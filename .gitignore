@@ -1,0 +1,7 @@
+.DS_Store
+.metascript-cache
+
+deps/
+out/
+
+CLAUDE.md
