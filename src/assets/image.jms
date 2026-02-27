@@ -1,0 +1,35 @@
+// Void Asset — Image loading (Browser)
+// JS/WASM backend — real async via fetch + canvas.
+
+let currentWidth: int32 = 0;
+let currentHeight: int32 = 0;
+
+export async function loadImage(path: string, channels: int32): Promise<unknown> {
+	const response = await fetch(path);
+	const blob = await response.blob();
+	const bitmap = await createImageBitmap(blob);
+
+	currentWidth = bitmap.width as int32;
+	currentHeight = bitmap.height as int32;
+
+	// Extract raw pixel data via OffscreenCanvas
+	const canvas = new OffscreenCanvas(currentWidth, currentHeight);
+	const ctx = canvas.getContext("2d");
+	ctx.drawImage(bitmap, 0, 0);
+	const imageData = ctx.getImageData(0, 0, currentWidth, currentHeight);
+	bitmap.close();
+
+	return imageData.data;
+}
+
+export function imageWidth(): int32 {
+	return currentWidth;
+}
+
+export function imageHeight(): int32 {
+	return currentHeight;
+}
+
+export function freeImage(data: unknown): void {
+	// No-op in JS — GC handles it
+}

@@ -25,4 +25,8 @@ void void_math_multiply_mvp(void);
 // Get pointer to the 64-byte MVP result (16 floats, column-major)
 const void *void_math_get_mvp(void);
 
+// Trig helpers (expose C math to MetaScript)
+float void_math_sinf(float x);
+float void_math_cosf(float x);
+
 #endif

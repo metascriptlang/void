@@ -1,14 +1,21 @@
-// Void Engine — Spinning Textured Cube (WebGPU)
+// Void Engine — Interactive Textured Cube (WebGPU)
+// WASD camera orbit, frame-rate independent, window resize
 
 import {
 	GPUInstance, GPUAdapter, GPUDevice, GPUCanvasContext,
 	GPURenderPipeline, GPUShaderModule, GPUBuffer,
 	GPUBindGroupLayout, GPUBindGroup, GPUPipelineLayout,
 	GPUTexture, GPUTextureView, GPUSampler,
-	createGPUInstance, genCheckerboard
+	createGPUInstance
 } from "./gpu/dawn"
 
-import { initPlatform, quitPlatform, createWindow, destroyWindow, pollEvents } from "./platform/sdl"
+import { loadImage, imageWidth, imageHeight, freeImage } from "./assets/image"
+
+import {
+	initPlatform, quitPlatform, createWindow, destroyWindow,
+	pollEvent, eventKey, eventWidth, eventHeight,
+	getTicksNS, EventType, Key
+} from "./platform/sdl"
 
 import {
 	GPUBufferUsage, GPUTextureUsage, GPUShaderStage,
@@ -16,7 +23,7 @@ import {
 	AddressMode, FilterMode
 } from "./gpu/constants"
 
-import { setPerspective, setLookAt, setRotateY, multiplyMVP, getMVP } from "./math/mat4"
+import { setPerspective, setLookAt, setRotateY, multiplyMVP, getMVP, sinf, cosf } from "./math/mat4"
 
 const SHADER = `
 struct Uniforms {
@@ -40,16 +47,16 @@ struct VOut {
 }
 `;
 
-function main(): int32 {
+async function main(): int32 {
 	if (!initPlatform()) {
 		console.log("Failed to init platform");
 		return 1;
 	}
 
-	const WIDTH: uint32 = 800;
-	const HEIGHT: uint32 = 600;
+	var WIDTH: uint32 = 800;
+	var HEIGHT: uint32 = 600;
 
-	const window = createWindow("Void Engine", WIDTH, HEIGHT);
+	const window = createWindow("Void Engine", WIDTH as int32, HEIGHT as int32);
 	const gpu = createGPUInstance();
 	defer gpu.release();
 	const context = gpu.createSurface(window);
@@ -75,7 +82,6 @@ function main(): int32 {
 	defer vertexBuffer.release();
 
 	const vMap = vertexBuffer.getMappedRange(0, 480);
-	// Helper: each vertex = 5 floats (px, py, pz, u, v), base index = vertexIndex * 5
 	// Front face (z = +0.5)
 	vertexBuffer.mappedWriteFloat(vMap, 0, -0.5); vertexBuffer.mappedWriteFloat(vMap, 1, -0.5); vertexBuffer.mappedWriteFloat(vMap, 2,  0.5); vertexBuffer.mappedWriteFloat(vMap, 3, 0.0); vertexBuffer.mappedWriteFloat(vMap, 4, 1.0);
 	vertexBuffer.mappedWriteFloat(vMap, 5,  0.5); vertexBuffer.mappedWriteFloat(vMap, 6, -0.5); vertexBuffer.mappedWriteFloat(vMap, 7,  0.5); vertexBuffer.mappedWriteFloat(vMap, 8, 1.0); vertexBuffer.mappedWriteFloat(vMap, 9, 1.0);
@@ -118,7 +124,6 @@ function main(): int32 {
 	defer indexBuffer.release();
 
 	const iMap = indexBuffer.getMappedRange(0, 72);
-	// Each face: 4 vertices → 2 triangles (0,1,2 + 0,2,3)
 	var fi: uint32 = 0;
 	var vi: uint16 = 0;
 	while (fi < 6) {
@@ -143,34 +148,25 @@ function main(): int32 {
 	});
 	defer uniformBuffer.release();
 
-	// --- Checkerboard texture (64x64 RGBA) ---
-	const TEX_SIZE: uint32 = 64;
-	const TEX_BYTES: uint64 = (TEX_SIZE * TEX_SIZE * 4) as uint64;
+	// --- Load texture from PNG ---
+	const imgData = await loadImage("assets/test.png", 4);
+	const imgW: uint32 = imageWidth() as uint32;
+	const imgH: uint32 = imageHeight() as uint32;
+	const imgBytes: uint64 = (imgW * imgH * 4) as uint64;
 	const texUsage: uint32 = (GPUTextureUsage.TEXTURE_BINDING as uint32) | (GPUTextureUsage.COPY_DST as uint32);
-	const checkerTexture = device.createTexture(TEX_SIZE, TEX_SIZE, TextureFormat.RGBA8_UNORM as uint32, texUsage, 1);
-	defer checkerTexture.release();
+	const loadedTexture = device.createTexture(imgW, imgH, TextureFormat.RGBA8_UNORM as uint32, texUsage, 1);
+	defer loadedTexture.release();
+	device.getQueue().writeTexture(loadedTexture, imgData, imgBytes, imgW * 4, imgW, imgH);
+	freeImage(imgData);
 
-	// Generate checkerboard into a mapped staging buffer
-	const stageBuf = device.createBuffer({
-		size: TEX_BYTES,
-		usage: GPUBufferUsage.MAP_WRITE as uint32,
-		mappedAtCreation: 1,
-	});
-	const texMap = stageBuf.getMappedRange(0, TEX_BYTES);
-	genCheckerboard(texMap, TEX_SIZE, 220, 220, 220, 80, 80, 180);
-	// Write texture directly from mapped pointer before unmapping
-	device.getQueue().writeTexture(checkerTexture, texMap, TEX_BYTES, TEX_SIZE * 4, TEX_SIZE, TEX_SIZE);
-	stageBuf.unmap();
-	stageBuf.release();
-
-	const checkerView = checkerTexture.createView();
-	defer checkerView.release();
+	const texView = loadedTexture.createView();
+	defer texView.release();
 
 	// --- Sampler ---
 	const sampler = device.createSampler(
 		AddressMode.REPEAT as uint32,
-		FilterMode.NEAREST as uint32,
-		FilterMode.NEAREST as uint32
+		FilterMode.LINEAR as uint32,
+		FilterMode.LINEAR as uint32
 	);
 	defer sampler.release();
 
@@ -185,7 +181,7 @@ function main(): int32 {
 	const visFragment: uint32 = GPUShaderStage.FRAGMENT as uint32;
 	const texSampBGL = device.createBindGroupLayout1Tex1Samp(0, visFragment, 1, visFragment);
 	defer texSampBGL.release();
-	const texSampBG = device.createBindGroup1Tex1Samp(texSampBGL, 0, checkerView, 1, sampler);
+	const texSampBG = device.createBindGroup1Tex1Samp(texSampBGL, 0, texView, 1, sampler);
 	defer texSampBG.release();
 
 	// --- Pipeline layout (2 bind groups) ---
@@ -196,37 +192,113 @@ function main(): int32 {
 	const pipeline = device.createRenderPipelineExt2(
 		shader, "vs", "fs",
 		pipelineLayout,
-		20, 2,  // stride=20 (5 floats), 2 attributes
-		VertexFormat.FLOAT32X3 as uint32, 0, 0,    // attr0: pos vec3f at offset 0
-		VertexFormat.FLOAT32X2 as uint32, 12, 1,   // attr1: uv vec2f at offset 12
-		0, 0, 0,  // attr2: unused
-		1,  // hasDepth
+		20, 2,
+		VertexFormat.FLOAT32X3 as uint32, 0, 0,
+		VertexFormat.FLOAT32X2 as uint32, 12, 1,
+		0, 0, 0,
+		1,
 		CullMode.BACK as uint32,
-		0,  // hasBlend = false
-		0, 0, 0, 0, 0, 0  // blend params (unused)
+		0,
+		0, 0, 0, 0, 0, 0
 	);
 	defer pipeline.release();
 
-	// --- Depth texture ---
-	const depthTexture = device.createDepthTexture(WIDTH, HEIGHT);
-	defer depthTexture.release();
-	const depthView = depthTexture.createView();
-	defer depthView.release();
+	// --- Depth texture (mutable for resize) ---
+	var depthTexture = device.createDepthTexture(WIDTH, HEIGHT);
+	var depthView = depthTexture.createView();
 
-	// --- Setup camera ---
-	setPerspective(1.0472, 800.0 / 600.0, 0.1, 100.0);
-	setLookAt(0.0, 1.5, 3.0,  0.0, 0.0, 0.0,  0.0, 1.0, 0.0);
+	// --- Camera state ---
+	var camAngle: float32 = 0.0;   // orbit angle around Y
+	var camDist: float32 = 3.0;    // distance from origin
+	var camHeight: float32 = 1.5;  // eye Y position
+
+	// --- Setup initial projection ---
+	setPerspective(1.0472, (WIDTH as float32) / (HEIGHT as float32), 0.1, 100.0);
+
+	// --- Input state (0 = not pressed, 1 = pressed) ---
+	var keyW: int32 = 0;
+	var keyA: int32 = 0;
+	var keyS: int32 = 0;
+	var keyD: int32 = 0;
+	var keyQ: int32 = 0;
+	var keyE: int32 = 0;
 
 	var angle: float32 = 0.0;
+	var lastTime: uint64 = getTicksNS();
+	var running: int32 = 1;
 
-	while (pollEvents()) {
-		angle = angle + 0.01;
+	while (running === 1) {
+		// --- Process events ---
+		var evt: int32 = pollEvent();
+		while (evt !== 0) {
+			if (evt === EventType.QUIT) {
+				running = 0;
+			}
+			if (evt === EventType.KEY_DOWN) {
+				const k: int32 = eventKey();
+				if (k === Key.ESCAPE) running = 0;
+				if (k === Key.W) keyW = 1;
+				if (k === Key.A) keyA = 1;
+				if (k === Key.S) keyS = 1;
+				if (k === Key.D) keyD = 1;
+				if (k === Key.Q) keyQ = 1;
+				if (k === Key.E) keyE = 1;
+			}
+			if (evt === EventType.KEY_UP) {
+				const k: int32 = eventKey();
+				if (k === Key.W) keyW = 0;
+				if (k === Key.A) keyA = 0;
+				if (k === Key.S) keyS = 0;
+				if (k === Key.D) keyD = 0;
+				if (k === Key.Q) keyQ = 0;
+				if (k === Key.E) keyE = 0;
+			}
+			if (evt === EventType.WINDOW_RESIZE) {
+				WIDTH = eventWidth() as uint32;
+				HEIGHT = eventHeight() as uint32;
+				if (WIDTH > 0 && HEIGHT > 0) {
+					context.configure({ device: device, format: "bgra8unorm", width: WIDTH, height: HEIGHT });
+					depthView.release();
+					depthTexture.release();
+					depthTexture = device.createDepthTexture(WIDTH, HEIGHT);
+					depthView = depthTexture.createView();
+					setPerspective(1.0472, (WIDTH as float32) / (HEIGHT as float32), 0.1, 100.0);
+				}
+			}
+			evt = pollEvent();
+		}
+
+		// --- Frame timing ---
+		const now: uint64 = getTicksNS();
+		const dtNS: uint64 = now - lastTime;
+		lastTime = now;
+		const dt: float32 = (dtNS as float32) / 1000000000.0;
+
+		// --- Update camera ---
+		if (keyA === 1) camAngle = camAngle - dt * 2.0;
+		if (keyD === 1) camAngle = camAngle + dt * 2.0;
+		if (keyW === 1) camDist = camDist - dt * 3.0;
+		if (keyS === 1) camDist = camDist + dt * 3.0;
+		if (keyQ === 1) camHeight = camHeight - dt * 2.0;
+		if (keyE === 1) camHeight = camHeight + dt * 2.0;
+
+		// Clamp distance
+		if (camDist < 1.0) camDist = 1.0;
+		if (camDist > 10.0) camDist = 10.0;
+
+		const eyeX: float32 = sinf(camAngle) * camDist;
+		const eyeZ: float32 = cosf(camAngle) * camDist;
+		setLookAt(eyeX, camHeight, eyeZ, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+
+		// --- Rotate cube ---
+		angle = angle + dt * 1.0;
 		setRotateY(angle);
 		multiplyMVP();
 
 		const mvpPtr = getMVP();
 		device.getQueue().writeBuffer(uniformBuffer, 0, mvpPtr, 64);
 
+		// --- Render ---
 		const texture = context.getCurrentTexture();
 		if (texture._handle === null) continue;
 
@@ -258,6 +330,8 @@ function main(): int32 {
 		view.release();
 	}
 
+	depthView.release();
+	depthTexture.release();
 	destroyWindow(window);
 	quitPlatform();
 
