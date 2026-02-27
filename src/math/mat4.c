@@ -95,3 +95,6 @@ void void_math_multiply_mvp(void) {
 const void *void_math_get_mvp(void) {
 	return (const void *)s_mvp;
 }
+
+float void_math_sinf(float x) { return sinf(x); }
+float void_math_cosf(float x) { return cosf(x); }
