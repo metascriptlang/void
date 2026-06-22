@@ -1,0 +1,23 @@
+// Void 2D — thin sokol/fontstash primitives. The batcher LOGIC (vertex buffer,
+// quad/glyph geometry, flush orchestration) lives in MetaScript (src/void2d/draw.ms);
+// this file only exposes what FFI can't do: sokol resource calls + the fontstash
+// glyph-layout iterator. See docs/VOID2D.md.
+#ifndef VOID2D_BATCHER_H
+#define VOID2D_BATCHER_H
+
+#include <stdint.h>
+
+void void2dSetup(void);
+uint32_t void2dWhiteView(void);
+uint32_t void2dFontView(void);
+
+// Upload a MetaScript-owned packed vertex run (pos2+uv2+color4 per vert) and draw it.
+// blend selects the pipeline: 0=Alpha 1=Add 2=Multiply 3=Screen 4=None (see BlendMode).
+void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH);
+
+// fontstash glyph-layout iterator (MetaScript builds the glyph quads).
+void void2dTextBegin(float x, float y, float size, const char *text);
+float *void2dTextNext(void);      // returns 8 floats [x0,y0,s0,t0,x1,y1,s1,t1], or NULL when done
+void void2dTextSyncAtlas(void);   // upload atlas if the iterator rasterized new glyphs
+
+#endif
