@@ -1,11 +1,17 @@
-import { defineConfig } from 'std/build';
+import { BuildConfig } from "std/build";
 
-export default defineConfig({
-	root: "src/index.ms",
-	build: {
-		target: "native",
-		outDir: "out",
-		outFile: "void",
-		optimize: "debug",
+const config: BuildConfig = {
+	entry: "./src/examples/mainSokol2d.ms",
+	fmt: {
+		useTabs: true,
 	},
-});
+	package: {
+		name: "@metascript/void",
+		version: "0.0.4",
+		description: "WebGPU game engine for MetaScript",
+		license: "MIT",
+		files: ["src/**/*.ms", "src/**/*.wms"],
+	},
+};
+
+export default config;
