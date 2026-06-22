@@ -1,7 +1,5 @@
 // Void Math — Mat4 wrapper for C bridge
 
-@include("./mat4.h")
-
 import {
 	void_math_set_perspective,
 	void_math_set_look_at,
@@ -10,7 +8,7 @@ import {
 	void_math_get_mvp,
 	void_math_sinf,
 	void_math_cosf
-} from "./mat4.h"
+} from "./mat4.h";
 
 export function setPerspective(fovY: float32, aspect: float32, nearZ: float32, farZ: float32): void {
 	void_math_set_perspective(fovY, aspect, nearZ, farZ);
