@@ -3,5 +3,10 @@
 
 deps/
 out/
+*.o
+
+web/wgpu/
+web/gl/
+web/.claude/
 
 CLAUDE.md
