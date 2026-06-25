@@ -4,9 +4,9 @@
 
 import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
-import { Node2D, rect, sprite, label, at, addChild } from "../void2d/node";
-import { Scene, scene, add, present } from "../void2d/scene";
-import { rgba, tile, sub, BlendMode } from "../void2d/types";
+import { Node2D, rect, sprite, label, anim, at, addChild } from "../void2d/node";
+import { Scene, scene, add, present, tick } from "../void2d/scene";
+import { Tile, rgba, tile, sub, BlendMode } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene | null = null;
@@ -40,12 +40,24 @@ export function init2d(): void {
 	greenNode.blend = BlendMode.Add;
 	greenNode.pivotX = 70.0;
 	greenNode.pivotY = 70.0;
+	greenNode.zIndex = 10;
+
+	const hw: float32 = (iw as float32) * 0.5;
+	const hh: float32 = (ih as float32) * 0.5;
+	const frames: Tile[] = [
+		sheet.sub(0.0, 0.0, hw, hh), sheet.sub(hw, 0.0, hw, hh),
+		sheet.sub(hw, hh, hw, hh), sheet.sub(0.0, hh, hw, hh),
+	];
+	const animNode = anim(frames, 6.0).at(250.0, 250.0);
+	animNode.w = 90.0;
+	animNode.h = 90.0;
 
 	const panelNode = rect(360.0, 380.0, rgba(0.16, 0.18, 0.24, 1.0)).at(60.0, 60.0);
 	panelNode.addChild(rect(160.0, 70.0, rgba(0.90, 0.30, 0.35, 1.0)).at(30.0, 30.0));
 	panelNode.addChild(cropNode);
 	panelNode.addChild(greenNode);
 	panelNode.addChild(logoNode);
+	panelNode.addChild(animNode);
 	panelNode.addChild(label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0));
 
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
@@ -71,6 +83,8 @@ export function frame2d(): void {
 	panel.scaleX = s;
 	panel.scaleY = s;
 	green.rotation = green.rotation + 0.03;
+	sc.cam.x = (t - 70.0) * 0.6;
 
+	sc.tick(1.0 / 60.0);
 	sc.present();
 }
