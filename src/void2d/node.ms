@@ -7,7 +7,7 @@
 import { fillQuad, imageQuad, drawTextXform } from "./draw";
 import { Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d } from "./types";
 
-export enum DrawKind { Group, Rect, Sprite, Label }
+export enum DrawKind { Group, Rect, Sprite, Label, Anim }
 
 export interface Node2D {
 	kind: DrawKind;
@@ -21,19 +21,23 @@ export interface Node2D {
 	alpha: float32;
 	visible: boolean;
 	blend: BlendMode;
+	zIndex: int32;
 	w: float32;
 	h: float32;
 	color: Color;
 	sheet: Tile;
 	text: string;
 	size: float32;
+	frames: Tile[];
+	fps: float32;
+	clock: float32;
 	children: Node2D[];
 }
 
 function base(kind: DrawKind): Node2D {
 	return {
-		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, blend: BlendMode.Alpha,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), sheet: tile(0, 0.0, 0.0), text: "", size: 0.0, children: [],
+		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, blend: BlendMode.Alpha, zIndex: 0,
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), sheet: tile(0, 0.0, 0.0), text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, children: [],
 	};
 }
 
@@ -63,6 +67,17 @@ export function label(text: string, size: float32, color: Color): Node2D {
 	n.color = color;
 	return n;
 }
+// h2d.Anim — cycles `frames` (tiles, e.g. via Tile.sub) at `fps`; advanced by update(dt).
+export function anim(frames: Tile[], fps: float32): Node2D {
+	const n = base(DrawKind.Anim);
+	n.frames = frames;
+	n.fps = fps;
+	if (frames.length > 0) {
+		n.w = frames[0].w;
+		n.h = frames[0].h;
+	}
+	return n;
+}
 
 // ===== extension methods (reads OO, is FP) =====
 
@@ -77,6 +92,33 @@ export function at(this n: Node2D, x: float32, y: float32): Node2D {
 	return n;
 }
 
+// h2d Object.sync — advance time-based state (Anim clocks) down the tree.
+export function update(this n: Node2D, dt: float32): void {
+	if (n.kind === DrawKind.Anim) {
+		n.clock = n.clock + dt;
+	}
+	for (const ch of n.children) {
+		ch.update(dt);
+	}
+}
+
+// h2d.Layers — order children by zIndex; stable (equal zIndex keep insertion order),
+// in-place insertion sort (≈O(n) once settled, no per-frame alloc).
+function sortByZ(cs: Node2D[]): void {
+	const m: int32 = cs.length as int32;
+	let i: int32 = 1;
+	while (i < m) {
+		const cur = cs[i];
+		let j: int32 = i - 1;
+		while (j >= 0 && cs[j].zIndex > cur.zIndex) {
+			cs[j + 1] = cs[j];
+			j = j - 1;
+		}
+		cs[j + 1] = cur;
+		i = i + 1;
+	}
+}
+
 export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 	if (!n.visible) { return; }
 	const world = parent * trs2d(n.x, n.y, n.rotation, n.scaleX, n.scaleY);
@@ -84,13 +126,24 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 	const col = rgba(n.color.r, n.color.g, n.color.b, n.color.a * na);
 	const px: float32 = n.pivotX;
 	const py: float32 = n.pivotY;
+	const tl = vec2(-px, -py) * world;
+	const tr = vec2(n.w - px, -py) * world;
+	const br = vec2(n.w - px, n.h - py) * world;
+	const bl = vec2(-px, n.h - py) * world;
 	if (n.kind === DrawKind.Rect) {
-		fillQuad(vec2(-px, -py) * world, vec2(n.w - px, -py) * world, vec2(n.w - px, n.h - py) * world, vec2(-px, n.h - py) * world, col, n.blend);
+		fillQuad(tl, tr, br, bl, col, n.blend);
 	} else if (n.kind === DrawKind.Sprite) {
-		imageQuad(n.sheet, vec2(-px, -py) * world, vec2(n.w - px, -py) * world, vec2(n.w - px, n.h - py) * world, vec2(-px, n.h - py) * world, col, n.blend);
+		imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
+	} else if (n.kind === DrawKind.Anim) {
+		const len: int32 = n.frames.length as int32;
+		if (len > 0) {
+			const fi: int32 = ((n.clock * n.fps) as int32) % len;
+			imageQuad(n.frames[fi], tl, tr, br, bl, col, n.blend);
+		}
 	} else if (n.kind === DrawKind.Label) {
 		drawTextXform(world, n.size, n.text, col, n.blend);
 	}
+	sortByZ(n.children);
 	for (const ch of n.children) {
 		ch.render(world, na);
 	}
