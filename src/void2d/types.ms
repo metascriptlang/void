@@ -92,3 +92,24 @@ export function trs2d(x: float32, y: float32, rot: float32, sx: float32, sy: flo
 	const si: float32 = sinf(rot);
 	return { a: co * sx, b: si * sx, c: -si * sy, d: co * sy, tx: x, ty: y };
 }
+
+// h2d.Camera — a view transform over the whole scene. (x,y) is the world point shown at
+// the viewport anchor (anchorX/Y as 0..1 of framebuffer); zoom + rotation around it.
+// Defaults (x=y=0, zoom=1, anchor=0) → identity, so a scene with no camera move is unchanged.
+export struct Camera {
+	x: float32;
+	y: float32;
+	zoom: float32;
+	rotation: float32;
+	anchorX: float32;
+	anchorY: float32;
+}
+
+export function camera(): Camera {
+	return { x: 0.0, y: 0.0, zoom: 1.0, rotation: 0.0, anchorX: 0.0, anchorY: 0.0 };
+}
+
+// world → screen: translate(anchor px) ∘ rotate ∘ zoom ∘ translate(-x,-y)
+export function viewMatrix(this c: Camera, fbW: float32, fbH: float32): Transform2D {
+	return trs2d(c.anchorX * fbW, c.anchorY * fbH, c.rotation, c.zoom, c.zoom) * trs2d(-c.x, -c.y, 0.0, 1.0, 1.0);
+}
