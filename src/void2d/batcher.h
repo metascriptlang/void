@@ -17,6 +17,9 @@ uint32_t void2dFontView(void);
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
                       const float *colorMatrix, float addR, float addG, float addB, float addA);
 
+// h2d.Mask clip — restrict subsequent draws to a framebuffer-pixel rect (top-left origin).
+void void2dScissor(int x, int y, int w, int h);
+
 // fontstash glyph-layout iterator (MetaScript builds the glyph quads).
 void void2dTextBegin(float x, float y, float size, const char *text);
 float *void2dTextNext(void);      // returns 8 floats [x0,y0,s0,t0,x1,y1,s1,t1], or NULL when done

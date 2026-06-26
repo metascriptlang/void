@@ -4,7 +4,7 @@
 // the string param of void2dTextBegin.
 
 import {
-	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw,
+	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas
 } from "./batcher.h";
 import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
@@ -28,6 +28,15 @@ const curMat: Vec<float32> = [
 ];
 let curAdd: Color = rgba(0.0, 0.0, 0.0, 0.0);
 let curHasEffect: boolean = false;
+
+// h2d.Mask clip stack: each pushClip intersects with the enclosing zone (Heaps
+// clipRenderZone semantics) and flushes so the scissor only bounds the masked subtree.
+const MAX_CLIP: int32 = 16;
+const clipX0: Vec<float32> = new Array(MAX_CLIP);
+const clipY0: Vec<float32> = new Array(MAX_CLIP);
+const clipX1: Vec<float32> = new Array(MAX_CLIP);
+const clipY1: Vec<float32> = new Array(MAX_CLIP);
+let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {
 	let i: int32 = 0;
@@ -78,6 +87,53 @@ export function begin2d(w: int32, h: int32): void {
 	setIdentityMat();
 	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
 	curHasEffect = false;
+	clipDepth = 0;
+}
+
+function applyScissor(x0: float32, y0: float32, x1: float32, y1: float32): void {
+	let ix: int32 = x0 as int32;
+	let iy: int32 = y0 as int32;
+	let iw: int32 = (x1 - x0) as int32;
+	let ih: int32 = (y1 - y0) as int32;
+	if (ix < 0) { iw = iw + ix; ix = 0; }
+	if (iy < 0) { ih = ih + iy; iy = 0; }
+	if (iw < 0) { iw = 0; }
+	if (ih < 0) { ih = 0; }
+	void2dScissor(ix, iy, iw, ih);
+}
+
+export function pushClip(minX: float32, minY: float32, maxX: float32, maxY: float32): void {
+	flush();
+	let x0: float32 = minX;
+	let y0: float32 = minY;
+	let x1: float32 = maxX;
+	let y1: float32 = maxY;
+	if (clipDepth > 0) {
+		const d: int32 = clipDepth - 1;
+		if (clipX0[d] > x0) { x0 = clipX0[d]; }
+		if (clipY0[d] > y0) { y0 = clipY0[d]; }
+		if (clipX1[d] < x1) { x1 = clipX1[d]; }
+		if (clipY1[d] < y1) { y1 = clipY1[d]; }
+	}
+	if (clipDepth < MAX_CLIP) {
+		clipX0[clipDepth] = x0;
+		clipY0[clipDepth] = y0;
+		clipX1[clipDepth] = x1;
+		clipY1[clipDepth] = y1;
+		clipDepth = clipDepth + 1;
+	}
+	applyScissor(x0, y0, x1, y1);
+}
+
+export function popClip(): void {
+	flush();
+	if (clipDepth > 0) { clipDepth = clipDepth - 1; }
+	if (clipDepth > 0) {
+		const d: int32 = clipDepth - 1;
+		applyScissor(clipX0[d], clipY0[d], clipX1[d], clipY1[d]);
+	} else {
+		void2dScissor(0, 0, fbW as int32, fbH as int32);
+	}
 }
 
 // h2d.Drawable color/colorAdd → batch state. mat = 16-float column-major colorMatrix
