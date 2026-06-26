@@ -7,7 +7,7 @@ import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas
 } from "./batcher.h";
-import { Vec2, Color, Tile, Transform2D, BlendMode, vec2 } from "./types";
+import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
 
 const MAX_VERTS: int32 = 32768;
 const verts: Vec<float32> = new Array(MAX_VERTS * 8);
@@ -17,9 +17,27 @@ let curBlend: BlendMode = BlendMode.Alpha;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
 
+// h2d.Drawable colour pipeline as batch state: identity matrix + zero add = no-op, so
+// effect-free nodes batch together. A node with a distinct effect starts its own run
+// (flush on change, like blend mode); identical-effect runs aren't deduped yet.
+const curMat: Vec<float32> = [
+	1.0, 0.0, 0.0, 0.0,
+	0.0, 1.0, 0.0, 0.0,
+	0.0, 0.0, 1.0, 0.0,
+	0.0, 0.0, 0.0, 1.0,
+];
+let curAdd: Color = rgba(0.0, 0.0, 0.0, 0.0);
+let curHasEffect: boolean = false;
+
+function setIdentityMat(): void {
+	let i: int32 = 0;
+	while (i < 16) { curMat[i] = 0.0; i = i + 1; }
+	curMat[0] = 1.0; curMat[5] = 1.0; curMat[10] = 1.0; curMat[15] = 1.0;
+}
+
 function flush(): void {
 	if (vertCount == 0) { return; }
-	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH);
+	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a);
 	vertCount = 0;
 }
 
@@ -57,6 +75,27 @@ export function begin2d(w: int32, h: int32): void {
 	vertCount = 0;
 	curView = void2dWhiteView();
 	curBlend = BlendMode.Alpha;
+	setIdentityMat();
+	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
+	curHasEffect = false;
+}
+
+// h2d.Drawable color/colorAdd → batch state. mat = 16-float column-major colorMatrix
+// (empty/<16 = identity); add = rgba added after. Flushes when switching off the
+// effect-free batch (or onto a different effect).
+export function setEffect(mat: float32[], add: Color): void {
+	const hasMat: boolean = (mat.length as int32) >= 16;
+	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0;
+	if (!wantsEffect && !curHasEffect) { return; }
+	flush();
+	if (hasMat) {
+		let i: int32 = 0;
+		while (i < 16) { curMat[i] = mat[i]; i = i + 1; }
+	} else {
+		setIdentityMat();
+	}
+	curAdd = add;
+	curHasEffect = wantsEffect;
 }
 
 export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode): void {
