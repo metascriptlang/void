@@ -8,7 +8,7 @@ import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addCh
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, strokePoly, cubicBezier } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
-import { Tile, Vec2, rgba, tile, sub, vec2, BlendMode } from "../void2d/types";
+import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene | null = null;
@@ -86,6 +86,16 @@ export function init2d(): void {
 	const keyed = sprite(tile(logoView, 120.0, 120.0)).at(470.0, 530.0);
 	keyed.colorKey = rgba(0.05, 0.05, 0.07, 1.0);
 
+	const flipped = sprite(tile(logoView, 90.0, 90.0).flipX()).at(610.0, 545.0);
+	const pixTile = sheet.sub((iw as float32) * 0.40, (ih as float32) * 0.38, 14.0, 14.0);
+	const nearestNode = sprite(pixTile).at(720.0, 555.0);
+	nearestNode.w = 80.0;
+	nearestNode.h = 80.0;
+	nearestNode.smooth = false;
+	const linearNode = sprite(pixTile).at(810.0, 555.0);
+	linearNode.w = 80.0;
+	linearNode.h = 80.0;
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
@@ -93,6 +103,9 @@ export function init2d(): void {
 	sceneObj.add(sgNode);
 	sceneObj.add(keyBg);
 	sceneObj.add(keyed);
+	sceneObj.add(flipped);
+	sceneObj.add(nearestNode);
+	sceneObj.add(linearNode);
 
 	logo = logoNode;
 	green = greenNode;
