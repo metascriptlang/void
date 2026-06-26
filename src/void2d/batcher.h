@@ -28,5 +28,7 @@ void void2dFrameBegin(void);
 void void2dTextBegin(float x, float y, float size, const char *text);
 float *void2dTextNext(void);      // returns 8 floats [x0,y0,s0,t0,x1,y1,s1,t1], or NULL when done
 void void2dTextSyncAtlas(void);   // upload atlas if the iterator rasterized new glyphs
+float void2dTextWidth(float size, const char *text);   // advance width of one line
+float void2dLineHeight(float size);                    // vertical line spacing
 
 #endif
