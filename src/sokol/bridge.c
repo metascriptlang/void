@@ -21,9 +21,14 @@ static void call0(msClosure c) {
 static void _init(void) { call0(s_init); }
 static void _frame(void) { call0(s_frame); }
 
+static bool s_keys[SAPP_MAX_KEYCODES];
+
 static void _event(const sapp_event *e) {
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN && e->key_code == SAPP_KEYCODE_ESCAPE) {
-		sapp_request_quit();
+	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
+		if (e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
+		s_keys[e->key_code] = true;
+	} else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
+		s_keys[e->key_code] = false;
 	}
 }
 
@@ -53,6 +58,11 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) { return sapp_width(); }
 int voidFbHeight(void) { return sapp_height(); }
+
+int voidKeyDown(int keycode) {
+	if (keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;
+	return s_keys[keycode] ? 1 : 0;
+}
 
 // --- Resource creation (sokol handle .id ↔ uint32) ---
 

@@ -9,6 +9,7 @@
 extern function voidGfxSetup(): void;
 extern function voidFbWidth(): int32;
 extern function voidFbHeight(): int32;
+extern function voidKeyDown(keycode: int32): int32;
 extern function voidMakeVertexBuffer(data: Borrow<float32>, size: int32): uint32;
 extern function voidMakeIndexBuffer(data: Borrow<uint16>, size: int32): uint32;
 extern function voidMakeCubeShader(): uint32;
@@ -27,6 +28,7 @@ extern function voidCommit(): void;
 export function gfxSetup(): void { voidGfxSetup(); }
 export function fbWidth(): int32 { return voidFbWidth(); }
 export function fbHeight(): int32 { return voidFbHeight(); }
+export function keyDown(code: int32): boolean { return voidKeyDown(code) !== 0; }
 export function makeVertexBuffer(data: Borrow<float32>, size: int32): uint32 { return voidMakeVertexBuffer(data, size); }
 export function makeIndexBuffer(data: Borrow<uint16>, size: int32): uint32 { return voidMakeIndexBuffer(data, size); }
 export function makeCubeShader(): uint32 { return voidMakeCubeShader(); }
@@ -41,3 +43,9 @@ export function applyMvp(mvp: unknown): void { voidApplyMvp(mvp); }
 export function draw(count: int32): void { voidDraw(count); }
 export function endPass(): void { voidEndPass(); }
 export function commit(): void { voidCommit(); }
+
+// sokol_app keycodes (ASCII-aligned letters) for keyDown polling.
+export const KEY_W: int32 = 87;
+export const KEY_A: int32 = 65;
+export const KEY_S: int32 = 83;
+export const KEY_D: int32 = 68;
