@@ -6,6 +6,7 @@ import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } fr
 import { setup2d } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, graphics, at, addChild } from "../void2d/node";
 import { fillCircle, strokeLine, fillConvex } from "../void2d/graphics";
+import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, vec2, BlendMode } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
@@ -35,6 +36,7 @@ export function init2d(): void {
 	const cropNode = sprite(sheet.sub(0.0, 0.0, (iw as float32) * 0.5, (ih as float32) * 0.5)).at(210.0, 30.0);
 	cropNode.w = 120.0;
 	cropNode.h = 120.0;
+	cropNode.colorAdd = rgba(0.35, 0.0, 0.0, 0.0);
 
 	const greenNode = rect(140.0, 140.0, rgba(0.35, 0.80, 0.45, 1.0)).at(180.0, 180.0);
 	greenNode.alpha = 0.6;
@@ -54,7 +56,9 @@ export function init2d(): void {
 	animNode.h = 90.0;
 
 	const panelNode = rect(360.0, 380.0, rgba(0.16, 0.18, 0.24, 1.0)).at(60.0, 60.0);
-	panelNode.addChild(rect(160.0, 70.0, rgba(0.90, 0.30, 0.35, 1.0)).at(30.0, 30.0));
+	const redNode = rect(160.0, 70.0, rgba(0.90, 0.30, 0.35, 1.0)).at(30.0, 30.0);
+	redNode.colorMatrix = colorMatrixGrayscale(1.0);
+	panelNode.addChild(redNode);
 	panelNode.addChild(cropNode);
 	panelNode.addChild(greenNode);
 	panelNode.addChild(logoNode);
