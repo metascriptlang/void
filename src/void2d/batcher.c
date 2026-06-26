@@ -186,6 +186,23 @@ float *void2dTextNext(void) {
 	return s_quad;
 }
 
+float void2dTextWidth(float size, const char *text) {
+	if (!s_fons || s_fontId == FONS_INVALID) return 0.0f;
+	fonsSetFont(s_fons, s_fontId);
+	fonsSetSize(s_fons, size);
+	fonsSetAlign(s_fons, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
+	return fonsTextBounds(s_fons, 0.0f, 0.0f, text, NULL, NULL);
+}
+
+float void2dLineHeight(float size) {
+	if (!s_fons || s_fontId == FONS_INVALID) return size;
+	fonsSetFont(s_fons, s_fontId);
+	fonsSetSize(s_fons, size);
+	float asc = 0.0f, desc = 0.0f, lineh = size;
+	fonsVertMetrics(s_fons, &asc, &desc, &lineh);
+	return lineh;
+}
+
 void void2dTextSyncAtlas(void) {
 	if (!s_fons) return;
 	int dirty[4];
