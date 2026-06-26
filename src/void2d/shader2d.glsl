@@ -20,11 +20,21 @@ void main() {
 @fs fs
 layout(binding=0) uniform texture2D tex;
 layout(binding=0) uniform sampler smp;
+// h2d.Drawable color pipeline: multiply tint (per-vertex) → colorMatrix → colorAdd.
+// Defaults (identity matrix, zero add) leave the pixel untouched, so no-effect nodes
+// batch together unchanged.
+layout(binding=1) uniform void2d_fx {
+    mat4 colorMatrix;
+    vec4 colorAdd;
+};
 in vec2 uv;
 in vec4 color;
 out vec4 frag_color;
 void main() {
-    frag_color = texture(sampler2D(tex, smp), uv) * color;
+    vec4 c = texture(sampler2D(tex, smp), uv) * color;
+    c = colorMatrix * c;
+    c = c + colorAdd;
+    frag_color = c;
 }
 @end
 

@@ -13,7 +13,9 @@ uint32_t void2dFontView(void);
 
 // Upload a MetaScript-owned packed vertex run (pos2+uv2+color4 per vert) and draw it.
 // blend selects the pipeline: 0=Alpha 1=Add 2=Multiply 3=Screen 4=None (see BlendMode).
-void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH);
+// colorMatrix = 16 floats (column-major, identity = no-op); colorAdd = rgba added after.
+void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
+                      const float *colorMatrix, float addR, float addG, float addB, float addA);
 
 // fontstash glyph-layout iterator (MetaScript builds the glyph quads).
 void void2dTextBegin(float x, float y, float size, const char *text);

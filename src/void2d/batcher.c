@@ -113,7 +113,8 @@ void void2dSetup(void) {
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
 uint32_t void2dFontView(void) { return s_fontView.id; }
 
-void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH) {
+void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
+                      const float *colorMatrix, float addR, float addG, float addB, float addA) {
 	if (vertCount <= 0) return;
 	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
 	if (s_atlasDirty) {
@@ -137,6 +138,11 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	vp.viewport[1] = fbH;
 	sg_range u = { .ptr = &vp, .size = sizeof(vp) };
 	sg_apply_uniforms(UB_void2d_params, &u);
+	void2d_fx_t fx = {0};
+	memcpy(fx.colorMatrix, colorMatrix, sizeof(fx.colorMatrix));
+	fx.colorAdd[0] = addR; fx.colorAdd[1] = addG; fx.colorAdd[2] = addB; fx.colorAdd[3] = addA;
+	sg_range uf = { .ptr = &fx, .size = sizeof(fx) };
+	sg_apply_uniforms(UB_void2d_fx, &uf);
 	sg_draw(0, vertCount, 1);
 }
 
