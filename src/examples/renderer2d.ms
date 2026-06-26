@@ -4,7 +4,7 @@
 
 import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
-import { Node2D, rect, sprite, label, anim, graphics, mask, at, addChild } from "../void2d/node";
+import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, strokePoly, cubicBezier } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
@@ -78,10 +78,15 @@ export function init2d(): void {
 	maskNode.addChild(rect(240.0, 240.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-40.0, -40.0));
 	maskNode.addChild(label("clipped", 40.0, rgba(0.1, 0.1, 0.14, 1.0)).at(8.0, 50.0));
 
+	const sgNode = scaleGrid(sheet, 36.0, 36.0, 36.0, 36.0).at(650.0, 380.0);
+	sgNode.w = 270.0;
+	sgNode.h = 150.0;
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
 	sceneObj.add(maskNode);
+	sceneObj.add(sgNode);
 
 	logo = logoNode;
 	green = greenNode;
