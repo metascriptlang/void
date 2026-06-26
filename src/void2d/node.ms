@@ -4,7 +4,7 @@
 // (A discriminated-union payload hit a C-codegen issue when used as an interface field —
 //  flat tag + fields is the robust shape; revisit the union later.)
 
-import { fillQuad, imageQuad, imageQuadUV, drawTextXform, fillTri, setEffect, pushClip, popClip } from "./draw";
+import { fillQuad, imageQuad, imageQuadUV, drawTextXform, fillTri, setEffect, setSmooth, pushClip, popClip } from "./draw";
 import { Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d } from "./types";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
@@ -20,6 +20,7 @@ export interface Node2D {
 	pivotY: float32;
 	alpha: float32;
 	visible: boolean;
+	smooth: boolean;
 	blend: BlendMode;
 	zIndex: int32;
 	w: float32;
@@ -44,7 +45,7 @@ export interface Node2D {
 
 function base(kind: DrawKind): Node2D {
 	return {
-		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, blend: BlendMode.Alpha, zIndex: 0,
+		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: true, blend: BlendMode.Alpha, zIndex: 0,
 		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
 	};
 }
@@ -210,6 +211,7 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 	const br = vec2(n.w - px, n.h - py) * world;
 	const bl = vec2(-px, n.h - py) * world;
 	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
+	setSmooth(n.smooth);
 	if (n.kind === DrawKind.Rect) {
 		fillQuad(tl, tr, br, bl, col, n.blend);
 	} else if (n.kind === DrawKind.Sprite) {

@@ -18,7 +18,7 @@
 static sg_buffer s_vbuf;
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_view s_whiteView;
-static sg_sampler s_smp;
+static sg_sampler s_smp[2];   // [0] = nearest (smooth off), [1] = linear (smooth on)
 
 static FONScontext *s_fons;
 static int s_fontId = FONS_INVALID;
@@ -94,7 +94,18 @@ void void2dSetup(void) {
 	}
 
 	s_whiteView = (sg_view){ .id = voidMakeView(voidMakeImage(NULL, 0, 0)) };
-	s_smp = (sg_sampler){ .id = voidMakeSampler() };
+	sg_sampler_desc smpLin = {0};
+	smpLin.min_filter = SG_FILTER_LINEAR;
+	smpLin.mag_filter = SG_FILTER_LINEAR;
+	smpLin.wrap_u = SG_WRAP_REPEAT;
+	smpLin.wrap_v = SG_WRAP_REPEAT;
+	s_smp[1] = sg_make_sampler(&smpLin);
+	sg_sampler_desc smpNear = {0};
+	smpNear.min_filter = SG_FILTER_NEAREST;
+	smpNear.mag_filter = SG_FILTER_NEAREST;
+	smpNear.wrap_u = SG_WRAP_REPEAT;
+	smpNear.wrap_v = SG_WRAP_REPEAT;
+	s_smp[0] = sg_make_sampler(&smpNear);
 
 	FONSparams fp = {0};
 	fp.width = 512;
@@ -123,7 +134,7 @@ void void2dFrameBegin(void) { s_atlasUpdated = false; }
 
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
                       const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA) {
+                      float keyR, float keyG, float keyB, float keyA, int smooth) {
 	if (vertCount <= 0) return;
 	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
 	if (s_atlasDirty && !s_atlasUpdated) {
@@ -141,7 +152,7 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	b.vertex_buffers[0] = s_vbuf;
 	b.vertex_buffer_offsets[0] = offset;
 	b.views[VIEW_tex] = (sg_view){ .id = view };
-	b.samplers[SMP_smp] = s_smp;
+	b.samplers[SMP_smp] = s_smp[(smooth != 0) ? 1 : 0];
 	sg_apply_bindings(&b);
 	void2d_params_t vp = {0};
 	vp.viewport[0] = fbW;
