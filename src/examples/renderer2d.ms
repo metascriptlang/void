@@ -2,7 +2,7 @@
 // methods (rect/sprite/label, .at, .addChild), then s.present() each frame (owns the pass).
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
-import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
+import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
@@ -83,7 +83,12 @@ export function frame2d(): void {
 	panel.scaleX = s;
 	panel.scaleY = s;
 	green.rotation = green.rotation + 0.03;
-	sc.cam.x = (t - 70.0) * 0.6;
+
+	const panSpeed: float32 = 5.0;
+	if (keyDown(KEY_D)) { sc.cam.x = sc.cam.x + panSpeed; }
+	if (keyDown(KEY_A)) { sc.cam.x = sc.cam.x - panSpeed; }
+	if (keyDown(KEY_S)) { sc.cam.y = sc.cam.y + panSpeed; }
+	if (keyDown(KEY_W)) { sc.cam.y = sc.cam.y - panSpeed; }
 
 	sc.tick(1.0 / 60.0);
 	sc.present();
