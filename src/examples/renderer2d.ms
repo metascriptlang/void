@@ -101,6 +101,9 @@ export function init2d(): void {
 	linearNode.w = 80.0;
 	linearNode.h = 80.0;
 
+	const ml = label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0)).at(800.0, 285.0);
+	ml.align = 0.5;
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
@@ -111,6 +114,7 @@ export function init2d(): void {
 	sceneObj.add(flipped);
 	sceneObj.add(nearestNode);
 	sceneObj.add(linearNode);
+	sceneObj.add(ml);
 
 	logo = logoNode;
 	green = greenNode;
