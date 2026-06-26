@@ -7,7 +7,8 @@ import {
 	void_math_multiply_mvp,
 	void_math_get_mvp,
 	void_math_sinf,
-	void_math_cosf
+	void_math_cosf,
+	void_math_sqrtf
 } from "./mat4.h";
 
 export function setPerspective(fovY: float32, aspect: float32, nearZ: float32, farZ: float32): void {
@@ -40,4 +41,8 @@ export function sinf(x: float32): float32 {
 
 export function cosf(x: float32): float32 {
 	return void_math_cosf(x);
+}
+
+export function sqrtf(x: float32): float32 {
+	return void_math_sqrtf(x);
 }
