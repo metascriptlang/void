@@ -113,6 +113,10 @@ void void2dSetup(void) {
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
 uint32_t void2dFontView(void) { return s_fontView.id; }
 
+void void2dScissor(int x, int y, int w, int h) {
+	sg_apply_scissor_rect(x, y, w, h, true);
+}
+
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
                       const float *colorMatrix, float addR, float addG, float addB, float addA) {
 	if (vertCount <= 0) return;

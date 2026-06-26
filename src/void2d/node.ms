@@ -4,10 +4,10 @@
 // (A discriminated-union payload hit a C-codegen issue when used as an interface field —
 //  flat tag + fields is the robust shape; revisit the union later.)
 
-import { fillQuad, imageQuad, drawTextXform, fillTri, setEffect } from "./draw";
+import { fillQuad, imageQuad, drawTextXform, fillTri, setEffect, pushClip, popClip } from "./draw";
 import { Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d } from "./types";
 
-export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics }
+export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask }
 
 export interface Node2D {
 	kind: DrawKind;
@@ -85,6 +85,13 @@ export function anim(frames: Tile[], fps: float32): Node2D {
 export function graphics(): Node2D {
 	return base(DrawKind.Graphics);
 }
+// h2d.Mask — clips its children to a (w,h) rect (axis-aligned scissor of the world box).
+export function mask(w: float32, h: float32): Node2D {
+	const n = base(DrawKind.Mask);
+	n.w = w;
+	n.h = h;
+	return n;
+}
 
 // ===== extension methods (reads OO, is FP) =====
 
@@ -124,6 +131,22 @@ function sortByZ(cs: Node2D[]): void {
 		cs[j + 1] = cur;
 		i = i + 1;
 	}
+}
+
+function fmin4(a: float32, b: float32, c: float32, d: float32): float32 {
+	let m: float32 = a;
+	if (b < m) { m = b; }
+	if (c < m) { m = c; }
+	if (d < m) { m = d; }
+	return m;
+}
+
+function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
+	let m: float32 = a;
+	if (b > m) { m = b; }
+	if (c > m) { m = c; }
+	if (d > m) { m = d; }
+	return m;
 }
 
 export function render(this n: Node2D, parent: Transform2D, a: float32): void {
@@ -166,8 +189,16 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 			i = i + 18;
 		}
 	}
+	const masking: boolean = n.kind === DrawKind.Mask;
+	if (masking) {
+		pushClip(fmin4(tl.x, tr.x, br.x, bl.x), fmin4(tl.y, tr.y, br.y, bl.y),
+			fmax4(tl.x, tr.x, br.x, bl.x), fmax4(tl.y, tr.y, br.y, bl.y));
+	}
 	sortByZ(n.children);
 	for (const ch of n.children) {
 		ch.render(world, na);
+	}
+	if (masking) {
+		popClip();
 	}
 }
