@@ -4,10 +4,10 @@
 // (A discriminated-union payload hit a C-codegen issue when used as an interface field —
 //  flat tag + fields is the robust shape; revisit the union later.)
 
-import { fillQuad, imageQuad, drawTextXform, fillTri, setEffect, pushClip, popClip } from "./draw";
+import { fillQuad, imageQuad, imageQuadUV, drawTextXform, fillTri, setEffect, pushClip, popClip } from "./draw";
 import { Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d } from "./types";
 
-export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask }
+export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
 
 export interface Node2D {
 	kind: DrawKind;
@@ -28,6 +28,10 @@ export interface Node2D {
 	colorAdd: Color;
 	colorMatrix: float32[];
 	sheet: Tile;
+	borderL: float32;
+	borderT: float32;
+	borderR: float32;
+	borderB: float32;
 	text: string;
 	size: float32;
 	frames: Tile[];
@@ -40,7 +44,7 @@ export interface Node2D {
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
 	};
 }
 
@@ -92,6 +96,18 @@ export function mask(w: float32, h: float32): Node2D {
 	n.h = h;
 	return n;
 }
+// h2d.ScaleGrid — 9-slice: corners fixed, edges/centre stretch to (w,h). Set n.w/n.h to resize.
+export function scaleGrid(t: Tile, borderL: float32, borderT: float32, borderR: float32, borderB: float32): Node2D {
+	const n = base(DrawKind.ScaleGrid);
+	n.sheet = t;
+	n.w = t.w;
+	n.h = t.h;
+	n.borderL = borderL;
+	n.borderT = borderT;
+	n.borderR = borderR;
+	n.borderB = borderB;
+	return n;
+}
 
 // ===== extension methods (reads OO, is FP) =====
 
@@ -130,6 +146,38 @@ function sortByZ(cs: Node2D[]): void {
 		}
 		cs[j + 1] = cur;
 		i = i + 1;
+	}
+}
+
+// 9-slice emit: 3×3 grid of textured quads. Corner cells keep their source size; edge
+// cells stretch along one axis, the centre along both (source borders → dest borders).
+function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
+	const t = n.sheet;
+	const srcW: float32 = t.w;
+	const srcH: float32 = t.h;
+	if (srcW <= 0.0 || srcH <= 0.0) { return; }
+	const sx: float32[] = [0.0, n.borderL, srcW - n.borderR, srcW];
+	const sy: float32[] = [0.0, n.borderT, srcH - n.borderB, srcH];
+	const dx: float32[] = [0.0, n.borderL, n.w - n.borderR, n.w];
+	const dy: float32[] = [0.0, n.borderT, n.h - n.borderB, n.h];
+	const du: float32 = t.u1 - t.u0;
+	const dv: float32 = t.v1 - t.v0;
+	let cj: int32 = 0;
+	while (cj < 3) {
+		let ci: int32 = 0;
+		while (ci < 3) {
+			const u0: float32 = t.u0 + (sx[ci] / srcW) * du;
+			const u1: float32 = t.u0 + (sx[ci + 1] / srcW) * du;
+			const v0: float32 = t.v0 + (sy[cj] / srcH) * dv;
+			const v1: float32 = t.v0 + (sy[cj + 1] / srcH) * dv;
+			const a = vec2(dx[ci], dy[cj]) * world;
+			const b = vec2(dx[ci + 1], dy[cj]) * world;
+			const c = vec2(dx[ci + 1], dy[cj + 1]) * world;
+			const d = vec2(dx[ci], dy[cj + 1]) * world;
+			imageQuadUV(t.view, u0, v0, u1, v1, a, b, c, d, col, n.blend);
+			ci = ci + 1;
+		}
+		cj = cj + 1;
 	}
 }
 
@@ -188,6 +236,8 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 			fillTri(pa, ca, pb, cb, pc, cc, n.blend);
 			i = i + 18;
 		}
+	} else if (n.kind === DrawKind.ScaleGrid) {
+		renderScaleGrid(n, world, col);
 	}
 	const masking: boolean = n.kind === DrawKind.Mask;
 	if (masking) {
