@@ -82,11 +82,17 @@ export function init2d(): void {
 	sgNode.w = 270.0;
 	sgNode.h = 150.0;
 
+	const keyBg = rect(120.0, 120.0, rgba(0.20, 0.85, 0.85, 1.0)).at(470.0, 530.0);
+	const keyed = sprite(tile(logoView, 120.0, 120.0)).at(470.0, 530.0);
+	keyed.colorKey = rgba(0.05, 0.05, 0.07, 1.0);
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
 	sceneObj.add(maskNode);
 	sceneObj.add(sgNode);
+	sceneObj.add(keyBg);
+	sceneObj.add(keyed);
 
 	logo = logoNode;
 	green = greenNode;
