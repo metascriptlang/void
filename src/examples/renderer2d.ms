@@ -5,7 +5,7 @@
 import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, graphics, at, addChild } from "../void2d/node";
-import { fillCircle, strokeLine, fillConvex } from "../void2d/graphics";
+import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, strokePoly, cubicBezier } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, vec2, BlendMode } from "../void2d/types";
@@ -65,11 +65,14 @@ export function init2d(): void {
 	panelNode.addChild(animNode);
 	panelNode.addChild(label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0));
 
-	const gfxNode = graphics().at(470.0, 80.0);
-	gfxNode.fillCircle(70.0, 70.0, 55.0, rgba(0.95, 0.75, 0.25, 1.0));
-	gfxNode.strokeLine(vec2(10.0, 160.0), vec2(150.0, 220.0), 8.0, rgba(0.40, 0.75, 1.0, 1.0));
-	const triPts: Vec2[] = [vec2(20.0, 260.0), vec2(140.0, 260.0), vec2(80.0, 180.0)];
-	gfxNode.fillConvex(triPts, rgba(0.85, 0.40, 0.55, 1.0));
+	const gfxNode = graphics().at(460.0, 40.0);
+	gfxNode.fillRoundedRect(0.0, 0.0, 170.0, 90.0, 22.0, rgba(0.30, 0.55, 0.85, 1.0));
+	gfxNode.strokeRect(0.0, 0.0, 170.0, 90.0, 4.0, rgba(0.85, 0.92, 1.0, 1.0));
+	gfxNode.fillEllipse(45.0, 165.0, 45.0, 28.0, rgba(0.95, 0.75, 0.25, 1.0));
+	gfxNode.fillPie(150.0, 165.0, 45.0, 0.0, 4.2, rgba(0.85, 0.40, 0.55, 1.0));
+	gfxNode.fillRing(255.0, 165.0, 45.0, 26.0, -1.2, 4.5, rgba(0.45, 0.80, 0.55, 1.0));
+	const curve: Vec2[] = cubicBezier(vec2(0.0, 250.0), vec2(80.0, 200.0), vec2(180.0, 320.0), vec2(280.0, 250.0), 40);
+	gfxNode.strokePoly(curve, 6.0, rgba(0.40, 0.75, 1.0, 1.0), false);
 
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
