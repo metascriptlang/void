@@ -44,6 +44,7 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	d.cleanup_cb = _cleanup;
 	d.width = w;
 	d.height = h;
+	d.sample_count = 4;
 	d.window_title = "Void — sokol";
 	d.logger.func = slog_func;
 	sapp_run(&d);
