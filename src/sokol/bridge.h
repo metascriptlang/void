@@ -19,6 +19,7 @@ void voidRun(int w, int h, msClosure init, msClosure frame);
 void voidGfxSetup(void);
 int voidFbWidth(void);
 int voidFbHeight(void);
+int voidKeyDown(int keycode);
 
 // Resource creation — sokol handles returned as uint32 ids (0 = invalid).
 uint32_t voidMakeVertexBuffer(const void *data, int size);
