@@ -4,9 +4,10 @@
 
 import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
-import { Node2D, rect, sprite, label, anim, at, addChild } from "../void2d/node";
+import { Node2D, rect, sprite, label, anim, graphics, at, addChild } from "../void2d/node";
+import { fillCircle, strokeLine, fillConvex } from "../void2d/graphics";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
-import { Tile, rgba, tile, sub, BlendMode } from "../void2d/types";
+import { Tile, Vec2, rgba, tile, sub, vec2, BlendMode } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene | null = null;
@@ -60,8 +61,15 @@ export function init2d(): void {
 	panelNode.addChild(animNode);
 	panelNode.addChild(label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0));
 
+	const gfxNode = graphics().at(470.0, 80.0);
+	gfxNode.fillCircle(70.0, 70.0, 55.0, rgba(0.95, 0.75, 0.25, 1.0));
+	gfxNode.strokeLine(vec2(10.0, 160.0), vec2(150.0, 220.0), 8.0, rgba(0.40, 0.75, 1.0, 1.0));
+	const triPts: Vec2[] = [vec2(20.0, 260.0), vec2(140.0, 260.0), vec2(80.0, 180.0)];
+	gfxNode.fillConvex(triPts, rgba(0.85, 0.40, 0.55, 1.0));
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
+	sceneObj.add(gfxNode);
 
 	logo = logoNode;
 	green = greenNode;
