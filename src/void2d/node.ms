@@ -4,10 +4,10 @@
 // (A discriminated-union payload hit a C-codegen issue when used as an interface field —
 //  flat tag + fields is the robust shape; revisit the union later.)
 
-import { fillQuad, imageQuad, drawTextXform } from "./draw";
+import { fillQuad, imageQuad, drawTextXform, fillTri } from "./draw";
 import { Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d } from "./types";
 
-export enum DrawKind { Group, Rect, Sprite, Label, Anim }
+export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics }
 
 export interface Node2D {
 	kind: DrawKind;
@@ -31,13 +31,14 @@ export interface Node2D {
 	frames: Tile[];
 	fps: float32;
 	clock: float32;
+	mesh: float32[];
 	children: Node2D[];
 }
 
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), sheet: tile(0, 0.0, 0.0), text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, children: [],
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), sheet: tile(0, 0.0, 0.0), text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
 	};
 }
 
@@ -77,6 +78,10 @@ export function anim(frames: Tile[], fps: float32): Node2D {
 		n.h = frames[0].h;
 	}
 	return n;
+}
+// h2d.Graphics — retained vector mesh (local-space tris); build via graphics.ms methods.
+export function graphics(): Node2D {
+	return base(DrawKind.Graphics);
 }
 
 // ===== extension methods (reads OO, is FP) =====
@@ -142,6 +147,21 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 		}
 	} else if (n.kind === DrawKind.Label) {
 		drawTextXform(world, n.size, n.text, col, n.blend);
+	} else if (n.kind === DrawKind.Graphics) {
+		// mesh: packed 6 floats/vertex (x y r g b a), 3 verts per triangle = 18-float stride.
+		const mv = n.mesh;
+		const total: int32 = mv.length as int32;
+		let i: int32 = 0;
+		while (i + 18 <= total) {
+			const pa = vec2(mv[i], mv[i + 1]) * world;
+			const ca = rgba(mv[i + 2], mv[i + 3], mv[i + 4], mv[i + 5] * na);
+			const pb = vec2(mv[i + 6], mv[i + 7]) * world;
+			const cb = rgba(mv[i + 8], mv[i + 9], mv[i + 10], mv[i + 11] * na);
+			const pc = vec2(mv[i + 12], mv[i + 13]) * world;
+			const cc = rgba(mv[i + 14], mv[i + 15], mv[i + 16], mv[i + 17] * na);
+			fillTri(pa, ca, pb, cb, pc, cc, n.blend);
+			i = i + 18;
+		}
 	}
 	sortByZ(n.children);
 	for (const ch of n.children) {
