@@ -14,6 +14,7 @@ const verts: Vec<float32> = new Array(MAX_VERTS * 8);
 let vertCount: int32 = 0;
 let curView: uint32 = 0;
 let curBlend: BlendMode = BlendMode.Alpha;
+let curSmooth: boolean = true;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
 
@@ -47,7 +48,8 @@ function setIdentityMat(): void {
 
 function flush(): void {
 	if (vertCount == 0) { return; }
-	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a, curKey.r, curKey.g, curKey.b, curKey.a);
+	const sm: int32 = curSmooth ? 1 : 0;
+	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a, curKey.r, curKey.g, curKey.b, curKey.a, sm);
 	vertCount = 0;
 }
 
@@ -86,6 +88,7 @@ export function begin2d(w: int32, h: int32): void {
 	vertCount = 0;
 	curView = void2dWhiteView();
 	curBlend = BlendMode.Alpha;
+	curSmooth = true;
 	setIdentityMat();
 	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
 	curKey = rgba(0.0, 0.0, 0.0, 0.0);
@@ -157,6 +160,11 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 	curAdd = add;
 	curKey = key;
 	curHasEffect = wantsEffect;
+}
+
+// h2d.Drawable.smooth — pick linear (true) vs nearest (false) sampling; batch state.
+export function setSmooth(s: boolean): void {
+	if (s != curSmooth) { flush(); curSmooth = s; }
 }
 
 export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode): void {

@@ -16,7 +16,7 @@ uint32_t void2dFontView(void);
 // colorMatrix = 16 floats (column-major, identity = no-op); colorAdd = rgba added after.
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
                       const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA);
+                      float keyR, float keyG, float keyB, float keyA, int smooth);
 
 // h2d.Mask clip — restrict subsequent draws to a framebuffer-pixel rect (top-left origin).
 void void2dScissor(int x, int y, int w, int h);
