@@ -208,10 +208,12 @@ export function fillRing(this g: Node2D, cx: float32, cy: float32, outerR: float
 
 // h2d.Graphics.curveTo — quadratic Bézier flattened to points (compose with stroke/fill).
 export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[] {
+	let seg: int32 = segments;
+	if (seg < 1) { seg = 1; }
 	const pts: Vec2[] = [];
 	let i: int32 = 0;
-	while (i <= segments) {
-		const t: float32 = (i as float32) / (segments as float32);
+	while (i <= seg) {
+		const t: float32 = (i as float32) / (seg as float32);
 		const u: float32 = 1.0 - t;
 		const x: float32 = u * u * a.x + 2.0 * u * t * ctrl.x + t * t * b.x;
 		const y: float32 = u * u * a.y + 2.0 * u * t * ctrl.y + t * t * b.y;
@@ -223,10 +225,12 @@ export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[
 
 // h2d.Graphics.cubicCurveTo — cubic Bézier flattened to points.
 export function cubicBezier(a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, segments: int32): Vec2[] {
+	let seg: int32 = segments;
+	if (seg < 1) { seg = 1; }
 	const pts: Vec2[] = [];
 	let i: int32 = 0;
-	while (i <= segments) {
-		const t: float32 = (i as float32) / (segments as float32);
+	while (i <= seg) {
+		const t: float32 = (i as float32) / (seg as float32);
 		const u: float32 = 1.0 - t;
 		const x: float32 = u * u * u * a.x + 3.0 * u * u * t * c1.x + 3.0 * u * t * t * c2.x + t * t * t * b.x;
 		const y: float32 = u * u * u * a.y + 3.0 * u * u * t * c1.y + 3.0 * u * t * t * c2.y + t * t * t * b.y;
