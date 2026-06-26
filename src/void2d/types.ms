@@ -55,6 +55,14 @@ export function sub(this t: Tile, x: float32, y: float32, w: float32, h: float32
 	};
 }
 
+// h2d.Tile.flipX / flipY — mirror the UV rect (returns a new Tile, value semantics).
+export function flipX(this t: Tile): Tile {
+	return { view: t.view, u0: t.u1, v0: t.v0, u1: t.u0, v1: t.v1, w: t.w, h: t.h, texW: t.texW, texH: t.texH };
+}
+export function flipY(this t: Tile): Tile {
+	return { view: t.view, u0: t.u0, v0: t.v1, u1: t.u1, v1: t.v0, w: t.w, h: t.h, texW: t.texW, texH: t.texH };
+}
+
 // 2D affine transform [a c tx ; b d ty] — point (x,y) → (a·x + c·y + tx, b·x + d·y + ty).
 export struct Transform2D {
 	a: float32;
