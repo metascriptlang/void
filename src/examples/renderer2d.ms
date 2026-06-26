@@ -4,7 +4,7 @@
 
 import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
-import { Node2D, rect, sprite, label, anim, graphics, at, addChild } from "../void2d/node";
+import { Node2D, rect, sprite, label, anim, graphics, mask, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, strokePoly, cubicBezier } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
@@ -74,9 +74,14 @@ export function init2d(): void {
 	const curve: Vec2[] = cubicBezier(vec2(0.0, 250.0), vec2(80.0, 200.0), vec2(180.0, 320.0), vec2(280.0, 250.0), 40);
 	gfxNode.strokePoly(curve, 6.0, rgba(0.40, 0.75, 1.0, 1.0), false);
 
+	const maskNode = mask(150.0, 120.0).at(470.0, 380.0);
+	maskNode.addChild(rect(240.0, 240.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-40.0, -40.0));
+	maskNode.addChild(label("clipped", 40.0, rgba(0.1, 0.1, 0.14, 1.0)).at(8.0, 50.0));
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
+	sceneObj.add(maskNode);
 
 	logo = logoNode;
 	green = greenNode;
