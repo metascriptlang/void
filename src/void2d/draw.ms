@@ -27,6 +27,7 @@ const curMat: Vec<float32> = [
 	0.0, 0.0, 0.0, 1.0,
 ];
 let curAdd: Color = rgba(0.0, 0.0, 0.0, 0.0);
+let curKey: Color = rgba(0.0, 0.0, 0.0, 0.0);
 let curHasEffect: boolean = false;
 
 // h2d.Mask clip stack: each pushClip intersects with the enclosing zone (Heaps
@@ -46,7 +47,7 @@ function setIdentityMat(): void {
 
 function flush(): void {
 	if (vertCount == 0) { return; }
-	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a);
+	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a, curKey.r, curKey.g, curKey.b, curKey.a);
 	vertCount = 0;
 }
 
@@ -87,6 +88,7 @@ export function begin2d(w: int32, h: int32): void {
 	curBlend = BlendMode.Alpha;
 	setIdentityMat();
 	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
+	curKey = rgba(0.0, 0.0, 0.0, 0.0);
 	curHasEffect = false;
 	clipDepth = 0;
 }
@@ -137,12 +139,13 @@ export function popClip(): void {
 	}
 }
 
-// h2d.Drawable color/colorAdd → batch state. mat = 16-float column-major colorMatrix
-// (empty/<16 = identity); add = rgba added after. Flushes when switching off the
-// effect-free batch (or onto a different effect).
-export function setEffect(mat: float32[], add: Color): void {
+// h2d.Drawable color pipeline → batch state. mat = 16-float column-major colorMatrix
+// (empty/<16 = identity); add = rgba added after; key = chroma colorKey (a>0 enables,
+// matching texels go transparent). Flushes when switching off the effect-free batch
+// (or onto a different effect).
+export function setEffect(mat: float32[], add: Color, key: Color): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
-	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0;
+	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && !curHasEffect) { return; }
 	flush();
 	if (hasMat) {
@@ -152,6 +155,7 @@ export function setEffect(mat: float32[], add: Color): void {
 		setIdentityMat();
 	}
 	curAdd = add;
+	curKey = key;
 	curHasEffect = wantsEffect;
 }
 

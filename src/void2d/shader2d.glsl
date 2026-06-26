@@ -26,12 +26,18 @@ layout(binding=0) uniform sampler smp;
 layout(binding=1) uniform void2d_fx {
     mat4 colorMatrix;
     vec4 colorAdd;
+    vec4 colorKey;
 };
 in vec2 uv;
 in vec4 color;
 out vec4 frag_color;
 void main() {
-    vec4 c = texture(sampler2D(tex, smp), uv) * color;
+    vec4 texel = texture(sampler2D(tex, smp), uv);
+    if (colorKey.a > 0.5) {
+        vec3 d = abs(texel.rgb - colorKey.rgb);
+        if (d.r + d.g + d.b < 0.08) { texel.a = 0.0; }
+    }
+    vec4 c = texel * color;
     c = colorMatrix * c;
     c = c + colorAdd;
     frag_color = c;
