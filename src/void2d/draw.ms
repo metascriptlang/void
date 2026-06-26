@@ -4,7 +4,7 @@
 // the string param of void2dTextBegin.
 
 import {
-	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor,
+	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dFrameBegin,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas
 } from "./batcher.h";
 import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
@@ -79,6 +79,7 @@ export function setup2d(): void {
 }
 
 export function begin2d(w: int32, h: int32): void {
+	void2dFrameBegin();
 	fbW = w as float32;
 	fbH = h as float32;
 	vertCount = 0;
@@ -211,6 +212,11 @@ export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend
 
 export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
 	quad4(t.view, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
+}
+
+// explicit-UV textured quad — ScaleGrid 9-slice cells carry their own UV sub-rect.
+export function imageQuadUV(view: uint32, u0: float32, v0: float32, u1: float32, v1: float32, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
+	quad4(view, blend, a, b, c, d, u0, v0, u1, v1, color);
 }
 
 // solid triangle, per-vertex colour (Graphics fills/strokes; white view, no texture).

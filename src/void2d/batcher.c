@@ -28,6 +28,7 @@ static sg_view s_fontView;
 static unsigned char *s_atlasRGBA;
 static int s_atlasW, s_atlasH;
 static bool s_atlasDirty;
+static bool s_atlasUpdated;   // gate: sokol allows only one sg_update_image per image per frame
 
 static int fons_create(void *up, int w, int h) {
 	(void)up;
@@ -117,16 +118,20 @@ void void2dScissor(int x, int y, int w, int h) {
 	sg_apply_scissor_rect(x, y, w, h, true);
 }
 
+// Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
+void void2dFrameBegin(void) { s_atlasUpdated = false; }
+
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
                       const float *colorMatrix, float addR, float addG, float addB, float addA) {
 	if (vertCount <= 0) return;
 	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
-	if (s_atlasDirty) {
+	if (s_atlasDirty && !s_atlasUpdated) {
 		sg_image_data id = {0};
 		id.mip_levels[0].ptr = s_atlasRGBA;
 		id.mip_levels[0].size = (size_t)(s_atlasW * s_atlasH * 4);
 		sg_update_image(s_fontImg, &id);
 		s_atlasDirty = false;
+		s_atlasUpdated = true;
 	}
 	sg_range data = { .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
 	int offset = sg_append_buffer(s_vbuf, &data);
