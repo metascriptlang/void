@@ -26,6 +26,7 @@ export interface Node2D {
 	h: float32;
 	color: Color;
 	colorAdd: Color;
+	colorKey: Color;
 	colorMatrix: float32[];
 	sheet: Tile;
 	borderL: float32;
@@ -44,7 +45,7 @@ export interface Node2D {
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
 	};
 }
 
@@ -208,7 +209,7 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 	const tr = vec2(n.w - px, -py) * world;
 	const br = vec2(n.w - px, n.h - py) * world;
 	const bl = vec2(-px, n.h - py) * world;
-	setEffect(n.colorMatrix, n.colorAdd);
+	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
 	if (n.kind === DrawKind.Rect) {
 		fillQuad(tl, tr, br, bl, col, n.blend);
 	} else if (n.kind === DrawKind.Sprite) {

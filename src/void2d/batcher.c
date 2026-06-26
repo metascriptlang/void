@@ -122,7 +122,8 @@ void void2dScissor(int x, int y, int w, int h) {
 void void2dFrameBegin(void) { s_atlasUpdated = false; }
 
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA) {
+                      const float *colorMatrix, float addR, float addG, float addB, float addA,
+                      float keyR, float keyG, float keyB, float keyA) {
 	if (vertCount <= 0) return;
 	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
 	if (s_atlasDirty && !s_atlasUpdated) {
@@ -150,6 +151,7 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	void2d_fx_t fx = {0};
 	memcpy(fx.colorMatrix, colorMatrix, sizeof(fx.colorMatrix));
 	fx.colorAdd[0] = addR; fx.colorAdd[1] = addG; fx.colorAdd[2] = addB; fx.colorAdd[3] = addA;
+	fx.colorKey[0] = keyR; fx.colorKey[1] = keyG; fx.colorKey[2] = keyB; fx.colorKey[3] = keyA;
 	sg_range uf = { .ptr = &fx, .size = sizeof(fx) };
 	sg_apply_uniforms(UB_void2d_fx, &uf);
 	sg_draw(0, vertCount, 1);

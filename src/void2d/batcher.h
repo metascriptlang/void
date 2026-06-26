@@ -15,7 +15,8 @@ uint32_t void2dFontView(void);
 // blend selects the pipeline: 0=Alpha 1=Add 2=Multiply 3=Screen 4=None (see BlendMode).
 // colorMatrix = 16 floats (column-major, identity = no-op); colorAdd = rgba added after.
 void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA);
+                      const float *colorMatrix, float addR, float addG, float addB, float addA,
+                      float keyR, float keyG, float keyB, float keyA);
 
 // h2d.Mask clip — restrict subsequent draws to a framebuffer-pixel rect (top-left origin).
 void void2dScissor(int x, int y, int w, int h);
