@@ -28,5 +28,6 @@ const void *void_math_get_mvp(void);
 // Trig helpers (expose C math to MetaScript)
 float void_math_sinf(float x);
 float void_math_cosf(float x);
+float void_math_sqrtf(float x);
 
 #endif
