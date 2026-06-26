@@ -118,6 +118,15 @@ export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Co
 	quad4(t.view, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
 }
 
+// solid triangle, per-vertex colour (Graphics fills/strokes; white view, no texture).
+export function fillTri(a: Vec2, ca: Color, b: Vec2, cb: Color, c: Vec2, cc: Color, blend: BlendMode): void {
+	useState(void2dWhiteView(), blend);
+	if (vertCount + 3 > MAX_VERTS) { flush(); }
+	pushVert(a.x, a.y, 0.0, 0.0, ca.r, ca.g, ca.b, ca.a);
+	pushVert(b.x, b.y, 0.0, 0.0, cb.r, cb.g, cb.b, cb.a);
+	pushVert(c.x, c.y, 0.0, 0.0, cc.r, cc.g, cc.b, cc.a);
+}
+
 // Text under a full affine — glyphs laid out at origin (fixed size → stable atlas), each
 // quad corner pushed through `m` (so rotation/scale/translate apply, no font-size churn).
 export function drawTextXform(m: Transform2D, size: float32, text: string, color: Color, blend: BlendMode): void {
