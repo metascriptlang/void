@@ -5,7 +5,7 @@
 import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
-import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, strokePoly, cubicBezier } from "../void2d/graphics";
+import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, strokePoly, cubicBezier } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode } from "../void2d/types";
@@ -73,6 +73,11 @@ export function init2d(): void {
 	gfxNode.fillRing(255.0, 165.0, 45.0, 26.0, -1.2, 4.5, rgba(0.45, 0.80, 0.55, 1.0));
 	const curve: Vec2[] = cubicBezier(vec2(0.0, 250.0), vec2(80.0, 200.0), vec2(180.0, 320.0), vec2(280.0, 250.0), 40);
 	gfxNode.strokePoly(curve, 6.0, rgba(0.40, 0.75, 1.0, 1.0), false);
+	const arrow: Vec2[] = [
+		vec2(300.0, 60.0), vec2(345.0, 60.0), vec2(345.0, 35.0), vec2(390.0, 80.0),
+		vec2(345.0, 125.0), vec2(345.0, 100.0), vec2(300.0, 100.0),
+	];
+	gfxNode.fillPolygon(arrow, rgba(0.62, 0.50, 0.92, 1.0));
 
 	const maskNode = mask(150.0, 120.0).at(470.0, 380.0);
 	maskNode.addChild(rect(240.0, 240.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-40.0, -40.0));
