@@ -74,6 +74,83 @@ export function fillConvex(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 	return g;
 }
 
+function polyArea2(pts: Vec2[]): float32 {
+	const m: int32 = pts.length as int32;
+	let a: float32 = 0.0;
+	let i: int32 = 0;
+	while (i < m) {
+		const j: int32 = (i + 1) % m;
+		a = a + pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+		i = i + 1;
+	}
+	return a;
+}
+
+function cross3(ax: float32, ay: float32, bx: float32, by: float32, cx: float32, cy: float32): float32 {
+	return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+}
+
+function pointInTri(px: float32, py: float32, ax: float32, ay: float32, bx: float32, by: float32, cx: float32, cy: float32): boolean {
+	const d1: float32 = cross3(ax, ay, bx, by, px, py);
+	const d2: float32 = cross3(bx, by, cx, cy, px, py);
+	const d3: float32 = cross3(cx, cy, ax, ay, px, py);
+	const hasNeg: boolean = d1 < 0.0 || d2 < 0.0 || d3 < 0.0;
+	const hasPos: boolean = d1 > 0.0 || d2 > 0.0 || d3 > 0.0;
+	return !(hasNeg && hasPos);
+}
+
+function isEar(pts: Vec2[], next: int32[], u: int32, v: int32, w: int32, ccw: boolean): boolean {
+	const cr: float32 = cross3(pts[u].x, pts[u].y, pts[v].x, pts[v].y, pts[w].x, pts[w].y);
+	if (ccw) { if (cr <= 0.0) { return false; } } else { if (cr >= 0.0) { return false; } }
+	let p: int32 = next[w];
+	while (p != u) {
+		if (pointInTri(pts[p].x, pts[p].y, pts[u].x, pts[u].y, pts[v].x, pts[v].y, pts[w].x, pts[w].y)) {
+			return false;
+		}
+		p = next[p];
+	}
+	return true;
+}
+
+// h2d.Graphics arbitrary fill — ear-clipping triangulation (handles CONCAVE simple
+// polygons; self-intersecting outlines are undefined). Convex shapes can use the
+// cheaper fillConvex fan.
+export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
+	const n: int32 = pts.length as int32;
+	if (n < 3) { return g; }
+	if (n == 3) { tri(g, pts[0], pts[1], pts[2], color); return g; }
+	const prev: int32[] = [];
+	const next: int32[] = [];
+	let i: int32 = 0;
+	while (i < n) {
+		prev.push((i - 1 + n) % n);
+		next.push((i + 1) % n);
+		i = i + 1;
+	}
+	const ccw: boolean = polyArea2(pts) > 0.0;
+	let remaining: int32 = n;
+	let v: int32 = 0;
+	let guard: int32 = 0;
+	while (remaining > 3) {
+		const u: int32 = prev[v];
+		const w: int32 = next[v];
+		if (isEar(pts, next, u, v, w, ccw)) {
+			tri(g, pts[u], pts[v], pts[w], color);
+			next[u] = w;
+			prev[w] = u;
+			remaining = remaining - 1;
+			guard = 0;
+			v = u;
+		} else {
+			v = next[v];
+			guard = guard + 1;
+			if (guard > remaining) { return g; }
+		}
+	}
+	tri(g, pts[prev[v]], pts[v], pts[next[v]], color);
+	return g;
+}
+
 export function fillCircle(this g: Node2D, cx: float32, cy: float32, r: float32, color: Color): Node2D {
 	let seg: int32 = (r as int32) / 2 + 8;
 	if (seg > CIRCLE_MAX_SEG) { seg = CIRCLE_MAX_SEG; }
