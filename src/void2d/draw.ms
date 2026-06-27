@@ -231,13 +231,14 @@ export function imageQuadUV(view: uint32, u0: float32, v0: float32, u1: float32,
 	quad4(view, blend, a, b, c, d, u0, v0, u1, v1, color);
 }
 
-// solid triangle, per-vertex colour (Graphics fills/strokes; white view, no texture).
-export function fillTri(a: Vec2, ca: Color, b: Vec2, cb: Color, c: Vec2, cc: Color, blend: BlendMode): void {
-	useState(void2dWhiteView(), blend);
+// per-vertex coloured + UV'd triangle for the Graphics mesh; view 0 = white (solid fill),
+// else a Tile's view (textured fill). UV is ignored for the white view (texel is 1).
+export function fillTriTex(view: uint32, a: Vec2, ua: float32, va: float32, ca: Color, b: Vec2, ub: float32, vb: float32, cb: Color, c: Vec2, uc: float32, vc: float32, cc: Color, blend: BlendMode): void {
+	useState(view == 0 ? void2dWhiteView() : view, blend);
 	if (vertCount + 3 > MAX_VERTS) { flush(); }
-	pushVert(a.x, a.y, 0.0, 0.0, ca.r, ca.g, ca.b, ca.a);
-	pushVert(b.x, b.y, 0.0, 0.0, cb.r, cb.g, cb.b, cb.a);
-	pushVert(c.x, c.y, 0.0, 0.0, cc.r, cc.g, cc.b, cc.a);
+	pushVert(a.x, a.y, ua, va, ca.r, ca.g, ca.b, ca.a);
+	pushVert(b.x, b.y, ub, vb, cb.r, cb.g, cb.b, cb.a);
+	pushVert(c.x, c.y, uc, vc, cc.r, cc.g, cc.b, cc.a);
 }
 
 // Text under a full affine — glyphs laid out at origin (fixed size → stable atlas), each

@@ -6,7 +6,7 @@
 // bevel-style clamp at sharp angles (correct for any alpha — no overlapping geometry).
 
 import { Node2D } from "./node";
-import { Vec2, Color, vec2 } from "./types";
+import { Vec2, Color, Tile, vec2 } from "./types";
 import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
@@ -14,9 +14,11 @@ const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
 
-function vtx(n: Node2D, x: float32, y: float32, c: Color): void {
+function vtx(n: Node2D, x: float32, y: float32, u: float32, v: float32, c: Color): void {
 	n.mesh.push(x);
 	n.mesh.push(y);
+	n.mesh.push(u);
+	n.mesh.push(v);
 	n.mesh.push(c.r);
 	n.mesh.push(c.g);
 	n.mesh.push(c.b);
@@ -24,9 +26,15 @@ function vtx(n: Node2D, x: float32, y: float32, c: Color): void {
 }
 
 function tri(n: Node2D, a: Vec2, b: Vec2, c: Vec2, col: Color): void {
-	vtx(n, a.x, a.y, col);
-	vtx(n, b.x, b.y, col);
-	vtx(n, c.x, c.y, col);
+	vtx(n, a.x, a.y, 0.0, 0.0, col);
+	vtx(n, b.x, b.y, 0.0, 0.0, col);
+	vtx(n, c.x, c.y, 0.0, 0.0, col);
+}
+
+function triUV(n: Node2D, a: Vec2, ua: float32, va: float32, b: Vec2, ub: float32, vb: float32, c: Vec2, uc: float32, vc: float32, col: Color): void {
+	vtx(n, a.x, a.y, ua, va, col);
+	vtx(n, b.x, b.y, ub, vb, col);
+	vtx(n, c.x, c.y, uc, vc, col);
 }
 
 function arcSegs(r: float32, sweep: float32): int32 {
@@ -56,6 +64,7 @@ function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
 
 export function clear(this g: Node2D): Node2D {
 	g.mesh = [];
+	g.gfxView = 0;
 	return g;
 }
 
@@ -122,13 +131,12 @@ function isEar(pts: Vec2[], next: int32[], u: int32, v: int32, w: int32, ccw: bo
 	return true;
 }
 
-// h2d.Graphics arbitrary fill — ear-clipping triangulation (handles CONCAVE simple
-// polygons; self-intersecting outlines are undefined). Convex shapes can use the
-// cheaper fillConvex fan.
-export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
+// ear-clipping triangulation → flat index triples (handles CONCAVE simple polygons;
+// self-intersecting outlines are undefined).
+function triangulate(pts: Vec2[]): int32[] {
+	const out: int32[] = [];
 	const n: int32 = pts.length as int32;
-	if (n < 3) { return g; }
-	if (n == 3) { tri(g, pts[0], pts[1], pts[2], color); return g; }
+	if (n < 3) { return out; }
 	const prev: int32[] = [];
 	const next: int32[] = [];
 	let i: int32 = 0;
@@ -145,7 +153,9 @@ export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 		const u: int32 = prev[v];
 		const w: int32 = next[v];
 		if (isEar(pts, next, u, v, w, ccw)) {
-			tri(g, pts[u], pts[v], pts[w], color);
+			out.push(u);
+			out.push(v);
+			out.push(w);
 			next[u] = w;
 			prev[w] = u;
 			remaining = remaining - 1;
@@ -154,10 +164,58 @@ export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 		} else {
 			v = next[v];
 			guard = guard + 1;
-			if (guard > remaining) { return g; }
+			if (guard > remaining) { return out; }
 		}
 	}
-	tri(g, pts[prev[v]], pts[v], pts[next[v]], color);
+	out.push(prev[v]);
+	out.push(v);
+	out.push(next[v]);
+	return out;
+}
+
+// h2d.Graphics arbitrary solid fill (convex shapes can use the cheaper fillConvex fan).
+export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
+	const idx: int32[] = triangulate(pts);
+	const tc: int32 = idx.length as int32;
+	let k: int32 = 0;
+	while (k + 3 <= tc) {
+		tri(g, pts[idx[k]], pts[idx[k + 1]], pts[idx[k + 2]], color);
+		k = k + 3;
+	}
+	return g;
+}
+
+// h2d.Graphics.drawTile — textured rect (tile mapped to the rect). Sets the node's view.
+export function fillTexRect(this g: Node2D, t: Tile, x: float32, y: float32, w: float32, h: float32, color: Color): Node2D {
+	g.gfxView = t.view;
+	const a = vec2(x, y);
+	const b = vec2(x + w, y);
+	const c = vec2(x + w, y + h);
+	const d = vec2(x, y + h);
+	triUV(g, a, t.u0, t.v0, b, t.u1, t.v0, c, t.u1, t.v1, color);
+	triUV(g, a, t.u0, t.v0, c, t.u1, t.v1, d, t.u0, t.v1, color);
+	return g;
+}
+
+// h2d.Graphics.beginTileFill — fill an arbitrary shape with a tile; UV maps the tile
+// across the shape from (originX,originY) over (tileW,tileH) px (REPEAT sampler tiles it).
+// One view per Graphics node: don't mix textured + solid fills on the same node.
+export function fillTexPolygon(this g: Node2D, t: Tile, pts: Vec2[], originX: float32, originY: float32, tileW: float32, tileH: float32, color: Color): Node2D {
+	g.gfxView = t.view;
+	const idx: int32[] = triangulate(pts);
+	const tc: int32 = idx.length as int32;
+	const du: float32 = t.u1 - t.u0;
+	const dv: float32 = t.v1 - t.v0;
+	let k: int32 = 0;
+	while (k + 3 <= tc) {
+		const pa = pts[idx[k]];
+		const pb = pts[idx[k + 1]];
+		const pc = pts[idx[k + 2]];
+		triUV(g, pa, t.u0 + (pa.x - originX) / tileW * du, t.v0 + (pa.y - originY) / tileH * dv,
+			pb, t.u0 + (pb.x - originX) / tileW * du, t.v0 + (pb.y - originY) / tileH * dv,
+			pc, t.u0 + (pc.x - originX) / tileW * du, t.v0 + (pc.y - originY) / tileH * dv, color);
+		k = k + 3;
+	}
 	return g;
 }
 
