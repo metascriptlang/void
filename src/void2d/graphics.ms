@@ -2,8 +2,8 @@
 // DrawKind.Graphics node. Builder methods append triangles in LOCAL space to n.mesh
 // (packed 6 floats/vertex: x y r g b a, 3 verts/tri); node.render transforms them
 // through the world matrix each frame. Fills use the white view (no texture).
-// Limits: fills triangulate by fan (CONVEX only — pre-split concave); strokes are
-// butt-cap segments with round joints (opaque only — translucent strokes keep corner gaps).
+// fillPolygon handles concave shapes (ear-clip); strokePoly uses miter joins with a
+// bevel-style clamp at sharp angles (correct for any alpha — no overlapping geometry).
 
 import { Node2D } from "./node";
 import { Vec2, Color, vec2 } from "./types";
@@ -12,6 +12,7 @@ import { sinf, cosf, sqrtf } from "../math/mat4";
 const TAU: float32 = 6.2831853;
 const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
+const MITER_LIMIT: float32 = 4.0;
 
 function vtx(n: Node2D, x: float32, y: float32, c: Color): void {
 	n.mesh.push(x);
@@ -42,6 +43,15 @@ function cornerArc(n: Node2D, pts: Vec2[], ccx: float32, ccy: float32, r: float3
 		pts.push(vec2(ccx + cosf(a) * r, ccy + sinf(a) * r));
 		i = i + 1;
 	}
+}
+
+// left-hand unit normal of segment a→b (zero vector if degenerate).
+function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
+	const dx: float32 = bx - ax;
+	const dy: float32 = by - ay;
+	const len: float32 = sqrtf(dx * dx + dy * dy);
+	if (len < DEGENERATE_LEN) { return vec2(0.0, 0.0); }
+	return vec2(-dy / len, dx / len);
 }
 
 export function clear(this g: Node2D): Node2D {
@@ -187,24 +197,59 @@ export function strokeLine(this g: Node2D, a: Vec2, b: Vec2, width: float32, col
 
 export function strokePoly(this g: Node2D, pts: Vec2[], width: float32, color: Color, closed: boolean): Node2D {
 	const m: int32 = pts.length as int32;
+	if (m < 2) { return g; }
+	const hw: float32 = width * 0.5;
+	// per-vertex outer offsets: butt at open ends, miter (clamped) at joints.
+	const lx: float32[] = [];
+	const ly: float32[] = [];
+	const rx: float32[] = [];
+	const ry: float32[] = [];
 	let i: int32 = 0;
-	while (i + 1 < m) {
-		g.strokeLine(pts[i], pts[i + 1], width, color);
+	while (i < m) {
+		const hasPrev: boolean = closed || i > 0;
+		const hasNext: boolean = closed || i < m - 1;
+		let nx: float32 = 0.0;
+		let ny: float32 = 0.0;
+		if (hasPrev && hasNext) {
+			const pi: int32 = (i - 1 + m) % m;
+			const ni: int32 = (i + 1) % m;
+			const n1 = segNormal(pts[pi].x, pts[pi].y, pts[i].x, pts[i].y);
+			const n2 = segNormal(pts[i].x, pts[i].y, pts[ni].x, pts[ni].y);
+			let mxn: float32 = n1.x + n2.x;
+			let myn: float32 = n1.y + n2.y;
+			const ml: float32 = sqrtf(mxn * mxn + myn * myn);
+			if (ml < DEGENERATE_LEN) { mxn = n1.x; myn = n1.y; }
+			else { mxn = mxn / ml; myn = myn / ml; }
+			const d: float32 = mxn * n1.x + myn * n1.y;
+			let scale: float32 = d > 0.1 ? 1.0 / d : MITER_LIMIT;
+			if (scale > MITER_LIMIT) { scale = MITER_LIMIT; }
+			nx = mxn * hw * scale;
+			ny = myn * hw * scale;
+		} else if (hasNext) {
+			const ni: int32 = (i + 1) % m;
+			const n2 = segNormal(pts[i].x, pts[i].y, pts[ni].x, pts[ni].y);
+			nx = n2.x * hw;
+			ny = n2.y * hw;
+		} else {
+			const pi: int32 = (i - 1 + m) % m;
+			const n1 = segNormal(pts[pi].x, pts[pi].y, pts[i].x, pts[i].y);
+			nx = n1.x * hw;
+			ny = n1.y * hw;
+		}
+		lx.push(pts[i].x + nx);
+		ly.push(pts[i].y + ny);
+		rx.push(pts[i].x - nx);
+		ry.push(pts[i].y - ny);
 		i = i + 1;
 	}
-	if (closed && m > 2) {
-		g.strokeLine(pts[m - 1], pts[0], width, color);
-	}
-	// round joints fill the wedge between consecutive butt-cap segments; opaque only,
-	// since translucent discs would double-blend over the segment ends.
-	if (width > 1.0 && color.a >= 1.0) {
-		const jr: float32 = width * 0.5;
-		let j: int32 = closed ? 0 : 1;
-		const jend: int32 = closed ? m : (m - 1);
-		while (j < jend) {
-			g.fillCircle(pts[j].x, pts[j].y, jr, color);
-			j = j + 1;
-		}
+	const segs: int32 = closed ? m : (m - 1);
+	let s: int32 = 0;
+	while (s < segs) {
+		const a: int32 = s;
+		const b: int32 = (s + 1) % m;
+		tri(g, vec2(lx[a], ly[a]), vec2(rx[a], ry[a]), vec2(rx[b], ry[b]), color);
+		tri(g, vec2(lx[a], ly[a]), vec2(rx[b], ry[b]), vec2(lx[b], ly[b]), color);
+		s = s + 1;
 	}
 	return g;
 }
