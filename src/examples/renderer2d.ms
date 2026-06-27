@@ -104,6 +104,11 @@ export function init2d(): void {
 	const ml = label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0)).at(800.0, 285.0);
 	ml.align = 0.5;
 
+	const para = label("The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0)).at(40.0, 565.0);
+	para.maxWidth = 330.0;
+	para.lineSpacing = 1.15;
+	para.letterSpacing = 1.0;
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
@@ -115,6 +120,7 @@ export function init2d(): void {
 	sceneObj.add(nearestNode);
 	sceneObj.add(linearNode);
 	sceneObj.add(ml);
+	sceneObj.add(para);
 
 	logo = logoNode;
 	green = greenNode;
