@@ -5,7 +5,7 @@
 import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
-import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, strokePoly, cubicBezier } from "../void2d/graphics";
+import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode } from "../void2d/types";
@@ -109,6 +109,13 @@ export function init2d(): void {
 	para.lineSpacing = 1.15;
 	para.letterSpacing = 1.0;
 
+	const texGfx = graphics().at(815.0, 170.0);
+	const texArrow: Vec2[] = [
+		vec2(0.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(95.0, 52.0),
+		vec2(48.0, 98.0), vec2(48.0, 72.0), vec2(0.0, 72.0),
+	];
+	texGfx.fillTexPolygon(sheet, texArrow, 0.0, 0.0, 100.0, 100.0, rgba(1.0, 1.0, 1.0, 1.0));
+
 	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
@@ -121,6 +128,7 @@ export function init2d(): void {
 	sceneObj.add(linearNode);
 	sceneObj.add(ml);
 	sceneObj.add(para);
+	sceneObj.add(texGfx);
 
 	logo = logoNode;
 	green = greenNode;
