@@ -37,6 +37,9 @@ export interface Node2D {
 	text: string;
 	size: float32;
 	align: float32;
+	letterSpacing: float32;
+	lineSpacing: float32;
+	maxWidth: float32;
 	frames: Tile[];
 	fps: float32;
 	clock: float32;
@@ -47,7 +50,7 @@ export interface Node2D {
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], children: [],
 	};
 }
 
@@ -224,7 +227,7 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 			imageQuad(n.frames[fi], tl, tr, br, bl, col, n.blend);
 		}
 	} else if (n.kind === DrawKind.Label) {
-		drawTextXform(world, n.size, n.text, col, n.blend, n.align);
+		drawTextXform(world, n.size, n.text, col, n.blend, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth);
 	} else if (n.kind === DrawKind.Graphics) {
 		// mesh: packed 6 floats/vertex (x y r g b a), 3 verts per triangle = 18-float stride.
 		const mv = n.mesh;
