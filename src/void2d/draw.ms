@@ -5,7 +5,7 @@
 
 import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dFrameBegin,
-	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight
+	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing
 } from "./batcher.h";
 import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
 
@@ -242,37 +242,78 @@ export function fillTri(a: Vec2, ca: Color, b: Vec2, cb: Color, c: Vec2, cc: Col
 
 // Text under a full affine — glyphs laid out at origin (fixed size → stable atlas), each
 // quad corner pushed through `m` (so rotation/scale/translate apply, no font-size churn).
-export function drawTextXform(m: Transform2D, size: float32, text: string, color: Color, blend: BlendMode, align: float32): void {
-	useState(void2dFontView(), blend);
-	const lines: string[] = text.split("\n");
-	const lineCount: int32 = lines.length as int32;
-	const lh: float32 = void2dLineHeight(size);
-	let li: int32 = 0;
-	while (li < lineCount) {
-		const line = lines[li];
-		const xoff: float32 = -void2dTextWidth(size, line) * align;
-		const yoff: float32 = (li as float32) * lh;
-		void2dTextBegin(xoff, yoff, size, line);
-		let q: Ptr<float32> = void2dTextNext();
-		while (q !== null) {
-			if (vertCount + 6 > MAX_VERTS) { flush(); }
-			const tl = vec2(q[0], q[1]) * m;
-			const tr = vec2(q[4], q[1]) * m;
-			const br = vec2(q[4], q[5]) * m;
-			const bl = vec2(q[0], q[5]) * m;
-			const s0: float32 = q[2];
-			const t0: float32 = q[3];
-			const s1: float32 = q[6];
-			const t1: float32 = q[7];
-			pushVert(tl.x, tl.y, s0, t0, color.r, color.g, color.b, color.a);
-			pushVert(tr.x, tr.y, s1, t0, color.r, color.g, color.b, color.a);
-			pushVert(br.x, br.y, s1, t1, color.r, color.g, color.b, color.a);
-			pushVert(tl.x, tl.y, s0, t0, color.r, color.g, color.b, color.a);
-			pushVert(br.x, br.y, s1, t1, color.r, color.g, color.b, color.a);
-			pushVert(bl.x, bl.y, s0, t1, color.r, color.g, color.b, color.a);
-			q = void2dTextNext();
-		}
-		li = li + 1;
+function layoutLine(line: string, size: float32, lh: float32, lineIdx: int32, m: Transform2D, color: Color, align: float32): void {
+	const xoff: float32 = -void2dTextWidth(size, line) * align;
+	const yoff: float32 = (lineIdx as float32) * lh;
+	void2dTextBegin(xoff, yoff, size, line);
+	let q: Ptr<float32> = void2dTextNext();
+	while (q !== null) {
+		if (vertCount + 6 > MAX_VERTS) { flush(); }
+		const tl = vec2(q[0], q[1]) * m;
+		const tr = vec2(q[4], q[1]) * m;
+		const br = vec2(q[4], q[5]) * m;
+		const bl = vec2(q[0], q[5]) * m;
+		const s0: float32 = q[2];
+		const t0: float32 = q[3];
+		const s1: float32 = q[6];
+		const t1: float32 = q[7];
+		pushVert(tl.x, tl.y, s0, t0, color.r, color.g, color.b, color.a);
+		pushVert(tr.x, tr.y, s1, t0, color.r, color.g, color.b, color.a);
+		pushVert(br.x, br.y, s1, t1, color.r, color.g, color.b, color.a);
+		pushVert(tl.x, tl.y, s0, t0, color.r, color.g, color.b, color.a);
+		pushVert(br.x, br.y, s1, t1, color.r, color.g, color.b, color.a);
+		pushVert(bl.x, bl.y, s0, t1, color.r, color.g, color.b, color.a);
+		q = void2dTextNext();
 	}
+}
+
+// greedy word wrap to maxWidth (px); lays out each wrapped line, returns next line index.
+function wrapAndLayout(para: string, size: float32, maxWidth: float32, lh: float32, startIdx: int32, m: Transform2D, color: Color, align: float32): int32 {
+	const words: string[] = para.split(" ");
+	const wc: int32 = words.length as int32;
+	let cur: string = "";
+	let hasCur: boolean = false;
+	let idx: int32 = startIdx;
+	let i: int32 = 0;
+	while (i < wc) {
+		const word = words[i];
+		const candidate: string = hasCur ? cur + " " + word : word;
+		if (hasCur && void2dTextWidth(size, candidate) > maxWidth) {
+			layoutLine(cur, size, lh, idx, m, color, align);
+			idx = idx + 1;
+			cur = word;
+		} else {
+			cur = candidate;
+		}
+		hasCur = true;
+		i = i + 1;
+	}
+	if (hasCur) {
+		layoutLine(cur, size, lh, idx, m, color, align);
+		idx = idx + 1;
+	}
+	return idx;
+}
+
+// Multi-line (\n) + optional word wrap (maxWidth>0) + per-line alignment, under affine m.
+// letterSpacing = extra glyph advance; lineSpacing scales the line height.
+export function drawTextXform(m: Transform2D, size: float32, text: string, color: Color, blend: BlendMode, align: float32, letterSpacing: float32, lineSpacing: float32, maxWidth: float32): void {
+	useState(void2dFontView(), blend);
+	void2dTextSpacing(letterSpacing);
+	const lh: float32 = void2dLineHeight(size) * lineSpacing;
+	const paras: string[] = text.split("\n");
+	const pc: int32 = paras.length as int32;
+	let li: int32 = 0;
+	let pi: int32 = 0;
+	while (pi < pc) {
+		if (maxWidth > 0.0) {
+			li = wrapAndLayout(paras[pi], size, maxWidth, lh, li, m, color, align);
+		} else {
+			layoutLine(paras[pi], size, lh, li, m, color, align);
+			li = li + 1;
+		}
+		pi = pi + 1;
+	}
+	void2dTextSpacing(0.0);
 	void2dTextSyncAtlas();
 }

@@ -30,5 +30,6 @@ float *void2dTextNext(void);      // returns 8 floats [x0,y0,s0,t0,x1,y1,s1,t1],
 void void2dTextSyncAtlas(void);   // upload atlas if the iterator rasterized new glyphs
 float void2dTextWidth(float size, const char *text);   // advance width of one line
 float void2dLineHeight(float size);                    // vertical line spacing
+void void2dTextSpacing(float spacing);                 // per-glyph advance (letter spacing)
 
 #endif

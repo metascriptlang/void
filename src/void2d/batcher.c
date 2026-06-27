@@ -203,6 +203,11 @@ float void2dLineHeight(float size) {
 	return lineh;
 }
 
+// persistent glyph-advance spacing; set per draw (0 = default) so it never leaks.
+void void2dTextSpacing(float spacing) {
+	if (s_fons) fonsSetSpacing(s_fons, spacing);
+}
+
 void void2dTextSyncAtlas(void) {
 	if (!s_fons) return;
 	int dirty[4];
