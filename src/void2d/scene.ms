@@ -2,7 +2,7 @@
 // entry that owns the GPU pass. Heaps: `s2d.addChild(o); s2d.render(engine)`.
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
-import { Node2D, group, addChild, render, update } from "./node";
+import { Node2D, group, addChild, sync, draw, update } from "./node";
 import { begin2d, end2d } from "./draw";
 import { Color, Camera, camera, viewMatrix } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight } from "../sokol/gpu";
@@ -32,7 +32,10 @@ export function present(this s: Scene): void {
 	const h: int32 = fbHeight();
 	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
 	begin2d(w, h);
-	s.root.render(s.cam.viewMatrix(w as float32, h as float32), 1.0);
+	// h2d two-pass: sync transforms top-down (root parentChanged=true since camera may move),
+	// then draw the synced tree.
+	s.root.sync(s.cam.viewMatrix(w as float32, h as float32), true);
+	s.root.draw(1.0, w as float32, h as float32);
 	end2d();
 	endPass();
 	commit();
