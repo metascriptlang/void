@@ -1,11 +1,8 @@
-// Void 2D scene — functional take on h2d (no classes/OOP): a data Node2D + a `kind`
-// tag + extension methods (n.addChild / n.at / n.render). Node2D ≈ h2d.Object;
-// kind = Group/Rect/Sprite/Label ≈ h2d.Bitmap/Text/Graphics; Tile ≈ h2d.Tile.
-// (A discriminated-union payload hit a C-codegen issue when used as an interface field —
-//  flat tag + fields is the robust shape; revisit the union later.)
+// Node2D is a flat tag + fields, not a discriminated union: a union payload as an interface
+// field hits a C-codegen bug. Revisit the union once the compiler handles it.
 
-import { fillQuad, imageQuad, imageQuadUV, drawTextXform, fillTriTex, setEffect, setSmooth, pushClip, popClip } from "./draw";
-import { Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d } from "./types";
+import { fillQuad, imageQuad, imageQuadUV, layoutText, drawGlyphCache, fillTriTex, setEffect, setSmooth, pushClip, popClip } from "./draw";
+import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d, identity2d } from "./types";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
 
@@ -46,12 +43,31 @@ export interface Node2D {
 	mesh: float32[];
 	gfxView: uint32;
 	children: Node2D[];
+	childrenDirty: boolean;
+	cachedLocal: Transform2D;
+	cachedWorld: Transform2D;
+	lastX: float32;
+	lastY: float32;
+	lastSX: float32;
+	lastSY: float32;
+	lastRot: float32;
+	dirty: boolean;
+	glyphCache: float32[];
+	textDirty: boolean;
+	lastText: string;
+	lastSize: float32;
+	lastAlign: float32;
+	lastLetterSpacing: float32;
+	lastLineSpacing: float32;
+	lastMaxWidth: float32;
 }
 
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], gfxView: 0, children: [],
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], gfxView: 0, children: [], childrenDirty: true,
+		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0, lastSY: 0.0, lastRot: 0.0, dirty: true,
+		glyphCache: [], textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
 	};
 }
 
@@ -81,7 +97,6 @@ export function label(text: string, size: float32, color: Color): Node2D {
 	n.color = color;
 	return n;
 }
-// h2d.Anim — cycles `frames` (tiles, e.g. via Tile.sub) at `fps`; advanced by update(dt).
 export function anim(frames: Tile[], fps: float32): Node2D {
 	const n = base(DrawKind.Anim);
 	n.frames = frames;
@@ -92,18 +107,15 @@ export function anim(frames: Tile[], fps: float32): Node2D {
 	}
 	return n;
 }
-// h2d.Graphics — retained vector mesh (local-space tris); build via graphics.ms methods.
 export function graphics(): Node2D {
 	return base(DrawKind.Graphics);
 }
-// h2d.Mask — clips its children to a (w,h) rect (axis-aligned scissor of the world box).
 export function mask(w: float32, h: float32): Node2D {
 	const n = base(DrawKind.Mask);
 	n.w = w;
 	n.h = h;
 	return n;
 }
-// h2d.ScaleGrid — 9-slice: corners fixed, edges/centre stretch to (w,h). Set n.w/n.h to resize.
 export function scaleGrid(t: Tile, borderL: float32, borderT: float32, borderR: float32, borderB: float32): Node2D {
 	const n = base(DrawKind.ScaleGrid);
 	n.sheet = t;
@@ -120,6 +132,7 @@ export function scaleGrid(t: Tile, borderL: float32, borderT: float32, borderR: 
 
 export function addChild(this n: Node2D, c: Node2D): Node2D {
 	n.children.push(c);
+	n.childrenDirty = true;
 	return n;
 }
 
@@ -129,7 +142,6 @@ export function at(this n: Node2D, x: float32, y: float32): Node2D {
 	return n;
 }
 
-// h2d Object.sync — advance time-based state (Anim clocks) down the tree.
 export function update(this n: Node2D, dt: float32): void {
 	if (n.kind === DrawKind.Anim) {
 		n.clock = n.clock + dt;
@@ -139,8 +151,7 @@ export function update(this n: Node2D, dt: float32): void {
 	}
 }
 
-// h2d.Layers — order children by zIndex; stable (equal zIndex keep insertion order),
-// in-place insertion sort (≈O(n) once settled, no per-frame alloc).
+// Stable sort by zIndex (equal zIndex keep insertion order). Runs only when childrenDirty.
 function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
 	let i: int32 = 1;
@@ -156,8 +167,6 @@ function sortByZ(cs: Node2D[]): void {
 	}
 }
 
-// 9-slice emit: 3×3 grid of textured quads. Corner cells keep their source size; edge
-// cells stretch along one axis, the centre along both (source borders → dest borders).
 function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 	const t = n.sheet;
 	const srcW: float32 = t.w;
@@ -204,17 +213,45 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 	return m;
 }
 
-export function render(this n: Node2D, parent: Transform2D, a: float32): void {
-	if (!n.visible) { return; }
-	const world = parent * trs2d(n.x, n.y, n.rotation, n.scaleX, n.scaleY);
-	const na: float32 = a * n.alpha;
-	const col = rgba(n.color.r, n.color.g, n.color.b, n.color.a * na);
-	const px: float32 = n.pivotX;
-	const py: float32 = n.pivotY;
-	const tl = vec2(-px, -py) * world;
-	const tr = vec2(n.w - px, -py) * world;
-	const br = vec2(n.w - px, n.h - py) * world;
-	const bl = vec2(-px, n.h - py) * world;
+// Dirty is value-compared, not setter-tracked (this FP API has no setters): trs2d (sinf/cosf)
+// runs only when the local transform changed; cachedWorld recomputes when local OR an ancestor
+// changed. Walks all children incl. invisible — visibility is a draw-only concern.
+export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: boolean): void {
+	const localChanged: boolean = n.dirty || n.x != n.lastX || n.y != n.lastY || n.scaleX != n.lastSX || n.scaleY != n.lastSY || n.rotation != n.lastRot;
+	if (localChanged) {
+		n.cachedLocal = trs2d(n.x, n.y, n.rotation, n.scaleX, n.scaleY);
+		n.lastX = n.x;
+		n.lastY = n.y;
+		n.lastSX = n.scaleX;
+		n.lastSY = n.scaleY;
+		n.lastRot = n.rotation;
+		n.dirty = false;
+	}
+	const worldChanged: boolean = localChanged || parentChanged;
+	if (worldChanged) {
+		n.cachedWorld = parentWorld * n.cachedLocal;
+	}
+	if (n.kind === DrawKind.Label) {
+		const textChanged: boolean = n.textDirty || n.size != n.lastSize || n.align != n.lastAlign
+			|| n.letterSpacing != n.lastLetterSpacing || n.lineSpacing != n.lastLineSpacing
+			|| n.maxWidth != n.lastMaxWidth || !n.text.equals(n.lastText);
+		if (textChanged) {
+			n.glyphCache = layoutText(n.size, n.text, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth);
+			n.lastText = n.text;
+			n.lastSize = n.size;
+			n.lastAlign = n.align;
+			n.lastLetterSpacing = n.letterSpacing;
+			n.lastLineSpacing = n.lineSpacing;
+			n.lastMaxWidth = n.maxWidth;
+			n.textDirty = false;
+		}
+	}
+	for (const ch of n.children) {
+		ch.sync(n.cachedWorld, worldChanged);
+	}
+}
+
+function emitNode(n: Node2D, world: Transform2D, na: float32, col: Color, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): void {
 	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
 	setSmooth(n.smooth);
 	if (n.kind === DrawKind.Rect) {
@@ -228,7 +265,7 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 			imageQuad(n.frames[fi], tl, tr, br, bl, col, n.blend);
 		}
 	} else if (n.kind === DrawKind.Label) {
-		drawTextXform(world, n.size, n.text, col, n.blend, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth);
+		drawGlyphCache(world, n.glyphCache, col, n.blend);
 	} else if (n.kind === DrawKind.Graphics) {
 		// mesh: packed 8 floats/vertex (x y u v r g b a), 3 verts per triangle = 24-float stride.
 		const mv = n.mesh;
@@ -247,14 +284,37 @@ export function render(this n: Node2D, parent: Transform2D, a: float32): void {
 	} else if (n.kind === DrawKind.ScaleGrid) {
 		renderScaleGrid(n, world, col);
 	}
+}
+
+// Walk the synced tree (no transform recompute). visible=false skips the whole subtree;
+// off-screen nodes skip their own emit but children still recurse (no subtree cull).
+export function draw(this n: Node2D, a: float32, vw: float32, vh: float32): void {
+	if (!n.visible) { return; }
+	const world = n.cachedWorld;
+	const na: float32 = a * n.alpha;
+	const col = rgba(n.color.r, n.color.g, n.color.b, n.color.a * na);
+	const px: float32 = n.pivotX;
+	const py: float32 = n.pivotY;
+	const tl = vec2(-px, -py) * world;
+	const tr = vec2(n.w - px, -py) * world;
+	const br = vec2(n.w - px, n.h - py) * world;
+	const bl = vec2(-px, n.h - py) * world;
+	// Graphics/Label hold content outside the (w,h) box (mesh/glyphs), so they can't cull on it yet.
+	const cullable: boolean = n.kind !== DrawKind.Graphics && n.kind !== DrawKind.Label;
+	const onscreen: boolean = !cullable
+		|| (fmax4(tl.x, tr.x, br.x, bl.x) >= 0.0 && fmin4(tl.x, tr.x, br.x, bl.x) <= vw
+			&& fmax4(tl.y, tr.y, br.y, bl.y) >= 0.0 && fmin4(tl.y, tr.y, br.y, bl.y) <= vh);
+	if (onscreen) {
+		emitNode(n, world, na, col, tl, tr, br, bl);
+	}
 	const masking: boolean = n.kind === DrawKind.Mask;
 	if (masking) {
 		pushClip(fmin4(tl.x, tr.x, br.x, bl.x), fmin4(tl.y, tr.y, br.y, bl.y),
 			fmax4(tl.x, tr.x, br.x, bl.x), fmax4(tl.y, tr.y, br.y, bl.y));
 	}
-	sortByZ(n.children);
+	if (n.childrenDirty) { sortByZ(n.children); n.childrenDirty = false; }
 	for (const ch of n.children) {
-		ch.render(world, na);
+		ch.draw(na, vw, vh);
 	}
 	if (masking) {
 		popClip();
