@@ -1,13 +1,33 @@
-// Void sokol GPU — native (Metal). Thin re-exports of the C bridge primitives.
+// Void sokol GPU — native, per-OS backend. @platform blocks pick the native deps
+// (Metal on macOS/iOS, GLES3+EGL on Android); the extern surface is backend-agnostic.
 
 @passC("-Ideps/sokol");
-@passL("-framework Cocoa");
-@passL("-framework QuartzCore");
-@passL("-framework Metal");
-@passL("-framework MetalKit");
-@link("./sokol.o");
 @include("bridge.h");
-@compile("src/sokol/bridge.c");
+
+@platform("macos") {
+	@passL("-framework Cocoa");
+	@passL("-framework QuartzCore");
+	@passL("-framework Metal");
+	@passL("-framework MetalKit");
+	@link("./sokol.o");
+	@link("./bridgeEmbed.o");
+}
+
+@platform("android") {
+	@compile("./bridgeAndroid.c");
+	@passL("-lEGL");
+	@passL("-lGLESv3");
+	@passL("-landroid");
+	@passL("-llog");
+}
+
+@platform("ios") {
+	@compile("./bridgeIos.m");
+	@passL("-framework Metal");
+	@passL("-framework QuartzCore");
+	@passL("-framework UIKit");
+	@passL("-framework Foundation");
+}
 
 extern function voidGfxSetup(): void;
 extern function voidFbWidth(): int32;
