@@ -10,3 +10,6 @@ web/gl/
 web/.claude/
 
 CLAUDE.md
+
+.playwright-mcp/
+/*.png
