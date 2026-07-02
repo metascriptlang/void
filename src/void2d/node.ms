@@ -1,7 +1,7 @@
 // Node2D is a flat tag + fields, not a discriminated union: a union payload as an interface
 // field hits a C-codegen bug. Revisit the union once the compiler handles it.
 
-import { fillQuad, imageQuad, imageQuadUV, layoutText, drawGlyphCache, fillTriTex, setEffect, setSmooth, pushClip, popClip } from "./draw";
+import { fillQuad, imageQuad, imageQuadUV, layoutText, buildGlyphMesh, drawStaticText, drawStaticGraphics, uploadStaticMesh, destroyStaticMesh, setEffect, setSmooth, pushClip, popClip } from "./draw";
 import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba, tile, trs2d, identity2d } from "./types";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
@@ -42,6 +42,9 @@ export interface Node2D {
 	clock: float32;
 	mesh: float32[];
 	gfxView: uint32;
+	gfxBuf: uint32;
+	gfxVertCount: int32;
+	gfxDirty: boolean;
 	children: Node2D[];
 	childrenDirty: boolean;
 	cachedLocal: Transform2D;
@@ -52,7 +55,8 @@ export interface Node2D {
 	lastSY: float32;
 	lastRot: float32;
 	dirty: boolean;
-	glyphCache: float32[];
+	txtBuf: uint32;
+	txtVertCount: int32;
 	textDirty: boolean;
 	lastText: string;
 	lastSize: float32;
@@ -65,9 +69,9 @@ export interface Node2D {
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], gfxView: 0, children: [], childrenDirty: true,
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], gfxView: 0, gfxBuf: 0, gfxVertCount: 0, gfxDirty: true, children: [], childrenDirty: true,
 		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0, lastSY: 0.0, lastRot: 0.0, dirty: true,
-		glyphCache: [], textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
+		txtBuf: 0, txtVertCount: 0, textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
 	};
 }
 
@@ -236,7 +240,11 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			|| n.letterSpacing != n.lastLetterSpacing || n.lineSpacing != n.lastLineSpacing
 			|| n.maxWidth != n.lastMaxWidth || !n.text.equals(n.lastText);
 		if (textChanged) {
-			n.glyphCache = layoutText(n.size, n.text, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth);
+			const tm: float32[] = buildGlyphMesh(layoutText(n.size, n.text, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth));
+			const tvc: int32 = (tm.length as int32) / 8;
+			if (n.txtBuf != 0) { destroyStaticMesh(n.txtBuf); n.txtBuf = 0; }
+			if (tvc > 0) { n.txtBuf = uploadStaticMesh(tm, tvc); }
+			n.txtVertCount = tvc;
 			n.lastText = n.text;
 			n.lastSize = n.size;
 			n.lastAlign = n.align;
@@ -245,6 +253,13 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			n.lastMaxWidth = n.maxWidth;
 			n.textDirty = false;
 		}
+	}
+	if (n.kind === DrawKind.Graphics && n.gfxDirty) {
+		const vc: int32 = (n.mesh.length as int32) / 8;
+		if (n.gfxBuf != 0) { destroyStaticMesh(n.gfxBuf); n.gfxBuf = 0; }
+		if (vc > 0) { n.gfxBuf = uploadStaticMesh(n.mesh, vc); }
+		n.gfxVertCount = vc;
+		n.gfxDirty = false;
 	}
 	for (const ch of n.children) {
 		ch.sync(n.cachedWorld, worldChanged);
@@ -265,22 +280,9 @@ function emitNode(n: Node2D, world: Transform2D, na: float32, col: Color, tl: Ve
 			imageQuad(n.frames[fi], tl, tr, br, bl, col, n.blend);
 		}
 	} else if (n.kind === DrawKind.Label) {
-		drawGlyphCache(world, n.glyphCache, col, n.blend);
+		drawStaticText(n.txtBuf, n.txtVertCount, world, n.color, na, n.blend, n.colorMatrix, n.colorAdd, n.colorKey, n.smooth);
 	} else if (n.kind === DrawKind.Graphics) {
-		// mesh: packed 8 floats/vertex (x y u v r g b a), 3 verts per triangle = 24-float stride.
-		const mv = n.mesh;
-		const total: int32 = mv.length as int32;
-		let i: int32 = 0;
-		while (i + 24 <= total) {
-			const pa = vec2(mv[i], mv[i + 1]) * world;
-			const ca = rgba(mv[i + 4], mv[i + 5], mv[i + 6], mv[i + 7] * na);
-			const pb = vec2(mv[i + 8], mv[i + 9]) * world;
-			const cb = rgba(mv[i + 12], mv[i + 13], mv[i + 14], mv[i + 15] * na);
-			const pc = vec2(mv[i + 16], mv[i + 17]) * world;
-			const cc = rgba(mv[i + 20], mv[i + 21], mv[i + 22], mv[i + 23] * na);
-			fillTriTex(n.gfxView, pa, mv[i + 2], mv[i + 3], ca, pb, mv[i + 10], mv[i + 11], cb, pc, mv[i + 18], mv[i + 19], cc, n.blend);
-			i = i + 24;
-		}
+		drawStaticGraphics(n.gfxBuf, n.gfxVertCount, n.gfxView, n.blend, world, na, n.colorMatrix, n.colorAdd, n.colorKey, n.smooth);
 	} else if (n.kind === DrawKind.ScaleGrid) {
 		renderScaleGrid(n, world, col);
 	}

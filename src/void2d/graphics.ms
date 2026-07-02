@@ -23,6 +23,7 @@ function vtx(n: Node2D, x: float32, y: float32, u: float32, v: float32, c: Color
 	n.mesh.push(c.g);
 	n.mesh.push(c.b);
 	n.mesh.push(c.a);
+	n.gfxDirty = true;
 }
 
 function tri(n: Node2D, a: Vec2, b: Vec2, c: Vec2, col: Color): void {
@@ -65,6 +66,7 @@ function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
 export function clear(this g: Node2D): Node2D {
 	g.mesh = [];
 	g.gfxView = 0;
+	g.gfxDirty = true;
 	return g;
 }
 

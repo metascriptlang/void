@@ -132,11 +132,8 @@ void void2dScissor(int x, int y, int w, int h) {
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
 void void2dFrameBegin(void) { s_atlasUpdated = false; }
 
-void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA, int smooth) {
-	if (vertCount <= 0) return;
-	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
+// Upload the font atlas once per frame (whichever draw — dynamic or static text — needs it first).
+static void ensureAtlas(void) {
 	if (s_atlasDirty && !s_atlasUpdated) {
 		sg_image_data id = {0};
 		id.mip_levels[0].ptr = s_atlasRGBA;
@@ -145,6 +142,14 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 		s_atlasDirty = false;
 		s_atlasUpdated = true;
 	}
+}
+
+void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
+                      const float *colorMatrix, float addR, float addG, float addB, float addA,
+                      float keyR, float keyG, float keyB, float keyA, int smooth) {
+	if (vertCount <= 0) return;
+	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
+	ensureAtlas();
 	sg_range data = { .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
 	int offset = sg_append_buffer(s_vbuf, &data);
 	sg_apply_pipeline(s_pips[blend]);
@@ -157,6 +162,8 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	void2d_params_t vp = {0};
 	vp.viewport[0] = fbW;
 	vp.viewport[1] = fbH;
+	vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // identity 2D affine (a=d=1, b=c=tx=ty=0)
+	vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 	sg_range u = { .ptr = &vp, .size = sizeof(vp) };
 	sg_apply_uniforms(UB_void2d_params, &u);
 	void2d_fx_t fx = {0};
@@ -164,6 +171,52 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	fx.colorAdd[0] = addR; fx.colorAdd[1] = addG; fx.colorAdd[2] = addB; fx.colorAdd[3] = addA;
 	fx.colorKey[0] = keyR; fx.colorKey[1] = keyG; fx.colorKey[2] = keyB; fx.colorKey[3] = keyA;
 	sg_range uf = { .ptr = &fx, .size = sizeof(fx) };
+	sg_apply_uniforms(UB_void2d_fx, &uf);
+	sg_draw(0, vertCount, 1);
+}
+
+// Persistent (immutable) vertex buffer holding LOCAL-space geometry — drawn via void2dDrawStatic
+// with the object matrix in the shader, reused across frames until the mesh changes.
+uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount) {
+	if (vertCount <= 0) return 0;
+	sg_buffer_desc bd = {0};
+	bd.usage.vertex_buffer = true;
+	bd.data = (sg_range){ .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
+	return sg_make_buffer(&bd).id;
+}
+
+void void2dDestroyStaticBuffer(uint32_t bufId) {
+	if (bufId) sg_destroy_buffer((sg_buffer){ .id = bufId });
+}
+
+// One draw call from a static buffer: object matrix + alpha in the shader (model/globalColor),
+// colour pipeline (colorMatrix/add/key) as for the dynamic path. Caller flushes first to keep z-order.
+void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, float fbW, float fbH,
+                      float mA, float mB, float mC, float mD, float mTx, float mTy,
+                      float gcR, float gcG, float gcB, float gcA,
+                      const float *colorMatrix, float addR, float addG, float addB, float addA,
+                      float keyR, float keyG, float keyB, float keyA, int smooth) {
+	if (vertCount <= 0 || bufId == 0) return;
+	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
+	ensureAtlas();
+	sg_apply_pipeline(s_pips[blend]);
+	sg_bindings b = {0};
+	b.vertex_buffers[0] = (sg_buffer){ .id = bufId };
+	b.views[VIEW_tex] = (sg_view){ .id = (view == 0 ? s_whiteView.id : view) };
+	b.samplers[SMP_smp] = s_smp[(smooth != 0) ? 1 : 0];
+	sg_apply_bindings(&b);
+	void2d_params_t vp = {0};
+	vp.viewport[0] = fbW; vp.viewport[1] = fbH;
+	vp.model0[0]=mA; vp.model0[1]=mB; vp.model0[2]=mC; vp.model0[3]=mD;
+	vp.model1[0]=mTx; vp.model1[1]=mTy;
+	vp.globalColor[0]=gcR; vp.globalColor[1]=gcG; vp.globalColor[2]=gcB; vp.globalColor[3]=gcA;
+	sg_range u = { .ptr=&vp, .size=sizeof(vp) };
+	sg_apply_uniforms(UB_void2d_params, &u);
+	void2d_fx_t fx = {0};
+	memcpy(fx.colorMatrix, colorMatrix, sizeof(fx.colorMatrix));
+	fx.colorAdd[0]=addR; fx.colorAdd[1]=addG; fx.colorAdd[2]=addB; fx.colorAdd[3]=addA;
+	fx.colorKey[0]=keyR; fx.colorKey[1]=keyG; fx.colorKey[2]=keyB; fx.colorKey[3]=keyA;
+	sg_range uf = { .ptr=&fx, .size=sizeof(fx) };
 	sg_apply_uniforms(UB_void2d_fx, &uf);
 	sg_draw(0, vertCount, 1);
 }

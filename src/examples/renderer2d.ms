@@ -2,7 +2,7 @@
 // methods (rect/sprite/label, .at, .addChild), then s.present() each frame (owns the pass).
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
-import { gfxSetup, makeImage, makeView, keyDown, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
+import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier } from "../void2d/graphics";
@@ -141,6 +141,18 @@ export function frame2d(): void {
 	if (panel === null) { return; }
 	if (logo === null) { return; }
 	if (green === null) { return; }
+
+	// Auto-fit the ~980x720 scene into whatever surface hosts it (embed views are
+	// smaller / different aspect than the 800x600 desktop window). Centered, zoom to fit.
+	const fw: float32 = fbWidth() as float32;
+	const fh: float32 = fbHeight() as float32;
+	const zx: float32 = fw / 980.0;
+	const zy: float32 = fh / 720.0;
+	sc.cam.zoom = zx < zy ? zx : zy;
+	sc.cam.x = 480.0;
+	sc.cam.y = 350.0;
+	sc.cam.anchorX = 0.5;
+	sc.cam.anchorY = 0.5;
 
 	t = t + dir * 1.6;
 	if (t > 140.0) { dir = -1.0; }
