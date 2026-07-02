@@ -16,6 +16,15 @@ typedef struct {
 
 // Lifecycle — MetaScript main() drives via init/frame closures.
 void voidRun(int w, int h, msClosure init, msClosure frame);
+
+// Embed lifecycle (iOS / host-driven) — host owns the CAMetalLayer + render loop.
+void voidEmbedRegister(msClosure init, msClosure frame);
+void voidEmbedInit(const void *layer, int w, int h);
+void voidEmbedResize(int w, int h);
+void voidEmbedFrame(void);
+void voidEmbedSetMessagePump(msClosure pump);
+void voidEmbedPumpMessages(void);
+
 void voidGfxSetup(void);
 int voidFbWidth(void);
 int voidFbHeight(void);
