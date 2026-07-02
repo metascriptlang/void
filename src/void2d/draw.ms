@@ -5,7 +5,8 @@
 
 import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dFrameBegin,
-	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing
+	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing,
+	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic
 } from "./batcher.h";
 import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
 
@@ -205,6 +206,34 @@ export function drawText(pos: Vec2, size: float32, scale: float32, text: string,
 
 export function end2d(): void { flush(); }
 
+// ===== static (retained) geometry: local-space buffer + object matrix in the shader =====
+
+const idMat16: float32[] = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
+
+export function uploadStaticMesh(mesh: float32[], vertCount: int32): uint32 {
+	return void2dMakeStaticBuffer(mesh[0], vertCount);
+}
+
+export function destroyStaticMesh(buf: uint32): void {
+	void2dDestroyStaticBuffer(buf);
+}
+
+// Draw a Graphics static buffer: flush the pending dynamic batch first (z-order), then one draw
+// call with the object matrix (m) + accumulated alpha (na) + the node's colour pipeline.
+export function drawStaticGraphics(buf: uint32, vertCount: int32, view: uint32, blend: BlendMode,
+	m: Transform2D, na: float32, colorMatrix: float32[], colorAdd: Color, colorKey: Color, smooth: boolean): void {
+	if (vertCount <= 0 || buf == 0) { return; }
+	flush();
+	const hasMat: boolean = (colorMatrix.length as int32) >= 16;
+	const mat: float32[] = hasMat ? colorMatrix : idMat16;
+	const sm: int32 = smooth ? 1 : 0;
+	void2dDrawStatic(buf, vertCount, view, blend as int32, fbW, fbH,
+		m.a, m.b, m.c, m.d, m.tx, m.ty,
+		1.0, 1.0, 1.0, na,
+		mat[0], colorAdd.r, colorAdd.g, colorAdd.b, colorAdd.a,
+		colorKey.r, colorKey.g, colorKey.b, colorKey.a, sm);
+}
+
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
 
 function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2, u0: float32, v0: float32, u1: float32, v1: float32, color: Color): void {
@@ -314,29 +343,42 @@ export function layoutText(size: float32, text: string, align: float32, letterSp
 	return out;
 }
 
-// Emit cached local-space glyph quads through the world affine m (per-frame, cheap — no
-// fontstash, just 4 corner transforms per glyph).
-export function drawGlyphCache(m: Transform2D, glyphs: float32[], color: Color, blend: BlendMode): void {
+function glyphVert(out: float32[], x: float32, y: float32, u: float32, v: float32): void {
+	const w: float32 = 1.0;
+	out.push(x); out.push(y); out.push(u); out.push(v);
+	out.push(w); out.push(w); out.push(w); out.push(w);
+}
+
+// Expand cached glyph quads (8 floats: x0,y0,s0,t0,x1,y1,s1,t1) into a LOCAL-space triangle
+// mesh (6 verts × 8, white) for a static buffer — the label colour is applied via globalColor.
+export function buildGlyphMesh(glyphs: float32[]): float32[] {
+	const out: float32[] = [];
 	const total: int32 = glyphs.length as int32;
-	if (total == 0) { return; }
-	useState(void2dFontView(), blend);
 	let i: int32 = 0;
 	while (i + 8 <= total) {
-		if (vertCount + 6 > MAX_VERTS) { flush(); }
-		const tl = vec2(glyphs[i], glyphs[i + 1]) * m;
-		const tr = vec2(glyphs[i + 4], glyphs[i + 1]) * m;
-		const br = vec2(glyphs[i + 4], glyphs[i + 5]) * m;
-		const bl = vec2(glyphs[i], glyphs[i + 5]) * m;
-		const s0: float32 = glyphs[i + 2];
-		const t0: float32 = glyphs[i + 3];
-		const s1: float32 = glyphs[i + 6];
-		const t1: float32 = glyphs[i + 7];
-		pushVert(tl.x, tl.y, s0, t0, color.r, color.g, color.b, color.a);
-		pushVert(tr.x, tr.y, s1, t0, color.r, color.g, color.b, color.a);
-		pushVert(br.x, br.y, s1, t1, color.r, color.g, color.b, color.a);
-		pushVert(tl.x, tl.y, s0, t0, color.r, color.g, color.b, color.a);
-		pushVert(br.x, br.y, s1, t1, color.r, color.g, color.b, color.a);
-		pushVert(bl.x, bl.y, s0, t1, color.r, color.g, color.b, color.a);
+		const x0: float32 = glyphs[i];     const y0: float32 = glyphs[i + 1];
+		const s0: float32 = glyphs[i + 2]; const t0: float32 = glyphs[i + 3];
+		const x1: float32 = glyphs[i + 4]; const y1: float32 = glyphs[i + 5];
+		const s1: float32 = glyphs[i + 6]; const t1: float32 = glyphs[i + 7];
+		glyphVert(out, x0, y0, s0, t0); glyphVert(out, x1, y0, s1, t0); glyphVert(out, x1, y1, s1, t1);
+		glyphVert(out, x0, y0, s0, t0); glyphVert(out, x1, y1, s1, t1); glyphVert(out, x0, y1, s0, t1);
 		i = i + 8;
 	}
+	return out;
+}
+
+// Draw a Label static glyph buffer: flush first (z-order), then one draw call with the object
+// matrix + the label colour×alpha as globalColor (glyphs are white) + the node's colour pipeline.
+export function drawStaticText(buf: uint32, vertCount: int32, m: Transform2D, color: Color, na: float32,
+	blend: BlendMode, colorMatrix: float32[], colorAdd: Color, colorKey: Color, smooth: boolean): void {
+	if (vertCount <= 0 || buf == 0) { return; }
+	flush();
+	const hasMat: boolean = (colorMatrix.length as int32) >= 16;
+	const mat: float32[] = hasMat ? colorMatrix : idMat16;
+	const sm: int32 = smooth ? 1 : 0;
+	void2dDrawStatic(buf, vertCount, void2dFontView(), blend as int32, fbW, fbH,
+		m.a, m.b, m.c, m.d, m.tx, m.ty,
+		color.r, color.g, color.b, color.a * na,
+		mat[0], colorAdd.r, colorAdd.g, colorAdd.b, colorAdd.a,
+		colorKey.r, colorKey.g, colorKey.b, colorKey.a, sm);
 }
