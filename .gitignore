@@ -4,6 +4,8 @@
 deps/
 out/
 *.o
+*.a
+ios/dist/
 
 web/wgpu/
 web/gl/
