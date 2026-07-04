@@ -44,6 +44,7 @@ uint32_t voidMakeRenderTarget(int w, int h);
 uint32_t voidRenderTargetView(uint32_t rt);
 void voidBeginRenderTargetPass(uint32_t rt, float r, float g, float b, float a);
 void voidDestroyRenderTarget(uint32_t rt);
+int voidIsRenderTargetView(uint32_t view);
 
 // Frame sequence.
 void voidBeginPass(float r, float g, float b, float a);

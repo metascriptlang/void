@@ -6,7 +6,7 @@
 import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dSetRTMode, void2dFrameBegin,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing,
-	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic
+	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic, void2dBlur
 } from "./batcher.h";
 import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
 
@@ -208,6 +208,12 @@ export function end2d(): void { flush(); }
 
 // Toggle offscreen-RT pipeline routing (flush first — pipeline set changes at pass boundaries).
 export function setRTMode(on: boolean): void { flush(); void2dSetRTMode(on ? 1 : 0); }
+
+// One separable-blur tap pass (h2d.filter.Blur) into the active RT pass. `step` is the per-tap
+// UV offset (radius/size); run horizontal (step,0) then vertical (0,step) ping-ponging two RTs.
+export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void {
+	void2dBlur(srcView, stepX, stepY);
+}
 
 // ===== static (retained) geometry: local-space buffer + object matrix in the shader =====
 
