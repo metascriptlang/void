@@ -21,6 +21,9 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 // h2d.Mask clip — restrict subsequent draws to a framebuffer-pixel rect (top-left origin).
 void void2dScissor(int x, int y, int w, int h);
 
+// Route draws to the offscreen-RT pipeline set (single-sample, no depth) vs the swapchain set.
+void void2dSetRTMode(int on);
+
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
 

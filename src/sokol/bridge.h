@@ -39,6 +39,12 @@ uint32_t voidMakeImage(const void *rgba, int w, int h);
 uint32_t voidMakeView(uint32_t image);
 uint32_t voidMakeSampler(void);
 
+// Offscreen render targets (for h2d-style Filters). Single-sample RGBA8 color-only.
+uint32_t voidMakeRenderTarget(int w, int h);
+uint32_t voidRenderTargetView(uint32_t rt);
+void voidBeginRenderTargetPass(uint32_t rt, float r, float g, float b, float a);
+void voidDestroyRenderTarget(uint32_t rt);
+
 // Frame sequence.
 void voidBeginPass(float r, float g, float b, float a);
 void voidApplyPipeline(uint32_t pipeline);

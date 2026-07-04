@@ -47,6 +47,10 @@ extern function voidApplyMvp(mvp: unknown): void;
 extern function voidDraw(count: int32): void;
 extern function voidEndPass(): void;
 extern function voidCommit(): void;
+extern function voidMakeRenderTarget(w: int32, h: int32): uint32;
+extern function voidRenderTargetView(rt: uint32): uint32;
+extern function voidBeginRenderTargetPass(rt: uint32, r: float32, g: float32, b: float32, a: float32): void;
+extern function voidDestroyRenderTarget(rt: uint32): void;
 
 export function gfxSetup(): void { voidGfxSetup(); }
 export function fbWidth(): int32 { return voidFbWidth(); }
@@ -66,6 +70,10 @@ export function applyMvp(mvp: unknown): void { voidApplyMvp(mvp); }
 export function draw(count: int32): void { voidDraw(count); }
 export function endPass(): void { voidEndPass(); }
 export function commit(): void { voidCommit(); }
+export function makeRenderTarget(w: int32, h: int32): uint32 { return voidMakeRenderTarget(w, h); }
+export function renderTargetView(rt: uint32): uint32 { return voidRenderTargetView(rt); }
+export function beginRenderTargetPass(rt: uint32, r: float32, g: float32, b: float32, a: float32): void { voidBeginRenderTargetPass(rt, r, g, b, a); }
+export function destroyRenderTarget(rt: uint32): void { voidDestroyRenderTarget(rt); }
 
 // sokol_app keycodes (ASCII-aligned letters) for keyDown polling.
 export const KEY_W: int32 = 87;
