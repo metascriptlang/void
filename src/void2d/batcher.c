@@ -19,6 +19,8 @@ static sg_buffer s_vbuf;
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
 static int s_rtMode;                               // 1 while drawing into an offscreen RT pass
+static sg_pipeline s_blurPip;                      // separable-blur fullscreen pass (offscreen format)
+static sg_buffer s_fsQuad;                         // fullscreen quad (pos2+uv2) for filter passes
 static sg_view s_whiteView;
 static sg_sampler s_smp[2];   // [0] = nearest (smooth off), [1] = linear (smooth on)
 
@@ -99,6 +101,24 @@ void void2dSetup(void) {
 		s_pipsRT[i] = sg_make_pipeline(&pd);
 	}
 
+	sg_pipeline_desc bpd = {0};
+	bpd.shader = sg_make_shader(blur_shader_desc(sg_query_backend()));
+	bpd.layout.attrs[ATTR_blur_pos].format = SG_VERTEXFORMAT_FLOAT2;
+	bpd.layout.attrs[ATTR_blur_uv0].format = SG_VERTEXFORMAT_FLOAT2;
+	bpd.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+	bpd.sample_count = 1;
+	bpd.depth.pixel_format = SG_PIXELFORMAT_NONE;
+	s_blurPip = sg_make_pipeline(&bpd);
+
+	static const float fsq[24] = {
+		-1.0f, -1.0f, 0.0f, 0.0f,   1.0f, -1.0f, 1.0f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f,
+		-1.0f, -1.0f, 0.0f, 0.0f,   1.0f,  1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f, 1.0f,
+	};
+	sg_buffer_desc fqd = {0};
+	fqd.usage.vertex_buffer = true;
+	fqd.data = (sg_range){ .ptr = fsq, .size = sizeof(fsq) };
+	s_fsQuad = sg_make_buffer(&fqd);
+
 	s_whiteView = (sg_view){ .id = voidMakeView(voidMakeImage(NULL, 0, 0)) };
 	sg_sampler_desc smpLin = {0};
 	smpLin.min_filter = SG_FILTER_LINEAR;
@@ -142,6 +162,23 @@ void void2dSetRTMode(int on) { s_rtMode = on ? 1 : 0; }
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
 void void2dFrameBegin(void) { s_atlasUpdated = false; }
 
+// One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
+// 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging
+// between two RTs. dir = (radius/texW,0) horizontal, (0,radius/texH) vertical.
+void void2dBlur(uint32_t srcView, float dirX, float dirY) {
+	sg_apply_pipeline(s_blurPip);
+	sg_bindings b = {0};
+	b.vertex_buffers[0] = s_fsQuad;
+	b.views[VIEW_srcTex] = (sg_view){ .id = srcView };
+	b.samplers[SMP_srcSmp] = s_smp[1];
+	sg_apply_bindings(&b);
+	blur_params_t p = {0};
+	p.dir[0] = dirX; p.dir[1] = dirY;
+	sg_range u = { .ptr = &p, .size = sizeof(p) };
+	sg_apply_uniforms(UB_blur_params, &u);
+	sg_draw(0, 6, 1);
+}
+
 // Upload the font atlas once per frame (whichever draw — dynamic or static text — needs it first).
 static void ensureAtlas(void) {
 	if (s_atlasDirty && !s_atlasUpdated) {
@@ -172,6 +209,7 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	void2d_params_t vp = {0};
 	vp.viewport[0] = fbW;
 	vp.viewport[1] = fbH;
+	vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
 	vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // identity 2D affine (a=d=1, b=c=tx=ty=0)
 	vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 	sg_range u = { .ptr = &vp, .size = sizeof(vp) };
@@ -217,6 +255,7 @@ void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, f
 	sg_apply_bindings(&b);
 	void2d_params_t vp = {0};
 	vp.viewport[0] = fbW; vp.viewport[1] = fbH;
+	vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
 	vp.model0[0]=mA; vp.model0[1]=mB; vp.model0[2]=mC; vp.model0[3]=mD;
 	vp.model1[0]=mTx; vp.model1[1]=mTy;
 	vp.globalColor[0]=gcR; vp.globalColor[1]=gcG; vp.globalColor[2]=gcB; vp.globalColor[3]=gcA;

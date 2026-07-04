@@ -179,6 +179,14 @@ void voidDestroyRenderTarget(uint32_t rt) {
 	p->used = 0;
 }
 
+int voidIsRenderTargetView(uint32_t view) {
+	if (view == 0) return 0;
+	for (int i = 0; i < VOID_MAX_RT; i++) {
+		if (s_rts[i].used && s_rts[i].texView.id == view) return 1;
+	}
+	return 0;
+}
+
 // --- Frame sequence ---
 
 void voidBeginPass(float r, float g, float b, float a) {
