@@ -6,7 +6,7 @@
 // bevel-style clamp at sharp angles (correct for any alpha — no overlapping geometry).
 
 import { Node2D } from "./node";
-import { Vec2, Color, Tile, vec2 } from "./types";
+import { Vec2, Color, Tile, vec2, rgba } from "./types";
 import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
@@ -36,6 +36,23 @@ function triUV(n: Node2D, a: Vec2, ua: float32, va: float32, b: Vec2, ub: float3
 	vtx(n, a.x, a.y, ua, va, col);
 	vtx(n, b.x, b.y, ub, vb, col);
 	vtx(n, c.x, c.y, uc, vc, col);
+}
+
+function lerpColor(a: Color, b: Color, t: float32): Color {
+	return rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+}
+
+function triCol(n: Node2D, a: Vec2, ca: Color, b: Vec2, cb: Color, c: Vec2, cc: Color): void {
+	vtx(n, a.x, a.y, 0.0, 0.0, ca);
+	vtx(n, b.x, b.y, 0.0, 0.0, cb);
+	vtx(n, c.x, c.y, 0.0, 0.0, cc);
+}
+
+function gradColorAt(p: Vec2, ax: float32, ay: float32, minP: float32, span: float32, c0: Color, c1: Color): Color {
+	let t: float32 = span > DEGENERATE_LEN ? (p.x * ax + p.y * ay - minP) / span : 0.0;
+	if (t < 0.0) { t = 0.0; }
+	if (t > 1.0) { t = 1.0; }
+	return lerpColor(c0, c1, t);
 }
 
 function arcSegs(r: float32, sweep: float32): int32 {
@@ -183,6 +200,62 @@ export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 	while (k + 3 <= tc) {
 		tri(g, pts[idx[k]], pts[idx[k + 1]], pts[idx[k + 2]], color);
 		k = k + 3;
+	}
+	return g;
+}
+
+// h2d.Graphics.beginGradientFill(Linear) — color lerps c0→c1 along `angle` (rad; 0 = +x)
+// across the shape's projected extent. Concave-safe (ear-clip); color is per-vertex.
+export function fillGradientPolygon(this g: Node2D, pts: Vec2[], c0: Color, c1: Color, angle: float32): Node2D {
+	const m: int32 = pts.length as int32;
+	if (m < 3) { return g; }
+	const ax: float32 = cosf(angle);
+	const ay: float32 = sinf(angle);
+	let minP: float32 = pts[0].x * ax + pts[0].y * ay;
+	let maxP: float32 = minP;
+	let i: int32 = 1;
+	while (i < m) {
+		const pp: float32 = pts[i].x * ax + pts[i].y * ay;
+		if (pp < minP) { minP = pp; }
+		if (pp > maxP) { maxP = pp; }
+		i = i + 1;
+	}
+	const span: float32 = maxP - minP;
+	const idx: int32[] = triangulate(pts);
+	const tc: int32 = idx.length as int32;
+	let k: int32 = 0;
+	while (k + 3 <= tc) {
+		const pa = pts[idx[k]];
+		const pb = pts[idx[k + 1]];
+		const pc = pts[idx[k + 2]];
+		triCol(g, pa, gradColorAt(pa, ax, ay, minP, span, c0, c1),
+			pb, gradColorAt(pb, ax, ay, minP, span, c0, c1),
+			pc, gradColorAt(pc, ax, ay, minP, span, c0, c1));
+		k = k + 3;
+	}
+	return g;
+}
+
+// h2d.Graphics.beginGradientFill(Linear) over an axis-aligned rect.
+export function fillGradientRect(this g: Node2D, x: float32, y: float32, w: float32, h: float32, c0: Color, c1: Color, angle: float32): Node2D {
+	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	return g.fillGradientPolygon(pts, c0, c1, angle);
+}
+
+// h2d.Graphics.beginGradientFill(Radial) — fan with center=cInner, rim=cOuter.
+export function fillRadialGradient(this g: Node2D, cx: float32, cy: float32, r: float32, cInner: Color, cOuter: Color): Node2D {
+	let seg: int32 = (r as int32) / 2 + 8;
+	if (seg > CIRCLE_MAX_SEG) { seg = CIRCLE_MAX_SEG; }
+	const step: float32 = TAU / (seg as float32);
+	const center = vec2(cx, cy);
+	let i: int32 = 0;
+	while (i < seg) {
+		const a0: float32 = step * (i as float32);
+		const a1: float32 = step * ((i + 1) as float32);
+		const p0 = vec2(cx + cosf(a0) * r, cy + sinf(a0) * r);
+		const p1 = vec2(cx + cosf(a1) * r, cy + sinf(a1) * r);
+		triCol(g, center, cInner, p0, cOuter, p1, cOuter);
+		i = i + 1;
 	}
 	return g;
 }
