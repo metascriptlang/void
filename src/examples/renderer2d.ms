@@ -2,8 +2,8 @@
 // methods (rect/sprite/label, .at, .addChild), then s.present() each frame (owns the pass).
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
-import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
-import { setup2d } from "../void2d/draw";
+import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, makeRenderTarget, renderTargetView, beginRenderTargetPass, endPass, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
+import { setup2d, begin2d, end2d, setRTMode, drawRect } from "../void2d/draw";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
@@ -17,6 +17,7 @@ let logo: Node2D | null = null;
 let green: Node2D | null = null;
 let t: float32 = 0.0;
 let dir: float32 = 1.0;
+let rt: uint32 = 0;
 
 export function init2d(): void {
 	gfxSetup();
@@ -136,6 +137,9 @@ export function init2d(): void {
 	sceneObj.add(para);
 	sceneObj.add(texGfx);
 
+	rt = makeRenderTarget(256, 256);
+	sceneObj.add(sprite(tile(renderTargetView(rt), 150.0, 150.0)).at(700.0, 285.0));
+
 	logo = logoNode;
 	green = greenNode;
 	panel = panelNode;
@@ -174,6 +178,15 @@ export function frame2d(): void {
 	if (keyDown(KEY_A)) { sc.cam.x = sc.cam.x - panSpeed; }
 	if (keyDown(KEY_S)) { sc.cam.y = sc.cam.y + panSpeed; }
 	if (keyDown(KEY_W)) { sc.cam.y = sc.cam.y - panSpeed; }
+
+	beginRenderTargetPass(rt, 0.12, 0.10, 0.18, 1.0);
+	begin2d(256, 256);
+	setRTMode(true);
+	drawRect(vec2(24.0, 24.0), vec2(208.0, 92.0), rgba(0.95, 0.45, 0.35, 1.0), BlendMode.Alpha);
+	drawRect(vec2(24.0, 140.0), vec2(208.0, 92.0), rgba(0.35, 0.75, 0.95, 1.0), BlendMode.Alpha);
+	setRTMode(false);
+	end2d();
+	endPass();
 
 	sc.tick(1.0 / 60.0);
 	sc.present();
