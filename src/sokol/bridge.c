@@ -127,6 +127,58 @@ uint32_t voidMakeSampler(void) {
 	return sg_make_sampler(&d).id;
 }
 
+// --- Offscreen render targets ---
+
+#define VOID_MAX_RT 16
+typedef struct { sg_image img; sg_view attView; sg_view texView; int used; } VoidRT;
+static VoidRT s_rts[VOID_MAX_RT];
+
+uint32_t voidMakeRenderTarget(int w, int h) {
+	if (w <= 0 || h <= 0) return 0;
+	int slot = -1;
+	for (int i = 0; i < VOID_MAX_RT; i++) { if (!s_rts[i].used) { slot = i; break; } }
+	if (slot < 0) return 0;
+	sg_image_desc id = {0};
+	id.usage.color_attachment = true;
+	id.width = w;
+	id.height = h;
+	id.pixel_format = SG_PIXELFORMAT_RGBA8;
+	id.sample_count = 1;
+	sg_image img = sg_make_image(&id);
+	sg_view_desc avd = {0};
+	avd.color_attachment.image = img;
+	sg_view_desc tvd = {0};
+	tvd.texture.image = img;
+	s_rts[slot].img = img;
+	s_rts[slot].attView = sg_make_view(&avd);
+	s_rts[slot].texView = sg_make_view(&tvd);
+	s_rts[slot].used = 1;
+	return (uint32_t)(slot + 1);
+}
+
+uint32_t voidRenderTargetView(uint32_t rt) {
+	if (rt == 0 || rt > VOID_MAX_RT || !s_rts[rt - 1].used) return 0;
+	return s_rts[rt - 1].texView.id;
+}
+
+void voidBeginRenderTargetPass(uint32_t rt, float r, float g, float b, float a) {
+	if (rt == 0 || rt > VOID_MAX_RT || !s_rts[rt - 1].used) return;
+	sg_pass pass = {0};
+	pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
+	pass.action.colors[0].clear_value = (sg_color){r, g, b, a};
+	pass.attachments.colors[0] = s_rts[rt - 1].attView;
+	sg_begin_pass(&pass);
+}
+
+void voidDestroyRenderTarget(uint32_t rt) {
+	if (rt == 0 || rt > VOID_MAX_RT || !s_rts[rt - 1].used) return;
+	VoidRT *p = &s_rts[rt - 1];
+	sg_destroy_view(p->texView);
+	sg_destroy_view(p->attView);
+	sg_destroy_image(p->img);
+	p->used = 0;
+}
+
 // --- Frame sequence ---
 
 void voidBeginPass(float r, float g, float b, float a) {

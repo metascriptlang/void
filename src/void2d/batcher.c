@@ -17,6 +17,8 @@
 
 static sg_buffer s_vbuf;
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
+static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
+static int s_rtMode;                               // 1 while drawing into an offscreen RT pass
 static sg_view s_whiteView;
 static sg_sampler s_smp[2];   // [0] = nearest (smooth off), [1] = linear (smooth on)
 
@@ -91,6 +93,10 @@ void void2dSetup(void) {
 		pd.colors[0].blend.src_factor_alpha = modes[i].sa;
 		pd.colors[0].blend.dst_factor_alpha = modes[i].da;
 		s_pips[i] = sg_make_pipeline(&pd);
+		pd.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+		pd.sample_count = 1;
+		pd.depth.pixel_format = SG_PIXELFORMAT_NONE;
+		s_pipsRT[i] = sg_make_pipeline(&pd);
 	}
 
 	s_whiteView = (sg_view){ .id = voidMakeView(voidMakeImage(NULL, 0, 0)) };
@@ -129,6 +135,10 @@ void void2dScissor(int x, int y, int w, int h) {
 	sg_apply_scissor_rect(x, y, w, h, true);
 }
 
+// Route subsequent draws to the offscreen-RT pipeline set (single-sample, no depth).
+// Set 1 inside voidBeginRenderTargetPass, back to 0 for the swapchain pass.
+void void2dSetRTMode(int on) { s_rtMode = on ? 1 : 0; }
+
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
 void void2dFrameBegin(void) { s_atlasUpdated = false; }
 
@@ -152,7 +162,7 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	ensureAtlas();
 	sg_range data = { .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
 	int offset = sg_append_buffer(s_vbuf, &data);
-	sg_apply_pipeline(s_pips[blend]);
+	sg_apply_pipeline((s_rtMode ? s_pipsRT : s_pips)[blend]);
 	sg_bindings b = {0};
 	b.vertex_buffers[0] = s_vbuf;
 	b.vertex_buffer_offsets[0] = offset;
@@ -199,7 +209,7 @@ void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, f
 	if (vertCount <= 0 || bufId == 0) return;
 	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
 	ensureAtlas();
-	sg_apply_pipeline(s_pips[blend]);
+	sg_apply_pipeline((s_rtMode ? s_pipsRT : s_pips)[blend]);
 	sg_bindings b = {0};
 	b.vertex_buffers[0] = (sg_buffer){ .id = bufId };
 	b.views[VIEW_tex] = (sg_view){ .id = (view == 0 ? s_whiteView.id : view) };

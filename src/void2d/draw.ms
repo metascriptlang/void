@@ -4,7 +4,7 @@
 // the string param of void2dTextBegin.
 
 import {
-	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dFrameBegin,
+	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dSetRTMode, void2dFrameBegin,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing,
 	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic
 } from "./batcher.h";
@@ -205,6 +205,9 @@ export function drawText(pos: Vec2, size: float32, scale: float32, text: string,
 }
 
 export function end2d(): void { flush(); }
+
+// Toggle offscreen-RT pipeline routing (flush first — pipeline set changes at pass boundaries).
+export function setRTMode(on: boolean): void { flush(); void2dSetRTMode(on ? 1 : 0); }
 
 // ===== static (retained) geometry: local-space buffer + object matrix in the shader =====
 
