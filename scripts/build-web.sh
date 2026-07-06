@@ -6,7 +6,7 @@ set -e
 
 EMSCRIPTEN_VERSION="$(cat "$(dirname "$0")/../.emscripten-version")"
 EMSDK_DIR="${EMSDK_DIR:-$HOME/projects/emsdk}"
-MSC="${MSC:-$HOME/metascript/recompiler/bin/msc-const}"
+MSC="${MSC:-msc}"
 ENTRY="src/examples/mainSokol2d.ms"
 
 cd "$(dirname "$0")/.."
@@ -19,7 +19,7 @@ if [ "$active" != "$EMSCRIPTEN_VERSION" ]; then
 	. "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
 fi
 
-# msc-const SEGVs intermittently on the uncached async-emcc path; retry.
+# msc can flake on the uncached async-emcc path; retry.
 build() {
 	target="$1"; passc="$2"; passl="$3"; dest="$4"
 	rm -f out/release/mainSokol2d.js out/release/mainSokol2d.wasm out/release/mainSokol2d.data
