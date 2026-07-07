@@ -10,7 +10,7 @@
 	@passL("-framework Metal");
 	@passL("-framework MetalKit");
 	@link("./sokol.o");
-	@link("./bridgeEmbed.o");
+	@compile("./bridgeEmbed.m");
 }
 
 @platform("android") {
@@ -32,6 +32,7 @@
 extern function voidGfxSetup(): void;
 extern function voidFbWidth(): int32;
 extern function voidFbHeight(): int32;
+extern function voidDpiScale(): float32;
 extern function voidKeyDown(keycode: int32): int32;
 extern function voidMakeVertexBuffer(data: Borrow<float32>, size: int32): uint32;
 extern function voidMakeIndexBuffer(data: Borrow<uint16>, size: int32): uint32;
@@ -55,6 +56,7 @@ extern function voidDestroyRenderTarget(rt: uint32): void;
 export function gfxSetup(): void { voidGfxSetup(); }
 export function fbWidth(): int32 { return voidFbWidth(); }
 export function fbHeight(): int32 { return voidFbHeight(); }
+export function dpiScale(): float32 { return voidDpiScale(); }
 export function keyDown(code: int32): boolean { return voidKeyDown(code) !== 0; }
 export function makeVertexBuffer(data: Borrow<float32>, size: int32): uint32 { return voidMakeVertexBuffer(data, size); }
 export function makeIndexBuffer(data: Borrow<uint16>, size: int32): uint32 { return voidMakeIndexBuffer(data, size); }

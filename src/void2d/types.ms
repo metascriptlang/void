@@ -27,6 +27,35 @@ export function rgba(r: float32, g: float32, b: float32, a: float32): Color {
 // the pipeline table in batcher.c (Alpha=0..None=4).
 export enum BlendMode { Alpha, Add, Multiply, Screen, None }
 
+export enum ScaleMode { Resize, Stretch, LetterBox, Fixed, Zoom, AutoZoom }
+
+export enum FilterKind { None, Blur, Glow, DropShadow }
+
+export struct Filter {
+	kind: FilterKind;
+	radius: float32;
+	color: Color;
+	gain: float32;
+	offsetX: float32;
+	offsetY: float32;
+}
+
+export function noFilter(): Filter {
+	return { kind: FilterKind.None, radius: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0, offsetX: 0.0, offsetY: 0.0 };
+}
+
+export function blurFilter(radius: float32): Filter {
+	return { kind: FilterKind.Blur, radius: radius, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0, offsetX: 0.0, offsetY: 0.0 };
+}
+
+export function glowFilter(color: Color, radius: float32, gain: float32): Filter {
+	return { kind: FilterKind.Glow, radius: radius, color: color, gain: gain, offsetX: 0.0, offsetY: 0.0 };
+}
+
+export function dropShadowFilter(color: Color, radius: float32, offsetX: float32, offsetY: float32): Filter {
+	return { kind: FilterKind.DropShadow, radius: radius, color: color, gain: 1.0, offsetX: offsetX, offsetY: offsetY };
+}
+
 // h2d.Tile — a texture region (view + UV rect + draw size). texW/texH = backing texture
 // pixel size, so `.sub` can turn a pixel sub-rect into UVs.
 export struct Tile {
@@ -77,6 +106,17 @@ export function identity2d(): Transform2D {
 	return { a: 1.0, b: 0.0, c: 0.0, d: 1.0, tx: 0.0, ty: 0.0 };
 }
 
+export function inverse2d(m: Transform2D): Transform2D {
+	const det: float32 = m.a * m.d - m.b * m.c;
+	if (det == 0.0) { return identity2d(); }
+	const invDet: float32 = 1.0 / det;
+	const ia: float32 = m.d * invDet;
+	const ib: float32 = -m.b * invDet;
+	const ic: float32 = -m.c * invDet;
+	const id: float32 = m.a * invDet;
+	return { a: ia, b: ib, c: ic, d: id, tx: -(ia * m.tx + ic * m.ty), ty: -(ib * m.tx + id * m.ty) };
+}
+
 // compose: parent ∘ local (apply n first, then m). `world = parent * local`
 export function `*`(this m: Transform2D, n: Transform2D): Transform2D {
 	return {
@@ -120,4 +160,15 @@ export function camera(): Camera {
 // world → screen: translate(anchor px) ∘ rotate ∘ zoom ∘ translate(-x,-y)
 export function viewMatrix(this c: Camera, fbW: float32, fbH: float32): Transform2D {
 	return trs2d(c.anchorX * fbW, c.anchorY * fbH, c.rotation, c.zoom, c.zoom) * trs2d(-c.x, -c.y, 0.0, 1.0, 1.0);
+}
+
+export struct Bounds {
+	xMin: float32;
+	yMin: float32;
+	xMax: float32;
+	yMax: float32;
+}
+
+export function emptyBounds(): Bounds {
+	return { xMin: 1e30, yMin: 1e30, xMax: -1e30, yMax: -1e30 };
 }

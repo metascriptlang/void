@@ -45,6 +45,7 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	d.width = w;
 	d.height = h;
 	d.sample_count = 4;
+	d.high_dpi = true;
 	d.window_title = "Void — sokol";
 	d.logger.func = slog_func;
 	sapp_run(&d);
@@ -59,6 +60,7 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) { return sapp_width(); }
 int voidFbHeight(void) { return sapp_height(); }
+float voidDpiScale(void) { return sapp_dpi_scale(); }
 
 int voidKeyDown(int keycode) {
 	if (keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;

@@ -3,12 +3,13 @@
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
 import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, makeRenderTarget, renderTargetView, beginRenderTargetPass, endPass, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
-import { setup2d, begin2d, end2d, setRTMode, drawRect, blurPass } from "../void2d/draw";
+import { setup2d, begin2d, end2d, setRTMode, drawRect, drawImage } from "../void2d/draw";
+import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
-import { Tile, Vec2, Color, rgba, tile, sub, flipX, vec2, BlendMode } from "../void2d/types";
+import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene | null = null;
@@ -17,8 +18,11 @@ let logo: Node2D | null = null;
 let green: Node2D | null = null;
 let t: float32 = 0.0;
 let dir: float32 = 1.0;
-let rt: uint32 = 0;
-let rt2: uint32 = 0;
+let rtSrc: uint32 = 0;
+let rtA: uint32 = 0;
+let rtB: uint32 = 0;
+let rtGlow: uint32 = 0;
+let rtShadow: uint32 = 0;
 
 export function init2d(): void {
 	gfxSetup();
@@ -138,9 +142,13 @@ export function init2d(): void {
 	sceneObj.add(para);
 	sceneObj.add(texGfx);
 
-	rt = makeRenderTarget(256, 256);
-	rt2 = makeRenderTarget(256, 256);
-	sceneObj.add(sprite(tile(renderTargetView(rt), 150.0, 150.0)).at(700.0, 285.0));
+	rtSrc = makeRenderTarget(256, 256);
+	rtA = makeRenderTarget(256, 256);
+	rtB = makeRenderTarget(256, 256);
+	rtGlow = makeRenderTarget(256, 256);
+	rtShadow = makeRenderTarget(256, 256);
+	sceneObj.add(sprite(tile(renderTargetView(rtGlow), 120.0, 120.0)).at(700.0, 262.0));
+	sceneObj.add(sprite(tile(renderTargetView(rtShadow), 120.0, 120.0)).at(828.0, 262.0));
 
 	logo = logoNode;
 	green = greenNode;
@@ -181,22 +189,38 @@ export function frame2d(): void {
 	if (keyDown(KEY_S)) { sc.cam.y = sc.cam.y + panSpeed; }
 	if (keyDown(KEY_W)) { sc.cam.y = sc.cam.y - panSpeed; }
 
-	beginRenderTargetPass(rt, 0.12, 0.10, 0.18, 1.0);
-	begin2d(256, 256);
+	// F3 filters: render a bold gold plus once into rtSrc, blur it (preserving rtSrc), then
+	// composite a glow (additive halo) and a drop shadow (offset, behind) — each with the sharp
+	// original drawn on top. The blurred silhouette rtB is reused by both tiles.
+	const plus = rgba(1.0, 0.82, 0.35, 1.0);
+	const orig = tile(renderTargetView(rtSrc), 256.0, 256.0);
+	beginRenderTargetPass(rtSrc, 0.0, 0.0, 0.0, 0.0);
+	begin2d(256, 256, 1.0);
 	setRTMode(true);
-	drawRect(vec2(24.0, 24.0), vec2(208.0, 92.0), rgba(0.95, 0.45, 0.35, 1.0), BlendMode.Alpha);
-	drawRect(vec2(24.0, 140.0), vec2(208.0, 92.0), rgba(0.35, 0.75, 0.95, 1.0), BlendMode.Alpha);
-	drawRect(vec2(24.0, 24.0), vec2(48.0, 48.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
+	drawRect(vec2(108.0, 40.0), vec2(40.0, 176.0), plus, BlendMode.Alpha);
+	drawRect(vec2(40.0, 108.0), vec2(176.0, 40.0), plus, BlendMode.Alpha);
 	setRTMode(false);
 	end2d();
 	endPass();
 
-	const blurStep: float32 = 2.6 / 256.0;
-	beginRenderTargetPass(rt2, 0.0, 0.0, 0.0, 0.0);
-	blurPass(renderTargetView(rt), blurStep, 0.0);
+	blurToTarget(rtSrc, rtA, rtB, 5.0, 256.0);
+
+	beginRenderTargetPass(rtGlow, 0.06, 0.07, 0.10, 1.0);
+	begin2d(256, 256, 1.0);
+	setRTMode(true);
+	drawGlow(rtB, 0.0, 0.0, 256.0, 256.0, rgba(1.0, 0.70, 0.25, 1.0), 1.8);
+	drawImage(orig, vec2(0.0, 0.0), vec2(256.0, 256.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
+	setRTMode(false);
+	end2d();
 	endPass();
-	beginRenderTargetPass(rt, 0.0, 0.0, 0.0, 0.0);
-	blurPass(renderTargetView(rt2), 0.0, blurStep);
+
+	beginRenderTargetPass(rtShadow, 0.88, 0.90, 0.94, 1.0);
+	begin2d(256, 256, 1.0);
+	setRTMode(true);
+	drawDropShadow(rtB, 12.0, 14.0, 256.0, 256.0, rgba(0.08, 0.08, 0.14, 1.0), 1.0);
+	drawImage(orig, vec2(0.0, 0.0), vec2(256.0, 256.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
+	setRTMode(false);
+	end2d();
 	endPass();
 
 	sc.tick(1.0 / 60.0);

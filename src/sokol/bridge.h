@@ -28,6 +28,7 @@ void voidEmbedPumpMessages(void);
 void voidGfxSetup(void);
 int voidFbWidth(void);
 int voidFbHeight(void);
+float voidDpiScale(void);
 int voidKeyDown(int keycode);
 
 // Resource creation — sokol handles returned as uint32 ids (0 = invalid).

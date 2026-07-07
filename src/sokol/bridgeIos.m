@@ -103,6 +103,7 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) { return g_w; }
 int voidFbHeight(void) { return g_h; }
+float voidDpiScale(void) { return 1.0f; }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 
 // --- Resource creation (identical to bridge.c) ---
