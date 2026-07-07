@@ -23,6 +23,7 @@ void void2dScissor(int x, int y, int w, int h);
 
 // Route draws to the offscreen-RT pipeline set (single-sample, no depth) vs the swapchain set.
 void void2dSetRTMode(int on);
+void void2dSetDpiScale(float scale);
 
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
@@ -48,5 +49,8 @@ void void2dTextSyncAtlas(void);   // upload atlas if the iterator rasterized new
 float void2dTextWidth(float size, const char *text);   // advance width of one line
 float void2dLineHeight(float size);                    // vertical line spacing
 void void2dTextSpacing(float spacing);                 // per-glyph advance (letter spacing)
+int void2dAtlasGen(void);                              // atlas generation (changes on resize → re-layout)
+int void2dAddFont(const char *path);                   // load a TTF, returns font index (0-based)
+void void2dSelectFont(int id);                         // select current font for subsequent text ops
 
 #endif

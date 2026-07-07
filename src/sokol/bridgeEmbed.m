@@ -18,6 +18,7 @@ static id<MTLDevice>       g_device;
 static CAMetalLayer*       g_layer;
 static id<CAMetalDrawable> g_drawable;
 static int g_w = 800, g_h = 600;
+static float g_dpiScale = 1.0f;
 
 // --- Lifecycle closures (driven by voidRun's loop) ---
 static msClosure s_init;
@@ -83,7 +84,6 @@ static void tick(void) {
 static id g_delegate;
 
 void voidRun(int w, int h, msClosure init, msClosure frame) {
-	g_w = w; g_h = h;
 	s_init = init;
 	s_frame = frame;
 
@@ -99,6 +99,9 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 			backing:NSBackingStoreBuffered defer:NO];
 		[win setTitle:@"Void — EMBED (no sokol_app)"];
 
+		g_dpiScale = (float)[[NSScreen mainScreen] backingScaleFactor];
+		if (g_dpiScale < 1.0f) g_dpiScale = 1.0f;
+
 		NSView* view = [win contentView];
 		view.wantsLayer = YES;
 
@@ -108,7 +111,10 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 		g_layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 		g_layer.framebufferOnly = NO;
 		g_layer.frame = view.bounds;
-		g_layer.drawableSize = CGSizeMake(w, h);
+		g_layer.contentsScale = (CGFloat)g_dpiScale;
+		g_w = (int)(w * g_dpiScale);
+		g_h = (int)(h * g_dpiScale);
+		g_layer.drawableSize = CGSizeMake(g_w, g_h);
 		[view setLayer:g_layer];
 
 		[win center];
@@ -135,6 +141,7 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) { return g_w; }
 int voidFbHeight(void) { return g_h; }
+float voidDpiScale(void) { return g_dpiScale; }
 
 // Keyboard polling — Stage-2 stub (the 2D render proof needs no input). In Stage 3
 // this maps to the host (RCTView) key state; here no keys are ever down.

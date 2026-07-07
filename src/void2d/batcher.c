@@ -11,7 +11,7 @@
 #define FONTSTASH_IMPLEMENTATION
 #include "../../deps/fontstash/fontstash.h"
 
-#define VOID2D_MAX_VERTS 32768
+#define VOID2D_MAX_VERTS 65536
 
 #define VOID2D_BLEND_COUNT 5
 
@@ -19,6 +19,7 @@ static sg_buffer s_vbuf;
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
 static int s_rtMode;                               // 1 while drawing into an offscreen RT pass
+static float s_dpiScale = 1.0f;                    // framebuffer / logical pixel ratio (retina = 2.0)
 static sg_pipeline s_blurPip;                      // separable-blur fullscreen pass (offscreen format)
 static sg_buffer s_fsQuad;                         // fullscreen quad (pos2+uv2) for filter passes
 static sg_view s_whiteView;
@@ -26,6 +27,8 @@ static sg_sampler s_smp[2];   // [0] = nearest (smooth off), [1] = linear (smoot
 
 static FONScontext *s_fons;
 static int s_fontId = FONS_INVALID;
+static int s_fontIds[16];
+static int s_fontCount = 0;
 static FONStextIter s_iter;
 static sg_image s_fontImg;
 static sg_view s_fontView;
@@ -33,6 +36,7 @@ static unsigned char *s_atlasRGBA;
 static int s_atlasW, s_atlasH;
 static bool s_atlasDirty;
 static bool s_atlasUpdated;   // gate: sokol allows only one sg_update_image per image per frame
+static int s_atlasGen = 0;    // bumped on atlas resize → invalidates cached glyph meshes
 
 static int fons_create(void *up, int w, int h) {
 	(void)up;
@@ -50,6 +54,7 @@ static int fons_create(void *up, int w, int h) {
 	return 1;
 }
 static int fons_resize(void *up, int w, int h) {
+	s_atlasGen++;
 	if (s_atlasRGBA) free(s_atlasRGBA);
 	return fons_create(up, w, h);
 }
@@ -77,8 +82,8 @@ void void2dSetup(void) {
 
 	sg_shader shd = sg_make_shader(void2d_shader_desc(sg_query_backend()));
 	struct { bool on; sg_blend_factor srgb, drgb, sa, da; } modes[VOID2D_BLEND_COUNT] = {
-		{ true,  SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 0 Alpha
-		{ true,  SG_BLENDFACTOR_SRC_ALPHA, SG_BLENDFACTOR_ONE,                 SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE                 }, // 1 Add
+		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 0 Alpha (premult)
+		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE,                 SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE                 }, // 1 Add (premult)
 		{ true,  SG_BLENDFACTOR_DST_COLOR, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_DST_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 2 Multiply
 		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 3 Screen
 		{ false, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ZERO,                SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ZERO                }, // 4 None
@@ -142,22 +147,36 @@ void void2dSetup(void) {
 	fp.renderDelete = fons_delete;
 	s_fons = fonsCreateInternal(&fp);
 	if (s_fons) {
-		int sz = 0;
-		unsigned char *ttf = readFile("assets/font.ttf", &sz);
-		if (ttf) s_fontId = fonsAddFontMem(s_fons, "sans", ttf, sz, 1);
+		void2dAddFont("assets/font.ttf");
 	}
+}
+
+int void2dAddFont(const char *path) {
+	if (!s_fons || s_fontCount >= 16) return -1;
+	int sz = 0;
+	unsigned char *ttf = readFile(path, &sz);
+	if (!ttf) return -1;
+	s_fontIds[s_fontCount] = fonsAddFontMem(s_fons, "font", ttf, sz, 1);
+	if (s_fontCount == 0) s_fontId = s_fontIds[0];
+	return s_fontCount++;
+}
+
+void void2dSelectFont(int id) {
+	if (id >= 0 && id < s_fontCount) s_fontId = s_fontIds[id];
 }
 
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
 uint32_t void2dFontView(void) { return s_fontView.id; }
 
 void void2dScissor(int x, int y, int w, int h) {
-	sg_apply_scissor_rect(x, y, w, h, true);
+	sg_apply_scissor_rect((int)(x * s_dpiScale), (int)(y * s_dpiScale),
+		(int)(w * s_dpiScale), (int)(h * s_dpiScale), true);
 }
 
 // Route subsequent draws to the offscreen-RT pipeline set (single-sample, no depth).
 // Set 1 inside voidBeginRenderTargetPass, back to 0 for the swapchain pass.
 void void2dSetRTMode(int on) { s_rtMode = on ? 1 : 0; }
+void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
 void void2dFrameBegin(void) { s_atlasUpdated = false; }
@@ -210,6 +229,9 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 	vp.viewport[0] = fbW;
 	vp.viewport[1] = fbH;
 	vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
+	vp.viewport[3] = (voidIsRenderTargetView(view)
+		&& addR == 0.0f && addG == 0.0f && addB == 0.0f
+		&& colorMatrix[0] == 1.0f && colorMatrix[5] == 1.0f && colorMatrix[10] == 1.0f) ? 1.0f : 0.0f;
 	vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // identity 2D affine (a=d=1, b=c=tx=ty=0)
 	vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 	sg_range u = { .ptr = &vp, .size = sizeof(vp) };
@@ -256,6 +278,9 @@ void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, f
 	void2d_params_t vp = {0};
 	vp.viewport[0] = fbW; vp.viewport[1] = fbH;
 	vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
+	vp.viewport[3] = (voidIsRenderTargetView(view)
+		&& addR == 0.0f && addG == 0.0f && addB == 0.0f
+		&& colorMatrix[0] == 1.0f && colorMatrix[5] == 1.0f && colorMatrix[10] == 1.0f) ? 1.0f : 0.0f;
 	vp.model0[0]=mA; vp.model0[1]=mB; vp.model0[2]=mC; vp.model0[3]=mD;
 	vp.model1[0]=mTx; vp.model1[1]=mTy;
 	vp.globalColor[0]=gcR; vp.globalColor[1]=gcG; vp.globalColor[2]=gcB; vp.globalColor[3]=gcA;
@@ -273,9 +298,9 @@ void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, f
 void void2dTextBegin(float x, float y, float size, const char *text) {
 	if (!s_fons || s_fontId == FONS_INVALID) return;
 	fonsSetFont(s_fons, s_fontId);
-	fonsSetSize(s_fons, size);
+	fonsSetSize(s_fons, size * s_dpiScale);
 	fonsSetAlign(s_fons, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
-	fonsTextIterInit(s_fons, &s_iter, x, y, text, NULL);
+	fonsTextIterInit(s_fons, &s_iter, x * s_dpiScale, y * s_dpiScale, text, NULL);
 }
 
 static float s_quad[8];
@@ -283,32 +308,34 @@ float *void2dTextNext(void) {
 	if (!s_fons) return NULL;
 	FONSquad q;
 	if (!fonsTextIterNext(s_fons, &s_iter, &q)) return NULL;
-	s_quad[0] = q.x0; s_quad[1] = q.y0; s_quad[2] = q.s0; s_quad[3] = q.t0;
-	s_quad[4] = q.x1; s_quad[5] = q.y1; s_quad[6] = q.s1; s_quad[7] = q.t1;
+	s_quad[0] = q.x0 / s_dpiScale; s_quad[1] = q.y0 / s_dpiScale; s_quad[2] = q.s0; s_quad[3] = q.t0;
+	s_quad[4] = q.x1 / s_dpiScale; s_quad[5] = q.y1 / s_dpiScale; s_quad[6] = q.s1; s_quad[7] = q.t1;
 	return s_quad;
 }
 
 float void2dTextWidth(float size, const char *text) {
 	if (!s_fons || s_fontId == FONS_INVALID) return 0.0f;
 	fonsSetFont(s_fons, s_fontId);
-	fonsSetSize(s_fons, size);
+	fonsSetSize(s_fons, size * s_dpiScale);
 	fonsSetAlign(s_fons, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
-	return fonsTextBounds(s_fons, 0.0f, 0.0f, text, NULL, NULL);
+	return fonsTextBounds(s_fons, 0.0f, 0.0f, text, NULL, NULL) / s_dpiScale;
 }
 
 float void2dLineHeight(float size) {
 	if (!s_fons || s_fontId == FONS_INVALID) return size;
 	fonsSetFont(s_fons, s_fontId);
-	fonsSetSize(s_fons, size);
+	fonsSetSize(s_fons, size * s_dpiScale);
 	float asc = 0.0f, desc = 0.0f, lineh = size;
 	fonsVertMetrics(s_fons, &asc, &desc, &lineh);
-	return lineh;
+	return lineh / s_dpiScale;
 }
 
 // persistent glyph-advance spacing; set per draw (0 = default) so it never leaks.
 void void2dTextSpacing(float spacing) {
 	if (s_fons) fonsSetSpacing(s_fons, spacing);
 }
+
+int void2dAtlasGen(void) { return s_atlasGen; }
 
 void void2dTextSyncAtlas(void) {
 	if (!s_fons) return;

@@ -2,15 +2,6 @@
 // packed column-major for GLSL `colorMatrix * rgba`; identity = no-op. Assign to
 // Node2D.colorMatrix; colorAdd (Node2D.colorAdd) is just a Color added afterwards.
 
-export function colorMatrixIdentity(): float32[] {
-	return [
-		1.0, 0.0, 0.0, 0.0,
-		0.0, 1.0, 0.0, 0.0,
-		0.0, 0.0, 1.0, 0.0,
-		0.0, 0.0, 0.0, 1.0,
-	];
-}
-
 // Luminance grayscale (Rec.601). amount 0 = original .. 1 = fully gray.
 export function colorMatrixGrayscale(amount: float32): float32[] {
 	const lr: float32 = 0.299;
@@ -26,12 +17,14 @@ export function colorMatrixGrayscale(amount: float32): float32[] {
 	];
 }
 
-// Per-channel multiply (scale R/G/B/A independently) — diagonal matrix.
-export function colorMatrixScale(sr: float32, sg: float32, sb: float32, sa: float32): float32[] {
+// Silhouette tint (h2d glow / drop-shadow): drops rgb, keeps alpha × gain. Pair with
+// colorAdd = the tint colour (a=0) so a blurred render-target becomes a solid-coloured
+// halo shaped only by its alpha — the colour of the source is discarded.
+export function colorMatrixAlphaOnly(gain: float32): float32[] {
 	return [
-		sr,  0.0, 0.0, 0.0,
-		0.0, sg,  0.0, 0.0,
-		0.0, 0.0, sb,  0.0,
-		0.0, 0.0, 0.0, sa,
+		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0, gain,
 	];
 }

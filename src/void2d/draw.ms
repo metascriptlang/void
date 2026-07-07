@@ -4,13 +4,20 @@
 // the string param of void2dTextBegin.
 
 import {
-	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dSetRTMode, void2dFrameBegin,
-	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing,
+	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dSetRTMode, void2dSetDpiScale, void2dFrameBegin,
+	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
 	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic, void2dBlur
 } from "./batcher.h";
-import { Vec2, Color, Tile, Transform2D, BlendMode, vec2, rgba } from "./types";
+import { Vec2, Color, Tile, Transform2D, BlendMode, rgba } from "./types";
+import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
 
-const MAX_VERTS: int32 = 32768;
+export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
+export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
+export function rtViewId(rt: uint32): uint32 { return renderTargetView(rt); }
+export function beginRT(rt: uint32, r: float32, g: float32, b: float32, a: float32): void { beginRenderTargetPass(rt, r, g, b, a); }
+export function endRT(): void { endPass(); }
+
+const MAX_VERTS: int32 = 65536;
 const verts: Vec<float32> = new Array(MAX_VERTS * 8);
 let vertCount: int32 = 0;
 let curView: uint32 = 0;
@@ -18,6 +25,9 @@ let curBlend: BlendMode = BlendMode.Alpha;
 let curSmooth: boolean = true;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
+let _drawCallCount: int32 = 0;
+
+export function drawCallCount(): int32 { return _drawCallCount; }
 
 // h2d.Drawable colour pipeline as batch state: identity matrix + zero add = no-op, so
 // effect-free nodes batch together. A node with a distinct effect starts its own run
@@ -34,11 +44,10 @@ let curHasEffect: boolean = false;
 
 // h2d.Mask clip stack: each pushClip intersects with the enclosing zone (Heaps
 // clipRenderZone semantics) and flushes so the scissor only bounds the masked subtree.
-const MAX_CLIP: int32 = 16;
-const clipX0: Vec<float32> = new Array(MAX_CLIP);
-const clipY0: Vec<float32> = new Array(MAX_CLIP);
-const clipX1: Vec<float32> = new Array(MAX_CLIP);
-const clipY1: Vec<float32> = new Array(MAX_CLIP);
+const clipX0: Vec<float32> = new Array(16);
+const clipY0: Vec<float32> = new Array(16);
+const clipX1: Vec<float32> = new Array(16);
+const clipY1: Vec<float32> = new Array(16);
 let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {
@@ -47,11 +56,24 @@ function setIdentityMat(): void {
 	curMat[0] = 1.0; curMat[5] = 1.0; curMat[10] = 1.0; curMat[15] = 1.0;
 }
 
+function effectMatrixSame(mat: float32[], hasMat: boolean): boolean {
+	if (hasMat) {
+		let i: int32 = 0;
+		while (i < 16) { if (mat[i] != curMat[i]) { return false; } i = i + 1; }
+		return true;
+	}
+	return curMat[0] == 1.0 && curMat[5] == 1.0 && curMat[10] == 1.0 && curMat[15] == 1.0
+		&& curMat[1] == 0.0 && curMat[2] == 0.0 && curMat[3] == 0.0 && curMat[4] == 0.0
+		&& curMat[6] == 0.0 && curMat[7] == 0.0 && curMat[8] == 0.0 && curMat[9] == 0.0
+		&& curMat[11] == 0.0 && curMat[12] == 0.0 && curMat[13] == 0.0 && curMat[14] == 0.0;
+}
+
 function flush(): void {
 	if (vertCount == 0) { return; }
 	const sm: int32 = curSmooth ? 1 : 0;
 	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a, curKey.r, curKey.g, curKey.b, curKey.a, sm);
 	vertCount = 0;
+	_drawCallCount = _drawCallCount + 1;
 }
 
 function useState(v: uint32, b: BlendMode): void {
@@ -82,7 +104,11 @@ export function setup2d(): void {
 	void2dSetup();
 }
 
-export function begin2d(w: int32, h: int32): void {
+export function atlasGen(): int32 { return void2dAtlasGen(); }
+export function addFont(path: string): int32 { return void2dAddFont(path); }
+
+export function begin2d(w: int32, h: int32, dpi: float32): void {
+	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
 	fbW = w as float32;
 	fbH = h as float32;
@@ -95,6 +121,7 @@ export function begin2d(w: int32, h: int32): void {
 	curKey = rgba(0.0, 0.0, 0.0, 0.0);
 	curHasEffect = false;
 	clipDepth = 0;
+	_drawCallCount = 0;
 }
 
 function applyScissor(x0: float32, y0: float32, x1: float32, y1: float32): void {
@@ -122,13 +149,14 @@ export function pushClip(minX: float32, minY: float32, maxX: float32, maxY: floa
 		if (clipX1[d] < x1) { x1 = clipX1[d]; }
 		if (clipY1[d] < y1) { y1 = clipY1[d]; }
 	}
-	if (clipDepth < MAX_CLIP) {
-		clipX0[clipDepth] = x0;
-		clipY0[clipDepth] = y0;
-		clipX1[clipDepth] = x1;
-		clipY1[clipDepth] = y1;
-		clipDepth = clipDepth + 1;
+	while (clipDepth >= clipX0.length as int32) {
+		clipX0.push(0.0); clipY0.push(0.0); clipX1.push(0.0); clipY1.push(0.0);
 	}
+	clipX0[clipDepth] = x0;
+	clipY0[clipDepth] = y0;
+	clipX1[clipDepth] = x1;
+	clipY1[clipDepth] = y1;
+	clipDepth = clipDepth + 1;
 	applyScissor(x0, y0, x1, y1);
 }
 
@@ -151,6 +179,10 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && !curHasEffect) { return; }
+	if (wantsEffect && curHasEffect
+		&& add.r == curAdd.r && add.g == curAdd.g && add.b == curAdd.b && add.a == curAdd.a
+		&& key.r == curKey.r && key.g == curKey.g && key.b == curKey.b && key.a == curKey.a
+		&& effectMatrixSame(mat, hasMat)) { return; }
 	flush();
 	if (hasMat) {
 		let i: int32 = 0;
@@ -241,6 +273,7 @@ export function drawStaticGraphics(buf: uint32, vertCount: int32, view: uint32, 
 		1.0, 1.0, 1.0, na,
 		mat[0], colorAdd.r, colorAdd.g, colorAdd.b, colorAdd.a,
 		colorKey.r, colorKey.g, colorKey.b, colorKey.a, sm);
+	_drawCallCount = _drawCallCount + 1;
 }
 
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
@@ -269,113 +302,6 @@ export function imageQuadUV(view: uint32, u0: float32, v0: float32, u1: float32,
 	quad4(view, blend, a, b, c, d, u0, v0, u1, v1, color);
 }
 
-// per-vertex coloured + UV'd triangle for the Graphics mesh; view 0 = white (solid fill),
-// else a Tile's view (textured fill). UV is ignored for the white view (texel is 1).
-export function fillTriTex(view: uint32, a: Vec2, ua: float32, va: float32, ca: Color, b: Vec2, ub: float32, vb: float32, cb: Color, c: Vec2, uc: float32, vc: float32, cc: Color, blend: BlendMode): void {
-	useState(view == 0 ? void2dWhiteView() : view, blend);
-	if (vertCount + 3 > MAX_VERTS) { flush(); }
-	pushVert(a.x, a.y, ua, va, ca.r, ca.g, ca.b, ca.a);
-	pushVert(b.x, b.y, ub, vb, cb.r, cb.g, cb.b, cb.a);
-	pushVert(c.x, c.y, uc, vc, cc.r, cc.g, cc.b, cc.a);
-}
-
-// Lay out one line into LOCAL-space glyph quads appended to out (8 floats/glyph:
-// x0,y0,s0,t0,x1,y1,s1,t1; alignment + line position baked into the local coords).
-function collectLine(line: string, size: float32, lh: float32, lineIdx: int32, align: float32, out: float32[]): void {
-	const xoff: float32 = -void2dTextWidth(size, line) * align;
-	const yoff: float32 = (lineIdx as float32) * lh;
-	void2dTextBegin(xoff, yoff, size, line);
-	let q: Ptr<float32> = void2dTextNext();
-	while (q !== null) {
-		out.push(q[0]);
-		out.push(q[1]);
-		out.push(q[2]);
-		out.push(q[3]);
-		out.push(q[4]);
-		out.push(q[5]);
-		out.push(q[6]);
-		out.push(q[7]);
-		q = void2dTextNext();
-	}
-}
-
-// greedy word wrap to maxWidth (px); collects each wrapped line, returns next line index.
-function wrapCollect(para: string, size: float32, maxWidth: float32, lh: float32, startIdx: int32, align: float32, out: float32[]): int32 {
-	const words: string[] = para.split(" ");
-	const wc: int32 = words.length as int32;
-	let cur: string = "";
-	let hasCur: boolean = false;
-	let idx: int32 = startIdx;
-	let i: int32 = 0;
-	while (i < wc) {
-		const word = words[i];
-		const candidate: string = hasCur ? cur + " " + word : word;
-		if (hasCur && void2dTextWidth(size, candidate) > maxWidth) {
-			collectLine(cur, size, lh, idx, align, out);
-			idx = idx + 1;
-			cur = word;
-		} else {
-			cur = candidate;
-		}
-		hasCur = true;
-		i = i + 1;
-	}
-	if (hasCur) {
-		collectLine(cur, size, lh, idx, align, out);
-		idx = idx + 1;
-	}
-	return idx;
-}
-
-// h2d.Text.initGlyphs — lay out text ONCE into cached LOCAL-space glyph quads. The expensive
-// fontstash split/measure/rasterize happens here (called from node.sync only when text params
-// change), NOT per frame. Multi-line (\n) + word wrap (maxWidth>0) + per-line alignment.
-export function layoutText(size: float32, text: string, align: float32, letterSpacing: float32, lineSpacing: float32, maxWidth: float32): float32[] {
-	const out: float32[] = [];
-	void2dTextSpacing(letterSpacing);
-	const lh: float32 = void2dLineHeight(size) * lineSpacing;
-	const paras: string[] = text.split("\n");
-	const pc: int32 = paras.length as int32;
-	let li: int32 = 0;
-	let pi: int32 = 0;
-	while (pi < pc) {
-		if (maxWidth > 0.0) {
-			li = wrapCollect(paras[pi], size, maxWidth, lh, li, align, out);
-		} else {
-			collectLine(paras[pi], size, lh, li, align, out);
-			li = li + 1;
-		}
-		pi = pi + 1;
-	}
-	void2dTextSpacing(0.0);
-	void2dTextSyncAtlas();
-	return out;
-}
-
-function glyphVert(out: float32[], x: float32, y: float32, u: float32, v: float32): void {
-	const w: float32 = 1.0;
-	out.push(x); out.push(y); out.push(u); out.push(v);
-	out.push(w); out.push(w); out.push(w); out.push(w);
-}
-
-// Expand cached glyph quads (8 floats: x0,y0,s0,t0,x1,y1,s1,t1) into a LOCAL-space triangle
-// mesh (6 verts × 8, white) for a static buffer — the label colour is applied via globalColor.
-export function buildGlyphMesh(glyphs: float32[]): float32[] {
-	const out: float32[] = [];
-	const total: int32 = glyphs.length as int32;
-	let i: int32 = 0;
-	while (i + 8 <= total) {
-		const x0: float32 = glyphs[i];     const y0: float32 = glyphs[i + 1];
-		const s0: float32 = glyphs[i + 2]; const t0: float32 = glyphs[i + 3];
-		const x1: float32 = glyphs[i + 4]; const y1: float32 = glyphs[i + 5];
-		const s1: float32 = glyphs[i + 6]; const t1: float32 = glyphs[i + 7];
-		glyphVert(out, x0, y0, s0, t0); glyphVert(out, x1, y0, s1, t0); glyphVert(out, x1, y1, s1, t1);
-		glyphVert(out, x0, y0, s0, t0); glyphVert(out, x1, y1, s1, t1); glyphVert(out, x0, y1, s0, t1);
-		i = i + 8;
-	}
-	return out;
-}
-
 // Draw a Label static glyph buffer: flush first (z-order), then one draw call with the object
 // matrix + the label colour×alpha as globalColor (glyphs are white) + the node's colour pipeline.
 export function drawStaticText(buf: uint32, vertCount: int32, m: Transform2D, color: Color, na: float32,
@@ -390,4 +316,5 @@ export function drawStaticText(buf: uint32, vertCount: int32, m: Transform2D, co
 		color.r, color.g, color.b, color.a * na,
 		mat[0], colorAdd.r, colorAdd.g, colorAdd.b, colorAdd.a,
 		colorKey.r, colorKey.g, colorKey.b, colorKey.a, sm);
+	_drawCallCount = _drawCallCount + 1;
 }

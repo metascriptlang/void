@@ -4,7 +4,7 @@
 // no-op. Static buffers (local-space geometry) pass the object matrix + alpha here instead.
 @vs vs
 layout(binding=0) uniform void2d_params {
-    vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w unused
+    vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = srcAlreadyPremult (1 for RT textures)
     vec4 model0;       // 2D affine linear part (a,b,c,d): x'=a*x+c*y+tx, y'=b*x+d*y+ty
     vec4 model1;       // xy = translation (tx,ty), zw unused
     vec4 globalColor;  // multiplied into the per-vertex tint
@@ -14,6 +14,7 @@ in vec2 uv0;
 in vec4 color0;
 out vec2 uv;
 out vec4 color;
+out float srcPremult;
 void main() {
     vec2 world = vec2(model0.x * pos.x + model0.z * pos.y + model1.x,
                       model0.y * pos.x + model0.w * pos.y + model1.y);
@@ -21,6 +22,7 @@ void main() {
     gl_Position = vec4(ndc, 0.0, 1.0);
     uv = (viewport.z > 0.5) ? vec2(uv0.x, 1.0 - uv0.y) : uv0;
     color = color0 * globalColor;
+    srcPremult = viewport.w;
 }
 @end
 
@@ -37,6 +39,7 @@ layout(binding=1) uniform void2d_fx {
 };
 in vec2 uv;
 in vec4 color;
+in float srcPremult;
 out vec4 frag_color;
 void main() {
     vec4 texel = texture(sampler2D(tex, smp), uv);
@@ -47,7 +50,8 @@ void main() {
     vec4 c = texel * color;
     c = colorMatrix * c;
     c = c + colorAdd;
-    frag_color = c;
+    vec4 premult = vec4(c.rgb * c.a, c.a);
+    frag_color = mix(premult, c, srcPremult);
 }
 @end
 
