@@ -3,6 +3,7 @@
 
 import { destroyStaticMesh, freeRenderTarget } from "./draw";
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
+import { FlexStyle } from "../../../yoga/src/index";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
 
@@ -75,6 +76,9 @@ export interface Node2D {
 	filterRT: uint32;
 	filterRTW: int32;
 	filterRTH: int32;
+	layoutStyle: FlexStyle | null;
+	lastLayoutStyle: FlexStyle | null;
+	yg: Ptr<void> | null;
 }
 
 function base(kind: DrawKind): Node2D {
@@ -87,6 +91,7 @@ function base(kind: DrawKind): Node2D {
 		lastAtlasGen: 0,
 		fontId: 0, lastFontId: -1,
 		filter: noFilter(), filterRT: 0, filterRTW: 0, filterRTH: 0,
+		layoutStyle: null, lastLayoutStyle: null, yg: null,
 	};
 }
 
