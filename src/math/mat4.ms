@@ -31,7 +31,7 @@ export function multiplyMVP(): void {
 	void_math_multiply_mvp();
 }
 
-export function getMVP(): unknown {
+export function getMVP(): Ptr<void> {
 	return void_math_get_mvp();
 }
 
