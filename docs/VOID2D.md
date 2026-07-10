@@ -10,9 +10,10 @@ Neon (parent)            component model: View, Text, Flexbox, events, state, di
   ├── native widgets      iOS UIKit · Android · Browser DOM          ← Neon-default
   └── Void backend        unified pixels on every platform           ← opt-in, "special"
          │
-   JSX / Solid layer      reconciles a declarative tree → void2d/void3d nodes
-   (built in parallel)    like React-Three-Fiber, but Solid-model (fine-grained
-         │                reactivity, no virtual-DOM diff). Needs a RETAINED host.
+   Neon reconcile +       Layer A: diffs JSX → Host ops (neon/src/render/reconcile.ms).
+   Void Host adapter      voidHost() maps Host ops → Node2D field mutations.
+         │                Like R3F (react-reconciler drives THREE.Object3D) — NOT a
+                          second reconciler; the adapter is ~50 lines (see neon mockHost).
    ┌─────┴───────────────────────────────────┐
  void2d (this layer)                        void3d (camera/mesh/material)   ← opt-in
    Node2D tree + quad batcher                       │
@@ -21,6 +22,8 @@ Neon (parent)            component model: View, Text, Flexbox, events, state, di
                               │   src/sokol/{bridge,gpu}
                        sokol_gfx (floooh)  ← the load-bearing cross-platform dependency
 ```
+
+> **Full 3-layer model** (A reconcile / B paint / C GPU) and who owns B+C per platform — native = OS, Void = owned: see [`~/metascript/neon/docs/RENDER-LAYERS.md`](../../neon/docs/RENDER-LAYERS.md). Void = Layers B+C; Neon = Layer A; they meet only at the Host interface.
 
 ## Two faces of void2d (load-bearing)
 
