@@ -150,7 +150,7 @@ export function pushClip(minX: float32, minY: float32, maxX: float32, maxY: floa
 		if (clipY1[d] < y1) { y1 = clipY1[d]; }
 	}
 	while (clipDepth >= clipX0.length as int32) {
-		clipX0.push(0.0); clipY0.push(0.0); clipX1.push(0.0); clipY1.push(0.0);
+		clipX0.push(0.0 as float32); clipY0.push(0.0 as float32); clipX1.push(0.0 as float32); clipY1.push(0.0 as float32);
 	}
 	clipX0[clipDepth] = x0;
 	clipY0[clipDepth] = y0;
