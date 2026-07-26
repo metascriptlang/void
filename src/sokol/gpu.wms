@@ -1,7 +1,7 @@
 // Void sokol GPU — browser (--os=emcc). Same API as gpu.ms; sokol impl compiled
 // by emcc (sokolWeb.c, backend via -D on the build command).
 
-@passC("-Ideps/sokol");
+@passC("-I../../deps/sokol");
 @include("bridge.h");
 @compile("src/sokol/bridge.c");
 @compile("src/sokol/sokolWeb.c");
