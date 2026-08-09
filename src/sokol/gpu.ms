@@ -4,7 +4,7 @@
 @passC("-I../../deps/sokol");
 @include("bridge.h");
 
-@platform("macos") {
+when (macos) {
 	@passL("-framework Cocoa");
 	@passL("-framework QuartzCore");
 	@passL("-framework Metal");
@@ -13,7 +13,7 @@
 	@compile("./bridgeEmbed.m");
 }
 
-@platform("android") {
+when (android) {
 	@compile("./bridgeAndroid.c");
 	@passL("-lEGL");
 	@passL("-lGLESv3");
@@ -21,7 +21,7 @@
 	@passL("-llog");
 }
 
-@platform("ios") {
+when (ios) {
 	@compile("./bridgeIos.m");
 	@passL("-framework Metal");
 	@passL("-framework QuartzCore");
