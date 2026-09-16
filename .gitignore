@@ -6,6 +6,12 @@ out/
 *.o
 *.a
 ios/dist/
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/app/src/main/jniLibs/
+android/local.properties
 
 web/wgpu/
 web/gl/
