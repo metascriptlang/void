@@ -1,0 +1,176 @@
+@block vertexUniforms
+layout(binding=0) uniform vertexParams {
+    mat4 viewProj;
+    vec4 cameraRight;
+    vec4 cameraUp;
+};
+@end
+
+@block lightUniforms
+layout(binding=1) uniform lightParams {
+    vec4 fireLight;
+    vec4 fireColor;
+    vec4 ambient;
+    vec4 moonDir;
+    vec4 grassColor;
+};
+
+vec3 fireLightAt(vec3 position, vec3 normal, float normalWeight) {
+    vec3 toLight = fireLight.xyz - position;
+    float distance = length(toLight);
+    float falloff = clamp(1.0 - distance / fireColor.a, 0.0, 1.0);
+    float facing = mix(1.0, max(dot(normal, toLight / max(distance, 0.0001)), 0.0), normalWeight);
+    float energy = falloff * falloff * facing * fireLight.w;
+    float levels = ambient.a;
+    float level = floor(energy * levels + 0.35) / levels;
+    return fireColor.rgb * level;
+}
+@end
+
+@vs litVs
+@include_block vertexUniforms
+in vec3 position;
+in vec3 normal;
+in vec4 color;
+out vec3 worldPosition;
+out vec3 worldNormal;
+out vec4 baseColor;
+out float depth01;
+void main() {
+    worldPosition = position;
+    worldNormal = normal;
+    baseColor = color;
+    gl_Position = viewProj * vec4(position, 1.0);
+    depth01 = gl_Position.z;
+}
+@end
+
+@fs litFs
+@include_block lightUniforms
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec4 baseColor;
+in float depth01;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fragNormal;
+void main() {
+    vec3 n = normalize(worldNormal);
+    float moon = step(0.35, dot(n, moonDir.xyz)) * moonDir.w;
+    vec3 shaded = baseColor.rgb * (ambient.rgb + vec3(moon));
+    fragColor = vec4(shaded + fireLightAt(worldPosition, n, 1.0), baseColor.a);
+    fragNormal = vec4(n * 0.5 + 0.5, depth01);
+}
+@end
+
+@vs billboardVs
+@include_block vertexUniforms
+in vec2 corner;
+in vec4 root;
+in vec4 shape;
+out vec2 uv;
+out vec3 rootPosition;
+out float tint;
+out float emissive;
+out float depth01;
+void main() {
+    vec3 p = root.xyz + cameraRight.xyz * (corner.x * shape.x) + cameraUp.xyz * (corner.y * shape.y);
+    gl_Position = viewProj * vec4(p, 1.0);
+    depth01 = gl_Position.z;
+    uv = vec2((corner.x + 0.5 + root.w) * 0.25, 1.0 - corner.y);
+    rootPosition = root.xyz;
+    tint = shape.z;
+    emissive = shape.w;
+}
+@end
+
+@fs billboardFs
+@include_block lightUniforms
+layout(binding=0) uniform texture2D spriteTexture;
+layout(binding=0) uniform sampler spriteSampler;
+in vec2 uv;
+in vec3 rootPosition;
+in float tint;
+in float emissive;
+in float depth01;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fragNormal;
+void main() {
+    vec4 texel = texture(sampler2D(spriteTexture, spriteSampler), uv);
+    if (texel.a < 0.5) {
+        discard;
+    }
+    vec3 light = fireLightAt(rootPosition + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), 0.0);
+    vec3 grass = grassColor.rgb * texel.r * tint + light;
+    fragColor = vec4(mix(grass, texel.rgb, emissive), 0.0);
+    fragNormal = vec4(0.5, 1.0, 0.5, depth01);
+}
+@end
+
+@vs fullscreenVs
+in vec2 position;
+void main() {
+    gl_Position = vec4(position, 0.5, 1.0);
+}
+@end
+
+@fs postFs
+layout(binding=0) uniform texture2D colorTexture;
+layout(binding=1) uniform texture2D normalTexture;
+layout(binding=0) uniform sampler pointSampler;
+layout(binding=0) uniform postParams {
+    vec4 edge;
+    vec4 fog;
+    vec4 fogColor;
+};
+out vec4 fragColor;
+
+vec4 fetchNormal(ivec2 p, ivec2 size) {
+    return texelFetch(sampler2D(normalTexture, pointSampler), clamp(p, ivec2(0, 0), size - ivec2(1, 1)), 0);
+}
+
+void main() {
+    ivec2 size = textureSize(sampler2D(colorTexture, pointSampler), 0);
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec4 color = texelFetch(sampler2D(colorTexture, pointSampler), p, 0);
+    vec4 center = fetchNormal(p, size);
+    vec3 n = center.xyz * 2.0 - 1.0;
+    float depthEdge = 0.0;
+    float normalEdge = 0.0;
+    ivec2 offsets[4] = ivec2[4](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
+    for (int i = 0; i < 4; i++) {
+        vec4 neighbor = fetchNormal(p + offsets[i], size);
+        float depthDelta = neighbor.w - center.w;
+        if (depthDelta > edge.x) {
+            depthEdge = 1.0;
+        }
+        vec3 nq = neighbor.xyz * 2.0 - 1.0;
+        if (abs(depthDelta) < edge.x && dot(n, nq) < edge.y && n.y > nq.y + 0.1) {
+            normalEdge = 1.0;
+        }
+    }
+    vec3 rgb = color.rgb;
+    rgb = mix(rgb, rgb * edge.z, depthEdge * color.a);
+    rgb = mix(rgb, rgb * edge.w + vec3(0.02), normalEdge * color.a * (1.0 - depthEdge));
+    float haze = smoothstep(fog.x, fog.y, center.w) * fog.z;
+    fragColor = vec4(mix(rgb, fogColor.rgb, haze), 1.0);
+}
+@end
+
+@fs blitFs
+layout(binding=0) uniform texture2D sceneTexture;
+layout(binding=0) uniform sampler pointSampler;
+layout(binding=0) uniform blitParams {
+    vec4 pixel;
+};
+out vec4 fragColor;
+void main() {
+    ivec2 size = textureSize(sampler2D(sceneTexture, pointSampler), 0);
+    ivec2 p = ivec2(floor((gl_FragCoord.xy + pixel.zw) / pixel.x));
+    fragColor = texelFetch(sampler2D(sceneTexture, pointSampler), clamp(p, ivec2(0, 0), size - ivec2(1, 1)), 0);
+}
+@end
+
+@program lit litVs litFs
+@program billboard billboardVs billboardFs
+@program post fullscreenVs postFs
+@program blit fullscreenVs blitFs
