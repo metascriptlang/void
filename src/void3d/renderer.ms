@@ -24,6 +24,7 @@ import {
 	DrawContext,
 	DrawItem,
 	addMesh,
+	rebuildMeshes,
 	reserveUniforms,
 	writeUniforms,
 	drawItem,
@@ -100,7 +101,9 @@ export function needsFrame(this renderer: Renderer): boolean {
 // fills the pass lists from `items`. Returns true when the context is new: every handle the
 // caller made before is stale then (it may name an object of the new context), so the caller
 // drops its own without destroying them and makes them again before drawing. The core has
-// already dropped the pipelines and remade the screen triangle.
+// already dropped the pipelines, remade the screen triangle, and re-uploaded every mesh that
+// carries its CPU data (draw.ms rebuildMeshes); what is left is whatever the caller uploaded
+// from buffers only it keeps.
 export function beginFrame(
 	ref renderer: Renderer,
 	ref context: DrawContext,
@@ -112,6 +115,7 @@ export function beginFrame(
 	const fresh: boolean = generation != renderer.generation;
 	if (fresh) {
 		forgetPipelines(context.pipelines);
+		rebuildMeshes(context);
 		context.meshes[renderer.screenMesh].vertexBuffer = makeScreenTriangle();
 		renderer.generation = generation;
 		renderer.changed = true;
