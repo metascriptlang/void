@@ -7,8 +7,8 @@ Void's 2D layer: draw the **same pixels on every platform** (Metal / D3D11 / GL 
 | Doc | Role |
 |---|---|
 | [HEAPS.md](HEAPS.md) | **The model.** Heaps `h2d`: the interface and semantics void2d keeps. |
-| [GPUI.md](GPUI.md) | **Rendering reference 1.** Zed's renderer: the primitive look, the text path, the frame shape. The full inventory of what is taken and why not the rest. |
-| [MAKEPAD.md](MAKEPAD.md) | **Rendering reference 2.** GPUI's model under Void's constraints: own shader fan-out, own text stack, web and mobile. |
+| [GPUI.md](GPUI.md) | **Rendering reference 1.** Zed's renderer: the primitive look, the text path, the frame shape. The only reference with a shipped WebGPU-in-the-browser path. |
+| [MAKEPAD.md](MAKEPAD.md) | **Rendering reference 2.** GPUI's model under Void's constraints: own shader fan-out, own text stack, WebGL2 and mobile. |
 | [GHOSTTY.md](GHOSTTY.md) | **Rendering reference 3.** Dense text only: font stack, atlas, blend space, frame discipline. |
 
 Scale and scene storage: [SCENE-SCALE.md](SCENE-SCALE.md).
@@ -119,6 +119,30 @@ The boundary is not "nothing above pixels". These are rendering services the hos
 
 Neon's `Style` already names what the host must express and today drops (`neon/src/macros/style/fields.ms:40-56`): `borderWidth/Color/Radius`, `boxShadow`, `fontFamily/Weight/Style`, `textDecorationLine`, `overflow`, `transform`, `zIndex`.
 
+### Web and WebGPU
+
+The browser is a first-class target, not a port: `scripts/build-web.sh` builds **both** web backends, WebGPU (`--use-port=emdawnwebgpu -DSOKOL_WGPU`, which also needs `-sASYNCIFY`) and WebGL2 (`-DSOKOL_GLES3`), from the same source (`src/sokol/sokolWeb.c:1-8`).
+
+Among the references **only GPUI ships a browser renderer**: `BrowserWebGpu` with WebGPU detection and a GL fallback (`gpui_wgpu/src/wgpu_context.rs:159-171`), plus a whole `gpui_web` crate. Makepad is WebGL2 only — its WGSL is an intermediate for Vulkan through naga, with no WebGPU consumer. Ghostty declares a `webgl` backend for wasm (`src/renderer/backend.zig:5-22`) but `src/renderer/WebGL.zig` is two lines: intent, not code. So on this axis GPUI is the closest reference, not the farthest.
+
+**The binding constraint is the intersection of WebGPU and WebGL2**, because Void must run both:
+
+- **No storage buffers on WebGL2.** Instance data travels as per-instance vertex attributes (`SG_VERTEXSTEP_PER_INSTANCE`), never a storage buffer. GPUI needs a second code path for this — instances packed into an `Rgba32Uint` texture "to keep the records available to both shader stages" (`gpui_wgpu/src/wgpu_renderer.rs:166-176`). Void does not, and must not grow one.
+- **No `base_instance` on GLES3/WebGL2** (`deps/sokol/sokol_gfx.h:238-239`). Instance ranges are addressed with `vertex_buffer_offsets`.
+- **255-byte vertex stride ceiling** on WebGL2 (Makepad's own validator, `web_gl.js:1103-1108`), and 16 attributes. The planned ~92–128 B UI stride fits with room to spare.
+- **No dual-source blending**, so no ClearType — GPUI disables subpixel text whenever it falls back to the WebGL instance path (`wgpu_renderer.rs:434-435`). Guardrail 7 already holds.
+- **Uniforms are expensive on WebGPU**: sokol allocates one per-frame uniform buffer and **every `sg_apply_uniforms` call costs at least 256 bytes** of it, whatever the payload (`sokol_gfx.h:2014-2023`, `_SG_WGPU_ROWPITCH_ALIGN`); the default `uniform_buffer_size` is 4 MB (`:6614`). void2d applies two uniform blocks per draw today, so a draw costs 512 B of that budget on WebGPU and Metal. At a few hundred draws this is fine, but the display list must keep per-draw uniforms to what actually changes, and the budget is a thing to measure, not assume.
+- Image data on WebGPU is row-pitch aligned to 256 bytes, so atlas pages stay at power-of-two widths ≥ 256.
+
+**What the browser demands beyond desktop:**
+
+1. **Warm-up matters more.** GPUI rasterizes a glyph synchronously on its first paint, with no pre-warm. On one browser thread that is a visible hitch the first time a file shows new glyphs. Ghostty's warm-up of device, pipelines and the font database off the first-frame path (`renderer/Metal.zig:405-441`) is the model; on the web it is not optional.
+2. **Upload bandwidth is scarcer.** sokol can only replace a whole image, so atlas pages stay small (1024²) and only dirty pages are uploaded — a 2048² page like Makepad's would re-send 16 MB for one new glyph.
+3. **Fractional DPI is the norm**, since `devicePixelRatio` is routinely 1.25 or 1.5. The truncation defect in `scene.ms:89` therefore hurts the web target hardest.
+4. **No OS text system at all.** GPUI's web path is cosmic-text plus a canvas fallback for emoji, which is a third set of pixels beside its macOS and Windows output. Void owns one rasterizer everywhere; this is guardrail 9 and the reason the glyph layer cannot be deferred.
+5. **wasm size is a shipping constraint, not a nicety** — hence guardrail 6 and the per-module measurement in the budget.
+6. Frames are driven by `requestAnimationFrame`, re-armed only when something is dirty (`gpui_web/src/window.rs:918`). That is the host's job, and it is the same "dirty → draw, else nothing" contract as the desktop hosts.
+
 ### Instance sizes
 
 Today a quad is 6 vertices × 8 floats = **192 B**, re-transformed on the CPU every frame, with no AA of its own. With per-instance attributes (`SG_VERTEXSTEP_PER_INSTANCE`, core in GLES3/WebGL2):
@@ -128,7 +152,7 @@ Today a quad is 6 vertices × 8 floats = **192 B**, re-transformed on the CPU ev
 | Sprite pipeline | affine 6 + size 2 + uv 4 + colour 4 (float) | 64 B |
 | UI pipeline (single stride for all modes) | affine 6 + size 2, uv-or-radii 4, border widths 4, mode/params 4, gradient/shadow params 4, three colours as `UBYTE4N` | ~92 B packed, ~128 B with float colours |
 
-For scale: GPUI's glyph instance is 112 B, Makepad's ~116 B, Ghostty's 32 B (integer grid coordinates — not reachable for general UI). Ceilings: 16 vertex attributes, and a **255-byte stride on WebGL2** (M). Ranges are addressed with `vertex_buffer_offsets`; `base_instance` does not exist on GLES3. Only what the fragment stage reads is passed as a varying (Makepad forwards every field, costly on tile-based GPUs). Sizes are estimates from planned layouts; 4-vertex instances should be checked against indexed quads on one Mali and one Adreno device before committing.
+For scale: GPUI's glyph instance is 112 B, Makepad's ~116 B, Ghostty's 32 B (integer grid coordinates — not reachable for general UI). Ceilings and addressing come from the web intersection above. Only what the fragment stage reads is passed as a varying (Makepad forwards every field, costly on tile-based GPUs). Sizes are estimates from planned layouts; 4-vertex instances should be checked against indexed quads on one Mali and one Adreno device before committing.
 
 ## Known defects in void2d (2026-09-20)
 
@@ -172,6 +196,7 @@ Budget checked at every step: draw calls and `present` time at 10k Box + 10k Lab
 
 - **Rasterizer**: stb_truetype only, or FreeType as a module — from step 2's captures.
 - **Atlas planes**: separate R8 and RGBA page kinds (G) or four coverage planes per RGBA page (M) — at step 2.
+- **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame buffer on WebGPU and Metal. Measure it at step 1 and fold what does not change per draw into fewer blocks if it bites.
 - Reference facts were read from source, not benchmarked. Instance sizes and the one-draw-call claim are from planned layouts, not measured.
 - Non-uniform scale on SDF boxes and `erf` shadows is approximated; the error has not been characterised.
 - Nested rotated clips fall back to scissor AABB for outer levels; whether Neon needs better is unknown.

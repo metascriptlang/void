@@ -8,7 +8,7 @@ Source: `~/projects/ghostty` (shallow clone) at `a301054`. Paths are relative to
 
 | | |
 |---|---|
-| Backends | Metal, OpenGL **4.3 core** (needs SSBOs and `sampler2DRect`, `renderer/OpenGL.zig:37-39`). One generic renderer over a comptime `GraphicsAPI` (`renderer/generic.zig:48-99`). |
+| Backends | Metal, OpenGL **4.3 core** (needs SSBOs and `sampler2DRect`, `renderer/OpenGL.zig:37-39`). One generic renderer over a comptime `GraphicsAPI` (`renderer/generic.zig:48-99`). A `webgl` backend is declared for wasm (`renderer/backend.zig:5-22`) but `renderer/WebGL.zig` is two lines — no browser renderer exists. |
 | Shaders | Two hand-written ports, `shaders.metal` and GLSL. They have drifted: the cursor-cell colour is loaded with `use_linear_blending` in GLSL and `true` in Metal (`shaders/glsl/cell_text.v.glsl:144` vs `shaders/shaders.metal:668-672`). |
 | Frame | **Three draws**: one full-screen triangle for the global background, one full-screen triangle that looks up `bg_cells[floor(fragCoord / cell_size)]`, one instanced strip for all text (`generic.zig:1850-1949`, `shaders/glsl/cell_bg.f.glsl:13-57`). No batching logic: a grid has a fixed z-order. |
 | Instances | `CellText`, **32 bytes**: atlas pos/size `u32×4`, bearings `i16×2`, grid pos `u16×2`, colour `u8×4`, atlas kind, flags (`renderer/metal/shaders.zig:262-289`). Backgrounds are a flat `rows × cols` array of `[4]u8` — no geometry. |

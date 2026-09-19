@@ -8,7 +8,7 @@ Source: `~/projects/makepad` (shallow clone) at `5e9a697`. Only `draw/`, `platfo
 
 | | |
 |---|---|
-| Backends | D3D11, Metal, GL / WebGL2 (`#version 300 es`), Vulkan via WGSL → naga. No WebGPU consumer. |
+| Backends | D3D11, Metal, GL / WebGL2 (`#version 300 es`), Vulkan via WGSL → naga. **No WebGPU consumer** — the WGSL backend only feeds naga on the way to SPIR-V. |
 | Shaders | One DSL, translated **at runtime** to MSL / HLSL / GLSL / WGSL by a single-pass generator with ~110 per-backend branches (`platform/script/src/shader.rs:209-245`, `shader_backend.rs:14-21`). A draw whose shader is still compiling is skipped — "a flat clear-color region" (`platform/src/draw_vars.rs:133-137`). D3D11 caches DXBC on disk (`platform/src/os/windows/d3d11.rs:4052-4194`). |
 | Instance layout | A `#[repr(C)]` Rust struct **is** the instance: `DrawVars::as_slice()` returns its own memory (`draw_vars.rs:195-213`). `DrawQuad` 48 B, `DrawColor` 64 B, `DrawText` ~116 B (`draw/src/shader/draw_text.rs:1380-1417`). |
 | Scene | A **retained tree of draw lists**. Each draw item owns a CPU float vec and its own GPU buffer, and both persist (`platform/src/draw_list.rs:1460-1520, 2372-2451`). |
