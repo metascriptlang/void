@@ -11,12 +11,28 @@ ENTRY="src/examples/mainSokol2d.ms"
 
 cd "$(dirname "$0")/.."
 
-. "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
+case "$(uname -s)" in
+MINGW*|MSYS*|CYGWIN*)
+	# Windows: emsdk_env.sh exports unix-shaped variables that break the .bat wrappers, and
+	# msc cannot spawn a .bat at all. Use the shims instead (scripts/emccShim.c) and point
+	# emcc.py at emsdk's own interpreter and config.
+	sh "$(dirname "$0")/build-emcc-shim.sh"
+	VOID_EMSDK_ROOT="$EMSDK_DIR"
+	VOID_EMSDK_PYTHON="$(ls -d "$EMSDK_DIR"/python/*/python.exe 2>/dev/null | head -1)"
+	[ -x "$VOID_EMSDK_PYTHON" ] || { echo "no emsdk python under $EMSDK_DIR/python"; exit 1; }
+	EM_CONFIG="$EMSDK_DIR/.emscripten"
+	export VOID_EMSDK_ROOT VOID_EMSDK_PYTHON EM_CONFIG
+	PATH="$(cd "$(dirname "$0")/.." && pwd)/out/emcc-shim:$PATH"
+	export PATH
+	;;
+*)
+	. "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
+	;;
+esac
 active="$(cat "$EMSDK_DIR/upstream/emscripten/emscripten-version.txt" 2>/dev/null | tr -d '\"')"
 if [ "$active" != "$EMSCRIPTEN_VERSION" ]; then
-	echo "activating emscripten $EMSCRIPTEN_VERSION (was $active)"
-	"$EMSDK_DIR/emsdk" activate "$EMSCRIPTEN_VERSION" >/dev/null
-	. "$EMSDK_DIR/emsdk_env.sh" >/dev/null 2>&1
+	echo "emscripten is $active, .emscripten-version pins $EMSCRIPTEN_VERSION"
+	exit 1
 fi
 
 # msc can flake on the uncached async-emcc path; retry.

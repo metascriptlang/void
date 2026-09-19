@@ -113,12 +113,14 @@ skip "webgpu: needs copyTextureToBuffer + mapAsync and a browser driver"
 skip "webgl2: shares the GLES3 path in wasm, needs the same browser driver"
 if [ "$WEB" -eq 1 ]; then
 	if sh scripts/build-web.sh > out/gate-web.log 2>&1; then
-		pass "web liveness: both backends build (this is a build check, NOT conformance)"
+		pass "web build: both backends build ($(wc -c < web/wgpu/mainSokol2d.wasm) B wgpu, $(wc -c < web/gl/mainSokol2d.wasm) B gl)"
+		# Liveness prints its own PASS/SKIP per backend, with the reason.
+		sh scripts/web-liveness.sh 2>&1 | sed 's/^/      /'
 	else
 		fail "web build — see out/gate-web.log"
 	fi
 else
-	skip "web build: not requested (pass --web)"
+	skip "web build and liveness: not requested (pass --web)"
 fi
 
 echo
