@@ -2,7 +2,9 @@
 
 What a void change has to prove before it is committed, and who can re-run the proof.
 
-**The problem this doc closes.** `msc test src/test/index.ms` is the only thing in this repo that anyone else can run: 133 `test` blocks and 457 `assert`s across `src/test/*.ms` (`msc test` also runs std's prelude tests, which is why the recorded gate figure is 380/380). Everything else that the last sessions used to judge their work lives in `out/tmp/`, which `.gitignore:5` excludes — the D3D11 readback harness (`out/tmp/capture/capture.{c,h}`, `demo2dCapture.ms`, `cmp.py`, twelve 800×600 `base_*.ppm` goldens) and the two seven-line entry points that make `src/examples/bench2d.ms` runnable (`out/tmp/bench/bench{Ui,Sprites}.ms`). The baseline in [VOID2D.md](VOID2D.md) and the "byte-identical readback" acceptance clauses in [VOID3D.md](VOID3D.md) were produced by files no one can check out. There is no gate script, no Makefile and no `.github/` anywhere in the repo; the gate is prose in `~/metascript/.wt/sokol-latest.md`.
+**The problem this doc closed.** Before P0, `msc test src/test/index.ms` was the only thing in this repo that anyone else could run — 425 tests including std's prelude. Everything the last sessions used to judge their work lived in `out/tmp/`, which `.gitignore:5` excludes: the D3D11 readback harness (`out/tmp/capture/capture.{c,h}`, `demo2dCapture.ms`, `cmp.py`, twelve 800×600 `base_*.ppm` goldens) and the two seven-line entry points that made `src/examples/bench2d.ms` runnable. The baseline in [VOID2D.md](VOID2D.md) and the "byte-identical readback" acceptance clauses in [VOID3D.md](VOID3D.md) were produced by files no one could check out, and there was no gate script anywhere in the repo.
+
+**As of P0 (2026-09-20) that is fixed**: `tests/capture/`, `tests/golden/`, `tests/bench/`, `tests/PENDING.md`, `scripts/gate.sh`, `scripts/golden.sh` and `scripts/web-liveness.sh` are committed, and `sh scripts/gate.sh` runs the whole thing in about 35 seconds. What each tier actually covers today is at the end of this doc.
 
 **The model.** Taken from `~/projects/rexa` (`AGENTS.md:132-147`, the Testing block of "Engineering workflow"), which runs it against Neovim for vim and pyte for the terminal: an oracle instead of hand-written expectations wherever a reference implementation exists; cases as data rows with a regenerated, committed snapshot, so CI never needs the oracle; a `PENDING` list of known divergences with reasons, where **a listed case that starts passing fails the run** (`crates/rexa-editor/tests/vim_spec.rs:877-899`); pass rate as the correctness metric with an absolute build-breaking condition; distrust the harness before the engine; a hand-written suite for what the oracle cannot express; a regression test in the same change as the bug; green before every commit.
 
@@ -71,23 +73,91 @@ tests/golden/d3d11/<scene>.png    the goldens
 
 **PNG, not PPM.** A committed 800×600 `P6` is 1.44 MB and `out/tmp/capture` holds twelve of them. The scenes below are 256²–512×256; PNG at that size is 3–15 KB for flat UI, so the whole suite fits in well under a megabyte. `deps/stb/stb_image_write.h` is already fetched by `setup.sh`, so the writer is one include and the gate stays on one toolchain. `cmp.py`'s hand-rolled PNG writer becomes a dev tool for diff masks, not a gate dependency.
 
-**The scenes.** Small, static, frame-indexed — never time-indexed. Grouped so a change regenerates only its group.
+**The scenes.** Small, static, frame-indexed — never time-indexed. Grouped so a change
+regenerates only its group. The **from** column is the phase whose renderer can produce the
+scene: rows marked later than the phase you are in are entries in `tests/PENDING.md`
+(`golden-missing:<scene>`), and the phase that lands the feature adds the row to
+`tests/golden/table.ms` and deletes the entry in the same commit.
 
-| Group | Scenes |
-|---|---|
-| `prim/` | rounded rect per-corner radii · per-side borders · dashed border · drop shadow · inset shadow · shadow+fill+border in one instance · linear gradient sRGB · linear gradient Oklab · radial · multi-stop · dither band · slash and checkerboard patterns |
-| `xform/` | the same card at rotation 0 / 7° / 45° · scale 0.5 / 1 / 2 · pivot from `Tile.dx/dy` · non-uniform scale (the approximation VOID2D.md "Open" records) |
-| `snap/` | hairline at DPI 1.0 / 1.25 / 1.5 · zero border stays zero · fractional split of 7 px · fractional origin box · fractional scene size |
-| `clip/` | nested masks · rotated mask · mask + scroll offset · a list scrolled so most rows are outside the clip |
-| `text/` | a code line at 13 px, DPI 1.0 / 1.25 / 1.5 · a wrapped paragraph · decorations (underline, strikethrough, wavy) · caret and selection · mixed Latin + CJK fallback · a ligature line · a colour-emoji line |
-| `image/` | sprite nearest and linear · `ObjectFit` variants · `corner_radii` on an image · `grayscale` |
-| `filter/` | blur, glow, drop shadow on a subtree · group opacity over overlapping children |
-| `regress/` | one scene per entry that leaves [VOID2D.md](VOID2D.md) "Known defects" |
-| `harness/` | the three self-checks below |
+| Group | from | Scenes |
+|---|---|---|
+| `harness/` | P0 | solid (hand-computed) · mustFail (deliberately wrong golden) |
+| `prim/` | P0 | roundedRect · strokeRect · ellipsePieRing · polygonBezier · gradientLinear · gradientRadial |
+| `prim/` | P2 | per-corner radii · per-side borders · dashed border · drop shadow · inset shadow · shadow+fill+border in one instance · gradient Oklab · multi-stop · dither band · slash and checkerboard |
+| `xform/` | P0 | rotate (0 / 7° / 37° / 45°) · scale (0.5 / 1 / 2) · pivot · nonUniform |
+| `xform/` | P2 | pivot from `Tile.dx/dy` |
+| `snap/` | P0 | hairline at DPI 1.0 / 1.25 / 1.5 · fractionalSplit of 7 px · fractionalOrigin |
+| `snap/` | P2 | zero border stays zero |
+| `clip/` | P0 | nestedMasks · rotatedMask · scrolledList |
+| `clip/` | P5 | mask + scroll offset |
+| `text/` | P0 | a code line at 13 px, DPI 1.0 / 1.25 / 1.5 · wrapped · multilineAlign |
+| `text/` | P3 | mixed Latin + CJK fallback |
+| `text/` | P4 | decorations (underline, strikethrough, wavy) · caret and selection |
+| `text/` | P6 | a ligature line · a colour-emoji line |
+| `image/` | P0 | nearestLinear · subFlip · colorPipeline (colorMatrix, colorAdd, colorKey, Add blend) · scaleGrid |
+| `image/` | P2 | `ObjectFit` variants · `corner_radii` on an image · the `grayscale` image mode |
+| `filter/` | P1 | blur · glow · dropShadow · groupOpacity — **built but not capturable at P0**, see below |
+| `regress/` | P0 | nodeCap · dpiTruncation · samplerRepeat · vertexCap |
+| `regress/` | P1 | atlasFull · filterNestedPass — **not capturable at P0**, see below |
+| `demo/` | P0 | `src/examples/renderer2d.ms` at 800×600, animation steps 1 / 30 / 90 / 200 |
 
-Plus the existing demo (`src/examples/renderer2d.ms`, 800×600, frames 1/30/90/200), kept as the one big integration capture, because it is what the last three sessions compared and its goldens already exist.
+Thirty-seven rows are live. The demo is the one big integration capture, because it is what
+the last three sessions compared.
 
-**Tolerance: byte-identical is the default.** The existing captures earn that. `base`, `base2` and `pin` — three runs across two sokol pins — are byte-identical at frames 1, 30 and 200; only frame 90 moves, and by 1–2 pixels at delta 1 (`base_90 vs pin_90: 1 px differ, max delta 1, bbox (355,419)-(355,419)`). So a tolerance is not a property of this machine; it is a property of a scene, and a scene that needs one is a finding.
+**Two groups P0 could not capture, and why.** Both are findings, not omissions:
+
+- **Every `filter/` row, and `regress/filterNestedPass`.** `drawFiltered`
+  (`render.ms:216-283`) opens a render-target pass while the swapchain pass is open. A
+  debug build trips sokol's `Assertion failed: !_sg.cur_pass.valid` (`sokol_gfx.h:27214`)
+  and the process dies; a release build presents a frame that is nothing but the clear
+  colour — the siblings drawn *before* and *after* the filtered node disappear with it.
+  The path has never had a caller: no example and no test sets `Node2D.filter`
+  (`src/test/nodeCheck.ms` only builds the `Filter` structs). The builders are written and
+  sit in `tests/golden/scenes.ms`; P1 adds the rows.
+- **`regress/atlasFull`.** Once the 512×512 fontstash atlas fills, *which* glyphs survive
+  varies between runs of the same binary: three distinct outputs in ten runs, worst pair
+  28 740 of 80 000 pixels (35.9%) at max delta 207. A golden with a 36% budget asserts
+  nothing, so the row is a `tests/PENDING.md` entry with those numbers until P1 handles
+  `FONS_ATLAS_FULL`. "Atlas-full drops glyphs silently" understates it: it drops a
+  *different* set of glyphs each run.
+
+**How a capture is taken.** `tests/golden/runner.ms`, one scene per process, driven by
+`scripts/golden.sh`:
+
+- **One scene per process**, because sokol's default resource pools hold 128 objects and
+  every Label and Graphics owns an `sg_buffer` today; several Label-heavy scenes in one
+  process would capture a scene with nodes missing.
+- **`sample_count` 1**. 4× MSAA is on only for the sokol_app entry (`bridge.c:56`) and off
+  on iOS, Android and the embed bridges, so a golden taken with it could never be the one
+  golden set every backend is compared against. It is also not reproducible: at
+  `sample_count` 4 the demo's D3D11 resolve differs by one or two pixels between runs of
+  the same binary, and at 1 it is byte-identical. That is what the "frame 90 moves" note in
+  earlier sessions was — an MSAA resolve artifact, not a renderer property.
+- **`high_dpi` off**, so the framebuffer is exactly the size the table asks for and
+  `voidDpiScale()` is 1.0 whatever the host display reports. A scene's DPI comes from the
+  table, through `Scene.presentAt`.
+- **A `--release` build.** sokol's validation layer, which a debug build links, aborts the
+  process on two of the defects this suite exists to record (`tests/PENDING.md`
+  `debug-abort:*`). A golden records what the renderer draws; the validation layer is a
+  separate check.
+- **Three draws**: one to warm up — the first draw of a Label rasterizes its glyphs — then
+  two into separate capture slots, which must be identical before either is written out.
+- **RGB, not RGBA.** The swapchain is opaque, so its alpha carries no information about what
+  was drawn; storing it would cost about a quarter of the suite and would add a
+  cross-backend difference that means nothing. Alpha inside the frame is still tested — it
+  is what blending turned into colour.
+
+**Size, measured.** `tests/golden/d3d11/` is **912 KB**: 320 KB for the 33 UI scenes and
+592 KB for the four 800×600 demo frames, which are photographic and do not compress. The
+"well under a megabyte" estimate held; VOID2D.md's "~600 KB" did not, and it was about the
+UI scenes alone. The lever, if it ever matters, is demo frames.
+
+**Tolerance: byte-identical is the default, and at P0 every live scene earns it.** All 37
+rows are byte-identical to their goldens, between two draws in one process and between two
+full runs of the suite in separate processes. `tests/PENDING.md` carries **zero** image
+budgets. A tolerance is not a property of this machine; it is a property of a scene, and a
+scene that needs one is a finding — which is why the two scenes that would have needed one
+are not in the table at all.
 
 The rule:
 
@@ -96,9 +166,16 @@ The rule:
 - A pending scene that comes back byte-identical **fails**, and the entry must be deleted — rexa's graduation rule (`vim_spec.rs:877-886`), applied to images.
 - A scene in the table with no golden is an error, not a skip (rexa's `missing` assert, `vim_spec.rs:892-895`).
 
-**Regeneration.** `sh scripts/golden.sh --update [scene…]`, never automatic. A golden changes only inside a commit that says why, and the PNG diff is the review artifact. A golden records what the renderer *does*, not what it should do: P0 generates them from today's renderer, defects and all, and each later phase regenerates the group it is supposed to move — which is how the phase proves it moved nothing else.
+**Regeneration.** `sh scripts/golden.sh --update [scene…]`, never automatic. It refuses to
+update if the capture step failed, and it never regenerates `harness/mustFail`, whose golden
+is deliberately wrong. A normal run writes into `out/golden/` and never touches
+`tests/golden/`, so a gate can never quietly rewrite what it is checking against. A golden changes only inside a commit that says why, and the PNG diff is the review artifact. A golden records what the renderer *does*, not what it should do: P0 generates them from today's renderer, defects and all, and each later phase regenerates the group it is supposed to move — which is how the phase proves it moved nothing else.
 
-**Determinism preconditions.** Fixed DPI per scene; frame index, never wall clock (today's driver already captures at frames 1/30/90/200); the font bytes committed and hashed (`assets/font.ttf` already is); a fixed clear colour with alpha written; `CAPTURE_PREFIX` required, never defaulting into a golden path as `capture.c:32-34` does today.
+**Determinism preconditions.** Fixed DPI per scene, from the table; animation step index,
+never wall clock; `sample_count` 1 and `high_dpi` off; the font bytes committed
+(`assets/font.ttf`, sha256 `40d692fc…`); a fixed clear colour with alpha written; and the
+output path built from the scene name rather than from an environment variable that could
+default into a golden path, as the old scratch `capture.c:32-34` did.
 
 ## T3 — oracles
 
@@ -168,22 +245,52 @@ Concrete mechanisms, because the phrase on its own does nothing:
 
 ## The gate
 
-`scripts/gate.sh`, the first one this repo has had. Each step prints PASS, FAIL or SKIP **with a reason**; a SKIP is loud and counted, and nothing may report PASS for a backend it did not run.
+`scripts/gate.sh`, the first one this repo has had. Each step prints PASS, FAIL or SKIP
+**with a reason**; a SKIP is loud and counted, and nothing may report PASS for a backend it
+did not run — the conformance line for a backend is the comparator's own output, never a
+number typed into the script.
 
-1. Evict the caches (above).
-2. `msc test src/test/index.ms` — T0 and T1.
-3. Build the golden runner; render every scene twice; determinism check; compare to `tests/golden/d3d11/`; report `N px differ, max delta M` per scene and the pass rate.
-4. Oracles present on this machine: compare against the committed snapshots. Absent tool → SKIP, named.
-5. `scripts/build-web.sh`, then capture both web backends in headless Chrome and compare to the **same** D3D11 goldens.
-6. `tests/bench/` — counters gated against `tests/bench/baseline.json`, milliseconds reported.
-7. wasm sizes against the budget.
-8. Print the tier table, the per-backend conformance pass rates, and the PENDING count.
+1. Evict the caches (above): the output binaries, `out/{debug,release}/.cache`, and this
+   checkout's objects under `~/.metascript/cache/objects`.
+2. `msc test src/test/index.ms` — T0, and T1 once it exists.
+3. The demo entry builds.
+4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
+   twice, compare the two, write the PNG, then `tests/golden/compare.ms` judges all 37
+   against `tests/golden/d3d11/` and prints `N px differ, max delta M, bbox` and a pass rate.
+5. Oracles present on this machine. None is wired yet, so five named SKIPs.
+6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
+   reported with a warn threshold. Plus a SKIP for the wasm budget, which P6 owns.
+7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
+   readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
+8. The tier table, the PENDING count, and the SKIP and FAIL totals.
 
-Green before every commit, as in rexa (`AGENTS.md:301-302`). A bug gets its regression case in the same change as the fix.
+Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 35 seconds** on this box.
+`--quick` skips the golden suite; `--web` adds the two web builds and the headless-Chrome
+liveness check.
+
+Green before every commit, as in rexa (`AGENTS.md:301-302`). A bug gets its regression case
+in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Honest status today: it is not.** Only D3D11 has a readback path, and it is gitignored. Metal, GLES3, WebGPU and WebGL2 have never had their pixels compared to anything; the existing web check is "WebGPU and WebGL2 render in headless Chrome" (`~/metascript/.wt/sokol-latest.md`), which is a liveness check, not a conformance one.
+**Status after P0: one backend of five, and the number is printed.**
+
+| Backend | Conformance, 2026-09-20 | Runs |
+|---|---|---|
+| D3D11 | **37 / 37 scenes byte-identical** | every gate, this box |
+| GLES3 desktop | not run — the `glReadPixels` path is written in `tests/capture/capture.c` and no GLES3 build has exercised it | SKIP |
+| Metal macOS | no readback | SKIP |
+| Metal iOS | no readback; the first device run is T5 | SKIP |
+| GLES3 Android | shares the `glReadPixels` path; needs the device | SKIP |
+| WebGPU | no readback in the wasm build | SKIP |
+| WebGL2 | no readback in the wasm build | SKIP |
+
+So guardrail 9 is a number now, and the number is **1 of 7 surfaces measured**. What exists
+for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads the built
+demo in headless Chrome and checks that the canvas is not blank. Measured 2026-09-20:
+**WebGL2 draws the demo; WebGPU builds and runs but headless Chrome hands it no adapter**
+(both `--use-angle=swiftshader` and the real adapter give a black canvas), so WebGPU
+liveness is unproven headless and is reported as a SKIP, not a pass.
 
 **The design: one golden set, authored on D3D11; five backends compared against it.** Not five golden sets — five golden sets would record five different renderers and prove exactly nothing. The output is a per-backend conformance report: scenes identical, scenes within a stated bound, scenes failing, and a pass rate. That report *is* guardrail 9, and it belongs in VOID2D.md as a number that moves per phase.
 
@@ -197,9 +304,28 @@ What each readback costs:
 | WebGPU | `copyTextureToBuffer` + `mapAsync`; `-sASYNCIFY` is already on for the emdawnwebgpu build (`src/sokol/sokolWeb.c`) | headless Chrome on this box | ~60 lines plus a JS hand-off |
 | WebGL2 | the GLES3 path | headless Chrome on this box | shared |
 
-Browser capture is driven by Playwright — `.playwright-mcp/` in `.gitignore:23` says it has driven this repo's web builds before. The wasm side writes the RGBA bytes out, the driver saves the PNG, and the comparator is the same one.
+**What browser conformance would take**, written down rather than attempted at P0, because
+the missing piece is the readback and not the driver:
 
-**Cadence**, because three of the five backends are not this machine: D3D11, WebGPU and WebGL2 run in every gate. Metal (macOS and iOS) and GLES3 on the Android device run **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
+1. A wasm-side capture: `glReadPixels` for WebGL2 (the same code already in
+   `tests/capture/capture.c`, which compiles under `SOKOL_GLES3`), and
+   `copyTextureToBuffer` + `mapAsync` for WebGPU, where `-sASYNCIFY` is already on for the
+   emdawnwebgpu build (`src/sokol/sokolWeb.c`).
+2. A hand-off out of the sandbox: the module writes the RGBA bytes to a JS-visible buffer
+   and the page exposes them, or writes into emscripten's virtual FS and the driver reads
+   them through `FS.readFile`.
+3. A web entry that takes a scene index the way `tests/golden/runner.ms` takes `VOID_SCENE`
+   — an environment variable does not exist in a browser, so it becomes a query parameter.
+4. A driver: `chrome.exe --headless=new --screenshot` is enough for liveness, but
+   conformance needs to pull bytes out, so it needs CDP (node 22+ has a global `WebSocket`,
+   so this needs no dependency) or playwright-core.
+5. **A headless Chrome that actually has WebGPU.** The blocker measured above. Until then
+   WebGPU conformance can only be taken headed.
+
+The comparator does not change: `tests/golden/compare.ms` reads two PNGs and knows nothing
+about where they came from.
+
+**Cadence**, because three of the five backends are not this machine: D3D11 runs in every gate, and WebGPU and WebGL2 will once they have a readback. Metal (macOS and iOS) and GLES3 on the Android device run **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
 
 **Cross-backend tolerance is not the same as within-backend tolerance.** Different GPUs round rasterization and interpolation differently. The starting bound is: delta ≤ 1 ignored, fail at max delta ≥ 4 or above 0.05% of pixels at delta 2–3; every scene that cannot meet it gets a PENDING entry naming the backend and the cause. A scene that differs **structurally** between backends — a glyph one pixel over, a border one device pixel wide instead of two, a gradient banded on one backend and dithered on another — is not a tolerance question and never gets a budget. That is the class of bug guardrail 9 exists to catch, and it is the class that hand-ported shaders produce in all three references (GPUI's gradients and dither, Ghostty's cursor colour, Makepad's `modf` — VOID2D.md "Frame shape").
 
@@ -207,12 +333,23 @@ Browser capture is driven by Playwright — `.playwright-mcp/` in `.gitignore:23
 
 | Phase | Tier work landing in it |
 |---|---|
-| **P0** | The whole harness: T2 suite, T4 rows and baseline, PENDING, `scripts/gate.sh`, the harness self-checks, D3D11 + GL readback, browser capture |
-| **P1** | T1 created — the display list is what makes it possible; regression scenes for six defects; T4 counters |
+| **P0** ✅ | The whole harness: the T2 suite (37 scenes), T4 rows and baseline, PENDING, `scripts/gate.sh`, `scripts/golden.sh`, the three harness self-checks, the D3D11 readback (and the GLES3 one, written but unrun), and web liveness in place of web capture |
+| **P1** | T1 created — the display list is what makes it possible; the `filter/` and `regress/atlasFull` rows turn on; regression scenes for the remaining defects; T4 counters |
 | **P2** | T3 coverage oracle; T1 snapping and batch-break assertions; `prim/`, `xform/`, `snap/`, `clip/` regenerated |
 | **P3** | T3 fontTools metrics and the HarfBuzz kerning subset; `text/` at three DPIs; T4 atlas budget; the first full five-backend conformance run |
 | **P4** | T3 UCD segmentation; T1 glyph and run placement; editor scenes |
 | **P5** | T1 dirty-range and idempotence assertions; T4 scroll and idle budgets; the h2d oracle |
 | **P6** | T3 full HarfBuzz shaping; T4 wasm budget per module; device-loss fault injection as a test switch (MAKEPAD.md:104) |
+
+**What each tier covers today**, so the table above is read against something real:
+
+| Tier | State after P0 |
+|---|---|
+| T0 | 425 tests, `msc test src/test/index.ms`, about half a second |
+| T1 | does not exist; P1 creates it |
+| T2 | 37 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
+| T3 | nothing wired; six named SKIPs |
+| T4 | ten counters gated, two milliseconds reported; the wasm budget SKIPs |
+| T5 | human only |
 
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".
