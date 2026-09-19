@@ -1,0 +1,114 @@
+// The golden scene table as data: one row per capture, no renderer and no GPU.
+//
+// Kept apart from tests/golden/scenes.ms, which holds the builders, so the comparator —
+// which needs neither a window nor a GPU — can read the table without linking sokol.
+// tests/golden/scenes.ms holds one builder per row in this order, and the runner refuses
+// to start if the two lengths disagree.
+//
+// `phase` is the phase whose renderer the row belongs to. Only what today's renderer can
+// draw is listed; every other row of the table in docs/TESTING.md is an entry in
+// tests/PENDING.md, "scene not renderable until <phase>", and the phase that lands the
+// feature adds the row here and deletes the entry in the same commit.
+//
+// Sizes: the width of every scene is at least 256 device pixels because Windows refuses to
+// make a window narrower than about 120 client pixels and silently widens it, which the
+// runner's shape check catches as a size mismatch. The narrow scenes just get more
+// background. Heights are free.
+
+export interface SceneRow {
+	name: string;
+	phase: string;
+	width: int32;
+	height: int32;
+	dpi: float32;
+	steps: int32;
+	demo: boolean;
+}
+
+export function sceneRows(): SceneRow[] {
+	return [
+		{ name: "harness/solid", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
+		{ name: "harness/mustFail", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "prim/roundedRect", phase: "P0", width: 256, height: 156, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/strokeRect", phase: "P0", width: 256, height: 156, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/ellipsePieRing", phase: "P0", width: 256, height: 176, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/polygonBezier", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/gradientLinear", phase: "P0", width: 256, height: 156, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/gradientRadial", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "xform/rotate", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "xform/scale", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "xform/pivot", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
+		{ name: "xform/nonUniform", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "snap/hairlineDpi100", phase: "P0", width: 256, height: 100, dpi: 1.0, steps: 0, demo: false },
+		{ name: "snap/hairlineDpi125", phase: "P0", width: 320, height: 125, dpi: 1.25, steps: 0, demo: false },
+		{ name: "snap/hairlineDpi150", phase: "P0", width: 384, height: 150, dpi: 1.5, steps: 0, demo: false },
+		{ name: "snap/fractionalSplit", phase: "P0", width: 256, height: 100, dpi: 1.0, steps: 0, demo: false },
+		{ name: "snap/fractionalOrigin", phase: "P0", width: 256, height: 96, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "clip/nestedMasks", phase: "P0", width: 256, height: 156, dpi: 1.0, steps: 0, demo: false },
+		{ name: "clip/rotatedMask", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "clip/scrolledList", phase: "P0", width: 256, height: 150, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "text/code13Dpi100", phase: "P0", width: 256, height: 120, dpi: 1.0, steps: 0, demo: false },
+		{ name: "text/code13Dpi125", phase: "P0", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/code13Dpi150", phase: "P0", width: 384, height: 180, dpi: 1.5, steps: 0, demo: false },
+		{ name: "text/wrapped", phase: "P0", width: 256, height: 120, dpi: 1.0, steps: 0, demo: false },
+		{ name: "text/multilineAlign", phase: "P0", width: 384, height: 96, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/subFlip", phase: "P0", width: 256, height: 176, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/colorPipeline", phase: "P0", width: 256, height: 170, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/scaleGrid", phase: "P0", width: 256, height: 148, dpi: 1.0, steps: 0, demo: false },
+
+		// filter/ is empty at P0 and the builders in scenes.ms are not wired to a row yet: a
+		// node filter opens a render-target pass inside the swapchain pass, which sokol
+		// refuses, and the frame comes back as nothing but the clear colour. P1 lands the
+		// hoisted per-target command lists and turns these four rows on. See tests/PENDING.md.
+
+		// regress/atlasFull has no row either: once the 512x512 fontstash atlas fills, which
+		// glyphs survive varies between runs of the same binary — three distinct outputs in
+		// ten runs, worst pair 28 740 of 80 000 pixels (35.9%) at max delta 207. That is the
+		// defect, not a tolerance, so it is a tests/PENDING.md entry until P1 handles
+		// FONS_ATLAS_FULL and P3 removes the class.
+		{ name: "regress/nodeCap", phase: "P0", width: 528, height: 168, dpi: 1.0, steps: 0, demo: false },
+		{ name: "regress/dpiTruncation", phase: "P0", width: 256, height: 170, dpi: 1.5, steps: 0, demo: false },
+		{ name: "regress/samplerRepeat", phase: "P0", width: 256, height: 152, dpi: 1.0, steps: 0, demo: false },
+		{ name: "regress/vertexCap", phase: "P0", width: 256, height: 168, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "demo/frame001", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 1, demo: true },
+		{ name: "demo/frame030", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 30, demo: true },
+		{ name: "demo/frame090", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 90, demo: true },
+		{ name: "demo/frame200", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 200, demo: true },
+	];
+}
+
+export function sceneCount(): int32 { return sceneRows().length as int32; }
+
+// The one row whose golden is deliberately wrong, so that a comparator which cannot fail is
+// itself a failure (docs/TESTING.md, "A scene that must fail").
+export const MUST_FAIL_SCENE: string = "harness/mustFail";
+
+// The row whose expected pixels are arithmetic rather than a capture. Its clear colour and
+// its rect are exact 8-bit values, so a UNORM swapchain returns them unchanged and the
+// comparator can predict every byte — which is what checks the hand-written BGRA -> RGBA
+// swizzle in tests/capture/capture.c.
+export const HAND_COMPUTED_SCENE: string = "harness/solid";
+export const HARNESS_CLEAR_R: int32 = 0;
+export const HARNESS_CLEAR_G: int32 = 128;
+export const HARNESS_CLEAR_B: int32 = 255;
+export const HARNESS_FILL_R: int32 = 255;
+export const HARNESS_FILL_G: int32 = 64;
+export const HARNESS_FILL_B: int32 = 0;
+export const HARNESS_RECT_X: int32 = 10;
+export const HARNESS_RECT_Y: int32 = 20;
+export const HARNESS_RECT_W: int32 = 30;
+export const HARNESS_RECT_H: int32 = 24;
+
+export function backendDirectory(backend: int32): string {
+	if (backend == 1) { return "d3d11"; }
+	if (backend == 2) { return "gles3"; }
+	return "none";
+}
