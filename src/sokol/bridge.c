@@ -34,7 +34,7 @@ static void _event(const sapp_event *e) {
 
 static void _cleanup(void) { sg_shutdown(); }
 
-void voidRun(int w, int h, msClosure init, msClosure frame) {
+void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	s_init = init;
 	s_frame = frame;
 	sapp_desc d = {0};
@@ -44,11 +44,15 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	d.cleanup_cb = _cleanup;
 	d.width = w;
 	d.height = h;
-	d.sample_count = 4;
-	d.high_dpi = true;
+	d.sample_count = sampleCount;
+	d.high_dpi = highDpi != 0;
 	d.window_title = "Void — sokol";
 	d.logger.func = slog_func;
 	sapp_run(&d);
+}
+
+void voidRun(int w, int h, msClosure init, msClosure frame) {
+	voidRunConfigured(w, h, 4, 1, init, frame);
 }
 
 void voidGfxSetup(void) {

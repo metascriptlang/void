@@ -17,6 +17,13 @@ typedef struct {
 // Lifecycle — MetaScript main() drives via init/frame closures.
 void voidRun(int w, int h, msClosure init, msClosure frame);
 
+// Same, with the two window knobs a capture harness has to pin (tests/golden/runner.ms):
+// `sampleCount` is the swapchain sample count — 1 is what iOS, Android and the embed
+// bridges already use, so a golden taken at 1 is the one every backend can be compared
+// against (guardrail 9); `highDpi` 0 makes the framebuffer exactly w x h and
+// voidDpiScale() 1.0 whatever the host display reports.
+void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame);
+
 // Embed lifecycle (iOS / host-driven) — host owns the CAMetalLayer + render loop.
 void voidEmbedRegister(msClosure init, msClosure frame);
 void voidEmbedInit(const void *layer, int w, int h);
