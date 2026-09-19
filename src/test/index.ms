@@ -9,3 +9,4 @@ import "./textCheck";
 import "./math3dCheck";
 import "./pipelineCheck";
 import "./rendererCheck";
+import "./cameraCheck";
