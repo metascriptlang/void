@@ -1,19 +1,150 @@
-# void3d — 3D Render Layer (planned, not started)
+# void3d — 3D Render Layer
 
-The opt-in 3D consumer above Void's GPU bridge — camera / mesh / material — sibling to [void2d](VOID2D.md). Same `sokol_gfx` bridge (`src/sokol/{bridge,gpu}`), same shared layers below; void3d adds the world-space draw path (perspective MVP, depth, culling, materials). The textured spinning cube (`src/rendererSokol.ms`) is the proto-renderer this layer will generalize.
+The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a port of Heaps `h3d` (`~/projects/heaps`), taken in the order Hibernal needs it.
 
-**Status:** not started. void2d (UI/HUD) is the current focus because Neon's first need is unified 2D rendering. This doc records decisions deferred from void2d so they land in the right place when void3d begins.
+**Status (2026-09-20):** M1–M3 done. The pixel-art renderer preset (`src/void3d/pixelArtRenderer.ms`, on the core `renderer.ms`) draws the campfire spike (`src/void3d/{camera,mesh}`, `src/examples/campfireScene.ms`) through the M2 bridge; with the palette off it renders byte-identical to M2. Each milestone below replaces another piece of the spike, and the spike is deleted when M6 lands.
+
+## What Hibernal needs
+
+From `~/metascript/hibernal`: `docs/RENDERER-BRIEF.md`, `docs/BRIEF.md` §5.6 (which amends the brief), `docs/ROADMAP.md` V1–V6 and A3/A4/A10/A11.
+
+- **One scene, two surfaces.** The campfire home scene renders in the live wallpaper and in the app, from the same native core (`libhibernal.so`); the HUD is void2d/Neon drawn on top in-app only.
+- **The t3ssel8r look.** Render at **360×800** into offscreen targets, integer-scale **3×** to 1080×2400 with nearest sampling. Passes: color + depth, normals, outline from depth + normal edges, palette quantization through a LUT, blit.
+- **Pixel-perfect camera.** Orthographic, fixed yaw/pitch, snapped to the low-res texel grid; the sub-pixel remainder is applied as an offset in the blit. Without it the image shimmers — the brief calls it the single most important item.
+- **Content.** Low-poly meshes, ≤500 tris per pet, ≤200 per prop, position + normal + vertex color, no textures on the pet, loaded from a glTF subset exported by a Blender generator.
+- **Lighting.** One directional light plus one campfire point light, a toon ramp in the color shader, fire flicker stepped at 10–12 fps.
+- **Animation.** Vertex-baked keyframes stepped at 12 fps. No skinning.
+- **Interaction.** Tap the pet (pick), tap-and-hold (the host deep-links).
+- **State-driven looks.** Palette swap for day/night, Winter and a Fading pet; fire size from hearts; harvest objects appear in the scene; snow. The mapping from game state lives in Hibernal, void3d only has to make each of these a parameter.
+- **Wallpaper constraints (V6).** 30 fps target, ~10 fps or on demand when idle, stop when invisible, no allocation in the frame loop, every GPU resource rebuildable after context loss, a reduced-fidelity preview path.
+
+## Porting rules
+
+sokol replaces `h3d/impl` (drivers) and `hxsl` (shader compiler), so the port covers the layers above them.
+
+Kept from Heaps: row-vector matrices and `local * parent` world transforms; the `posChanged` lazy sync of `h3d.scene.Object`; Material → Pass → render state; a Renderer that owns an ordered list of passes; depth in `[0, 1]`.
+
+Changed on purpose:
+
+- **Y up, right-handed** (Heaps: Z up, left-handed). glTF, the Blender exporter and the spike are Y up.
+- **Fixed sokol-shdc programs instead of hxsl shader lists.** A Material names one program and carries its uniform values. Composable fragments stay deferred (`docs/SHADER.md` Tier 3).
+- **The renderer consumes a draw list, not the scene tree.** Heaps' `emitRec` fills per-pass object lists during the walk; here the scene flattens to `Vec<DrawItem>` only when its structure changes, and each frame only rewrites world matrices. The renderer works (and is tested) with no scene at all.
+
+Not ported: `hxsl`, `h3d/impl`, PBR (`scene/pbr`, `shader/pbr`), shadow maps, skinning (`anim/Skin`, `scene/Skin`), `World`/`HierarchicalWorld`, `GpuParticles`, `MeshBatch`/`Batcher` beyond instanced billboards, `RenderGraph`, `CameraController`.
+
+## Data types
+
+Storage is a plain retained tree: a Hibernal scene is tens of objects, and at that size layout costs nothing measurable. What is taken from [SCENE-SCALE.md](SCENE-SCALE.md) is how the **types** are cut, so that the tree could be moved to columns later without changing callers:
+
+- **Per-node state is value structs grouped by the pass that reads it.** `Transform3D { position: Vec3; rotation: Quat; scale: Vec3 }` is one field; `world: Mat4` is another. An `h3d.scene.Object` allocates four times (itself, `absPos`, `qRot`, `children`); here only the node and its `children` array allocate.
+- **Small node, kind data in side tables.** `Object3D` carries `kind`, `flags` (visible, posChanged, culled as bits), `local`, `world`, `children` and a `payload: int32` indexing the scene's `meshes: Vec<MeshInstance>` or `lights: Vec<Light>`. The opposite of `Node2D`'s 71 fields.
+- **Assets are CPU data plus GPU handles.** `MeshData` keeps its vertex/index arrays; GPU buffers are `uint32` handles created from them and can be recreated from them after context loss. The same holds for textures (palette LUT, billboard atlases) and pipelines.
+- **Frame state is preallocated.** Uniform blocks are `Vec<float32>` sized once; the draw list is rebuilt only on structural change; nothing in `frame` allocates.
+- **Handles into scene tables are indices**, not references, so a draw item or a pick result is a plain value.
+
+Possible feedback into void2d (not part of this plan): if the small-node + side-table split works here, `Node2D` is the obvious next candidate.
+
+## Milestones
+
+Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3 → V3/V4/T1 → A4 → … → A10 → A11). The render passes on device come first because A3 gates the rest, and the renderer does not need a scene to be tested.
+
+| # | Heaps source | Void deliverable | Unblocks | State |
+|---|---|---|---|---|
+| M1 | `Vector`, `Vector4`, `Matrix`, `Quat` | `src/math/math3d.ms`, 17 tests | V3 | **done** |
+| M2 | `mat/Pass` (render state), `mat/Material`, `impl/PipelineCache`, `mat/Texture` (targets) | Pipeline/pass creation from MetaScript through a flattened-descriptor bridge (`src/void3d/gpu3d.c`); render-state → pipeline cache; offscreen targets with depth; `DrawItem { mesh, material, world }` | V2, V1 (offscreen depth) | **done**, 12 tests |
+| M3 | `scene/Renderer`, `scene/fwd/Renderer`, `pass/PassList`, `pass/ScreenFx`, `pass/Copy`, `pass/Outline` | Renderer core (pass lists, context, screen passes) and a pixel-art preset on it, the look Hibernal needs: scene pass to MRT color + normal/depth, one post pass for outline + palette LUT, integer-scale blit with sub-pixel offset; preview path at reduced fidelity | V5, A3 | **done**, 16 tests |
+| M4 | `Camera` (ortho `orthoBounds`, `makeCameraMatrix`, `project`, `rayFromScreen`) | Ortho camera with fixed yaw/pitch, texel-grid snap, remainder handed to the blit | A4 camera | |
+| M5 | `prim/Primitive`, `Polygon`, `Cube`, `Plane2D`, `col/Bounds` | `MeshData` (position, normal, color; uint16 indices), GPU upload and rebuild, bounds; box/plane builders moved from the spike | A4, T1 | |
+| M6 | `scene/Object`, `scene/Mesh`, `scene/Scene` | `Object3D` tree, lazy world sync, scene → draw list; **campfire rebuilt on M2–M6, spike deleted** | A4 | |
+| M7 | `scene/Light`, `fwd/DirLight`, `fwd/PointLight`, `shader/AmbientLight` | Directional + point light as scene nodes, toon ramp levels as a material parameter | A4 lights | |
+| M8 | — (Heaps loads HMD/FBX) | glTF subset loader: one buffer, positions, normals, `COLOR_0`, one mesh per node, node TRS | V4 | |
+| M9 | `anim/Animation`, `anim/LinearAnimation`, `anim/BufferAnimation` | Object keyframes and vertex-baked frames, both stepped at a fixed rate (12 fps) | A4 idle, replay | |
+| M10 | `col/Ray`, `col/Bounds`, `scene/Interactive` | Tap → ray → nearest object by bounds, then by triangle | A4 touch | |
+| M11 | `parts/Emitter`, `parts/Particles` (CPU) | Snow and embers on the instanced billboard path; palette LUT swap and desaturation as renderer parameters | A11 | |
+
+### M2 as built
+
+- **Bridge.** `gpu3d.c` turns flat arrays into `sg_*_desc` and nothing else: a program table (`Program` → `*_shader_desc(sg_query_backend())`), three vertex layouts (`Lit`, `Billboard` with an instance buffer in slot 1, `Fullscreen`), and ordinal → sokol tables for every enum, each with a `_Static_assert` on its length against the MetaScript enum (order is still kept by hand). Descriptor layouts are `static const int32_t` in `gpu3d.h`, the one form of constant msc imports from a header. Front faces are CCW.
+- **MetaScript side.** `gpu3d.ms` (enums, uniform slots, thin wrappers), `pass.ms` (`RenderState`: culling, depth, blend, colorMask, `setBlendMode`; `bits()`/`fromBits` like `Pass.bits`/`loadBits`), `target.ms` (`RenderTarget` with attachment + optional texture view, `Sampler`, attachments with load/clear, `TargetLayout`, `beginPass`), `pipelineCache.ms` (`PipelineKey`, 64 bits = layout, program, target formats, state bits, decodable back into its parts; lazy `pipelineFor`), `material.ms` (program + render state + textures + uniform block), `draw.ms` (`GpuMesh`, `DrawItem`, `DrawContext` with a uniform pool sized once, `drawItems`).
+- **Diagnostics.** `toString` on `RenderState`, `TargetLayout` and `PipelineKey` prints one line (`program=Billboard layout=Billboard colors=Rgba8,Rgba8 depth=Depth sampleCount=1 culling=None …`), the role of Heaps' `CachedPipeline.getFields`: when a cache miss is unexpected, print both keys. It allocates, so it stays out of the frame loop.
+- **Rebuild after context loss.** Targets keep size and format, samplers keep their settings, the pipeline cache keeps its keys (`forgetPipelines` drops handles, the next `pipelineFor` rebuilds). Meshes and data textures are uploaded from buffers the spike does not keep; their CPU copies come with M5.
+- **Not yet used:** `DrawItem.world` (the programs take world-space vertices; the model matrix comes with M6), index buffers (M5 adds the pipeline index type), `Face.Both`, stencil, per-target color masks.
+- **Acceptance.** The campfire's setup and frame order were in `src/examples/campfirePasses.ms` (replaced by the renderer in M3); `pass3d.c/.h` are deleted. A D3D11 readback of the resolved swapchain at 1280×720, frames 1, 6, 11 and 16 (different flicker and flame frames), is byte-identical before and after. The cache creates 4 pipelines over the run (grass and flame share one). The arm64 Android `.so` builds.
+
+### M3 as built
+
+- **Core and preset, as in Heaps.** Heaps splits its renderer into a base that draws nothing (`h3d.scene.Renderer`: pass lists, sorting, targets, `effects`), presets built on it (`fwd.Renderer`, `pbr.Renderer` with `RenderProps`; a game subclasses one, as `samples/Sao.hx` does for SSAO) and building blocks (`h3d.pass.*`). void3d keeps the same three layers, so Void stays a pure rendering library and no game is favored:
+  - **Core** (`renderer.ms`, `scene/Renderer`). `Renderer` owns the pass lists, the camera and light uniform blocks, the screen triangle and the GPU context bookkeeping. A preset calls `beginFrame` (adopts a new context, uploads camera and lights, fills and sorts the pass lists; returns true when the preset must rebuild its own GPU objects), `drawPassLists` (Heaps' default, alpha, additive), `drawScreen` (ScreenFx over the current pass) and `endFrame`, in its own order. It takes a `Span<DrawItem>` and the camera block, never a scene. `markChanged` / `needsFrame` live here.
+  - **Pixel-art preset** (`pixelArtRenderer.ms`, in the role of `scene/fwd/Renderer`). `PixelArtRenderer` wraps the core and owns the four low-res targets (color, normal, depth, post), the sampler, the palette LUT and the post/blit materials. `renderFrame(renderer, context, items, camera, lights, view)` runs the stages of `planStages(settings)`: `Scene` (the core's pass lists into MRT color + normal with a depth attachment), `Post`, `Blit`. `PixelArtSettings` and `PixelArtLook` (outline, fog, background) and the palette are all the caller's; Hibernal's numbers are only the defaults of `PixelArtSettings.full()`. `PixelArtRenderer.create` reserves `PIXEL_ART_UNIFORM_LENGTH` floats (core blocks included) and makes no GPU object; the first frame does.
+  - **Building blocks**: `passList.ms`, `screenFx.ms`, `blit.ms`, `palette.ms` below, usable by any other preset.
+- **Why composition, and where polymorphism goes.** Nothing calls "some renderer" yet: Hibernal and the campfire use `PixelArtRenderer` directly, so there is no polymorphic call site and the preset simply calls the core's functions (static calls, no allocation, value types throughout). Heaps' `process()` → abstract `render()` is the only template method in its base; here `beginFrame`/`endFrame` are its preamble and epilogue and the preset's `renderFrame` is `render()`. The static form of that template method (a generic `runFrame<P>(ref core, ref preset: P)` calling an exported extension on `P`) does not build on 0.2.53 (see "Waiting on a newer msc"). Polymorphism arrives with `h3d.impl.RendererFX` (M11: desaturation for a Fading pet, later bloom): effects plugged into the steps of any preset, a heterogeneous list at runtime, so an `interface` with function-typed fields as Neon's `Host` seam does, or a discriminated union if void3d keeps the set closed. Decided when M11 lands.
+- **Pass lists** (`passList.ms`, from `pass/PassList`). `Material.phase` (`Opaque`, `Alpha`, `Additive`: fwd.Renderer's "default", "alpha", "additive") picks the list; `collect` keeps item order, `sortBackToFront` is `depthSort` (stable insertion sort on clip z of the item's world translation). Index storage grows only with the item count. Sorting has nothing to do until M6 fills `DrawItem.world`.
+- **Screen passes** (`screenFx.ms`, from `pass/ScreenFx`, `Copy`, `Outline`). A screen effect is an ordinary `Material` on the `Fullscreen` layout drawn as one item over one triangle, so it goes through the pipeline cache like the scene. Materials now carry four textures and two samplers.
+- **Post pass**, one program (`postFs`): outline from depth + normal edges, depth fog, then palette quantization, which reads only the outlined pixel, so one pass is enough. `features` switches outline, palette and the depth source per frame through uniforms; no switch makes a new pipeline.
+- **Palette LUT** (`palette.ms`). `levels`³ cells (16 by default, up to 32) stored `levels²` × `levels`, cell (r, g, b) at x = r + b·levels, y = g; the post shader rounds each channel to a level and fetches. `fill` maps every cell to the nearest palette color (0xRRGGBB, weighted squared RGB 2:4:3, first wins a tie) into CPU pixels; `upload` sends them to one dynamic image, so a palette swap rewrites pixels and never touches a pipeline. An unfilled LUT is the identity at its level count. `setPalette` fills; the `palette` setting turns it on.
+- **Blit** (`blit.ms`). `lowResView(framebuffer, shortSide, divisor, margin)`: scale = max(1, short side / 360) × divisor, the target covers the framebuffer rounded up to whole texels plus `margin` on every side, the overhang is split between both sides. `withRemainder(x, y, originTopLeft)` adds the camera's snap remainder (true minus snapped position, low-res texels along the camera's right and up, each in [0, 1)) as `remainder × scale` framebuffer pixels; up is −y on D3D11/Metal and +y on GL (`gpu3d originTopLeft`). M4 supplies the remainder and should set `margin: 1` so a shift never samples past the edge. The blit writes alpha 1.
+- **Preview** (`PixelArtSettings.preview()`, RENDERER-BRIEF §4.1): half resolution (180×400 at 6× on 1080×2400) and no outline, same palette and pipelines. `postPass: false` goes further: the blit reads the scene color directly, with no outline, fog or palette. Frame rate stays the host's.
+- **Nothing changed** (V6). The core's `needsFrame()` is true after `markChanged` (which the scene calls until M6 tracks its own dirty state) or on a new GPU context; the preset's `needsFrame(view)` adds any setting, look or palette change and a new view (size or sub-pixel offset). `endFrame` clears it.
+- **Acceptance.** With the palette off, a D3D11 readback of the campfire (1280×720, frames 1, 6, 11, 16) is byte-identical to M2 and to the pre-M2 images. With the sample night palette (`CAMPFIRE_PALETTE`, 21 colors) the frames are quantized as expected and stable across runs. Preview, `postPass: false` and `DepthSource.DepthTexture` were each captured and render correctly. The arm64 Android `.so` builds. `campfirePasses.ms` is deleted; the campfire's materials and meshes moved into `campfireScene.ms`, which calls the renderer (`configureCampfire(settings, palette)` selects a configuration for the checks).
+- **HLSL note.** fxc warns `X4000: use of potentially uninitialized variable (depthAt)` when it inlines the post shader's `depthAt` into the edge loop; the generated HLSL initializes the variable on every path and the output is unaffected.
+
+M3 and M6 end with the campfire running on D3D11 here and as a `.so` for Android. Every milestone adds headless tests to `src/test/` for whatever does not need a GPU (math, camera snap, bounds, sync, glTF parsing, animation stepping, picking).
+
+### Android lifecycle (V6), alongside from M3
+
+- The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
+- **Context loss, done in M3 without a device.** `voidEmbedFrame` checks `eglSwapBuffers`; on `EGL_CONTEXT_LOST` the next frame calls `sg_shutdown`, destroys the old surface and context, makes new ones on the same window (or pbuffer), runs `sg_setup` again and bumps a generation (`voidGpuGeneration`, read through `gpu3d contextGeneration`). `voidEmbedLoseContext()` forces the same path, to exercise it on a device. After `sg_setup` sokol hands out ids from fresh pools, so an old handle can name a new object: the renderer **drops** its handles without destroying them (`RenderTarget.forgotten`, `forgetGpu`, `forgetPipelines`) and rebuilds targets, sampler, screen triangle, pipelines and the palette LUT from CPU data on the frame that sees the new generation.
+- **Still missing:** the app's meshes and data textures (the spike uploads them from buffers it does not keep; M5 keeps `MeshData` on the CPU and replays uploads on the same generation check), and void2d's resources. Nothing of this path has run on a device.
+- `EGL_DEPTH_SIZE` stays 0: the scene renders offscreen with its own depth attachment, and the swapchain only receives the blit.
+- Frame pacing (30 / ~10 / on demand) is the host's call; `needsFrame` says whether the next frame would differ from the last (M3 as built).
+
+## Open questions
+
+- **Depth for edge detection, answered for the code, open for the device.** In the vendored sokol (6c3fa5ac) `SG_PIXELFORMAT_DEPTH` is `GL_DEPTH_COMPONENT32F` on GLES3, created as a real texture when single-sampled and marked sampleable but not filterable (`_sg_pixelformat_srmd`); a shader reads it with `texelFetch` through `@image_sample_type … unfilterable_float` and a `nonfiltering` sampler, which GLES 3.0 allows for sized depth formats with compare mode off. D3D11 uses `R32_TYPELESS` with an `R32_FLOAT` view. So the renderer takes it as a setting, `DepthSource.NormalAlpha` (default, the spike's 8-bit copy) or `DepthTexture`; GL stores (z + 1) / 2, which the post pass unpacks (`depthUnpack`). On D3D11 `DepthTexture` changes about 15% of the campfire's pixels: fog loses its 8-bit banding, and the normal-edge test (`|Δdepth| < depthThreshold`) flips on sloped stone faces, peak difference 85/255. The outline thresholds were tuned against 8-bit depth, so switching means retuning them. Which source ships is decided on the Seeker with RENDERER-BRIEF §10 Q4 (`RGB10_A2` vs `RGBA8` normals); M3 depends on neither.
+- **One post pass or two, answered: one.** The palette quantizes the pixel the outline and fog just produced and reads no neighbor, so it runs at the end of the same fragment (`postFs`).
+- **Device.** Nothing here has run on the Seeker yet; the Android `.so` has only been built. The first on-device run is the checkpoint after M3: the post shader under GLES3, the depth-texture path, the context-loss rebuild (`voidEmbedLoseContext`) and the palette LUT's dynamic image.
+
+## Compiler notes (msc 0.2.53)
+
+Hit while writing M1 to M3, each worked around in void, none checked against a newer msc. Repros for the M2 and M3 ones are small enough to rebuild from the description.
+
+- A second `` `*` `` overload on the same receiver type is invisible to importing modules: the C backend emits a raw `*` on two structs. In the defining module both overloads resolve. Workaround: one `` `*` `` per receiver (`Vec3 * Mat4`); scaling is `scaled()`.
+- A float literal in arithmetic inside a struct-literal field widens to `float64`: `const p: P = { a: 2.0 * (x + x) }` with `a: float32` is a type error, the same expression in a `float32` local is not. Workaround: `float32` locals for the constants.
+- **`span[0]` into a header-imported pointer parameter passes a copy (wrong code, no diagnostic).** `import { f } from "x.h"` maps `const float *` to `Borrow<float32>`; called as `f(s[0], s.length as int64)` with `s: Span<float32>`, the C is `float tmp = …; f(&tmp, len)`, so C reads one real element and then garbage (a sum over `[1, 2, 3, 4]` returns `-1.8e38`). The same call on a `Vec` (`v[0]`) is correct. On the GPU it crashed inside the driver. Workaround: declare array-taking functions as `extern function f(data: Span<float32>)`, which lowers to the header's `(const float *, int64_t)` pair (`gpu3d.ms`).
+- **The same header imported from two directories compiles its `.c` twice.** `lib/m.ms` imports `./x.h`, `app/main.ms` imports `../lib/m` and `../lib/x.h`: link fails with `duplicate symbol` because the second path is not normalized (`src/test/../void3d/gpu3d.c`). Workaround: only `src/void3d` imports `gpu3d.h`; tests reach its values through the `.ms` modules.
+- **`==` on a struct over 24 bytes fails C compile**, in the defining module too: the generated `TEq` takes values, the call site passes pointers (`struct Big { a..g: int32 }`, `x == y`). Two-field structs work. Workaround: compare fields (`sameState` in `pipelineCheck.ms`) or packed bits.
+- Header import sees functions and `static const` values only: `#define` and `enum` constants are `Undefined variable`, and `export { X } from "./x.h"` is rejected. That is why `gpu3d.h` spells its layouts as `static const int32_t`.
+- **Extension methods come with any import from their module; do not import them by name.** `collectImport` registers every exported extension of the source module (`autoPropagateModuleExtensions`), so `import { RenderState } from "./pass"` is enough for `state.bits()`, `RenderState.defaults()` and `state.toString()`. Importing one by name adds a module-scope symbol of that name, and if the module also defines an extension with the same name (`import { A, toString } from "./a"` plus its own `toString(this c: C)`), the two merge into one broken overload set with no diagnostic: importers of that module get the default JSON for `c.toString()`, or an undefined-symbol link error. The void3d modules import types, constants and free functions only. The same holds for a value reached through another module: `screenKey(stage).toString()` in a file that imports `renderer` but nothing from `pipelineCache` prints `{"bits":…}`; `rendererCheck.ms` imports `PipelineKey` for that.
+
+What the tools say about the entries above (measured 2026-09-20): the Borrow copy, the struct `==`, the double `.c` compile and a same-name extension clash all give **no** checker or LSP diagnostic. The `==` fails in clang on the generated C (mangled names, no `.ms` line), the double compile in `lld-link` (`duplicate symbol`), the clash as either a wrong result or an undefined-symbol link error; the only hint for the clash is an `'toString' is imported but never used` warning at the importer, and LSP hover/definition returning `null` on the call. Importing an extension by name when nothing clashes gives no message at all.
+
+- **`msc lsp` on Windows answers one message late.** `msStdinHasData` (`runtime/io/streams.h`) uses `WaitForSingleObject` on the stdin handle, which is always signalled for a pipe, so the drain loop blocks in `fgets` on the next message before handling the current one; `initialize` alone gets no reply. Sending a batch and closing stdin makes it process everything (`out/tmp/diag/lspBatch.py` does that).
+- **`msc check` does not resolve relative imports** (`Cannot resolve module './s'`, from any working directory, with a relative or absolute entry path), so it reports errors on files that build and test clean. Use `msc build` / `msc test` to type-check.
+- **`msc build` does not rebuild when only a header that a compiled `.c` includes changed.** `main.ms` with `@compile("./value.c")`, `value.c` including `value.h` (`#define VALUE 1`), `extern function readValue(): int32`: build and run print `1`; change `value.h` to `2`, and `msc build` answers `Up to date` and the binary still prints `1` (repro in `out/tmp/cacheRepro`). Here that is every shader edit: `scripts/regen-shaders.sh` rewrites `shader3d.glsl.h`, `gpu3d.c` does not change, and the old shader stays in the binary. Workaround: after regenerating shaders, `rm out/debug/<entry>.exe out/debug/.cache/*gpu3d*` before building.
+- `Math.min` / `Math.max` on two `int32` return `float64` on 0.2.53 (CODE-STYLE, measured on 0.2.54, has them generic): `const n: int32 = Math.min(a, b)` is `implicit float64 → int32 narrowing`. The void3d code writes `Math.min(a, b) as int32`, which stays right when they become generic; `src/examples/campfireScene.ms` does not, hence its patched copy in `out/tmp`.
+- A function cannot return a `Span` on 0.2.53 (`cannot return Span<int32>: a Span borrows memory owned by its source`), though CODE-STYLE lists it as measured. `passList.ms` draws its own entries (`drawPassList`) instead of handing out a `Span<int32>` of them.
+- An `extern function` gets no C prototype from msc: the call compiles only if an imported header (or `@include`) declares it. On the Android clang an extern inside `when (android)` with no header was `call to undeclared function` (`-Wimplicit-function-declaration` is an error there). `gpu3d.c` wraps the Android-only `voidGpuGeneration` behind `#if defined(__ANDROID__)` instead.
+
+### Waiting on a newer msc
+
+Measured absent on 0.2.53; CODE-STYLE (measured on 0.2.54) asks for each of them here.
+
+- `BitSet<E>` (`Unresolved type 'BitSet'`): `RenderState.colorMask` should be `BitSet<ColorChannel>` with `Red, Green, Blue, Alpha`, whose ordinals are exactly Heaps' and sokol's mask bits 1, 2, 4, 8.
+- `distinct` (`Unresolved type 'distinct'`): the `uint32` handles for buffers, images, views, samplers and pipelines should be distinct types so that a view passed where a buffer is expected (`draw.ms` `bindItem`) is a compile error.
+- A generic `ref` parameter (measured 2026-09-20): `function runFrame<P>(ref core: Core, ref preset: P)` calling `preset.drawStages(…)` (an exported extension on the caller's struct) fails with `cannot instantiate: 'P'` at `runFrame(core, pixel)`, and `runFrame<Pixel>(core, pixel)` fails at link (`undefined symbol: runFrame__Pixel_…`); the same function with a value `preset: P` builds and dispatches statically. It is what a core-driven renderer (Heaps' `process()` → `render()`) needs.
+- A `ref` receiver (`ref this c: T` and `this ref c: T` are both parse errors): `pipelineFor`, `addMesh`, `addMaterial`, `reserveUniforms` and `writeUniforms` would become methods on the cache and the context, and `renderFrame`, `setSettings`, `setLook`, `setPalette`, `markChanged`, `beginFrame`, `drawPassLists`, `drawScreen`, `endFrame`, `collect`, `sortBackToFront`, `fill` and `upload` methods on the renderers, pass list and LUT.
 
 ## Deferred from void2d: 3D text + SDF
 
-Text shares **one** glyph layer with void2d — see the survey + rationale in [VOID2D.md → Text design](VOID2D.md#text-design-2026-06-21-one-shared-glyph-layer-two-consumers--bitmap-now-sdf-later). Carry-overs for void3d:
+Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](VOID2D.md#text-design-2026-06-21-one-shared-glyph-layer-two-consumers--bitmap-now-sdf-later). Carry-overs for void3d:
 
-- **Same glyph quads, different transform.** The font layer (fontstash) emits backend-neutral `quad + UV + atlas`. void2d feeds them through the screen-space ortho path; void3d feeds the **same** quads through the camera MVP (world space, perspective, depth-tested). No second text system.
-- **3D-text consumer = billboard or text-mesh.** Billboard = a flat quad in world space that always faces the camera (Godot `Label3D`, Unity world `TextMeshPro`). Text-mesh = extruded glyph geometry (Godot `TextMesh`). Start with billboard; mesh only if a use case demands it.
-- **Atlas upgrade bitmap → SDF.** Bitmap atlas (fontstash default, used by void2d) blurs/jaggies under 3D perspective + scaling. World-space text wants **SDF** (Unity adopted SDF for exactly this; high end = GPU-from-outline / Slug). When void3d adds crisp world text, swap the atlas rasterization to SDF — the glyph-quad interface stays the same, so void2d is unaffected.
+- **Same glyph quads, different transform.** The font layer (fontstash) emits backend-neutral `quad + UV + atlas`. void2d feeds them through the screen-space ortho path; void3d feeds the **same** quads through the camera MVP (world space, depth-tested). No second text system.
+- **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
+- **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected.
 
 ## Reference
 
-- [HEAPS.md](HEAPS.md) — `h3d.scene` / `h3d.mat` (Pass + ShaderList) object + material model; the 3D scene-graph reference (Dawn-era doc, GPU-layer notes superseded by sokol).
+- [HEAPS.md](HEAPS.md) — `h3d.scene` / `h3d.mat` object and material model.
+- [SCENE-SCALE.md](SCENE-SCALE.md) — how node data is typed and grouped (used here for types only, not storage).
 - `~/projects/oryol` — module discipline + the `Gfx` tier that sokol_gfx descends from.
-- Same scope discipline as void2d: a thin render layer, **not** a scene graph / ECS / physics engine. Camera/mesh/material helpers live here; higher-level game systems are layers above, pulled in per use case.
+- Same scope discipline as void2d: a thin render layer, **not** a scene graph engine / ECS / physics. Higher-level game systems are layers above, pulled in per use case.

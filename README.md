@@ -46,7 +46,7 @@ scripts/build-android.sh                # arm64 .so for android/; ENTRY= picks t
 
 ## Docs
 
-[void2d](docs/VOID2D.md) · [void3d](docs/VOID3D.md) · [shaders](docs/SHADER.md) · [C interop](docs/CINTEROP.md)
+[sokol](docs/SOKOL.md) · [void2d](docs/VOID2D.md) · [void3d](docs/VOID3D.md) · [shaders](docs/SHADER.md) · [C interop](docs/CINTEROP.md)
 
 ## License
 

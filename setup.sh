@@ -21,8 +21,12 @@ SOKOL_TOOLS_REV="11d0cf678105d614d675e6d9bd2aaf3eeff12f8c"
 FONTSTASH_REV="b5ddc9741061343740d85d636d782ed3e07cf7be"
 STB_REV="2c980bb59875b0d32144a71867fbdebb2f77cd20"
 
+# Our sokol fork (docs/SOKOL.md): Void-local patches sit on its `void` branch
+# until upstream merges them, so a pin may name a commit floooh/sokol lacks.
+SOKOL_FORK="${SOKOL_FORK:-$HOME/projects/sokol}"
+
 fetch() {
-	name="$1"; repo="$2"; rev="$3"
+	name="$1"; repo="$2"; rev="$3"; fork="$4"
 	dest="deps/$name"
 	if [ ! -d "$dest/.git" ]; then
 		echo "cloning $repo"
@@ -30,13 +34,17 @@ fetch() {
 	fi
 	if [ "$(git -C "$dest" rev-parse HEAD)" != "$rev" ]; then
 		git -C "$dest" fetch -q origin
+		if [ -n "$fork" ] && ! git -C "$dest" cat-file -e "$rev^{commit}" 2>/dev/null; then
+			[ -d "$fork/.git" ] || { echo "$name: $rev is not upstream and fork $fork is missing"; exit 1; }
+			git -C "$dest" fetch -q "$fork" void
+		fi
 		git -C "$dest" checkout -q "$rev"
 	fi
 	echo "$name @ $(git -C "$dest" rev-parse --short HEAD)"
 }
 
 mkdir -p deps
-fetch sokol           floooh/sokol           "$SOKOL_REV"
+fetch sokol           floooh/sokol           "$SOKOL_REV" "$SOKOL_FORK"
 fetch sokol-tools-bin floooh/sokol-tools-bin "$SOKOL_TOOLS_REV"
 fetch fontstash       memononen/fontstash    "$FONTSTASH_REV"
 fetch stb             nothings/stb           "$STB_REV"

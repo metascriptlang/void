@@ -87,7 +87,7 @@ Weak spots in GPUI's text path: 112-byte glyph instances carrying HSLA and a `Tr
 | Blend / colour | Premultiplied; Alpha, Add, Multiply, Screen, None; colorMatrix, colorAdd, colorKey; nearest sampling | One blend |
 | Offscreen | Render targets; filters on any subtree; group opacity is possible | No render-target API; opacity is multiplied into each primitive, so overlapping children of a translucent parent double-blend (`W:4038-4054`) |
 | Retention | Retained tree: a node that did not change need not be rebuilt | Tree, layout and scene rebuilt every frame |
-| 3D | Depth, MRT, low-res pass + post + blit (`void3d/pass3d.c`) | No depth buffer anywhere |
+| 3D | Depth, MRT, low-res pass + post + blit (`void3d/renderer.ms` core, `pixelArtRenderer.ms` preset, on the `gpu3d.c` bridge) | No depth buffer anywhere |
 | Custom shaders | Own the pipeline | Closed |
 | Size | ~6k hand-written lines | ~150k |
 

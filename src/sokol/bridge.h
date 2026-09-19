@@ -25,6 +25,11 @@ void voidEmbedFrame(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 
+// Android only: the GPU context generation (bumped when a lost EGL context is rebuilt) and a
+// switch that forces that rebuild on the next frame.
+int voidGpuGeneration(void);
+void voidEmbedLoseContext(void);
+
 void voidGfxSetup(void);
 int voidFbWidth(void);
 int voidFbHeight(void);
