@@ -19,6 +19,13 @@ export struct LowResView {
 	offsetY: float32;
 }
 
+// A point in either of the two grids the blit maps between — framebuffer pixels and low-res
+// texels — continuous, and in the framebuffer's row order.
+export struct ViewPoint {
+	x: float32;
+	y: float32;
+}
+
 export enum ViewError {
 	EmptyFramebuffer,
 	BadShortSide,
@@ -71,6 +78,29 @@ export function withRemainder(
 	const scale: float32 = view.scale as float32;
 	const up: float32 = originTopLeft ? -remainderY * scale : remainderY * scale;
 	return { ...view, offsetX: view.offsetX + remainderX * scale, offsetY: view.offsetY + up };
+}
+
+// The blit shader's own mapping, minus its floor: `texel = floor((fragment + offset) / scale)`
+// without the floor is where inside the low-res image a framebuffer point reads from, and
+// `framebufferAt` is that read the other way round. The camera goes through both — screen to
+// world and back (camera.ms `rayFromScreen`, `project`) — so the formula is written once here
+// and never restated against the shader.
+export function texelAt(
+	this view: LowResView,
+	framebufferX: float32,
+	framebufferY: float32,
+): ViewPoint {
+	const scale: float32 = view.scale as float32;
+	const x: float32 = (framebufferX + view.offsetX) / scale;
+	const y: float32 = (framebufferY + view.offsetY) / scale;
+	return { x: x, y: y };
+}
+
+export function framebufferAt(this view: LowResView, texelX: float32, texelY: float32): ViewPoint {
+	const scale: float32 = view.scale as float32;
+	const x: float32 = texelX * scale - view.offsetX;
+	const y: float32 = texelY * scale - view.offsetY;
+	return { x: x, y: y };
 }
 
 // The blit shader's `pixel` uniform: scale twice, then the offset.
