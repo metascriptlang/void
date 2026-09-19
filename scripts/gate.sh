@@ -26,6 +26,10 @@ fails=0
 skips=0
 d3d11_conformance="not run"
 
+# out/ is gitignored, so on a clean clone the first redirect into it would abort under set -e
+# before any step had a chance to report.
+mkdir -p out out/golden
+
 pass() { echo "PASS  $1"; }
 fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $1"; skips=$((skips + 1)); }
@@ -63,7 +67,9 @@ if [ "$QUICK" -eq 1 ]; then
 	skip "golden suite: --quick"
 else
 	if sh scripts/golden.sh > out/gate-golden.log 2>&1; then
-		d3d11_conformance="$(grep -E '^golden ' out/gate-golden.log)"
+		# `|| echo` matters under set -e: a bare assignment whose command substitution fails
+		# takes grep's status and kills the gate mid-run, with no summary and no message.
+		d3d11_conformance="$(grep -E '^golden ' out/gate-golden.log || echo 'no conformance line in the log')"
 		pass "$d3d11_conformance"
 		grep -E '^(PENDING|  harness/mustFail)' out/gate-golden.log | sed 's/^/      /' || true
 	else

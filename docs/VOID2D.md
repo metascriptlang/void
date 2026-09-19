@@ -159,7 +159,7 @@ For scale: GPUI's glyph instance is 112 B, Makepad's ~116 B, Ghostty's 32 B (int
 Each carries the phase that closes it. Each also becomes a listed, failing case in `tests/PENDING.md` at P0, so a defect is a failing test before it is a fixed defect and the entry is deleted in the same commit as the fix ([TESTING.md](TESTING.md) "PENDING").
 
 - **Atlas-full drops glyphs silently**: a fixed 512² atlas (`void2d/batcher.c:147-148`) and no `FONS_ATLAS_FULL` handler; `fons_resize` would leak the old image and view (`:61-65`). — **P1** holds it (handler + leak), **P3** removes the class with fontstash.
-- **At most ~126 Labels/Graphics render**: each owns an `sg_buffer` and sokol's default pool is 128. Measured: at 10 000 labels, `buffersAlive` 126 and `buffersFailed` 9 874 (`tests/bench/baseline.json`), and the golden `regress/nodeCap` shows labels 0–125 drawn and 126–199 absent. — **P1**, one growing instance buffer.
+- **At most ~126 Labels/Graphics render**: each owns an `sg_buffer` and sokol's default pool is 128. Measured: at 10 000 labels, `buffersAlive` 126 and `buffersRefused` 9 874 (`tests/bench/baseline.json`), and the golden `regress/nodeCap` shows labels 0–125 drawn and 126–199 absent. — **P1**, one growing instance buffer.
 - **Node filters do not work at all, and take the whole frame with them.** `drawFiltered` (`void2d/render.ms:216-283`) opens a render-target pass inside the swapchain pass. Measured at P0: a debug build trips `Assertion failed: !_sg.cur_pass.valid` (`sokol_gfx.h:27214`) and the process dies; a release build presents a frame that is nothing but the clear colour, including the siblings drawn before and after the filtered node, because the nested `begin2d` discards the pending batch and the pass bracketing never recovers. The path has never had a caller — no example and no test sets `Node2D.filter`, and `src/test/nodeCheck.ms` only builds the `Filter` structs. Five golden scenes are PENDING on it. — **P1**, per-target command lists hoisted.
 - **Filter semantics differ from h2d**: only children enter the target; alpha applied twice under Blur; the target is screen-space at dpi 1; children re-synced twice per frame. The blur kernel multiplies tap spacing by the radius (`shader2d.glsl:81-87`). — **P1**, semantics and kernel together, one regeneration of `filter/`.
 - **Fractional DPI puts every glyph off-grid**: `begin2d(wf as int32, hf as int32, dpi)` (`scene.ms:89`). — **P1**.
@@ -194,16 +194,19 @@ Seven phases. Each ends with something demonstrable; none leaves `src/examples/r
 
 | row | ui | sprites |
 |---|---|---|
-| nodes | 10 000 | 10 000 |
+| nodes | 20 000 | 10 000 |
+| retainedNodes | 10 000 | 0 |
 | draws | 253 | 1 |
-| buffersAlive | 126 | 0 |
-| buffersFailed | 9 874 | 0 |
-| nodesDrawn | **126** | 10 000 |
+| buffersAlive | **126** | 0 |
+| buffersRefused | 9 874 | 0 |
 | present.ms | 4.48 | 1.73 |
 
-`buffersFailed` is the ~126-node cap as a number: past sokol's 128-object default pool every
-`sg_make_buffer` comes back in the FAILED state and its draws are dropped. Counters gate;
-milliseconds report with a warn threshold at 1.5× and never fail a commit.
+`retainedNodes` is how many nodes ask for a GPU buffer — the Labels; cards and sprites go
+through the dynamic batcher and own none. So the UI pair reads as **10 000 labels asked,
+126 drew**, which is the ~126-node cap as a number: past sokol's 128-object default pool
+every `sg_make_buffer` is refused. `buffersRefused` is monotonic, so a scene that rebuilds a
+mesh every frame shows a larger number than the difference. Counters gate; milliseconds
+report with a warn threshold at 1.5× and never fail a commit.
 
 **Dependencies**, stated rather than implied:
 

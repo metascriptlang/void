@@ -72,14 +72,21 @@ function trim(text: string): string {
 	return text.substring(start, end);
 }
 
-function parseInt32(text: string, fallback: int32): int32 {
+// -1 for anything that is not a plain run of digits - an empty cell, the `-` placeholder the
+// PENDING table uses for non-image rows, or a number written with a thousands separator. A
+// budget that does not parse has to be reported as unparseable, not quietly read as zero,
+// which would come out as "over its budget (0 px, delta 0)" and send the author looking at
+// the renderer.
+const NOT_A_NUMBER: int32 = -1;
+
+function parseInt32(text: string): int32 {
 	const digits = trim(text);
 	const length: int32 = digits.length as int32;
-	if (length == 0) { return fallback; }
+	if (length == 0) { return NOT_A_NUMBER; }
 	let value: int32 = 0;
 	for (let i: int32 = 0; i < length; i++) {
 		const code: int32 = digits.charCodeAt(i) as int32;
-		if (code < "0".code || code > "9".code) { return fallback; }
+		if (code < "0".code || code > "9".code) { return NOT_A_NUMBER; }
 		value = value * 10 + (code - "0".code);
 	}
 	return value;
@@ -88,6 +95,8 @@ function parseInt32(text: string, fallback: int32): int32 {
 // tests/PENDING.md is a markdown table so that one file serves both a reader and the
 // harness. A row is `| id | tier | reason | phase | date | maxPixels | maxDelta |`, and only
 // rows whose id starts with `golden:` mean anything here.
+let malformed: int32 = 0;
+
 function readPendingBudgets(): PendingBudget[] {
 	const budgets: PendingBudget[] = [];
 	const lines = readLines(PENDING_PATH);
@@ -97,11 +106,15 @@ function readPendingBudgets(): PendingBudget[] {
 		if ((cells.length as int32) < 8) { continue; }
 		const id = trim(cells[1]);
 		if (!id.startsWith("golden:")) { continue; }
-		budgets.push({
-			id: id.substring("golden:".length as int32, id.length as int32),
-			maxPixels: parseInt32(cells[6], 0),
-			maxDelta: parseInt32(cells[7], 0),
-		});
+		const name = id.substring("golden:".length as int32, id.length as int32);
+		const maxPixels: int32 = parseInt32(cells[6]);
+		const maxDelta: int32 = parseInt32(cells[7]);
+		if (maxPixels == NOT_A_NUMBER || maxDelta == NOT_A_NUMBER) {
+			console.log(`FAIL ${PENDING_PATH} row golden:${name} has an unreadable budget: maxPixels '${trim(cells[6])}', maxDelta '${trim(cells[7])}'`);
+			malformed = malformed + 1;
+			continue;
+		}
+		budgets.push({ id: name, maxPixels: maxPixels, maxDelta: maxDelta });
 	}
 	return budgets;
 }
@@ -230,9 +243,12 @@ function runComparison(): int32 {
 
 	const total: int32 = rows.length as int32;
 	console.log("");
+	if (malformed > 0) {
+		console.log(`golden ${backend}: ${malformed} unreadable ${PENDING_PATH} budget row(s)`);
+	}
 	console.log(`golden ${backend}: ${passed} pass, ${pending} pending, ${failed} fail of ${total}`);
 	console.log(`pass rate ${(passed + pending) * 100 / total}%`);
-	return failed == 0 ? 0 : 1;
+	return failed == 0 && malformed == 0 ? 0 : 1;
 }
 
 process.exit(runComparison());

@@ -24,8 +24,10 @@ command -v python >/dev/null || { echo "SKIP web liveness: no python to serve we
 mkdir -p "$SHOTS"
 ( cd web && exec python -m http.server "$PORT" >/dev/null 2>&1 ) &
 server=$!
-sleep 2
+# Before the sleep, not after: a Ctrl-C in that window would otherwise leave the server
+# bound to the port and the next run would talk to the orphan.
 trap 'kill "$server" 2>/dev/null || true' EXIT
+sleep 2
 
 shot() {
 	backend="$1"
@@ -35,6 +37,10 @@ shot() {
 	else
 		out="$PWD/$SHOTS/$backend.png"
 	fi
+	# Remove the previous run's PNG first. Chrome's exit status is not usable here, so a
+	# crash or a 404 would otherwise be measured as the last run's screenshot and reported
+	# as a pass.
+	rm -f "$SHOTS/$backend.png"
 	"$CHROME" --headless=new --enable-unsafe-webgpu --use-angle=swiftshader \
 		--virtual-time-budget=8000 --window-size=800,600 \
 		--screenshot="$out" "http://localhost:$PORT/void2d.html?$backend" >/dev/null 2>&1 || true
