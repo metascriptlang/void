@@ -55,6 +55,15 @@ void2d's render base is a **hand-rolled quad batcher (~150 lines) on Void's own 
 | **Kha `graphics2`** | `~/projects/Kha` | "2D built on top of the GPU layer" generational pattern; how a 2D API maps onto a 3D/GPU backend + a fallback path. | Its full multi-target build system. |
 | **sokol_gp** (edubart) | not vendored — [github](https://github.com/edubart/sokol_gp) | Read its quad-batching + transform-stack approach as a model. | **Do not compile** (version mismatch, see decision above). |
 | **sokol_fontstash** | `deps/sokol/util/sokol_fontstash.h` ✅ | Text/glyph atlas on sokol_gfx — the text path for void2d (step after shapes). | — |
+| **GPUI** (Zed) | `~/projects/gpui` (sparse, `crates/gpui*` @ `b961b49`) · [docs/GPUI.md](GPUI.md) | **Primitive look + frame shape**: rounded-rect SDF (re-derived for local space), `erf` box shadow, per-pixel gradients, R8 multi-page glyph atlas; flat POD display list uploaded once per frame, drawn by ranges. | Taffy/elements/entities/hitboxes/a11y (Neon's job), BoundsTree reordering, pipeline per primitive kind, MSAA path intermediate, ClearType. |
+
+## Render quality (2026-09-19): absorb GPUI's techniques, keep the Heaps model
+
+void2d takes from GPUI **how a primitive is drawn** (SDF box, `erf` shadow, per-pixel gradient, glyph atlas) and **how a frame reaches the GPU** (display list → one upload → draw ranges). It keeps the `Node2D` tree, painter's order, an affine on every node, render-target filters and blend modes.
+
+The SDF cannot be ported as-is: GPUI evaluates it in device pixels on snapped, axis-aligned quads, which is why its quads never rotate. Under Void's per-node affine it is evaluated in local space, with the AA width derived from the transform and the quad inflated by ~1 device pixel. One unified UI pipeline (per-instance mode: box / shadow / glyph / image) beside one flat sprite pipeline keeps a UI subtree in tree order to about one draw call without reordering. The immediate face above becomes "append to the display list".
+
+Decision, gaps, guardrails, the nine-step sequencing and its measurement budget: [GPUI.md](GPUI.md).
 
 ## Text design (2026-06-21): one shared glyph layer, two consumers — bitmap now, SDF later
 
