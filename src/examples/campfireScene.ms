@@ -28,9 +28,14 @@ import {
 	setSettings,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { identity } from "../math/math3d";
+import { identity, Vec3, vec3 } from "../math/math3d";
 import { Rgba, Box, LIT_VERTEX_STRIDE, pushBox, pushGround } from "../void3d/mesh";
-import { OrthoCamera, vertexParams, writeVertexParams } from "../void3d/camera";
+import {
+	OrthoCamera,
+	CameraView,
+	CameraError,
+	CAMERA_BLOCK_LENGTH,
+} from "../void3d/camera";
 
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;
@@ -72,6 +77,7 @@ const stones: Vec<Box> = [];
 const flameBuffers: Vec<uint32> = [];
 const texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
 const lightParams: Vec<float32> = new Array(20);
+const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
 
 // Billboard quad corners (x across, y up), two triangles; instances supply root and size.
 const CORNERS: Vec<float32> = [
@@ -97,6 +103,8 @@ const FLAME_ITEM: int32 = 2;
 let firstFlameMesh: int32 = 0;
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
 let paletteWanted: boolean = false;
+let cameraSnap: boolean = true;
+let panTexelsPerFrame: float32 = 0.0;
 
 let sceneBuffer: uint32 = 0;
 let sceneVertexCount: int32 = 0;
@@ -420,6 +428,15 @@ export function configureCampfire(settings: PixelArtSettings, palette: boolean):
 	paletteWanted = palette;
 }
 
+// For the M4 checks: whether the camera snaps to the texel grid, and how far it slides along its
+// right axis each frame, in low-res texels. The default is the pixel-perfect camera; the M2/M3
+// baseline captures turn the snap off, because the spike's camera did not have one
+// (docs/VOID3D.md, M4 as built).
+export function configureCampfireCamera(snap: boolean, panPerFrame: float32): void {
+	cameraSnap = snap;
+	panTexelsPerFrame = panPerFrame;
+}
+
 export function initCampfire(): void {
 	gfxSetup();
 	buildScene();
@@ -438,34 +455,50 @@ export function initCampfire(): void {
 }
 
 export function frameCampfire(): void {
+	// The low-res target's size does not depend on the camera, so the view is made twice: once
+	// to learn the texel grid the camera snaps to, and once with the remainder that snap left.
 	const noRemainder: float32 = 0.0;
-	const viewed: Result<LowResView, ViewError> = renderer.viewFor(
+	const sized: Result<LowResView, ViewError> = renderer.viewFor(
 		fbWidth(),
 		fbHeight(),
 		noRemainder,
 		noRemainder,
 	);
-	if (!viewed.ok) { return; }
-	const view: LowResView = viewed.value;
+	if (!sized.ok) { return; }
+	const grid: LowResView = sized.value;
 
-	const shortSide: float32 = Math.min(view.width, view.height) as float32;
-	const pixelsPerUnit: float32 = shortSide / UNITS_ON_SHORT_SIDE;
-	const halfWidth: float32 = (view.width as float32) / (2.0 * pixelsPerUnit);
-	const halfHeight: float32 = (view.height as float32) / (2.0 * pixelsPerUnit);
-	const camera: OrthoCamera = {
+	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
+	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE / shortSide;
+	const centred: OrthoCamera = {
+		target: vec3(0.0, 0.0, 0.0),
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
-		halfWidth: halfWidth,
-		halfHeight: halfHeight,
-		distance: 50.0,
-		depthRange: 100.0,
+		worldPerTexel: worldPerTexel,
+		nearPlane: -50.0,
+		farPlane: 50.0,
+		snap: cameraSnap,
 	};
-	camera.writeVertexParams();
+	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
+	const target: Vec3 = centred.basisOf().right.scaled(slide);
+	const camera: OrthoCamera = { ...centred, target: target };
+	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
+	if (!resolved.ok) { return; }
+	const cameraView: CameraView = resolved.value;
+
+	const viewed: Result<LowResView, ViewError> = renderer.viewFor(
+		fbWidth(),
+		fbHeight(),
+		cameraView.remainderX,
+		cameraView.remainderY,
+	);
+	if (!viewed.ok) { return; }
+
+	cameraView.writeCameraBlock(cameraParams);
 	updateFlicker();
 	writeLightParams();
 
 	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
 	sceneItems[FLAME_ITEM].mesh = firstFlameMesh + flameFrame;
-	renderFrame(renderer, context, sceneItems, vertexParams, lightParams, view);
+	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	frameIndex = frameIndex + 1;
 }
