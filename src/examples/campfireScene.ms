@@ -1,16 +1,37 @@
+// The campfire spike: a hand-built scene drawn by the M3 renderer. Its meshes, camera and
+// lights are spike code until M4-M7 replace them; the spike is deleted with M6.
+
 import { gfxSetup, fbWidth, fbHeight } from "../sokol/gpu";
 import { sinf, cosf } from "../math/mat4";
-import { makeVertexBuffer, makeImage, makeTextureView } from "../void3d/gpu3d";
+import {
+	Program,
+	VertexLayout,
+	Filter,
+	Wrap,
+	makeVertexBuffer,
+	makeImage,
+	makeTextureView,
+} from "../void3d/gpu3d";
+import { RenderState, Face, Compare } from "../void3d/pass";
+import { Material, Phase } from "../void3d/material";
+import { Sampler } from "../void3d/target";
+import { DrawContext, DrawItem, addMesh, addMaterial } from "../void3d/draw";
+import { LowResView, ViewError } from "../void3d/blit";
+import { PaletteError } from "../void3d/palette";
+import {
+	PixelArtRenderer,
+	PixelArtSettings,
+	PixelArtError,
+	PixelArtLook,
+	PIXEL_ART_UNIFORM_LENGTH,
+	setPalette,
+	setSettings,
+	renderFrame,
+} from "../void3d/pixelArtRenderer";
+import { identity } from "../math/math3d";
 import { Rgba, Box, LIT_VERTEX_STRIDE, pushBox, pushGround } from "../void3d/mesh";
 import { OrthoCamera, vertexParams, writeVertexParams } from "../void3d/camera";
-import {
-	CampfireAssets,
-	CampfireView,
-	setupCampfirePasses,
-	renderCampfire,
-} from "./campfirePasses";
 
-const LOW_RES_SHORT_SIDE: int32 = 360;
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;
 const CAMERA_PITCH: float32 = 0.6;
@@ -51,7 +72,31 @@ const stones: Vec<Box> = [];
 const flameBuffers: Vec<uint32> = [];
 const texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
 const lightParams: Vec<float32> = new Array(20);
-const postParams: Vec<float32> = new Array(12);
+
+// Billboard quad corners (x across, y up), two triangles; instances supply root and size.
+const CORNERS: Vec<float32> = [
+	-0.5, 0.0, 0.5, 0.0, 0.5, 1.0,
+	-0.5, 0.0, 0.5, 1.0, -0.5, 1.0,
+];
+
+// A night palette for the palette-LUT check (0xRRGGBB): ground and grass blues, cool stone
+// greys, the warm tones of firelit stone and grass, wood browns and the flame ramp.
+const CAMPFIRE_PALETTE: Vec<uint32> = [
+	0x07080F, 0x0E1224, 0x18203D, 0x243259, 0x33477F, 0x4A64A8, 0x6F8AD6,
+	0x4F4A66, 0x6E6784, 0x8E86A6,
+	0x5E3F4F, 0x8A5A64, 0xB5766E, 0xD99A7E, 0xF2C29A,
+	0x2E1A17, 0x4F2E24,
+	0xC8502A, 0xF08A36, 0xFFC857, 0xFFF1B0,
+];
+
+let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+let renderer: PixelArtRenderer = createRenderer();
+let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
+const sceneItems: Vec<DrawItem> = [];
+const FLAME_ITEM: int32 = 2;
+let firstFlameMesh: int32 = 0;
+let settingsWanted: PixelArtSettings = PixelArtSettings.full();
+let paletteWanted: boolean = false;
 
 let sceneBuffer: uint32 = 0;
 let sceneVertexCount: int32 = 0;
@@ -65,6 +110,36 @@ let fireOffsetX: float32 = 0.0;
 let fireOffsetY: float32 = 0.0;
 let fireOffsetZ: float32 = 0.0;
 let fireFlicker: float32 = 1.0;
+
+// The spike's look: outline and fog tuned on the campfire, palette off.
+function campfireLook(): PixelArtLook {
+	return {
+		background: { x: 0.02, y: 0.02, z: 0.06, w: 0.0 },
+		outline: {
+			depthThreshold: 0.006,
+			normalThreshold: 0.6,
+			depthShade: 0.55,
+			normalShade: 1.35,
+		},
+		fog: {
+			start: 0.5,
+			end: 0.8,
+			strength: 0.85,
+			color: { x: 0.02, y: 0.02, z: 0.07, w: 0.0 },
+		},
+	};
+}
+
+// The pool is sized for exactly the renderer's blocks, so create cannot fail.
+function createRenderer(): PixelArtRenderer {
+	const created: Result<PixelArtRenderer, PixelArtError> = PixelArtRenderer.create(
+		context,
+		PixelArtSettings.full(),
+		campfireLook(),
+	);
+	if (created.ok) { return created.value; }
+	unreachable;
+}
 
 function nextRandom(): float32 {
 	randomState = randomState * RANDOM_MULTIPLIER + RANDOM_INCREMENT;
@@ -283,19 +358,66 @@ function writeLightParams(): void {
 	lightParams[19] = 0.0;
 }
 
-function writePostParams(): void {
-	postParams[0] = 0.006;
-	postParams[1] = 0.6;
-	postParams[2] = 0.55;
-	postParams[3] = 1.35;
-	postParams[4] = 0.5;
-	postParams[5] = 0.8;
-	postParams[6] = 0.85;
-	postParams[7] = 0.0;
-	postParams[8] = 0.02;
-	postParams[9] = 0.02;
-	postParams[10] = 0.07;
-	postParams[11] = 0.0;
+function item(mesh: int32, material: int32): DrawItem {
+	return { mesh: mesh, material: material, world: identity() };
+}
+
+// Materials, meshes and items: lit geometry, grass and one flame, all opaque (the billboards
+// discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
+function setupDraws(): void {
+	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
+	const cornerBuffer: uint32 = makeVertexBuffer(CORNERS);
+	const scene: RenderState = RenderState.defaults()
+		.withCulling(Face.None)
+		.withDepth(true, Compare.LessEqual);
+	const litMaterial: int32 = addMaterial(
+		context,
+		Material.plain(Program.Lit, scene, Phase.Opaque),
+	);
+	const grassMaterial: int32 = addMaterial(context, {
+		...Material.plain(Program.Billboard, scene, Phase.Opaque),
+		texture0: grassTexture,
+		sampler0: pointSampler.handle,
+	});
+	const flameMaterial: int32 = addMaterial(context, {
+		...Material.plain(Program.Billboard, scene, Phase.Opaque),
+		texture0: flameTexture,
+		sampler0: pointSampler.handle,
+	});
+	const litMesh: int32 = addMesh(context, {
+		layout: VertexLayout.Lit,
+		vertexBuffer: sceneBuffer,
+		instanceBuffer: 0,
+		vertexCount: sceneVertexCount,
+		instanceCount: 1,
+	});
+	const grassMesh: int32 = addMesh(context, {
+		layout: VertexLayout.Billboard,
+		vertexBuffer: cornerBuffer,
+		instanceBuffer: grassBuffer,
+		vertexCount: 6,
+		instanceCount: grassCount,
+	});
+	firstFlameMesh = context.meshes.length as int32;
+	for (const flameBuffer of flameBuffers) {
+		addMesh(context, {
+			layout: VertexLayout.Billboard,
+			vertexBuffer: cornerBuffer,
+			instanceBuffer: flameBuffer,
+			vertexCount: 6,
+			instanceCount: 1,
+		});
+	}
+	sceneItems.push(item(litMesh, litMaterial));
+	sceneItems.push(item(grassMesh, grassMaterial));
+	sceneItems.push(item(firstFlameMesh, flameMaterial));
+}
+
+// For the checks in out/tmp: the renderer settings and whether CAMPFIRE_PALETTE is on. Call
+// before voidRun.
+export function configureCampfire(settings: PixelArtSettings, palette: boolean): void {
+	settingsWanted = settings;
+	paletteWanted = palette;
 }
 
 export function initCampfire(): void {
@@ -305,30 +427,31 @@ export function initCampfire(): void {
 	buildFlameBuffers();
 	grassTexture = buildTuftTexture();
 	flameTexture = buildFlameTexture();
-	writePostParams();
-	const assets: CampfireAssets = {
-		sceneBuffer: sceneBuffer,
-		sceneVertexCount: sceneVertexCount,
-		grassBuffer: grassBuffer,
-		grassCount: grassCount,
-		grassTexture: grassTexture,
-		flameTexture: flameTexture,
-	};
-	setupCampfirePasses(assets, flameBuffers, postParams);
+	setupDraws();
+	setSettings(renderer, settingsWanted);
+	if (paletteWanted) {
+		const filled: Result<int32, PaletteError> = setPalette(renderer, CAMPFIRE_PALETTE);
+		if (filled.ok) {
+			setSettings(renderer, { ...renderer.settings, palette: true });
+		}
+	}
 }
 
 export function frameCampfire(): void {
-	const framebufferWidth: int32 = fbWidth();
-	const framebufferHeight: int32 = fbHeight();
-	if (framebufferWidth <= 0 || framebufferHeight <= 0) { return; }
-	const shortSide: int32 = Math.min(framebufferWidth, framebufferHeight);
-	const pixelScale: int32 = Math.max(1, shortSide / LOW_RES_SHORT_SIDE);
-	const lowWidth: int32 = (framebufferWidth + pixelScale - 1) / pixelScale;
-	const lowHeight: int32 = (framebufferHeight + pixelScale - 1) / pixelScale;
+	const noRemainder: float32 = 0.0;
+	const viewed: Result<LowResView, ViewError> = renderer.viewFor(
+		fbWidth(),
+		fbHeight(),
+		noRemainder,
+		noRemainder,
+	);
+	if (!viewed.ok) { return; }
+	const view: LowResView = viewed.value;
 
-	const pixelsPerUnit: float32 = (Math.min(lowWidth, lowHeight) as float32) / UNITS_ON_SHORT_SIDE;
-	const halfWidth: float32 = (lowWidth as float32) / (2.0 * pixelsPerUnit);
-	const halfHeight: float32 = (lowHeight as float32) / (2.0 * pixelsPerUnit);
+	const shortSide: float32 = Math.min(view.width, view.height) as float32;
+	const pixelsPerUnit: float32 = shortSide / UNITS_ON_SHORT_SIDE;
+	const halfWidth: float32 = (view.width as float32) / (2.0 * pixelsPerUnit);
+	const halfHeight: float32 = (view.height as float32) / (2.0 * pixelsPerUnit);
 	const camera: OrthoCamera = {
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
@@ -341,16 +464,8 @@ export function frameCampfire(): void {
 	updateFlicker();
 	writeLightParams();
 
-	const offsetX: float32 = ((lowWidth * pixelScale - framebufferWidth) / 2) as float32;
-	const offsetY: float32 = ((lowHeight * pixelScale - framebufferHeight) / 2) as float32;
-	const view: CampfireView = {
-		lowWidth: lowWidth,
-		lowHeight: lowHeight,
-		pixelScale: pixelScale as float32,
-		offsetX: offsetX,
-		offsetY: offsetY,
-	};
 	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
-	renderCampfire(view, flameFrame, vertexParams, lightParams);
+	sceneItems[FLAME_ITEM].mesh = firstFlameMesh + flameFrame;
+	renderFrame(renderer, context, sceneItems, vertexParams, lightParams, view);
 	frameIndex = frameIndex + 1;
 }

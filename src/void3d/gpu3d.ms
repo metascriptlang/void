@@ -11,6 +11,7 @@ import {
 	gpu3dMakeAttachmentView,
 	gpu3dMakeTextureView,
 	gpu3dMakeSampler,
+	gpu3dMakeDynamicImage,
 	gpu3dDestroyShader,
 	gpu3dDestroyPipeline,
 	gpu3dDestroyBuffer,
@@ -22,6 +23,9 @@ import {
 	gpu3dDraw,
 	gpu3dEndPass,
 	gpu3dCommit,
+	gpu3dOriginTopLeft,
+	gpu3dDepthZeroToOne,
+	gpu3dContextGeneration,
 } from "./gpu3d.h";
 
 // The functions that take arrays are declared here instead: an `extern` Span<T> parameter
@@ -34,6 +38,7 @@ extern function gpu3dMakeImage(rgba: Span<uint32>, width: int32, height: int32):
 extern function gpu3dBeginPass(descriptor: Span<uint32>, clear: Span<float32>): void;
 extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
 extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
+extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
 
 // One per @program in shader3d.glsl; gpu3d.c maps each to its *_shader_desc.
 export enum Program {
@@ -82,7 +87,7 @@ export const VERTEX_UNIFORM_LENGTH: int32 = 24;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
 export const LIGHT_UNIFORM_LENGTH: int32 = 20;
 export const POST_UNIFORM_SLOT: int32 = 0;
-export const POST_UNIFORM_LENGTH: int32 = 12;
+export const POST_UNIFORM_LENGTH: int32 = 20;
 export const BLIT_UNIFORM_SLOT: int32 = 0;
 export const BLIT_UNIFORM_LENGTH: int32 = 4;
 
@@ -116,6 +121,33 @@ export function makeTextureView(image: uint32): uint32 {
 
 export function makeSampler(filter: Filter, wrap: Wrap): uint32 {
 	return gpu3dMakeSampler(filter as int32, wrap as int32);
+}
+
+// An RGBA8 image the CPU rewrites with updateImage; its pixels start undefined.
+export function makeDynamicImage(width: int32, height: int32): uint32 {
+	return gpu3dMakeDynamicImage(width, height);
+}
+
+// sokol allows one update per image per frame, before any pass samples it.
+export function updateImage(image: uint32, rgba: Span<uint32>): void {
+	gpu3dUpdateImage(image, rgba);
+}
+
+// Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).
+export function originTopLeft(): boolean {
+	return gpu3dOriginTopLeft() != 0;
+}
+
+// The depth buffer holds clip z as is (0..1); GL stores (z + 1) / 2 instead.
+export function depthZeroToOne(): boolean {
+	return gpu3dDepthZeroToOne() != 0;
+}
+
+// Counts GPU contexts: it changes when the host lost the context and made a new one, and every
+// handle from before is then stale (docs/VOID3D.md, Android lifecycle). Only the Android
+// bridge ever loses its context.
+export function contextGeneration(): int32 {
+	return gpu3dContextGeneration();
 }
 
 export function destroyShader(shader: uint32): void { gpu3dDestroyShader(shader); }

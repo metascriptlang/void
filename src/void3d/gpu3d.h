@@ -56,6 +56,10 @@ uint32_t gpu3dMakeTargetImage(int32_t width, int32_t height, int32_t format);
 uint32_t gpu3dMakeAttachmentView(uint32_t image, int32_t format);
 uint32_t gpu3dMakeTextureView(uint32_t image);
 uint32_t gpu3dMakeSampler(int32_t filter, int32_t wrap);
+// An RGBA8 image whose pixels are replaced from the CPU (the palette LUT); starts undefined.
+uint32_t gpu3dMakeDynamicImage(int32_t width, int32_t height);
+// At most once per frame per image, before the pass that samples it.
+void gpu3dUpdateImage(uint32_t image, const uint32_t *rgba, int64_t length);
 void gpu3dDestroyShader(uint32_t shader);
 void gpu3dDestroyPipeline(uint32_t pipeline);
 void gpu3dDestroyBuffer(uint32_t buffer);
@@ -71,5 +75,14 @@ void gpu3dApplyUniforms(int32_t slot, const float *data, int64_t length);
 void gpu3dDraw(int32_t base, int32_t count, int32_t instances);
 void gpu3dEndPass(void);
 void gpu3dCommit(void);
+
+// Backend conventions the renderer adapts to: 1 when framebuffer and texture rows start at the
+// top (D3D11, Metal), 0 when at the bottom (GL); 1 when the depth buffer stores clip z as is
+// (0..1), 0 when GL maps clip z from -1..1 into it.
+int32_t gpu3dOriginTopLeft(void);
+int32_t gpu3dDepthZeroToOne(void);
+// Changes when the host rebuilt a lost GPU context (only the Android bridge does); every
+// handle made before is stale then.
+int32_t gpu3dContextGeneration(void);
 
 #endif

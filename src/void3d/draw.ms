@@ -110,36 +110,49 @@ function bindItem(ref context: DrawContext, mesh: GpuMesh, material: Material): 
 	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = 0;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;
-	context.bindings[GPU3D_BINDING_SAMPLER] = material.sampler;
+	context.bindings[GPU3D_BINDING_VIEW + 2] = material.texture2;
+	context.bindings[GPU3D_BINDING_VIEW + 3] = material.texture3;
+	context.bindings[GPU3D_BINDING_SAMPLER] = material.sampler0;
+	context.bindings[GPU3D_BINDING_SAMPLER + 1] = material.sampler1;
 	applyBindings(context.bindings);
 }
 
-// Draws `items` in order into the current pass, whose attachments match `targets`.
-// `globals` are the pass-wide blocks (camera, lights) applied before each material's own.
+// One item into the current pass, whose attachments match `targets`. `globals` are the
+// pass-wide blocks (camera, lights) applied before the material's own.
+export function drawItem(
+	ref context: DrawContext,
+	item: DrawItem,
+	targets: TargetLayout,
+	globals: Span<UniformBlock>,
+): void {
+	const mesh: GpuMesh = context.meshes[item.mesh];
+	const material: Material = context.materials[item.material];
+	const pipeline: uint32 = pipelineFor(
+		context.pipelines,
+		material.program,
+		mesh.layout,
+		material.pass,
+		targets,
+	);
+	applyPipeline(pipeline);
+	bindItem(context, mesh, material);
+	for (const block of globals) {
+		context.applyBlock(block);
+	}
+	if (material.uniforms.length > 0) {
+		context.applyBlock(material.uniforms);
+	}
+	draw(0, mesh.vertexCount, mesh.instanceCount);
+}
+
+// Draws `items` in order.
 export function drawItems(
 	ref context: DrawContext,
 	items: Span<DrawItem>,
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
-	for (let i = 0; i < (items.length as int32); i++) {
-		const mesh: GpuMesh = context.meshes[items[i].mesh];
-		const material: Material = context.materials[items[i].material];
-		const pipeline: uint32 = pipelineFor(
-			context.pipelines,
-			material.program,
-			mesh.layout,
-			material.pass,
-			targets,
-		);
-		applyPipeline(pipeline);
-		bindItem(context, mesh, material);
-		for (const block of globals) {
-			context.applyBlock(block);
-		}
-		if (material.uniforms.length > 0) {
-			context.applyBlock(material.uniforms);
-		}
-		draw(0, mesh.vertexCount, mesh.instanceCount);
+	for (const item of items) {
+		drawItem(context, item, targets, globals);
 	}
 }

@@ -114,13 +114,22 @@ void main() {
 @end
 
 @fs postFs
+// Outline from depth + normal edges, fog by depth, then palette quantization through a LUT:
+// one pass, because the palette only needs this pixel's outlined color (docs/VOID3D.md, M3).
+@image_sample_type depthTexture unfilterable_float
+@sampler_type depthSampler nonfiltering
 layout(binding=0) uniform texture2D colorTexture;
 layout(binding=1) uniform texture2D normalTexture;
+layout(binding=2) uniform texture2D depthTexture;
+layout(binding=3) uniform texture2D paletteTexture;
 layout(binding=0) uniform sampler pointSampler;
+layout(binding=1) uniform sampler depthSampler;
 layout(binding=0) uniform postParams {
     vec4 edge;
     vec4 fog;
     vec4 fogColor;
+    vec4 features;
+    vec4 depthUnpack;
 };
 out vec4 fragColor;
 
@@ -128,31 +137,59 @@ vec4 fetchNormal(ivec2 p, ivec2 size) {
     return texelFetch(sampler2D(normalTexture, pointSampler), clamp(p, ivec2(0, 0), size - ivec2(1, 1)), 0);
 }
 
+// features.z picks the depth: the scene's depth attachment, unpacked to the depth the scene
+// shaders write, or the 8-bit copy they pack into the normal target's alpha.
+float depthAt(vec4 normal, ivec2 p, ivec2 size) {
+    float depth = normal.w;
+    if (features.z > 0.5) {
+        ivec2 q = clamp(p, ivec2(0, 0), size - ivec2(1, 1));
+        float stored = texelFetch(sampler2D(depthTexture, depthSampler), q, 0).r;
+        depth = stored * depthUnpack.x + depthUnpack.y;
+    }
+    return depth;
+}
+
+// features.w levels per channel; the LUT is levels * levels wide, red + blue * levels across,
+// green down (palette.ms).
+vec3 paletteColor(vec3 rgb) {
+    int levels = int(features.w);
+    ivec3 q = ivec3(clamp(rgb, 0.0, 1.0) * float(levels - 1) + 0.5);
+    ivec2 cell = ivec2(q.r + q.b * levels, q.g);
+    return texelFetch(sampler2D(paletteTexture, pointSampler), cell, 0).rgb;
+}
+
 void main() {
     ivec2 size = textureSize(sampler2D(colorTexture, pointSampler), 0);
     ivec2 p = ivec2(gl_FragCoord.xy);
     vec4 color = texelFetch(sampler2D(colorTexture, pointSampler), p, 0);
     vec4 center = fetchNormal(p, size);
-    vec3 n = center.xyz * 2.0 - 1.0;
-    float depthEdge = 0.0;
-    float normalEdge = 0.0;
-    ivec2 offsets[4] = ivec2[4](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
-    for (int i = 0; i < 4; i++) {
-        vec4 neighbor = fetchNormal(p + offsets[i], size);
-        float depthDelta = neighbor.w - center.w;
-        if (depthDelta > edge.x) {
-            depthEdge = 1.0;
-        }
-        vec3 nq = neighbor.xyz * 2.0 - 1.0;
-        if (abs(depthDelta) < edge.x && dot(n, nq) < edge.y && n.y > nq.y + 0.1) {
-            normalEdge = 1.0;
-        }
-    }
+    float centerDepth = depthAt(center, p, size);
     vec3 rgb = color.rgb;
-    rgb = mix(rgb, rgb * edge.z, depthEdge * color.a);
-    rgb = mix(rgb, rgb * edge.w + vec3(0.02), normalEdge * color.a * (1.0 - depthEdge));
-    float haze = smoothstep(fog.x, fog.y, center.w) * fog.z;
-    fragColor = vec4(mix(rgb, fogColor.rgb, haze), 1.0);
+    if (features.x > 0.5) {
+        vec3 n = center.xyz * 2.0 - 1.0;
+        float depthEdge = 0.0;
+        float normalEdge = 0.0;
+        ivec2 offsets[4] = ivec2[4](ivec2(1, 0), ivec2(-1, 0), ivec2(0, 1), ivec2(0, -1));
+        for (int i = 0; i < 4; i++) {
+            vec4 neighbor = fetchNormal(p + offsets[i], size);
+            float depthDelta = depthAt(neighbor, p + offsets[i], size) - centerDepth;
+            if (depthDelta > edge.x) {
+                depthEdge = 1.0;
+            }
+            vec3 nq = neighbor.xyz * 2.0 - 1.0;
+            if (abs(depthDelta) < edge.x && dot(n, nq) < edge.y && n.y > nq.y + 0.1) {
+                normalEdge = 1.0;
+            }
+        }
+        rgb = mix(rgb, rgb * edge.z, depthEdge * color.a);
+        rgb = mix(rgb, rgb * edge.w + vec3(0.02), normalEdge * color.a * (1.0 - depthEdge));
+    }
+    float haze = smoothstep(fog.x, fog.y, centerDepth) * fog.z;
+    rgb = mix(rgb, fogColor.rgb, haze);
+    if (features.y > 0.5) {
+        rgb = paletteColor(rgb);
+    }
+    fragColor = vec4(rgb, 1.0);
 }
 @end
 
@@ -163,10 +200,13 @@ layout(binding=0) uniform blitParams {
     vec4 pixel;
 };
 out vec4 fragColor;
+// pixel = (scale, scale, offset x, offset y) in framebuffer pixels (blit.ms). Alpha is 1 so
+// that blitting the scene color directly (no post stage) never shows through the surface.
 void main() {
     ivec2 size = textureSize(sampler2D(sceneTexture, pointSampler), 0);
     ivec2 p = ivec2(floor((gl_FragCoord.xy + pixel.zw) / pixel.x));
-    fragColor = texelFetch(sampler2D(sceneTexture, pointSampler), clamp(p, ivec2(0, 0), size - ivec2(1, 1)), 0);
+    vec4 texel = texelFetch(sampler2D(sceneTexture, pointSampler), clamp(p, ivec2(0, 0), size - ivec2(1, 1)), 0);
+    fragColor = vec4(texel.rgb, 1.0);
 }
 @end
 

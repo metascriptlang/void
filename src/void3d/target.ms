@@ -127,6 +127,29 @@ export function release(this target: RenderTarget): void {
 	destroyImage(target.image);
 }
 
+// A target that knows its format but has no size or GPU objects yet; `resized` allocates it.
+export function unallocated(
+	this typeof RenderTarget,
+	format: PixelFormat,
+	sampled: boolean,
+): RenderTarget {
+	return {
+		width: 0,
+		height: 0,
+		format: format,
+		sampled: sampled,
+		image: 0,
+		attachment: 0,
+		texture: 0,
+	};
+}
+
+// After a context loss: the same target with its handles dropped, not destroyed (they are
+// stale and may name objects of the new context). `resized` allocates it again.
+export function forgotten(this target: RenderTarget): RenderTarget {
+	return { ...target, image: 0, attachment: 0, texture: 0 };
+}
+
 // The same target at a new size; the old GPU objects are released when the size changed.
 export function resized(this target: RenderTarget, width: int32, height: int32): RenderTarget {
 	if (target.image != 0 && target.width == width && target.height == height) {

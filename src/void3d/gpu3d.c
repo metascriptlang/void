@@ -227,6 +227,28 @@ uint32_t gpu3dMakeSampler(int32_t filter, int32_t wrap) {
 	return sg_make_sampler(&desc).id;
 }
 
+uint32_t gpu3dMakeDynamicImage(int32_t width, int32_t height) {
+	if (width <= 0 || height <= 0) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.usage.dynamic_update = true;
+	desc.width = width;
+	desc.height = height;
+	desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+	return sg_make_image(&desc).id;
+}
+
+void gpu3dUpdateImage(uint32_t image, const uint32_t *rgba, int64_t length) {
+	sg_image handle = {.id = image};
+	if (sg_query_image_state(handle) != SG_RESOURCESTATE_VALID) return;
+	const int width = sg_query_image_width(handle);
+	const int height = sg_query_image_height(handle);
+	if (length < (int64_t)width * height) return;
+	sg_image_data data = {0};
+	data.mip_levels[0].ptr = rgba;
+	data.mip_levels[0].size = (size_t)width * (size_t)height * 4;
+	sg_update_image(handle, &data);
+}
+
 void gpu3dDestroyShader(uint32_t shader) { sg_destroy_shader((sg_shader){.id = shader}); }
 void gpu3dDestroyPipeline(uint32_t pipeline) { sg_destroy_pipeline((sg_pipeline){.id = pipeline}); }
 void gpu3dDestroyBuffer(uint32_t buffer) { sg_destroy_buffer((sg_buffer){.id = buffer}); }
@@ -285,3 +307,20 @@ void gpu3dDraw(int32_t base, int32_t count, int32_t instances) {
 
 void gpu3dEndPass(void) { sg_end_pass(); }
 void gpu3dCommit(void) { sg_commit(); }
+
+// ---- backend conventions ----
+
+int32_t gpu3dOriginTopLeft(void) { return sg_query_features().origin_top_left ? 1 : 0; }
+
+int32_t gpu3dDepthZeroToOne(void) {
+	const sg_backend backend = sg_query_backend();
+	return backend == SG_BACKEND_GLCORE || backend == SG_BACKEND_GLES3 ? 0 : 1;
+}
+
+int32_t gpu3dContextGeneration(void) {
+#if defined(__ANDROID__)
+	return voidGpuGeneration();
+#else
+	return 1;
+#endif
+}

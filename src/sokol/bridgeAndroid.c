@@ -21,6 +21,11 @@ static EGLContext g_ctx  = EGL_NO_CONTEXT;
 static EGLSurface g_surf = EGL_NO_SURFACE;
 static EGLConfig  g_cfg;
 static int g_w = 0, g_h = 0;
+// The window the surface is made on (kept to rebuild after a context loss) and the context
+// generation void3d watches (voidGpuGeneration).
+static const void *g_window = NULL;
+static int g_generation = 1;
+static int g_contextLost = 0;
 
 static msClosure s_init;
 static msClosure s_frame;
@@ -86,6 +91,7 @@ static int g_scene_inited = 0;
 
 void voidEmbedInit(const void *window, int w, int h) {
 	g_w = w; g_h = h;
+	g_window = window;
 	if (g_ctx == EGL_NO_CONTEXT && !egl_boot(0)) return;
 	if (g_surf != EGL_NO_SURFACE) {
 		eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -111,10 +117,51 @@ static void render_once(void) {
 	call0(s_frame);
 }
 
+// ---- context loss (docs/VOID3D.md, Android lifecycle) ----
+//
+// eglSwapBuffers fails with EGL_CONTEXT_LOST after a power-management event; every GL object
+// is gone. The next frame makes a new context on the same window and sets sokol up again,
+// then counts a new generation: void3d's renderer sees it (gpu3d contextGeneration), drops
+// its stale handles and rebuilds targets, samplers, pipelines and the palette LUT from CPU
+// data. The app's meshes and textures are not rebuilt yet (void3d M5), nor is void2d.
+
+int voidGpuGeneration(void) { return g_generation; }
+
+// Forces the rebuild on the next frame, to exercise it on a device without a real loss.
+void voidEmbedLoseContext(void) { g_contextLost = 1; }
+
+static int restore_context(void) {
+	// sokol frees its pools here; the GL deletes it issues go to the lost context, which
+	// ignores them. Stale sokol ids may be handed out again after sg_setup, so the owners of
+	// the old ones must drop them without destroying (the generation tells them).
+	sg_shutdown();
+	eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	if (g_surf != EGL_NO_SURFACE) eglDestroySurface(g_dpy, g_surf);
+	if (g_ctx != EGL_NO_CONTEXT) eglDestroyContext(g_dpy, g_ctx);
+	g_surf = EGL_NO_SURFACE;
+	g_ctx = EGL_NO_CONTEXT;
+	if (!egl_boot(g_window == NULL)) return 0;
+	if (g_window != NULL) {
+		EGLNativeWindowType window = (EGLNativeWindowType)(uintptr_t)g_window;
+		g_surf = eglCreateWindowSurface(g_dpy, g_cfg, window, NULL);
+	} else {
+		EGLint pb[] = { EGL_WIDTH, g_w, EGL_HEIGHT, g_h, EGL_NONE };
+		g_surf = eglCreatePbufferSurface(g_dpy, g_cfg, pb);
+	}
+	if (g_surf == EGL_NO_SURFACE || !eglMakeCurrent(g_dpy, g_surf, g_surf, g_ctx)) return 0;
+	voidGfxSetup();
+	g_generation++;
+	g_contextLost = 0;
+	return 1;
+}
+
 void voidEmbedFrame(void) {
 	if (g_ctx == EGL_NO_CONTEXT) return;
+	if (g_contextLost && !restore_context()) return;
 	render_once();
-	eglSwapBuffers(g_dpy, g_surf);
+	if (!eglSwapBuffers(g_dpy, g_surf) && eglGetError() == EGL_CONTEXT_LOST) {
+		g_contextLost = 1;
+	}
 }
 
 // Headless render with no present — pbuffer content stays readable by voidAndroidReadPixels.
