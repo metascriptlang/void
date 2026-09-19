@@ -54,16 +54,18 @@ void2d's render base is a **hand-rolled quad batcher (~150 lines) on Void's own 
 | **Heaps `h2d`** | `~/projects/heaps` · [docs/HEAPS.md](HEAPS.md) | **Object model only**: `Object` retained transform tree, `Drawable`/`Tile`/`TileGroup` batching, `Text`/`Font` glyph layout, lazy cached matrices, object flags. Direct model for `Node2D`. | `Flow`/`Interactive`/`domkit` — that's a **UI framework = Neon's job**, not Void's. |
 | **Kha `graphics2`** | `~/projects/Kha` | "2D built on top of the GPU layer" generational pattern; how a 2D API maps onto a 3D/GPU backend + a fallback path. | Its full multi-target build system. |
 | **sokol_gp** (edubart) | not vendored — [github](https://github.com/edubart/sokol_gp) | Read its quad-batching + transform-stack approach as a model. | **Do not compile** (version mismatch, see decision above). |
-| **sokol_fontstash** | `deps/sokol/util/sokol_fontstash.h` ✅ | Text/glyph atlas on sokol_gfx — the text path for void2d (step after shapes). | — |
+| **fontstash** | `deps/fontstash` ✅ | Today's text path. **To be replaced** by void2d's own glyph layer on `deps/stb/stb_truetype.h`: fontstash rounds every glyph origin and advance to whole pixels, which rules out subpixel positioning ([GPUI.md](GPUI.md) "Text"). | Its integer layout, its single fixed atlas. |
 | **GPUI** (Zed) | `~/projects/gpui` (sparse, `crates/gpui*` @ `b961b49`) · [docs/GPUI.md](GPUI.md) | **Primitive look + frame shape**: rounded-rect SDF (re-derived for local space), `erf` box shadow, per-pixel gradients, R8 multi-page glyph atlas; flat POD display list uploaded once per frame, drawn by ranges. | Taffy/elements/entities/hitboxes/a11y (Neon's job), BoundsTree reordering, pipeline per primitive kind, MSAA path intermediate, ClearType. |
 
 ## Render quality (2026-09-19): absorb GPUI's techniques, keep the Heaps model
 
-void2d takes from GPUI **how a primitive is drawn** (SDF box, `erf` shadow, per-pixel gradient, glyph atlas) and **how a frame reaches the GPU** (display list → one upload → draw ranges). It keeps the `Node2D` tree, painter's order, an affine on every node, render-target filters and blend modes.
+The bar (2026-09-20): void2d must carry application-UI rendering when Void is a Neon backend, up to a code editor like Zed — fine font control, high-quality antialiasing, fast and smooth — and still be recognisably h2d. It takes **everything in GPUI's rendering layer** except what Neon and its Void host already cover, what GPUI does worse than Void can, and what is not portable: **how a primitive is drawn** (SDF box, `erf` shadow, per-pixel gradient), **how text is drawn** (unhinted logical layout, four subpixel variants, baseline snap, gamma/contrast, multi-page R8 atlas, font features and fallbacks, runs and decorations), **how a frame reaches the GPU** (display list → one upload → draw ranges) and **when** (dirty → draw, else nothing). It keeps the `Node2D` tree, painter's order, an affine on every node, render-target filters and blend modes.
 
 The SDF cannot be ported as-is: GPUI evaluates it in device pixels on snapped, axis-aligned quads, which is why its quads never rotate. Under Void's per-node affine it is evaluated in local space, with the AA width derived from the transform and the quad inflated by ~1 device pixel. One unified UI pipeline (per-instance mode: box / shadow / glyph / image) beside one flat sprite pipeline keeps a UI subtree in tree order to about one draw call without reordering. The immediate face above becomes "append to the display list".
 
-Decision, gaps, guardrails, the nine-step sequencing and its measurement budget: [GPUI.md](GPUI.md).
+A retained tree also buys what GPUI cannot do: with a text run's origin snapped to a device pixel, its glyph variants survive any snapped translation, so scrolling is `Mask.scrollX/Y` with no re-layout.
+
+The full inventory with its disposition, the boundary with Neon, the h2d surface still missing, guardrails, the nine-step sequencing and its measurement budget: [GPUI.md](GPUI.md).
 
 ## Text design (2026-06-21): one shared glyph layer, two consumers — bitmap now, SDF later
 
@@ -83,7 +85,7 @@ The decision that matters for text is **NOT** "2D text vs 3D text" — it's **bi
 
 **Void's call:**
 1. **Shared glyph layer, not two text systems.** fontstash does shaping + atlas + glyph quads once; consumers stay thin (matches Bevy/Unity/Godot/Heaps).
-2. **fontstash (bitmap) → void2d now.** Neon UI = fixed-size screen text → bitmap is crisp, lean, proven. Correct first step.
+2. **fontstash (bitmap) → void2d now.** Neon UI = fixed-size screen text → bitmap is crisp, lean, proven. Correct first step. *(2026-09-20: bitmap atlas stays the answer for 2D; fontstash itself does not — its integer glyph positions cannot reach editor-grade text. See [GPUI.md](GPUI.md) "Text".)*
 3. **Keep the glyph layer backend-neutral** — it emits `quad + UV + atlas`, NOT screen-space-coupled geometry. So when void3d wants crisp world-space labels, it **swaps the atlas to SDF and feeds the same glyph quads through the 3D MVP** — no rearchitecting. The bitmap→SDF upgrade and the 3D-text consumer are deferred to [VOID3D.md](VOID3D.md).
 
 This is "the Heaps way" only in the sense that the shared-font-layer + thin-consumers pattern is industry-universal — it is **not** a Heaps-specific tradeoff. The one thing Void does better than Heaps from day one: keep the glyph layer render-path-neutral so the 3D/SDF door stays open.
