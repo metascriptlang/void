@@ -1,10 +1,14 @@
-// void2d frame budget (docs/GPUI.md "Sequencing"): CPU time of Scene.present and draw calls for
-// a UI scene (a grid of cards, each a Rect with a Label child — box/text alternation in tree
-// order) and a sprite-only scene. An entry calls voidRun with benchInit(kind) / benchFrame;
-// every REPORT_EVERY frames it prints the mean present() time, and it exits after REPORTS reports.
+// void2d frame budget (docs/TESTING.md "T4"): a UI scene of 10 000 cards, each a Rect with
+// a Label child — box/text alternation in tree order — and a sprite-only scene of the same
+// size. tests/bench/bench{Ui,Sprites}.ms are the entries; each prints one machine-readable
+// row per metric and exits, and tests/bench/baseline.json is what those rows are gated on.
+//
+// What gates and what only reports (docs/TESTING.md "T4"): counters are deterministic for a
+// given build and fail the gate; milliseconds are reported with a warn threshold and never
+// fail a commit, because this is a shared developer box.
 
 import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
-import { setup2d, drawCallCount } from "../void2d/draw";
+import { setup2d, drawCallCount, staticBuffersAlive, staticBuffersFailed } from "../void2d/draw";
 import { rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
@@ -19,10 +23,12 @@ const COLUMNS: int32 = 100;
 const ROWS: int32 = 100;
 const CELL_W: float32 = 12.8;
 const CELL_H: float32 = 7.2;
-const REPORT_EVERY: int32 = 120;
-const REPORTS: int32 = 4;
+const WARMUP_FRAMES: int32 = 20;
+const MEASURED_FRAMES: int32 = 120;
 
 let benchScene: Scene | null = null;
+let benchName: string = "ui";
+let nodeCount: int32 = 0;
 let frameIndex: int32 = 0;
 let presentMs: float64 = 0.0;
 
@@ -31,8 +37,9 @@ export function benchInit(kind: BenchKind): void {
 	setup2d();
 	const s = scene(rgba(0.08, 0.09, 0.11, 1.0));
 	if (kind === BenchKind.Ui) {
-		for (let row = 0; row < ROWS; row++) {
-			for (let column = 0; column < COLUMNS; column++) {
+		benchName = "ui";
+		for (let row: int32 = 0; row < ROWS; row++) {
+			for (let column: int32 = 0; column < COLUMNS; column++) {
 				const card = rect(CELL_W - 1.0, CELL_H - 1.0, rgba(0.2, 0.3, 0.5, 1.0))
 					.at((column as float32) * CELL_W, (row as float32) * CELL_H);
 				card.addChild(label(String(row * COLUMNS + column), 6.0, rgba(1.0, 1.0, 1.0, 1.0)));
@@ -40,28 +47,43 @@ export function benchInit(kind: BenchKind): void {
 			}
 		}
 	} else {
-		const img = loadImageSync("assets/test.png", 4);
-		const view = makeView(makeImage(img, imageWidth(), imageHeight()));
-		freeImage(img);
-		for (let row = 0; row < ROWS; row++) {
-			for (let column = 0; column < COLUMNS; column++) {
+		benchName = "sprites";
+		const pixels = loadImageSync("assets/test.png", 4);
+		const view = makeView(makeImage(pixels, imageWidth(), imageHeight()));
+		freeImage(pixels);
+		for (let row: int32 = 0; row < ROWS; row++) {
+			for (let column: int32 = 0; column < COLUMNS; column++) {
 				s.add(sprite(tile(view, CELL_W - 1.0, CELL_H - 1.0))
 					.at((column as float32) * CELL_W, (row as float32) * CELL_H));
 			}
 		}
 	}
+	nodeCount = ROWS * COLUMNS;
 	benchScene = s;
+}
+
+// One `key value` pair per line, so a gate reads rows instead of parsing prose.
+function report(): void {
+	console.log(`${benchName}.nodes ${nodeCount}`);
+	console.log(`${benchName}.draws ${drawCallCount()}`);
+	console.log(`${benchName}.buffersAlive ${staticBuffersAlive()}`);
+	console.log(`${benchName}.buffersFailed ${staticBuffersFailed()}`);
+	console.log(`${benchName}.nodesDrawn ${nodeCount - staticBuffersFailed()}`);
+	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
 }
 
 export function benchFrame(): void {
 	if (benchScene === null) { return; }
+	frameIndex = frameIndex + 1;
+	if (frameIndex <= WARMUP_FRAMES) {
+		benchScene.present();
+		return;
+	}
 	const started: float64 = performance.now();
 	benchScene.present();
 	presentMs = presentMs + (performance.now() - started);
-	frameIndex = frameIndex + 1;
-	if (frameIndex % REPORT_EVERY == 0) {
-		console.log(`present ${presentMs / (REPORT_EVERY as float64)} ms, ${drawCallCount()} draws`);
-		presentMs = 0.0;
-		if (frameIndex == REPORT_EVERY * REPORTS) { process.exit(0); }
+	if (frameIndex == WARMUP_FRAMES + MEASURED_FRAMES) {
+		report();
+		process.exit(0);
 	}
 }
