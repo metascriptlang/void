@@ -11,6 +11,7 @@ import "./pipelineCheck";
 import "./rendererCheck";
 import "./cameraCheck";
 import "./boundsCheck";
+import "./meshDataCheck";
 // The harness's own parsers. The gate is a claim about the renderer, so the code that reads
 // the gate's own tables has to be tested like anything else (docs/TESTING.md, "Distrust the
 // harness before the engine").
