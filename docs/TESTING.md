@@ -147,10 +147,12 @@ the last three sessions compared.
   cross-backend difference that means nothing. Alpha inside the frame is still tested — it
   is what blending turned into colour.
 
-**Size, measured.** `tests/golden/d3d11/` is **912 KB**: 320 KB for the 33 UI scenes and
-592 KB for the four 800×600 demo frames, which are photographic and do not compress. The
-"well under a megabyte" estimate held; VOID2D.md's "~600 KB" did not, and it was about the
-UI scenes alone. The lever, if it ever matters, is demo frames.
+**Size, measured in bytes rather than `du` blocks.** `tests/golden/d3d11/` is
+**826 687 B**: **226 976 B** for the 33 UI scenes and **599 711 B** for the four 800×600 demo
+frames, which are photographic and do not compress. Both estimates in this doc were about
+the UI scenes, and both held — "3–15 KB for flat UI" and "well under a megabyte". VOID2D.md's
+"~600 KB" exit line did not, because it did not account for the integration capture. The
+lever, if it ever matters, is demo frames.
 
 **Tolerance: byte-identical is the default, and at P0 every live scene earns it.** All 37
 rows are byte-identical to their goldens, between two draws in one process and between two

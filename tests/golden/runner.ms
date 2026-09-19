@@ -22,7 +22,7 @@
 // the two capture slots. The two captures must be identical before either is written out.
 
 import { SceneRow, sceneRows, sceneCount, backendDirectory } from "./table";
-import { sceneBuilders } from "./scenes";
+import { SceneBuilder, sceneBuilders } from "./scenes";
 import { Scene, presentAt } from "../../src/void2d/scene";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
@@ -56,7 +56,7 @@ const EXIT_BAD_USAGE: int32 = 2;
 const EXIT_NO_READBACK: int32 = 3;
 
 const rows: SceneRow[] = sceneRows();
-const builders: (() => Scene)[] = sceneBuilders();
+const builders: SceneBuilder[] = sceneBuilders();
 let index: int32 = 0;
 let current: Scene | null = null;
 let stage: int32 = 0;
@@ -78,7 +78,7 @@ function initScene(): void {
 	}
 	gfxSetup();
 	setup2d();
-	current = builders[index]();
+	current = builders[index].build();
 }
 
 function drawOnce(): void {
@@ -148,8 +148,17 @@ function frame(): void {
 }
 
 function startRunner(): void {
+	// Name by name, not just length. Rexa's cross-check that the command table agrees with
+	// the parser is by name, and it has to be: two lists of the same length whose entries
+	// are off by one would render a correct image under the wrong row's name, and
+	// `golden.sh --update` would commit it as that row's golden.
 	if ((builders.length as int32) != sceneCount()) {
 		console.log(`FAIL the table has ${sceneCount()} rows and scenes.ms has ${builders.length as int32} builders`);
+		voidCaptureExit(EXIT_BAD_USAGE);
+	}
+	for (let i: int32 = 0; i < sceneCount(); i++) {
+		if (rows[i].name.equals(builders[i].name)) { continue; }
+		console.log(`FAIL row ${i} is '${rows[i].name}' in table.ms and '${builders[i].name}' in scenes.ms`);
 		voidCaptureExit(EXIT_BAD_USAGE);
 	}
 	if (voidCaptureEnvInt("VOID_SCENE_LIST", 0) != 0) {

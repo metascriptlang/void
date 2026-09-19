@@ -18,6 +18,10 @@ let logo: Node2D | null = null;
 let green: Node2D | null = null;
 let t: float32 = 0.0;
 let dir: float32 = 1.0;
+// The camera is recomputed from the surface size on every draw, so a pan cannot live in
+// cam.x/y — the fit would overwrite it. It accumulates here and the fit adds it.
+let panX: float32 = 0.0;
+let panY: float32 = 0.0;
 let rtSrc: uint32 = 0;
 let rtA: uint32 = 0;
 let rtB: uint32 = 0;
@@ -181,10 +185,10 @@ export function step2d(dt: float32): void {
 	green.rotation = green.rotation + 0.03;
 
 	const panSpeed: float32 = 5.0;
-	if (keyDown(KEY_D)) { sc.cam.x = sc.cam.x + panSpeed; }
-	if (keyDown(KEY_A)) { sc.cam.x = sc.cam.x - panSpeed; }
-	if (keyDown(KEY_S)) { sc.cam.y = sc.cam.y + panSpeed; }
-	if (keyDown(KEY_W)) { sc.cam.y = sc.cam.y - panSpeed; }
+	if (keyDown(KEY_D)) { panX = panX + panSpeed; }
+	if (keyDown(KEY_A)) { panX = panX - panSpeed; }
+	if (keyDown(KEY_S)) { panY = panY + panSpeed; }
+	if (keyDown(KEY_W)) { panY = panY - panSpeed; }
 
 	sc.tick(dt);
 }
@@ -199,8 +203,8 @@ export function present2d(): void {
 	const zx: float32 = fw / 980.0;
 	const zy: float32 = fh / 720.0;
 	sc.cam.zoom = zx < zy ? zx : zy;
-	sc.cam.x = 480.0;
-	sc.cam.y = 350.0;
+	sc.cam.x = 480.0 + panX;
+	sc.cam.y = 350.0 + panY;
 	sc.cam.anchorX = 0.5;
 	sc.cam.anchorY = 0.5;
 

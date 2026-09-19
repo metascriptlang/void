@@ -54,9 +54,19 @@ fi
 echo "      T1 (display list) does not exist yet: P1 creates it (docs/TESTING.md 'T1')"
 
 echo
-echo "=== 3. the demo still builds =========================================="
+echo "=== 3. the demo still builds and runs ================================="
 if "$MSC" build src/examples/mainSokol2d.ms --output=out/demo2d.exe > out/gate-demo.log 2>&1; then
 	pass "src/examples/renderer2d.ms builds through src/examples/mainSokol2d.ms"
+	# Building is not enough. The entry used to declare `function main()` with nothing
+	# calling it, so it built a binary that exited at once — a defect a build check cannot
+	# see. A windowed app never exits on its own, so the timeout IS the pass.
+	demo_status=0
+	timeout 5 out/demo2d.exe > out/gate-demo-run.log 2>&1 || demo_status=$?
+	case "$demo_status" in
+		124) pass "the demo still runs (held a window for 5 s)" ;;
+		0)   fail "the demo exited on its own within 5 s — see out/gate-demo-run.log" ;;
+		*)   fail "the demo exited $demo_status — see out/gate-demo-run.log" ;;
+	esac
 else
 	fail "the demo does not build — see out/gate-demo.log"
 fi
@@ -120,8 +130,11 @@ skip "webgl2: shares the GLES3 path in wasm, needs the same browser driver"
 if [ "$WEB" -eq 1 ]; then
 	if sh scripts/build-web.sh > out/gate-web.log 2>&1; then
 		pass "web build: both backends build ($(wc -c < web/wgpu/mainSokol2d.wasm) B wgpu, $(wc -c < web/gl/mainSokol2d.wasm) B gl)"
-		# Liveness prints its own PASS/SKIP per backend, with the reason.
-		sh scripts/web-liveness.sh 2>&1 | sed 's/^/      /'
+		# Liveness prints its own PASS/SKIP per backend, with the reason. Its skips have to
+		# reach $skips or the summary undercounts what was not run.
+		sh scripts/web-liveness.sh > out/gate-liveness.log 2>&1 || true
+		sed 's/^/      /' out/gate-liveness.log
+		skips=$((skips + $(grep -c '^SKIP' out/gate-liveness.log || true)))
 	else
 		fail "web build — see out/gate-web.log"
 	fi

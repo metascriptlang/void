@@ -616,52 +616,60 @@ function regressVertexCap(): Scene {
 // call a builder; this stands in for their slot so the two lists stay the same length.
 function demoPlaceholder(): Scene { return scene(DARK); }
 
-export function sceneBuilders(): (() => Scene)[] {
+// Paired with the row name, not just positional. A length check cannot catch a builder
+// inserted at the wrong index — and the failure that follows is the worst kind: a correct
+// image written under the wrong name, which `--update` would then commit as the golden.
+export interface SceneBuilder {
+	name: string;
+	build: () => Scene;
+}
+
+export function sceneBuilders(): SceneBuilder[] {
 	return [
-		harnessSolid,
-		harnessSolid,
+		{ name: "harness/solid", build: harnessSolid },
+		{ name: "harness/mustFail", build: harnessSolid },
 
-		primRoundedRect,
-		primStrokeRect,
-		primEllipsePieRing,
-		primPolygonBezier,
-		primGradientLinear,
-		primGradientRadial,
+		{ name: "prim/roundedRect", build: primRoundedRect },
+		{ name: "prim/strokeRect", build: primStrokeRect },
+		{ name: "prim/ellipsePieRing", build: primEllipsePieRing },
+		{ name: "prim/polygonBezier", build: primPolygonBezier },
+		{ name: "prim/gradientLinear", build: primGradientLinear },
+		{ name: "prim/gradientRadial", build: primGradientRadial },
 
-		xformRotate,
-		xformScale,
-		xformPivot,
-		xformNonUniform,
+		{ name: "xform/rotate", build: xformRotate },
+		{ name: "xform/scale", build: xformScale },
+		{ name: "xform/pivot", build: xformPivot },
+		{ name: "xform/nonUniform", build: xformNonUniform },
 
-		snapHairlines,
-		snapHairlines,
-		snapHairlines,
-		snapFractionalSplit,
-		snapFractionalOrigin,
+		{ name: "snap/hairlineDpi100", build: snapHairlines },
+		{ name: "snap/hairlineDpi125", build: snapHairlines },
+		{ name: "snap/hairlineDpi150", build: snapHairlines },
+		{ name: "snap/fractionalSplit", build: snapFractionalSplit },
+		{ name: "snap/fractionalOrigin", build: snapFractionalOrigin },
 
-		clipNestedMasks,
-		clipRotatedMask,
-		clipScrolledList,
+		{ name: "clip/nestedMasks", build: clipNestedMasks },
+		{ name: "clip/rotatedMask", build: clipRotatedMask },
+		{ name: "clip/scrolledList", build: clipScrolledList },
 
-		textCode,
-		textCode,
-		textCode,
-		textWrapped,
-		textMultilineAlign,
+		{ name: "text/code13Dpi100", build: textCode },
+		{ name: "text/code13Dpi125", build: textCode },
+		{ name: "text/code13Dpi150", build: textCode },
+		{ name: "text/wrapped", build: textWrapped },
+		{ name: "text/multilineAlign", build: textMultilineAlign },
 
-		imageNearestLinear,
-		imageSubFlip,
-		imageColorPipeline,
-		imageScaleGrid,
+		{ name: "image/nearestLinear", build: imageNearestLinear },
+		{ name: "image/subFlip", build: imageSubFlip },
+		{ name: "image/colorPipeline", build: imageColorPipeline },
+		{ name: "image/scaleGrid", build: imageScaleGrid },
 
-		regressNodeCap,
-		regressDpiTruncation,
-		regressSamplerRepeat,
-		regressVertexCap,
+		{ name: "regress/nodeCap", build: regressNodeCap },
+		{ name: "regress/dpiTruncation", build: regressDpiTruncation },
+		{ name: "regress/samplerRepeat", build: regressSamplerRepeat },
+		{ name: "regress/vertexCap", build: regressVertexCap },
 
-		demoPlaceholder,
-		demoPlaceholder,
-		demoPlaceholder,
-		demoPlaceholder,
+		{ name: "demo/frame001", build: demoPlaceholder },
+		{ name: "demo/frame030", build: demoPlaceholder },
+		{ name: "demo/frame090", build: demoPlaceholder },
+		{ name: "demo/frame200", build: demoPlaceholder },
 	];
 }
