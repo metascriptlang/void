@@ -134,21 +134,21 @@ prepare_entries() {
 	note "prepare: five capture entries written to $CAPTURE"
 }
 
-# msc build answers "Up to date" when only a header a compiled .c includes has changed, and
-# the stale shader is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
-# notes). The gate notices the header itself and evicts what includes it: this checkout's
-# build cache, and the global object keyed on gpu3d.c.
+# msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
+# stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
+# notes). gpu3d.c includes shader3d.glsl.h and gpu3d.h; the gate hashes both and evicts what
+# was built from them: this checkout's build cache, and the global object keyed on gpu3d.c.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
-	current=$(md5sum src/void3d/shader3d.glsl.h 2>/dev/null | cut -d' ' -f1)
-	if [ -z "$current" ]; then
-		note "capture: src/void3d/shader3d.glsl.h is missing"
+	current=$(cat src/void3d/shader3d.glsl.h src/void3d/gpu3d.h 2>/dev/null | md5sum | cut -d' ' -f1)
+	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/gpu3d.h ]; then
+		note "capture: src/void3d/shader3d.glsl.h or gpu3d.h is missing"
 		return 0
 	fi
 	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
 		return 0
 	fi
-	note "capture: shader3d.glsl.h changed since the last gate — evicting the objects that include it"
+	note "capture: a header gpu3d.c includes changed since the last gate — evicting the objects built from it"
 	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* 2>/dev/null
 	for object in "$HOME"/.metascript/cache/objects/*.o; do
 		[ -f "$object" ] || continue
