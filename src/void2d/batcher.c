@@ -53,7 +53,9 @@ static int fons_create(void *up, int w, int h) {
 	d.width = w;
 	d.height = h;
 	d.pixel_format = SG_PIXELFORMAT_RGBA8;
-	d.usage.stream_update = true;
+	// Persists across frames, re-uploaded only when fontstash adds glyphs. dynamic_update is
+	// deprecated upstream in favour of write_persistent (sokol CHANGELOG, 30-Aug-2026).
+	d.usage.dynamic_update = true;
 	s_fontImg = sg_make_image(&d);
 	s_fontView = (sg_view){ .id = voidMakeView(s_fontImg.id) };
 	return 1;
@@ -81,7 +83,10 @@ static unsigned char *readFile(const char *path, int *outSize) {
 void void2dSetup(void) {
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;
-	bd.usage.stream_update = true;
+	// Flushes append here between draws; write_transient forbids writes after the first bind
+	// in a frame, dynamic_update still allows sg_append_buffer. The display list (GPUI.md
+	// step 1) writes once per frame and moves this buffer to write_transient.
+	bd.usage.dynamic_update = true;
 	bd.size = (size_t)(VOID2D_MAX_VERTS * 8) * sizeof(float);
 	s_vbuf = sg_make_buffer(&bd);
 

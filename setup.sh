@@ -1,19 +1,22 @@
 #!/bin/sh
 # Fetch Void's C dependencies into deps/ at pinned commits.
 #
-# The pins are the versions Void is built and tested against. sokol in
-# particular moves its API: master after 2026-08 replaced
-# sg_buffer_usage.stream_update with write_transient/write_unsealed, which
-# void2d/batcher.c still uses. Bump a pin only together with the code change
-# it needs, and regenerate the shader headers (scripts/regen-shaders.sh) when
-# sokol-tools-bin moves.
+# The pins are the versions Void is built and tested against. sokol moves its
+# API often (its CHANGELOG.md gives a migration recipe per break). Bump a pin
+# only together with the code change it needs, and regenerate the shader
+# headers (scripts/regen-shaders.sh) when sokol-tools-bin moves.
+#
+# msc caches C objects globally (~/.metascript/cache/objects) keyed by the .c
+# file, not the headers it includes, and --force does not bypass it: after a
+# pin bump, delete the cached objects that include deps/sokol, or the build
+# silently links code compiled against the old headers.
 #
 # Also needed, as a sibling checkout: ../yoga (github.com/metascriptlang/yoga),
 # with libyoga.a built for the target (see its scripts/build-yoga.sh).
 set -e
 cd "$(dirname "$0")"
 
-SOKOL_REV="6c3fa5ac6493f4a157f4a8d9740ef0ede1d69ebb"            # 2026-08-10
+SOKOL_REV="2e75443dbd4940b5aa8d76a8e479f8e4b270b9a3"            # 2026-09-14
 SOKOL_TOOLS_REV="11d0cf678105d614d675e6d9bd2aaf3eeff12f8c"
 FONTSTASH_REV="b5ddc9741061343740d85d636d782ed3e07cf7be"
 STB_REV="2c980bb59875b0d32144a71867fbdebb2f77cd20"
