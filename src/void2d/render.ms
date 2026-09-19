@@ -282,7 +282,7 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	}
 }
 
-export function getBounds(this n: Node2D, out: Bounds): void {
+export function getBounds(this n: Node2D, ref out: Bounds): void {
 	const lb = localBounds(n);
 	if (lb.xMax > lb.xMin && lb.yMax > lb.yMin) {
 		const world = n.cachedWorld;
