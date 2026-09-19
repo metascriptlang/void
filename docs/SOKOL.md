@@ -84,7 +84,7 @@ Void needs Metal, D3D11, GLES3, WebGPU and WebGL2 from one API. That backend set
   - swapchain composite mode (2026-07)
   - `write_transient` (2026-08-30)
 
-  The pin (`6c3fa5ac`, 2026-08-10) is 171 commits behind master as of today. The 2026-08-30 change removes `sg_append_buffer` for dynamic buffers, which void2d's batcher uses on every flush. **Upgrade sokol together with GPUI.md step 1:** the display list writes one buffer once per frame, which is exactly the `write_transient` model.
+  The pin moved from `6c3fa5ac` (2026-08-10) to upstream master `2e75443d` (2026-09-14) in `0c36bd1`. `stream_update` is gone; the batcher's vertex buffer and the font atlas moved to `dynamic_update`, which still allows `sg_append_buffer`. **GPUI.md step 1 moves the display list to `write_transient`:** it writes one buffer once per frame, which is exactly that model.
 - **Feature ceiling.**
   - Missing: indirect draw, timestamp/occlusion queries, readback, render bundles, async pipeline creation.
   - Present: compute, storage buffers and images, and MRT.
