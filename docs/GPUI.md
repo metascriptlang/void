@@ -48,7 +48,7 @@ Rotate or scale that quad and three things break: the SDF is in the wrong space,
 | Transform | Full affine (rotation/scale/pivot) on every node (`void2d/render.ms:78-88`) | Only monochrome/subpixel sprites; quads, images, shadows cannot rotate |
 | Blend / colour | Alpha, Add, Multiply, Screen, colorMatrix, colorAdd, colorKey, nearest sampling | Premultiplied alpha only |
 | Offscreen | Render targets; Blur/Glow/DropShadow filters on any subtree | No render-target API |
-| 3D | Depth, MRT, low-res pass + post + blit (`void3d/pass3d.c`) | No depth buffer anywhere |
+| 3D | Depth, MRT, low-res pass + post + blit (`void3d/gpu3d.c` bridge, passes in MetaScript) | No depth buffer anywhere |
 | Custom shaders | Own the pipeline | Closed |
 | Size | ~6k hand-written lines | ~150k |
 

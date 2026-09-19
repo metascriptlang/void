@@ -7,3 +7,4 @@ import "./sceneCheck";
 import "./effectCheck";
 import "./textCheck";
 import "./math3dCheck";
+import "./pipelineCheck";

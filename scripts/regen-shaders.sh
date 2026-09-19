@@ -4,7 +4,7 @@
 # and a stale header produces silent visual bugs (old shader code compiled into the binary).
 #
 # Every header carries every backend and sokol picks one at runtime (sg_query_backend).
-# Do not add --ifdef: batcher.c, pass3d.c, bridge.c and bridgeEmbed.m include these
+# Do not add --ifdef: batcher.c, gpu3d.c, bridge.c and bridgeEmbed.m include these
 # headers without defining a SOKOL_<backend> macro, so wrapped code would compile away.
 set -e
 cd "$(dirname "$0")/.."

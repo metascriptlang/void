@@ -1,19 +1,14 @@
 import { gfxSetup, fbWidth, fbHeight } from "../sokol/gpu";
 import { sinf, cosf } from "../math/mat4";
-import {
-	void3dSetup,
-	void3dResize,
-	void3dMakeBuffer,
-	void3dMakeTexture,
-	void3dBeginScene,
-	void3dDrawLit,
-	void3dDrawBillboards,
-	void3dEndScene,
-	void3dPost,
-	void3dPresent,
-} from "../void3d/pass3d.h";
+import { makeVertexBuffer, makeImage, makeTextureView } from "../void3d/gpu3d";
 import { Rgba, Box, LIT_VERTEX_STRIDE, pushBox, pushGround } from "../void3d/mesh";
 import { OrthoCamera, vertexParams, writeVertexParams } from "../void3d/camera";
+import {
+	CampfireAssets,
+	CampfireView,
+	setupCampfirePasses,
+	renderCampfire,
+} from "./campfirePasses";
 
 const LOW_RES_SHORT_SIDE: int32 = 360;
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
@@ -141,7 +136,7 @@ function buildScene(): void {
 		pushBox(sceneVertices, log);
 	}
 	sceneVertexCount = (sceneVertices.length as int32) / LIT_VERTEX_STRIDE;
-	sceneBuffer = void3dMakeBuffer(sceneVertices[0], (sceneVertices.length as int32) * 4);
+	sceneBuffer = makeVertexBuffer(sceneVertices);
 }
 
 function insideStone(x: float32, z: float32): boolean {
@@ -179,7 +174,7 @@ function buildGrass(): void {
 		}
 	}
 	grassCount = (grassInstances.length as int32) / BILLBOARD_STRIDE;
-	grassBuffer = void3dMakeBuffer(grassInstances[0], (grassInstances.length as int32) * 4);
+	grassBuffer = makeVertexBuffer(grassInstances);
 }
 
 function clearTexturePixels(): void {
@@ -216,7 +211,7 @@ function buildTuftTexture(): uint32 {
 			}
 		}
 	}
-	return void3dMakeTexture(texturePixels[0], width, height);
+	return makeTextureView(makeImage(texturePixels, width, height));
 }
 
 function buildFlameTexture(): uint32 {
@@ -244,7 +239,7 @@ function buildFlameTexture(): uint32 {
 			}
 		}
 	}
-	return void3dMakeTexture(texturePixels[0], width, height);
+	return makeTextureView(makeImage(texturePixels, width, height));
 }
 
 function buildFlameBuffers(): void {
@@ -253,7 +248,7 @@ function buildFlameBuffers(): void {
 			0.0, 0.05, 0.0, frame as float32,
 			0.95, 1.2, 1.0, 1.0,
 		];
-		flameBuffers.push(void3dMakeBuffer(instance[0], BILLBOARD_STRIDE * 4));
+		flameBuffers.push(makeVertexBuffer(instance));
 	}
 }
 
@@ -305,13 +300,21 @@ function writePostParams(): void {
 
 export function initCampfire(): void {
 	gfxSetup();
-	void3dSetup();
 	buildScene();
 	buildGrass();
 	buildFlameBuffers();
 	grassTexture = buildTuftTexture();
 	flameTexture = buildFlameTexture();
 	writePostParams();
+	const assets: CampfireAssets = {
+		sceneBuffer: sceneBuffer,
+		sceneVertexCount: sceneVertexCount,
+		grassBuffer: grassBuffer,
+		grassCount: grassCount,
+		grassTexture: grassTexture,
+		flameTexture: flameTexture,
+	};
+	setupCampfirePasses(assets, flameBuffers, postParams);
 }
 
 export function frameCampfire(): void {
@@ -322,7 +325,6 @@ export function frameCampfire(): void {
 	const pixelScale: int32 = Math.max(1, shortSide / LOW_RES_SHORT_SIDE);
 	const lowWidth: int32 = (framebufferWidth + pixelScale - 1) / pixelScale;
 	const lowHeight: int32 = (framebufferHeight + pixelScale - 1) / pixelScale;
-	void3dResize(lowWidth, lowHeight);
 
 	const pixelsPerUnit: float32 = (Math.min(lowWidth, lowHeight) as float32) / UNITS_ON_SHORT_SIDE;
 	const halfWidth: float32 = (lowWidth as float32) / (2.0 * pixelsPerUnit);
@@ -339,16 +341,16 @@ export function frameCampfire(): void {
 	updateFlicker();
 	writeLightParams();
 
-	void3dBeginScene(0.02, 0.02, 0.06);
-	void3dDrawLit(sceneBuffer, sceneVertexCount, vertexParams[0], lightParams[0]);
-	void3dDrawBillboards(grassBuffer, grassCount, grassTexture, vertexParams[0], lightParams[0]);
-	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
-	void3dDrawBillboards(flameBuffers[flameFrame], 1, flameTexture, vertexParams[0], lightParams[0]);
-	void3dEndScene();
-	void3dPost(postParams[0]);
-
 	const offsetX: float32 = ((lowWidth * pixelScale - framebufferWidth) / 2) as float32;
 	const offsetY: float32 = ((lowHeight * pixelScale - framebufferHeight) / 2) as float32;
-	void3dPresent(pixelScale as float32, offsetX, offsetY);
+	const view: CampfireView = {
+		lowWidth: lowWidth,
+		lowHeight: lowHeight,
+		pixelScale: pixelScale as float32,
+		offsetX: offsetX,
+		offsetY: offsetY,
+	};
+	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
+	renderCampfire(view, flameFrame, vertexParams, lightParams);
 	frameIndex = frameIndex + 1;
 }
