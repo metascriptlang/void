@@ -396,14 +396,18 @@ function setupDraws(): void {
 		layout: VertexLayout.Lit,
 		vertexBuffer: sceneBuffer,
 		instanceBuffer: 0,
+		indexBuffer: 0,
 		vertexCount: sceneVertexCount,
+		indexCount: 0,
 		instanceCount: 1,
 	});
 	const grassMesh: int32 = addMesh(context, {
 		layout: VertexLayout.Billboard,
 		vertexBuffer: cornerBuffer,
 		instanceBuffer: grassBuffer,
+		indexBuffer: 0,
 		vertexCount: 6,
+		indexCount: 0,
 		instanceCount: grassCount,
 	});
 	firstFlameMesh = context.meshes.length as int32;
@@ -412,7 +416,9 @@ function setupDraws(): void {
 			layout: VertexLayout.Billboard,
 			vertexBuffer: cornerBuffer,
 			instanceBuffer: flameBuffer,
+			indexBuffer: 0,
 			vertexCount: 6,
+			indexCount: 0,
 			instanceCount: 1,
 		});
 	}

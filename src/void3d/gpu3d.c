@@ -73,6 +73,12 @@ static const sg_load_action LOAD_ACTIONS[] = {
 	SG_LOADACTION_DONTCARE,
 };
 
+// IndexType: uint16 only, which caps a mesh at 65536 vertices (meshData.ms).
+static const sg_index_type INDEX_TYPES[] = {
+	SG_INDEXTYPE_NONE,
+	SG_INDEXTYPE_UINT16,
+};
+
 // Filter, Wrap (h3d.mat.Data)
 static const sg_filter FILTERS[] = { SG_FILTER_NEAREST, SG_FILTER_LINEAR };
 static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_MIRRORED_REPEAT };
@@ -91,6 +97,7 @@ _Static_assert(COUNT(PIXEL_FORMATS) == 4, "PIXEL_FORMATS must match PixelFormat 
 _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in gpu3d.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match Filter in gpu3d.ms");
 _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in gpu3d.ms");
+_Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in gpu3d.ms");
 
 // ---- vertex layouts, one per VertexLayout member ----
 
@@ -139,6 +146,7 @@ uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length) {
 	desc.depth.compare = LOOKUP(COMPARE_FUNCTIONS, d[GPU3D_PIPELINE_DEPTH_TEST]);
 	desc.depth.write_enabled = d[GPU3D_PIPELINE_DEPTH_WRITE] != 0;
 	desc.sample_count = (int)d[GPU3D_PIPELINE_SAMPLE_COUNT];
+	desc.index_type = LOOKUP(INDEX_TYPES, d[GPU3D_PIPELINE_INDEX_TYPE]);
 
 	sg_blend_state blend = {0};
 	blend.src_factor_rgb = LOOKUP(BLEND_FACTORS, d[GPU3D_PIPELINE_BLEND_SOURCE]);
@@ -173,6 +181,14 @@ uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length) {
 	desc.usage.vertex_buffer = true;
 	desc.data.ptr = data;
 	desc.data.size = (size_t)length * sizeof(float);
+	return sg_make_buffer(&desc).id;
+}
+
+uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length) {
+	sg_buffer_desc desc = {0};
+	desc.usage.index_buffer = true;
+	desc.data.ptr = data;
+	desc.data.size = (size_t)length * sizeof(uint16_t);
 	return sg_make_buffer(&desc).id;
 }
 

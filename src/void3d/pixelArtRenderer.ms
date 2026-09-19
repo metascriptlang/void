@@ -249,7 +249,9 @@ export function writePostParams(
 export function screenKey(stage: Stage): PipelineKey {
 	const program: Program = stage == Stage.Blit ? Program.Blit : Program.Post;
 	const targets: TargetLayout = stage == Stage.Blit ? SWAPCHAIN_LAYOUT : POST_LAYOUT;
-	return pipelineKey(program, VertexLayout.Fullscreen, screenState(), targets);
+	// The screen triangle is three vertices with no index buffer (screenFx.ms).
+	const indexed: boolean = false;
+	return pipelineKey(program, VertexLayout.Fullscreen, indexed, screenState(), targets);
 }
 
 function reserve(ref context: DrawContext, slot: int32, length: int32): UniformBlock {

@@ -34,6 +34,7 @@ import {
 // one-element copy (docs/VOID3D.md, Compiler notes).
 extern function gpu3dMakePipeline(descriptor: Span<uint32>): uint32;
 extern function gpu3dMakeVertexBuffer(data: Span<float32>): uint32;
+extern function gpu3dMakeIndexBuffer(data: Span<uint16>): uint32;
 extern function gpu3dMakeImage(rgba: Span<uint32>, width: int32, height: int32): uint32;
 extern function gpu3dBeginPass(descriptor: Span<uint32>, clear: Span<float32>): void;
 extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
@@ -56,6 +57,15 @@ export enum VertexLayout {
 }
 
 // Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
+// sokol bakes the index type into the pipeline, so a mesh drawn from an index buffer and one
+// drawn straight from its vertex buffer need different pipelines (pipelineCache.ms). Only
+// uint16 is offered: it caps a mesh at 65536 vertices, far above Hibernal's budget, and
+// widening the format is a decision, not a fallback (meshData.ms MAX_MESH_VERTICES).
+export enum IndexType {
+	None,
+	Uint16,
+}
+
 export enum PixelFormat {
 	None,
 	Default,
@@ -101,6 +111,11 @@ export function makePipeline(descriptor: Span<uint32>): uint32 {
 
 export function makeVertexBuffer(data: Span<float32>): uint32 {
 	return gpu3dMakeVertexBuffer(data);
+}
+
+// Three uint16 per triangle. sokol copies the data, so the Vec it came from may move after.
+export function makeIndexBuffer(data: Span<uint16>): uint32 {
+	return gpu3dMakeIndexBuffer(data);
 }
 
 export function makeImage(rgba: Span<uint32>, width: int32, height: int32): uint32 {

@@ -18,14 +18,28 @@ import { Material, UniformBlock } from "./material";
 import { PipelineCache, pipelineFor } from "./pipelineCache";
 import { TargetLayout } from "./target";
 
-// GPU side of a mesh until M5 brings MeshData: buffer handles plus what sg_draw needs.
-// `instanceBuffer` feeds vertex buffer slot 1 (billboard instances), 0 when not instanced.
+// GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` feeds vertex
+// buffer slot 1 (billboard instances), 0 when not instanced. `indexBuffer` is 0 for a mesh
+// drawn straight from its vertex buffer, and then `indexCount` is unread; when it is set the
+// draw is indexed and takes `indexCount` elements. The CPU data a lost context rebuilds this
+// from is the MeshData at the same index of `DrawContext.meshData` (addMeshData).
 export struct GpuMesh {
 	layout: VertexLayout;
 	vertexBuffer: uint32;
 	instanceBuffer: uint32;
+	indexBuffer: uint32;
 	vertexCount: int32;
+	indexCount: int32;
 	instanceCount: int32;
+}
+
+export function isIndexed(this mesh: GpuMesh): boolean {
+	return mesh.indexBuffer != 0;
+}
+
+// What sg_draw counts: index elements when indexed, vertices otherwise.
+export function elementCount(this mesh: GpuMesh): int32 {
+	return mesh.isIndexed() ? mesh.indexCount : mesh.vertexCount;
 }
 
 // `mesh` and `material` index the DrawContext tables. `world` is carried for M6: the programs
@@ -107,7 +121,7 @@ function applyBlock(this context: DrawContext, block: UniformBlock): void {
 function bindItem(ref context: DrawContext, mesh: GpuMesh, material: Material): void {
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] = mesh.vertexBuffer;
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = mesh.instanceBuffer;
-	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = 0;
+	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = mesh.indexBuffer;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;
 	context.bindings[GPU3D_BINDING_VIEW + 2] = material.texture2;
@@ -131,6 +145,7 @@ export function drawItem(
 		context.pipelines,
 		material.program,
 		mesh.layout,
+		mesh.isIndexed(),
 		material.pass,
 		targets,
 	);
@@ -142,7 +157,7 @@ export function drawItem(
 	if (material.uniforms.length > 0) {
 		context.applyBlock(material.uniforms);
 	}
-	draw(0, mesh.vertexCount, mesh.instanceCount);
+	draw(0, mesh.elementCount(), mesh.instanceCount);
 }
 
 // Draws `items` in order.

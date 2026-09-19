@@ -258,13 +258,14 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 }
 
 test "screen passes have one pipeline each, whatever the settings or palette" {
-	const post: string = "program=Post layout=Fullscreen colors=Rgba8 depth=None sampleCount=1" +
+	const post: string = "program=Post layout=Fullscreen indexType=None" +
+		" colors=Rgba8 depth=None sampleCount=1" +
 		" culling=None depthWrite=false depthTest=Always blend=One,Zero alphaBlend=One,Zero" +
 		" operation=Add,Add colorMask=15";
 	const postKey: PipelineKey = screenKey(Stage.Post);
 	assert postKey.toString() == post;
 	const blit: string = screenKey(Stage.Blit).toString();
-	assert blit.indexOf("program=Blit layout=Fullscreen colors=Default depth=Default") == 0;
+	assert blit.indexOf("program=Blit layout=Fullscreen indexType=None colors=Default depth=Default") == 0;
 	assert screenKey(Stage.Post).bits != screenKey(Stage.Blit).bits;
 }
 

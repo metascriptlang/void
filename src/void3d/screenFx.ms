@@ -26,7 +26,9 @@ export function screenMesh(vertexBuffer: uint32): GpuMesh {
 		layout: VertexLayout.Fullscreen,
 		vertexBuffer: vertexBuffer,
 		instanceBuffer: 0,
+		indexBuffer: 0,
 		vertexCount: 3,
+		indexCount: 0,
 		instanceCount: 1,
 	};
 }
