@@ -14,7 +14,11 @@ sokol is a dependency we own a stake in, not a black box.
 ### Workflow
 
 1. **Before touching the header,** check upstream master and the changelog. The need may already be solved, or be on the way.
-2. **Patch on a branch in our fork.** `deps/sokol` is a git checkout pinned by `setup.sh`. The fork does not exist yet; create it before the first patch. The Void pin then points at the fork's commit, and `setup.sh` names the fork as the remote.
+2. **Patch in our fork, `~/projects/sokol`.** It is a clone of floooh/sokol, with remote `upstream` = floooh/sokol. It has two kinds of branches:
+   - **`void`:** Void's pinned commit plus Void-local patches.
+   - **PR branches:** cut from `upstream/master`.
+
+   `deps/sokol` is a git checkout pinned by `setup.sh` (`SOKOL_REV`). When the pin names a commit that floooh/sokol lacks, `setup.sh` fetches the `void` branch from the fork (override the path with `SOKOL_FORK`). A GitHub fork, needed to open PRs, is added as a remote of `~/projects/sokol` when the first PR is ready.
 3. **Keep every Void-local patch on its own commit.** Each carries an upstream reference: the PR link, the issue link, or "not upstreamable" with the reason. A patch with no upstream path needs that reason written down.
 4. **Open the PR as soon as the patch works in Void.** Don't wait for Void to ship it. Review feedback is cheaper before Void builds on top.
 5. **When upstream merges, move the pin back to floooh/sokol** at a commit that contains the change, and drop the local commit. The goal is a fork with zero local commits.
