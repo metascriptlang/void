@@ -12,6 +12,7 @@ import { TargetLayout } from "./target";
 import {
 	Program,
 	VertexLayout,
+	IndexType,
 	makeShader,
 	makePipeline,
 	destroyShader,
@@ -33,19 +34,27 @@ import {
 	GPU3D_PIPELINE_COLOR_FORMAT,
 	GPU3D_PIPELINE_DEPTH_FORMAT,
 	GPU3D_PIPELINE_SAMPLE_COUNT,
+	GPU3D_PIPELINE_INDEX_TYPE,
 	GPU3D_PIPELINE_LENGTH,
 } from "./gpu3d.h";
 
 export const PROGRAM_COUNT: int32 = 4;
 
-// Key layout, low to high: vertex layout (4 bits), program (4), target formats (24),
-// RenderState.bits (32).
+// Key layout, low to high: vertex layout (3 bits), indexed (1), program (4), target formats
+// (24), RenderState.bits (32) — 64 bits, exactly full. The indexed flag shares a nibble with
+// the vertex layout because `VertexLayout` has three members and RenderState already owns a
+// whole word; `LAYOUT_LIMIT` is what the tests hold that constraint against.
+const INDEXED_SHIFT: uint64 = 3;
 const PROGRAM_SHIFT: uint64 = 4;
 const TARGETS_SHIFT: uint64 = 8;
 const STATE_SHIFT: uint64 = 32;
+const LAYOUT_MASK: uint64 = 7;
 const NIBBLE: uint64 = 15;
 const TARGETS_MASK: uint64 = 16777215;
 const STATE_MASK: uint64 = 4294967295;
+
+// One more VertexLayout than this and the key needs a second word.
+export const LAYOUT_LIMIT: int32 = 8;
 
 // Everything that selects a pipeline, packed; decodes back into its parts.
 export struct PipelineKey {
@@ -78,11 +87,13 @@ function ordinal(value: int32): uint64 {
 export function pipelineKey(
 	program: Program,
 	layout: VertexLayout,
+	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
 ): PipelineKey {
 	return {
 		bits: ordinal(layout as int32) |
+			((indexed ? 1 : 0) as uint64) << INDEXED_SHIFT |
 			(ordinal(program as int32) << PROGRAM_SHIFT) |
 			((targets.formatBits() as uint64) << TARGETS_SHIFT) |
 			((state.bits() as uint64) << STATE_SHIFT),
@@ -90,7 +101,15 @@ export function pipelineKey(
 }
 
 export function vertexLayout(this key: PipelineKey): VertexLayout {
-	return ((key.bits & NIBBLE) as int32) as VertexLayout;
+	return ((key.bits & LAYOUT_MASK) as int32) as VertexLayout;
+}
+
+export function isIndexed(this key: PipelineKey): boolean {
+	return ((key.bits >> INDEXED_SHIFT) & 1) != 0;
+}
+
+export function indexType(this key: PipelineKey): IndexType {
+	return key.isIndexed() ? IndexType.Uint16 : IndexType.None;
 }
 
 export function program(this key: PipelineKey): Program {
@@ -109,6 +128,7 @@ export function renderState(this key: PipelineKey): RenderState {
 // cache entry is, for logs and for comparing two entries by eye.
 export function toString(this key: PipelineKey): string {
 	return `program=${key.program().toString()} layout=${key.vertexLayout().toString()} ` +
+		`indexType=${key.indexType().toString()} ` +
 		`${key.targetLayout().toString()} ${key.renderState().toString()}`;
 }
 
@@ -121,6 +141,7 @@ export function describePipeline(
 	out: Span<uint32>,
 	shader: uint32,
 	layout: VertexLayout,
+	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
 ): void {
@@ -142,6 +163,7 @@ export function describePipeline(
 	out[GPU3D_PIPELINE_COLOR_FORMAT + 3] = unsigned(targets.color3 as int32);
 	out[GPU3D_PIPELINE_DEPTH_FORMAT] = unsigned(targets.depth as int32);
 	out[GPU3D_PIPELINE_SAMPLE_COUNT] = unsigned(targets.sampleCount);
+	out[GPU3D_PIPELINE_INDEX_TYPE] = unsigned((indexed ? IndexType.Uint16 : IndexType.None) as int32);
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
@@ -164,10 +186,11 @@ export function pipelineFor(
 	ref cache: PipelineCache,
 	program: Program,
 	layout: VertexLayout,
+	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
 ): uint32 {
-	const key: PipelineKey = pipelineKey(program, layout, state, targets);
+	const key: PipelineKey = pipelineKey(program, layout, indexed, state, targets);
 	let found: int32 = cache.entries.length as int32;
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		if (cache.entries[i].key.bits == key.bits) {
@@ -176,7 +199,7 @@ export function pipelineFor(
 		}
 	}
 	const shader: uint32 = shaderFor(cache, program);
-	describePipeline(cache.descriptor, shader, layout, state, targets);
+	describePipeline(cache.descriptor, shader, layout, indexed, state, targets);
 	const pipeline: uint32 = makePipeline(cache.descriptor);
 	if (found == (cache.entries.length as int32)) {
 		cache.entries.push({ key: key, pipeline: pipeline });

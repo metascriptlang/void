@@ -27,7 +27,10 @@ static const int32_t GPU3D_PIPELINE_COLOR_MASK = 11;
 static const int32_t GPU3D_PIPELINE_COLOR_FORMAT = 12; // four, one per color attachment
 static const int32_t GPU3D_PIPELINE_DEPTH_FORMAT = 16;
 static const int32_t GPU3D_PIPELINE_SAMPLE_COUNT = 17;
-static const int32_t GPU3D_PIPELINE_LENGTH = 18;
+// IndexType ordinal: None for a mesh drawn straight from its vertex buffer, Uint16 when an
+// index buffer is bound. sokol bakes it into the pipeline, so it selects one (PipelineKey).
+static const int32_t GPU3D_PIPELINE_INDEX_TYPE = 18;
+static const int32_t GPU3D_PIPELINE_LENGTH = 19;
 
 // Pass: four color attachments (view, load action), then depth; the float side holds
 // four rgba clear colors, then the depth clear value.
@@ -51,6 +54,7 @@ static const int32_t GPU3D_BINDING_LENGTH = 9;
 uint32_t gpu3dMakeShader(int32_t program);
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);
 uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length);
+uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length);
 uint32_t gpu3dMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
 uint32_t gpu3dMakeTargetImage(int32_t width, int32_t height, int32_t format);
 uint32_t gpu3dMakeAttachmentView(uint32_t image, int32_t format);
