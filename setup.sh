@@ -1,55 +1,44 @@
 #!/bin/sh
+# Fetch Void's C dependencies into deps/ at pinned commits.
+#
+# The pins are the versions Void is built and tested against. sokol in
+# particular moves its API: master after 2026-08 replaced
+# sg_buffer_usage.stream_update with write_transient/write_unsealed, which
+# void2d/batcher.c still uses. Bump a pin only together with the code change
+# it needs, and regenerate the shader headers (scripts/regen-shaders.sh) when
+# sokol-tools-bin moves.
+#
+# Also needed, as a sibling checkout: ../yoga (github.com/metascriptlang/yoga),
+# with libyoga.a built for the target (see its scripts/build-yoga.sh).
 set -e
+cd "$(dirname "$0")"
 
-DAWN_VERSION="7187"
-DAWN_REPO="eliemichel/dawn-prebuilt"
-DAWN_TAG="chromium/${DAWN_VERSION}"
+SOKOL_REV="6c3fa5ac6493f4a157f4a8d9740ef0ede1d69ebb"            # 2026-08-10
+SOKOL_TOOLS_REV="11d0cf678105d614d675e6d9bd2aaf3eeff12f8c"
+FONTSTASH_REV="b5ddc9741061343740d85d636d782ed3e07cf7be"
+STB_REV="2c980bb59875b0d32144a71867fbdebb2f77cd20"
 
-# Detect platform
-OS=$(uname -s)
-ARCH=$(uname -m)
+fetch() {
+	name="$1"; repo="$2"; rev="$3"
+	dest="deps/$name"
+	if [ ! -d "$dest/.git" ]; then
+		echo "cloning $repo"
+		git clone -q "https://github.com/$repo.git" "$dest"
+	fi
+	if [ "$(git -C "$dest" rev-parse HEAD)" != "$rev" ]; then
+		git -C "$dest" fetch -q origin
+		git -C "$dest" checkout -q "$rev"
+	fi
+	echo "$name @ $(git -C "$dest" rev-parse --short HEAD)"
+}
 
-case "${OS}-${ARCH}" in
-	Darwin-arm64)  PLATFORM="macos-aarch64" ;;
-	Darwin-x86_64) PLATFORM="macos-x64" ;;
-	Linux-x86_64)  PLATFORM="linux-x64" ;;
-	*)             echo "Unsupported: ${OS}-${ARCH}"; exit 1 ;;
-esac
+mkdir -p deps
+fetch sokol           floooh/sokol           "$SOKOL_REV"
+fetch sokol-tools-bin floooh/sokol-tools-bin "$SOKOL_TOOLS_REV"
+fetch fontstash       memononen/fontstash    "$FONTSTASH_REV"
+fetch stb             nothings/stb           "$STB_REV"
 
-# --- Dawn ---
-DAWN_DEST="deps/dawn"
-if [ -d "$DAWN_DEST" ]; then
-	echo "Dawn already at ${DAWN_DEST}"
-else
-	ASSET="Dawn-${DAWN_VERSION}-${PLATFORM}-Release.zip"
-	echo "Downloading Dawn ${DAWN_VERSION} for ${PLATFORM}..."
-	mkdir -p deps
-	gh release download "$DAWN_TAG" -R "$DAWN_REPO" -p "$ASSET" -D /tmp --clobber
-	unzip -q "/tmp/${ASSET}" -d "$DAWN_DEST"
-	rm "/tmp/${ASSET}"
-	echo "Dawn installed"
-fi
-
-# --- sdl3webgpu (pre-compile, needs ObjC on macOS) ---
-SDL3WEBGPU_OBJ="deps/sdl3webgpu/sdl3webgpu.o"
-if [ -f "$SDL3WEBGPU_OBJ" ]; then
-	echo "sdl3webgpu already compiled"
-else
-	echo "Compiling sdl3webgpu..."
-	SDL3_INC="$(brew --prefix sdl3)/include"
-	DAWN_INC="deps/dawn/include"
-	case "$OS" in
-		Darwin)
-			clang -c deps/sdl3webgpu/sdl3webgpu_bridge.m \
-				-o "$SDL3WEBGPU_OBJ" -fno-objc-arc \
-				-I"$SDL3_INC" -I"$DAWN_INC" -I deps/sdl3webgpu
-			;;
-		Linux)
-			cc -c deps/sdl3webgpu/sdl3webgpu.c -o "$SDL3WEBGPU_OBJ" \
-				-I"$SDL3_INC" -I"$DAWN_INC" -I deps/sdl3webgpu
-			;;
-	esac
-	echo "sdl3webgpu compiled"
-fi
+# batcher.c includes deps/fontstash/fontstash.h; upstream keeps its headers in src/.
+cp deps/fontstash/src/fontstash.h deps/fontstash/src/stb_truetype.h deps/fontstash/
 
 echo "--- Setup complete ---"
