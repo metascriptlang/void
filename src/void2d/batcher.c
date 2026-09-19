@@ -257,17 +257,34 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 
 // Persistent (immutable) vertex buffer holding LOCAL-space geometry — drawn via void2dDrawStatic
 // with the object matrix in the shader, reused across frames until the mesh changes.
+// Counted, because the number of live static buffers IS the ~126-node defect: sokol's
+// default buffer pool holds 128, every Label and Graphics takes one, and past that
+// sg_make_buffer hands back a handle in the FAILED state whose draws are silently dropped
+// (VOID2D.md "Known defects", closed at P1). tests/bench/ gates both numbers.
+static int s_staticBuffersAlive;
+static int s_staticBuffersFailed;
+
 uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount) {
 	if (vertCount <= 0) return 0;
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;
 	bd.data = (sg_range){ .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
-	return sg_make_buffer(&bd).id;
+	sg_buffer buf = sg_make_buffer(&bd);
+	if (sg_query_buffer_state(buf) == SG_RESOURCESTATE_VALID) s_staticBuffersAlive++;
+	else s_staticBuffersFailed++;
+	return buf.id;
 }
 
 void void2dDestroyStaticBuffer(uint32_t bufId) {
-	if (bufId) sg_destroy_buffer((sg_buffer){ .id = bufId });
+	if (!bufId) return;
+	sg_buffer buf = (sg_buffer){ .id = bufId };
+	if (sg_query_buffer_state(buf) == SG_RESOURCESTATE_VALID) s_staticBuffersAlive--;
+	else s_staticBuffersFailed--;
+	sg_destroy_buffer(buf);
 }
+
+int void2dStaticBuffersAlive(void) { return s_staticBuffersAlive; }
+int void2dStaticBuffersFailed(void) { return s_staticBuffersFailed; }
 
 // One draw call from a static buffer: object matrix + alpha in the shader (model/globalColor),
 // colour pipeline (colorMatrix/add/key) as for the dynamic path. Caller flushes first to keep z-order.

@@ -36,6 +36,10 @@ void void2dBlur(uint32_t srcView, float dirX, float dirY);
 // matrix + alpha supplied per draw. Destroy before re-uploading a changed mesh (no auto-free).
 uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount);
 void void2dDestroyStaticBuffer(uint32_t bufId);
+// Live static buffers, and how many sg_make_buffer calls came back not VALID — the second
+// number is the ~126-node cap becoming visible (tests/bench/, docs/TESTING.md "T4").
+int void2dStaticBuffersAlive(void);
+int void2dStaticBuffersFailed(void);
 void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, float fbW, float fbH,
                       float mA, float mB, float mC, float mD, float mTx, float mTy,
                       float gcR, float gcG, float gcB, float gcA,
