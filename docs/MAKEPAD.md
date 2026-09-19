@@ -99,7 +99,7 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Offscreen passes ordered children-first, never nested at paint time | **Confirms** the hoisting in "The display list" | sokol has the same constraint |
 | Tree order, no spatial sort, a handful of draw calls | **Confirms** guardrail 1 | |
 | Logical unhinted float layout; fonts from bytes; colour out of the atlas key | **Confirms** | |
-| Persistent instance ranges + dirty flag + `Wait` when idle | **Confirms** step 5 — and is the only running example of it | |
+| Persistent instance ranges + dirty flag + `Wait` when idle | **Confirms** P5 — and is the only running example of it | |
 | Per-instance attributes + `vertexAttribDivisor` on WebGL2; **255-byte stride ceiling** | **Confirms**, adds a number | the planned 92–128 B UI stride fits |
 | Device loss = drop all, re-arm dirty, redraw; fault injection | **Confirms**, take the test switch | |
 | **`Area` + paint-only animation**: the animator writes instance fields in place | **Take** | the missing half of "dirty-range upload": hover, focus, caret blink never walk the tree |
@@ -113,7 +113,7 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Lazy CJK / emoji families on a real glyph miss | **Take** | the wasm-size answer for guardrail 6 |
 | Emoji strikes pre-shrunk into 1.25× size buckets | **Take** | bounded atlas churn under zoom |
 | Layout-cache eviction that never evicts this frame's working set | **Take**, if a keyed cache is ever added | |
-| Four single-channel planes per RGBA page, balanced allocator | **Consider** at step 2 | 4× glyphs per texture and per bind slot on GLES3, and one page kind for coverage and emoji; costs a per-instance plane selector and rules out an R8 format |
+| Four single-channel planes per RGBA page, balanced allocator | **Consider** at P3 | 4× glyphs per texture and per bind slot on GLES3, and one page kind for coverage and emoji; costs a per-instance plane selector and rules out an R8 format |
 | "Identical bytes → skip upload" | **Take** | cheap guard for re-recorded, unchanged ranges |
 | Frame-latency waitable as frame clock, timestamp from DXGI statistics, draw during modal resize, occlusion probe; frame-gap histograms | **N**, with requirements noted | Ion / the host owns pacing; the histograms are the template for void2d's profiler |
 | **Minified SDF as UI text** — no hinting, no variants, no snap, no gamma | **W** | nothing lands small text on the pixel grid (inferred from source; not captured). The contrast with GPUI and Ghostty is the argument for the pixel-exact coverage regime |

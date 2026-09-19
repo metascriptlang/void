@@ -30,7 +30,7 @@ Ordered by how soon Void hits them. None is started; each waits for the Void nee
 
 | Need | Void driver | Upstream state (2026-09-20) |
 |---|---|---|
-| Sub-rect texture updates that persist across frames | Glyph atlas: GPUI.md step 4 | Pinned rev: `sg_update_image` replaces a whole mip level, once per frame. Upstream `sg_write_image_transient` writes sub-rects but does not survive the frame. `write_persistent` is announced. Coordinate on that. |
+| Sub-rect texture updates that persist across frames | Glyph atlas: VOID2D.md P3 | Pinned rev: `sg_update_image` replaces a whole mip level, once per frame. Upstream `sg_write_image_transient` writes sub-rects but does not survive the frame. `write_persistent` is announced. Coordinate on that. |
 | GPU→CPU readback | Golden-image tests on every backend | No API. `out/tmp/capture/capture.c` does it for D3D11 through native handles. Async `read-buffer`/`read-image` is announced. |
 | Android host-owned EGL: context loss, preview and live side by side | Hibernal V6 (`hibernal/docs/ROADMAP.md`) | `sokol_gfx` works on an external GL context (`SOKOL_EXTERNAL_GL_LOADER`, hand-filled `sg_environment`/`sg_swapchain`), but has no context-loss rebuild. `sokol_app` on Android is NativeActivity only. |
 | Embedding `sokol_app` in a host view | Neon hosts, `bridgeEmbed.m` / `bridgeIos.m` | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue for now. |
@@ -84,7 +84,7 @@ Void needs Metal, D3D11, GLES3, WebGPU and WebGL2 from one API. That backend set
   - swapchain composite mode (2026-07)
   - `write_transient` (2026-08-30)
 
-  The pin moved from `6c3fa5ac` (2026-08-10) to upstream master `2e75443d` (2026-09-14) in `0c36bd1`. `stream_update` is gone; the batcher's vertex buffer and the font atlas moved to `dynamic_update`, which still allows `sg_append_buffer`. **GPUI.md step 1 moves the display list to `write_transient`:** it writes one buffer once per frame, which is exactly that model.
+  The pin moved from `6c3fa5ac` (2026-08-10) to upstream master `2e75443d` (2026-09-14) in `0c36bd1`. `stream_update` is gone; the batcher's vertex buffer and the font atlas moved to `dynamic_update`, which still allows `sg_append_buffer`. **VOID2D.md P1 moves the display list to `write_transient`:** it writes one buffer once per frame, which is exactly that model.
 - **Feature ceiling.**
   - Missing: indirect draw, timestamp/occlusion queries, readback, render bundles, async pipeline creation.
   - Present: compute, storage buffers and images, and MRT.
