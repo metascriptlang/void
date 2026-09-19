@@ -80,9 +80,17 @@ export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D
 }
 
 export function present(this s: Scene): void {
+	s.presentAt(dpiScale());
+}
+
+// h2d has no DPI concept — a Heaps scene is sized in framebuffer pixels. void2d needs one,
+// because the pixel-exact text regime and the snapping rules are stated per device pixel.
+// `present()` takes the host's ratio; `presentAt` takes an explicit one, which is how a
+// golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
+// "Determinism preconditions").
+export function presentAt(this s: Scene, dpi: float32): void {
 	const fw: int32 = fbWidth();
 	const fh: int32 = fbHeight();
-	const dpi: float32 = dpiScale();
 	const wf: float32 = (fw as float32) / dpi;
 	const hf: float32 = (fh as float32) / dpi;
 	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
