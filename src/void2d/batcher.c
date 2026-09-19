@@ -259,10 +259,15 @@ void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blen
 // with the object matrix in the shader, reused across frames until the mesh changes.
 // Counted, because the number of live static buffers IS the ~126-node defect: sokol's
 // default buffer pool holds 128, every Label and Graphics takes one, and past that
-// sg_make_buffer hands back a handle in the FAILED state whose draws are silently dropped
-// (VOID2D.md "Known defects", closed at P1). tests/bench/ gates both numbers.
+// sg_make_buffer hands back either id 0 or a handle in the FAILED state, whose draws are
+// silently dropped (VOID2D.md "Known defects", closed at P1). tests/bench/ gates both.
+//
+// `alive` is symmetric — make and destroy move it in opposite directions. `refused` is
+// monotonic: it counts allocation attempts sokol turned down, and is never decremented,
+// because a refusal that returned id 0 leaves nothing to destroy later and a node whose
+// mesh changes every frame would otherwise drive the count negative.
 static int s_staticBuffersAlive;
-static int s_staticBuffersFailed;
+static int s_staticBuffersRefused;
 
 uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount) {
 	if (vertCount <= 0) return 0;
@@ -271,7 +276,7 @@ uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount) {
 	bd.data = (sg_range){ .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
 	sg_buffer buf = sg_make_buffer(&bd);
 	if (sg_query_buffer_state(buf) == SG_RESOURCESTATE_VALID) s_staticBuffersAlive++;
-	else s_staticBuffersFailed++;
+	else s_staticBuffersRefused++;
 	return buf.id;
 }
 
@@ -279,12 +284,11 @@ void void2dDestroyStaticBuffer(uint32_t bufId) {
 	if (!bufId) return;
 	sg_buffer buf = (sg_buffer){ .id = bufId };
 	if (sg_query_buffer_state(buf) == SG_RESOURCESTATE_VALID) s_staticBuffersAlive--;
-	else s_staticBuffersFailed--;
 	sg_destroy_buffer(buf);
 }
 
 int void2dStaticBuffersAlive(void) { return s_staticBuffersAlive; }
-int void2dStaticBuffersFailed(void) { return s_staticBuffersFailed; }
+int void2dStaticBuffersRefused(void) { return s_staticBuffersRefused; }
 
 // One draw call from a static buffer: object matrix + alpha in the shader (model/globalColor),
 // colour pipeline (colorMatrix/add/key) as for the dynamic path. Caller flushes first to keep z-order.

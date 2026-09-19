@@ -8,7 +8,7 @@
 // fail a commit, because this is a shared developer box.
 
 import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
-import { setup2d, drawCallCount, staticBuffersAlive, staticBuffersFailed } from "../void2d/draw";
+import { setup2d, drawCallCount, staticBuffersAlive, staticBuffersRefused } from "../void2d/draw";
 import { rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
@@ -29,6 +29,7 @@ const MEASURED_FRAMES: int32 = 120;
 let benchScene: Scene | null = null;
 let benchName: string = "ui";
 let nodeCount: int32 = 0;
+let retainedNodeCount: int32 = 0;
 let frameIndex: int32 = 0;
 let presentMs: float64 = 0.0;
 
@@ -58,17 +59,26 @@ export function benchInit(kind: BenchKind): void {
 			}
 		}
 	}
-	nodeCount = ROWS * COLUMNS;
+	// Cards and sprites draw through the dynamic batcher and own no GPU buffer; only the
+	// Labels do. Keeping the two counts apart is what makes `buffersAlive` readable as
+	// "labels that actually drew" instead of a number that happens to line up.
+	nodeCount = ROWS * COLUMNS * (kind === BenchKind.Ui ? 2 : 1);
+	retainedNodeCount = kind === BenchKind.Ui ? ROWS * COLUMNS : 0;
 	benchScene = s;
 }
 
 // One `key value` pair per line, so a gate reads rows instead of parsing prose.
+//
+// `retainedNodes` is how many nodes asked for a GPU buffer; `buffersAlive` is how many got
+// one, so on the UI scene the pair reads directly as "10 000 labels asked, 126 drew".
+// `buffersRefused` is monotonic and counts the refusals, which for a static scene is the
+// difference and for a scene that rebuilds a mesh every frame is larger.
 function report(): void {
 	console.log(`${benchName}.nodes ${nodeCount}`);
+	console.log(`${benchName}.retainedNodes ${retainedNodeCount}`);
 	console.log(`${benchName}.draws ${drawCallCount()}`);
 	console.log(`${benchName}.buffersAlive ${staticBuffersAlive()}`);
-	console.log(`${benchName}.buffersFailed ${staticBuffersFailed()}`);
-	console.log(`${benchName}.nodesDrawn ${nodeCount - staticBuffersFailed()}`);
+	console.log(`${benchName}.buffersRefused ${staticBuffersRefused()}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
 }
 

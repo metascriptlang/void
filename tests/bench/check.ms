@@ -21,24 +21,75 @@ interface BenchRow {
 	value: float64;
 }
 
+// Handles the sign and an exponent, because MetaScript prints a float64 in whatever form it
+// likes and a counter that regressed to a negative number must not be read as positive -
+// that is exactly the regression the counter gate exists to catch.
 function parseFloat64(text: string): float64 {
+	const length: int32 = text.length as int32;
+	let index: int32 = 0;
+	let sign: float64 = 1.0;
+	if (index < length && (text.charCodeAt(index) as int32) == "-".code) {
+		sign = -1.0;
+		index = index + 1;
+	} else if (index < length && (text.charCodeAt(index) as int32) == "+".code) {
+		index = index + 1;
+	}
 	let value: float64 = 0.0;
-	let fraction: float64 = 0.0;
-	let scale: float64 = 1.0;
-	let seenDot: boolean = false;
-	for (let i: int32 = 0; i < text.length as int32; i++) {
-		const code: int32 = text.charCodeAt(i) as int32;
-		if (code == ".".code) { seenDot = true; continue; }
-		if (code < "0".code || code > "9".code) { continue; }
-		const digit: float64 = (code - "0".code) as float64;
-		if (seenDot) {
+	while (index < length) {
+		const code: int32 = text.charCodeAt(index) as int32;
+		if (code < "0".code || code > "9".code) { break; }
+		value = value * 10.0 + ((code - "0".code) as float64);
+		index = index + 1;
+	}
+	if (index < length && (text.charCodeAt(index) as int32) == ".".code) {
+		index = index + 1;
+		let scale: float64 = 1.0;
+		while (index < length) {
+			const code: int32 = text.charCodeAt(index) as int32;
+			if (code < "0".code || code > "9".code) { break; }
 			scale = scale * 10.0;
-			fraction = fraction + digit / scale;
-		} else {
-			value = value * 10.0 + digit;
+			value = value + ((code - "0".code) as float64) / scale;
+			index = index + 1;
 		}
 	}
-	return value + fraction;
+	if (index < length) {
+		const marker: int32 = text.charCodeAt(index) as int32;
+		if (marker == "e".code || marker == "E".code) {
+			index = index + 1;
+			let exponentSign: int32 = 1;
+			if (index < length && (text.charCodeAt(index) as int32) == "-".code) {
+				exponentSign = -1;
+				index = index + 1;
+			} else if (index < length && (text.charCodeAt(index) as int32) == "+".code) {
+				index = index + 1;
+			}
+			let exponent: int32 = 0;
+			while (index < length) {
+				const code: int32 = text.charCodeAt(index) as int32;
+				if (code < "0".code || code > "9".code) { break; }
+				exponent = exponent * 10 + (code - "0".code);
+				index = index + 1;
+			}
+			for (let step: int32 = 0; step < exponent; step++) {
+				value = exponentSign > 0 ? value * 10.0 : value / 10.0;
+			}
+		}
+	}
+	return sign * value;
+}
+
+test "parseFloat64 keeps the sign" {
+	assert parseFloat64("-4312") == -4312.0;
+}
+
+test "parseFloat64 reads an exponent" {
+	assert parseFloat64("1.2e-05") < 0.0001;
+	assert parseFloat64("1.5e2") == 150.0;
+}
+
+test "parseFloat64 reads a plain decimal" {
+	assert parseFloat64("4.48") > 4.47;
+	assert parseFloat64("4.48") < 4.49;
 }
 
 function parseRows(output: string): BenchRow[] {
@@ -62,16 +113,18 @@ function runBench(binary: string): BenchRow[] {
 	return parseRows(result.value);
 }
 
-function rowValue(rows: BenchRow[], scene: string, metric: string): float64 {
+// A tuple rather than a sentinel: now that a row can legitimately be negative - which is how
+// a broken counter would show up - "not reported" needs a flag of its own.
+function rowValue(rows: BenchRow[], scene: string, metric: string): [boolean, float64] {
 	for (const row of rows) {
-		if (row.scene.equals(scene) && row.metric.equals(metric)) { return row.value; }
+		if (row.scene.equals(scene) && row.metric.equals(metric)) { return [true, row.value]; }
 	}
-	return -1.0;
+	return [false, 0.0];
 }
 
 function checkCounter(rows: BenchRow[], scene: string, metric: string, expected: int32): boolean {
-	const actual: float64 = rowValue(rows, scene, metric);
-	if (actual < 0.0) {
+	const [reported, actual] = rowValue(rows, scene, metric);
+	if (!reported) {
 		console.log(`FAIL ${scene}.${metric} was not reported`);
 		return false;
 	}
@@ -84,8 +137,8 @@ function checkCounter(rows: BenchRow[], scene: string, metric: string, expected:
 }
 
 function reportMilliseconds(rows: BenchRow[], scene: string, baseline: float64, warnFactor: float64): void {
-	const actual: float64 = rowValue(rows, scene, "present");
-	if (actual < 0.0) {
+	const [reported, actual] = rowValue(rows, scene, "present");
+	if (!reported) {
 		console.log(`WARN ${scene}.present.ms was not reported`);
 		return;
 	}
@@ -113,7 +166,7 @@ function runCheck(): int32 {
 	if ((uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0) { return 1; }
 
 	let failed: int32 = 0;
-	const metrics: string[] = ["nodes", "draws", "buffersAlive", "buffersFailed", "nodesDrawn"];
+	const metrics: string[] = ["nodes", "retainedNodes", "draws", "buffersAlive", "buffersRefused"];
 	for (const metric of metrics) {
 		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) { failed = failed + 1; }
 	}

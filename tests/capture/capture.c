@@ -50,15 +50,21 @@ typedef struct {
 
 static voidCaptureSlot s_slots[VOID_CAPTURE_SLOTS];
 
+// NULL on failure, and the slot is left empty rather than sized, so a caller that forgets
+// to check cannot go on to report a size for a buffer that does not exist.
 static uint8_t *slotResize(int slot, int width, int height) {
 	voidCaptureSlot *s = &s_slots[slot];
 	size_t bytes = (size_t)width * (size_t)height * 4u;
-	if (s->width != width || s->height != height || s->rgba == NULL) {
-		free(s->rgba);
-		s->rgba = (uint8_t *)malloc(bytes);
-		s->width = width;
-		s->height = height;
+	if (s->width == width && s->height == height && s->rgba != NULL) return s->rgba;
+	free(s->rgba);
+	s->rgba = (uint8_t *)malloc(bytes);
+	if (s->rgba == NULL) {
+		s->width = 0;
+		s->height = 0;
+		return NULL;
 	}
+	s->width = width;
+	s->height = height;
 	return s->rgba;
 }
 
@@ -100,6 +106,12 @@ int voidCaptureGrab(int slot) {
 		return 0;
 	}
 	uint8_t *out = slotResize(slot, (int)desc.Width, (int)desc.Height);
+	if (out == NULL) {
+		ID3D11DeviceContext_Unmap(context, (ID3D11Resource *)staging, 0);
+		ID3D11Texture2D_Release(staging);
+		ID3D11Texture2D_Release(back);
+		return 0;
+	}
 	for (UINT y = 0; y < desc.Height; y++) {
 		const uint8_t *row = (const uint8_t *)mapped.pData + (size_t)y * mapped.RowPitch;
 		uint8_t *dst = out + (size_t)y * (size_t)desc.Width * 4u;
@@ -121,6 +133,7 @@ int voidCaptureGrab(int slot) {
 	int height = sapp_height();
 	if (width <= 0 || height <= 0) return 0;
 	uint8_t *out = slotResize(slot, width, height);
+	if (out == NULL) return 0;
 	uint8_t *flip = (uint8_t *)malloc((size_t)width * (size_t)height * 4u);
 	if (!flip) return 0;
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);

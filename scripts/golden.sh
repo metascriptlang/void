@@ -64,6 +64,8 @@ matches() {
 }
 
 capture() {
+	# out/ is gitignored, so on a clean clone nothing has created it yet.
+	mkdir -p out/golden
 	VOID_SCENE_LIST=1 "$RUNNER" > out/golden/table.tsv
 	rm -rf "out/golden/$BACKEND_DIR"
 	index=0
@@ -71,13 +73,25 @@ capture() {
 	while IFS="$(printf '\t')" read -r name phase width height dpi steps; do
 		if matches "$name"; then
 			mkdir -p "out/golden/$BACKEND_DIR/$(dirname "$name")"
-			if ! VOID_SCENE="$index" "$RUNNER" 2>/dev/null | grep -E '^(CAPTURED|FAIL|SKIP)'; then
+			# The runner's exit status, not grep's: grep matching the word FAIL is not the
+			# same as the scene having been captured, and taking the pipeline's status would
+			# make a run where every scene printed `SKIP this build has no readback path`
+			# report success and then let --update overwrite the goldens with nothing.
+			VOID_SCENE="$index" "$RUNNER" > out/golden/scene.log 2>&1 || true
+			verdict="$(grep -E '^(CAPTURED|FAIL|SKIP)' out/golden/scene.log || true)"
+			if [ -n "$verdict" ]; then
+				echo "$verdict"
+			else
 				echo "FAIL $name produced no verdict"
-				failures=$((failures + 1))
 			fi
+			case "$verdict" in
+				CAPTURED*) ;;
+				*) failures=$((failures + 1)) ;;
+			esac
 		fi
 		index=$((index + 1))
 	done < out/golden/table.tsv
+	rm -f out/golden/scene.log
 	[ "$failures" -eq 0 ]
 }
 
