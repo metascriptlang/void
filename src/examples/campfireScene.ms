@@ -15,7 +15,7 @@ import {
 import { RenderState, Face, Compare } from "../void3d/pass";
 import { Material, Phase } from "../void3d/material";
 import { Sampler } from "../void3d/target";
-import { DrawContext, DrawItem, addMesh, addMaterial } from "../void3d/draw";
+import { DrawContext, DrawItem, addMesh, addMeshData, addMaterial } from "../void3d/draw";
 import { LowResView, ViewError } from "../void3d/blit";
 import { PaletteError } from "../void3d/palette";
 import {
@@ -29,7 +29,7 @@ import {
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
 import { identity, Vec3, vec3 } from "../math/math3d";
-import { Rgba, Box, LIT_VERTEX_STRIDE, pushBox, pushGround } from "../void3d/mesh";
+import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
 import {
 	OrthoCamera,
 	CameraView,
@@ -71,7 +71,7 @@ const STONE: Rgba = { red: 0.5, green: 0.44, blue: 0.48, alpha: 1.0 };
 const LOG_WOOD: Rgba = { red: 0.3, green: 0.18, blue: 0.14, alpha: 1.0 };
 const GROUND: Rgba = { red: 0.15, green: 0.17, blue: 0.3, alpha: 1.0 };
 
-const sceneVertices: Vec<float32> = [];
+let sceneMesh: MeshData = MeshData.empty();
 const grassInstances: Vec<float32> = [];
 const stones: Vec<Box> = [];
 const flameBuffers: Vec<uint32> = [];
@@ -106,8 +106,6 @@ let paletteWanted: boolean = false;
 let cameraSnap: boolean = true;
 let panTexelsPerFrame: float32 = 0.0;
 
-let sceneBuffer: uint32 = 0;
-let sceneVertexCount: int32 = 0;
 let grassBuffer: uint32 = 0;
 let grassCount: int32 = 0;
 let grassTexture: uint32 = 0;
@@ -199,11 +197,16 @@ function layoutStones(): void {
 	stones.push(stone(-1.0, 11.0, 1.6, 1.2, 0.8, 0.0));
 }
 
+// The ground, the stones and three leaning logs, all into one MeshData. Nothing here touches
+// the GPU: the buffers are made when setupDraws hands the data to the DrawContext, and remade
+// from this same data after a context loss (draw.ms rebuildMeshes).
 function buildScene(): void {
 	layoutStones();
-	pushGround(sceneVertices, GROUND_HALF_SIZE, GROUND);
+	const ground: Result<int32, MeshError> = addPlane(sceneMesh, GROUND_HALF_SIZE, GROUND);
+	if (!ground.ok) { return; }
 	for (const block of stones) {
-		pushBox(sceneVertices, block);
+		const added: Result<int32, MeshError> = addBox(sceneMesh, block);
+		if (!added.ok) { return; }
 	}
 	for (let i = 0; i < 3; i++) {
 		const yaw: float32 = (i as float32) * 2.094 + 0.4;
@@ -216,10 +219,9 @@ function buildScene(): void {
 			tilt: -0.85,
 			color: LOG_WOOD,
 		};
-		pushBox(sceneVertices, log);
+		const added: Result<int32, MeshError> = addBox(sceneMesh, log);
+		if (!added.ok) { return; }
 	}
-	sceneVertexCount = (sceneVertices.length as int32) / LIT_VERTEX_STRIDE;
-	sceneBuffer = makeVertexBuffer(sceneVertices);
 }
 
 function insideStone(x: float32, z: float32): boolean {
@@ -392,15 +394,10 @@ function setupDraws(): void {
 		texture0: flameTexture,
 		sampler0: pointSampler.handle,
 	});
-	const litMesh: int32 = addMesh(context, {
-		layout: VertexLayout.Lit,
-		vertexBuffer: sceneBuffer,
-		instanceBuffer: 0,
-		indexBuffer: 0,
-		vertexCount: sceneVertexCount,
-		indexCount: 0,
-		instanceCount: 1,
-	});
+	// The one mesh here with CPU data: indexed, and rebuilt by the renderer after a context
+	// loss. The billboards below keep their buffers in this file and are still not rebuilt
+	// (docs/VOID3D.md, M5 as built — Still missing).
+	const litMesh: int32 = addMeshData(context, sceneMesh);
 	const grassMesh: int32 = addMesh(context, {
 		layout: VertexLayout.Billboard,
 		vertexBuffer: cornerBuffer,
@@ -409,6 +406,7 @@ function setupDraws(): void {
 		vertexCount: 6,
 		indexCount: 0,
 		instanceCount: grassCount,
+		generation: 0,
 	});
 	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
@@ -420,6 +418,7 @@ function setupDraws(): void {
 			vertexCount: 6,
 			indexCount: 0,
 			instanceCount: 1,
+			generation: 0,
 		});
 	}
 	sceneItems.push(item(litMesh, litMaterial));
