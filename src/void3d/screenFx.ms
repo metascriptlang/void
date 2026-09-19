@@ -30,6 +30,7 @@ export function screenMesh(vertexBuffer: uint32): GpuMesh {
 		vertexCount: 3,
 		indexCount: 0,
 		instanceCount: 1,
+		generation: 0,
 	};
 }
 
