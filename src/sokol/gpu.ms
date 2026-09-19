@@ -13,6 +13,16 @@ when (macos) {
 	@compile("./bridgeEmbed.m");
 }
 
+when (windows) {
+	@compile("./sokolWin.c");
+	@compile("./bridge.c");
+	@passL("-ld3d11");
+	@passL("-ldxgi");
+	@passL("-luser32");
+	@passL("-lgdi32");
+	@passL("-lshell32");
+}
+
 when (android) {
 	@compile("./bridgeAndroid.c");
 	@passL("-lEGL");

@@ -8,6 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>   // fontstash's _WIN32 fopen path uses MAX_PATH / MultiByteToWideChar
+#endif
 #define FONTSTASH_IMPLEMENTATION
 #include "../../deps/fontstash/fontstash.h"
 
