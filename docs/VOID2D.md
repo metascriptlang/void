@@ -159,17 +159,18 @@ For scale: GPUI's glyph instance is 112 B, Makepad's ~116 B, Ghostty's 32 B (int
 Each carries the phase that closes it. Each also becomes a listed, failing case in `tests/PENDING.md` at P0, so a defect is a failing test before it is a fixed defect and the entry is deleted in the same commit as the fix ([TESTING.md](TESTING.md) "PENDING").
 
 - **Atlas-full drops glyphs silently**: a fixed 512² atlas (`void2d/batcher.c:147-148`) and no `FONS_ATLAS_FULL` handler; `fons_resize` would leak the old image and view (`:61-65`). — **P1** holds it (handler + leak), **P3** removes the class with fontstash.
-- **At most ~126 Labels/Graphics render**: each owns an `sg_buffer` and sokol's default pool is 128. Measured with `src/examples/bench2d.ms`. — **P1**, one growing instance buffer.
-- **Node filters nest a pass inside the swapchain pass** (`void2d/render.ms:216-283`, `scene.ms:88-102`); the nested `begin2d` also drops pending vertices and state. — **P1**, per-target command lists hoisted.
+- **At most ~126 Labels/Graphics render**: each owns an `sg_buffer` and sokol's default pool is 128. Measured: at 10 000 labels, `buffersAlive` 126 and `buffersFailed` 9 874 (`tests/bench/baseline.json`), and the golden `regress/nodeCap` shows labels 0–125 drawn and 126–199 absent. — **P1**, one growing instance buffer.
+- **Node filters do not work at all, and take the whole frame with them.** `drawFiltered` (`void2d/render.ms:216-283`) opens a render-target pass inside the swapchain pass. Measured at P0: a debug build trips `Assertion failed: !_sg.cur_pass.valid` (`sokol_gfx.h:27214`) and the process dies; a release build presents a frame that is nothing but the clear colour, including the siblings drawn before and after the filtered node, because the nested `begin2d` discards the pending batch and the pass bracketing never recovers. The path has never had a caller — no example and no test sets `Node2D.filter`, and `src/test/nodeCheck.ms` only builds the `Filter` structs. Five golden scenes are PENDING on it. — **P1**, per-target command lists hoisted.
 - **Filter semantics differ from h2d**: only children enter the target; alpha applied twice under Blur; the target is screen-space at dpi 1; children re-synced twice per frame. The blur kernel multiplies tap spacing by the radius (`shader2d.glsl:81-87`). — **P1**, semantics and kernel together, one regeneration of `filter/`.
 - **Fractional DPI puts every glyph off-grid**: `begin2d(wf as int32, hf as int32, dpi)` (`scene.ms:89`). — **P1**.
-- **Samplers are hard-wired REPEAT** (`batcher.c:136-143`). — **P1**, its own commit: it changes edge pixels.
-- **Per-frame vertex cap**: the dynamic buffer holds 65536 vertices (`batcher.c:19`, `:85`) and draws are dropped past it, silently. — **P1**.
+- **Samplers are hard-wired REPEAT** (`batcher.c:141-148`). — **P1**, its own commit: it changes edge pixels.
+- **Per-frame vertex cap**: the dynamic buffer holds 65536 vertices (`batcher.c:19`, `:90`) and `sg_append_buffer` accumulates across flushes within a frame, so past the cap the rest of the scene disappears. Silent in release — that is what the golden `regress/vertexCap` records — and a hard `VALIDATION_FAILED` panic (`sokol_gfx.h:23960`) in a debug build. — **P1**.
 - **GPU calls are issued while the tree is walked** (`batcher.c:218-251`, `draw.ms:264-277`, `:307-320`); a text change destroys and recreates its GPU buffer (`render.ms:110-111`). — **P1**.
 - **A rotated Mask clips to its AABB** (`render.ms:204`), and culling tests the viewport rather than the active clip (`render.ms:191-201`). — **P2**.
 - **Integer glyph origins and rounded advances** (`fontstash.h:1230-1244`, `:1314`), `kern`-only metrics, `split(" ")` wrapping (`text.ms:19`), no `textWidth`, no fallback, ≤ 16 fonts (`batcher.c:35`), the atlas expanded R8→RGBA on the CPU and fully re-uploaded on any new glyph (`batcher.c:345-360`, `:207-216`). — **P3**.
 - The h2d surface still missing — `parent`, `TileGroup`, `Tile.dx/dy`, `Mask.scrollX/Y`, text metrics — is listed in [HEAPS.md](HEAPS.md). — `Tile.dx/dy` at **P2**, text metrics at **P3**, the rest at **P5**.
 - **Idle costs a full walk and draw**: `Scene.present` runs every frame and nothing knows whether the tree changed. — **P5**.
+- **Entry points declare `function main()` and nothing calls it** on the installed msc (0.2.53) on Windows and under `--os=emcc`, so the binary exits at once and the wasm build links the renderer out. `src/examples/mainSokol2d.ms` was fixed at P0 — it built a 48 KB wasm instead of 498 KB. `mainSokol.ms`, `mainCampfire.ms`, `iosEntryAnim.ms` and `iosEmbedEntry.ms` still have it; they belong to the void3d arc. — **fixed for void2d at P0.**
 
 ## Guardrails
 
@@ -181,13 +182,28 @@ Each carries the phase that closes it. Each also becomes a listed, failing case 
 6. **Text is where the weight goes, so it is modular.** The glyph layer goes in by default. The shaper, a hinting rasterizer, colour emoji, the SDF text path, procedural sprite glyphs and the SVG rasterizer are compile-time modules; CJK and emoji families load on a real miss. A game build pays for none of them. Measure the wasm delta of each.
 7. **No ClearType.**
 8. **Pay for what you use.** Snapping, the pixel-exact text regime and the UI pipeline engage only for nodes that use them; a sprite-only scene must not regress at any step.
-9. **Same pixels on every platform.** No OS text system, no per-platform text path (Makepad's slug on macOS/web, SDF on Windows), no runtime shader generation. **Today this is asserted, not checked**: only D3D11 has a readback path and it is gitignored scratch. It becomes a number at P0 and a five-backend conformance run at P3 — one golden set authored on D3D11, every backend compared against it, a pass rate per backend ([TESTING.md](TESTING.md) "Guardrail 9").
+9. **Same pixels on every platform.** No OS text system, no per-platform text path (Makepad's slug on macOS/web, SDF on Windows), no runtime shader generation. **As of P0 this is a number: 37/37 scenes byte-identical on D3D11, and six other surfaces reported as SKIP with a reason** — GLES3 desktop, Metal macOS, Metal iOS, GLES3 Android, WebGPU, WebGL2. One golden set authored on D3D11, every backend compared against it, a pass rate per backend ([TESTING.md](TESTING.md) "Guardrail 9"); the full five-backend run is P3. What each missing readback costs, and what browser conformance needs beyond a driver, is written down there rather than guessed at.
 
 ## Roadmap
 
 Seven phases. Each ends with something demonstrable; none leaves `src/examples/renderer2d.ms` — the demo the golden suite captures — broken; each names the "Known defects" entries it closes. How a phase is proved is [TESTING.md](TESTING.md), and the tier names below (T0–T5) come from there.
 
-**Baseline** (release, D3D11, 2026-09-20, `src/examples/bench2d.ms`): UI scene of 10 000 cards + labels — `present` 4.5 ms CPU, 253 draws, **126 labels actually drawn**; 10 000 sprites — 1.7 ms, 1 draw. From P0 on, these come from `tests/bench/` and a committed `baseline.json` rather than from this paragraph.
+**Baseline**, from `tests/bench/baseline.json` and reproducible by `sh scripts/gate.sh`
+(release, D3D11, 1280×720, `sample_count` 1, `high_dpi` 0, 20 warm-up + 120 measured frames,
+2026-09-20):
+
+| row | ui | sprites |
+|---|---|---|
+| nodes | 10 000 | 10 000 |
+| draws | 253 | 1 |
+| buffersAlive | 126 | 0 |
+| buffersFailed | 9 874 | 0 |
+| nodesDrawn | **126** | 10 000 |
+| present.ms | 4.48 | 1.73 |
+
+`buffersFailed` is the ~126-node cap as a number: past sokol's 128-object default pool every
+`sg_make_buffer` comes back in the FAILED state and its draws are dropped. Counters gate;
+milliseconds report with a warn threshold at 1.5× and never fail a commit.
 
 **Dependencies**, stated rather than implied:
 
@@ -216,31 +232,79 @@ P1 needs only P0. P2 needs P1's instance stream. P3 needs P2's instance layout, 
 
 **Par.** Not applicable — this is the precondition, and on this axis the references are behind, not ahead: GPUI has no golden-image suite, and GPUI.md:62 records that no GPUI renderer counts draw calls, batches or instances. Void owns five backends and claims identical pixels across them; that claim is checked by pixels, not by reading.
 
-**Lands.**
+**Lands** (all committed, 2026-09-20):
 
-- `tests/capture/capture.{c,h}` — `out/tmp/capture/capture.c` moved in, its D3D11 path unchanged, behind one signature; `glReadPixels` added for GL/GLES3 because it costs ~30 lines and covers both the Android device and WebGL2; every other backend a stub reported as SKIP, never as PASS.
-- PNG output through `deps/stb/stb_image_write.h`; PPM demoted to a debug format.
-- `tests/golden/{scenes.ms,runner.ms,compare.ms}` and `tests/golden/d3d11/*.png` — the scene table in TESTING.md, goldens generated from today's renderer, defects and all.
-- `tests/bench/bench{Ui,Sprites}.ms` — the two seven-line entries from `out/tmp/bench/`; `bench2d.ms` emits machine-readable rows; `tests/bench/baseline.json`.
-- `tests/PENDING.md`, seeded with one entry per "Known defects" line and one per backend that has no readback.
-- `scripts/gate.sh` — the first gate script in this repo, cache eviction as step one.
-- Browser capture through Playwright for WebGPU and WebGL2.
+- `tests/capture/capture.{c,h}` — the D3D11 readback moved in from `out/tmp/`, behind one
+  signature, plus `glReadPixels` for GL/GLES3 (written, not yet exercised by a GLES3 build)
+  and a PNG writer through `deps/stb/stb_image_write.h`. Two capture slots, so the same
+  frame can be grabbed twice and the two compared before either becomes a golden. Every
+  other backend reports itself absent, so the gate says SKIP and never PASS.
+- `tests/golden/{table,scenes,runner,compare}.ms` and `tests/golden/pngio.{c,h}` — the table
+  as data (no GPU, so the comparator links no sokol), the builders, a one-scene-per-process
+  runner and a comparator that applies the tolerance and PENDING policy.
+- `tests/golden/d3d11/` — **37 scenes**, generated from today's renderer, defects and all.
+- `tests/bench/bench{Ui,Sprites}.ms`, `check.ms` and `baseline.json`; `bench2d.ms` emits one
+  machine-readable row per metric.
+- `tests/PENDING.md`, seeded with every "Known defects" line, every unrenderable scene, every
+  backend without a readback, every unwired oracle, and the two debug-build aborts P0 found.
+- `scripts/gate.sh` — the first gate this repo has had — and `scripts/golden.sh`.
+- `scripts/emccShim.c`, `scripts/build-emcc-shim.sh` and a reworked `scripts/build-web.sh`:
+  emscripten ships `emcc.bat`, not `emcc.exe`, and msc spawns its C compiler as an
+  executable, so an `--os=emcc` build on Windows died before compiling a line. The shim is
+  committed so it stops evaporating into a scratchpad.
+- `scripts/web-liveness.sh` — headless Chrome loads the built demo and the script checks the
+  canvas is not blank. Liveness, explicitly not conformance.
+- Three small renderer-side changes the harness needed: `voidRunConfigured` (sample count
+  and high-DPI as parameters), `Scene.presentAt` (an explicit DPI, so a scene can pin 1.25
+  or 1.5 on a 1.0 display), and `staticBuffersAlive`/`staticBuffersFailed` counters.
 - [TESTING.md](TESTING.md).
 
 **Defects closed.** None. Each becomes a listed, failing case, so the phase that fixes it deletes its entry in the same commit.
 
-**Exit.**
+**Exit — what was asked, and what was measured.**
 
-- `sh scripts/gate.sh` from a clean clone on this box: T0 green; every golden scene green on D3D11; both web backends built, captured in headless Chrome and compared against the **same** D3D11 goldens; bench rows within baseline; Metal, iOS and Android reported as SKIP with their reason.
-- The baseline above is reproduced by a committed command.
-- The three harness self-checks pass: the hand-computed scene, the deliberately wrong scene, and the double-render determinism check.
-- `tests/golden/` is under ~600 KB.
+| Exit criterion | Result |
+|---|---|
+| `sh scripts/gate.sh` green on this box | **GATE GREEN**, 13 loud skips, ~35 s |
+| T0 green | 425 tests |
+| every golden scene green on D3D11 | **37 / 37 byte-identical, zero tolerance budgets** |
+| both web backends built | **yes** — 498 KB wasm (WebGPU), 401 KB (WebGL2) |
+| both web backends captured in headless Chrome and compared to the D3D11 goldens | **not met.** The wasm build has no readback, so there is nothing to compare. What exists instead is liveness: WebGL2 draws the demo headless; WebGPU builds and runs but headless Chrome hands it no adapter. What conformance would take is written into [TESTING.md](TESTING.md) "Guardrail 9" |
+| bench rows within baseline | ten counters gated, two milliseconds reported |
+| Metal, iOS and Android reported as SKIP with a reason | yes, plus GLES3 desktop, WebGPU and WebGL2 — seven surfaces, one measured |
+| the baseline reproduced by a committed command | `sh scripts/gate.sh`, via `tests/bench/check.ms` |
+| the three harness self-checks pass | yes: the hand-computed scene, the deliberately wrong golden, and two draws of the same state compared before either is written out |
+| `tests/golden/` under ~600 KB | **not met: 912 KB.** 320 KB is the 33 UI scenes — which is what the estimate was about — and 592 KB is the four 800×600 demo frames, which are photographic. Recorded rather than cut, because the integration capture is the most valuable golden in the suite; the lever, if it ever matters, is demo frames |
+
+**Defects closed.** None, as planned. Each is now a listed, failing case, so the phase that
+fixes it deletes its entry in the same commit.
+
+**What P0 found that the plan did not predict.** Four things, all recorded in
+`tests/PENDING.md` and corrected above in "Known defects":
+
+1. **The node-filter path has never worked, and it takes the whole frame with it.** A debug
+   build aborts on sokol's `!_sg.cur_pass.valid`; a release build presents nothing but the
+   clear colour, including the siblings drawn before and after the filtered node. It had no
+   caller: no example and no test sets `Node2D.filter`. Five scenes are therefore PENDING
+   until P1.
+2. **Atlas-full is nondeterministic, not merely lossy.** Three distinct outputs in ten runs,
+   worst pair 35.9% of the image at max delta 207.
+3. **The demo entry never ran.** `src/examples/mainSokol2d.ms` declared `function main()`
+   and nothing called it, so the native binary exited at once and the wasm build linked the
+   renderer out — 48 KB instead of 498 KB. Fixed here; the golden suite's four `demo/` rows
+   are what keep it honest.
+4. **The "frame 90 moves by 1–2 pixels" note from earlier sessions was 4× MSAA**, not the
+   renderer. At `sample_count` 1 every scene is byte-identical across processes. Which is
+   also the right setting for a golden set that five backends must match, since MSAA is on
+   for the sokol_app entry only.
 
 **Tests.** This phase *is* T2, T4 and the harness self-checks.
 
-**Measure.** Nothing moves. The point is that every later number is comparable to a baseline anyone can regenerate.
+**Measure.** Nothing in the renderer moves. The point is that every later number is
+comparable to a baseline anyone can regenerate.
 
-**Unblocks.** Every phase. Without it, "no phase leaves the demo broken" is an assertion nobody can check.
+**Unblocks.** Every phase. Without it, "no phase leaves the demo broken" is an assertion
+nobody can check — and, as it turned out, an assertion that was already false.
 
 **Risk → fallback.** The suite is written against a renderer P1 and P2 are about to rewrite, so most goldens are regenerated twice. That is the intended use, not a cost to avoid: the regeneration diff is the review artifact each change deserves. The real risk is the opposite one — freezing goldens later, against a renderer nobody can compare to what came before. No fallback is needed; if the scene table proves too large to regenerate comfortably, cut scenes from `prim/` and `image/` first, never from `regress/` or `harness/`.
 
@@ -471,7 +535,8 @@ Checked and recorded per phase, from `tests/bench/`: draw calls, instances and u
 - Nested rotated clips fall back to a scissor AABB for outer levels; whether Neon needs better is unknown.
 - System font discovery is host work; whether Ion or the Neon host owns it is undecided. Ghostty's Windows scanner is a stopgap, not a model.
 - The Zed editor element (`crates/editor`) is outside the sparse clone: how it uses `paint_layer`, `split_at` and tab expansion was not read.
-- `tests/layout.test.ms` does not build on msc 0.2.53 and belongs to no tier: port its cases into `src/test/` or delete it (TESTING.md "T0").
+- `tests/layout.test.ms` does not build on msc 0.2.53 and belongs to no tier: port its cases into `src/test/` or delete it (TESTING.md "T0"). Listed as `legacy:tests/layout.test.ms` in `tests/PENDING.md`, for P1.
+- **Headless Chrome has no WebGPU adapter on this box**, measured at P0 with and without `--use-angle=swiftshader`: the canvas is black. WebGPU conformance can only be taken headed until that changes, which is the one part of guardrail 9 that is blocked by something outside this repo.
 
 ## Decision (2026-06-20): own the batcher, do NOT vendor sokol_gp
 
