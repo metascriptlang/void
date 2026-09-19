@@ -1,14 +1,8 @@
-# GPUI — Reference for void2d, and what to absorb (2026-09-19, revised 2026-09-20)
+# GPUI — Reference for void2d (2026-09-19, revised 2026-09-20)
 
-[GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) is Zed's UI renderer. It is the best-in-class reference for **how a UI primitive should look on the GPU** — rounded boxes, borders, shadows, and above all text — and for **how a frame should be handed to the GPU**. This doc records the comparison, read from source, and the decision on what void2d takes from it without losing the Heaps model.
+[GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) is Zed's UI renderer. It is the best-in-class reference for **how a UI primitive should look on the GPU** — rounded boxes, borders, shadows, and above all text — and for **how a frame should be handed to the GPU**. This doc records the comparison, read from source.
 
-**The bar (2026-09-20).** Heaps is a game engine. Void is a rendering engine, and void2d must carry application-UI rendering when Void is a Neon backend: concretely, render a code editor like Zed — fine font control, high-quality antialiasing, fast and smooth — while keeping the interface and feel of Heaps h2d. Every decision below is judged against "a 13 px code font at 1× and 1.5× DPI looks and scrolls like Zed", not against HUD needs.
-
-**The rule.** void2d takes **everything in GPUI's rendering layer**, except where one of three reasons applies:
-
-- **N** — Neon or its Void host already covers it (component model, layout, events, focus, lists, a11y). Void renders; Neon + Void is the combination.
-- **W** — GPUI's mechanism is worse than an alternative Void has, or exists to repair a problem Void does not have.
-- **P** — it is not portable to sokol_gfx / GLES3 / WebGL2, or it contradicts "same pixels on every platform" ([VOID2D.md](VOID2D.md)).
+The entry point for void2d's decisions — the bar, the conclusions across all references, guardrails and sequencing — is [VOID2D.md](VOID2D.md). This doc is the evidence for the GPUI part: how GPUI works, where void2d stands against it, and the disposition of every item in GPUI's rendering layer. The disposition reasons are VOID2D.md's: **N** Neon or its Void host covers it, **W** GPUI's mechanism is worse than one Void has or plans, **P** not portable or against "same pixels on every platform".
 
 Source: `~/projects/gpui` — a sparse clone of the Zed monorepo (only `crates/gpui*`) at `b961b49`. GPUI paths below are relative to `crates/`; `W:` is `gpui/src/window.rs`. Void paths are relative to `src/` at `45d88e0`; Heaps paths are relative to `~/projects/heaps` at `b9aa6dcb`. Citations were re-checked against those trees on 2026-09-20.
 
@@ -42,7 +36,7 @@ A 2D-only, instanced, SDF UI renderer with a fixed set of eight primitive kinds,
 
 The SDF is evaluated in **device pixels**: `fs_quad` takes `input.position.xy` (the fragment coordinate) minus `quad.bounds.origin`, and hard-codes `antialias_threshold = 0.5` on the assumption that one SDF unit is one pixel (`shaders.wgsl:565-600`). `paint_quad` snaps bounds and border widths to device pixels first (`W:4513-4525`), which is why the quad geometry can end exactly at the bounds: straight edges land on pixel boundaries and need no AA; only the corners, which are inside the bounds, do.
 
-Rotate or scale that quad and three things break: the SDF is in the wrong space, 0.5 is no longer half a pixel, and the straight edges need an AA fringe that lies **outside** the quad's geometry and is never rasterized. The shader cannot be ported as-is under a per-node affine. See "SDF under an affine".
+Rotate or scale that quad and three things break: the SDF is in the wrong space, 0.5 is no longer half a pixel, and the straight edges need an AA fringe that lies **outside** the quad's geometry and is never rasterized. The shader cannot be ported as-is under a per-node affine; the local-space form is in [VOID2D.md](VOID2D.md) "Primitives".
 
 ### The text path — where Zed's look actually comes from
 
@@ -110,22 +104,15 @@ Weak spots in GPUI's text path: 112-byte glyph instances carrying HSLA and a `Tr
 9. **No pixel-snapping rules**: no hairline minimum, fractional box edges, centred text lines on fractional pixels (`text.ms:7`).
 10. **Idle cost.** `Scene.present` walks and draws every frame; nothing knows whether the tree changed.
 
-### Defects found while tracing (2026-09-20)
+Defects found in void2d while tracing are listed in [VOID2D.md](VOID2D.md) "Known defects".
 
-- **Atlas-full drops glyphs silently.** The atlas is a fixed 512² (`batcher.c:147-148`); fontstash reports `FONS_ATLAS_FULL` through `handleError` (`fontstash.h:1131`) and retries once, but `batcher.c` never sets a handler, so `fons__getGlyph` returns NULL. `fons_resize` would also leak the old `sg_image` and view (`batcher.c:61-65`).
-- **At most ~126 Labels/Graphics render.** Each owns an `sg_buffer`; sokol's default `buffer_pool_size` is 128 (`sokol_gfx.h:6590`) and `sg_make_buffer` fails silently past it. Measured with `examples/bench2d.ms`: 10 000 labels requested, 126 drawn.
-- **Node filters nest a pass inside the swapchain pass.** `drawFiltered` calls `beginRT` while `Scene.present` is between `beginPass` and `endPass` (`render.ms:216-283`, `scene.ms:88-102`); `sg_begin_pass` asserts `!in_pass`. Its nested `begin2d` also drops pending vertices and resets clip/effect state (`draw.ms:110-125`).
-- **Filter semantics differ from h2d**: only children go into the target, not the node itself; alpha is applied twice under Blur (`render.ms:245, 273`); the target is screen-space at dpi 1 (`:239`), so it is half-resolution on HiDPI and does not rotate with the node; children are re-synced twice per frame.
-- **Fractional DPI puts every glyph off-grid.** `present` truncates the logical size: `begin2d(wf as int32, hf as int32, dpi)` (`scene.ms:89`). A 1000 px framebuffer at 1.5 gives 666, not 666.67; the projection becomes 1.5015×.
-- **Samplers are hard-wired REPEAT** (`batcher.c:136-143`) — bilinear bleed at atlas tile edges. h2d defaults to clamp.
+## Disposition of GPUI's rendering layer
 
-## Decision
-
-### Inventory of GPUI's rendering layer
+How the taken items are adapted — the display list, the unified UI pipeline, SDF under an affine, the text regimes, clip and scroll — is in [VOID2D.md](VOID2D.md) "Conclusions".
 
 | GPUI | Disposition | Note |
 |---|---|---|
-| Display list: build → upload once → draw ranges | **Take** | "The display list" below |
+| Display list: build → upload once → draw ranges | **Take** | VOID2D.md "Frame shape" |
 | Instance buffer growth `max(2×, pow2)`, no shrink, cap, drop-frame-with-error | **Take** | |
 | CPU cull of primitives with empty `bounds ∩ mask` | **Take** | cull against the active clip, not only the viewport |
 | Rounded-rect SDF, per-corner radii, per-side borders, dashes | **Take, adapted** | re-derived for local space |
@@ -133,7 +120,7 @@ Weak spots in GPUI's text path: 112-byte glyph instances carrying HSLA and a `Tr
 | Per-pixel gradient, sRGB/Oklab; slash + checkerboard patterns; dither | **Take** | keep Void's radial and multi-stop |
 | `corner_radii` + `grayscale` on image instances; `ObjectFit` math; animated frames keyed by `frame_index` | **Take** | decoding stays in `assets/` |
 | SVG → R8 mask at 2× → tinted sprite (icons) | **Take**, opt-in module | rasterizer: a single-header C one; resvg is Rust |
-| Clip by four edge distances | **Take, adapted** | extended to a rotated rect; `discard`, not `vec4(0)` (see "Clip") |
+| Clip by four edge distances | **Take, adapted** | extended to a rotated rect; `discard`, not `vec4(0)` (VOID2D.md "Clip and scroll") |
 | Pixel-snapping rules (`snap_bounds`, `snap_stroke` min 1 dp, `cover_bounds`, snapped offsets) | **Take** | applied when the world transform is axis-aligned |
 | Glyph layer: logical unhinted layout, 4 x-variants, baseline snap, atlas key, 1:1 texel-exact sprites | **Take** | replaces fontstash |
 | Gamma/contrast correction function + `gamma_ratios` table | **Take** | one GLSL function; same UNORM/gamma-space blending as Void |
@@ -149,16 +136,16 @@ Weak spots in GPUI's text path: 112-byte glyph instances carrying HSLA and a `Tr
 | `paint_layer` non-overlap hint | **Take, adapted** | as h2d `TileGroup` + a node flag |
 | Cached-view replay | **Take, adapted** | persistent instance ranges with dirty upload ([SCENE-SCALE.md](SCENE-SCALE.md)) |
 | Line-layout cache, two generations | **W** | exists because GPUI rebuilds its tree; in Void the node holds its layout. A keyed cache only if measure and paint shape the same string twice |
-| BoundsTree reordering, per-kind `Vec`s, `BatchIterator` | **W** | guardrail 1 |
+| BoundsTree reordering, per-kind `Vec`s, `BatchIterator` | **W** | VOID2D.md guardrail 1 |
 | One pipeline per primitive kind | **W** | creates the box/text flush problem |
 | Scene stored twice; replay re-inserts and re-sorts | **W** | |
 | 112-byte glyph instance, HSLA converted on the GPU, identity matrix per glyph | **W** | |
 | Atlas without padding or eviction | **W** | Void sprites can be transformed; zoom must not leak |
-| Scroll = rebuild every visible item | **W** | "Scroll" below |
+| Scroll = rebuild every visible item | **W** | VOID2D.md "Clip and scroll" |
 | Opacity multiplied per primitive only | **W** | Void keeps alpha down the tree **and** group opacity through a target |
-| MSAA intermediate-texture path rasterization | **W/P** | guardrail 4 |
+| MSAA intermediate-texture path rasterization | **W/P** | VOID2D.md guardrail 4 |
 | Platform text systems (DirectWrite / CoreText / swash) | **P** | different pixels per OS; Void owns one rasterizer |
-| ClearType / dual-source blending | **P** | guardrail 7 |
+| ClearType / dual-source blending | **P** | VOID2D.md guardrail 7 |
 | Storage-buffer instances, `base_instance` ranges | **P** | not in GLES3/WebGL2 (`sokol_gfx.h:238-239`); use per-instance vertex attributes and `vertex_buffer_offsets` |
 | Per-tile partial texture upload | **P** | sokol's `sg_update_image` replaces a whole image once per frame; keep a CPU mirror per page and upload dirty pages |
 | Three hand-written shader ports | **P** | one GLSL source |
@@ -166,141 +153,8 @@ Weak spots in GPUI's text path: 112-byte glyph instances carrying HSLA and a `Tr
 | Hitboxes, dispatch tree, focus, tab stops, IME input handler, cursor styles, tooltips, `uniform_list` / `list`, a11y, frame scheduling, window/platform | **N** | Neon's Void host (and Ion) |
 | Layout pixel rounding (`taffy.rs:270-376`) | **N** | Yoga's `pointScaleFactor`, set to the DPI by the host |
 
-### What the Neon host needs from void2d
-
-The boundary is not "nothing above pixels". These are rendering services the host cannot compute itself:
-
-- **Text measurement** for the Yoga measure callback: width/height of a run list under a width constraint, from the same layout the node will paint.
-- **Text geometry**: x for a byte index, index for an x, line boxes — caret, selection, IME candidate position.
-- **Hit geometry**: `globalToLocal`, world bounds, clip-aware containment. Dispatch order and event semantics stay in the host.
-- **"Did anything change?"** from `Scene`, so the host can skip a frame; and a re-present of the last list.
-- **Frame timings and counters.**
-
-Neon's `Style` already names what the host must be able to express and today drops (`neon/src/macros/style/fields.ms:40-56`): `borderWidth/Color/Radius`, `boxShadow`, `fontFamily/Weight/Style`, `textDecorationLine`, `overflow`, `transform`, `zIndex`.
-
-### The display list
-
-`emitNode` stops calling the GPU. It appends POD instances to a CPU stream and records draw commands `(pipeline, views, blend, fx, clip, instance range)`. At `end2d`: one upload, then the commands replay as `sg_draw` over ranges. Consequences:
-
-- A state change costs one more draw call, not an upload. A few hundred draws per frame is fine on every target, so scissor clipping and painter's order stop being throughput problems.
-- The vertex cap goes: the stream is a growable CPU array and the GPU buffer is reallocated when it is outgrown.
-- **Offscreen passes are hoisted.** One command list per target; filter and blur passes run before the swapchain pass in the order they completed. `Heaps` can open a target lazily mid-walk because its API has no pass objects; sokol cannot (`sg_begin_pass` asserts `!in_pass`).
-- Labels emit glyph quads into the stream instead of owning a buffer — this also removes the 128-buffer cap.
-- An immediate bracket opened more than once per frame uses `sg_append_buffer` (returns an offset), not `sg_update_buffer` (once per frame).
-- The renderer's input no longer depends on `Node2D`; the columnar scene in SCENE-SCALE.md can replace the fat-object tree without touching it.
-- The immediate-mode face of void2d ([VOID2D.md](VOID2D.md) "two faces") is exactly "append to the list".
-- The list can be asserted on in tests with no GPU, and re-presented without walking the tree.
-
-With the affine in the instance, a node that did not change has byte-identical instance data; keeping instance ranges persistent and uploading only dirty ranges makes static content cost zero CPU per frame. Draw order is rebuilt only on structural change (`drawOrder` in SCENE-SCALE.md).
-
-### One UI pipeline, not one per kind
-
-Painter's order plus one pipeline per kind means a flush at every box→text→box alternation — the exact problem GPUI's BoundsTree exists to repair. Void avoids creating it:
-
-- **UI pipeline** — one shader, one instance layout, a per-instance `mode` (box SDF / shadow / glyph / image / underline). The glyph atlas and one image atlas sit in two view slots, and the glyph atlas carries a white texel (the Dear ImGui trick), so a UI subtree in tree order is typically **one draw call** with no reordering.
-- **Sprite pipeline** — flat textured shader for sprites, particles, tiles, `Graphics` meshes. Never runs SDF math. **Pay for what you use** holds at the pipeline level: game scenes never touch the UI shader.
-
-### SDF under an affine
-
-1. **Evaluate in local space.** The vertex shader passes the local position as a varying; radii, border widths and the SDF are all in local units.
-2. **AA width from the transform.** Half a device pixel in local units: `0.5 / scale` from the affine for uniform scale, `fwidth(d)` otherwise. Heaps does the same for SDF fonts (`h3d/shader/SignedDistanceField.hx:40`, `autoSmoothing`).
-3. **Inflate the quad** by ~1 device pixel so the outer AA fringe of straight edges is rasterized under rotation. The fast paths stay.
-4. **Shadow.** The Gaussian is isotropic, so rotation is free; under non-uniform scale sigma is approximated by the mean scale.
-5. **When the world transform is axis-aligned**, apply GPUI's snapping rules on the CPU first. Then straight edges land on pixel boundaries and the result is GPUI's, pixel for pixel; the fringe only matters once a node rotates or scales.
-
-### Text
-
-**fontstash goes.** Integer origins, rounded advances and a key with no variant are its design, not a setting. Its replacement is a glyph layer owned by void2d, first on `deps/stb/stb_truetype.h` v1.26 (GPOS kerning, `stbtt_MakeGlyphBitmapSubpixel`) — no new dependency.
-
-- **Interface stays h2d's**: `Font`, `Text` with `text / font / textColor / letterSpacing / lineSpacing / maxWidth / textAlign`, `textWidth / textHeight / calcTextWidth / splitText`. Added on top: `Font` carries `weight, style, features, fallbacks`; a `Text` takes runs (`TextRun`); per-glyph x is queryable.
-- **Layout** at the logical size, float positions, never rounded. The node holds its shaped layout; wrap boundaries, truncation and hit-testing index into it, so a width change never re-shapes.
-- **Two regimes, chosen per node at sync from the world matrix.**
-  - *Pixel-exact* — the transform is a translation plus the DPI/view scale. Rasterize at `size × scale`; snap the run's origin to a device pixel; quantize glyph x to 1/4 device pixel and y to a whole one; draw 1:1. This is GPUI's text.
-  - *Transformed* — any other affine (game text, animation). Bilinear sampling of the nearest rasterized size; the 1 px atlas gutter makes this safe. SDF fonts remain the answer for world-space text ([VOID2D.md](VOID2D.md) "Text design").
-- **Scroll.** With the run's origin snapped to a device pixel, each glyph's variant depends only on its position inside the run: it is computed once at layout and survives any snapped translation. Scrolling is then `Mask.scrollX/Y` — the h2d idiom (`h2d/Mask.hx:70-125`) — snapped to device pixels: no re-layout, no re-rasterization, no variant churn. GPUI cannot do this; a retained tree can.
-- **Atlas**: R8 pages for coverage, RGBA pages for colour glyphs and images; 1024² pages, a new page when full; a CPU mirror per page, dirty pages uploaded once per frame; 1 px gutter; tiles ref-counted by live layouts so zooming does not leak. The white texel lives in page 0.
-- **Gamma/contrast**: GPUI's function, ported once to GLSL, in the glyph mode of the UI pipeline. Parameters are uniforms, defaults gamma 1.8 / contrast 1.0.
-- **Decorations**: run backgrounds and underline/strikethrough are instances of the same pipeline, thickness through `snap_stroke`.
-- **Shaper** — compile-time opt-in module (candidate `kb_text_shape`, single header). Without it: cmap + GPOS kerning, NFC-normalised input (covers Vietnamese), fallback by coverage. With it: GSUB features, ligatures, complex scripts. The glyph layer's output (`glyph id, x, y, byte index`) is the same either way.
-- **Rasterizer — open decision.** stb_truetype is unhinted. On HiDPI that is what macOS does and is sufficient. At 1× and 13 px it will be softer than Zed on Windows (DirectWrite) or Linux (swash, hinted); matching that needs FreeType light auto-hint, which also brings COLR/CBDT emoji and variable fonts, at a real size cost on wasm. Decide from captures of the same text beside Zed at 1× and 1.5×, behind a rasterizer interface that makes the swap local.
-
-### Clip
-
-Four edge distances as varyings work for any convex quad, so a **rotated Mask clips correctly** with the clip rect's four half-planes supplied per draw command (uniform, not per instance — clip changes are rare and a draw call is now cheap). The fragment shader **discards**: returning transparent, as GPUI's WGSL does, is wrong under `BlendMode.None` and `Multiply`. Nested clips whose intersection is no longer a rectangle fall back to the scissor AABB for the outer levels. Rounded `overflow: hidden` is covered for the image case by `corner_radii` on the image instance; a general rounded clip is one more SDF term on the same varyings and is deferred until needed.
-
-### Instance sizes
-
-Today a quad is 6 vertices × 8 floats = **192 B**, re-transformed on the CPU every frame, with no AA of its own. With per-instance attributes (`SG_VERTEXSTEP_PER_INSTANCE`, core in GLES3/WebGL2):
-
-| Instance | Payload | Size |
-|---|---|---|
-| Sprite pipeline | affine 6 + size 2 + uv 4 + colour 4 (float) | 64 B |
-| UI pipeline (single stride for all modes) | affine 6 + size 2, uv-or-radii 4, border widths 4, mode/params 4, gradient/shadow params 4, three colours as `UBYTE4N` | ~92 B packed, ~128 B with float colours |
-
-Glyphs drawn through the UI pipeline pay the UI stride; that is still under half of today's 192 B and under GPUI's 112 B. The UI layout is ~9 per-instance attributes plus the per-vertex corner, inside the 16-attribute limit of WebGL2 and `SG_MAX_VERTEX_ATTRIBUTES`. Instance ranges are addressed with `vertex_buffer_offsets`, since `base_instance` is unavailable on GLES3. These sizes are estimates from the planned layouts, not measured; 4-vertex instances should be checked against indexed quads on one Mali and one Adreno device before committing.
-
-## The Heaps side
-
-### Keep, and still add, to stay h2d
-
-Kept as-is: radians, S·R·T then parent, alpha multiplied down the tree, colour/blend/effects not inherited, array-order painter's drawing, filter as a node property, Mask as a node, `getBounds`, `localToGlobal/globalToLocal`.
-
-Missing from void2d today:
-
-- `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt / getChildIndex / numChildren`, `name` (`h2d/Object.hx:411-443` vs `void2d/node.ms:133-137`, where one node can sit under two parents). A reconciler host needs `parent` anyway.
-- **`TileGroup`** — a retained multi-quad node on one texture (`h2d/TileGroup.hx:562-718`); `Text` is built on it (`h2d/Text.hx:187-189`). It maps onto a persistent instance range and is the h2d-native form of the non-overlap hint.
-- **`Tile.dx/dy`** with `center()` / `setCenterRatio()` (`h2d/Tile.hx:26-30, 166-175`). Today's node `pivot` is applied for Rect/Sprite/Anim, ignored by ScaleGrid, Label and Graphics, and used by Mask (`render.ms:42-56, 192-204`).
-- `Mask.scrollX/Y` — the scroll mechanism above.
-- The `Text` metric surface and `Align` enum; `lineSpacing` in pixels (void2d's is a multiplier, `text.ms:49`).
-- `smooth` as a tri-state with a scene default; `tileWrap`, with clamp as the default sampler.
-- Filter semantics (`h2d/Object.hx:896-956`): the node itself goes into the target, alpha applied once, target in object-local space through a filter matrix instead of re-syncing the subtree, bounds clipped to the viewport, a frame-linear target pool (`h3d/impl/TextureCache.hx`), clip state saved and cleared per target.
-- `localToGlobal` after a mutation and before `present` returns last frame's matrix (`node.ms:174-180`); h2d calls `syncPos()` first (`Object.hx:359`).
-- `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:65-78` vs `h2d/Scene.hx:415-427`).
-
-### Do not copy from h2d
-
-- **Its whole font pipeline**: offline or canvas-baked atlases with a fixed charset (`hxd/res/FontBuilder.hx:26-146`, JS only), one texture page (`hxd/fmt/bfnt/FontParser.hx:10`), **Int metrics** for advance and kerning (`:68-73`), accent-stripping as "fallback" (`hxd/Charset.hx:53-72`), one sub-font per Text, per-code-unit iteration (`Text.hx:455`). Keep the interface, replace everything under it.
-- Rebuilding a whole `Text` on any change (`Text.hx:299-303`) and O(n) re-measurement for caret and selection every frame (`h2d/TextInput.hx:792-793`).
-- No analytic AA: `Graphics` is tessellation only and engine MSAA defaults to 0 (`h3d/Engine.hx:73`). Rounded, bordered panels are 9-slice bitmaps (`h2d/Flow.hx:355-359`).
-- Render-target drop shadows as the way to shadow a panel (`h2d/filter/DropShadow.hx:42-54`): two targets plus blur per box per frame.
-- Ignoring DPI (`displayScale` has no reader) and nearest sampling by default (`h2d/RenderContext.hx:52`).
-- The two-corner rotated mask (`h2d/Mask.hx:26-43`) — void2d's four-corner AABB is already more correct.
-- Scrolling by mutating child positions, which re-syncs the subtree (`Flow.hx:728-733`, `Mask.hx:109-125`). void2d's variant — the camera baked into every world matrix, so a camera move re-multiplies the tree (`scene.ms:91-99`) — is the same mistake; in h2d the camera is one uniform (`RenderContext.hx:275-283`).
-- One draw per Bitmap: h2d's default path does **not** batch — `BUFFERING` is a compile flag, off by default (`RenderContext.hx:24`); throughput comes from user-chosen `TileGroup`/`SpriteBatch`. That does not survive a reconciler that emits thousands of small nodes.
-
-## Guardrails — where absorbing GPUI would break the Heaps model
-
-1. **Draw order.** Heaps draws in tree order; **painter's order stays**, and the unified UI pipeline makes it batch. BoundsTree reordering is **not planned**: it repairs a problem the per-kind pipelines would have created, GPUI rebuilds it from empty every frame (natural for an immediate-mode scene, not for a retained tree), and it is O(log n) per primitive against the 1M-node target in [SCENE-SCALE.md](SCENE-SCALE.md). The cheap form of the same idea is kept: `TileGroup`, and a node flag asserting that children do not overlap, inside which draws may be sorted by pipeline/texture freely. Revisit only if measurements of real Neon UI show state-change draws dominating.
-2. **Node2D width.** `Node2D` already carries 71 fields (`void2d/node.ms`). Box style (~20 floats) and text runs are read only when emitting, so they belong in side tables, not in new columns on every node — the side-table bar in SCENE-SCALE.md.
-3. **Filters stay — and get fixed.** Render-target filters on arbitrary subtrees are Heaps semantics and remain; the `erf` shadow covers only rounded rects and is a fast path beside them. The blur must be corrected: downsample by 2^k then blur at a 1-texel step, or dual-Kawase; tap spacing is never multiplied by the radius.
-4. **Paths: no MSAA intermediate, and no baked fringe.** GPUI's per-path-batch pass break is a full tile store/load on tile-based mobile GPUs. A NanoVG-style fringe baked into the mesh does not work either: `Graphics` meshes are retained in local space and scaled in the shader, so a baked 1 px fringe becomes 2 px of blur at 2× and aliases at 0.5×. Instead store the edge normal per fringe vertex and **extrude in the vertex shader by `1px / scale`**.
-5. **MSAA is a knob, not a dependency.** On tile-based GPUs 4× MSAA on the swapchain pass resolves on-tile and is cheap; what is expensive is breaking the pass. Expose `sample_count` for iOS/Android instead of hard-coding 1. SDF and the fringe are still required: the embed host owns the framebuffer and its sample count, and analytic coverage is better than four levels.
-6. **Text is where the weight goes, so it is modular.** The glyph layer (layout, variants, atlas, gamma) is small and goes in by default. The shaper, a hinting rasterizer, colour emoji and the SVG rasterizer are compile-time modules: a game build pays for none of them, an editor build takes all of them. Measure the wasm delta of each.
-7. **Skip ClearType.** Dual-source blending is not core in GLES3/WebGL2, GPUI does not use it on Metal either, LCD AA is meaningless under rotation, and HiDPI does not need it. Grayscale + gamma/contrast is the target.
-8. **Pay for what you use.** Snapping, the pixel-exact text regime and the UI pipeline engage only for nodes that use them; a sprite-only scene must not regress at any step.
-
-## Sequencing
-
-Each step is measured before and after, the way SCENE-SCALE.md was. Baseline (release, D3D11, 2026-09-20, `examples/bench2d.ms`): UI scene of 10 000 cards + labels — `present` 4.5 ms CPU, 253 draws, **126 labels actually drawn**; 10 000 sprites — 1.7 ms, 1 draw.
-
-1. **Display list** — record draw commands, one upload per bracket, draw ranges; growable stream; per-target command lists with offscreen passes hoisted; Labels emit quads into the stream. With it: **atlas-full** handled (error callback → expand, reset at the next frame start past the maximum; font view resolved at replay; `fons_resize` leak), **filters** brought to h2d semantics, the **fractional-DPI truncation**, and **clamp** samplers (its own commit — it changes edge pixels).
-2. **Glyph layer** — replaces fontstash: logical float layout on stb_truetype v1.26, four x-variants and baseline snap, pixel-exact vs transformed regime, R8 pages with gutter, dirty-page upload, gamma/contrast; `Font` with weight/style/fallbacks, fonts from bytes; text metric surface and per-glyph x. Captured beside Zed at 1× and 1.5× → the rasterizer decision.
-3. **Instanced pipelines** — flat sprite pipeline; unified UI pipeline with local-space SDF box (per-corner radii, per-side borders, dashes, per-pixel gradient, patterns, dither), glyph, image and underline modes, quad inflation, white texel; snapping rules for axis-aligned nodes; box style in a side table; culling against the active clip.
-4. **Text runs** — `TextRun`, run backgrounds, underline / strikethrough / wavy; wrap boundaries with the CJK rule, truncation, `force_width`, `split_at`.
-5. **Persistent instance ranges** — `TileGroup`, dirty-range upload, draw order rebuilt on structural change only; `Mask.scrollX/Y` with snapped offsets; `Scene` change flag and re-present; `parent` and the missing `Object` surface.
-6. **`erf` shadow** (drop + inset); `corner_radii` / `grayscale` / `ObjectFit` on images; clip by edge distances incl. rotated Mask.
-7. **Shaping module** (`kb_text_shape`), OpenType features, ligatures; colour emoji and the hinting rasterizer if step 2's captures call for them.
-8. **AA for `Graphics`** — vertex-shader fringe; `sample_count` knob on mobile bridges. **Blur** — correct kernel.
-9. **SVG mask module**; animated image frames; non-overlap node flag; frame profiler and counters; device-loss path.
-
-Budget checked at every step: draw calls and `present` time at 10k Box + 10k Label; frame time of a sprite-only scene (must not regress); CPU time of a fully static 100k-node frame and of a scrolling 200-line text view after step 5; atlas bytes after a zoom sweep; wasm size delta per backend and per module.
-
 ## Open
 
-- **Rasterizer**: stb_truetype only, or FreeType as a module — decided from step 2's captures.
-- GPUI facts were read from source at `b961b49`, not benchmarked. Instance sizes and the one-draw-call claim for the unified UI pipeline are from planned layouts, not measured.
-- Non-uniform scale on SDF boxes and `erf` shadows is approximated; the error has not been characterised.
-- Nested rotated clips fall back to scissor AABB for outer levels; whether Neon needs better is unknown.
-- System font discovery (an editor user expects installed fonts) is host work; void2d takes bytes. Who owns it — Ion or the Neon host — is undecided.
+- GPUI facts were read from source at `b961b49`, not benchmarked.
 - The Zed editor element (`crates/editor`) is outside the sparse clone: how it uses `paint_layer`, `split_at` and tab expansion was not read.
 - Two suspected GPUI bugs were noticed and should not be copied: the swash subpixel offset is divided by `scale_factor` although the scaler is already in device pixels (`cosmic_text_system.rs:506-523`), and the variant computation misplaces glyphs at negative device x (`W:4666-4670`).

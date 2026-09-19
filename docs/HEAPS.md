@@ -269,22 +269,24 @@ sokol eliminates 2 entire layers (driver + shader compiler) that were Heaps' big
 
 ## 2D Quality Parity — vs Heaps (the committed front)
 
-Feature-Done ≠ quality-parity. This section tracks the **internal quality** of each 2D dimension against Heaps `h2d`, with code evidence. Grades: NAIVE / BASIC / MATURE / PARITY-GRADE. Source: parallel audit of `src/void2d/*` vs `~/projects/heaps/h2d`.
+Feature-Done ≠ quality-parity. This section tracks the **internal quality** of each 2D dimension against Heaps `h2d`, with code evidence. Grades: NAIVE / BASIC / MATURE / PARITY-GRADE. First audited 2026-07; **re-graded 2026-09-20** against `src/void2d/*` at `45d88e0` and `~/projects/heaps` at `b9aa6dcb`. Parity with h2d is no longer the finish line: the bar is in [VOID2D.md](VOID2D.md), and several rows are already past h2d.
 
-| Dimension | void2d grade | void2d reality | Heaps mechanism | Gap |
+| Dimension | void2d grade | void2d reality (2026-09-20) | Heaps mechanism | Gap |
 |---|---|---|---|---|
-| Transform laziness | **BASIC** | cache exists but `scene.present` hardcodes `parentChanged=true` every frame (scene.ms:37) → **whole tree re-muls world matrix per frame** | `posChanged` bool + downward propagation in `sync()`; `lastFrame` dedup; separate upward `syncPos()` for queries | **Critical, easy fix** |
-| Bounds + culling | **NAIVE** | no `getBounds()`, no subtree cull; Graphics/Label never culled (node.ms:304-311) | per-tile viewport cull at emit (`RenderContext.drawTile` corner test vs NDC), no stored flag | High |
-| Batching | **BASIC** | tree-DFS order, no texture sort, no `BatchDrawState`, `MAX_VERTS=32768` hard ceiling no grow | `BatchDrawState` linked-list (texture,count) → 1 draw call per texture swap | High (perf cliff) |
-| Alpha | **BASIC** | straight-alpha only; Add/Multiply/Screen under non-unit-alpha group = **mathematically wrong** (halo, double-darken) | `blendAlphaSrc=One` + alpha fold at leaf (`setupColor`); `premultiplyAlpha` toggle | Critical (correctness) |
-| DPI / scale modes | **NAIVE** | re-reads `fbW/fbH` per frame; no LetterBox/Auto/Stretch/Zoom, no pixel ratio | 6 `ScaleMode` + viewport matrix **in the vertex shader** (`Base2d.viewportA/B`) | Critical (retina/mobile) |
-| Filters | **NAIVE** | one hardcoded 5-tap Gaussian, caller ping-pongs RT, no per-Node attachment | `Filter` base + RT pool + `filterMatrix` + Group/Blur/Glow/DropShadow/Outline | Medium (API gap) |
-| Clip / mask | **BASIC** | scissor-axis only; rotated mask collapses to AABB (draw.ms:35-42) | scissor + intersect-on-push (Heaps 2D is also scissor-only — actual parity here) | Low |
-| Text shaping | **BASIC** | 1 font, ASCII-space-only word wrap, no rich/bidi/fallback (draw.ms:302-353) | `FontChar`+kerning list, `needsRebuild` deferred, charset fallback, `HtmlText` | Medium |
-| **Color pipeline** | **MATURE** | multiply+add+matrix+key in one shader (shader2d.glsl:41-51) — **exceeds Heaps** (`colorKey`) | same via `ShaderList` | **Parity+** |
-| **Static buffers** | **BASIC+** | Graphics+Label retain immutable buffers, re-emit per frame | TileGroup persistent + `allocated` lifecycle + per-subtree retention | Near-parity |
+| Transform laziness | **MATURE** | world matrices cached; `scene.present` passes `viewChanged`, not `true` (`scene.ms:91-99`). But the scale mode and camera are baked into every world matrix, so a camera move re-multiplies the tree; five field compares per node per frame instead of a set-time flag (`render.ms:79`); `localToGlobal` reads last frame's matrix (`node.ms:174-180`) | `posChanged` set in setters + downward propagation in `sync()`; `syncPos()` before every query; camera as a uniform (`RenderContext.hx:275-283`) | Medium |
+| Bounds + culling | **MATURE** | `getBounds` (world space, `render.ms:285-305`); every node kind incl. Label and Graphics culled against the viewport (`:191-201`). Not culled against the active clip; no subtree cull; no `relativeTo` | per-tile cull in `drawTile` only; Text/TileGroup/Graphics never culled | **Ahead of h2d**; clip cull missing |
+| Batching | **BASIC** | always-on dynamic batching for Rect/Sprite/Anim/ScaleGrid; flush on view, blend, effect, smooth, clip change and on **every Label and Graphics node** (`draw.ms:79-81, 264-320`); fixed 65536-vertex stream, draws dropped past it (`batcher.c:19`) | off by default (`BUFFERING` is a compile flag, `RenderContext.hx:24`); throughput from user-chosen `TileGroup`/`SpriteBatch` | High — [VOID2D.md](VOID2D.md) step 1, 3 |
+| Alpha | **PARITY+** | premultiplied in the shader (`shader2d.glsl:53-54`), `ONE / ONE_MINUS_SRC_ALPHA` pipelines (`batcher.c:88-96`), render-target sources flagged already premultiplied | non-premultiplied with `blendAlphaSrc=One` | none |
+| DPI / scale modes | **MATURE** | six `ScaleMode`s (`types.ms:30`), logical-point scene units, fonts rasterised at `size × dpi`. **Defects:** the logical size is truncated to int (`scene.ms:89`), so fractional DPI is off-grid; `Zoom`/`AutoZoom` mean something different from h2d's (`scene.ms:65-78` vs `Scene.hx:415-427`) | 6 `ScaleMode` + viewport in the vertex shader; **DPI not modelled at all** (`displayScale` has no reader) | Ahead in design, one real defect |
+| Filters | **BASIC, wrong semantics** | per-node Blur/Glow/DropShadow (`types.ms:32-41`). Only children enter the target; alpha applied twice under Blur; screen-space target at dpi 1; two subtree re-syncs per frame; the pass is nested inside the swapchain pass; blur tap spacing multiplied by the radius (`render.ms:216-283`, `shader2d.glsl:81-87`) | `Filter` base + RT pool + `filterMatrix` + self-and-children in object-local space + Group; true Gaussian (`h3d/pass/Blur.hx:74-112`) | High (correctness) |
+| Clip / mask | **MATURE** | scissor, intersect-on-push; rotated mask → four-corner AABB (`render.ms:204-205`), which is more correct than h2d's two-corner form (`Mask.hx:26-43`). No `scrollX/Y` | scissor + intersect-on-push; `Mask.scrollX/Y` | Low — scroll fields missing |
+| Text | **BASIC** | on-demand TTF glyph cache (ahead of h2d's baked atlases); but integer glyph origins and advances (`fontstash.h:1230-1244`), `kern`-only, `split(" ")` wrapping, fixed 512² atlas that drops glyphs when full, no `textWidth`, no fallback, no runs | `FontChar` + kerning list, `needsRebuild`, `HtmlText`, SDF fonts; but baked atlases, Int metrics, one page | High — replaced at [VOID2D.md](VOID2D.md) step 2 |
+| **Color pipeline** | **PARITY** | multiply + add + matrix + key in one shader, no variant compilation (`shader2d.glsl:41-54`). `colorKey` is a looser threshold than h2d's exact match (`ColorKey.hx:9-12`) | same set via `ShaderList`, plus `addShader` | none |
+| **Static buffers** | **BASIC** | Graphics and Label each own an `sg_buffer`: past sokol's 128-buffer pool nothing more renders; a text change destroys and recreates the buffer (`render.ms:110-111`); `removeChild` leaks unless `dispose` is called | `TileGroup` persistent + `allocated` lifecycle (`onAdd`/`onRemove`) | High — [VOID2D.md](VOID2D.md) step 1, 5 |
 
 ### Parity plan (sequenced by dependency, not by difficulty)
+
+> **Status 2026-09-20.** Done: T0.1, T0.2, T0.3 (one defect left: the int truncation), T1.1. Partly: T1.3 (65536, still no grow), T2.1 (per-node filters exist, semantics wrong). Open: T1.2, T2.3. What remains is carried by the sequencing in [VOID2D.md](VOID2D.md); this list is kept as the record of the 2026-07 plan.
 
 **Tier 0 — correctness (no deps, blocks the reconciler). ~2–3 days.**
 - **T0.1 Transform cache actually lazy** — cache last cam/zoom/fbW/fbH in `scene.present`, pass `parentChanged=false` when unchanged. *Smallest, highest-leverage; do first as the validating win.*
@@ -302,6 +304,37 @@ Feature-Done ≠ quality-parity. This section tracks the **internal quality** of
 - **T2.3 Text richness** — multi-font + fallback chain, break-char-aware word wrap, kerning toggle, `HtmlText`/markup. (bidi genuinely hard — may defer; verify fontstash kerning first.)
 
 **Near-parity — verify, don't rebuild:** color pipeline (parity+), static buffers. Rotation in `drawNode` + real TTF (caps placeholder) roll up under T2.3 / general 2D polish — they were the old "Next" line in CLAUDE.md, now subsumed here.
+
+## The h2d contract — status (2026-09-20)
+
+What void2d keeps of h2d, what it still lacks, and what it must not copy. void2d stays h2d in **interface and semantics**; how pixels are produced comes from the rendering references ([VOID2D.md](VOID2D.md)).
+
+### Keep, and still add
+
+Kept as-is: radians, S·R·T then parent, alpha multiplied down the tree, colour/blend/effects not inherited, array-order painter's drawing, filter as a node property, Mask as a node, `getBounds`, `localToGlobal/globalToLocal`.
+
+Missing from void2d today:
+
+- `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt / getChildIndex / numChildren`, `name` (`h2d/Object.hx:411-443` vs `void2d/node.ms:133-137`, where one node can sit under two parents). A reconciler host needs `parent` anyway.
+- **`TileGroup`** — a retained multi-quad node on one texture (`h2d/TileGroup.hx:562-718`); `Text` is built on it (`h2d/Text.hx:187-189`). It maps onto a persistent instance range and is the h2d-native form of the non-overlap hint.
+- **`Tile.dx/dy`** with `center()` / `setCenterRatio()` (`h2d/Tile.hx:26-30, 166-175`). Today's node `pivot` is applied for Rect/Sprite/Anim, ignored by ScaleGrid, Label and Graphics, and used by Mask (`render.ms:42-56, 192-204`).
+- `Mask.scrollX/Y` (`h2d/Mask.hx:70-125`) — the scroll mechanism in [VOID2D.md](VOID2D.md) "Clip and scroll".
+- The `Text` metric surface and `Align` enum; `lineSpacing` in pixels (void2d's is a multiplier, `text.ms:49`).
+- `smooth` as a tri-state with a scene default; `tileWrap`, with clamp as the default sampler.
+- Filter semantics (`h2d/Object.hx:896-956`): the node itself goes into the target, alpha applied once, target in object-local space through a filter matrix instead of re-syncing the subtree, bounds clipped to the viewport, a frame-linear target pool (`h3d/impl/TextureCache.hx`), clip state saved and cleared per target.
+- `localToGlobal` after a mutation and before `present` returns last frame's matrix (`node.ms:174-180`); h2d calls `syncPos()` first (`Object.hx:359`).
+- `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:65-78` vs `h2d/Scene.hx:415-427`).
+
+### Do not copy from h2d
+
+- **Its whole font pipeline**: offline or canvas-baked atlases with a fixed charset (`hxd/res/FontBuilder.hx:26-146`, JS only), one texture page (`hxd/fmt/bfnt/FontParser.hx:10`), **Int metrics** for advance and kerning (`:68-73`), accent-stripping as "fallback" (`hxd/Charset.hx:53-72`), one sub-font per Text, per-code-unit iteration (`Text.hx:455`). Keep the interface, replace everything under it.
+- Rebuilding a whole `Text` on any change (`Text.hx:299-303`) and O(n) re-measurement for caret and selection every frame (`h2d/TextInput.hx:792-793`).
+- No analytic AA: `Graphics` is tessellation only and engine MSAA defaults to 0 (`h3d/Engine.hx:73`). Rounded, bordered panels are 9-slice bitmaps (`h2d/Flow.hx:355-359`).
+- Render-target drop shadows as the way to shadow a panel (`h2d/filter/DropShadow.hx:42-54`): two targets plus blur per box per frame.
+- Ignoring DPI (`displayScale` has no reader) and nearest sampling by default (`h2d/RenderContext.hx:52`).
+- The two-corner rotated mask (`h2d/Mask.hx:26-43`) — void2d's four-corner AABB is already more correct.
+- Scrolling by mutating child positions, which re-syncs the subtree (`Flow.hx:728-733`, `Mask.hx:109-125`). void2d's variant — the camera baked into every world matrix, so a camera move re-multiplies the tree (`scene.ms:91-99`) — is the same mistake; in h2d the camera is one uniform (`RenderContext.hx:275-283`).
+- One draw per Bitmap: h2d's default path does **not** batch — `BUFFERING` is a compile flag, off by default (`RenderContext.hx:24`); throughput comes from user-chosen `TileGroup`/`SpriteBatch`. That does not survive a reconciler that emits thousands of small nodes.
 
 ## Key Heaps Design Decisions — Adopt or Skip
 
