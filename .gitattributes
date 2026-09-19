@@ -1,0 +1,4 @@
+# Goldens are compared byte for byte; autocrlf must never touch them.
+*.png binary
+*.ppm binary
+*.ttf binary
