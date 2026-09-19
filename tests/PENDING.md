@@ -10,6 +10,38 @@ That is what keeps the list from going stale, and it is why the list can be seed
 aggressively. The build-breaking condition is absolute: zero unlisted failures, zero
 graduated entries, zero missing snapshots.
 
+**The contract, stated exactly.** Every line of [docs/VOID2D.md](../docs/VOID2D.md)
+"Known defects" is covered on this page in one of two ways, and the index below says which:
+
+- **a row here** — the defect has no picture, or its picture cannot be captured yet. The
+  graduation rule is what forces the row to be deleted when the defect is fixed.
+- **a `regress/` golden** — the defect *has* a picture, and a golden is a stronger record
+  than a list row, because it says what the defect looks like and not merely that it
+  exists. The forcing function is different but real: fixing the defect changes those
+  pixels, the gate goes red, and the only way to green is `sh scripts/golden.sh --update`
+  in a commit that says why — which is the commit that also edits the "Known defects" line.
+
+A defect that is in neither column is a hole, and the index is how that stays visible.
+
+## Index — every "Known defects" line, and where it is covered
+
+| docs/VOID2D.md "Known defects" line | covered by | phase |
+|---|---|---|
+| Atlas-full drops a different set of glyphs each run | row `golden-missing:regress/atlasFull` | P1 / P3 |
+| At most ~126 Labels/Graphics render | golden `regress/nodeCap`, and the gated counters `ui.retainedNodes` / `ui.buffersAlive` / `ui.buffersRefused` | P1 |
+| Node filters do not work at all | rows `golden-missing:filter/*`, `golden-missing:regress/filterNestedPass`, `debug-abort:node-filter` | P1 |
+| Filter semantics differ from h2d | the same rows — nothing renders, so the semantics cannot be captured yet | P1 |
+| Fractional DPI puts every glyph off-grid | goldens `regress/dpiTruncation`, `text/code13Dpi125`, `text/code13Dpi150`, `snap/hairlineDpi125`, `snap/hairlineDpi150` | P1 |
+| Samplers are hard-wired REPEAT | golden `regress/samplerRepeat` | P1 |
+| Per-frame vertex cap | golden `regress/vertexCap`, and row `debug-abort:vertex-cap` | P1 |
+| GPU calls are issued while the tree is walked | rows `walk-issues-gpu-calls`, `text-buffer-churn`, `upload-per-bracket` | P1 |
+| A rotated Mask clips to its AABB | golden `clip/rotatedMask` | P2 |
+| Culling tests the viewport rather than the active clip | row `cull-against-viewport` (the golden `clip/scrolledList` looks right; only the cost is wrong) | P2 |
+| Integer glyph origins and rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, no fallback, ≤ 16 fonts, the R8→RGBA CPU expansion | goldens `text/code13Dpi100` and `text/wrapped` for the pixels, rows `h2d-text-metrics` and `golden-missing:text/cjkFallback` for the surface that does not exist | P3 |
+| The h2d surface still missing — `parent`, `TileGroup`, `Tile.dx/dy`, `Mask.scrollX/Y`, text metrics | rows `h2d-object-surface`, `h2d-tilegroup`, `h2d-text-metrics`, `one-node-two-parents`, `golden-missing:xform/tilePivot`, `golden-missing:clip/maskScroll` | P2 / P3 / P5 |
+| Idle costs a full walk and draw | row `idle-costs-a-walk` | P5 |
+| Entry points declare `function main()` and nothing calls it | **fixed at P0** for `src/examples/mainSokol2d.ms`; the gate now runs the demo, not just builds it. The four void3d entries still carry it — row `entry-main-not-called` | P0 / void3d arc |
+
 ## How a row is read
 
 | Column | Meaning |
@@ -32,6 +64,26 @@ have needed one are not in the table at all — see "Scenes that cannot be captu
 
 | id | tier | reason | phase | date | maxPixels | maxDelta |
 |---|---|---|---|---|---|---|
+
+An empty table means the graduation rule has nothing to run on, so it was exercised by hand
+at P0 and the result is written down here rather than described. Add a row to the table
+above for a scene that currently passes, with a budget of 50 pixels at delta 3, and
+`out/goldenCompare.exe` answers
+
+> FAIL prim/roundedRect is byte-identical and still listed in tests/PENDING.md — delete the entry
+
+and exits 1. Give the same row a budget of `9 874` and `-` and it answers
+
+> FAIL tests/PENDING.md row golden:prim/roundedRect has an unreadable budget
+
+and exits 1 — a budget that does not parse is never quietly read as zero. Delete the row and
+the suite is green again. The first phase that needs a real budget inherits a mechanism that
+has been seen to work in both directions.
+
+Note for whoever writes the next row: the parser splits a line on `|` and looks at cells 1,
+6 and 7, and it knows nothing about markdown. A pipe-delimited example anywhere on this page
+— inside a fenced block included — is read as a real row. That is why the two examples above
+are block quotes and not a table.
 
 ## Scenes that cannot be captured yet
 
@@ -87,6 +139,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | h2d-tilegroup | T1 | `TileGroup` does not exist | P5 | 2026-09-20 |
 | h2d-text-metrics | T0 | no `textWidth`, no `calcTextWidth`, no `splitText`, no per-glyph x | P3 | 2026-09-20 |
 | one-node-two-parents | T0 | `addChild` does not detach from a previous parent (`node.ms:133-137`) | P5 | 2026-09-20 |
+| entry-main-not-called | T2 | `mainSokol.ms`, `mainCampfire.ms`, `iosEntryAnim.ms` and `iosEmbedEntry.ms` declare `function main()` and end without calling it, so they build binaries that exit at once (CODE-STYLE.md section 9: "Nothing calls `main()`"). `src/examples/mainSokol2d.ms` was fixed at P0; these four are void3d's entries and belong to that arc | void3d arc | 2026-09-20 |
 
 ## Debug-build aborts
 
