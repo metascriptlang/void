@@ -6,7 +6,8 @@
 import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dSetRTMode, void2dSetDpiScale, void2dFrameBegin,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
-	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic, void2dBlur
+	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic, void2dBlur,
+	void2dStaticBuffersAlive, void2dStaticBuffersFailed
 } from "./batcher.h";
 import { Vec2, Color, Tile, Transform2D, BlendMode, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
@@ -28,6 +29,12 @@ let fbH: float32 = 0.0;
 let _drawCallCount: int32 = 0;
 
 export function drawCallCount(): int32 { return _drawCallCount; }
+
+// Retained GPU buffers, and how many allocations sokol refused. The second number is zero
+// until the 128-object default pool runs out, which today it does at about 126 Labels or
+// Graphics (VOID2D.md "Known defects", closed at P1).
+export function staticBuffersAlive(): int32 { return void2dStaticBuffersAlive(); }
+export function staticBuffersFailed(): int32 { return void2dStaticBuffersFailed(); }
 
 // h2d.Drawable colour pipeline as batch state: identity matrix + zero add = no-op, so
 // effect-free nodes batch together. A node with a distinct effect starts its own run
