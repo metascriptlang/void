@@ -1,0 +1,33 @@
+{
+  "comment": "T4 baseline (docs/TESTING.md). Counters gate hard; milliseconds only report, with a warn threshold, because this is a shared developer box — SCENE-SCALE.md:197 records its own numbers being taken at load average 14-17. Keys are nested rather than dotted so tests/bench/check.ms can read them through the JsonValue accessors.",
+  "taken": {
+    "date": "2026-09-20",
+    "phase": "P0",
+    "renderer": "unchanged by P0; this is the pre-P1 baseline",
+    "backend": "d3d11",
+    "build": "msc 0.2.53 --release",
+    "window": "1280x720, sample_count 1, high_dpi 0",
+    "frames": "20 warm-up, 120 measured"
+  },
+  "counters": {
+    "ui": {
+      "nodes": 10000,
+      "draws": 253,
+      "buffersAlive": 126,
+      "buffersFailed": 9874,
+      "nodesDrawn": 126
+    },
+    "sprites": {
+      "nodes": 10000,
+      "draws": 1,
+      "buffersAlive": 0,
+      "buffersFailed": 0,
+      "nodesDrawn": 10000
+    }
+  },
+  "milliseconds": {
+    "warnFactor": 1.5,
+    "ui": { "present": 4.48 },
+    "sprites": { "present": 1.73 }
+  }
+}
