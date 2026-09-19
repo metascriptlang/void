@@ -156,23 +156,20 @@ export function init2d(): void {
 	sc = sceneObj;
 }
 
+// A frame is one step of the animation and then one draw of it. They are separate because
+// the golden runner draws the same state twice and requires the two captures to be
+// identical before either is compared to a golden (docs/TESTING.md, "Distrust the harness
+// before the engine"); with them fused there is no way to redraw without moving.
 export function frame2d(): void {
+	step2d(1.0 / 60.0);
+	present2d();
+}
+
+export function step2d(dt: float32): void {
 	if (sc === null) { return; }
 	if (panel === null) { return; }
 	if (logo === null) { return; }
 	if (green === null) { return; }
-
-	// Auto-fit the ~980x720 scene into whatever surface hosts it (embed views are
-	// smaller / different aspect than the 800x600 desktop window). Centered, zoom to fit.
-	const fw: float32 = fbWidth() as float32;
-	const fh: float32 = fbHeight() as float32;
-	const zx: float32 = fw / 980.0;
-	const zy: float32 = fh / 720.0;
-	sc.cam.zoom = zx < zy ? zx : zy;
-	sc.cam.x = 480.0;
-	sc.cam.y = 350.0;
-	sc.cam.anchorX = 0.5;
-	sc.cam.anchorY = 0.5;
 
 	t = t + dir * 1.6;
 	if (t > 140.0) { dir = -1.0; }
@@ -188,6 +185,24 @@ export function frame2d(): void {
 	if (keyDown(KEY_A)) { sc.cam.x = sc.cam.x - panSpeed; }
 	if (keyDown(KEY_S)) { sc.cam.y = sc.cam.y + panSpeed; }
 	if (keyDown(KEY_W)) { sc.cam.y = sc.cam.y - panSpeed; }
+
+	sc.tick(dt);
+}
+
+export function present2d(): void {
+	if (sc === null) { return; }
+
+	// Auto-fit the ~980x720 scene into whatever surface hosts it (embed views are
+	// smaller / different aspect than the 800x600 desktop window). Centered, zoom to fit.
+	const fw: float32 = fbWidth() as float32;
+	const fh: float32 = fbHeight() as float32;
+	const zx: float32 = fw / 980.0;
+	const zy: float32 = fh / 720.0;
+	sc.cam.zoom = zx < zy ? zx : zy;
+	sc.cam.x = 480.0;
+	sc.cam.y = 350.0;
+	sc.cam.anchorX = 0.5;
+	sc.cam.anchorY = 0.5;
 
 	// F3 filters: render a bold gold plus once into rtSrc, blur it (preserving rtSrc), then
 	// composite a glow (additive halo) and a drop shadow (offset, behind) — each with the sharp
@@ -223,6 +238,5 @@ export function frame2d(): void {
 	end2d();
 	endPass();
 
-	sc.tick(1.0 / 60.0);
 	sc.present();
 }
