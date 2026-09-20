@@ -16,6 +16,8 @@ import {
 	uploadBytes,
 	atlasImagesAlive,
 	recordedVertexCount,
+	recordedUiInstanceCount,
+	recordedSpriteInstanceCount,
 	droppedFrames,
 } from "../void2d/draw";
 import { rect, sprite, label, at, addChild } from "../void2d/node";
@@ -78,6 +80,16 @@ export function benchInit(kind: BenchKind): void {
 
 // One `key value` pair per line, so a gate reads rows instead of parsing prose.
 //
+// The two instance streams are here because P2's acceptance criterion A2 asks for it, and
+// what it asks for is a SHAPE, not a number: draws falling while instances hold at the node
+// count is the only reading that means "batched". Instances falling with draws means nodes
+// were dropped, and `draws` alone cannot tell those apart.
+//
+// Both streams, per scene, rather than one number: that makes B5 gated rather than argued -
+// `sprites.uiInstances` is 0, so a sprite-only frame provably emits nothing into the UI
+// pipeline, which a per-mode count could never say because an empty frame reads zero of
+// every mode too.
+//
 // `retainedNodes` is how many nodes carry a mesh of their own — the Labels. Since P1 they
 // all draw: `buffersAlive` is constant in the node count, because the whole frame shares one
 // growing vertex buffer instead of one per node, and `vertices` is what proves every label
@@ -88,6 +100,8 @@ function report(): void {
 	console.log(`${benchName}.draws ${drawCallCount()}`);
 	console.log(`${benchName}.buffersAlive ${buffersAlive()}`);
 	console.log(`${benchName}.vertices ${recordedVertexCount()}`);
+	console.log(`${benchName}.uiInstances ${recordedUiInstanceCount()}`);
+	console.log(`${benchName}.spriteInstances ${recordedSpriteInstanceCount()}`);
 	console.log(`${benchName}.uploads ${uploadCount()}`);
 	console.log(`${benchName}.uploadBytes ${uploadBytes()}`);
 	console.log(`${benchName}.atlasImages ${atlasImagesAlive()}`);

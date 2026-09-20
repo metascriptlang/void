@@ -100,6 +100,7 @@ function runCheck(): int32 {
 	// `uploadBytes` and `atlasImages` were printed by the bench and gated by nobody. P1 says
 	// these counters are read by T1 and T4; two of five were not.
 	const metrics: string[] = ["nodes", "retainedNodes", "draws", "buffersAlive", "vertices",
+		"uiInstances", "spriteInstances",
 		"uploads", "uploadBytes", "atlasImages", "droppedFrames"];
 	for (const metric of metrics) {
 		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) { failed = failed + 1; }
