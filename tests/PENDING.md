@@ -40,7 +40,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | Integer glyph origins and rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, no fallback, ≤ 16 fonts, the R8→RGBA CPU expansion | goldens `text/code13Dpi100` and `text/wrapped` for the pixels, rows `h2d-text-metrics` and `golden-missing:text/cjkFallback` for the surface that does not exist | P3 |
 | The h2d surface still missing — `parent`, `TileGroup`, `Tile.dx/dy`, `Mask.scrollX/Y`, text metrics | rows `h2d-object-surface`, `h2d-tilegroup`, `h2d-text-metrics`, `one-node-two-parents`, `golden-missing:xform/tilePivot`, `golden-missing:clip/maskScroll` | P2 / P3 / P5 |
 | Idle costs a full walk and draw | row `idle-costs-a-walk` | P5 |
-| Entry points declare `function main()` and nothing calls it | **fixed at P0** for `src/examples/mainSokol2d.ms`; the gate now runs the demo, not just builds it. The four void3d entries still carry it — row `entry-main-not-called` | P0 / void3d arc |
+| ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `e4a1a05`, on `main` in `c2019b5`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
 
 ## How a row is read
 
@@ -137,7 +137,6 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | h2d-tilegroup | T1 | `TileGroup` does not exist | P5 | 2026-09-20 |
 | h2d-text-metrics | T0 | no `textWidth`, no `calcTextWidth`, no `splitText`, no per-glyph x | P3 | 2026-09-20 |
 | one-node-two-parents | T0 | `addChild` does not detach from a previous parent (`node.ms:133-137`) | P5 | 2026-09-20 |
-| entry-main-not-called | T2 | `mainSokol.ms`, `mainCampfire.ms`, `iosEntryAnim.ms` and `iosEmbedEntry.ms` declare `function main()` and end without calling it, so they build binaries that exit at once (CODE-STYLE.md section 9: "Nothing calls `main()`"). `src/examples/mainSokol2d.ms` was fixed at P0; these four are void3d's entries and belong to that arc | void3d arc | 2026-09-20 |
 
 ## Debug-build aborts
 
