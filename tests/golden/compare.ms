@@ -76,9 +76,22 @@ function readPendingBudgets(): PendingBudget[] {
 	if (!lines.ok) { return budgets; }
 	for (const line of lines.value) {
 		const cells = line.split("|");
-		if ((cells.length as int32) < 8) { continue; }
+		// Order matters, and it used to be wrong. The `< 8` test is what lets this parser walk
+		// a markdown file at all - prose, headings and the 3-cell index rows all fall out here
+		// - so it cannot simply become a failure. But it ran *before* the `golden:` test, which
+		// meant a budget row that had lost a column was dropped as quietly as a paragraph.
+		// Measured: a `golden:` row with two columns missing left the comparator reporting
+		// `45 pass, 0 fail` and exit 0, with the budget it carried silently absent.
+		// So: enough cells to read an id, then decide whether this row is ours, and only then
+		// insist on the full width - loudly, because by then we know it was meant to be a row.
+		if ((cells.length as int32) < 2) { continue; }
 		const id = trimSpaces(cells[1]);
 		if (!id.startsWith("golden:")) { continue; }
+		if ((cells.length as int32) < 8) {
+			console.log(`FAIL ${PENDING_PATH} row ${id} has ${cells.length as int32} cells, not the 8 a budget row needs`);
+			malformed = malformed + 1;
+			continue;
+		}
 		const name = id.substring("golden:".length as int32, id.length as int32);
 		const maxPixels: int32 = parseInt32(cells[6]);
 		const maxDelta: int32 = parseInt32(cells[7]);
