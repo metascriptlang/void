@@ -67,5 +67,6 @@ void voidApplyMvp(const float *mvp);
 void voidDraw(int count);
 void voidEndPass(void);
 void voidCommit(void);
+void voidSetCommitHook(void (*fn)(void));
 
 #endif

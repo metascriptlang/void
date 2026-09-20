@@ -285,7 +285,9 @@ void voidApplyMvp(const float *mvp) {
 
 void voidDraw(int count) { sg_draw(0, count, 1); }
 void voidEndPass(void) { sg_end_pass(); }
-void voidCommit(void) { sg_commit(); }
+static void (*s_commitHook)(void);
+void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
+void voidCommit(void) { sg_commit(); if (s_commitHook) { s_commitHook(); } }
 
 // M2 readback — pull the rendered pbuffer (RGBA8, bottom-up GL order).
 void voidAndroidReadPixels(unsigned char *out) {
