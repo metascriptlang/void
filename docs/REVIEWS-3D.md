@@ -23,8 +23,8 @@ can be re-taken by anybody in a single gate run.
 **Verdict: SHIP WITH FOLLOW-UPS.** No send-back. Thirteen findings across the two passes were
 confirmed and fixed; one was rejected on a measurement; the rest are carried into M6 below.
 
-Reviewed: the defect pass saw `main..HEAD` at `f480da6`; the design pass saw the same range and
-finished after `a8f75d0` had already landed, so four of its findings were fixed before it
+Reviewed: the defect pass saw `main..HEAD` at `fdbfb8b`; the design pass saw the same range and
+finished after `003bdb8` had already landed, so four of its findings were fixed before it
 reported. Both are recorded as they were raised.
 
 ### Defect pass — `/code-review high`
@@ -32,7 +32,7 @@ reported. Both are recorded as they were raised.
 | # | Finding | What I did |
 |---|---|---|
 | 1 | `rebuildMeshes` deep-copies every `MeshData`, so the context-loss path allocates | **Rejected — measured.** 40 000 calls passing a struct holding a 200 000-element `Vec` by value ran in 0 ms (`out/tmp/copyProbe`); a deep copy would be ~16 GB of memcpy. CODE-STYLE §5: a struct value parameter over 24 bytes is emitted as `const T*`. The reviewer applied the "a `Vec<T>` **parameter** is a copy" rule to a struct that merely *contains* one. The only real copy is `Vec.push` in `addMeshData`, which is setup-time and documented. |
-| 2 | A refused index buffer flips `GpuMesh.isIndexed()` to false, so an indexed mesh draws 194 garbage triangles with no diagnostic | Fixed in `a8f75d0`. `uploadMesh` returns `Result`; a refused buffer leaves the mesh drawing nothing and stale, so it is retried rather than reinterpreted. |
+| 2 | A refused index buffer flips `GpuMesh.isIndexed()` to false, so an indexed mesh draws 194 garbage triangles with no diagnostic | Fixed in `003bdb8`. `uploadMesh` returns `Result`; a refused buffer leaves the mesh drawing nothing and stale, so it is retried rather than reinterpreted. |
 | 3 | `try` propagates out of a half-written quad, leaving orphan vertices and an over-reported bounds | Fixed. `hasRoomFor` is checked up front in `addQuad` and `addBox`; a test fills to the cap and asserts that a rejected `addBox` changes neither count. |
 | 4 | The layout field is masked on decode but not on encode, so ordinal 8 forges the `indexed` bit | Fixed, with a test that the forgery no longer works. |
 | 5 | `closestPoint` has no empty guard, unlike every other accessor, so it returns the +1e20 corner | Fixed; returns zero as `size` and `center` do. |
@@ -125,8 +125,8 @@ Non-blocking items it raised, and what happened:
 
 ### Numbers
 
-Measured at `d868c03`, this section's own commit. One void3d commit followed it inside M5 —
-`a83d794`, which strips line endings before comparing the manifest — and it moved none of these
+Measured at `830db85`, this section's own commit. One void3d commit followed it inside M5 —
+`1009e33`, which strips line endings before comparing the manifest — and it moved none of these
 rows. Read them as M5's numbers and not as today's: the gate has grown eight stages and the
 suite has grown by 120 since, for reasons that have nothing to do with M5.
 
@@ -169,8 +169,8 @@ Read the diff, ran the gate and the suite, wrote eight probes, and read the emit
 
 | # | Finding | What I did |
 |---|---|---|
-| 1 | `collect` and `refresh` bind each node's children to a `Vec` local — CODE-STYLE §5's copy trap — so the steady frame does 34 `msArrayCopy` + `msArrayDestroy` pairs. **The central "nothing in `frame` allocates" claim was false, and the bench could not see it.** | Fixed in `f945e4b`. Both walks index through the field. Confirmed from the emitted C: `msArrayCopy` per function is now `syncWorld` 0, `collectDrawList` 0, `refresh` 0, and `detach` 1 — deliberate, it pops, and it is not in the frame path. Frame cost fell 0.0727 → 0.0643 ms and the variance with it. The claim now has its own gate stage. |
-| 2 | `refresh` returns `items.length` rather than what it wrote, never truncates and never bounds-checks: a node culled after collection leaves a stale duplicate in the list, and un-culling it writes past the end. | Fixed in `f945e4b` — **and the first fix was half of one.** I added truncation only; the test written immediately after, "un-culling a node puts it back without writing past the end", crashed and bisected to exactly the direction I had missed. `refresh` now grows as well as shrinks, and rewrites `material` too, which `collect` already did and it did not. |
+| 1 | `collect` and `refresh` bind each node's children to a `Vec` local — CODE-STYLE §5's copy trap — so the steady frame does 34 `msArrayCopy` + `msArrayDestroy` pairs. **The central "nothing in `frame` allocates" claim was false, and the bench could not see it.** | Fixed in `0442f7c`. Both walks index through the field. Confirmed from the emitted C: `msArrayCopy` per function is now `syncWorld` 0, `collectDrawList` 0, `refresh` 0, and `detach` 1 — deliberate, it pops, and it is not in the frame path. Frame cost fell 0.0727 → 0.0643 ms and the variance with it. The claim now has its own gate stage. |
+| 2 | `refresh` returns `items.length` rather than what it wrote, never truncates and never bounds-checks: a node culled after collection leaves a stale duplicate in the list, and un-culling it writes past the end. | Fixed in `0442f7c` — **and the first fix was half of one.** I added truncation only; the test written immediately after, "un-culling a node puts it back without writing past the end", crashed and bisected to exactly the direction I had missed. `refresh` now grows as well as shrinks, and rewrites `material` too, which `collect` already did and it did not. |
 | 3 | A retired slot is withheld from the free list but its **id is never invalidated**, so `isLive` answers true forever: every guarded entry point lets a caller through, including adopting a child under a node unreachable from the root. | Fixed. The generation is zeroed on retirement, which no id is ever issued with, and `nodeCount` no longer counts a retired slot as live. |
 | 4 | `scene.meshes` is never reclaimed: `remove` frees the node slot but leaves the `MeshInstance` row, so churning *n* mesh nodes grows that table by *n* forever. | **Open**, documented. Written into "Two things `remove` does not do" with why compaction needs a remap pass. No caller churns nodes yet. |
 | 5 | `refresh` is missing the `root == NO_NODE` guard that both other walks have. | Fixed. |
@@ -178,7 +178,7 @@ Read the diff, ran the gate and the suite, wrote eight probes, and read the emit
 | 7 | Dead error surface: `SlotsExhausted` and `CycleWouldForm` are never constructed, `newSlot` cannot fail so three `try`/`if (ok)` arms are dead, and `UnknownNode` names two unrelated conditions. | Fixed. `newSlot` returns a `NodeId`, the enum is `StaleNode` / `RootCannotBeRemoved` / `NotAMeshNode`. |
 | 8 | Untested arms: `setMeshOf` entirely, the stale-id arm of five entry points, `setVisible(true)`, middle-sibling removal, `collect` after `remove`. | Fixed — eight tests added, 524 total. The culled-node pair is what caught finding 2's incomplete fix. |
 | 9 | 14 lines over 100 columns, in files the M5 review had just fixed for the same reason. | Fixed, and made a gate stage rather than a third review comment. |
-| 10 | The `entries` stage greps and does not build; `src/examples/mainCampfire.ms` **does not compile from `src/`** — only the gate's sed-patched copy in `out/tmp` does. | Fixed in `c9ed332`. The `as int32` moved into the source, the sed clause is gone, and the stage now builds the host entries. |
+| 10 | The `entries` stage greps and does not build; `src/examples/mainCampfire.ms` **does not compile from `src/`** — only the gate's sed-patched copy in `out/tmp` does. | Fixed in `cf27364`. The `as int32` moved into the source, the sed clause is gone, and the stage now builds the host entries. |
 | 11 | The bench's six counters are near-tautological in this workload; `uniforms` can never grow because `reserveUniforms` returns `PoolFull` rather than pushing. | Accepted as correct. It is a trip-wire against a future regression, not a measurement of allocation — the `allocation` stage is. Said so in the doc. |
 | 12 | Nothing checks that `shader3d.glsl.h` was regenerated from `shader3d.glsl`; `purge_stale_shader_objects` guards the objects downstream, not the header. The reviewer re-ran `sokol-shdc` and confirmed the committed header is current. | **Open.** Two-line check, M7. |
 | 13 | Every early `return` in `setupDraws` leaves `flameNode` at `{-1, 0}`, after which `frameCampfire` returns before rendering on every frame — full speed, blank screen, no diagnostic. | **Open**, M7 with the billboard rebuild work that touches the same function. |
@@ -224,7 +224,7 @@ of ten is not a variance and the figure is not yet a licence for a threshold.
 - **M8.** `Object3D` has no `name` and there is no lookup, while glTF nodes and the Blender
   exporter's contract are name-keyed. `Transform3D.scale` still has no production caller that
   sets it, and the shader's `mat3(model)` is still wrong for non-uniform scale —
-  `normalMatrix` exists unused. **"Has no test" stopped being true at `8a538cd`**, after this
+  `normalMatrix` exists unused. **"Has no test" stopped being true at `82ab440`**, after this
   list was written: `local-scale-on-the-diagonal`, `scale-is-prepended-to-rotation` and
   `non-uniform-scale-under-rotated-parent` hold it against real Heaps, and the second is what
   established that the local is `S * R`. One material per mesh node, where glTF primitives will
@@ -250,18 +250,18 @@ of ten is not a variance and the figure is not yet a licence for a threshold.
 
 ### Numbers
 
-Re-taken at `8b027e7` from one `sh scripts/gate3d.sh` run, because the table was first written
-at `839669a` and five commits landed after it — `f5d564f`, `0125a24`, `8a538cd`, `c2019b5`,
-`8b027e7` — and four of its eight rows had stopped being true. What moved each one is in the row.
+Re-taken at `a47f483` from one `sh scripts/gate3d.sh` run, because the table was first written
+at `9c72aaa` and five commits landed after it — `23c5534`, `ff239d5`, `82ab440`, `3860752`,
+`a47f483` — and four of its eight rows had stopped being true. What moved each one is in the row.
 
 | | |
 |---|---|
-| Gate | `sh scripts/gate3d.sh`, **18 stages**, GREEN with **1 SKIP** (`device`). Was 16 and zero SKIP: `f5d564f` added `device`, a loud SKIP unless `GATE_DEVICE=1`, and `0125a24` added `oracle` |
-| Tests | **604**, and none of the 80 over the review's 524 are this milestone's. Every test file that changed across the rebase onto `6a997ee` is void2d's — `tests/displayList/snapshot.ms`, `tests/harness/benchRows.ms`, `tests/harness/parse.ms`, `src/test/nodeCheck.ms` — and no test file of either arc changed after `839669a`, which bounds M6's own post-review contribution at zero. M6 added 25, unchanged |
+| Gate | `sh scripts/gate3d.sh`, **18 stages**, GREEN with **1 SKIP** (`device`). Was 16 and zero SKIP: `23c5534` added `device`, a loud SKIP unless `GATE_DEVICE=1`, and `ff239d5` added `oracle` |
+| Tests | **604**, and none of the 80 over the review's 524 are this milestone's. Every test file that changed across the rebase onto `da36060` is void2d's — `tests/displayList/snapshot.ms`, `tests/harness/benchRows.ms`, `tests/harness/parse.ms`, `src/test/nodeCheck.ms` — and no test file of either arc changed after `9c72aaa`, which bounds M6's own post-review contribution at zero. M6 added 25, unchanged |
 | Capture | seven configurations, four frames each, byte-identical; `m6spin` is a new baseline, not a re-baseline |
 | Baselines | 24, checked against `docs/baselines3d.sha256` |
-| Oracle | 30 cases agree with real Heaps and 3 diverge as declared, over 2 files — a row the review could not have had, since `0125a24` and `8a538cd` are both after it |
+| Oracle | 30 cases agree with real Heaps and 3 diverge as declared, over 2 files — a row the review could not have had, since `ff239d5` and `82ab440` are both after it |
 | Scene | 34 nodes, 36 meshes of which 30 rebuildable, 32 draw items per frame (was 3), 4 pipelines (unchanged) — the `bench` stage prints `drawItems=32 nodes=34 meshes=36 rebuildable=30 pipelines=4` every run |
 | Geometry | 584 vertices, 876 indices — the same totals the merged mesh had |
 | Frame cost | **not re-taken, and deliberately.** This run printed 0.0596 ms; one reading is not a variance, and 0.0643 ms sd 0.0017 is a figure stated more precisely than it was measured. The interleaved A/B that would settle it is open and is not a session's to open. Nothing gates on milliseconds — `bench` gates growth at zero |
-| Android | arm64 `libVoidAndroid.so`, **2 319 400 bytes**, and **it has run**: `f5d564f` executed the GLES3 path on the Android emulator, `tests/device/gles3Campfire.png`. Not on a device, and against no baseline |
+| Android | arm64 `libVoidAndroid.so`, **2 319 400 bytes**, and **it has run**: `23c5534` executed the GLES3 path on the Android emulator, `tests/device/gles3Campfire.png`. Not on a device, and against no baseline |
