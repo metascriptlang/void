@@ -2,3 +2,4 @@
 *.png binary
 *.ppm binary
 *.ttf binary
+tests/displayList/*.txt -text
