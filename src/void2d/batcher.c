@@ -812,20 +812,23 @@ static void runCommands(const float *commands, int commandCount,
 		}
 		if (kind != CMD_KIND_DRAW) continue;
 
-		int count = (int)cmd[CMD_VERTEX_COUNT];
-		if (count <= 0) continue;
 		int blend = (int)cmd[CMD_BLEND];
 		if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
 		uint32_t view = (uint32_t)cmd[CMD_VIEW];
 		if (view == 0) view = s_whiteView.id;
 
-		int pipeKind = (int)cmd[CMD_PIPELINE];
+		// The pipeline branch comes BEFORE the vertex-count guard: a sprite run carries an
+		// instance range and a vertex count of zero, so testing the vertex count first would
+		// skip every instanced draw and the frame would simply be missing its sprites.
 		int rt = cmd[CMD_RT_MODE] != 0.0f;
-		if (pipeKind == PIPELINE_SPRITE) {
+		if ((int)cmd[CMD_PIPELINE] == PIPELINE_SPRITE) {
 			drawSpriteRun(cmd, blend, rt, view, fbW, fbH, &lastPipeline, &scissorApplied,
 				&paramsValid, &fxValid);
 			continue;
 		}
+
+		int count = (int)cmd[CMD_VERTEX_COUNT];
+		if (count <= 0) continue;
 		sg_pipeline pip = (rt ? s_pipsRT : s_pips)[blend];
 		if (pip.id != lastPipeline) {
 			sg_apply_pipeline(pip);

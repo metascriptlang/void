@@ -35,6 +35,8 @@ import {
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, recordDraw, recordClip, recordBlur,
+	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
+	pushSpriteInstance, recordSpriteDraw,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
@@ -62,6 +64,10 @@ function pushVertex(
 // the replay would otherwise have to change between them.
 let runStart: int32 = 0;
 let runOpen: boolean = false;
+// Which stream the open run is accumulating into. It is batch state like the view or the
+// blend: the two pipelines read different streams and bind different programs, so a change
+// here can only ever end the run.
+let curPipeline: Pipeline = Pipeline.Vertex;
 let runReason: BreakReason = BreakReason.First;
 let curView: uint32 = 0;
 let curBlend: BlendMode = BlendMode.Alpha;
@@ -153,9 +159,16 @@ function effectMatrixSame(mat: float32[], hasMat: boolean): boolean {
 // and at the end of the bracket — never in the middle of a primitive.
 function closeRun(): void {
 	if (!runOpen) { return; }
-	const count: int32 = vertexCount() - runStart;
-	if (count > 0) {
-		recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
+	if (curPipeline == Pipeline.Sprite) {
+		const instances: int32 = spriteInstanceCount() - runStart;
+		if (instances > 0) {
+			recordSpriteDraw(runReason, runStart, instances, curView, curBlend, curSampler);
+		}
+	} else {
+		const count: int32 = vertexCount() - runStart;
+		if (count > 0) {
+			recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
+		}
 	}
 	runOpen = false;
 }
@@ -169,18 +182,36 @@ export function finishRecording(): void {
 }
 
 function openRun(reason: BreakReason): void {
-	runStart = vertexCount();
+	runStart = curPipeline == Pipeline.Sprite ? spriteInstanceCount() : vertexCount();
 	runReason = reason;
 	runOpen = true;
 }
 
 function useState(view: uint32, blend: BlendMode): void {
-	if (runOpen && view == curView && blend == curBlend) { return; }
+	if (runOpen && view == curView && blend == curBlend && curPipeline == Pipeline.Vertex) {
+		return;
+	}
 	const reason: BreakReason = !runOpen ? BreakReason.First
-		: (view != curView ? BreakReason.View : BreakReason.Blend);
+		: (curPipeline != Pipeline.Vertex ? BreakReason.Pipeline
+		: (view != curView ? BreakReason.View : BreakReason.Blend));
 	closeRun();
 	curView = view;
 	curBlend = blend;
+	curPipeline = Pipeline.Vertex;
+	openRun(reason);
+}
+
+function useSpriteState(view: uint32, blend: BlendMode): void {
+	if (runOpen && view == curView && blend == curBlend && curPipeline == Pipeline.Sprite) {
+		return;
+	}
+	const reason: BreakReason = !runOpen ? BreakReason.First
+		: (curPipeline != Pipeline.Sprite ? BreakReason.Pipeline
+		: (view != curView ? BreakReason.View : BreakReason.Blend));
+	closeRun();
+	curView = view;
+	curBlend = blend;
+	curPipeline = Pipeline.Sprite;
 	openRun(reason);
 }
 
@@ -538,6 +569,46 @@ function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec
 	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
 	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
 	pushVertex(d.x, d.y, u0, v1, color.r, color.g, color.b, color.a);
+}
+
+// One instanced sprite: the node's world affine, the origin its local bounds map to, and
+// its local size. The shader rebuilds the corners, so the walk stops writing six transformed
+// vertices and writes 64 unchanged bytes instead.
+//
+// `curEffect` is the gate. The sprite program carries no colour pipeline - no colorMatrix, no
+// colorAdd, no colorKey - so a node with one stays on the vertex path. That is a decision the
+// caller makes, not a silent fallback: `spriteInstancingAvailable` is what render.ms asks.
+export function drawSpriteAffine(
+	view: uint32,
+	blend: BlendMode,
+	world: Transform2D,
+	originX: float32,
+	originY: float32,
+	sizeX: float32,
+	sizeY: float32,
+	u0: float32, v0: float32, u1: float32, v1: float32,
+	color: Color,
+): void {
+	useSpriteState(view == 0 ? void2dWhiteView() : view, blend);
+	pushSpriteInstance(
+		world.a, world.b, world.c, world.d,
+		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,
+		u0, v0, u1, v1,
+		color,
+	);
+}
+
+// A filter records its subtree into an object-local target by subtracting the target's
+// origin as each vertex is written. An instance carries its origin once, so the same
+// subtraction applies there - and it has to be the same two numbers, or a filtered sprite
+// lands somewhere else than a filtered anything else.
+function originXOffset(): float32 { return originX; }
+function originYOffset(): float32 { return originY; }
+
+// True when the instanced path is legal for the state the emitter is in. The only thing that
+// disqualifies it is a colour pipeline, which the sprite program does not have.
+export function spriteInstancingAvailable(): boolean {
+	return curEffect == NO_EFFECT;
 }
 
 export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {

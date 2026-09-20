@@ -27,7 +27,12 @@ import {
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
 	commandKindName, breakReasonName,
+	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
+	uiInstanceCount, spriteInstanceCount, spriteInstanceField,
 } from "../../src/void2d/displayList";
+import {
+	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
+} from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
@@ -47,7 +52,9 @@ function f2(v: float32): string {
 // regression then names its own cause instead of leaving a count to be explained.
 function formatStream(): string {
 	let out: string = "";
-	out = out + `commands ${commandCount()} draws ${drawCommandCount()} vertices ${vertexCount()}` + "\n";
+	out = out + `commands ${commandCount()} draws ${drawCommandCount()}`
+		+ ` vertices ${vertexCount()} uiInstances ${uiInstanceCount()}`
+		+ ` spriteInstances ${spriteInstanceCount()}` + "\n";
 	for (let i: int32 = 0; i < commandCount(); i++) {
 		const kind: string = commandKindName(commandField(i, CMD_KIND) as int32);
 		const why: string = breakReasonName(commandField(i, CMD_BREAK) as int32);
@@ -57,7 +64,15 @@ function formatStream(): string {
 		out = out + ` sampler:${commandField(i, CMD_SAMPLER) as int32}`;
 		out = out + ` effect:${commandField(i, CMD_EFFECT) as int32}`;
 		out = out + ` rt:${commandField(i, CMD_RT_MODE) as int32}`;
-		out = out + ` verts:${commandField(i, CMD_VERTEX_OFFSET) as int32}+${commandField(i, CMD_VERTEX_COUNT) as int32}`;
+		// A run reads ONE stream, so the line names which and prints only that range.
+		// Printing `verts:0+0` for an instanced run is how a snapshot stops being able to fail.
+		if ((commandField(i, CMD_PIPELINE) as int32) == (Pipeline.Sprite as int32)) {
+			out = out + ` pipe:sprite inst:${commandField(i, CMD_INSTANCE_OFFSET) as int32}`
+				+ `+${commandField(i, CMD_INSTANCE_COUNT) as int32}`;
+		} else {
+			out = out + ` pipe:vertex verts:${commandField(i, CMD_VERTEX_OFFSET) as int32}`
+				+ `+${commandField(i, CMD_VERTEX_COUNT) as int32}`;
+		}
 		out = out + ` clip:${f2(commandField(i, CMD_CLIP_X))},${f2(commandField(i, CMD_CLIP_Y))},${f2(commandField(i, CMD_CLIP_W))},${f2(commandField(i, CMD_CLIP_H))}`;
 		out = out + "\n";
 	}
@@ -65,6 +80,31 @@ function formatStream(): string {
 		out = out + `v ${i} ${f2(vertexField(i, 0))} ${f2(vertexField(i, 1))}`;
 		out = out + ` uv ${f2(vertexField(i, 2))} ${f2(vertexField(i, 3))}`;
 		out = out + ` rgba ${f2(vertexField(i, 4))} ${f2(vertexField(i, 5))} ${f2(vertexField(i, 6))} ${f2(vertexField(i, 7))}`;
+		out = out + "\n";
+	}
+	for (let i: int32 = 0; i < spriteInstanceCount(); i++) {
+		out = out + `s ${i}`;
+		out = out + ` affine`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_AFFINE))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_AFFINE + 1))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_AFFINE + 2))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_AFFINE + 3))}`;
+		out = out + ` at`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_ORIGIN_SIZE))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_ORIGIN_SIZE + 1))}`;
+		out = out + ` size`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_ORIGIN_SIZE + 2))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_ORIGIN_SIZE + 3))}`;
+		out = out + ` uv`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_UV))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_UV + 1))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_UV + 2))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_UV + 3))}`;
+		out = out + ` rgba`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_COLOR))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_COLOR + 1))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_COLOR + 2))}`;
+		out = out + ` ${f2(spriteInstanceField(i, REC_SPRITE_COLOR + 3))}`;
 		out = out + "\n";
 	}
 	return out;
@@ -190,7 +230,10 @@ test "the walk records and uploads nothing" {
 	const text: string = record(breaksScene(), 128.0, 64.0, 1.0);
 	assert (text.length as int32) > 0;
 	assert commandCount() > 0;
-	assert vertexCount() > 0;
+	// Geometry landed in one stream or the other. Asserting `vertexCount() > 0` alone
+	// stopped being true the moment sprites became instances, and an assertion that a
+	// refactor can silently satisfy by emitting nothing is worse than none.
+	assert vertexCount() + spriteInstanceCount() + uiInstanceCount() > 0;
 	assert uploadCount() == before;
 }
 

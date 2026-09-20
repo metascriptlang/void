@@ -4,6 +4,8 @@
 import { Node2D, DrawKind } from "./node";
 import {
 	fillQuad,
+	drawSpriteAffine,
+	spriteInstancingAvailable,
 	imageQuad,
 	imageQuadUV,
 	drawMesh,
@@ -168,18 +170,43 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 	}
 }
 
-function emitNode(n: Node2D, world: Transform2D, na: float32, col: Color, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): void {
+function emitNode(
+	n: Node2D, world: Transform2D, na: float32, col: Color,
+	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32,
+): void {
 	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
 	setSampler(n.smooth, n.tileWrap);
+	// P2: a flat quad becomes one 64-byte instance instead of six transformed vertices,
+	// whenever the sprite program can express it. `tl` is the origin because it is what the
+	// node's local (xMin,yMin) maps to, and the shader rebuilds the other three corners from
+	// the same affine - so a rotated sprite is the same pixels by construction and not by a
+	// second code path.
+	const instanced: boolean = spriteInstancingAvailable();
 	if (n.kind === DrawKind.Rect) {
-		fillQuad(tl, tr, br, bl, col, n.blend);
+		if (instanced) {
+			drawSpriteAffine(0, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+				0.0, 0.0, 1.0, 1.0, col);
+		} else {
+			fillQuad(tl, tr, br, bl, col, n.blend);
+		}
 	} else if (n.kind === DrawKind.Sprite) {
-		imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
+		if (instanced) {
+			drawSpriteAffine(n.sheet.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+				n.sheet.u0, n.sheet.v0, n.sheet.u1, n.sheet.v1, col);
+		} else {
+			imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
+		}
 	} else if (n.kind === DrawKind.Anim) {
 		const len: int32 = n.frames.length as int32;
 		if (len > 0) {
 			const fi: int32 = ((n.clock * n.fps) as int32) % len;
-			imageQuad(n.frames[fi], tl, tr, br, bl, col, n.blend);
+			const fr = n.frames[fi];
+			if (instanced) {
+				drawSpriteAffine(fr.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+					fr.u0, fr.v0, fr.u1, fr.v1, col);
+			} else {
+				imageQuad(fr, tl, tr, br, bl, col, n.blend);
+			}
 		}
 	} else if (n.kind === DrawKind.Label) {
 		// Glyph coverage is white in the atlas, so the label's colour is the tint.
@@ -327,7 +354,7 @@ function drawContent(n: Node2D, a: float32, vw: float32, vh: float32): void {
 		fmax4(tl.x, tr.x, br.x, bl.x) >= 0.0 && fmin4(tl.x, tr.x, br.x, bl.x) <= vw
 		&& fmax4(tl.y, tr.y, br.y, bl.y) >= 0.0 && fmin4(tl.y, tr.y, br.y, bl.y) <= vh;
 	if (onscreen) {
-		emitNode(n, world, na, col, tl, tr, br, bl);
+		emitNode(n, world, na, col, tl, tr, br, bl, lb.xMax - lb.xMin, lb.yMax - lb.yMin);
 	}
 	const masking: boolean = n.kind === DrawKind.Mask;
 	if (masking) {

@@ -53,6 +53,10 @@ export enum BreakReason {
 	Effect,
 	Clip,
 	Barrier,
+	// P2: the run changed pipeline. A sprite run and a vertex run read different streams
+	// and bind different programs, so they can never be one draw - and a T1 snapshot that
+	// says `break: pipeline` names that, instead of leaving a count to be explained.
+	Pipeline,
 }
 
 export const COMMAND_FLOATS: int32 = 24;
@@ -403,6 +407,28 @@ export function recordDraw(
 	commands[base + CMD_EFFECT] = effectIndex as float32;
 }
 
+// A run of instanced sprites. It carries an instance range and a vertex count of zero; the
+// replay branches on CMD_PIPELINE before it looks at the vertex count, which is what stops
+// a zero there from silently dropping the run.
+export function recordSpriteDraw(
+	reason: BreakReason,
+	instanceOffset: int32,
+	count: int32,
+	view: uint32,
+	blend: BlendMode,
+	sampler: int32,
+): void {
+	const base: int32 = startCommand(CommandKind.Draw, reason);
+	commands[base + CMD_PIPELINE] = (Pipeline.Sprite as int32) as float32;
+	commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
+	commands[base + CMD_INSTANCE_COUNT] = count as float32;
+	commands[base + CMD_VERTEX_COUNT] = 0.0;
+	commands[base + CMD_VIEW] = view as float32;
+	commands[base + CMD_BLEND] = (blend as int32) as float32;
+	commands[base + CMD_SAMPLER] = sampler as float32;
+	commands[base + CMD_EFFECT] = NO_EFFECT as float32;
+}
+
 // Open a render-target pass. Everything recorded until the matching `endTargetList` belongs
 // to it. h2d saves and clears the clip per target (`h2d/Object.hx:896-956`): a Mask outside
 // the filter must not scissor the target, whose coordinates are its own.
@@ -513,6 +539,7 @@ export function breakReasonName(reason: int32): string {
 		BreakReason.Effect => "effect",
 		BreakReason.Clip => "clip",
 		BreakReason.Barrier => "barrier",
+		BreakReason.Pipeline => "pipeline",
 	};
 }
 
