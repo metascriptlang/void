@@ -33,6 +33,14 @@ static int s_frameBaseOffset;   // where this frame's vertices start in s_vbuf
 static int s_frameUploaded;     // 0 when the frame was dropped, and then nothing may draw
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
+// P2's flat sprite pipeline: one instance per quad, no SDF maths, its own program. Guardrail
+// 8 is that a sprite-only scene must not pay for the UI pipeline, and a separate program is
+// the only form of that promise a reviewer can check.
+static sg_pipeline s_spritePips[VOID2D_BLEND_COUNT];
+static sg_pipeline s_spritePipsRT[VOID2D_BLEND_COUNT];
+static sg_buffer s_unitQuad;          // six corners (0,0)..(1,1), made once, stepped per vertex
+static int s_spriteInstanceBase;      // where this frame's sprite instances start in s_vbuf
+static int s_spriteInstanceCount;
 // sokol's origin convention does not change after setup, and it was being queried twice per
 // draw command - 40 000 times a frame on the UI bench whose `present` this phase reports as
 // not met.
@@ -129,6 +137,16 @@ static int s_retiredCount;
 #define CMD_ARG1            13
 #define CMD_RT_MODE         14
 #define CMD_CLEAR_R         15
+#define CMD_PIPELINE        19
+#define CMD_INSTANCE_OFFSET 20
+#define CMD_INSTANCE_COUNT  21
+
+#define PIPELINE_VERTEX     0
+#define PIPELINE_SPRITE     1
+
+// The sprite record and its GPU struct are the same bytes in the same order, so the upload is
+// a memcpy and not a pack. src/test/instanceLayoutCheck.ms asserts that.
+#define SPRITE_REC_FLOATS   16
 
 #define EFFECT_FLOATS       24
 #define VERTEX_FLOATS       8
@@ -427,6 +445,46 @@ void void2dSetup(void) {
 		s_pipsRT[i] = sg_make_pipeline(&pd);
 	}
 
+	sg_shader spriteShd = sg_make_shader(sprite_shader_desc(sg_query_backend()));
+	for (int i = 0; i < VOID2D_BLEND_COUNT; i++) {
+		sg_pipeline_desc sd = {0};
+		sd.shader = spriteShd;
+		sd.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		sd.layout.attrs[ATTR_sprite_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		sd.layout.attrs[ATTR_sprite_corner].buffer_index = 0;
+		sd.layout.attrs[ATTR_sprite_iAffine].format = SG_VERTEXFORMAT_FLOAT4;
+		sd.layout.attrs[ATTR_sprite_iAffine].buffer_index = 1;
+		sd.layout.attrs[ATTR_sprite_iOriginSize].format = SG_VERTEXFORMAT_FLOAT4;
+		sd.layout.attrs[ATTR_sprite_iOriginSize].buffer_index = 1;
+		sd.layout.attrs[ATTR_sprite_iUv].format = SG_VERTEXFORMAT_FLOAT4;
+		sd.layout.attrs[ATTR_sprite_iUv].buffer_index = 1;
+		sd.layout.attrs[ATTR_sprite_iColor].format = SG_VERTEXFORMAT_FLOAT4;
+		sd.layout.attrs[ATTR_sprite_iColor].buffer_index = 1;
+		sd.colors[0].blend.enabled = modes[i].on;
+		sd.colors[0].blend.src_factor_rgb = modes[i].srgb;
+		sd.colors[0].blend.dst_factor_rgb = modes[i].drgb;
+		sd.colors[0].blend.src_factor_alpha = modes[i].sa;
+		sd.colors[0].blend.dst_factor_alpha = modes[i].da;
+		s_spritePips[i] = sg_make_pipeline(&sd);
+		sd.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+		sd.sample_count = 1;
+		sd.depth.pixel_format = SG_PIXELFORMAT_NONE;
+		s_spritePipsRT[i] = sg_make_pipeline(&sd);
+	}
+
+	// Six corners rather than four plus an index buffer. VOID2D.md records that the two have
+	// not been compared on a Mali or an Adreno; until they have, this is one 48-byte static
+	// buffer and no index path to get wrong.
+	static const float unit[12] = {
+		0.0f, 0.0f,  1.0f, 0.0f,  1.0f, 1.0f,
+		0.0f, 0.0f,  1.0f, 1.0f,  0.0f, 1.0f,
+	};
+	sg_buffer_desc uqd = {0};
+	uqd.usage.vertex_buffer = true;
+	uqd.data = (sg_range){ .ptr = unit, .size = sizeof(unit) };
+	s_unitQuad = sg_make_buffer(&uqd);
+	s_buffersMade++;
+
 	sg_pipeline_desc bpd = {0};
 	bpd.shader = sg_make_shader(blur_shader_desc(sg_query_backend()));
 	bpd.layout.attrs[ATTR_blur_pos].format = SG_VERTEXFORMAT_FLOAT2;
@@ -582,17 +640,21 @@ static void runCommands(const float *commands, int commandCount,
 // old filter path died. Returns 0 when the frame was dropped; then nothing else may draw.
 int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
                         const float *effects, int effectCount,
-                        const float *vertices, int vertexCount) {
+                        const float *vertices, int vertexCount,
+                        const float *spriteInstances, int spriteInstanceCount) {
 	s_frameUploaded = 0;
 	s_frameBaseOffset = 0;
+	s_spriteInstanceBase = 0;
+	s_spriteInstanceCount = spriteInstanceCount;
 
 	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
+	size_t spriteBytes = (size_t)spriteInstanceCount * sizeof(void2dSpriteInstance);
 	// Against the FRAME's total, not this bracket's. sg_append_buffer accumulates until
 	// sg_commit, so a buffer sized for one bracket overflows on the second - and sokol's
 	// overflow copies nothing, returns a start position anyway, and leaves every draw in that
 	// bracket reading whatever was there before. Silent in release. Same mechanism as the
 	// "per-frame vertex cap" defect this phase closed one layer down.
-	size_t frameBytes = (size_t)s_frameVertexBytes + vertexBytes;
+	size_t frameBytes = (size_t)s_frameVertexBytes + vertexBytes + spriteBytes;
 	if (frameBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
 		// A dropped frame with an error, never a silent truncation. The old path let
 		// sg_append_buffer run past the end and the rest of the scene simply vanished.
@@ -612,8 +674,18 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 		s_frameBaseOffset = sg_append_buffer(s_vbuf, &data);
 		s_uploadCount++;
 		s_uploadBytes += (int)vertexBytes;
-		s_frameVertexBytes = (int)frameBytes;
 	}
+	// The sprite record and void2dSpriteInstance are the same 64 bytes in the same order, so
+	// the frame's instances append as they were recorded - no pack, no staging copy. A second
+	// append rather than one concatenated upload, because concatenating would mean copying the
+	// whole vertex stream through a staging buffer to save a call that costs nothing.
+	if (spriteBytes > 0) {
+		sg_range data = { .ptr = spriteInstances, .size = spriteBytes };
+		s_spriteInstanceBase = sg_append_buffer(s_vbuf, &data);
+		s_uploadCount++;
+		s_uploadBytes += (int)spriteBytes;
+	}
+	if (vertexBytes > 0 || spriteBytes > 0) { s_frameVertexBytes = (int)frameBytes; }
 	s_frameUploaded = 1;
 	if (targetCommandCount > 0) {
 		runCommands(targetCommands, targetCommandCount, effects, effectCount, 0.0f, 0.0f);
@@ -627,6 +699,55 @@ void void2dReplay(const float *commands, int commandCount,
                   float fbW, float fbH) {
 	if (commandCount <= 0 || !s_frameUploaded) return;
 	runCommands(commands, commandCount, effects, effectCount, fbW, fbH);
+}
+
+// One instanced sprite run: the unit quad at slot 0, this run's instances at slot 1, one
+// sg_draw for the whole run. The sprite program carries no colour pipeline, so a node with a
+// colorMatrix, colorAdd or colorKey never reaches here - the emitter keeps it on the vertex
+// path and records the break, which is what makes that decision visible in a T1 snapshot
+// rather than inferred from a pixel.
+static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
+                          float fbW, float fbH, uint32_t *lastPipeline, int *scissorApplied,
+                          int *paramsValid, int *fxValid) {
+	int count = (int)cmd[CMD_INSTANCE_COUNT];
+	if (count <= 0) { return; }
+
+	sg_pipeline pip = (rt ? s_spritePipsRT : s_spritePips)[blend];
+	if (pip.id != *lastPipeline) {
+		sg_apply_pipeline(pip);
+		*lastPipeline = pip.id;
+		*scissorApplied = 0;
+		*paramsValid = 0;
+		*fxValid = 0;
+	}
+
+	sg_bindings b = {0};
+	b.vertex_buffers[0] = s_unitQuad;
+	b.vertex_buffers[1] = s_vbuf;
+	b.vertex_buffer_offsets[1] = s_spriteInstanceBase
+		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dSpriteInstance);
+	b.views[VIEW_spriteTex] = (sg_view){ .id = view };
+	int smpIndex = (int)cmd[CMD_SAMPLER];
+	if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }
+	b.samplers[SMP_spriteSmp] = s_smp[smpIndex];
+	sg_apply_bindings(&b);
+
+	if (!*scissorApplied) {
+		applyScissor(cmd, fbW, fbH);
+		*scissorApplied = 1;
+	}
+
+	sprite_params_t sp = {0};
+	sp.viewport[0] = fbW;
+	sp.viewport[1] = fbH;
+	bool isRT = voidIsRenderTargetView(view);
+	sp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
+	sp.viewport[3] = isRT ? 1.0f : 0.0f;
+	sg_range u = { .ptr = &sp, .size = sizeof(sp) };
+	sg_apply_uniforms(UB_sprite_params, &u);
+
+	sg_draw(0, 6, count);
+	s_drawCallCount++;
 }
 
 // The one executor both lists go through. `fbW`/`fbH` are the viewport the commands were
@@ -698,7 +819,14 @@ static void runCommands(const float *commands, int commandCount,
 		uint32_t view = (uint32_t)cmd[CMD_VIEW];
 		if (view == 0) view = s_whiteView.id;
 
-		sg_pipeline pip = (cmd[CMD_RT_MODE] != 0.0f ? s_pipsRT : s_pips)[blend];
+		int pipeKind = (int)cmd[CMD_PIPELINE];
+		int rt = cmd[CMD_RT_MODE] != 0.0f;
+		if (pipeKind == PIPELINE_SPRITE) {
+			drawSpriteRun(cmd, blend, rt, view, fbW, fbH, &lastPipeline, &scissorApplied,
+				&paramsValid, &fxValid);
+			continue;
+		}
+		sg_pipeline pip = (rt ? s_pipsRT : s_pips)[blend];
 		if (pip.id != lastPipeline) {
 			sg_apply_pipeline(pip);
 			lastPipeline = pip.id;

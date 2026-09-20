@@ -31,7 +31,7 @@ import {
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SAMPLER,
 	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R, SAMPLER_COUNT, samplerIndex,
-	commands, effects, vertices, targetCommands,
+	commands, effects, vertices, targetCommands, spriteInstances, spriteInstanceCount,
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, recordDraw, recordClip, recordBlur,
@@ -256,6 +256,7 @@ export function flushTargets(): void {
 		targetCommands[0], targetCommandCount(),
 		effects[0], effectCount(),
 		vertices[0], vertexCount(),
+		spriteInstances[0], spriteInstanceCount(),
 	) != 0;
 }
 

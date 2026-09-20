@@ -90,6 +90,18 @@ export const CMD_CLEAR_R: int32 = 15;
 export const CMD_CLEAR_G: int32 = 16;
 export const CMD_CLEAR_B: int32 = 17;
 export const CMD_CLEAR_A: int32 = 18;
+// Which of P2's two pipelines the run wants, and the instance range inside the stream that
+// pipeline reads. A Draw carries either a vertex range or an instance range, never both;
+// the field says which, so the replay branches on the record rather than on a guess about
+// whether a count is zero.
+export const CMD_PIPELINE: int32 = 19;
+export const CMD_INSTANCE_OFFSET: int32 = 20;
+export const CMD_INSTANCE_COUNT: int32 = 21;
+
+export enum Pipeline {
+	Vertex,
+	Sprite,
+}
 
 // Exported because `draw.ms` hands `commands[0]` to the replay as a `Borrow<float32>`, and
 // there is no way to return a `Span` from a function on this compiler. Read them; only this

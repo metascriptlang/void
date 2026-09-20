@@ -24,7 +24,8 @@ uint32_t void2dFontView(void);
 // before the swapchain pass; 0 means the frame was dropped and void2dReplay will do nothing.
 int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
                         const float *effects, int effectCount,
-                        const float *vertices, int vertexCount);
+                        const float *vertices, int vertexCount,
+                        const float *spriteInstances, int spriteInstanceCount);
 
 // Replays the swapchain list inside the pass the caller has already opened.
 void void2dReplay(const float *commands, int commandCount,

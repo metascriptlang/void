@@ -63,6 +63,55 @@ void main() {
 
 @program void2d vs fs
 
+// The flat sprite pipeline (VOID2D.md "P2"). One instance per quad, 64 B, and no SDF maths
+// anywhere in it — guardrail 8 is that a sprite-only scene must not pay for the UI pipeline,
+// and the cheapest way to mean that is a program that cannot run the other one's code.
+//
+// `corner` is the per-vertex unit quad (0,0)..(1,1); everything else steps per instance. The
+// affine is carried per instance rather than re-transformed on the CPU, which is what turns
+// 192 B of re-written vertices into 64 B of unchanged bytes.
+@vs spriteVs
+layout(binding=0) uniform sprite_params {
+    vec4 viewport;     // xy = framebuffer size in px; z = flipV; w = srcAlreadyPremult
+};
+in vec2 corner;
+in vec4 iAffine;      // a,b,c,d
+in vec4 iOriginSize;  // tx,ty,w,h
+in vec4 iUv;          // u0,v0,u1,v1
+in vec4 iColor;
+out vec2 uv;
+out vec4 color;
+out float srcPremult;
+void main() {
+    vec2 local = corner * iOriginSize.zw;
+    vec2 world = vec2(iAffine.x * local.x + iAffine.z * local.y + iOriginSize.x,
+                      iAffine.y * local.x + iAffine.w * local.y + iOriginSize.y);
+    vec2 ndc = vec2(world.x / viewport.x * 2.0 - 1.0, 1.0 - world.y / viewport.y * 2.0);
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    vec2 t = mix(iUv.xy, iUv.zw, corner);
+    uv = (viewport.z > 0.5) ? vec2(t.x, 1.0 - t.y) : t;
+    color = iColor;
+    srcPremult = viewport.w;
+}
+@end
+
+@fs spriteFs
+layout(binding=0) uniform texture2D spriteTex;
+layout(binding=0) uniform sampler spriteSmp;
+in vec2 uv;
+in vec4 color;
+in float srcPremult;
+out vec4 frag_color;
+void main() {
+    vec4 c = texture(sampler2D(spriteTex, spriteSmp), uv) * color;
+    c.rgb = mix(c.rgb, c.rgb * color.a, srcPremult);
+    vec4 premult = vec4(c.rgb * c.a, c.a);
+    frag_color = mix(premult, c, srcPremult);
+}
+@end
+
+@program sprite spriteVs spriteFs
+
 // Separable Gaussian blur (h2d.filter.Blur). Fullscreen quad; `dir` is the per-tap UV step
 // (radius/texW,0) for the horizontal pass, (0,radius/texH) for the vertical. Two passes = 2D blur.
 @vs blurVs
