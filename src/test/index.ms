@@ -18,3 +18,5 @@ import "./drawCheck";
 // harness before the engine").
 import "../../tests/harness/parse";
 import "../../tests/harness/benchRows";
+// T1 - the display list, asserted as data with no GPU (docs/TESTING.md "T1").
+import "../../tests/displayList/snapshot";

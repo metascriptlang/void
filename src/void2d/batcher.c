@@ -267,10 +267,22 @@ static unsigned char *readFile(const char *path, int *outSize) {
 // Allocate, or reallocate, the one vertex buffer. sokol cannot resize a buffer, so growth is
 // a destroy and a make; it happens when a frame first needs more room and then never again,
 // because the buffer does not shrink.
+// The growth policy, as arithmetic and nothing else: max(2x, next power of two), no shrink,
+// and 0 for "past the cap, drop the frame". Pure, so T1 can assert its boundaries with no GPU
+// - which is the only way the cap is ever exercised, since reaching it for real needs 192 MB
+// of geometry. `have` is the current buffer size in bytes, `need` what the frame wants.
+int void2dGrowthTarget(int have, int need) {
+	if (need > VOID2D_MAX_BUFFER_BYTES) { return 0; }
+	if (need <= have) { return have; }
+	int want = have > 0 ? have * 2 : VOID2D_INITIAL_BUFFER_BYTES;
+	while (want < need) { want *= 2; }
+	if (want > VOID2D_MAX_BUFFER_BYTES) { want = VOID2D_MAX_BUFFER_BYTES; }
+	return want;
+}
+
 static void ensureVertexBuffer(int bytes) {
-	if (bytes <= s_vbufBytes) return;
-	int want = s_vbufBytes > 0 ? s_vbufBytes * 2 : VOID2D_INITIAL_BUFFER_BYTES;
-	while (want < bytes) want *= 2;
+	int want = void2dGrowthTarget(s_vbufBytes, bytes);
+	if (want <= s_vbufBytes) return;
 	if (s_vbuf.id) sg_destroy_buffer(s_vbuf);
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;

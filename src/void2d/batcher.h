@@ -61,6 +61,10 @@ int void2dBuffersAlive(void);
 
 // Glyph-atlas images made minus freed; 1 in a steady frame.
 int void2dAtlasImagesAlive(void);
+
+// The vertex buffer growth policy as pure arithmetic: max(2x, pow2), no shrink, 0 past the
+// cap. Exposed so T1 can assert its boundaries without a GPU.
+int void2dGrowthTarget(int have, int need);
 int void2dInstanceBufferBytes(void);
 // Frames dropped because one frame's geometry exceeded VOID2D_MAX_BUFFER_BYTES. Never
 // silent: the drop is logged once per frame and counted here.

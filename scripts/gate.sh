@@ -51,7 +51,7 @@ if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
 else
 	fail "msc test src/test/index.ms — see out/gate-t0.log"
 fi
-echo "      T1 (display list) does not exist yet: P1 creates it (docs/TESTING.md 'T1')"
+	echo "      T1: tests/displayList/*.txt snapshots, recorded with no GPU; VOID_SNAPSHOT=1 rewrites them"
 
 echo
 echo "=== 3. the demo still builds and runs ================================="
@@ -158,7 +158,7 @@ echo "=== 8. summary ========================================================"
 pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md || true)
 echo "      tier   what ran"
 echo "      T0     msc test src/test/index.ms"
-echo "      T1     does not exist until P1"
+echo "      T1     display-list snapshots + growth policy, no GPU"
 echo "      T2     $d3d11_conformance"
 echo "      T3     nothing wired"
 echo "      T4     bench counters gated, milliseconds reported"

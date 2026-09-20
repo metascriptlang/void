@@ -17,7 +17,7 @@ import {
 	void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
-	void2dInstanceBufferBytes, void2dDroppedFrames,
+	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 } from "./batcher.h";
 import {
 	CommandKind, BreakReason,
@@ -85,6 +85,13 @@ export function buffersAlive(): int32 { return void2dBuffersAlive(); }
 export function instanceBufferBytes(): int32 { return void2dInstanceBufferBytes(); }
 export function droppedFrames(): int32 { return void2dDroppedFrames(); }
 
+// The vertex-buffer growth policy, as pure arithmetic. Re-exported rather than imported from
+// `batcher.h` directly, because a header imported from a second directory compiles its `.c`
+// a second time and the link fails on duplicate symbols - `src/void2d/` owns batcher.h.
+export function growthTarget(have: int32, need: int32): int32 {
+	return void2dGrowthTarget(have, need);
+}
+
 // Counted from the stream rather than from the GPU, so T1 can read them with no GPU at all.
 export function recordedDrawCount(): int32 { return drawCommandCount(); }
 export function recordedCommandCount(): int32 { return commandCount(); }
@@ -135,6 +142,14 @@ function closeRun(): void {
 		recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
 	}
 	runOpen = false;
+}
+
+// Close the open run so the streams are final. Naming the step separates *recording is
+// finished* from *the GPU is told about it*: `flushTargets` and `end2d` both start with it,
+// and T1 uses it on its own, because a display list is assertable with no GPU at all and the
+// replay is the one part that is not.
+export function finishRecording(): void {
+	closeRun();
 }
 
 function openRun(reason: BreakReason): void {
@@ -205,7 +220,7 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 // swapchain pass is begun: that ordering is the phase's whole point, because a target pass
 // opened inside the swapchain pass is what sokol asserts on.
 export function flushTargets(): void {
-	closeRun();
+	finishRecording();
 	if (targetStackOverflowed()) {
 		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
 	}
@@ -219,7 +234,7 @@ export function flushTargets(): void {
 // Replay the swapchain list into the pass the caller already has open. Together with
 // `flushTargets` this is the only place the GPU is touched, and both happen after the walk.
 export function end2d(): void {
-	closeRun();
+	finishRecording();
 	if (!frameLive || commandCount() == 0) { return; }
 	void2dReplay(
 		commands[0], commandCount(),

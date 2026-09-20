@@ -34,7 +34,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~Fractional DPI puts every glyph off-grid~~ | **closed `747127f`** — `begin2d` takes a float logical size; golden `regress/dpiTruncation` moved. The `text/` and `snap/` goldens did not move: integer glyph origins are a separate defect | done / P3 for glyph origins |
 | ~~Samplers are hard-wired REPEAT~~ | **closed** — four samplers indexed by `smooth * 2 + tileWrap`, clamp by default. `regress/samplerRepeat` moved but is weak (448 px at max delta 2: both sheet edges are near-black); `image/tileWrap` is the scene that shows the mechanism, and `image/sceneSmooth` covers the tri-state | done |
 | ~~Per-frame vertex cap~~ | **closed `747127f`** — one growing buffer, cap plus dropped frame past it; golden `regress/vertexCap` moved; `debug-abort:vertex-cap` deleted after a debug build was re-run and did not abort | done |
-| GPU calls are issued while the tree is walked | **behaviour closed `747127f`**, assertion not written: the walk's only output is the stream and `void2dReplay` is the only draw-issuing function. Rows `walk-issues-gpu-calls`, `text-buffer-churn`, `upload-per-bracket` stay open against the T1 tier | P1 (T1) |
+| ~~GPU calls are issued while the tree is walked~~ | **closed** - behaviour at `747127f`, and the assertion that holds it at the T1 tier: `tests/displayList/snapshot.ms` records three scenes with no GPU at all and asserts that after a walk the stream is full and `uploadCount()` has not moved. The three rows are deleted | done |
 | A rotated Mask clips to its AABB | golden `clip/rotatedMask` | P2 |
 | Culling tests the viewport rather than the active clip | row `cull-against-viewport` (the golden `clip/scrolledList` looks right; only the cost is wrong) | P2 |
 | Integer glyph origins and rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, no fallback, ≤ 16 fonts, the R8→RGBA CPU expansion | goldens `text/code13Dpi100` and `text/wrapped` for the pixels, rows `h2d-text-metrics` and `golden-missing:text/cjkFallback` for the surface that does not exist | P3 |
@@ -124,9 +124,6 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| walk-issues-gpu-calls | T1 | **the behaviour is fixed** (`747127f`): the stream is the walk's only output. What is missing is the assertion that keeps it fixed — a T1 test that records a tree and proves no `sg_*` call was made before `end2d`. The T1 tier does not exist yet | P1 | 2026-09-20 |
-| text-buffer-churn | T1 | **the behaviour is fixed** (`747127f`): no node owns a GPU buffer, so a text change rewrites a `float32[]` and nothing else. Missing is the T1 assertion that a text change creates and destroys no buffer | P1 | 2026-09-20 |
-| upload-per-bracket | T1 | **the behaviour is fixed** (`747127f`): one upload per bracket, gated at T4 as `ui.uploads` 1 / `sprites.uploads` 1. Missing is the T1 assertion that reads the command stream directly rather than a counter | P1 | 2026-09-20 |
 | cull-against-viewport | T1 | culling tests the viewport, not the active clip (`render.ms:191-201`), so `clip/scrolledList` draws forty rows to show four. The picture is right and the cost is wrong | P2 | 2026-09-20 |
 | idle-costs-a-walk | T4 | `Scene.present` walks and draws every frame; nothing knows whether the tree changed | P5 | 2026-09-20 |
 | h2d-object-surface | T0 | `parent`, `remove()`, `getChildAt`, `getChildIndex`, `numChildren`, `name`, and `localToGlobal` returning last frame's matrix (`node.ms:174-180`) | P5 | 2026-09-20 |

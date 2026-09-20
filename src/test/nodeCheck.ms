@@ -285,3 +285,32 @@ test "dropShadowFilter sets offset" {
 	assert approx(f.offsetX, 2.0);
 	assert approx(f.offsetY, 3.0);
 }
+
+test "add hands back the node that was added, not the parent" {
+	// It used to hand back the parent, so `const n = s.add(node); n.alpha = 0.5;` - the h2d
+	// idiom with the handle kept - configured the scene root instead, in silence. Found by
+	// writing a T1 scene the way a Heaps user would.
+	const parent = group();
+	const child = rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0));
+	const handle = parent.addChild(child);
+	handle.alpha = 0.25;
+	assert (parent.children.length as int32) == 1;
+	assert parent.children[0].alpha == 0.25;
+	assert parent.alpha == 1.0;
+
+	// And a second child through the handle becomes a grandchild, not a sibling.
+	const grand = handle.addChild(rect(2.0, 2.0, rgba(0.0, 1.0, 0.0, 1.0)));
+	assert (parent.children.length as int32) == 1;
+	assert (parent.children[0].children.length as int32) == 1;
+	grand.alpha = 0.5;
+	assert parent.children[0].children[0].alpha == 0.5;
+}
+
+test "addChildAt hands back the node that was added too" {
+	const parent = group();
+	parent.addChild(rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0)));
+	const inserted = parent.addChildAt(rect(2.0, 2.0, rgba(0.0, 1.0, 0.0, 1.0)), 0);
+	inserted.alpha = 0.75;
+	assert (parent.children.length as int32) == 2;
+	assert parent.children[0].alpha == 0.75;
+}

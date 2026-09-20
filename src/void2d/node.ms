@@ -131,10 +131,16 @@ export function scaleGrid(t: Tile, borderL: float32, borderT: float32, borderR: 
 	return n;
 }
 
+// Returns the CHILD, not the parent. It used to return the parent, which made
+// `const n = s.add(node); n.alpha = 0.5;` - the h2d idiom, `new Bitmap(tile, parent)` with
+// the handle kept - silently configure the scene root instead, and
+// `s.add(a).addChild(b)` silently make `b` a sibling of `a` rather than its child. Nothing
+// read the old return value, so nothing depended on the chaining it offered; what it cost was
+// that the obvious reading of `add(x)` was wrong and said nothing.
 export function addChild(this n: Node2D, c: Node2D): Node2D {
 	n.children.push(c);
 	n.childrenDirty = true;
-	return n;
+	return c;
 }
 
 export function addChildAt(this n: Node2D, c: Node2D, index: int32): Node2D {
@@ -150,7 +156,7 @@ export function addChildAt(this n: Node2D, c: Node2D, index: int32): Node2D {
 	if (index >= len) { cs.push(c); }
 	n.children = cs;
 	n.childrenDirty = true;
-	return n;
+	return c;
 }
 
 export function removeChild(this n: Node2D, c: Node2D): void {

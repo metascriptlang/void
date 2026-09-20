@@ -40,7 +40,11 @@ What T0 gains through the roadmap: the snapping rules as arithmetic, wrap and tr
 
 ## T1 — the display list is assertable with no GPU
 
-This tier does not exist yet and cannot until the display list does ([VOID2D.md](VOID2D.md) P1). It is the largest single win in this doc.
+**Created at P1.** `tests/displayList/snapshot.ms`, reached from `src/test/index.ms`, with the snapshots beside it as `tests/displayList/<scene>.txt`.
+
+**What it costs, stated rather than glossed.** The tier is GPU-free because the walk records and stops - `finishRecording` closes the open run and the replay is never called. That works because `void2dWhiteView()` on an unset batcher returns 0 and `void2dFrameBegin` only resets statics, so nothing on the recording path calls sokol. The price is that a scene needing a real resource cannot be in a snapshot: a filter allocates a render target and text needs a fontstash context. Target ordering and nesting are therefore asserted in `src/void2d/displayList.ms` directly - where they need no scene at all - and the golden scenes are **not** shared with this tier, which is a divergence from the plan below.
+
+It is the largest single win in this doc.
 
 **What it buys.** Every conclusion in VOID2D.md "Frame shape" and "Order and batching" is a statement about a POD stream, not about pixels. Recorded as data, the stream can be asserted in the existing `msc test` tier, in seconds, on every platform, with no GPU, no capture and no golden. It catches exactly what a golden image cannot see — identical pixels produced with ten times the draw calls or ten times the uploaded bytes — and it is the only tier that can assert a **negative**: that nothing was uploaded, that no pass was opened, that a culled subtree contributed no instances.
 
@@ -352,7 +356,7 @@ about where they came from.
 | Tier | State after P0 |
 |---|---|
 | T0 | 431 tests, `msc test src/test/index.ms`, about half a second — six of them are the harness's own parsers |
-| T1 | does not exist; P1 creates it |
+| T1 | `tests/displayList/*.txt`, recorded with no GPU; `VOID_SNAPSHOT=1` rewrites them on the run that compares |
 | T2 | 37 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
 | T3 | nothing wired; six named SKIPs |
 | T4 | ten counters gated, two milliseconds reported; the wasm budget SKIPs |

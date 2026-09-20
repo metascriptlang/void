@@ -128,6 +128,15 @@ export function resetList(): void {
 	effectTotal = 0;
 	vertexTotal = 0;
 	clipRecorded = false;
+	// The rect too, not only the flag. Leaving it meant the first command of a new frame
+	// carried the last clip of the previous one; `popClip` records (0,0,0,0) at depth zero so
+	// a balanced frame always ended clear and production never noticed, but an unbalanced one
+	// would have scissored to a stale rect - and T1 found it at once, because a snapshot then
+	// depended on which test had run before it in the same process.
+	clipX = 0.0;
+	clipY = 0.0;
+	clipW = 0.0;
+	clipH = 0.0;
 	renderTargetMode = false;
 	targetDepthNow = 0;
 	targetOverflowed = false;
