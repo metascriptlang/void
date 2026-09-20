@@ -388,23 +388,35 @@ run_device() {
 # every claim about what Heaps does rested on somebody having read the file. This runs the
 # port's side of tests/oracle/*.cases against a snapshot taken from real Heaps and committed,
 # so an ordinary gate needs no Haxe. `sh scripts/oracle.sh regen <cases>` retakes the snapshot
-# and is the only part that does.
+# and is the only part that does. Every file in that directory is checked, so adding a case
+# file needs no edit here — which is how it was written when only bounds3d existed, and
+# scene3d would then have been added and silently never run.
 run_oracle() {
-	cases=tests/oracle/bounds3d.cases
-	if [ ! -f "$cases" ]; then
-		skip "oracle: $cases is missing"
+	found=0
+	agreed=0
+	diverged=0
+	for cases in tests/oracle/*.cases; do
+		[ -f "$cases" ] || continue
+		found=$((found + 1))
+		snapshot=${cases%.cases}.snapshot
+		if [ ! -f "$snapshot" ]; then
+			skip "oracle: no snapshot for $cases — run 'sh scripts/oracle.sh regen $cases' with Haxe"
+			return
+		fi
+		if sh scripts/oracle.sh check "$cases" > "$WORK/oracle.log" 2>&1; then
+			agreed=$((agreed + $(grep -c '^AGREES' "$WORK/oracle.log")))
+			diverged=$((diverged + $(grep -c '^DIVERGES' "$WORK/oracle.log")))
+		else
+			fail "oracle: $cases and real Heaps disagree in a way nothing declared"
+			grep -E '^(MISMATCH|GRADUATED|MISSING)' "$WORK/oracle.log" | head -8 | sed 's/^/         /'
+			return
+		fi
+	done
+	if [ "$found" = 0 ]; then
+		skip "oracle: no tests/oracle/*.cases to check"
 		return
 	fi
-	if [ ! -f tests/oracle/bounds3d.snapshot ]; then
-		skip "oracle: no snapshot — run 'sh scripts/oracle.sh regen $cases' with Haxe installed"
-		return
-	fi
-	if sh scripts/oracle.sh check "$cases" > "$WORK/oracle.log" 2>&1; then
-		pass "oracle: $(grep -c '^AGREES' "$WORK/oracle.log") case(s) agree with real Heaps, $(grep -c '^DIVERGES' "$WORK/oracle.log") diverge as declared"
-	else
-		fail "oracle: the port and real Heaps disagree in a way nothing declared"
-		grep -E '^(MISMATCH|GRADUATED|MISSING)' "$WORK/oracle.log" | head -8 | sed 's/^/         /'
-	fi
+	pass "oracle: $agreed case(s) agree with real Heaps and $diverged diverge as declared, over $found file(s)"
 }
 
 # ---- style --------------------------------------------------------------------------------

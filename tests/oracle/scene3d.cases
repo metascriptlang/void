@@ -1,0 +1,328 @@
+# h3d.scene.Object against src/void3d/scene.ms — `calcAbsPos` and the `posChanged` descent.
+#
+# Same shape as bounds3d.cases: no expected answer is written here. The answers come from
+# running real Heaps (`sh scripts/oracle.sh regen tests/oracle/scene3d.cases`) and are committed
+# as scene3d.snapshot, which an ordinary gate run checks the port against with no Haxe.
+#
+# **What this file can and cannot reach.** Heaps' own `syncRec` is out of reach headless: it
+# takes an `h3d.scene.RenderContext`, which only `h3d.scene.Scene` constructs, and
+# `new h3d.scene.Scene(false, false)` calls `hxd.Window.getInstance()` — measured on node at
+# `out/tmp/scenProbe`, it throws `ReferenceError: window is not defined`. What does run is a
+# bare `h3d.scene.Object` tree and the public `getAbsPos()`, which calls the private `syncPos()`
+# (`Object.hx:855`): it walks the parent chain, recomputes every node on it carrying
+# `posChanged`, and marks that node's children. So for the *values* of `world`, `getAbsPos` and
+# `syncRec` answer the same thing, and those values are what every case below asks about. The
+# *count* of nodes recomputed per sync is deliberately not asked: `syncPos` is lazy along one
+# chain where `syncRec` and this port's `syncWorld` both descend the whole tree, so comparing
+# counts would compare two Heaps functions rather than the port against Heaps. The port's count
+# is asserted in src/test/scene3dCheck.ms instead, against nothing but itself.
+#
+# The port is float32 and Heaps float64, so every case carries a tolerance, relative to the
+# larger magnitude.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: class H {
+# haxe-prelude: 	public static function root(): Object { return new Object(); }
+# haxe-prelude: 	public static function node(p: Object, px: Float, py: Float, pz: Float,
+# haxe-prelude: 			rx: Float, ry: Float, rz: Float, sx: Float, sy: Float, sz: Float): Object {
+# haxe-prelude: 		var o = new Object(p);
+# haxe-prelude: 		o.x = px; o.y = py; o.z = pz;
+# haxe-prelude: 		o.setRotation(rx, ry, rz);
+# haxe-prelude: 		o.scaleX = sx; o.scaleY = sy; o.scaleZ = sz;
+# haxe-prelude: 		return o;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function at(p: Object, px: Float, py: Float, pz: Float): Object {
+# haxe-prelude: 		return node(p, px, py, pz, 0, 0, 0, 1, 1, 1);
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function moveTo(o: Object, px: Float, py: Float, pz: Float): Object {
+# haxe-prelude: 		o.x = px; o.y = py; o.z = pz;
+# haxe-prelude: 		return o;
+# haxe-prelude: 	}
+# haxe-prelude: }
+#
+# ms-prelude: import { Vec3, vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
+# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
+# ms-prelude: import {
+# ms-prelude: 	Scene, NodeId, Transform3D, SceneError, NO_NODE, addGroup, setLocal, syncWorld,
+# ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude:
+# ms-prelude: function tf(px: float32, py: float32, pz: float32, rx: float32, ry: float32,
+# ms-prelude: 		rz: float32, sx: float32, sy: float32, sz: float32): Transform3D {
+# ms-prelude: 	return {
+# ms-prelude: 		position: vec3(px, py, pz), rotation: eulerQuat(rx, ry, rz), scale: vec3(sx, sy, sz),
+# ms-prelude: 	};
+# ms-prelude: }
+# ms-prelude: function at(px: float32, py: float32, pz: float32): Transform3D {
+# ms-prelude: 	return tf(px, py, pz, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+# ms-prelude: }
+# ms-prelude: function node(ref s: Scene, p: NodeId, t: Transform3D): NodeId {
+# ms-prelude: 	const r: Result<NodeId, SceneError> = addGroup(s, p, t);
+# ms-prelude: 	return r.ok ? r.value : { index: NO_NODE, generation: 0 };
+# ms-prelude: }
+# ms-prelude: function moveTo(ref s: Scene, id: NodeId, t: Transform3D): int32 {
+# ms-prelude: 	const r: Result<int32, SceneError> = setLocal(s, id, t);
+# ms-prelude: 	return r.ok ? r.value : NO_NODE;
+# ms-prelude: }
+# ms-prelude: function wm(s: Scene, id: NodeId): Mat4 {
+# ms-prelude: 	const r: Result<Mat4, SceneError> = s.worldOf(id);
+# ms-prelude: 	return r.ok ? r.value : identity();
+# ms-prelude: }
+#
+# The one line below is not part of the oracle. src/void3d/scene.ms reaches gpu3d.c, whose sg_*
+# calls are linked by src/sokol/gpu.ms's @compile — and msc drops a module, and its @compile
+# with it, unless one of its exports is read from live code, so a bare side-effect import of
+# that module links nothing. Compiler card
+# ~/metascript/.inbox/compiler/2026-09-20-unused-module-drops-compile.md; delete this line and
+# the KEY_W import above when it lands.
+# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
+
+# ---- calcAbsPos: the world matrix is local times parent, in row-vector order ----------------
+
+# The plainest statement of `multiply3x4inline(absPos, parent.absPos)` (Object.hx:772): the
+# child's offset is added in the parent's frame.
+case child-under-translated-parent tol=1e-5
+haxe> var r1 = H.root(); var p1 = H.at(r1, 10, 0, 0); var c1 = H.at(p1, 0, 2, 0);
+haxe> var m1 = c1.getAbsPos(); emit("child-under-translated-parent", [m1._41, m1._42, m1._43]);
+ms> let s1: Scene = Scene.create();
+ms> const p1: NodeId = node(s1, s1.rootId(), at(10.0, 0.0, 0.0));
+ms> const c1: NodeId = node(s1, p1, at(0.0, 2.0, 0.0));
+ms> const n1: int32 = syncWorld(s1);
+ms> const m1: Mat4 = wm(s1, c1);
+ms> emit3("child-under-translated-parent", m1.m41, m1.m42, m1.m43);
+
+# The case `parent * local` gets backwards: a quarter turn about Y on the parent takes a child
+# at +X to -Z. This is the claim src/test/scene3dCheck.ms asserts against nothing but itself.
+case child-under-rotated-parent tol=1e-5
+haxe> var r2 = H.root(); var p2 = H.node(r2, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1);
+haxe> var c2 = H.at(p2, 1, 0, 0);
+haxe> var m2 = c2.getAbsPos(); emit("child-under-rotated-parent", [m2._41, m2._42, m2._43]);
+ms> let s2: Scene = Scene.create();
+ms> const q2: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
+ms> const p2: NodeId = node(s2, s2.rootId(), q2);
+ms> const c2: NodeId = node(s2, p2, at(1.0, 0.0, 0.0));
+ms> const n2: int32 = syncWorld(s2);
+ms> const m2: Mat4 = wm(s2, c2);
+ms> emit3("child-under-rotated-parent", m2.m41, m2.m42, m2.m43);
+
+# Translation alone satisfies the case above; this asks for the child's basis, so a port that
+# carried the parent's position but dropped its rotation would fail here and not there.
+case rotated-parent-child-basis tol=1e-5
+haxe> var r3 = H.root(); var p3 = H.node(r3, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1);
+haxe> var c3 = H.at(p3, 1, 0, 0); var m3 = c3.getAbsPos();
+haxe> emit("rotated-parent-child-basis", [m3._11, m3._13, m3._31, m3._33]);
+ms> let s3: Scene = Scene.create();
+ms> const q3: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
+ms> const p3: NodeId = node(s3, s3.rootId(), q3);
+ms> const c3: NodeId = node(s3, p3, at(1.0, 0.0, 0.0));
+ms> const n3: int32 = syncWorld(s3);
+ms> const m3: Mat4 = wm(s3, c3);
+ms> emit4("rotated-parent-child-basis", m3.m11, m3.m13, m3.m31, m3.m33);
+
+# Three levels, so the product is associated the same way on both sides and not merely applied
+# once. The middle node turns, which is what makes the two orderings differ at the leaf.
+case three-level-chain tol=1e-5
+haxe> var r4 = H.root(); var a4 = H.at(r4, 1, 0, 0);
+haxe> var b4 = H.node(a4, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1); var c4 = H.at(b4, 2, 0, 0);
+haxe> var m4 = c4.getAbsPos(); emit("three-level-chain", [m4._41, m4._42, m4._43]);
+ms> let s4: Scene = Scene.create();
+ms> const q4: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
+ms> const a4: NodeId = node(s4, s4.rootId(), at(1.0, 0.0, 0.0));
+ms> const b4: NodeId = node(s4, a4, q4);
+ms> const c4: NodeId = node(s4, b4, at(2.0, 0.0, 0.0));
+ms> const n4: int32 = syncWorld(s4);
+ms> const m4: Mat4 = wm(s4, c4);
+ms> emit3("three-level-chain", m4.m41, m4.m42, m4.m43);
+
+# `Transform3D.scale` had no test at all after M6 and no production caller sets it, so these
+# three cases are the first measurement of it against anything.
+case local-scale-on-the-diagonal tol=1e-5
+haxe> var r5 = H.root(); var o5 = H.node(r5, 1, 2, 3, 0, 0, 0, 2, 3, 4);
+haxe> var m5 = o5.getAbsPos(); emit("local-scale-on-the-diagonal", [m5._11, m5._22, m5._33]);
+ms> let s5: Scene = Scene.create();
+ms> const q5: Transform3D = tf(1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 2.0, 3.0, 4.0);
+ms> const o5: NodeId = node(s5, s5.rootId(), q5);
+ms> const n5: int32 = syncWorld(s5);
+ms> const m5: Mat4 = wm(s5, o5);
+ms> emit3("local-scale-on-the-diagonal", m5.m11, m5.m22, m5.m33);
+
+# Heaps prepends scale to the rotation matrix row by row (Object.hx:748-758), so the local is
+# `S * R` and not `R * S`. With scale (2,1,1) under a quarter turn about Y the two differ:
+# `S * R` gives m13 = -2 where `R * S` gives m13 = -1.
+case scale-is-prepended-to-rotation tol=1e-5
+haxe> var r6 = H.root(); var o6 = H.node(r6, 0, 0, 0, 0, Math.PI / 2, 0, 2, 1, 1);
+haxe> var m6 = o6.getAbsPos();
+haxe> emit("scale-is-prepended-to-rotation", [m6._11, m6._13, m6._31, m6._33]);
+ms> let s6: Scene = Scene.create();
+ms> const q6: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 2.0, 1.0, 1.0);
+ms> const o6: NodeId = node(s6, s6.rootId(), q6);
+ms> const n6: int32 = syncWorld(s6);
+ms> const m6: Mat4 = wm(s6, o6);
+ms> emit4("scale-is-prepended-to-rotation", m6.m11, m6.m13, m6.m31, m6.m33);
+
+# A non-uniform scale under a rotated parent — the shape that makes `mat3(model)` the wrong
+# normal matrix, and the one M8's glTF node TRS is the first to produce.
+case non-uniform-scale-under-rotated-parent tol=1e-5
+haxe> var r7 = H.root(); var p7 = H.node(r7, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1);
+haxe> var c7 = H.node(p7, 0, 0, 0, 0, 0, 0, 2, 1, 3); var m7 = c7.getAbsPos();
+haxe> emit("non-uniform-scale-under-rotated-parent",
+haxe> 	[m7._11, m7._12, m7._13, m7._21, m7._22, m7._23, m7._31, m7._32, m7._33]);
+ms> let s7: Scene = Scene.create();
+ms> const q7: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
+ms> const p7: NodeId = node(s7, s7.rootId(), q7);
+ms> const c7: NodeId = node(s7, p7, tf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 1.0, 3.0));
+ms> const n7: int32 = syncWorld(s7);
+ms> const m7: Mat4 = wm(s7, c7);
+ms> emit9("non-uniform-scale-under-rotated-parent",
+ms> 	m7.m11, m7.m12, m7.m13, m7.m21, m7.m22, m7.m23, m7.m31, m7.m32, m7.m33);
+
+# `math3d.eulerQuat` claims to be `h3d.Quat.initRotation`, which is what `setRotation` calls.
+# Three angles at once, none of them a right angle, so a wrong axis order cannot cancel.
+case euler-rotation-basis tol=1e-5
+haxe> var r8 = H.root(); var o8 = H.node(r8, 0, 0, 0, 0.3, 0.7, 0.2, 1, 1, 1);
+haxe> var m8 = o8.getAbsPos();
+haxe> emit("euler-rotation-basis",
+haxe> 	[m8._11, m8._12, m8._13, m8._21, m8._22, m8._23, m8._31, m8._32, m8._33]);
+ms> let s8: Scene = Scene.create();
+ms> const q8: Transform3D = tf(0.0, 0.0, 0.0, 0.3, 0.7, 0.2, 1.0, 1.0, 1.0);
+ms> const o8: NodeId = node(s8, s8.rootId(), q8);
+ms> const n8: int32 = syncWorld(s8);
+ms> const m8: Mat4 = wm(s8, o8);
+ms> emit9("euler-rotation-basis",
+ms> 	m8.m11, m8.m12, m8.m13, m8.m21, m8.m22, m8.m23, m8.m31, m8.m32, m8.m33);
+
+# ---- posChanged: what a sync after a change must reach, and what it must leave alone -------
+
+# The flag is set on the node written and on nothing else, so reaching the child at all is the
+# propagation. Both sides sync once first, so the second read cannot pass by having never
+# computed anything.
+case parent-move-reaches-the-child tol=1e-5
+haxe> var r9 = H.root(); var p9 = H.at(r9, 1, 0, 0); var c9 = H.at(p9, 0, 1, 0);
+haxe> c9.getAbsPos(); H.moveTo(p9, 5, 0, 0);
+haxe> var m9 = c9.getAbsPos(); emit("parent-move-reaches-the-child", [m9._41, m9._42, m9._43]);
+ms> let s9: Scene = Scene.create();
+ms> const p9: NodeId = node(s9, s9.rootId(), at(1.0, 0.0, 0.0));
+ms> const c9: NodeId = node(s9, p9, at(0.0, 1.0, 0.0));
+ms> const n9: int32 = syncWorld(s9);
+ms> const w9: int32 = moveTo(s9, p9, at(5.0, 0.0, 0.0));
+ms> const n9b: int32 = syncWorld(s9);
+ms> const m9: Mat4 = wm(s9, c9);
+ms> emit3("parent-move-reaches-the-child", m9.m41, m9.m42, m9.m43);
+
+# Four levels, so the flag has to survive two hops it was not set on.
+case deep-chain-propagates-to-the-leaf tol=1e-5
+haxe> var ra = H.root(); var aa = H.at(ra, 1, 0, 0); var ba = H.at(aa, 1, 0, 0);
+haxe> var ca = H.at(ba, 1, 0, 0); var da = H.at(ca, 1, 0, 0);
+haxe> da.getAbsPos(); H.moveTo(aa, 0, 0, 10);
+haxe> var ma = da.getAbsPos();
+haxe> emit("deep-chain-propagates-to-the-leaf", [ma._41, ma._42, ma._43]);
+ms> let sa: Scene = Scene.create();
+ms> const aa: NodeId = node(sa, sa.rootId(), at(1.0, 0.0, 0.0));
+ms> const ba: NodeId = node(sa, aa, at(1.0, 0.0, 0.0));
+ms> const ca: NodeId = node(sa, ba, at(1.0, 0.0, 0.0));
+ms> const da: NodeId = node(sa, ca, at(1.0, 0.0, 0.0));
+ms> const na: int32 = syncWorld(sa);
+ms> const wa: int32 = moveTo(sa, aa, at(0.0, 0.0, 10.0));
+ms> const na2: int32 = syncWorld(sa);
+ms> const ma: Mat4 = wm(sa, da);
+ms> emit3("deep-chain-propagates-to-the-leaf", ma.m41, ma.m42, ma.m43);
+
+# The other half of propagation: a flag that reached too far would move this one too.
+case a-sibling-subtree-does-not-move tol=1e-5
+haxe> var rb = H.root(); var ab = H.at(rb, 1, 0, 0); var acb = H.at(ab, 0, 1, 0);
+haxe> var bb = H.at(rb, 0, 0, 1); var bcb = H.at(bb, 0, 1, 0);
+haxe> bcb.getAbsPos(); H.moveTo(ab, 9, 0, 0);
+haxe> var mb = bcb.getAbsPos();
+haxe> emit("a-sibling-subtree-does-not-move", [mb._41, mb._42, mb._43]);
+ms> let sb: Scene = Scene.create();
+ms> const ab: NodeId = node(sb, sb.rootId(), at(1.0, 0.0, 0.0));
+ms> const acb: NodeId = node(sb, ab, at(0.0, 1.0, 0.0));
+ms> const bb: NodeId = node(sb, sb.rootId(), at(0.0, 0.0, 1.0));
+ms> const bcb: NodeId = node(sb, bb, at(0.0, 1.0, 0.0));
+ms> const nb: int32 = syncWorld(sb);
+ms> const wb: int32 = moveTo(sb, ab, at(9.0, 0.0, 0.0));
+ms> const nb2: int32 = syncWorld(sb);
+ms> const mb: Mat4 = wm(sb, bcb);
+ms> emit3("a-sibling-subtree-does-not-move", mb.m41, mb.m42, mb.m43);
+
+# Propagation is downward only.
+case moving-a-child-leaves-its-parent tol=1e-5
+haxe> var rc = H.root(); var pc = H.at(rc, 3, 0, 0); var cc = H.at(pc, 0, 1, 0);
+haxe> cc.getAbsPos(); H.moveTo(cc, 0, 7, 0);
+haxe> var mc = pc.getAbsPos();
+haxe> emit("moving-a-child-leaves-its-parent", [mc._41, mc._42, mc._43]);
+ms> let sc: Scene = Scene.create();
+ms> const pc: NodeId = node(sc, sc.rootId(), at(3.0, 0.0, 0.0));
+ms> const cc: NodeId = node(sc, pc, at(0.0, 1.0, 0.0));
+ms> const nc: int32 = syncWorld(sc);
+ms> const wc: int32 = moveTo(sc, cc, at(0.0, 7.0, 0.0));
+ms> const nc2: int32 = syncWorld(sc);
+ms> const mc: Mat4 = wm(sc, pc);
+ms> emit3("moving-a-child-leaves-its-parent", mc.m41, mc.m42, mc.m43);
+
+# Clearing the flag must not lose the matrix: syncing a tree nothing changed leaves it where it
+# was, which is the half of laziness a value can see.
+case resync-with-nothing-changed-is-stable tol=1e-5
+haxe> var rd = H.root(); var pd = H.node(rd, 2, 0, 0, 0, 0.4, 0, 1, 1, 1);
+haxe> var cd = H.at(pd, 0, 1, 0);
+haxe> cd.getAbsPos(); cd.getAbsPos();
+haxe> var md = cd.getAbsPos();
+haxe> emit("resync-with-nothing-changed-is-stable", [md._41, md._42, md._43]);
+ms> let sd: Scene = Scene.create();
+ms> const qd: Transform3D = tf(2.0, 0.0, 0.0, 0.0, 0.4, 0.0, 1.0, 1.0, 1.0);
+ms> const pd: NodeId = node(sd, sd.rootId(), qd);
+ms> const cd: NodeId = node(sd, pd, at(0.0, 1.0, 0.0));
+ms> const nd: int32 = syncWorld(sd);
+ms> const nd2: int32 = syncWorld(sd);
+ms> const nd3: int32 = syncWorld(sd);
+ms> const md: Mat4 = wm(sd, cd);
+ms> emit3("resync-with-nothing-changed-is-stable", md.m41, md.m42, md.m43);
+
+# A node written twice ends where the last write says, not where the accumulated writes would.
+case move-and-move-back-restores-the-world tol=1e-5
+haxe> var re = H.root(); var pe = H.at(re, 1, 0, 0); var ce = H.at(pe, 0, 1, 0);
+haxe> ce.getAbsPos(); H.moveTo(pe, 5, 0, 0); ce.getAbsPos(); H.moveTo(pe, 1, 0, 0);
+haxe> var me = ce.getAbsPos();
+haxe> emit("move-and-move-back-restores-the-world", [me._41, me._42, me._43]);
+ms> let se: Scene = Scene.create();
+ms> const pe: NodeId = node(se, se.rootId(), at(1.0, 0.0, 0.0));
+ms> const ce: NodeId = node(se, pe, at(0.0, 1.0, 0.0));
+ms> const ne: int32 = syncWorld(se);
+ms> const we: int32 = moveTo(se, pe, at(5.0, 0.0, 0.0));
+ms> const ne2: int32 = syncWorld(se);
+ms> const we2: int32 = moveTo(se, pe, at(1.0, 0.0, 0.0));
+ms> const ne3: int32 = syncWorld(se);
+ms> const me: Mat4 = wm(se, ce);
+ms> emit3("move-and-move-back-restores-the-world", me.m41, me.m42, me.m43);
+
+# A node added to an already-synced tree starts dirty, so the next sync places it rather than
+# leaving it at the identity it was constructed with.
+case a-node-added-after-a-sync-is-placed tol=1e-5
+haxe> var rf = H.root(); var pf = H.at(rf, 2, 0, 0); pf.getAbsPos();
+haxe> var cf = H.at(pf, 0, 3, 0);
+haxe> var mf = cf.getAbsPos();
+haxe> emit("a-node-added-after-a-sync-is-placed", [mf._41, mf._42, mf._43]);
+ms> let sf: Scene = Scene.create();
+ms> const pf: NodeId = node(sf, sf.rootId(), at(2.0, 0.0, 0.0));
+ms> const nf: int32 = syncWorld(sf);
+ms> const cf: NodeId = node(sf, pf, at(0.0, 3.0, 0.0));
+ms> const nf2: int32 = syncWorld(sf);
+ms> const mf: Mat4 = wm(sf, cf);
+ms> emit3("a-node-added-after-a-sync-is-placed", mf.m41, mf.m42, mf.m43);
+
+# Propagation of a rotation, not only of a translation: the child never moves in its own frame
+# and ends up somewhere else entirely.
+case rotating-a-parent-after-a-sync-turns-the-child tol=1e-5
+haxe> var rg = H.root(); var pg = H.at(rg, 0, 0, 0); var cg = H.at(pg, 1, 0, 0);
+haxe> cg.getAbsPos(); pg.setRotation(0, Math.PI / 2, 0);
+haxe> var mg = cg.getAbsPos();
+haxe> emit("rotating-a-parent-after-a-sync-turns-the-child", [mg._41, mg._42, mg._43]);
+ms> let sg: Scene = Scene.create();
+ms> const qg: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
+ms> const pg: NodeId = node(sg, sg.rootId(), at(0.0, 0.0, 0.0));
+ms> const cg: NodeId = node(sg, pg, at(1.0, 0.0, 0.0));
+ms> const ng: int32 = syncWorld(sg);
+ms> const wg: int32 = moveTo(sg, pg, qg);
+ms> const ng2: int32 = syncWorld(sg);
+ms> const mg: Mat4 = wm(sg, cg);
+ms> emit3("rotating-a-parent-after-a-sync-turns-the-child", mg.m41, mg.m42, mg.m43);

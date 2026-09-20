@@ -33,13 +33,18 @@ SNAPSHOT=$(dirname "$CASES")/$(basename "$CASES" .cases).snapshot
 # ---- the case file --------------------------------------------------------------------------
 # Directives are `# key: value` lines; a case opens with `case <id> [tol=<n>] [diverges=<row>]`
 # and its two bodies are the `haxe>` and `ms>` lines under it. Both bodies end by calling
-# `emit(id, ...)`, which each side defines.
+# `emit(id, ...)`, which each side defines. Heaps' `emit` takes an array; the port's side has
+# one helper per value count (`emit1`, `emit3`, `emit4`, `emit9`, `emitB`), and the two sides of
+# a case must emit the same number of values or the row silently mismatches.
 
 directive() { sed -n "s|^# $1: ||p" "$CASES" | head -1; }
 
 LIBS=$(directive lib)
 HAXE_PRELUDE=$(sed -n 's|^# haxe-prelude: ||p' "$CASES")
 MS_PRELUDE=$(sed -n 's|^# ms-prelude: ||p' "$CASES")
+# Statements the port's side runs at the top of `main`, before the first case: setup shared by
+# every case in the file, where a prelude line can only declare.
+MS_MAIN_PRELUDE=$(sed -n 's|^# ms-main-prelude: ||p' "$CASES")
 
 case_ids() { sed -n 's|^case \([a-z0-9-]*\).*|\1|p' "$CASES"; }
 case_attr() { sed -n "s|^case $1 .*$2=\([^ ]*\).*|\1|p" "$CASES" | head -1; }
@@ -114,7 +119,19 @@ check() {
 		echo 'function emitB(id: string, a: boolean): void {'
 		echo '	console.log(`CASE ${id} ${a ? 1.0 : 0.0}`);'
 		echo '}'
+		echo 'function emit4(id: string, a: float32, b: float32, c: float32, d: float32): void {'
+		echo '	console.log(`CASE ${id} ${a} ${b} ${c} ${d}`);'
+		echo '}'
+		echo 'function emit9('
+		echo '	id: string,'
+		echo '	a: float32, b: float32, c: float32,'
+		echo '	d: float32, e: float32, f: float32,'
+		echo '	g: float32, h: float32, i: float32,'
+		echo '): void {'
+		echo '	console.log(`CASE ${id} ${a} ${b} ${c} ${d} ${e} ${f} ${g} ${h} ${i}`);'
+		echo '}'
 		echo 'function main(): int32 {'
+		echo "$MS_MAIN_PRELUDE"
 		for id in $(case_ids); do
 			echo "	// $id"
 			case_body "$id" ms | sed 's|^|	|'
