@@ -943,6 +943,27 @@ void void2dTextSpacing(float spacing) {
 
 int void2dAtlasGen(void) { return s_atlasGen; }
 
+// fontstash reserves a 2x2 opaque block at the atlas origin on create and on reset, and
+// fonsExpandAtlas preserves what is already placed, so it survives a grow. That block is what
+// lets a solid card sample the GLYPH atlas instead of the 1x1 white image - and a card and a
+// label that share a view no longer break each other's batch, which is half of what collapses
+// P2's 20 000 draws.
+//
+// The UV is the centre of that block and therefore moves when the atlas grows; read it per
+// frame, never cache it. void2dAtlasGen() already bumps on a resize for the same reason.
+float void2dWhiteTexelU(void) { return s_atlasW > 0 ? 1.0f / (float)s_atlasW : 0.0f; }
+float void2dWhiteTexelV(void) { return s_atlasH > 0 ? 1.0f / (float)s_atlasH : 0.0f; }
+
+// Whether that block is ACTUALLY opaque, read out of fontstash rather than taken on trust
+// from the comment beside its allocation. Returns 0 with no context, which is what T0 sees.
+int void2dWhiteTexelOk(void) {
+	if (!s_fons) { return 0; }
+	int w = 0, h = 0;
+	const unsigned char *tex = fonsGetTextureData(s_fons, &w, &h);
+	if (!tex || w < 2 || h < 2) { return 0; }
+	return tex[0] == 0xff && tex[1] == 0xff && tex[w] == 0xff && tex[w + 1] == 0xff;
+}
+
 void void2dTextSyncAtlas(void) {
 	if (!s_fons) return;
 	int dirty[4];

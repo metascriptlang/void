@@ -20,6 +20,7 @@ import {
 	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd,
 	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
+	void2dWhiteTexelU, void2dWhiteTexelV, void2dWhiteTexelOk,
 } from "./batcher.h";
 import {
 	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
@@ -236,7 +237,20 @@ export function setup2d(): void {
 	) == 0) {
 		console.log("void2d: the instance layout in instance.ms and batcher.c disagree");
 	}
+	// Loud, not a fallback. If the glyph atlas has no opaque texel, a card drawn against the
+	// glyph view is transparent everywhere, and the symptom - missing cards - says nothing
+	// about the cause. fontstash reserves it; this is the check that it is still true.
+	if (void2dWhiteTexelOk() == 0) {
+		console.log("void2d: the glyph atlas has no opaque texel at its origin - solid fills "
+			+ "cannot share a batch with text");
+	}
 }
+
+// The opaque texel in the glyph atlas, as a UV. Read per frame: it moves when the atlas
+// grows, and `atlasGen()` bumps for the same reason.
+export function whiteTexelU(): float32 { return void2dWhiteTexelU(); }
+export function whiteTexelV(): float32 { return void2dWhiteTexelV(); }
+export function whiteTexelOk(): boolean { return void2dWhiteTexelOk() != 0; }
 
 // The strides sokol is handed, from sizeof. Re-exported rather than reached through
 // `batcher.h` from a second directory, which would compile `batcher.c` twice.

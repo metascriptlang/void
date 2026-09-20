@@ -87,6 +87,14 @@ int void2dAtlasGen(void);                              // atlas generation (chan
 int void2dAddFont(const char *path);                   // load a TTF, returns font index (0-based)
 void void2dSelectFont(int id);                         // select current font for subsequent text ops
 
+// The opaque texel fontstash reserves at the glyph atlas origin, as a UV. A solid card drawn
+// against the glyph view instead of the 1x1 white image shares a batch with the labels around
+// it. The UV moves when the atlas grows, so read it per frame.
+float void2dWhiteTexelU(void);
+float void2dWhiteTexelV(void);
+// 1 only when that texel is measurably opaque; 0 with no fontstash context.
+int void2dWhiteTexelOk(void);
+
 // The instance strides sokol is handed, from sizeof rather than a literal, and the offsets
 // the emitter in src/void2d/instance.ms claims it writes. void2dInstanceLayoutCheck fails at
 // setup if the two ever disagree.
