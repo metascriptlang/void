@@ -27,6 +27,7 @@
 #   GATE_SKIP_CAPTURE=1    skip the capture stage (loudly)
 #   GATE_SKIP_ANDROID=1    skip the android stage (loudly)
 #   GATE_SKIP_BENCH=1      skip the bench stage (loudly)
+#   GATE_DEVICE=1          build/run the GLES3 check against whatever adb sees
 #   ANDROID_NDK=<path>     NDK root (default: the Windows SDK location)
 set -u
 cd "$(dirname "$0")/.."
@@ -343,6 +344,44 @@ run_bench() {
 	note "bench: reported only — docs/VOID3D.md records the variance behind any future threshold"
 }
 
+# ---- device -------------------------------------------------------------------------------
+
+# The GLES3 backend is the one Hibernal ships on and the one with no byte-level numbers. It ran
+# for the first time before M7 (tests/device/gles3Campfire.png) — on the Android emulator, which
+# is not a device. This stage is a loud SKIP by default rather than a silent omission: a green
+# gate should say out loud that the shipping backend is unverified here, the way the baseline
+# skips do. GATE_DEVICE=1 builds, installs and runs it against whatever adb can see.
+run_device() {
+	if [ "${GATE_DEVICE:-0}" != "1" ]; then
+		skip "device: GATE_DEVICE=1 not set — no GLES3 run this gate; every pixel claim here is D3D11 only"
+		return
+	fi
+	adb=${ADB:-$HOME/AppData/Local/Android/Sdk/platform-tools/adb.exe}
+	if [ ! -x "$adb" ] && ! command -v adb > /dev/null 2>&1; then
+		skip "device: no adb (set ADB)"
+		return
+	fi
+	[ -x "$adb" ] || adb=adb
+	target=$("$adb" devices | awk 'NR>1 && $2=="device" { print $1; exit }')
+	if [ -z "$target" ]; then
+		skip "device: adb sees no device"
+		return
+	fi
+	kind=$("$adb" -s "$target" shell getprop ro.build.characteristics | tr -d '')
+	egl=$("$adb" -s "$target" shell getprop ro.hardware.egl | tr -d '')
+	if ! "$adb" -s "$target" shell pidof com.metascript.voidsample > /dev/null 2>&1; then
+		skip "device: $target ($kind, egl=$egl) is there but the app is not running — see tests/device/README.md"
+		return
+	fi
+	"$adb" -s "$target" exec-out screencap -p > "$WORK/device.png" 2>/dev/null
+	colours=$(magick "$WORK/device.png" -format "%k" info: 2>/dev/null || echo 0)
+	if [ "$colours" -lt 100 ]; then
+		fail "device: $target rendered $colours colours — a blank or near-blank frame"
+		return
+	fi
+	pass "device: $target ($kind, egl=$egl) rendering, $colours colours — NOT a baseline comparison"
+}
+
 # ---- style --------------------------------------------------------------------------------
 
 # CODE-STYLE section 16 caps a line at 100 columns with a tab counted as 4. The M5 review found
@@ -420,8 +459,8 @@ run_pending() {
 		case "$row" in
 			baselines-adopted-circular)
 				grep -q 'plausible\* M4 images' docs/VOID3D.md || graduated="$graduated $row" ;;
-			gles3-never-run)
-				grep -q 'has never run it' docs/VOID3D.md || graduated="$graduated $row" ;;
+			gles3-emulator-only)
+				grep -q 'not a device' docs/VOID3D.md || graduated="$graduated $row" ;;
 			*)
 				echo "$tags" | grep -qx "$row" || graduated="$graduated $row" ;;
 		esac
@@ -647,6 +686,7 @@ run_captures
 run_manifest
 run_allocation
 run_style
+run_device
 run_bench
 run_android
 
