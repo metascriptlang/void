@@ -139,6 +139,16 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 
 M3 and M6 end with the campfire running on D3D11 here and as a `.so` for Android. Every milestone adds headless tests to `src/test/` for whatever does not need a GPU (math, camera snap, bounds, sync, glTF parsing, animation stepping, picking).
 
+### The Heaps oracle
+
+Every claim in this document about what Heaps does used to rest on somebody having read the file — "Heaps' `getSize` on an empty box answers −2e20 per axis (`Bounds.hx:329`)" was a citation, not a measurement, and this is a document whose whole posture is that numbers are measured. `scripts/oracle.sh` closes that: cases are data rows with no expected answer, `regen` replays them through **real Heaps at `2b84cc2`** compiled to JS and run on node, and the answers are committed as `tests/oracle/bounds3d.snapshot`. An ordinary gate run checks the port against that snapshot and needs no Haxe. The harness is deliberately not h3d-specific — everything library-specific lives in the case file, because void2d will want the same thing against h2d.
+
+A case may declare `diverges=<PENDING3D row>`, and those are checked **in both directions**: a declared divergence that starts agreeing fails the run and names the row to reconcile, exactly as a PENDING3D sentinel does. Verified by making `size()` answer Heaps' −2e20 and watching two cases graduate.
+
+**Its first two runs corrected this document, which is the point of building it.** `bounds-sphere-rescale` was written up as a divergence; the answers agree to 4.6e-9 relative, so it is a divergence in method forced by float32 and not a difference in behaviour. And `bounds-transformed-or` was described as applying to a box "empty on one axis" — but a *flat* axis (min == max) is empty under neither Heaps' rule nor this port's, so the real divergence needs a genuinely negative extent: with one, Heaps answers `10 -1 0` where this port answers `0 0 0`. Seventeen cases now: fourteen agree, three diverge as declared.
+
+**What it does not cover.** Only `h3d.col.Bounds`, and only through values a single expression can print. `Object`/`Scene` semantics — `calcAbsPos`, `syncRec`'s propagation, `emitRec` — need a scene to exist on the Heaps side and are not in it yet, so the M6 claims about those are still source-derived.
+
 ### M6 as built
 
 - **`scene.ms` is the tree, and the renderer never walks it.** `Object3D` carries `kind`, `flags`, `parent`, `payload`, `local`, `world` and `children` — the small node "Data types" asked for, against `Node2D`'s 71 fields. `Transform3D { position, rotation, scale }` is one field because every pass that reads one reads all three, and `world: Mat4` is another. Heaps' `h3d.scene.Object` allocates four times (itself, `absPos`, `qRot`, `children`); here only the node's `children` array allocates, and only when the structure changes — which was **false as first written**: `collect` and `refresh` bound each node's children to a `Vec` local, CODE-STYLE section 5's copy trap, and so allocated once per node visited per frame. Both now index through the field, and the `allocation` gate stage holds it. `MeshInstance { mesh, material }` is the Mesh side table; lights get their own in M7 rather than fields on the node.

@@ -1,0 +1,107 @@
+# h3d.col.Bounds against src/void3d/bounds.ms.
+#
+# Every row here is a question asked of real Heaps and of this port, with no expected answer
+# written down: the answer comes from running Heaps (scripts/oracle.sh regen) and is committed
+# as bounds3d.snapshot. A case that carries `diverges=<row>` is a divergence this port chose on
+# purpose, and it is checked in both directions — if it ever starts agreeing, the run fails and
+# the named tests/PENDING3D.md row has to be reconciled in the same commit.
+#
+# Heaps computes in float64 and this port in float32, so every case carries a tolerance. The
+# tolerance is relative to the larger magnitude; `tol=0` means the two must agree exactly, which
+# only holds for values that are exactly representable in both.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.col.Bounds;
+# ms-prelude: import { Vec3, vec3, Mat4, identity, rotationY, translation } from "../../../src/math/math3d";
+# ms-prelude: import { Bounds, addPos, addPoint } from "../../../src/void3d/bounds";
+
+# ---- the three deliberate divergences, now measured on both sides ---------------------------
+
+# Heaps' getSize on an empty box answers -2e20 per axis (Bounds.hx:329); this port answers zero,
+# which is the conservative reading and is what every other accessor here does.
+case empty-size tol=1e-6 diverges=bounds-empty-size-zero
+haxe> var b = new Bounds(); b.empty(); var s = b.getSize(); emit("empty-size", [s.x, s.y, s.z]);
+ms> let e: Bounds = Bounds.empty(); const es: Vec3 = e.size(); emit3("empty-size", es.x, es.y, es.z);
+
+# Same divergence through dimension(), which is getSize's longest axis (Bounds.hx:389).
+case empty-dimension tol=1e-6 diverges=bounds-empty-size-zero
+haxe> var b2 = new Bounds(); b2.empty(); emit("empty-dimension", [b2.dimension()]);
+ms> let e2: Bounds = Bounds.empty(); emit1("empty-dimension", e2.dimension());
+
+# This one was declared as a divergence and the oracle disagreed on its first run, which is
+# what it is for. Heaps squares the extent directly, which is finite in float64 and infinity in
+# float32, so this port scales by the longest edge before squaring. That is a divergence in
+# *method*, forced by the float width — the *answers* agree to 4.6e-9 relative, well inside
+# float32 epsilon. So it is not a divergence in behaviour and is not declared as one; the
+# PENDING3D row stays, because someone simplifying the code back to Heaps' form would get
+# infinity, and this case is what would then go red.
+case unbounded-sphere tol=1e-6
+haxe> var b3 = Bounds.fromValues(-1e20, -1e20, -1e20, 2e20, 2e20, 2e20); emit("unbounded-sphere", [b3.toSphere().r]);
+ms> let a3: Bounds = Bounds.all(); emit1("unbounded-sphere", a3.boundingSphereRadius());
+
+# A box flat on one axis. Heaps treats empty axis by axis, so a flat box is a real box with a
+# zero extent; this port's isEmpty is an OR, so `transformed` leaves it alone entirely. The
+# measurable half is what getSize says about it.
+case flat-axis-size tol=1e-6
+haxe> var b4 = new Bounds(); b4.empty(); b4.addPos(0,0,0); b4.addPos(1,1,0); var s4 = b4.getSize(); emit("flat-axis-size", [s4.x, s4.y, s4.z]);
+ms> let f4: Bounds = Bounds.empty(); addPos(f4, 0.0, 0.0, 0.0); addPos(f4, 1.0, 1.0, 0.0); const s4: Vec3 = f4.size(); emit3("flat-axis-size", s4.x, s4.y, s4.z);
+
+# Heaps tests emptiness axis by axis with an AND (Bounds.hx:159), so a box empty on one axis
+# only is transformed like any other; this port's isEmpty is an OR, so `transformed` leaves it
+# where it is. The oracle corrected this case twice before it was right: a *flat* axis
+# (min == max) is not empty under either rule, and the port's own isEmpty tests `max < min`, so
+# the divergence needs an axis with a genuinely negative size. That is what fromValues with
+# dy = -1 builds, and it is the construction src/test/boundsCheck.ms uses for the same reason.
+case negative-axis-transformed tol=1e-5 diverges=bounds-transformed-or
+haxe> var bt = Bounds.fromValues(0,0,0, 1,-1,1); var mt = h3d.Matrix.I(); mt.initTranslation(10,0,0); bt.transform(mt); emit("negative-axis-transformed", [bt.xMin, bt.yMin, bt.zMin]);
+ms> const ft: Bounds = Bounds.fromValues(0.0,0.0,0.0, 1.0,-1.0,1.0); const gt: Bounds = ft.transformed(translation(10.0, 0.0, 0.0)); emit3("negative-axis-transformed", gt.min.x, gt.min.y, gt.min.z);
+
+# ---- cases that should agree, so the oracle can prove agreement and not only difference -----
+
+case empty-contains-origin tol=0
+haxe> var c1 = new Bounds(); c1.empty(); emit("empty-contains-origin", [c1.contains(new h3d.col.Point(0,0,0)) ? 1 : 0]);
+ms> let c1: Bounds = Bounds.empty(); emitB("empty-contains-origin", c1.contains(vec3(0.0, 0.0, 0.0)));
+
+case first-point-is-a-degenerate-box tol=0
+haxe> var c2 = new Bounds(); c2.empty(); c2.addPos(3,4,5); var s2 = c2.getSize(); emit("first-point-is-a-degenerate-box", [s2.x, s2.y, s2.z]);
+ms> let c2: Bounds = Bounds.empty(); addPos(c2, 3.0, 4.0, 5.0); const g2: Vec3 = c2.size(); emit3("first-point-is-a-degenerate-box", g2.x, g2.y, g2.z);
+
+case first-point-is-where-it-was-put tol=0
+haxe> var c2b = new Bounds(); c2b.empty(); c2b.addPos(3,4,5); emit("first-point-is-where-it-was-put", [c2b.xMin, c2b.yMin, c2b.zMin]);
+ms> let c2b: Bounds = Bounds.empty(); addPos(c2b, 3.0, 4.0, 5.0); emit3("first-point-is-where-it-was-put", c2b.min.x, c2b.min.y, c2b.min.z);
+
+case two-points-span tol=0
+haxe> var c3 = new Bounds(); c3.empty(); c3.addPos(-1,2,0); c3.addPos(3,-4,5); var s3 = c3.getSize(); emit("two-points-span", [s3.x, s3.y, s3.z]);
+ms> let c3: Bounds = Bounds.empty(); addPos(c3, -1.0, 2.0, 0.0); addPos(c3, 3.0, -4.0, 5.0); const g3: Vec3 = c3.size(); emit3("two-points-span", g3.x, g3.y, g3.z);
+
+case centre-of-a-box tol=0
+haxe> var c4 = Bounds.fromValues(-2, -4, -6, 4, 8, 12); var p4 = c4.getCenter(); emit("centre-of-a-box", [p4.x, p4.y, p4.z]);
+ms> let c4: Bounds = Bounds.fromValues(-2.0, -4.0, -6.0, 4.0, 8.0, 12.0); const p4: Vec3 = c4.center(); emit3("centre-of-a-box", p4.x, p4.y, p4.z);
+
+case contains-is-min-inclusive tol=0
+haxe> var c5 = Bounds.fromValues(0, 0, 0, 2, 2, 2); emit("contains-is-min-inclusive", [c5.contains(new h3d.col.Point(0,0,0)) ? 1 : 0]);
+ms> let c5: Bounds = Bounds.fromValues(0.0, 0.0, 0.0, 2.0, 2.0, 2.0); emitB("contains-is-min-inclusive", c5.contains(vec3(0.0, 0.0, 0.0)));
+
+case contains-is-max-exclusive tol=0
+haxe> var c6 = Bounds.fromValues(0, 0, 0, 2, 2, 2); emit("contains-is-max-exclusive", [c6.contains(new h3d.col.Point(2,1,1)) ? 1 : 0]);
+ms> let c6: Bounds = Bounds.fromValues(0.0, 0.0, 0.0, 2.0, 2.0, 2.0); emitB("contains-is-max-exclusive", c6.contains(vec3(2.0, 1.0, 1.0)));
+
+case touching-boxes-collide tol=0
+haxe> var c7 = Bounds.fromValues(0,0,0,1,1,1); var d7 = Bounds.fromValues(1,0,0,1,1,1); emit("touching-boxes-collide", [c7.collide(d7) ? 1 : 0]);
+ms> let c7: Bounds = Bounds.fromValues(0.0,0.0,0.0,1.0,1.0,1.0); let d7: Bounds = Bounds.fromValues(1.0,0.0,0.0,1.0,1.0,1.0); emitB("touching-boxes-collide", c7.collide(d7));
+
+case union-of-two-boxes tol=0
+haxe> var c8 = Bounds.fromValues(0,0,0,1,1,1); var d8 = Bounds.fromValues(2,2,2,1,1,1); c8.add(d8); var s8 = c8.getSize(); emit("union-of-two-boxes", [s8.x, s8.y, s8.z]);
+ms> let c8: Bounds = Bounds.fromValues(0.0,0.0,0.0,1.0,1.0,1.0); const d8: Bounds = Bounds.fromValues(2.0,2.0,2.0,1.0,1.0,1.0); addPoint(c8, d8.min); addPoint(c8, d8.max); const g8: Vec3 = c8.size(); emit3("union-of-two-boxes", g8.x, g8.y, g8.z);
+
+case quarter-turn-swaps-extents tol=1e-5
+haxe> var c9 = Bounds.fromValues(0,0,0,2,3,4); var m9 = h3d.Matrix.I(); m9.initRotationY(Math.PI/2); c9.transform(m9); var s9 = c9.getSize(); emit("quarter-turn-swaps-extents", [s9.x, s9.y, s9.z]);
+ms> const c9: Bounds = Bounds.fromValues(0.0,0.0,0.0,2.0,3.0,4.0); const t9: Bounds = c9.transformed(rotationY(1.5707963267948966)); const g9: Vec3 = t9.size(); emit3("quarter-turn-swaps-extents", g9.x, g9.y, g9.z);
+
+case translation-keeps-size tol=1e-5
+haxe> var ca = Bounds.fromValues(0,0,0,2,3,4); var ma = h3d.Matrix.I(); ma.initTranslation(10,-5,2); ca.transform(ma); var sa = ca.getSize(); emit("translation-keeps-size", [sa.x, sa.y, sa.z]);
+ms> const ca: Bounds = Bounds.fromValues(0.0,0.0,0.0,2.0,3.0,4.0); const ta: Bounds = ca.transformed(translation(10.0,-5.0,2.0)); const ga: Vec3 = ta.size(); emit3("translation-keeps-size", ga.x, ga.y, ga.z);
+
+case translation-moves-the-corner tol=1e-5
+haxe> var cb = Bounds.fromValues(0,0,0,2,3,4); var mb = h3d.Matrix.I(); mb.initTranslation(10,-5,2); cb.transform(mb); emit("translation-moves-the-corner", [cb.xMin, cb.yMin, cb.zMin]);
+ms> const cb: Bounds = Bounds.fromValues(0.0,0.0,0.0,2.0,3.0,4.0); const tb: Bounds = cb.transformed(translation(10.0,-5.0,2.0)); emit3("translation-moves-the-corner", tb.min.x, tb.min.y, tb.min.z);

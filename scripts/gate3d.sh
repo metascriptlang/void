@@ -382,6 +382,31 @@ run_device() {
 	pass "device: $target ($kind, egl=$egl) rendering, $colours colours — NOT a baseline comparison"
 }
 
+# ---- oracle -------------------------------------------------------------------------------
+
+# Heaps is the reference for everything this port copies, and until scripts/oracle.sh existed
+# every claim about what Heaps does rested on somebody having read the file. This runs the
+# port's side of tests/oracle/*.cases against a snapshot taken from real Heaps and committed,
+# so an ordinary gate needs no Haxe. `sh scripts/oracle.sh regen <cases>` retakes the snapshot
+# and is the only part that does.
+run_oracle() {
+	cases=tests/oracle/bounds3d.cases
+	if [ ! -f "$cases" ]; then
+		skip "oracle: $cases is missing"
+		return
+	fi
+	if [ ! -f tests/oracle/bounds3d.snapshot ]; then
+		skip "oracle: no snapshot — run 'sh scripts/oracle.sh regen $cases' with Haxe installed"
+		return
+	fi
+	if sh scripts/oracle.sh check "$cases" > "$WORK/oracle.log" 2>&1; then
+		pass "oracle: $(grep -c '^AGREES' "$WORK/oracle.log") case(s) agree with real Heaps, $(grep -c '^DIVERGES' "$WORK/oracle.log") diverge as declared"
+	else
+		fail "oracle: the port and real Heaps disagree in a way nothing declared"
+		grep -E '^(MISMATCH|GRADUATED|MISSING)' "$WORK/oracle.log" | head -8 | sed 's/^/         /'
+	fi
+}
+
 # ---- style --------------------------------------------------------------------------------
 
 # CODE-STYLE section 16 caps a line at 100 columns with a tab counted as 4. The M5 review found
@@ -685,6 +710,7 @@ run_tests
 run_captures
 run_manifest
 run_allocation
+run_oracle
 run_style
 run_device
 run_bench
