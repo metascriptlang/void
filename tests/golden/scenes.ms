@@ -532,6 +532,25 @@ function filterGlow(): Scene {
 	return s;
 }
 
+// A filtered group at alpha != 1, with the shadow thrown far enough that it never touches the
+// subject's interior. The interior is then the sharp original alone, at the accumulated alpha,
+// and its value is arithmetic: 0.5 * subject + 0.5 * DARK if the alpha is applied once, and
+// 0.25 * subject + 0.75 * DARK if it is applied twice.
+//
+// It exists because the four filter scenes that shipped with the filter commit could not tell
+// those apart: filter/glow and filter/dropShadow use a host at alpha 1, and filter/groupOpacity
+// goes through blurFilter(0.0), which is the one branch that was already right. The Glow and
+// DropShadow branch squared the alpha for a whole phase with five filter goldens green.
+function filterDropShadowAlpha(): Scene {
+	const s = scene(DARK);
+	const host = rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(20.0, 20.0);
+	host.alpha = 0.5;
+	host.filter = dropShadowFilter(rgba(0.10, 0.10, 0.16, 1.0), 4.0, 60.0, 60.0);
+	host.addChild(rect(80.0, 50.0, rgba(0.95, 0.80, 0.35, 1.0)));
+	s.add(host);
+	return s;
+}
+
 function filterDropShadow(): Scene {
 	const s = scene(LIGHT);
 	const host = filterHost(40.0, 36.0);
@@ -708,6 +727,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "filter/blur", build: filterBlur },
 		{ name: "filter/glow", build: filterGlow },
 		{ name: "filter/dropShadow", build: filterDropShadow },
+		{ name: "filter/dropShadowAlpha", build: filterDropShadowAlpha },
 		{ name: "filter/groupOpacity", build: filterGroupOpacity },
 
 		{ name: "regress/atlasFull", build: regressAtlasFull },

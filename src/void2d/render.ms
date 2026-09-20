@@ -388,23 +388,43 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	}
 
 	const na: float32 = a * n.alpha;
+	// The target's own extent, not the bounds it was derived from: `rtW`/`rtH` are the ceiling
+	// of `xMax - xMin`, so drawing the quad to `xMax` would resample the target by a fraction
+	// of a pixel and soften what is supposed to be the sharp copy.
+	const qx1: float32 = xMin + (rtW as float32);
+	const qy1: float32 = yMin + (rtH as float32);
 	const rtTile = tile(rtViewId(src), rtW as float32, rtH as float32);
 	if (n.filter.kind === FilterKind.Blur) {
-		imageQuad(rtTile, vec2(xMin, yMin), vec2(xMax, yMin), vec2(xMax, yMax), vec2(xMin, yMax),
+		imageQuad(rtTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 			rgba(1.0, 1.0, 1.0, na), n.blend);
 		return;
 	}
-	// Glow and DropShadow composite a tinted silhouette of the blur and then the sharp
-	// original on top, both at the accumulated alpha.
+	// Glow and DropShadow composite a tinted silhouette of the blur, then the sharp original
+	// on top, both at the accumulated alpha.
+	//
+	// Both halves used to be wrong here and a whole phase of green filter goldens missed it.
+	// The sharp copy was produced by `drawContent(n, na, ...)` - a SECOND walk of the subtree
+	// straight into the swapchain - and `drawContent` opens with `na = a * n.alpha`, so the
+	// alpha was applied twice and the copy drew at `a * alpha^2`. Measured on
+	// `filter/dropShadowAlpha` before this line changed: the subject's interior read
+	// (76, 68, 45), which is `0.25 * subject + 0.75 * clear` to the byte, against
+	// (131, 113, 60) for the once-applied value.
+	//
+	// It is composited from `rt` now, which already holds the subtree at alpha 1 - that is
+	// what h2d does (`h2d/filter/Glow.hx` draws the blurred pass and then the source texture,
+	// not a re-render) - so the group composites exactly once, the second walk is gone, and
+	// the "one walk, one sync" this function claims is true for these two kinds as well.
 	setEffect(colorMatrixAlphaOnly(n.filter.gain),
 		rgba(n.filter.color.r, n.filter.color.g, n.filter.color.b, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	const ox: float32 = n.filter.kind === FilterKind.DropShadow ? n.filter.offsetX : 0.0;
 	const oy: float32 = n.filter.kind === FilterKind.DropShadow ? n.filter.offsetY : 0.0;
 	const fblend: BlendMode = n.filter.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
-	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(xMax + ox, yMin + oy),
-		vec2(xMax + ox, yMax + oy), vec2(xMin + ox, yMax + oy), rgba(1.0, 1.0, 1.0, na), fblend);
+	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
+		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	drawContent(n, na, vw, vh);
+	const sharpTile = tile(rtViewId(rt), rtW as float32, rtH as float32);
+	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
+		rgba(1.0, 1.0, 1.0, na), n.blend);
 }
 
 export function getBounds(this n: Node2D, ref out: Bounds): void {

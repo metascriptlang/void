@@ -71,6 +71,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "filter/blur", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "filter/glow", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "filter/dropShadow", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "filter/dropShadowAlpha", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "filter/groupOpacity", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 
 		// Turned on at P1: FONS_ATLAS_FULL grows the atlas and lets fontstash retry, so every
