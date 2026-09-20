@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stddef.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -169,6 +170,52 @@ int void2dBuffersAlive(void) { return s_buffersMade - s_buffersFreed; }
 // top of the next frame. A number, because the leak it replaced was invisible until sokol's
 // image pool ran out 128 resizes later.
 int void2dAtlasImagesAlive(void) { return s_atlasMade - s_atlasFreed; }
+
+// P2's two instance layouts. These structs are what the vertex-buffer layout is built from,
+// so sizeof is the stride and src/void2d/instance.ms's constants are checked against it.
+typedef struct {
+	float affine[4];
+	float originSize[4];
+	float uvRadii[4];
+	float borders[4];
+	float params0[4];
+	float params1[4];
+	uint32_t colorFill;
+	uint32_t colorBorder;
+	uint32_t colorExtra;
+} void2dUiInstance;
+
+typedef struct {
+	float affine[4];
+	float originSize[4];
+	float uv[4];
+	float color[4];
+} void2dSpriteInstance;
+
+int void2dUiInstanceStride(void) { return (int)sizeof(void2dUiInstance); }
+int void2dSpriteInstanceStride(void) { return (int)sizeof(void2dSpriteInstance); }
+
+int void2dInstanceLayoutCheck(int uiStride, int uiAffine, int uiOriginSize, int uiUvRadii,
+                              int uiBorders, int uiParams0, int uiParams1, int uiColorFill,
+                              int uiColorBorder, int uiColorExtra,
+                              int spriteStride, int spriteAffine, int spriteOriginSize,
+                              int spriteUv, int spriteColor) {
+	return uiStride == (int)sizeof(void2dUiInstance)
+		&& uiAffine == (int)offsetof(void2dUiInstance, affine)
+		&& uiOriginSize == (int)offsetof(void2dUiInstance, originSize)
+		&& uiUvRadii == (int)offsetof(void2dUiInstance, uvRadii)
+		&& uiBorders == (int)offsetof(void2dUiInstance, borders)
+		&& uiParams0 == (int)offsetof(void2dUiInstance, params0)
+		&& uiParams1 == (int)offsetof(void2dUiInstance, params1)
+		&& uiColorFill == (int)offsetof(void2dUiInstance, colorFill)
+		&& uiColorBorder == (int)offsetof(void2dUiInstance, colorBorder)
+		&& uiColorExtra == (int)offsetof(void2dUiInstance, colorExtra)
+		&& spriteStride == (int)sizeof(void2dSpriteInstance)
+		&& spriteAffine == (int)offsetof(void2dSpriteInstance, affine)
+		&& spriteOriginSize == (int)offsetof(void2dSpriteInstance, originSize)
+		&& spriteUv == (int)offsetof(void2dSpriteInstance, uv)
+		&& spriteColor == (int)offsetof(void2dSpriteInstance, color);
+}
 
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,

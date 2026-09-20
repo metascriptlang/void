@@ -19,7 +19,13 @@ import {
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd,
+	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
 } from "./batcher.h";
+import {
+	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
+	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA,
+	SPRITE_STRIDE, SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR,
+} from "./instance";
 import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
@@ -192,7 +198,19 @@ export function setup2d(): void {
 	) == 0) {
 		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
 	}
+	if (void2dInstanceLayoutCheck(
+		UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
+		UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA,
+		SPRITE_STRIDE, SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR,
+	) == 0) {
+		console.log("void2d: the instance layout in instance.ms and batcher.c disagree");
+	}
 }
+
+// The strides sokol is handed, from sizeof. Re-exported rather than reached through
+// `batcher.h` from a second directory, which would compile `batcher.c` twice.
+export function uiInstanceStride(): int32 { return void2dUiInstanceStride(); }
+export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStride(); }
 
 // The glyph atlas view, so render.ms can emit a Label's mesh against it without reaching
 // into batcher.h itself.

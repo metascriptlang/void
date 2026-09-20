@@ -86,4 +86,15 @@ int void2dAtlasGen(void);                              // atlas generation (chan
 int void2dAddFont(const char *path);                   // load a TTF, returns font index (0-based)
 void void2dSelectFont(int id);                         // select current font for subsequent text ops
 
+// The instance strides sokol is handed, from sizeof rather than a literal, and the offsets
+// the emitter in src/void2d/instance.ms claims it writes. void2dInstanceLayoutCheck fails at
+// setup if the two ever disagree.
+int void2dUiInstanceStride(void);
+int void2dSpriteInstanceStride(void);
+int void2dInstanceLayoutCheck(int uiStride, int uiAffine, int uiOriginSize, int uiUvRadii,
+                              int uiBorders, int uiParams0, int uiParams1, int uiColorFill,
+                              int uiColorBorder, int uiColorExtra,
+                              int spriteStride, int spriteAffine, int spriteOriginSize,
+                              int spriteUv, int spriteColor);
+
 #endif

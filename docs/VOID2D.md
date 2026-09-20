@@ -149,8 +149,32 @@ Today a quad is 6 vertices × 8 floats = **192 B**, re-transformed on the CPU ev
 
 | Instance | Payload | Size |
 |---|---|---|
-| Sprite pipeline | affine 6 + size 2 + uv 4 + colour 4 (float) | 64 B |
-| UI pipeline (single stride for all modes) | affine 6 + size 2, uv-or-radii 4, border widths 4, mode/params 4, gradient/shadow params 4, three colours as `UBYTE4N` | ~92 B packed, ~128 B with float colours |
+| Sprite pipeline | affine 4 + origin/size 4 + uv 4 + colour 4 (float) | **64 B, measured** |
+| UI pipeline (single stride for all modes) | affine 4, origin/size 4, uv-or-radii 4, border widths 4, mode/params 4, gradient/shadow params 4 (all `FLOAT4`), three colours as `UBYTE4N` | **108 B, measured** |
+
+**Measured 2026-09-21, not estimated.** Both numbers now come from `sizeof` on the structs in
+`batcher.c` that the vertex layout is built from, checked against the offsets
+`src/void2d/instance.ms` declares — at setup by `void2dInstanceLayoutCheck`, and with no GPU at
+all by `src/test/instanceLayoutCheck.ms`. Moving one offset on one side turns that file red.
+
+Two things the estimate got wrong, kept because the phase says *do not defend the estimate*:
+
+- **"~92 B packed" did not match the field list printed beside it.** Six `FLOAT4` lanes plus
+  three `UBYTE4N` is 96 + 12 = **108 B**; there is no packing in the enumeration that reaches 92.
+  92 is reachable only by demoting the radii and border lanes to `HALF4`, which the row never
+  said and which is not being done: at 108 B there are **147 bytes of headroom** under the
+  ceiling, and a second vertex format is cost with no measured buyer. If P5's persistent ranges
+  or a bandwidth measurement later want those 16 bytes, that is a measured reason to pack.
+- **The sprite row said "affine 6 + size 2".** An affine is six numbers but ships as two
+  `FLOAT4` lanes, because a vertex attribute is a vec4 — the translation rides in the same lane
+  as the size. The count of numbers and the count of bytes are not the same thing, and the row
+  mixed them.
+
+**P2's two-stride fallback is therefore not taken.** 108 ≤ 255, so one stride serves box,
+shadow, glyph, image, underline and selection, and the UI pipeline uses 9 of the 16 vertex
+attributes the web intersection gives. `src/test/instanceLayoutCheck.ms` asserts both as
+arithmetic, so the commit that first overflows either is the commit that goes red — which is
+the commit that has to take the fallback.
 
 For scale: GPUI's glyph instance is 112 B, Makepad's ~116 B, Ghostty's 32 B (integer grid coordinates — not reachable for general UI). Ceilings and addressing come from the web intersection above. Only what the fragment stage reads is passed as a varying (Makepad forwards every field, costly on tile-based GPUs). Sizes are estimates from planned layouts; 4-vertex instances should be checked against indexed quads on one Mali and one Adreno device before committing.
 
@@ -468,7 +492,7 @@ an otherwise idle machine span 17.9–18.9 ms. The counters are what gate hard.
 
 **Tests.** **T3 coverage oracle**: the rounded rect and the `erf` shadow supersampled 16×16 per pixel on the CPU, compared against the capture within a stated bound. This is the only tier that says the AA is *correct* rather than merely unchanged. T1: instance counts per mode, batch-break reasons on the bench scene, the snapping rules as numbers at three DPIs, and a scrolled list emitting nothing for off-clip rows. T2: `prim/`, `xform/`, `snap/`, `clip/` regenerated. T0: Oklab conversion, dither, the SDF distance function.
 
-**Measure.** Draws **20 000** (P1 measured, not the 253 this line used to anchor on) → **≤ 4**; instance bytes per frame ≈ 20 000 × 92 B ≈ 1.8 MB, replaced by the measured stride; wasm delta per backend recorded. The two millisecond figures this line used to carry were both anchored on numbers that do not exist, and were corrected on 2026-09-21 when the baseline was re-taken (see "Baseline" (b)):
+**Measure.** Draws **20 000** (P1 measured, not the 253 this line used to anchor on) → **≤ 4**; instance bytes per frame **20 000 × 108 B = 2 160 000 B**, measured, replacing the ≈ 92 B estimate; wasm delta per backend recorded. The two millisecond figures this line used to carry were both anchored on numbers that do not exist, and were corrected on 2026-09-21 when the baseline was re-taken (see "Baseline" (b)):
 
 - `present` ≤ 2.0 ms was set against a baseline of 17.8; the measured before is **19.9 ms**. The target is kept, because it is not arithmetically impossible the way P1's `≤ 253 draws` was — 20 000 draw calls at ~1 µs each is essentially all of the 19.9 ms, and removing them removes it. It is recorded as **optimistic**: the nearest measured floor on this box is `benchSprites`, which does *half* the nodes in *one* draw and still costs 2.5 ms. P2 is not failed by missing 2.0 — milliseconds never gate — but the phase reports the real number and says which of the two predictions it landed on.
 - `benchSprites` ≤ 1.7 ms was derived from the unreproducible 1.63. **The guardrail-8 check is no longer a constant**: it is "no worse than the re-taken 2.5 ms (2.2–3.1), proven by an interleaved same-box A/B", because a fixed 1.7 would fail this phase on its first run for a reason that has nothing to do with this phase. The draw count stays absolute: `sprites.draws` is 1, and that gates.
