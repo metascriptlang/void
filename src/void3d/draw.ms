@@ -172,6 +172,7 @@ export function external(
 	};
 }
 
+// PENDING3D: mesh-generation-ownership
 export function isStale(this mesh: GpuMesh, data: MeshData, generation: int32): boolean {
 	return data.vertexCount() > 0 && mesh.generation != generation;
 }
@@ -197,6 +198,7 @@ function drawsNothing(this mesh: GpuMesh): GpuMesh {
 // GpuMesh is indexed is read off `indexBuffer`, so an indexed mesh whose index buffer was
 // refused would silently become a non-indexed draw over an indexed vertex array — 194 wrong
 // triangles instead of 292 right ones, with no diagnostic. The mesh is emptied instead.
+// PENDING3D: upload-mesh-leaks-on-replace
 export function uploadMesh(ref context: DrawContext, index: int32): Result<int32, MeshUploadError> {
 	// sokol validates a buffer's size > 0 and panics rather than returning an invalid id, so an
 	// empty mesh must never reach the driver.
@@ -249,6 +251,7 @@ export function rebuildableMeshes(this context: DrawContext): int32 {
 }
 
 // How many meshes hold handles from an older GPU context.
+// PENDING3D: stale-meshes-duplicate-loop
 export function staleMeshes(this context: DrawContext, generation: int32): int32 {
 	let count: int32 = 0;
 	for (let i = 0; i < (context.meshes.length as int32); i++) {

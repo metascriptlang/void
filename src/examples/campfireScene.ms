@@ -534,6 +534,7 @@ export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 
 // Only meshes with CPU data come back; the billboards' buffers are this file's and are left
 // alone, which is the half of the contract that would show up as a blank screen if it broke.
+// PENDING3D: example-billboards-not-rebuildable
 function forceRebuild(): void {
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		context.meshes[i].generation = 0;

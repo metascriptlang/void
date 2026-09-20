@@ -24,6 +24,7 @@ import { DrawItem } from "./draw";
 // would otherwise ask for. This is a version floor, not a preference: the installed msc
 // (0.2.53) has no BitSet. A reader on 0.2.54+ should check whether it has arrived and replace
 // these three constants with an enum and a BitSet field.
+// PENDING3D: scene-flags-not-bitset
 export const FLAG_VISIBLE: int32 = 1;
 export const FLAG_POS_CHANGED: int32 = 2;
 export const FLAG_CULLED: int32 = 4;
@@ -190,6 +191,7 @@ export function addGroup(ref scene: Scene, parent: NodeId, local: Transform3D): 
 // do not merely collide — the compiler resolves the call to whichever won and runs it on the
 // wrong type, with no diagnostic. Measured in `out/tmp/overload`; see the compiler card
 // `2026-09-20-ref-receiver-not-an-extension.md`, which lists this as a site to rename back.
+// PENDING3D: mesh-node-name-collision
 export function addMeshNode(
 	ref scene: Scene,
 	parent: NodeId,

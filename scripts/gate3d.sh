@@ -213,6 +213,45 @@ run_entries() {
 	pass "entries: $checked entry points declare main() and all of them call it"
 }
 
+# ---- pending ------------------------------------------------------------------------------
+
+# tests/PENDING3D.md on rexa's rule: a listed case that stops holding fails the run, and its row
+# is deleted in the same commit as the fix. Enforced in both directions, because a list with a
+# forcing function in only one direction rots from the other end.
+run_pending() {
+	if [ ! -f "$PENDING" ]; then
+		skip "pending: $PENDING is missing, so nothing holds the known divergences to account"
+		return
+	fi
+	rows=$(grep -oE '^\| `[a-z0-9-]+`' "$PENDING" | tr -d '|` ' | sort)
+	tags=$(grep -rhoE 'PENDING3D: [a-z0-9-]+' src/ | sed 's/PENDING3D: //' | sort -u)
+	graduated=""
+	for row in $rows; do
+		case "$row" in
+			baselines-adopted-circular)
+				grep -q 'plausible\* M4 images' docs/VOID3D.md || graduated="$graduated $row" ;;
+			gles3-never-run)
+				grep -q 'has never run it' docs/VOID3D.md || graduated="$graduated $row" ;;
+			*)
+				echo "$tags" | grep -qx "$row" || graduated="$graduated $row" ;;
+		esac
+	done
+	unlisted=""
+	for tag in $tags; do
+		echo "$rows" | grep -qx "$tag" || unlisted="$unlisted $tag"
+	done
+	if [ -n "$graduated" ]; then
+		fail "pending: listed but no longer holding — delete the row in the commit that fixed it:$graduated"
+		return
+	fi
+	if [ -n "$unlisted" ]; then
+		fail "pending: marked in the tree with no row in $PENDING:$unlisted"
+		return
+	fi
+	count=$(echo "$rows" | grep -c .)
+	pass "pending: $count rows in $PENDING, every sentinel present and every sentinel listed"
+}
+
 # ---- tests --------------------------------------------------------------------------------
 
 run_tests() {
@@ -326,6 +365,7 @@ run_captures() {
 # ---- manifest -----------------------------------------------------------------------------
 
 MANIFEST=docs/baselines3d.sha256
+PENDING=tests/PENDING3D.md
 
 baseline_files() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin; do
@@ -409,6 +449,7 @@ else
 	fail "prepare: the capture entries were not written"
 fi
 run_entries
+run_pending
 run_tests
 run_captures
 run_manifest

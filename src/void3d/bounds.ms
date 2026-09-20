@@ -69,6 +69,7 @@ export function isEmpty(this bounds: Bounds): boolean {
 		bounds.max.z < bounds.min.z;
 }
 
+// PENDING3D: bounds-empty-size-zero
 export function size(this bounds: Bounds): Vec3 {
 	if (bounds.isEmpty()) { return vec3(0.0, 0.0, 0.0); }
 	return bounds.max - bounds.min;
@@ -110,6 +111,7 @@ export function offsetBy(this bounds: Bounds, delta: Vec3): Bounds {
 
 // h3d.col.Bounds.transform(m): the eight corners through the matrix, re-bounded. An empty
 // bounds stays empty, as in Heaps, rather than collapsing onto the matrix translation.
+// PENDING3D: bounds-transformed-or
 export function transformed(this bounds: Bounds, matrix: Mat4): Bounds {
 	if (bounds.isEmpty()) { return bounds; }
 	let out: Bounds = Bounds.empty();
@@ -137,6 +139,7 @@ export function dimension(this bounds: Bounds): float32 {
 // edges directly (Bounds.hx getBoundingSphereRadius) because its floats are 64-bit; here
 // Bounds.all() spans 2e20 per axis and (2e20)² is infinity in float32 long before the square
 // root could bring it back.
+// PENDING3D: bounds-sphere-rescale
 export function boundingSphereRadius(this bounds: Bounds): float32 {
 	if (bounds.isEmpty()) { return 0.0; }
 	const longest: float32 = bounds.dimension();
