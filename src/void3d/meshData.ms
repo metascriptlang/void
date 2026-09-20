@@ -93,6 +93,14 @@ export function addVertex(
 	return Result.ok(index);
 }
 
+// Whether `count` more vertices would still fit a uint16 index. The builders below ask before
+// they push anything, because `try` propagates out of a half-written quad: a failure partway
+// through would leave loose vertices in `vertices` and in `bounds` that no triangle refers to,
+// and every caller reads an `err` as "nothing was added".
+export function hasRoomFor(this data: MeshData, count: int32): boolean {
+	return data.vertexCount() + count <= MAX_MESH_VERTICES;
+}
+
 // Three vertex indices, counter-clockwise as seen from the front (gpu3d.c sets CCW winding).
 export function addTriangle(ref data: MeshData, a: int32, b: int32, c: int32): Result<int32, MeshError> {
 	const count: int32 = data.vertexCount();
@@ -116,6 +124,7 @@ export function addQuad(
 	normal: Vec3,
 	color: Rgba,
 ): Result<int32, MeshError> {
+	if (!data.hasRoomFor(4)) { return Result.err(MeshError.TooManyVertices); }
 	const first: int32 = try addVertex(data, a, normal, color);
 	const second: int32 = try addVertex(data, b, normal, color);
 	const third: int32 = try addVertex(data, c, normal, color);
@@ -147,6 +156,9 @@ export function recomputeBounds(ref data: MeshData): void {
 // in (draw.ms, DrawItem.world). The arithmetic is the campfire spike's, moved rather than
 // rewritten, so the vertex floats are bit-identical to the pre-M5 images; M6 is where the
 // placement becomes a node transform and this becomes a plain unit box.
+// Five quads of four vertices: what addBox appends when it succeeds.
+export const BOX_VERTICES: int32 = 20;
+
 export struct Box {
 	base: Vec3;
 	size: Vec3;
@@ -182,6 +194,7 @@ function rotate(this frame: BoxFrame, direction: Vec3): Vec3 {
 // Five quads: the top and the four sides. The underside is never seen from above the ground
 // plane, and leaving it out is what the spike did — 20 vertices and 30 indices per box.
 export function addBox(ref data: MeshData, box: Box): Result<int32, MeshError> {
+	if (!data.hasRoomFor(BOX_VERTICES)) { return Result.err(MeshError.TooManyVertices); }
 	const frame: BoxFrame = {
 		base: box.base,
 		yawSin: sinf(box.yaw),

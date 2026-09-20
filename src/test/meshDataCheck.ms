@@ -6,6 +6,8 @@ import {
 	Rgba,
 	Box,
 	LIT_VERTEX_STRIDE,
+	MAX_MESH_VERTICES,
+	BOX_VERTICES,
 	addVertex,
 	addTriangle,
 	addQuad,
@@ -168,6 +170,33 @@ test "recomputeBounds agrees with the bounds the builders kept" {
 	recomputeBounds(data);
 	assert near(data.bounds.min, kept.min.x, kept.min.y, kept.min.z);
 	assert near(data.bounds.max, kept.max.x, kept.max.y, kept.max.z);
+}
+
+test "hasRoomFor counts against the uint16 index cap" {
+	let data: MeshData = MeshData.empty();
+	assert data.hasRoomFor(MAX_MESH_VERTICES);
+	assert !data.hasRoomFor(MAX_MESH_VERTICES + 1);
+	assert addPlane(data, 1.0, WHITE).ok;
+	assert data.hasRoomFor(MAX_MESH_VERTICES - 4);
+	assert !data.hasRoomFor(MAX_MESH_VERTICES - 3);
+}
+
+// A builder that cannot fit has to add nothing at all: `try` propagates out of a half-written
+// quad, and every caller reads an err as "nothing was added".
+test "a builder that does not fit leaves the mesh exactly as it was" {
+	let data: MeshData = MeshData.empty();
+	const room: int32 = MAX_MESH_VERTICES - BOX_VERTICES + 1;
+	for (let i = 0; i < room; i++) {
+		if (!addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE).ok) { break; }
+	}
+	assert data.vertexCount() == room;
+	const before: int32 = data.vertexCount();
+	const indicesBefore: int32 = data.indexCount();
+	const rejected: Result<int32, MeshError> = addBox(data, plainBox(1.0));
+	assert !rejected.ok;
+	if (!rejected.ok) { assert rejected.error == MeshError.TooManyVertices; }
+	assert data.vertexCount() == before;
+	assert data.indexCount() == indicesBefore;
 }
 
 test "every index a builder writes is within the vertex count" {

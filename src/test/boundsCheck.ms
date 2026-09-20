@@ -118,6 +118,14 @@ test "closestPoint clamps into the box and leaves inside points alone" {
 	assert near(box.closestPoint(vec3(0.5, 0.5, 0.5)), 0.5, 0.5, 0.5);
 }
 
+test "closestPoint on an empty bounds answers zero, not the 1e20 corner" {
+	// Clamping into an empty box would give (1e20, 1e20, 1e20), whose distance overflows
+	// float32 to infinity — a picker would read that as a very far hit instead of no hit.
+	const empty: Bounds = Bounds.empty();
+	assert near(empty.closestPoint(vec3(1.0, 2.0, 3.0)), 0.0, 0.0, 0.0);
+	assert near(empty.closestPoint(vec3(-5.0, -5.0, -5.0)), 0.0, 0.0, 0.0);
+}
+
 test "all contains every ordinary point" {
 	assert Bounds.all().contains(vec3(1e6, -1e6, 0.0));
 	assert !Bounds.all().isEmpty();

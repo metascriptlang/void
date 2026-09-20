@@ -134,7 +134,11 @@ export function boundingSphereRadius(this bounds: Bounds): float32 {
 	return bounds.size().length() * half;
 }
 
+// Zero for an empty box, as `size` and `center` answer, rather than clamping to the +1e20
+// corner — the distance from that overflows float32 to infinity, and M10 would read it as a
+// very far hit instead of no hit. A picker still has to test `isEmpty` itself.
 export function closestPoint(this bounds: Bounds, point: Vec3): Vec3 {
+	if (bounds.isEmpty()) { return vec3(0.0, 0.0, 0.0); }
 	return vec3(
 		clamp(point.x, bounds.min.x, bounds.max.x),
 		clamp(point.y, bounds.min.y, bounds.max.y),

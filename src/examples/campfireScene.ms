@@ -15,7 +15,14 @@ import {
 import { RenderState, Face, Compare } from "../void3d/pass";
 import { Material, Phase } from "../void3d/material";
 import { Sampler } from "../void3d/target";
-import { DrawContext, DrawItem, addMesh, addMeshData, addMaterial } from "../void3d/draw";
+import {
+	DrawContext,
+	DrawItem,
+	MeshUploadError,
+	addMesh,
+	addMeshData,
+	addMaterial,
+} from "../void3d/draw";
 import { LowResView, ViewError } from "../void3d/blit";
 import { PaletteError } from "../void3d/palette";
 import {
@@ -397,7 +404,9 @@ function setupDraws(): void {
 	// The one mesh here with CPU data: indexed, and rebuilt by the renderer after a context
 	// loss. The billboards below keep their buffers in this file and are still not rebuilt
 	// (docs/VOID3D.md, M5 as built — Still missing).
-	const litMesh: int32 = addMeshData(context, sceneMesh);
+	const uploaded: Result<int32, MeshUploadError> = addMeshData(context, sceneMesh);
+	if (!uploaded.ok) { return; }
+	const litMesh: int32 = uploaded.value;
 	const grassMesh: int32 = addMesh(context, {
 		layout: VertexLayout.Billboard,
 		vertexBuffer: cornerBuffer,
