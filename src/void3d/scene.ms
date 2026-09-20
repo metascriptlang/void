@@ -281,6 +281,13 @@ export function setVisible(ref scene: Scene, id: NodeId, visible: boolean): Resu
 	return Result.ok(id.index);
 }
 
+export function setMeshOf(ref scene: Scene, id: NodeId, mesh: int32): Result<int32, SceneError> {
+	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	if (scene.nodes[id.index].kind != NodeKind.Mesh) { return Result.err(SceneError.UnknownNode); }
+	scene.meshes[scene.nodes[id.index].payload].mesh = mesh;
+	return Result.ok(id.index);
+}
+
 export function worldOf(this scene: Scene, id: NodeId): Result<Mat4, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	return Result.ok(scene.nodes[id.index].world);
@@ -361,8 +368,11 @@ export function refresh(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 	if (scene.structureChanged) {
 		return collect(scene, items);
 	}
-	if (synced > 0) {
-		// The list and the tree are in the same order, so one pass rewrites the matrices.
+	// The tree and the list are in the same order, so one pass rewrites every item in place.
+	// This runs on every steady frame rather than only when something moved, which is what
+	// "the draw list is rebuilt only on structural change; each frame only rewrites world
+	// matrices" describes (docs/VOID3D.md, Data types). It allocates nothing.
+	{
 		let at: int32 = 0;
 		let top: int32 = 0;
 		scene.stack[top] = scene.root;
@@ -373,6 +383,7 @@ export function refresh(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 			if (!scene.nodes[index].isVisible()) { continue; }
 			if (scene.nodes[index].kind == NodeKind.Mesh) {
 				items[at].world = scene.nodes[index].world;
+				items[at].mesh = scene.meshes[scene.nodes[index].payload].mesh;
 				at = at + 1;
 			}
 			const children: Vec<int32> = scene.nodes[index].children;

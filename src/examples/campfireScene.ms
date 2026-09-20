@@ -1,5 +1,8 @@
-// The campfire spike: a hand-built scene drawn by the M3 renderer. Its meshes, camera and
-// lights are spike code until M4-M7 replace them; the spike is deleted with M6.
+// The campfire, built as an Object3D tree and drawn from the draw list that tree produces.
+// Nothing here positions geometry by hand any more: every piece is modelled in its own local
+// space and placed by its node's transform, which is what finally exercises `DrawItem.world`.
+// The hand-built scene this file used to be — one merged MeshData in world space and a draw
+// list assembled by pushing items — is gone with M6.
 
 import { gfxSetup, fbWidth, fbHeight } from "../sokol/gpu";
 import { sinf, cosf } from "../math/mat4";
@@ -37,8 +40,18 @@ import {
 	setSettings,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { identity, Vec3, vec3 } from "../math/math3d";
+import { Vec3, vec3, eulerQuat } from "../math/math3d";
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
+import {
+	Scene,
+	NodeId,
+	Transform3D,
+	SceneError,
+	identityTransform,
+	addMeshNode,
+	setMeshOf,
+	refresh,
+} from "../void3d/scene";
 import {
 	OrthoCamera,
 	CameraView,
@@ -80,7 +93,10 @@ const STONE: Rgba = { red: 0.5, green: 0.44, blue: 0.48, alpha: 1.0 };
 const LOG_WOOD: Rgba = { red: 0.3, green: 0.18, blue: 0.14, alpha: 1.0 };
 const GROUND: Rgba = { red: 0.15, green: 0.17, blue: 0.3, alpha: 1.0 };
 
-let sceneMesh: MeshData = MeshData.empty();
+// Each piece is its own geometry in its own local space, with `placements[i]` saying where
+// that piece goes. The tree is what turns the two into draws.
+const pieces: Vec<MeshData> = [];
+const placements: Vec<Transform3D> = [];
 const grassInstances: Vec<float32> = [];
 const stones: Vec<Box> = [];
 const flameBuffers: Vec<uint32> = [];
@@ -107,8 +123,10 @@ const CAMPFIRE_PALETTE: Vec<uint32> = [
 let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 let renderer: PixelArtRenderer = createRenderer();
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
+// The draw list the tree writes into, owned here and reused every frame.
 const sceneItems: Vec<DrawItem> = [];
-const FLAME_ITEM: int32 = 2;
+let tree: Scene = Scene.create();
+let flameNode: NodeId = { index: -1, generation: 0 };
 const NEVER_REBUILD: int32 = -1;
 let firstFlameMesh: int32 = 0;
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
@@ -208,16 +226,47 @@ function layoutStones(): void {
 	stones.push(stone(-1.0, 11.0, 1.6, 1.2, 0.8, 0.0));
 }
 
-// The ground, the stones and three leaning logs, all into one MeshData. Nothing here touches
-// the GPU: the buffers are made when setupDraws hands the data to the DrawContext, and remade
-// from this same data after a context loss (draw.ms rebuildMeshes).
+// A box's placement as a node transform. `toWorld` tilts about X first and then yaws about Y,
+// so the node's rotation is `eulerQuat(tilt, yaw, 0)` — measured against the builder's own
+// matrix in out/tmp/quatProbe, where the three other orderings are wrong by 0.78 to 1.5 and
+// this one agrees to 1.19e-7, one float32 ulp at this magnitude.
+function placementOf(block: Box): Transform3D {
+	return {
+		...identityTransform(),
+		position: block.base,
+		rotation: eulerQuat(block.tilt, block.yaw, 0.0),
+	};
+}
+
+// The same box modelled at the origin, unturned: everything that used to be baked into the
+// vertices now lives in the node instead. Size and colour stay, because they are the shape
+// rather than the placement.
+function unplaced(block: Box): Box {
+	const origin: Vec3 = vec3(0.0, 0.0, 0.0);
+	const flat: float32 = 0.0;
+	return { ...block, base: origin, yaw: flat, tilt: flat };
+}
+
+function addPiece(geometry: MeshData, where: Transform3D): void {
+	pieces.push(geometry);
+	placements.push(where);
+}
+
+// The ground, the stones and three leaning logs, each its own piece of local-space geometry
+// with its own place in the tree. Nothing here touches the GPU: the buffers are made when
+// setupDraws hands each piece to the DrawContext, and remade from that same data after a
+// context loss (draw.ms rebuildMeshes).
 function buildScene(): void {
 	layoutStones();
-	const ground: Result<int32, MeshError> = addPlane(sceneMesh, GROUND_HALF_SIZE, GROUND);
-	if (!ground.ok) { return; }
+	let ground: MeshData = MeshData.empty();
+	const plane: Result<int32, MeshError> = addPlane(ground, GROUND_HALF_SIZE, GROUND);
+	if (!plane.ok) { return; }
+	addPiece(ground, identityTransform());
 	for (const block of stones) {
-		const added: Result<int32, MeshError> = addBox(sceneMesh, block);
+		let geometry: MeshData = MeshData.empty();
+		const added: Result<int32, MeshError> = addBox(geometry, unplaced(block));
 		if (!added.ok) { return; }
+		addPiece(geometry, placementOf(block));
 	}
 	for (let i = 0; i < 3; i++) {
 		const yaw: float32 = (i as float32) * 2.094 + 0.4;
@@ -230,8 +279,10 @@ function buildScene(): void {
 			tilt: -0.85,
 			color: LOG_WOOD,
 		};
-		const added: Result<int32, MeshError> = addBox(sceneMesh, log);
+		let geometry: MeshData = MeshData.empty();
+		const added: Result<int32, MeshError> = addBox(geometry, unplaced(log));
 		if (!added.ok) { return; }
+		addPiece(geometry, placementOf(log));
 	}
 }
 
@@ -379,42 +430,46 @@ function writeLightParams(): void {
 	lightParams[19] = 0.0;
 }
 
-function item(mesh: int32, material: int32): DrawItem {
-	return { mesh: mesh, material: material, world: identity() };
-}
-
 // Materials, meshes and items: lit geometry, grass and one flame, all opaque (the billboards
 // discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
 function setupDraws(): void {
 	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
 	const cornerBuffer: uint32 = makeVertexBuffer(CORNERS);
-	const scene: RenderState = RenderState.defaults()
+	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
 	const litMaterial: int32 = addMaterial(
 		context,
-		Material.plain(Program.Lit, scene, Phase.Opaque),
+		Material.plain(Program.Lit, state, Phase.Opaque),
 	);
 	const grassMaterial: int32 = addMaterial(context, {
-		...Material.plain(Program.Billboard, scene, Phase.Opaque),
+		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
 		sampler0: pointSampler.handle,
 	});
 	const flameMaterial: int32 = addMaterial(context, {
-		...Material.plain(Program.Billboard, scene, Phase.Opaque),
+		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: flameTexture,
 		sampler0: pointSampler.handle,
 	});
-	// The one mesh here with CPU data: indexed, and rebuilt by the renderer after a context
-	// loss. The billboards below keep their buffers in this file and are still not rebuilt
-	// (docs/VOID3D.md, M5 as built — Still missing).
-	const uploaded: Result<int32, MeshUploadError> = addMeshData(context, sceneMesh);
-	if (!uploaded.ok) { return; }
-	const litMesh: int32 = uploaded.value;
+	// Every lit piece carries CPU data, so all of them are rebuilt by the renderer after a
+	// context loss. The billboards below keep their buffers in this file and are still not
+	// rebuilt (docs/VOID3D.md, "Still missing").
+	const root: NodeId = tree.rootId();
+	for (let i = 0; i < (pieces.length as int32); i++) {
+		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
+		if (!uploaded.ok) { return; }
+		const placed: Result<NodeId, SceneError> =
+			addMeshNode(tree, root, placements[i], uploaded.value, litMaterial);
+		if (!placed.ok) { return; }
+	}
 	const grassMesh: int32 = addMesh(
 		context,
 		GpuMesh.external(VertexLayout.Billboard, cornerBuffer, grassBuffer, 6, grassCount),
 	);
+	const grassNode: Result<NodeId, SceneError> =
+		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
+	if (!grassNode.ok) { return; }
 	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
@@ -422,9 +477,12 @@ function setupDraws(): void {
 			GpuMesh.external(VertexLayout.Billboard, cornerBuffer, flameBuffer, 6, 1),
 		);
 	}
-	sceneItems.push(item(litMesh, litMaterial));
-	sceneItems.push(item(grassMesh, grassMaterial));
-	sceneItems.push(item(firstFlameMesh, flameMaterial));
+	// The billboard programs ignore the model matrix — their roots are already world-space
+	// instance data — so these two nodes sit at the identity and only carry draw order.
+	const flame: Result<NodeId, SceneError> =
+		addMeshNode(tree, root, identityTransform(), firstFlameMesh, flameMaterial);
+	if (!flame.ok) { return; }
+	flameNode = flame.value;
 }
 
 // For the checks in out/tmp: the renderer settings and whether CAMPFIRE_PALETTE is on. Call
@@ -522,7 +580,13 @@ export function frameCampfire(): void {
 	writeLightParams();
 
 	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
-	sceneItems[FLAME_ITEM].mesh = firstFlameMesh + flameFrame;
+	const swapped: Result<int32, SceneError> =
+		setMeshOf(tree, flameNode, firstFlameMesh + flameFrame);
+	if (!swapped.ok) { return; }
+	// Sync the world matrices and rewrite the list in place. The structure only changes once,
+	// at setup, so every later frame takes the rewrite path and allocates nothing.
+	const drawn: int32 = refresh(tree, sceneItems);
+	if (drawn == 0) { return; }
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	frameIndex = frameIndex + 1;
 	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
