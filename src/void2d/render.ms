@@ -2,8 +2,28 @@
 // getBounds. Extracted from node.ms so each file has one responsibility.
 
 import { Node2D, DrawKind } from "./node";
-import { fillQuad, imageQuad, imageQuadUV, drawStaticText, drawStaticGraphics, uploadStaticMesh, destroyStaticMesh, setEffect, setSmooth, pushClip, popClip, atlasGen, begin2d, end2d, setRTMode, blurPass, allocRenderTarget, freeRenderTarget, rtViewId, beginRT, endRT } from "./draw";
+import {
+	fillQuad,
+	imageQuad,
+	imageQuadUV,
+	drawMesh,
+	setEffect,
+	setSmooth,
+	pushClip,
+	popClip,
+	atlasGen,
+	begin2d,
+	end2d,
+	setRTMode,
+	blurPass,
+	allocRenderTarget,
+	freeRenderTarget,
+	rtViewId,
+	beginRT,
+	endRT,
+} from "./draw";
 import { layoutText, buildGlyphMesh } from "./text";
+import { fontView } from "./draw";
 import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 
@@ -105,11 +125,12 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 				gi = gi + 8;
 			}
 			if (n.contentXMin > n.contentXMax) { n.contentXMin = 0.0; n.contentXMax = 0.0; n.contentYMin = 0.0; n.contentYMax = 0.0; }
-			const tm: float32[] = buildGlyphMesh(glyphs);
-			const tvc: int32 = (tm.length as int32) / 8;
-			if (n.txtBuf != 0) { destroyStaticMesh(n.txtBuf); n.txtBuf = 0; }
-			if (tvc > 0) { n.txtBuf = uploadStaticMesh(tm, tvc); }
-			n.txtVertCount = tvc;
+			// The glyph mesh stays on the node in LOCAL space and is transformed into the
+			// frame's stream when it is emitted. It used to be destroyed and re-created as
+			// an sg_buffer on every text change (VOID2D.md "Known defects"), which is both
+			// the buffer churn and the reason only about 126 Labels could draw at all.
+			n.mesh = buildGlyphMesh(glyphs);
+			n.meshVertCount = (n.mesh.length as int32) / 8;
 			n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
 			n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
 			n.textDirty = false;
@@ -129,10 +150,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			mi = mi + 8;
 		}
 		if (n.contentXMin > n.contentXMax) { n.contentXMin = 0.0; n.contentXMax = 0.0; n.contentYMin = 0.0; n.contentYMax = 0.0; }
-		const vc: int32 = (n.mesh.length as int32) / 8;
-		if (n.gfxBuf != 0) { destroyStaticMesh(n.gfxBuf); n.gfxBuf = 0; }
-		if (vc > 0) { n.gfxBuf = uploadStaticMesh(n.mesh, vc); }
-		n.gfxVertCount = vc;
+		n.meshVertCount = (n.mesh.length as int32) / 8;
 		n.gfxDirty = false;
 	}
 	for (const ch of n.children) {
@@ -154,9 +172,12 @@ function emitNode(n: Node2D, world: Transform2D, na: float32, col: Color, tl: Ve
 			imageQuad(n.frames[fi], tl, tr, br, bl, col, n.blend);
 		}
 	} else if (n.kind === DrawKind.Label) {
-		drawStaticText(n.txtBuf, n.txtVertCount, world, n.color, na, n.blend, n.colorMatrix, n.colorAdd, n.colorKey, n.smooth);
+		// Glyph coverage is white in the atlas, so the label's colour is the tint.
+		drawMesh(n.mesh, fontView(), n.blend, world, n.color, na);
 	} else if (n.kind === DrawKind.Graphics) {
-		drawStaticGraphics(n.gfxBuf, n.gfxVertCount, n.gfxView, n.blend, world, na, n.colorMatrix, n.colorAdd, n.colorKey, n.smooth);
+		// Graphics vertices already carry their own colour; the tint is white and only the
+		// accumulated alpha multiplies in.
+		drawMesh(n.mesh, n.gfxView, n.blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
 	} else if (n.kind === DrawKind.ScaleGrid) {
 		renderScaleGrid(n, world, col);
 	}

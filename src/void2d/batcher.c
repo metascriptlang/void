@@ -16,14 +16,20 @@
 #define FONTSTASH_IMPLEMENTATION
 #include "../../deps/fontstash/fontstash.h"
 
-#define VOID2D_MAX_VERTS 65536
-
 #define VOID2D_BLEND_COUNT 5
 
+// One growing vertex buffer for the whole frame, replacing both the fixed 65 536-vertex
+// stream and the per-node static buffers (VOID2D.md "Known defects", closed here). Growth is
+// max(2x, next power of two) with no shrink, a hard cap, and a dropped frame with an error
+// past it (GPUI.md:63) — never a silent truncation, which is what the old
+// `sg_append_buffer` overflow was.
+#define VOID2D_INITIAL_BUFFER_BYTES (1 << 20)
+#define VOID2D_MAX_BUFFER_BYTES     (192 << 20)
+
 static sg_buffer s_vbuf;
+static int s_vbufBytes;
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
-static int s_rtMode;                               // 1 while drawing into an offscreen RT pass
 static float s_dpiScale = 1.0f;                    // framebuffer / logical pixel ratio (retina = 2.0)
 static sg_pipeline s_blurPip;                      // separable-blur fullscreen pass (offscreen format)
 static sg_buffer s_fsQuad;                         // fullscreen quad (pos2+uv2) for filter passes
@@ -42,6 +48,80 @@ static int s_atlasW, s_atlasH;
 static bool s_atlasDirty;
 static bool s_atlasUpdated;   // gate: sokol allows only one sg_update_image per image per frame
 static int s_atlasGen = 0;    // bumped on atlas resize → invalidates cached glyph meshes
+
+// Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
+// called from MetaScript with that file's own constants, so a field added on one side and
+// not the other fails at setup rather than drawing garbage.
+#define CMD_FLOATS          24
+#define CMD_KIND            0
+#define CMD_BREAK           1
+#define CMD_VERTEX_OFFSET   2
+#define CMD_VERTEX_COUNT    3
+#define CMD_VIEW            4
+#define CMD_BLEND           5
+#define CMD_SMOOTH          6
+#define CMD_EFFECT          7
+#define CMD_CLIP_X          8
+#define CMD_CLIP_Y          9
+#define CMD_CLIP_W          10
+#define CMD_CLIP_H          11
+#define CMD_ARG0            12
+#define CMD_ARG1            13
+#define CMD_RT_MODE         14
+
+#define EFFECT_FLOATS       24
+#define VERTEX_FLOATS       8
+
+#define CMD_KIND_DRAW       0
+#define CMD_KIND_SCISSOR    1
+#define CMD_KIND_BLUR       2
+
+static const float s_identityMatrix[16] = {
+	1.0f, 0.0f, 0.0f, 0.0f,
+	0.0f, 1.0f, 0.0f, 0.0f,
+	0.0f, 0.0f, 1.0f, 0.0f,
+	0.0f, 0.0f, 0.0f, 1.0f,
+};
+
+static int s_drawCallCount;
+static int s_uploadCount;
+static int s_uploadBytes;
+static int s_droppedFrames;
+
+int void2dDrawCallCount(void) { return s_drawCallCount; }
+int void2dUploadCount(void) { return s_uploadCount; }
+int void2dUploadBytes(void) { return s_uploadBytes; }
+int void2dInstanceBufferBytes(void) { return s_vbufBytes; }
+int void2dDroppedFrames(void) { return s_droppedFrames; }
+
+// Every sg_buffer and sg_image this layer holds: the one vertex buffer, the fullscreen quad
+// the filter passes draw, and the font atlas image. Constant in the node count, which is the
+// whole point of the change (VOID2D.md P1 exit).
+int void2dBuffersAlive(void) { return 3; }
+
+int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
+                      int kindField, int breakField, int vertexOffsetField, int vertexCountField,
+                      int viewField, int blendField, int smoothField, int effectField,
+                      int clipXField, int arg0Field, int rtModeField,
+                      int kindDraw, int kindScissor, int kindBlur) {
+	return commandFloats == CMD_FLOATS
+		&& effectFloats == EFFECT_FLOATS
+		&& vertexFloats == VERTEX_FLOATS
+		&& kindField == CMD_KIND
+		&& breakField == CMD_BREAK
+		&& vertexOffsetField == CMD_VERTEX_OFFSET
+		&& vertexCountField == CMD_VERTEX_COUNT
+		&& viewField == CMD_VIEW
+		&& blendField == CMD_BLEND
+		&& smoothField == CMD_SMOOTH
+		&& effectField == CMD_EFFECT
+		&& clipXField == CMD_CLIP_X
+		&& arg0Field == CMD_ARG0
+		&& rtModeField == CMD_RT_MODE
+		&& kindDraw == CMD_KIND_DRAW
+		&& kindScissor == CMD_KIND_SCISSOR
+		&& kindBlur == CMD_KIND_BLUR;
+}
 
 static int fons_create(void *up, int w, int h) {
 	(void)up;
@@ -80,15 +160,24 @@ static unsigned char *readFile(const char *path, int *outSize) {
 	return buf;
 }
 
-void void2dSetup(void) {
+// Allocate, or reallocate, the one vertex buffer. sokol cannot resize a buffer, so growth is
+// a destroy and a make; it happens when a frame first needs more room and then never again,
+// because the buffer does not shrink.
+static void ensureVertexBuffer(int bytes) {
+	if (bytes <= s_vbufBytes) return;
+	int want = s_vbufBytes > 0 ? s_vbufBytes * 2 : VOID2D_INITIAL_BUFFER_BYTES;
+	while (want < bytes) want *= 2;
+	if (s_vbuf.id) sg_destroy_buffer(s_vbuf);
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;
-	// Flushes append here between draws; write_transient forbids writes after the first bind
-	// in a frame, dynamic_update still allows sg_append_buffer. The display list (GPUI.md
-	// step 1) writes once per frame and moves this buffer to write_transient.
 	bd.usage.dynamic_update = true;
-	bd.size = (size_t)(VOID2D_MAX_VERTS * 8) * sizeof(float);
+	bd.size = (size_t)want;
 	s_vbuf = sg_make_buffer(&bd);
+	s_vbufBytes = want;
+}
+
+void void2dSetup(void) {
+	ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
 	sg_shader shd = sg_make_shader(void2d_shader_desc(sg_query_backend()));
 	struct { bool on; sg_blend_factor srgb, drgb, sa, da; } modes[VOID2D_BLEND_COUNT] = {
@@ -178,18 +267,28 @@ void void2dSelectFont(int id) {
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
 uint32_t void2dFontView(void) { return s_fontView.id; }
 
-void void2dScissor(int x, int y, int w, int h) {
-	sg_apply_scissor_rect((int)(x * s_dpiScale), (int)(y * s_dpiScale),
-		(int)(w * s_dpiScale), (int)(h * s_dpiScale), true);
+// A clip is a command in the stream now, applied here during replay rather than by the tree
+// walk. The whole viewport is w == 0, which is how displayList.ms records "no clip".
+static void applyScissor(const float *cmd, float fbW, float fbH) {
+	float w = cmd[CMD_CLIP_W];
+	float h = cmd[CMD_CLIP_H];
+	if (w <= 0.0f || h <= 0.0f) {
+		sg_apply_scissor_rectf(0.0f, 0.0f, fbW * s_dpiScale, fbH * s_dpiScale, true);
+		return;
+	}
+	sg_apply_scissor_rectf(cmd[CMD_CLIP_X] * s_dpiScale, cmd[CMD_CLIP_Y] * s_dpiScale,
+		w * s_dpiScale, h * s_dpiScale, true);
 }
 
-// Route subsequent draws to the offscreen-RT pipeline set (single-sample, no depth).
-// Set 1 inside voidBeginRenderTargetPass, back to 0 for the swapchain pass.
-void void2dSetRTMode(int on) { s_rtMode = on ? 1 : 0; }
 void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
-void void2dFrameBegin(void) { s_atlasUpdated = false; }
+void void2dFrameBegin(void) {
+	s_atlasUpdated = false;
+	s_drawCallCount = 0;
+	s_uploadCount = 0;
+	s_uploadBytes = 0;
+}
 
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
 // 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging
@@ -220,110 +319,134 @@ static void ensureAtlas(void) {
 	}
 }
 
-void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA, int smooth) {
-	if (vertCount <= 0) return;
-	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
+void void2dReplay(const float *commands, int commandCount,
+                  const float *effects, int effectCount,
+                  const float *vertices, int vertexCount,
+                  float fbW, float fbH) {
+	if (commandCount <= 0) return;
+
+	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
+	if (vertexBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
+		// A dropped frame with an error, never a silent truncation. The old path let
+		// sg_append_buffer run past the end and the rest of the scene simply vanished.
+		s_droppedFrames++;
+		fprintf(stderr, "void2d: frame needs %zu bytes of geometry, cap is %d — frame dropped\n",
+			vertexBytes, VOID2D_MAX_BUFFER_BYTES);
+		return;
+	}
+	ensureVertexBuffer((int)vertexBytes);
 	ensureAtlas();
-	sg_range data = { .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
-	int offset = sg_append_buffer(s_vbuf, &data);
-	sg_apply_pipeline((s_rtMode ? s_pipsRT : s_pips)[blend]);
-	sg_bindings b = {0};
-	b.vertex_buffers[0] = s_vbuf;
-	b.vertex_buffer_offsets[0] = offset;
-	b.views[VIEW_tex] = (sg_view){ .id = view };
-	b.samplers[SMP_smp] = s_smp[(smooth != 0) ? 1 : 0];
-	sg_apply_bindings(&b);
-	void2d_params_t vp = {0};
-	vp.viewport[0] = fbW;
-	vp.viewport[1] = fbH;
-	vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
-	vp.viewport[3] = (voidIsRenderTargetView(view)
-		&& addR == 0.0f && addG == 0.0f && addB == 0.0f
-		&& colorMatrix[0] == 1.0f && colorMatrix[5] == 1.0f && colorMatrix[10] == 1.0f) ? 1.0f : 0.0f;
-	vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // identity 2D affine (a=d=1, b=c=tx=ty=0)
-	vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
-	sg_range u = { .ptr = &vp, .size = sizeof(vp) };
-	sg_apply_uniforms(UB_void2d_params, &u);
-	void2d_fx_t fx = {0};
-	memcpy(fx.colorMatrix, colorMatrix, sizeof(fx.colorMatrix));
-	fx.colorAdd[0] = addR; fx.colorAdd[1] = addG; fx.colorAdd[2] = addB; fx.colorAdd[3] = addA;
-	fx.colorKey[0] = keyR; fx.colorKey[1] = keyG; fx.colorKey[2] = keyB; fx.colorKey[3] = keyA;
-	sg_range uf = { .ptr = &fx, .size = sizeof(fx) };
-	sg_apply_uniforms(UB_void2d_fx, &uf);
-	sg_draw(0, vertCount, 1);
-}
 
-// Persistent (immutable) vertex buffer holding LOCAL-space geometry — drawn via void2dDrawStatic
-// with the object matrix in the shader, reused across frames until the mesh changes.
-// Counted, because the number of live static buffers IS the ~126-node defect: sokol's
-// default buffer pool holds 128, every Label and Graphics takes one, and past that
-// sg_make_buffer hands back either id 0 or a handle in the FAILED state, whose draws are
-// silently dropped (VOID2D.md "Known defects", closed at P1). tests/bench/ gates both.
-//
-// `alive` is symmetric — make and destroy move it in opposite directions. `refused` is
-// monotonic: it counts allocation attempts sokol turned down, and is never decremented,
-// because a refusal that returned id 0 leaves nothing to destroy later and a node whose
-// mesh changes every frame would otherwise drive the count negative.
-static int s_staticBuffersAlive;
-static int s_staticBuffersRefused;
+	// One upload for the whole frame, before any draw: every Draw command is a range inside
+	// it. This is the "one upload per bracket" of VOID2D.md P1, and it is one per FRAME here
+	// because the target lists share the stream.
+	int baseOffset = 0;
+	if (vertexBytes > 0) {
+		sg_range data = { .ptr = vertices, .size = vertexBytes };
+		baseOffset = sg_append_buffer(s_vbuf, &data);
+		s_uploadCount++;
+		s_uploadBytes += (int)vertexBytes;
+	}
 
-uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount) {
-	if (vertCount <= 0) return 0;
-	sg_buffer_desc bd = {0};
-	bd.usage.vertex_buffer = true;
-	bd.data = (sg_range){ .ptr = verts, .size = (size_t)(vertCount * 8) * sizeof(float) };
-	sg_buffer buf = sg_make_buffer(&bd);
-	if (sg_query_buffer_state(buf) == SG_RESOURCESTATE_VALID) s_staticBuffersAlive++;
-	else s_staticBuffersRefused++;
-	return buf.id;
-}
+	// A uniform block that has not changed is not re-applied. On WebGPU and Metal every
+	// sg_apply_uniforms costs at least 256 bytes of the per-frame uniform buffer whatever
+	// the payload (sokol_gfx.h:2014-2023, VOID2D.md "Web and WebGPU"), and in a UI frame the
+	// viewport and the colour pipeline are the same for almost every draw. The display list
+	// is what makes this visible: before it, each draw applied both blocks unconditionally.
+	void2d_params_t lastParams;
+	void2d_fx_t lastFx;
+	int paramsValid = 0;
+	int fxValid = 0;
+	uint32_t lastPipeline = 0;
 
-void void2dDestroyStaticBuffer(uint32_t bufId) {
-	if (!bufId) return;
-	sg_buffer buf = (sg_buffer){ .id = bufId };
-	if (sg_query_buffer_state(buf) == SG_RESOURCESTATE_VALID) s_staticBuffersAlive--;
-	sg_destroy_buffer(buf);
-}
+	int scissorApplied = 0;
+	for (int i = 0; i < commandCount; i++) {
+		const float *cmd = commands + (size_t)i * CMD_FLOATS;
+		int kind = (int)cmd[CMD_KIND];
+		if (kind == CMD_KIND_SCISSOR) {
+			applyScissor(cmd, fbW, fbH);
+			scissorApplied = 1;
+			continue;
+		}
+		if (kind == CMD_KIND_BLUR) {
+			void2dBlur((uint32_t)cmd[CMD_VIEW], cmd[CMD_ARG0], cmd[CMD_ARG1]);
+			continue;
+		}
+		if (kind != CMD_KIND_DRAW) continue;
 
-int void2dStaticBuffersAlive(void) { return s_staticBuffersAlive; }
-int void2dStaticBuffersRefused(void) { return s_staticBuffersRefused; }
+		int count = (int)cmd[CMD_VERTEX_COUNT];
+		if (count <= 0) continue;
+		int blend = (int)cmd[CMD_BLEND];
+		if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
+		uint32_t view = (uint32_t)cmd[CMD_VIEW];
+		if (view == 0) view = s_whiteView.id;
 
-// One draw call from a static buffer: object matrix + alpha in the shader (model/globalColor),
-// colour pipeline (colorMatrix/add/key) as for the dynamic path. Caller flushes first to keep z-order.
-void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      float mA, float mB, float mC, float mD, float mTx, float mTy,
-                      float gcR, float gcG, float gcB, float gcA,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA, int smooth) {
-	if (vertCount <= 0 || bufId == 0) return;
-	if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
-	ensureAtlas();
-	sg_apply_pipeline((s_rtMode ? s_pipsRT : s_pips)[blend]);
-	sg_bindings b = {0};
-	b.vertex_buffers[0] = (sg_buffer){ .id = bufId };
-	b.views[VIEW_tex] = (sg_view){ .id = (view == 0 ? s_whiteView.id : view) };
-	b.samplers[SMP_smp] = s_smp[(smooth != 0) ? 1 : 0];
-	sg_apply_bindings(&b);
-	void2d_params_t vp = {0};
-	vp.viewport[0] = fbW; vp.viewport[1] = fbH;
-	vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
-	vp.viewport[3] = (voidIsRenderTargetView(view)
-		&& addR == 0.0f && addG == 0.0f && addB == 0.0f
-		&& colorMatrix[0] == 1.0f && colorMatrix[5] == 1.0f && colorMatrix[10] == 1.0f) ? 1.0f : 0.0f;
-	vp.model0[0]=mA; vp.model0[1]=mB; vp.model0[2]=mC; vp.model0[3]=mD;
-	vp.model1[0]=mTx; vp.model1[1]=mTy;
-	vp.globalColor[0]=gcR; vp.globalColor[1]=gcG; vp.globalColor[2]=gcB; vp.globalColor[3]=gcA;
-	sg_range u = { .ptr=&vp, .size=sizeof(vp) };
-	sg_apply_uniforms(UB_void2d_params, &u);
-	void2d_fx_t fx = {0};
-	memcpy(fx.colorMatrix, colorMatrix, sizeof(fx.colorMatrix));
-	fx.colorAdd[0]=addR; fx.colorAdd[1]=addG; fx.colorAdd[2]=addB; fx.colorAdd[3]=addA;
-	fx.colorKey[0]=keyR; fx.colorKey[1]=keyG; fx.colorKey[2]=keyB; fx.colorKey[3]=keyA;
-	sg_range uf = { .ptr=&fx, .size=sizeof(fx) };
-	sg_apply_uniforms(UB_void2d_fx, &uf);
-	sg_draw(0, vertCount, 1);
+		sg_pipeline pip = (cmd[CMD_RT_MODE] != 0.0f ? s_pipsRT : s_pips)[blend];
+		if (pip.id != lastPipeline) {
+			sg_apply_pipeline(pip);
+			lastPipeline = pip.id;
+			// sokol resets the scissor and the bindings when a pipeline is applied.
+			scissorApplied = 0;
+			paramsValid = 0;
+			fxValid = 0;
+		}
+		sg_bindings b = {0};
+		b.vertex_buffers[0] = s_vbuf;
+		b.vertex_buffer_offsets[0] = baseOffset + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
+		b.views[VIEW_tex] = (sg_view){ .id = view };
+		b.samplers[SMP_smp] = s_smp[cmd[CMD_SMOOTH] != 0.0f ? 1 : 0];
+		sg_apply_bindings(&b);
+
+		// After a pipeline change the scissor is no longer in force, and the clip a command
+		// carries is the one displayList.ms recorded for it.
+		if (!scissorApplied) {
+			applyScissor(cmd, fbW, fbH);
+			scissorApplied = 1;
+		}
+
+		int effectIndex = (int)cmd[CMD_EFFECT];
+		const float *fx = (effectIndex >= 0 && effectIndex < effectCount)
+			? effects + (size_t)effectIndex * EFFECT_FLOATS
+			: NULL;
+		const float *matrix = fx ? fx : s_identityMatrix;
+		float addR = fx ? fx[16] : 0.0f;
+		float addG = fx ? fx[17] : 0.0f;
+		float addB = fx ? fx[18] : 0.0f;
+		float addA = fx ? fx[19] : 0.0f;
+
+		void2d_params_t vp = {0};
+		vp.viewport[0] = fbW;
+		vp.viewport[1] = fbH;
+		vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
+		vp.viewport[3] = (voidIsRenderTargetView(view)
+			&& addR == 0.0f && addG == 0.0f && addB == 0.0f
+			&& matrix[0] == 1.0f && matrix[5] == 1.0f && matrix[10] == 1.0f) ? 1.0f : 0.0f;
+		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
+		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
+		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
+			sg_range u = { .ptr = &vp, .size = sizeof(vp) };
+			sg_apply_uniforms(UB_void2d_params, &u);
+			lastParams = vp;
+			paramsValid = 1;
+		}
+
+		void2d_fx_t fxu = {0};
+		memcpy(fxu.colorMatrix, matrix, sizeof(fxu.colorMatrix));
+		fxu.colorAdd[0] = addR; fxu.colorAdd[1] = addG; fxu.colorAdd[2] = addB; fxu.colorAdd[3] = addA;
+		if (fx) {
+			fxu.colorKey[0] = fx[20]; fxu.colorKey[1] = fx[21];
+			fxu.colorKey[2] = fx[22]; fxu.colorKey[3] = fx[23];
+		}
+		if (!fxValid || memcmp(&fxu, &lastFx, sizeof(fxu)) != 0) {
+			sg_range uf = { .ptr = &fxu, .size = sizeof(fxu) };
+			sg_apply_uniforms(UB_void2d_fx, &uf);
+			lastFx = fxu;
+			fxValid = 1;
+		}
+
+		sg_draw(0, count, 1);
+		s_drawCallCount++;
+	}
 }
 
 void void2dTextBegin(float x, float y, float size, const char *text) {

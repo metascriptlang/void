@@ -1,9 +1,9 @@
 {
-  "comment": "T4 baseline (docs/TESTING.md). `nodes` counts every node, `retainedNodes` only those that ask for a GPU buffer (the Labels), so `buffersAlive` reads as 'labels that actually drew' and `buffersRefused` as the allocations sokol turned down. Counters gate hard; milliseconds only report, with a warn threshold, because this is a shared developer box — SCENE-SCALE.md:197 records its own numbers being taken at load average 14-17. Keys are nested rather than dotted so tests/bench/check.ms can read them through the JsonValue accessors.",
+  "comment": "T4 baseline (docs/TESTING.md). `nodes` counts every node and `retainedNodes` only those carrying a mesh of their own (the Labels). Since P1 all of them draw: `buffersAlive` is 3 whatever the node count, because the frame shares one growing vertex buffer, and `vertices` is what proves every label emitted geometry instead of being dropped by a full pool. `ui.draws` is 20000 and not 253 because the bench alternates a white-texture card with a font-texture label on every node; the unified pipeline and the white texel in the glyph atlas that collapse that are P2's. Counters gate hard; milliseconds only report, with a warn threshold, because this is a shared developer box — SCENE-SCALE.md:197 records its own numbers being taken at load average 14-17. Keys are nested rather than dotted so tests/bench/check.ms can read them through the JsonValue accessors.",
   "taken": {
     "date": "2026-09-20",
-    "phase": "P0",
-    "renderer": "unchanged by P0; this is the pre-P1 baseline",
+    "phase": "P1",
+    "renderer": "the display list: one growing vertex buffer, one upload, no per-node sg_buffer",
     "backend": "d3d11",
     "build": "msc 0.2.53 --release",
     "window": "1280x720, sample_count 1, high_dpi 0",
@@ -13,21 +13,25 @@
     "ui": {
       "nodes": 20000,
       "retainedNodes": 10000,
-      "draws": 253,
-      "buffersAlive": 126,
-      "buffersRefused": 9874
+      "draws": 20000,
+      "buffersAlive": 3,
+      "vertices": 293340,
+      "uploads": 1,
+      "droppedFrames": 0
     },
     "sprites": {
       "nodes": 10000,
       "retainedNodes": 0,
       "draws": 1,
-      "buffersAlive": 0,
-      "buffersRefused": 0
+      "buffersAlive": 3,
+      "vertices": 60000,
+      "uploads": 1,
+      "droppedFrames": 0
     }
   },
   "milliseconds": {
     "warnFactor": 1.5,
-    "ui": { "present": 4.48 },
-    "sprites": { "present": 1.73 }
+    "ui": { "present": 17.8 },
+    "sprites": { "present": 1.63 }
   }
 }

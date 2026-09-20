@@ -94,7 +94,7 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	const wf: float32 = (fw as float32) / dpi;
 	const hf: float32 = (fh as float32) / dpi;
 	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
-	begin2d(wf as int32, hf as int32, dpi);
+	begin2d(wf, hf, dpi);
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const viewChanged: boolean = !s.viewInit
 		|| nv.a != s.viewMat.a || nv.b != s.viewMat.b
