@@ -25,7 +25,8 @@ uint32_t void2dFontView(void);
 int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
                         const float *effects, int effectCount,
                         const float *vertices, int vertexCount,
-                        const float *spriteInstances, int spriteInstanceCount);
+                        const float *spriteInstances, int spriteInstanceCount,
+                        const float *uiInstances, int uiInstanceCount);
 
 // Replays the swapchain list inside the pass the caller has already opened.
 void void2dReplay(const float *commands, int commandCount,
@@ -99,6 +100,10 @@ int void2dWhiteTexelOk(void);
 // the emitter in src/void2d/instance.ms claims it writes. void2dInstanceLayoutCheck fails at
 // setup if the two ever disagree.
 int void2dUiInstanceStride(void);
+
+// One colour channel packed as the GPU stores it. Exported so a test can hold it against
+// instance.ms's packChannel instead of guardrail 9 resting on two copies that look alike.
+int void2dPackChannel(float value);
 int void2dSpriteInstanceStride(void);
 int void2dInstanceLayoutCheck(int uiStride, int uiAffine, int uiOriginSize, int uiUvRadii,
                               int uiBorders, int uiParams0, int uiParams1, int uiColorFill,

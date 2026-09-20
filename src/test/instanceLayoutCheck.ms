@@ -18,7 +18,7 @@ import {
 	REC_UI_FLOATS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
 	REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
 } from "../void2d/instance";
-import { uiInstanceStride, spriteInstanceStride } from "../void2d/draw";
+import { uiInstanceStride, spriteInstanceStride, packChannelC } from "../void2d/draw";
 
 const FLOAT4: int32 = 16;
 const UBYTE4N: int32 = 4;
@@ -161,4 +161,20 @@ test "packChannel rounds and clamps instead of truncating" {
 test "packChannel never loses the top level the way truncation does" {
 	assert packChannel(0.999 as float32) == 255;
 	assert packChannel((1.0 / 255.0) as float32) == 1;
+}
+
+// The UI instance packs its three colours in C, on the way into the GPU buffer, because a
+// Vec<float32> cannot hold a packed RGBA8. That makes two copies of one piece of arithmetic,
+// which guardrail 9 does not allow to rest on them looking alike - so they are compared
+// across the boundary, over the values where rounding and clamping actually differ.
+test "the C pack and the MetaScript pack are the same arithmetic" {
+	assert packChannelC(0.0 as float32) == packChannel(0.0 as float32);
+	assert packChannelC(1.0 as float32) == packChannel(1.0 as float32);
+	assert packChannelC(0.5 as float32) == packChannel(0.5 as float32);
+	assert packChannelC(0.999 as float32) == packChannel(0.999 as float32);
+	assert packChannelC((1.0 / 255.0) as float32) == packChannel((1.0 / 255.0) as float32);
+	assert packChannelC(-1.0 as float32) == packChannel(-1.0 as float32);
+	assert packChannelC(2.0 as float32) == packChannel(2.0 as float32);
+	// And the pair is not vacuously equal: both say 255 where truncation would say 254.
+	assert packChannelC(1.0 as float32) == 255;
 }

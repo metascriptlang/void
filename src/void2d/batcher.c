@@ -38,6 +38,13 @@ static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-
 // the only form of that promise a reviewer can check.
 static sg_pipeline s_spritePips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_spritePipsRT[VOID2D_BLEND_COUNT];
+// P2's unified UI pipeline: one program, one 108-byte stride, a per-instance mode. It is a
+// third pipeline and needs no new machinery — a run carries its pipeline, so switching it
+// closes the run and records break:pipeline exactly like a view or a blend change does.
+static sg_pipeline s_uiPips[VOID2D_BLEND_COUNT];
+static sg_pipeline s_uiPipsRT[VOID2D_BLEND_COUNT];
+static int s_uiInstanceBase;          // where this frame's UI instances start in s_vbuf
+static int s_uiInstanceCount;
 static sg_buffer s_unitQuad;          // six corners (0,0)..(1,1), made once, stepped per vertex
 static int s_spriteInstanceBase;      // where this frame's sprite instances start in s_vbuf
 static int s_spriteInstanceCount;
@@ -143,10 +150,16 @@ static int s_retiredCount;
 
 #define PIPELINE_VERTEX     0
 #define PIPELINE_SPRITE     1
+#define PIPELINE_UI         2
 
 // The sprite record and its GPU struct are the same bytes in the same order, so the upload is
 // a memcpy and not a pack. src/test/instanceLayoutCheck.ms asserts that.
 #define SPRITE_REC_FLOATS   16
+
+// The UI record is 36 floats where the GPU instance is 108 bytes: six float4 lanes copy
+// straight through and the three trailing colours pack to UBYTE4N.
+// src/test/instanceLayoutCheck.ms asserts both numbers against instance.ms.
+#define UI_REC_FLOATS       36
 
 #define EFFECT_FLOATS       24
 #define VERTEX_FLOATS       8
@@ -203,12 +216,37 @@ typedef struct {
 	uint32_t colorExtra;
 } void2dUiInstance;
 
+// The UI record is 36 floats and the GPU instance is 108 bytes, so unlike the sprite stream
+// this one cannot be uploaded as it was recorded — the three colours pack to UBYTE4N on the
+// way in. That is one staging buffer, grown and never shrunk, rather than bit-twiddling in
+// the emitter where a Vec<float32> would lose the low bits to the mantissa anyway.
+static void2dUiInstance *s_uiStage;
+static int s_uiStageCap;
+
 typedef struct {
 	float affine[4];
 	float originSize[4];
 	float uv[4];
 	float color[4];
 } void2dSpriteInstance;
+
+// One colour channel as the GPU will store it. Rounding, not truncation: truncation loses a
+// full level at every channel and turns 1.0 into 254. src/void2d/instance.ms holds the same
+// arithmetic, and `void2dPackChannel` is exported so a test can compare the two rather than
+// letting guardrail 9 rest on two copies that look alike.
+int void2dPackChannel(float value) {
+	float scaled = value * 255.0f + 0.5f;
+	if (scaled <= 0.0f) { return 0; }
+	if (scaled >= 255.0f) { return 255; }
+	return (int)scaled;
+}
+
+static uint32_t packColor(const float *c) {
+	return (uint32_t)void2dPackChannel(c[0])
+		| ((uint32_t)void2dPackChannel(c[1]) << 8)
+		| ((uint32_t)void2dPackChannel(c[2]) << 16)
+		| ((uint32_t)void2dPackChannel(c[3]) << 24);
+}
 
 int void2dUiInstanceStride(void) { return (int)sizeof(void2dUiInstance); }
 int void2dSpriteInstanceStride(void) { return (int)sizeof(void2dSpriteInstance); }
@@ -472,6 +510,46 @@ void void2dSetup(void) {
 		s_spritePipsRT[i] = sg_make_pipeline(&sd);
 	}
 
+	sg_shader uiShd = sg_make_shader(ui_shader_desc(sg_query_backend()));
+	for (int i = 0; i < VOID2D_BLEND_COUNT; i++) {
+		sg_pipeline_desc ud = {0};
+		ud.shader = uiShd;
+		ud.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		ud.layout.attrs[ATTR_ui_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		ud.layout.attrs[ATTR_ui_corner].buffer_index = 0;
+		ud.layout.attrs[ATTR_ui_iAffine].format = SG_VERTEXFORMAT_FLOAT4;
+		ud.layout.attrs[ATTR_ui_iAffine].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iOriginSize].format = SG_VERTEXFORMAT_FLOAT4;
+		ud.layout.attrs[ATTR_ui_iOriginSize].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iUvRadii].format = SG_VERTEXFORMAT_FLOAT4;
+		ud.layout.attrs[ATTR_ui_iUvRadii].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iBorders].format = SG_VERTEXFORMAT_FLOAT4;
+		ud.layout.attrs[ATTR_ui_iBorders].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iParams0].format = SG_VERTEXFORMAT_FLOAT4;
+		ud.layout.attrs[ATTR_ui_iParams0].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iParams1].format = SG_VERTEXFORMAT_FLOAT4;
+		ud.layout.attrs[ATTR_ui_iParams1].buffer_index = 1;
+		// The three colours are UBYTE4N on the GPU and four floats in the record — the pack
+		// happens on the way into the buffer (instance.ms, "the RECORD layout"), because a
+		// Vec<float32> cannot hold a packed RGBA8 without losing the low bits to the mantissa.
+		ud.layout.attrs[ATTR_ui_iColorFill].format = SG_VERTEXFORMAT_UBYTE4N;
+		ud.layout.attrs[ATTR_ui_iColorFill].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iColorBorder].format = SG_VERTEXFORMAT_UBYTE4N;
+		ud.layout.attrs[ATTR_ui_iColorBorder].buffer_index = 1;
+		ud.layout.attrs[ATTR_ui_iColorExtra].format = SG_VERTEXFORMAT_UBYTE4N;
+		ud.layout.attrs[ATTR_ui_iColorExtra].buffer_index = 1;
+		ud.colors[0].blend.enabled = modes[i].on;
+		ud.colors[0].blend.src_factor_rgb = modes[i].srgb;
+		ud.colors[0].blend.dst_factor_rgb = modes[i].drgb;
+		ud.colors[0].blend.src_factor_alpha = modes[i].sa;
+		ud.colors[0].blend.dst_factor_alpha = modes[i].da;
+		s_uiPips[i] = sg_make_pipeline(&ud);
+		ud.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
+		ud.sample_count = 1;
+		ud.depth.pixel_format = SG_PIXELFORMAT_NONE;
+		s_uiPipsRT[i] = sg_make_pipeline(&ud);
+	}
+
 	// Six corners rather than four plus an index buffer. VOID2D.md records that the two have
 	// not been compared on a Mali or an Adreno; until they have, this is one 48-byte static
 	// buffer and no index path to get wrong.
@@ -641,20 +719,24 @@ static void runCommands(const float *commands, int commandCount,
 int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
                         const float *effects, int effectCount,
                         const float *vertices, int vertexCount,
-                        const float *spriteInstances, int spriteInstanceCount) {
+                        const float *spriteInstances, int spriteInstanceCount,
+                        const float *uiInstances, int uiInstanceCount) {
 	s_frameUploaded = 0;
 	s_frameBaseOffset = 0;
 	s_spriteInstanceBase = 0;
 	s_spriteInstanceCount = spriteInstanceCount;
+	s_uiInstanceBase = 0;
+	s_uiInstanceCount = uiInstanceCount;
 
 	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
 	size_t spriteBytes = (size_t)spriteInstanceCount * sizeof(void2dSpriteInstance);
+	size_t uiBytes = (size_t)uiInstanceCount * sizeof(void2dUiInstance);
 	// Against the FRAME's total, not this bracket's. sg_append_buffer accumulates until
 	// sg_commit, so a buffer sized for one bracket overflows on the second - and sokol's
 	// overflow copies nothing, returns a start position anyway, and leaves every draw in that
 	// bracket reading whatever was there before. Silent in release. Same mechanism as the
 	// "per-frame vertex cap" defect this phase closed one layer down.
-	size_t frameBytes = (size_t)s_frameVertexBytes + vertexBytes + spriteBytes;
+	size_t frameBytes = (size_t)s_frameVertexBytes + vertexBytes + spriteBytes + uiBytes;
 	if (frameBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
 		// A dropped frame with an error, never a silent truncation. The old path let
 		// sg_append_buffer run past the end and the rest of the scene simply vanished.
@@ -685,7 +767,33 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 		s_uploadCount++;
 		s_uploadBytes += (int)spriteBytes;
 	}
-	if (vertexBytes > 0 || spriteBytes > 0) { s_frameVertexBytes = (int)frameBytes; }
+	if (uiBytes > 0) {
+		if (uiInstanceCount > s_uiStageCap) {
+			void2dUiInstance *grown = (void2dUiInstance *)realloc(
+				s_uiStage, (size_t)uiInstanceCount * sizeof(void2dUiInstance));
+			if (!grown) {
+				s_droppedFrames++;
+				fprintf(stderr, "void2d: no room to stage %d UI instances — frame dropped\n",
+					uiInstanceCount);
+				return 0;
+			}
+			s_uiStage = grown;
+			s_uiStageCap = uiInstanceCount;
+		}
+		for (int i = 0; i < uiInstanceCount; i++) {
+			const float *rec = uiInstances + (size_t)i * UI_REC_FLOATS;
+			void2dUiInstance *dst = s_uiStage + i;
+			memcpy(dst->affine, rec, 24 * sizeof(float));
+			dst->colorFill = packColor(rec + 24);
+			dst->colorBorder = packColor(rec + 28);
+			dst->colorExtra = packColor(rec + 32);
+		}
+		sg_range data = { .ptr = s_uiStage, .size = uiBytes };
+		s_uiInstanceBase = sg_append_buffer(s_vbuf, &data);
+		s_uploadCount++;
+		s_uploadBytes += (int)uiBytes;
+	}
+	if (vertexBytes > 0 || spriteBytes > 0 || uiBytes > 0) { s_frameVertexBytes = (int)frameBytes; }
 	s_frameUploaded = 1;
 	if (targetCommandCount > 0) {
 		runCommands(targetCommands, targetCommandCount, effects, effectCount, 0.0f, 0.0f);
@@ -745,6 +853,55 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	sp.viewport[3] = isRT ? 1.0f : 0.0f;
 	sg_range u = { .ptr = &sp, .size = sizeof(sp) };
 	sg_apply_uniforms(UB_sprite_params, &u);
+
+	sg_draw(0, 6, count);
+	s_drawCallCount++;
+}
+
+// One unified-UI run: the unit quad at slot 0, this run's instances at slot 1, one sg_draw
+// for the whole run. Every mode shares this program, which is the point — a card, its label
+// and its image are one draw instead of three, and the mode lives in a per-instance lane
+// rather than in a pipeline.
+//
+// Like the sprite program it carries no colour pipeline, so a node with a colorMatrix,
+// colorAdd or colorKey stays on the vertex path and records the break.
+static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
+                      float fbW, float fbH, uint32_t *lastPipeline, int *scissorApplied,
+                      int *paramsValid, int *fxValid) {
+	int count = (int)cmd[CMD_INSTANCE_COUNT];
+	if (count <= 0) { return; }
+
+	sg_pipeline pip = (rt ? s_uiPipsRT : s_uiPips)[blend];
+	if (pip.id != *lastPipeline) {
+		sg_apply_pipeline(pip);
+		*lastPipeline = pip.id;
+		*scissorApplied = 0;
+		*paramsValid = 0;
+		*fxValid = 0;
+	}
+
+	sg_bindings b = {0};
+	b.vertex_buffers[0] = s_unitQuad;
+	b.vertex_buffers[1] = s_vbuf;
+	b.vertex_buffer_offsets[1] = s_uiInstanceBase
+		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dUiInstance);
+	b.views[VIEW_uiTex] = (sg_view){ .id = view };
+	int smpIndex = (int)cmd[CMD_SAMPLER];
+	if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }
+	b.samplers[SMP_uiSmp] = s_smp[smpIndex];
+	sg_apply_bindings(&b);
+
+	if (!*scissorApplied) {
+		applyScissor(cmd, fbW, fbH);
+		*scissorApplied = 1;
+	}
+
+	ui_params_t up = {0};
+	up.viewport[0] = fbW;
+	up.viewport[1] = fbH;
+	up.viewport[2] = (voidIsRenderTargetView(view) && !s_originTopLeft) ? 1.0f : 0.0f;
+	sg_range u = { .ptr = &up, .size = sizeof(up) };
+	sg_apply_uniforms(UB_ui_params, &u);
 
 	sg_draw(0, 6, count);
 	s_drawCallCount++;
@@ -823,6 +980,11 @@ static void runCommands(const float *commands, int commandCount,
 		int rt = cmd[CMD_RT_MODE] != 0.0f;
 		if ((int)cmd[CMD_PIPELINE] == PIPELINE_SPRITE) {
 			drawSpriteRun(cmd, blend, rt, view, fbW, fbH, &lastPipeline, &scissorApplied,
+				&paramsValid, &fxValid);
+			continue;
+		}
+		if ((int)cmd[CMD_PIPELINE] == PIPELINE_UI) {
+			drawUiRun(cmd, blend, rt, view, fbW, fbH, &lastPipeline, &scissorApplied,
 				&paramsValid, &fxValid);
 			continue;
 		}

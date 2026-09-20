@@ -11,6 +11,7 @@ import "./pipelineCheck";
 import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
 import "./coverageOracleCheck";
+import "./uiPipelineCheck";
 import "./rendererCheck";
 import "./cameraCheck";
 import "./boundsCheck";

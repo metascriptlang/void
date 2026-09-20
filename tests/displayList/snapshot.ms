@@ -28,10 +28,12 @@ import {
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
 	commandKindName, breakReasonName,
 	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
-	uiInstanceCount, spriteInstanceCount, spriteInstanceField,
+	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField,
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
+	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
+	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
 
@@ -69,6 +71,9 @@ function formatStream(): string {
 		if ((commandField(i, CMD_PIPELINE) as int32) == (Pipeline.Sprite as int32)) {
 			out = out + ` pipe:sprite inst:${commandField(i, CMD_INSTANCE_OFFSET) as int32}`
 				+ `+${commandField(i, CMD_INSTANCE_COUNT) as int32}`;
+		} else if ((commandField(i, CMD_PIPELINE) as int32) == (Pipeline.Ui as int32)) {
+			out = out + ` pipe:ui inst:${commandField(i, CMD_INSTANCE_OFFSET) as int32}`
+				+ `+${commandField(i, CMD_INSTANCE_COUNT) as int32}`;
 		} else {
 			out = out + ` pipe:vertex verts:${commandField(i, CMD_VERTEX_OFFSET) as int32}`
 				+ `+${commandField(i, CMD_VERTEX_COUNT) as int32}`;
@@ -80,6 +85,44 @@ function formatStream(): string {
 		out = out + `v ${i} ${f2(vertexField(i, 0))} ${f2(vertexField(i, 1))}`;
 		out = out + ` uv ${f2(vertexField(i, 2))} ${f2(vertexField(i, 3))}`;
 		out = out + ` rgba ${f2(vertexField(i, 4))} ${f2(vertexField(i, 5))} ${f2(vertexField(i, 6))} ${f2(vertexField(i, 7))}`;
+		out = out + "\n";
+	}
+	// One line per UI instance, and it prints the mode: P2's whole thesis is that a card, a
+	// label and an image differ by one float in one stream, so the float that says which is
+	// the one a snapshot must not leave out.
+	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
+		out = out + `u ${i} mode ${uiInstanceField(i, REC_UI_PARAMS0) as int32}`;
+		out = out + ` affine`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_AFFINE + 3))}`;
+		out = out + ` at`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 1))}`;
+		out = out + ` size`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3))}`;
+		out = out + ` uvr`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 3))}`;
+		out = out + ` border`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 3))}`;
+		out = out + ` fill`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 3))}`;
+		out = out + ` edge`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_BORDER + 3))}`;
 		out = out + "\n";
 	}
 	for (let i: int32 = 0; i < spriteInstanceCount(); i++) {

@@ -20,11 +20,11 @@ import {
 	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd,
 	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
-	void2dWhiteTexelU, void2dWhiteTexelV, void2dWhiteTexelOk,
+	void2dWhiteTexelU, void2dWhiteTexelV, void2dWhiteTexelOk, void2dPackChannel,
 } from "./batcher.h";
 import {
 	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
-	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA,
+	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, InstanceMode,
 	SPRITE_STRIDE, SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR,
 } from "./instance";
 import {
@@ -33,6 +33,7 @@ import {
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SAMPLER,
 	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R, SAMPLER_COUNT, samplerIndex,
 	commands, effects, vertices, targetCommands, spriteInstances, spriteInstanceCount,
+	uiInstances, uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, recordDraw, recordClip, recordBlur,
@@ -165,6 +166,11 @@ function closeRun(): void {
 		if (instances > 0) {
 			recordSpriteDraw(runReason, runStart, instances, curView, curBlend, curSampler);
 		}
+	} else if (curPipeline == Pipeline.Ui) {
+		const instances: int32 = uiInstanceCount() - runStart;
+		if (instances > 0) {
+			recordUiDraw(runReason, runStart, instances, curView, curBlend, curSampler);
+		}
 	} else {
 		const count: int32 = vertexCount() - runStart;
 		if (count > 0) {
@@ -183,7 +189,8 @@ export function finishRecording(): void {
 }
 
 function openRun(reason: BreakReason): void {
-	runStart = curPipeline == Pipeline.Sprite ? spriteInstanceCount() : vertexCount();
+	runStart = curPipeline == Pipeline.Sprite ? spriteInstanceCount()
+		: (curPipeline == Pipeline.Ui ? uiInstanceCount() : vertexCount());
 	runReason = reason;
 	runOpen = true;
 }
@@ -213,6 +220,20 @@ function useSpriteState(view: uint32, blend: BlendMode): void {
 	curView = view;
 	curBlend = blend;
 	curPipeline = Pipeline.Sprite;
+	openRun(reason);
+}
+
+function useUiState(view: uint32, blend: BlendMode): void {
+	if (runOpen && view == curView && blend == curBlend && curPipeline == Pipeline.Ui) {
+		return;
+	}
+	const reason: BreakReason = !runOpen ? BreakReason.First
+		: (curPipeline != Pipeline.Ui ? BreakReason.Pipeline
+		: (view != curView ? BreakReason.View : BreakReason.Blend));
+	closeRun();
+	curView = view;
+	curBlend = blend;
+	curPipeline = Pipeline.Ui;
 	openRun(reason);
 }
 
@@ -255,6 +276,11 @@ export function whiteTexelOk(): boolean { return void2dWhiteTexelOk() != 0; }
 // The strides sokol is handed, from sizeof. Re-exported rather than reached through
 // `batcher.h` from a second directory, which would compile `batcher.c` twice.
 export function uiInstanceStride(): int32 { return void2dUiInstanceStride(); }
+
+// The colour pack as C does it on the way into the GPU buffer. Re-exported so T0 can hold it
+// against `instance.ms`'s `packChannel` rather than letting guardrail 9 rest on two copies
+// that look alike - src/void2d/ owns batcher.h, so a test cannot import it directly.
+export function packChannelC(value: float32): int32 { return void2dPackChannel(value); }
 export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStride(); }
 
 // The glyph atlas view, so render.ms can emit a Label's mesh against it without reaching
@@ -302,6 +328,7 @@ export function flushTargets(): void {
 		effects[0], effectCount(),
 		vertices[0], vertexCount(),
 		spriteInstances[0], spriteInstanceCount(),
+		uiInstances[0], uiInstanceCount(),
 	) != 0;
 }
 
@@ -611,6 +638,59 @@ export function drawSpriteAffine(
 		color,
 	);
 }
+
+// One unified-UI instance: the node's world affine, the origin its local bounds map to, its
+// local size, and the six lanes the modes share. The fragment stage re-derives the SDF in
+// local space from these, so a rounded, bordered card at 37 degrees keeps its corner radius
+// and its edge softness instead of having them baked in here.
+//
+// `mode` is a lane and not a pipeline - that is P2's whole thesis. A card, its label and its
+// image differ by one float and stay in one run; the alternative is GPUI's per-kind pipelines,
+// which is what forces its BoundsTree (guardrail 1).
+//
+// Every lane is a parameter rather than a struct because a struct over 24 bytes has no `==`
+// on this compiler and would be copied at every call; the modes that leave a lane unused
+// pass zeros and `instance.ms` says which lane means what.
+export function drawUiInstance(
+	mode: InstanceMode,
+	view: uint32,
+	blend: BlendMode,
+	world: Transform2D,
+	originX: float32,
+	originY: float32,
+	sizeX: float32,
+	sizeY: float32,
+	uvr0: float32, uvr1: float32, uvr2: float32, uvr3: float32,
+	borderL: float32, borderT: float32, borderR: float32, borderB: float32,
+	p1: float32, p2: float32, p3: float32,
+	q0: float32, q1: float32, q2: float32, q3: float32,
+	fill: Color,
+	border: Color,
+	extra: Color,
+): void {
+	useUiState(view == 0 ? void2dWhiteView() : view, blend);
+	pushUiInstance(
+		world.a, world.b, world.c, world.d,
+		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,
+		uvr0, uvr1, uvr2, uvr3,
+		borderL, borderT, borderR, borderB,
+		(mode as int32) as float32, p1, p2, p3,
+		q0, q1, q2, q3,
+		fill, border, extra,
+	);
+}
+
+// True when the unified UI pipeline is legal for the state the emitter is in. Same single
+// disqualifier as the sprite path: the UI program carries no colour pipeline either, so a
+// node with a colorMatrix, colorAdd or colorKey stays on the vertex path - a decision the
+// caller makes, never a silent fallback.
+export function uiInstancingAvailable(): boolean {
+	return curEffect == NO_EFFECT;
+}
+
+// Counted from the stream rather than from the GPU, so T1 reads them with no GPU at all.
+export function recordedUiInstanceCount(): int32 { return uiInstanceCount(); }
+export function recordedSpriteInstanceCount(): int32 { return spriteInstanceCount(); }
 
 // A filter records its subtree into an object-local target by subtracting the target's
 // origin as each vertex is written. An instance carries its origin once, so the same
