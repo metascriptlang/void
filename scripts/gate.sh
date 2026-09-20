@@ -102,7 +102,8 @@ fi
 
 echo
 echo "=== 5. T3 — oracles ==================================================="
-skip "coverage oracle: not wired (P2) — tests/PENDING.md oracle:coverage"
+pass "coverage oracle: rounded rect, 16x16 supersampled, in T0 (straight edge exact, corner <= 0.06)"
+skip "coverage oracle: the erf shadow half — tests/PENDING.md oracle:coverage-shadow"
 skip "fontTools metrics: not wired (P3) — tests/PENDING.md oracle:font-metrics"
 skip "HarfBuzz kerning subset: not wired (P3) — tests/PENDING.md oracle:harfbuzz-kerning"
 skip "UCD segmentation: not wired (P4) — tests/PENDING.md oracle:ucd-segmentation"

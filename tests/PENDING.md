@@ -167,7 +167,7 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| oracle:coverage | T3 | the CPU 16x16 supersampled rounded-rect and `erf` shadow reference — the only tier that says the AA is correct rather than merely unchanged | P2 | 2026-09-20 |
+| oracle:coverage-shadow | T3 | the `erf` shadow half of the coverage oracle. The rounded-rect half is **wired** (`tests/oracle/coverage.ms`, `src/test/coverageOracleCheck.ms`) and already convicted `smoothstep`; the shadow reference waits for the shadow mode to exist | P2 | 2026-09-21 |
 | oracle:font-metrics | T3 | fontTools over `head`/`hhea`/`OS_2`/`post` | P3 | 2026-09-20 |
 | oracle:harfbuzz-kerning | T3 | the cmap + GPOS-kerning subset, features off | P3 | 2026-09-20 |
 | oracle:ucd-segmentation | T3 | `GraphemeBreakTest.txt` and `LineBreakTest.txt` | P4 | 2026-09-20 |

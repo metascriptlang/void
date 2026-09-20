@@ -10,6 +10,7 @@ import "./math3dCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
+import "./coverageOracleCheck";
 import "./rendererCheck";
 import "./cameraCheck";
 import "./boundsCheck";
