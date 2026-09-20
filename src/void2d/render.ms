@@ -108,6 +108,20 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			|| n.maxWidth != n.lastMaxWidth || !n.text.equals(n.lastText)
 			|| n.fontId != n.lastFontId || atlasGen() != n.lastAtlasGen;
 		if (textChanged) {
+			// Read BEFORE laying out, not after. Laying this label out can fill the atlas and
+			// grow it, and `fonsExpandAtlas` changes the normalised texture size - so quads
+			// produced before the growth carry UVs for the old size while `emitNode` binds the
+			// newest atlas. Recording the generation from *after* the layout meant the one label
+			// whose own text triggered the growth saw no change next frame and kept its wrong
+			// UVs permanently. Taking it first leaves `lastAtlasGen` behind the current one
+			// whenever a growth happened during this layout, so the label is laid out again next
+			// frame and corrects itself.
+			//
+			// What remains is one transient frame: labels laid out earlier in the same frame hold
+			// old-size UVs until their own next sync. A golden never sees it - the runner draws
+			// three frames and captures the last two - and P3 removes the class with fontstash.
+			// `tests/PENDING.md atlas-resize-transient-frame` carries it.
+			const genBeforeLayout: int32 = atlasGen();
 			const glyphs: float32[] = layoutText(n.size, n.text, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth, n.fontId);
 			n.contentXMin = 1e30; n.contentYMin = 1e30; n.contentXMax = -1e30; n.contentYMax = -1e30;
 			let gi: int32 = 0;
@@ -130,7 +144,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
 			n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
 			n.textDirty = false;
-			n.lastAtlasGen = atlasGen();
+			n.lastAtlasGen = genBeforeLayout;
 			n.lastFontId = n.fontId;
 		}
 	}

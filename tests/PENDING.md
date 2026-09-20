@@ -85,6 +85,8 @@ Note for whoever writes the next row: the parser splits a line on `|` and looks 
 — inside a fenced block included — is read as a real row. That is why the two examples above
 are block quotes and not a table.
 
+| atlas-resize-transient-frame | T2 | when the glyph atlas grows during a frame, labels already laid out in that frame hold UVs normalised to the old atlas size for that one frame; each corrects itself on its next sync, and `lastAtlasGen` is now read before layout so the label that triggered the growth is not permanently wrong. A golden cannot see it (the runner draws three frames and captures the last two) and an app sees it once, on first use of a new glyph size | P3 | 2026-09-20 |
+
 ## Scenes that cannot be captured yet
 
 These are rows of the scene table in [docs/TESTING.md](../docs/TESTING.md) "T2" that today's
