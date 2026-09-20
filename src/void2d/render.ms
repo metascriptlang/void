@@ -20,7 +20,7 @@ import {
 } from "./draw";
 import { layoutText, buildGlyphMesh } from "./text";
 import { fontView } from "./draw";
-import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
+import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 
 function sortByZ(cs: Node2D[]): void {
@@ -279,6 +279,14 @@ export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32
 // One half-scale copy. `BlendMode.None` writes the source through instead of compositing it
 // over the target's transparent black, which would otherwise darken every edge texel.
 function blitTarget(src: uint32, w: float32, h: float32): void {
+	// Says what it needs rather than inheriting it. The emitter's sampler and colour pipeline
+	// are sticky and were last set by whatever node was emitted before this filter, so a
+	// scene with `defaultSmooth = false` point-sampled every halving step - which turns
+	// guardrail 3's "downsample by 2^k then blur at one texel" back into a comb - and a
+	// grayscale sibling tinted the downsample. `void2dBlur` hardcodes linear-clamp for its tap
+	// pass for exactly this reason; this had been left to luck.
+	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setSampler(Smooth.On, false);
 	imageQuad(tile(rtViewId(src), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
@@ -394,6 +402,12 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	const qx1: float32 = xMin + (rtW as float32);
 	const qy1: float32 = yMin + (rtH as float32);
 	const rtTile = tile(rtViewId(src), rtW as float32, rtH as float32);
+	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
+	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
+	// target is always composited linear-clamp with no colour pipeline; the silhouette below
+	// sets its own effect and puts this one back afterwards.
+	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setSampler(Smooth.On, false);
 	if (n.filter.kind === FilterKind.Blur) {
 		imageQuad(rtTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 			rgba(1.0, 1.0, 1.0, na), n.blend);

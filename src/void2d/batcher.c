@@ -433,14 +433,19 @@ uint32_t void2dFontView(void) { return s_fontView.id; }
 // A clip is a command in the stream now, applied here during replay rather than by the tree
 // walk. The whole viewport is w == 0, which is how displayList.ms records "no clip".
 static void applyScissor(const float *cmd, float fbW, float fbH) {
+	// Inside a render-target pass the viewport IS the target's pixel size - `render.ms` sizes
+	// a filter target from bounds in logical units and hands that straight to
+	// `allocRenderTarget` - so one logical unit is one pixel there and scaling by the DPI
+	// would scissor 1.5x the intended rect at DPI 1.5. Only the swapchain is in logical units.
+	float scale = (cmd[CMD_RT_MODE] != 0.0f) ? 1.0f : s_dpiScale;
 	float w = cmd[CMD_CLIP_W];
 	float h = cmd[CMD_CLIP_H];
 	if (w <= 0.0f || h <= 0.0f) {
-		sg_apply_scissor_rectf(0.0f, 0.0f, fbW * s_dpiScale, fbH * s_dpiScale, true);
+		sg_apply_scissor_rectf(0.0f, 0.0f, fbW * scale, fbH * scale, true);
 		return;
 	}
-	sg_apply_scissor_rectf(cmd[CMD_CLIP_X] * s_dpiScale, cmd[CMD_CLIP_Y] * s_dpiScale,
-		w * s_dpiScale, h * s_dpiScale, true);
+	sg_apply_scissor_rectf(cmd[CMD_CLIP_X] * scale, cmd[CMD_CLIP_Y] * scale,
+		w * scale, h * scale, true);
 }
 
 void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
@@ -584,6 +589,10 @@ static void runCommands(const float *commands, int commandCount,
 		}
 		if (kind == CMD_KIND_BLUR) {
 			void2dBlur((uint32_t)cmd[CMD_VIEW], cmd[CMD_ARG0], cmd[CMD_ARG1]);
+			// It applied its own pipeline and bindings, so everything this loop remembers about
+			// what is bound is now wrong. A Draw after a Blur in the same pass would otherwise
+			// skip its own `sg_apply_pipeline` and draw the quad with the blur pipeline.
+			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
 			continue;
 		}
 		if (kind == CMD_KIND_TGT_BEGIN) {

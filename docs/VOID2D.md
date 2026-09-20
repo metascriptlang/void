@@ -350,7 +350,7 @@ nobody can check — and, as it turned out, an assertion that was already false.
 **Exit.**
 
 - All 10 000 labels of the bench UI scene draw. GPU buffers alive is constant in the node count.
-- No `sg_*` call happens between the start and the end of the tree walk — assertable, because the stream is the walk's only output.
+- No **draw** and no **upload** happens between the start and the end of the tree walk — assertable, because the stream is the walk's only output, and asserted in T1 (`tests/displayList/snapshot.ms`, "the walk records and uploads nothing"). **Restated during P1's review**, because the criterion as originally written said *no `sg_*` call* and that is not true and was being reported as met: `acquireTarget` reaches `sg_make_image` when a filter first needs a target of a given size, and a glyph that does not fit reaches `sg_make_image` through `fonsExpandAtlas`, both inside `draw()`. Those are **resource creations, not frame work** — they happen once per new size and once per atlas growth, never per node and never per frame, and GPUI's own atlas does the same. The property that matters, and that P2 and P5 depend on, is that the walk issues no draw call and moves no bytes; that one is true and now has a test. Hoisting the two allocations to frame begin would need the walk's target sizes known before the walk, which is P5's retained-bounds work.
 - Blur, Glow and DropShadow on a subtree compose as h2d does; group opacity does not double-blend.
 - At DPI 1.25 and 1.5 box edges and text baselines land on device pixels.
 - Golden regeneration is confined to `filter/`, `snap/` and the sampler-affected scenes; every other scene stays byte-identical.
@@ -366,6 +366,7 @@ and 120 measured frames; the committed row is `tests/bench/baseline.json`.
 | GPU buffers alive | constant in node count | **2**, was 126 | met, and the counter was made able to move |
 | Uploads per bracket | 1 | **1** | met |
 | Dropped frames | 0 | **0** | met |
+| No draw or upload during the walk | asserted | **T1 asserts it**; `sg_make_image` for a new filter target or an atlas growth still happens in the walk, restated above | met as restated |
 | `benchSprites` | unchanged, 1.7 ms / 1 draw | **1.63 ms / 1 draw** | met, guardrail 8 holds |
 | `ui.draws` | ≤ 253 | **20 000** | **not met** |
 | `ui.present` | ≤ 4.5 ms | **17.8 ms** | **not met** |

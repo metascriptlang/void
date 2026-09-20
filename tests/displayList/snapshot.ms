@@ -21,7 +21,7 @@ import { env } from "std/process";
 import { scene, add } from "../../src/void2d/scene";
 import { Node2D, rect, mask, at, addChild } from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
-import { begin2d, finishRecording, uploadCount, growthTarget } from "../../src/void2d/draw";
+import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
 import {
 	commandCount, vertexCount, drawCommandCount, commandField, vertexField,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND,
@@ -73,6 +73,11 @@ function formatStream(): string {
 // Record one scene and stop. No pass is opened and no upload happens, which is the point.
 function record(root: Node2D, w: float32, h: float32, dpi: float32): string {
 	begin2d(w, h, dpi);
+	// `sceneSmooth` is emitter state that only `Scene.present` sets, so without this a
+	// snapshot's `sampler:` column depended on whether some other test in the same process
+	// had rendered a scene with `defaultSmooth = false`. A snapshot that can pass for a
+	// reason outside its own scene is not a snapshot.
+	setSceneSmooth(true);
 	root.sync(identity2d(), true);
 	root.draw(1.0, w, h);
 	finishRecording();

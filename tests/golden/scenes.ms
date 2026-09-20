@@ -541,6 +541,38 @@ function filterGlow(): Scene {
 // those apart: filter/glow and filter/dropShadow use a host at alpha 1, and filter/groupOpacity
 // goes through blurFilter(0.0), which is the one branch that was already right. The Glow and
 // DropShadow branch squared the alpha for a whole phase with five filter goldens green.
+// A filtered node whose PREVIOUS SIBLING left a colour matrix and a nearest-repeat sampler
+// behind. Both are sticky emitter state, so before P1's review the filter's composite and its
+// downsample steps inherited them: the blur came out grayscale and point-sampled, which also
+// turns guardrail 3's "downsample by 2^k then blur at one texel" back into a comb. Nothing
+// covered it, because every other filter scene has the filter first or alone.
+function filterAfterTintedSibling(): Scene {
+	const s = scene(DARK);
+	const tinted = rect(60.0, 40.0, rgba(0.95, 0.35, 0.30, 1.0)).at(10.0, 10.0);
+	tinted.colorMatrix = colorMatrixGrayscale(1.0);
+	tinted.smooth = Smooth.Off;
+	tinted.tileWrap = true;
+	s.add(tinted);
+	const host = filterHost(90.0, 40.0);
+	host.filter = blurFilter(6.0);
+	s.add(host);
+	return s;
+}
+
+// A Mask inside a filtered subtree, at DPI 1.5. The target's space is its own pixels, so its
+// scissor must not be scaled by the display ratio the way the swapchain's is; scaling it
+// clipped 1.5x the zone. Every other filter row is at dpi 1.0 and could not see it.
+function filterMaskAtDpi(): Scene {
+	const s = scene(DARK);
+	const host = rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(16.0, 12.0);
+	host.filter = blurFilter(2.0);
+	const m = mask(60.0, 40.0);
+	m.addChild(rect(120.0, 90.0, rgba(0.95, 0.80, 0.35, 1.0)).at(0.0, 0.0));
+	host.addChild(m);
+	s.add(host);
+	return s;
+}
+
 function filterDropShadowAlpha(): Scene {
 	const s = scene(DARK);
 	const host = rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(20.0, 20.0);
@@ -727,6 +759,8 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "filter/blur", build: filterBlur },
 		{ name: "filter/glow", build: filterGlow },
 		{ name: "filter/dropShadow", build: filterDropShadow },
+		{ name: "filter/afterTintedSibling", build: filterAfterTintedSibling },
+		{ name: "filter/maskAtDpi150", build: filterMaskAtDpi },
 		{ name: "filter/dropShadowAlpha", build: filterDropShadowAlpha },
 		{ name: "filter/groupOpacity", build: filterGroupOpacity },
 
