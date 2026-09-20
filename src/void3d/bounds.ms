@@ -79,6 +79,11 @@ export function center(this bounds: Bounds): Vec3 {
 	return (bounds.min + bounds.max).scaled(0.5);
 }
 
+// Heaps' `add` merges axis by axis with no emptiness test, so adding an empty box drags the
+// result out to ±1e20. This returns early instead — a divergence, and the reason `addBounds`
+// over a mixed list of boxes gives the union of the non-empty ones.
+// (continued below)
+
 // Heaps' contains: min inclusive, max exclusive, so touching boxes do not both own a point.
 export function contains(this bounds: Bounds, point: Vec3): boolean {
 	return point.x >= bounds.min.x && point.x < bounds.max.x &&
@@ -128,10 +133,18 @@ export function dimension(this bounds: Bounds): float32 {
 	return longest;
 }
 
+// Half the diagonal, computed on the extent scaled down by its longest edge. Heaps squares the
+// edges directly (Bounds.hx getBoundingSphereRadius) because its floats are 64-bit; here
+// Bounds.all() spans 2e20 per axis and (2e20)² is infinity in float32 long before the square
+// root could bring it back.
 export function boundingSphereRadius(this bounds: Bounds): float32 {
 	if (bounds.isEmpty()) { return 0.0; }
+	const longest: float32 = bounds.dimension();
+	if (longest == 0.0) { return 0.0; }
+	const one: float32 = 1.0;
 	const half: float32 = 0.5;
-	return bounds.size().length() * half;
+	const unit: Vec3 = bounds.size().scaled(one / longest);
+	return longest * unit.length() * half;
 }
 
 // Zero for an empty box, as `size` and `center` answer, rather than clamping to the +1e20

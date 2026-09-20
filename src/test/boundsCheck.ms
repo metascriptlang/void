@@ -1,6 +1,6 @@
 import { Vec3, vec3, identity, translation, scaling, rotationY } from "../math/math3d";
 import { Bounds, addPoint, addPos, addBounds } from "../void3d/bounds";
-import { approx } from "./helpers";
+import { approx, approxRel } from "./helpers";
 
 function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 	return approx(a.x, x) && approx(a.y, y) && approx(a.z, z);
@@ -124,6 +124,28 @@ test "closestPoint on an empty bounds answers zero, not the 1e20 corner" {
 	const empty: Bounds = Bounds.empty();
 	assert near(empty.closestPoint(vec3(1.0, 2.0, 3.0)), 0.0, 0.0, 0.0);
 	assert near(empty.closestPoint(vec3(-5.0, -5.0, -5.0)), 0.0, 0.0, 0.0);
+}
+
+// Heaps' transform() tests emptiness with an AND over the three axes, so a box empty on one
+// axis is transformed anyway; isEmpty here is an OR, so it is left alone. Same for addBounds,
+// where Heaps merges axis by axis with no emptiness test at all.
+test "a bounds empty on one axis only is still treated as empty" {
+	const oneAxis: Bounds = Bounds.fromValues(0.0, 0.0, 0.0, 1.0, -1.0, 1.0);
+	assert oneAxis.isEmpty();
+	const moved: Bounds = oneAxis.transformed(translation(10.0, 10.0, 10.0));
+	assert near(moved.min, oneAxis.min.x, oneAxis.min.y, oneAxis.min.z);
+	let box: Bounds = unitBox();
+	addBounds(box, oneAxis);
+	assert near(box.min, 0.0, 0.0, 0.0);
+	assert near(box.max, 1.0, 2.0, 3.0);
+}
+
+// Bounds.all() spans 2e20 per axis; squaring that directly is infinity in float32.
+test "the bounding sphere of an unbounded box is finite" {
+	const radius: float32 = Bounds.all().boundingSphereRadius();
+	assert radius > 0.0;
+	assert radius < 3.0e38;
+	assert approxRel(radius, 1.7320508e20, 0.1);
 }
 
 test "all contains every ordinary point" {

@@ -80,6 +80,10 @@ function blendModes(): Vec<BlendMode> {
 
 const NOT_INDEXED: boolean = false;
 
+function litKey(indexed: boolean, state: RenderState): PipelineKey {
+	return pipelineKey(Program.Lit, VertexLayout.Lit, indexed, state, sceneLayout());
+}
+
 function billboardKey(state: RenderState, targets: TargetLayout): uint64 {
 	return pipelineKey(Program.Billboard, VertexLayout.Billboard, NOT_INDEXED, state, targets).bits;
 }
@@ -134,8 +138,8 @@ test "every blend mode packs to different bits" {
 }
 
 test "same pipeline inputs give the same key" {
-	const a: uint64 = pipelineKey(Program.Lit, VertexLayout.Lit, NOT_INDEXED, sceneState(), sceneLayout()).bits;
-	const b: uint64 = pipelineKey(Program.Lit, VertexLayout.Lit, NOT_INDEXED, sceneState(), sceneLayout()).bits;
+	const a: uint64 = litKey(NOT_INDEXED, sceneState()).bits;
+	const b: uint64 = litKey(NOT_INDEXED, sceneState()).bits;
 	assert a == b;
 	// Built another way to the same fields.
 	const rebuilt: RenderState = RenderState.defaults()
@@ -143,7 +147,7 @@ test "same pipeline inputs give the same key" {
 		.withBlendMode(BlendMode.None)
 		.withDepth(true, Compare.LessEqual)
 		.withCulling(Face.None);
-	assert pipelineKey(Program.Lit, VertexLayout.Lit, NOT_INDEXED, rebuilt, sceneLayout()).bits == a;
+	assert litKey(NOT_INDEXED, rebuilt).bits == a;
 }
 
 test "a different state, program, layout or target gives a different key" {
@@ -245,8 +249,8 @@ test "the descriptor carries the index type, and only the index type, for an ind
 test "a vertex layout ordinal cannot forge the indexed flag" {
 	const state: RenderState = sceneState();
 	const targets: TargetLayout = sceneLayout();
-	const plain: PipelineKey = pipelineKey(Program.Lit, VertexLayout.Lit, NOT_INDEXED, state, targets);
-	const indexed: PipelineKey = pipelineKey(Program.Lit, VertexLayout.Lit, true, state, targets);
+	const plain: PipelineKey = litKey(NOT_INDEXED, state);
+	const indexed: PipelineKey = litKey(true, state);
 	assert !plain.isIndexed() && indexed.isIndexed();
 	assert plain.bits != indexed.bits;
 	const forged: PipelineKey = pipelineKey(

@@ -22,16 +22,7 @@ export function screenState(): RenderState {
 
 // The mesh every screen effect draws; `vertexBuffer` from makeScreenTriangle.
 export function screenMesh(vertexBuffer: uint32): GpuMesh {
-	return {
-		layout: VertexLayout.Fullscreen,
-		vertexBuffer: vertexBuffer,
-		instanceBuffer: 0,
-		indexBuffer: 0,
-		vertexCount: 3,
-		indexCount: 0,
-		instanceCount: 1,
-		generation: 0,
-	};
+	return GpuMesh.external(VertexLayout.Fullscreen, vertexBuffer, 0, 3, 1);
 }
 
 export function makeScreenTriangle(): uint32 {

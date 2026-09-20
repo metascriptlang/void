@@ -85,6 +85,21 @@ test "a triangle out of range is rejected and pushes nothing" {
 	assert data.indexCount() == 0;
 }
 
+test "a negative vertex index is rejected as firmly as one past the end" {
+	let data: MeshData = MeshData.empty();
+	assert addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE).ok;
+	assert addVertex(data, vec3(1.0, 0.0, 0.0), UP, WHITE).ok;
+	assert addVertex(data, vec3(0.0, 0.0, 1.0), UP, WHITE).ok;
+	const negative: Result<int32, MeshError> = addTriangle(data, 0, -1, 2);
+	assert !negative.ok;
+	if (!negative.ok) { assert negative.error == MeshError.IndexOutOfRange; }
+	assert data.indexCount() == 0;
+	const good: Result<int32, MeshError> = addTriangle(data, 0, 1, 2);
+	assert good.ok;
+	if (good.ok) { assert good.value == 0; }
+	assert data.indexCount() == 3;
+}
+
 test "a quad is four vertices and two triangles sharing two corners" {
 	let data: MeshData = MeshData.empty();
 	const added: Result<int32, MeshError> = addQuad(
@@ -147,7 +162,8 @@ test "a box at a base is the same box moved there" {
 	assert addBox(moved, { ...plainBox(3.0), base: vec3(10.0, 0.0, -5.0) }).ok;
 	assert near(moved.bounds.min, 9.0, 0.0, -7.0);
 	assert near(moved.bounds.max, 11.0, 3.0, -3.0);
-	assert near(moved.bounds.size(), atOrigin.bounds.size().x, atOrigin.bounds.size().y, atOrigin.bounds.size().z);
+	const spread: Vec3 = atOrigin.bounds.size();
+	assert near(moved.bounds.size(), spread.x, spread.y, spread.z);
 }
 
 test "a quarter-turn yaw swaps the box's X and Z extents" {
@@ -197,6 +213,29 @@ test "a builder that does not fit leaves the mesh exactly as it was" {
 	if (!rejected.ok) { assert rejected.error == MeshError.TooManyVertices; }
 	assert data.vertexCount() == before;
 	assert data.indexCount() == indicesBefore;
+}
+
+// The byte-identity of the campfire rests on addBox producing the floats the deleted spike
+// produced, and the baselines that would catch a change live in gitignored out/tmp. These
+// literals are the half of that contract which survives losing them: at `approx`'s tolerance
+// they catch the geometry moving — someone expressing the placement as a Mat4 in M6, say —
+// while a change of the last ulp still only shows up in the capture comparison.
+test "the box builder still produces the spike's vertex floats" {
+	let data: MeshData = MeshData.empty();
+	const leaning: Box = {
+		base: vec3(0.5, 0.0, -0.25),
+		size: vec3(0.16, 0.95, 0.16),
+		yaw: 0.4,
+		tilt: -0.85,
+		color: WHITE,
+	};
+	assert addBox(data, leaning).ok;
+	// Top face, first corner and third corner, and the top face's rotated normal.
+	assert near(positionAt(data, 0), 0.12782013, 0.56688148, -0.92485362);
+	assert near(positionAt(data, 2), 0.31631139, 0.68708634, -0.88989902);
+	assert near(normalAt(data, 0), -0.29256237, 0.65998310, -0.69197506);
+	assert near(data.bounds.min, 0.12782013, -0.06010243, -0.98716056);
+	assert near(data.bounds.max, 0.59424561, 0.68708634, -0.17021576);
 }
 
 test "every index a builder writes is within the vertex count" {

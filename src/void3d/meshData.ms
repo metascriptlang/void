@@ -24,9 +24,9 @@ import { Bounds, addPoint } from "./bounds";
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
 export const LIT_VERTEX_STRIDE: int32 = 10;
 
-// uint16 indices, so one MeshData holds at most 65536 vertices. Hibernal's budget is 500
-// triangles per pet and 200 per prop (RENDERER-BRIEF §4.4), three orders of magnitude under
-// it; a mesh that does not fit is a content constraint, not a reason to widen the format.
+// uint16 indices, so one MeshData holds at most 65536 vertices. The content budget this port
+// was sized against is three orders of magnitude under that (RENDERER-BRIEF §4.4); a mesh that
+// does not fit is a content constraint, not a reason to widen the format.
 export const MAX_MESH_VERTICES: int32 = 65536;
 
 export struct Rgba {
@@ -102,7 +102,13 @@ export function hasRoomFor(this data: MeshData, count: int32): boolean {
 }
 
 // Three vertex indices, counter-clockwise as seen from the front (gpu3d.c sets CCW winding).
-export function addTriangle(ref data: MeshData, a: int32, b: int32, c: int32): Result<int32, MeshError> {
+// Returns the index of the triangle it added, as addVertex returns the index of its vertex.
+export function addTriangle(
+	ref data: MeshData,
+	a: int32,
+	b: int32,
+	c: int32,
+): Result<int32, MeshError> {
 	const count: int32 = data.vertexCount();
 	if (a < 0 || b < 0 || c < 0 || a >= count || b >= count || c >= count) {
 		return Result.err(MeshError.IndexOutOfRange);
@@ -110,7 +116,7 @@ export function addTriangle(ref data: MeshData, a: int32, b: int32, c: int32): R
 	data.indices.push(a as uint16);
 	data.indices.push(b as uint16);
 	data.indices.push(c as uint16);
-	return Result.ok(data.triangleCount());
+	return Result.ok(data.triangleCount() - 1);
 }
 
 // One flat quad: four vertices sharing a normal and a color, two triangles (a b c, a c d).
@@ -153,8 +159,9 @@ export function recomputeBounds(ref data: MeshData): void {
 // role of h3d.prim.Cube. Heaps builds a cube at the origin and moves it with `translate` /
 // `scale`; here the placement is baked into the vertices, because until M6 gives every mesh
 // an Object3D the programs take world-space positions and there is no model matrix to put it
-// in (draw.ms, DrawItem.world). The arithmetic is the campfire spike's, moved rather than
-// rewritten, so the vertex floats are bit-identical to the pre-M5 images; M6 is where the
+// in (draw.ms, DrawItem.world). The arithmetic is the spike's, moved rather than rewritten —
+// the same term order, and the same `sinf`/`cosf` — so the vertex floats are bit-identical to
+// the pre-M5 images and `meshDataCheck.ms` pins a few of them to literals. M6 is where the
 // placement becomes a node transform and this becomes a plain unit box.
 // Five quads of four vertices: what addBox appends when it succeeds.
 export const BOX_VERTICES: int32 = 20;
@@ -242,7 +249,11 @@ export function addBox(ref data: MeshData, box: Box): Result<int32, MeshError> {
 // One quad in the XZ plane at y = 0, facing up: h3d.prim.Plane2D turned into the ground plane
 // this renderer's Y-up world wants. `halfSize` is half its edge, so the plane spans
 // [-halfSize, halfSize] on both axes.
-export function addPlane(ref data: MeshData, halfSize: float32, color: Rgba): Result<int32, MeshError> {
+export function addPlane(
+	ref data: MeshData,
+	halfSize: float32,
+	color: Rgba,
+): Result<int32, MeshError> {
 	return addQuad(
 		data,
 		vec3(-halfSize, 0.0, -halfSize),
