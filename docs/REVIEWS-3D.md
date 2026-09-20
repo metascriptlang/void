@@ -9,12 +9,20 @@ are recorded here too — the point of this file is what was caught, not a clean
 `docs/REVIEWS.md` is void2d's and is written on another branch; this file is void3d's so the
 two never collide.
 
-**A "### Numbers" table names the sha it was measured at, and the milestone's last commit
+**A "### Numbers" table names the tree it was measured at, and the milestone's last commit
 re-takes it.** A verdict is written before its milestone's last commits, so its numbers are
 stale by construction and not by anyone's mistake — M6's table said 16 stages and 524 tests for
 five commits after it stopped being true, in the one document the next milestone reads to
-decide the previous one is done. A table with no sha cannot even be checked; a table with one
-can be re-taken by anybody in a single gate run.
+decide the previous one is done.
+
+**The anchor is a tree hash with the commit's subject beside it, and not a commit sha.** A gate
+run reads a *working tree*: the tree is the thing the numbers were measured on, and naming the
+commit was always one indirection more than the measurement needed. It is also the only anchor
+that survives — this arc lost its commit references twice in one day, first to a rebase and then
+to a force-pushed history, while the tree hash came through both unchanged: the rewritten commit
+and the dead one it replaced name the same tree, `75df15b6`. Find the commit again with
+`git log --format='%h %T %s' main | grep <tree>`; the subject is written beside the hash because
+`git show <tree>` gives a directory listing and no story.
 
 ---
 
@@ -125,7 +133,8 @@ Non-blocking items it raised, and what happened:
 
 ### Numbers
 
-Measured at `830db85`, this section's own commit. One void3d commit followed it inside M5 —
+Measured at tree `b09f44a2`, the tree of *docs: the M5 review, its findings, and what they
+changed*, this section's own commit. One void3d commit followed it inside M5 —
 `1009e33`, which strips line endings before comparing the manifest — and it moved none of these
 rows. Read them as M5's numbers and not as today's: the gate has grown eight stages and the
 suite has grown by 120 since, for reasons that have nothing to do with M5.
@@ -250,9 +259,10 @@ of ten is not a variance and the figure is not yet a licence for a threshold.
 
 ### Numbers
 
-Re-taken at `a47f483` from one `sh scripts/gate3d.sh` run, because the table was first written
-at `9c72aaa` and five commits landed after it — `23c5534`, `ff239d5`, `82ab440`, `3860752`,
-`a47f483` — and four of its eight rows had stopped being true. What moved each one is in the row.
+Re-taken at tree `75df15b6`, the tree of *docs(void3d): the pending list enforces a sentinel,
+and only three rows enforce the divergence*, from one `sh scripts/gate3d.sh` run — because the
+table was first written at the M6 review itself, five commits earlier, and four of its eight
+rows had stopped being true by the time the milestone ended. What moved each one is in the row.
 
 | | |
 |---|---|
