@@ -222,9 +222,13 @@ of ten is not a variance and the figure is not yet a licence for a threshold.
   `refresh` walks the whole tree even when `sync` returned 0; the shader-header freshness check;
   `setupDraws`' silent permanent failure.
 - **M8.** `Object3D` has no `name` and there is no lookup, while glTF nodes and the Blender
-  exporter's contract are name-keyed. `Transform3D.scale` exists, is never set, has no test, and
-  the shader's `mat3(model)` is wrong for non-uniform scale — `normalMatrix` exists unused. One
-  material per mesh node, where glTF primitives will want one node per primitive.
+  exporter's contract are name-keyed. `Transform3D.scale` still has no production caller that
+  sets it, and the shader's `mat3(model)` is still wrong for non-uniform scale —
+  `normalMatrix` exists unused. **"Has no test" stopped being true at `8a538cd`**, after this
+  list was written: `local-scale-on-the-diagonal`, `scale-is-prepended-to-rotation` and
+  `non-uniform-scale-under-rotated-parent` hold it against real Heaps, and the second is what
+  established that the local is `S * R`. One material per mesh node, where glTF primitives will
+  want one node per primitive.
 - **M9.** No `defaultTransform`, so animation must overwrite the authored transform or add the
   second slot then. `uploadMesh` still never destroys what it replaces.
 - **M10.** No bounds on a node, so nothing culls and picking has nothing to test against;
