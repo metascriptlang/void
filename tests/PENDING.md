@@ -28,13 +28,13 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | docs/VOID2D.md "Known defects" line | covered by | phase |
 |---|---|---|
 | Atlas-full drops a different set of glyphs each run | row `golden-missing:regress/atlasFull` | P1 / P3 |
-| At most ~126 Labels/Graphics render | golden `regress/nodeCap`, and the gated counters `ui.retainedNodes` / `ui.buffersAlive` / `ui.buffersRefused` | P1 |
+| ~~At most ~126 Labels/Graphics render~~ | **closed `747127f`** — golden `regress/nodeCap` shows all 200 labels; `ui.buffersAlive` 3, constant in node count. `ui.buffersRefused` deleted with the defect | done |
 | Node filters do not work at all | rows `golden-missing:filter/*`, `golden-missing:regress/filterNestedPass`, `debug-abort:node-filter` | P1 |
 | Filter semantics differ from h2d | the same rows — nothing renders, so the semantics cannot be captured yet | P1 |
-| Fractional DPI puts every glyph off-grid | goldens `regress/dpiTruncation`, `text/code13Dpi125`, `text/code13Dpi150`, `snap/hairlineDpi125`, `snap/hairlineDpi150` | P1 |
+| ~~Fractional DPI puts every glyph off-grid~~ | **closed `747127f`** — `begin2d` takes a float logical size; golden `regress/dpiTruncation` moved. The `text/` and `snap/` goldens did not move: integer glyph origins are a separate defect | done / P3 for glyph origins |
 | Samplers are hard-wired REPEAT | golden `regress/samplerRepeat` | P1 |
-| Per-frame vertex cap | golden `regress/vertexCap`, and row `debug-abort:vertex-cap` | P1 |
-| GPU calls are issued while the tree is walked | rows `walk-issues-gpu-calls`, `text-buffer-churn`, `upload-per-bracket` | P1 |
+| ~~Per-frame vertex cap~~ | **closed `747127f`** — one growing buffer, cap plus dropped frame past it; golden `regress/vertexCap` moved; `debug-abort:vertex-cap` deleted after a debug build was re-run and did not abort | done |
+| GPU calls are issued while the tree is walked | **behaviour closed `747127f`**, assertion not written: the walk's only output is the stream and `void2dReplay` is the only draw-issuing function. Rows `walk-issues-gpu-calls`, `text-buffer-churn`, `upload-per-bracket` stay open against the T1 tier | P1 (T1) |
 | A rotated Mask clips to its AABB | golden `clip/rotatedMask` | P2 |
 | Culling tests the viewport rather than the active clip | row `cull-against-viewport` (the golden `clip/scrolledList` looks right; only the cost is wrong) | P2 |
 | Integer glyph origins and rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, no fallback, ≤ 16 fonts, the R8→RGBA CPU expansion | goldens `text/code13Dpi100` and `text/wrapped` for the pixels, rows `h2d-text-metrics` and `golden-missing:text/cjkFallback` for the surface that does not exist | P3 |
@@ -130,9 +130,9 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| walk-issues-gpu-calls | T1 | `sg_*` calls happen while the tree is walked (`batcher.c:218-251`, `draw.ms:264-277`, `:307-320`). Assertable only once the stream is the walk's only output | P1 | 2026-09-20 |
-| text-buffer-churn | T1 | a text change destroys and recreates its GPU buffer (`render.ms:110-111`) | P1 | 2026-09-20 |
-| upload-per-bracket | T1 | there is no "one upload per bracket" to assert against; the batch flushes on every state change | P1 | 2026-09-20 |
+| walk-issues-gpu-calls | T1 | **the behaviour is fixed** (`747127f`): the stream is the walk's only output. What is missing is the assertion that keeps it fixed — a T1 test that records a tree and proves no `sg_*` call was made before `end2d`. The T1 tier does not exist yet | P1 | 2026-09-20 |
+| text-buffer-churn | T1 | **the behaviour is fixed** (`747127f`): no node owns a GPU buffer, so a text change rewrites a `float32[]` and nothing else. Missing is the T1 assertion that a text change creates and destroys no buffer | P1 | 2026-09-20 |
+| upload-per-bracket | T1 | **the behaviour is fixed** (`747127f`): one upload per bracket, gated at T4 as `ui.uploads` 1 / `sprites.uploads` 1. Missing is the T1 assertion that reads the command stream directly rather than a counter | P1 | 2026-09-20 |
 | cull-against-viewport | T1 | culling tests the viewport, not the active clip (`render.ms:191-201`), so `clip/scrolledList` draws forty rows to show four. The picture is right and the cost is wrong | P2 | 2026-09-20 |
 | idle-costs-a-walk | T4 | `Scene.present` walks and draws every frame; nothing knows whether the tree changed | P5 | 2026-09-20 |
 | h2d-object-surface | T0 | `parent`, `remove()`, `getChildAt`, `getChildIndex`, `numChildren`, `name`, and `localToGlobal` returning last frame's matrix (`node.ms:174-180`) | P5 | 2026-09-20 |
@@ -150,7 +150,6 @@ it can capture anything.
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | debug-abort:node-filter | T2 | any `Node2D.filter` trips `Assertion failed: !_sg.cur_pass.valid` (`sokol_gfx.h:27214`) and the process dies. The path has never had a caller: no example and no test sets `Node2D.filter` | P1 | 2026-09-20 |
-| debug-abort:vertex-cap | T2 | `regress/vertexCap` panics with `VALIDATION_FAILED` (`sokol_gfx.h:23960`) when `sg_append_buffer` runs past the 65 536-vertex buffer. In release the same overflow is silent, which is what the golden records | P1 | 2026-09-20 |
 
 ## Backends with no conformance run
 
