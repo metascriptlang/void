@@ -329,3 +329,111 @@ Recorded because a review that only lists faults is not a measurement either.
 
 **P2 does not start and nothing lands until the blockers are fixed and the phase is
 re-reviewed.**
+
+---
+
+## Re-review after the send-back: **SHIP WITH FOLLOW-UPS**
+
+A third fresh reviewer, which wrote neither the code nor the first two reviews, was given the
+charge sheet above and asked whether each item was fixed or merely moved. It ran T0 and the
+golden self-check and **re-captured 13 of the 48 goldens** rather than trusting the gate log.
+
+### The four blockers
+
+| | |
+|---|---|
+| **B1** | **Fixed, and it can move.** `buffersAlive` is made-minus-freed at the real `sg_make_buffer` / `sg_destroy_buffer` sites. The reviewer went further than the fix claimed and cross-checked `uploadBytes` against the vertex counts — ui `293 340 × 32 = 9 386 880`, sprites `60 000 × 32 = 1 920 000` — confirming those rows are readings and not typed numbers. |
+| **B2** | **Fixed, all four sub-claims**, and the reviewer traced the new retirement path for safety: bindings are re-applied on every Draw, the first bracket's draws were already submitted against the old buffer, and the drain runs after `sg_commit`, which is correct for Metal and WebGPU too. |
+| **B3** | **Restated, which the reviewer called the right answer** — with the carve-out stated in the exit table and in the Known-defects line — but noted the T1 test asserting it can only record scenes with no filter and no text, which are the two sites that create images. The criterion is asserted where it was never in doubt. |
+| **B4** | **Fixed and measured.** The reviewer recomputed both models independently and got the same bytes: twice-applied (75.9, 68.2, 45.3) → **(76, 68, 45)**, once-applied (131.3, 113.5, 59.9) → **(131, 113, 60)**. It also checked for the use-after-free that compositing `rt` after the blur chain invites, and found `acquireTarget` marks `rt` busy for the whole frame so `blurTargetPooled` can never recycle it. |
+
+### What the re-review found that the first pass had not
+
+- **D3 was only half fixed, and the unfixed half was unrecorded.** The scissor scaling is real
+  and `filter/maskAtDpi150` discriminates hard. But the same root cause has a second
+  consequence: `render.ms` sizes a filter target from bounds in **logical** units and hands
+  that to `allocRenderTarget` as a pixel size, so at DPI 1.5 a filtered subtree renders at
+  1/1.5 resolution and is upscaled. Untouched, in no doc and no row — **and the new golden is
+  at dpi 1.5, so it now freezes that softness as correct.** It has a row of its own now
+  (`filter-target-sized-in-logical-units`), which says explicitly that when the target is
+  sized in device pixels that golden moves, and the move is the fix landing.
+- **D5 was partially fixed.** `setSceneSmooth(true)` runs *after* `begin2d`, and `resetList()`
+  inside `begin2d` has already computed `curSampler` from the previous value — so the first
+  node still emits a spurious `break:sampler`. Latent, and exactly the process-history
+  dependency D5 named.
+- **D8's commit subject overclaims.** `sg_query_features()` was hoisted; the 16-entry view scan
+  went from two per draw to one and **cannot** be hoisted, because it depends on the draw's
+  view. The in-code comment says "one lookup, not two" and is right; the subject line says
+  "two frame-invariant queries leave the draw loop" and is not. `ui.present.ms` was also not
+  re-measured afterwards.
+- **A comment of mine is wrong.** `blitTarget`'s note claims a grayscale sibling could tint a
+  downsample; `beginTarget` already resets `curEffect`, so only the sampler half of that was
+  ever possible. The fix is right; the reason given for half of it is not.
+- **The paper class recurred in the very commit charged with cleaning it.** `PENDING.md` still
+  said `buffersAlive` 3 while two other files said 2; `TESTING.md`'s tier table was updated to
+  a P1 number under a header reading "State after P0" while T0 stayed at 431 and T4 at "ten
+  counters"; the four new PENDING rows were filed under **Image budgets**, whose prose reads
+  "None."; and `VOID2D.md` guardrail 9 had nested bold that renders wrong. P0's design review
+  logged this same class as **G2**. One phase later, same table.
+- **F13's number was not reproducible.** The row said "31 in P1's own files"; the reviewer
+  counted 39 and the row named no file set and no command — which is P0's own **F4** complaint
+  answered there and not here.
+
+### Closed before this record was, with the re-review's numbering
+
+**F-1** `PENDING.md` buffersAlive 3 → 2 · **F-2** the tier table's header and its T0 and T4 rows
+now agree with what the gate prints (579 tests over 35 files; nine gated counters) · **F-3** the
+four rows moved into a headed section with the right column count · **F-4** the nested bold ·
+**F-6** D3's unfixed half has its row, and that row says the dpi-1.5 golden currently freezes the
+defect · **F-17** the line-length row now carries the command that produces its numbers —
+`awk 'length > 100' $(git ls-files '*.ms') | wc -l`, which gives **204** repo-wide and **79**
+over the ten files P1 wrote or rewrote, correcting the 31 that was in the record.
+
+**F-7**, the thing the reviewer said it trusted least: forgetting `void2dFrameEnd` used to make
+the glyph atlas **silently** stop uploading before it made anything fail loudly. The batcher now
+counts brackets since the last frame end and complains once past sixteen, naming the call and
+what breaks without it. Proven by removing `frameEnd()` from `Scene.presentAt` for one run — the
+complaint fired once — and restoring it — no complaint.
+
+**F-5**, disclosed rather than fixed: **P1-f is two thirds done.** `uploadBytes` and
+`atlasImages` are gated; `instanceBufferBytes()` is still named for an instance buffer that does
+not exist and still returns `s_vbufBytes` (**F-15**, P2, with P2-c). **P1-g landed as a
+`console.log`, not the assert that was asked for** — a forgotten `flushTargets()` now says so
+instead of failing, which is weaker than the follow-up's wording.
+
+### Carried into P2
+
+| id | Follow-up |
+|---|---|
+| F-8 | Size filter targets in device pixels; `filter/maskAtDpi150` moves when it lands |
+| F-9 | `setSceneSmooth` before `begin2d`, in `record()` and in `presentAt` |
+| F-10 | `renderTargetsAlive()` beside `atlasImagesAlive()`, gated — nothing counts the 16-slot filter pool against sokol's 128 |
+| F-11 | `VOID2D_MAX_RETIRED_BUFFERS` overflow falls back to the immediate destroy the list exists to prevent, silently |
+| F-12 | A `golden.sh --self-check` case for "said CAPTURED and wrote no png" |
+| F-13 | Correct the `blitTarget` comment |
+| F-14 | Re-measure `ui.present.ms` after D8, or state that it was not re-taken |
+| F-15 | `instanceBufferBytes()` → `vertexBufferBytes()` |
+| F-16 | State that a glyph first needed in a second bracket is one frame late, now that `s_atlasUpdated` is per frame |
+| F-17 | *(done above)* |
+| P2-a..d | The design pass's own list, unchanged |
+
+### The one thing the re-review still would not trust
+
+> the `void2dFrameEnd` contract … it is called from exactly one function in the whole tree, and
+> forgetting it makes the font atlas stop updating **silently** before it makes every frame drop
+> loudly. Every other mistake in this phase now fails at the site of the mistake — this one fails
+> three layers away, in text that renders from a stale atlas.
+
+F-7 answers the *silence*, not the *contract*: the call is still one a host can omit. Folding it
+into `src/sokol/gpu.ms commit()` would make it unforgettable and is the first thing P2 does if it
+is not done sooner.
+
+### Two things about the evidence itself, recorded because they qualify it
+
+The reviewer verified 13 of the 48 goldens by running them; the rest rest on a gate log that is
+gitignored. And `harness/mustFail` is counted among the 48 and passes **by differing** — which is
+its job, and worth saying out loud whenever the number 48 is used.
+
+### Verdict
+
+**SHIP WITH FOLLOW-UPS.** P1 is done. P2 may begin, and the phase may land.

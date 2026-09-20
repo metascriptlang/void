@@ -353,13 +353,13 @@ about where they came from.
 
 **What each tier covers today**, so the table above is read against something real:
 
-| Tier | State after P0 |
+| Tier | State after P1 |
 |---|---|
-| T0 | 431 tests, `msc test src/test/index.ms`, about half a second — six of them are the harness's own parsers |
+| T0 | 579 tests over 35 files, `msc test src/test/index.ms`, about half a second — twelve of them are the harness's own parsers |
 | T1 | `tests/displayList/*.txt`, recorded with no GPU; `VOID_SNAPSHOT=1` rewrites them on the run that compares |
 | T2 | 48 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
 | T3 | nothing wired; six named SKIPs |
-| T4 | ten counters gated, two milliseconds reported; the wasm budget SKIPs |
+| T4 | nine counters gated per scene, two milliseconds reported; the wasm budget SKIPs |
 | T5 | human only |
 
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".

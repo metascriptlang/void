@@ -76,6 +76,15 @@ static int s_buffersFreed;
 // (`sokol_gfx.h:27551`). Three things are therefore per frame and were being re-armed per
 // bracket: the append budget, the one-sg_update_image-per-image rule, and the counters.
 static int s_frameOpen;
+// Brackets opened since the last void2dFrameEnd. A frame legitimately holds a few - the demo
+// runs two - so this is not an error until it is absurd. It exists because forgetting
+// void2dFrameEnd fails in the worst possible way: s_frameOpen latches, ensureAtlas stops
+// uploading, and text silently renders from a stale atlas for the rest of the process. Every
+// other mistake in this file fails at the site of the mistake; this one failed three layers
+// away, which is what P1's re-review said it trusted least.
+static int s_bracketsThisFrame;
+static int s_frameEndMissingReported;
+#define VOID2D_BRACKETS_BEFORE_COMPLAINT 16
 static int s_frameVertexBytes;   // bytes appended so far this FRAME, across every bracket
 
 // A vertex buffer that grew mid-frame cannot be destroyed on the spot: an earlier bracket's
@@ -459,6 +468,14 @@ void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 // Called at the top of every bracket. Only the FIRST bracket of a frame does the per-frame
 // work; `void2dFrameEnd` at sg_commit is what closes the frame and lets the next one through.
 void void2dFrameBegin(void) {
+	s_bracketsThisFrame++;
+	if (s_bracketsThisFrame > VOID2D_BRACKETS_BEFORE_COMPLAINT && !s_frameEndMissingReported) {
+		s_frameEndMissingReported = 1;
+		fprintf(stderr,
+			"void2d: %d brackets since the last void2dFrameEnd - is it being called after sg_commit? "
+			"until it is, the glyph atlas will not upload and retired resources will not be freed\n",
+			s_bracketsThisFrame);
+	}
 	if (s_frameOpen) { return; }
 	s_frameOpen = 1;
 	s_atlasUpdated = false;
@@ -474,6 +491,7 @@ void void2dFrameBegin(void) {
 // above all - becomes safe to reset here and nowhere else.
 void void2dFrameEnd(void) {
 	s_frameOpen = 0;
+	s_bracketsThisFrame = 0;
 }
 
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
