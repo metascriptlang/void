@@ -319,11 +319,15 @@ run_manifest() {
 		skip "manifest: $MANIFEST is missing (GATE_WRITE_MANIFEST=1 writes it)"
 		return
 	fi
-	if diff -q "$MANIFEST" "$WORK/manifest.new" > /dev/null 2>&1; then
+	# core.autocrlf hands the committed manifest back with CRLF while sha256sum always writes
+	# LF, so the two are compared with the line endings stripped: the claim is about the
+	# hashes, not about how this checkout stores a text file.
+	tr -d '\r' < "$MANIFEST" > "$WORK/manifest.committed"
+	if diff -q "$WORK/manifest.committed" "$WORK/manifest.new" > /dev/null 2>&1; then
 		pass "manifest: 20 baselines match $MANIFEST"
 	else
 		fail "manifest: the baselines on disk are not the ones $MANIFEST records"
-		diff "$MANIFEST" "$WORK/manifest.new" | head -12
+		diff "$WORK/manifest.committed" "$WORK/manifest.new" | head -12
 	fi
 }
 
