@@ -30,7 +30,8 @@ void void2dReplay(const float *commands, int commandCount,
 // command table agrees with the parser" (docs/TESTING.md).
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
-                      int viewField, int blendField, int smoothField, int effectField,
+                      int viewField, int blendField, int samplerField, int effectField,
+                      int samplerCount,
                       int clipXField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur);
 

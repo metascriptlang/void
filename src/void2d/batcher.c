@@ -34,7 +34,11 @@ static float s_dpiScale = 1.0f;                    // framebuffer / logical pixe
 static sg_pipeline s_blurPip;                      // separable-blur fullscreen pass (offscreen format)
 static sg_buffer s_fsQuad;                         // fullscreen quad (pos2+uv2) for filter passes
 static sg_view s_whiteView;
-static sg_sampler s_smp[2];   // [0] = nearest (smooth off), [1] = linear (smooth on)
+// Indexed by `smooth * 2 + tileWrap`, the packing displayList.ms `samplerIndex` writes into
+// CMD_SAMPLER. Clamp is the default: a tile is a sub-rect of an atlas, so REPEAT on a tile
+// that does not fill its page wraps in a neighbour's pixels at the seam.
+#define SMP_COUNT 4
+static sg_sampler s_smp[SMP_COUNT];
 
 static FONScontext *s_fons;
 static int s_fontId = FONS_INVALID;
@@ -59,7 +63,7 @@ static int s_atlasGen = 0;    // bumped on atlas resize → invalidates cached g
 #define CMD_VERTEX_COUNT    3
 #define CMD_VIEW            4
 #define CMD_BLEND           5
-#define CMD_SMOOTH          6
+#define CMD_SAMPLER         6
 #define CMD_EFFECT          7
 #define CMD_CLIP_X          8
 #define CMD_CLIP_Y          9
@@ -101,7 +105,8 @@ int void2dBuffersAlive(void) { return 3; }
 
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
-                      int viewField, int blendField, int smoothField, int effectField,
+                      int viewField, int blendField, int samplerField, int effectField,
+                      int samplerCount,
                       int clipXField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur) {
 	return commandFloats == CMD_FLOATS
@@ -113,7 +118,8 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& vertexCountField == CMD_VERTEX_COUNT
 		&& viewField == CMD_VIEW
 		&& blendField == CMD_BLEND
-		&& smoothField == CMD_SMOOTH
+		&& samplerField == CMD_SAMPLER
+		&& samplerCount == SMP_COUNT
 		&& effectField == CMD_EFFECT
 		&& clipXField == CMD_CLIP_X
 		&& arg0Field == CMD_ARG0
@@ -224,18 +230,19 @@ void void2dSetup(void) {
 	s_fsQuad = sg_make_buffer(&fqd);
 
 	s_whiteView = (sg_view){ .id = voidMakeView(voidMakeImage(NULL, 0, 0)) };
-	sg_sampler_desc smpLin = {0};
-	smpLin.min_filter = SG_FILTER_LINEAR;
-	smpLin.mag_filter = SG_FILTER_LINEAR;
-	smpLin.wrap_u = SG_WRAP_REPEAT;
-	smpLin.wrap_v = SG_WRAP_REPEAT;
-	s_smp[1] = sg_make_sampler(&smpLin);
-	sg_sampler_desc smpNear = {0};
-	smpNear.min_filter = SG_FILTER_NEAREST;
-	smpNear.mag_filter = SG_FILTER_NEAREST;
-	smpNear.wrap_u = SG_WRAP_REPEAT;
-	smpNear.wrap_v = SG_WRAP_REPEAT;
-	s_smp[0] = sg_make_sampler(&smpNear);
+	// Four samplers, made once: smooth * 2 + tileWrap. They are four objects and not a
+	// mutated one because sokol samplers are immutable, and four of a 128-slot pool is a
+	// constant cost that does not grow with the scene.
+	for (int i = 0; i < SMP_COUNT; i++) {
+		int smooth = (i & 2) != 0;
+		int wrap = (i & 1) != 0;
+		sg_sampler_desc d = {0};
+		d.min_filter = smooth ? SG_FILTER_LINEAR : SG_FILTER_NEAREST;
+		d.mag_filter = smooth ? SG_FILTER_LINEAR : SG_FILTER_NEAREST;
+		d.wrap_u = wrap ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+		d.wrap_v = wrap ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
+		s_smp[i] = sg_make_sampler(&d);
+	}
 
 	FONSparams fp = {0};
 	fp.width = 512;
@@ -298,7 +305,7 @@ void void2dBlur(uint32_t srcView, float dirX, float dirY) {
 	sg_bindings b = {0};
 	b.vertex_buffers[0] = s_fsQuad;
 	b.views[VIEW_srcTex] = (sg_view){ .id = srcView };
-	b.samplers[SMP_srcSmp] = s_smp[1];
+	b.samplers[SMP_srcSmp] = s_smp[2];   // linear, clamp: a blur tap past the edge must not wrap
 	sg_apply_bindings(&b);
 	blur_params_t p = {0};
 	p.dir[0] = dirX; p.dir[1] = dirY;
@@ -394,7 +401,9 @@ void void2dReplay(const float *commands, int commandCount,
 		b.vertex_buffers[0] = s_vbuf;
 		b.vertex_buffer_offsets[0] = baseOffset + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
 		b.views[VIEW_tex] = (sg_view){ .id = view };
-		b.samplers[SMP_smp] = s_smp[cmd[CMD_SMOOTH] != 0.0f ? 1 : 0];
+		int smpIndex = (int)cmd[CMD_SAMPLER];
+		if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }
+		b.samplers[SMP_smp] = s_smp[smpIndex];
 		sg_apply_bindings(&b);
 
 		// After a pipeline change the scissor is no longer in force, and the clip a command

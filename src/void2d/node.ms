@@ -2,7 +2,7 @@
 // field hits a C-codegen bug. Revisit the union once the compiler handles it.
 
 import { freeRenderTarget } from "./draw";
-import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
+import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
@@ -18,7 +18,12 @@ export interface Node2D {
 	pivotY: float32;
 	alpha: float32;
 	visible: boolean;
-	smooth: boolean;
+	// h2d.Drawable.smooth / .tileWrap. `Smooth.Inherit` takes the scene's default, so a node
+	// that says nothing follows the scene and a node that says something wins over it.
+	// `tileWrap` is false by default: a Tile is a sub-rect of an atlas page, and REPEAT on a
+	// sub-rect wraps a neighbour's pixels in at the seam rather than repeating the tile.
+	smooth: Smooth;
+	tileWrap: boolean;
 	blend: BlendMode;
 	zIndex: int32;
 	w: float32;
@@ -83,7 +88,7 @@ export interface Node2D {
 
 function base(kind: DrawKind): Node2D {
 	return {
-		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: true, blend: BlendMode.Alpha, zIndex: 0,
+		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: Smooth.Inherit, tileWrap: false, blend: BlendMode.Alpha, zIndex: 0,
 		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], meshVertCount: 0, gfxView: 0, gfxDirty: true, children: [], childrenDirty: true,
 		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0, lastSY: 0.0, lastRot: 0.0, dirty: true,
 		textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,

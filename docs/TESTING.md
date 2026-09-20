@@ -95,6 +95,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `text/` | P4 | decorations (underline, strikethrough, wavy) · caret and selection |
 | `text/` | P6 | a ligature line · a colour-emoji line |
 | `image/` | P0 | nearestLinear · subFlip · colorPipeline (colorMatrix, colorAdd, colorKey, Add blend) · scaleGrid |
+| `image/` | P1 | tileWrap (clamp beside repeat, u1 = 3) · sceneSmooth (`Smooth.Inherit` against a scene default of nearest, beside an explicit `Smooth.On`) |
 | `image/` | P2 | `ObjectFit` variants · `corner_radii` on an image · the `grayscale` image mode |
 | `filter/` | P1 | blur · glow · dropShadow · groupOpacity — **built but not capturable at P0**, see below |
 | `regress/` | P0 | nodeCap · dpiTruncation · samplerRepeat · vertexCap |

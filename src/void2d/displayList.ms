@@ -32,7 +32,7 @@ export enum BreakReason {
 	First,
 	View,
 	Blend,
-	Smooth,
+	Sampler,
 	Effect,
 	Clip,
 	Capacity,
@@ -52,7 +52,10 @@ export const CMD_VERTEX_OFFSET: int32 = 2;
 export const CMD_VERTEX_COUNT: int32 = 3;
 export const CMD_VIEW: int32 = 4;
 export const CMD_BLEND: int32 = 5;
-export const CMD_SMOOTH: int32 = 6;
+// Which of the four samplers the draw wants: `smooth * 2 + tileWrap`. It stopped being a
+// single bit when `tileWrap` arrived, so it is an index and not a flag.
+export const CMD_SAMPLER: int32 = 6;
+export const SAMPLER_COUNT: int32 = 4;
 export const CMD_EFFECT: int32 = 7;
 export const CMD_CLIP_X: int32 = 8;
 export const CMD_CLIP_Y: int32 = 9;
@@ -182,13 +185,19 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	return base;
 }
 
+// smooth * 2 + tileWrap. One function, because a packing that is open-coded in the emitter
+// and re-derived in a test is a packing with two definitions.
+export function samplerIndex(smooth: boolean, tileWrap: boolean): int32 {
+	return (smooth ? 2 : 0) + (tileWrap ? 1 : 0);
+}
+
 export function recordDraw(
 	reason: BreakReason,
 	vertexOffset: int32,
 	count: int32,
 	view: uint32,
 	blend: BlendMode,
-	smooth: boolean,
+	sampler: int32,
 	effectIndex: int32,
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
@@ -196,7 +205,7 @@ export function recordDraw(
 	commands[base + CMD_VERTEX_COUNT] = count as float32;
 	commands[base + CMD_VIEW] = view as float32;
 	commands[base + CMD_BLEND] = (blend as int32) as float32;
-	commands[base + CMD_SMOOTH] = smooth ? 1.0 : 0.0;
+	commands[base + CMD_SAMPLER] = sampler as float32;
 	commands[base + CMD_EFFECT] = effectIndex as float32;
 }
 
@@ -234,7 +243,7 @@ export function breakReasonName(reason: int32): string {
 		BreakReason.First => "first",
 		BreakReason.View => "view",
 		BreakReason.Blend => "blend",
-		BreakReason.Smooth => "smooth",
+		BreakReason.Sampler => "sampler",
 		BreakReason.Effect => "effect",
 		BreakReason.Clip => "clip",
 		BreakReason.Capacity => "capacity",
@@ -259,7 +268,7 @@ test "a fresh list is empty" {
 
 test "a draw command carries its range and its reason" {
 	resetList();
-	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Add, false, NO_EFFECT);
+	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Add, samplerIndex(false, true), NO_EFFECT);
 	assert commandCount() == 1;
 	assert (commandField(0, CMD_KIND) as int32) == (CommandKind.Draw as int32);
 	assert (commandField(0, CMD_BREAK) as int32) == (BreakReason.View as int32);
@@ -267,8 +276,17 @@ test "a draw command carries its range and its reason" {
 	assert (commandField(0, CMD_VERTEX_COUNT) as int32) == 6;
 	assert (commandField(0, CMD_VIEW) as int32) == 3;
 	assert (commandField(0, CMD_BLEND) as int32) == (BlendMode.Add as int32);
-	assert commandField(0, CMD_SMOOTH) == 0.0;
+	assert (commandField(0, CMD_SAMPLER) as int32) == 1;
 	assert (commandField(0, CMD_EFFECT) as int32) == NO_EFFECT;
+}
+
+test "the sampler index packs smooth and tileWrap into the four combinations" {
+	assert samplerIndex(false, false) == 0;
+	assert samplerIndex(false, true) == 1;
+	assert samplerIndex(true, false) == 2;
+	assert samplerIndex(true, true) == 3;
+	// Every combination is a distinct slot, and there are exactly as many as batcher.c makes.
+	assert samplerIndex(true, true) + 1 == SAMPLER_COUNT;
 }
 
 test "recording the same clip twice records one scissor" {
@@ -283,7 +301,7 @@ test "recording the same clip twice records one scissor" {
 test "a draw inherits the clip that was recorded before it" {
 	resetList();
 	recordClip(4.0, 5.0, 6.0, 7.0);
-	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(1, CMD_CLIP_X) == 4.0;
 	assert commandField(1, CMD_CLIP_Y) == 5.0;
 	assert commandField(1, CMD_CLIP_W) == 6.0;
@@ -320,18 +338,18 @@ test "vertices land where the offset says" {
 test "drawCommandCount counts draws and not scissors" {
 	resetList();
 	recordClip(0.0, 0.0, 8.0, 8.0);
-	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
-	recordDraw(BreakReason.View, 6, 6, 2, BlendMode.Alpha, true, NO_EFFECT);
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	recordDraw(BreakReason.View, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandCount() == 3;
 	assert drawCommandCount() == 2;
 }
 
 test "a command carries the pipeline set the replay must bind" {
 	resetList();
-	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(0, CMD_RT_MODE) == 0.0;
 	setRenderTargetMode(true);
-	recordDraw(BreakReason.Barrier, 6, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	recordDraw(BreakReason.Barrier, 6, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(1, CMD_RT_MODE) == 1.0;
 	setRenderTargetMode(false);
 }

@@ -32,7 +32,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | Node filters do not work at all | rows `golden-missing:filter/*`, `golden-missing:regress/filterNestedPass`, `debug-abort:node-filter` | P1 |
 | Filter semantics differ from h2d | the same rows — nothing renders, so the semantics cannot be captured yet | P1 |
 | ~~Fractional DPI puts every glyph off-grid~~ | **closed `747127f`** — `begin2d` takes a float logical size; golden `regress/dpiTruncation` moved. The `text/` and `snap/` goldens did not move: integer glyph origins are a separate defect | done / P3 for glyph origins |
-| Samplers are hard-wired REPEAT | golden `regress/samplerRepeat` | P1 |
+| ~~Samplers are hard-wired REPEAT~~ | **closed** — four samplers indexed by `smooth * 2 + tileWrap`, clamp by default. `regress/samplerRepeat` moved but is weak (448 px at max delta 2: both sheet edges are near-black); `image/tileWrap` is the scene that shows the mechanism, and `image/sceneSmooth` covers the tri-state | done |
 | ~~Per-frame vertex cap~~ | **closed `747127f`** — one growing buffer, cap plus dropped frame past it; golden `regress/vertexCap` moved; `debug-abort:vertex-cap` deleted after a debug build was re-run and did not abort | done |
 | GPU calls are issued while the tree is walked | **behaviour closed `747127f`**, assertion not written: the walk's only output is the stream and `void2dReplay` is the only draw-issuing function. Rows `walk-issues-gpu-calls`, `text-buffer-churn`, `upload-per-bracket` stay open against the T1 tier | P1 (T1) |
 | A rotated Mask clips to its AABB | golden `clip/rotatedMask` | P2 |

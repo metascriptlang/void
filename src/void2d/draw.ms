@@ -22,13 +22,13 @@ import {
 import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
-	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SMOOTH,
-	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE,
+	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SAMPLER,
+	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE, SAMPLER_COUNT, samplerIndex,
 	commands, effects, vertices,
 	resetList, commandCount, effectCount, vertexCount, drawCommandCount, setRenderTargetMode,
 	pushVertex, pushEffect, recordDraw, recordClip, recordBlur,
 } from "./displayList";
-import { Vec2, Color, Tile, Transform2D, BlendMode, rgba } from "./types";
+import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
 
 export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
@@ -44,7 +44,13 @@ let runOpen: boolean = false;
 let runReason: BreakReason = BreakReason.First;
 let curView: uint32 = 0;
 let curBlend: BlendMode = BlendMode.Alpha;
-let curSmooth: boolean = true;
+// The sampler this run wants, packed by `samplerIndex`. Its default is the scene default
+// with clamp, which is what a node that sets neither `smooth` nor `tileWrap` asks for.
+let curSampler: int32 = 0;
+// h2d resolves a node's null `smooth` against the scene. h2d's own default is nearest
+// (`h2d/RenderContext.hx:52`), which HEAPS.md "Do not copy from h2d" rejects: text and
+// scaled UI are the common case here, so the default is linear.
+let sceneSmooth: boolean = true;
 let curEffect: int32 = NO_EFFECT;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
@@ -103,7 +109,7 @@ function closeRun(): void {
 	if (!runOpen) { return; }
 	const count: int32 = vertexCount() - runStart;
 	if (count > 0) {
-		recordDraw(runReason, runStart, count, curView, curBlend, curSmooth, curEffect);
+		recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
 	}
 	runOpen = false;
 }
@@ -131,7 +137,7 @@ export function setup2d(): void {
 	if (void2dLayoutCheck(
 		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
 		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
-		CMD_VIEW, CMD_BLEND, CMD_SMOOTH, CMD_EFFECT,
+		CMD_VIEW, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
 		CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE,
 		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
 	) == 0) {
@@ -159,7 +165,7 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 	runStart = 0;
 	curView = void2dWhiteView();
 	curBlend = BlendMode.Alpha;
-	curSmooth = true;
+	curSampler = samplerIndex(sceneSmooth, false);
 	curEffect = NO_EFFECT;
 	setIdentityMat();
 	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
@@ -257,12 +263,27 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 	openRun(BreakReason.Effect);
 }
 
-// h2d.Drawable.smooth — linear (true) vs nearest (false) sampling; batch state.
-export function setSmooth(s: boolean): void {
-	if (s == curSmooth) { return; }
+// The scene's default for nodes whose `smooth` is `Smooth.Inherit`. Set once per bracket by
+// `Scene.present`, before the walk; changing it mid-walk would make two nodes with identical
+// state sample differently, which is exactly the bug a tri-state invites.
+export function setSceneSmooth(s: boolean): void {
+	sceneSmooth = s;
+}
+
+export function sceneSmoothDefault(): boolean {
+	return sceneSmooth;
+}
+
+// h2d.Drawable.smooth and h2d.Drawable.tileWrap, resolved: linear vs nearest sampling, and
+// repeat vs clamp at the tile's edge. Batch state — a change closes the run, because a
+// sampler is bound per draw.
+export function setSampler(smooth: Smooth, tileWrap: boolean): void {
+	const on: boolean = smooth == Smooth.Inherit ? sceneSmooth : smooth == Smooth.On;
+	const want: int32 = samplerIndex(on, tileWrap);
+	if (want == curSampler) { return; }
 	closeRun();
-	curSmooth = s;
-	openRun(BreakReason.Smooth);
+	curSampler = want;
+	openRun(BreakReason.Sampler);
 }
 
 function quad(view: uint32, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {

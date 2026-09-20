@@ -9,7 +9,7 @@ import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addCh
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
-import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode } from "../void2d/types";
+import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode, Smooth } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene | null = null;
@@ -111,7 +111,7 @@ export function init2d(): void {
 	const nearestNode = sprite(pixTile).at(720.0, 555.0);
 	nearestNode.w = 80.0;
 	nearestNode.h = 80.0;
-	nearestNode.smooth = false;
+	nearestNode.smooth = Smooth.Off;
 	const linearNode = sprite(pixTile).at(810.0, 555.0);
 	linearNode.w = 80.0;
 	linearNode.h = 80.0;

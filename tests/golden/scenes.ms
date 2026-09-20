@@ -33,6 +33,7 @@ import {
 	flipY,
 	vec2,
 	BlendMode,
+	Smooth,
 	blurFilter,
 	glowFilter,
 	dropShadowFilter,
@@ -378,12 +379,52 @@ function imageNearestLinear(): Scene {
 	const nearest = sprite(pixels).at(16.0, 20.0);
 	nearest.w = 96.0;
 	nearest.h = 96.0;
-	nearest.smooth = false;
+	nearest.smooth = Smooth.Off;
 	const linear = sprite(pixels).at(128.0, 20.0);
 	linear.w = 96.0;
 	linear.h = 96.0;
 	s.add(nearest);
 	s.add(linear);
+	return s;
+}
+
+// tileWrap. `sub` divides by texW/texH, so a sub-rect three times the sheet has u1 = v1 = 3:
+// under CLAMP_TO_EDGE the last row and column stretch across the whole sprite, under REPEAT
+// the sheet tiles 3x3. The two halves of this scene differ in nothing but `tileWrap`, so a
+// golden that shows them identical means the flag reached no sampler.
+function imageTileWrap(): Scene {
+	const s = scene(DARK);
+	const t = sheet();
+	const thrice = t.sub(0.0, 0.0, t.texW * 3.0, t.texH * 3.0);
+	const clamped = sprite(thrice).at(16.0, 16.0);
+	clamped.w = 104.0;
+	clamped.h = 104.0;
+	const wrapped = sprite(thrice).at(136.0, 16.0);
+	wrapped.w = 104.0;
+	wrapped.h = 104.0;
+	wrapped.tileWrap = true;
+	s.add(clamped);
+	s.add(wrapped);
+	return s;
+}
+
+// The `smooth` tri-state resolved against a scene whose default is nearest. The left sprite
+// says nothing and must follow the scene; the right one says `Smooth.On` and must win over
+// it. If `Smooth.Inherit` were treated as "on", the two halves would be identical.
+function imageSceneSmooth(): Scene {
+	const s = scene(DARK);
+	s.defaultSmooth = false;
+	const t = sheet();
+	const pixels = t.sub(t.texW * 0.40, t.texH * 0.38, 14.0, 14.0);
+	const inherits = sprite(pixels).at(16.0, 20.0);
+	inherits.w = 96.0;
+	inherits.h = 96.0;
+	const overrides = sprite(pixels).at(128.0, 20.0);
+	overrides.w = 96.0;
+	overrides.h = 96.0;
+	overrides.smooth = Smooth.On;
+	s.add(inherits);
+	s.add(overrides);
 	return s;
 }
 
@@ -658,6 +699,8 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/multilineAlign", build: textMultilineAlign },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
+		{ name: "image/tileWrap", build: imageTileWrap },
+		{ name: "image/sceneSmooth", build: imageSceneSmooth },
 		{ name: "image/subFlip", build: imageSubFlip },
 		{ name: "image/colorPipeline", build: imageColorPipeline },
 		{ name: "image/scaleGrid", build: imageScaleGrid },

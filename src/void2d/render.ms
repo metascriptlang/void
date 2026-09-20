@@ -8,7 +8,7 @@ import {
 	imageQuadUV,
 	drawMesh,
 	setEffect,
-	setSmooth,
+	setSampler,
 	pushClip,
 	popClip,
 	atlasGen,
@@ -160,7 +160,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 
 function emitNode(n: Node2D, world: Transform2D, na: float32, col: Color, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): void {
 	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
-	setSmooth(n.smooth);
+	setSampler(n.smooth, n.tileWrap);
 	if (n.kind === DrawKind.Rect) {
 		fillQuad(tl, tr, br, bl, col, n.blend);
 	} else if (n.kind === DrawKind.Sprite) {

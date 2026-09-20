@@ -4,7 +4,7 @@
 
 import { Node2D, group, addChild, update } from "./node";
 import { sync, draw } from "./render";
-import { begin2d, end2d } from "./draw";
+import { begin2d, end2d, setSceneSmooth } from "./draw";
 import { Color, Camera, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
@@ -17,13 +17,18 @@ export interface Scene {
 	designH: float32;
 	viewMat: Transform2D;
 	viewInit: boolean;
+	// What a node's `Smooth.Inherit` resolves to. h2d keeps this on the render context and
+	// defaults it to nearest (`h2d/RenderContext.hx:52`); HEAPS.md "Do not copy from h2d"
+	// rejects that default, because scaled UI and text are the common case here, not pixel
+	// art. A pixel-art scene sets it false once instead of tagging every node.
+	defaultSmooth: boolean;
 }
 
 export function scene(clear: Color): Scene {
 	return {
 		root: group(), clear: clear, cam: camera(),
 		scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
-		viewMat: identity2d(), viewInit: false
+		viewMat: identity2d(), viewInit: false, defaultSmooth: true
 	};
 }
 
@@ -95,6 +100,9 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	const hf: float32 = (fh as float32) / dpi;
 	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
 	begin2d(wf, hf, dpi);
+	// Before the walk, never during it: two nodes with identical state must not sample
+	// differently because the default moved between them.
+	setSceneSmooth(s.defaultSmooth);
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const viewChanged: boolean = !s.viewInit
 		|| nv.a != s.viewMat.a || nv.b != s.viewMat.b

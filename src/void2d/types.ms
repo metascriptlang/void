@@ -27,6 +27,11 @@ export function rgba(r: float32, g: float32, b: float32, a: float32): Color {
 // the pipeline table in batcher.c (Alpha=0..None=4).
 export enum BlendMode { Alpha, Add, Multiply, Screen, None }
 
+// h2d.Drawable.smooth is `Null<Bool>`: null means "whatever the scene says". There is no
+// nullable boolean here, so the third state is named instead of encoded, which also makes
+// `node.smooth = Smooth.Inherit` read as the thing it is.
+export enum Smooth { Inherit, Off, On }
+
 export enum ScaleMode { Resize, Stretch, LetterBox, Fixed, Zoom, AutoZoom }
 
 export enum FilterKind { None, Blur, Glow, DropShadow }

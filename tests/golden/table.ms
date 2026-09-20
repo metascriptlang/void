@@ -59,6 +59,8 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/multilineAlign", phase: "P0", width: 384, height: 96, dpi: 1.0, steps: 0, demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/sceneSmooth", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/subFlip", phase: "P0", width: 256, height: 176, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/colorPipeline", phase: "P0", width: 256, height: 170, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/scaleGrid", phase: "P0", width: 256, height: 148, dpi: 1.0, steps: 0, demo: false },
