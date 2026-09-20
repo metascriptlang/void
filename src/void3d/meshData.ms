@@ -6,8 +6,8 @@
 // Heaps keeps points, normals, uvs and colors as four parallel arrays and interleaves them in
 // `getCPUBuffer` at upload. Here the interleave is the storage: one `Vec<float32>` in the Lit
 // layout gpu3d.c describes (position 3, normal 3, rgba 4). There is one layout, it is the one
-// Hibernal's content has, and keeping four arrays would only pay off for a format switch that
-// the fixed sokol-shdc programs do not have (docs/VOID3D.md, Porting rules).
+// this renderer's content has, and keeping four arrays would only pay off for a format switch
+// that the fixed sokol-shdc programs do not have (docs/VOID3D.md, Porting rules).
 //
 // Bounds are maintained as vertices arrive rather than computed on demand as in Heaps'
 // `Polygon.getBounds`: the builders are the only writers, so the bounds cannot go stale, and

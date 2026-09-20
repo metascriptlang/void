@@ -4,7 +4,7 @@
 // The table has `levels` steps per channel and is stored as a 2D texture `levels * levels`
 // wide and `levels` high: cell (red, green, blue) sits at x = red + blue * levels, y = green,
 // the addressing postFs uses. It is built on the CPU and uploaded into one dynamic image, so
-// a palette swap (day/night, Winter, a Fading pet) rewrites pixels and touches no pipeline,
+// a palette swap (day/night, a season, a faded look) rewrites pixels and touches no pipeline,
 // and the image is rebuilt from `pixels` after a context loss.
 
 import {

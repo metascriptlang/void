@@ -87,7 +87,7 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 #define LOOKUP(table, index) ((uint32_t)(index) < COUNT(table) ? table[(uint32_t)(index)] : table[0])
 
 // One entry per MetaScript enum member. These catch a member added on one side only; the
-// order still has to be kept by hand (and is covered by the campfire image check).
+// order still has to be kept by hand (and is covered by the scene image check).
 _Static_assert(COUNT(PROGRAMS) == 4, "PROGRAMS must match Program in gpu3d.ms");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
 _Static_assert(COUNT(COMPARE_FUNCTIONS) == 8, "COMPARE_FUNCTIONS must match Compare in pass.ms");
