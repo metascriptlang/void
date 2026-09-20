@@ -58,6 +58,13 @@ static int s_atlasGen = 0;    // bumped on atlas resize -> invalidates cached gl
 // `sg_make_image` failure 128 resizes later.
 static int s_atlasMade;
 static int s_atlasFreed;
+// Buffers this module owns, counted where sokol is actually called. It used to be
+// `return 3` - a literal, gated in tests/bench/baseline.json against the literal 3, so the
+// assertion compared a constant to a constant and would have kept passing if every Label
+// allocated a buffer again. It also miscounted: two of the three were buffers and the third
+// was the font image.
+static int s_buffersMade;
+static int s_buffersFreed;
 // A glyph that does not fit gets one report, not one per glyph per frame.
 static bool s_atlasFullReported;
 // The atlas image and view a resize retired. They cannot be destroyed on the spot: the
@@ -126,7 +133,10 @@ int void2dDroppedFrames(void) { return s_droppedFrames; }
 // Every sg_buffer and sg_image this layer holds: the one vertex buffer, the fullscreen quad
 // the filter passes draw, and the font atlas image. Constant in the node count, which is the
 // whole point of the change (VOID2D.md P1 exit).
-int void2dBuffersAlive(void) { return 3; }
+// Made minus freed, at the sites that make and free. Two in a steady frame: the growing
+// vertex buffer and the fullscreen quad the filter passes draw. It goes UP if anything starts
+// allocating per node again, which is the whole reason the number is gated.
+int void2dBuffersAlive(void) { return s_buffersMade - s_buffersFreed; }
 
 // Glyph-atlas images made minus freed. One, unless a resize is waiting to be collected at the
 // top of the next frame. A number, because the leak it replaced was invisible until sokol's
@@ -283,12 +293,13 @@ int void2dGrowthTarget(int have, int need) {
 static void ensureVertexBuffer(int bytes) {
 	int want = void2dGrowthTarget(s_vbufBytes, bytes);
 	if (want <= s_vbufBytes) return;
-	if (s_vbuf.id) sg_destroy_buffer(s_vbuf);
+	if (s_vbuf.id) { sg_destroy_buffer(s_vbuf); s_buffersFreed++; }
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;
 	bd.usage.dynamic_update = true;
 	bd.size = (size_t)want;
 	s_vbuf = sg_make_buffer(&bd);
+	s_buffersMade++;
 	s_vbufBytes = want;
 }
 
@@ -338,6 +349,7 @@ void void2dSetup(void) {
 	fqd.usage.vertex_buffer = true;
 	fqd.data = (sg_range){ .ptr = fsq, .size = sizeof(fsq) };
 	s_fsQuad = sg_make_buffer(&fqd);
+	s_buffersMade++;
 
 	s_whiteView = (sg_view){ .id = voidMakeView(voidMakeImage(NULL, 0, 0)) };
 	// Four samplers, made once: smooth * 2 + tileWrap. They are four objects and not a

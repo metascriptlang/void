@@ -14,6 +14,7 @@ import {
 	buffersAlive,
 	uploadCount,
 	uploadBytes,
+	atlasImagesAlive,
 	recordedVertexCount,
 	droppedFrames,
 } from "../void2d/draw";
@@ -89,6 +90,7 @@ function report(): void {
 	console.log(`${benchName}.vertices ${recordedVertexCount()}`);
 	console.log(`${benchName}.uploads ${uploadCount()}`);
 	console.log(`${benchName}.uploadBytes ${uploadBytes()}`);
+	console.log(`${benchName}.atlasImages ${atlasImagesAlive()}`);
 	console.log(`${benchName}.droppedFrames ${droppedFrames()}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
 }

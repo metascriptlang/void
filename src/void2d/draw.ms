@@ -18,6 +18,7 @@ import {
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
+	void2dAtlasImagesAlive,
 } from "./batcher.h";
 import {
 	CommandKind, BreakReason,
@@ -84,6 +85,11 @@ export function uploadBytes(): int32 { return void2dUploadBytes(); }
 export function buffersAlive(): int32 { return void2dBuffersAlive(); }
 export function instanceBufferBytes(): int32 { return void2dInstanceBufferBytes(); }
 export function droppedFrames(): int32 { return void2dDroppedFrames(); }
+
+// Glyph-atlas images made minus freed. Declared in batcher.h since the atlas grew a
+// resize path, but until now nothing in MetaScript read it, so no tier reproduced the
+// "3 made, 2 freed, 1 alive" the commit message reported.
+export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
 
 // The vertex-buffer growth policy, as pure arithmetic. Re-exported rather than imported from
 // `batcher.h` directly, because a header imported from a second directory compiles its `.c`
