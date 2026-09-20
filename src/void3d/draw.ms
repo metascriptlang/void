@@ -84,6 +84,11 @@ export enum UniformError {
 	PoolFull,
 }
 
+export enum MeshUploadError {
+	VertexBufferRefused,
+	IndexBufferRefused,
+}
+
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
 export function withUniformCapacity(this typeof DrawContext, capacity: int32): DrawContext {
 	const bindings: Vec<uint32> = new Array(GPU3D_BINDING_LENGTH);
@@ -134,14 +139,40 @@ export function isStale(this mesh: GpuMesh, data: MeshData, generation: int32): 
 	return data.vertexCount() > 0 && mesh.generation != generation;
 }
 
+// The same mesh with nothing to draw and no generation, so a refused upload draws nothing and
+// stays stale for the next rebuild rather than drawing wrong triangles.
+function drawsNothing(this mesh: GpuMesh): GpuMesh {
+	return {
+		...mesh,
+		vertexBuffer: 0,
+		indexBuffer: 0,
+		vertexCount: 0,
+		indexCount: 0,
+		generation: 0,
+	};
+}
+
 // Makes the buffers for mesh `index` from its CPU data and points the GpuMesh at them. The
 // old handles are dropped rather than destroyed: after a context loss they may already name an
 // object of the new context (docs/VOID3D.md, Android lifecycle).
-export function uploadMesh(ref context: DrawContext, index: int32): void {
+//
+// A buffer the driver refuses comes back as handle 0. That must not reach `meshFor`: whether a
+// GpuMesh is indexed is read off `indexBuffer`, so an indexed mesh whose index buffer was
+// refused would silently become a non-indexed draw over an indexed vertex array — 194 wrong
+// triangles instead of 292 right ones, with no diagnostic. The mesh is emptied instead.
+export function uploadMesh(ref context: DrawContext, index: int32): Result<int32, MeshUploadError> {
 	const vertexBuffer: uint32 = makeVertexBuffer(context.meshData[index].vertices);
 	let indexBuffer: uint32 = 0;
 	if (context.meshData[index].isIndexed()) {
 		indexBuffer = makeIndexBuffer(context.meshData[index].indices);
+	}
+	if (vertexBuffer == 0) {
+		context.meshes[index] = context.meshes[index].drawsNothing();
+		return Result.err(MeshUploadError.VertexBufferRefused);
+	}
+	if (context.meshData[index].isIndexed() && indexBuffer == 0) {
+		context.meshes[index] = context.meshes[index].drawsNothing();
+		return Result.err(MeshUploadError.IndexBufferRefused);
 	}
 	context.meshes[index] = meshFor(
 		context.meshData[index],
@@ -149,16 +180,21 @@ export function uploadMesh(ref context: DrawContext, index: int32): void {
 		indexBuffer,
 		contextGeneration(),
 	);
+	return Result.ok(index);
 }
 
-// Takes a copy of `data` — a MeshData owns two Vec, and a Vec assignment copies (CODE-STYLE
-// §5) — uploads it, and returns the index both tables now share.
-export function addMeshData(ref context: DrawContext, data: MeshData): int32 {
+// Takes a copy of `data` — pushing a MeshData into the table copies its two Vec (CODE-STYLE
+// §5) — uploads it, and returns the index both tables now share. The entry is kept even when
+// the upload is refused: the CPU data is what a later rebuild works from.
+export function addMeshData(
+	ref context: DrawContext,
+	data: MeshData,
+): Result<int32, MeshUploadError> {
 	const index: int32 = context.meshes.length as int32;
 	context.meshData.push(data);
 	context.meshes.push(meshFor(data, 0, 0, 0));
-	uploadMesh(context, index);
-	return index;
+	const uploaded: int32 = try uploadMesh(context, index);
+	return Result.ok(uploaded);
 }
 
 // How many meshes would come back on their own after a context loss.
@@ -179,17 +215,18 @@ export function staleMeshes(this context: DrawContext, generation: int32): int32
 	return count;
 }
 
-// Re-uploads every mesh whose handles are from an older GPU context, and answers how many.
-// Called from the core's beginFrame on the frame that sees a new contextGeneration; a mesh
-// uploaded on this generation already (addMeshData, the common case) is left alone. It
-// allocates no MetaScript memory.
+// Re-uploads every mesh whose handles are from an older GPU context, and answers how many came
+// back. Called from the core's beginFrame on the frame that sees a new contextGeneration; a
+// mesh uploaded on this generation already (addMeshData, the common case) is left alone. A
+// mesh the driver refuses is left empty and stale, so it is retried on the next rebuild and is
+// not counted here. Nothing on this path allocates: a MeshData parameter is passed by pointer,
+// not copied, because the struct is over 24 bytes (CODE-STYLE §5, measured on 0.2.53).
 export function rebuildMeshes(ref context: DrawContext): int32 {
 	const generation: int32 = contextGeneration();
 	let rebuilt: int32 = 0;
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (!context.meshes[i].isStale(context.meshData[i], generation)) { continue; }
-		uploadMesh(context, i);
-		rebuilt = rebuilt + 1;
+		if (uploadMesh(context, i).ok) { rebuilt = rebuilt + 1; }
 	}
 	return rebuilt;
 }

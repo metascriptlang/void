@@ -240,6 +240,25 @@ test "the descriptor carries the index type, and only the index type, for an ind
 
 // The key packs the vertex layout in three bits and the indexed flag in the fourth; one more
 // layout than this and it needs a second word (pipelineCache.ms).
+// The indexed flag is bit 3 of the layout field. If the layout were written unmasked, an
+// ordinal of 8 would set that bit and be indistinguishable from an indexed layout 0.
+test "a vertex layout ordinal cannot forge the indexed flag" {
+	const state: RenderState = sceneState();
+	const targets: TargetLayout = sceneLayout();
+	const plain: PipelineKey = pipelineKey(Program.Lit, VertexLayout.Lit, NOT_INDEXED, state, targets);
+	const indexed: PipelineKey = pipelineKey(Program.Lit, VertexLayout.Lit, true, state, targets);
+	assert !plain.isIndexed() && indexed.isIndexed();
+	assert plain.bits != indexed.bits;
+	const forged: PipelineKey = pipelineKey(
+		Program.Lit,
+		(8 as int32) as VertexLayout,
+		NOT_INDEXED,
+		state,
+		targets,
+	);
+	assert !forged.isIndexed();
+}
+
 test "every vertex layout still fits the three bits the key gives it" {
 	assert (VertexLayout.Lit as int32) < LAYOUT_LIMIT;
 	assert (VertexLayout.Billboard as int32) < LAYOUT_LIMIT;

@@ -106,7 +106,7 @@ enum { LAYOUT_LIT, LAYOUT_BILLBOARD, LAYOUT_FULLSCREEN };
 static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 	switch (layout) {
 	case LAYOUT_LIT:
-		// position, normal, rgba; one interleaved buffer (mesh.ms LIT_VERTEX_STRIDE)
+		// position, normal, rgba; one interleaved buffer (meshData.ms LIT_VERTEX_STRIDE)
 		out->attrs[ATTR_lit_position].format = SG_VERTEXFORMAT_FLOAT3;
 		out->attrs[ATTR_lit_normal].format = SG_VERTEXFORMAT_FLOAT3;
 		out->attrs[ATTR_lit_color].format = SG_VERTEXFORMAT_FLOAT4;
