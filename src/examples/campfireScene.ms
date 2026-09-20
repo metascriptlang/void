@@ -542,6 +542,42 @@ function forceRebuild(): void {
 	rebuildMeshes(context);
 }
 
+// What the bench stage reads. Every field is a length that a steady frame must not move: the
+// draw list, the tree's node table and its descent stack, the uniform pool, the mesh table and
+// the pipeline cache. "Frame state is preallocated... nothing in `frame` allocates"
+// (docs/VOID3D.md, Data types) is a claim about exactly these, and a growth of zero across a
+// long run is what makes it a measurement instead of an intention.
+//
+// The DRC ledger (`-DMS_DRC_LEDGER`) is deliberately not what this uses. It was tried: it
+// counts typed ref objects and reports alloc=0 for a `Vec` and for a string, so on a renderer
+// built from structs and `Vec` it would pass while measuring nothing. A gate that cannot fail
+// is worse than no gate.
+export struct CampfireStats {
+	drawItems: int32;
+	nodes: int32;
+	meshes: int32;
+	rebuildable: int32;
+	pipelines: int32;
+	uniforms: int32;
+	stack: int32;
+}
+
+export function campfireStats(): CampfireStats {
+	let rebuildable: int32 = 0;
+	for (let i = 0; i < (context.meshData.length as int32); i++) {
+		if (context.meshData[i].vertexCount() > 0) { rebuildable = rebuildable + 1; }
+	}
+	return {
+		drawItems: sceneItems.length as int32,
+		nodes: tree.nodeCount(),
+		meshes: context.meshes.length as int32,
+		rebuildable: rebuildable,
+		pipelines: context.pipelines.entries.length as int32,
+		uniforms: context.uniforms.length as int32,
+		stack: tree.stack.length as int32,
+	};
+}
+
 export function initCampfire(): void {
 	gfxSetup();
 	buildScene();
