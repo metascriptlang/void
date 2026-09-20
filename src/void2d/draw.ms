@@ -1,14 +1,33 @@
-// Void 2D batcher — LOGIC in MetaScript. Owns the packed vertex buffer (Vec<float32>)
-// and builds quad/glyph geometry; C (batcher.c) only does sokol uploads + fontstash layout.
-// Public API takes value types (Vec2/Color). import-from-.h auto-compiles batcher.c + maps
-// the string param of void2dTextBegin.
+// Void 2D emitter — turns the tree walk into a display list and nothing else.
+//
+// Before P1 this file issued sokol calls as the tree was walked: every state change was a
+// flush, every Label and Graphics owned an sg_buffer, and a Mask applied a scissor on the
+// spot. Now it appends to the two streams in displayList.ms and `end2d()` hands the whole
+// frame to `void2dReplay` once. The only sokol calls left here are the ones that are not
+// drawing — creating a render target, opening a pass — and those are the host's, not the
+// walk's.
+//
+// A batch ends when the state the replay would have to change ends: a different view, blend,
+// sampler or colour pipeline. The reason is recorded with the command, so a T1 snapshot says
+// `break: view` rather than leaving a count to be explained.
 
 import {
-	void2dSetup, void2dWhiteView, void2dFontView, void2dUploadDraw, void2dScissor, void2dSetRTMode, void2dSetDpiScale, void2dFrameBegin,
-	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight, void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
-	void2dMakeStaticBuffer, void2dDestroyStaticBuffer, void2dDrawStatic, void2dBlur,
-	void2dStaticBuffersAlive, void2dStaticBuffersRefused
+	void2dSetup, void2dWhiteView, void2dFontView, void2dSetDpiScale, void2dFrameBegin,
+	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight,
+	void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
+	void2dReplay, void2dLayoutCheck,
+	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
+	void2dInstanceBufferBytes, void2dDroppedFrames,
 } from "./batcher.h";
+import {
+	CommandKind, BreakReason,
+	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
+	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SMOOTH,
+	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE,
+	commands, effects, vertices,
+	resetList, commandCount, effectCount, vertexCount, drawCommandCount, setRenderTargetMode,
+	pushVertex, pushEffect, recordDraw, recordClip, recordBlur,
+} from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
 
@@ -18,27 +37,33 @@ export function rtViewId(rt: uint32): uint32 { return renderTargetView(rt); }
 export function beginRT(rt: uint32, r: float32, g: float32, b: float32, a: float32): void { beginRenderTargetPass(rt, r, g, b, a); }
 export function endRT(): void { endPass(); }
 
-const MAX_VERTS: int32 = 65536;
-const verts: Vec<float32> = new Array(MAX_VERTS * 8);
-let vertCount: int32 = 0;
+// The batch the emitter is accumulating: a run of vertices that share every piece of state
+// the replay would otherwise have to change between them.
+let runStart: int32 = 0;
+let runOpen: boolean = false;
+let runReason: BreakReason = BreakReason.First;
 let curView: uint32 = 0;
 let curBlend: BlendMode = BlendMode.Alpha;
 let curSmooth: boolean = true;
+let curEffect: int32 = NO_EFFECT;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
-let _drawCallCount: int32 = 0;
 
-export function drawCallCount(): int32 { return _drawCallCount; }
+export function drawCallCount(): int32 { return void2dDrawCallCount(); }
+export function uploadCount(): int32 { return void2dUploadCount(); }
+export function uploadBytes(): int32 { return void2dUploadBytes(); }
+export function buffersAlive(): int32 { return void2dBuffersAlive(); }
+export function instanceBufferBytes(): int32 { return void2dInstanceBufferBytes(); }
+export function droppedFrames(): int32 { return void2dDroppedFrames(); }
 
-// Retained GPU buffers alive, and a monotonic count of the allocations sokol refused. The
-// second number is zero until the 128-object default pool runs out, which today it does at
-// about 126 Labels or Graphics (VOID2D.md "Known defects", closed at P1).
-export function staticBuffersAlive(): int32 { return void2dStaticBuffersAlive(); }
-export function staticBuffersRefused(): int32 { return void2dStaticBuffersRefused(); }
+// Counted from the stream rather than from the GPU, so T1 can read them with no GPU at all.
+export function recordedDrawCount(): int32 { return drawCommandCount(); }
+export function recordedCommandCount(): int32 { return commandCount(); }
+export function recordedVertexCount(): int32 { return vertexCount(); }
 
-// h2d.Drawable colour pipeline as batch state: identity matrix + zero add = no-op, so
-// effect-free nodes batch together. A node with a distinct effect starts its own run
-// (flush on change, like blend mode); identical-effect runs aren't deduped yet.
+// h2d.Drawable colour pipeline as batch state. An identity matrix with a zero add and no key
+// is `NO_EFFECT`, so effect-free nodes — almost all of them — share one batch and cost no
+// row in the effect table.
 const curMat: Vec<float32> = [
 	1.0, 0.0, 0.0, 0.0,
 	0.0, 1.0, 0.0, 0.0,
@@ -49,8 +74,8 @@ let curAdd: Color = rgba(0.0, 0.0, 0.0, 0.0);
 let curKey: Color = rgba(0.0, 0.0, 0.0, 0.0);
 let curHasEffect: boolean = false;
 
-// h2d.Mask clip stack: each pushClip intersects with the enclosing zone (Heaps
-// clipRenderZone semantics) and flushes so the scissor only bounds the masked subtree.
+// h2d.Mask clip stack: each push intersects with the enclosing zone (Heaps clipRenderZone
+// semantics). Intersecting rather than replacing is what makes a nested Mask clip to both.
 const clipX0: Vec<float32> = new Array(16);
 const clipY0: Vec<float32> = new Array(16);
 const clipX1: Vec<float32> = new Array(16);
@@ -58,93 +83,119 @@ const clipY1: Vec<float32> = new Array(16);
 let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {
-	let i: int32 = 0;
-	while (i < 16) { curMat[i] = 0.0; i = i + 1; }
-	curMat[0] = 1.0; curMat[5] = 1.0; curMat[10] = 1.0; curMat[15] = 1.0;
+	for (let i: int32 = 0; i < 16; i++) { curMat[i] = i % 5 == 0 ? 1.0 : 0.0; }
 }
 
 function effectMatrixSame(mat: float32[], hasMat: boolean): boolean {
 	if (hasMat) {
-		let i: int32 = 0;
-		while (i < 16) { if (mat[i] != curMat[i]) { return false; } i = i + 1; }
+		for (let i: int32 = 0; i < 16; i++) { if (mat[i] != curMat[i]) { return false; } }
 		return true;
 	}
-	return curMat[0] == 1.0 && curMat[5] == 1.0 && curMat[10] == 1.0 && curMat[15] == 1.0
-		&& curMat[1] == 0.0 && curMat[2] == 0.0 && curMat[3] == 0.0 && curMat[4] == 0.0
-		&& curMat[6] == 0.0 && curMat[7] == 0.0 && curMat[8] == 0.0 && curMat[9] == 0.0
-		&& curMat[11] == 0.0 && curMat[12] == 0.0 && curMat[13] == 0.0 && curMat[14] == 0.0;
+	for (let i: int32 = 0; i < 16; i++) {
+		if (curMat[i] != (i % 5 == 0 ? 1.0 : 0.0)) { return false; }
+	}
+	return true;
 }
 
-function flush(): void {
-	if (vertCount == 0) { return; }
-	const sm: int32 = curSmooth ? 1 : 0;
-	void2dUploadDraw(verts[0], vertCount, curView, curBlend as int32, fbW, fbH, curMat[0], curAdd.r, curAdd.g, curAdd.b, curAdd.a, curKey.r, curKey.g, curKey.b, curKey.a, sm);
-	vertCount = 0;
-	_drawCallCount = _drawCallCount + 1;
+// Close the open run as one Draw command. Called when the state changes, when a clip moves,
+// and at the end of the bracket — never in the middle of a primitive.
+function closeRun(): void {
+	if (!runOpen) { return; }
+	const count: int32 = vertexCount() - runStart;
+	if (count > 0) {
+		recordDraw(runReason, runStart, count, curView, curBlend, curSmooth, curEffect);
+	}
+	runOpen = false;
 }
 
-function useState(v: uint32, b: BlendMode): void {
-	if (v != curView || b != curBlend) { flush(); curView = v; curBlend = b; }
+function openRun(reason: BreakReason): void {
+	runStart = vertexCount();
+	runReason = reason;
+	runOpen = true;
 }
 
-function pushVert(x: float32, y: float32, u: float32, v: float32, r: float32, g: float32, b: float32, a: float32): void {
-	const o: int32 = vertCount * 8;
-	verts[o] = x; verts[o + 1] = y; verts[o + 2] = u; verts[o + 3] = v;
-	verts[o + 4] = r; verts[o + 5] = g; verts[o + 6] = b; verts[o + 7] = a;
-	vertCount = vertCount + 1;
-}
-
-function quad(view: uint32, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {
-	useState(view, blend);
-	if (vertCount + 6 > MAX_VERTS) { flush(); }
-	const x1: float32 = x + w;
-	const y1: float32 = y + h;
-	pushVert(x, y, u0, v0, c.r, c.g, c.b, c.a);
-	pushVert(x1, y, u1, v0, c.r, c.g, c.b, c.a);
-	pushVert(x1, y1, u1, v1, c.r, c.g, c.b, c.a);
-	pushVert(x, y, u0, v0, c.r, c.g, c.b, c.a);
-	pushVert(x1, y1, u1, v1, c.r, c.g, c.b, c.a);
-	pushVert(x, y1, u0, v1, c.r, c.g, c.b, c.a);
+function useState(view: uint32, blend: BlendMode): void {
+	if (runOpen && view == curView && blend == curBlend) { return; }
+	const reason: BreakReason = !runOpen ? BreakReason.First
+		: (view != curView ? BreakReason.View : BreakReason.Blend);
+	closeRun();
+	curView = view;
+	curBlend = blend;
+	openRun(reason);
 }
 
 export function setup2d(): void {
 	void2dSetup();
+	// The emitter and the replay are two hand-written readers of one byte layout, so they
+	// are made to agree out loud rather than by inspection.
+	if (void2dLayoutCheck(
+		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
+		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
+		CMD_VIEW, CMD_BLEND, CMD_SMOOTH, CMD_EFFECT,
+		CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE,
+		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
+	) == 0) {
+		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
+	}
 }
+
+// The glyph atlas view, so render.ms can emit a Label's mesh against it without reaching
+// into batcher.h itself.
+export function fontView(): uint32 { return void2dFontView(); }
 
 export function atlasGen(): int32 { return void2dAtlasGen(); }
 export function addFont(path: string): int32 { return void2dAddFont(path); }
 
-export function begin2d(w: int32, h: int32, dpi: float32): void {
+// h2d has no DPI concept; void2d needs one because snapping and the pixel-exact text regime
+// are stated per device pixel. The logical size is a float — the `as int32` truncation that
+// put every glyph off-grid at DPI 1.25 and 1.5 is gone (VOID2D.md "Known defects").
+export function begin2d(w: float32, h: float32, dpi: float32): void {
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
-	fbW = w as float32;
-	fbH = h as float32;
-	vertCount = 0;
+	fbW = w;
+	fbH = h;
+	resetList();
+	runOpen = false;
+	runStart = 0;
 	curView = void2dWhiteView();
 	curBlend = BlendMode.Alpha;
 	curSmooth = true;
+	curEffect = NO_EFFECT;
 	setIdentityMat();
 	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
 	curKey = rgba(0.0, 0.0, 0.0, 0.0);
 	curHasEffect = false;
 	clipDepth = 0;
-	_drawCallCount = 0;
 }
 
-function applyScissor(x0: float32, y0: float32, x1: float32, y1: float32): void {
-	let ix: int32 = x0 as int32;
-	let iy: int32 = y0 as int32;
-	let iw: int32 = (x1 - x0) as int32;
-	let ih: int32 = (y1 - y0) as int32;
-	if (ix < 0) { iw = iw + ix; ix = 0; }
-	if (iy < 0) { ih = ih + iy; iy = 0; }
-	if (iw < 0) { iw = 0; }
-	if (ih < 0) { ih = 0; }
-	void2dScissor(ix, iy, iw, ih);
+// Replay the frame into the pass the caller already has open. This is the only place the GPU
+// is touched, and it happens after the walk has finished.
+export function end2d(): void {
+	closeRun();
+	if (commandCount() == 0) { return; }
+	void2dReplay(
+		commands[0], commandCount(),
+		effects[0], effectCount(),
+		vertices[0], vertexCount(),
+		fbW, fbH,
+	);
+}
+
+function applyClip(x0: float32, y0: float32, x1: float32, y1: float32): void {
+	let ix: float32 = x0;
+	let iy: float32 = y0;
+	let iw: float32 = x1 - x0;
+	let ih: float32 = y1 - y0;
+	if (ix < 0.0) { iw = iw + ix; ix = 0.0; }
+	if (iy < 0.0) { ih = ih + iy; iy = 0.0; }
+	if (iw < 0.0) { iw = 0.0; }
+	if (ih < 0.0) { ih = 0.0; }
+	closeRun();
+	recordClip(ix, iy, iw, ih);
+	openRun(BreakReason.Clip);
 }
 
 export function pushClip(minX: float32, minY: float32, maxX: float32, maxY: float32): void {
-	flush();
 	let x0: float32 = minX;
 	let y0: float32 = minY;
 	let x1: float32 = maxX;
@@ -157,31 +208,34 @@ export function pushClip(minX: float32, minY: float32, maxX: float32, maxY: floa
 		if (clipY1[d] < y1) { y1 = clipY1[d]; }
 	}
 	while (clipDepth >= clipX0.length as int32) {
-		clipX0.push(0.0 as float32); clipY0.push(0.0 as float32); clipX1.push(0.0 as float32); clipY1.push(0.0 as float32);
+		clipX0.push(0.0 as float32);
+		clipY0.push(0.0 as float32);
+		clipX1.push(0.0 as float32);
+		clipY1.push(0.0 as float32);
 	}
 	clipX0[clipDepth] = x0;
 	clipY0[clipDepth] = y0;
 	clipX1[clipDepth] = x1;
 	clipY1[clipDepth] = y1;
 	clipDepth = clipDepth + 1;
-	applyScissor(x0, y0, x1, y1);
+	applyClip(x0, y0, x1, y1);
 }
 
 export function popClip(): void {
-	flush();
 	if (clipDepth > 0) { clipDepth = clipDepth - 1; }
 	if (clipDepth > 0) {
 		const d: int32 = clipDepth - 1;
-		applyScissor(clipX0[d], clipY0[d], clipX1[d], clipY1[d]);
+		applyClip(clipX0[d], clipY0[d], clipX1[d], clipY1[d]);
 	} else {
-		void2dScissor(0, 0, fbW as int32, fbH as int32);
+		closeRun();
+		recordClip(0.0, 0.0, 0.0, 0.0);
+		openRun(BreakReason.Clip);
 	}
 }
 
-// h2d.Drawable color pipeline → batch state. mat = 16-float column-major colorMatrix
+// h2d.Drawable colour pipeline → batch state. mat = 16-float column-major colorMatrix
 // (empty/<16 = identity); add = rgba added after; key = chroma colorKey (a>0 enables,
-// matching texels go transparent). Flushes when switching off the effect-free batch
-// (or onto a different effect).
+// matching texels go transparent).
 export function setEffect(mat: float32[], add: Color, key: Color): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
@@ -190,21 +244,37 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 		&& add.r == curAdd.r && add.g == curAdd.g && add.b == curAdd.b && add.a == curAdd.a
 		&& key.r == curKey.r && key.g == curKey.g && key.b == curKey.b && key.a == curKey.a
 		&& effectMatrixSame(mat, hasMat)) { return; }
-	flush();
+	closeRun();
 	if (hasMat) {
-		let i: int32 = 0;
-		while (i < 16) { curMat[i] = mat[i]; i = i + 1; }
+		for (let i: int32 = 0; i < 16; i++) { curMat[i] = mat[i]; }
 	} else {
 		setIdentityMat();
 	}
 	curAdd = add;
 	curKey = key;
 	curHasEffect = wantsEffect;
+	curEffect = wantsEffect ? pushEffect(mat, add, key) : NO_EFFECT;
+	openRun(BreakReason.Effect);
 }
 
-// h2d.Drawable.smooth — pick linear (true) vs nearest (false) sampling; batch state.
+// h2d.Drawable.smooth — linear (true) vs nearest (false) sampling; batch state.
 export function setSmooth(s: boolean): void {
-	if (s != curSmooth) { flush(); curSmooth = s; }
+	if (s == curSmooth) { return; }
+	closeRun();
+	curSmooth = s;
+	openRun(BreakReason.Smooth);
+}
+
+function quad(view: uint32, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {
+	useState(view, blend);
+	const x1: float32 = x + w;
+	const y1: float32 = y + h;
+	pushVertex(x, y, u0, v0, c.r, c.g, c.b, c.a);
+	pushVertex(x1, y, u1, v0, c.r, c.g, c.b, c.a);
+	pushVertex(x1, y1, u1, v1, c.r, c.g, c.b, c.a);
+	pushVertex(x, y, u0, v0, c.r, c.g, c.b, c.a);
+	pushVertex(x1, y1, u1, v1, c.r, c.g, c.b, c.a);
+	pushVertex(x, y1, u0, v1, c.r, c.g, c.b, c.a);
 }
 
 export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode): void {
@@ -216,14 +286,12 @@ export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: Bl
 }
 
 // `size` is the FIXED rasterization size (stable atlas — never animate it, or fontstash
-// re-rasterizes every frame → atlas churn/flicker). `scale` transforms the glyph quads,
-// so animated scaling stays crisp-enough and the atlas is untouched.
+// re-rasterizes every frame → atlas churn/flicker). `scale` transforms the glyph quads.
 export function drawText(pos: Vec2, size: float32, scale: float32, text: string, color: Color, blend: BlendMode): void {
 	useState(void2dFontView(), blend);
-	void2dTextBegin(0.0, 0.0, size, text);   // layout at origin; pos+scale applied per-corner below
+	void2dTextBegin(0.0, 0.0, size, text);
 	let q: Ptr<float32> = void2dTextNext();
 	while (q !== null) {
-		if (vertCount + 6 > MAX_VERTS) { flush(); }
 		const x0: float32 = pos.x + q[0] * scale;
 		const y0: float32 = pos.y + q[1] * scale;
 		const s0: float32 = q[2];
@@ -232,68 +300,80 @@ export function drawText(pos: Vec2, size: float32, scale: float32, text: string,
 		const y1: float32 = pos.y + q[5] * scale;
 		const s1: float32 = q[6];
 		const t1: float32 = q[7];
-		pushVert(x0, y0, s0, t0, color.r, color.g, color.b, color.a);
-		pushVert(x1, y0, s1, t0, color.r, color.g, color.b, color.a);
-		pushVert(x1, y1, s1, t1, color.r, color.g, color.b, color.a);
-		pushVert(x0, y0, s0, t0, color.r, color.g, color.b, color.a);
-		pushVert(x1, y1, s1, t1, color.r, color.g, color.b, color.a);
-		pushVert(x0, y1, s0, t1, color.r, color.g, color.b, color.a);
+		pushVertex(x0, y0, s0, t0, color.r, color.g, color.b, color.a);
+		pushVertex(x1, y0, s1, t0, color.r, color.g, color.b, color.a);
+		pushVertex(x1, y1, s1, t1, color.r, color.g, color.b, color.a);
+		pushVertex(x0, y0, s0, t0, color.r, color.g, color.b, color.a);
+		pushVertex(x1, y1, s1, t1, color.r, color.g, color.b, color.a);
+		pushVertex(x0, y1, s0, t1, color.r, color.g, color.b, color.a);
 		q = void2dTextNext();
 	}
 	void2dTextSyncAtlas();
 }
 
-export function end2d(): void { flush(); }
+// Which pipeline set the following draws need: the offscreen one (single sample, no depth)
+// or the swapchain one. Recorded per command rather than flipped here, because the replay
+// runs after the recording has finished — the demo caught this the moment the display list
+// landed, with every render-target draw replaying under the swapchain set.
+export function setRTMode(on: boolean): void {
+	closeRun();
+	setRenderTargetMode(on);
+	openRun(BreakReason.Barrier);
+}
 
-// Toggle offscreen-RT pipeline routing (flush first — pipeline set changes at pass boundaries).
-export function setRTMode(on: boolean): void { flush(); void2dSetRTMode(on ? 1 : 0); }
-
-// One separable-blur tap pass (h2d.filter.Blur) into the active RT pass. `step` is the per-tap
-// UV offset (radius/size); run horizontal (step,0) then vertical (0,step) ping-ponging two RTs.
+// One separable-blur tap pass (h2d.filter.Blur) recorded into the stream. `step` is the
+// per-tap UV offset; run horizontal (step,0) then vertical (0,step) ping-ponging two RTs.
 export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void {
-	void2dBlur(srcView, stepX, stepY);
+	closeRun();
+	recordBlur(srcView, stepX, stepY);
+	openRun(BreakReason.Barrier);
 }
 
-// ===== static (retained) geometry: local-space buffer + object matrix in the shader =====
+// ===== world-space geometry from a retained local-space mesh =====
 
-const idMat16: float32[] = [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0];
-
-export function uploadStaticMesh(mesh: float32[], vertCount: int32): uint32 {
-	return void2dMakeStaticBuffer(mesh[0], vertCount);
-}
-
-export function destroyStaticMesh(buf: uint32): void {
-	void2dDestroyStaticBuffer(buf);
-}
-
-// Draw a Graphics static buffer: flush the pending dynamic batch first (z-order), then one draw
-// call with the object matrix (m) + accumulated alpha (na) + the node's colour pipeline.
-export function drawStaticGraphics(buf: uint32, vertCount: int32, view: uint32, blend: BlendMode,
-	m: Transform2D, na: float32, colorMatrix: float32[], colorAdd: Color, colorKey: Color, smooth: boolean): void {
-	if (vertCount <= 0 || buf == 0) { return; }
-	flush();
-	const hasMat: boolean = (colorMatrix.length as int32) >= 16;
-	const mat: float32[] = hasMat ? colorMatrix : idMat16;
-	const sm: int32 = smooth ? 1 : 0;
-	void2dDrawStatic(buf, vertCount, view, blend as int32, fbW, fbH,
-		m.a, m.b, m.c, m.d, m.tx, m.ty,
-		1.0, 1.0, 1.0, na,
-		mat[0], colorAdd.r, colorAdd.g, colorAdd.b, colorAdd.a,
-		colorKey.r, colorKey.g, colorKey.b, colorKey.a, sm);
-	_drawCallCount = _drawCallCount + 1;
+// A Label's glyphs and a Graphics' triangles are built once in LOCAL space and kept on the
+// node. Before P1 each owned an sg_buffer and was drawn with an object matrix in the shader,
+// which is why at most about 126 of them could exist at all. Now the mesh is transformed
+// here and appended to the frame's stream, so any number of them share one buffer and one
+// draw per state run. P2 gives the transform back to the GPU as a per-instance affine; until
+// then the CPU does it, which is what the old dynamic path already did for every Rect.
+export function drawMesh(
+	mesh: float32[],
+	view: uint32,
+	blend: BlendMode,
+	m: Transform2D,
+	tint: Color,
+	alpha: float32,
+): void {
+	const total: int32 = mesh.length as int32;
+	if (total < VERTEX_FLOATS) { return; }
+	useState(view == 0 ? void2dWhiteView() : view, blend);
+	for (let i: int32 = 0; i + VERTEX_FLOATS <= total; i = i + VERTEX_FLOATS) {
+		const lx: float32 = mesh[i];
+		const ly: float32 = mesh[i + 1];
+		pushVertex(
+			m.a * lx + m.c * ly + m.tx,
+			m.b * lx + m.d * ly + m.ty,
+			mesh[i + 2],
+			mesh[i + 3],
+			mesh[i + 4] * tint.r,
+			mesh[i + 5] * tint.g,
+			mesh[i + 6] * tint.b,
+			mesh[i + 7] * tint.a * alpha,
+		);
+	}
 }
 
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
 
 function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2, u0: float32, v0: float32, u1: float32, v1: float32, color: Color): void {
 	useState(view, blend);
-	if (vertCount + 6 > MAX_VERTS) { flush(); }
-	pushVert(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
-	pushVert(b.x, b.y, u1, v0, color.r, color.g, color.b, color.a);
-	pushVert(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
-	pushVert(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
-	pushVert(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
-	pushVert(d.x, d.y, u0, v1, color.r, color.g, color.b, color.a);
+	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
+	pushVertex(b.x, b.y, u1, v0, color.r, color.g, color.b, color.a);
+	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
+	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
+	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
+	pushVertex(d.x, d.y, u0, v1, color.r, color.g, color.b, color.a);
 }
 
 export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
@@ -307,21 +387,4 @@ export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Co
 // explicit-UV textured quad — ScaleGrid 9-slice cells carry their own UV sub-rect.
 export function imageQuadUV(view: uint32, u0: float32, v0: float32, u1: float32, v1: float32, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
 	quad4(view, blend, a, b, c, d, u0, v0, u1, v1, color);
-}
-
-// Draw a Label static glyph buffer: flush first (z-order), then one draw call with the object
-// matrix + the label colour×alpha as globalColor (glyphs are white) + the node's colour pipeline.
-export function drawStaticText(buf: uint32, vertCount: int32, m: Transform2D, color: Color, na: float32,
-	blend: BlendMode, colorMatrix: float32[], colorAdd: Color, colorKey: Color, smooth: boolean): void {
-	if (vertCount <= 0 || buf == 0) { return; }
-	flush();
-	const hasMat: boolean = (colorMatrix.length as int32) >= 16;
-	const mat: float32[] = hasMat ? colorMatrix : idMat16;
-	const sm: int32 = smooth ? 1 : 0;
-	void2dDrawStatic(buf, vertCount, void2dFontView(), blend as int32, fbW, fbH,
-		m.a, m.b, m.c, m.d, m.tx, m.ty,
-		color.r, color.g, color.b, color.a * na,
-		mat[0], colorAdd.r, colorAdd.g, colorAdd.b, colorAdd.a,
-		colorKey.r, colorKey.g, colorKey.b, colorKey.a, sm);
-	_drawCallCount = _drawCallCount + 1;
 }

@@ -8,7 +8,15 @@
 // fail a commit, because this is a shared developer box.
 
 import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
-import { setup2d, drawCallCount, staticBuffersAlive, staticBuffersRefused } from "../void2d/draw";
+import {
+	setup2d,
+	drawCallCount,
+	buffersAlive,
+	uploadCount,
+	uploadBytes,
+	recordedVertexCount,
+	droppedFrames,
+} from "../void2d/draw";
 import { rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
@@ -69,16 +77,19 @@ export function benchInit(kind: BenchKind): void {
 
 // One `key value` pair per line, so a gate reads rows instead of parsing prose.
 //
-// `retainedNodes` is how many nodes asked for a GPU buffer; `buffersAlive` is how many got
-// one, so on the UI scene the pair reads directly as "10 000 labels asked, 126 drew".
-// `buffersRefused` is monotonic and counts the refusals, which for a static scene is the
-// difference and for a scene that rebuilds a mesh every frame is larger.
+// `retainedNodes` is how many nodes carry a mesh of their own — the Labels. Since P1 they
+// all draw: `buffersAlive` is constant in the node count, because the whole frame shares one
+// growing vertex buffer instead of one per node, and `vertices` is what proves every label
+// emitted its geometry rather than being silently dropped by a full resource pool.
 function report(): void {
 	console.log(`${benchName}.nodes ${nodeCount}`);
 	console.log(`${benchName}.retainedNodes ${retainedNodeCount}`);
 	console.log(`${benchName}.draws ${drawCallCount()}`);
-	console.log(`${benchName}.buffersAlive ${staticBuffersAlive()}`);
-	console.log(`${benchName}.buffersRefused ${staticBuffersRefused()}`);
+	console.log(`${benchName}.buffersAlive ${buffersAlive()}`);
+	console.log(`${benchName}.vertices ${recordedVertexCount()}`);
+	console.log(`${benchName}.uploads ${uploadCount()}`);
+	console.log(`${benchName}.uploadBytes ${uploadBytes()}`);
+	console.log(`${benchName}.droppedFrames ${droppedFrames()}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
 }
 

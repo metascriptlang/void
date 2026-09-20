@@ -5,7 +5,7 @@
 // single tint, alpha-shaped by the blur. The composite draws into the currently-open pass.
 
 import { renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
-import { blurPass, drawImage, setEffect } from "./draw";
+import { blurPass, drawImage, setEffect, begin2d, end2d, setRTMode } from "./draw";
 import { colorMatrixAlphaOnly } from "./effect";
 import { Color, BlendMode, tile, vec2, rgba } from "./types";
 
@@ -17,13 +17,24 @@ const noMat: float32[] = [];
 // caller can still composite the sharp original on top. `radius` is the per-tap offset in pixels,
 // `size` the render-target dimension (both temps and dst must be `size`×`size`). Runs its own two
 // RT passes, so call it between the source-render pass and the composite pass.
+// Each tap pass is its own bracket: a blur is a command in the display list now, and a
+// command is only replayed by `end2d`. Without the bracket the blur was recorded and then
+// replayed into whatever pass happened to be open next.
 export function blurToTarget(src: uint32, tmp: uint32, dst: uint32, radius: float32, size: float32): void {
 	const step: float32 = radius / size;
 	beginRenderTargetPass(tmp, 0.0, 0.0, 0.0, 0.0);
+	begin2d(size, size, 1.0);
+	setRTMode(true);
 	blurPass(renderTargetView(src), step, 0.0);
+	setRTMode(false);
+	end2d();
 	endPass();
 	beginRenderTargetPass(dst, 0.0, 0.0, 0.0, 0.0);
+	begin2d(size, size, 1.0);
+	setRTMode(true);
 	blurPass(renderTargetView(tmp), 0.0, step);
+	setRTMode(false);
+	end2d();
 	endPass();
 }
 

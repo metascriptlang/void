@@ -11,18 +11,29 @@ void void2dSetup(void);
 uint32_t void2dWhiteView(void);
 uint32_t void2dFontView(void);
 
-// Upload a MetaScript-owned packed vertex run (pos2+uv2+color4 per vert) and draw it.
-// blend selects the pipeline: 0=Alpha 1=Add 2=Multiply 3=Screen 4=None (see BlendMode).
-// colorMatrix = 16 floats (column-major, identity = no-op); colorAdd = rgba added after.
-void void2dUploadDraw(const float *verts, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA, int smooth);
+// Replay one frame's display list (src/void2d/displayList.ms) into the pass that is already
+// open. This is the ONLY function in this file that issues a draw, and it is called once per
+// bracket, after the tree walk has finished — which is what makes "no sg_* call happens
+// while the tree is walked" a property of the code rather than a promise.
+//
+// The whole vertex stream is uploaded once, in a single sg_append_buffer, and each Draw
+// command is a range inside it. `commands` is commandCount records of COMMAND_FLOATS floats
+// and `effects` is effectCount records of EFFECT_FLOATS, both laid out by displayList.ms;
+// the layout constants are asserted to agree in void2dLayoutCheck below.
+void void2dReplay(const float *commands, int commandCount,
+                  const float *effects, int effectCount,
+                  const float *vertices, int vertexCount,
+                  float fbW, float fbH);
 
-// h2d.Mask clip — restrict subsequent draws to a framebuffer-pixel rect (top-left origin).
-void void2dScissor(int x, int y, int w, int h);
+// 1 when C's idea of the record layout matches MetaScript's. The emitter and the replay are
+// two hand-written readers of one byte layout; this is the renderer's form of rexa's "the
+// command table agrees with the parser" (docs/TESTING.md).
+int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
+                      int kindField, int breakField, int vertexOffsetField, int vertexCountField,
+                      int viewField, int blendField, int smoothField, int effectField,
+                      int clipXField, int arg0Field, int rtModeField,
+                      int kindDraw, int kindScissor, int kindBlur);
 
-// Route draws to the offscreen-RT pipeline set (single-sample, no depth) vs the swapchain set.
-void void2dSetRTMode(int on);
 void void2dSetDpiScale(float scale);
 
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
@@ -32,19 +43,17 @@ void void2dFrameBegin(void);
 // with a 9-tap Gaussian offset by (dirX,dirY) in UV. Run twice (H then V) ping-ponging two RTs.
 void void2dBlur(uint32_t srcView, float dirX, float dirY);
 
-// Static (retained) geometry: upload LOCAL-space verts once, draw many frames with the object
-// matrix + alpha supplied per draw. Destroy before re-uploading a changed mesh (no auto-free).
-uint32_t void2dMakeStaticBuffer(const float *verts, int vertCount);
-void void2dDestroyStaticBuffer(uint32_t bufId);
-// Live static buffers, and a monotonic count of the allocations sokol refused — the second
-// number is the ~126-node cap becoming visible (tests/bench/, docs/TESTING.md "T4").
-int void2dStaticBuffersAlive(void);
-int void2dStaticBuffersRefused(void);
-void void2dDrawStatic(uint32_t bufId, int vertCount, uint32_t view, int blend, float fbW, float fbH,
-                      float mA, float mB, float mC, float mD, float mTx, float mTy,
-                      float gcR, float gcG, float gcB, float gcA,
-                      const float *colorMatrix, float addR, float addG, float addB, float addA,
-                      float keyR, float keyG, float keyB, float keyA, int smooth);
+// Frame counters, read by T1 and gated by T4 (docs/TESTING.md). GPUI counts none of them
+// (GPUI.md:62). `buffersAlive` is every sg_buffer this layer holds — one, now that the
+// per-node static buffers are gone, which is what makes it constant in the node count.
+int void2dDrawCallCount(void);
+int void2dUploadCount(void);
+int void2dUploadBytes(void);
+int void2dBuffersAlive(void);
+int void2dInstanceBufferBytes(void);
+// Frames dropped because one frame's geometry exceeded VOID2D_MAX_BUFFER_BYTES. Never
+// silent: the drop is logged once per frame and counted here.
+int void2dDroppedFrames(void);
 
 // fontstash glyph-layout iterator (MetaScript builds the glyph quads).
 void void2dTextBegin(float x, float y, float size, const char *text);

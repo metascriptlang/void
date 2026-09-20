@@ -1,0 +1,343 @@
+// The display list: the flat POD stream the tree walk writes and the GPU replays.
+//
+// Nothing here touches the GPU. `draw.ms` records into these two arrays while the tree is
+// walked, and `batcher.c` replays them once, at the end of the bracket. That is the whole
+// point of the layer: a frame becomes data, so every claim in VOID2D.md "Frame shape" and
+// "Order and batching" — painter's order, one upload per bracket, what broke a batch, what
+// a culled subtree contributed — is a statement about an array that can be asserted with no
+// GPU at all (docs/TESTING.md "T1").
+//
+// Two streams:
+//   - `vertices`, 8 floats per vertex (x y u v r g b a) in WORLD space, shared by every
+//     command in the frame, so the whole frame is one upload and a command is a range.
+//   - `commands`, COMMAND_FLOATS floats per command, fixed width. A fixed width costs a few
+//     zero fields on a scissor and buys an index that is arithmetic rather than a scan —
+//     and a snapshot whose lines are all the same shape.
+//
+// The colour pipeline (a 4x4 matrix, an add and a chroma key: 24 floats) is the bulk of a
+// command and is the identity almost everywhere, so it lives in its own table and a command
+// carries an index into it, or NO_EFFECT. That keeps a command at 24 floats.
+
+import { Color, BlendMode } from "./types";
+
+export enum CommandKind {
+	Draw,
+	Scissor,
+	Blur,
+}
+
+// Why this command could not join the one before it. Recorded so a T1 snapshot names its
+// own cause: `break: view` is a finding, `break: 300 times` is a mystery.
+export enum BreakReason {
+	First,
+	View,
+	Blend,
+	Smooth,
+	Effect,
+	Clip,
+	Capacity,
+	Barrier,
+}
+
+export const COMMAND_FLOATS: int32 = 24;
+export const EFFECT_FLOATS: int32 = 24;
+export const VERTEX_FLOATS: int32 = 8;
+export const NO_EFFECT: int32 = -1;
+
+// Field offsets inside one command record. Named, because `commands[base + 7]` in the
+// emitter and `cmd[7]` in the replay is exactly how the two drift apart.
+export const CMD_KIND: int32 = 0;
+export const CMD_BREAK: int32 = 1;
+export const CMD_VERTEX_OFFSET: int32 = 2;
+export const CMD_VERTEX_COUNT: int32 = 3;
+export const CMD_VIEW: int32 = 4;
+export const CMD_BLEND: int32 = 5;
+export const CMD_SMOOTH: int32 = 6;
+export const CMD_EFFECT: int32 = 7;
+export const CMD_CLIP_X: int32 = 8;
+export const CMD_CLIP_Y: int32 = 9;
+export const CMD_CLIP_W: int32 = 10;
+export const CMD_CLIP_H: int32 = 11;
+export const CMD_ARG0: int32 = 12;
+export const CMD_ARG1: int32 = 13;
+// Which pipeline set the replay must bind: the swapchain one, or the offscreen one (single
+// sample, no depth). It is per command because it is state the replay needs, and the record
+// is the only thing that reaches the replay.
+export const CMD_RT_MODE: int32 = 14;
+
+// Exported because `draw.ms` hands `commands[0]` to the replay as a `Borrow<float32>`, and
+// there is no way to return a `Span` from a function on this compiler. Read them; only this
+// module writes them.
+//
+// Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
+// frame that records no effect at all would otherwise index an empty array to take its
+// address. Counts come from the `*Total` variables, never from `.length`, so the seed is
+// invisible to every reader.
+export const commands: Vec<float32> = new Array(COMMAND_FLOATS);
+export const effects: Vec<float32> = new Array(EFFECT_FLOATS);
+export const vertices: Vec<float32> = new Array(VERTEX_FLOATS);
+
+let commandTotal: int32 = 0;
+let effectTotal: int32 = 0;
+let vertexTotal: int32 = 0;
+
+// The clip the replay is under. A scissor is a command, not a call, so the emitter tracks
+// what it last recorded and only records a change.
+let clipX: float32 = 0.0;
+let clipY: float32 = 0.0;
+let clipW: float32 = 0.0;
+let clipH: float32 = 0.0;
+let clipRecorded: boolean = false;
+let renderTargetMode: boolean = false;
+
+export function resetList(): void {
+	commandTotal = 0;
+	effectTotal = 0;
+	vertexTotal = 0;
+	clipRecorded = false;
+	renderTargetMode = false;
+}
+
+// Which pipeline set every command recorded from here on will ask the replay to bind.
+export function setRenderTargetMode(on: boolean): void { renderTargetMode = on; }
+export function renderTargetModeOn(): boolean { return renderTargetMode; }
+
+export function commandCount(): int32 { return commandTotal; }
+export function effectCount(): int32 { return effectTotal; }
+export function vertexCount(): int32 { return vertexTotal; }
+
+export function commandField(index: int32, field: int32): float32 {
+	return commands[index * COMMAND_FLOATS + field];
+}
+
+export function effectField(index: int32, field: int32): float32 {
+	return effects[index * EFFECT_FLOATS + field];
+}
+
+export function vertexField(index: int32, field: int32): float32 {
+	return vertices[index * VERTEX_FLOATS + field];
+}
+
+// Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
+// Inlined at each of the three sites rather than shared: a `Vec<T>` parameter is a read-only
+// copy on this compiler, so a helper taking one could not push through it.
+
+// Append one vertex to the frame's stream and answer nothing — the caller already knows
+// where it landed, because it asked for the offset before it started.
+export function pushVertex(
+	x: float32,
+	y: float32,
+	u: float32,
+	v: float32,
+	r: float32,
+	g: float32,
+	b: float32,
+	a: float32,
+): void {
+	const base: int32 = vertexTotal * VERTEX_FLOATS;
+	while ((vertices.length as int32) < base + VERTEX_FLOATS) { vertices.push(0.0 as float32); }
+	vertices[base] = x;
+	vertices[base + 1] = y;
+	vertices[base + 2] = u;
+	vertices[base + 3] = v;
+	vertices[base + 4] = r;
+	vertices[base + 5] = g;
+	vertices[base + 6] = b;
+	vertices[base + 7] = a;
+	vertexTotal = vertexTotal + 1;
+}
+
+// The colour pipeline as a row of its own. Returns the index a command should carry.
+export function pushEffect(matrix: float32[], add: Color, key: Color): int32 {
+	const base: int32 = effectTotal * EFFECT_FLOATS;
+	while ((effects.length as int32) < base + EFFECT_FLOATS) { effects.push(0.0 as float32); }
+	const hasMatrix: boolean = (matrix.length as int32) >= 16;
+	for (let i: int32 = 0; i < 16; i++) {
+		effects[base + i] = hasMatrix ? matrix[i] : (i % 5 == 0 ? 1.0 : 0.0);
+	}
+	effects[base + 16] = add.r;
+	effects[base + 17] = add.g;
+	effects[base + 18] = add.b;
+	effects[base + 19] = add.a;
+	effects[base + 20] = key.r;
+	effects[base + 21] = key.g;
+	effects[base + 22] = key.b;
+	effects[base + 23] = key.a;
+	effectTotal = effectTotal + 1;
+	return effectTotal - 1;
+}
+
+function startCommand(kind: CommandKind, reason: BreakReason): int32 {
+	const base: int32 = commandTotal * COMMAND_FLOATS;
+	while ((commands.length as int32) < base + COMMAND_FLOATS) { commands.push(0.0 as float32); }
+	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { commands[base + i] = 0.0; }
+	commands[base + CMD_KIND] = (kind as int32) as float32;
+	commands[base + CMD_BREAK] = (reason as int32) as float32;
+	commands[base + CMD_CLIP_X] = clipX;
+	commands[base + CMD_CLIP_Y] = clipY;
+	commands[base + CMD_CLIP_W] = clipW;
+	commands[base + CMD_CLIP_H] = clipH;
+	commands[base + CMD_RT_MODE] = renderTargetMode ? 1.0 : 0.0;
+	commandTotal = commandTotal + 1;
+	return base;
+}
+
+export function recordDraw(
+	reason: BreakReason,
+	vertexOffset: int32,
+	count: int32,
+	view: uint32,
+	blend: BlendMode,
+	smooth: boolean,
+	effectIndex: int32,
+): void {
+	const base: int32 = startCommand(CommandKind.Draw, reason);
+	commands[base + CMD_VERTEX_OFFSET] = vertexOffset as float32;
+	commands[base + CMD_VERTEX_COUNT] = count as float32;
+	commands[base + CMD_VIEW] = view as float32;
+	commands[base + CMD_BLEND] = (blend as int32) as float32;
+	commands[base + CMD_SMOOTH] = smooth ? 1.0 : 0.0;
+	commands[base + CMD_EFFECT] = effectIndex as float32;
+}
+
+// The clip the replay should be under from here on. Recording the same rect twice is a
+// no-op, so a Mask that does not change the zone costs nothing in the stream.
+export function recordClip(x: float32, y: float32, w: float32, h: float32): void {
+	if (clipRecorded && x == clipX && y == clipY && w == clipW && h == clipH) { return; }
+	clipX = x;
+	clipY = y;
+	clipW = w;
+	clipH = h;
+	clipRecorded = true;
+	startCommand(CommandKind.Scissor, BreakReason.Clip);
+}
+
+export function recordBlur(view: uint32, dirX: float32, dirY: float32): void {
+	const base: int32 = startCommand(CommandKind.Blur, BreakReason.Barrier);
+	commands[base + CMD_VIEW] = view as float32;
+	commands[base + CMD_ARG0] = dirX;
+	commands[base + CMD_ARG1] = dirY;
+}
+
+// How many Draw commands are in the stream — the draw-call count, known before a single
+// sg_* call is made, which is what lets T4 gate it with no GPU.
+export function drawCommandCount(): int32 {
+	let count: int32 = 0;
+	for (let i: int32 = 0; i < commandTotal; i++) {
+		if ((commandField(i, CMD_KIND) as int32) == (CommandKind.Draw as int32)) { count = count + 1; }
+	}
+	return count;
+}
+
+export function breakReasonName(reason: int32): string {
+	return match (reason as BreakReason) {
+		BreakReason.First => "first",
+		BreakReason.View => "view",
+		BreakReason.Blend => "blend",
+		BreakReason.Smooth => "smooth",
+		BreakReason.Effect => "effect",
+		BreakReason.Clip => "clip",
+		BreakReason.Capacity => "capacity",
+		BreakReason.Barrier => "barrier",
+	};
+}
+
+export function commandKindName(kind: int32): string {
+	return match (kind as CommandKind) {
+		CommandKind.Draw => "draw",
+		CommandKind.Scissor => "scissor",
+		CommandKind.Blur => "blur",
+	};
+}
+
+test "a fresh list is empty" {
+	resetList();
+	assert commandCount() == 0;
+	assert vertexCount() == 0;
+	assert effectCount() == 0;
+}
+
+test "a draw command carries its range and its reason" {
+	resetList();
+	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Add, false, NO_EFFECT);
+	assert commandCount() == 1;
+	assert (commandField(0, CMD_KIND) as int32) == (CommandKind.Draw as int32);
+	assert (commandField(0, CMD_BREAK) as int32) == (BreakReason.View as int32);
+	assert (commandField(0, CMD_VERTEX_OFFSET) as int32) == 12;
+	assert (commandField(0, CMD_VERTEX_COUNT) as int32) == 6;
+	assert (commandField(0, CMD_VIEW) as int32) == 3;
+	assert (commandField(0, CMD_BLEND) as int32) == (BlendMode.Add as int32);
+	assert commandField(0, CMD_SMOOTH) == 0.0;
+	assert (commandField(0, CMD_EFFECT) as int32) == NO_EFFECT;
+}
+
+test "recording the same clip twice records one scissor" {
+	resetList();
+	recordClip(0.0, 0.0, 10.0, 10.0);
+	recordClip(0.0, 0.0, 10.0, 10.0);
+	assert commandCount() == 1;
+	recordClip(1.0, 0.0, 10.0, 10.0);
+	assert commandCount() == 2;
+}
+
+test "a draw inherits the clip that was recorded before it" {
+	resetList();
+	recordClip(4.0, 5.0, 6.0, 7.0);
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	assert commandField(1, CMD_CLIP_X) == 4.0;
+	assert commandField(1, CMD_CLIP_Y) == 5.0;
+	assert commandField(1, CMD_CLIP_W) == 6.0;
+	assert commandField(1, CMD_CLIP_H) == 7.0;
+}
+
+test "an empty matrix records the identity" {
+	resetList();
+	const index: int32 = pushEffect([], { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
+	assert index == 0;
+	assert effectField(0, 0) == 1.0;
+	assert effectField(0, 5) == 1.0;
+	assert effectField(0, 10) == 1.0;
+	assert effectField(0, 15) == 1.0;
+	assert effectField(0, 1) == 0.0;
+	assert effectField(0, 4) == 0.0;
+}
+
+// Exact binary fractions only: a float32 field compared against a float64 literal such as
+// 0.4 fails on the last bit, and a harness test that fails for its own reasons is worse than
+// no test.
+test "vertices land where the offset says" {
+	resetList();
+	pushVertex(1.0, 2.0, 0.25, 0.5, 0.125, 0.375, 0.625, 0.875);
+	assert vertexCount() == 1;
+	assert vertexField(0, 0) == 1.0;
+	assert vertexField(0, 1) == 2.0;
+	assert vertexField(0, 2) == 0.25;
+	assert vertexField(0, 3) == 0.5;
+	assert vertexField(0, 4) == 0.125;
+	assert vertexField(0, 7) == 0.875;
+}
+
+test "drawCommandCount counts draws and not scissors" {
+	resetList();
+	recordClip(0.0, 0.0, 8.0, 8.0);
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	recordDraw(BreakReason.View, 6, 6, 2, BlendMode.Alpha, true, NO_EFFECT);
+	assert commandCount() == 3;
+	assert drawCommandCount() == 2;
+}
+
+test "a command carries the pipeline set the replay must bind" {
+	resetList();
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	assert commandField(0, CMD_RT_MODE) == 0.0;
+	setRenderTargetMode(true);
+	recordDraw(BreakReason.Barrier, 6, 6, 1, BlendMode.Alpha, true, NO_EFFECT);
+	assert commandField(1, CMD_RT_MODE) == 1.0;
+	setRenderTargetMode(false);
+}
+
+test "every break reason and command kind has a name" {
+	assert breakReasonName(BreakReason.View as int32).equals("view");
+	assert breakReasonName(BreakReason.Capacity as int32).equals("capacity");
+	assert commandKindName(CommandKind.Scissor as int32).equals("scissor");
+}

@@ -96,7 +96,7 @@ function runCheck(): int32 {
 	if ((uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0) { return 1; }
 
 	let failed: int32 = 0;
-	const metrics: string[] = ["nodes", "retainedNodes", "draws", "buffersAlive", "buffersRefused"];
+	const metrics: string[] = ["nodes", "retainedNodes", "draws", "buffersAlive", "vertices", "uploads", "droppedFrames"];
 	for (const metric of metrics) {
 		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) { failed = failed + 1; }
 	}

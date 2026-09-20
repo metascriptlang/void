@@ -1,7 +1,7 @@
 // Node2D is a flat tag + fields, not a discriminated union: a union payload as an interface
 // field hits a C-codegen bug. Revisit the union once the compiler handles it.
 
-import { destroyStaticMesh, freeRenderTarget } from "./draw";
+import { freeRenderTarget } from "./draw";
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
 
@@ -41,10 +41,12 @@ export interface Node2D {
 	frames: Tile[];
 	fps: float32;
 	clock: float32;
+	// LOCAL-space geometry, 8 floats per vertex (x y u v r g b a): a Graphics' triangles or
+	// a Label's shaped glyph quads. It is transformed into the frame's display list when the
+	// node is emitted; no node owns a GPU buffer any more (VOID2D.md P1).
 	mesh: float32[];
+	meshVertCount: int32;
 	gfxView: uint32;
-	gfxBuf: uint32;
-	gfxVertCount: int32;
 	gfxDirty: boolean;
 	children: Node2D[];
 	childrenDirty: boolean;
@@ -56,8 +58,6 @@ export interface Node2D {
 	lastSY: float32;
 	lastRot: float32;
 	dirty: boolean;
-	txtBuf: uint32;
-	txtVertCount: int32;
 	textDirty: boolean;
 	lastText: string;
 	lastSize: float32;
@@ -84,9 +84,9 @@ export interface Node2D {
 function base(kind: DrawKind): Node2D {
 	return {
 		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: true, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], gfxView: 0, gfxBuf: 0, gfxVertCount: 0, gfxDirty: true, children: [], childrenDirty: true,
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], meshVertCount: 0, gfxView: 0, gfxDirty: true, children: [], childrenDirty: true,
 		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0, lastSY: 0.0, lastRot: 0.0, dirty: true,
-		txtBuf: 0, txtVertCount: 0, textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
+		textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
 		contentXMin: 0.0, contentYMin: 0.0, contentXMax: 0.0, contentYMax: 0.0,
 		lastAtlasGen: 0,
 		fontId: 0, lastFontId: -1,
@@ -188,9 +188,9 @@ export function update(this n: Node2D, dt: float32): void {
 	}
 }
 
+// A node owns no GPU buffer now — only a filter still holds a render target — so disposing
+// a subtree is about that and nothing else.
 export function dispose(this n: Node2D): void {
-	if (n.gfxBuf != 0) { destroyStaticMesh(n.gfxBuf); n.gfxBuf = 0; }
-	if (n.txtBuf != 0) { destroyStaticMesh(n.txtBuf); n.txtBuf = 0; }
 	if (n.filterRT != 0) { freeRenderTarget(n.filterRT); n.filterRT = 0; }
 	for (const ch of n.children) {
 		ch.dispose();
