@@ -28,6 +28,8 @@
 
 static sg_buffer s_vbuf;
 static int s_vbufBytes;
+static int s_frameBaseOffset;   // where this frame's vertices start in s_vbuf
+static int s_frameUploaded;     // 0 when the frame was dropped, and then nothing may draw
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
 static float s_dpiScale = 1.0f;                    // framebuffer / logical pixel ratio (retina = 2.0)
@@ -72,6 +74,7 @@ static int s_atlasGen = 0;    // bumped on atlas resize → invalidates cached g
 #define CMD_ARG0            12
 #define CMD_ARG1            13
 #define CMD_RT_MODE         14
+#define CMD_CLEAR_R         15
 
 #define EFFECT_FLOATS       24
 #define VERTEX_FLOATS       8
@@ -79,6 +82,9 @@ static int s_atlasGen = 0;    // bumped on atlas resize → invalidates cached g
 #define CMD_KIND_DRAW       0
 #define CMD_KIND_SCISSOR    1
 #define CMD_KIND_BLUR       2
+#define CMD_KIND_TGT_BEGIN  3
+#define CMD_KIND_TGT_END    4
+#define VOID2D_MAX_TARGET_DEPTH 8
 
 static const float s_identityMatrix[16] = {
 	1.0f, 0.0f, 0.0f, 0.0f,
@@ -106,9 +112,10 @@ int void2dBuffersAlive(void) { return 3; }
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
                       int viewField, int blendField, int samplerField, int effectField,
-                      int samplerCount,
+                      int samplerCount, int maxTargetDepth, int clearRField,
                       int clipXField, int arg0Field, int rtModeField,
-                      int kindDraw, int kindScissor, int kindBlur) {
+                      int kindDraw, int kindScissor, int kindBlur,
+                      int kindTargetBegin, int kindTargetEnd) {
 	return commandFloats == CMD_FLOATS
 		&& effectFloats == EFFECT_FLOATS
 		&& vertexFloats == VERTEX_FLOATS
@@ -126,7 +133,11 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& rtModeField == CMD_RT_MODE
 		&& kindDraw == CMD_KIND_DRAW
 		&& kindScissor == CMD_KIND_SCISSOR
-		&& kindBlur == CMD_KIND_BLUR;
+		&& kindBlur == CMD_KIND_BLUR
+		&& kindTargetBegin == CMD_KIND_TGT_BEGIN
+		&& kindTargetEnd == CMD_KIND_TGT_END
+		&& maxTargetDepth == VOID2D_MAX_TARGET_DEPTH
+		&& clearRField == CMD_CLEAR_R;
 }
 
 static int fons_create(void *up, int w, int h) {
@@ -326,11 +337,20 @@ static void ensureAtlas(void) {
 	}
 }
 
-void void2dReplay(const float *commands, int commandCount,
-                  const float *effects, int effectCount,
-                  const float *vertices, int vertexCount,
-                  float fbW, float fbH) {
-	if (commandCount <= 0) return;
+static void runCommands(const float *commands, int commandCount,
+                        const float *effects, int effectCount,
+                        float fbW, float fbH);
+
+// Upload the frame's geometry once, then run every render-target pass to completion. Called
+// with NO pass open: each TargetBegin opens one and its TargetEnd closes it, so target passes
+// are siblings and never nest. That is what hoisting the target blocks out of the swapchain
+// list buys - sokol asserts `!_sg.cur_pass.valid` on a nested begin, which is exactly how the
+// old filter path died. Returns 0 when the frame was dropped; then nothing else may draw.
+int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
+                        const float *effects, int effectCount,
+                        const float *vertices, int vertexCount) {
+	s_frameUploaded = 0;
+	s_frameBaseOffset = 0;
 
 	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
 	if (vertexBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
@@ -339,7 +359,7 @@ void void2dReplay(const float *commands, int commandCount,
 		s_droppedFrames++;
 		fprintf(stderr, "void2d: frame needs %zu bytes of geometry, cap is %d — frame dropped\n",
 			vertexBytes, VOID2D_MAX_BUFFER_BYTES);
-		return;
+		return 0;
 	}
 	ensureVertexBuffer((int)vertexBytes);
 	ensureAtlas();
@@ -347,13 +367,35 @@ void void2dReplay(const float *commands, int commandCount,
 	// One upload for the whole frame, before any draw: every Draw command is a range inside
 	// it. This is the "one upload per bracket" of VOID2D.md P1, and it is one per FRAME here
 	// because the target lists share the stream.
-	int baseOffset = 0;
 	if (vertexBytes > 0) {
 		sg_range data = { .ptr = vertices, .size = vertexBytes };
-		baseOffset = sg_append_buffer(s_vbuf, &data);
+		s_frameBaseOffset = sg_append_buffer(s_vbuf, &data);
 		s_uploadCount++;
 		s_uploadBytes += (int)vertexBytes;
 	}
+	s_frameUploaded = 1;
+	if (targetCommandCount > 0) {
+		runCommands(targetCommands, targetCommandCount, effects, effectCount, 0.0f, 0.0f);
+	}
+	return 1;
+}
+
+// Replay the swapchain list inside the pass the caller already opened.
+void void2dReplay(const float *commands, int commandCount,
+                  const float *effects, int effectCount,
+                  float fbW, float fbH) {
+	if (commandCount <= 0 || !s_frameUploaded) return;
+	runCommands(commands, commandCount, effects, effectCount, fbW, fbH);
+}
+
+// The one executor both lists go through. `fbW`/`fbH` are the viewport the commands were
+// recorded against; a TargetBegin replaces them for the length of its block, which is how a
+// target of a different size gets the right projection with no second code path.
+static void runCommands(const float *commands, int commandCount,
+                        const float *effects, int effectCount,
+                        float fbW, float fbH) {
+	float sizeStack[VOID2D_MAX_TARGET_DEPTH][2];
+	int sizeDepth = 0;
 
 	// A uniform block that has not changed is not re-applied. On WebGPU and Metal every
 	// sg_apply_uniforms costs at least 256 bytes of the per-frame uniform buffer whatever
@@ -379,6 +421,29 @@ void void2dReplay(const float *commands, int commandCount,
 			void2dBlur((uint32_t)cmd[CMD_VIEW], cmd[CMD_ARG0], cmd[CMD_ARG1]);
 			continue;
 		}
+		if (kind == CMD_KIND_TGT_BEGIN) {
+			if (sizeDepth < VOID2D_MAX_TARGET_DEPTH) {
+				sizeStack[sizeDepth][0] = fbW;
+				sizeStack[sizeDepth][1] = fbH;
+				sizeDepth++;
+			}
+			fbW = cmd[CMD_ARG0];
+			fbH = cmd[CMD_ARG1];
+			voidBeginRenderTargetPass((uint32_t)cmd[CMD_VIEW],
+				cmd[CMD_CLEAR_R], cmd[CMD_CLEAR_R + 1], cmd[CMD_CLEAR_R + 2], cmd[CMD_CLEAR_R + 3]);
+			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
+			continue;
+		}
+		if (kind == CMD_KIND_TGT_END) {
+			voidEndPass();
+			if (sizeDepth > 0) {
+				sizeDepth--;
+				fbW = sizeStack[sizeDepth][0];
+				fbH = sizeStack[sizeDepth][1];
+			}
+			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
+			continue;
+		}
 		if (kind != CMD_KIND_DRAW) continue;
 
 		int count = (int)cmd[CMD_VERTEX_COUNT];
@@ -399,7 +464,7 @@ void void2dReplay(const float *commands, int commandCount,
 		}
 		sg_bindings b = {0};
 		b.vertex_buffers[0] = s_vbuf;
-		b.vertex_buffer_offsets[0] = baseOffset + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
+		b.vertex_buffer_offsets[0] = s_frameBaseOffset + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
 		b.views[VIEW_tex] = (sg_view){ .id = view };
 		int smpIndex = (int)cmd[CMD_SAMPLER];
 		if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }

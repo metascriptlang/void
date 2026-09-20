@@ -3,7 +3,7 @@
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
 import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, makeRenderTarget, renderTargetView, beginRenderTargetPass, endPass, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
-import { setup2d, begin2d, end2d, setRTMode, drawRect, drawImage } from "../void2d/draw";
+import { setup2d, begin2d, flushTargets, beginTarget, endTarget, drawRect, drawImage } from "../void2d/draw";
 import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
@@ -209,38 +209,36 @@ export function present2d(): void {
 	sc.cam.anchorY = 0.5;
 
 	// F3 filters: render a bold gold plus once into rtSrc, blur it (preserving rtSrc), then
-	// composite a glow (additive halo) and a drop shadow (offset, behind) — each with the sharp
+	// composite a glow (additive halo) and a drop shadow (offset, behind) - each with the sharp
 	// original drawn on top. The blurred silhouette rtB is reused by both tiles.
+	//
+	// Since P1 none of this opens a pass. `begin2d` starts a display list, each `beginTarget`
+	// brackets a region of it, and `flushTargets` replays every one of those regions as its own
+	// pass with nothing else open. The swapchain list stays empty here - the visible frame is
+	// `sc.present()` just below, which starts its own list.
 	const plus = rgba(1.0, 0.82, 0.35, 1.0);
 	const orig = tile(renderTargetView(rtSrc), 256.0, 256.0);
-	beginRenderTargetPass(rtSrc, 0.0, 0.0, 0.0, 0.0);
-	begin2d(256, 256, 1.0);
-	setRTMode(true);
+	const clearNone = rgba(0.0, 0.0, 0.0, 0.0);
+	begin2d(256.0, 256.0, 1.0);
+	beginTarget(rtSrc, 256.0, 256.0, 0.0, 0.0, clearNone);
 	drawRect(vec2(108.0, 40.0), vec2(40.0, 176.0), plus, BlendMode.Alpha);
 	drawRect(vec2(40.0, 108.0), vec2(176.0, 40.0), plus, BlendMode.Alpha);
-	setRTMode(false);
-	end2d();
-	endPass();
+	endTarget();
 
-	blurToTarget(rtSrc, rtA, rtB, 5.0, 256.0);
+	// 16, not 5: the old kernel turned a radius of 5 into a 16-texel spread, and the look the
+	// demo was tuned for is the one the corrected kernel reaches by being asked for it.
+	blurToTarget(rtSrc, rtB, 16.0, 256.0);
 
-	beginRenderTargetPass(rtGlow, 0.06, 0.07, 0.10, 1.0);
-	begin2d(256, 256, 1.0);
-	setRTMode(true);
+	beginTarget(rtGlow, 256.0, 256.0, 0.0, 0.0, rgba(0.06, 0.07, 0.10, 1.0));
 	drawGlow(rtB, 0.0, 0.0, 256.0, 256.0, rgba(1.0, 0.70, 0.25, 1.0), 1.8);
 	drawImage(orig, vec2(0.0, 0.0), vec2(256.0, 256.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
-	setRTMode(false);
-	end2d();
-	endPass();
+	endTarget();
 
-	beginRenderTargetPass(rtShadow, 0.88, 0.90, 0.94, 1.0);
-	begin2d(256, 256, 1.0);
-	setRTMode(true);
+	beginTarget(rtShadow, 256.0, 256.0, 0.0, 0.0, rgba(0.88, 0.90, 0.94, 1.0));
 	drawDropShadow(rtB, 12.0, 14.0, 256.0, 256.0, rgba(0.08, 0.08, 0.14, 1.0), 1.0);
 	drawImage(orig, vec2(0.0, 0.0), vec2(256.0, 256.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
-	setRTMode(false);
-	end2d();
-	endPass();
+	endTarget();
+	flushTargets();
 
 	sc.present();
 }

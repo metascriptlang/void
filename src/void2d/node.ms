@@ -1,7 +1,6 @@
 // Node2D is a flat tag + fields, not a discriminated union: a union payload as an interface
 // field hits a C-codegen bug. Revisit the union once the compiler handles it.
 
-import { freeRenderTarget } from "./draw";
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
 
@@ -78,9 +77,6 @@ export interface Node2D {
 	fontId: int32;
 	lastFontId: int32;
 	filter: Filter;
-	filterRT: uint32;
-	filterRTW: int32;
-	filterRTH: int32;
 	layoutStyle: FlexStyle | null;
 	lastLayoutStyle: FlexStyle | null;
 	yg: Ptr<void> | null;
@@ -95,7 +91,7 @@ function base(kind: DrawKind): Node2D {
 		contentXMin: 0.0, contentYMin: 0.0, contentXMax: 0.0, contentYMax: 0.0,
 		lastAtlasGen: 0,
 		fontId: 0, lastFontId: -1,
-		filter: noFilter(), filterRT: 0, filterRTW: 0, filterRTH: 0,
+		filter: noFilter(),
 		layoutStyle: null, lastLayoutStyle: null, yg: null,
 	};
 }
@@ -193,10 +189,11 @@ export function update(this n: Node2D, dt: float32): void {
 	}
 }
 
-// A node owns no GPU buffer now — only a filter still holds a render target — so disposing
-// a subtree is about that and nothing else.
+// A node owns no GPU resource at all since P1: no vertex buffer, and since the filter targets
+// became a frame-linear pool (`render.ms`), no render target either. `dispose` is kept because
+// it is the h2d-shaped way to drop a subtree, and it still walks the children so that shape
+// stays true when a later phase gives a node something to release again.
 export function dispose(this n: Node2D): void {
-	if (n.filterRT != 0) { freeRenderTarget(n.filterRT); n.filterRT = 0; }
 	for (const ch of n.children) {
 		ch.dispose();
 	}

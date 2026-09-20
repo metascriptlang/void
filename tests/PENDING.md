@@ -29,8 +29,8 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 |---|---|---|
 | Atlas-full drops a different set of glyphs each run | row `golden-missing:regress/atlasFull` | P1 / P3 |
 | ~~At most ~126 Labels/Graphics render~~ | **closed `747127f`** — golden `regress/nodeCap` shows all 200 labels; `ui.buffersAlive` 3, constant in node count. `ui.buffersRefused` deleted with the defect | done |
-| Node filters do not work at all | rows `golden-missing:filter/*`, `golden-missing:regress/filterNestedPass`, `debug-abort:node-filter` | P1 |
-| Filter semantics differ from h2d | the same rows — nothing renders, so the semantics cannot be captured yet | P1 |
+| ~~Node filters do not work at all~~ | **closed** - per-target command lists are hoisted out of the swapchain list, so the replay runs each target as its own pass before it. Goldens `filter/blur`, `filter/glow`, `filter/dropShadow`, `filter/groupOpacity`, `regress/filterNestedPass` are on. Re-measured in a debug build with sokol's validation layer linked: all five capture, no `!_sg.cur_pass.valid` | done |
+| ~~Filter semantics differ from h2d~~ | **closed** - the node itself enters the target, alpha applied once, object-local space through the emitter's filter matrix, bounds clipped to the viewport, one sync, a frame-linear target pool. `filter/groupOpacity` is the proof and was read pixel by pixel against both models | done |
 | ~~Fractional DPI puts every glyph off-grid~~ | **closed `747127f`** — `begin2d` takes a float logical size; golden `regress/dpiTruncation` moved. The `text/` and `snap/` goldens did not move: integer glyph origins are a separate defect | done / P3 for glyph origins |
 | ~~Samplers are hard-wired REPEAT~~ | **closed** — four samplers indexed by `smooth * 2 + tileWrap`, clamp by default. `regress/samplerRepeat` moved but is weak (448 px at max delta 2: both sheet edges are near-black); `image/tileWrap` is the scene that shows the mechanism, and `image/sceneSmooth` covers the tri-state | done |
 | ~~Per-frame vertex cap~~ | **closed `747127f`** — one growing buffer, cap plus dropped frame past it; golden `regress/vertexCap` moved; `debug-abort:vertex-cap` deleted after a debug build was re-run and did not abort | done |
@@ -93,11 +93,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:filter/blur | T2 | a node filter opens a render-target pass inside the swapchain pass; a debug build trips sokol's `!_sg.cur_pass.valid` assertion and aborts, a release build presents nothing but the clear colour. The builder exists in `tests/golden/scenes.ms` | P1 | 2026-09-20 |
-| golden-missing:filter/glow | T2 | same cause as filter/blur | P1 | 2026-09-20 |
-| golden-missing:filter/dropShadow | T2 | same cause as filter/blur | P1 | 2026-09-20 |
-| golden-missing:filter/groupOpacity | T2 | same cause as filter/blur | P1 | 2026-09-20 |
-| golden-missing:regress/filterNestedPass | T2 | same cause as filter/blur; the siblings drawn before and after the filtered node disappear with it | P1 | 2026-09-20 |
 | golden-missing:regress/atlasFull | T2 | once the 512x512 fontstash atlas fills, which glyphs survive varies between runs of the same binary: three distinct outputs in ten runs, worst pair 28 740 of 80 000 pixels (35.9%) at max delta 207. The builder exists in `tests/golden/scenes.ms` | P1 | 2026-09-20 |
 | golden-missing:prim/perCornerRadii | T2 | scene not renderable until P2 — one radius per rect today (`graphics.ms` `fillRoundedRect`) | P2 | 2026-09-20 |
 | golden-missing:prim/perSideBorders | T2 | scene not renderable until P2 — `strokeRect` has one width | P2 | 2026-09-20 |
@@ -149,7 +144,6 @@ it can capture anything.
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| debug-abort:node-filter | T2 | any `Node2D.filter` trips `Assertion failed: !_sg.cur_pass.valid` (`sokol_gfx.h:27214`) and the process dies. The path has never had a caller: no example and no test sets `Node2D.filter` | P1 | 2026-09-20 |
 
 ## Backends with no conformance run
 

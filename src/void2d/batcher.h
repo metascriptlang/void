@@ -20,9 +20,15 @@ uint32_t void2dFontView(void);
 // command is a range inside it. `commands` is commandCount records of COMMAND_FLOATS floats
 // and `effects` is effectCount records of EFFECT_FLOATS, both laid out by displayList.ms;
 // the layout constants are asserted to agree in void2dLayoutCheck below.
+// Uploads the frame's geometry and runs every render-target pass. Call with no pass open,
+// before the swapchain pass; 0 means the frame was dropped and void2dReplay will do nothing.
+int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
+                        const float *effects, int effectCount,
+                        const float *vertices, int vertexCount);
+
+// Replays the swapchain list inside the pass the caller has already opened.
 void void2dReplay(const float *commands, int commandCount,
                   const float *effects, int effectCount,
-                  const float *vertices, int vertexCount,
                   float fbW, float fbH);
 
 // 1 when C's idea of the record layout matches MetaScript's. The emitter and the replay are
@@ -31,9 +37,10 @@ void void2dReplay(const float *commands, int commandCount,
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
                       int viewField, int blendField, int samplerField, int effectField,
-                      int samplerCount,
+                      int samplerCount, int maxTargetDepth, int clearRField,
                       int clipXField, int arg0Field, int rtModeField,
-                      int kindDraw, int kindScissor, int kindBlur);
+                      int kindDraw, int kindScissor, int kindBlur,
+                      int kindTargetBegin, int kindTargetEnd);
 
 void void2dSetDpiScale(float scale);
 

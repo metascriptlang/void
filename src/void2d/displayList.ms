@@ -24,6 +24,11 @@ export enum CommandKind {
 	Draw,
 	Scissor,
 	Blur,
+	// A render-target pass. These never appear in the swapchain list: a closed target block
+	// is moved out of it into `targetCommands`, so the replay opens every target pass before
+	// the swapchain pass and no pass is ever nested inside another (sokol asserts on that).
+	TargetBegin,
+	TargetEnd,
 }
 
 // Why this command could not join the one before it. Recorded so a T1 snapshot names its
@@ -67,6 +72,13 @@ export const CMD_ARG1: int32 = 13;
 // sample, no depth). It is per command because it is state the replay needs, and the record
 // is the only thing that reaches the replay.
 export const CMD_RT_MODE: int32 = 14;
+// TargetBegin only: what the pass clears its target to. A command record is 24 floats and
+// only 15 were named, so this is four fields of its own rather than a reuse of the clip
+// fields, which a TargetBegin does not carry but every other command does.
+export const CMD_CLEAR_R: int32 = 15;
+export const CMD_CLEAR_G: int32 = 16;
+export const CMD_CLEAR_B: int32 = 17;
+export const CMD_CLEAR_A: int32 = 18;
 
 // Exported because `draw.ms` hands `commands[0]` to the replay as a `Borrow<float32>`, and
 // there is no way to return a `Span` from a function on this compiler. Read them; only this
@@ -80,9 +92,26 @@ export const commands: Vec<float32> = new Array(COMMAND_FLOATS);
 export const effects: Vec<float32> = new Array(EFFECT_FLOATS);
 export const vertices: Vec<float32> = new Array(VERTEX_FLOATS);
 
+// Every closed render-target pass, in the order the replay must run them: a target's block
+// is appended here when it closes, so an inner target lands ahead of the outer one that
+// consumes it. The swapchain list in `commands` only ever holds the quad that samples the
+// finished target.
+export const targetCommands: Vec<float32> = new Array(COMMAND_FLOATS);
+
 let commandTotal: int32 = 0;
+let targetCommandTotal: int32 = 0;
 let effectTotal: int32 = 0;
 let vertexTotal: int32 = 0;
+
+// Where each open target's block starts inside `commands`. Targets close in the order they
+// opened's reverse, so the open block is always the tail of `commands` and moving it out is
+// a copy plus a count, never a hole. 8 is deeper than any filter tree h2d composes; going
+// past it records into the parent instead of corrupting the stack, and says so.
+const MAX_TARGET_DEPTH: int32 = 8;
+const targetMarks: Vec<int32> = new Array(MAX_TARGET_DEPTH);
+const targetClipSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH * 5);
+let targetDepthNow: int32 = 0;
+let targetOverflowed: boolean = false;
 
 // The clip the replay is under. A scissor is a command, not a call, so the emitter tracks
 // what it last recorded and only records a change.
@@ -95,10 +124,13 @@ let renderTargetMode: boolean = false;
 
 export function resetList(): void {
 	commandTotal = 0;
+	targetCommandTotal = 0;
 	effectTotal = 0;
 	vertexTotal = 0;
 	clipRecorded = false;
 	renderTargetMode = false;
+	targetDepthNow = 0;
+	targetOverflowed = false;
 }
 
 // Which pipeline set every command recorded from here on will ask the replay to bind.
@@ -106,6 +138,13 @@ export function setRenderTargetMode(on: boolean): void { renderTargetMode = on; 
 export function renderTargetModeOn(): boolean { return renderTargetMode; }
 
 export function commandCount(): int32 { return commandTotal; }
+export function targetCommandCount(): int32 { return targetCommandTotal; }
+export function targetDepth(): int32 { return targetDepthNow; }
+export function targetStackOverflowed(): boolean { return targetOverflowed; }
+
+export function targetCommandField(index: int32, field: int32): float32 {
+	return targetCommands[index * COMMAND_FLOATS + field];
+}
 export function effectCount(): int32 { return effectTotal; }
 export function vertexCount(): int32 { return vertexTotal; }
 
@@ -209,6 +248,78 @@ export function recordDraw(
 	commands[base + CMD_EFFECT] = effectIndex as float32;
 }
 
+// Open a render-target pass. Everything recorded until the matching `endTargetList` belongs
+// to it. h2d saves and clears the clip per target (`h2d/Object.hx:896-956`): a Mask outside
+// the filter must not scissor the target, whose coordinates are its own.
+export function beginTargetList(
+	rt: uint32,
+	w: float32,
+	h: float32,
+	clearR: float32,
+	clearG: float32,
+	clearB: float32,
+	clearA: float32,
+): void {
+	if (targetDepthNow >= MAX_TARGET_DEPTH) {
+		// Recording into the parent is wrong, but it is visibly wrong rather than a stack
+		// smash, and the flag makes the frame say so instead of the picture.
+		targetOverflowed = true;
+		return;
+	}
+	targetMarks[targetDepthNow] = commandTotal;
+	const cs: int32 = targetDepthNow * 5;
+	targetClipSaves[cs] = clipX;
+	targetClipSaves[cs + 1] = clipY;
+	targetClipSaves[cs + 2] = clipW;
+	targetClipSaves[cs + 3] = clipH;
+	targetClipSaves[cs + 4] = clipRecorded ? 1.0 : 0.0;
+	targetDepthNow = targetDepthNow + 1;
+	const base: int32 = startCommand(CommandKind.TargetBegin, BreakReason.Barrier);
+	commands[base + CMD_VIEW] = rt as float32;
+	commands[base + CMD_ARG0] = w;
+	commands[base + CMD_ARG1] = h;
+	commands[base + CMD_CLEAR_R] = clearR;
+	commands[base + CMD_CLEAR_G] = clearG;
+	commands[base + CMD_CLEAR_B] = clearB;
+	commands[base + CMD_CLEAR_A] = clearA;
+	// Inside a target the clip starts empty and the offscreen pipeline set applies.
+	clipRecorded = false;
+	clipX = 0.0;
+	clipY = 0.0;
+	clipW = 0.0;
+	clipH = 0.0;
+	renderTargetMode = true;
+}
+
+// Close the open target and move its block out of the swapchain list. Because targets close
+// in LIFO order the block is the tail of `commands`, so this is a copy of a few records and
+// a count, and an inner target has already moved ahead of its consumer.
+export function endTargetList(): void {
+	if (targetDepthNow <= 0) { return; }
+	startCommand(CommandKind.TargetEnd, BreakReason.Barrier);
+	targetDepthNow = targetDepthNow - 1;
+	const mark: int32 = targetMarks[targetDepthNow];
+	const from: int32 = mark * COMMAND_FLOATS;
+	const upto: int32 = commandTotal * COMMAND_FLOATS;
+	let write: int32 = targetCommandTotal * COMMAND_FLOATS;
+	while ((targetCommands.length as int32) < write + (upto - from)) {
+		targetCommands.push(0.0 as float32);
+	}
+	for (let i: int32 = from; i < upto; i++) {
+		targetCommands[write] = commands[i];
+		write = write + 1;
+	}
+	targetCommandTotal = targetCommandTotal + (commandTotal - mark);
+	commandTotal = mark;
+	const cs: int32 = targetDepthNow * 5;
+	clipX = targetClipSaves[cs];
+	clipY = targetClipSaves[cs + 1];
+	clipW = targetClipSaves[cs + 2];
+	clipH = targetClipSaves[cs + 3];
+	clipRecorded = targetClipSaves[cs + 4] != 0.0;
+	renderTargetMode = targetDepthNow > 0;
+}
+
 // The clip the replay should be under from here on. Recording the same rect twice is a
 // no-op, so a Mask that does not change the zone costs nothing in the stream.
 export function recordClip(x: float32, y: float32, w: float32, h: float32): void {
@@ -256,6 +367,8 @@ export function commandKindName(kind: int32): string {
 		CommandKind.Draw => "draw",
 		CommandKind.Scissor => "scissor",
 		CommandKind.Blur => "blur",
+		CommandKind.TargetBegin => "target-begin",
+		CommandKind.TargetEnd => "target-end",
 	};
 }
 
@@ -287,6 +400,75 @@ test "the sampler index packs smooth and tileWrap into the four combinations" {
 	assert samplerIndex(true, true) == 3;
 	// Every combination is a distinct slot, and there are exactly as many as batcher.c makes.
 	assert samplerIndex(true, true) + 1 == SAMPLER_COUNT;
+}
+
+test "a closed target block leaves the swapchain list and lands in the target list" {
+	resetList();
+	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	beginTargetList(7, 64.0, 32.0, 0.0, 0.0, 0.0, 0.0);
+	recordDraw(BreakReason.First, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	endTargetList();
+	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	// The swapchain list kept only the sibling before and the consumer after it.
+	assert commandCount() == 2;
+	assert (commandField(0, CMD_VIEW) as int32) == 1;
+	assert (commandField(1, CMD_VIEW) as int32) == 3;
+	// The target's own pass went to the other list, wrapped in its markers.
+	assert targetCommandCount() == 3;
+	assert (targetCommandField(0, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
+	assert (targetCommandField(0, CMD_VIEW) as int32) == 7;
+	assert targetCommandField(0, CMD_ARG0) == 64.0;
+	assert targetCommandField(0, CMD_ARG1) == 32.0;
+	assert (targetCommandField(1, CMD_VIEW) as int32) == 2;
+	assert (targetCommandField(2, CMD_KIND) as int32) == (CommandKind.TargetEnd as int32);
+	assert targetDepth() == 0;
+}
+
+test "a nested target is replayed before the target that consumes it" {
+	resetList();
+	beginTargetList(10, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0);
+	recordDraw(BreakReason.First, 0, 6, 100, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	beginTargetList(11, 4.0, 4.0, 0.0, 0.0, 0.0, 0.0);
+	recordDraw(BreakReason.First, 6, 6, 200, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	endTargetList();
+	recordDraw(BreakReason.View, 12, 6, 300, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	endTargetList();
+	assert commandCount() == 0;
+	// inner: begin(11), draw 200, end — then outer: begin(10), draw 100, draw 300, end.
+	assert (targetCommandField(0, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
+	assert (targetCommandField(0, CMD_VIEW) as int32) == 11;
+	assert (targetCommandField(1, CMD_VIEW) as int32) == 200;
+	assert (targetCommandField(2, CMD_KIND) as int32) == (CommandKind.TargetEnd as int32);
+	assert (targetCommandField(3, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
+	assert (targetCommandField(3, CMD_VIEW) as int32) == 10;
+	assert (targetCommandField(4, CMD_VIEW) as int32) == 100;
+	assert (targetCommandField(5, CMD_VIEW) as int32) == 300;
+	assert (targetCommandField(6, CMD_KIND) as int32) == (CommandKind.TargetEnd as int32);
+	assert targetCommandCount() == 7;
+}
+
+test "a target starts with no clip and gives the outer clip back when it closes" {
+	resetList();
+	recordClip(5.0, 6.0, 7.0, 8.0);
+	beginTargetList(3, 16.0, 16.0, 0.0, 0.0, 0.0, 0.0);
+	// The outer Mask must not scissor the target: its coordinates are the target's own.
+	// Recording the same rect the outer list holds therefore has to emit a real scissor.
+	recordClip(5.0, 6.0, 7.0, 8.0);
+	endTargetList();
+	// And back outside, the outer clip is current again, so re-recording it is a no-op.
+	recordClip(5.0, 6.0, 7.0, 8.0);
+	assert commandCount() == 1;
+	assert targetCommandCount() == 3;
+	assert (targetCommandField(1, CMD_KIND) as int32) == (CommandKind.Scissor as int32);
+}
+
+test "the target stack refuses to overflow and says so" {
+	resetList();
+	for (let i: int32 = 0; i < 9; i++) { beginTargetList(1, 4.0, 4.0, 0.0, 0.0, 0.0, 0.0); }
+	assert targetStackOverflowed();
+	assert targetDepth() == 8;
+	for (let i: int32 = 0; i < 8; i++) { endTargetList(); }
+	assert targetDepth() == 0;
 }
 
 test "recording the same clip twice records one scissor" {

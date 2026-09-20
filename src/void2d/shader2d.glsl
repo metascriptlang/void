@@ -48,6 +48,12 @@ void main() {
         if (d.r + d.g + d.b < 0.08) { texel.a = 0.0; }
     }
     vec4 c = texel * color;
+    // A premultiplied source - a render target, which the whole pass wrote through
+    // premultiplied blending - already carries its coverage in rgb. A tint alpha therefore
+    // has to scale rgb as well, or fading it changes only its coverage: measured on
+    // filter/groupOpacity, a group at alpha 0.5 composited at full colour strength and the
+    // only thing 0.5 did was let the background through at the edges.
+    c.rgb = mix(c.rgb, c.rgb * color.a, srcPremult);
     c = colorMatrix * c;
     c = c + colorAdd;
     vec4 premult = vec4(c.rgb * c.a, c.a);

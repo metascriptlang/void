@@ -3,8 +3,8 @@
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
 import { Node2D, group, addChild, update } from "./node";
-import { sync, draw } from "./render";
-import { begin2d, end2d, setSceneSmooth } from "./draw";
+import { sync, draw, releaseTargets } from "./render";
+import { begin2d, end2d, flushTargets, setSceneSmooth } from "./draw";
 import { Color, Camera, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
@@ -98,11 +98,11 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	const fh: int32 = fbHeight();
 	const wf: float32 = (fw as float32) / dpi;
 	const hf: float32 = (fh as float32) / dpi;
-	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
 	begin2d(wf, hf, dpi);
 	// Before the walk, never during it: two nodes with identical state must not sample
 	// differently because the default moved between them.
 	setSceneSmooth(s.defaultSmooth);
+	releaseTargets();
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const viewChanged: boolean = !s.viewInit
 		|| nv.a != s.viewMat.a || nv.b != s.viewMat.b
@@ -114,6 +114,11 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	}
 	s.root.sync(s.viewMat, viewChanged);
 	s.root.draw(1.0, wf, hf);
+	// Every render-target pass first, with no pass open, then one swapchain pass that is only
+	// draws. That ordering is what stops a filter nesting a pass inside the frame's pass, and
+	// it is the GPUI frame shape (GPUI.md:18).
+	flushTargets();
+	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
 	end2d();
 	endPass();
 	commit();

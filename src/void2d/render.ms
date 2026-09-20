@@ -12,15 +12,11 @@ import {
 	pushClip,
 	popClip,
 	atlasGen,
-	begin2d,
-	end2d,
-	setRTMode,
+	beginTarget,
+	endTarget,
 	blurPass,
 	allocRenderTarget,
-	freeRenderTarget,
 	rtViewId,
-	beginRT,
-	endRT,
 } from "./draw";
 import { layoutText, buildGlyphMesh } from "./text";
 import { fontView } from "./draw";
@@ -183,17 +179,108 @@ function emitNode(n: Node2D, world: Transform2D, na: float32, col: Color, tl: Ve
 	}
 }
 
-let scratchRT: uint32 = 0;
-let scratchRTW: int32 = 0;
-let scratchRTH: int32 = 0;
+// A filter target always starts empty: what is not drawn into it must not composite.
+const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 
-function ensureScratch(w: int32, h: int32): void {
-	if (scratchRT == 0 || scratchRTW < w || scratchRTH < h) {
-		if (scratchRT != 0) { freeRenderTarget(scratchRT); }
-		scratchRT = allocRenderTarget(w, h);
-		scratchRTW = w;
-		scratchRTH = h;
+// ===== the frame-linear render-target pool (h3d/impl/TextureCache.hx) =====
+//
+// No node owns a target any more. A target is taken for the length of one frame and handed
+// back at the start of the next, so two filters that never overlap in time share one, and a
+// node that stops being filtered stops holding a texture it is not using. Reuse is by exact
+// size, because a golden has to be reproducible and a size-bucketed pool would make the
+// contents of a target depend on which frame allocated it first.
+//
+// The cap matters: sokol's default pools hold 128 images, 128 views and 128 attachment sets,
+// and a render target costs one of each. 16 is far below that and still more filters than
+// h2d composes in one frame; past it the filter is skipped and says so once, rather than
+// failing inside sokol where the message names no node.
+const MAX_POOLED_TARGETS: int32 = 16;
+const poolRT: Vec<uint32> = [];
+const poolW: Vec<int32> = [];
+const poolH: Vec<int32> = [];
+const poolBusy: Vec<boolean> = [];
+let poolExhaustedReported: boolean = false;
+
+// Called once per frame, before the walk: every target from last frame becomes available.
+// Exported so `filter.ms` can take a scratch target for its own downsample chain rather
+// than carrying a second, weaker kernel.
+export function acquireFrameTarget(w: int32, h: int32): uint32 { return acquireTarget(w, h); }
+
+export function releaseTargets(): void {
+	for (let i: int32 = 0; i < (poolBusy.length as int32); i++) { poolBusy[i] = false; }
+}
+
+function acquireTarget(w: int32, h: int32): uint32 {
+	for (let i: int32 = 0; i < (poolRT.length as int32); i++) {
+		if (!poolBusy[i] && poolW[i] == w && poolH[i] == h) {
+			poolBusy[i] = true;
+			return poolRT[i];
+		}
 	}
+	if ((poolRT.length as int32) >= MAX_POOLED_TARGETS) {
+		if (!poolExhaustedReported) {
+			poolExhaustedReported = true;
+			console.log(`void2d: more than ${MAX_POOLED_TARGETS} filter targets in one frame - the rest are drawn unfiltered`);
+		}
+		return 0;
+	}
+	const rt: uint32 = allocRenderTarget(w, h);
+	if (rt == 0) { return 0; }
+	poolRT.push(rt);
+	poolW.push(w);
+	poolH.push(h);
+	poolBusy.push(true);
+	return rt;
+}
+
+function ceilToInt(v: float32): int32 {
+	const t: int32 = v as int32;
+	return (v > (t as float32)) ? t + 1 : t;
+}
+
+// Guardrail 3: downsample by 2^k, then blur at a one-texel step - never widen the tap
+// spacing. The shader is a five-tap linear-sampled Gaussian whose offsets (1.384615 and
+// 3.230769 texels) are the classic sigma-2 kernel, so it is only a Gaussian when `dir` is one
+// texel. The pre-P1 code passed `radius / size`, which put the outer taps at 3.2 * radius
+// texels: at radius 12 that samples 39 texels away and the result is a comb, not a blur.
+// Halving until the radius is about two texels keeps the kernel in its valid regime and makes
+// a wide blur cheaper rather than more wrong.
+export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32): uint32 {
+	let src: uint32 = rt;
+	let sw: int32 = w;
+	let sh: int32 = h;
+	let r: float32 = radius;
+	while (r > 2.0 && sw >= 8 && sh >= 8) {
+		const dw: int32 = sw / 2;
+		const dh: int32 = sh / 2;
+		const dst: uint32 = acquireTarget(dw, dh);
+		if (dst == 0) { return 0; }
+		beginTarget(dst, dw as float32, dh as float32, 0.0, 0.0, transparent);
+		blitTarget(src, dw as float32, dh as float32);
+		endTarget();
+		src = dst;
+		sw = dw;
+		sh = dh;
+		r = r * 0.5;
+	}
+	const tmp: uint32 = acquireTarget(sw, sh);
+	if (tmp == 0) { return 0; }
+	beginTarget(tmp, sw as float32, sh as float32, 0.0, 0.0, transparent);
+	blurPass(rtViewId(src), 1.0 / (sw as float32), 0.0);
+	endTarget();
+	const out: uint32 = acquireTarget(sw, sh);
+	if (out == 0) { return 0; }
+	beginTarget(out, sw as float32, sh as float32, 0.0, 0.0, transparent);
+	blurPass(rtViewId(tmp), 0.0, 1.0 / (sh as float32));
+	endTarget();
+	return out;
+}
+
+// One half-scale copy. `BlendMode.None` writes the source through instead of compositing it
+// over the target's transparent black, which would otherwise darken every edge texel.
+function blitTarget(src: uint32, w: float32, h: float32): void {
+	imageQuad(tile(rtViewId(src), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
+		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 
 export function draw(this n: Node2D, a: float32, vw: float32, vh: float32): void {
@@ -234,6 +321,25 @@ function drawContent(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	}
 }
 
+// h2d.Object.drawFilters (`h2d/Object.hx:896-956`), which the pre-P1 version got wrong in
+// five separate ways. What it does now, and what each line replaces:
+//
+//   - **the node itself enters the target**, through `drawContent`; before, only `n.children`
+//     did, so a filtered Graphics lost its own geometry and kept its children's.
+//   - **alpha is applied once.** The subtree goes into the target at alpha 1 and the target is
+//     composited at the accumulated alpha. Before, `a * n.alpha` was used for both, so a group
+//     at 0.5 came out at 0.25.
+//   - **object-local space through a filter matrix**, which here is the translation the
+//     emitter subtracts from every vertex (`draw.ms` `originX/originY`). Before, the subtree
+//     was re-synced against a second world matrix and then synced back, so it was walked and
+//     transformed twice a frame and `localToGlobal` answered in target coordinates in between.
+//   - **bounds clipped to the viewport**, so a filtered node mostly offscreen allocates a
+//     target the size of the visible part instead of the size of the node.
+//   - **no pass is opened here at all.** `beginTarget` brackets a region of the display list;
+//     the replay opens the pass, outside the swapchain pass. Before, `beginRT` opened a pass
+//     inside the open swapchain pass - sokol's `!_sg.cur_pass.valid` assertion in a debug
+//     build, a frame of nothing but the clear colour in release, because the nested `begin2d`
+//     also reset the list the frame was being recorded into.
 function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	const b = emptyBounds();
 	n.getBounds(b);
@@ -247,60 +353,58 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 		if (n.filter.offsetX < 0.0) { xMin = xMin + n.filter.offsetX; } else { xMax = xMax + n.filter.offsetX; }
 		if (n.filter.offsetY < 0.0) { yMin = yMin + n.filter.offsetY; } else { yMax = yMax + n.filter.offsetY; }
 	}
-	const rtW: int32 = (xMax - xMin) as int32;
-	const rtH: int32 = (yMax - yMin) as int32;
+	// Clipped to the viewport: a target is only ever needed for the part that can be seen.
+	if (xMin < 0.0) { xMin = 0.0; }
+	if (yMin < 0.0) { yMin = 0.0; }
+	if (xMax > vw) { xMax = vw; }
+	if (yMax > vh) { yMax = vh; }
+	if (xMax <= xMin || yMax <= yMin) { return; }
+	const rtW: int32 = ceilToInt(xMax - xMin);
+	const rtH: int32 = ceilToInt(yMax - yMin);
 	if (rtW <= 0 || rtH <= 0) { return; }
-	if (n.filterRT == 0 || n.filterRTW < rtW || n.filterRTH < rtH) {
-		if (n.filterRT != 0) { freeRenderTarget(n.filterRT); }
-		n.filterRT = allocRenderTarget(rtW, rtH);
-		n.filterRTW = rtW;
-		n.filterRTH = rtH;
-	}
-	beginRT(n.filterRT, 0.0, 0.0, 0.0, 0.0);
-	begin2d(rtW, rtH, 1.0);
-	setRTMode(true);
-	const rtWorld: Transform2D = trs2d(-xMin, -yMin, 0.0, 1.0, 1.0) * n.cachedWorld;
-	if (n.childrenDirty) { sortByZ(n.children); n.childrenDirty = false; }
-	for (const ch of n.children) {
-		ch.sync(rtWorld, true);
-		ch.draw(a * n.alpha, rtW as float32, rtH as float32);
-	}
-	setRTMode(false);
-	end2d();
-	endRT();
+	const rt: uint32 = acquireTarget(rtW, rtH);
+	if (rt == 0) { return; }
+
+	// The subtree at alpha 1, in target space. One walk, one sync, no GPU call.
+	//
+	// `drawContent` multiplies the alpha it is given by `n.alpha` - that is its contract for
+	// every other node - so handing it 1.0 would still put the group's own alpha into the
+	// target and then apply it again at the composite. Measured before this line existed: a
+	// group at 0.5 came out at 0.49 of the background instead of 0.5, and its two overlapping
+	// children still double-blended against each other. The filter takes the node's alpha
+	// over for the length of the target, which is what h2d does by carrying it on the filter
+	// rather than on the object (`h2d/Object.hx:896-956`).
+	const heldAlpha: float32 = n.alpha;
+	n.alpha = 1.0;
+	beginTarget(rt, rtW as float32, rtH as float32, xMin, yMin, transparent);
+	drawContent(n, 1.0, vw, vh);
+	endTarget();
+	n.alpha = heldAlpha;
+
+	let src: uint32 = rt;
 	if (n.filter.radius > 0.0) {
-		ensureScratch(rtW, rtH);
-		beginRT(scratchRT, 0.0, 0.0, 0.0, 0.0);
-		begin2d(rtW, rtH, 1.0);
-		setRTMode(true);
-		blurPass(rtViewId(n.filterRT), n.filter.radius / (rtW as float32), 0.0);
-		setRTMode(false);
-		end2d();
-		endRT();
-		beginRT(n.filterRT, 0.0, 0.0, 0.0, 0.0);
-		begin2d(rtW, rtH, 1.0);
-		setRTMode(true);
-		blurPass(rtViewId(scratchRT), 0.0, n.filter.radius / (rtH as float32));
-		setRTMode(false);
-		end2d();
-		endRT();
+		src = blurTargetPooled(rt, rtW, rtH, n.filter.radius);
+		if (src == 0) { return; }
 	}
+
 	const na: float32 = a * n.alpha;
-	const rtTile = tile(rtViewId(n.filterRT), rtW as float32, rtH as float32);
-	for (const ch of n.children) {
-		ch.sync(n.cachedWorld, true);
-	}
+	const rtTile = tile(rtViewId(src), rtW as float32, rtH as float32);
 	if (n.filter.kind === FilterKind.Blur) {
-		imageQuad(rtTile, vec2(xMin, yMin), vec2(xMax, yMin), vec2(xMax, yMax), vec2(xMin, yMax), rgba(1.0, 1.0, 1.0, na), n.blend);
-	} else {
-		setEffect(colorMatrixAlphaOnly(n.filter.gain), rgba(n.filter.color.r, n.filter.color.g, n.filter.color.b, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-		const ox: float32 = n.filter.kind === FilterKind.DropShadow ? n.filter.offsetX : 0.0;
-		const oy: float32 = n.filter.kind === FilterKind.DropShadow ? n.filter.offsetY : 0.0;
-		const fblend: BlendMode = n.filter.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
-		imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(xMax + ox, yMin + oy), vec2(xMax + ox, yMax + oy), vec2(xMin + ox, yMax + oy), rgba(1.0, 1.0, 1.0, 1.0), fblend);
-		setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-		drawContent(n, na, vw, vh);
+		imageQuad(rtTile, vec2(xMin, yMin), vec2(xMax, yMin), vec2(xMax, yMax), vec2(xMin, yMax),
+			rgba(1.0, 1.0, 1.0, na), n.blend);
+		return;
 	}
+	// Glow and DropShadow composite a tinted silhouette of the blur and then the sharp
+	// original on top, both at the accumulated alpha.
+	setEffect(colorMatrixAlphaOnly(n.filter.gain),
+		rgba(n.filter.color.r, n.filter.color.g, n.filter.color.b, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	const ox: float32 = n.filter.kind === FilterKind.DropShadow ? n.filter.offsetX : 0.0;
+	const oy: float32 = n.filter.kind === FilterKind.DropShadow ? n.filter.offsetY : 0.0;
+	const fblend: BlendMode = n.filter.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
+	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(xMax + ox, yMin + oy),
+		vec2(xMax + ox, yMax + oy), vec2(xMin + ox, yMax + oy), rgba(1.0, 1.0, 1.0, na), fblend);
+	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	drawContent(n, na, vw, vh);
 }
 
 export function getBounds(this n: Node2D, ref out: Bounds): void {

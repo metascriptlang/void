@@ -15,7 +15,7 @@ import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dSetDpiScale, void2dFrameBegin,
 	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight,
 	void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
-	void2dReplay, void2dLayoutCheck,
+	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dInstanceBufferBytes, void2dDroppedFrames,
 } from "./batcher.h";
@@ -23,10 +23,11 @@ import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SAMPLER,
-	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE, SAMPLER_COUNT, samplerIndex,
-	commands, effects, vertices,
-	resetList, commandCount, effectCount, vertexCount, drawCommandCount, setRenderTargetMode,
-	pushVertex, pushEffect, recordDraw, recordClip, recordBlur,
+	CMD_EFFECT, CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R, SAMPLER_COUNT, samplerIndex,
+	commands, effects, vertices, targetCommands,
+	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
+	targetDepth, targetStackOverflowed, beginTargetList, endTargetList,
+	pushVertex as pushVertexRaw, pushEffect, recordDraw, recordClip, recordBlur,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
@@ -34,8 +35,21 @@ import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTar
 export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
 export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
 export function rtViewId(rt: uint32): uint32 { return renderTargetView(rt); }
-export function beginRT(rt: uint32, r: float32, g: float32, b: float32, a: float32): void { beginRenderTargetPass(rt, r, g, b, a); }
-export function endRT(): void { endPass(); }
+
+// h2d puts a filtered subtree into its target through a filter matrix rather than re-syncing
+// the subtree against a second world matrix (`h2d/Object.hx:896-956`). The matrix is a pure
+// translation here, so it is one subtraction at the point a vertex is recorded - and because
+// it is applied to the *stream* rather than to the tree, the subtree keeps the single sync it
+// already had and `localToGlobal` keeps answering in screen coordinates.
+let originX: float32 = 0.0;
+let originY: float32 = 0.0;
+
+function pushVertex(
+	x: float32, y: float32, u: float32, v: float32,
+	r: float32, g: float32, b: float32, a: float32,
+): void {
+	pushVertexRaw(x - originX, y - originY, u, v, r, g, b, a);
+}
 
 // The batch the emitter is accumulating: a run of vertices that share every piece of state
 // the replay would otherwise have to change between them.
@@ -52,8 +66,17 @@ let curSampler: int32 = 0;
 // scaled UI are the common case here, so the default is linear.
 let sceneSmooth: boolean = true;
 let curEffect: int32 = NO_EFFECT;
+// False when the frame's geometry blew the cap: the swapchain list must not draw either.
+let frameLive: boolean = true;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
+
+// The emitter state each open target has to give back. Same depth as displayList.ms's stack;
+// past it `beginTarget` still brackets the list correctly, it just stops restoring, and the
+// list's own overflow flag is what reports it.
+const TARGET_SAVE_SLOTS: int32 = 8;
+const savedView: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
+const savedSize: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
 
 export function drawCallCount(): int32 { return void2dDrawCallCount(); }
 export function uploadCount(): int32 { return void2dUploadCount(); }
@@ -137,9 +160,10 @@ export function setup2d(): void {
 	if (void2dLayoutCheck(
 		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
 		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
-		CMD_VIEW, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
+		CMD_VIEW, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT, TARGET_SAVE_SLOTS, CMD_CLEAR_R,
 		CMD_CLIP_X, CMD_ARG0, CMD_RT_MODE,
 		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
+		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
 	) == 0) {
 		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
 	}
@@ -161,6 +185,9 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 	fbW = w;
 	fbH = h;
 	resetList();
+	frameLive = true;
+	originX = 0.0;
+	originY = 0.0;
 	runOpen = false;
 	runStart = 0;
 	curView = void2dWhiteView();
@@ -174,15 +201,29 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 	clipDepth = 0;
 }
 
-// Replay the frame into the pass the caller already has open. This is the only place the GPU
-// is touched, and it happens after the walk has finished.
+// Upload the frame and run every render-target pass. Called with NO pass open, before the
+// swapchain pass is begun: that ordering is the phase's whole point, because a target pass
+// opened inside the swapchain pass is what sokol asserts on.
+export function flushTargets(): void {
+	closeRun();
+	if (targetStackOverflowed()) {
+		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
+	}
+	frameLive = void2dReplayTargets(
+		targetCommands[0], targetCommandCount(),
+		effects[0], effectCount(),
+		vertices[0], vertexCount(),
+	) != 0;
+}
+
+// Replay the swapchain list into the pass the caller already has open. Together with
+// `flushTargets` this is the only place the GPU is touched, and both happen after the walk.
 export function end2d(): void {
 	closeRun();
-	if (commandCount() == 0) { return; }
+	if (!frameLive || commandCount() == 0) { return; }
 	void2dReplay(
 		commands[0], commandCount(),
 		effects[0], effectCount(),
-		vertices[0], vertexCount(),
 		fbW, fbH,
 	);
 }
@@ -197,7 +238,8 @@ function applyClip(x0: float32, y0: float32, x1: float32, y1: float32): void {
 	if (iw < 0.0) { iw = 0.0; }
 	if (ih < 0.0) { ih = 0.0; }
 	closeRun();
-	recordClip(ix, iy, iw, ih);
+	// A Mask inside a filtered subtree scissors the target, whose origin is not the screen's.
+	recordClip(ix - originX, iy - originY, iw, ih);
 	openRun(BreakReason.Clip);
 }
 
@@ -336,9 +378,60 @@ export function drawText(pos: Vec2, size: float32, scale: float32, text: string,
 // or the swapchain one. Recorded per command rather than flipped here, because the replay
 // runs after the recording has finished — the demo caught this the moment the display list
 // landed, with every render-target draw replaying under the swapchain set.
-export function setRTMode(on: boolean): void {
+// Open a render-target bracket. Nothing touches the GPU here: the commands that follow are
+// moved into the hoisted target list when `endTarget` closes them, and the pass itself is
+// opened by the replay, outside the swapchain pass. The emitter's run state is saved because
+// the target has its own viewport and its own idea of what is already bound.
+export function beginTarget(
+	rt: uint32,
+	w: float32,
+	h: float32,
+	ox: float32,
+	oy: float32,
+	clear: Color,
+): void {
+	if (targetDepth() >= TARGET_SAVE_SLOTS) {
+		beginTargetList(rt, w, h, clear.r, clear.g, clear.b, clear.a);
+		return;
+	}
 	closeRun();
-	setRenderTargetMode(on);
+	const slot: int32 = targetDepth() * 4;
+	savedView[slot] = curView as float32;
+	savedView[slot + 1] = (curBlend as int32) as float32;
+	savedView[slot + 2] = curSampler as float32;
+	savedView[slot + 3] = curEffect as float32;
+	savedSize[targetDepth() * 4] = fbW;
+	savedSize[targetDepth() * 4 + 1] = fbH;
+	savedSize[targetDepth() * 4 + 2] = originX;
+	savedSize[targetDepth() * 4 + 3] = originY;
+	beginTargetList(rt, w, h, clear.r, clear.g, clear.b, clear.a);
+	fbW = w;
+	fbH = h;
+	originX = ox;
+	originY = oy;
+	// A fresh pass has nothing bound, so the first draw in it must not be told it can skip a
+	// bind it never made.
+	curView = void2dWhiteView();
+	curBlend = BlendMode.Alpha;
+	curSampler = samplerIndex(sceneSmooth, false);
+	curEffect = NO_EFFECT;
+	openRun(BreakReason.Barrier);
+}
+
+export function endTarget(): void {
+	closeRun();
+	const depth: int32 = targetDepth();
+	endTargetList();
+	if (depth > TARGET_SAVE_SLOTS || depth <= 0) { return; }
+	const slot: int32 = (depth - 1) * 4;
+	curView = savedView[slot] as uint32;
+	curBlend = (savedView[slot + 1] as int32) as BlendMode;
+	curSampler = savedView[slot + 2] as int32;
+	curEffect = savedView[slot + 3] as int32;
+	fbW = savedSize[(depth - 1) * 4];
+	fbH = savedSize[(depth - 1) * 4 + 1];
+	originX = savedSize[(depth - 1) * 4 + 2];
+	originY = savedSize[(depth - 1) * 4 + 3];
 	openRun(BreakReason.Barrier);
 }
 

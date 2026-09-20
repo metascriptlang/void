@@ -705,10 +705,16 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "image/colorPipeline", build: imageColorPipeline },
 		{ name: "image/scaleGrid", build: imageScaleGrid },
 
+		{ name: "filter/blur", build: filterBlur },
+		{ name: "filter/glow", build: filterGlow },
+		{ name: "filter/dropShadow", build: filterDropShadow },
+		{ name: "filter/groupOpacity", build: filterGroupOpacity },
+
 		{ name: "regress/nodeCap", build: regressNodeCap },
 		{ name: "regress/dpiTruncation", build: regressDpiTruncation },
 		{ name: "regress/samplerRepeat", build: regressSamplerRepeat },
 		{ name: "regress/vertexCap", build: regressVertexCap },
+		{ name: "regress/filterNestedPass", build: regressFilterNestedPass },
 
 		{ name: "demo/frame001", build: demoPlaceholder },
 		{ name: "demo/frame030", build: demoPlaceholder },

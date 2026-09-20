@@ -65,10 +65,13 @@ export function sceneRows(): SceneRow[] {
 		{ name: "image/colorPipeline", phase: "P0", width: 256, height: 170, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/scaleGrid", phase: "P0", width: 256, height: 148, dpi: 1.0, steps: 0, demo: false },
 
-		// filter/ is empty at P0 and the builders in scenes.ms are not wired to a row yet: a
-		// node filter opens a render-target pass inside the swapchain pass, which sokol
-		// refuses, and the frame comes back as nothing but the clear colour. P1 lands the
-		// hoisted per-target command lists and turns these four rows on. See tests/PENDING.md.
+		// Turned on at P1, once the per-target command lists were hoisted out of the swapchain
+		// list: a filter no longer opens a pass during the walk, it brackets a region of the
+		// display list that the replay runs as its own pass beforehand.
+		{ name: "filter/blur", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "filter/glow", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "filter/dropShadow", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "filter/groupOpacity", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 
 		// regress/atlasFull has no row either: once the 512x512 fontstash atlas fills, which
 		// glyphs survive varies between runs of the same binary — three distinct outputs in
@@ -79,6 +82,9 @@ export function sceneRows(): SceneRow[] {
 		{ name: "regress/dpiTruncation", phase: "P0", width: 256, height: 170, dpi: 1.5, steps: 0, demo: false },
 		{ name: "regress/samplerRepeat", phase: "P0", width: 256, height: 152, dpi: 1.0, steps: 0, demo: false },
 		{ name: "regress/vertexCap", phase: "P0", width: 256, height: 168, dpi: 1.0, steps: 0, demo: false },
+		// The siblings drawn before and after a filtered node used to disappear with it, because
+		// the nested begin2d reset the list the frame was being recorded into. P1.
+		{ name: "regress/filterNestedPass", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 
 		{ name: "demo/frame001", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 1, demo: true },
 		{ name: "demo/frame030", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 30, demo: true },
