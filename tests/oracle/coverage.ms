@@ -82,3 +82,78 @@ export function maxCoverageError(
 	}
 	return worst;
 }
+
+
+// ===== judging a CAPTURE, not just an analytic curve =====
+//
+// Everything above works in the shape's own space. A capture is in device pixels under an
+// affine, so this maps each supersample back through the INVERSE linear part before asking
+// the same geometry question. Supersampling stays in device space, because coverage is a
+// fraction of a DEVICE pixel and a rotation does not make those two the same thing.
+//
+// Still no distance field and still no code shared with src/void2d/sdf.ms: this decides
+// inside from outside by cases, the way the rest of this file does.
+
+// The fraction of the device pixel centred at (cx, cy) inside a rounded rect whose local
+// (0,0) maps to (ox, oy) and whose local axes are the affine (a, b, c, d). The inverse is
+// taken here rather than passed, so a caller cannot hand in an inverse that does not match
+// the forward transform the scene was drawn with.
+export function devicePixelCoverage(
+	cx: float32,
+	cy: float32,
+	a: float32, b: float32, c: float32, d: float32,
+	ox: float32, oy: float32,
+	w: float32, h: float32,
+	r: float32,
+): float32 {
+	const det: float32 = a * d - b * c;
+	if (det == 0.0) { return 0.0; }
+	const ia: float32 = d / det;
+	const ib: float32 = -b / det;
+	const ic: float32 = -c / det;
+	const id: float32 = a / det;
+	const hx: float32 = w * 0.5;
+	const hy: float32 = h * 0.5;
+	let hits: int32 = 0;
+	const step: float32 = 1.0 / (SUPERSAMPLES as float32);
+	for (let sy: int32 = 0; sy < SUPERSAMPLES; sy++) {
+		const py: float32 = cy + (((sy as float32) + 0.5) * step - 0.5);
+		for (let sx: int32 = 0; sx < SUPERSAMPLES; sx++) {
+			const px: float32 = cx + (((sx as float32) + 0.5) * step - 0.5);
+			const dx: float32 = px - ox;
+			const dy: float32 = py - oy;
+			const lx: float32 = ia * dx + ic * dy;
+			const ly: float32 = ib * dx + id * dy;
+			if (insideRoundedRect(lx - hx, ly - hy, hx, hy, r)) { hits = hits + 1; }
+		}
+	}
+	return (hits as float32) / ((SUPERSAMPLES * SUPERSAMPLES) as float32);
+}
+
+// The coverage a captured pixel implies, read off the channel with the widest range between
+// background and fill - that channel carries the most levels, so it quantises the answer the
+// least. Returns -1 when no channel separates the two colours at all, which is a scene that
+// cannot be judged rather than a scene that passed.
+export function coverageFromPixel(
+	pr: int32, pg: int32, pb: int32,
+	bgR: int32, bgG: int32, bgB: int32,
+	fillR: int32, fillG: int32, fillB: int32,
+): float32 {
+	let span: int32 = 0;
+	let observed: int32 = 0;
+	let base: int32 = 0;
+	const spans: Vec<int32> = [fillR - bgR, fillG - bgG, fillB - bgB];
+	const values: Vec<int32> = [pr, pg, pb];
+	const bases: Vec<int32> = [bgR, bgG, bgB];
+	for (let i: int32 = 0; i < 3; i++) {
+		const magnitude: int32 = spans[i] < 0 ? -spans[i] : spans[i];
+		const best: int32 = span < 0 ? -span : span;
+		if (magnitude > best) {
+			span = spans[i];
+			observed = values[i];
+			base = bases[i];
+		}
+	}
+	if (span == 0) { return -1.0; }
+	return ((observed - base) as float32) / (span as float32);
+}
