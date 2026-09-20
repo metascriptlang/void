@@ -271,7 +271,7 @@ run_capture() {
 
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the five configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the six configurations were not built, not run, not compared"
 		return
 	fi
 	if [ ! -f "$CAPTURE/capture.c" ] || [ ! -f "$CAPTURE/capture.h" ]; then
