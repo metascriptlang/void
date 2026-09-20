@@ -39,10 +39,9 @@ export enum NodeKind {
 }
 
 export enum SceneError {
-	UnknownNode,
 	StaleNode,
-	SlotsExhausted,
-	CycleWouldForm,
+	RootCannotBeRemoved,
+	NotAMeshNode,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -94,7 +93,7 @@ export function identityTransform(): Transform3D {
 	return { position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), scale: vec3(1.0, 1.0, 1.0) };
 }
 
-export function at(position: Vec3): Transform3D {
+export function transformAt(position: Vec3): Transform3D {
 	return { ...identityTransform(), position: position };
 }
 
@@ -112,7 +111,11 @@ export function isVisible(this node: Object3D): boolean {
 }
 
 export function nodeCount(this scene: Scene): int32 {
-	return (scene.nodes.length as int32) - (scene.free.length as int32);
+	let retired: int32 = 0;
+	for (const gone of scene.retired) {
+		if (gone) { retired = retired + 1; }
+	}
+	return (scene.nodes.length as int32) - (scene.free.length as int32) - retired;
 }
 
 // True when `id` still names the node it was handed out for.
@@ -121,21 +124,21 @@ export function isLive(this scene: Scene, id: NodeId): boolean {
 	return scene.generations[id.index] == id.generation;
 }
 
-function newSlot(ref scene: Scene, node: Object3D): Result<NodeId, SceneError> {
+function newSlot(ref scene: Scene, node: Object3D): NodeId {
 	const reusable: int32 = scene.free.length as int32;
 	if (reusable > 0) {
 		// Dense LIFO: the last freed slot is the next handed out.
 		const index: int32 = scene.free[reusable - 1];
 		scene.free.pop();
 		scene.nodes[index] = node;
-		return Result.ok({ index: index, generation: scene.generations[index] });
+		return { index: index, generation: scene.generations[index] };
 	}
 	const index: int32 = scene.nodes.length as int32;
 	scene.nodes.push(node);
 	scene.generations.push(1);
 	scene.retired.push(false);
 	scene.stack.push(NO_NODE);
-	return Result.ok({ index: index, generation: 1 });
+	return { index: index, generation: 1 };
 }
 
 export function create(this typeof Scene): Scene {
@@ -149,7 +152,7 @@ export function create(this typeof Scene): Scene {
 		root: NO_NODE,
 		structureChanged: true,
 	};
-	const root: Result<NodeId, SceneError> = newSlot(scene, {
+	const root: NodeId = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: NO_NODE,
@@ -158,7 +161,7 @@ export function create(this typeof Scene): Scene {
 		world: identity(),
 		children: [],
 	});
-	if (root.ok) { scene.root = root.value.index; }
+	scene.root = root.index;
 	return scene;
 }
 
@@ -169,7 +172,7 @@ export function rootId(this scene: Scene): NodeId {
 // Adds an empty group under `parent`. Structure changed, so the draw list is rebuilt next collect.
 export function addGroup(ref scene: Scene, parent: NodeId, local: Transform3D): Result<NodeId, SceneError> {
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
-	const id: NodeId = try newSlot(scene, {
+	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: parent.index,
@@ -202,7 +205,7 @@ export function addMeshNode(
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material });
-	const id: NodeId = try newSlot(scene, {
+	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: parent.index,
@@ -236,7 +239,7 @@ function detach(ref scene: Scene, index: int32): void {
 // a slot whose generation would wrap is retired instead, so an id can never come back aliased.
 export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	if (id.index == scene.root) { return Result.err(SceneError.UnknownNode); }
+	if (id.index == scene.root) { return Result.err(SceneError.RootCannotBeRemoved); }
 	detach(scene, id.index);
 	let removed: int32 = 0;
 	let top: int32 = 0;
@@ -253,8 +256,13 @@ export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> 
 		scene.nodes[index].parent = NO_NODE;
 		const generation: int32 = scene.generations[index];
 		if (generation == 2147483647) {
-			// Wrap detected rather than silent: the slot is never handed out again.
+			// Wrap detected rather than silent. Withholding the slot from the free list is only
+			// half of it: the generation has to stop matching any id ever issued, or `isLive`
+			// keeps answering true for the dead node and every guarded entry point lets a caller
+			// through — including adopting a child under it, which would be unreachable from the
+			// root forever. Generation 0 is issued by nothing; `newSlot` starts at 1.
 			scene.retired[index] = true;
+			scene.generations[index] = 0;
 		} else {
 			scene.generations[index] = generation + 1;
 			scene.free.push(index);
@@ -285,7 +293,7 @@ export function setVisible(ref scene: Scene, id: NodeId, visible: boolean): Resu
 
 export function setMeshOf(ref scene: Scene, id: NodeId, mesh: int32): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	if (scene.nodes[id.index].kind != NodeKind.Mesh) { return Result.err(SceneError.UnknownNode); }
+	if (scene.nodes[id.index].kind != NodeKind.Mesh) { return Result.err(SceneError.NotAMeshNode); }
 	scene.meshes[scene.nodes[id.index].payload].mesh = mesh;
 	return Result.ok(id.index);
 }
@@ -303,7 +311,7 @@ export function worldOf(this scene: Scene, id: NodeId): Result<Mat4, SceneError>
 // nodes the two cost the same — the bench stage is what would show otherwise.
 //
 // Allocates nothing: the descent stack is `scene.stack`, sized when nodes were added.
-export function sync(ref scene: Scene): int32 {
+export function syncWorld(ref scene: Scene): int32 {
 	if (scene.root == NO_NODE) { return 0; }
 	let synced: int32 = 0;
 	let top: int32 = 0;
@@ -333,7 +341,7 @@ export function sync(ref scene: Scene): int32 {
 
 // The walk h3d's `emitRec` does every frame, done here only when the structure changed. Writes
 // into `items`, which the caller owns and keeps, so a steady frame allocates nothing.
-export function collect(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
+export function collectDrawList(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 	// Emptied by popping rather than by `items = []`, which would hand back a fresh array and
 	// drop the capacity this list already has. Collect runs only on a structural change, but
 	// keeping it allocation-free means the claim does not depend on how often that is.
@@ -352,10 +360,10 @@ export function collect(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
 		// order is draw order, and the draw list is what decides overdraw.
-		const children: Vec<int32> = scene.nodes[index].children;
-		const count: int32 = children.length as int32;
+		// Indexed, not copied and not sliced — see the note in `refresh`.
+		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {
-			scene.stack[top] = children[i];
+			scene.stack[top] = scene.nodes[index].children[i];
 			top = top + 1;
 		}
 	}
@@ -366,9 +374,10 @@ export function collect(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 // Each frame: sync the matrices, and rebuild the list only when the structure moved. A steady
 // frame with a moving node rewrites `world` in place rather than walking the tree again.
 export function refresh(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
-	const synced: int32 = sync(scene);
+	if (scene.root == NO_NODE) { return 0; }
+	const _synced: int32 = syncWorld(scene);
 	if (scene.structureChanged) {
-		return collect(scene, items);
+		return collectDrawList(scene, items);
 	}
 	// The tree and the list are in the same order, so one pass rewrites every item in place.
 	// This runs on every steady frame rather than only when something moved, which is what
@@ -384,17 +393,43 @@ export function refresh(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 			const index: int32 = scene.stack[top];
 			if (!scene.nodes[index].isVisible()) { continue; }
 			if (scene.nodes[index].kind == NodeKind.Mesh) {
-				items[at].world = scene.nodes[index].world;
-				items[at].mesh = scene.meshes[scene.nodes[index].payload].mesh;
+				const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
+				// The walk can produce more items than the list holds as well as fewer: a node
+				// culled since the last collect drops out, and un-culling it puts it back.
+				// Writing `items[at]` unconditionally would store past the end in that second
+				// case, which is a fault, not a wrong pixel.
+				if (at < (items.length as int32)) {
+					items[at].world = scene.nodes[index].world;
+					items[at].mesh = instance.mesh;
+					items[at].material = instance.material;
+				} else {
+					items.push({
+						mesh: instance.mesh,
+						material: instance.material,
+						world: scene.nodes[index].world,
+					});
+				}
 				at = at + 1;
 			}
-			const children: Vec<int32> = scene.nodes[index].children;
-			const count: int32 = children.length as int32;
+			// Indexed through the field rather than bound to a local. `const children:
+			// Vec<int32> = ...` is CODE-STYLE section 5's copy trap — it emits msArrayCopy plus
+			// msArrayDestroy on every visit, measured at 16.42 ms against 2.92 ms over 680 000
+			// visits (`out/tmp/copyTrap`) and visible in the emitted C. A `Span` view fixes that
+			// but slicing an empty `Vec` yields a null view that faults, and a leaf has no
+			// children, so the index is both the cheap form and the safe one. `sync` was already
+			// written this way.
+			const count: int32 = scene.nodes[index].children.length as int32;
 			for (let i = count - 1; i >= 0; i--) {
-				scene.stack[top] = children[i];
+				scene.stack[top] = scene.nodes[index].children[i];
 				top = top + 1;
 			}
 		}
+		// `at` is what this pass actually wrote, and it can be fewer than the list holds: a node
+		// culled since the last collect emits no item, and `structureChanged` is deliberately not
+		// set for culling or the fast path would never be taken. Returning `items.length` instead
+		// would leave the tail of the previous frame in the list and draw it again, and writing
+		// past the end when a node becomes visible again would be an out-of-bounds store.
+		while ((items.length as int32) > at) { items.pop(); }
+		return at;
 	}
-	return items.length as int32;
 }
