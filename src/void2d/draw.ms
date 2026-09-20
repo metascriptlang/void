@@ -245,6 +245,12 @@ export function flushTargets(): void {
 // `flushTargets` this is the only place the GPU is touched, and both happen after the walk.
 export function end2d(): void {
 	finishRecording();
+	// A caller that opened render targets and forgot `flushTargets()` used to get silence: the
+	// hoisted blocks sat in `targetCommands` and the next `resetList()` threw them away, so a
+	// filtered subtree simply did not appear and nothing said why.
+	if (targetCommandCount() > 0) {
+		console.log("void2d: end2d with render-target commands still pending - flushTargets() was not called");
+	}
 	if (!frameLive || commandCount() == 0) { return; }
 	void2dReplay(
 		commands[0], commandCount(),

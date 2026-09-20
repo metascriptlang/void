@@ -40,7 +40,6 @@ export enum BreakReason {
 	Sampler,
 	Effect,
 	Clip,
-	Capacity,
 	Barrier,
 }
 
@@ -366,7 +365,6 @@ export function breakReasonName(reason: int32): string {
 		BreakReason.Sampler => "sampler",
 		BreakReason.Effect => "effect",
 		BreakReason.Clip => "clip",
-		BreakReason.Capacity => "capacity",
 		BreakReason.Barrier => "barrier",
 	};
 }
@@ -547,6 +545,29 @@ test "a command carries the pipeline set the replay must bind" {
 
 test "every break reason and command kind has a name" {
 	assert breakReasonName(BreakReason.View as int32).equals("view");
-	assert breakReasonName(BreakReason.Capacity as int32).equals("capacity");
+	assert breakReasonName(BreakReason.Sampler as int32).equals("sampler");
+	assert breakReasonName(BreakReason.Barrier as int32).equals("barrier");
 	assert commandKindName(CommandKind.Scissor as int32).equals("scissor");
+	assert commandKindName(CommandKind.TargetBegin as int32).equals("target-begin");
+}
+
+test "every break reason an emitter can produce is one this module still defines" {
+	// `BreakReason.Capacity` used to be here, produced by nothing and asserted only by a test
+	// that named it - a value that could never appear in a stream, with a test that could
+	// never fail. The recording side has no capacity limit at all: the streams are `Vec`s that
+	// grow, and the only cap is on the GPU buffer, which is the replay's business and reports
+	// itself by dropping the frame with an error.
+	//
+	// This is TESTING.md's "every command kind has a batch-break rule" cross-check in the one
+	// direction that is assertable here: every reason still named is one `draw.ms` passes to
+	// `recordDraw` or `startCommand`. If a reason is added and never emitted, the grep in that
+	// file's review catches it; if one is emitted and not named, `commandKindName`'s match is
+	// non-exhaustive and the compiler refuses to build.
+	assert breakReasonName(BreakReason.First as int32).equals("first");
+	assert breakReasonName(BreakReason.View as int32).equals("view");
+	assert breakReasonName(BreakReason.Blend as int32).equals("blend");
+	assert breakReasonName(BreakReason.Sampler as int32).equals("sampler");
+	assert breakReasonName(BreakReason.Effect as int32).equals("effect");
+	assert breakReasonName(BreakReason.Clip as int32).equals("clip");
+	assert breakReasonName(BreakReason.Barrier as int32).equals("barrier");
 }

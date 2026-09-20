@@ -32,6 +32,10 @@ static int s_frameBaseOffset;   // where this frame's vertices start in s_vbuf
 static int s_frameUploaded;     // 0 when the frame was dropped, and then nothing may draw
 static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
 static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
+// sokol's origin convention does not change after setup, and it was being queried twice per
+// draw command - 40 000 times a frame on the UI bench whose `present` this phase reports as
+// not met.
+static bool s_originTopLeft;
 static float s_dpiScale = 1.0f;                    // framebuffer / logical pixel ratio (retina = 2.0)
 static sg_pipeline s_blurPip;                      // separable-blur fullscreen pass (offscreen format)
 static sg_buffer s_fsQuad;                         // fullscreen quad (pos2+uv2) for filter passes
@@ -339,6 +343,7 @@ static void ensureVertexBuffer(int bytes) {
 void void2dSetup(void) {
 	ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
+	s_originTopLeft = sg_query_features().origin_top_left;
 	sg_shader shd = sg_make_shader(void2d_shader_desc(sg_query_backend()));
 	struct { bool on; sg_blend_factor srgb, drgb, sa, da; } modes[VOID2D_BLEND_COUNT] = {
 		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 0 Alpha (premult)
@@ -665,8 +670,10 @@ static void runCommands(const float *commands, int commandCount,
 		void2d_params_t vp = {0};
 		vp.viewport[0] = fbW;
 		vp.viewport[1] = fbH;
-		vp.viewport[2] = (voidIsRenderTargetView(view) && !sg_query_features().origin_top_left) ? 1.0f : 0.0f;
-		vp.viewport[3] = (voidIsRenderTargetView(view)
+		// One lookup, not two: `voidIsRenderTargetView` is a linear scan of the 16-slot table.
+		bool isRT = voidIsRenderTargetView(view);
+		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
+		vp.viewport[3] = (isRT
 			&& addR == 0.0f && addG == 0.0f && addB == 0.0f
 			&& matrix[0] == 1.0f && matrix[5] == 1.0f && matrix[10] == 1.0f) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space

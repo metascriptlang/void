@@ -162,7 +162,18 @@ capture() {
 			else
 				echo "FAIL $name produced no verdict"
 			fi
-			verdictOk "$verdict" || failures=$((failures + 1))
+			if verdictOk "$verdict"; then
+				# A printed word is not a file. The runner could say CAPTURED and then die, or
+				# write nothing at all, and `--update` would keep the stale golden while the run
+				# reported success. The comment above is about the pipeline's exit status; this
+				# is about the artefact.
+				if [ ! -s "out/golden/$BACKEND_DIR/$name.png" ]; then
+					echo "FAIL $name said CAPTURED and wrote no png"
+					failures=$((failures + 1))
+				fi
+			else
+				failures=$((failures + 1))
+			fi
 			captured=$((captured + 1))
 		fi
 		index=$((index + 1))
