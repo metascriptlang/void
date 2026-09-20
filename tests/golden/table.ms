@@ -25,6 +25,32 @@ export interface SceneRow {
 	demo: boolean;
 }
 
+// `prim/aaRotatedBox` as numbers, because it is the one golden a second tier reads back.
+// tests/oracle/captureCheck.ms recomputes every pixel of it from GEOMETRY - the rotation and
+// the two colours below and nothing else - and says whether the antialiasing in the capture
+// is CORRECT, which no golden can: a golden reports that the AA has not changed since last
+// week, and that is exactly the check a squared alpha survived a whole phase behind
+// (docs/REVIEWS.md, P1).
+//
+// B6 as well: off the default axis on purpose. A mode whose only golden is axis-aligned at
+// alpha 1 is how that squared alpha lived, so the box mode's own scene is rotated AND
+// translucent, and either being wrong changes these pixels.
+export const AA_BOX_SCENE: string = "prim/aaRotatedBox";
+export const AA_BOX_W: float32 = 90.0;
+export const AA_BOX_H: float32 = 58.0;
+export const AA_BOX_X: float32 = 128.0;   // where the node's local (0,0) sits before rotation
+export const AA_BOX_Y: float32 = 80.0;
+export const AA_BOX_PIVOT_X: float32 = 45.0;
+export const AA_BOX_PIVOT_Y: float32 = 29.0;
+export const AA_BOX_ROTATION: float32 = 0.6458;   // 37 degrees
+export const AA_BOX_ALPHA: float32 = 0.5;
+export const AA_BOX_FILL_R: float32 = 0.92;
+export const AA_BOX_FILL_G: float32 = 0.52;
+export const AA_BOX_FILL_B: float32 = 0.20;
+export const AA_BOX_BG_R: float32 = 0.08;
+export const AA_BOX_BG_G: float32 = 0.09;
+export const AA_BOX_BG_B: float32 = 0.12;
+
 export function sceneRows(): SceneRow[] {
 	return [
 		{ name: "harness/solid", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
@@ -36,6 +62,8 @@ export function sceneRows(): SceneRow[] {
 		{ name: "prim/polygonBezier", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/gradientLinear", phase: "P0", width: 256, height: 156, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/gradientRadial", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+
+		{ name: "prim/aaRotatedBox", phase: "P2", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 
 		{ name: "xform/rotate", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "xform/scale", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },

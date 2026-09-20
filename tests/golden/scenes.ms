@@ -50,6 +50,10 @@ import {
 	HARNESS_RECT_Y,
 	HARNESS_RECT_W,
 	HARNESS_RECT_H,
+	AA_BOX_W, AA_BOX_H, AA_BOX_X, AA_BOX_Y, AA_BOX_PIVOT_X, AA_BOX_PIVOT_Y,
+	AA_BOX_ROTATION, AA_BOX_ALPHA,
+	AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B,
+	AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B,
 } from "./table";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
@@ -183,6 +187,25 @@ function card(w: float32, h: float32): Node2D {
 	g.fillRoundedRect(0.0, 0.0, w, h, 10.0, rgba(0.30, 0.55, 0.85, 1.0));
 	g.strokeRect(0.0, 0.0, w, h, 2.0, rgba(0.92, 0.95, 1.0, 1.0));
 	return g;
+}
+
+// The box mode's own scene, and the only golden a second tier recomputes from geometry
+// (tests/oracle/captureCheck.ms). One rect, nothing else in the frame, so every non-background
+// pixel is attributable: rotated 37 degrees and at alpha 0.5, which is B6's rule that a new
+// mode gets a golden off the default axis rather than one that cannot be wrong.
+//
+// The numbers live in table.ms, not here, because the oracle needs the same ones and a
+// geometry copied into two files is a geometry with two definitions.
+function primAaRotatedBox(): Scene {
+	const s = scene(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
+	const box = rect(AA_BOX_W, AA_BOX_H,
+		rgba(AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B, 1.0)).at(AA_BOX_X, AA_BOX_Y);
+	box.pivotX = AA_BOX_PIVOT_X;
+	box.pivotY = AA_BOX_PIVOT_Y;
+	box.rotation = AA_BOX_ROTATION;
+	box.alpha = AA_BOX_ALPHA;
+	s.add(box);
+	return s;
 }
 
 function xformRotate(): Scene {
@@ -727,6 +750,8 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/polygonBezier", build: primPolygonBezier },
 		{ name: "prim/gradientLinear", build: primGradientLinear },
 		{ name: "prim/gradientRadial", build: primGradientRadial },
+
+		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },
