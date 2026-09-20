@@ -73,6 +73,14 @@ fi
 
 echo
 echo "=== 4. T2 — golden images, D3D11 ======================================"
+# The runner's own verdict logic first, against known inputs, and before it is trusted to say
+# what was captured. It needs no build and no GPU, so it runs even under --quick.
+if sh scripts/golden.sh --self-check > out/gate-verdict.log 2>&1; then
+	pass "golden.sh verdict decision: $(grep -c '^PASS' out/gate-verdict.log) inputs, including a CAPTURED line followed by a FAIL"
+else
+	fail "golden.sh verdict decision — see out/gate-verdict.log"
+	grep -E '^FAIL' out/gate-verdict.log | sed 's/^/      /' || true
+fi
 if [ "$QUICK" -eq 1 ]; then
 	skip "golden suite: --quick"
 else
@@ -88,7 +96,8 @@ else
 		grep -E '^FAIL' out/gate-golden.log | sed 's/^/      /' || true
 	fi
 	echo "      harness self-checks: hand-computed scene, deliberately wrong golden,"
-	echo "      and two draws of the same state compared before either is written out"
+	echo "      two draws of the same state compared before either is written out,"
+	echo "      and the verdict decision proved above"
 fi
 
 echo

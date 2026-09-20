@@ -4,6 +4,7 @@
 #   sh scripts/golden.sh                 capture every scene, then compare
 #   sh scripts/golden.sh --capture       capture only
 #   sh scripts/golden.sh --compare       compare what is already in out/golden/
+#   sh scripts/golden.sh --self-check    prove the verdict decision against known inputs
 #   sh scripts/golden.sh --update        capture, then copy out/golden -> tests/golden
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
@@ -27,6 +28,7 @@ filters=""
 for arg in "$@"; do
 	case "$arg" in
 		--capture) mode=capture ;;
+		--self-check) mode=selfcheck ;;
 		--compare) mode=compare ;;
 		--update)  mode=update ;;
 		-*) echo "golden.sh: unknown flag $arg" >&2; exit 2 ;;
@@ -53,6 +55,44 @@ build() {
 	# is a separate check, and tests/PENDING.md carries what it says.
 	"$MSC" build tests/golden/runner.ms --release --output="$RUNNER" >/dev/null
 	"$MSC" build tests/golden/compare.ms --output="$COMPARE" >/dev/null
+}
+
+# Whether a scene's verdict block means the scene was captured. One function, because a
+# decision that is only ever exercised by real runs is a decision whose failure mode is a
+# wrong golden. `sh scripts/golden.sh --self-check` proves it against known inputs.
+verdictOk() {
+	# Every line has to be a CAPTURED, not just the first. `case "$1" in CAPTURED*)` read as
+	# if it tested that, but a verdict block is grep output over the whole scene log and a
+	# shell glob's `*` spans newlines - so `CAPTURED a` followed by `FAIL b` was counted as a
+	# capture, and `--update` would then take that scene's output as its golden.
+	[ -n "$1" ] || return 1
+	printf '%s
+' "$1" | grep -qvE '^CAPTURED' && return 1
+	return 0
+}
+
+# The inputs the decision has to get right. A verdict block is grep output over the scene
+# log, so it can hold more than one line.
+selfCheck() {
+	bad=0
+	check() {  # check <expected 0|1> <label> <verdict block>
+		if verdictOk "$3"; then got=0; else got=1; fi
+		if [ "$got" -eq "$1" ]; then
+			echo "PASS  verdict: $2"
+		else
+			echo "FAIL  verdict: $2 — expected $1, got $got"
+			bad=$((bad + 1))
+		fi
+	}
+	check 0 "a single CAPTURED line is a capture" "CAPTURED prim/rect 256x256 dpi 1 draws 1"
+	check 1 "an empty block is not a capture" ""
+	check 1 "a single FAIL line is not a capture" "FAIL prim/rect something went wrong"
+	check 1 "a single SKIP line is not a capture" "SKIP this build has no readback path"
+	check 1 "CAPTURED followed by FAIL is not a capture" "CAPTURED prim/rect 256x256
+FAIL prim/rect the png writer refused"
+	check 1 "CAPTURED followed by SKIP is not a capture" "CAPTURED prim/rect 256x256
+SKIP the second grab was not taken"
+	[ "$bad" -eq 0 ]
 }
 
 matches() {
@@ -84,10 +124,7 @@ capture() {
 			else
 				echo "FAIL $name produced no verdict"
 			fi
-			case "$verdict" in
-				CAPTURED*) ;;
-				*) failures=$((failures + 1)) ;;
-			esac
+			verdictOk "$verdict" || failures=$((failures + 1))
 		fi
 		index=$((index + 1))
 	done < out/golden/table.tsv
@@ -96,12 +133,15 @@ capture() {
 }
 
 case "$mode" in
-	compare) ;;
+	compare|selfcheck) ;;
 	*) build ;;
 esac
 
 status=0
 case "$mode" in
+	selfcheck)
+		selfCheck || status=1
+		;;
 	capture)
 		capture || status=1
 		;;
