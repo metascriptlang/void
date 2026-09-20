@@ -47,6 +47,10 @@ void void2dSetDpiScale(float scale);
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
 
+// Call once per sokol frame, immediately after sg_commit. void2dFrameBegin opens a bracket
+// and a frame may hold several; only this closes the frame.
+void void2dFrameEnd(void);
+
 // One separable-blur tap pass (fullscreen) into the active offscreen RT pass — sample srcView
 // with a 9-tap Gaussian offset by (dirX,dirY) in UV. Run twice (H then V) ping-ponging two RTs.
 void void2dBlur(uint32_t srcView, float dirX, float dirY);

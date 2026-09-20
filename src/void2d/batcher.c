@@ -65,6 +65,20 @@ static int s_atlasFreed;
 // was the font image.
 static int s_buffersMade;
 static int s_buffersFreed;
+
+// A sokol FRAME, which is not a bracket. `begin2d`/`flushTargets` is a bracket and a frame may
+// hold several - src/examples/renderer2d.ms runs two, the manual filter targets and then the
+// scene - while sokol resets a buffer's append cursor only once per frame, at sg_commit
+// (`sokol_gfx.h:27551`). Three things are therefore per frame and were being re-armed per
+// bracket: the append budget, the one-sg_update_image-per-image rule, and the counters.
+static int s_frameOpen;
+static int s_frameVertexBytes;   // bytes appended so far this FRAME, across every bracket
+
+// A vertex buffer that grew mid-frame cannot be destroyed on the spot: an earlier bracket's
+// draws are already encoded against it. Same frame-linear discipline as the retired atlases.
+#define VOID2D_MAX_RETIRED_BUFFERS 4
+static sg_buffer s_retiredBuf[VOID2D_MAX_RETIRED_BUFFERS];
+static int s_retiredBufCount;
 // A glyph that does not fit gets one report, not one per glyph per frame.
 static bool s_atlasFullReported;
 // The atlas image and view a resize retired. They cannot be destroyed on the spot: the
@@ -219,6 +233,14 @@ static int fons_resize(void *up, int w, int h) {
 }
 
 // Free what the previous frame retired. Called once per frame, after that frame's replay.
+static void releaseRetiredBuffers(void) {
+	for (int i = 0; i < s_retiredBufCount; i++) {
+		sg_destroy_buffer(s_retiredBuf[i]);
+		s_buffersFreed++;
+	}
+	s_retiredBufCount = 0;
+}
+
 static void releaseRetiredAtlases(void) {
 	if (s_retiredCount == 0) { return; }
 	for (int i = 0; i < s_retiredCount; i++) {
@@ -293,7 +315,18 @@ int void2dGrowthTarget(int have, int need) {
 static void ensureVertexBuffer(int bytes) {
 	int want = void2dGrowthTarget(s_vbufBytes, bytes);
 	if (want <= s_vbufBytes) return;
-	if (s_vbuf.id) { sg_destroy_buffer(s_vbuf); s_buffersFreed++; }
+	if (s_vbuf.id) {
+		// Retire, do not destroy: a second bracket that triggers growth would otherwise free a
+		// buffer the first bracket's encoded draws still point at. Harmless on D3D11's
+		// immediate context, a use-after-free on Metal and WebGPU - guardrail 9.
+		if (s_retiredBufCount < VOID2D_MAX_RETIRED_BUFFERS) {
+			s_retiredBuf[s_retiredBufCount] = s_vbuf;
+			s_retiredBufCount++;
+		} else {
+			sg_destroy_buffer(s_vbuf);
+			s_buffersFreed++;
+		}
+	}
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;
 	bd.usage.dynamic_update = true;
@@ -413,12 +446,24 @@ static void applyScissor(const float *cmd, float fbW, float fbH) {
 void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
+// Called at the top of every bracket. Only the FIRST bracket of a frame does the per-frame
+// work; `void2dFrameEnd` at sg_commit is what closes the frame and lets the next one through.
 void void2dFrameBegin(void) {
+	if (s_frameOpen) { return; }
+	s_frameOpen = 1;
 	s_atlasUpdated = false;
 	releaseRetiredAtlases();
+	releaseRetiredBuffers();
 	s_drawCallCount = 0;
 	s_uploadCount = 0;
 	s_uploadBytes = 0;
+	s_frameVertexBytes = 0;
+}
+
+// Called immediately after sg_commit. Everything sokol resets per frame - the append cursor
+// above all - becomes safe to reset here and nowhere else.
+void void2dFrameEnd(void) {
+	s_frameOpen = 0;
 }
 
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
@@ -466,15 +511,21 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 	s_frameBaseOffset = 0;
 
 	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
-	if (vertexBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
+	// Against the FRAME's total, not this bracket's. sg_append_buffer accumulates until
+	// sg_commit, so a buffer sized for one bracket overflows on the second - and sokol's
+	// overflow copies nothing, returns a start position anyway, and leaves every draw in that
+	// bracket reading whatever was there before. Silent in release. Same mechanism as the
+	// "per-frame vertex cap" defect this phase closed one layer down.
+	size_t frameBytes = (size_t)s_frameVertexBytes + vertexBytes;
+	if (frameBytes > (size_t)VOID2D_MAX_BUFFER_BYTES) {
 		// A dropped frame with an error, never a silent truncation. The old path let
 		// sg_append_buffer run past the end and the rest of the scene simply vanished.
 		s_droppedFrames++;
 		fprintf(stderr, "void2d: frame needs %zu bytes of geometry, cap is %d — frame dropped\n",
-			vertexBytes, VOID2D_MAX_BUFFER_BYTES);
+			frameBytes, VOID2D_MAX_BUFFER_BYTES);
 		return 0;
 	}
-	ensureVertexBuffer((int)vertexBytes);
+	ensureVertexBuffer((int)frameBytes);
 	ensureAtlas();
 
 	// One upload for the whole frame, before any draw: every Draw command is a range inside
@@ -485,6 +536,7 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 		s_frameBaseOffset = sg_append_buffer(s_vbuf, &data);
 		s_uploadCount++;
 		s_uploadBytes += (int)vertexBytes;
+		s_frameVertexBytes = (int)frameBytes;
 	}
 	s_frameUploaded = 1;
 	if (targetCommandCount > 0) {

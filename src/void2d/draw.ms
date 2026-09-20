@@ -18,7 +18,7 @@ import {
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
-	void2dAtlasImagesAlive,
+	void2dAtlasImagesAlive, void2dFrameEnd,
 } from "./batcher.h";
 import {
 	CommandKind, BreakReason,
@@ -90,6 +90,10 @@ export function droppedFrames(): int32 { return void2dDroppedFrames(); }
 // resize path, but until now nothing in MetaScript read it, so no tier reproduced the
 // "3 made, 2 freed, 1 alive" the commit message reported.
 export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
+
+// Call once per sokol frame, right after `commit()`. `begin2d` opens a BRACKET and a frame
+// may hold several; this is what tells the batcher the frame itself is over.
+export function frameEnd(): void { void2dFrameEnd(); }
 
 // The vertex-buffer growth policy, as pure arithmetic. Re-exported rather than imported from
 // `batcher.h` directly, because a header imported from a second directory compiles its `.c`
