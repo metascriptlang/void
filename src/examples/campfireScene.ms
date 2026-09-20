@@ -23,6 +23,7 @@ import {
 	addMesh,
 	addMeshData,
 	addMaterial,
+	rebuildMeshes,
 } from "../void3d/draw";
 import { LowResView, ViewError } from "../void3d/blit";
 import { PaletteError } from "../void3d/palette";
@@ -108,11 +109,13 @@ let renderer: PixelArtRenderer = createRenderer();
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
 const sceneItems: Vec<DrawItem> = [];
 const FLAME_ITEM: int32 = 2;
+const NEVER_REBUILD: int32 = -1;
 let firstFlameMesh: int32 = 0;
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
 let paletteWanted: boolean = false;
 let cameraSnap: boolean = true;
 let panTexelsPerFrame: float32 = 0.0;
+let rebuildAtFrame: int32 = NEVER_REBUILD;
 
 let grassBuffer: uint32 = 0;
 let grassCount: int32 = 0;
@@ -440,6 +443,24 @@ export function configureCampfireCamera(snap: boolean, panPerFrame: float32): vo
 	panTexelsPerFrame = panPerFrame;
 }
 
+// For the M5 check: at this frame, tell the renderer that every mesh's handles came from a GPU
+// context that is gone, so its rebuild path re-uploads the ones that carry CPU data. Off
+// Android `contextGeneration()` never moves, so nothing else here ever exercises that branch.
+// The frames captured after it say whether the rebuilt buffers draw the same pixels. The
+// default never does it.
+export function configureCampfireRebuildAt(frame: int32): void {
+	rebuildAtFrame = frame;
+}
+
+// Only meshes with CPU data come back; the billboards' buffers are this file's and are left
+// alone, which is the half of the contract that would show up as a blank screen if it broke.
+function forceRebuild(): void {
+	for (let i = 0; i < (context.meshes.length as int32); i++) {
+		context.meshes[i].generation = 0;
+	}
+	rebuildMeshes(context);
+}
+
 export function initCampfire(): void {
 	gfxSetup();
 	buildScene();
@@ -504,4 +525,5 @@ export function frameCampfire(): void {
 	sceneItems[FLAME_ITEM].mesh = firstFlameMesh + flameFrame;
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	frameIndex = frameIndex + 1;
+	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
 }
