@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the six capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the seven capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -100,7 +100,7 @@ write_entry() {
 		echo "	frameCampfire,"
 		echo "	configureCampfire,"
 		echo "	configureCampfireCamera,"
-		[ -n "$extraConfig" ] && echo "	configureCampfireRebuildAt,"
+		[ -n "$extraConfig" ] && echo "	${extraConfig%%(*},"
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings$extra } from \"../../../src/void3d/pixelArtRenderer\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
@@ -149,7 +149,14 @@ prepare_entries() {
 	write_entry campfireRebuildCapture "" \
 		"configureCampfire(PixelArtSettings.full(), false);" \
 		"configureCampfireRebuildAt(3);"
-	note "prepare: six capture entries written to $CAPTURE"
+
+	# The seventh configuration is for what the other six cannot reach. They all render a
+	# scene placed once that never moves, so none of them exercises a node changing after
+	# setup, or a child whose world matrix is its parent's times its own. This one turns the
+	# log group every frame. Its baseline is new at M6, which is not the same thing as
+	# re-baselining one of the six: those stay byte-identical and a change there is a defect.
+	write_entry campfireSpinCapture "" "configureCampfire(PixelArtSettings.full(), false);" "configureCampfireLogSpin(0.11);"
+	note "prepare: seven capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -299,7 +306,7 @@ run_capture() {
 
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the six configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the seven configurations were not built, not run, not compared"
 		return
 	fi
 	if [ ! -f "$CAPTURE/capture.c" ] || [ ! -f "$CAPTURE/capture.h" ]; then
@@ -313,6 +320,7 @@ run_captures() {
 	run_capture campfireDirectCapture  m3direct   "postPass off"
 	run_capture campfireDepthCapture   m3depth    "DepthTexture"
 	run_capture campfireRebuildCapture before     "rebuilt mid-run"
+	run_capture campfireSpinCapture    m6spin     "log group turning"
 }
 
 # ---- manifest -----------------------------------------------------------------------------
@@ -320,7 +328,7 @@ run_captures() {
 MANIFEST=docs/baselines3d.sha256
 
 baseline_files() {
-	for prefix in before m3palette m3preview m3direct m3depth; do
+	for prefix in before m3palette m3preview m3direct m3depth m6spin; do
 		for frame in $FRAMES; do
 			echo "$CAPTURE/${prefix}_$frame.ppm"
 		done
@@ -333,7 +341,7 @@ run_manifest() {
 		[ -f "$file" ] || missing=$((missing + 1))
 	done
 	if [ "$missing" -gt 0 ]; then
-		skip "manifest: $missing of 20 baselines are missing, nothing to check them against"
+		skip "manifest: $missing of 24 baselines are missing, nothing to check them against"
 		return
 	fi
 	# Hashes are over the basename, so the manifest does not carry this checkout's path.
@@ -352,7 +360,7 @@ run_manifest() {
 	# hashes, not about how this checkout stores a text file.
 	tr -d '\r' < "$MANIFEST" > "$WORK/manifest.committed"
 	if diff -q "$WORK/manifest.committed" "$WORK/manifest.new" > /dev/null 2>&1; then
-		pass "manifest: 20 baselines match $MANIFEST"
+		pass "manifest: 24 baselines match $MANIFEST"
 	else
 		fail "manifest: the baselines on disk are not the ones $MANIFEST records"
 		diff "$WORK/manifest.committed" "$WORK/manifest.new" | head -12
@@ -396,7 +404,7 @@ echo
 
 if prepare_scene; then
 	prepare_entries
-	pass "prepare: campfireScene.ms and the six capture entries are current"
+	pass "prepare: campfireScene.ms and the seven capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi

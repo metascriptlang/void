@@ -48,7 +48,9 @@ import {
 	Transform3D,
 	SceneError,
 	identityTransform,
+	addGroup,
 	addMeshNode,
+	setLocal,
 	setMeshOf,
 	refresh,
 } from "../void3d/scene";
@@ -127,6 +129,12 @@ let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 
 const sceneItems: Vec<DrawItem> = [];
 let tree: Scene = Scene.create();
 let flameNode: NodeId = { index: -1, generation: 0 };
+// The logs hang under their own group rather than off the root, so the tree has a real nested
+// transform to propagate through. The group sits at the identity unless a check turns it, and
+// `local * identity` is exact, so the six standing configurations see the same pixels.
+let logGroup: NodeId = { index: -1, generation: 0 };
+let firstLogPiece: int32 = 0;
+let logSpinPerFrame: float32 = 0.0;
 const NEVER_REBUILD: int32 = -1;
 let firstFlameMesh: int32 = 0;
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
@@ -268,6 +276,7 @@ function buildScene(): void {
 		if (!added.ok) { return; }
 		addPiece(geometry, placementOf(block));
 	}
+	firstLogPiece = pieces.length as int32;
 	for (let i = 0; i < 3; i++) {
 		const yaw: float32 = (i as float32) * 2.094 + 0.4;
 		const logX: float32 = sinf(yaw) * LOG_RING_RADIUS;
@@ -456,11 +465,17 @@ function setupDraws(): void {
 	// context loss. The billboards below keep their buffers in this file and are still not
 	// rebuilt (docs/VOID3D.md, "Still missing").
 	const root: NodeId = tree.rootId();
+	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
+	if (!group.ok) { return; }
+	logGroup = group.value;
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
 		if (!uploaded.ok) { return; }
+		// The ground and the stones hang off the root; the logs hang off the group, so their
+		// world matrix is the two-level product the flat pieces never exercise.
+		const under: NodeId = i >= firstLogPiece ? logGroup : root;
 		const placed: Result<NodeId, SceneError> =
-			addMeshNode(tree, root, placements[i], uploaded.value, litMaterial);
+			addMeshNode(tree, under, placements[i], uploaded.value, litMaterial);
 		if (!placed.ok) { return; }
 	}
 	const grassMesh: int32 = addMesh(
@@ -508,6 +523,13 @@ export function configureCampfireCamera(snap: boolean, panPerFrame: float32): vo
 // default never does it.
 export function configureCampfireRebuildAt(frame: int32): void {
 	rebuildAtFrame = frame;
+}
+
+// For the seventh capture configuration: turn the log group a little every frame. It is the one
+// thing the standing campfire does not exercise — a node that moves after setup, and a child
+// whose world matrix is its parent's times its own. Zero leaves the group at the identity.
+export function configureCampfireLogSpin(radiansPerFrame: float32): void {
+	logSpinPerFrame = radiansPerFrame;
 }
 
 // Only meshes with CPU data come back; the billboards' buffers are this file's and are left
@@ -579,6 +601,12 @@ export function frameCampfire(): void {
 	updateFlicker();
 	writeLightParams();
 
+	if (logSpinPerFrame != 0.0) {
+		const angle: float32 = logSpinPerFrame * (frameIndex as float32);
+		const turned: Transform3D = { ...identityTransform(), rotation: eulerQuat(0.0, angle, 0.0) };
+		const spun: Result<int32, SceneError> = setLocal(tree, logGroup, turned);
+		if (!spun.ok) { return; }
+	}
 	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
 	const swapped: Result<int32, SceneError> =
 		setMeshOf(tree, flameNode, firstFlameMesh + flameFrame);
