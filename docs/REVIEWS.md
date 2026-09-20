@@ -428,6 +428,28 @@ F-7 answers the *silence*, not the *contract*: the call is still one a host can 
 into `src/sokol/gpu.ms commit()` would make it unforgettable and is the first thing P2 does if it
 is not done sooner.
 
+**Closed at `d80f9e4`, before P2 opened**, and one level lower than the line above proposed.
+`src/sokol/gpu.ms` cannot call into void2d: `scene.ms:9` already imports `commit` from it, so the
+fold would be a module cycle and a layering inversion — the sokol layer would depend on a layer
+above it. The hook goes in the C bridge instead, where `batcher.c` already includes `bridge.h`:
+`voidCommit` fires a function pointer that defaults to null, and `void2dSetup` registers
+`void2dFrameEnd` into it. That ties the reset to the event that causes it — sokol rewinds a
+buffer's append cursor at `sg_commit` — rather than to a caller's memory. `scene.ms` no longer
+calls `frameEnd()` at all, and the export stays only so a test can close a frame it never
+committed.
+
+Shown failing before it was shown passing, as the class of fix requires. With the registration
+commented out and everything else identical, `out/benchUi.exe` printed
+`void2d: 17 brackets since the last void2dFrameEnd` and then dropped **every** frame —
+`frame needs 206 511 360 bytes of geometry, cap is 201 326 592` — because the per-frame append
+budget never rearmed. With it restored, the same binary printed all nine counters at their
+`tests/bench/baseline.json` values and the full gate read `48 pass, 0 pending, 0 fail of 48`.
+
+**The limit, stated rather than implied:** `voidCommit` is not the only `sg_commit` in the tree —
+`src/void3d/gpu3d.c:329 gpu3dCommit` is the other. A frame that draws void2d and commits through
+void3d's path still latches, which is why the 16-bracket complaint stays rather than being deleted
+as answered.
+
 ### Two things about the evidence itself, recorded because they qualify it
 
 The reviewer verified 13 of the 48 goldens by running them; the rest rest on a gate log that is
