@@ -7,3 +7,5 @@ function main(): int32 {
 	voidRun(1280, 720, initCampfire, frameCampfire);
 	return 0;
 }
+
+main();

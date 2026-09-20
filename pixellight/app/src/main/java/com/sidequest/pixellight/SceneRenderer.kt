@@ -15,10 +15,13 @@ class SceneRenderer {
     private var vao = 0
     private var lowW = 0
     private var lowH = 0
+    private var vbo = 0
+    private var burst = 100
+    private var burstDir: java.io.File? = null
     private var surfW = 0
     private var surfH = 0
-    private val params = FloatArray(8)
-    private val paramBuf = ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    private val paramBufs = Array(2) { ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer() }
+    private var ping = 0
 
     companion object {
         private const val PIXEL_SCALE = 3.5f
@@ -83,12 +86,21 @@ class SceneRenderer {
         GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
         GLES30.glTexImage2D(
             GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA32F, 2, 1, 0,
-            GLES30.GL_RGBA, GLES30.GL_FLOAT, paramBuf
+            GLES30.GL_RGBA, GLES30.GL_FLOAT, paramBufs[0]
         )
 
         GLES30.glGenVertexArrays(1, one, 0)
         vao = one[0]
         GLES30.glBindVertexArray(vao)
+        GLES30.glGenBuffers(1, one, 0)
+        vbo = one[0]
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vbo)
+        val tri = floatArrayOf(-1.0f, -1.0f, 3.0f, -1.0f, -1.0f, 3.0f)
+        val tb = java.nio.ByteBuffer.allocateDirect(24).order(java.nio.ByteOrder.nativeOrder()).asFloatBuffer()
+        tb.put(tri).flip()
+        GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, 24, tb, GLES30.GL_STATIC_DRAW)
+        GLES30.glEnableVertexAttribArray(0)
+        GLES30.glVertexAttribPointer(0, 2, GLES30.GL_FLOAT, false, 0, 0)
     }
 
     fun resize(w: Int, h: Int) {
@@ -108,6 +120,10 @@ class SceneRenderer {
         )
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
+    fun burstTo(dir: java.io.File) {
+        burstDir = dir
+        burst = 0
+    }
 
     fun draw(tSec: Float) {
         val tick = Math.floor(tSec * WIGGLE_HZ.toDouble()).toFloat()
@@ -125,6 +141,8 @@ class SceneRenderer {
         val starX = (baseX + wigX) / lowW
         val starY = (baseY + wigY) / lowH
 
+        val paramBuf = paramBufs[ping]
+        ping = 1 - ping
         paramBuf.clear()
         paramBuf.put(tick).put(starX).put(starY).put(radius)
         paramBuf.put(intensity).put(lowW.toFloat()).put(lowH.toFloat()).put(0f)
@@ -151,6 +169,16 @@ class SceneRenderer {
         GLES30.glUseProgram(lightProg)
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
 
+        if (burst < 24) {
+            GLES30.glReadBuffer(GLES30.GL_COLOR_ATTACHMENT0)
+            val fb = java.nio.ByteBuffer.allocateDirect(lowW * lowH * 4).order(java.nio.ByteOrder.nativeOrder())
+            GLES30.glReadPixels(0, 0, lowW, lowH, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, fb)
+            val arr = ByteArray(lowW * lowH * 4)
+            fb.get(arr)
+            burstDir?.let { java.io.File(it, "burst_$burst.raw").writeBytes(arr) }
+            burst++
+        }
+
         // pass C: nearest upscale to the window surface
         GLES30.glDisable(GLES30.GL_BLEND)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -160,7 +188,6 @@ class SceneRenderer {
         GLES30.glUniform2f(GLES30.glGetUniformLocation(blitProg, "uRes"), surfW.toFloat(), surfH.toFloat())
         GLES30.glDrawArrays(GLES30.GL_TRIANGLES, 0, 3)
     }
-
     fun release() {
         val one = IntArray(1)
         GLES30.glDeleteProgram(sceneProg); sceneProg = 0
@@ -170,5 +197,6 @@ class SceneRenderer {
         one[0] = fboTex; GLES30.glDeleteTextures(1, one, 0); fboTex = 0
         one[0] = paramTex; GLES30.glDeleteTextures(1, one, 0); paramTex = 0
         one[0] = vao; GLES30.glDeleteVertexArrays(1, one, 0); vao = 0
+        GLES30.glDeleteBuffers(1, one, 0); vbo = 0
     }
 }

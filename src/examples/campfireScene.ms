@@ -301,7 +301,9 @@ function buildTuftTexture(): uint32 {
 			const lean: float32 = (rootX - 8.0) * 0.14 + (nextRandom() - 0.5) * 0.4;
 			for (let step = 0; step < bladeHeight; step++) {
 				const offset: int32 = (rootX + lean * (step as float32)) as int32;
-				const clamped: int32 = Math.max(0, Math.min(TUFT_CELL - 1, offset));
+			let clamped: int32 = offset;
+				if (clamped < 0) { clamped = 0; }
+				if (clamped > TUFT_CELL - 1) { clamped = TUFT_CELL - 1; }
 				const shade: int32 = 120 + (135 * step) / bladeHeight;
 				setTexturePixel(width, cellLeft + clamped, height - 1 - step, shade, shade, shade);
 			}
