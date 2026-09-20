@@ -24,13 +24,14 @@ done
 
 fails=0
 skips=0
+passes=0
 d3d11_conformance="not run"
 
 # out/ is gitignored, so on a clean clone the first redirect into it would abort under set -e
 # before any step had a chance to report.
 mkdir -p out out/golden
 
-pass() { echo "PASS  $1"; }
+pass() { echo "PASS  $1"; passes=$((passes + 1)); }
 fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $1"; skips=$((skips + 1)); }
 
@@ -102,12 +103,15 @@ fi
 
 echo
 echo "=== 5. T3 — oracles ==================================================="
+t3_pass_before=$passes
+t3_skip_before=$skips
 pass "coverage oracle: rounded rect, 16x16 supersampled, in T0 (straight edge exact, corner <= 0.06)"
 skip "coverage oracle: the erf shadow half — tests/PENDING.md oracle:coverage-shadow"
 skip "fontTools metrics: not wired (P3) — tests/PENDING.md oracle:font-metrics"
 skip "HarfBuzz kerning subset: not wired (P3) — tests/PENDING.md oracle:harfbuzz-kerning"
 skip "UCD segmentation: not wired (P4) — tests/PENDING.md oracle:ucd-segmentation"
 skip "h2d semantics: not wired (P5) — tests/PENDING.md oracle:h2d"
+t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 
 echo
 echo "=== 6. T4 — budget ===================================================="
@@ -161,7 +165,7 @@ echo "      tier   what ran"
 echo "      T0     msc test src/test/index.ms"
 echo "      T1     display-list snapshots + growth policy, no GPU"
 echo "      T2     $d3d11_conformance"
-echo "      T3     nothing wired"
+echo "      T3     oracles: $t3_report"
 echo "      T4     bench counters gated, milliseconds reported"
 echo "      T5     human only (docs/TESTING.md 'T5')"
 echo "      tests/PENDING.md entries: $pending"
