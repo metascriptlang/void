@@ -144,7 +144,9 @@ fi
 
 echo
 echo "=== 8. summary ========================================================"
-pending=$(grep -cE '^\| (golden|backend|oracle|debug-abort|walk|text-buffer|upload|cull|idle|h2d|one-node|legacy)' tests/PENDING.md || true)
+# Shape, not an allowlist of id prefixes: an allowlist silently undercounts the moment
+# someone adds a row with a new prefix, and a count that is off by one is worse than none.
+pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md || true)
 echo "      tier   what ran"
 echo "      T0     msc test src/test/index.ms"
 echo "      T1     does not exist until P1"

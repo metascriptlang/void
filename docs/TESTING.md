@@ -266,7 +266,8 @@ number typed into the script.
    readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
 
-Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 35 seconds** on this box.
+Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 40 seconds** on this box, starting
+from a tree with no `out/` directory at all.
 `--quick` skips the golden suite; `--web` adds the two web builds and the headless-Chrome
 liveness check.
 
@@ -347,7 +348,7 @@ about where they came from.
 
 | Tier | State after P0 |
 |---|---|
-| T0 | 425 tests, `msc test src/test/index.ms`, about half a second |
+| T0 | 431 tests, `msc test src/test/index.ms`, about half a second — six of them are the harness's own parsers |
 | T1 | does not exist; P1 creates it |
 | T2 | 37 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
 | T3 | nothing wired; six named SKIPs |
