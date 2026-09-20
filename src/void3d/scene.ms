@@ -17,7 +17,9 @@
 //     generation that would wrap retires the slot instead of aliasing it silently
 //     (`entity/mod.rs:710-755`, `:885-892`). A silently reused node id in a scene graph is
 //     unfindable from the symptom it produces.
-import { Vec3, vec3, Quat, identityQuat, Mat4, identity, composeTransform, multiplyAffine } from "../math/math3d";
+import {
+	Vec3, vec3, Quat, identityQuat, Mat4, identity, composeTransform, multiplyAffine,
+} from "../math/math3d";
 import { DrawItem } from "./draw";
 
 // Flags are bits in an int32 rather than `BitSet<NodeFlag>`, which is what CODE-STYLE section 4
@@ -170,7 +172,11 @@ export function rootId(this scene: Scene): NodeId {
 }
 
 // Adds an empty group under `parent`. Structure changed, so the draw list is rebuilt next collect.
-export function addGroup(ref scene: Scene, parent: NodeId, local: Transform3D): Result<NodeId, SceneError> {
+export function addGroup(
+	ref scene: Scene,
+	parent: NodeId,
+	local: Transform3D,
+): Result<NodeId, SceneError> {
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Group,
@@ -226,7 +232,8 @@ function detach(ref scene: Scene, index: int32): void {
 	const count: int32 = siblings.length as int32;
 	for (let i = 0; i < count; i++) {
 		if (siblings[i] == index) {
-			// Order among siblings is draw order, so close the gap rather than swapping the tail in.
+			// Order among siblings is draw order, so close the gap rather than
+			// swapping the tail in.
 			for (let j = i; j < count - 1; j++) { siblings[j] = siblings[j + 1]; }
 			siblings.pop();
 			break;
@@ -274,14 +281,22 @@ export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> 
 }
 
 // Heaps' `posChanged`: writing a transform marks only this node, and the descent propagates it.
-export function setLocal(ref scene: Scene, id: NodeId, local: Transform3D): Result<int32, SceneError> {
+export function setLocal(
+	ref scene: Scene,
+	id: NodeId,
+	local: Transform3D,
+): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	scene.nodes[id.index].local = local;
 	scene.nodes[id.index].flags = scene.nodes[id.index].flags | FLAG_POS_CHANGED;
 	return Result.ok(id.index);
 }
 
-export function setVisible(ref scene: Scene, id: NodeId, visible: boolean): Result<int32, SceneError> {
+export function setVisible(
+	ref scene: Scene,
+	id: NodeId,
+	visible: boolean,
+): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	const flags: int32 = scene.nodes[id.index].flags;
 	scene.nodes[id.index].flags = visible ? (flags | FLAG_VISIBLE) : (flags & ~FLAG_VISIBLE);
@@ -291,9 +306,15 @@ export function setVisible(ref scene: Scene, id: NodeId, visible: boolean): Resu
 	return Result.ok(id.index);
 }
 
-export function setMeshOf(ref scene: Scene, id: NodeId, mesh: int32): Result<int32, SceneError> {
+export function setMeshOf(
+	ref scene: Scene,
+	id: NodeId,
+	mesh: int32,
+): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	if (scene.nodes[id.index].kind != NodeKind.Mesh) { return Result.err(SceneError.NotAMeshNode); }
+	if (scene.nodes[id.index].kind != NodeKind.Mesh) {
+		return Result.err(SceneError.NotAMeshNode);
+	}
 	scene.meshes[scene.nodes[id.index].payload].mesh = mesh;
 	return Result.ok(id.index);
 }
@@ -324,7 +345,9 @@ export function syncWorld(ref scene: Scene): int32 {
 		if (changed) {
 			const local: Mat4 = scene.nodes[index].local.toMatrix();
 			const parent: int32 = scene.nodes[index].parent;
-			scene.nodes[index].world = parent == NO_NODE ? local : local.multiplyAffine(scene.nodes[parent].world);
+			const parentWorld: Mat4 = parent == NO_NODE ? identity() : scene.nodes[parent].world;
+			scene.nodes[index].world =
+				parent == NO_NODE ? local : local.multiplyAffine(parentWorld);
 			scene.nodes[index].flags = scene.nodes[index].flags & ~FLAG_POS_CHANGED;
 			synced = synced + 1;
 		}
@@ -356,7 +379,11 @@ export function collectDrawList(ref scene: Scene, ref items: Vec<DrawItem>): int
 		if (!scene.nodes[index].isVisible()) { continue; }
 		if (scene.nodes[index].kind == NodeKind.Mesh) {
 			const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
-			items.push({ mesh: instance.mesh, material: instance.material, world: scene.nodes[index].world });
+			items.push({
+				mesh: instance.mesh,
+				material: instance.material,
+				world: scene.nodes[index].world,
+			});
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
 		// order is draw order, and the draw list is what decides overdraw.

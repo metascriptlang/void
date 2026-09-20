@@ -332,6 +332,66 @@ run_bench() {
 	note "bench: reported only — docs/VOID3D.md records the variance behind any future threshold"
 }
 
+# ---- style --------------------------------------------------------------------------------
+
+# CODE-STYLE section 16 caps a line at 100 columns with a tab counted as 4. The M5 review found
+# five over-long lines and the M6 review found thirteen more, in the files M5 had just fixed. A
+# finding that recurs the next milestone is infrastructure, not a third review comment.
+#
+# Scoped to what this port owns: src/void3d, its tests, and the campfire. void2d has its own
+# gate and its own backlog.
+STYLE_PATHS="src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms"
+
+run_style() {
+	long=$(
+		for path in $STYLE_PATHS; do
+			find "$path" -name '*.ms' 2>/dev/null
+		done | while read -r file; do
+			expand -t 4 "$file" | awk -v f="$file" 'length($0) > 100 { print f ":" FNR " (" length($0) " cols)" }'
+		done
+	)
+	if [ -n "$long" ]; then
+		count=$(echo "$long" | grep -c .)
+		fail "style: $count line(s) over 100 columns (CODE-STYLE section 16)"
+		echo "$long" | head -8 | sed 's/^/         /'
+		return
+	fi
+	pass "style: no line over 100 columns in $(echo $STYLE_PATHS | wc -w) path(s)"
+}
+
+# ---- allocation ---------------------------------------------------------------------------
+
+# "Frame state is preallocated... nothing in `frame` allocates" (docs/VOID3D.md, Data types) is
+# the one claim in this port that the bench stage cannot see: the bench gates the *lengths* of
+# the frame state, and an allocation that does not change a length is invisible to it. That is
+# exactly how M6 shipped a per-node `msArrayCopy` in `refresh` with a green gate — the copy trap
+# of CODE-STYLE section 5, `const xs: Vec<T> = someStruct.field`, which copies and frees on
+# every visit without moving any length.
+#
+# The M6 review found it by reading the emitted C, so that is what this checks. It is
+# deterministic and it can fail, which is the whole point: a gate that cannot fail is worse than
+# no gate. Runs after `tests`, which is what emits the C.
+FRAME_PATH_FUNCTIONS="syncWorld collectDrawList refresh"
+
+run_allocation() {
+	emitted=$(ls -t out/debug/.cache/*scene_x_ms*.c 2>/dev/null | head -1)
+	if [ -z "$emitted" ] || [ ! -f "$emitted" ]; then
+		skip "allocation: no emitted C for scene.ms yet (the tests stage is what produces it)"
+		return
+	fi
+	offenders=""
+	for fn in $FRAME_PATH_FUNCTIONS; do
+		copies=$(awk "/^[a-zA-Z_].*\y${fn}__M/,/^}/" "$emitted" | grep -c 'msArrayCopy' || true)
+		[ "$copies" -gt 0 ] && offenders="$offenders ${fn}=${copies}"
+	done
+	if [ -n "$offenders" ]; then
+		fail "allocation: the frame path copies an array — msArrayCopy in:$offenders"
+		echo "         CODE-STYLE section 5, the copy trap: index the field or take a Span view"
+		return
+	fi
+	pass "allocation: no msArrayCopy in the frame path ($FRAME_PATH_FUNCTIONS)"
+}
+
 # ---- pending ------------------------------------------------------------------------------
 
 # tests/PENDING3D.md on rexa's rule: a listed case that stops holding fails the run, and its row
@@ -574,6 +634,8 @@ run_pending
 run_tests
 run_captures
 run_manifest
+run_allocation
+run_style
 run_bench
 run_android
 

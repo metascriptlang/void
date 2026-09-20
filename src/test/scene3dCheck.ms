@@ -33,7 +33,8 @@ function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 // A mesh node under the root, at `where`. A failure comes back as NO_NODE rather than an
 // assert, which only a test block may use; every caller checks the index it gets.
 function oneMesh(ref scene: Scene, where: Vec3, mesh: int32): NodeId {
-	const added: Result<NodeId, SceneError> = addMeshNode(scene, scene.rootId(), transformAt(where), mesh, 0);
+	const added: Result<NodeId, SceneError> =
+		addMeshNode(scene, scene.rootId(), transformAt(where), mesh, 0);
 	return added.ok ? added.value : { index: NO_NODE, generation: 0 };
 }
 
@@ -58,10 +59,12 @@ test "a child is parented both ways, and the structure is marked" {
 
 test "sync places a child at local times parent, in that order" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), transformAt(vec3(10.0, 0.0, 0.0)));
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), transformAt(vec3(10.0, 0.0, 0.0)));
 	assert group.ok;
 	if (!group.ok) { return; }
-	const child: Result<NodeId, SceneError> = addMeshNode(scene, group.value, transformAt(vec3(0.0, 2.0, 0.0)), 0, 0);
+	const child: Result<NodeId, SceneError> =
+		addMeshNode(scene, group.value, transformAt(vec3(0.0, 2.0, 0.0)), 0, 0);
 	assert child.ok;
 	if (!child.ok) { return; }
 	const synced: int32 = syncWorld(scene);
@@ -80,7 +83,8 @@ test "a parent's rotation carries its child around, not the other way" {
 	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), turned);
 	assert group.ok;
 	if (!group.ok) { return; }
-	const child: Result<NodeId, SceneError> = addMeshNode(scene, group.value, transformAt(vec3(1.0, 0.0, 0.0)), 0, 0);
+	const child: Result<NodeId, SceneError> =
+		addMeshNode(scene, group.value, transformAt(vec3(1.0, 0.0, 0.0)), 0, 0);
 	assert child.ok;
 	if (!child.ok) { return; }
 	const _synced: int32 = syncWorld(scene);
@@ -99,10 +103,12 @@ test "a synced tree is clean, and syncing again moves nothing" {
 
 test "moving a parent re-syncs its children and nothing above it" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
-	const child: Result<NodeId, SceneError> = addMeshNode(scene, group.value, transformAt(vec3(0.0, 1.0, 0.0)), 0, 0);
+	const child: Result<NodeId, SceneError> =
+		addMeshNode(scene, group.value, transformAt(vec3(0.0, 1.0, 0.0)), 0, 0);
 	assert child.ok;
 	if (!child.ok) { return; }
 	assert syncWorld(scene) == 3;
@@ -130,10 +136,12 @@ test "collect emits one item per mesh node, in sibling order" {
 
 test "a group contributes no draw item but its children still do" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
-	const under: Result<NodeId, SceneError> = addMeshNode(scene, group.value, identityTransform(), 5, 0);
+	const under: Result<NodeId, SceneError> =
+		addMeshNode(scene, group.value, identityTransform(), 5, 0);
 	assert under.ok;
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
@@ -152,7 +160,8 @@ test "collect carries the synced world matrix onto the draw item" {
 
 test "an invisible node takes its whole subtree out of the draw list" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
 	assert addMeshNode(scene, group.value, identityTransform(), 1, 0).ok;
@@ -182,7 +191,8 @@ test "refresh rewrites world matrices without rebuilding the list" {
 
 test "removing a node takes its subtree with it and unlinks it from its parent" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
 	assert addMeshNode(scene, group.value, identityTransform(), 1, 0).ok;
@@ -290,7 +300,8 @@ test "a mesh node can swap which mesh it draws without the structure changing" {
 
 test "setMeshOf refuses a group and refuses a stale id" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
 	const wrongKind: Result<int32, SceneError> = setMeshOf(scene, group.value, 1);
@@ -305,7 +316,8 @@ test "setMeshOf refuses a group and refuses a stale id" {
 
 test "a hidden subtree comes back when it is shown again" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
 	assert addMeshNode(scene, group.value, identityTransform(), 1, 0).ok;
@@ -338,7 +350,8 @@ test "removing a middle child keeps its siblings in order" {
 
 test "a removed subtree leaves the draw list" {
 	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
 	assert addMeshNode(scene, group.value, identityTransform(), 1, 0).ok;

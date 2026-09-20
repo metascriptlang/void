@@ -165,7 +165,8 @@ export function describePipeline(
 	out[GPU3D_PIPELINE_COLOR_FORMAT + 3] = unsigned(targets.color3 as int32);
 	out[GPU3D_PIPELINE_DEPTH_FORMAT] = unsigned(targets.depth as int32);
 	out[GPU3D_PIPELINE_SAMPLE_COUNT] = unsigned(targets.sampleCount);
-	out[GPU3D_PIPELINE_INDEX_TYPE] = unsigned((indexed ? IndexType.Uint16 : IndexType.None) as int32);
+	const indexType: IndexType = indexed ? IndexType.Uint16 : IndexType.None;
+	out[GPU3D_PIPELINE_INDEX_TYPE] = unsigned(indexType as int32);
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
