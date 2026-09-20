@@ -484,6 +484,13 @@ run_allocation() {
 # tests/PENDING3D.md on rexa's rule: a listed case that stops holding fails the run, and its row
 # is deleted in the same commit as the fix. Enforced in both directions, because a list with a
 # forcing function in only one direction rots from the other end.
+#
+# What this stage sees is that a **sentinel is present**, not that the **divergence still
+# holds** — measured: fixing `size()` while leaving its `// PENDING3D:` line in place passes
+# here and fails `oracle`. Three rows carry a `diverges=` oracle case and are enforced
+# behaviourally; the other eight are not. Written up in tests/PENDING3D.md. The `*)` branch
+# below is deliberately a requirement and not a skip: a row naming a sentinel nobody wrote
+# fails rather than passing quietly.
 run_pending() {
 	if [ ! -f "$PENDING" ]; then
 		skip "pending: $PENDING is missing, so nothing holds the known divergences to account"

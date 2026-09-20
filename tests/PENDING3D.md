@@ -19,7 +19,24 @@ the site of the divergence, or a sentence in a doc that states the gap. The `pen
 - a sentinel in the tree with **no row** here — a divergence was marked and never written down.
 
 So deleting the code comment without deleting the row turns the gate red, and so does the
-reverse. A prose list has no forcing function; this one does.
+reverse. A prose list has no forcing function; this one does. There is no escape hatch: the
+`pending` stage's default branch requires a tag for every id it does not special-case, so a row
+naming a sentinel nobody wrote fails rather than being skipped.
+
+**How far that reaches, measured rather than implied.** The `pending` stage observes that a
+**sentinel is present**, not that the **divergence still holds**. Those are different claims,
+and only three of the rows below have the second one enforced: `bounds-transformed-or`,
+`bounds-empty-size-zero` and `bounds-sphere-rescale` each carry a `diverges=` case in
+`tests/oracle/bounds3d.cases`, which the `oracle` stage checks in both directions against real
+Heaps. The control: making `size()` answer Heaps' −2e20 while leaving its `// PENDING3D:` line
+untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines. For
+the other eight rows there is no second stage, so fixing the divergence and forgetting the
+comment keeps the gate green — the row would survive until a reader noticed. The two rows
+whose sentinel is a sentence in `docs/VOID3D.md` are weaker still: they track the *prose*, so
+rewording the sentence reddens the gate and changing the world behind it does not.
+
+Where a row can be given a behavioural sentinel, it should be. That is what an oracle case is
+for, and it is why the three bounds rows are the ones to copy.
 
 ## Rows
 
