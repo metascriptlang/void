@@ -361,7 +361,11 @@ function buildTuftTexture(): uint32 {
 			const lean: float32 = (rootX - 8.0) * 0.14 + (nextRandom() - 0.5) * 0.4;
 			for (let step = 0; step < bladeHeight; step++) {
 				const offset: int32 = (rootX + lean * (step as float32)) as int32;
-				const clamped: int32 = Math.max(0, Math.min(TUFT_CELL - 1, offset));
+				// The `as int32` is not decoration: Math.min/max answer float64 and the narrowing
+				// is an error, so without it this file does not compile. It used to be applied
+				// only by the gate's sed, which meant the example built in out/tmp and nowhere
+				// else — the `entries` stage now builds what it blesses.
+				const clamped: int32 = (Math.max(0, Math.min(TUFT_CELL - 1, offset)) as int32);
 				const shade: int32 = 120 + (135 * step) / bladeHeight;
 				setTexturePixel(width, cellLeft + clamped, height - 1 - step, shade, shade, shade);
 			}

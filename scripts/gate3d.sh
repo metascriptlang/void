@@ -65,10 +65,8 @@ prepare_scene() {
 		return 1
 	fi
 	sed -e 's|from "\.\./|from "../../src/|' \
-		-e 's|const clamped: int32 = Math.max(0, Math.min(TUFT_CELL - 1, offset));|const clamped: int32 = (Math.max(0, Math.min(TUFT_CELL - 1, offset)) as int32);|' \
 		src/examples/campfireScene.ms > "$WORK/campfireScene.new"
 	sed -e 's|from "\.\./\.\./src/|from "../|' \
-		-e 's|const clamped: int32 = (Math.max(0, Math.min(TUFT_CELL - 1, offset)) as int32);|const clamped: int32 = Math.max(0, Math.min(TUFT_CELL - 1, offset));|' \
 		"$WORK/campfireScene.new" > "$WORK/campfireScene.back"
 	if ! diff --strip-trailing-cr -q src/examples/campfireScene.ms "$WORK/campfireScene.back" > /dev/null; then
 		fail "prepare: the patch of campfireScene.ms does not invert cleanly — re-derive it"
@@ -78,7 +76,7 @@ prepare_scene() {
 	changed=$(diff --strip-trailing-cr src/examples/campfireScene.ms "$WORK/campfireScene.new" | grep -c '^[<>]')
 	replace_if_changed "$WORK/campfireScene.new" "$SCENE"
 	rm -f "$WORK/campfireScene.back"
-	note "prepare: $SCENE patched from the example, $changed lines changed (imports, one as int32)"
+	note "prepare: $SCENE patched from the example, $changed lines changed (imports only)"
 	return 0
 }
 
@@ -212,7 +210,20 @@ run_entries() {
 		echo "         each of those builds a binary that exits at once — add \`main();\` at the end"
 		return
 	fi
-	pass "entries: $checked entry points declare main() and all of them call it"
+	broken=""
+	for entry in src/examples/*.ms; do
+		grep -qE '^(export )?function main\(' "$entry" || continue
+		case "$(basename "$entry")" in
+			ios*|android*) continue ;;
+		esac
+		msc build "$entry" > "$WORK/entry-build.log" 2>&1 || broken="$broken $(basename "$entry")"
+	done
+	if [ -n "$broken" ]; then
+		fail "entries: declared main() and calls it, but does not build:$broken"
+		tail -4 "$WORK/entry-build.log" | sed 's/^/         /'
+		return
+	fi
+	pass "entries: $checked entry points declare main() and call it; the host ones build"
 }
 
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
