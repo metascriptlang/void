@@ -166,3 +166,166 @@ the bench row parser splits on `" "` so the field never carries spaces. P1.
 ### Verdict
 
 **SHIP WITH FOLLOW-UPS.** P0 is done. P1 may start.
+---
+
+# P1 — The display list
+
+Diff reviewed: `b70b5fa..36b3c43`, 70 files, +4628 / −865. Ten commits.
+
+Both passes were run by fresh reviewers that did not write the code. **The defect pass was
+not `/code-review high`**: that command is user-triggered in this harness and cannot be
+launched from inside a session, so a separate adversarial reviewer was briefed for the same
+job — find defects, cite file:line, give a failure scenario, separate what was traced from
+what was suspected. Recorded here because a reader should not assume the usual tool ran.
+
+## Verdict: **SEND BACK** — three blockers, and a fourth the defect pass found
+
+Neither reviewer saw the other's output. **Both independently returned the same two
+blockers**, which is the strongest signal in this page so far.
+
+---
+
+## The blockers
+
+### B1 — the counter that closes the headline defect is a literal
+
+`src/void2d/batcher.c:129` is `int void2dBuffersAlive(void) { return 3; }`.
+`tests/bench/baseline.json` gates `ui.buffersAlive == 3` and `sprites.buffersAlive == 3`, and
+`tests/bench/check.ms` lists it among the hard-gated metrics. **The assertion compares a
+constant to a constant.** It would still print 3 if every Label allocated a buffer again
+tomorrow — which is precisely the defect it is cited as having closed.
+
+Worse, `docs/VOID2D.md` publishes the number in a column headed **measured**, as the evidence
+that the ~126-node cap is gone.
+
+It also miscounts what it names: `s_vbuf` and `s_fsQuad` are two *buffers*, the third thing is
+the font *image*, and it ignores the up-to-16 render-target images the new pool holds and the
+retired atlases waiting to be freed.
+
+Against `CLAUDE.md` "Measurements are measured, not asserted" and TESTING.md "Distrust the
+harness before the engine". The shape it needs is the one `void2dAtlasImagesAlive()` already
+has: made minus freed, incremented at the real `sg_make_buffer` / `sg_destroy_buffer` sites.
+
+### B2 — `void2dFrameBegin` treats a bracket as a frame, which re-opens a defect this phase deleted
+
+Verified in the pinned sokol: `append_pos` is reset only when
+`buf->cmn.append_frame_index != _sg.frame_index` (`deps/sokol/sokol_gfx.h:27551-27552`) —
+once per **sokol frame**, at `sg_commit`. But `ensureVertexBuffer((int)vertexBytes)`
+(`batcher.c:465`) sizes the buffer for **this bracket's** bytes alone.
+
+`src/examples/renderer2d.ms:222-241` runs **two brackets per frame**: the manual filter
+brackets, then `sc.present()`. The second bracket's append therefore accumulates on top of the
+first. Past the end sokol sets `append_overflow`, **copies nothing**, and still returns a
+start position — so every draw in that bracket reads whatever was in the buffer before.
+Silent in release; `VALIDATE_ABND_VBUF_OVERFLOW` in debug.
+
+That is the exact mechanism the "Per-frame vertex cap" defect text named —
+*"`sg_append_buffer` accumulates across flushes within a frame"* — and
+`tests/PENDING.md debug-abort:vertex-cap` was deleted on the strength of a **single-bracket**
+re-run. The defect is not dead; it moved up a layer.
+
+Two more per-sokol-frame resources are re-armed per bracket by the same function:
+`s_atlasUpdated`, which guards sokol's one-`sg_update_image`-per-image-per-frame rule (a hard
+`SOKOL_ASSERT`), and `s_drawCallCount` / `s_uploadCount`, so after a two-bracket frame the
+counters describe only the last bracket.
+
+And when growth *does* fire in the second bracket, `ensureVertexBuffer` destroys and re-creates
+`s_vbuf` while the first bracket's already-encoded draws still reference it: benign on D3D11's
+immediate context, a use-after-free on Metal and WebGPU. That is guardrail 9.
+
+### B3 — an exit criterion reported as met is not met, and the record does not say so
+
+*"No `sg_*` call happens between the start and the end of the tree walk — assertable, because
+the stream is the walk's only output."*
+
+It is not. `render.ms` `acquireTarget` → `allocRenderTarget` → `sg_make_image` + `voidMakeView`
+runs inside `draw()`, and a fontstash atlas resize inside text layout runs `fons_resize` →
+`fons_create` → `sg_make_image` mid-walk. `draw.ms` half-admits it — "the only sokol calls left
+here are the ones that are not drawing — creating a render target, opening a pass — and those
+are the host's, not the walk's" — but creating a *filter* target is the walk's.
+
+The P1 Measure table has no row for this criterion, so it reads as met.
+
+### B4 — Glow and DropShadow still apply the group alpha twice
+
+Found by the defect pass, confirmed by reading. `drawFiltered` computes `na = a * n.alpha` and
+then calls `drawContent(n, na, vw, vh)` — and `drawContent` opens with `const na = a * n.alpha`
+again. The sharp original therefore draws at `a · alpha²`.
+
+This is the defect the commit message and the `drawFiltered` docstring claim to have closed
+("alpha is applied once… before, a group at 0.5 came out at 0.25"). It **was** fixed on the
+Blur branch, which returns early, and left standing on the Glow/DropShadow branch.
+
+**The phase's own golden set is arranged so that it cannot catch this.** `filter/glow` and
+`filter/dropShadow` use a host at alpha 1; `filter/groupOpacity` — the scene that was read
+pixel by pixel against two models — uses `blurFilter(0.0)`, which is the branch that was
+already right. A fix without a scene at alpha ≠ 1 on the Glow branch would be worth nothing.
+
+Same site, second half: the sharp original is drawn by a **second walk of the subtree into the
+swapchain** rather than by compositing the target that already holds it, so the "composites
+once" property proved for Blur is false for Glow and DropShadow, and the docstring's "one
+walk, one sync" is false for them too.
+
+---
+
+## Further defects to fix with the blockers
+
+| | |
+|---|---|
+| **D1** | Filter composites and blur downsamples inherit `curSampler`/`curEffect` from an unrelated sibling. `endTarget` restores what was current when `beginTarget` ran, and `drawFiltered` emits its composite with no `setSampler`, and on the Blur branch no `setEffect`. A grayscale sibling therefore tints the next node's blur, and `defaultSmooth = false` point-samples every downsample step — which degenerates guardrail 3's kernel. `void2dBlur` hardcodes the linear-clamp sampler for its tap pass for exactly this reason; the blit does not. |
+| **D2** | A mid-frame glyph-atlas resize corrupts every label laid out before it. `fonsExpandAtlas` changes the normalised texture size, so quads emitted before the expand carry old-atlas UVs, while `emitNode` resolves `fontView()` at **emit** time — always the newest atlas. The retired-atlas list defers destruction to protect commands that bind the old view, and no label command ever does; it guards a case that cannot arise and misses the one that does. Worse, the straddling label records `lastAtlasGen` *after* `buildGlyphMesh`, so it is never re-laid-out. This is the scene `regress/atlasFull` is, and its closure was claimed on "10 runs, 1 output" — deterministic is not correct. |
+| **D3** | `applyScissor` multiplies by `s_dpiScale` unconditionally, but inside a target pass the viewport is `rtW/rtH`, computed in *logical* units and handed to `allocRenderTarget` as a pixel size. A Mask inside a filtered subtree at DPI 1.5 therefore scissors 1.5× its zone — and the same root cause means a filtered subtree renders at 1/1.5 resolution and is upscaled, against the P1 exit line about DPI 1.25/1.5. No golden covers it: all five filter rows are at dpi 1.0. |
+| **D4** | A `Draw` following a `CMD_KIND_BLUR` in the same pass would skip its `sg_apply_pipeline`, because the Blur branch does not clear `lastPipeline`/`paramsValid`/`fxValid`/`scissorApplied` the way the target branches do. Masked today only because the blur block is always `TargetBegin, Blur, TargetEnd` on its own. |
+| **D5** | `snapshot.ms` depends on a global no test resets: `sceneSmooth` is set only by `Scene.presentAt`. `breaks.txt` records `sampler:2`/`sampler:3`, which shift to 0/1 if any test in the same process renders a scene with `defaultSmooth = false`. `record()` should set it. |
+| **D6** | `BreakReason.Capacity` is produced by no emitter, and the only thing that names it is a test asserting its name. |
+| **D7** | `golden.sh capture()` still decides purely from a printed line — the runner's exit status is discarded with `|| true` despite the comment saying it is used, and nothing checks that the PNG was written. |
+| **D8** | Per-draw cost: `sg_query_features()` and a 16-entry `voidIsRenderTargetView` scan run **twice** for every Draw — 40 000 scans per frame on the bench whose `present` the phase reports as not met. Both are frame-invariant. |
+
+---
+
+## What the reviewers checked and found sound
+
+Recorded because a review that only lists faults is not a measurement either.
+
+- **The `draws ≤ 253` argument is correct, not an excuse.** The design reviewer went looking
+  for one: 126 × 2 + 1 = 253 is the *defective* renderer's number, the bench alternates a card
+  and a label per node, so 10 000 labels is 20 000 binds and a display list cannot collapse
+  what it faithfully records. The reviewer singled out that P2's own Measure anchor was
+  corrected from "253 → ≤ 4" to "20 000 → ≤ 4" so P2 cannot inherit a number it never had.
+- **The guardrail-8 millisecond claim** is backed by an interleaved same-box A/B against the
+  parent commit, and the warn factor was not raised to fit a noisy reading.
+- **`filter/groupOpacity`** read pixel by pixel against both a double-blend and a
+  single-composite prediction, matching the latter to within 1/255.
+- **The blur kernel is one implementation** serving both the node filter and the manual
+  helper — "two would drift".
+- **`void2dGrowthTarget` is clean** and its T1 boundary test is real, including the
+  drop-past-cap, which is the only way a 192 MB cap is ever exercised.
+- **No compiler workaround hides a bug.** The two "on this compiler" notes are documented
+  language limits, not defects, and both carry their consequence.
+- **The `addChild` fix was the right thing to do out of scope.**
+- **PENDING discipline held on the hardest case**: the three T1 rows were deleted only after
+  the assertion existed, not before.
+
+## The line worth keeping
+
+> Make every gated number come from a site that can move. P2's entire thesis is a number going
+> down; a number that can only go down is not evidence.
+
+## Follow-ups the design pass carried, to be handled with the fix or assigned
+
+| id | Follow-up | Phase |
+|---|---|---|
+| P1-a | `VOID2D.md` still says the three T1 rows are open; `PENDING.md` says deleted. Reconcile | P1 |
+| P1-b | `docs/HEAPS.md:323-324` still lists `smooth`/`tileWrap` and filter semantics as missing | P1 |
+| P1-c | 37 → 45 goldens everywhere: `TESTING.md:162, :267, :290`, `VOID2D.md` guardrail 9 | P1 |
+| P1-d | Two PENDING rows still stamped P1: `backend:gles3-desktop`, `legacy:tests/layout.test.ms` | P1 |
+| P1-e | P0's F2 (DPI into `Scene`), F3 (counter snapshot per golden), F13 (≤100 columns) — do them or record them as deferred with a phase | P1 |
+| P1-f | Gate `uploadBytes`; wire `void2dAtlasImagesAlive()` into the bench and the baseline; delete or rename `instanceBufferBytes()` | P1 |
+| P1-g | `end2d()` should flush targets or assert `targetCommandCount() == 0` — a forgotten `flushTargets()` is silent today | P1 |
+| P2-a | T1 scenes for `break:view` and `break:effect` (neither needs a GPU); remove or produce `BreakReason.Capacity`; add TESTING.md's "every break reason is reachable from an emitter" cross-check | P2 |
+| P2-b | Document the `srcPremult` carve-out: the premultiply correction is disabled by any colorAdd or colour matrix — right for the silhouette, wrong for an unrelated matrix on a filtered subtree | P2 |
+| P2-c | State the 192 MB cap's reason against GPUI's 256 MiB; rename "instance" to "vertex" in P1's Lands bullet until P2 makes it true | P2 |
+| P2-d | Six dead imports in `draw.ms`; the stale `regressAtlasFull` and `releaseRetiredAtlases` comments; `startCommand` zeroing `CMD_EFFECT` to 0 rather than `NO_EFFECT` | P2 |
+
+**P2 does not start and nothing lands until the blockers are fixed and the phase is
+re-reviewed.**
