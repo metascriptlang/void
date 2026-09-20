@@ -265,7 +265,9 @@ test "screen passes have one pipeline each, whatever the settings or palette" {
 	const postKey: PipelineKey = screenKey(Stage.Post);
 	assert postKey.toString() == post;
 	const blit: string = screenKey(Stage.Blit).toString();
-	assert blit.indexOf("program=Blit layout=Fullscreen indexType=None colors=Default depth=Default") == 0;
+	const blitHead: string = "program=Blit layout=Fullscreen indexType=None" +
+		" colors=Default depth=Default";
+	assert blit.indexOf(blitHead) == 0;
 	assert screenKey(Stage.Post).bits != screenKey(Stage.Blit).bits;
 }
 

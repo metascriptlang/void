@@ -5,42 +5,31 @@
 
 import { Vec3, vec3 } from "../math/math3d";
 import { VertexLayout } from "../void3d/gpu3d";
-import { MeshData, Rgba, addPlane, addVertex } from "../void3d/meshData";
-import { DrawContext, GpuMesh, addMesh, meshFor } from "../void3d/draw";
+import { MeshData, MeshError, Rgba, addPlane, addVertex } from "../void3d/meshData";
+import { DrawContext, GpuMesh, addMesh } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UP: Vec3 = { x: 0.0, y: 1.0, z: 0.0 };
-const NO_MESH: int32 = -1;
-
 function billboard(): GpuMesh {
-	return {
-		layout: VertexLayout.Billboard,
-		vertexBuffer: 11,
-		instanceBuffer: 12,
-		indexBuffer: 0,
-		vertexCount: 6,
-		indexCount: 0,
-		instanceCount: 40,
-		generation: 3,
-	};
+	return GpuMesh.external(VertexLayout.Billboard, 11, 12, 6, 40);
 }
 
 function planeData(): MeshData {
 	let data: MeshData = MeshData.empty();
-	const _added: int32 = try addPlane(data, 1.0, WHITE) catch NO_MESH;
+	const _added: Result<int32, MeshError> = addPlane(data, 1.0, WHITE);
 	return data;
 }
 
 function triangleData(): MeshData {
 	let data: MeshData = MeshData.empty();
-	const _a: int32 = try addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE) catch NO_MESH;
-	const _b: int32 = try addVertex(data, vec3(1.0, 0.0, 0.0), UP, WHITE) catch NO_MESH;
-	const _c: int32 = try addVertex(data, vec3(0.0, 0.0, 1.0), UP, WHITE) catch NO_MESH;
+	const _a: Result<int32, MeshError> = addVertex(data, vec3(0.0, 0.0, 0.0), UP, WHITE);
+	const _b: Result<int32, MeshError> = addVertex(data, vec3(1.0, 0.0, 0.0), UP, WHITE);
+	const _c: Result<int32, MeshError> = addVertex(data, vec3(0.0, 0.0, 1.0), UP, WHITE);
 	return data;
 }
 
 test "a mesh built from MeshData is indexed and counts its own elements" {
-	const mesh: GpuMesh = meshFor(planeData(), 7, 9, 3);
+	const mesh: GpuMesh = planeData().meshFor(7, 9, 3);
 	assert mesh.layout == VertexLayout.Lit;
 	assert mesh.vertexBuffer == (7 as uint32);
 	assert mesh.indexBuffer == (9 as uint32);
@@ -54,14 +43,14 @@ test "a mesh built from MeshData is indexed and counts its own elements" {
 test "MeshData with no indices leaves the index buffer unbound and draws its vertices" {
 	// An index buffer handed in is ignored when the data has no indices, so a stale handle
 	// from an earlier upload cannot survive into a non-indexed mesh.
-	const mesh: GpuMesh = meshFor(triangleData(), 7, 9, 3);
+	const mesh: GpuMesh = triangleData().meshFor(7, 9, 3);
 	assert mesh.indexBuffer == (0 as uint32);
 	assert mesh.indexCount == 0;
 	assert mesh.elementCount() == 3;
 }
 
-test "an empty MeshData gives an empty mesh rather than a bad draw" {
-	const mesh: GpuMesh = meshFor(MeshData.empty(), 7, 9, 3);
+test "an empty MeshData describes a mesh that draws nothing" {
+	const mesh: GpuMesh = MeshData.empty().meshFor(7, 9, 3);
 	assert mesh.indexBuffer == (0 as uint32);
 	assert mesh.vertexCount == 0 && mesh.elementCount() == 0;
 }
@@ -88,7 +77,7 @@ test "a mesh whose buffers the caller keeps is not one the renderer can rebuild"
 
 test "a mesh is stale exactly when it has CPU data from an older context" {
 	const data: MeshData = planeData();
-	const current: GpuMesh = meshFor(data, 7, 9, 3);
+	const current: GpuMesh = data.meshFor(7, 9, 3);
 	assert !current.isStale(data, 3);
 	assert current.isStale(data, 4);
 	// The same handles with no CPU data behind them are never stale: nothing here can rebuild
@@ -98,7 +87,7 @@ test "a mesh is stale exactly when it has CPU data from an older context" {
 
 test "a mesh never uploaded is stale on every generation the GPU can be on" {
 	const data: MeshData = planeData();
-	const fresh: GpuMesh = meshFor(data, 0, 0, 0);
+	const fresh: GpuMesh = data.meshFor(0, 0, 0);
 	assert fresh.isStale(data, 1);
 	assert fresh.isStale(data, 2);
 }

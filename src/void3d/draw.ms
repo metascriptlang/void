@@ -85,6 +85,7 @@ export enum UniformError {
 }
 
 export enum MeshUploadError {
+	EmptyMesh,
 	VertexBufferRefused,
 	IndexBufferRefused,
 }
@@ -117,7 +118,7 @@ export function addMesh(ref context: DrawContext, mesh: GpuMesh): int32 {
 // The GpuMesh that `data` describes once its buffers exist. Pure: what the counts and the
 // indexed flag are is decided here, so the rebuild path can be checked without a GPU.
 export function meshFor(
-	data: MeshData,
+	this data: MeshData,
 	vertexBuffer: uint32,
 	indexBuffer: uint32,
 	generation: int32,
@@ -135,6 +136,29 @@ export function meshFor(
 }
 
 // A mesh is stale when it has CPU data and its handles belong to an older GPU context.
+// A mesh whose buffers the caller made and keeps: no CPU data, so no index or generation of
+// ours. Defaulting those three here is what keeps the next field added to GpuMesh from being
+// silently zero at a hand-written literal (docs/VOID3D.md, Compiler notes).
+export function external(
+	this typeof GpuMesh,
+	layout: VertexLayout,
+	vertexBuffer: uint32,
+	instanceBuffer: uint32,
+	vertexCount: int32,
+	instanceCount: int32,
+): GpuMesh {
+	return {
+		layout: layout,
+		vertexBuffer: vertexBuffer,
+		instanceBuffer: instanceBuffer,
+		indexBuffer: 0,
+		vertexCount: vertexCount,
+		indexCount: 0,
+		instanceCount: instanceCount,
+		generation: 0,
+	};
+}
+
 export function isStale(this mesh: GpuMesh, data: MeshData, generation: int32): boolean {
 	return data.vertexCount() > 0 && mesh.generation != generation;
 }
@@ -161,6 +185,12 @@ function drawsNothing(this mesh: GpuMesh): GpuMesh {
 // refused would silently become a non-indexed draw over an indexed vertex array — 194 wrong
 // triangles instead of 292 right ones, with no diagnostic. The mesh is emptied instead.
 export function uploadMesh(ref context: DrawContext, index: int32): Result<int32, MeshUploadError> {
+	// sokol validates a buffer's size > 0 and panics rather than returning an invalid id, so an
+	// empty mesh must never reach the driver.
+	if (context.meshData[index].vertexCount() == 0) {
+		context.meshes[index] = context.meshes[index].drawsNothing();
+		return Result.err(MeshUploadError.EmptyMesh);
+	}
 	const vertexBuffer: uint32 = makeVertexBuffer(context.meshData[index].vertices);
 	let indexBuffer: uint32 = 0;
 	if (context.meshData[index].isIndexed()) {
@@ -174,8 +204,7 @@ export function uploadMesh(ref context: DrawContext, index: int32): Result<int32
 		context.meshes[index] = context.meshes[index].drawsNothing();
 		return Result.err(MeshUploadError.IndexBufferRefused);
 	}
-	context.meshes[index] = meshFor(
-		context.meshData[index],
+	context.meshes[index] = context.meshData[index].meshFor(
 		vertexBuffer,
 		indexBuffer,
 		contextGeneration(),
@@ -192,7 +221,7 @@ export function addMeshData(
 ): Result<int32, MeshUploadError> {
 	const index: int32 = context.meshes.length as int32;
 	context.meshData.push(data);
-	context.meshes.push(meshFor(data, 0, 0, 0));
+	context.meshes.push(data.meshFor(0, 0, 0));
 	const uploaded: int32 = try uploadMesh(context, index);
 	return Result.ok(uploaded);
 }

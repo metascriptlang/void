@@ -95,7 +95,7 @@ export function pipelineKey(
 		// Masked on encode as well as on decode: an ordinal of 8 would otherwise set bit 3 and
 		// be indistinguishable from `indexed` on layout 0 (LAYOUT_LIMIT is the real guard).
 		bits: (ordinal(layout as int32) & LAYOUT_MASK) |
-			((indexed ? 1 : 0) as uint64) << INDEXED_SHIFT |
+			(((indexed ? 1 : 0) as uint64) << INDEXED_SHIFT) |
 			(ordinal(program as int32) << PROGRAM_SHIFT) |
 			((targets.formatBits() as uint64) << TARGETS_SHIFT) |
 			((state.bits() as uint64) << STATE_SHIFT),

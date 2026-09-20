@@ -177,6 +177,9 @@ uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length) {
 }
 
 uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length) {
+	// sokol validates size > 0 and _SG_PANICs on failure, so an empty buffer would abort the
+	// process rather than return an invalid id, as gpu3dMakeImage already guards against.
+	if (length <= 0) return SG_INVALID_ID;
 	sg_buffer_desc desc = {0};
 	desc.usage.vertex_buffer = true;
 	desc.data.ptr = data;
@@ -185,6 +188,7 @@ uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length) {
 }
 
 uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length) {
+	if (length <= 0) return SG_INVALID_ID;
 	sg_buffer_desc desc = {0};
 	desc.usage.index_buffer = true;
 	desc.data.ptr = data;

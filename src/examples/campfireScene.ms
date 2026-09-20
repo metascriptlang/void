@@ -18,6 +18,7 @@ import { Sampler } from "../void3d/target";
 import {
 	DrawContext,
 	DrawItem,
+	GpuMesh,
 	MeshUploadError,
 	addMesh,
 	addMeshData,
@@ -407,28 +408,16 @@ function setupDraws(): void {
 	const uploaded: Result<int32, MeshUploadError> = addMeshData(context, sceneMesh);
 	if (!uploaded.ok) { return; }
 	const litMesh: int32 = uploaded.value;
-	const grassMesh: int32 = addMesh(context, {
-		layout: VertexLayout.Billboard,
-		vertexBuffer: cornerBuffer,
-		instanceBuffer: grassBuffer,
-		indexBuffer: 0,
-		vertexCount: 6,
-		indexCount: 0,
-		instanceCount: grassCount,
-		generation: 0,
-	});
+	const grassMesh: int32 = addMesh(
+		context,
+		GpuMesh.external(VertexLayout.Billboard, cornerBuffer, grassBuffer, 6, grassCount),
+	);
 	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
-		addMesh(context, {
-			layout: VertexLayout.Billboard,
-			vertexBuffer: cornerBuffer,
-			instanceBuffer: flameBuffer,
-			indexBuffer: 0,
-			vertexCount: 6,
-			indexCount: 0,
-			instanceCount: 1,
-			generation: 0,
-		});
+		addMesh(
+			context,
+			GpuMesh.external(VertexLayout.Billboard, cornerBuffer, flameBuffer, 6, 1),
+		);
 	}
 	sceneItems.push(item(litMesh, litMaterial));
 	sceneItems.push(item(grassMesh, grassMaterial));
