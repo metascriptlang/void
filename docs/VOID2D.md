@@ -204,7 +204,7 @@ Seven phases. Each ends with something demonstrable; none leaves `src/examples/r
 | draws | 253 | 1 |
 | buffersAlive | **126** | 0 |
 | buffersRefused | 9 874 | 0 |
-| present.ms | ~4.5 (4.28-4.87) | ~1.8 (1.51-2.09) |
+| present.ms | ~4.2 (3.6–5.2) | ~1.7 (1.5–2.1) |
 
 `retainedNodes` is how many nodes ask for a GPU buffer — the Labels; cards and sprites go
 through the dynamic batcher and own none. So the UI pair reads as **10 000 labels asked,
@@ -212,8 +212,10 @@ through the dynamic batcher and own none. So the UI pair reads as **10 000 label
 every `sg_make_buffer` is refused. `buffersRefused` is monotonic, so a scene that rebuilds a
 mesh every frame shows a larger number than the difference. Counters gate; milliseconds
 report with a warn threshold at 1.5× and never fail a commit — and are written here as a
-median and a range, because a re-run on this box moves them by around 10% and two decimals
-would claim a reproducibility the number does not have.
+median and the full range seen over sixteen runs, because on this box the spread is about
+±20% and depends on what else is running. Two decimals would claim a reproducibility the
+number does not have, which is the same reason milliseconds do not gate
+([TESTING.md](TESTING.md) "T4").
 
 **Dependencies**, stated rather than implied:
 
@@ -277,8 +279,8 @@ P1 needs only P0. P2 needs P1's instance stream. P3 needs P2's instance layout, 
 
 | Exit criterion | Result |
 |---|---|
-| `sh scripts/gate.sh` green on this box | **GATE GREEN**, 13 loud skips, ~35 s |
-| T0 green | 425 tests |
+| `sh scripts/gate.sh` green on this box | **GATE GREEN**, 13 loud skips, ~40 s, from a tree with no `out/` at all |
+| T0 green | 431 tests |
 | every golden scene green on D3D11 | **37 / 37 byte-identical, zero tolerance budgets** |
 | both web backends built | **yes** — 509 672 B wasm (WebGPU), 410 724 B (WebGL2) |
 | both web backends captured in headless Chrome and compared to the D3D11 goldens | **not met.** The wasm build has no readback, so there is nothing to compare. What exists instead is liveness: WebGL2 draws the demo headless; WebGPU builds and runs but headless Chrome hands it no adapter. What conformance would take is written into [TESTING.md](TESTING.md) "Guardrail 9" |
