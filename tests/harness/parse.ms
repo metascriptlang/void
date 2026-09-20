@@ -45,7 +45,59 @@ export function parseInt32(text: string): int32 {
 
 // Sign and exponent included, because MetaScript prints a float64 in whatever form it likes
 // and a counter that regressed to a negative number must not come back positive.
-export function parseFloat64(text: string): float64 {
+// Whether `parseFloat64` would be reading a number rather than guessing one. It exists
+// because `parseFloat64` cannot answer it: the function stops at the first character it does
+// not understand and returns what it had, so "abc", "" and "0" all come back 0.0. A caller
+// that has to tell "the value is zero" from "the value is unreadable" - the bench row parser
+// does - needs this first.
+export function isNumber(text: string): boolean {
+	const t: string = trimSpaces(text);
+	const length: int32 = t.length as int32;
+	if (length == 0) { return false; }
+	let index: int32 = 0;
+	const first: int32 = t.charCodeAt(0) as int32;
+	if (first == "-".code || first == "+".code) { index = 1; }
+	let digits: int32 = 0;
+	while (index < length) {
+		const code: int32 = t.charCodeAt(index) as int32;
+		if (code < "0".code || code > "9".code) { break; }
+		digits = digits + 1;
+		index = index + 1;
+	}
+	if (index < length && (t.charCodeAt(index) as int32) == ".".code) {
+		index = index + 1;
+		while (index < length) {
+			const code: int32 = t.charCodeAt(index) as int32;
+			if (code < "0".code || code > "9".code) { break; }
+			digits = digits + 1;
+			index = index + 1;
+		}
+	}
+	if (digits == 0) { return false; }
+	if (index < length) {
+		const marker: int32 = t.charCodeAt(index) as int32;
+		if (marker != "e".code && marker != "E".code) { return false; }
+		index = index + 1;
+		if (index < length) {
+			const sign: int32 = t.charCodeAt(index) as int32;
+			if (sign == "-".code || sign == "+".code) { index = index + 1; }
+		}
+		let expDigits: int32 = 0;
+		while (index < length) {
+			const code: int32 = t.charCodeAt(index) as int32;
+			if (code < "0".code || code > "9".code) { break; }
+			expDigits = expDigits + 1;
+			index = index + 1;
+		}
+		if (expDigits == 0) { return false; }
+	}
+	return index == length;
+}
+
+export function parseFloat64(raw: string): float64 {
+	// Trimmed, because `parseInt32` beside it already is and a caller should not have to know
+	// which of the two is fussy about a leading space.
+	const text: string = trimSpaces(raw);
 	const length: int32 = text.length as int32;
 	let index: int32 = 0;
 	let sign: float64 = 1.0;
@@ -132,4 +184,26 @@ test "parseFloat64 reads an exponent in both directions" {
 	assert parseFloat64("1.5e2") == 150.0;
 	assert parseFloat64("1.2e-05") < 0.00002;
 	assert parseFloat64("1.2e-05") > 0.0;
+}
+
+test "isNumber separates an unreadable value from a real zero" {
+	// parseFloat64 cannot say this on its own: "abc" and "0" both come back 0.0. A bench row
+	// `ui.draws abc` therefore became the number 0 and was reported as "is 0, the baseline
+	// says 20000" - a wrong value where the truth is an unreadable one.
+	assert isNumber("0");
+	assert isNumber("1.5");
+	assert isNumber("-2.25");
+	assert isNumber("+7");
+	assert isNumber("1e3");
+	assert isNumber("2.5E-2");
+	// Trimmed, like parseInt32 already is.
+	assert isNumber("  1.5  ");
+	assert !isNumber("abc");
+	assert !isNumber("");
+	assert !isNumber("   ");
+	assert !isNumber("1.5x");
+	assert !isNumber("-");
+	assert !isNumber(".");
+	// And the value itself survives the trim.
+	assert parseFloat64("  1.5  ") == 1.5;
 }

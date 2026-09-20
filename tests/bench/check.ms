@@ -9,7 +9,11 @@
 
 import { readFile } from "std/fs";
 import { execFileCapture } from "std/process";
-import { parseFloat64 } from "../harness/parse";
+import { parseRows } from "../harness/benchRows";
+
+// Counted across both bench binaries, reported once at the end.
+let unreadableRows: int32 = 0;
+let ignoredLines: int32 = 0;
 
 const BASELINE_PATH: string = "tests/bench/baseline.json";
 const UI_BINARY: string = "out/benchUi.exe";
@@ -22,25 +26,22 @@ interface BenchRow {
 	value: float64;
 }
 
-function parseRows(output: string): BenchRow[] {
-	const rows: BenchRow[] = [];
-	for (const line of output.split("\n")) {
-		const parts = line.split(" ");
-		if ((parts.length as int32) != 2) { continue; }
-		const key = parts[0].split(".");
-		if ((key.length as int32) < 2) { continue; }
-		rows.push({ scene: key[0], metric: key[1], value: parseFloat64(parts[1]) });
-	}
-	return rows;
-}
-
 function runBench(binary: string): BenchRow[] {
 	const result = execFileCapture(binary, []);
 	if (!result.ok) {
 		console.log(`FAIL ${binary} did not run: ${result.error.message}`);
 		return [];
 	}
-	return parseRows(result.value);
+	const parsed = parseRows(result.value);
+	for (const bad of parsed.badLines) {
+		console.log(`FAIL bench row '${bad}' has an unreadable value`);
+	}
+	unreadableRows = unreadableRows + parsed.unreadable;
+	ignoredLines = ignoredLines + parsed.ignored;
+	if ((parsed.rows.length as int32) == 0) {
+		console.log(`FAIL ${binary} produced no bench rows at all (${parsed.ignored} line(s) ignored)`);
+	}
+	return parsed.rows;
 }
 
 // A tuple rather than a sentinel: now that a row can legitimately be negative - which is how
@@ -109,8 +110,11 @@ function runCheck(): int32 {
 	reportMilliseconds(spriteRows, "sprites", milliseconds.sprites.present.asNumber(), warnFactor);
 
 	console.log("");
-	console.log(`bench: ${failed} counter(s) off the baseline`);
-	return failed == 0 ? 0 : 1;
+	if (unreadableRows > 0) {
+		console.log(`bench: ${unreadableRows} row(s) claimed to be a measurement and could not be read`);
+	}
+	console.log(`bench: ${failed} counter(s) off the baseline, ${ignoredLines} non-row line(s) ignored`);
+	return failed == 0 && unreadableRows == 0 ? 0 : 1;
 }
 
 process.exit(runCheck());
