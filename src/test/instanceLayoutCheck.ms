@@ -12,7 +12,11 @@ import {
 	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, UI_STRIDE, UI_ATTRIBUTES,
 	SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR, SPRITE_STRIDE,
 	SPRITE_ATTRIBUTES, LEGACY_QUAD_BYTES,
-	uiInstanceBytes, spriteInstanceBytes, oneStrideFitsWeb,
+	uiInstanceBytes, spriteInstanceBytes, oneStrideFitsWeb, packChannel,
+	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
+	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
+	REC_UI_FLOATS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
+	REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
 } from "../void2d/instance";
 import { uiInstanceStride, spriteInstanceStride } from "../void2d/draw";
 
@@ -108,4 +112,53 @@ test "the modes are the six the roadmap lists, distinct and dense from zero" {
 	assert (InstanceMode.Selection as int32) == 5;
 	assert UI_MODE_COUNT == 6;
 	assert (InstanceMode.Selection as int32) == UI_MODE_COUNT - 1;
+}
+
+// ---------------------------------------------------------------------------------------
+// The record stream against the GPU stride. Two layouts, one field order — asserted, because
+// the emitter writes one and sokol reads the other and nothing else connects them.
+
+test "the record layout names the same fields in the same order as the GPU layout" {
+	assert REC_UI_AFFINE * 4 == UI_AFFINE;
+	assert REC_UI_ORIGIN_SIZE * 4 == UI_ORIGIN_SIZE;
+	assert REC_UI_UV_RADII * 4 == UI_UV_RADII;
+	assert REC_UI_BORDERS * 4 == UI_BORDERS;
+	assert REC_UI_PARAMS0 * 4 == UI_PARAMS0;
+	assert REC_UI_PARAMS1 * 4 == UI_PARAMS1;
+}
+
+test "the three colour lanes are where the record and the GPU layout part company" {
+	assert REC_UI_COLOR_FILL * 4 == UI_COLOR_FILL;
+	assert REC_UI_COLOR_BORDER * 4 == UI_COLOR_BORDER + 12;
+	assert REC_UI_COLOR_EXTRA * 4 == UI_COLOR_EXTRA + 24;
+	assert REC_UI_FLOATS * 4 == UI_STRIDE + 36;
+}
+
+test "a recorded UI instance is wider than the bytes it uploads" {
+	assert REC_UI_FLOATS * 4 == 144;
+	assert UI_STRIDE == 108;
+	assert REC_UI_FLOATS * 4 > UI_STRIDE;
+}
+
+test "the sprite record and its GPU stride are the same bytes, since nothing is packed" {
+	assert REC_SPRITE_AFFINE * 4 == SPRITE_AFFINE;
+	assert REC_SPRITE_ORIGIN_SIZE * 4 == SPRITE_ORIGIN_SIZE;
+	assert REC_SPRITE_UV * 4 == SPRITE_UV;
+	assert REC_SPRITE_COLOR * 4 == SPRITE_COLOR;
+	assert REC_SPRITE_FLOATS * 4 == SPRITE_STRIDE;
+}
+
+// Guardrail 9 is "same pixels on every platform", so the colour pack is arithmetic with one
+// definition, not a cast that rounds differently in two places.
+test "packChannel rounds and clamps instead of truncating" {
+	assert packChannel(0.0 as float32) == 0;
+	assert packChannel(1.0 as float32) == 255;
+	assert packChannel(0.5 as float32) == 128;
+	assert packChannel(-1.0 as float32) == 0;
+	assert packChannel(2.0 as float32) == 255;
+}
+
+test "packChannel never loses the top level the way truncation does" {
+	assert packChannel(0.999 as float32) == 255;
+	assert packChannel((1.0 / 255.0) as float32) == 1;
 }

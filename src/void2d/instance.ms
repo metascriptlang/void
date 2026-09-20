@@ -61,6 +61,47 @@ export const SPRITE_ATTRIBUTES: int32 = 4;
 // six vertices of eight floats, re-transformed on the CPU every frame.
 export const LEGACY_QUAD_BYTES: int32 = 192;
 
+// ---------------------------------------------------------------------------------------
+// The RECORD layout, which is not the GPU layout, and the two are not allowed to drift
+// quietly.
+//
+// The GPU stride above packs each colour into four bytes. A `Vec<float32>` cannot hold a
+// packed RGBA8 — the value exceeds float32's 24-bit mantissa — so the walk records colours
+// as four floats each, exactly as the vertex stream already does, and `batcher.c` packs them
+// while it copies the frame into the GPU buffer. That is one bridge in one place instead of
+// bit-twiddling in the emitter.
+//
+// So a UI instance is 36 floats on the CPU and 108 bytes on the GPU, and `uploadBytes` counts
+// the GPU number because that is what crosses the bus. Both are stated; `instanceLayoutCheck`
+// asserts they describe the same fields in the same order.
+
+export const REC_UI_AFFINE: int32 = 0;          // 4 floats
+export const REC_UI_ORIGIN_SIZE: int32 = 4;     // 4
+export const REC_UI_UV_RADII: int32 = 8;        // 4
+export const REC_UI_BORDERS: int32 = 12;        // 4
+export const REC_UI_PARAMS0: int32 = 16;        // 4
+export const REC_UI_PARAMS1: int32 = 20;        // 4
+export const REC_UI_COLOR_FILL: int32 = 24;     // 4 floats -> one ubyte4n
+export const REC_UI_COLOR_BORDER: int32 = 28;   // 4 floats -> one ubyte4n
+export const REC_UI_COLOR_EXTRA: int32 = 32;    // 4 floats -> one ubyte4n
+export const REC_UI_FLOATS: int32 = 36;
+
+export const REC_SPRITE_AFFINE: int32 = 0;
+export const REC_SPRITE_ORIGIN_SIZE: int32 = 4;
+export const REC_SPRITE_UV: int32 = 8;
+export const REC_SPRITE_COLOR: int32 = 12;
+export const REC_SPRITE_FLOATS: int32 = 16;
+
+// A colour channel as the GPU will store it. Rounding, not truncation: truncation loses a
+// full level at every channel and turns 1.0 into 254. Guardrail 9 needs this to be the same
+// arithmetic everywhere, so it lives here and is tested rather than being open-coded in C.
+export function packChannel(value: float32): int32 {
+	const scaled: float32 = value * 255.0 + 0.5;
+	if (scaled <= 0.0) { return 0; }
+	if (scaled >= 255.0) { return 255; }
+	return scaled as int32;
+}
+
 export function uiInstanceBytes(instances: int32): int32 {
 	return instances * UI_STRIDE;
 }

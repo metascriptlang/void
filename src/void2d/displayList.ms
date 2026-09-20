@@ -7,9 +7,13 @@
 // a culled subtree contributed — is a statement about an array that can be asserted with no
 // GPU at all (docs/TESTING.md "T1").
 //
-// Two streams:
+// The streams:
 //   - `vertices`, 8 floats per vertex (x y u v r g b a) in WORLD space, shared by every
 //     command in the frame, so the whole frame is one upload and a command is a range.
+//   - `uiInstances` and `spriteInstances`, P2's two instance streams, in LOCAL space with the
+//     affine carried per instance — which is what lets the SDF be re-derived in local space
+//     and survive rotation. Separate rather than one wide record, because guardrail 8 says a
+//     sprite must not pay for the UI pipeline, and 36 floats to record 16 is paying.
 //   - `commands`, COMMAND_FLOATS floats per command, fixed width. A fixed width costs a few
 //     zero fields on a scissor and buys an index that is arithmetic rather than a scan —
 //     and a snapshot whose lines are all the same shape.
@@ -19,6 +23,14 @@
 // carries an index into it, or NO_EFFECT. That keeps a command at 24 floats.
 
 import { Color, BlendMode } from "./types";
+import {
+	UI_STRIDE, SPRITE_STRIDE, UI_PARAM_MODE,
+	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
+	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
+	REC_UI_FLOATS,
+	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
+	REC_SPRITE_FLOATS,
+} from "./instance";
 
 export enum CommandKind {
 	Draw,
@@ -91,6 +103,10 @@ export const commands: Vec<float32> = new Array(COMMAND_FLOATS);
 export const effects: Vec<float32> = new Array(EFFECT_FLOATS);
 export const vertices: Vec<float32> = new Array(VERTEX_FLOATS);
 
+// P2's two instance streams, seeded like the others so index 0 is always in bounds.
+export const uiInstances: Vec<float32> = new Array(REC_UI_FLOATS);
+export const spriteInstances: Vec<float32> = new Array(REC_SPRITE_FLOATS);
+
 // Every closed render-target pass, in the order the replay must run them: a target's block
 // is appended here when it closes, so an inner target lands ahead of the outer one that
 // consumes it. The swapchain list in `commands` only ever holds the quad that samples the
@@ -101,6 +117,8 @@ let commandTotal: int32 = 0;
 let targetCommandTotal: int32 = 0;
 let effectTotal: int32 = 0;
 let vertexTotal: int32 = 0;
+let uiInstanceTotal: int32 = 0;
+let spriteInstanceTotal: int32 = 0;
 
 // Where each open target's block starts inside `commands`. Targets close in the order they
 // opened's reverse, so the open block is always the tail of `commands` and moving it out is
@@ -126,6 +144,8 @@ export function resetList(): void {
 	targetCommandTotal = 0;
 	effectTotal = 0;
 	vertexTotal = 0;
+	uiInstanceTotal = 0;
+	spriteInstanceTotal = 0;
 	clipRecorded = false;
 	// The rect too, not only the flag. Leaving it meant the first command of a new frame
 	// carried the last clip of the previous one; `popClip` records (0,0,0,0) at depth zero so
@@ -195,6 +215,121 @@ export function pushVertex(
 	vertices[base + 6] = b;
 	vertices[base + 7] = a;
 	vertexTotal = vertexTotal + 1;
+}
+
+// Append one UI instance. The caller passes the six float4 lanes and three colours; the
+// packing to UBYTE4N happens in `batcher.c` on the way to the GPU (instance.ms, "the RECORD
+// layout").
+export function pushUiInstance(
+	a: float32, b: float32, c: float32, d: float32,
+	tx: float32, ty: float32, w: float32, h: float32,
+	uvr0: float32, uvr1: float32, uvr2: float32, uvr3: float32,
+	borderL: float32, borderT: float32, borderR: float32, borderB: float32,
+	mode: float32, p1: float32, p2: float32, p3: float32,
+	q0: float32, q1: float32, q2: float32, q3: float32,
+	fill: Color, border: Color, extra: Color,
+): void {
+	const base: int32 = uiInstanceTotal * REC_UI_FLOATS;
+	while ((uiInstances.length as int32) < base + REC_UI_FLOATS) {
+		uiInstances.push(0.0 as float32);
+	}
+	uiInstances[base + REC_UI_AFFINE] = a;
+	uiInstances[base + REC_UI_AFFINE + 1] = b;
+	uiInstances[base + REC_UI_AFFINE + 2] = c;
+	uiInstances[base + REC_UI_AFFINE + 3] = d;
+	uiInstances[base + REC_UI_ORIGIN_SIZE] = tx;
+	uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = ty;
+	uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = w;
+	uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = h;
+	uiInstances[base + REC_UI_UV_RADII] = uvr0;
+	uiInstances[base + REC_UI_UV_RADII + 1] = uvr1;
+	uiInstances[base + REC_UI_UV_RADII + 2] = uvr2;
+	uiInstances[base + REC_UI_UV_RADII + 3] = uvr3;
+	uiInstances[base + REC_UI_BORDERS] = borderL;
+	uiInstances[base + REC_UI_BORDERS + 1] = borderT;
+	uiInstances[base + REC_UI_BORDERS + 2] = borderR;
+	uiInstances[base + REC_UI_BORDERS + 3] = borderB;
+	uiInstances[base + REC_UI_PARAMS0] = mode;
+	uiInstances[base + REC_UI_PARAMS0 + 1] = p1;
+	uiInstances[base + REC_UI_PARAMS0 + 2] = p2;
+	uiInstances[base + REC_UI_PARAMS0 + 3] = p3;
+	uiInstances[base + REC_UI_PARAMS1] = q0;
+	uiInstances[base + REC_UI_PARAMS1 + 1] = q1;
+	uiInstances[base + REC_UI_PARAMS1 + 2] = q2;
+	uiInstances[base + REC_UI_PARAMS1 + 3] = q3;
+	uiInstances[base + REC_UI_COLOR_FILL] = fill.r;
+	uiInstances[base + REC_UI_COLOR_FILL + 1] = fill.g;
+	uiInstances[base + REC_UI_COLOR_FILL + 2] = fill.b;
+	uiInstances[base + REC_UI_COLOR_FILL + 3] = fill.a;
+	uiInstances[base + REC_UI_COLOR_BORDER] = border.r;
+	uiInstances[base + REC_UI_COLOR_BORDER + 1] = border.g;
+	uiInstances[base + REC_UI_COLOR_BORDER + 2] = border.b;
+	uiInstances[base + REC_UI_COLOR_BORDER + 3] = border.a;
+	uiInstances[base + REC_UI_COLOR_EXTRA] = extra.r;
+	uiInstances[base + REC_UI_COLOR_EXTRA + 1] = extra.g;
+	uiInstances[base + REC_UI_COLOR_EXTRA + 2] = extra.b;
+	uiInstances[base + REC_UI_COLOR_EXTRA + 3] = extra.a;
+	uiInstanceTotal = uiInstanceTotal + 1;
+}
+
+// The sprite stream is separate rather than a wide record with unused lanes: guardrail 8
+// says a sprite-only scene must not pay for the UI pipeline, and paying 36 floats to record
+// 16 is exactly that. It is also what makes B5 assertable - a sprite-only frame has
+// uiInstanceCount() == 0, which no mode count could prove.
+export function pushSpriteInstance(
+	a: float32, b: float32, c: float32, d: float32,
+	tx: float32, ty: float32, w: float32, h: float32,
+	u0: float32, v0: float32, u1: float32, v1: float32,
+	color: Color,
+): void {
+	const base: int32 = spriteInstanceTotal * REC_SPRITE_FLOATS;
+	while ((spriteInstances.length as int32) < base + REC_SPRITE_FLOATS) {
+		spriteInstances.push(0.0 as float32);
+	}
+	spriteInstances[base + REC_SPRITE_AFFINE] = a;
+	spriteInstances[base + REC_SPRITE_AFFINE + 1] = b;
+	spriteInstances[base + REC_SPRITE_AFFINE + 2] = c;
+	spriteInstances[base + REC_SPRITE_AFFINE + 3] = d;
+	spriteInstances[base + REC_SPRITE_ORIGIN_SIZE] = tx;
+	spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 1] = ty;
+	spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 2] = w;
+	spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 3] = h;
+	spriteInstances[base + REC_SPRITE_UV] = u0;
+	spriteInstances[base + REC_SPRITE_UV + 1] = v0;
+	spriteInstances[base + REC_SPRITE_UV + 2] = u1;
+	spriteInstances[base + REC_SPRITE_UV + 3] = v1;
+	spriteInstances[base + REC_SPRITE_COLOR] = color.r;
+	spriteInstances[base + REC_SPRITE_COLOR + 1] = color.g;
+	spriteInstances[base + REC_SPRITE_COLOR + 2] = color.b;
+	spriteInstances[base + REC_SPRITE_COLOR + 3] = color.a;
+	spriteInstanceTotal = spriteInstanceTotal + 1;
+}
+
+export function uiInstanceCount(): int32 { return uiInstanceTotal; }
+export function spriteInstanceCount(): int32 { return spriteInstanceTotal; }
+
+export function uiInstanceField(index: int32, field: int32): float32 {
+	return uiInstances[index * REC_UI_FLOATS + field];
+}
+
+export function spriteInstanceField(index: int32, field: int32): float32 {
+	return spriteInstances[index * REC_SPRITE_FLOATS + field];
+}
+
+// What the frame will upload for its instances, in GPU bytes rather than record floats.
+export function instanceUploadBytes(): int32 {
+	return uiInstanceTotal * UI_STRIDE + spriteInstanceTotal * SPRITE_STRIDE;
+}
+
+// How many instances carry each mode. The counter A4 asks for a negative control on: it
+// moves when an emitter changes mode, and a sprite-only frame reads zero across the board.
+export function uiModeCount(mode: int32): int32 {
+	let n: int32 = 0;
+	for (let i: int32 = 0; i < uiInstanceTotal; i++) {
+		const m: float32 = uiInstances[i * REC_UI_FLOATS + REC_UI_PARAMS0 + UI_PARAM_MODE];
+		if ((m as int32) == mode) { n = n + 1; }
+	}
+	return n;
 }
 
 // The colour pipeline as a row of its own. Returns the index a command should carry.
