@@ -6,6 +6,12 @@ layout(binding=0) uniform vertexParams {
 };
 @end
 
+@block modelUniforms
+layout(binding=2) uniform modelParams {
+    mat4 model;
+};
+@end
+
 @block lightUniforms
 layout(binding=1) uniform lightParams {
     vec4 fireLight;
@@ -29,6 +35,7 @@ vec3 fireLightAt(vec3 position, vec3 normal, float normalWeight) {
 
 @vs litVs
 @include_block vertexUniforms
+@include_block modelUniforms
 in vec3 position;
 in vec3 normal;
 in vec4 color;
@@ -37,10 +44,14 @@ out vec3 worldNormal;
 out vec4 baseColor;
 out float depth01;
 void main() {
-    worldPosition = position;
-    worldNormal = normal;
+    vec4 world = model * vec4(position, 1.0);
+    worldPosition = world.xyz;
+    // mat3(model) is right for rotation and uniform scale, which is all a node carries today.
+    // Non-uniform scale needs the inverse transpose; math3d.normalMatrix exists for when a
+    // milestone introduces one (M8 glTF node TRS is the first that can).
+    worldNormal = mat3(model) * normal;
     baseColor = color;
-    gl_Position = viewProj * vec4(position, 1.0);
+    gl_Position = viewProj * world;
     depth01 = gl_Position.z;
 }
 @end

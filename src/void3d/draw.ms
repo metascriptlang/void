@@ -5,9 +5,10 @@
 // DrawContext owns everything items point into: GPU meshes, materials, the uniform pool and the
 // pipeline cache. Items and materials are plain values holding indices and handles.
 
-import { Mat4 } from "../math/math3d";
+import { Mat4, writeTo } from "../math/math3d";
 import {
 	VertexLayout,
+	Program,
 	applyPipeline,
 	applyBindings,
 	applyUniforms,
@@ -70,6 +71,12 @@ export struct DrawItem {
 // uploaded from, or an empty MeshData for a mesh whose data its owner keeps (the screen
 // triangle, billboard corners and instances). Everything with CPU data here comes back on its
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
+// Slot 2, matching `layout(binding=2) uniform modelParams` in shader3d.glsl. Only the Lit
+// program declares it; the billboard path keeps its roots in world space and the two screen
+// programs have no geometry to place.
+export const MODEL_SLOT: int32 = 2;
+export const MODEL_LENGTH: int32 = 16;
+
 export struct DrawContext {
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
@@ -78,6 +85,7 @@ export struct DrawContext {
 	uniformsUsed: int32;
 	pipelines: PipelineCache;
 	bindings: Vec<uint32>;
+	model: Vec<float32>;
 }
 
 export enum UniformError {
@@ -96,6 +104,10 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 	for (let i = 0; i < GPU3D_BINDING_LENGTH; i++) {
 		bindings[i] = 0;
 	}
+	const model: Vec<float32> = new Array(MODEL_LENGTH);
+	for (let i = 0; i < MODEL_LENGTH; i++) {
+		model[i] = 0.0;
+	}
 	return {
 		meshes: [],
 		meshData: [],
@@ -104,6 +116,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		uniformsUsed: 0,
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
+		model: model,
 	};
 }
 
@@ -327,6 +340,11 @@ export function drawItem(
 	);
 	applyPipeline(pipeline);
 	bindItem(context, mesh, material);
+	if (material.program == Program.Lit) {
+		// Written into a buffer sized at construction, so a frame of draws allocates nothing.
+		item.world.writeTo(context.model[0..MODEL_LENGTH], 0);
+		applyUniforms(MODEL_SLOT, context.model[0..MODEL_LENGTH]);
+	}
 	for (const block of globals) {
 		context.applyBlock(block);
 	}
