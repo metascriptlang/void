@@ -6,6 +6,8 @@ import {
 	fillQuad,
 	drawSpriteAffine,
 	spriteInstancingAvailable,
+	drawUiInstance,
+	uiInstancingAvailable,
 	imageQuad,
 	imageQuadUV,
 	drawMesh,
@@ -21,6 +23,7 @@ import {
 	rtViewId,
 } from "./draw";
 import { layoutText, buildGlyphMesh } from "./text";
+import { InstanceMode } from "./instance";
 import { fontView } from "./draw";
 import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
@@ -176,16 +179,27 @@ function emitNode(
 ): void {
 	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
 	setSampler(n.smooth, n.tileWrap);
-	// P2: a flat quad becomes one 64-byte instance instead of six transformed vertices,
-	// whenever the sprite program can express it. `tl` is the origin because it is what the
-	// node's local (xMin,yMin) maps to, and the shader rebuilds the other three corners from
-	// the same affine - so a rotated sprite is the same pixels by construction and not by a
-	// second code path.
+	// P2: a flat quad becomes one instance instead of six transformed vertices, whenever the
+	// program can express it. `tl` is the origin because it is what the node's local
+	// (xMin,yMin) maps to, and the shader rebuilds the other three corners from the same
+	// affine - so a rotated quad is the same pixels by construction and not by a second code
+	// path.
+	//
+	// A Rect goes to the UNIFIED UI pipeline and a Sprite or an Anim to the flat sprite one,
+	// and that is the line guardrail 8 draws: a box is a UI primitive whose edges are covered
+	// analytically, a sheet quad is a sprite that never runs SDF maths. benchSprites is the
+	// scene that measures the second half of that sentence.
 	const instanced: boolean = spriteInstancingAvailable();
 	if (n.kind === DrawKind.Rect) {
-		if (instanced) {
-			drawSpriteAffine(0, n.blend, world, tl.x, tl.y, sizeX, sizeY,
-				0.0, 0.0, 1.0, 1.0, col);
+		if (uiInstancingAvailable()) {
+			// Radii, borders and the two param lanes are zero until the box side table lands;
+			// what this commit changes is where the edge comes from, not what the box carries.
+			drawUiInstance(InstanceMode.Box, 0, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+				0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0,
+				col, transparent, transparent);
 		} else {
 			fillQuad(tl, tr, br, bl, col, n.blend);
 		}

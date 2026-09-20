@@ -223,14 +223,25 @@ void main() {
     float maxBorder = max(max(vBorders.x, vBorders.y), max(vBorders.z, vBorders.w));
     float dInner = roundedRectDistance(p - shift, max(half_ - inset, vec2(0.0)), max(r - maxBorder, 0.0));
 
-    vec4 c = mix(vFill, vBorder, coverageFromDistance(-dInner, aa));
+    // Area fractions, not a blend factor between two colours. The fill covers the inner
+    // rect and the border covers the RING between the two, so a zero-width border has zero
+    // area and contributes nothing — where `mix` on the inner distance would paint half a
+    // border colour along every edge of a box that has no border at all. That is what
+    // `snap/zeroBorder` means by "zero stays zero", stated as arithmetic instead of a rule.
+    float outer = coverageFromDistance(dOuter, aa);
+    float inner = coverageFromDistance(dInner, aa);
+    float ring = max(outer - inner, 0.0);
+
+    vec4 fill = vFill;
     if (mode == 3) {                       // Image
-        c = c * texture(sampler2D(uiTex, uiSmp), vUvAa.xy);
+        fill = fill * texture(sampler2D(uiTex, uiSmp), vUvAa.xy);
     } else if (mode == 2) {                // Glyph: the atlas carries coverage, not colour
-        c.a = c.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
+        fill.a = fill.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
     }
-    c.a = c.a * coverageFromDistance(dOuter, aa);
-    frag_color = vec4(c.rgb * c.a, c.a);
+
+    // Premultiplied out, which is what every blend mode in this layer expects.
+    float alpha = fill.a * inner + vBorder.a * ring;
+    frag_color = vec4(fill.rgb * (fill.a * inner) + vBorder.rgb * (vBorder.a * ring), alpha);
 }
 @end
 
