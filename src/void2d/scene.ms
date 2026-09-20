@@ -4,7 +4,7 @@
 
 import { Node2D, group, addChild, update } from "./node";
 import { sync, draw, releaseTargets } from "./render";
-import { begin2d, end2d, flushTargets, frameEnd, setSceneSmooth } from "./draw";
+import { begin2d, end2d, flushTargets, setSceneSmooth } from "./draw";
 import { Color, Camera, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
@@ -122,9 +122,4 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	end2d();
 	endPass();
 	commit();
-	// Closes the sokol frame for the batcher. A frame may hold several brackets - the demo
-	// runs its manual filter targets in one and the scene in another - and sokol resets a
-	// buffer's append cursor only here, so this is the only safe place to re-arm what is
-	// per frame rather than per bracket.
-	frameEnd();
 }

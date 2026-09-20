@@ -77,11 +77,11 @@ static int s_buffersFreed;
 // bracket: the append budget, the one-sg_update_image-per-image rule, and the counters.
 static int s_frameOpen;
 // Brackets opened since the last void2dFrameEnd. A frame legitimately holds a few - the demo
-// runs two - so this is not an error until it is absurd. It exists because forgetting
-// void2dFrameEnd fails in the worst possible way: s_frameOpen latches, ensureAtlas stops
-// uploading, and text silently renders from a stale atlas for the rest of the process. Every
-// other mistake in this file fails at the site of the mistake; this one failed three layers
-// away, which is what P1's re-review said it trusted least.
+// runs two - so this is not an error until it is absurd. void2dSetup registers void2dFrameEnd
+// as the bridge's commit hook, so a host reaches this only by committing through something
+// other than voidCommit - void3d's gpu3dCommit is the one other sg_commit site in the tree.
+// The counter stays because that path still ends in s_frameOpen latching, ensureAtlas no
+// longer uploading, and text rendering from a stale atlas three layers from the mistake.
 static int s_bracketsThisFrame;
 static int s_frameEndMissingReported;
 #define VOID2D_BRACKETS_BEFORE_COMPLAINT 16
@@ -350,6 +350,7 @@ static void ensureVertexBuffer(int bytes) {
 }
 
 void void2dSetup(void) {
+	voidSetCommitHook(void2dFrameEnd);
 	ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
 	s_originTopLeft = sg_query_features().origin_top_left;
@@ -487,8 +488,8 @@ void void2dFrameBegin(void) {
 	s_frameVertexBytes = 0;
 }
 
-// Called immediately after sg_commit. Everything sokol resets per frame - the append cursor
-// above all - becomes safe to reset here and nowhere else.
+// Runs immediately after sg_commit, as the commit hook void2dSetup registers. Everything sokol
+// resets per frame - the append cursor above all - becomes safe to reset here and nowhere else.
 void void2dFrameEnd(void) {
 	s_frameOpen = 0;
 	s_bracketsThisFrame = 0;

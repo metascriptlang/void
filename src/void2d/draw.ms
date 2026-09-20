@@ -91,8 +91,8 @@ export function droppedFrames(): int32 { return void2dDroppedFrames(); }
 // "3 made, 2 freed, 1 alive" the commit message reported.
 export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
 
-// Call once per sokol frame, right after `commit()`. `begin2d` opens a BRACKET and a frame
-// may hold several; this is what tells the batcher the frame itself is over.
+// `setup2d` registers this as the bridge's commit hook, so `commit()` already runs it and no
+// frame has to call it. Exported so a test can close a frame it never committed.
 export function frameEnd(): void { void2dFrameEnd(); }
 
 // The vertex-buffer growth policy, as pure arithmetic. Re-exported rather than imported from

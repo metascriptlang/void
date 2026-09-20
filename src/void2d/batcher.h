@@ -47,8 +47,9 @@ void void2dSetDpiScale(float scale);
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
 
-// Call once per sokol frame, immediately after sg_commit. void2dFrameBegin opens a bracket
-// and a frame may hold several; only this closes the frame.
+// Runs once per sokol frame, immediately after sg_commit — void2dSetup registers it as the
+// bridge's commit hook, so no caller has to remember it. void2dFrameBegin opens a bracket and
+// a frame may hold several; only this closes the frame.
 void void2dFrameEnd(void);
 
 // One separable-blur tap pass (fullscreen) into the active offscreen RT pass — sample srcView
