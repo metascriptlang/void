@@ -53,7 +53,26 @@ static unsigned char *s_atlasRGBA;
 static int s_atlasW, s_atlasH;
 static bool s_atlasDirty;
 static bool s_atlasUpdated;   // gate: sokol allows only one sg_update_image per image per frame
-static int s_atlasGen = 0;    // bumped on atlas resize → invalidates cached glyph meshes
+static int s_atlasGen = 0;    // bumped on atlas resize -> invalidates cached glyph meshes
+// Atlas images and views made and destroyed, so a leak is a number rather than an eventual
+// `sg_make_image` failure 128 resizes later.
+static int s_atlasMade;
+static int s_atlasFreed;
+// A glyph that does not fit gets one report, not one per glyph per frame.
+static bool s_atlasFullReported;
+// The atlas image and view a resize retired. They cannot be destroyed on the spot: the
+// commands already recorded this frame carry the OLD view id, and the replay has not run yet,
+// so destroying immediately would have the replay bind a dead view. They are freed at the top
+// of the next frame instead, by which time the frame that referenced them has been replayed -
+// the same frame-linear discipline the filter targets use.
+#define VOID2D_MAX_RETIRED_ATLASES 8
+static sg_image s_retiredImg[VOID2D_MAX_RETIRED_ATLASES];
+static sg_view s_retiredView[VOID2D_MAX_RETIRED_ATLASES];
+static int s_retiredCount;
+// 2048 is the smallest guaranteed maximum texture size across the backends this ships on,
+// WebGL2 included, and the RGBA mirror of one is already 16 MB (batcher.c expands R8 to RGBA
+// on the CPU - VOID2D.md lists that as P3's to remove).
+#define VOID2D_MAX_ATLAS 2048
 
 // Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
 // called from MetaScript with that file's own constants, so a field added on one side and
@@ -109,6 +128,11 @@ int void2dDroppedFrames(void) { return s_droppedFrames; }
 // whole point of the change (VOID2D.md P1 exit).
 int void2dBuffersAlive(void) { return 3; }
 
+// Glyph-atlas images made minus freed. One, unless a resize is waiting to be collected at the
+// top of the next frame. A number, because the leak it replaced was invisible until sokol's
+// image pool ran out 128 resizes later.
+int void2dAtlasImagesAlive(void) { return s_atlasMade - s_atlasFreed; }
+
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
                       int viewField, int blendField, int samplerField, int effectField,
@@ -142,9 +166,14 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 
 static int fons_create(void *up, int w, int h) {
 	(void)up;
+	unsigned char *mirror = (unsigned char *)malloc((size_t)(w * h * 4));
+	if (!mirror) {
+		fprintf(stderr, "void2d: no memory for a %dx%d glyph atlas mirror\n", w, h);
+		return 0;
+	}
 	s_atlasW = w;
 	s_atlasH = h;
-	s_atlasRGBA = (unsigned char *)malloc((size_t)(w * h * 4));
+	s_atlasRGBA = mirror;
 	memset(s_atlasRGBA, 0, (size_t)(w * h * 4));
 	sg_image_desc d = {0};
 	d.width = w;
@@ -155,12 +184,70 @@ static int fons_create(void *up, int w, int h) {
 	d.usage.dynamic_update = true;
 	s_fontImg = sg_make_image(&d);
 	s_fontView = (sg_view){ .id = voidMakeView(s_fontImg.id) };
+	s_atlasMade++;
 	return 1;
 }
 static int fons_resize(void *up, int w, int h) {
 	s_atlasGen++;
 	if (s_atlasRGBA) free(s_atlasRGBA);
-	return fons_create(up, w, h);
+	// Retire the outgoing image and view before fons_create overwrites the handles. Without
+	// this, every resize leaked one of each against sokol's 128-slot pools: measured on
+	// regress/atlasFull before the fix, one capture of one scene left 3 atlas images alive
+	// and 0 freed.
+	if (s_retiredCount < VOID2D_MAX_RETIRED_ATLASES) {
+		s_retiredImg[s_retiredCount] = s_fontImg;
+		s_retiredView[s_retiredCount] = s_fontView;
+		s_retiredCount++;
+	} else {
+		// Eight resizes inside one frame is not a thing that happens - the atlas only ever
+		// doubles, twice, between 512 and the 2048 cap. Say so rather than drop them.
+		fprintf(stderr, "void2d: more than %d glyph-atlas resizes in one frame; the oldest images are leaked\n",
+			VOID2D_MAX_RETIRED_ATLASES);
+	}
+	int ok = fons_create(up, w, h);
+	return ok;
+}
+
+// Free what the previous frame retired. Called once per frame, after that frame's replay.
+static void releaseRetiredAtlases(void) {
+	if (s_retiredCount == 0) { return; }
+	for (int i = 0; i < s_retiredCount; i++) {
+		sg_destroy_view(s_retiredView[i]);
+		sg_destroy_image(s_retiredImg[i]);
+		s_atlasFreed++;
+	}
+	fprintf(stderr, "void2d: released %d retired glyph atlas(es); images made %d freed %d alive %d\n",
+		s_retiredCount, s_atlasMade, s_atlasFreed, s_atlasMade - s_atlasFreed);
+	s_retiredCount = 0;
+}
+
+// FONS_ATLAS_FULL: fontstash could not place a glyph. It asks once, retries once, and drops
+// the glyph if the retry also fails - which is why, with no handler at all, *which* glyphs
+// survived varied between runs of the same binary (three distinct outputs in ten runs,
+// tests/PENDING.md at P0). Growing the atlas and letting it retry is the holding fix;
+// P3 removes fontstash and the class with it.
+static void fons_error(void *up, int error, int val) {
+	(void)up;
+	(void)val;
+	if (error != FONS_ATLAS_FULL || !s_fons) { return; }
+	int w = 0, h = 0;
+	fonsGetAtlasSize(s_fons, &w, &h);
+	int nw = w, nh = h;
+	// Height first, then width: fontstash's packer fills row by row, so a taller atlas takes
+	// the next glyph where a wider one only helps the row it is already on.
+	if (h <= w && h * 2 <= VOID2D_MAX_ATLAS) { nh = h * 2; }
+	else if (w * 2 <= VOID2D_MAX_ATLAS) { nw = w * 2; }
+	else {
+		if (!s_atlasFullReported) {
+			s_atlasFullReported = true;
+			fprintf(stderr, "void2d: glyph atlas is full at %dx%d, the cap - later glyphs will be dropped\n", w, h);
+		}
+		return;
+	}
+	if (!fonsExpandAtlas(s_fons, nw, nh) && !s_atlasFullReported) {
+		s_atlasFullReported = true;
+		fprintf(stderr, "void2d: could not expand the glyph atlas from %dx%d to %dx%d\n", w, h, nw, nh);
+	}
 }
 static void fons_delete(void *up) { (void)up; if (s_atlasRGBA) { free(s_atlasRGBA); s_atlasRGBA = NULL; } }
 
@@ -264,6 +351,7 @@ void void2dSetup(void) {
 	fp.renderDelete = fons_delete;
 	s_fons = fonsCreateInternal(&fp);
 	if (s_fons) {
+		fonsSetErrorCallback(s_fons, fons_error, NULL);
 		void2dAddFont("assets/font.ttf");
 	}
 }
@@ -303,6 +391,7 @@ void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
 // Per-frame reset — re-arms the single sg_update_image allowed for the font atlas.
 void void2dFrameBegin(void) {
 	s_atlasUpdated = false;
+	releaseRetiredAtlases();
 	s_drawCallCount = 0;
 	s_uploadCount = 0;
 	s_uploadBytes = 0;

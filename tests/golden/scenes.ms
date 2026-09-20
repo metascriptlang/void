@@ -710,6 +710,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "filter/dropShadow", build: filterDropShadow },
 		{ name: "filter/groupOpacity", build: filterGroupOpacity },
 
+		{ name: "regress/atlasFull", build: regressAtlasFull },
 		{ name: "regress/nodeCap", build: regressNodeCap },
 		{ name: "regress/dpiTruncation", build: regressDpiTruncation },
 		{ name: "regress/samplerRepeat", build: regressSamplerRepeat },

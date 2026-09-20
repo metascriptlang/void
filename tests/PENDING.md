@@ -27,7 +27,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 
 | docs/VOID2D.md "Known defects" line | covered by | phase |
 |---|---|---|
-| Atlas-full drops a different set of glyphs each run | row `golden-missing:regress/atlasFull` | P1 / P3 |
+| ~~Atlas-full drops a different set of glyphs each run~~ | **closed (held)** - `FONS_ATLAS_FULL` grows the atlas and lets fontstash retry, and the retired image/view are freed one frame later instead of leaked. Golden `regress/atlasFull` is on: **10 runs, 1 output**, against 3 outputs in 10 before. P3 still removes the class with fontstash | done / P3 |
 | ~~At most ~126 Labels/Graphics render~~ | **closed `747127f`** — golden `regress/nodeCap` shows all 200 labels; `ui.buffersAlive` 3, constant in node count. `ui.buffersRefused` deleted with the defect | done |
 | ~~Node filters do not work at all~~ | **closed** - per-target command lists are hoisted out of the swapchain list, so the replay runs each target as its own pass before it. Goldens `filter/blur`, `filter/glow`, `filter/dropShadow`, `filter/groupOpacity`, `regress/filterNestedPass` are on. Re-measured in a debug build with sokol's validation layer linked: all five capture, no `!_sg.cur_pass.valid` | done |
 | ~~Filter semantics differ from h2d~~ | **closed** - the node itself enters the target, alpha applied once, object-local space through the emitter's filter matrix, bounds clipped to the viewport, one sync, a frame-linear target pool. `filter/groupOpacity` is the proof and was read pixel by pixel against both models | done |
@@ -93,7 +93,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:regress/atlasFull | T2 | once the 512x512 fontstash atlas fills, which glyphs survive varies between runs of the same binary: three distinct outputs in ten runs, worst pair 28 740 of 80 000 pixels (35.9%) at max delta 207. The builder exists in `tests/golden/scenes.ms` | P1 | 2026-09-20 |
 | golden-missing:prim/perCornerRadii | T2 | scene not renderable until P2 — one radius per rect today (`graphics.ms` `fillRoundedRect`) | P2 | 2026-09-20 |
 | golden-missing:prim/perSideBorders | T2 | scene not renderable until P2 — `strokeRect` has one width | P2 | 2026-09-20 |
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |

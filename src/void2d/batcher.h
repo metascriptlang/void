@@ -58,6 +58,9 @@ int void2dDrawCallCount(void);
 int void2dUploadCount(void);
 int void2dUploadBytes(void);
 int void2dBuffersAlive(void);
+
+// Glyph-atlas images made minus freed; 1 in a steady frame.
+int void2dAtlasImagesAlive(void);
 int void2dInstanceBufferBytes(void);
 // Frames dropped because one frame's geometry exceeded VOID2D_MAX_BUFFER_BYTES. Never
 // silent: the drop is logged once per frame and counted here.

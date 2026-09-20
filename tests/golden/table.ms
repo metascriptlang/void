@@ -73,11 +73,12 @@ export function sceneRows(): SceneRow[] {
 		{ name: "filter/dropShadow", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "filter/groupOpacity", phase: "P1", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 
-		// regress/atlasFull has no row either: once the 512x512 fontstash atlas fills, which
-		// glyphs survive varies between runs of the same binary — three distinct outputs in
-		// ten runs, worst pair 28 740 of 80 000 pixels (35.9%) at max delta 207. That is the
-		// defect, not a tolerance, so it is a tests/PENDING.md entry until P1 handles
-		// FONS_ATLAS_FULL and P3 removes the class.
+		// Turned on at P1: FONS_ATLAS_FULL grows the atlas and lets fontstash retry, so every
+		// glyph is placed and the scene is the same every run. Before that it had no row,
+		// because which glyphs survived varied between runs of the same binary - three
+		// distinct outputs in ten runs, worst pair 28 740 of 80 000 pixels (35.9%) at max
+		// delta 207. That was the defect, not a tolerance. P3 removes the class with fontstash.
+		{ name: "regress/atlasFull", phase: "P1", width: 320, height: 250, dpi: 1.0, steps: 0, demo: false },
 		{ name: "regress/nodeCap", phase: "P0", width: 528, height: 168, dpi: 1.0, steps: 0, demo: false },
 		{ name: "regress/dpiTruncation", phase: "P0", width: 256, height: 170, dpi: 1.5, steps: 0, demo: false },
 		{ name: "regress/samplerRepeat", phase: "P0", width: 256, height: 152, dpi: 1.0, steps: 0, demo: false },
