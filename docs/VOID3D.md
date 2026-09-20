@@ -153,6 +153,30 @@ A case may declare `diverges=<PENDING3D row>`, and those are checked **in both d
 
 **What it still does not cover.** Heaps' own `syncRec` is out of reach headless: it needs an `h3d.scene.RenderContext`, which only `h3d.scene.Scene` builds, and `new h3d.scene.Scene(false, false)` calls `hxd.Window.getInstance()` — measured on node, `ReferenceError: window is not defined`. What runs is `getAbsPos()`, whose private `syncPos()` (`Object.hx:855`) recomputes the parent chain and yields the same *values* `syncRec` would. So the oracle asks for values and never for the *count* of nodes a sync recomputes: `syncPos` is lazy along one chain where `syncRec` and this port's `syncWorld` both descend the whole tree, and comparing those counts would compare two Heaps functions rather than the port against Heaps. Two consequences of that are therefore still source-derived: Heaps' `syncRec` returns early for an invisible or culled subtree and leaves its `absPos` stale where this port's `syncWorld` refreshes it regardless, and `emitRec` — the set of (mesh, material, world) a scene yields and the order it yields them in — is not asked at all. `emitRec` waits for M7 deliberately: "sibling order is draw order" is a claim about Heaps as much as about this port, but M7 is the milestone where sorting arrives and tree order stops being the answer, so that is when the comparison starts to matter.
 
+### Running the Haxe side
+
+Haxe was installed during this arc (scoop): `haxe 4.3.7`, `neko 2.4.1`, `haxelib git heaps ...
+2b84cc2` plus `format 3.8.0`. Use `-lib heaps -lib format`; **do not** use the clone at
+`~/projects/heaps`, which is 18 commits off the pin.
+
+Three traps, one of which no document had:
+
+- `haxelib` prints nothing and exits silently unless **`~/scoop/apps/neko/current` is on PATH**.
+  It is `0xC0000135`, a missing `neko.dll`, not the segfault `SCENE-SCALE.md` §204 diagnosed.
+  So every oracle invocation needs `PATH="$HOME/scoop/shims:$HOME/scoop/apps/neko/current:$PATH"`.
+- §204's warning is real and I walked into it while debugging: **node to a pipe reads as a hang**.
+  Redirect to a file, including when tracing with `sh -x`.
+- **Not in §204, and the expensive one: node never exits.** Heaps' JS keeps the event loop alive,
+  so the program prints every value and then sits there forever, output already complete. The
+  generated main ends with `js.Syntax.code("process.exit(0)")` and the node call is wrapped in
+  `timeout` so a future recurrence fails loudly instead of hanging. This is what made item 1 cost
+  more than "just wiring".
+
+Two things about the case format that will bite whoever adds cases: the generated MetaScript
+lands in `out/tmp/oracle/`, so preludes import `../../../src/...`, three levels up; and the two
+sides of a case must emit the **same number of values** under the same id, so a six-value Heaps
+row and two three-value port rows silently mismatch rather than failing usefully.
+
 ### M6 as built
 
 - **`scene.ms` is the tree, and the renderer never walks it.** `Object3D` carries `kind`, `flags`, `parent`, `payload`, `local`, `world` and `children` — the small node "Data types" asked for, against `Node2D`'s 71 fields. `Transform3D { position, rotation, scale }` is one field because every pass that reads one reads all three, and `world: Mat4` is another. Heaps' `h3d.scene.Object` allocates four times (itself, `absPos`, `qRot`, `children`); here only the node's `children` array allocates, and only when the structure changes — which was **false as first written**: `collect` and `refresh` bound each node's children to a `Vec` local, CODE-STYLE section 5's copy trap, and so allocated once per node visited per frame. Both now index through the field, and the `allocation` gate stage holds it. `MeshInstance { mesh, material }` is the Mesh side table; lights get their own in M7 rather than fields on the node.
