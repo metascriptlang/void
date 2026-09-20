@@ -178,6 +178,34 @@ purge_stale_shader_objects() {
 	echo "$current" > "$stamp"
 }
 
+# ---- entries ------------------------------------------------------------------------------
+
+# msc 0.2.53 on Windows does not call main(): a module that only declares `function main()`
+# builds into a binary that exits at once, and under --os=emcc it links the renderer out
+# entirely. It has now been the same bug five times — mainSokol2d (fixed in ef1de70), and the
+# four void3d entries mainSokol, mainCampfire, iosEntryAnim and iosEmbedEntry. A recurring bug
+# class is infrastructure, not a fifth spot fix, so the sixth one fails here instead of
+# shipping. Compiler card: 2026-09-20-main-not-called-windows.md.
+run_entries() {
+	missing=""
+	checked=0
+	for entry in src/examples/*.ms; do
+		grep -qE '^(export )?function main\(' "$entry" || continue
+		checked=$((checked + 1))
+		grep -qE '^main\(\);' "$entry" || missing="$missing $(basename "$entry")"
+	done
+	if [ "$checked" -eq 0 ]; then
+		skip "entries: no entry point declares main(), so there was nothing to check"
+		return
+	fi
+	if [ -n "$missing" ]; then
+		fail "entries: declared main() with no top-level call:$missing"
+		echo "         each of those builds a binary that exits at once — add \`main();\` at the end"
+		return
+	fi
+	pass "entries: $checked entry points declare main() and all of them call it"
+}
+
 # ---- tests --------------------------------------------------------------------------------
 
 run_tests() {
@@ -372,6 +400,7 @@ if prepare_scene; then
 else
 	fail "prepare: the capture entries were not written"
 fi
+run_entries
 run_tests
 run_captures
 run_manifest

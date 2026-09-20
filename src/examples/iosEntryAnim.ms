@@ -17,3 +17,5 @@ function main(): int32 {
 	voidOnMessage(onMsg);
 	return 0;
 }
+
+main();

@@ -9,3 +9,5 @@ function main(): int32 {
 	voidRun(800, 600, initRenderer, renderFrame);
 	return 0;
 }
+
+main();
