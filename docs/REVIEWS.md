@@ -411,7 +411,7 @@ instead of failing, which is weaker than the follow-up's wording.
 | F-11 | `VOID2D_MAX_RETIRED_BUFFERS` overflow falls back to the immediate destroy the list exists to prevent, silently |
 | F-12 | A `golden.sh --self-check` case for "said CAPTURED and wrote no png" |
 | F-13 | Correct the `blitTarget` comment |
-| F-14 | Re-measure `ui.present.ms` after D8, or state that it was not re-taken |
+| F-14 | ~~Re-measure `ui.present.ms` after D8~~ — **done 2026-09-21**, as P2's first step, and it found more than it was asked for: *both* millisecond baselines were unreproducible by their own commit's binary on a box proven quiet (10.8% CPU). Interleaved A/B `6a997ee` vs `544ea4a`: ui 19.95 vs 19.86, sprites 2.51 vs 2.48 — guardrail 8 holds, and 17.8 / 1.63 were simply wrong rather than stale-because-busy. Baselines re-taken to 19.9 / 2.5 with `warnFactor` untouched; the gate's permanent `WARN sprites.present.ms` is gone. P2's Measure line carried two targets derived from the phantom numbers and both were corrected — `benchSprites ≤ 1.7 ms` would have failed this phase on its first run for a reason with nothing to do with this phase |
 | F-15 | `instanceBufferBytes()` → `vertexBufferBytes()` |
 | F-16 | State that a glyph first needed in a second bracket is one frame late, now that `s_atlasUpdated` is per frame |
 | F-17 | *(done above)* |

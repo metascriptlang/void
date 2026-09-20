@@ -233,7 +233,7 @@ today** (2026-09-20, at `6a997ee`). This is the table a phase is measured agains
 | uploadBytes | 9 386 880 | 1 920 000 |
 | atlasImages | 1 | 1 |
 | droppedFrames | 0 | 0 |
-| present.ms | 17.8 | 1.63 |
+| present.ms | **19.9** (19.3–21.1) | **2.5** (2.2–3.1) |
 
 **`draws` went 253 → 20 000 and `present` 4.2 → 17.8 ms, and neither is a regression.** P0's
 two numbers were cheap because the frame drew 126 of the 10 000 labels it was asked for and
@@ -243,14 +243,29 @@ back down is exactly what P2 is for, which is why P2's "Measure" anchors on 20 0
 the 253 a reader would otherwise carry out of this section.
 
 Counters gate; milliseconds report with a warn threshold at 1.5× and never fail a commit
-([TESTING.md](TESTING.md) "T4"). The two millisecond rows in (b) are single readings rather
-than the median-and-range of (a), and `ui.present.ms` was **not** re-measured after the
-per-draw hoist in P1's D8 (REVIEWS.md F-14). Re-run on this box while writing this
-correction, the same binaries read `ui.present.ms` 20.07 and `sprites.present.ms` 2.68 — the
-latter a gate WARN — against a box already busy. A WARN on a millisecond row means re-run the
-interleaved same-box A/B that `tests/bench/baseline.json` documents, not that a phase
-regressed; the threshold is not raised to fit a reading, and two decimals on (a) would claim a
-reproducibility the number does not have.
+([TESTING.md](TESTING.md) "T4").
+
+**(b)'s two millisecond rows were re-taken on 2026-09-21**, at P2's first step, closing F-14 —
+`ui.present.ms` had never been re-measured after P1's D8. They used to read 17.8 and 1.63 and
+**neither could be reproduced by the commit they came from**. Measured on a box checked quiet
+first (10.8% CPU mean over five one-second samples), by an interleaved same-box A/B between
+`6a997ee` and `544ea4a`, six alternating pairs each: ui **19.95** (19.69–20.30) against **19.86**
+(19.34–20.16); sprites **2.51** (2.24–3.06) against **2.48** (2.27–2.82).
+
+Two things follow, and the second is the uncomfortable one.
+
+- **Guardrail 8 holds.** Nothing between P1's land and here moved either row; the two columns of
+  the A/B sit inside each other's spread.
+- **The old numbers were wrong, not stale-because-busy.** `tests/bench/baseline.json` explained
+  the gap to 1.63 as the machine, citing a run at 54% CPU. That explanation does not survive: at
+  10.8% CPU, **P1's own rebuilt binary reads 2.51**. Correcting the baseline is not the forbidden
+  move of raising a threshold to fit a reading — `warnFactor` is unchanged at 1.5, and what was
+  replaced is a baseline proven unreproducible by its own commit's binary on a proven-quiet box,
+  in an A/B rather than a single run. Leaving it meant the gate printed `WARN sprites.present.ms`
+  on every green run, and a warning that always fires is a warning nobody reads.
+
+A WARN on a millisecond row still means run that A/B, not that a phase regressed. Two decimals on
+(a) would claim a reproducibility the number does not have; (b)'s ranges are what it does have.
 
 **Dependencies**, stated rather than implied:
 
@@ -453,7 +468,10 @@ an otherwise idle machine span 17.9–18.9 ms. The counters are what gate hard.
 
 **Tests.** **T3 coverage oracle**: the rounded rect and the `erf` shadow supersampled 16×16 per pixel on the CPU, compared against the capture within a stated bound. This is the only tier that says the AA is *correct* rather than merely unchanged. T1: instance counts per mode, batch-break reasons on the bench scene, the snapping rules as numbers at three DPIs, and a scrolled list emitting nothing for off-clip rows. T2: `prim/`, `xform/`, `snap/`, `clip/` regenerated. T0: Oklab conversion, dither, the SDF distance function.
 
-**Measure.** Draws **20 000** (P1 measured, not the 253 this line used to anchor on) → ≤ 4; `present` ≤ 2.0 ms; instance bytes per frame ≈ 20 000 × 92 B ≈ 1.8 MB; `benchSprites` ≤ 1.7 ms / 1 draw — a regression there fails the phase (guardrail 8); wasm delta per backend recorded.
+**Measure.** Draws **20 000** (P1 measured, not the 253 this line used to anchor on) → **≤ 4**; instance bytes per frame ≈ 20 000 × 92 B ≈ 1.8 MB, replaced by the measured stride; wasm delta per backend recorded. The two millisecond figures this line used to carry were both anchored on numbers that do not exist, and were corrected on 2026-09-21 when the baseline was re-taken (see "Baseline" (b)):
+
+- `present` ≤ 2.0 ms was set against a baseline of 17.8; the measured before is **19.9 ms**. The target is kept, because it is not arithmetically impossible the way P1's `≤ 253 draws` was — 20 000 draw calls at ~1 µs each is essentially all of the 19.9 ms, and removing them removes it. It is recorded as **optimistic**: the nearest measured floor on this box is `benchSprites`, which does *half* the nodes in *one* draw and still costs 2.5 ms. P2 is not failed by missing 2.0 — milliseconds never gate — but the phase reports the real number and says which of the two predictions it landed on.
+- `benchSprites` ≤ 1.7 ms was derived from the unreproducible 1.63. **The guardrail-8 check is no longer a constant**: it is "no worse than the re-taken 2.5 ms (2.2–3.1), proven by an interleaved same-box A/B", because a fixed 1.7 would fail this phase on its first run for a reason that has nothing to do with this phase. The draw count stays absolute: `sprites.draws` is 1, and that gates.
 
 **Unblocks.** P3 writes the glyph layer against a final instance layout; P5's persistent ranges need stable per-instance bytes.
 
