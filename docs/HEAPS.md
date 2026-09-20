@@ -320,8 +320,8 @@ Missing from void2d today:
 - **`Tile.dx/dy`** with `center()` / `setCenterRatio()` (`h2d/Tile.hx:26-30, 166-175`). Today's node `pivot` is applied for Rect/Sprite/Anim, ignored by ScaleGrid, Label and Graphics, and used by Mask (`render.ms:42-56, 192-204`).
 - `Mask.scrollX/Y` (`h2d/Mask.hx:70-125`) — the scroll mechanism in [VOID2D.md](VOID2D.md) "Clip and scroll".
 - The `Text` metric surface and `Align` enum; `lineSpacing` in pixels (void2d's is a multiplier, `text.ms:49`).
-- `smooth` as a tri-state with a scene default; `tileWrap`, with clamp as the default sampler.
-- Filter semantics (`h2d/Object.hx:896-956`): the node itself goes into the target, alpha applied once, target in object-local space through a filter matrix instead of re-syncing the subtree, bounds clipped to the viewport, a frame-linear target pool (`h3d/impl/TextureCache.hx`), clip state saved and cleared per target.
+- ~~`smooth` as a tri-state with a scene default; `tileWrap`, with clamp as the default sampler.~~ **Landed at P1**: `Smooth.Inherit/Off/On` in `void2d/types.ms` resolving against `Scene.defaultSmooth`, and `Node2D.tileWrap` with clamp by default. The scene default is **linear**, not h2d's nearest - that is the "Do not copy from h2d" entry below, applied.
+- ~~Filter semantics (`h2d/Object.hx:896-956`)~~ **Landed at P1**, all six: the node itself goes into the target, alpha applied once (on every filter kind - the Glow and DropShadow branch took a second pass of the review to get right), the target in object-local space through a filter matrix that the emitter subtracts as it records rather than a second sync, bounds clipped to the viewport, a frame-linear target pool (`h3d/impl/TextureCache.hx`) capped at 16, and clip state saved and cleared per target.
 - `localToGlobal` after a mutation and before `present` returns last frame's matrix (`node.ms:174-180`); h2d calls `syncPos()` first (`Object.hx:359`).
 - `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:65-78` vs `h2d/Scene.hx:415-427`).
 

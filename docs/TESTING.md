@@ -287,7 +287,7 @@ in the same change as the fix.
 
 | Backend | Conformance, 2026-09-20 | Runs |
 |---|---|---|
-| D3D11 | **37 / 37 scenes byte-identical** | every gate, this box |
+| D3D11 | **48 / 48 scenes byte-identical** | every gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path is written in `tests/capture/capture.c` and no GLES3 build has exercised it | SKIP |
 | Metal macOS | no readback | SKIP |
 | Metal iOS | no readback; the first device run is T5 | SKIP |
@@ -343,7 +343,7 @@ about where they came from.
 
 | Phase | Tier work landing in it |
 |---|---|
-| **P0** ✅ | The whole harness: the T2 suite (37 scenes), T4 rows and baseline, PENDING, `scripts/gate.sh`, `scripts/golden.sh`, the harness self-checks, the D3D11 readback (and the GLES3 one, written but unrun), and web liveness in place of web capture |
+| **P0** ✅ | The whole harness: the T2 suite (37 scenes at P0, 48 at P1), T4 rows and baseline, PENDING, `scripts/gate.sh`, `scripts/golden.sh`, the harness self-checks, the D3D11 readback (and the GLES3 one, written but unrun), and web liveness in place of web capture |
 | **P1** | T1 created — the display list is what makes it possible; the `filter/` and `regress/atlasFull` rows turn on; regression scenes for the remaining defects; T4 counters |
 | **P2** | T3 coverage oracle; T1 snapping and batch-break assertions; `prim/`, `xform/`, `snap/`, `clip/` regenerated |
 | **P3** | T3 fontTools metrics and the HarfBuzz kerning subset; `text/` at three DPIs; T4 atlas budget; the first full five-backend conformance run |
@@ -357,7 +357,7 @@ about where they came from.
 |---|---|
 | T0 | 431 tests, `msc test src/test/index.ms`, about half a second — six of them are the harness's own parsers |
 | T1 | `tests/displayList/*.txt`, recorded with no GPU; `VOID_SNAPSHOT=1` rewrites them on the run that compares |
-| T2 | 37 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
+| T2 | 48 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
 | T3 | nothing wired; six named SKIPs |
 | T4 | ten counters gated, two milliseconds reported; the wasm budget SKIPs |
 | T5 | human only |

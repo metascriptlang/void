@@ -87,6 +87,10 @@ are block quotes and not a table.
 
 | atlas-resize-transient-frame | T2 | when the glyph atlas grows during a frame, labels already laid out in that frame hold UVs normalised to the old atlas size for that one frame; each corrects itself on its next sync, and `lastAtlasGen` is now read before layout so the label that triggered the growth is not permanently wrong. A golden cannot see it (the runner draws three frames and captures the last two) and an app sees it once, on first use of a new glyph size | P3 | 2026-09-20 |
 
+| style:line-length | T0 | CODE-STYLE asks for <=100 columns and **204** lines of `.ms` are over it, measured 2026-09-20. **31 are in the files P1 wrote or rewrote** and every one is code, not a comment: the compressed conditions in `render.ms sync`, long `imageQuad` argument lists, import lines. Carried as F13 since P0 and not done again here, deliberately - wrapping 31 code lines by hand across seven files at the moment the diff should be about the review's blockers is risk for no behavioural gain. It is a number and an owner now instead of a third 'carried' | P2 | 2026-09-20 |
+| style:dpi-on-scene | T0 | P0's F2: fold the DPI into `Scene` state rather than `presentAt(dpi)`'s parameter. `begin2d` takes a float logical size since P1, which was the blocker; the argument is still a parameter because every caller - the golden runner above all - wants to pin it per scene. Decide the shape in P2, when `Scene` grows the retained state it needs anyway | P2 | 2026-09-20 |
+| test:counter-snapshot-per-golden | T2 | P0's F3: commit a per-scene counter snapshot beside each golden, so a scene that draws the same pixels with ten times the draw calls fails. The runner already computes the draw count and prints it in the CAPTURED line, then discards it. T1 now covers this for three synthetic scenes; the 48 real ones do not have it | P2 | 2026-09-20 |
+
 ## Scenes that cannot be captured yet
 
 These are rows of the scene table in [docs/TESTING.md](../docs/TESTING.md) "T2" that today's
@@ -150,7 +154,7 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| backend:gles3-desktop | T2 | `glReadPixels` is written (`tests/capture/capture.c`) but no GLES3 build of the runner has been run; the path is untested | P1 | 2026-09-20 |
+| backend:gles3-desktop | T2 | `glReadPixels` is written (`tests/capture/capture.c`) but no GLES3 build of the runner has been run; the path is untested. Re-dated at P1's review: P1 never owned a second backend - guardrail 9's full five-backend run is P3's, and this row belongs with it | P3 | 2026-09-20 |
 | backend:metal-macos | T2 | no readback; needs the blit to a shared `MTLBuffer` (~50 lines) and the Mac | P3 | 2026-09-20 |
 | backend:metal-ios | T2 | no readback, and the device run is T5 the first time | P3 | 2026-09-20 |
 | backend:gles3-android | T2 | shares the `glReadPixels` path; needs the device and an entry that writes the PNG off-device | P3 | 2026-09-20 |
@@ -174,4 +178,4 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| legacy:tests/layout.test.ms | T0 | a standalone binary with its own `expectEq` runner that does not build on msc 0.2.53; port its cases into `src/test/` or delete it (docs/TESTING.md "T0") | P1 | 2026-09-20 |
+| legacy:tests/layout.test.ms | T0 | a standalone binary with its own `expectEq` runner that does not build on msc 0.2.53; port its cases into `src/test/` or delete it (docs/TESTING.md "T0"). Re-dated at P1's review: it was stamped P1 and P1 did not touch it, so saying P1 again would be the third time | P2 | 2026-09-20 |
