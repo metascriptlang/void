@@ -9,6 +9,13 @@ are recorded here too — the point of this file is what was caught, not a clean
 `docs/REVIEWS.md` is void2d's and is written on another branch; this file is void3d's so the
 two never collide.
 
+**A "### Numbers" table names the sha it was measured at, and the milestone's last commit
+re-takes it.** A verdict is written before its milestone's last commits, so its numbers are
+stale by construction and not by anyone's mistake — M6's table said 16 stages and 524 tests for
+five commits after it stopped being true, in the one document the next milestone reads to
+decide the previous one is done. A table with no sha cannot even be checked; a table with one
+can be re-taken by anybody in a single gate run.
+
 ---
 
 ## M5 — MeshData, Bounds, index buffers, rebuild after context loss
@@ -117,6 +124,11 @@ Non-blocking items it raised, and what happened:
 - `campfireScene` keeps a second ~23 KB copy of the geometry alive after `addMeshData` copies it.
 
 ### Numbers
+
+Measured at `d868c03`, this section's own commit. One void3d commit followed it inside M5 —
+`a83d794`, which strips line endings before comparing the manifest — and it moved none of these
+rows. Read them as M5's numbers and not as today's: the gate has grown eight stages and the
+suite has grown by 120 since, for reasons that have nothing to do with M5.
 
 | | |
 |---|---|
@@ -234,13 +246,18 @@ of ten is not a variance and the figure is not yet a licence for a threshold.
 
 ### Numbers
 
+Re-taken at `8b027e7` from one `sh scripts/gate3d.sh` run, because the table was first written
+at `839669a` and five commits landed after it — `f5d564f`, `0125a24`, `8a538cd`, `c2019b5`,
+`8b027e7` — and four of its eight rows had stopped being true. What moved each one is in the row.
+
 | | |
 |---|---|
-| Gate | `sh scripts/gate3d.sh`, **16 stages**, zero SKIP |
-| Tests | 524 (499 before M6; 25 added) |
+| Gate | `sh scripts/gate3d.sh`, **18 stages**, GREEN with **1 SKIP** (`device`). Was 16 and zero SKIP: `f5d564f` added `device`, a loud SKIP unless `GATE_DEVICE=1`, and `0125a24` added `oracle` |
+| Tests | **604**, and none of the 80 over the review's 524 are this milestone's. Every test file that changed across the rebase onto `6a997ee` is void2d's — `tests/displayList/snapshot.ms`, `tests/harness/benchRows.ms`, `tests/harness/parse.ms`, `src/test/nodeCheck.ms` — and no test file of either arc changed after `839669a`, which bounds M6's own post-review contribution at zero. M6 added 25, unchanged |
 | Capture | seven configurations, four frames each, byte-identical; `m6spin` is a new baseline, not a re-baseline |
 | Baselines | 24, checked against `docs/baselines3d.sha256` |
-| Scene | 34 nodes, 36 meshes of which 30 rebuildable, 32 draw items per frame (was 3), 4 pipelines (unchanged) |
+| Oracle | 30 cases agree with real Heaps and 3 diverge as declared, over 2 files — a row the review could not have had, since `0125a24` and `8a538cd` are both after it |
+| Scene | 34 nodes, 36 meshes of which 30 rebuildable, 32 draw items per frame (was 3), 4 pipelines (unchanged) — the `bench` stage prints `drawItems=32 nodes=34 meshes=36 rebuildable=30 pipelines=4` every run |
 | Geometry | 584 vertices, 876 indices — the same totals the merged mesh had |
-| Frame cost | 0.0643 ms of CPU, sd 0.0017 over ten runs; the 6.06 ms wall clock is vsync at 165 Hz, not a cost |
-| Android | arm64 `libVoidAndroid.so`, 2 318 952 bytes, still never run |
+| Frame cost | **not re-taken, and deliberately.** This run printed 0.0596 ms; one reading is not a variance, and 0.0643 ms sd 0.0017 is a figure stated more precisely than it was measured. The interleaved A/B that would settle it is open and is not a session's to open. Nothing gates on milliseconds — `bench` gates growth at zero |
+| Android | arm64 `libVoidAndroid.so`, **2 319 400 bytes**, and **it has run**: `f5d564f` executed the GLES3 path on the Android emulator, `tests/device/gles3Campfire.png`. Not on a device, and against no baseline |
