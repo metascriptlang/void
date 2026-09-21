@@ -195,6 +195,11 @@ float roundedRectDistance(vec2 p, vec2 half_, float r) {
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rr;
 }
 
+float cornerRadius(vec2 p, vec4 radii) {
+    return p.x < 0.0 ? (p.y < 0.0 ? radii.x : radii.w)
+                     : (p.y < 0.0 ? radii.y : radii.z);
+}
+
 // LINEAR, and this is the one line in this file that was measured rather than inherited.
 // The true area of a pixel cut by a straight edge is linear in the edge's distance from the
 // pixel centre; smoothstep is an S-curve through the same endpoints and overshoots by up to
@@ -211,17 +216,27 @@ void main() {
     float aa = vUvAa.z;
     int mode = int(vUvAa.w + 0.5);
 
-    float r = p.x < 0.0 ? (p.y < 0.0 ? vRadii.x : vRadii.w)
-                        : (p.y < 0.0 ? vRadii.y : vRadii.z);
+    float r = cornerRadius(p, vRadii);
     float dOuter = roundedRectDistance(p, half_, r);
 
     // The border's inner edge is the outer rect inset per side, which moves its centre when
-    // the two opposite widths differ. Its radius shrinks with the thickest side it touches,
-    // so a 1-px border on a 6-px radius leaves a 5-px inner radius rather than a flat corner.
-    vec2 inset = vec2(vBorders.x + vBorders.z, vBorders.y + vBorders.w) * 0.5;
-    vec2 shift = vec2(vBorders.x - vBorders.z, vBorders.y - vBorders.w) * 0.5;
-    float maxBorder = max(max(vBorders.x, vBorders.y), max(vBorders.z, vBorders.w));
-    float dInner = roundedRectDistance(p - shift, max(half_ - inset, vec2(0.0)), max(r - maxBorder, 0.0));
+    // the two opposite widths differ. Each corner radius shrinks with the thicker of the two
+    // sides touching that corner.
+    vec4 borders = max(vBorders, vec4(0.0));
+    vec2 inset = vec2(borders.x + borders.z, borders.y + borders.w) * 0.5;
+    vec2 shift = vec2(borders.x - borders.z, borders.y - borders.w) * 0.5;
+    vec4 innerRadii = max(vRadii - vec4(
+        max(borders.x, borders.y),
+        max(borders.y, borders.z),
+        max(borders.z, borders.w),
+        max(borders.w, borders.x)
+    ), vec4(0.0));
+    vec2 innerPoint = p - shift;
+    float dInner = roundedRectDistance(
+        innerPoint,
+        max(half_ - inset, vec2(0.0)),
+        cornerRadius(innerPoint, innerRadii)
+    );
 
     // Area fractions, not a blend factor between two colours. The fill covers the inner
     // rect and the border covers the RING between the two, so a zero-width border has zero

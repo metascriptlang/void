@@ -19,7 +19,7 @@
 import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { scene, add } from "../../src/void2d/scene";
-import { Node2D, rect, mask, at, addChild } from "../../src/void2d/node";
+import { Node2D, rect, mask, at, addChild, setBoxStyle } from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
 import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
 import {
@@ -36,6 +36,7 @@ import {
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
+import { boxStyle, cornerRadii, borderWidths } from "../../src/void2d/boxStyle";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -244,6 +245,18 @@ function clipScene(): Node2D {
 	return s.root;
 }
 
+function boxStyleScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
+	box.alpha = 0.5;
+	box.setBoxStyle(boxStyle(
+		cornerRadii(2.0, 4.0, 6.0, 8.0),
+		borderWidths(1.0, 2.0, 3.0, 4.0),
+		rgba(0.9, 0.7, 0.5, 0.6),
+	));
+	return s.root;
+}
+
 test "T1 snapshot: painter order" {
 	assert snapshot("order", record(orderScene(), 128.0, 64.0, 1.0));
 }
@@ -254,6 +267,10 @@ test "T1 snapshot: every batch names why it broke" {
 
 test "T1 snapshot: a Mask scissors its children and gives the clip back" {
 	assert snapshot("clip", record(clipScene(), 128.0, 64.0, 1.0));
+}
+
+test "T1 snapshot: box style reaches the per-corner and per-side instance lanes" {
+	assert snapshot("boxStyle", record(boxStyleScene(), 128.0, 64.0, 1.0));
 }
 
 test "recording an unchanged tree twice is byte-identical" {

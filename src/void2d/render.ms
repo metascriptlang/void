@@ -27,6 +27,7 @@ import { InstanceMode } from "./instance";
 import { fontView } from "./draw";
 import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
+import { NO_BOX_STYLE, boxStyles } from "./boxStyle";
 
 function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
@@ -192,14 +193,34 @@ function emitNode(
 	const instanced: boolean = spriteInstancingAvailable();
 	if (n.kind === DrawKind.Rect) {
 		if (uiInstancingAvailable()) {
-			// Radii, borders and the two param lanes are zero until the box side table lands;
-			// what this commit changes is where the edge comes from, not what the box carries.
+			let radiusTL: float32 = 0.0;
+			let radiusTR: float32 = 0.0;
+			let radiusBR: float32 = 0.0;
+			let radiusBL: float32 = 0.0;
+			let borderL: float32 = 0.0;
+			let borderT: float32 = 0.0;
+			let borderR: float32 = 0.0;
+			let borderB: float32 = 0.0;
+			let edge: Color = transparent;
+			if (n.payload != NO_BOX_STYLE) {
+				const styleIndex: int32 = n.payload;
+				radiusTL = boxStyles[styleIndex].radii.topLeft;
+				radiusTR = boxStyles[styleIndex].radii.topRight;
+				radiusBR = boxStyles[styleIndex].radii.bottomRight;
+				radiusBL = boxStyles[styleIndex].radii.bottomLeft;
+				borderL = boxStyles[styleIndex].borders.left;
+				borderT = boxStyles[styleIndex].borders.top;
+				borderR = boxStyles[styleIndex].borders.right;
+				borderB = boxStyles[styleIndex].borders.bottom;
+				const source: Color = boxStyles[styleIndex].borderColor;
+				edge = rgba(source.r, source.g, source.b, source.a * na);
+			}
 			drawUiInstance(InstanceMode.Box, 0, n.blend, world, tl.x, tl.y, sizeX, sizeY,
-				0.0, 0.0, 0.0, 0.0,
-				0.0, 0.0, 0.0, 0.0,
+				radiusTL, radiusTR, radiusBR, radiusBL,
+				borderL, borderT, borderR, borderB,
 				0.0, 0.0, 0.0,
 				0.0, 0.0, 0.0, 0.0,
-				col, transparent, transparent);
+				col, edge, transparent);
 		} else {
 			fillQuad(tl, tr, br, bl, col, n.blend);
 		}

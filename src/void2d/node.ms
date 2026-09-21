@@ -3,11 +3,13 @@
 
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
+import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
 
 export interface Node2D {
 	kind: DrawKind;
+	payload: int32;
 	x: float32;
 	y: float32;
 	scaleX: float32;
@@ -84,7 +86,7 @@ export interface Node2D {
 
 function base(kind: DrawKind): Node2D {
 	return {
-		kind: kind, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: Smooth.Inherit, tileWrap: false, blend: BlendMode.Alpha, zIndex: 0,
+		kind: kind, payload: NO_BOX_STYLE, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: Smooth.Inherit, tileWrap: false, blend: BlendMode.Alpha, zIndex: 0,
 		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 1.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], meshVertCount: 0, gfxView: 0, gfxDirty: true, children: [], childrenDirty: true,
 		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0, lastSY: 0.0, lastRot: 0.0, dirty: true,
 		textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
@@ -102,6 +104,17 @@ export function rect(w: float32, h: float32, color: Color): Node2D {
 	n.w = w; n.h = h; n.color = color;
 	return n;
 }
+
+export function setBoxStyle(this n: Node2D, style: BoxStyle): Node2D {
+	if (n.kind !== DrawKind.Rect) { unreachable; }
+	if (n.payload == NO_BOX_STYLE) {
+		n.payload = allocateBoxStyle(style);
+	} else {
+		updateBoxStyle(n.payload, style);
+	}
+	return n;
+}
+
 export function sprite(t: Tile): Node2D {
 	const n = base(DrawKind.Sprite);
 	n.sheet = t; n.w = t.w; n.h = t.h;
@@ -202,5 +215,9 @@ export function update(this n: Node2D, dt: float32): void {
 export function dispose(this n: Node2D): void {
 	for (const ch of n.children) {
 		ch.dispose();
+	}
+	if (n.kind === DrawKind.Rect && n.payload != NO_BOX_STYLE) {
+		releaseBoxStyle(n.payload);
+		n.payload = NO_BOX_STYLE;
 	}
 }
