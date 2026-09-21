@@ -7,7 +7,8 @@
 // draw a known defect on purpose, so that the commit which fixes the defect has to
 // regenerate exactly that group and nothing else.
 
-import { Node2D, rect, sprite, label, graphics, mask, scaleGrid, at, addChild } from "../../src/void2d/node";
+import { Node2D, rect, sprite, label, graphics, mask, scaleGrid, at, addChild, setBoxStyle } from "../../src/void2d/node";
+import { boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
 	strokeRect,
@@ -204,6 +205,38 @@ function primAaRotatedBox(): Scene {
 	box.pivotY = AA_BOX_PIVOT_Y;
 	box.rotation = AA_BOX_ROTATION;
 	box.alpha = AA_BOX_ALPHA;
+	s.add(box);
+	return s;
+}
+
+function primPerCornerRadii(): Scene {
+	const s = scene(DARK);
+	const box = rect(150.0, 88.0, rgba(0.28, 0.58, 0.90, 1.0)).at(128.0, 100.0);
+	box.pivotX = 75.0;
+	box.pivotY = 44.0;
+	box.rotation = 0.31;
+	box.alpha = 0.78;
+	box.setBoxStyle(boxStyle(
+		cornerRadii(4.0, 14.0, 28.0, 40.0),
+		uniformBorders(3.0),
+		rgba(0.94, 0.96, 1.0, 1.0),
+	));
+	s.add(box);
+	return s;
+}
+
+function primPerSideBorders(): Scene {
+	const s = scene(DARK);
+	const box = rect(150.0, 88.0, rgba(0.30, 0.72, 0.48, 1.0)).at(128.0, 100.0);
+	box.pivotX = 75.0;
+	box.pivotY = 44.0;
+	box.rotation = -0.27;
+	box.alpha = 0.74;
+	box.setBoxStyle(boxStyle(
+		uniformRadii(18.0),
+		borderWidths(2.0, 6.0, 10.0, 14.0),
+		rgba(0.98, 0.65, 0.24, 1.0),
+	));
 	s.add(box);
 	return s;
 }
@@ -752,6 +785,8 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/gradientRadial", build: primGradientRadial },
 
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
+		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
+		{ name: "prim/perSideBorders", build: primPerSideBorders },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },

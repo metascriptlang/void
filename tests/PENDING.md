@@ -95,8 +95,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:prim/perCornerRadii | T2 | scene not renderable until P2 — one radius per rect today (`graphics.ms` `fillRoundedRect`) | P2 | 2026-09-20 |
-| golden-missing:prim/perSideBorders | T2 | scene not renderable until P2 — `strokeRect` has one width | P2 | 2026-09-20 |
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
 | golden-missing:prim/dropShadow | T2 | scene not renderable until P2 — the `erf` shadow as a primitive, distinct from the render-target filter | P2 | 2026-09-20 |
 | golden-missing:prim/insetShadow | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
