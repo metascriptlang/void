@@ -171,6 +171,24 @@ else
 fi
 
 echo
+# ---- the pending list and the skip lines must correspond ---------------------------------
+# The skip lines above name PENDING ids in prose ("... tests/PENDING.md oracle:foo"), and
+# nothing parsed them: a row an edit swallowed left its skip line pointing at nothing, green.
+# That nearly shipped tonight - oracle:harfbuzz-kerning, caught by a diff audit rather than
+# by a mechanism. The invariant is the dead-hash idiom this workspace already uses for card
+# SHAs: read out EMPTY. One direction only, deliberately - a skip naming a dead row is always
+# wrong, while "a new row no skip names yet" is the normal state of a row added before its
+# gate line, and making that red is a contract change that belongs to the phase review.
+dead_refs=$(grep -vE '^[[:space:]]*#' scripts/gate.sh \
+	| grep -oE 'tests/PENDING\.md [a-z-]+:[a-zA-Z0-9/-]+' \
+	| awk '{ print $2 }' | sort -u \
+	| comm -23 - <(grep -oE '^\| [a-z-]+:[a-zA-Z0-9/-]+' tests/PENDING.md | sed 's/^| //' | sort -u))
+if [ -z "$dead_refs" ]; then
+	pass "every PENDING id the skip lines name exists in tests/PENDING.md"
+else
+	fail "skip lines name PENDING rows that do not exist: $(echo $dead_refs | tr '\n' ' ')"
+fi
+
 echo "=== 8. summary ========================================================"
 # Shape, not an allowlist of id prefixes: an allowlist silently undercounts the moment
 # someone adds a row with a new prefix, and a count that is off by one is worse than none.
