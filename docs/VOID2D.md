@@ -254,10 +254,10 @@ coverage and the wrong blur all exceed the accepted bounds; the real rotated edg
    audit.** `tests/PENDING.md` now says its five rows are the oracles still unwired rather
    than claiming none exists; `docs/TESTING.md` records both coverage oracles, their capture
    checks and the current 56-scene D3D11 count.
-5. **Reserved UI modes need production reachability checks when they land.**
-   `uiPipelineCheck.ms` can emit raw mode instances, which proves shader/pipeline batching but
-   not that a retained node can reach each mode. Gradient, image, underline and selection
-   should graduate with one emitter-level assertion each, rather than another parallel harness.
+5. ~~**Reserved UI modes need production reachability checks when they land.**~~ **Closed
+   during P2.** T1 `gradients`, `imageStyle` and `textPrimitives` now start at retained nodes,
+   pass through the production emitter and pin their effect or instance lanes; raw-mode tests
+   remain only the lower-level layout and batching check.
 
 The shared-commit defect is closed without a second renderer or a new batching mechanism.
 The next P2 correctness boundary is the rotated-Mask clip: it is the still-open half of the
@@ -546,6 +546,16 @@ bounds. T0 pins all fit branches and side-table reuse, T1 pins the image instanc
 pins all five fits, an affine translucent four-radius image, and original/grayscale output.
 The UI program has no arbitrary colour matrix, so combining an image style with `colorMatrix`,
 `colorAdd` or `colorKey` is rejected loudly instead of dropping either effect silently.
+Underline and selection activate modes 4 and 5 through retained nodes without adding a second
+instance layout. A wavy underline uses GPUI's three-thickness bounds and sine-distance shader;
+the straight form is the same mode with a strip distance. Each selection row carries the
+neighbouring rows' relative x and width, then ports Makepad's radius-2 smooth union at
+gloopiness 8. Its quad grows horizontally by that join radius but not vertically, so adjoining
+translucent rows share an edge instead of double-blending an AA fringe. P4 still owns font
+metrics, decoration placement, selection construction and caret blink; P2 supplies only the
+retained primitives those behaviours emit. T0 pins the distance arithmetic and retained
+bounds, T1 `textPrimitives` pins production reachability and all parameter lanes in one UI
+run, and T2 `prim/textModes` pins affine translucent straight/wavy and ragged-row joins.
 
 **Exit.**
 
