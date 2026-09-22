@@ -352,3 +352,60 @@ the lambert term it holds*, from one `sh scripts/gate3d.sh` run.
 | Scene | 36 nodes (+2 lights), 36 meshes of which 30 rebuildable, 32 draw items, 4 pipelines |
 | Frame cost | 0.0616 ms CPU this run; the interleaved A/B is still open and still not a session's to open; `bench` gates growth at zero and passed at 300 frames |
 | Android | arm64 `libVoidAndroid.so`, **2 376 056 bytes**; still emulator-only, still no device |
+
+## M8 — strict glTF subset, scene materialization, and scale-correct normals
+
+**Verdict: SHIP WITH FOLLOW-UPS.** No send-back. The defect pass and a separate design pass
+reviewed `git diff 2a067a4..9e6f0e2`, then re-read the live review fixes before issuing their
+verdicts. The original audit was right: its six M8-local findings were real, and all six are
+closed. The review itself found additional fail-open cases; `9e6f0e2` closes them rather than
+describing malformed or unsupported content as loaded.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The first decoder accepted a missing index accessor and returned a mesh with vertices but no triangles; it also ignored node matrices | uint16 indices are mandatory for this subset, and matrix nodes are rejected |
+| 2 | JSON integer coercion accepted fractional values and could wrap an int64 node, mesh or scene ordinal into int32; accessors also accepted zero counts, bad alignment and an escaped declared view | One range-checked integer path now owns every ordinal and byte field; array kind, count, stride, alignment, declared view and actual buffer bounds fail before decode |
+| 3 | Skins, morph weights/targets and required extensions were ignored, returning undeformed or incomplete geometry as success | The unsupported deformation fields and every non-empty `extensionsRequired` list now fail loud |
+| 4 | Non-finite payloads, zero/non-unit normals and quaternions, mirrored or degenerate local scale, and out-of-range float `COLOR_0` could reach the renderer | The content boundary validates finite float32 payloads, unit directions/rotations, supported scale parity and colour range |
+| 5 | `normalMatrix` returned zero once a composed determinant fell below epsilon, so individually valid downscales could produce `normalize(0)` in the shader | It now uploads the signed cofactor direction: proportional to inverse transpose after normalization, division-free for tiny determinants, and meaningful for rank-two transforms |
+| 6 | `addGltfNodes` checked only binding count, so a negative mesh/material id survived into draw-list indexing | Every binding is preflighted before the first scene mutation; upper bounds remain caller-owned because the adapter deliberately does not own `DrawContext` |
+| 7 | `findByName` used recursive descent over a hierarchy whose depth comes from content | The same self-first, child-order traversal is iterative, so valid deep content cannot consume the C stack |
+
+### Design pass
+
+- **Ownership remains one-way.** `gltf.ms` produces CPU `MeshData` and value-only nodes;
+  `gltfScene.ms` is the only adapter into caller-owned mesh/material ids and the existing
+  `Scene`. Neither file creates a GPU handle, resource cache, asset registry or second tree.
+- **The renderer remains a consumer.** M8 adds no frame-loop collection or allocation.
+  Imported meshes use the M5 CPU copy and generation rebuild path; node transforms use M6's
+  lazy world sync and flat draw list; scale normals use the existing per-object uniform.
+- **The ABI is held at both sides.** The model block is 32 floats in `draw.ms`, two generated
+  matrices at c0–c7, and a C static assertion over `modelParams_t`. The seven existing captures
+  did not move when the normal transform changed.
+- **The implementation is larger than the milestone's rough estimate.** The four loader files
+  are 599 lines, 499 of them in `gltf.ms`, not about 200. The review did not replace explicit
+  rejection paths with a schema abstraction: that would be a new decoder mechanism while the
+  compiler still needs localized `Result` and ref-receiver workarounds. The file is long, but
+  its accepted surface remains smaller than glTF; no extension dispatch, file I/O, material,
+  animation, skin, texture or renderer ownership entered it.
+- **The missing real export remains an honest follow-up.** The hand-built buffer proves bytes,
+  hierarchy and scene insertion, not Blender compatibility or the on-disk path. Its PENDING3D
+  row is the exit condition. The audit's clean-checkout corpus, shared 2D/3D commit lifecycle,
+  scene-diversity/oracle and physical-device findings remain valid QC work outside M8.
+
+### Numbers
+
+Re-taken at reviewed tree `6d40d930e7a647731af48e0ad36d08f0c6df1028` from one
+`sh scripts/gate3d.sh` run.
+
+| | |
+|---|---|
+| Gate | GREEN with **1 SKIP** (`device`); the CPU-only glTF entry builds and runs without sokol |
+| Tests | **627**, 10 added by M8 (3 name/tree, 7 glTF); 617 before M8 |
+| Capture | seven configurations × four frames, byte-identical; no baseline replaced |
+| Baselines | 24, checked against `docs/baselines3d.sha256` |
+| Oracle | 30 cases agree with real Heaps and 3 diverge as declared |
+| Allocation | zero frame-state growth over 300 frames; the guarded frame functions contain no `msArrayCopy` |
+| Android | arm64 `libVoidAndroid.so`, **2 385 624 bytes**; physical device still skipped |

@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a port of Heaps `h3d` (`~/projects/heaps`), taken in the order Hibernal needs it.
 
-**Status (2026-09-22):** M1–M8 are built; M7 is reviewed and M8 awaits its milestone review (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene. The gate is `sh scripts/gate3d.sh`.
+**Status (2026-09-22):** M1–M8 are built and reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene. The gate is `sh scripts/gate3d.sh`.
 
 ## What Hibernal needs
 
@@ -69,7 +69,7 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 | M5 | `prim/Primitive`, `Polygon`, `Cube`, `Plane2D`, `col/Bounds` | `MeshData` (position, normal, color; uint16 indices), GPU upload and rebuild, bounds; box/plane builders moved from the spike | A4, T1 | **done**, 47 tests |
 | M6 | `scene/Object`, `scene/Mesh`, `scene/Scene` | `Object3D` tree, lazy world sync, scene → draw list; **campfire rebuilt on M2–M6, spike deleted** | A4 | **done**, 25 tests |
 | M7 | `scene/Light`, `fwd/DirLight`, `fwd/PointLight`, `shader/AmbientLight` | Directional + point light as scene nodes, toon ramp levels as a material parameter | A4 lights | **done**, 12 tests |
-| M8 | — (Heaps loads HMD/FBX) | glTF subset loader: one buffer, positions, normals, `COLOR_0`, one mesh per node, node TRS | V4 | **done**, 9 tests |
+| M8 | — (Heaps loads HMD/FBX) | glTF subset loader: one buffer, positions, normals, `COLOR_0`, one mesh per node, node TRS | V4 | **done**, 10 tests |
 | M9 | `anim/Animation`, `anim/LinearAnimation`, `anim/BufferAnimation` | Object keyframes and vertex-baked frames, both stepped at a fixed rate (12 fps) | A4 idle, replay | |
 | M10 | `col/Ray`, `col/Bounds`, `scene/Interactive` | Tap → ray → nearest object by bounds, then by triangle | A4 touch | |
 | M11 | `parts/Emitter`, `parts/Particles` (CPU) | Snow and embers on the instanced billboard path; palette LUT swap and desaturation as renderer parameters | A11 | |
@@ -209,15 +209,15 @@ row and two three-value port rows silently mismatch rather than failing usefully
 
 ### M8 as built
 
-- **The decoder is a strict content boundary, not a general glTF library.** `src/void3d/gltf.ms` `loadGltf` accepts the Hibernal export subset named in the milestone and refuses the cases that would otherwise be misrendered: a version other than exactly `2.0`, a primitive mode other than triangles, accessors outside their declared buffer view, multiple parents or cycles, malformed TRS, extra buffers, sparse/interleaved data and unsupported component shapes. `COLOR_0` remains optional and defaults to white. uint16 remains the content limit.
+- **The decoder is a strict content boundary, not a general glTF library.** `src/void3d/gltf.ms` `loadGltf` accepts the Hibernal export subset named in the milestone and refuses inputs it would misrender: versions other than exactly `2.0`, non-triangle or non-indexed primitives, invalid integer/range/alignment/count fields, required extensions, matrix nodes, skins and morph targets, malformed or unsafe TRS, non-finite or non-unit normals, out-of-range `COLOR_0`, extra buffers, sparse/interleaved data and unsupported component shapes. `COLOR_0` remains optional and defaults to white. uint16 remains the content limit.
 - **CPU decoding stays independent of sokol.** The exact little-endian float conversion moved from the GPU bridge to `src/void3d/gltfDecode.ms`; the gate now builds and runs an entry that imports only `loadGltf`. This closes the audit's hidden-linkage finding rather than teaching the corpus to link a renderer it does not use.
 - **The decoded hierarchy enters the existing scene model.** `src/void3d/gltfScene.ms` `addGltfNodes` maps each decoded mesh ordinal to a caller-owned mesh/material binding, preserves root and sibling order, names every node, and hands TRS to `scene.ms` rather than creating a second tree. The hand-built two-node case proves the parent scale reaches the child's world basis and translation. The loader creates no GPU resource; its `MeshData` uses M5's existing upload and context-rebuild path.
-- **Non-uniform scale is accepted only with correct normals.** The lit per-object block is now two matrices: the authored world transform and `math3d.normalMatrix`'s inverse transpose. The generated header packs them as c0–c3 and c4–c7, and `gpu3d.c` statically holds the block at 32 floats. All 28 standing D3D11 frame comparisons remained byte-identical, so no baseline moved.
+- **Non-uniform scale is accepted only with correct normals.** The lit per-object block is now two matrices: the authored world transform and `math3d.normalMatrix`'s signed cofactor direction, equivalent to inverse transpose after the shader normalizes it and still defined for a rank-two transform. The generated header packs them as c0–c3 and c4–c7, and `gpu3d.c` statically holds the block at 32 floats. All 28 standing D3D11 frame comparisons remained byte-identical, so no baseline moved.
 - **The audit's M8-local defects are closed.** Its LINES, escaped-buffer-view, `"2bad"`, GPU-coupling, missing-scene-consumer and non-uniform-normal findings now have code paths and regression checks. The broader clean-checkout baseline corpus, shared 2D/3D commit lifecycle, scene-diversity corpus and physical-device run are real findings, but they are not glTF decoder mechanisms and remain in the audit's QC order.
 
 **Still missing after M8.** No Blender-generator export exists in this repository, so exporter compatibility, the on-disk path and a rendered glTF capture remain unproved. The pre-decided response was a hand-built binary fixture rather than inventing an asset; `gltf-real-export-not-exercised` in `tests/PENDING3D.md` removes only when a real generated fixture decodes headlessly, enters `Scene`, and renders.
 
-**Measured at M8, stated as of tree `35aeca7b542d8f9b0622674589c6b8f744ee9cfb`:** 626 tests (617 before M8), 30 oracle cases agreeing with real Heaps and 3 declared divergences, 28 byte-identical frame comparisons over seven configurations against 24 baselines, PENDING3D at 11 rows, zero frame-state growth over 300 frames, and arm64 `libVoidAndroid.so` at 2,386,288 bytes. The standalone decoder smoke built 22 modules and printed `true`; its GPU-independence is now a permanent gate stage. The only gate skip was the physical-device run.
+**Measured at M8, stated as of reviewed tree `6d40d930e7a647731af48e0ad36d08f0c6df1028`:** 627 tests (617 before M8), 30 oracle cases agreeing with real Heaps and 3 declared divergences, 28 byte-identical frame comparisons over seven configurations against 24 baselines, PENDING3D at 11 rows, zero frame-state growth over 300 frames, and arm64 `libVoidAndroid.so` at 2,385,624 bytes. The standalone decoder smoke built 22 modules and printed `true`; its GPU-independence is now a permanent gate stage. The only gate skip was the physical-device run.
 
 
 ### Android lifecycle (V6), alongside from M3
