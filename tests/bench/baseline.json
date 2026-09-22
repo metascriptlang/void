@@ -1,5 +1,5 @@
 {
-  "comment": "T4 baseline (docs/TESTING.md). GLYPH MODE AND THE WHITE-TEXEL CARD, 2026-09-22. The label's shaped quads are UI instances in glyph mode and the card binds the glyph atlas view, so the alternating card/label pair that held ui.draws at 20000 is one run now. Arithmetic for every moved row. ui.draws 20000 -> 1, P2's exit number met at its floor. ui.vertices 233340 -> 0: the labels were the last vertices and their quads are instances. ui.uiInstances 10000 -> 48890 = 10000 cards + 38890 glyph quads. ui.uploadBytes 8546880 -> 5280120, exactly 48890 x 108 B. ui.uploads 2 -> 1: no vertex stream left, one append. retainedNodes UNCHANGED at 10000 - the mesh stays on the node for the colour-pipeline fallback and this file still counts it. The 11 re-recorded text goldens moved by max delta 2 of 255: the UI lane packs colours as ubyte4n where the mesh path carried floats, so a text tint pays one rounding level - bytes, not behaviour. ui.present is NOT re-baselined: it read 18.6 standalone and 10.8 in the gate's own run, and a spread that wide is the machine, not the change; the only measurement this file accepts for a milliseconds row is the interleaved same-box A/B, which belongs to the phase report. Earlier steps below keep their arithmetic.",
+  "comment": "T4 baseline (docs/TESTING.md). `load` and `context` in `taken` are the conditions of the MILLISECONDS rows — CPU load over 1-second samples before the run, and what invoked the binary (`standalone`, `gate-after-goldens`, `interleaved A/B vs <tree>`). They are null because no taking so far fielded them: the ui.present 18.6-standalone vs 10.8-in-gate spread of 2026-09-22 is the proof they must exist, and the F-14 conditions of the current rows live in the prose below. The phase-end A/B fills them; a reader of `taken` now sees the gap instead of assuming balance. GLYPH MODE AND THE WHITE-TEXEL CARD, 2026-09-22. The label's shaped quads are UI instances in glyph mode and the card binds the glyph atlas view, so the alternating card/label pair that held ui.draws at 20000 is one run now. Arithmetic for every moved row. ui.draws 20000 -> 1, P2's exit number met at its floor. ui.vertices 233340 -> 0: the labels were the last vertices and their quads are instances. ui.uiInstances 10000 -> 48890 = 10000 cards + 38890 glyph quads. ui.uploadBytes 8546880 -> 5280120, exactly 48890 x 108 B. ui.uploads 2 -> 1: no vertex stream left, one append. retainedNodes UNCHANGED at 10000 - the mesh stays on the node for the colour-pipeline fallback and this file still counts it. ui.present is NOT re-baselined: it read 18.6 standalone and 10.8 in the gate's own run, and a spread that wide is the machine, not the change; the only measurement this file accepts for a milliseconds row is the interleaved same-box A/B, which belongs to the phase report. Earlier steps below keep their arithmetic.",
   "taken": {
     "date": "2026-09-22",
     "phase": "P2",
@@ -7,7 +7,9 @@
     "backend": "d3d11",
     "build": "msc 0.2.53 --release",
     "window": "1280x720, sample_count 1, high_dpi 0",
-    "frames": "20 warm-up, 120 measured"
+    "frames": "20 warm-up, 120 measured",
+    "load": null,
+    "context": null
   },
   "counters": {
     "ui": {
