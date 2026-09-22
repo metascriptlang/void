@@ -164,7 +164,6 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | oracle:font-metrics | T3 | fontTools over `head`/`hhea`/`OS_2`/`post` | P3 | 2026-09-20 |
-| oracle:coverage-shadow | T3 | the CAPTURE half of the shadow oracle: judge a captured soft shadow per pixel against the kernel integral. The T0 half is wired — `tests/oracle/coverage.ms` `blurredPixelCoverage` judges `shadowCoverage` in `src/test/coverageOracleCheck.ms` within 0.02 (worst 0.0078, wrong-blur convicted at 0.127). An axis-aligned scene keeps the truth one Riemann sum per pixel | P2 | 2026-09-22 |
 | oracle:harfbuzz-kerning | T3 | the cmap + GPOS-kerning subset, features off | P3 | 2026-09-20 |
 | oracle:ucd-segmentation | T3 | `GraphemeBreakTest.txt` and `LineBreakTest.txt` | P4 | 2026-09-20 |
 | oracle:h2d | T3 | Heaps compiled to JS, for `getBounds`, `localToGlobal`, mask intersection and scale modes | P5 | 2026-09-20 |

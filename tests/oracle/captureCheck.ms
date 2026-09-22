@@ -21,7 +21,7 @@ import {
 	AA_BOX_W, AA_BOX_H, AA_BOX_X, AA_BOX_Y, AA_BOX_PIVOT_X, AA_BOX_PIVOT_Y,
 	AA_BOX_ROTATION,
 } from "../golden/table";
-import { devicePixelCoverage, coverageFromPixel } from "./coverage";
+import { devicePixelCoverage, coverageFromPixel, blurredPixelCoverage } from "./coverage";
 import { voidPngLoad, voidPngWidth, voidPngHeight, voidPngPixel } from "../golden/pngio.h";
 
 // Two bounds, because a straight edge and a sharp corner are two different claims and one
@@ -71,6 +71,97 @@ function pixel(x: int32, y: int32, channel: int32): int32 {
 // capture, let the oracle say the antialiasing is true area, and only then promote. Judging
 // a golden that was promoted first would be judging a decision already taken.
 const GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaRotatedBox.png";
+
+// ===== the shadow half: the erf integral's GLSL copy, judged against the definition =====
+//
+// The T0 oracle (src/test/coverageOracleCheck.ms) judges `sdf.ms`'s shadowCoverage against
+// the kernel-integral Riemann truth. The shader is a SECOND copy of that arithmetic in GLSL,
+// and this half is the only thing that can say the copy draws the integral it claims: it
+// reads the committed `prim/aaShadow` golden - axis-aligned, dpi 1.0, so a device pixel is a
+// local pixel - and compares every penumbra pixel the Riemann truth leaves strictly between
+// 0 and 1. Under-box pixels are skipped by geometry: the opaque fill covers the shadow there
+// and coverage read off them would be the fill's, not the shadow's.
+//
+// The two reference colours are read out of the capture, as above: the background at a corner
+// clear of the kernel's reach, full shadow at (212, 115) - outside the box, four sigma inside
+// the shadow, where the analytic and the truth both read ~0.998.
+const SHADOW_HX: float32 = 60.0;
+const SHADOW_HY: float32 = 35.0;
+const SHADOW_R: float32 = 12.0;
+const SHADOW_SIGMA: float32 = 6.0;
+const SHADOW_OFF_X: float32 = 30.0;
+const SHADOW_OFF_Y: float32 = 22.0;
+const SHADOW_CX: float32 = 150.0;   // box centre: at(90,60) + (120,70)/2
+const SHADOW_CY: float32 = 95.0;
+// ONE bound for the whole penumbra, and the reason it is not tighter is measured, not
+// guessed: the four-sample midpoint rule over the y window carries an inherent error where
+// the scanline width has its sqrt kink - a corner - and that kink's influence reaches the
+// full +-3-sigma sampling window, so at sigma 6, radius 12 there is no straight penumbra
+// far enough from a corner to be exact. `sdf.ms`'s own analytic reads +0.017 against the
+// Riemann truth at this scene's worst point; the capture adds 8-bit quantisation and the
+// full-reference bias to 0.0251. The T0 half measured 0.0078 at sigma 2, radius 3. This
+// bound still convicts what it exists for: the offset-lane swap read 1.05, and a blur a
+// fifth off reads an order of magnitude over it (the T0 wrong-blur control).
+const SHADOW_BOUND: float32 = 0.035;
+// Below this truth a pixel cannot distinguish curves - it is under one level of 8-bit
+// coverage - and judging the far field costs a Riemann sum each for nothing.
+const SHADOW_EPSILON: float32 = 0.005;
+function runShadow(): int32 {
+	const override: string = env.get("VOID_SHADOW_CAPTURE");
+	const path: string = override.equals("") ? "tests/golden/d3d11/prim/aaShadow.png" : override;
+	if (voidPngLoad(1, path) == 0) {
+		console.log(`FAIL shadow oracle: cannot read ${path}`);
+		return 1;
+	}
+	const w: int32 = voidPngWidth(1);
+	const h: int32 = voidPngHeight(1);
+	const spixel = (x: int32, y: int32, channel: int32): int32 => voidPngPixel(1, x, y, channel);
+	const bgR: int32 = spixel(3, 3, 0);
+	const bgG: int32 = spixel(3, 3, 1);
+	const bgB: int32 = spixel(3, 3, 2);
+	const fullR: int32 = spixel(212, 115, 0);
+	const fullG: int32 = spixel(212, 115, 1);
+	const fullB: int32 = spixel(212, 115, 2);
+	let judged: int32 = 0;
+	let worst: float32 = 0.0;
+	let worstX: int32 = -1;
+	let worstY: int32 = -1;
+	for (let y: int32 = 0; y < h; y++) {
+		for (let x: int32 = 0; x < w; x++) {
+			const lx: float32 = ((x as float32) + 0.5) - SHADOW_CX;
+			const ly: float32 = ((y as float32) + 0.5) - SHADOW_CY;
+			if (lx > -SHADOW_HX - 2.0 && lx < SHADOW_HX + 2.0 && ly > -SHADOW_HY - 2.0 && ly < SHADOW_HY + 2.0) {
+				continue;
+			}
+			const truth: float32 = blurredPixelCoverage(lx, ly, SHADOW_HX, SHADOW_HY, SHADOW_R,
+				SHADOW_OFF_X, SHADOW_OFF_Y, SHADOW_SIGMA);
+			if (truth <= SHADOW_EPSILON || truth >= 1.0 - SHADOW_EPSILON) { continue; }
+			const observed: float32 = coverageFromPixel(
+				spixel(x, y, 0), spixel(x, y, 1), spixel(x, y, 2),
+				bgR, bgG, bgB, fullR, fullG, fullB);
+			if (observed < 0.0) { continue; }
+			const delta: float32 = observed - truth;
+			const error: float32 = delta < 0.0 ? -delta : delta;
+			judged = judged + 1;
+			if (error > worst) {
+				worst = error; worstX = x; worstY = y;
+			}
+		}
+	}
+	console.log(`coverage oracle: capture prim/aaShadow,`
+		+ ` ${judged} penumbra pixels worst ${worst} at (${worstX},${worstY})`);
+	if (judged < 100) {
+		console.log(`FAIL shadow oracle: only ${judged} penumbra pixels - the scene cannot convict`);
+		return 1;
+	}
+	if (worst > SHADOW_BOUND) {
+		console.log(`FAIL shadow oracle: penumbra error ${worst} exceeds ${SHADOW_BOUND}`
+			+ ` - the shader's erf integral disagrees with the kernel integral`);
+		return 1;
+	}
+	console.log(`PASS coverage oracle: the capture's shadow is the kernel integral within ${SHADOW_BOUND}`);
+	return 0;
+}
 
 function run(): int32 {
 	const override: string = env.get("VOID_AA_CAPTURE");
@@ -190,4 +281,4 @@ function run(): int32 {
 	return 0;
 }
 
-process.exit(run());
+process.exit(run() != 0 ? 1 : runShadow());

@@ -306,6 +306,23 @@ function primInsetShadow(): Scene {
 	return s;
 }
 
+// The judging scene for the shadow CAPTURE oracle: axis-aligned, uniform radius, dpi 1.0, so
+// the kernel-integral truth is one Riemann sum per device pixel with no inverse affine. The
+// offset (30, 22) leaves a band of penumbra outside the box on the right and bottom, and a
+// full-coverage reference point at (212, 115) - outside the box, four sigma inside the
+// shadow. The fill is opaque so under-box pixels read as fill and are skipped by geometry.
+function primAaShadow(): Scene {
+	const s = scene(DARK);
+	const box = rect(120.0, 70.0, rgba(0.30, 0.62, 0.92, 1.0)).at(90.0, 60.0);
+	box.setBoxStyle(castShadow(boxStyle(
+		uniformRadii(12.0),
+		uniformBorders(0.0),
+		rgba(0.0, 0.0, 0.0, 0.0),
+	), rgba(0.90, 0.45, 0.15, 0.85), 6.0, 30.0, 22.0));
+	s.add(box);
+	return s;
+}
+
 function xformRotate(): Scene {
 	const s = scene(DARK);
 	const upright = card(56.0, 36.0).at(40.0, 44.0);
@@ -854,6 +871,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/cardWithLabel", build: primCardWithLabel },
 		{ name: "prim/dropShadow", build: primDropShadow },
 		{ name: "prim/insetShadow", build: primInsetShadow },
+		{ name: "prim/aaShadow", build: primAaShadow },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },
