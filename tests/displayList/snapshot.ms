@@ -269,6 +269,18 @@ function boxStyleScene(): Node2D {
 	return s.root;
 }
 
+function snapScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
+	const boxed = s.add(rect(30.0, 20.0, rgba(0.3, 0.5, 0.9, 1.0)).at(64.35, 16.8));
+	boxed.setBoxStyle(boxStyle(
+		uniformRadii(4.0),
+		borderWidths(0.8, 1.3, 0.0, 2.2),
+		rgba(0.95, 0.95, 1.0, 1.0),
+	));
+	return s.root;
+}
+
 function glyphScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const card = s.add(rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
@@ -315,11 +327,11 @@ test "T1 snapshot: box style reaches the per-corner and per-side instance lanes"
 }
 
 test "T1 snapshot: a card and its label are one UI run of mixed modes" {
-	// The box instance and the glyph instances name the same view, so the run does not break
-	// between them — one draw for a card with text on it, which is P2's headline claim. The
-	// snapshot prints one pipe:ui command and per-instance modes 0 then 2; equality against
-	// the file is the assertion.
 	assert snapshot("glyphs", record(glyphScene(), 128.0, 64.0, 1.0));
+}
+
+test "T1 snapshot: a fractional box records device-integral edges and snapped strokes" {
+	assert snapshot("snap", record(snapScene(), 128.0, 64.0, 1.25));
 }
 
 test "T1 snapshot: a shadowed box is one instance carrying shadow, fill and border" {

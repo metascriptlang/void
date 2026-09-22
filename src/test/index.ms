@@ -12,6 +12,7 @@ import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
 import "./coverageOracleCheck";
 import "./uiPipelineCheck";
+import "./snapCheck";
 import "./rendererCheck";
 import "./cameraCheck";
 import "./boundsCheck";
