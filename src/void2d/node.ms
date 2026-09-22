@@ -8,7 +8,7 @@ import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
 
-export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
+export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid, Underline, Selection }
 
 export interface Node2D {
 	kind: DrawKind;
@@ -158,6 +158,35 @@ export function scaleGrid(t: Tile, borderL: float32, borderT: float32, borderR: 
 	n.borderL = borderL; n.borderT = borderT; n.borderR = borderR; n.borderB = borderB;
 	return n;
 }
+export function underline(w: float32, thickness: float32, color: Color, wavy: boolean): Node2D {
+	const n = base(DrawKind.Underline);
+	n.w = w;
+	n.h = wavy ? thickness * 3.0 : thickness;
+	n.size = thickness;
+	n.align = wavy ? 1.0 : 0.0;
+	n.color = color;
+	return n;
+}
+export function selection(
+	w: float32,
+	h: float32,
+	color: Color,
+	prevOffsetX: float32,
+	prevWidth: float32,
+	nextOffsetX: float32,
+	nextWidth: float32,
+): Node2D {
+	const n = base(DrawKind.Selection);
+	n.w = w;
+	n.h = h;
+	n.color = color;
+	n.borderL = prevOffsetX;
+	n.borderT = prevWidth;
+	n.borderR = nextOffsetX;
+	n.borderB = nextWidth;
+	return n;
+}
+
 
 // Returns the CHILD, not the parent. It used to return the parent, which made
 // `const n = s.add(node); n.alpha = 0.5;` - the h2d idiom, `new Bitmap(tile, parent)` with

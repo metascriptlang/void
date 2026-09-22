@@ -69,6 +69,31 @@ export function aaWidthForAffine(a: float32, b: float32, c: float32, d: float32)
 	if (s <= 0.0) { return 0.0; }
 	return (1.0 / s) as float32;
 }
+export function smoothUnionDistance(a: float32, b: float32, k: float32): float32 {
+	if (k <= 0.0) { return a < b ? a : b; }
+	let h: float32 = 0.5 + 0.5 * (a - b) / k;
+	if (h < 0.0) { h = 0.0; }
+	if (h > 1.0) { h = 1.0; }
+	return (a * (1.0 - h) + b * h - k * h * (1.0 - h)) as float32;
+}
+
+export function wavyUnderlineDistance(
+	px: float32,
+	py: float32,
+	height: float32,
+	thickness: float32,
+): float32 {
+	const frequency: float32 = (2.0 * (Math.PI as float32) * thickness / height) as float32;
+	const amplitude: float32 = thickness * 0.8 / height;
+	const phase: float32 = px / height * frequency;
+	const slope: float32 = (Math.cos(phase as float64) as float32) * amplitude * frequency;
+	const wave: float32 = (Math.sin(phase as float64) as float32) * amplitude;
+	const distance: float32 = (py / height - wave)
+		* height / (Math.sqrt((1.0 + slope * slope) as float64) as float32);
+	const ad: float32 = distance < 0.0 ? -distance : distance;
+	return (ad - thickness * 0.5) as float32;
+}
+
 
 // ===== the analytic shadow: GPUI's erf integral, ported =====
 //

@@ -6,7 +6,10 @@
 // none of them could see the defect they were meant to cover - the captures simply froze
 // whatever the code did. Here the bound is stated first, and the shader has to meet it.
 
-import { roundedRectDistance, coverageFromDistance, aaWidthForAffine } from "../void2d/sdf";
+import {
+	roundedRectDistance, coverageFromDistance, aaWidthForAffine,
+	smoothUnionDistance, wavyUnderlineDistance,
+} from "../void2d/sdf";
 import {
 	insideRoundedRect, pixelCoverage, maxCoverageError, SUPERSAMPLES,
 } from "../../tests/oracle/coverage";
@@ -98,6 +101,22 @@ test "the antialiasing width is one device pixel in local units" {
 	const r: float32 = 0.7071068;
 	assert approx(aaWidthForAffine(r, r, -r, r) as float64, 1.0);
 }
+test "selection gloop is a hard union outside its radius and fillets a join inside it" {
+	assert smoothUnionDistance(-4.0, 8.0, 8.0) == -4.0;
+	assert smoothUnionDistance(8.0, -4.0, 8.0) == -4.0;
+	assert smoothUnionDistance(1.0, 1.0, 8.0) == -1.0;
+	assert smoothUnionDistance(-2.0, 3.0, 8.0) == smoothUnionDistance(3.0, -2.0, 8.0);
+}
+
+test "wavy underline distance follows the sine centreline" {
+	const height: float32 = 6.0;
+	const thickness: float32 = 2.0;
+	const peakX: float32 = 4.5;
+	assert approx(wavyUnderlineDistance(0.0, 0.0, height, thickness) as float64, -1.0);
+	assert approx(wavyUnderlineDistance(peakX, 1.6, height, thickness) as float64, -1.0);
+	assert wavyUnderlineDistance(peakX, 0.0, height, thickness) > 0.0;
+}
+
 
 // THE BOUND, stated before the shader exists, and tightened to what was measured once the
 // curve was corrected. A straight edge is the case where analytic coverage can be EXACT, so

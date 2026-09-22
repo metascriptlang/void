@@ -288,7 +288,8 @@ void main() {
     float aa = iParams0.x == 2.0 ? 0.0 : (s > 0.0 ? 1.0 / s : 0.0);
 
     vec2 size = iOriginSize.zw;
-    vec2 local = corner * (size + 2.0 * aa) - aa;
+    vec2 inflate = iParams0.x == 5.0 ? vec2(aa, 0.0) : vec2(aa);
+    vec2 local = corner * (size + 2.0 * inflate) - inflate;
     vec2 world = vec2(iAffine.x * local.x + iAffine.z * local.y + iOriginSize.x,
                       iAffine.y * local.x + iAffine.w * local.y + iOriginSize.y);
     gl_Position = vec4(world.x / viewport.x * 2.0 - 1.0, 1.0 - world.y / viewport.y * 2.0, 0.0, 1.0);
@@ -333,6 +334,12 @@ float roundedRectDistance(vec2 p, vec2 half_, float r) {
     vec2 q = abs(p) - (half_ - rr);
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rr;
 }
+float smoothUnionDistance(float a, float b, float k) {
+    if (k <= 0.0) { return min(a, b); }
+    float h = clamp(0.5 + 0.5 * (a - b) / k, 0.0, 1.0);
+    return mix(a, b, h) - k * h * (1.0 - h);
+}
+
 
 float cornerRadius(vec2 p, vec4 radii) {
     return p.x < 0.0 ? (p.y < 0.0 ? radii.x : radii.w)
@@ -425,6 +432,54 @@ void main() {
         vec4 fill = texel * vFill;
         float alpha = fill.a * coverage;
         frag_color = vec4(fill.rgb * alpha, alpha);
+        return;
+    }
+
+    if (mode == 4) {
+        float thickness = vBorders.x;
+        float d;
+        if (vBorders.y > 0.5) {
+            float height = half_.y * 2.0;
+            float frequency = 6.283185307179586 * thickness / height;
+            float amplitude = thickness * 0.8 / height;
+            float phase = ((p.x + half_.x) / height) * frequency;
+            float slope = cos(phase) * amplitude * frequency;
+            float distance = (p.y / height - sin(phase) * amplitude)
+                * height / sqrt(1.0 + slope * slope);
+            d = abs(distance) - thickness * 0.5;
+        } else {
+            d = roundedRectDistance(p, half_, 0.0);
+        }
+        float coverage = coverageFromDistance(d, aa);
+        float alpha = vFill.a * coverage;
+        frag_color = vec4(vFill.rgb * alpha, alpha);
+        return;
+    }
+
+    if (mode == 5) {
+        vec2 boxHalf = vBorders.xy;
+        float radius = vBorders.z;
+        float gloopiness = vBorders.w;
+        float d = roundedRectDistance(p, boxHalf, radius);
+        if (vParams1.y > 0.0) {
+            vec2 prevCenter = vec2(
+                vParams1.x + vParams1.y * 0.5 - boxHalf.x,
+                -boxHalf.y * 2.0);
+            float prev = roundedRectDistance(
+                p - prevCenter, vec2(vParams1.y * 0.5, boxHalf.y), radius);
+            d = smoothUnionDistance(d, prev, gloopiness);
+        }
+        if (vParams1.w > 0.0) {
+            vec2 nextCenter = vec2(
+                vParams1.z + vParams1.w * 0.5 - boxHalf.x,
+                boxHalf.y * 2.0);
+            float next = roundedRectDistance(
+                p - nextCenter, vec2(vParams1.w * 0.5, boxHalf.y), radius);
+            d = smoothUnionDistance(d, next, gloopiness);
+        }
+        float coverage = coverageFromDistance(d, aa);
+        float alpha = vFill.a * coverage;
+        frag_color = vec4(vFill.rgb * alpha, alpha);
         return;
     }
 

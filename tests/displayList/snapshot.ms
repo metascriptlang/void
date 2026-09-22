@@ -21,6 +21,7 @@ import { env } from "std/process";
 import { scene, add } from "../../src/void2d/scene";
 import {
 	Node2D, rect, mask, at, addChild, setBoxStyle, setImageStyle, label, graphics, sprite,
+	underline, selection,
 } from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
 import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
@@ -396,6 +397,16 @@ function imageStyleScene(): Node2D {
 	s.add(image);
 	return s.root;
 }
+function textPrimitiveScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(underline(72.0, 2.0, rgba(0.9, 0.3, 0.2, 1.0), false).at(8.0, 8.0));
+	const wave = s.add(underline(84.0, 3.0, rgba(0.3, 0.7, 1.0, 0.8), true).at(8.0, 18.0));
+	wave.rotation = 0.2;
+	s.add(selection(80.0, 18.0, rgba(0.2, 0.5, 0.9, 0.65),
+		-6.0, 58.0, 12.0, 92.0).at(28.0, 42.0));
+	return s.root;
+}
+
 
 test "T1 snapshot: painter order" {
 	assert snapshot("order", record(orderScene(), 128.0, 64.0, 1.0));
@@ -441,6 +452,10 @@ test "T1 snapshot: gradients and patterns keep draw order and effect records" {
 test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lanes" {
 	assert snapshot("imageStyle", record(imageStyleScene(), 128.0, 108.0, 1.0));
 }
+test "T1 snapshot: retained underline and selection nodes reach their UI modes" {
+	assert snapshot("textPrimitives", record(textPrimitiveScene(), 160.0, 96.0, 1.0));
+}
+
 
 test "recording an unchanged tree twice is byte-identical" {
 	// The precondition for persistent instance ranges in P5. Without it, "a node that did not

@@ -1,4 +1,4 @@
-import { DrawKind, group, rect, sprite, label, anim, graphics, mask, scaleGrid, addChild, addChildAt, removeChild, removeChildren, at, update, dispose, localToGlobal, globalToLocal } from "../void2d/node";
+import { DrawKind, group, rect, sprite, label, anim, graphics, mask, scaleGrid, underline, selection, addChild, addChildAt, removeChild, removeChildren, at, update, dispose, localToGlobal, globalToLocal } from "../void2d/node";
 import { sync, getBounds } from "../void2d/render";
 import { Tile, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter, glowFilter, dropShadowFilter, FilterKind } from "../void2d/types";
 import { approx } from "./helpers";
@@ -33,6 +33,30 @@ test "anim takes size from first frame" {
 	assert approx(n.w, 8.0);
 	assert approx(n.fps, 12.0);
 }
+test "underline factory reserves GPUI's three-thickness wavy bounds" {
+	const straight = underline(80.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0), false);
+	const wavy = underline(80.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0), true);
+	assert straight.kind === DrawKind.Underline;
+	assert approx(straight.h, 2.0);
+	assert approx(wavy.h, 6.0);
+	assert approx(wavy.size, 2.0);
+	assert approx(wavy.align, 1.0);
+}
+
+test "selection factory retains adjacent-row geometry and gloop bounds" {
+	const n = selection(80.0, 20.0, rgba(0.2, 0.4, 0.8, 0.6), -12.0, 60.0, 8.0, 90.0).at(40.0, 30.0);
+	assert n.kind === DrawKind.Selection;
+	assert approx(n.borderL, -12.0);
+	assert approx(n.borderT, 60.0);
+	assert approx(n.borderR, 8.0);
+	assert approx(n.borderB, 90.0);
+	n.sync(identity2d(), false);
+	const b = emptyBounds();
+	n.getBounds(b);
+	assert approx(b.xMin, 32.0);
+	assert approx(b.xMax, 128.0);
+}
+
 
 test "addChild appends and marks dirty" {
 	const p = group();

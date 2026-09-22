@@ -8,8 +8,8 @@
 // regenerate exactly that group and nothing else.
 
 import {
-	Node2D, rect, sprite, label, graphics, mask, scaleGrid, at, addChild,
-	setBoxStyle, setImageStyle,
+	Node2D, group, rect, sprite, label, graphics, mask, scaleGrid, underline, selection,
+	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
 import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
@@ -235,6 +235,23 @@ function primPatterns(): Scene {
 	s.add(g);
 	return s;
 }
+function primTextModes(): Scene {
+	const s = scene(DARK);
+	const modes = group().at(46.0, 30.0);
+	modes.rotation = 0.12;
+	modes.alpha = 0.84;
+	modes.addChild(underline(190.0, 2.0, rgba(0.95, 0.72, 0.25, 1.0), false).at(0.0, 0.0));
+	modes.addChild(underline(216.0, 3.0, rgba(0.35, 0.78, 1.0, 1.0), true).at(0.0, 18.0));
+	modes.addChild(selection(160.0, 22.0, rgba(0.38, 0.55, 1.0, 0.72),
+		0.0, 0.0, 32.0, 210.0).at(0.0, 54.0));
+	modes.addChild(selection(210.0, 22.0, rgba(0.38, 0.55, 1.0, 0.72),
+		-32.0, 160.0, -20.0, 130.0).at(32.0, 76.0));
+	modes.addChild(selection(130.0, 22.0, rgba(0.38, 0.55, 1.0, 0.72),
+		20.0, 210.0, 0.0, 0.0).at(12.0, 98.0));
+	s.add(modes);
+	return s;
+}
+
 
 // ===== xform/ =====
 
@@ -999,6 +1016,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/gradientMultiStop", build: primGradientMultiStop },
 		{ name: "prim/ditherBand", build: primDitherBand },
 		{ name: "prim/patterns", build: primPatterns },
+		{ name: "prim/textModes", build: primTextModes },
 
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },

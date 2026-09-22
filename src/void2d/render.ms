@@ -70,9 +70,20 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 	return m;
 }
 
+const SELECTION_RADIUS: float32 = 2.0;
+const SELECTION_GLOOP: float32 = 8.0;
+
 function localBounds(n: Node2D): Bounds {
 	if (n.kind === DrawKind.Graphics || n.kind === DrawKind.Label) {
 		return { xMin: n.contentXMin, yMin: n.contentYMin, xMax: n.contentXMax, yMax: n.contentYMax };
+	}
+	if (n.kind === DrawKind.Selection) {
+		return {
+			xMin: -n.pivotX - SELECTION_GLOOP,
+			yMin: -n.pivotY,
+			xMax: n.w - n.pivotX + SELECTION_GLOOP,
+			yMax: n.h - n.pivotY,
+		};
 	}
 	return { xMin: -n.pivotX, yMin: -n.pivotY, xMax: n.w - n.pivotX, yMax: n.h - n.pivotY };
 }
@@ -185,6 +196,8 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 	}
 }
 let imageEffectRejectedReported: boolean = false;
+let textPrimitiveEffectRejectedReported: boolean = false;
+
 
 function emitStyledImage(
 	n: Node2D,
@@ -343,6 +356,32 @@ function emitNode(
 					imageQuad(fr, tl, tr, br, bl, col, n.blend);
 				}
 			}
+		}
+	} else if (n.kind === DrawKind.Underline) {
+		if (uiInstancingAvailable()) {
+			drawUiInstance(InstanceMode.Underline, fontView(), n.blend, world,
+				tl.x, tl.y, sizeX, sizeY,
+				0.0, 0.0, 0.0, 0.0,
+				n.size, n.align, 0.0, 0.0,
+				0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0,
+				col, transparent, transparent);
+		} else if (!textPrimitiveEffectRejectedReported) {
+			console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
+			textPrimitiveEffectRejectedReported = true;
+		}
+	} else if (n.kind === DrawKind.Selection) {
+		if (uiInstancingAvailable()) {
+			drawUiInstance(InstanceMode.Selection, fontView(), n.blend, world,
+				tl.x, tl.y, sizeX, sizeY,
+				0.0, 0.0, 0.0, 0.0,
+				n.w * 0.5, n.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
+				0.0, 0.0, 0.0,
+				n.borderL, n.borderT, n.borderR, n.borderB,
+				col, transparent, transparent);
+		} else if (!textPrimitiveEffectRejectedReported) {
+			console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
+			textPrimitiveEffectRejectedReported = true;
 		}
 	} else if (n.kind === DrawKind.Label) {
 		// Glyph mode: one instance per shaped quad, against the same glyph view the card above

@@ -66,6 +66,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "prim/gradientMultiStop", phase: "P2", width: 320, height: 220, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/ditherBand", phase: "P2", width: 320, height: 206, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/patterns", phase: "P2", width: 320, height: 216, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/textModes", phase: "P2", width: 320, height: 220, dpi: 1.0, steps: 0, demo: false },
 
 		{ name: "prim/aaRotatedBox", phase: "P2", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/perCornerRadii", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
