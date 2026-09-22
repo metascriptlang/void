@@ -6,7 +6,7 @@
 import { Vec3, vec3 } from "../math/math3d";
 import { VertexLayout } from "../void3d/gpu3d";
 import { MeshData, MeshError, Rgba, addPlane, addVertex } from "../void3d/meshData";
-import { DrawContext, GpuMesh, addMesh } from "../void3d/draw";
+import { DrawContext, GpuMesh, addMesh, staleMeshes } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UP: Vec3 = { x: 0.0, y: 1.0, z: 0.0 };
@@ -69,25 +69,26 @@ test "a mesh whose buffers the caller keeps is not one the renderer can rebuild"
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
 	assert addMesh(context, billboard()) == 0;
 	assert context.rebuildableMeshes() == 0;
-	// Not stale on any generation: there is no CPU data to rebuild it from, so the caller owns
-	// it and the renderer must not touch it.
-	assert context.staleMeshes(3) == 0;
-	assert context.staleMeshes(4) == 0;
+	// Not stale on any generation: the sentinel says the caller owns the buffers, and the
+	// renderer must not touch them.
+	assert staleMeshes(context, 3) == 0;
+	assert staleMeshes(context, 4) == 0;
 }
 
-test "a mesh is stale exactly when it has CPU data from an older context" {
+test "a mesh is stale exactly when its generation is neither external nor current" {
 	const data: MeshData = planeData();
 	const current: GpuMesh = data.meshFor(7, 9, 3);
-	assert !current.isStale(data, 3);
-	assert current.isStale(data, 4);
-	// The same handles with no CPU data behind them are never stale: nothing here can rebuild
-	// them, and re-uploading from an empty MeshData would erase a working mesh.
-	assert !current.isStale(MeshData.empty(), 4);
+	assert !current.isStale(3);
+	assert current.isStale(4);
+	// An external mesh is never stale whatever the generation: re-uploading it from the empty
+	// MeshData it carries would zero handles its owner still holds.
+	assert !billboard().isStale(3);
+	assert !billboard().isStale(4);
 }
 
 test "a mesh never uploaded is stale on every generation the GPU can be on" {
 	const data: MeshData = planeData();
 	const fresh: GpuMesh = data.meshFor(0, 0, 0);
-	assert fresh.isStale(data, 1);
-	assert fresh.isStale(data, 2);
+	assert fresh.isStale(1);
+	assert fresh.isStale(2);
 }

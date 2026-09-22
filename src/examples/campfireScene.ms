@@ -19,6 +19,7 @@ import { RenderState, Face, Compare } from "../void3d/pass";
 import { Material, Phase } from "../void3d/material";
 import { Sampler } from "../void3d/target";
 import {
+	EXTERNAL_GENERATION,
 	DrawContext,
 	DrawItem,
 	GpuMesh,
@@ -541,7 +542,9 @@ export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 // PENDING3D: example-billboards-not-rebuildable
 function forceRebuild(): void {
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
-		context.meshes[i].generation = 0;
+		if (context.meshes[i].generation != EXTERNAL_GENERATION) {
+			context.meshes[i].generation = 0;
+		}
 	}
 	rebuildMeshes(context);
 }

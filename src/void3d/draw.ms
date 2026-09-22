@@ -148,10 +148,12 @@ export function meshFor(
 	};
 }
 
-// A mesh is stale when it has CPU data and its handles belong to an older GPU context.
-// A mesh whose buffers the caller made and keeps: no CPU data, so no index or generation of
-// ours. Defaulting those three here is what keeps the next field added to GpuMesh from being
+// A mesh whose buffers the caller made and keeps: `EXTERNAL_GENERATION` says so on the mesh
+// itself, which is what keeps `uploadMesh` away from it — an empty MeshData would zero its
+// handles. Defaulting the rest here is what keeps the next field added to GpuMesh from being
 // silently zero at a hand-written literal (docs/VOID3D.md, Compiler notes).
+export const EXTERNAL_GENERATION: int32 = -1;
+
 export function external(
 	this typeof GpuMesh,
 	layout: VertexLayout,
@@ -168,13 +170,12 @@ export function external(
 		vertexCount: vertexCount,
 		indexCount: 0,
 		instanceCount: instanceCount,
-		generation: 0,
+		generation: EXTERNAL_GENERATION,
 	};
 }
 
-// PENDING3D: mesh-generation-ownership
-export function isStale(this mesh: GpuMesh, data: MeshData, generation: int32): boolean {
-	return data.vertexCount() > 0 && mesh.generation != generation;
+export function isStale(this mesh: GpuMesh, generation: int32): boolean {
+	return mesh.generation != EXTERNAL_GENERATION && mesh.generation != generation;
 }
 
 // The same mesh with nothing to draw and no generation, so a refused upload draws nothing and
@@ -250,14 +251,24 @@ export function rebuildableMeshes(this context: DrawContext): int32 {
 	return count;
 }
 
-// How many meshes hold handles from an older GPU context.
-// PENDING3D: stale-meshes-duplicate-loop
-export function staleMeshes(this context: DrawContext, generation: int32): int32 {
+// How many meshes hold handles from an older GPU context, and re-uploading them: one walk,
+// because a counting loop and a working loop that must agree is a defect that only bites when
+// they drift.
+function sweepStaleMeshes(ref context: DrawContext, generation: int32, upload: boolean): int32 {
 	let count: int32 = 0;
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
-		if (context.meshes[i].isStale(context.meshData[i], generation)) { count = count + 1; }
+		if (!context.meshes[i].isStale(generation)) { continue; }
+		if (!upload) {
+			count = count + 1;
+			continue;
+		}
+		if (uploadMesh(context, i).ok) { count = count + 1; }
 	}
 	return count;
+}
+
+export function staleMeshes(ref context: DrawContext, generation: int32): int32 {
+	return sweepStaleMeshes(context, generation, false);
 }
 
 // Re-uploads every mesh whose handles are from an older GPU context, and answers how many came
@@ -267,13 +278,7 @@ export function staleMeshes(this context: DrawContext, generation: int32): int32
 // not counted here. Nothing on this path allocates: a MeshData parameter is passed by pointer,
 // not copied, because the struct is over 24 bytes (CODE-STYLE §5, measured on 0.2.53).
 export function rebuildMeshes(ref context: DrawContext): int32 {
-	const generation: int32 = contextGeneration();
-	let rebuilt: int32 = 0;
-	for (let i = 0; i < (context.meshes.length as int32); i++) {
-		if (!context.meshes[i].isStale(context.meshData[i], generation)) { continue; }
-		if (uploadMesh(context, i).ok) { rebuilt = rebuilt + 1; }
-	}
-	return rebuilt;
+	return sweepStaleMeshes(context, contextGeneration(), true);
 }
 
 export function addMaterial(ref context: DrawContext, material: Material): int32 {
