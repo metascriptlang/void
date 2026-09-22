@@ -13,14 +13,14 @@ anything.
 
 # P0 — The gate
 
-**Diff:** `c487474..HEAD`, 16 commits.
-**Defect pass: 10 findings, all confirmed, all fixed** (`a06edd9`).
-**Design pass: SEND BACK** on four blockers, then fixed (`8dd1b7f`) and re-reviewed.
+**Diff:** `f2ca41d..HEAD`, 16 commits.
+**Defect pass: 10 findings, all confirmed, all fixed** (`f1d088c`).
+**Design pass: SEND BACK** on four blockers, then fixed (`829aa5f`) and re-reviewed.
 **Final verdict: see "Design pass — re-review" below.**
 
 ## Defect pass — `/code-review high`
 
-Ten findings, every one real. Fixed in a commit of its own, `a06edd9`.
+Ten findings, every one real. Fixed in a commit of its own, `f1d088c`.
 
 | # | Finding | What I did |
 |---|---|---|
@@ -109,7 +109,7 @@ giving box-shaped UI its own analytic antialiasing.
 
 ## Design pass — re-review: **SHIP WITH FOLLOW-UPS**
 
-The same reviewer, re-reading after `8dd1b7f`. All four blockers closed, each demonstrated
+The same reviewer, re-reading after `829aa5f`. All four blockers closed, each demonstrated
 by running rather than by reading, and explicitly **not** a second send-back on the same
 cause:
 
@@ -170,7 +170,7 @@ the bench row parser splits on `" "` so the field never carries spaces. P1.
 
 # P1 — The display list
 
-Diff reviewed: `b70b5fa..36b3c43`, 70 files, +4628 / −865. Ten commits.
+Diff reviewed: `b17bb7c..77b5054`, 70 files, +4628 / −865. Ten commits.
 
 Both passes were run by fresh reviewers that did not write the code. **The defect pass was
 not `/code-review high`**: that command is user-triggered in this harness and cannot be
@@ -411,7 +411,7 @@ instead of failing, which is weaker than the follow-up's wording.
 | F-11 | `VOID2D_MAX_RETIRED_BUFFERS` overflow falls back to the immediate destroy the list exists to prevent, silently |
 | F-12 | A `golden.sh --self-check` case for "said CAPTURED and wrote no png" |
 | F-13 | Correct the `blitTarget` comment |
-| F-14 | ~~Re-measure `ui.present.ms` after D8~~ — **done 2026-09-21**, as P2's first step, and it found more than it was asked for: *both* millisecond baselines were unreproducible by their own commit's binary on a box proven quiet (10.8% CPU). Interleaved A/B `6a997ee` vs `544ea4a`: ui 19.95 vs 19.86, sprites 2.51 vs 2.48 — guardrail 8 holds, and 17.8 / 1.63 were simply wrong rather than stale-because-busy. Baselines re-taken to 19.9 / 2.5 with `warnFactor` untouched; the gate's permanent `WARN sprites.present.ms` is gone. P2's Measure line carried two targets derived from the phantom numbers and both were corrected — `benchSprites ≤ 1.7 ms` would have failed this phase on its first run for a reason with nothing to do with this phase |
+| F-14 | ~~Re-measure `ui.present.ms` after D8~~ — **done 2026-09-21**, as P2's first step, and it found more than it was asked for: *both* millisecond baselines were unreproducible by their own commit's binary on a box proven quiet (10.8% CPU). Interleaved A/B `da36060` vs `817f2c8`: ui 19.95 vs 19.86, sprites 2.51 vs 2.48 — guardrail 8 holds, and 17.8 / 1.63 were simply wrong rather than stale-because-busy. Baselines re-taken to 19.9 / 2.5 with `warnFactor` untouched; the gate's permanent `WARN sprites.present.ms` is gone. P2's Measure line carried two targets derived from the phantom numbers and both were corrected — `benchSprites ≤ 1.7 ms` would have failed this phase on its first run for a reason with nothing to do with this phase |
 | F-15 | `instanceBufferBytes()` → `vertexBufferBytes()` |
 | F-16 | State that a glyph first needed in a second bracket is one frame late, now that `s_atlasUpdated` is per frame |
 | F-17 | *(done above)* |
@@ -428,7 +428,7 @@ F-7 answers the *silence*, not the *contract*: the call is still one a host can 
 into `src/sokol/gpu.ms commit()` would make it unforgettable and is the first thing P2 does if it
 is not done sooner.
 
-**Closed at `d80f9e4`, before P2 opened**, and one level lower than the line above proposed.
+**Closed at `46d939b`, before P2 opened**, and one level lower than the line above proposed.
 `src/sokol/gpu.ms` cannot call into void2d: `scene.ms:9` already imports `commit` from it, so the
 fold would be a module cycle and a layering inversion — the sokol layer would depend on a layer
 above it. The hook goes in the C bridge instead, where `batcher.c` already includes `bridge.h`:
