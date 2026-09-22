@@ -427,19 +427,20 @@ export function findByName(
 	name: string,
 ): Result<NodeId, SceneError> {
 	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
-	const found: int32 = findByNameRec(scene, from.index, name);
-	if (found == NO_NODE) { return Result.err(SceneError.NodeNotFound); }
-	return Result.ok({ index: found, generation: scene.generations[found] });
-}
-
-function findByNameRec(ref scene: Scene, index: int32, name: string): int32 {
-	if (scene.nodes[index].name == name) { return index; }
-	const count: int32 = scene.nodes[index].children.length as int32;
-	for (let i = 0; i < count; i++) {
-		const found: int32 = findByNameRec(scene, scene.nodes[index].children[i], name);
-		if (found != NO_NODE) { return found; }
+	const stack: Vec<int32> = [from.index];
+	while ((stack.length as int32) > 0) {
+		const last: int32 = (stack.length as int32) - 1;
+		const index: int32 = stack[last];
+		stack.pop();
+		if (scene.nodes[index].name == name) {
+			return Result.ok({ index: index, generation: scene.generations[index] });
+		}
+		const count: int32 = scene.nodes[index].children.length as int32;
+		for (let i = count - 1; i >= 0; i--) {
+			stack.push(scene.nodes[index].children[i]);
+		}
 	}
-	return NO_NODE;
+	return Result.err(SceneError.NodeNotFound);
 }
 
 export function worldOf(this scene: Scene, id: NodeId): Result<Mat4, SceneError> {

@@ -88,6 +88,14 @@ test "normal matrix keeps normals perpendicular under non-uniform scale" {
 	const movedNormal: Vec3 = normal.transformDirection(m.normalMatrix());
 	assert approx(movedTangent.dot(movedNormal), 0.0);
 	assert !approx(tangent.transformDirection(m).dot(normal.transformDirection(m)), 0.0);
+	const flatNormal: Vec3 =
+		vec3(0.0, 0.0, 1.0).transformDirection(scaling(1.0, 1.0, 0.0).normalMatrix());
+	assert near(flatNormal, 0.0, 0.0, 1.0);
+	const tinyNormal: Vec3 =
+		vec3(0.0, 0.0, 1.0).transformDirection(scaling(1.0, 1.0, 1e-15).normalMatrix());
+	assert near(tinyNormal, 0.0, 0.0, 1.0);
+	const reflected: Mat4 = scaling(-1.0, 1.0, 1.0).normalMatrix();
+	assert approx(reflected.m11, -1.0) && approx(reflected.m22, 1.0);
 }
 
 test "euler quat matches euler matrix" {

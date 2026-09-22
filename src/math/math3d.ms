@@ -323,9 +323,9 @@ export function inverseAffine(this m: Mat4): Mat4 {
 	return { ...r.scaledBy(k), m14: 0.0, m24: 0.0, m34: 0.0, m44: 1.0 };
 }
 
-// Normal matrix of an affine transform: transpose of the inverse of its 3x3, as a Mat4 with
-// no translation. `normal.transformDirection(m.normalMatrix())` stays perpendicular to
-// surfaces under non-uniform scale.
+// Signed cofactor transform for affine normals. The shader normalizes the result, so dividing by
+// the determinant adds only overflow risk; its sign is enough to preserve reflected orientation.
+// A rank-two transform still has a useful cofactor normal instead of collapsing every normal to 0.
 export function normalMatrix(this m: Mat4): Mat4 {
 	const r: Mat4 = {
 		m11: m.m22 * m.m33 - m.m32 * m.m23,
@@ -343,10 +343,8 @@ export function normalMatrix(this m: Mat4): Mat4 {
 		m41: 0.0, m42: 0.0, m43: 0.0, m44: 0.0,
 	};
 	const det: float32 = m.m11 * r.m11 + m.m12 * r.m21 + m.m13 * r.m31;
-	if (absolute(det) < EPSILON) {
-		return zeroMatrix();
-	}
-	return { ...r.scaledBy(1.0 / det).transposed(), m44: 1.0 };
+	const signed: Mat4 = det < 0.0 ? r.scaledBy(-1.0) : r;
+	return { ...signed.transposed(), m44: 1.0 };
 }
 
 // Local transform of h3d.scene.Object: scale, then rotate, then translate.

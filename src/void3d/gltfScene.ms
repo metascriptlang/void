@@ -33,6 +33,11 @@ export function addGltfNodes(
 	if ((bindings.length as int32) != (data.meshes.length as int32)) {
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}
+	for (const binding of bindings) {
+		if (binding.mesh < 0 || binding.material < 0) {
+			return Result.err(GltfSceneError.BadMeshBinding);
+		}
+	}
 	const valid = validateGltfGraph(data);
 	if (!valid.ok) { return Result.err(GltfSceneError.InvalidData); }
 	const nodes: Vec<int32> = [];

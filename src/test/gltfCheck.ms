@@ -77,6 +77,12 @@ function treeGltf(): string {
 		+ "\"buffers\":[{\"byteLength\":114}]}";
 }
 
+function nodeOnlyGltf(node: string, root: string = "0"): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[" + root + "]}],"
+		+ "\"nodes\":[" + node + "],\"meshes\":[],\"accessors\":[],"
+		+ "\"bufferViews\":[],\"buffers\":[]}";
+}
+
 
 test "loadGltf decodes a hand-built triangle into one indexed MeshData" {
 	const loaded = loadGltf(triangleGltf(), triangleBuffer());
@@ -130,6 +136,11 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 		addGltfNodes(scene, scene.rootId(), loaded.value, []);
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error == GltfSceneError.BadMeshBinding; }
+	const invalidBindings: Vec<GltfMeshBinding> = [{ mesh: -1, material: 9 }];
+	const invalid: Result<int32, GltfSceneError> =
+		addGltfNodes(scene, scene.rootId(), loaded.value, invalidBindings);
+	assert !invalid.ok;
+	if (!invalid.ok) { assert invalid.error == GltfSceneError.BadMeshBinding; }
 	const bindings: Vec<GltfMeshBinding> = [{ mesh: 7, material: 9 }];
 	const added: Result<int32, GltfSceneError> =
 		addGltfNodes(scene, scene.rootId(), loaded.value, bindings);
@@ -157,14 +168,16 @@ test "COLOR_0 absent means white, and a wrong count is refused" {
 	const noColor = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
-		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1}}]}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":2}]}],"
 		+ "\"accessors\":["
 		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
-		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}],"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
 		+ "\"bufferViews\":["
 		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
-		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36}],"
-		+ "\"buffers\":[{\"byteLength\":72}]}",
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114}]}",
 		triangleBuffer(),
 	);
 	assert noColor.ok;
@@ -214,6 +227,15 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	);
 	assert !lines.ok;
 	if (!lines.ok) { assert lines.error == GltfError.Unsupported; }
+	const fractionalMode = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"mode\":4.5,\"attributes\":{}}]}],"
+		+ "\"accessors\":[],\"bufferViews\":[],\"buffers\":[{\"byteLength\":0}]}",
+		[],
+	);
+	assert !fractionalMode.ok;
+	if (!fractionalMode.ok) { assert fractionalMode.error == GltfError.Unsupported; }
 	const escapedView = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
@@ -229,6 +251,92 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	);
 	assert !escapedView.ok;
 	if (!escapedView.ok) { assert escapedView.error == GltfError.OutOfRange; }
+	const zeroCount = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":0},\"indices\":1}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":0,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":[{\"buffer\":0,\"byteLength\":0},{\"buffer\":0,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":6}]}",
+		triangleBuffer(),
+	);
+	assert !zeroCount.ok;
+	const misaligned = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":0},\"indices\":1}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"byteOffset\":2,\"componentType\":5126,\"count\":1,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":[{\"buffer\":0,\"byteLength\":14},{\"buffer\":0,\"byteOffset\":14,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":20}]}",
+		triangleBuffer(),
+	);
+	assert !misaligned.ok;
+}
+
+test "unsupported transforms, deformation and non-indexed geometry fail loudly" {
+	const matrixNode = loadGltf(
+		nodeOnlyGltf("{\"matrix\":[1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]}"), [],
+	);
+	assert !matrixNode.ok;
+	const skinned = loadGltf(nodeOnlyGltf("{\"skin\":0}"), []);
+	assert !skinned.ok;
+	const zeroScale = loadGltf(nodeOnlyGltf("{\"scale\":[1,1,0]}"), []);
+	assert !zeroScale.ok;
+	const mirroredScale = loadGltf(nodeOnlyGltf("{\"scale\":[-1,1,1]}"), []);
+	assert !mirroredScale.ok;
+	const badRotation = loadGltf(nodeOnlyGltf("{\"rotation\":[0,0,0,0]}"), []);
+	assert !badRotation.ok;
+	const infiniteTranslation = loadGltf(nodeOnlyGltf("{\"translation\":[1e999,0,0]}"), []);
+	assert !infiniteTranslation.ok;
+	const wideRoot = loadGltf(nodeOnlyGltf("{}", "4294967296"), []);
+	assert !wideRoot.ok;
+	const targets = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{\"targets\":[]}]}],"
+		+ "\"accessors\":[],\"bufferViews\":[],\"buffers\":[{\"byteLength\":0}]}",
+		[],
+	);
+	assert !targets.ok;
+	const requiredExtension = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"extensionsRequired\":[\"EXT_mesh_gpu_instancing\"],"
+		+ "\"scenes\":[{\"nodes\":[]}],\"nodes\":[],\"meshes\":[],\"accessors\":[],"
+		+ "\"bufferViews\":[],\"buffers\":[]}",
+		[],
+	);
+	assert !requiredExtension.ok;
+	const noIndices = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1}}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36}],"
+		+ "\"buffers\":[{\"byteLength\":72}]}",
+		triangleBuffer(),
+	);
+	assert !noIndices.ok;
+	let nonFinite = triangleBuffer();
+	nonFinite[2] = 192 as uint8;
+	nonFinite[3] = 127 as uint8;
+	const nonFiniteMesh = loadGltf(triangleGltf(), nonFinite);
+	assert !nonFiniteMesh.ok;
+	let zeroNormal = triangleBuffer();
+	zeroNormal[46] = 0 as uint8;
+	zeroNormal[47] = 0 as uint8;
+	const zeroNormalMesh = loadGltf(triangleGltf(), zeroNormal);
+	assert !zeroNormalMesh.ok;
+	let overbrightColor = triangleBuffer();
+	overbrightColor[74] = 0 as uint8;
+	overbrightColor[75] = 64 as uint8;
+	const overbrightMesh = loadGltf(triangleGltf(), overbrightColor);
+	assert !overbrightMesh.ok;
 }
 
 test "not glTF, bad JSON, short buffer and missing POSITION each say which one" {
