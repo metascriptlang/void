@@ -8,7 +8,7 @@
 // regenerate exactly that group and nothing else.
 
 import { Node2D, rect, sprite, label, graphics, mask, scaleGrid, at, addChild, setBoxStyle } from "../../src/void2d/node";
-import { boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders } from "../../src/void2d/boxStyle";
+import { boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
 	strokeRect,
@@ -261,6 +261,48 @@ function primCardWithLabel(): Scene {
 	small.rotation = 0.41;
 	small.alpha = 0.7;
 	s.add(small);
+	return s;
+}
+
+function primDropShadow(): Scene {
+	const s = scene(DARK);
+	const box = rect(150.0, 88.0, rgba(0.28, 0.58, 0.90, 1.0)).at(140.0, 92.0);
+	box.pivotX = 75.0;
+	box.pivotY = 44.0;
+	box.rotation = 0.31;
+	box.alpha = 0.88;
+	box.setBoxStyle(castShadow(boxStyle(
+		cornerRadii(4.0, 14.0, 28.0, 40.0),
+		uniformBorders(2.0),
+		rgba(0.94, 0.96, 1.0, 1.0),
+	), rgba(0.01, 0.01, 0.06, 0.55), 9.0, 7.0, 10.0));
+	s.add(box);
+	const hard = rect(56.0, 32.0, rgba(0.30, 0.72, 0.48, 1.0)).at(16.0, 8.0);
+	hard.setBoxStyle(castShadow(boxStyle(
+		uniformRadii(8.0),
+		uniformBorders(0.0),
+		rgba(0.0, 0.0, 0.0, 0.0),
+	), rgba(0.0, 0.0, 0.03, 0.8), 0.0, 5.0, 4.0));
+	s.add(hard);
+	return s;
+}
+
+function primInsetShadow(): Scene {
+	const s = scene(DARK);
+	const well = rect(180.0, 110.0, rgba(0.88, 0.90, 0.95, 1.0)).at(70.0, 60.0);
+	well.setBoxStyle(castInsetShadow(boxStyle(
+		uniformRadii(16.0),
+		uniformBorders(0.0),
+		rgba(0.0, 0.0, 0.0, 0.0),
+	), rgba(0.04, 0.05, 0.12, 0.7), 12.0));
+	s.add(well);
+	const pill = rect(120.0, 56.0, rgba(0.82, 0.88, 1.0, 1.0)).at(100.0, 190.0);
+	pill.setBoxStyle(castInsetShadow(boxStyle(
+		cornerRadii(28.0, 28.0, 28.0, 28.0),
+		uniformBorders(1.5),
+		rgba(0.3, 0.5, 0.8, 1.0),
+	), rgba(0.0, 0.0, 0.04, 0.55), 5.0));
+	s.add(pill);
 	return s;
 }
 
@@ -794,7 +836,6 @@ export interface SceneBuilder {
 	name: string;
 	build: () => Scene;
 }
-
 export function sceneBuilders(): SceneBuilder[] {
 	return [
 		{ name: "harness/solid", build: harnessSolid },
@@ -811,6 +852,8 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
 		{ name: "prim/perSideBorders", build: primPerSideBorders },
 		{ name: "prim/cardWithLabel", build: primCardWithLabel },
+		{ name: "prim/dropShadow", build: primDropShadow },
+		{ name: "prim/insetShadow", build: primInsetShadow },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },

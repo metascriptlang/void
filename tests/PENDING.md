@@ -96,8 +96,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:prim/dropShadow | T2 | scene not renderable until P2 — the `erf` shadow as a primitive, distinct from the render-target filter | P2 | 2026-09-20 |
-| golden-missing:prim/insetShadow | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
 | golden-missing:prim/cardOneInstance | T2 | scene not renderable until P2 — shadow, fill and border in one instance | P2 | 2026-09-20 |
 | golden-missing:prim/gradientOklab | T2 | scene not renderable until P2 — gradients are per-vertex sRGB today | P2 | 2026-09-20 |
 | golden-missing:prim/gradientMultiStop | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
@@ -165,8 +163,8 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| oracle:coverage-shadow | T3 | the `erf` shadow half of the coverage oracle. The rounded-rect half is **wired** (`tests/oracle/coverage.ms`, `src/test/coverageOracleCheck.ms`) and already convicted `smoothstep`; the shadow reference waits for the shadow mode to exist | P2 | 2026-09-21 |
 | oracle:font-metrics | T3 | fontTools over `head`/`hhea`/`OS_2`/`post` | P3 | 2026-09-20 |
+| oracle:coverage-shadow | T3 | the CAPTURE half of the shadow oracle: judge a captured soft shadow per pixel against the kernel integral. The T0 half is wired — `tests/oracle/coverage.ms` `blurredPixelCoverage` judges `shadowCoverage` in `src/test/coverageOracleCheck.ms` within 0.02 (worst 0.0078, wrong-blur convicted at 0.127). An axis-aligned scene keeps the truth one Riemann sum per pixel | P2 | 2026-09-22 |
 | oracle:harfbuzz-kerning | T3 | the cmap + GPOS-kerning subset, features off | P3 | 2026-09-20 |
 | oracle:ucd-segmentation | T3 | `GraphemeBreakTest.txt` and `LineBreakTest.txt` | P4 | 2026-09-20 |
 | oracle:h2d | T3 | Heaps compiled to JS, for `getBounds`, `localToGlobal`, mask intersection and scale modes | P5 | 2026-09-20 |

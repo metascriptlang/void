@@ -36,7 +36,7 @@ import {
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
-import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -269,6 +269,23 @@ function glyphScene(): Node2D {
 	return s.root;
 }
 
+function boxShadowScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
+	box.setBoxStyle(castShadow(boxStyle(
+		cornerRadii(4.0, 6.0, 8.0, 10.0),
+		uniformBorders(1.0),
+		rgba(0.9, 0.9, 0.95, 1.0),
+	), rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0));
+	const well = s.add(rect(36.0, 22.0, rgba(0.85, 0.88, 0.94, 1.0)).at(64.0, 16.0));
+	well.setBoxStyle(castInsetShadow(boxStyle(
+		uniformRadii(5.0),
+		uniformBorders(0.0),
+		rgba(0.0, 0.0, 0.0, 0.0),
+	), rgba(0.0, 0.0, 0.05, 0.6), 2.5));
+	return s.root;
+}
+
 test "T1 snapshot: painter order" {
 	assert snapshot("order", record(orderScene(), 128.0, 64.0, 1.0));
 }
@@ -291,6 +308,12 @@ test "T1 snapshot: a card and its label are one UI run of mixed modes" {
 	// snapshot prints one pipe:ui command and per-instance modes 0 then 2; equality against
 	// the file is the assertion.
 	assert snapshot("glyphs", record(glyphScene(), 128.0, 64.0, 1.0));
+}
+
+test "T1 snapshot: a shadowed box is two instances of one run, drop under and inset over" {
+	// The drop shadow precedes its box in the stream and the inset follows its fill, because
+	// blend order is instance order; the snapshot pins both orders and the inflated quad.
+	assert snapshot("boxShadow", record(boxShadowScene(), 128.0, 64.0, 1.0));
 }
 
 test "recording an unchanged tree twice is byte-identical" {

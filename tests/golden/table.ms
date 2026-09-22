@@ -67,6 +67,8 @@ export function sceneRows(): SceneRow[] {
 		{ name: "prim/perCornerRadii", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/perSideBorders", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/cardWithLabel", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
+		{ name: "prim/dropShadow", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
+		{ name: "prim/insetShadow", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "xform/rotate", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "xform/scale", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
