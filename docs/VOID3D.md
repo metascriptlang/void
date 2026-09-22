@@ -216,6 +216,61 @@ row and two three-value port rows silently mismatch rather than failing usefully
 - `EGL_DEPTH_SIZE` stays 0: the scene renders offscreen with its own depth attachment, and the swapchain only receives the blit.
 - Frame pacing (30 / ~10 / on demand) is the host's call; `needsFrame` says whether the next frame would differ from the last (M3 as built).
 
+## AUDIT: corpus, oracle, QC and architecture at `07bff24`
+
+This audit freezes M1–M7 at tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`;
+the uncommitted M8 glTF work is outside it.
+
+**Verdict: the architecture follows this document without growing a general engine.**
+`scene.ms` keeps the retained `Object3D` tree small, puts meshes and lights in side tables,
+and refreshes a flat `DrawItem` list only after structural change. `renderer.ms` consumes that
+list rather than the scene and owns pass ordering, while generation-tagged GPU resources keep
+context rebuild explicit. The explicit traversal stack, generation IDs and zero-growth steady
+path are coherent with the tens-of-objects target; columnar storage would add machinery with
+no measured benefit here.
+
+**Evidence actually held.** After supplying the ignored gate prerequisites,
+`sh scripts/gate3d.sh` was green with **620 tests**, **10 PENDING3D rows**, **30 oracle cases
+agreeing with real Heaps and 3 declared divergences**, **28 byte-identical frame comparisons
+across 7 configurations against 24 unique baselines**, zero frame-state growth over 300
+frames, and a 2,371,960-byte arm64 library. The only final skip was the physical-device run.
+The scene oracle also survives fault injection: reversing `local * parent` made 4 of its 16
+cases fail.
+
+**Findings, in closure order:**
+
+1. **The visual corpus is not portable from a clean checkout.** The 24 baseline PPMs,
+   `test2d.ms`, the D3D11 readback C/H files and the Android entry live under ignored
+   `out/tmp`; the gate generates capture entries but not those prerequisites. A clean
+   worktree therefore SKIPs every baseline rather than reproducing the pixel claim, and the
+   gate is allowed to finish green with skipped stages. `docs/baselines3d.sha256` authenticates
+   copies somebody already has; it does not make them available. Put the baselines and harness
+   in a reproducible artifact or tracked corpus, and make their absence fail the default gate.
+2. **M8 cannot accept non-uniform glTF scale with the current lit normal path.**
+   `litVs` uses `mat3(model) * normal`; `math3d.normalMatrix` already exists, and
+   `scene3d.cases` already carries a non-uniform-scale-under-rotated-parent case, but no GPU
+   test or capture connects them. Upload the inverse-transpose normal matrix before M8 scene
+   integration, or reject non-uniform scale loudly at import. Silent acceptance is wrong.
+3. **The void3d → void2d composition boundary bypasses the shared frame lifecycle.**
+   `renderer.endFrame` calls `gpu3dCommit`, and `gpu3dCommit` calls `sg_commit` instead of
+   `voidCommit`; the latter owns void2d's commit hook. Use one host-owned/shared commit and
+   prove two consecutive mixed frames. This is the same existing mechanism the 2D audit names,
+   not a second integration layer.
+4. **The captures vary configuration, not scene content.** Seven runs of the campfire exercise
+   palette, post-pass, depth source, rebuild and a moving parent, but they do not independently
+   cover sort modes, material multiplicity, frustum/culling, mesh topology, or light-slot
+   boundaries. The light block has a wiring control but no independent Heaps/numerical oracle.
+   Also, only 3 of the 10 PENDING3D rows have behavioural oracle sentinels; the rest mostly
+   prove that a comment or sentence still exists.
+5. **Device confidence remains explicitly absent.** The gate built arm64 and the recorded
+   GLES3 image came from an emulator without a baseline. Context loss, depth-texture sampling
+   and the pixel/FMA claims still need the Seeker run.
+
+The next QC order is therefore: close or reject non-uniform-scale normals before M8; make the
+baseline corpus clean-checkout reproducible; unify commit and add the mixed-surface capture;
+then add small discriminating scenes/oracles instead of multiplying campfire configurations.
+
+
 ## Open questions
 
 - **Depth for edge detection, answered for the code, open for the device.** In the vendored sokol (read at 6c3fa5ac, unchanged at 2e75443d) `SG_PIXELFORMAT_DEPTH` is `GL_DEPTH_COMPONENT32F` on GLES3, created as a real texture when single-sampled and marked sampleable but not filterable (`_sg_pixelformat_srmd`); a shader reads it with `texelFetch` through `@image_sample_type … unfilterable_float` and a `nonfiltering` sampler, which GLES 3.0 allows for sized depth formats with compare mode off. D3D11 uses `R32_TYPELESS` with an `R32_FLOAT` view. So the renderer takes it as a setting, `DepthSource.NormalAlpha` (default, the spike's 8-bit copy) or `DepthTexture`; GL stores (z + 1) / 2, which the post pass unpacks (`depthUnpack`). On D3D11 `DepthTexture` changes about 15% of the campfire's pixels: fog loses its 8-bit banding, and the normal-edge test (`|Δdepth| < depthThreshold`) flips on sloped stone faces, peak difference 85/255. The outline thresholds were tuned against 8-bit depth, so switching means retuning them. Which source ships is decided on the Seeker with RENDERER-BRIEF §10 Q4 (`RGB10_A2` vs `RGBA8` normals); M3 depends on neither.
@@ -234,6 +289,8 @@ Hit while writing M1 to M4, each worked around in void, none checked against a n
 
 - A second `` `*` `` overload on the same receiver type is invisible to importing modules: the C backend emits a raw `*` on two structs. In the defining module both overloads resolve. Workaround: one `` `*` `` per receiver (`Vec3 * Mat4`); scaling is `scaled()`.
 - **A float literal in arithmetic with a `float32` widens the expression to `float64`**, and whether that is an error depends only on the position. Measured 2026-09-20 (`out/tmp/floatRepro`, card `~/metascript/.inbox/compiler/2026-09-20-float32-literal-widens.md`): `return a * 0.5;` from a `float32` function is `Return type mismatch … expected float32, got float64`; `{ a: a * 0.5 }` for a `float32` field is `Type 'float64' is not assignable to type 'float32' for field 'a'`; and `const doubled: float32 = a * 0.5;` builds and prints the right value, because the annotation coerces. Workaround: a `float32` local for the constant, which `camera.ms`, `bounds.ms` (`boundingSphereRadius`) and `meshData.ms` (`addBox`) each carry.
+
+- **Method-call syntax on a free function whose receiver is a `Ref` passes the checker and breaks in codegen.** Hit while writing M8 (card `~/metascript/.inbox/compiler/2026-09-22-method-call-free-function-ref-receiver.md`, repros `out/tmp/toplevelConcat/mini/repro9*`): `v.pick("k")` where `pick(v, key)` is a free function and `v: JsonValue` (a `Ref`) emits a call to an undefined `dollartmp_` helper that clang rejects; in the glTF-shaped file the same syntax produced five `internal: unresolved type (kind=48) reached codegen … proc <toplevel>` with no location. An `int32` receiver gets the correct "no member" diagnostic, so only the `Ref` path is broken. Workaround, carried through `gltf.ms`: call free functions in free-call form and bind call results to locals before any extension method — `.length` on a `JsonValue` also resolves into the struct rather than the std extension, so `gltf.ms` has its own `countOf`.
 
 - **A `ref`-receiver free function is not an extension and does not arrive with the module import.** `function addPoint(ref b: Bounds, p: Vec3)` is `Undefined variable` in a file that imported only `Bounds`, while `isEmpty(this b: Bounds)` in the same module resolves with no import of its own (`autoPropagateModuleExtensions` registers exported *extensions*). So the mutating half of a value-struct API has to be imported by name — and it then competes in the ordinary overload set: Heaps' `Bounds.add` could not keep its name here, because std's `Set.add` / `HashSet.add` are already in it and the call reports `No matching overload for 'add'` listing only those. It is `addBounds` (measured 2026-09-20).
 - **`span[0]` into a header-imported pointer parameter passes a copy (wrong code, no diagnostic).** `import { f } from "x.h"` maps `const float *` to `Borrow<float32>`; called as `f(s[0], s.length as int64)` with `s: Span<float32>`, the C is `float tmp = …; f(&tmp, len)`, so C reads one real element and then garbage (a sum over `[1, 2, 3, 4]` returns `-1.8e38`). The same call on a `Vec` (`v[0]`) is correct. On the GPU it crashed inside the driver. Workaround: declare array-taking functions as `extern function f(data: Span<float32>)`, which lowers to the header's `(const float *, int64_t)` pair (`gpu3d.ms`).

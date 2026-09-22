@@ -40,7 +40,11 @@ extern function gpu3dBeginPass(descriptor: Span<uint32>, clear: Span<float32>): 
 extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
 extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
 extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
+extern function gpu3dFloat32At(bytes: Span<uint8>, at: int32): float32;
 
+export function float32At(bytes: Span<uint8>, at: int32): float32 {
+	return gpu3dFloat32At(bytes, at);
+}
 // One per @program in shader3d.glsl; gpu3d.c maps each to its *_shader_desc.
 export enum Program {
 	Lit,
