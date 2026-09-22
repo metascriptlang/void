@@ -129,9 +129,8 @@ the last three sessions compared.
 **How a capture is taken.** `tests/golden/runner.ms`, one scene per process, driven by
 `scripts/golden.sh`:
 
-- **One scene per process**, because sokol's default resource pools hold 128 objects and
-  every Label and Graphics owns an `sg_buffer` today; several Label-heavy scenes in one
-  process would capture a scene with nodes missing.
+- **One scene per process**, so each capture starts from the same GPU-resource and atlas
+  state; a scene can neither inherit pooled targets nor hide a leak behind another scene.
 - **`sample_count` 1**. 4× MSAA is on only for the sokol_app entry (`bridge.c:56`) and off
   on iOS, Android and the embed bridges, so a golden taken with it could never be the one
   golden set every backend is compared against. It is also not reproducible: at
@@ -147,24 +146,24 @@ the last three sessions compared.
   separate check.
 - **Three draws**: one to warm up — the first draw of a Label rasterizes its glyphs — then
   two into separate capture slots, which must be identical before either is written out.
+- **Counters before pixels.** The table-order vectors beside `sceneRows` pin draw calls and
+  live pooled render targets for every row. A mismatch fails before the PNG is written, so
+  identical pixels cannot hide multiplied draws or a target leak.
 - **RGB, not RGBA.** The swapchain is opaque, so its alpha carries no information about what
   was drawn; storing it would cost about a quarter of the suite and would add a
   cross-backend difference that means nothing. Alpha inside the frame is still tested — it
   is what blending turned into colour.
 
-**Size, measured in bytes rather than `du` blocks.** `tests/golden/d3d11/` is
-**826 687 B**: **226 976 B** for the 33 UI scenes and **599 711 B** for the four 800×600 demo
-frames, which are photographic and do not compress. Both estimates in this doc were about
-the UI scenes, and both held — "3–15 KB for flat UI" and "well under a megabyte". VOID2D.md's
-"~600 KB" exit line did not, because it did not account for the integration capture. The
-lever, if it ever matters, is demo frames.
+**Size, measured in bytes rather than `du` blocks.** The 67 D3D11 goldens total
+**1 328 179 B**: **683 201 B** for the 63 harness/UI scenes and **644 978 B** for the four
+800×600 demo frames. The suite passed the original sub-megabyte estimate at P2 because 30
+scenes were added; the integration captures still account for nearly half. The lever, if this
+becomes material, remains the demo frames.
 
-**Tolerance: byte-identical is the default, and at P0 every live scene earns it.** All 37
-rows are byte-identical to their goldens, between two draws in one process and between two
-full runs of the suite in separate processes. `tests/PENDING.md` carries **zero** image
-budgets. A tolerance is not a property of this machine; it is a property of a scene, and a
-scene that needs one is a finding — which is why the two scenes that would have needed one
-are not in the table at all.
+**Tolerance: byte-identical is the default.** All **67** live rows are byte-identical to
+their goldens, between two draws in one process and between full suite runs in separate
+processes. `tests/PENDING.md` carries **zero** image budgets. A tolerance is not a property
+of this machine; it is a property of a scene, and a scene that needs one is a finding.
 
 The rule:
 
@@ -249,7 +248,11 @@ Concrete mechanisms, because the phrase on its own does nothing:
 - **A run that captured nothing is a failure, at three levels.** `capture()` used to return success whenever its loop body never executed. Now the scene table is checked for content before the loop (`tableUsable`, also in `--self-check`), and a filter that matched no scene fails by name. Measured before the fix: `sh scripts/golden.sh --capture zzz/nothing` exited 0 having printed nothing at all, which is what a mistyped scene name looks like. Downstream did catch the empty-table case - `--update` died on `cp: cannot stat` with every golden intact and the comparator reported all 44 missing - but a function that reports success for doing nothing is wrong at its own boundary.
 - **Capture shape checks.** Assert the readback's width, height and row pitch, and that the image is not uniformly the clear colour — the "captured before the draw" bug.
 - **Input pinning.** Font bytes hashed; DPI fixed per scene; frame index, not wall clock; `CAPTURE_PREFIX` required.
-- **Cross-checks between our own tables**, rexa's `the_command_table_agrees_with_the_parser` (`crates/rexa-editor/src/vim/parser.rs:667`) in renderer form: the instance layout the shader declares agrees with the one the emitter writes; every `mode` the shader branches on is reachable from an emitter; every command kind has a batch-break rule.
+- **Cross-checks between our own tables**, rexa's `the_command_table_agrees_with_the_parser`
+  (`crates/rexa-editor/src/vim/parser.rs:667`) in renderer form: the instance layout the
+  shader declares agrees with the one the emitter writes; every shader `mode` is reachable
+  from an emitter; production T1 scenes reach every `BreakReason` including view, effect and
+  pipeline, while a target bracket reaches barrier; every command kind has a batch-break rule.
 - **The build trap is part of the gate.** `msc build` answers "Up to date" after a header that a compiled `.c` includes has changed, and the global object cache is keyed on the `.c` and not its includes — `--force` does not bypass it (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`). Every shader regeneration hits this. The gate's first step deletes the output binary, `out/debug/.cache` and this checkout's objects under `~/.metascript/cache/objects`. A gate that silently tests the previous binary is worse than no gate.
 
 ## The gate
@@ -264,9 +267,10 @@ number typed into the script.
 2. `msc test src/test/index.ms` — T0, and T1 once it exists.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
-   twice, compare the two, write the PNG, then `tests/golden/compare.ms` judges all 37
-   against `tests/golden/d3d11/` and prints `N px differ, max delta M, bbox` and a pass rate.
-5. Oracles present on this machine. None is wired yet, so five named SKIPs.
+   twice, compare the two, gate per-scene counters, write the PNG, then
+   `tests/golden/compare.ms` judges all **67** against `tests/golden/d3d11/` and prints
+   `N px differ, max delta M, bbox` and a pass rate.
+5. The three coverage oracles, plus four named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
    reported with a warn threshold. Plus a SKIP for the wasm budget, which P6 owns.
 7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
@@ -283,11 +287,11 @@ in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Current status, 2026-09-22: one backend of seven, and the number is printed.**
+**Current status, 2026-09-23: one backend of seven, and the number is printed.**
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **56 / 56 scenes byte-identical** | every full gate, this box |
+| D3D11 | **67 / 67 scenes byte-identical** | every full gate, this box; P2 review gate 2026-09-23 |
 | GLES3 desktop | not run — the `glReadPixels` path is written in `tests/capture/capture.c` and no GLES3 build has exercised it | SKIP |
 | Metal macOS | no readback | SKIP |
 | Metal iOS | no readback; the first device run is T5 | SKIP |
@@ -343,9 +347,9 @@ about where they came from.
 
 | Phase | Tier work landing in it |
 |---|---|
-| **P0** ✅ | The whole harness: the T2 suite (37 scenes at P0, 48 at P1), T4 rows and baseline, PENDING, `scripts/gate.sh`, `scripts/golden.sh`, the harness self-checks, the D3D11 readback (and the GLES3 one, written but unrun), and web liveness in place of web capture |
-| **P1** | T1 created — the display list is what makes it possible; the `filter/` and `regress/atlasFull` rows turn on; regression scenes for the remaining defects; T4 counters |
-| **P2** | T3 coverage oracle; T1 snapping and batch-break assertions; `prim/`, `xform/`, `snap/`, `clip/` regenerated |
+| **P0** ✅ | The harness: 37 T2 scenes, T4 rows and baseline, PENDING, gate scripts, harness self-checks, D3D11 readback, GLES3 readback written but unrun, and web liveness |
+| **P1** ✅ | T1 display-list assertions; filter and atlas-regression rows; **48** T2 scenes; deterministic T4 counters |
+| **P2** ✅ | T3 coverage oracle; T1 snapping and complete batch-reason reachability; **67** T2 scenes with per-scene draw/target counters; regenerated primitive groups |
 | **P3** | T3 fontTools metrics and the HarfBuzz kerning subset; `text/` at three DPIs; T4 atlas budget; the first full five-backend conformance run |
 | **P4** | T3 UCD segmentation; T1 glyph and run placement; editor scenes |
 | **P5** | T1 dirty-range and idempotence assertions; T4 scroll and idle budgets; the h2d oracle |
@@ -353,13 +357,12 @@ about where they came from.
 
 **What each tier covers today**, so the table above is read against something real:
 
-| Tier | State after P1 |
+| Tier | State after P2 |
 |---|---|
-| T0 | 579 tests over 35 files, `msc test src/test/index.ms`, about half a second — twelve of them are the harness's own parsers |
-| T1 | `tests/displayList/*.txt`, recorded with no GPU; `VOID_SNAPSHOT=1` rewrites them on the run that compares |
-| T2 | 48 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
-| T3 | nothing wired; six named SKIPs |
-| T4 | nine counters gated per scene, two milliseconds reported; the wasm budget SKIPs |
+| T0 | 708 tests over 43 files, `msc test src/test/index.ms`; twelve are harness parsers |
+| T1 | 11 display-list snapshots plus no-GPU reachability and invariant assertions |
+| T2 | 67 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
+| T3 | three coverage oracles green; four current-roadmap SKIPs, plus full HarfBuzz at P6 |
+| T4 | twelve counters gated per bench scene, two milliseconds reported; wasm budget SKIPs |
 | T5 | human only |
-
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".

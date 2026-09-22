@@ -24,9 +24,20 @@ import {
 	underline, selection,
 } from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
-import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
 import {
-	commandCount, effectCount, vertexCount, drawCommandCount, commandField, effectField, vertexField,
+	begin2d,
+	beginTarget,
+	endTarget,
+	finishRecording,
+	frameEnd,
+	uploadCount,
+	growthTarget,
+	currentRenderScale,
+	setSceneSmooth,
+} from "../../src/void2d/draw";
+import {
+	commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
+	commandField, targetCommandField, effectField, vertexField,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
 	CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN, CMD_CLIP_U_MAX,
@@ -34,7 +45,7 @@ import {
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	commandKindName, breakReasonName,
-	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
+	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField,
 } from "../../src/void2d/displayList";
 import {
@@ -47,8 +58,10 @@ import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, dash
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
 } from "../../src/void2d/graphics";
+import { colorMatrixGrayscale } from "../../src/void2d/effect";
 import { GradientSpace } from "../../src/void2d/gradient";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
+import { approx } from "../../src/test/helpers";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -211,16 +224,28 @@ function formatStream(): string {
 
 // Record one scene and stop. No pass is opened and no upload happens, which is the point.
 function record(root: Node2D, w: float32, h: float32, dpi: float32): string {
-	begin2d(w, h, dpi);
-	// `sceneSmooth` is emitter state that only `Scene.present` sets, so without this a
-	// snapshot's `sampler:` column depended on whether some other test in the same process
-	// had rendered a scene with `defaultSmooth = false`. A snapshot that can pass for a
-	// reason outside its own scene is not a snapshot.
 	setSceneSmooth(true);
+	begin2d(w, h, dpi);
 	root.sync(identity2d(), true);
 	root.draw(1.0, w, h);
 	finishRecording();
-	return formatStream();
+	const text: string = formatStream();
+	frameEnd();
+	return text;
+}
+
+test "scene smoothing seeds the first run before recording begins" {
+	setSceneSmooth(false);
+	const root = rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
+	begin2d(16.0, 16.0, 1.0);
+	root.sync(identity2d(), true);
+	root.draw(1.0, 16.0, 16.0);
+	finishRecording();
+	assert commandCount() == 1;
+	assert commandField(0, CMD_BREAK) == (BreakReason.First as int32) as float32;
+	assert commandField(0, CMD_SAMPLER) == 0.0;
+	frameEnd();
+	setSceneSmooth(true);
 }
 
 function snapshot(name: string, actual: string): boolean {
@@ -286,6 +311,10 @@ function breaksScene(): Node2D {
 	nearest.smooth = Smooth.Off;
 	const wrapped = s.add(rect(8.0, 8.0, rgba(1.0, 1.0, 0.0, 1.0)).at(30.0, 0.0));
 	wrapped.tileWrap = true;
+	const firstView = s.add(sprite(tile(11, 8.0, 8.0)).at(40.0, 0.0));
+	firstView.smooth = Smooth.On;
+	const secondView = s.add(sprite(tile(12, 8.0, 8.0)).at(50.0, 0.0));
+	secondView.smooth = Smooth.On;
 	return s.root;
 }
 
@@ -333,6 +362,18 @@ function boxStyleScene(): Node2D {
 	return s.root;
 }
 
+function rejectedBoxEffectScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
+	box.setBoxStyle(boxStyle(
+		uniformRadii(6.0),
+		uniformBorders(2.0),
+		rgba(0.9, 0.9, 0.95, 1.0),
+	));
+	box.colorMatrix = colorMatrixGrayscale(1.0);
+	return s.root;
+}
+
 function snapScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
@@ -373,6 +414,18 @@ function boxShadowScene(): Node2D {
 	), rgba(0.0, 0.0, 0.05, 0.6), 2.5));
 	return s.root;
 }
+
+function shadowOnlyVisibleScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(rect(20.0, 20.0, rgba(0.2, 0.4, 0.6, 0.8)).at(104.0, 10.0));
+	box.setBoxStyle(castShadow(boxStyle(
+		uniformRadii(4.0),
+		uniformBorders(0.0),
+		rgba(0.0, 0.0, 0.0, 0.0),
+	), rgba(0.0, 0.0, 0.0, 0.8), 3.0, -6.0, 0.0));
+	return s.root;
+}
+
 function gradientScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const g = s.add(graphics());
@@ -419,6 +472,33 @@ test "T1 snapshot: every batch names why it broke" {
 test "T1 snapshot: a Mask scissors its children and gives the clip back" {
 	assert snapshot("clip", record(clipScene(), 128.0, 64.0, 1.0));
 }
+
+test "T1 production emitters reach every batch-break reason" {
+	const breaks: string = record(breaksScene(), 128.0, 64.0, 1.0);
+	assert breaks.indexOf("break:first") >= 0;
+	assert breaks.indexOf("break:view") >= 0;
+	assert breaks.indexOf("break:blend") >= 0;
+	assert breaks.indexOf("break:sampler") >= 0;
+	assert breaks.indexOf("break:pipeline") >= 0;
+	assert record(gradientScene(), 128.0, 64.0, 1.0).indexOf("break:effect") >= 0;
+	assert record(clipScene(), 128.0, 64.0, 1.0).indexOf("break:clip") >= 0;
+
+	setSceneSmooth(true);
+	begin2d(16.0, 16.0, 1.5);
+	assert currentRenderScale() == 1.5;
+	beginTarget(1, 16.0, 16.0, 1.25, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));
+	assert currentRenderScale() == 1.25;
+	const targetRoot = rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
+	targetRoot.sync(identity2d(), true);
+	targetRoot.draw(1.0, 16.0, 16.0);
+	endTarget();
+	assert currentRenderScale() == 1.5;
+	finishRecording();
+	assert targetCommandCount() == 3;
+	assert targetCommandField(1, CMD_BREAK) == (BreakReason.Barrier as int32) as float32;
+	assert targetCommandField(1, CMD_RT_MODE) == 1.25;
+	frameEnd();
+}
 test "T1 snapshot: a rotated Mask carries four exact edge distances" {
 	assert snapshot("rotatedClip", record(rotatedClipScene(), 128.0, 64.0, 1.0));
 }
@@ -432,6 +512,13 @@ test "T1 snapshot: dashed box style reaches the per-corner and per-side instance
 	assert snapshot("boxStyle", record(boxStyleScene(), 128.0, 64.0, 1.0));
 }
 
+test "T1 styled Rect rejects a color effect instead of losing its style" {
+	record(rejectedBoxEffectScene(), 128.0, 64.0, 1.0);
+	assert uiInstanceCount() == 0;
+	assert vertexCount() == 0;
+	assert drawCommandCount() == 0;
+}
+
 test "T1 snapshot: a card and its label are one UI run of mixed modes" {
 	assert snapshot("glyphs", record(glyphScene(), 128.0, 64.0, 1.0));
 }
@@ -440,12 +527,27 @@ test "T1 snapshot: a fractional box records device-integral edges and snapped st
 	assert snapshot("snap", record(snapScene(), 128.0, 64.0, 1.25));
 }
 
-test "T1 snapshot: a shadowed box is one instance carrying shadow, fill and border" {
-	// cardOneInstance: the drop card and the inset well each record as ONE mode-0 instance
-	// whose params1 carries (offsetX, offsetY, sigma, inset) and whose quad is inflated by
-	// the drop's kernel reach - the snapshot pins the lanes and the inflation.
-	assert snapshot("boxShadow", record(boxShadowScene(), 128.0, 64.0, 1.0));
+test "T1 shadow inflation preserves the snapped visible box" {
+	// A fractional margin must not move the reconstructed fill edge off-grid.
+	const dpi: float32 = 1.25;
+	assert snapshot("boxShadow", record(boxShadowScene(), 128.0, 64.0, dpi));
+	const affineX: float32 = uiInstanceField(0, REC_UI_AFFINE);
+	const originX: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE);
+	const quadWidth: float32 = uiInstanceField(0, REC_UI_ORIGIN_SIZE + 2);
+	const offsetX: float32 = uiInstanceField(0, REC_UI_PARAMS1);
+	const sigma: float32 = uiInstanceField(0, REC_UI_PARAMS1 + 2);
+	const margin: float32 = 3.0 * sigma + offsetX;
+	const visibleLeft: float32 = (originX + margin * affineX) * dpi;
+	const visibleRight: float32 = (originX + (quadWidth - margin) * affineX) * dpi;
+	assert approx(visibleLeft as float64, Math.round(visibleLeft as float64));
+	assert approx(visibleRight as float64, Math.round(visibleRight as float64));
 }
+
+test "T1 an offscreen box still emits when its shadow reaches the viewport" {
+	record(shadowOnlyVisibleScene(), 100.0, 50.0, 1.0);
+	assert uiInstanceCount() == 1;
+}
+
 test "T1 snapshot: gradients and patterns keep draw order and effect records" {
 	assert snapshot("gradients", record(gradientScene(), 128.0, 64.0, 1.0));
 }

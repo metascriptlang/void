@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <math.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -104,7 +105,7 @@ static int s_frameVertexBytes;   // bytes appended so far this FRAME, across eve
 
 // A vertex buffer that grew mid-frame cannot be destroyed on the spot: an earlier bracket's
 // draws are already encoded against it. Same frame-linear discipline as the retired atlases.
-#define VOID2D_MAX_RETIRED_BUFFERS 4
+#define VOID2D_MAX_RETIRED_BUFFERS 8
 static sg_buffer s_retiredBuf[VOID2D_MAX_RETIRED_BUFFERS];
 static int s_retiredBufCount;
 // A glyph that does not fit gets one report, not one per glyph per frame.
@@ -186,8 +187,12 @@ static int s_droppedFrames;
 int void2dDrawCallCount(void) { return s_drawCallCount; }
 int void2dUploadCount(void) { return s_uploadCount; }
 int void2dUploadBytes(void) { return s_uploadBytes; }
-int void2dInstanceBufferBytes(void) { return s_vbufBytes; }
+int void2dVertexBufferBytes(void) { return s_vbufBytes; }
 int void2dDroppedFrames(void) { return s_droppedFrames; }
+void void2dFailPendingTargets(void) {
+	fprintf(stderr, "void2d: end2d with render-target commands pending; call flushTargets first\n");
+	abort();
+}
 
 // Every sg_buffer and sg_image this layer holds: the one vertex buffer, the fullscreen quad
 // the filter passes draw, and the font atlas image. Constant in the node count, which is the
@@ -360,7 +365,8 @@ static int fons_resize(void *up, int w, int h) {
 	return ok;
 }
 
-// Free what the previous frame retired. Called once per frame, after that frame's replay.
+// Free resources retained through the preceding commit; deferred backends may still read them
+// until that frame has been submitted.
 static void releaseRetiredBuffers(void) {
 	for (int i = 0; i < s_retiredBufCount; i++) {
 		sg_destroy_buffer(s_retiredBuf[i]);
@@ -440,20 +446,20 @@ int void2dGrowthTarget(int have, int need) {
 	return want;
 }
 
-static void ensureVertexBuffer(int bytes) {
+static int ensureVertexBuffer(int bytes) {
 	int want = void2dGrowthTarget(s_vbufBytes, bytes);
-	if (want <= s_vbufBytes) return;
+	if (want <= s_vbufBytes) return 1;
 	if (s_vbuf.id) {
-		// Retire, do not destroy: a second bracket that triggers growth would otherwise free a
-		// buffer the first bracket's encoded draws still point at. Harmless on D3D11's
-		// immediate context, a use-after-free on Metal and WebGPU - guardrail 9.
-		if (s_retiredBufCount < VOID2D_MAX_RETIRED_BUFFERS) {
-			s_retiredBuf[s_retiredBufCount] = s_vbuf;
-			s_retiredBufCount++;
-		} else {
-			sg_destroy_buffer(s_vbuf);
-			s_buffersFreed++;
+		// Doubling from 1 MiB through the 192 MiB cap can retire at most eight buffers in
+		// one frame. Keep every one alive until commit; destroying an encoded buffer here is
+		// a use-after-free on deferred backends.
+		if (s_retiredBufCount >= VOID2D_MAX_RETIRED_BUFFERS) {
+			fprintf(stderr, "void2d: more than %d vertex-buffer growths in one frame — frame dropped\n",
+				VOID2D_MAX_RETIRED_BUFFERS);
+			return 0;
 		}
+		s_retiredBuf[s_retiredBufCount] = s_vbuf;
+		s_retiredBufCount++;
 	}
 	sg_buffer_desc bd = {0};
 	bd.usage.vertex_buffer = true;
@@ -462,13 +468,14 @@ static void ensureVertexBuffer(int bytes) {
 	s_vbuf = sg_make_buffer(&bd);
 	s_buffersMade++;
 	s_vbufBytes = want;
+	return 1;
 }
 static void ensureFons(void);
 
 
 void void2dSetup(void) {
 	voidSetCommitHook(void2dFrameEnd);
-	ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
+	(void)ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
 	s_originTopLeft = sg_query_features().origin_top_left;
 	sg_shader shd = sg_make_shader(void2d_shader_desc(sg_query_backend()));
@@ -653,22 +660,45 @@ void void2dSelectFont(int id) {
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
 uint32_t void2dFontView(void) { return s_fontView.id; }
 
+int void2dScissorMin(float edge, float scale) {
+	return (int)floorf(edge * scale);
+}
+
+int void2dScissorMax(float edge, float scale) {
+	return (int)ceilf(edge * scale);
+}
+
 // A clip is a command in the stream now, applied here during replay rather than by the tree
 // walk. The whole viewport is w == 0, which is how displayList.ms records "no clip".
 static void applyScissor(const float *cmd, float fbW, float fbH) {
-	// Inside a render-target pass the viewport IS the target's pixel size - `render.ms` sizes
-	// a filter target from bounds in logical units and hands that straight to
-	// `allocRenderTarget` - so one logical unit is one pixel there and scaling by the DPI
-	// would scissor 1.5x the intended rect at DPI 1.5. Only the swapchain is in logical units.
-	float scale = (cmd[CMD_RT_MODE] != 0.0f) ? 1.0f : s_dpiScale;
+	// Floor the near edge and ceil the far edge in device pixels. Letting sokol truncate
+	// x/y/w/h independently can discard a pixel the exact clip planes accept.
+	float targetScale = cmd[CMD_RT_MODE];
+	float scale = targetScale != 0.0f ? targetScale : s_dpiScale;
+	int limitW = void2dScissorMax(fbW, scale);
+	int limitH = void2dScissorMax(fbH, scale);
 	float w = cmd[CMD_CLIP_W];
 	float h = cmd[CMD_CLIP_H];
 	if (w <= 0.0f || h <= 0.0f) {
-		sg_apply_scissor_rectf(0.0f, 0.0f, fbW * scale, fbH * scale, true);
+		sg_apply_scissor_rectf(0.0f, 0.0f, (float)limitW, (float)limitH, true);
 		return;
 	}
-	sg_apply_scissor_rectf(cmd[CMD_CLIP_X] * scale, cmd[CMD_CLIP_Y] * scale,
-		w * scale, h * scale, true);
+	int x0 = void2dScissorMin(cmd[CMD_CLIP_X], scale);
+	int y0 = void2dScissorMin(cmd[CMD_CLIP_Y], scale);
+	int x1 = void2dScissorMax(cmd[CMD_CLIP_X] + w, scale);
+	int y1 = void2dScissorMax(cmd[CMD_CLIP_Y] + h, scale);
+	if (x0 < 0) x0 = 0;
+	if (y0 < 0) y0 = 0;
+	if (x0 > limitW) x0 = limitW;
+	if (y0 > limitH) y0 = limitH;
+	if (x1 < 0) x1 = 0;
+	if (y1 < 0) y1 = 0;
+	if (x1 > limitW) x1 = limitW;
+	if (y1 > limitH) y1 = limitH;
+	if (x1 < x0) x1 = x0;
+	if (y1 < y0) y1 = y0;
+	sg_apply_scissor_rectf(
+		(float)x0, (float)y0, (float)(x1 - x0), (float)(y1 - y0), true);
 }
 
 void void2dSetDpiScale(float scale) { if (scale > 0.0f) s_dpiScale = scale; }
@@ -770,7 +800,10 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 			frameBytes, VOID2D_MAX_BUFFER_BYTES);
 		return 0;
 	}
-	ensureVertexBuffer((int)frameBytes);
+	if (!ensureVertexBuffer((int)frameBytes)) {
+		s_droppedFrames++;
+		return 0;
+	}
 	ensureAtlas();
 
 	// One upload for the whole frame, before any draw: every Draw command is a range inside
@@ -930,6 +963,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	up.viewport[0] = fbW;
 	up.viewport[1] = fbH;
 	up.viewport[2] = (voidIsRenderTargetView(view) && !s_originTopLeft) ? 1.0f : 0.0f;
+	up.viewport[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
 	copyClipParams(up.clipU, up.clipV, cmd);
 	sg_range u = { .ptr = &up, .size = sizeof(up) };
 	sg_apply_uniforms(UB_ui_params, &u);
@@ -1062,10 +1096,10 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[1] = fbH;
 		// One lookup, not two: `voidIsRenderTargetView` is a linear scan of the 16-slot table.
 		bool isRT = voidIsRenderTargetView(view);
+		bool effectIsIdentity = memcmp(matrix, s_identityMatrix, sizeof(s_identityMatrix)) == 0
+			&& addR == 0.0f && addG == 0.0f && addB == 0.0f && addA == 0.0f;
 		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
-		vp.viewport[3] = (isRT
-			&& addR == 0.0f && addG == 0.0f && addB == 0.0f
-			&& matrix[0] == 1.0f && matrix[5] == 1.0f && matrix[10] == 1.0f) ? 1.0f : 0.0f;
+		vp.viewport[3] = (isRT && effectIsIdentity) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 		copyClipParams(vp.clipU, vp.clipV, cmd);

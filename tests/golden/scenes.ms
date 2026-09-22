@@ -307,7 +307,7 @@ function primPerSideBorders(): Scene {
 	box.alpha = 0.74;
 	box.setBoxStyle(boxStyle(
 		uniformRadii(18.0),
-		borderWidths(2.0, 6.0, 10.0, 14.0),
+		borderWidths(0.2, 6.0, 10.0, 14.0),
 		rgba(0.98, 0.65, 0.24, 1.0),
 	));
 	s.add(box);
@@ -425,23 +425,24 @@ function primAaShadow(): Scene {
 	return s;
 }
 
-// P2's exit scene: a rounded, bordered, shadowed, translucent card is ONE instance, rotated
-// 37 degrees so the corner AA, the border width and the shadow's local-space extent all
-// have to survive the affine. The label under it proves the card still shares a run.
+// P2's exit scene: a rounded, bordered, shadowed, translucent card is ONE instance. Its
+// rotated Mask supplies the 37-degree world affine, so the corner AA, border width, shadow
+// extent and exact clip planes are exercised together; the card's corners stay visible while
+// the shadow crosses the Mask's right and bottom edges.
 function primCardOneInstance(): Scene {
 	const s = scene(DARK);
-	const card = rect(180.0, 96.0, rgba(0.24, 0.44, 0.66, 0.82)).at(120.0, 95.0);
-	card.pivotX = 90.0;
-	card.pivotY = 48.0;
-	card.rotation = 0.6458;
+	const clip = mask(190.0, 120.0).at(65.0, 85.0);
+	clip.pivotX = 95.0;
+	clip.pivotY = 60.0;
+	clip.rotation = 0.6458;
+	const card = rect(180.0, 96.0, rgba(0.24, 0.44, 0.66, 0.82)).at(5.0, 8.0);
 	card.setBoxStyle(castShadow(boxStyle(
 		cornerRadii(22.0, 8.0, 18.0, 4.0),
 		borderWidths(3.0, 1.5, 3.0, 1.5),
 		rgba(0.93, 0.95, 1.0, 1.0),
 	), rgba(0.01, 0.01, 0.05, 0.5), 8.0, 9.0, 12.0));
-	s.add(card);
-	const text = label("one instance", 14.0, rgba(0.93, 0.96, 1.0, 1.0)).at(158.0, 14.0);
-	s.add(text);
+	clip.addChild(card);
+	s.add(clip);
 	return s;
 }
 
@@ -528,9 +529,9 @@ function xformNonUniform(): Scene {
 
 // ===== snap/ =====
 
-// Hairlines at three DPIs. Nothing snaps today, so a 1-logical-pixel rule at DPI 1.25 lands
-// on 1.25 device pixels and the rasterizer decides; P2 lands the rules that make it exactly
-// one device pixel, and a zero-width stroke exactly zero (VOID2D.md "Pixel snapping").
+// Hairlines at three DPIs. The emitter rounds both edges on the active target's device grid;
+// these one-, two- and half-logical-pixel strips make the DPI-dependent rounding visible
+// instead of relying on the rasterizer to choose fractional coverage.
 function snapHairlines(): Scene {
 	const s = scene(DARK);
 	for (let i: int32 = 0; i < 8; i++) {
@@ -866,6 +867,14 @@ function filterBlur(): Scene {
 	const s = scene(DARK);
 	const host = filterHost(40.0, 40.0);
 	host.filter = blurFilter(6.0);
+	const card = host.addChild(
+		rect(40.0, 26.0, rgba(0.25, 0.55, 0.95, 1.0)).at(95.0, 14.0),
+	);
+	card.setBoxStyle(castShadow(boxStyle(
+		uniformRadii(7.0),
+		uniformBorders(1.0),
+		rgba(0.85, 0.92, 1.0, 1.0),
+	), rgba(0.0, 0.0, 0.0, 0.7), 5.0, 8.0, 4.0));
 	s.add(host);
 	return s;
 }
@@ -905,9 +914,8 @@ function filterAfterTintedSibling(): Scene {
 	return s;
 }
 
-// A Mask inside a filtered subtree, at DPI 1.5. The target's space is its own pixels, so its
-// scissor must not be scaled by the display ratio the way the swapchain's is; scaling it
-// clipped 1.5x the zone. Every other filter row is at dpi 1.0 and could not see it.
+// A Mask inside a filtered subtree, at DPI 1.5. The target is allocated in device pixels
+// while its viewport stays logical, so the exact Mask edges and the blur retain 1.5× density.
 function filterMaskAtDpi(): Scene {
 	const s = scene(DARK);
 	const host = rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(16.0, 12.0);
@@ -959,10 +967,9 @@ function filterGroupOpacity(): Scene {
 
 // ===== regress/ — one row per "Known defects" entry that has pixels =====
 
-// Not in tests/golden/table.ms: see the note there. Kept so P1 can add the row back.
-// batcher.c:151-154 fixes the fontstash atlas at 512x512 and there is no FONS_ATLAS_FULL
-// handler, so once the atlas fills, later glyphs come back blank. Twenty-two sizes of a
-// 62-glyph line is far more coverage than 512x512 holds. P1 holds it, P3 removes the class.
+// Twenty-two sizes of a 62-glyph line overflow the initial 512² atlas. The P1 holding fix
+// grows it deterministically through the FONS_ATLAS_FULL callback; P3 removes fontstash and
+// this failure class.
 function regressAtlasFull(): Scene {
 	const s = scene(DARK);
 	for (let i: int32 = 0; i < 22; i++) {

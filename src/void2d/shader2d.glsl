@@ -252,7 +252,7 @@ void main() {
 // the coverage ramp would be clipped by the geometry it is meant to soften.
 @vs uiVs
 layout(binding=0) uniform ui_params {
-    vec4 viewport;     // xy = framebuffer size in px; z = flipV; w unused
+    vec4 viewport;     // xy = logical size; z = flipV; w = physical pixels per logical pixel
     vec4 clipU;
     vec4 clipV;
 };
@@ -276,15 +276,18 @@ out vec4 vFill;
 out vec4 vBorder;
 out vec4 vExtra;
 out vec4 clipDistance;
+float dilateStroke(float width_, float pixelsPerLocal) {
+    if (width_ <= 0.0 || pixelsPerLocal <= 0.0) { return 0.0; }
+    return max(width_, 1.0 / pixelsPerLocal);
+}
 void main() {
     // One device pixel across an edge, in the node's local units — the geometric mean of the
-    // two axis lengths, so a non-uniform scale gets one width rather than a direction-
-    // dependent one. Mirrors aaWidthForAffine in sdf.ms. Glyph mode is the exception: the
-    // atlas texel already carries the antialiasing fontstash rasterized, so aa stays zero —
-    // the quad un-inflated at the glyph's exact bitmap rect, coverage a hard step at that
-    // rect, which is the quad the mesh path always drew.
-    float sx = length(iAffine.xy);
-    float sy = length(iAffine.zw);
+    // two affine-axis lengths times the recording target's physical-pixel scale. Glyph mode
+    // is the exception: the atlas texel already carries the antialiasing fontstash
+    // rasterized, so aa stays zero — the quad un-inflated at the glyph's exact bitmap rect,
+    // coverage a hard step at that rect, which is the quad the mesh path always drew.
+    float sx = length(iAffine.xy) * viewport.w;
+    float sy = length(iAffine.zw) * viewport.w;
     float s = sqrt(sx * sy);
     float aa = iParams0.x == 2.0 ? 0.0 : (s > 0.0 ? 1.0 / s : 0.0);
 
@@ -299,7 +302,13 @@ void main() {
     vLocalHalf = vec4(local - size * 0.5, size * 0.5);
     vUvAa = vec4((viewport.z > 0.5) ? vec2(t.x, 1.0 - t.y) : t, aa, iParams0.x);
     vRadii = iUvRadii;
-    vBorders = iBorders;
+    vBorders = iParams0.x == 0.0
+        ? vec4(
+            dilateStroke(iBorders.x, sx),
+            dilateStroke(iBorders.y, sy),
+            dilateStroke(iBorders.z, sx),
+            dilateStroke(iBorders.w, sy))
+        : iBorders;
     vParams0 = iParams0.yzw;
     vParams1 = iParams1;
     vFill = iColorFill;

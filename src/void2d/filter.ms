@@ -32,7 +32,7 @@ export function blurToTarget(src: uint32, dst: uint32, radius: float32, size: fl
 	if (blurred == 0) { return; }
 	// The pooled result is smaller than `dst` by 2^k; the upscale is the linear filter doing
 	// the last, widest step of the blur, which is the point of downsampling in the first place.
-	beginTarget(dst, size, size, 0.0, 0.0, zeroColor);
+	beginTarget(dst, size, size, 1.0, 0.0, 0.0, zeroColor);
 	drawImage(tile(renderTargetView(blurred), size, size), vec2(0.0, 0.0), vec2(size, size),
 		white, BlendMode.None);
 	endTarget();

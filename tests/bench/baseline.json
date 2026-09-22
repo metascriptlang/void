@@ -23,6 +23,7 @@
       "uploads": 1,
       "uploadBytes": 5280120,
       "atlasImages": 1,
+      "renderTargets": 0,
       "droppedFrames": 0
     },
     "sprites": {
@@ -36,6 +37,7 @@
       "uploads": 1,
       "uploadBytes": 640000,
       "atlasImages": 1,
+      "renderTargets": 0,
       "droppedFrames": 0
     }
   },

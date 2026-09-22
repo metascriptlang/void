@@ -98,10 +98,10 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	const fh: int32 = fbHeight();
 	const wf: float32 = (fw as float32) / dpi;
 	const hf: float32 = (fh as float32) / dpi;
-	begin2d(wf, hf, dpi);
-	// Before the walk, never during it: two nodes with identical state must not sample
-	// differently because the default moved between them.
+	// Before recording begins, never during the walk: begin2d captures this default in the
+	// first run's sampler state.
 	setSceneSmooth(s.defaultSmooth);
+	begin2d(wf, hf, dpi);
 	releaseTargets();
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const viewChanged: boolean = !s.viewInit

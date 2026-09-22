@@ -85,10 +85,11 @@ export function dither4x4(x: int32, y: int32): float32 {
 	let iy: int32 = y % 4;
 	if (ix < 0) { ix = ix + 4; }
 	if (iy < 0) { iy = iy + 4; }
-	let index: int32 = 0;
-	if (iy == 0) { index = ix == 0 ? 0 : (ix == 1 ? 8 : (ix == 2 ? 2 : 10)); }
-	else if (iy == 1) { index = ix == 0 ? 12 : (ix == 1 ? 4 : (ix == 2 ? 14 : 6)); }
-	else if (iy == 2) { index = ix == 0 ? 3 : (ix == 1 ? 11 : (ix == 2 ? 1 : 9)); }
-	else { index = ix == 0 ? 15 : (ix == 1 ? 7 : (ix == 2 ? 13 : 5)); }
+	const index: int32 = match (iy * 4 + ix) {
+		0 => 0, 1 => 8, 2 => 2, 3 => 10,
+		4 => 12, 5 => 4, 6 => 14, 7 => 6,
+		8 => 3, 9 => 11, 10 => 1, 11 => 9,
+		12 => 15, 13 => 7, 14 => 13, _ => 5,
+	};
 	return (((index as float32) - 7.5) * (2.0 / (7.5 * 255.0))) as float32;
 }

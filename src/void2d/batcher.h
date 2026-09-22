@@ -45,6 +45,8 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindTargetBegin, int kindTargetEnd);
 
 void void2dSetDpiScale(float scale);
+int void2dScissorMin(float edge, float scale);
+int void2dScissorMax(float edge, float scale);
 
 // Per-frame reset (call once before building the frame) — re-arms the font-atlas upload.
 void void2dFrameBegin(void);
@@ -72,10 +74,12 @@ int void2dAtlasImagesAlive(void);
 // The vertex buffer growth policy as pure arithmetic: max(2x, pow2), no shrink, 0 past the
 // cap. Exposed so T1 can assert its boundaries without a GPU.
 int void2dGrowthTarget(int have, int need);
-int void2dInstanceBufferBytes(void);
+int void2dVertexBufferBytes(void);
 // Frames dropped because one frame's geometry exceeded VOID2D_MAX_BUFFER_BYTES. Never
 // silent: the drop is logged once per frame and counted here.
 int void2dDroppedFrames(void);
+// A pending target list at end2d is a pass-order violation, not a recoverable dropped draw.
+void void2dFailPendingTargets(void);
 
 // fontstash glyph-layout iterator (MetaScript builds the glyph quads).
 void void2dTextBegin(float x, float y, float size, const char *text);

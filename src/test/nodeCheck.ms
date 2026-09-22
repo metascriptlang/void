@@ -1,7 +1,15 @@
-import { DrawKind, group, rect, sprite, label, anim, graphics, mask, scaleGrid, underline, selection, addChild, addChildAt, removeChild, removeChildren, at, update, dispose, localToGlobal, globalToLocal } from "../void2d/node";
+import {
+	DrawKind, group, rect, sprite, label, anim, graphics, mask, scaleGrid, underline, selection,
+	addChild, addChildAt, removeChild, removeChildren, at, update, dispose, localToGlobal,
+	globalToLocal, setBoxStyle,
+} from "../void2d/node";
 import { sync, getBounds } from "../void2d/render";
-import { Tile, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter, glowFilter, dropShadowFilter, FilterKind } from "../void2d/types";
+import {
+	Tile, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter, glowFilter,
+	dropShadowFilter, FilterKind,
+} from "../void2d/types";
 import { approx } from "./helpers";
+import { boxStyle, uniformRadii, uniformBorders, castShadow } from "../void2d/boxStyle";
 
 const HALF_PI: float32 = 1.5707963;
 
@@ -175,6 +183,22 @@ test "getBounds covers single rect" {
 	assert approx(b.xMin, 10.0);
 	assert approx(b.yMin, 20.0);
 	assert approx(b.xMax, 40.0);
+	assert approx(b.yMax, 60.0);
+}
+
+test "getBounds includes an outset analytic box shadow" {
+	const n = rect(20.0, 10.0, rgba(0.3, 0.5, 0.8, 1.0)).at(50.0, 40.0);
+	n.setBoxStyle(castShadow(boxStyle(
+		uniformRadii(0.0),
+		uniformBorders(0.0),
+		rgba(0.0, 0.0, 0.0, 0.0),
+	), rgba(0.0, 0.0, 0.0, 0.8), 2.0, -3.0, 4.0));
+	n.sync(identity2d(), false);
+	const b = emptyBounds();
+	n.getBounds(b);
+	assert approx(b.xMin, 41.0);
+	assert approx(b.yMin, 30.0);
+	assert approx(b.xMax, 79.0);
 	assert approx(b.yMax, 60.0);
 }
 

@@ -24,6 +24,7 @@ import {
 	blurPass,
 	allocRenderTarget,
 	rtViewId,
+	currentRenderScale,
 } from "./draw";
 import { layoutText, buildGlyphMesh } from "./text";
 import { InstanceMode } from "./instance";
@@ -31,7 +32,7 @@ import { fontView } from "./draw";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
-import { axisAligned, snapBoxEdges, snapStroke } from "./snap";
+import { axisAligned, snapEdge, snapBoxEdges, snapStroke } from "./snap";
 import {
 	GraphicsOpKind, GRAPHICS_OP_FLOATS, GFX_OP_KIND, GFX_OP_VERTEX_OFFSET,
 	GFX_OP_VERTEX_COUNT, GFX_OP_SPACE, GFX_OP_DITHER, GFX_OP_MIDDLE,
@@ -104,6 +105,51 @@ function localBounds(n: Node2D): Bounds {
 		return { xMin: dx, yMin: dy, xMax: dx + n.w, yMax: dy + n.h };
 	}
 	return { xMin: 0.0, yMin: 0.0, xMax: n.w, yMax: n.h };
+}
+
+function boxRenderBounds(n: Node2D, world: Transform2D, lb: Bounds): Bounds {
+	if (n.kind !== DrawKind.Rect) { return lb; }
+	let xMin: float32 = lb.xMin;
+	let yMin: float32 = lb.yMin;
+	let xMax: float32 = lb.xMax;
+	let yMax: float32 = lb.yMax;
+	const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
+	const scale: float32 = currentRenderScale();
+	let deviceAX: float32 = 0.0;
+	let deviceDX: float32 = 0.0;
+	if (aligned) {
+		deviceAX = world.a * scale;
+		deviceDX = world.d * scale;
+		const snapped = snapBoxEdges(
+			xMin, yMin, xMax - xMin, yMax - yMin,
+			deviceAX, world.tx * scale, deviceDX, world.ty * scale,
+		);
+		xMin = snapped[0];
+		yMin = snapped[1];
+		xMax = xMin + snapped[2];
+		yMax = yMin + snapped[3];
+	}
+	if (n.payload == NO_BOX_STYLE) {
+		return { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
+	}
+	const st = boxStyles[n.payload];
+	if (st.shadowColor.a > 0.0 && !st.shadowInset) {
+		let offsetX: float32 = st.shadowOffsetX;
+		let offsetY: float32 = st.shadowOffsetY;
+		if (aligned) {
+			offsetX = snapEdge(offsetX * deviceAX) / deviceAX;
+			offsetY = snapEdge(offsetY * deviceDX) / deviceDX;
+		}
+		const absX: float32 = offsetX < 0.0 ? -offsetX : offsetX;
+		const absY: float32 = offsetY < 0.0 ? -offsetY : offsetY;
+		const mx: float32 = 3.0 * st.shadowBlur + absX;
+		const my: float32 = 3.0 * st.shadowBlur + absY;
+		xMin = xMin - mx;
+		yMin = yMin - my;
+		xMax = xMax + mx;
+		yMax = yMax + my;
+	}
+	return { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
 }
 
 function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
@@ -223,6 +269,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 }
 let imageEffectRejectedReported: boolean = false;
 let textPrimitiveEffectRejectedReported: boolean = false;
+let boxEffectRejectedReported: boolean = false;
 
 
 function emitStyledImage(
@@ -260,6 +307,7 @@ function emitStyledImage(
 function emitNode(
 	n: Node2D, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
+	boxBounds: Bounds,
 ): void {
 	setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
 	setSampler(n.smooth, n.tileWrap);
@@ -275,6 +323,15 @@ function emitNode(
 	// scene that measures the second half of that sentence.
 	const instanced: boolean = spriteInstancingAvailable();
 	if (n.kind === DrawKind.Rect) {
+		if (!uiInstancingAvailable() && n.payload != NO_BOX_STYLE) {
+			if (!boxEffectRejectedReported) {
+				console.log(
+					"void2d: a box style cannot be combined with colorMatrix, colorAdd, or colorKey",
+				);
+				boxEffectRejectedReported = true;
+			}
+			return;
+		}
 		if (uiInstancingAvailable()) {
 			let radiusTL: float32 = 0.0;
 			let radiusTR: float32 = 0.0;
@@ -301,57 +358,48 @@ function emitNode(
 				borderStyle = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
 			}
 			// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
-			// border. The quad spans the kernel's reach - 3 sigma plus the offset's own
-			// displacement, per axis, in LOCAL units so a rotated card's shadow follows its
-			// axes; an inset stays inside the element and does not inflate. params1 carries
-			// (offsetX, offsetY, sigma, inset) and the extra colour is the shadow; the shader
-			// derives the box's half extents back from this same margin formula, so the two
-			// are one contract, mirrored like aaWidthForAffine.
+			// border. The visible box is snapped before its quad is inflated, otherwise a
+			// fractional shadow margin moves the reconstructed fill edge off the device grid.
 			const shadowOn: boolean = n.payload != NO_BOX_STYLE
 				&& boxStyles[n.payload].shadowColor.a > 0.0;
-			let qx: float32 = tl.x;
-			let qy: float32 = tl.y;
-			let qw: float32 = sizeX;
-			let qh: float32 = sizeY;
+			const rendered = boxBounds;
+			const qOrigin = vec2(rendered.xMin, rendered.yMin) * world;
+			const qx: float32 = qOrigin.x;
+			const qy: float32 = qOrigin.y;
+			const qw: float32 = rendered.xMax - rendered.xMin;
+			const qh: float32 = rendered.yMax - rendered.yMin;
 			let shadowColor: Color = transparent;
 			let sp0: float32 = 0.0;
 			let sp1: float32 = 0.0;
 			let sp2: float32 = 0.0;
 			let sp3: float32 = 0.0;
+			const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
+			const scale: float32 = currentRenderScale();
+			let deviceAX: float32 = 0.0;
+			let deviceDX: float32 = 0.0;
+			if (aligned) {
+				deviceAX = world.a * scale;
+				deviceDX = world.d * scale;
+				borderL = snapStroke(borderL * deviceAX) / deviceAX;
+				borderR = snapStroke(borderR * deviceAX) / deviceAX;
+				borderT = snapStroke(borderT * deviceDX) / deviceDX;
+				borderB = snapStroke(borderB * deviceDX) / deviceDX;
+			}
 			if (shadowOn) {
 				const st = boxStyles[n.payload];
 				const sigma: float32 = st.shadowBlur;
-				const ax: float32 = st.shadowOffsetX < 0.0 ? -st.shadowOffsetX : st.shadowOffsetX;
-				const ay: float32 = st.shadowOffsetY < 0.0 ? -st.shadowOffsetY : st.shadowOffsetY;
-				const mx: float32 = st.shadowInset ? 0.0 : 3.0 * sigma + ax;
-				const my: float32 = st.shadowInset ? 0.0 : 3.0 * sigma + ay;
-				const quadMin = vec2(lbMin.x - mx, lbMin.y - my) * world;
-				qx = quadMin.x;
-				qy = quadMin.y;
-				qw = sizeX + 2.0 * mx;
-				qh = sizeY + 2.0 * my;
-				sp0 = st.shadowOffsetX;
-				sp1 = st.shadowOffsetY;
+				let offsetX: float32 = st.shadowOffsetX;
+				let offsetY: float32 = st.shadowOffsetY;
+				if (aligned) {
+					offsetX = snapEdge(offsetX * deviceAX) / deviceAX;
+					offsetY = snapEdge(offsetY * deviceDX) / deviceDX;
+				}
+				sp0 = offsetX;
+				sp1 = offsetY;
 				sp2 = sigma;
 				sp3 = st.shadowInset ? 1.0 : 0.0;
 				const sc: Color = st.shadowColor;
 				shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
-			}
-
-			// Device-pixel snapping, axis-aligned only (snap.ms carries the why). The shadow's
-			// offset rides in local units, so it follows the snapped box by construction.
-			if (axisAligned(world.a, world.b, world.c, world.d)) {
-				const lbx0: float32 = (qx - world.tx) / world.a;
-				const lby0: float32 = (qy - world.ty) / world.d;
-				const snapped = snapBoxEdges(lbx0, lby0, qw, qh, world.a, world.tx, world.d, world.ty);
-				qx = snapped[0] * world.a + world.tx;
-				qy = snapped[1] * world.d + world.ty;
-				qw = snapped[2];
-				qh = snapped[3];
-				borderL = snapStroke(borderL * world.a) / world.a;
-				borderR = snapStroke(borderR * world.a) / world.a;
-				borderT = snapStroke(borderT * world.d) / world.d;
-				borderB = snapStroke(borderB * world.d) / world.d;
 			}
 			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, qx, qy, qw, qh,
 				radiusTL, radiusTR, radiusBR, radiusBL,
@@ -509,6 +557,7 @@ let poolExhaustedReported: boolean = false;
 // Exported so `filter.ms` can take a scratch target for its own downsample chain rather
 // than carrying a second, weaker kernel.
 export function acquireFrameTarget(w: int32, h: int32): uint32 { return acquireTarget(w, h); }
+export function renderTargetsAlive(): int32 { return poolRT.length as int32; }
 
 export function releaseTargets(): void {
 	for (let i: int32 = 0; i < (poolBusy.length as int32); i++) { poolBusy[i] = false; }
@@ -559,7 +608,7 @@ export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32
 		const dh: int32 = sh / 2;
 		const dst: uint32 = acquireTarget(dw, dh);
 		if (dst == 0) { return 0; }
-		beginTarget(dst, dw as float32, dh as float32, 0.0, 0.0, transparent);
+		beginTarget(dst, dw as float32, dh as float32, 1.0, 0.0, 0.0, transparent);
 		blitTarget(src, dw as float32, dh as float32);
 		endTarget();
 		src = dst;
@@ -569,12 +618,12 @@ export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32
 	}
 	const tmp: uint32 = acquireTarget(sw, sh);
 	if (tmp == 0) { return 0; }
-	beginTarget(tmp, sw as float32, sh as float32, 0.0, 0.0, transparent);
+	beginTarget(tmp, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
 	blurPass(rtViewId(src), 1.0 / (sw as float32), 0.0);
 	endTarget();
 	const out: uint32 = acquireTarget(sw, sh);
 	if (out == 0) { return 0; }
-	beginTarget(out, sw as float32, sh as float32, 0.0, 0.0, transparent);
+	beginTarget(out, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
 	blurPass(rtViewId(tmp), 0.0, 1.0 / (sh as float32));
 	endTarget();
 	return out;
@@ -583,12 +632,8 @@ export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32
 // One half-scale copy. `BlendMode.None` writes the source through instead of compositing it
 // over the target's transparent black, which would otherwise darken every edge texel.
 function blitTarget(src: uint32, w: float32, h: float32): void {
-	// Says what it needs rather than inheriting it. The emitter's sampler and colour pipeline
-	// are sticky and were last set by whatever node was emitted before this filter, so a
-	// scene with `defaultSmooth = false` point-sampled every halving step - which turns
-	// guardrail 3's "downsample by 2^k then blur at one texel" back into a comb - and a
-	// grayscale sibling tinted the downsample. `void2dBlur` hardcodes linear-clamp for its tap
-	// pass for exactly this reason; this had been left to luck.
+	// The target starts with no colour effect, but its sampler inherits the scene default.
+	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
 	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
 	imageQuad(tile(rtViewId(src), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
@@ -613,12 +658,20 @@ function drawContent(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	const tr = vec2(lb.xMax, lb.yMin) * world;
 	const br = vec2(lb.xMax, lb.yMax) * world;
 	const bl = vec2(lb.xMin, lb.yMax) * world;
+	const vb = boxRenderBounds(n, world, lb);
+	const vtl = vec2(vb.xMin, vb.yMin) * world;
+	const vtr = vec2(vb.xMax, vb.yMin) * world;
+	const vbr = vec2(vb.xMax, vb.yMax) * world;
+	const vbl = vec2(vb.xMin, vb.yMax) * world;
 	const onscreen: boolean =
-		fmax4(tl.x, tr.x, br.x, bl.x) >= 0.0 && fmin4(tl.x, tr.x, br.x, bl.x) <= vw
-		&& fmax4(tl.y, tr.y, br.y, bl.y) >= 0.0 && fmin4(tl.y, tr.y, br.y, bl.y) <= vh
-		&& clipIntersectsQuad(tl, tr, br, bl);
+		fmax4(vtl.x, vtr.x, vbr.x, vbl.x) >= 0.0 && fmin4(vtl.x, vtr.x, vbr.x, vbl.x) <= vw
+		&& fmax4(vtl.y, vtr.y, vbr.y, vbl.y) >= 0.0 && fmin4(vtl.y, vtr.y, vbr.y, vbl.y) <= vh
+		&& clipIntersectsQuad(vtl, vtr, vbr, vbl);
 	if (onscreen) {
-		emitNode(n, world, na, col, tl, tr, br, bl, lb.xMax - lb.xMin, lb.yMax - lb.yMin, vec2(lb.xMin, lb.yMin));
+		emitNode(
+			n, world, na, col, tl, tr, br, bl,
+			lb.xMax - lb.xMin, lb.yMax - lb.yMin, vec2(lb.xMin, lb.yMin), vb,
+		);
 	}
 	const masking: boolean = n.kind === DrawKind.Mask;
 	let clipSupported: boolean = true;
@@ -674,9 +727,12 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	if (xMax > vw) { xMax = vw; }
 	if (yMax > vh) { yMax = vh; }
 	if (xMax <= xMin || yMax <= yMin) { return; }
-	const rtW: int32 = ceilToInt(xMax - xMin);
-	const rtH: int32 = ceilToInt(yMax - yMin);
+	const dpi: float32 = currentRenderScale();
+	const rtW: int32 = ceilToInt((xMax - xMin) * dpi);
+	const rtH: int32 = ceilToInt((yMax - yMin) * dpi);
 	if (rtW <= 0 || rtH <= 0) { return; }
+	const logicalW: float32 = (rtW as float32) / dpi;
+	const logicalH: float32 = (rtH as float32) / dpi;
 	const rt: uint32 = acquireTarget(rtW, rtH);
 	if (rt == 0) { return; }
 
@@ -691,23 +747,21 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	// rather than on the object (`h2d/Object.hx:896-956`).
 	const heldAlpha: float32 = n.alpha;
 	n.alpha = 1.0;
-	beginTarget(rt, rtW as float32, rtH as float32, xMin, yMin, transparent);
+	beginTarget(rt, logicalW, logicalH, dpi, xMin, yMin, transparent);
 	drawContent(n, 1.0, vw, vh);
 	endTarget();
 	n.alpha = heldAlpha;
 
 	let src: uint32 = rt;
 	if (n.filter.radius > 0.0) {
-		src = blurTargetPooled(rt, rtW, rtH, n.filter.radius);
+		src = blurTargetPooled(rt, rtW, rtH, n.filter.radius * dpi);
 		if (src == 0) { return; }
 	}
 
 	const na: float32 = a * n.alpha;
-	// The target's own extent, not the bounds it was derived from: `rtW`/`rtH` are the ceiling
-	// of `xMax - xMin`, so drawing the quad to `xMax` would resample the target by a fraction
-	// of a pixel and soften what is supposed to be the sharp copy.
-	const qx1: float32 = xMin + (rtW as float32);
-	const qy1: float32 = yMin + (rtH as float32);
+	// Composite at the exact logical extent represented by the physical target.
+	const qx1: float32 = xMin + logicalW;
+	const qy1: float32 = yMin + logicalH;
 	const rtTile = tile(rtViewId(src), rtW as float32, rtH as float32);
 	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
@@ -750,12 +804,13 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 
 export function getBounds(this n: Node2D, ref out: Bounds): void {
 	const lb = localBounds(n);
-	if (lb.xMax > lb.xMin && lb.yMax > lb.yMin) {
-		const world = n.cachedWorld;
-		const btl = vec2(lb.xMin, lb.yMin) * world;
-		const btr = vec2(lb.xMax, lb.yMin) * world;
-		const bbr = vec2(lb.xMax, lb.yMax) * world;
-		const bbl = vec2(lb.xMin, lb.yMax) * world;
+	const world = n.cachedWorld;
+	const vb = boxRenderBounds(n, world, lb);
+	if (vb.xMax > vb.xMin && vb.yMax > vb.yMin) {
+		const btl = vec2(vb.xMin, vb.yMin) * world;
+		const btr = vec2(vb.xMax, vb.yMin) * world;
+		const bbr = vec2(vb.xMax, vb.yMax) * world;
+		const bbl = vec2(vb.xMin, vb.yMax) * world;
 		const bxMin: float32 = fmin4(btl.x, btr.x, bbr.x, bbl.x);
 		const byMin: float32 = fmin4(btl.y, btr.y, bbr.y, bbl.y);
 		const bxMax: float32 = fmax4(btl.x, btr.x, bbr.x, bbl.x);

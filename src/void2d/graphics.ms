@@ -313,15 +313,13 @@ export function fillGradientPolygonStops(
 	const idx: int32[] = triangulate(pts);
 	const total: int32 = idx.length as int32;
 	const start: int32 = (g.mesh.length as int32) / 8;
-	let k: int32 = 0;
-	while (k + 3 <= total) {
+	for (let k: int32 = 0; k + 3 <= total; k = k + 3) {
 		const pa = pts[idx[k]];
 		const pb = pts[idx[k + 1]];
 		const pc = pts[idx[k + 2]];
 		rawVtx(g, pa.x, pa.y, projectedT(pa, ax, ay, minP, span), 0.0, white);
 		rawVtx(g, pb.x, pb.y, projectedT(pb, ax, ay, minP, span), 0.0, white);
 		rawVtx(g, pc.x, pc.y, projectedT(pc, ax, ay, minP, span), 0.0, white);
-		k = k + 3;
 	}
 	const count: int32 = (g.mesh.length as int32) / 8 - start;
 	if (count > 0) {
@@ -520,15 +518,13 @@ export function fillTexPolygon(this g: Node2D, t: Tile, pts: Vec2[], originX: fl
 	const tc: int32 = idx.length as int32;
 	const du: float32 = t.u1 - t.u0;
 	const dv: float32 = t.v1 - t.v0;
-	let k: int32 = 0;
-	while (k + 3 <= tc) {
+	for (let k: int32 = 0; k + 3 <= tc; k = k + 3) {
 		const pa = pts[idx[k]];
 		const pb = pts[idx[k + 1]];
 		const pc = pts[idx[k + 2]];
 		triUV(g, pa, t.u0 + (pa.x - originX) / tileW * du, t.v0 + (pa.y - originY) / tileH * dv,
 			pb, t.u0 + (pb.x - originX) / tileW * du, t.v0 + (pb.y - originY) / tileH * dv,
 			pc, t.u0 + (pc.x - originX) / tileW * du, t.v0 + (pc.y - originY) / tileH * dv, color);
-		k = k + 3;
 	}
 	return g;
 }
@@ -538,14 +534,12 @@ export function fillCircle(this g: Node2D, cx: float32, cy: float32, r: float32,
 	if (seg > CIRCLE_MAX_SEG) { seg = CIRCLE_MAX_SEG; }
 	const step: float32 = TAU / (seg as float32);
 	const center = vec2(cx, cy);
-	let i: int32 = 0;
-	while (i < seg) {
+	for (let i: int32 = 0; i < seg; i++) {
 		const a0: float32 = step * (i as float32);
 		const a1: float32 = step * ((i + 1) as float32);
 		const p0 = vec2(cx + cosf(a0) * r, cy + sinf(a0) * r);
 		const p1 = vec2(cx + cosf(a1) * r, cy + sinf(a1) * r);
 		tri(g, center, p0, p1, color);
-		i = i + 1;
 	}
 	return g;
 }

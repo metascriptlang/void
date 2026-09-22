@@ -145,6 +145,27 @@ export function sceneRows(): SceneRow[] {
 
 export function sceneCount(): int32 { return sceneRows().length as int32; }
 
+// Deterministic renderer counters captured beside the pixel goldens, in sceneRows order.
+// A pixel-identical change that multiplies draw calls or leaks a pooled target is still a
+// regression. The runner refuses to start unless both vectors cover every row.
+export function sceneDrawCounts(): int32[] {
+	return [
+		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
+		1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 6, 2, 1, 1, 1, 6,
+		6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7, 30, 30, 30, 30,
+	];
+}
+
+export function sceneRenderTargetCounts(): int32[] {
+	return [
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+		5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5,
+	];
+}
+
 // The one row whose golden is deliberately wrong, so that a comparator which cannot fail is
 // itself a failure (docs/TESTING.md, "A scene that must fail").
 export const MUST_FAIL_SCENE: string = "harness/mustFail";

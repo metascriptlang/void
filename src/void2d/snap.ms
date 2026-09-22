@@ -32,6 +32,14 @@ export function snapStroke(widthDevice: float32): float32 {
 	return r < 1.0 ? 1.0 : r;
 }
 
+// A positive local-space stroke stays at least one physical pixel under any affine. Unlike
+// snapStroke this does not round a transformed edge, so it is valid for rotated boxes too.
+export function dilateStroke(widthLocal: float32, pixelsPerLocal: float32): float32 {
+	if (widthLocal <= 0.0 || pixelsPerLocal <= 0.0) { return 0.0; }
+	const minimum: float32 = 1.0 / pixelsPerLocal;
+	return widthLocal < minimum ? minimum : widthLocal;
+}
+
 // True when the transform's linear part maps local axes onto device axes, positively - the
 // precondition for every rule in this file. A mirror or a rotation disqualifies it.
 export function axisAligned(a: float32, b: float32, c: float32, d: float32): boolean {

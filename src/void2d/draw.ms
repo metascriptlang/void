@@ -13,12 +13,12 @@
 
 import {
 	void2dSetup, void2dWhiteView, void2dFontView, void2dSetDpiScale, void2dFrameBegin,
-	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dTextWidth, void2dLineHeight,
-	void2dTextSpacing, void2dAtlasGen, void2dAddFont, void2dSelectFont,
+	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dAtlasGen, void2dAddFont,
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
-	void2dInstanceBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
-	void2dAtlasImagesAlive, void2dFrameEnd,
+	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
+	void2dAtlasImagesAlive, void2dFrameEnd, void2dFailPendingTargets,
+	void2dScissorMin, void2dScissorMax,
 	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
 	void2dWhiteTexelU, void2dWhiteTexelV, void2dWhiteTexelOk, void2dPackChannel,
 } from "./batcher.h";
@@ -38,13 +38,13 @@ import {
 	commands, effects, vertices, targetCommands, spriteInstances, spriteInstanceCount,
 	uiInstances, uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
-	targetDepth, targetStackOverflowed, beginTargetList, endTargetList,
+	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
-	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
+	Pipeline,
 	pushSpriteInstance, recordSpriteDraw,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
-import { makeRenderTarget, destroyRenderTarget, renderTargetView, beginRenderTargetPass, endPass } from "../sokol/gpu";
+import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
 
 export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
 export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
@@ -88,6 +88,8 @@ let curEffect: int32 = NO_EFFECT;
 let frameLive: boolean = true;
 let fbW: float32 = 0.0;
 let fbH: float32 = 0.0;
+let frameDpi: float32 = 1.0;
+let targetsFlushed: boolean = false;
 
 // The emitter state each open target has to give back. Same depth as displayList.ms's stack;
 // past it `beginTarget` still brackets the list correctly, it just stops restoring, and the
@@ -100,8 +102,19 @@ export function drawCallCount(): int32 { return void2dDrawCallCount(); }
 export function uploadCount(): int32 { return void2dUploadCount(); }
 export function uploadBytes(): int32 { return void2dUploadBytes(); }
 export function buffersAlive(): int32 { return void2dBuffersAlive(); }
-export function instanceBufferBytes(): int32 { return void2dInstanceBufferBytes(); }
+export function vertexBufferBytes(): int32 { return void2dVertexBufferBytes(); }
 export function droppedFrames(): int32 { return void2dDroppedFrames(); }
+export function currentRenderScale(): float32 {
+	const targetScale: float32 = renderTargetScaleNow();
+	return targetScale != 0.0 ? targetScale : frameDpi;
+}
+
+export function scissorMinDevice(edge: float32, scale: float32): int32 {
+	return void2dScissorMin(edge, scale);
+}
+export function scissorMaxDevice(edge: float32, scale: float32): int32 {
+	return void2dScissorMax(edge, scale);
+}
 
 // Glyph-atlas images made minus freed. Declared in batcher.h since the atlas grew a
 // resize path, but until now nothing in MetaScript read it, so no tier reproduced the
@@ -307,8 +320,10 @@ export function addFont(path: string): int32 { return void2dAddFont(path); }
 export function begin2d(w: float32, h: float32, dpi: float32): void {
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
+	frameDpi = dpi;
 	fbW = w;
 	fbH = h;
+	targetsFlushed = false;
 	resetList();
 	frameLive = true;
 	originX = 0.0;
@@ -341,6 +356,7 @@ export function flushTargets(): void {
 		spriteInstances[0], spriteInstanceCount(),
 		uiInstances[0], uiInstanceCount(),
 	) != 0;
+	targetsFlushed = true;
 }
 
 // Replay the swapchain list into the pass the caller already has open. Together with
@@ -350,8 +366,9 @@ export function end2d(): void {
 	// A caller that opened render targets and forgot `flushTargets()` used to get silence: the
 	// hoisted blocks sat in `targetCommands` and the next `resetList()` threw them away, so a
 	// filtered subtree simply did not appear and nothing said why.
-	if (targetCommandCount() > 0) {
-		console.log("void2d: end2d with render-target commands still pending - flushTargets() was not called");
+	if (targetCommandCount() > 0 && !targetsFlushed) {
+		void2dFailPendingTargets();
+		return;
 	}
 	if (!frameLive || commandCount() == 0) { return; }
 	void2dReplay(
@@ -691,12 +708,14 @@ export function beginTarget(
 	rt: uint32,
 	w: float32,
 	h: float32,
+	scale: float32,
 	ox: float32,
 	oy: float32,
 	clear: Color,
 ): void {
+	targetsFlushed = false;
 	if (targetDepth() >= TARGET_SAVE_SLOTS) {
-		beginTargetList(rt, w, h, clear.r, clear.g, clear.b, clear.a);
+		beginTargetList(rt, w, h, scale, clear.r, clear.g, clear.b, clear.a);
 		return;
 	}
 	closeRun();
@@ -709,7 +728,7 @@ export function beginTarget(
 	savedSize[targetDepth() * 4 + 1] = fbH;
 	savedSize[targetDepth() * 4 + 2] = originX;
 	savedSize[targetDepth() * 4 + 3] = originY;
-	beginTargetList(rt, w, h, clear.r, clear.g, clear.b, clear.a);
+	beginTargetList(rt, w, h, scale, clear.r, clear.g, clear.b, clear.a);
 	fbW = w;
 	fbH = h;
 	originX = ox;

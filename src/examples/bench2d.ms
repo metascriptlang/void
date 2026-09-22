@@ -20,6 +20,7 @@ import {
 	recordedSpriteInstanceCount,
 	droppedFrames,
 } from "../void2d/draw";
+import { renderTargetsAlive } from "../void2d/render";
 import { rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
@@ -105,6 +106,7 @@ function report(): void {
 	console.log(`${benchName}.uploads ${uploadCount()}`);
 	console.log(`${benchName}.uploadBytes ${uploadBytes()}`);
 	console.log(`${benchName}.atlasImages ${atlasImagesAlive()}`);
+	console.log(`${benchName}.renderTargets ${renderTargetsAlive()}`);
 	console.log(`${benchName}.droppedFrames ${droppedFrames()}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
 }

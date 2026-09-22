@@ -460,3 +460,93 @@ its job, and worth saying out loud whenever the number 48 is used.
 ### Verdict
 
 **SHIP WITH FOLLOW-UPS.** P1 is done. P2 may begin, and the phase may land.
+
+---
+
+## P2 design review: **SEND BACK**
+
+A fresh reviewer that wrote none of P2 read the phase diff, roadmap, guardrails and test plan.
+It accepted the one-draw UI stream, unified instance layout, sprite/UI separation, filter-target
+repair, resource counters and buffer-retirement fix, but refused the phase on seven findings:
+
+| id | Finding | Resolution before re-review |
+|---|---|---|
+| P2-R1 | CPU box snapping and shader AA ignored the active target's DPI | `currentRenderScale()` now follows the target stack; CPU edges/strokes round in device space and `ui_params.viewport.w` carries the same scale into AA. T1 pins swapchain/target restoration and the DPI goldens moved |
+| P2-R2 | A styled Rect with a colour effect silently became a flat square quad | The combination now reports a named rejection and emits no lossy fallback. T1 pins zero UI instances, vertices and draws; `ui-box-color-effect` assigns full unified-shader support to P6 |
+| P2-R3 | The fractional-split test compared one expression with itself | It now snaps two independently positioned adjacent boxes and checks both the shared edge and the rounded outer extent at all three DPIs |
+| P2-R4 | The one-instance card and rotated Mask were separate scenes | `prim/cardOneInstance` now puts the styled card inside the 37-degree Mask, keeps rounded corners visible, crosses the clip with its shadow, and remains one draw/instance |
+| P2-R5 | The Measure text called 20 000 × 108 B the measured stream | Corrected to the gated **48 890 instances / 5 280 120 B**; 20 000 remains the node count |
+| P2-R6 | Guardrail 9 still reported 56 D3D11 scenes | Corrected to the current **67 / 67** suite and dated to the P2 review gate |
+| P2-R7 | Tracked docs disagreed on ownership of the legacy Yoga tests | Both now name compiler card `2026-09-22-imported-interface-literal-reachability.md`, the parked standalone file and compiler ownership |
+
+The same pass called out CODE-STYLE review discipline. P2's new Bayer dispatch is now a `match`;
+the repository-wide 278-line length debt remains measured and assigned to P6. Its reference to
+counted loops is not a §14 violation: §14 forbids a counted `while`, while the changed code uses
+`for`. No compiler workaround was introduced; the imported-interface failure remains parked at
+the compiler card.
+
+---
+
+## P2 re-review: **SEND BACK**
+
+A second fresh reviewer verified all seven first-pass findings as closed, then found three
+different omissions inside the adopted GPUI snapping row. This is not the stride-risk fallback
+case in P2: splitting the 108-byte instance layout would change none of these device-space
+rules. The response was to make each rule explicit at the layer that owns it:
+
+| id | Finding | Resolution before second re-review |
+|---|---|---|
+| P2-R8 | sokol truncated fractional mask scissor arguments independently and could move the far edge inward | The replay now floors the near device edge, ceils the far edge, clamps that rectangle to the target, and passes only integer-valued floats to sokol. T0 calls the same C helpers at fractional and negative edges |
+| P2-R9 | A shadowed axis-aligned box snapped the inflated shadow quad, so a fractional margin moved the reconstructed fill edge off-grid | The visible box snaps first; the shadow offset snaps separately; only then does the margin inflate the quad. T1 reconstructs both visible x edges from the recorded instance and requires device integers |
+| P2-R10 | A rotated positive border could remain thinner than one device pixel | The UI vertex shader now mirrors `dilateStroke`: per local axis, zero stays zero and a positive box border is at least one physical pixel. T0 pins the arithmetic and `prim/perSideBorders` carries a rotated 0.2-unit side at DPI 1.25 |
+
+The re-review also found two new counted `while` loops in P2-touched gradient/texture
+triangulation despite CODE-STYLE §14. They are counted `for` loops now. The remaining
+non-uniform-SDF approximation was already disclosed in `VOID2D.md`; `sdf-non-uniform-bound`
+now assigns its independent numerical bound to P6 instead of pretending the old pixel golden
+proves one.
+
+---
+
+## P2 final re-review: **SEND BACK**
+
+The fresh final reviewer verified R1-R10 closed, then found one bounds-design omission with two
+observable failures: the emitter knew the analytic shadow quad, but culling and filter-target
+sizing still knew only the fill box. This is unrelated to P2's stride fallback. The repair removes
+the split ownership rather than adding two exceptions:
+
+| id | Finding | Resolution before final review |
+|---|---|---|
+| P2-R11 | A box wholly outside a viewport or active Mask was dropped even when its outset shadow reached the visible area | `boxRenderBounds` now computes the snapped box and outset-shadow quad once; both emission and viewport/Mask culling consume it. T1 places the fill beyond the viewport and requires the shadow instance |
+| P2-R12 | A node filter sized its render target from the fill box and clipped an analytic BoxStyle shadow before applying the filter | Public `getBounds` consumes the same rendered bounds, so `drawFiltered` allocates for the analytic shadow before adding its own radius. T0 pins the exact outset bound and `filter/blur` combines the two mechanisms in a D3D11 golden |
+
+Inset shadows remain fill-bounded. The combined golden's extra UI pipeline run changes only
+`filter/blur` from five to six draws; its five pooled render targets remain unchanged.
+
+---
+
+## P2 ship review: **SHIP WITH FOLLOW-UPS**
+
+A fourth fresh reviewer read the repaired live tree and all three SEND BACK records. It found no
+P2 blocker: R1-R12 are closed, and the remaining work is already named under P3-P6 or the
+compiler card. The final `sh scripts/gate.sh --web` ran **708 / 708** tests, **67 / 67** D3D11
+goldens, three coverage oracles, twelve loud skips and zero failures; the demo and mixed 3D/2D
+frame ran, both web backends built, and WebGL2 drew the demo headlessly.
+
+| Question | Decision and evidence |
+|---|---|
+| 1. Exit criteria | SHIP: the UI bench is one draw, the 37-degree masked card is one instance, DPI/split/zero-border behavior is pinned, and the sprite-only path remains 64 B with no SDF mode |
+| 2. Measurements | The six-pair A/B remains UI **21.36 → 12.13 ms** and sprites **2.11 → 1.77 ms**; the gate owns one UI draw, **48 890** instances and **5 280 120 B** uploaded |
+| 3. Guardrails 1-9 | Preserved: side tables, retained filter targets, analytic AA without MSAA, the narrow sprite path and the honest **1 / 7** measured-backend conformance status |
+| 4. GPUI dispositions | Display-list batching, local-space SDF, clipping, snapping, gradients and image modes keep the accepted Take/Take-adapted choices; no W/P exclusion moved |
+| 5. h2d spirit | Retained painter order, S·R·T transforms, Mask/filter nodes, bounds, Tile offsets and pivots remain h2d-shaped; unsupported styled colour effects fail loudly |
+| 6. Defects | The rotated-Mask, active-clip, pivot, gradient and batching defects plus R1-R12 are fixed at their owner. R11/R12 now share `boxRenderBounds` instead of parallel exceptions |
+| 7. Test tiers | T0 owns arithmetic and bounds, T1 owns streams and negative reachability, T2 owns pixels and counters, T3 owns independent coverage, and T4 owns deterministic budgets |
+| 8. Compiler discipline | The imported `FlexStyle` TypeInfo failure remains parked at `2026-09-22-imported-interface-literal-reachability.md`; no workaround entered void |
+| 9. CODE-STYLE §14 | P2 Bayer dispatch is a `match`, its counted loops are `for`, and the measured **215-line / 31-file** repository debt plus non-uniform-SDF bound remain assigned to P6 |
+| 10. Refusal to merge | None. Emission, viewport/Mask culling, public bounds, filter allocation and outset/inset behavior now consume one rendered-bounds contract |
+
+Follow-ups are not P2 escape hatches: P3 owns atlas/text metrics and the first multi-backend
+conformance run; P4 owns editor text and UCD; P5 owns retained ranges, Mask scrolling and the
+h2d oracle; P6 owns styled-box colour effects, the non-uniform-SDF bound, line-length hardening
+and per-module wasm budgets.

@@ -2,7 +2,8 @@
 // exit criterion is stated per device pixel, so the arithmetic is pinned here where it is
 // exact, and the display-list tier pins that the emitter actually applies it.
 
-import { snapEdge, snapStroke, snapBoxEdges, axisAligned } from "../void2d/snap";
+import { snapEdge, snapStroke, snapBoxEdges, axisAligned, dilateStroke } from "../void2d/snap";
+import { scissorMinDevice, scissorMaxDevice } from "../void2d/draw";
 import { approx } from "./helpers";
 
 test "an edge rounds half toward zero, each edge independently" {
@@ -25,6 +26,19 @@ test "a stroke width is zero or at least one device pixel" {
 	assert snapStroke(2.4) == 2.0;
 }
 
+test "a transformed hairline dilates to one device pixel and zero remains zero" {
+	const pixelsPerLocal: float32 = 1.25 * 0.5;
+	assert approx(dilateStroke(0.2, pixelsPerLocal), 1.0 / pixelsPerLocal);
+	assert dilateStroke(2.0, pixelsPerLocal) == 2.0;
+	assert dilateStroke(0.0, pixelsPerLocal) == 0.0;
+}
+
+test "a mask scissor covers fractional device edges outward" {
+	assert scissorMinDevice(10.25, 1.5) == 15;
+	assert scissorMaxDevice(30.75, 1.5) == 47;
+	assert scissorMinDevice(-0.25, 1.5) == -1;
+}
+
 test "only a positive axis-aligned affine snaps" {
 	assert axisAligned(1.0, 0.0, 0.0, 1.0);
 	assert axisAligned(1.25, 0.0, 0.0, 1.5);
@@ -33,10 +47,10 @@ test "only a positive axis-aligned affine snaps" {
 	assert !axisAligned(-1.0, 0.0, 0.0, 1.0);
 }
 
-// THE EXIT CRITERION, as arithmetic: at DPI 1.0, 1.25 and 1.5 a 1-logical-px border is
-// exactly one device pixel, a zero border is zero, and the two halves of a 7-px split share
-// one integer edge - which is what "touch with no gap" is, mechanically.
-test "a 1px border is one device pixel at three DPIs, and zero stays zero" {
+// THE EXIT CRITERION, as arithmetic: at DPI 1.0, 1.25 and 1.5 a one-device-pixel border
+// expressed as 1/dpi logical units is exactly one device pixel, a zero border is zero, and
+// the two halves of a 7-logical-pixel split share one integer device edge.
+test "a device-pixel border stays one device pixel at three DPIs, and zero stays zero" {
 	const dpis: Vec<float32> = [1.0, 1.25, 1.5];
 	for (let i: int32 = 0; i < 3; i++) {
 		const dpi: float32 = dpis[i];
@@ -53,22 +67,26 @@ test "a 1px border is one device pixel at three DPIs, and zero stays zero" {
 	}
 }
 
-test "the halves of a 7px split share one integer edge at three DPIs" {
+test "the halves of a 7px split share one snapped edge at three DPIs" {
 	const dpis: Vec<float32> = [1.0, 1.25, 1.5];
 	for (let i: int32 = 0; i < 3; i++) {
 		const dpi: float32 = dpis[i];
 		for (let k: int32 = 0; k < 6; k++) {
 			const fraction: float32 = 0.5 + (k as float32) * 0.07;
-			const shared: float32 = 16.0 + 7.0 * fraction;
-			const firstRight = snapEdge(shared * dpi) / dpi;
-			const secondLeft = snapEdge(shared * dpi) / dpi;
+			const firstWidth: float32 = 7.0 * fraction;
+			const secondX: float32 = 16.0 + firstWidth;
+			const first = snapBoxEdges(16.0, 0.0, firstWidth, 1.0, dpi, 0.0, dpi, 0.0);
+			const second = snapBoxEdges(
+				secondX, 0.0, 7.0 - firstWidth, 1.0,
+				dpi, 0.0, dpi, 0.0,
+			);
+			const firstRight: float32 = (first[0] + first[2]) * dpi;
+			const secondLeft: float32 = second[0] * dpi;
 			assert firstRight == secondLeft;
-			// Complementary widths: min + max = 7 in device pixels, never 6 with a gap
-			// or 8 with an overlap.
-			const near: float32 = snapEdge(0.0);
-			const split: float32 = snapEdge(7.0 * fraction * dpi);
-			const rest: float32 = snapEdge(7.0 * dpi) - split;
-			assert rest > 0.0;
+			const outerLeft: float32 = first[0] * dpi;
+			const outerRight: float32 = (second[0] + second[2]) * dpi;
+			assert outerRight - outerLeft
+				== snapEdge(23.0 * dpi) - snapEdge(16.0 * dpi);
 		}
 	}
 }

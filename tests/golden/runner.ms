@@ -2,10 +2,8 @@
 // variable, captured to out/golden/<backend>/<name>.png. scripts/golden.sh drives it, and
 // tests/golden/compare.ms is what judges the result.
 //
-// One scene per process is not tidiness. sokol's default resource pools hold 128 objects
-// and today every Label and Graphics owns an sg_buffer (VOID2D.md "Known defects", P1), so
-// a process that builds several Label-heavy scenes hits the cap partway through and
-// captures a scene with nodes missing — which would then become the golden.
+// One scene per process isolates GPU-resource and atlas state. A capture cannot inherit pooled
+// targets from another row or hide a leak behind resources that row already allocated.
 //
 // The window is opened with sample_count 1 and high_dpi off. Both are deliberate:
 //   - 4x MSAA is on only for the sokol_app entry (bridge.c:56) and off on iOS, Android and
@@ -21,11 +19,19 @@
 // its glyphs, and a fontstash atlas resize re-lays out every label — and then twice, into
 // the two capture slots. The two captures must be identical before either is written out.
 
-import { SceneRow, sceneRows, sceneCount, backendDirectory } from "./table";
+import {
+	SceneRow,
+	sceneRows,
+	sceneCount,
+	sceneDrawCounts,
+	sceneRenderTargetCounts,
+	backendDirectory,
+} from "./table";
 import { SceneBuilder, sceneBuilders } from "./scenes";
 import { Scene, presentAt } from "../../src/void2d/scene";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
+import { renderTargetsAlive } from "../../src/void2d/render";
 import { init2d, step2d, present2d } from "../../src/examples/renderer2d";
 import {
 	voidCaptureBackend,
@@ -56,6 +62,8 @@ const EXIT_BAD_USAGE: int32 = 2;
 const EXIT_NO_READBACK: int32 = 3;
 
 const rows: SceneRow[] = sceneRows();
+const expectedDraws: int32[] = sceneDrawCounts();
+const expectedRenderTargets: int32[] = sceneRenderTargetCounts();
 const builders: SceneBuilder[] = sceneBuilders();
 let index: int32 = 0;
 let current: Scene | null = null;
@@ -113,12 +121,25 @@ function finish(): void {
 		voidCaptureExit(EXIT_FAILED);
 	}
 
+	const draws: int32 = drawCallCount();
+	const targets: int32 = renderTargetsAlive();
+	if (draws != expectedDraws[index] || targets != expectedRenderTargets[index]) {
+		console.log(
+			`FAIL ${row.name} counters are draws ${draws}, renderTargets ${targets};`
+			+ ` expected ${expectedDraws[index]}, ${expectedRenderTargets[index]}`,
+		);
+		voidCaptureExit(EXIT_FAILED);
+	}
+
 	const path: string = `out/golden/${backendDirectory(voidCaptureBackend())}/${row.name}.png`;
 	if (voidCaptureWritePng(1, path) == 0) {
 		console.log(`FAIL ${row.name} could not write ${path}`);
 		voidCaptureExit(EXIT_FAILED);
 	}
-	console.log(`CAPTURED ${row.name} ${width}x${height} dpi ${row.dpi} draws ${drawCallCount()} -> ${path}`);
+	console.log(
+		`CAPTURED ${row.name} ${width}x${height} dpi ${row.dpi} draws ${draws}`
+		+ ` renderTargets ${targets} -> ${path}`,
+	);
 	voidCaptureExit(EXIT_OK);
 }
 
@@ -153,12 +174,23 @@ function startRunner(): void {
 	// are off by one would render a correct image under the wrong row's name, and
 	// `golden.sh --update` would commit it as that row's golden.
 	if ((builders.length as int32) != sceneCount()) {
-		console.log(`FAIL the table has ${sceneCount()} rows and scenes.ms has ${builders.length as int32} builders`);
+		console.log(
+			`FAIL the table has ${sceneCount()} rows`
+			+ ` and scenes.ms has ${builders.length as int32} builders`,
+		);
+		voidCaptureExit(EXIT_BAD_USAGE);
+	}
+	if ((expectedDraws.length as int32) != sceneCount()
+		|| (expectedRenderTargets.length as int32) != sceneCount()) {
+		console.log("FAIL the golden counter vectors do not cover every scene row");
 		voidCaptureExit(EXIT_BAD_USAGE);
 	}
 	for (let i: int32 = 0; i < sceneCount(); i++) {
 		if (rows[i].name.equals(builders[i].name)) { continue; }
-		console.log(`FAIL row ${i} is '${rows[i].name}' in table.ms and '${builders[i].name}' in scenes.ms`);
+		console.log(
+			`FAIL row ${i} is '${rows[i].name}' in table.ms`
+			+ ` and '${builders[i].name}' in scenes.ms`,
+		);
 		voidCaptureExit(EXIT_BAD_USAGE);
 	}
 	if (voidCaptureEnvInt("VOID_SCENE_LIST", 0) != 0) {

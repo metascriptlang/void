@@ -12,9 +12,8 @@
 # PNG diff — out/golden/<backend>/<name>.diff.png, written by the comparator — is the review
 # artifact that commit is judged on.
 #
-# One process per scene: sokol's default resource pools hold 128 objects and today every
-# Label and Graphics owns an sg_buffer, so several Label-heavy scenes in one process would
-# capture a scene with nodes missing (VOID2D.md "Known defects", closed at P1).
+# One process per scene isolates GPU-resource and atlas state. A capture cannot inherit pooled
+# targets from another row or hide a leak behind resources that row already allocated.
 set -e
 cd "$(dirname "$0")/.."
 

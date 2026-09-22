@@ -85,9 +85,9 @@ export const CMD_CLIP_H: int32 = 11;
 export const CMD_ARG0: int32 = 12;
 export const CMD_ARG1: int32 = 13;
 export const CMD_RT_MODE: int32 = 14;
-// Which pipeline set the replay must bind: the swapchain one, or the offscreen one (single
-// sample, no depth). It is per command because it is state the replay needs, and the record
-// is the only thing that reaches the replay.
+// Zero for the swapchain; otherwise the render target's physical-pixels-per-logical-pixel
+// scale. The replay uses nonzero to choose the offscreen pipeline and the value to scale
+// logical scissors.
 export const CMD_CLEAR_R: int32 = 15;
 export const CMD_CLEAR_G: int32 = 16;
 export const CMD_CLEAR_B: int32 = 17;
@@ -155,6 +155,7 @@ let spriteInstanceTotal: int32 = 0;
 const MAX_TARGET_DEPTH: int32 = 8;
 const targetMarks: Vec<int32> = new Array(MAX_TARGET_DEPTH);
 const targetClipSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH * 13);
+const targetScaleSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH);
 let targetDepthNow: int32 = 0;
 let targetOverflowed: boolean = false;
 
@@ -173,7 +174,7 @@ let clipVY: float32 = 0.0;
 let clipVMin: float32 = 0.0;
 let clipVMax: float32 = 0.0;
 let clipRecorded: boolean = false;
-let renderTargetMode: boolean = false;
+let renderTargetScale: float32 = 0.0;
 
 export function resetList(): void {
 	commandTotal = 0;
@@ -200,14 +201,15 @@ export function resetList(): void {
 	clipVY = 0.0;
 	clipVMin = 0.0;
 	clipVMax = 0.0;
-	renderTargetMode = false;
+	renderTargetScale = 0.0;
 	targetDepthNow = 0;
 	targetOverflowed = false;
 }
 
-// Which pipeline set every command recorded from here on will ask the replay to bind.
-export function setRenderTargetMode(on: boolean): void { renderTargetMode = on; }
-export function renderTargetModeOn(): boolean { return renderTargetMode; }
+// Which pipeline set and device scale every command recorded from here will ask the replay
+// to use. A zero scale is the swapchain, whose scale belongs to the frame.
+export function setRenderTargetMode(on: boolean): void { renderTargetScale = on ? 1.0 : 0.0; }
+export function renderTargetScaleNow(): float32 { return renderTargetScale; }
 
 export function commandCount(): int32 { return commandTotal; }
 export function targetCommandCount(): int32 { return targetCommandTotal; }
@@ -443,6 +445,7 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	while ((commands.length as int32) < base + COMMAND_FLOATS) { commands.push(0.0 as float32); }
 	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { commands[base + i] = 0.0; }
 	commands[base + CMD_KIND] = (kind as int32) as float32;
+	commands[base + CMD_EFFECT] = NO_EFFECT as float32;
 	commands[base + CMD_BREAK] = (reason as int32) as float32;
 	commands[base + CMD_CLIP_X] = clipX;
 	commands[base + CMD_CLIP_Y] = clipY;
@@ -456,7 +459,7 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	commands[base + CMD_CLIP_V_Y] = clipVY;
 	commands[base + CMD_CLIP_V_MIN] = clipVMin;
 	commands[base + CMD_CLIP_V_MAX] = clipVMax;
-	commands[base + CMD_RT_MODE] = renderTargetMode ? 1.0 : 0.0;
+	commands[base + CMD_RT_MODE] = renderTargetScale;
 	commandTotal = commandTotal + 1;
 	return base;
 }
@@ -537,6 +540,7 @@ export function beginTargetList(
 	rt: uint32,
 	w: float32,
 	h: float32,
+	scale: float32,
 	clearR: float32,
 	clearG: float32,
 	clearB: float32,
@@ -549,6 +553,7 @@ export function beginTargetList(
 		return;
 	}
 	targetMarks[targetDepthNow] = commandTotal;
+	targetScaleSaves[targetDepthNow] = renderTargetScale;
 	const cs: int32 = targetDepthNow * 13;
 	targetClipSaves[cs] = clipX;
 	targetClipSaves[cs + 1] = clipY;
@@ -586,7 +591,7 @@ export function beginTargetList(
 	clipVY = 0.0;
 	clipVMin = 0.0;
 	clipVMax = 0.0;
-	renderTargetMode = true;
+	renderTargetScale = scale;
 }
 
 // Close the open target and move its block out of the swapchain list. Because targets close
@@ -623,7 +628,7 @@ export function endTargetList(): void {
 	clipVMin = targetClipSaves[cs + 10];
 	clipVMax = targetClipSaves[cs + 11];
 	clipRecorded = targetClipSaves[cs + 12] != 0.0;
-	renderTargetMode = targetDepthNow > 0;
+	renderTargetScale = targetScaleSaves[targetDepthNow];
 }
 
 // The clip the replay should be under from here on. The rect is a coarse hardware scissor;
@@ -725,7 +730,7 @@ test "the sampler index packs smooth and tileWrap into the four combinations" {
 test "a closed target block leaves the swapchain list and lands in the target list" {
 	resetList();
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
-	beginTargetList(7, 64.0, 32.0, 0.0, 0.0, 0.0, 0.0);
+	beginTargetList(7, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	endTargetList();
 	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
@@ -746,9 +751,9 @@ test "a closed target block leaves the swapchain list and lands in the target li
 
 test "a nested target is replayed before the target that consumes it" {
 	resetList();
-	beginTargetList(10, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0);
+	beginTargetList(10, 8.0, 8.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 0, 6, 100, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
-	beginTargetList(11, 4.0, 4.0, 0.0, 0.0, 0.0, 0.0);
+	beginTargetList(11, 4.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 6, 6, 200, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	endTargetList();
 	recordDraw(BreakReason.View, 12, 6, 300, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
@@ -770,7 +775,7 @@ test "a nested target is replayed before the target that consumes it" {
 test "a target starts with no clip and gives the outer clip back when it closes" {
 	resetList();
 	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-	beginTargetList(3, 16.0, 16.0, 0.0, 0.0, 0.0, 0.0);
+	beginTargetList(3, 16.0, 16.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	// The outer Mask must not scissor the target: its coordinates are the target's own.
 	// Recording the same rect the outer list holds therefore has to emit a real scissor.
 	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -780,11 +785,14 @@ test "a target starts with no clip and gives the outer clip back when it closes"
 	assert commandCount() == 1;
 	assert targetCommandCount() == 3;
 	assert (targetCommandField(1, CMD_KIND) as int32) == (CommandKind.Scissor as int32);
+	assert (targetCommandField(1, CMD_EFFECT) as int32) == NO_EFFECT;
 }
 
 test "the target stack refuses to overflow and says so" {
 	resetList();
-	for (let i: int32 = 0; i < 9; i++) { beginTargetList(1, 4.0, 4.0, 0.0, 0.0, 0.0, 0.0); }
+	for (let i: int32 = 0; i < 9; i++) {
+		beginTargetList(1, 4.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.0);
+	}
 	assert targetStackOverflowed();
 	assert targetDepth() == 8;
 	for (let i: int32 = 0; i < 8; i++) { endTargetList(); }
@@ -887,4 +895,5 @@ test "every break reason an emitter can produce is one this module still defines
 	assert breakReasonName(BreakReason.Effect as int32).equals("effect");
 	assert breakReasonName(BreakReason.Clip as int32).equals("clip");
 	assert breakReasonName(BreakReason.Barrier as int32).equals("barrier");
+	assert breakReasonName(BreakReason.Pipeline as int32).equals("pipeline");
 }
