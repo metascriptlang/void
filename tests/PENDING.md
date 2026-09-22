@@ -158,7 +158,7 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 ## Oracles not wired
 
-[docs/TESTING.md](../docs/TESTING.md) "T3" lists these as "wire it". None exists yet.
+[docs/TESTING.md](../docs/TESTING.md) "T3" lists these five as "wire it"; P2's rounded-rect and shadow coverage oracles already run in every gate.
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|

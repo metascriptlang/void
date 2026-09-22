@@ -445,10 +445,11 @@ commented out and everything else identical, `out/benchUi.exe` printed
 budget never rearmed. With it restored, the same binary printed all nine counters at their
 `tests/bench/baseline.json` values and the full gate read `48 pass, 0 pending, 0 fail of 48`.
 
-**The limit, stated rather than implied:** `voidCommit` is not the only `sg_commit` in the tree —
-`src/void3d/gpu3d.c:329 gpu3dCommit` is the other. A frame that draws void2d and commits through
-void3d's path still latches, which is why the 16-bracket complaint stays rather than being deleted
-as answered.
+**The limit is now closed.** This audit found that `voidCommit` was still not the only
+`sg_commit` path: `renderer.endFrame` reached the duplicate `gpu3dCommit` wrapper. The wrapper
+and its C declaration are gone; void3d imports the shared bridge commit. The permanent mixed
+capture draws 3D and void2d in one pass, commits once, then starts a second frame and requires
+the captures to match with a fresh one-draw void2d counter each time.
 
 ### Two things about the evidence itself, recorded because they qualify it
 

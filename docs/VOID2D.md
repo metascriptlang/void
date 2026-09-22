@@ -235,32 +235,34 @@ coverage and the wrong blur all exceed the accepted bounds; the real rotated edg
 
 **Findings, in closure order:**
 
-1. **The mixed void3d → void2d frame boundary is not proved and is currently wrong.**
-   `void2dSetup` closes frame state through the hook in `voidCommit`, but
-   `renderer.endFrame` reaches `gpu3dCommit`, whose C implementation calls `sg_commit`
-   directly. That bypasses `void2dFrameEnd`, so a 3D frame followed by a 2D HUD can leave the
-   atlas upload and retired-resource lifecycle latched. Reuse the existing shared commit path;
-   then add one composed capture that draws 3D, draws void2d, commits once, and starts a second
-   frame.
+1. ~~**The mixed void3d → void2d frame boundary was unproved and wrong.**~~ **Closed after
+   this audit.** `renderer.endFrame` now imports the bridge's shared `commit`; the duplicate
+   `gpu3dCommit` declaration, wrapper and direct `sg_commit` site are gone. The permanent
+   `tests/integration/mixedFrame.ms` capture draws the cube and a void2d overlay in one
+   swapchain pass, commits once, starts a second frame, and requires the two fixed-state
+   captures to match. Its per-frame void2d draw-count assertion is the regression guard:
+   the old path left that count accumulating because `void2dFrameEnd` never ran.
 2. **Guardrail 9 is still a D3D11 claim, not a platform claim.** The six other surfaces are
    explicit SKIPs. The honesty is good; the risk remains until at least one GLES3 path runs the
    same 56 images and the browser paths have a driver.
 3. **The performance gate protects shape, not timing.** It correctly gates one draw, buffer
    count, instance count, upload bytes and zero dropped frames. `tests/bench/baseline.json`
-   still has `taken.load` and `taken.context` as null, so the reported 8.88 ms UI result is not
-   a phase-end A/B and must not be used as one.
-4. **The ledgers have drifted behind the executable evidence.** `tests/PENDING.md` still says
-   no T3 oracle exists even though three coverage checks run, and parts of `docs/TESTING.md`
-   still describe pre-shadow/P1 state. Counts and phase claims should be updated from the gate,
-   not by copying this paragraph.
+   still has `taken.load` and `taken.context` as null. The observed 18.6 ms standalone /
+   10.8 ms in-gate spread is evidence that those fields are necessary, not a phase-end result;
+   P2 makes no new timing claim until the controlled interleaved A/B fills them.
+4. ~~**The ledgers had drifted behind the executable evidence.**~~ **Corrected after this
+   audit.** `tests/PENDING.md` now says its five rows are the oracles still unwired rather
+   than claiming none exists; `docs/TESTING.md` records both coverage oracles, their capture
+   checks and the current 56-scene D3D11 count.
 5. **Reserved UI modes need production reachability checks when they land.**
    `uiPipelineCheck.ms` can emit raw mode instances, which proves shader/pipeline batching but
    not that a retained node can reach each mode. Gradient, image, underline and selection
    should graduate with one emitter-level assertion each, rather than another parallel harness.
 
-The next QC order is therefore: shared commit plus a mixed-surface two-frame capture; one
-non-D3D11 conformance run; a controlled phase-end timing A/B; then ledger repair. None requires
-a second renderer or a new batching mechanism.
+The shared-commit defect is closed without a second renderer or a new batching mechanism.
+The next P2 correctness boundary is the rotated-Mask clip: it is the still-open half of the
+37° card exit row. Non-D3D11 conformance remains P3 work; the controlled timing A/B remains
+a P2 phase-end measurement rather than a number minted by an incidental gate run.
 
 ## Roadmap
 

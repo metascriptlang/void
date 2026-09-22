@@ -193,7 +193,7 @@ Where ground truth can come from outside void, it should, because a hand-written
 | Shaping: glyph ids, clusters, advances, offsets, OpenType features | **HarfBuzz** (`hb-shape --output-format=json`) over (font, size, text, features) rows | `tests/oracle/shape.json` | **Wire it.** Full version at P6 with the shaper; a subset (cmap + GPOS kerning, features off) is usable at P3 |
 | Font metrics: `unitsPerEm`, ascent/descent/lineGap, underline and strikethrough position and thickness, broken-table fallbacks (GHOSTTY.md:62) | **fontTools**, reading `head`/`hhea`/`OS_2`/`post` directly | `tests/oracle/metrics.json` | **Wire it.** Exact, cheap, and it covers a GPUI weakness (GPUI ignores the font's underline metric, GPUI.md:54) |
 | Grapheme clusters, line-break opportunities | **The Unicode UCD conformance files** `GraphemeBreakTest.txt`, `LineBreakTest.txt` | vendored under `tests/oracle/ucd/` with their version | **Wire it** at P4. Ground truth from the standard, so there is no second implementation to distrust |
-| Analytic coverage of the SDF primitives | **A CPU reference**: the same rounded-rect and `erf`-shadow definitions supersampled 16×16 per pixel | `tests/oracle/coverage.ms` | **Wired at P2**, rounded-rect half, in T0 so it runs in every gate with no GPU. It earned itself immediately: it rejected `smoothstep` as the coverage curve **before the SDF reached a shader**. True area under a straight edge is LINEAR in distance; smoothstep overshoots by 0.09375 at the quarter points, 24 levels of 255 on every antialiased edge. Linear now measures exactly 0 error on a straight edge and 0.043 around a corner. The `erf` shadow half waits for the shadow mode (`oracle:coverage-shadow`) |
+| Analytic coverage of the SDF primitives | **A CPU reference**: exact rounded-rect geometry supersampled 16×16 per device pixel, and a numerical Gaussian integral for the `erf` shadow | `tests/oracle/coverage.ms`, `tests/oracle/captureCheck.ms` | **Wired at P2 in T0 and against captures.** The T0 controls reject `smoothstep` by 0.09375 and a blur one fifth wrong; the accepted arithmetic measures 0 on a straight edge and 0.0078 on the tested shadow. The capture check independently judges the committed or freshly captured shader output: rotated AA measures 0.0502 against 0.06, and the shadow 0.0251 against 0.035. |
 | h2d semantics: `getBounds`, `localToGlobal`/`globalToLocal`, mask intersection, scale modes, text metrics | **Heaps compiled to JS**, which SCENE-SCALE.md:204 records as already runnable here | `tests/oracle/h2d.json` | **Wire it, second priority.** It is the only mechanical check that "void2d stays h2d in interface and semantics" (VOID2D.md "The rule") is still true. Its PENDING list is already written: the deliberate divergences in HEAPS.md "The h2d contract" and "Do not copy from h2d" — four-corner mask AABB, `ScaleMode.Zoom`/`AutoZoom`, `lineSpacing` units, the looser `colorKey` threshold |
 | Oklab / sRGB interpolation, the gamma/contrast table | the published matrices; GPUI's 13-row `gamma_ratios` (`gpui/src/platform.rs:1344-1378`) is itself the source constant | — | **T0, not an oracle.** Our table equals theirs, or it does not |
 | Glyph rasterization | FreeType, unhinted, same size and offset | — | **Not ground truth.** void2d deliberately does not match FreeType: stb_truetype in the pixel-exact regime with its own four x-variants. Usable as a shape smoke check with a loose coverage bound — is the outline right? — and never as a gate on pixels. Say so rather than implying otherwise |
@@ -283,11 +283,11 @@ in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Status after P0: one backend of five, and the number is printed.**
+**Current status, 2026-09-22: one backend of seven, and the number is printed.**
 
-| Backend | Conformance, 2026-09-20 | Runs |
+| Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **48 / 48 scenes byte-identical** | every gate, this box |
+| D3D11 | **56 / 56 scenes byte-identical** | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path is written in `tests/capture/capture.c` and no GLES3 build has exercised it | SKIP |
 | Metal macOS | no readback | SKIP |
 | Metal iOS | no readback; the first device run is T5 | SKIP |
