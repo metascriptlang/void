@@ -30,7 +30,7 @@ and only three of the rows below have the second one enforced: `bounds-transform
 `tests/oracle/bounds3d.cases`, which the `oracle` stage checks in both directions against real
 Heaps. The control: making `size()` answer Heaps' −2e20 while leaving its `// PENDING3D:` line
 untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines. For
-the other seven rows there is no second stage, so fixing the divergence and forgetting the
+the other six rows there is no second stage, so fixing the divergence and forgetting the
 comment keeps the gate green — the row would survive until a reader noticed. The two rows
 whose sentinel is a sentence in `docs/VOID3D.md` are weaker still: they track the *prose*, so
 rewording the sentence reddens the gate and changing the world behind it does not.
@@ -49,7 +49,6 @@ for, and it is why the three bounds rows are the ones to copy.
 | `scene-flags-not-bitset` | Node flags are bits in an `int32` where CODE-STYLE §4 asks for `BitSet<E>`. A version floor: msc 0.2.53 has no `BitSet`. | `src/void3d/scene.ms` | whichever msc first ships `BitSet` |
 | `mesh-node-name-collision` | The scene's mesh writer is `addMeshNode` rather than Heaps' name, because two `ref`-receiver free functions with one name resolve to the wrong one **silently** (compiler card `2026-09-20-ref-receiver-not-an-extension.md`). | `src/void3d/scene.ms` | when a `ref this` receiver parses |
 | `light-params-divergence` | A light node carries `radius` and `power` where Heaps' fwd PointLight carries `params` (constant, linear, quadratic attenuation) and its DirLight folds intensity into color: the toon shader quantizes total energy before multiplying color, and folding power in would quantize at a different place. The block holds one directional and four point slots, and a scene past that is an error rather than the silent top-N drop fwd.LightSystem does. | `src/void3d/scene.ms` | deliberate |
-| `example-billboards-not-rebuildable` | The campfire cannot rebuild its billboard corner buffer, grass and flame instance buffers, or its two generated textures after a context loss: regenerating them re-rolls the shared `nextRandom()` and changes the image. Needs kept pixels or a reset seed. | `src/examples/campfireScene.ms` | M7 |
 | `baselines-adopted-circular` | `m3preview_*`, `m3direct_*` and `m3depth_*` were adopted at `16c6546` because the M4 worktree's copies were never carried over. Comparing against an adopted image is circular; the non-circular evidence is gone. | `docs/VOID3D.md` phrase `plausible* M4 images` | never — it is a permanent hole in the record, kept visible |
 | `gles3-emulator-only` | The GLES3 path now runs — `tests/device/gles3Campfire.png` is the frame — but on the **Android emulator** (`ro.hardware.egl=emulation`, arm64 under binary translation), not on a device, and against no baseline. Every byte-identity claim in this port remains D3D11-only, including the FMA result. | `docs/VOID3D.md` phrase `not a device` | a run on the Seeker, compared against something |
 

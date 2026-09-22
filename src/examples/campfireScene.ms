@@ -19,6 +19,10 @@ import {
 	makeVertexBuffer,
 	makeImage,
 	makeTextureView,
+	destroyBuffer,
+	destroyImage,
+	destroyView,
+	destroySampler,
 } from "../void3d/gpu3d";
 import { RenderState, Face, Compare } from "../void3d/pass";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
@@ -168,6 +172,17 @@ let grassBuffer: uint32 = 0;
 let grassCount: int32 = 0;
 let grassTexture: uint32 = 0;
 let flameTexture: uint32 = 0;
+let grassImage: uint32 = 0;
+let flameImage: uint32 = 0;
+// The CPU copies a lost context rebuilds the billboards from: the pixels each texture was
+// uploaded from (the shared scratch is overwritten by the second build) and the mesh and
+// material slots the re-made handles go back into.
+let tuftPixels: Vec<uint32> = [];
+let flamePixels: Vec<uint32> = [];
+let billboardCornerBuffer: uint32 = 0;
+let grassMesh: int32 = 0;
+let grassMaterial: int32 = 0;
+let flameMaterial: int32 = 0;
 let frameIndex: int32 = 0;
 let randomState: uint64 = 88172645463325252;
 let fireOffsetX: float32 = 0.0;
@@ -392,7 +407,7 @@ function buildTuftTexture(): uint32 {
 			}
 		}
 	}
-	return makeTextureView(makeImage(texturePixels, width, height));
+	return makeImage(texturePixels, width, height);
 }
 
 function buildFlameTexture(): uint32 {
@@ -420,16 +435,19 @@ function buildFlameTexture(): uint32 {
 			}
 		}
 	}
-	return makeTextureView(makeImage(texturePixels, width, height));
+	return makeImage(texturePixels, width, height);
+}
+
+function deterministicFlameInstance(frame: int32): Vec<float32> {
+	return [
+		0.0, 0.05, 0.0, frame as float32,
+		0.95, 1.2, 1.0, 1.0,
+	];
 }
 
 function buildFlameBuffers(): void {
 	for (let frame = 0; frame < FLAME_FRAMES; frame++) {
-		const instance: Vec<float32> = [
-			0.0, 0.05, 0.0, frame as float32,
-			0.95, 1.2, 1.0, 1.0,
-		];
-		flameBuffers.push(makeVertexBuffer(instance));
+		flameBuffers.push(makeVertexBuffer(deterministicFlameInstance(frame)));
 	}
 }
 
@@ -455,7 +473,7 @@ function updateFlicker(): void {
 // discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
 function setupDraws(): void {
 	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
-	const cornerBuffer: uint32 = makeVertexBuffer(CORNERS);
+	billboardCornerBuffer = makeVertexBuffer(CORNERS);
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
@@ -477,21 +495,18 @@ function setupDraws(): void {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: litBlock,
 	});
-	const grassMaterial: int32 = addMaterial(context, {
+	grassMaterial = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
 		sampler0: pointSampler.handle,
 		uniforms: spriteBlock,
 	});
-	const flameMaterial: int32 = addMaterial(context, {
+	flameMaterial = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: flameTexture,
 		sampler0: pointSampler.handle,
 		uniforms: spriteBlock,
 	});
-	// Every lit piece carries CPU data, so all of them are rebuilt by the renderer after a
-	// context loss. The billboards below keep their buffers in this file and are still not
-	// rebuilt (docs/VOID3D.md, "Still missing").
 	const root: NodeId = tree.rootId();
 	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
 	if (!group.ok) { return; }
@@ -542,9 +557,9 @@ function setupDraws(): void {
 			addMeshNode(tree, under, placements[i], uploaded.value, litMaterial);
 		if (!placed.ok) { return; }
 	}
-	const grassMesh: int32 = addMesh(
+	grassMesh = addMesh(
 		context,
-		GpuMesh.external(VertexLayout.Billboard, cornerBuffer, grassBuffer, 6, grassCount),
+		GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, grassBuffer, 6, grassCount),
 	);
 	const grassNode: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
@@ -553,7 +568,7 @@ function setupDraws(): void {
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
 			context,
-			GpuMesh.external(VertexLayout.Billboard, cornerBuffer, flameBuffer, 6, 1),
+			GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, flameBuffer, 6, 1),
 		);
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space
@@ -596,10 +611,48 @@ export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 	logSpinPerFrame = radiansPerFrame;
 }
 
-// Only meshes with CPU data come back; the billboards' buffers are this file's and are left
-// alone, which is the half of the contract that would show up as a blank screen if it broke.
-// PENDING3D: example-billboards-not-rebuildable
+function copyTexturePixels(): Vec<uint32> {
+	const kept: Vec<uint32> = new Array(texturePixels.length as int32);
+	for (let i = 0; i < (texturePixels.length as int32); i++) { kept[i] = texturePixels[i]; }
+	return kept;
+}
+
+// Everything this file owns is re-made from its CPU copies — corners and grass instances back
+// into buffers, the kept pixels back into textures, the sampler afresh — and the re-made
+// handles are written back into the external meshes and materials that hold them. Nothing
+// re-rolls the RNG: the grass and the textures were generated once, and a rebuild replays
+// data, not chance.
 function forceRebuild(): void {
+	destroyBuffer(billboardCornerBuffer);
+	destroyBuffer(grassBuffer);
+	for (let i = 0; i < (flameBuffers.length as int32); i++) {
+		destroyBuffer(flameBuffers[i]);
+	}
+	destroyView(grassTexture);
+	destroyImage(grassImage);
+	destroyView(flameTexture);
+	destroyImage(flameImage);
+	destroySampler(pointSampler.handle);
+	billboardCornerBuffer = makeVertexBuffer(CORNERS);
+	grassBuffer = makeVertexBuffer(grassInstances);
+	for (let i = 0; i < (flameBuffers.length as int32); i++) {
+		flameBuffers[i] = makeVertexBuffer(deterministicFlameInstance(i));
+	}
+	grassImage = makeImage(tuftPixels, TUFT_CELL * ATLAS_CELLS, TUFT_CELL);
+	flameImage = makeImage(flamePixels, FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_CELL_HEIGHT);
+	grassTexture = makeTextureView(grassImage);
+	flameTexture = makeTextureView(flameImage);
+	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
+	context.materials[grassMaterial].texture0 = grassTexture;
+	context.materials[grassMaterial].sampler0 = pointSampler.handle;
+	context.materials[flameMaterial].texture0 = flameTexture;
+	context.materials[flameMaterial].sampler0 = pointSampler.handle;
+	context.meshes[grassMesh].vertexBuffer = billboardCornerBuffer;
+	context.meshes[grassMesh].instanceBuffer = grassBuffer;
+	for (let i = 0; i < (flameBuffers.length as int32); i++) {
+		context.meshes[firstFlameMesh + i].vertexBuffer = billboardCornerBuffer;
+		context.meshes[firstFlameMesh + i].instanceBuffer = flameBuffers[i];
+	}
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (context.meshes[i].generation != EXTERNAL_GENERATION) {
 			context.meshes[i].generation = 0;
@@ -649,8 +702,12 @@ export function initCampfire(): void {
 	buildScene();
 	buildGrass();
 	buildFlameBuffers();
-	grassTexture = buildTuftTexture();
-	flameTexture = buildFlameTexture();
+	grassImage = buildTuftTexture();
+	tuftPixels = copyTexturePixels();
+	grassTexture = makeTextureView(grassImage);
+	flameImage = buildFlameTexture();
+	flamePixels = copyTexturePixels();
+	flameTexture = makeTextureView(flameImage);
 	setupDraws();
 	setAmbient(tree, vec3(0.33, 0.36, 0.6));
 	setSettings(renderer, settingsWanted);
