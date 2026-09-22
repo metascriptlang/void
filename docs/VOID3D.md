@@ -216,10 +216,11 @@ row and two three-value port rows silently mismatch rather than failing usefully
 - `EGL_DEPTH_SIZE` stays 0: the scene renders offscreen with its own depth attachment, and the swapchain only receives the blit.
 - Frame pacing (30 / ~10 / on demand) is the host's call; `needsFrame` says whether the next frame would differ from the last (M3 as built).
 
-## AUDIT: corpus, oracle, QC and architecture at `07bff24`
+## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
-This audit freezes M1–M7 at tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`;
-the uncommitted M8 glTF work is outside it.
+The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
+M8 landed while the audit was running and is reviewed separately below at tree
+`a85508e477a974d35b78e65cff2dfbb0cf104dfb`.
 
 **Verdict: the architecture follows this document without growing a general engine.**
 `scene.ms` keeps the retained `Object3D` tree small, puts meshes and lights in side tables,
@@ -237,6 +238,27 @@ frames, and a 2,371,960-byte arm64 library. The only final skip was the physical
 The scene oracle also survives fault injection: reversing `local * parent` made 4 of its 16
 cases fail.
 
+### M8 delta
+
+The implementation keeps the intended subset narrow: one caller-owned buffer, float32
+position/normal/color, uint16 indices, one primitive per mesh and node TRS. The post-delta
+gate was green with **624 tests**, the same 28 frame comparisons and oracle result, and a
+2,381,440-byte arm64 library.
+
+That is not yet an end-to-end glTF corpus. The repository contains no `.gltf` or `.glb`
+fixture, and `loadGltf` has no consumer outside its four hand-built unit tests. Nothing proves
+the accepted subset against a real Hibernal Blender export, instantiates the decoded hierarchy
+into `Scene`, uploads it, or renders it. Three fault probes also show the parser currently
+accepts shapes the subset must refuse: primitive `mode: 1` (LINES) is decoded as triangles; an
+accessor may read 36 bytes through a buffer view declaring `byteLength: 4`; and asset version
+`"2bad"` is accepted as version 2. These are validation bugs, not future-format support.
+
+The loader also imports `float32At` from `gpu3d.ms`; that pulls the whole sokol GPU bridge into
+an otherwise CPU-only decoder. A standalone `msc test` of the loader failed to link on the
+bridge's `sg_*` symbols, while the integrated suite hid the coupling by already linking sokol.
+Keep the exact little-endian float conversion, but place it at the binary-loader boundary so
+the glTF corpus remains headless.
+
 **Findings, in closure order:**
 
 1. **The visual corpus is not portable from a clean checkout.** The 24 baseline PPMs,
@@ -246,11 +268,12 @@ cases fail.
    gate is allowed to finish green with skipped stages. `docs/baselines3d.sha256` authenticates
    copies somebody already has; it does not make them available. Put the baselines and harness
    in a reproducible artifact or tracked corpus, and make their absence fail the default gate.
-2. **M8 cannot accept non-uniform glTF scale with the current lit normal path.**
-   `litVs` uses `mat3(model) * normal`; `math3d.normalMatrix` already exists, and
-   `scene3d.cases` already carries a non-uniform-scale-under-rotated-parent case, but no GPU
-   test or capture connects them. Upload the inverse-transpose normal matrix before M8 scene
-   integration, or reject non-uniform scale loudly at import. Silent acceptance is wrong.
+2. **M8 currently accepts non-uniform glTF scale that the lit shader shades incorrectly.**
+   `loadNode` preserves any three-component scale while `litVs` uses
+   `mat3(model) * normal`; `math3d.normalMatrix` already exists, and `scene3d.cases` already
+   carries a non-uniform-scale-under-rotated-parent case, but no GPU test or capture connects
+   them. Upload the inverse-transpose normal matrix before scene integration, or reject
+   non-uniform scale loudly at import. Silent acceptance is wrong.
 3. **The void3d → void2d composition boundary bypasses the shared frame lifecycle.**
    `renderer.endFrame` calls `gpu3dCommit`, and `gpu3dCommit` calls `sg_commit` instead of
    `voidCommit`; the latter owns void2d's commit hook. Use one host-owned/shared commit and
@@ -266,10 +289,11 @@ cases fail.
    GLES3 image came from an emulator without a baseline. Context loss, depth-texture sampling
    and the pixel/FMA claims still need the Seeker run.
 
-The next QC order is therefore: close or reject non-uniform-scale normals before M8; make the
-baseline corpus clean-checkout reproducible; unify commit and add the mixed-surface capture;
-then add small discriminating scenes/oracles instead of multiplying campfire configurations.
-
+The next QC order is therefore: fix M8 validation and close or reject non-uniform-scale
+normals; add one real Blender-exported asset that decodes headless, enters `Scene`, and renders
+through the existing capture; make the baseline corpus clean-checkout reproducible; unify
+commit and add the mixed-surface capture; then add small discriminating scenes/oracles instead
+of multiplying campfire configurations.
 
 ## Open questions
 
