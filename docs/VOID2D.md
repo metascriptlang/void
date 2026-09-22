@@ -565,6 +565,16 @@ and scale around the same local point. T0 pins centre/ratio/flip arithmetic, sca
 bounds, pivot mutation and child propagation; T1's rotated-Mask stream pins the child move; T2
 `xform/pivot` and `xform/tilePivot` pin the two contracts, while the Graphics-pivot demo and
 Oklab captures move as the defect requires.
+Dashed borders reuse GPUI's border style and arc-length layout without adding an instance:
+the existing box parameter lane carries the style bit, rounded boxes run one clockwise phase
+around all four sides and corners, and square boxes restart each side so both ends are dashes.
+Dash length is twice the local border width with a one-width gap; per-side widths select their
+own phase velocity, adjacent sides choose the slower corner velocity, and the final period is
+adjusted to close without a seam. The dash mask multiplies only the analytic border ring, so
+fill and the one-instance drop/inset shadow remain unchanged. T1 `boxStyle` pins the style bit
+beside asymmetric radii and widths; T2 `prim/dashedBorder` pins rounded, square, rotated,
+asymmetric and shadowed forms. T2 `snap/zeroBorder` separately proves a bright zero-width
+border contributes no pixels.
 
 **Exit.**
 
