@@ -1,6 +1,4 @@
-commands 1 draws 1 vertices 0 uiInstances 4 spriteInstances 0
-cmd 0 draw break:first view:0 blend:0 sampler:2 effect:-1 rt:0 pipe:ui inst:0+4 clip:0.00,0.00,0.00,0.00
-u 0 mode 1 affine 1.00 0.00 0.00 1.00 at 5.00 2.00 size 62.00 48.00 uvr 4.00 6.00 8.00 10.00 border 20.00 14.00 3.00 0.00 params 0.00 0.00 0.00 2.00 1.00 0.00 0.00 fill 0.00 0.00 0.00 0.00 edge 0.00 0.00 0.00 0.00
-u 1 mode 0 affine 1.00 0.00 0.00 1.00 at 16.00 12.00 size 40.00 28.00 uvr 4.00 6.00 8.00 10.00 border 1.00 1.00 1.00 1.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.20 0.40 0.60 0.80 edge 0.90 0.90 0.95 1.00
-u 2 mode 0 affine 1.00 0.00 0.00 1.00 at 64.00 16.00 size 36.00 22.00 uvr 5.00 5.00 5.00 5.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.85 0.88 0.94 1.00 edge 0.00 0.00 0.00 0.00
-u 3 mode 1 affine 1.00 0.00 0.00 1.00 at 64.00 16.00 size 36.00 22.00 uvr 5.00 5.00 5.00 5.00 border 18.00 11.00 2.50 1.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.00 0.00 0.00 0.00 edge 0.00 0.00 0.00 0.00
+commands 1 draws 1 vertices 0 uiInstances 2 spriteInstances 0
+cmd 0 draw break:first view:0 blend:0 sampler:2 effect:-1 rt:0 pipe:ui inst:0+2 clip:0.00,0.00,0.00,0.00
+u 0 mode 0 affine 1.00 0.00 0.00 1.00 at 5.00 2.00 size 62.00 48.00 uvr 4.00 6.00 8.00 10.00 border 1.00 1.00 1.00 1.00 params 0.00 0.00 0.00 2.00 1.00 3.00 0.00 fill 0.20 0.40 0.60 0.80 edge 0.90 0.90 0.95 1.00
+u 1 mode 0 affine 1.00 0.00 0.00 1.00 at 64.00 16.00 size 36.00 22.00 uvr 5.00 5.00 5.00 5.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 2.50 1.00 fill 0.85 0.88 0.94 1.00 edge 0.00 0.00 0.00 0.00

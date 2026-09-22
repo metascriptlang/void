@@ -322,9 +322,10 @@ test "T1 snapshot: a card and its label are one UI run of mixed modes" {
 	assert snapshot("glyphs", record(glyphScene(), 128.0, 64.0, 1.0));
 }
 
-test "T1 snapshot: a shadowed box is two instances of one run, drop under and inset over" {
-	// The drop shadow precedes its box in the stream and the inset follows its fill, because
-	// blend order is instance order; the snapshot pins both orders and the inflated quad.
+test "T1 snapshot: a shadowed box is one instance carrying shadow, fill and border" {
+	// cardOneInstance: the drop card and the inset well each record as ONE mode-0 instance
+	// whose params1 carries (offsetX, offsetY, sigma, inset) and whose quad is inflated by
+	// the drop's kernel reach - the snapshot pins the lanes and the inflation.
 	assert snapshot("boxShadow", record(boxShadowScene(), 128.0, 64.0, 1.0));
 }
 
