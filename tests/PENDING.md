@@ -96,7 +96,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:prim/cardOneInstance | T2 | scene not renderable until P2 — shadow, fill and border in one instance | P2 | 2026-09-20 |
 | golden-missing:prim/gradientOklab | T2 | scene not renderable until P2 — gradients are per-vertex sRGB today | P2 | 2026-09-20 |
 | golden-missing:prim/gradientMultiStop | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
 | golden-missing:prim/ditherBand | T2 | scene not renderable until P2 — no dither today | P2 | 2026-09-20 |

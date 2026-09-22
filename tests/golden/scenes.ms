@@ -323,6 +323,26 @@ function primAaShadow(): Scene {
 	return s;
 }
 
+// P2's exit scene: a rounded, bordered, shadowed, translucent card is ONE instance, rotated
+// 37 degrees so the corner AA, the border width and the shadow's local-space extent all
+// have to survive the affine. The label under it proves the card still shares a run.
+function primCardOneInstance(): Scene {
+	const s = scene(DARK);
+	const card = rect(180.0, 96.0, rgba(0.24, 0.44, 0.66, 0.82)).at(120.0, 95.0);
+	card.pivotX = 90.0;
+	card.pivotY = 48.0;
+	card.rotation = 0.6458;
+	card.setBoxStyle(castShadow(boxStyle(
+		cornerRadii(22.0, 8.0, 18.0, 4.0),
+		borderWidths(3.0, 1.5, 3.0, 1.5),
+		rgba(0.93, 0.95, 1.0, 1.0),
+	), rgba(0.01, 0.01, 0.05, 0.5), 8.0, 9.0, 12.0));
+	s.add(card);
+	const text = label("one instance", 14.0, rgba(0.93, 0.96, 1.0, 1.0)).at(158.0, 14.0);
+	s.add(text);
+	return s;
+}
+
 function xformRotate(): Scene {
 	const s = scene(DARK);
 	const upright = card(56.0, 36.0).at(40.0, 44.0);
@@ -872,6 +892,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/dropShadow", build: primDropShadow },
 		{ name: "prim/insetShadow", build: primInsetShadow },
 		{ name: "prim/aaShadow", build: primAaShadow },
+		{ name: "prim/cardOneInstance", build: primCardOneInstance },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },
