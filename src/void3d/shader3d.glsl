@@ -79,8 +79,8 @@ layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
     vec3 n = normalize(worldNormal);
-    float moon = step(0.35, dot(n, dirLight.xyz)) * dirLight.w;
-    vec3 shaded = baseColor.rgb * (ambient.rgb + dirColor.rgb * vec3(moon));
+    float lambert = step(0.35, dot(n, dirLight.xyz)) * dirLight.w;
+    vec3 shaded = baseColor.rgb * (ambient.rgb + dirColor.rgb * vec3(lambert));
     vec3 points = vec3(0.0);
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         points += pointLightAt(i, worldPosition, n, 1.0);
