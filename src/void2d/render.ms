@@ -15,6 +15,7 @@ import {
 	setSampler,
 	pushClip,
 	popClip,
+	clipIntersectsQuad,
 	atlasGen,
 	beginTarget,
 	endTarget,
@@ -469,18 +470,21 @@ function drawContent(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	const bl = vec2(lb.xMin, lb.yMax) * world;
 	const onscreen: boolean =
 		fmax4(tl.x, tr.x, br.x, bl.x) >= 0.0 && fmin4(tl.x, tr.x, br.x, bl.x) <= vw
-		&& fmax4(tl.y, tr.y, br.y, bl.y) >= 0.0 && fmin4(tl.y, tr.y, br.y, bl.y) <= vh;
+		&& fmax4(tl.y, tr.y, br.y, bl.y) >= 0.0 && fmin4(tl.y, tr.y, br.y, bl.y) <= vh
+		&& clipIntersectsQuad(tl, tr, br, bl);
 	if (onscreen) {
 		emitNode(n, world, na, col, tl, tr, br, bl, lb.xMax - lb.xMin, lb.yMax - lb.yMin, vec2(lb.xMin, lb.yMin));
 	}
 	const masking: boolean = n.kind === DrawKind.Mask;
+	let clipSupported: boolean = true;
 	if (masking) {
-		pushClip(fmin4(tl.x, tr.x, br.x, bl.x), fmin4(tl.y, tr.y, br.y, bl.y),
-			fmax4(tl.x, tr.x, br.x, bl.x), fmax4(tl.y, tr.y, br.y, bl.y));
+		clipSupported = pushClip(tl, tr, br, bl);
 	}
-	if (n.childrenDirty) { sortByZ(n.children); n.childrenDirty = false; }
-	for (const ch of n.children) {
-		ch.draw(na, vw, vh);
+	if (clipSupported) {
+		if (n.childrenDirty) { sortByZ(n.children); n.childrenDirty = false; }
+		for (const ch of n.children) {
+			ch.draw(na, vw, vh);
+		}
 	}
 	if (masking) {
 		popClip();

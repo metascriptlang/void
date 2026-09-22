@@ -8,6 +8,8 @@ layout(binding=0) uniform void2d_params {
     vec4 model0;       // 2D affine linear part (a,b,c,d): x'=a*x+c*y+tx, y'=b*x+d*y+ty
     vec4 model1;       // xy = translation (tx,ty), zw unused
     vec4 globalColor;  // multiplied into the per-vertex tint
+    vec4 clipU;        // xy = edge axis; zw = accepted projection interval (disabled when w <= z)
+    vec4 clipV;
 };
 in vec2 pos;
 in vec2 uv0;
@@ -15,6 +17,7 @@ in vec4 color0;
 out vec2 uv;
 out vec4 color;
 out float srcPremult;
+out vec4 clipDistance;
 void main() {
     vec2 world = vec2(model0.x * pos.x + model0.z * pos.y + model1.x,
                       model0.y * pos.x + model0.w * pos.y + model1.y);
@@ -23,6 +26,13 @@ void main() {
     uv = (viewport.z > 0.5) ? vec2(uv0.x, 1.0 - uv0.y) : uv0;
     color = color0 * globalColor;
     srcPremult = viewport.w;
+    if (clipU.w > clipU.z) {
+        float cu = dot(world, clipU.xy);
+        float cv = dot(world, clipV.xy);
+        clipDistance = vec4(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+    } else {
+        clipDistance = vec4(1.0);
+    }
 }
 @end
 
@@ -40,8 +50,10 @@ layout(binding=1) uniform void2d_fx {
 in vec2 uv;
 in vec4 color;
 in float srcPremult;
+in vec4 clipDistance;
 out vec4 frag_color;
 void main() {
+    if (min(min(clipDistance.x, clipDistance.y), min(clipDistance.z, clipDistance.w)) < 0.0) { discard; }
     vec4 texel = texture(sampler2D(tex, smp), uv);
     if (colorKey.a > 0.5) {
         vec3 d = abs(texel.rgb - colorKey.rgb);
@@ -73,6 +85,8 @@ void main() {
 @vs spriteVs
 layout(binding=0) uniform sprite_params {
     vec4 viewport;     // xy = framebuffer size in px; z = flipV; w = srcAlreadyPremult
+    vec4 clipU;
+    vec4 clipV;
 };
 in vec2 corner;
 in vec4 iAffine;      // a,b,c,d
@@ -82,6 +96,7 @@ in vec4 iColor;
 out vec2 uv;
 out vec4 color;
 out float srcPremult;
+out vec4 clipDistance;
 void main() {
     vec2 local = corner * iOriginSize.zw;
     vec2 world = vec2(iAffine.x * local.x + iAffine.z * local.y + iOriginSize.x,
@@ -92,6 +107,13 @@ void main() {
     uv = (viewport.z > 0.5) ? vec2(t.x, 1.0 - t.y) : t;
     color = iColor;
     srcPremult = viewport.w;
+    if (clipU.w > clipU.z) {
+        float cu = dot(world, clipU.xy);
+        float cv = dot(world, clipV.xy);
+        clipDistance = vec4(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+    } else {
+        clipDistance = vec4(1.0);
+    }
 }
 @end
 
@@ -101,8 +123,10 @@ layout(binding=0) uniform sampler spriteSmp;
 in vec2 uv;
 in vec4 color;
 in float srcPremult;
+in vec4 clipDistance;
 out vec4 frag_color;
 void main() {
+    if (min(min(clipDistance.x, clipDistance.y), min(clipDistance.z, clipDistance.w)) < 0.0) { discard; }
     vec4 c = texture(sampler2D(spriteTex, spriteSmp), uv) * color;
     c.rgb = mix(c.rgb, c.rgb * color.a, srcPremult);
     vec4 premult = vec4(c.rgb * c.a, c.a);
@@ -128,6 +152,8 @@ void main() {
 @vs uiVs
 layout(binding=0) uniform ui_params {
     vec4 viewport;     // xy = framebuffer size in px; z = flipV; w unused
+    vec4 clipU;
+    vec4 clipV;
 };
 in vec2 corner;
 in vec4 iAffine;      // a,b,c,d
@@ -147,6 +173,7 @@ out vec4 vParams1;
 out vec4 vFill;
 out vec4 vBorder;
 out vec4 vExtra;
+out vec4 clipDistance;
 void main() {
     // One device pixel across an edge, in the node's local units — the geometric mean of the
     // two axis lengths, so a non-uniform scale gets one width rather than a direction-
@@ -174,6 +201,13 @@ void main() {
     vFill = iColorFill;
     vBorder = iColorBorder;
     vExtra = iColorExtra;
+    if (clipU.w > clipU.z) {
+        float cu = dot(world, clipU.xy);
+        float cv = dot(world, clipV.xy);
+        clipDistance = vec4(cu - clipU.z, clipU.w - cu, cv - clipV.z, clipV.w - cv);
+    } else {
+        clipDistance = vec4(1.0);
+    }
 }
 @end
 
@@ -188,6 +222,7 @@ in vec4 vParams1;
 in vec4 vFill;
 in vec4 vBorder;
 in vec4 vExtra;
+in vec4 clipDistance;
 out vec4 frag_color;
 
 // Negative inside. `r` is clamped to the largest radius the box can hold, because a radius
@@ -272,6 +307,7 @@ float shadowCoverage(vec2 p, vec2 half_, vec4 radii, vec2 offset, float sigma, f
 }
 
 void main() {
+    if (min(min(clipDistance.x, clipDistance.y), min(clipDistance.z, clipDistance.w)) < 0.0) { discard; }
     vec2 p = vLocalHalf.xy;
     vec2 half_ = vLocalHalf.zw;
     float aa = vUvAa.z;

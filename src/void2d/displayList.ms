@@ -20,7 +20,8 @@
 //
 // The colour pipeline (a 4x4 matrix, an add and a chroma key: 24 floats) is the bulk of a
 // command and is the identity almost everywhere, so it lives in its own table and a command
-// carries an index into it, or NO_EFFECT. That keeps a command at 24 floats.
+// carries an index into it, or NO_EFFECT. The active rotated clip adds two projection
+// intervals; axis-aligned clips stay in the hardware scissor.
 
 import { Color, BlendMode } from "./types";
 import {
@@ -59,7 +60,7 @@ export enum BreakReason {
 	Pipeline,
 }
 
-export const COMMAND_FLOATS: int32 = 24;
+export const COMMAND_FLOATS: int32 = 32;
 export const EFFECT_FLOATS: int32 = 24;
 export const VERTEX_FLOATS: int32 = 8;
 export const NO_EFFECT: int32 = -1;
@@ -83,13 +84,10 @@ export const CMD_CLIP_W: int32 = 10;
 export const CMD_CLIP_H: int32 = 11;
 export const CMD_ARG0: int32 = 12;
 export const CMD_ARG1: int32 = 13;
+export const CMD_RT_MODE: int32 = 14;
 // Which pipeline set the replay must bind: the swapchain one, or the offscreen one (single
 // sample, no depth). It is per command because it is state the replay needs, and the record
 // is the only thing that reaches the replay.
-export const CMD_RT_MODE: int32 = 14;
-// TargetBegin only: what the pass clears its target to. A command record is 24 floats and
-// only 15 were named, so this is four fields of its own rather than a reuse of the clip
-// fields, which a TargetBegin does not carry but every other command does.
 export const CMD_CLEAR_R: int32 = 15;
 export const CMD_CLEAR_G: int32 = 16;
 export const CMD_CLEAR_B: int32 = 17;
@@ -101,6 +99,14 @@ export const CMD_CLEAR_A: int32 = 18;
 export const CMD_PIPELINE: int32 = 19;
 export const CMD_INSTANCE_OFFSET: int32 = 20;
 export const CMD_INSTANCE_COUNT: int32 = 21;
+export const CMD_CLIP_U_X: int32 = 22;
+export const CMD_CLIP_U_Y: int32 = 23;
+export const CMD_CLIP_U_MIN: int32 = 24;
+export const CMD_CLIP_U_MAX: int32 = 25;
+export const CMD_CLIP_V_X: int32 = 26;
+export const CMD_CLIP_V_Y: int32 = 27;
+export const CMD_CLIP_V_MIN: int32 = 28;
+export const CMD_CLIP_V_MAX: int32 = 29;
 
 export enum Pipeline {
 	Vertex,
@@ -143,7 +149,7 @@ let spriteInstanceTotal: int32 = 0;
 // past it records into the parent instead of corrupting the stack, and says so.
 const MAX_TARGET_DEPTH: int32 = 8;
 const targetMarks: Vec<int32> = new Array(MAX_TARGET_DEPTH);
-const targetClipSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH * 5);
+const targetClipSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH * 13);
 let targetDepthNow: int32 = 0;
 let targetOverflowed: boolean = false;
 
@@ -153,6 +159,14 @@ let clipX: float32 = 0.0;
 let clipY: float32 = 0.0;
 let clipW: float32 = 0.0;
 let clipH: float32 = 0.0;
+let clipUX: float32 = 0.0;
+let clipUY: float32 = 0.0;
+let clipUMin: float32 = 0.0;
+let clipUMax: float32 = 0.0;
+let clipVX: float32 = 0.0;
+let clipVY: float32 = 0.0;
+let clipVMin: float32 = 0.0;
+let clipVMax: float32 = 0.0;
 let clipRecorded: boolean = false;
 let renderTargetMode: boolean = false;
 
@@ -173,6 +187,14 @@ export function resetList(): void {
 	clipY = 0.0;
 	clipW = 0.0;
 	clipH = 0.0;
+	clipUX = 0.0;
+	clipUY = 0.0;
+	clipUMin = 0.0;
+	clipUMax = 0.0;
+	clipVX = 0.0;
+	clipVY = 0.0;
+	clipVMin = 0.0;
+	clipVMax = 0.0;
 	renderTargetMode = false;
 	targetDepthNow = 0;
 	targetOverflowed = false;
@@ -379,6 +401,14 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	commands[base + CMD_CLIP_Y] = clipY;
 	commands[base + CMD_CLIP_W] = clipW;
 	commands[base + CMD_CLIP_H] = clipH;
+	commands[base + CMD_CLIP_U_X] = clipUX;
+	commands[base + CMD_CLIP_U_Y] = clipUY;
+	commands[base + CMD_CLIP_U_MIN] = clipUMin;
+	commands[base + CMD_CLIP_U_MAX] = clipUMax;
+	commands[base + CMD_CLIP_V_X] = clipVX;
+	commands[base + CMD_CLIP_V_Y] = clipVY;
+	commands[base + CMD_CLIP_V_MIN] = clipVMin;
+	commands[base + CMD_CLIP_V_MAX] = clipVMax;
 	commands[base + CMD_RT_MODE] = renderTargetMode ? 1.0 : 0.0;
 	commandTotal = commandTotal + 1;
 	return base;
@@ -472,12 +502,20 @@ export function beginTargetList(
 		return;
 	}
 	targetMarks[targetDepthNow] = commandTotal;
-	const cs: int32 = targetDepthNow * 5;
+	const cs: int32 = targetDepthNow * 13;
 	targetClipSaves[cs] = clipX;
 	targetClipSaves[cs + 1] = clipY;
 	targetClipSaves[cs + 2] = clipW;
 	targetClipSaves[cs + 3] = clipH;
-	targetClipSaves[cs + 4] = clipRecorded ? 1.0 : 0.0;
+	targetClipSaves[cs + 4] = clipUX;
+	targetClipSaves[cs + 5] = clipUY;
+	targetClipSaves[cs + 6] = clipUMin;
+	targetClipSaves[cs + 7] = clipUMax;
+	targetClipSaves[cs + 8] = clipVX;
+	targetClipSaves[cs + 9] = clipVY;
+	targetClipSaves[cs + 10] = clipVMin;
+	targetClipSaves[cs + 11] = clipVMax;
+	targetClipSaves[cs + 12] = clipRecorded ? 1.0 : 0.0;
 	targetDepthNow = targetDepthNow + 1;
 	const base: int32 = startCommand(CommandKind.TargetBegin, BreakReason.Barrier);
 	commands[base + CMD_VIEW] = rt as float32;
@@ -493,6 +531,14 @@ export function beginTargetList(
 	clipY = 0.0;
 	clipW = 0.0;
 	clipH = 0.0;
+	clipUX = 0.0;
+	clipUY = 0.0;
+	clipUMin = 0.0;
+	clipUMax = 0.0;
+	clipVX = 0.0;
+	clipVY = 0.0;
+	clipVMin = 0.0;
+	clipVMax = 0.0;
 	renderTargetMode = true;
 }
 
@@ -516,23 +562,45 @@ export function endTargetList(): void {
 	}
 	targetCommandTotal = targetCommandTotal + (commandTotal - mark);
 	commandTotal = mark;
-	const cs: int32 = targetDepthNow * 5;
+	const cs: int32 = targetDepthNow * 13;
 	clipX = targetClipSaves[cs];
 	clipY = targetClipSaves[cs + 1];
 	clipW = targetClipSaves[cs + 2];
 	clipH = targetClipSaves[cs + 3];
-	clipRecorded = targetClipSaves[cs + 4] != 0.0;
+	clipUX = targetClipSaves[cs + 4];
+	clipUY = targetClipSaves[cs + 5];
+	clipUMin = targetClipSaves[cs + 6];
+	clipUMax = targetClipSaves[cs + 7];
+	clipVX = targetClipSaves[cs + 8];
+	clipVY = targetClipSaves[cs + 9];
+	clipVMin = targetClipSaves[cs + 10];
+	clipVMax = targetClipSaves[cs + 11];
+	clipRecorded = targetClipSaves[cs + 12] != 0.0;
 	renderTargetMode = targetDepthNow > 0;
 }
 
-// The clip the replay should be under from here on. Recording the same rect twice is a
-// no-op, so a Mask that does not change the zone costs nothing in the stream.
-export function recordClip(x: float32, y: float32, w: float32, h: float32): void {
-	if (clipRecorded && x == clipX && y == clipY && w == clipW && h == clipH) { return; }
+// The clip the replay should be under from here on. The rect is a coarse hardware scissor;
+// the two projection intervals are the exact four edges of a rotated Mask.
+export function recordClip(
+	x: float32, y: float32, w: float32, h: float32,
+	ux: float32, uy: float32, uMin: float32, uMax: float32,
+	vx: float32, vy: float32, vMin: float32, vMax: float32,
+): void {
+	if (clipRecorded && x == clipX && y == clipY && w == clipW && h == clipH
+		&& ux == clipUX && uy == clipUY && uMin == clipUMin && uMax == clipUMax
+		&& vx == clipVX && vy == clipVY && vMin == clipVMin && vMax == clipVMax) { return; }
 	clipX = x;
 	clipY = y;
 	clipW = w;
 	clipH = h;
+	clipUX = ux;
+	clipUY = uy;
+	clipUMin = uMin;
+	clipUMax = uMax;
+	clipVX = vx;
+	clipVY = vy;
+	clipVMin = vMin;
+	clipVMax = vMax;
 	clipRecorded = true;
 	startCommand(CommandKind.Scissor, BreakReason.Clip);
 }
@@ -654,14 +722,14 @@ test "a nested target is replayed before the target that consumes it" {
 
 test "a target starts with no clip and gives the outer clip back when it closes" {
 	resetList();
-	recordClip(5.0, 6.0, 7.0, 8.0);
+	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	beginTargetList(3, 16.0, 16.0, 0.0, 0.0, 0.0, 0.0);
 	// The outer Mask must not scissor the target: its coordinates are the target's own.
 	// Recording the same rect the outer list holds therefore has to emit a real scissor.
-	recordClip(5.0, 6.0, 7.0, 8.0);
+	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	endTargetList();
 	// And back outside, the outer clip is current again, so re-recording it is a no-op.
-	recordClip(5.0, 6.0, 7.0, 8.0);
+	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	assert commandCount() == 1;
 	assert targetCommandCount() == 3;
 	assert (targetCommandField(1, CMD_KIND) as int32) == (CommandKind.Scissor as int32);
@@ -678,21 +746,25 @@ test "the target stack refuses to overflow and says so" {
 
 test "recording the same clip twice records one scissor" {
 	resetList();
-	recordClip(0.0, 0.0, 10.0, 10.0);
-	recordClip(0.0, 0.0, 10.0, 10.0);
+	recordClip(0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip(0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	assert commandCount() == 1;
-	recordClip(1.0, 0.0, 10.0, 10.0);
+	recordClip(1.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	assert commandCount() == 2;
 }
 
 test "a draw inherits the clip that was recorded before it" {
 	resetList();
-	recordClip(4.0, 5.0, 6.0, 7.0);
+	recordClip(4.0, 5.0, 6.0, 7.0, 1.0, 0.0, 4.0, 10.0, 0.0, 1.0, 5.0, 12.0);
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(1, CMD_CLIP_X) == 4.0;
 	assert commandField(1, CMD_CLIP_Y) == 5.0;
 	assert commandField(1, CMD_CLIP_W) == 6.0;
 	assert commandField(1, CMD_CLIP_H) == 7.0;
+	assert commandField(1, CMD_CLIP_U_X) == 1.0;
+	assert commandField(1, CMD_CLIP_U_MIN) == 4.0;
+	assert commandField(1, CMD_CLIP_V_Y) == 1.0;
+	assert commandField(1, CMD_CLIP_V_MAX) == 12.0;
 }
 
 test "an empty matrix records the identity" {
@@ -724,7 +796,7 @@ test "vertices land where the offset says" {
 
 test "drawCommandCount counts draws and not scissors" {
 	resetList();
-	recordClip(0.0, 0.0, 8.0, 8.0);
+	recordClip(0.0, 0.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	recordDraw(BreakReason.View, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandCount() == 3;

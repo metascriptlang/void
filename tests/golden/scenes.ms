@@ -461,8 +461,8 @@ function clipNestedMasks(): Scene {
 	return s;
 }
 
-// render.ms:204 pushes the AABB of the rotated mask, so the clip is a screen-aligned box
-// rather than the rotated rectangle. P2 replaces it with four edge distances and discard.
+// The coarse scissor is this rotated Mask's AABB; the two projection intervals carried by
+// the draw command provide its four exact fragment edges.
 function clipRotatedMask(): Scene {
 	const s = scene(DARK);
 	const m = mask(120.0, 80.0).at(128.0, 80.0);
@@ -474,9 +474,8 @@ function clipRotatedMask(): Scene {
 	return s;
 }
 
-// render.ms:191-201 culls against the viewport, not the active clip, so every row of this
-// list is emitted even though the mask shows four of them. The picture is right and the cost
-// is wrong, which is why the assertion that catches it belongs to T1 and not to this golden.
+// Forty rows with only four overlapping the active clip. T1 asserts that off-clip rows emit
+// no instances; this golden keeps the resulting picture pinned.
 function clipScrolledList(): Scene {
 	const s = scene(DARK);
 	const m = mask(200.0, 90.0).at(28.0, 30.0);

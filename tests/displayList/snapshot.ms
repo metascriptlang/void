@@ -26,6 +26,8 @@ import {
 	commandCount, vertexCount, drawCommandCount, commandField, vertexField,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
+	CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN, CMD_CLIP_U_MAX,
+	CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
 	commandKindName, breakReasonName,
 	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField,
@@ -80,6 +82,12 @@ function formatStream(): string {
 				+ `+${commandField(i, CMD_VERTEX_COUNT) as int32}`;
 		}
 		out = out + ` clip:${f2(commandField(i, CMD_CLIP_X))},${f2(commandField(i, CMD_CLIP_Y))},${f2(commandField(i, CMD_CLIP_W))},${f2(commandField(i, CMD_CLIP_H))}`;
+		if (commandField(i, CMD_CLIP_U_MAX) > commandField(i, CMD_CLIP_U_MIN)) {
+			out = out + ` edges:${f2(commandField(i, CMD_CLIP_U_X))},${f2(commandField(i, CMD_CLIP_U_Y))}`;
+			out = out + `,${f2(commandField(i, CMD_CLIP_U_MIN))},${f2(commandField(i, CMD_CLIP_U_MAX))}`;
+			out = out + ` ${f2(commandField(i, CMD_CLIP_V_X))},${f2(commandField(i, CMD_CLIP_V_Y))}`;
+			out = out + `,${f2(commandField(i, CMD_CLIP_V_MIN))},${f2(commandField(i, CMD_CLIP_V_MAX))}`;
+		}
 		out = out + "\n";
 	}
 	for (let i: int32 = 0; i < vertexCount(); i++) {
@@ -256,6 +264,27 @@ function clipScene(): Node2D {
 	s.add(rect(6.0, 6.0, rgba(0.0, 0.0, 1.0, 1.0)).at(60.0, 0.0));
 	return s.root;
 }
+function rotatedClipScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = mask(40.0, 24.0).at(44.0, 24.0);
+	m.pivotX = 20.0;
+	m.pivotY = 12.0;
+	m.rotation = 0.4;
+	m.addChild(rect(80.0, 64.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-20.0, -20.0));
+	s.add(m);
+	return s.root;
+}
+
+function culledListScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = mask(200.0, 90.0).at(28.0, 30.0);
+	for (let i: int32 = 0; i < 40; i++) {
+		m.addChild(rect(190.0, 18.0, rgba(0.0, 1.0, 0.0, 1.0))
+			.at(5.0, (i as float32) * 22.0 - 240.0));
+	}
+	s.add(m);
+	return s.root;
+}
 
 function boxStyleScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
@@ -320,6 +349,14 @@ test "T1 snapshot: every batch names why it broke" {
 
 test "T1 snapshot: a Mask scissors its children and gives the clip back" {
 	assert snapshot("clip", record(clipScene(), 128.0, 64.0, 1.0));
+}
+test "T1 snapshot: a rotated Mask carries four exact edge distances" {
+	assert snapshot("rotatedClip", record(rotatedClipScene(), 128.0, 64.0, 1.0));
+}
+
+test "T1 active-clip culling drops rows outside a Mask" {
+	record(culledListScene(), 256.0, 150.0, 1.0);
+	assert uiInstanceCount() == 4;
 }
 
 test "T1 snapshot: box style reaches the per-corner and per-side instance lanes" {

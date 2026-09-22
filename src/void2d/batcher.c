@@ -126,7 +126,7 @@ static int s_retiredCount;
 // Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
 // called from MetaScript with that file's own constants, so a field added on one side and
 // not the other fails at setup rather than drawing garbage.
-#define CMD_FLOATS          24
+#define CMD_FLOATS          32
 #define CMD_KIND            0
 #define CMD_BREAK           1
 #define CMD_VERTEX_OFFSET   2
@@ -146,6 +146,7 @@ static int s_retiredCount;
 #define CMD_PIPELINE        19
 #define CMD_INSTANCE_OFFSET 20
 #define CMD_INSTANCE_COUNT  21
+#define CMD_CLIP_U_X        22
 
 #define PIPELINE_VERTEX     0
 #define PIPELINE_SPRITE     1
@@ -276,7 +277,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
                       int viewField, int blendField, int samplerField, int effectField,
                       int samplerCount, int maxTargetDepth, int clearRField,
-                      int clipXField, int arg0Field, int rtModeField,
+                      int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd) {
 	return commandFloats == CMD_FLOATS
@@ -292,6 +293,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& samplerCount == SMP_COUNT
 		&& effectField == CMD_EFFECT
 		&& clipXField == CMD_CLIP_X
+		&& clipUField == CMD_CLIP_U_X
 		&& arg0Field == CMD_ARG0
 		&& rtModeField == CMD_RT_MODE
 		&& kindDraw == CMD_KIND_DRAW
@@ -831,6 +833,10 @@ void void2dReplay(const float *commands, int commandCount,
 	if (commandCount <= 0 || !s_frameUploaded) return;
 	runCommands(commands, commandCount, effects, effectCount, fbW, fbH);
 }
+static void copyClipParams(float *clipU, float *clipV, const float *cmd) {
+	memcpy(clipU, cmd + CMD_CLIP_U_X, 4 * sizeof(float));
+	memcpy(clipV, cmd + CMD_CLIP_U_X + 4, 4 * sizeof(float));
+}
 
 // One instanced sprite run: the unit quad at slot 0, this run's instances at slot 1, one
 // sg_draw for the whole run. The sprite program carries no colour pipeline, so a node with a
@@ -874,6 +880,7 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	bool isRT = voidIsRenderTargetView(view);
 	sp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
 	sp.viewport[3] = isRT ? 1.0f : 0.0f;
+	copyClipParams(sp.clipU, sp.clipV, cmd);
 	sg_range u = { .ptr = &sp, .size = sizeof(sp) };
 	sg_apply_uniforms(UB_sprite_params, &u);
 
@@ -923,6 +930,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	up.viewport[0] = fbW;
 	up.viewport[1] = fbH;
 	up.viewport[2] = (voidIsRenderTargetView(view) && !s_originTopLeft) ? 1.0f : 0.0f;
+	copyClipParams(up.clipU, up.clipV, cmd);
 	sg_range u = { .ptr = &up, .size = sizeof(up) };
 	sg_apply_uniforms(UB_ui_params, &u);
 
@@ -1060,6 +1068,7 @@ static void runCommands(const float *commands, int commandCount,
 			&& matrix[0] == 1.0f && matrix[5] == 1.0f && matrix[10] == 1.0f) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
+		copyClipParams(vp.clipU, vp.clipV, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
 			sg_range u = { .ptr = &vp, .size = sizeof(vp) };
 			sg_apply_uniforms(UB_void2d_params, &u);

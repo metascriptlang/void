@@ -40,7 +40,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
                       int viewField, int blendField, int samplerField, int effectField,
                       int samplerCount, int maxTargetDepth, int clearRField,
-                      int clipXField, int arg0Field, int rtModeField,
+                      int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd);
 
