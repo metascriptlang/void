@@ -19,7 +19,7 @@
 import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { scene, add } from "../../src/void2d/scene";
-import { Node2D, rect, mask, at, addChild, setBoxStyle } from "../../src/void2d/node";
+import { Node2D, rect, mask, at, addChild, setBoxStyle, label } from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
 import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
 import {
@@ -36,7 +36,7 @@ import {
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
-import { boxStyle, cornerRadii, borderWidths } from "../../src/void2d/boxStyle";
+import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -257,6 +257,18 @@ function boxStyleScene(): Node2D {
 	return s.root;
 }
 
+function glyphScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const card = s.add(rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
+	card.setBoxStyle(boxStyle(
+		uniformRadii(6.0),
+		uniformBorders(2.0),
+		rgba(0.9, 0.9, 0.95, 1.0),
+	));
+	s.add(label("Hi void", 16.0, rgba(0.95, 0.96, 1.0, 1.0)).at(16.0, 14.0));
+	return s.root;
+}
+
 test "T1 snapshot: painter order" {
 	assert snapshot("order", record(orderScene(), 128.0, 64.0, 1.0));
 }
@@ -271,6 +283,14 @@ test "T1 snapshot: a Mask scissors its children and gives the clip back" {
 
 test "T1 snapshot: box style reaches the per-corner and per-side instance lanes" {
 	assert snapshot("boxStyle", record(boxStyleScene(), 128.0, 64.0, 1.0));
+}
+
+test "T1 snapshot: a card and its label are one UI run of mixed modes" {
+	// The box instance and the glyph instances name the same view, so the run does not break
+	// between them — one draw for a card with text on it, which is P2's headline claim. The
+	// snapshot prints one pipe:ui command and per-instance modes 0 then 2; equality against
+	// the file is the assertion.
+	assert snapshot("glyphs", record(glyphScene(), 128.0, 64.0, 1.0));
 }
 
 test "recording an unchanged tree twice is byte-identical" {

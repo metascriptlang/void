@@ -241,6 +241,29 @@ function primPerSideBorders(): Scene {
 	return s;
 }
 
+function primCardWithLabel(): Scene {
+	const s = scene(DARK);
+	const card = rect(220.0, 96.0, rgba(0.20, 0.34, 0.52, 0.92)).at(56.0, 66.0);
+	card.pivotX = 110.0;
+	card.pivotY = 48.0;
+	card.rotation = 0.27;
+	card.alpha = 0.9;
+	card.setBoxStyle(boxStyle(
+		cornerRadii(18.0, 6.0, 14.0, 4.0),
+		uniformBorders(2.5),
+		rgba(0.92, 0.95, 1.0, 1.0),
+	));
+	s.add(card);
+	const text = label("card + label, one run", 17.0, rgba(0.93, 0.96, 1.0, 1.0)).at(64.0, 96.0);
+	text.alpha = 0.85;
+	s.add(text);
+	const small = label("rotated", 13.0, rgba(0.98, 0.65, 0.24, 1.0)).at(150.0, 40.0);
+	small.rotation = 0.41;
+	small.alpha = 0.7;
+	s.add(small);
+	return s;
+}
+
 function xformRotate(): Scene {
 	const s = scene(DARK);
 	const upright = card(56.0, 36.0).at(40.0, 44.0);
@@ -787,6 +810,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
 		{ name: "prim/perSideBorders", build: primPerSideBorders },
+		{ name: "prim/cardWithLabel", build: primCardWithLabel },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },
