@@ -271,6 +271,7 @@ export function addLightNode(
 ): Result<NodeId, SceneError> {
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
 	const payload: int32 = scene.lights.length as int32;
+	// PENDING3D: scene-side-tables-never-shrunk
 	scene.lights.push(light);
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Light,
@@ -570,8 +571,8 @@ export function collectLights(ref scene: Scene, out: Span<float32>): Result<int3
 					seenDirectional = true;
 					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
 					// vector pointing at the light, which is the front vector negated.
-				const forward: Vec3 = vec3(0.0, 0.0, 1.0);
-				const front: Vec3 = transformDirection(forward, scene.nodes[index].world);
+					const forward: Vec3 = vec3(0.0, 0.0, 1.0);
+					const front: Vec3 = transformDirection(forward, scene.nodes[index].world);
 					const toward: Vec3 = front.scaled(-1.0).normalized();
 					out[4] = toward.x;
 					out[5] = toward.y;

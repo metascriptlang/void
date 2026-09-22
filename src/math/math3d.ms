@@ -404,7 +404,10 @@ export function eulerQuat(x: float32, y: float32, z: float32): Quat {
 // Half-angle form, so no arccosine: with d = from.dot(to), sin(θ/2)/sin(θ) = 1/(2cos(θ/2)).
 export function quatBetween(from: Vec3, to: Vec3): Quat {
 	const axis: Vec3 = from.cross(to);
-	const half: float32 = squareRoot((1.0 + from.dot(to)) * 0.5);
+	const radicand: float32 = (1.0 + from.dot(to)) * 0.5;
+	// A dot product of two unit vectors can round below -1, and sqrt of that is a NaN the
+	// guard below would read as false: clamp by branch, so near-opposite takes the 180° path.
+	const half: float32 = radicand > 0.0 ? squareRoot(radicand) : 0.0;
 	if (half < EPSILON) {
 		// Opposite: a 180-degree turn about any axis perpendicular to `from` carries it onto `to`.
 		const helper: Vec3 = absolute(from.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);

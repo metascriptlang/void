@@ -119,6 +119,16 @@ test "quatBetween turns a vector onto its opposite through a perpendicular axis"
 	assert near(flipped, 0.0, 0.0, -1.0);
 }
 
+test "quatBetween answers a 180-degree turn when the dot rounds past -1" {
+	const from: Vec3 = vec3(0.6, 0.64, 0.476).normalized();
+	const to: Vec3 = from.scaled(-1.0000001);
+	const q: Quat = quatBetween(from, to);
+	assert q.w == 0.0;
+	assert approx(q.x * q.x + q.y * q.y + q.z * q.z, 1.0);
+	const carried: Vec3 = transformDirection(from, q.toMatrix());
+	assert near(carried, -from.x, -from.y, -from.z);
+}
+
 test "quat product composes like h3d.Quat.multiply" {
 	const a: Quat = eulerQuat(0.2, 0.0, 0.0);
 	const b: Quat = eulerQuat(0.0, 0.5, 0.0);

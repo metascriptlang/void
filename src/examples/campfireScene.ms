@@ -509,7 +509,7 @@ function setupDraws(): void {
 	});
 	const root: NodeId = tree.rootId();
 	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
-	if (!group.ok) { return; }
+	if (!group.ok) { console.log("campfire: setupDraws bailed at addGroup"); return; }
 	// The moon as h3d.scene.fwd.DirLight: its direction is the node's front vector, and the
 	// shader wants the vector at the light, so the node faces away from it. Priority 100, the
 	// value Heaps' DirLight sorts at.
@@ -529,7 +529,7 @@ function setupDraws(): void {
 			priority: 100,
 		},
 	);
-	if (!moon.ok) { return; }
+	if (!moon.ok) { console.log("campfire: setupDraws bailed at the moon light"); return; }
 	// The fire as h3d.scene.fwd.PointLight: its position is the node's world translation, and
 	// the flicker below moves both that and its power.
 	const fire: Result<NodeId, SceneError> = addLightNode(
@@ -544,18 +544,18 @@ function setupDraws(): void {
 			priority: 0,
 		},
 	);
-	if (!fire.ok) { return; }
+	if (!fire.ok) { console.log("campfire: setupDraws bailed at the fire light"); return; }
 	fireLight = fire.value;
 	logGroup = group.value;
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
-		if (!uploaded.ok) { return; }
+		if (!uploaded.ok) { console.log("campfire: setupDraws bailed at addMeshData"); return; }
 		// The ground and the stones hang off the root; the logs hang off the group, so their
 		// world matrix is the two-level product the flat pieces never exercise.
 		const under: NodeId = i >= firstLogPiece ? logGroup : root;
 		const placed: Result<NodeId, SceneError> =
 			addMeshNode(tree, under, placements[i], uploaded.value, litMaterial);
-		if (!placed.ok) { return; }
+		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
 	}
 	grassMesh = addMesh(
 		context,
@@ -563,7 +563,7 @@ function setupDraws(): void {
 	);
 	const grassNode: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
-	if (!grassNode.ok) { return; }
+	if (!grassNode.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
 	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
@@ -575,7 +575,7 @@ function setupDraws(): void {
 	// instance data — so these two nodes sit at the identity and only carry draw order.
 	const flame: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), firstFlameMesh, flameMaterial);
-	if (!flame.ok) { return; }
+	if (!flame.ok) { console.log("campfire: setupDraws bailed at the flame node"); return; }
 	flameNode = flame.value;
 }
 
@@ -655,6 +655,8 @@ function forceRebuild(): void {
 	}
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (context.meshes[i].generation != EXTERNAL_GENERATION) {
+			if (context.meshes[i].vertexBuffer != 0) { destroyBuffer(context.meshes[i].vertexBuffer); }
+			if (context.meshes[i].indexBuffer != 0) { destroyBuffer(context.meshes[i].indexBuffer); }
 			context.meshes[i].generation = 0;
 		}
 	}

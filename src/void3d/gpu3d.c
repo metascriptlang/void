@@ -98,6 +98,7 @@ _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in 
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match Filter in gpu3d.ms");
 _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in gpu3d.ms");
 _Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in gpu3d.ms");
+_Static_assert(sizeof(lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
 
 // ---- vertex layouts, one per VertexLayout member ----
 

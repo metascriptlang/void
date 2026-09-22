@@ -227,6 +227,47 @@ run_entries() {
 	pass "entries: $checked entry points declare main() and call it; the host ones build"
 }
 
+# ---- shaders ------------------------------------------------------------------------------
+#
+# REVIEWS-3D M6 defect 12: nothing checked that a .glsl.h was regenerated from its .glsl, and
+# the M7 light block made the generated header load-bearing. shdc echoes the output path into
+# the header twice (the Cmdline comment, the include-guard #error), so both lines are dropped
+# and the comparison is then byte-exact.
+run_shaders() {
+	case "$(uname -s)-$(uname -m)" in
+		Darwin-arm64)  SHDC="deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
+		Darwin-*)      SHDC="deps/sokol-tools-bin/bin/osx/sokol-shdc" ;;
+		Linux-aarch64) SHDC="deps/sokol-tools-bin/bin/linux_arm64/sokol-shdc" ;;
+		Linux-*)       SHDC="deps/sokol-tools-bin/bin/linux/sokol-shdc" ;;
+		*)             SHDC="deps/sokol-tools-bin/bin/win32/sokol-shdc.exe" ;;
+	esac
+	if [ ! -f "$SHDC" ]; then
+		skip "shaders: sokol-shdc not found — .glsl.h freshness not checked"
+		return
+	fi
+	SHDC_LANGS="metal_macos:glsl300es:wgsl:hlsl5"
+	SHDC_LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
+	for SHDC_SRC in src/sokol/shader.glsl src/void2d/shader2d.glsl src/void3d/shader3d.glsl; do
+		SHDC_LANGS_PICK="$SHDC_LANGS"
+		case "$SHDC_SRC" in
+			src/sokol/*|src/void3d/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
+		esac
+		SHDC_OUT="$WORK/fresh_$(basename "$SHDC_SRC" .glsl).h"
+		if ! "$SHDC" -i "$SHDC_SRC" -o "$SHDC_OUT" -l "$SHDC_LANGS_PICK" -f sokol >/dev/null 2>&1; then
+			fail "shaders: sokol-shdc failed on $SHDC_SRC"
+			return
+		fi
+		sed -e '/^        sokol-shdc /d' -e '/Please include sokol_gfx.h before/d' "$SHDC_OUT" > "$SHDC_OUT.n"
+		sed -e '/^        sokol-shdc /d' -e '/Please include sokol_gfx.h before/d' "$SHDC_SRC.h" > "$SHDC_SRC.h.n"
+		if cmp -s "$SHDC_OUT.n" "$SHDC_SRC.h.n"; then
+			pass "shaders: $SHDC_SRC.h is a fresh regeneration of its .glsl"
+		else
+			fail "shaders: $SHDC_SRC.h is stale — run scripts/regen-shaders.sh and commit it"
+		fi
+		rm -f "$SHDC_OUT" "$SHDC_OUT.n" "$SHDC_SRC.h.n"
+	done
+}
+
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
 # harness's quit because that is what lets a windowed run end by itself.
 write_bench_entry() {
@@ -367,8 +408,10 @@ run_device() {
 		skip "device: adb sees no device"
 		return
 	fi
-	kind=$("$adb" -s "$target" shell getprop ro.build.characteristics | tr -d '')
-	egl=$("$adb" -s "$target" shell getprop ro.hardware.egl | tr -d '')
+	kind=$("$adb" -s "$target" shell getprop ro.build.characteristics | tr -d '
+')
+	egl=$("$adb" -s "$target" shell getprop ro.hardware.egl | tr -d '
+')
 	if ! "$adb" -s "$target" shell pidof com.metascript.voidsample > /dev/null 2>&1; then
 		skip "device: $target ($kind, egl=$egl) is there but the app is not running — see tests/device/README.md"
 		return
@@ -458,7 +501,7 @@ run_style() {
 # The M6 review found it by reading the emitted C, so that is what this checks. It is
 # deterministic and it can fail, which is the whole point: a gate that cannot fail is worse than
 # no gate. Runs after `tests`, which is what emits the C.
-FRAME_PATH_FUNCTIONS="syncWorld collectDrawList refresh"
+FRAME_PATH_FUNCTIONS="syncWorld collectDrawList refresh collectLights"
 
 run_allocation() {
 	emitted=$(ls -t out/debug/.cache/*scene_x_ms*.c 2>/dev/null | head -1)
@@ -724,6 +767,7 @@ else
 	fail "prepare: the capture entries were not written"
 fi
 run_entries
+run_shaders
 run_pending
 run_tests
 run_captures
