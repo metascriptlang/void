@@ -538,6 +538,14 @@ pattern through the existing effect record. That avoids a second geometry path a
 UI instance layout unchanged. T0 pins published Oklab coordinates and the zero-mean 4×4 dither;
 T1 pins range order and effect payloads; T2 pins sRGB, Oklab, radial, multi-stop, low-contrast
 dither, slash and checker output, including an affine Oklab/sRGB comparison at DPI 1.25.
+The image slice activates mode 3 only for styled `Sprite` and `Anim` nodes; unstyled sprites stay
+on the 64-byte flat pipeline and therefore keep guardrail 8. A payload-indexed side table owns
+per-corner radii, Rec.709 grayscale and the five GPUI `ObjectFit` choices. Fit is CPU arithmetic;
+`Cover` crops UVs to the visible centre while the other modes change or clip the destination
+bounds. T0 pins all fit branches and side-table reuse, T1 pins the image instance lanes, and T2
+pins all five fits, an affine translucent four-radius image, and original/grayscale output.
+The UI program has no arbitrary colour matrix, so combining an image style with `colorMatrix`,
+`colorAdd` or `colorKey` is rejected loudly instead of dropping either effect silently.
 
 **Exit.**
 
