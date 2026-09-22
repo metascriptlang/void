@@ -28,6 +28,7 @@ import { fontView } from "./draw";
 import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, boxStyles } from "./boxStyle";
+import { axisAligned, snapBoxEdges, snapStroke } from "./snap";
 
 function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
@@ -253,11 +254,22 @@ function emitNode(
 				const sc: Color = st.shadowColor;
 				shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 			}
-			// The card binds the GLYPH view, not the 1x1 white image: box mode never samples,
-			// so the pixels cannot tell, and sharing the view is what lets a card and the
-			// labels around it sit in one run instead of one draw each. The white texel the
-			// atlas reserves is the invariant that keeps "solid, against the glyph atlas"
-			// meaning opaque for the modes that do sample — checked at setup (draw.ms).
+
+			// Device-pixel snapping, axis-aligned only (snap.ms carries the why). The shadow's
+			// offset rides in local units, so it follows the snapped box by construction.
+			if (axisAligned(world.a, world.b, world.c, world.d)) {
+				const lbx0: float32 = (qx - world.tx) / world.a;
+				const lby0: float32 = (qy - world.ty) / world.d;
+				const snapped = snapBoxEdges(lbx0, lby0, qw, qh, world.a, world.tx, world.d, world.ty);
+				qx = snapped[0] * world.a + world.tx;
+				qy = snapped[1] * world.d + world.ty;
+				qw = snapped[2];
+				qh = snapped[3];
+				borderL = snapStroke(borderL * world.a) / world.a;
+				borderR = snapStroke(borderR * world.a) / world.a;
+				borderT = snapStroke(borderT * world.d) / world.d;
+				borderB = snapStroke(borderB * world.d) / world.d;
+			}
 			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, qx, qy, qw, qh,
 				radiusTL, radiusTR, radiusBR, radiusBL,
 				borderL, borderT, borderR, borderB,
