@@ -73,19 +73,37 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 const SELECTION_RADIUS: float32 = 2.0;
 const SELECTION_GLOOP: float32 = 8.0;
 
+function visualTile(n: Node2D): Tile {
+	if (n.kind === DrawKind.Anim && (n.frames.length as int32) > 0) {
+		const len: int32 = n.frames.length as int32;
+		const index: int32 = ((n.clock * n.fps) as int32) % len;
+		return n.frames[index];
+	}
+	return n.sheet;
+}
+function tileOffsetX(t: Tile, width: float32): float32 {
+	return t.w != 0.0 ? t.dx * width / t.w : t.dx;
+}
+
+function tileOffsetY(t: Tile, height: float32): float32 {
+	return t.h != 0.0 ? t.dy * height / t.h : t.dy;
+}
+
+
 function localBounds(n: Node2D): Bounds {
 	if (n.kind === DrawKind.Graphics || n.kind === DrawKind.Label) {
 		return { xMin: n.contentXMin, yMin: n.contentYMin, xMax: n.contentXMax, yMax: n.contentYMax };
 	}
 	if (n.kind === DrawKind.Selection) {
-		return {
-			xMin: -n.pivotX - SELECTION_GLOOP,
-			yMin: -n.pivotY,
-			xMax: n.w - n.pivotX + SELECTION_GLOOP,
-			yMax: n.h - n.pivotY,
-		};
+		return { xMin: -SELECTION_GLOOP, yMin: 0.0, xMax: n.w + SELECTION_GLOOP, yMax: n.h };
 	}
-	return { xMin: -n.pivotX, yMin: -n.pivotY, xMax: n.w - n.pivotX, yMax: n.h - n.pivotY };
+	if (n.kind === DrawKind.Sprite || n.kind === DrawKind.Anim || n.kind === DrawKind.ScaleGrid) {
+		const t: Tile = visualTile(n);
+		const dx: float32 = tileOffsetX(t, n.w);
+		const dy: float32 = tileOffsetY(t, n.h);
+		return { xMin: dx, yMin: dy, xMax: dx + n.w, yMax: dy + n.h };
+	}
+	return { xMin: 0.0, yMin: 0.0, xMax: n.w, yMax: n.h };
 }
 
 function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
@@ -93,10 +111,12 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 	const srcW: float32 = t.w;
 	const srcH: float32 = t.h;
 	if (srcW <= 0.0 || srcH <= 0.0) { return; }
+	const ox: float32 = tileOffsetX(t, n.w);
+	const oy: float32 = tileOffsetY(t, n.h);
 	const sx: float32[] = [0.0, n.borderL, srcW - n.borderR, srcW];
 	const sy: float32[] = [0.0, n.borderT, srcH - n.borderB, srcH];
-	const dx: float32[] = [0.0, n.borderL, n.w - n.borderR, n.w];
-	const dy: float32[] = [0.0, n.borderT, n.h - n.borderB, n.h];
+	const dx: float32[] = [ox, ox + n.borderL, ox + n.w - n.borderR, ox + n.w];
+	const dy: float32[] = [oy, oy + n.borderT, oy + n.h - n.borderB, oy + n.h];
 	const du: float32 = t.u1 - t.u0;
 	const dv: float32 = t.v1 - t.v0;
 	let cj: int32 = 0;
@@ -119,10 +139,16 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 }
 
 export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: boolean): void {
-	const localChanged: boolean = n.dirty || n.x != n.lastX || n.y != n.lastY || n.scaleX != n.lastSX || n.scaleY != n.lastSY || n.rotation != n.lastRot;
+	const localChanged: boolean = n.dirty
+		|| n.x != n.lastX || n.y != n.lastY
+		|| n.scaleX != n.lastSX || n.scaleY != n.lastSY
+		|| n.rotation != n.lastRot
+		|| n.pivotX != n.lastPivotX || n.pivotY != n.lastPivotY;
 	if (localChanged) {
-		n.cachedLocal = trs2d(n.x, n.y, n.rotation, n.scaleX, n.scaleY);
+		n.cachedLocal = trs2d(n.x, n.y, n.rotation, n.scaleX, n.scaleY)
+			* trs2d(-n.pivotX, -n.pivotY, 0.0, 1.0, 1.0);
 		n.lastX = n.x; n.lastY = n.y; n.lastSX = n.scaleX; n.lastSY = n.scaleY; n.lastRot = n.rotation;
+		n.lastPivotX = n.pivotX; n.lastPivotY = n.pivotY;
 		n.dirty = false;
 	}
 	const worldChanged: boolean = localChanged || parentChanged;

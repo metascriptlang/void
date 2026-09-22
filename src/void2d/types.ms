@@ -71,12 +71,17 @@ export struct Tile {
 	v1: float32;
 	w: float32;
 	h: float32;
+	dx: float32;
+	dy: float32;
 	texW: float32;
 	texH: float32;
 }
 
 export function tile(view: uint32, w: float32, h: float32): Tile {
-	return { view: view, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0, w: w, h: h, texW: w, texH: h };
+	return {
+		view: view, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0,
+		w: w, h: h, dx: 0.0, dy: 0.0, texW: w, texH: h,
+	};
 }
 
 // h2d.Tile.sub — a sub-region (pixel coords on the same texture) → new Tile with UVs.
@@ -85,16 +90,33 @@ export function sub(this t: Tile, x: float32, y: float32, w: float32, h: float32
 		view: t.view,
 		u0: x / t.texW, v0: y / t.texH,
 		u1: (x + w) / t.texW, v1: (y + h) / t.texH,
-		w: w, h: h, texW: t.texW, texH: t.texH,
+		w: w, h: h, dx: 0.0, dy: 0.0, texW: t.texW, texH: t.texH,
 	};
 }
+export function center(this t: Tile): Tile {
+	let result = t;
+	result.dx = -result.w * 0.5;
+	result.dy = -result.h * 0.5;
+	return result;
+}
 
-// h2d.Tile.flipX / flipY — mirror the UV rect (returns a new Tile, value semantics).
+export function setCenterRatio(ref t: Tile, px: float32, py: float32): void {
+	t.dx = -px * t.w;
+	t.dy = -py * t.h;
+}
+
+// h2d.Tile.flipX / flipY — mirror UVs and the visual offset.
 export function flipX(this t: Tile): Tile {
-	return { view: t.view, u0: t.u1, v0: t.v0, u1: t.u0, v1: t.v1, w: t.w, h: t.h, texW: t.texW, texH: t.texH };
+	return {
+		view: t.view, u0: t.u1, v0: t.v0, u1: t.u0, v1: t.v1,
+		w: t.w, h: t.h, dx: -t.dx - t.w, dy: t.dy, texW: t.texW, texH: t.texH,
+	};
 }
 export function flipY(this t: Tile): Tile {
-	return { view: t.view, u0: t.u0, v0: t.v1, u1: t.u1, v1: t.v0, w: t.w, h: t.h, texW: t.texW, texH: t.texH };
+	return {
+		view: t.view, u0: t.u0, v0: t.v1, u1: t.u1, v1: t.v0,
+		w: t.w, h: t.h, dx: t.dx, dy: -t.dy - t.h, texW: t.texW, texH: t.texH,
+	};
 }
 
 // 2D affine transform [a c tx ; b d ty] — point (x,y) → (a·x + c·y + tx, b·x + d·y + ty).

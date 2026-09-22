@@ -111,6 +111,38 @@ test "sync writes rotation into world matrix" {
 	assert approx(n.cachedWorld.c, -1.0);
 	assert approx(n.cachedWorld.d, 0.0);
 }
+test "pivot shifts the node transform and its children around one local point" {
+	const root = group().at(100.0, 80.0);
+	root.pivotX = 10.0;
+	root.pivotY = 20.0;
+	const child = rect(4.0, 6.0, rgba(1.0, 1.0, 1.0, 1.0));
+	root.addChild(child);
+	root.sync(identity2d(), false);
+	const pivotWorld = root.localToGlobal(vec2(10.0, 20.0));
+	assert approx(pivotWorld.x, 100.0);
+	assert approx(pivotWorld.y, 80.0);
+	assert approx(child.cachedWorld.tx, 90.0);
+	assert approx(child.cachedWorld.ty, 60.0);
+	root.pivotX = 20.0;
+	root.pivotY = 30.0;
+	root.sync(identity2d(), false);
+	assert approx(child.cachedWorld.tx, 80.0);
+	assert approx(child.cachedWorld.ty, 50.0);
+}
+
+test "a centered Tile scales its visual offset with Sprite size" {
+	const n = sprite(tile(1, 32.0, 16.0).center()).at(100.0, 50.0);
+	n.w = 64.0;
+	n.h = 32.0;
+	n.sync(identity2d(), false);
+	const b = emptyBounds();
+	n.getBounds(b);
+	assert approx(b.xMin, 68.0);
+	assert approx(b.yMin, 34.0);
+	assert approx(b.xMax, 132.0);
+	assert approx(b.yMax, 66.0);
+}
+
 
 test "resync after parent move updates clean child" {
 	const root = group().at(10.0, 0.0);

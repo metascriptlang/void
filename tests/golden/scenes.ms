@@ -41,6 +41,7 @@ import {
 	sub,
 	flipX,
 	flipY,
+	setCenterRatio,
 	vec2,
 	BlendMode,
 	Smooth,
@@ -71,7 +72,7 @@ const DARK: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
 const LIGHT: Color = { r: 0.90, g: 0.91, b: 0.94, a: 1.0 };
 
 // assets/test.png as a sheet, loaded at most once per process.
-let sheetTile: Tile = { view: 0, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0, w: 0.0, h: 0.0, texW: 0.0, texH: 0.0 };
+let sheetTile: Tile = { view: 0, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0, w: 0.0, h: 0.0, dx: 0.0, dy: 0.0, texW: 0.0, texH: 0.0 };
 let sheetLoaded: boolean = false;
 
 function sheet(): Tile {
@@ -446,9 +447,8 @@ function xformScale(): Scene {
 	return s;
 }
 
-// pivotX/Y is applied for Rect, Sprite and Anim, ignored by Graphics, Label and ScaleGrid,
-// and reinterpreted by Mask. This row holds a Rect and a Graphics under the same rotation
-// and the same pivot, so the inconsistency is in the picture; P2 replaces it with Tile.dx/dy.
+// Both nodes have the same local geometry and pivot. The pivot now lives in the affine, so it
+// moves Rect and Graphics content and their children by the same amount.
 function xformPivot(): Scene {
 	const s = scene(DARK);
 	const pivotedRect = rect(56.0, 36.0, rgba(0.30, 0.55, 0.85, 1.0)).at(70.0, 50.0);
@@ -461,6 +461,22 @@ function xformPivot(): Scene {
 	pivotedCard.rotation = 0.5236;
 	s.add(pivotedRect);
 	s.add(pivotedCard);
+	return s;
+}
+
+function xformTilePivot(): Scene {
+	const s = scene(DARK);
+	const source = sheet().sub(0.0, 0.0, 64.0, 64.0);
+	const centered = sprite(source.center()).at(88.0, 90.0);
+	centered.rotation = 0.5236;
+	let biasedTile = source;
+	setCenterRatio(biasedTile, 0.25, 0.75);
+	const biased = sprite(biasedTile).at(224.0, 90.0);
+	biased.rotation = -0.5236;
+	s.add(centered);
+	s.add(biased);
+	s.add(rect(4.0, 4.0, rgba(1.0, 0.35, 0.25, 1.0)).at(86.0, 88.0));
+	s.add(rect(4.0, 4.0, rgba(1.0, 0.35, 0.25, 1.0)).at(222.0, 88.0));
 	return s;
 }
 
@@ -664,10 +680,10 @@ function imageSubFlip(): Scene {
 	const plain = sprite(half).at(10.0, 16.0);
 	plain.w = 68.0;
 	plain.h = 68.0;
-	const mirroredX = sprite(half.flipX()).at(88.0, 16.0);
+	const mirroredX = sprite(half.flipX()).at(156.0, 16.0);
 	mirroredX.w = 68.0;
 	mirroredX.h = 68.0;
-	const mirroredY = sprite(half.flipY()).at(166.0, 16.0);
+	const mirroredY = sprite(half.flipY()).at(166.0, 84.0);
 	mirroredY.w = 68.0;
 	mirroredY.h = 68.0;
 	const whole = sprite(t).at(88.0, 92.0);
@@ -1030,6 +1046,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },
 		{ name: "xform/pivot", build: xformPivot },
+		{ name: "xform/tilePivot", build: xformTilePivot },
 		{ name: "xform/nonUniform", build: xformNonUniform },
 
 		{ name: "snap/hairlineDpi100", build: snapHairlines },

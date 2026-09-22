@@ -2,4 +2,4 @@ commands 3 draws 1 vertices 0 uiInstances 1 spriteInstances 0
 cmd 0 scissor break:clip view:0 blend:0 sampler:0 effect:0 rt:0 pipe:vertex verts:0+0 clip:20.91,5.16,46.19,37.68 edges:0.92,0.39,29.87,69.87 0.39,0.92,-7.03,16.97
 cmd 1 draw break:clip view:0 blend:0 sampler:2 effect:-1 rt:0 pipe:ui inst:0+1 clip:20.91,5.16,46.19,37.68 edges:0.92,0.39,29.87,69.87 0.39,0.92,-7.03,16.97
 cmd 2 scissor break:clip view:0 blend:0 sampler:0 effect:0 rt:0 pipe:vertex verts:0+0 clip:0.00,0.00,0.00,0.00
-u 0 mode 0 affine 0.92 0.39 0.39 0.92 at 33.37 -2.21 size 80.00 64.00 uvr 0.00 0.00 0.00 0.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.00 1.00 0.00 1.00 edge 0.00 0.00 0.00 0.00
+u 0 mode 0 affine 0.92 0.39 0.39 0.92 at 19.62 -21.05 size 80.00 64.00 uvr 0.00 0.00 0.00 0.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.00 1.00 0.00 1.00 edge 0.00 0.00 0.00 0.00

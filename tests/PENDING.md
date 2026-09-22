@@ -38,7 +38,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~A rotated Mask clips to its AABB~~ | **closed** — T1 snapshot `rotatedClip` carries the two projection intervals; T2 golden `clip/rotatedMask` is the exact rotated rectangle rather than its AABB | done |
 | ~~Culling tests the viewport rather than the active clip~~ | **closed** — T1 `active-clip culling drops rows outside a Mask` records four visible instances from forty rows; `clip/scrolledList` keeps the pixels | done |
 | Integer glyph origins and rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, no fallback, ≤ 16 fonts, the R8→RGBA CPU expansion | goldens `text/code13Dpi100` and `text/wrapped` for the pixels, rows `h2d-text-metrics` and `golden-missing:text/cjkFallback` for the surface that does not exist | P3 |
-| The h2d surface still missing — `parent`, `TileGroup`, `Tile.dx/dy`, `Mask.scrollX/Y`, text metrics | rows `h2d-object-surface`, `h2d-tilegroup`, `h2d-text-metrics`, `one-node-two-parents`, `golden-missing:xform/tilePivot`, `golden-missing:clip/maskScroll` | P2 / P3 / P5 |
+| The h2d surface still missing — `parent`, `TileGroup`, `Mask.scrollX/Y`, text metrics; `Tile.dx/dy` and uniform node pivots are closed | rows `h2d-object-surface`, `h2d-tilegroup`, `h2d-text-metrics`, `one-node-two-parents`, `golden-missing:clip/maskScroll` | P3 / P5 |
 | Idle costs a full walk and draw | row `idle-costs-a-walk` | P5 |
 | ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `e4a1a05`, on `main` in `c2019b5`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
 
@@ -96,7 +96,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:xform/tilePivot | T2 | scene not renderable until P2 — `Tile.dx/dy` does not exist | P2 | 2026-09-20 |
 | golden-missing:snap/zeroBorder | T2 | scene not renderable until P2 — no border primitive, so "zero stays zero" has nothing to assert | P2 | 2026-09-20 |
 | golden-missing:text/cjkFallback | T2 | scene not renderable until P3 — no fallback chain, one font | P3 | 2026-09-20 |
 | golden-missing:clip/maskScroll | T2 | scene not renderable until P5 — `Mask.scrollX/Y` does not exist | P5 | 2026-09-20 |

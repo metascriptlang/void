@@ -80,6 +80,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "xform/rotate", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "xform/scale", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "xform/pivot", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
+		{ name: "xform/tilePivot", phase: "P2", width: 320, height: 180, dpi: 1.0, steps: 0, demo: false },
 		{ name: "xform/nonUniform", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 
 		{ name: "snap/hairlineDpi100", phase: "P0", width: 256, height: 100, dpi: 1.0, steps: 0, demo: false },
