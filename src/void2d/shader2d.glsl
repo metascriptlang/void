@@ -213,11 +213,88 @@ float coverageFromDistance(float d, float aa) {
     return clamp(0.5 - d / aa, 0.0, 1.0);
 }
 
+// GPUI's error function (`shaders.wgsl:325`), rational form. Its polynomial error is orders
+// below one 8-bit level, so it is never the term a bound has to worry about. Mirrored in
+// sdf.ms as erfApprox, where the coverage oracle judges the integral built on it.
+float erfApprox(float x) {
+    float s = sign(x);
+    float a = abs(x);
+    float r1 = 1.0 + (0.278393 + (0.230389 + (0.000972 + 0.078108 * a) * a) * a) * a;
+    float r2 = r1 * r1;
+    return s - s / (r2 * r2);
+}
+
+// The Gaussian pdf, GPUI's `gaussian`.
+float gaussianPdf(float x, float sigma) {
+    return exp(-(x * x) / (2.0 * sigma * sigma)) / (sqrt(6.283185307179586) * sigma);
+}
+
+// One side's half-extent at |y|: the core width plus the chord the corner circle still covers
+// at that height. GPUI's `curved`, computed per side - per-corner radii get their own chords,
+// where GPUI symmetrises to the evaluation point's quadrant.
+float scanlineHalf(float hx, float hy, float ay, float r) {
+    float dy = ay - (hy - r);
+    float under = r * r - dy * dy;
+    float chord = (dy > 0.0 && under > 0.0) ? sqrt(under) : r;
+    return hx - r + chord;
+}
+
+// The Gaussian-blurred rounded rect: closed-form CDF difference along x (erfApprox), four
+// midpoint samples along y over the kernel's +-3-sigma window clamped to the box's extent -
+// GPUI's `fs_shadow` integral. The blur is applied by evaluating at (p - offset), which is
+// GPUI's CPU-side bounds offset stated as one subtraction. sigma <= 0 is the hard shadow.
+// Judged against the kernel-integral oracle within 0.02 (worst measured 0.0078).
+float shadowCoverage(vec2 p, vec2 half_, vec4 radii, vec2 offset, float sigma, float aa) {
+    vec4 rr = clamp(radii, vec4(0.0), vec4(min(half_.x, half_.y)));
+    vec2 c = p - offset;
+    if (sigma <= 0.0) {
+        return coverageFromDistance(roundedRectDistance(c, half_, cornerRadius(c, rr)), aa);
+    }
+    float low = c.y - half_.y;
+    float high = c.y + half_.y;
+    float start = clamp(-3.0 * sigma, low, high);
+    float end = clamp(3.0 * sigma, low, high);
+    float stepY = (end - start) / 4.0;
+    float k = sqrt(0.5) / sigma;
+    float acc = 0.0;
+    float y = start + stepY * 0.5;
+    for (int i = 0; i < 4; i++) {
+        float scanY = c.y - y;
+        float ay = abs(scanY);
+        float wL = scanlineHalf(half_.x, half_.y, ay, scanY < 0.0 ? rr.x : rr.w);
+        float wR = scanlineHalf(half_.x, half_.y, ay, scanY < 0.0 ? rr.y : rr.z);
+        float hi = 0.5 + 0.5 * erfApprox((c.x + wL) * k);
+        float lo = 0.5 + 0.5 * erfApprox((c.x - wR) * k);
+        acc += (hi - lo) * gaussianPdf(y, sigma) * stepY;
+        y += stepY;
+    }
+    return acc;
+}
+
 void main() {
     vec2 p = vLocalHalf.xy;
     vec2 half_ = vLocalHalf.zw;
     float aa = vUvAa.z;
     int mode = int(vUvAa.w + 0.5);
+
+    if (mode == 1) {                       // Shadow: standalone drop or inset
+        // The box's own half extents and blur ride in the borders lane; the quad is inflated
+        // by the emitter (3-sigma + offset for a drop, nothing for an inset - it cannot
+        // escape the element), so `half_` here is the QUAD's half, not the box's.
+        vec2 halfBox = vBorders.xy;
+        float sigma = vBorders.z;
+        float alpha;
+        if (vBorders.w > 0.5) {
+            // Inset: the complement of the blurred hole, clipped to the element itself.
+            float blur = shadowCoverage(p, halfBox, vRadii, vec2(0.0), sigma, aa);
+            alpha = (1.0 - blur) * coverageFromDistance(
+                roundedRectDistance(p, halfBox, cornerRadius(p, vRadii)), aa);
+        } else {
+            alpha = shadowCoverage(p, halfBox, vRadii, vParams1.xy, sigma, aa);
+        }
+        frag_color = vec4(vExtra.rgb * (vExtra.a * alpha), vExtra.a * alpha);
+        return;
+    }
 
     float r = cornerRadius(p, vRadii);
     float dOuter = roundedRectDistance(p, half_, r);
