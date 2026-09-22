@@ -524,7 +524,7 @@ an otherwise idle machine span 17.9–18.9 ms. The counters are what gate hard.
 
 - The flat sprite pipeline (64 B) that never runs SDF math, and the unified UI pipeline (~92 B packed) with modes box / shadow / glyph / image / underline / selection, plus a white texel in the glyph atlas.
 - Local-space rounded-rect SDF: AA width `0.5 / scale`, `fwidth` otherwise, quad inflated ~1 device pixel. Shadow, fill and border in **one** instance with the quad inflated by the shadow extent (MAKEPAD.md:47); the standalone shadow mode stays for drop and inset.
-- Per-pixel gradients with dither, keeping Void's radial and multi-stop (`graphics.ms:41-55` goes); slash and checkerboard patterns.
+- Per-pixel gradients with dither, keeping Void's radial and multi-stop; slash and checkerboard patterns.
 - Snapping when the world transform is axis-aligned: independently rounded edges, `snap_stroke` 0→0 else ≥ 1 device pixel, `cover_bounds`, snapped offsets; complementary rounding for fractional splits (GHOSTTY.md:61); a `dpi_dilate` uniform for hairlines inside SDF shaders (MAKEPAD.md:49).
 - Clip by four edge distances with `discard`, correct under a rotated Mask (replacing the scissor AABB at `render.ms:204`); CPU cull against the **active clip**, not the viewport (`render.ms:191-201`).
 - `Tile.dx/dy` with `center()` / `setCenterRatio()`, so the pivot means one thing across node kinds instead of being applied for Rect/Sprite/Anim, ignored by ScaleGrid, Label and Graphics, and reinterpreted by Mask.
@@ -532,6 +532,12 @@ an otherwise idle machine span 17.9–18.9 ms. The counters are what gate hard.
 - Glyph mode fed by fontstash. No text behaviour changes in this phase.
 
 **Defects closed.** The pivot inconsistency and missing `Tile.dx/dy`; the rotated-Mask scissor AABB; culling against the viewport instead of the clip; per-vertex sRGB gradients. Not on the defect list but closed here: box-shaped UI stops depending on MSAA for its antialiasing, which today is on only for the sokol_app entry (`bridge.c:47`) and off on iOS, Android and embed — paths themselves wait for P6.
+The gradient slice stays on the existing vertex pipeline: `Graphics` keeps arbitrary polygon
+tessellation and painter order, while each contiguous range selects an sRGB/Oklab gradient or
+pattern through the existing effect record. That avoids a second geometry path and leaves the
+UI instance layout unchanged. T0 pins published Oklab coordinates and the zero-mean 4×4 dither;
+T1 pins range order and effect payloads; T2 pins sRGB, Oklab, radial, multi-stop, low-contrast
+dither, slash and checker output, including an affine Oklab/sRGB comparison at DPI 1.25.
 
 **Exit.**
 
