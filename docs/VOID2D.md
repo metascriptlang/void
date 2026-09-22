@@ -341,6 +341,28 @@ Two things follow, and the second is the uncomfortable one.
 A WARN on a millisecond row still means run that A/B, not that a phase regressed. Two decimals on
 (a) would claim a reproducibility the number does not have; (b)'s ranges are what it does have.
 
+**(c) P2, phase-end measurement at `681fed1`** (2026-09-22). The machine read 11.77% CPU
+mean over five one-second samples before the run. Both release binaries used 20 warm-up and
+120 measured frames at 1280×720, sample count 1 and high-DPI off. Six pairs per scene
+alternated the current tree against the reachable P1 control `46d939b`, with order reversed
+every pair:
+
+| scene | P1 control | P2 | result |
+|---|---:|---:|---|
+| UI | 21.36 ms (19.83–23.23) | **12.13 ms (11.71–12.70)** | 43.2% faster; 20 000 → 1 draw |
+| sprites | 2.11 ms (2.04–2.23) | **1.77 ms (1.74–1.79)** | 15.7% faster; guardrail 8 holds |
+
+P2 did not reach the optimistic 2.0 ms UI prediction. It did remove the cost the phase owned:
+the complete 20 000-node scene moved from 20 000 draws to one and from 9 386 880 to 5 280 120
+uploaded bytes; no node or pixel was removed. The current `tests/bench/baseline.json` records
+12.1/1.8 only as report thresholds, with the load and comparison context beside them.
+
+Both web builds used the same `msc 0.2.53 --release` command and the same dependency checkout.
+Against `46d939b`, WebGPU wasm is **543 846 → 722 351 B** and WebGL2 is
+**449 188 → 627 693 B**: exactly **+178 505 B** on each backend (32.8% and 39.7% respectively).
+This is P2's whole instanced-primitives layer, not a module budget; P6 still owns the
+per-compile-time-module size gate.
+
 **Dependencies**, stated rather than implied:
 
 ```
