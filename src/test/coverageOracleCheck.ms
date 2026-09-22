@@ -177,3 +177,87 @@ test "smoothstep would fail the straight-edge bound that linear coverage meets e
 	assert worst > 0.09;
 	assert worst > 0.001;
 }
+
+// ===== the shadow half (tests/PENDING.md `oracle:coverage-shadow`) =====
+//
+// Same discipline as the geometry half above: the bound is stated, the analytic curve is
+// `sdf.ms`'s shadow integral, and the truth is the kernel-integral Riemann sum in
+// tests/oracle/coverage.ms, which shares no code with it.
+
+import { erfApprox, shadowCoverage, insetShadowCoverage } from "../void2d/sdf";
+import { blurredPixelCoverage, maxShadowError } from "../../tests/oracle/coverage";
+
+test "the error function is odd, saturates, and lands on erf(1)" {
+	assert approx(erfApprox(0.0) as float64, 0.0);
+	assert erfApprox(3.0) > 0.9999;
+	assert erfApprox(-3.0) < -0.9999;
+	// erf(1) = 0.8427008; the rational form's polynomial error is far below this bound.
+	assert Math.abs((erfApprox(1.0) - 0.8427008) as float64) < 0.001;
+	assert approx(erfApprox(-0.7) as float64, -(erfApprox(0.7) as float64));
+}
+
+// The shadow scene every test below judges: half extents 10x6, radius 3, sigma 2, the caster
+// offset by (1.5, -1) - so the shadow's own rect spans x in [-8.5, 11.5], y in [-7, 5] and
+// its soft edges and corners sit away from the sample points' grid.
+function shadowPoints(): Vec<float32> {
+	return [9.5, -1.0,  10.5, -1.0,  11.5, -1.0,  12.5, -1.0,  13.5, -1.0,
+	        11.5, -6.5,  12.5, -5.5,  11.0, -7.5,   2.0, -1.0,  20.0, -1.0];
+}
+
+test "the shadow integral matches the kernel-integral truth within 0.02" {
+	const pts: Vec<float32> = shadowPoints();
+	const analytic: Vec<float32> = new Array(0);
+	const pxs: Vec<float32> = new Array(0);
+	const pys: Vec<float32> = new Array(0);
+	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
+		analytic.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 2.0, 1.0));
+		pxs.push(pts[i]);
+		pys.push(pts[i + 1]);
+	}
+	const worst: float32 = maxShadowError(analytic, pxs, pys, 10.0, 6.0, 3.0, 1.5, -1.0, 2.0);
+	console.log(`coverage oracle: shadow integral, worst error ${worst}`);
+	assert worst <= 0.02;
+}
+
+test "the oracle convicts a shadow computed with the wrong blur" {
+	const pts: Vec<float32> = shadowPoints();
+	const wrong: Vec<float32> = new Array(0);
+	const pxs: Vec<float32> = new Array(0);
+	const pys: Vec<float32> = new Array(0);
+	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
+		wrong.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 3.0, 1.0));
+		pxs.push(pts[i]);
+		pys.push(pts[i + 1]);
+	}
+	const worst: float32 = maxShadowError(wrong, pxs, pys, 10.0, 6.0, 3.0, 1.5, -1.0, 2.0);
+	console.log(`coverage oracle: sigma 3 against truth sigma 2, worst error ${worst}`);
+	assert worst > 0.02;
+}
+
+test "per-corner radii mirror exactly under x negation" {
+	// The asymmetric scanline's left and right chords swap roles when the box is mirrored,
+	// which is exact algebra - a drift here means the two sides are not the two chords.
+	const a: float32 = shadowCoverage(11.5, -4.5, 10.0, 6.0, 5.0, 2.0, 3.0, 6.0, 1.5, -1.0, 2.0, 1.0);
+	const b: float32 = shadowCoverage(-11.5, -4.5, 10.0, 6.0, 2.0, 5.0, 6.0, 3.0, -1.5, -1.0, 2.0, 1.0);
+	assert approx(a as float64, b as float64);
+	assert a != shadowCoverage(11.5, -4.5, 10.0, 6.0, 5.0, 6.0, 3.0, 2.0, 1.5, -1.0, 2.0, 1.0);
+}
+
+test "the inset shadow is the clipped complement of the blur" {
+	// Truth composed from the oracle's own pieces, both definition-level: the blurred hole is
+	// the kernel integral, the clip is the supersampled area fraction.
+	const pts: Vec<float32> = [1.0, 1.0,  8.0, 0.0,  9.5, 0.0,  10.5, 0.0,  8.5, 4.5,  0.0, 5.5];
+	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
+		const px: float32 = pts[i];
+		const py: float32 = pts[i + 1];
+		const analytic: float32 = insetShadowCoverage(px, py, 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 2.0, 1.0);
+		const truth: float32 = (1.0 - blurredPixelCoverage(px, py, 10.0, 6.0, 3.0, 0.0, 0.0, 2.0))
+			* pixelCoverage(px, py, 10.0, 6.0, 3.0);
+		const d: float32 = analytic - truth;
+		const e: float32 = d < 0.0 ? -d : d;
+		if (e > 0.02) {
+			console.log(`coverage oracle: inset at (${px},${py}), analytic ${analytic} truth ${truth}`);
+		}
+		assert e <= 0.02;
+	}
+}

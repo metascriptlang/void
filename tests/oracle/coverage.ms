@@ -157,3 +157,65 @@ export function coverageFromPixel(
 	if (span == 0) { return -1.0; }
 	return ((observed - base) as float32) / (span as float32);
 }
+
+// ===== the shadow half (tests/PENDING.md `oracle:coverage-shadow`) =====
+//
+// Truth for a blurred shape is the DEFINITION, not the scanline trick: the coverage of a
+// Gaussian-blurred rounded rect is the integral of the kernel over the shape. This
+// Riemann-sums that integral on a fine grid, asking only the by-cases inside test above - no
+// erf, no chord, no four samples, nothing `src/void2d/sdf.ms` computes with. Uniform radii,
+// because the inside test is; the asymmetric-radii claim is judged by its mirror symmetry
+// instead, which is exact algebra rather than a sampling bound.
+
+export const SHADOW_GRID: int32 = 160;
+
+// The kernel-integral truth at (px, py) for a uniform-radius rounded rect whose shadow is
+// offset by (offsetX, offsetY). The box is sampled on a SHADOW_GRID^2 grid of midpoints over
+// its bounding rect; each inside sample contributes its cell's kernel weight.
+export function blurredPixelCoverage(
+	px: float32, py: float32,
+	hx: float32, hy: float32, r: float32,
+	offsetX: float32, offsetY: float32,
+	sigma: float32,
+): float32 {
+	const cellX: float32 = (2.0 * hx) / ((SHADOW_GRID) as float32);
+	const cellY: float32 = (2.0 * hy) / ((SHADOW_GRID) as float32);
+	const cellArea: float32 = cellX * cellY;
+	const inv: float32 = 1.0 / (2.0 * sigma * sigma);
+	const norm: float32 = 1.0 / ((2.0 * (Math.PI as float64)) as float32) / (sigma * sigma);
+	let acc: float32 = 0.0;
+	for (let gy: int32 = 0; gy < SHADOW_GRID; gy++) {
+		const qy: float32 = -hy + ((gy as float32) + 0.5) * cellY;
+		for (let gx: int32 = 0; gx < SHADOW_GRID; gx++) {
+			const qx: float32 = -hx + ((gx as float32) + 0.5) * cellX;
+			if (!insideRoundedRect(qx, qy, hx, hy, r)) { continue; }
+			const dx: float32 = px - (qx + offsetX);
+			const dy: float32 = py - (qy + offsetY);
+			const e: float32 = Math.exp(((-(dx * dx + dy * dy)) * inv) as float64) as float32;
+			acc = acc + e * norm * cellArea;
+		}
+	}
+	return acc;
+}
+
+// The largest disagreement between an analytic shadow curve and the kernel-integral truth,
+// over the points given. Returned rather than asserted, like `maxCoverageError`, so a test
+// states the bound it accepts and prints the number it got.
+export function maxShadowError(
+	analytic: Vec<float32>,
+	pxs: Vec<float32>,
+	pys: Vec<float32>,
+	hx: float32, hy: float32, r: float32,
+	offsetX: float32, offsetY: float32,
+	sigma: float32,
+): float32 {
+	let worst: float32 = 0.0;
+	const n: int32 = analytic.length as int32;
+	for (let i: int32 = 0; i < n; i++) {
+		const truth: float32 = blurredPixelCoverage(pxs[i], pys[i], hx, hy, r, offsetX, offsetY, sigma);
+		const d: float32 = analytic[i] - truth;
+		const e: float32 = d < 0.0 ? -d : d;
+		if (e > worst) { worst = e; }
+	}
+	return worst;
+}

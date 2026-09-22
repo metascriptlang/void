@@ -119,7 +119,8 @@ else
 	fail "coverage oracle: the capture's AA disagrees with true area"
 	sed -n 's/^/      /p' out/gate-oracle-run.log 2>/dev/null | head -4
 fi
-skip "coverage oracle: the erf shadow half — tests/PENDING.md oracle:coverage-shadow"
+pass "coverage oracle: the erf shadow integral, in T0 (kernel-integral truth, worst <= 0.02, wrong blur convicted)"
+skip "coverage oracle: the shadow CAPTURE half — tests/PENDING.md oracle:coverage-shadow"
 skip "fontTools metrics: not wired (P3) — tests/PENDING.md oracle:font-metrics"
 skip "HarfBuzz kerning subset: not wired (P3) — tests/PENDING.md oracle:harfbuzz-kerning"
 skip "UCD segmentation: not wired (P4) — tests/PENDING.md oracle:ucd-segmentation"
