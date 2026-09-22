@@ -589,6 +589,25 @@ run_tests() {
 	fi
 }
 
+run_gltf_cpu() {
+	printf '%s\n' \
+		'import { loadGltf } from "../../../src/void3d/gltf";' \
+		'const loaded = loadGltf("{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[]}],\"nodes\":[],\"meshes\":[],\"accessors\":[],\"bufferViews\":[],\"buffers\":[]}", []);' \
+		'console.log(loaded.ok);' \
+		> "$WORK/gltfCpu.ms"
+	rm -f out/debug/gltfCpu.exe
+	if ! msc build "$WORK/gltfCpu.ms" > "$WORK/gltfCpu.build.log" 2>&1; then
+		fail "gltf-cpu: the decoder does not build without sokol"
+		tail -20 "$WORK/gltfCpu.build.log"
+		return
+	fi
+	if [ "$(./out/debug/gltfCpu.exe 2>&1 | tr -d '\r\n')" != "true" ]; then
+		fail "gltf-cpu: the CPU-only smoke did not decode an empty glTF scene"
+		return
+	fi
+	pass "gltf-cpu: decoder builds and runs without the sokol GPU bridge"
+}
+
 # ---- capture ------------------------------------------------------------------------------
 #
 # One configuration: rebuild the entry, run it, and cmp all four frames against the baseline it
@@ -770,6 +789,7 @@ run_entries
 run_shaders
 run_pending
 run_tests
+run_gltf_cpu
 run_captures
 run_manifest
 run_allocation
