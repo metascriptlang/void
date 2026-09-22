@@ -175,32 +175,6 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 	}
 }
 
-// One shadow instance for a Rect whose style casts one. `inset` decides only the quad and the
-// lane flag; the draw order around the box instance is the caller's, because a drop goes
-// under the fill and an inset goes over it. The drop quad is inflated by the kernel's reach
-// in LOCAL units, so a rotated card's shadow follows its own axes.
-function emitBoxShadow(
-	n: Node2D, world: Transform2D, na: float32, lbMin: Vec2, sizeX: float32, sizeY: float32,
-	radiusTL: float32, radiusTR: float32, radiusBR: float32, radiusBL: float32,
-	inset: boolean,
-): void {
-	const st = boxStyles[n.payload];
-	const sigma: float32 = st.shadowBlur;
-	const ax: float32 = st.shadowOffsetX < 0.0 ? -st.shadowOffsetX : st.shadowOffsetX;
-	const ay: float32 = st.shadowOffsetY < 0.0 ? -st.shadowOffsetY : st.shadowOffsetY;
-	const mx: float32 = inset ? 0.0 : 3.0 * sigma + ax;
-	const my: float32 = inset ? 0.0 : 3.0 * sigma + ay;
-	const quadMin = vec2(lbMin.x - mx, lbMin.y - my) * world;
-	const sc: Color = st.shadowColor;
-	drawUiInstance(InstanceMode.Shadow, fontView(), n.blend, world,
-		quadMin.x, quadMin.y, sizeX + 2.0 * mx, sizeY + 2.0 * my,
-		radiusTL, radiusTR, radiusBR, radiusBL,
-		sizeX * 0.5, sizeY * 0.5, sigma, inset ? 1.0 : 0.0,
-		0.0, 0.0, 0.0,
-		st.shadowOffsetX, st.shadowOffsetY, 0.0, 0.0,
-		transparent, transparent, rgba(sc.r, sc.g, sc.b, sc.a * na));
-}
-
 function emitNode(
 	n: Node2D, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
@@ -242,34 +216,54 @@ function emitNode(
 				const source: Color = boxStyles[styleIndex].borderColor;
 				edge = rgba(source.r, source.g, source.b, source.a * na);
 			}
-			// The analytic shadow, when the style casts one. A DROP is emitted UNDER the box
-			// and its quad is the box inflated by the kernel's reach - 3 sigma plus the
-			// offset's own displacement, in LOCAL units so a rotated card's shadow follows its
-			// axes; an INSET is emitted OVER the fill and cannot escape the element, so its
-			// quad is the box itself. Two instances in one run; collapsing them into one is
-			// P2's cardOneInstance step.
+			// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
+			// border. The quad spans the kernel's reach - 3 sigma plus the offset's own
+			// displacement, per axis, in LOCAL units so a rotated card's shadow follows its
+			// axes; an inset stays inside the element and does not inflate. params1 carries
+			// (offsetX, offsetY, sigma, inset) and the extra colour is the shadow; the shader
+			// derives the box's half extents back from this same margin formula, so the two
+			// are one contract, mirrored like aaWidthForAffine.
 			const shadowOn: boolean = n.payload != NO_BOX_STYLE
 				&& boxStyles[n.payload].shadowColor.a > 0.0;
-			const inset: boolean = shadowOn && boxStyles[n.payload].shadowInset;
-			if (shadowOn && !inset) {
-				emitBoxShadow(n, world, na, lbMin, sizeX, sizeY,
-					radiusTL, radiusTR, radiusBR, radiusBL, false);
+			let qx: float32 = tl.x;
+			let qy: float32 = tl.y;
+			let qw: float32 = sizeX;
+			let qh: float32 = sizeY;
+			let shadowColor: Color = transparent;
+			let sp0: float32 = 0.0;
+			let sp1: float32 = 0.0;
+			let sp2: float32 = 0.0;
+			let sp3: float32 = 0.0;
+			if (shadowOn) {
+				const st = boxStyles[n.payload];
+				const sigma: float32 = st.shadowBlur;
+				const ax: float32 = st.shadowOffsetX < 0.0 ? -st.shadowOffsetX : st.shadowOffsetX;
+				const ay: float32 = st.shadowOffsetY < 0.0 ? -st.shadowOffsetY : st.shadowOffsetY;
+				const mx: float32 = st.shadowInset ? 0.0 : 3.0 * sigma + ax;
+				const my: float32 = st.shadowInset ? 0.0 : 3.0 * sigma + ay;
+				const quadMin = vec2(lbMin.x - mx, lbMin.y - my) * world;
+				qx = quadMin.x;
+				qy = quadMin.y;
+				qw = sizeX + 2.0 * mx;
+				qh = sizeY + 2.0 * my;
+				sp0 = st.shadowOffsetX;
+				sp1 = st.shadowOffsetY;
+				sp2 = sigma;
+				sp3 = st.shadowInset ? 1.0 : 0.0;
+				const sc: Color = st.shadowColor;
+				shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 			}
 			// The card binds the GLYPH view, not the 1x1 white image: box mode never samples,
 			// so the pixels cannot tell, and sharing the view is what lets a card and the
 			// labels around it sit in one run instead of one draw each. The white texel the
 			// atlas reserves is the invariant that keeps "solid, against the glyph atlas"
 			// meaning opaque for the modes that do sample — checked at setup (draw.ms).
-			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, tl.x, tl.y, sizeX, sizeY,
+			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, qx, qy, qw, qh,
 				radiusTL, radiusTR, radiusBR, radiusBL,
 				borderL, borderT, borderR, borderB,
 				0.0, 0.0, 0.0,
-				0.0, 0.0, 0.0, 0.0,
-				col, edge, transparent);
-			if (inset) {
-				emitBoxShadow(n, world, na, lbMin, sizeX, sizeY,
-					radiusTL, radiusTR, radiusBR, radiusBL, true);
-			}
+				sp0, sp1, sp2, sp3,
+				col, edge, shadowColor);
 		} else {
 			fillQuad(tl, tr, br, bl, col, n.blend);
 		}

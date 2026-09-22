@@ -296,8 +296,21 @@ void main() {
         return;
     }
 
+    // A shadowed box is ONE instance (cardOneInstance): the quad carries the shadow's
+    // extent, so `half_` is the QUAD's half and the box's own half is derived back from the
+    // emitter's margin formula - 3 sigma plus the offset's displacement per axis, nothing
+    // for an inset, which cannot escape the element. params1 = (offsetX, offsetY, sigma,
+    // inset) while vExtra.a > 0, and vExtra is the shadow colour: a zero-alpha extra is no
+    // shadow, the same convention the style itself uses. The margin formula is one contract
+    // with render.ms, mirrored the way aaWidthForAffine is.
+    vec2 halfBox = half_;
+    bool shadowed = vExtra.a > 0.0;
+    if (shadowed && vParams1.w <= 0.5) {
+        halfBox = half_ - (vec2(3.0 * vParams1.z) + abs(vParams1.xy));
+    }
+
     float r = cornerRadius(p, vRadii);
-    float dOuter = roundedRectDistance(p, half_, r);
+    float dOuter = roundedRectDistance(p, halfBox, r);
 
     // The border's inner edge is the outer rect inset per side, which moves its centre when
     // the two opposite widths differ. Each corner radius shrinks with the thicker of the two
@@ -314,7 +327,7 @@ void main() {
     vec2 innerPoint = p - shift;
     float dInner = roundedRectDistance(
         innerPoint,
-        max(half_ - inset, vec2(0.0)),
+        max(halfBox - inset, vec2(0.0)),
         cornerRadius(innerPoint, innerRadii)
     );
 
@@ -334,7 +347,27 @@ void main() {
         fill.a = fill.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).a;
     }
     float alpha = fill.a * inner + vBorder.a * ring;
-    frag_color = vec4(fill.rgb * (fill.a * inner) + vBorder.rgb * (vBorder.a * ring), alpha);
+    vec3 rgb = fill.rgb * (fill.a * inner) + vBorder.rgb * (vBorder.a * ring);
+    if (shadowed) {
+        float sAlpha;
+        if (vParams1.w > 0.5) {
+            // Inset: the complement of the blurred hole, clipped to the element, OVER the
+            // fill - the same `over` the two-instance form drew by blending order.
+            float blurCov = shadowCoverage(p, halfBox, vRadii, vec2(0.0), vParams1.z, aa);
+            sAlpha = (1.0 - blurCov) * outer;
+        } else {
+            sAlpha = shadowCoverage(p, halfBox, vRadii, vParams1.xy, vParams1.z, aa);
+        }
+        sAlpha *= vExtra.a;
+        if (vParams1.w > 0.5) {
+            rgb = vExtra.rgb * sAlpha + rgb * (1.0 - sAlpha);
+            alpha = sAlpha + alpha * (1.0 - sAlpha);
+        } else {
+            rgb = rgb + vExtra.rgb * sAlpha * (1.0 - alpha);
+            alpha = alpha + sAlpha * (1.0 - alpha);
+        }
+    }
+    frag_color = vec4(rgb, alpha);
 }
 @end
 
