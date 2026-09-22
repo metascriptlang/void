@@ -1,5 +1,7 @@
 import { approx } from "./helpers";
-import { loadGltf, GltfError } from "../void3d/gltf";
+import { Mat4 } from "../math/math3d";
+import { addGltfNodes, loadGltf, GltfError, GltfMeshBinding } from "../void3d/gltf";
+import { Scene, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
 import { vertexCount, triangleCount } from "../void3d/meshData";
 // The buffer a test builds by hand, in the bit patterns the decoder must see: every float
 // here is 0.0 (0x00000000) or 1.0 (0x3F800000), so the bytes below are the IEEE-754
@@ -38,6 +40,27 @@ function triangleGltf(): string {
 		+ "\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"name\":\"tri\",\"mesh\":0,"
 		+ "\"translation\":[0.0,0.0,0.0],\"rotation\":[0.0,0.0,0.0,1.0],\"scale\":[1.0,1.0,1.0]}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":"
+		+ "{\"POSITION\":0,\"NORMAL\":1,\"COLOR_0\":2},\"indices\":3}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":72,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114}]}";
+}
+
+function treeGltf(): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,"
+		+ "\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":["
+		+ "{\"name\":\"scaled\",\"scale\":[2.0,3.0,4.0],\"children\":[1]},"
+		+ "{\"name\":\"tri\",\"mesh\":0,\"translation\":[1.0,0.0,0.0]}],"
 		+ "\"meshes\":[{\"primitives\":[{\"attributes\":"
 		+ "{\"POSITION\":0,\"NORMAL\":1,\"COLOR_0\":2},\"indices\":3}]}],"
 		+ "\"accessors\":["
@@ -97,6 +120,38 @@ test "a node's TRS comes through with glTF's defaults when a field is absent" {
 	assert placed.mesh == -1;
 }
 
+test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
+	const loaded = loadGltf(treeGltf(), triangleBuffer());
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	let scene: Scene = Scene.create();
+	const missing: Result<int32, GltfError> =
+		addGltfNodes(scene, scene.rootId(), loaded.value, []);
+	assert !missing.ok;
+	if (!missing.ok) { assert missing.error == GltfError.BadMeshBinding; }
+	const bindings: Vec<GltfMeshBinding> = [{ mesh: 7, material: 9 }];
+	const added: Result<int32, GltfError> =
+		addGltfNodes(scene, scene.rootId(), loaded.value, bindings);
+	assert added.ok;
+	if (!added.ok) { return; }
+	assert added.value == 2;
+	assert syncWorld(scene) == 3;
+	const scaled = scene.findByName(scene.rootId(), "scaled");
+	const tri = scene.findByName(scene.rootId(), "tri");
+	assert scaled.ok && tri.ok;
+	if (!tri.ok) { return; }
+	const world: Result<Mat4, SceneError> = scene.worldOf(tri.value);
+	assert world.ok;
+	if (!world.ok) { return; }
+	assert approx(world.value.m11, 2.0);
+	assert approx(world.value.m22, 3.0);
+	assert approx(world.value.m33, 4.0);
+	assert approx(world.value.m41, 2.0);
+	const payload: int32 = scene.nodes[tri.value.index].payload;
+	assert scene.meshes[payload].mesh == 7;
+	assert scene.meshes[payload].material == 9;
+}
+
 test "COLOR_0 absent means white, and a wrong count is refused" {
 	const noColor = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
@@ -130,6 +185,40 @@ test "COLOR_0 absent means white, and a wrong count is refused" {
 	);
 	assert !mismatch.ok;
 	if (!mismatch.ok) { assert mismatch.error == GltfError.CountMismatch; }
+}
+
+test "malformed TRS, cyclic nodes and accessors past their buffer view fail loudly" {
+	const badScale = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"scale\":[1.0,2.0]}],\"meshes\":[],"
+		+ "\"accessors\":[],\"bufferViews\":[],\"buffers\":[]}",
+		[],
+	);
+	assert !badScale.ok;
+	if (!badScale.ok) { assert badScale.error == GltfError.Unsupported; }
+	const cycle = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"children\":[0]}],\"meshes\":[],"
+		+ "\"accessors\":[],\"bufferViews\":[],\"buffers\":[]}",
+		[],
+	);
+	assert !cycle.ok;
+	if (!cycle.ok) { assert cycle.error == GltfError.BadNode; }
+	const escapedView = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1}}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":35},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36}],"
+		+ "\"buffers\":[{\"byteLength\":72}]}",
+		triangleBuffer(),
+	);
+	assert !escapedView.ok;
+	if (!escapedView.ok) { assert escapedView.error == GltfError.OutOfRange; }
 }
 
 test "not glTF, bad JSON, short buffer and missing POSITION each say which one" {
