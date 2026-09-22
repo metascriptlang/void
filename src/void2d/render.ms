@@ -196,8 +196,8 @@ function emitBoxShadow(
 		quadMin.x, quadMin.y, sizeX + 2.0 * mx, sizeY + 2.0 * my,
 		radiusTL, radiusTR, radiusBR, radiusBL,
 		sizeX * 0.5, sizeY * 0.5, sigma, inset ? 1.0 : 0.0,
-		st.shadowOffsetX, st.shadowOffsetY, 0.0,
-		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0,
+		st.shadowOffsetX, st.shadowOffsetY, 0.0, 0.0,
 		transparent, transparent, rgba(sc.r, sc.g, sc.b, sc.a * na));
 }
 
