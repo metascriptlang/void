@@ -9,6 +9,7 @@ layout(binding=0) uniform vertexParams {
 @block modelUniforms
 layout(binding=2) uniform modelParams {
     mat4 model;
+    mat4 normalModel;
 };
 @end
 
@@ -58,10 +59,7 @@ out float depth01;
 void main() {
     vec4 world = model * vec4(position, 1.0);
     worldPosition = world.xyz;
-    // mat3(model) is right for rotation and uniform scale, which is all a node carries today.
-    // Non-uniform scale needs the inverse transpose; math3d.normalMatrix exists for when a
-    // milestone introduces one (M8 glTF node TRS is the first that can).
-    worldNormal = mat3(model) * normal;
+    worldNormal = mat3(normalModel) * normal;
     baseColor = color;
     gl_Position = viewProj * world;
     depth01 = gl_Position.z;

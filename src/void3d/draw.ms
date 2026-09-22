@@ -5,7 +5,7 @@
 // DrawContext owns everything items point into: GPU meshes, materials, the uniform pool and the
 // pipeline cache. Items and materials are plain values holding indices and handles.
 
-import { Mat4, writeTo } from "../math/math3d";
+import { Mat4, normalMatrix, writeTo } from "../math/math3d";
 import {
 	VertexLayout,
 	Program,
@@ -59,8 +59,6 @@ export function elementCount(this mesh: GpuMesh): int32 {
 	return mesh.isIndexed() ? mesh.indexCount : mesh.vertexCount;
 }
 
-// `mesh` and `material` index the DrawContext tables. `world` is carried for M6: the programs
-// in shader3d.glsl still take world-space vertices and have no model matrix to upload it to.
 export struct DrawItem {
 	mesh: int32;
 	material: int32;
@@ -75,7 +73,7 @@ export struct DrawItem {
 // program declares it; the billboard path keeps its roots in world space and the two screen
 // programs have no geometry to place.
 export const MODEL_SLOT: int32 = 2;
-export const MODEL_LENGTH: int32 = 16;
+export const MODEL_LENGTH: int32 = 32;
 
 export struct DrawContext {
 	meshes: Vec<GpuMesh>;
@@ -349,8 +347,8 @@ export function drawItem(
 	applyPipeline(pipeline);
 	bindItem(context, mesh, material);
 	if (material.program == Program.Lit) {
-		// Written into a buffer sized at construction, so a frame of draws allocates nothing.
 		item.world.writeTo(context.model[0..MODEL_LENGTH], 0);
+		item.world.normalMatrix().writeTo(context.model[0..MODEL_LENGTH], 16);
 		applyUniforms(MODEL_SLOT, context.model[0..MODEL_LENGTH]);
 	}
 	for (const block of globals) {
