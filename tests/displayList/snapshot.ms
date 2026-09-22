@@ -32,7 +32,7 @@ import {
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
-	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
+	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
@@ -114,6 +114,18 @@ function formatStream(): string {
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 1))}`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 2))}`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 3))}`;
+		// The two param lanes are where a mode's meaning lives - the shadow's half extents
+		// and blur in one, its offset in the other - and a lane swap here is invisible to
+		// every other field. The offset-lane swap shipped a golden whose shadow hugged the
+		// box un-offset; this line is what makes the next one a snapshot diff.
+		out = out + ` params`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS0 + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS0 + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS0 + 3))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1 + 1))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1 + 2))}`;
+		out = out + ` ${f2(uiInstanceField(i, REC_UI_PARAMS1 + 3))}`;
 		out = out + ` fill`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL))}`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 1))}`;
