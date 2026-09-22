@@ -40,7 +40,7 @@ echo "=== 1. evict the caches ==============================================="
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
 # (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). A gate that
 # silently tests the previous binary is worse than no gate.
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchCheck.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchCheck.exe out/mixedFrame.exe
 rm -rf out/debug/.cache out/release/.cache
 rm -rf "$HOME/.metascript/cache/objects"
 pass "caches evicted"
@@ -70,6 +70,13 @@ if "$MSC" build src/examples/mainSokol2d.ms --output=out/demo2d.exe > out/gate-d
 	esac
 else
 	fail "the demo does not build — see out/gate-demo.log"
+fi
+
+if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFrame.exe > out/gate-mixed-frame.log 2>&1 \
+		&& out/mixedFrame.exe > out/gate-mixed-frame-run.log 2>&1; then
+	pass "mixed frame: 3D + void2d, one shared commit, two fresh frames"
+else
+	fail "mixed 3D/void2d frame lifecycle — see out/gate-mixed-frame.log and out/gate-mixed-frame-run.log"
 fi
 
 echo

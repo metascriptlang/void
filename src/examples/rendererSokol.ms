@@ -30,19 +30,27 @@ export function initRenderer(): void {
 	sampler = makeSampler();
 }
 
-export function renderFrame(): void {
-	angle = angle + 0.02;
+export function drawRendererAt(frameAngle: float32): void {
 	const aspect: float32 = (fbWidth() as float32) / (fbHeight() as float32);
 	setPerspective(1.0472, aspect, 0.1, 100.0);
 	setLookAt(2.5, 1.5, 3.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
-	setRotateY(angle);
+	setRotateY(frameAngle);
 	multiplyMVP();
 
-	beginPass(0.05, 0.05, 0.15, 1.0);
 	applyPipeline(pipeline);
 	applyBindings(vbuf, ibuf, texView, sampler);
 	applyMvp(getMVP());
 	draw(cubeIndexCount);
+}
+
+export function drawRenderer(): void {
+	angle = angle + 0.02;
+	drawRendererAt(angle);
+}
+
+export function renderFrame(): void {
+	beginPass(0.05, 0.05, 0.15, 1.0);
+	drawRenderer();
 	endPass();
 	commit();
 }
