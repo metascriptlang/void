@@ -11,7 +11,7 @@ import {
 	Node2D, group, rect, sprite, label, graphics, mask, scaleGrid, underline, selection,
 	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
-import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
+import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
 	strokeRect,
@@ -314,6 +314,35 @@ function primPerSideBorders(): Scene {
 	return s;
 }
 
+function primDashedBorder(): Scene {
+	const s = scene(DARK);
+	const rounded = rect(150.0, 88.0, rgba(0.20, 0.34, 0.52, 0.92)).at(128.0, 64.0);
+	rounded.pivotX = 75.0;
+	rounded.pivotY = 44.0;
+	rounded.rotation = 0.24;
+	rounded.setBoxStyle(dashedBorder(boxStyle(
+		cornerRadii(8.0, 24.0, 36.0, 16.0),
+		borderWidths(3.0, 5.0, 8.0, 4.0),
+		rgba(0.98, 0.65, 0.24, 1.0),
+	)));
+	s.add(rounded);
+	const shadowed = rect(116.0, 58.0, rgba(0.30, 0.72, 0.48, 0.9)).at(40.0, 168.0);
+	shadowed.setBoxStyle(castShadow(dashedBorder(boxStyle(
+		uniformRadii(14.0),
+		uniformBorders(4.0),
+		rgba(0.94, 0.96, 1.0, 1.0),
+	)), rgba(0.01, 0.01, 0.06, 0.6), 6.0, 7.0, 8.0));
+	s.add(shadowed);
+	const square = rect(112.0, 58.0, rgba(0.42, 0.24, 0.62, 0.9)).at(184.0, 172.0);
+	square.setBoxStyle(dashedBorder(boxStyle(
+		uniformRadii(0.0),
+		borderWidths(2.0, 5.0, 8.0, 3.0),
+		rgba(0.92, 0.95, 1.0, 1.0),
+	)));
+	s.add(square);
+	return s;
+}
+
 function primCardWithLabel(): Scene {
 	const s = scene(DARK);
 	const card = rect(220.0, 96.0, rgba(0.20, 0.34, 0.52, 0.92)).at(56.0, 66.0);
@@ -532,6 +561,21 @@ function snapFractionalOrigin(): Scene {
 	for (let i: int32 = 0; i < 8; i++) {
 		const x: float32 = 14.0 + (i as float32) * 28.125;
 		s.add(rect(20.0, 40.0, LIGHT).at(x, 20.0 + (i as float32) * 0.125));
+	}
+	return s;
+}
+
+function snapZeroBorder(): Scene {
+	const s = scene(DARK);
+	for (let i: int32 = 0; i < 4; i++) {
+		const box = rect(56.0, 52.0, rgba(0.30, 0.55, 0.85, 0.82))
+			.at(18.0 + (i as float32) * 74.0, 34.0);
+		box.setBoxStyle(boxStyle(
+			uniformRadii(4.0 + (i as float32) * 5.0),
+			uniformBorders(0.0),
+			rgba(1.0, 0.0, 0.8, 1.0),
+		));
+		s.add(box);
 	}
 	return s;
 }
@@ -1037,6 +1081,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
 		{ name: "prim/perSideBorders", build: primPerSideBorders },
+		{ name: "prim/dashedBorder", build: primDashedBorder },
 		{ name: "prim/cardWithLabel", build: primCardWithLabel },
 		{ name: "prim/dropShadow", build: primDropShadow },
 		{ name: "prim/insetShadow", build: primInsetShadow },
@@ -1054,6 +1099,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "snap/hairlineDpi150", build: snapHairlines },
 		{ name: "snap/fractionalSplit", build: snapFractionalSplit },
 		{ name: "snap/fractionalOrigin", build: snapFractionalOrigin },
+		{ name: "snap/zeroBorder", build: snapZeroBorder },
 
 		{ name: "clip/nestedMasks", build: clipNestedMasks },
 		{ name: "clip/rotatedMask", build: clipRotatedMask },

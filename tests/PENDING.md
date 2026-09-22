@@ -95,8 +95,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:snap/zeroBorder | T2 | scene not renderable until P2 — no border primitive, so "zero stays zero" has nothing to assert | P2 | 2026-09-20 |
 | golden-missing:text/cjkFallback | T2 | scene not renderable until P3 — no fallback chain, one font | P3 | 2026-09-20 |
 | golden-missing:clip/maskScroll | T2 | scene not renderable until P5 — `Mask.scrollX/Y` does not exist | P5 | 2026-09-20 |
 | golden-missing:text/decorations | T2 | scene not renderable until P4 — no underline, strikethrough or wavy | P4 | 2026-09-20 |

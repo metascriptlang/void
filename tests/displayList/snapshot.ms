@@ -43,7 +43,7 @@ import {
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
-import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
+import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
 } from "../../src/void2d/graphics";
@@ -325,11 +325,11 @@ function boxStyleScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.alpha = 0.5;
-	box.setBoxStyle(boxStyle(
+	box.setBoxStyle(dashedBorder(boxStyle(
 		cornerRadii(2.0, 4.0, 6.0, 8.0),
 		borderWidths(1.0, 2.0, 3.0, 4.0),
 		rgba(0.9, 0.7, 0.5, 0.6),
-	));
+	)));
 	return s.root;
 }
 
@@ -428,7 +428,7 @@ test "T1 active-clip culling drops rows outside a Mask" {
 	assert uiInstanceCount() == 4;
 }
 
-test "T1 snapshot: box style reaches the per-corner and per-side instance lanes" {
+test "T1 snapshot: dashed box style reaches the per-corner and per-side instance lanes" {
 	assert snapshot("boxStyle", record(boxStyleScene(), 128.0, 64.0, 1.0));
 }
 

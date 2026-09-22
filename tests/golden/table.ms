@@ -71,6 +71,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "prim/aaRotatedBox", phase: "P2", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/perCornerRadii", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/perSideBorders", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
+		{ name: "prim/dashedBorder", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/cardWithLabel", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/dropShadow", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/insetShadow", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
@@ -88,6 +89,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "snap/hairlineDpi150", phase: "P0", width: 384, height: 150, dpi: 1.5, steps: 0, demo: false },
 		{ name: "snap/fractionalSplit", phase: "P0", width: 256, height: 100, dpi: 1.0, steps: 0, demo: false },
 		{ name: "snap/fractionalOrigin", phase: "P0", width: 256, height: 96, dpi: 1.0, steps: 0, demo: false },
+		{ name: "snap/zeroBorder", phase: "P2", width: 320, height: 125, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "clip/nestedMasks", phase: "P0", width: 256, height: 156, dpi: 1.0, steps: 0, demo: false },
 		{ name: "clip/rotatedMask", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },

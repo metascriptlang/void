@@ -2,6 +2,11 @@ import { Color, rgba } from "./types";
 
 export const NO_BOX_STYLE: int32 = -1;
 
+export enum BorderStyle {
+	Solid,
+	Dashed,
+}
+
 export struct CornerRadii {
 	topLeft: float32;
 	topRight: float32;
@@ -20,6 +25,7 @@ export struct BoxStyle {
 	radii: CornerRadii;
 	borders: BorderWidths;
 	borderColor: Color;
+	borderStyle: BorderStyle;
 	// The analytic shadow (GPUI's erf integral, no render target). A zero-alpha shadowColor
 	// is no shadow; blur is the Gaussian sigma in local units; inset keeps it inside the box.
 	shadowColor: Color;
@@ -69,12 +75,19 @@ export function boxStyle(
 		radii: radii,
 		borders: borders,
 		borderColor: borderColor,
+		borderStyle: BorderStyle.Solid,
 		shadowColor: rgba(0.0, 0.0, 0.0, 0.0),
 		shadowBlur: 0.0,
 		shadowOffsetX: 0.0,
 		shadowOffsetY: 0.0,
 		shadowInset: false,
 	};
+}
+
+export function dashedBorder(s: BoxStyle): BoxStyle {
+	const o: BoxStyle = s;
+	o.borderStyle = BorderStyle.Dashed;
+	return o;
 }
 
 // A drop shadow cast by the box: offset in local units, positive down-right. The colour's

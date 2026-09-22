@@ -270,6 +270,7 @@ out vec4 vLocalHalf;  // xy = point relative to the rect centre; zw = half exten
 out vec4 vUvAa;       // xy = uv; z = one device pixel in local units; w = mode
 out vec4 vRadii;
 out vec4 vBorders;
+out vec3 vParams0;
 out vec4 vParams1;
 out vec4 vFill;
 out vec4 vBorder;
@@ -299,6 +300,7 @@ void main() {
     vUvAa = vec4((viewport.z > 0.5) ? vec2(t.x, 1.0 - t.y) : t, aa, iParams0.x);
     vRadii = iUvRadii;
     vBorders = iBorders;
+    vParams0 = iParams0.yzw;
     vParams1 = iParams1;
     vFill = iColorFill;
     vBorder = iColorBorder;
@@ -320,6 +322,7 @@ in vec4 vLocalHalf;
 in vec4 vUvAa;
 in vec4 vRadii;
 in vec4 vBorders;
+in vec3 vParams0;
 in vec4 vParams1;
 in vec4 vFill;
 in vec4 vBorder;
@@ -354,6 +357,116 @@ float cornerRadius(vec2 p, vec4 radii) {
 float coverageFromDistance(float d, float aa) {
     if (aa <= 0.0) { return d <= 0.0 ? 1.0 : 0.0; }
     return clamp(0.5 - d / aa, 0.0, 1.0);
+}
+
+float cornerDashVelocity(float first, float second) {
+    if (first == 0.0) { return second; }
+    if (second == 0.0) { return first; }
+    return min(first, second);
+}
+
+float dashAlpha(float t, float period, float length_, float velocity, float aa) {
+    if (velocity <= 0.0) { return 0.0; }
+    float halfPeriod = period * 0.5;
+    float halfLength = length_ * 0.5;
+    float centered = mod(t + halfPeriod - halfLength, period) - halfPeriod;
+    return coverageFromDistance((abs(centered) - halfLength) / velocity, aa);
+}
+
+float dashedBorderAlpha(vec2 p, vec2 half_, vec4 rawRadii, vec4 borders, float aa) {
+    vec4 radii = clamp(rawRadii, vec4(0.0), vec4(min(half_.x, half_.y)));
+    vec2 size = half_ * 2.0;
+    vec2 point = p + half_;
+    float radius = cornerRadius(p, radii);
+    vec2 cornerDelta = abs(p) - (half_ - vec2(radius));
+    bool unrounded = all(equal(radii, vec4(0.0)));
+    bool horizontal = cornerDelta.x < cornerDelta.y;
+    float dashLength = 2.0 / 3.0;
+    float velocity = 0.0;
+    float t = 0.0;
+    float maxT = 0.0;
+    if (unrounded) {
+        float width_ = horizontal
+            ? max(borders.y, borders.w)
+            : max(borders.x, borders.z);
+        if (width_ <= 0.0) { return 0.0; }
+        velocity = 1.0 / (3.0 * width_);
+        t = (horizontal ? point.x : point.y) * velocity;
+        maxT = (horizontal ? size.x : size.y) * velocity - dashLength;
+    } else {
+        float dvT = borders.y > 0.0 ? 1.0 / (3.0 * borders.y) : 0.0;
+        float dvR = borders.z > 0.0 ? 1.0 / (3.0 * borders.z) : 0.0;
+        float dvB = borders.w > 0.0 ? 1.0 / (3.0 * borders.w) : 0.0;
+        float dvL = borders.x > 0.0 ? 1.0 / (3.0 * borders.x) : 0.0;
+        float sT = (size.x - radii.x - radii.y) * dvT;
+        float sR = (size.y - radii.y - radii.z) * dvR;
+        float sB = (size.x - radii.z - radii.w) * dvB;
+        float sL = (size.y - radii.w - radii.x) * dvL;
+        float cvTR = cornerDashVelocity(dvT, dvR);
+        float cvBR = cornerDashVelocity(dvB, dvR);
+        float cvBL = cornerDashVelocity(dvB, dvL);
+        float cvTL = cornerDashVelocity(dvT, dvL);
+        float quarterPi = 1.5707963267948966;
+        float cTR = radii.y * quarterPi * cvTR;
+        float cBR = radii.z * quarterPi * cvBR;
+        float cBL = radii.w * quarterPi * cvBL;
+        float cTL = radii.x * quarterPi * cvTL;
+        float uptoTR = sT;
+        float uptoR = uptoTR + cTR;
+        float uptoBR = uptoR + sR;
+        float uptoB = uptoBR + cBR;
+        float uptoBL = uptoB + sB;
+        float uptoL = uptoBL + cBL;
+        float uptoTL = uptoL + sL;
+        maxT = uptoTL + cTL;
+        if (cornerDelta.x > 0.0 && cornerDelta.y > 0.0) {
+            float radians = atan(cornerDelta.y, cornerDelta.x);
+            if (p.x >= 0.0) {
+                if (p.y < 0.0) {
+                    velocity = cvTR;
+                    t = uptoR - radians * radii.y * velocity;
+                } else {
+                    velocity = cvBR;
+                    t = uptoBR + radians * radii.z * velocity;
+                }
+            } else {
+                if (p.y >= 0.0) {
+                    velocity = cvBL;
+                    t = uptoL - radians * radii.w * velocity;
+                } else {
+                    velocity = cvTL;
+                    t = uptoTL + radians * radii.x * velocity;
+                }
+            }
+        } else if (horizontal) {
+            if (p.y < 0.0) {
+                velocity = dvT;
+                t = (point.x - radii.x) * velocity;
+            } else {
+                velocity = dvB;
+                t = uptoBL - (point.x - radii.w) * velocity;
+            }
+        } else {
+            if (p.x < 0.0) {
+                velocity = dvL;
+                t = uptoTL - (point.y - radii.x) * velocity;
+            } else {
+                velocity = dvR;
+                t = uptoR + (point.y - radii.y) * velocity;
+            }
+        }
+    }
+    if (maxT >= 1.0) {
+        float count = floor(maxT);
+        return dashAlpha(t, maxT / count, dashLength, velocity, aa);
+    }
+    if (unrounded) {
+        float gap = maxT - dashLength;
+        if (gap > 0.0) {
+            return dashAlpha(t, dashLength + gap, dashLength, velocity, aa);
+        }
+    }
+    return 1.0;
 }
 
 // GPUI's error function (`shaders.wgsl:325`), rational form. Its polynomial error is orders
@@ -545,6 +658,9 @@ void main() {
     float outer = coverageFromDistance(dOuter, aa);
     float inner = coverageFromDistance(dInner, aa);
     float ring = max(outer - inner, 0.0);
+    if (vParams0.x > 0.5) {
+        ring *= dashedBorderAlpha(p, halfBox, vRadii, borders, aa);
+    }
 
     vec4 fill = vFill;
     if (mode == 2) {                        // Glyph: the atlas is white in rgb, coverage in alpha

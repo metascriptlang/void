@@ -30,7 +30,7 @@ import { InstanceMode } from "./instance";
 import { fontView } from "./draw";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
-import { NO_BOX_STYLE, boxStyles } from "./boxStyle";
+import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
 import { axisAligned, snapBoxEdges, snapStroke } from "./snap";
 import {
 	GraphicsOpKind, GRAPHICS_OP_FLOATS, GFX_OP_KIND, GFX_OP_VERTEX_OFFSET,
@@ -285,6 +285,7 @@ function emitNode(
 			let borderR: float32 = 0.0;
 			let borderB: float32 = 0.0;
 			let edge: Color = transparent;
+			let borderStyle: float32 = 0.0;
 			if (n.payload != NO_BOX_STYLE) {
 				const styleIndex: int32 = n.payload;
 				radiusTL = boxStyles[styleIndex].radii.topLeft;
@@ -297,6 +298,7 @@ function emitNode(
 				borderB = boxStyles[styleIndex].borders.bottom;
 				const source: Color = boxStyles[styleIndex].borderColor;
 				edge = rgba(source.r, source.g, source.b, source.a * na);
+				borderStyle = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
 			}
 			// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
 			// border. The quad spans the kernel's reach - 3 sigma plus the offset's own
@@ -354,7 +356,7 @@ function emitNode(
 			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, qx, qy, qw, qh,
 				radiusTL, radiusTR, radiusBR, radiusBL,
 				borderL, borderT, borderR, borderB,
-				0.0, 0.0, 0.0,
+				borderStyle, 0.0, 0.0,
 				sp0, sp1, sp2, sp3,
 				col, edge, shadowColor);
 		} else {
