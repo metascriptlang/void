@@ -161,7 +161,7 @@ static int s_retiredCount;
 // src/test/instanceLayoutCheck.ms asserts both numbers against instance.ms.
 #define UI_REC_FLOATS       36
 
-#define EFFECT_FLOATS       24
+#define EFFECT_FLOATS       44
 #define VERTEX_FLOATS       8
 
 #define CMD_KIND_DRAW       0
@@ -1082,6 +1082,11 @@ static void runCommands(const float *commands, int commandCount,
 		if (fx) {
 			fxu.colorKey[0] = fx[20]; fxu.colorKey[1] = fx[21];
 			fxu.colorKey[2] = fx[22]; fxu.colorKey[3] = fx[23];
+			memcpy(fxu.gradientMeta, fx + 24, sizeof(fxu.gradientMeta));
+			memcpy(fxu.gradientParams, fx + 28, sizeof(fxu.gradientParams));
+			memcpy(fxu.gradientColor0, fx + 32, sizeof(fxu.gradientColor0));
+			memcpy(fxu.gradientColor1, fx + 36, sizeof(fxu.gradientColor1));
+			memcpy(fxu.gradientColor2, fx + 40, sizeof(fxu.gradientColor2));
 		}
 		if (!fxValid || memcmp(&fxu, &lastFx, sizeof(fxu)) != 0) {
 			sg_range uf = { .ptr = &fxu, .size = sizeof(fxu) };

@@ -11,7 +11,9 @@ import {
 	imageQuad,
 	imageQuadUV,
 	drawMesh,
+	drawMeshRange,
 	setEffect,
+	setGradientEffect,
 	setSampler,
 	pushClip,
 	popClip,
@@ -30,6 +32,11 @@ import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, 
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, boxStyles } from "./boxStyle";
 import { axisAligned, snapBoxEdges, snapStroke } from "./snap";
+import {
+	GraphicsOpKind, GRAPHICS_OP_FLOATS, GFX_OP_KIND, GFX_OP_VERTEX_OFFSET,
+	GFX_OP_VERTEX_COUNT, GFX_OP_SPACE, GFX_OP_DITHER, GFX_OP_MIDDLE,
+	GFX_OP_COLOR0, GFX_OP_COLOR1, GFX_OP_COLOR2, GFX_OP_PARAMS,
+} from "./graphics";
 
 function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
@@ -148,7 +155,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			// an sg_buffer on every text change (VOID2D.md "Known defects"), which is both
 			// the buffer churn and the reason only about 126 Labels could draw at all.
 			n.mesh = buildGlyphMesh(glyphs);
-			n.glyphs = glyphs;
+			n.records = glyphs;
 			n.meshVertCount = (n.mesh.length as int32) / 8;
 			n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
 			n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
@@ -307,7 +314,7 @@ function emitNode(
 		// coverage ramp on top of it would soften every glyph edge twice. The mesh path stays
 		// for the colour pipeline, which the UI program cannot express.
 		if (uiInstancingAvailable()) {
-			const quads: float32[] = n.glyphs;
+			const quads: float32[] = n.records;
 			const total: int32 = quads.length as int32;
 			let gi: int32 = 0;
 			while (gi + 8 <= total) {
@@ -330,9 +337,42 @@ function emitNode(
 			drawMesh(n.mesh, fontView(), n.blend, world, n.color, na);
 		}
 	} else if (n.kind === DrawKind.Graphics) {
-		// Graphics vertices already carry their own colour; the tint is white and only the
-		// accumulated alpha multiplies in.
-		drawMesh(n.mesh, n.gfxView, n.blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
+		const ops: float32[] = n.records;
+		const opTotal: int32 = ops.length as int32;
+		if (opTotal == 0) {
+			drawMesh(n.mesh, n.gfxView, n.blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
+		} else {
+			let oi: int32 = 0;
+			while (oi + GRAPHICS_OP_FLOATS <= opTotal) {
+				const kind: int32 = ops[oi + GFX_OP_KIND] as int32;
+				const offset: int32 = ops[oi + GFX_OP_VERTEX_OFFSET] as int32;
+				const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
+				if (kind == GraphicsOpKind.Mesh as int32) {
+					setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
+					drawMeshRange(n.mesh, offset, count, n.gfxView, n.blend, world,
+						rgba(1.0, 1.0, 1.0, 1.0), na);
+				} else {
+					const c0: Color = rgba(
+						ops[oi + GFX_OP_COLOR0], ops[oi + GFX_OP_COLOR0 + 1],
+						ops[oi + GFX_OP_COLOR0 + 2], ops[oi + GFX_OP_COLOR0 + 3]);
+					const c1: Color = rgba(
+						ops[oi + GFX_OP_COLOR1], ops[oi + GFX_OP_COLOR1 + 1],
+						ops[oi + GFX_OP_COLOR1 + 2], ops[oi + GFX_OP_COLOR1 + 3]);
+					const c2: Color = rgba(
+						ops[oi + GFX_OP_COLOR2], ops[oi + GFX_OP_COLOR2 + 1],
+						ops[oi + GFX_OP_COLOR2 + 2], ops[oi + GFX_OP_COLOR2 + 3]);
+					setGradientEffect(n.colorMatrix, n.colorAdd, n.colorKey,
+						kind, ops[oi + GFX_OP_SPACE] as int32,
+						ops[oi + GFX_OP_DITHER] != 0.0, ops[oi + GFX_OP_MIDDLE],
+						ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
+						ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
+						c0, c1, c2);
+					drawMeshRange(n.mesh, offset, count, 0, n.blend, world,
+						rgba(1.0, 1.0, 1.0, 1.0), na);
+				}
+				oi = oi + GRAPHICS_OP_FLOATS;
+			}
+		}
 	} else if (n.kind === DrawKind.ScaleGrid) {
 		renderScaleGrid(n, world, col);
 	}

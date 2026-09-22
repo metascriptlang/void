@@ -46,15 +46,116 @@ layout(binding=1) uniform void2d_fx {
     mat4 colorMatrix;
     vec4 colorAdd;
     vec4 colorKey;
+    vec4 gradientMeta;
+    vec4 gradientParams;
+    vec4 gradientColor0;
+    vec4 gradientColor1;
+    vec4 gradientColor2;
 };
 in vec2 uv;
 in vec4 color;
 in float srcPremult;
 in vec4 clipDistance;
 out vec4 frag_color;
+vec3 srgbToLinear(vec3 c) {
+    vec3 lo = c / 12.92;
+    vec3 hi = pow((c + vec3(0.055)) / 1.055, vec3(2.4));
+    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
+}
+vec3 linearToSrgb(vec3 c) {
+    vec3 lo = c * 12.92;
+    vec3 hi = vec3(1.055) * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - vec3(0.055);
+    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
+}
+vec3 linearToOklab(vec3 c) {
+    vec3 lms = vec3(
+        0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
+        0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b,
+        0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
+    lms = sign(lms) * pow(abs(lms), vec3(1.0 / 3.0));
+    return vec3(
+        0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
+        1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
+        0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
+}
+vec3 oklabToLinear(vec3 c) {
+    vec3 lms = vec3(
+        c.x + 0.3963377774 * c.y + 0.2158037573 * c.z,
+        c.x - 0.1055613458 * c.y - 0.0638541728 * c.z,
+        c.x - 0.0894841775 * c.y - 1.2914855480 * c.z);
+    lms = lms * lms * lms;
+    return vec3(
+         4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
+        -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
+        -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
+}
+vec4 mixGradient(vec4 a, vec4 b, float t) {
+    vec3 rgb;
+    if (gradientMeta.y > 0.5) {
+        vec3 la = linearToOklab(srgbToLinear(a.rgb));
+        vec3 lb = linearToOklab(srgbToLinear(b.rgb));
+        rgb = linearToSrgb(oklabToLinear(mix(la, lb, t)));
+    } else {
+        rgb = mix(a.rgb, b.rgb, t);
+    }
+    return vec4(rgb, mix(a.a, b.a, t));
+}
+vec4 gradientAt(float t) {
+    float middle = gradientMeta.w;
+    if (middle > 0.0 && middle < 1.0) {
+        if (t < middle) { return mixGradient(gradientColor0, gradientColor1, t / middle); }
+        return mixGradient(gradientColor1, gradientColor2, (t - middle) / (1.0 - middle));
+    }
+    return mixGradient(gradientColor0, gradientColor1, t);
+}
+float bayer4(vec2 pixel) {
+    int x = int(mod(floor(pixel.x), 4.0));
+    int y = int(mod(floor(pixel.y), 4.0));
+    if (y == 0) {
+        if (x == 0) return 0.0;
+        if (x == 1) return 8.0;
+        if (x == 2) return 2.0;
+        return 10.0;
+    }
+    if (y == 1) {
+        if (x == 0) return 12.0;
+        if (x == 1) return 4.0;
+        if (x == 2) return 14.0;
+        return 6.0;
+    }
+    if (y == 2) {
+        if (x == 0) return 3.0;
+        if (x == 1) return 11.0;
+        if (x == 2) return 1.0;
+        return 9.0;
+    }
+    if (x == 0) return 15.0;
+    if (x == 1) return 7.0;
+    if (x == 2) return 13.0;
+    return 5.0;
+}
 void main() {
     if (min(min(clipDistance.x, clipDistance.y), min(clipDistance.z, clipDistance.w)) < 0.0) { discard; }
-    vec4 texel = texture(sampler2D(tex, smp), uv);
+    int gradientKind = int(gradientMeta.x + 0.5);
+    vec4 texel;
+    if (gradientKind == 1 || gradientKind == 2) {
+        float t = gradientKind == 1 ? clamp(uv.x, 0.0, 1.0) : clamp(length(uv), 0.0, 1.0);
+        texel = gradientAt(t);
+        if (gradientMeta.z > 0.5) {
+            float noise = (bayer4(gl_FragCoord.xy) - 7.5) * (2.0 / (7.5 * 255.0));
+            texel.rgb = clamp(texel.rgb + vec3(noise), vec3(0.0), vec3(1.0));
+        }
+    } else if (gradientKind == 3) {
+        float spacing = max(gradientParams.x, 1.0);
+        float width = clamp(gradientParams.y, 0.0, spacing);
+        texel = mod(uv.x + uv.y, spacing) < width ? gradientColor1 : gradientColor0;
+    } else if (gradientKind == 4) {
+        float cell = max(gradientParams.x, 1.0);
+        float parity = mod(floor(uv.x / cell) + floor(uv.y / cell), 2.0);
+        texel = parity < 1.0 ? gradientColor0 : gradientColor1;
+    } else {
+        texel = texture(sampler2D(tex, smp), uv);
+    }
     if (colorKey.a > 0.5) {
         vec3 d = abs(texel.rgb - colorKey.rgb);
         if (d.r + d.g + d.b < 0.08) { texel.a = 0.0; }

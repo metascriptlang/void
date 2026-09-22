@@ -1,20 +1,41 @@
-// Void 2D Graphics — h2d.Graphics-style vector drawing as a RETAINED mesh on a
-// DrawKind.Graphics node. Builder methods append triangles in LOCAL space to n.mesh
-// (packed 6 floats/vertex: x y r g b a, 3 verts/tri); node.render transforms them
-// through the world matrix each frame. Fills use the white view (no texture).
+// Void 2D Graphics — h2d.Graphics-style vector drawing as a retained local-space mesh.
+// Each vertex is x/y, u/v and rgba; an operation list preserves fill order while selecting
+// texture, gradient or pattern state for contiguous vertex ranges.
 // fillPolygon handles concave shapes (ear-clip); strokePoly uses miter joins with a
 // bevel-style clamp at sharp angles (correct for any alpha — no overlapping geometry).
 
 import { Node2D } from "./node";
 import { Vec2, Color, Tile, vec2, rgba } from "./types";
+import { GradientSpace } from "./gradient";
 import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
 const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
+const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
 
-function vtx(n: Node2D, x: float32, y: float32, u: float32, v: float32, c: Color): void {
+export enum GraphicsOpKind {
+	Mesh,
+	LinearGradient,
+	RadialGradient,
+	SlashPattern,
+	CheckerPattern,
+}
+
+export const GRAPHICS_OP_FLOATS: int32 = 24;
+export const GFX_OP_KIND: int32 = 0;
+export const GFX_OP_VERTEX_OFFSET: int32 = 1;
+export const GFX_OP_VERTEX_COUNT: int32 = 2;
+export const GFX_OP_SPACE: int32 = 3;
+export const GFX_OP_DITHER: int32 = 4;
+export const GFX_OP_MIDDLE: int32 = 5;
+export const GFX_OP_COLOR0: int32 = 8;
+export const GFX_OP_COLOR1: int32 = 12;
+export const GFX_OP_COLOR2: int32 = 16;
+export const GFX_OP_PARAMS: int32 = 20;
+
+function rawVtx(n: Node2D, x: float32, y: float32, u: float32, v: float32, c: Color): void {
 	n.mesh.push(x);
 	n.mesh.push(y);
 	n.mesh.push(u);
@@ -26,33 +47,87 @@ function vtx(n: Node2D, x: float32, y: float32, u: float32, v: float32, c: Color
 	n.gfxDirty = true;
 }
 
-function tri(n: Node2D, a: Vec2, b: Vec2, c: Vec2, col: Color): void {
-	vtx(n, a.x, a.y, 0.0, 0.0, col);
-	vtx(n, b.x, b.y, 0.0, 0.0, col);
-	vtx(n, c.x, c.y, 0.0, 0.0, col);
+function beginMeshVertex(n: Node2D): int32 {
+	const total: int32 = n.records.length as int32;
+	let base: int32 = total - GRAPHICS_OP_FLOATS;
+	if (base < 0 || (n.records[base + GFX_OP_KIND] as int32) != (GraphicsOpKind.Mesh as int32)) {
+		base = total;
+		for (let i: int32 = 0; i < GRAPHICS_OP_FLOATS; i++) { n.records.push(0.0 as float32); }
+		n.records[base + GFX_OP_KIND] = (GraphicsOpKind.Mesh as int32) as float32;
+		n.records[base + GFX_OP_VERTEX_OFFSET] = ((n.mesh.length as int32) / 8) as float32;
+	}
+	n.records[base + GFX_OP_VERTEX_COUNT] = n.records[base + GFX_OP_VERTEX_COUNT] + 1.0;
+	return base;
 }
 
-function triUV(n: Node2D, a: Vec2, ua: float32, va: float32, b: Vec2, ub: float32, vb: float32, c: Vec2, uc: float32, vc: float32, col: Color): void {
-	vtx(n, a.x, a.y, ua, va, col);
-	vtx(n, b.x, b.y, ub, vb, col);
-	vtx(n, c.x, c.y, uc, vc, col);
+function vtx(n: Node2D, x: float32, y: float32, u: float32, v: float32, c: Color): void {
+	beginMeshVertex(n);
+	rawVtx(n, x, y, u, v, c);
+}
+function tri(n: Node2D, a: Vec2, b: Vec2, c: Vec2, color: Color): void {
+	vtx(n, a.x, a.y, 0.0, 0.0, color);
+	vtx(n, b.x, b.y, 0.0, 0.0, color);
+	vtx(n, c.x, c.y, 0.0, 0.0, color);
 }
 
-function lerpColor(a: Color, b: Color, t: float32): Color {
-	return rgba(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t);
+function triUV(
+	n: Node2D,
+	a: Vec2,
+	au: float32,
+	av: float32,
+	b: Vec2,
+	bu: float32,
+	bv: float32,
+	c: Vec2,
+	cu: float32,
+	cv: float32,
+	color: Color,
+): void {
+	vtx(n, a.x, a.y, au, av, color);
+	vtx(n, b.x, b.y, bu, bv, color);
+	vtx(n, c.x, c.y, cu, cv, color);
 }
 
-function triCol(n: Node2D, a: Vec2, ca: Color, b: Vec2, cb: Color, c: Vec2, cc: Color): void {
-	vtx(n, a.x, a.y, 0.0, 0.0, ca);
-	vtx(n, b.x, b.y, 0.0, 0.0, cb);
-	vtx(n, c.x, c.y, 0.0, 0.0, cc);
-}
-
-function gradColorAt(p: Vec2, ax: float32, ay: float32, minP: float32, span: float32, c0: Color, c1: Color): Color {
-	let t: float32 = span > DEGENERATE_LEN ? (p.x * ax + p.y * ay - minP) / span : 0.0;
-	if (t < 0.0) { t = 0.0; }
-	if (t > 1.0) { t = 1.0; }
-	return lerpColor(c0, c1, t);
+function appendOp(
+	n: Node2D,
+	kind: GraphicsOpKind,
+	vertexOffset: int32,
+	vertexCount: int32,
+	space: GradientSpace,
+	dither: boolean,
+	middle: float32,
+	c0: Color,
+	c1: Color,
+	c2: Color,
+	p0: float32,
+	p1: float32,
+	p2: float32,
+	p3: float32,
+): void {
+	const base: int32 = n.records.length as int32;
+	for (let i: int32 = 0; i < GRAPHICS_OP_FLOATS; i++) { n.records.push(0.0 as float32); }
+	n.records[base + GFX_OP_KIND] = (kind as int32) as float32;
+	n.records[base + GFX_OP_VERTEX_OFFSET] = vertexOffset as float32;
+	n.records[base + GFX_OP_VERTEX_COUNT] = vertexCount as float32;
+	n.records[base + GFX_OP_SPACE] = (space as int32) as float32;
+	n.records[base + GFX_OP_DITHER] = dither ? 1.0 : 0.0;
+	n.records[base + GFX_OP_MIDDLE] = middle;
+	n.records[base + GFX_OP_COLOR0] = c0.r;
+	n.records[base + GFX_OP_COLOR0 + 1] = c0.g;
+	n.records[base + GFX_OP_COLOR0 + 2] = c0.b;
+	n.records[base + GFX_OP_COLOR0 + 3] = c0.a;
+	n.records[base + GFX_OP_COLOR1] = c1.r;
+	n.records[base + GFX_OP_COLOR1 + 1] = c1.g;
+	n.records[base + GFX_OP_COLOR1 + 2] = c1.b;
+	n.records[base + GFX_OP_COLOR1 + 3] = c1.a;
+	n.records[base + GFX_OP_COLOR2] = c2.r;
+	n.records[base + GFX_OP_COLOR2 + 1] = c2.g;
+	n.records[base + GFX_OP_COLOR2 + 2] = c2.b;
+	n.records[base + GFX_OP_COLOR2 + 3] = c2.a;
+	n.records[base + GFX_OP_PARAMS] = p0;
+	n.records[base + GFX_OP_PARAMS + 1] = p1;
+	n.records[base + GFX_OP_PARAMS + 2] = p2;
+	n.records[base + GFX_OP_PARAMS + 3] = p3;
 }
 
 function arcSegs(r: float32, sweep: float32): int32 {
@@ -82,6 +157,7 @@ function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
 
 export function clear(this g: Node2D): Node2D {
 	g.mesh = [];
+	g.records = [];
 	g.gfxView = 0;
 	g.gfxDirty = true;
 	return g;
@@ -204,60 +280,223 @@ export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 	return g;
 }
 
-// h2d.Graphics.beginGradientFill(Linear) — color lerps c0→c1 along `angle` (rad; 0 = +x)
-// across the shape's projected extent. Concave-safe (ear-clip); color is per-vertex.
-export function fillGradientPolygon(this g: Node2D, pts: Vec2[], c0: Color, c1: Color, angle: float32): Node2D {
+function projectedT(p: Vec2, ax: float32, ay: float32, minP: float32, span: float32): float32 {
+	if (span <= DEGENERATE_LEN) { return 0.0; }
+	let t: float32 = (p.x * ax + p.y * ay - minP) / span;
+	if (t < 0.0) { t = 0.0; }
+	if (t > 1.0) { t = 1.0; }
+	return t;
+}
+
+export function fillGradientPolygonStops(
+	this g: Node2D,
+	pts: Vec2[],
+	c0: Color,
+	cMiddle: Color,
+	c1: Color,
+	middle: float32,
+	angle: float32,
+	space: GradientSpace,
+): Node2D {
 	const m: int32 = pts.length as int32;
 	if (m < 3) { return g; }
 	const ax: float32 = cosf(angle);
 	const ay: float32 = sinf(angle);
 	let minP: float32 = pts[0].x * ax + pts[0].y * ay;
 	let maxP: float32 = minP;
-	let i: int32 = 1;
-	while (i < m) {
+	for (let i: int32 = 1; i < m; i++) {
 		const pp: float32 = pts[i].x * ax + pts[i].y * ay;
 		if (pp < minP) { minP = pp; }
 		if (pp > maxP) { maxP = pp; }
-		i = i + 1;
 	}
 	const span: float32 = maxP - minP;
 	const idx: int32[] = triangulate(pts);
-	const tc: int32 = idx.length as int32;
+	const total: int32 = idx.length as int32;
+	const start: int32 = (g.mesh.length as int32) / 8;
 	let k: int32 = 0;
-	while (k + 3 <= tc) {
+	while (k + 3 <= total) {
 		const pa = pts[idx[k]];
 		const pb = pts[idx[k + 1]];
 		const pc = pts[idx[k + 2]];
-		triCol(g, pa, gradColorAt(pa, ax, ay, minP, span, c0, c1),
-			pb, gradColorAt(pb, ax, ay, minP, span, c0, c1),
-			pc, gradColorAt(pc, ax, ay, minP, span, c0, c1));
+		rawVtx(g, pa.x, pa.y, projectedT(pa, ax, ay, minP, span), 0.0, white);
+		rawVtx(g, pb.x, pb.y, projectedT(pb, ax, ay, minP, span), 0.0, white);
+		rawVtx(g, pc.x, pc.y, projectedT(pc, ax, ay, minP, span), 0.0, white);
 		k = k + 3;
+	}
+	const count: int32 = (g.mesh.length as int32) / 8 - start;
+	if (count > 0) {
+		appendOp(g, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
+			c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
 	}
 	return g;
 }
 
-// h2d.Graphics.beginGradientFill(Linear) over an axis-aligned rect.
-export function fillGradientRect(this g: Node2D, x: float32, y: float32, w: float32, h: float32, c0: Color, c1: Color, angle: float32): Node2D {
+export function fillGradientPolygon(
+	this g: Node2D,
+	pts: Vec2[],
+	c0: Color,
+	c1: Color,
+	angle: float32,
+): Node2D {
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Srgb);
+}
+export function fillGradientPolygonOklab(
+	this g: Node2D,
+	pts: Vec2[],
+	c0: Color,
+	c1: Color,
+	angle: float32,
+): Node2D {
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab);
+}
+
+export function fillGradientRect(
+	this g: Node2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	c0: Color,
+	c1: Color,
+	angle: float32,
+): Node2D {
 	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
 	return g.fillGradientPolygon(pts, c0, c1, angle);
 }
 
-// h2d.Graphics.beginGradientFill(Radial) — fan with center=cInner, rim=cOuter.
-export function fillRadialGradient(this g: Node2D, cx: float32, cy: float32, r: float32, cInner: Color, cOuter: Color): Node2D {
+export function fillGradientRectOklab(
+	this g: Node2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	c0: Color,
+	c1: Color,
+	angle: float32,
+): Node2D {
+	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	return g.fillGradientPolygonStops(pts, c0, c1, c1, -1.0, angle, GradientSpace.Oklab);
+}
+
+export function fillGradientRectStops(
+	this g: Node2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	c0: Color,
+	cMiddle: Color,
+	c1: Color,
+	middle: float32,
+	angle: float32,
+	space: GradientSpace,
+): Node2D {
+	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+	return g.fillGradientPolygonStops(pts, c0, cMiddle, c1, middle, angle, space);
+}
+
+export function fillRadialGradientStops(
+	this g: Node2D,
+	cx: float32,
+	cy: float32,
+	r: float32,
+	c0: Color,
+	cMiddle: Color,
+	c1: Color,
+	middle: float32,
+	space: GradientSpace,
+): Node2D {
+	if (r <= 0.0) { return g; }
 	let seg: int32 = (r as int32) / 2 + 8;
 	if (seg > CIRCLE_MAX_SEG) { seg = CIRCLE_MAX_SEG; }
 	const step: float32 = TAU / (seg as float32);
-	const center = vec2(cx, cy);
-	let i: int32 = 0;
-	while (i < seg) {
+	const start: int32 = (g.mesh.length as int32) / 8;
+	for (let i: int32 = 0; i < seg; i++) {
 		const a0: float32 = step * (i as float32);
 		const a1: float32 = step * ((i + 1) as float32);
-		const p0 = vec2(cx + cosf(a0) * r, cy + sinf(a0) * r);
-		const p1 = vec2(cx + cosf(a1) * r, cy + sinf(a1) * r);
-		triCol(g, center, cInner, p0, cOuter, p1, cOuter);
-		i = i + 1;
+		rawVtx(g, cx, cy, 0.0, 0.0, white);
+		rawVtx(g, cx + cosf(a0) * r, cy + sinf(a0) * r, cosf(a0), sinf(a0), white);
+		rawVtx(g, cx + cosf(a1) * r, cy + sinf(a1) * r, cosf(a1), sinf(a1), white);
 	}
+	const count: int32 = (g.mesh.length as int32) / 8 - start;
+	appendOp(g, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
+		c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
 	return g;
+}
+
+export function fillRadialGradient(
+	this g: Node2D,
+	cx: float32,
+	cy: float32,
+	r: float32,
+	cInner: Color,
+	cOuter: Color,
+): Node2D {
+	return g.fillRadialGradientStops(cx, cy, r, cInner, cOuter, cOuter, -1.0, GradientSpace.Srgb);
+}
+
+export function fillRadialGradientOklab(
+	this g: Node2D,
+	cx: float32,
+	cy: float32,
+	r: float32,
+	cInner: Color,
+	cOuter: Color,
+): Node2D {
+	return g.fillRadialGradientStops(cx, cy, r, cInner, cOuter, cOuter, -1.0, GradientSpace.Oklab);
+}
+
+function fillPatternRect(
+	g: Node2D,
+	kind: GraphicsOpKind,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	c0: Color,
+	c1: Color,
+	p0: float32,
+	p1: float32,
+): Node2D {
+	const start: int32 = (g.mesh.length as int32) / 8;
+	rawVtx(g, x, y, 0.0, 0.0, white);
+	rawVtx(g, x + w, y, w, 0.0, white);
+	rawVtx(g, x + w, y + h, w, h, white);
+	rawVtx(g, x, y, 0.0, 0.0, white);
+	rawVtx(g, x + w, y + h, w, h, white);
+	rawVtx(g, x, y + h, 0.0, h, white);
+	appendOp(g, kind, start, 6, GradientSpace.Srgb, false, -1.0,
+		c0, c1, c1, p0, p1, 0.0, 0.0);
+	return g;
+}
+
+export function fillSlashRect(
+	this g: Node2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	background: Color,
+	stripe: Color,
+	spacing: float32,
+	width: float32,
+): Node2D {
+	return fillPatternRect(g, GraphicsOpKind.SlashPattern, x, y, w, h,
+		background, stripe, spacing, width);
+}
+
+export function fillCheckerRect(
+	this g: Node2D,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	a: Color,
+	b: Color,
+	cell: float32,
+): Node2D {
+	return fillPatternRect(g, GraphicsOpKind.CheckerPattern, x, y, w, h,
+		a, b, cell, 0.0);
 }
 
 // h2d.Graphics.drawTile — textured rect (tile mapped to the rect). Sets the node's view.

@@ -61,7 +61,7 @@ export enum BreakReason {
 }
 
 export const COMMAND_FLOATS: int32 = 32;
-export const EFFECT_FLOATS: int32 = 24;
+export const EFFECT_FLOATS: int32 = 44;
 export const VERTEX_FLOATS: int32 = 8;
 export const NO_EFFECT: int32 = -1;
 
@@ -107,6 +107,11 @@ export const CMD_CLIP_V_X: int32 = 26;
 export const CMD_CLIP_V_Y: int32 = 27;
 export const CMD_CLIP_V_MIN: int32 = 28;
 export const CMD_CLIP_V_MAX: int32 = 29;
+export const EFFECT_GRADIENT_META: int32 = 24;
+export const EFFECT_GRADIENT_PARAMS: int32 = 28;
+export const EFFECT_GRADIENT_COLOR0: int32 = 32;
+export const EFFECT_GRADIENT_COLOR1: int32 = 36;
+export const EFFECT_GRADIENT_COLOR2: int32 = 40;
 
 export enum Pipeline {
 	Vertex,
@@ -375,6 +380,7 @@ export function uiModeCount(mode: int32): int32 {
 export function pushEffect(matrix: float32[], add: Color, key: Color): int32 {
 	const base: int32 = effectTotal * EFFECT_FLOATS;
 	while ((effects.length as int32) < base + EFFECT_FLOATS) { effects.push(0.0 as float32); }
+	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { effects[base + i] = 0.0; }
 	const hasMatrix: boolean = (matrix.length as int32) >= 16;
 	for (let i: int32 = 0; i < 16; i++) {
 		effects[base + i] = hasMatrix ? matrix[i] : (i % 5 == 0 ? 1.0 : 0.0);
@@ -389,6 +395,47 @@ export function pushEffect(matrix: float32[], add: Color, key: Color): int32 {
 	effects[base + 23] = key.a;
 	effectTotal = effectTotal + 1;
 	return effectTotal - 1;
+}
+
+export function pushGradientEffect(
+	matrix: float32[],
+	add: Color,
+	key: Color,
+	kind: int32,
+	space: int32,
+	dither: boolean,
+	middle: float32,
+	p0: float32,
+	p1: float32,
+	p2: float32,
+	p3: float32,
+	c0: Color,
+	c1: Color,
+	c2: Color,
+): int32 {
+	const index: int32 = pushEffect(matrix, add, key);
+	const base: int32 = index * EFFECT_FLOATS;
+	effects[base + EFFECT_GRADIENT_META] = kind as float32;
+	effects[base + EFFECT_GRADIENT_META + 1] = space as float32;
+	effects[base + EFFECT_GRADIENT_META + 2] = dither ? 1.0 : 0.0;
+	effects[base + EFFECT_GRADIENT_META + 3] = middle;
+	effects[base + EFFECT_GRADIENT_PARAMS] = p0;
+	effects[base + EFFECT_GRADIENT_PARAMS + 1] = p1;
+	effects[base + EFFECT_GRADIENT_PARAMS + 2] = p2;
+	effects[base + EFFECT_GRADIENT_PARAMS + 3] = p3;
+	effects[base + EFFECT_GRADIENT_COLOR0] = c0.r;
+	effects[base + EFFECT_GRADIENT_COLOR0 + 1] = c0.g;
+	effects[base + EFFECT_GRADIENT_COLOR0 + 2] = c0.b;
+	effects[base + EFFECT_GRADIENT_COLOR0 + 3] = c0.a;
+	effects[base + EFFECT_GRADIENT_COLOR1] = c1.r;
+	effects[base + EFFECT_GRADIENT_COLOR1 + 1] = c1.g;
+	effects[base + EFFECT_GRADIENT_COLOR1 + 2] = c1.b;
+	effects[base + EFFECT_GRADIENT_COLOR1 + 3] = c1.a;
+	effects[base + EFFECT_GRADIENT_COLOR2] = c2.r;
+	effects[base + EFFECT_GRADIENT_COLOR2 + 1] = c2.g;
+	effects[base + EFFECT_GRADIENT_COLOR2 + 2] = c2.b;
+	effects[base + EFFECT_GRADIENT_COLOR2 + 3] = c2.a;
+	return index;
 }
 
 function startCommand(kind: CommandKind, reason: BreakReason): int32 {

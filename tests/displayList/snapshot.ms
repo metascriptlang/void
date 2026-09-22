@@ -19,15 +19,17 @@
 import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { scene, add } from "../../src/void2d/scene";
-import { Node2D, rect, mask, at, addChild, setBoxStyle, label } from "../../src/void2d/node";
+import { Node2D, rect, mask, at, addChild, setBoxStyle, label, graphics } from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
 import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
 import {
-	commandCount, vertexCount, drawCommandCount, commandField, vertexField,
+	commandCount, effectCount, vertexCount, drawCommandCount, commandField, effectField, vertexField,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
 	CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN, CMD_CLIP_U_MAX,
 	CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
+	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
+	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	commandKindName, breakReasonName,
 	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField,
@@ -39,6 +41,10 @@ import {
 } from "../../src/void2d/instance";
 import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
 import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
+import {
+	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
+} from "../../src/void2d/graphics";
+import { GradientSpace } from "../../src/void2d/gradient";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -88,6 +94,31 @@ function formatStream(): string {
 			out = out + ` ${f2(commandField(i, CMD_CLIP_V_X))},${f2(commandField(i, CMD_CLIP_V_Y))}`;
 			out = out + `,${f2(commandField(i, CMD_CLIP_V_MIN))},${f2(commandField(i, CMD_CLIP_V_MAX))}`;
 		}
+		out = out + "\n";
+	}
+	for (let i: int32 = 0; i < effectCount(); i++) {
+		const kind: int32 = effectField(i, EFFECT_GRADIENT_META) as int32;
+		if (kind == 0) { continue; }
+		out = out + `fx ${i} gradient:${kind}`;
+		out = out + ` space:${effectField(i, EFFECT_GRADIENT_META + 1) as int32}`;
+		out = out + ` dither:${effectField(i, EFFECT_GRADIENT_META + 2) as int32}`;
+		out = out + ` middle:${f2(effectField(i, EFFECT_GRADIENT_META + 3))}`;
+		out = out + ` params:${f2(effectField(i, EFFECT_GRADIENT_PARAMS))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_PARAMS + 1))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_PARAMS + 2))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_PARAMS + 3))}`;
+		out = out + ` c0:${f2(effectField(i, EFFECT_GRADIENT_COLOR0))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR0 + 1))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR0 + 2))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR0 + 3))}`;
+		out = out + ` c1:${f2(effectField(i, EFFECT_GRADIENT_COLOR1))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR1 + 1))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR1 + 2))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR1 + 3))}`;
+		out = out + ` c2:${f2(effectField(i, EFFECT_GRADIENT_COLOR2))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR2 + 1))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR2 + 2))}`;
+		out = out + `,${f2(effectField(i, EFFECT_GRADIENT_COLOR2 + 3))}`;
 		out = out + "\n";
 	}
 	for (let i: int32 = 0; i < vertexCount(); i++) {
@@ -338,6 +369,21 @@ function boxShadowScene(): Node2D {
 	), rgba(0.0, 0.0, 0.05, 0.6), 2.5));
 	return s.root;
 }
+function gradientScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(graphics());
+	g.fillRect(0.0, 0.0, 8.0, 8.0, rgba(0.2, 0.3, 0.4, 1.0));
+	g.fillGradientRectOklab(10.0, 0.0, 16.0, 8.0,
+		rgba(1.0, 0.0, 0.0, 1.0), rgba(0.0, 0.0, 1.0, 0.8), 0.0);
+	g.fillGradientRectStops(28.0, 0.0, 16.0, 8.0,
+		rgba(0.0, 0.0, 0.0, 1.0), rgba(0.5, 0.7, 0.2, 0.9),
+		rgba(1.0, 1.0, 1.0, 0.7), 0.35, 0.0, GradientSpace.Srgb);
+	g.fillSlashRect(46.0, 0.0, 16.0, 8.0,
+		rgba(0.1, 0.1, 0.1, 1.0), rgba(0.8, 0.6, 0.2, 1.0), 6.0, 2.0);
+	g.fillCheckerRect(64.0, 0.0, 16.0, 8.0,
+		rgba(0.2, 0.2, 0.2, 1.0), rgba(0.8, 0.8, 0.8, 1.0), 4.0);
+	return s.root;
+}
 
 test "T1 snapshot: painter order" {
 	assert snapshot("order", record(orderScene(), 128.0, 64.0, 1.0));
@@ -376,6 +422,9 @@ test "T1 snapshot: a shadowed box is one instance carrying shadow, fill and bord
 	// whose params1 carries (offsetX, offsetY, sigma, inset) and whose quad is inflated by
 	// the drop's kernel reach - the snapshot pins the lanes and the inflation.
 	assert snapshot("boxShadow", record(boxShadowScene(), 128.0, 64.0, 1.0));
+}
+test "T1 snapshot: gradients and patterns keep draw order and effect records" {
+	assert snapshot("gradients", record(gradientScene(), 128.0, 64.0, 1.0));
 }
 
 test "recording an unchanged tree twice is byte-identical" {

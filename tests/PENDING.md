@@ -96,10 +96,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:prim/gradientOklab | T2 | scene not renderable until P2 — gradients are per-vertex sRGB today | P2 | 2026-09-20 |
-| golden-missing:prim/gradientMultiStop | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:prim/ditherBand | T2 | scene not renderable until P2 — no dither today | P2 | 2026-09-20 |
-| golden-missing:prim/patterns | T2 | scene not renderable until P2 — slash and checkerboard | P2 | 2026-09-20 |
 | golden-missing:xform/tilePivot | T2 | scene not renderable until P2 — `Tile.dx/dy` does not exist | P2 | 2026-09-20 |
 | golden-missing:snap/zeroBorder | T2 | scene not renderable until P2 — no border primitive, so "zero stays zero" has nothing to assert | P2 | 2026-09-20 |
 | golden-missing:image/objectFit | T2 | scene not renderable until P2 | P2 | 2026-09-20 |

@@ -11,6 +11,7 @@ import "./pipelineCheck";
 import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
 import "./coverageOracleCheck";
+import "./gradientCheck";
 import "./uiPipelineCheck";
 import "./snapCheck";
 import "./rendererCheck";

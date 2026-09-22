@@ -32,12 +32,14 @@ import {
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SAMPLER,
 	CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R,
+	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
+	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
 	commands, effects, vertices, targetCommands, spriteInstances, spriteInstanceCount,
 	uiInstances, uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, beginTargetList, endTargetList,
-	pushVertex as pushVertexRaw, pushEffect, recordDraw, recordClip, recordBlur,
+	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	pushSpriteInstance, recordSpriteDraw,
 } from "./displayList";
@@ -528,11 +530,15 @@ export function popClip(): void {
 // h2d.Drawable colour pipeline → batch state. mat = 16-float column-major colorMatrix
 // (empty/<16 = identity); add = rgba added after; key = chroma colorKey (a>0 enables,
 // matching texels go transparent).
+function currentGradientKind(): int32 {
+	if (curEffect == NO_EFFECT) { return 0; }
+	return effects[curEffect * EFFECT_FLOATS + EFFECT_GRADIENT_META] as int32;
+}
 export function setEffect(mat: float32[], add: Color, key: Color): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && !curHasEffect) { return; }
-	if (wantsEffect && curHasEffect
+	if (wantsEffect && curHasEffect && currentGradientKind() == 0
 		&& add.r == curAdd.r && add.g == curAdd.g && add.b == curAdd.b && add.a == curAdd.a
 		&& key.r == curKey.r && key.g == curKey.g && key.b == curKey.b && key.a == curKey.a
 		&& effectMatrixSame(mat, hasMat)) { return; }
@@ -546,6 +552,61 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 	curKey = key;
 	curHasEffect = wantsEffect;
 	curEffect = wantsEffect ? pushEffect(mat, add, key) : NO_EFFECT;
+	openRun(BreakReason.Effect);
+}
+export function setGradientEffect(
+	mat: float32[],
+	add: Color,
+	key: Color,
+	kind: int32,
+	space: int32,
+	dither: boolean,
+	middle: float32,
+	p0: float32,
+	p1: float32,
+	p2: float32,
+	p3: float32,
+	c0: Color,
+	c1: Color,
+	c2: Color,
+): void {
+	const hasMat: boolean = (mat.length as int32) >= 16;
+	const base: int32 = curEffect * EFFECT_FLOATS;
+	if (curHasEffect && curEffect != NO_EFFECT
+		&& (effects[base + EFFECT_GRADIENT_META] as int32) == kind
+		&& (effects[base + EFFECT_GRADIENT_META + 1] as int32) == space
+		&& effects[base + EFFECT_GRADIENT_META + 2] == (dither ? 1.0 : 0.0)
+		&& effects[base + EFFECT_GRADIENT_META + 3] == middle
+		&& effects[base + EFFECT_GRADIENT_PARAMS] == p0
+		&& effects[base + EFFECT_GRADIENT_PARAMS + 1] == p1
+		&& effects[base + EFFECT_GRADIENT_PARAMS + 2] == p2
+		&& effects[base + EFFECT_GRADIENT_PARAMS + 3] == p3
+		&& effects[base + EFFECT_GRADIENT_COLOR0] == c0.r
+		&& effects[base + EFFECT_GRADIENT_COLOR0 + 1] == c0.g
+		&& effects[base + EFFECT_GRADIENT_COLOR0 + 2] == c0.b
+		&& effects[base + EFFECT_GRADIENT_COLOR0 + 3] == c0.a
+		&& effects[base + EFFECT_GRADIENT_COLOR1] == c1.r
+		&& effects[base + EFFECT_GRADIENT_COLOR1 + 1] == c1.g
+		&& effects[base + EFFECT_GRADIENT_COLOR1 + 2] == c1.b
+		&& effects[base + EFFECT_GRADIENT_COLOR1 + 3] == c1.a
+		&& effects[base + EFFECT_GRADIENT_COLOR2] == c2.r
+		&& effects[base + EFFECT_GRADIENT_COLOR2 + 1] == c2.g
+		&& effects[base + EFFECT_GRADIENT_COLOR2 + 2] == c2.b
+		&& effects[base + EFFECT_GRADIENT_COLOR2 + 3] == c2.a
+		&& add.r == curAdd.r && add.g == curAdd.g && add.b == curAdd.b && add.a == curAdd.a
+		&& key.r == curKey.r && key.g == curKey.g && key.b == curKey.b && key.a == curKey.a
+		&& effectMatrixSame(mat, hasMat)) { return; }
+	closeRun();
+	if (hasMat) {
+		for (let i: int32 = 0; i < 16; i++) { curMat[i] = mat[i]; }
+	} else {
+		setIdentityMat();
+	}
+	curAdd = add;
+	curKey = key;
+	curHasEffect = true;
+	curEffect = pushGradientEffect(mat, add, key, kind, space, dither, middle,
+		p0, p1, p2, p3, c0, c1, c2);
 	openRun(BreakReason.Effect);
 }
 
@@ -695,18 +756,22 @@ export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void 
 // here and appended to the frame's stream, so any number of them share one buffer and one
 // draw per state run. P2 gives the transform back to the GPU as a per-instance affine; until
 // then the CPU does it, which is what the old dynamic path already did for every Rect.
-export function drawMesh(
+export function drawMeshRange(
 	mesh: float32[],
+	vertexOffset: int32,
+	vertexTotal: int32,
 	view: uint32,
 	blend: BlendMode,
 	m: Transform2D,
 	tint: Color,
 	alpha: float32,
 ): void {
-	const total: int32 = mesh.length as int32;
-	if (total < VERTEX_FLOATS) { return; }
+	const first: int32 = vertexOffset * VERTEX_FLOATS;
+	let upto: int32 = first + vertexTotal * VERTEX_FLOATS;
+	if (first < 0 || first >= (mesh.length as int32)) { return; }
+	if (upto > (mesh.length as int32)) { upto = mesh.length as int32; }
 	useState(view == 0 ? void2dWhiteView() : view, blend);
-	for (let i: int32 = 0; i + VERTEX_FLOATS <= total; i = i + VERTEX_FLOATS) {
+	for (let i: int32 = first; i + VERTEX_FLOATS <= upto; i = i + VERTEX_FLOATS) {
 		const lx: float32 = mesh[i];
 		const ly: float32 = mesh[i + 1];
 		pushVertex(
@@ -720,6 +785,18 @@ export function drawMesh(
 			mesh[i + 7] * tint.a * alpha,
 		);
 	}
+}
+
+export function drawMesh(
+	mesh: float32[],
+	view: uint32,
+	blend: BlendMode,
+	m: Transform2D,
+	tint: Color,
+	alpha: float32,
+): void {
+	drawMeshRange(mesh, 0, (mesh.length as int32) / VERTEX_FLOATS,
+		view, blend, m, tint, alpha);
 }
 
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====

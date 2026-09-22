@@ -19,8 +19,13 @@ import {
 	strokePoly,
 	cubicBezier,
 	fillGradientRect,
+	fillGradientRectOklab,
+	fillGradientRectStops,
 	fillRadialGradient,
+	fillSlashRect,
+	fillCheckerRect,
 } from "../../src/void2d/graphics";
+import { GradientSpace } from "../../src/void2d/gradient";
 import { colorMatrixGrayscale } from "../../src/void2d/effect";
 import { Scene, scene, add } from "../../src/void2d/scene";
 import {
@@ -160,8 +165,7 @@ function primPolygonBezier(): Scene {
 	return s;
 }
 
-// Per-vertex today: graphics.ms tessellates a gradient into vertex colours, which is what P2
-// replaces with per-pixel sRGB and Oklab plus dither (VOID2D.md "Primitives").
+// Horizontal, vertical and low-contrast bands pin per-pixel interpolation and dithering.
 function primGradientLinear(): Scene {
 	const s = scene(DARK);
 	const g = graphics().at(12.0, 12.0);
@@ -177,6 +181,53 @@ function primGradientRadial(): Scene {
 	const g = graphics();
 	g.fillRadialGradient(72.0, 80.0, 60.0, rgba(1.0, 1.0, 1.0, 1.0), rgba(0.30, 0.15, 0.60, 1.0));
 	g.fillRadialGradient(186.0, 80.0, 52.0, rgba(0.98, 0.85, 0.25, 1.0), rgba(0.98, 0.85, 0.25, 0.0));
+	s.add(g);
+	return s;
+}
+function primGradientOklab(): Scene {
+	const s = scene(DARK);
+	const g = graphics().at(42.0, 44.0);
+	g.pivotX = 112.0;
+	g.pivotY = 54.0;
+	g.rotation = 0.22;
+	g.alpha = 0.82;
+	g.fillGradientRect(0.0, 0.0, 224.0, 44.0,
+		rgba(1.0, 0.0, 0.0, 1.0), rgba(0.0, 0.0, 1.0, 1.0), 0.0);
+	g.fillGradientRectOklab(0.0, 64.0, 224.0, 44.0,
+		rgba(1.0, 0.0, 0.0, 1.0), rgba(0.0, 0.0, 1.0, 1.0), 0.0);
+	s.add(g);
+	return s;
+}
+
+function primGradientMultiStop(): Scene {
+	const s = scene(DARK);
+	const g = graphics().at(20.0, 30.0);
+	g.fillGradientRectStops(0.0, 0.0, 280.0, 70.0,
+		rgba(0.08, 0.20, 0.80, 1.0), rgba(0.95, 0.25, 0.18, 0.75),
+		rgba(0.95, 0.90, 0.15, 1.0), 0.32, 0.0, GradientSpace.Srgb);
+	g.fillGradientRectStops(0.0, 92.0, 280.0, 70.0,
+		rgba(0.05, 0.65, 0.55, 1.0), rgba(0.70, 0.20, 0.90, 0.8),
+		rgba(0.95, 0.65, 0.10, 1.0), 0.68, 0.0, GradientSpace.Oklab);
+	s.add(g);
+	return s;
+}
+
+function primDitherBand(): Scene {
+	const s = scene(rgba(0.025, 0.025, 0.03, 1.0));
+	const g = graphics().at(16.0, 28.0);
+	g.fillGradientRect(0.0, 0.0, 288.0, 150.0,
+		rgba(0.075, 0.08, 0.095, 1.0), rgba(0.14, 0.15, 0.17, 1.0), 0.0);
+	s.add(g);
+	return s;
+}
+
+function primPatterns(): Scene {
+	const s = scene(DARK);
+	const g = graphics().at(20.0, 28.0);
+	g.fillSlashRect(0.0, 0.0, 130.0, 160.0,
+		rgba(0.12, 0.16, 0.22, 1.0), rgba(0.35, 0.72, 0.92, 1.0), 14.0, 5.0);
+	g.fillCheckerRect(150.0, 0.0, 130.0, 160.0,
+		rgba(0.16, 0.17, 0.20, 1.0), rgba(0.82, 0.84, 0.88, 1.0), 16.0);
 	s.add(g);
 	return s;
 }
@@ -883,6 +934,10 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/polygonBezier", build: primPolygonBezier },
 		{ name: "prim/gradientLinear", build: primGradientLinear },
 		{ name: "prim/gradientRadial", build: primGradientRadial },
+		{ name: "prim/gradientOklab", build: primGradientOklab },
+		{ name: "prim/gradientMultiStop", build: primGradientMultiStop },
+		{ name: "prim/ditherBand", build: primDitherBand },
+		{ name: "prim/patterns", build: primPatterns },
 
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
