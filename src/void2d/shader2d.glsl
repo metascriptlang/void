@@ -150,11 +150,14 @@ out vec4 vExtra;
 void main() {
     // One device pixel across an edge, in the node's local units — the geometric mean of the
     // two axis lengths, so a non-uniform scale gets one width rather than a direction-
-    // dependent one. Mirrors aaWidthForAffine in sdf.ms.
+    // dependent one. Mirrors aaWidthForAffine in sdf.ms. Glyph mode is the exception: the
+    // atlas texel already carries the antialiasing fontstash rasterized, so aa stays zero —
+    // the quad un-inflated at the glyph's exact bitmap rect, coverage a hard step at that
+    // rect, which is the quad the mesh path always drew.
     float sx = length(iAffine.xy);
     float sy = length(iAffine.zw);
     float s = sqrt(sx * sy);
-    float aa = s > 0.0 ? 1.0 / s : 0.0;
+    float aa = iParams0.x == 2.0 ? 0.0 : (s > 0.0 ? 1.0 / s : 0.0);
 
     vec2 size = iOriginSize.zw;
     vec2 local = corner * (size + 2.0 * aa) - aa;
@@ -250,11 +253,9 @@ void main() {
     vec4 fill = vFill;
     if (mode == 3) {                       // Image
         fill = fill * texture(sampler2D(uiTex, uiSmp), vUvAa.xy);
-    } else if (mode == 2) {                // Glyph: the atlas carries coverage, not colour
-        fill.a = fill.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
+    } else if (mode == 2) {                // Glyph: the atlas is white in rgb, coverage in alpha
+        fill.a = fill.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).a;
     }
-
-    // Premultiplied out, which is what every blend mode in this layer expects.
     float alpha = fill.a * inner + vBorder.a * ring;
     frag_color = vec4(fill.rgb * (fill.a * inner) + vBorder.rgb * (vBorder.a * ring), alpha);
 }

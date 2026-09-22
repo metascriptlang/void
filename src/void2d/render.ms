@@ -146,6 +146,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 			// an sg_buffer on every text change (VOID2D.md "Known defects"), which is both
 			// the buffer churn and the reason only about 126 Labels could draw at all.
 			n.mesh = buildGlyphMesh(glyphs);
+			n.glyphs = glyphs;
 			n.meshVertCount = (n.mesh.length as int32) / 8;
 			n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
 			n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
@@ -215,7 +216,12 @@ function emitNode(
 				const source: Color = boxStyles[styleIndex].borderColor;
 				edge = rgba(source.r, source.g, source.b, source.a * na);
 			}
-			drawUiInstance(InstanceMode.Box, 0, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+			// The card binds the GLYPH view, not the 1x1 white image: box mode never samples,
+			// so the pixels cannot tell, and sharing the view is what lets a card and the
+			// labels around it sit in one run instead of one draw each. The white texel the
+			// atlas reserves is the invariant that keeps "solid, against the glyph atlas"
+			// meaning opaque for the modes that do sample — checked at setup (draw.ms).
+			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, tl.x, tl.y, sizeX, sizeY,
 				radiusTL, radiusTR, radiusBR, radiusBL,
 				borderL, borderT, borderR, borderB,
 				0.0, 0.0, 0.0,
@@ -244,8 +250,35 @@ function emitNode(
 			}
 		}
 	} else if (n.kind === DrawKind.Label) {
-		// Glyph coverage is white in the atlas, so the label's colour is the tint.
-		drawMesh(n.mesh, fontView(), n.blend, world, n.color, na);
+		// Glyph mode: one instance per shaped quad, against the same glyph view the card above
+		// binds, so a card and its label are one run and not two draws. The atlas is white in
+		// rgb and carries coverage in alpha, so the tint is the whole fill and the shader turns
+		// the geometric ramp off — fontstash rasterized the antialiasing into the texel, and a
+		// coverage ramp on top of it would soften every glyph edge twice. The mesh path stays
+		// for the colour pipeline, which the UI program cannot express.
+		if (uiInstancingAvailable()) {
+			const quads: float32[] = n.glyphs;
+			const total: int32 = quads.length as int32;
+			let gi: int32 = 0;
+			while (gi + 8 <= total) {
+				// The instance's affine lane carries only the linear part; the translation
+				// rides in the origin, world-space, exactly as `tl` does for the card. Same
+				// arithmetic drawMesh applied per vertex, once per quad.
+				const ox: float32 = world.a * quads[gi] + world.c * quads[gi + 1] + world.tx;
+				const oy: float32 = world.b * quads[gi] + world.d * quads[gi + 1] + world.ty;
+				drawUiInstance(InstanceMode.Glyph, fontView(), n.blend, world,
+					ox, oy, quads[gi + 4] - quads[gi], quads[gi + 5] - quads[gi + 1],
+					quads[gi + 2], quads[gi + 3], quads[gi + 6], quads[gi + 7],
+					0.0, 0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0,
+					col, transparent, transparent);
+				gi = gi + 8;
+			}
+		} else {
+			// Glyph coverage is white in the atlas, so the label's colour is the tint.
+			drawMesh(n.mesh, fontView(), n.blend, world, n.color, na);
+		}
 	} else if (n.kind === DrawKind.Graphics) {
 		// Graphics vertices already carry their own colour; the tint is white and only the
 		// accumulated alpha multiplies in.

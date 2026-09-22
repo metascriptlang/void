@@ -315,16 +315,24 @@ static int fons_create(void *up, int w, int h) {
 	s_atlasH = h;
 	s_atlasRGBA = mirror;
 	memset(s_atlasRGBA, 0, (size_t)(w * h * 4));
-	sg_image_desc d = {0};
-	d.width = w;
-	d.height = h;
-	d.pixel_format = SG_PIXELFORMAT_RGBA8;
-	// Persists across frames, re-uploaded only when fontstash adds glyphs. dynamic_update is
-	// deprecated upstream in favour of write_persistent (sokol CHANGELOG, 30-Aug-2026).
-	d.usage.dynamic_update = true;
-	s_fontImg = sg_make_image(&d);
-	s_fontView = (sg_view){ .id = voidMakeView(s_fontImg.id) };
-	s_atlasMade++;
+	// The image is the only sokol object in the fontstash path, and T1 asserts glyph emission
+	// in a process with no context at all: headless, the mirror and the white texel are real
+	// and the image is not, and nothing below the layout ever looks at the ids.
+	if (sg_isvalid()) {
+		sg_image_desc d = {0};
+		d.width = w;
+		d.height = h;
+		d.pixel_format = SG_PIXELFORMAT_RGBA8;
+		// Persists across frames, re-uploaded only when fontstash adds glyphs. dynamic_update is
+		// deprecated upstream in favour of write_persistent (sokol CHANGELOG, 30-Aug-2026).
+		d.usage.dynamic_update = true;
+		s_fontImg = sg_make_image(&d);
+		s_fontView = (sg_view){ .id = voidMakeView(s_fontImg.id) };
+		s_atlasMade++;
+	} else {
+		s_fontImg = (sg_image){0};
+		s_fontView = (sg_view){0};
+	}
 	return 1;
 }
 static int fons_resize(void *up, int w, int h) {
@@ -333,8 +341,11 @@ static int fons_resize(void *up, int w, int h) {
 	// Retire the outgoing image and view before fons_create overwrites the handles. Without
 	// this, every resize leaked one of each against sokol's 128-slot pools: measured on
 	// regress/atlasFull before the fix, one capture of one scene left 3 atlas images alive
-	// and 0 freed.
-	if (s_retiredCount < VOID2D_MAX_RETIRED_ATLASES) {
+	// and 0 freed. Headless there is no image (sg_isvalid() was false at create), so there
+	// is nothing to retire.
+	if (s_fontImg.id == 0) {
+		// no image to retire
+	} else if (s_retiredCount < VOID2D_MAX_RETIRED_ATLASES) {
 		s_retiredImg[s_retiredCount] = s_fontImg;
 		s_retiredView[s_retiredCount] = s_fontView;
 		s_retiredCount++;
@@ -451,6 +462,8 @@ static void ensureVertexBuffer(int bytes) {
 	s_buffersMade++;
 	s_vbufBytes = want;
 }
+static void ensureFons(void);
+
 
 void void2dSetup(void) {
 	voidSetCommitHook(void2dFrameEnd);
@@ -597,6 +610,15 @@ void void2dSetup(void) {
 		s_smp[i] = sg_make_sampler(&d);
 	}
 
+	ensureFons();
+}
+
+// fontstash is a CPU rasterizer; its lifetime was tied to void2dSetup only because that is
+// where it was created. T1 asserts glyph emission in a process with no sokol context at all,
+// so the fons state is created on demand — the first text entry point to need it — and the
+// one sokol object in the path (the atlas image) guards itself on sg_isvalid().
+static void ensureFons(void) {
+	if (s_fons) return;
 	FONSparams fp = {0};
 	fp.width = 512;
 	fp.height = 512;
@@ -612,6 +634,7 @@ void void2dSetup(void) {
 }
 
 int void2dAddFont(const char *path) {
+	if (!s_fons) ensureFons();
 	if (!s_fons || s_fontCount >= 16) return -1;
 	int sz = 0;
 	unsigned char *ttf = readFile(path, &sz);
@@ -622,6 +645,7 @@ int void2dAddFont(const char *path) {
 }
 
 void void2dSelectFont(int id) {
+	if (!s_fons) ensureFons();
 	if (id >= 0 && id < s_fontCount) s_fontId = s_fontIds[id];
 }
 
@@ -1064,6 +1088,7 @@ static void runCommands(const float *commands, int commandCount,
 }
 
 void void2dTextBegin(float x, float y, float size, const char *text) {
+	if (!s_fons) ensureFons();
 	if (!s_fons || s_fontId == FONS_INVALID) return;
 	fonsSetFont(s_fons, s_fontId);
 	fonsSetSize(s_fons, size * s_dpiScale);
