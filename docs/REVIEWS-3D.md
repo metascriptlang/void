@@ -275,3 +275,80 @@ rows had stopped being true by the time the milestone ended. What moved each one
 | Geometry | 584 vertices, 876 indices — the same totals the merged mesh had |
 | Frame cost | **not re-taken, and deliberately.** This run printed 0.0596 ms; one reading is not a variance, and 0.0643 ms sd 0.0017 is a figure stated more precisely than it was measured. The interleaved A/B that would settle it is open and is not a session's to open. Nothing gates on milliseconds — `bench` gates growth at zero |
 | Android | arm64 `libVoidAndroid.so`, **2 319 400 bytes**, and **it has run**: `23c5534` executed the GLES3 path on the Android emulator, `tests/device/gles3Campfire.png`. Not on a device, and against no baseline |
+
+## M7 — lights as scene nodes, the 44-float block, and the billboards rebuilt from CPU copies
+
+**Verdict: SHIP WITH FOLLOW-UPS.** No send-back. Both passes ran before this section was
+written. Between them they confirmed one measured code defect (fixed in the review's own
+commit, `c3bc215`) and two debts M6 had scheduled for M7 that the milestone's commits did not
+pay — one of the two was paid by the review instead (the `shaders` freshness stage), the other
+(`setupDraws`' silent failure) is paid as fail-loud `console.log` arms in the same commit and
+re-scheduled below only for the remaining `frameCampfire` arms.
+
+Reviewed: the defect pass saw `git diff 8ed7b76^..12e96c7`; the design pass saw the same range
+plus the docs commit. The review's fixes land as `c3bc215` and `965a7cd`.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | **`quatBetween` returns an all-NaN quaternion for near-opposite unit vectors** — a float32 dot can round below −1 (~1% of near-opposite normalized pairs, measured by simulation: 4 892 of 500 000), the negative radicand square-roots to NaN, and `NaN < EPSILON` is false so the 180° fallback never fires | Clamped by branch (`radicand > 0.0 ? sqrt : 0.0`), added the regression test that fails on the old form (`math3dCheck`, 617th test) |
+| 2 | `setupDraws`' six silent `return` arms still leave `flameNode` at `{-1, 0}` — M6 defect 13, scheduled for M7 | Every arm now prints `campfire: setupDraws bailed at <step>`. The arms in `frameCampfire` remain silent and are carried below |
+| 3 | The shader-header freshness check (M6 defect 12, "two-line check, M7") was not paid | Paid: the `shaders` gate stage regenerates all three `.glsl.h` into `out/tmp` and compares byte-exact after dropping the two lines shdc echoes the output path into. Verified failing: `step(0.35→0.36)` in the GLSL reddens it; a comment does not, because shdc strips comments — the control that failed first |
+| 4 | `scene.lights` rows are never reclaimed by `remove` — the documented `scene.meshes` leak, existing a second time undocumented | Added `scene-side-tables-never-shrunk` to PENDING3D, covering both tables, scheduled for M11's compaction |
+| 5 | "M7 as built" first misattributed the tie-break to `sortLight` and named `computeLighting`, which does not exist | Corrected: `computeLight`, priority-descending is Heaps', declaration-order ties are this port's (Heaps ties on `objectDistance`), and the cut `cullLights`/dir-priority items are now said |
+
+### Design pass
+
+Independently verified, by reading the emitted C and the generated header rather than trusting
+the docs: `collectLights`' frame path contains zero `msArrayCopy` (24 array reads, 20 span
+writes, one push and one pop into a scratch drained at entry); the 44-float layout matches
+`lightParams_t` exactly; `norm(0.35, 0.9, 0.25) = 0.9974968`; `225 928 / 921 600 = 24.51%`;
+the 12-test count and the 9-then-10 PENDING3D rows; both rebuild shapes honestly written down.
+Its findings and their dispositions:
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The allocation stage did not cover `collectLights`, a new per-frame function — the exact shape by which M6 shipped a copy with a green gate | Added to `FRAME_PATH_FUNCTIONS`; the stage line now reads `syncWorld collectDrawList refresh collectLights` |
+| 2 | `forceRebuild`'s mesh half leaked ~60 live buffers per rebuild run (pool ceiling ~127/128 corroborated by the `BUFFER_POOL_EXHAUSTED` anecdote), and `upload-mesh-leaks-on-replace`'s "M9 is the first to re-upload live meshes" premise was false since this milestone | `forceRebuild` now destroys each stale mesh's vertex and index buffer before resetting its generation; the PENDING3D row keeps its `uploadMesh` claim and its exit is re-worded |
+| 3 | Two M6 debts scheduled for M7 were silently unpaid and "M7 as built" did not say so | Paid both here (findings 2 and 3 above); this section is the record that says so |
+| 4 | "Front" is local +Z here; Heaps' `Matrix.front()` is the +X row — undocumented, and a verbatim Heaps rotation aims a directional 90° off | Written into "M7 as built" and the `light-params-divergence` context |
+| 5 | The 225 928 px control had no in-tree recipe | The sed/capture/magick one-liner is now in "M7 as built" |
+| 6 | `moon` survived as a local name in the library shader on a line the patch renamed | Renamed `lambert` (`965a7cd`); header unchanged, pixels unchanged |
+| 7 | Nothing statically ties `LIGHT_UNIFORM_LENGTH` to the generated block size | `_Static_assert(sizeof(lightParams_t) == 44 * 4)` in `gpu3d.c`, the established pattern |
+
+### Carried into M8 and later
+
+- **M8.** `Object3D` has no `name` and no lookup (glTF nodes are name-keyed); `Transform3D.scale`
+  has no production caller and `mat3(model)` stays wrong for non-uniform scale; one material
+  per mesh node where glTF primitives want one node per primitive. All carried from M6, still true.
+- **M9.** No `defaultTransform`; `uploadMesh` still never destroys what it replaces (now only
+  reachable by a path that destroys first — the row says which).
+- **M10.** No bounds on a node, so nothing culls and picking has nothing to test against.
+- **M11.** `scene.meshes` and now `scene.lights` both grow forever under churn
+  (`scene-side-tables-never-shrunk`); the instance-CPU-owner question, sharpened by M7's
+  kept-copy pattern, is in Open questions.
+- **Any time.** `frameCampfire`'s own silent `return` arms (the setup arms are paid; the frame
+  arms print nothing); `refresh` walks the whole tree even when `sync` returned 0, and a steady
+  frame is now three walks (sync, collectDrawList path, collectLights); the tree emits in tree
+  order with `Phase` and `sortBackToFront` unused, which transparency will break first; the
+  `android` stage's entry is still a hand-kept copy in `out/tmp`.
+- **Re-carried from M5, undone by neither milestone:** `LAYOUT_LIMIT` held by three hand-written
+  asserts; "exactly 4 pipelines" stops holding once indexed and non-indexed share a program; the
+  duplicate geometry copy (`pieces`/`placements` module-scope).
+
+### Numbers
+
+Re-taken at tree `3507f613`, the tree of *refactor(void3d): the lit shader's moon local names
+the lambert term it holds*, from one `sh scripts/gate3d.sh` run.
+
+| | |
+|---|---|
+| Gate | `sh scripts/gate3d.sh`, **19 stages**, GREEN with **1 SKIP** (`device`). Was 18: `c3bc215` added `shaders` |
+| Tests | **617**, 13 of them M7's (10 scene, 3 quaternion — the third is the review's own regression test) |
+| Capture | seven configurations, four frames each, byte-identical to the M6 baselines; **no baseline replaced**, and the campfire's lights provably drive the image (control in "M7 as built") |
+| Baselines | 24, checked against `docs/baselines3d.sha256` |
+| Oracle | 30 cases agree with real Heaps and 3 diverge as declared, over 2 files |
+| Scene | 36 nodes (+2 lights), 36 meshes of which 30 rebuildable, 32 draw items, 4 pipelines |
+| Frame cost | 0.0616 ms CPU this run; the interleaved A/B is still open and still not a session's to open; `bench` gates growth at zero and passed at 300 frames |
+| Android | arm64 `libVoidAndroid.so`, **2 376 056 bytes**; still emulator-only, still no device |
