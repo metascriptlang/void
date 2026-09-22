@@ -56,7 +56,7 @@ for, and it is why the three bounds rows are the ones to copy.
 
 ## Not covered here, deliberately
 
-`docs/VOID3D.md` "Still missing" carries the narrative gaps that are milestones rather than
-divergences — lights, glTF, animation, picking, particles. A milestone that has not happened is
-not a pending divergence; it is the roadmap. The distinction matters because this list is meant
-to be short enough that every row is read.
+`docs/VOID3D.md` "Still missing" carries narrative gaps that are future milestones rather than
+divergences — animation, picking and particles. The missing real glTF export is narrower: M8's
+code is present but its external producer is not, so it has the enforced row above. The
+distinction keeps this list short enough that every row is read.
