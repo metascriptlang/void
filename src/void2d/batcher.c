@@ -94,10 +94,9 @@ static int s_buffersFreed;
 static int s_frameOpen;
 // Brackets opened since the last void2dFrameEnd. A frame legitimately holds a few - the demo
 // runs two - so this is not an error until it is absurd. void2dSetup registers void2dFrameEnd
-// as the bridge's commit hook, so a host reaches this only by committing through something
-// other than voidCommit - void3d's gpu3dCommit is the one other sg_commit site in the tree.
-// The counter stays because that path still ends in s_frameOpen latching, ensureAtlas no
-// longer uploading, and text rendering from a stale atlas three layers from the mistake.
+// as the bridge's commit hook; any direct sg_commit call bypasses it and leaves s_frameOpen
+// latched, so ensureAtlas stops uploading and retired resources stop being freed. Keep the
+// counter loud because the visible failure appears several layers from the missing frame end.
 static int s_bracketsThisFrame;
 static int s_frameEndMissingReported;
 #define VOID2D_BRACKETS_BEFORE_COMPLAINT 16

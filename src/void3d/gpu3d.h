@@ -78,7 +78,6 @@ void gpu3dApplyBindings(const uint32_t *bindings, int64_t length);
 void gpu3dApplyUniforms(int32_t slot, const float *data, int64_t length);
 void gpu3dDraw(int32_t base, int32_t count, int32_t instances);
 void gpu3dEndPass(void);
-void gpu3dCommit(void);
 
 // Backend conventions the renderer adapts to: 1 when framebuffer and texture rows start at the
 // top (D3D11, Metal), 0 when at the bottom (GL); 1 when the depth buffer stores clip z as is

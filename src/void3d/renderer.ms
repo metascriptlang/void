@@ -15,9 +15,9 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
-	commit,
 	contextGeneration,
 } from "./gpu3d";
+import { commit } from "../sokol/gpu";
 import { Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { TargetLayout } from "./target";
 import {

@@ -328,7 +328,6 @@ void gpu3dDraw(int32_t base, int32_t count, int32_t instances) {
 }
 
 void gpu3dEndPass(void) { sg_end_pass(); }
-void gpu3dCommit(void) { sg_commit(); }
 
 // ---- backend conventions ----
 

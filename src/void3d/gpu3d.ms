@@ -22,7 +22,6 @@ import {
 	gpu3dApplyPipeline,
 	gpu3dDraw,
 	gpu3dEndPass,
-	gpu3dCommit,
 	gpu3dOriginTopLeft,
 	gpu3dDepthZeroToOne,
 	gpu3dContextGeneration,
@@ -209,4 +208,3 @@ export function draw(base: int32, count: int32, instances: int32): void {
 }
 
 export function endPass(): void { gpu3dEndPass(); }
-export function commit(): void { gpu3dCommit(); }
