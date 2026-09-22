@@ -22,6 +22,9 @@ import {
 	setLightPower,
 	setAmbient,
 	setVisible,
+	setName,
+	nameOf,
+	findByName,
 	remove,
 	syncWorld,
 	collectDrawList,
@@ -388,7 +391,61 @@ test "every guarded entry point refuses a stale id" {
 	assert !setVisible(scene, gone, false).ok;
 	assert !setMeshOf(scene, gone, 1).ok;
 	assert !scene.worldOf(gone).ok;
+	assert !setName(scene, gone, "x").ok;
+	assert !scene.nameOf(gone).ok;
+	assert !scene.findByName(scene.rootId(), "x").ok;
 	assert !remove(scene, gone).ok;
+}
+
+// ---- names, in the role of h3d.scene.Object.name / getObjectByName ----
+
+test "findByName walks self first, then children in order" {
+	let scene: Scene = Scene.create();
+	const root: NodeId = scene.rootId();
+	const _a: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
+	const b: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
+	assert b.ok;
+	if (!b.ok) { return; }
+	const _c: Result<NodeId, SceneError> = addGroup(scene, b.value, identityTransform());
+	assert setName(scene, b.value, "arm").ok;
+	assert setName(scene, root, "root").ok;
+	const named: Result<NodeId, SceneError> = scene.findByName(root, "arm");
+	assert named.ok;
+	if (named.ok) { assert named.value.index == b.value.index; }
+	const missed: Result<NodeId, SceneError> = scene.findByName(root, "leg");
+	assert !missed.ok;
+	if (!missed.ok) { assert missed.error == SceneError.NodeNotFound; }
+}
+
+test "a name given twice finds the first in walk order, not the last set" {
+	let scene: Scene = Scene.create();
+	const root: NodeId = scene.rootId();
+	const first: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
+	const second: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
+	assert first.ok && second.ok;
+	if (!first.ok || !second.ok) { return; }
+	assert setName(scene, second.value, "twin").ok;
+	assert setName(scene, first.value, "twin").ok;
+	const named: Result<NodeId, SceneError> = scene.findByName(root, "twin");
+	assert named.ok;
+	if (named.ok) { assert named.value.index == first.value.index; }
+	const deep: Result<NodeId, SceneError> = scene.findByName(second.value, "twin");
+	assert deep.ok;
+	if (deep.ok) { assert deep.value.index == second.value.index; }
+}
+
+test "nameOf reads back what setName wrote, and a fresh node is unnamed" {
+	let scene: Scene = Scene.create();
+	const fresh: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	assert fresh.ok;
+	if (!fresh.ok) { return; }
+	const before: Result<string, SceneError> = scene.nameOf(fresh.value);
+	assert before.ok;
+	if (before.ok) { assert before.value == ""; }
+	assert setName(scene, fresh.value, "pet-body").ok;
+	const after: Result<string, SceneError> = scene.nameOf(fresh.value);
+	assert after.ok;
+	if (after.ok) { assert after.value == "pet-body"; }
 }
 
 // ---- lights, in the role of h3d.scene.Light / fwd.DirLight / fwd.PointLight ----

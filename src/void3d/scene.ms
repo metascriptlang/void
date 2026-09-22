@@ -67,6 +67,7 @@ export enum SceneError {
 	RootCannotBeRemoved,
 	NotAMeshNode,
 	NotALightNode,
+	NodeNotFound,
 }
 
 export enum LightError {
@@ -96,6 +97,9 @@ export struct Object3D {
 	flags: int32;
 	parent: int32;
 	payload: int32;
+	// h3d.scene.Object.name (default null there, "" here): glTF nodes are name-keyed, and
+	// `findByName` is this port's getObjectByName.
+	name: string;
 	local: Transform3D;
 	world: Mat4;
 	children: Vec<int32>;
@@ -195,6 +199,7 @@ export function create(this typeof Scene): Scene {
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: NO_NODE,
 		payload: NO_NODE,
+		name: "",
 		local: identityTransform(),
 		world: identity(),
 		children: [],
@@ -219,6 +224,7 @@ export function addGroup(
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: parent.index,
 		payload: NO_NODE,
+		name: "",
 		local: local,
 		world: identity(),
 		children: [],
@@ -252,6 +258,7 @@ export function addMeshNode(
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: parent.index,
 		payload: payload,
+		name: "",
 		local: local,
 		world: identity(),
 		children: [],
@@ -278,6 +285,7 @@ export function addLightNode(
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: parent.index,
 		payload: payload,
+		name: "",
 		local: local,
 		world: identity(),
 		children: [],
@@ -398,6 +406,40 @@ export function setLightPower(
 
 export function setAmbient(ref scene: Scene, ambient: Vec3): void {
 	scene.ambientLight = ambient;
+}
+
+export function setName(ref scene: Scene, id: NodeId, name: string): Result<int32, SceneError> {
+	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	scene.nodes[id.index].name = name;
+	return Result.ok(id.index);
+}
+
+export function nameOf(this scene: Scene, id: NodeId): Result<string, SceneError> {
+	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	return Result.ok(scene.nodes[id.index].name);
+}
+
+// h3d.scene.Object.getObjectByName: self first, then children in order, depth-first. A miss is
+// an error rather than a null id, so a caller cannot quietly address the root by accident.
+export function findByName(
+	this scene: Scene,
+	from: NodeId,
+	name: string,
+): Result<NodeId, SceneError> {
+	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
+	const found: int32 = findByNameRec(scene, from.index, name);
+	if (found == NO_NODE) { return Result.err(SceneError.NodeNotFound); }
+	return Result.ok({ index: found, generation: scene.generations[found] });
+}
+
+function findByNameRec(ref scene: Scene, index: int32, name: string): int32 {
+	if (scene.nodes[index].name == name) { return index; }
+	const count: int32 = scene.nodes[index].children.length as int32;
+	for (let i = 0; i < count; i++) {
+		const found: int32 = findByNameRec(scene, scene.nodes[index].children[i], name);
+		if (found != NO_NODE) { return found; }
+	}
+	return NO_NODE;
 }
 
 export function worldOf(this scene: Scene, id: NodeId): Result<Mat4, SceneError> {
