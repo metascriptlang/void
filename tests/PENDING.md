@@ -98,9 +98,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 | golden-missing:prim/dashedBorder | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
 | golden-missing:xform/tilePivot | T2 | scene not renderable until P2 — `Tile.dx/dy` does not exist | P2 | 2026-09-20 |
 | golden-missing:snap/zeroBorder | T2 | scene not renderable until P2 — no border primitive, so "zero stays zero" has nothing to assert | P2 | 2026-09-20 |
-| golden-missing:image/objectFit | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:image/cornerRadii | T2 | scene not renderable until P2 | P2 | 2026-09-20 |
-| golden-missing:image/grayscale | T2 | scene not renderable until P2 — the image mode; the `colorMatrix` form is captured as `image/colorPipeline` | P2 | 2026-09-20 |
 | golden-missing:text/cjkFallback | T2 | scene not renderable until P3 — no fallback chain, one font | P3 | 2026-09-20 |
 | golden-missing:clip/maskScroll | T2 | scene not renderable until P5 — `Mask.scrollX/Y` does not exist | P5 | 2026-09-20 |
 | golden-missing:text/decorations | T2 | scene not renderable until P4 — no underline, strikethrough or wavy | P4 | 2026-09-20 |

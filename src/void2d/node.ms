@@ -4,6 +4,9 @@
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
+import {
+	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
+} from "./imageStyle";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid }
 
@@ -123,6 +126,15 @@ export function sprite(t: Tile): Node2D {
 	n.sheet = t; n.w = t.w; n.h = t.h;
 	return n;
 }
+export function setImageStyle(this n: Node2D, style: ImageStyle): Node2D {
+	if (n.kind !== DrawKind.Sprite && n.kind !== DrawKind.Anim) { unreachable; }
+	if (n.payload == NO_IMAGE_STYLE) {
+		n.payload = allocateImageStyle(style);
+	} else {
+		updateImageStyle(n.payload, style);
+	}
+	return n;
+}
 export function label(text: string, size: float32, color: Color): Node2D {
 	const n = base(DrawKind.Label);
 	n.text = text; n.size = size; n.color = color;
@@ -222,5 +234,8 @@ export function dispose(this n: Node2D): void {
 	if (n.kind === DrawKind.Rect && n.payload != NO_BOX_STYLE) {
 		releaseBoxStyle(n.payload);
 		n.payload = NO_BOX_STYLE;
+	} else if ((n.kind === DrawKind.Sprite || n.kind === DrawKind.Anim) && n.payload != NO_IMAGE_STYLE) {
+		releaseImageStyle(n.payload);
+		n.payload = NO_IMAGE_STYLE;
 	}
 }

@@ -102,6 +102,9 @@ export function sceneRows(): SceneRow[] {
 		{ name: "image/sceneSmooth", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/subFlip", phase: "P0", width: 256, height: 176, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/colorPipeline", phase: "P0", width: 256, height: 170, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/objectFit", phase: "P2", width: 320, height: 214, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/cornerRadii", phase: "P2", width: 320, height: 220, dpi: 1.25, steps: 0, demo: false },
+		{ name: "image/grayscale", phase: "P2", width: 320, height: 188, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/scaleGrid", phase: "P0", width: 256, height: 148, dpi: 1.0, steps: 0, demo: false },
 
 		// Turned on at P1, once the per-target command lists were hoisted out of the swapchain

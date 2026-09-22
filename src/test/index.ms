@@ -12,6 +12,7 @@ import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
 import "./coverageOracleCheck";
 import "./gradientCheck";
+import "./imageStyleCheck";
 import "./uiPipelineCheck";
 import "./snapCheck";
 import "./rendererCheck";

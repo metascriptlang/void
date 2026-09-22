@@ -19,7 +19,9 @@
 import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { scene, add } from "../../src/void2d/scene";
-import { Node2D, rect, mask, at, addChild, setBoxStyle, label, graphics } from "../../src/void2d/node";
+import {
+	Node2D, rect, mask, at, addChild, setBoxStyle, setImageStyle, label, graphics, sprite,
+} from "../../src/void2d/node";
 import { sync, draw } from "../../src/void2d/render";
 import { begin2d, finishRecording, uploadCount, growthTarget, setSceneSmooth } from "../../src/void2d/draw";
 import {
@@ -39,12 +41,13 @@ import {
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
 } from "../../src/void2d/instance";
-import { rgba, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
+import { rgba, tile, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
 import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
 } from "../../src/void2d/graphics";
 import { GradientSpace } from "../../src/void2d/gradient";
+import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -384,6 +387,15 @@ function gradientScene(): Node2D {
 		rgba(0.2, 0.2, 0.2, 1.0), rgba(0.8, 0.8, 0.8, 1.0), 4.0);
 	return s.root;
 }
+function imageStyleScene(): Node2D {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const image = sprite(tile(17, 200.0, 100.0)).at(10.0, 12.0);
+	image.w = 100.0;
+	image.h = 80.0;
+	image.setImageStyle(imageStyle(cornerRadii(3.0, 6.0, 9.0, 12.0), true, ObjectFit.Cover));
+	s.add(image);
+	return s.root;
+}
 
 test "T1 snapshot: painter order" {
 	assert snapshot("order", record(orderScene(), 128.0, 64.0, 1.0));
@@ -425,6 +437,9 @@ test "T1 snapshot: a shadowed box is one instance carrying shadow, fill and bord
 }
 test "T1 snapshot: gradients and patterns keep draw order and effect records" {
 	assert snapshot("gradients", record(gradientScene(), 128.0, 64.0, 1.0));
+}
+test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lanes" {
+	assert snapshot("imageStyle", record(imageStyleScene(), 128.0, 108.0, 1.0));
 }
 
 test "recording an unchanged tree twice is byte-identical" {

@@ -413,6 +413,20 @@ void main() {
     vec2 half_ = vLocalHalf.zw;
     float aa = vUvAa.z;
     int mode = int(vUvAa.w + 0.5);
+    if (mode == 3) {
+        vec4 radii = clamp(vBorders, vec4(0.0), vec4(min(half_.x, half_.y)));
+        float coverage = coverageFromDistance(
+            roundedRectDistance(p, half_, cornerRadius(p, radii)), aa);
+        vec4 texel = texture(sampler2D(uiTex, uiSmp), vUvAa.xy);
+        if (vParams1.x > 0.5) {
+            float gray = dot(texel.rgb, vec3(0.2126, 0.7152, 0.0722));
+            texel.rgb = vec3(gray);
+        }
+        vec4 fill = texel * vFill;
+        float alpha = fill.a * coverage;
+        frag_color = vec4(fill.rgb * alpha, alpha);
+        return;
+    }
 
     if (mode == 1) {                       // Shadow: standalone drop or inset
         // The box's own half extents and blur ride in the borders lane; the quad is inflated
@@ -478,9 +492,7 @@ void main() {
     float ring = max(outer - inner, 0.0);
 
     vec4 fill = vFill;
-    if (mode == 3) {                       // Image
-        fill = fill * texture(sampler2D(uiTex, uiSmp), vUvAa.xy);
-    } else if (mode == 2) {                // Glyph: the atlas is white in rgb, coverage in alpha
+    if (mode == 2) {                        // Glyph: the atlas is white in rgb, coverage in alpha
         fill.a = fill.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).a;
     }
     float alpha = fill.a * inner + vBorder.a * ring;

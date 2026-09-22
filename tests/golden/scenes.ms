@@ -7,8 +7,11 @@
 // draw a known defect on purpose, so that the commit which fixes the defect has to
 // regenerate exactly that group and nothing else.
 
-import { Node2D, rect, sprite, label, graphics, mask, scaleGrid, at, addChild, setBoxStyle } from "../../src/void2d/node";
-import { boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
+import {
+	Node2D, rect, sprite, label, graphics, mask, scaleGrid, at, addChild,
+	setBoxStyle, setImageStyle,
+} from "../../src/void2d/node";
+import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
 	strokeRect,
@@ -27,6 +30,7 @@ import {
 } from "../../src/void2d/graphics";
 import { GradientSpace } from "../../src/void2d/gradient";
 import { colorMatrixGrayscale } from "../../src/void2d/effect";
+import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 import { Scene, scene, add } from "../../src/void2d/scene";
 import {
 	Tile,
@@ -688,6 +692,63 @@ function imageColorPipeline(): Scene {
 	s.add(additive);
 	return s;
 }
+function styledImage(
+	t: Tile,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	fit: ObjectFit,
+	radii: CornerRadii,
+	grayscale: boolean,
+): Node2D {
+	const image = sprite(t).at(x, y);
+	image.w = w;
+	image.h = h;
+	image.setImageStyle(imageStyle(radii, grayscale, fit));
+	return image;
+}
+
+function imageObjectFit(): Scene {
+	const s = scene(DARK);
+	const t = sheet();
+	const wide = t.sub(0.0, 0.0, t.texW, t.texH * 0.5);
+	const small = t.sub(t.texW * 0.35, t.texH * 0.35, 48.0, 24.0);
+	const square: CornerRadii = uniformRadii(0.0);
+	const xs: float32[] = [10.0, 110.0, 210.0, 60.0, 170.0];
+	const ys: float32[] = [14.0, 14.0, 14.0, 116.0, 116.0];
+	for (let i: int32 = 0; i < 5; i++) {
+		s.add(rect(90.0, 78.0, rgba(0.20, 0.22, 0.28, 1.0)).at(xs[i], ys[i]));
+	}
+	s.add(styledImage(wide, xs[0], ys[0], 90.0, 78.0, ObjectFit.Fill, square, false));
+	s.add(styledImage(wide, xs[1], ys[1], 90.0, 78.0, ObjectFit.Contain, square, false));
+	s.add(styledImage(wide, xs[2], ys[2], 90.0, 78.0, ObjectFit.Cover, square, false));
+	s.add(styledImage(small, xs[3], ys[3], 90.0, 78.0, ObjectFit.ScaleDown, square, false));
+	s.add(styledImage(wide, xs[4], ys[4], 90.0, 78.0, ObjectFit.None, square, false));
+	return s;
+}
+
+function imageCornerRadii(): Scene {
+	const s = scene(DARK);
+	const image = styledImage(sheet(), 86.0, 48.0, 148.0, 112.0, ObjectFit.Cover,
+		cornerRadii(5.0, 18.0, 38.0, 12.0), false);
+	image.pivotX = 74.0;
+	image.pivotY = 56.0;
+	image.rotation = 0.31;
+	image.alpha = 0.82;
+	s.add(image);
+	return s;
+}
+
+function imageGrayscale(): Scene {
+	const s = scene(DARK);
+	const radii: CornerRadii = uniformRadii(12.0);
+	s.add(styledImage(sheet(), 18.0, 28.0, 132.0, 132.0,
+		ObjectFit.Cover, radii, false));
+	s.add(styledImage(sheet(), 170.0, 28.0, 132.0, 132.0,
+		ObjectFit.Cover, radii, true));
+	return s;
+}
 
 function imageScaleGrid(): Scene {
 	const s = scene(DARK);
@@ -974,6 +1035,9 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "image/sceneSmooth", build: imageSceneSmooth },
 		{ name: "image/subFlip", build: imageSubFlip },
 		{ name: "image/colorPipeline", build: imageColorPipeline },
+		{ name: "image/objectFit", build: imageObjectFit },
+		{ name: "image/cornerRadii", build: imageCornerRadii },
+		{ name: "image/grayscale", build: imageGrayscale },
 		{ name: "image/scaleGrid", build: imageScaleGrid },
 
 		{ name: "filter/blur", build: filterBlur },

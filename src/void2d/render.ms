@@ -28,7 +28,7 @@ import {
 import { layoutText, buildGlyphMesh } from "./text";
 import { InstanceMode } from "./instance";
 import { fontView } from "./draw";
-import { Vec2, Color, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
+import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, boxStyles } from "./boxStyle";
 import { axisAligned, snapBoxEdges, snapStroke } from "./snap";
@@ -37,6 +37,7 @@ import {
 	GFX_OP_VERTEX_COUNT, GFX_OP_SPACE, GFX_OP_DITHER, GFX_OP_MIDDLE,
 	GFX_OP_COLOR0, GFX_OP_COLOR1, GFX_OP_COLOR2, GFX_OP_PARAMS,
 } from "./graphics";
+import { NO_IMAGE_STYLE, imageStyles, fitImage } from "./imageStyle";
 
 function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
@@ -183,6 +184,39 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 		ch.sync(n.cachedWorld, worldChanged);
 	}
 }
+let imageEffectRejectedReported: boolean = false;
+
+function emitStyledImage(
+	n: Node2D,
+	t: Tile,
+	world: Transform2D,
+	col: Color,
+	sizeX: float32,
+	sizeY: float32,
+	lbMin: Vec2,
+): boolean {
+	if (n.payload == NO_IMAGE_STYLE) { return false; }
+	if (!uiInstancingAvailable()) {
+		if (!imageEffectRejectedReported) {
+			console.log("void2d: an image style cannot be combined with colorMatrix, colorAdd, or colorKey");
+			imageEffectRejectedReported = true;
+		}
+		return true;
+	}
+	const style = imageStyles[n.payload];
+	const fitted = fitImage(t, sizeX, sizeY, style.fit);
+	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
+	const origin = vec2(lbMin.x + fitted.x, lbMin.y + fitted.y) * world;
+	drawUiInstance(InstanceMode.Image, t.view, n.blend, world,
+		origin.x, origin.y, fitted.w, fitted.h,
+		fitted.u0, fitted.v0, fitted.u1, fitted.v1,
+		style.radii.topLeft, style.radii.topRight,
+		style.radii.bottomRight, style.radii.bottomLeft,
+		0.0, 0.0, 0.0,
+		style.grayscale ? 1.0 : 0.0, 0.0, 0.0, 0.0,
+		col, transparent, transparent);
+	return true;
+}
 
 function emitNode(
 	n: Node2D, world: Transform2D, na: float32, col: Color,
@@ -288,22 +322,26 @@ function emitNode(
 			fillQuad(tl, tr, br, bl, col, n.blend);
 		}
 	} else if (n.kind === DrawKind.Sprite) {
-		if (instanced) {
-			drawSpriteAffine(n.sheet.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
-				n.sheet.u0, n.sheet.v0, n.sheet.u1, n.sheet.v1, col);
-		} else {
-			imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
+		if (!emitStyledImage(n, n.sheet, world, col, sizeX, sizeY, lbMin)) {
+			if (instanced) {
+				drawSpriteAffine(n.sheet.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+					n.sheet.u0, n.sheet.v0, n.sheet.u1, n.sheet.v1, col);
+			} else {
+				imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
+			}
 		}
 	} else if (n.kind === DrawKind.Anim) {
 		const len: int32 = n.frames.length as int32;
 		if (len > 0) {
 			const fi: int32 = ((n.clock * n.fps) as int32) % len;
 			const fr = n.frames[fi];
-			if (instanced) {
-				drawSpriteAffine(fr.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
-					fr.u0, fr.v0, fr.u1, fr.v1, col);
-			} else {
-				imageQuad(fr, tl, tr, br, bl, col, n.blend);
+			if (!emitStyledImage(n, fr, world, col, sizeX, sizeY, lbMin)) {
+				if (instanced) {
+					drawSpriteAffine(fr.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+						fr.u0, fr.v0, fr.u1, fr.v1, col);
+				} else {
+					imageQuad(fr, tl, tr, br, bl, col, n.blend);
+				}
 			}
 		}
 	} else if (n.kind === DrawKind.Label) {
