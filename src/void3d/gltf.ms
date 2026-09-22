@@ -9,18 +9,15 @@
 // content, already read from wherever it lives. There is no on-disk path here —
 // nothing has verified one against a real exported file, and a loader that reads files
 // it has never seen is a claim this port does not make.
+// PENDING3D: gltf-real-export-not-exercised
 
 import { parseJson } from "std/serialize/json/parser";
 import { jsonNull } from "std/serialize/json/builder";
 import { asString, asInt32, asNumber, at } from "std/serialize/json/accessors";
 import { JsonKind, JsonValue } from "std/serialize/json/types";
-import { vec3, Vec3 } from "../math/math3d";
-import { float32At } from "./gpu3d";
+import { vec3, Vec3, Quat, identityQuat } from "../math/math3d";
+import { float32At } from "./gltfDecode";
 import { MeshData, MeshError, addVertex, addTriangle, hasRoomFor } from "./meshData";
-import {
-	Scene, NodeId, SceneError, Transform3D, identityTransform,
-	addGroup, addMeshNode, setName, isLive,
-} from "./scene";
 
 export enum GltfError {
 	BadJson,
@@ -31,8 +28,6 @@ export enum GltfError {
 	MeshTooLarge,
 	BadIndex,
 	BadNode,
-	BadMeshBinding,
-	SceneRefused,
 }
 
 const COMPONENT_FLOAT: int32 = 5126;
@@ -69,10 +64,16 @@ function arrayOf(obj: JsonValue, key: string): JsonValue {
 	return v;
 }
 
+export struct GltfTransform {
+	position: Vec3;
+	rotation: Quat;
+	scale: Vec3;
+}
+
 export struct GltfNode {
 	name: string;
 	mesh: int32;
-	local: Transform3D;
+	local: GltfTransform;
 	children: Vec<int32>;
 }
 
@@ -82,10 +83,6 @@ export struct GltfData {
 	sceneRoots: Vec<int32>;
 }
 
-export struct GltfMeshBinding {
-	mesh: int32;
-	material: int32;
-}
 
 // What a decoded accessor claims: where its floats start in the buffer and how many
 // elements it holds. The subset's element types are checked before this is built, so
@@ -93,6 +90,10 @@ export struct GltfMeshBinding {
 struct AccessorView {
 	offset: int32;
 	count: int32;
+}
+
+function accessorError(error: GltfError): Result<AccessorView, GltfError> {
+	return Result.err(error);
 }
 
 function accessorView(
@@ -105,39 +106,39 @@ function accessorView(
 	components: int32,
 ): Result<AccessorView, GltfError> {
 	if (index < 0 || index >= countOf(accessors)) {
-		return Result.err(GltfError.Unsupported);
+		return accessorError(GltfError.Unsupported);
 	}
 	const accessor: JsonValue = accessors.at(index);
-	if (isNull(accessor)) { return Result.err(GltfError.Unsupported); }
+	if (isNull(accessor)) { return accessorError(GltfError.Unsupported); }
 	if (intField(accessor, "componentType", 0) != component) {
-		return Result.err(GltfError.Unsupported);
+		return accessorError(GltfError.Unsupported);
 	}
 	const typeField: JsonValue = fieldOf(accessor, "type");
-	if (typeField.asString() != typeName) { return Result.err(GltfError.Unsupported); }
-	if (!isNull(fieldOf(accessor, "sparse"))) { return Result.err(GltfError.Unsupported); }
+	if (typeField.asString() != typeName) { return accessorError(GltfError.Unsupported); }
+	if (!isNull(fieldOf(accessor, "sparse"))) { return accessorError(GltfError.Unsupported); }
 	const count: int32 = intField(accessor, "count", -1);
 	const viewIndex: int32 = intField(accessor, "bufferView", -1);
 	if (viewIndex < 0 || viewIndex >= countOf(views)) {
-		return Result.err(GltfError.Unsupported);
+		return accessorError(GltfError.Unsupported);
 	}
 	const view: JsonValue = views.at(viewIndex);
-	if (isNull(view)) { return Result.err(GltfError.Unsupported); }
-	if (intField(view, "buffer", 0) != 0) { return Result.err(GltfError.Unsupported); }
+	if (isNull(view)) { return accessorError(GltfError.Unsupported); }
+	if (intField(view, "buffer", 0) != 0) { return accessorError(GltfError.Unsupported); }
 	const elementBytes: int32 = (component == COMPONENT_FLOAT ? 4 : 2) * components;
 	const stride: int32 = intField(view, "byteStride", 0);
-	if (stride != 0 && stride != elementBytes) { return Result.err(GltfError.Unsupported); }
+	if (stride != 0 && stride != elementBytes) { return accessorError(GltfError.Unsupported); }
 	const viewOffset: int32 = intField(view, "byteOffset", 0);
 	const viewLength: int32 = intField(view, "byteLength", -1);
 	const accessorOffset: int32 = intField(accessor, "byteOffset", 0);
 	if (viewOffset < 0 || viewLength < 0 || accessorOffset < 0 || count < 0) {
-		return Result.err(GltfError.OutOfRange);
+		return accessorError(GltfError.OutOfRange);
 	}
 	if (viewOffset > bufferLength || viewLength > bufferLength - viewOffset) {
-		return Result.err(GltfError.OutOfRange);
+		return accessorError(GltfError.OutOfRange);
 	}
 	if (accessorOffset > viewLength
 		|| count > (viewLength - accessorOffset) / elementBytes) {
-		return Result.err(GltfError.OutOfRange);
+		return accessorError(GltfError.OutOfRange);
 	}
 	const out: AccessorView = { offset: viewOffset + accessorOffset, count: count };
 	return Result.ok(out);
@@ -160,7 +161,11 @@ function loadMesh(
 	if (isNull(primitives) || countOf(primitives) != 1) {
 		return Result.err(GltfError.Unsupported);
 	}
-	const attributes: JsonValue = fieldOf(primitives.at(0), "attributes");
+	const primitive: JsonValue = at(primitives, 0);
+	if (intField(primitive, "mode", 4) != 4) {
+		return Result.err(GltfError.Unsupported);
+	}
+	const attributes: JsonValue = fieldOf(primitive, "attributes");
 	if (isNull(attributes)) { return Result.err(GltfError.Unsupported); }
 	const positions: Result<AccessorView, GltfError> = accessorView(
 		accessors, views, bufferLength,
@@ -203,7 +208,7 @@ function loadMesh(
 		);
 		if (!added.ok) { return Result.err(GltfError.MeshTooLarge); }
 	}
-	const indicesField: JsonValue = fieldOf(primitives.at(0), "indices");
+	const indicesField: JsonValue = fieldOf(primitive, "indices");
 	if (!isNull(indicesField)) {
 		const indices: Result<AccessorView, GltfError> = accessorView(
 			accessors, views, bufferLength,
@@ -240,7 +245,11 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 	if (node === null || node.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	const local: Transform3D = identityTransform();
+	const local: GltfTransform = {
+		position: vec3(0.0, 0.0, 0.0),
+		rotation: identityQuat(),
+		scale: vec3(1.0, 1.0, 1.0),
+	};
 	const translation: JsonValue = fieldOf(node, "translation");
 	if (!isNull(translation)) {
 		if (translation.kind != JsonKind.Array || countOf(translation) != 3) {
@@ -313,7 +322,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 	});
 }
 
-function validateGraph(data: GltfData): Result<int32, GltfError> {
+export function validateGltfGraph(data: GltfData): Result<int32, GltfError> {
 	const states: Vec<int32> = new Array(data.nodes.length as int32);
 	for (let i = 0; i < (states.length as int32); i++) { states[i] = 0; }
 	const stack: Vec<int32> = [];
@@ -342,57 +351,6 @@ function validateGraph(data: GltfData): Result<int32, GltfError> {
 	return Result.ok(count);
 }
 
-export function addGltfNodes(
-	ref scene: Scene,
-	parent: NodeId,
-	data: GltfData,
-	bindings: Span<GltfMeshBinding>,
-): Result<int32, GltfError> {
-	if (!isLive(scene, parent)) { return Result.err(GltfError.SceneRefused); }
-	if ((bindings.length as int32) != (data.meshes.length as int32)) {
-		return Result.err(GltfError.BadMeshBinding);
-	}
-	const valid: Result<int32, GltfError> = validateGraph(data);
-	if (!valid.ok) { return Result.err(valid.error); }
-	const nodes: Vec<int32> = [];
-	const parents: Vec<NodeId> = [];
-	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
-		nodes.push(data.sceneRoots[i]);
-		parents.push(parent);
-	}
-	let count: int32 = 0;
-	while ((nodes.length as int32) > 0) {
-		const last: int32 = (nodes.length as int32) - 1;
-		const index: int32 = nodes[last];
-		const under: NodeId = parents[last];
-		nodes.pop();
-		parents.pop();
-		let id: NodeId = { index: -1, generation: 0 };
-		const mesh: int32 = data.nodes[index].mesh;
-		if (mesh == NO_MESH) {
-			const added: Result<NodeId, SceneError> =
-				addGroup(scene, under, data.nodes[index].local);
-			if (!added.ok) { return Result.err(GltfError.SceneRefused); }
-			id = added.value;
-		} else {
-			const added: Result<NodeId, SceneError> = addMeshNode(
-				scene, under, data.nodes[index].local,
-				bindings[mesh].mesh, bindings[mesh].material,
-			);
-			if (!added.ok) { return Result.err(GltfError.SceneRefused); }
-			id = added.value;
-		}
-		const named: Result<int32, SceneError> = setName(scene, id, data.nodes[index].name);
-		if (!named.ok) { return Result.err(GltfError.SceneRefused); }
-		count = count + 1;
-		const childCount: int32 = data.nodes[index].children.length as int32;
-		for (let i = childCount - 1; i >= 0; i--) {
-			nodes.push(data.nodes[index].children[i]);
-			parents.push(id);
-		}
-	}
-	return Result.ok(count);
-}
 
 
 
@@ -404,7 +362,7 @@ export function loadGltf(json: string, buffer: Span<uint8>): Result<GltfData, Gl
 	if (isNull(asset)) { return Result.err(GltfError.NotGltf); }
 	const versionField: JsonValue = fieldOf(asset, "version");
 	const version: string = versionField.asString();
-	if (version.length < 1 || version[0] != '2') { return Result.err(GltfError.NotGltf); }
+	if (version != "2.0") { return Result.err(GltfError.NotGltf); }
 	const accessors: JsonValue = arrayOf(root, "accessors");
 	const views: JsonValue = arrayOf(root, "bufferViews");
 	const data: GltfData = { meshes: [], nodes: [], sceneRoots: [] };
@@ -451,7 +409,7 @@ export function loadGltf(json: string, buffer: Span<uint8>): Result<GltfData, Gl
 		}
 		data.sceneRoots.push(asInt32(rootNode, -1));
 	}
-	const valid: Result<int32, GltfError> = validateGraph(data);
+	const valid: Result<int32, GltfError> = validateGltfGraph(data);
 	if (!valid.ok) { return Result.err(valid.error); }
 	return Result.ok(data);
 }

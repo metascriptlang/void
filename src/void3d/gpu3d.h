@@ -69,9 +69,6 @@ void gpu3dDestroyPipeline(uint32_t pipeline);
 void gpu3dDestroyBuffer(uint32_t buffer);
 void gpu3dDestroyImage(uint32_t image);
 void gpu3dDestroyView(uint32_t view);
-// The glTF reader's one byte-level need: a little-endian float32 at `at`, exact through a
-// union pun because an arithmetic decode is wrong on denormals and NaN.
-float gpu3dFloat32At(const uint8_t *bytes, int64_t length, int32_t at);
 void gpu3dDestroySampler(uint32_t sampler);
 
 void gpu3dBeginPass(const uint32_t *descriptor, int64_t length, const float *clear, int64_t clearLength);

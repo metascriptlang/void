@@ -1,6 +1,7 @@
 import { approx } from "./helpers";
 import { Mat4 } from "../math/math3d";
-import { addGltfNodes, loadGltf, GltfError, GltfMeshBinding } from "../void3d/gltf";
+import { loadGltf, GltfError } from "../void3d/gltf";
+import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
 import { Scene, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
 import { vertexCount, triangleCount } from "../void3d/meshData";
 // The buffer a test builds by hand, in the bit patterns the decoder must see: every float
@@ -125,12 +126,12 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 	assert loaded.ok;
 	if (!loaded.ok) { return; }
 	let scene: Scene = Scene.create();
-	const missing: Result<int32, GltfError> =
+	const missing: Result<int32, GltfSceneError> =
 		addGltfNodes(scene, scene.rootId(), loaded.value, []);
 	assert !missing.ok;
-	if (!missing.ok) { assert missing.error == GltfError.BadMeshBinding; }
+	if (!missing.ok) { assert missing.error == GltfSceneError.BadMeshBinding; }
 	const bindings: Vec<GltfMeshBinding> = [{ mesh: 7, material: 9 }];
-	const added: Result<int32, GltfError> =
+	const added: Result<int32, GltfSceneError> =
 		addGltfNodes(scene, scene.rootId(), loaded.value, bindings);
 	assert added.ok;
 	if (!added.ok) { return; }
@@ -204,6 +205,15 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	);
 	assert !cycle.ok;
 	if (!cycle.ok) { assert cycle.error == GltfError.BadNode; }
+	const lines = loadGltf(
+		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
+		+ "\"nodes\":[{\"mesh\":0}],"
+		+ "\"meshes\":[{\"primitives\":[{\"mode\":1,\"attributes\":{}}]}],"
+		+ "\"accessors\":[],\"bufferViews\":[],\"buffers\":[{\"byteLength\":0}]}",
+		[],
+	);
+	assert !lines.ok;
+	if (!lines.ok) { assert lines.error == GltfError.Unsupported; }
 	const escapedView = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
@@ -227,6 +237,11 @@ test "not glTF, bad JSON, short buffer and missing POSITION each say which one" 
 	);
 	assert !wrongVersion.ok;
 	if (!wrongVersion.ok) { assert wrongVersion.error == GltfError.NotGltf; }
+	const malformedVersion = loadGltf(
+		"{\"asset\":{\"version\":\"2bad\"}}", [],
+	);
+	assert !malformedVersion.ok;
+	if (!malformedVersion.ok) { assert malformedVersion.error == GltfError.NotGltf; }
 	const badJson = loadGltf("{not json", []);
 	assert !badJson.ok;
 	if (!badJson.ok) { assert badJson.error == GltfError.BadJson; }
