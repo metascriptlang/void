@@ -7,6 +7,11 @@
 import { gfxSetup, fbWidth, fbHeight } from "../sokol/gpu";
 import { sinf, cosf } from "../math/mat4";
 import {
+	LIGHT_UNIFORM_LENGTH,
+	TOON_UNIFORM_SLOT,
+	TOON_UNIFORM_LENGTH,
+	SPRITE_UNIFORM_SLOT,
+	SPRITE_UNIFORM_LENGTH,
 	Program,
 	VertexLayout,
 	Filter,
@@ -16,7 +21,7 @@ import {
 	makeTextureView,
 } from "../void3d/gpu3d";
 import { RenderState, Face, Compare } from "../void3d/pass";
-import { Material, Phase } from "../void3d/material";
+import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { Sampler } from "../void3d/target";
 import {
 	EXTERNAL_GENERATION,
@@ -28,6 +33,8 @@ import {
 	addMeshData,
 	addMaterial,
 	rebuildMeshes,
+	reserveUniforms,
+	writeUniforms,
 } from "../void3d/draw";
 import { LowResView, ViewError } from "../void3d/blit";
 import { PaletteError } from "../void3d/palette";
@@ -41,18 +48,25 @@ import {
 	setSettings,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { Vec3, vec3, eulerQuat } from "../math/math3d";
+import { Vec3, vec3, eulerQuat, quatBetween } from "../math/math3d";
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
 import {
 	Scene,
 	NodeId,
 	Transform3D,
 	SceneError,
+	LightError,
+	LightKind,
 	identityTransform,
+	transformAt,
 	addGroup,
 	addMeshNode,
+	addLightNode,
 	setLocal,
 	setMeshOf,
+	setLightPower,
+	setAmbient,
+	collectLights,
 	refresh,
 } from "../void3d/scene";
 import {
@@ -104,7 +118,7 @@ const grassInstances: Vec<float32> = [];
 const stones: Vec<Box> = [];
 const flameBuffers: Vec<uint32> = [];
 const texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
-const lightParams: Vec<float32> = new Array(20);
+const lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
 
 // Billboard quad corners (x across, y up), two triangles; instances supply root and size.
@@ -123,7 +137,12 @@ const CAMPFIRE_PALETTE: Vec<uint32> = [
 	0xC8502A, 0xF08A36, 0xFFC857, 0xFFF1B0,
 ];
 
-let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+// The pool holds the renderer's blocks plus this scene's material blocks: one toon ramp for
+// the lit material, one sprite block shared by grass and flame.
+const MATERIAL_UNIFORM_LENGTH: int32 = TOON_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
+let context: DrawContext = DrawContext.withUniformCapacity(
+	PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
+);
 let renderer: PixelArtRenderer = createRenderer();
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
@@ -134,6 +153,7 @@ let flameNode: NodeId = { index: -1, generation: 0 };
 // transform to propagate through. The group sits at the identity unless a check turns it, and
 // `local * identity` is exact, so the six standing configurations see the same pixels.
 let logGroup: NodeId = { index: -1, generation: 0 };
+let fireLight: NodeId = { index: -1, generation: 0 };
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
 const NEVER_REBUILD: int32 = -1;
@@ -419,30 +439,17 @@ function updateFlicker(): void {
 	fireOffsetY = (nextRandom() - 0.5) * 0.12;
 	fireOffsetZ = (nextRandom() - 0.5) * 0.16;
 	fireFlicker = 1.0 + (nextRandom() - 0.5) * 0.14;
+	const moved: Result<int32, SceneError> = setLocal(
+		tree,
+		fireLight,
+		transformAt(vec3(fireOffsetX, FIRE_HEIGHT + fireOffsetY, fireOffsetZ)),
+	);
+	if (!moved.ok) { return; }
+	const powered: Result<int32, SceneError> =
+		setLightPower(tree, fireLight, FIRE_INTENSITY * fireFlicker);
+	if (!powered.ok) { return; }
 }
 
-function writeLightParams(): void {
-	lightParams[0] = fireOffsetX;
-	lightParams[1] = FIRE_HEIGHT + fireOffsetY;
-	lightParams[2] = fireOffsetZ;
-	lightParams[3] = FIRE_INTENSITY * fireFlicker;
-	lightParams[4] = 1.0;
-	lightParams[5] = 0.45;
-	lightParams[6] = 0.16;
-	lightParams[7] = FIRE_RADIUS;
-	lightParams[8] = 0.33;
-	lightParams[9] = 0.36;
-	lightParams[10] = 0.6;
-	lightParams[11] = LIGHT_LEVELS;
-	lightParams[12] = 0.35;
-	lightParams[13] = 0.9;
-	lightParams[14] = 0.25;
-	lightParams[15] = 0.22;
-	lightParams[16] = 0.2;
-	lightParams[17] = 0.26;
-	lightParams[18] = 0.5;
-	lightParams[19] = 0.0;
-}
 
 // Materials, meshes and items: lit geometry, grass and one flame, all opaque (the billboards
 // discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
@@ -452,19 +459,35 @@ function setupDraws(): void {
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
-	const litMaterial: int32 = addMaterial(
+	const litToon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	const spriteToon: Vec<float32> = [0.2, 0.26, 0.5, 0.0, LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	const litBlock: UniformBlock = try reserveUniforms(
 		context,
-		Material.plain(Program.Lit, state, Phase.Opaque),
-	);
+		TOON_UNIFORM_SLOT,
+		TOON_UNIFORM_LENGTH,
+	) catch NO_UNIFORMS;
+	const spriteBlock: UniformBlock = try reserveUniforms(
+		context,
+		SPRITE_UNIFORM_SLOT,
+		SPRITE_UNIFORM_LENGTH,
+	) catch NO_UNIFORMS;
+	writeUniforms(context, litBlock, litToon);
+	writeUniforms(context, spriteBlock, spriteToon);
+	const litMaterial: int32 = addMaterial(context, {
+		...Material.plain(Program.Lit, state, Phase.Opaque),
+		uniforms: litBlock,
+	});
 	const grassMaterial: int32 = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
 		sampler0: pointSampler.handle,
+		uniforms: spriteBlock,
 	});
 	const flameMaterial: int32 = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: flameTexture,
 		sampler0: pointSampler.handle,
+		uniforms: spriteBlock,
 	});
 	// Every lit piece carries CPU data, so all of them are rebuilt by the renderer after a
 	// context loss. The billboards below keep their buffers in this file and are still not
@@ -472,6 +495,42 @@ function setupDraws(): void {
 	const root: NodeId = tree.rootId();
 	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
 	if (!group.ok) { return; }
+	// The moon as h3d.scene.fwd.DirLight: its direction is the node's front vector, and the
+	// shader wants the vector at the light, so the node faces away from it. Priority 100, the
+	// value Heaps' DirLight sorts at.
+	const moonToward: Vec3 = vec3(0.35, 0.9, 0.25).normalized();
+	const moon: Result<NodeId, SceneError> = addLightNode(
+		tree,
+		root,
+		{
+			...identityTransform(),
+			rotation: quatBetween(vec3(0.0, 0.0, 1.0), moonToward.scaled(-1.0)),
+		},
+		{
+			kind: LightKind.Directional,
+			color: vec3(1.0, 1.0, 1.0),
+			radius: 0.0,
+			power: 0.22,
+			priority: 100,
+		},
+	);
+	if (!moon.ok) { return; }
+	// The fire as h3d.scene.fwd.PointLight: its position is the node's world translation, and
+	// the flicker below moves both that and its power.
+	const fire: Result<NodeId, SceneError> = addLightNode(
+		tree,
+		root,
+		transformAt(vec3(0.0, FIRE_HEIGHT, 0.0)),
+		{
+			kind: LightKind.Point,
+			color: vec3(1.0, 0.45, 0.16),
+			radius: FIRE_RADIUS,
+			power: FIRE_INTENSITY,
+			priority: 0,
+		},
+	);
+	if (!fire.ok) { return; }
+	fireLight = fire.value;
 	logGroup = group.value;
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
@@ -593,6 +652,7 @@ export function initCampfire(): void {
 	grassTexture = buildTuftTexture();
 	flameTexture = buildFlameTexture();
 	setupDraws();
+	setAmbient(tree, vec3(0.33, 0.36, 0.6));
 	setSettings(renderer, settingsWanted);
 	if (paletteWanted) {
 		const filled: Result<int32, PaletteError> = setPalette(renderer, CAMPFIRE_PALETTE);
@@ -643,7 +703,6 @@ export function frameCampfire(): void {
 
 	cameraView.writeCameraBlock(cameraParams);
 	updateFlicker();
-	writeLightParams();
 
 	if (logSpinPerFrame != 0.0) {
 		const angle: float32 = logSpinPerFrame * (frameIndex as float32);
@@ -659,6 +718,10 @@ export function frameCampfire(): void {
 	// at setup, so every later frame takes the rewrite path and allocates nothing.
 	const drawn: int32 = refresh(tree, sceneItems);
 	if (drawn == 0) { return; }
+	// Lights are read out of the synced tree: a light's position and direction are its world
+	// matrix, so collecting before `refresh` would read the previous frame's.
+	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
+	if (!lit.ok) { return; }
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	frameIndex = frameIndex + 1;
 	if (frameIndex == rebuildAtFrame) { forceRebuild(); }

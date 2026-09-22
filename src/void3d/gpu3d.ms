@@ -95,7 +95,17 @@ export enum Wrap {
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 24;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
-export const LIGHT_UNIFORM_LENGTH: int32 = 20;
+// ambient (rgb + point count), dirLight (direction + power), dirColor, then pointLight[4]
+// (position + power) and pointColor[4] (rgb + radius): two vec4 arrays of one vec4 per light,
+// packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
+export const MAX_POINT_LIGHTS: int32 = 4;
+export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
+// The material's own block (binding=3): the toon ramp levels the lit program quantizes with,
+// and the grass tint the billboard program multiplies in beside them.
+export const TOON_UNIFORM_SLOT: int32 = 3;
+export const TOON_UNIFORM_LENGTH: int32 = 4;
+export const SPRITE_UNIFORM_SLOT: int32 = 2;
+export const SPRITE_UNIFORM_LENGTH: int32 = 8;
 export const POST_UNIFORM_SLOT: int32 = 0;
 export const POST_UNIFORM_LENGTH: int32 = 20;
 export const BLIT_UNIFORM_SLOT: int32 = 0;

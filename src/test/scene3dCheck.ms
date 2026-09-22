@@ -1,4 +1,5 @@
 import { Vec3, vec3, Mat4, eulerQuat } from "../math/math3d";
+import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS } from "../void3d/gpu3d";
 import { DrawItem } from "../void3d/draw";
 import {
 	Scene,
@@ -6,6 +7,9 @@ import {
 	NodeKind,
 	Transform3D,
 	SceneError,
+	LightError,
+	LightKind,
+	LightInstance,
 	setMeshOf,
 	FLAG_CULLED,
 	identityTransform,
@@ -13,11 +17,15 @@ import {
 	NO_NODE,
 	addGroup,
 	addMeshNode,
+	addLightNode,
 	setLocal,
+	setLightPower,
+	setAmbient,
 	setVisible,
 	remove,
 	syncWorld,
 	collectDrawList,
+	collectLights,
 	refresh,
 } from "../void3d/scene";
 import { approx } from "./helpers";
@@ -79,7 +87,11 @@ test "sync places a child at local times parent, in that order" {
 test "a parent's rotation carries its child around, not the other way" {
 	let scene: Scene = Scene.create();
 	const quarter: float32 = 1.5707963;
-	const turned: Transform3D = { ...identityTransform(), rotation: eulerQuat(0.0, quarter, 0.0) };
+	const turned: Transform3D = {
+		position: vec3(0.0, 0.0, 0.0),
+		rotation: eulerQuat(0.0, quarter, 0.0),
+		scale: vec3(1.0, 1.0, 1.0),
+	};
 	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), turned);
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -377,4 +389,205 @@ test "every guarded entry point refuses a stale id" {
 	assert !setMeshOf(scene, gone, 1).ok;
 	assert !scene.worldOf(gone).ok;
 	assert !remove(scene, gone).ok;
+}
+
+// ---- lights, in the role of h3d.scene.Light / fwd.DirLight / fwd.PointLight ----
+
+const AMBIENT_AT: int32 = 0;
+const COUNT_AT: int32 = 3;
+const DIR_AT: int32 = 4;
+const DIR_COLOR_AT: int32 = 8;
+const POINT_AT: int32 = 12;
+const COLOR_AT: int32 = POINT_AT + MAX_POINT_LIGHTS * 4;
+const POINT_STRIDE: int32 = 4;
+
+function blockOf(): Vec<float32> {
+	return new Array(LIGHT_UNIFORM_LENGTH);
+}
+
+function oneLight(
+	ref scene: Scene,
+	where: Vec3,
+	light: LightInstance,
+): NodeId {
+	const added: Result<NodeId, SceneError> =
+		addLightNode(scene, scene.rootId(), transformAt(where), light);
+	return added.ok ? added.value : { index: NO_NODE, generation: 0 };
+}
+
+test "a light node is a node whose payload indexes the lights table" {
+	let scene: Scene = Scene.create();
+	const light: NodeId = oneLight(scene, vec3(1.0, 2.0, 3.0), {
+		kind: LightKind.Point,
+		color: vec3(1.0, 0.45, 0.16),
+		radius: 9.0,
+		power: 1.35,
+		priority: 0,
+	});
+	assert scene.nodeCount() == 2;
+	assert scene.nodes[light.index].kind == NodeKind.Light;
+	assert scene.nodes[light.index].payload == 0;
+	assert (scene.lights.length as int32) == 1;
+}
+
+function nearAt(block: Vec<float32>, at: int32, x: float32, y: float32, z: float32): boolean {
+	return approx(block[at], x) && approx(block[at + 1], y) && approx(block[at + 2], z);
+}
+
+test "collectLights writes a point light's world place, color and radius" {
+	let scene: Scene = Scene.create();
+	const _light: NodeId = oneLight(scene, vec3(1.0, 2.0, 3.0), {
+		kind: LightKind.Point,
+		color: vec3(1.0, 0.45, 0.16),
+		radius: 9.0,
+		power: 1.35,
+		priority: 0,
+	});
+	const block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 1; }
+	assert approx(block[COUNT_AT], 1.0);
+	assert nearAt(block, POINT_AT, 1.0, 2.0, 3.0);
+	assert approx(block[POINT_AT + 3], 1.35);
+	assert nearAt(block, COLOR_AT, 1.0, 0.45, 0.16);
+	assert approx(block[COLOR_AT + 3], 9.0);
+}
+
+test "a point light under a moved parent carries the parent's place" {
+	let scene: Scene = Scene.create();
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), transformAt(vec3(10.0, 0.0, 0.0)));
+	assert group.ok;
+	if (!group.ok) { return; }
+	const added: Result<NodeId, SceneError> = addLightNode(
+		scene,
+		group.value,
+		transformAt(vec3(0.0, 2.0, 0.0)),
+		{
+			kind: LightKind.Point,
+			color: vec3(1.0, 1.0, 1.0),
+			radius: 1.0,
+			power: 1.0,
+			priority: 0,
+		},
+	);
+	assert added.ok;
+	if (!added.ok) { return; }
+	const block: Vec<float32> = blockOf();
+	assert collectLights(scene, block).ok;
+	assert nearAt(block, POINT_AT, 10.0, 2.0, 0.0);
+}
+
+test "a directional light's direction is its front vector negated and normalized" {
+	let scene: Scene = Scene.create();
+	const quarter: float32 = 1.5707963;
+	const turned: Transform3D = { ...identityTransform(), rotation: eulerQuat(0.0, quarter, 0.0) };
+	const added: Result<NodeId, SceneError> = addLightNode(scene, scene.rootId(), turned, {
+		kind: LightKind.Directional,
+		color: vec3(1.0, 1.0, 1.0),
+		radius: 0.0,
+		power: 0.22,
+		priority: 100,
+	});
+	assert added.ok;
+	if (!added.ok) { return; }
+	const block: Vec<float32> = blockOf();
+	assert collectLights(scene, block).ok;
+	assert nearAt(block, DIR_AT, -1.0, 0.0, 0.0);
+	assert approx(block[DIR_AT + 3], 0.22);
+	assert nearAt(block, DIR_COLOR_AT, 1.0, 1.0, 1.0);
+}
+
+test "point lights sort by priority and keep declaration order on ties" {
+	let scene: Scene = Scene.create();
+	const _low: NodeId = oneLight(scene, vec3(1.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(1.0, 0.0, 0.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	const _high: NodeId = oneLight(scene, vec3(2.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(0.0, 1.0, 0.0), radius: 1.0, power: 1.0, priority: 5,
+	});
+	const _tie: NodeId = oneLight(scene, vec3(3.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(0.0, 0.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	const block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 3; }
+	assert approx(block[POINT_AT], 2.0);
+	assert approx(block[POINT_AT + POINT_STRIDE], 1.0);
+	assert approx(block[POINT_AT + 2 * POINT_STRIDE], 3.0);
+}
+
+test "a light beyond the block's slots is an error, not a silent drop" {
+	let scene: Scene = Scene.create();
+	for (let i = 0; i <= MAX_POINT_LIGHTS; i++) {
+		const _each: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+		});
+	}
+	const block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert !collected.ok;
+	if (!collected.ok) { assert collected.error == LightError.TooManyPointLights; }
+}
+
+test "a second directional light is an error" {
+	let scene: Scene = Scene.create();
+	const _first: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+		kind: LightKind.Directional,
+		color: vec3(1.0, 1.0, 1.0),
+		radius: 0.0,
+		power: 0.2,
+		priority: 100,
+	});
+	const _second: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+		kind: LightKind.Directional,
+		color: vec3(1.0, 1.0, 1.0),
+		radius: 0.0,
+		power: 0.2,
+		priority: 50,
+	});
+	const block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert !collected.ok;
+	if (!collected.ok) { assert collected.error == LightError.TooManyDirectionalLights; }
+}
+
+test "an invisible light is not collected" {
+	let scene: Scene = Scene.create();
+	const light: NodeId = oneLight(scene, vec3(1.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	assert setVisible(scene, light, false).ok;
+	const block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 0; }
+	assert approx(block[COUNT_AT], 0.0);
+}
+
+test "ambient comes from the scene and zeroed slots mean unlit" {
+	let scene: Scene = Scene.create();
+	setAmbient(scene, vec3(0.33, 0.36, 0.6));
+	const block: Vec<float32> = blockOf();
+	assert collectLights(scene, block).ok;
+	assert nearAt(block, AMBIENT_AT, 0.33, 0.36, 0.6);
+	assert approx(block[DIR_AT + 3], 0.0);
+}
+
+test "setLightPower moves what the flicker drives, and refuses a non-light" {
+	let scene: Scene = Scene.create();
+	const light: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	});
+	const mesh: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 0);
+	const powered: Result<int32, SceneError> = setLightPower(scene, light, 1.4);
+	assert powered.ok;
+	const refused: Result<int32, SceneError> = setLightPower(scene, mesh, 1.4);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == SceneError.NotALightNode; }
+	const block: Vec<float32> = blockOf();
+	assert collectLights(scene, block).ok;
+	assert approx(block[POINT_AT + 3], 1.4);
 }

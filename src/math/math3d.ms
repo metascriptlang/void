@@ -400,6 +400,21 @@ export function eulerQuat(x: float32, y: float32, z: float32): Quat {
 	};
 }
 
+// The rotation carrying unit vector `from` onto unit vector `to`, by the shortest arc.
+// Half-angle form, so no arccosine: with d = from.dot(to), sin(θ/2)/sin(θ) = 1/(2cos(θ/2)).
+export function quatBetween(from: Vec3, to: Vec3): Quat {
+	const axis: Vec3 = from.cross(to);
+	const half: float32 = squareRoot((1.0 + from.dot(to)) * 0.5);
+	if (half < EPSILON) {
+		// Opposite: a 180-degree turn about any axis perpendicular to `from` carries it onto `to`.
+		const helper: Vec3 = absolute(from.x) < 0.9 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+		const perpendicular: Vec3 = from.cross(helper).normalized();
+		return { x: perpendicular.x, y: perpendicular.y, z: perpendicular.z, w: 0.0 };
+	}
+	const k: float32 = 0.5 / half;
+	return { x: axis.x * k, y: axis.y * k, z: axis.z * k, w: half };
+}
+
 export function dot(this a: Quat, b: Quat): float32 {
 	return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }

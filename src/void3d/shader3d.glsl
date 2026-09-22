@@ -12,24 +12,36 @@ layout(binding=2) uniform modelParams {
 };
 @end
 
+@block materialUniforms
+layout(binding=3) uniform toonParams {
+    vec4 toon;
+};
+@end
+
+@block spriteUniforms
+layout(binding=2) uniform spriteParams {
+    vec4 grassColor;
+    vec4 toon;
+};
+@end
+
 @block lightUniforms
 layout(binding=1) uniform lightParams {
-    vec4 fireLight;
-    vec4 fireColor;
     vec4 ambient;
-    vec4 moonDir;
-    vec4 grassColor;
+    vec4 dirLight;
+    vec4 dirColor;
+    vec4 pointLight[4];
+    vec4 pointColor[4];
 };
 
-vec3 fireLightAt(vec3 position, vec3 normal, float normalWeight) {
-    vec3 toLight = fireLight.xyz - position;
+vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight) {
+    vec3 toLight = pointLight[i].xyz - position;
     float distance = length(toLight);
-    float falloff = clamp(1.0 - distance / fireColor.a, 0.0, 1.0);
+    float falloff = clamp(1.0 - distance / pointColor[i].a, 0.0, 1.0);
     float facing = mix(1.0, max(dot(normal, toLight / max(distance, 0.0001)), 0.0), normalWeight);
-    float energy = falloff * falloff * facing * fireLight.w;
-    float levels = ambient.a;
-    float level = floor(energy * levels + 0.35) / levels;
-    return fireColor.rgb * level;
+    float energy = falloff * falloff * facing * pointLight[i].w;
+    float level = floor(energy * toon.x + 0.35) / toon.x;
+    return pointColor[i].rgb * level;
 }
 @end
 
@@ -57,6 +69,7 @@ void main() {
 @end
 
 @fs litFs
+@include_block materialUniforms
 @include_block lightUniforms
 in vec3 worldPosition;
 in vec3 worldNormal;
@@ -66,9 +79,13 @@ layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
     vec3 n = normalize(worldNormal);
-    float moon = step(0.35, dot(n, moonDir.xyz)) * moonDir.w;
-    vec3 shaded = baseColor.rgb * (ambient.rgb + vec3(moon));
-    fragColor = vec4(shaded + fireLightAt(worldPosition, n, 1.0), baseColor.a);
+    float moon = step(0.35, dot(n, dirLight.xyz)) * dirLight.w;
+    vec3 shaded = baseColor.rgb * (ambient.rgb + dirColor.rgb * vec3(moon));
+    vec3 points = vec3(0.0);
+    for (int i = 0; i < int(ambient.a + 0.5); i++) {
+        points += pointLightAt(i, worldPosition, n, 1.0);
+    }
+    fragColor = vec4(shaded + points, baseColor.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -95,6 +112,7 @@ void main() {
 @end
 
 @fs billboardFs
+@include_block spriteUniforms
 @include_block lightUniforms
 layout(binding=0) uniform texture2D spriteTexture;
 layout(binding=0) uniform sampler spriteSampler;
@@ -110,8 +128,11 @@ void main() {
     if (texel.a < 0.5) {
         discard;
     }
-    vec3 light = fireLightAt(rootPosition + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), 0.0);
-    vec3 grass = grassColor.rgb * texel.r * tint + light;
+    vec3 points = vec3(0.0);
+    for (int i = 0; i < int(ambient.a + 0.5); i++) {
+        points += pointLightAt(i, rootPosition + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), 0.0);
+    }
+    vec3 grass = grassColor.rgb * texel.r * tint + points;
     fragColor = vec4(mix(grass, texel.rgb, emissive), 0.0);
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
 }

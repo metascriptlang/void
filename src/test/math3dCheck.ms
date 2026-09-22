@@ -1,6 +1,6 @@
 import {
 	Vec3, Mat4, Quat, vec3, identity, translation, scaling, rotationX, rotationY, rotationZ, rotationEuler,
-	composeTransform, identityQuat, axisAngle, eulerQuat,
+	composeTransform, identityQuat, axisAngle, eulerQuat, quatBetween, transformDirection,
 } from "../math/math3d";
 import { approx } from "./helpers";
 
@@ -99,6 +99,24 @@ test "axis-angle quat about y matches rotationY" {
 	const q: Quat = axisAngle(vec3(0.0, 2.0, 0.0), 0.9);
 	assert approx(q.dot(q), 1.0);
 	assert sameMatrix(q.toMatrix(), rotationY(0.9));
+}
+
+test "quatBetween carries one unit vector onto another, shortest arc" {
+	const zToX: Quat = quatBetween(vec3(0.0, 0.0, 1.0), vec3(1.0, 0.0, 0.0));
+	assert sameMatrix(zToX.toMatrix(), rotationY(HALF_PI));
+	const from: Vec3 = vec3(0.35, 0.9, 0.25).normalized();
+	const to: Vec3 = vec3(-0.2, 0.4, -0.9).normalized();
+	const carried: Vec3 = transformDirection(from, quatBetween(from, to).toMatrix());
+	assert near(carried, to.x, to.y, to.z);
+	assert near(transformDirection(to, quatBetween(to, to).toMatrix()), to.x, to.y, to.z);
+}
+
+test "quatBetween turns a vector onto its opposite through a perpendicular axis" {
+	const flipped: Vec3 = transformDirection(
+		vec3(0.0, 0.0, 1.0),
+		quatBetween(vec3(0.0, 0.0, 1.0), vec3(0.0, 0.0, -1.0)).toMatrix(),
+	);
+	assert near(flipped, 0.0, 0.0, -1.0);
 }
 
 test "quat product composes like h3d.Quat.multiply" {

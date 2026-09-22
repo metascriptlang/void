@@ -18,8 +18,10 @@
 //     (`entity/mod.rs:710-755`, `:885-892`). A silently reused node id in a scene graph is
 //     unfindable from the symptom it produces.
 import {
-	Vec3, vec3, Quat, identityQuat, Mat4, identity, composeTransform, multiplyAffine,
+	Vec3, vec3, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
+	composeTransform, multiplyAffine,
 } from "../math/math3d";
+import { MAX_POINT_LIGHTS } from "./gpu3d";
 import { DrawItem } from "./draw";
 
 // Flags are bits in an int32 rather than `BitSet<NodeFlag>`, which is what CODE-STYLE section 4
@@ -33,17 +35,43 @@ export const FLAG_CULLED: int32 = 4;
 
 export const NO_NODE: int32 = -1;
 
-// The kinds a node can be. `payload` indexes the scene table this names: Mesh -> `meshes`.
-// Lights join in M7 and get their own table rather than fields on the node.
+// The kinds a node can be. `payload` indexes the scene table this names: Mesh -> `meshes`,
+// Light -> `lights`.
 export enum NodeKind {
 	Group,
 	Mesh,
+	Light,
+}
+
+export enum LightKind {
+	Directional,
+	Point,
+}
+
+// What h3d.scene.fwd.Light carries beyond an Object, cut for the toon shader: color and
+// priority are Heaps'; `radius` and `power` stand where Heaps' fwd PointLight has `params`
+// (constant, linear, quadratic attenuation) and where its DirLight folds intensity into
+// color, because this port quantizes total energy before it multiplies color, and folding
+// power in would quantize at a different place.
+// PENDING3D: light-params-divergence
+export struct LightInstance {
+	kind: LightKind;
+	color: Vec3;
+	radius: float32;
+	power: float32;
+	priority: int32;
 }
 
 export enum SceneError {
 	StaleNode,
 	RootCannotBeRemoved,
 	NotAMeshNode,
+	NotALightNode,
+}
+
+export enum LightError {
+	TooManyDirectionalLights,
+	TooManyPointLights,
 }
 
 // h3d.scene.Object's position/rotation/scale, kept as one value struct because every pass that
@@ -86,6 +114,11 @@ export struct Scene {
 	retired: Vec<boolean>;
 	free: Vec<int32>;
 	meshes: Vec<MeshInstance>;
+	lights: Vec<LightInstance>;
+	// Scratch for collectLights' priority sort; grows only when lights are added.
+	lightOrder: Vec<int32>;
+	// h3d.scene.Scene lighting.ambient, fwd.LightSystem's default grey.
+	ambientLight: Vec3;
 	stack: Vec<int32>;
 	root: int32;
 	structureChanged: boolean;
@@ -150,6 +183,9 @@ export function create(this typeof Scene): Scene {
 		retired: [],
 		free: [],
 		meshes: [],
+		lights: [],
+		lightOrder: [],
+		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
 		root: NO_NODE,
 		structureChanged: true,
@@ -213,6 +249,31 @@ export function addMeshNode(
 	scene.meshes.push({ mesh: mesh, material: material });
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Mesh,
+		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
+		parent: parent.index,
+		payload: payload,
+		local: local,
+		world: identity(),
+		children: [],
+	});
+	scene.nodes[parent.index].children.push(id.index);
+	scene.structureChanged = true;
+	return Result.ok(id);
+}
+
+// h3d.scene.Light: an object whose payload is a light rather than a drawable. Named with the
+// Node suffix for the same reason as `addMeshNode` (the compiler card above).
+export function addLightNode(
+	ref scene: Scene,
+	parent: NodeId,
+	local: Transform3D,
+	light: LightInstance,
+): Result<NodeId, SceneError> {
+	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
+	const payload: int32 = scene.lights.length as int32;
+	scene.lights.push(light);
+	const id: NodeId = newSlot(scene, {
+		kind: NodeKind.Light,
 		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
 		parent: parent.index,
 		payload: payload,
@@ -317,6 +378,25 @@ export function setMeshOf(
 	}
 	scene.meshes[scene.nodes[id.index].payload].mesh = mesh;
 	return Result.ok(id.index);
+}
+
+// The flicker path: power moves every few frames, and `collectLights` re-reads it, so nothing
+// else needs to hear about the change.
+export function setLightPower(
+	ref scene: Scene,
+	id: NodeId,
+	power: float32,
+): Result<int32, SceneError> {
+	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	if (scene.nodes[id.index].kind != NodeKind.Light) {
+		return Result.err(SceneError.NotALightNode);
+	}
+	scene.lights[scene.nodes[id.index].payload].power = power;
+	return Result.ok(id.index);
+}
+
+export function setAmbient(ref scene: Scene, ambient: Vec3): void {
+	scene.ambientLight = ambient;
 }
 
 export function worldOf(this scene: Scene, id: NodeId): Result<Mat4, SceneError> {
@@ -446,17 +526,104 @@ export function refresh(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 			// children, so the index is both the cheap form and the safe one. `sync` was already
 			// written this way.
 			const count: int32 = scene.nodes[index].children.length as int32;
+		for (let i = count - 1; i >= 0; i--) {
+			scene.stack[top] = scene.nodes[index].children[i];
+			top = top + 1;
+		}
+	}
+	// `at` is what this pass actually wrote, and it can be fewer than the list holds: a node
+	// culled since the last collect emits no item, and `structureChanged` is deliberately not
+	// set for culling or the fast path would never be taken. Returning `items.length` instead
+	// would leave the tail of the previous frame in the list and draw it again, and writing
+	// past the end when a node becomes visible again would be an out-of-bounds store.
+	while ((items.length as int32) > at) { items.pop(); }
+	return at;
+	}
+}
+
+// Fills the renderer's light block from the visible light nodes: ambient first, then the one
+// directional slot, then the point slots. `out` is the caller's LIGHT_UNIFORM_LENGTH floats.
+// A second visible directional, or a fifth visible point light, is an error rather than a
+// silent drop: the block cannot express it, and a shader quietly lighting less is the failure
+// this port refuses (fwd.LightSystem sorts by priority and keeps its top N without a word).
+// Syncs first, so a light moved this frame is read at its new place whatever called this.
+export function collectLights(ref scene: Scene, out: Span<float32>): Result<int32, LightError> {
+	const _synced: int32 = syncWorld(scene);
+	for (let i = 0; i < (out.length as int32); i++) { out[i] = 0.0; }
+	out[0] = scene.ambientLight.x;
+	out[1] = scene.ambientLight.y;
+	out[2] = scene.ambientLight.z;
+	while ((scene.lightOrder.length as int32) > 0) { scene.lightOrder.pop(); }
+	let seenDirectional: boolean = false;
+	if (scene.root != NO_NODE) {
+		let top: int32 = 0;
+		scene.stack[top] = scene.root;
+		top = top + 1;
+		while (top > 0) {
+			top = top - 1;
+			const index: int32 = scene.stack[top];
+			if (!scene.nodes[index].isVisible()) { continue; }
+			if (scene.nodes[index].kind == NodeKind.Light) {
+				const light: LightInstance = scene.lights[scene.nodes[index].payload];
+				if (light.kind == LightKind.Directional) {
+					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
+					seenDirectional = true;
+					// fwd.DirLight.emit reads absPos.front() normalized; the shader wants the
+					// vector pointing at the light, which is the front vector negated.
+				const forward: Vec3 = vec3(0.0, 0.0, 1.0);
+				const front: Vec3 = transformDirection(forward, scene.nodes[index].world);
+					const toward: Vec3 = front.scaled(-1.0).normalized();
+					out[4] = toward.x;
+					out[5] = toward.y;
+					out[6] = toward.z;
+					out[7] = light.power;
+					out[8] = light.color.x;
+					out[9] = light.color.y;
+					out[10] = light.color.z;
+				} else {
+					scene.lightOrder.push(index);
+				}
+			}
+			const count: int32 = scene.nodes[index].children.length as int32;
 			for (let i = count - 1; i >= 0; i--) {
 				scene.stack[top] = scene.nodes[index].children[i];
 				top = top + 1;
 			}
 		}
-		// `at` is what this pass actually wrote, and it can be fewer than the list holds: a node
-		// culled since the last collect emits no item, and `structureChanged` is deliberately not
-		// set for culling or the fast path would never be taken. Returning `items.length` instead
-		// would leave the tail of the previous frame in the list and draw it again, and writing
-		// past the end when a node becomes visible again would be an out-of-bounds store.
-		while ((items.length as int32) > at) { items.pop(); }
-		return at;
 	}
+	// Highest priority first, ties keeping declaration order: fwd.LightSystem's sortLight.
+	for (let i = 1; i < (scene.lightOrder.length as int32); i++) {
+		const held: int32 = scene.lightOrder[i];
+		const priority: int32 = scene.lights[scene.nodes[held].payload].priority;
+		let j: int32 = i - 1;
+		while (j >= 0) {
+			const ahead: int32 = scene.lights[scene.nodes[scene.lightOrder[j]].payload].priority;
+			if (ahead >= priority) { break; }
+			scene.lightOrder[j + 1] = scene.lightOrder[j];
+			j = j - 1;
+		}
+		scene.lightOrder[j + 1] = held;
+	}
+	const found: int32 = scene.lightOrder.length as int32;
+	if (found > MAX_POINT_LIGHTS) { return Result.err(LightError.TooManyPointLights); }
+	for (let i = 0; i < found; i++) {
+		const index: int32 = scene.lightOrder[i];
+		const light: LightInstance = scene.lights[scene.nodes[index].payload];
+		const world: Mat4 = scene.nodes[index].world;
+		// The block's arrays are sequential, not interleaved: all four pointLight[4], then all
+		// four pointColor[4]. Each array is one vec4 per light — packoffset(c3)/packoffset(c7)
+		// in the HLSL — so the stride within an array is four floats, not eight.
+		const lightAt: int32 = 12 + i * 4;
+		const colorAt: int32 = 12 + MAX_POINT_LIGHTS * 4 + i * 4;
+		out[lightAt] = world.m41;
+		out[lightAt + 1] = world.m42;
+		out[lightAt + 2] = world.m43;
+		out[lightAt + 3] = light.power;
+		out[colorAt] = light.color.x;
+		out[colorAt + 1] = light.color.y;
+		out[colorAt + 2] = light.color.z;
+		out[colorAt + 3] = light.radius;
+	}
+	out[3] = found as float32;
+	return Result.ok(found);
 }
