@@ -204,6 +204,7 @@ function allocate(
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
 	const packed: uint64 = packKey(key);
+	// Misses held keys in --release: .inbox/compiler/2026-09-23-map-uint64-key-lookup-misses.md
 	const hit = atlas.index.get(packed);
 	if (hit.present) {
 		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
