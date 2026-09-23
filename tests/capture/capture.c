@@ -78,15 +78,13 @@ int voidCaptureBackend(void) {
 #endif
 }
 
-int voidCaptureGrab(int slot) {
-	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
 #if defined(VOID_CAPTURE_D3D11)
-	IDXGISwapChain *swapChain = (IDXGISwapChain *)sapp_d3d11_get_swap_chain();
+static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
 	ID3D11Device *device = (ID3D11Device *)sg_d3d11_device();
 	ID3D11DeviceContext *context = (ID3D11DeviceContext *)sg_d3d11_device_context();
 	if (!swapChain || !device || !context) return 0;
 	ID3D11Texture2D *back = NULL;
-	if (FAILED(IDXGISwapChain_GetBuffer(swapChain, 0, &VOID_TEXTURE2D_IID, (void **)&back))) return 0;
+	if (FAILED(IDXGISwapChain_GetBuffer(swapChain, (UINT)buffer, &VOID_TEXTURE2D_IID, (void **)&back))) return 0;
 	D3D11_TEXTURE2D_DESC desc;
 	ID3D11Texture2D_GetDesc(back, &desc);
 	desc.Usage = D3D11_USAGE_STAGING;
@@ -126,6 +124,13 @@ int voidCaptureGrab(int slot) {
 	ID3D11Texture2D_Release(staging);
 	ID3D11Texture2D_Release(back);
 	return 1;
+}
+#endif
+
+int voidCaptureGrab(int slot) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
+#if defined(VOID_CAPTURE_D3D11)
+	return grabD3D11(slot, (IDXGISwapChain *)sapp_d3d11_get_swap_chain(), 0);
 #elif defined(VOID_CAPTURE_GL)
 	// Untested on this box: no GLES3 target has run the golden runner yet. It exists because
 	// it is ~30 lines and is the same path the Android device and WebGL2 will use.
@@ -150,6 +155,25 @@ int voidCaptureGrab(int slot) {
 	(void)slot;
 	return 0;
 #endif
+}
+
+int voidCaptureGrabSwapChain(int slot, long long swapChain, int buffer) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
+#if defined(VOID_CAPTURE_D3D11)
+	return grabD3D11(slot, (IDXGISwapChain *)(intptr_t)swapChain, buffer);
+#else
+	(void)swapChain;
+	(void)buffer;
+	return 0;
+#endif
+}
+
+long long voidCapturePixel(int slot, int x, int y) {
+	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return -1;
+	const voidCaptureSlot *s = &s_slots[slot];
+	if (s->rgba == NULL || x < 0 || y < 0 || x >= s->width || y >= s->height) return -1;
+	const uint8_t *p = s->rgba + ((size_t)y * (size_t)s->width + (size_t)x) * 4u;
+	return ((long long)p[0] << 24) | ((long long)p[1] << 16) | ((long long)p[2] << 8) | (long long)p[3];
 }
 
 int voidCaptureWidth(int slot) {

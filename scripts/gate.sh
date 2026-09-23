@@ -40,7 +40,7 @@ echo "=== 1. evict the caches ==============================================="
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
 # (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). A gate that
 # silently tests the previous binary is worse than no gate.
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchCheck.exe out/mixedFrame.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe
 rm -rf out/debug/.cache out/release/.cache
 rm -rf "$HOME/.metascript/cache/objects"
 pass "caches evicted"
@@ -77,6 +77,21 @@ if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFram
 	pass "mixed frame: 3D + void2d, one shared commit, two fresh frames"
 else
 	fail "mixed 3D/void2d frame lifecycle — see out/gate-mixed-frame.log and out/gate-mixed-frame-run.log"
+fi
+
+if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
+		&& out/twoViews.exe > out/gate-two-views-run.log 2>&1; then
+	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
+else
+	fail "two host views in one process — see out/gate-two-views.log and out/gate-two-views-run.log"
+	grep -E '^FAIL' out/gate-two-views-run.log | sed 's/^/      /' || true
+fi
+outside_status=0
+VOID_VIEWS_OUTSIDE=1 out/twoViews.exe > out/gate-two-views-outside.log 2>&1 || outside_status=$?
+if [ "$outside_status" -ne 0 ] && grep -q 'fbWidth outside a view frame' out/gate-two-views-outside.log; then
+	pass "fbWidth outside a view frame aborts and names the call"
+else
+	fail "fbWidth outside a view frame did not abort (exit $outside_status) — see out/gate-two-views-outside.log"
 fi
 
 echo

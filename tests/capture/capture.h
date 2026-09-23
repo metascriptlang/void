@@ -22,6 +22,12 @@ int voidCaptureBackend(void);
 // Returns 1 on success, 0 when this build has no readback path or the read failed.
 int voidCaptureGrab(int slot);
 
+// D3D11 only: read buffer `buffer` of an IDXGISwapChain1 the caller owns (a host view's).
+int voidCaptureGrabSwapChain(int slot, long long swapChain, int buffer);
+
+// 0xRRGGBBAA of one pixel of `slot`, or -1 outside the capture.
+long long voidCapturePixel(int slot, int x, int y);
+
 int voidCaptureWidth(int slot);
 int voidCaptureHeight(int slot);
 
