@@ -25,12 +25,13 @@ naming a sentinel nobody wrote fails rather than being skipped.
 
 **How far that reaches, measured rather than implied.** The `pending` stage observes that a
 **sentinel is present**, not that the **divergence still holds**. Those are different claims,
-and only three of the rows below have the second one enforced: `bounds-transformed-or`,
+and only five of the rows below have the second one enforced: `bounds-transformed-or`,
 `bounds-empty-size-zero` and `bounds-sphere-rescale` each carry a `diverges=` case in
-`tests/oracle/bounds3d.cases`, which the `oracle` stage checks in both directions against real
+`tests/oracle/bounds3d.cases`, and `anim-holds-last-key` and `anim-pose-replaces-local` one in
+`tests/oracle/anim3d.cases`, which the `oracle` stage checks in both directions against real
 Heaps. The control: making `size()` answer Heaps' −2e20 while leaving its `// PENDING3D:` line
 untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines. For
-the other six rows there is no second stage, so fixing the divergence and forgetting the
+every other row there is no second stage, so fixing the divergence and forgetting the
 comment keeps the gate green — the row would survive until a reader noticed. The two rows
 whose sentinel is a sentence in `docs/VOID3D.md` are weaker still: they track the *prose*, so
 rewording the sentence reddens the gate and changing the world behind it does not.
@@ -45,18 +46,21 @@ for, and it is why the three bounds rows are the ones to copy.
 | `bounds-transformed-or` | `transformed` treats a box empty on **any** axis as empty, where Heaps (`Bounds.hx:159`) tests all three with AND and transforms it anyway. **Measured against real Heaps** (`tests/oracle/bounds3d.cases`, `negative-axis-transformed`): a box with a negative size on one axis, translated by +10x, gives Heaps `10 -1 0` and this port `0 0 0`. Narrower than first written — a *flat* axis (min == max) is empty under neither rule, so the divergence needs a genuinely negative extent. | `src/void3d/bounds.ms` | deliberate — deleted only if Heaps parity is chosen over it |
 | `bounds-empty-size-zero` | `size()` and `dimension()` answer zero on an empty box; Heaps answers −2e20 per axis. **Measured, not cited**: real Heaps at `2b84cc2` returns `-200000000000000000000` for both (`tests/oracle/bounds3d.snapshot`). | `src/void3d/bounds.ms` | deliberate |
 | `bounds-sphere-rescale` | `boundingSphereRadius` scales by the longest edge before squaring, because `Bounds.all()` spans 2e20 and its square is infinity in float32; Heaps squares directly on float64. **The oracle corrected this row**: the two *answers* agree to 4.6e-9 relative (`1.7320508075688775e20` against `1.7320508156113480e20`), so this is a divergence in method and not in behaviour. The row stays because simplifying the code back to Heaps' form returns infinity, and `unbounded-sphere` is the case that would then go red. | `src/void3d/bounds.ms` | deliberate |
-| `upload-mesh-leaks-on-replace` | `uploadMesh` never destroys the buffers it replaces. Correct for a real context loss, where they are already gone; a leak of two buffers per swap once something re-uploads a live mesh without destroying first. `forceRebuild` destroys before re-uploading, so nothing leaks on this tree today. | `src/void3d/draw.ms` | M9, which swaps positions under a live mesh |
+| `upload-mesh-leaks-on-replace` | `uploadMesh` never destroys the buffers it replaces. Correct for a real context loss, where they are already gone; a leak of two buffers per swap once something re-uploads a live mesh without destroying first. `forceRebuild` destroys before re-uploading, so nothing leaks on this tree today. | `src/void3d/draw.ms` | the first path that re-uploads a live mesh; M9 does not — each baked frame is its own mesh, uploaded once |
 | `scene-flags-not-bitset` | Node flags are bits in an `int32` where CODE-STYLE §4 asks for `BitSet<E>`. A version floor: msc 0.2.53 has no `BitSet`. | `src/void3d/scene.ms` | whichever msc first ships `BitSet` |
 | `scene-side-tables-never-shrunk` | `addMeshNode` and `addLightNode` each push a row their node's `payload` indexes, and `remove` frees only the node slot — so churning nodes grows `scene.meshes` and `scene.lights` forever while `nodeCount()` stays flat. A leak, not corruption: indices stay valid. | `src/void3d/scene.ms` | M11's compaction pass, covering both tables |
 | `mesh-node-name-collision` | The scene's mesh writer is `addMeshNode` rather than Heaps' name, because two `ref`-receiver free functions with one name resolve to the wrong one **silently** (compiler card `2026-09-20-ref-receiver-not-an-extension.md`). | `src/void3d/scene.ms` | when a `ref this` receiver parses |
 | `light-params-divergence` | A light node carries `radius` and `power` where Heaps' fwd PointLight carries `params` (constant, linear, quadratic attenuation) and its DirLight folds intensity into color: the toon shader quantizes total energy before multiplying color, and folding power in would quantize at a different place. The block holds one directional and four point slots, and a scene past that is an error rather than the silent top-N drop fwd.LightSystem does. | `src/void3d/scene.ms` | deliberate |
 | `baselines-adopted-circular` | `m3preview_*`, `m3direct_*` and `m3depth_*` were adopted at `16c6546` because the M4 worktree's copies were never carried over. Comparing against an adopted image is circular; the non-circular evidence is gone. | `docs/VOID3D.md` phrase `plausible* M4 images` | never — it is a permanent hole in the record, kept visible |
 | `gles3-emulator-only` | The GLES3 path now runs — `tests/device/gles3Campfire.png` is the frame — but on the **Android emulator** (`ro.hardware.egl=emulation`, arm64 under binary translation), not on a device, and against no baseline. Every byte-identity claim in this port remains D3D11-only, including the FMA result. | `docs/VOID3D.md` phrase `not a device` | a run on the Seeker, compared against something |
+| `anim-holds-last-key` | A one-shot clock inside its last interval holds its last key; Heaps' `getIFrame` steps back a key there and the blend weight runs past 1, so it extrapolates. **Measured against real Heaps** (`tests/oracle/anim3d.cases`, `one-shot-last-interval`): keys 0, 10, 20 at frame 2.5 give Heaps 25 and this port 20. | `src/void3d/animation.ms` | deliberate |
+| `anim-pose-replaces-local` | A synced pose replaces the node's local transform, as a glTF channel does; Heaps writes it to `defaultTransform`, which `calcAbsPos` prepends to the object's own x/y/z (`Object.hx:774`). **Measured against real Heaps** (`pose-over-a-rest-transform`): an object at x = 5 posed to x = 1 lands at 6 in Heaps and at 1 here. | `src/void3d/animation.ms` | deliberate |
+| `anim-missing-target-refused` | `bindTracks` refuses an animation with a track whose name is not under the base node; Heaps' `bind` drops that track and plays the rest. | `src/void3d/animation.ms` | deliberate |
 | `gltf-real-export-not-exercised` | M8 decodes a hand-built JSON document and byte buffer, then materializes its hierarchy into `Scene`; no real Blender-generator export exists in the repository, so the on-disk export path and exporter compatibility are unproved. | `src/void3d/gltf.ms` | the first real generated `.gltf` fixture decodes headlessly, enters `Scene`, and renders through a capture |
 
 ## Not covered here, deliberately
 
 `docs/VOID3D.md` "Still missing" carries narrative gaps that are future milestones rather than
-divergences — animation, picking and particles. The missing real glTF export is narrower: M8's
+divergences — picking and particles. The missing real glTF export is narrower: M8's
 code is present but its external producer is not, so it has the enforced row above. The
 distinction keeps this list short enough that every row is read.
