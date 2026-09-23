@@ -4,6 +4,7 @@ import {
 	glyphKern,
 	faceMetrics,
 } from "./face";
+import { faceForCodepoint } from "./fontFallback";
 
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
@@ -18,6 +19,7 @@ export struct TextStyle {
 }
 
 export struct LaidGlyph {
+	face: int32;
 	glyph: int32;
 	codepoint: int32;
 	x: float32;
@@ -102,11 +104,16 @@ function layRun(
 	let pen: float32 = 0.0;
 	let width: float32 = 0.0;
 	let previous: int32 = -1;
+	let previousFace: int32 = -1;
 	for (let i = from; i < to; i++) {
-		const glyph: int32 = glyphIndex(style.face, cps[i].value);
-		if (previous >= 0) { pen = pen + glyphKern(style.face, previous, glyph, style.size); }
-		const advance: float32 = glyphAdvance(style.face, glyph, style.size);
+		const face: int32 = faceForCodepoint(style.face, cps[i].value);
+		const glyph: int32 = glyphIndex(face, cps[i].value);
+		if (previous >= 0 && previousFace == face) {
+			pen = pen + glyphKern(face, previous, glyph, style.size);
+		}
+		const advance: float32 = glyphAdvance(face, glyph, style.size);
 		glyphs.push({
+			face: face,
 			glyph: glyph,
 			codepoint: cps[i].value,
 			x: pen,
@@ -119,6 +126,7 @@ function layRun(
 		if (cps[i].value != SPACE) { width = pen + advance; }
 		pen = pen + advance + style.letterSpacing;
 		previous = glyph;
+		previousFace = face;
 	}
 	return { glyphs: glyphs, width: width };
 }
@@ -128,10 +136,14 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	let lastSpace: int32 = -1;
 	let pen: float32 = 0.0;
 	let previous: int32 = -1;
+	let previousFace: int32 = -1;
 	for (let i = from; i < to; i++) {
-		const glyph: int32 = glyphIndex(style.face, cps[i].value);
-		if (previous >= 0) { pen = pen + glyphKern(style.face, previous, glyph, style.size); }
-		const advance: float32 = glyphAdvance(style.face, glyph, style.size);
+		const face: int32 = faceForCodepoint(style.face, cps[i].value);
+		const glyph: int32 = glyphIndex(face, cps[i].value);
+		if (previous >= 0 && previousFace == face) {
+			pen = pen + glyphKern(face, previous, glyph, style.size);
+		}
+		const advance: float32 = glyphAdvance(face, glyph, style.size);
 		if (cps[i].value == SPACE) {
 			lastSpace = i;
 		} else if (lastSpace >= from && pen + advance > style.maxWidth) {
@@ -139,6 +151,7 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 		}
 		pen = pen + advance + style.letterSpacing;
 		previous = glyph;
+		previousFace = face;
 	}
 	return to;
 }

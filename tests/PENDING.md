@@ -37,7 +37,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~GPU calls are issued while the tree is walked~~ | **closed** - behaviour at `d05601c`, and the assertion that holds it at the T1 tier: `tests/displayList/snapshot.ms` records three scenes with no GPU at all and asserts that after a walk the stream is full and `uploadCount()` has not moved. The three rows are deleted | done |
 | ~~A rotated Mask clips to its AABB~~ | **closed** — T1 snapshot `rotatedClip` carries the two projection intervals; T2 golden `clip/rotatedMask` is the exact rotated rectangle rather than its AABB | done |
 | ~~Culling tests the viewport rather than the active clip~~ | **closed** — T1 `active-clip culling drops rows outside a Mask` records four visible instances from forty rows; `clip/scrolledList` keeps the pixels | done |
-| No fallback chain: a codepoint the label's face lacks draws its `.notdef`. ~~Integer glyph origins, rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, ≤ 16 fonts, the R8→RGBA CPU expansion~~ closed at P3 step 3 | row `golden-missing:text/cjkFallback`; the closed half moved goldens `text/*` | P3 |
+| ~~No fallback chain; integer glyph origins, rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, ≤ 16 fonts, the R8→RGBA CPU expansion~~ closed at P3 steps 3 and 5. What the collection model still lacks is row `font-collection-model` | goldens `text/*`, `text/cjkFallback` | done / P3 |
 | The h2d surface still missing — `parent`, `TileGroup`, `Mask.scrollX/Y`; `Tile.dx/dy`, uniform node pivots and the text metrics are closed | rows `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `golden-missing:clip/maskScroll` | P5 |
 | Idle costs a full walk and draw | row `idle-costs-a-walk` | P5 |
 | ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `7b7f163`, on `main` in `3860752`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
@@ -95,7 +95,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:text/cjkFallback | T2 | scene not renderable until P3 — no fallback chain, one font | P3 | 2026-09-20 |
 | golden-missing:clip/maskScroll | T2 | scene not renderable until P5 — `Mask.scrollX/Y` does not exist | P5 | 2026-09-20 |
 | golden-missing:text/decorations | T2 | scene not renderable until P4 — no underline, strikethrough or wavy | P4 | 2026-09-20 |
 | golden-missing:text/caretSelection | T2 | scene not renderable until P4 | P4 | 2026-09-20 |
@@ -111,6 +110,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
+| font-collection-model | T0 | P3 step 5 landed the fallback chain only: faces fall back per codepoint through `addFallbackFont`, load on the first real miss and cache hits and misses. Not landed: `Font { family, weight, style, features, fallbacks }` as the h2d-facing value, explicit-versus-fallback presentation, fallback size harmonisation, synthetic bold and italic, emoji families. Whole-grapheme selection needs the UCD segmentation P4 wires | P3 | 2026-09-24 |
 | glyph-page-second-upload | T2 | a glyph first rasterized into a page that an earlier bracket of the same frame already uploaded is one frame late, because sokol permits one `sg_update_image` per image per frame. The resize half of the old row is gone: pages never grow, so no UV goes stale. The runner draws three frames, so a golden cannot see the transient | P3 | 2026-09-24 |
 | style:line-length | T0 | CODE-STYLE asks for <=100 columns. Re-measured 2026-09-23 with the P0 command `awk 'length > 100' $(git ls-files '*.ms') | wc -l`: **215** lines across **31** MetaScript files; 67 are the one-row-per-scene data table. A compliant cut would touch 31 files, mostly formatting pre-existing imports, signatures and data rows, so P2 rejected that unrelated churn during renderer review. P6 "Modules and hardening" owns the repository-wide mechanical pass | P6 | 2026-09-23 |
 | ui-box-color-effect | T1 | A styled Rect combined with `colorMatrix`, `colorAdd` or `colorKey` is rejected loudly rather than rendered as a square flat fallback. P6 carries the existing colour-effect record through the unified UI shader, then adds a production-emitter assertion before this row is removed | P6 | 2026-09-23 |

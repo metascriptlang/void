@@ -11,6 +11,7 @@ import {
 	Node2D, group, rect, sprite, label, graphics, mask, scaleGrid, underline, selection,
 	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
+import { addFallbackFont } from "../../src/void2d/labelText";
 import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
@@ -647,6 +648,15 @@ function textWrapped(): Scene {
 	return s;
 }
 
+function textCjkFallback(): Scene {
+	addFallbackFont(0, "tests/fonts/NotoSansSC-subset.ttf");
+	const s = scene(DARK);
+	s.add(label("void2d 渲染测试 — 你好世界", 16.0, rgba(0.86, 0.90, 0.98, 1.0)).at(10.0, 12.0));
+	s.add(label("汉字 fallback: 字体 A你V", 13.0, rgba(0.95, 0.80, 0.45, 1.0)).at(10.5, 44.0));
+	s.add(label("中文 and Latin, one run", 13.0, rgba(0.82, 0.88, 1.0, 1.0)).at(10.0, 70.0));
+	return s;
+}
+
 function textMultilineAlign(): Scene {
 	const s = scene(DARK);
 	const left = label("void2d\nleft\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0)).at(14.0, 12.0);
@@ -1117,6 +1127,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/code13Dpi150", build: textCode },
 		{ name: "text/wrapped", build: textWrapped },
 		{ name: "text/multilineAlign", build: textMultilineAlign },
+		{ name: "text/cjkFallback", build: textCjkFallback },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },

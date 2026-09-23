@@ -7,6 +7,7 @@ import {
 } from "./glyphAtlas";
 import { TextLayout, TextStyle } from "./textLayout";
 import { loadFace } from "./face";
+import { addFallback } from "./fontFallback";
 import { Transform2D } from "./types";
 
 export const NO_LABEL_TEXT: int32 = -1;
@@ -57,6 +58,10 @@ export function addFont(path: string): int32 {
 	if (face < 0) { return -1; }
 	fonts.push(face);
 	return (fonts.length as int32) - 1;
+}
+
+export function addFallbackFont(fontId: int32, path: string): void {
+	addFallback(faceFor(fontId), path);
 }
 
 export function faceFor(fontId: int32): int32 {
@@ -195,7 +200,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				whole = q.whole;
 				baselineDevice = snapBaseline(fracY + baseline * devicePerLocal);
 			}
-			const tileIndex: int32 = acquireOrReport(entry.style.face, g.glyph, sizePx, variant);
+			const tileIndex: int32 = acquireOrReport(g.face, g.glyph, sizePx, variant);
 			if (tileIndex < 0) { continue; }
 			const t: GlyphTile = glyphAtlas.tile(tileIndex);
 			const [u0, v0, u1, v1] = uvRect(t);
