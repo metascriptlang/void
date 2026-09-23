@@ -16,7 +16,13 @@ import {
 	SWAPCHAIN_LAYOUT,
 	layoutOf,
 } from "../void3d/target";
-import { PipelineKey, pipelineKey, describePipeline, LAYOUT_LIMIT } from "../void3d/pipelineCache";
+import {
+	PipelineKey,
+	pipelineKey,
+	describePipeline,
+	LAYOUT_LIMIT,
+	PROGRAM_COUNT,
+} from "../void3d/pipelineCache";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, UniformError, reserveUniforms, writeUniforms } from "../void3d/draw";
 import { Vec4 } from "../math/math3d";
@@ -313,4 +319,8 @@ test "a pipeline key decodes back into what built it" {
 	assert text.indexOf("program=Billboard layout=Billboard indexType=Uint16 colors=Rgba8,Rgba8") == 0;
 	assert text.indexOf("blend=SourceAlpha,OneMinusSourceAlpha") > 0;
 	assert text.indexOf("colorMask=7") > 0;
+}
+
+test "the shader table has a slot for every program, the last one included" {
+	assert (Program.Particle as int32) == PROGRAM_COUNT - 1;
 }

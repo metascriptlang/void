@@ -36,9 +36,10 @@ import {
 	GPU3D_PIPELINE_SAMPLE_COUNT,
 	GPU3D_PIPELINE_INDEX_TYPE,
 	GPU3D_PIPELINE_LENGTH,
+	GPU3D_PROGRAM_COUNT,
 } from "./gpu3d.h";
 
-export const PROGRAM_COUNT: int32 = 4;
+export const PROGRAM_COUNT: int32 = GPU3D_PROGRAM_COUNT;
 
 // Key layout, low to high: vertex layout (3 bits), indexed (1), program (4), target formats
 // (24), RenderState.bits (32) — 64 bits, exactly full. The indexed flag shares a nibble with

@@ -89,7 +89,7 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 
 // One entry per MetaScript enum member. These catch a member added on one side only; the
 // order still has to be kept by hand (and is covered by the scene image check).
-_Static_assert(COUNT(PROGRAMS) == 5, "PROGRAMS must match Program in gpu3d.ms");
+_Static_assert(COUNT(PROGRAMS) == GPU3D_PROGRAM_COUNT, "PROGRAMS must match Program in gpu3d.ms");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
 _Static_assert(COUNT(COMPARE_FUNCTIONS) == 8, "COMPARE_FUNCTIONS must match Compare in pass.ms");
 _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in pass.ms");

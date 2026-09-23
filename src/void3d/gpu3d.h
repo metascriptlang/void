@@ -50,6 +50,8 @@ static const int32_t GPU3D_BINDING_INDEX_BUFFER = 2;
 static const int32_t GPU3D_BINDING_VIEW = 3; // four
 static const int32_t GPU3D_BINDING_SAMPLER = 7; // two
 static const int32_t GPU3D_BINDING_LENGTH = 9;
+// Members of Program in gpu3d.ms, and entries of PROGRAMS in gpu3d.c.
+static const int32_t GPU3D_PROGRAM_COUNT = 5;
 
 uint32_t gpu3dMakeShader(int32_t program);
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);
