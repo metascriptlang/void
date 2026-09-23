@@ -6,6 +6,7 @@ import "./nodeCheck";
 import "./sceneCheck";
 import "./effectCheck";
 import "./textCheck";
+import "./faceCheck";
 import "./math3dCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";
