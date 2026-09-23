@@ -500,26 +500,42 @@ run_style() {
 #
 # The M6 review found it by reading the emitted C, so that is what this checks. It is
 # deterministic and it can fail, which is the whole point: a gate that cannot fail is worse than
-# no gate. Runs after `tests`, which is what emits the C.
-FRAME_PATH_FUNCTIONS="syncWorld collectDrawList refresh collectLights"
+# no gate. The C comes from `--emit=c` of the campfire bench entry, the real frame path, into
+# fixed file names: picking the newest file in the object cache by mtime once read a build that
+# lacked `refresh` entirely, and after a revert it reads the stale one. A `Vec` of structs with
+# owned fields copies through `<T>ArrayCopy`, not `msArrayCopy`, so the match is on both.
+FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:collectLights
+	animation:update animation:syncPose animation:syncMeshFrame"
 
 run_allocation() {
-	emitted=$(ls -t out/debug/.cache/*scene_x_ms*.c 2>/dev/null | head -1)
-	if [ -z "$emitted" ] || [ ! -f "$emitted" ]; then
-		skip "allocation: no emitted C for scene.ms yet (the tests stage is what produces it)"
+	if [ ! -f "$CAPTURE/campfireBench.ms" ]; then
+		skip "allocation: $CAPTURE/campfireBench.ms is missing"
+		return
+	fi
+	rm -f out/debug/*ZsrcZvoid3dZ*Oms.c
+	if ! msc build "$CAPTURE/campfireBench.ms" --emit=c > "$WORK/allocation.log" 2>&1; then
+		fail "allocation: emitting C for the bench entry failed; see $WORK/allocation.log"
 		return
 	fi
 	offenders=""
-	for fn in $FRAME_PATH_FUNCTIONS; do
-		copies=$(awk "/^[a-zA-Z_].*\y${fn}__M/,/^}/" "$emitted" | grep -c 'msArrayCopy' || true)
+	for entry in $FRAME_PATH_FUNCTIONS; do
+		module=${entry%%:*}
+		fn=${entry#*:}
+		emitted=$(ls out/debug/*ZsrcZvoid3dZ${module}Oms.c 2>/dev/null | head -1)
+		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
+			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
+			return
+		fi
+		copies=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted" |
+			grep -c 'ArrayCopy(' || true)
 		[ "$copies" -gt 0 ] && offenders="$offenders ${fn}=${copies}"
 	done
 	if [ -n "$offenders" ]; then
-		fail "allocation: the frame path copies an array — msArrayCopy in:$offenders"
+		fail "allocation: the frame path copies an array — ArrayCopy in:$offenders"
 		echo "         CODE-STYLE section 5, the copy trap: index the field or take a Span view"
 		return
 	fi
-	pass "allocation: no msArrayCopy in the frame path ($FRAME_PATH_FUNCTIONS)"
+	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
