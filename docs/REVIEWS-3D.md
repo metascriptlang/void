@@ -603,3 +603,68 @@ Taken at tree `25796ff5` (*test(void3d): pin mirrored parents and two-sided pick
 | Allocation | no `ArrayCopy` in the 11 frame-path functions or the 7 pick-path functions |
 | PENDING3D | 19 rows (14 before M10: +5 new, and the builder row opened and closed) |
 | Android | arm64 `libVoidAndroid.so`, **2 508 392 bytes** (+12 096 over M9); physical device still skipped |
+
+## M11 — CPU particles on stream meshes, saturation in the look, and the side tables compacted
+
+**Verdict: SHIP WITH FOLLOW-UPS, with no send-back.** Two passes read `git diff bbbd73e..79102bb`: the defect pass (`/code-review high`) and a fresh design reviewer. The design reviewer re-ran the gate at `79102bb` (GREEN) and measured one of its findings against real Heaps with an oracle case of its own. The fixes are `fd521d3`, `45ef7e3` and `6902a37`. Each was verified in the main session by a test, an oracle case or a gate run.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | After a context loss, the rebuild remakes a stream empty with zero instances; a paused emitter whose owner writes nothing shows no particles | Kept, and written down: a stream keeps no CPU copy by design, and its owner holds the state to write it from. The contract (write every frame you draw) is in M11 as built; the campfire writes every frame |
+| 2 | `gpu3dUpdateBuffer` returned quietly on an invalid or oversized buffer, and `writeStream` still reported the count | It returns 0 on refusal; `writeStream` answers `StreamError.BufferRefused` and draws nothing |
+| 3 | `_Static_assert` against a `static const` is not an integer constant expression in portable C | The table length is `#define GPU3D_PROGRAM_TABLE_LENGTH`, which the assert reads; the `static const` msc imports is defined from it |
+| 4 | `writeStream` never marks the renderer changed, so an on-demand host would freeze the snow | Not taken as code: the draw context has no renderer, and deciding to redraw is the host's, as with M9's `update`. A live emitter changes every step, and a host that runs one draws |
+| 5 | `remakeStream` leaked the buffer it did get when the other was refused | It destroys it |
+| 6 | The campfire's frame-clock comment ended up above `setupParticles` | Moved back above `setupAnimations` |
+| 7 | `rebuildableMeshes` does not count streams | Not taken: "rebuildable" is "comes back with its contents", and a stream comes back empty |
+| 8 | `addStreamMesh` repeated `addMesh` | It calls `addMesh` |
+| 9 | Every stream makes its own corner buffer | Not taken: six vertices per emitter, and a shared buffer would be one more context-owned handle to rebuild |
+| 10 | Comments naming the milestone in the gate and the campfire | Reworded to say what the configuration is |
+
+### Design pass
+
+**SHIP WITH FOLLOW-UPS.** The pass found the port faithful function by function, including the order of every random draw in each shape and the force draw order after the y/z exchange. It found nothing named for Hibernal in `src/void3d`, no allocation in the emitted C of the particle path, and every new GPU resource rebuilt. It judged both deferred decisions sound (closed effects as look fields, stream meshes with no CPU copy) and the compaction correct in each case asked: row equals last, subtree, stale id, draw order, lights and pick.
+
+**Its findings, and what I did:**
+
+1. **An undeclared divergence, measured.** `Burst.time` was `float32` against a `float64` cycle, so a burst at 0.1 fired one update late (Heaps 3 particles, port 0). `Burst.time`, `ColorKey.time` and `globalLife` are now `float64`. `burst-at-a-tenth` pins it, and putting the field back in `float32` mismatches it.
+2. **A false claim about Heaps in a comment.** `Emitter.draw` evaluates `globalSize` before `Particles.draw` returns on an empty list. The port now does the same, which is tested (the sequence moves on an empty write), and the comment is gone.
+3. **Stream meshes cannot be released.** Written under "Still missing after M11". The draw context has no mesh removal of any kind.
+4. **Capacity lived in mutable state.** It is now `ParticleEmitter.capacity`, fixed at `create` and tested.
+5. **Silent failures.**
+   - The buffer update fails loud (defect 2).
+   - The campfire logs a particle failure in the frame and names setup failures with its own `ParticleSetupError`.
+   - Sokol's one-update-per-frame rule is written under "Still missing", not enforced.
+6. **Comments.** The particles header is two lines, and the block over `updateEmitter` and the comments that restated code are gone.
+7. **Evidence.**
+   - `particle-random-per-life` now says why it is deliberate.
+   - The program-count test stays: it is what reddens when a member is added past the table.
+   - `rebuildableMeshes` is kept (defect 7).
+
+**Follow-ups the pass raised, not taken here:** a per-material saturation for a single fading object, and a CPU reference of `colorSaturate` tested against Heaps. Both are under "Still missing after M11".
+
+### Carried into M12 and later
+
+- Stream meshes cannot be released, and nothing enforces one update per buffer per frame.
+- Saturation is screen-wide and has no CPU reference.
+- Particles are alpha-tested; nothing is translucent.
+- A palette swap is a 2.4 ms refill; a cross-fade needs kept LUTs.
+- `m11particles_*` and `m11look_*` were adopted from this port's own run, like the M3 images: they hold the port to itself.
+- From M10: no hit proxy; the GL row flip has never run. Particles are not pickable.
+
+### Numbers
+
+Taken at tree `16e9bcbb` (*fix(void3d): name the campfire's particle failures and put its comments back where they belong*) from one `sh scripts/gate3d.sh` run.
+
+| | |
+|---|---|
+| Gate | GREEN with **1 SKIP** (`device`) |
+| Tests | **792**, 25 added by M11 |
+| Capture | ten configurations × four frames byte-identical against 32 baselines; the seven standing ones unmoved; `capture look` holds frames 1 and 16 to `m3palette_*` |
+| Oracle | 69 agree with real Heaps and 11 diverge as declared, over five files; `particles3d.cases` 8 + 1 |
+| Allocation | no `ArrayCopy` in the frame path, the particle functions and `writeStream` included; control red |
+| Bench | zero frame-state growth over 300 frames with particles on; 0.070–0.109 ms CPU per frame over five single runs |
+| PENDING3D | 22 rows: one removed, four new |
+| Android | arm64 `libVoidAndroid.so`, **2 682 840 bytes** (+174 448 over M10, not attributed); physical device still skipped |
