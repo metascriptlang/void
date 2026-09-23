@@ -648,3 +648,68 @@ test "setLightPower moves what the flicker drives, and refuses a non-light" {
 	assert collectLights(scene, block).ok;
 	assert approx(block[POINT_AT + 3], 1.4);
 }
+
+// ---- side tables: remove gives rows back ----
+
+test "churning mesh and light nodes keeps both side tables at the live count" {
+	let scene: Scene = Scene.create();
+	const light: LightInstance = {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
+	};
+	for (let round = 0; round < 50; round++) {
+		const mesh: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), round);
+		const lit: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), light);
+		assert remove(scene, mesh).ok;
+		assert remove(scene, lit).ok;
+	}
+	assert scene.nodeCount() == 1;
+	assert (scene.meshes.length as int32) == 0;
+	assert (scene.lights.length as int32) == 0;
+	assert (scene.meshOwners.length as int32) == 0;
+	assert (scene.lightOwners.length as int32) == 0;
+}
+
+test "removing an early mesh node repoints the node whose row moved, and draws the same" {
+	let scene: Scene = Scene.create();
+	const a: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 10);
+	const b: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 20);
+	const c: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 30);
+	assert remove(scene, a).ok;
+	assert (scene.meshes.length as int32) == 2;
+	assert scene.meshes[scene.nodes[b.index].payload].mesh == 20;
+	assert scene.meshes[scene.nodes[c.index].payload].mesh == 30;
+	assert setMeshOf(scene, c, 31).ok;
+	assert scene.meshes[scene.nodes[b.index].payload].mesh == 20;
+	let items: Vec<DrawItem> = [];
+	const _synced: int32 = syncWorld(scene);
+	assert collectDrawList(scene, items) == 2;
+	assert items[0].mesh == 20;
+	assert items[1].mesh == 31;
+}
+
+test "removing a subtree gives back every row under it and keeps the rest addressable" {
+	let scene: Scene = Scene.create();
+	const group: Result<NodeId, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
+	assert group.ok;
+	if (!group.ok) { return; }
+	assert addMeshNode(scene, group.value, identityTransform(), 1, 0).ok;
+	const light: LightInstance = {
+		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 2.0, power: 0.5, priority: 0,
+	};
+	assert addLightNode(scene, group.value, identityTransform(), light).ok;
+	assert addMeshNode(scene, group.value, identityTransform(), 2, 0).ok;
+	const kept: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 3);
+	const keptLight: NodeId = oneLight(scene, vec3(1.0, 2.0, 3.0), { ...light, power: 0.75 });
+	assert remove(scene, group.value).ok;
+	assert (scene.meshes.length as int32) == 1;
+	assert (scene.lights.length as int32) == 1;
+	assert scene.meshes[scene.nodes[kept.index].payload].mesh == 3;
+	assert setLightPower(scene, keptLight, 0.9).ok;
+	const block: Vec<float32> = blockOf();
+	const collected: Result<int32, LightError> = collectLights(scene, block);
+	assert collected.ok;
+	if (collected.ok) { assert collected.value == 1; }
+	assert approx(block[POINT_AT + 3], 0.9);
+	assert nearAt(block, POINT_AT, 1.0, 2.0, 3.0);
+}

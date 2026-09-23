@@ -120,6 +120,8 @@ export struct Scene {
 	free: Vec<int32>;
 	meshes: Vec<MeshInstance>;
 	lights: Vec<LightInstance>;
+	meshOwners: Vec<int32>;
+	lightOwners: Vec<int32>;
 	// Scratch for collectLights' priority sort; grows only when lights are added.
 	lightOrder: Vec<int32>;
 	// h3d.scene.Scene lighting.ambient, fwd.LightSystem's default grey.
@@ -189,6 +191,8 @@ export function create(this typeof Scene): Scene {
 		free: [],
 		meshes: [],
 		lights: [],
+		meshOwners: [],
+		lightOwners: [],
 		lightOrder: [],
 		ambientLight: vec3(0.5, 0.5, 0.5),
 		stack: [],
@@ -264,6 +268,7 @@ export function addMeshNode(
 		world: identity(),
 		children: [],
 	});
+	scene.meshOwners.push(id.index);
 	scene.nodes[parent.index].children.push(id.index);
 	scene.structureChanged = true;
 	return Result.ok(id);
@@ -279,7 +284,6 @@ export function addLightNode(
 ): Result<NodeId, SceneError> {
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
 	const payload: int32 = scene.lights.length as int32;
-	// PENDING3D: scene-side-tables-never-shrunk
 	scene.lights.push(light);
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Light,
@@ -291,6 +295,7 @@ export function addLightNode(
 		world: identity(),
 		children: [],
 	});
+	scene.lightOwners.push(id.index);
 	scene.nodes[parent.index].children.push(id.index);
 	scene.structureChanged = true;
 	return Result.ok(id);
@@ -313,6 +318,32 @@ function detach(ref scene: Scene, index: int32): void {
 	scene.nodes[parent].children = siblings;
 }
 
+function releasePayload(ref scene: Scene, index: int32): void {
+	const row: int32 = scene.nodes[index].payload;
+	match (scene.nodes[index].kind) {
+		NodeKind.Mesh => {
+			const last: int32 = (scene.meshes.length as int32) - 1;
+			const mover: int32 = scene.meshOwners[last];
+			scene.meshes[row] = scene.meshes[last];
+			scene.meshOwners[row] = mover;
+			scene.nodes[mover].payload = row;
+			scene.meshes.pop();
+			scene.meshOwners.pop();
+		},
+		NodeKind.Light => {
+			const last: int32 = (scene.lights.length as int32) - 1;
+			const mover: int32 = scene.lightOwners[last];
+			scene.lights[row] = scene.lights[last];
+			scene.lightOwners[row] = mover;
+			scene.nodes[mover].payload = row;
+			scene.lights.pop();
+			scene.lightOwners.pop();
+		},
+		NodeKind.Group => {},
+	};
+	scene.nodes[index].payload = NO_NODE;
+}
+
 // Frees `id` and everything under it. The slots go on the free list with their generation bumped;
 // a slot whose generation would wrap is retired instead, so an id can never come back aliased.
 export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> {
@@ -332,6 +363,7 @@ export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> 
 		}
 		scene.nodes[index].children = [];
 		scene.nodes[index].parent = NO_NODE;
+		releasePayload(scene, index);
 		const generation: int32 = scene.generations[index];
 		if (generation == 2147483647) {
 			// Wrap detected rather than silent. Withholding the slot from the free list is only
