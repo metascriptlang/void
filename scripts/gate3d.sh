@@ -278,6 +278,7 @@ write_bench_entry() {
 		echo "	frameCampfire,"
 		echo "	configureCampfire,"
 		echo "	configureCampfireCamera,"
+		echo "	configureCampfireLogSpin,"
 		echo "	campfireStats,"
 		echo "	CampfireStats,"
 		echo "} from \"../campfireScene\";"
@@ -327,6 +328,7 @@ write_bench_entry() {
 		echo ""
 		echo "configureCampfire(PixelArtSettings.full(), false);"
 		echo "configureCampfireCamera(false, 0.0);"
+		echo "configureCampfireLogSpin(0.11);"
 		echo "voidRun(1280, 720, initCampfire, frame);"
 	} > "$WORK/campfireBench.new"
 	replace_if_changed "$WORK/campfireBench.new" "$CAPTURE/campfireBench.ms"
@@ -500,12 +502,12 @@ run_style() {
 #
 # The M6 review found it by reading the emitted C, so that is what this checks. It is
 # deterministic and it can fail, which is the whole point: a gate that cannot fail is worse than
-# no gate. The C comes from `--emit=c` of the campfire bench entry, the real frame path, into
-# fixed file names: picking the newest file in the object cache by mtime once read a build that
-# lacked `refresh` entirely, and after a revert it reads the stale one. A `Vec` of structs with
-# owned fields copies through `<T>ArrayCopy`, not `msArrayCopy`, so the match is on both.
+# no gate. Read C emitted from the bench entry into fixed names, never the object cache by
+# mtime, which can hold another entry's or a reverted build. A `Vec` of structs with owned
+# fields copies through `<T>ArrayCopy`, not `msArrayCopy`.
 FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:collectLights
-	animation:update animation:syncPose animation:syncMeshFrame"
+	scene:setLocal scene:setMeshOf animation:update animation:keys animation:blendTo
+	animation:syncPose animation:syncMeshFrame"
 
 run_allocation() {
 	if [ ! -f "$CAPTURE/campfireBench.ms" ]; then
@@ -546,8 +548,8 @@ run_allocation() {
 #
 # What this stage sees is that a **sentinel is present**, not that the **divergence still
 # holds** — measured: fixing `size()` while leaving its `// PENDING3D:` line in place passes
-# here and fails `oracle`. Three rows carry a `diverges=` oracle case and are enforced
-# behaviourally; the other eight are not. Written up in tests/PENDING3D.md. The `*)` branch
+# here and fails `oracle`. Only the rows with a `diverges=` oracle case are enforced
+# behaviourally; tests/PENDING3D.md names them. The `*)` branch
 # below is deliberately a requirement and not a skip: a row naming a sentinel nobody wrote
 # fails rather than passing quietly.
 run_pending() {

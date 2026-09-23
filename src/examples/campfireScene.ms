@@ -85,6 +85,7 @@ import {
 	syncPose,
 	bindMeshFrames,
 	syncMeshFrame,
+	addBakedFrames,
 } from "../void3d/animation";
 import {
 	OrthoCamera,
@@ -107,6 +108,7 @@ const SPROUT_TINT: float32 = 2.3;
 const FLICKER_FRAMES: int32 = 4;
 const FLAME_FRAMES: int32 = 4;
 const SPIN_KEYS: int32 = 32;
+const BAKED_STONE: int32 = 1;
 const ATLAS_CELLS: int32 = 4;
 const TUFT_CELL: int32 = 16;
 const FLAME_CELL_WIDTH: int32 = 16;
@@ -191,6 +193,8 @@ let flameFrames: MeshFrameAnimation = {
 	shown: -1,
 };
 let logSpin: ObjectAnimation = ObjectAnimation.forClock(flameFrames.clock);
+let stoneFrames: MeshFrameAnimation = flameFrames;
+let firstStoneFrame: int32 = 0;
 const NEVER_REBUILD: int32 = -1;
 let firstFlameMesh: int32 = 0;
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
@@ -581,6 +585,11 @@ function setupDraws(): void {
 	fireLight = fire.value;
 	logGroup = group.value;
 	for (let i = 0; i < (pieces.length as int32); i++) {
+		if (i == BAKED_STONE) {
+			const placed: int32 = placeBakedStone(pieces[i], placements[i], root, litMaterial);
+			if (placed < 0) { console.log("campfire: setupDraws bailed at the baked stone"); return; }
+			continue;
+		}
 		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
 		if (!uploaded.ok) { console.log("campfire: setupDraws bailed at addMeshData"); return; }
 		// The ground and the stones hang off the root; the logs hang off the group, so their
@@ -616,6 +625,26 @@ function setupDraws(): void {
 	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
 }
 
+// One stone goes through the vertex-baked path with two identical frames: the image cannot
+// change, and upload, frame swap and the mid-run rebuild all run on it every capture.
+function placeBakedStone(
+	stone: MeshData,
+	where: Transform3D,
+	root: NodeId,
+	material: int32,
+): int32 {
+	const frames: Vec<MeshData> = [stone, stone];
+	const baked: Result<int32, AnimationError> = addBakedFrames(context, frames);
+	if (!baked.ok) { return -1; }
+	firstStoneFrame = baked.value;
+	const placed: Result<NodeId, SceneError> =
+		addMeshNode(tree, root, where, firstStoneFrame, material);
+	if (!placed.ok) { return -1; }
+	const named: Result<int32, SceneError> = setName(tree, placed.value, "bakedStone");
+	if (!named.ok) { return -1; }
+	return placed.value.index;
+}
+
 // The example's clock runs in frames, not seconds: every animation is updated by 1.0 per
 // frame, so a sampling rate is keys per frame. The flame steps one atlas cell every
 // FLICKER_FRAMES frames; the log spin is one key per frame.
@@ -627,6 +656,11 @@ function setupAnimations(): Result<int32, AnimationError> {
 	for (let i = 0; i < FLAME_FRAMES; i++) { cells.push(firstFlameMesh + i); }
 	flameFrames = try MeshFrameAnimation.forMeshes(flameClock, "flame", cells);
 	const _flame: int32 = try bindMeshFrames(flameFrames, tree, tree.rootId());
+	const stoneClock: AnimationClock =
+		try AnimationClock.forFrames(2, perFlicker, Interpolation.Step);
+	const stoneMeshes: Vec<int32> = [firstStoneFrame, firstStoneFrame + 1];
+	stoneFrames = try MeshFrameAnimation.forMeshes(stoneClock, "bakedStone", stoneMeshes);
+	const _stone: int32 = try bindMeshFrames(stoneFrames, tree, tree.rootId());
 	if (logSpinPerFrame == 0.0) { return Result.ok(0); }
 	let spinClock: AnimationClock =
 		try AnimationClock.forFrames(SPIN_KEYS, 1.0, Interpolation.Step);
@@ -832,6 +866,8 @@ export function frameCampfire(): void {
 	}
 	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
 	if (!swapped.ok) { return; }
+	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree);
+	if (!stoneSwapped.ok) { return; }
 	// Sync the world matrices and rewrite the list in place. The structure only changes once,
 	// at setup, so every later frame takes the rewrite path and allocates nothing.
 	const drawn: int32 = refresh(tree, sceneItems);
@@ -841,8 +877,10 @@ export function frameCampfire(): void {
 	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
 	if (!lit.ok) { return; }
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
-	const _flameMoved: boolean = update(flameFrames.clock, 1.0);
-	const _logsMoved: boolean = update(logSpin.clock, 1.0);
+	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
+	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
+	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
+	if (!flameMoved.ok || !stoneMoved.ok || !logsMoved.ok) { return; }
 	frameIndex = frameIndex + 1;
 	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
 }
