@@ -2,6 +2,18 @@
 // vert pos → model (2D affine) → pixel → NDC; per-vertex color × globalColor.
 // Dynamic batch passes model=identity, globalColor=white (verts already pixel-space) →
 // no-op. Static buffers (local-space geometry) pass the object matrix + alpha here instead.
+@block textGamma
+// GPUI's apply_contrast_and_gamma_correction (crates/gpui_windows/src/alpha_correction.hlsl),
+// itself from Windows Terminal's dwrite.hlsl, MIT. src/void2d/textGamma.ms is its T0 copy.
+float applyContrastAndGamma(float coverage, vec3 color, float contrastFactor, vec4 ratios) {
+    float brightness = dot(color, vec3(0.30, 0.59, 0.11));
+    float k = contrastFactor * clamp(4.0 * (0.75 - brightness), 0.0, 1.0);
+    float a = coverage * (k + 1.0) / (coverage * k + 1.0);
+    float correction = (ratios.x * brightness + ratios.y) * a + (ratios.z * brightness + ratios.w);
+    return a + a * (1.0 - a) * correction;
+}
+@end
+
 @vs vs
 layout(binding=0) uniform void2d_params {
     vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = srcAlreadyPremult (1 for RT textures)
@@ -53,6 +65,8 @@ layout(binding=1) uniform void2d_fx {
     vec4 gradientColor0;
     vec4 gradientColor1;
     vec4 gradientColor2;
+    vec4 gammaRatios;
+    vec4 textParams;   // x = grayscale enhanced contrast
 };
 in vec2 uv;
 in vec4 color;
@@ -60,6 +74,7 @@ in float srcPremult;
 in float coverageTexture;
 in vec4 clipDistance;
 out vec4 frag_color;
+@include_block textGamma
 vec3 srgbToLinear(vec3 c) {
     vec3 lo = c / 12.92;
     vec3 hi = pow((c + vec3(0.055)) / 1.055, vec3(2.4));
@@ -158,7 +173,9 @@ void main() {
         texel = parity < 1.0 ? gradientColor0 : gradientColor1;
     } else {
         texel = texture(sampler2D(tex, smp), uv);
-        if (coverageTexture > 0.5) { texel = vec4(1.0, 1.0, 1.0, texel.r); }
+        if (coverageTexture > 0.5) {
+            texel = vec4(1.0, 1.0, 1.0, applyContrastAndGamma(texel.r, color.rgb, textParams.x, gammaRatios));
+        }
     }
     if (colorKey.a > 0.5) {
         vec3 d = abs(texel.rgb - colorKey.rgb);
@@ -331,6 +348,11 @@ void main() {
 @fs uiFs
 layout(binding=0) uniform texture2D uiTex;
 layout(binding=0) uniform sampler uiSmp;
+layout(binding=1) uniform ui_text {
+    vec4 gammaRatios;
+    vec4 textParams;   // x = grayscale enhanced contrast
+};
+@include_block textGamma
 in vec4 vLocalHalf;
 in vec4 vUvAa;
 in vec4 vRadii;
@@ -677,7 +699,8 @@ void main() {
 
     vec4 fill = vFill;
     if (mode == 2) {                        // Glyph: an R8 coverage page
-        fill.a = fill.a * texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
+        float coverage = texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
+        fill.a = fill.a * applyContrastAndGamma(coverage, fill.rgb, textParams.x, gammaRatios);
     }
     float alpha = fill.a * inner + vBorder.a * ring;
     vec3 rgb = fill.rgb * (fill.a * inner) + vBorder.rgb * (vBorder.a * ring);

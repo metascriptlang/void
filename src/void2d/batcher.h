@@ -81,6 +81,7 @@ void void2dFailPendingTargets(void);
 
 uint32_t void2dGlyphPageView(int page);
 int void2dGlyphUploadCount(void);
+void void2dSetTextGamma(float r0, float r1, float r2, float r3, float contrast);
 int void2dGlyphUploadBytes(void);
 
 // The instance strides sokol is handed, from sizeof rather than a literal, and the offsets

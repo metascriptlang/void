@@ -10,6 +10,7 @@ import "./glyphAtlasCheck";
 import "./textLayoutCheck";
 import "./labelTextCheck";
 import "./textMetricsCheck";
+import "./textGammaCheck";
 import "./math3dCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";

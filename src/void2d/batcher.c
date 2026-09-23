@@ -63,6 +63,8 @@ static sg_view s_pageView[VOID2D_MAX_GLYPH_PAGES];
 static bool s_pageUploaded[VOID2D_MAX_GLYPH_PAGES];
 static int s_atlasMade;
 static int s_glyphUploads;
+static float s_textGamma[4];
+static float s_textContrast = 1.0f;
 static int s_glyphUploadBytes;
 // Buffers this module owns, counted where sokol is actually called. It used to be
 // `return 3` - a literal, gated in tests/bench/baseline.json against the literal 3, so the
@@ -174,6 +176,10 @@ int void2dBuffersAlive(void) { return s_buffersMade - s_buffersFreed; }
 
 int void2dAtlasImagesAlive(void) { return s_atlasMade; }
 int void2dGlyphUploadCount(void) { return s_glyphUploads; }
+void void2dSetTextGamma(float r0, float r1, float r2, float r3, float contrast) {
+	s_textGamma[0] = r0; s_textGamma[1] = r1; s_textGamma[2] = r2; s_textGamma[3] = r3;
+	s_textContrast = contrast;
+}
 int void2dGlyphUploadBytes(void) { return s_glyphUploadBytes; }
 
 // P2's two instance layouts. These structs are what the vertex-buffer layout is built from,
@@ -821,6 +827,11 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	copyClipParams(up.clipU, up.clipV, cmd);
 	sg_range u = { .ptr = &up, .size = sizeof(up) };
 	sg_apply_uniforms(UB_ui_params, &u);
+	ui_text_t tu = {0};
+	memcpy(tu.gammaRatios, s_textGamma, sizeof(tu.gammaRatios));
+	tu.textParams[0] = s_textContrast;
+	sg_range t = { .ptr = &tu, .size = sizeof(tu) };
+	sg_apply_uniforms(UB_ui_text, &t);
 
 	sg_draw(0, 6, count);
 	s_drawCallCount++;
@@ -977,6 +988,8 @@ static void runCommands(const float *commands, int commandCount,
 			memcpy(fxu.gradientColor1, fx + 36, sizeof(fxu.gradientColor1));
 			memcpy(fxu.gradientColor2, fx + 40, sizeof(fxu.gradientColor2));
 		}
+		memcpy(fxu.gammaRatios, s_textGamma, sizeof(fxu.gammaRatios));
+		fxu.textParams[0] = s_textContrast;
 		if (!fxValid || memcmp(&fxu, &lastFx, sizeof(fxu)) != 0) {
 			sg_range uf = { .ptr = &fxu, .size = sizeof(fxu) };
 			sg_apply_uniforms(UB_void2d_fx, &uf);

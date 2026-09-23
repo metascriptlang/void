@@ -13,7 +13,7 @@
 
 import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
-	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes,
+	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes, void2dSetTextGamma,
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
@@ -23,6 +23,7 @@ import {
 	void2dPackChannel,
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
+import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
 import {
 	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
 	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, InstanceMode,
@@ -122,6 +123,11 @@ export function glyphUploadCount(): int32 { return void2dGlyphUploadCount(); }
 export function glyphUploadBytes(): int32 { return void2dGlyphUploadBytes(); }
 export function glyphPageView(handle: int32): uint32 { return void2dGlyphPageView(handle); }
 export function glyphPageCount(): int32 { return void2dGlyphPageCount(); }
+
+export function setTextGamma(gamma: float32, contrast: float32): void {
+	const r = gammaRatios(gamma);
+	void2dSetTextGamma(r.r0, r.r1, r.r2, r.r3, contrast);
+}
 
 // `setup2d` registers this as the bridge's commit hook, so `commit()` already runs it and no
 // frame has to call it. Exported so a test can close a frame it never committed.
@@ -265,6 +271,7 @@ function useUiState(view: uint32, blend: BlendMode): void {
 
 export function setup2d(): void {
 	void2dSetup();
+	setTextGamma(DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST);
 	// The emitter and the replay are two hand-written readers of one byte layout, so they
 	// are made to agree out loud rather than by inspection.
 	if (void2dLayoutCheck(
