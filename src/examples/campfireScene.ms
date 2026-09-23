@@ -332,10 +332,7 @@ function emberState(): EmitterState {
 function emitterOf(state: EmitterState, seed: uint32): ParticleEmitter {
 	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
 	if (made.ok) { return made.value; }
-	console.log("campfire: a particle preset was refused");
-	const fallback: Result<ParticleEmitter, ParticleError> =
-		ParticleEmitter.create(EmitterState.defaults(), seed);
-	return fallback.value;
+	unreachable;
 }
 
 // The spike's look: outline and fog tuned on the campfire, palette off.

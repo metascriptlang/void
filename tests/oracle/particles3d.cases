@@ -63,6 +63,7 @@
 # ms-prelude:
 # ms-prelude: function run(state: EmitterState, seed: uint32, steps: int32, dt: float64): ParticleEmitter {
 # ms-prelude: 	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
+# ms-prelude: 	if (!made.ok) { unreachable; }
 # ms-prelude: 	let emitter: ParticleEmitter = made.value;
 # ms-prelude: 	for (let i = 0; i < steps; i++) {
 # ms-prelude: 		const _stepped: Result<int32, ParticleError> = updateEmitter(emitter, dt, identity());

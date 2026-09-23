@@ -20,9 +20,7 @@ import { approx } from "./helpers";
 function emitterFor(state: EmitterState, seed: uint32): ParticleEmitter {
 	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
 	if (made.ok) { return made.value; }
-	const fallback: Result<ParticleEmitter, ParticleError> =
-		ParticleEmitter.create(EmitterState.defaults(), seed);
-	return fallback.value;
+	unreachable;
 }
 
 function step(ref emitter: ParticleEmitter, dt: float64): int32 {
