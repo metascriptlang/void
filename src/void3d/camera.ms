@@ -22,6 +22,7 @@
 
 import { Vec3, Vec4, Mat4, vec3 } from "../math/math3d";
 import { LowResView, ViewPoint } from "./blit";
+import { Ray } from "./ray";
 
 // Floats in the scene programs' camera block: viewProj, then cameraRight and cameraUp
 // (shader3d.glsl `vertexParams`). It is gpu3d's VERTEX_UNIFORM_LENGTH, which cameraCheck.ms
@@ -66,13 +67,6 @@ export struct OrthoBounds {
 	maxY: float32;
 	minZ: float32;
 	maxZ: float32;
-}
-
-// h3d.col.Ray, the part a pick needs. M10 moves it to its own module with the intersection
-// tests against bounds and triangles.
-export struct Ray {
-	origin: Vec3;
-	direction: Vec3;
 }
 
 export struct CameraView {
@@ -299,7 +293,7 @@ export function rayFromScreen(
 	const backwards: Mat4 = view.viewProj.inverse();
 	const atNear: Vec3 = unproject(ndc, 0.0, backwards);
 	const atFar: Vec3 = unproject(ndc, 1.0, backwards);
-	return { origin: atNear, direction: (atFar - atNear).normalized() };
+	return Ray.fromPoints(atNear, atFar);
 }
 
 function pointAt(p: Vec3): Vec4 {

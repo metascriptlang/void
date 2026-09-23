@@ -7,10 +7,10 @@ import {
 	CameraError,
 	CameraBasis,
 	OrthoBounds,
-	Ray,
 	CAMERA_BLOCK_LENGTH,
 } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
+import { Ray } from "../void3d/ray";
 import { Vec3, vec3, identity } from "../math/math3d";
 import { VERTEX_UNIFORM_LENGTH } from "../void3d/gpu3d";
 import { approx } from "./helpers";
