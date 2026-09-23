@@ -189,6 +189,11 @@ case triangle-back tol=0
 haxe> emit("triangle-back", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -5, 0, 0, 1), true)]);
 ms> emit1("triangle-back", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.Back));
 
+# Heaps drops a back face whatever the pass draws; a two-sided material here keeps it.
+case triangle-back-two-sided tol=0 diverges=pick-culling-follows-material
+haxe> emit("triangle-back-two-sided", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -5, 0, 0, 1), true)]);
+ms> emit1("triangle-back-two-sided", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.None));
+
 case triangle-beside tol=0
 haxe> emit("triangle-beside", [H.tri(0).rayIntersection(Ray.fromValues(0.9, 0.9, 5, 0, 0, -1), true)]);
 ms> emit1("triangle-beside", tri(0.0).rayIntersection(ray(0.9, 0.9, 5.0, 0.0, 0.0, -1.0), Face.Back));

@@ -856,6 +856,9 @@ export function campfirePixelOf(id: NodeId): Result<Vec3, SceneError> {
 		return Result.err(SceneError.NotAMeshNode);
 	}
 	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh;
+	if (mesh < 0 || mesh >= (context.meshData.length as int32)) {
+		return Result.err(SceneError.NodeNotFound);
+	}
 	const box: Bounds = context.meshData[mesh].bounds;
 	const centre: Vec3 = box.center() * tree.nodes[id.index].world;
 	const pixel: Vec3 = shownView.project(centre, shownBlit, originTopLeft());

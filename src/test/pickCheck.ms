@@ -36,6 +36,7 @@ import { approx } from "./helpers";
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UNCULLED: int32 = 0;
 const BACK_CULLED: int32 = 1;
+const FRONT_CULLED: int32 = 2;
 const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
 const NO_HIT: PickHit = {
 	owner: NO_ID,
@@ -207,10 +208,11 @@ test "every face addBox and addPlane build faces outward" {
 		{ origin: vec3(0.0, 0.5, 5.0), direction: vec3(0.0, 0.0, -1.0) },
 		{ origin: vec3(0.0, 0.5, -5.0), direction: vec3(0.0, 0.0, 1.0) },
 	];
-	for (const ray of toward) {
-		const outside: float32 = box.rayIntersection(ray, Face.Back);
-		assert approx(outside, 4.5) || approx(outside, 4.0);
-		assert box.rayIntersection(ray, Face.Front) != outside;
+	const entered: Vec<float32> = [4.0, 4.5, 4.5, 4.5, 4.5];
+	const leftBy: Vec<float32> = [-1.0, 5.5, 5.5, 5.5, 5.5];
+	for (let i = 0; i < 5; i++) {
+		assert approx(box.rayIntersection(toward[i], Face.Back), entered[i]);
+		assert approx(box.rayIntersection(toward[i], Face.Front), leftBy[i]);
 	}
 	let ground: MeshData = MeshData.empty();
 	const _plane: int32 = try addPlane(ground, 2.0, WHITE) catch -1;
@@ -335,6 +337,27 @@ test "the pick keeps the faces the material draws, turned over by a mirroring no
 	assert !missed.ok;
 	const behind: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
 	assert sameId(pickOf(scene, meshes, behind).owner, plain);
+}
+
+test "a mirroring parent turns a child's faces over, and a second mirror turns them back" {
+	let scene: Scene = Scene.create();
+	const meshes: Vec<MeshData> = [facingPlusZ(0.0)];
+	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
+	const behind: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
+	const mirror: Transform3D = { ...identityTransform(), scale: vec3(-1.0, 1.0, 1.0) };
+	const parent: NodeId = try addGroup(scene, scene.rootId(), mirror) catch NO_ID;
+	const child: NodeId =
+		try addMeshNode(scene, parent, identityTransform(), 0, FRONT_CULLED) catch NO_ID;
+	const _marked: NodeId = pickable(scene, child);
+	const drawnFromFront: Result<PickHit, PickError> =
+		pickNearest(scene, meshes, materials(), front);
+	assert drawnFromFront.ok;
+	const culledFromBehind: Result<PickHit, PickError> =
+		pickNearest(scene, meshes, materials(), behind);
+	assert !culledFromBehind.ok;
+	const _twice: int32 = try setLocal(scene, child, mirror) catch -1;
+	assert !pickNearest(scene, meshes, materials(), front).ok;
+	assert pickNearest(scene, meshes, materials(), behind).ok;
 }
 
 // Heaps never sets checkInside on a getCollider() shape, so it misses this ray.

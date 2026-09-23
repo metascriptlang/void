@@ -16,6 +16,7 @@ bounds-ray-on-max-face-outside 0
 bounds-ray-on-min-face-crossing 1
 triangle-front 5
 triangle-back -1
+triangle-back-two-sided -1
 triangle-beside -1
 triangle-behind-origin -1
 triangle-nearest-of-two 3
