@@ -31,6 +31,7 @@ static GlyphPage *s_pages;
 static int s_pageCount;
 static int s_pageCapacity;
 static float s_metrics[3];
+static float s_decoration[4];
 static int s_box[4];
 
 static int validFace(int face) { return face >= 0 && face < s_faceCount; }
@@ -179,6 +180,65 @@ static int gposKern(GlyphFace *face, int left, int right) {
 		}
 	}
 	return total;
+}
+
+static stbtt_uint8 *findTable(GlyphFace *face, const char *tag, int *length) {
+	stbtt_uint8 *font = face->bytes + face->info.fontstart;
+	int tables = ttUSHORT(font + 4);
+	*length = 0;
+	for (int i = 0; i < tables; i++) {
+		stbtt_uint8 *record = font + 12 + 16 * i;
+		if (memcmp(record, tag, 4) != 0) { continue; }
+		*length = (int)ttULONG(record + 12);
+		return face->bytes + ttULONG(record + 8);
+	}
+	return NULL;
+}
+
+static float glyphHeight(GlyphFace *face, int codepoint) {
+	int glyph = stbtt_FindGlyphIndex(&face->info, codepoint);
+	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+	if (glyph == 0 || !stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1)) { return 0.0f; }
+	return (float)(y1 - y0);
+}
+
+float *void2dGlyphDecoration(int face, float sizePx) {
+	s_decoration[0] = 0.0f; s_decoration[1] = 0.0f; s_decoration[2] = 0.0f; s_decoration[3] = 0.0f;
+	if (!validFace(face)) { return s_decoration; }
+	GlyphFace *f = &s_faces[face];
+	int ascent = 0, descent = 0, lineGap = 0;
+	stbtt_GetFontVMetrics(&f->info, &ascent, &descent, &lineGap);
+	int postLength = 0, os2Length = 0;
+	stbtt_uint8 *post = findTable(f, "post", &postLength);
+	stbtt_uint8 *os2 = findTable(f, "OS/2", &os2Length);
+	if (postLength < 12) { post = NULL; }
+	if (os2Length < 30) { os2 = NULL; }
+	float capHeight = 0.0f, exHeight = 0.0f;
+	if (os2 && ttUSHORT(os2) >= 2 && os2Length >= 90) {
+		exHeight = (float)ttSHORT(os2 + 86);
+		capHeight = (float)ttSHORT(os2 + 88);
+	} else {
+		exHeight = glyphHeight(f, 'x');
+		capHeight = glyphHeight(f, 'H');
+	}
+	if (capHeight <= 0.0f) { capHeight = 0.75f * (float)ascent; }
+	if (exHeight <= 0.0f) { exHeight = 0.75f * capHeight; }
+	int underlinePosition = post ? ttSHORT(post + 8) : 0;
+	int underlineSize = post ? ttSHORT(post + 10) : 0;
+	float underlineThickness = underlineSize > 0 ? (float)underlineSize : 0.15f * exHeight;
+	float underlineTop = post && (underlineSize != 0 || underlinePosition != 0)
+		? (float)underlinePosition : -underlineThickness;
+	int strikeSize = os2 ? ttSHORT(os2 + 26) : 0;
+	int strikePosition = os2 ? ttSHORT(os2 + 28) : 0;
+	float strikeThickness = strikeSize > 0 ? (float)strikeSize : underlineThickness;
+	float strikeTop = os2 && (strikeSize != 0 || strikePosition != 0)
+		? (float)strikePosition : (exHeight + strikeThickness) * 0.5f;
+	float scale = void2dGlyphScale(face, sizePx);
+	s_decoration[0] = -underlineTop * scale;
+	s_decoration[1] = underlineThickness * scale;
+	s_decoration[2] = -strikeTop * scale;
+	s_decoration[3] = strikeThickness * scale;
+	return s_decoration;
 }
 
 int void2dGlyphFaceLoad(const char *path) {

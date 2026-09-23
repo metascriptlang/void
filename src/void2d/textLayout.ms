@@ -3,6 +3,8 @@ import {
 	glyphAdvance,
 	glyphKern,
 	faceMetrics,
+	decorationMetrics,
+	DecorationMetrics,
 } from "./face";
 import { faceForCodepoint } from "./fontFallback";
 
@@ -51,6 +53,7 @@ export struct TextLayout {
 	lineHeight: float32;
 	width: float32;
 	height: float32;
+	decoration: DecorationMetrics;
 }
 
 struct Codepoint {
@@ -210,6 +213,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		lineHeight: lineHeight,
 		width: width,
 		height: lineCount * lineHeight + gaps * style.lineSpacing,
+		decoration: decorationMetrics(style.face, style.size),
 	};
 }
 

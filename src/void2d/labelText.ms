@@ -91,6 +91,12 @@ function emptyLayout(): TextLayout {
 		lineHeight: 0.0,
 		width: 0.0,
 		height: 0.0,
+		decoration: {
+			underlineTop: 0.0,
+			underlineThickness: 0.0,
+			strikethroughTop: 0.0,
+			strikethroughThickness: 0.0,
+		},
 	};
 }
 
