@@ -1,5 +1,5 @@
 import { Mat4, translation } from "../math/math3d";
-import { Program } from "../void3d/gpu3d";
+import { Program, POST_UNIFORM_LENGTH } from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
 import { Material, Phase } from "../void3d/material";
 import { DrawContext, DrawItem, addMaterial } from "../void3d/draw";
@@ -40,6 +40,7 @@ function look(): PixelArtLook {
 			normalShade: 1.35,
 		},
 		fog: { start: 0.5, end: 0.8, strength: 0.85, color: { x: 0.02, y: 0.02, z: 0.07, w: 0.0 } },
+		saturation: 0.0,
 	};
 }
 
@@ -272,7 +273,7 @@ test "screen passes have one pipeline each, whatever the settings or palette" {
 }
 
 test "post parameters carry the look, the switches and the depth unpack" {
-	const values: Vec<float32> = new Array(20);
+	const values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);
 	look().writePostParams(PixelArtSettings.full(), 16, true, values);
 	const style: PixelArtLook = look();
 	assert values[0] == style.outline.depthThreshold && values[3] == style.outline.normalShade;
@@ -289,6 +290,10 @@ test "post parameters carry the look, the switches and the depth unpack" {
 	assert values[12] == 0.0 && values[13] == 1.0 && values[14] == 1.0 && values[15] == 32.0;
 	// GL keeps (z + 1) / 2 in its depth buffer.
 	assert values[16] == 2.0 && values[17] == -1.0;
+	assert values[20] == 0.0;
+	const grey: PixelArtLook = { ...look(), saturation: -0.75 };
+	grey.writePostParams(every, 32, false, values);
+	assert values[20] == -0.75 && values[21] == 0.0 && values[23] == 0.0;
 }
 
 test "a renderer needs a frame until one is drawn, then only when something changed" {

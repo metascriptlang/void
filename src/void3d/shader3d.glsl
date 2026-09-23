@@ -160,6 +160,7 @@ layout(binding=0) uniform postParams {
     vec4 fogColor;
     vec4 features;
     vec4 depthUnpack;
+    vec4 colorAdjust;
 };
 out vec4 fragColor;
 
@@ -216,6 +217,11 @@ void main() {
     }
     float haze = smoothstep(fog.x, fog.y, centerDepth) * fog.z;
     rgb = mix(rgb, fogColor.rgb, haze);
+    if (colorAdjust.x != 0.0) {
+        float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
+        float keep = colorAdjust.x + 1.0;
+        rgb = rgb * keep + vec3(luma * (1.0 - keep));
+    }
     if (features.y > 0.5) {
         rgb = paletteColor(rgb);
     }

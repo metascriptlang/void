@@ -108,7 +108,7 @@ export const TOON_UNIFORM_LENGTH: int32 = 4;
 export const SPRITE_UNIFORM_SLOT: int32 = 2;
 export const SPRITE_UNIFORM_LENGTH: int32 = 8;
 export const POST_UNIFORM_SLOT: int32 = 0;
-export const POST_UNIFORM_LENGTH: int32 = 20;
+export const POST_UNIFORM_LENGTH: int32 = 24;
 export const BLIT_UNIFORM_SLOT: int32 = 0;
 export const BLIT_UNIFORM_LENGTH: int32 = 4;
 

@@ -265,6 +265,7 @@ function campfireLook(): PixelArtLook {
 			strength: 0.85,
 			color: { x: 0.02, y: 0.02, z: 0.07, w: 0.0 },
 		},
+		saturation: 0.0,
 	};
 }
 

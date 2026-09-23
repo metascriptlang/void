@@ -113,6 +113,8 @@ export struct PixelArtLook {
 	background: Vec4;
 	outline: OutlineStyle;
 	fog: Fog;
+	// h3d.Matrix.colorSaturate: 0 leaves color alone, -1 is grey. Applied before the palette.
+	saturation: float32;
 }
 
 export enum PixelArtError {
@@ -179,6 +181,7 @@ const NO_VIEW: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offse
 // postFs `features` and `depthUnpack`, after edge, fog and fogColor.
 const POST_FEATURES: int32 = 12;
 const POST_DEPTH_UNPACK: int32 = 16;
+const POST_COLOR_ADJUST: int32 = 20;
 
 // Hibernal's numbers are the defaults: 360 texels across the short side (360x800 at 3x on
 // 1080x2400), outline on, palette off until one is set.
@@ -243,6 +246,10 @@ export function writePostParams(
 	out[POST_DEPTH_UNPACK + 1] = bias;
 	out[POST_DEPTH_UNPACK + 2] = OFF;
 	out[POST_DEPTH_UNPACK + 3] = OFF;
+	out[POST_COLOR_ADJUST] = look.saturation;
+	out[POST_COLOR_ADJUST + 1] = OFF;
+	out[POST_COLOR_ADJUST + 2] = OFF;
+	out[POST_COLOR_ADJUST + 3] = OFF;
 }
 
 // The pipelines of the screen stages; the scene's depend on its materials, on SCENE_LAYOUT.
