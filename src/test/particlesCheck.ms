@@ -11,7 +11,7 @@ import {
 	PARTICLE_INSTANCE_STRIDE,
 	constant,
 	nextUnit,
-	update,
+	updateEmitter,
 	writeInstances,
 	clearParticles,
 } from "../void3d/particles";
@@ -26,7 +26,7 @@ function emitterFor(state: EmitterState, seed: uint32): ParticleEmitter {
 }
 
 function step(ref emitter: ParticleEmitter, dt: float32): int32 {
-	const stepped: Result<int32, ParticleError> = update(emitter, dt, identity());
+	const stepped: Result<int32, ParticleError> = updateEmitter(emitter, dt, identity());
 	return stepped.ok ? stepped.value : -1;
 }
 
@@ -233,11 +233,11 @@ test "spawn happens in world space; emitLocal defers the transform to the write"
 	const moved: Mat4 = translation(5.0, 1.0, -2.0);
 	let world: ParticleEmitter = emitterFor({ ...still(0.0), life: constant(10.0) }, 1);
 	world.emitCount = 1.0;
-	const _w: Result<int32, ParticleError> = update(world, 0.0, moved);
+	const _w: Result<int32, ParticleError> = updateEmitter(world, 0.0, moved);
 	let local: ParticleEmitter =
 		emitterFor({ ...still(0.0), life: constant(10.0), emitLocal: true }, 1);
 	local.emitCount = 1.0;
-	const _l: Result<int32, ParticleError> = update(local, 0.0, moved);
+	const _l: Result<int32, ParticleError> = updateEmitter(local, 0.0, moved);
 	assert approx(world.particles[0].position.x, 5.0);
 	assert approx(local.particles[0].position.x, 0.0);
 	const drawn: Vec<float32> = instancesOf(local, moved);
@@ -302,6 +302,6 @@ test "a bad state or a non-finite step is refused" {
 	assert !ParticleEmitter.create({ ...EmitterState.defaults(), globalLife: 0.0 }, 1).ok;
 	let emitter: ParticleEmitter = emitterFor(EmitterState.defaults(), 1);
 	const infinite: float32 = 1.0 / 0.0;
-	assert !update(emitter, infinite, identity()).ok;
+	assert !updateEmitter(emitter, infinite, identity()).ok;
 	assert emitter.count == 0;
 }

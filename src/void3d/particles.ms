@@ -114,7 +114,7 @@ export struct ParticleEmitter {
 	state: EmitterState;
 	time: float32;
 	emitCount: float32;
-	random: ParticleRandom;
+	sequence: ParticleRandom;
 	// The first `count` are live, in the order Heaps' list keeps them.
 	particles: Vec<Particle>;
 	randoms: Vec<float32>;
@@ -233,7 +233,7 @@ export function create(
 		state: state,
 		time: 0.0,
 		emitCount: 0.0,
-		random: ParticleRandom.seeded(seed),
+		sequence: ParticleRandom.seeded(seed),
 		particles: particles,
 		randoms: randoms,
 		count: 0,
@@ -254,7 +254,7 @@ export function clearParticles(ref emitter: ParticleEmitter): void {
 
 // Emitter.eval: a Random value draws a fresh value from the emitter's sequence.
 function emitterValue(ref emitter: ParticleEmitter, v: ParticleValue, time: float32): float32 {
-	const random: float32 = v.drawsRandom() ? nextUnit(emitter.random) : 0.0;
+	const random: float32 = v.drawsRandom() ? nextUnit(emitter.sequence) : 0.0;
 	return v.evaluate(time, random);
 }
 
@@ -270,7 +270,7 @@ function particleValue(
 	const index: int32 = emitter.particles[slot].randomIndex;
 	const at: int32 = slot * PARTICLE_RANDOM_SLOTS + index;
 	if (index >= emitter.particles[slot].randomsDrawn) {
-		emitter.randoms[at] = nextUnit(emitter.random);
+		emitter.randoms[at] = nextUnit(emitter.sequence);
 		emitter.particles[slot].randomsDrawn = index + 1;
 	}
 	emitter.particles[slot].randomIndex = index + 1;
@@ -278,7 +278,7 @@ function particleValue(
 }
 
 function unitRandom(ref emitter: ParticleEmitter): float64 {
-	return nextUnit(emitter.random) as float64;
+	return nextUnit(emitter.sequence) as float64;
 }
 
 // Heaps' (sin phi cos theta, sin phi sin theta, cos phi) with its y and z exchanged.
@@ -303,14 +303,14 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 	match (emitter.state.shape.kind) {
 		ShapeKind.Line => {
 			let height: float32 = emitterValue(emitter, emitter.state.shape.size, time);
-			if (!shell) { height = height * nextUnit(emitter.random); }
+			if (!shell) { height = height * nextUnit(emitter.sequence); }
 			position = vec3(0.0, height, 0.0);
 		},
 		ShapeKind.Sphere => {
 			const theta: float64 = unitRandom(emitter) * TWO_PI;
 			const phi: float64 = Math.acos(unitRandom(emitter) * 2.0 - 1.0);
 			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
-			if (!shell) { radius = radius * nextUnit(emitter.random); }
+			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
 			position = direction.scaled(radius);
 		},
@@ -320,13 +320,13 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 			const spread: float64 = angle as float64;
 			const phi: float64 = spread * unitRandom(emitter);
 			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
-			if (!shell) { radius = radius * nextUnit(emitter.random); }
+			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
 			position = direction.scaled(radius);
 		},
 		ShapeKind.Disc => {
 			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
-			if (!shell) { radius = radius * nextUnit(emitter.random); }
+			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			const angle: float64 = unitRandom(emitter) * TWO_PI;
 			direction = vec3(Math.cos(angle) as float32, 0.0, Math.sin(angle) as float32);
 			position = direction.scaled(radius);
@@ -431,7 +431,11 @@ function moveParticle(ref emitter: ParticleEmitter, from: int32, to: int32): voi
 
 // Emitter.update: advance the emitter's cycle, emit what it owes, then step every particle,
 // dropping the dead ones while keeping the others in order. `world` is the emitter's absPos.
-export function update(
+// Not Heaps' `update`, which animation.ms already exports: two `ref` free functions sharing a
+// name resolve to the wrong one with no diagnostic (compiler card
+// 2026-09-20-ref-receiver-not-an-extension.md).
+// PENDING3D: particle-update-name-collision
+export function updateEmitter(
 	ref emitter: ParticleEmitter,
 	dt: float32,
 	world: Mat4,
