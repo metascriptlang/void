@@ -25,11 +25,11 @@ naming a sentinel nobody wrote fails rather than being skipped.
 
 **How far that reaches, measured rather than implied.** The `pending` stage observes that a
 **sentinel is present**, not that the **divergence still holds**. Those are different claims,
-and only five of the rows below have the second one enforced: `bounds-transformed-or`,
+and only six of the rows below have the second one enforced: `bounds-transformed-or`,
 `bounds-empty-size-zero` and `bounds-sphere-rescale` each carry a `diverges=` case in
-`tests/oracle/bounds3d.cases`, and `anim-never-extrapolates` and `anim-pose-replaces-local` one in
-`tests/oracle/anim3d.cases`, which the `oracle` stage checks in both directions against real
-Heaps. The control: making `size()` answer Heaps' −2e20 while leaving its `// PENDING3D:` line
+`tests/oracle/bounds3d.cases`, `anim-never-extrapolates` and `anim-pose-replaces-local` one in
+`tests/oracle/anim3d.cases`, and `ray-bounds-parallel-on-face` two in `tests/oracle/ray3d.cases`,
+which the `oracle` stage checks in both directions against real Heaps. The control: making `size()` answer Heaps' −2e20 while leaving its `// PENDING3D:` line
 untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines. For
 every other row there is no second stage, so fixing the divergence and forgetting the
 comment keeps the gate green — the row would survive until a reader noticed. The two rows
@@ -57,6 +57,9 @@ for, and it is why the three bounds rows are the ones to copy.
 | `anim-pose-replaces-local` | A synced pose replaces the node's local transform, as a glTF channel does; Heaps writes it to `defaultTransform`, which `calcAbsPos` prepends to the object's own x/y/z (`Object.hx:774`). **Measured against real Heaps** (`pose-over-a-rest-transform`): an object at x = 5 posed to x = 1 lands at 6 in Heaps and at 1 here. | `src/void3d/animation.ms` | deliberate |
 | `anim-missing-target-refused` | `bindTracks` refuses an animation with a track whose name is not under the base node; Heaps' `bind` drops that track and plays the rest. | `src/void3d/animation.ms` | deliberate |
 | `gltf-real-export-not-exercised` | M8 decodes a hand-built JSON document and byte buffer, then materializes its hierarchy into `Scene`; no real Blender-generator export exists in the repository, so the on-disk export path and exporter compatibility are unproved. | `src/void3d/gltf.ms` | the first real generated `.gltf` fixture decodes headlessly, enters `Scene`, and renders through a capture |
+| `ray-bounds-parallel-on-face` | `Bounds.rayIntersection` counts a ray that runs along a face plane of the box, with a zero direction component on that axis, as inside that slab on both faces. Heaps divides by the zero: 0/0 on the face, and `hxd.Math.min`/`max` return their first argument against a NaN. **Measured against real Heaps** (`tests/oracle/ray3d.cases`): on the max face Heaps misses a ray that crosses the box (`bounds-ray-on-max-face-crossing`, Heaps 0, port 1); on the min face it hits one that passes outside it (`bounds-ray-on-min-face-outside`, Heaps 1, port 0). | `src/void3d/bounds.ms` | deliberate |
+| `pick-culling-follows-material` | The triangle test drops the faces the node's material culls: front-facing only under `Face.Back`, back-facing only under `Face.Front`, both under `Face.None`. Heaps' `PolygonBuffer.rayIntersection` always drops back faces, whatever the pass draws. So a pick hits what the pass draws. | `src/void3d/meshData.ms` | deliberate |
+| `box-builders-wound-inward` | `addBox` and `addPlane` wind every face clockwise seen from outside, against the counter-clockwise front `gpu3d.c` sets. The campfire draws them with `Face.None`, so no image shows it. Under `Face.Back` their outside would be culled, and a pick through a `Face.Back` material misses a box's top from above (`src/test/pickCheck.ms`, "a box's top is hit from above only when its material does not cull back faces"). | `src/void3d/meshData.ms` | rewinding the builders; the campfire's `Face.None` should then keep every capture byte-identical, which that commit has to measure |
 
 ## Not covered here, deliberately
 

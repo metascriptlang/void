@@ -8,6 +8,7 @@
 // sides and an empty bounds answers false to every containment test.
 
 import { Vec3, Mat4, vec3 } from "../math/math3d";
+import { Ray } from "./ray";
 
 export struct Bounds {
 	min: Vec3;
@@ -125,6 +126,44 @@ export function transformed(this bounds: Bounds, matrix: Mat4): Bounds {
 	}
 	return out;
 }
+
+// h3d.col.Bounds.rayIntersection: the distance at which the ray enters the box, or -1 when the
+// slabs do not overlap. As in Heaps, a box around the origin or behind it answers a negative
+// entry, so a caller that counts an origin inside as a hit also tests `contains`.
+export function rayIntersection(this bounds: Bounds, ray: Ray): float32 {
+	const x: Slab = slabOf(bounds.min.x, bounds.max.x, ray.origin.x, ray.direction.x);
+	const y: Slab = slabOf(bounds.min.y, bounds.max.y, ray.origin.y, ray.direction.y);
+	const z: Slab = slabOf(bounds.min.z, bounds.max.z, ray.origin.z, ray.direction.z);
+	let exit: float32 = x.exit;
+	if (y.exit < exit) { exit = y.exit; }
+	if (z.exit < exit) { exit = z.exit; }
+	let entry: float32 = x.entry;
+	if (y.entry > entry) { entry = y.entry; }
+	if (z.entry > entry) { entry = z.entry; }
+	if (exit < entry) { return -1.0; }
+	return entry;
+}
+
+struct Slab {
+	entry: float32;
+	exit: float32;
+}
+
+// Heaps divides by a zero direction component too. On a face plane that is 0/0, and through
+// hxd.Math.min/max the max face then misses every ray and the min face hits every ray.
+// PENDING3D: ray-bounds-parallel-on-face
+function slabOf(low: float32, high: float32, origin: float32, direction: float32): Slab {
+	if (direction == 0.0) {
+		if (origin >= low && origin <= high) { return { entry: -UNBOUNDED, exit: UNBOUNDED }; }
+		return { entry: UNBOUNDED, exit: -UNBOUNDED };
+	}
+	const toLow: float32 = (low - origin) / direction;
+	const toHigh: float32 = (high - origin) / direction;
+	if (toLow < toHigh) { return { entry: toLow, exit: toHigh }; }
+	return { entry: toHigh, exit: toLow };
+}
+
+const UNBOUNDED: float32 = 3.0e38;
 
 // The longest edge (Heaps' dimension), and the radius of the sphere around the box.
 export function dimension(this bounds: Bounds): float32 {

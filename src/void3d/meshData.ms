@@ -20,6 +20,8 @@
 import { Vec3, vec3 } from "../math/math3d";
 import { sinf, cosf } from "../math/mat4";
 import { Bounds, addPoint } from "./bounds";
+import { Ray } from "./ray";
+import { Face } from "./pass";
 
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
 export const LIT_VERTEX_STRIDE: int32 = 10;
@@ -153,6 +155,52 @@ export function recomputeBounds(ref data: MeshData): void {
 	data.bounds = box;
 }
 
+// h3d.col.PolygonBuffer.rayIntersection (Moller-Trumbore), with bestMatch: the nearest
+// triangle the ray hits, or -1. Heaps always rejects back faces; here `culling` is the
+// material's, so a pick finds what the pass draws. Front is counter-clockwise (gpu3d.c).
+// PENDING3D: pick-culling-follows-material
+export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): float32 {
+	let best: float32 = -1.0;
+	const count: int32 = data.triangleCount();
+	for (let triangle = 0; triangle < count; triangle++) {
+		const p0: Vec3 = data.cornerOf(triangle, 0);
+		const edge1: Vec3 = data.cornerOf(triangle, 1) - p0;
+		const edge2: Vec3 = data.cornerOf(triangle, 2) - p0;
+		const p: Vec3 = ray.direction.cross(edge2);
+		const det: float32 = edge1.dot(p);
+		if (!facesKept(det, culling)) { continue; }
+		const inverseDet: float32 = 1.0 / det;
+		const fromCorner: Vec3 = ray.origin - p0;
+		const u: float32 = fromCorner.dot(p) * inverseDet;
+		if (u < 0.0 || u > 1.0) { continue; }
+		const q: Vec3 = fromCorner.cross(edge1);
+		const v: float32 = ray.direction.dot(q) * inverseDet;
+		if (v < 0.0 || u + v > 1.0) { continue; }
+		const distance: float32 = edge2.dot(q) * inverseDet;
+		if (distance < RAY_EPSILON) { continue; }
+		if (best < 0.0 || distance < best) { best = distance; }
+	}
+	return best;
+}
+
+// hxd.Math.EPSILON.
+const RAY_EPSILON: float32 = 1e-10;
+
+function facesKept(det: float32, culling: Face): boolean {
+	return match (culling) {
+		Face.Back => det >= RAY_EPSILON,
+		Face.Front => det <= -RAY_EPSILON,
+		Face.None => det >= RAY_EPSILON || det <= -RAY_EPSILON,
+	};
+}
+
+function cornerOf(this data: MeshData, triangle: int32, corner: int32): Vec3 {
+	const at: int32 = triangle * 3 + corner;
+	const vertex: int32 = data.isIndexed() ? (data.indices[at] as int32) : at;
+	const base: int32 = vertex * LIT_VERTEX_STRIDE;
+	return vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]);
+}
+
 // ---- builders --------------------------------------------------------------------------
 //
 // A box standing on its base, turned by `yaw` about Y and leaned by `tilt` about X, in the
@@ -200,6 +248,7 @@ function rotate(this frame: BoxFrame, direction: Vec3): Vec3 {
 
 // Five quads: the top and the four sides. The underside is never seen from above the ground
 // plane, and leaving it out is what the spike did — 20 vertices and 30 indices per box.
+// PENDING3D: box-builders-wound-inward
 export function addBox(ref data: MeshData, box: Box): Result<int32, MeshError> {
 	if (!data.hasRoomFor(BOX_VERTICES)) { return Result.err(MeshError.TooManyVertices); }
 	const frame: BoxFrame = {
