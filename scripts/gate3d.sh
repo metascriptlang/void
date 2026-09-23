@@ -11,19 +11,15 @@
 #   manifest  check the baselines against the committed SHA-256 list
 #   android   build the arm64 .so
 #
-# Everything the capture stage reads and writes lives under out/tmp, which is gitignored: the
-# baselines are evidence, not source. A missing baseline is a loud SKIP, never a pass.
-# GATE_ADOPT=1 writes the missing ones from this run — deliberate re-baselining only, and it
-# says what it adopted so the milestone can write down which image it replaced.
-#
-# The baselines themselves are gitignored, so `docs/baselines3d.sha256` is committed beside the
-# code: it is what lets someone six months from now tell whether the images they hold are the
-# images a byte-identity claim was made against. GATE_WRITE_MANIFEST=1 rewrites it, which is a
-# deliberate act that belongs in the same commit as the re-baselining it records.
+# The baselines are the SHA-256 hashes in `docs/baselines3d.sha256`, committed, so a clean
+# checkout needs nothing the gate does not generate: the readback harness is
+# tests/capture3d/, and the test and Android entries are written by `prepare`. A frame with no
+# hash fails. GATE_ADOPT=1 records the hashes the manifest lacks, from this run: deliberate
+# re-baselining only, in its own commit, with the reason written down. A hash is a D3D11 claim
+# about this machine's driver; another GPU may render other bytes.
 #
 # Environment:
-#   GATE_ADOPT=1           adopt missing baselines from this run
-#   GATE_WRITE_MANIFEST=1  rewrite docs/baselines3d.sha256 from the baselines on disk
+#   GATE_ADOPT=1           record the hashes docs/baselines3d.sha256 lacks, from this run
 #   GATE_SKIP_CAPTURE=1    skip the capture stage (loudly)
 #   GATE_SKIP_ANDROID=1    skip the android stage (loudly)
 #   GATE_SKIP_BENCH=1      skip the bench stage (loudly)
@@ -131,6 +127,22 @@ write_entry() {
 		echo "voidRun(1280, 720, initCampfire, frame);"
 	} > "$WORK/$outName.new"
 	replace_if_changed "$WORK/$outName.new" "$CAPTURE/$outName.ms"
+}
+
+# Everything else the stages read from out/tmp: the readback harness (tracked in tests/capture3d),
+# the test entry and the arm64 entry, whose imports are relative to out/tmp.
+prepare_harness() {
+	mkdir -p "$TMP/android"
+	for file in capture.c capture.h; do
+		cp "tests/capture3d/$file" "$WORK/$file.new"
+		replace_if_changed "$WORK/$file.new" "$CAPTURE/$file"
+	done
+	echo 'import "../../src/test/index";' > "$WORK/test2d.new"
+	replace_if_changed "$WORK/test2d.new" "$TMP/test2d.ms"
+	sed -e 's|from "./campfireScene"|from "../campfireScene"|' \
+		-e 's|@include("../sokol/|@include("../../../src/sokol/|' \
+		src/examples/androidCampfireEntry.ms > "$WORK/androidEntry.new"
+	replace_if_changed "$WORK/androidEntry.new" "$TMP/android/campfireEntry.ms"
 }
 
 prepare_entries() {
@@ -761,9 +773,38 @@ run_gltf_cpu() {
 
 # ---- capture ------------------------------------------------------------------------------
 #
-# One configuration: rebuild the entry, run it, and cmp all four frames against the baseline it
-# claims to reproduce. The binary is deleted first so the link is always redone; the object
-# eviction above is what makes a stale shader impossible.
+# One configuration: rebuild the entry, run it, and hash all four frames against the baseline
+# it claims to reproduce. The committed docs/baselines3d.sha256 *is* the baseline set, so a
+# clean checkout has everything the comparison needs, and a frame with no hash there fails.
+# The binary is deleted first so the link is always redone; the object eviction above is what
+# makes a stale shader impossible.
+#
+# A frame that matches is also kept as out/tmp/capture/<baseline>_<frame>.ppm. That copy is
+# only ever read to measure a later difference (AE, PAE); it decides nothing.
+expected_hash() {
+	tr -d '\r' < "$MANIFEST" | sed -n "s|^\([0-9a-f]\{64\}\) \*$1\$|\1|p" | head -1
+}
+
+baseline_names() {
+	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look; do
+		for frame in $FRAMES; do
+			echo "${prefix}_$frame.ppm"
+		done
+	done
+}
+
+# GATE_ADOPT=1 only: writes the hash of a baseline the manifest does not have yet, keeping the
+# manifest in baseline_names order.
+record_hash() {
+	tr -d '\r' < "$MANIFEST" | grep -v " \*$1\$" > "$WORK/manifest.old"
+	echo "$2 *$1" >> "$WORK/manifest.old"
+	: > "$WORK/manifest.new"
+	for key in $(baseline_names); do
+		grep " \*$key\$" "$WORK/manifest.old" >> "$WORK/manifest.new" || true
+	done
+	cp "$WORK/manifest.new" "$MANIFEST"
+}
+
 run_capture() {
 	name=$1
 	baseline=$2
@@ -794,13 +835,17 @@ run_capture() {
 	adopted=0
 	for frame in $FRAMES; do
 		got=$CAPTURE/gate/${name}_$frame.ppm
-		want=$CAPTURE/${baseline}_$frame.ppm
+		key=${baseline}_$frame.ppm
+		want=$CAPTURE/$key
 		if [ ! -f "$got" ]; then
 			fail "capture $name: frame $frame was not captured"
 			return
 		fi
-		if [ ! -f "$want" ]; then
+		hash=$(sha256sum "$got" | cut -d' ' -f1)
+		expected=$(expected_hash "$key")
+		if [ -z "$expected" ]; then
 			if [ "${GATE_ADOPT:-0}" = "1" ]; then
+				record_hash "$key" "$hash"
 				cp "$got" "$want"
 				adopted=$((adopted + 1))
 			else
@@ -808,22 +853,27 @@ run_capture() {
 			fi
 			continue
 		fi
-		if ! cmp -s "$got" "$want"; then
-			differing=$((differing + 1))
-			note "capture $name: frame $frame differs from $want"
-			if command -v magick > /dev/null 2>&1; then
-				absolute=$(magick compare -metric AE "$want" "$got" null: 2>&1 | tail -1)
-				peak=$(magick compare -metric PAE "$want" "$got" null: 2>&1 | tail -1)
-				note "capture $name: frame $frame AE $absolute, PAE $peak"
-			fi
+		if [ "$hash" = "$expected" ]; then
+			cmp -s "$got" "$want" 2>/dev/null || cp "$got" "$want"
+			continue
+		fi
+		differing=$((differing + 1))
+		note "capture $name: frame $frame does not hash to $key in $MANIFEST"
+		if [ -f "$want" ] && [ "$(sha256sum "$want" | cut -d' ' -f1)" = "$expected" ] &&
+			command -v magick > /dev/null 2>&1; then
+			absolute=$(magick compare -metric AE "$want" "$got" null: 2>&1 | tail -1)
+			peak=$(magick compare -metric PAE "$want" "$got" null: 2>&1 | tail -1)
+			note "capture $name: frame $frame AE $absolute, PAE $peak"
+		else
+			note "capture $name: no local image of $key to measure the difference against"
 		fi
 	done
 	if [ "$differing" -gt 0 ]; then
 		fail "capture $name ($what): $differing of 4 frames differ from ${baseline}_*.ppm"
 	elif [ "$missing" -gt 0 ]; then
-		skip "capture $name ($what): $missing of 4 baselines ${baseline}_*.ppm missing — built and rendered, compared nothing (GATE_ADOPT=1 adopts)"
+		fail "capture $name ($what): $missing of 4 frames have no ${baseline}_* hash in $MANIFEST (GATE_ADOPT=1 records them)"
 	elif [ "$adopted" -gt 0 ]; then
-		skip "capture $name ($what): adopted $adopted of 4 baselines as ${baseline}_*.ppm from this run — write down what was replaced and why"
+		skip "capture $name ($what): recorded $adopted new ${baseline}_* hashes in $MANIFEST — commit them, and write down why"
 	else
 		pass "capture $name ($what): 4 frames byte-identical to ${baseline}_*.ppm"
 	fi
@@ -835,12 +885,12 @@ run_capture() {
 run_look_restored() {
 	for frame in 1 16; do
 		got=$CAPTURE/gate/campfireLookCapture_$frame.ppm
-		want=$CAPTURE/m3palette_$frame.ppm
-		if [ ! -f "$got" ] || [ ! -f "$want" ]; then
-			skip "capture look: frame $frame or m3palette_$frame.ppm is missing"
+		expected=$(expected_hash "m3palette_$frame.ppm")
+		if [ ! -f "$got" ] || [ -z "$expected" ]; then
+			fail "capture look: frame $frame was not captured or m3palette_$frame.ppm has no hash"
 			return
 		fi
-		if ! cmp -s "$got" "$want"; then
+		if [ "$(sha256sum "$got" | cut -d' ' -f1)" != "$expected" ]; then
 			fail "capture look: frame $frame is not the palette-on image after the swap and back"
 			return
 		fi
@@ -851,10 +901,6 @@ run_look_restored() {
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "capture: GATE_SKIP_CAPTURE=1 — the ten configurations were not built, not run, not compared"
-		return
-	fi
-	if [ ! -f "$CAPTURE/capture.c" ] || [ ! -f "$CAPTURE/capture.h" ]; then
-		skip "capture: $CAPTURE/capture.c and capture.h are missing (the D3D11 readback harness lives in gitignored out/tmp)"
 		return
 	fi
 	purge_stale_shader_objects
@@ -879,44 +925,22 @@ BENCH_WARMUP=${GATE_BENCH_WARMUP:-30}
 BENCH_FRAMES=${GATE_BENCH_FRAMES:-300}
 PICK_FRAME=12
 
-baseline_files() {
-	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look; do
-		for frame in $FRAMES; do
-			echo "$CAPTURE/${prefix}_$frame.ppm"
-		done
-	done
-}
-
+# The manifest holds one hash per baseline and nothing else: a baseline without a hash is a
+# frame nothing checks, and a hash without a baseline is a claim nothing makes.
 run_manifest() {
-	missing=0
-	for file in $(baseline_files); do
-		[ -f "$file" ] || missing=$((missing + 1))
-	done
-	if [ "$missing" -gt 0 ]; then
-		skip "manifest: $missing of 32 baselines are missing, nothing to check them against"
-		return
-	fi
-	# Hashes are over the basename, so the manifest does not carry this checkout's path.
-	( cd "$CAPTURE" && sha256sum $(baseline_files | sed "s|$CAPTURE/||") ) > "$WORK/manifest.new" 2>/dev/null
-	if [ "${GATE_WRITE_MANIFEST:-0}" = "1" ]; then
-		cp "$WORK/manifest.new" "$MANIFEST"
-		skip "manifest: rewrote $MANIFEST from this run — commit it with the re-baselining it records"
-		return
-	fi
 	if [ ! -f "$MANIFEST" ]; then
-		skip "manifest: $MANIFEST is missing (GATE_WRITE_MANIFEST=1 writes it)"
+		fail "manifest: $MANIFEST is missing, so no frame can be compared"
 		return
 	fi
-	# core.autocrlf hands the committed manifest back with CRLF while sha256sum always writes
-	# LF, so the two are compared with the line endings stripped: the claim is about the
-	# hashes, not about how this checkout stores a text file.
-	tr -d '\r' < "$MANIFEST" > "$WORK/manifest.committed"
-	if diff -q "$WORK/manifest.committed" "$WORK/manifest.new" > /dev/null 2>&1; then
-		pass "manifest: 32 baselines match $MANIFEST"
-	else
-		fail "manifest: the baselines on disk are not the ones $MANIFEST records"
-		diff "$WORK/manifest.committed" "$WORK/manifest.new" | head -12
+	tr -d '\r' < "$MANIFEST" | sed 's|^[0-9a-f]\{64\} \*||' > "$WORK/manifest.names"
+	baseline_names > "$WORK/manifest.expected"
+	malformed=$(tr -d '\r' < "$MANIFEST" | grep -vc '^[0-9a-f]\{64\} \*[a-z0-9]*_[0-9]*\.ppm$' || true)
+	if [ "$malformed" -gt 0 ] || ! diff -q "$WORK/manifest.expected" "$WORK/manifest.names" > /dev/null; then
+		fail "manifest: $MANIFEST is not exactly one hash per baseline, in order"
+		diff "$WORK/manifest.expected" "$WORK/manifest.names" | head -12
+		return
 	fi
+	pass "manifest: $(wc -l < "$WORK/manifest.expected" | tr -d ' ') hashes, one per baseline"
 }
 
 # ---- android ------------------------------------------------------------------------------
@@ -955,6 +979,7 @@ echo "  commit   $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --
 echo
 
 if prepare_scene; then
+	prepare_harness
 	prepare_entries
 	pass "prepare: campfireScene.ms and the ten capture entries are current"
 else
