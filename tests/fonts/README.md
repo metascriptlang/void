@@ -18,3 +18,10 @@ python -m fontTools.subset NotoSansSC-400.ttf --unicodes-file=unicodes.txt \
 
 The weight axis is pinned because stb_truetype reads the default instance of a variable font,
 which for this family is Thin (100).
+
+`zeroedDecorations.ttf` and `zeroThickness.ttf` are two- and three-glyph subsets of Inter
+(`assets/font.ttf`, OFL, no reserved name) with their decoration tables broken on purpose, for
+the fallback rule in `src/test/faceCheck.ms`: the first has `post` and the `OS/2` strikeout zeroed
+and `OS/2` cut to version 1, so the ex height is measured from `x`; the second keeps the
+positions, zeroes the thicknesses and the `OS/2` heights, so the estimate starts from the ascent.
+`python tests/fonts/brokenTables.py` rebuilds both from `assets/font.ttf`.
