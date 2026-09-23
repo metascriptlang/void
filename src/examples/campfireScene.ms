@@ -67,12 +67,25 @@ import {
 	addMeshNode,
 	addLightNode,
 	setLocal,
-	setMeshOf,
+	setName,
 	setLightPower,
 	setAmbient,
 	collectLights,
 	refresh,
 } from "../void3d/scene";
+import {
+	AnimationClock,
+	AnimationError,
+	Interpolation,
+	ObjectAnimation,
+	MeshFrameAnimation,
+	update,
+	addTrack,
+	bindTracks,
+	syncPose,
+	bindMeshFrames,
+	syncMeshFrame,
+} from "../void3d/animation";
 import {
 	OrthoCamera,
 	CameraView,
@@ -93,6 +106,7 @@ const SPROUT_TINT: float32 = 2.3;
 
 const FLICKER_FRAMES: int32 = 4;
 const FLAME_FRAMES: int32 = 4;
+const SPIN_KEYS: int32 = 32;
 const ATLAS_CELLS: int32 = 4;
 const TUFT_CELL: int32 = 16;
 const FLAME_CELL_WIDTH: int32 = 16;
@@ -160,6 +174,23 @@ let logGroup: NodeId = { index: -1, generation: 0 };
 let fireLight: NodeId = { index: -1, generation: 0 };
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
+let flameFrames: MeshFrameAnimation = {
+	clock: {
+		frameCount: 0,
+		sampling: 0.0,
+		speed: 0.0,
+		frame: 0.0,
+		loop: false,
+		pause: true,
+		interpolation: Interpolation.Step,
+	},
+	name: "",
+	target: { index: -1, generation: 0 },
+	meshes: [],
+	bound: false,
+	shown: -1,
+};
+let logSpin: ObjectAnimation = ObjectAnimation.forClock(flameFrames.clock);
 const NEVER_REBUILD: int32 = -1;
 let firstFlameMesh: int32 = 0;
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
@@ -510,6 +541,8 @@ function setupDraws(): void {
 	const root: NodeId = tree.rootId();
 	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
 	if (!group.ok) { console.log("campfire: setupDraws bailed at addGroup"); return; }
+	const logsNamed: Result<int32, SceneError> = setName(tree, group.value, "logs");
+	if (!logsNamed.ok) { console.log("campfire: setupDraws bailed at naming the logs"); return; }
 	// The moon as h3d.scene.fwd.DirLight: its direction is the node's front vector, and the
 	// shader wants the vector at the light, so the node faces away from it. Priority 100, the
 	// value Heaps' DirLight sorts at.
@@ -577,6 +610,35 @@ function setupDraws(): void {
 		addMeshNode(tree, root, identityTransform(), firstFlameMesh, flameMaterial);
 	if (!flame.ok) { console.log("campfire: setupDraws bailed at the flame node"); return; }
 	flameNode = flame.value;
+	const flameNamed: Result<int32, SceneError> = setName(tree, flameNode, "flame");
+	if (!flameNamed.ok) { console.log("campfire: setupDraws bailed at naming the flame"); return; }
+	const animated: Result<int32, AnimationError> = setupAnimations();
+	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
+}
+
+// The example's clock runs in frames, not seconds: every animation is updated by 1.0 per
+// frame, so a sampling rate is keys per frame. The flame steps one atlas cell every
+// FLICKER_FRAMES frames; the log spin is one key per frame.
+function setupAnimations(): Result<int32, AnimationError> {
+	const perFlicker: float64 = 1.0 / (FLICKER_FRAMES as float64);
+	const flameClock: AnimationClock =
+		try AnimationClock.forFrames(FLAME_FRAMES, perFlicker, Interpolation.Step);
+	const cells: Vec<int32> = [];
+	for (let i = 0; i < FLAME_FRAMES; i++) { cells.push(firstFlameMesh + i); }
+	flameFrames = try MeshFrameAnimation.forMeshes(flameClock, "flame", cells);
+	const _flame: int32 = try bindMeshFrames(flameFrames, tree, tree.rootId());
+	if (logSpinPerFrame == 0.0) { return Result.ok(0); }
+	let spinClock: AnimationClock =
+		try AnimationClock.forFrames(SPIN_KEYS, 1.0, Interpolation.Step);
+	spinClock.loop = false;
+	logSpin = ObjectAnimation.forClock(spinClock);
+	const turns: Vec<Transform3D> = [];
+	for (let i = 0; i < SPIN_KEYS; i++) {
+		const angle: float32 = logSpinPerFrame * (i as float32);
+		turns.push({ ...identityTransform(), rotation: eulerQuat(0.0, angle, 0.0) });
+	}
+	const _track: int32 = try addTrack(logSpin, "logs", turns);
+	return bindTracks(logSpin, tree, tree.rootId());
 }
 
 // For the checks in out/tmp: the renderer settings and whether CAMPFIRE_PALETTE is on. Call
@@ -604,9 +666,10 @@ export function configureCampfireRebuildAt(frame: int32): void {
 	rebuildAtFrame = frame;
 }
 
-// For the seventh capture configuration: turn the log group a little every frame. It is the one
-// thing the standing campfire does not exercise — a node that moves after setup, and a child
-// whose world matrix is its parent's times its own. Zero leaves the group at the identity.
+// For the seventh capture configuration: turn the log group a little every frame, as a stepped
+// keyframe animation of SPIN_KEYS keys that then holds its last one. It is the one thing the
+// standing campfire does not exercise — a node that moves after setup, and a child whose world
+// matrix is its parent's times its own. Zero leaves the group at the identity.
 export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 	logSpinPerFrame = radiansPerFrame;
 }
@@ -764,14 +827,10 @@ export function frameCampfire(): void {
 	updateFlicker();
 
 	if (logSpinPerFrame != 0.0) {
-		const angle: float32 = logSpinPerFrame * (frameIndex as float32);
-		const turned: Transform3D = { ...identityTransform(), rotation: eulerQuat(0.0, angle, 0.0) };
-		const spun: Result<int32, SceneError> = setLocal(tree, logGroup, turned);
+		const spun: Result<int32, AnimationError> = syncPose(logSpin, tree);
 		if (!spun.ok) { return; }
 	}
-	const flameFrame: int32 = (frameIndex / FLICKER_FRAMES) % FLAME_FRAMES;
-	const swapped: Result<int32, SceneError> =
-		setMeshOf(tree, flameNode, firstFlameMesh + flameFrame);
+	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
 	if (!swapped.ok) { return; }
 	// Sync the world matrices and rewrite the list in place. The structure only changes once,
 	// at setup, so every later frame takes the rewrite path and allocates nothing.
@@ -782,6 +841,8 @@ export function frameCampfire(): void {
 	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
 	if (!lit.ok) { return; }
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
+	const _flameMoved: boolean = update(flameFrames.clock, 1.0);
+	const _logsMoved: boolean = update(logSpin.clock, 1.0);
 	frameIndex = frameIndex + 1;
 	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
 }
