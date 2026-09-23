@@ -27,6 +27,8 @@ when (windows) {
 
 when (android) {
 	@compile("./bridgeAndroid.c");
+	@compile("./views.c");
+	@compile("./bridge.c");
 	@passL("-lEGL");
 	@passL("-lGLESv3");
 	@passL("-landroid");

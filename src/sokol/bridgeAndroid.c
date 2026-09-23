@@ -1,35 +1,31 @@
-// Void sokol bridge — Android embed driver (GLES3 via EGL). Host-driven: no sokol_app.
-// The host (RN Fabric SurfaceView, or the headless M2 driver) owns the surface + render
-// loop and calls voidEmbedInit*/voidEmbedFrame. Single sokol_gfx implementation unit on
-// Android (GLES3 backend). Everything below voidGfxSetup mirrors bridgeIos.m (Metal),
-// swapping the GPU-context internals: EGL context + GLES3 default framebuffer.
+// Void sokol driver — Android (GLES3 via EGL). Host-driven: no sokol_app. The host (RN
+// Fabric SurfaceView, or a headless pbuffer view) owns the surface and the render loop and
+// drives the views in views.c. One EGL context is shared by every view; each view has its own
+// EGL window surface. Single sokol_gfx implementation unit on Android.
 
 #define SOKOL_IMPL
 #define SOKOL_GLES3
 
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "bridge.h"
-#include "sokol_gfx.h"
+#include "views.h"
 #include "sokol_log.h"
-#include "shader.glsl.h"
 
-static EGLDisplay g_dpy  = EGL_NO_DISPLAY;
-static EGLContext g_ctx  = EGL_NO_CONTEXT;
-static EGLSurface g_surf = EGL_NO_SURFACE;
-static EGLConfig  g_cfg;
-static int g_w = 0, g_h = 0;
-// The window the surface is made on (kept to rebuild after a context loss) and the context
-// generation void3d watches (voidGpuGeneration).
-static const void *g_window = NULL;
+static EGLDisplay g_dpy = EGL_NO_DISPLAY;
+static EGLContext g_ctx = EGL_NO_CONTEXT;
+static EGLConfig g_cfg;
 static int g_generation = 1;
 static int g_contextLost = 0;
 
-static msClosure s_init;
-static msClosure s_frame;
-static msClosure s_pump;
+typedef struct {
+	const void *window;
+	EGLSurface surf;
+	int w, h;
+} AndroidSurface;
 
 static void call0(msClosure c) {
 	if (!c.fn) return;
@@ -37,21 +33,12 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
-void voidEmbedRegister(msClosure init, msClosure frame) {
-	s_init = init;
-	s_frame = frame;
-}
-
-void voidEmbedSetMessagePump(msClosure pump) { s_pump = pump; }
-void voidEmbedPumpMessages(void) { call0(s_pump); }
-
-// EGL display + config + ES3 context (surface created by the caller: window or pbuffer).
-static int egl_boot(int want_pbuffer) {
+static int egl_boot(void) {
 	g_dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (g_dpy == EGL_NO_DISPLAY) return 0;
 	if (!eglInitialize(g_dpy, NULL, NULL)) return 0;
 	EGLint cfgAttr[] = {
-		EGL_SURFACE_TYPE, want_pbuffer ? EGL_PBUFFER_BIT : EGL_WINDOW_BIT,
+		EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
 		EGL_DEPTH_SIZE, 0, EGL_NONE
@@ -64,14 +51,31 @@ static int egl_boot(int want_pbuffer) {
 	return g_ctx != EGL_NO_CONTEXT;
 }
 
-// Headless offscreen render (M2 proof / tests) — no ANativeWindow needed.
-void voidEmbedInitHeadless(int w, int h) {
-	g_w = w; g_h = h;
-	if (!egl_boot(1)) return;
-	EGLint pb[] = { EGL_WIDTH, w, EGL_HEIGHT, h, EGL_NONE };
-	g_surf = eglCreatePbufferSurface(g_dpy, g_cfg, pb);
-	eglMakeCurrent(g_dpy, g_surf, g_surf, g_ctx);
-	call0(s_init);
+static void sokolSetup(void) {
+	sg_desc d = {0};
+	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
+	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
+	d.environment.defaults.sample_count = 1;
+	d.logger.func = slog_func;
+	sg_setup(&d);
+	if (!sg_isvalid()) voidFail("sg_setup on the EGL context failed");
+}
+
+static EGLSurface makeSurface(const AndroidSurface *s) {
+	if (s->window != NULL) {
+		return eglCreateWindowSurface(g_dpy, g_cfg, (EGLNativeWindowType)(uintptr_t)s->window, NULL);
+	}
+	EGLint pb[] = { EGL_WIDTH, s->w, EGL_HEIGHT, s->h, EGL_NONE };
+	return eglCreatePbufferSurface(g_dpy, g_cfg, pb);
+}
+
+static void makeCurrent(const AndroidSurface *s) {
+	if (!eglMakeCurrent(g_dpy, s->surf, s->surf, g_ctx)) voidFail("eglMakeCurrent failed: 0x%04x", eglGetError());
+}
+
+void voidPlatformDeviceEnsure(void) {
+	if (g_ctx != EGL_NO_CONTEXT) return;
+	if (!egl_boot()) voidFail("EGL could not make a GLES3 context: 0x%04x", eglGetError());
 }
 
 // Asset loaders use relative paths ("assets/test.png"); the host extracts APK assets to a
@@ -84,91 +88,107 @@ void voidEmbedSetAssetRoot(const char *p) {
 	g_assetRoot[n] = 0;
 }
 
-// Window-surface path (RN Fabric SurfaceView hands us an ANativeWindow*). Idempotent:
-// Android fires surfaceCreated/Changed repeatedly (and on rotation) — the GL context +
-// scene persist across calls; only the window surface is rebound.
-static int g_scene_inited = 0;
-
-void voidEmbedInit(const void *window, int w, int h) {
-	g_w = w; g_h = h;
-	g_window = window;
-	if (g_ctx == EGL_NO_CONTEXT && !egl_boot(0)) return;
-	if (g_surf != EGL_NO_SURFACE) {
-		eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-		eglDestroySurface(g_dpy, g_surf);
-		g_surf = EGL_NO_SURFACE;
-	}
-	g_surf = eglCreateWindowSurface(g_dpy, g_cfg, (EGLNativeWindowType)(uintptr_t)window, NULL);
-	eglMakeCurrent(g_dpy, g_surf, g_surf, g_ctx);
-	if (!g_scene_inited) {
-		char prev[1024];
-		const char *got = getcwd(prev, sizeof prev);
-		if (g_assetRoot[0]) chdir(g_assetRoot);
-		call0(s_init);
-		if (got) chdir(prev);
-		g_scene_inited = 1;
-	}
+void voidPlatformRunInit(msClosure init) {
+	char prev[1024];
+	const char *got = getcwd(prev, sizeof prev);
+	if (g_assetRoot[0]) chdir(g_assetRoot);
+	call0(init);
+	if (got) chdir(prev);
 }
 
-void voidEmbedResize(int w, int h) { g_w = w; g_h = h; }
+void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
+	AndroidSurface *s = (AndroidSurface *)calloc(1, sizeof(AndroidSurface));
+	s->window = native;
+	s->w = w;
+	s->h = h;
+	s->surf = makeSurface(s);
+	if (s->surf == EGL_NO_SURFACE) voidFail("EGL could not make a %dx%d surface: 0x%04x", w, h, eglGetError());
+	if (!sg_isvalid()) {
+		makeCurrent(s);
+		sokolSetup();
+	}
+	return s;
+}
 
-static void render_once(void) {
-	voidEmbedPumpMessages();
-	call0(s_frame);
+void voidPlatformSurfaceResize(void *surface, int w, int h) {
+	AndroidSurface *s = (AndroidSurface *)surface;
+	s->w = w;
+	s->h = h;
+	if (s->window != NULL) return;
+	eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, g_ctx);
+	eglDestroySurface(g_dpy, s->surf);
+	s->surf = makeSurface(s);
+	if (s->surf == EGL_NO_SURFACE) voidFail("EGL could not resize a pbuffer to %dx%d: 0x%04x", w, h, eglGetError());
 }
 
 // ---- context loss (docs/VOID3D.md, Android lifecycle) ----
 //
 // eglSwapBuffers fails with EGL_CONTEXT_LOST after a power-management event; every GL object
-// is gone. The next frame makes a new context on the same window and sets sokol up again,
-// then counts a new generation: void3d's renderer sees it (gpu3d contextGeneration), drops
-// its stale handles and rebuilds targets, samplers, pipelines and the palette LUT from CPU
-// data. The app's meshes and textures are not rebuilt yet (void3d M5), nor is void2d.
+// is gone. The next frame makes a new context, remakes every view's surface and sets sokol up
+// again, then counts a new generation: void3d's renderer sees it (gpu3d contextGeneration),
+// drops its stale handles and rebuilds targets, samplers, pipelines and the palette LUT from
+// CPU data. The app's meshes and textures are not rebuilt yet (void3d M5), nor is void2d.
 
 int voidGpuGeneration(void) { return g_generation; }
 
 // Forces the rebuild on the next frame, to exercise it on a device without a real loss.
 void voidEmbedLoseContext(void) { g_contextLost = 1; }
 
-static int restore_context(void) {
+static void dropSurface(void *surface) {
+	AndroidSurface *s = (AndroidSurface *)surface;
+	if (s->surf != EGL_NO_SURFACE) eglDestroySurface(g_dpy, s->surf);
+	s->surf = EGL_NO_SURFACE;
+}
+
+static void remakeSurface(void *surface) {
+	AndroidSurface *s = (AndroidSurface *)surface;
+	s->surf = makeSurface(s);
+	if (s->surf == EGL_NO_SURFACE) voidFail("EGL could not remake a surface after a context loss: 0x%04x", eglGetError());
+}
+
+static void restore_context(AndroidSurface *current) {
 	// sokol frees its pools here; the GL deletes it issues go to the lost context, which
 	// ignores them. Stale sokol ids may be handed out again after sg_setup, so the owners of
 	// the old ones must drop them without destroying (the generation tells them).
 	sg_shutdown();
 	eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-	if (g_surf != EGL_NO_SURFACE) eglDestroySurface(g_dpy, g_surf);
+	voidViewsEachSurface(dropSurface);
 	if (g_ctx != EGL_NO_CONTEXT) eglDestroyContext(g_dpy, g_ctx);
-	g_surf = EGL_NO_SURFACE;
 	g_ctx = EGL_NO_CONTEXT;
-	if (!egl_boot(g_window == NULL)) return 0;
-	if (g_window != NULL) {
-		EGLNativeWindowType window = (EGLNativeWindowType)(uintptr_t)g_window;
-		g_surf = eglCreateWindowSurface(g_dpy, g_cfg, window, NULL);
-	} else {
-		EGLint pb[] = { EGL_WIDTH, g_w, EGL_HEIGHT, g_h, EGL_NONE };
-		g_surf = eglCreatePbufferSurface(g_dpy, g_cfg, pb);
-	}
-	if (g_surf == EGL_NO_SURFACE || !eglMakeCurrent(g_dpy, g_surf, g_surf, g_ctx)) return 0;
-	voidGfxSetup();
+	if (!egl_boot()) voidFail("EGL could not rebuild the context after a loss: 0x%04x", eglGetError());
+	voidViewsEachSurface(remakeSurface);
+	makeCurrent(current);
+	sokolSetup();
 	g_generation++;
 	g_contextLost = 0;
+}
+
+int voidPlatformSurfaceAcquire(void *surface) {
+	AndroidSurface *s = (AndroidSurface *)surface;
+	if (g_contextLost) restore_context(s);
+	makeCurrent(s);
 	return 1;
 }
 
-void voidEmbedFrame(void) {
-	if (g_ctx == EGL_NO_CONTEXT) return;
-	if (g_contextLost && !restore_context()) return;
-	render_once();
-	if (!eglSwapBuffers(g_dpy, g_surf) && eglGetError() == EGL_CONTEXT_LOST) {
-		g_contextLost = 1;
-	}
+void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
+	(void)surface;
+	swapchain->color_format = SG_PIXELFORMAT_RGBA8;
+	swapchain->gl.framebuffer = 0;
 }
 
-// Headless render with no present — pbuffer content stays readable by voidAndroidReadPixels.
-void voidEmbedRenderNoSwap(void) {
-	if (g_ctx == EGL_NO_CONTEXT) return;
-	render_once();
+void voidPlatformSurfacePresent(void *surface) {
+	AndroidSurface *s = (AndroidSurface *)surface;
+	if (!eglSwapBuffers(g_dpy, s->surf) && eglGetError() == EGL_CONTEXT_LOST) g_contextLost = 1;
 }
+
+void voidPlatformSurfaceDestroy(void *surface) {
+	AndroidSurface *s = (AndroidSurface *)surface;
+	if (eglGetCurrentSurface(EGL_DRAW) == s->surf) eglMakeCurrent(g_dpy, EGL_NO_SURFACE, EGL_NO_SURFACE, g_ctx);
+	dropSurface(s);
+	free(s);
+}
+
+long long voidPlatformSurfaceNative(void *surface) { (void)surface; return 0; }
 
 // Release the context from the calling thread (render thread teardown) so a future render
 // thread can make it current again.
@@ -179,117 +199,17 @@ void voidEmbedDetach(void) {
 }
 
 void voidGfxSetup(void) {
-	sg_desc d = {0};
-	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
-	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
-	d.logger.func = slog_func;
-	sg_setup(&d);
+	if (!sg_isvalid()) voidFail("gfxSetup before voidViewCreate made the EGL context");
 }
 
-int voidFbWidth(void) { return g_w; }
-int voidFbHeight(void) { return g_h; }
-float voidDpiScale(void) { return 1.0f; }
+int voidFbWidth(void) { return voidViewsFbWidth(); }
+int voidFbHeight(void) { return voidViewsFbHeight(); }
+float voidDpiScale(void) { return voidViewsDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
+sg_swapchain voidDriverSwapchain(void) { return voidViewsSwapchain(); }
+void voidDriverPresent(void) { voidViewsPresent(); }
 
-uint32_t voidMakeVertexBuffer(const void *data, int size) {
-	sg_buffer_desc d = {0};
-	d.usage.vertex_buffer = true;
-	d.data.ptr = data;
-	d.data.size = (size_t)size;
-	return sg_make_buffer(&d).id;
-}
-
-uint32_t voidMakeIndexBuffer(const void *data, int size) {
-	sg_buffer_desc d = {0};
-	d.usage.index_buffer = true;
-	d.data.ptr = data;
-	d.data.size = (size_t)size;
-	return sg_make_buffer(&d).id;
-}
-
-uint32_t voidMakeCubeShader(void) {
-	return sg_make_shader(cube_shader_desc(sg_query_backend())).id;
-}
-
-uint32_t voidMakePipeline(uint32_t shader) {
-	sg_pipeline_desc d = {0};
-	d.shader = (sg_shader){.id = shader};
-	d.layout.attrs[ATTR_cube_pos].format = SG_VERTEXFORMAT_FLOAT3;
-	d.layout.attrs[ATTR_cube_uv0].format = SG_VERTEXFORMAT_FLOAT2;
-	d.index_type = SG_INDEXTYPE_UINT16;
-	d.cull_mode = SG_CULLMODE_BACK;
-	d.face_winding = SG_FACEWINDING_CCW;
-	d.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
-	d.depth.write_enabled = true;
-	return sg_make_pipeline(&d).id;
-}
-
-uint32_t voidMakeImage(const void *rgba, int w, int h) {
-	static const uint8_t white[4] = {255, 255, 255, 255};
-	if (rgba == NULL || w <= 0 || h <= 0) { rgba = white; w = 1; h = 1; }
-	sg_image_desc d = {0};
-	d.width = w;
-	d.height = h;
-	d.pixel_format = SG_PIXELFORMAT_RGBA8;
-	d.data.mip_levels[0].ptr = rgba;
-	d.data.mip_levels[0].size = (size_t)(w * h * 4);
-	return sg_make_image(&d).id;
-}
-
-uint32_t voidMakeView(uint32_t image) {
-	sg_view_desc d = {0};
-	d.texture.image = (sg_image){.id = image};
-	return sg_make_view(&d).id;
-}
-
-uint32_t voidMakeSampler(void) {
-	sg_sampler_desc d = {0};
-	d.min_filter = SG_FILTER_LINEAR;
-	d.mag_filter = SG_FILTER_LINEAR;
-	d.wrap_u = SG_WRAP_REPEAT;
-	d.wrap_v = SG_WRAP_REPEAT;
-	return sg_make_sampler(&d).id;
-}
-
-void voidBeginPass(float r, float g, float b, float a) {
-	sg_pass pass = {0};
-	pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
-	pass.action.colors[0].clear_value = (sg_color){r, g, b, a};
-	pass.swapchain.width = g_w;
-	pass.swapchain.height = g_h;
-	pass.swapchain.sample_count = 1;
-	pass.swapchain.color_format = SG_PIXELFORMAT_RGBA8;
-	pass.swapchain.depth_format = SG_PIXELFORMAT_NONE;
-	pass.swapchain.gl.framebuffer = 0;
-	sg_begin_pass(&pass);
-}
-
-void voidApplyPipeline(uint32_t pipeline) {
-	sg_apply_pipeline((sg_pipeline){.id = pipeline});
-}
-
-void voidApplyBindings(uint32_t vbuf, uint32_t ibuf, uint32_t view, uint32_t sampler) {
-	sg_bindings b = {0};
-	b.vertex_buffers[0] = (sg_buffer){.id = vbuf};
-	b.index_buffer = (sg_buffer){.id = ibuf};
-	b.views[VIEW_tex] = (sg_view){.id = view};
-	b.samplers[SMP_smp] = (sg_sampler){.id = sampler};
-	sg_apply_bindings(&b);
-}
-
-void voidApplyMvp(const float *mvp) {
-	sg_range u = {.ptr = mvp, .size = sizeof(vs_params_t)};
-	sg_apply_uniforms(UB_vs_params, &u);
-}
-
-void voidDraw(int count) { sg_draw(0, count, 1); }
-void voidEndPass(void) { sg_end_pass(); }
-static void (*s_commitHook)(void);
-void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
-void voidCommit(void) { sg_commit(); if (s_commitHook) { s_commitHook(); } }
-
-// M2 readback — pull the rendered pbuffer (RGBA8, bottom-up GL order).
-void voidAndroidReadPixels(unsigned char *out) {
-	glReadPixels(0, 0, g_w, g_h, GL_RGBA, GL_UNSIGNED_BYTE, out);
+// M2 readback — the surface drawn last (a pbuffer keeps it after present), RGBA8, bottom-up GL order.
+void voidAndroidReadPixels(int w, int h, unsigned char *out) {
+	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out);
 }

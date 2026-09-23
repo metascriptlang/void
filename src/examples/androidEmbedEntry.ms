@@ -1,7 +1,7 @@
 // Void — Android RN embed entry. Registers renderer2d's init2d/frame2d; the host (Kotlin
 // SurfaceView via JNI) owns the window surface + Choreographer render loop. No driver, no
 // main: MsMain (called once from JNI) runs this top-level to register, then the host drives
-// voidEmbedInit(ANativeWindow) + voidEmbedFrame.
+// voidViewCreate(ANativeWindow) + voidViewFrame.
 
 import { init2d, frame2d } from "./renderer2d";
 import { voidOnMessage } from "../void2d/message";
