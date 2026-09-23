@@ -1,75 +1,10 @@
-// Void sokol bridge — thin C wrappers (impl lives in the @link'd sokol unit).
+// Void sokol bridge — thin C wrappers over sokol_gfx, shared by every driver. The driver
+// (bridgeWin.c, bridgeIos.m, bridgeAndroid.c) owns the sokol implementation unit, the
+// device and the swapchain.
 
 #include "bridge.h"
-#include "sokol_gfx.h"
-#include "sokol_app.h"
-#include "sokol_glue.h"
-#include "sokol_log.h"
+#include "views.h"
 #include "shader.glsl.h"
-
-// --- Lifecycle ---
-
-static msClosure s_init;
-static msClosure s_frame;
-
-static void call0(msClosure c) {
-	if (!c.fn) return;
-	if (c.env) ((void (*)(void *))c.fn)(c.env);
-	else ((void (*)(void))c.fn)();
-}
-
-static void _init(void) { call0(s_init); }
-static void _frame(void) { call0(s_frame); }
-
-static bool s_keys[SAPP_MAX_KEYCODES];
-
-static void _event(const sapp_event *e) {
-	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
-		if (e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
-		s_keys[e->key_code] = true;
-	} else if (e->type == SAPP_EVENTTYPE_KEY_UP) {
-		s_keys[e->key_code] = false;
-	}
-}
-
-static void _cleanup(void) { sg_shutdown(); }
-
-void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
-	s_init = init;
-	s_frame = frame;
-	sapp_desc d = {0};
-	d.init_cb = _init;
-	d.frame_cb = _frame;
-	d.event_cb = _event;
-	d.cleanup_cb = _cleanup;
-	d.width = w;
-	d.height = h;
-	d.sample_count = sampleCount;
-	d.high_dpi = highDpi != 0;
-	d.window_title = "Void — sokol";
-	d.logger.func = slog_func;
-	sapp_run(&d);
-}
-
-void voidRun(int w, int h, msClosure init, msClosure frame) {
-	voidRunConfigured(w, h, 4, 1, init, frame);
-}
-
-void voidGfxSetup(void) {
-	sg_desc d = {0};
-	d.environment = sglue_environment();
-	d.logger.func = slog_func;
-	sg_setup(&d);
-}
-
-int voidFbWidth(void) { return sapp_width(); }
-int voidFbHeight(void) { return sapp_height(); }
-float voidDpiScale(void) { return sapp_dpi_scale(); }
-
-int voidKeyDown(int keycode) {
-	if (keycode < 0 || keycode >= SAPP_MAX_KEYCODES) return 0;
-	return s_keys[keycode] ? 1 : 0;
-}
 
 // --- Resource creation (sokol handle .id ↔ uint32) ---
 
@@ -201,7 +136,7 @@ void voidBeginPass(float r, float g, float b, float a) {
 	pass.action.colors[0].clear_value = (sg_color){r, g, b, a};
 	pass.action.depth.load_action = SG_LOADACTION_CLEAR;
 	pass.action.depth.clear_value = 1.0f;
-	pass.swapchain = sglue_swapchain();
+	pass.swapchain = voidDriverSwapchain();
 	sg_begin_pass(&pass);
 }
 
@@ -227,4 +162,8 @@ void voidDraw(int count) { sg_draw(0, count, 1); }
 void voidEndPass(void) { sg_end_pass(); }
 static void (*s_commitHook)(void);
 void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
-void voidCommit(void) { sg_commit(); if (s_commitHook) { s_commitHook(); } }
+void voidCommit(void) {
+	sg_commit();
+	if (s_commitHook) { s_commitHook(); }
+	voidDriverPresent();
+}

@@ -24,11 +24,14 @@ void voidRun(int w, int h, msClosure init, msClosure frame);
 // voidDpiScale() 1.0 whatever the host display reports.
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame);
 
-// Embed lifecycle (iOS / host-driven) — host owns the CAMetalLayer + render loop.
+typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);
-void voidEmbedInit(const void *layer, int w, int h);
-void voidEmbedResize(int w, int h);
-void voidEmbedFrame(void);
+VoidViewId voidViewCreate(long long native, int w, int h, float scale);
+void voidViewResize(VoidViewId v, int w, int h, float scale);
+int voidViewFrame(VoidViewId v);
+void voidViewDestroy(VoidViewId v);
+long long voidViewSwapChain(VoidViewId v);
+VoidViewId voidCurrentView(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 
@@ -36,6 +39,8 @@ void voidEmbedPumpMessages(void);
 // switch that forces that rebuild on the next frame.
 int voidGpuGeneration(void);
 void voidEmbedLoseContext(void);
+void voidEmbedDetach(void);
+void voidEmbedSetAssetRoot(const char *path);
 
 void voidGfxSetup(void);
 int voidFbWidth(void);

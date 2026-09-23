@@ -15,6 +15,8 @@ when (macos) {
 
 when (windows) {
 	@compile("./sokolWin.c");
+	@compile("./bridgeWin.c");
+	@compile("./views.c");
 	@compile("./bridge.c");
 	@passL("-ld3d11");
 	@passL("-ldxgi");
@@ -37,6 +39,27 @@ when (ios) {
 	@passL("-framework QuartzCore");
 	@passL("-framework UIKit");
 	@passL("-framework Foundation");
+}
+
+when (windows || ios || android) {
+	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
+	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;
+	extern function voidViewResize(view: int32, w: int32, h: int32, scale: float32): void;
+	extern function voidViewFrame(view: int32): int32;
+	extern function voidViewDestroy(view: int32): void;
+	extern function voidViewSwapChain(view: int32): int64;
+	extern function voidCurrentView(): int32;
+
+	export type ViewId = int32;
+	export const ViewInvalid: ViewId = 0 as int32;
+
+	export function embedRegister(init: () => void, frame: () => void): void { voidEmbedRegister(init, frame); }
+	export function viewCreate(native: int64, w: int32, h: int32, scale: float32): ViewId { return voidViewCreate(native, w, h, scale); }
+	export function viewResize(view: ViewId, w: int32, h: int32, scale: float32): void { voidViewResize(view, w, h, scale); }
+	export function viewFrame(view: ViewId): boolean { return voidViewFrame(view) !== 0; }
+	export function viewDestroy(view: ViewId): void { voidViewDestroy(view); }
+	export function viewSwapChain(view: ViewId): int64 { return voidViewSwapChain(view); }
+	export function currentView(): ViewId { return voidCurrentView(); }
 }
 
 extern function voidGfxSetup(): void;
