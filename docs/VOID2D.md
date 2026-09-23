@@ -562,7 +562,7 @@ an otherwise idle machine span 17.9–18.9 ms. The counters are what gate hard.
 - Box and image style into side tables (guardrail 2; `Node2D` carries 71 fields).
 - Glyph mode fed by fontstash. No text behaviour changes in this phase.
 
-**Defects closed.** The pivot inconsistency and missing `Tile.dx/dy`; the rotated-Mask scissor AABB; culling against the viewport instead of the clip; per-vertex sRGB gradients. Not on the defect list but closed here: box-shaped UI stops depending on MSAA for its antialiasing, which today is on only for the sokol_app entry (`bridge.c:47`) and off on iOS, Android and embed — paths themselves wait for P6.
+**Defects closed.** The pivot inconsistency and missing `Tile.dx/dy`; the rotated-Mask scissor AABB; culling against the viewport instead of the clip; per-vertex sRGB gradients. Not on the defect list but closed here: box-shaped UI stops depending on MSAA for its antialiasing, which today is on only for the sokol_app entry (`bridgeWin.c` `voidRun`) and off on iOS, Android and embed — paths themselves wait for P6.
 The gradient slice stays on the existing vertex pipeline: `Graphics` keeps arbitrary polygon
 tessellation and painter order, while each contiguous range selects an sRGB/Oklab gradient or
 pattern through the existing effect record. That avoids a second geometry path and leaves the

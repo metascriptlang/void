@@ -6,7 +6,7 @@
 // targets from another row or hide a leak behind resources that row already allocated.
 //
 // The window is opened with sample_count 1 and high_dpi off. Both are deliberate:
-//   - 4x MSAA is on only for the sokol_app entry (bridge.c:56) and off on iOS, Android and
+//   - 4x MSAA is on only for the sokol_app entry (bridgeWin.c voidRun) and off on iOS, Android and
 //     the embed bridges, so a golden taken with it could never be the single golden set
 //     every backend is compared against (guardrail 9, docs/TESTING.md). It is also not
 //     reproducible: at sample_count 4 the demo scene's D3D11 resolve differs by one or two

@@ -131,7 +131,7 @@ the last three sessions compared.
 
 - **One scene per process**, so each capture starts from the same GPU-resource and atlas
   state; a scene can neither inherit pooled targets nor hide a leak behind another scene.
-- **`sample_count` 1**. 4× MSAA is on only for the sokol_app entry (`bridge.c:56`) and off
+- **`sample_count` 1**. 4× MSAA is on only for the sokol_app entry (`bridgeWin.c` `voidRun`) and off
   on iOS, Android and the embed bridges, so a golden taken with it could never be the one
   golden set every backend is compared against. It is also not reproducible: at
   `sample_count` 4 the demo's D3D11 resolve differs by one or two pixels between runs of

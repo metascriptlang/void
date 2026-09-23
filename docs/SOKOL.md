@@ -33,7 +33,7 @@ Ordered by how soon Void hits them. None is started; each waits for the Void nee
 | Sub-rect texture updates that persist across frames | Glyph atlas: VOID2D.md P3 | Pinned rev: `sg_update_image` replaces a whole mip level, once per frame. Upstream `sg_write_image_transient` writes sub-rects but does not survive the frame. `write_persistent` is announced. Coordinate on that. |
 | GPU→CPU readback | Golden-image tests on every backend | No API. `out/tmp/capture/capture.c` does it for D3D11 through native handles. Async `read-buffer`/`read-image` is announced. |
 | Android host-owned EGL: context loss, preview and live side by side | Hibernal V6 (`hibernal/docs/ROADMAP.md`) | `sokol_gfx` works on an external GL context (`SOKOL_EXTERNAL_GL_LOADER`, hand-filled `sg_environment`/`sg_swapchain`), but has no context-loss rebuild. `sokol_app` on Android is NativeActivity only. |
-| Embedding `sokol_app` in a host view | Neon hosts, `bridgeEmbed.m` / `bridgeIos.m` | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue for now. |
+| Embedding `sokol_app` in a host view | Neon hosts, host views (docs/EMBED.md) | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue: `views.c` and a `voidPlatform*` half per OS. |
 | Async pipeline creation on WebGPU | Only if first-frame hitches show up on the web | Pipelines are created with synchronous `wgpuDeviceCreateRenderPipeline`. void2d needs about two pipelines, created at init. |
 
 ## Why sokol stays
@@ -66,7 +66,7 @@ Void needs Metal, D3D11, GLES3, WebGPU and WebGL2 from one API. That backend set
 **Coupling is narrow.**
 - Every sokol call lives in six C/ObjC bridge files, about 1,630 lines. No `.ms` file calls `sg_*`.
 - Swapping the layer would mean rewriting that C and about 290 lines of GLSL, not the MetaScript.
-- The four copies of the `bridge.h` functions (`bridge.c`, `bridgeEmbed.m`, `bridgeIos.m`, `bridgeAndroid.c`) double that cost. Merging them is worth doing before the next sokol upgrade.
+- `bridge.c` holds the resource and pass wrappers once, for Windows, iOS and Android; each driver (`bridgeWin.c`, `bridgeIos.m`, `bridgeAndroid.c`) keeps only the device and the swapchain. `bridgeEmbed.m`, the macOS proof of concept, is the one copy left.
 
 **Control is kept.**
 - The WebGPU device can be injected (`sg_environment.wgpu.device`).
