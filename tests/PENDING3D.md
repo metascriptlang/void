@@ -25,11 +25,11 @@ naming a sentinel nobody wrote fails rather than being skipped.
 
 **How far that reaches, measured rather than implied.** The `pending` stage observes that a
 **sentinel is present**, not that the **divergence still holds**. Those are different claims,
-and only eight of the rows below have the second one enforced: `bounds-transformed-or`,
+and only nine of the rows below have the second one enforced: `bounds-transformed-or`,
 `bounds-empty-size-zero` and `bounds-sphere-rescale` each carry a `diverges=` case in
 `tests/oracle/bounds3d.cases`, `anim-never-extrapolates` and `anim-pose-replaces-local` one in
 `tests/oracle/anim3d.cases`, `ray-bounds-parallel-on-face` two, and `pick-origin-inside-bounds`
-and `pick-culling-follows-material` one each in `tests/oracle/ray3d.cases`, which the `oracle`
+and `pick-culling-follows-material` one each in `tests/oracle/ray3d.cases`, and `particle-random-per-life` one in `tests/oracle/particles3d.cases`, which the `oracle`
 stage checks in both directions against real Heaps. The control: making `size()` answer
 Heaps' −2e20 while leaving its `// PENDING3D:` line
 untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines. For
@@ -64,10 +64,13 @@ for, and it is why the three bounds rows are the ones to copy.
 | `pick-origin-inside-bounds` | A ray that starts inside a mesh's bounds still reaches its triangles. In Heaps the Interactive shape comes from `getCollider()`, an `ObjectCollider`, so `rayCastEventTargets`' downcast to `OptimizedCollider` fails and `checkInside` is never set (`Scene.hx:331`). **Measured against real Heaps** (`tests/oracle/ray3d.cases`): `inside-bounds-through-object-collider` gives Heaps -1 and the port 1; `inside-bounds-with-check-inside` shows the same collider with the flag set by hand agreeing with the port. | `src/void3d/pick.ms` | deliberate |
 | `pick-owner-is-a-flag` | `h3d.scene.Interactive` is a flag here, and three things follow from that. A hidden mesh under a visible pickable node is not hit: Heaps' `getCollider()` gathers children whatever their `visible`, and visibility is tested only up the Interactive's own chain (`Scene.hx:315`). With nested pickable nodes the hit belongs to the nearest one; in Heaps the outer shape contains the inner meshes too, so both report the same distance. And the geometry is the live tree at the tap, where a Heaps shape is a snapshot taken when the collider was built. Heaps' own `new Interactive(obj.getCollider(), obj)` is not the shape to copy: with `isAbsoluteShape` false the ray goes through `invPos` in `rayCastEventTargets` and again in `ObjectCollider` (`Scene.hx:320`, `ObjectCollider.hx:19`). Source-derived: `h3d.scene.Scene` needs a window on node. Pinned by `src/test/pickCheck.ms` ("a hidden mesh under a visible pickable node is not picked", "a hit on a mesh belongs to its nearest pickable ancestor", "a baked frame swapped in by its animation is the geometry picked"). | `src/void3d/pick.ms` | deliberate |
 | `pick-distance-from-ray-origin` | `PickHit.distance` is measured from the ray's origin on the near plane, and `point` is in world space. Heaps sorts by distance from `camera.pos` and keeps `hitPoint` in the Interactive's space. The orders are not the same here: the M4 camera's eye is its target, in the middle of the depth range, so an occluder just in front of the eye and the mesh just behind it swap in Heaps' order. Pinned by `src/test/pickCheck.ms` ("the nearest hit is measured from the ray's origin, not from the camera's eye"). | `src/void3d/pick.ms` | deliberate |
+| `particle-random-per-life` | A particle draws its random values afresh every life. Heaps keeps them on the `Particle` object (`randValues`), and a killed particle goes back to the pool and is handed out again with the values of its previous life, so its next life repeats its sizes and speeds. **Measured against real Heaps** (`tests/oracle/particles3d.cases`, `random-values-per-life`): one slot, size `VRandom(0.1, 0.2)`; the reborn particle's size is 0.18018 in Heaps, the same as its first life, and 0.16936 here. | `src/void3d/particles.ms` | deliberate |
+| `particle-size-world-units` | A particle is a camera-facing square of side `size × globalSize` in world units. Heaps' default (`is3D` false) offsets it in clip space by `size × globalSize × 0.1 × 4` (times height over width on x), and `is3D` true lies it in a fixed world plane. The pixel-art camera has a fixed world size per texel, so world units are the ones a caller can reason about. `ratio` and `rotation` are not ported. Source-derived (`Particles.hx` `draw`, `ParticleShader.hx`); nothing draws Heaps headlessly. | `src/void3d/particles.ms` | deliberate |
+| `particle-alpha-tested` | The particle program discards a fragment whose alpha is under 0.5 and writes depth, like the billboards. Heaps blends (`SoftAdd` by default, `Add`, `Alpha`) and sorts per `SortMode`. A blended pixel would feed the post pass a colour between palette entries and would need sorting; alpha-tested, the particles need neither. A fading particle therefore vanishes at half alpha instead of fading. | `src/void3d/shader3d.glsl` | when a caller needs translucent particles |
 
 ## Not covered here, deliberately
 
-`docs/VOID3D.md` "Still missing" carries narrative gaps that are future milestones rather than
-divergences — picking and particles. The missing real glTF export is narrower: M8's
+`docs/VOID3D.md` "Still missing" carries narrative gaps that are future work rather than
+divergences — a hit proxy for picking, a run on a physical device. The missing real glTF export is narrower: M8's
 code is present but its external producer is not, so it has the enforced row above. The
 distinction keeps this list short enough that every row is read.

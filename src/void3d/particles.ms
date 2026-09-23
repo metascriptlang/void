@@ -94,8 +94,8 @@ export struct Particle {
 	position: Vec3;
 	direction: Vec3;
 	force: Vec3;
-	time: float32;
-	lifeTimeFactor: float32;
+	time: float64;
+	lifeTimeFactor: float64;
 	size: float32;
 	red: float32;
 	green: float32;
@@ -112,8 +112,8 @@ export struct ParticleRandom {
 
 export struct ParticleEmitter {
 	state: EmitterState;
-	time: float32;
-	emitCount: float32;
+	time: float64;
+	emitCount: float64;
 	sequence: ParticleRandom;
 	// The first `count` are live, in the order Heaps' list keeps them.
 	particles: Vec<Particle>;
@@ -295,8 +295,9 @@ function polar(theta: float64, phi: float64): Vec3 {
 function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 	const slot: int32 = emitter.count;
 	emitter.count = slot + 1;
+	// PENDING3D: particle-random-per-life
 	emitter.particles[slot].randomsDrawn = 0;
-	const time: float32 = emitter.time;
+	const time: float32 = emitter.time as float32;
 	const shell: boolean = emitter.state.emitFromShell;
 	let position: Vec3 = vec3(0.0, 0.0, 0.0);
 	let direction: Vec3 = vec3(0.0, 1.0, 0.0);
@@ -345,7 +346,8 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 	emitter.particles[slot].direction = direction;
 	emitter.particles[slot].force = vec3(0.0, 0.0, 0.0);
 	emitter.particles[slot].time = 0.0;
-	emitter.particles[slot].lifeTimeFactor = 1.0 / emitterValue(emitter, emitter.state.life, time);
+	const life: float32 = emitterValue(emitter, emitter.state.life, time);
+	emitter.particles[slot].lifeTimeFactor = 1.0 / (life as float64);
 }
 
 function channel(color: uint32, shift: uint32): float32 {
@@ -355,7 +357,7 @@ function channel(color: uint32, shift: uint32): float32 {
 // Emitter.updateParticle's color: the keys around the particle's time, blended, times light.
 function colorAt(ref emitter: ParticleEmitter, slot: int32, light: float32): void {
 	const keys: int32 = emitter.state.colors.length as int32;
-	const at: float32 = emitter.particles[slot].time;
+	const at: float32 = emitter.particles[slot].time as float32;
 	if (keys == 0) {
 		emitter.particles[slot].red = light;
 		emitter.particles[slot].green = light;
@@ -387,13 +389,15 @@ function colorAt(ref emitter: ParticleEmitter, slot: int32, light: float32): voi
 }
 
 // Emitter.updateParticle: false when the particle's life is over.
-function stepParticle(ref emitter: ParticleEmitter, slot: int32, dt: float32): boolean {
-	const factor: float32 = emitter.particles[slot].lifeTimeFactor;
-	const life: float32 = emitter.particles[slot].time + dt * factor;
-	emitter.particles[slot].time = life;
-	if (life > 1.0) { return false; }
+function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64): boolean {
+	const lived: float64 =
+		emitter.particles[slot].time + step * emitter.particles[slot].lifeTimeFactor;
+	emitter.particles[slot].time = lived;
+	if (lived > 1.0) { return false; }
+	const life: float32 = lived as float32;
+	const dt: float32 = step as float32;
 	emitter.particles[slot].randomIndex = 0;
-	const cycle: float32 = emitter.time;
+	const cycle: float32 = emitter.time as float32;
 	const forceX: float32 = particleValue(emitter, slot, emitter.state.force.x, cycle);
 	const forceZ: float32 = particleValue(emitter, slot, emitter.state.force.z, cycle);
 	const forceY: float32 = particleValue(emitter, slot, emitter.state.force.y, cycle);
@@ -437,24 +441,25 @@ function moveParticle(ref emitter: ParticleEmitter, from: int32, to: int32): voi
 // PENDING3D: particle-update-name-collision
 export function updateEmitter(
 	ref emitter: ParticleEmitter,
-	dt: float32,
+	dt: float64,
 	world: Mat4,
 ): Result<int32, ParticleError> {
-	if (!Number.isFinite(dt as float64)) { return Result.err(ParticleError.NonFiniteStep); }
-	const old: float32 = emitter.time;
-	const life: float32 = emitter.state.globalLife;
-	const rate: float32 = emitterValue(emitter, emitter.state.globalSpeed, old);
-	emitter.time = old + dt * rate / life;
-	const elapsed: float32 = (emitter.time - old) * life;
+	if (!Number.isFinite(dt)) { return Result.err(ParticleError.NonFiniteStep); }
+	const old: float64 = emitter.time;
+	const life: float64 = emitter.state.globalLife as float64;
+	const rate: float32 = emitterValue(emitter, emitter.state.globalSpeed, old as float32);
+	emitter.time = old + dt * (rate as float64) / life;
+	const elapsed: float64 = (emitter.time - old) * life;
 	if (emitter.time >= 1.0 && emitter.state.loop) { emitter.time = emitter.time - 1.0; }
 	if (emitter.time < 1.0) {
-		const emitted: float32 = emitterValue(emitter, emitter.state.emitRate, emitter.time);
-		emitter.emitCount = emitter.emitCount + emitted * elapsed;
+		const cycle: float32 = emitter.time as float32;
+		const emitted: float32 = emitterValue(emitter, emitter.state.emitRate, cycle);
+		emitter.emitCount = emitter.emitCount + (emitted as float64) * elapsed;
 	}
 	for (let i = 0; i < (emitter.state.bursts.length as int32); i++) {
-		const at: float32 = emitter.state.bursts[i].time;
+		const at: float64 = emitter.state.bursts[i].time as float64;
 		if (at <= emitter.time && at > old) {
-			emitter.emitCount = emitter.emitCount + (emitter.state.bursts[i].count as float32);
+			emitter.emitCount = emitter.emitCount + (emitter.state.bursts[i].count as float64);
 		}
 	}
 	while (emitter.emitCount > 0.0) {
@@ -484,7 +489,9 @@ export function writeInstances(
 		return Result.err(ParticleError.ShortInstances);
 	}
 	if (count == 0) { return Result.ok(0); }
-	const scale: float32 = emitterValue(emitter, emitter.state.globalSize, emitter.time);
+	// PENDING3D: particle-size-world-units
+	const cycle: float32 = emitter.time as float32;
+	const scale: float32 = emitterValue(emitter, emitter.state.globalSize, cycle);
 	for (let i = 0; i < count; i++) {
 		let position: Vec3 = emitter.particles[i].position;
 		if (emitter.state.emitLocal) { position = position * world; }

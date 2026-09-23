@@ -262,6 +262,7 @@ void main() {
 @end
 
 @fs particleFs
+// PENDING3D: particle-alpha-tested
 in vec4 particleColor;
 in float depth01;
 layout(location=0) out vec4 fragColor;

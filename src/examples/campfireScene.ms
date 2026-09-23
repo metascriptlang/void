@@ -185,7 +185,7 @@ const WINTER_PALETTE: Vec<uint32> = [
 	0xEEF4FC, 0x3A3F4F, 0x5C6272, 0x868C9C, 0x6E4A4A, 0xB0705A, 0xE0A070, 0xFFE0A8,
 ];
 
-const PARTICLE_STEP: float32 = 1.0 / 30.0;
+const PARTICLE_STEP: float64 = 1.0 / 30.0;
 const PARTICLE_WARMUP_STEPS: int32 = 240;
 const SNOW_SEED: uint32 = 12345;
 const EMBER_SEED: uint32 = 777;

@@ -25,7 +25,7 @@ function emitterFor(state: EmitterState, seed: uint32): ParticleEmitter {
 	return fallback.value;
 }
 
-function step(ref emitter: ParticleEmitter, dt: float32): int32 {
+function step(ref emitter: ParticleEmitter, dt: float64): int32 {
 	const stepped: Result<int32, ParticleError> = updateEmitter(emitter, dt, identity());
 	return stepped.ok ? stepped.value : -1;
 }
@@ -102,7 +102,7 @@ test "the random sequence is fixed by its seed and stays in [0, 1)" {
 test "an emitter owes rate times elapsed particles and carries the fraction over" {
 	let emitter: ParticleEmitter = emitterFor({ ...still(10.0), globalLife: 4.0 }, 1);
 	assert step(emitter, 0.25) == 3;
-	assert approx(emitter.emitCount, -0.5);
+	assert approx(emitter.emitCount as float32, -0.5);
 	assert step(emitter, 0.25) == 5;
 }
 
@@ -110,7 +110,7 @@ test "no more than maxParts live, and the particles owed past it are dropped, no
 	let emitter: ParticleEmitter =
 		emitterFor({ ...still(100.0), maxParts: 8, life: constant(10.0), globalLife: 10.0 }, 1);
 	assert step(emitter, 0.5) == 8;
-	assert approx(emitter.emitCount, 0.0);
+	assert approx(emitter.emitCount as float32, 0.0);
 	assert step(emitter, 0.001) == 8;
 }
 
@@ -301,7 +301,7 @@ test "a bad state or a non-finite step is refused" {
 	assert !ParticleEmitter.create({ ...EmitterState.defaults(), maxParts: 0 }, 1).ok;
 	assert !ParticleEmitter.create({ ...EmitterState.defaults(), globalLife: 0.0 }, 1).ok;
 	let emitter: ParticleEmitter = emitterFor(EmitterState.defaults(), 1);
-	const infinite: float32 = 1.0 / 0.0;
+	const infinite: float64 = 1.0 / 0.0;
 	assert !updateEmitter(emitter, infinite, identity()).ok;
 	assert emitter.count == 0;
 }
