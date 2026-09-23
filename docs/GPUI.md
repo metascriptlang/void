@@ -4,7 +4,7 @@
 
 The entry point for void2d's decisions — the bar, the conclusions across all references, guardrails and sequencing — is [VOID2D.md](VOID2D.md). This doc is the evidence for the GPUI part: how GPUI works, where void2d stands against it, and the disposition of every item in GPUI's rendering layer. The disposition reasons are VOID2D.md's: **N** Neon or its Void host covers it, **W** GPUI's mechanism is worse than one Void has or plans, **P** not portable or against "same pixels on every platform".
 
-Source: `~/projects/gpui` — a sparse clone of the Zed monorepo (only `crates/gpui*`) at `b961b49`. GPUI paths below are relative to `crates/`; `W:` is `gpui/src/window.rs`. Void paths are relative to `src/` at `45d88e0`; Heaps paths are relative to `~/projects/heaps` at `b9aa6dcb`. Citations were re-checked against those trees on 2026-09-20.
+Source: `~/projects/gpui` — a sparse clone of the Zed monorepo (only `crates/gpui*`) at `b961b49`. GPUI paths below are relative to `crates/`; `W:` is `gpui/src/window.rs`. Void paths are relative to `src/` at `7f52e78`; Heaps paths are relative to `~/projects/heaps` at `b9aa6dcb`. Citations were re-checked against those trees on 2026-09-20.
 
 ## What GPUI is
 

@@ -269,7 +269,7 @@ sokol eliminates 2 entire layers (driver + shader compiler) that were Heaps' big
 
 ## 2D Quality Parity — vs Heaps (the committed front)
 
-Feature-Done ≠ quality-parity. This section tracks the **internal quality** of each 2D dimension against Heaps `h2d`, with code evidence. Grades: NAIVE / BASIC / MATURE / PARITY-GRADE. First audited 2026-07; **re-graded 2026-09-20** against `src/void2d/*` at `45d88e0` and `~/projects/heaps` at `b9aa6dcb`. Parity with h2d is no longer the finish line: the bar is in [VOID2D.md](VOID2D.md), and several rows are already past h2d.
+Feature-Done ≠ quality-parity. This section tracks the **internal quality** of each 2D dimension against Heaps `h2d`, with code evidence. Grades: NAIVE / BASIC / MATURE / PARITY-GRADE. First audited 2026-07; **re-graded 2026-09-20** against `src/void2d/*` at `7f52e78` and `~/projects/heaps` at `b9aa6dcb`. Parity with h2d is no longer the finish line: the bar is in [VOID2D.md](VOID2D.md), and several rows are already past h2d.
 
 | Dimension | void2d grade | void2d reality (2026-09-20) | Heaps mechanism | Gap |
 |---|---|---|---|---|

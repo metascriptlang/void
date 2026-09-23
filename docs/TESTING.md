@@ -204,7 +204,7 @@ The interesting number here is the UAX #14 one. void2d's wrap rule is GPUI's —
 
 ## T4 — budget
 
-`src/examples/bench2d.ms` is committed (`90369b3`); what is missing is the two seven-line entries that make it runnable, `out/tmp/bench/bench{Ui,Sprites}.ms`. Commit them as `tests/bench/bench{Ui,Sprites}.ms` and the whole perf story becomes reproducible.
+`src/examples/bench2d.ms` is committed (`168cea9`); what is missing is the two seven-line entries that make it runnable, `out/tmp/bench/bench{Ui,Sprites}.ms`. Commit them as `tests/bench/bench{Ui,Sprites}.ms` and the whole perf story becomes reproducible.
 
 **Rows, not prose.** `bench2d.ms:63` prints ``present ${presentMs / 120} ms, ${drawCallCount()} draws``. Emit one machine-readable row per metric instead — `ui.present.ms`, `ui.draws`, `ui.labelsDrawn`, `ui.instances`, `ui.uploadBytes`, `ui.buffersAlive`, `sprites.*` — and commit `tests/bench/baseline.json`.
 
