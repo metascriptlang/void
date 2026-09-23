@@ -291,6 +291,7 @@ let shownView: CameraView = {
 	worldPerTexel: 0.0,
 };
 let shownBlit: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offsetY: 0.0 };
+let shownHeight: int32 = 0;
 
 function snowState(): EmitterState {
 	return {
@@ -1027,7 +1028,7 @@ export function campfireTargets(): CampfireTargets {
 // framebuffer pixels count them from the bottom on GL.
 function flipRowIfGl(row: float32): float32 {
 	if (originTopLeft()) { return row; }
-	return (fbHeight() as float32) - row;
+	return (shownHeight as float32) - row;
 }
 
 // The host pixel under the centre of a mesh node's bounds in the last frame drawn.
@@ -1143,6 +1144,7 @@ export function frameCampfire(): void {
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	shownView = cameraView;
 	shownBlit = viewed.value;
+	shownHeight = fbHeight();
 	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
 	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
 	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
