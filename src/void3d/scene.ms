@@ -32,6 +32,7 @@ import { DrawItem } from "./draw";
 export const FLAG_VISIBLE: int32 = 1;
 export const FLAG_POS_CHANGED: int32 = 2;
 export const FLAG_CULLED: int32 = 4;
+export const FLAG_PICKABLE: int32 = 8;
 
 export const NO_NODE: int32 = -1;
 
@@ -373,6 +374,18 @@ export function setVisible(
 	// Visibility does not move anything, so the world matrices stay valid; only the draw list
 	// changes, and `collect` reads the flag as it walks.
 	scene.structureChanged = true;
+	return Result.ok(id.index);
+}
+
+// h3d.scene.Interactive cut to a flag: a pickable node owns every hit on the meshes under it.
+export function setPickable(
+	ref scene: Scene,
+	id: NodeId,
+	pickable: boolean,
+): Result<int32, SceneError> {
+	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	const flags: int32 = scene.nodes[id.index].flags;
+	scene.nodes[id.index].flags = pickable ? (flags | FLAG_PICKABLE) : (flags & ~FLAG_PICKABLE);
 	return Result.ok(id.index);
 }
 
