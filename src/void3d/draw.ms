@@ -450,7 +450,9 @@ export function drawItem(
 		applyUniforms(MODEL_SLOT, context.model[0..MODEL_LENGTH]);
 	}
 	for (const block of globals) {
-		context.applyBlock(block);
+		if (context.pipelines.declaresBlock(material.program, block.slot)) {
+			context.applyBlock(block);
+		}
 	}
 	if (material.uniforms.length > 0) {
 		context.applyBlock(material.uniforms);

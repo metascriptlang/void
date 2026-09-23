@@ -7,6 +7,7 @@
 
 import {
 	gpu3dMakeShader,
+	gpu3dUniformSlotMask,
 	gpu3dMakeTargetImage,
 	gpu3dMakeAttachmentView,
 	gpu3dMakeTextureView,
@@ -114,6 +115,10 @@ export const BLIT_UNIFORM_LENGTH: int32 = 4;
 
 export function makeShader(program: Program): uint32 {
 	return gpu3dMakeShader(program as int32);
+}
+
+export function uniformSlotMask(program: Program): uint32 {
+	return gpu3dUniformSlotMask(program as int32);
 }
 
 export function makePipeline(descriptor: Span<uint32>): uint32 {

@@ -54,6 +54,8 @@ static const int32_t GPU3D_BINDING_LENGTH = 9;
 static const int32_t GPU3D_PROGRAM_COUNT = 5;
 
 uint32_t gpu3dMakeShader(int32_t program);
+// Bit n set when the program declares a uniform block at slot n, read off its shader desc.
+uint32_t gpu3dUniformSlotMask(int32_t program);
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);
 uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length);
 uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length);

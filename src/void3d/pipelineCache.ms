@@ -14,6 +14,7 @@ import {
 	VertexLayout,
 	IndexType,
 	makeShader,
+	uniformSlotMask,
 	makePipeline,
 	destroyShader,
 	destroyPipeline,
@@ -70,6 +71,7 @@ export struct PipelineEntry {
 export struct PipelineCache {
 	entries: Vec<PipelineEntry>;
 	shaders: Vec<uint32>;
+	blockSlots: Vec<uint32>;
 	descriptor: Vec<uint32>;
 }
 
@@ -78,7 +80,16 @@ export function empty(this typeof PipelineCache): PipelineCache {
 	for (let i = 0; i < PROGRAM_COUNT; i++) {
 		shaders[i] = 0;
 	}
-	return { entries: [], shaders: shaders, descriptor: new Array(GPU3D_PIPELINE_LENGTH) };
+	const blockSlots: Vec<uint32> = new Array(PROGRAM_COUNT);
+	for (let i = 0; i < PROGRAM_COUNT; i++) {
+		blockSlots[i] = 0;
+	}
+	return {
+		entries: [],
+		shaders: shaders,
+		blockSlots: blockSlots,
+		descriptor: new Array(GPU3D_PIPELINE_LENGTH),
+	};
 }
 
 function ordinal(value: int32): uint64 {
@@ -181,8 +192,14 @@ export function shaderFor(ref cache: PipelineCache, program: Program): uint32 {
 	const index: int32 = program as int32;
 	if (cache.shaders[index] == 0) {
 		cache.shaders[index] = makeShader(program);
+		cache.blockSlots[index] = uniformSlotMask(program);
 	}
 	return cache.shaders[index];
+}
+
+// Whether `program` declares a uniform block at `slot`; known once its shader has been made.
+export function declaresBlock(this cache: PipelineCache, program: Program, slot: int32): boolean {
+	return (cache.blockSlots[program as int32] & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
 // PipelineBuilder.lookup + the driver's makePipeline on a miss.

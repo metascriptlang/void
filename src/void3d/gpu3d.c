@@ -138,6 +138,15 @@ uint32_t gpu3dMakeShader(int32_t program) {
 	return sg_make_shader(LOOKUP(PROGRAMS, program)(sg_query_backend())).id;
 }
 
+uint32_t gpu3dUniformSlotMask(int32_t program) {
+	const sg_shader_desc *desc = LOOKUP(PROGRAMS, program)(sg_query_backend());
+	uint32_t mask = 0;
+	for (int slot = 0; slot < SG_MAX_UNIFORMBLOCK_BINDSLOTS; slot++) {
+		if (desc->uniform_blocks[slot].stage != SG_SHADERSTAGE_NONE) mask |= 1u << slot;
+	}
+	return mask;
+}
+
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length) {
 	if (length < GPU3D_PIPELINE_LENGTH) return SG_INVALID_ID;
 	const uint32_t *d = descriptor;
