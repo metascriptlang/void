@@ -47,8 +47,14 @@ pass "caches evicted"
 
 echo
 echo "=== 2. T0 and T1 — msc test ==========================================="
+# msc exits 0 for a crashed test binary: ~/metascript/.inbox/compiler/2026-09-23-crash-exit-status-lost.md
 if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
-	pass "$(grep -E '^\s+Tests' out/gate-t0.log | tail -1 | tr -s ' ')"
+	t0Summary="$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
+	if echo "$t0Summary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
+		pass "$t0Summary"
+	else
+		fail "msc test exited 0 without a clean 'Tests N passed (N)' summary (a crash?) — see out/gate-t0.log"
+	fi
 else
 	fail "msc test src/test/index.ms — see out/gate-t0.log"
 fi
