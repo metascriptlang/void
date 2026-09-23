@@ -37,6 +37,8 @@ when (android) {
 
 when (ios) {
 	@compile("./bridgeIos.m");
+	@compile("./views.c");
+	@compile("./bridge.c");
 	@passL("-framework Metal");
 	@passL("-framework QuartzCore");
 	@passL("-framework UIKit");

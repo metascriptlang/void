@@ -6,6 +6,7 @@
 @interface VoidView ()
 @property(nonatomic, strong) CADisplayLink *link;
 @property(nonatomic, assign) BOOL started;
+@property(nonatomic, assign) VoidViewId viewId;
 @end
 
 @implementation VoidView
@@ -21,8 +22,12 @@ static void ensureMsMain(void) {
 	dispatch_once(&once, ^{ MsMain(); });
 }
 
+- (CGFloat)pixelScale {
+	return self.contentScaleFactor > 0.0 ? self.contentScaleFactor : [UIScreen mainScreen].scale;
+}
+
 - (CGSize)drawablePx {
-	CGFloat scale = self.contentScaleFactor > 0.0 ? self.contentScaleFactor : [UIScreen mainScreen].scale;
+	CGFloat scale = [self pixelScale];
 	int w = (int)(self.bounds.size.width * scale);
 	int h = (int)(self.bounds.size.height * scale);
 	return CGSizeMake(w < 1 ? 1 : w, h < 1 ? 1 : h);
@@ -39,13 +44,10 @@ static void ensureMsMain(void) {
 
 	CGSize px = [self drawablePx];
 	CAMetalLayer *layer = [self metalLayer];
-	layer.device = MTLCreateSystemDefaultDevice();
-	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	layer.framebufferOnly = NO;
-	layer.contentsScale = self.contentScaleFactor > 0.0 ? self.contentScaleFactor : [UIScreen mainScreen].scale;
-	layer.drawableSize = px;
+	layer.contentsScale = [self pixelScale];
 
-	voidEmbedInit((__bridge const void *)layer, (int)px.width, (int)px.height);
+	self.viewId = voidViewCreate((long long)(intptr_t)(__bridge void *)layer, (int)px.width, (int)px.height, (float)[self pixelScale]);
 
 	self.link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick)];
 	[self.link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
@@ -55,12 +57,14 @@ static void ensureMsMain(void) {
 	[super layoutSubviews];
 	if (!self.started) return;
 	CGSize px = [self drawablePx];
-	[self metalLayer].drawableSize = px;
-	voidEmbedResize((int)px.width, (int)px.height);
+	voidViewResize(self.viewId, (int)px.width, (int)px.height, (float)[self pixelScale]);
 }
 
-- (void)tick { voidEmbedFrame(); }
+- (void)tick { voidViewFrame(self.viewId); }
 
-- (void)dealloc { [self.link invalidate]; }
+- (void)dealloc {
+	[self.link invalidate];
+	if (self.viewId != 0) voidViewDestroy(self.viewId);
+}
 
 @end

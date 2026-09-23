@@ -1,5 +1,5 @@
 // Void — iOS embed entry. No run-loop: registers lifecycle closures with the bridge;
-// the host (React-Native VoidView driven by CADisplayLink) calls voidEmbedInit/voidEmbedFrame.
+// the host (React-Native VoidView driven by CADisplayLink) calls voidViewCreate/voidViewFrame.
 
 import { initIos, frameIos } from "./iosScene";
 import { voidOnMessage } from "../void2d/message";

@@ -9,18 +9,22 @@ extern "C" {
 #endif
 
 // Runs the MetaScript module-init graph once + the auto-called main_ (which
-// registers the Void lifecycle closures). Call once before any voidEmbedInit.
+// registers the Void lifecycle closures). Call once before any voidViewCreate.
 void MsMain(void);
 
-// Host hands over its CAMetalLayer (id<MTLDevice> read from layer.device, or
-// created if nil) and the drawable size in pixels. Runs the scene's init.
-void voidEmbedInit(const void *metalLayer, int widthPx, int heightPx);
+typedef int VoidViewId;
+
+// A view on the host's CAMetalLayer, sized in pixels at `scale` pixels per point. The first
+// view makes the shared MTLDevice and runs the scene's init. A failure aborts with a message.
+VoidViewId voidViewCreate(long long metalLayer, int widthPx, int heightPx, float scale);
 
 // Host notifies a new drawable size in pixels (on layout / rotation).
-void voidEmbedResize(int widthPx, int heightPx);
+void voidViewResize(VoidViewId view, int widthPx, int heightPx, float scale);
 
-// Host drives one frame (acquires the next drawable + renders the scene).
-void voidEmbedFrame(void);
+// Host drives one frame of one view (acquires its next drawable and renders its scene).
+int voidViewFrame(VoidViewId view);
+
+void voidViewDestroy(VoidViewId view);
 
 #ifdef __cplusplus
 }
