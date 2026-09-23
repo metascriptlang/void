@@ -18,7 +18,7 @@ import {
 	pushClip,
 	popClip,
 	clipIntersectsQuad,
-	atlasGen,
+	glyphPageView,
 	beginTarget,
 	endTarget,
 	blurPass,
@@ -26,9 +26,18 @@ import {
 	rtViewId,
 	currentRenderScale,
 } from "./draw";
-import { layoutText, buildGlyphMesh } from "./text";
 import { InstanceMode } from "./instance";
-import { fontView } from "./draw";
+import {
+	NO_LABEL_TEXT,
+	allocateLabelText,
+	shapeLabel,
+	placeLabel,
+	faceFor,
+	firstGlyphPage,
+	glyphPageHandle,
+	labelTexts,
+} from "./labelText";
+import { TextLayout, TextStyle, calcTextWidth as layoutWidth } from "./textLayout";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
@@ -184,6 +193,39 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 	}
 }
 
+function labelStyle(n: Node2D): TextStyle {
+	return {
+		face: faceFor(n.fontId),
+		size: n.size,
+		letterSpacing: n.letterSpacing,
+		lineSpacing: n.lineSpacing,
+		maxWidth: n.maxWidth,
+		align: n.align,
+	};
+}
+
+function shapeIfChanged(n: Node2D): void {
+	const textChanged: boolean = n.textDirty || n.size != n.lastSize || n.align != n.lastAlign
+		|| n.letterSpacing != n.lastLetterSpacing || n.lineSpacing != n.lastLineSpacing
+		|| n.maxWidth != n.lastMaxWidth || !n.text.equals(n.lastText)
+		|| n.fontId != n.lastFontId;
+	if (textChanged) {
+		if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
+		const laid = shapeLabel(n.payload, n.text, labelStyle(n));
+		n.contentXMin = 0.0; n.contentXMax = 0.0;
+		for (const line of laid.lines) {
+			if (line.x < n.contentXMin) { n.contentXMin = line.x; }
+			if (line.x + line.width > n.contentXMax) { n.contentXMax = line.x + line.width; }
+		}
+		n.contentYMin = 0.0;
+		n.contentYMax = laid.height;
+		n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
+		n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
+		n.textDirty = false;
+		n.lastFontId = n.fontId;
+	}
+}
+
 export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: boolean): void {
 	const localChanged: boolean = n.dirty
 		|| n.x != n.lastX || n.y != n.lastY
@@ -201,53 +243,7 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 	if (worldChanged) {
 		n.cachedWorld = parentWorld * n.cachedLocal;
 	}
-	if (n.kind === DrawKind.Label) {
-		const textChanged: boolean = n.textDirty || n.size != n.lastSize || n.align != n.lastAlign
-			|| n.letterSpacing != n.lastLetterSpacing || n.lineSpacing != n.lastLineSpacing
-			|| n.maxWidth != n.lastMaxWidth || !n.text.equals(n.lastText)
-			|| n.fontId != n.lastFontId || atlasGen() != n.lastAtlasGen;
-		if (textChanged) {
-			// Read BEFORE laying out, not after. Laying this label out can fill the atlas and
-			// grow it, and `fonsExpandAtlas` changes the normalised texture size - so quads
-			// produced before the growth carry UVs for the old size while `emitNode` binds the
-			// newest atlas. Recording the generation from *after* the layout meant the one label
-			// whose own text triggered the growth saw no change next frame and kept its wrong
-			// UVs permanently. Taking it first leaves `lastAtlasGen` behind the current one
-			// whenever a growth happened during this layout, so the label is laid out again next
-			// frame and corrects itself.
-			//
-			// What remains is one transient frame: labels laid out earlier in the same frame hold
-			// old-size UVs until their own next sync. A golden never sees it - the runner draws
-			// three frames and captures the last two - and P3 removes the class with fontstash.
-			// `tests/PENDING.md atlas-resize-transient-frame` carries it.
-			const genBeforeLayout: int32 = atlasGen();
-			const glyphs: float32[] = layoutText(n.size, n.text, n.align, n.letterSpacing, n.lineSpacing, n.maxWidth, n.fontId);
-			n.contentXMin = 1e30; n.contentYMin = 1e30; n.contentXMax = -1e30; n.contentYMax = -1e30;
-			let gi: int32 = 0;
-			while (gi + 8 <= glyphs.length as int32) {
-				const gx0: float32 = glyphs[gi]; const gy0: float32 = glyphs[gi + 1];
-				const gx1: float32 = glyphs[gi + 4]; const gy1: float32 = glyphs[gi + 5];
-				if (gx0 < n.contentXMin) { n.contentXMin = gx0; }
-				if (gy0 < n.contentYMin) { n.contentYMin = gy0; }
-				if (gx1 > n.contentXMax) { n.contentXMax = gx1; }
-				if (gy1 > n.contentYMax) { n.contentYMax = gy1; }
-				gi = gi + 8;
-			}
-			if (n.contentXMin > n.contentXMax) { n.contentXMin = 0.0; n.contentXMax = 0.0; n.contentYMin = 0.0; n.contentYMax = 0.0; }
-			// The glyph mesh stays on the node in LOCAL space and is transformed into the
-			// frame's stream when it is emitted. It used to be destroyed and re-created as
-			// an sg_buffer on every text change (VOID2D.md "Known defects"), which is both
-			// the buffer churn and the reason only about 126 Labels could draw at all.
-			n.mesh = buildGlyphMesh(glyphs);
-			n.records = glyphs;
-			n.meshVertCount = (n.mesh.length as int32) / 8;
-			n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
-			n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
-			n.textDirty = false;
-			n.lastAtlasGen = genBeforeLayout;
-			n.lastFontId = n.fontId;
-		}
-	}
+	if (n.kind === DrawKind.Label) { shapeIfChanged(n); }
 	if (n.kind === DrawKind.Graphics && n.gfxDirty) {
 		n.contentXMin = 1e30; n.contentYMin = 1e30; n.contentXMax = -1e30; n.contentYMax = -1e30;
 		let mi: int32 = 0;
@@ -268,6 +264,54 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 	}
 }
 let imageEffectRejectedReported: boolean = false;
+const deviceGrid: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+
+function sharedGlyphView(): uint32 {
+	return glyphPageView(firstGlyphPage());
+}
+
+function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
+	if (n.payload == NO_LABEL_TEXT) { return; }
+	const scale: float32 = currentRenderScale();
+	const text = placeLabel(n.payload, world, scale);
+	const originX: float32 = Math.floor(world.tx * scale) as float32;
+	const originY: float32 = Math.floor(world.ty * scale) as float32;
+	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	for (const p of text.placed) {
+		if (p.w <= 0.0 || p.h <= 0.0) { continue; }
+		const view: uint32 = glyphPageView(glyphPageHandle(p.page));
+		let corner: Vec2 = vec2(p.x, p.y) * world;
+		let affine: Transform2D = world;
+		let w: float32 = p.w;
+		let h: float32 = p.h;
+		if (text.pixelExact) {
+			corner = vec2((originX + p.x) / scale, (originY + p.y) / scale);
+			affine = deviceGrid;
+			w = p.w / scale;
+			h = p.h / scale;
+		}
+		if (uiInstancingAvailable()) {
+			drawUiInstance(InstanceMode.Glyph, view, n.blend, affine,
+				corner.x, corner.y, w, h,
+				p.u0, p.v0, p.u1, p.v1,
+				0.0, 0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0,
+				0.0, 0.0, 0.0, 0.0,
+				col, transparent, transparent);
+		} else {
+			const rx: float32 = affine.a * w;
+			const ry: float32 = affine.b * w;
+			const dx: float32 = affine.c * h;
+			const dy: float32 = affine.d * h;
+			imageQuadUV(view, p.u0, p.v0, p.u1, p.v1,
+				corner,
+				vec2(corner.x + rx, corner.y + ry),
+				vec2(corner.x + rx + dx, corner.y + ry + dy),
+				vec2(corner.x + dx, corner.y + dy),
+				col, n.blend);
+		}
+	}
+}
 let textPrimitiveEffectRejectedReported: boolean = false;
 let boxEffectRejectedReported: boolean = false;
 
@@ -401,7 +445,7 @@ function emitNode(
 				const sc: Color = st.shadowColor;
 				shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 			}
-			drawUiInstance(InstanceMode.Box, fontView(), n.blend, world, qx, qy, qw, qh,
+			drawUiInstance(InstanceMode.Box, sharedGlyphView(), n.blend, world, qx, qy, qw, qh,
 				radiusTL, radiusTR, radiusBR, radiusBL,
 				borderL, borderT, borderR, borderB,
 				borderStyle, 0.0, 0.0,
@@ -435,7 +479,7 @@ function emitNode(
 		}
 	} else if (n.kind === DrawKind.Underline) {
 		if (uiInstancingAvailable()) {
-			drawUiInstance(InstanceMode.Underline, fontView(), n.blend, world,
+			drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
 				tl.x, tl.y, sizeX, sizeY,
 				0.0, 0.0, 0.0, 0.0,
 				n.size, n.align, 0.0, 0.0,
@@ -448,7 +492,7 @@ function emitNode(
 		}
 	} else if (n.kind === DrawKind.Selection) {
 		if (uiInstancingAvailable()) {
-			drawUiInstance(InstanceMode.Selection, fontView(), n.blend, world,
+			drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
 				tl.x, tl.y, sizeX, sizeY,
 				0.0, 0.0, 0.0, 0.0,
 				n.w * 0.5, n.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
@@ -460,35 +504,7 @@ function emitNode(
 			textPrimitiveEffectRejectedReported = true;
 		}
 	} else if (n.kind === DrawKind.Label) {
-		// Glyph mode: one instance per shaped quad, against the same glyph view the card above
-		// binds, so a card and its label are one run and not two draws. The atlas is white in
-		// rgb and carries coverage in alpha, so the tint is the whole fill and the shader turns
-		// the geometric ramp off — fontstash rasterized the antialiasing into the texel, and a
-		// coverage ramp on top of it would soften every glyph edge twice. The mesh path stays
-		// for the colour pipeline, which the UI program cannot express.
-		if (uiInstancingAvailable()) {
-			const quads: float32[] = n.records;
-			const total: int32 = quads.length as int32;
-			let gi: int32 = 0;
-			while (gi + 8 <= total) {
-				// The instance's affine lane carries only the linear part; the translation
-				// rides in the origin, world-space, exactly as `tl` does for the card. Same
-				// arithmetic drawMesh applied per vertex, once per quad.
-				const ox: float32 = world.a * quads[gi] + world.c * quads[gi + 1] + world.tx;
-				const oy: float32 = world.b * quads[gi] + world.d * quads[gi + 1] + world.ty;
-				drawUiInstance(InstanceMode.Glyph, fontView(), n.blend, world,
-					ox, oy, quads[gi + 4] - quads[gi], quads[gi + 5] - quads[gi + 1],
-					quads[gi + 2], quads[gi + 3], quads[gi + 6], quads[gi + 7],
-					0.0, 0.0, 0.0, 0.0,
-					0.0, 0.0, 0.0,
-					0.0, 0.0, 0.0, 0.0,
-					col, transparent, transparent);
-				gi = gi + 8;
-			}
-		} else {
-			// Glyph coverage is white in the atlas, so the label's colour is the tint.
-			drawMesh(n.mesh, fontView(), n.blend, world, n.color, na);
-		}
+		emitLabel(n, world, col);
 	} else if (n.kind === DrawKind.Graphics) {
 		const ops: float32[] = n.records;
 		const opTotal: int32 = ops.length as int32;
@@ -823,4 +839,29 @@ export function getBounds(this n: Node2D, ref out: Bounds): void {
 	for (const ch of n.children) {
 		if (ch.visible) { ch.getBounds(out); }
 	}
+}
+
+export function textLayout(this n: Node2D): TextLayout {
+	if (n.kind !== DrawKind.Label) {
+		console.log("void2d: text metrics asked of a node that is not a Label");
+		return TextLayout.layout("", labelStyle(n));
+	}
+	shapeIfChanged(n);
+	return labelTexts[n.payload].layout;
+}
+
+export function textWidth(this n: Node2D): float32 {
+	return n.textLayout().width;
+}
+
+export function textHeight(this n: Node2D): float32 {
+	return n.textLayout().height;
+}
+
+export function calcTextWidth(this n: Node2D, text: string): float32 {
+	return layoutWidth(text, labelStyle(n));
+}
+
+export function splitText(this n: Node2D, text: string): string {
+	return TextLayout.layout(text, labelStyle(n)).splitText(text);
 }

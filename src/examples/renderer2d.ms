@@ -121,7 +121,7 @@ export function init2d(): void {
 
 	const para = label("The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0)).at(40.0, 565.0);
 	para.maxWidth = 330.0;
-	para.lineSpacing = 1.15;
+	para.lineSpacing = 5.0;
 	para.letterSpacing = 1.0;
 
 	const texGfx = graphics().at(815.0, 170.0);

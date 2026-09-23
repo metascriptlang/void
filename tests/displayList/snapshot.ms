@@ -18,6 +18,7 @@
 
 import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
+import { GLYPH_PAGE_SIZE } from "../../src/void2d/glyphAtlas";
 import { scene, add } from "../../src/void2d/scene";
 import {
 	Node2D, rect, mask, at, addChild, setBoxStyle, setImageStyle, label, graphics, sprite,
@@ -51,7 +52,7 @@ import {
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
-	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER,
+	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, InstanceMode,
 } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
 import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
@@ -160,11 +161,22 @@ function formatStream(): string {
 		out = out + ` size`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2))}`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3))}`;
-		out = out + ` uvr`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 1))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 2))}`;
-		out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 3))}`;
+		if (uiInstanceField(i, REC_UI_PARAMS0) as int32 == InstanceMode.Glyph as int32) {
+			// A glyph's UV is where the atlas happened to pack it, which depends on every
+			// label the process shaped before; its extent in texels is what the display list owns.
+			const page: float32 = GLYPH_PAGE_SIZE as float32;
+			const u0: float32 = uiInstanceField(i, REC_UI_UV_RADII);
+			const v0: float32 = uiInstanceField(i, REC_UI_UV_RADII + 1);
+			const u1: float32 = uiInstanceField(i, REC_UI_UV_RADII + 2);
+			const v1: float32 = uiInstanceField(i, REC_UI_UV_RADII + 3);
+			out = out + ` tile ${f2((u1 - u0) * page)} ${f2((v1 - v0) * page)}`;
+		} else {
+			out = out + ` uvr`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 1))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 2))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_UV_RADII + 3))}`;
+		}
 		out = out + ` border`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS))}`;
 		out = out + ` ${f2(uiInstanceField(i, REC_UI_BORDERS + 1))}`;

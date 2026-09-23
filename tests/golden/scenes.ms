@@ -641,7 +641,7 @@ function textWrapped(): Scene {
 		rgba(0.82, 0.88, 1.0, 1.0),
 	).at(12.0, 12.0);
 	paragraph.maxWidth = 210.0;
-	paragraph.lineSpacing = 1.15;
+	paragraph.lineSpacing = 3.0;
 	paragraph.letterSpacing = 1.0;
 	s.add(paragraph);
 	return s;

@@ -1,7 +1,6 @@
-// Void 2D — thin sokol/fontstash primitives. The batcher LOGIC (vertex buffer,
+// Void 2D — thin sokol primitives. The batcher LOGIC (vertex buffer,
 // quad/glyph geometry, flush orchestration) lives in MetaScript (src/void2d/draw.ms);
-// this file only exposes what FFI can't do: sokol resource calls + the fontstash
-// glyph-layout iterator. See docs/VOID2D.md.
+// this file only exposes what FFI can't do: sokol resource calls. See docs/VOID2D.md.
 #ifndef VOID2D_BATCHER_H
 #define VOID2D_BATCHER_H
 
@@ -9,7 +8,6 @@
 
 void void2dSetup(void);
 uint32_t void2dWhiteView(void);
-uint32_t void2dFontView(void);
 
 // Replay one frame's display list (src/void2d/displayList.ms) into the pass that is already
 // open. This is the ONLY function in this file that issues a draw, and it is called once per
@@ -68,7 +66,7 @@ int void2dUploadCount(void);
 int void2dUploadBytes(void);
 int void2dBuffersAlive(void);
 
-// Glyph-atlas images made minus freed; 1 in a steady frame.
+// Glyph page images made; pages are reclaimed in place, never destroyed.
 int void2dAtlasImagesAlive(void);
 
 // The vertex buffer growth policy as pure arithmetic: max(2x, pow2), no shrink, 0 past the
@@ -81,24 +79,9 @@ int void2dDroppedFrames(void);
 // A pending target list at end2d is a pass-order violation, not a recoverable dropped draw.
 void void2dFailPendingTargets(void);
 
-// fontstash glyph-layout iterator (MetaScript builds the glyph quads).
-void void2dTextBegin(float x, float y, float size, const char *text);
-float *void2dTextNext(void);      // returns 8 floats [x0,y0,s0,t0,x1,y1,s1,t1], or NULL when done
-void void2dTextSyncAtlas(void);   // upload atlas if the iterator rasterized new glyphs
-float void2dTextWidth(float size, const char *text);   // advance width of one line
-float void2dLineHeight(float size);                    // vertical line spacing
-void void2dTextSpacing(float spacing);                 // per-glyph advance (letter spacing)
-int void2dAtlasGen(void);                              // atlas generation (changes on resize → re-layout)
-int void2dAddFont(const char *path);                   // load a TTF, returns font index (0-based)
-void void2dSelectFont(int id);                         // select current font for subsequent text ops
-
-// The opaque texel fontstash reserves at the glyph atlas origin, as a UV. A solid card drawn
-// against the glyph view instead of the 1x1 white image shares a batch with the labels around
-// it. The UV moves when the atlas grows, so read it per frame.
-float void2dWhiteTexelU(void);
-float void2dWhiteTexelV(void);
-// 1 only when that texel is measurably opaque; 0 with no fontstash context.
-int void2dWhiteTexelOk(void);
+uint32_t void2dGlyphPageView(int page);
+int void2dGlyphUploadCount(void);
+int void2dGlyphUploadBytes(void);
 
 // The instance strides sokol is handed, from sizeof rather than a literal, and the offsets
 // the emitter in src/void2d/instance.ms claims it writes. void2dInstanceLayoutCheck fails at

@@ -1,4 +1,4 @@
-// Void 2D — thin sokol/fontstash primitives (see batcher.h). Batcher logic is in draw.ms.
+// Void 2D — thin sokol primitives (see batcher.h). Batcher logic is in draw.ms.
 
 #include "batcher.h"
 #include "../sokol/bridge.h"
@@ -10,13 +10,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <math.h>
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-#include <windows.h>   // fontstash's _WIN32 fopen path uses MAX_PATH / MultiByteToWideChar
-#endif
-#define FONTSTASH_IMPLEMENTATION
-#include "../../deps/fontstash/fontstash.h"
+#include "glyph.h"
 
 #define VOID2D_BLEND_COUNT 5
 
@@ -63,22 +57,13 @@ static sg_view s_whiteView;
 #define SMP_COUNT 4
 static sg_sampler s_smp[SMP_COUNT];
 
-static FONScontext *s_fons;
-static int s_fontId = FONS_INVALID;
-static int s_fontIds[16];
-static int s_fontCount = 0;
-static FONStextIter s_iter;
-static sg_image s_fontImg;
-static sg_view s_fontView;
-static unsigned char *s_atlasRGBA;
-static int s_atlasW, s_atlasH;
-static bool s_atlasDirty;
-static bool s_atlasUpdated;   // gate: sokol allows only one sg_update_image per image per frame
-static int s_atlasGen = 0;    // bumped on atlas resize -> invalidates cached glyph meshes
-// Atlas images and views made and destroyed, so a leak is a number rather than an eventual
-// `sg_make_image` failure 128 resizes later.
+#define VOID2D_MAX_GLYPH_PAGES 64
+static sg_image s_pageImg[VOID2D_MAX_GLYPH_PAGES];
+static sg_view s_pageView[VOID2D_MAX_GLYPH_PAGES];
+static bool s_pageUploaded[VOID2D_MAX_GLYPH_PAGES];
 static int s_atlasMade;
-static int s_atlasFreed;
+static int s_glyphUploads;
+static int s_glyphUploadBytes;
 // Buffers this module owns, counted where sokol is actually called. It used to be
 // `return 3` - a literal, gated in tests/bench/baseline.json against the literal 3, so the
 // assertion compared a constant to a constant and would have kept passing if every Label
@@ -96,7 +81,7 @@ static int s_frameOpen;
 // Brackets opened since the last void2dFrameEnd. A frame legitimately holds a few - the demo
 // runs two - so this is not an error until it is absurd. void2dSetup registers void2dFrameEnd
 // as the bridge's commit hook; any direct sg_commit call bypasses it and leaves s_frameOpen
-// latched, so ensureAtlas stops uploading and retired resources stop being freed. Keep the
+// latched, so glyph pages stop uploading and retired resources stop being freed. Keep the
 // counter loud because the visible failure appears several layers from the missing frame end.
 static int s_bracketsThisFrame;
 static int s_frameEndMissingReported;
@@ -108,21 +93,6 @@ static int s_frameVertexBytes;   // bytes appended so far this FRAME, across eve
 #define VOID2D_MAX_RETIRED_BUFFERS 8
 static sg_buffer s_retiredBuf[VOID2D_MAX_RETIRED_BUFFERS];
 static int s_retiredBufCount;
-// A glyph that does not fit gets one report, not one per glyph per frame.
-static bool s_atlasFullReported;
-// The atlas image and view a resize retired. They cannot be destroyed on the spot: the
-// commands already recorded this frame carry the OLD view id, and the replay has not run yet,
-// so destroying immediately would have the replay bind a dead view. They are freed at the top
-// of the next frame instead, by which time the frame that referenced them has been replayed -
-// the same frame-linear discipline the filter targets use.
-#define VOID2D_MAX_RETIRED_ATLASES 8
-static sg_image s_retiredImg[VOID2D_MAX_RETIRED_ATLASES];
-static sg_view s_retiredView[VOID2D_MAX_RETIRED_ATLASES];
-static int s_retiredCount;
-// 2048 is the smallest guaranteed maximum texture size across the backends this ships on,
-// WebGL2 included, and the RGBA mirror of one is already 16 MB (batcher.c expands R8 to RGBA
-// on the CPU - VOID2D.md lists that as P3's to remove).
-#define VOID2D_MAX_ATLAS 2048
 
 // Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
 // called from MetaScript with that file's own constants, so a field added on one side and
@@ -202,10 +172,9 @@ void void2dFailPendingTargets(void) {
 // allocating per node again, which is the whole reason the number is gated.
 int void2dBuffersAlive(void) { return s_buffersMade - s_buffersFreed; }
 
-// Glyph-atlas images made minus freed. One, unless a resize is waiting to be collected at the
-// top of the next frame. A number, because the leak it replaced was invisible until sokol's
-// image pool ran out 128 resizes later.
-int void2dAtlasImagesAlive(void) { return s_atlasMade - s_atlasFreed; }
+int void2dAtlasImagesAlive(void) { return s_atlasMade; }
+int void2dGlyphUploadCount(void) { return s_glyphUploads; }
+int void2dGlyphUploadBytes(void) { return s_glyphUploadBytes; }
 
 // P2's two instance layouts. These structs are what the vertex-buffer layout is built from,
 // so sizeof is the stride and src/void2d/instance.ms's constants are checked against it.
@@ -310,60 +279,6 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& clearRField == CMD_CLEAR_R;
 }
 
-static int fons_create(void *up, int w, int h) {
-	(void)up;
-	unsigned char *mirror = (unsigned char *)malloc((size_t)(w * h * 4));
-	if (!mirror) {
-		fprintf(stderr, "void2d: no memory for a %dx%d glyph atlas mirror\n", w, h);
-		return 0;
-	}
-	s_atlasW = w;
-	s_atlasH = h;
-	s_atlasRGBA = mirror;
-	memset(s_atlasRGBA, 0, (size_t)(w * h * 4));
-	// The image is the only sokol object in the fontstash path, and T1 asserts glyph emission
-	// in a process with no context at all: headless, the mirror and the white texel are real
-	// and the image is not, and nothing below the layout ever looks at the ids.
-	if (sg_isvalid()) {
-		sg_image_desc d = {0};
-		d.width = w;
-		d.height = h;
-		d.pixel_format = SG_PIXELFORMAT_RGBA8;
-		// Persists across frames, re-uploaded only when fontstash adds glyphs. dynamic_update is
-		// deprecated upstream in favour of write_persistent (sokol CHANGELOG, 30-Aug-2026).
-		d.usage.dynamic_update = true;
-		s_fontImg = sg_make_image(&d);
-		s_fontView = (sg_view){ .id = voidMakeView(s_fontImg.id) };
-		s_atlasMade++;
-	} else {
-		s_fontImg = (sg_image){0};
-		s_fontView = (sg_view){0};
-	}
-	return 1;
-}
-static int fons_resize(void *up, int w, int h) {
-	s_atlasGen++;
-	if (s_atlasRGBA) free(s_atlasRGBA);
-	// Retire the outgoing image and view before fons_create overwrites the handles. Without
-	// this, every resize leaked one of each against sokol's 128-slot pools: measured on
-	// regress/atlasFull before the fix, one capture of one scene left 3 atlas images alive
-	// and 0 freed. Headless there is no image (sg_isvalid() was false at create), so there
-	// is nothing to retire.
-	if (s_fontImg.id == 0) {
-		// no image to retire
-	} else if (s_retiredCount < VOID2D_MAX_RETIRED_ATLASES) {
-		s_retiredImg[s_retiredCount] = s_fontImg;
-		s_retiredView[s_retiredCount] = s_fontView;
-		s_retiredCount++;
-	} else {
-		// Eight resizes inside one frame is not a thing that happens - the atlas only ever
-		// doubles, twice, between 512 and the 2048 cap. Say so rather than drop them.
-		fprintf(stderr, "void2d: more than %d glyph-atlas resizes in one frame; the oldest images are leaked\n",
-			VOID2D_MAX_RETIRED_ATLASES);
-	}
-	int ok = fons_create(up, w, h);
-	return ok;
-}
 
 // Free resources retained through the preceding commit; deferred backends may still read them
 // until that frame has been submitted.
@@ -375,60 +290,8 @@ static void releaseRetiredBuffers(void) {
 	s_retiredBufCount = 0;
 }
 
-static void releaseRetiredAtlases(void) {
-	if (s_retiredCount == 0) { return; }
-	for (int i = 0; i < s_retiredCount; i++) {
-		sg_destroy_view(s_retiredView[i]);
-		sg_destroy_image(s_retiredImg[i]);
-		s_atlasFreed++;
-	}
-	fprintf(stderr, "void2d: released %d retired glyph atlas(es); images made %d freed %d alive %d\n",
-		s_retiredCount, s_atlasMade, s_atlasFreed, s_atlasMade - s_atlasFreed);
-	s_retiredCount = 0;
-}
 
-// FONS_ATLAS_FULL: fontstash could not place a glyph. It asks once, retries once, and drops
-// the glyph if the retry also fails - which is why, with no handler at all, *which* glyphs
-// survived varied between runs of the same binary (three distinct outputs in ten runs,
-// tests/PENDING.md at P0). Growing the atlas and letting it retry is the holding fix;
-// P3 removes fontstash and the class with it.
-static void fons_error(void *up, int error, int val) {
-	(void)up;
-	(void)val;
-	if (error != FONS_ATLAS_FULL || !s_fons) { return; }
-	int w = 0, h = 0;
-	fonsGetAtlasSize(s_fons, &w, &h);
-	int nw = w, nh = h;
-	// Height first, then width: fontstash's packer fills row by row, so a taller atlas takes
-	// the next glyph where a wider one only helps the row it is already on.
-	if (h <= w && h * 2 <= VOID2D_MAX_ATLAS) { nh = h * 2; }
-	else if (w * 2 <= VOID2D_MAX_ATLAS) { nw = w * 2; }
-	else {
-		if (!s_atlasFullReported) {
-			s_atlasFullReported = true;
-			fprintf(stderr, "void2d: glyph atlas is full at %dx%d, the cap - later glyphs will be dropped\n", w, h);
-		}
-		return;
-	}
-	if (!fonsExpandAtlas(s_fons, nw, nh) && !s_atlasFullReported) {
-		s_atlasFullReported = true;
-		fprintf(stderr, "void2d: could not expand the glyph atlas from %dx%d to %dx%d\n", w, h, nw, nh);
-	}
-}
-static void fons_delete(void *up) { (void)up; if (s_atlasRGBA) { free(s_atlasRGBA); s_atlasRGBA = NULL; } }
 
-static unsigned char *readFile(const char *path, int *outSize) {
-	FILE *f = fopen(path, "rb");
-	if (!f) return NULL;
-	fseek(f, 0, SEEK_END);
-	long n = ftell(f);
-	fseek(f, 0, SEEK_SET);
-	unsigned char *buf = (unsigned char *)malloc((size_t)n);
-	if (fread(buf, 1, (size_t)n, f) != (size_t)n) { fclose(f); free(buf); return NULL; }
-	fclose(f);
-	*outSize = (int)n;
-	return buf;
-}
 
 // Allocate, or reallocate, the one vertex buffer. sokol cannot resize a buffer, so growth is
 // a destroy and a make; it happens when a frame first needs more room and then never again,
@@ -470,7 +333,6 @@ static int ensureVertexBuffer(int bytes) {
 	s_vbufBytes = want;
 	return 1;
 }
-static void ensureFons(void);
 
 
 void void2dSetup(void) {
@@ -618,47 +480,34 @@ void void2dSetup(void) {
 		s_smp[i] = sg_make_sampler(&d);
 	}
 
-	ensureFons();
 }
 
-// fontstash is a CPU rasterizer; its lifetime was tied to void2dSetup only because that is
-// where it was created. T1 asserts glyph emission in a process with no sokol context at all,
-// so the fons state is created on demand — the first text entry point to need it — and the
-// one sokol object in the path (the atlas image) guards itself on sg_isvalid().
-static void ensureFons(void) {
-	if (s_fons) return;
-	FONSparams fp = {0};
-	fp.width = 512;
-	fp.height = 512;
-	fp.flags = (unsigned char)FONS_ZERO_TOPLEFT;
-	fp.renderCreate = fons_create;
-	fp.renderResize = fons_resize;
-	fp.renderDelete = fons_delete;
-	s_fons = fonsCreateInternal(&fp);
-	if (s_fons) {
-		fonsSetErrorCallback(s_fons, fons_error, NULL);
-		void2dAddFont("assets/font.ttf");
-	}
-}
-
-int void2dAddFont(const char *path) {
-	if (!s_fons) ensureFons();
-	if (!s_fons || s_fontCount >= 16) return -1;
-	int sz = 0;
-	unsigned char *ttf = readFile(path, &sz);
-	if (!ttf) return -1;
-	s_fontIds[s_fontCount] = fonsAddFontMem(s_fons, "font", ttf, sz, 1);
-	if (s_fontCount == 0) s_fontId = s_fontIds[0];
-	return s_fontCount++;
-}
-
-void void2dSelectFont(int id) {
-	if (!s_fons) ensureFons();
-	if (id >= 0 && id < s_fontCount) s_fontId = s_fontIds[id];
-}
 
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
-uint32_t void2dFontView(void) { return s_fontView.id; }
+uint32_t void2dGlyphPageView(int page) {
+	if (page < 0 || page >= VOID2D_MAX_GLYPH_PAGES || !sg_isvalid()) { return 0; }
+	if (s_pageImg[page].id == 0) {
+		int size = void2dGlyphPageSize(page);
+		if (size <= 0) { return 0; }
+		sg_image_desc d = {0};
+		d.width = size;
+		d.height = size;
+		d.pixel_format = SG_PIXELFORMAT_R8;
+		d.usage.dynamic_update = true;
+		s_pageImg[page] = sg_make_image(&d);
+		s_pageView[page] = (sg_view){ .id = voidMakeView(s_pageImg[page].id) };
+		s_atlasMade++;
+	}
+	return s_pageView[page].id;
+}
+
+static bool isGlyphPageView(uint32_t view) {
+	if (view == 0) { return false; }
+	for (int i = 0; i < VOID2D_MAX_GLYPH_PAGES; i++) {
+		if (s_pageView[i].id == view) { return true; }
+	}
+	return false;
+}
 
 int void2dScissorMin(float edge, float scale) {
 	return (int)floorf(edge * scale);
@@ -717,12 +566,13 @@ void void2dFrameBegin(void) {
 	}
 	if (s_frameOpen) { return; }
 	s_frameOpen = 1;
-	s_atlasUpdated = false;
-	releaseRetiredAtlases();
+	memset(s_pageUploaded, 0, sizeof(s_pageUploaded));
 	releaseRetiredBuffers();
 	s_drawCallCount = 0;
 	s_uploadCount = 0;
 	s_uploadBytes = 0;
+	s_glyphUploads = 0;
+	s_glyphUploadBytes = 0;
 	s_frameVertexBytes = 0;
 }
 
@@ -750,15 +600,19 @@ void void2dBlur(uint32_t srcView, float dirX, float dirY) {
 	sg_draw(0, 6, 1);
 }
 
-// Upload the font atlas once per frame (whichever draw — dynamic or static text — needs it first).
-static void ensureAtlas(void) {
-	if (s_atlasDirty && !s_atlasUpdated) {
+static void uploadGlyphPages(void) {
+	int count = void2dGlyphPageCount();
+	for (int page = 0; page < count && page < VOID2D_MAX_GLYPH_PAGES; page++) {
+		if (s_pageImg[page].id == 0 || !void2dGlyphPageDirty(page) || s_pageUploaded[page]) { continue; }
+		int size = void2dGlyphPageSize(page);
 		sg_image_data id = {0};
-		id.mip_levels[0].ptr = s_atlasRGBA;
-		id.mip_levels[0].size = (size_t)(s_atlasW * s_atlasH * 4);
-		sg_update_image(s_fontImg, &id);
-		s_atlasDirty = false;
-		s_atlasUpdated = true;
+		id.mip_levels[0].ptr = void2dGlyphPageData(page);
+		id.mip_levels[0].size = (size_t)size * (size_t)size;
+		sg_update_image(s_pageImg[page], &id);
+		void2dGlyphPageClean(page);
+		s_pageUploaded[page] = true;
+		s_glyphUploads++;
+		s_glyphUploadBytes += size * size;
 	}
 }
 
@@ -804,7 +658,7 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 		s_droppedFrames++;
 		return 0;
 	}
-	ensureAtlas();
+	uploadGlyphPages();
 
 	// One upload for the whole frame, before any draw: every Draw command is a range inside
 	// it. This is the "one upload per bracket" of VOID2D.md P1, and it is one per FRAME here
@@ -1101,6 +955,7 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
 		vp.viewport[3] = (isRT && effectIsIdentity) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
+		vp.model1[2] = isGlyphPageView(view) ? 1.0f : 0.0f;
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 		copyClipParams(vp.clipU, vp.clipV, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
@@ -1131,86 +986,5 @@ static void runCommands(const float *commands, int commandCount,
 
 		sg_draw(0, count, 1);
 		s_drawCallCount++;
-	}
-}
-
-void void2dTextBegin(float x, float y, float size, const char *text) {
-	if (!s_fons) ensureFons();
-	if (!s_fons || s_fontId == FONS_INVALID) return;
-	fonsSetFont(s_fons, s_fontId);
-	fonsSetSize(s_fons, size * s_dpiScale);
-	fonsSetAlign(s_fons, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
-	fonsTextIterInit(s_fons, &s_iter, x * s_dpiScale, y * s_dpiScale, text, NULL);
-}
-
-static float s_quad[8];
-float *void2dTextNext(void) {
-	if (!s_fons) return NULL;
-	FONSquad q;
-	if (!fonsTextIterNext(s_fons, &s_iter, &q)) return NULL;
-	s_quad[0] = q.x0 / s_dpiScale; s_quad[1] = q.y0 / s_dpiScale; s_quad[2] = q.s0; s_quad[3] = q.t0;
-	s_quad[4] = q.x1 / s_dpiScale; s_quad[5] = q.y1 / s_dpiScale; s_quad[6] = q.s1; s_quad[7] = q.t1;
-	return s_quad;
-}
-
-float void2dTextWidth(float size, const char *text) {
-	if (!s_fons || s_fontId == FONS_INVALID) return 0.0f;
-	fonsSetFont(s_fons, s_fontId);
-	fonsSetSize(s_fons, size * s_dpiScale);
-	fonsSetAlign(s_fons, FONS_ALIGN_LEFT | FONS_ALIGN_TOP);
-	return fonsTextBounds(s_fons, 0.0f, 0.0f, text, NULL, NULL) / s_dpiScale;
-}
-
-float void2dLineHeight(float size) {
-	if (!s_fons || s_fontId == FONS_INVALID) return size;
-	fonsSetFont(s_fons, s_fontId);
-	fonsSetSize(s_fons, size * s_dpiScale);
-	float asc = 0.0f, desc = 0.0f, lineh = size;
-	fonsVertMetrics(s_fons, &asc, &desc, &lineh);
-	return lineh / s_dpiScale;
-}
-
-// persistent glyph-advance spacing; set per draw (0 = default) so it never leaks.
-void void2dTextSpacing(float spacing) {
-	if (s_fons) fonsSetSpacing(s_fons, spacing);
-}
-
-int void2dAtlasGen(void) { return s_atlasGen; }
-
-// fontstash reserves a 2x2 opaque block at the atlas origin on create and on reset, and
-// fonsExpandAtlas preserves what is already placed, so it survives a grow. That block is what
-// lets a solid card sample the GLYPH atlas instead of the 1x1 white image - and a card and a
-// label that share a view no longer break each other's batch, which is half of what collapses
-// P2's 20 000 draws.
-//
-// The UV is the centre of that block and therefore moves when the atlas grows; read it per
-// frame, never cache it. void2dAtlasGen() already bumps on a resize for the same reason.
-float void2dWhiteTexelU(void) { return s_atlasW > 0 ? 1.0f / (float)s_atlasW : 0.0f; }
-float void2dWhiteTexelV(void) { return s_atlasH > 0 ? 1.0f / (float)s_atlasH : 0.0f; }
-
-// Whether that block is ACTUALLY opaque, read out of fontstash rather than taken on trust
-// from the comment beside its allocation. Returns 0 with no context, which is what T0 sees.
-int void2dWhiteTexelOk(void) {
-	if (!s_fons) { return 0; }
-	int w = 0, h = 0;
-	const unsigned char *tex = fonsGetTextureData(s_fons, &w, &h);
-	if (!tex || w < 2 || h < 2) { return 0; }
-	return tex[0] == 0xff && tex[1] == 0xff && tex[w] == 0xff && tex[w + 1] == 0xff;
-}
-
-void void2dTextSyncAtlas(void) {
-	if (!s_fons) return;
-	int dirty[4];
-	if (fonsValidateTexture(s_fons, dirty)) {
-		int w = 0, h = 0;
-		const unsigned char *tex = fonsGetTextureData(s_fons, &w, &h);
-		int n = w * h;
-		for (int i = 0; i < n; i++) {
-			s_atlasRGBA[i * 4 + 0] = 255;
-			s_atlasRGBA[i * 4 + 1] = 255;
-			s_atlasRGBA[i * 4 + 2] = 255;
-			s_atlasRGBA[i * 4 + 3] = tex[i];
-		}
-		s_atlasDirty = true;
 	}
 }

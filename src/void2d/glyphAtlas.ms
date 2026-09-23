@@ -107,6 +107,14 @@ export function pageHandle(this atlas: GlyphAtlas, page: int32): int32 {
 	return atlas.pages[page].handle;
 }
 
+export function ensurePage(this atlas: GlyphAtlas): int32 {
+	if ((atlas.pages.length as int32) == 0 && atlas.maxPages > 0) {
+		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize);
+		if (handle >= 0) { atlas.pages.push({ handle: handle, top: 0 }); }
+	}
+	return (atlas.pages.length as int32) > 0 ? atlas.pages[0].handle : -1;
+}
+
 export function residentBytes(this atlas: GlyphAtlas): int32 {
 	return (atlas.pages.length as int32) * atlas.pageSize * atlas.pageSize;
 }
@@ -204,7 +212,6 @@ function allocate(
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
 	const packed: uint64 = packKey(key);
-	// Misses held keys in --release: .inbox/compiler/2026-09-23-map-uint64-key-lookup-misses.md
 	const hit = atlas.index.get(packed);
 	if (hit.present) {
 		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;

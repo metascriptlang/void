@@ -12,16 +12,17 @@
 // `break: view` rather than leaving a count to be explained.
 
 import {
-	void2dSetup, void2dWhiteView, void2dFontView, void2dSetDpiScale, void2dFrameBegin,
-	void2dTextBegin, void2dTextNext, void2dTextSyncAtlas, void2dAtlasGen, void2dAddFont,
+	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
+	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes,
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFailPendingTargets,
 	void2dScissorMin, void2dScissorMax,
 	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
-	void2dWhiteTexelU, void2dWhiteTexelV, void2dWhiteTexelOk, void2dPackChannel,
+	void2dPackChannel,
 } from "./batcher.h";
+import { void2dGlyphPageCount } from "./glyph.h";
 import {
 	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
 	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, InstanceMode,
@@ -116,10 +117,11 @@ export function scissorMaxDevice(edge: float32, scale: float32): int32 {
 	return void2dScissorMax(edge, scale);
 }
 
-// Glyph-atlas images made minus freed. Declared in batcher.h since the atlas grew a
-// resize path, but until now nothing in MetaScript read it, so no tier reproduced the
-// "3 made, 2 freed, 1 alive" the commit message reported.
 export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
+export function glyphUploadCount(): int32 { return void2dGlyphUploadCount(); }
+export function glyphUploadBytes(): int32 { return void2dGlyphUploadBytes(); }
+export function glyphPageView(handle: int32): uint32 { return void2dGlyphPageView(handle); }
+export function glyphPageCount(): int32 { return void2dGlyphPageCount(); }
 
 // `setup2d` registers this as the bridge's commit hook, so `commit()` already runs it and no
 // frame has to call it. Exported so a test can close a frame it never committed.
@@ -282,20 +284,7 @@ export function setup2d(): void {
 	) == 0) {
 		console.log("void2d: the instance layout in instance.ms and batcher.c disagree");
 	}
-	// Loud, not a fallback. If the glyph atlas has no opaque texel, a card drawn against the
-	// glyph view is transparent everywhere, and the symptom - missing cards - says nothing
-	// about the cause. fontstash reserves it; this is the check that it is still true.
-	if (void2dWhiteTexelOk() == 0) {
-		console.log("void2d: the glyph atlas has no opaque texel at its origin - solid fills "
-			+ "cannot share a batch with text");
-	}
 }
-
-// The opaque texel in the glyph atlas, as a UV. Read per frame: it moves when the atlas
-// grows, and `atlasGen()` bumps for the same reason.
-export function whiteTexelU(): float32 { return void2dWhiteTexelU(); }
-export function whiteTexelV(): float32 { return void2dWhiteTexelV(); }
-export function whiteTexelOk(): boolean { return void2dWhiteTexelOk() != 0; }
 
 // The strides sokol is handed, from sizeof. Re-exported rather than reached through
 // `batcher.h` from a second directory, which would compile `batcher.c` twice.
@@ -307,12 +296,6 @@ export function uiInstanceStride(): int32 { return void2dUiInstanceStride(); }
 export function packChannelC(value: float32): int32 { return void2dPackChannel(value); }
 export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStride(); }
 
-// The glyph atlas view, so render.ms can emit a Label's mesh against it without reaching
-// into batcher.h itself.
-export function fontView(): uint32 { return void2dFontView(); }
-
-export function atlasGen(): int32 { return void2dAtlasGen(); }
-export function addFont(path: string): int32 { return void2dAddFont(path); }
 
 // h2d has no DPI concept; void2d needs one because snapping and the pixel-exact text regime
 // are stated per device pixel. The logical size is a float — the `as int32` truncation that
@@ -668,32 +651,6 @@ export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode):
 
 export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: BlendMode): void {
 	quad(t.view, blend, pos.x, pos.y, size.x, size.y, tint, t.u0, t.v0, t.u1, t.v1);
-}
-
-// `size` is the FIXED rasterization size (stable atlas — never animate it, or fontstash
-// re-rasterizes every frame → atlas churn/flicker). `scale` transforms the glyph quads.
-export function drawText(pos: Vec2, size: float32, scale: float32, text: string, color: Color, blend: BlendMode): void {
-	useState(void2dFontView(), blend);
-	void2dTextBegin(0.0, 0.0, size, text);
-	let q: Ptr<float32> = void2dTextNext();
-	while (q !== null) {
-		const x0: float32 = pos.x + q[0] * scale;
-		const y0: float32 = pos.y + q[1] * scale;
-		const s0: float32 = q[2];
-		const t0: float32 = q[3];
-		const x1: float32 = pos.x + q[4] * scale;
-		const y1: float32 = pos.y + q[5] * scale;
-		const s1: float32 = q[6];
-		const t1: float32 = q[7];
-		pushVertex(x0, y0, s0, t0, color.r, color.g, color.b, color.a);
-		pushVertex(x1, y0, s1, t0, color.r, color.g, color.b, color.a);
-		pushVertex(x1, y1, s1, t1, color.r, color.g, color.b, color.a);
-		pushVertex(x0, y0, s0, t0, color.r, color.g, color.b, color.a);
-		pushVertex(x1, y1, s1, t1, color.r, color.g, color.b, color.a);
-		pushVertex(x0, y1, s0, t1, color.r, color.g, color.b, color.a);
-		q = void2dTextNext();
-	}
-	void2dTextSyncAtlas();
 }
 
 // Which pipeline set the following draws need: the offscreen one (single sample, no depth)
