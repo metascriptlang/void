@@ -163,3 +163,15 @@ ms> let e9: ParticleEmitter = run({ ...EmitterState.defaults(), maxParts: 1, emi
 ms> const first9: float32 = e9.particles[0].size;
 ms> for (let i = 0; i < 2; i++) { const _s9: Result<int32, ParticleError> = updateEmitter(e9, 0.2, identity()); }
 ms> emit3("random-values-per-life", first9, e9.particles[0].size, e9.count as float32);
+
+# ---- times that decide events ---------------------------------------------------------------
+
+# A burst at 0.1 and one 0.1 s step: the burst time is compared with the emitter's cycle in
+# float64 on both sides. Stored as float32, 0.1 reads as 0.10000000149 and the burst fires one
+# update late.
+case burst-at-a-tenth tol=1e-6
+haxe> var s10 = H.state(); s10.emitRate = VConst(0); s10.bursts = [{ time: 0.1, count: 3 }]; s10.life = VConst(10);
+haxe> var e10 = H.run(s10, 3, 1, 0.1);
+haxe> emit("burst-at-a-tenth", [e10.count]);
+ms> const e10: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(0.0), bursts: [{ time: 0.1, count: 3 }], life: constant(10.0) }, 3, 1, 0.1);
+ms> emit1("burst-at-a-tenth", e10.count as float32);

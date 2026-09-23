@@ -1,11 +1,5 @@
-// Port of h3d.parts at Heaps 2b84cc2, CPU only: Data (Value, Shape, State), Particle, and the
-// simulation half of Particles and Emitter. The draw half writes one billboard instance per
-// particle for a stream mesh (draw.ms writeStream) instead of four vertices into a buffer made
-// every frame. GpuParticles is not ported (docs/VOID3D.md, Porting rules).
-//
-// Heaps is Z up and left-handed; this frame is Y up and right-handed. Exchanging y and z maps
-// one onto the other, so every local axis Heaps names z is y here: the cone and the line point
-// up +Y, the disc lies in XZ, and gravity pulls along -Y.
+// Port of h3d.parts at Heaps 2b84cc2, CPU only (docs/VOID3D.md, M11 as built). Heaps is Z up
+// and left-handed: every local axis Heaps names z is y here, and y is z.
 
 import { Vec3, vec3, Mat4, transformDirection } from "../math/math3d";
 
@@ -50,13 +44,13 @@ export type EmitterShape = match (kind: ShapeKind) {
 };
 
 export struct Burst {
-	time: float32;
+	time: float64;
 	count: int32;
 }
 
 // One row of State.colors: a time in the particle's life and 0xRRGGBB.
 export struct ColorKey {
-	time: float32;
+	time: float64;
 	color: uint32;
 }
 
@@ -77,7 +71,7 @@ export struct EmitterState {
 	emitFromShell: boolean;
 	emitLocal: boolean;
 	randomDir: boolean;
-	globalLife: float32;
+	globalLife: float64;
 	globalSpeed: ParticleValue;
 	globalSize: ParticleValue;
 	life: ParticleValue;
@@ -119,6 +113,7 @@ export struct ParticleEmitter {
 	particles: Vec<Particle>;
 	randoms: Vec<float32>;
 	count: int32;
+	capacity: int32;
 }
 
 export enum ParticleError {
@@ -170,7 +165,6 @@ export function seeded(this typeof ParticleRandom, seed: uint32): ParticleRandom
 	return { state: seed == 0 ? DEFAULT_SEED : seed };
 }
 
-// The next value in [0, 1), in the role of Math.random.
 export function nextUnit(ref random: ParticleRandom): float32 {
 	let x: uint32 = random.state;
 	x = x ^ (x << 13);
@@ -237,6 +231,7 @@ export function create(
 		particles: particles,
 		randoms: randoms,
 		count: 0,
+		capacity: state.maxParts,
 	});
 }
 
@@ -252,14 +247,13 @@ export function clearParticles(ref emitter: ParticleEmitter): void {
 	emitter.emitCount = 0.0;
 }
 
-// Emitter.eval: a Random value draws a fresh value from the emitter's sequence.
+// Emitter.eval.
 function emitterValue(ref emitter: ParticleEmitter, v: ParticleValue, time: float32): float32 {
 	const random: float32 = v.drawsRandom() ? nextUnit(emitter.sequence) : 0.0;
 	return v.evaluate(time, random);
 }
 
-// Particle.eval: the k-th Random value a particle evaluates in an update reads its k-th value,
-// drawn from the emitter's sequence the first time this life asks for it.
+// Particle.eval with Particle.rand.
 function particleValue(
 	ref emitter: ParticleEmitter,
 	slot: int32,
@@ -357,7 +351,7 @@ function channel(color: uint32, shift: uint32): float32 {
 // Emitter.updateParticle's color: the keys around the particle's time, blended, times light.
 function colorAt(ref emitter: ParticleEmitter, slot: int32, light: float32): void {
 	const keys: int32 = emitter.state.colors.length as int32;
-	const at: float32 = emitter.particles[slot].time as float32;
+	const at: float64 = emitter.particles[slot].time;
 	if (keys == 0) {
 		emitter.particles[slot].red = light;
 		emitter.particles[slot].green = light;
@@ -366,7 +360,7 @@ function colorAt(ref emitter: ParticleEmitter, slot: int32, light: float32): voi
 	}
 	let from: int32 = 0;
 	let to: int32 = 0;
-	let weight: float32 = 0.0;
+	let weight: float64 = 0.0;
 	if (emitter.state.colors[0].time < at) {
 		to = 1;
 		while (to < keys && emitter.state.colors[to].time < at) {
@@ -376,16 +370,17 @@ function colorAt(ref emitter: ParticleEmitter, slot: int32, light: float32): voi
 		if (to == keys) {
 			to = from;
 		} else {
-			const start: float32 = emitter.state.colors[from].time;
+			const start: float64 = emitter.state.colors[from].time;
 			weight = (at - start) / (emitter.state.colors[to].time - start);
 		}
 	}
 	const a: uint32 = emitter.state.colors[from].color;
 	const b: uint32 = emitter.state.colors[to].color;
-	const keep: float32 = 1.0 - weight;
-	emitter.particles[slot].red = (channel(a, 16) * keep + channel(b, 16) * weight) * light;
-	emitter.particles[slot].green = (channel(a, 8) * keep + channel(b, 8) * weight) * light;
-	emitter.particles[slot].blue = (channel(a, 0) * keep + channel(b, 0) * weight) * light;
+	const mix: float32 = weight as float32;
+	const keep: float32 = 1.0 - mix;
+	emitter.particles[slot].red = (channel(a, 16) * keep + channel(b, 16) * mix) * light;
+	emitter.particles[slot].green = (channel(a, 8) * keep + channel(b, 8) * mix) * light;
+	emitter.particles[slot].blue = (channel(a, 0) * keep + channel(b, 0) * mix) * light;
 }
 
 // Emitter.updateParticle: false when the particle's life is over.
@@ -435,9 +430,6 @@ function moveParticle(ref emitter: ParticleEmitter, from: int32, to: int32): voi
 
 // Emitter.update: advance the emitter's cycle, emit what it owes, then step every particle,
 // dropping the dead ones while keeping the others in order. `world` is the emitter's absPos.
-// Not Heaps' `update`, which animation.ms already exports: two `ref` free functions sharing a
-// name resolve to the wrong one with no diagnostic (compiler card
-// 2026-09-20-ref-receiver-not-an-extension.md).
 // PENDING3D: particle-update-name-collision
 export function updateEmitter(
 	ref emitter: ParticleEmitter,
@@ -463,7 +455,7 @@ export function updateEmitter(
 		}
 	}
 	while (emitter.emitCount > 0.0) {
-		if (emitter.count < emitter.state.maxParts) { spawn(emitter, world); }
+		if (emitter.count < emitter.capacity) { spawn(emitter, world); }
 		emitter.emitCount = emitter.emitCount - 1.0;
 	}
 	let kept: int32 = 0;
@@ -476,9 +468,8 @@ export function updateEmitter(
 	return Result.ok(kept);
 }
 
-// Particles.draw, one instance per live particle: world position and side, then rgba. Heaps
-// evaluates globalSize at draw time, from the emitter's own sequence, and not at all when
-// nothing is alive; so does this.
+// Emitter.draw then Particles.draw: one instance per live particle, world position and side,
+// then rgba.
 export function writeInstances(
 	ref emitter: ParticleEmitter,
 	world: Mat4,
@@ -488,10 +479,10 @@ export function writeInstances(
 	if ((out.length as int32) < count * PARTICLE_INSTANCE_STRIDE) {
 		return Result.err(ParticleError.ShortInstances);
 	}
-	if (count == 0) { return Result.ok(0); }
 	// PENDING3D: particle-size-world-units
 	const cycle: float32 = emitter.time as float32;
 	const scale: float32 = emitterValue(emitter, emitter.state.globalSize, cycle);
+	if (count == 0) { return Result.ok(0); }
 	for (let i = 0; i < count; i++) {
 		let position: Vec3 = emitter.particles[i].position;
 		if (emitter.state.emitLocal) { position = position * world; }

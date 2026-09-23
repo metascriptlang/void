@@ -305,3 +305,21 @@ test "a bad state or a non-finite step is refused" {
 	assert !updateEmitter(emitter, infinite, identity()).ok;
 	assert emitter.count == 0;
 }
+
+test "raising maxParts on a live emitter does not outgrow the arrays it was made with" {
+	let emitter: ParticleEmitter = emitterFor({ ...still(100.0), maxParts: 4, life: constant(10.0) }, 1);
+	emitter.state.maxParts = 64;
+	assert step(emitter, 0.5) == 4;
+}
+
+test "globalSize is evaluated on every write, as Emitter.draw does, even with nothing alive" {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		globalSize: { kind: ValueKind.Random, start: 1.0, length: 1.0, converge: Converge.No },
+	}, 5);
+	const before: uint32 = emitter.sequence.state;
+	const out: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE);
+	const written: Result<int32, ParticleError> = writeInstances(emitter, identity(), out);
+	assert written.ok;
+	assert emitter.sequence.state != before;
+}
