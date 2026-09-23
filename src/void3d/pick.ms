@@ -19,16 +19,16 @@ import {
 } from "./scene";
 
 export struct PickHit {
-	// The pickable node that owns the hit: the mesh node itself or its nearest pickable ancestor.
-	node: NodeId;
+	owner: NodeId;
 	mesh: NodeId;
-	// World units from the ray's origin, and the world point hit.
 	distance: float32;
 	point: Vec3;
 }
 
 export enum PickError {
 	NothingHit,
+	MeshOutOfRange,
+	MaterialOutOfRange,
 }
 
 struct MeshHit {
@@ -38,8 +38,9 @@ struct MeshHit {
 
 const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 } };
 
-// `meshData` and `materials` are the tables the scene's indices address (DrawContext's), read at
-// the node's current mesh, so a baked frame swapped in by an animation is the one tested.
+// `meshData` and `materials` are the DrawContext's tables, read at the node's current mesh.
+// PENDING3D: pick-owner-is-a-flag
+// PENDING3D: pick-distance-from-ray-origin
 export function pickNearest(
 	ref scene: Scene,
 	meshData: Span<MeshData>,
@@ -48,7 +49,7 @@ export function pickNearest(
 ): Result<PickHit, PickError> {
 	const _synced: int32 = syncWorld(scene);
 	let best: PickHit = {
-		node: { index: NO_NODE, generation: 0 },
+		owner: { index: NO_NODE, generation: 0 },
 		mesh: { index: NO_NODE, generation: 0 },
 		distance: -1.0,
 		point: ray.origin,
@@ -61,28 +62,30 @@ export function pickNearest(
 		const index: int32 = scene.stack[top];
 		if (!scene.nodes[index].has(FLAG_VISIBLE)) { continue; }
 		const owner: int32 = scene.nodes[index].kind == NodeKind.Mesh
-			? pickableOwner(scene, index)
+			? scene.pickableOwner(index)
 			: NO_NODE;
 		if (owner != NO_NODE) {
 			const mesh: int32 = scene.meshes[scene.nodes[index].payload].mesh;
 			const material: int32 = scene.meshes[scene.nodes[index].payload].material;
-			if (mesh >= 0 && mesh < (meshData.length as int32) &&
-				material >= 0 && material < (materials.length as int32)) {
-				const hit: MeshHit = meshHit(
-					meshData[mesh],
-					materials[material].pass.culling,
-					scene.nodes[index].world,
-					ray,
-				);
-				const nearer: boolean = best.distance < 0.0 || hit.distance < best.distance;
-				if (hit.distance >= 0.0 && nearer) {
-					best = {
-						node: { index: owner, generation: scene.generations[owner] },
-						mesh: { index: index, generation: scene.generations[index] },
-						distance: hit.distance,
-						point: hit.point,
-					};
-				}
+			if (mesh < 0 || mesh >= (meshData.length as int32)) {
+				return Result.err(PickError.MeshOutOfRange);
+			}
+			if (material < 0 || material >= (materials.length as int32)) {
+				return Result.err(PickError.MaterialOutOfRange);
+			}
+			const hit: MeshHit = meshData[mesh].meshHit(
+				materials[material].pass.culling,
+				scene.nodes[index].world,
+				ray,
+			);
+			const nearer: boolean = best.distance < 0.0 || hit.distance < best.distance;
+			if (hit.distance >= 0.0 && nearer) {
+				best = {
+					owner: { index: owner, generation: scene.generations[owner] },
+					mesh: { index: index, generation: scene.generations[index] },
+					distance: hit.distance,
+					point: hit.point,
+				};
 			}
 		}
 		const count: int32 = scene.nodes[index].children.length as int32;
@@ -95,7 +98,7 @@ export function pickNearest(
 	return Result.ok(best);
 }
 
-function pickableOwner(scene: Scene, index: int32): int32 {
+function pickableOwner(this scene: Scene, index: int32): int32 {
 	let at: int32 = index;
 	while (at != NO_NODE) {
 		if (scene.nodes[at].has(FLAG_PICKABLE)) { return at; }
@@ -104,16 +107,28 @@ function pickableOwner(scene: Scene, index: int32): int32 {
 	return NO_NODE;
 }
 
-// Heaps' OptimizedCollider(bounds, polygon) with checkInside, as rayCastEventTargets sets it,
-// in the node's own space; the distance is measured back in the world, as ObjectCollider does.
-function meshHit(data: MeshData, culling: Face, world: Mat4, ray: Ray): MeshHit {
+// Heaps' ObjectCollider over OptimizedCollider(bounds, polygon), except that a ray starting
+// inside the bounds still reaches the triangles: getCollider() never yields the
+// OptimizedCollider that rayCastEventTargets would set checkInside on (Scene.hx:331).
+// PENDING3D: pick-origin-inside-bounds
+function meshHit(this data: MeshData, culling: Face, world: Mat4, ray: Ray): MeshHit {
 	const box: Bounds = data.bounds;
 	if (box.isEmpty()) { return MISS; }
 	const local: Ray = ray.transformed(world.inverseAffine());
-	if (local.direction.lengthSquared() == 0.0) { return MISS; }
 	if (box.rayIntersection(local) < 0.0 && !box.contains(local.origin)) { return MISS; }
-	const along: float32 = data.rayIntersection(local, culling);
+	const along: float32 = data.rayIntersection(local, seenThrough(culling, world));
 	if (along < 0.0) { return MISS; }
 	const point: Vec3 = local.pointAt(along) * world;
 	return { distance: (point - ray.origin).length(), point: point };
+}
+
+// A mirroring world matrix turns the local winding over on screen, so the face the pass culls
+// is the other local one.
+function seenThrough(culling: Face, world: Mat4): Face {
+	if (world.determinant3x3() >= 0.0) { return culling; }
+	return match (culling) {
+		Face.Back => Face.Front,
+		Face.Front => Face.Back,
+		Face.None => Face.None,
+	};
 }

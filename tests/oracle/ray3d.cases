@@ -94,7 +94,7 @@
 # ms-prelude: }
 # ms-prelude: const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
 # ms-prelude: const NO_HIT: PickHit = {
-# ms-prelude: 	node: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 },
+# ms-prelude: 	owner: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 },
 # ms-prelude: };
 # ms-prelude: struct Picked { scene: Scene; node: NodeId; }
 # ms-prelude: function onePickable(t: Transform3D): Picked {
@@ -218,3 +218,15 @@ ms> let n9: Picked = onePickable(placed(4.0, 1.0, -2.0, 0.7, 2.0, 3.0, 2.0)); co
 case object-miss-beside tol=0
 haxe> var o10 = H.node(4, 1, -2, 0.7, 2, 3, 2); var r10 = H.through(o10, 0.9, 0.9); emit("object-miss-beside", [new ObjectCollider(o10, H.tri(0)).rayIntersection(r10, true)]);
 ms> let n10: Picked = onePickable(placed(4.0, 1.0, -2.0, 0.7, 2.0, 3.0, 2.0)); const r10: Ray = through(n10.scene, n10.node, 0.9, 0.9); emit1("object-miss-beside", pickIn(n10.scene, tri(0.0), r10).distance);
+
+# A ray starting inside a mesh's bounds. Heaps' Interactive shape comes from getCollider(),
+# an ObjectCollider, so rayCastEventTargets' downcast to OptimizedCollider fails and
+# checkInside stays off (Scene.hx:331): the bounds test's negative entry ends the pick.
+case inside-bounds-through-object-collider tol=0 diverges=pick-origin-inside-bounds
+haxe> var p11 = H.poly([-1, -1, 0, 1, -1, 0, 0, 1, 0, -1, -1, 2, 1, -1, 2, 0, 1, 2]); var o11 = H.node(0, 0, 0, 0, 1, 1, 1); var c11 = new ObjectCollider(o11, new h3d.col.Collider.OptimizedCollider(p11.getBounds(), p11)); emit("inside-bounds-through-object-collider", [c11.rayIntersection(Ray.fromValues(0, 0, 1, 0, 0, -1), true)]);
+ms> const q11: Vec<float32> = [-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 2.0, 1.0, -1.0, 2.0, 0.0, 1.0, 2.0]; let n11: Picked = onePickable(placed(0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0)); emit1("inside-bounds-through-object-collider", pickIn(n11.scene, poly(q11), ray(0.0, 0.0, 1.0, 0.0, 0.0, -1.0)).distance);
+
+# The same collider with checkInside set by hand answers what the port does.
+case inside-bounds-with-check-inside tol=1e-6
+haxe> var p12 = H.poly([-1, -1, 0, 1, -1, 0, 0, 1, 0, -1, -1, 2, 1, -1, 2, 0, 1, 2]); var c12 = new h3d.col.Collider.OptimizedCollider(p12.getBounds(), p12); c12.checkInside = true; emit("inside-bounds-with-check-inside", [c12.rayIntersection(Ray.fromValues(0, 0, 1, 0, 0, -1), true)]);
+ms> const q12: Vec<float32> = [-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 2.0, 1.0, -1.0, 2.0, 0.0, 1.0, 2.0]; let n12: Picked = onePickable(placed(0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0)); emit1("inside-bounds-with-check-inside", pickIn(n12.scene, poly(q12), ray(0.0, 0.0, 1.0, 0.0, 0.0, -1.0)).distance);

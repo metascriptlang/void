@@ -156,8 +156,8 @@ export function recomputeBounds(ref data: MeshData): void {
 }
 
 // h3d.col.PolygonBuffer.rayIntersection (Moller-Trumbore), with bestMatch: the nearest
-// triangle the ray hits, or -1. Heaps always rejects back faces; here `culling` is the
-// material's, so a pick finds what the pass draws. Front is counter-clockwise (gpu3d.c).
+// triangle the ray hits among the faces `culling` keeps, or -1. Front is counter-clockwise
+// (gpu3d.c).
 // PENDING3D: pick-culling-follows-material
 export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): float32 {
 	let best: float32 = -1.0;
@@ -248,7 +248,6 @@ function rotate(this frame: BoxFrame, direction: Vec3): Vec3 {
 
 // Five quads: the top and the four sides. The underside is never seen from above the ground
 // plane, and leaving it out is what the spike did — 20 vertices and 30 indices per box.
-// PENDING3D: box-builders-wound-inward
 export function addBox(ref data: MeshData, box: Box): Result<int32, MeshError> {
 	if (!data.hasRoomFor(BOX_VERTICES)) { return Result.err(MeshError.TooManyVertices); }
 	const frame: BoxFrame = {
@@ -273,15 +272,15 @@ export function addBox(ref data: MeshData, box: Box): Result<int32, MeshError> {
 	const color: Rgba = box.color;
 
 	const first: int32 = try addQuad(
-		data, leftTopBack, rightTopBack, rightTopFront, leftTopFront,
+		data, leftTopBack, leftTopFront, rightTopFront, rightTopBack,
 		frame.rotate(vec3(0.0, 1.0, 0.0)), color,
 	);
 	const _right: int32 = try addQuad(
-		data, rightBottomBack, rightBottomFront, rightTopFront, rightTopBack,
+		data, rightBottomBack, rightTopBack, rightTopFront, rightBottomFront,
 		frame.rotate(vec3(1.0, 0.0, 0.0)), color,
 	);
 	const _left: int32 = try addQuad(
-		data, leftBottomFront, leftBottomBack, leftTopBack, leftTopFront,
+		data, leftBottomFront, leftTopFront, leftTopBack, leftBottomBack,
 		frame.rotate(vec3(-1.0, 0.0, 0.0)), color,
 	);
 	const _front: int32 = try addQuad(
@@ -306,9 +305,9 @@ export function addPlane(
 	return addQuad(
 		data,
 		vec3(-halfSize, 0.0, -halfSize),
-		vec3(halfSize, 0.0, -halfSize),
-		vec3(halfSize, 0.0, halfSize),
 		vec3(-halfSize, 0.0, halfSize),
+		vec3(halfSize, 0.0, halfSize),
+		vec3(halfSize, 0.0, -halfSize),
 		vec3(0.0, 1.0, 0.0),
 		color,
 	);

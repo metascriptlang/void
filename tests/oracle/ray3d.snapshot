@@ -23,3 +23,5 @@ triangle-oblique 4.998944795577644
 object-hit-world-distance 9.999999999999998
 object-hit-world-point 4.152968437456898 1.6 -2.128843537447538
 object-miss-beside -1
+inside-bounds-through-object-collider -1
+inside-bounds-with-check-inside 1

@@ -63,6 +63,7 @@ import {
 	SceneError,
 	LightError,
 	LightKind,
+	NodeKind,
 	identityTransform,
 	transformAt,
 	addGroup,
@@ -232,7 +233,6 @@ let fireOffsetX: float32 = 0.0;
 let fireOffsetY: float32 = 0.0;
 let fireOffsetZ: float32 = 0.0;
 let fireFlicker: float32 = 1.0;
-// The camera and blit the last frame was drawn with: a tap is read through these.
 let shownView: CameraView = {
 	eye: vec3(0.0, 0.0, 0.0),
 	basis: {
@@ -826,8 +826,6 @@ export function campfireStats(): CampfireStats {
 	};
 }
 
-// The pickable nodes and the meshes to tap them on: the log group through its first log, the
-// baked stone, and a stone that is not pickable.
 export struct CampfireTargets {
 	logs: NodeId;
 	firstLog: NodeId;
@@ -844,20 +842,29 @@ export function campfireTargets(): CampfireTargets {
 	};
 }
 
-// The framebuffer pixel the centre of a mesh node's bounds was drawn at by the last frame.
-export function campfirePixelOf(id: NodeId): Vec3 {
+// Host pixels count rows from the top (sokol_app events, Android MotionEvent); the blit's
+// framebuffer pixels count them from the bottom on GL.
+function flipRowIfGl(row: float32): float32 {
+	if (originTopLeft()) { return row; }
+	return (fbHeight() as float32) - row;
+}
+
+// The host pixel under the centre of a mesh node's bounds in the last frame drawn.
+export function campfirePixelOf(id: NodeId): Result<Vec3, SceneError> {
+	if (!tree.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	if (tree.nodes[id.index].kind != NodeKind.Mesh) {
+		return Result.err(SceneError.NotAMeshNode);
+	}
 	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh;
 	const box: Bounds = context.meshData[mesh].bounds;
 	const centre: Vec3 = box.center() * tree.nodes[id.index].world;
-	return shownView.project(centre, shownBlit, originTopLeft());
+	const pixel: Vec3 = shownView.project(centre, shownBlit, originTopLeft());
+	return Result.ok(vec3(pixel.x, flipRowIfGl(pixel.y), pixel.z));
 }
 
-// A tap at a framebuffer pixel, read through the camera and blit the last frame was drawn with.
-export function campfireTap(
-	framebufferX: float32,
-	framebufferY: float32,
-): Result<PickHit, PickError> {
-	const ray: Ray = shownView.rayFromScreen(framebufferX, framebufferY, shownBlit, originTopLeft());
+export function campfireTap(hostX: float32, hostY: float32): Result<PickHit, PickError> {
+	const ray: Ray =
+		shownView.rayFromScreen(hostX, flipRowIfGl(hostY), shownBlit, originTopLeft());
 	return pickNearest(tree, context.meshData, context.materials, ray);
 }
 
