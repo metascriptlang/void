@@ -550,11 +550,15 @@ run_device() {
 	fi
 	"$adb" -s "$target" exec-out screencap -p > "$WORK/device.png" 2>/dev/null
 	colours=$(magick "$WORK/device.png" -format "%k" info: 2>/dev/null || echo 0)
-	if [ "$colours" -lt 100 ]; then
-		fail "device: $target rendered $colours colours — a blank or near-blank frame"
+	# A palette quantizes a real frame to a couple of dozen colours, so the count alone cannot
+	# tell it from a blank one; a blank frame is one colour over nearly every pixel.
+	dominant=$(magick "$WORK/device.png" -format %c histogram:info: 2>/dev/null |
+		awk '{ n = $1 + 0; t += n; if (n > m) m = n } END { if (t) printf "%d", 100 * m / t; else print 100 }')
+	if [ "$colours" -lt 8 ] || [ "$dominant" -gt 90 ]; then
+		fail "device: $target rendered $colours colours, one of them over $dominant% of the frame — blank or near-blank"
 		return
 	fi
-	pass "device: $target ($kind, egl=$egl) rendering, $colours colours — NOT a baseline comparison"
+	pass "device: $target ($kind, egl=$egl) rendering, $colours colours, largest $dominant% — NOT a baseline comparison"
 }
 
 # ---- oracle -------------------------------------------------------------------------------
