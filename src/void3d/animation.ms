@@ -18,6 +18,7 @@ export enum AnimationError {
 	NoFrames,
 	BadSampling,
 	BadFrame,
+	BadMesh,
 	TrackLength,
 	TargetNotFound,
 	NotBound,
@@ -29,7 +30,7 @@ export enum AnimationError {
 }
 
 // Animation's `frameCount`, `sampling` (frames per second), `speed`, `frame`, `loop`, `pause`.
-// `frame` stays float64 as Heaps' Float is: a wallpaper clock runs for hours.
+// `frame` stays float64 as Heaps' Float is: a clock may run for hours.
 export struct AnimationClock {
 	frameCount: int32;
 	sampling: float64;
@@ -73,9 +74,9 @@ export struct MeshFrameAnimation {
 }
 
 const UNBOUND: NodeId = { index: NO_NODE, generation: 0 };
+const NO_MESH: int32 = -1;
 const PLAYING_EPSILON: float64 = 0.000001;
-
-function isFinite(x: float64): boolean { return x - x == 0.0; }
+const HOLD_FIRST: KeyPair = { first: 0, second: 0, weight: 0.0 };
 
 export function forFrames(
 	this typeof AnimationClock,
@@ -84,7 +85,7 @@ export function forFrames(
 	interpolation: Interpolation,
 ): Result<AnimationClock, AnimationError> {
 	if (frameCount < 1) { return Result.err(AnimationError.NoFrames); }
-	if (!isFinite(sampling) || sampling <= 0.0) {
+	if (!Number.isFinite(sampling) || sampling <= 0.0) {
 		return Result.err(AnimationError.BadSampling);
 	}
 	return Result.ok({
@@ -115,18 +116,19 @@ export function samePair(this a: KeyPair, b: KeyPair): boolean {
 	return a.first == b.first && a.second == b.second && a.weight == b.weight;
 }
 
-// Heaps' `getIFrame` plus the clamps that open `LinearAnimation.sync`, with one divergence: a
-// non-looping clock past its last key holds it, where Heaps extrapolates the last interval
-// (k2 in [1, 2)). PENDING3D: anim-holds-last-key
+// Heaps' `getIFrame` plus the clamps that open `LinearAnimation.sync`, except that this never
+// extrapolates: Heaps' weight leaves [0, 1] inside a one-shot's last interval and below frame 0.
+// PENDING3D: anim-never-extrapolates
 export function keys(this clock: AnimationClock): KeyPair {
 	const count: int32 = clock.frameCount;
+	if (count <= 1) { return HOLD_FIRST; }
 	const last: int32 = count - 1;
 	const at: float64 = clock.interpolation == Interpolation.Step
 		? Math.floor(clock.frame)
 		: clock.frame;
-	if (at <= 0.0) { return { first: 0, second: 0, weight: 0.0 }; }
+	if (at <= 0.0) { return HOLD_FIRST; }
 	if (clock.loop) {
-		if (at >= (count as float64)) { return { first: last, second: last, weight: 0.0 }; }
+		if (at >= (count as float64)) { return HOLD_FIRST; }
 	} else if (at >= (last as float64)) {
 		return { first: last, second: last, weight: 0.0 };
 	}
@@ -137,27 +139,33 @@ export function keys(this clock: AnimationClock): KeyPair {
 }
 
 // Animation.update without events and `onAnimEnd`: a value clock has no callback to call. It
-// answers whether the pose it samples moved, which is what a host on demand pacing needs.
-export function update(ref clock: AnimationClock, dt: float64): boolean {
-	if (!clock.isPlaying()) { return false; }
-	const before: KeyPair = clock.keys();
+// answers whether the sampled keys moved, which is what a host on demand pacing needs.
+export function update(ref clock: AnimationClock, dt: float64): Result<boolean, AnimationError> {
+	if (!clock.isPlaying()) { return Result.ok(false); }
 	const count: float64 = clock.frameCount as float64;
-	clock.frame = clock.frame + dt * clock.speed * clock.sampling;
-	if (clock.frame >= count) {
-		clock.frame = clock.loop ? clock.frame % count : count;
+	let next: float64 = clock.frame + dt * clock.speed * clock.sampling;
+	if (!Number.isFinite(next)) { return Result.err(AnimationError.BadFrame); }
+	if (next >= count) {
+		next = clock.loop ? next % count : count;
 	}
-	return !before.samePair(clock.keys());
+	const before: KeyPair = clock.keys();
+	clock.frame = next;
+	return Result.ok(!before.samePair(clock.keys()));
 }
 
-// Animation.setFrame: wraps into [0, frameCount].
+// Animation.setFrame's two `while` loops, taken in one step: the result lies in [0, frameCount],
+// and a positive exact multiple lands on frameCount itself, as the loops do.
 export function setFrame(
 	ref clock: AnimationClock,
 	frame: float64,
 ): Result<float64, AnimationError> {
-	if (!isFinite(frame)) { return Result.err(AnimationError.BadFrame); }
+	if (!Number.isFinite(frame)) { return Result.err(AnimationError.BadFrame); }
 	const count: float64 = clock.frameCount as float64;
 	let wrapped: float64 = frame;
-	if (wrapped < 0.0 || wrapped > count) {
+	if (wrapped > count) {
+		wrapped = wrapped % count;
+		if (wrapped == 0.0) { wrapped = count; }
+	} else if (wrapped < 0.0) {
 		wrapped = wrapped % count;
 		if (wrapped < 0.0) { wrapped = wrapped + count; }
 	}
@@ -167,7 +175,7 @@ export function setFrame(
 
 // LinearAnimation.sync's blend: translation and scale as `f1 * k1 + f2 * k2`, rotation by
 // nearest-hemisphere lerp then normalize.
-export function blendPose(a: Transform3D, b: Transform3D, weight: float32): Transform3D {
+export function blendTo(this a: Transform3D, b: Transform3D, weight: float32): Transform3D {
 	const keep: float32 = 1.0 - weight;
 	return {
 		position: vec3(
@@ -190,7 +198,7 @@ export function forClock(this typeof ObjectAnimation, clock: AnimationClock): Ob
 		tracks: [],
 		keys: [],
 		bound: false,
-		synced: { first: 0, second: 0, weight: 0.0 },
+		synced: HOLD_FIRST,
 		hasSynced: false,
 	};
 }
@@ -200,6 +208,7 @@ export function addTrack(
 	name: string,
 	keys: Span<Transform3D>,
 ): Result<int32, AnimationError> {
+	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
 	if ((keys.length as int32) != animation.clock.frameCount) {
 		return Result.err(AnimationError.TrackLength);
 	}
@@ -210,7 +219,7 @@ export function addTrack(
 }
 
 // Animation.bind: each track's object by name under `base`. Heaps drops a track whose object is
-// missing and plays the rest; this refuses, because a pose missing a part is a wrong pose.
+// missing and plays the rest; this refuses and keeps the previous binding whole.
 // PENDING3D: anim-missing-target-refused
 export function bindTracks(
 	ref animation: ObjectAnimation,
@@ -219,33 +228,44 @@ export function bindTracks(
 ): Result<int32, AnimationError> {
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const count: int32 = animation.tracks.length as int32;
+	const found: Vec<NodeId> = [];
 	for (let i = 0; i < count; i++) {
-		const found: Result<NodeId, SceneError> = scene.findByName(base, animation.tracks[i].name);
-		if (!found.ok) { return Result.err(AnimationError.TargetNotFound); }
-		animation.tracks[i].target = found.value;
+		const named: Result<NodeId, SceneError> = scene.findByName(base, animation.tracks[i].name);
+		if (!named.ok) { return Result.err(AnimationError.TargetNotFound); }
+		found.push(named.value);
 	}
+	for (let i = 0; i < count; i++) { animation.tracks[i].target = found[i]; }
 	animation.bound = true;
 	animation.hasSynced = false;
 	return Result.ok(count);
 }
 
-// LinearAnimation.sync. Heaps writes the pose into `defaultTransform`, which `calcAbsPos`
-// prepends to the object's own x/y/z; here it replaces the node's local transform, as a glTF
-// channel does. PENDING3D: anim-pose-replaces-local
-// Returns how many nodes were written: zero when the sampled keys have not moved.
+// After something other than this animation wrote one of its nodes, the next sync must write
+// again even if the sampled keys have not moved.
+export function forgetSync(ref animation: ObjectAnimation): void {
+	animation.hasSynced = false;
+}
+
+// LinearAnimation.sync. The pose replaces the node's local transform, as a glTF channel does;
+// Heaps prepends it through `defaultTransform`. PENDING3D: anim-pose-replaces-local
 export function syncPose(
 	ref animation: ObjectAnimation,
 	ref scene: Scene,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
+	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
+	const count: int32 = animation.tracks.length as int32;
+	for (let track = 0; track < count; track++) {
+		if (!scene.isLive(animation.tracks[track].target)) {
+			return Result.err(AnimationError.StaleTarget);
+		}
+	}
 	const pair: KeyPair = animation.clock.keys();
 	if (animation.hasSynced && pair.samePair(animation.synced)) { return Result.ok(0); }
 	const frames: int32 = animation.clock.frameCount;
-	const count: int32 = animation.tracks.length as int32;
 	for (let track = 0; track < count; track++) {
 		const base: int32 = track * frames;
-		const pose: Transform3D = blendPose(
-			animation.keys[base + pair.first],
+		const pose: Transform3D = animation.keys[base + pair.first].blendTo(
 			animation.keys[base + pair.second],
 			pair.weight,
 		);
@@ -269,18 +289,22 @@ export function forMeshes(
 	if (clock.interpolation != Interpolation.Step) {
 		return Result.err(AnimationError.InterpolatedMeshFrames);
 	}
+	if (clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
 	if ((meshes.length as int32) != clock.frameCount) {
 		return Result.err(AnimationError.TrackLength);
 	}
 	const kept: Vec<int32> = [];
-	for (const mesh of meshes) { kept.push(mesh); }
+	for (const mesh of meshes) {
+		if (mesh < 0) { return Result.err(AnimationError.BadMesh); }
+		kept.push(mesh);
+	}
 	return Result.ok({
 		clock: clock,
 		name: name,
 		target: UNBOUND,
 		meshes: kept,
 		bound: false,
-		shown: NO_NODE,
+		shown: NO_MESH,
 	});
 }
 
@@ -297,7 +321,7 @@ export function bindMeshFrames(
 	}
 	animation.target = found.value;
 	animation.bound = true;
-	animation.shown = NO_NODE;
+	animation.shown = NO_MESH;
 	return Result.ok(found.value.index);
 }
 
@@ -307,6 +331,8 @@ export function syncMeshFrame(
 	ref scene: Scene,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
+	if ((animation.meshes.length as int32) < 1) { return Result.err(AnimationError.NoFrames); }
+	if (!scene.isLive(animation.target)) { return Result.err(AnimationError.StaleTarget); }
 	const mesh: int32 = animation.meshes[animation.clock.keys().first];
 	if (mesh == animation.shown) { return Result.ok(0); }
 	const swapped: Result<int32, SceneError> = setMeshOf(scene, animation.target, mesh);
@@ -336,17 +362,20 @@ export function checkBakedFrames(frames: Span<MeshData>): Result<int32, Animatio
 	return Result.ok(count);
 }
 
-// Uploads every frame through the M5 path, so each one is rebuilt after a context loss like
-// any other mesh. Returns the first mesh index; the frames occupy the indices after it.
+// Every frame goes through `addMeshData`, so the frames always take the `frames.length` slots
+// starting at the context's mesh count before the call, and a frame whose upload was refused
+// keeps its CPU data for the next rebuild — the error says only that one did not draw yet.
 export function addBakedFrames(
 	ref context: DrawContext,
 	frames: Span<MeshData>,
 ): Result<int32, AnimationError> {
 	const count: int32 = try checkBakedFrames(frames);
 	const first: int32 = context.meshes.length as int32;
+	let refused: boolean = false;
 	for (let f = 0; f < count; f++) {
 		const added: Result<int32, MeshUploadError> = addMeshData(context, frames[f]);
-		if (!added.ok) { return Result.err(AnimationError.UploadRefused); }
+		if (!added.ok) { refused = true; }
 	}
+	if (refused) { return Result.err(AnimationError.UploadRefused); }
 	return Result.ok(first);
 }

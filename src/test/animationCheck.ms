@@ -12,6 +12,7 @@ import {
 	addGroup,
 	addMeshNode,
 	setName,
+	setLocal,
 	remove,
 	syncWorld,
 	refresh,
@@ -24,8 +25,8 @@ import {
 	ObjectAnimation,
 	MeshFrameAnimation,
 	update,
+	forgetSync,
 	setFrame,
-	blendPose,
 	addTrack,
 	bindTracks,
 	syncPose,
@@ -48,6 +49,11 @@ function clockOf(frames: int32, sampling: float64, interpolation: Interpolation)
 		pause: true,
 		interpolation: interpolation,
 	};
+}
+
+function moved(ref clock: AnimationClock, dt: float64): boolean {
+	const advanced: Result<boolean, AnimationError> = update(clock, dt);
+	return advanced.ok && advanced.value;
 }
 
 function pair(first: int32, second: int32, weight: float32): KeyPair {
@@ -139,7 +145,7 @@ test "a 12 fps stepped clock reports a change only when it reaches the next key"
 	const tick: float64 = 1.0 / 30.0;
 	let changes: int32 = 0;
 	for (let i = 0; i < 30; i++) {
-		if (update(clock, tick)) { changes = changes + 1; }
+		if (moved(clock, tick)) { changes = changes + 1; }
 	}
 	assert changes == 12;
 	assert approx(clock.frame as float32, 0.0);
@@ -147,18 +153,18 @@ test "a 12 fps stepped clock reports a change only when it reaches the next key"
 
 test "a linear clock reports every advance as a change" {
 	let clock: AnimationClock = clockOf(12, 12.0, Interpolation.Linear);
-	assert update(clock, 0.01);
-	assert update(clock, 0.01);
+	assert moved(clock, 0.01);
+	assert moved(clock, 0.01);
 }
 
 test "update wraps a loop and clamps a one-shot at its end" {
 	let looped: AnimationClock = clockOf(4, 2.0, Interpolation.Linear);
-	const _moved: boolean = update(looped, 2.25);
+	const _moved: boolean = moved(looped, 2.25);
 	assert approx(looped.frame as float32, 0.5);
 	let once: AnimationClock = clockOf(4, 2.0, Interpolation.Linear);
 	once.loop = false;
 	assert !once.isFinished();
-	const _ended: boolean = update(once, 10.0);
+	const _ended: boolean = moved(once, 10.0);
 	assert once.frame == 4.0;
 	assert once.isFinished();
 }
@@ -166,11 +172,11 @@ test "update wraps a loop and clamps a one-shot at its end" {
 test "a paused or stopped clock does not move" {
 	let paused: AnimationClock = clockOf(4, 12.0, Interpolation.Step);
 	paused.pause = true;
-	assert !update(paused, 1.0);
+	assert !moved(paused, 1.0);
 	assert paused.frame == 0.0;
 	let stopped: AnimationClock = clockOf(4, 12.0, Interpolation.Step);
 	stopped.speed = 0.0;
-	assert !update(stopped, 1.0);
+	assert !moved(stopped, 1.0);
 	assert stopped.frame == 0.0;
 }
 
@@ -188,10 +194,10 @@ test "setFrame wraps outside the clip and refuses a non-finite frame" {
 	assert clock.frame == 3.0;
 }
 
-test "blendPose lerps translation and scale and takes the short way round in rotation" {
+test "blendTo lerps translation and scale and takes the short way round in rotation" {
 	const a: Transform3D = { ...slide(0.0), scale: vec3(1.0, 1.0, 1.0) };
 	const b: Transform3D = { ...slide(4.0), scale: vec3(3.0, 1.0, 1.0) };
-	const half: Transform3D = blendPose(a, b, 0.5);
+	const half: Transform3D = a.blendTo(b, 0.5);
 	assert approx(half.position.x, 2.0);
 	assert approx(half.scale.x, 2.0);
 	const q: Quat = eulerQuat(0.0, 0.5, 0.0);
@@ -199,7 +205,7 @@ test "blendPose lerps translation and scale and takes the short way round in rot
 		...identityTransform(),
 		rotation: { x: -q.x, y: -q.y, z: -q.z, w: -q.w },
 	};
-	const mid: Transform3D = blendPose(turn(0.5), flipped, 0.5);
+	const mid: Transform3D = turn(0.5).blendTo(flipped, 0.5);
 	const expected: Quat = eulerQuat(0.0, 0.5, 0.0);
 	assert approx(mid.rotation.y, expected.y);
 	assert approx(mid.rotation.w, expected.w);
@@ -269,12 +275,12 @@ test "syncPose writes nothing while the sampled keys have not moved" {
 	assert first.ok;
 	if (first.ok) { assert first.value == 1; }
 	const _synced: int32 = syncWorld(scene);
-	const _moved: boolean = update(animation.clock, 0.01);
+	const _moved: boolean = moved(animation.clock, 0.01);
 	const again: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert again.ok;
 	if (again.ok) { assert again.value == 0; }
 	assert syncWorld(scene) == 0;
-	const _stepped: boolean = update(animation.clock, 0.1);
+	const _stepped: boolean = moved(animation.clock, 0.1);
 	const next: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert next.ok;
 	if (next.ok) { assert next.value == 1; }
@@ -333,7 +339,7 @@ test "mesh frames swap the node's mesh, and the draw list follows without a rebu
 		const same: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
 		assert same.ok;
 		if (same.ok) { assert same.value == 0; }
-		const _moved: boolean = update(animation.clock, 2.0);
+		const _moved: boolean = moved(animation.clock, 2.0);
 		const swapped: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
 		assert swapped.ok;
 		if (swapped.ok) { assert swapped.value == 1; }
@@ -373,4 +379,128 @@ test "baked frames share one topology and may only move their vertices" {
 	assert !checkBakedFrames(none).ok;
 	const hollow: Vec<MeshData> = [MeshData.empty()];
 	assert !checkBakedFrames(hollow).ok;
+}
+
+test "a non-finite step is refused and leaves the clock where it was" {
+	let clock: AnimationClock = clockOf(4, 12.0, Interpolation.Linear);
+	clock.frame = 1.5;
+	const infinite: float64 = 1.0 / 0.0;
+	const refused: Result<boolean, AnimationError> = update(clock, infinite);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == AnimationError.BadFrame; }
+	assert clock.frame == 1.5;
+}
+
+test "setFrame on an exact multiple lands on the clip's end, as Heaps' loops do" {
+	let clock: AnimationClock = clockOf(4, 1.0, Interpolation.Linear);
+	const _eight: Result<float64, AnimationError> = setFrame(clock, 8.0);
+	assert clock.frame == 4.0;
+	assert clock.keys().samePair(pair(0, 0, 0.0));
+	clock.loop = false;
+	assert clock.keys().samePair(pair(3, 3, 0.0));
+	const _back: Result<float64, AnimationError> = setFrame(clock, -4.0);
+	assert clock.frame == 0.0;
+}
+
+test "a clock never extrapolates below its first key" {
+	let clock: AnimationClock = clockOf(4, 1.0, Interpolation.Linear);
+	clock.loop = false;
+	clock.speed = -1.0;
+	assert !moved(clock, 0.5);
+	assert clock.frame == -0.5;
+	assert clock.keys().samePair(pair(0, 0, 0.0));
+}
+
+test "a one-key linear clock reports no change, so an idle host can stop drawing" {
+	let clock: AnimationClock = clockOf(1, 12.0, Interpolation.Linear);
+	for (let i = 0; i < 10; i++) { assert !moved(clock, 0.01); }
+}
+
+test "a clock with no frames is refused by every animation built on it" {
+	const empty: AnimationClock = {
+		frameCount: 0,
+		sampling: 1.0,
+		speed: 1.0,
+		frame: 0.0,
+		loop: true,
+		pause: false,
+		interpolation: Interpolation.Step,
+	};
+	let animation: ObjectAnimation = ObjectAnimation.forClock(empty);
+	const none: Vec<Transform3D> = [];
+	const track: Result<int32, AnimationError> = addTrack(animation, "arm", none);
+	assert !track.ok;
+	if (!track.ok) { assert track.error == AnimationError.NoFrames; }
+	const noMeshes: Vec<int32> = [];
+	const frames: Result<MeshFrameAnimation, AnimationError> =
+		MeshFrameAnimation.forMeshes(empty, "flame", noMeshes);
+	assert !frames.ok;
+	assert empty.keys().samePair(pair(0, 0, 0.0));
+}
+
+test "mesh frames refuse a negative mesh index" {
+	const meshes: Vec<int32> = [3, -1];
+	const refused: Result<MeshFrameAnimation, AnimationError> =
+		MeshFrameAnimation.forMeshes(clockOf(2, 12.0, Interpolation.Step), "flame", meshes);
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == AnimationError.BadMesh; }
+}
+
+test "a rebind that fails keeps the previous binding whole" {
+	let scene: Scene = Scene.create();
+	const a: NodeId = named(scene, scene.rootId(), "a");
+	const armA: NodeId = named(scene, a, "arm");
+	const _legA: NodeId = named(scene, a, "leg");
+	const b: NodeId = named(scene, scene.rootId(), "b");
+	const _armB: NodeId = named(scene, b, "arm");
+	let animation: ObjectAnimation =
+		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
+	const keys: Vec<Transform3D> = [slide(3.0)];
+	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
+	const _leg: Result<int32, AnimationError> = addTrack(animation, "leg", keys);
+	const first: Result<int32, AnimationError> = bindTracks(animation, scene, a);
+	assert first.ok;
+	const refused: Result<int32, AnimationError> = bindTracks(animation, scene, b);
+	assert !refused.ok;
+	assert animation.bound;
+	assert animation.tracks[0].target.index == armA.index;
+	const posed: Result<int32, AnimationError> = syncPose(animation, scene);
+	assert posed.ok;
+	assert approx(localX(scene, armA), 3.0);
+}
+
+test "a target removed after a sync is refused even while the keys stand still" {
+	let scene: Scene = Scene.create();
+	const arm: NodeId = named(scene, scene.rootId(), "arm");
+	let animation: ObjectAnimation =
+		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
+	const keys: Vec<Transform3D> = [slide(1.0)];
+	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
+	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
+	const first: Result<int32, AnimationError> = syncPose(animation, scene);
+	assert first.ok;
+	const _gone: Result<int32, SceneError> = remove(scene, arm);
+	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
+	assert !stale.ok;
+}
+
+test "forgetSync makes the next sync write over a node someone else moved" {
+	let scene: Scene = Scene.create();
+	const arm: NodeId = named(scene, scene.rootId(), "arm");
+	let animation: ObjectAnimation =
+		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
+	const keys: Vec<Transform3D> = [slide(1.0)];
+	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
+	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
+	const _first: Result<int32, AnimationError> = syncPose(animation, scene);
+	const _moved: Result<int32, SceneError> = setLocal(scene, arm, slide(99.0));
+	const cached: Result<int32, AnimationError> = syncPose(animation, scene);
+	assert cached.ok;
+	if (cached.ok) { assert cached.value == 0; }
+	assert approx(localX(scene, arm), 99.0);
+	forgetSync(animation);
+	const rewritten: Result<int32, AnimationError> = syncPose(animation, scene);
+	assert rewritten.ok;
+	if (rewritten.ok) { assert rewritten.value == 1; }
+	assert approx(localX(scene, arm), 1.0);
 }

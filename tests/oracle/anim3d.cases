@@ -36,6 +36,21 @@
 # haxe-prelude: 		i.sync();
 # haxe-prelude: 		return child.getAbsPos();
 # haxe-prelude: 	}
+# haxe-prelude: 	public static function at(keys: Array<LinearFrame>, loop: Bool, frame: Float,
+# haxe-prelude: 			speed: Float, dt: Float): h3d.Matrix {
+# haxe-prelude: 		var root = new Object();
+# haxe-prelude: 		var child = new Object(root);
+# haxe-prelude: 		child.name = "o";
+# haxe-prelude: 		var a = new LinearAnimation("a", keys.length, 1);
+# haxe-prelude: 		a.addCurve("o", haxe.ds.Vector.fromArrayCopy(keys), true, true, true);
+# haxe-prelude: 		var i: LinearAnimation = cast a.createInstance(root);
+# haxe-prelude: 		i.loop = loop;
+# haxe-prelude: 		i.setFrame(frame);
+# haxe-prelude: 		i.speed = speed;
+# haxe-prelude: 		i.update(dt);
+# haxe-prelude: 		i.sync();
+# haxe-prelude: 		return child.getAbsPos();
+# haxe-prelude: 	}
 # haxe-prelude: }
 #
 # ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
@@ -45,7 +60,7 @@
 # ms-prelude: } from "../../../src/void3d/scene";
 # ms-prelude: import {
 # ms-prelude: 	AnimationClock, AnimationError, Interpolation, ObjectAnimation,
-# ms-prelude: 	update, addTrack, bindTracks, syncPose,
+# ms-prelude: 	update, setFrame, addTrack, bindTracks, syncPose,
 # ms-prelude: } from "../../../src/void3d/animation";
 # ms-prelude:
 # ms-prelude: function key(tx: float32, ty: float32, tz: float32, ry: float32, s: float32,
@@ -75,7 +90,33 @@
 # ms-prelude: 	const _track: Result<int32, AnimationError> = addTrack(animation, "o", keys);
 # ms-prelude: 	const _bound: Result<int32, AnimationError> =
 # ms-prelude: 		bindTracks(animation, scene, scene.rootId());
-# ms-prelude: 	for (const dt of dts) { const _moved: boolean = update(animation.clock, dt); }
+# ms-prelude: 	for (const dt of dts) {
+# ms-prelude: 		const _moved: Result<boolean, AnimationError> = update(animation.clock, dt);
+# ms-prelude: 	}
+# ms-prelude: 	const _posed: Result<int32, AnimationError> = syncPose(animation, scene);
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added.value);
+# ms-prelude: 	return world.ok ? world.value : identity();
+# ms-prelude: }
+# ms-prelude: function at(keys: Vec<Transform3D>, loop: boolean, frame: float64, speed: float64,
+# ms-prelude: 		dt: float64): Mat4 {
+# ms-prelude: 	let scene: Scene = Scene.create();
+# ms-prelude: 	const added: Result<NodeId, SceneError> =
+# ms-prelude: 		addGroup(scene, scene.rootId(), transformAt(vec3(0.0, 0.0, 0.0)));
+# ms-prelude: 	if (!added.ok) { return identity(); }
+# ms-prelude: 	const _named: Result<int32, SceneError> = setName(scene, added.value, "o");
+# ms-prelude: 	const made: Result<AnimationClock, AnimationError> = AnimationClock.forFrames(
+# ms-prelude: 		keys.length as int32, 1.0, Interpolation.Linear);
+# ms-prelude: 	if (!made.ok) { return identity(); }
+# ms-prelude: 	let clock: AnimationClock = made.value;
+# ms-prelude: 	clock.loop = loop;
+# ms-prelude: 	const _set: Result<float64, AnimationError> = setFrame(clock, frame);
+# ms-prelude: 	clock.speed = speed;
+# ms-prelude: 	let animation: ObjectAnimation = ObjectAnimation.forClock(clock);
+# ms-prelude: 	const _track: Result<int32, AnimationError> = addTrack(animation, "o", keys);
+# ms-prelude: 	const _bound: Result<int32, AnimationError> =
+# ms-prelude: 		bindTracks(animation, scene, scene.rootId());
+# ms-prelude: 	const _moved: Result<boolean, AnimationError> = update(animation.clock, dt);
 # ms-prelude: 	const _posed: Result<int32, AnimationError> = syncPose(animation, scene);
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);
 # ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added.value);
@@ -132,7 +173,7 @@ ms> emit1("one-shot-ends-on-last-key", m5.m41);
 
 # Inside a one-shot's last interval Heaps' `getIFrame` steps back a key and the blend weight
 # runs past 1, so it extrapolates (25 here); the port holds the last key (20).
-case one-shot-last-interval tol=1e-5 diverges=anim-holds-last-key
+case one-shot-last-interval tol=1e-5 diverges=anim-never-extrapolates
 haxe> var m6 = H.run([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
 haxe>     H.key(20,0,0,0,1,false)], 1, false, [2.5], 0);
 haxe> emit("one-shot-last-interval", [m6._41]);
@@ -176,3 +217,30 @@ haxe> var m10 = H.run([H.key(1,0,0,0,1,false)], 1, true, [0], 5);
 haxe> emit("pose-over-a-rest-transform", [m10._41]);
 ms> const m10: Mat4 = run([slid(1.0)], 1.0, true, [0.0], 5.0);
 ms> emit1("pose-over-a-rest-transform", m10.m41);
+
+# ---- setFrame and a backward clock -------------------------------------------------------
+
+# Animation.setFrame's `while (frame > frameCount)` stops on frameCount itself, and a loop at
+# frameCount blends the last key into the first with weight 1: key 0.
+case set-frame-multiple-on-a-loop tol=1e-5
+haxe> var m11 = H.at([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false), H.key(30,0,0,0,1,false)], true, 8, 1, 0);
+haxe> emit("set-frame-multiple-on-a-loop", [m11._41]);
+ms> const m11: Mat4 = at([slid(0.0), slid(10.0), slid(20.0), slid(30.0)], true, 8.0, 1.0, 0.0);
+ms> emit1("set-frame-multiple-on-a-loop", m11.m41);
+
+# The same frame on a one-shot is past its end, so the last key.
+case set-frame-multiple-on-a-one-shot tol=1e-5
+haxe> var m12 = H.at([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false), H.key(30,0,0,0,1,false)], false, 8, 1, 0);
+haxe> emit("set-frame-multiple-on-a-one-shot", [m12._41]);
+ms> const m12: Mat4 = at([slid(0.0), slid(10.0), slid(20.0), slid(30.0)], false, 8.0, 1.0, 0.0);
+ms> emit1("set-frame-multiple-on-a-one-shot", m12.m41);
+
+# A negative speed takes the frame below 0, where Heaps' `Std.int` truncates toward zero and the
+# weight goes negative (-5 here); the port holds the first key (0).
+case negative-speed-below-first-key tol=1e-5 diverges=anim-never-extrapolates
+haxe> var m13 = H.at([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false)], false, 0, -1, 0.5);
+haxe> emit("negative-speed-below-first-key", [m13._41]);
+ms> const m13: Mat4 = at([slid(0.0), slid(10.0)], false, 0.0, -1.0, 0.5);
+ms> emit1("negative-speed-below-first-key", m13.m41);
