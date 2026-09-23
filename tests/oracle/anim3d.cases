@@ -1,0 +1,178 @@
+# h3d.anim.LinearAnimation against src/void3d/animation.ms — the clock (`update`, `getIFrame`,
+# the key clamps) and the pose blend of `sync`, read back through the animated node's world.
+#
+# Same shape as scene3d.cases: no expected answer here; `sh scripts/oracle.sh regen
+# tests/oracle/anim3d.cases` replays the Haxe side through real Heaps and commits the snapshot.
+# Heaps' own driver (`Object.syncRec` calling `update` then `sync`) needs a Scene and so a
+# window; each case calls `update` and `sync` on the instance directly, which is the same pair.
+# Stepped sampling is this port's addition and has no Heaps side; src/test/animationCheck.ms
+# holds it.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: import h3d.anim.LinearAnimation;
+# haxe-prelude: class H {
+# haxe-prelude: 	public static function key(tx: Float, ty: Float, tz: Float, ry: Float, s: Float,
+# haxe-prelude: 			flip: Bool): LinearFrame {
+# haxe-prelude: 		var f = new LinearFrame();
+# haxe-prelude: 		f.tx = tx; f.ty = ty; f.tz = tz;
+# haxe-prelude: 		var q = new h3d.Quat(); q.initRotation(0, ry, 0);
+# haxe-prelude: 		var sign = flip ? -1.0 : 1.0;
+# haxe-prelude: 		f.qx = q.x * sign; f.qy = q.y * sign; f.qz = q.z * sign; f.qw = q.w * sign;
+# haxe-prelude: 		f.sx = s; f.sy = s; f.sz = s;
+# haxe-prelude: 		return f;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function run(keys: Array<LinearFrame>, sampling: Float, loop: Bool,
+# haxe-prelude: 			dts: Array<Float>, restX: Float): h3d.Matrix {
+# haxe-prelude: 		var root = new Object();
+# haxe-prelude: 		var child = new Object(root);
+# haxe-prelude: 		child.name = "o";
+# haxe-prelude: 		child.x = restX;
+# haxe-prelude: 		var a = new LinearAnimation("a", keys.length, sampling);
+# haxe-prelude: 		a.addCurve("o", haxe.ds.Vector.fromArrayCopy(keys), true, true, true);
+# haxe-prelude: 		var i: LinearAnimation = cast a.createInstance(root);
+# haxe-prelude: 		i.loop = loop;
+# haxe-prelude: 		for (dt in dts) i.update(dt);
+# haxe-prelude: 		i.sync();
+# haxe-prelude: 		return child.getAbsPos();
+# haxe-prelude: 	}
+# haxe-prelude: }
+#
+# ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
+# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
+# ms-prelude: import {
+# ms-prelude: 	Scene, NodeId, Transform3D, SceneError, addGroup, setName, syncWorld, transformAt,
+# ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import {
+# ms-prelude: 	AnimationClock, AnimationError, Interpolation, ObjectAnimation,
+# ms-prelude: 	update, addTrack, bindTracks, syncPose,
+# ms-prelude: } from "../../../src/void3d/animation";
+# ms-prelude:
+# ms-prelude: function key(tx: float32, ty: float32, tz: float32, ry: float32, s: float32,
+# ms-prelude: 		flip: boolean): Transform3D {
+# ms-prelude: 	const q = eulerQuat(0.0, ry, 0.0);
+# ms-prelude: 	const sign: float32 = flip ? -1.0 : 1.0;
+# ms-prelude: 	return {
+# ms-prelude: 		position: vec3(tx, ty, tz),
+# ms-prelude: 		rotation: { x: q.x * sign, y: q.y * sign, z: q.z * sign, w: q.w * sign },
+# ms-prelude: 		scale: vec3(s, s, s),
+# ms-prelude: 	};
+# ms-prelude: }
+# ms-prelude: function slid(x: float32): Transform3D { return key(x, 0.0, 0.0, 0.0, 1.0, false); }
+# ms-prelude: function run(keys: Vec<Transform3D>, sampling: float64, loop: boolean,
+# ms-prelude: 		dts: Vec<float64>, restX: float32): Mat4 {
+# ms-prelude: 	let scene: Scene = Scene.create();
+# ms-prelude: 	const added: Result<NodeId, SceneError> =
+# ms-prelude: 		addGroup(scene, scene.rootId(), transformAt(vec3(restX, 0.0, 0.0)));
+# ms-prelude: 	if (!added.ok) { return identity(); }
+# ms-prelude: 	const _named: Result<int32, SceneError> = setName(scene, added.value, "o");
+# ms-prelude: 	const made: Result<AnimationClock, AnimationError> = AnimationClock.forFrames(
+# ms-prelude: 		keys.length as int32, sampling, Interpolation.Linear);
+# ms-prelude: 	if (!made.ok) { return identity(); }
+# ms-prelude: 	let clock: AnimationClock = made.value;
+# ms-prelude: 	clock.loop = loop;
+# ms-prelude: 	let animation: ObjectAnimation = ObjectAnimation.forClock(clock);
+# ms-prelude: 	const _track: Result<int32, AnimationError> = addTrack(animation, "o", keys);
+# ms-prelude: 	const _bound: Result<int32, AnimationError> =
+# ms-prelude: 		bindTracks(animation, scene, scene.rootId());
+# ms-prelude: 	for (const dt of dts) { const _moved: boolean = update(animation.clock, dt); }
+# ms-prelude: 	const _posed: Result<int32, AnimationError> = syncPose(animation, scene);
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added.value);
+# ms-prelude: 	return world.ok ? world.value : identity();
+# ms-prelude: }
+#
+# Same link keepalive as scene3d.cases (card 2026-09-20-unused-module-drops-compile.md).
+# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
+
+# ---- the clock: update, getIFrame and the loop -----------------------------------------------
+
+# `frame += dt * speed * sampling`, then the two keys either side blend by the fraction.
+case linear-between-two-keys tol=1e-5
+haxe> var m1 = H.run([H.key(0,0,0,0,1,false), H.key(2,0,0,0,1,false), H.key(4,0,0,0,1,false),
+haxe>     H.key(6,0,0,0,1,false)], 1, true, [1.5], 0);
+haxe> emit("linear-between-two-keys", [m1._41]);
+ms> const m1: Mat4 = run([slid(0.0), slid(2.0), slid(4.0), slid(6.0)], 1.0, true, [1.5], 0.0);
+ms> emit1("linear-between-two-keys", m1.m41);
+
+# A loop's last interval blends the last key back into the first.
+case loop-blends-last-into-first tol=1e-5
+haxe> var m2 = H.run([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false)], 1, true, [2.5], 0);
+haxe> emit("loop-blends-last-into-first", [m2._41]);
+ms> const m2: Mat4 = run([slid(0.0), slid(10.0), slid(20.0)], 1.0, true, [2.5], 0.0);
+ms> emit1("loop-blends-last-into-first", m2.m41);
+
+# `frame %= frameCount` on a loop that overruns by more than one lap.
+case loop-wraps-by-modulo tol=1e-5
+haxe> var m3 = H.run([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false)], 1, true, [7.25], 0);
+haxe> emit("loop-wraps-by-modulo", [m3._41]);
+ms> const m3: Mat4 = run([slid(0.0), slid(10.0), slid(20.0)], 1.0, true, [7.25], 0.0);
+ms> emit1("loop-wraps-by-modulo", m3.m41);
+
+# Twelve keys at 12 fps, driven by five 30 fps ticks: sampling is keys per second.
+case sampling-is-keys-per-second tol=1e-5
+haxe> var k4 = [for (i in 0...12) H.key(i, 0, 0, 0, 1, false)];
+haxe> var m4 = H.run(k4, 12, true, [1/30, 1/30, 1/30, 1/30, 1/30], 0);
+haxe> emit("sampling-is-keys-per-second", [m4._41]);
+ms> const k4: Vec<Transform3D> = [];
+ms> for (let i = 0; i < 12; i++) { k4.push(slid(i as float32)); }
+ms> const tick4: float64 = 1.0 / 30.0;
+ms> const m4: Mat4 = run(k4, 12.0, true, [tick4, tick4, tick4, tick4, tick4], 0.0);
+ms> emit1("sampling-is-keys-per-second", m4.m41);
+
+# A one-shot that overruns stops on `frameCount` and shows its last key.
+case one-shot-ends-on-last-key tol=1e-5
+haxe> var m5 = H.run([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false)], 1, false, [100], 0);
+haxe> emit("one-shot-ends-on-last-key", [m5._41]);
+ms> const m5: Mat4 = run([slid(0.0), slid(10.0), slid(20.0)], 1.0, false, [100.0], 0.0);
+ms> emit1("one-shot-ends-on-last-key", m5.m41);
+
+# Inside a one-shot's last interval Heaps' `getIFrame` steps back a key and the blend weight
+# runs past 1, so it extrapolates (25 here); the port holds the last key (20).
+case one-shot-last-interval tol=1e-5 diverges=anim-holds-last-key
+haxe> var m6 = H.run([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false)], 1, false, [2.5], 0);
+haxe> emit("one-shot-last-interval", [m6._41]);
+ms> const m6: Mat4 = run([slid(0.0), slid(10.0), slid(20.0)], 1.0, false, [2.5], 0.0);
+ms> emit1("one-shot-last-interval", m6.m41);
+
+# ---- the pose: LinearAnimation.sync's blend -----------------------------------------------
+
+# Rotation blends by the normalized lerp, not the slerp: at a quarter of 0 -> 1.2 rad m11 is
+# 0.9574 by nlerp and 0.9553 by slerp; swapping the port to slerp mismatches here. The two cases
+# after it blend at the midpoint, where nlerp and slerp agree, so they cannot tell them apart.
+case rotation-is-nlerp tol=1e-6
+haxe> var m7 = H.run([H.key(0,0,0,0,1,false), H.key(0,0,0,1.2,1,false)], 1, true, [0.25], 0);
+haxe> emit("rotation-is-nlerp", [m7._11, m7._13, m7._31, m7._33]);
+ms> const m7: Mat4 = run([slid(0.0), key(0.0, 0.0, 0.0, 1.2, 1.0, false)], 1.0, true, [0.25], 0.0);
+ms> emit4("rotation-is-nlerp", m7.m11, m7.m13, m7.m31, m7.m33);
+
+# A key stored on the far hemisphere (q and -q are one rotation) is flipped before the blend.
+case rotation-takes-the-near-hemisphere tol=1e-6
+haxe> var m8 = H.run([H.key(0,0,0,0.2,1,false), H.key(0,0,0,0.6,1,true)], 1, true, [0.5], 0);
+haxe> emit("rotation-takes-the-near-hemisphere", [m8._11, m8._13, m8._31, m8._33]);
+ms> const m8: Mat4 = run([key(0.0, 0.0, 0.0, 0.2, 1.0, false), key(0.0, 0.0, 0.0, 0.6, 1.0, true)],
+ms>     1.0, true, [0.5], 0.0);
+ms> emit4("rotation-takes-the-near-hemisphere", m8.m11, m8.m13, m8.m31, m8.m33);
+
+# Scale and rotation together: Heaps scales the rotation matrix's rows (prependScale).
+case scale-and-rotation-blend tol=1e-6
+haxe> var m9 = H.run([H.key(1,2,3,0,1,false), H.key(3,2,1,0.8,3,false)], 1, true, [0.5], 0);
+haxe> emit("scale-and-rotation-blend", [m9._11, m9._12, m9._13, m9._31, m9._33, m9._22,
+haxe>     m9._41, m9._42, m9._43]);
+ms> const m9: Mat4 = run([key(1.0, 2.0, 3.0, 0.0, 1.0, false), key(3.0, 2.0, 1.0, 0.8, 3.0, false)],
+ms>     1.0, true, [0.5], 0.0);
+ms> emit9("scale-and-rotation-blend", m9.m11, m9.m12, m9.m13, m9.m31, m9.m33, m9.m22,
+ms>     m9.m41, m9.m42, m9.m43);
+
+# Heaps prepends the pose to the object's own transform (`defaultTransform`, Object.hx:774), so
+# an object at x = 5 animated to x = 1 lands at 6; the port replaces the local transform, as a
+# glTF channel does, and lands at 1.
+case pose-over-a-rest-transform tol=1e-5 diverges=anim-pose-replaces-local
+haxe> var m10 = H.run([H.key(1,0,0,0,1,false)], 1, true, [0], 5);
+haxe> emit("pose-over-a-rest-transform", [m10._41]);
+ms> const m10: Mat4 = run([slid(1.0)], 1.0, true, [0.0], 5.0);
+ms> emit1("pose-over-a-rest-transform", m10.m41);
