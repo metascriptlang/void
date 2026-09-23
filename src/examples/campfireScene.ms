@@ -1076,9 +1076,10 @@ export function frameCampfire(): void {
 	// The low-res target's size does not depend on the camera, so the view is made twice: once
 	// to learn the texel grid the camera snaps to, and once with the remainder that snap left.
 	const noRemainder: float32 = 0.0;
+	const framebufferHeight: int32 = fbHeight();
 	const sized: Result<LowResView, ViewError> = renderer.viewFor(
 		fbWidth(),
-		fbHeight(),
+		framebufferHeight,
 		noRemainder,
 		noRemainder,
 	);
@@ -1141,7 +1142,7 @@ export function frameCampfire(): void {
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	shownView = cameraView;
 	shownBlit = viewed.value;
-	shownHeight = fbHeight();
+	shownHeight = framebufferHeight;
 	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
 	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
 	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
