@@ -409,3 +409,92 @@ Re-taken at reviewed tree `6d40d930e7a647731af48e0ad36d08f0c6df1028` from one
 | Oracle | 30 cases agree with real Heaps and 3 diverge as declared |
 | Allocation | zero frame-state growth over 300 frames; the guarded frame functions contain no `msArrayCopy` |
 | Android | arm64 `libVoidAndroid.so`, **2 385 624 bytes**; physical device still skipped |
+
+## M9 — animation clock, object keyframes and vertex-baked mesh frames
+
+**Verdict: SHIP WITH FOLLOW-UPS, after two send-backs on different causes.** The defect pass
+(`/code-review high`) and a fresh design reviewer read `git diff 3ce8c9b..303c785`. The design
+pass sent it back on three blockers. The re-review of `0dbc6a6`/`fbe9227` closed those three
+and sent it back again on a regression that the fix had introduced; `c632173` closed that one.
+The causes differ, so the brief's rule for two consecutive send-backs (the design is wrong) does
+not apply. Each fix below was verified in the main session with a mutation control or an oracle
+case, not taken from the reviewers' word.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | `bindTracks` wrote each target as it went, so a failed rebind returned an error and left the animation bound across two subtrees | Every name is resolved first; targets are written only when all resolve. Test "a rebind that fails keeps the previous binding whole" goes red when the old shape is restored |
+| 2 | `update` accepted a non-finite `dt`, and the NaN frame reached `as int32` and a `Vec` index | `update` returns `Result` and refuses a non-finite advance, leaving the clock where it was (tested) |
+| 3 | `addBakedFrames` had no caller, and a partial upload failure left orphan slots whose indices the caller never learned | The frames always take `frames.length` contiguous slots, and a refused frame keeps its CPU data for the rebuild. One campfire stone now runs upload, swap and the mid-run rebuild in every capture |
+| 4 | A zero-frame clock divided by zero in `keys()` and read `keys[0]` of an empty `Vec`; the campfire's placeholder was one | `keys()` holds key 0 for fewer than two frames; `addTrack`, `forMeshes` and `syncPose` refuse `NoFrames` (tested) |
+| 5 | `forMeshes` accepted negative mesh indices, and `-1` collided with the "nothing shown" sentinel | `BadMesh`; the sentinel is a private `NO_MESH` (tested) |
+| 6 | The spin freezes after 32 keys, and no gate ran `syncPose` at runtime | Kept, and the doc now says the spin holds its last key (the captures end at frame 16). The bench now turns the spin on, so `syncPose` runs across its 300 frames |
+| 7 | The gate's pending-stage comment still counted three enforced rows | Rewritten without a count |
+| 8 | Comments over the playbook's length, including narrative history in the allocation stage | Trimmed to the external facts |
+| 9 | A local `isFinite` duplicated std | `Number.isFinite` |
+| 10 | `bound` and `hasSynced` duplicate derivable state; the allocation stage skipped the callees | The flags stay, because each has one writer and a test. The stage now also covers `keys`, `blendTo`, `setLocal` and `setMeshOf` |
+
+### Design pass
+
+**First pass: SEND BACK.**
+
+- **Partial rebind.** The same bug as defect 1, verified independently by a probe.
+- **Two divergences from Heaps were not written down.** `setFrame(8)` on four keys gave frame 0
+  where Heaps' `while` loops stop on 4. A frame in (−1, 0) held key 0 where Heaps' truncating
+  `Std.int` extrapolates backwards. Fixes: `setFrame` now matches the loops, and the one-shot
+  case agrees with Heaps at 30 where the old port gave key 0. The row is renamed to
+  `anim-never-extrapolates` and now covers both ends, with a new oracle case,
+  `negative-speed-below-first-key` (Heaps −5, port 0).
+- **`addBakedFrames` was untested.** Closed at the capture level, as defect 3.
+- **Follow-ups the pass raised, all taken:**
+  - The `syncPose` cache hid a target removed after a sync. Targets are now checked with
+    `isLive` before the cache.
+  - The cache could not be cleared when another writer moved a node. `forgetSync` does that
+    now.
+  - A one-key linear clip reported a change on every tick.
+  - `blendPose` is now the extension `blendTo`.
+
+  Each has a test, and the stale-target test goes red when the `isLive` check is removed.
+
+**Second pass: SEND BACK, one regression.** While fixing `setFrame` I had made a loop at
+`frameCount` show key 0, and I explained the oracle's 0 as "weight 1 blends into key 0". That
+was wrong. `LinearAnimation.sync` clamps `frame >= frameCount` to the last key whether or not
+the clip loops (`LinearAnimation.hx:153`). The oracle read 0 only because its helper's
+`update` wrapped the frame first (`Animation.hx:340`). The reviewer showed it with a speed-0
+case: Heaps 30, port 0. `c632173` restores the clamp and keeps that case as
+`loop-at-frame-count-shows-last-key`. It now agrees with Heaps, and the comment on the other
+case names the real mechanism.
+
+**What the passes found sound:**
+
+- No Hibernal vocabulary in `src/void3d`.
+- The frame path allocates nothing. The gate checks it, and the reviewer also scanned the
+  emitted C of the callees.
+- Baked frames rebuild through the M5 path by construction.
+- The byte-identity claim comes from a readback the reviewer re-ran.
+- The tests that discriminate: the hemisphere flip, the cache, and the 12-changes count.
+
+### Carried into M10 and later
+
+- There is no headless test of `addBakedFrames`' first-index contract or of its refused-upload
+  path. Both need a GPU, and today they are covered only by the captures.
+- The stepped clock decides a key boundary with `floor` on an accumulated float. A rate that
+  is not a binary fraction can show a key one update late (measured: 1/3 per frame).
+- No glTF animation is decoded. The exporter's encoding is an open question in
+  `docs/VOID3D.md`.
+- `libVoidAndroid.so` grew 110 416 bytes over M8. The growth is not attributed.
+
+### Numbers
+
+Taken at code tree `98781380` from one `sh scripts/gate3d.sh` run.
+
+| | |
+|---|---|
+| Gate | GREEN with **1 SKIP** (`device`) |
+| Tests | **654**, 27 added by M9; 627 before M9 |
+| Capture | seven configurations × four frames, byte-identical; no baseline replaced |
+| Baselines | 24, checked against `docs/baselines3d.sha256` |
+| Oracle | 41 cases agree with real Heaps and 6 diverge as declared, over three files |
+| Allocation | zero frame-state growth over 300 frames with the spin animating; no `ArrayCopy` in the eleven guarded frame functions, read from freshly emitted C |
+| Android | arm64 `libVoidAndroid.so`, **2 496 040 bytes**; physical device still skipped |
