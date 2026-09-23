@@ -255,7 +255,7 @@ row and two three-value port rows silently mismatch rather than failing usefully
 - **Not ported:** `Interactive`'s events, cursor, `priority`, `preciseShape`, `propagateEvents` and `showDebug`; the all-hits list `rayCastEventTargets` returns (only the nearest is kept, so nothing allocates); `bestMatch = false`; `Bounds.transform3x3` and `intersection`, which the pick path does not need; `Ray.collide`, `distance`, `intersect` and `collideFrustum`; `Polygon`/`TriPlane` (`PolygonBuffer` works on the index buffer directly and needs no per-triangle precompute); every collider but bounds and triangles; hlphysics.
 - **No second screen mapping.** The campfire keeps the `CameraView` and the shifted `LowResView` the last frame was drawn with. `campfireTap(x, y)` takes host pixels, rows counted from the top as sokol_app and Android deliver them. It flips the row on GL, whose blit counts rows from the bottom, then calls `rayFromScreen` through that pair and `pickNearest`. `campfirePixelOf(node)` goes the other way, and is a `Result` that refuses a stale or non-mesh node.
 
-**Acceptance, at the review-fix tree.** The gate is GREEN with 1 skip (device).
+**Acceptance, at tree `25796ff5`** (*test(void3d): pin mirrored parents and two-sided picks against Heaps*). The gate is GREEN with 1 skip (device).
 - **Tests.** **767**, 22 of them new, all headless. They cover:
   - the ray, and the slab test in five cases;
   - the triangle test under all three cullings, and all five box faces plus the plane;

@@ -498,3 +498,108 @@ Taken at code tree `98781380` from one `sh scripts/gate3d.sh` run.
 | Oracle | 41 cases agree with real Heaps and 6 diverge as declared, over three files |
 | Allocation | zero frame-state growth over 300 frames with the spin animating; no `ArrayCopy` in the eleven guarded frame functions, read from freshly emitted C |
 | Android | arm64 `libVoidAndroid.so`, **2 496 040 bytes**; physical device still skipped |
+
+## M10 — rays, bounds and triangle hits, and the nearest pickable object under a tap
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one send-back.** Two passes read `git diff ab237d1..a3c30ae`: the defect pass
+(`/code-review high`) and a fresh design reviewer. The design pass sent the milestone back on two
+blockers, and both were in the fidelity record, not in the code. `3c4bec7` and `a55ba60` close
+them together with the defect findings. The re-review of `a3c30ae..a55ba60` then gave
+SHIP WITH FOLLOW-UPS. Every fix below was verified in the main session with a mutation control, an
+oracle case or a gate run, not taken on the reviewers' word.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | `campfireTap` passed host rows to `rayFromScreen` with `originTopLeft()`. On GL that function counts rows from the bottom, while touch rows count from the top | `campfireTap` and `campfirePixelOf` take and return host pixels, rows from the top, and flip the row on GL. The `pick` stage runs only the D3D11 branch, and the doc says so |
+| 2 | A mirroring world matrix turns the winding over on screen, so the pick kept exactly the faces the GPU culls | `seenThrough` swaps `Back` and `Front` when the world 3×3 determinant is negative. The mirror test goes red when the swap is removed |
+| 3 | The scale-0 test guarded dead code: a zero direction already fails every triangle's determinant | The guard is gone. The test stays as behaviour, and the doc gives the real mechanism |
+| 4 | A mesh or material index outside the tables was skipped as a miss | `PickError.MeshOutOfRange` / `MaterialOutOfRange`, tested |
+| 5 | `campfirePixelOf` indexed without checking that the node is live or is a mesh | It returns `Result<Vec3, SceneError>`, and the gate entry fails loudly on an error |
+| 6 | The culling divergence was argued as forced by the inward-wound box builders, when those should be fixed instead | **Fixed at the root.** `addBox`'s top, right and left quads and `addPlane` were wound clockwise from outside; front and back already faced out. They are rewound, and the 28 capture frames stay byte-identical. The culling row now stands on its own: pick what the pass draws |
+| 7 | The status line claimed M10 reviewed before a review existed | Closed by this section |
+| 8 | `run_pick` FAILed without the gitignored readback harness | It SKIPs, as `run_captures` does |
+| 9 | The owner walk is O(nodes × depth) | Kept and written under "Still missing". At tens of nodes and a tap per second it is not measurable, and carrying the owner down would take a second stack in `Scene` |
+| 10 | Comments that restate the code | Removed. `PickHit.node` is renamed `owner`, which makes its comment unnecessary |
+
+### Design pass
+
+**First pass: SEND BACK.**
+
+1. **A divergence was presented as Heaps behaviour.** `getCollider()` always yields an
+   `ObjectCollider` or a `GroupCollider` (`Object.hx:679-710`), so `rayCastEventTargets`'
+   downcast to `OptimizedCollider` is null and `checkInside` is never set (`Scene.hx:331`).
+   I verified this in source. Measured against real Heaps, a ray starting inside a mesh's
+   bounds gives Heaps −1 and the port 1, and the same collider with the flag set by hand
+   agrees with the port. That is `pick-origin-inside-bounds`, with a `diverges=` case and a
+   control case. Three more consequences of a flag in place of a collider are
+   `pick-owner-is-a-flag`: hidden children, nested pickable nodes, and live geometry against
+   a snapshot. Each is pinned by a test.
+2. **The ordering argument was false.** The M4 eye is the target, in the middle of the depth
+   range, so Heaps' distance from `camera.pos` does not order hits along the ray.
+   `pick-distance-from-ray-origin` pins the port's order with two triangles 0.8 apart
+   across the eye.
+
+**Follow-ups the pass raised, taken:**
+
+- The gate's `allocation` stage now also checks the pick entry's C. Control: an injected
+  `Vec` copy in `meshHit` fails it (`meshHit=1`).
+- The `pick` stage no longer claims to tap the drawn image. It says each tap is aimed
+  through `project`, and the doc says what that leaves unproved.
+- `pickableOwner` and `meshHit` are extensions.
+- The compiler card's `Parked at:` names `cameraCheck.ms` too.
+- The first-person history is out of the doc.
+
+**Follow-ups the pass raised, not taken:** a readback in the `pick` stage, a hit-proxy shape
+table, a `DrawContext` overload, the two thresholds stricter than Heaps', and one `BitSet` for
+all scene flags. Each is written under "Still missing after M10" or already has its
+PENDING3D row.
+
+**Re-review of `a3c30ae..a55ba60`: SHIP WITH FOLLOW-UPS.** The reviewer re-ran the gate and
+one mutation of its own: dropping the mirror swap reddens exactly one test. It checked the
+rewound quads' cross products by hand and found all five sides and the plane facing outward.
+Each rewound quad keeps its a–c diagonal, so the set of triangles is unchanged, which is why
+the captures did not move. It confirmed the GL row flip against `texelAt` and `ndcOf`, and
+confirmed that the fail-loud errors cannot fire in the campfire, because every external mesh
+has an empty `MeshData` slot. Of its seven follow-ups, `c30e7d6` takes five:
+
+- a test with a mirroring parent over a `Face.Front` child, and a second mirror cancelling it;
+- `triangle-back-two-sided`, a `diverges=` case that puts `pick-culling-follows-material`
+  under the oracle (Heaps −1, port 5);
+- the outward-faces test pinned to exact entry and exit distances;
+- a mesh-index check in `campfirePixelOf`;
+- `pick.ms` added to the receiver-rule compiler card's list of sites.
+
+It also noted that Heaps' own `new Interactive(obj.getCollider(), obj)` transforms the ray
+twice; that note is now in `pick-owner-is-a-flag`. One follow-up is left: the GL row flip
+lives in the example, and nothing runs it.
+
+**What the passes found sound:** each piece is the Heaps function it names, and 20 oracle
+cases agree. No Hibernal vocabulary is in `src/void3d`. There is no new GPU resource. The
+frame path is unchanged, and the gate now also holds the pick path to no array copy. The
+headless tests work at the arithmetic level.
+
+### Carried into M11 and later
+
+- There is no hit proxy (`Interactive.shape`): a thin model picks only by exact triangles.
+- The `pick` stage never reads a pixel back. GL's row flip lives in the example and has never
+  run.
+- Owners cost O(nodes × depth), and nothing is timed.
+- `pickNearest` takes two spans, and nothing stops a caller mixing two contexts' tables.
+- Two thresholds are stricter than Heaps': `inverseAffine` 1e-10 against `EPSILON2` 1e-20.
+
+### Numbers
+
+Taken at tree `25796ff5` (*test(void3d): pin mirrored parents and two-sided picks against Heaps*) from one `sh scripts/gate3d.sh` run.
+
+| | |
+|---|---|
+| Gate | GREEN with **1 SKIP** (`device`) |
+| Tests | **767**, 22 added by M10; 745 before M10 on this rebased tree |
+| Capture | seven configurations × four frames byte-identical, the rewound builders included; no baseline replaced |
+| Oracle | 61 agree with real Heaps and 10 diverge as declared, over four files; `ray3d.cases` 20 + 4 |
+| Pick | 3 taps through the drawn view with a snap remainder, all right; control red |
+| Allocation | no `ArrayCopy` in the 11 frame-path functions or the 7 pick-path functions |
+| PENDING3D | 19 rows (14 before M10: +5 new, and the builder row opened and closed) |
+| Android | arm64 `libVoidAndroid.so`, **2 508 392 bytes** (+12 096 over M9); physical device still skipped |
