@@ -25,3 +25,21 @@ adb exec-out screencap -p > gles3Campfire.png
 
 Read `docs/VOID3D.md`, "The scope of every pixel claim", for what this frame does and does not
 establish. The short version: it ran on the **Android emulator**, not on a device.
+
+## `gles3Particles.png`
+
+The M11 path on GLES3: the campfire with the night palette on, snow and embers on stream meshes,
+drawn by the `Particle` program. It was taken on the **Android emulator** (`pixellight` AVD,
+x86_64 running the arm64 library under translation, `ro.hardware.egl=emulation`) on 2026-09-24,
+at `main` after `2936e0b` plus the campfire's framebuffer-height fix. The frame has 24 colours:
+the palette's 21 plus the system navigation bar.
+
+The entry is the Android entry with two configuration calls added before `registerVoid()`:
+
+```
+configureCampfire(PixelArtSettings.full(), true);
+configureCampfireParticles(true);
+```
+
+The build, install and screenshot are the recipe above, with that entry in place of
+`out/tmp/android/campfireEntry.ms` (the file used was `out/tmp/android/campfireParticlesEntry.ms`).
