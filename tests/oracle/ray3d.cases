@@ -1,0 +1,220 @@
+# h3d.col.Ray, Bounds.rayIntersection, PolygonBuffer.rayIntersection and ObjectCollider against
+# src/void3d/ray.ms, bounds.ms, meshData.ms and pick.ms.
+#
+# Same shape as bounds3d.cases: no expected answer here; `sh scripts/oracle.sh regen
+# tests/oracle/ray3d.cases` replays the Haxe side through real Heaps and commits the snapshot.
+# Scene.rayCastEventTargets needs an h3d.scene.Scene, which needs a window on node (see
+# scene3d.cases), so the scene-level case goes through ObjectCollider, which is the same
+# inverse-transform, local hit and world distance for one object. Heaps' PolygonBuffer always
+# culls back faces, so the port's side of every triangle case passes Face.Back.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.col.Bounds;
+# haxe-prelude: import h3d.col.Ray;
+# haxe-prelude: import h3d.col.Point;
+# haxe-prelude: import h3d.col.PolygonBuffer;
+# haxe-prelude: import h3d.col.ObjectCollider;
+# haxe-prelude: import h3d.scene.Object;
+# haxe-prelude: class H {
+# haxe-prelude: 	public static function box(): Bounds { return Bounds.fromValues(-1, -1, -1, 2, 2, 2); }
+# haxe-prelude: 	public static function hit(d: Float): Float { return d < 0 ? 0 : 1; }
+# haxe-prelude: 	public static function poly(points: Array<Float>): PolygonBuffer {
+# haxe-prelude: 		var p = new PolygonBuffer();
+# haxe-prelude: 		var idx = [for (i in 0...Std.int(points.length / 3)) i];
+# haxe-prelude: 		var buffer = new haxe.ds.Vector<hxd.impl.Float32>(points.length);
+# haxe-prelude: 		for (i in 0...points.length) buffer[i] = points[i];
+# haxe-prelude: 		p.setData(buffer, haxe.ds.Vector.fromArrayCopy(idx));
+# haxe-prelude: 		return p;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function tri(z: Float): PolygonBuffer {
+# haxe-prelude: 		return poly([-1, -1, z, 1, -1, z, 0, 1, z]);
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function node(px: Float, py: Float, pz: Float, ry: Float,
+# haxe-prelude: 			sx: Float, sy: Float, sz: Float): Object {
+# haxe-prelude: 		var o = new Object(new Object());
+# haxe-prelude: 		o.x = px; o.y = py; o.z = pz;
+# haxe-prelude: 		o.setRotation(0, ry, 0);
+# haxe-prelude: 		o.scaleX = sx; o.scaleY = sy; o.scaleZ = sz;
+# haxe-prelude: 		return o;
+# haxe-prelude: 	}
+# haxe-prelude: 	public static function through(o: Object, x: Float, y: Float): Ray {
+# haxe-prelude: 		var m = o.getAbsPos();
+# haxe-prelude: 		var a = new Point(x, y, 5); a.transform(m);
+# haxe-prelude: 		var b = new Point(x, y, 0); b.transform(m);
+# haxe-prelude: 		return Ray.fromPoints(a, b);
+# haxe-prelude: 	}
+# haxe-prelude: }
+#
+# ms-prelude: import { Vec3, vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
+# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
+# ms-prelude: import { Bounds } from "../../../src/void3d/bounds";
+# ms-prelude: import { Ray } from "../../../src/void3d/ray";
+# ms-prelude: import { MeshData, Rgba, addVertex, addTriangle } from "../../../src/void3d/meshData";
+# ms-prelude: import { Face, RenderState } from "../../../src/void3d/pass";
+# ms-prelude: import { Material, Phase } from "../../../src/void3d/material";
+# ms-prelude: import { Program } from "../../../src/void3d/gpu3d";
+# ms-prelude: import {
+# ms-prelude: 	Scene, NodeId, Transform3D, SceneError, NO_NODE, addMeshNode, setPickable, syncWorld,
+# ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import { PickHit, PickError, pickNearest } from "../../../src/void3d/pick";
+# ms-prelude:
+# ms-prelude: const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+# ms-prelude: function box(): Bounds { return Bounds.fromValues(-1.0, -1.0, -1.0, 2.0, 2.0, 2.0); }
+# ms-prelude: function ray(ox: float32, oy: float32, oz: float32,
+# ms-prelude: 		dx: float32, dy: float32, dz: float32): Ray {
+# ms-prelude: 	return Ray.fromPoints(vec3(ox, oy, oz), vec3(ox + dx, oy + dy, oz + dz));
+# ms-prelude: }
+# ms-prelude: function hit(d: float32): boolean { return !(d < 0.0); }
+# ms-prelude: function poly(points: Vec<float32>): MeshData {
+# ms-prelude: 	let data: MeshData = MeshData.empty();
+# ms-prelude: 	const up: Vec3 = vec3(0.0, 0.0, 1.0);
+# ms-prelude: 	const count: int32 = (points.length as int32) / 3;
+# ms-prelude: 	for (let i = 0; i < count; i++) {
+# ms-prelude: 		const p: Vec3 = vec3(points[i * 3], points[i * 3 + 1], points[i * 3 + 2]);
+# ms-prelude: 		const _v: int32 = addVertex(data, p, up, WHITE).ok ? 0 : 0;
+# ms-prelude: 	}
+# ms-prelude: 	for (let t = 0; t < count / 3; t++) {
+# ms-prelude: 		const _t: int32 = addTriangle(data, t * 3, t * 3 + 1, t * 3 + 2).ok ? 0 : 0;
+# ms-prelude: 	}
+# ms-prelude: 	return data;
+# ms-prelude: }
+# ms-prelude: function tri(z: float32): MeshData {
+# ms-prelude: 	const points: Vec<float32> = [-1.0, -1.0, z, 1.0, -1.0, z, 0.0, 1.0, z];
+# ms-prelude: 	return poly(points);
+# ms-prelude: }
+# ms-prelude: function placed(px: float32, py: float32, pz: float32, ry: float32,
+# ms-prelude: 		sx: float32, sy: float32, sz: float32): Transform3D {
+# ms-prelude: 	return {
+# ms-prelude: 		position: vec3(px, py, pz), rotation: eulerQuat(0.0, ry, 0.0), scale: vec3(sx, sy, sz),
+# ms-prelude: 	};
+# ms-prelude: }
+# ms-prelude: function culledBack(): Vec<Material> {
+# ms-prelude: 	const state: RenderState = RenderState.defaults();
+# ms-prelude: 	return [Material.plain(Program.Lit, state.withCulling(Face.Back), Phase.Opaque)];
+# ms-prelude: }
+# ms-prelude: const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
+# ms-prelude: const NO_HIT: PickHit = {
+# ms-prelude: 	node: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 },
+# ms-prelude: };
+# ms-prelude: struct Picked { scene: Scene; node: NodeId; }
+# ms-prelude: function onePickable(t: Transform3D): Picked {
+# ms-prelude: 	let scene: Scene = Scene.create();
+# ms-prelude: 	const made: Result<NodeId, SceneError> = addMeshNode(scene, scene.rootId(), t, 0, 0);
+# ms-prelude: 	const id: NodeId = made.ok ? made.value : NO_ID;
+# ms-prelude: 	const _marked: boolean = setPickable(scene, id, true).ok;
+# ms-prelude: 	const _synced: int32 = syncWorld(scene);
+# ms-prelude: 	return { scene: scene, node: id };
+# ms-prelude: }
+# ms-prelude: function through(scene: Scene, id: NodeId, x: float32, y: float32): Ray {
+# ms-prelude: 	const w: Mat4 = scene.nodes[id.index].world;
+# ms-prelude: 	return Ray.fromPoints(vec3(x, y, 5.0) * w, vec3(x, y, 0.0) * w);
+# ms-prelude: }
+# ms-prelude: function pickIn(ref scene: Scene, mesh: MeshData, r: Ray): PickHit {
+# ms-prelude: 	const meshes: Vec<MeshData> = [mesh];
+# ms-prelude: 	const materials: Vec<Material> = culledBack();
+# ms-prelude: 	const picked: Result<PickHit, PickError> = pickNearest(scene, meshes, materials, r);
+# ms-prelude: 	return picked.ok ? picked.value : NO_HIT;
+# ms-prelude: }
+#
+# The link keepalive of scene3d.cases, for the same reason and the same compiler card
+# (~/metascript/.inbox/compiler/2026-09-20-unused-module-drops-compile.md).
+# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
+
+# ---- h3d.col.Ray ----------------------------------------------------------------------------
+
+case ray-from-points-direction tol=1e-6
+haxe> var r1 = Ray.fromPoints(new Point(1, 2, 3), new Point(4, 6, 3)); emit("ray-from-points-direction", [r1.lx, r1.ly, r1.lz]);
+ms> const r1: Ray = Ray.fromPoints(vec3(1.0, 2.0, 3.0), vec3(4.0, 6.0, 3.0)); emit3("ray-from-points-direction", r1.direction.x, r1.direction.y, r1.direction.z);
+
+# Ray.transform: the origin as a point, the direction through the 3x3 and renormalized, under
+# a turned, non-uniformly scaled and moved object's matrix.
+case ray-transformed-origin tol=1e-5
+haxe> var o2 = H.node(5, 0, 0, 0.7, 2, 3, 1); var r2 = Ray.fromValues(1, 0, 0, 1, 1, 0); r2.transform(o2.getAbsPos()); emit("ray-transformed-origin", [r2.px, r2.py, r2.pz]);
+ms> const n2: Picked = onePickable(placed(5.0, 0.0, 0.0, 0.7, 2.0, 3.0, 1.0)); const r2: Ray = ray(1.0, 0.0, 0.0, 1.0, 1.0, 0.0).transformed(n2.scene.nodes[n2.node.index].world); emit3("ray-transformed-origin", r2.origin.x, r2.origin.y, r2.origin.z);
+
+case ray-transformed-direction tol=1e-5
+haxe> var o3 = H.node(5, 0, 0, 0.7, 2, 3, 1); var r3 = Ray.fromValues(1, 0, 0, 1, 1, 0); r3.transform(o3.getAbsPos()); emit("ray-transformed-direction", [r3.lx, r3.ly, r3.lz]);
+ms> const n3: Picked = onePickable(placed(5.0, 0.0, 0.0, 0.7, 2.0, 3.0, 1.0)); const r3: Ray = ray(1.0, 0.0, 0.0, 1.0, 1.0, 0.0).transformed(n3.scene.nodes[n3.node.index].world); emit3("ray-transformed-direction", r3.direction.x, r3.direction.y, r3.direction.z);
+
+# ---- Bounds.rayIntersection ------------------------------------------------------------------
+
+case bounds-ray-entry tol=1e-6
+haxe> emit("bounds-ray-entry", [H.box().rayIntersection(Ray.fromValues(0.5, 0, 5, 0, 0, -1), true)]);
+ms> emit1("bounds-ray-entry", box().rayIntersection(ray(0.5, 0.0, 5.0, 0.0, 0.0, -1.0)));
+
+case bounds-ray-oblique-entry tol=1e-5
+haxe> emit("bounds-ray-oblique-entry", [H.box().rayIntersection(Ray.fromValues(-5, 0.3, 4, 1, 0, -1), true)]);
+ms> emit1("bounds-ray-oblique-entry", box().rayIntersection(ray(-5.0, 0.3, 4.0, 1.0, 0.0, -1.0)));
+
+case bounds-ray-beside tol=0
+haxe> emit("bounds-ray-beside", [H.box().rayIntersection(Ray.fromValues(3, 0, 5, 0, 0, -1), true)]);
+ms> emit1("bounds-ray-beside", box().rayIntersection(ray(3.0, 0.0, 5.0, 0.0, 0.0, -1.0)));
+
+# A box wholly behind the ray answers its (negative) entry, not -1.
+case bounds-ray-behind tol=1e-6
+haxe> emit("bounds-ray-behind", [H.box().rayIntersection(Ray.fromValues(0, 0, 5, 0, 0, 1), true)]);
+ms> emit1("bounds-ray-behind", box().rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, 1.0)));
+
+case bounds-ray-around-origin tol=1e-6
+haxe> emit("bounds-ray-around-origin", [H.box().rayIntersection(Ray.fromValues(0, 0, 0.5, 0, 0, -1), true)]);
+ms> emit1("bounds-ray-around-origin", box().rayIntersection(ray(0.0, 0.0, 0.5, 0.0, 0.0, -1.0)));
+
+# A zero direction component with the origin on that axis's face plane is 0/0 in Heaps, and
+# hxd.Math.min/max return their first argument against a NaN: on the max face the slab
+# collapses to -inf and every ray misses; on the min face the NaN reaches the result, which is
+# not below zero, so every ray hits. The port counts both faces as inside the slab.
+case bounds-ray-on-max-face-crossing tol=0 diverges=ray-bounds-parallel-on-face
+haxe> emit("bounds-ray-on-max-face-crossing", [H.hit(H.box().rayIntersection(Ray.fromValues(1, 0, 5, 0, 0, -1), true))]);
+ms> emitB("bounds-ray-on-max-face-crossing", hit(box().rayIntersection(ray(1.0, 0.0, 5.0, 0.0, 0.0, -1.0))));
+
+case bounds-ray-on-min-face-outside tol=0 diverges=ray-bounds-parallel-on-face
+haxe> emit("bounds-ray-on-min-face-outside", [H.hit(H.box().rayIntersection(Ray.fromValues(-1, 5, 5, 0, 0, -1), true))]);
+ms> emitB("bounds-ray-on-min-face-outside", hit(box().rayIntersection(ray(-1.0, 5.0, 5.0, 0.0, 0.0, -1.0))));
+
+case bounds-ray-on-max-face-outside tol=0
+haxe> emit("bounds-ray-on-max-face-outside", [H.hit(H.box().rayIntersection(Ray.fromValues(1, 5, 5, 0, 0, -1), true))]);
+ms> emitB("bounds-ray-on-max-face-outside", hit(box().rayIntersection(ray(1.0, 5.0, 5.0, 0.0, 0.0, -1.0))));
+
+case bounds-ray-on-min-face-crossing tol=0
+haxe> emit("bounds-ray-on-min-face-crossing", [H.hit(H.box().rayIntersection(Ray.fromValues(-1, 0, 5, 0, 0, -1), true))]);
+ms> emitB("bounds-ray-on-min-face-crossing", hit(box().rayIntersection(ray(-1.0, 0.0, 5.0, 0.0, 0.0, -1.0))));
+
+# ---- PolygonBuffer.rayIntersection (Moller-Trumbore) -----------------------------------------
+
+case triangle-front tol=1e-6
+haxe> emit("triangle-front", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, 5, 0, 0, -1), true)]);
+ms> emit1("triangle-front", tri(0.0).rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, -1.0), Face.Back));
+
+case triangle-back tol=0
+haxe> emit("triangle-back", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -5, 0, 0, 1), true)]);
+ms> emit1("triangle-back", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.Back));
+
+case triangle-beside tol=0
+haxe> emit("triangle-beside", [H.tri(0).rayIntersection(Ray.fromValues(0.9, 0.9, 5, 0, 0, -1), true)]);
+ms> emit1("triangle-beside", tri(0.0).rayIntersection(ray(0.9, 0.9, 5.0, 0.0, 0.0, -1.0), Face.Back));
+
+case triangle-behind-origin tol=0
+haxe> emit("triangle-behind-origin", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -1, 0, 0, -1), true)]);
+ms> emit1("triangle-behind-origin", tri(0.0).rayIntersection(ray(0.0, 0.0, -1.0, 0.0, 0.0, -1.0), Face.Back));
+
+case triangle-nearest-of-two tol=1e-6
+haxe> emit("triangle-nearest-of-two", [H.poly([-1, -1, 0, 1, -1, 0, 0, 1, 0, -1, -1, 2, 1, -1, 2, 0, 1, 2]).rayIntersection(Ray.fromValues(0, 0, 5, 0, 0, -1), true)]);
+ms> const q6: Vec<float32> = [-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 2.0, 1.0, -1.0, 2.0, 0.0, 1.0, 2.0]; emit1("triangle-nearest-of-two", poly(q6).rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, -1.0), Face.Back));
+
+case triangle-oblique tol=1e-5
+haxe> emit("triangle-oblique", [H.poly([0, 0, 0, 2, 0.5, 0.3, 0.4, 1.8, -0.2]).rayIntersection(Ray.fromValues(0.7, 0.6, 5, -0.05, -0.02, -1), true)]);
+ms> const q7: Vec<float32> = [0.0, 0.0, 0.0, 2.0, 0.5, 0.3, 0.4, 1.8, -0.2]; emit1("triangle-oblique", poly(q7).rayIntersection(ray(0.7, 0.6, 5.0, -0.05, -0.02, -1.0), Face.Back));
+
+# ---- ObjectCollider: one object's inverse transform, local hit, world distance ---------------
+
+case object-hit-world-distance tol=1e-5
+haxe> var o8 = H.node(4, 1, -2, 0.7, 2, 3, 2); var r8 = H.through(o8, 0.1, 0.2); emit("object-hit-world-distance", [new ObjectCollider(o8, H.tri(0)).rayIntersection(r8, true)]);
+ms> let n8: Picked = onePickable(placed(4.0, 1.0, -2.0, 0.7, 2.0, 3.0, 2.0)); const r8: Ray = through(n8.scene, n8.node, 0.1, 0.2); emit1("object-hit-world-distance", pickIn(n8.scene, tri(0.0), r8).distance);
+
+case object-hit-world-point tol=1e-5
+haxe> var o9 = H.node(4, 1, -2, 0.7, 2, 3, 2); var r9 = H.through(o9, 0.1, 0.2); var d9 = new ObjectCollider(o9, H.tri(0)).rayIntersection(r9, true); var p9 = r9.getPoint(d9); emit("object-hit-world-point", [p9.x, p9.y, p9.z]);
+ms> let n9: Picked = onePickable(placed(4.0, 1.0, -2.0, 0.7, 2.0, 3.0, 2.0)); const r9: Ray = through(n9.scene, n9.node, 0.1, 0.2); const p9: Vec3 = pickIn(n9.scene, tri(0.0), r9).point; emit3("object-hit-world-point", p9.x, p9.y, p9.z);
+
+case object-miss-beside tol=0
+haxe> var o10 = H.node(4, 1, -2, 0.7, 2, 3, 2); var r10 = H.through(o10, 0.9, 0.9); emit("object-miss-beside", [new ObjectCollider(o10, H.tri(0)).rayIntersection(r10, true)]);
+ms> let n10: Picked = onePickable(placed(4.0, 1.0, -2.0, 0.7, 2.0, 3.0, 2.0)); const r10: Ray = through(n10.scene, n10.node, 0.9, 0.9); emit1("object-miss-beside", pickIn(n10.scene, tri(0.0), r10).distance);
