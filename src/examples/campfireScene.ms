@@ -23,6 +23,7 @@ import {
 	destroyImage,
 	destroyView,
 	destroySampler,
+	originTopLeft,
 } from "../void3d/gpu3d";
 import { RenderState, Face, Compare } from "../void3d/pass";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
@@ -41,6 +42,7 @@ import {
 	writeUniforms,
 } from "../void3d/draw";
 import { LowResView, ViewError } from "../void3d/blit";
+import { Bounds } from "../void3d/bounds";
 import { PaletteError } from "../void3d/palette";
 import {
 	PixelArtRenderer,
@@ -52,7 +54,7 @@ import {
 	setSettings,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { Vec3, vec3, eulerQuat, quatBetween } from "../math/math3d";
+import { Vec3, vec3, eulerQuat, quatBetween, identity } from "../math/math3d";
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
 import {
 	Scene,
@@ -70,6 +72,7 @@ import {
 	setName,
 	setLightPower,
 	setAmbient,
+	setPickable,
 	collectLights,
 	refresh,
 } from "../void3d/scene";
@@ -93,6 +96,8 @@ import {
 	CameraError,
 	CAMERA_BLOCK_LENGTH,
 } from "../void3d/camera";
+import { Ray } from "../void3d/ray";
+import { PickHit, PickError, pickNearest } from "../void3d/pick";
 
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;
@@ -173,6 +178,9 @@ let flameNode: NodeId = { index: -1, generation: 0 };
 // transform to propagate through. The group sits at the identity unless a check turns it, and
 // `local * identity` is exact, so the six standing configurations see the same pixels.
 let logGroup: NodeId = { index: -1, generation: 0 };
+let firstLogNode: NodeId = { index: -1, generation: 0 };
+let bakedStoneNode: NodeId = { index: -1, generation: 0 };
+let plainStoneNode: NodeId = { index: -1, generation: 0 };
 let fireLight: NodeId = { index: -1, generation: 0 };
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
@@ -224,6 +232,22 @@ let fireOffsetX: float32 = 0.0;
 let fireOffsetY: float32 = 0.0;
 let fireOffsetZ: float32 = 0.0;
 let fireFlicker: float32 = 1.0;
+// The camera and blit the last frame was drawn with: a tap is read through these.
+let shownView: CameraView = {
+	eye: vec3(0.0, 0.0, 0.0),
+	basis: {
+		right: vec3(0.0, 0.0, 0.0),
+		up: vec3(0.0, 0.0, 0.0),
+		forward: vec3(0.0, 0.0, 0.0),
+	},
+	viewProj: identity(),
+	remainderX: 0.0,
+	remainderY: 0.0,
+	texelWidth: 0,
+	texelHeight: 0,
+	worldPerTexel: 0.0,
+};
+let shownBlit: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offsetY: 0.0 };
 
 // The spike's look: outline and fog tuned on the campfire, palette off.
 function campfireLook(): PixelArtLook {
@@ -584,6 +608,8 @@ function setupDraws(): void {
 	if (!fire.ok) { console.log("campfire: setupDraws bailed at the fire light"); return; }
 	fireLight = fire.value;
 	logGroup = group.value;
+	const logsPickable: Result<int32, SceneError> = setPickable(tree, logGroup, true);
+	if (!logsPickable.ok) { console.log("campfire: setupDraws bailed at the pickable logs"); return; }
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
 			const placed: Result<int32, AnimationError> =
@@ -599,6 +625,8 @@ function setupDraws(): void {
 		const placed: Result<NodeId, SceneError> =
 			addMeshNode(tree, under, placements[i], uploaded.value, litMaterial);
 		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
+		if (i == firstLogPiece) { firstLogNode = placed.value; }
+		if (i == BAKED_STONE + 1) { plainStoneNode = placed.value; }
 	}
 	grassMesh = addMesh(
 		context,
@@ -641,6 +669,9 @@ function placeBakedStone(
 	if (!placed.ok) { return Result.err(AnimationError.StaleTarget); }
 	const named: Result<int32, SceneError> = setName(tree, placed.value, "bakedStone");
 	if (!named.ok) { return Result.err(AnimationError.StaleTarget); }
+	const marked: Result<int32, SceneError> = setPickable(tree, placed.value, true);
+	if (!marked.ok) { return Result.err(AnimationError.StaleTarget); }
+	bakedStoneNode = placed.value;
 	return Result.ok(placed.value.index);
 }
 
@@ -795,6 +826,41 @@ export function campfireStats(): CampfireStats {
 	};
 }
 
+// The pickable nodes and the meshes to tap them on: the log group through its first log, the
+// baked stone, and a stone that is not pickable.
+export struct CampfireTargets {
+	logs: NodeId;
+	firstLog: NodeId;
+	bakedStone: NodeId;
+	plainStone: NodeId;
+}
+
+export function campfireTargets(): CampfireTargets {
+	return {
+		logs: logGroup,
+		firstLog: firstLogNode,
+		bakedStone: bakedStoneNode,
+		plainStone: plainStoneNode,
+	};
+}
+
+// The framebuffer pixel the centre of a mesh node's bounds was drawn at by the last frame.
+export function campfirePixelOf(id: NodeId): Vec3 {
+	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh;
+	const box: Bounds = context.meshData[mesh].bounds;
+	const centre: Vec3 = box.center() * tree.nodes[id.index].world;
+	return shownView.project(centre, shownBlit, originTopLeft());
+}
+
+// A tap at a framebuffer pixel, read through the camera and blit the last frame was drawn with.
+export function campfireTap(
+	framebufferX: float32,
+	framebufferY: float32,
+): Result<PickHit, PickError> {
+	const ray: Ray = shownView.rayFromScreen(framebufferX, framebufferY, shownBlit, originTopLeft());
+	return pickNearest(tree, context.meshData, context.materials, ray);
+}
+
 export function initCampfire(): void {
 	gfxSetup();
 	buildScene();
@@ -876,6 +942,8 @@ export function frameCampfire(): void {
 	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
 	if (!lit.ok) { return; }
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
+	shownView = cameraView;
+	shownBlit = viewed.value;
 	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
 	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
 	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
