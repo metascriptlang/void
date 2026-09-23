@@ -17,6 +17,7 @@ import {
 	makeIndexBuffer,
 	makeStreamBuffer,
 	updateBuffer,
+	destroyBuffer,
 	contextGeneration,
 } from "./gpu3d";
 import {
@@ -291,6 +292,8 @@ function remakeStream(ref context: DrawContext, index: int32): Result<int32, Str
 	const corners: uint32 = makeVertexBuffer(STREAM_CORNERS);
 	const instances: uint32 = makeStreamBuffer(capacity * STREAM_INSTANCE_STRIDE);
 	if (corners == 0 || instances == 0) {
+		if (corners != 0) { destroyBuffer(corners); }
+		if (instances != 0) { destroyBuffer(instances); }
 		context.meshes[index] = GpuMesh.streamMesh(capacity, 0, 0, 0);
 		return Result.err(StreamError.BufferRefused);
 	}
@@ -303,9 +306,7 @@ export function addStreamMesh(
 	capacity: int32,
 ): Result<int32, StreamError> {
 	if (capacity <= 0) { return Result.err(StreamError.OverCapacity); }
-	const index: int32 = context.meshes.length as int32;
-	context.meshes.push(GpuMesh.streamMesh(capacity, 0, 0, 0));
-	context.meshData.push(MeshData.empty());
+	const index: int32 = addMesh(context, GpuMesh.streamMesh(capacity, 0, 0, 0));
 	return remakeStream(context, index);
 }
 
@@ -329,7 +330,10 @@ export function writeStream(
 	if (context.meshes[index].isStale(contextGeneration())) {
 		const _remade: int32 = try remakeStream(context, index);
 	}
-	if (count > 0) { updateBuffer(context.meshes[index].instanceBuffer, instances[0..length]); }
+	if (count > 0 && !updateBuffer(context.meshes[index].instanceBuffer, instances[0..length])) {
+		context.meshes[index].instanceCount = 0;
+		return Result.err(StreamError.BufferRefused);
+	}
 	context.meshes[index].instanceCount = count;
 	return Result.ok(count);
 }

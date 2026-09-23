@@ -89,7 +89,7 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 
 // One entry per MetaScript enum member. These catch a member added on one side only; the
 // order still has to be kept by hand (and is covered by the scene image check).
-_Static_assert(COUNT(PROGRAMS) == GPU3D_PROGRAM_COUNT, "PROGRAMS must match Program in gpu3d.ms");
+_Static_assert(COUNT(PROGRAMS) == GPU3D_PROGRAM_TABLE_LENGTH, "PROGRAMS must match Program in gpu3d.ms");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
 _Static_assert(COUNT(COMPARE_FUNCTIONS) == 8, "COMPARE_FUNCTIONS must match Compare in pass.ms");
 _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in pass.ms");
@@ -219,12 +219,13 @@ uint32_t gpu3dMakeStreamBuffer(int64_t length) {
 	return sg_make_buffer(&desc).id;
 }
 
-void gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length) {
+int32_t gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length) {
 	sg_buffer handle = {.id = buffer};
-	if (length <= 0 || sg_query_buffer_state(handle) != SG_RESOURCESTATE_VALID) return;
+	if (length <= 0 || sg_query_buffer_state(handle) != SG_RESOURCESTATE_VALID) return 0;
 	const size_t size = (size_t)length * sizeof(float);
-	if (size > sg_query_buffer_size(handle)) return;
+	if (size > sg_query_buffer_size(handle)) return 0;
 	sg_update_buffer(handle, &(sg_range){.ptr = data, .size = size});
+	return 1;
 }
 
 uint32_t gpu3dMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height) {

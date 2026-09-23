@@ -51,7 +51,8 @@ static const int32_t GPU3D_BINDING_VIEW = 3; // four
 static const int32_t GPU3D_BINDING_SAMPLER = 7; // two
 static const int32_t GPU3D_BINDING_LENGTH = 9;
 // Members of Program in gpu3d.ms, and entries of PROGRAMS in gpu3d.c.
-static const int32_t GPU3D_PROGRAM_COUNT = 5;
+#define GPU3D_PROGRAM_TABLE_LENGTH 5
+static const int32_t GPU3D_PROGRAM_COUNT = GPU3D_PROGRAM_TABLE_LENGTH;
 
 uint32_t gpu3dMakeShader(int32_t program);
 // Bit n set when the program declares a uniform block at slot n, read off its shader desc.
@@ -70,8 +71,9 @@ uint32_t gpu3dMakeDynamicImage(int32_t width, int32_t height);
 void gpu3dUpdateImage(uint32_t image, const uint32_t *rgba, int64_t length);
 // A vertex buffer of `length` floats the CPU rewrites (particle instances); starts undefined.
 uint32_t gpu3dMakeStreamBuffer(int64_t length);
-// At most once per frame per buffer, before the pass that draws it; refuses more than it holds.
-void gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length);
+// At most once per frame per buffer, before the pass that draws it. 0 when refused: a buffer that
+// is not valid, or more floats than it holds.
+int32_t gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length);
 void gpu3dDestroyShader(uint32_t shader);
 void gpu3dDestroyPipeline(uint32_t pipeline);
 void gpu3dDestroyBuffer(uint32_t buffer);
