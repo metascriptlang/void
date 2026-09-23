@@ -15,6 +15,8 @@ import {
 	draw,
 	makeVertexBuffer,
 	makeIndexBuffer,
+	makeStreamBuffer,
+	updateBuffer,
 	contextGeneration,
 } from "./gpu3d";
 import {
@@ -47,6 +49,7 @@ export struct GpuMesh {
 	vertexCount: int32;
 	indexCount: int32;
 	instanceCount: int32;
+	instanceCapacity: int32;
 	generation: int32;
 }
 
@@ -142,6 +145,7 @@ export function meshFor(
 		vertexCount: data.vertexCount(),
 		indexCount: data.indexCount(),
 		instanceCount: 1,
+		instanceCapacity: 0,
 		generation: generation,
 	};
 }
@@ -168,6 +172,7 @@ export function external(
 		vertexCount: vertexCount,
 		indexCount: 0,
 		instanceCount: instanceCount,
+		instanceCapacity: 0,
 		generation: EXTERNAL_GENERATION,
 	};
 }
@@ -240,6 +245,95 @@ export function addMeshData(
 	return Result.ok(uploaded);
 }
 
+// h3d.parts.Particles' quad: corners at ±0.5 around the instance root, two triangles.
+const STREAM_CORNERS: Vec<float32> = [
+	-0.5, -0.5, 0.5, -0.5, 0.5, 0.5,
+	-0.5, -0.5, 0.5, 0.5, -0.5, 0.5,
+];
+const STREAM_CORNER_COUNT: int32 = 6;
+
+export const STREAM_INSTANCE_STRIDE: int32 = 8;
+
+export enum StreamError {
+	MeshOutOfRange,
+	NotAStream,
+	OverCapacity,
+	ShortInstances,
+	BufferRefused,
+}
+
+export function isStream(this mesh: GpuMesh): boolean {
+	return mesh.instanceCapacity > 0;
+}
+
+export function streamMesh(
+	this typeof GpuMesh,
+	capacity: int32,
+	cornerBuffer: uint32,
+	instanceBuffer: uint32,
+	generation: int32,
+): GpuMesh {
+	return {
+		layout: VertexLayout.Billboard,
+		vertexBuffer: cornerBuffer,
+		instanceBuffer: instanceBuffer,
+		indexBuffer: 0,
+		vertexCount: STREAM_CORNER_COUNT,
+		indexCount: 0,
+		instanceCount: 0,
+		instanceCapacity: capacity,
+		generation: generation,
+	};
+}
+
+function remakeStream(ref context: DrawContext, index: int32): Result<int32, StreamError> {
+	const capacity: int32 = context.meshes[index].instanceCapacity;
+	const corners: uint32 = makeVertexBuffer(STREAM_CORNERS);
+	const instances: uint32 = makeStreamBuffer(capacity * STREAM_INSTANCE_STRIDE);
+	if (corners == 0 || instances == 0) {
+		context.meshes[index] = GpuMesh.streamMesh(capacity, 0, 0, 0);
+		return Result.err(StreamError.BufferRefused);
+	}
+	context.meshes[index] = GpuMesh.streamMesh(capacity, corners, instances, contextGeneration());
+	return Result.ok(index);
+}
+
+export function addStreamMesh(
+	ref context: DrawContext,
+	capacity: int32,
+): Result<int32, StreamError> {
+	if (capacity <= 0) { return Result.err(StreamError.OverCapacity); }
+	const index: int32 = context.meshes.length as int32;
+	context.meshes.push(GpuMesh.streamMesh(capacity, 0, 0, 0));
+	context.meshData.push(MeshData.empty());
+	return remakeStream(context, index);
+}
+
+// A stream whose handles are from an older context is made again first: the write that follows
+// a context loss is also its rebuild.
+export function writeStream(
+	ref context: DrawContext,
+	index: int32,
+	instances: Span<float32>,
+	count: int32,
+): Result<int32, StreamError> {
+	if (index < 0 || index >= (context.meshes.length as int32)) {
+		return Result.err(StreamError.MeshOutOfRange);
+	}
+	if (!context.meshes[index].isStream()) { return Result.err(StreamError.NotAStream); }
+	if (count < 0 || count > context.meshes[index].instanceCapacity) {
+		return Result.err(StreamError.OverCapacity);
+	}
+	const length: int32 = count * STREAM_INSTANCE_STRIDE;
+	if ((instances.length as int32) < length) { return Result.err(StreamError.ShortInstances); }
+	if (context.meshes[index].isStale(contextGeneration())) {
+		const _remade: int32 = try remakeStream(context, index);
+	}
+	if (count > 0) { updateBuffer(context.meshes[index].instanceBuffer, instances[0..length]); }
+	context.meshes[index].instanceCount = count;
+	return Result.ok(count);
+}
+
 // How many meshes would come back on their own after a context loss.
 export function rebuildableMeshes(this context: DrawContext): int32 {
 	let count: int32 = 0;
@@ -258,6 +352,10 @@ function sweepStaleMeshes(ref context: DrawContext, generation: int32, upload: b
 		if (!context.meshes[i].isStale(generation)) { continue; }
 		if (!upload) {
 			count = count + 1;
+			continue;
+		}
+		if (context.meshes[i].isStream()) {
+			if (remakeStream(context, i).ok) { count = count + 1; }
 			continue;
 		}
 		if (uploadMesh(context, i).ok) { count = count + 1; }

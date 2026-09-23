@@ -12,6 +12,7 @@ import {
 	gpu3dMakeTextureView,
 	gpu3dMakeSampler,
 	gpu3dMakeDynamicImage,
+	gpu3dMakeStreamBuffer,
 	gpu3dDestroyShader,
 	gpu3dDestroyPipeline,
 	gpu3dDestroyBuffer,
@@ -39,12 +40,14 @@ extern function gpu3dBeginPass(descriptor: Span<uint32>, clear: Span<float32>): 
 extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
 extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
 extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
+extern function gpu3dUpdateBuffer(buffer: uint32, data: Span<float32>): void;
 // One per @program in shader3d.glsl; gpu3d.c maps each to its *_shader_desc.
 export enum Program {
 	Lit,
 	Billboard,
 	Post,
 	Blit,
+	Particle,
 }
 
 // Vertex buffer layouts gpu3d.c knows how to describe (describeLayout).
@@ -154,6 +157,15 @@ export function makeDynamicImage(width: int32, height: int32): uint32 {
 // sokol allows one update per image per frame, before any pass samples it.
 export function updateImage(image: uint32, rgba: Span<uint32>): void {
 	gpu3dUpdateImage(image, rgba);
+}
+
+export function makeStreamBuffer(length: int32): uint32 {
+	return gpu3dMakeStreamBuffer(length as int64);
+}
+
+// sokol takes one update per buffer per frame, before the pass that draws it.
+export function updateBuffer(buffer: uint32, data: Span<float32>): void {
+	gpu3dUpdateBuffer(buffer, data);
 }
 
 // Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).

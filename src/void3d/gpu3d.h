@@ -64,6 +64,10 @@ uint32_t gpu3dMakeSampler(int32_t filter, int32_t wrap);
 uint32_t gpu3dMakeDynamicImage(int32_t width, int32_t height);
 // At most once per frame per image, before the pass that samples it.
 void gpu3dUpdateImage(uint32_t image, const uint32_t *rgba, int64_t length);
+// A vertex buffer of `length` floats the CPU rewrites (particle instances); starts undefined.
+uint32_t gpu3dMakeStreamBuffer(int64_t length);
+// At most once per frame per buffer, before the pass that draws it; refuses more than it holds.
+void gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length);
 void gpu3dDestroyShader(uint32_t shader);
 void gpu3dDestroyPipeline(uint32_t pipeline);
 void gpu3dDestroyBuffer(uint32_t buffer);

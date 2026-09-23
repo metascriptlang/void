@@ -240,7 +240,37 @@ void main() {
 }
 @end
 
+@vs particleVs
+@include_block vertexUniforms
+in vec2 corner;
+in vec4 root;
+in vec4 color;
+out vec4 particleColor;
+out float depth01;
+void main() {
+    vec3 p = root.xyz + cameraRight.xyz * (corner.x * root.w) + cameraUp.xyz * (corner.y * root.w);
+    gl_Position = viewProj * vec4(p, 1.0);
+    depth01 = gl_Position.z;
+    particleColor = color;
+}
+@end
+
+@fs particleFs
+in vec4 particleColor;
+in float depth01;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fragNormal;
+void main() {
+    if (particleColor.a < 0.5) {
+        discard;
+    }
+    fragColor = vec4(particleColor.rgb, 0.0);
+    fragNormal = vec4(0.5, 1.0, 0.5, depth01);
+}
+@end
+
 @program lit litVs litFs
 @program billboard billboardVs billboardFs
 @program post fullscreenVs postFs
 @program blit fullscreenVs blitFs
+@program particle particleVs particleFs

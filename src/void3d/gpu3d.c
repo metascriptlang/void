@@ -13,6 +13,7 @@ static const ShaderDescription PROGRAMS[] = {
 	billboard_shader_desc,
 	post_shader_desc,
 	blit_shader_desc,
+	particle_shader_desc,
 };
 
 // Face (h3d.mat.Data.Face without Both)
@@ -88,7 +89,7 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 
 // One entry per MetaScript enum member. These catch a member added on one side only; the
 // order still has to be kept by hand (and is covered by the scene image check).
-_Static_assert(COUNT(PROGRAMS) == 4, "PROGRAMS must match Program in gpu3d.ms");
+_Static_assert(COUNT(PROGRAMS) == 5, "PROGRAMS must match Program in gpu3d.ms");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
 _Static_assert(COUNT(COMPARE_FUNCTIONS) == 8, "COMPARE_FUNCTIONS must match Compare in pass.ms");
 _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in pass.ms");
@@ -100,6 +101,8 @@ _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in gpu3d.ms");
 _Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in gpu3d.ms");
 _Static_assert(sizeof(lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
 _Static_assert(sizeof(modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
+_Static_assert(ATTR_particle_corner == ATTR_billboard_corner && ATTR_particle_root == ATTR_billboard_root
+	&& ATTR_particle_color == ATTR_billboard_shape, "particle attributes must match the Billboard layout");
 
 // ---- vertex layouts, one per VertexLayout member ----
 
@@ -196,6 +199,23 @@ uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length) {
 	desc.data.ptr = data;
 	desc.data.size = (size_t)length * sizeof(uint16_t);
 	return sg_make_buffer(&desc).id;
+}
+
+uint32_t gpu3dMakeStreamBuffer(int64_t length) {
+	if (length <= 0) return SG_INVALID_ID;
+	sg_buffer_desc desc = {0};
+	desc.usage.vertex_buffer = true;
+	desc.usage.dynamic_update = true;
+	desc.size = (size_t)length * sizeof(float);
+	return sg_make_buffer(&desc).id;
+}
+
+void gpu3dUpdateBuffer(uint32_t buffer, const float *data, int64_t length) {
+	sg_buffer handle = {.id = buffer};
+	if (length <= 0 || sg_query_buffer_state(handle) != SG_RESOURCESTATE_VALID) return;
+	const size_t size = (size_t)length * sizeof(float);
+	if (size > sg_query_buffer_size(handle)) return;
+	sg_update_buffer(handle, &(sg_range){.ptr = data, .size = size});
 }
 
 uint32_t gpu3dMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height) {

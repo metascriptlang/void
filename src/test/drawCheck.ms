@@ -6,7 +6,15 @@
 import { Vec3, vec3 } from "../math/math3d";
 import { VertexLayout } from "../void3d/gpu3d";
 import { MeshData, MeshError, Rgba, addPlane, addVertex } from "../void3d/meshData";
-import { DrawContext, GpuMesh, addMesh, staleMeshes } from "../void3d/draw";
+import {
+	DrawContext,
+	GpuMesh,
+	StreamError,
+	STREAM_INSTANCE_STRIDE,
+	addMesh,
+	staleMeshes,
+	writeStream,
+} from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UP: Vec3 = { x: 0.0, y: 1.0, z: 0.0 };
@@ -91,4 +99,34 @@ test "a mesh never uploaded is stale on every generation the GPU can be on" {
 	const fresh: GpuMesh = data.meshFor(0, 0, 0);
 	assert fresh.isStale(1);
 	assert fresh.isStale(2);
+}
+
+test "a stream mesh draws nothing until written and is the only kind with a capacity" {
+	const stream: GpuMesh = GpuMesh.streamMesh(64, 11, 12, 1);
+	assert stream.isStream();
+	assert stream.layout == VertexLayout.Billboard;
+	assert stream.instanceCount == 0;
+	assert stream.instanceCapacity == 64;
+	assert stream.elementCount() == 6;
+	assert !stream.isStale(1);
+	assert stream.isStale(2);
+	assert !billboard().isStream();
+	assert !planeData().meshFor(7, 9, 3).isStream();
+}
+
+function streamError(result: Result<int32, StreamError>): StreamError {
+	return result.ok ? StreamError.BufferRefused : result.error;
+}
+
+test "a stream write is refused before the driver when it names the wrong mesh or too much" {
+	let context: DrawContext = DrawContext.withUniformCapacity(8);
+	const plain: int32 = addMesh(context, billboard());
+	const stream: int32 = addMesh(context, GpuMesh.streamMesh(4, 11, 12, 1));
+	const four: Vec<float32> = new Array(4 * STREAM_INSTANCE_STRIDE);
+	assert streamError(writeStream(context, 9, four, 1)) == StreamError.MeshOutOfRange;
+	assert streamError(writeStream(context, plain, four, 1)) == StreamError.NotAStream;
+	assert streamError(writeStream(context, stream, four, 5)) == StreamError.OverCapacity;
+	assert streamError(writeStream(context, stream, four, -1)) == StreamError.OverCapacity;
+	assert streamError(writeStream(context, stream, four[0..8], 2)) == StreamError.ShortInstances;
+	assert context.meshes[stream].instanceCount == 0;
 }
