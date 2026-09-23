@@ -395,7 +395,7 @@ test "setFrame on an exact multiple lands on the clip's end, as Heaps' loops do"
 	let clock: AnimationClock = clockOf(4, 1.0, Interpolation.Linear);
 	const _eight: Result<float64, AnimationError> = setFrame(clock, 8.0);
 	assert clock.frame == 4.0;
-	assert clock.keys().samePair(pair(0, 0, 0.0));
+	assert clock.keys().samePair(pair(3, 3, 0.0));
 	clock.loop = false;
 	assert clock.keys().samePair(pair(3, 3, 0.0));
 	const _back: Result<float64, AnimationError> = setFrame(clock, -4.0);

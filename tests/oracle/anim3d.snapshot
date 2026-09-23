@@ -14,4 +14,5 @@ scale-and-rotation-blend 1.8421219880057702 0 -0.7788366846173012 0.778836684617
 pose-over-a-rest-transform 6
 set-frame-multiple-on-a-loop 0
 set-frame-multiple-on-a-one-shot 30
+loop-at-frame-count-shows-last-key 30
 negative-speed-below-first-key -5

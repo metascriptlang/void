@@ -220,8 +220,8 @@ ms> emit1("pose-over-a-rest-transform", m10.m41);
 
 # ---- setFrame and a backward clock -------------------------------------------------------
 
-# Animation.setFrame's `while (frame > frameCount)` stops on frameCount itself, and a loop at
-# frameCount blends the last key into the first with weight 1: key 0.
+# Animation.setFrame's `while (frame > frameCount)` stops on frameCount itself; the `update`
+# after it wraps a loop's frameCount back to 0 (Animation.hx:340), so this shows key 0.
 case set-frame-multiple-on-a-loop tol=1e-5
 haxe> var m11 = H.at([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
 haxe>     H.key(20,0,0,0,1,false), H.key(30,0,0,0,1,false)], true, 8, 1, 0);
@@ -236,6 +236,15 @@ haxe>     H.key(20,0,0,0,1,false), H.key(30,0,0,0,1,false)], false, 8, 1, 0);
 haxe> emit("set-frame-multiple-on-a-one-shot", [m12._41]);
 ms> const m12: Mat4 = at([slid(0.0), slid(10.0), slid(20.0), slid(30.0)], false, 8.0, 1.0, 0.0);
 ms> emit1("set-frame-multiple-on-a-one-shot", m12.m41);
+
+# With speed 0, `update` returns before it wraps, so `sync` sees frameCount itself, and its
+# `frame >= frameCount` clamp (LinearAnimation.hx:153) shows the last key on a loop too.
+case loop-at-frame-count-shows-last-key tol=1e-5
+haxe> var m14 = H.at([H.key(0,0,0,0,1,false), H.key(10,0,0,0,1,false),
+haxe>     H.key(20,0,0,0,1,false), H.key(30,0,0,0,1,false)], true, 8, 0, 0);
+haxe> emit("loop-at-frame-count-shows-last-key", [m14._41]);
+ms> const m14: Mat4 = at([slid(0.0), slid(10.0), slid(20.0), slid(30.0)], true, 8.0, 0.0, 0.0);
+ms> emit1("loop-at-frame-count-shows-last-key", m14.m41);
 
 # A negative speed takes the frame below 0, where Heaps' `Std.int` truncates toward zero and the
 # weight goes negative (-5 here); the port holds the first key (0).

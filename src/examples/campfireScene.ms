@@ -586,8 +586,9 @@ function setupDraws(): void {
 	logGroup = group.value;
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
-			const placed: int32 = placeBakedStone(pieces[i], placements[i], root, litMaterial);
-			if (placed < 0) { console.log("campfire: setupDraws bailed at the baked stone"); return; }
+			const placed: Result<int32, AnimationError> =
+				placeBakedStone(pieces[i], placements[i], root, litMaterial);
+			if (!placed.ok) { console.log("campfire: setupDraws bailed at the baked stone"); return; }
 			continue;
 		}
 		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
@@ -632,17 +633,15 @@ function placeBakedStone(
 	where: Transform3D,
 	root: NodeId,
 	material: int32,
-): int32 {
+): Result<int32, AnimationError> {
 	const frames: Vec<MeshData> = [stone, stone];
-	const baked: Result<int32, AnimationError> = addBakedFrames(context, frames);
-	if (!baked.ok) { return -1; }
-	firstStoneFrame = baked.value;
+	firstStoneFrame = try addBakedFrames(context, frames);
 	const placed: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, where, firstStoneFrame, material);
-	if (!placed.ok) { return -1; }
+	if (!placed.ok) { return Result.err(AnimationError.StaleTarget); }
 	const named: Result<int32, SceneError> = setName(tree, placed.value, "bakedStone");
-	if (!named.ok) { return -1; }
-	return placed.value.index;
+	if (!named.ok) { return Result.err(AnimationError.StaleTarget); }
+	return Result.ok(placed.value.index);
 }
 
 // The example's clock runs in frames, not seconds: every animation is updated by 1.0 per

@@ -127,11 +127,8 @@ export function keys(this clock: AnimationClock): KeyPair {
 		? Math.floor(clock.frame)
 		: clock.frame;
 	if (at <= 0.0) { return HOLD_FIRST; }
-	if (clock.loop) {
-		if (at >= (count as float64)) { return HOLD_FIRST; }
-	} else if (at >= (last as float64)) {
-		return { first: last, second: last, weight: 0.0 };
-	}
+	const end: int32 = clock.loop ? count : last;
+	if (at >= (end as float64)) { return { first: last, second: last, weight: 0.0 }; }
 	const first: int32 = at as int32;
 	const weight: float32 = (at - (first as float64)) as float32;
 	if (weight == 0.0) { return { first: first, second: first, weight: 0.0 }; }
