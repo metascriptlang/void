@@ -161,9 +161,9 @@ prepare_entries() {
 	write_pick_entry
 	write_entry campfireSpinCapture "" "configureCampfire(PixelArtSettings.full(), false);" "configureCampfireLogSpin(0.11);"
 
-	# M11: snow and embers on the particle path, the same run with every mesh rebuilt at frame 3,
-	# and a palette swapped and a look greyed mid-run and both put back. Their baselines are new
-	# at M11; the seven above leave particles and the look schedule off and stay as they were.
+	# Snow and embers on the particle path, the same run with every mesh rebuilt at frame 3, and a
+	# palette swapped and a look greyed mid-run, then both put back. The seven above leave
+	# particles and the look schedule off.
 	write_entry campfireParticlesCapture "" "configureCampfire(PixelArtSettings.full(), false);" \
 		"configureCampfireParticles(true);"
 	write_entry campfireParticlesRebuildCapture "" \

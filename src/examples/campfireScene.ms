@@ -740,7 +740,7 @@ function setupDraws(): void {
 	const flameNamed: Result<int32, SceneError> = setName(tree, flameNode, "flame");
 	if (!flameNamed.ok) { console.log("campfire: setupDraws bailed at naming the flame"); return; }
 	if (particlesWanted) {
-		const particles: Result<int32, StreamError> = setupParticles(root, state);
+		const particles: Result<int32, ParticleSetupError> = setupParticles(root, state);
 		if (!particles.ok) { console.log("campfire: setupDraws bailed at the particles"); return; }
 	}
 	const animated: Result<int32, AnimationError> = setupAnimations();
@@ -768,13 +768,19 @@ function placeBakedStone(
 	return Result.ok(placed.value.index);
 }
 
-// The example's clock runs in frames, not seconds: every animation is updated by 1.0 per
-// frame, so a sampling rate is keys per frame. The flame steps one atlas cell every
-// FLICKER_FRAMES frames; the log spin is one key per frame.
-function setupParticles(root: NodeId, state: RenderState): Result<int32, StreamError> {
+enum ParticleSetupError {
+	StreamRefused,
+	NodeRefused,
+	EmitterRefused,
+}
+
+function setupParticles(root: NodeId, state: RenderState): Result<int32, ParticleSetupError> {
 	particleMaterial = addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
-	snowMesh = try addStreamMesh(context, snow.state.maxParts);
-	emberMesh = try addStreamMesh(context, embers.state.maxParts);
+	const snowStream: Result<int32, StreamError> = addStreamMesh(context, snow.capacity);
+	const emberStream: Result<int32, StreamError> = addStreamMesh(context, embers.capacity);
+	if (!snowStream.ok || !emberStream.ok) { return Result.err(ParticleSetupError.StreamRefused); }
+	snowMesh = snowStream.value;
+	emberMesh = emberStream.value;
 	const snowPlaced: Result<NodeId, SceneError> = addMeshNode(
 		tree,
 		root,
@@ -789,13 +795,13 @@ function setupParticles(root: NodeId, state: RenderState): Result<int32, StreamE
 		emberMesh,
 		particleMaterial,
 	);
-	if (!snowPlaced.ok || !emberPlaced.ok) { return Result.err(StreamError.MeshOutOfRange); }
+	if (!snowPlaced.ok || !emberPlaced.ok) { return Result.err(ParticleSetupError.NodeRefused); }
 	snowNode = snowPlaced.value;
 	emberNode = emberPlaced.value;
 	const _synced: int32 = syncWorld(tree);
 	for (let i = 0; i < PARTICLE_WARMUP_STEPS; i++) {
-		if (!advanceEmitter(snow, snowNode)) { return Result.err(StreamError.MeshOutOfRange); }
-		if (!advanceEmitter(embers, emberNode)) { return Result.err(StreamError.MeshOutOfRange); }
+		if (!advanceEmitter(snow, snowNode)) { return Result.err(ParticleSetupError.EmitterRefused); }
+		if (!advanceEmitter(embers, emberNode)) { return Result.err(ParticleSetupError.EmitterRefused); }
 	}
 	return Result.ok(2);
 }
@@ -835,6 +841,9 @@ function applyLookSchedule(): void {
 	}
 }
 
+// The example's clock runs in frames, not seconds: every animation is updated by 1.0 per
+// frame, so a sampling rate is keys per frame. The flame steps one atlas cell every
+// FLICKER_FRAMES frames; the log spin is one key per frame.
 function setupAnimations(): Result<int32, AnimationError> {
 	const perFlicker: float64 = 1.0 / (FLICKER_FRAMES as float64);
 	const flameClock: AnimationClock =
@@ -895,14 +904,14 @@ export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 	logSpinPerFrame = radiansPerFrame;
 }
 
-// For the M11 checks: snow and embers on the particle path, which the seven standing
-// configurations leave off so their images stay what they were.
+// Snow and embers on the particle path. Off by default, so the configurations that predate them
+// still draw what they drew.
 export function configureCampfireParticles(on: boolean): void {
 	particlesWanted = on;
 }
 
-// For the M11 checks: swap to WINTER_PALETTE at frame 5, grey the look at frame 10, and put
-// both back at frame 15. Needs the palette on.
+// Swaps to WINTER_PALETTE at frame 5, greys the look at frame 10 and puts both back at frame 15.
+// Needs the palette on.
 export function configureCampfireLookSchedule(on: boolean): void {
 	lookScheduleWanted = on;
 }
@@ -1124,9 +1133,11 @@ export function frameCampfire(): void {
 	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
 	if (!lit.ok) { return; }
 	if (particlesWanted) {
-		if (!advanceEmitter(snow, snowNode) || !advanceEmitter(embers, emberNode)) { return; }
-		if (!drawEmitter(snow, snowNode, snowMesh, snowInstances)) { return; }
-		if (!drawEmitter(embers, emberNode, emberMesh, emberInstances)) { return; }
+		const stepped: boolean = advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
+		const drawn: boolean = stepped &&
+			drawEmitter(snow, snowNode, snowMesh, snowInstances) &&
+			drawEmitter(embers, emberNode, emberMesh, emberInstances);
+		if (!drawn) { console.log("campfire: a particle emitter failed to step or draw"); return; }
 	}
 	applyLookSchedule();
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
