@@ -34,9 +34,12 @@ import {
 	DrawItem,
 	GpuMesh,
 	MeshUploadError,
+	StreamError,
 	addMesh,
 	addMeshData,
 	addMaterial,
+	addStreamMesh,
+	writeStream,
 	rebuildMeshes,
 	reserveUniforms,
 	writeUniforms,
@@ -50,11 +53,12 @@ import {
 	PixelArtError,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
+	setLook,
 	setPalette,
 	setSettings,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { Vec3, vec3, eulerQuat, quatBetween, identity } from "../math/math3d";
+import { Vec3, vec3, Mat4, eulerQuat, quatBetween, identity } from "../math/math3d";
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
 import {
 	Scene,
@@ -76,6 +80,7 @@ import {
 	setPickable,
 	collectLights,
 	refresh,
+	syncWorld,
 } from "../void3d/scene";
 import {
 	AnimationClock,
@@ -99,6 +104,18 @@ import {
 } from "../void3d/camera";
 import { Ray } from "../void3d/ray";
 import { PickHit, PickError, pickNearest } from "../void3d/pick";
+import {
+	EmitterState,
+	ParticleEmitter,
+	ParticleError,
+	ShapeKind,
+	ValueKind,
+	Converge,
+	PARTICLE_INSTANCE_STRIDE,
+	constant,
+	updateEmitter,
+	writeInstances,
+} from "../void3d/particles";
 
 const UNITS_ON_SHORT_SIDE: float32 = 20.0;
 const CAMERA_YAW: float32 = 0.785398;
@@ -163,6 +180,21 @@ const CAMPFIRE_PALETTE: Vec<uint32> = [
 	0xC8502A, 0xF08A36, 0xFFC857, 0xFFF1B0,
 ];
 
+const WINTER_PALETTE: Vec<uint32> = [
+	0x0B0E1A, 0x151C33, 0x22304F, 0x34486E, 0x4C6690, 0x6D88B0, 0x97AFCF, 0xC4D4EA,
+	0xEEF4FC, 0x3A3F4F, 0x5C6272, 0x868C9C, 0x6E4A4A, 0xB0705A, 0xE0A070, 0xFFE0A8,
+];
+
+const PARTICLE_STEP: float32 = 1.0 / 30.0;
+const PARTICLE_WARMUP_STEPS: int32 = 240;
+const SNOW_SEED: uint32 = 12345;
+const EMBER_SEED: uint32 = 777;
+const SNOW_HEIGHT: float32 = 6.0;
+const EMBER_HEIGHT: float32 = 0.35;
+const LOOK_WINTER_AT: int32 = 5;
+const LOOK_GREY_AT: int32 = 10;
+const LOOK_RESTORED_AT: int32 = 15;
+
 // The pool holds the renderer's blocks plus this scene's material blocks: one toon ramp for
 // the lit material, one sprite block shared by grass and flame.
 const MATERIAL_UNIFORM_LENGTH: int32 = TOON_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
@@ -211,6 +243,17 @@ let paletteWanted: boolean = false;
 let cameraSnap: boolean = true;
 let panTexelsPerFrame: float32 = 0.0;
 let rebuildAtFrame: int32 = NEVER_REBUILD;
+let particlesWanted: boolean = false;
+let lookScheduleWanted: boolean = false;
+let particleMaterial: int32 = 0;
+let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
+let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
+let snowNode: NodeId = { index: -1, generation: 0 };
+let emberNode: NodeId = { index: -1, generation: 0 };
+let snowMesh: int32 = 0;
+let emberMesh: int32 = 0;
+const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
+const emberInstances: Vec<float32> = new Array(emberState().maxParts * PARTICLE_INSTANCE_STRIDE);
 
 let grassBuffer: uint32 = 0;
 let grassCount: int32 = 0;
@@ -248,6 +291,51 @@ let shownView: CameraView = {
 	worldPerTexel: 0.0,
 };
 let shownBlit: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offsetY: 0.0 };
+
+function snowState(): EmitterState {
+	return {
+		...EmitterState.defaults(),
+		emitRate: constant(45.0),
+		maxParts: 400,
+		shape: { kind: ShapeKind.Disc, radius: constant(13.0) },
+		life: constant(7.0),
+		size: constant(0.07),
+		speed: constant(0.0),
+		gravity: { kind: ValueKind.Random, start: 0.15, length: 0.15, converge: Converge.No },
+		force: { x: constant(0.08), y: constant(0.0), z: constant(0.0) },
+		colors: [{ time: 0.0, color: 0xE6ECFF }],
+		alpha: { kind: ValueKind.Linear, start: 1.4, length: -1.0 },
+	};
+}
+
+function emberState(): EmitterState {
+	return {
+		...EmitterState.defaults(),
+		emitRate: constant(10.0),
+		maxParts: 48,
+		shape: { kind: ShapeKind.Cone, radius: constant(0.12), angle: constant(0.5) },
+		life: { kind: ValueKind.Random, start: 1.0, length: 1.0, converge: Converge.No },
+		size: constant(0.08),
+		speed: { kind: ValueKind.Random, start: 0.5, length: 0.5, converge: Converge.No },
+		gravity: constant(-0.4),
+		force: { x: constant(0.1), y: constant(0.0), z: constant(0.0) },
+		colors: [
+			{ time: 0.0, color: 0xFFE070 },
+			{ time: 0.4, color: 0xFF7A20 },
+			{ time: 1.0, color: 0x9A2A10 },
+		],
+		alpha: { kind: ValueKind.Linear, start: 1.5, length: -1.2 },
+	};
+}
+
+function emitterOf(state: EmitterState, seed: uint32): ParticleEmitter {
+	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
+	if (made.ok) { return made.value; }
+	console.log("campfire: a particle preset was refused");
+	const fallback: Result<ParticleEmitter, ParticleError> =
+		ParticleEmitter.create(EmitterState.defaults(), seed);
+	return fallback.value;
+}
 
 // The spike's look: outline and fog tuned on the campfire, palette off.
 function campfireLook(): PixelArtLook {
@@ -651,6 +739,10 @@ function setupDraws(): void {
 	flameNode = flame.value;
 	const flameNamed: Result<int32, SceneError> = setName(tree, flameNode, "flame");
 	if (!flameNamed.ok) { console.log("campfire: setupDraws bailed at naming the flame"); return; }
+	if (particlesWanted) {
+		const particles: Result<int32, StreamError> = setupParticles(root, state);
+		if (!particles.ok) { console.log("campfire: setupDraws bailed at the particles"); return; }
+	}
 	const animated: Result<int32, AnimationError> = setupAnimations();
 	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
 }
@@ -679,6 +771,70 @@ function placeBakedStone(
 // The example's clock runs in frames, not seconds: every animation is updated by 1.0 per
 // frame, so a sampling rate is keys per frame. The flame steps one atlas cell every
 // FLICKER_FRAMES frames; the log spin is one key per frame.
+function setupParticles(root: NodeId, state: RenderState): Result<int32, StreamError> {
+	particleMaterial = addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
+	snowMesh = try addStreamMesh(context, snow.state.maxParts);
+	emberMesh = try addStreamMesh(context, embers.state.maxParts);
+	const snowPlaced: Result<NodeId, SceneError> = addMeshNode(
+		tree,
+		root,
+		transformAt(vec3(0.0, SNOW_HEIGHT, 0.0)),
+		snowMesh,
+		particleMaterial,
+	);
+	const emberPlaced: Result<NodeId, SceneError> = addMeshNode(
+		tree,
+		root,
+		transformAt(vec3(0.0, EMBER_HEIGHT, 0.0)),
+		emberMesh,
+		particleMaterial,
+	);
+	if (!snowPlaced.ok || !emberPlaced.ok) { return Result.err(StreamError.MeshOutOfRange); }
+	snowNode = snowPlaced.value;
+	emberNode = emberPlaced.value;
+	const _synced: int32 = syncWorld(tree);
+	for (let i = 0; i < PARTICLE_WARMUP_STEPS; i++) {
+		if (!advanceEmitter(snow, snowNode)) { return Result.err(StreamError.MeshOutOfRange); }
+		if (!advanceEmitter(embers, emberNode)) { return Result.err(StreamError.MeshOutOfRange); }
+	}
+	return Result.ok(2);
+}
+
+function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId): boolean {
+	const world: Result<Mat4, SceneError> = tree.worldOf(node);
+	if (!world.ok) { return false; }
+	return updateEmitter(emitter, PARTICLE_STEP, world.value).ok;
+}
+
+function drawEmitter(
+	ref emitter: ParticleEmitter,
+	node: NodeId,
+	mesh: int32,
+	instances: Span<float32>,
+): boolean {
+	const world: Result<Mat4, SceneError> = tree.worldOf(node);
+	if (!world.ok) { return false; }
+	const written: Result<int32, ParticleError> = writeInstances(emitter, world.value, instances);
+	if (!written.ok) { return false; }
+	return writeStream(context, mesh, instances, written.value).ok;
+}
+
+function applyLookSchedule(): void {
+	if (!lookScheduleWanted) { return; }
+	if (frameIndex == LOOK_WINTER_AT) {
+		const swapped: Result<int32, PaletteError> = setPalette(renderer, WINTER_PALETTE);
+		if (!swapped.ok) { console.log("campfire: the winter palette was refused"); }
+	}
+	if (frameIndex == LOOK_GREY_AT) {
+		setLook(renderer, { ...campfireLook(), saturation: -1.0 });
+	}
+	if (frameIndex == LOOK_RESTORED_AT) {
+		const restored: Result<int32, PaletteError> = setPalette(renderer, CAMPFIRE_PALETTE);
+		if (!restored.ok) { console.log("campfire: the night palette was refused"); }
+		setLook(renderer, campfireLook());
+	}
+}
+
 function setupAnimations(): Result<int32, AnimationError> {
 	const perFlicker: float64 = 1.0 / (FLICKER_FRAMES as float64);
 	const flameClock: AnimationClock =
@@ -739,6 +895,18 @@ export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 	logSpinPerFrame = radiansPerFrame;
 }
 
+// For the M11 checks: snow and embers on the particle path, which the seven standing
+// configurations leave off so their images stay what they were.
+export function configureCampfireParticles(on: boolean): void {
+	particlesWanted = on;
+}
+
+// For the M11 checks: swap to WINTER_PALETTE at frame 5, grey the look at frame 10, and put
+// both back at frame 15. Needs the palette on.
+export function configureCampfireLookSchedule(on: boolean): void {
+	lookScheduleWanted = on;
+}
+
 function copyTexturePixels(): Vec<uint32> {
 	const kept: Vec<uint32> = new Array(texturePixels.length as int32);
 	for (let i = 0; i < (texturePixels.length as int32); i++) { kept[i] = texturePixels[i]; }
@@ -785,6 +953,9 @@ function forceRebuild(): void {
 		if (context.meshes[i].generation != EXTERNAL_GENERATION) {
 			if (context.meshes[i].vertexBuffer != 0) { destroyBuffer(context.meshes[i].vertexBuffer); }
 			if (context.meshes[i].indexBuffer != 0) { destroyBuffer(context.meshes[i].indexBuffer); }
+			if (context.meshes[i].isStream() && context.meshes[i].instanceBuffer != 0) {
+				destroyBuffer(context.meshes[i].instanceBuffer);
+			}
 			context.meshes[i].generation = 0;
 		}
 	}
@@ -952,6 +1123,12 @@ export function frameCampfire(): void {
 	// matrix, so collecting before `refresh` would read the previous frame's.
 	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
 	if (!lit.ok) { return; }
+	if (particlesWanted) {
+		if (!advanceEmitter(snow, snowNode) || !advanceEmitter(embers, emberNode)) { return; }
+		if (!drawEmitter(snow, snowNode, snowMesh, snowInstances)) { return; }
+		if (!drawEmitter(embers, emberNode, emberMesh, emberInstances)) { return; }
+	}
+	applyLookSchedule();
 	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
 	shownView = cameraView;
 	shownBlit = viewed.value;

@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the seven capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the ten capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -100,7 +100,9 @@ write_entry() {
 		echo "	frameCampfire,"
 		echo "	configureCampfire,"
 		echo "	configureCampfireCamera,"
-		[ -n "$extraConfig" ] && echo "	${extraConfig%%(*},"
+		if [ -n "$extraConfig" ]; then
+			echo "$extraConfig" | while IFS= read -r call; do echo "	${call%%(*},"; done
+		fi
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings$extra } from \"../../../src/void3d/pixelArtRenderer\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
@@ -158,7 +160,19 @@ prepare_entries() {
 	write_bench_entry
 	write_pick_entry
 	write_entry campfireSpinCapture "" "configureCampfire(PixelArtSettings.full(), false);" "configureCampfireLogSpin(0.11);"
-	note "prepare: seven capture entries written to $CAPTURE"
+
+	# M11: snow and embers on the particle path, the same run with every mesh rebuilt at frame 3,
+	# and a palette swapped and a look greyed mid-run and both put back. Their baselines are new
+	# at M11; the seven above leave particles and the look schedule off and stay as they were.
+	write_entry campfireParticlesCapture "" "configureCampfire(PixelArtSettings.full(), false);" \
+		"configureCampfireParticles(true);"
+	write_entry campfireParticlesRebuildCapture "" \
+		"configureCampfire(PixelArtSettings.full(), false);" \
+		"configureCampfireParticles(true);
+configureCampfireRebuildAt(3);"
+	write_entry campfireLookCapture "" "configureCampfire(PixelArtSettings.full(), true);" \
+		"configureCampfireLookSchedule(true);"
+	note "prepare: ten capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -280,6 +294,7 @@ write_bench_entry() {
 		echo "	configureCampfire,"
 		echo "	configureCampfireCamera,"
 		echo "	configureCampfireLogSpin,"
+		echo "	configureCampfireParticles,"
 		echo "	campfireStats,"
 		echo "	CampfireStats,"
 		echo "} from \"../campfireScene\";"
@@ -330,6 +345,7 @@ write_bench_entry() {
 		echo "configureCampfire(PixelArtSettings.full(), false);"
 		echo "configureCampfireCamera(false, 0.0);"
 		echo "configureCampfireLogSpin(0.11);"
+		echo "configureCampfireParticles(true);"
 		echo "voidRun(1280, 720, initCampfire, frame);"
 	} > "$WORK/campfireBench.new"
 	replace_if_changed "$WORK/campfireBench.new" "$CAPTURE/campfireBench.ms"
@@ -609,7 +625,9 @@ run_style() {
 # fields copies through `<T>ArrayCopy`, not `msArrayCopy`.
 FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:collectLights
 	scene:setLocal scene:setMeshOf animation:update animation:keys animation:blendTo
-	animation:syncPose animation:syncMeshFrame"
+	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
+	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
+	particles:emitterValue particles:writeInstances draw:writeStream"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
@@ -811,9 +829,28 @@ run_capture() {
 	fi
 }
 
+# The look schedule swaps the palette and greys the look, then puts both back before frame 16,
+# and frame 1 is before any of it: both have to be the palette-on image, byte for byte. A swap
+# that left the LUT or the post block anywhere but where it was fails here.
+run_look_restored() {
+	for frame in 1 16; do
+		got=$CAPTURE/gate/campfireLookCapture_$frame.ppm
+		want=$CAPTURE/m3palette_$frame.ppm
+		if [ ! -f "$got" ] || [ ! -f "$want" ]; then
+			skip "capture look: frame $frame or m3palette_$frame.ppm is missing"
+			return
+		fi
+		if ! cmp -s "$got" "$want"; then
+			fail "capture look: frame $frame is not the palette-on image after the swap and back"
+			return
+		fi
+	done
+	pass "capture look: frames 1 and 16 byte-identical to m3palette_*.ppm around the swap"
+}
+
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the seven configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the ten configurations were not built, not run, not compared"
 		return
 	fi
 	if [ ! -f "$CAPTURE/capture.c" ] || [ ! -f "$CAPTURE/capture.h" ]; then
@@ -828,6 +865,10 @@ run_captures() {
 	run_capture campfireDepthCapture   m3depth    "DepthTexture"
 	run_capture campfireRebuildCapture before     "rebuilt mid-run"
 	run_capture campfireSpinCapture    m6spin     "log group turning"
+	run_capture campfireParticlesCapture m11particles "snow and embers"
+	run_capture campfireParticlesRebuildCapture m11particles "particles, rebuilt mid-run"
+	run_capture campfireLookCapture    m11look    "palette swapped, greyed, restored"
+	run_look_restored
 }
 
 # ---- manifest -----------------------------------------------------------------------------
@@ -839,7 +880,7 @@ BENCH_FRAMES=${GATE_BENCH_FRAMES:-300}
 PICK_FRAME=12
 
 baseline_files() {
-	for prefix in before m3palette m3preview m3direct m3depth m6spin; do
+	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look; do
 		for frame in $FRAMES; do
 			echo "$CAPTURE/${prefix}_$frame.ppm"
 		done
@@ -852,7 +893,7 @@ run_manifest() {
 		[ -f "$file" ] || missing=$((missing + 1))
 	done
 	if [ "$missing" -gt 0 ]; then
-		skip "manifest: $missing of 24 baselines are missing, nothing to check them against"
+		skip "manifest: $missing of 32 baselines are missing, nothing to check them against"
 		return
 	fi
 	# Hashes are over the basename, so the manifest does not carry this checkout's path.
@@ -871,7 +912,7 @@ run_manifest() {
 	# hashes, not about how this checkout stores a text file.
 	tr -d '\r' < "$MANIFEST" > "$WORK/manifest.committed"
 	if diff -q "$WORK/manifest.committed" "$WORK/manifest.new" > /dev/null 2>&1; then
-		pass "manifest: 24 baselines match $MANIFEST"
+		pass "manifest: 32 baselines match $MANIFEST"
 	else
 		fail "manifest: the baselines on disk are not the ones $MANIFEST records"
 		diff "$WORK/manifest.committed" "$WORK/manifest.new" | head -12
@@ -915,7 +956,7 @@ echo
 
 if prepare_scene; then
 	prepare_entries
-	pass "prepare: campfireScene.ms and the seven capture entries are current"
+	pass "prepare: campfireScene.ms and the ten capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
