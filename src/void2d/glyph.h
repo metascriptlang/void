@@ -13,6 +13,8 @@ float void2dGlyphAdvance(int face, int glyph, float sizePx);
 float void2dGlyphKern(int face, int left, int right, float sizePx);
 int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX);
 
+#define VOID2D_MAX_GLYPH_PAGES 64
+
 int void2dGlyphPageCreate(int size);
 int void2dGlyphPageCount(void);
 int void2dGlyphPageSize(int page);

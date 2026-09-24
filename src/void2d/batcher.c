@@ -57,7 +57,6 @@ static sg_view s_whiteView;
 #define SMP_COUNT 4
 static sg_sampler s_smp[SMP_COUNT];
 
-#define VOID2D_MAX_GLYPH_PAGES 64
 static sg_image s_pageImg[VOID2D_MAX_GLYPH_PAGES];
 static sg_view s_pageView[VOID2D_MAX_GLYPH_PAGES];
 static bool s_pageUploaded[VOID2D_MAX_GLYPH_PAGES];

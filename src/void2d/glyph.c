@@ -582,6 +582,11 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX) {
 
 int void2dGlyphPageCreate(int size) {
 	if (size <= 0) { return -1; }
+	if (s_pageCount >= VOID2D_MAX_GLYPH_PAGES) {
+		fprintf(stderr, "void2d: glyph page %d refused, the renderer binds at most %d\n",
+			s_pageCount, VOID2D_MAX_GLYPH_PAGES);
+		return -1;
+	}
 	if (s_pageCount == s_pageCapacity) {
 		int grown = s_pageCapacity ? s_pageCapacity * 2 : 4;
 		GlyphPage *pages = (GlyphPage *)realloc(s_pages, sizeof(GlyphPage) * (size_t)grown);
