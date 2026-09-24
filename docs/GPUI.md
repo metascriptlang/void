@@ -129,7 +129,7 @@ How the taken items are adapted — the display list, the unified UI pipeline, S
 | `TextRun`, run backgrounds, underline / strikethrough / wavy primitive | **Take** | |
 | Wrap boundaries, truncation, `x_for_index` / `index_for_x`, `force_width`, `split_at` — all over shaped glyphs | **Take** | text layout is rendering: native Neon hosts get it from the OS, the Void host gets it from Void |
 | Shaping with OpenType features (ligatures, `calt`), colour-change splits the run | **Take**, compile-time module | shaper candidate `kb_text_shape` |
-| Colour emoji as RGBA sprites | **Take**, with the rasterizer decision | needs COLR/CBDT, which stb_truetype lacks |
+| Colour emoji as RGBA sprites | **Take**, as P6's compile-time module (decided at P3's review) | stb_truetype has no colour tables, so the module reads CBDT/sbix and COLRv0 itself |
 | Dirty → draw+present / present-only / nothing; retained list re-presented | **Take** (renderer half) | `Scene` reports whether it changed and can replay its last list; scheduling is the host's |
 | Frame profiler: `dirty_to_present`, draw time, input latency; overlay drawn outside invalidation | **Take**, plus draw-call / instance / upload-byte counters GPUI lacks | |
 | Device-loss path: drop atlas + GPU resources, force a full redraw | **Take** | generalises `s_atlasGen` |
