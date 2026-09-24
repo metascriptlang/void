@@ -55,7 +55,12 @@ build() {
 	echo "$target FAILED after retries — see /tmp/void_web_$target.log"; return 1
 }
 
-PRELOAD="--preload-file assets/test.png --preload-file assets/font.ttf"
-build wgpu "--use-port=emdawnwebgpu -DSOKOL_WGPU" "--use-port=emdawnwebgpu $PRELOAD" "$DEST/wgpu"
-build gl   "-DSOKOL_GLES3" "-sFULL_ES3=1 -sMAX_WEBGL_VERSION=2 $PRELOAD" "$DEST/gl"
+PRELOAD="${VOID_WEB_PRELOAD:---preload-file assets/test.png --preload-file assets/font.ttf}"
+BACKENDS="${VOID_WEB_BACKENDS:-wgpu gl}"
+case " $BACKENDS " in *" wgpu "*)
+	build wgpu "--use-port=emdawnwebgpu -DSOKOL_WGPU" "--use-port=emdawnwebgpu $PRELOAD" "$DEST/wgpu" ;;
+esac
+case " $BACKENDS " in *" gl "*)
+	build gl   "-DSOKOL_GLES3" "-sFULL_ES3=1 -sMAX_WEBGL_VERSION=2 $PRELOAD" "$DEST/gl" ;;
+esac
 echo "done — serve web/ and open void2d.html"

@@ -22,6 +22,7 @@ static voidPngSlot s_slots[VOID_PNG_SLOTS];
 
 static int s_differ = -1;
 static int s_maxDelta = 0;
+static int s_overOne = 0;
 static int s_minX = 0;
 static int s_minY = 0;
 static int s_maxX = -1;
@@ -68,6 +69,7 @@ int voidPngDiff(void) {
 	const voidPngSlot *b = &s_slots[1];
 	s_differ = -1;
 	s_maxDelta = 0;
+	s_overOne = 0;
 	s_minX = 0;
 	s_minY = 0;
 	s_maxX = -1;
@@ -96,6 +98,7 @@ int voidPngDiff(void) {
 			}
 			if (delta == 0) continue;
 			differ++;
+			if (delta > 1) s_overOne++;
 			if (delta > s_maxDelta) s_maxDelta = delta;
 			if (x < s_minX) s_minX = x;
 			if (y < s_minY) s_minY = y;
@@ -118,6 +121,7 @@ int voidPngDiff(void) {
 }
 
 int voidPngDiffMaxDelta(void) { return s_maxDelta; }
+int voidPngDiffOverOne(void) { return s_overOne; }
 int voidPngDiffMinX(void) { return s_minX; }
 int voidPngDiffMinY(void) { return s_minY; }
 int voidPngDiffMaxX(void) { return s_maxX; }

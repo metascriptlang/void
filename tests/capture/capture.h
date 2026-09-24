@@ -15,7 +15,7 @@
 
 #define VOID_CAPTURE_SLOTS 2
 
-// 0 = none (stub), 1 = D3D11, 2 = GLES3. Names the path that voidCaptureGrab would take.
+// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2. Names the path that voidCaptureGrab would take.
 int voidCaptureBackend(void);
 
 // Read the current swapchain contents into `slot` as 8-bit RGBA, top row first.

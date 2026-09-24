@@ -15,6 +15,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if defined(__EMSCRIPTEN__)
+	#include <emscripten.h>
+#endif
+
 #if defined(SOKOL_GLES3) || defined(SOKOL_GLCORE)
 	#define VOID_CAPTURE_GL 1
 #elif defined(_WIN32)
@@ -71,6 +75,8 @@ static uint8_t *slotResize(int slot, int width, int height) {
 int voidCaptureBackend(void) {
 #if defined(VOID_CAPTURE_D3D11)
 	return 1;
+#elif defined(VOID_CAPTURE_GL) && defined(__EMSCRIPTEN__)
+	return 3;
 #elif defined(VOID_CAPTURE_GL)
 	return 2;
 #else
@@ -241,4 +247,13 @@ int voidCaptureEnvInt(const char *name, int fallback) {
 	return (int)parsed;
 }
 
-void voidCaptureExit(int code) { exit(code); }
+void voidCaptureExit(int code) {
+#if defined(__EMSCRIPTEN__)
+	// A browser has no process to exit: the page's driver (scripts/webGolden.mjs) waits for
+	// this flag, then reads the PNG out of the in-memory file system.
+	EM_ASM({ window.voidDone = $0; }, code);
+	emscripten_force_exit(code);
+#else
+	exit(code);
+#endif
+}

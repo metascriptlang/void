@@ -24,6 +24,9 @@ int voidPngPixel(int slot, int x, int y, int channel);
 int voidPngDiff(void);
 
 int voidPngDiffMaxDelta(void);
+// Pixels of the last diff whose largest channel delta is 2 or more: the cross-backend bound
+// ignores a delta of 1 (docs/TESTING.md "Guardrail 9").
+int voidPngDiffOverOne(void);
 int voidPngDiffMinX(void);
 int voidPngDiffMinY(void);
 int voidPngDiffMaxX(void);

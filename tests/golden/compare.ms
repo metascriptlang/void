@@ -16,6 +16,7 @@
 // the runner.
 
 import { readLines } from "std/fs";
+import { env } from "std/process";
 import { trimSpaces, parseInt32, NOT_A_NUMBER } from "../harness/parse";
 import {
 	SceneRow,
@@ -41,6 +42,7 @@ import {
 	voidPngPixel,
 	voidPngDiff,
 	voidPngDiffMaxDelta,
+	voidPngDiffOverOne,
 	voidPngDiffMinX,
 	voidPngDiffMinY,
 	voidPngDiffMaxX,
@@ -51,6 +53,10 @@ import {
 const GOLDEN_ROOT: string = "tests/golden";
 const ACTUAL_ROOT: string = "out/golden";
 const PENDING_PATH: string = "tests/PENDING.md";
+// docs/TESTING.md "Guardrail 9": across backends a delta of 1 is ignored, and a scene fails at
+// a max delta of 4 or when more than 0.05 % of its pixels differ by 2 or 3.
+const CROSS_FAIL_DELTA: int32 = 4;
+const CROSS_MAX_SHARE: float64 = 0.0005;
 
 // A tests/PENDING.md row that carries an image budget.
 interface PendingBudget {
@@ -146,9 +152,10 @@ function reportDiff(name: string, differ: int32): void {
 	console.log(`  ${name}: ${differ} px differ, max delta ${voidPngDiffMaxDelta()}, bbox (${voidPngDiffMinX()},${voidPngDiffMinY()})-(${voidPngDiffMaxX()},${voidPngDiffMaxY()})`);
 }
 
-function judge(row: SceneRow, budgets: PendingBudget[], backend: string): Verdict {
+function judge(row: SceneRow, budgets: PendingBudget[], backend: string, captured: string): Verdict {
 	const goldenPath: string = `${GOLDEN_ROOT}/${backend}/${row.name}.png`;
-	const actualPath: string = `${ACTUAL_ROOT}/${backend}/${row.name}.png`;
+	const actualPath: string = `${ACTUAL_ROOT}/${captured}/${row.name}.png`;
+	const cross: boolean = !captured.equals(backend);
 
 	if (voidPngLoad(1, actualPath) == 0) {
 		console.log(`FAIL ${row.name} was not captured (${actualPath} is missing)`);
@@ -185,7 +192,18 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string): Verdic
 		return Verdict.Fail;
 	}
 
-	const budget = budgetFor(budgets, row.name);
+	if (cross && differ > 0) {
+		const pixels: float64 = (row.width * row.height) as float64;
+		const within: boolean = voidPngDiffMaxDelta() < CROSS_FAIL_DELTA
+			&& (voidPngDiffOverOne() as float64) <= pixels * CROSS_MAX_SHARE;
+		if (within) {
+			reportDiff(row.name, differ);
+			console.log(`PASS ${row.name} within the cross-backend bound (${voidPngDiffOverOne()} px over delta 1)`);
+			return Verdict.PassPending;
+		}
+	}
+
+	const budget = budgetFor(budgets, cross ? `${row.name}@${captured}` : row.name);
 	if (budget !== null) {
 		if (differ == 0) {
 			console.log(`FAIL ${row.name} is byte-identical and still listed in ${PENDING_PATH} — delete the entry`);
@@ -196,7 +214,7 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string): Verdic
 			console.log(`PENDING ${row.name} within its budget (${budget.maxPixels} px, delta ${budget.maxDelta})`);
 			return Verdict.PassPending;
 		}
-		voidPngWriteDiffMask(`${ACTUAL_ROOT}/${backend}/${row.name}.diff.png`);
+		voidPngWriteDiffMask(`${ACTUAL_ROOT}/${captured}/${row.name}.diff.png`);
 		console.log(`FAIL ${row.name} is over its budget (${budget.maxPixels} px, delta ${budget.maxDelta})`);
 		return Verdict.Fail;
 	}
@@ -206,7 +224,7 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string): Verdic
 		return Verdict.Pass;
 	}
 	reportDiff(row.name, differ);
-	voidPngWriteDiffMask(`${ACTUAL_ROOT}/${backend}/${row.name}.diff.png`);
+	voidPngWriteDiffMask(`${ACTUAL_ROOT}/${captured}/${row.name}.diff.png`);
 	console.log(`FAIL ${row.name} differs from its golden and has no ${PENDING_PATH} entry`);
 	return Verdict.Fail;
 }
@@ -214,6 +232,10 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string): Verdic
 function runComparison(): int32 {
 	// The comparator never runs a backend, so it is told which golden set to read. 1 = D3D11.
 	const backend: string = backendDirectory(1);
+	// VOID_CONFORM names another backend's captures to judge against the same D3D11 goldens,
+	// under the cross-backend bound instead of byte identity.
+	const conform: string = env.get("VOID_CONFORM");
+	const captured: string = conform.length > 0 ? conform : backend;
 	const budgets = readPendingBudgets();
 	const rows = sceneRows();
 	let passed: int32 = 0;
@@ -221,7 +243,7 @@ function runComparison(): int32 {
 	let failed: int32 = 0;
 
 	for (const row of rows) {
-		const verdict = judge(row, budgets, backend);
+		const verdict = judge(row, budgets, backend, captured);
 		if (verdict === Verdict.Pass) { passed = passed + 1; }
 		else if (verdict === Verdict.PassPending) { pending = pending + 1; }
 		else { failed = failed + 1; }
@@ -230,9 +252,9 @@ function runComparison(): int32 {
 	const total: int32 = rows.length as int32;
 	console.log("");
 	if (malformed > 0) {
-		console.log(`golden ${backend}: ${malformed} unreadable ${PENDING_PATH} budget row(s)`);
+		console.log(`golden ${captured}: ${malformed} unreadable ${PENDING_PATH} budget row(s)`);
 	}
-	console.log(`golden ${backend}: ${passed} pass, ${pending} pending, ${failed} fail of ${total}`);
+	console.log(`golden ${captured}: ${passed} pass, ${pending} pending, ${failed} fail of ${total}`);
 	console.log(`pass rate ${(passed + pending) * 100 / total}%`);
 	return failed == 0 && malformed == 0 ? 0 : 1;
 }
