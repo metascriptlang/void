@@ -1,0 +1,36 @@
+# h3d.Matrix.colorSaturate against src/math/math3d.ms colorSaturated.
+#
+# Same shape as bounds3d.cases: no expected answer here; `sh scripts/oracle.sh regen
+# tests/oracle/color3d.cases` replays the Haxe side through real Heaps and commits the snapshot.
+# A colour is the row vec4(rgb, 1) times the matrix, which is Vector4.transform and what
+# h3d.shader.ColorMatrix computes on pixelColor. The lit and post programs apply the same
+# formula in its scalar form; src/test/math3dCheck.ms ties that form to this matrix.
+#
+# lib: heaps format
+# haxe-prelude: import h3d.Matrix;
+# haxe-prelude: import h3d.Vector4;
+# ms-prelude: import { Vec4, vec4, Mat4, identity, scaling, translation, colorSaturated } from "../../../src/math/math3d";
+
+case saturate-grey-matrix tol=1e-6
+haxe> var g = Matrix.I(); g.colorSaturate(-1); emit("saturate-grey-matrix", [g._11, g._12, g._13, g._21, g._22, g._23, g._31, g._32, g._33]);
+ms> const g: Mat4 = identity().colorSaturated(-1.0); emit9("saturate-grey-matrix", g.m11, g.m12, g.m13, g.m21, g.m22, g.m23, g.m31, g.m32, g.m33);
+
+case saturate-half-matrix tol=1e-6
+haxe> var h = Matrix.I(); h.colorSaturate(-0.5); emit("saturate-half-matrix", [h._11, h._12, h._13, h._21, h._22, h._23, h._31, h._32, h._33]);
+ms> const h: Mat4 = identity().colorSaturated(-0.5); emit9("saturate-half-matrix", h.m11, h.m12, h.m13, h.m21, h.m22, h.m23, h.m31, h.m32, h.m33);
+
+case saturate-boost-matrix tol=1e-6
+haxe> var k = Matrix.I(); k.colorSaturate(0.4); emit("saturate-boost-matrix", [k._11, k._12, k._13, k._21, k._22, k._23, k._31, k._32, k._33]);
+ms> const k: Mat4 = identity().colorSaturated(0.4); emit9("saturate-boost-matrix", k.m11, k.m12, k.m13, k.m21, k.m22, k.m23, k.m31, k.m32, k.m33);
+
+case saturate-colour tol=1e-6
+haxe> var c = Matrix.I(); c.colorSaturate(-0.6); var cv = new Vector4(0.9, 0.4, 0.1, 1); cv.transform(c); emit("saturate-colour", [cv.x, cv.y, cv.z, cv.w]);
+ms> const c: Vec4 = vec4(0.9, 0.4, 0.1, 1.0) * identity().colorSaturated(-0.6); emit4("saturate-colour", c.x, c.y, c.z, c.w);
+
+case saturate-after-scale tol=1e-6
+haxe> var s = Matrix.I(); s.initScale(1, 0, 0); s.colorSaturate(-1); emit("saturate-after-scale", [s._11, s._12, s._13, s._21, s._22, s._23, s._31, s._32, s._33]);
+ms> const s: Mat4 = scaling(1.0, 0.0, 0.0).colorSaturated(-1.0); emit9("saturate-after-scale", s.m11, s.m12, s.m13, s.m21, s.m22, s.m23, s.m31, s.m32, s.m33);
+
+case saturate-keeps-offset-row tol=1e-6
+haxe> var t = Matrix.I(); t.initTranslation(0.1, 0.2, 0.3); t.colorSaturate(-0.75); emit("saturate-keeps-offset-row", [t._41, t._42, t._43]);
+ms> const t: Mat4 = translation(0.1, 0.2, 0.3).colorSaturated(-0.75); emit3("saturate-keeps-offset-row", t.m41, t.m42, t.m43);
