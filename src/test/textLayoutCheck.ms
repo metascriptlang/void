@@ -1,5 +1,4 @@
 import {
-	loadFace,
 	glyphIndex,
 	glyphAdvance,
 	glyphKern,
@@ -10,14 +9,15 @@ import {
 	TextStyle,
 	calcTextWidth,
 } from "../void2d/textLayout";
+import { addFont, fontFace } from "../void2d/font";
 import { approx } from "./helpers";
 
-let loadedFace: int32 = -1;
+let loadedFont: int32 = -1;
 
 function style(): TextStyle {
-	if (loadedFace < 0) { loadedFace = loadFace("assets/font.ttf"); }
+	if (loadedFont < 0) { loadedFont = addFont("assets/font.ttf"); }
 	return {
-		face: loadedFace,
+		font: loadedFont,
 		size: 13.0,
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
@@ -28,12 +28,14 @@ function style(): TextStyle {
 
 function advanceOf(codepoint: int32): float32 {
 	const s = style();
-	return glyphAdvance(s.face, glyphIndex(s.face, codepoint), 13.0);
+	const face = fontFace(s.font);
+	return glyphAdvance(face, glyphIndex(face, codepoint), 13.0);
 }
 
 function kernOf(left: int32, right: int32): float32 {
 	const s = style();
-	return glyphKern(s.face, glyphIndex(s.face, left), glyphIndex(s.face, right), 13.0);
+	const face = fontFace(s.font);
+	return glyphKern(face, glyphIndex(face, left), glyphIndex(face, right), 13.0);
 }
 
 test "a pair is laid out by float advance plus its GPOS kern, never rounded" {
@@ -96,7 +98,7 @@ test "a newline is a hard break, and a trailing one opens an empty line" {
 test "lines advance by the line height plus lineSpacing in pixels" {
 	const s: TextStyle = { ...style(), lineSpacing: 4.0 };
 	const l = TextLayout.layout("a\nb", s);
-	const m = faceMetrics(s.face, 13.0);
+	const m = faceMetrics(fontFace(s.font), 13.0);
 	const lineHeight: float32 = m.ascent + m.descent + m.lineGap;
 	assert approx(l.lineHeight, lineHeight);
 	assert approx(l.lines[1].top, lineHeight + 4.0);

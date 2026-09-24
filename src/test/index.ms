@@ -11,7 +11,7 @@ import "./textLayoutCheck";
 import "./labelTextCheck";
 import "./textMetricsCheck";
 import "./textGammaCheck";
-import "./fontFallbackCheck";
+import "./fontCheck";
 import "./syntheticFaceCheck";
 import "./math3dCheck";
 import "./pipelineCheck";

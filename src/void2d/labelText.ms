@@ -6,13 +6,10 @@ import {
 	snapBaseline,
 } from "./glyphAtlas";
 import { TextLayout, TextStyle } from "./textLayout";
-import { loadFace } from "./face";
-import { addFallback } from "./fontFallback";
 import { Transform2D } from "./types";
 
 export const NO_LABEL_TEXT: int32 = -1;
 const MAX_GLYPH_PAGES: int32 = 16;
-const DEFAULT_FONT: string = "assets/font.ttf";
 
 export struct PlacedGlyph {
 	tile: int32;
@@ -45,30 +42,7 @@ export interface LabelText {
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
 export const labelTexts: LabelText[] = [];
 const freeLabelTexts: Vec<int32> = [];
-const fonts: Vec<int32> = [];
 let atlasFullReported: boolean = false;
-
-function ensureDefaultFont(): void {
-	if ((fonts.length as int32) == 0) { fonts.push(loadFace(DEFAULT_FONT)); }
-}
-
-export function addFont(path: string): int32 {
-	ensureDefaultFont();
-	const face: int32 = loadFace(path);
-	if (face < 0) { return -1; }
-	fonts.push(face);
-	return (fonts.length as int32) - 1;
-}
-
-export function addFallbackFont(fontId: int32, path: string): void {
-	addFallback(faceFor(fontId), path);
-}
-
-export function faceFor(fontId: int32): int32 {
-	ensureDefaultFont();
-	if (fontId < 0 || fontId >= (fonts.length as int32)) { return fonts[0]; }
-	return fonts[fontId];
-}
 
 export function firstGlyphPage(): int32 {
 	return glyphAtlas.ensurePage();
@@ -103,7 +77,7 @@ function emptyLayout(): TextLayout {
 export function allocateLabelText(): int32 {
 	const entry: LabelText = {
 		layout: emptyLayout(),
-		style: { face: -1, size: 0.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0 },
+		style: { font: -1, size: 0.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0 },
 		placed: new Array(0),
 		placedValid: false,
 		pixelExact: false,

@@ -3,7 +3,6 @@ import {
 	releaseLabelText,
 	shapeLabel,
 	placeLabel,
-	faceFor,
 	glyphAtlas,
 	glyphRasterizations,
 	isPixelExact,
@@ -14,7 +13,7 @@ import { Transform2D, trs2d } from "../void2d/types";
 function shaped(text: string): int32 {
 	const index = allocateLabelText();
 	shapeLabel(index, text, {
-		face: faceFor(0),
+		font: 0,
 		size: 13.0,
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,

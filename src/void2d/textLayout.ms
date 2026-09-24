@@ -6,13 +6,13 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "./face";
-import { faceForCodepoint } from "./fontFallback";
+import { faceForCodepoint, fontFace, fontKerns } from "./font";
 
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
 
 export struct TextStyle {
-	face: int32;
+	font: int32;
 	size: float32;
 	letterSpacing: float32;
 	lineSpacing: float32;
@@ -108,10 +108,11 @@ function layRun(
 	let width: float32 = 0.0;
 	let previous: int32 = -1;
 	let previousFace: int32 = -1;
+	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
-		const face: int32 = faceForCodepoint(style.face, cps[i].value);
+		const face: int32 = faceForCodepoint(style.font, cps[i].value);
 		const glyph: int32 = glyphIndex(face, cps[i].value);
-		if (previous >= 0 && previousFace == face) {
+		if (previous >= 0 && previousFace == face && kerns) {
 			pen = pen + glyphKern(face, previous, glyph, style.size);
 		}
 		const advance: float32 = glyphAdvance(face, glyph, style.size);
@@ -140,10 +141,11 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	let pen: float32 = 0.0;
 	let previous: int32 = -1;
 	let previousFace: int32 = -1;
+	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
-		const face: int32 = faceForCodepoint(style.face, cps[i].value);
+		const face: int32 = faceForCodepoint(style.font, cps[i].value);
 		const glyph: int32 = glyphIndex(face, cps[i].value);
-		if (previous >= 0 && previousFace == face) {
+		if (previous >= 0 && previousFace == face && kerns) {
 			pen = pen + glyphKern(face, previous, glyph, style.size);
 		}
 		const advance: float32 = glyphAdvance(face, glyph, style.size);
@@ -160,7 +162,8 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 }
 
 export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
-	const metrics = faceMetrics(style.face, style.size);
+	const primary: int32 = fontFace(style.font);
+	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const cps: Vec<Codepoint> = decodeUtf8(text);
 	const count: int32 = cps.length as int32;
@@ -213,7 +216,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		lineHeight: lineHeight,
 		width: width,
 		height: lineCount * lineHeight + gaps * style.lineSpacing,
-		decoration: decorationMetrics(style.face, style.size),
+		decoration: decorationMetrics(primary, style.size),
 	};
 }
 

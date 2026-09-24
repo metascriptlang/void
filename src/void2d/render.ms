@@ -32,7 +32,6 @@ import {
 	allocateLabelText,
 	shapeLabel,
 	placeLabel,
-	faceFor,
 	firstGlyphPage,
 	glyphPageHandle,
 	labelTexts,
@@ -195,7 +194,7 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 
 function labelStyle(n: Node2D): TextStyle {
 	return {
-		face: faceFor(n.fontId),
+		font: n.fontId,
 		size: n.size,
 		letterSpacing: n.letterSpacing,
 		lineSpacing: n.lineSpacing,

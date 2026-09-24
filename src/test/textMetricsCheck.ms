@@ -1,14 +1,13 @@
 import { label, rect } from "../void2d/node";
 import { textLayout, textWidth, textHeight, calcTextWidth, splitText, getBounds } from "../void2d/render";
 import { TextLayout } from "../void2d/textLayout";
-import { faceFor } from "../void2d/labelText";
 import { Bounds, rgba, emptyBounds } from "../void2d/types";
 import { approx } from "./helpers";
 
 test "textWidth is the width of the layout the label paints" {
 	const n = label("fn main() { }", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const direct = TextLayout.layout("fn main() { }", {
-		face: faceFor(0), size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+		font: 0, size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
 	});
 	assert approx(n.textWidth(), direct.width);
 	assert approx(n.textHeight(), direct.height);
@@ -29,7 +28,7 @@ test "calcTextWidth and splitText use the label's font, size and wrap width" {
 	n.maxWidth = fits;
 	assert n.splitText("aa bb cc") == "aa bb\ncc";
 	assert approx(n.calcTextWidth("aa bb cc"), TextLayout.layout("aa bb cc", {
-		face: faceFor(0), size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+		font: 0, size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
 	}).width);
 }
 

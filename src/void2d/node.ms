@@ -5,6 +5,7 @@ import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, 
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
 import { NO_LABEL_TEXT, releaseLabelText } from "./labelText";
+import { Font, NO_FONT, resolveFont } from "./font";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
@@ -139,6 +140,12 @@ export function setImageStyle(this n: Node2D, style: ImageStyle): Node2D {
 export function label(text: string, size: float32, color: Color): Node2D {
 	const n = base(DrawKind.Label);
 	n.text = text; n.size = size; n.color = color;
+	return n;
+}
+export function setFont(this n: Node2D, font: Font): Node2D {
+	if (n.kind !== DrawKind.Label) { unreachable; }
+	const id: int32 = resolveFont(font);
+	if (id != NO_FONT) { n.fontId = id; }
 	return n;
 }
 export function anim(frames: Tile[], fps: float32): Node2D {
