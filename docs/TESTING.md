@@ -30,13 +30,13 @@ Already exists. `src/test/index.ms` is eleven imports; `msc test` runs the impor
 Two constraints on everything below come from the language, not from taste:
 
 - **`assert` takes a bare boolean and carries no message.** `expect` does not exist. A snapshot or table comparator must `console.log` the differing rows itself before asserting the difference count is zero, or a failure reports only that an assert failed.
-- **`==` on a struct over 24 bytes fails to compile on msc 0.2.53** (`src/test/pipelineCheck.ms:24-35` works around it with a field-by-field `sameState`). Comparators over instance structs are written out by field, or over their packed bytes.
+- **`==` compares structs of any size since msc 0.2.55** (re-probed 2026-09-25). On 0.2.53 a struct over 24 bytes failed to compile, which is why older comparators here are written out by field.
 
 Data-driven tables are already the local idiom — `blendModes(): Vec<BlendMode>` looped over in `pipelineCheck.ms:123`, the fixture builders at `rendererCheck.ms:34-89`. Keep that; there is no framework to add.
 
 What T0 gains through the roadmap: the snapping rules as arithmetic, wrap and truncation boundaries over a shaped line, the atlas packer, complementary rounding, Oklab and sRGB interpolation, the gamma/contrast table, instance bit packing, the display-list growth policy.
 
-`tests/layout.test.ms` at the repo root is a separate, older mechanism — a standalone binary with its own `expectEq(label, actual, expected)` runner (`tests/layout.test.ms:13-21`) that does not build on msc 0.2.53. It is not part of this model; either port its cases into `src/test/` or delete it.
+`tests/layout.test.ms` at the repo root is a separate, older mechanism — a standalone binary with its own `expectEq(label, actual, expected)` runner (`tests/layout.test.ms:13-21`) that builds and passes standalone on msc 0.2.55. Its port into `src/test/` is parked on a compiler card (`tests/PENDING.md legacy:tests/layout.test.ms`). It is not part of this model; either port its cases into `src/test/` or delete it.
 
 ## T1 — the display list is assertable with no GPU
 
