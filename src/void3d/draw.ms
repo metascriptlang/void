@@ -217,10 +217,12 @@ export function uploadMesh(ref context: DrawContext, index: int32): Result<int32
 		indexBuffer = makeIndexBuffer(context.meshData[index].indices);
 	}
 	if (vertexBuffer == 0) {
+		if (indexBuffer != 0) { destroyBuffer(indexBuffer); }
 		context.meshes[index] = context.meshes[index].drawsNothing();
 		return Result.err(MeshUploadError.VertexBufferRefused);
 	}
 	if (context.meshData[index].isIndexed() && indexBuffer == 0) {
+		destroyBuffer(vertexBuffer);
 		context.meshes[index] = context.meshes[index].drawsNothing();
 		return Result.err(MeshUploadError.IndexBufferRefused);
 	}
