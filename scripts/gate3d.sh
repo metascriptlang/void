@@ -766,7 +766,10 @@ run_tests() {
 	fi
 	if msc test "$TMP/test2d.ms" > "$WORK/tests.log" 2>&1; then
 		summary=$(grep -E '^ *Tests ' "$WORK/tests.log" | tail -1 | tr -s ' ')
-		if grep -qE 'failed' "$WORK/tests.log"; then
+		if [ -z "$summary" ]; then
+			fail "tests: no summary line; msc test exits 0 when the test binary crashes"
+			grep -nE 'terminated|Assertion|×' "$WORK/tests.log" | head -10
+		elif grep -qE 'failed' "$WORK/tests.log"; then
 			fail "tests:$summary"
 			grep -nE 'failed|FAIL' "$WORK/tests.log" | head -20
 		else
