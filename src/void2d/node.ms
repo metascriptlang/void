@@ -260,9 +260,8 @@ export function update(this n: Node2D, dt: float32): void {
 	}
 }
 
-// A node owns no GPU resource since P1. What it does own are side-table rows - box style,
-// image style, and label text with the glyph tiles it holds - and a label that is dropped
-// without `dispose` keeps its tiles live, so their atlas page can never be reclaimed.
+// A label dropped without `dispose` keeps its glyph tiles live, and their atlas page is never
+// reclaimed.
 export function dispose(this n: Node2D): void {
 	for (const ch of n.children) {
 		ch.dispose();
