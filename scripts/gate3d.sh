@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the ten capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the twelve capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -184,7 +184,15 @@ prepare_entries() {
 configureCampfireRebuildAt(3);"
 	write_entry campfireLookCapture "" "configureCampfire(PixelArtSettings.full(), true);" \
 		"configureCampfireLookSchedule(true);"
-	note "prepare: ten capture entries written to $CAPTURE"
+	# The stones greyed on their own lit material while the rest of the scene keeps its colour:
+	# with the post pass off, where run_grey_reference checks each greyed pixel against
+	# colorSaturate, and with the palette on, the look the saturation ships under.
+	write_entry campfireGreyDirectCapture "" \
+		"configureCampfire({ ...PixelArtSettings.full(), postPass: false }, false);" \
+		"configureCampfireGreyStones($GREY_STONES);"
+	write_entry campfireGreyPaletteCapture "" "configureCampfire(PixelArtSettings.full(), true);" \
+		"configureCampfireGreyStones($GREY_STONES);"
+	note "prepare: twelve capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -790,7 +798,8 @@ expected_hash() {
 }
 
 baseline_names() {
-	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look; do
+	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
+		m12greydirect m12greypalette; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -902,9 +911,47 @@ run_look_restored() {
 	pass "capture look: frames 1 and 16 byte-identical to m3palette_*.ppm around the swap"
 }
 
+# The lit program's saturation against the CPU reference (math3d colorSaturated, which the
+# oracle holds to Heaps). With the post pass off a frame is the lit output itself, so a pixel the
+# greyed run changed must be colorSaturate of the same pixel in the plain postPass-off run,
+# within one 8-bit level: the reference reads that pixel already rounded to 8 bits. A pixel with
+# a channel at 255 is not checked: the shader saturates the colour before the target clips it,
+# and the stored pixel no longer says what that colour was.
+run_grey_reference() {
+	keep=$(awk -v s="$GREY_STONES" 'BEGIN { print 1 + s }')
+	checked=""
+	for frame in $FRAMES; do
+		base=$CAPTURE/gate/campfireDirectCapture_$frame.ppm
+		grey=$CAPTURE/gate/campfireGreyDirectCapture_$frame.ppm
+		if [ ! -f "$base" ] || [ ! -f "$grey" ]; then
+			fail "capture grey: frame $frame of the postPass-off or the greyed run was not captured"
+			return
+		fi
+		changed=$(magick compare -metric AE "$base" "$grey" null: 2>&1 | cut -d' ' -f1)
+		magick "$base" "$grey" -fx "max(max(abs(u.r - v.r), abs(u.g - v.g)), abs(u.b - v.b)) > 0 \
+			&& max(max(u.r, u.g), u.b) < 1" "$WORK/greyMask.png"
+		compared=$(magick "$WORK/greyMask.png" -format "%[fx:round(mean * w * h)]" info:)
+		if [ "${compared:-0}" = 0 ]; then
+			fail "capture grey: frame $frame greyed no unclipped pixel ($changed changed)"
+			return
+		fi
+		magick "$base" -fx "u * $keep + (0.212671 * u.r + 0.71516 * u.g + 0.072169 * u.b) * (1 - $keep)" \
+			"$WORK/greyMask.png" -compose multiply -composite "$WORK/greyExpected.png"
+		magick "$grey" "$WORK/greyMask.png" -compose multiply -composite "$WORK/greyGot.png"
+		levels=$(magick compare -metric PAE "$WORK/greyExpected.png" "$WORK/greyGot.png" null: 2>&1 |
+			sed 's/.*(\(.*\)).*/\1/' | awk '{ printf "%.3f", $1 * 255 }')
+		if awk -v l="$levels" 'BEGIN { exit !(l > 1.001) }'; then
+			fail "capture grey: frame $frame is $levels levels from colorSaturate($GREY_STONES)"
+			return
+		fi
+		checked="$checked $compared/$changed"
+	done
+	pass "capture grey: within one level of colorSaturate($GREY_STONES), unclipped/greyed pixels:$checked"
+}
+
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the ten configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the twelve configurations were not built, not run, not compared"
 		return
 	fi
 	purge_stale_shader_objects
@@ -919,6 +966,9 @@ run_captures() {
 	run_capture campfireParticlesRebuildCapture m11particles "particles, rebuilt mid-run"
 	run_capture campfireLookCapture    m11look    "palette swapped, greyed, restored"
 	run_look_restored
+	run_capture campfireGreyDirectCapture  m12greydirect  "stones greyed, postPass off"
+	run_capture campfireGreyPaletteCapture m12greypalette "stones greyed, palette on"
+	run_grey_reference
 }
 
 # ---- manifest -----------------------------------------------------------------------------
@@ -928,6 +978,7 @@ PENDING=tests/PENDING3D.md
 BENCH_WARMUP=${GATE_BENCH_WARMUP:-30}
 BENCH_FRAMES=${GATE_BENCH_FRAMES:-300}
 PICK_FRAME=12
+GREY_STONES=-1.0
 
 # The manifest holds one hash per baseline and nothing else: a baseline without a hash is a
 # frame nothing checks, and a hash without a baseline is a claim nothing makes.
@@ -985,7 +1036,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the ten capture entries are current"
+	pass "prepare: campfireScene.ms and the twelve capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
