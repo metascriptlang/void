@@ -92,6 +92,7 @@ export struct DrawContext {
 
 export enum UniformError {
 	PoolFull,
+	WrongLength,
 }
 
 export enum MeshUploadError {
@@ -401,16 +402,16 @@ export function reserveUniforms(
 	return Result.ok({ slot: slot, offset: offset, length: length });
 }
 
-// Copies `values` into the block; extra values are dropped, missing ones keep their old value.
 export function writeUniforms(
 	ref context: DrawContext,
 	block: UniformBlock,
 	values: Span<float32>,
-): void {
-	const count: int32 = Math.min(block.length, values.length as int32) as int32;
-	for (let i = 0; i < count; i++) {
+): Result<int32, UniformError> {
+	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
+	for (let i = 0; i < block.length; i++) {
 		context.uniforms[block.offset + i] = values[i];
 	}
+	return Result.ok(block.length);
 }
 
 function applyBlock(this context: DrawContext, block: UniformBlock): void {

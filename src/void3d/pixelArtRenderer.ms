@@ -39,7 +39,14 @@ import {
 	beginPass,
 	beginScreenPass,
 } from "./target";
-import { DrawContext, DrawItem, addMaterial, reserveUniforms, writeUniforms } from "./draw";
+import {
+	DrawContext,
+	DrawItem,
+	UniformError,
+	addMaterial,
+	reserveUniforms,
+	writeUniforms,
+} from "./draw";
 import { PipelineKey, pipelineKey } from "./pipelineCache";
 import { LowResView, ViewError, lowResView } from "./blit";
 import {
@@ -120,6 +127,9 @@ export struct PixelArtLook {
 export enum PixelArtError {
 	UniformPoolFull,
 	PaletteLevels,
+	CameraBlockLength,
+	LightBlockLength,
+	ScreenBlockLength,
 }
 
 export struct PixelArtRenderer {
@@ -437,9 +447,17 @@ function drawBlit(ref renderer: PixelArtRenderer, ref context: DrawContext): voi
 	endPass();
 }
 
+function fromCore(error: RendererError): PixelArtError {
+	return match (error) {
+		RendererError.UniformPoolFull => PixelArtError.UniformPoolFull,
+		RendererError.CameraBlockLength => PixelArtError.CameraBlockLength,
+		RendererError.LightBlockLength => PixelArtError.LightBlockLength,
+	};
+}
+
 // One frame: `items` index `context`'s meshes and materials; `camera` and `lights` are the
 // scene programs' uniform blocks (shader3d.glsl vertexParams, lightParams); `view` comes from
-// viewFor. Allocates nothing unless the item count grew.
+// viewFor. Answers how many items it was given. Allocates nothing unless the item count grew.
 export function renderFrame(
 	ref renderer: PixelArtRenderer,
 	ref context: DrawContext,
@@ -447,8 +465,11 @@ export function renderFrame(
 	camera: Span<float32>,
 	lights: Span<float32>,
 	view: LowResView,
-): void {
-	if (beginFrame(renderer.core, context, items, camera, lights)) {
+): Result<int32, PixelArtError> {
+	const began: Result<boolean, RendererError> =
+		beginFrame(renderer.core, context, items, camera, lights);
+	if (!began.ok) { return Result.err(fromCore(began.error)); }
+	if (began.value) {
 		adoptContext(renderer);
 	}
 	resizeTargets(renderer, view.width, view.height);
@@ -460,9 +481,12 @@ export function renderFrame(
 		depthZeroToOne(),
 		renderer.postValues,
 	);
-	writeUniforms(context, renderer.postBlock, renderer.postValues);
 	view.writeBlitParams(renderer.blitValues);
-	writeUniforms(context, renderer.blitBlock, renderer.blitValues);
+	const post: Result<int32, UniformError> =
+		writeUniforms(context, renderer.postBlock, renderer.postValues);
+	const blit: Result<int32, UniformError> =
+		writeUniforms(context, renderer.blitBlock, renderer.blitValues);
+	if (!post.ok || !blit.ok) { return Result.err(PixelArtError.ScreenBlockLength); }
 
 	for (const stage of renderer.stages) {
 		match (stage) {
@@ -473,4 +497,5 @@ export function renderFrame(
 	}
 	endFrame(renderer.core);
 	renderer.view = view;
+	return Result.ok(items.length as int32);
 }

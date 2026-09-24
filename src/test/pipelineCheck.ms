@@ -269,8 +269,13 @@ test "uniform pool hands out ranges once and refuses to overflow" {
 	assert !second.ok;
 	const third: UniformBlock = try reserveUniforms(context, 1, 2) catch NO_UNIFORMS;
 	assert third.offset == 6 && third.slot == 1;
-	const values: Vec<float32> = [1.0, 2.0, 3.0];
-	writeUniforms(context, third, values);
+	const tooMany: Vec<float32> = [1.0, 2.0, 3.0];
+	const refused: Result<int32, UniformError> = writeUniforms(context, third, tooMany);
+	assert !refused.ok && refused.error == UniformError.WrongLength;
+	const tooFew: Vec<float32> = [5.0];
+	assert !writeUniforms(context, third, tooFew).ok;
+	const exact: Vec<float32> = [1.0, 2.0];
+	assert writeUniforms(context, third, exact).ok;
 	assert context.uniforms[6] == 1.0 && context.uniforms[7] == 2.0;
 }
 

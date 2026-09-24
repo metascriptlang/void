@@ -1,5 +1,10 @@
 import { Mat4, translation } from "../math/math3d";
-import { Program, POST_UNIFORM_LENGTH } from "../void3d/gpu3d";
+import {
+	Program,
+	POST_UNIFORM_LENGTH,
+	VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_LENGTH,
+} from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
 import { Material, Phase } from "../void3d/material";
 import { DrawContext, DrawItem, addMaterial } from "../void3d/draw";
@@ -27,6 +32,7 @@ import {
 	screenKey,
 	setSettings,
 	setPalette,
+	renderFrame,
 } from "../void3d/pixelArtRenderer";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, markChanged } from "../void3d/renderer";
 
@@ -334,6 +340,29 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 		const palette: Vec<uint32> = [0x101010];
 		assert setPalette(renderer, palette).ok;
 		assert renderer.needsFrame(drawn) && renderer.palette.dirty;
+	}
+}
+
+test "a camera or light block of the wrong length refuses the frame before it adopts a context" {
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+	assert created.ok;
+	if (created.ok) {
+		let renderer: PixelArtRenderer = created.value;
+		const items: Vec<DrawItem> = [];
+		const drawn: LowResView = view(1080, 2400, 360, 1, 0);
+		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+		const longLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH + 1);
+		const noCamera: Result<int32, PixelArtError> =
+			renderFrame(renderer, context, items, shortCamera, lights, drawn);
+		assert !noCamera.ok && noCamera.error == PixelArtError.CameraBlockLength;
+		const noLights: Result<int32, PixelArtError> =
+			renderFrame(renderer, context, items, camera, longLights, drawn);
+		assert !noLights.ok && noLights.error == PixelArtError.LightBlockLength;
+		assert renderer.core.generation == 0 && renderer.view.width == 0;
 	}
 }
 

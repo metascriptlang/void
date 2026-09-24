@@ -50,6 +50,8 @@ export struct Renderer {
 
 export enum RendererError {
 	UniformPoolFull,
+	CameraBlockLength,
+	LightBlockLength,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -97,8 +99,9 @@ export function needsFrame(this renderer: Renderer): boolean {
 	return renderer.changed || renderer.generation != contextGeneration();
 }
 
-// Starts a frame: adopts a new GPU context if there is one, uploads the camera and lights and
-// fills the pass lists from `items`. Returns true when the context is new: every handle the
+// Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and
+// fills the pass lists from `items`. A camera or light span that is not its block's length is
+// refused before anything changes. Answers true when the context is new: every handle the
 // caller made before is stale then (it may name an object of the new context), so the caller
 // drops its own without destroying them and makes them again before drawing. The core has
 // already dropped the pipelines, remade the screen triangle, and re-uploaded every mesh that
@@ -110,7 +113,13 @@ export function beginFrame(
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
-): boolean {
+): Result<boolean, RendererError> {
+	if (!writeUniforms(context, renderer.cameraBlock, camera).ok) {
+		return Result.err(RendererError.CameraBlockLength);
+	}
+	if (!writeUniforms(context, renderer.lightBlock, lights).ok) {
+		return Result.err(RendererError.LightBlockLength);
+	}
 	const generation: int32 = contextGeneration();
 	const fresh: boolean = generation != renderer.generation;
 	if (fresh) {
@@ -120,13 +129,11 @@ export function beginFrame(
 		renderer.generation = generation;
 		renderer.changed = true;
 	}
-	writeUniforms(context, renderer.cameraBlock, camera);
-	writeUniforms(context, renderer.lightBlock, lights);
 	collect(renderer.opaque, items, context.materials);
 	collect(renderer.alpha, items, context.materials);
 	collect(renderer.additive, items, context.materials);
 	sortBackToFront(renderer.alpha, items, camera);
-	return fresh;
+	return Result.ok(fresh);
 }
 
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is

@@ -665,8 +665,13 @@ function setupDraws(): void {
 		SPRITE_UNIFORM_SLOT,
 		SPRITE_UNIFORM_LENGTH,
 	) catch NO_UNIFORMS;
-	writeUniforms(context, litBlock, litToon);
-	writeUniforms(context, spriteBlock, spriteToon);
+	const litWritten: Result<int32, UniformError> = writeUniforms(context, litBlock, litToon);
+	const spriteWritten: Result<int32, UniformError> =
+		writeUniforms(context, spriteBlock, spriteToon);
+	if (!litWritten.ok || !spriteWritten.ok) {
+		console.log("campfire: setupDraws bailed at the toon blocks");
+		return;
+	}
 	const litMaterial: int32 = addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: litBlock,
@@ -787,7 +792,7 @@ function groundMaterialFor(state: RenderState, litMaterial: int32): Result<int32
 		try reserveUniforms(context, TOON_UNIFORM_SLOT, TOON_UNIFORM_LENGTH);
 	const toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
 	toon[TOON_SATURATION] = groundSaturation;
-	writeUniforms(context, block, toon);
+	const _written: int32 = try writeUniforms(context, block, toon);
 	return Result.ok(addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: block,
@@ -1226,7 +1231,12 @@ export function frameCampfire(): void {
 		if (!drawn) { console.log("campfire: a particle emitter failed to step or draw"); return; }
 	}
 	applyLookSchedule();
-	renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
+	const rendered: Result<int32, PixelArtError> =
+		renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
+	if (!rendered.ok) {
+		console.log(`campfire: the frame was refused, ${rendered.error.toString()}`);
+		return;
+	}
 	shownView = cameraView;
 	shownBlit = viewed.value;
 	shownHeight = framebufferHeight;
