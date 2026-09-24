@@ -276,22 +276,33 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
 	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const instanced: boolean = uiInstancingAvailable();
+	const exact: boolean = text.pixelExact;
+	const affine: Transform2D = exact ? deviceGrid : world;
+	let viewPage: int32 = -1;
+	let view: uint32 = 0;
 	for (const p of text.placed) {
 		if (p.w <= 0.0 || p.h <= 0.0) { continue; }
-		const view: uint32 = glyphPageView(glyphPageHandle(p.page));
-		let corner: Vec2 = vec2(p.x, p.y) * world;
-		let affine: Transform2D = world;
+		if (p.page != viewPage) {
+			view = glyphPageView(glyphPageHandle(p.page));
+			viewPage = p.page;
+		}
+		let x: float32 = 0.0;
+		let y: float32 = 0.0;
 		let w: float32 = p.w;
 		let h: float32 = p.h;
-		if (text.pixelExact) {
-			corner = vec2((originX + p.x) / scale, (originY + p.y) / scale);
-			affine = deviceGrid;
+		if (exact) {
+			x = (originX + p.x) / scale;
+			y = (originY + p.y) / scale;
 			w = p.w / scale;
 			h = p.h / scale;
+		} else {
+			x = world.a * p.x + world.c * p.y + world.tx;
+			y = world.b * p.x + world.d * p.y + world.ty;
 		}
-		if (uiInstancingAvailable()) {
+		if (instanced) {
 			drawUiInstance(InstanceMode.Glyph, view, n.blend, affine,
-				corner.x, corner.y, w, h,
+				x, y, w, h,
 				p.u0, p.v0, p.u1, p.v1,
 				0.0, 0.0, 0.0, 0.0,
 				0.0, 0.0, 0.0,
@@ -303,10 +314,10 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 			const dx: float32 = affine.c * h;
 			const dy: float32 = affine.d * h;
 			imageQuadUV(view, p.u0, p.v0, p.u1, p.v1,
-				corner,
-				vec2(corner.x + rx, corner.y + ry),
-				vec2(corner.x + rx + dx, corner.y + ry + dy),
-				vec2(corner.x + dx, corner.y + dy),
+				vec2(x, y),
+				vec2(x + rx, y + ry),
+				vec2(x + rx + dx, y + ry + dy),
+				vec2(x + dx, y + dy),
 				col, n.blend);
 		}
 	}
