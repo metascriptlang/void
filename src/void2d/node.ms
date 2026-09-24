@@ -1,6 +1,3 @@
-// Node2D is a flat tag + fields, not a discriminated union: a union payload as an interface
-// field hits a C-codegen bug. Revisit the union once the compiler handles it.
-
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
