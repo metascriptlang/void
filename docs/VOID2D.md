@@ -789,7 +789,7 @@ the baseline was re-taken (see "Baseline" (b)):
 
 **Tests.** T1 carries this phase: mutate one node, assert exactly one dirty range of a known size; assert byte-identical re-records; assert zero instances written on a blink; assert the draw order rebuilds only on structural change. T3: the h2d oracle for `getBounds`, `localToGlobal` / `globalToLocal`, mask intersection and scale modes, with HEAPS.md's deliberate divergences as the seed PENDING list. T4: scroll and idle budgets gated on uploaded bytes, which are deterministic.
 
-**Measure.** Scrolling the 200-line text view: CPU per frame and uploaded bytes per frame, both against P4's numbers. A static 100 000-node frame: CPU. An idle frame: zero draws. The UI bench scene must not regress.
+**Measure.** Scrolling the 200-line text view: CPU per frame and uploaded bytes per frame, both against P4's numbers. A static 100 000-node frame: CPU. An idle frame: zero draws. The UI bench scene must not regress, and **UI `present` must come back to or below the pre-P3 control `8a473f3` under `scripts/bench-ab.sh`, on a box checked quiet** — the +1.4 to +1.8 ms P3 left in label emission is owed here (P3 "Measured at P3 step 8").
 
 **Unblocks.** The Neon Void host; SCENE-SCALE.md's columnar model has a consumer for the first time.
 
