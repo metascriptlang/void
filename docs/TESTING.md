@@ -160,7 +160,7 @@ the last three sessions compared.
 scenes were added; the integration captures still account for nearly half. The lever, if this
 becomes material, remains the demo frames.
 
-**Tolerance: byte-identical is the default.** All **67** live rows are byte-identical to
+**Tolerance: byte-identical is the default.** All **69** live rows are byte-identical to
 their goldens, between two draws in one process and between full suite runs in separate
 processes. `tests/PENDING.md` carries **zero** image budgets. A tolerance is not a property
 of this machine; it is a property of a scene, and a scene that needs one is a finding.
@@ -268,7 +268,7 @@ number typed into the script.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
-   `tests/golden/compare.ms` judges all **67** against `tests/golden/d3d11/` and prints
+   `tests/golden/compare.ms` judges all **69** against `tests/golden/d3d11/` and prints
    `N px differ, max delta M, bbox` and a pass rate.
 5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
@@ -287,17 +287,17 @@ in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Current status, 2026-09-24 (P3 step 8): two backends of seven measured, and both numbers are printed.**
+**Current status, 2026-09-24 (P3 review): two backends of seven measured, and both numbers are printed. P3's exit asked for five; GLES3 desktop and WebGPU are P6's, Metal and Android wait on the human's hardware.**
 
 | Backend | Conformance | Runs |
 |---|---|---|
 | D3D11 | **69 / 69 scenes byte-identical** | every full gate, this box |
-| GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430` | SKIP |
-| Metal macOS | no readback | SKIP |
-| Metal iOS | no readback; the first device run is T5 | SKIP |
-| GLES3 Android | shares the `glReadPixels` path; needs the device | SKIP |
-| WebGPU | no readback in the wasm build, and headless Chrome has no adapter here | SKIP |
-| WebGL2 | **65 / 69**: 45 byte-identical, 20 within the cross-backend bound, 4 structural failures (`tests/PENDING.md conformance:webgl2-pixel-centre`) | `sh scripts/golden-web.sh`, and the gate with `--web`; headless Chrome on this box |
+| GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
+| Metal macOS | no readback; the Mac is the human's | SKIP |
+| Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
+| GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
+| WebGPU | no readback in the wasm build, and headless Chrome has no adapter here, so the run is headed. P6 | SKIP |
+| WebGL2 | **65 / 69**: 45 byte-identical, 20 within the cross-backend bound, 4 structural failures (`tests/PENDING.md conformance:webgl2-pixel-centre`); all seven `text/` scenes byte-identical. It runs through ANGLE on D3D11 on the same GPU (the script prints the `RENDERER` line), so it proves the GLSL ES path and GL's conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web`; headless Chrome on this box |
 
 So guardrail 9 is a number now, and the number is **2 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
 for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads the built
@@ -350,10 +350,10 @@ about where they came from.
 | **P0** ✅ | The harness: 37 T2 scenes, T4 rows and baseline, PENDING, gate scripts, harness self-checks, D3D11 readback, GLES3 readback written but unrun, and web liveness |
 | **P1** ✅ | T1 display-list assertions; filter and atlas-regression rows; **48** T2 scenes; deterministic T4 counters |
 | **P2** ✅ | T3 coverage oracle; T1 snapping and complete batch-reason reachability; **67** T2 scenes with per-scene draw/target counters; regenerated primitive groups |
-| **P3** | T3 fontTools metrics and the HarfBuzz kerning subset; `text/` at three DPIs; T4 atlas budget; the first full five-backend conformance run |
+| **P3** | T3 fontTools metrics and the HarfBuzz kerning subset; `text/` at three DPIs; T4 atlas and rasterization budgets; **69** T2 scenes; the first cross-backend run, WebGL2 at 65 / 69 — the five-backend run was not reached and moved to P6 |
 | **P4** | T3 UCD segmentation; T1 glyph and run placement; editor scenes |
 | **P5** | T1 dirty-range and idempotence assertions; T4 scroll and idle budgets; the h2d oracle |
-| **P6** | T3 full HarfBuzz shaping; T4 wasm budget per module; device-loss fault injection as a test switch (MAKEPAD.md:104) |
+| **P6** | T3 full HarfBuzz shaping; T4 wasm budget per module; device-loss fault injection as a test switch (MAKEPAD.md:104); GLES3 desktop and WebGPU conformance |
 
 **What each tier covers today**, so the table above is read against something real:
 

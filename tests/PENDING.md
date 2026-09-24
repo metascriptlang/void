@@ -136,11 +136,11 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| backend:gles3-desktop | T2 | `glReadPixels` is written (`tests/capture/capture.c`) but no GLES3 build of the runner has been run; the path is untested. Re-dated at P1's review: P1 never owned a second backend - guardrail 9's full five-backend run is P3's, and this row belongs with it | P3 | 2026-09-20 |
-| backend:metal-macos | T2 | no readback; needs the blit to a shared `MTLBuffer` (~50 lines) and the Mac | P3 | 2026-09-20 |
-| backend:metal-ios | T2 | no readback, and the device run is T5 the first time | P3 | 2026-09-20 |
-| backend:gles3-android | T2 | shares the `glReadPixels` path; needs the device and an entry that writes the PNG off-device | P3 | 2026-09-20 |
-| backend:webgpu | T2 | needs `copyTextureToBuffer` + `mapAsync` (~60 lines plus a JS hand-off) and a browser driver; see docs/TESTING.md "Guardrail 9" | P3 | 2026-09-20 |
+| backend:gles3-desktop | T2 | no desktop GLES3 build of the runner exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. The `glReadPixels` path in `tests/capture/capture.c` itself has run under WebGL2 since P3 step 8. Moved at P3's review: the five-backend run P3's exit asked for was not reached, and this box can run this one | P6 | 2026-09-24 |
+| backend:metal-macos | T2 | no readback; needs the blit to a shared `MTLBuffer` (~50 lines) and the human's Mac. Moved at P3's review | P6 | 2026-09-24 |
+| backend:metal-ios | T2 | no readback, and the device run is T5 the first time, on the human's device. Moved at P3's review | P6 | 2026-09-24 |
+| backend:gles3-android | T2 | shares the `glReadPixels` path; needs the human's device and an entry that writes the PNG off-device. Moved at P3's review | P6 | 2026-09-24 |
+| backend:webgpu | T2 | needs `copyTextureToBuffer` + `mapAsync` (~60 lines plus a JS hand-off) and a headed browser, since headless Chrome hands WebGPU no adapter on this box; the WebGL2 driver in `scripts/webGolden.mjs` is the template. Moved at P3's review | P6 | 2026-09-24 |
 | conformance:webgl2-pixel-centre | T2 | first WebGL2 conformance run, P3 step 8 (`sh scripts/golden-web.sh`): 65 / 69 against the D3D11 goldens. `prim/strokeRect`, `prim/polygonBezier`, `prim/patterns` and `xform/scale` differ structurally (max delta 179-224, one-pixel moves of horizontal edges and hatch lines): the mesh path puts edges and pattern thresholds exactly on pixel centres, and GL's bottom-left window origin breaks those ties on the other side of the top-left rule. No budget, by the guardrail 9 rule. Proposed root fix: bias mesh geometry by -1/64 px in x and y in device space, which keeps D3D11's tie results and gives GL the same | P6 | 2026-09-24 |
 
 ## Oracles not wired
