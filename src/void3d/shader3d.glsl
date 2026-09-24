@@ -80,6 +80,7 @@ void main() {
 
 @fs litFs
 // PENDING3D: material-saturation-only
+// PENDING3D: dir-light-stepped
 @include_block materialUniforms
 @include_block lightUniforms
 @include_block saturation
