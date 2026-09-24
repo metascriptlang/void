@@ -27,7 +27,7 @@ if [ "${1:-}" != "--compare" ]; then
 	trap 'kill "$server" 2>/dev/null || true' EXIT
 	sleep 2
 	node scripts/webGolden.mjs "http://127.0.0.1:$PORT/runner.html" out/web-golden/scenes.tsv webgl2 \
-		| tee out/golden-web-capture.log | grep -E '^(FAIL|SKIP|EXCEPTION)' || true
+		| tee out/golden-web-capture.log | grep -E '^(RENDERER|FAIL|SKIP|EXCEPTION)' || true
 	echo "captured $(grep -c '^CAPTURED' out/golden-web-capture.log) of $(wc -l < out/web-golden/scenes.tsv) scenes"
 fi
 

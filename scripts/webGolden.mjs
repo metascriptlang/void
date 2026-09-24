@@ -62,6 +62,19 @@ async function evaluate(s, expression) {
 	return r.result?.result?.value;
 }
 
+async function renderer() {
+	const created = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
+	const s = session(created.webSocketDebuggerUrl);
+	await s.open;
+	const name = await evaluate(s, `(() => { const gl = document.createElement('canvas').getContext('webgl2');
+		if (!gl) return 'no WebGL2 context';
+		const info = gl.getExtension('WEBGL_debug_renderer_info');
+		return gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER); })()`);
+	s.close();
+	await fetch(`http://127.0.0.1:${port}/json/close/${created.id}`);
+	return name;
+}
+
 async function capture(scene) {
 	const dir = `out/golden/${backend}/${dirname(scene.name)}`;
 	const query = `scene=${scene.index}&w=${scene.w}&h=${scene.h}&dir=${encodeURIComponent(dir)}`;
@@ -100,6 +113,7 @@ async function capture(scene) {
 
 try {
 	await waitForBrowser();
+	console.log(`RENDERER ${await renderer()}`);
 	for (const scene of scenes) await capture(scene);
 } finally {
 	browser.kill();
