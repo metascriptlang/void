@@ -200,7 +200,7 @@ Where ground truth can come from outside void, it should, because a hand-written
 
 **Regeneration and CI.** Same shape as rexa: the snapshot is committed and the gate never needs the tool (`AGENTS.md:135-136`). The font oracles regenerate with `python tests/oracle/fonts.py regen` (fontTools and uharfbuzz from pip) rather than inside the test, because the tool is Python and the test is MetaScript; `src/test/fontOracleCheck.ms` compares and prints the pass count the gate reads. A case row is data with no expected output. Divergences go to PENDING with a reason, and the pass rate against each oracle is printed.
 
-The interesting number here is the UAX #14 one. void2d's wrap rule is GPUI's — after a space, or at any non-word char (GPUI.md:49) — not UAX #14, so most `LineBreakTest.txt` rows will land in PENDING under one shared reason. That is the honest use of a pass rate: it says how far the cheap rule is from the standard, and the number is the argument for or against replacing it, instead of nobody knowing.
+The interesting number here is the UAX #14 one. void2d's wrap rule breaks at U+0020 only since P3; GPUI's rule — after a space, or at any non-word char (GPUI.md:49) — is P4's, and neither is UAX #14, so most `LineBreakTest.txt` rows will land in PENDING under one shared reason. That is the honest use of a pass rate: it says how far the cheap rule is from the standard, and the number is the argument for or against replacing it, instead of nobody knowing.
 
 ## T4 — budget
 
