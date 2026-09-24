@@ -23,6 +23,11 @@ adb shell am start -n com.metascript.voidsample/.MainActivity
 adb exec-out screencap -p > gles3Campfire.png
 ```
 
+After the emulator boots, `adb shell am force-stop com.metascript.voidsample` before the `am start`.
+A quickboot snapshot resumes the app's old process, which then draws black at 30 fps with no
+`EGL_CONTEXT_LOST` reaching Void (measured 2026-09-24 on `pixellight`; a cold start draws the
+campfire). The gate's `device` stage screenshots whatever is running and fails on that frame.
+
 Read `docs/VOID3D.md`, "The scope of every pixel claim", for what this frame does and does not
 establish. The short version: it ran on the **Android emulator**, not on a device.
 
