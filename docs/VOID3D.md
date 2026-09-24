@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a port of Heaps `h3d` (`~/projects/heaps`), taken in the order Hibernal needs it.
 
-**Status (2026-09-23):** M1–M11 are built and reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look. The gate is `sh scripts/gate3d.sh`.
+**Status (2026-09-24):** M1–M12 are built and reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone. The gate is `sh scripts/gate3d.sh`.
 
 ## What Hibernal needs
 
@@ -73,6 +73,7 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 | M9 | `anim/Animation`, `anim/LinearAnimation`, `anim/BufferAnimation` | Object keyframes and vertex-baked frames, both stepped at a fixed rate (12 fps) | A4 idle, replay | **done**, 27 tests |
 | M10 | `col/Ray`, `col/Bounds`, `scene/Interactive` | Tap → ray → nearest object by bounds, then by triangle | A4 touch | **done**, 22 tests |
 | M11 | `parts/Emitter`, `parts/Particles` (CPU), `Matrix.colorSaturate` | Snow and embers on the instanced billboard path; palette LUT swap and desaturation as renderer parameters | A11 | **done**, 23 tests |
+| M12 | `shader/ColorMatrix` (per-pass colour matrix), `Matrix.colorSaturate` | Saturation as a lit-material parameter, applied to the material's colour before the lights, so one object greys while the scene keeps its colour; a CPU `colorSaturate` pinned against Heaps by the oracle | A11 Fading | **done**, 4 tests, 6 oracle cases |
 
 ### M2 as built
 
@@ -328,13 +329,54 @@ row and two three-value port rows silently mismatch rather than failing usefully
 
 **Still missing after M11.**
 - **Nothing is translucent.** Particles pop out at half alpha. A blended particle needs sorting, and a decision about what the post pass does with a colour between palette entries.
-- **Saturation is screen-wide.** Fading a single object would need a per-material parameter.
+- **Saturation is screen-wide.** Fading a single object would need a per-material parameter. M12 adds it for lit materials.
 - **A palette swap costs a refill**, about 2.4 ms here and more on a phone. A cross-fade between palettes would need two kept LUTs and a blend in the post pass.
 - **No particle is pickable**, and particles have no bounds for culling.
 - **Particles have run on GLES3 only on the emulator.** After M11 landed, the palette-on campfire with snow and embers ran on the Android emulator (`tests/device/gles3Particles.png`: 21 palette colours plus the system navigation bar). That covers the stream buffer and the `Particle` program on GLES3. It does not cover the stream rebuild after a real context loss, which has still only been simulated on D3D11.
 - **A stream mesh cannot be released.** Nothing removes a mesh from the `DrawContext`, so an effect made and dropped per event (a burst on each harvest) keeps its two buffers for the life of the context. The campfire makes two streams once.
 - **Nothing enforces sokol's one update per buffer per frame.** A host that steps and writes an emitter twice in one frame hits a sokol validation error, not a `StreamError`.
-- **Saturation has no CPU reference.** The formula lives only in `postFs` and is pinned by the `m11look_*` baseline, not by a headless test against `Matrix.colorSaturate`.
+- **Saturation has no CPU reference.** The formula lives only in `postFs` and is pinned by the `m11look_*` baseline, not by a headless test against `Matrix.colorSaturate`. M12 adds it: `colorSaturated` in `math3d.ms`, held to Heaps by `tests/oracle/color3d.cases`.
+
+### M12 as built
+
+- **Saturation is a lit-material parameter, applied to the material's colour before the lights.** The lit program reads it at `TOON_SATURATION` of the material's own block, the vec4 whose `TOON_LEVELS` already held the toon ramp levels, so the block keeps its size and layout and a caller that writes `[levels, 0, 0, 0]` sees no change. It greys `baseColor`, and the ambient and directional light are then applied to the grey. The point lights are not: `litFs` adds them without multiplying them by the material's colour, where Heaps multiplies every light in. That is M7's, recorded now in `light-params-divergence`, and it is why a greyed object still takes a warm tint from the fire. That is where Heaps' `h3d.shader.ColorMatrix` acts when it is added to a pass. It reads and writes `pixelColor`. `fwd/LightSystem.computeLight` puts `AmbientLight` at the head of the shader list, and `hxsl/Cache.compileRuntimeShader` reverses that list, so `AmbientLight`'s `pixelColor.rgb *= calcLight(…)` runs after the pass's shaders. That order was read from the Heaps source at the pin, not run: the node oracle calls Heaps' CPU code and never runs its shader linker. A Heaps object greys by adding that shader to its material's pass. Here it greys by having a material of its own, and the glTF path already takes a material per mesh from its caller (`gltfScene.ms` bindings).
+- **Greying before the lights changes little on an object whose own colour is already grey.** Measured on the campfire's stones under the palette, frame 11: at −1, greying after the lights changes 88 216 pixels and greying before them 1 648, because the colour the stones show comes from the lights. The example greys the ground, whose own colour is blue. The first cut greyed after the lights; `docs/REVIEWS-3D.md` (M12) has why it moved.
+- **One formula in the shaders.** `@block saturation` holds `saturated(rgb, amount)`, which skips at 0 and otherwise computes `rgb × (1 + s) − luma × s`. `litFs` and `postFs` both include it, and `postFs` lost its inline copy. The ten standing configurations stayed byte-identical through that move.
+- **The CPU reference, pinned to Heaps.** `math3d.ms` `colorSaturated(this m: Mat4, amount)` is `Matrix.colorSaturate`: it builds the saturation matrix with Heaps' `lumR/G/B` and composes it after `m` through `multiplyAffine`, which is `multiply3x4`. `tests/oracle/color3d.cases` runs six cases through real Heaps at `2b84cc2` and all six agree: the matrix at −1, −0.5 and +0.4, a colour through it, the order of composition after a scale, and the offset row after a translation. A headless test ties the scalar form the shaders use to that matrix for four amounts and two colours, to 1e-6. It checks the formula, not the GLSL.
+- **The GLSL, held to the reference byte for byte.** Because the saturation acts on the material's colour, the same grey can be made on the CPU. `configureCampfireGreyGround(s, true)` greys the ground's vertex colours through `colorSaturated` and keeps the scene's material. `configureCampfireGreyGround(s, false)` gives the ground its own material at `s`. At −0.75 with the post pass off, the two draw the same frames byte for byte. The gate holds both to one set of hashes (`m12greydirect_*`), as it holds the rebuilt campfire to `before_*`.
+- **Not ported, and a PENDING3D row** (`material-saturation-only`). Heaps attaches a whole colour matrix to any pass. Here a material has a saturation amount on the lit program only. Billboards and particles have none, and nothing else of the matrix (contrast, gain, hue) exists.
+- **The campfire greys its ground, off unless configured.** At 0 no material is added and the ground colour is untouched, so every older configuration builds the same scene. The pool grew by one toon block to hold the ground's.
+
+**What the palette does to saturation, measured before any code.** A colour the palette cannot express is quantized to what the palette has, so whether a greyed object *reads* as grey is up to the palette, not the renderer. The screen-wide saturation of M11 measured it on the campfire palette at frame 11:
+
+| saturation | pixels changed | colours |
+|---|---|---|
+| 0 | 0 | 20 |
+| −0.25 | 251 396 (27%) | 20 |
+| −0.5 | 198 796 (22%) | 18 |
+| −0.75 | 535 840 (58%) | 15 |
+| −1 | 897 152 (97%) | 9 |
+
+The palette does not swallow saturation, but it takes it in steps, and not monotonically: −0.5 moves fewer pixels than −0.25. At −1 the frame turns brown rather than grey. The campfire palette has no neutral grey, and at 16 LUT levels the nearest entry to a mid grey is one of its warm browns rather than its bluish stone greys. A palette meant to show grey needs a grey ramp. That is content, and it belongs to the caller.
+
+**Acceptance, at tree `76c4665b`** (*docs(device): record the ground greyed by its material on the GLES3 emulator*). The gate is GREEN with `GATE_DEVICE=1`.
+- **Tests.** **828**, four more than the 824 before M12: `colorSaturate` at 0 is the identity, at −1 it gives the luma, the scalar form equals the matrix, and the matrix applies after the one it composes with.
+- **Oracle.** 75 agree and 11 are declared divergences, over six files. `color3d.cases` adds six cases, all agreeing. Control: composing the saturation before `m` instead of after mismatches `saturate-after-scale` and `saturate-keeps-offset-row` on the oracle and reddens one headless test.
+- **Pixels.** The ten standing configurations, 40 frames, are byte-identical. Three configurations are new, with eight new baselines (40 in the manifest):
+  - `campfireGreyDirectCapture` (`m12greydirect_*`): the ground's material at −0.75 with the post pass off. It differs from `m3direct_*` in 162 824 to 162 836 pixels per frame.
+  - `campfireGreyCpuCapture`: the ground's vertex colours greyed by `colorSaturated`, held to `m12greydirect_*`. It is byte-identical in all four frames. Control: −0.7 on the CPU against −0.75 in the material differs in every ground pixel (162 836 in frame 1).
+  - `campfireGreyPaletteCapture` (`m12greypalette_*`): the ground's material at −0.75 with the palette on. It differs from `m3palette_*` in 13 192 to 13 424 pixels per frame, against 162 824 or more with the palette off: the campfire palette quantizes most of the greyed blue back to the blues it had.
+- **GLES3, on the emulator.** The palette-on campfire with the ground at −0.75 ran on the `pixellight` AVD (`tests/device/gles3GreyGround.png`, recipe in `tests/device/README.md`). It differs from the same build at 0 in 20 789 pixels, against 274 between two shots of that ungreyed build. It is an emulator claim and not a pixel comparison with D3D11.
+- **Allocation, bench.** Nothing new runs per frame, and both stages are unchanged.
+- **Size.** arm64 `libVoidAndroid.so` is 2 704 216 bytes, +16 368 against the 2 687 848 before M12 on this msc. Not attributed.
+- **PENDING3D** has 23 rows, one of them new.
+
+**Still missing after M12.**
+- **A greyed object reads as grey only under a palette with a grey ramp.** The campfire palette turns a grey brown.
+- **Only lit materials have a saturation.** A billboard or particle cannot grey on its own.
+- **No fade over time has run.** A caller fades an object by rewriting `TOON_SATURATION` of its block with `writeUniforms`, which the next draw applies with the rest of the block. No configuration here changes it after setup.
+- **The GPU is held to the CPU for one colour at one amount.** The ground is a single colour and the configuration runs at −0.75; the oracle and the headless tests cover the formula at other amounts and colours, the GPU path only there.
+- **The order against Heaps is read, not run.** No oracle case links `ColorMatrix` with `AmbientLight`; that needs Heaps' shader linker, which the node oracle does not run.
 
 ### Android lifecycle (V6), alongside from M3
 
