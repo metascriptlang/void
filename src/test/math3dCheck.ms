@@ -1,6 +1,7 @@
 import {
-	Vec3, Mat4, Quat, vec3, identity, translation, scaling, rotationX, rotationY, rotationZ, rotationEuler,
-	composeTransform, identityQuat, axisAngle, eulerQuat, quatBetween, transformDirection,
+	Vec3, Vec4, Mat4, Quat, vec3, vec4, identity, translation, scaling,
+	rotationX, rotationY, rotationZ, rotationEuler, composeTransform,
+	identityQuat, axisAngle, eulerQuat, quatBetween, transformDirection, colorSaturated,
 } from "../math/math3d";
 import { approx } from "./helpers";
 
@@ -179,4 +180,55 @@ test "writeTo lays the fields out in upload order" {
 	assert approx(out[15], 8.0);
 	assert approx(out[16], 9.0);
 	assert approx(out[17], 1.0);
+}
+
+function lumaOf(c: Vec4): float32 {
+	const luma: float32 = c.x * 0.212671 + c.y * 0.71516 + c.z * 0.072169;
+	return luma;
+}
+
+function within(a: float32, b: float32): boolean {
+	let d: float32 = a - b;
+	if (d < 0.0) { d = -d; }
+	return d < 0.000001;
+}
+
+test "colorSaturate at zero is the identity" {
+	assert sameMatrix(identity().colorSaturated(0.0), identity());
+}
+
+test "colorSaturate at minus one turns a colour into its luma" {
+	const c: Vec4 = vec4(0.9, 0.4, 0.1, 1.0);
+	const grey: Vec4 = c * identity().colorSaturated(-1.0);
+	const luma: float32 = lumaOf(c);
+	console.log(grey.x, grey.y, grey.z, luma);
+	assert within(grey.x, luma) && within(grey.y, luma) && within(grey.z, luma);
+	assert grey.w == 1.0;
+}
+
+test "the shaders' rgb * keep + luma * (1 - keep) is colorSaturate" {
+	const amounts: Vec<float32> = [-1.0, -0.5, -0.25, 0.3];
+	const colors: Vec<Vec4> = [vec4(0.9, 0.4, 0.1, 1.0), vec4(0.05, 0.6, 0.95, 1.0)];
+	const one: float32 = 1.0;
+	for (const amount of amounts) {
+		for (const c of colors) {
+			const byMatrix: Vec4 = c * identity().colorSaturated(amount);
+			const keep: float32 = amount + one;
+			const grey: float32 = lumaOf(c) * (one - keep);
+			const x: float32 = c.x * keep + grey;
+			const y: float32 = c.y * keep + grey;
+			const z: float32 = c.z * keep + grey;
+			if (!(within(byMatrix.x, x) && within(byMatrix.y, y) && within(byMatrix.z, z))) {
+				console.log(amount, byMatrix.x, x, byMatrix.y, y, byMatrix.z, z);
+			}
+			assert within(byMatrix.x, x) && within(byMatrix.y, y) && within(byMatrix.z, z);
+		}
+	}
+}
+
+test "colorSaturate applies after the matrix it composes with" {
+	const redOnly: Vec4 = vec4(0.8, 0.5, 0.5, 1.0) * scaling(1.0, 0.0, 0.0).colorSaturated(-1.0);
+	const luma: float32 = 0.8 * 0.212671;
+	console.log(redOnly.x, redOnly.y, redOnly.z, luma);
+	assert within(redOnly.x, luma) && within(redOnly.y, luma) && within(redOnly.z, luma);
 }

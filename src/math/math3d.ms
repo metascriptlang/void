@@ -242,6 +242,27 @@ export function multiplyAffine(this a: Mat4, b: Mat4): Mat4 {
 	};
 }
 
+const LUMA_RED: float32 = 0.212671;
+const LUMA_GREEN: float32 = 0.71516;
+const LUMA_BLUE: float32 = 0.072169;
+
+// h3d.Matrix.colorSaturate: a colour is the row vec4(rgb, 1) times the matrix.
+export function colorSaturated(this m: Mat4, amount: float32): Mat4 {
+	const one: float32 = 1.0;
+	const keep: float32 = amount + one;
+	const drop: float32 = one - keep;
+	const r: float32 = drop * LUMA_RED;
+	const g: float32 = drop * LUMA_GREEN;
+	const b: float32 = drop * LUMA_BLUE;
+	const saturation: Mat4 = {
+		m11: r + keep, m12: r, m13: r, m14: 0.0,
+		m21: g, m22: g + keep, m23: g, m24: 0.0,
+		m31: b, m32: b, m33: b + keep, m34: 0.0,
+		m41: 0.0, m42: 0.0, m43: 0.0, m44: 1.0,
+	};
+	return m.multiplyAffine(saturation);
+}
+
 export function transposed(this m: Mat4): Mat4 {
 	return {
 		m11: m.m11, m12: m.m21, m13: m.m31, m14: m.m41,
