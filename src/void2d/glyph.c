@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// fontstash compiles its own stb_truetype v1.16 into batcher.c: keep this v1.26 file-local,
-// or the two implementations collide at link.
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../deps/stb/stb_truetype.h"

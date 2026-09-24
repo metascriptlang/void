@@ -304,7 +304,7 @@ float dilateStroke(float width_, float pixelsPerLocal) {
 void main() {
     // One device pixel across an edge, in the node's local units — the geometric mean of the
     // two affine-axis lengths times the recording target's physical-pixel scale. Glyph mode
-    // is the exception: the atlas texel already carries the antialiasing fontstash
+    // is the exception: the atlas texel already carries the antialiasing the glyph layer
     // rasterized, so aa stays zero — the quad un-inflated at the glyph's exact bitmap rect,
     // coverage a hard step at that rect, which is the quad the mesh path always drew.
     float sx = length(iAffine.xy) * viewport.w;
