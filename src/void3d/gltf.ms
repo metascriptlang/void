@@ -1,8 +1,7 @@
-// glTF 2.0 subset loader, for exactly what Hibernal's Blender generator exports
-// (RENDERER-BRIEF §4.4: "position + normal + vertex colour only... do not pull in a
-// general-purpose glTF library"). One buffer, one buffer view per accessor, FLOAT32
+// glTF 2.0 subset loader for low-poly meshes coloured per vertex: position, normal and
+// COLOR_0, with no textures. One buffer, one buffer view per accessor, FLOAT32
 // VEC3 attributes, UNSIGNED_SHORT indices, node TRS, one primitive per mesh. Not
-// loaded, by that same contract: materials, textures, skins, animations, cameras,
+// loaded: materials, textures, skins, animations, cameras,
 // morph targets, sparse accessors, interleaved buffer views, more than one buffer.
 //
 // The caller owns the bytes: `json` is the .gltf document and `buffer` is buffer #0's
