@@ -41,6 +41,7 @@ static int s_pageCount;
 static int s_pageCapacity;
 static float s_metrics[3];
 static float s_decoration[4];
+static float s_heights[7];
 static int s_box[4];
 
 static int validFace(int face) { return face >= 0 && face < s_faceCount; }
@@ -358,27 +359,89 @@ static float glyphHeight(GlyphFace *face, int codepoint) {
 	return (float)(y1 - y0);
 }
 
+typedef struct {
+	float cap, ex, ic;
+	float capEstimate, exEstimate, icEstimate;
+	float lineHeight;
+} FaceHeights;
+
+static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
+	int top = 0, bottom = 0, widest = 0;
+	for (int c = ' '; c < 127; c++) {
+		int glyph = stbtt_FindGlyphIndex(&face->info, c);
+		if (glyph == 0) { continue; }
+		int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+		stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
+		if (advance > widest) { widest = advance; }
+		if (stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1)) {
+			if (y1 > top) { top = y1; }
+			if (y0 < bottom) { bottom = y0; }
+		}
+	}
+	*height = (float)(top - bottom);
+	*cellWidth = (float)widest;
+}
+
+static float ideographWidth(GlyphFace *face) {
+	int glyph = stbtt_FindGlyphIndex(&face->info, 0x6C34);
+	if (glyph == 0) { return 0.0f; }
+	int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+	stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
+	if (stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1) && x1 - x0 > advance) { return 0.0f; }
+	return (float)advance;
+}
+
+static void measureHeights(GlyphFace *f, FaceHeights *h) {
+	int ascent = 0, descent = 0, lineGap = 0;
+	stbtt_GetFontVMetrics(&f->info, &ascent, &descent, &lineGap);
+	int os2Length = 0;
+	stbtt_uint8 *os2 = findTable(f, "OS/2", &os2Length);
+	if (os2 && ttUSHORT(os2) >= 2 && os2Length >= 90) {
+		h->ex = (float)ttSHORT(os2 + 86);
+		h->cap = (float)ttSHORT(os2 + 88);
+	} else {
+		h->ex = glyphHeight(f, 'x');
+		h->cap = glyphHeight(f, 'H');
+	}
+	h->ic = ideographWidth(f);
+	h->capEstimate = h->cap > 0.0f ? h->cap : 0.75f * (float)ascent;
+	h->exEstimate = h->ex > 0.0f ? h->ex : 0.75f * h->capEstimate;
+	float asciiHeight = 0.0f, cellWidth = 0.0f;
+	asciiExtent(f, &asciiHeight, &cellWidth);
+	if (asciiHeight <= 0.0f) { asciiHeight = 1.5f * h->capEstimate; }
+	float twoCells = 2.0f * cellWidth;
+	h->icEstimate = h->ic > 0.0f ? h->ic : (asciiHeight < twoCells ? asciiHeight : twoCells);
+	h->lineHeight = (float)(ascent - descent + lineGap);
+}
+
+float *void2dGlyphFaceHeights(int face) {
+	for (int i = 0; i < 7; i++) { s_heights[i] = 0.0f; }
+	if (!validFace(face)) { return s_heights; }
+	FaceHeights h;
+	measureHeights(&s_faces[face], &h);
+	float perEm = void2dGlyphScale(face, 1.0f);
+	s_heights[0] = (h.ic > 0.0f ? h.ic : 0.0f) * perEm;
+	s_heights[1] = (h.ex > 0.0f ? h.ex : 0.0f) * perEm;
+	s_heights[2] = (h.cap > 0.0f ? h.cap : 0.0f) * perEm;
+	s_heights[3] = h.icEstimate * perEm;
+	s_heights[4] = h.exEstimate * perEm;
+	s_heights[5] = h.capEstimate * perEm;
+	s_heights[6] = h.lineHeight * perEm;
+	return s_heights;
+}
+
 float *void2dGlyphDecoration(int face, float sizePx) {
 	s_decoration[0] = 0.0f; s_decoration[1] = 0.0f; s_decoration[2] = 0.0f; s_decoration[3] = 0.0f;
 	if (!validFace(face)) { return s_decoration; }
 	GlyphFace *f = &s_faces[face];
-	int ascent = 0, descent = 0, lineGap = 0;
-	stbtt_GetFontVMetrics(&f->info, &ascent, &descent, &lineGap);
 	int postLength = 0, os2Length = 0;
 	stbtt_uint8 *post = findTable(f, "post", &postLength);
 	stbtt_uint8 *os2 = findTable(f, "OS/2", &os2Length);
 	if (postLength < 12) { post = NULL; }
 	if (os2Length < 30) { os2 = NULL; }
-	float capHeight = 0.0f, exHeight = 0.0f;
-	if (os2 && ttUSHORT(os2) >= 2 && os2Length >= 90) {
-		exHeight = (float)ttSHORT(os2 + 86);
-		capHeight = (float)ttSHORT(os2 + 88);
-	} else {
-		exHeight = glyphHeight(f, 'x');
-		capHeight = glyphHeight(f, 'H');
-	}
-	if (capHeight <= 0.0f) { capHeight = 0.75f * (float)ascent; }
-	if (exHeight <= 0.0f) { exHeight = 0.75f * capHeight; }
+	FaceHeights heights;
+	measureHeights(f, &heights);
+	float exHeight = heights.exEstimate;
 	int underlinePosition = post ? ttSHORT(post + 8) : 0;
 	int underlineSize = post ? ttSHORT(post + 10) : 0;
 	float underlineThickness = underlineSize > 0 ? (float)underlineSize : 0.15f * exHeight;

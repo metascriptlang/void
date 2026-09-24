@@ -6,7 +6,7 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "./face";
-import { faceForCodepoint, fontFace, fontKerns } from "./font";
+import { codepointFace, fontFace, fontKerns } from "./font";
 
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
@@ -23,6 +23,7 @@ export struct TextStyle {
 export struct LaidGlyph {
 	face: int32;
 	glyph: int32;
+	size: float32;
 	codepoint: int32;
 	x: float32;
 	advance: float32;
@@ -110,15 +111,18 @@ function layRun(
 	let previousFace: int32 = -1;
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
-		const face: int32 = faceForCodepoint(style.font, cps[i].value);
+		const source = codepointFace(style.font, cps[i].value);
+		const face: int32 = source.face;
+		const size: float32 = style.size * source.scale;
 		const glyph: int32 = glyphIndex(face, cps[i].value);
 		if (previous >= 0 && previousFace == face && kerns) {
-			pen = pen + glyphKern(face, previous, glyph, style.size);
+			pen = pen + glyphKern(face, previous, glyph, size);
 		}
-		const advance: float32 = glyphAdvance(face, glyph, style.size);
+		const advance: float32 = glyphAdvance(face, glyph, size);
 		glyphs.push({
 			face: face,
 			glyph: glyph,
+			size: size,
 			codepoint: cps[i].value,
 			x: pen,
 			advance: advance,
@@ -143,12 +147,14 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	let previousFace: int32 = -1;
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
-		const face: int32 = faceForCodepoint(style.font, cps[i].value);
+		const source = codepointFace(style.font, cps[i].value);
+		const face: int32 = source.face;
+		const size: float32 = style.size * source.scale;
 		const glyph: int32 = glyphIndex(face, cps[i].value);
 		if (previous >= 0 && previousFace == face && kerns) {
-			pen = pen + glyphKern(face, previous, glyph, style.size);
+			pen = pen + glyphKern(face, previous, glyph, size);
 		}
-		const advance: float32 = glyphAdvance(face, glyph, style.size);
+		const advance: float32 = glyphAdvance(face, glyph, size);
 		if (cps[i].value == SPACE) {
 			lastSpace = i;
 		} else if (lastSpace >= from && pen + advance > style.maxWidth) {

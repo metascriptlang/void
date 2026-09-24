@@ -6,6 +6,7 @@ import {
 	void2dGlyphKern,
 	void2dGlyphFaceMetrics,
 	void2dGlyphDecoration,
+	void2dGlyphFaceHeights,
 	void2dGlyphPageTexel,
 } from "./glyph.h";
 
@@ -20,6 +21,16 @@ export struct DecorationMetrics {
 	underlineThickness: float32;
 	strikethroughTop: float32;
 	strikethroughThickness: float32;
+}
+
+export struct FaceHeights {
+	icWidth: float32;
+	exHeight: float32;
+	capHeight: float32;
+	icWidthEstimate: float32;
+	exHeightEstimate: float32;
+	capHeightEstimate: float32;
+	lineHeight: float32;
 }
 
 export function loadFace(path: string): int32 {
@@ -54,6 +65,19 @@ export function decorationMetrics(face: int32, sizePx: float32): DecorationMetri
 		underlineThickness: m[1],
 		strikethroughTop: m[2],
 		strikethroughThickness: m[3],
+	};
+}
+
+export function faceHeights(face: int32): FaceHeights {
+	const m: Ptr<float32> = void2dGlyphFaceHeights(face);
+	return {
+		icWidth: m[0],
+		exHeight: m[1],
+		capHeight: m[2],
+		icWidthEstimate: m[3],
+		exHeightEstimate: m[4],
+		capHeightEstimate: m[5],
+		lineHeight: m[6],
 	};
 }
 

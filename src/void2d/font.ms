@@ -1,6 +1,8 @@
-import { loadFace, syntheticFace, glyphIndex } from "./face";
+import { loadFace, syntheticFace, glyphIndex, faceHeights } from "./face";
 
 export enum FontStyle { Normal, Italic }
+
+export enum SizeAdjust { None, IcWidth, ExHeight, CapHeight, LineHeight }
 
 export struct FontFeature {
 	tag: string;
@@ -13,6 +15,12 @@ export struct Font {
 	style: FontStyle;
 	features: FontFeature[];
 	fallbacks: string[];
+	sizeAdjust: SizeAdjust;
+}
+
+export struct CodepointFace {
+	face: int32;
+	scale: float32;
 }
 
 export const NO_FONT: int32 = -1;
@@ -21,6 +29,7 @@ const DEFAULT_FAMILY: string = "Inter";
 const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
 const BOLD_WEIGHT: int32 = 600;
+const PRIMARY_SLOT: int32 = -1;
 
 struct RegisteredFace {
 	path: string;
@@ -44,6 +53,7 @@ struct Synthetic {
 struct FontEntry {
 	face: int32;
 	kern: boolean;
+	sizeAdjust: SizeAdjust;
 	described: boolean;
 	description: Font;
 }
@@ -54,6 +64,7 @@ struct Fallback {
 	bold: boolean;
 	italic: boolean;
 	face: int32;
+	scale: float32;
 }
 
 const registered: RegisteredFace[] = [];
@@ -88,8 +99,11 @@ function plainFont(face: int32): FontEntry {
 	return {
 		face: face,
 		kern: true,
+		sizeAdjust: SizeAdjust.None,
 		described: false,
-		description: { family: "", weight: 0, style: FontStyle.Normal, features: [], fallbacks: [] },
+		description: {
+			family: "", weight: 0, style: FontStyle.Normal, features: [], fallbacks: [], sizeAdjust: SizeAdjust.None,
+		},
 	};
 }
 
@@ -163,6 +177,7 @@ function sameStrings(a: string[], b: string[]): boolean {
 
 function sameFont(a: Font, b: Font): boolean {
 	if (!a.family.equals(b.family) || a.weight != b.weight || a.style != b.style) { return false; }
+	if (a.sizeAdjust != b.sizeAdjust) { return false; }
 	if (a.features.length != b.features.length || !sameStrings(a.fallbacks, b.fallbacks)) { return false; }
 	for (let i = 0; i < (a.features.length as int32); i++) {
 		if (!a.features[i].tag.equals(b.features[i].tag) || a.features[i].value != b.features[i].value) {
@@ -209,6 +224,7 @@ export function resolveFont(font: Font): int32 {
 	fonts.push({
 		face: face,
 		kern: kern,
+		sizeAdjust: font.sizeAdjust,
 		described: true,
 		description: { ...font, features: features, fallbacks: fallbackFamilies },
 	});
@@ -220,6 +236,7 @@ export function resolveFont(font: Font): int32 {
 			bold: needsBold(font, m),
 			italic: needsItalic(font, m),
 			face: NOT_LOADED,
+			scale: 1.0,
 		});
 	}
 	resolved = new Map<uint64, int32>();
@@ -227,7 +244,7 @@ export function resolveFont(font: Font): int32 {
 }
 
 export function addFallbackFont(font: int32, path: string): void {
-	fallbacks.push({ font: font, path: path, bold: false, italic: false, face: NOT_LOADED });
+	fallbacks.push({ font: font, path: path, bold: false, italic: false, face: NOT_LOADED, scale: 1.0 });
 	resolved = new Map<uint64, int32>();
 }
 
@@ -251,6 +268,18 @@ export function fallbackProbes(): int32 {
 	return coverageProbes;
 }
 
+function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): float32 {
+	if (adjust == SizeAdjust.None) { return 1.0; }
+	const p = faceHeights(primary);
+	const f = faceHeights(fallback);
+	if (adjust == SizeAdjust.IcWidth && f.icWidth > 0.0) { return p.icWidthEstimate / f.icWidth; }
+	if ((adjust == SizeAdjust.IcWidth || adjust == SizeAdjust.ExHeight) && f.exHeight > 0.0) {
+		return p.exHeightEstimate / f.exHeight;
+	}
+	if (adjust != SizeAdjust.LineHeight && f.capHeight > 0.0) { return p.capHeightEstimate / f.capHeight; }
+	return p.lineHeight / f.lineHeight;
+}
+
 function fallbackFace(index: int32): int32 {
 	if (fallbacks[index].face == NOT_LOADED) {
 		const face: int32 = styled(faceAtPath(fallbacks[index].path), fallbacks[index].bold, fallbacks[index].italic);
@@ -260,28 +289,38 @@ function fallbackFace(index: int32): int32 {
 			fallbacks[index].face = LOAD_FAILED;
 		} else {
 			fallbacks[index].face = face;
+			fallbacks[index].scale = adjustedScale(fontFace(fallbacks[index].font), face, fonts[fallbacks[index].font].sizeAdjust);
 		}
 	}
 	return fallbacks[index].face;
 }
 
-export function faceForCodepoint(font: int32, codepoint: int32): int32 {
+function codepointSlot(font: int32, codepoint: int32): int32 {
 	const key: uint64 = ((font as uint64) << 32) | (codepoint as uint64);
 	const hit = resolved.get(key);
 	if (hit.present) { return hit.value; }
 	coverageProbes = coverageProbes + 1;
-	const primary: int32 = fontFace(font);
-	let face: int32 = primary;
-	if (glyphIndex(primary, codepoint) == 0) {
+	let slot: int32 = PRIMARY_SLOT;
+	if (glyphIndex(fontFace(font), codepoint) == 0) {
 		for (let i = 0; i < (fallbacks.length as int32); i++) {
 			if (fallbacks[i].font != font) { continue; }
 			const candidate: int32 = fallbackFace(i);
 			if (candidate >= 0 && glyphIndex(candidate, codepoint) != 0) {
-				face = candidate;
+				slot = i;
 				break;
 			}
 		}
 	}
-	resolved.set(key, face);
-	return face;
+	resolved.set(key, slot);
+	return slot;
+}
+
+export function codepointFace(font: int32, codepoint: int32): CodepointFace {
+	const slot: int32 = codepointSlot(font, codepoint);
+	if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
+	return { face: fallbacks[slot].face, scale: fallbacks[slot].scale };
+}
+
+export function faceForCodepoint(font: int32, codepoint: int32): int32 {
+	return codepointFace(font, codepoint).face;
 }

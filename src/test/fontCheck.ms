@@ -3,6 +3,7 @@ import {
 	Font,
 	FontStyle,
 	FontFeature,
+	SizeAdjust,
 	NO_FONT,
 	addFont,
 	addFallbackFont,
@@ -40,7 +41,10 @@ function font(family: string, weight: int32, style: FontStyle): Font {
 	registerFamilies();
 	const features: FontFeature[] = [];
 	const fallbacks: string[] = [];
-	return { family: family, weight: weight, style: style, features: features, fallbacks: fallbacks };
+	return {
+		family: family, weight: weight, style: style, features: features, fallbacks: fallbacks,
+		sizeAdjust: SizeAdjust.None,
+	};
 }
 
 function faceOfPath(path: string): int32 {
@@ -180,4 +184,50 @@ test "setFont gives a label its font, and a refused font leaves the label as it 
 	assert n.fontId == resolveFont(bold);
 	n.setFont(font("No Such Family", 400, FontStyle.Normal));
 	assert n.fontId == resolveFont(bold);
+}
+
+struct AdjustCase {
+	adjust: SizeAdjust;
+	ratio: float64;
+}
+
+function withFallback(family: string, fallback: string, adjust: SizeAdjust): int32 {
+	const f = font(family, 400, FontStyle.Normal);
+	f.fallbacks.push(fallback);
+	f.sizeAdjust = adjust;
+	return resolveFont(f);
+}
+
+function laidSize(fontId: int32, text: string, index: int32): float32 {
+	return layoutWith(fontId, text).glyphs[index].size;
+}
+
+test "without sizeAdjust a fallback glyph keeps the label's size" {
+	assert laidSize(withFallback("Test Sans", "Test Hanzi", SizeAdjust.None), "A你", 1) == 13.0;
+}
+
+test "sizeAdjust scales a fallback face to the primary's metric, in em" {
+	const inter: float32 = 1.0 / 2048.0;
+	const noto: float32 = 1.0 / 1000.0;
+	const cases: AdjustCase[] = [
+		{ adjust: SizeAdjust.IcWidth, ratio: 2450.0 * inter / (1000.0 * noto) },
+		{ adjust: SizeAdjust.ExHeight, ratio: 1118.0 * inter / (543.0 * noto) },
+		{ adjust: SizeAdjust.CapHeight, ratio: 1490.0 * inter / (733.0 * noto) },
+		{ adjust: SizeAdjust.LineHeight, ratio: 2478.0 * inter / (1448.0 * noto) },
+	];
+	for (const c of cases) {
+		const id = withFallback("Test Sans", "Test Hanzi", c.adjust);
+		const l = layoutWith(id, "A你");
+		assert l.glyphs[0].size == 13.0;
+		assert Math.abs(l.glyphs[1].size - ((13.0 * c.ratio) as float32)) < 0.01;
+		const g = l.glyphs[1];
+		assert approx(g.advance, glyphAdvance(g.face, g.glyph, g.size));
+	}
+}
+
+test "an ic width the fallback lacks falls through to the ex height" {
+	const id = withFallback("Test Hanzi", "Test Sans", SizeAdjust.IcWidth);
+	const l = layoutWith(id, "你é");
+	assert l.glyphs[1].face != l.glyphs[0].face;
+	assert Math.abs(l.glyphs[1].size - 13.0 * (543.0 / 1000.0) / (1118.0 / 2048.0)) < 0.01;
 }

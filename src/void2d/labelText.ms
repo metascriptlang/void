@@ -164,7 +164,6 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 		? world.a
 		: Math.sqrt(Math.abs(world.a * world.d - world.b * world.c)) as float32;
 	const devicePerLocal: float32 = linear * scale;
-	const sizePx: float32 = entry.style.size * devicePerLocal;
 	const fracX: float32 = fraction(world.tx * scale);
 	const fracY: float32 = fraction(world.ty * scale);
 	const placed: Vec<PlacedGlyph> = new Array(0);
@@ -180,7 +179,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				whole = q.whole;
 				baselineDevice = snapBaseline(fracY + baseline * devicePerLocal);
 			}
-			const tileIndex: int32 = acquireOrReport(g.face, g.glyph, sizePx, variant);
+			const tileIndex: int32 = acquireOrReport(g.face, g.glyph, g.size * devicePerLocal, variant);
 			if (tileIndex < 0) { continue; }
 			const t: GlyphTile = glyphAtlas.tile(tileIndex);
 			const [u0, v0, u1, v1] = uvRect(t);
