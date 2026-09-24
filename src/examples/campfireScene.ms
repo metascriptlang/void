@@ -35,6 +35,7 @@ import {
 	GpuMesh,
 	MeshUploadError,
 	StreamError,
+	UniformError,
 	addMesh,
 	addMeshData,
 	addMaterial,
@@ -196,8 +197,9 @@ const LOOK_GREY_AT: int32 = 10;
 const LOOK_RESTORED_AT: int32 = 15;
 
 // The pool holds the renderer's blocks plus this scene's material blocks: one toon ramp for
-// the lit material, one sprite block shared by grass and flame.
-const MATERIAL_UNIFORM_LENGTH: int32 = TOON_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
+// the lit material, one for the stones' own lit material when they are greyed, and one sprite
+// block shared by grass and flame.
+const MATERIAL_UNIFORM_LENGTH: int32 = 2 * TOON_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
@@ -245,6 +247,7 @@ let panTexelsPerFrame: float32 = 0.0;
 let rebuildAtFrame: int32 = NEVER_REBUILD;
 let particlesWanted: boolean = false;
 let lookScheduleWanted: boolean = false;
+let stoneSaturation: float32 = 0.0;
 let particleMaterial: int32 = 0;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
@@ -641,6 +644,11 @@ function setupDraws(): void {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: litBlock,
 	});
+	const stoneMaterial: Result<int32, UniformError> = stoneMaterialFor(state, litMaterial);
+	if (!stoneMaterial.ok) {
+		console.log("campfire: setupDraws bailed at the stone material");
+		return;
+	}
 	grassMaterial = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
@@ -700,7 +708,7 @@ function setupDraws(): void {
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
 			const placed: Result<int32, AnimationError> =
-				placeBakedStone(pieces[i], placements[i], root, litMaterial);
+				placeBakedStone(pieces[i], placements[i], root, stoneMaterial.value);
 			if (!placed.ok) { console.log("campfire: setupDraws bailed at the baked stone"); return; }
 			continue;
 		}
@@ -709,8 +717,10 @@ function setupDraws(): void {
 		// The ground and the stones hang off the root; the logs hang off the group, so their
 		// world matrix is the two-level product the flat pieces never exercise.
 		const under: NodeId = i >= firstLogPiece ? logGroup : root;
+		const stone: boolean = i > 0 && i < firstLogPiece;
+		const material: int32 = stone ? stoneMaterial.value : litMaterial;
 		const placed: Result<NodeId, SceneError> =
-			addMeshNode(tree, under, placements[i], uploaded.value, litMaterial);
+			addMeshNode(tree, under, placements[i], uploaded.value, material);
 		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
 		if (i == firstLogPiece) { firstLogNode = placed.value; }
 		if (i == BAKED_STONE + 1) { plainStoneNode = placed.value; }
@@ -743,6 +753,20 @@ function setupDraws(): void {
 	}
 	const animated: Result<int32, AnimationError> = setupAnimations();
 	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
+}
+
+// The stones share the lit material unless they are greyed, and then they get their own, so
+// they change colour and the ground and the logs do not.
+function stoneMaterialFor(state: RenderState, litMaterial: int32): Result<int32, UniformError> {
+	if (stoneSaturation == 0.0) { return Result.ok(litMaterial); }
+	const block: UniformBlock =
+		try reserveUniforms(context, TOON_UNIFORM_SLOT, TOON_UNIFORM_LENGTH);
+	const toon: Vec<float32> = [LIGHT_LEVELS, stoneSaturation, 0.0, 0.0];
+	writeUniforms(context, block, toon);
+	return Result.ok(addMaterial(context, {
+		...Material.plain(Program.Lit, state, Phase.Opaque),
+		uniforms: block,
+	}));
 }
 
 // One stone goes through the vertex-baked path with two identical frames: the image cannot
@@ -906,6 +930,12 @@ export function configureCampfireLogSpin(radiansPerFrame: float32): void {
 // still draw what they drew.
 export function configureCampfireParticles(on: boolean): void {
 	particlesWanted = on;
+}
+
+// The stones' saturation, on their own lit material: 0 leaves them sharing the scene's, -1 is
+// grey.
+export function configureCampfireGreyStones(saturation: float32): void {
+	stoneSaturation = saturation;
 }
 
 // Swaps to WINTER_PALETTE at frame 5, greys the look at frame 10 and puts both back at frame 15.
