@@ -110,7 +110,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| font-colour-emoji | T2 | an emoji draws `.notdef` after probing every fallback face. stb_truetype reads no colour glyph table, so colour emoji is a P6 compile-time module (decided at P3's review): CBDT/sbix strikes through `stb_image` and COLRv0 layers into RGBA pages, with explicit-versus-fallback presentation and deferred faces that answer coverage before they load | P6 | 2026-09-24 |
+| font-colour-emoji | T2 | an emoji draws `.notdef` after probing every fallback face. stb_truetype reads no colour glyph table, so colour emoji is a P6 compile-time module (decided at P3's review): CBDT/sbix strikes through `stb_image` and COLRv0 layers into RGBA pages, with explicit-versus-fallback presentation; deferred faces, which answer coverage before they load, land beside it in the default glyph layer | P6 | 2026-09-24 |
 | font-grapheme-selection | T1 | a face is chosen per codepoint; a multi-codepoint grapheme should take the first face covering all of it (GHOSTTY.md:27), which needs the UCD segmentation P4 wires | P4 | 2026-09-24 |
 | glyph-page-second-upload | T2 | a glyph first rasterized into a page that an earlier bracket of the same frame already uploaded is one frame late, because sokol permits one `sg_update_image` per image per frame. The resize half of the old row is gone: pages never grow, so no UV goes stale. The runner draws three frames, so a golden cannot see the transient. Fix direction from P3's review: a page already uploaded this frame takes no new tile and is not reclaimed | P5 | 2026-09-24 |
 | label-dispose-pins-page | T1 | a Label dropped without `dispose` keeps its glyph tiles referenced, so its atlas page is never reclaimed; a reconciler that forgets `dispose` fills all 16 pages and then refuses glyphs. Only a comment in `node.ms` states it. The host contract owns node lifetime | P5 | 2026-09-24 |
@@ -133,7 +133,7 @@ it can capture anything.
 
 ## Backends with no conformance run
 
-Guardrail 9 is "same pixels on every platform", and today it is checked on one backend.
+Guardrail 9 is "same pixels on every platform", and today it is measured on two backends, D3D11 and WebGL2.
 `scripts/gate.sh` prints each of these as a loud SKIP and never as a PASS.
 
 | id | tier | reason | phase | date |

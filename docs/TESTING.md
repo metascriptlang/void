@@ -95,7 +95,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `clip/` | P0 | nestedMasks · rotatedMask · scrolledList |
 | `clip/` | P5 | mask + scroll offset |
 | `text/` | P0 | a code line at 13 px, DPI 1.0 / 1.25 / 1.5 · wrapped · multilineAlign |
-| `text/` | P3 | mixed Latin + CJK fallback |
+| `text/` | P3 | mixed Latin + CJK fallback · fontStyles (synthetic bold and italic, size harmonisation) |
 | `text/` | P4 | decorations (underline, strikethrough, wavy) · caret and selection |
 | `text/` | P6 | a ligature line · a colour-emoji line |
 | `image/` | P0 | nearestLinear · subFlip · colorPipeline (colorMatrix, colorAdd, colorKey, Add blend) · scaleGrid |
@@ -154,8 +154,8 @@ the last three sessions compared.
   cross-backend difference that means nothing. Alpha inside the frame is still tested — it
   is what blending turned into colour.
 
-**Size, measured in bytes rather than `du` blocks.** The 67 D3D11 goldens total
-**1 328 179 B**: **683 201 B** for the 63 harness/UI scenes and **644 978 B** for the four
+**Size, measured in bytes rather than `du` blocks.** The 69 D3D11 goldens total
+**1 394 175 B** at P3's review: **748 008 B** for the 65 harness/UI scenes and **646 167 B** for the four
 800×600 demo frames. The suite passed the original sub-megabyte estimate at P2 because 30
 scenes were added; the integration captures still account for nearly half. The lever, if this
 becomes material, remains the demo frames.
@@ -339,7 +339,7 @@ the missing piece is the readback and not the driver:
 The comparator does not change: `tests/golden/compare.ms` reads two PNGs and knows nothing
 about where they came from.
 
-**Cadence**, because three of the five backends are not this machine: D3D11 runs in every gate, and WebGPU and WebGL2 will once they have a readback. Metal (macOS and iOS) and GLES3 on the Android device run **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
+**Cadence**, because three of the five backends are not this machine: D3D11 runs in every gate, WebGL2 with `--web` since P3, and WebGPU once it has a readback (P6). Metal (macOS and iOS) and GLES3 on the Android device run **once per phase**, and additionally at every change that touches a shader, the snapping rules or the atlas — the three places where backends actually diverge. The conformance report carries the date and the commit it was taken at, so a stale one is visible rather than assumed.
 
 **Cross-backend tolerance is not the same as within-backend tolerance.** Different GPUs round rasterization and interpolation differently. The starting bound is: delta ≤ 1 ignored, fail at max delta ≥ 4 or above 0.05% of pixels at delta 2–3; every scene that cannot meet it gets a PENDING entry naming the backend and the cause. A scene that differs **structurally** between backends — a glyph one pixel over, a border one device pixel wide instead of two, a gradient banded on one backend and dithered on another — is not a tolerance question and never gets a budget. That is the class of bug guardrail 9 exists to catch, and it is the class that hand-ported shaders produce in all three references (GPUI's gradients and dither, Ghostty's cursor colour, Makepad's `modf` — VOID2D.md "Frame shape").
 
@@ -357,12 +357,12 @@ about where they came from.
 
 **What each tier covers today**, so the table above is read against something real:
 
-| Tier | State after P2 |
+| Tier | State after P3 |
 |---|---|
-| T0 | 708 tests over 43 files, `msc test src/test/index.ms`; twelve are harness parsers |
+| T0 | 859 tests over 55 files, `msc test src/test/index.ms`; twelve are harness parsers |
 | T1 | 11 display-list snapshots plus no-GPU reachability and invariant assertions |
-| T2 | 67 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
+| T2 | 69 scenes, D3D11, byte-identical, zero budgets; WebGL2 65 / 69 with `--web`; five backends SKIP |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
-| T4 | twelve counters gated per bench scene, two milliseconds reported; wasm budget SKIPs |
+| T4 | eighteen counters gated per bench scene (ui, sprites, text), three `present` milliseconds reported; wasm budget SKIPs |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".
