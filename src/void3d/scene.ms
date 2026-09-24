@@ -24,15 +24,12 @@ import {
 import { MAX_POINT_LIGHTS } from "./gpu3d";
 import { DrawItem } from "./draw";
 
-// Flags are bits in an int32 rather than `BitSet<NodeFlag>`, which is what CODE-STYLE section 4
-// would otherwise ask for. This is a version floor, not a preference: the installed msc
-// (0.2.53) has no BitSet. A reader on 0.2.54+ should check whether it has arrived and replace
-// these three constants with an enum and a BitSet field.
-// PENDING3D: scene-flags-not-bitset
-export const FLAG_VISIBLE: int32 = 1;
-export const FLAG_POS_CHANGED: int32 = 2;
-export const FLAG_CULLED: int32 = 4;
-export const FLAG_PICKABLE: int32 = 8;
+export enum NodeFlag {
+	Visible,
+	PosChanged,
+	Culled,
+	Pickable,
+}
 
 export const NO_NODE: int32 = -1;
 
@@ -95,7 +92,7 @@ export struct NodeId {
 // The opposite of Node2D's 71 fields. Anything only one kind reads belongs in a side table.
 export struct Object3D {
 	kind: NodeKind;
-	flags: int32;
+	flags: BitSet<NodeFlag>;
 	parent: int32;
 	payload: int32;
 	// h3d.scene.Object.name (default null there, "" here): glTF nodes are name-keyed, and
@@ -144,12 +141,12 @@ export function toMatrix(this t: Transform3D): Mat4 {
 	return composeTransform(t.position, t.rotation, t.scale);
 }
 
-export function has(this node: Object3D, flag: int32): boolean {
-	return (node.flags & flag) != 0;
+function freshFlags(): BitSet<NodeFlag> {
+	return (0 as BitSet<NodeFlag>).incl(NodeFlag.Visible).incl(NodeFlag.PosChanged);
 }
 
 export function isVisible(this node: Object3D): boolean {
-	return node.has(FLAG_VISIBLE) && !node.has(FLAG_CULLED);
+	return node.flags.has(NodeFlag.Visible) && !node.flags.has(NodeFlag.Culled);
 }
 
 export function nodeCount(this scene: Scene): int32 {
@@ -201,7 +198,7 @@ export function create(this typeof Scene): Scene {
 	};
 	const root: NodeId = newSlot(scene, {
 		kind: NodeKind.Group,
-		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
+		flags: freshFlags(),
 		parent: NO_NODE,
 		payload: NO_NODE,
 		name: "",
@@ -226,7 +223,7 @@ export function addGroup(
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Group,
-		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
+		flags: freshFlags(),
 		parent: parent.index,
 		payload: NO_NODE,
 		name: "",
@@ -260,7 +257,7 @@ export function addMeshNode(
 	scene.meshes.push({ mesh: mesh, material: material });
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Mesh,
-		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
+		flags: freshFlags(),
 		parent: parent.index,
 		payload: payload,
 		name: "",
@@ -287,7 +284,7 @@ export function addLightNode(
 	scene.lights.push(light);
 	const id: NodeId = newSlot(scene, {
 		kind: NodeKind.Light,
-		flags: FLAG_VISIBLE | FLAG_POS_CHANGED,
+		flags: freshFlags(),
 		parent: parent.index,
 		payload: payload,
 		name: "",
@@ -391,7 +388,7 @@ export function setLocal(
 ): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	scene.nodes[id.index].local = local;
-	scene.nodes[id.index].flags = scene.nodes[id.index].flags | FLAG_POS_CHANGED;
+	scene.nodes[id.index].flags = scene.nodes[id.index].flags.incl(NodeFlag.PosChanged);
 	return Result.ok(id.index);
 }
 
@@ -401,8 +398,10 @@ export function setVisible(
 	visible: boolean,
 ): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	const flags: int32 = scene.nodes[id.index].flags;
-	scene.nodes[id.index].flags = visible ? (flags | FLAG_VISIBLE) : (flags & ~FLAG_VISIBLE);
+	const flags: BitSet<NodeFlag> = scene.nodes[id.index].flags;
+	scene.nodes[id.index].flags = visible ?
+		flags.incl(NodeFlag.Visible) :
+		flags.excl(NodeFlag.Visible);
 	// Visibility does not move anything, so the world matrices stay valid; only the draw list
 	// changes, and `collect` reads the flag as it walks.
 	scene.structureChanged = true;
@@ -416,8 +415,10 @@ export function setPickable(
 	pickable: boolean,
 ): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	const flags: int32 = scene.nodes[id.index].flags;
-	scene.nodes[id.index].flags = pickable ? (flags | FLAG_PICKABLE) : (flags & ~FLAG_PICKABLE);
+	const flags: BitSet<NodeFlag> = scene.nodes[id.index].flags;
+	scene.nodes[id.index].flags = pickable ?
+		flags.incl(NodeFlag.Pickable) :
+		flags.excl(NodeFlag.Pickable);
 	return Result.ok(id.index);
 }
 
@@ -510,19 +511,19 @@ export function syncWorld(ref scene: Scene): int32 {
 	while (top > 0) {
 		top = top - 1;
 		const index: int32 = scene.stack[top];
-		const changed: boolean = scene.nodes[index].has(FLAG_POS_CHANGED);
+		const changed: boolean = scene.nodes[index].flags.has(NodeFlag.PosChanged);
 		if (changed) {
 			const local: Mat4 = scene.nodes[index].local.toMatrix();
 			const parent: int32 = scene.nodes[index].parent;
 			const parentWorld: Mat4 = parent == NO_NODE ? identity() : scene.nodes[parent].world;
 			scene.nodes[index].world =
 				parent == NO_NODE ? local : local.multiplyAffine(parentWorld);
-			scene.nodes[index].flags = scene.nodes[index].flags & ~FLAG_POS_CHANGED;
+			scene.nodes[index].flags = scene.nodes[index].flags.excl(NodeFlag.PosChanged);
 			synced = synced + 1;
 		}
 		for (const child of scene.nodes[index].children) {
 			if (changed) {
-				scene.nodes[child].flags = scene.nodes[child].flags | FLAG_POS_CHANGED;
+				scene.nodes[child].flags = scene.nodes[child].flags.incl(NodeFlag.PosChanged);
 			}
 			scene.stack[top] = child;
 			top = top + 1;

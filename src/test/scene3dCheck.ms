@@ -11,7 +11,7 @@ import {
 	LightKind,
 	LightInstance,
 	setMeshOf,
-	FLAG_CULLED,
+	NodeFlag,
 	identityTransform,
 	transformAt,
 	NO_NODE,
@@ -281,7 +281,7 @@ test "a node culled after collection leaves the list, and does not leave a ghost
 	const _second: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 2;
-	scene.nodes[first.index].flags = scene.nodes[first.index].flags | FLAG_CULLED;
+	scene.nodes[first.index].flags = scene.nodes[first.index].flags.incl(NodeFlag.Culled);
 	assert refresh(scene, items) == 1;
 	assert (items.length as int32) == 1;
 	assert items[0].mesh == 22;
@@ -292,9 +292,9 @@ test "un-culling a node puts it back without writing past the end" {
 	const first: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 11);
 	const _second: NodeId = oneMesh(scene, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
-	scene.nodes[first.index].flags = scene.nodes[first.index].flags | FLAG_CULLED;
+	scene.nodes[first.index].flags = scene.nodes[first.index].flags.incl(NodeFlag.Culled);
 	assert refresh(scene, items) == 1;
-	scene.nodes[first.index].flags = scene.nodes[first.index].flags & ~FLAG_CULLED;
+	scene.nodes[first.index].flags = scene.nodes[first.index].flags.excl(NodeFlag.Culled);
 	assert refresh(scene, items) == 2;
 	assert items[0].mesh == 11;
 	assert items[1].mesh == 22;

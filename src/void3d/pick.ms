@@ -12,8 +12,7 @@ import {
 	Scene,
 	NodeId,
 	NodeKind,
-	FLAG_VISIBLE,
-	FLAG_PICKABLE,
+	NodeFlag,
 	NO_NODE,
 	syncWorld,
 } from "./scene";
@@ -60,7 +59,7 @@ export function pickNearest(
 	while (top > 0) {
 		top = top - 1;
 		const index: int32 = scene.stack[top];
-		if (!scene.nodes[index].has(FLAG_VISIBLE)) { continue; }
+		if (!scene.nodes[index].flags.has(NodeFlag.Visible)) { continue; }
 		const owner: int32 = scene.nodes[index].kind == NodeKind.Mesh
 			? scene.pickableOwner(index)
 			: NO_NODE;
@@ -101,7 +100,7 @@ export function pickNearest(
 function pickableOwner(this scene: Scene, index: int32): int32 {
 	let at: int32 = index;
 	while (at != NO_NODE) {
-		if (scene.nodes[at].has(FLAG_PICKABLE)) { return at; }
+		if (scene.nodes[at].flags.has(NodeFlag.Pickable)) { return at; }
 		at = scene.nodes[at].parent;
 	}
 	return NO_NODE;
