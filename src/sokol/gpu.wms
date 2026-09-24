@@ -4,6 +4,7 @@
 @passC("-I../../deps/sokol");
 @include("bridge.h");
 @compile("src/sokol/bridge.c");
+@compile("src/sokol/bridgeWeb.c");
 @compile("src/sokol/sokolWeb.c");
 
 extern function voidGfxSetup(): void;
