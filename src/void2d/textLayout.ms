@@ -173,6 +173,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const cps: Vec<Codepoint> = decodeUtf8(text);
 	const count: int32 = cps.length as int32;
+	const textBytes: int32 = count > 0 ? cps[count - 1].byteEnd : 0;
 	const glyphs: Vec<LaidGlyph> = new Array(0);
 	const lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
@@ -189,7 +190,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		const x: float32 = -run.width * style.align;
 		const firstGlyph: int32 = glyphs.length as int32;
 		for (const g of run.glyphs) { glyphs.push({ ...g, x: g.x + x }); }
-		const byteStart: int32 = start < count ? cps[start].byteStart : 0;
+		const byteStart: int32 = start < count ? cps[start].byteStart : textBytes;
 		const byteEnd: int32 = end > start ? cps[end - 1].byteEnd : byteStart;
 		lines.push({
 			firstGlyph: firstGlyph,

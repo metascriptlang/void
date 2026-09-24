@@ -95,6 +95,15 @@ test "a newline is a hard break, and a trailing one opens an empty line" {
 	assert l.splitText("ab\ncd\n") == "ab\ncd\n";
 }
 
+test "the empty line after a trailing newline sits at the end of the text" {
+	const l = TextLayout.layout("ab\n", style());
+	assert (l.lines.length as int32) == 2;
+	assert l.lines[1].byteStart == 3;
+	assert l.lines[1].byteEnd == 3;
+	assert l.byteForX(1, 50.0) == 3;
+	assert approx(l.xForByte(3), l.lines[1].x);
+}
+
 test "lines advance by the line height plus lineSpacing in pixels" {
 	const s: TextStyle = { ...style(), lineSpacing: 4.0 };
 	const l = TextLayout.layout("a\nb", s);
