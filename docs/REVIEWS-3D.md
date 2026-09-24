@@ -668,3 +668,81 @@ Taken at tree `16e9bcbb` (*fix(void3d): name the campfire's particle failures an
 | Bench | zero frame-state growth over 300 frames with particles on; 0.070–0.109 ms CPU per frame over five single runs |
 | PENDING3D | 22 rows: one removed, four new |
 | Android | arm64 `libVoidAndroid.so`, **2 682 840 bytes** (+174 448 over M10, not attributed); physical device still skipped |
+
+## M12 — saturation as a lit-material parameter, held to Heaps' colorSaturate
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one send-back.** Two passes read `git diff ea4b620..3a0b2be` (the first cut): the defect pass (`/code-review high`) and a fresh design reviewer. The design pass sent it back. The rework is `ec6d800..6f6b26f`, and the same reviewer re-reviewed it. Every finding below was checked in the main session before anything was changed.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | `run_grey_reference` could PASS having compared nothing: an error from `magick compare` parsed as 0 levels, and the images of the previous frame were reused | Fixed, then made moot. The first fix checked every `magick` status, cleared the images per frame and required a numeric PAE (checked on real frames, and it failed at −0.9). The rework then deleted the function (design finding 1) |
+| 2 | A failed build or run left the previous gate's frames for a later comparison | `run_capture` clears its frames before it builds and after a failed run (`6b3c4c4`) |
+| 3 | The shader comment and the as-built said a headless test tied the GLSL to the matrix; the test ties an MS copy of the formula | The test is named for the scalar form, and the as-built says it checks the formula, not the GLSL. The GLSL is now held to the CPU byte for byte (below) |
+| 4 | The mask covered only changed pixels, so a stone that was never greyed would drop out silently | Moot after the rework. It was covered anyway: a stone not greyed changes the frame, and the frame hash fails |
+| 5 | The acceptance named `<TREE>` | Filled with the tree hash |
+| 6 | The example picks the greyed piece by index | Not taken: the example already chooses each piece's parent by the same index ranges. The rework greys piece 0, the ground, alone |
+| 7 | Three `-fx` passes per frame are slow | Not taken, measured: 0.24 to 0.31 s per pass. The rework removed them |
+| 8 | The luma weights appear in four places; `within` repeats `approx` | Not taken: the test keeps its own weights on purpose, so that it is not checking the code against itself, and the oracle pins them to Heaps. `approx` allows 0.005, which is more than one 8-bit level; `within` allows 1e-6 |
+| 9 | Two tests log even when they pass | They log only when the assertion fails |
+| 10 | Six lines of design prose above `run_grey_reference` | Cut to the one external fact, then deleted with the function |
+
+### Design pass
+
+**First review: SEND BACK.** The code was sound. The blocking findings were claims and evidence:
+
+1. **An undeclared divergence from Heaps, written up as agreement.** The first cut greyed the lit colour *after* the lights. Heaps' `ColorMatrix` added to a pass greys `pixelColor` *before* `AmbientLight` multiplies the light in:
+   - `LightSystem.computeLight` puts the light shaders at the head of the list;
+   - `Cache.compileRuntimeShader` reverses it.
+
+   I checked this in the source at the pin; it has not been run. The first cut had been argued from one app's readability (a fading object stays grey by the fire). The human decided that a general renderer takes Heaps' position. The saturation now greys `baseColor` before the lights (`ec6d800`), and the three false texts are gone.
+2. **The acceptance named no tree.** It names one now.
+3. **Only an adopt run had produced the new baselines.** A plain gate run reproduced them: the gate at `76c4665b` with `GATE_DEVICE=1` is GREEN with no SKIP, and all three new configurations match their committed hashes.
+4. **The reference check could pass without checking.** It is gone. The GPU is now held to `colorSaturated` byte for byte: the ground greyed in its vertex colours on the CPU must draw the frames its material draws at the same amount (`campfireGreyCpuCapture` against `m12greydirect_*`). With −0.7 on the CPU the frames differ in every ground pixel.
+
+**Follow-ups it raised:**
+- Named offsets: `TOON_LEVELS` and `TOON_SATURATION`, done, used by the example.
+- The pixel check tested only the luma half at −1: moot. The amount is now −0.75 and the check is byte identity.
+- Style: `luma` is an extension, and the WHAT comment and the long gate comment are gone.
+- The test count: fixed to four more than the 824 before M12.
+
+**Re-review: SHIP WITH FOLLOW-UPS.** All four blocking items closed. The reviewer rebuilt the change mask of frame 11 (only the ground between the grass blades changed) and re-measured every pixel count in the as-built. It noted that two independent paths agreeing byte for byte is what shows the ground greyed and where. Its follow-ups, all taken:
+1. The Milestones row still said "after lighting". Fixed.
+2. The shader comment named the deleted grey reference. It names `campfireGreyCpuCapture`.
+3. **An old gap M12 brings to light.** `litFs` adds the point lights without multiplying them by the material's colour; Heaps multiplies every light in. Checked in the shader. It is M7's, and no row recorded it. `light-params-divergence` now says so, and the as-built says a greyed object keeps a warm tint from the fire. The lighting is not changed here: that would move every baseline, and it is not this milestone's.
+4. The as-built told the send-back as history. It keeps the measurement, and the story is here.
+5. The GPU is held to the CPU for one colour at one amount. Written under "Still missing after M12".
+
+It did not re-measure the −0.7 control or the emulator counts, whose shots are not committed.
+
+**It confirmed, with its own runs:**
+- the port of `colorSaturate`, including `multiply3x4`;
+- all four shader backends keep the `amount == 0` skip and the same expression;
+- nothing Hibernal-shaped in `src/void3d`;
+- no per-frame work;
+- nothing new to rebuild after a context loss.
+
+### Carried into M13 and later
+
+- A greyed object reads as grey only under a palette with a grey ramp. The campfire palette turns a grey brown. Under that palette, greying the ground at −0.75 moves only about 13 300 pixels, against 162 800 with the palette off.
+- Only lit materials have a saturation.
+- No fade over time has run.
+- The order against Heaps has been read in the source but not run.
+- The point lights are added without the material's colour (M7's, now in `light-params-divergence`).
+- The GPU is held to the CPU for one colour at one amount.
+- The rest of M11's list, less its two saturation items.
+
+### Numbers
+
+Taken at tree `76c4665b` (*docs(device): record the ground greyed by its material on the GLES3 emulator*) from one plain `sh scripts/gate3d.sh` run. The commits after it change a shader comment and documents only; the shader header is unchanged.
+
+| | |
+|---|---|
+| Gate | GREEN, no SKIP, with `GATE_DEVICE=1` (the device stage on the `pixellight` emulator) |
+| Tests | **828**, 4 added by M12 |
+| Capture | ten standing configurations byte-identical; three new, 8 new baselines (40); the CPU-greyed ground byte-identical to the material's |
+| Oracle | 75 agree and 11 declared, over six files; `color3d.cases` 6 + 0 |
+| GLES3 emulator | ground greyed: 20 789 pixels against the same build at 0; 274 between two shots of that build |
+| PENDING3D | 23 rows, one new |
+| Android | arm64 `libVoidAndroid.so`, **2 704 216 bytes** (+16 368 over the 2 687 848 before M12, not attributed) |
