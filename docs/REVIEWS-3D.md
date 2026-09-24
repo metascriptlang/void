@@ -746,3 +746,55 @@ Taken at tree `76c4665b` (*docs(device): record the ground greyed by its materia
 | GLES3 emulator | ground greyed: 20 789 pixels against the same build at 0; 274 between two shots of that build |
 | PENDING3D | 23 rows, one new |
 | Android | arm64 `libVoidAndroid.so`, **2 704 216 bytes** (+16 368 over the 2 687 848 before M12, not attributed) |
+
+## Audit before M13 — the whole of `src/void3d`, read against the porting and decision rules
+
+**Verdict: no defect in the running paths; three design findings that no milestone review could
+see, because they came with the spike before M5.** Read in the main session at tree `7913307e`
+(*docs(void3d): M12 review, a send-back for the light order and the ship*), after the human
+reframed void3d at M12 as a renderer for any game. Read line by line: `scene`, `draw`,
+`renderer`, `passList`, `pipelineCache`, `pixelArtRenderer`, `camera` (its head), `pick` and
+`shader3d.glsl`. The other modules were checked by the cross-cutting searches and measurements
+below. Most of them are held to real Heaps by the oracle.
+
+### Findings
+
+| # | Layer | Finding | What was done |
+|---|---|---|---|
+| 1 | core | The directional light is a step, `step(0.35, n·l) × power`, where Heaps' `DirLight` is Lambert, `color × max(n·l, 0)` (read, not run). It ignores the material's toon levels, and the point lights' quantization adds a fixed 0.35 bias. From the spike (`a394a82`), with no row | Row `dir-light-stepped`. M13, which rewrites that formula, decides it |
+| 2 | core | `Program.Billboard` is the campfire's grass-and-flame shader: a `grassColor` uniform, a `texel.r` mask, a four-cell atlas written as `* 0.25`, the light sampled `0.25` above the root, `mix(…, emissive)` for the flame. The decision rule forbids app vocabulary in `src/void3d` | Carried, for the milestones that make void3d general |
+| 3 | core | Every scene program writes the pixel-art preset's two targets (normal, depth packed in alpha), and colour alpha is the outline mask. Core and preset are split in MetaScript but not in the shaders: a plain forward preset could not reuse `Program.Lit` | Carried |
+| 4 | core | Nothing is ever released from a `DrawContext`: meshes, materials and the uniform pool only grow. The M11 follow-up named streams only | Carried, widening follow-up 1 |
+| 5 | core | No frustum culling: nothing outside a test sets `NodeFlag.Culled`, and no "Still missing" said so | Carried |
+| 6 | gate | The `allocation` stage held scene, animation and particles, not the render path. Measured by hand on the emitted C of the bench entry: 26 render-path functions, no array copy | Added to the stage (`c613826`). Control: a written `Vec` copy in `drawItem` fails it (`drawItem=1`) |
+| 7 | example | `frameCampfire` returns silently at eight sites. A fifth point light is refused by the core and then dropped by the example with no message; in a host view the same return would abort as "returned without commit()" | Carried; the example is the code callers copy |
+| 8 | docs | "Data types" said billboard atlases rebuild from CPU data like meshes; they are the caller's | Corrected |
+| 9 | compiler | Workarounds re-probed on msc 0.2.55 (`8cdd91c6`): `BitSet`, `==` on large structs, `distinct` and a simple generic `ref` now work; `ref this` and returning a `Span` still do not | Flags and colour mask are `BitSet`s (`0529b6f`, `b85d3b4`), row `scene-flags-not-bitset` deleted, `sameState` gone, Compiler notes re-dated |
+| 10 | docs | The "Device" open question still said the `.so` had only been built; the compiler notes were headed 0.2.53; the glTF comment scoped the loader by the customer's exporter | Corrected |
+| 11 | style | 727 comment lines against 4 550 code lines; 49 blocks longer than three lines, most written before the comment rule was narrowed on 2026-09-21 | Not swept: the comment playbook forbids cleaning a file as a side effect. A pass of its own if the human wants one |
+| 12 | style | `refresh` is mis-indented at `scene.ms` 617–630; `uploadMesh` keeps a half-made buffer pair where `remakeStream` destroys it; `writeUniforms` truncates or leaves values silently | Carried |
+
+**Confirmed, with the check named:**
+- nothing in an API name or behaviour is Hibernal's, beyond the defaults the brief allows and finding 2 (grep over `src/void3d`);
+- the frame and render paths copy no array (the `allocation` stage, now with the render path);
+- everything the library owns has a way back after a context loss: meshes with CPU data, streams, pipelines, shaders, targets, the LUT, the sampler (read in `beginFrame`, `adoptContext`, `sweepStaleMeshes`);
+- too many lights is an error, not a silent drop, and a stale `NodeId` is caught by its generation.
+
+**Also found:**
+- A gate from 2026-09-23 had been orphaned for over a day, its `msc` running from a binary since renamed by a toolchain sync. It held nothing a later gate needed. The kill was refused by the harness and is the human's.
+- Building under the long session scratch path fails; the second sighting is in `~/metascript/.inbox/compiler/2026-09-23-emit-c-long-path-windows.md`.
+
+### Numbers
+
+Taken at tree `e0a07b17` (*docs(void3d): re-check the compiler notes on 0.2.55 and correct the
+drifted claims*) from one plain `sh scripts/gate3d.sh` run. The commit after it adds this section only.
+
+| | |
+|---|---|
+| Gate | GREEN, one SKIP (device) |
+| Tests | **828**, unchanged |
+| Capture | thirteen configurations, 52 frames, byte-identical to the 40 committed hashes |
+| Oracle | 75 agree and 11 declared, over six files |
+| Allocation | frame, render and pick paths, no array copy; the render path is new to the stage |
+| PENDING3D | 23 rows: `scene-flags-not-bitset` deleted, `dir-light-stepped` added |
+| Android | arm64 `libVoidAndroid.so`, **2 702 880 bytes** (2 704 216 at M12) |
