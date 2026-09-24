@@ -646,3 +646,40 @@ It also moved three follow-ups and found new record items for the P3 close. All 
 The phase rule on two consecutive send-backs does not apply. Neither pass found a design fault;
 both found the record behind the code. The lesson is procedural: a count or an owner that moves
 is swept across every tracked doc in the same commit, not only at the sites a reviewer named.
+
+## P3 ship review: **SHIP WITH FOLLOW-UPS**
+
+A third fresh reviewer checked B1-B3 at `c182805`, file by file, against the disk. The golden
+count and bytes, the tier table and the gate logs of `698c57b` all match. It found nothing in the
+code it would refuse. `sh scripts/gate.sh --web` was GREEN at `698c57b`, and everything after it
+is docs only: 859 tests over 55 files, D3D11 69 / 69, WebGL2 65 / 69 with the four listed
+structural failures and all seven `text/` scenes byte-identical, through
+`ANGLE (NVIDIA ... Direct3D11 ...)`. Both web backends built, at 761 810 B and 667 012 B.
+
+| Question | Decision and evidence |
+|---|---|
+| 1. Exit criteria | Met and gated: `text/` byte-identical at DPI 1.0, 1.25 and 1.5; 0 rasterizations in the steady state; 2 pages after the zoom sweep; `textWidth` and per-glyph x from the painted layout; fallback with cached misses. **Two halves unmet and declared, each with an owner:** the Zed look (the human, before P4's exit) and the five-backend run, 2 of 7 (GLES3 desktop and WebGPU in P6's Lands and Exit; Metal and Android in P6's Exit, on the human's hardware) |
+| 2. Measurements | Every count in the tracked docs matches the `698c57b` logs. The wasm delta after the fixes is +30 169 / +30 046 B. The `present` A/B was taken at step 8, and P4 re-takes it first on a quiet box (F10) |
+| 3. Guardrails 1-9 | None violated. Guardrail 9 is two measured surfaces, and the record says that WebGL2 runs through ANGLE on the same GPU. Guardrail 6 carries colour emoji as a P6 module. Guardrail 8 holds: sprites 4.93 → 4.93 ms |
+| 4. GPUI fidelity | Float unhinted layout, four x-variants, the key, 1:1 sprites and the gamma and contrast table are GPUI's. The interim bitmap transformed regime and the oversized-glyph refusal are written down in VOID2D.md and GPUI.md |
+| 5. h2d spirit | `textWidth`, `calcTextWidth`, `splitText`, `maxWidth`, `letterSpacing` and `lineSpacing` in px are h2d's. What is foreign is carried to P4 (F4, F9) |
+| 6. Known defects | Closed at their owner, including fractional baselines. Atlas-full is closed as a class, and the refusal is now loud per placement |
+| 7. Test tiers | Right tiers. The weak and missing pins are F8, and the gate's missing graduation rule for `conformance:*` rows is F13 |
+| 8. Compiler discipline | No hidden workaround; the `uint64` Map card was unparked after the recompiler fix |
+| 9. CODE-STYLE §14 | F9, P4, before the host binds |
+| 10. Refusal to merge | None |
+
+New follow-ups from this pass, recorded in `docs/VOID2D.md` in the commit that records this pass:
+
+| id | Follow-up | Owner |
+|---|---|---|
+| F13 | `scripts/gate.sh` does not apply the graduation rule to `conformance:webgl2-pixel-centre`: a listed scene that starts passing prints SKIP or PASS instead of failing | P4, in its carried list |
+| F14 | P6's Lands and Exit did not name four P6 rows: the WebGL2 pixel-centre bias and the P2 rows `ui-box-color-effect`, `sdf-non-uniform-bound` and `style:line-length` | done: P6 Lands name all four, and P6 Exit requires no structural failure and every P6 row closed or re-owned |
+| F15 | P4's section carried only F10 and F11 | done: P4 Lands carry F1-F4, F8, F9 and F13; P4 Exit carries F12 |
+| F16 | Small record errors: GPUI.md's oversized row, fontstash still listed as today's text path, "100 ns" where the numbers give 140-180 ns per label, the wasm delta before the fixes, the `firstPaint` rows, and `removeChild` / `removeChildren` beside `remove()` in P5 | done |
+
+P4 may assume a float shaped layout on stb_truetype with GPOS kerning; quarter-pixel pixel-exact
+placement with a frame-fenced, page-reclaiming R8 atlas; per-codepoint fallback with cached misses;
+the `Font` value with synthetic styles; decoration metrics from `post`/`OS/2`; and GPUI's gamma
+table. It may not assume grapheme-level face selection, colour glyphs, a `present` at the pre-P3
+level, or text that stays pixel-exact inside a filter at fractional DPI.
