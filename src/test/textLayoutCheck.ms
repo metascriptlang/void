@@ -136,6 +136,13 @@ test "multi-byte text keeps byte ranges for the caret" {
 	assert l.byteForX(0, 1000.0) == 6;
 }
 
+test "splitText cuts wrapped lines by byte range, so an astral codepoint stays whole" {
+	const fits: float32 = calcTextWidth("a😀 bb", style());
+	const l = TextLayout.layout("a😀 bb cc", { ...style(), maxWidth: fits });
+	assert (l.lines.length as int32) == 2;
+	assert l.splitText("a😀 bb cc") == "a😀 bb\ncc";
+}
+
 test "an empty string is one empty line one line tall" {
 	const l = TextLayout.layout("", style());
 	assert (l.lines.length as int32) == 1;

@@ -235,7 +235,7 @@ export function splitText(this l: TextLayout, text: string): string {
 	let out: string = "";
 	for (let i = 0; i < (l.lines.length as int32); i++) {
 		if (i > 0) { out += "\n"; }
-		out += text.slice(l.lines[i].charStart, l.lines[i].charEnd);
+		out += text.byteSlice(l.lines[i].byteStart, l.lines[i].byteEnd);
 	}
 	return out;
 }
