@@ -141,7 +141,7 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 | backend:metal-ios | T2 | no readback, and the device run is T5 the first time | P3 | 2026-09-20 |
 | backend:gles3-android | T2 | shares the `glReadPixels` path; needs the device and an entry that writes the PNG off-device | P3 | 2026-09-20 |
 | backend:webgpu | T2 | needs `copyTextureToBuffer` + `mapAsync` (~60 lines plus a JS hand-off) and a browser driver; see docs/TESTING.md "Guardrail 9" | P3 | 2026-09-20 |
-| backend:webgl2 | T2 | shares the GLES3 path in wasm; needs the same browser driver | P3 | 2026-09-20 |
+| conformance:webgl2-pixel-centre | T2 | first WebGL2 conformance run, P3 step 8 (`sh scripts/golden-web.sh`): 65 / 69 against the D3D11 goldens. `prim/strokeRect`, `prim/polygonBezier`, `prim/patterns` and `xform/scale` differ structurally (max delta 179-224, one-pixel moves of horizontal edges and hatch lines): the mesh path puts edges and pattern thresholds exactly on pixel centres, and GL's bottom-left window origin breaks those ties on the other side of the top-left rule. No budget, by the guardrail 9 rule. Proposed root fix: bias mesh geometry by -1/64 px in x and y in device space, which keeps D3D11's tie results and gives GL the same | P6 | 2026-09-24 |
 
 ## Oracles not wired
 

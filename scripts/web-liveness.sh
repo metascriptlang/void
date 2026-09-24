@@ -5,7 +5,7 @@
 # context and drew something"; it does not say the pixels match the D3D11 goldens, because
 # the wasm build has no readback yet. Guardrail 9 needs `copyTextureToBuffer` + `mapAsync`
 # for WebGPU and the existing `glReadPixels` path for WebGL2, plus a way to hand the bytes
-# back out — tests/PENDING.md backend:webgpu and backend:webgl2.
+# back out — tests/PENDING.md backend:webgpu. WebGL2 conformance is scripts/golden-web.sh.
 #
 # Measured 2026-09-20 on this box: WebGL2 draws the demo. WebGPU builds and runs but
 # headless Chrome hands it no adapter (`--use-angle=swiftshader` and the real adapter both

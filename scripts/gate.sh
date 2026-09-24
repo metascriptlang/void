@@ -195,8 +195,31 @@ skip "gles3 desktop: capture.c has the glReadPixels path, no GLES3 build has run
 skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
 skip "metal iOS: no readback, and the first device run is T5"
 skip "gles3 Android: shares the glReadPixels path, needs the device"
-skip "webgpu: needs copyTextureToBuffer + mapAsync and a browser driver"
-skip "webgl2: shares the GLES3 path in wasm, needs the same browser driver"
+skip "webgpu: needs copyTextureToBuffer + mapAsync, and headless Chrome has no adapter here"
+if [ "$WEB" -eq 1 ]; then
+	sh scripts/golden-web.sh > out/gate-golden-web.log 2>&1 || true
+	webgl2_conformance="$(grep -E '^golden webgl2' out/gate-golden-web.log || echo 'no conformance line — see out/gate-golden-web.log')"
+	echo "      webgl2   $webgl2_conformance      (headless Chrome, --web)"
+	if ! grep -q '^golden webgl2' out/gate-golden-web.log; then
+		fail "webgl2 conformance did not run — see out/gate-golden-web.log"
+	elif grep -q '^golden webgl2: .* 0 fail of' out/gate-golden-web.log; then
+		pass "webgl2 conformance: every scene identical or within the cross-backend bound"
+	else
+		listed=$(grep -E '^\| conformance:webgl2-pixel-centre ' tests/PENDING.md || true)
+		unlisted=""
+		for scene in $(grep -E '^FAIL' out/gate-golden-web.log | awk '{ print $2 }'); do
+			case "$listed" in *"\`$scene\`"*) ;; *) unlisted="$unlisted $scene" ;; esac
+		done
+		if [ -z "$unlisted" ]; then
+			skip "webgl2 conformance: the structural failures are the listed ones — tests/PENDING.md conformance:webgl2-pixel-centre"
+		else
+			fail "webgl2 conformance: failures no PENDING row lists:$unlisted"
+		fi
+		grep -E '^FAIL' out/gate-golden-web.log | sed 's/^/      /' || true
+	fi
+else
+	skip "webgl2 conformance: runs with --web (sh scripts/golden-web.sh)"
+fi
 if [ "$WEB" -eq 1 ]; then
 	if sh scripts/build-web.sh > out/gate-web.log 2>&1; then
 		pass "web build: both backends build ($(wc -c < web/wgpu/mainSokol2d.wasm) B wgpu, $(wc -c < web/gl/mainSokol2d.wasm) B gl)"
