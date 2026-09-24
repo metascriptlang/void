@@ -43,3 +43,21 @@ configureCampfireParticles(true);
 
 The build, install and screenshot are the recipe above, with that entry in place of
 `out/tmp/android/campfireEntry.ms` (the file used was `out/tmp/android/campfireParticlesEntry.ms`).
+
+## `gles3GreyStones.png`
+
+The lit program's material saturation on GLES3: the campfire with the night palette on and the
+stones on their own lit material at saturation −1. It was taken on the **Android emulator**
+(`pixellight` AVD) on 2026-09-24 from the M12 working tree. The frame has 24 colours. The stones
+come out brownish red, not grey, as they do in `m12greypalette_*` on D3D11: the palette has no
+neutral grey to quantize them to (`docs/VOID3D.md`, M12 as built).
+
+The entry is the Android entry with two configuration calls added before `registerVoid()`:
+
+```
+configureCampfire(PixelArtSettings.full(), true);
+configureCampfireGreyStones(-1.0);
+```
+
+The build, install and screenshot are the recipe above, with that entry in place of
+`out/tmp/android/campfireEntry.ms` (the file used was `out/tmp/android/campfireGreyEntry.ms`).
