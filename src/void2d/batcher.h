@@ -53,6 +53,7 @@ void void2dFrameBegin(void);
 // bridge's commit hook, so no caller has to remember it. void2dFrameBegin opens a bracket and
 // a frame may hold several; only this closes the frame.
 void void2dFrameEnd(void);
+int void2dFrameSerial(void);
 
 // One separable-blur tap pass (fullscreen) into the active offscreen RT pass — sample srcView
 // with a 9-tap Gaussian offset by (dirX,dirY) in UV. Run twice (H then V) ping-ponging two RTs.

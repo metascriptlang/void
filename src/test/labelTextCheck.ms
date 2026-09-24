@@ -8,7 +8,10 @@ import {
 	isPixelExact,
 } from "../void2d/labelText";
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
-import { Transform2D, trs2d } from "../void2d/types";
+import { Transform2D, trs2d, rgba, identity2d } from "../void2d/types";
+import { begin2d, frameEnd } from "../void2d/draw";
+import { label } from "../void2d/node";
+import { renderTargetsAlive } from "../void2d/render";
 
 function shaped(text: string): int32 {
 	const index = allocateLabelText();
@@ -83,4 +86,18 @@ test "releasing a label drops its tile references" {
 	const held = glyphAtlas.tile(tileIndex).refs;
 	releaseLabelText(index);
 	assert glyphAtlas.tile(tileIndex).refs == held - 1;
+}
+
+test "drawing a label fences its glyph page for the frame the bracket belongs to" {
+	begin2d(200.0, 100.0, 1.0);
+	const frame = glyphAtlas.frame;
+	const n = label("fence", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.sync(identity2d(), false);
+	n.draw(1.0, 200.0, 100.0);
+	const page = glyphAtlas.tile(placeLabel(n.payload, n.cachedWorld, 1.0).placed[0].tile).page;
+	assert glyphAtlas.pages[page].drawnFrame == frame;
+	frameEnd();
+	begin2d(200.0, 100.0, 1.0);
+	assert glyphAtlas.frame == frame + 1;
+	n.dispose();
 }

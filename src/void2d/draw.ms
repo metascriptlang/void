@@ -17,12 +17,13 @@ import {
 	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
-	void2dAtlasImagesAlive, void2dFrameEnd, void2dFailPendingTargets,
+	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
 	void2dScissorMin, void2dScissorMax,
 	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
 	void2dPackChannel,
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
+import { beginGlyphFrame } from "./labelText";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
 import {
 	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
@@ -310,6 +311,7 @@ export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStrid
 export function begin2d(w: float32, h: float32, dpi: float32): void {
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
+	beginGlyphFrame(void2dFrameSerial());
 	frameDpi = dpi;
 	fbW = w;
 	fbH = h;

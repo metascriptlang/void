@@ -48,6 +48,7 @@ struct Shelf {
 struct AtlasPage {
 	handle: int32;
 	top: int32;
+	drawnFrame: int32;
 }
 
 export interface GlyphAtlas {
@@ -60,6 +61,7 @@ export interface GlyphAtlas {
 	index: Map<uint64, int32>;
 	rasterizations: int32;
 	reclaims: int32;
+	frame: int32;
 }
 
 export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32): GlyphAtlas {
@@ -73,6 +75,7 @@ export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32)
 		index: new Map<uint64, int32>(),
 		rasterizations: 0,
 		reclaims: 0,
+		frame: 0,
 	};
 }
 
@@ -107,10 +110,18 @@ export function pageHandle(this atlas: GlyphAtlas, page: int32): int32 {
 	return atlas.pages[page].handle;
 }
 
+export function beginFrame(this atlas: GlyphAtlas, frame: int32): void {
+	atlas.frame = frame;
+}
+
+export function markDrawn(this atlas: GlyphAtlas, page: int32): void {
+	atlas.pages[page].drawnFrame = atlas.frame;
+}
+
 export function ensurePage(this atlas: GlyphAtlas): int32 {
 	if ((atlas.pages.length as int32) == 0 && atlas.maxPages > 0) {
 		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize);
-		if (handle >= 0) { atlas.pages.push({ handle: handle, top: 0 }); }
+		if (handle >= 0) { atlas.pages.push({ handle: handle, top: 0, drawnFrame: -1 }); }
 	}
 	return (atlas.pages.length as int32) > 0 ? atlas.pages[0].handle : -1;
 }
@@ -162,7 +173,7 @@ function placeOnPage(
 
 function reclaimPage(atlas: GlyphAtlas): int32 {
 	for (let p = 0; p < (atlas.pages.length as int32); p++) {
-		if (liveTilesOn(atlas, p) != 0) { continue; }
+		if (atlas.pages[p].drawnFrame == atlas.frame || liveTilesOn(atlas, p) != 0) { continue; }
 		for (let i = 0; i < (atlas.tiles.length as int32); i++) {
 			if (atlas.tiles[i].page == p) {
 				atlas.index.delete(atlas.tiles[i].key);
@@ -200,7 +211,7 @@ function allocate(
 	if ((atlas.pages.length as int32) < atlas.maxPages) {
 		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize);
 		if (handle < 0) { return Result.err(AtlasError.Full); }
-		atlas.pages.push({ handle: handle, top: 0 });
+		atlas.pages.push({ handle: handle, top: 0, drawnFrame: -1 });
 		page = (atlas.pages.length as int32) - 1;
 	} else {
 		page = reclaimPage(atlas);

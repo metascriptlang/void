@@ -162,3 +162,20 @@ test "a page with no live tile is reclaimed whole and bytes stay bounded" {
 	assert again.ok;
 	assert atlas.rasterizations == (held.length as int32) + 2;
 }
+
+test "a page drawn from in this frame is not reclaimed until the next frame" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(64, 1);
+	atlas.beginFrame(7);
+	const held = fillUntilFull(atlas, face);
+	atlas.markDrawn(atlas.tile(held[0]).page);
+	for (const index of held) { atlas.release(index); }
+	const blocked = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
+	assert !blocked.ok;
+	if (!blocked.ok) { assert blocked.error == AtlasError.Full; }
+	assert atlas.reclaims == 0;
+	atlas.beginFrame(8);
+	const next = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
+	assert next.ok;
+	assert atlas.reclaims == 1;
+}

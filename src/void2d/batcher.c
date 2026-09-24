@@ -87,6 +87,7 @@ static int s_frameOpen;
 // counter loud because the visible failure appears several layers from the missing frame end.
 static int s_bracketsThisFrame;
 static int s_frameEndMissingReported;
+static int s_frameSerial;
 #define VOID2D_BRACKETS_BEFORE_COMPLAINT 16
 static int s_frameVertexBytes;   // bytes appended so far this FRAME, across every bracket
 
@@ -587,7 +588,10 @@ void void2dFrameBegin(void) {
 void void2dFrameEnd(void) {
 	s_frameOpen = 0;
 	s_bracketsThisFrame = 0;
+	s_frameSerial++;
 }
+
+int void2dFrameSerial(void) { return s_frameSerial; }
 
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
 // 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging

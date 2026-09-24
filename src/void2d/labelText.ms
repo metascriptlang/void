@@ -52,6 +52,14 @@ export function glyphPageHandle(page: int32): int32 {
 	return glyphAtlas.pageHandle(page);
 }
 
+export function beginGlyphFrame(frame: int32): void {
+	glyphAtlas.beginFrame(frame);
+}
+
+export function markGlyphPageDrawn(page: int32): void {
+	glyphAtlas.markDrawn(page);
+}
+
 export function glyphRasterizations(): int32 {
 	return glyphAtlas.rasterizations;
 }

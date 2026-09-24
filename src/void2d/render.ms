@@ -34,6 +34,7 @@ import {
 	placeLabel,
 	firstGlyphPage,
 	glyphPageHandle,
+	markGlyphPageDrawn,
 	labelTexts,
 } from "./labelText";
 import { TextLayout, TextStyle, calcTextWidth as layoutWidth } from "./textLayout";
@@ -296,6 +297,7 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 		if (p.page != viewPage) {
 			view = glyphPageView(glyphPageHandle(p.page));
 			viewPage = p.page;
+			markGlyphPageDrawn(p.page);
 		}
 		let x: float32 = 0.0;
 		let y: float32 = 0.0;
