@@ -277,6 +277,10 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 		return p.exHeightEstimate / f.exHeight;
 	}
 	if (adjust != SizeAdjust.LineHeight && f.capHeight > 0.0) { return p.capHeightEstimate / f.capHeight; }
+	if (f.lineHeight <= 0.0 || p.lineHeight <= 0.0) {
+		console.log(`void2d: face ${fallback} or ${primary} has no line height, so the fallback cannot be size-adjusted; it keeps the primary size`);
+		return 1.0;
+	}
 	return p.lineHeight / f.lineHeight;
 }
 
