@@ -656,6 +656,15 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
 	particles:emitterValue particles:writeInstances draw:writeStream"
 
+RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:drawPassLists renderer:drawScreen
+	renderer:endFrame pass76ist:collect pass76ist:sortBackToFront pass76ist:drawPassList
+	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock pipeline67ache:pipelineFor
+	pipeline67ache:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:resizeTargets
+	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
+	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
+	pixel65rt82enderer:drawBlit camera:resolve camera:writeCameraBlock blit:writeBlitParams
+	blit:lowResView palette:upload target:beginPass"
+
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
 	mesh68ata:rayIntersection mesh68ata:cornerOf ray:transformed"
@@ -694,9 +703,11 @@ run_allocation() {
 		skip "allocation: $CAPTURE/campfireBench.ms or campfirePick.ms is missing"
 		return
 	fi
-	check_array_copies "$CAPTURE/campfireBench.ms" "frame path" "$FRAME_PATH_FUNCTIONS" || return
+	check_array_copies "$CAPTURE/campfireBench.ms" "frame path" \
+		"$FRAME_PATH_FUNCTIONS $RENDER_PATH_FUNCTIONS" || return
 	check_array_copies "$CAPTURE/campfirePick.ms" "pick path" "$PICK_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
+	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
 }
 
