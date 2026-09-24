@@ -603,12 +603,13 @@ defects and states that wrapping breaks at U+0020 only. `42cd91d` gives a Label 
 | F2 | Every layout call, `calcTextWidth` and `splitText` included, recomputes the face's decoration metrics from 95 glyph lookups, and `textWidth()` / `textHeight()` copy the whole layout. Cache heights per face and gate a measure call in T4 before the host's Yoga measure binds to it | P4 |
 | F3 | Filter targets open at an unsnapped `xMin`, so pixel-exact text inside a filter at DPI 1.25 or 1.5 is resampled. Snap the target and add `text/filteredDpi125` | P4 |
 | F4 | `\r` and tab draw `.notdef` and probe every fallback face; wrapping follows GPUI's break rule; `align` is centred about the origin, where h2d centres inside `maxWidth` | P4 |
+| F5 | The two undocumented GPUI divergences, the interim bitmap transformed regime and the oversized-glyph refusal | closed in `33a9a29` |
 | F6 | A Label dropped without `dispose` pins its page: PENDING `label-dispose-pins-page` | P5 |
 | F7 | Fix direction for `glyph-page-second-upload`: never place new tiles on, or reclaim, a page already uploaded this frame; C knows `s_pageUploaded` | P5 |
 | F8 | Pins for `f7c5358`, `90372ae` and `2859b8c`. The first cannot run in the shared test process, since exhausting the process-wide page table starves every later test; it needs a standalone T0 entry | P4 |
 | F9 | CODE-STYLE §14: `NO_FONT` and `-1` returns in place of `Result`, struct-first free functions, an atlas page index and a C page handle that are both bare `int32`, module data as `T[]`, 30 new lines over 100 columns, stale fontstash comments in the harness | P4, before the host binds |
-| F10 | A perf card, or a stated DRC reason, for the "reference counting in the generated C" behind the `present` gap. Both A/B arms read about 2.2× P2's absolute UI milliseconds at 25-33 % load: re-take on a quiet box, and file a compiler perf card if it follows msc 0.2.53 → 0.2.55 | P5 |
-| F11 | Zero-area tiles are cached with no page and never reclaimed; the line box uses only the primary face's ascent and descent | P6 |
+| F10 | Both A/B arms read about 2.2× P2's absolute UI milliseconds at 25-33 % load: re-take `8a473f3` against the head on a quiet box before any P4 change, and file a compiler perf card if the shift follows msc 0.2.53 → 0.2.55. Then a perf card, or a stated DRC reason, for the "reference counting in the generated C" behind the `present` gap | re-take: start of P4 (P4 Measure); the card: P5 |
+| F11 | Zero-area tiles are cached with no page and never reclaimed (P6). The line box uses only the primary face's ascent and descent, which P4's caret, selection and IME geometry would inherit (P4 Lands) | P6 / P4 |
 | F12 | The T5 look beside Zed at 13 px, 1× and 1.5× | the human, before P4's editor exit |
 
 ### What the reviewer checked and found sound
@@ -620,3 +621,28 @@ reclaim fence's serial advances only in `void2dFrameEnd`, so every bracket of a 
 The four WebGL2 failures are all mesh-path scenes, owned by P6's fringe rewrite. No compiler
 workaround is hidden: the `uint64` Map lookup was parked on its card and unparked after the
 recompiler fix landed.
+
+## P3 re-review: **SEND BACK** — the fixes overstated two things and missed residue
+
+A second fresh reviewer verified R1, R2 and R3 closed at every site the first pass named, and
+again found nothing in the code. It sent the phase back on three record defects. Two of them
+came from the fixes themselves.
+
+| id | Finding | Resolution before the third pass |
+|---|---|---|
+| P3-B1 | `33a9a29` put "resolved" in front of the rasterizer line and left its last sentence, "Decided from captures beside Zed", a false past-tense claim about the capture R1 declares owed. The same fix and P6's emoji bullet spoke of "the RGBA pages P3 reserved", but only R8 glyph pages exist (`batcher.c` makes one page format) | `2e926bd`: the rasterizer was decided by the FreeType experiment and its wasm cost, and the Zed look is owed. The RGBA page kind is decided and not built, and P6's emoji module builds it: the format, its view and a colour draw path |
+| P3-B2 | R1's stale counts survived in TESTING.md's tier table ("State after P2", 708 tests, 67 scenes, six backends SKIP), its golden-size paragraph (67 goldens, 1 328 179 B) and PENDING's "checked on one backend" | `e248307`, re-measured: 859 tests over 55 files; 69 goldens, **1 394 175 B**, of which 748 008 B are the 65 scenes and 646 167 B the four demo frames; 18 counters per bench scene. PENDING says two backends. `2e926bd` also updates VOID2D's two present-tense golden counts |
+| P3-B3 | Two PENDING rows named an owner whose Lands and Exit do not carry the work: `label-dispose-pins-page` (P5) and the Metal and Android backend rows (P6) | `2e926bd`: P5's Lands release a Label's glyph tiles when it leaves the scene, on h2d's `onAdd`/`onRemove` allocation, with a T1 assertion. P6's Exit makes Metal and Android either report a pass rate from the human's hardware or stay a SKIP that names the missing run |
+
+It also moved three follow-ups and found new record items for the P3 close. All of them are in
+`2e926bd`, `e248307` and `b27dec0`:
+- **The follow-up table is corrected above.** F10's quiet-box re-take moves to the start of P4, because P4's `present` becomes P5's baseline. F11's line-box half moves to P4. F5 is closed.
+- **F2 and F9 clash with P3's Unblocks**, which hands the Neon host its Yoga measure callback now. Unblocks now says the measure cost and the font API's shape move in P4.
+- **Deferred faces** serve the lazy CJK families too, so they belong in the default glyph layer rather than in the emoji module. P6's Exit tests them with the module on or off.
+- **P4's Tests** name whole-grapheme selection as a T1 assertion.
+- **Reference docs:** GHOSTTY.md's variable-axes row, MAKEPAD.md's four-plane row (declined at step 8) and its emoji size buckets (now in P6's emoji bullet), and HEAPS.md's "P3 in progress".
+- **TESTING.md:** its scene table gains `text/fontStyles`, and its cadence says WebGL2 runs with `--web`.
+
+The phase rule on two consecutive send-backs does not apply. Neither pass found a design fault;
+both found the record behind the code. The lesson is procedural: a count or an owner that moves
+is swept across every tracked doc in the same commit, not only at the sites a reviewer named.
