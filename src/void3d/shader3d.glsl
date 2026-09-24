@@ -20,7 +20,7 @@ layout(binding=3) uniform toonParams {
 @end
 
 @block saturation
-// h3d.Matrix.colorSaturate in scalar form; src/test/math3dCheck.ms ties it to the matrix.
+// h3d.Matrix.colorSaturate in scalar form; the gate's grey reference holds it to colorSaturated.
 vec3 saturated(vec3 rgb, float amount) {
     if (amount == 0.0) {
         return rgb;
@@ -92,12 +92,12 @@ layout(location=1) out vec4 fragNormal;
 void main() {
     vec3 n = normalize(worldNormal);
     float lambert = step(0.35, dot(n, dirLight.xyz)) * dirLight.w;
-    vec3 shaded = baseColor.rgb * (ambient.rgb + dirColor.rgb * vec3(lambert));
+    vec3 shaded = saturated(baseColor.rgb, toon.y) * (ambient.rgb + dirColor.rgb * vec3(lambert));
     vec3 points = vec3(0.0);
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         points += pointLightAt(i, worldPosition, n, 1.0);
     }
-    fragColor = vec4(saturated(shaded + points, toon.y), baseColor.a);
+    fragColor = vec4(shaded + points, baseColor.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
