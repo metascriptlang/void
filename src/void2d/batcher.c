@@ -967,6 +967,7 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[3] = (isRT && effectIsIdentity) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.model1[2] = isGlyphPageView(view) ? 1.0f : 0.0f;
+		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 		copyClipParams(vp.clipU, vp.clipV, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {

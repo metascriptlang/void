@@ -18,7 +18,7 @@ float applyContrastAndGamma(float coverage, vec3 color, float contrastFactor, ve
 layout(binding=0) uniform void2d_params {
     vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = srcAlreadyPremult (1 for RT textures)
     vec4 model0;       // 2D affine linear part (a,b,c,d): x'=a*x+c*y+tx, y'=b*x+d*y+ty
-    vec4 model1;       // xy = translation (tx,ty), z = texture is R8 glyph coverage
+    vec4 model1;       // xy = translation (tx,ty), z = texture is R8 glyph coverage, w = device pixels per unit
     vec4 globalColor;  // multiplied into the per-vertex tint
     vec4 clipU;        // xy = edge axis; zw = accepted projection interval (disabled when w <= z)
     vec4 clipV;
@@ -31,9 +31,11 @@ out vec4 color;
 out float srcPremult;
 out float coverageTexture;
 out vec4 clipDistance;
+out vec2 pixel;
 void main() {
     vec2 world = vec2(model0.x * pos.x + model0.z * pos.y + model1.x,
                       model0.y * pos.x + model0.w * pos.y + model1.y);
+    pixel = world * model1.w;
     vec2 ndc = vec2(world.x / viewport.x * 2.0 - 1.0, 1.0 - world.y / viewport.y * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     uv = (viewport.z > 0.5) ? vec2(uv0.x, 1.0 - uv0.y) : uv0;
@@ -73,6 +75,7 @@ in vec4 color;
 in float srcPremult;
 in float coverageTexture;
 in vec4 clipDistance;
+in vec2 pixel;
 out vec4 frag_color;
 @include_block textGamma
 vec3 srgbToLinear(vec3 c) {
@@ -160,7 +163,7 @@ void main() {
         float t = gradientKind == 1 ? clamp(uv.x, 0.0, 1.0) : clamp(length(uv), 0.0, 1.0);
         texel = gradientAt(t);
         if (gradientMeta.z > 0.5) {
-            float noise = (bayer4(gl_FragCoord.xy) - 7.5) * (2.0 / (7.5 * 255.0));
+            float noise = (bayer4(pixel) - 7.5) * (2.0 / (7.5 * 255.0));
             texel.rgb = clamp(texel.rgb + vec3(noise), vec3(0.0), vec3(1.0));
         }
     } else if (gradientKind == 3) {
