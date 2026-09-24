@@ -18,6 +18,7 @@ let ignoredLines: int32 = 0;
 const BASELINE_PATH: string = "tests/bench/baseline.json";
 const UI_BINARY: string = "out/benchUi.exe";
 const SPRITES_BINARY: string = "out/benchSprites.exe";
+const TEXT_BINARY: string = "out/benchText.exe";
 
 // One `scene.metric value` row as the bench prints it.
 interface BenchRow {
@@ -77,6 +78,11 @@ function reportMilliseconds(rows: BenchRow[], scene: string, baseline: float64, 
 	console.log(`${marker} ${scene}.present.ms ${actual} (baseline ${baseline}, warn above ${baseline * warnFactor})`);
 }
 
+function reportFirstPaint(rows: BenchRow[], scene: string): void {
+	const [reported, firstPaint] = rowValue(rows, scene, "firstPaint");
+	if (reported) { console.log(`REPORT ${scene}.firstPaint.ms ${firstPaint}`); }
+}
+
 function runCheck(): int32 {
 	const text = readFile(BASELINE_PATH);
 	if (!text.ok) {
@@ -94,13 +100,17 @@ function runCheck(): int32 {
 
 	const uiRows = runBench(UI_BINARY);
 	const spriteRows = runBench(SPRITES_BINARY);
-	if ((uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0) { return 1; }
+	const textRows = runBench(TEXT_BINARY);
+	if ((uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0 || (textRows.length as int32) == 0) {
+		return 1;
+	}
 
 	let failed: int32 = 0;
 	const metrics: string[] = [
 		"nodes", "retainedNodes", "draws", "buffersAlive", "vertices",
 		"uiInstances", "spriteInstances", "uploads", "uploadBytes", "atlasImages",
-		"renderTargets", "droppedFrames",
+		"renderTargets", "droppedFrames", "glyphRasterizationsSteady", "glyphPages", "glyphBytes",
+		"firstPaintRasterizations", "sweepPeakPages", "sweepRasterizations",
 	];
 	for (const metric of metrics) {
 		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) { failed = failed + 1; }
@@ -108,10 +118,17 @@ function runCheck(): int32 {
 	for (const metric of metrics) {
 		if (!checkCounter(spriteRows, "sprites", metric, counters.sprites.getDynamicField(metric).asInt32())) { failed = failed + 1; }
 	}
+	for (const metric of metrics) {
+		if (!checkCounter(textRows, "text", metric, counters.text.getDynamicField(metric).asInt32())) { failed = failed + 1; }
+	}
 
 	const warnFactor: float64 = milliseconds.warnFactor.asNumber();
 	reportMilliseconds(uiRows, "ui", milliseconds.ui.present.asNumber(), warnFactor);
 	reportMilliseconds(spriteRows, "sprites", milliseconds.sprites.present.asNumber(), warnFactor);
+	reportMilliseconds(textRows, "text", milliseconds.text.present.asNumber(), warnFactor);
+	reportFirstPaint(uiRows, "ui");
+	reportFirstPaint(spriteRows, "sprites");
+	reportFirstPaint(textRows, "text");
 
 	console.log("");
 	if (unreadableRows > 0) {

@@ -21,7 +21,9 @@ import {
 	droppedFrames,
 } from "../void2d/draw";
 import { renderTargetsAlive } from "../void2d/render";
-import { rect, sprite, label, at, addChild } from "../void2d/node";
+import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
+import { GlyphAtlas } from "../void2d/glyphAtlas";
+import { Node2D, group, rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
@@ -29,6 +31,7 @@ import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/ima
 export enum BenchKind {
 	Ui,
 	Sprites,
+	Text,
 }
 
 const COLUMNS: int32 = 100;
@@ -37,6 +40,11 @@ const CELL_W: float32 = 12.8;
 const CELL_H: float32 = 7.2;
 const WARMUP_FRAMES: int32 = 20;
 const MEASURED_FRAMES: int32 = 120;
+const SWEEP_FRAMES: int32 = 64;
+const SWEEP_MIN: float32 = 0.5;
+const SWEEP_MAX: float32 = 4.0;
+const CODE_LINES: int32 = 40;
+const CODE_LINE: string = "fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
 
 let benchScene: Scene | null = null;
 let benchName: string = "ui";
@@ -44,6 +52,12 @@ let nodeCount: int32 = 0;
 let retainedNodeCount: int32 = 0;
 let frameIndex: int32 = 0;
 let presentMs: float64 = 0.0;
+let firstPaintMs: float64 = 0.0;
+let firstPaintRasterizations: int32 = 0;
+let rasterizationsBeforeMeasure: int32 = 0;
+let sweepPeakPages: int32 = 0;
+let codeBlock: Node2D | null = null;
+let warmupFrames: int32 = WARMUP_FRAMES;
 
 export function benchInit(kind: BenchKind): void {
 	gfxSetup();
@@ -59,6 +73,15 @@ export function benchInit(kind: BenchKind): void {
 				s.add(card);
 			}
 		}
+	} else if (kind === BenchKind.Text) {
+		benchName = "text";
+		const block = group();
+		for (let line: int32 = 0; line < CODE_LINES; line++) {
+			block.addChild(label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, 8.0 + (line as float32) * 17.0));
+		}
+		s.add(block);
+		codeBlock = block;
+		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
 	} else {
 		benchName = "sprites";
 		const pixels = loadImageSync("assets/test.png", 4);
@@ -74,8 +97,16 @@ export function benchInit(kind: BenchKind): void {
 	// Cards and sprites draw through the dynamic batcher and own no GPU buffer; only the
 	// Labels do. Keeping the two counts apart is what makes `buffersAlive` readable as
 	// "labels that actually drew" instead of a number that happens to line up.
-	nodeCount = ROWS * COLUMNS * (kind === BenchKind.Ui ? 2 : 1);
-	retainedNodeCount = kind === BenchKind.Ui ? ROWS * COLUMNS : 0;
+	if (kind === BenchKind.Ui) {
+		nodeCount = ROWS * COLUMNS * 2;
+		retainedNodeCount = ROWS * COLUMNS;
+	} else if (kind === BenchKind.Text) {
+		nodeCount = CODE_LINES + 1;
+		retainedNodeCount = CODE_LINES;
+	} else {
+		nodeCount = ROWS * COLUMNS;
+		retainedNodeCount = 0;
+	}
 	benchScene = s;
 }
 
@@ -108,20 +139,51 @@ function report(): void {
 	console.log(`${benchName}.atlasImages ${atlasImagesAlive()}`);
 	console.log(`${benchName}.renderTargets ${renderTargetsAlive()}`);
 	console.log(`${benchName}.droppedFrames ${droppedFrames()}`);
+	console.log(`${benchName}.glyphRasterizationsSteady ${glyphRasterizations() - rasterizationsBeforeMeasure}`);
+	console.log(`${benchName}.glyphPages ${glyphAtlas.pageCount()}`);
+	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
+	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
+	console.log(`${benchName}.sweepPeakPages ${sweepPeakPages}`);
+	console.log(`${benchName}.sweepRasterizations ${rasterizationsBeforeMeasure - firstPaintRasterizations}`);
+	console.log(`${benchName}.firstPaint.ms ${firstPaintMs}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
+}
+
+// The zoom sweep runs inside the warm-up: the code block scales from 0.5 to 4 over the
+// sweep frames and settles back at 1 before the measured frames begin, so the measured
+// frames prove a steady state after the atlas has churned, not before.
+function sweep(frame: int32): void {
+	if (codeBlock === null) { return; }
+	const step: int32 = frame - 2;
+	let scale: float32 = 1.0;
+	if (step < SWEEP_FRAMES) {
+		scale = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * (step as float32) / ((SWEEP_FRAMES - 1) as float32);
+	}
+	codeBlock.scaleX = scale;
+	codeBlock.scaleY = scale;
 }
 
 export function benchFrame(): void {
 	if (benchScene === null) { return; }
 	frameIndex = frameIndex + 1;
-	if (frameIndex <= WARMUP_FRAMES) {
+	if (frameIndex == 1) {
+		const firstStarted: float64 = performance.now();
 		benchScene.present();
+		firstPaintMs = performance.now() - firstStarted;
+		firstPaintRasterizations = glyphRasterizations();
+		return;
+	}
+	if (frameIndex <= warmupFrames) {
+		sweep(frameIndex);
+		benchScene.present();
+		if (glyphAtlas.pageCount() > sweepPeakPages) { sweepPeakPages = glyphAtlas.pageCount(); }
+		rasterizationsBeforeMeasure = glyphRasterizations();
 		return;
 	}
 	const started: float64 = performance.now();
 	benchScene.present();
 	presentMs = presentMs + (performance.now() - started);
-	if (frameIndex == WARMUP_FRAMES + MEASURED_FRAMES) {
+	if (frameIndex == warmupFrames + MEASURED_FRAMES) {
 		report();
 		process.exit(0);
 	}

@@ -40,7 +40,7 @@ echo "=== 1. evict the caches ==============================================="
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
 # (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). A gate that
 # silently tests the previous binary is worse than no gate.
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe
 rm -rf out/debug/.cache out/release/.cache
 rm -rf "$HOME/.metascript/cache/objects"
 pass "caches evicted"
@@ -173,6 +173,7 @@ echo "=== 6. T4 — budget ===================================================="
 if [ "$QUICK" -eq 1 ] || [ ! -f out/benchUi.exe ]; then
 	"$MSC" build tests/bench/benchUi.ms --release --output=out/benchUi.exe > out/gate-bench.log 2>&1 || true
 	"$MSC" build tests/bench/benchSprites.ms --release --output=out/benchSprites.exe >> out/gate-bench.log 2>&1 || true
+	"$MSC" build tests/bench/benchText.ms --release --output=out/benchText.exe >> out/gate-bench.log 2>&1 || true
 fi
 "$MSC" build tests/bench/check.ms --output=out/benchCheck.exe >> out/gate-bench.log 2>&1 || true
 if [ -x out/benchCheck.exe ] && out/benchCheck.exe > out/gate-bench-rows.log 2>&1; then
