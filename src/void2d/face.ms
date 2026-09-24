@@ -1,5 +1,6 @@
 import {
 	void2dGlyphFaceLoad,
+	void2dGlyphFaceSynthetic,
 	void2dGlyphIndex,
 	void2dGlyphAdvance,
 	void2dGlyphKern,
@@ -23,6 +24,10 @@ export struct DecorationMetrics {
 
 export function loadFace(path: string): int32 {
 	return void2dGlyphFaceLoad(path);
+}
+
+export function syntheticFace(face: int32, bold: boolean, italic: boolean): int32 {
+	return void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0);
 }
 
 export function glyphIndex(face: int32, codepoint: int32): int32 {

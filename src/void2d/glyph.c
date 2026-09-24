@@ -1,4 +1,5 @@
 #include "glyph.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,13 +11,21 @@
 #include "../../deps/stb/stb_truetype.h"
 
 #define GLYPH_MAX_KERN_LOOKUPS 32
+#define GLYPH_ITALIC_SKEW 0.21255656f
 
 typedef struct {
 	unsigned char *bytes;
 	stbtt_fontinfo info;
 	int kernLookups[GLYPH_MAX_KERN_LOOKUPS];
 	int kernLookupCount;
+	float emboldenUnits;
+	float skew;
 } GlyphFace;
+
+typedef struct {
+	float x, y;
+	stbtt_vertex_type *px, *py;
+} GlyphPoint;
 
 typedef struct {
 	unsigned char *texels;
@@ -182,6 +191,153 @@ static int gposKern(GlyphFace *face, int left, int right) {
 	return total;
 }
 
+static void pushPoint(GlyphPoint *points, int *count, stbtt_vertex_type *x, stbtt_vertex_type *y) {
+	points[*count].x = (float)*x;
+	points[*count].y = (float)*y;
+	points[*count].px = x;
+	points[*count].py = y;
+	(*count)++;
+}
+
+static int outlinePoints(stbtt_vertex *v, int count, GlyphPoint *points, int *contourEnds) {
+	int n = 0, contours = 0;
+	for (int i = 0; i < count; i++) {
+		if (v[i].type == STBTT_vmove) {
+			if (n > 0) { contourEnds[contours++] = n - 1; }
+		} else if (v[i].type == STBTT_vcurve) {
+			pushPoint(points, &n, &v[i].cx, &v[i].cy);
+		} else if (v[i].type == STBTT_vcubic) {
+			pushPoint(points, &n, &v[i].cx, &v[i].cy);
+			pushPoint(points, &n, &v[i].cx1, &v[i].cy1);
+		}
+		pushPoint(points, &n, &v[i].x, &v[i].y);
+	}
+	if (n > 0) { contourEnds[contours++] = n - 1; }
+	return contours;
+}
+
+static float normLen(float *x, float *y) {
+	float len = sqrtf(*x * *x + *y * *y);
+	if (len > 0.0f) { *x /= len; *y /= len; }
+	return len;
+}
+
+static void emboldenContour(GlyphPoint *p, int first, int last, float strength, int trueType) {
+	float xs = strength * 0.5f, ys = strength * 0.5f;
+	float inX = 0.0f, inY = 0.0f, anchorX = 0.0f, anchorY = 0.0f;
+	float lIn = 0.0f, lAnchor = 0.0f;
+	int i = last, j = first, k = -1;
+	for (; j != i && i != k; j = j < last ? j + 1 : first) {
+		float outX, outY, lOut;
+		if (j != k) {
+			outX = p[j].x - p[i].x;
+			outY = p[j].y - p[i].y;
+			lOut = normLen(&outX, &outY);
+			if (lOut == 0.0f) { continue; }
+		} else {
+			outX = anchorX; outY = anchorY; lOut = lAnchor;
+		}
+		if (lIn != 0.0f) {
+			if (k < 0) { k = i; anchorX = inX; anchorY = inY; lAnchor = lIn; }
+			float d = inX * outX + inY * outY;
+			float shiftX = 0.0f, shiftY = 0.0f;
+			if (d > -0.9375f) {
+				d += 1.0f;
+				shiftX = inY + outY;
+				shiftY = inX + outX;
+				if (trueType) { shiftX = -shiftX; } else { shiftY = -shiftY; }
+				float q = outX * inY - outY * inX;
+				if (trueType) { q = -q; }
+				float l = lIn < lOut ? lIn : lOut;
+				shiftX = xs * q <= l * d ? shiftX * xs / d : shiftX * l / q;
+				shiftY = ys * q <= l * d ? shiftY * ys / d : shiftY * l / q;
+			}
+			for (; i != j; i = i < last ? i + 1 : first) {
+				p[i].x += xs + shiftX;
+				p[i].y += ys + shiftY;
+			}
+		} else {
+			i = j;
+		}
+		inX = outX; inY = outY; lIn = lOut;
+	}
+}
+
+static void embolden(stbtt_vertex *v, int count, float strength) {
+	GlyphPoint *points = (GlyphPoint *)malloc(sizeof(GlyphPoint) * (size_t)count * 3);
+	int *ends = (int *)malloc(sizeof(int) * (size_t)count);
+	if (!points || !ends) {
+		fprintf(stderr, "void2d: no memory to embolden a %d-vertex glyph; it is drawn regular\n", count);
+		free(points);
+		free(ends);
+		return;
+	}
+	int contours = outlinePoints(v, count, points, ends);
+	float area = 0.0f;
+	for (int c = 0, first = 0; c < contours; first = ends[c] + 1, c++) {
+		for (int i = first, prev = ends[c]; i <= ends[c]; prev = i, i++) {
+			area += (points[i].y - points[prev].y) * (points[i].x + points[prev].x);
+		}
+	}
+	if (area != 0.0f) {
+		for (int c = 0, first = 0; c < contours; first = ends[c] + 1, c++) {
+			int last = ends[c];
+			int closed = last > first && points[last].x == points[first].x && points[last].y == points[first].y;
+			emboldenContour(points, first, closed ? last - 1 : last, strength, area < 0.0f);
+			if (closed) { points[last].x = points[first].x; points[last].y = points[first].y; }
+		}
+	}
+	int total = contours ? ends[contours - 1] + 1 : 0;
+	for (int i = 0; i < total; i++) {
+		*points[i].px = (stbtt_vertex_type)floorf(points[i].x + 0.5f);
+		*points[i].py = (stbtt_vertex_type)floorf(points[i].y + 0.5f);
+	}
+	free(points);
+	free(ends);
+}
+
+static int isSynthetic(GlyphFace *face) { return face->emboldenUnits > 0.0f || face->skew != 0.0f; }
+
+static int glyphShape(GlyphFace *face, int glyph, stbtt_vertex **vertices) {
+	int count = stbtt_GetGlyphShape(&face->info, glyph, vertices);
+	if (count <= 0) { return count; }
+	if (face->emboldenUnits > 0.0f) { embolden(*vertices, count, face->emboldenUnits); }
+	if (face->skew != 0.0f) {
+		for (int i = 0; i < count; i++) {
+			stbtt_vertex *v = &(*vertices)[i];
+			v->x = (stbtt_vertex_type)floorf(v->x + v->y * face->skew + 0.5f);
+			if (v->type == STBTT_vcurve || v->type == STBTT_vcubic) {
+				v->cx = (stbtt_vertex_type)floorf(v->cx + v->cy * face->skew + 0.5f);
+			}
+			if (v->type == STBTT_vcubic) {
+				v->cx1 = (stbtt_vertex_type)floorf(v->cx1 + v->cy1 * face->skew + 0.5f);
+			}
+		}
+	}
+	return count;
+}
+
+static void shapeBox(stbtt_vertex *v, int count, float scale, float shiftX, int *box) {
+	box[0] = box[1] = box[2] = box[3] = 0;
+	if (count <= 0) { return; }
+	float x0 = v[0].x, x1 = v[0].x, y0 = v[0].y, y1 = v[0].y;
+	for (int i = 0; i < count; i++) {
+		float xs[3] = { v[i].x, v[i].cx, v[i].cx1 };
+		float ys[3] = { v[i].y, v[i].cy, v[i].cy1 };
+		int used = v[i].type == STBTT_vcubic ? 3 : v[i].type == STBTT_vcurve ? 2 : 1;
+		for (int k = 0; k < used; k++) {
+			if (xs[k] < x0) { x0 = xs[k]; }
+			if (xs[k] > x1) { x1 = xs[k]; }
+			if (ys[k] < y0) { y0 = ys[k]; }
+			if (ys[k] > y1) { y1 = ys[k]; }
+		}
+	}
+	box[0] = (int)floorf(x0 * scale + shiftX);
+	box[1] = (int)floorf(-y1 * scale);
+	box[2] = (int)ceilf(x1 * scale + shiftX);
+	box[3] = (int)ceilf(-y0 * scale);
+}
+
 static stbtt_uint8 *findTable(GlyphFace *face, const char *tag, int *length) {
 	stbtt_uint8 *font = face->bytes + face->info.fontstart;
 	int tables = ttUSHORT(font + 4);
@@ -241,6 +397,19 @@ float *void2dGlyphDecoration(int face, float sizePx) {
 	return s_decoration;
 }
 
+static int growFaces(void) {
+	if (s_faceCount < s_faceCapacity) { return 1; }
+	int grown = s_faceCapacity ? s_faceCapacity * 2 : 4;
+	GlyphFace *faces = (GlyphFace *)realloc(s_faces, sizeof(GlyphFace) * (size_t)grown);
+	if (!faces) {
+		fprintf(stderr, "void2d: no memory for %d font faces\n", grown);
+		return 0;
+	}
+	s_faces = faces;
+	s_faceCapacity = grown;
+	return 1;
+}
+
 int void2dGlyphFaceLoad(const char *path) {
 	long size = 0;
 	unsigned char *bytes = readWholeFile(path, &size);
@@ -255,20 +424,28 @@ int void2dGlyphFaceLoad(const char *path) {
 		free(bytes);
 		return -1;
 	}
-	if (s_faceCount == s_faceCapacity) {
-		int grown = s_faceCapacity ? s_faceCapacity * 2 : 4;
-		GlyphFace *faces = (GlyphFace *)realloc(s_faces, sizeof(GlyphFace) * (size_t)grown);
-		if (!faces) {
-			fprintf(stderr, "void2d: no memory for %d font faces\n", grown);
-			free(bytes);
-			return -1;
-		}
-		s_faces = faces;
-		s_faceCapacity = grown;
+	if (!growFaces()) {
+		free(bytes);
+		return -1;
 	}
 	s_faces[s_faceCount].bytes = bytes;
 	s_faces[s_faceCount].info = info;
+	s_faces[s_faceCount].emboldenUnits = 0.0f;
+	s_faces[s_faceCount].skew = 0.0f;
 	findKernLookups(&s_faces[s_faceCount]);
+	return s_faceCount++;
+}
+
+int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
+	if (!validFace(face) || !growFaces()) { return -1; }
+	GlyphFace synthetic = s_faces[face];
+	if (bold) {
+		int ascent = 0, descent = 0, lineGap = 0;
+		stbtt_GetFontVMetrics(&synthetic.info, &ascent, &descent, &lineGap);
+		synthetic.emboldenUnits = (float)(ascent - descent + lineGap) / 32.0f;
+	}
+	if (italic) { synthetic.skew = GLYPH_ITALIC_SKEW; }
+	s_faces[s_faceCount] = synthetic;
 	return s_faceCount++;
 }
 
@@ -300,7 +477,7 @@ float void2dGlyphAdvance(int face, int glyph, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
 	int advance = 0, bearing = 0;
 	stbtt_GetGlyphHMetrics(&s_faces[face].info, glyph, &advance, &bearing);
-	return (float)advance * void2dGlyphScale(face, sizePx);
+	return ((float)advance + s_faces[face].emboldenUnits) * void2dGlyphScale(face, sizePx);
 }
 
 float void2dGlyphKern(int face, int left, int right, float sizePx) {
@@ -316,7 +493,15 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX) {
 	s_box[0] = 0; s_box[1] = 0; s_box[2] = 0; s_box[3] = 0;
 	if (!validFace(face)) { return s_box; }
 	float scale = void2dGlyphScale(face, sizePx);
-	stbtt_GetGlyphBitmapBoxSubpixel(&s_faces[face].info, glyph, scale, scale, shiftX, 0.0f,
+	GlyphFace *f = &s_faces[face];
+	if (isSynthetic(f)) {
+		stbtt_vertex *vertices = NULL;
+		int count = glyphShape(f, glyph, &vertices);
+		shapeBox(vertices, count, scale, shiftX, s_box);
+		STBTT_free(vertices, f->info.userdata);
+		return s_box;
+	}
+	stbtt_GetGlyphBitmapBoxSubpixel(&f->info, glyph, scale, scale, shiftX, 0.0f,
 		&s_box[0], &s_box[1], &s_box[2], &s_box[3]);
 	return s_box;
 }
@@ -365,8 +550,22 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 		return;
 	}
 	float scale = void2dGlyphScale(face, sizePx);
-	stbtt_MakeGlyphBitmapSubpixel(&s_faces[face].info, p->texels + (size_t)y * (size_t)p->size + (size_t)x,
-		w, h, p->size, scale, scale, shiftX, 0.0f, glyph);
+	GlyphFace *f = &s_faces[face];
+	unsigned char *at = p->texels + (size_t)y * (size_t)p->size + (size_t)x;
+	if (isSynthetic(f)) {
+		stbtt_vertex *vertices = NULL;
+		int count = glyphShape(f, glyph, &vertices);
+		int box[4];
+		shapeBox(vertices, count, scale, shiftX, box);
+		stbtt__bitmap bitmap = { w, h, p->size, at };
+		if (count > 0) {
+			stbtt_Rasterize(&bitmap, 0.35f, vertices, count, scale, scale, shiftX, 0.0f,
+				box[0], box[1], 1, f->info.userdata);
+		}
+		STBTT_free(vertices, f->info.userdata);
+	} else {
+		stbtt_MakeGlyphBitmapSubpixel(&f->info, at, w, h, p->size, scale, scale, shiftX, 0.0f, glyph);
+	}
 	p->dirty = 1;
 }
 

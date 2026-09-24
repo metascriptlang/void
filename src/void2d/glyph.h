@@ -2,6 +2,7 @@
 #define VOID2D_GLYPH_H
 
 int void2dGlyphFaceLoad(const char *path);
+int void2dGlyphFaceSynthetic(int face, int bold, int italic);
 int void2dGlyphFaceCount(void);
 float void2dGlyphScale(int face, float sizePx);
 float *void2dGlyphFaceMetrics(int face, float sizePx);
