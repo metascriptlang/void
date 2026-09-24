@@ -42,7 +42,6 @@ export interface LabelText {
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
 export const labelTexts: LabelText[] = [];
 const freeLabelTexts: Vec<int32> = [];
-let atlasFullReported: boolean = false;
 
 export function firstGlyphPage(): int32 {
 	return glyphAtlas.ensurePage();
@@ -143,16 +142,6 @@ function placementCurrent(entry: LabelText, world: Transform2D, scale: float32):
 		entry.keyFracY == fraction(world.ty * scale);
 }
 
-function acquireOrReport(face: int32, glyph: int32, sizePx: float32, variant: int32): int32 {
-	const r = glyphAtlas.acquire({ face: face, glyph: glyph, sizePx: sizePx, variant: variant });
-	if (r.ok) { return r.value; }
-	if (!atlasFullReported) {
-		console.log(`void2d: glyph ${glyph} at ${sizePx} px has no room in the glyph atlas (${r.error.toString()})`);
-		atlasFullReported = true;
-	}
-	return -1;
-}
-
 function uvRect(t: GlyphTile): [float32, float32, float32, float32] {
 	const size: float32 = GLYPH_PAGE_SIZE as float32;
 	return [
@@ -175,6 +164,8 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	const fracX: float32 = fraction(world.tx * scale);
 	const fracY: float32 = fraction(world.ty * scale);
 	const placed: Vec<PlacedGlyph> = new Array(0);
+	let refused: int32 = 0;
+	let refusal: string = "";
 	if (devicePerLocal > 0.0) {
 		for (const g of entry.layout.glyphs) {
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
@@ -187,8 +178,15 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				whole = q.whole;
 				baselineDevice = snapBaseline(fracY + baseline * devicePerLocal);
 			}
-			const tileIndex: int32 = acquireOrReport(g.face, g.glyph, g.size * devicePerLocal, variant);
-			if (tileIndex < 0) { continue; }
+			const acquired = glyphAtlas.acquire({
+				face: g.face, glyph: g.glyph, sizePx: g.size * devicePerLocal, variant: variant,
+			});
+			if (!acquired.ok) {
+				refused = refused + 1;
+				refusal = acquired.error.toString();
+				continue;
+			}
+			const tileIndex: int32 = acquired.value;
 			const t: GlyphTile = glyphAtlas.tile(tileIndex);
 			const [u0, v0, u1, v1] = uvRect(t);
 			const w: float32 = t.width as float32;
@@ -209,6 +207,9 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				});
 			}
 		}
+	}
+	if (refused > 0) {
+		console.log(`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not drawn, the glyph atlas refused them (${refusal})`);
 	}
 	entry.placed = placed;
 	entry.placedValid = true;
