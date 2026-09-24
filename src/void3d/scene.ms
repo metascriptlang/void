@@ -616,18 +616,18 @@ export function refresh(ref scene: Scene, ref items: Vec<DrawItem>): int32 {
 			// children, so the index is both the cheap form and the safe one. `sync` was already
 			// written this way.
 			const count: int32 = scene.nodes[index].children.length as int32;
-		for (let i = count - 1; i >= 0; i--) {
-			scene.stack[top] = scene.nodes[index].children[i];
-			top = top + 1;
+			for (let i = count - 1; i >= 0; i--) {
+				scene.stack[top] = scene.nodes[index].children[i];
+				top = top + 1;
+			}
 		}
-	}
-	// `at` is what this pass actually wrote, and it can be fewer than the list holds: a node
-	// culled since the last collect emits no item, and `structureChanged` is deliberately not
-	// set for culling or the fast path would never be taken. Returning `items.length` instead
-	// would leave the tail of the previous frame in the list and draw it again, and writing
-	// past the end when a node becomes visible again would be an out-of-bounds store.
-	while ((items.length as int32) > at) { items.pop(); }
-	return at;
+		// `at` is what this pass actually wrote, and it can be fewer than the list holds: a node
+		// culled since the last collect emits no item, and `structureChanged` is deliberately not
+		// set for culling or the fast path would never be taken. Returning `items.length` instead
+		// would leave the tail of the previous frame in the list and draw it again, and writing
+		// past the end when a node becomes visible again would be an out-of-bounds store.
+		while ((items.length as int32) > at) { items.pop(); }
+		return at;
 	}
 }
 
