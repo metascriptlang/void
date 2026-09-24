@@ -766,13 +766,14 @@ below. Most of them are held to real Heaps by the oracle.
 | 3 | core | Every scene program writes the pixel-art preset's two targets (normal, depth packed in alpha), and colour alpha is the outline mask. Core and preset are split in MetaScript but not in the shaders: a plain forward preset could not reuse `Program.Lit` | Carried |
 | 4 | core | Nothing is ever released from a `DrawContext`: meshes, materials and the uniform pool only grow. The M11 follow-up named streams only | Carried, widening follow-up 1 |
 | 5 | core | No frustum culling: nothing outside a test sets `NodeFlag.Culled`, and no "Still missing" said so | Carried |
-| 6 | gate | The `allocation` stage held scene, animation and particles, not the render path. Measured by hand on the emitted C of the bench entry: 26 render-path functions, no array copy | Added to the stage (`c613826`). Control: a written `Vec` copy in `drawItem` fails it (`drawItem=1`) |
-| 7 | example | `frameCampfire` returns silently at eight sites. A fifth point light is refused by the core and then dropped by the example with no message; in a host view the same return would abort as "returned without commit()" | Carried; the example is the code callers copy |
+| 6 | gate | The `allocation` stage held scene, animation and particles, not the render path. Measured by hand on the emitted C of the bench entry: 26 render-path functions, no array copy | Added to the stage (`377de90`). Control: a written `Vec` copy in `drawItem` fails it (`drawItem=1`) |
+| 7 | example | `frameCampfire` returns silently at eight sites. A fifth point light is refused by the core and then dropped by the example with no message; in a host view the same return would abort as "returned without commit()" | Fixed (`fb9a2ca`): every failure site logs its error by name. In a host view the return after it still aborts on the missing `commit()`, now after the log |
 | 8 | docs | "Data types" said billboard atlases rebuild from CPU data like meshes; they are the caller's | Corrected |
-| 9 | compiler | Workarounds re-probed on msc 0.2.55 (`8cdd91c6`): `BitSet`, `==` on large structs, `distinct` and a simple generic `ref` now work; `ref this` and returning a `Span` still do not | Flags and colour mask are `BitSet`s (`0529b6f`, `b85d3b4`), row `scene-flags-not-bitset` deleted, `sameState` gone, Compiler notes re-dated |
+| 9 | compiler | Workarounds re-probed on msc 0.2.55 (`8cdd91c6`): `BitSet`, `==` on large structs, `distinct` and a simple generic `ref` now work; `ref this` and returning a `Span` still do not | Flags and colour mask are `BitSet`s (`1c86c56`, `3493cfa`), row `scene-flags-not-bitset` deleted, `sameState` gone, Compiler notes re-dated |
 | 10 | docs | The "Device" open question still said the `.so` had only been built; the compiler notes were headed 0.2.53; the glTF comment scoped the loader by the customer's exporter | Corrected |
 | 11 | style | 727 comment lines against 4 550 code lines; 49 blocks longer than three lines, most written before the comment rule was narrowed on 2026-09-21 | Not swept: the comment playbook forbids cleaning a file as a side effect. A pass of its own if the human wants one |
-| 12 | style | `refresh` is mis-indented at `scene.ms` 617–630; `uploadMesh` keeps a half-made buffer pair where `remakeStream` destroys it; `writeUniforms` truncates or leaves values silently | Carried |
+| 12 | style | `refresh` is mis-indented at `scene.ms` 617–630; `uploadMesh` keeps a half-made buffer pair where `remakeStream` destroys it; `writeUniforms` truncates or leaves values silently | Fixed. The indentation (`40a9f2d`). `uploadMesh` destroys the buffer it made when its pair is refused (`e9458b6`), not pinned: no headless test can make the driver refuse. `writeUniforms` refuses a length that is not its block's, so `beginFrame` and `renderFrame` answer a `Result`, and the camera and light writes run before a new context is adopted (`0f89fed`; control: truncation back reddens `pipelineCheck` and crashes the suite in the new renderer test) |
+| 13 | gate | Found by that control: `msc test` exits 0 when the test binary crashes, and the `tests` stage passed any log that lacked the word "failed" | The stage fails without the summary line (`0d4f70c`). Second sighting on `~/metascript/.inbox/compiler/2026-09-23-crash-exit-status-lost.md` |
 
 **Confirmed, with the check named:**
 - nothing in an API name or behaviour is Hibernal's, beyond the defaults the brief allows and finding 2 (grep over `src/void3d`);
@@ -786,15 +787,21 @@ below. Most of them are held to real Heaps by the oracle.
 
 ### Numbers
 
-Taken at tree `e0a07b17` (*docs(void3d): re-check the compiler notes on 0.2.55 and correct the
-drifted claims*) from one plain `sh scripts/gate3d.sh` run. The commit after it adds this section only.
+Taken at tree `9c6e03d4` (*docs(void3d): record the audit before M13*) by the land gate with
+`GATE_DEVICE=1`, after the rebase onto void2d's P3. The follow-up column is the plain gate at tree
+`15a91e87` (*test(void3d): fail the tests stage when msc test prints no summary*).
 
-| | |
-|---|---|
-| Gate | GREEN, one SKIP (device) |
-| Tests | **828**, unchanged |
-| Capture | thirteen configurations, 52 frames, byte-identical to the 40 committed hashes |
-| Oracle | 75 agree and 11 declared, over six files |
-| Allocation | frame, render and pick paths, no array copy; the render path is new to the stage |
-| PENDING3D | 23 rows: `scene-flags-not-bitset` deleted, `dir-light-stepped` added |
-| Android | arm64 `libVoidAndroid.so`, **2 702 880 bytes** (2 704 216 at M12) |
+| | at the land | after follow-up 11 |
+|---|---|---|
+| Gate | GREEN, no SKIP | GREEN, one SKIP (device) |
+| Tests | **863**, 35 of them void2d's P3 | **864**, one refused-frame test added |
+| Capture | 52 frames byte-identical to the 40 committed hashes | the same |
+| Oracle | 75 agree and 11 declared, over six files | the same |
+| Allocation | frame, render and pick paths, no array copy | the same |
+| Device | `pixellight` emulator, 23 colours, largest 40%, after a cold start of the app | not run |
+| PENDING3D | 23 rows: `scene-flags-not-bitset` deleted, `dir-light-stepped` added | the same |
+| Android | arm64 `libVoidAndroid.so`, **2 702 880 bytes** (2 704 216 at M12) | **2 740 448 bytes**, the example's error messages |
+
+The first land attempt failed at `device`: the emulator resumed the app from its quickboot
+snapshot, and it drew black at 30 fps with no `EGL_CONTEXT_LOST` reaching Void. A cold start drew
+the campfire.
