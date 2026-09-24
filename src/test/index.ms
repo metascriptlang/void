@@ -13,6 +13,7 @@ import "./textMetricsCheck";
 import "./textGammaCheck";
 import "./fontCheck";
 import "./syntheticFaceCheck";
+import "./fontOracleCheck";
 import "./math3dCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";
