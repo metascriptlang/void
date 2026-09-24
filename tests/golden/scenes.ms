@@ -11,7 +11,9 @@ import {
 	Node2D, group, rect, sprite, label, graphics, mask, scaleGrid, underline, selection,
 	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
-import { addFallbackFont } from "../../src/void2d/font";
+import {
+	addFallbackFont, registerFace, Font, FontStyle, FontFeature, SizeAdjust,
+} from "../../src/void2d/font";
 import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
@@ -657,6 +659,30 @@ function textCjkFallback(): Scene {
 	return s;
 }
 
+function fontOf(weight: int32, style: FontStyle, adjust: SizeAdjust): Font {
+	const features: FontFeature[] = [];
+	const fallbacks: string[] = ["Noto Sans SC"];
+	return {
+		family: "Inter", weight: weight, style: style, features: features, fallbacks: fallbacks,
+		sizeAdjust: adjust,
+	};
+}
+
+function styledLabel(s: Scene, text: string, font: Font, y: float32): void {
+	s.add(label(text, 16.0, rgba(0.86, 0.90, 0.98, 1.0)).setFont(font).at(10.0, y));
+}
+
+function textFontStyles(): Scene {
+	registerFace("tests/fonts/NotoSansSC-subset.ttf", "Noto Sans SC", 400, FontStyle.Normal);
+	const s = scene(DARK);
+	styledLabel(s, "Regular 400 你好 void2d", fontOf(400, FontStyle.Normal, SizeAdjust.None), 4.0);
+	styledLabel(s, "Bold 700 你好 void2d", fontOf(700, FontStyle.Normal, SizeAdjust.None), 26.0);
+	styledLabel(s, "Italic 你好 void2d", fontOf(400, FontStyle.Italic, SizeAdjust.None), 48.0);
+	styledLabel(s, "Bold italic 你好 void2d", fontOf(700, FontStyle.Italic, SizeAdjust.None), 70.0);
+	styledLabel(s, "ic-width 你好 void2d", fontOf(400, FontStyle.Normal, SizeAdjust.IcWidth), 94.0);
+	return s;
+}
+
 function textMultilineAlign(): Scene {
 	const s = scene(DARK);
 	const left = label("void2d\nleft\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0)).at(14.0, 12.0);
@@ -1128,6 +1154,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/wrapped", build: textWrapped },
 		{ name: "text/multilineAlign", build: textMultilineAlign },
 		{ name: "text/cjkFallback", build: textCjkFallback },
+		{ name: "text/fontStyles", build: textFontStyles },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },

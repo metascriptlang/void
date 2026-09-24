@@ -101,6 +101,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/wrapped", phase: "P0", width: 256, height: 120, dpi: 1.0, steps: 0, demo: false },
 		{ name: "text/multilineAlign", phase: "P0", width: 384, height: 96, dpi: 1.0, steps: 0, demo: false },
 		{ name: "text/cjkFallback", phase: "P3", width: 320, height: 120, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/fontStyles", phase: "P3", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
@@ -153,8 +154,9 @@ export function sceneDrawCounts(): int32[] {
 	return [
 		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
-		1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 6, 2, 1, 1, 1,
-		6, 6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7, 30, 30, 30, 30,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 6, 2, 1, 1,
+		1, 6, 6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7, 30, 30, 30,
+		30,
 	];
 }
 
@@ -163,7 +165,8 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5,
+		0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5,
+		5,
 	];
 }
 
