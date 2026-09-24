@@ -13,6 +13,7 @@
 
 typedef struct {
 	unsigned char *bytes;
+	int length;
 	stbtt_fontinfo info;
 	int kernLookups[GLYPH_MAX_KERN_LOOKUPS];
 	int kernLookupCount;
@@ -41,6 +42,8 @@ static float s_metrics[3];
 static float s_decoration[4];
 static float s_heights[7];
 static int s_box[4];
+static GlyphRasterBox s_rasterBox;
+static GlyphRasterFill s_rasterFill;
 
 static int validFace(int face) { return face >= 0 && face < s_faceCount; }
 static int validPage(int page) { return page >= 0 && page < s_pageCount; }
@@ -490,6 +493,7 @@ int void2dGlyphFaceLoad(const char *path) {
 		return -1;
 	}
 	s_faces[s_faceCount].bytes = bytes;
+	s_faces[s_faceCount].length = (int)size;
 	s_faces[s_faceCount].info = info;
 	s_faces[s_faceCount].emboldenUnits = 0.0f;
 	s_faces[s_faceCount].skew = 0.0f;
@@ -511,6 +515,11 @@ int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
 }
 
 int void2dGlyphFaceCount(void) { return s_faceCount; }
+
+void void2dGlyphSetRasterizer(GlyphRasterBox box, GlyphRasterFill fill) {
+	s_rasterBox = box;
+	s_rasterFill = fill;
+}
 
 float void2dGlyphScale(int face, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
@@ -555,6 +564,10 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX) {
 	if (!validFace(face)) { return s_box; }
 	float scale = void2dGlyphScale(face, sizePx);
 	GlyphFace *f = &s_faces[face];
+	if (s_rasterBox && !isSynthetic(f)) {
+		s_rasterBox(f->bytes, f->length, glyph, sizePx, shiftX, s_box);
+		return s_box;
+	}
 	if (isSynthetic(f)) {
 		stbtt_vertex *vertices = NULL;
 		int count = glyphShape(f, glyph, &vertices);
@@ -613,7 +626,9 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 	float scale = void2dGlyphScale(face, sizePx);
 	GlyphFace *f = &s_faces[face];
 	unsigned char *at = p->texels + (size_t)y * (size_t)p->size + (size_t)x;
-	if (isSynthetic(f)) {
+	if (s_rasterFill && !isSynthetic(f)) {
+		s_rasterFill(f->bytes, f->length, glyph, sizePx, shiftX, at, w, h, p->size);
+	} else if (isSynthetic(f)) {
 		stbtt_vertex *vertices = NULL;
 		int count = glyphShape(f, glyph, &vertices);
 		int box[4];

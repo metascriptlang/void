@@ -7,7 +7,10 @@ set -e
 EMSCRIPTEN_VERSION="$(cat "$(dirname "$0")/../.emscripten-version")"
 EMSDK_DIR="${EMSDK_DIR:-$HOME/projects/emsdk}"
 MSC="${MSC:-msc}"
-ENTRY="src/examples/mainSokol2d.ms"
+ENTRY="${VOID_WEB_ENTRY:-src/examples/mainSokol2d.ms}"
+DEST="${VOID_WEB_DEST:-web}"
+EXTRA_PASSC="${VOID_WEB_PASSC:-}"
+NAME="$(basename "$ENTRY" .ms)"
 
 cd "$(dirname "$0")/.."
 
@@ -38,13 +41,13 @@ fi
 # msc can flake on the uncached async-emcc path; retry.
 build() {
 	target="$1"; passc="$2"; passl="$3"; dest="$4"
-	rm -f out/release/mainSokol2d.js out/release/mainSokol2d.wasm out/release/mainSokol2d.data
+	rm -f "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data"
 	for i in 1 2 3 4; do
-		"$MSC" build "$ENTRY" --os=emcc --passC="$passc" --passL="$passl" \
-			--output=out/release/mainSokol2d.js >/tmp/void_web_$target.log 2>&1 || true
-		if grep -q "Built" /tmp/void_web_$target.log && [ -f out/release/mainSokol2d.wasm ]; then
+		"$MSC" build "$ENTRY" --os=emcc --passC="$passc $EXTRA_PASSC" --passL="$passl" \
+			--output="out/release/$NAME.js" >/tmp/void_web_$target.log 2>&1 || true
+		if grep -q "Built" /tmp/void_web_$target.log && [ -f "out/release/$NAME.wasm" ]; then
 			mkdir -p "$dest"
-			cp out/release/mainSokol2d.js out/release/mainSokol2d.wasm out/release/mainSokol2d.data "$dest/"
+			cp "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data" "$dest/"
 			echo "$target → $dest (attempt $i)"
 			return 0
 		fi
@@ -53,6 +56,6 @@ build() {
 }
 
 PRELOAD="--preload-file assets/test.png --preload-file assets/font.ttf"
-build wgpu "--use-port=emdawnwebgpu -DSOKOL_WGPU" "--use-port=emdawnwebgpu $PRELOAD" web/wgpu
-build gl   "-DSOKOL_GLES3" "-sFULL_ES3=1 -sMAX_WEBGL_VERSION=2 $PRELOAD" web/gl
+build wgpu "--use-port=emdawnwebgpu -DSOKOL_WGPU" "--use-port=emdawnwebgpu $PRELOAD" "$DEST/wgpu"
+build gl   "-DSOKOL_GLES3" "-sFULL_ES3=1 -sMAX_WEBGL_VERSION=2 $PRELOAD" "$DEST/gl"
 echo "done — serve web/ and open void2d.html"

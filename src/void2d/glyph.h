@@ -24,4 +24,10 @@ const unsigned char *void2dGlyphPageData(int page);
 int void2dGlyphPageDirty(int page);
 void void2dGlyphPageClean(int page);
 
+typedef void (*GlyphRasterBox)(const unsigned char *font, int length, int glyph, float sizePx,
+                               float shiftX, int *box);
+typedef void (*GlyphRasterFill)(const unsigned char *font, int length, int glyph, float sizePx,
+                                float shiftX, unsigned char *out, int w, int h, int stride);
+void void2dGlyphSetRasterizer(GlyphRasterBox box, GlyphRasterFill fill);
+
 #endif
