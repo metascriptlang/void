@@ -148,8 +148,22 @@ else
 	sed -n 's/^/      /p' out/gate-oracle-run.log 2>/dev/null | head -4
 fi
 pass "coverage oracle: the erf shadow integral, in T0 and judged on the capture (kernel-integral truth, worst 0.0251 of 0.035)"
-skip "fontTools metrics: not wired (P3) — tests/PENDING.md oracle:font-metrics"
-skip "HarfBuzz kerning subset: not wired (P3) — tests/PENDING.md oracle:harfbuzz-kerning"
+# The font oracles run inside T0 (src/test/fontOracleCheck.ms) against snapshots that
+# `python tests/oracle/fonts.py regen` writes from fontTools and HarfBuzz; the gate needs
+# neither tool, and reads the verdict line each test prints.
+for oracle in "fontTools metrics" "HarfBuzz kerning"; do
+	line=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E "^font oracle: $oracle " | tail -1)
+	case "$line" in
+		*" values agree")
+			agreed=$(echo "$line" | sed -E 's|.* ([0-9]+)/([0-9]+) values agree|\1 \2|')
+			if [ -n "$agreed" ] && [ "${agreed% *}" = "${agreed#* }" ]; then
+				pass "${line#font oracle: }"
+			else
+				fail "${line#font oracle: } — see out/gate-t0.log"
+			fi ;;
+		*) fail "font oracle: $oracle printed no verdict — see out/gate-t0.log" ;;
+	esac
+done
 skip "UCD segmentation: not wired (P4) — tests/PENDING.md oracle:ucd-segmentation"
 skip "h2d semantics: not wired (P5) — tests/PENDING.md oracle:h2d"
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"

@@ -189,8 +189,8 @@ Where ground truth can come from outside void, it should, because a hand-written
 
 | Domain | Oracle | Committed form | Verdict |
 |---|---|---|---|
-| Shaping: glyph ids, clusters, advances, offsets, OpenType features | **HarfBuzz** (`hb-shape --output-format=json`) over (font, size, text, features) rows | `tests/oracle/shape.json` | **Wire it.** Full version at P6 with the shaper; a subset (cmap + GPOS kerning, features off) is usable at P3 |
-| Font metrics: `unitsPerEm`, ascent/descent/lineGap, underline and strikethrough position and thickness, broken-table fallbacks (GHOSTTY.md:62) | **fontTools**, reading `head`/`hhea`/`OS_2`/`post` directly | `tests/oracle/metrics.json` | **Wire it.** Exact, cheap, and it covers a GPUI weakness (GPUI ignores the font's underline metric, GPUI.md:54) |
+| Shaping: glyph ids, clusters, advances, offsets, OpenType features | **HarfBuzz** (`hb-shape --output-format=json`) over (font, size, text, features) rows | `tests/oracle/shape.json` | **Subset wired at P3 step 7**: 10 rows over Inter and the Noto Sans SC subset, uharfbuzz 0.56.2 / HarfBuzz 14.5.0 with every GSUB feature off and `kern` on, glyph ids and pen x at size = unitsPerEm: **268 / 268 agree**. Full version at P6 with the shaper |
+| Font metrics: `unitsPerEm`, ascent/descent/lineGap, underline and strikethrough position and thickness, broken-table fallbacks (GHOSTTY.md:62) | **fontTools**, reading `head`/`hhea`/`OS_2`/`post` directly | `tests/oracle/metrics.json` | **Wired at P3 step 7**: fontTools 4.65.0 reads the raw tables and the generator re-implements Ghostty's decoration and height fallbacks on its own, over Inter, the Noto subset and the two broken-table fixtures — 14 values per font, **56 / 56 agree**. It covers a GPUI weakness (GPUI ignores the font's underline metric, GPUI.md:54) |
 | Grapheme clusters, line-break opportunities | **The Unicode UCD conformance files** `GraphemeBreakTest.txt`, `LineBreakTest.txt` | vendored under `tests/oracle/ucd/` with their version | **Wire it** at P4. Ground truth from the standard, so there is no second implementation to distrust |
 | Analytic coverage of the SDF primitives | **A CPU reference**: exact rounded-rect geometry supersampled 16×16 per device pixel, and a numerical Gaussian integral for the `erf` shadow | `tests/oracle/coverage.ms`, `tests/oracle/captureCheck.ms` | **Wired at P2 in T0 and against captures.** The T0 controls reject `smoothstep` by 0.09375 and a blur one fifth wrong; the accepted arithmetic measures 0 on a straight edge and 0.0078 on the tested shadow. The capture check independently judges the committed or freshly captured shader output: rotated AA measures 0.0502 against 0.06, and the shadow 0.0251 against 0.035. |
 | h2d semantics: `getBounds`, `localToGlobal`/`globalToLocal`, mask intersection, scale modes, text metrics | **Heaps compiled to JS**, which SCENE-SCALE.md:204 records as already runnable here | `tests/oracle/h2d.json` | **Wire it, second priority.** It is the only mechanical check that "void2d stays h2d in interface and semantics" (VOID2D.md "The rule") is still true. Its PENDING list is already written: the deliberate divergences in HEAPS.md "The h2d contract" and "Do not copy from h2d" — four-corner mask AABB, `ScaleMode.Zoom`/`AutoZoom`, `lineSpacing` units, the looser `colorKey` threshold |
@@ -198,7 +198,7 @@ Where ground truth can come from outside void, it should, because a hand-written
 | Glyph rasterization | FreeType, unhinted, same size and offset | — | **Not ground truth.** void2d deliberately does not match FreeType: stb_truetype in the pixel-exact regime with its own four x-variants. Usable as a shape smoke check with a loose coverage bound — is the outline right? — and never as a gate on pixels. Say so rather than implying otherwise |
 | GPUI / Zed parity | a Zed screenshot | — | **Manual, and not a gate.** See T5 |
 
-**Regeneration and CI.** Same shape as rexa: `VOID_ORACLE=1` regenerates inside the same test that otherwise compares, the snapshot is committed, and the gate never needs the tool (`AGENTS.md:135-136`). A case row is data with no expected output. Divergences go to PENDING with a reason, and the pass rate against each oracle is printed.
+**Regeneration and CI.** Same shape as rexa: the snapshot is committed and the gate never needs the tool (`AGENTS.md:135-136`). The font oracles regenerate with `python tests/oracle/fonts.py regen` (fontTools and uharfbuzz from pip) rather than inside the test, because the tool is Python and the test is MetaScript; `src/test/fontOracleCheck.ms` compares and prints the pass count the gate reads. A case row is data with no expected output. Divergences go to PENDING with a reason, and the pass rate against each oracle is printed.
 
 The interesting number here is the UAX #14 one. void2d's wrap rule is GPUI's — after a space, or at any non-word char (GPUI.md:49) — not UAX #14, so most `LineBreakTest.txt` rows will land in PENDING under one shared reason. That is the honest use of a pass rate: it says how far the cheap rule is from the standard, and the number is the argument for or against replacing it, instead of nobody knowing.
 
@@ -270,7 +270,7 @@ number typed into the script.
    twice, compare the two, gate per-scene counters, write the PNG, then
    `tests/golden/compare.ms` judges all **67** against `tests/golden/d3d11/` and prints
    `N px differ, max delta M, bbox` and a pass rate.
-5. The three coverage oracles, plus four named SKIPs for oracles not wired yet.
+5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
    reported with a warn threshold. Plus a SKIP for the wasm budget, which P6 owns.
 7. Guardrail 9: the D3D11 conformance line, then one named SKIP per backend that has no
@@ -362,7 +362,7 @@ about where they came from.
 | T0 | 708 tests over 43 files, `msc test src/test/index.ms`; twelve are harness parsers |
 | T1 | 11 display-list snapshots plus no-GPU reachability and invariant assertions |
 | T2 | 67 scenes, D3D11, byte-identical, zero budgets; six backends SKIP |
-| T3 | three coverage oracles green; four current-roadmap SKIPs, plus full HarfBuzz at P6 |
+| T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
 | T4 | twelve counters gated per bench scene, two milliseconds reported; wasm budget SKIPs |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".

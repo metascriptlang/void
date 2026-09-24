@@ -145,12 +145,10 @@ Guardrail 9 is "same pixels on every platform", and today it is checked on one b
 
 ## Oracles not wired
 
-[docs/TESTING.md](../docs/TESTING.md) "T3" lists these five as "wire it"; P2's rounded-rect and shadow coverage oracles already run in every gate.
+[docs/TESTING.md](../docs/TESTING.md) "T3" lists these as "wire it"; P2's rounded-rect and shadow coverage oracles and P3's fontTools metrics and HarfBuzz kerning subset already run in every gate.
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| oracle:font-metrics | T3 | fontTools over `head`/`hhea`/`OS_2`/`post` | P3 | 2026-09-20 |
-| oracle:harfbuzz-kerning | T3 | the cmap + GPOS-kerning subset, features off | P3 | 2026-09-20 |
 | oracle:ucd-segmentation | T3 | `GraphemeBreakTest.txt` and `LineBreakTest.txt` | P4 | 2026-09-20 |
 | oracle:h2d | T3 | Heaps compiled to JS, for `getBounds`, `localToGlobal`, mask intersection and scale modes | P5 | 2026-09-20 |
 | oracle:harfbuzz-full | T3 | the full shaping oracle | P6 | 2026-09-20 |
