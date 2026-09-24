@@ -124,7 +124,7 @@ How the taken items are adapted — the display list, the unified UI pipeline, S
 | Pixel-snapping rules (`snap_bounds`, `snap_stroke` min 1 dp, `cover_bounds`, snapped offsets) | **Take** | applied when the world transform is axis-aligned |
 | Glyph layer: logical unhinted layout, 4 x-variants, baseline snap, atlas key, 1:1 texel-exact sprites | **Take** | replaces fontstash |
 | Gamma/contrast correction function + `gamma_ratios` table | **Take** | one GLSL function; same UNORM/gamma-space blending as Void |
-| Atlas: R8 + RGBA kinds, fixed 1024² pages, new page when full, oversized item → own page | **Take, adapted** | 1 px gutter; dirty-page upload; eviction |
+| Atlas: R8 + RGBA kinds, fixed 1024² pages, new page when full, oversized item → own page | **Take, adapted** | 1 px gutter; dirty-page upload; eviction. An oversized glyph is refused (`AtlasError.TooLarge`), not given its own page: those sizes belong to the SDF regime (VOID2D.md "Text", Atlas) |
 | `Font { family, weight, style, features, fallbacks }` → `FontId`; fonts from bytes; per-grapheme fallback by coverage | **Take** | |
 | `TextRun`, run backgrounds, underline / strikethrough / wavy primitive | **Take** | |
 | Wrap boundaries, truncation, `x_for_index` / `index_for_x`, `force_width`, `split_at` — all over shaped glyphs | **Take** | text layout is rendering: native Neon hosts get it from the OS, the Void host gets it from Void |

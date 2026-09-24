@@ -363,6 +363,6 @@ about where they came from.
 | T1 | 11 display-list snapshots plus no-GPU reachability and invariant assertions |
 | T2 | 69 scenes, D3D11, byte-identical, zero budgets; WebGL2 65 / 69 with `--web`; five backends SKIP |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
-| T4 | eighteen counters gated per bench scene (ui, sprites, text), three `present` milliseconds reported; wasm budget SKIPs |
+| T4 | eighteen counters gated per bench scene (ui, sprites, text), three `present` and three `firstPaint` milliseconds reported; wasm budget SKIPs |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".

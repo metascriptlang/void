@@ -717,10 +717,10 @@ the baseline was re-taken (see "Baseline" (b)):
 
 **Measured at P3 step 8 (2026-09-24, D3D11, msc release, this box at 25-33 % CPU load).**
 - **Draws unchanged**: `ui.draws` 1, `text.draws` 1, 48 890 UI instances as at P2 (`tests/bench/baseline.json`).
-- **`present` is worse, and the phase does not meet this line.** `sh scripts/bench-ab.sh` interleaves pairs against the tree just before P3 (`8a473f3`, same `main` base): UI **26.66 → 29.35 ms** over eight pairs, ranges disjoint, sprites unchanged (4.93 → 4.93 ms). Bisected: step 3 alone carries it (step 3 against the head, 25.70 against 25.49 ms), and a phase timer put all of it in the walk's label emission, about +0.9 ms of 5 ms. The page view is now looked up once per page rather than twice per glyph and the per-glyph `vec2` temporaries are gone, which took the gap to **+1.4 to +1.8 ms (+5 to +7 %)**. What remains is a fixed cost per label per frame — the side-table read and the placement check, about 100 ns per label over 10 000 labels, most of it reference counting in the generated C. P5's retained ranges remove the re-emission of unchanged labels altogether, and that is where it is owed; it is not worth a codegen workaround here.
+- **`present` is worse, and the phase does not meet this line.** `sh scripts/bench-ab.sh` interleaves pairs against the tree just before P3 (`8a473f3`, same `main` base): UI **26.66 → 29.35 ms** over eight pairs, ranges disjoint, sprites unchanged (4.93 → 4.93 ms). Bisected: step 3 alone carries it (step 3 against the head, 25.70 against 25.49 ms), and a phase timer put all of it in the walk's label emission, about +0.9 ms of 5 ms. The page view is now looked up once per page rather than twice per glyph and the per-glyph `vec2` temporaries are gone, which took the gap to **+1.4 to +1.8 ms (+5 to +7 %)**. What remains is a fixed cost per label per frame — the side-table read and the placement check, 140 to 180 ns per label over the bench's 10 000 labels, most of it reference counting in the generated C. P5's retained ranges remove the re-emission of unchanged labels altogether, and that is where it is owed; it is not worth a codegen workaround here.
 - **First paint**: 40 rasterizations for the UI bench (10 digits × 4 x-variants), 63 for the 40-line code block; 3.5 ms for the text scene's first frame.
 - **Zoom sweep**: 0.5× → 4× over 64 frames rasterizes 3 907 glyphs and never holds more than **2 pages (2 MiB)**; after it, **0 rasterizations per frame** — the steady state the exit asks for, now gated as `glyphRasterizationsSteady`.
-- **wasm delta of the glyph layer**: against the pre-P3 tree built the same way, WebGPU **731 641 → 759 941 B (+28 300)** and WebGL2 **636 966 → 665 144 B (+28 178)**, fontstash removed and stb_truetype 1.26, GPOS, the atlas, layout, fallback, `Font` and synthetic styles added.
+- **wasm delta of the glyph layer**: against the pre-P3 tree built the same way, WebGPU **731 641 → 759 941 B (+28 300)** and WebGL2 **636 966 → 665 144 B (+28 178)**, fontstash removed and stb_truetype 1.26, GPOS, the atlas, layout, fallback, `Font` and synthetic styles added. After the review's defect fixes the gate at `698c57b` built **761 810 B** and **667 012 B** (+30 169 and +30 046 against the same pre-P3 tree).
 - **Conformance: the exit's five-backend run is not met — 2 of 7 surfaces measured.** D3D11 69 / 69 byte-identical; WebGL2 65 / 69, and all seven `text/` scenes are byte-identical there. The WebGL2 number is narrower than a second driver: headless Chrome reports `ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 ... Direct3D11 vs_5_0 ps_5_0, D3D11)`, so it proves the GLSL ES path, GL's conventions (the dither bug above was one) and ANGLE's translation, on the same GPU and D3D11 driver. GLES3 desktop and WebGPU move to P6, which can run both on this box; Metal macOS, Metal iOS and GLES3 Android wait on the human's hardware (`tests/PENDING.md backend:*`).
 - **The Zed half of the first exit bullet is not met** either: the T5 capture beside Zed is owed by the human (above). The byte-identical half is met: the gate captures every `text/` scene twice, at DPI 1.0, 1.25 and 1.5.
 
@@ -743,6 +743,7 @@ the baseline was re-taken (see "Baseline" (b)):
 - **Caret and selection as their own instances**, never part of a text range, so a blink dirties nothing else (GHOSTTY.md:90); selection as per-row quads carrying the neighbouring rows' x and width, unioned by smooth-min in the fragment shader, so concave joins are filleted with no geometry (MAKEPAD.md:78).
 - Shaping break at an index, as an input on `Text` (GHOSTTY.md:35) — the mechanism, not Ghostty's terminal defaults.
 - Whole-grapheme face selection: a multi-codepoint grapheme takes the first face that covers all of it (GHOSTTY.md:27), over the grapheme segmentation this phase wires. P3 selects a face per codepoint.
+- Carried from P3's review (REVIEWS.md P3, follow-ups): a placement stays invalid while any glyph is refused (F1); one measure call's cost — face heights cached per face, the layout not copied — gated in T4 before the host relies on it (F2); filter targets snapped to device pixels, with golden `text/filteredDpi125` (F3); `\r` and tab drawn as nothing and a tab stop, C0 controls kept out of the fallback probe, GPUI's break rule, and h2d's `maxWidth` centring for `align` (F4); pins for the page cap, the refusal report and the `sizeAdjust` guard (F8); the font API under CODE-STYLE §14 (F9); the gate failing when a `conformance:*` row's scene starts passing (F13).
 
 **Defects closed.** The remaining h2d text surface: the `Text` metric surface and the `Align` enum.
 
@@ -752,6 +753,7 @@ the baseline was re-taken (see "Baseline" (b)):
 - A ligature never spans two colours; a wavy underline follows the font's metric, snapped.
 - Caret blink changes no text instance.
 - Selection across a ragged range joins without gaps or overlapping alpha.
+- The T5 look beside Zed at 13 px, 1× and 1.5× is taken by the human, and its verdict is written into P3 (REVIEWS.md P3 F12).
 
 **Tests.** T3: the UCD conformance files for grapheme clusters and line-break opportunities, with the divergence from UAX #14 recorded as one PENDING reason — void2d follows GPUI's cheaper rule, and the pass rate against the standard is what says whether that is acceptable. T1: run splitting, wrap boundaries, decoration placement and whole-grapheme face selection as numbers. T2: the editor scenes and the decoration group. T0: truncation and `split_at` boundary arithmetic.
 
@@ -776,7 +778,7 @@ the baseline was re-taken (see "Baseline" (b)):
 - `Scene` reports whether it changed and can re-present its last list; scheduling stays the host's.
 - The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:174-180`).
 - The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:91-99`).
-- A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()` is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`).
+- A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`).
 - Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
 
@@ -817,6 +819,8 @@ the baseline was re-taken (see "Baseline" (b)):
 - Device loss: drop every GPU object, re-arm every dirty flag, redraw, with a **fault-injection switch** (MAKEPAD.md:104) — which is also how the path is tested. void3d already has the Android form of this (`voidEmbedLoseContext`); this generalises it and covers the atlas and the instance buffer.
 - Warm-up of pipelines, device and the font database off the first-frame path; release of GPU resources when occluded; a synchronous draw during live resize; discard of a late frame at the wrong size.
 - **The guardrail-9 backends this box can run**, which P3 did not reach: a desktop GLES3 build of the golden runner (a GL variant of `src/sokol/sokolWin.c` and `glsl430` shaders; `tests/capture/capture.c` already has the `glReadPixels` path, which WebGL2 exercises), and WebGPU's `copyTextureToBuffer` + `mapAsync` readback in a headed browser, since headless Chrome hands WebGPU no adapter here. Metal macOS, Metal iOS and GLES3 Android run on the human's hardware.
+- The mesh path's pixel-centre ties: bias mesh geometry by −1/64 px in device space, the fix `tests/PENDING.md conformance:webgl2-pixel-centre` proposes, which keeps D3D11's tie results and gives GL the same.
+- The P2 rows this phase owns: styled-box colour effects (`ui-box-color-effect`), the independent non-uniform-SDF bound (`sdf-non-uniform-bound`) and the repository-wide line-length pass (`style:line-length`).
 - The frame profiler: histograms of dirty-to-present, draw time and input latency, plus the draw-call, instance and upload-byte counters GPUI lacks, drawn outside invalidation.
 
 **Defects closed.** None remaining; "Known defects" is empty by the end of P5.
@@ -831,6 +835,7 @@ the baseline was re-taken (see "Baseline" (b)):
 - Guardrail 9 prints a pass rate for GLES3 desktop and WebGPU instead of a SKIP.
 - The colour-emoji line (TESTING.md `text/`) draws in colour through the module, presentation selectors pick text or emoji per grapheme, and a build with the module off pays none of it.
 - A deferred CJK or emoji family answers coverage without loading, with the module on or off.
+- WebGL2 and GLES3 desktop show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.
 
 **Tests.** T3: the full HarfBuzz shaping oracle, cases as data rows, snapshot committed, CI never needing `hb-shape`. T4: the wasm budget per module — the only gate that makes guardrail 6 real. T2: ligature, emoji, zoom and rotation scenes. Device loss is tested by its own switch, which is why the switch is a deliverable and not a debug aid.
@@ -879,7 +884,7 @@ void2d's render base is a **hand-rolled quad batcher on Void's own GPU bridge** 
 | **oryol** (floooh) | `~/projects/oryol` | Module discipline: small layered modules, strict one-way deps (high→low), tier stays technique-agnostic. Its `Gfx` module = the **predecessor of sokol_gfx** → confirms our sokol bridge already IS that tier. | Its C++ container/RTTI opinions, CMake. |
 | **Kha `graphics2`** | `~/projects/Kha` | "2D built on top of the GPU layer" generational pattern. | Its full multi-target build system. |
 | **sokol_gp** (edubart) | not vendored — [github](https://github.com/edubart/sokol_gp) | Read its quad-batching + transform-stack approach as a model. | **Do not compile** (version mismatch, see decision above). |
-| **fontstash** | `deps/fontstash` ✅ | Today's text path, until P3. | Its integer layout, its single fixed atlas. |
+| **fontstash** | removed at P3 step 3 | The text path before P3; stb_truetype 1.26 replaced it. | Its integer layout, its single fixed atlas. |
 
 Local clones of the four main references: `~/projects/heaps` @ `b9aa6dcb`, `~/projects/gpui` (sparse `crates/gpui*`) @ `b961b49`, `~/projects/makepad` @ `5e9a697`, `~/projects/ghostty` @ `a301054`. No further rendering references are planned: models that differ too much do not combine.
 
