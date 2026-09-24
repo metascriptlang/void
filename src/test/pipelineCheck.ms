@@ -27,20 +27,6 @@ import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, UniformError, reserveUniforms, writeUniforms } from "../void3d/draw";
 import { Vec4 } from "../math/math3d";
 
-// Field by field: `==` on a struct over 24 bytes fails C compile on msc 0.2.53.
-function sameState(a: RenderState, b: RenderState): boolean {
-	return a.culling == b.culling &&
-		a.depthWrite == b.depthWrite &&
-		a.depthTest == b.depthTest &&
-		a.blendSource == b.blendSource &&
-		a.blendDestination == b.blendDestination &&
-		a.blendAlphaSource == b.blendAlphaSource &&
-		a.blendAlphaDestination == b.blendAlphaDestination &&
-		a.blendOperation == b.blendOperation &&
-		a.blendAlphaOperation == b.blendAlphaOperation &&
-		a.colorMask == b.colorMask;
-}
-
 // The campfire scene pass: unculled, depth-tested with LessEqual.
 function sceneState(): RenderState {
 	return RenderState.defaults().withCulling(Face.None).withDepth(true, Compare.LessEqual);
@@ -116,20 +102,20 @@ test "setBlendMode Alpha keeps the source alpha and blends the destination" {
 }
 
 test "color mask packs r g b a as bits 1 2 4 8" {
-	assert RenderState.defaults().withColorMask(true, false, true, false).colorMask == 5;
-	assert RenderState.defaults().withColorMask(false, false, false, false).colorMask == 0;
+	assert (RenderState.defaults().withColorMask(true, false, true, false).colorMask as uint32) == 5;
+	assert (RenderState.defaults().withColorMask(false, false, false, false).colorMask as uint32) == 0;
 }
 
 test "render state bits round-trip through fromBits" {
 	const base: RenderState = sceneState().withColorMask(false, true, true, true);
 	for (const mode of blendModes()) {
 		const state: RenderState = base.withBlendMode(mode);
-		assert sameState(RenderState.fromBits(state.bits()), state);
+		assert RenderState.fromBits(state.bits()) == state;
 	}
 	const unwritten: RenderState = RenderState.defaults()
 		.withDepth(false, Compare.Always)
 		.withCulling(Face.Front);
-	assert sameState(RenderState.fromBits(unwritten.bits()), unwritten);
+	assert RenderState.fromBits(unwritten.bits()) == unwritten;
 }
 
 test "every blend mode packs to different bits" {
@@ -311,7 +297,7 @@ test "a pipeline key decodes back into what built it" {
 	assert key.vertexLayout() == VertexLayout.Billboard;
 	assert key.isIndexed();
 	assert key.indexType() == IndexType.Uint16;
-	assert sameState(key.renderState(), state);
+	assert key.renderState() == state;
 	assert key.targetLayout().formatBits() == sceneLayout().formatBits();
 	const screen: TargetLayout = TargetLayout.fromFormatBits(SWAPCHAIN_LAYOUT.formatBits());
 	assert screen.toString() == SWAPCHAIN_LAYOUT.toString();

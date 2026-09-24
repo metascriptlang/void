@@ -170,7 +170,7 @@ export function describePipeline(
 	out[GPU3D_PIPELINE_BLEND_ALPHA_DESTINATION] = unsigned(state.blendAlphaDestination as int32);
 	out[GPU3D_PIPELINE_BLEND_OPERATION] = unsigned(state.blendOperation as int32);
 	out[GPU3D_PIPELINE_BLEND_ALPHA_OPERATION] = unsigned(state.blendAlphaOperation as int32);
-	out[GPU3D_PIPELINE_COLOR_MASK] = unsigned(state.colorMask);
+	out[GPU3D_PIPELINE_COLOR_MASK] = state.colorMask as uint32;
 	out[GPU3D_PIPELINE_COLOR_FORMAT] = unsigned(targets.color0 as int32);
 	out[GPU3D_PIPELINE_COLOR_FORMAT + 1] = unsigned(targets.color1 as int32);
 	out[GPU3D_PIPELINE_COLOR_FORMAT + 2] = unsigned(targets.color2 as int32);

@@ -63,6 +63,13 @@ export enum BlendMode {
 	Min,
 }
 
+export enum ColorChannel {
+	Red,
+	Green,
+	Blue,
+	Alpha,
+}
+
 export struct RenderState {
 	culling: Face;
 	depthWrite: boolean;
@@ -73,10 +80,10 @@ export struct RenderState {
 	blendAlphaDestination: Blend;
 	blendOperation: Operation;
 	blendAlphaOperation: Operation;
-	colorMask: int32;
+	colorMask: BitSet<ColorChannel>;
 }
 
-export const COLOR_MASK_ALL: int32 = 15;
+export const COLOR_MASK_ALL: BitSet<ColorChannel> = (15 as uint8) as BitSet<ColorChannel>;
 
 // Bit layout of `bits()`, low to high (field widths fit every enum above).
 const CULLING_SHIFT: int32 = 0;
@@ -134,7 +141,11 @@ export function withColorMask(
 	blue: boolean,
 	alpha: boolean,
 ): RenderState {
-	const mask: int32 = (red ? 1 : 0) + (green ? 2 : 0) + (blue ? 4 : 0) + (alpha ? 8 : 0);
+	let mask: BitSet<ColorChannel> = 0 as BitSet<ColorChannel>;
+	if (red) { mask = mask.incl(ColorChannel.Red); }
+	if (green) { mask = mask.incl(ColorChannel.Green); }
+	if (blue) { mask = mask.incl(ColorChannel.Blue); }
+	if (alpha) { mask = mask.incl(ColorChannel.Alpha); }
 	return { ...state, colorMask: mask };
 }
 
@@ -195,7 +206,7 @@ export function bits(this state: RenderState): uint32 {
 		field(state.blendAlphaDestination as int32, BLEND_ALPHA_DESTINATION_SHIFT) |
 		field(state.blendOperation as int32, BLEND_OPERATION_SHIFT) |
 		field(state.blendAlphaOperation as int32, BLEND_ALPHA_OPERATION_SHIFT) |
-		field(state.colorMask, COLOR_MASK_SHIFT);
+		field((state.colorMask as uint32) as int32, COLOR_MASK_SHIFT);
 }
 
 // One line for logs and cache diagnostics, in the spirit of Heaps' CachedPipeline.getFields.
@@ -207,7 +218,7 @@ export function toString(this state: RenderState): string {
 		` alphaBlend=${state.blendAlphaSource.toString()}` +
 		`,${state.blendAlphaDestination.toString()}` +
 		` operation=${state.blendOperation.toString()},${state.blendAlphaOperation.toString()}` +
-		` colorMask=${state.colorMask}`;
+		` colorMask=${state.colorMask as uint32}`;
 }
 
 // Pass.loadBits
@@ -222,6 +233,6 @@ export function fromBits(this typeof RenderState, bits: uint32): RenderState {
 		blendAlphaDestination: extract(bits, BLEND_ALPHA_DESTINATION_SHIFT, 4) as Blend,
 		blendOperation: extract(bits, BLEND_OPERATION_SHIFT, 3) as Operation,
 		blendAlphaOperation: extract(bits, BLEND_ALPHA_OPERATION_SHIFT, 3) as Operation,
-		colorMask: extract(bits, COLOR_MASK_SHIFT, 4),
+		colorMask: (extract(bits, COLOR_MASK_SHIFT, 4) as uint8) as BitSet<ColorChannel>,
 	};
 }
