@@ -102,8 +102,9 @@ export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
 export const MAX_POINT_LIGHTS: int32 = 4;
 export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
-// The material's own block (binding=3): the toon ramp levels the lit program quantizes with,
-// and the grass tint the billboard program multiplies in beside them.
+// The material's own block (binding=3): the lit program reads the toon ramp levels from x and
+// its saturation from y (0 leaves colour alone, -1 is grey); the billboard program's block puts
+// the grass tint beside the levels.
 export const TOON_UNIFORM_SLOT: int32 = 3;
 export const TOON_UNIFORM_LENGTH: int32 = 4;
 export const SPRITE_UNIFORM_SLOT: int32 = 2;

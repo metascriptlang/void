@@ -19,6 +19,18 @@ layout(binding=3) uniform toonParams {
 };
 @end
 
+@block saturation
+// h3d.Matrix.colorSaturate in scalar form; src/test/math3dCheck.ms ties it to the matrix.
+vec3 saturated(vec3 rgb, float amount) {
+    if (amount == 0.0) {
+        return rgb;
+    }
+    float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
+    float keep = amount + 1.0;
+    return rgb * keep + vec3(luma * (1.0 - keep));
+}
+@end
+
 @block spriteUniforms
 layout(binding=2) uniform spriteParams {
     vec4 grassColor;
@@ -67,8 +79,10 @@ void main() {
 @end
 
 @fs litFs
+// PENDING3D: material-saturation-only
 @include_block materialUniforms
 @include_block lightUniforms
+@include_block saturation
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -83,7 +97,7 @@ void main() {
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         points += pointLightAt(i, worldPosition, n, 1.0);
     }
-    fragColor = vec4(shaded + points, baseColor.a);
+    fragColor = vec4(saturated(shaded + points, toon.y), baseColor.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -154,6 +168,7 @@ layout(binding=2) uniform texture2D depthTexture;
 layout(binding=3) uniform texture2D paletteTexture;
 layout(binding=0) uniform sampler pointSampler;
 layout(binding=1) uniform sampler depthSampler;
+@include_block saturation
 layout(binding=0) uniform postParams {
     vec4 edge;
     vec4 fog;
@@ -217,11 +232,7 @@ void main() {
     }
     float haze = smoothstep(fog.x, fog.y, centerDepth) * fog.z;
     rgb = mix(rgb, fogColor.rgb, haze);
-    if (colorAdjust.x != 0.0) {
-        float luma = dot(rgb, vec3(0.212671, 0.71516, 0.072169));
-        float keep = colorAdjust.x + 1.0;
-        rgb = rgb * keep + vec3(luma * (1.0 - keep));
-    }
+    rgb = saturated(rgb, colorAdjust.x);
     if (features.y > 0.5) {
         rgb = paletteColor(rgb);
     }
