@@ -10,6 +10,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	TOON_UNIFORM_SLOT,
 	TOON_UNIFORM_LENGTH,
+	TOON_SATURATION,
 	SPRITE_UNIFORM_SLOT,
 	SPRITE_UNIFORM_LENGTH,
 	Program,
@@ -59,7 +60,17 @@ import {
 	setSettings,
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
-import { Vec3, vec3, Mat4, eulerQuat, quatBetween, identity } from "../math/math3d";
+import {
+	Vec3,
+	Vec4,
+	vec3,
+	vec4,
+	Mat4,
+	eulerQuat,
+	quatBetween,
+	identity,
+	colorSaturated,
+} from "../math/math3d";
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
 import {
 	Scene,
@@ -197,7 +208,7 @@ const LOOK_GREY_AT: int32 = 10;
 const LOOK_RESTORED_AT: int32 = 15;
 
 // The pool holds the renderer's blocks plus this scene's material blocks: one toon ramp for
-// the lit material, one for the stones' own lit material when they are greyed, and one sprite
+// the lit material, one for the ground's own lit material when it is greyed, and one sprite
 // block shared by grass and flame.
 const MATERIAL_UNIFORM_LENGTH: int32 = 2 * TOON_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
 let context: DrawContext = DrawContext.withUniformCapacity(
@@ -247,7 +258,8 @@ let panTexelsPerFrame: float32 = 0.0;
 let rebuildAtFrame: int32 = NEVER_REBUILD;
 let particlesWanted: boolean = false;
 let lookScheduleWanted: boolean = false;
-let stoneSaturation: float32 = 0.0;
+let groundSaturation: float32 = 0.0;
+let groundGreyOnCpu: boolean = false;
 let particleMaterial: int32 = 0;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
@@ -452,7 +464,7 @@ function addPiece(geometry: MeshData, where: Transform3D): void {
 function buildScene(): void {
 	layoutStones();
 	let ground: MeshData = MeshData.empty();
-	const plane: Result<int32, MeshError> = addPlane(ground, GROUND_HALF_SIZE, GROUND);
+	const plane: Result<int32, MeshError> = addPlane(ground, GROUND_HALF_SIZE, groundColor());
 	if (!plane.ok) { return; }
 	addPiece(ground, identityTransform());
 	for (const block of stones) {
@@ -644,9 +656,9 @@ function setupDraws(): void {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: litBlock,
 	});
-	const stoneMaterial: Result<int32, UniformError> = stoneMaterialFor(state, litMaterial);
-	if (!stoneMaterial.ok) {
-		console.log("campfire: setupDraws bailed at the stone material");
+	const groundMaterial: Result<int32, UniformError> = groundMaterialFor(state, litMaterial);
+	if (!groundMaterial.ok) {
+		console.log("campfire: setupDraws bailed at the ground material");
 		return;
 	}
 	grassMaterial = addMaterial(context, {
@@ -708,7 +720,7 @@ function setupDraws(): void {
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
 			const placed: Result<int32, AnimationError> =
-				placeBakedStone(pieces[i], placements[i], root, stoneMaterial.value);
+				placeBakedStone(pieces[i], placements[i], root, litMaterial);
 			if (!placed.ok) { console.log("campfire: setupDraws bailed at the baked stone"); return; }
 			continue;
 		}
@@ -717,8 +729,7 @@ function setupDraws(): void {
 		// The ground and the stones hang off the root; the logs hang off the group, so their
 		// world matrix is the two-level product the flat pieces never exercise.
 		const under: NodeId = i >= firstLogPiece ? logGroup : root;
-		const stone: boolean = i > 0 && i < firstLogPiece;
-		const material: int32 = stone ? stoneMaterial.value : litMaterial;
+		const material: int32 = i == 0 ? groundMaterial.value : litMaterial;
 		const placed: Result<NodeId, SceneError> =
 			addMeshNode(tree, under, placements[i], uploaded.value, material);
 		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
@@ -755,18 +766,24 @@ function setupDraws(): void {
 	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
 }
 
-// The stones share the lit material unless they are greyed, and then they get their own, so
-// they change colour and the ground and the logs do not.
-function stoneMaterialFor(state: RenderState, litMaterial: int32): Result<int32, UniformError> {
-	if (stoneSaturation == 0.0) { return Result.ok(litMaterial); }
+function groundMaterialFor(state: RenderState, litMaterial: int32): Result<int32, UniformError> {
+	if (groundSaturation == 0.0 || groundGreyOnCpu) { return Result.ok(litMaterial); }
 	const block: UniformBlock =
 		try reserveUniforms(context, TOON_UNIFORM_SLOT, TOON_UNIFORM_LENGTH);
-	const toon: Vec<float32> = [LIGHT_LEVELS, stoneSaturation, 0.0, 0.0];
+	const toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	toon[TOON_SATURATION] = groundSaturation;
 	writeUniforms(context, block, toon);
 	return Result.ok(addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: block,
 	}));
+}
+
+function groundColor(): Rgba {
+	if (!groundGreyOnCpu) { return GROUND; }
+	const base: Vec4 = vec4(GROUND.red, GROUND.green, GROUND.blue, 1.0);
+	const grey: Vec4 = base * identity().colorSaturated(groundSaturation);
+	return { red: grey.x, green: grey.y, blue: grey.z, alpha: GROUND.alpha };
 }
 
 // One stone goes through the vertex-baked path with two identical frames: the image cannot
@@ -932,10 +949,11 @@ export function configureCampfireParticles(on: boolean): void {
 	particlesWanted = on;
 }
 
-// The stones' saturation, on their own lit material: 0 leaves them sharing the scene's, -1 is
-// grey.
-export function configureCampfireGreyStones(saturation: float32): void {
-	stoneSaturation = saturation;
+// The ground's saturation: on a lit material of its own, or, with `onCpu`, baked into its vertex
+// colours through colorSaturated while it keeps the scene's material. 0 leaves it alone.
+export function configureCampfireGreyGround(saturation: float32, onCpu: boolean): void {
+	groundSaturation = saturation;
+	groundGreyOnCpu = onCpu;
 }
 
 // Swaps to WINTER_PALETTE at frame 5, greys the look at frame 10 and puts both back at frame 15.
