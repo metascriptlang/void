@@ -20,7 +20,7 @@ layout(binding=3) uniform toonParams {
 @end
 
 @block saturation
-// h3d.Matrix.colorSaturate in scalar form; the gate's grey reference holds it to colorSaturated.
+// h3d.Matrix.colorSaturate in scalar form; campfireGreyCpuCapture holds it to colorSaturated.
 vec3 saturated(vec3 rgb, float amount) {
     if (amount == 0.0) {
         return rgb;
