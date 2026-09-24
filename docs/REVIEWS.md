@@ -555,7 +555,7 @@ and per-module wasm budgets.
 
 # P3 — The glyph layer
 
-The phase diff is `2fe84d3..1a517eb`, steps 1-8; steps 1-3 reached `main` mid-phase as `2936e0b`.
+The phase diff is `2fe84d3..333b70c`, steps 1-8; steps 1-3 reached `main` mid-phase as `2936e0b`.
 The defect pass was `/code-review high` in Claude Code, verified finding by finding in the main
 session. The design pass was a fresh Claude subagent that had written none of P3.
 
@@ -566,14 +566,14 @@ after them: 859 tests, D3D11 69 / 69, no golden moved.
 
 | Finding | Resolution |
 |---|---|
-| The empty line after a trailing newline had `byteStart` 0, so a caret or click there jumped to the start of the text | `65a372f`: it starts at the text's byte length; T0 pins `byteForX` and `xForByte` on it |
-| `splitText` sliced codepoint indices out of a UTF-16 `slice`, so an astral character shifted every later line | `6742189`: slices each line's byte range; T0 wraps text holding an emoji |
-| Label bounds had become line boxes only, so synthetic italic, negative bearings or a taller fallback lost their ink to filter targets and culling | `e7d29a7`: bounds are line boxes ∪ glyph ink boxes at the layout size; T1 fails without the union |
-| A label placed twice in one frame released its tiles mid-frame; at 16 pages another label could reclaim that page while this frame's quads still sampled it | `6272629`: a page drawn from in the current frame is never reclaimed. The frame serial comes from `void2dFrameEnd`, `begin2d` hands it to the atlas, `emitLabel` marks each page it draws from. T0 pins the fence, T1 the wiring |
-| `glyph.c` handed out unbounded page handles while the GPU side keeps 64 views and returned view 0 past them | `f7c5358`: one shared cap, `VOID2D_MAX_GLYPH_PAGES`; a page past it is refused with an error and the atlas reports `Full` |
-| An atlas refusal was reported once per process, and then glyphs vanished silently | `90372ae`: every placement that loses glyphs reports how many and why |
-| `sizeAdjust` divided by a fallback's line height with no zero guard | `2859b8c`: a face without a line height is reported and keeps the primary size |
-| A comment carried narrative | `777ea6d`: trimmed to its one hazard |
+| The empty line after a trailing newline had `byteStart` 0, so a caret or click there jumped to the start of the text | `efa0c7c`: it starts at the text's byte length; T0 pins `byteForX` and `xForByte` on it |
+| `splitText` sliced codepoint indices out of a UTF-16 `slice`, so an astral character shifted every later line | `329dab9`: slices each line's byte range; T0 wraps text holding an emoji |
+| Label bounds had become line boxes only, so synthetic italic, negative bearings or a taller fallback lost their ink to filter targets and culling | `cc00e7d`: bounds are line boxes ∪ glyph ink boxes at the layout size; T1 fails without the union |
+| A label placed twice in one frame released its tiles mid-frame; at 16 pages another label could reclaim that page while this frame's quads still sampled it | `5a2e85e`: a page drawn from in the current frame is never reclaimed. The frame serial comes from `void2dFrameEnd`, `begin2d` hands it to the atlas, `emitLabel` marks each page it draws from. T0 pins the fence, T1 the wiring |
+| `glyph.c` handed out unbounded page handles while the GPU side keeps 64 views and returned view 0 past them | `7721356`: one shared cap, `VOID2D_MAX_GLYPH_PAGES`; a page past it is refused with an error and the atlas reports `Full` |
+| An atlas refusal was reported once per process, and then glyphs vanished silently | `a241496`: every placement that loses glyphs reports how many and why |
+| `sizeAdjust` divided by a fallback's line height with no zero guard | `9674309`: a face without a line height is reported and keeps the primary size |
+| A comment carried narrative | `0e4607b`: trimmed to its one hazard |
 | Kept: a glyph rasterized into a page an earlier bracket already uploaded is one frame late | Already `tests/PENDING.md glyph-page-second-upload`: sokol allows one `sg_update_image` per image per frame |
 | Kept: 64 page views scanned per draw command, a synthetic outline parsed twice per rasterization | No steady-state cost: rasterizations are 0 and the UI bench is one draw |
 
@@ -584,15 +584,15 @@ defects, the pattern P1-B3 and P2-R6 were sent back for.
 
 | id | Finding | Resolution before re-review |
 |---|---|---|
-| P3-R1 | The exit's five-backend conformance run was not met (2 of 7 surfaces), and the record did not say so: guardrail 9 still read "67/67 at P2 … the full five-backend run is P3", TESTING.md still said 67, and five `backend:*` rows still named P3, so closing P3 would orphan them | `176692d`: "Measured at P3 step 8" states both unmet halves (2 of 7 backends; the Zed capture owed by the human). Guardrail 9 reads 69 / 69 plus WebGL2 65 / 69. GLES3 desktop and WebGPU move into P6's Lands and Exit; Metal and Android wait on the human's hardware. `a6e3580` makes the web run print its renderer, `ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 ... Direct3D11 vs_5_0 ps_5_0, D3D11)`: the WebGL2 number is the GLSL ES path and GL's conventions on the same GPU and driver, not a second driver, and the record says so. All seven `text/` scenes are byte-identical there |
-| P3-R2 | Step 8 decided the rasterizer, but colour emoji and explicit-versus-fallback presentation still "wait on step 8's decision" and no phase owns them. P3's Lands promised both, and P6 takes emoji "only if P3's captures asked" | `1b7e6b9`, on the human's decision: colour emoji is a P6 compile-time module (guardrail 6) that reads CBDT/sbix strikes through `stb_image` and COLRv0 layers into P3's RGBA pages, with presentation and deferred faces beside it (PENDING `font-colour-emoji`). Whole-grapheme selection goes to P4's Lands (`font-grapheme-selection`), and `glyph-page-second-upload` to P5's with F7's fix direction |
-| P3-R3 | The `present` debt, UI +1.4 to +1.8 ms, lived only in P3's text. P5's Measure said only "must not regress", so P5 would inherit the gap as its baseline. The reviewer judged P5 the right owner: its retained ranges remove the per-label re-emission that carries the cost | `747f937`: P5's Measure requires UI `present` at or below the pre-P3 control `8a473f3` under `scripts/bench-ab.sh`, on a box checked quiet |
+| P3-R1 | The exit's five-backend conformance run was not met (2 of 7 surfaces), and the record did not say so: guardrail 9 still read "67/67 at P2 … the full five-backend run is P3", TESTING.md still said 67, and five `backend:*` rows still named P3, so closing P3 would orphan them | `39097c2`: "Measured at P3 step 8" states both unmet halves (2 of 7 backends; the Zed capture owed by the human). Guardrail 9 reads 69 / 69 plus WebGL2 65 / 69. GLES3 desktop and WebGPU move into P6's Lands and Exit; Metal and Android wait on the human's hardware. `ae04731` makes the web run print its renderer, `ANGLE (NVIDIA, NVIDIA GeForce RTX 5090 ... Direct3D11 vs_5_0 ps_5_0, D3D11)`: the WebGL2 number is the GLSL ES path and GL's conventions on the same GPU and driver, not a second driver, and the record says so. All seven `text/` scenes are byte-identical there |
+| P3-R2 | Step 8 decided the rasterizer, but colour emoji and explicit-versus-fallback presentation still "wait on step 8's decision" and no phase owns them. P3's Lands promised both, and P6 takes emoji "only if P3's captures asked" | `d32839a`, on the human's decision: colour emoji is a P6 compile-time module (guardrail 6) that reads CBDT/sbix strikes through `stb_image` and COLRv0 layers into P3's RGBA pages, with presentation and deferred faces beside it (PENDING `font-colour-emoji`). Whole-grapheme selection goes to P4's Lands (`font-grapheme-selection`), and `glyph-page-second-upload` to P5's with F7's fix direction |
+| P3-R3 | The `present` debt, UI +1.4 to +1.8 ms, lived only in P3's text. P5's Measure said only "must not regress", so P5 would inherit the gap as its baseline. The reviewer judged P5 the right owner: its retained ranges remove the per-label re-emission that carries the cost | `155603e`: P5's Measure requires UI `present` at or below the pre-P3 control `8a473f3` under `scripts/bench-ab.sh`, on a box checked quiet |
 
-Recorded with the send-back: `33a9a29` writes down two divergences from GPUI that were not
+Recorded with the send-back: `7552dc2` writes down two divergences from GPUI that were not
 written — the interim bitmap transformed regime (the SDF regime is P6's) and the refusal of a
 glyph larger than a page, where GPUI gives it its own texture — and marks the atlas page kinds
-and the rasterizer resolved. `fc50a88` closes "text lines centred on fractional pixels" in Known
-defects and states that wrapping breaks at U+0020 only. `42cd91d` gives a Label dropped without
+and the rasterizer resolved. `572d863` closes "text lines centred on fractional pixels" in Known
+defects and states that wrapping breaks at U+0020 only. `a33ec36` gives a Label dropped without
 `dispose` a PENDING row owned by P5.
 
 ### Follow-ups the design pass carried
@@ -603,10 +603,10 @@ defects and states that wrapping breaks at U+0020 only. `42cd91d` gives a Label 
 | F2 | Every layout call, `calcTextWidth` and `splitText` included, recomputes the face's decoration metrics from 95 glyph lookups, and `textWidth()` / `textHeight()` copy the whole layout. Cache heights per face and gate a measure call in T4 before the host's Yoga measure binds to it | P4 |
 | F3 | Filter targets open at an unsnapped `xMin`, so pixel-exact text inside a filter at DPI 1.25 or 1.5 is resampled. Snap the target and add `text/filteredDpi125` | P4 |
 | F4 | `\r` and tab draw `.notdef` and probe every fallback face; wrapping follows GPUI's break rule; `align` is centred about the origin, where h2d centres inside `maxWidth` | P4 |
-| F5 | The two undocumented GPUI divergences, the interim bitmap transformed regime and the oversized-glyph refusal | closed in `33a9a29` |
+| F5 | The two undocumented GPUI divergences, the interim bitmap transformed regime and the oversized-glyph refusal | closed in `7552dc2` |
 | F6 | A Label dropped without `dispose` pins its page: PENDING `label-dispose-pins-page` | P5 |
 | F7 | Fix direction for `glyph-page-second-upload`: never place new tiles on, or reclaim, a page already uploaded this frame; C knows `s_pageUploaded` | P5 |
-| F8 | Pins for `f7c5358`, `90372ae` and `2859b8c`. The first cannot run in the shared test process, since exhausting the process-wide page table starves every later test; it needs a standalone T0 entry | P4 |
+| F8 | Pins for `7721356`, `a241496` and `9674309`. The first cannot run in the shared test process, since exhausting the process-wide page table starves every later test; it needs a standalone T0 entry | P4 |
 | F9 | CODE-STYLE §14: `NO_FONT` and `-1` returns in place of `Result`, struct-first free functions, an atlas page index and a C page handle that are both bare `int32`, module data as `T[]`, 30 new lines over 100 columns, stale fontstash comments in the harness | P4, before the host binds |
 | F10 | Both A/B arms read about 2.2× P2's absolute UI milliseconds at 25-33 % load: re-take `8a473f3` against the head on a quiet box before any P4 change, and file a compiler perf card if the shift follows msc 0.2.53 → 0.2.55. Then a perf card, or a stated DRC reason, for the "reference counting in the generated C" behind the `present` gap | re-take: start of P4 (P4 Measure); the card: P5 |
 | F11 | Zero-area tiles are cached with no page and never reclaimed (P6). The line box uses only the primary face's ascent and descent, which P4's caret, selection and IME geometry would inherit (P4 Lands) | P6 / P4 |
@@ -630,12 +630,12 @@ came from the fixes themselves.
 
 | id | Finding | Resolution before the third pass |
 |---|---|---|
-| P3-B1 | `33a9a29` put "resolved" in front of the rasterizer line and left its last sentence, "Decided from captures beside Zed", a false past-tense claim about the capture R1 declares owed. The same fix and P6's emoji bullet spoke of "the RGBA pages P3 reserved", but only R8 glyph pages exist (`batcher.c` makes one page format) | `2e926bd`: the rasterizer was decided by the FreeType experiment and its wasm cost, and the Zed look is owed. The RGBA page kind is decided and not built, and P6's emoji module builds it: the format, its view and a colour draw path |
-| P3-B2 | R1's stale counts survived in TESTING.md's tier table ("State after P2", 708 tests, 67 scenes, six backends SKIP), its golden-size paragraph (67 goldens, 1 328 179 B) and PENDING's "checked on one backend" | `e248307`, re-measured: 859 tests over 55 files; 69 goldens, **1 394 175 B**, of which 748 008 B are the 65 scenes and 646 167 B the four demo frames; 18 counters per bench scene. PENDING says two backends. `2e926bd` also updates VOID2D's two present-tense golden counts |
-| P3-B3 | Two PENDING rows named an owner whose Lands and Exit do not carry the work: `label-dispose-pins-page` (P5) and the Metal and Android backend rows (P6) | `2e926bd`: P5's Lands release a Label's glyph tiles when it leaves the scene, on h2d's `onAdd`/`onRemove` allocation, with a T1 assertion. P6's Exit makes Metal and Android either report a pass rate from the human's hardware or stay a SKIP that names the missing run |
+| P3-B1 | `7552dc2` put "resolved" in front of the rasterizer line and left its last sentence, "Decided from captures beside Zed", a false past-tense claim about the capture R1 declares owed. The same fix and P6's emoji bullet spoke of "the RGBA pages P3 reserved", but only R8 glyph pages exist (`batcher.c` makes one page format) | `9f89d3d`: the rasterizer was decided by the FreeType experiment and its wasm cost, and the Zed look is owed. The RGBA page kind is decided and not built, and P6's emoji module builds it: the format, its view and a colour draw path |
+| P3-B2 | R1's stale counts survived in TESTING.md's tier table ("State after P2", 708 tests, 67 scenes, six backends SKIP), its golden-size paragraph (67 goldens, 1 328 179 B) and PENDING's "checked on one backend" | `a667c16`, re-measured: 859 tests over 55 files; 69 goldens, **1 394 175 B**, of which 748 008 B are the 65 scenes and 646 167 B the four demo frames; 18 counters per bench scene. PENDING says two backends. `9f89d3d` also updates VOID2D's two present-tense golden counts |
+| P3-B3 | Two PENDING rows named an owner whose Lands and Exit do not carry the work: `label-dispose-pins-page` (P5) and the Metal and Android backend rows (P6) | `9f89d3d`: P5's Lands release a Label's glyph tiles when it leaves the scene, on h2d's `onAdd`/`onRemove` allocation, with a T1 assertion. P6's Exit makes Metal and Android either report a pass rate from the human's hardware or stay a SKIP that names the missing run |
 
 It also moved three follow-ups and found new record items for the P3 close. All of them are in
-`2e926bd`, `e248307` and `b27dec0`:
+`9f89d3d`, `a667c16` and `f112d61`:
 - **The follow-up table is corrected above.** F10's quiet-box re-take moves to the start of P4, because P4's `present` becomes P5's baseline. F11's line-box half moves to P4. F5 is closed.
 - **F2 and F9 clash with P3's Unblocks**, which hands the Neon host its Yoga measure callback now. Unblocks now says the measure cost and the font API's shape move in P4.
 - **Deferred faces** serve the lazy CJK families too, so they belong in the default glyph layer rather than in the emoji module. P6's Exit tests them with the module on or off.
@@ -649,9 +649,9 @@ is swept across every tracked doc in the same commit, not only at the sites a re
 
 ## P3 ship review: **SHIP WITH FOLLOW-UPS**
 
-A third fresh reviewer checked B1-B3 at `c182805`, file by file, against the disk. The golden
-count and bytes, the tier table and the gate logs of `698c57b` all match. It found nothing in the
-code it would refuse. `sh scripts/gate.sh --web` was GREEN at `698c57b`, and everything after it
+A third fresh reviewer checked B1-B3 at `ed4de3c`, file by file, against the disk. The golden
+count and bytes, the tier table and the gate logs of `682966f` all match. It found nothing in the
+code it would refuse. `sh scripts/gate.sh --web` was GREEN at `682966f`, and everything after it
 is docs only: 859 tests over 55 files, D3D11 69 / 69, WebGL2 65 / 69 with the four listed
 structural failures and all seven `text/` scenes byte-identical, through
 `ANGLE (NVIDIA ... Direct3D11 ...)`. Both web backends built, at 761 810 B and 667 012 B.
@@ -659,7 +659,7 @@ structural failures and all seven `text/` scenes byte-identical, through
 | Question | Decision and evidence |
 |---|---|
 | 1. Exit criteria | Met and gated: `text/` byte-identical at DPI 1.0, 1.25 and 1.5; 0 rasterizations in the steady state; 2 pages after the zoom sweep; `textWidth` and per-glyph x from the painted layout; fallback with cached misses. **Two halves unmet and declared, each with an owner:** the Zed look (the human, before P4's exit) and the five-backend run, 2 of 7 (GLES3 desktop and WebGPU in P6's Lands and Exit; Metal and Android in P6's Exit, on the human's hardware) |
-| 2. Measurements | Every count in the tracked docs matches the `698c57b` logs. The wasm delta after the fixes is +30 169 / +30 046 B. The `present` A/B was taken at step 8, and P4 re-takes it first on a quiet box (F10) |
+| 2. Measurements | Every count in the tracked docs matches the `682966f` logs. The wasm delta after the fixes is +30 169 / +30 046 B. The `present` A/B was taken at step 8, and P4 re-takes it first on a quiet box (F10) |
 | 3. Guardrails 1-9 | None violated. Guardrail 9 is two measured surfaces, and the record says that WebGL2 runs through ANGLE on the same GPU. Guardrail 6 carries colour emoji as a P6 module. Guardrail 8 holds: sprites 4.93 → 4.93 ms |
 | 4. GPUI fidelity | Float unhinted layout, four x-variants, the key, 1:1 sprites and the gamma and contrast table are GPUI's. The interim bitmap transformed regime and the oversized-glyph refusal are written down in VOID2D.md and GPUI.md |
 | 5. h2d spirit | `textWidth`, `calcTextWidth`, `splitText`, `maxWidth`, `letterSpacing` and `lineSpacing` in px are h2d's. What is foreign is carried to P4 (F4, F9) |
