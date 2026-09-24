@@ -827,7 +827,7 @@ run_capture() {
 		fail "capture $name: the entry is missing"
 		return
 	fi
-	rm -f "out/debug/$name.exe"
+	rm -f "out/debug/$name.exe" "$CAPTURE/gate/${name}_"*.ppm
 	if ! msc build "$entry" > "$WORK/$name.build.log" 2>&1; then
 		fail "capture $name: build failed"
 		tail -30 "$WORK/$name.build.log"
@@ -837,8 +837,8 @@ run_capture() {
 		fail "capture $name: out/debug/$name.exe was not produced"
 		return
 	fi
-	rm -f "$CAPTURE/gate/${name}_"*.ppm
 	if ! CAPTURE_PREFIX="$CAPTURE/gate/$name" "./out/debug/$name.exe" > "$WORK/$name.run.log" 2>&1; then
+		rm -f "$CAPTURE/gate/${name}_"*.ppm
 		fail "capture $name: the run exited nonzero"
 		tail -20 "$WORK/$name.run.log"
 		return
