@@ -111,9 +111,9 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | `clamp(clamp(p, instance clip) + view_shift, view_clip)` — list-level shift applied after the per-instance clip | **Take the formulation** | the shader shape of `Mask.scrollX/Y`. Makepad wrote it and does not use it |
 | **SDF text recipe**: 32 px/em ESDT, pad 4 / radius 8, derivative-scaled ramp, luma bias | **Take, for the transformed regime only** | one raster serves every size, so zoom and animation cost nothing. It is not the UI-text path (below) |
 | Lazy CJK / emoji families on a real glyph miss | **Take** | the wasm-size answer for guardrail 6 |
-| Emoji strikes pre-shrunk into 1.25× size buckets | **Take** | bounded atlas churn under zoom |
+| Emoji strikes pre-shrunk into 1.25× size buckets | **Take**, in P6's colour-emoji module | bounded atlas churn under zoom |
 | Layout-cache eviction that never evicts this frame's working set | **Take**, if a keyed cache is ever added | |
-| Four single-channel planes per RGBA page, balanced allocator | **Consider** at P3 | 4× glyphs per texture and per bind slot on GLES3, and one page kind for coverage and emoji; costs a per-instance plane selector and rules out an R8 format |
+| Four single-channel planes per RGBA page, balanced allocator | **Considered and declined** at P3 step 8 (VOID2D.md P3 "Atlas page kinds": R8 + RGBA) | 4× glyphs per texture and per bind slot on GLES3, and one page kind for coverage and emoji; costs a per-instance plane selector and rules out an R8 format |
 | "Identical bytes → skip upload" | **Take** | cheap guard for re-recorded, unchanged ranges |
 | Frame-latency waitable as frame clock, timestamp from DXGI statistics, draw during modal resize, occlusion probe; frame-gap histograms | **N**, with requirements noted | Ion / the host owns pacing; the histograms are the template for void2d's profiler |
 | **Minified SDF as UI text** — no hinting, no variants, no snap, no gamma | **W** | nothing lands small text on the pixel grid (inferred from source; not captured). The contrast with GPUI and Ghostty is the argument for the pixel-exact coverage regime |

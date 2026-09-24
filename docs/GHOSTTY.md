@@ -105,7 +105,7 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Hand-ported shaders drift | **Confirms** "one GLSL source" | |
 | Font collection: ordered faces per style, deferred faces, explicit-vs-fallback presentation, negative-caching codepoint map, whole-grapheme selection, embedded last-resort fonts | **Take** | the fallback design for the glyph layer; GPUI's is "per grapheme by coverage" and no more |
 | Fallback size harmonisation (`ic_width → ex_height → cap_height → line_height`) | **Take** | metrics only; an editor mixing CJK or symbols with a Latin mono font needs it |
-| Variable-font axes; style derived from axes | **Take**, with the rasterizer decision | stb_truetype has no `fvar`/`gvar` |
+| Variable-font axes; style derived from axes | **Take**, at P6 only if the T5 capture beside Zed asks for them (the rasterizer was decided at P3 step 8) | stb_truetype has no `fvar`/`gvar` |
 | Synthetic bold / italic policy | **Take**, module | |
 | Decoration metrics from `post` / `OS/2`, with broken-table fallbacks | **Take** | fixes a GPUI weakness |
 | Complementary rounding for fractional splits | **Take** | into the snapping rules: split panes, progress bars, table columns |
