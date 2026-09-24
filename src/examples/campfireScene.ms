@@ -465,12 +465,18 @@ function buildScene(): void {
 	layoutStones();
 	let ground: MeshData = MeshData.empty();
 	const plane: Result<int32, MeshError> = addPlane(ground, GROUND_HALF_SIZE, groundColor());
-	if (!plane.ok) { return; }
+	if (!plane.ok) {
+		console.log(`campfire: buildScene bailed at the ground, ${plane.error.toString()}`);
+		return;
+	}
 	addPiece(ground, identityTransform());
 	for (const block of stones) {
 		let geometry: MeshData = MeshData.empty();
 		const added: Result<int32, MeshError> = addBox(geometry, unplaced(block));
-		if (!added.ok) { return; }
+		if (!added.ok) {
+			console.log(`campfire: buildScene bailed at a stone, ${added.error.toString()}`);
+			return;
+		}
 		addPiece(geometry, placementOf(block));
 	}
 	firstLogPiece = pieces.length as int32;
@@ -487,7 +493,10 @@ function buildScene(): void {
 		};
 		let geometry: MeshData = MeshData.empty();
 		const added: Result<int32, MeshError> = addBox(geometry, unplaced(log));
-		if (!added.ok) { return; }
+		if (!added.ok) {
+			console.log(`campfire: buildScene bailed at a log, ${added.error.toString()}`);
+			return;
+		}
 		addPiece(geometry, placementOf(log));
 	}
 }
@@ -623,10 +632,16 @@ function updateFlicker(): void {
 		fireLight,
 		transformAt(vec3(fireOffsetX, FIRE_HEIGHT + fireOffsetY, fireOffsetZ)),
 	);
-	if (!moved.ok) { return; }
+	if (!moved.ok) {
+		console.log(`campfire: the flicker could not move the fire, ${moved.error.toString()}`);
+		return;
+	}
 	const powered: Result<int32, SceneError> =
 		setLightPower(tree, fireLight, FIRE_INTENSITY * fireFlicker);
-	if (!powered.ok) { return; }
+	if (!powered.ok) {
+		console.log(`campfire: the fire's power was refused, ${powered.error.toString()}`);
+		return;
+	}
 }
 
 
@@ -1131,7 +1146,10 @@ export function frameCampfire(): void {
 		noRemainder,
 		noRemainder,
 	);
-	if (!sized.ok) { return; }
+	if (!sized.ok) {
+		console.log(`campfire: the low-res view was refused, ${sized.error.toString()}`);
+		return;
+	}
 	const grid: LowResView = sized.value;
 
 	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
@@ -1149,7 +1167,10 @@ export function frameCampfire(): void {
 	const target: Vec3 = centred.basisOf().right.scaled(slide);
 	const camera: OrthoCamera = { ...centred, target: target };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
-	if (!resolved.ok) { return; }
+	if (!resolved.ok) {
+		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
+		return;
+	}
 	const cameraView: CameraView = resolved.value;
 
 	const viewed: Result<LowResView, ViewError> = renderer.viewFor(
@@ -1158,27 +1179,45 @@ export function frameCampfire(): void {
 		cameraView.remainderX,
 		cameraView.remainderY,
 	);
-	if (!viewed.ok) { return; }
+	if (!viewed.ok) {
+		console.log(`campfire: the remainder view was refused, ${viewed.error.toString()}`);
+		return;
+	}
 
 	cameraView.writeCameraBlock(cameraParams);
 	updateFlicker();
 
 	if (logSpinPerFrame != 0.0) {
 		const spun: Result<int32, AnimationError> = syncPose(logSpin, tree);
-		if (!spun.ok) { return; }
+		if (!spun.ok) {
+			console.log(`campfire: the log spin could not pose the logs, ${spun.error.toString()}`);
+			return;
+		}
 	}
 	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
-	if (!swapped.ok) { return; }
+	if (!swapped.ok) {
+		console.log(`campfire: the flame could not swap its frame, ${swapped.error.toString()}`);
+		return;
+	}
 	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree);
-	if (!stoneSwapped.ok) { return; }
+	if (!stoneSwapped.ok) {
+		console.log(`campfire: the stone frame swap was refused, ${stoneSwapped.error.toString()}`);
+		return;
+	}
 	// Sync the world matrices and rewrite the list in place. The structure only changes once,
 	// at setup, so every later frame takes the rewrite path and allocates nothing.
 	const drawn: int32 = refresh(tree, sceneItems);
-	if (drawn == 0) { return; }
+	if (drawn == 0) {
+		console.log("campfire: the scene has nothing to draw");
+		return;
+	}
 	// Lights are read out of the synced tree: a light's position and direction are its world
 	// matrix, so collecting before `refresh` would read the previous frame's.
 	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
-	if (!lit.ok) { return; }
+	if (!lit.ok) {
+		console.log(`campfire: the lights were refused, ${lit.error.toString()}`);
+		return;
+	}
 	if (particlesWanted) {
 		const stepped: boolean = advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
 		const drawn: boolean = stepped &&
@@ -1194,7 +1233,18 @@ export function frameCampfire(): void {
 	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
 	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
 	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
-	if (!flameMoved.ok || !stoneMoved.ok || !logsMoved.ok) { return; }
+	if (!flameMoved.ok) {
+		console.log(`campfire: the flame clock was refused, ${flameMoved.error.toString()}`);
+		return;
+	}
+	if (!stoneMoved.ok) {
+		console.log(`campfire: the stone clock was refused, ${stoneMoved.error.toString()}`);
+		return;
+	}
+	if (!logsMoved.ok) {
+		console.log(`campfire: the spin clock was refused, ${logsMoved.error.toString()}`);
+		return;
+	}
 	frameIndex = frameIndex + 1;
 	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
 }
