@@ -37,6 +37,7 @@ import {
 	labelTexts,
 } from "./labelText";
 import { TextLayout, TextStyle, calcTextWidth as layoutWidth } from "./textLayout";
+import { glyphInkBox } from "./face";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
@@ -218,6 +219,15 @@ function shapeIfChanged(n: Node2D): void {
 		}
 		n.contentYMin = 0.0;
 		n.contentYMax = laid.height;
+		for (const g of laid.glyphs) {
+			const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
+			if (right <= left || bottom <= top) { continue; }
+			const baseline: float32 = laid.lines[g.line].baseline;
+			if (g.x + left < n.contentXMin) { n.contentXMin = g.x + left; }
+			if (g.x + right > n.contentXMax) { n.contentXMax = g.x + right; }
+			if (baseline + top < n.contentYMin) { n.contentYMin = baseline + top; }
+			if (baseline + bottom > n.contentYMax) { n.contentYMax = baseline + bottom; }
+		}
 		n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
 		n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
 		n.textDirty = false;

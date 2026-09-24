@@ -1,7 +1,8 @@
 import { label, rect } from "../void2d/node";
 import { textLayout, textWidth, textHeight, calcTextWidth, splitText, getBounds } from "../void2d/render";
 import { TextLayout } from "../void2d/textLayout";
-import { Bounds, rgba, emptyBounds } from "../void2d/types";
+import { Bounds, rgba, emptyBounds, identity2d } from "../void2d/types";
+import { Font, FontFeature, FontStyle, SizeAdjust, registerFace } from "../void2d/font";
 import { approx } from "./helpers";
 
 test "textWidth is the width of the layout the label paints" {
@@ -42,4 +43,21 @@ test "per-glyph x and line boxes come from the same layout" {
 test "text metrics on a node that is not a Label are empty, not a crash" {
 	const box = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert box.textWidth() == 0.0;
+}
+
+test "a label's bounds hold the ink that overhangs its line box" {
+	registerFace("assets/font.ttf", "Overhang Sans", 400, FontStyle.Normal);
+	const features: FontFeature[] = [];
+	const fallbacks: string[] = [];
+	const italic: Font = {
+		family: "Overhang Sans", weight: 400, style: FontStyle.Italic,
+		features: features, fallbacks: fallbacks, sizeAdjust: SizeAdjust.None,
+	};
+	const n = label("ll", 40.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(italic);
+	n.sync(identity2d(), false);
+	const b = emptyBounds();
+	n.getBounds(b);
+	assert b.xMax > n.textWidth() + 1.0;
+	assert b.yMin <= 0.0;
+	assert b.yMax >= n.textHeight();
 }

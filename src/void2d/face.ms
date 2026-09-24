@@ -8,6 +8,7 @@ import {
 	void2dGlyphDecoration,
 	void2dGlyphFaceHeights,
 	void2dGlyphPageTexel,
+	void2dGlyphBox,
 } from "./glyph.h";
 
 export struct FaceMetrics {
@@ -51,6 +52,11 @@ export function glyphAdvance(face: int32, glyph: int32, sizePx: float32): float3
 
 export function glyphKern(face: int32, left: int32, right: int32, sizePx: float32): float32 {
 	return void2dGlyphKern(face, left, right, sizePx);
+}
+
+export function glyphInkBox(face: int32, glyph: int32, sizePx: float32): [float32, float32, float32, float32] {
+	const box: Ptr<int32> = void2dGlyphBox(face, glyph, sizePx, 0.0);
+	return [box[0] as float32, box[1] as float32, box[2] as float32, box[3] as float32];
 }
 
 export function faceMetrics(face: int32, sizePx: float32): FaceMetrics {
