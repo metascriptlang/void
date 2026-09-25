@@ -5,6 +5,7 @@
 // here must be added there in the same position. Handles are sokol ids as uint32, 0 = none.
 // The descriptor layouts (GPU3D_PIPELINE_*, GPU3D_PASS_*, GPU3D_BINDING_*) come from gpu3d.h.
 
+import "../sokol/gpu";
 import {
 	gpu3dMakeShader,
 	gpu3dUniformSlotMask,
