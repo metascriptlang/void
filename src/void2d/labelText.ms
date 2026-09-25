@@ -1,6 +1,8 @@
 import {
 	GlyphAtlas,
 	GlyphTile,
+	GlyphPage,
+	GlyphPageHandle,
 	GLYPH_PAGE_SIZE,
 	quantizeX,
 	snapBaseline,
@@ -13,7 +15,7 @@ const MAX_GLYPH_PAGES: int32 = 16;
 
 export struct PlacedGlyph {
 	tile: int32;
-	page: int32;
+	page: GlyphPage;
 	x: float32;
 	y: float32;
 	w: float32;
@@ -43,11 +45,11 @@ export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLY
 export const labelTexts: LabelText[] = [];
 const freeLabelTexts: Vec<int32> = [];
 
-export function firstGlyphPage(): int32 {
+export function firstGlyphPageHandle(): GlyphPageHandle {
 	return glyphAtlas.ensurePage();
 }
 
-export function glyphPageHandle(page: int32): int32 {
+export function glyphPageHandle(page: GlyphPage): GlyphPageHandle {
 	return glyphAtlas.pageHandle(page);
 }
 
@@ -55,7 +57,7 @@ export function beginGlyphFrame(frame: int32): void {
 	glyphAtlas.beginFrame(frame);
 }
 
-export function markGlyphPageDrawn(page: int32): void {
+export function markGlyphPageDrawn(page: GlyphPage): void {
 	glyphAtlas.markDrawn(page);
 }
 

@@ -10,6 +10,7 @@ import {
 	quantizeX,
 	snapBaseline,
 	packKey,
+	NO_GLYPH_PAGE,
 } from "../void2d/glyphAtlas";
 
 let loadedFace: int32 = -1;
@@ -111,7 +112,7 @@ test "an empty glyph is cached without a tile on any page" {
 	const space = atlas.acquire(keyFor(face, " ".code, 13.0, 0));
 	assert space.ok;
 	if (space.ok) {
-		assert atlas.tile(space.value).page == -1;
+		assert atlas.tile(space.value).page == NO_GLYPH_PAGE;
 		assert atlas.tile(space.value).width == 0;
 	}
 	assert atlas.pageCount() == 0;

@@ -24,6 +24,7 @@ import {
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
 import { beginGlyphFrame } from "./labelText";
+import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
 import {
 	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
@@ -122,7 +123,9 @@ export function scissorMaxDevice(edge: float32, scale: float32): int32 {
 export function atlasImagesAlive(): int32 { return void2dAtlasImagesAlive(); }
 export function glyphUploadCount(): int32 { return void2dGlyphUploadCount(); }
 export function glyphUploadBytes(): int32 { return void2dGlyphUploadBytes(); }
-export function glyphPageView(handle: int32): uint32 { return void2dGlyphPageView(handle); }
+export function glyphPageView(handle: GlyphPageHandle): uint32 {
+	return void2dGlyphPageView(handle as int32);
+}
 export function glyphPageCount(): int32 { return void2dGlyphPageCount(); }
 
 export function setTextGamma(gamma: float32, contrast: float32): void {

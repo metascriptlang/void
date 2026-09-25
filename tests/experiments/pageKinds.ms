@@ -5,7 +5,7 @@
 // No GPU: the atlas, its CPU pages and the placement are all CPU-side.
 
 import { allocateLabelText, shapeLabel, placeLabel, glyphAtlas, glyphRasterizations } from "../../src/void2d/labelText";
-import { GlyphAtlas } from "../../src/void2d/glyphAtlas";
+import { GlyphAtlas, NO_GLYPH_PAGE } from "../../src/void2d/glyphAtlas";
 import { trs2d } from "../../src/void2d/types";
 
 const CODE: string = "fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
@@ -26,7 +26,7 @@ function place(text: string, size: float32, dpi: float32, x: float32): void {
 	shapeLabel(index, text, { font: 0, size: size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0 });
 	const placed = placeLabel(index, trs2d(x, 20.0, 0.0, 1.0, 1.0), dpi);
 	for (const p of placed.placed) {
-		if (p.page >= 0) { pageOrder.push(p.page); }
+		if (p.page != NO_GLYPH_PAGE) { pageOrder.push(p.page as int32); }
 	}
 }
 

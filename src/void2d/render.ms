@@ -32,12 +32,13 @@ import {
 	allocateLabelText,
 	shapeLabel,
 	placeLabel,
-	firstGlyphPage,
+	firstGlyphPageHandle,
 	glyphPageHandle,
 	markGlyphPageDrawn,
 	labelTexts,
 } from "./labelText";
 import { TextLayout, TextStyle, calcTextWidth as layoutWidth } from "./textLayout";
+import { GlyphPage, NO_GLYPH_PAGE } from "./glyphAtlas";
 import { glyphInkBox } from "./face";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
@@ -277,7 +278,7 @@ let imageEffectRejectedReported: boolean = false;
 const deviceGrid: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
 
 function sharedGlyphView(): uint32 {
-	return glyphPageView(firstGlyphPage());
+	return glyphPageView(firstGlyphPageHandle());
 }
 
 function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
@@ -290,7 +291,7 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 	const instanced: boolean = uiInstancingAvailable();
 	const exact: boolean = text.pixelExact;
 	const affine: Transform2D = exact ? deviceGrid : world;
-	let viewPage: int32 = -1;
+	let viewPage: GlyphPage = NO_GLYPH_PAGE;
 	let view: uint32 = 0;
 	for (const p of text.placed) {
 		if (p.w <= 0.0 || p.h <= 0.0) { continue; }

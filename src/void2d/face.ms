@@ -10,6 +10,7 @@ import {
 	void2dGlyphPageTexel,
 	void2dGlyphBox,
 } from "./glyph.h";
+import { GlyphPageHandle } from "./glyphAtlas";
 
 export struct FaceMetrics {
 	ascent: float32;
@@ -87,6 +88,6 @@ export function faceHeights(face: int32): FaceHeights {
 	};
 }
 
-export function pageTexel(page: int32, x: int32, y: int32): int32 {
-	return void2dGlyphPageTexel(page, x, y);
+export function pageTexel(page: GlyphPageHandle, x: int32, y: int32): int32 {
+	return void2dGlyphPageTexel(page as int32, x, y);
 }

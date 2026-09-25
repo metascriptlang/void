@@ -95,7 +95,7 @@ test "drawing a label fences its glyph page for the frame the bracket belongs to
 	n.sync(identity2d(), false);
 	n.draw(1.0, 200.0, 100.0);
 	const page = glyphAtlas.tile(placeLabel(n.payload, n.cachedWorld, 1.0).placed[0].tile).page;
-	assert glyphAtlas.pages[page].drawnFrame == frame;
+	assert glyphAtlas.pages[page as int32].drawnFrame == frame;
 	frameEnd();
 	begin2d(200.0, 100.0, 1.0);
 	assert glyphAtlas.frame == frame + 1;
