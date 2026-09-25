@@ -4,7 +4,7 @@
 import { readFile } from "std/fs";
 import {
 	PendingRow,
-	pendingRows,
+	readPending,
 	roadmapPhases,
 	phaseSection,
 	closesIds,
@@ -84,8 +84,13 @@ function main(): int32 {
 	const roadmap: string = read("docs/VOID2D.md");
 	const testing: string = read("docs/TESTING.md");
 	const table: string = read("tests/golden/table.ms");
-	const rows = pendingRows(pending);
+	const read = readPending(pending);
+	const rows = read.rows;
 	let failed: int32 = checkOwners(rows, roadmap) + checkGoldenCount(table, testing);
+	for (const line of read.unread) {
+		console.log(`FAIL tests/PENDING.md ${line} is in a PENDING table but is not a row`);
+		failed = failed + 1;
+	}
 	if ((rows.length as int32) == 0) {
 		console.log("FAIL tests/PENDING.md parsed to no rows");
 		failed = failed + 1;
