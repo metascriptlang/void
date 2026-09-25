@@ -189,7 +189,7 @@ function setIdentityMat(): void {
 	for (let i: int32 = 0; i < 16; i++) { curMat[i] = i % 5 == 0 ? 1.0 : 0.0; }
 }
 
-function effectMatrixSame(mat: float32[], hasMat: boolean): boolean {
+function effectMatrixSame(mat: Span<float32>, hasMat: boolean): boolean {
 	if (hasMat) {
 		for (let i: int32 = 0; i < 16; i++) { if (mat[i] != curMat[i]) { return false; } }
 		return true;
@@ -516,7 +516,7 @@ function currentGradientKind(): int32 {
 	if (curEffect == NO_EFFECT) { return 0; }
 	return effects[curEffect * EFFECT_FLOATS + EFFECT_GRADIENT_META] as int32;
 }
-export function setEffect(mat: float32[], add: Color, key: Color): void {
+export function setEffect(mat: Span<float32>, add: Color, key: Color): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && !curHasEffect) { return; }
@@ -536,7 +536,7 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 	openRun(BreakReason.Effect);
 }
 export function setGradientEffect(
-	mat: float32[],
+	mat: Span<float32>,
 	add: Color,
 	key: Color,
 	kind: int32,

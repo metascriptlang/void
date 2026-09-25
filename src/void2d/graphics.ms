@@ -137,7 +137,14 @@ function arcSegs(r: float32, sweep: float32): int32 {
 	return n;
 }
 
-function cornerArc(n: Node2D, pts: Vec2[], ccx: float32, ccy: float32, r: float32, a0: float32, seg: int32): void {
+function cornerArc(
+	pts: Vec2[],
+	ccx: float32,
+	ccy: float32,
+	r: float32,
+	a0: float32,
+	seg: int32,
+): void {
 	for (let i: int32 = 0; i <= seg; i++) {
 		const a: float32 = a0 + TAU * 0.25 * ((i as float32) / (seg as float32));
 		pts.push(vec2(ccx + cosf(a) * r, ccy + sinf(a) * r));
@@ -184,7 +191,7 @@ export function fillConvex(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 	return g;
 }
 
-function polyArea2(pts: Vec2[]): float32 {
+function polyArea2(pts: Span<Vec2>): float32 {
 	const m: int32 = pts.length as int32;
 	let a: float32 = 0.0;
 	for (let i: int32 = 0; i < m; i++) {
@@ -207,7 +214,14 @@ function pointInTri(px: float32, py: float32, ax: float32, ay: float32, bx: floa
 	return !(hasNeg && hasPos);
 }
 
-function isEar(pts: Vec2[], next: int32[], u: int32, v: int32, w: int32, ccw: boolean): boolean {
+function isEar(
+	pts: Span<Vec2>,
+	next: Span<int32>,
+	u: int32,
+	v: int32,
+	w: int32,
+	ccw: boolean,
+): boolean {
 	const cr: float32 = cross3(pts[u].x, pts[u].y, pts[v].x, pts[v].y, pts[w].x, pts[w].y);
 	if (ccw) { if (cr <= 0.0) { return false; } } else { if (cr >= 0.0) { return false; } }
 	let p: int32 = next[w];
@@ -222,7 +236,7 @@ function isEar(pts: Vec2[], next: int32[], u: int32, v: int32, w: int32, ccw: bo
 
 // ear-clipping triangulation → flat index triples (handles CONCAVE simple polygons;
 // self-intersecting outlines are undefined).
-function triangulate(pts: Vec2[]): int32[] {
+function triangulate(pts: Span<Vec2>): int32[] {
 	const out: int32[] = [];
 	const n: int32 = pts.length as int32;
 	if (n < 3) { return out; }
@@ -619,10 +633,10 @@ export function fillRoundedRect(this g: Node2D, x: float32, y: float32, w: float
 	if (r <= 0.0) { return g.fillRect(x, y, w, h, color); }
 	const seg: int32 = arcSegs(r, TAU * 0.25);
 	const pts: Vec2[] = [];
-	cornerArc(g, pts, x + r,     y + r,     r, TAU * 0.5,  seg);
-	cornerArc(g, pts, x + w - r, y + r,     r, TAU * 0.75, seg);
-	cornerArc(g, pts, x + w - r, y + h - r, r, 0.0,        seg);
-	cornerArc(g, pts, x + r,     y + h - r, r, TAU * 0.25, seg);
+	cornerArc(pts, x + r,     y + r,     r, TAU * 0.5,  seg);
+	cornerArc(pts, x + w - r, y + r,     r, TAU * 0.75, seg);
+	cornerArc(pts, x + w - r, y + h - r, r, 0.0,        seg);
+	cornerArc(pts, x + r,     y + h - r, r, TAU * 0.25, seg);
 	return g.fillConvex(pts, color);
 }
 

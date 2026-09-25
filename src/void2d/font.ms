@@ -199,7 +199,7 @@ function needsItalic(this font: Font, match: int32): boolean {
 	return font.style == FontStyle.Italic && registered[match].style != FontStyle.Italic;
 }
 
-function sameStrings(a: string[], b: string[]): boolean {
+function sameStrings(a: Span<string>, b: Span<string>): boolean {
 	if (a.length != b.length) { return false; }
 	for (let i = 0; i < (a.length as int32); i++) {
 		if (!a[i].equals(b[i])) { return false; }

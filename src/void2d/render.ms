@@ -52,7 +52,7 @@ import {
 } from "./graphics";
 import { NO_IMAGE_STYLE, imageStyles, fitImage } from "./imageStyle";
 
-function sortByZ(cs: Node2D[]): void {
+function sortByZ(cs: Span<Node2D>): void {
 	const m: int32 = cs.length as int32;
 	for (let i: int32 = 1; i < m; i++) {
 		const cur = cs[i];

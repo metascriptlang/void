@@ -376,7 +376,7 @@ export function uiModeCount(mode: int32): int32 {
 }
 
 // The colour pipeline as a row of its own. Returns the index a command should carry.
-export function pushEffect(matrix: float32[], add: Color, key: Color): int32 {
+export function pushEffect(matrix: Span<float32>, add: Color, key: Color): int32 {
 	const base: int32 = effectTotal * EFFECT_FLOATS;
 	growTo(effects, base + EFFECT_FLOATS);
 	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { effects[base + i] = 0.0; }
@@ -397,7 +397,7 @@ export function pushEffect(matrix: float32[], add: Color, key: Color): int32 {
 }
 
 export function pushGradientEffect(
-	matrix: float32[],
+	matrix: Span<float32>,
 	add: Color,
 	key: Color,
 	kind: int32,
