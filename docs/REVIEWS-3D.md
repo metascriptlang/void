@@ -805,3 +805,72 @@ Taken at tree `9c6e03d4` (*docs(void3d): record the audit before M13*) by the la
 The first land attempt failed at `device`: the emulator resumed the app from its quickboot
 snapshot, and it drew black at 30 fps with no `EGL_CONTEXT_LOST` reaching Void. A cold start drew
 the campfire.
+
+## M13 — every light multiplies the material's colour, the directional light is Heaps' Lambert
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one send-back on the docs.** Both passes read
+`git diff e070605..3eafa2c`: the defect pass (`/code-review high`) and a fresh design reviewer.
+The design pass sent it back on two false statements; the shader it would have merged as it
+was. The rework is `3906bcc..c7570af`, and the same reviewer re-read it and shipped it.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | `billboardFs` still adds the point lights unmultiplied, and M13 deleted the only row text that recorded it | Row `billboard-points-added`, sentinel in `billboardFs` (`3906bcc`) |
+| 2 | The `LightInstance` comment still justified a separate `power` by "quantizes total energy", untrue for the directional light since M13 | The reason is per point light; the directional `power` is recorded as a field Heaps lacks with the same product (`3906bcc`) |
+| 3 | The same stale reason in `light-params-divergence` | Same fix, same commit |
+| 4 | The status line said "reviewed" before any M13 review existed | Written with this section |
+| 5 | The multiply was held only by a probe in scratch space, so the next retake could lose it | Gate stage `multiply` (`5d1f4f6`): 0 off in the four M13 frames, 2 016 to 2 304 off in the four pre-M13 frames |
+| 6 | The GLES3 noise control was two shots of one build in one boot, the comparison across two boots | Redone in one boot, both builds, with the boot-to-boot noise measured (`611fe9a`) |
+| 7 | The device recipe named only a gitignored entry | The configuration calls are quoted inline |
+| 8 | `pointLightAt` divides by the material's toon levels, and nothing checks them: 0 draws NaN | Not fixed here: it came with M7 and is part of the ramp that leaves the core. Written into `point-light-toon-quantized` |
+| 9 | "Carried into M13" still points at `light-params-divergence` for the added point lights | The lit half is fixed; the billboard half has its own row now. The carried list below replaces the pointer |
+
+### Design pass
+
+**First review: SEND BACK, docs only.** The shader is Heaps' additive model; the refusals were two claims:
+
+1. **"A greyed object takes no tint from them" was false.** Under `saturated(base) × light` a grey ground of luma L takes `L × (1.0, 0.45, 0.16)` from the fire: the fire's hue at the ground's own brightness. The probe's premise says the same. What M13 removed is the fire's colour on a dark object. The row and "M13 as built" now say a light scales with the object's colour.
+2. **The reason in `light-params-divergence` described the lighting before M13.** Defect findings 2 and 3.
+
+Follow-ups it listed, and what happened:
+- the billboard row (defect finding 1);
+- tracked docs cited "follow-up 10", an item number of the machine-local arc card: they now cite this file's "Audit before M13" findings 2–3;
+- the multiply as a gate stage (defect finding 5);
+- the stale-library `grep` could not fail: the pre-M13 header spells the step `step(0.3499999940395355`, and `max(dot(` is in `pointLightAt` either way. It greps the full literal now: 6 hits in the pre-M13 library, 0 in M13's;
+- "the shader text is shorter" was not measured: it says "not attributed";
+- per-pixel lighting and `normalWeight 0 = isAmbient` had no line: one sentence each.
+
+**Re-review: SHIP WITH FOLLOW-UPS.** It checked that the `multiply` stage cannot fail on 8-bit rounding alone (the worst rounding is about 1.56 levels, the threshold 1.53, and a whole-number difference of 1 always passes) and that the purge fix matches the cache on disk. What it still found:
+- the acceptance mixed two trees: it now names the tree of the last gate;
+- the stage would blame the multiply for a clipped channel: it now fails first on a ground pixel at 255 in the plain frame or its prediction, naming the clip (`c7570af`; 0 in the M13 frames, 72 to 96 near the fire before M13; a brightened control trips it);
+- a sentence in "M13 as built" had drifted after another: moved back;
+- the eviction's glob matched nothing until `c5d4bcf`, yet every retake changed pixels, so the compiler card `2026-09-20-object-cache-ignores-headers.md` may no longer reproduce. Not measured: every build here also cleared the checkout's own cache, which is enough to explain it, and `out/tmp/cacheRepro` is not in this worktree. Carried.
+
+**Found while reworking.** `purge_stale_shader_objects` globbed `cache/objects/*.o`, a layout the cache no longer has; objects sit in per-stamp directories. It greps them recursively now (`c5d4bcf`).
+
+### Carried into M14 and later
+
+- The point lights are stepped and their levels unchecked (`point-light-toon-quantized`), and the billboard adds them unmultiplied (`billboard-points-added`): the pixel-art look in the core, with "Audit before M13" findings 2–3.
+- No specular and no non-additive model.
+- The palette-on campfire takes Lambert in steps the palette never had to express: shaded stone sides fall to its blues. Content, and the caller's.
+- Whether the object cache still ignores headers, on the installed msc.
+- The rest of the audit's carried list, unchanged.
+
+### Numbers
+
+Taken at tree `03c134d` (*test(gate): name a clipped channel before the multiply's ratio*) from
+one `GATE_DEVICE=1 sh scripts/gate3d.sh` run; the commits after it are docs.
+
+| | |
+|---|---|
+| Gate | GREEN, no SKIP |
+| Tests | **864**, none added: the formula lives only in the GLSL |
+| Capture | 52 frames byte-identical to the 40 hashes retaken in `a170d81`; the rebuilt, CPU-greyed and look-restored configurations still byte-identical to the ones they share hashes with |
+| Multiply | 0 of 162 824 to 162 836 ground pixels off the ratio, 0 clipped, in four frames |
+| Oracle | 75 agree and 11 declared, over six files |
+| Device | `pixellight` emulator running the M13 build, 24 colours, largest 38% |
+| GLES3 emulator | pre-M13 against M13 in one boot: 13 306 / 13 540 pixels; noise at most 1 245 |
+| PENDING3D | 24 rows: `dir-light-stepped` deleted, `point-light-toon-quantized` and `billboard-points-added` added |
+| Android | arm64 `libVoidAndroid.so`, **2 791 992 bytes** (2 795 728 before M13 on the same msc, not attributed) |
