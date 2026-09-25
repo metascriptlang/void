@@ -235,8 +235,9 @@ export function vertexField(index: int32, field: int32): float32 {
 }
 
 // Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
-// Inlined at each of the three sites rather than shared: a `Vec<T>` parameter is a read-only
-// copy on this compiler, so a helper taking one could not push through it.
+function growTo(ref stream: Vec<float32>, length: int32): void {
+	while ((stream.length as int32) < length) { stream.push(0.0 as float32); }
+}
 
 // Append one vertex to the frame's stream and answer nothing — the caller already knows
 // where it landed, because it asked for the offset before it started.
@@ -251,7 +252,7 @@ export function pushVertex(
 	a: float32,
 ): void {
 	const base: int32 = vertexTotal * VERTEX_FLOATS;
-	while ((vertices.length as int32) < base + VERTEX_FLOATS) { vertices.push(0.0 as float32); }
+	growTo(vertices, base + VERTEX_FLOATS);
 	vertices[base] = x;
 	vertices[base + 1] = y;
 	vertices[base + 2] = u;
@@ -276,9 +277,7 @@ export function pushUiInstance(
 	fill: Color, border: Color, extra: Color,
 ): void {
 	const base: int32 = uiInstanceTotal * REC_UI_FLOATS;
-	while ((uiInstances.length as int32) < base + REC_UI_FLOATS) {
-		uiInstances.push(0.0 as float32);
-	}
+	growTo(uiInstances, base + REC_UI_FLOATS);
 	uiInstances[base + REC_UI_AFFINE] = a;
 	uiInstances[base + REC_UI_AFFINE + 1] = b;
 	uiInstances[base + REC_UI_AFFINE + 2] = c;
@@ -329,9 +328,7 @@ export function pushSpriteInstance(
 	color: Color,
 ): void {
 	const base: int32 = spriteInstanceTotal * REC_SPRITE_FLOATS;
-	while ((spriteInstances.length as int32) < base + REC_SPRITE_FLOATS) {
-		spriteInstances.push(0.0 as float32);
-	}
+	growTo(spriteInstances, base + REC_SPRITE_FLOATS);
 	spriteInstances[base + REC_SPRITE_AFFINE] = a;
 	spriteInstances[base + REC_SPRITE_AFFINE + 1] = b;
 	spriteInstances[base + REC_SPRITE_AFFINE + 2] = c;
@@ -381,7 +378,7 @@ export function uiModeCount(mode: int32): int32 {
 // The colour pipeline as a row of its own. Returns the index a command should carry.
 export function pushEffect(matrix: float32[], add: Color, key: Color): int32 {
 	const base: int32 = effectTotal * EFFECT_FLOATS;
-	while ((effects.length as int32) < base + EFFECT_FLOATS) { effects.push(0.0 as float32); }
+	growTo(effects, base + EFFECT_FLOATS);
 	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { effects[base + i] = 0.0; }
 	const hasMatrix: boolean = (matrix.length as int32) >= 16;
 	for (let i: int32 = 0; i < 16; i++) {
@@ -442,7 +439,7 @@ export function pushGradientEffect(
 
 function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	const base: int32 = commandTotal * COMMAND_FLOATS;
-	while ((commands.length as int32) < base + COMMAND_FLOATS) { commands.push(0.0 as float32); }
+	growTo(commands, base + COMMAND_FLOATS);
 	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { commands[base + i] = 0.0; }
 	commands[base + CMD_KIND] = (kind as int32) as float32;
 	commands[base + CMD_EFFECT] = NO_EFFECT as float32;
@@ -582,9 +579,7 @@ export function endTargetList(): void {
 	const from: int32 = mark * COMMAND_FLOATS;
 	const upto: int32 = commandTotal * COMMAND_FLOATS;
 	let write: int32 = targetCommandTotal * COMMAND_FLOATS;
-	while ((targetCommands.length as int32) < write + (upto - from)) {
-		targetCommands.push(0.0 as float32);
-	}
+	growTo(targetCommands, write + (upto - from));
 	for (let i: int32 = from; i < upto; i++) {
 		targetCommands[write] = commands[i];
 		write = write + 1;
