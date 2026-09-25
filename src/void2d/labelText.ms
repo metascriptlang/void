@@ -47,11 +47,14 @@ export interface LabelText {
 	placedValid: boolean;
 	pixelExact: boolean;
 	key: PlacementKey;
+	refused: int32;
 }
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
 export const labelTexts: Vec<LabelText> = [];
 const freeLabelTexts: Vec<int32> = [];
+let refusedGlyphs: int32 = 0;
+let refusalReports: int32 = 0;
 
 export function firstGlyphPageHandle(): GlyphPageHandle {
 	return glyphAtlas.ensurePage();
@@ -71,6 +74,14 @@ export function markGlyphPageDrawn(page: GlyphPage): void {
 
 export function glyphRasterizations(): int32 {
 	return glyphAtlas.rasterizations;
+}
+
+export function glyphRefusals(): int32 {
+	return refusedGlyphs;
+}
+
+export function glyphRefusalReports(): int32 {
+	return refusalReports;
 }
 
 function emptyLayout(): TextLayout {
@@ -106,6 +117,7 @@ export function allocateLabelText(): int32 {
 		placedValid: false,
 		pixelExact: false,
 		key: NO_PLACEMENT_KEY,
+		refused: 0,
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -232,14 +244,17 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			}
 		}
 	}
-	if (refused > 0) {
+	refusedGlyphs = refusedGlyphs + refused;
+	if (refused > 0 && refused != entry.refused) {
+		refusalReports = refusalReports + 1;
 		console.log(
 			`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not ` +
 			`drawn, the glyph atlas refused them (${refusal})`,
 		);
 	}
+	entry.refused = refused;
 	entry.placed = placed;
-	entry.placedValid = true;
+	entry.placedValid = refused == 0;
 	entry.pixelExact = pixelExact;
 	entry.key = placementKey(world, scale);
 	return entry;

@@ -5,6 +5,8 @@ import {
 	placeLabel,
 	glyphAtlas,
 	glyphRasterizations,
+	glyphRefusals,
+	glyphRefusalReports,
 	isPixelExact,
 } from "../void2d/labelText";
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
@@ -14,10 +16,14 @@ import { label } from "../void2d/node";
 import { renderTargetsAlive } from "../void2d/render";
 
 function shaped(text: string): int32 {
+	return shapedAt(text, 13.0);
+}
+
+function shapedAt(text: string, size: float32): int32 {
 	const index = allocateLabelText();
 	shapeLabel(index, text, {
 		font: 0,
-		size: 13.0,
+		size: size,
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
 		maxWidth: 0.0,
@@ -100,4 +106,21 @@ test "drawing a label fences its glyph page for the frame the bracket belongs to
 	begin2d(200.0, 100.0, 1.0);
 	assert glyphAtlas.frame == frame + 1;
 	n.dispose();
+}
+
+test "a placement that loses a glyph stays invalid, is retried, and is reported once per label" {
+	const oversized: float32 = 3000.0;
+	const first = shapedAt("W ", oversized);
+	const second = shapedAt("M ", oversized);
+	const refusals = glyphRefusals();
+	const reports = glyphRefusalReports();
+	const at = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+	assert !placeLabel(first, at, 1.0).placedValid;
+	assert glyphRefusals() == refusals + 1 && glyphRefusalReports() == reports + 1;
+	placeLabel(first, at, 1.0);
+	assert glyphRefusals() == refusals + 2 && glyphRefusalReports() == reports + 1;
+	placeLabel(second, at, 1.0);
+	assert glyphRefusals() == refusals + 3 && glyphRefusalReports() == reports + 2;
+	releaseLabelText(first);
+	releaseLabelText(second);
 }
