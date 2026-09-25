@@ -375,6 +375,6 @@ about where they came from.
 | T1 | the snapshots in `tests/displayList/` plus no-GPU reachability and invariant assertions |
 | T2 | the scenes of `tests/golden/table.ms`, D3D11, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
-| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene; the `allocation` stage over the emitted C; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
+| T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene; the `allocation` stage over the emitted C, reading only the functions it names, not what they call, and not seeing stream growth or allocation inside C; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
 | T5 | human only |
 The roadmap those phases belong to is [VOID2D.md](VOID2D.md) "Roadmap".

@@ -697,7 +697,7 @@ It takes F2, F9, F10 and F13 from P4's list. The brief is
 
 **Verdict: no defect in the paths the gates exercise; one latent defect in how the display list
 stores a view; the idiom debt fixed where it is internal, and sent to the human where an app
-author would see it.** Read in the main session, line by line, from `05b4b9d`: all 6 182 lines of
+author would see it.** Read in the main session, line by line, from `05b4b9d`: all 6 188 lines of
 `src/void2d/*.ms`. The C files were read where a finding crossed into them.
 
 ### Compiler workarounds, re-probed on msc 0.2.55
@@ -783,7 +783,9 @@ same window:
 
 Absolute numbers move by about 0.6 ms between windows ten minutes apart on this box, which is why
 only the pairs compare. P3's 2.2× (VOID2D.md P3 "Measured") was load. One measure call costs 80
-glyph lookups for 80 glyphs, where it cost 176.
+glyph lookups for 80 glyphs, where it cost 176. The final gate's web build is 744 307 B (WebGPU) and
+649 510 B (WebGL2), against P3's 761 810 B and 667 012 B; the 17.5 KB went somewhere between msc
+0.2.53 and 0.2.55 and P3.5's refactors, and nothing separated the two.
 
 ## P3.5 review
 
@@ -823,14 +825,14 @@ only. It refused the step on two record defects, the P3-B3 class again.
 | id | Finding | Resolution before re-review |
 |---|---|---|
 | P3.5-S1 | The audit carried #18, #19, #23 and #24 "to P5" and #21 "with the filter path", but P5's Lands, Closes and `tests/PENDING.md` named none of them, and #18, a latent defect, was not in "Known defects". The record check compares PENDING rows against Closes lines, so it could not see it | `d694e9c`: #18 in "Known defects" and as `tests/PENDING.md display-list-view-id-float32`, owned by P5 and on its Closes line; #18, #19, #21, #23 and #24 as one P5 Lands bullet; the audit rows point there |
-| P3.5-S2 | P4 "Measure" pointed at a P3.5-head number that did not exist. The only P3.5 number was `939b2ed`, before `23e29f4`, `bb8b11a` and `2d4405f`; the refactors were never A/B'd against `05b4b9d`, and `2d4405f` was a `perf` commit with no measurement | `342ec54`: the P3.5 head against the pre-P3 control `8a473f3`, UI 13.54 → 13.05 ms over 7 clean pairs of 8, in P3 "Measured" and in "Numbers" above; P4 "Measure" points at it and takes its own pairs. The P3 head against the P3.5 head got no clean UI pair in the same window (load 20-68 %), so P3.5's own delta, about −1 ms, is read across two windows, not from one pair |
+| P3.5-S2 | P4 "Measure" pointed at a P3.5-head number that did not exist. The only P3.5 number was `939b2ed`, before `23e29f4`, `bb8b11a` and `2d4405f`; the refactors were never A/B'd against `05b4b9d`, and `2d4405f` was a `perf` commit with no measurement | `342ec54`: the P3.5 head against the pre-P3 control `8a473f3`, UI 13.54 → 13.05 ms over 7 clean pairs of 8, in P3 "Measured at P3 step 8" (bullet "The P3.5 head") and in "Numbers" above; P4 "Measure" points at it and takes its own pairs. The P3 head against the P3.5 head got no clean UI pair in the same window (samples 17-68 %), so P3.5's own delta, about −1 ms, is read across two windows, not from one pair |
 
 ### Follow-ups the design pass carried
 
 | id | Follow-up | Owner |
 |---|---|---|
 | F-a | The record check passed a row owned by `P7` and missing from every Closes line: it read only P4-P6 | done, `69d2974`: the phases come from VOID2D.md's headings, and an owner that is neither a phase nor `compiler` or `human` fails. TESTING.md says a Closes line lists ids, not work (`bce0704`). Controls: a `P7` owner and a `robot` owner each fail the stage |
-| F-b | The allocation stage could not see a struct's deep copy, which emits `<Type>…OmsCopy(`, not `ArrayCopy(`; `textWidth` and `textHeight`, where P3.5 removed exactly that copy, were on no list | done, `46cacd2`: `OmsCopy(` in the pattern; `benchText` emits the measure path, and `textWidth`, `textHeight` and `shapedLabel` are held to no copy and to no `textLayout` call. Control: `textWidth` through `textLayout` again fails. The wider pattern found one more copy, `shapeLabel` returning its layout to callers that dropped it (`c55be18`). The list is still named rather than followed through calls; the seven per-frame helpers the reviewer found unlisted allocate nothing today |
+| F-b | The allocation stage could not see a struct's deep copy, which emits `<Type>…OmsCopy(`, not `ArrayCopy(`; `textWidth` and `textHeight`, where P3.5 removed exactly that copy, were on no list | done, `46cacd2`: `OmsCopy(` in the pattern; `benchText` emits the measure path, and `textWidth`, `textHeight` and `shapedLabel` are held to no copy and to no `textLayout` call. Control: `textWidth` through `textLayout` again fails. The wider pattern found one more copy, `shapeLabel` returned a copy of the layout, which `shapeIfChanged` read and the tests dropped; the caller now reads the stored one (`c55be18`). Not timed: a reshape runs only when a label's text or style changes, which the bench does not do in steady state. The list is still named rather than followed through calls; the seven per-frame helpers the reviewer found unlisted allocate nothing today |
 | F-c | CODE-STYLE §14's "parameters are `Span<T>`": private `T[]` parameters remain in `sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, `polyArea2`, `isEar` and `triangulate` | P4, with F9 (`76302a7`) |
 | F-d | F9's half no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1` | P4, with F9 (`76302a7`) |
 
