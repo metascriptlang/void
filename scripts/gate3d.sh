@@ -934,7 +934,8 @@ count_off_ratio() {
 	magick "$WORK/ratioPredicted.ppm" "$2" -compose difference -composite -separate \
 		-evaluate-sequence max -threshold 0.6% "$WORK/ratioGround.png" -compose multiply \
 		-composite -format "%[fx:round(mean*w*h)] " info:
-	magick "$WORK/ratioGround.png" -format "%[fx:round(mean*w*h)]" info:
+	magick "$WORK/ratioGround.png" -format "%[fx:round(mean*w*h)] " info:
+	magick "$WORK/ratioPredicted.ppm" "$1" -separate -evaluate-sequence max -threshold 99.9% 		"$WORK/ratioGround.png" -compose multiply -composite -format "%[fx:round(mean*w*h)]" info:
 }
 
 run_light_multiplies() {
@@ -959,6 +960,10 @@ run_light_multiplies() {
 		set -- $(count_off_ratio "$plain" "$greyed" $ratios)
 		if [ "$2" -eq 0 ]; then
 			fail "multiply: frame $frame has no ground pixel that greying changed"
+			return
+		fi
+		if [ "$3" -ne 0 ]; then
+			fail "multiply: frame $frame, $3 ground pixels reach 255 in the plain frame or plain × grey/ground; the ratio cannot hold where a channel clips"
 			return
 		fi
 		if [ "$1" -ne 0 ]; then
