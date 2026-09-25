@@ -756,6 +756,8 @@ the baseline was re-taken (see "Baseline" (b)):
 - Selection across a ragged range joins without gaps or overlapping alpha.
 - The T5 look beside Zed at 13 px, 1× and 1.5× is taken by the human, and its verdict is written into P3 (REVIEWS.md P3 F12).
 
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/decorations`, `golden-missing:text/caretSelection`, `font-grapheme-selection`, `oracle:ucd-segmentation`.
+
 **Tests.** T3: the UCD conformance files for grapheme clusters and line-break opportunities, with the divergence from UAX #14 recorded as one PENDING reason — void2d follows GPUI's cheaper rule, and the pass rate against the standard is what says whether that is acceptable. T1: run splitting, wrap boundaries, decoration placement and whole-grapheme face selection as numbers. T2: the editor scenes and the decoration group. T0: truncation and `split_at` boundary arithmetic.
 
 **Measure.** P4's `present` becomes P5's baseline, so it is taken with `scripts/bench-ab.sh` against the P3.5 head, whose quiet-box numbers are in P3 "Measured" (REVIEWS.md P3 F10, closed at P3.5). Then a new bench scene — 200 lines × 80 columns with runs, a selection and a caret: draw calls, instances, `present`. It becomes the scroll case P5 is measured on.
@@ -792,6 +794,8 @@ the baseline was re-taken (see "Baseline" (b)):
 - An idle frame issues no draw and no upload.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
 - One node can no longer sit under two parents (`node.ms:133-137`).
+
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:clip/maskScroll`, `glyph-page-second-upload`, `label-dispose-pins-page`, `idle-costs-a-walk`, `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `oracle:h2d`.
 
 **Tests.** T1 carries this phase: mutate one node, assert exactly one dirty range of a known size; assert byte-identical re-records; assert zero instances written on a blink; assert the draw order rebuilds only on structural change. T3: the h2d oracle for `getBounds`, `localToGlobal` / `globalToLocal`, mask intersection and scale modes, with HEAPS.md's deliberate divergences as the seed PENDING list. T4: scroll and idle budgets gated on uploaded bytes, which are deterministic.
 
@@ -838,6 +842,8 @@ the baseline was re-taken (see "Baseline" (b)):
 - A deferred CJK or emoji family answers coverage without loading, with the module on or off.
 - WebGL2 and GLES3 desktop show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.
+
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/ligature`, `golden-missing:text/colourEmoji`, `golden-missing:image/animatedFrames`, `font-colour-emoji`, `style:line-length`, `ui-box-color-effect`, `sdf-non-uniform-bound`, `backend:gles3-desktop`, `backend:metal-macos`, `backend:metal-ios`, `backend:gles3-android`, `backend:webgpu`, `conformance:webgl2-pixel-centre`, `oracle:harfbuzz-full`.
 
 **Tests.** T3: the full HarfBuzz shaping oracle, cases as data rows, snapshot committed, CI never needing `hb-shape`. T4: the wasm budget per module — the only gate that makes guardrail 6 real. T2: ligature, emoji, zoom and rotation scenes. Device loss is tested by its own switch, which is why the switch is a deliverable and not a debug aid.
 
