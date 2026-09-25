@@ -683,3 +683,101 @@ placement with a frame-fenced, page-reclaiming R8 atlas; per-codepoint fallback 
 the `Font` value with synthetic styles; decoration metrics from `post`/`OS/2`; and GPUI's gamma
 table. It may not assume grapheme-level face selection, colour glyphs, a `present` at the pre-P3
 level, or text that stays pixel-exact inside a filter at fractional DPI.
+
+# P3.5 — Solidify before P4
+
+P3.5 is not a roadmap phase. P3 shipped with follow-ups, and before P4 builds the editor surface
+on it the human asked for three things to be made solid: numbers that can be trusted, a record
+that checks itself, and MetaScript written to the 0.2.55 compiler rather than to 0.2.53's limits.
+It takes F2, F9, F10 and F13 from P4's list. The brief is
+`~/metascript/.wt/void2d-p35-solidify-prompt.md`; the model for the audit is REVIEWS-3D.md
+"Audit before M13".
+
+## Audit before P4 — `src/void2d` read against CODE-STYLE and the 0.2.55 compiler
+
+**Verdict: no defect in the paths the gates exercise; one latent defect in how the display list
+stores a view; the idiom debt fixed where it is internal, and sent to the human where an app
+author would see it.** Read in the main session, line by line, from `05b4b9d`: all 6 182 lines of
+`src/void2d/*.ms`. The C files were read where a finding crossed into them.
+
+### Compiler workarounds, re-probed on msc 0.2.55
+
+One small probe each, under `out/tmp/p35probes/` (gitignored), msc v0.2.55 BUILD `8cdd91c6`,
+2026-09-25. The cards named here carry the result as a sighting.
+
+| Workaround | Where void2d carried it | On 0.2.55 | What was done |
+|---|---|---|---|
+| The object cache ignores a `.c`'s headers | the gate's cache eviction; the worktree `CLAUDE.md` | Does not reproduce, for `@compile` and for a `.c` compiled through `import from "./x.h"` that includes a second header | Eviction kept until the card is pinned; the card has the re-probe |
+| `msc test` exits 0 for a crashed test binary | the gate requires the `Tests N passed (N)` line | Still exits 0; `msc run` now exits non-zero | Kept; card `2026-09-23-crash-exit-status-lost` updated |
+| A function cannot return a `Span` | `displayList.ms` exports its streams | Still refused, as a borrow of its source; CODE-STYLE §5 says it works | Kept; the comment states the rule (`aea80ab`) |
+| A `Vec` parameter is a read-only copy | six hand-inlined growth loops | A `ref` `Vec` parameter pushes through | Finding 2 |
+| `==` on a struct over 24 bytes fails; a struct parameter is copied per call | field-by-field compares; `drawUiInstance`'s 25 lanes | `==` works on a 32-byte struct, and a struct value parameter is emitted as `const T*` | Findings 1, 7, 8, 19; TESTING.md corrected (`cee91d3`) |
+| A union payload as an interface field fails in C | `node.ms`'s header comment | The probed shape builds and runs | Comment removed (`e4c2358`); a union `Node2D` is P5's design question |
+| Nothing calls `function main()` | `mainSokol2d.ms` blamed 0.2.53 | Unchanged, and CODE-STYLE §9 states it as the rule | Comment removed (`e4c2358`); the gate's demo run pins it |
+| A float literal widens `float32` arithmetic | typed `float32` locals in `textGamma.ms`, `effect.ms`, `graphics.ms` | Unchanged | Kept; design card `2026-09-20-float32-literal-widens` |
+| No `BitSet`, no `distinct`, no generic `ref` | — | All three work. Two `distinct` values do arithmetic, a swapped one is a type error, and `-1 as T` parses as `-(1 as T)`: write `(-1) as T` | `distinct` adopted (finding 3); `BitSet` carried (finding 24) |
+| No `ref` receiver | `ref` free functions | Still a parse error | Kept; card `2026-09-20-ref-receiver-not-an-extension` |
+| `Math.min` / `Math.max` on `int32` return `float64` | no site | They return `int32` | Nothing to do |
+| `msc check` ignores relative imports | no site | It resolves them and reports an error in the imported module | A correction to the work order's TRAPS |
+| The same header from two directories compiles its `.c` twice | three comments in `draw.ms` | Builds and links | Comments corrected (`aea80ab`); the re-exports stay |
+| An extension imported by name merges with a same-name local one | none: void2d imports no extension by name | Still wrong: the local type's `toString` runs the imported one | New card `2026-09-25-extension-imported-by-name-shadows-local` |
+| `span[0]` passed to a header-imported pointer is a copy | none: void2d passes `arr[0]` on `Vec`s | Still wrong code | New card `2026-09-25-span-index-to-header-pointer-copies` |
+| A `Vec` parameter copied into a local and grown corrupts the heap | none | Wider than the card said: `let b = vec` from any source emits no copy, and growing `b` leaves the source reading freed memory (`738` read where `7` was stored, or `0xC0000374`) | Second sighting on `2026-09-23-vec-param-copy-corrupts-heap`; void2d grows only fresh `Vec`s (read in the emitted C) |
+| A partial literal assigned to an imported interface field loses its TypeInfo | PENDING `legacy:tests/layout.test.ms` | The card's repro passes | Card updated; the unpark waits on its pin |
+| A struct literal may leave fields out, zeroed silently | review | Unchanged | A review rule |
+
+The installed compiler changed twice during P3.5 (`8cdd91c6` → `2f306532` → `cf69e040`). The
+first change turned void3d's `rendererCheck.ms` red: a `ref` parameter of a `this typeof T` static
+extension had always landed on the next parameter, a silent copy that a new argument check
+exposed. It was fixed in recompiler (`15af5b04`); void2d has no such parameter.
+
+### Findings
+
+| # | Layer | Finding | What was done |
+|---|---|---|---|
+| 1 | display list | The clip was 12 loose scalars and a 13-float save stack in `displayList.ms`, and 12 parallel `Vec` columns in `draw.ms`, compared field by field | `Clip` and `MaskClip` structs compared with `==` (`97a9c10`); T1 snapshots unchanged |
+| 2 | display list | Six hand-inlined growth loops, because a `Vec` parameter was a read-only copy | One `growTo(ref stream: Vec<float32>, …)` (`8b7ccfc`) |
+| 3 | glyph layer | An atlas page index and a C page handle were both bare `int32`, and `firstGlyphPage()` returned a handle (F9c) | `GlyphPage` and `GlyphPageHandle` are `distinct` (`984b5a4`). Control: an index where a handle is wanted is now `Argument type mismatch` |
+| 4 | core | `if / else if` chains on `DrawKind` (`emitNode`, `dispose`), `Pipeline` and `ScaleMode` | Exhaustive `match` (`c28b979`) |
+| 5 | glyph, font | Struct-first helpers `packKey`, `uvRect`, `sameFont`, `needsBold`, `needsItalic` (F9b) | Extensions (`db17e64`) |
+| 6 | font, label | Module data one layer owns, as `T[]` (F9d) | `Vec` (`a408a13`) |
+| 7 | draw, scene | Colours and transforms compared field by field | `==` (`958c636`) |
+| 8 | label | The placement key was seven loose floats compared one by one | `PlacementKey`, compared with `==` (`93020b6`) |
+| 9 | draw | `useState`, `useSpriteState` and `useUiState` differed only in the pipeline | One `useRun` (`59d4a88`) |
+| 10 | glyph atlas | `placeOnPage` returned `[-1, -1]` and `reclaimPage` `-1` | `Result<…, AtlasError>` (`5331305`). `ensurePage` keeps its named sentinel, which crosses into C |
+| 11 | core | 18 counted `while` loops | `for` (`7059346`); `while` stays where a loop converges or walks a list |
+| 12 | frame path | `snapBoxEdges` returned a `Vec`, one heap array per Rect per frame, and `renderScaleGrid` built four `float32[]` per call. The ported stage saw copies, not allocations | A tuple and `float32[4]` (`939b2ed`): UI `present` 14.01 → 13.32 ms, eight clean pairs. The stage now fails a frame-path allocation and no longer mistakes a call that starts a line for a definition (`a96e8ac`) |
+| 13 | draw | A layout mismatch between the emitter and `batcher.c` only logged, then drew with the wrong layout | It stops the renderer (`5ba1c3c`). Control: a planted mismatch stops the demo with the message |
+| 14 | measure | F2: every layout call measured the face's heights and decoration with 96 glyph lookups, and `textWidth` / `textHeight` deep-copied the layout | Measured once per face (`bb8b11a`), read without a copy (`23e29f4`), gated as `text.measureGlyphLookups`: 80, was 176 (`b787172`) |
+| 15 | style | 23 lines that P3 and P3.5 wrote past 100 columns (F9e) | Wrapped (`3ee347f`). 53 older lines remain: a pass of its own if the human wants one |
+| 16 | harness | Comments still describing fontstash (F9f) | Corrected (`6441fd8`) |
+| 17 | style | The gamma table was a heap `float32[]`; the box-style builders mutated a copied `const` | `float32[52]` (`d10cef3`); spread (`653496c`) |
+| 18 | display list | A sokol id is `(generation << 16) \| slot`, and the display list stores `view` as `float32` (`CMD_VIEW`, and `savedView` in `draw.ms`), exact only to 2^24. After the 256th reuse of one view slot the replay's `(uint32_t)cmd[CMD_VIEW]` names another slot. Latent: nothing here recycles a view that often | Carried to P5, where a long-running app churns images: the id's two 16-bit halves in the two spare command floats, rejoined in the replay and the T1 printer, with a T1 test on a synthetic id past 2^24 |
+| 19 | draw | `drawUiInstance` takes 25 positional lanes, and its stated reason is false on 0.2.55 | Comment corrected (`aea80ab`); a record struct carried to P5, whose persistent instance ranges rewrite the emission |
+| 20 | render | `fmin4` / `fmax4` and `minFour` / `maxFour` duplicate each other, but keep different operands on a tie (`-0.0` against `0.0`) | Kept: merging them changes which zero a clip records, for no gain |
+| 21 | render | The filter path allocates two arrays per filtered node per frame (`setEffect([])`, `colorMatrixAlphaOnly`) | Carried with the filter path; it is outside the frame path's no-allocation list |
+| 22 | protocols | `breakReasonName` / `commandKindName` are the enums' text | Kept as functions: a `toString` extension on an enum makes `"" + e` a C compile error (CODE-STYLE §15). `TextLayout`'s lines and glyphs are already iterated as `Vec`s, so no `toItems` |
+| 23 | metaprogramming | The UI instance's 108 bytes are packed field by field in `instance.ms` and in C, held together by a runtime layout check | Proposed for P5, which rewrites the record: one table generating both sides. Not built |
+| 24 | flags | `Node2D`'s `visible`, `tileWrap` and four dirty booleans | Carried to P5, which rewrites dirtiness for retention; `visible` and `tileWrap` are h2d's app-facing properties |
+| 25 | API | The idiom changes an app author would see | Sent to the human on 2026-09-25: `addFont` / `resolveFont` as `Result` with a `FontId` (Neon's `window.ms:278` calls `addFont`); the BoxStyle builders as extensions without forwarding constructors; `textLayout()` on a non-Label failing loud. Face ids in `LaidGlyph`, `Tile.view` as a distinct type and `Node2D.payload` wait on the same decision and on P5 |
+| 26 | compile-time | `@comptime` for constant tables | The gamma table is a fixed array (finding 17); the instance offsets are literals, not computed; no finding needs `when` or `-d:` yet |
+
+**Confirmed, with the check named:**
+- no refactor moved a pixel: D3D11 69 / 69 byte-identical at every gate of P3.5, and the bench counters unchanged apart from the new `text.measureGlyphLookups`;
+- the frame path neither copies nor allocates (the `allocation` stage, 51 functions, proven by a planted copy and a planted array literal);
+- the record checks itself (the gate's "the record against the code", proven by five planted drifts), and a `conformance:*` row now fails the run when its scenes pass or a run is clean (F13, proven by three planted logs).
+
+### Numbers
+
+`present` on a quiet box, `scripts/bench-ab.sh`, eight pairs each, every pair clean (load under
+40 % before and after each run):
+
+| A | B | UI | Sprites |
+|---|---|---:|---:|
+| P2 ship `2255d9f` | pre-P3 `8a473f3` | 13.43 → 13.37 ms | 2.54 → 2.47 ms |
+| pre-P3 `8a473f3` | P3 head `05b4b9d` | 12.76 → 13.29 ms | 1.84 → 1.81 ms |
+| `5331305` | no frame-path arrays `939b2ed` | 14.01 → 13.32 ms | 2.40 → 2.44 ms |
+
+Absolute numbers move by about 0.6 ms between windows ten minutes apart on this box, which is why
+only the pairs compare. P3's 2.2× (VOID2D.md P3 "Measured") was load. One measure call costs 80
+glyph lookups for 80 glyphs, where it cost 176.
