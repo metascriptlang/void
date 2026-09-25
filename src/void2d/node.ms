@@ -92,10 +92,19 @@ export interface Node2D {
 
 function base(kind: DrawKind): Node2D {
 	return {
-		kind: kind, payload: NO_BOX_STYLE, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0, pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: Smooth.Inherit, tileWrap: false, blend: BlendMode.Alpha, zIndex: 0,
-		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0), colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0, mesh: [], meshVertCount: 0, records: [], gfxView: 0, gfxDirty: true, children: [], childrenDirty: true,
-		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0, lastSY: 0.0, lastRot: 0.0, lastPivotX: 0.0, lastPivotY: 0.0, dirty: true,
-		textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0, lastLineSpacing: 0.0, lastMaxWidth: 0.0,
+		kind: kind, payload: NO_BOX_STYLE, x: 0.0, y: 0.0, scaleX: 1.0, scaleY: 1.0, rotation: 0.0,
+		pivotX: 0.0, pivotY: 0.0, alpha: 1.0, visible: true, smooth: Smooth.Inherit,
+		tileWrap: false, blend: BlendMode.Alpha, zIndex: 0,
+		w: 0.0, h: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), colorAdd: rgba(0.0, 0.0, 0.0, 0.0),
+		colorKey: rgba(0.0, 0.0, 0.0, 0.0), colorMatrix: [], sheet: tile(0, 0.0, 0.0), borderL: 0.0,
+		borderT: 0.0, borderR: 0.0, borderB: 0.0, text: "", size: 0.0, align: 0.0,
+		letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, frames: [], fps: 0.0, clock: 0.0,
+		mesh: [], meshVertCount: 0, records: [], gfxView: 0, gfxDirty: true, children: [],
+		childrenDirty: true,
+		cachedLocal: identity2d(), cachedWorld: identity2d(), lastX: 0.0, lastY: 0.0, lastSX: 0.0,
+		lastSY: 0.0, lastRot: 0.0, lastPivotX: 0.0, lastPivotY: 0.0, dirty: true,
+		textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0,
+		lastLineSpacing: 0.0, lastMaxWidth: 0.0,
 		contentXMin: 0.0, contentYMin: 0.0, contentXMax: 0.0, contentYMax: 0.0,
 		fontId: 0, lastFontId: -1,
 		filter: noFilter(),

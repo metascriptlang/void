@@ -102,14 +102,24 @@ function plainFont(face: int32): FontEntry {
 		sizeAdjust: SizeAdjust.None,
 		described: false,
 		description: {
-			family: "", weight: 0, style: FontStyle.Normal, features: [], fallbacks: [], sizeAdjust: SizeAdjust.None,
+			family: "",
+			weight: 0,
+			style: FontStyle.Normal,
+			features: [],
+			fallbacks: [],
+			sizeAdjust: SizeAdjust.None,
 		},
 	};
 }
 
 function ensureDefaultFont(): void {
 	if ((fonts.length as int32) > 0) { return; }
-	registered.push({ path: DEFAULT_PATH, family: DEFAULT_FAMILY, weight: 400, style: FontStyle.Normal });
+	registered.push({
+		path: DEFAULT_PATH,
+		family: DEFAULT_FAMILY,
+		weight: 400,
+		style: FontStyle.Normal,
+	});
 	fonts.push(plainFont(faceAtPath(DEFAULT_PATH)));
 }
 
@@ -178,11 +188,12 @@ function sameStrings(a: string[], b: string[]): boolean {
 function sameAs(this a: Font, b: Font): boolean {
 	if (!a.family.equals(b.family) || a.weight != b.weight || a.style != b.style) { return false; }
 	if (a.sizeAdjust != b.sizeAdjust) { return false; }
-	if (a.features.length != b.features.length || !sameStrings(a.fallbacks, b.fallbacks)) { return false; }
+	if (a.features.length != b.features.length) { return false; }
+	if (!sameStrings(a.fallbacks, b.fallbacks)) { return false; }
 	for (let i = 0; i < (a.features.length as int32); i++) {
-		if (!a.features[i].tag.equals(b.features[i].tag) || a.features[i].value != b.features[i].value) {
-			return false;
-		}
+		const left: FontFeature = a.features[i];
+		const right: FontFeature = b.features[i];
+		if (!left.tag.equals(right.tag) || left.value != right.value) { return false; }
 	}
 	return true;
 }
@@ -195,19 +206,27 @@ export function resolveFont(font: Font): int32 {
 	let kern: boolean = true;
 	for (const feature of font.features) {
 		if (!feature.tag.equals("kern")) {
-			console.log(`void2d: font feature "${feature.tag}" needs the shaper, which lands at P6; font "${font.family}" is refused`);
+			console.log(
+				`void2d: font feature "${feature.tag}" needs the shaper, which lands at P6; ` +
+				`font "${font.family}" is refused`,
+			);
 			return NO_FONT;
 		}
 		kern = feature.value != 0;
 	}
 	const match: int32 = bestFace(font.family, font.weight, font.style);
 	if (match < 0) {
-		console.log(`void2d: no face is registered for family "${font.family}"; the font is refused`);
+		console.log(
+			`void2d: no face is registered for family "${font.family}"; the font is refused`,
+		);
 		return NO_FONT;
 	}
 	for (const family of font.fallbacks) {
 		if (bestFace(family, font.weight, font.style) < 0) {
-			console.log(`void2d: no face is registered for fallback family "${family}"; font "${font.family}" is refused`);
+			console.log(
+				`void2d: no face is registered for fallback family "${family}"; ` +
+				`font "${font.family}" is refused`,
+			);
 			return NO_FONT;
 		}
 	}
@@ -217,7 +236,9 @@ export function resolveFont(font: Font): int32 {
 		font.needsItalic(match),
 	);
 	if (face < 0) {
-		console.log(`void2d: ${registered[match].path} did not load; font "${font.family}" is refused`);
+		console.log(
+			`void2d: ${registered[match].path} did not load; font "${font.family}" is refused`,
+		);
 		return NO_FONT;
 	}
 	const id: int32 = fonts.length as int32;
@@ -248,7 +269,14 @@ export function resolveFont(font: Font): int32 {
 }
 
 export function addFallbackFont(font: int32, path: string): void {
-	fallbacks.push({ font: font, path: path, bold: false, italic: false, face: NOT_LOADED, scale: 1.0 });
+	fallbacks.push({
+		font: font,
+		path: path,
+		bold: false,
+		italic: false,
+		face: NOT_LOADED,
+		scale: 1.0,
+	});
 	resolved = new Map<uint64, int32>();
 }
 
@@ -280,9 +308,14 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 	if ((adjust == SizeAdjust.IcWidth || adjust == SizeAdjust.ExHeight) && f.exHeight > 0.0) {
 		return p.exHeightEstimate / f.exHeight;
 	}
-	if (adjust != SizeAdjust.LineHeight && f.capHeight > 0.0) { return p.capHeightEstimate / f.capHeight; }
+	if (adjust != SizeAdjust.LineHeight && f.capHeight > 0.0) {
+		return p.capHeightEstimate / f.capHeight;
+	}
 	if (f.lineHeight <= 0.0 || p.lineHeight <= 0.0) {
-		console.log(`void2d: face ${fallback} or ${primary} has no line height, so the fallback cannot be size-adjusted; it keeps the primary size`);
+		console.log(
+			`void2d: face ${fallback} or ${primary} has no line height, so the fallback ` +
+			`cannot be size-adjusted; it keeps the primary size`,
+		);
 		return 1.0;
 	}
 	return p.lineHeight / f.lineHeight;
@@ -290,14 +323,16 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 
 function fallbackFace(index: int32): int32 {
 	if (fallbacks[index].face == NOT_LOADED) {
-		const face: int32 = styled(faceAtPath(fallbacks[index].path), fallbacks[index].bold, fallbacks[index].italic);
+		const entry: Fallback = fallbacks[index];
+		const face: int32 = styled(faceAtPath(entry.path), entry.bold, entry.italic);
 		fallbackLoads = fallbackLoads + 1;
 		if (face < 0) {
-			console.log(`void2d: fallback font ${fallbacks[index].path} did not load; it is skipped`);
+			console.log(`void2d: fallback font ${entry.path} did not load; it is skipped`);
 			fallbacks[index].face = LOAD_FAILED;
 		} else {
 			fallbacks[index].face = face;
-			fallbacks[index].scale = adjustedScale(fontFace(fallbacks[index].font), face, fonts[fallbacks[index].font].sizeAdjust);
+			const primary: int32 = fontFace(entry.font);
+			fallbacks[index].scale = adjustedScale(primary, face, fonts[entry.font].sizeAdjust);
 		}
 	}
 	return fallbacks[index].face;

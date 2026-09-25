@@ -225,7 +225,9 @@ function shapeIfChanged(n: Node2D): void {
 			if (baseline + bottom > n.contentYMax) { n.contentYMax = baseline + bottom; }
 		}
 		n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
-		n.lastLetterSpacing = n.letterSpacing; n.lastLineSpacing = n.lineSpacing; n.lastMaxWidth = n.maxWidth;
+		n.lastLetterSpacing = n.letterSpacing;
+		n.lastLineSpacing = n.lineSpacing;
+		n.lastMaxWidth = n.maxWidth;
 		n.textDirty = false;
 		n.lastFontId = n.fontId;
 	}
@@ -328,6 +330,8 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 	}
 }
 let textPrimitiveEffectRejectedReported: boolean = false;
+const TEXT_PRIMITIVE_EFFECT_REFUSED: string =
+	"void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey";
 let boxEffectRejectedReported: boolean = false;
 
 
@@ -386,7 +390,8 @@ function emitNode(
 			if (!uiInstancingAvailable() && n.payload != NO_BOX_STYLE) {
 				if (!boxEffectRejectedReported) {
 					console.log(
-						"void2d: a box style cannot be combined with colorMatrix, colorAdd, or colorKey",
+						"void2d: a box style cannot be combined with colorMatrix, colorAdd, " +
+						"or colorKey",
 					);
 					boxEffectRejectedReported = true;
 				}
@@ -415,7 +420,8 @@ function emitNode(
 					borderB = boxStyles[styleIndex].borders.bottom;
 					const source: Color = boxStyles[styleIndex].borderColor;
 					edge = rgba(source.r, source.g, source.b, source.a * na);
-					borderStyle = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
+					const dashed: boolean = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed;
+					borderStyle = dashed ? 1.0 : 0.0;
 				}
 				// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
 				// border. The visible box is snapped before its quad is inflated, otherwise a
@@ -506,7 +512,7 @@ function emitNode(
 					0.0, 0.0, 0.0, 0.0,
 					col, transparent, transparent);
 			} else if (!textPrimitiveEffectRejectedReported) {
-				console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
+				console.log(TEXT_PRIMITIVE_EFFECT_REFUSED);
 				textPrimitiveEffectRejectedReported = true;
 			}
 		},
@@ -520,7 +526,7 @@ function emitNode(
 					n.borderL, n.borderT, n.borderR, n.borderB,
 					col, transparent, transparent);
 			} else if (!textPrimitiveEffectRejectedReported) {
-				console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
+				console.log(TEXT_PRIMITIVE_EFFECT_REFUSED);
 				textPrimitiveEffectRejectedReported = true;
 			}
 		},

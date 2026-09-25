@@ -94,7 +94,14 @@ function emptyLayout(): TextLayout {
 export function allocateLabelText(): int32 {
 	const entry: LabelText = {
 		layout: emptyLayout(),
-		style: { font: -1, size: 0.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0 },
+		style: {
+			font: -1,
+			size: 0.0,
+			letterSpacing: 0.0,
+			lineSpacing: 0.0,
+			maxWidth: 0.0,
+			align: 0.0,
+		},
 		placed: new Array(0),
 		placedValid: false,
 		pixelExact: false,
@@ -221,7 +228,10 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 		}
 	}
 	if (refused > 0) {
-		console.log(`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not drawn, the glyph atlas refused them (${refusal})`);
+		console.log(
+			`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not drawn, ` +
+			`the glyph atlas refused them (${refusal})`,
+		);
 	}
 	entry.placed = placed;
 	entry.placedValid = true;
