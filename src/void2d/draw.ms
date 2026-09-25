@@ -207,21 +207,25 @@ function effectMatrixSame(mat: float32[], hasMat: boolean): boolean {
 // and at the end of the bracket — never in the middle of a primitive.
 function closeRun(): void {
 	if (!runOpen) { return; }
-	if (curPipeline == Pipeline.Sprite) {
-		const instances: int32 = spriteInstanceCount() - runStart;
-		if (instances > 0) {
-			recordSpriteDraw(runReason, runStart, instances, curView, curBlend, curSampler);
-		}
-	} else if (curPipeline == Pipeline.Ui) {
-		const instances: int32 = uiInstanceCount() - runStart;
-		if (instances > 0) {
-			recordUiDraw(runReason, runStart, instances, curView, curBlend, curSampler);
-		}
-	} else {
-		const count: int32 = vertexCount() - runStart;
-		if (count > 0) {
-			recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
-		}
+	match (curPipeline) {
+		Pipeline.Sprite => {
+			const instances: int32 = spriteInstanceCount() - runStart;
+			if (instances > 0) {
+				recordSpriteDraw(runReason, runStart, instances, curView, curBlend, curSampler);
+			}
+		},
+		Pipeline.Ui => {
+			const instances: int32 = uiInstanceCount() - runStart;
+			if (instances > 0) {
+				recordUiDraw(runReason, runStart, instances, curView, curBlend, curSampler);
+			}
+		},
+		Pipeline.Vertex => {
+			const count: int32 = vertexCount() - runStart;
+			if (count > 0) {
+				recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
+			}
+		},
 	}
 	runOpen = false;
 }
@@ -235,8 +239,11 @@ export function finishRecording(): void {
 }
 
 function openRun(reason: BreakReason): void {
-	runStart = curPipeline == Pipeline.Sprite ? spriteInstanceCount()
-		: (curPipeline == Pipeline.Ui ? uiInstanceCount() : vertexCount());
+	runStart = match (curPipeline) {
+		Pipeline.Sprite => spriteInstanceCount(),
+		Pipeline.Ui => uiInstanceCount(),
+		Pipeline.Vertex => vertexCount(),
+	};
 	runReason = reason;
 	runOpen = true;
 }

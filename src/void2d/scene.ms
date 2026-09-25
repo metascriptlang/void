@@ -56,30 +56,36 @@ export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D
 	let scaleY: float32 = 1.0;
 	let offsetX: float32 = 0.0;
 	let offsetY: float32 = 0.0;
-	if (s.scaleMode === ScaleMode.Stretch) {
-		scaleX = wf / dw;
-		scaleY = hf / dh;
-	} else if (s.scaleMode === ScaleMode.LetterBox) {
-		const r: float32 = wf / dw < hf / dh ? wf / dw : hf / dh;
-		scaleX = r; scaleY = r;
-		offsetX = (wf - dw * r) * 0.5;
-		offsetY = (hf - dh * r) * 0.5;
-	} else if (s.scaleMode === ScaleMode.Fixed) {
-		offsetX = (wf - dw) * 0.5;
-		offsetY = (hf - dh) * 0.5;
-	} else if (s.scaleMode === ScaleMode.Zoom) {
-		const r: float32 = wf / dw > hf / dh ? wf / dw : hf / dh;
-		scaleX = r; scaleY = r;
-		offsetX = (wf - dw * r) * 0.5;
-		offsetY = (hf - dh * r) * 0.5;
-	} else {
-		const ratio: float32 = wf / dw < hf / dh ? wf / dw : hf / dh;
-		const ir: int32 = ratio as int32;
-		let r: float32;
-		if (ir > 0) { r = ir as float32; } else { r = 1.0; }
-		scaleX = r; scaleY = r;
-		offsetX = (wf - dw * r) * 0.5;
-		offsetY = (hf - dh * r) * 0.5;
+	match (s.scaleMode) {
+		ScaleMode.Stretch => {
+			scaleX = wf / dw;
+			scaleY = hf / dh;
+		},
+		ScaleMode.LetterBox => {
+			const r: float32 = wf / dw < hf / dh ? wf / dw : hf / dh;
+			scaleX = r; scaleY = r;
+			offsetX = (wf - dw * r) * 0.5;
+			offsetY = (hf - dh * r) * 0.5;
+		},
+		ScaleMode.Fixed => {
+			offsetX = (wf - dw) * 0.5;
+			offsetY = (hf - dh) * 0.5;
+		},
+		ScaleMode.Zoom => {
+			const r: float32 = wf / dw > hf / dh ? wf / dw : hf / dh;
+			scaleX = r; scaleY = r;
+			offsetX = (wf - dw * r) * 0.5;
+			offsetY = (hf - dh * r) * 0.5;
+		},
+		ScaleMode.AutoZoom | ScaleMode.Resize => {
+			const ratio: float32 = wf / dw < hf / dh ? wf / dw : hf / dh;
+			const ir: int32 = ratio as int32;
+			let r: float32;
+			if (ir > 0) { r = ir as float32; } else { r = 1.0; }
+			scaleX = r; scaleY = r;
+			offsetX = (wf - dw * r) * 0.5;
+			offsetY = (hf - dh * r) * 0.5;
+		},
 	}
 	return trs2d(offsetX, offsetY, 0.0, scaleX, scaleY) * s.cam.viewMatrix(dw, dh);
 }

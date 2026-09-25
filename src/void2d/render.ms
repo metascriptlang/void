@@ -389,184 +389,194 @@ function emitNode(
 	// analytically, a sheet quad is a sprite that never runs SDF maths. benchSprites is the
 	// scene that measures the second half of that sentence.
 	const instanced: boolean = spriteInstancingAvailable();
-	if (n.kind === DrawKind.Rect) {
-		if (!uiInstancingAvailable() && n.payload != NO_BOX_STYLE) {
-			if (!boxEffectRejectedReported) {
-				console.log(
-					"void2d: a box style cannot be combined with colorMatrix, colorAdd, or colorKey",
-				);
-				boxEffectRejectedReported = true;
+	match (n.kind) {
+		DrawKind.Rect => {
+			if (!uiInstancingAvailable() && n.payload != NO_BOX_STYLE) {
+				if (!boxEffectRejectedReported) {
+					console.log(
+						"void2d: a box style cannot be combined with colorMatrix, colorAdd, or colorKey",
+					);
+					boxEffectRejectedReported = true;
+				}
+				return;
 			}
-			return;
-		}
-		if (uiInstancingAvailable()) {
-			let radiusTL: float32 = 0.0;
-			let radiusTR: float32 = 0.0;
-			let radiusBR: float32 = 0.0;
-			let radiusBL: float32 = 0.0;
-			let borderL: float32 = 0.0;
-			let borderT: float32 = 0.0;
-			let borderR: float32 = 0.0;
-			let borderB: float32 = 0.0;
-			let edge: Color = transparent;
-			let borderStyle: float32 = 0.0;
-			if (n.payload != NO_BOX_STYLE) {
-				const styleIndex: int32 = n.payload;
-				radiusTL = boxStyles[styleIndex].radii.topLeft;
-				radiusTR = boxStyles[styleIndex].radii.topRight;
-				radiusBR = boxStyles[styleIndex].radii.bottomRight;
-				radiusBL = boxStyles[styleIndex].radii.bottomLeft;
-				borderL = boxStyles[styleIndex].borders.left;
-				borderT = boxStyles[styleIndex].borders.top;
-				borderR = boxStyles[styleIndex].borders.right;
-				borderB = boxStyles[styleIndex].borders.bottom;
-				const source: Color = boxStyles[styleIndex].borderColor;
-				edge = rgba(source.r, source.g, source.b, source.a * na);
-				borderStyle = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
-			}
-			// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
-			// border. The visible box is snapped before its quad is inflated, otherwise a
-			// fractional shadow margin moves the reconstructed fill edge off the device grid.
-			const shadowOn: boolean = n.payload != NO_BOX_STYLE
-				&& boxStyles[n.payload].shadowColor.a > 0.0;
-			const rendered = boxBounds;
-			const qOrigin = vec2(rendered.xMin, rendered.yMin) * world;
-			const qx: float32 = qOrigin.x;
-			const qy: float32 = qOrigin.y;
-			const qw: float32 = rendered.xMax - rendered.xMin;
-			const qh: float32 = rendered.yMax - rendered.yMin;
-			let shadowColor: Color = transparent;
-			let sp0: float32 = 0.0;
-			let sp1: float32 = 0.0;
-			let sp2: float32 = 0.0;
-			let sp3: float32 = 0.0;
-			const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
-			const scale: float32 = currentRenderScale();
-			let deviceAX: float32 = 0.0;
-			let deviceDX: float32 = 0.0;
-			if (aligned) {
-				deviceAX = world.a * scale;
-				deviceDX = world.d * scale;
-				borderL = snapStroke(borderL * deviceAX) / deviceAX;
-				borderR = snapStroke(borderR * deviceAX) / deviceAX;
-				borderT = snapStroke(borderT * deviceDX) / deviceDX;
-				borderB = snapStroke(borderB * deviceDX) / deviceDX;
-			}
-			if (shadowOn) {
-				const st = boxStyles[n.payload];
-				const sigma: float32 = st.shadowBlur;
-				let offsetX: float32 = st.shadowOffsetX;
-				let offsetY: float32 = st.shadowOffsetY;
+			if (uiInstancingAvailable()) {
+				let radiusTL: float32 = 0.0;
+				let radiusTR: float32 = 0.0;
+				let radiusBR: float32 = 0.0;
+				let radiusBL: float32 = 0.0;
+				let borderL: float32 = 0.0;
+				let borderT: float32 = 0.0;
+				let borderR: float32 = 0.0;
+				let borderB: float32 = 0.0;
+				let edge: Color = transparent;
+				let borderStyle: float32 = 0.0;
+				if (n.payload != NO_BOX_STYLE) {
+					const styleIndex: int32 = n.payload;
+					radiusTL = boxStyles[styleIndex].radii.topLeft;
+					radiusTR = boxStyles[styleIndex].radii.topRight;
+					radiusBR = boxStyles[styleIndex].radii.bottomRight;
+					radiusBL = boxStyles[styleIndex].radii.bottomLeft;
+					borderL = boxStyles[styleIndex].borders.left;
+					borderT = boxStyles[styleIndex].borders.top;
+					borderR = boxStyles[styleIndex].borders.right;
+					borderB = boxStyles[styleIndex].borders.bottom;
+					const source: Color = boxStyles[styleIndex].borderColor;
+					edge = rgba(source.r, source.g, source.b, source.a * na);
+					borderStyle = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
+				}
+				// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
+				// border. The visible box is snapped before its quad is inflated, otherwise a
+				// fractional shadow margin moves the reconstructed fill edge off the device grid.
+				const shadowOn: boolean = n.payload != NO_BOX_STYLE
+					&& boxStyles[n.payload].shadowColor.a > 0.0;
+				const rendered = boxBounds;
+				const qOrigin = vec2(rendered.xMin, rendered.yMin) * world;
+				const qx: float32 = qOrigin.x;
+				const qy: float32 = qOrigin.y;
+				const qw: float32 = rendered.xMax - rendered.xMin;
+				const qh: float32 = rendered.yMax - rendered.yMin;
+				let shadowColor: Color = transparent;
+				let sp0: float32 = 0.0;
+				let sp1: float32 = 0.0;
+				let sp2: float32 = 0.0;
+				let sp3: float32 = 0.0;
+				const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
+				const scale: float32 = currentRenderScale();
+				let deviceAX: float32 = 0.0;
+				let deviceDX: float32 = 0.0;
 				if (aligned) {
-					offsetX = snapEdge(offsetX * deviceAX) / deviceAX;
-					offsetY = snapEdge(offsetY * deviceDX) / deviceDX;
+					deviceAX = world.a * scale;
+					deviceDX = world.d * scale;
+					borderL = snapStroke(borderL * deviceAX) / deviceAX;
+					borderR = snapStroke(borderR * deviceAX) / deviceAX;
+					borderT = snapStroke(borderT * deviceDX) / deviceDX;
+					borderB = snapStroke(borderB * deviceDX) / deviceDX;
 				}
-				sp0 = offsetX;
-				sp1 = offsetY;
-				sp2 = sigma;
-				sp3 = st.shadowInset ? 1.0 : 0.0;
-				const sc: Color = st.shadowColor;
-				shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
-			}
-			drawUiInstance(InstanceMode.Box, sharedGlyphView(), n.blend, world, qx, qy, qw, qh,
-				radiusTL, radiusTR, radiusBR, radiusBL,
-				borderL, borderT, borderR, borderB,
-				borderStyle, 0.0, 0.0,
-				sp0, sp1, sp2, sp3,
-				col, edge, shadowColor);
-		} else {
-			fillQuad(tl, tr, br, bl, col, n.blend);
-		}
-	} else if (n.kind === DrawKind.Sprite) {
-		if (!emitStyledImage(n, n.sheet, world, col, sizeX, sizeY, lbMin)) {
-			if (instanced) {
-				drawSpriteAffine(n.sheet.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
-					n.sheet.u0, n.sheet.v0, n.sheet.u1, n.sheet.v1, col);
+				if (shadowOn) {
+					const st = boxStyles[n.payload];
+					const sigma: float32 = st.shadowBlur;
+					let offsetX: float32 = st.shadowOffsetX;
+					let offsetY: float32 = st.shadowOffsetY;
+					if (aligned) {
+						offsetX = snapEdge(offsetX * deviceAX) / deviceAX;
+						offsetY = snapEdge(offsetY * deviceDX) / deviceDX;
+					}
+					sp0 = offsetX;
+					sp1 = offsetY;
+					sp2 = sigma;
+					sp3 = st.shadowInset ? 1.0 : 0.0;
+					const sc: Color = st.shadowColor;
+					shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
+				}
+				drawUiInstance(InstanceMode.Box, sharedGlyphView(), n.blend, world, qx, qy, qw, qh,
+					radiusTL, radiusTR, radiusBR, radiusBL,
+					borderL, borderT, borderR, borderB,
+					borderStyle, 0.0, 0.0,
+					sp0, sp1, sp2, sp3,
+					col, edge, shadowColor);
 			} else {
-				imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
+				fillQuad(tl, tr, br, bl, col, n.blend);
 			}
-		}
-	} else if (n.kind === DrawKind.Anim) {
-		const len: int32 = n.frames.length as int32;
-		if (len > 0) {
-			const fi: int32 = ((n.clock * n.fps) as int32) % len;
-			const fr = n.frames[fi];
-			if (!emitStyledImage(n, fr, world, col, sizeX, sizeY, lbMin)) {
+		},
+		DrawKind.Sprite => {
+			if (!emitStyledImage(n, n.sheet, world, col, sizeX, sizeY, lbMin)) {
 				if (instanced) {
-					drawSpriteAffine(fr.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
-						fr.u0, fr.v0, fr.u1, fr.v1, col);
+					drawSpriteAffine(n.sheet.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+						n.sheet.u0, n.sheet.v0, n.sheet.u1, n.sheet.v1, col);
 				} else {
-					imageQuad(fr, tl, tr, br, bl, col, n.blend);
+					imageQuad(n.sheet, tl, tr, br, bl, col, n.blend);
 				}
 			}
-		}
-	} else if (n.kind === DrawKind.Underline) {
-		if (uiInstancingAvailable()) {
-			drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
-				tl.x, tl.y, sizeX, sizeY,
-				0.0, 0.0, 0.0, 0.0,
-				n.size, n.align, 0.0, 0.0,
-				0.0, 0.0, 0.0,
-				0.0, 0.0, 0.0, 0.0,
-				col, transparent, transparent);
-		} else if (!textPrimitiveEffectRejectedReported) {
-			console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
-			textPrimitiveEffectRejectedReported = true;
-		}
-	} else if (n.kind === DrawKind.Selection) {
-		if (uiInstancingAvailable()) {
-			drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
-				tl.x, tl.y, sizeX, sizeY,
-				0.0, 0.0, 0.0, 0.0,
-				n.w * 0.5, n.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
-				0.0, 0.0, 0.0,
-				n.borderL, n.borderT, n.borderR, n.borderB,
-				col, transparent, transparent);
-		} else if (!textPrimitiveEffectRejectedReported) {
-			console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
-			textPrimitiveEffectRejectedReported = true;
-		}
-	} else if (n.kind === DrawKind.Label) {
-		emitLabel(n, world, col);
-	} else if (n.kind === DrawKind.Graphics) {
-		const ops: float32[] = n.records;
-		const opTotal: int32 = ops.length as int32;
-		if (opTotal == 0) {
-			drawMesh(n.mesh, n.gfxView, n.blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
-		} else {
-			let oi: int32 = 0;
-			while (oi + GRAPHICS_OP_FLOATS <= opTotal) {
-				const kind: int32 = ops[oi + GFX_OP_KIND] as int32;
-				const offset: int32 = ops[oi + GFX_OP_VERTEX_OFFSET] as int32;
-				const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
-				if (kind == GraphicsOpKind.Mesh as int32) {
-					setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
-					drawMeshRange(n.mesh, offset, count, n.gfxView, n.blend, world,
-						rgba(1.0, 1.0, 1.0, 1.0), na);
-				} else {
-					const c0: Color = rgba(
-						ops[oi + GFX_OP_COLOR0], ops[oi + GFX_OP_COLOR0 + 1],
-						ops[oi + GFX_OP_COLOR0 + 2], ops[oi + GFX_OP_COLOR0 + 3]);
-					const c1: Color = rgba(
-						ops[oi + GFX_OP_COLOR1], ops[oi + GFX_OP_COLOR1 + 1],
-						ops[oi + GFX_OP_COLOR1 + 2], ops[oi + GFX_OP_COLOR1 + 3]);
-					const c2: Color = rgba(
-						ops[oi + GFX_OP_COLOR2], ops[oi + GFX_OP_COLOR2 + 1],
-						ops[oi + GFX_OP_COLOR2 + 2], ops[oi + GFX_OP_COLOR2 + 3]);
-					setGradientEffect(n.colorMatrix, n.colorAdd, n.colorKey,
-						kind, ops[oi + GFX_OP_SPACE] as int32,
-						ops[oi + GFX_OP_DITHER] != 0.0, ops[oi + GFX_OP_MIDDLE],
-						ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
-						ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
-						c0, c1, c2);
-					drawMeshRange(n.mesh, offset, count, 0, n.blend, world,
-						rgba(1.0, 1.0, 1.0, 1.0), na);
+		},
+		DrawKind.Anim => {
+			const len: int32 = n.frames.length as int32;
+			if (len > 0) {
+				const fi: int32 = ((n.clock * n.fps) as int32) % len;
+				const fr = n.frames[fi];
+				if (!emitStyledImage(n, fr, world, col, sizeX, sizeY, lbMin)) {
+					if (instanced) {
+						drawSpriteAffine(fr.view, n.blend, world, tl.x, tl.y, sizeX, sizeY,
+							fr.u0, fr.v0, fr.u1, fr.v1, col);
+					} else {
+						imageQuad(fr, tl, tr, br, bl, col, n.blend);
+					}
 				}
-				oi = oi + GRAPHICS_OP_FLOATS;
 			}
-		}
-	} else if (n.kind === DrawKind.ScaleGrid) {
-		renderScaleGrid(n, world, col);
+		},
+		DrawKind.Underline => {
+			if (uiInstancingAvailable()) {
+				drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
+					tl.x, tl.y, sizeX, sizeY,
+					0.0, 0.0, 0.0, 0.0,
+					n.size, n.align, 0.0, 0.0,
+					0.0, 0.0, 0.0,
+					0.0, 0.0, 0.0, 0.0,
+					col, transparent, transparent);
+			} else if (!textPrimitiveEffectRejectedReported) {
+				console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
+				textPrimitiveEffectRejectedReported = true;
+			}
+		},
+		DrawKind.Selection => {
+			if (uiInstancingAvailable()) {
+				drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
+					tl.x, tl.y, sizeX, sizeY,
+					0.0, 0.0, 0.0, 0.0,
+					n.w * 0.5, n.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
+					0.0, 0.0, 0.0,
+					n.borderL, n.borderT, n.borderR, n.borderB,
+					col, transparent, transparent);
+			} else if (!textPrimitiveEffectRejectedReported) {
+				console.log("void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey");
+				textPrimitiveEffectRejectedReported = true;
+			}
+		},
+		DrawKind.Label => {
+			emitLabel(n, world, col);
+		},
+		DrawKind.Graphics => {
+			const ops: float32[] = n.records;
+			const opTotal: int32 = ops.length as int32;
+			if (opTotal == 0) {
+				drawMesh(n.mesh, n.gfxView, n.blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
+			} else {
+				let oi: int32 = 0;
+				while (oi + GRAPHICS_OP_FLOATS <= opTotal) {
+					const kind: int32 = ops[oi + GFX_OP_KIND] as int32;
+					const offset: int32 = ops[oi + GFX_OP_VERTEX_OFFSET] as int32;
+					const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
+					if (kind == GraphicsOpKind.Mesh as int32) {
+						setEffect(n.colorMatrix, n.colorAdd, n.colorKey);
+						drawMeshRange(n.mesh, offset, count, n.gfxView, n.blend, world,
+							rgba(1.0, 1.0, 1.0, 1.0), na);
+					} else {
+						const c0: Color = rgba(
+							ops[oi + GFX_OP_COLOR0], ops[oi + GFX_OP_COLOR0 + 1],
+							ops[oi + GFX_OP_COLOR0 + 2], ops[oi + GFX_OP_COLOR0 + 3]);
+						const c1: Color = rgba(
+							ops[oi + GFX_OP_COLOR1], ops[oi + GFX_OP_COLOR1 + 1],
+							ops[oi + GFX_OP_COLOR1 + 2], ops[oi + GFX_OP_COLOR1 + 3]);
+						const c2: Color = rgba(
+							ops[oi + GFX_OP_COLOR2], ops[oi + GFX_OP_COLOR2 + 1],
+							ops[oi + GFX_OP_COLOR2 + 2], ops[oi + GFX_OP_COLOR2 + 3]);
+						setGradientEffect(n.colorMatrix, n.colorAdd, n.colorKey,
+							kind, ops[oi + GFX_OP_SPACE] as int32,
+							ops[oi + GFX_OP_DITHER] != 0.0, ops[oi + GFX_OP_MIDDLE],
+							ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
+							ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
+							c0, c1, c2);
+						drawMeshRange(n.mesh, offset, count, 0, n.blend, world,
+							rgba(1.0, 1.0, 1.0, 1.0), na);
+					}
+					oi = oi + GRAPHICS_OP_FLOATS;
+				}
+			}
+		},
+		DrawKind.ScaleGrid => {
+			renderScaleGrid(n, world, col);
+		},
+		DrawKind.Group | DrawKind.Mask => {},
 	}
 }
 

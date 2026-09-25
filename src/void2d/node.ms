@@ -263,14 +263,25 @@ export function dispose(this n: Node2D): void {
 	for (const ch of n.children) {
 		ch.dispose();
 	}
-	if (n.kind === DrawKind.Rect && n.payload != NO_BOX_STYLE) {
-		releaseBoxStyle(n.payload);
-		n.payload = NO_BOX_STYLE;
-	} else if ((n.kind === DrawKind.Sprite || n.kind === DrawKind.Anim) && n.payload != NO_IMAGE_STYLE) {
-		releaseImageStyle(n.payload);
-		n.payload = NO_IMAGE_STYLE;
-	} else if (n.kind === DrawKind.Label && n.payload != NO_LABEL_TEXT) {
-		releaseLabelText(n.payload);
-		n.payload = NO_LABEL_TEXT;
+	match (n.kind) {
+		DrawKind.Rect => {
+			if (n.payload != NO_BOX_STYLE) {
+				releaseBoxStyle(n.payload);
+				n.payload = NO_BOX_STYLE;
+			}
+		},
+		DrawKind.Sprite | DrawKind.Anim => {
+			if (n.payload != NO_IMAGE_STYLE) {
+				releaseImageStyle(n.payload);
+				n.payload = NO_IMAGE_STYLE;
+			}
+		},
+		DrawKind.Label => {
+			if (n.payload != NO_LABEL_TEXT) {
+				releaseLabelText(n.payload);
+				n.payload = NO_LABEL_TEXT;
+			}
+		},
+		_ => {},
 	}
 }
