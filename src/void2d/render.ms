@@ -36,6 +36,7 @@ import {
 	glyphPageHandle,
 	markGlyphPageDrawn,
 	labelTexts,
+	LabelText,
 } from "./labelText";
 import { TextLayout, TextStyle, calcTextWidth as layoutWidth } from "./textLayout";
 import { GlyphPage, NO_GLYPH_PAGE } from "./glyphAtlas";
@@ -207,18 +208,19 @@ function shapeIfChanged(n: Node2D): void {
 		|| n.fontId != n.lastFontId;
 	if (textChanged) {
 		if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
-		const laid = shapeLabel(n.payload, n.text, labelStyle(n));
+		shapeLabel(n.payload, n.text, labelStyle(n));
+		const shaped: LabelText = labelTexts[n.payload];
 		n.contentXMin = 0.0; n.contentXMax = 0.0;
-		for (const line of laid.lines) {
+		for (const line of shaped.layout.lines) {
 			if (line.x < n.contentXMin) { n.contentXMin = line.x; }
 			if (line.x + line.width > n.contentXMax) { n.contentXMax = line.x + line.width; }
 		}
 		n.contentYMin = 0.0;
-		n.contentYMax = laid.height;
-		for (const g of laid.glyphs) {
+		n.contentYMax = shaped.layout.height;
+		for (const g of shaped.layout.glyphs) {
 			const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
 			if (right <= left || bottom <= top) { continue; }
-			const baseline: float32 = laid.lines[g.line].baseline;
+			const baseline: float32 = shaped.layout.lines[g.line].baseline;
 			if (g.x + left < n.contentXMin) { n.contentXMin = g.x + left; }
 			if (g.x + right > n.contentXMax) { n.contentXMax = g.x + right; }
 			if (baseline + top < n.contentYMin) { n.contentYMin = baseline + top; }

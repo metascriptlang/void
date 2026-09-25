@@ -128,12 +128,11 @@ export function releaseLabelText(index: int32): void {
 	freeLabelTexts.push(index);
 }
 
-export function shapeLabel(index: int32, text: string, style: TextStyle): TextLayout {
+export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	releasePlacement(entry);
 	entry.style = style;
 	entry.layout = TextLayout.layout(text, style);
-	return entry.layout;
 }
 
 export function isPixelExact(world: Transform2D): boolean {
