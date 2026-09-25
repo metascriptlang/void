@@ -157,8 +157,14 @@ function placementKey(world: Transform2D, scale: float32): PlacementKey {
 	};
 }
 
+// Early exits, not one struct compare: this runs for every label on every frame.
 function placementCurrent(entry: LabelText, world: Transform2D, scale: float32): boolean {
-	return entry.placedValid && entry.key == placementKey(world, scale);
+	if (!entry.placedValid || entry.key.scale != scale) { return false; }
+	if (entry.key.a != world.a || entry.key.b != world.b) { return false; }
+	if (entry.key.c != world.c || entry.key.d != world.d) { return false; }
+	if (!entry.pixelExact) { return true; }
+	return entry.key.fracX == fraction(world.tx * scale) &&
+		entry.key.fracY == fraction(world.ty * scale);
 }
 
 function uvRect(this t: GlyphTile): [float32, float32, float32, float32] {
