@@ -748,6 +748,49 @@ the baseline was re-taken (see "Baseline" (b)):
 - Whole-grapheme face selection: a multi-codepoint grapheme takes the first face that covers all of it (GHOSTTY.md:27), over the grapheme segmentation this phase wires. P3 selects a face per codepoint.
 - Carried from P3's review (REVIEWS.md P3, follow-ups): a placement stays invalid while any glyph is refused (F1); filter targets snapped to device pixels, with golden `text/filteredDpi125` (F3); `\r` and tab drawn as nothing and a tab stop, C0 controls kept out of the fallback probe, GPUI's break rule, and h2d's `maxWidth` centring for `align` (F4); pins for the page cap, the refusal report and the `sizeAdjust` guard (F8); the font API under CODE-STYLE §14 (F9), and with it the half of F9 no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1`, and private `T[]` parameters remain where CODE-STYLE asks for `Span<T>` (`sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, and `polyArea2`, `isEar` and `triangulate` in `graphics.ms`) (REVIEWS.md P3.5 review). From P3.5's re-review: a line in a `tests/PENDING.md` table that the record check cannot parse fails the gate and names the line, where today it is skipped in silence; and the gate prints `msc --version` and `~/.metascript/BUILD`, so its log names the compiler it certified.
 
+**Steps, in order** (written 2026-09-26, before P4's code). Steps 4-7 build what an app author
+writes or reads; the human was sent the app code before and after on 2026-09-26, and each of them
+waits for that answer, parked at this list. Steps 1-3 do not depend on it.
+
+1. **The gate names what it cannot read and what compiled it** (P3.5 re-review #3, #8). A line in
+   a `tests/PENDING.md` table that `pendingRows` cannot parse fails the record stage and is named;
+   the gate log opens with `msc --version` and `~/.metascript/BUILD`. T0 over the parser in
+   `tests/harness/record.ms`, and a planted control per case: a `T2/T4` tier, an id with a space,
+   a row missing its date cell.
+2. **P3's follow-ups with no app surface.** F1: a placement with a refused glyph stays invalid, so
+   the label retries it next frame (T1). F3: filter targets open on device pixels; golden
+   `text/filteredDpi125` (T2). F4's internal half: `\r` draws nothing, a tab advances to a tab stop,
+   C0 controls never probe the fallback faces (T0 on the layout, T4 `fallbackProbes`). F8: pins for
+   the page cap, the refusal report and the `sizeAdjust` guard; the page cap in its own process,
+   since exhausting the page table starves every later test (T0). F9's internal half: F-c's `Span`
+   parameters, F-d's `Result` returns, `cornerArc`'s unread `Node2D`. Every golden but the new one
+   stays byte-identical.
+3. **Segmentation, as T3 first.** `GraphemeBreakTest.txt` and `LineBreakTest.txt` vendored under
+   `tests/oracle/ucd/` with their Unicode version; a grapheme segmenter over generated property
+   tables, held to the grapheme file; the line-break pass rate printed for the U+0020 rule, then
+   again after GPUI's break rule replaces it (F4), because that pair of numbers is the argument
+   for the cheap rule (TESTING.md "T3"). Then whole-grapheme face selection on top
+   (`font-grapheme-selection`), T1 as numbers. Measured: wasm delta of the property tables.
+   The break rule moved here from step 2 so the oracle exists before the rule changes.
+4. **The app-facing half of F4 and F9**, waiting on the human: the font API as `Result` with a
+   `FontId`, the BoxStyle builders as extensions, text metrics on a non-Label failing loud, `Align`
+   with h2d's `maxWidth` centring. Neon's call sites get a note in `.inbox/neon/`.
+5. **`TextRun`**, waiting on the human: run splitting, backgrounds before glyphs, underline,
+   strikethrough and wavy as UI instances placed from the font's metrics and snapped. T1: a style
+   change splits the run; decoration position and thickness as numbers. T2: golden
+   `text/decorations`.
+6. **Wrap, truncation and hit-testing over the unwrapped glyph list**, waiting on the human: wrap
+   boundaries, hanging indent, truncation at start, middle and end, `force_width`, `split_at`, the
+   shaping-break input, `x_for_index` / `index_for_x`, line boxes over the tallest face (F11). T0
+   for the boundary arithmetic; T1 that a width change lays out no glyph again.
+7. **Caret and selection as their own instances**, waiting on the human: the smooth-min union in
+   the fragment shader. T1: a blink changes no text instance. T2: golden `text/caretSelection`,
+   and a capture check that a ragged selection has no gap and no doubled alpha. The Zed look is
+   asked of the human once this renders.
+8. **The 200 × 80 editor bench scene**: draws, instances and `present` (T4); P4's `present` by
+   `scripts/bench-ab.sh` against the P3.5 head `4d357f7`; the wasm delta against a tree built on
+   the same compiler the same day.
+
 **Defects closed.** The remaining h2d text surface: the `Text` metric surface and the `Align` enum.
 
 **Exit.**
