@@ -8,7 +8,7 @@ export struct GammaRatios {
 	r3: float32;
 }
 
-const GAMMA_ROWS: float32[] = [
+const GAMMA_ROWS: float32[52] = [
 	0.0000, 0.0000, 0.0000, 0.0000,
 	0.0166, -0.0807, 0.2227, -0.0751,
 	0.0350, -0.1760, 0.4325, -0.1370,
