@@ -40,6 +40,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~No fallback chain; integer glyph origins, rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, ≤ 16 fonts, the R8→RGBA CPU expansion~~ closed at P3 steps 3 and 5. What the collection model still lacks is rows `font-colour-emoji` and `font-grapheme-selection` | goldens `text/*`, `text/cjkFallback` | done / P3 |
 | The h2d surface still missing — `parent`, `TileGroup`, `Mask.scrollX/Y`; `Tile.dx/dy`, uniform node pivots and the text metrics are closed | rows `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `golden-missing:clip/maskScroll` | P5 |
 | Idle costs a full walk and draw | row `idle-costs-a-walk` | P5 |
+| A sokol view id past 2^24 names another slot in the replay | row `display-list-view-id-float32` | P5 |
 | ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `7b7f163`, on `main` in `3860752`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
 
 ## How a row is read
@@ -121,6 +122,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | h2d-object-surface | T0 | `parent`, `remove()`, `getChildAt`, `getChildIndex`, `numChildren`, `name`, and `localToGlobal` returning last frame's matrix (`node.ms:174-180`) | P5 | 2026-09-20 |
 | h2d-tilegroup | T1 | `TileGroup` does not exist | P5 | 2026-09-20 |
 | one-node-two-parents | T0 | `addChild` does not detach from a previous parent (`node.ms:133-137`) | P5 | 2026-09-20 |
+| display-list-view-id-float32 | T1 | the display list stores a sokol view id as `float32` (`CMD_VIEW`, and `draw.ms`'s saved view), exact below 2^24 only; an id is `(generation << 16) | slot`, so after the 256th reuse of one view slot the replay binds another slot. Found by P3.5's audit (REVIEWS.md "Audit before P4" #18) | P5 | 2026-09-25 |
 
 ## Debug-build aborts
 
