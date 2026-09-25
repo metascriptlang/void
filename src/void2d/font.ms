@@ -1,4 +1,4 @@
-import { loadFace, syntheticFace, glyphIndex, faceHeights } from "./face";
+import { FaceError, loadFace, syntheticFace, glyphIndex, faceHeights } from "./face";
 
 export enum FontStyle { Normal, Italic }
 
@@ -18,6 +18,13 @@ export struct Font {
 	sizeAdjust: SizeAdjust;
 }
 
+enum FontError {
+	NoFamily,
+	NoFallbackFamily,
+	NeedsShaper,
+	NotLoaded,
+}
+
 export struct CodepointFace {
 	face: int32;
 	scale: float32;
@@ -26,6 +33,7 @@ export struct CodepointFace {
 export const NO_FONT: int32 = -1;
 const DEFAULT_PATH: string = "assets/font.ttf";
 const DEFAULT_FAMILY: string = "Inter";
+const NO_FACE: int32 = -1;
 const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
 const BOLD_WEIGHT: int32 = 600;
@@ -40,7 +48,7 @@ struct RegisteredFace {
 
 struct LoadedPath {
 	path: string;
-	face: int32;
+	face: Result<int32, FaceError>;
 }
 
 struct Synthetic {
@@ -76,23 +84,28 @@ let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
 
-function faceAtPath(path: string): int32 {
+function faceAtPath(path: string): Result<int32, FaceError> {
 	for (const loaded of loadedPaths) {
 		if (loaded.path.equals(path)) { return loaded.face; }
 	}
-	const face: int32 = loadFace(path);
+	const face = loadFace(path);
 	loadedPaths.push({ path: path, face: face });
 	return face;
 }
 
-function styled(face: int32, bold: boolean, italic: boolean): int32 {
-	if (face < 0 || (!bold && !italic)) { return face; }
+function styled(face: int32, bold: boolean, italic: boolean): Result<int32, FaceError> {
+	if (!bold && !italic) { return Result.ok(face); }
 	for (const s of synthetics) {
-		if (s.base == face && s.bold == bold && s.italic == italic) { return s.face; }
+		if (s.base == face && s.bold == bold && s.italic == italic) { return Result.ok(s.face); }
 	}
-	const synthetic: int32 = syntheticFace(face, bold, italic);
+	const synthetic: int32 = try syntheticFace(face, bold, italic);
 	synthetics.push({ base: face, bold: bold, italic: italic, face: synthetic });
-	return synthetic;
+	return Result.ok(synthetic);
+}
+
+function styledAt(path: string, bold: boolean, italic: boolean): Result<int32, FaceError> {
+	const face: int32 = try faceAtPath(path);
+	return styled(face, bold, italic);
 }
 
 function plainFont(face: int32): FontEntry {
@@ -120,7 +133,16 @@ function ensureDefaultFont(): void {
 		weight: 400,
 		style: FontStyle.Normal,
 	});
-	fonts.push(plainFont(faceAtPath(DEFAULT_PATH)));
+	const loaded = faceAtPath(DEFAULT_PATH);
+	if (!loaded.ok) {
+		console.log(
+			`void2d: the default font ${DEFAULT_PATH} did not load ` +
+			`(${loaded.error.toString()}); text in it draws nothing`,
+		);
+		fonts.push(plainFont(NO_FACE));
+		return;
+	}
+	fonts.push(plainFont(loaded.value));
 }
 
 export function registerFace(path: string, family: string, weight: int32, style: FontStyle): void {
@@ -130,9 +152,9 @@ export function registerFace(path: string, family: string, weight: int32, style:
 
 export function addFont(path: string): int32 {
 	ensureDefaultFont();
-	const face: int32 = faceAtPath(path);
-	if (face < 0) { return NO_FONT; }
-	fonts.push(plainFont(face));
+	const face = faceAtPath(path);
+	if (!face.ok) { return NO_FONT; }
+	fonts.push(plainFont(face.value));
 	return (fonts.length as int32) - 1;
 }
 
@@ -150,7 +172,7 @@ function weightRank(desired: int32, weight: int32): int32 {
 	return 1000 + desired - weight;
 }
 
-function bestFace(family: string, weight: int32, style: FontStyle): int32 {
+function bestFace(family: string, weight: int32, style: FontStyle): Result<int32, FontError> {
 	let styleMatches: boolean = false;
 	for (const r of registered) {
 		if (r.family.equals(family) && r.style == style) { styleMatches = true; }
@@ -166,7 +188,7 @@ function bestFace(family: string, weight: int32, style: FontStyle): int32 {
 			bestRank = rank;
 		}
 	}
-	return best;
+	return best < 0 ? Result.err(FontError.NoFamily) : Result.ok(best);
 }
 
 function needsBold(this font: Font, match: int32): boolean {
@@ -199,9 +221,13 @@ function sameAs(this a: Font, b: Font): boolean {
 }
 
 export function resolveFont(font: Font): int32 {
+	return try resolve(font) catch NO_FONT;
+}
+
+function resolve(font: Font): Result<int32, FontError> {
 	ensureDefaultFont();
 	for (let i = 0; i < (fonts.length as int32); i++) {
-		if (fonts[i].described && fonts[i].description.sameAs(font)) { return i; }
+		if (fonts[i].described && fonts[i].description.sameAs(font)) { return Result.ok(i); }
 	}
 	let kern: boolean = true;
 	for (const feature of font.features) {
@@ -210,36 +236,41 @@ export function resolveFont(font: Font): int32 {
 				`void2d: font feature "${feature.tag}" needs the shaper, which lands at P6; ` +
 				`font "${font.family}" is refused`,
 			);
-			return NO_FONT;
+			return Result.err(FontError.NeedsShaper);
 		}
 		kern = feature.value != 0;
 	}
-	const match: int32 = bestFace(font.family, font.weight, font.style);
-	if (match < 0) {
+	const best = bestFace(font.family, font.weight, font.style);
+	if (!best.ok) {
 		console.log(
 			`void2d: no face is registered for family "${font.family}"; the font is refused`,
 		);
-		return NO_FONT;
+		return Result.err(best.error);
 	}
+	const primary: int32 = best.value;
+	const fallbackMatches: Vec<int32> = new Array(0);
 	for (const family of font.fallbacks) {
-		if (bestFace(family, font.weight, font.style) < 0) {
+		const matched = bestFace(family, font.weight, font.style);
+		if (!matched.ok) {
 			console.log(
 				`void2d: no face is registered for fallback family "${family}"; ` +
 				`font "${font.family}" is refused`,
 			);
-			return NO_FONT;
+			return Result.err(FontError.NoFallbackFamily);
 		}
+		fallbackMatches.push(matched.value);
 	}
-	const face: int32 = styled(
-		faceAtPath(registered[match].path),
-		font.needsBold(match),
-		font.needsItalic(match),
+	const face = styledAt(
+		registered[primary].path,
+		font.needsBold(primary),
+		font.needsItalic(primary),
 	);
-	if (face < 0) {
+	if (!face.ok) {
 		console.log(
-			`void2d: ${registered[match].path} did not load; font "${font.family}" is refused`,
+			`void2d: ${registered[primary].path} did not load (${face.error.toString()}); ` +
+			`font "${font.family}" is refused`,
 		);
-		return NO_FONT;
+		return Result.err(FontError.NotLoaded);
 	}
 	const id: int32 = fonts.length as int32;
 	const features: FontFeature[] = [];
@@ -247,14 +278,13 @@ export function resolveFont(font: Font): int32 {
 	const fallbackFamilies: string[] = [];
 	for (const family of font.fallbacks) { fallbackFamilies.push(family); }
 	fonts.push({
-		face: face,
+		face: face.value,
 		kern: kern,
 		sizeAdjust: font.sizeAdjust,
 		described: true,
 		description: { ...font, features: features, fallbacks: fallbackFamilies },
 	});
-	for (const family of font.fallbacks) {
-		const m: int32 = bestFace(family, font.weight, font.style);
+	for (const m of fallbackMatches) {
 		fallbacks.push({
 			font: id,
 			path: registered[m].path,
@@ -265,7 +295,7 @@ export function resolveFont(font: Font): int32 {
 		});
 	}
 	resolved = new Map<uint64, int32>();
-	return id;
+	return Result.ok(id);
 }
 
 export function addFallbackFont(font: int32, path: string): void {
@@ -324,15 +354,22 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 function fallbackFace(index: int32): int32 {
 	if (fallbacks[index].face == NOT_LOADED) {
 		const entry: Fallback = fallbacks[index];
-		const face: int32 = styled(faceAtPath(entry.path), entry.bold, entry.italic);
+		const face = styledAt(entry.path, entry.bold, entry.italic);
 		fallbackLoads = fallbackLoads + 1;
-		if (face < 0) {
-			console.log(`void2d: fallback font ${entry.path} did not load; it is skipped`);
+		if (!face.ok) {
+			console.log(
+				`void2d: fallback font ${entry.path} did not load ` +
+				`(${face.error.toString()}); it is skipped`,
+			);
 			fallbacks[index].face = LOAD_FAILED;
 		} else {
-			fallbacks[index].face = face;
+			fallbacks[index].face = face.value;
 			const primary: int32 = fontFace(entry.font);
-			fallbacks[index].scale = adjustedScale(primary, face, fonts[entry.font].sizeAdjust);
+			fallbacks[index].scale = adjustedScale(
+				primary,
+				face.value,
+				fonts[entry.font].sizeAdjust,
+			);
 		}
 	}
 	return fallbacks[index].face;

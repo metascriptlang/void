@@ -15,7 +15,7 @@ import {
 let loadedFace: int32 = -1;
 
 function testFace(): int32 {
-	if (loadedFace < 0) { loadedFace = loadFace("assets/font.ttf"); }
+	if (loadedFace < 0) { loadedFace = try loadFace("assets/font.ttf") catch -1; }
 	return loadedFace;
 }
 

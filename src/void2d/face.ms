@@ -36,12 +36,34 @@ export struct FaceHeights {
 	lineHeight: float32;
 }
 
-export function loadFace(path: string): int32 {
-	return void2dGlyphFaceLoad(path);
+export enum FaceError {
+	Unreadable,
+	NotAFont,
+	OutOfMemory,
+	NoBaseFace,
 }
 
-export function syntheticFace(face: int32, bold: boolean, italic: boolean): int32 {
-	return void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0);
+function faceResult(code: int32): Result<int32, FaceError> {
+	if (code >= 0) { return Result.ok(code); }
+	if (code < -4) { unreachable; }
+	return match (code) {
+		-1 => Result.err(FaceError.Unreadable),
+		-2 => Result.err(FaceError.NotAFont),
+		-3 => Result.err(FaceError.OutOfMemory),
+		_ => Result.err(FaceError.NoBaseFace),
+	};
+}
+
+export function loadFace(path: string): Result<int32, FaceError> {
+	return faceResult(void2dGlyphFaceLoad(path));
+}
+
+export function syntheticFace(
+	face: int32,
+	bold: boolean,
+	italic: boolean,
+): Result<int32, FaceError> {
+	return faceResult(void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0));
 }
 
 export function glyphLookups(): uint32 {

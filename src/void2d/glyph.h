@@ -1,6 +1,11 @@
 #ifndef VOID2D_GLYPH_H
 #define VOID2D_GLYPH_H
 
+#define VOID2D_FACE_UNREADABLE -1
+#define VOID2D_FACE_NOT_A_FONT -2
+#define VOID2D_FACE_NO_MEMORY -3
+#define VOID2D_FACE_NO_BASE -4
+
 int void2dGlyphFaceLoad(const char *path);
 int void2dGlyphFaceSynthetic(int face, int bold, int italic);
 int void2dGlyphFaceCount(void);

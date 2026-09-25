@@ -1,5 +1,7 @@
 import {
+	FaceError,
 	loadFace,
+	syntheticFace,
 	glyphIndex,
 	glyphAdvance,
 	glyphKern,
@@ -11,8 +13,20 @@ import {
 let loadedFace: int32 = -1;
 
 function testFace(): int32 {
-	if (loadedFace < 0) { loadedFace = loadFace("assets/font.ttf"); }
+	if (loadedFace < 0) { loadedFace = try loadFace("assets/font.ttf") catch -1; }
 	return loadedFace;
+}
+
+test "a face that cannot load says why, in the error the C loader chose" {
+	const missing = loadFace("tests/fonts/noSuchFont.ttf");
+	assert !missing.ok;
+	if (!missing.ok) { assert missing.error == FaceError.Unreadable; }
+	const notAFont = loadFace("tests/fonts/README.md");
+	assert !notAFont.ok;
+	if (!notAFont.ok) { assert notAFont.error == FaceError.NotAFont; }
+	const noBase = syntheticFace(1000000, true, false);
+	assert !noBase.ok;
+	if (!noBase.ok) { assert noBase.error == FaceError.NoBaseFace; }
 }
 
 test "metrics are float and unrounded at 13 px" {
@@ -66,7 +80,7 @@ test "decoration metrics read post and OS/2 when both tables are sound" {
 }
 
 test "zeroed decoration tables fall back to the ex height the x glyph measures" {
-	const face = loadFace("tests/fonts/zeroedDecorations.ttf");
+	const face = try loadFace("tests/fonts/zeroedDecorations.ttf") catch -1;
 	assert face >= 0;
 	const d = decorationInUnits(face, 2048.0);
 	const thickness: float32 = 0.15 * 1118.0;
@@ -77,7 +91,7 @@ test "zeroed decoration tables fall back to the ex height the x glyph measures" 
 }
 
 test "a zero thickness keeps the table's position and estimates from the ascent" {
-	const face = loadFace("tests/fonts/zeroThickness.ttf");
+	const face = try loadFace("tests/fonts/zeroThickness.ttf") catch -1;
 	assert face >= 0;
 	const d = decorationInUnits(face, 2048.0);
 	const thickness: float32 = 0.15 * 0.75 * 0.75 * 1984.0;

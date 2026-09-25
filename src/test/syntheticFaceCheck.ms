@@ -16,7 +16,7 @@ let regularFace: int32 = -1;
 const atlas: GlyphAtlas = GlyphAtlas.create(256, 4);
 
 function regular(): int32 {
-	if (regularFace < 0) { regularFace = loadFace("assets/font.ttf"); }
+	if (regularFace < 0) { regularFace = try loadFace("assets/font.ttf") catch -1; }
 	return regularFace;
 }
 
@@ -45,7 +45,7 @@ function rowCentroid(t: GlyphTile, deviceY: int32): float32 {
 }
 
 test "synthetic bold widens the advance by its embolden strength" {
-	const bold = syntheticFace(regular(), true, false);
+	const bold = try syntheticFace(regular(), true, false) catch -1;
 	assert bold >= 0;
 	const h = glyphIndex(regular(), "H".code);
 	const strength: float32 = INTER_LINE_UNITS / 32.0 * SIZE / UNITS_PER_EM;
@@ -53,7 +53,7 @@ test "synthetic bold widens the advance by its embolden strength" {
 }
 
 test "synthetic bold thickens a stem by its strength, measured in coverage" {
-	const bold = syntheticFace(regular(), true, false);
+	const bold = try syntheticFace(regular(), true, false) catch -1;
 	const stem: float32 = 180.0 * SIZE / UNITS_PER_EM;
 	const strength: float32 = INTER_LINE_UNITS / 32.0 * SIZE / UNITS_PER_EM;
 	const regularRow = rowCoverage(tileOf(regular(), "l".code), -12);
@@ -64,7 +64,7 @@ test "synthetic bold thickens a stem by its strength, measured in coverage" {
 }
 
 test "synthetic italic slants 12 degrees about the baseline and keeps the advance" {
-	const italic = syntheticFace(regular(), false, true);
+	const italic = try syntheticFace(regular(), false, true) catch -1;
 	const l = glyphIndex(regular(), "l".code);
 	assert glyphAdvance(italic, l, SIZE) == glyphAdvance(regular(), l, SIZE);
 	const upright = tileOf(regular(), "l".code);

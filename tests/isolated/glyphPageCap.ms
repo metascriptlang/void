@@ -13,9 +13,14 @@ test "the renderer binds at most 64 glyph pages, and an atlas refused one fails 
 		if (atlas.ensurePage() != NO_GLYPH_PAGE_HANDLE) { made = made + 1; }
 	}
 	assert made == RENDERER_PAGE_VIEWS;
-	const face: int32 = loadFace("assets/font.ttf");
+	const face: int32 = try loadFace("assets/font.ttf") catch -1;
 	const late = GlyphAtlas.create(64, 4);
-	const r = late.acquire({ face: face, glyph: glyphIndex(face, "H".code), sizePx: 13.0, variant: 0 });
+	const r = late.acquire({
+		face: face,
+		glyph: glyphIndex(face, "H".code),
+		sizePx: 13.0,
+		variant: 0,
+	});
 	assert !r.ok;
 	if (!r.ok) { assert r.error == AtlasError.Full; }
 	assert late.pageCount() == 0;

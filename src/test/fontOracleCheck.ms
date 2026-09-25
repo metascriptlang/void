@@ -30,7 +30,7 @@ test "font and decoration metrics agree with fontTools, broken tables included" 
 	for (let i: int32 = 0; i < count; i++) {
 		const row = fonts.at(i);
 		const path: string = row.getDynamicField("path").asString();
-		const face = loadFace(path);
+		const face = try loadFace(path) catch -1;
 		assert face >= 0;
 		const em: float32 = row.getDynamicField("unitsPerEm").asNumber() as float32;
 		const v = faceMetrics(face, em);

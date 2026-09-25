@@ -495,18 +495,18 @@ int void2dGlyphFaceLoad(const char *path) {
 	unsigned char *bytes = readWholeFile(path, &size);
 	if (!bytes) {
 		fprintf(stderr, "void2d: cannot read font file %s\n", path);
-		return -1;
+		return VOID2D_FACE_UNREADABLE;
 	}
 	int offset = stbtt_GetFontOffsetForIndex(bytes, 0);
 	stbtt_fontinfo info;
 	if (offset < 0 || !stbtt_InitFont(&info, bytes, offset)) {
 		fprintf(stderr, "void2d: %s is not a font stb_truetype can read\n", path);
 		free(bytes);
-		return -1;
+		return VOID2D_FACE_NOT_A_FONT;
 	}
 	if (!growFaces()) {
 		free(bytes);
-		return -1;
+		return VOID2D_FACE_NO_MEMORY;
 	}
 	s_faces[s_faceCount].bytes = bytes;
 	s_faces[s_faceCount].length = (int)size;
@@ -519,7 +519,8 @@ int void2dGlyphFaceLoad(const char *path) {
 }
 
 int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
-	if (!validFace(face) || !growFaces()) { return -1; }
+	if (!validFace(face)) { return VOID2D_FACE_NO_BASE; }
+	if (!growFaces()) { return VOID2D_FACE_NO_MEMORY; }
 	GlyphFace synthetic = s_faces[face];
 	if (bold) {
 		int ascent = 0, descent = 0, lineGap = 0;

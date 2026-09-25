@@ -60,9 +60,9 @@ function layoutWith(fontId: int32, text: string): TextLayout {
 }
 
 test "the primary face lacks a hanzi the fallback has" {
-	const primary = loadFace(LATIN);
+	const primary = try loadFace(LATIN) catch -1;
 	assert glyphIndex(primary, 0x4F60) == 0;
-	const cjk = loadFace(CJK);
+	const cjk = try loadFace(CJK) catch -1;
 	assert cjk >= 0;
 	assert glyphIndex(cjk, 0x4F60) != 0;
 }
