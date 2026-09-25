@@ -54,17 +54,17 @@ function checkOwners(rows: PendingRow[], roadmap: string): int32 {
 	return failed;
 }
 
+// Only the total: how many of them pass is the run's to say, and the gate checks that.
 function checkGoldenCount(table: string, testing: string): int32 {
 	const rows: int32 = goldenRowCount(table);
-	const claim: string = `| D3D11 | **${rows} / ${rows} scenes byte-identical**`;
-	if (testing.indexOf(claim) < 0) {
-		console.log(
-			`FAIL docs/TESTING.md's D3D11 row does not say ${rows} / ${rows}: ` +
-			`tests/golden/table.ms has ${rows} scenes`,
-		);
-		return 1;
+	for (const line of testing.split("\n")) {
+		if (line.startsWith("| D3D11 | **") && line.indexOf(` / ${rows} scenes`) >= 0) { return 0; }
 	}
-	return 0;
+	console.log(
+		`FAIL docs/TESTING.md's D3D11 row does not count ${rows} scenes, ` +
+		"as tests/golden/table.ms does",
+	);
+	return 1;
 }
 
 function main(): int32 {

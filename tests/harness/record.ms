@@ -34,10 +34,11 @@ export function tableCells(line: string): string[] {
 	return cells;
 }
 
+// Any single word but the header's and the separator's: a row is a row because its tier cell
+// says so, not because of how its id is spelled.
 function isPendingId(cell: string): boolean {
 	if ((cell.length as int32) == 0 || cell.indexOf(" ") >= 0) { return false; }
-	const first: string = cell.byteSlice(0, 1);
-	return first.toLowerCase().equals(first) && !first.equals("-") && !first.equals(":");
+	return !cell.equals("id") && !cell.startsWith("-");
 }
 
 // `P6, with the shaper` is owned by P6; `compiler` by the compiler.
@@ -89,9 +90,13 @@ export function contains(values: string[], value: string): boolean {
 	return false;
 }
 
-// How many scene rows `tests/golden/table.ms` declares.
+// How many scene rows `tests/golden/table.ms` declares; a commented-out row is not one.
 export function goldenRowCount(table: string): int32 {
-	return (table.split("{ name: \"").length as int32) - 1;
+	let rows: int32 = 0;
+	for (const line of table.split("\n")) {
+		if (trimSpaces(line).startsWith("{ name: \"")) { rows = rows + 1; }
+	}
+	return rows;
 }
 
 test "a table row splits on bars outside backticks only" {
@@ -102,6 +107,11 @@ test "a table row splits on bars outside backticks only" {
 	assert cells[0].equals("legacy:x");
 	assert cells[2].equals("assigning `FlexStyle | null` fails");
 	assert cells[3].equals("compiler");
+}
+
+test "a row is recognised by its tier, whatever its id's case" {
+	const rows = pendingRows("| F13:graduation | T2 | an upper-case id | P5 | 2026-09-25 |\n");
+	assert (rows.length as int32) == 1 && rows[0].owner.equals("P5");
 }
 
 test "pending rows keep the owner's first word and skip prose tables" {
@@ -129,4 +139,5 @@ test "a phase section ends at the next heading and names what it closes" {
 
 test "the golden table's rows are counted by their name field" {
 	assert goldenRowCount("[\n\t{ name: \"a/b\", w: 1 },\n\t{ name: \"c/d\", w: 2 },\n]") == 2;
+	assert goldenRowCount("[\n\t{ name: \"a/b\" },\n\t// { name: \"c/d\" },\n]") == 1;
 }
