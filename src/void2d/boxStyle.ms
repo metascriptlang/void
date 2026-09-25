@@ -85,9 +85,7 @@ export function boxStyle(
 }
 
 export function dashedBorder(s: BoxStyle): BoxStyle {
-	const o: BoxStyle = s;
-	o.borderStyle = BorderStyle.Dashed;
-	return o;
+	return { ...s, borderStyle: BorderStyle.Dashed };
 }
 
 // A drop shadow cast by the box: offset in local units, positive down-right. The colour's
@@ -99,24 +97,26 @@ export function castShadow(
 	offsetX: float32,
 	offsetY: float32,
 ): BoxStyle {
-	const o: BoxStyle = s;
-	o.shadowColor = color;
-	o.shadowBlur = blur;
-	o.shadowOffsetX = offsetX;
-	o.shadowOffsetY = offsetY;
-	o.shadowInset = false;
-	return o;
+	return {
+		...s,
+		shadowColor: color,
+		shadowBlur: blur,
+		shadowOffsetX: offsetX,
+		shadowOffsetY: offsetY,
+		shadowInset: false,
+	};
 }
 
 // An inset shadow: the blurred hole's complement, clipped to the element.
 export function castInsetShadow(s: BoxStyle, color: Color, blur: float32): BoxStyle {
-	const o: BoxStyle = s;
-	o.shadowColor = color;
-	o.shadowBlur = blur;
-	o.shadowOffsetX = 0.0;
-	o.shadowOffsetY = 0.0;
-	o.shadowInset = true;
-	return o;
+	return {
+		...s,
+		shadowColor: color,
+		shadowBlur: blur,
+		shadowOffsetX: 0.0,
+		shadowOffsetY: 0.0,
+		shadowInset: true,
+	};
 }
 
 export const boxStyles: Vec<BoxStyle> = [];
