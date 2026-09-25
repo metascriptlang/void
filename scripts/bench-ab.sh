@@ -1,6 +1,6 @@
 #!/bin/sh
 # Interleaved A/B of the bench milliseconds; the protocol and why load is sampled on both sides
-# of a run are docs/TESTING.md "T4". AB_LOAD_LIMIT (default 40 %) marks a pair NOISY,
+# of a run are docs/TESTING.md "T4". AB_LOAD_LIMIT (default 25 %) marks a pair NOISY,
 # AB_MIN_CLEAN (default 5) is the fewest clean pairs a verdict is given on.
 #
 #   sh scripts/bench-ab.sh <tree A> <tree B> [pairs] [scene...]
@@ -11,7 +11,7 @@ set -eu
 A="$1"; B="$2"; PAIRS="${3:-6}"
 shift 2; [ $# -gt 0 ] && shift
 SCENES="${*:-Ui Sprites}"
-LIMIT="${AB_LOAD_LIMIT:-40}"
+LIMIT="${AB_LOAD_LIMIT:-25}"
 MIN_CLEAN="${AB_MIN_CLEAN:-5}"
 ROWS=$(mktemp)
 trap 'rm -f "$ROWS"' EXIT
