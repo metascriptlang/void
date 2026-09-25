@@ -266,15 +266,21 @@ if [ "$WEB" -eq 1 ]; then
 		row=$(grep -E '^\| conformance:webgl2-pixel-centre ' tests/PENDING.md || true)
 		listed=$(echo "$row" | grep -oE '`[a-z]+/[A-Za-z0-9]+`' | tr -d '`' | sort -u)
 		failing=$(grep -E '^FAIL' out/gate-golden-web.log | awk '{ print $2 }' | sort -u)
-		unlisted=$(comm -13 <(echo "$listed") <(echo "$failing") | tr '\n' ' ')
-		graduated=$(comm -23 <(echo "$listed") <(echo "$failing") | tr '\n' ' ')
-		if [ -n "$(echo $unlisted)" ]; then
-			fail "webgl2 conformance: failures no PENDING row lists: $unlisted"
-		elif [ -n "$row" ] && [ -z "$(echo $failing)" ]; then
+		unlisted=""
+		for scene in $failing; do
+			case " $(echo $listed) " in *" $scene "*) ;; *) unlisted="$unlisted $scene" ;; esac
+		done
+		graduated=""
+		for scene in $listed; do
+			case " $(echo $failing) " in *" $scene "*) ;; *) graduated="$graduated $scene" ;; esac
+		done
+		if [ -n "$unlisted" ]; then
+			fail "webgl2 conformance: failures no PENDING row lists:$unlisted"
+		elif [ -n "$row" ] && [ -z "$failing" ]; then
 			fail "webgl2 conformance: 0 fail, and tests/PENDING.md conformance:webgl2-pixel-centre survives the run — delete it"
-		elif [ -n "$(echo $graduated)" ]; then
-			fail "webgl2 conformance: listed scenes now pass: $graduated— delete them from tests/PENDING.md conformance:webgl2-pixel-centre"
-		elif [ -z "$(echo $failing)" ]; then
+		elif [ -n "$graduated" ]; then
+			fail "webgl2 conformance: listed scenes now pass:$graduated — delete them from tests/PENDING.md conformance:webgl2-pixel-centre"
+		elif [ -z "$failing" ]; then
 			pass "webgl2 conformance: every scene identical or within the cross-backend bound"
 		else
 			skip "webgl2 conformance: the structural failures are the listed ones — tests/PENDING.md conformance:webgl2-pixel-centre"
@@ -339,11 +345,15 @@ if [ "$QUICK" -eq 0 ]; then
 	fi
 fi
 if [ "$WEB" -eq 1 ] && grep -q '^golden webgl2' out/gate-golden-web.log; then
-	webgl2=$(tr -d '\r' < out/gate-golden-web.log | sed -nE 's/^golden webgl2: ([0-9]+) pass, ([0-9]+) pending, ([0-9]+) fail of ([0-9]+)$/\1 \2 \3 \4/p')
-	set -- $webgl2
-	claim="| WebGL2 | **$(($1 + $2)) / $4**: $1 byte-identical, $2 within the cross-backend bound, $3 structural failures"
-	if grep -qF "$claim" docs/TESTING.md; then
-		pass "docs/TESTING.md's WebGL2 row matches this run: $(($1 + $2)) / $4"
+	claim=$(tr -d '\r' < out/gate-golden-web.log | awk '
+		/^golden webgl2: [0-9]+ pass, [0-9]+ pending, [0-9]+ fail of [0-9]+$/ {
+			p = $3; q = $5; f = $7; n = $10
+			printf "| WebGL2 | **%d / %d**: %d byte-identical, %d within the cross-backend bound, %d structural failures", p + q, n, p, q, f
+		}')
+	if [ -z "$claim" ]; then
+		fail "the golden webgl2 line is not in the form the record check reads — see out/gate-golden-web.log"
+	elif grep -qF "$claim" docs/TESTING.md; then
+		pass "docs/TESTING.md's WebGL2 row matches this run: $(echo "$claim" | sed -E 's/.*\*\*(.*)\*\*.*/\1/')"
 	else
 		fail "docs/TESTING.md's WebGL2 row does not match this run's '$(grep -E '^golden webgl2' out/gate-golden-web.log)'"
 	fi
