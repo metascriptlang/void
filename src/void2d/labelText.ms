@@ -26,19 +26,27 @@ export struct PlacedGlyph {
 	v1: float32;
 }
 
+struct PlacementKey {
+	a: float32;
+	b: float32;
+	c: float32;
+	d: float32;
+	scale: float32;
+	fracX: float32;
+	fracY: float32;
+}
+
+const NO_PLACEMENT_KEY: PlacementKey = {
+	a: 0.0, b: 0.0, c: 0.0, d: 0.0, scale: 0.0, fracX: 0.0, fracY: 0.0,
+};
+
 export interface LabelText {
 	layout: TextLayout;
 	style: TextStyle;
 	placed: Vec<PlacedGlyph>;
 	placedValid: boolean;
 	pixelExact: boolean;
-	keyA: float32;
-	keyB: float32;
-	keyC: float32;
-	keyD: float32;
-	keyScale: float32;
-	keyFracX: float32;
-	keyFracY: float32;
+	key: PlacementKey;
 }
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
@@ -90,13 +98,7 @@ export function allocateLabelText(): int32 {
 		placed: new Array(0),
 		placedValid: false,
 		pixelExact: false,
-		keyA: 0.0,
-		keyB: 0.0,
-		keyC: 0.0,
-		keyD: 0.0,
-		keyScale: 0.0,
-		keyFracX: 0.0,
-		keyFracY: 0.0,
+		key: NO_PLACEMENT_KEY,
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -135,13 +137,21 @@ function fraction(value: float32): float32 {
 	return value - (Math.floor(value) as float32);
 }
 
+function placementKey(world: Transform2D, scale: float32): PlacementKey {
+	const exact: boolean = isPixelExact(world);
+	return {
+		a: world.a,
+		b: world.b,
+		c: world.c,
+		d: world.d,
+		scale: scale,
+		fracX: exact ? fraction(world.tx * scale) : 0.0,
+		fracY: exact ? fraction(world.ty * scale) : 0.0,
+	};
+}
+
 function placementCurrent(entry: LabelText, world: Transform2D, scale: float32): boolean {
-	if (!entry.placedValid || entry.keyScale != scale) { return false; }
-	if (entry.keyA != world.a || entry.keyB != world.b) { return false; }
-	if (entry.keyC != world.c || entry.keyD != world.d) { return false; }
-	if (!entry.pixelExact) { return true; }
-	return entry.keyFracX == fraction(world.tx * scale) &&
-		entry.keyFracY == fraction(world.ty * scale);
+	return entry.placedValid && entry.key == placementKey(world, scale);
 }
 
 function uvRect(this t: GlyphTile): [float32, float32, float32, float32] {
@@ -216,12 +226,6 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	entry.placed = placed;
 	entry.placedValid = true;
 	entry.pixelExact = pixelExact;
-	entry.keyA = world.a;
-	entry.keyB = world.b;
-	entry.keyC = world.c;
-	entry.keyD = world.d;
-	entry.keyScale = scale;
-	entry.keyFracX = fracX;
-	entry.keyFracY = fracY;
+	entry.key = placementKey(world, scale);
 	return entry;
 }

@@ -64,7 +64,7 @@ test "a whole-pixel move reuses the placement and rasterizes nothing" {
 	const before = glyphRasterizations();
 	const moved = placeLabel(index, trs2d(9.25, 12.0, 0.0, 1.0, 1.0), 1.0);
 	assert glyphRasterizations() == before;
-	assert moved.keyFracX == 0.25;
+	assert moved.key.fracX == 0.25;
 	releaseLabelText(index);
 }
 
