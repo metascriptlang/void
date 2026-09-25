@@ -248,45 +248,15 @@ function openRun(reason: BreakReason): void {
 	runOpen = true;
 }
 
-function useState(view: uint32, blend: BlendMode): void {
-	if (runOpen && view == curView && blend == curBlend && curPipeline == Pipeline.Vertex) {
-		return;
-	}
+function useRun(pipeline: Pipeline, view: uint32, blend: BlendMode): void {
+	if (runOpen && view == curView && blend == curBlend && curPipeline == pipeline) { return; }
 	const reason: BreakReason = !runOpen ? BreakReason.First
-		: (curPipeline != Pipeline.Vertex ? BreakReason.Pipeline
+		: (curPipeline != pipeline ? BreakReason.Pipeline
 		: (view != curView ? BreakReason.View : BreakReason.Blend));
 	closeRun();
 	curView = view;
 	curBlend = blend;
-	curPipeline = Pipeline.Vertex;
-	openRun(reason);
-}
-
-function useSpriteState(view: uint32, blend: BlendMode): void {
-	if (runOpen && view == curView && blend == curBlend && curPipeline == Pipeline.Sprite) {
-		return;
-	}
-	const reason: BreakReason = !runOpen ? BreakReason.First
-		: (curPipeline != Pipeline.Sprite ? BreakReason.Pipeline
-		: (view != curView ? BreakReason.View : BreakReason.Blend));
-	closeRun();
-	curView = view;
-	curBlend = blend;
-	curPipeline = Pipeline.Sprite;
-	openRun(reason);
-}
-
-function useUiState(view: uint32, blend: BlendMode): void {
-	if (runOpen && view == curView && blend == curBlend && curPipeline == Pipeline.Ui) {
-		return;
-	}
-	const reason: BreakReason = !runOpen ? BreakReason.First
-		: (curPipeline != Pipeline.Ui ? BreakReason.Pipeline
-		: (view != curView ? BreakReason.View : BreakReason.Blend));
-	closeRun();
-	curView = view;
-	curBlend = blend;
-	curPipeline = Pipeline.Ui;
+	curPipeline = pipeline;
 	openRun(reason);
 }
 
@@ -648,7 +618,7 @@ export function setSampler(smooth: Smooth, tileWrap: boolean): void {
 }
 
 function quad(view: uint32, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {
-	useState(view, blend);
+	useRun(Pipeline.Vertex, view, blend);
 	const x1: float32 = x + w;
 	const y1: float32 = y + h;
 	pushVertex(x, y, u0, v0, c.r, c.g, c.b, c.a);
@@ -760,7 +730,7 @@ export function drawMeshRange(
 	let upto: int32 = first + vertexTotal * VERTEX_FLOATS;
 	if (first < 0 || first >= (mesh.length as int32)) { return; }
 	if (upto > (mesh.length as int32)) { upto = mesh.length as int32; }
-	useState(view == 0 ? void2dWhiteView() : view, blend);
+	useRun(Pipeline.Vertex, view == 0 ? void2dWhiteView() : view, blend);
 	for (let i: int32 = first; i + VERTEX_FLOATS <= upto; i = i + VERTEX_FLOATS) {
 		const lx: float32 = mesh[i];
 		const ly: float32 = mesh[i + 1];
@@ -792,7 +762,7 @@ export function drawMesh(
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
 
 function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2, u0: float32, v0: float32, u1: float32, v1: float32, color: Color): void {
-	useState(view, blend);
+	useRun(Pipeline.Vertex, view, blend);
 	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
 	pushVertex(b.x, b.y, u1, v0, color.r, color.g, color.b, color.a);
 	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
@@ -819,7 +789,7 @@ export function drawSpriteAffine(
 	u0: float32, v0: float32, u1: float32, v1: float32,
 	color: Color,
 ): void {
-	useSpriteState(view == 0 ? void2dWhiteView() : view, blend);
+	useRun(Pipeline.Sprite, view == 0 ? void2dWhiteView() : view, blend);
 	pushSpriteInstance(
 		world.a, world.b, world.c, world.d,
 		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,
@@ -857,7 +827,7 @@ export function drawUiInstance(
 	border: Color,
 	extra: Color,
 ): void {
-	useUiState(view == 0 ? void2dWhiteView() : view, blend);
+	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, blend);
 	pushUiInstance(
 		world.a, world.b, world.c, world.d,
 		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,
