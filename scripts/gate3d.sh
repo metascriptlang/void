@@ -214,13 +214,11 @@ purge_stale_shader_objects() {
 	fi
 	note "capture: a header gpu3d.c includes changed since the last gate — evicting the objects built from it"
 	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* 2>/dev/null
-	for object in "$HOME"/.metascript/cache/objects/*.o; do
-		[ -f "$object" ] || continue
-		if grep -l gpu3d "$object" > /dev/null 2>&1; then
-			note "capture: evicting $(basename "$object")"
+	grep -rl --include='*.o' gpu3d "$HOME"/.metascript/cache/objects 2>/dev/null |
+		while read -r object; do
+			note "capture: evicting $object"
 			rm -f "$object"
-		fi
-	done
+		done
 	echo "$current" > "$stamp"
 }
 
