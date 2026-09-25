@@ -709,17 +709,17 @@ One small probe each, under `out/tmp/p35probes/` (gitignored), msc v0.2.55 BUILD
 |---|---|---|---|
 | The object cache ignores a `.c`'s headers | the gate's cache eviction; the worktree `CLAUDE.md` | Does not reproduce, for `@compile` and for a `.c` compiled through `import from "./x.h"` that includes a second header | Eviction kept until the card is pinned; the card has the re-probe |
 | `msc test` exits 0 for a crashed test binary | the gate requires the `Tests N passed (N)` line | Still exits 0; `msc run` now exits non-zero | Kept; card `2026-09-23-crash-exit-status-lost` updated |
-| A function cannot return a `Span` | `displayList.ms` exports its streams | Still refused, as a borrow of its source; CODE-STYLE §5 says it works | Kept; the comment states the rule (`aea80ab`) |
+| A function cannot return a `Span` | `displayList.ms` exports its streams | Still refused, as a borrow of its source; CODE-STYLE §5 says it works | Kept; the comment states the rule (`4e4f6e9`) |
 | A `Vec` parameter is a read-only copy | six hand-inlined growth loops | A `ref` `Vec` parameter pushes through | Finding 2 |
-| `==` on a struct over 24 bytes fails; a struct parameter is copied per call | field-by-field compares; `drawUiInstance`'s 25 lanes | `==` works on a 32-byte struct, and a struct value parameter is emitted as `const T*` | Findings 1, 7, 8, 19; TESTING.md corrected (`cee91d3`) |
-| A union payload as an interface field fails in C | `node.ms`'s header comment | The probed shape builds and runs | Comment removed (`e4c2358`); a union `Node2D` is P5's design question |
-| Nothing calls `function main()` | `mainSokol2d.ms` blamed 0.2.53 | Unchanged, and CODE-STYLE §9 states it as the rule | Comment removed (`e4c2358`); the gate's demo run pins it |
+| `==` on a struct over 24 bytes fails; a struct parameter is copied per call | field-by-field compares; `drawUiInstance`'s 25 lanes | `==` works on a 32-byte struct, and a struct value parameter is emitted as `const T*` | Findings 1, 7, 8, 19; TESTING.md corrected (`75b286b`) |
+| A union payload as an interface field fails in C | `node.ms`'s header comment | The probed shape builds and runs | Comment removed (`17ab4b4`); a union `Node2D` is P5's design question |
+| Nothing calls `function main()` | `mainSokol2d.ms` blamed 0.2.53 | Unchanged, and CODE-STYLE §9 states it as the rule | Comment removed (`17ab4b4`); the gate's demo run pins it |
 | A float literal widens `float32` arithmetic | typed `float32` locals in `textGamma.ms`, `effect.ms`, `graphics.ms` | Unchanged | Kept; design card `2026-09-20-float32-literal-widens` |
 | No `BitSet`, no `distinct`, no generic `ref` | — | All three work. Two `distinct` values do arithmetic, a swapped one is a type error, and `-1 as T` parses as `-(1 as T)`: write `(-1) as T` | `distinct` adopted (finding 3); `BitSet` carried (finding 24) |
 | No `ref` receiver | `ref` free functions | Still a parse error | Kept; card `2026-09-20-ref-receiver-not-an-extension` |
 | `Math.min` / `Math.max` on `int32` return `float64` | no site | They return `int32` | Nothing to do |
 | `msc check` ignores relative imports | no site | It resolves them and reports an error in the imported module | A correction to the work order's TRAPS |
-| The same header from two directories compiles its `.c` twice | three comments in `draw.ms` | Builds and links | Comments corrected (`aea80ab`); the re-exports stay |
+| The same header from two directories compiles its `.c` twice | three comments in `draw.ms` | Builds and links | Comments corrected (`4e4f6e9`); the re-exports stay |
 | An extension imported by name merges with a same-name local one | none: void2d imports no extension by name | Still wrong: the local type's `toString` runs the imported one | New card `2026-09-25-extension-imported-by-name-shadows-local` |
 | `span[0]` passed to a header-imported pointer is a copy | none: void2d passes `arr[0]` on `Vec`s | Still wrong code | New card `2026-09-25-span-index-to-header-pointer-copies` |
 | A `Vec` parameter copied into a local and grown corrupts the heap | none | Wider than the card said: `let b = vec` from any source emits no copy, and growing `b` leaves the source reading freed memory (`738` read where `7` was stored, or `0xC0000374`) | Second sighting on `2026-09-23-vec-param-copy-corrupts-heap`; void2d grows only fresh `Vec`s (read in the emitted C) |
@@ -735,25 +735,25 @@ exposed. It was fixed in recompiler (`15af5b04`); void2d has no such parameter.
 
 | # | Layer | Finding | What was done |
 |---|---|---|---|
-| 1 | display list | The clip was 12 loose scalars and a 13-float save stack in `displayList.ms`, and 12 parallel `Vec` columns in `draw.ms`, compared field by field | `Clip` and `MaskClip` structs compared with `==` (`97a9c10`); T1 snapshots unchanged |
-| 2 | display list | Six hand-inlined growth loops, because a `Vec` parameter was a read-only copy | One `growTo(ref stream: Vec<float32>, …)` (`8b7ccfc`) |
-| 3 | glyph layer | An atlas page index and a C page handle were both bare `int32`, and `firstGlyphPage()` returned a handle (F9c) | `GlyphPage` and `GlyphPageHandle` are `distinct` (`984b5a4`). Control: an index where a handle is wanted is now `Argument type mismatch` |
-| 4 | core | `if / else if` chains on `DrawKind` (`emitNode`, `dispose`), `Pipeline` and `ScaleMode` | Exhaustive `match` (`c28b979`) |
-| 5 | glyph, font | Struct-first helpers `packKey`, `uvRect`, `sameFont`, `needsBold`, `needsItalic` (F9b) | Extensions (`db17e64`) |
-| 6 | font, label | Module data one layer owns, as `T[]` (F9d) | `Vec` (`a408a13`) |
-| 7 | draw, scene | Colours and transforms compared field by field | `==` (`958c636`) |
-| 8 | label | The placement key was seven loose floats compared one by one | `PlacementKey` (`93020b6`); the per-label check keeps its early exits rather than one `==` (`2d4405f`) |
-| 9 | draw | `useState`, `useSpriteState` and `useUiState` differed only in the pipeline | One `useRun` (`59d4a88`) |
-| 10 | glyph atlas | `placeOnPage` returned `[-1, -1]` and `reclaimPage` `-1` | `Result<…, AtlasError>` (`5331305`). `ensurePage` keeps its named sentinel, which crosses into C |
-| 11 | core | 18 counted `while` loops | `for` (`7059346`); `while` stays where a loop converges or walks a list |
-| 12 | frame path | `snapBoxEdges` returned a `Vec`, one heap array per Rect per frame, and `renderScaleGrid` built four `float32[]` per call. The ported stage saw copies, not allocations | A tuple and `float32[4]` (`939b2ed`): UI `present` 14.01 → 13.32 ms, eight clean pairs. The stage now fails a frame-path allocation and no longer mistakes a call that starts a line for a definition (`a96e8ac`) |
-| 13 | draw | A layout mismatch between the emitter and `batcher.c` only logged, then drew with the wrong layout | It stops the renderer (`5ba1c3c`). Control: a planted mismatch stops the demo with the message |
-| 14 | measure | F2: every layout call measured the face's heights and decoration with 96 glyph lookups, and `textWidth` / `textHeight` deep-copied the layout | Measured once per face (`bb8b11a`), read without a copy (`23e29f4`), gated as `text.measureGlyphLookups`: 80, was 176 (`b787172`) |
-| 15 | style | 23 lines that P3 and P3.5 wrote past 100 columns (F9e) | Wrapped (`3ee347f`, `7de76e1`). The older ones stay with `tests/PENDING.md style:line-length`, P6's mechanical pass |
-| 16 | harness | Comments still describing fontstash (F9f) | Corrected (`6441fd8`) |
-| 17 | style | The gamma table was a heap `float32[]`; the box-style builders mutated a copied `const` | `float32[52]` (`d10cef3`); spread (`653496c`) |
+| 1 | display list | The clip was 12 loose scalars and a 13-float save stack in `displayList.ms`, and 12 parallel `Vec` columns in `draw.ms`, compared field by field | `Clip` and `MaskClip` structs compared with `==` (`8724733`); T1 snapshots unchanged |
+| 2 | display list | Six hand-inlined growth loops, because a `Vec` parameter was a read-only copy | One `growTo(ref stream: Vec<float32>, …)` (`6dbcff5`) |
+| 3 | glyph layer | An atlas page index and a C page handle were both bare `int32`, and `firstGlyphPage()` returned a handle (F9c) | `GlyphPage` and `GlyphPageHandle` are `distinct` (`52224ff`). Control: an index where a handle is wanted is now `Argument type mismatch` |
+| 4 | core | `if / else if` chains on `DrawKind` (`emitNode`, `dispose`), `Pipeline` and `ScaleMode` | Exhaustive `match` (`2d68987`) |
+| 5 | glyph, font | Struct-first helpers `packKey`, `uvRect`, `sameFont`, `needsBold`, `needsItalic` (F9b) | Extensions (`a1409e2`) |
+| 6 | font, label | Module data one layer owns, as `T[]` (F9d) | `Vec` (`ce84c13`) |
+| 7 | draw, scene | Colours and transforms compared field by field | `==` (`d2754e8`) |
+| 8 | label | The placement key was seven loose floats compared one by one | `PlacementKey` (`1599dd2`); the per-label check keeps its early exits rather than one `==` (`19f9f5b`) |
+| 9 | draw | `useState`, `useSpriteState` and `useUiState` differed only in the pipeline | One `useRun` (`679b31c`) |
+| 10 | glyph atlas | `placeOnPage` returned `[-1, -1]` and `reclaimPage` `-1` | `Result<…, AtlasError>` (`42b7de8`). `ensurePage` keeps its named sentinel, which crosses into C |
+| 11 | core | 18 counted `while` loops | `for` (`36ce70b`); `while` stays where a loop converges or walks a list |
+| 12 | frame path | `snapBoxEdges` returned a `Vec`, one heap array per Rect per frame, and `renderScaleGrid` built four `float32[]` per call. The ported stage saw copies, not allocations | A tuple and `float32[4]` (`9115c7b`): UI `present` 14.01 → 13.32 ms, eight clean pairs. The stage now fails a frame-path allocation and no longer mistakes a call that starts a line for a definition (`cb87dcb`) |
+| 13 | draw | A layout mismatch between the emitter and `batcher.c` only logged, then drew with the wrong layout | It stops the renderer (`6ee454b`). Control: a planted mismatch stops the demo with the message |
+| 14 | measure | F2: every layout call measured the face's heights and decoration with 96 glyph lookups, and `textWidth` / `textHeight` deep-copied the layout | Measured once per face (`fdaa291`), read without a copy (`e72f0d4`), gated as `text.measureGlyphLookups`: 80, was 176 (`f67cce1`) |
+| 15 | style | 23 lines that P3 and P3.5 wrote past 100 columns (F9e) | Wrapped (`36de95a`, `d56e513`). The older ones stay with `tests/PENDING.md style:line-length`, P6's mechanical pass |
+| 16 | harness | Comments still describing fontstash (F9f) | Corrected (`2f9ec9d`) |
+| 17 | style | The gamma table was a heap `float32[]`; the box-style builders mutated a copied `const` | `float32[52]` (`07374d1`); spread (`8bb1841`) |
 | 18 | display list | A sokol id is `(generation << 16) \| slot`, and the display list stores `view` as `float32` (`CMD_VIEW`, and `savedView` in `draw.ms`), exact only to 2^24. After the 256th reuse of one view slot the replay's `(uint32_t)cmd[CMD_VIEW]` names another slot. Latent: nothing here recycles a view that often | In "Known defects", `tests/PENDING.md display-list-view-id-float32` and P5's Lands: the id's two 16-bit halves in the two spare command floats, rejoined in the replay and the T1 printer, with a T1 test on a synthetic id past 2^24 |
-| 19 | draw | `drawUiInstance` takes 25 positional lanes, and its stated reason is false on 0.2.55 | Comment corrected (`aea80ab`); a record struct in P5's Lands, whose persistent instance ranges rewrite the emission |
+| 19 | draw | `drawUiInstance` takes 25 positional lanes, and its stated reason is false on 0.2.55 | Comment corrected (`4e4f6e9`); a record struct in P5's Lands, whose persistent instance ranges rewrite the emission |
 | 20 | render | `fmin4` / `fmax4` and `minFour` / `maxFour` duplicate each other, but keep different operands on a tie (`-0.0` against `0.0`) | Kept: merging them changes which zero a clip records, for no gain |
 | 21 | render | The filter path allocates two arrays per filtered node per frame (`setEffect([])`, `colorMatrixAlphaOnly`) | In P5's Lands: a filtered node that did not change reuses its target |
 | 22 | protocols | `breakReasonName` / `commandKindName` are the enums' text | Kept as functions: a `toString` extension on an enum makes `"" + e` a C compile error (CODE-STYLE §15). `TextLayout`'s lines and glyphs are already iterated as `Vec`s, so no `toItems` |
@@ -778,8 +778,8 @@ same window:
 |---|---|---:|---:|
 | P2 ship `2255d9f` | pre-P3 `8a473f3` | 13.43 → 13.37 ms | 2.54 → 2.47 ms |
 | pre-P3 `8a473f3` | P3 head `05b4b9d` | 12.76 → 13.29 ms | 1.84 → 1.81 ms |
-| `5331305` | no frame-path arrays `939b2ed` | 14.01 → 13.32 ms | 2.40 → 2.44 ms |
-| pre-P3 `8a473f3` | P3.5 head `7de76e1` | 13.54 → 13.05 ms | 2.61 → 2.59 ms |
+| `42b7de8` | no frame-path arrays `9115c7b` | 14.01 → 13.32 ms | 2.40 → 2.44 ms |
+| pre-P3 `8a473f3` | P3.5 head `d56e513` | 13.54 → 13.05 ms | 2.61 → 2.59 ms |
 
 Absolute numbers move by about 0.6 ms between windows ten minutes apart on this box, which is why
 only the pairs compare. P3's 2.2× (VOID2D.md P3 "Measured") was load. One measure call costs 80
@@ -799,23 +799,23 @@ Ten findings: eight confirmed and fixed, one plausible and fixed, one kept.
 
 | Finding | Resolution |
 |---|---|
-| The record check wanted `N / N` from `table.ms` where the gate wanted `pass / total` from the run: with a pending D3D11 scene the row could satisfy neither | `cba6ab4`: the record check reads only the total; the run's line owns the pass count |
-| The record parsers skipped a PENDING row whose id was not lower-case, and counted a commented-out golden row | `cba6ab4`: a row is recognised by its tier cell, and a golden row only when a line starts with it; T0 tests for both |
-| The WebGL2 graduation block used bash's `<(…)` under `#!/bin/sh` | `8d6c29b`: POSIX loops. The gate's older skip-line check still uses `<(…)`, from before P3.5 |
-| An unreadable `golden webgl2` line made `$(( + ))` stop the gate with no FAIL and no summary | `8d6c29b`: the claim is built by awk, or the gate fails naming the line. Control: a suffixed line fails loud |
-| The allocation stage's PASS said the frame path "neither copies nor allocates", but it cannot see stream growth (`growTo`) or allocation inside C (`ensurePage`) | `84fa19d`: it claims no array copy and no fresh array; the audit's "Confirmed" corrected |
-| Comments over three lines in `gate.sh` and `bench-ab.sh` (the comment playbook) | `84fa19d`, `027804f` |
-| `bench-ab.sh` read fields by position, so a run that printed no number counted as a clean pair at 0 ms | `027804f`: the pair is BROKEN, left out and counted. Tested on a planted row |
-| `placementCurrent` built the whole key, fractions included, for every label on every frame, where the old code exited early | `2d4405f`: early exits restored; the key stays one struct for storing |
-| The glyph-lookup counter was a signed `int` bumped on every lookup, undefined at overflow | `ea18542`: unsigned |
+| The record check wanted `N / N` from `table.ms` where the gate wanted `pass / total` from the run: with a pending D3D11 scene the row could satisfy neither | `8ef78b9`: the record check reads only the total; the run's line owns the pass count |
+| The record parsers skipped a PENDING row whose id was not lower-case, and counted a commented-out golden row | `8ef78b9`: a row is recognised by its tier cell, and a golden row only when a line starts with it; T0 tests for both |
+| The WebGL2 graduation block used bash's `<(…)` under `#!/bin/sh` | `4750f3e`: POSIX loops. The gate's older skip-line check still uses `<(…)`, from before P3.5 |
+| An unreadable `golden webgl2` line made `$(( + ))` stop the gate with no FAIL and no summary | `4750f3e`: the claim is built by awk, or the gate fails naming the line. Control: a suffixed line fails loud |
+| The allocation stage's PASS said the frame path "neither copies nor allocates", but it cannot see stream growth (`growTo`) or allocation inside C (`ensurePage`) | `f5fdd67`: it claims no array copy and no fresh array; the audit's "Confirmed" corrected |
+| Comments over three lines in `gate.sh` and `bench-ab.sh` (the comment playbook) | `f5fdd67`, `a030751` |
+| `bench-ab.sh` read fields by position, so a run that printed no number counted as a clean pair at 0 ms | `a030751`: the pair is BROKEN, left out and counted. Tested on a planted row |
+| `placementCurrent` built the whole key, fractions included, for every label on every frame, where the old code exited early | `19f9f5b`: early exits restored; the key stays one struct for storing |
+| The glyph-lookup counter was a signed `int` bumped on every lookup, undefined at overflow | `b66232e`: unsigned |
 | Kept: the three text-metric fallbacks build an empty layout "to return 0" | `textHeight`'s fallback is one empty line's height, not 0, and what a non-Label should do is the human's question (audit finding 25) |
 
-`sh scripts/gate.sh` was GREEN after them, at `ea18542`: 868 tests, D3D11 69 / 69, the bench
+`sh scripts/gate.sh` was GREEN after them, at `b66232e`: 868 tests, D3D11 69 / 69, the bench
 counters unchanged but for the new `text.measureGlyphLookups`.
 
 ### Design pass: **SEND BACK** — two defects in the record, none in the code
 
-A fresh Claude subagent that had written none of P3.5 read the diff at `ea18542` against the
+A fresh Claude subagent that had written none of P3.5 read the diff at `b66232e` against the
 brief, the guardrails and the decision rule. It verified that no behaviour changed: struct `==`
 compiles to field-by-field float compares, so `-0` and NaN compare as before; every `match`
 covers the chain it replaced; `growTo` grows the stream in place; the atlas `Result` paths behave
@@ -824,33 +824,33 @@ only. It refused the step on two record defects, the P3-B3 class again.
 
 | id | Finding | Resolution before re-review |
 |---|---|---|
-| P3.5-S1 | The audit carried #18, #19, #23 and #24 "to P5" and #21 "with the filter path", but P5's Lands, Closes and `tests/PENDING.md` named none of them, and #18, a latent defect, was not in "Known defects". The record check compares PENDING rows against Closes lines, so it could not see it | `d694e9c`: #18 in "Known defects" and as `tests/PENDING.md display-list-view-id-float32`, owned by P5 and on its Closes line; #18, #19, #21, #23 and #24 as one P5 Lands bullet; the audit rows point there |
-| P3.5-S2 | P4 "Measure" pointed at a P3.5-head number that did not exist. The only P3.5 number was `939b2ed`, before `23e29f4`, `bb8b11a` and `2d4405f`; the refactors were never A/B'd against `05b4b9d`, and `2d4405f` was a `perf` commit with no measurement | `342ec54`: the P3.5 head against the pre-P3 control `8a473f3`, UI 13.54 → 13.05 ms over 7 clean pairs of 8, in P3 "Measured at P3 step 8" (bullet "The P3.5 head") and in "Numbers" above; P4 "Measure" points at it and takes its own pairs. The P3 head against the P3.5 head got no clean UI pair in the same window (samples 17-68 %), so P3.5's own delta, about −1 ms, is read across two windows, not from one pair |
+| P3.5-S1 | The audit carried #18, #19, #23 and #24 "to P5" and #21 "with the filter path", but P5's Lands, Closes and `tests/PENDING.md` named none of them, and #18, a latent defect, was not in "Known defects". The record check compares PENDING rows against Closes lines, so it could not see it | `0a68769`: #18 in "Known defects" and as `tests/PENDING.md display-list-view-id-float32`, owned by P5 and on its Closes line; #18, #19, #21, #23 and #24 as one P5 Lands bullet; the audit rows point there |
+| P3.5-S2 | P4 "Measure" pointed at a P3.5-head number that did not exist. The only P3.5 number was `9115c7b`, before `e72f0d4`, `fdaa291` and `19f9f5b`; the refactors were never A/B'd against `05b4b9d`, and `19f9f5b` was a `perf` commit with no measurement | `31c68b1`: the P3.5 head against the pre-P3 control `8a473f3`, UI 13.54 → 13.05 ms over 7 clean pairs of 8, in P3 "Measured at P3 step 8" (bullet "The P3.5 head") and in "Numbers" above; P4 "Measure" points at it and takes its own pairs. The P3 head against the P3.5 head got no clean UI pair in the same window (samples 17-68 %), so P3.5's own delta, about −1 ms, is read across two windows, not from one pair |
 
 ### Follow-ups the design pass carried
 
 | id | Follow-up | Owner |
 |---|---|---|
-| F-a | The record check passed a row owned by `P7` and missing from every Closes line: it read only P4-P6 | done, `69d2974`: the phases come from VOID2D.md's headings, and an owner that is neither a phase nor `compiler` or `human` fails. TESTING.md says a Closes line lists ids, not work (`bce0704`). Controls: a `P7` owner and a `robot` owner each fail the stage |
-| F-b | The allocation stage could not see a struct's deep copy, which emits `<Type>…OmsCopy(`, not `ArrayCopy(`; `textWidth` and `textHeight`, where P3.5 removed exactly that copy, were on no list | done, `46cacd2`: `OmsCopy(` in the pattern; `benchText` emits the measure path, and `textWidth`, `textHeight` and `shapedLabel` are held to no copy and to no `textLayout` call. Control: `textWidth` through `textLayout` again fails. The wider pattern found one more copy, `shapeLabel` returned a copy of the layout, which `shapeIfChanged` read and the tests dropped; the caller now reads the stored one (`c55be18`). Not timed: a reshape runs only when a label's text or style changes, which the bench does not do in steady state. The list is still named rather than followed through calls; the seven per-frame helpers the reviewer found unlisted allocate nothing today |
-| F-c | CODE-STYLE §14's "parameters are `Span<T>`": private `T[]` parameters remain in `sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, `polyArea2`, `isEar` and `triangulate` | P4, with F9 (`76302a7`) |
-| F-d | F9's half no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1` | P4, with F9 (`76302a7`) |
+| F-a | The record check passed a row owned by `P7` and missing from every Closes line: it read only P4-P6 | done, `416ee58`: the phases come from VOID2D.md's headings, and an owner that is neither a phase nor `compiler` or `human` fails. TESTING.md says a Closes line lists ids, not work (`0c2ea48`). Controls: a `P7` owner and a `robot` owner each fail the stage |
+| F-b | The allocation stage could not see a struct's deep copy, which emits `<Type>…OmsCopy(`, not `ArrayCopy(`; `textWidth` and `textHeight`, where P3.5 removed exactly that copy, were on no list | done, `153f70e`: `OmsCopy(` in the pattern; `benchText` emits the measure path, and `textWidth`, `textHeight` and `shapedLabel` are held to no copy and to no `textLayout` call. Control: `textWidth` through `textLayout` again fails. The wider pattern found one more copy, `shapeLabel` returned a copy of the layout, which `shapeIfChanged` read and the tests dropped; the caller now reads the stored one (`3f2c3d6`). Not timed: a reshape runs only when a label's text or style changes, which the bench does not do in steady state. The list is still named rather than followed through calls; the seven per-frame helpers the reviewer found unlisted allocate nothing today |
+| F-c | CODE-STYLE §14's "parameters are `Span<T>`": private `T[]` parameters remain in `sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, `polyArea2`, `isEar` and `triangulate` | P4, with F9 (`a3c918d`) |
+| F-d | F9's half no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1` | P4, with F9 (`a3c918d`) |
 
 The reviewer's notes, and what became of them:
 
-- Audit #8 still said `PlacementKey` was "compared with `==`": corrected (`d694e9c`).
+- Audit #8 still said `PlacementKey` was "compared with `==`": corrected (`0a68769`).
 - `dispose` ended in `_ => {}`, the one match where a new kind with a payload would leak in
-  silence: it names every kind (`c252911`).
+  silence: it names every kind (`821f906`).
 - `sceneViewMatrix`'s `Resize` arm could never run, because the function returns for `Resize`
   before the match: the arm returns, the early exit keeps only the missing design size
-  (`984ab40`), and a T0 test holds a `Resize` scene with a design size to the identity
-  (`3743927`).
-- Two lines P3.5 wrote, and four in its new files, were over 100 columns: wrapped (`7de76e1`);
-  `style:line-length` re-measured at 246 lines (`93a6047`).
+  (`9d8b139`), and a T0 test holds a `Resize` scene with a design size to the identity
+  (`be3c150`).
+- Two lines P3.5 wrote, and four in its new files, were over 100 columns: wrapped (`d56e513`);
+  `style:line-length` re-measured at 246 lines (`a8593b6`).
 - TESTING.md said "a `conformance:*` row" where the gate handles one named row, and did not say
-  that a listed WebGL2 scene can get worse without bound: both written (`bce0704`).
+  that a listed WebGL2 scene can get worse without bound: both written (`0c2ea48`).
 - `bench-ab.sh`'s 40 % limit sat above the 25-33 % band P3's inflated numbers came from: 25 %,
-  and T4 says interleaving protects the difference, not the absolute (`0e7eefc`).
+  and T4 says interleaving protects the difference, not the absolute (`186aaa2`).
 - `-1 as T` is a checker error with no card: now
   `~/metascript/.inbox/compiler/2026-09-25-unary-minus-looser-than-as.md`.
 - For the human, not changed here: `draw.ms`'s layout checks stop the renderer with
@@ -861,7 +861,7 @@ The reviewer's notes, and what became of them:
 
 ### The gate after the send-back
 
-`sh scripts/gate.sh --web` was GREEN at `3eb4f90`, with 10 loud skips: 870 tests, D3D11 69 / 69
+`sh scripts/gate.sh --web` was GREEN at `2d1fba9`, with 10 loud skips: 870 tests, D3D11 69 / 69
 byte-identical, WebGL2 65 / 69 with the four listed structural failures (`prim/strokeRect`,
 `prim/polygonBezier`, `prim/patterns`, `xform/scale`), the bench counters matching, the
 allocation stage over 51 frame, 14 rebuild and 3 measure functions, and the record stage at 28
@@ -872,30 +872,30 @@ the allocation stage fails a struct copy, an array literal and `textWidth` throu
 The run before it went RED at the golden stage and nowhere else: deleting
 `~/.metascript/cache/objects` failed with "Directory not empty" while another session's `msc`
 wrote into it. TESTING.md said the gate evicted only this checkout's objects; it evicts the
-whole machine-wide store, and now says so, with the race (`3c0f9fc`).
+whole machine-wide store, and now says so, with the race (`1cf6bf7`).
 
 ## P3.5 re-review: **SHIP WITH FOLLOW-UPS**
 
 A second fresh Claude subagent, which had written none of P3.5 and had not sent it back, read
-`ea18542..3edc986` against the brief. It recomputed every median in "Numbers" from the A/B logs
+`b66232e..2dd062a` against the brief. It recomputed every median in "Numbers" from the A/B logs
 and found each one right, and it found S1, S2, F-a and F-b resolved on disk. No behaviour changed
 after the send-back: msc 0.2.55 rejects a non-exhaustive enum `match`, so `dispose` cannot miss a
 new kind, and no golden or T1 snapshot changed across `05b4b9d..HEAD`. It would refuse nothing in
-the code. It would refuse a land whose record still had its findings 1 and 2, which `b2e91f2`
+the code. It would refuse a land whose record still had its findings 1 and 2, which `96b60bd`
 fixes.
 
 | # | Finding | Resolution |
 |---|---|---|
-| 1 | P4 "Measure" pointed at P3 "Measured"'s last bullet; the P3.5-head number is the fourth | `b2e91f2`: it names the bullet |
-| 2 | P5 "Defects closed" did not name the view-id defect, though P5 closes it | `b2e91f2` |
+| 1 | P4 "Measure" pointed at P3 "Measured"'s last bullet; the P3.5-head number is the fourth | `96b60bd`: it names the bullet |
+| 2 | P5 "Defects closed" did not name the view-id defect, though P5 closes it | `96b60bd` |
 | 3 | `pendingRows` skips a PENDING row it cannot parse, in silence: a tier of `T2/T4`, an id with a space and a row without its date cell each stayed green. Nothing is skipped today | P4, in its carried list: such a line fails the gate and is named |
-| 4 | The allocation stage reads only the functions it names: a private helper returning `labelTexts[i].layout`, called from `textWidth`, puts F2's copy back one call deeper and passes | P5, in its Lands: follow calls. TESTING.md's T4 row now states the stage's limits (`b2e91f2`) |
-| 5 | `shapeLabel`'s one production caller used the copy it returned; only tests dropped it. `c55be18` has no number | `b2e91f2`: described, and why it is not timed |
-| 6 | The P3-against-P3.5 window's load was 17.3-67.8 %, not 20-68 % | `b2e91f2` |
-| 7 | The audit read 6 188 lines, not 6 182 | `b2e91f2` |
+| 4 | The allocation stage reads only the functions it names: a private helper returning `labelTexts[i].layout`, called from `textWidth`, puts F2's copy back one call deeper and passes | P5, in its Lands: follow calls. TESTING.md's T4 row now states the stage's limits (`96b60bd`) |
+| 5 | `shapeLabel`'s one production caller used the copy it returned; only tests dropped it. `3f2c3d6` has no number | `96b60bd`: described, and why it is not timed |
+| 6 | The P3-against-P3.5 window's load was 17.3-67.8 %, not 20-68 % | `96b60bd` |
+| 7 | The audit read 6 188 lines, not 6 182 | `96b60bd` |
 | 8 | The installed msc became BUILD `8b4ed972` after the final gate, and no gate log names its compiler | P4, in its carried list. The land re-runs the gate after the rebase |
-| 9 | The web build shrank by 17.5 KB since P3, recorded nowhere | `b2e91f2`: in "Numbers", cause not separated |
-| 10 | `style:line-length`'s 246 holds only under a UTF-8 locale; the C locale reads 248 | `b2e91f2`: the command pins `LC_ALL=C.UTF-8` |
+| 9 | The web build shrank by 17.5 KB since P3, recorded nowhere | `96b60bd`: in "Numbers", cause not separated |
+| 10 | `style:line-length`'s 246 holds only under a UTF-8 locale; the C locale reads 248 | `96b60bd`: the command pins `LC_ALL=C.UTF-8` |
 
 Also noted for P4's F9 pass: `cornerArc` (`graphics.ms`) takes a `Node2D` it never reads.
 
