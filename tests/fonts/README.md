@@ -24,4 +24,7 @@ which for this family is Thin (100).
 the fallback rule in `src/test/faceCheck.ms`: the first has `post` and the `OS/2` strikeout zeroed
 and `OS/2` cut to version 1, so the ex height is measured from `x`; the second keeps the
 positions, zeroes the thicknesses and the `OS/2` heights, so the estimate starts from the ascent.
-`python tests/fonts/brokenTables.py` rebuilds both from `assets/font.ttf`.
+`zeroLineHeight.ttf` is an `H`-only subset whose `hhea` ascent, descent and line gap are 0, for
+the `sizeAdjust` guard in `src/test/fontCheck.ms`. `python tests/fonts/brokenTables.py` rebuilds
+all three from `assets/font.ttf`; fontTools stamps `head.modified`, so a rebuild is not
+byte-identical.

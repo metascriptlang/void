@@ -54,8 +54,19 @@ def thicknessOnlyBroken():
     font.save(OUT + "zeroThickness.ttf")
 
 
+def zeroLineHeight():
+    font = small("H")
+    hhea = font["hhea"]
+    hhea.ascent = 0
+    hhea.descent = 0
+    hhea.lineGap = 0
+    rename(font, "Void Zero Line Height")
+    font.save(OUT + "zeroLineHeight.ttf")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         SOURCE = sys.argv[1]
     zeroedWithVersion1()
     thicknessOnlyBroken()
+    zeroLineHeight()

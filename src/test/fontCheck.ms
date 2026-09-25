@@ -23,6 +23,7 @@ const LATIN: string = "assets/font.ttf";
 const CJK: string = "tests/fonts/NotoSansSC-subset.ttf";
 const LIGHT: string = "tests/fonts/zeroThickness.ttf";
 const HEAVY: string = "tests/fonts/zeroedDecorations.ttf";
+const NO_LINE_HEIGHT: string = "tests/fonts/zeroLineHeight.ttf";
 
 let registeredFamilies: boolean = false;
 
@@ -35,6 +36,7 @@ function registerFamilies(): void {
 	registerFace(HEAVY, "Weights", 700, FontStyle.Normal);
 	registerFace(HEAVY, "Weights", 400, FontStyle.Italic);
 	registerFace(CJK, "Test Hanzi", 400, FontStyle.Normal);
+	registerFace(NO_LINE_HEIGHT, "No Line Height", 400, FontStyle.Normal);
 }
 
 function font(family: string, weight: int32, style: FontStyle): Font {
@@ -230,4 +232,11 @@ test "an ic width the fallback lacks falls through to the ex height" {
 	const l = layoutWith(id, "你é");
 	assert l.glyphs[1].face != l.glyphs[0].face;
 	assert Math.abs(l.glyphs[1].size - 13.0 * (543.0 / 1000.0) / (1118.0 / 2048.0)) < 0.01;
+}
+
+test "a primary face with no line height leaves a line-height fallback at the label's size" {
+	const id = withFallback("No Line Height", "Test Sans", SizeAdjust.LineHeight);
+	const l = layoutWith(id, "Hx");
+	assert l.glyphs[1].face != l.glyphs[0].face;
+	assert l.glyphs[1].size == 13.0;
 }
