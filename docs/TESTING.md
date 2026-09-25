@@ -265,7 +265,7 @@ Concrete mechanisms, because the phrase on its own does nothing:
   shader declares agrees with the one the emitter writes; every shader `mode` is reachable
   from an emitter; production T1 scenes reach every `BreakReason` including view, effect and
   pipeline, while a target bracket reaches barrier; every command kind has a batch-break rule.
-- **The build trap is part of the gate.** `msc build` answers "Up to date" after a header that a compiled `.c` includes has changed, and the global object cache is keyed on the `.c` and not its includes — `--force` does not bypass it (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`). Every shader regeneration hits this. The gate's first step deletes the output binary, `out/debug/.cache` and this checkout's objects under `~/.metascript/cache/objects`. A gate that silently tests the previous binary is worse than no gate.
+- **The build trap is part of the gate.** `msc build` answers "Up to date" after a header that a compiled `.c` includes has changed, and the global object cache is keyed on the `.c` and not its includes — `--force` does not bypass it (`~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md`). Every shader regeneration hits this. The gate's first step, and `scripts/golden.sh` before each build, delete the output binaries, `out/{debug,release}/.cache` and the whole machine-wide `~/.metascript/cache/objects` — other sessions' objects too, since nothing in it names a checkout. A gate that silently tests the previous binary is worse than no gate. The price: while another session's `msc` writes into that directory the deletion can fail with "Directory not empty", and the golden stage goes RED loudly; a re-run clears it (P3.5's final gate).
 
 ## The gate
 
@@ -274,8 +274,8 @@ Concrete mechanisms, because the phrase on its own does nothing:
 did not run — the conformance line for a backend is the comparator's own output, never a
 number typed into the script.
 
-1. Evict the caches (above): the output binaries, `out/{debug,release}/.cache`, and this
-   checkout's objects under `~/.metascript/cache/objects`.
+1. Evict the caches (above): the output binaries, `out/{debug,release}/.cache`, and the
+   machine-wide `~/.metascript/cache/objects`.
 2. `msc test src/test/index.ms` — T0, and T1 once it exists.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
