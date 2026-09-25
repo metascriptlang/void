@@ -74,6 +74,7 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 | M10 | `col/Ray`, `col/Bounds`, `scene/Interactive` | Tap → ray → nearest object by bounds, then by triangle | A4 touch | **done**, 22 tests |
 | M11 | `parts/Emitter`, `parts/Particles` (CPU), `Matrix.colorSaturate` | Snow and embers on the instanced billboard path; palette LUT swap and desaturation as renderer parameters | A11 | **done**, 23 tests |
 | M12 | `shader/ColorMatrix` (per-pass colour matrix), `Matrix.colorSaturate` | Saturation as a lit-material parameter, applied to the material's colour before the lights, so one object greys while the scene keeps its colour; a CPU `colorSaturate` pinned against Heaps by the oracle | A11 Fading | **done**, 4 tests, 6 oracle cases |
+| M13 | `shader/AmbientLight` (additive: `pixelColor.rgb *= ambient + lights`), `shader/DirLight` (`calcLighting`) | Every light multiplies the material's colour, point lights included, so a greyed object takes no tint from them; the directional light is Heaps' Lambert, `max(n·l, 0) × power`, in place of the spike's step. The point lights' toon quantization and the billboard program are not touched: both leave the core with follow-up 10 | A11 Fading, A4 lights | in progress |
 
 ### M2 as built
 
