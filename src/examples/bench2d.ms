@@ -146,10 +146,16 @@ function report(): void {
 	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
 	console.log(`${benchName}.sweepPeakPages ${sweepPeakPages}`);
-	console.log(`${benchName}.sweepRasterizations ${rasterizationsBeforeMeasure - firstPaintRasterizations}`);
+	const swept: int32 = rasterizationsBeforeMeasure - firstPaintRasterizations;
+	console.log(`${benchName}.sweepRasterizations ${swept}`);
 	console.log(`${benchName}.firstPaint.ms ${firstPaintMs}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
-	if (codeBlock !== null) { console.log(`${benchName}.measureGlyphLookups ${measureGlyphLookups()}`); }
+	if (codeBlock !== null) {
+		console.log(`${benchName}.measureGlyphLookups ${measureGlyphLookups()}`);
+		const first: Node2D = codeBlock.children[0];
+		console.log(`${benchName}.lineWidth ${first.textWidth()}`);
+		console.log(`${benchName}.lineHeight ${first.textHeight()}`);
+	}
 }
 
 // What one measure call costs once the faces are loaded and the fallback cache is warm: the

@@ -203,14 +203,20 @@ REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement text76ayout:layout text76ayout:layRun
 	text76ayout:decodeUtf8 glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
 	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"
-rm -f out/debug/benchUi.exe out/debug/*ZsrcZvoid2dZ*Oms.c
-if ! "$MSC" build tests/bench/benchUi.ms --emit=c > out/gate-allocation.log 2>&1; then
-	fail "allocation: emitting C for tests/bench/benchUi.ms failed — see out/gate-allocation.log"
-else
-	copied=""
-	allocated=""
-	unreachable=""
-	for entry in $FRAME_PATH $REBUILD_PATH; do
+MEASURE_PATH="render:textWidth render:textHeight render:shapedLabel"
+copied=""
+allocated=""
+unreachable=""
+: > out/gate-allocation.log
+# $1 bench entry; $2 functions that copy nothing and build no array; $3 that copy nothing and
+# call no function named in $4 (textLayout returns the whole layout by value: REVIEWS.md P3 F2).
+read_emitted_c() {
+	rm -f "out/debug/$(basename "$1" .ms).exe" out/debug/*ZsrcZvoid2dZ*Oms.c
+	if ! "$MSC" build "$1" --emit=c >> out/gate-allocation.log 2>&1; then
+		unreachable="$unreachable (emitting C for $1 failed)"
+		return 0
+	fi
+	for entry in $2 $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
 		emitted=$(ls out/debug/*ZsrcZvoid2dZ${module}Oms.c 2>/dev/null | head -1)
@@ -221,23 +227,30 @@ else
 			continue
 		fi
 		body=$(awk "/${start}/,/^}/" "$emitted")
-		copies=$(printf '%s\n' "$body" | grep -c 'ArrayCopy(' || true)
+		copies=$(printf '%s\n' "$body" | grep -cE 'ArrayCopy\(|OmsCopy\(' || true)
 		[ "$copies" -gt 0 ] && copied="$copied ${fn}=${copies}"
-		case " $(echo $FRAME_PATH) " in *" $entry "*)
+		for callee in $4; do
+			printf '%s\n' "$body" | grep -q "[^A-Za-z0-9_]${callee}__M" \
+				&& copied="$copied ${fn}->${callee}"
+		done
+		case " $(echo $2) " in *" $entry "*)
 			allocs=$(printf '%s\n' "$body" \
 				| grep -cE 'msAllocTyped\(|[^a-z]calloc\(|[^a-z]malloc\(|ArrayPush\(&\(?T[0-9]+_' || true)
 			[ "$allocs" -gt 0 ] && allocated="$allocated ${fn}=${allocs}" ;;
 		esac
 	done
-	if [ -n "$unreachable" ]; then
-		fail "allocation: no body in the emitted C for$unreachable — renamed or unreachable?"
-	elif [ -n "$copied" ] || [ -n "$allocated" ]; then
-		[ -n "$copied" ] && fail "allocation: an array is copied — ArrayCopy in:$copied"
-		[ -n "$allocated" ] && fail "allocation: the frame path builds a fresh array — in:$allocated"
-		echo "         CODE-STYLE section 5: index the field, take a Span view, or return a tuple"
-	else
-		pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild path ($(echo $REBUILD_PATH | wc -w)) copies none"
-	fi
+	return 0
+}
+read_emitted_c tests/bench/benchUi.ms "$FRAME_PATH" "$REBUILD_PATH" ""
+read_emitted_c tests/bench/benchText.ms "" "$MEASURE_PATH" "textLayout"
+if [ -n "$unreachable" ]; then
+	fail "allocation: no body in the emitted C for$unreachable — renamed or unreachable?"
+elif [ -n "$copied" ] || [ -n "$allocated" ]; then
+	[ -n "$copied" ] && fail "allocation: an array or a struct holding one is copied — in:$copied"
+	[ -n "$allocated" ] && fail "allocation: the frame path builds a fresh array — in:$allocated"
+	echo "         CODE-STYLE section 5: index the field, take a Span view, or return a tuple"
+else
+	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none"
 fi
 skip "wasm size budget: no budget committed yet (P6 makes guardrail 6 real)"
 
