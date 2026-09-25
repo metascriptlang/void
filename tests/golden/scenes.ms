@@ -1003,9 +1003,8 @@ function filterGroupOpacity(): Scene {
 
 // ===== regress/ — one row per "Known defects" entry that has pixels =====
 
-// Twenty-two sizes of a 62-glyph line overflow the initial 512² atlas. The P1 holding fix
-// grows it deterministically through the FONS_ATLAS_FULL callback; P3 removes fontstash and
-// this failure class.
+// Twenty-two sizes of a 62-glyph line. Under fontstash they overflowed its 512² atlas (the
+// table row says what that cost); the glyph layer's paged atlas has to place all of them.
 function regressAtlasFull(): Scene {
 	const s = scene(DARK);
 	for (let i: int32 = 0; i < 22; i++) {
