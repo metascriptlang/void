@@ -42,6 +42,7 @@ static float s_metrics[3];
 static float s_decoration[4];
 static float s_heights[7];
 static int s_box[4];
+static int s_glyphLookups;
 static GlyphRasterBox s_rasterBox;
 static GlyphRasterFill s_rasterFill;
 
@@ -353,8 +354,15 @@ static stbtt_uint8 *findTable(GlyphFace *face, const char *tag, int *length) {
 	return NULL;
 }
 
+static int findGlyph(GlyphFace *face, int codepoint) {
+	s_glyphLookups++;
+	return stbtt_FindGlyphIndex(&face->info, codepoint);
+}
+
+int void2dGlyphLookups(void) { return s_glyphLookups; }
+
 static float glyphHeight(GlyphFace *face, int codepoint) {
-	int glyph = stbtt_FindGlyphIndex(&face->info, codepoint);
+	int glyph = findGlyph(face, codepoint);
 	int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 	if (glyph == 0 || !stbtt_GetGlyphBox(&face->info, glyph, &x0, &y0, &x1, &y1)) { return 0.0f; }
 	return (float)(y1 - y0);
@@ -369,7 +377,7 @@ typedef struct {
 static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
 	int top = 0, bottom = 0, widest = 0;
 	for (int c = ' '; c < 127; c++) {
-		int glyph = stbtt_FindGlyphIndex(&face->info, c);
+		int glyph = findGlyph(face, c);
 		if (glyph == 0) { continue; }
 		int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 		stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
@@ -384,7 +392,7 @@ static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
 }
 
 static float ideographWidth(GlyphFace *face) {
-	int glyph = stbtt_FindGlyphIndex(&face->info, 0x6C34);
+	int glyph = findGlyph(face, 0x6C34);
 	if (glyph == 0) { return 0.0f; }
 	int advance = 0, bearing = 0, x0 = 0, y0 = 0, x1 = 0, y1 = 0;
 	stbtt_GetGlyphHMetrics(&face->info, glyph, &advance, &bearing);
@@ -540,7 +548,7 @@ float *void2dGlyphFaceMetrics(int face, float sizePx) {
 
 int void2dGlyphIndex(int face, int codepoint) {
 	if (!validFace(face)) { return 0; }
-	return stbtt_FindGlyphIndex(&s_faces[face].info, codepoint);
+	return findGlyph(&s_faces[face], codepoint);
 }
 
 float void2dGlyphAdvance(int face, int glyph, float sizePx) {

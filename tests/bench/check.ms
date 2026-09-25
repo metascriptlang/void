@@ -121,6 +121,8 @@ function runCheck(): int32 {
 	for (const metric of metrics) {
 		if (!checkCounter(textRows, "text", metric, counters.text.getDynamicField(metric).asInt32())) { failed = failed + 1; }
 	}
+	const lookups: int32 = counters.text.getDynamicField("measureGlyphLookups").asInt32();
+	if (!checkCounter(textRows, "text", "measureGlyphLookups", lookups)) { failed = failed + 1; }
 
 	const warnFactor: float64 = milliseconds.warnFactor.asNumber();
 	reportMilliseconds(uiRows, "ui", milliseconds.ui.present.asNumber(), warnFactor);

@@ -9,6 +9,7 @@ float *void2dGlyphFaceMetrics(int face, float sizePx);
 float *void2dGlyphDecoration(int face, float sizePx);
 float *void2dGlyphFaceHeights(int face);
 int void2dGlyphIndex(int face, int codepoint);
+int void2dGlyphLookups(void);
 float void2dGlyphAdvance(int face, int glyph, float sizePx);
 float void2dGlyphKern(int face, int left, int right, float sizePx);
 int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX);

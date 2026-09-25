@@ -26,6 +26,8 @@ import { GlyphAtlas } from "../void2d/glyphAtlas";
 import { Node2D, group, rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
+import { calcTextWidth } from "../void2d/textLayout";
+import { glyphLookups } from "../void2d/face";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 export enum BenchKind {
@@ -147,6 +149,22 @@ function report(): void {
 	console.log(`${benchName}.sweepRasterizations ${rasterizationsBeforeMeasure - firstPaintRasterizations}`);
 	console.log(`${benchName}.firstPaint.ms ${firstPaintMs}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
+	if (codeBlock !== null) { console.log(`${benchName}.measureGlyphLookups ${measureGlyphLookups()}`); }
+}
+
+// What one measure call costs once the faces are loaded and the fallback cache is warm: the
+// Neon host's Yoga measure callback makes this call per text node per layout pass.
+function measureGlyphLookups(): int32 {
+	const before: int32 = glyphLookups();
+	calcTextWidth(CODE_LINE, {
+		font: 0,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: 0.0,
+	});
+	return glyphLookups() - before;
 }
 
 // The zoom sweep runs inside the warm-up: the code block scales from 0.5 to 4 over the
