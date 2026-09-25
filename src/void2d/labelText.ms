@@ -42,7 +42,7 @@ export interface LabelText {
 }
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
-export const labelTexts: LabelText[] = [];
+export const labelTexts: Vec<LabelText> = [];
 const freeLabelTexts: Vec<int32> = [];
 
 export function firstGlyphPageHandle(): GlyphPageHandle {

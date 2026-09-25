@@ -67,11 +67,11 @@ struct Fallback {
 	scale: float32;
 }
 
-const registered: RegisteredFace[] = [];
-const loadedPaths: LoadedPath[] = [];
-const synthetics: Synthetic[] = [];
-const fonts: FontEntry[] = [];
-const fallbacks: Fallback[] = [];
+const registered: Vec<RegisteredFace> = [];
+const loadedPaths: Vec<LoadedPath> = [];
+const synthetics: Vec<Synthetic> = [];
+const fonts: Vec<FontEntry> = [];
+const fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
