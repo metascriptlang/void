@@ -156,9 +156,3 @@ Guardrail 9 is "same pixels on every platform", and today it is measured on two 
 | oracle:ucd-segmentation | T3 | `GraphemeBreakTest.txt` and `LineBreakTest.txt` | P4 | 2026-09-20 |
 | oracle:h2d | T3 | Heaps compiled to JS, for `getBounds`, `localToGlobal`, mask intersection and scale modes | P5 | 2026-09-20 |
 | oracle:harfbuzz-full | T3 | the full shaping oracle | P6 | 2026-09-20 |
-
-## Tests that belong to no tier
-
-| id | tier | reason | phase | date |
-|---|---|---|---|---|
-| legacy:tests/layout.test.ms | T0 | Porting these five Yoga cases into `src/test/` is blocked by compiler card `../../.inbox/compiler/2026-09-22-imported-interface-literal-reachability.md`: assigning a partial literal through the imported `FlexStyle | null` field reaches codegen with its TypeInfo marked dead. The standalone file remains the parked site; no workaround hides the compiler failure | compiler | 2026-09-22 |

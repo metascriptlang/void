@@ -36,7 +36,7 @@ Data-driven tables are already the local idiom — `blendModes(): Vec<BlendMode>
 
 What T0 gains through the roadmap: the snapping rules as arithmetic, wrap and truncation boundaries over a shaped line, the atlas packer, complementary rounding, Oklab and sRGB interpolation, the gamma/contrast table, instance bit packing, the display-list growth policy.
 
-`tests/layout.test.ms` at the repo root is a separate, older mechanism — a standalone binary with its own `expectEq(label, actual, expected)` runner (`tests/layout.test.ms:13-21`) that builds and passes standalone on msc 0.2.55. Its port into `src/test/` is parked on a compiler card (`tests/PENDING.md legacy:tests/layout.test.ms`). It is not part of this model; either port its cases into `src/test/` or delete it.
+The five Yoga layout cases that lived in a standalone binary, `tests/layout.test.ms`, with its own runner, are `src/test/layoutCheck.ms` since P4. The port waited on a compiler card that msc BUILD `1718d72c` carries.
 
 ## T1 — the display list is assertable with no GPU
 

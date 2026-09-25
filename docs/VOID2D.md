@@ -869,9 +869,6 @@ Checked and recorded per phase, from `tests/bench/`: draw calls, instances and u
 - The command carries one rotated clip basis. Nested rotated Masks with the same world edge axes intersect exactly; different axes are rejected loudly rather than leaking. Whether Neon needs arbitrary rotated-mask intersections is unknown.
 - System font discovery is host work; whether Ion or the Neon host owns it is undecided. Ghostty's Windows scanner is a stopgap, not a model.
 - The Zed editor element (`crates/editor`) is outside the sparse clone: how it uses `paint_layer`, `split_at` and tab expansion was not read.
-- `tests/layout.test.ms` belongs to no tier. Porting its five Yoga cases is blocked by compiler
-  card `../../.inbox/compiler/2026-09-22-imported-interface-literal-reachability.md`; the
-  standalone file is the parked site and the card owns the next action.
 - **Headless Chrome has no WebGPU adapter on this box**, measured at P0 with and without `--use-angle=swiftshader`: the canvas is black. WebGPU conformance can only be taken headed until that changes, which is the one part of guardrail 9 that is blocked by something outside this repo.
 
 ## Decision (2026-06-20): own the batcher, do NOT vendor sokol_gp
