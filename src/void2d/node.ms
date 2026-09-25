@@ -289,6 +289,7 @@ export function dispose(this n: Node2D): void {
 				n.payload = NO_LABEL_TEXT;
 			}
 		},
-		_ => {},
+		DrawKind.Group | DrawKind.Graphics | DrawKind.Mask | DrawKind.ScaleGrid => {},
+		DrawKind.Underline | DrawKind.Selection => {},
 	}
 }
