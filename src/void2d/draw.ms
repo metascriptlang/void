@@ -555,8 +555,7 @@ export function setEffect(mat: float32[], add: Color, key: Color): void {
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && !curHasEffect) { return; }
 	if (wantsEffect && curHasEffect && currentGradientKind() == 0
-		&& add.r == curAdd.r && add.g == curAdd.g && add.b == curAdd.b && add.a == curAdd.a
-		&& key.r == curKey.r && key.g == curKey.g && key.b == curKey.b && key.a == curKey.a
+		&& add == curAdd && key == curKey
 		&& effectMatrixSame(mat, hasMat)) { return; }
 	closeRun();
 	if (hasMat) {
@@ -609,8 +608,7 @@ export function setGradientEffect(
 		&& effects[base + EFFECT_GRADIENT_COLOR2 + 1] == c2.g
 		&& effects[base + EFFECT_GRADIENT_COLOR2 + 2] == c2.b
 		&& effects[base + EFFECT_GRADIENT_COLOR2 + 3] == c2.a
-		&& add.r == curAdd.r && add.g == curAdd.g && add.b == curAdd.b && add.a == curAdd.a
-		&& key.r == curKey.r && key.g == curKey.g && key.b == curKey.b && key.a == curKey.a
+		&& add == curAdd && key == curKey
 		&& effectMatrixSame(mat, hasMat)) { return; }
 	closeRun();
 	if (hasMat) {

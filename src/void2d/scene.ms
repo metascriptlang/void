@@ -110,10 +110,7 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	begin2d(wf, hf, dpi);
 	releaseTargets();
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
-	const viewChanged: boolean = !s.viewInit
-		|| nv.a != s.viewMat.a || nv.b != s.viewMat.b
-		|| nv.c != s.viewMat.c || nv.d != s.viewMat.d
-		|| nv.tx != s.viewMat.tx || nv.ty != s.viewMat.ty;
+	const viewChanged: boolean = !s.viewInit || nv != s.viewMat;
 	if (viewChanged) {
 		s.viewMat = nv;
 		s.viewInit = true;
