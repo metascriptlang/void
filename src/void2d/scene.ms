@@ -47,7 +47,7 @@ export function tick(this s: Scene, dt: float32): void {
 }
 
 export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D {
-	if (s.scaleMode === ScaleMode.Resize || s.designW <= 0.0 || s.designH <= 0.0) {
+	if (s.designW <= 0.0 || s.designH <= 0.0) {
 		return s.cam.viewMatrix(wf, hf);
 	}
 	const dw: float32 = s.designW;
@@ -57,6 +57,9 @@ export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D
 	let offsetX: float32 = 0.0;
 	let offsetY: float32 = 0.0;
 	match (s.scaleMode) {
+		ScaleMode.Resize => {
+			return s.cam.viewMatrix(wf, hf);
+		},
 		ScaleMode.Stretch => {
 			scaleX = wf / dw;
 			scaleY = hf / dh;
@@ -77,7 +80,7 @@ export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D
 			offsetX = (wf - dw * r) * 0.5;
 			offsetY = (hf - dh * r) * 0.5;
 		},
-		ScaleMode.AutoZoom | ScaleMode.Resize => {
+		ScaleMode.AutoZoom => {
 			const ratio: float32 = wf / dw < hf / dh ? wf / dw : hf / dh;
 			const ir: int32 = ratio as int32;
 			let r: float32;
