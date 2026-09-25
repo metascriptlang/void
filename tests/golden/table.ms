@@ -51,6 +51,16 @@ export const AA_BOX_BG_R: float32 = 0.08;
 export const AA_BOX_BG_G: float32 = 0.09;
 export const AA_BOX_BG_B: float32 = 0.12;
 
+// text/filteredDpi125 draws one line twice at the same device phase, plain and inside a
+// radius-0 blur, a whole number of device pixels apart, so the capture check can compare them.
+export const FILTERED_TEXT_SCENE: string = "text/filteredDpi125";
+export const FILTERED_TEXT_DPI: float32 = 1.25;
+export const FILTERED_TEXT_X: float32 = 10.3;
+export const FILTERED_TEXT_Y: float32 = 14.3;
+export const FILTERED_TEXT_SHIFT: float32 = 48.0;
+export const FILTERED_TEXT_W: float32 = 236.0;
+export const FILTERED_TEXT_H: float32 = 22.0;
+
 export function sceneRows(): SceneRow[] {
 	return [
 		{ name: "harness/solid", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
@@ -102,6 +112,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/multilineAlign", phase: "P0", width: 384, height: 96, dpi: 1.0, steps: 0, demo: false },
 		{ name: "text/cjkFallback", phase: "P3", width: 320, height: 120, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/fontStyles", phase: "P3", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/filteredDpi125", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
@@ -154,9 +165,9 @@ export function sceneDrawCounts(): int32[] {
 	return [
 		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 6, 2, 1, 1,
-		1, 6, 6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7, 30, 30, 30,
-		30,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 6, 2, 1,
+		1, 1, 6, 6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7, 30, 30,
+		30, 30,
 	];
 }
 
@@ -164,9 +175,9 @@ export function sceneRenderTargetCounts(): int32[] {
 	return [
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5,
-		5,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5,
+		5, 5,
 	];
 }
 

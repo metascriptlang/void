@@ -96,7 +96,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `clip/` | P5 | mask + scroll offset |
 | `text/` | P0 | a code line at 13 px, DPI 1.0 / 1.25 / 1.5 · wrapped · multilineAlign |
 | `text/` | P3 | mixed Latin + CJK fallback · fontStyles (synthetic bold and italic, size harmonisation) |
-| `text/` | P4 | decorations (underline, strikethrough, wavy) · caret and selection |
+| `text/` | P4 | filteredDpi125 (one line plain and inside a filter target, compared by `tests/golden/invariants.ms`) · decorations (underline, strikethrough, wavy) · caret and selection |
 | `text/` | P6 | a ligature line · a colour-emoji line |
 | `image/` | P0 | nearestLinear · subFlip · colorPipeline (colorMatrix, colorAdd, colorKey, Add blend) · scaleGrid |
 | `image/` | P1 | tileWrap (clamp beside repeat, u1 = 3) · sceneSmooth (`Smooth.Inherit` against a scene default of nearest, beside an explicit `Smooth.On`) |
@@ -160,7 +160,7 @@ the last three sessions compared.
 scenes were added; the integration captures still account for nearly half. The lever, if this
 becomes material, remains the demo frames.
 
-**Tolerance: byte-identical is the default.** All **69** live rows are byte-identical to
+**Tolerance: byte-identical is the default.** All **70** live rows are byte-identical to
 their goldens, between two draws in one process and between full suite runs in separate
 processes. `tests/PENDING.md` carries **zero** image budgets. A tolerance is not a property
 of this machine; it is a property of a scene, and a scene that needs one is a finding.
@@ -285,7 +285,7 @@ number typed into the script.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
-   `tests/golden/compare.ms` judges all **69** against `tests/golden/d3d11/` and prints
+   `tests/golden/compare.ms` judges all **70** against `tests/golden/d3d11/` and prints
    `N px differ, max delta M, bbox` and a pass rate.
 5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
@@ -308,7 +308,7 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **69 / 69 scenes byte-identical** | every full gate, this box |
+| D3D11 | **70 / 70 scenes byte-identical** | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |

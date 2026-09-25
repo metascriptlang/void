@@ -777,6 +777,8 @@ function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
 	if (yMax > vh) { yMax = vh; }
 	if (xMax <= xMin || yMax <= yMin) { return; }
 	const dpi: float32 = currentRenderScale();
+	xMin = (Math.floor(xMin * dpi) as float32) / dpi;
+	yMin = (Math.floor(yMin * dpi) as float32) / dpi;
 	const rtW: int32 = ceilToInt((xMax - xMin) * dpi);
 	const rtH: int32 = ceilToInt((yMax - yMin) * dpi);
 	if (rtW <= 0 || rtH <= 0) { return; }

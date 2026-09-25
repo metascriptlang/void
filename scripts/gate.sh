@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -150,6 +150,13 @@ else
 	echo "      harness self-checks: hand-computed scene, deliberately wrong golden,"
 	echo "      two draws of the same state compared before either is written out,"
 	echo "      and the verdict decision proved above"
+fi
+"$MSC" build tests/golden/invariants.ms --output=out/goldenInvariants.exe > out/gate-invariants.log 2>&1 || true
+if [ -x out/goldenInvariants.exe ] && out/goldenInvariants.exe >> out/gate-invariants.log 2>&1; then
+	pass "$(grep -E '^PASS' out/gate-invariants.log | sed 's/^PASS //')"
+else
+	fail "a committed golden breaks what it must hold within itself — see out/gate-invariants.log"
+	grep -E '^FAIL' out/gate-invariants.log | sed 's/^/      /' || true
 fi
 
 echo

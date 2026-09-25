@@ -68,6 +68,7 @@ import {
 	AA_BOX_ROTATION, AA_BOX_ALPHA,
 	AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B,
 	AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B,
+	FILTERED_TEXT_X, FILTERED_TEXT_Y, FILTERED_TEXT_SHIFT,
 } from "./table";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
@@ -636,6 +637,17 @@ function textCode(): Scene {
 	return s;
 }
 
+function textFilteredDpi125(): Scene {
+	const s = scene(DARK);
+	const color: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	s.add(label(CODE_LINE, 13.0, color).at(FILTERED_TEXT_X, FILTERED_TEXT_Y));
+	const host = group().at(FILTERED_TEXT_X, FILTERED_TEXT_Y + FILTERED_TEXT_SHIFT);
+	host.filter = blurFilter(0.0);
+	host.addChild(label(CODE_LINE, 13.0, color));
+	s.add(host);
+	return s;
+}
+
 function textWrapped(): Scene {
 	const s = scene(DARK);
 	const paragraph = label(
@@ -1154,6 +1166,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/multilineAlign", build: textMultilineAlign },
 		{ name: "text/cjkFallback", build: textCjkFallback },
 		{ name: "text/fontStyles", build: textFontStyles },
+		{ name: "text/filteredDpi125", build: textFilteredDpi125 },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },

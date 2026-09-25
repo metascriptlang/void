@@ -411,7 +411,7 @@ P1 needs only P0. P2 needs P1's instance stream. P3 needs P2's instance layout, 
 - `tests/golden/{table,scenes,runner,compare}.ms` and `tests/golden/pngio.{c,h}` — the table
   as data (no GPU, so the comparator links no sokol), the builders, a one-scene-per-process
   runner and a comparator that applies the tolerance and PENDING policy.
-- `tests/golden/d3d11/` — **37 scenes** at P0, **48** after P1 turned the filter rows on, **67** after P2 added the instanced primitives and their boundary cases, and **69** after P3's `text/cjkFallback` and `text/fontStyles`.
+- `tests/golden/d3d11/` — **37 scenes** at P0, **48** after P1 turned the filter rows on, **67** after P2 added the instanced primitives and their boundary cases, **69** after P3's `text/cjkFallback` and `text/fontStyles`, and **70** with P4's `text/filteredDpi125`.
 - `tests/bench/bench{Ui,Sprites}.ms`, `check.ms` and `baseline.json`; `bench2d.ms` emits one
   machine-readable row per metric.
 - `tests/PENDING.md`, opening with an index that maps every "Known defects" line to the row
@@ -646,7 +646,7 @@ render-target drawing must not combine an arbitrary colour matrix with that sour
 shader has an explicit unpremultiply-transform-premultiply path.
 
 Every golden row now gates its draw count and live pooled-render-target count as well as pixels.
-The expectations, 67 at P2 and 69 since P3, live in table order beside the scene table; a pixel-identical draw-call
+The expectations, 67 at P2, 69 at P3 and 70 in P4, live in table order beside the scene table; a pixel-identical draw-call
 regression or target leak fails before the PNG is written. T1 also closes the batch-reason
 cross-check: production `breaks`, `gradients` and `clip` scenes reach first/view/blend/sampler/
 pipeline/effect/clip, and a no-GPU target bracket reaches barrier.
