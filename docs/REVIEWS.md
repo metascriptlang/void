@@ -764,7 +764,7 @@ exposed. It was fixed in recompiler (`15af5b04`); void2d has no such parameter.
 
 **Confirmed, with the check named:**
 - no refactor moved a pixel: D3D11 69 / 69 byte-identical at every gate of P3.5, and the bench counters unchanged apart from the new `text.measureGlyphLookups`;
-- the frame path neither copies nor allocates (the `allocation` stage, 51 functions, proven by a planted copy and a planted array literal);
+- the frame path copies no array and builds no fresh one (the `allocation` stage, 51 functions, proven by a planted copy and a planted array literal; it does not see stream growth or allocation inside C);
 - the record checks itself (the gate's "the record against the code", proven by five planted drifts), and a `conformance:*` row now fails the run when its scenes pass or a run is clean (F13, proven by three planted logs).
 
 ### Numbers

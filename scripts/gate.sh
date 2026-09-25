@@ -183,11 +183,9 @@ else
 	fail "bench — see out/gate-bench-rows.log"
 	grep -E '^FAIL' out/gate-bench-rows.log | sed 's/^/      /' || true
 fi
-# An allocation that moves no length is invisible to the counters, so read the emitted C, as
-# gate3d.sh's "allocation" stage does. It sees copies, not aliases: on msc 0.2.55 `let b = vec`
-# emits no copy at all (~/metascript/.inbox/compiler/2026-09-23-vec-param-copy-corrupts-heap.md).
-# The frame path runs per node per frame: it neither copies nor allocates. The rebuild path
-# reshapes, re-places and filters: it may allocate and never copies.
+# The counters cannot see an allocation that moves no length, so read the emitted C. It sees
+# array copies and fresh arrays; not aliases (`let b = vec` emits no copy on msc 0.2.55, card
+# 2026-09-23-vec-param-copy-corrupts-heap), not stream growth, not allocation inside C.
 FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:sync
 	render:emitNode render:emitLabel render:emitStyledImage render:labelStyle render:localBounds
 	render:boxRenderBounds render:visualTile render:sortByZ render:sharedGlyphView
@@ -235,10 +233,10 @@ else
 		fail "allocation: no body in the emitted C for$unreachable — renamed or unreachable?"
 	elif [ -n "$copied" ] || [ -n "$allocated" ]; then
 		[ -n "$copied" ] && fail "allocation: an array is copied — ArrayCopy in:$copied"
-		[ -n "$allocated" ] && fail "allocation: the frame path allocates — in:$allocated"
+		[ -n "$allocated" ] && fail "allocation: the frame path builds a fresh array — in:$allocated"
 		echo "         CODE-STYLE section 5: index the field, take a Span view, or return a tuple"
 	else
-		pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) neither copies nor allocates; the rebuild path ($(echo $REBUILD_PATH | wc -w)) copies no array"
+		pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild path ($(echo $REBUILD_PATH | wc -w)) copies none"
 	fi
 fi
 skip "wasm size budget: no budget committed yet (P6 makes guardrail 6 real)"
@@ -368,7 +366,7 @@ echo "      T0     msc test src/test/index.ms"
 echo "      T1     display-list snapshots + growth policy, no GPU"
 echo "      T2     $d3d11_conformance"
 echo "      T3     oracles: $t3_report"
-echo "      T4     bench counters gated, milliseconds reported, frame path neither copies nor allocates"
+echo "      T4     bench counters gated, milliseconds reported, frame path copies and builds no array"
 echo "      T5     human only (docs/TESTING.md 'T5')"
 echo "      tests/PENDING.md entries: $pending"
 echo "      SKIP: $skips   FAIL: $fails"
