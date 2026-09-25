@@ -47,6 +47,7 @@ layout(binding=1) uniform lightParams {
     vec4 pointColor[4];
 };
 
+// PENDING3D: point-light-toon-quantized
 vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight) {
     vec3 toLight = pointLight[i].xyz - position;
     float distance = length(toLight);
@@ -80,7 +81,6 @@ void main() {
 
 @fs litFs
 // PENDING3D: material-saturation-only
-// PENDING3D: dir-light-stepped
 @include_block materialUniforms
 @include_block lightUniforms
 @include_block saturation
@@ -92,13 +92,12 @@ layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
     vec3 n = normalize(worldNormal);
-    float lambert = step(0.35, dot(n, dirLight.xyz)) * dirLight.w;
-    vec3 shaded = saturated(baseColor.rgb, toon.y) * (ambient.rgb + dirColor.rgb * vec3(lambert));
-    vec3 points = vec3(0.0);
+    float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+    vec3 light = ambient.rgb + dirColor.rgb * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        points += pointLightAt(i, worldPosition, n, 1.0);
+        light += pointLightAt(i, worldPosition, n, 1.0);
     }
-    fragColor = vec4(shaded + points, baseColor.a);
+    fragColor = vec4(saturated(baseColor.rgb, toon.y) * light, baseColor.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
