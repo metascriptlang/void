@@ -12,6 +12,12 @@
 #define GLYPH_ITALIC_SKEW 0.21255656f
 
 typedef struct {
+	float cap, ex, ic;
+	float capEstimate, exEstimate, icEstimate;
+	float lineHeight;
+} FaceHeights;
+
+typedef struct {
 	unsigned char *bytes;
 	int length;
 	stbtt_fontinfo info;
@@ -19,6 +25,9 @@ typedef struct {
 	int kernLookupCount;
 	float emboldenUnits;
 	float skew;
+	int measured;
+	FaceHeights heights;
+	float underlineTop, underlineThickness, strikeTop, strikeThickness;
 } GlyphFace;
 
 typedef struct {
@@ -368,12 +377,6 @@ static float glyphHeight(GlyphFace *face, int codepoint) {
 	return (float)(y1 - y0);
 }
 
-typedef struct {
-	float cap, ex, ic;
-	float capEstimate, exEstimate, icEstimate;
-	float lineHeight;
-} FaceHeights;
-
 static void asciiExtent(GlyphFace *face, float *height, float *cellWidth) {
 	int top = 0, bottom = 0, widest = 0;
 	for (int c = ' '; c < 127; c++) {
@@ -423,19 +426,41 @@ static void measureHeights(GlyphFace *f, FaceHeights *h) {
 	h->lineHeight = (float)(ascent - descent + lineGap);
 }
 
+static void measureFace(GlyphFace *f) {
+	if (f->measured) { return; }
+	measureHeights(f, &f->heights);
+	int postLength = 0, os2Length = 0;
+	stbtt_uint8 *post = findTable(f, "post", &postLength);
+	stbtt_uint8 *os2 = findTable(f, "OS/2", &os2Length);
+	if (postLength < 12) { post = NULL; }
+	if (os2Length < 30) { os2 = NULL; }
+	float exHeight = f->heights.exEstimate;
+	int underlinePosition = post ? ttSHORT(post + 8) : 0;
+	int underlineSize = post ? ttSHORT(post + 10) : 0;
+	f->underlineThickness = underlineSize > 0 ? (float)underlineSize : 0.15f * exHeight;
+	f->underlineTop = post && (underlineSize != 0 || underlinePosition != 0)
+		? (float)underlinePosition : -f->underlineThickness;
+	int strikeSize = os2 ? ttSHORT(os2 + 26) : 0;
+	int strikePosition = os2 ? ttSHORT(os2 + 28) : 0;
+	f->strikeThickness = strikeSize > 0 ? (float)strikeSize : f->underlineThickness;
+	f->strikeTop = os2 && (strikeSize != 0 || strikePosition != 0)
+		? (float)strikePosition : (exHeight + f->strikeThickness) * 0.5f;
+	f->measured = 1;
+}
+
 float *void2dGlyphFaceHeights(int face) {
 	for (int i = 0; i < 7; i++) { s_heights[i] = 0.0f; }
 	if (!validFace(face)) { return s_heights; }
-	FaceHeights h;
-	measureHeights(&s_faces[face], &h);
+	measureFace(&s_faces[face]);
+	const FaceHeights *h = &s_faces[face].heights;
 	float perEm = void2dGlyphScale(face, 1.0f);
-	s_heights[0] = (h.ic > 0.0f ? h.ic : 0.0f) * perEm;
-	s_heights[1] = (h.ex > 0.0f ? h.ex : 0.0f) * perEm;
-	s_heights[2] = (h.cap > 0.0f ? h.cap : 0.0f) * perEm;
-	s_heights[3] = h.icEstimate * perEm;
-	s_heights[4] = h.exEstimate * perEm;
-	s_heights[5] = h.capEstimate * perEm;
-	s_heights[6] = h.lineHeight * perEm;
+	s_heights[0] = (h->ic > 0.0f ? h->ic : 0.0f) * perEm;
+	s_heights[1] = (h->ex > 0.0f ? h->ex : 0.0f) * perEm;
+	s_heights[2] = (h->cap > 0.0f ? h->cap : 0.0f) * perEm;
+	s_heights[3] = h->icEstimate * perEm;
+	s_heights[4] = h->exEstimate * perEm;
+	s_heights[5] = h->capEstimate * perEm;
+	s_heights[6] = h->lineHeight * perEm;
 	return s_heights;
 }
 
@@ -443,29 +468,12 @@ float *void2dGlyphDecoration(int face, float sizePx) {
 	s_decoration[0] = 0.0f; s_decoration[1] = 0.0f; s_decoration[2] = 0.0f; s_decoration[3] = 0.0f;
 	if (!validFace(face)) { return s_decoration; }
 	GlyphFace *f = &s_faces[face];
-	int postLength = 0, os2Length = 0;
-	stbtt_uint8 *post = findTable(f, "post", &postLength);
-	stbtt_uint8 *os2 = findTable(f, "OS/2", &os2Length);
-	if (postLength < 12) { post = NULL; }
-	if (os2Length < 30) { os2 = NULL; }
-	FaceHeights heights;
-	measureHeights(f, &heights);
-	float exHeight = heights.exEstimate;
-	int underlinePosition = post ? ttSHORT(post + 8) : 0;
-	int underlineSize = post ? ttSHORT(post + 10) : 0;
-	float underlineThickness = underlineSize > 0 ? (float)underlineSize : 0.15f * exHeight;
-	float underlineTop = post && (underlineSize != 0 || underlinePosition != 0)
-		? (float)underlinePosition : -underlineThickness;
-	int strikeSize = os2 ? ttSHORT(os2 + 26) : 0;
-	int strikePosition = os2 ? ttSHORT(os2 + 28) : 0;
-	float strikeThickness = strikeSize > 0 ? (float)strikeSize : underlineThickness;
-	float strikeTop = os2 && (strikeSize != 0 || strikePosition != 0)
-		? (float)strikePosition : (exHeight + strikeThickness) * 0.5f;
+	measureFace(f);
 	float scale = void2dGlyphScale(face, sizePx);
-	s_decoration[0] = -underlineTop * scale;
-	s_decoration[1] = underlineThickness * scale;
-	s_decoration[2] = -strikeTop * scale;
-	s_decoration[3] = strikeThickness * scale;
+	s_decoration[0] = -f->underlineTop * scale;
+	s_decoration[1] = f->underlineThickness * scale;
+	s_decoration[2] = -f->strikeTop * scale;
+	s_decoration[3] = f->strikeThickness * scale;
 	return s_decoration;
 }
 
@@ -505,6 +513,7 @@ int void2dGlyphFaceLoad(const char *path) {
 	s_faces[s_faceCount].info = info;
 	s_faces[s_faceCount].emboldenUnits = 0.0f;
 	s_faces[s_faceCount].skew = 0.0f;
+	s_faces[s_faceCount].measured = 0;
 	findKernLookups(&s_faces[s_faceCount]);
 	return s_faceCount++;
 }
