@@ -53,8 +53,7 @@ import { NO_IMAGE_STYLE, imageStyles, fitImage } from "./imageStyle";
 
 function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
-	let i: int32 = 1;
-	while (i < m) {
+	for (let i: int32 = 1; i < m; i++) {
 		const cur = cs[i];
 		let j: int32 = i - 1;
 		while (j >= 0 && cs[j].zIndex > cur.zIndex) {
@@ -62,7 +61,6 @@ function sortByZ(cs: Node2D[]): void {
 			j = j - 1;
 		}
 		cs[j + 1] = cur;
-		i = i + 1;
 	}
 }
 
@@ -176,10 +174,8 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 	const dy: float32[4] = [oy, oy + n.borderT, oy + n.h - n.borderB, oy + n.h];
 	const du: float32 = t.u1 - t.u0;
 	const dv: float32 = t.v1 - t.v0;
-	let cj: int32 = 0;
-	while (cj < 3) {
-		let ci: int32 = 0;
-		while (ci < 3) {
+	for (let cj: int32 = 0; cj < 3; cj++) {
+		for (let ci: int32 = 0; ci < 3; ci++) {
 			const u0: float32 = t.u0 + (sx[ci] / srcW) * du;
 			const u1: float32 = t.u0 + (sx[ci + 1] / srcW) * du;
 			const v0: float32 = t.v0 + (sy[cj] / srcH) * dv;
@@ -189,9 +185,7 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 			const c = vec2(dx[ci + 1], dy[cj + 1]) * world;
 			const d = vec2(dx[ci], dy[cj + 1]) * world;
 			imageQuadUV(t.view, u0, v0, u1, v1, a, b, c, d, col, n.blend);
-			ci = ci + 1;
 		}
-		cj = cj + 1;
 	}
 }
 
@@ -257,14 +251,12 @@ export function sync(this n: Node2D, parentWorld: Transform2D, parentChanged: bo
 	if (n.kind === DrawKind.Label) { shapeIfChanged(n); }
 	if (n.kind === DrawKind.Graphics && n.gfxDirty) {
 		n.contentXMin = 1e30; n.contentYMin = 1e30; n.contentXMax = -1e30; n.contentYMax = -1e30;
-		let mi: int32 = 0;
-		while (mi + 8 <= n.mesh.length as int32) {
+		for (let mi: int32 = 0; mi + 8 <= n.mesh.length as int32; mi += 8) {
 			const mx: float32 = n.mesh[mi]; const my: float32 = n.mesh[mi + 1];
 			if (mx < n.contentXMin) { n.contentXMin = mx; }
 			if (my < n.contentYMin) { n.contentYMin = my; }
 			if (mx > n.contentXMax) { n.contentXMax = mx; }
 			if (my > n.contentYMax) { n.contentYMax = my; }
-			mi = mi + 8;
 		}
 		if (n.contentXMin > n.contentXMax) { n.contentXMin = 0.0; n.contentXMax = 0.0; n.contentYMin = 0.0; n.contentYMax = 0.0; }
 		n.meshVertCount = (n.mesh.length as int32) / 8;
@@ -541,8 +533,8 @@ function emitNode(
 			if (opTotal == 0) {
 				drawMesh(n.mesh, n.gfxView, n.blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
 			} else {
-				let oi: int32 = 0;
-				while (oi + GRAPHICS_OP_FLOATS <= opTotal) {
+				const stride: int32 = GRAPHICS_OP_FLOATS;
+				for (let oi: int32 = 0; oi + stride <= opTotal; oi += stride) {
 					const kind: int32 = ops[oi + GFX_OP_KIND] as int32;
 					const offset: int32 = ops[oi + GFX_OP_VERTEX_OFFSET] as int32;
 					const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
@@ -569,7 +561,6 @@ function emitNode(
 						drawMeshRange(n.mesh, offset, count, 0, n.blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					}
-					oi = oi + GRAPHICS_OP_FLOATS;
 				}
 			}
 		},

@@ -209,11 +209,9 @@ export function addChildAt(this n: Node2D, c: Node2D, index: int32): Node2D {
 	if (index < 0) { index = 0; }
 	const cs: Node2D[] = [];
 	const len: int32 = n.children.length as int32;
-	let i: int32 = 0;
-	while (i < len) {
+	for (let i: int32 = 0; i < len; i++) {
 		if (i == index) { cs.push(c); }
 		cs.push(n.children[i]);
-		i = i + 1;
 	}
 	if (index >= len) { cs.push(c); }
 	n.children = cs;

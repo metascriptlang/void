@@ -138,11 +138,9 @@ function arcSegs(r: float32, sweep: float32): int32 {
 }
 
 function cornerArc(n: Node2D, pts: Vec2[], ccx: float32, ccy: float32, r: float32, a0: float32, seg: int32): void {
-	let i: int32 = 0;
-	while (i <= seg) {
+	for (let i: int32 = 0; i <= seg; i++) {
 		const a: float32 = a0 + TAU * 0.25 * ((i as float32) / (seg as float32));
 		pts.push(vec2(ccx + cosf(a) * r, ccy + sinf(a) * r));
-		i = i + 1;
 	}
 }
 
@@ -180,10 +178,8 @@ export function fillRect(this g: Node2D, x: float32, y: float32, w: float32, h: 
 
 export function fillConvex(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 	const m: int32 = pts.length as int32;
-	let i: int32 = 1;
-	while (i + 1 < m) {
+	for (let i: int32 = 1; i + 1 < m; i++) {
 		tri(g, pts[0], pts[i], pts[i + 1], color);
-		i = i + 1;
 	}
 	return g;
 }
@@ -191,11 +187,9 @@ export function fillConvex(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 function polyArea2(pts: Vec2[]): float32 {
 	const m: int32 = pts.length as int32;
 	let a: float32 = 0.0;
-	let i: int32 = 0;
-	while (i < m) {
+	for (let i: int32 = 0; i < m; i++) {
 		const j: int32 = (i + 1) % m;
 		a = a + pts[i].x * pts[j].y - pts[j].x * pts[i].y;
-		i = i + 1;
 	}
 	return a;
 }
@@ -234,11 +228,9 @@ function triangulate(pts: Vec2[]): int32[] {
 	if (n < 3) { return out; }
 	const prev: int32[] = [];
 	const next: int32[] = [];
-	let i: int32 = 0;
-	while (i < n) {
+	for (let i: int32 = 0; i < n; i++) {
 		prev.push((i - 1 + n) % n);
 		next.push((i + 1) % n);
-		i = i + 1;
 	}
 	const ccw: boolean = polyArea2(pts) > 0.0;
 	let remaining: int32 = n;
@@ -272,10 +264,8 @@ function triangulate(pts: Vec2[]): int32[] {
 export function fillPolygon(this g: Node2D, pts: Vec2[], color: Color): Node2D {
 	const idx: int32[] = triangulate(pts);
 	const tc: int32 = idx.length as int32;
-	let k: int32 = 0;
-	while (k + 3 <= tc) {
+	for (let k: int32 = 0; k + 3 <= tc; k += 3) {
 		tri(g, pts[idx[k]], pts[idx[k + 1]], pts[idx[k + 2]], color);
-		k = k + 3;
 	}
 	return g;
 }
@@ -570,8 +560,7 @@ export function strokePoly(this g: Node2D, pts: Vec2[], width: float32, color: C
 	const ly: float32[] = [];
 	const rx: float32[] = [];
 	const ry: float32[] = [];
-	let i: int32 = 0;
-	while (i < m) {
+	for (let i: int32 = 0; i < m; i++) {
 		const hasPrev: boolean = closed || i > 0;
 		const hasNext: boolean = closed || i < m - 1;
 		let nx: float32 = 0.0;
@@ -606,16 +595,13 @@ export function strokePoly(this g: Node2D, pts: Vec2[], width: float32, color: C
 		ly.push(pts[i].y + ny);
 		rx.push(pts[i].x - nx);
 		ry.push(pts[i].y - ny);
-		i = i + 1;
 	}
 	const segs: int32 = closed ? m : (m - 1);
-	let s: int32 = 0;
-	while (s < segs) {
+	for (let s: int32 = 0; s < segs; s++) {
 		const a: int32 = s;
 		const b: int32 = (s + 1) % m;
 		tri(g, vec2(lx[a], ly[a]), vec2(rx[a], ry[a]), vec2(rx[b], ry[b]), color);
 		tri(g, vec2(lx[a], ly[a]), vec2(rx[b], ry[b]), vec2(lx[b], ly[b]), color);
-		s = s + 1;
 	}
 	return g;
 }
@@ -646,14 +632,12 @@ export function fillEllipse(this g: Node2D, cx: float32, cy: float32, rx: float3
 	const seg: int32 = arcSegs(rr, TAU);
 	const step: float32 = TAU / (seg as float32);
 	const center = vec2(cx, cy);
-	let i: int32 = 0;
-	while (i < seg) {
+	for (let i: int32 = 0; i < seg; i++) {
 		const a0: float32 = step * (i as float32);
 		const a1: float32 = step * ((i + 1) as float32);
 		const p0 = vec2(cx + cosf(a0) * rx, cy + sinf(a0) * ry);
 		const p1 = vec2(cx + cosf(a1) * rx, cy + sinf(a1) * ry);
 		tri(g, center, p0, p1, color);
-		i = i + 1;
 	}
 	return g;
 }
@@ -663,14 +647,12 @@ export function fillPie(this g: Node2D, cx: float32, cy: float32, r: float32, an
 	const seg: int32 = arcSegs(r, angleLength);
 	const step: float32 = angleLength / (seg as float32);
 	const center = vec2(cx, cy);
-	let i: int32 = 0;
-	while (i < seg) {
+	for (let i: int32 = 0; i < seg; i++) {
 		const a0: float32 = angleStart + step * (i as float32);
 		const a1: float32 = angleStart + step * ((i + 1) as float32);
 		const p0 = vec2(cx + cosf(a0) * r, cy + sinf(a0) * r);
 		const p1 = vec2(cx + cosf(a1) * r, cy + sinf(a1) * r);
 		tri(g, center, p0, p1, color);
-		i = i + 1;
 	}
 	return g;
 }
@@ -679,8 +661,7 @@ export function fillPie(this g: Node2D, cx: float32, cy: float32, r: float32, an
 export function fillRing(this g: Node2D, cx: float32, cy: float32, outerR: float32, innerR: float32, angleStart: float32, angleLength: float32, color: Color): Node2D {
 	const seg: int32 = arcSegs(outerR, angleLength);
 	const step: float32 = angleLength / (seg as float32);
-	let i: int32 = 0;
-	while (i < seg) {
+	for (let i: int32 = 0; i < seg; i++) {
 		const a0: float32 = angleStart + step * (i as float32);
 		const a1: float32 = angleStart + step * ((i + 1) as float32);
 		const o0 = vec2(cx + cosf(a0) * outerR, cy + sinf(a0) * outerR);
@@ -689,7 +670,6 @@ export function fillRing(this g: Node2D, cx: float32, cy: float32, outerR: float
 		const i1 = vec2(cx + cosf(a1) * innerR, cy + sinf(a1) * innerR);
 		tri(g, i0, o0, o1, color);
 		tri(g, i0, o1, i1, color);
-		i = i + 1;
 	}
 	return g;
 }
@@ -699,14 +679,12 @@ export function quadBezier(a: Vec2, ctrl: Vec2, b: Vec2, segments: int32): Vec2[
 	let seg: int32 = segments;
 	if (seg < 1) { seg = 1; }
 	const pts: Vec2[] = [];
-	let i: int32 = 0;
-	while (i <= seg) {
+	for (let i: int32 = 0; i <= seg; i++) {
 		const t: float32 = (i as float32) / (seg as float32);
 		const u: float32 = 1.0 - t;
 		const x: float32 = u * u * a.x + 2.0 * u * t * ctrl.x + t * t * b.x;
 		const y: float32 = u * u * a.y + 2.0 * u * t * ctrl.y + t * t * b.y;
 		pts.push(vec2(x, y));
-		i = i + 1;
 	}
 	return pts;
 }
@@ -716,14 +694,12 @@ export function cubicBezier(a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, segments: int3
 	let seg: int32 = segments;
 	if (seg < 1) { seg = 1; }
 	const pts: Vec2[] = [];
-	let i: int32 = 0;
-	while (i <= seg) {
+	for (let i: int32 = 0; i <= seg; i++) {
 		const t: float32 = (i as float32) / (seg as float32);
 		const u: float32 = 1.0 - t;
 		const x: float32 = u * u * u * a.x + 3.0 * u * u * t * c1.x + 3.0 * u * t * t * c2.x + t * t * t * b.x;
 		const y: float32 = u * u * u * a.y + 3.0 * u * u * t * c1.y + 3.0 * u * t * t * c2.y + t * t * t * b.y;
 		pts.push(vec2(x, y));
-		i = i + 1;
 	}
 	return pts;
 }
