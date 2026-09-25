@@ -46,7 +46,8 @@ const SWEEP_FRAMES: int32 = 64;
 const SWEEP_MIN: float32 = 0.5;
 const SWEEP_MAX: float32 = 4.0;
 const CODE_LINES: int32 = 40;
-const CODE_LINE: string = "fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
+const CODE_LINE: string =
+	"fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
 
 let benchScene: Scene | null = null;
 let benchName: string = "ui";
@@ -79,7 +80,8 @@ export function benchInit(kind: BenchKind): void {
 		benchName = "text";
 		const block = group();
 		for (let line: int32 = 0; line < CODE_LINES; line++) {
-			block.addChild(label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, 8.0 + (line as float32) * 17.0));
+			const y: float32 = 8.0 + (line as float32) * 17.0;
+			block.addChild(label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, y));
 		}
 		s.add(block);
 		codeBlock = block;
@@ -141,7 +143,8 @@ function report(): void {
 	console.log(`${benchName}.atlasImages ${atlasImagesAlive()}`);
 	console.log(`${benchName}.renderTargets ${renderTargetsAlive()}`);
 	console.log(`${benchName}.droppedFrames ${droppedFrames()}`);
-	console.log(`${benchName}.glyphRasterizationsSteady ${glyphRasterizations() - rasterizationsBeforeMeasure}`);
+	const steady: int32 = glyphRasterizations() - rasterizationsBeforeMeasure;
+	console.log(`${benchName}.glyphRasterizationsSteady ${steady}`);
 	console.log(`${benchName}.glyphPages ${glyphAtlas.pageCount()}`);
 	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
@@ -181,7 +184,8 @@ function sweep(frame: int32): void {
 	const step: int32 = frame - 2;
 	let scale: float32 = 1.0;
 	if (step < SWEEP_FRAMES) {
-		scale = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * (step as float32) / ((SWEEP_FRAMES - 1) as float32);
+		const span: float32 = (SWEEP_FRAMES - 1) as float32;
+		scale = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * (step as float32) / span;
 	}
 	codeBlock.scaleX = scale;
 	codeBlock.scaleY = scale;

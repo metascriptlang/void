@@ -146,7 +146,8 @@ test "pending rows keep the owner's first word and skip prose tables" {
 }
 
 test "a phase section ends at the next heading and names what it closes" {
-	const doc: string = "### P4 — Text\n\nBody.\n\n**Closes** (`tests/PENDING.md`): `a:b`, `c`.\n\n" +
+	const doc: string = "### P4 — Text\n\nBody.\n\n" +
+		"**Closes** (`tests/PENDING.md`): `a:b`, `c`.\n\n" +
 		"### P5 — Next\n\n**Closes** (`tests/PENDING.md`): `d`.\n";
 	const four: string = phaseSection(doc, "P4");
 	assert four.indexOf("P5") < 0;

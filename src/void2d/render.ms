@@ -422,7 +422,8 @@ function emitNode(
 					borderB = boxStyles[styleIndex].borders.bottom;
 					const source: Color = boxStyles[styleIndex].borderColor;
 					edge = rgba(source.r, source.g, source.b, source.a * na);
-					const dashed: boolean = boxStyles[styleIndex].borderStyle === BorderStyle.Dashed;
+					const dashed: boolean =
+						boxStyles[styleIndex].borderStyle === BorderStyle.Dashed;
 					borderStyle = dashed ? 1.0 : 0.0;
 				}
 				// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and

@@ -16,7 +16,8 @@
 //     table instead, through Scene.presentAt.
 //
 // Each scene is drawn three times: once to warm up — the first draw of a Label shapes it and
-// rasterizes its glyphs into the atlas — and then twice, into the two capture slots. The two captures must be identical before either is written out.
+// rasterizes its glyphs into the atlas — and then twice, into the two capture slots. The two
+// captures must be identical before either is written out.
 
 import {
 	SceneRow,

@@ -234,8 +234,8 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	}
 	if (refused > 0) {
 		console.log(
-			`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not drawn, ` +
-			`the glyph atlas refused them (${refusal})`,
+			`void2d: ${refused} of ${entry.layout.glyphs.length} glyphs of a label are not ` +
+			`drawn, the glyph atlas refused them (${refusal})`,
 		);
 	}
 	entry.placed = placed;

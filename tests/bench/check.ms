@@ -101,7 +101,9 @@ function runCheck(): int32 {
 	const uiRows = runBench(UI_BINARY);
 	const spriteRows = runBench(SPRITES_BINARY);
 	const textRows = runBench(TEXT_BINARY);
-	if ((uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0 || (textRows.length as int32) == 0) {
+	const empty: boolean = (uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0
+		|| (textRows.length as int32) == 0;
+	if (empty) {
 		return 1;
 	}
 
@@ -119,7 +121,8 @@ function runCheck(): int32 {
 		if (!checkCounter(spriteRows, "sprites", metric, counters.sprites.getDynamicField(metric).asInt32())) { failed = failed + 1; }
 	}
 	for (const metric of metrics) {
-		if (!checkCounter(textRows, "text", metric, counters.text.getDynamicField(metric).asInt32())) { failed = failed + 1; }
+		const expected: int32 = counters.text.getDynamicField(metric).asInt32();
+		if (!checkCounter(textRows, "text", metric, expected)) { failed = failed + 1; }
 	}
 	const lookups: int32 = counters.text.getDynamicField("measureGlyphLookups").asInt32();
 	if (!checkCounter(textRows, "text", "measureGlyphLookups", lookups)) { failed = failed + 1; }
