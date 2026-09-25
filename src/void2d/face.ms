@@ -44,7 +44,7 @@ export function syntheticFace(face: int32, bold: boolean, italic: boolean): int3
 	return void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0);
 }
 
-export function glyphLookups(): int32 {
+export function glyphLookups(): uint32 {
 	return void2dGlyphLookups();
 }
 

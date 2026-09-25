@@ -155,7 +155,7 @@ function report(): void {
 // What one measure call costs once the faces are loaded and the fallback cache is warm: the
 // Neon host's Yoga measure callback makes this call per text node per layout pass.
 function measureGlyphLookups(): int32 {
-	const before: int32 = glyphLookups();
+	const before: uint32 = glyphLookups();
 	calcTextWidth(CODE_LINE, {
 		font: 0,
 		size: 13.0,
@@ -164,7 +164,7 @@ function measureGlyphLookups(): int32 {
 		maxWidth: 0.0,
 		align: 0.0,
 	});
-	return glyphLookups() - before;
+	return (glyphLookups() - before) as int32;
 }
 
 // The zoom sweep runs inside the warm-up: the code block scales from 0.5 to 4 over the

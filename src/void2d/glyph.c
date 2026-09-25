@@ -51,7 +51,7 @@ static float s_metrics[3];
 static float s_decoration[4];
 static float s_heights[7];
 static int s_box[4];
-static int s_glyphLookups;
+static unsigned int s_glyphLookups;
 static GlyphRasterBox s_rasterBox;
 static GlyphRasterFill s_rasterFill;
 
@@ -368,7 +368,7 @@ static int findGlyph(GlyphFace *face, int codepoint) {
 	return stbtt_FindGlyphIndex(&face->info, codepoint);
 }
 
-int void2dGlyphLookups(void) { return s_glyphLookups; }
+unsigned int void2dGlyphLookups(void) { return s_glyphLookups; }
 
 static float glyphHeight(GlyphFace *face, int codepoint) {
 	int glyph = findGlyph(face, codepoint);
