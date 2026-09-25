@@ -769,14 +769,17 @@ exposed. It was fixed in recompiler (`15af5b04`); void2d has no such parameter.
 
 ### Numbers
 
-`present` on a quiet box, `scripts/bench-ab.sh`, eight pairs each, every pair clean (load under
-40 % before and after each run):
+`present` on a quiet box, `scripts/bench-ab.sh`, eight pairs each. The first three rows had every
+pair clean under the 40 % limit then in force (13-25 %); the last was taken under 25 %, with 7 UI
+and 5 sprite pairs of 8 clean, and the P3 head against the P3.5 head got no clean UI pair in the
+same window:
 
 | A | B | UI | Sprites |
 |---|---|---:|---:|
 | P2 ship `2255d9f` | pre-P3 `8a473f3` | 13.43 → 13.37 ms | 2.54 → 2.47 ms |
 | pre-P3 `8a473f3` | P3 head `05b4b9d` | 12.76 → 13.29 ms | 1.84 → 1.81 ms |
 | `5331305` | no frame-path arrays `939b2ed` | 14.01 → 13.32 ms | 2.40 → 2.44 ms |
+| pre-P3 `8a473f3` | P3.5 head `7de76e1` | 13.54 → 13.05 ms | 2.61 → 2.59 ms |
 
 Absolute numbers move by about 0.6 ms between windows ten minutes apart on this box, which is why
 only the pairs compare. P3's 2.2× (VOID2D.md P3 "Measured") was load. One measure call costs 80
