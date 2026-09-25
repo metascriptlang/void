@@ -871,21 +871,28 @@ export function getBounds(this n: Node2D, ref out: Bounds): void {
 	}
 }
 
-export function textLayout(this n: Node2D): TextLayout {
+function shapedLabel(n: Node2D): boolean {
 	if (n.kind !== DrawKind.Label) {
 		console.log("void2d: text metrics asked of a node that is not a Label");
-		return TextLayout.layout("", labelStyle(n));
+		return false;
 	}
 	shapeIfChanged(n);
+	return true;
+}
+
+export function textLayout(this n: Node2D): TextLayout {
+	if (!shapedLabel(n)) { return TextLayout.layout("", labelStyle(n)); }
 	return labelTexts[n.payload].layout;
 }
 
 export function textWidth(this n: Node2D): float32 {
-	return n.textLayout().width;
+	if (!shapedLabel(n)) { return TextLayout.layout("", labelStyle(n)).width; }
+	return labelTexts[n.payload].layout.width;
 }
 
 export function textHeight(this n: Node2D): float32 {
-	return n.textLayout().height;
+	if (!shapedLabel(n)) { return TextLayout.layout("", labelStyle(n)).height; }
+	return labelTexts[n.payload].layout.height;
 }
 
 export function calcTextWidth(this n: Node2D, text: string): float32 {
