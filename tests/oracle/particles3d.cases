@@ -55,7 +55,6 @@
 # haxe-prelude: }
 #
 # ms-prelude: import { identity } from "../../../src/math/math3d";
-# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
 # ms-prelude: import {
 # ms-prelude: 	ParticleValue, ValueKind, Converge, ShapeKind, EmitterState, ParticleEmitter,
 # ms-prelude: 	ParticleError, constant, updateEmitter,
@@ -73,9 +72,6 @@
 # ms-prelude: function randomValue(start: float32, length: float32, converge: Converge): ParticleValue {
 # ms-prelude: 	return { kind: ValueKind.Random, start: start, length: length, converge: converge };
 # ms-prelude: }
-#
-# Same link keepalive as scene3d.cases (card 2026-09-20-unused-module-drops-compile.md).
-# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
 
 # ---- State.eval -----------------------------------------------------------------------------
 

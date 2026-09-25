@@ -42,7 +42,6 @@
 # haxe-prelude: }
 #
 # ms-prelude: import { Vec3, vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
-# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
 # ms-prelude: import {
 # ms-prelude: 	Scene, NodeId, Transform3D, SceneError, NO_NODE, addGroup, setLocal, syncWorld,
 # ms-prelude: } from "../../../src/void3d/scene";
@@ -68,14 +67,6 @@
 # ms-prelude: 	const r: Result<Mat4, SceneError> = s.worldOf(id);
 # ms-prelude: 	return r.ok ? r.value : identity();
 # ms-prelude: }
-#
-# The one line below is not part of the oracle. src/void3d/scene.ms reaches gpu3d.c, whose sg_*
-# calls are linked by src/sokol/gpu.ms's @compile — and msc drops a module, and its @compile
-# with it, unless one of its exports is read from live code, so a bare side-effect import of
-# that module links nothing. Compiler card
-# ~/metascript/.inbox/compiler/2026-09-20-unused-module-drops-compile.md; delete this line and
-# the KEY_W import above when it lands.
-# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
 
 # ---- calcAbsPos: the world matrix is local times parent, in row-vector order ----------------
 

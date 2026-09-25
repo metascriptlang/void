@@ -54,7 +54,6 @@
 # haxe-prelude: }
 #
 # ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
-# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
 # ms-prelude: import {
 # ms-prelude: 	Scene, NodeId, Transform3D, SceneError, addGroup, setName, syncWorld, transformAt,
 # ms-prelude: } from "../../../src/void3d/scene";
@@ -122,9 +121,6 @@
 # ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added.value);
 # ms-prelude: 	return world.ok ? world.value : identity();
 # ms-prelude: }
-#
-# Same link keepalive as scene3d.cases (card 2026-09-20-unused-module-drops-compile.md).
-# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
 
 # ---- the clock: update, getIFrame and the loop -----------------------------------------------
 

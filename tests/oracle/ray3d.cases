@@ -46,7 +46,6 @@
 # haxe-prelude: }
 #
 # ms-prelude: import { Vec3, vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
-# ms-prelude: import { KEY_W } from "../../../src/sokol/gpu";
 # ms-prelude: import { Bounds } from "../../../src/void3d/bounds";
 # ms-prelude: import { Ray } from "../../../src/void3d/ray";
 # ms-prelude: import { MeshData, Rgba, addVertex, addTriangle } from "../../../src/void3d/meshData";
@@ -115,10 +114,6 @@
 # ms-prelude: 	const picked: Result<PickHit, PickError> = pickNearest(scene, meshes, materials, r);
 # ms-prelude: 	return picked.ok ? picked.value : NO_HIT;
 # ms-prelude: }
-#
-# The link keepalive of scene3d.cases, for the same reason and the same compiler card
-# (~/metascript/.inbox/compiler/2026-09-20-unused-module-drops-compile.md).
-# ms-main-prelude: console.log(`link keepalive ${KEY_W}`);
 
 # ---- h3d.col.Ray ----------------------------------------------------------------------------
 
