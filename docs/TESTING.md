@@ -243,9 +243,9 @@ Pass rate is printed per tier and per backend and is the correctness metric. The
 
 Both of P3's send-backs were the written record drifting from the code: counts left stale in files nobody named, an owner with no Lands line, a fix that over-claimed. Two mechanisms, in this order. A number lives in one place and every other doc points at it; this doc's tier table points at `tests/bench/check.ms` and `tests/golden/table.ms` rather than copying their counts. What has to be repeated is checked by the gate (`scripts/gate.sh` "the record against the code", `tests/record/check.ms`, parsers tested in T0 from `tests/harness/record.ms`):
 
-- every PENDING row owned by P4, P5 or P6 is on that phase's **Closes** line in VOID2D.md, and every id on a **Closes** line is a row that phase owns;
+- every PENDING row's owner is a roadmap phase (read from VOID2D.md's headings) or `compiler` or `human`; every row a phase owns is on that phase's **Closes** line, and every id on a **Closes** line is a row that phase owns. A **Closes** line lists ids, not work: an id with no Lands bullet behind it still passes, so a reviewer reads the bullets;
 - the D3D11 row of "Guardrail 9" below equals the scene count of `tests/golden/table.ms` and the run's `golden d3d11` line, and the WebGL2 row equals the `golden webgl2` line of a `--web` run;
-- a `conformance:*` row fails the run when one of its scenes starts passing, or when a run has no failure and the row is still there (REVIEWS.md P3 F13).
+- the `conformance:webgl2-pixel-centre` row fails the run when one of its scenes starts passing, or when a run has no failure and the row is still there (REVIEWS.md P3 F13). How far a listed scene is off is not bounded; its failures are structural, not budgeted.
 
 Each was proven to fail on a planted drift. Test counts are not pinned: they change every commit, and the gate prints them.
 
