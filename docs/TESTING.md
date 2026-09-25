@@ -279,7 +279,9 @@ number typed into the script.
    that cannot name what it certified fails.
 1. Evict the caches (above): the output binaries and `out/{debug,release}/.cache`; the
    machine-wide object cache is switched off for the run, not deleted.
-2. `msc test src/test/index.ms` — T0, and T1 once it exists.
+2. `msc test src/test/index.ms` — T0 and T1; then each `tests/isolated/*.ms` in a process of its
+   own, for a test that exhausts process-wide state (the glyph page table) and would starve the
+   tests after it.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then

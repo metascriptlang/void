@@ -71,6 +71,16 @@ if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
 else
 	fail "msc test src/test/index.ms — see out/gate-t0.log"
 fi
+for isolated in tests/isolated/*.ms; do
+	log="out/gate-isolated-$(basename "$isolated" .ms).log"
+	"$MSC" test "$isolated" > "$log" 2>&1 || true
+	summary="$(sed 's/\x1b\[[0-9;]*m//g' "$log" | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
+	if echo "$summary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
+		pass "$isolated in a process of its own:$summary"
+	else
+		fail "$isolated — see $log"
+	fi
+done
 	echo "      T1: tests/displayList/*.txt snapshots, recorded with no GPU; VOID_SNAPSHOT=1 rewrites them"
 
 echo
