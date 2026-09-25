@@ -4,7 +4,7 @@ What a void change has to prove before it is committed, and who can re-run the p
 
 **The problem this doc closed.** Before P0, `msc test src/test/index.ms` was the only thing in this repo that anyone else could run — 425 tests including std's prelude. Everything the last sessions used to judge their work lived in `out/tmp/`, which `.gitignore:5` excludes: the D3D11 readback harness (`out/tmp/capture/capture.{c,h}`, `demo2dCapture.ms`, `cmp.py`, twelve 800×600 `base_*.ppm` goldens) and the two seven-line entry points that made `src/examples/bench2d.ms` runnable. The baseline in [VOID2D.md](VOID2D.md) and the "byte-identical readback" acceptance clauses in [VOID3D.md](VOID3D.md) were produced by files no one could check out, and there was no gate script anywhere in the repo.
 
-**As of P0 (2026-09-20) that is fixed**: `tests/capture/`, `tests/golden/`, `tests/bench/`, `tests/PENDING.md`, `scripts/gate.sh`, `scripts/golden.sh` and `scripts/web-liveness.sh` are committed, and `sh scripts/gate.sh` runs the whole thing in about 35 seconds. What each tier actually covers today is at the end of this doc.
+**As of P0 (2026-09-20) that is fixed**: `tests/capture/`, `tests/golden/`, `tests/bench/`, `tests/PENDING.md`, `scripts/gate.sh`, `scripts/golden.sh` and `scripts/web-liveness.sh` are committed, and `sh scripts/gate.sh` runs the whole thing. What each tier actually covers today is at the end of this doc.
 
 **The model.** Taken from `~/projects/rexa` (`AGENTS.md:132-147`, the Testing block of "Engineering workflow"), which runs it against Neovim for vim and pyte for the terminal: an oracle instead of hand-written expectations wherever a reference implementation exists; cases as data rows with a regenerated, committed snapshot, so CI never needs the oracle; a `PENDING` list of known divergences with reasons, where **a listed case that starts passing fails the run** (`crates/rexa-editor/tests/vim_spec.rs:877-899`); pass rate as the correctness metric with an absolute build-breaking condition; distrust the harness before the engine; a hand-written suite for what the oracle cannot express; a regression test in the same change as the bug; green before every commit.
 
@@ -25,7 +25,7 @@ The split that matters: **T0, T1 and T3 are the tiers that run in every gate on 
 
 ## T0 — pure tests
 
-Already exists. `src/test/index.ms` is eleven imports; `msc test` runs the import graph, and that is the whole registration mechanism. Tests are top-level `test "name" { assert expr; }` (`~/metascript/docs/CODE-STYLE.md:377-390`). `src/test/helpers.ms` is the only shared helper: `approx` (absolute 0.005), `approxRel`, `meshTriArea`, `meshHasVert`/`meshHasVertUV`.
+Already exists. `src/test/index.ms` imports every test file; `msc test` runs the import graph, and that is the whole registration mechanism. Tests are top-level `test "name" { assert expr; }` (`~/metascript/docs/CODE-STYLE.md:377-390`). `src/test/helpers.ms` is the only shared helper: `approx` (absolute 0.005), `approxRel`, `meshTriArea`, `meshHasVert`/`meshHasVertUV`.
 
 Two constraints on everything below come from the language, not from taste:
 
@@ -42,7 +42,7 @@ What T0 gains through the roadmap: the snapping rules as arithmetic, wrap and tr
 
 **Created at P1.** `tests/displayList/snapshot.ms`, reached from `src/test/index.ms`, with the snapshots beside it as `tests/displayList/<scene>.txt`.
 
-**What it costs, stated rather than glossed.** The tier is GPU-free because the walk records and stops - `finishRecording` closes the open run and the replay is never called. That works because `void2dWhiteView()` on an unset batcher returns 0 and `void2dFrameBegin` only resets statics, so nothing on the recording path calls sokol. The price is that a scene needing a real resource cannot be in a snapshot: a filter allocates a render target and text needs a fontstash context. Target ordering and nesting are therefore asserted in `src/void2d/displayList.ms` directly - where they need no scene at all - and the golden scenes are **not** shared with this tier, which is a divergence from the plan below.
+**What it costs, stated rather than glossed.** The tier is GPU-free because the walk records and stops - `finishRecording` closes the open run and the replay is never called. That works because `void2dWhiteView()` on an unset batcher returns 0 and `void2dFrameBegin` only resets statics, so nothing on the recording path calls sokol. The price is that a scene needing a real resource cannot be in a snapshot: a filter allocates a render target and text needs a glyph page. Target ordering and nesting are therefore asserted in `src/void2d/displayList.ms` directly - where they need no scene at all - and the golden scenes are **not** shared with this tier, which is a divergence from the plan below.
 
 It is the largest single win in this doc.
 
@@ -239,6 +239,16 @@ The rule is rexa's, unchanged: **a listed case that starts passing fails the run
 
 Pass rate is printed per tier and per backend and is the correctness metric. The build-breaking condition is absolute, as in rexa: zero unlisted failures, zero graduated entries, zero missing snapshots.
 
+## The record checks itself
+
+Both of P3's send-backs were the written record drifting from the code: counts left stale in files nobody named, an owner with no Lands line, a fix that over-claimed. Two mechanisms, in this order. A number lives in one place and every other doc points at it; this doc's tier table points at `tests/bench/check.ms` and `tests/golden/table.ms` rather than copying their counts. What has to be repeated is checked by the gate (`scripts/gate.sh` "the record against the code", `tests/record/check.ms`, parsers tested in T0 from `tests/harness/record.ms`):
+
+- every PENDING row owned by P4, P5 or P6 is on that phase's **Closes** line in VOID2D.md, and every id on a **Closes** line is a row that phase owns;
+- the D3D11 row of "Guardrail 9" below equals the scene count of `tests/golden/table.ms` and the run's `golden d3d11` line, and the WebGL2 row equals the `golden webgl2` line of a `--web` run;
+- a `conformance:*` row fails the run when one of its scenes starts passing, or when a run has no failure and the row is still there (REVIEWS.md P3 F13).
+
+Each was proven to fail on a planted drift. Test counts are not pinned: they change every commit, and the gate prints them.
+
 ## Distrust the harness before the engine
 
 Concrete mechanisms, because the phrase on its own does nothing:
@@ -359,11 +369,11 @@ about where they came from.
 
 **What each tier covers today**, so the table above is read against something real:
 
-| Tier | State after P3 |
+| Tier | State after P3.5 |
 |---|---|
-| T0 | 859 tests over 55 files, `msc test src/test/index.ms`; twelve are harness parsers |
-| T1 | 11 display-list snapshots plus no-GPU reachability and invariant assertions |
-| T2 | 69 scenes, D3D11, byte-identical, zero budgets; WebGL2 65 / 69 with `--web`; five backends SKIP |
+| T0 | `msc test src/test/index.ms`, the harness parsers included; the gate prints the count |
+| T1 | the snapshots in `tests/displayList/` plus no-GPU reachability and invariant assertions |
+| T2 | the scenes of `tests/golden/table.ms`, D3D11, byte-identical, zero budgets; the per-backend numbers are in "Guardrail 9" |
 | T3 | three coverage oracles and two font oracles green; two current-roadmap SKIPs, plus full HarfBuzz at P6 |
 | T4 | the counters `tests/bench/check.ms` lists, gated per bench scene (ui, sprites, text), plus one measure call's glyph lookups on the text scene; the `allocation` stage over the emitted C; `present` and `firstPaint` milliseconds reported; wasm budget SKIPs |
 | T5 | human only |

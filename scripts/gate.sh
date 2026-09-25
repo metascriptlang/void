@@ -40,7 +40,7 @@ echo "=== 1. evict the caches ==============================================="
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
 # (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). A gate that
 # silently tests the previous binary is worse than no gate.
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe
 rm -rf out/debug/.cache out/release/.cache
 rm -rf "$HOME/.metascript/cache/objects"
 pass "caches evicted"
@@ -312,7 +312,38 @@ else
 	fail "skip lines name PENDING rows that do not exist: $(echo $dead_refs | tr '\n' ' ')"
 fi
 
-echo "=== 8. summary ========================================================"
+echo
+echo "=== 8. the record against the code ===================================="
+"$MSC" build tests/record/check.ms --output=out/recordCheck.exe > out/gate-record.log 2>&1 || true
+if [ -x out/recordCheck.exe ] && out/recordCheck.exe >> out/gate-record.log 2>&1; then
+	pass "$(grep -E '^record:' out/gate-record.log)"
+else
+	fail "the record disagrees with the code — see out/gate-record.log"
+	grep -E '^FAIL' out/gate-record.log | sed 's/^/      /' || true
+fi
+# The conformance rows of docs/TESTING.md against the logs this run wrote; a skipped suite has
+# no log from this run, so its row is not judged.
+if [ "$QUICK" -eq 0 ]; then
+	d3d11=$(tr -d '\r' < out/gate-golden.log | sed -nE 's/^golden d3d11: ([0-9]+) pass, [0-9]+ pending, [0-9]+ fail of ([0-9]+)$/\1 \2/p')
+	claim="| D3D11 | **${d3d11% *} / ${d3d11#* } scenes byte-identical**"
+	if [ -n "$d3d11" ] && grep -qF "$claim" docs/TESTING.md; then
+		pass "docs/TESTING.md's D3D11 row matches this run: ${d3d11% *} / ${d3d11#* }"
+	else
+		fail "docs/TESTING.md's D3D11 row does not match this run's '$(grep -E '^golden d3d11' out/gate-golden.log)'"
+	fi
+fi
+if [ "$WEB" -eq 1 ] && grep -q '^golden webgl2' out/gate-golden-web.log; then
+	webgl2=$(tr -d '\r' < out/gate-golden-web.log | sed -nE 's/^golden webgl2: ([0-9]+) pass, ([0-9]+) pending, ([0-9]+) fail of ([0-9]+)$/\1 \2 \3 \4/p')
+	set -- $webgl2
+	claim="| WebGL2 | **$(($1 + $2)) / $4**: $1 byte-identical, $2 within the cross-backend bound, $3 structural failures"
+	if grep -qF "$claim" docs/TESTING.md; then
+		pass "docs/TESTING.md's WebGL2 row matches this run: $(($1 + $2)) / $4"
+	else
+		fail "docs/TESTING.md's WebGL2 row does not match this run's '$(grep -E '^golden webgl2' out/gate-golden-web.log)'"
+	fi
+fi
+
+echo "=== 9. summary ========================================================"
 # Shape, not an allowlist of id prefixes: an allowlist silently undercounts the moment
 # someone adds a row with a new prefix, and a count that is off by one is worse than none.
 pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md || true)
