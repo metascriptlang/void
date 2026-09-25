@@ -271,6 +271,7 @@ export function setup2d(): void {
 		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
 	) == 0) {
 		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
+		unreachable;
 	}
 	if (void2dInstanceLayoutCheck(
 		UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
@@ -278,6 +279,7 @@ export function setup2d(): void {
 		SPRITE_STRIDE, SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR,
 	) == 0) {
 		console.log("void2d: the instance layout in instance.ms and batcher.c disagree");
+		unreachable;
 	}
 }
 
