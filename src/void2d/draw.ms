@@ -137,9 +137,6 @@ export function setTextGamma(gamma: float32, contrast: float32): void {
 // frame has to call it. Exported so a test can close a frame it never committed.
 export function frameEnd(): void { void2dFrameEnd(); }
 
-// The vertex-buffer growth policy, as pure arithmetic. Re-exported rather than imported from
-// `batcher.h` directly, because a header imported from a second directory compiles its `.c`
-// a second time and the link fails on duplicate symbols - `src/void2d/` owns batcher.h.
 export function growthTarget(have: int32, need: int32): int32 {
 	return void2dGrowthTarget(have, need);
 }
@@ -284,13 +281,10 @@ export function setup2d(): void {
 	}
 }
 
-// The strides sokol is handed, from sizeof. Re-exported rather than reached through
-// `batcher.h` from a second directory, which would compile `batcher.c` twice.
 export function uiInstanceStride(): int32 { return void2dUiInstanceStride(); }
 
-// The colour pack as C does it on the way into the GPU buffer. Re-exported so T0 can hold it
-// against `instance.ms`'s `packChannel` rather than letting guardrail 9 rest on two copies
-// that look alike - src/void2d/ owns batcher.h, so a test cannot import it directly.
+// The colour pack as C does it on the way into the GPU buffer, re-exported so T0 can hold it
+// against `instance.ms`'s `packChannel`: guardrail 9 must not rest on two copies that look alike.
 export function packChannelC(value: float32): int32 { return void2dPackChannel(value); }
 export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStride(); }
 
@@ -807,9 +801,7 @@ export function drawSpriteAffine(
 // image differ by one float and stay in one run; the alternative is GPUI's per-kind pipelines,
 // which is what forces its BoundsTree (guardrail 1).
 //
-// Every lane is a parameter rather than a struct because a struct over 24 bytes has no `==`
-// on this compiler and would be copied at every call; the modes that leave a lane unused
-// pass zeros and `instance.ms` says which lane means what.
+// The modes that leave a lane unused pass zeros; `instance.ms` says which lane means what.
 export function drawUiInstance(
 	mode: InstanceMode,
 	view: uint32,

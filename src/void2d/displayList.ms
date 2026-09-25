@@ -140,9 +140,9 @@ export const NO_CLIP: Clip = {
 	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
 };
 
-// Exported because `draw.ms` hands `commands[0]` to the replay as a `Borrow<float32>`, and
-// there is no way to return a `Span` from a function on this compiler. Read them; only this
-// module writes them.
+// Exported because `draw.ms` hands `commands[0]` to the replay as a `Borrow<float32>`, and a
+// function cannot return a `Span` (the checker refuses it as a borrow of its source). Read
+// them; only this module writes them.
 //
 // Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
 // frame that records no effect at all would otherwise index an empty array to take its
