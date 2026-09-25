@@ -928,6 +928,49 @@ run_look_restored() {
 	pass "capture look: frames 1 and 16 byte-identical to m3palette_*.ppm around the swap"
 }
 
+count_off_ratio() {
+	magick "$1" -channel R -evaluate multiply "$3" -channel G -evaluate multiply "$4" \
+		-channel B -evaluate multiply "$5" +channel "$WORK/ratioPredicted.ppm"
+	magick "$1" "$2" -compose difference -composite -separate -evaluate-sequence max \
+		-threshold 0 "$WORK/ratioGround.png"
+	magick "$WORK/ratioPredicted.ppm" "$2" -compose difference -composite -separate \
+		-evaluate-sequence max -threshold 0.6% "$WORK/ratioGround.png" -compose multiply \
+		-composite -format "%[fx:round(mean*w*h)] " info:
+	magick "$WORK/ratioGround.png" -format "%[fx:round(mean*w*h)]" info:
+}
+
+run_light_multiplies() {
+	ground=$(sed -n 's/^const GROUND: Rgba = { red: \([0-9.]*\), green: \([0-9.]*\), blue: \([0-9.]*\),.*/\1 \2 \3/p' \
+		src/examples/campfireScene.ms)
+	luma=$(sed -n 's/^const LUMA_[A-Z]*: float32 = \([0-9.]*\);/\1/p' src/math/math3d.ms | tr '\n' ' ')
+	if [ "$(echo $ground | wc -w)" -ne 3 ] || [ "$(echo $luma | wc -w)" -ne 3 ]; then
+		fail "multiply: GROUND in campfireScene.ms or LUMA_* in math3d.ms not found (got '$ground' / '$luma')"
+		return
+	fi
+	ratios=$(echo "$ground $luma $GREY_GROUND" | awk '{
+		l = $1 * $4 + $2 * $5 + $3 * $6
+		for (i = 1; i <= 3; i++) printf "%.9f ", ($i * (1 + $7) - l * $7) / $i
+	}')
+	for frame in $FRAMES; do
+		plain=$CAPTURE/gate/campfireDirectCapture_$frame.ppm
+		greyed=$CAPTURE/gate/campfireGreyDirectCapture_$frame.ppm
+		if [ ! -f "$plain" ] || [ ! -f "$greyed" ]; then
+			fail "multiply: frame $frame of campfireDirectCapture or campfireGreyDirectCapture was not captured"
+			return
+		fi
+		set -- $(count_off_ratio "$plain" "$greyed" $ratios)
+		if [ "$2" -eq 0 ]; then
+			fail "multiply: frame $frame has no ground pixel that greying changed"
+			return
+		fi
+		if [ "$1" -ne 0 ]; then
+			fail "multiply: frame $frame, $1 of $2 ground pixels are not the plain ground × grey/ground"
+			return
+		fi
+	done
+	pass "multiply: the greyed ground is the plain ground × grey/ground ($ratios) in 4 frames"
+}
+
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "capture: GATE_SKIP_CAPTURE=1 — the thirteen configurations were not built, not run, not compared"
@@ -946,6 +989,7 @@ run_captures() {
 	run_capture campfireLookCapture    m11look    "palette swapped, greyed, restored"
 	run_look_restored
 	run_capture campfireGreyDirectCapture  m12greydirect  "ground greyed by its material, postPass off"
+	run_light_multiplies
 	run_capture campfireGreyCpuCapture     m12greydirect  "ground greyed in its vertex colours"
 	run_capture campfireGreyPaletteCapture m12greypalette "ground greyed by its material, palette on"
 }
