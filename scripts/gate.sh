@@ -183,6 +183,52 @@ else
 	fail "bench — see out/gate-bench-rows.log"
 	grep -E '^FAIL' out/gate-bench-rows.log | sed 's/^/      /' || true
 fi
+# An allocation that moves no length is invisible to the counters, so read the emitted C, as
+# gate3d.sh's "allocation" stage does. It sees copies, not aliases: on msc 0.2.55 `let b = vec`
+# emits no copy at all (~/metascript/.inbox/compiler/2026-09-23-vec-param-copy-corrupts-heap.md).
+FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:drawFiltered
+	render:sync render:emitNode render:emitLabel render:emitStyledImage render:labelStyle
+	render:localBounds render:boxRenderBounds render:visualTile render:sortByZ
+	render:sharedGlyphView render:renderScaleGrid label84ext:placeLabel
+	label84ext:placementCurrent label84ext:uvRect label84ext:markGlyphPageDrawn
+	label84ext:beginGlyphFrame label84ext:glyphPageHandle glyph65tlas:tile glyph65tlas:markDrawn
+	glyph65tlas:beginFrame glyph65tlas:pageHandle display76ist:resetList
+	display76ist:pushUiInstance display76ist:pushSpriteInstance display76ist:pushVertex
+	display76ist:recordDraw display76ist:recordUiDraw display76ist:recordSpriteDraw
+	display76ist:startCommand display76ist:pushEffect display76ist:recordClip draw:begin2d
+	draw:end2d draw:flushTargets draw:drawUiInstance draw:drawSpriteAffine draw:useUiState
+	draw:useSpriteState draw:openRun draw:closeRun draw:finishRecording draw:applyClip
+	draw:pushClip draw:popClip draw:setEffect draw:drawMeshRange snap:snapBoxEdges"
+PLACEMENT_PATH="render:shapeIfChanged label84ext:shapeLabel label84ext:releasePlacement
+	text76ayout:layout text76ayout:layRun text76ayout:decodeUtf8 glyph65tlas:acquire
+	glyph65tlas:allocate glyph65tlas:placeOnPage glyph65tlas:ensurePage glyph65tlas:reclaimPage
+	glyph65tlas:release"
+rm -f out/debug/benchUi.exe out/debug/*ZsrcZvoid2dZ*Oms.c
+if ! "$MSC" build tests/bench/benchUi.ms --emit=c > out/gate-allocation.log 2>&1; then
+	fail "allocation: emitting C for tests/bench/benchUi.ms failed — see out/gate-allocation.log"
+else
+	offenders=""
+	unreachable=""
+	for entry in $FRAME_PATH $PLACEMENT_PATH; do
+		module=${entry%%:*}
+		fn=${entry#*:}
+		emitted=$(ls out/debug/*ZsrcZvoid2dZ${module}Oms.c 2>/dev/null | head -1)
+		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
+			unreachable="$unreachable $entry"
+			continue
+		fi
+		copies=$(awk "/^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted" | grep -c 'ArrayCopy(' || true)
+		[ "$copies" -gt 0 ] && offenders="$offenders ${fn}=${copies}"
+	done
+	if [ -n "$unreachable" ]; then
+		fail "allocation: no body in the emitted C for$unreachable — renamed or unreachable?"
+	elif [ -n "$offenders" ]; then
+		fail "allocation: the frame path copies an array — ArrayCopy in:$offenders"
+		echo "         CODE-STYLE section 5: index the field or take a Span view"
+	else
+		pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH | wc -w) functions) or the placement path ($(echo $PLACEMENT_PATH | wc -w))"
+	fi
+fi
 skip "wasm size budget: no budget committed yet (P6 makes guardrail 6 real)"
 
 echo
@@ -263,7 +309,7 @@ echo "      T0     msc test src/test/index.ms"
 echo "      T1     display-list snapshots + growth policy, no GPU"
 echo "      T2     $d3d11_conformance"
 echo "      T3     oracles: $t3_report"
-echo "      T4     bench counters gated, milliseconds reported"
+echo "      T4     bench counters gated, milliseconds reported, frame path copies no array"
 echo "      T5     human only (docs/TESTING.md 'T5')"
 echo "      tests/PENDING.md entries: $pending"
 echo "      SKIP: $skips   FAIL: $fails"
