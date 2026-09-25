@@ -95,7 +95,7 @@ export function snapBaseline(deviceY: float32): int32 {
 	return Math.floor(deviceY + 0.5) as int32;
 }
 
-export function packKey(key: GlyphKey): uint64 {
+export function packed(this key: GlyphKey): uint64 {
 	const sizeQ: uint64 = (Math.floor(key.sizePx * 64.0 + 0.5) as int32) as uint64;
 	return ((key.face as uint64) << 48) |
 		((key.glyph as uint64) << 32) |
@@ -230,8 +230,8 @@ function allocate(
 }
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
-	const packed: uint64 = packKey(key);
-	const hit = atlas.index.get(packed);
+	const packedKey: uint64 = key.packed();
+	const hit = atlas.index.get(packedKey);
 	if (hit.present) {
 		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
 		return Result.ok(hit.value);
@@ -263,7 +263,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 		left: left,
 		top: top,
 		refs: 1,
-		key: packed,
+		key: packedKey,
 	};
 	let index: int32 = atlas.tiles.length as int32;
 	if ((atlas.freeTiles.length as int32) > 0) {
@@ -272,6 +272,6 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 	} else {
 		atlas.tiles.push(record);
 	}
-	atlas.index.set(packed, index);
+	atlas.index.set(packedKey, index);
 	return Result.ok(index);
 }

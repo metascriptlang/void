@@ -9,7 +9,6 @@ import {
 	AtlasError,
 	quantizeX,
 	snapBaseline,
-	packKey,
 	NO_GLYPH_PAGE,
 } from "../void2d/glyphAtlas";
 
@@ -56,12 +55,17 @@ test "the baseline lands on the nearest whole device pixel" {
 
 test "the key separates face, glyph, size and variant" {
 	const base: GlyphKey = { face: 0, glyph: 36, sizePx: 16.25, variant: 0 };
-	assert packKey(base) != packKey({ ...base, variant: 1 });
-	assert packKey(base) != packKey({ ...base, sizePx: 16.5 });
-	assert packKey(base) != packKey({ ...base, glyph: 37 });
-	assert packKey(base) != packKey({ ...base, face: 1 });
-	const nearby: float32 = 16.251;
-	assert packKey(base) == packKey({ ...base, sizePx: nearby });
+	const variant: GlyphKey = { ...base, variant: 1 };
+	const larger: GlyphKey = { ...base, sizePx: 16.5 };
+	const glyph: GlyphKey = { ...base, glyph: 37 };
+	const face: GlyphKey = { ...base, face: 1 };
+	const nearbySize: float32 = 16.251;
+	const nearby: GlyphKey = { ...base, sizePx: nearbySize };
+	assert base.packed() != variant.packed();
+	assert base.packed() != larger.packed();
+	assert base.packed() != glyph.packed();
+	assert base.packed() != face.packed();
+	assert base.packed() == nearby.packed();
 }
 
 test "one key rasterizes once and is shared by reference" {

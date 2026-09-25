@@ -159,11 +159,11 @@ function bestFace(family: string, weight: int32, style: FontStyle): int32 {
 	return best;
 }
 
-function needsBold(font: Font, match: int32): boolean {
+function needsBold(this font: Font, match: int32): boolean {
 	return font.weight >= BOLD_WEIGHT && registered[match].weight < BOLD_WEIGHT;
 }
 
-function needsItalic(font: Font, match: int32): boolean {
+function needsItalic(this font: Font, match: int32): boolean {
 	return font.style == FontStyle.Italic && registered[match].style != FontStyle.Italic;
 }
 
@@ -175,7 +175,7 @@ function sameStrings(a: string[], b: string[]): boolean {
 	return true;
 }
 
-function sameFont(a: Font, b: Font): boolean {
+function sameAs(this a: Font, b: Font): boolean {
 	if (!a.family.equals(b.family) || a.weight != b.weight || a.style != b.style) { return false; }
 	if (a.sizeAdjust != b.sizeAdjust) { return false; }
 	if (a.features.length != b.features.length || !sameStrings(a.fallbacks, b.fallbacks)) { return false; }
@@ -190,7 +190,7 @@ function sameFont(a: Font, b: Font): boolean {
 export function resolveFont(font: Font): int32 {
 	ensureDefaultFont();
 	for (let i = 0; i < (fonts.length as int32); i++) {
-		if (fonts[i].described && sameFont(fonts[i].description, font)) { return i; }
+		if (fonts[i].described && fonts[i].description.sameAs(font)) { return i; }
 	}
 	let kern: boolean = true;
 	for (const feature of font.features) {
@@ -211,7 +211,11 @@ export function resolveFont(font: Font): int32 {
 			return NO_FONT;
 		}
 	}
-	const face: int32 = styled(faceAtPath(registered[match].path), needsBold(font, match), needsItalic(font, match));
+	const face: int32 = styled(
+		faceAtPath(registered[match].path),
+		font.needsBold(match),
+		font.needsItalic(match),
+	);
 	if (face < 0) {
 		console.log(`void2d: ${registered[match].path} did not load; font "${font.family}" is refused`);
 		return NO_FONT;
@@ -233,8 +237,8 @@ export function resolveFont(font: Font): int32 {
 		fallbacks.push({
 			font: id,
 			path: registered[m].path,
-			bold: needsBold(font, m),
-			italic: needsItalic(font, m),
+			bold: font.needsBold(m),
+			italic: font.needsItalic(m),
 			face: NOT_LOADED,
 			scale: 1.0,
 		});

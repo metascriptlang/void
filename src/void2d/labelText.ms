@@ -144,7 +144,7 @@ function placementCurrent(entry: LabelText, world: Transform2D, scale: float32):
 		entry.keyFracY == fraction(world.ty * scale);
 }
 
-function uvRect(t: GlyphTile): [float32, float32, float32, float32] {
+function uvRect(this t: GlyphTile): [float32, float32, float32, float32] {
 	const size: float32 = GLYPH_PAGE_SIZE as float32;
 	return [
 		(t.x as float32) / size,
@@ -190,7 +190,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			}
 			const tileIndex: int32 = acquired.value;
 			const t: GlyphTile = glyphAtlas.tile(tileIndex);
-			const [u0, v0, u1, v1] = uvRect(t);
+			const [u0, v0, u1, v1] = t.uvRect();
 			const w: float32 = t.width as float32;
 			const h: float32 = t.height as float32;
 			if (pixelExact) {
