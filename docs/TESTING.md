@@ -275,6 +275,8 @@ Concrete mechanisms, because the phrase on its own does nothing:
 did not run — the conformance line for a backend is the comparator's own output, never a
 number typed into the script.
 
+0. Name the compiler: `msc --version`, its path, and the `BUILD` file beside the binary. A gate
+   that cannot name what it certified fails.
 1. Evict the caches (above): the output binaries and `out/{debug,release}/.cache`; the
    machine-wide object cache is switched off for the run, not deleted.
 2. `msc test src/test/index.ms` — T0, and T1 once it exists.

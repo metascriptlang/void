@@ -35,6 +35,18 @@ pass() { echo "PASS  $1"; passes=$((passes + 1)); }
 fail() { echo "FAIL  $1"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $1"; skips=$((skips + 1)); }
 
+echo "=== 0. the compiler under test ========================================"
+mscPath="$(command -v "$MSC" || true)"
+mscVersion="$("$MSC" --version 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | head -1 || true)"
+mscBuild="$(dirname "${mscPath:-.}")/../BUILD"
+if [ -n "$mscPath" ] && [ -n "$mscVersion" ] && [ -f "$mscBuild" ]; then
+	pass "$mscVersion, $mscPath"
+	sed 's/^/      BUILD /' "$mscBuild"
+else
+	fail "cannot name the compiler: '$MSC' resolves to '${mscPath}', --version printed '${mscVersion}', and $mscBuild is missing or unread"
+fi
+
+echo
 echo "=== 1. evict the caches ==============================================="
 # msc answers "Up to date" after a header that a compiled .c includes has changed, and the
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
