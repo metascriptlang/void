@@ -72,12 +72,30 @@ and, for the comparison, `campfireGreyOffEntry.ms`).
 
 M13's lighting on GLES3: every light multiplies the material's colour and the directional light
 is Lambert. The campfire with the night palette on, taken on the **Android emulator**
-(`pixellight` AVD, cold boot) on 2026-09-26 at `a170d81`. The frame has 23 colours. Against the
-pre-M13 build of the same entry, taken on 2026-09-25 after a cold start, it differs in 13 006
-pixels (6.4%); two screenshots of the M13 build, seconds apart, differ in 613. On D3D11 the same
-change moves 6.9% of the palette-on frame. Before the screenshot, `grep -a` on the built
-`libVoidAndroid.so` found the Lambert `max(dot(` in its GLSL and no `step(0.35`, so the library
-did not link a stale shader object.
+(`pixellight` AVD, cold boot) on 2026-09-26 at `a170d81`. The frame has 23 colours.
 
-The entry is `out/tmp/android/campfireGreyOffEntry.ms`, the palette-on campfire with the ground's
-saturation at 0; the build, install and screenshot are the recipe above.
+Both builds were installed and cold-started in one boot, two screenshots each, seconds apart:
+
+| pair | pixels that differ |
+|---|---|
+| pre-M13 against M13, first shots / second shots | 13 306 / 13 540 |
+| two shots of the pre-M13 build | 1 245 |
+| two shots of the M13 build | 694 |
+| the pre-M13 build, this boot against a cold start the day before | 446 |
+| the M13 build against the committed image, another boot | 728 |
+
+The change is ten times the largest noise. On D3D11 the same change moves 6.9% of the palette-on
+frame; here 13 306 is 6.5%. The pre-M13 build is the tree with `shader3d.glsl.h` of `e070605`.
+Each build first evicted the objects built from `gpu3d.c`, and `grep -a` on each
+`libVoidAndroid.so` tells them apart: the directional step, `step(0.3499999940395355`, is in the
+pre-M13 library 6 times and in the M13 library 0 times.
+
+The entry is the Android entry with two configuration calls added before `registerVoid()`:
+
+```
+configureCampfire(PixelArtSettings.full(), true);
+configureCampfireGreyGround(0.0, false);
+```
+
+The build, install and screenshot are the recipe above, with that entry in place of
+`out/tmp/android/campfireEntry.ms` (the file used was `out/tmp/android/campfireGreyOffEntry.ms`).
