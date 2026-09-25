@@ -67,3 +67,17 @@ configureCampfireGreyGround(-0.75, false);
 The build, install and screenshot are the recipe above, with that entry in place of
 `out/tmp/android/campfireEntry.ms` (the files used were `out/tmp/android/campfireGreyEntry.ms`
 and, for the comparison, `campfireGreyOffEntry.ms`).
+
+## `gles3Lambert.png`
+
+M13's lighting on GLES3: every light multiplies the material's colour and the directional light
+is Lambert. The campfire with the night palette on, taken on the **Android emulator**
+(`pixellight` AVD, cold boot) on 2026-09-26 at `a170d81`. The frame has 23 colours. Against the
+pre-M13 build of the same entry, taken on 2026-09-25 after a cold start, it differs in 13 006
+pixels (6.4%); two screenshots of the M13 build, seconds apart, differ in 613. On D3D11 the same
+change moves 6.9% of the palette-on frame. Before the screenshot, `grep -a` on the built
+`libVoidAndroid.so` found the Lambert `max(dot(` in its GLSL and no `step(0.35`, so the library
+did not link a stale shader object.
+
+The entry is `out/tmp/android/campfireGreyOffEntry.ms`, the palette-on campfire with the ground's
+saturation at 0; the build, install and screenshot are the recipe above.
