@@ -47,7 +47,9 @@ function filteredTextMatchesPlain(): int32 {
 		}
 	}
 	if (inked == 0) {
-		console.log(`FAIL ${FILTERED_TEXT_SCENE}: the plain copy has no ink in the compared region`);
+		console.log(
+			`FAIL ${FILTERED_TEXT_SCENE}: the plain copy has no ink in the compared region`,
+		);
 		return 1;
 	}
 	if (differ > 0) {
