@@ -26,6 +26,16 @@ test "Resize mode is identity camera" {
 	assert approx(m.ty, 0.0);
 }
 
+test "Resize mode ignores a design size" {
+	const s = scene(rgba(0, 0, 0, 1));
+	s.setScaleMode(ScaleMode.Resize, 400.0, 300.0);
+	const m = sceneViewMatrix(s, 800.0, 600.0);
+	assert approx(m.a, 1.0);
+	assert approx(m.d, 1.0);
+	assert approx(m.tx, 0.0);
+	assert approx(m.ty, 0.0);
+}
+
 test "Stretch mode scales to fill" {
 	const s = scene(rgba(0, 0, 0, 1));
 	s.setScaleMode(ScaleMode.Stretch, 400.0, 300.0);
