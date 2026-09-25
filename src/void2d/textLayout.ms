@@ -10,6 +10,11 @@ import { codepointFace, fontFace, fontKerns } from "./font";
 
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
+const TAB: int32 = 9;
+const DELETE: int32 = 127;
+
+export const NO_GLYPH: int32 = -1;
+export const TAB_STOP_SPACES: int32 = 8;
 
 export struct TextStyle {
 	font: int32;
@@ -97,6 +102,60 @@ struct Run {
 	width: float32;
 }
 
+struct Step {
+	face: int32;
+	glyph: int32;
+	size: float32;
+	x: float32;
+	advance: float32;
+	next: float32;
+}
+
+function isControl(codepoint: int32): boolean {
+	return codepoint < SPACE || codepoint == DELETE;
+}
+
+function tabStop(style: TextStyle): float32 {
+	const primary: int32 = fontFace(style.font);
+	const space: float32 = glyphAdvance(primary, glyphIndex(primary, SPACE), style.size);
+	return (TAB_STOP_SPACES as float32) * space;
+}
+
+function step(
+	codepoint: int32,
+	pen: float32,
+	previous: int32,
+	previousFace: int32,
+	style: TextStyle,
+	kerns: boolean,
+): Step {
+	if (isControl(codepoint)) {
+		const primary: int32 = fontFace(style.font);
+		let next: float32 = pen;
+		if (codepoint == TAB) {
+			const stop: float32 = tabStop(style);
+			next = ((Math.floor(pen / stop) as float32) + 1.0) * stop;
+		}
+		return {
+			face: primary, glyph: NO_GLYPH, size: style.size, x: pen, advance: next - pen,
+			next: next,
+		};
+	}
+	const source = codepointFace(style.font, codepoint);
+	const face: int32 = source.face;
+	const size: float32 = style.size * source.scale;
+	const glyph: int32 = glyphIndex(face, codepoint);
+	let x: float32 = pen;
+	if (previous >= 0 && previousFace == face && kerns) {
+		x = pen + glyphKern(face, previous, glyph, size);
+	}
+	const advance: float32 = glyphAdvance(face, glyph, size);
+	return {
+		face: face, glyph: glyph, size: size, x: x, advance: advance,
+		next: x + advance + style.letterSpacing,
+	};
+}
+
 function layRun(
 	cps: Span<Codepoint>,
 	from: int32,
@@ -107,34 +166,28 @@ function layRun(
 	const glyphs: Vec<LaidGlyph> = new Array(0);
 	let pen: float32 = 0.0;
 	let width: float32 = 0.0;
-	let previous: int32 = -1;
+	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
-		const source = codepointFace(style.font, cps[i].value);
-		const face: int32 = source.face;
-		const size: float32 = style.size * source.scale;
-		const glyph: int32 = glyphIndex(face, cps[i].value);
-		if (previous >= 0 && previousFace == face && kerns) {
-			pen = pen + glyphKern(face, previous, glyph, size);
-		}
-		const advance: float32 = glyphAdvance(face, glyph, size);
+		const value: int32 = cps[i].value;
+		const s = step(value, pen, previous, previousFace, style, kerns);
 		glyphs.push({
-			face: face,
-			glyph: glyph,
-			size: size,
-			codepoint: cps[i].value,
-			x: pen,
-			advance: advance,
+			face: s.face,
+			glyph: s.glyph,
+			size: s.size,
+			codepoint: value,
+			x: s.x,
+			advance: s.advance,
 			line: line,
 			charIndex: i,
 			byteStart: cps[i].byteStart,
 			byteEnd: cps[i].byteEnd,
 		});
-		if (cps[i].value != SPACE) { width = pen + advance; }
-		pen = pen + advance + style.letterSpacing;
-		previous = glyph;
-		previousFace = face;
+		if (value != SPACE && s.glyph != NO_GLYPH) { width = s.x + s.advance; }
+		pen = s.next;
+		previous = s.glyph;
+		previousFace = s.face;
 	}
 	return { glyphs: glyphs, width: width };
 }
@@ -143,26 +196,20 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	if (style.maxWidth <= 0.0) { return to; }
 	let lastSpace: int32 = -1;
 	let pen: float32 = 0.0;
-	let previous: int32 = -1;
+	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
-		const source = codepointFace(style.font, cps[i].value);
-		const face: int32 = source.face;
-		const size: float32 = style.size * source.scale;
-		const glyph: int32 = glyphIndex(face, cps[i].value);
-		if (previous >= 0 && previousFace == face && kerns) {
-			pen = pen + glyphKern(face, previous, glyph, size);
-		}
-		const advance: float32 = glyphAdvance(face, glyph, size);
-		if (cps[i].value == SPACE) {
+		const value: int32 = cps[i].value;
+		const s = step(value, pen, previous, previousFace, style, kerns);
+		if (value == SPACE) {
 			lastSpace = i;
-		} else if (lastSpace >= from && pen + advance > style.maxWidth) {
+		} else if (lastSpace >= from && s.x + s.advance > style.maxWidth) {
 			return lastSpace;
 		}
-		pen = pen + advance + style.letterSpacing;
-		previous = glyph;
-		previousFace = face;
+		pen = s.next;
+		previous = s.glyph;
+		previousFace = s.face;
 	}
 	return to;
 }

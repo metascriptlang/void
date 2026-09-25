@@ -7,7 +7,7 @@ import {
 	quantizeX,
 	snapBaseline,
 } from "./glyphAtlas";
-import { TextLayout, TextStyle } from "./textLayout";
+import { TextLayout, TextStyle, NO_GLYPH } from "./textLayout";
 import { Transform2D } from "./types";
 
 export const NO_LABEL_TEXT: int32 = -1;
@@ -204,6 +204,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let refusal: string = "";
 	if (devicePerLocal > 0.0) {
 		for (const g of entry.layout.glyphs) {
+			if (g.glyph == NO_GLYPH) { continue; }
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
 			let variant: int32 = 0;
 			let whole: int32 = 0;

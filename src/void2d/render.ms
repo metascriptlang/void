@@ -38,7 +38,7 @@ import {
 	labelTexts,
 	LabelText,
 } from "./labelText";
-import { TextLayout, TextStyle, calcTextWidth as layoutWidth } from "./textLayout";
+import { TextLayout, TextStyle, NO_GLYPH, calcTextWidth as layoutWidth } from "./textLayout";
 import { GlyphPage, NO_GLYPH_PAGE } from "./glyphAtlas";
 import { glyphInkBox } from "./face";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
@@ -218,6 +218,7 @@ function shapeIfChanged(n: Node2D): void {
 		n.contentYMin = 0.0;
 		n.contentYMax = shaped.layout.height;
 		for (const g of shaped.layout.glyphs) {
+			if (g.glyph == NO_GLYPH) { continue; }
 			const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
 			if (right <= left || bottom <= top) { continue; }
 			const baseline: float32 = shaped.layout.lines[g.line].baseline;

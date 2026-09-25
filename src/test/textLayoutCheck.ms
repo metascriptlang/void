@@ -7,9 +7,11 @@ import {
 import {
 	TextLayout,
 	TextStyle,
+	NO_GLYPH,
+	TAB_STOP_SPACES,
 	calcTextWidth,
 } from "../void2d/textLayout";
-import { addFont, fontFace } from "../void2d/font";
+import { addFont, fontFace, fallbackProbes } from "../void2d/font";
 import { approx } from "./helpers";
 
 let loadedFont: int32 = -1;
@@ -148,4 +150,36 @@ test "an empty string is one empty line one line tall" {
 	assert (l.lines.length as int32) == 1;
 	assert l.width == 0.0;
 	assert approx(l.height, l.lineHeight);
+}
+
+test "a carriage return draws nothing, advances nothing and breaks the kerning pair" {
+	const l = TextLayout.layout("AV\rV", style());
+	assert (l.glyphs.length as int32) == 4;
+	assert l.glyphs[2].glyph == NO_GLYPH && l.glyphs[2].advance == 0.0;
+	assert approx(l.glyphs[3].x, l.glyphs[2].x);
+	assert approx(l.glyphs[2].x, l.glyphs[1].x + advanceOf("V".code));
+}
+
+test "a tab advances to the next stop, counted in spaces from the line start" {
+	const stop: float32 = (TAB_STOP_SPACES as float32) * advanceOf(32);
+	const l = TextLayout.layout("ab\tc\t\td", style());
+	assert l.glyphs[2].glyph == NO_GLYPH;
+	assert approx(l.glyphs[3].x, stop);
+	assert approx(l.glyphs[6].x, 3.0 * stop);
+	assert approx(l.width, 3.0 * stop + advanceOf("d".code));
+}
+
+test "a tab already on a stop moves a whole stop, and a trailing one adds no width" {
+	const stop: float32 = (TAB_STOP_SPACES as float32) * advanceOf(32);
+	const l = TextLayout.layout("\t\tx\t", style());
+	assert approx(l.glyphs[2].x, 2.0 * stop);
+	assert approx(l.width, 2.0 * stop + advanceOf("x".code));
+}
+
+test "control characters never probe the fallback faces" {
+	const fresh: TextStyle = { ...style(), font: addFont("assets/font.ttf") };
+	TextLayout.layout("x", fresh);
+	const before: int32 = fallbackProbes();
+	TextLayout.layout("x\t\r\u0001\u001B\u001F\u007Fx", fresh);
+	assert fallbackProbes() == before;
 }
