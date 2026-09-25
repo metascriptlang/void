@@ -873,3 +873,34 @@ The run before it went RED at the golden stage and nowhere else: deleting
 `~/.metascript/cache/objects` failed with "Directory not empty" while another session's `msc`
 wrote into it. TESTING.md said the gate evicted only this checkout's objects; it evicts the
 whole machine-wide store, and now says so, with the race (`3c0f9fc`).
+
+## P3.5 re-review: **SHIP WITH FOLLOW-UPS**
+
+A second fresh Claude subagent, which had written none of P3.5 and had not sent it back, read
+`ea18542..3edc986` against the brief. It recomputed every median in "Numbers" from the A/B logs
+and found each one right, and it found S1, S2, F-a and F-b resolved on disk. No behaviour changed
+after the send-back: msc 0.2.55 rejects a non-exhaustive enum `match`, so `dispose` cannot miss a
+new kind, and no golden or T1 snapshot changed across `05b4b9d..HEAD`. It would refuse nothing in
+the code. It would refuse a land whose record still had its findings 1 and 2, which `b2e91f2`
+fixes.
+
+| # | Finding | Resolution |
+|---|---|---|
+| 1 | P4 "Measure" pointed at P3 "Measured"'s last bullet; the P3.5-head number is the fourth | `b2e91f2`: it names the bullet |
+| 2 | P5 "Defects closed" did not name the view-id defect, though P5 closes it | `b2e91f2` |
+| 3 | `pendingRows` skips a PENDING row it cannot parse, in silence: a tier of `T2/T4`, an id with a space and a row without its date cell each stayed green. Nothing is skipped today | P4, in its carried list: such a line fails the gate and is named |
+| 4 | The allocation stage reads only the functions it names: a private helper returning `labelTexts[i].layout`, called from `textWidth`, puts F2's copy back one call deeper and passes | P5, in its Lands: follow calls. TESTING.md's T4 row now states the stage's limits (`b2e91f2`) |
+| 5 | `shapeLabel`'s one production caller used the copy it returned; only tests dropped it. `c55be18` has no number | `b2e91f2`: described, and why it is not timed |
+| 6 | The P3-against-P3.5 window's load was 17.3-67.8 %, not 20-68 % | `b2e91f2` |
+| 7 | The audit read 6 188 lines, not 6 182 | `b2e91f2` |
+| 8 | The installed msc became BUILD `8b4ed972` after the final gate, and no gate log names its compiler | P4, in its carried list. The land re-runs the gate after the rebase |
+| 9 | The web build shrank by 17.5 KB since P3, recorded nowhere | `b2e91f2`: in "Numbers", cause not separated |
+| 10 | `style:line-length`'s 246 holds only under a UTF-8 locale; the C locale reads 248 | `b2e91f2`: the command pins `LC_ALL=C.UTF-8` |
+
+Also noted for P4's F9 pass: `cornerArc` (`graphics.ms`) takes a `Node2D` it never reads.
+
+P4 may assume a record that checks its owners, its Closes lines and its conformance rows against
+the code; a frame path whose named functions copy no array and build none; one glyph lookup per
+glyph in a measure call; and a `present` at or below the pre-P3 control. It may not assume the
+record check reads every PENDING line, the allocation stage sees through calls, or a gate log that
+names its compiler.
