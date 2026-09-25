@@ -43,7 +43,7 @@ import {
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
-	Pipeline,
+	Pipeline, NO_CLIP,
 	pushSpriteInstance, recordSpriteDraw,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
@@ -161,18 +161,28 @@ let curHasEffect: boolean = false;
 
 // The hardware scissor carries the intersection AABB. A rotated Mask additionally carries
 // one pair of projection intervals: four exact edges, interpolated by the vertex shader.
-const clipX0: Vec<float32> = new Array(16);
-const clipY0: Vec<float32> = new Array(16);
-const clipX1: Vec<float32> = new Array(16);
-const clipY1: Vec<float32> = new Array(16);
-const clipUX: Vec<float32> = new Array(16);
-const clipUY: Vec<float32> = new Array(16);
-const clipUMin: Vec<float32> = new Array(16);
-const clipUMax: Vec<float32> = new Array(16);
-const clipVX: Vec<float32> = new Array(16);
-const clipVY: Vec<float32> = new Array(16);
-const clipVMin: Vec<float32> = new Array(16);
-const clipVMax: Vec<float32> = new Array(16);
+struct MaskClip {
+	x0: float32;
+	y0: float32;
+	x1: float32;
+	y1: float32;
+	ux: float32;
+	uy: float32;
+	uMin: float32;
+	uMax: float32;
+	vx: float32;
+	vy: float32;
+	vMin: float32;
+	vMax: float32;
+}
+
+const NO_MASK_CLIP: MaskClip = {
+	x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0,
+	ux: 0.0, uy: 0.0, uMin: 0.0, uMax: 0.0,
+	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
+};
+
+const clipStack: Vec<MaskClip> = new Array(16);
 let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {
@@ -387,45 +397,46 @@ function maxFour(a: float32, b: float32, c: float32, d: float32): float32 {
 }
 
 function applyClip(d: int32): void {
-	let ix: float32 = clipX0[d];
-	let iy: float32 = clipY0[d];
-	let iw: float32 = clipX1[d] - clipX0[d];
-	let ih: float32 = clipY1[d] - clipY0[d];
+	const c: MaskClip = clipStack[d];
+	let ix: float32 = c.x0;
+	let iy: float32 = c.y0;
+	let iw: float32 = c.x1 - c.x0;
+	let ih: float32 = c.y1 - c.y0;
 	if (ix < 0.0) { iw = iw + ix; ix = 0.0; }
 	if (iy < 0.0) { ih = ih + iy; iy = 0.0; }
 	if (iw < 0.0) { iw = 0.0; }
 	if (ih < 0.0) { ih = 0.0; }
-	const uShift: float32 = originX * clipUX[d] + originY * clipUY[d];
-	const vShift: float32 = originX * clipVX[d] + originY * clipVY[d];
+	const uShift: float32 = originX * c.ux + originY * c.uy;
+	const vShift: float32 = originX * c.vx + originY * c.vy;
 	closeRun();
-	recordClip(
-		ix - originX, iy - originY, iw, ih,
-		clipUX[d], clipUY[d], clipUMin[d] - uShift, clipUMax[d] - uShift,
-		clipVX[d], clipVY[d], clipVMin[d] - vShift, clipVMax[d] - vShift,
-	);
+	recordClip({
+		x: ix - originX, y: iy - originY, w: iw, h: ih,
+		ux: c.ux, uy: c.uy, uMin: c.uMin - uShift, uMax: c.uMax - uShift,
+		vx: c.vx, vy: c.vy, vMin: c.vMin - vShift, vMax: c.vMax - vShift,
+	});
 	openRun(BreakReason.Clip);
 }
 
 export function clipIntersectsQuad(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 	if (clipDepth <= 0) { return true; }
-	const d: int32 = clipDepth - 1;
-	if (maxFour(tl.x, tr.x, br.x, bl.x) <= clipX0[d]
-		|| minFour(tl.x, tr.x, br.x, bl.x) >= clipX1[d]
-		|| maxFour(tl.y, tr.y, br.y, bl.y) <= clipY0[d]
-		|| minFour(tl.y, tr.y, br.y, bl.y) >= clipY1[d]) { return false; }
-	if (clipUMax[d] <= clipUMin[d]) { return true; }
-	const u0: float32 = tl.x * clipUX[d] + tl.y * clipUY[d];
-	const u1: float32 = tr.x * clipUX[d] + tr.y * clipUY[d];
-	const u2: float32 = br.x * clipUX[d] + br.y * clipUY[d];
-	const u3: float32 = bl.x * clipUX[d] + bl.y * clipUY[d];
-	if (maxFour(u0, u1, u2, u3) <= clipUMin[d]
-		|| minFour(u0, u1, u2, u3) >= clipUMax[d]) { return false; }
-	const v0: float32 = tl.x * clipVX[d] + tl.y * clipVY[d];
-	const v1: float32 = tr.x * clipVX[d] + tr.y * clipVY[d];
-	const v2: float32 = br.x * clipVX[d] + br.y * clipVY[d];
-	const v3: float32 = bl.x * clipVX[d] + bl.y * clipVY[d];
-	return maxFour(v0, v1, v2, v3) > clipVMin[d]
-		&& minFour(v0, v1, v2, v3) < clipVMax[d];
+	const c: MaskClip = clipStack[clipDepth - 1];
+	if (maxFour(tl.x, tr.x, br.x, bl.x) <= c.x0
+		|| minFour(tl.x, tr.x, br.x, bl.x) >= c.x1
+		|| maxFour(tl.y, tr.y, br.y, bl.y) <= c.y0
+		|| minFour(tl.y, tr.y, br.y, bl.y) >= c.y1) { return false; }
+	if (c.uMax <= c.uMin) { return true; }
+	const u0: float32 = tl.x * c.ux + tl.y * c.uy;
+	const u1: float32 = tr.x * c.ux + tr.y * c.uy;
+	const u2: float32 = br.x * c.ux + br.y * c.uy;
+	const u3: float32 = bl.x * c.ux + bl.y * c.uy;
+	if (maxFour(u0, u1, u2, u3) <= c.uMin
+		|| minFour(u0, u1, u2, u3) >= c.uMax) { return false; }
+	const v0: float32 = tl.x * c.vx + tl.y * c.vy;
+	const v1: float32 = tr.x * c.vx + tr.y * c.vy;
+	const v2: float32 = br.x * c.vx + br.y * c.vy;
+	const v3: float32 = bl.x * c.vx + bl.y * c.vy;
+	return maxFour(v0, v1, v2, v3) > c.vMin
+		&& minFour(v0, v1, v2, v3) < c.vMax;
 }
 
 export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
@@ -434,29 +445,16 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 	let x1: float32 = maxFour(tl.x, tr.x, br.x, bl.x);
 	let y1: float32 = maxFour(tl.y, tr.y, br.y, bl.y);
 	const parent: int32 = clipDepth - 1;
+	let next: MaskClip = NO_MASK_CLIP;
 	if (parent >= 0) {
-		if (clipX0[parent] > x0) { x0 = clipX0[parent]; }
-		if (clipY0[parent] > y0) { y0 = clipY0[parent]; }
-		if (clipX1[parent] < x1) { x1 = clipX1[parent]; }
-		if (clipY1[parent] < y1) { y1 = clipY1[parent]; }
+		next = clipStack[parent];
+		if (next.x0 > x0) { x0 = next.x0; }
+		if (next.y0 > y0) { y0 = next.y0; }
+		if (next.x1 < x1) { x1 = next.x1; }
+		if (next.y1 < y1) { y1 = next.y1; }
 	}
-	while (clipDepth >= clipX0.length as int32) {
-		clipX0.push(0.0 as float32); clipY0.push(0.0 as float32);
-		clipX1.push(0.0 as float32); clipY1.push(0.0 as float32);
-		clipUX.push(0.0 as float32); clipUY.push(0.0 as float32);
-		clipUMin.push(0.0 as float32); clipUMax.push(0.0 as float32);
-		clipVX.push(0.0 as float32); clipVY.push(0.0 as float32);
-		clipVMin.push(0.0 as float32); clipVMax.push(0.0 as float32);
-	}
+	while (clipDepth >= clipStack.length as int32) { clipStack.push(NO_MASK_CLIP); }
 	const d: int32 = clipDepth;
-	clipUX[d] = parent >= 0 ? clipUX[parent] : 0.0;
-	clipUY[d] = parent >= 0 ? clipUY[parent] : 0.0;
-	clipUMin[d] = parent >= 0 ? clipUMin[parent] : 0.0;
-	clipUMax[d] = parent >= 0 ? clipUMax[parent] : 0.0;
-	clipVX[d] = parent >= 0 ? clipVX[parent] : 0.0;
-	clipVY[d] = parent >= 0 ? clipVY[parent] : 0.0;
-	clipVMin[d] = parent >= 0 ? clipVMin[parent] : 0.0;
-	clipVMax[d] = parent >= 0 ? clipVMax[parent] : 0.0;
 
 	const ex: float32 = tr.x - tl.x;
 	const ey: float32 = tr.y - tl.y;
@@ -472,38 +470,36 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 		const uy: float32 = ey / exLen;
 		const vx: float32 = fx / fLen;
 		const vy: float32 = fy / fLen;
-		if (clipUMax[d] > clipUMin[d]) {
+		if (next.uMax > next.uMin) {
 			const same: boolean =
-				(absf(clipUX[d] * ux + clipUY[d] * uy) > 0.9999
-					&& absf(clipVX[d] * vx + clipVY[d] * vy) > 0.9999)
-				|| (absf(clipUX[d] * vx + clipUY[d] * vy) > 0.9999
-					&& absf(clipVX[d] * ux + clipVY[d] * uy) > 0.9999);
+				(absf(next.ux * ux + next.uy * uy) > 0.9999
+					&& absf(next.vx * vx + next.vy * vy) > 0.9999)
+				|| (absf(next.ux * vx + next.uy * vy) > 0.9999
+					&& absf(next.vx * ux + next.vy * uy) > 0.9999);
 			if (!same) {
 				console.log("void2d: nested rotated Masks use different edge axes");
 				x1 = x0;
 				y1 = y0;
 				supported = false;
 			} else {
-				const pu0: float32 = tl.x * clipUX[d] + tl.y * clipUY[d];
-				const pu1: float32 = tr.x * clipUX[d] + tr.y * clipUY[d];
-				const pu2: float32 = br.x * clipUX[d] + br.y * clipUY[d];
-				const pu3: float32 = bl.x * clipUX[d] + bl.y * clipUY[d];
-				const pv0: float32 = tl.x * clipVX[d] + tl.y * clipVY[d];
-				const pv1: float32 = tr.x * clipVX[d] + tr.y * clipVY[d];
-				const pv2: float32 = br.x * clipVX[d] + br.y * clipVY[d];
-				const pv3: float32 = bl.x * clipVX[d] + bl.y * clipVY[d];
+				const pu0: float32 = tl.x * next.ux + tl.y * next.uy;
+				const pu1: float32 = tr.x * next.ux + tr.y * next.uy;
+				const pu2: float32 = br.x * next.ux + br.y * next.uy;
+				const pu3: float32 = bl.x * next.ux + bl.y * next.uy;
+				const pv0: float32 = tl.x * next.vx + tl.y * next.vy;
+				const pv1: float32 = tr.x * next.vx + tr.y * next.vy;
+				const pv2: float32 = br.x * next.vx + br.y * next.vy;
+				const pv3: float32 = bl.x * next.vx + bl.y * next.vy;
 				const uMin: float32 = minFour(pu0, pu1, pu2, pu3);
 				const uMax: float32 = maxFour(pu0, pu1, pu2, pu3);
 				const vMin: float32 = minFour(pv0, pv1, pv2, pv3);
 				const vMax: float32 = maxFour(pv0, pv1, pv2, pv3);
-				if (uMin > clipUMin[d]) { clipUMin[d] = uMin; }
-				if (uMax < clipUMax[d]) { clipUMax[d] = uMax; }
-				if (vMin > clipVMin[d]) { clipVMin[d] = vMin; }
-				if (vMax < clipVMax[d]) { clipVMax[d] = vMax; }
+				if (uMin > next.uMin) { next.uMin = uMin; }
+				if (uMax < next.uMax) { next.uMax = uMax; }
+				if (vMin > next.vMin) { next.vMin = vMin; }
+				if (vMax < next.vMax) { next.vMax = vMax; }
 			}
 		} else {
-			clipUX[d] = ux; clipUY[d] = uy;
-			clipVX[d] = vx; clipVY[d] = vy;
 			const u0: float32 = tl.x * ux + tl.y * uy;
 			const u1: float32 = tr.x * ux + tr.y * uy;
 			const u2: float32 = br.x * ux + br.y * uy;
@@ -512,14 +508,15 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 			const v1: float32 = tr.x * vx + tr.y * vy;
 			const v2: float32 = br.x * vx + br.y * vy;
 			const v3: float32 = bl.x * vx + bl.y * vy;
-			clipUMin[d] = minFour(u0, u1, u2, u3);
-			clipUMax[d] = maxFour(u0, u1, u2, u3);
-			clipVMin[d] = minFour(v0, v1, v2, v3);
-			clipVMax[d] = maxFour(v0, v1, v2, v3);
+			next = {
+				...next,
+				ux: ux, uy: uy, vx: vx, vy: vy,
+				uMin: minFour(u0, u1, u2, u3), uMax: maxFour(u0, u1, u2, u3),
+				vMin: minFour(v0, v1, v2, v3), vMax: maxFour(v0, v1, v2, v3),
+			};
 		}
 	}
-	clipX0[d] = x0; clipY0[d] = y0;
-	clipX1[d] = x1; clipY1[d] = y1;
+	clipStack[d] = { ...next, x0: x0, y0: y0, x1: x1, y1: y1 };
 	clipDepth = clipDepth + 1;
 	applyClip(d);
 	return supported;
@@ -531,7 +528,7 @@ export function popClip(): void {
 		applyClip(clipDepth - 1);
 	} else {
 		closeRun();
-		recordClip(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+		recordClip(NO_CLIP);
 		openRun(BreakReason.Clip);
 	}
 }

@@ -119,6 +119,27 @@ export enum Pipeline {
 	Ui,
 }
 
+export struct Clip {
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	ux: float32;
+	uy: float32;
+	uMin: float32;
+	uMax: float32;
+	vx: float32;
+	vy: float32;
+	vMin: float32;
+	vMax: float32;
+}
+
+export const NO_CLIP: Clip = {
+	x: 0.0, y: 0.0, w: 0.0, h: 0.0,
+	ux: 0.0, uy: 0.0, uMin: 0.0, uMax: 0.0,
+	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
+};
+
 // Exported because `draw.ms` hands `commands[0]` to the replay as a `Borrow<float32>`, and
 // there is no way to return a `Span` from a function on this compiler. Read them; only this
 // module writes them.
@@ -154,25 +175,15 @@ let spriteInstanceTotal: int32 = 0;
 // past it records into the parent instead of corrupting the stack, and says so.
 const MAX_TARGET_DEPTH: int32 = 8;
 const targetMarks: Vec<int32> = new Array(MAX_TARGET_DEPTH);
-const targetClipSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH * 13);
+const targetClipSaves: Vec<Clip> = new Array(MAX_TARGET_DEPTH);
+const targetClipRecordedSaves: Vec<boolean> = new Array(MAX_TARGET_DEPTH);
 const targetScaleSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH);
 let targetDepthNow: int32 = 0;
 let targetOverflowed: boolean = false;
 
 // The clip the replay is under. A scissor is a command, not a call, so the emitter tracks
 // what it last recorded and only records a change.
-let clipX: float32 = 0.0;
-let clipY: float32 = 0.0;
-let clipW: float32 = 0.0;
-let clipH: float32 = 0.0;
-let clipUX: float32 = 0.0;
-let clipUY: float32 = 0.0;
-let clipUMin: float32 = 0.0;
-let clipUMax: float32 = 0.0;
-let clipVX: float32 = 0.0;
-let clipVY: float32 = 0.0;
-let clipVMin: float32 = 0.0;
-let clipVMax: float32 = 0.0;
+let clip: Clip = NO_CLIP;
 let clipRecorded: boolean = false;
 let renderTargetScale: float32 = 0.0;
 
@@ -189,18 +200,7 @@ export function resetList(): void {
 	// a balanced frame always ended clear and production never noticed, but an unbalanced one
 	// would have scissored to a stale rect - and T1 found it at once, because a snapshot then
 	// depended on which test had run before it in the same process.
-	clipX = 0.0;
-	clipY = 0.0;
-	clipW = 0.0;
-	clipH = 0.0;
-	clipUX = 0.0;
-	clipUY = 0.0;
-	clipUMin = 0.0;
-	clipUMax = 0.0;
-	clipVX = 0.0;
-	clipVY = 0.0;
-	clipVMin = 0.0;
-	clipVMax = 0.0;
+	clip = NO_CLIP;
 	renderTargetScale = 0.0;
 	targetDepthNow = 0;
 	targetOverflowed = false;
@@ -447,18 +447,18 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	commands[base + CMD_KIND] = (kind as int32) as float32;
 	commands[base + CMD_EFFECT] = NO_EFFECT as float32;
 	commands[base + CMD_BREAK] = (reason as int32) as float32;
-	commands[base + CMD_CLIP_X] = clipX;
-	commands[base + CMD_CLIP_Y] = clipY;
-	commands[base + CMD_CLIP_W] = clipW;
-	commands[base + CMD_CLIP_H] = clipH;
-	commands[base + CMD_CLIP_U_X] = clipUX;
-	commands[base + CMD_CLIP_U_Y] = clipUY;
-	commands[base + CMD_CLIP_U_MIN] = clipUMin;
-	commands[base + CMD_CLIP_U_MAX] = clipUMax;
-	commands[base + CMD_CLIP_V_X] = clipVX;
-	commands[base + CMD_CLIP_V_Y] = clipVY;
-	commands[base + CMD_CLIP_V_MIN] = clipVMin;
-	commands[base + CMD_CLIP_V_MAX] = clipVMax;
+	commands[base + CMD_CLIP_X] = clip.x;
+	commands[base + CMD_CLIP_Y] = clip.y;
+	commands[base + CMD_CLIP_W] = clip.w;
+	commands[base + CMD_CLIP_H] = clip.h;
+	commands[base + CMD_CLIP_U_X] = clip.ux;
+	commands[base + CMD_CLIP_U_Y] = clip.uy;
+	commands[base + CMD_CLIP_U_MIN] = clip.uMin;
+	commands[base + CMD_CLIP_U_MAX] = clip.uMax;
+	commands[base + CMD_CLIP_V_X] = clip.vx;
+	commands[base + CMD_CLIP_V_Y] = clip.vy;
+	commands[base + CMD_CLIP_V_MIN] = clip.vMin;
+	commands[base + CMD_CLIP_V_MAX] = clip.vMax;
 	commands[base + CMD_RT_MODE] = renderTargetScale;
 	commandTotal = commandTotal + 1;
 	return base;
@@ -554,20 +554,8 @@ export function beginTargetList(
 	}
 	targetMarks[targetDepthNow] = commandTotal;
 	targetScaleSaves[targetDepthNow] = renderTargetScale;
-	const cs: int32 = targetDepthNow * 13;
-	targetClipSaves[cs] = clipX;
-	targetClipSaves[cs + 1] = clipY;
-	targetClipSaves[cs + 2] = clipW;
-	targetClipSaves[cs + 3] = clipH;
-	targetClipSaves[cs + 4] = clipUX;
-	targetClipSaves[cs + 5] = clipUY;
-	targetClipSaves[cs + 6] = clipUMin;
-	targetClipSaves[cs + 7] = clipUMax;
-	targetClipSaves[cs + 8] = clipVX;
-	targetClipSaves[cs + 9] = clipVY;
-	targetClipSaves[cs + 10] = clipVMin;
-	targetClipSaves[cs + 11] = clipVMax;
-	targetClipSaves[cs + 12] = clipRecorded ? 1.0 : 0.0;
+	targetClipSaves[targetDepthNow] = clip;
+	targetClipRecordedSaves[targetDepthNow] = clipRecorded;
 	targetDepthNow = targetDepthNow + 1;
 	const base: int32 = startCommand(CommandKind.TargetBegin, BreakReason.Barrier);
 	commands[base + CMD_VIEW] = rt as float32;
@@ -579,18 +567,7 @@ export function beginTargetList(
 	commands[base + CMD_CLEAR_A] = clearA;
 	// Inside a target the clip starts empty and the offscreen pipeline set applies.
 	clipRecorded = false;
-	clipX = 0.0;
-	clipY = 0.0;
-	clipW = 0.0;
-	clipH = 0.0;
-	clipUX = 0.0;
-	clipUY = 0.0;
-	clipUMin = 0.0;
-	clipUMax = 0.0;
-	clipVX = 0.0;
-	clipVY = 0.0;
-	clipVMin = 0.0;
-	clipVMax = 0.0;
+	clip = NO_CLIP;
 	renderTargetScale = scale;
 }
 
@@ -614,45 +591,16 @@ export function endTargetList(): void {
 	}
 	targetCommandTotal = targetCommandTotal + (commandTotal - mark);
 	commandTotal = mark;
-	const cs: int32 = targetDepthNow * 13;
-	clipX = targetClipSaves[cs];
-	clipY = targetClipSaves[cs + 1];
-	clipW = targetClipSaves[cs + 2];
-	clipH = targetClipSaves[cs + 3];
-	clipUX = targetClipSaves[cs + 4];
-	clipUY = targetClipSaves[cs + 5];
-	clipUMin = targetClipSaves[cs + 6];
-	clipUMax = targetClipSaves[cs + 7];
-	clipVX = targetClipSaves[cs + 8];
-	clipVY = targetClipSaves[cs + 9];
-	clipVMin = targetClipSaves[cs + 10];
-	clipVMax = targetClipSaves[cs + 11];
-	clipRecorded = targetClipSaves[cs + 12] != 0.0;
+	clip = targetClipSaves[targetDepthNow];
+	clipRecorded = targetClipRecordedSaves[targetDepthNow];
 	renderTargetScale = targetScaleSaves[targetDepthNow];
 }
 
 // The clip the replay should be under from here on. The rect is a coarse hardware scissor;
 // the two projection intervals are the exact four edges of a rotated Mask.
-export function recordClip(
-	x: float32, y: float32, w: float32, h: float32,
-	ux: float32, uy: float32, uMin: float32, uMax: float32,
-	vx: float32, vy: float32, vMin: float32, vMax: float32,
-): void {
-	if (clipRecorded && x == clipX && y == clipY && w == clipW && h == clipH
-		&& ux == clipUX && uy == clipUY && uMin == clipUMin && uMax == clipUMax
-		&& vx == clipVX && vy == clipVY && vMin == clipVMin && vMax == clipVMax) { return; }
-	clipX = x;
-	clipY = y;
-	clipW = w;
-	clipH = h;
-	clipUX = ux;
-	clipUY = uy;
-	clipUMin = uMin;
-	clipUMax = uMax;
-	clipVX = vx;
-	clipVY = vy;
-	clipVMin = vMin;
-	clipVMax = vMax;
+export function recordClip(next: Clip): void {
+	if (clipRecorded && next == clip) { return; }
+	clip = next;
 	clipRecorded = true;
 	startCommand(CommandKind.Scissor, BreakReason.Clip);
 }
@@ -774,14 +722,14 @@ test "a nested target is replayed before the target that consumes it" {
 
 test "a target starts with no clip and gives the outer clip back when it closes" {
 	resetList();
-	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip({ ...NO_CLIP, x: 5.0, y: 6.0, w: 7.0, h: 8.0 });
 	beginTargetList(3, 16.0, 16.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	// The outer Mask must not scissor the target: its coordinates are the target's own.
 	// Recording the same rect the outer list holds therefore has to emit a real scissor.
-	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip({ ...NO_CLIP, x: 5.0, y: 6.0, w: 7.0, h: 8.0 });
 	endTargetList();
 	// And back outside, the outer clip is current again, so re-recording it is a no-op.
-	recordClip(5.0, 6.0, 7.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip({ ...NO_CLIP, x: 5.0, y: 6.0, w: 7.0, h: 8.0 });
 	assert commandCount() == 1;
 	assert targetCommandCount() == 3;
 	assert (targetCommandField(1, CMD_KIND) as int32) == (CommandKind.Scissor as int32);
@@ -801,16 +749,20 @@ test "the target stack refuses to overflow and says so" {
 
 test "recording the same clip twice records one scissor" {
 	resetList();
-	recordClip(0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-	recordClip(0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip({ ...NO_CLIP, w: 10.0, h: 10.0 });
+	recordClip({ ...NO_CLIP, w: 10.0, h: 10.0 });
 	assert commandCount() == 1;
-	recordClip(1.0, 0.0, 10.0, 10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip({ ...NO_CLIP, x: 1.0, w: 10.0, h: 10.0 });
 	assert commandCount() == 2;
 }
 
 test "a draw inherits the clip that was recorded before it" {
 	resetList();
-	recordClip(4.0, 5.0, 6.0, 7.0, 1.0, 0.0, 4.0, 10.0, 0.0, 1.0, 5.0, 12.0);
+	recordClip({
+		x: 4.0, y: 5.0, w: 6.0, h: 7.0,
+		ux: 1.0, uy: 0.0, uMin: 4.0, uMax: 10.0,
+		vx: 0.0, vy: 1.0, vMin: 5.0, vMax: 12.0,
+	});
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(1, CMD_CLIP_X) == 4.0;
 	assert commandField(1, CMD_CLIP_Y) == 5.0;
@@ -851,7 +803,7 @@ test "vertices land where the offset says" {
 
 test "drawCommandCount counts draws and not scissors" {
 	resetList();
-	recordClip(0.0, 0.0, 8.0, 8.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+	recordClip({ ...NO_CLIP, w: 8.0, h: 8.0 });
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	recordDraw(BreakReason.View, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandCount() == 3;
