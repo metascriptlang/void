@@ -260,18 +260,24 @@ if [ "$WEB" -eq 1 ]; then
 	echo "      webgl2   $webgl2_conformance      (headless Chrome, --web)"
 	if ! grep -q '^golden webgl2' out/gate-golden-web.log; then
 		fail "webgl2 conformance did not run — see out/gate-golden-web.log"
-	elif grep -q '^golden webgl2: .* 0 fail of' out/gate-golden-web.log; then
-		pass "webgl2 conformance: every scene identical or within the cross-backend bound"
 	else
-		listed=$(grep -E '^\| conformance:webgl2-pixel-centre ' tests/PENDING.md || true)
-		unlisted=""
-		for scene in $(grep -E '^FAIL' out/gate-golden-web.log | awk '{ print $2 }'); do
-			case "$listed" in *"\`$scene\`"*) ;; *) unlisted="$unlisted $scene" ;; esac
-		done
-		if [ -z "$unlisted" ]; then
-			skip "webgl2 conformance: the structural failures are the listed ones — tests/PENDING.md conformance:webgl2-pixel-centre"
+		# The graduation rule for a conformance row: every scene it lists must still fail, and
+		# a clean run with the row still present fails too.
+		row=$(grep -E '^\| conformance:webgl2-pixel-centre ' tests/PENDING.md || true)
+		listed=$(echo "$row" | grep -oE '`[a-z]+/[A-Za-z0-9]+`' | tr -d '`' | sort -u)
+		failing=$(grep -E '^FAIL' out/gate-golden-web.log | awk '{ print $2 }' | sort -u)
+		unlisted=$(comm -13 <(echo "$listed") <(echo "$failing") | tr '\n' ' ')
+		graduated=$(comm -23 <(echo "$listed") <(echo "$failing") | tr '\n' ' ')
+		if [ -n "$(echo $unlisted)" ]; then
+			fail "webgl2 conformance: failures no PENDING row lists: $unlisted"
+		elif [ -n "$row" ] && [ -z "$(echo $failing)" ]; then
+			fail "webgl2 conformance: 0 fail, and tests/PENDING.md conformance:webgl2-pixel-centre survives the run — delete it"
+		elif [ -n "$(echo $graduated)" ]; then
+			fail "webgl2 conformance: listed scenes now pass: $graduated— delete them from tests/PENDING.md conformance:webgl2-pixel-centre"
+		elif [ -z "$(echo $failing)" ]; then
+			pass "webgl2 conformance: every scene identical or within the cross-backend bound"
 		else
-			fail "webgl2 conformance: failures no PENDING row lists:$unlisted"
+			skip "webgl2 conformance: the structural failures are the listed ones — tests/PENDING.md conformance:webgl2-pixel-centre"
 		fi
 		grep -E '^FAIL' out/gate-golden-web.log | sed 's/^/      /' || true
 	fi
