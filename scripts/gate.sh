@@ -39,10 +39,11 @@ echo "=== 1. evict the caches ==============================================="
 # msc answers "Up to date" after a header that a compiled .c includes has changed, and the
 # global object cache is keyed on the .c and not its includes — --force does not bypass it
 # (~/metascript/.inbox/compiler/2026-09-20-object-cache-ignores-headers.md). A gate that
-# silently tests the previous binary is worse than no gate.
+# silently tests the previous binary is worse than no gate. The machine-wide cache stays
+# untouched: deleting it raced every other session's msc and wiped their objects.
+export MSC_NO_GLOBAL_CACHE=1
 rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe
 rm -rf out/debug/.cache out/release/.cache
-rm -rf "$HOME/.metascript/cache/objects"
 pass "caches evicted"
 
 echo
