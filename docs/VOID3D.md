@@ -74,7 +74,7 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 | M10 | `col/Ray`, `col/Bounds`, `scene/Interactive` | Tap → ray → nearest object by bounds, then by triangle | A4 touch | **done**, 22 tests |
 | M11 | `parts/Emitter`, `parts/Particles` (CPU), `Matrix.colorSaturate` | Snow and embers on the instanced billboard path; palette LUT swap and desaturation as renderer parameters | A11 | **done**, 23 tests |
 | M12 | `shader/ColorMatrix` (per-pass colour matrix), `Matrix.colorSaturate` | Saturation as a lit-material parameter, applied to the material's colour before the lights, so one object greys while the scene keeps its colour; a CPU `colorSaturate` pinned against Heaps by the oracle | A11 Fading | **done**, 4 tests, 6 oracle cases |
-| M13 | `shader/AmbientLight` (additive: `pixelColor.rgb *= ambient + lights`), `shader/DirLight` (`calcLighting`) | Every light multiplies the material's colour, point lights included, so a greyed object takes no tint from them; the directional light is Heaps' Lambert, `max(n·l, 0) × power`, in place of the spike's step. The point lights' toon quantization and the billboard program are not touched: both leave the core with follow-up 10 | A11 Fading, A4 lights | **done**, 0 tests, the baselines retaken |
+| M13 | `shader/AmbientLight` (additive: `pixelColor.rgb *= ambient + lights`), `shader/DirLight` (`calcLighting`) | Every light multiplies the material's colour, point lights included, so a light scales with the object's colour: a dark object stays dark and a grey one takes the light's hue at its own brightness; the directional light is Heaps' Lambert, `max(n·l, 0) × power`, in place of the spike's step. The point lights' toon quantization and the billboard program are not touched: both are the pixel-art look in the core, `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3 | A11 Fading, A4 lights | **done**, 0 tests, the baselines retaken |
 
 ### M2 as built
 
@@ -381,9 +381,9 @@ The palette does not swallow saturation, but it takes it in steps, and not monot
 
 ### M13 as built
 
-- **Every light multiplies the material's colour.** `litFs` sums the ambient, the directional light and the point lights into one light and multiplies the (saturated) material colour by it. That is Heaps' default, `fwd/LightSystem.additiveLighting = true`: `AmbientLight.__init__fragment` starts `lightPixelColor` at the ambient, each light's `fragment()` adds to it, and `AmbientLight.fragment` ends with `pixelColor.rgb *= lightPixelColor`. Before M13 the point lights were added after the multiply, so a greyed or dark object still took the fire's colour; the M12 section above describes that state. The sentence saying so left `light-params-divergence`.
+- **Every light multiplies the material's colour.** `litFs` sums the ambient, the directional light and the point lights into one light and multiplies the (saturated) material colour by it. That is Heaps' default, `fwd/LightSystem.additiveLighting = true`: `AmbientLight.__init__fragment` starts `lightPixelColor` at the ambient, each light's `fragment()` adds to it, and `AmbientLight.fragment` ends with `pixelColor.rgb *= lightPixelColor`. Before M13 the point lights were added after the multiply, so a dark object took the fire's full colour and a greyed one kept the fire's colour on top of its grey; the M12 section above describes that state. Now a light scales with the object: black stays black, and a grey object takes the light's hue at its own brightness, as in Heaps. Lighting is per pixel only, Heaps' default `perPixelLighting = true`; the billboard's `normalWeight` 0 is `PointLight.isAmbient`. The sentence saying so left `light-params-divergence`.
 - **The directional light is Heaps' Lambert.** `max(n·l, 0) × power`, as `DirLight.calcLighting` computes `color × max(n·(−direction), 0)` without specular; `dirLight.xyz` already points toward the light. The spike's `step(0.35, n·l)` is gone and so is its row, `dir-light-stepped`. The human chose Lambert over keeping the step as a declared look on 2026-09-26: void3d is a renderer for any game, and a stepped or toon ramp is a look, which belongs to a preset.
-- **Not touched, and why.** The point lights still quantize their energy to the material's toon levels with a 0.35 bias; that has its own row now, `point-light-toon-quantized`, and leaves the core with follow-up 10 together with `Program.Billboard`, the grass-and-flame program that still adds the point lights to its colour. The campfire's light numbers were not retuned: how bright a light should be is the caller's.
+- **Not touched, and why.** The point lights still quantize their energy to the material's toon levels with a 0.35 bias; that has its own row now, `point-light-toon-quantized`, and `Program.Billboard`, the grass-and-flame program, still adds the point lights to its colour (`billboard-points-added`). Both are the pixel-art look in the core, carried with `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3. The campfire's light numbers were not retuned: how bright a light should be is the caller's.
 - **What the palette does to Lambert.** A continuous light lands on palette entries the step never reached: on the campfire palette the stones' shaded sides fall to its blues and some tops rise to its red-browns. That is content. A palette that wants a smooth ramp needs one.
 
 **The multiply, held on the GPU.** Under `material × light`, a pixel of the greyed ground is the same pixel of the plain ground times `grey / ground` per channel, whatever the light at that pixel. The ground is one colour (`0.15, 0.17, 0.30`), greyed at −0.75 to a ratio of `1.1256, 1.0226, 0.6878`. A probe held `campfireGreyDirectCapture` to `campfireDirectCapture` (post pass off) over every pixel that differs and is below 250:
@@ -394,7 +394,7 @@ The palette does not swallow saturation, but it takes it in steps, and not monot
 | M13, frame 11 | 162 832 | 162 832 (100%) | 0 | 1 |
 | before M13, frame 1 (control) | 162 740 | 160 660 (98.7%) | 2 080 | 24 |
 
-The control fails where the fire lights the ground and holds elsewhere, which is what an added point light predicts. The probe is a script in the session's scratch space, not a gate stage; the gate holds the result through the baselines.
+The control fails where the fire lights the ground and holds elsewhere, which is what an added point light predicts. The gate's `multiply` stage runs the same check on every gate, in ImageMagick, reading the ground colour from the example and the luma weights from `math3d.ms`: 0 of 162 824 to 162 836 ground pixels off in the four M13 frames, and 2 016 to 2 304 off in the four pre-M13 frames.
 
 **How much of the change is which half.** Two trial shaders were rendered on the same tree: the multiply alone with the step kept, and the multiply with Lambert, which is byte-identical to the committed M13 frames. Frame 1:
 
@@ -406,16 +406,16 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 
 **Acceptance, at `a170d81`.** The gate is GREEN with one SKIP (`device`).
 - **Pixels, re-baselined by design.** All 40 hashes of the ten baselines were retaken in `a170d81`, their own commit, with the names kept: `before`, `m3palette`, `m3preview`, `m3direct`, `m3depth`, `m6spin`, `m11particles`, `m11look`, `m12greydirect`, `m12greypalette`. Against the pre-M13 images, frame 1: palette off, postPass off, DepthTexture and spin 256 608 to 256 616 pixels (PAE 50 629); palette on and preview 63 452 and 65 280 (PAE 46 517); particles 255 852; greyed ground 256 608 (postPass off) and 152 868 (palette on). The relations the gate holds between configurations still hold byte for byte in every frame: the rebuilt campfire against `before`, the rebuilt particles against `m11particles`, the ground greyed on the CPU against the ground greyed by its material, and the look's frames 1 and 16 against `m3palette`.
-- **Tests, oracle.** 864 tests and 75 / 11 oracle cases, unchanged: the lit formula lives only in the GLSL, and the node oracle does not run Heaps' shaders. The probe above is what checks the formula.
-- **GLES3, on the emulator.** `tests/device/gles3Lambert.png`: the palette-on campfire under M13 differs from the pre-M13 build in 13 006 pixels (6.4%), against 613 between two shots of the M13 build; D3D11 moves 6.9% of the same frame. An emulator claim, not a pixel comparison.
-- **Size.** arm64 `libVoidAndroid.so` 2 791 992 bytes, −3 736 against 2 795 728 on the same msc (`145f4a08`): the shader text is shorter.
-- **PENDING3D** has 23 rows: `dir-light-stepped` deleted, `point-light-toon-quantized` added.
+- **Tests, oracle.** 864 tests and 75 / 11 oracle cases, unchanged: the lit formula lives only in the GLSL, and the node oracle does not run Heaps' shaders. The `multiply` stage is what checks the formula.
+- **GLES3, on the emulator.** `tests/device/gles3Lambert.png`: the palette-on campfire under M13 differs from the pre-M13 build, both run in one boot, in 13 306 and 13 540 pixels (6.5%), against at most 1 245 between two shots of one build or 446 between two boots; D3D11 moves 6.9% of the same frame. An emulator claim, not a pixel comparison.
+- **Size.** arm64 `libVoidAndroid.so` 2 791 992 bytes, −3 736 against 2 795 728 on the same msc (`145f4a08`). Not attributed.
+- **PENDING3D** has 24 rows: `dir-light-stepped` deleted, `point-light-toon-quantized` and `billboard-points-added` added.
 
 **Still missing after M13.**
-- **The point lights are stepped** (`point-light-toon-quantized`), and the billboard program adds them unmultiplied. Both are the pixel-art look inside the core; follow-up 10 moves them to a preset.
+- **The point lights are stepped** (`point-light-toon-quantized`), and the billboard program adds them unmultiplied. Both are the pixel-art look inside the core, carried with `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3.
 - **No specular.** Heaps' `DirLight` and `PointLight` have an `enableSpecular` branch; this port has none, and the lit material has no `specPower` or `specColor`.
 - **The non-additive model is not ported.** `additiveLighting = false` scales the lights by `1 − ambient`; only the default exists here.
-- **The formula has no CPU reference.** It is held by the GPU probe and the baselines, not by a headless test.
+- **The formula has no CPU reference.** It is held by the `multiply` stage and the baselines, not by a headless test; a CPU copy of `litFs` would only check itself.
 
 ### Android lifecycle (V6), alongside from M3
 
