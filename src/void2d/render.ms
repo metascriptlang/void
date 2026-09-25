@@ -170,10 +170,10 @@ function renderScaleGrid(n: Node2D, world: Transform2D, col: Color): void {
 	if (srcW <= 0.0 || srcH <= 0.0) { return; }
 	const ox: float32 = tileOffsetX(t, n.w);
 	const oy: float32 = tileOffsetY(t, n.h);
-	const sx: float32[] = [0.0, n.borderL, srcW - n.borderR, srcW];
-	const sy: float32[] = [0.0, n.borderT, srcH - n.borderB, srcH];
-	const dx: float32[] = [ox, ox + n.borderL, ox + n.w - n.borderR, ox + n.w];
-	const dy: float32[] = [oy, oy + n.borderT, oy + n.h - n.borderB, oy + n.h];
+	const sx: float32[4] = [0.0, n.borderL, srcW - n.borderR, srcW];
+	const sy: float32[4] = [0.0, n.borderT, srcH - n.borderB, srcH];
+	const dx: float32[4] = [ox, ox + n.borderL, ox + n.w - n.borderR, ox + n.w];
+	const dy: float32[4] = [oy, oy + n.borderT, oy + n.h - n.borderB, oy + n.h];
 	const du: float32 = t.u1 - t.u0;
 	const dv: float32 = t.v1 - t.v0;
 	let cj: int32 = 0;

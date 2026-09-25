@@ -52,7 +52,7 @@ export function axisAligned(a: float32, b: float32, c: float32, d: float32): boo
 export function snapBoxEdges(
 	lx0: float32, ly0: float32, sx: float32, sy: float32,
 	a: float32, tx: float32, d: float32, ty: float32,
-): Vec<float32> {
+): [float32, float32, float32, float32] {
 	const x0d: float32 = snapEdge(a * lx0 + tx);
 	const y0d: float32 = snapEdge(d * ly0 + ty);
 	const x1d: float32 = snapEdge(a * (lx0 + sx) + tx);
