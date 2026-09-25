@@ -784,3 +784,90 @@ same window:
 Absolute numbers move by about 0.6 ms between windows ten minutes apart on this box, which is why
 only the pairs compare. P3's 2.2× (VOID2D.md P3 "Measured") was load. One measure call costs 80
 glyph lookups for 80 glyphs, where it cost 176.
+
+## P3.5 review
+
+The diff is `05b4b9d..HEAD`. The defect pass was `/code-review high` in Claude Code, verified
+finding by finding in the main session. The design pass was a fresh Claude subagent that had
+written none of P3.5.
+
+### Defect pass — `/code-review high`
+
+Ten findings: eight confirmed and fixed, one plausible and fixed, one kept.
+
+| Finding | Resolution |
+|---|---|
+| The record check wanted `N / N` from `table.ms` where the gate wanted `pass / total` from the run: with a pending D3D11 scene the row could satisfy neither | `cba6ab4`: the record check reads only the total; the run's line owns the pass count |
+| The record parsers skipped a PENDING row whose id was not lower-case, and counted a commented-out golden row | `cba6ab4`: a row is recognised by its tier cell, and a golden row only when a line starts with it; T0 tests for both |
+| The WebGL2 graduation block used bash's `<(…)` under `#!/bin/sh` | `8d6c29b`: POSIX loops. The gate's older skip-line check still uses `<(…)`, from before P3.5 |
+| An unreadable `golden webgl2` line made `$(( + ))` stop the gate with no FAIL and no summary | `8d6c29b`: the claim is built by awk, or the gate fails naming the line. Control: a suffixed line fails loud |
+| The allocation stage's PASS said the frame path "neither copies nor allocates", but it cannot see stream growth (`growTo`) or allocation inside C (`ensurePage`) | `84fa19d`: it claims no array copy and no fresh array; the audit's "Confirmed" corrected |
+| Comments over three lines in `gate.sh` and `bench-ab.sh` (the comment playbook) | `84fa19d`, `027804f` |
+| `bench-ab.sh` read fields by position, so a run that printed no number counted as a clean pair at 0 ms | `027804f`: the pair is BROKEN, left out and counted. Tested on a planted row |
+| `placementCurrent` built the whole key, fractions included, for every label on every frame, where the old code exited early | `2d4405f`: early exits restored; the key stays one struct for storing |
+| The glyph-lookup counter was a signed `int` bumped on every lookup, undefined at overflow | `ea18542`: unsigned |
+| Kept: the three text-metric fallbacks build an empty layout "to return 0" | `textHeight`'s fallback is one empty line's height, not 0, and what a non-Label should do is the human's question (audit finding 25) |
+
+`sh scripts/gate.sh` was GREEN after them, at `ea18542`: 868 tests, D3D11 69 / 69, the bench
+counters unchanged but for the new `text.measureGlyphLookups`.
+
+### Design pass: **SEND BACK** — two defects in the record, none in the code
+
+A fresh Claude subagent that had written none of P3.5 read the diff at `ea18542` against the
+brief, the guardrails and the decision rule. It verified that no behaviour changed: struct `==`
+compiles to field-by-field float compares, so `-0` and NaN compare as before; every `match`
+covers the chain it replaced; `growTo` grows the stream in place; the atlas `Result` paths behave
+as the sentinels did; a synthetic face may share the measured heights, which read outline boxes
+only. It refused the step on two record defects, the P3-B3 class again.
+
+| id | Finding | Resolution before re-review |
+|---|---|---|
+| P3.5-S1 | The audit carried #18, #19, #23 and #24 "to P5" and #21 "with the filter path", but P5's Lands, Closes and `tests/PENDING.md` named none of them, and #18, a latent defect, was not in "Known defects". The record check compares PENDING rows against Closes lines, so it could not see it | `d694e9c`: #18 in "Known defects" and as `tests/PENDING.md display-list-view-id-float32`, owned by P5 and on its Closes line; #18, #19, #21, #23 and #24 as one P5 Lands bullet; the audit rows point there |
+| P3.5-S2 | P4 "Measure" pointed at a P3.5-head number that did not exist. The only P3.5 number was `939b2ed`, before `23e29f4`, `bb8b11a` and `2d4405f`; the refactors were never A/B'd against `05b4b9d`, and `2d4405f` was a `perf` commit with no measurement | `342ec54`: the P3.5 head against the pre-P3 control `8a473f3`, UI 13.54 → 13.05 ms over 7 clean pairs of 8, in P3 "Measured" and in "Numbers" above; P4 "Measure" points at it and takes its own pairs. The P3 head against the P3.5 head got no clean UI pair in the same window (load 20-68 %), so P3.5's own delta, about −1 ms, is read across two windows, not from one pair |
+
+### Follow-ups the design pass carried
+
+| id | Follow-up | Owner |
+|---|---|---|
+| F-a | The record check passed a row owned by `P7` and missing from every Closes line: it read only P4-P6 | done, `69d2974`: the phases come from VOID2D.md's headings, and an owner that is neither a phase nor `compiler` or `human` fails. TESTING.md says a Closes line lists ids, not work (`bce0704`). Controls: a `P7` owner and a `robot` owner each fail the stage |
+| F-b | The allocation stage could not see a struct's deep copy, which emits `<Type>…OmsCopy(`, not `ArrayCopy(`; `textWidth` and `textHeight`, where P3.5 removed exactly that copy, were on no list | done, `46cacd2`: `OmsCopy(` in the pattern; `benchText` emits the measure path, and `textWidth`, `textHeight` and `shapedLabel` are held to no copy and to no `textLayout` call. Control: `textWidth` through `textLayout` again fails. The wider pattern found one more copy, `shapeLabel` returning its layout to callers that dropped it (`c55be18`). The list is still named rather than followed through calls; the seven per-frame helpers the reviewer found unlisted allocate nothing today |
+| F-c | CODE-STYLE §14's "parameters are `Span<T>`": private `T[]` parameters remain in `sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, `polyArea2`, `isEar` and `triangulate` | P4, with F9 (`76302a7`) |
+| F-d | F9's half no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1` | P4, with F9 (`76302a7`) |
+
+The reviewer's notes, and what became of them:
+
+- Audit #8 still said `PlacementKey` was "compared with `==`": corrected (`d694e9c`).
+- `dispose` ended in `_ => {}`, the one match where a new kind with a payload would leak in
+  silence: it names every kind (`c252911`).
+- `sceneViewMatrix`'s `Resize` arm could never run, because the function returns for `Resize`
+  before the match: the arm returns, the early exit keeps only the missing design size
+  (`984ab40`), and a T0 test holds a `Resize` scene with a design size to the identity
+  (`3743927`).
+- Two lines P3.5 wrote, and four in its new files, were over 100 columns: wrapped (`7de76e1`);
+  `style:line-length` re-measured at 246 lines (`93a6047`).
+- TESTING.md said "a `conformance:*` row" where the gate handles one named row, and did not say
+  that a listed WebGL2 scene can get worse without bound: both written (`bce0704`).
+- `bench-ab.sh`'s 40 % limit sat above the 25-33 % band P3's inflated numbers came from: 25 %,
+  and T4 says interleaving protects the difference, not the absolute (`0e7eefc`).
+- `-1 as T` is a checker error with no card: now
+  `~/metascript/.inbox/compiler/2026-09-25-unary-minus-looser-than-as.md`.
+- For the human, not changed here: `draw.ms`'s layout checks stop the renderer with
+  `unreachable`, which traps in release too, where LANG.md says "crashes in debug"; and CODE-STYLE
+  §5 says arithmetic on a `distinct` crashes, which the audit found it does not.
+- The allocation stage's awk range ends at the entry's column-0 `}` and does not read the
+  `BeforeRet_` tail. Harmless today: no listed function lives there.
+
+### The gate after the send-back
+
+`sh scripts/gate.sh --web` was GREEN at `3eb4f90`, with 10 loud skips: 870 tests, D3D11 69 / 69
+byte-identical, WebGL2 65 / 69 with the four listed structural failures (`prim/strokeRect`,
+`prim/polygonBezier`, `prim/patterns`, `xform/scale`), the bench counters matching, the
+allocation stage over 51 frame, 14 rebuild and 3 measure functions, and the record stage at 28
+rows against 7 phases. The controls were re-run on the final stages: the record stage fails a
+moved owner, a `P7` owner, a `robot` owner, a dropped Closes id and both drifted conformance rows;
+the allocation stage fails a struct copy, an array literal and `textWidth` through `textLayout`.
+
+The run before it went RED at the golden stage and nowhere else: deleting
+`~/.metascript/cache/objects` failed with "Directory not empty" while another session's `msc`
+wrote into it. TESTING.md said the gate evicted only this checkout's objects; it evicts the
+whole machine-wide store, and now says so, with the race (`3c0f9fc`).
