@@ -124,6 +124,7 @@ void main() {
 @end
 
 @fs billboardFs
+// PENDING3D: billboard-points-added
 @include_block spriteUniforms
 @include_block lightUniforms
 layout(binding=0) uniform texture2D spriteTexture;

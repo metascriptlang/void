@@ -49,8 +49,8 @@ export enum LightKind {
 // What h3d.scene.fwd.Light carries beyond an Object, cut for the toon shader: color and
 // priority are Heaps'; `radius` and `power` stand where Heaps' fwd PointLight has `params`
 // (constant, linear, quadratic attenuation) and where its DirLight folds intensity into
-// color, because this port quantizes total energy before it multiplies color, and folding
-// power in would quantize at a different place.
+// color, because a point light quantizes its energy before it multiplies color, and folding
+// power in would quantize at a different place. The directional light is not quantized.
 // PENDING3D: light-params-divergence
 export struct LightInstance {
 	kind: LightKind;
