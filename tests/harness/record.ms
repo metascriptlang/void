@@ -70,6 +70,25 @@ export function phaseSection(doc: string, phase: string): string {
 	return heading + parts[1].split("\n### ")[0];
 }
 
+function isDigits(text: string): boolean {
+	if ((text.length as int32) == 0) { return false; }
+	for (let i: int32 = 0; i < (text.length as int32); i++) {
+		if ("0123456789".indexOf(text.byteSlice(i, i + 1)) < 0) { return false; }
+	}
+	return true;
+}
+
+// Every `### P<n> — ` heading of VOID2D.md, in order.
+export function roadmapPhases(doc: string): string[] {
+	const phases: string[] = [];
+	const parts = doc.split("\n### P");
+	for (let i: int32 = 1; i < (parts.length as int32); i++) {
+		const number: string = parts[i].split(" — ")[0];
+		if (isDigits(number)) { phases.push("P" + number); }
+	}
+	return phases;
+}
+
 // The ids in backticks on a section's `**Closes**` line.
 export function closesIds(section: string): string[] {
 	const ids: string[] = [];
@@ -135,6 +154,11 @@ test "a phase section ends at the next heading and names what it closes" {
 	assert (ids.length as int32) == 2 && ids[0].equals("a:b") && ids[1].equals("c");
 	assert (closesIds(phaseSection(doc, "P5")).length as int32) == 1;
 	assert phaseSection(doc, "P7").equals("");
+}
+
+test "the roadmap's phases come from its headings" {
+	const phases = roadmapPhases("# Doc\n\n### P0 — Gate\n\n### P12 — Late\n\n### Plan\n");
+	assert (phases.length as int32) == 2 && phases[0].equals("P0") && phases[1].equals("P12");
 }
 
 test "the golden table's rows are counted by their name field" {

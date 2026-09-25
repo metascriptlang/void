@@ -5,13 +5,14 @@ import { readFile } from "std/fs";
 import {
 	PendingRow,
 	pendingRows,
+	roadmapPhases,
 	phaseSection,
 	closesIds,
 	contains,
 	goldenRowCount,
 } from "../harness/record";
 
-const PHASES: string[] = ["P4", "P5", "P6"];
+const OWNERS_OUTSIDE_THE_ROADMAP: string[] = ["compiler", "human"];
 
 function read(path: string): string {
 	const text = readFile(path);
@@ -24,10 +25,21 @@ function read(path: string): string {
 
 function checkOwners(rows: PendingRow[], roadmap: string): int32 {
 	let failed: int32 = 0;
-	for (const phase of PHASES) {
+	const phases = roadmapPhases(roadmap);
+	for (const row of rows) {
+		if (!contains(phases, row.owner) && !contains(OWNERS_OUTSIDE_THE_ROADMAP, row.owner)) {
+			console.log(`FAIL tests/PENDING.md ${row.id}: ${row.owner} is no roadmap phase`);
+			failed = failed + 1;
+		}
+	}
+	for (const phase of phases) {
 		const closes = closesIds(phaseSection(roadmap, phase));
-		if ((closes.length as int32) == 0) {
-			console.log(`FAIL docs/VOID2D.md ${phase} has no **Closes** line`);
+		let owns: boolean = false;
+		for (const row of rows) {
+			if (row.owner.equals(phase)) { owns = true; }
+		}
+		if (owns && (closes.length as int32) == 0) {
+			console.log(`FAIL docs/VOID2D.md ${phase} owns PENDING rows but has no **Closes**`);
 			failed = failed + 1;
 		}
 		for (const id of closes) {
@@ -78,8 +90,11 @@ function main(): int32 {
 		console.log("FAIL tests/PENDING.md parsed to no rows");
 		failed = failed + 1;
 	}
-	console.log(`record: ${rows.length} PENDING rows against the Closes lines of ${PHASES.length} phases, ` +
-		`${goldenRowCount(table)} golden scenes against TESTING.md, ${failed} off`);
+	const phases: int32 = roadmapPhases(roadmap).length as int32;
+	console.log(
+		`record: ${rows.length} PENDING rows against the Closes lines of ${phases} phases, ` +
+		`${goldenRowCount(table)} golden scenes against TESTING.md, ${failed} off`,
+	);
 	return failed == 0 ? 0 : 1;
 }
 
