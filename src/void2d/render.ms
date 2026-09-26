@@ -47,6 +47,7 @@ import {
 	TextLayout,
 	TextStyle,
 	LineBox,
+	LaidGlyph,
 	NO_GLYPH,
 	NO_RUN,
 	calcTextWidth as layoutWidth,
@@ -125,7 +126,7 @@ function localBounds(n: Node2D): Bounds {
 	if (n.kind === DrawKind.Label && showsEditing(n)) {
 		return {
 			xMin: n.contentXMin - SELECTION_GLOOP, yMin: n.contentYMin,
-			xMax: n.contentXMax + SELECTION_GLOOP, yMax: n.contentYMax,
+			xMax: labelTexts[n.payload].rowsXMax + SELECTION_GLOOP, yMax: n.contentYMax,
 		};
 	}
 	if (n.kind === DrawKind.Graphics || n.kind === DrawKind.Label) {
@@ -254,6 +255,12 @@ function shapeIfChanged(n: Node2D): void {
 			if (baseline + top < n.contentYMin) { n.contentYMin = baseline + top; }
 			if (baseline + bottom > n.contentYMax) { n.contentYMax = baseline + bottom; }
 		}
+		let rowsXMax: float32 = n.contentXMax;
+		for (const line of shaped.layout.lines) {
+			const end: float32 = rowEnd(shaped.layout, line);
+			if (end > rowsXMax) { rowsXMax = end; }
+		}
+		labelTexts[n.payload].rowsXMax = rowsXMax;
 		n.lastText = n.text; n.lastSize = n.size; n.lastTextAlign = n.textAlign;
 		n.lastLetterSpacing = n.letterSpacing;
 		n.lastLineSpacing = n.lineSpacing;
@@ -395,12 +402,18 @@ function emitDecorations(
 
 const EMPTY_ROW_WIDTH: float32 = 4.0;
 
+function rowEnd(layout: TextLayout, line: LineBox): float32 {
+	if (line.glyphCount == 0) { return line.x; }
+	const last: LaidGlyph = layout.glyphs[line.firstGlyph + line.glyphCount - 1];
+	return last.x + last.advance;
+}
+
 function xOnRow(layout: TextLayout, line: LineBox, index: int32): float32 {
 	const end: int32 = line.firstGlyph + line.glyphCount;
 	for (let k = line.firstGlyph; k < end; k++) {
 		if (layout.glyphs[k].index >= index) { return layout.glyphs[k].x; }
 	}
-	return line.x + line.width;
+	return rowEnd(layout, line);
 }
 
 // The selected span of one line, [x0, x1] in local units, or x1 < x0 when the line holds none of
@@ -415,7 +428,7 @@ function selectedRow(text: LabelText, li: int32): [float32, float32] {
 	if (end <= line.indexStart || start >= owned || text.selectionLength <= 0) {
 		return [0.0, -1.0];
 	}
-	const lineEnd: float32 = line.x + line.width;
+	const lineEnd: float32 = rowEnd(text.layout, line);
 	const x0: float32 = start <= line.indexStart ? line.x : xOnRow(text.layout, line, start);
 	let x1: float32 = end >= line.indexEnd ? lineEnd : xOnRow(text.layout, line, end);
 	if (end > line.indexEnd && owned > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }

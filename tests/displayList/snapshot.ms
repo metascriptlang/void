@@ -56,6 +56,7 @@ import {
 } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, emptyBounds, BlendMode, Smooth } from "../../src/void2d/types";
 import { CURSOR_WIDTH } from "../../src/void2d/labelText";
+import { TextLayout } from "../../src/void2d/textLayout";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
@@ -746,4 +747,22 @@ test "a label's runs, selection and caret under a colour effect are refused, not
 	const spans = selectedSpans(s.root, 200.0, 80.0);
 	assert (spans.length as int32) == 0;
 	assert labelEditingRefusals() == before + 1;
+}
+
+test "a selected row covers its trailing spaces, and a blank indented row its indent" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("ab  \n    \ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setSelectionRange({ start: 0, length: 11 }, rgba(0.3, 0.5, 0.9, 0.5));
+	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
+	const spans = selectedSpans(s.root, 200.0, 80.0);
+	const l = text.textLayout();
+	const spaces = l.glyphs[3];
+	const indent = l.glyphs[l.lines[1].firstGlyph + 3];
+	assert (spans.length as int32) == 6;
+	assert spans[1] > spaces.x + spaces.advance;
+	assert spans[3] > indent.x + indent.advance;
+	const bounds = emptyBounds();
+	text.getBounds(bounds);
+	assert l.xForIndex(4) + CURSOR_WIDTH <= bounds.xMax;
+	assert spans[1] <= bounds.xMax && spans[3] <= bounds.xMax;
 }

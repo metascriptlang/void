@@ -94,6 +94,7 @@ export interface LabelText {
 	cursorColor: Color;
 	cursorBlinkTime: float32;
 	blinkClock: float32;
+	rowsXMax: float32;
 }
 
 export const NO_CURSOR: int32 = -1;
@@ -185,6 +186,7 @@ export function allocateLabelText(): int32 {
 		cursorColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
 		cursorBlinkTime: CURSOR_BLINK_TIME,
 		blinkClock: 0.0,
+		rowsXMax: 0.0,
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
