@@ -42,15 +42,20 @@ import {
 	CURSOR_WIDTH,
 	NO_CURSOR,
 	cursorShown,
+	labelLines,
 } from "./labelText";
 import {
 	TextLayout,
 	TextStyle,
 	LineBox,
 	LaidGlyph,
+	LineOptions,
+	TextRun,
+	PLAIN_LINES,
 	NO_GLYPH,
 	NO_RUN,
-	calcTextWidth as layoutWidth,
+	shapeText,
+	wrapText,
 } from "./textLayout";
 import { GlyphPage, NO_GLYPH_PAGE } from "./glyphAtlas";
 import { glyphInkBox } from "./face";
@@ -1115,14 +1120,21 @@ export function textHeight(this n: Node2D): float32 {
 	return labelTexts[n.payload].layout.height;
 }
 
+function layoutLike(n: Node2D, text: string, style: TextStyle): TextLayout {
+	const noRuns: Vec<TextRun> = new Array(0);
+	const noBreaks: Vec<int32> = new Array(0);
+	const options: LineOptions = n.payload == NO_LABEL_TEXT ? PLAIN_LINES : labelLines(n.payload);
+	return wrapText(shapeText(text, style, noRuns, noBreaks), style, options);
+}
+
 export function calcTextWidth(this n: Node2D, text: string): float32 {
 	requireLabel(n, "calcTextWidth");
-	return layoutWidth(text, labelStyle(n));
+	return layoutLike(n, text, { ...labelStyle(n), maxWidth: 0.0 }).width;
 }
 
 export function splitText(this n: Node2D, text: string): string {
 	requireLabel(n, "splitText");
-	return TextLayout.layout(text, labelStyle(n)).splitText(text);
+	return layoutLike(n, text, labelStyle(n)).splitText(text);
 }
 
 export function xForIndex(this n: Node2D, index: int32): float32 {

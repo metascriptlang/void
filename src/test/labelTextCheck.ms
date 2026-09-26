@@ -213,6 +213,20 @@ test "a decoration lands on device pixels at DPI 1.25, a stroke at least one pix
 	assert approx(bx * 1.25, 13.0) && approx(bw * 1.25, 50.0);
 }
 
+test "calcTextWidth and splitText lay other text out with the label's line options" {
+	const cells = label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	cells.setForceWidth(10.0);
+	assert cells.calcTextWidth("abc") == 30.0;
+	const text: string = "aa bb cc dd";
+	const n = label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.maxWidth = n.calcTextWidth("aa bb") + 1.0;
+	assert n.splitText(text) == "aa bb\ncc dd";
+	n.setHangingIndent(n.calcTextWidth("aa "));
+	assert n.splitText(text) == "aa bb\ncc\ndd";
+	cells.dispose();
+	n.dispose();
+}
+
 test "setTextRuns styles a label, and each placed glyph carries its run" {
 	const n = label("ab", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const runs: TextRun[] = [plainRun(1), plainRun(1)];
