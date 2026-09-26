@@ -613,7 +613,9 @@ function pushTruncated(
 	while ((out.length as int32) > first) { out.pop(); }
 	const dots: float32 = ellipsisGlyph(shaped).advance;
 	const count: int32 = line.length as int32;
-	const budget: float32 = truncate == Truncate.Middle ? (room - dots) * 0.5 : room - dots;
+	const content: float32 = room - dots;
+	const headBudget: float32 = truncate == Truncate.Middle ? content * (2.0 / 3.0) : content;
+	const tailBudget: float32 = truncate == Truncate.Middle ? content - headBudget : content;
 	let head: int32 = 0;
 	if (truncate != Truncate.Start) {
 		while (head < count) {
@@ -624,7 +626,7 @@ function pushTruncated(
 				if (markRight > right) { right = markRight; }
 				next = next + 1;
 			}
-			if (right > budget) { break; }
+			if (right > headBudget) { break; }
 			head = next;
 		}
 	}
@@ -637,7 +639,7 @@ function pushTruncated(
 		let k: int32 = count;
 		while (k > head) {
 			const at: int32 = k - 1;
-			if (end - line[at].x > budget) { break; }
+			if (end - line[at].x > tailBudget) { break; }
 			k = at;
 			if (line[k].clusterStart) { tail = k; }
 		}

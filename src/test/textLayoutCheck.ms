@@ -335,6 +335,16 @@ test "End truncation trims the spaces and punctuation before its ellipsis, as GP
 	assert l.glyphs[last - 1].codepoint == "o".code;
 }
 
+test "Middle truncation gives two thirds of the room to the front, as GPUI's does" {
+	const room: float32 = calcTextWidth("aaaaaaaaaaaa\u{2026}", style()) + 0.5;
+	const middle: LineOptions = { ...PLAIN_LINES, truncate: Truncate.Middle };
+	const l = wrapped("aaaaaaaaaaaaaaaaaaaaaaaa", room, middle);
+	let head: int32 = 0;
+	while (l.glyphs[head].codepoint != 0x2026) { head = head + 1; }
+	const tail: int32 = (l.glyphs.length as int32) - head - 1;
+	assert head == 8 && tail == 4;
+}
+
 test "Start truncation keeps the end, Middle keeps both ends" {
 	const room: float32 = calcTextWidth("abcde", style());
 	const start = wrapped("abcdefghij", room, { ...PLAIN_LINES, truncate: Truncate.Start });
