@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a port of Heaps `h3d` (`~/projects/heaps`), taken in the order Hibernal needs it.
 
-**Status (2026-09-26):** M1–M13 are built and reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light. The gate is `sh scripts/gate3d.sh`.
+**Status (2026-09-26):** M1–M14 are built, M1–M13 reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light; M14 gives the core Heaps' forward programs, moves the pixel-art look into its preset's own programs, and adds a forward preset. The gate is `sh scripts/gate3d.sh`.
 
 ## What Hibernal needs
 
@@ -75,7 +75,7 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 | M11 | `parts/Emitter`, `parts/Particles` (CPU), `Matrix.colorSaturate` | Snow and embers on the instanced billboard path; palette LUT swap and desaturation as renderer parameters | A11 | **done**, 23 tests |
 | M12 | `shader/ColorMatrix` (per-pass colour matrix), `Matrix.colorSaturate` | Saturation as a lit-material parameter, applied to the material's colour before the lights, so one object greys while the scene keeps its colour; a CPU `colorSaturate` pinned against Heaps by the oracle | A11 Fading | **done**, 4 tests, 6 oracle cases |
 | M13 | `shader/AmbientLight` (additive: `pixelColor.rgb *= ambient + lights`), `shader/DirLight` (`calcLighting`) | Every light multiplies the material's colour, point lights included, so a light scales with the object's colour: a dark object stays dark and a grey one takes the light's hue at its own brightness; the directional light is Heaps' Lambert, `max(n·l, 0) × power`, in place of the spike's step. The point lights' toon quantization and the billboard program are not touched: both are the pixel-art look in the core, `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3 | A11 Fading, A4 lights | **done**, 0 tests, the baselines retaken |
-| M14 | `scene/Renderer` (what a renderer's passes draw), `fwd/Renderer`, `pass/Copy` | The pixel-art look leaves the core programs. Core `Lit` and `Particle` are Heaps' forward shading into one colour target, the point lights continuous; the pixel-art preset draws its own programs (toon ramp, normal and depth MRT) in their place through a program map that refuses, by name, a program it does not draw. A minimal forward preset (the scene into its own colour and depth targets, `Copy` to the swapchain) proves the core draws without the preset. The pixel-art frames stay byte-identical. `Program.Billboard` stays the preset's until M15 | generality: `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3 | in progress |
+| M14 | `scene/Renderer` (what a renderer's passes draw), `fwd/Renderer`, `pass/Copy` | The pixel-art look leaves the core programs. Core `Lit` and `Particle` are Heaps' forward shading into one colour target, the point lights continuous; the pixel-art preset draws its own programs (toon ramp, normal and depth MRT) in their place through a program map that refuses, by name, a program it does not draw. A minimal forward preset (the scene into its own colour and depth targets, `Copy` to the swapchain) proves the core draws without the preset. The pixel-art frames stay byte-identical. `Program.Billboard` stays the preset's until M15 | generality: `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3 | **done**, 7 tests, one new baseline |
 
 ### M2 as built
 
@@ -417,6 +417,53 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 - **No specular.** Heaps' `DirLight` and `PointLight` have an `enableSpecular` branch; this port has none, and the lit material has no `specPower` or `specColor`.
 - **The non-additive model is not ported.** `additiveLighting = false` scales the lights by `1 − ambient`; only the default exists here.
 - **The formula has no CPU reference.** It is held by the `multiply` stage and the baselines, not by a headless test; a CPU copy of `litFs` would only check itself.
+
+### M14 as built
+
+- **The core and the pixel-art preset each have their own programs.** Three GLSL files replace one:
+  - `shader3dBlocks.glsl`, included by both, holds every uniform block the CPU writes, so each layout has one definition.
+  - `shader3d.glsl` is the core's. `Lit` is Heaps' forward shading into one colour output: the (saturated) material colour times ambient, Lambert and the point lights, the point lights now continuous (`falloff² × facing × power`). `Particle` writes one colour output. `Copy` is `h3d.pass.Copy`.
+  - `pixelArt3d.glsl` (`@module pixelArt`) is the preset's. Its lit and particle programs are the ones the core had until now, with the toon ramp and the normal and depth target; then the billboard, post and blit programs.
+  - `gpu3d.c` includes both headers. `_Static_assert`s hold every program of one vertex layout to the core's attribute slots, and the three shared blocks to one size in both headers.
+- **A program map says what a renderer draws for the program a material names** (`programMap.ms`). **NEW MECHANISM**, approved with the M14 row. Heaps composes a pass's output shaders into whatever the material brings; with fixed sokol-shdc programs a renderer draws a whole program of its own in the material's place instead.
+  - The core draws `Lit` and `Particle` as themselves (`ProgramMap.core()`), and `Renderer.create` keeps its signature. A preset passes its own map to `Renderer.createDrawing`. The pixel-art map draws `PixelArtLit` for `Lit`, `PixelArtParticle` for `Particle`, and `Billboard` as itself.
+  - `beginFrame` refuses a frame with an item whose material names a program the map does not hold (`RendererError.ProgramNotDrawn`), before it writes a block. `drawPassList` resolves every item through the map, and stops with `ProgramError.NotDrawn` if it is ever called around that check.
+  - The map is a value: a `BitSet<Program>` and four bits per program in a `uint64`. It allocates nothing, and the `allocation` stage now covers `draws` and `drawnFor`.
+  - What it can regress: a preset whose map leaves out a program its scene uses. That is a refused frame, never a wrong one.
+- **The model matrix follows its slot, not a program's name.** `drawItem` applied it when `material.program == Program.Lit`, which under a map would have skipped `PixelArtLit` without a word. The model block moved to binding 4, which no other block uses. `drawItem` applies it where the drawn program declares that slot, the idiom the pass-wide blocks already used.
+- **The pixel-art preset refuses a stepped item without ramp levels.** This closes the M13 review's defect finding 8. `renderFrame` checks each `Lit` item's material block for levels of at least 1 at `RAMP_LEVELS`, and each `Billboard` item's block at `SPRITE_RAMP_LEVELS`. Otherwise it answers `PixelArtError.RampLevels` before anything changes.
+- **Names moved to what they belong to.**
+  - `gpu3d.ms` keeps what the core reads: `MATERIAL_UNIFORM_SLOT`, `MATERIAL_UNIFORM_LENGTH` and `MATERIAL_SATURATION`. The `TOON_*` constants are gone.
+  - The preset's `RAMP_LEVELS`, `SPRITE_*`, `POST_*` and `BLIT_*` live in `pixelArtRenderer.ms`.
+  - `Program.Post` and `Program.Blit` are `PixelArtPost` and `PixelArtBlit`.
+- **A forward preset** (`forwardRenderer.ms`), as `h3d.scene.fwd.Renderer` is on `h3d.scene.Renderer`. It draws the core's pass lists with the core's programs into a colour and a depth target of its own, at the framebuffer's size, then copies to the swapchain. Heaps draws into whatever target is current. Here the scene needs targets of its own because the Android swapchain has no depth buffer (`bridgeAndroid.c` sets `depth_format` to none). The GLES3 frame below is that path running. It needs only the core's blocks (`FORWARD_UNIFORM_LENGTH`), and it refuses a `Billboard` material by the map.
+- **The campfire through it.** `configureCampfireForward(true)` draws the campfire through the forward preset, unsnapped, at the framebuffer's resolution. The grass and the flame are hidden, because their program is the pixel-art preset's until M15. `stepScene` and `advanceClocks` were cut out of `frameCampfire` verbatim, so both presets run the same scene steps. The pixel-art frames staying byte-identical is what shows the cut changed nothing.
+- **A compiler bug, carded and parked.** `return Result.err(…)` inside a statement `match` arm does not take the function's return type (`~/metascript/.inbox/compiler/2026-09-26-return-in-match-arm-loses-function-type.md`). `renderFrame`'s stage loop binds the refusal to a typed local first, which is the form the message asks for. The row `match-arm-return-typed` marks it.
+
+**Acceptance, at `bec89e5`.** The gate is GREEN with one SKIP (`device`); the commits after it are docs and device evidence.
+- **Pixels.**
+  - The thirteen standing configurations, 52 frames, are byte-identical to the 40 hashes of M13. That is the claim M14 makes for the pixel-art preset: its programs are the core's old ones. The tree of the first code commit (`2e3830c`), without the forward preset, was gated on its own and held them too.
+  - One configuration is new, `campfireForwardCapture` (`m14forward_*`, four hashes, 44 in the manifest): the forward preset with snow and embers, so both core programs draw. It is a new baseline, not a re-baseline, and a second gate drew it byte-identical.
+- **Tests.** **878**, seven more:
+  - three on the map: the core's, the preset's, and replacing an entry;
+  - the core refusing an unmapped material before it writes the camera;
+  - the forward preset's pool, copy material, size and map refusals;
+  - the pixel-art preset refusing an unmapped program, and a missing or zero ramp.
+  - Controls. Leaving out the nibble clear in `drawing` fails exactly "drawing a name again…". Leaving out `beginFrame`'s check lets the refused frame reach sokol, and the test binary dies in `_sg.valid`.
+- **GLES3, on the emulator.**
+  - `tests/device/gles3Forward.png` is the forward preset: 385 colours, depth-tested, with the snow. Two shots differ in 7 914 pixels, the particles moving.
+  - The pixel-art build of M14 against the M13 build differs in 522 to 1 577 pixels. That is inside the range two shots of one build differ in (544 to 1 099, and 694), and every difference falls in the same 195×120 box around the flickering fire. So nothing measurable moved on GLES3. An emulator claim, not a pixel comparison.
+- **Size.** arm64 `libVoidAndroid.so` is 2 900 432 bytes, +108 440 against M13 on the same msc (`2925176a`). The embedded shader sources grew from 87 723 to 119 855 bytes (+32 132): the core's three programs in six backends. The rest is not attributed.
+- **Bench.** `meshes=40`, one more: the forward core's screen triangle, since the example's context now holds both renderers. There is no frame-state growth.
+- **PENDING3D** has 24 rows:
+  - `point-light-toon-quantized` deleted: the core is continuous, and the preset's ramp is its look, with its levels checked;
+  - `match-arm-return-typed` added;
+  - `billboard-points-added` moved with its program to `pixelArt3d.glsl`.
+
+**Still missing after M14.**
+- **`Program.Billboard` is still the pixel-art preset's.** Materials name it, so the forward preset refuses it. M15 is a core billboard in Heaps' textured-particle shape, with the preset's form of it.
+- **Nobody outside `src/void3d` can add a program.** The program table is closed: a game with a look of its own adds its programs and its map here. Programs a caller owns would be a mechanism of their own.
+- **The forward preset is minimal.** It has no sRGB conversion (neither has the pixel-art preset), no MSAA, and draws at the framebuffer's size only.
 
 ### Android lifecycle (V6), alongside from M3
 
