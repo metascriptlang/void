@@ -9,8 +9,13 @@ import {
 	TextStyle,
 	TextRun,
 	Align,
+	Truncate,
+	LineOptions,
+	PLAIN_LINES,
 	NO_GLYPH,
 	layoutRuns,
+	shapeText,
+	wrapText,
 	TAB_STOP_SPACES,
 	calcTextWidth,
 } from "../void2d/textLayout";
@@ -26,6 +31,7 @@ import {
 } from "../void2d/font";
 import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
+import { glyphLookups } from "../void2d/face";
 
 let loadedFont: FontId = DEFAULT_FONT;
 let fontLoaded: boolean = false;
@@ -143,8 +149,9 @@ test "the empty line after a trailing newline sits at the end of the text" {
 	assert (l.lines.length as int32) == 2;
 	assert l.lines[1].byteStart == 3;
 	assert l.lines[1].byteEnd == 3;
-	assert l.byteForX(1, 50.0) == 3;
-	assert approx(l.xForByte(3), l.lines[1].x);
+	assert l.lines[1].indexStart == 3 && l.lines[1].indexEnd == 3;
+	assert l.indexAt(50.0, l.lines[1].top + 1.0) == 3;
+	assert approx(l.xForIndex(3), l.lines[1].x);
 }
 
 test "lines advance by the line height plus lineSpacing in pixels" {
@@ -187,7 +194,7 @@ test "the Multiline aligns work inside the widest line" {
 	assert left.lines[1].x == 0.0;
 }
 
-test "multi-byte text keeps byte ranges for the caret" {
+test "multi-byte text keeps byte ranges, and the caret counts UTF-16 units" {
 	const l = TextLayout.layout("é漢b", style());
 	assert (l.glyphs.length as int32) == 3;
 	assert l.glyphs[0].codepoint == 0xE9;
@@ -195,10 +202,11 @@ test "multi-byte text keeps byte ranges for the caret" {
 	assert l.glyphs[1].byteStart == 2;
 	assert l.glyphs[1].byteEnd == 5;
 	assert l.glyphs[2].charIndex == 2;
-	assert approx(l.xForByte(2), l.glyphs[1].x);
-	assert approx(l.xForByte(6), l.width);
-	assert l.byteForX(0, l.glyphs[2].x + 0.1) == 5;
-	assert l.byteForX(0, 1000.0) == 6;
+	assert l.glyphs[1].index == 1 && l.glyphs[2].index == 2;
+	assert approx(l.xForIndex(1), l.glyphs[1].x);
+	assert approx(l.xForIndex(3), l.width);
+	assert l.indexAt(l.glyphs[2].x + 0.1, 0.0) == 2;
+	assert l.indexAt(1000.0, 0.0) == 3;
 }
 
 test "splitText cuts wrapped lines by byte range, so an astral codepoint stays whole" {
@@ -286,4 +294,109 @@ test "a run draws in its own font" {
 	const l = layoutRuns("HH", style(), runs);
 	assert l.glyphs[0].face == fontFace(style().font);
 	assert l.glyphs[1].face == fontFace(bold.value);
+}
+
+function wrapped(text: string, width: float32, options: LineOptions): TextLayout {
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const wide: TextStyle = { ...style(), maxWidth: width };
+	return wrapText(shapeText(text, wide, noRuns, noBreaks), wide, options);
+}
+
+test "End truncation keeps what fits beside an ellipsis" {
+	const room: float32 = calcTextWidth("abcde", style());
+	const l = wrapped("abcdefghij", room, { ...PLAIN_LINES, truncate: Truncate.End });
+	const last: int32 = (l.glyphs.length as int32) - 1;
+	assert (l.lines.length as int32) == 1;
+	assert l.glyphs[last].codepoint == 0x2026;
+	assert l.glyphs[0].codepoint == "a".code;
+	assert l.lines[0].width <= room;
+	assert l.glyphs[last].index == l.glyphs[last - 1].index + 1;
+}
+
+test "Start truncation keeps the end, Middle keeps both ends" {
+	const room: float32 = calcTextWidth("abcde", style());
+	const start = wrapped("abcdefghij", room, { ...PLAIN_LINES, truncate: Truncate.Start });
+	assert start.glyphs[0].codepoint == 0x2026;
+	assert start.glyphs[(start.glyphs.length as int32) - 1].codepoint == "j".code;
+	assert start.lines[0].width <= room + 0.01;
+	const middle = wrapped("abcdefghij", room, { ...PLAIN_LINES, truncate: Truncate.Middle });
+	const count: int32 = middle.glyphs.length as int32;
+	assert middle.glyphs[0].codepoint == "a".code;
+	assert middle.glyphs[count - 1].codepoint == "j".code;
+	let dots: int32 = 0;
+	for (const g of middle.glyphs) { if (g.codepoint == 0x2026) { dots = dots + 1; } }
+	assert dots == 1 && middle.lines[0].width <= room + 0.01;
+	const fits = wrapped("abc", room, { ...PLAIN_LINES, truncate: Truncate.End });
+	assert (fits.glyphs.length as int32) == 3;
+}
+
+test "a hanging indent moves every continuation line, not the first" {
+	const room: float32 = calcTextWidth("aa bb", style());
+	const l = wrapped("aa bb cc dd", room, { ...PLAIN_LINES, hangingIndent: 12.0 });
+	assert (l.lines.length as int32) >= 2;
+	assert l.lines[0].x == 0.0 && l.glyphs[0].x == 0.0;
+	assert l.lines[1].x == 12.0;
+	assert approx(l.glyphs[l.lines[1].firstGlyph].x, 12.0);
+}
+
+test "force_width puts each base on the cell grid and keeps a mark on its base" {
+	const l = wrapped("ae\u0301b", 0.0, { ...PLAIN_LINES, forceWidth: 10.0 });
+	assert l.glyphs[0].x == 0.0;
+	assert l.glyphs[1].x == 10.0;
+	assert l.glyphs[3].x == 20.0;
+	const plain = TextLayout.layout("ae\u0301b", style());
+	assert approx(l.glyphs[2].x - l.glyphs[1].x, plain.glyphs[2].x - plain.glyphs[1].x);
+	assert l.lines[0].width == 30.0;
+}
+
+test "splitAt cuts one line without shaping it again" {
+	const l = TextLayout.layout("abcdef", style());
+	const [left, right] = l.splitAt(3);
+	assert (left.glyphs.length as int32) == 3 && (right.glyphs.length as int32) == 3;
+	assert right.glyphs[0].x == 0.0 && right.glyphs[0].codepoint == "d".code;
+	assert approx(right.glyphs[1].x, l.glyphs[4].x - l.glyphs[3].x);
+	assert left.lines[0].indexEnd == 3 && right.lines[0].indexStart == 3;
+	assert approx(left.width + right.width, l.width);
+}
+
+test "a shaping break splits the kerning pair at its index" {
+	const noRuns: TextRun[] = [];
+	const breaks: int32[] = [1];
+	const l = wrapText(shapeText("AV", style(), noRuns, breaks), style(), PLAIN_LINES);
+	assert approx(l.glyphs[1].x, advanceOf("A".code));
+}
+
+test "a width change wraps the shaped glyphs again and looks no glyph up" {
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const wide: TextStyle = { ...style(), maxWidth: 400.0 };
+	const shaped = shapeText("aa bb cc dd ee ff", wide, noRuns, noBreaks);
+	const one = wrapText(shaped, wide, PLAIN_LINES);
+	const room: float32 = calcTextWidth("aa bb", style());
+	const before: uint32 = glyphLookups();
+	const narrow = wrapText(shaped, { ...wide, maxWidth: room }, PLAIN_LINES);
+	assert glyphLookups() == before;
+	assert (one.lines.length as int32) == 1 && (narrow.lines.length as int32) > 1;
+}
+
+test "a tab on a wrapped line finds its stop from that line's start" {
+	const stop: float32 = (TAB_STOP_SPACES as float32) * advanceOf(32);
+	const l = wrapped("aa bb\tc", calcTextWidth("aa", style()) + 1.0, PLAIN_LINES);
+	const second = l.lines[1];
+	const tab = l.glyphs[second.firstGlyph + 2];
+	assert tab.codepoint == 9;
+	assert approx(tab.x + tab.advance, stop);
+}
+
+test "the caret, the hit test and the line box agree across lines" {
+	const room: float32 = calcTextWidth("aa bb", style());
+	const l = wrapped("aa bb cc", room, PLAIN_LINES);
+	const second = l.lines[1];
+	assert second.indexStart == 6;
+	assert approx(l.xForIndex(6), l.glyphs[second.firstGlyph].x);
+	assert l.lineBoxAt(7).top == second.top;
+	assert l.indexAt(0.0, second.top + 1.0) == 6;
+	assert l.indexAt(1000.0, second.top + 1.0) == second.indexEnd;
+	assert l.indexAt(l.glyphs[1].x + 0.1, 0.0) == 1;
 }

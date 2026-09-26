@@ -1,6 +1,6 @@
-import { Align, TextRun } from "../void2d/textLayout";
+import { Align, TextRun, Truncate } from "../void2d/textLayout";
 import { DEFAULT_FONT, fontFace } from "../void2d/font";
-import { decorationMetrics } from "../void2d/face";
+import { decorationMetrics, glyphLookups } from "../void2d/face";
 import {
 	allocateLabelText,
 	releaseLabelText,
@@ -194,5 +194,34 @@ test "setTextRuns styles a label, and each placed glyph carries its run" {
 	assert n.textWidth() > 0.0;
 	const placed = placeLabel(n.payload, identity2d(), 1.0).placed;
 	assert placed[0].run == 0 && placed[1].run == 1;
+	n.dispose();
+}
+
+test "a label wraps again on a width change without looking a glyph up" {
+	const n = label("aa bb cc dd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.maxWidth = 400.0;
+	n.sync(identity2d(), false);
+	const one: float32 = n.textHeight();
+	const before: uint32 = glyphLookups();
+	n.maxWidth = 30.0;
+	const many: float32 = n.textHeight();
+	assert glyphLookups() == before;
+	assert many > one;
+	n.dispose();
+}
+
+test "a label's line options reach its layout, and its hit tests read it" {
+	const n = label("aa bb cc dd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.maxWidth = 30.0;
+	n.setHangingIndent(6.0);
+	n.sync(identity2d(), false);
+	assert n.textLayout().lines[1].x == 6.0;
+	assert n.lineBoxAt(3).top == n.textLayout().lines[1].top;
+	assert n.indexAt(0.0, n.textLayout().lines[1].top + 1.0) == 3;
+	assert n.xForIndex(3) == 6.0;
+	n.setTruncate(Truncate.End);
+	const truncated = n.textLayout();
+	assert (truncated.lines.length as int32) == 1;
+	assert truncated.glyphs[(truncated.glyphs.length as int32) - 1].codepoint == 0x2026;
 	n.dispose();
 }

@@ -43,6 +43,7 @@ import {
 import {
 	TextLayout,
 	TextStyle,
+	LineBox,
 	NO_GLYPH,
 	NO_RUN,
 	calcTextWidth as layoutWidth,
@@ -1012,4 +1013,22 @@ export function calcTextWidth(this n: Node2D, text: string): float32 {
 export function splitText(this n: Node2D, text: string): string {
 	requireLabel(n, "splitText");
 	return TextLayout.layout(text, labelStyle(n)).splitText(text);
+}
+
+export function xForIndex(this n: Node2D, index: int32): float32 {
+	requireLabel(n, "xForIndex");
+	shapeIfChanged(n);
+	return labelTexts[n.payload].layout.xForIndex(index);
+}
+
+export function indexAt(this n: Node2D, x: float32, y: float32): int32 {
+	requireLabel(n, "indexAt");
+	shapeIfChanged(n);
+	return labelTexts[n.payload].layout.indexAt(x, y);
+}
+
+export function lineBoxAt(this n: Node2D, index: int32): LineBox {
+	requireLabel(n, "lineBoxAt");
+	shapeIfChanged(n);
+	return labelTexts[n.payload].layout.lineBoxAt(index);
 }

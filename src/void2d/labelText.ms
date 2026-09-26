@@ -13,9 +13,13 @@ import {
 	TextStyle,
 	TextRun,
 	LineBox,
+	LineOptions,
+	ShapedText,
 	NO_GLYPH,
 	NO_RUN,
-	layoutRuns,
+	PLAIN_LINES,
+	shapeText,
+	wrapText,
 } from "./textLayout";
 import { decorationMetrics } from "./face";
 import { DEFAULT_FONT, fontFace } from "./font";
@@ -78,6 +82,11 @@ export interface LabelText {
 	refused: int32;
 	runs: Vec<TextRun>;
 	decorations: Vec<Decoration>;
+	shaped: ShapedText;
+	shapedText: string;
+	reshape: boolean;
+	options: LineOptions;
+	shapingBreaks: Vec<int32>;
 }
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
@@ -133,16 +142,19 @@ function emptyLayout(): TextLayout {
 }
 
 export function allocateLabelText(): int32 {
+	const style: TextStyle = {
+		font: DEFAULT_FONT,
+		size: 0.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	};
+	const noRuns: Vec<TextRun> = new Array(0);
+	const noBreaks: Vec<int32> = new Array(0);
 	const entry: LabelText = {
 		layout: emptyLayout(),
-		style: {
-			font: DEFAULT_FONT,
-			size: 0.0,
-			letterSpacing: 0.0,
-			lineSpacing: 0.0,
-			maxWidth: 0.0,
-			align: Align.Left,
-		},
+		style: style,
 		placed: new Array(0),
 		placedValid: false,
 		pixelExact: false,
@@ -150,6 +162,11 @@ export function allocateLabelText(): int32 {
 		refused: 0,
 		runs: new Array(0),
 		decorations: new Array(0),
+		shaped: shapeText("", style, noRuns, noBreaks),
+		shapedText: "",
+		reshape: true,
+		options: PLAIN_LINES,
+		shapingBreaks: new Array(0),
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -172,11 +189,24 @@ export function releaseLabelText(index: int32): void {
 	freeLabelTexts.push(index);
 }
 
+function shapeStale(entry: LabelText, text: string, style: TextStyle): boolean {
+	const shapedWith: TextStyle = entry.shaped.style;
+	return entry.reshape || !text.equals(entry.shapedText) || style.font != shapedWith.font ||
+		style.size != shapedWith.size || style.letterSpacing != shapedWith.letterSpacing;
+}
+
+// A width, alignment or line-option change wraps the shaped text again; only a change to what
+// is shaped looks glyphs up (T1 "a width change lays out no glyph again").
 export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	releasePlacement(entry);
+	if (shapeStale(entry, text, style)) {
+		entry.shaped = shapeText(text, style, entry.runs, entry.shapingBreaks);
+		entry.shapedText = text;
+		entry.reshape = false;
+	}
 	entry.style = style;
-	entry.layout = layoutRuns(text, style, entry.runs);
+	entry.layout = wrapText(entry.shaped, style, entry.options);
 	entry.decorations = runDecorations(entry.layout, entry.runs, style.size);
 }
 
@@ -228,6 +258,22 @@ export function setLabelRuns(index: int32, runs: Span<TextRun>): void {
 	const kept: Vec<TextRun> = new Array(0);
 	for (const run of runs) { kept.push(run); }
 	labelTexts[index].runs = kept;
+	labelTexts[index].reshape = true;
+}
+
+export function setLabelShapingBreaks(index: int32, breaks: Span<int32>): void {
+	const kept: Vec<int32> = new Array(0);
+	for (const at of breaks) { kept.push(at); }
+	labelTexts[index].shapingBreaks = kept;
+	labelTexts[index].reshape = true;
+}
+
+export function setLabelLines(index: int32, options: LineOptions): void {
+	labelTexts[index].options = options;
+}
+
+export function labelLines(index: int32): LineOptions {
+	return labelTexts[index].options;
 }
 
 export function isPixelExact(world: Transform2D): boolean {

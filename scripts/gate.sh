@@ -252,9 +252,11 @@ FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
 	draw:drawMeshRange snap:snapBoxEdges"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
-	label84ext:shapeLabel label84ext:releasePlacement text76ayout:layout text76ayout:layRun
-	text76ayout:decodeUtf8 text76ayout:assignFaces text76ayout:assignGrapheme
-	text76ayout:graphemeFace text76ayout:assignBreaks text76ayout:breakAfter text76ayout:step
+	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
+	text76ayout:layout text76ayout:shapeText text76ayout:wrapText text76ayout:pushLine
+	text76ayout:pushTruncated text76ayout:forceCells text76ayout:decodeUtf8
+	text76ayout:assignFaces text76ayout:assignGrapheme text76ayout:graphemeFace
+	text76ayout:breakAfter text76ayout:step
 	text76ayout:tallestFaces grapheme:breaksBefore line66reak:lineBreaks line66reak:unitBreak
 	glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
 	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"

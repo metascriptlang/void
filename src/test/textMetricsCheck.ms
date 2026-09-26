@@ -55,7 +55,7 @@ test "per-glyph x and line boxes come from the same layout" {
 	const n = label("ab\ncd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const l = n.textLayout();
 	assert (l.lines.length as int32) == 2;
-	assert approx(l.xForByte(1), l.glyphs[1].x);
+	assert approx(l.xForIndex(1), l.glyphs[1].x);
 }
 
 

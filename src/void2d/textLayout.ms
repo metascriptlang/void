@@ -20,8 +20,29 @@ const TEXT_PRESENTATION: int32 = 0xFE0E;
 const EMOJI_PRESENTATION: int32 = 0xFE0F;
 const ZERO_WIDTH_JOINER: int32 = 0x200D;
 
+const ELLIPSIS: int32 = 0x2026;
+
 export const NO_GLYPH: int32 = -1;
 export const TAB_STOP_SPACES: int32 = 8;
+
+export enum Truncate {
+	None,
+	Start,
+	Middle,
+	End,
+}
+
+export struct LineOptions {
+	truncate: Truncate;
+	hangingIndent: float32;
+	forceWidth: float32;
+}
+
+export const PLAIN_LINES: LineOptions = {
+	truncate: Truncate.None,
+	hangingIndent: 0.0,
+	forceWidth: 0.0,
+};
 
 export enum Align {
 	Left,
@@ -53,6 +74,7 @@ export struct LaidGlyph {
 	byteStart: int32;
 	byteEnd: int32;
 	run: int32;
+	clusterStart: boolean;
 }
 
 export const NO_RUN: int32 = -1;
@@ -94,6 +116,17 @@ export struct TextLayout {
 	decoration: DecorationMetrics;
 }
 
+export interface ShapedText {
+	glyphs: Vec<LaidGlyph>;
+	values: Vec<int32>;
+	breaks: Vec<boolean>;
+	ellipsis: Vec<LaidGlyph>;
+	units: int32;
+	bytes: int32;
+	style: TextStyle;
+	tabStop: float32;
+}
+
 struct Codepoint {
 	value: int32;
 	index: int32;
@@ -103,7 +136,8 @@ struct Codepoint {
 	run: int32;
 	face: int32;
 	scale: float32;
-	breakBefore: boolean;
+	clusterStart: boolean;
+	shapingBreak: boolean;
 }
 
 enum GraphemeCoverage {
@@ -136,17 +170,12 @@ function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 		}
 		out.push({
 			value: value, index: index, byteStart: i, byteEnd: i + length, font: font,
-			run: NO_RUN, face: -1, scale: 1.0, breakBefore: false,
+			run: NO_RUN, face: -1, scale: 1.0, clusterStart: false, shapingBreak: false,
 		});
 		index = index + (value >= 0x10000 ? 2 : 1);
 		i = i + length;
 	}
 	return out;
-}
-
-struct Run {
-	glyphs: Vec<LaidGlyph>;
-	width: float32;
 }
 
 struct Step {
@@ -223,19 +252,14 @@ function assignFaces(cps: Span<Codepoint>): void {
 	let first: int32 = 0;
 	const count: int32 = cps.length as int32;
 	for (let i = 0; i < count; i++) {
-		if (breaksBefore(cursor, cps[i].value) && i > first) {
+		const boundary: boolean = breaksBefore(cursor, cps[i].value);
+		cps[i].clusterStart = boundary;
+		if (boundary && i > first) {
 			assignGrapheme(cps, first, i);
 			first = i;
 		}
 	}
 	if (count > first) { assignGrapheme(cps, first, count); }
-}
-
-function assignBreaks(cps: Span<Codepoint>): void {
-	const values: Vec<int32> = new Array(0);
-	for (const cp of cps) { values.push(cp.value); }
-	const breaks = lineBreaks(values);
-	for (let i = 0; i < (cps.length as int32); i++) { cps[i].breakBefore = breaks[i]; }
 }
 
 function step(
@@ -245,11 +269,11 @@ function step(
 	previousFace: int32,
 	previousRun: int32,
 	style: TextStyle,
+	stop: float32,
 ): Step {
 	if (isControl(codepoint.value)) {
 		let next: float32 = pen;
 		if (codepoint.value == TAB) {
-			const stop: float32 = tabStop(style);
 			next = ((Math.floor(pen / stop) as float32) + 1.0) * stop;
 		}
 		return {
@@ -261,7 +285,8 @@ function step(
 	const size: float32 = style.size * codepoint.scale;
 	const glyph: int32 = glyphIndex(face, codepoint.value);
 	let x: float32 = pen;
-	const sameRun: boolean = previousFace == face && previousRun == codepoint.run;
+	const sameRun: boolean = previousFace == face && previousRun == codepoint.run &&
+		!codepoint.shapingBreak;
 	if (previous >= 0 && sameRun && fontKerns(codepoint.font)) {
 		x = pen + glyphKern(face, previous, glyph, size);
 	}
@@ -272,76 +297,30 @@ function step(
 	};
 }
 
-function layRun(
-	cps: Span<Codepoint>,
-	from: int32,
-	to: int32,
-	style: TextStyle,
-	line: int32,
-): Run {
-	const glyphs: Vec<LaidGlyph> = new Array(0);
-	let pen: float32 = 0.0;
-	let width: float32 = 0.0;
-	let previous: int32 = NO_GLYPH;
-	let previousFace: int32 = -1;
-	let previousRun: int32 = NO_RUN;
-	for (let i = from; i < to; i++) {
-		const value: int32 = cps[i].value;
-		const s = step(cps[i], pen, previous, previousFace, previousRun, style);
-		glyphs.push({
-			face: s.face,
-			glyph: s.glyph,
-			size: s.size,
-			codepoint: value,
-			x: s.x,
-			advance: s.advance,
-			line: line,
-			charIndex: i,
-			index: cps[i].index,
-			byteStart: cps[i].byteStart,
-			byteEnd: cps[i].byteEnd,
-			run: cps[i].run,
-		});
-		if (value != SPACE && s.glyph != NO_GLYPH) { width = s.x + s.advance; }
-		pen = s.next;
-		previous = s.glyph;
-		previousFace = s.face;
-		previousRun = cps[i].run;
-	}
-	return { glyphs: glyphs, width: width };
-}
-
 struct LineBreak {
 	end: int32;
 	next: int32;
 }
 
-function breakAt(cps: Span<Codepoint>, next: int32): LineBreak {
-	const end: int32 = cps[next - 1].value == SPACE ? next - 1 : next;
+function breakAt(glyphs: Span<LaidGlyph>, next: int32): LineBreak {
+	const end: int32 = glyphs[next - 1].codepoint == SPACE ? next - 1 : next;
 	return { end: end, next: next };
 }
 
-function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextStyle): LineBreak {
+function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): LineBreak {
 	const whole: LineBreak = { end: to, next: to };
-	if (style.maxWidth <= 0.0) { return whole; }
+	if (from >= to) { return whole; }
+	const origin: float32 = shaped.glyphs[from].x;
 	let candidate: int32 = -1;
 	let inked: boolean = false;
-	let pen: float32 = 0.0;
-	let previous: int32 = NO_GLYPH;
-	let previousFace: int32 = -1;
-	let previousRun: int32 = NO_RUN;
-	for (let i = from; i < to; i++) {
-		const value: int32 = cps[i].value;
-		if (i > from && inked && cps[i].breakBefore) { candidate = i; }
-		const s = step(cps[i], pen, previous, previousFace, previousRun, style);
-		if (value != SPACE && candidate > from && s.x + s.advance > style.maxWidth) {
-			return breakAt(cps, candidate);
+	for (let k = from; k < to; k++) {
+		const value: int32 = shaped.glyphs[k].codepoint;
+		if (k > from && inked && shaped.breaks[k]) { candidate = k; }
+		const right: float32 = shaped.glyphs[k].x + shaped.glyphs[k].advance - origin;
+		if (value != SPACE && candidate > from && right > room) {
+			return breakAt(shaped.glyphs, candidate);
 		}
 		if (value != SPACE) { inked = true; }
-		pen = s.next;
-		previous = s.glyph;
-		previousFace = s.face;
-		previousRun = cps[i].run;
 	}
 	return whole;
 }
@@ -387,8 +366,9 @@ function alignLines(
 	const share: float32 = alignShare(style.align);
 	if (share == 0.0) { return; }
 	for (let i = 0; i < (lines.length as int32); i++) {
-		const x: float32 = (span - lines[i].width) * share;
-		lines[i].x = x;
+		const indent: float32 = lines[i].x;
+		const x: float32 = (span - indent - lines[i].width) * share;
+		lines[i].x = indent + x;
 		const first: int32 = lines[i].firstGlyph;
 		for (let k = first; k < first + lines[i].glyphCount; k++) {
 			glyphs[k].x = glyphs[k].x + x;
@@ -426,26 +406,238 @@ function assignRuns(cps: Span<Codepoint>, runs: Span<TextRun>, units: int32): vo
 	}
 }
 
-export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
-	const plain: Vec<TextRun> = new Array(0);
-	return layoutRuns(text, style, plain);
+function markShapingBreaks(cps: Span<Codepoint>, breaks: Span<int32>): void {
+	if ((breaks.length as int32) == 0) { return; }
+	for (let i = 0; i < (cps.length as int32); i++) {
+		for (const at of breaks) {
+			if (cps[i].index == at) { cps[i].shapingBreak = true; }
+		}
+	}
 }
 
-export function layoutRuns(
+function hasTab(cps: Span<Codepoint>): boolean {
+	for (let i = 0; i < (cps.length as int32); i++) {
+		if (cps[i].value == TAB) { return true; }
+	}
+	return false;
+}
+
+// Shapes once: one glyph per codepoint, x measured from the start of its paragraph. A width,
+// alignment or truncation change wraps these again without a glyph lookup (GPUI.md:49).
+export function shapeText(
 	text: string,
 	style: TextStyle,
 	runs: Span<TextRun>,
-): TextLayout {
+	shapingBreaks: Span<int32>,
+): ShapedText {
+	const cps: Vec<Codepoint> = decodeUtf8(text, style.font);
+	const count: int32 = cps.length as int32;
+	const units: int32 = count > 0 ? unitEnd(cps[count - 1]) : 0;
+	if (runs.length > 0) { assignRuns(cps, runs, units); }
+	markShapingBreaks(cps, shapingBreaks);
+	assignFaces(cps);
+	const stop: float32 = hasTab(cps) ? tabStop(style) : 0.0;
+	const glyphs: Vec<LaidGlyph> = new Array(0);
+	const values: Vec<int32> = new Array(0);
+	let pen: float32 = 0.0;
+	let previous: int32 = NO_GLYPH;
+	let previousFace: int32 = -1;
+	let previousRun: int32 = NO_RUN;
+	let paragraph: int32 = 0;
+	for (let i = 0; i < count; i++) {
+		const cp: Codepoint = cps[i];
+		values.push(cp.value);
+		let s: Step = {
+			face: cp.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: 0.0, next: pen,
+		};
+		if (cp.value != NEWLINE) {
+			s = step(cp, pen, previous, previousFace, previousRun, style, stop);
+		}
+		glyphs.push({
+			face: s.face,
+			glyph: s.glyph,
+			size: s.size,
+			codepoint: cp.value,
+			x: s.x,
+			advance: s.advance,
+			line: paragraph,
+			charIndex: i,
+			index: cp.index,
+			byteStart: cp.byteStart,
+			byteEnd: cp.byteEnd,
+			run: cp.run,
+			clusterStart: cp.clusterStart,
+		});
+		if (cp.value == NEWLINE) {
+			pen = 0.0;
+			previous = NO_GLYPH;
+			previousFace = -1;
+			previousRun = NO_RUN;
+			paragraph = paragraph + 1;
+			continue;
+		}
+		pen = s.next;
+		previous = s.glyph;
+		previousFace = s.face;
+		previousRun = cp.run;
+	}
+	return {
+		glyphs: glyphs,
+		values: values,
+		breaks: new Array(0),
+		ellipsis: new Array(0),
+		units: units,
+		bytes: count > 0 ? cps[count - 1].byteEnd : 0,
+		style: style,
+		tabStop: stop,
+	};
+}
+
+function lineWidthOf(glyphs: Span<LaidGlyph>, first: int32): float32 {
+	let width: float32 = 0.0;
+	for (let k = first; k < (glyphs.length as int32); k++) {
+		const g: LaidGlyph = glyphs[k];
+		if (g.codepoint != SPACE && g.glyph != NO_GLYPH) { width = g.x + g.advance; }
+	}
+	return width;
+}
+
+// GPUI's force_width (line_layout.rs:898-921): a base moves onto the grid unless it is within a
+// pixel of it, a combining mark keeps its offset. A base is a grapheme's first glyph: GPUI finds
+// it by x, which holds only once a shaper has put the marks over their base.
+function forceCells(glyphs: Span<LaidGlyph>, first: int32, cell: float32): float32 {
+	let cells: int32 = 0;
+	let lastShaped: float32 = 0.0;
+	let lastActual: float32 = 0.0;
+	for (let k = first; k < (glyphs.length as int32); k++) {
+		const shaped: float32 = glyphs[k].x;
+		if (glyphs[k].clusterStart || k == first) {
+			const forced: float32 = (cells as float32) * cell;
+			if (Math.abs(shaped - forced) > 1.0) { glyphs[k].x = forced; }
+			glyphs[k].advance = cell;
+			lastShaped = shaped;
+			lastActual = glyphs[k].x;
+			cells = cells + 1;
+		} else {
+			glyphs[k].x = lastActual + (shaped - lastShaped);
+		}
+	}
+	return (cells as float32) * cell;
+}
+
+function pushLine(
+	shaped: ShapedText,
+	from: int32,
+	end: int32,
+	lineIndex: int32,
+	ref out: Vec<LaidGlyph>,
+): void {
+	let delta: float32 = from < end ? -shaped.glyphs[from].x : 0.0;
+	for (let k = from; k < end; k++) {
+		const g: LaidGlyph = shaped.glyphs[k];
+		const x: float32 = g.x + delta;
+		let advance: float32 = g.advance;
+		if (g.codepoint == TAB && shaped.tabStop > 0.0) {
+			const stops: float32 = (Math.floor(x / shaped.tabStop) as float32) + 1.0;
+			const next: float32 = stops * shaped.tabStop;
+			delta = delta + (next - x) - advance;
+			advance = next - x;
+		}
+		out.push({ ...g, x: x, advance: advance, line: lineIndex });
+	}
+}
+
+function ellipsisGlyph(shaped: ShapedText): LaidGlyph {
+	if ((shaped.ellipsis.length as int32) == 0) {
+		const style: TextStyle = shaped.style;
+		const source: CodepointFace = codepointFace(style.font, ELLIPSIS);
+		const size: float32 = style.size * source.scale;
+		const glyph: int32 = glyphIndex(source.face, ELLIPSIS);
+		shaped.ellipsis.push({
+			face: source.face, glyph: glyph, size: size, codepoint: ELLIPSIS, x: 0.0,
+			advance: glyphAdvance(source.face, glyph, size), line: 0, charIndex: 0, index: 0,
+			byteStart: 0, byteEnd: 0, run: NO_RUN, clusterStart: true,
+		});
+	}
+	return shaped.ellipsis[0];
+}
+
+function elided(
+	shaped: ShapedText,
+	at: int32,
+	x: float32,
+	lineIndex: int32,
+	run: int32,
+): LaidGlyph {
+	const g: LaidGlyph = shaped.glyphs[at];
+	return {
+		...ellipsisGlyph(shaped), x: x, line: lineIndex, charIndex: g.charIndex, index: g.index,
+		byteStart: g.byteStart, byteEnd: g.byteStart, run: run,
+	};
+}
+
+// GPUI's truncation (line_wrapper.rs:141-446): the line keeps what fits beside an ellipsis,
+// cut only where a grapheme starts.
+function pushTruncated(
+	shaped: ShapedText,
+	from: int32,
+	to: int32,
+	lineIndex: int32,
+	ref out: Vec<LaidGlyph>,
+	room: float32,
+	truncate: Truncate,
+): void {
+	const first: int32 = out.length as int32;
+	pushLine(shaped, from, to, lineIndex, out);
+	const full: float32 = lineWidthOf(out, first);
+	if (full <= room || to <= from) { return; }
+	const line: Vec<LaidGlyph> = new Array(0);
+	for (let k = first; k < (out.length as int32); k++) { line.push(out[k]); }
+	while ((out.length as int32) > first) { out.pop(); }
+	const dots: float32 = ellipsisGlyph(shaped).advance;
+	const count: int32 = line.length as int32;
+	const budget: float32 = truncate == Truncate.Middle ? (room - dots) * 0.5 : room - dots;
+	let head: int32 = 0;
+	if (truncate != Truncate.Start) {
+		while (head < count) {
+			const fits: boolean = line[head].x + line[head].advance <= budget;
+			if (line[head].clusterStart && !fits) { break; }
+			head = head + 1;
+		}
+		while (head > 0 && head < count && !line[head].clusterStart) { head = head - 1; }
+	}
+	let tail: int32 = count;
+	if (truncate != Truncate.End) {
+		const end: float32 = line[count - 1].x + line[count - 1].advance;
+		let k: int32 = count;
+		while (k > head) {
+			const at: int32 = k - 1;
+			if (end - line[at].x > budget) { break; }
+			k = at;
+			if (line[k].clusterStart) { tail = k; }
+		}
+	}
+	for (let k = 0; k < head; k++) { out.push(line[k]); }
+	const cut: int32 = head < count ? head : count - 1;
+	const dotsX: float32 = head > 0 ? line[head - 1].x + line[head - 1].advance : 0.0;
+	const run: int32 = head > 0 ? line[head - 1].run : line[tail < count ? tail : count - 1].run;
+	out.push(elided(shaped, from + cut, dotsX, lineIndex, run));
+	if (tail < count) {
+		const shift: float32 = dotsX + dots - line[tail].x;
+		for (let k = tail; k < count; k++) { out.push({ ...line[k], x: line[k].x + shift }); }
+	}
+}
+
+export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOptions): TextLayout {
 	const primary: int32 = fontFace(style.font);
 	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
-	const cps: Vec<Codepoint> = decodeUtf8(text, style.font);
-	const count: int32 = cps.length as int32;
-	if (runs.length > 0) { assignRuns(cps, runs, count > 0 ? unitEnd(cps[count - 1]) : 0); }
-	assignFaces(cps);
-	if (style.maxWidth > 0.0) { assignBreaks(cps); }
-	const textBytes: int32 = count > 0 ? cps[count - 1].byteEnd : 0;
-	const textUnits: int32 = count > 0 ? unitEnd(cps[count - 1]) : 0;
+	const truncating: boolean = style.maxWidth > 0.0 && options.truncate != Truncate.None;
+	const wrapping: boolean = style.maxWidth > 0.0 && !truncating;
+	const count: int32 = shaped.glyphs.length as int32;
+	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
+		shaped.breaks = lineBreaks(shaped.values);
+	}
 	const glyphs: Vec<LaidGlyph> = new Array(0);
 	const lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
@@ -453,45 +645,63 @@ export function layoutRuns(
 	let start: int32 = 0;
 	while (true) {
 		let paragraphEnd: int32 = start;
-		while (paragraphEnd < count && cps[paragraphEnd].value != NEWLINE) {
+		while (paragraphEnd < count && shaped.glyphs[paragraphEnd].codepoint != NEWLINE) {
 			paragraphEnd = paragraphEnd + 1;
 		}
-		const lineBreak: LineBreak = breakAfter(cps, start, paragraphEnd, style);
-		const end: int32 = lineBreak.end;
-		const lineIndex: int32 = lines.length as int32;
-		const run = layRun(cps, start, end, style, lineIndex);
-		const box: FaceMetrics = tallestFaces(run.glyphs, primary, style);
-		const height: float32 = box.ascent + box.descent + box.lineGap;
-		const firstGlyph: int32 = glyphs.length as int32;
-		for (const g of run.glyphs) { glyphs.push(g); }
-		const byteStart: int32 = start < count ? cps[start].byteStart : textBytes;
-		const byteEnd: int32 = end > start ? cps[end - 1].byteEnd : byteStart;
-		const indexStart: int32 = start < count ? cps[start].index : textUnits;
-		const indexEnd: int32 = end > start ? unitEnd(cps[end - 1]) : indexStart;
-		lines.push({
-			firstGlyph: firstGlyph,
-			glyphCount: run.glyphs.length as int32,
-			x: 0.0,
-			top: top,
-			baseline: top + box.ascent,
-			height: height,
-			width: run.width,
-			charStart: start,
-			charEnd: end,
-			indexStart: indexStart,
-			indexEnd: indexEnd,
-			byteStart: byteStart,
-			byteEnd: byteEnd,
-		});
-		if (run.width > width) { width = run.width; }
-		top = top + height + style.lineSpacing;
-		if (lineBreak.next < paragraphEnd) {
-			start = lineBreak.next;
-		} else if (paragraphEnd < count) {
-			start = paragraphEnd + 1;
-		} else {
-			break;
+		let lineStart: int32 = start;
+		let continuation: boolean = false;
+		while (true) {
+			const indent: float32 = continuation ? options.hangingIndent : 0.0;
+			const lineBreak: LineBreak = wrapping
+				? breakAfter(shaped, lineStart, paragraphEnd, style.maxWidth - indent)
+				: { end: paragraphEnd, next: paragraphEnd };
+			const end: int32 = lineBreak.end;
+			const lineIndex: int32 = lines.length as int32;
+			const firstGlyph: int32 = glyphs.length as int32;
+			if (truncating) {
+				pushTruncated(
+					shaped, lineStart, end, lineIndex, glyphs, style.maxWidth, options.truncate,
+				);
+			} else {
+				pushLine(shaped, lineStart, end, lineIndex, glyphs);
+			}
+			let lineWidth: float32 = options.forceWidth > 0.0
+				? forceCells(glyphs, firstGlyph, options.forceWidth)
+				: lineWidthOf(glyphs, firstGlyph);
+			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {
+				glyphs[k].x = glyphs[k].x + indent;
+			}
+			const lineGlyphs: Span<LaidGlyph> = glyphs[firstGlyph..(glyphs.length as int32)];
+			const box: FaceMetrics = tallestFaces(lineGlyphs, primary, style);
+			const height: float32 = box.ascent + box.descent + box.lineGap;
+			const atEnd: boolean = lineStart >= count;
+			const indexStart: int32 = atEnd ? shaped.units : shaped.glyphs[lineStart].index;
+			const byteStart: int32 = atEnd ? shaped.bytes : shaped.glyphs[lineStart].byteStart;
+			const indexEnd: int32 = end > lineStart ? unitsTo(shaped, end) : indexStart;
+			const byteEnd: int32 = end > lineStart ? shaped.glyphs[end - 1].byteEnd : byteStart;
+			lines.push({
+				firstGlyph: firstGlyph,
+				glyphCount: (glyphs.length as int32) - firstGlyph,
+				x: indent,
+				top: top,
+				baseline: top + box.ascent,
+				height: height,
+				width: lineWidth,
+				charStart: lineStart,
+				charEnd: end,
+				indexStart: indexStart,
+				indexEnd: indexEnd,
+				byteStart: byteStart,
+				byteEnd: byteEnd,
+			});
+			if (indent + lineWidth > width) { width = indent + lineWidth; }
+			top = top + height + style.lineSpacing;
+			if (lineBreak.next >= paragraphEnd) { break; }
+			lineStart = lineBreak.next;
+			continuation = true;
 		}
+		if (paragraphEnd >= count) { break; }
+		start = paragraphEnd + 1;
 	}
 	alignLines(glyphs, lines, style, width);
 	return {
@@ -504,6 +714,21 @@ export function layoutRuns(
 		height: top - style.lineSpacing,
 		decoration: decorationMetrics(primary, style.size),
 	};
+}
+
+function unitsTo(shaped: ShapedText, end: int32): int32 {
+	const last: LaidGlyph = shaped.glyphs[end - 1];
+	return last.index + (last.codepoint >= 0x10000 ? 2 : 1);
+}
+
+export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
+	const plain: Vec<TextRun> = new Array(0);
+	return layoutRuns(text, style, plain);
+}
+
+export function layoutRuns(text: string, style: TextStyle, runs: Span<TextRun>): TextLayout {
+	const noBreaks: Vec<int32> = new Array(0);
+	return wrapText(shapeText(text, style, runs, noBreaks), style, PLAIN_LINES);
 }
 
 export function calcTextWidth(text: string, style: TextStyle): float32 {
@@ -519,24 +744,98 @@ export function splitText(this l: TextLayout, text: string): string {
 	return out;
 }
 
-export function xForByte(this l: TextLayout, byteIndex: int32): float32 {
-	for (const line of l.lines) {
-		if (byteIndex < line.byteStart || byteIndex > line.byteEnd) { continue; }
-		for (let i = line.firstGlyph; i < line.firstGlyph + line.glyphCount; i++) {
-			if (l.glyphs[i].byteStart == byteIndex) { return l.glyphs[i].x; }
+function lineOfIndex(l: TextLayout, index: int32): int32 {
+	const last: int32 = (l.lines.length as int32) - 1;
+	for (let i = 0; i <= last; i++) {
+		if (index < l.lines[i].indexEnd || (index == l.lines[i].indexEnd && i == last)) {
+			return i;
 		}
-		if (line.glyphCount == 0) { return line.x; }
-		const last: LaidGlyph = l.glyphs[line.firstGlyph + line.glyphCount - 1];
-		return last.x + last.advance;
+		if (i < last && index < l.lines[i + 1].indexStart) { return i; }
 	}
-	return 0.0;
+	return last;
 }
 
-export function byteForX(this l: TextLayout, lineIndex: int32, x: float32): int32 {
-	const line: LineBox = l.lines[lineIndex];
-	for (let i = line.firstGlyph; i < line.firstGlyph + line.glyphCount; i++) {
-		const g: LaidGlyph = l.glyphs[i];
-		if (x < g.x + g.advance * 0.5) { return g.byteStart; }
+// GPUI's x_for_index (line_layout.rs:61-129), over every line: the x of the caret before
+// `index`, a UTF-16 unit; past a line's last glyph it is the line's end.
+export function xForIndex(this l: TextLayout, index: int32): float32 {
+	if ((l.lines.length as int32) == 0) { return 0.0; }
+	const line: LineBox = l.lines[lineOfIndex(l, index)];
+	const end: int32 = line.firstGlyph + line.glyphCount;
+	for (let k = line.firstGlyph; k < end; k++) {
+		if (l.glyphs[k].index >= index) { return l.glyphs[k].x; }
 	}
-	return line.byteEnd;
+	if (line.glyphCount == 0) { return line.x; }
+	return l.glyphs[end - 1].x + l.glyphs[end - 1].advance;
+}
+
+export function lineBoxAt(this l: TextLayout, index: int32): LineBox {
+	return l.lines[lineOfIndex(l, index)];
+}
+
+// GPUI's closest_index_for_x on the line under `y`: the grapheme boundary nearest to `x`.
+export function indexAt(this l: TextLayout, x: float32, y: float32): int32 {
+	const count: int32 = l.lines.length as int32;
+	if (count == 0) { return 0; }
+	let li: int32 = 0;
+	while (li + 1 < count && y >= l.lines[li + 1].top) { li = li + 1; }
+	const line: LineBox = l.lines[li];
+	const end: int32 = line.firstGlyph + line.glyphCount;
+	for (let k = line.firstGlyph; k < end; k++) {
+		if (!l.glyphs[k].clusterStart) { continue; }
+		let right: float32 = l.glyphs[k].x + l.glyphs[k].advance;
+		let next: int32 = k + 1;
+		while (next < end && !l.glyphs[next].clusterStart) {
+			right = l.glyphs[next].x + l.glyphs[next].advance;
+			next = next + 1;
+		}
+		if (x < (l.glyphs[k].x + right) * 0.5) { return l.glyphs[k].index; }
+	}
+	return line.indexEnd;
+}
+
+// GPUI's ShapedLine::split_at (line.rs:193-380): one line cut in two at `index` without being
+// shaped again; the right half starts at x 0.
+export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayout] {
+	if ((l.lines.length as int32) != 1) {
+		console.log(`void2d: splitAt cuts one line, and this layout has ${l.lines.length}`);
+		unreachable;
+	}
+	const line: LineBox = l.lines[0];
+	let cut: int32 = line.firstGlyph + line.glyphCount;
+	for (let k = line.firstGlyph; k < line.firstGlyph + line.glyphCount; k++) {
+		if (l.glyphs[k].index >= index) {
+			cut = k;
+			break;
+		}
+	}
+	const left: Vec<LaidGlyph> = new Array(0);
+	const right: Vec<LaidGlyph> = new Array(0);
+	const origin: float32 = cut < line.firstGlyph + line.glyphCount ? l.glyphs[cut].x : 0.0;
+	for (let k = line.firstGlyph; k < line.firstGlyph + line.glyphCount; k++) {
+		if (k < cut) {
+			left.push(l.glyphs[k]);
+		} else {
+			right.push({ ...l.glyphs[k], x: l.glyphs[k].x - origin });
+		}
+	}
+	const leftWidth: float32 = lineWidthOf(left, 0);
+	const rightWidth: float32 = lineWidthOf(right, 0);
+	const whole: boolean = cut >= line.firstGlyph + line.glyphCount;
+	const leftEnd: int32 = whole ? line.indexEnd : l.glyphs[cut].index;
+	const leftLine: LineBox = {
+		...line, firstGlyph: 0, glyphCount: left.length as int32, width: leftWidth,
+		charEnd: line.charStart + (left.length as int32), indexEnd: leftEnd,
+	};
+	const rightLine: LineBox = {
+		...line, firstGlyph: 0, glyphCount: right.length as int32, x: 0.0, width: rightWidth,
+		charStart: line.charStart + (left.length as int32), indexStart: leftEnd,
+	};
+	const leftLines: Vec<LineBox> = new Array(0);
+	leftLines.push(leftLine);
+	const rightLines: Vec<LineBox> = new Array(0);
+	rightLines.push(rightLine);
+	return [
+		{ ...l, glyphs: left, lines: leftLines, width: leftWidth },
+		{ ...l, glyphs: right, lines: rightLines, width: rightWidth },
+	];
 }
