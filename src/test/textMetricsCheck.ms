@@ -1,6 +1,6 @@
 import { label, rect } from "../void2d/node";
 import { textLayout, textWidth, textHeight, calcTextWidth, splitText, getBounds } from "../void2d/render";
-import { TextLayout } from "../void2d/textLayout";
+import { Align, TextLayout } from "../void2d/textLayout";
 import { Bounds, rgba, emptyBounds, identity2d } from "../void2d/types";
 import {
 	DEFAULT_FONT,
@@ -21,7 +21,7 @@ test "textWidth is the width of the layout the label paints" {
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
 		maxWidth: 0.0,
-		align: 0.0,
+		align: Align.Left,
 	});
 	assert approx(n.textWidth(), direct.width);
 	assert approx(n.textHeight(), direct.height);
@@ -47,7 +47,7 @@ test "calcTextWidth and splitText use the label's font, size and wrap width" {
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
 		maxWidth: 0.0,
-		align: 0.0,
+		align: Align.Left,
 	}).width);
 }
 

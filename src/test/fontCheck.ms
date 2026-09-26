@@ -16,7 +16,7 @@ import {
 	fallbackProbes,
 } from "../void2d/font";
 import { label } from "../void2d/node";
-import { TextLayout } from "../void2d/textLayout";
+import { Align, TextLayout } from "../void2d/textLayout";
 import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
 
@@ -70,7 +70,12 @@ function faceOfPath(path: string): int32 {
 
 function layoutWith(fontId: FontId, text: string): TextLayout {
 	return TextLayout.layout(text, {
-		font: fontId, size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+		font: fontId,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
 	});
 }
 

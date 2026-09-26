@@ -8,6 +8,7 @@ import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
 import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
+import { Align } from "../void2d/textLayout";
 import { Scene, scene, add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode, Smooth } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
@@ -117,7 +118,7 @@ export function init2d(): void {
 	linearNode.h = 80.0;
 
 	const ml = label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0)).at(800.0, 285.0);
-	ml.align = 0.5;
+	ml.textAlign = Align.Center;
 
 	const para = label("The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0)).at(40.0, 565.0);
 	para.maxWidth = 330.0;

@@ -1,3 +1,4 @@
+import { Align } from "../void2d/textLayout";
 import { DEFAULT_FONT } from "../void2d/font";
 import {
 	allocateLabelText,
@@ -28,7 +29,7 @@ function shapedAt(text: string, size: float32): int32 {
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
 		maxWidth: 0.0,
-		align: 0.0,
+		align: Align.Left,
 	});
 	return index;
 }

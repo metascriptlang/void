@@ -7,7 +7,7 @@ import {
 	quantizeX,
 	snapBaseline,
 } from "./glyphAtlas";
-import { TextLayout, TextStyle, NO_GLYPH } from "./textLayout";
+import { Align, TextLayout, TextStyle, NO_GLYPH } from "./textLayout";
 import { DEFAULT_FONT } from "./font";
 import { Transform2D } from "./types";
 
@@ -112,7 +112,7 @@ export function allocateLabelText(): int32 {
 			letterSpacing: 0.0,
 			lineSpacing: 0.0,
 			maxWidth: 0.0,
-			align: 0.0,
+			align: Align.Left,
 		},
 		placed: new Array(0),
 		placedValid: false,

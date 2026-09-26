@@ -199,12 +199,13 @@ function labelStyle(n: Node2D): TextStyle {
 		letterSpacing: n.letterSpacing,
 		lineSpacing: n.lineSpacing,
 		maxWidth: n.maxWidth,
-		align: n.align,
+		align: n.textAlign,
 	};
 }
 
 function shapeIfChanged(n: Node2D): void {
-	const textChanged: boolean = n.textDirty || n.size != n.lastSize || n.align != n.lastAlign
+	const textChanged: boolean = n.textDirty || n.size != n.lastSize
+		|| n.textAlign != n.lastTextAlign
 		|| n.letterSpacing != n.lastLetterSpacing || n.lineSpacing != n.lastLineSpacing
 		|| n.maxWidth != n.lastMaxWidth || !n.text.equals(n.lastText)
 		|| n.fontId != n.lastFontId;
@@ -229,7 +230,7 @@ function shapeIfChanged(n: Node2D): void {
 			if (baseline + top < n.contentYMin) { n.contentYMin = baseline + top; }
 			if (baseline + bottom > n.contentYMax) { n.contentYMax = baseline + bottom; }
 		}
-		n.lastText = n.text; n.lastSize = n.size; n.lastAlign = n.align;
+		n.lastText = n.text; n.lastSize = n.size; n.lastTextAlign = n.textAlign;
 		n.lastLetterSpacing = n.letterSpacing;
 		n.lastLineSpacing = n.lineSpacing;
 		n.lastMaxWidth = n.maxWidth;
@@ -513,7 +514,7 @@ function emitNode(
 				drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
 					tl.x, tl.y, sizeX, sizeY,
 					0.0, 0.0, 0.0, 0.0,
-					n.size, n.align, 0.0, 0.0,
+					n.size, n.borderL, 0.0, 0.0,
 					0.0, 0.0, 0.0,
 					0.0, 0.0, 0.0, 0.0,
 					col, transparent, transparent);

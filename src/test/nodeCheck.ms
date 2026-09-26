@@ -48,7 +48,7 @@ test "underline factory reserves GPUI's three-thickness wavy bounds" {
 	assert approx(straight.h, 2.0);
 	assert approx(wavy.h, 6.0);
 	assert approx(wavy.size, 2.0);
-	assert approx(wavy.align, 1.0);
+	assert approx(wavy.borderL, 1.0);
 }
 
 test "selection factory retains adjacent-row geometry and gloop bounds" {

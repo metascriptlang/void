@@ -7,6 +7,7 @@ import {
 import {
 	TextLayout,
 	TextStyle,
+	Align,
 	NO_GLYPH,
 	TAB_STOP_SPACES,
 	calcTextWidth,
@@ -28,7 +29,7 @@ function style(): TextStyle {
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
 		maxWidth: 0.0,
-		align: 0.0,
+		align: Align.Left,
 	};
 }
 
@@ -145,11 +146,33 @@ test "lines advance by the line height plus lineSpacing in pixels" {
 	assert approx(l.height, 2.0 * lineHeight + 4.0);
 }
 
-test "align shifts each line by its own width about the origin" {
-	const l = TextLayout.layout("abc\na", { ...style(), align: 0.5 });
+test "Center and Right with no maxWidth align each line about the origin, as h2d does" {
+	const l = TextLayout.layout("abc\na", { ...style(), align: Align.Center });
 	assert approx(l.lines[0].x, -l.lines[0].width * 0.5);
 	assert approx(l.lines[1].x, -l.lines[1].width * 0.5);
 	assert approx(l.glyphs[l.lines[1].firstGlyph].x, l.lines[1].x);
+	const r = TextLayout.layout("abc\na", { ...style(), align: Align.Right });
+	assert approx(r.lines[1].x, -r.lines[1].width);
+}
+
+test "Center and Right with a maxWidth align each line inside it" {
+	const box: float32 = 200.0;
+	const c = TextLayout.layout("abc\na", { ...style(), maxWidth: box, align: Align.Center });
+	assert approx(c.lines[0].x, (box - c.lines[0].width) * 0.5);
+	assert approx(c.lines[1].x, (box - c.lines[1].width) * 0.5);
+	const r = TextLayout.layout("abc\na", { ...style(), maxWidth: box, align: Align.Right });
+	assert approx(r.lines[1].x, box - r.lines[1].width);
+	assert approx(r.glyphs[r.lines[1].firstGlyph].x, r.lines[1].x);
+}
+
+test "the Multiline aligns work inside the widest line" {
+	const c = TextLayout.layout("abc\na", { ...style(), align: Align.MultilineCenter });
+	assert approx(c.lines[0].x, 0.0);
+	assert approx(c.lines[1].x, (c.width - c.lines[1].width) * 0.5);
+	const r = TextLayout.layout("abc\na", { ...style(), align: Align.MultilineRight });
+	assert approx(r.lines[1].x, r.width - r.lines[1].width);
+	const left = TextLayout.layout("abc\na", { ...style(), align: Align.Left });
+	assert left.lines[1].x == 0.0;
 }
 
 test "multi-byte text keeps byte ranges for the caret" {

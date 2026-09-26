@@ -1,7 +1,7 @@
 import { readFile } from "std/fs";
 import { loadFace, faceMetrics, decorationMetrics, faceHeights } from "../void2d/face";
 import { DEFAULT_FONT, addFont } from "../void2d/font";
-import { TextLayout } from "../void2d/textLayout";
+import { Align, TextLayout } from "../void2d/textLayout";
 
 const METRICS_PATH: string = "tests/oracle/metrics.json";
 const SHAPE_PATH: string = "tests/oracle/shape.json";
@@ -79,7 +79,7 @@ test "cmap glyph ids and kerned pen positions agree with HarfBuzz, GSUB off" {
 			letterSpacing: 0.0,
 			lineSpacing: 0.0,
 			maxWidth: 0.0,
-			align: 0.0,
+			align: Align.Left,
 		});
 		const expected: int32 = glyphs.length() as int32;
 		if ((l.glyphs.length as int32) != expected) {

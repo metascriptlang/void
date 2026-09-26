@@ -27,7 +27,7 @@ import { GlyphAtlas } from "../void2d/glyphAtlas";
 import { Node2D, group, rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
 import { rgba, tile } from "../void2d/types";
-import { calcTextWidth } from "../void2d/textLayout";
+import { Align, calcTextWidth } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
@@ -172,7 +172,7 @@ function measureGlyphLookups(): int32 {
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
 		maxWidth: 0.0,
-		align: 0.0,
+		align: Align.Left,
 	});
 	return (glyphLookups() - before) as int32;
 }

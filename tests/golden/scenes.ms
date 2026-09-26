@@ -11,6 +11,7 @@ import {
 	Node2D, group, rect, sprite, label, graphics, mask, scaleGrid, underline, selection,
 	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
+import { Align } from "../../src/void2d/textLayout";
 import {
 	addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature, SizeAdjust,
 	DEFAULT_FONT,
@@ -707,9 +708,9 @@ function textMultilineAlign(): Scene {
 	const s = scene(DARK);
 	const left = label("void2d\nleft\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0)).at(14.0, 12.0);
 	const centred = label("void2d\ncentred\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0)).at(160.0, 12.0);
-	centred.align = 0.5;
+	centred.textAlign = Align.Center;
 	const right = label("void2d\nright\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0)).at(306.0, 12.0);
-	right.align = 1.0;
+	right.textAlign = Align.Right;
 	s.add(left);
 	s.add(centred);
 	s.add(right);

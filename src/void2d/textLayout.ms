@@ -22,13 +22,21 @@ const ZERO_WIDTH_JOINER: int32 = 0x200D;
 export const NO_GLYPH: int32 = -1;
 export const TAB_STOP_SPACES: int32 = 8;
 
+export enum Align {
+	Left,
+	Right,
+	Center,
+	MultilineRight,
+	MultilineCenter,
+}
+
 export struct TextStyle {
 	font: FontId;
 	size: float32;
 	letterSpacing: float32;
 	lineSpacing: float32;
 	maxWidth: float32;
-	align: float32;
+	align: Align;
 }
 
 export struct LaidGlyph {
@@ -330,6 +338,35 @@ function tallestFaces(glyphs: Span<LaidGlyph>, primary: int32, style: TextStyle)
 	return { ascent: ascent, descent: descent, lineGap: own.lineGap };
 }
 
+function alignShare(align: Align): float32 {
+	return match (align) {
+		Align.Left => 0.0,
+		Align.Center | Align.MultilineCenter => 0.5,
+		Align.Right | Align.MultilineRight => 1.0,
+	};
+}
+
+function alignLines(
+	glyphs: Span<LaidGlyph>,
+	lines: Span<LineBox>,
+	style: TextStyle,
+	widest: float32,
+): void {
+	const multiline: boolean = style.align == Align.MultilineCenter ||
+		style.align == Align.MultilineRight;
+	const span: float32 = multiline ? widest : (style.maxWidth > 0.0 ? style.maxWidth : 0.0);
+	const share: float32 = alignShare(style.align);
+	if (share == 0.0) { return; }
+	for (let i = 0; i < (lines.length as int32); i++) {
+		const x: float32 = (span - lines[i].width) * share;
+		lines[i].x = x;
+		const first: int32 = lines[i].firstGlyph;
+		for (let k = first; k < first + lines[i].glyphCount; k++) {
+			glyphs[k].x = glyphs[k].x + x;
+		}
+	}
+}
+
 export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
 	const primary: int32 = fontFace(style.font);
 	const metrics = faceMetrics(primary, style.size);
@@ -355,15 +392,14 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		const run = layRun(cps, start, end, style, lineIndex);
 		const box: FaceMetrics = tallestFaces(run.glyphs, primary, style);
 		const height: float32 = box.ascent + box.descent + box.lineGap;
-		const x: float32 = -run.width * style.align;
 		const firstGlyph: int32 = glyphs.length as int32;
-		for (const g of run.glyphs) { glyphs.push({ ...g, x: g.x + x }); }
+		for (const g of run.glyphs) { glyphs.push(g); }
 		const byteStart: int32 = start < count ? cps[start].byteStart : textBytes;
 		const byteEnd: int32 = end > start ? cps[end - 1].byteEnd : byteStart;
 		lines.push({
 			firstGlyph: firstGlyph,
 			glyphCount: run.glyphs.length as int32,
-			x: x,
+			x: 0.0,
 			top: top,
 			baseline: top + box.ascent,
 			height: height,
@@ -383,6 +419,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 			break;
 		}
 	}
+	alignLines(glyphs, lines, style, width);
 	return {
 		glyphs: glyphs,
 		lines: lines,
