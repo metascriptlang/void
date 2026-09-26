@@ -40,10 +40,6 @@ test "per-glyph x and line boxes come from the same layout" {
 	assert approx(l.xForByte(1), l.glyphs[1].x);
 }
 
-test "text metrics on a node that is not a Label are empty, not a crash" {
-	const box = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
-	assert box.textWidth() == 0.0;
-}
 
 test "a label's bounds hold the ink that overhangs its line box" {
 	registerFace("assets/font.ttf", "Overhang Sans", 400, FontStyle.Normal);

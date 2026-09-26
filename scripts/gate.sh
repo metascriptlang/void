@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe out/metricsOnRect.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -121,6 +121,14 @@ if [ "$outside_status" -ne 0 ] && grep -q 'fbWidth outside a view frame' out/gat
 	pass "fbWidth outside a view frame aborts and names the call"
 else
 	fail "fbWidth outside a view frame did not abort (exit $outside_status) — see out/gate-two-views-outside.log"
+fi
+metrics_status=0
+"$MSC" build tests/aborts/metricsOnRect.ms --output=out/metricsOnRect.exe > out/gate-metrics-rect.log 2>&1 || true
+out/metricsOnRect.exe >> out/gate-metrics-rect.log 2>&1 || metrics_status=$?
+if [ "$metrics_status" -ne 0 ] && grep -q 'textWidth asked of a Rect node' out/gate-metrics-rect.log; then
+	pass "textWidth on a Rect aborts and names the call"
+else
+	fail "textWidth on a Rect did not abort (exit $metrics_status) — see out/gate-metrics-rect.log"
 fi
 
 echo
@@ -239,9 +247,12 @@ FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:
 	draw:drawMeshRange snap:snapBoxEdges"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement text76ayout:layout text76ayout:layRun
-	text76ayout:decodeUtf8 glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
+	text76ayout:decodeUtf8 text76ayout:assignFaces text76ayout:assignGrapheme
+	text76ayout:graphemeFace text76ayout:assignBreaks text76ayout:breakAfter text76ayout:step
+	text76ayout:tallestFaces grapheme:breaksBefore line66reak:lineBreaks line66reak:unitBreak
+	glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
 	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"
-MEASURE_PATH="render:textWidth render:textHeight render:shapedLabel"
+MEASURE_PATH="render:textWidth render:textHeight render:requireLabel"
 copied=""
 allocated=""
 unreachable=""

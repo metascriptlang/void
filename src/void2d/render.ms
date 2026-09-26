@@ -879,34 +879,36 @@ export function getBounds(this n: Node2D, ref out: Bounds): void {
 	}
 }
 
-function shapedLabel(n: Node2D): boolean {
-	if (n.kind !== DrawKind.Label) {
-		console.log("void2d: text metrics asked of a node that is not a Label");
-		return false;
-	}
-	shapeIfChanged(n);
-	return true;
+function requireLabel(n: Node2D, call: string): void {
+	if (n.kind === DrawKind.Label) { return; }
+	console.log(`void2d: ${call} asked of a ${n.kind.toString()} node; only a Label has text`);
+	unreachable;
 }
 
 export function textLayout(this n: Node2D): TextLayout {
-	if (!shapedLabel(n)) { return TextLayout.layout("", labelStyle(n)); }
+	requireLabel(n, "textLayout");
+	shapeIfChanged(n);
 	return labelTexts[n.payload].layout;
 }
 
 export function textWidth(this n: Node2D): float32 {
-	if (!shapedLabel(n)) { return TextLayout.layout("", labelStyle(n)).width; }
+	requireLabel(n, "textWidth");
+	shapeIfChanged(n);
 	return labelTexts[n.payload].layout.width;
 }
 
 export function textHeight(this n: Node2D): float32 {
-	if (!shapedLabel(n)) { return TextLayout.layout("", labelStyle(n)).height; }
+	requireLabel(n, "textHeight");
+	shapeIfChanged(n);
 	return labelTexts[n.payload].layout.height;
 }
 
 export function calcTextWidth(this n: Node2D, text: string): float32 {
+	requireLabel(n, "calcTextWidth");
 	return layoutWidth(text, labelStyle(n));
 }
 
 export function splitText(this n: Node2D, text: string): string {
+	requireLabel(n, "splitText");
 	return TextLayout.layout(text, labelStyle(n)).splitText(text);
 }
