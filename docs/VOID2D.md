@@ -870,18 +870,68 @@ with `--release` on BUILD `598ca62e`, the P4 head `c85f5d0` (tree `2497f5d`) aga
 **Lands.**
 
 - Persistent instance ranges with dirty-range upload; draw order rebuilt only on structural change; "identical bytes → skip the upload" (MAKEPAD.md:117).
-- The in-place paint-only patch: hover, focus and caret blink write instance floats and never walk the tree.
+- The in-place paint-only patch: a paint-only write and a caret blink write instance floats and never walk the tree. void2d has no hover or focus; what the host does on either is a colour or alpha write, and that is the paint-only case.
 - `TileGroup` — the h2d-native retained multi-quad node on one texture — and the non-overlap node flag, with Makepad's lane fallback where a draw cannot join the unified pipeline (a custom shader, a second atlas page), guarded by the flag rather than by a depth buffer.
 - `Mask.scrollX/Y` applied as a list-level shift after the per-instance clip: `clamp(clamp(p, clip) + shift, viewClip)` — the formulation Makepad wrote and never used (MAKEPAD.md:111) — with the offset snapped to a device pixel, so a text run's subpixel variants survive the translation.
 - `Scene` reports whether it changed and can re-present its last list; scheduling stays the host's.
-- The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:174-180`).
-- The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:91-99`).
+- The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:344-350`).
+- The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:115-121`: `presentAt` hands the camera and scale mode to `sync` as the root's parent world).
 - A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`).
 - Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
 - Render bounds apart from h2d's `getBounds`. Since P4 an editing label's `getBounds` grows by the selection's gloop, half its line spacing and its trailing whitespace once a caret or a selection shows, because the filter target and culling read it; h2d's TextInput bounds do not move with the caret (REVIEWS.md "P4 re-review" F-b). If the human's answer on run colours (P4 F2) is still to be applied, it lands before this contract does.
 
 - Carried from P3.5's audit (REVIEWS.md "Audit before P4"): a view id stored as its two 16-bit halves in the command stream's two spare floats, rejoined by the replay and the T1 printer, with a T1 test on an id past 2^24 (#18, `tests/PENDING.md display-list-view-id-float32`); the UI instance as one record the persistent ranges store, replacing `drawUiInstance`'s 25 positional lanes, with the 108-byte layout generated for `instance.ms` and C from one table instead of held together by a runtime check (#19, #23); a retained node's dirty booleans as a `BitSet` once retention redefines them (#24); a filtered node that did not change reusing its target instead of rebuilding two arrays and a blur every frame (#21); and the allocation stage following calls out of its listed functions, so a copy one call deeper fails (P3.5 re-review).
+
+**Steps, in order** (written 2026-09-27, before P5's code, from the brief the human approved that
+day; the citations above were checked against the code after P4). The internal pieces the
+persistent ranges stand on come first; what an app author writes or reads is built only after the
+human has seen it as app code; the phase measurement comes last.
+
+1. **The allocation stage follows calls** out of its listed functions (P3.5 re-review #4): a
+   function a listed one calls is held to the caller's rule unless a list names it, and a bench
+   reaches `update`, so `advanceBlink` is read (P4 re-review N-b). Control: a private helper
+   returning `labelTexts[i].layout`, called from `textWidth`, fails the stage.
+2. **The view id in two halves** (#18). T1 on an id past 2^24; closes
+   `display-list-view-id-float32`.
+3. **The UI instance as one record** (#19, #23), its 108-byte layout generated for `instance.ms`
+   and C from one table. Every golden byte-identical, the bench counters unchanged.
+4. **Glyph pages.** A page uploaded this frame takes no new tile and is not reclaimed (F7, closes
+   `glyph-page-second-upload`, T1 over two brackets in one frame); a Label that leaves the scene
+   through `removeChild` or `removeChildren` releases its tiles, as h2d's `onRemove` does (F6, T1:
+   a removed Label holds no tile reference). `label-dispose-pins-page` closes when `remove()`
+   does the same in step 9.
+5. **The change model, measured.** msc 0.2.55 has no property setters, so `n.x = 5` is a store
+   nothing observes, and `readonly` on an interface field crashes codegen
+   (`~/metascript/.inbox/compiler/2026-09-27-readonly-interface-field-unresolved-type.md`).
+   "An unchanged node costs nothing" therefore needs a compare sweep over the flattened order (A,
+   no app change), setters that mark the node dirty (B, h2d's `setPosition` / `move` / `setScale`
+   / `rotate` forms), or a call the writer must not forget (C, refused by "fail loud"). Measured
+   first: A's sweep on a static 100 000-node frame and on the editor scroll, beside today's
+   `present`. Then the human chooses A or B from app code and the numbers.
+6. **Retention** under the chosen model: a draw order flattened and rebuilt only on a structural
+   change (SCENE-SCALE.md "Flatten traversal order"), persistent instance ranges, dirty-range
+   upload, identical bytes skipping the upload, the dirty booleans as a `BitSet` (#24), a filtered
+   node that did not change reusing its target (#21). T1: one mutated node, one dirty range of a
+   known size; byte-identical re-records; the order rebuilt only on a structural change.
+7. **The paint-only patch.** T1: a blink writes the caret's instance and nothing else; a colour
+   write uploads a known number of bytes.
+8. **The change flag and the camera uniform.** T4: an idle frame issues no draw and no upload
+   (closes `idle-costs-a-walk`); T1: a camera move re-multiplies no node.
+9. **The `Object` surface**, after the human has seen it: `parent`, `remove()`, reparent-on-add
+   with a cycle guard that stops and names both nodes, `getChildAt` / `getChildIndex` /
+   `numChildren`, `name`, `localToGlobal` syncing first. T0. Closes `h2d-object-surface`,
+   `one-node-two-parents`, `label-dispose-pins-page`.
+10. **Scroll**: `Mask.scrollX/Y` as the list-level shift, snapped. T2 golden `clip/maskScroll`; a
+    scroll bench over the editor scene, CPU and uploaded bytes per frame, the bytes gated (T4).
+11. **`TileGroup`**, the non-overlap flag and the lane fallback. T1. Closes `h2d-tilegroup`.
+12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
+    F-b). The run-colour rule (P4 F2) lands first if the human has answered it.
+13. **`oracle:h2d`** (T3), Heaps compiled to JS and run on node by SCENE-SCALE.md "Reproducing";
+    `haxe` 4.3.7, `heaps` and `format` are on this box (2026-09-27). HEAPS.md's deliberate
+    divergences seed its PENDING list.
+14. **The measurement** listed under "Measure", and the wasm delta against the P4 head built the
+    same day on the same compiler.
 
 **Defects closed.** Two "Known defects" lines: the h2d surface — `parent`, `TileGroup`, `Mask.scrollX/Y` and the text metrics it points at — and a sokol view id past 2^24 naming another slot. Also the idle cost: `Scene.present` walking and drawing every frame with nothing knowing whether the tree changed.
 
@@ -891,7 +941,7 @@ with `--release` on BUILD `598ca62e`, the P4 head `c85f5d0` (tree `2497f5d`) aga
 - A caret blink and a hover upload a known small number of bytes and cause no structural change.
 - An idle frame issues no draw and no upload.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
-- One node can no longer sit under two parents (`node.ms:133-137`).
+- One node can no longer sit under two parents (`node.ms:305-309`).
 
 **Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:clip/maskScroll`, `glyph-page-second-upload`, `label-dispose-pins-page`, `idle-costs-a-walk`, `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `oracle:h2d`, `display-list-view-id-float32`.
 

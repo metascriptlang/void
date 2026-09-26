@@ -118,9 +118,9 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | ui-box-color-effect | T1 | A styled Rect, and since P4 a Label's text runs, selection and caret, combined with `colorMatrix`, `colorAdd` or `colorKey` are rejected loudly rather than rendered as a square flat fallback or dropped (`render.ms` `emitLabel`, counted by `labelEditingRefusals`). P6 carries the existing colour-effect record through the unified UI shader, then adds a production-emitter assertion before this row is removed | P6 | 2026-09-23 |
 | sdf-non-uniform-bound | T3 | Local-space box and `erf` shadow AA use the affine axes' geometric mean under non-uniform scale. P6 must bound that approximation with an independent coverage case; the legacy `xform/nonUniform` golden only pins its pixels and cannot prove the error | P6 | 2026-09-23 |
 | idle-costs-a-walk | T4 | `Scene.present` walks and draws every frame; nothing knows whether the tree changed | P5 | 2026-09-20 |
-| h2d-object-surface | T0 | `parent`, `remove()`, `getChildAt`, `getChildIndex`, `numChildren`, `name`, and `localToGlobal` returning last frame's matrix (`node.ms:174-180`) | P5 | 2026-09-20 |
+| h2d-object-surface | T0 | `parent`, `remove()`, `getChildAt`, `getChildIndex`, `numChildren`, `name`, and `localToGlobal` returning last frame's matrix (`node.ms:344-350`) | P5 | 2026-09-20 |
 | h2d-tilegroup | T1 | `TileGroup` does not exist | P5 | 2026-09-20 |
-| one-node-two-parents | T0 | `addChild` does not detach from a previous parent (`node.ms:133-137`) | P5 | 2026-09-20 |
+| one-node-two-parents | T0 | `addChild` does not detach from a previous parent (`node.ms:305-309`) | P5 | 2026-09-20 |
 | display-list-view-id-float32 | T1 | the display list stores a sokol view id as `float32` (`CMD_VIEW`, and `draw.ms`'s saved view), exact below 2^24 only; an id is `(generation << 16) | slot`, so after the 256th reuse of one view slot the replay binds another slot. Found by P3.5's audit (REVIEWS.md "Audit before P4" #18) | P5 | 2026-09-25 |
 
 ## Debug-build aborts

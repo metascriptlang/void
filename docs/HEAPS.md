@@ -273,7 +273,7 @@ Feature-Done ≠ quality-parity. This section tracks the **internal quality** of
 
 | Dimension | void2d grade | void2d reality (2026-09-20) | Heaps mechanism | Gap |
 |---|---|---|---|---|
-| Transform laziness | **MATURE** | world matrices cached; `scene.present` passes `viewChanged`, not `true` (`scene.ms:91-99`). But the scale mode and camera are baked into every world matrix, so a camera move re-multiplies the tree; five field compares per node per frame instead of a set-time flag (`render.ms:79`); `localToGlobal` reads last frame's matrix (`node.ms:174-180`) | `posChanged` set in setters + downward propagation in `sync()`; `syncPos()` before every query; camera as a uniform (`RenderContext.hx:275-283`) | Medium |
+| Transform laziness | **MATURE** | world matrices cached; `scene.present` passes `viewChanged`, not `true` (`scene.ms:115-121`). But the scale mode and camera are baked into every world matrix, so a camera move re-multiplies the tree; seven field compares per node per frame instead of a set-time flag (`render.ms:286-290`); `localToGlobal` reads last frame's matrix (`node.ms:344-350`) | `posChanged` set in setters + downward propagation in `sync()`; `syncPos()` before every query; camera as a uniform (`RenderContext.hx:275-283`) | Medium |
 | Bounds + culling | **MATURE** | `getBounds` (world space, `render.ms:285-305`); every node kind incl. Label and Graphics culled against the viewport (`:191-201`). Not culled against the active clip; no subtree cull; no `relativeTo` | per-tile cull in `drawTile` only; Text/TileGroup/Graphics never culled | **Ahead of h2d**; clip cull missing |
 | Batching | **BASIC** | always-on dynamic batching for Rect/Sprite/Anim/ScaleGrid; flush on view, blend, effect, smooth, clip change and on **every Label and Graphics node** (`draw.ms:79-81, 264-320`); fixed 65536-vertex stream, draws dropped past it (`batcher.c:19`) | off by default (`BUFFERING` is a compile flag, `RenderContext.hx:24`); throughput from user-chosen `TileGroup`/`SpriteBatch` | High — [VOID2D.md](VOID2D.md) P1, P2 |
 | Alpha | **PARITY+** | premultiplied in the shader (`shader2d.glsl:53-54`), `ONE / ONE_MINUS_SRC_ALPHA` pipelines (`batcher.c:88-96`), render-target sources flagged already premultiplied | non-premultiplied with `blendAlphaSrc=One` | none |
@@ -315,15 +315,15 @@ Kept as-is: radians, S·R·T then parent, alpha multiplied down the tree, colour
 
 Missing from void2d today:
 
-- `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt / getChildIndex / numChildren`, `name` (`h2d/Object.hx:411-443` vs `void2d/node.ms:133-137`, where one node can sit under two parents). A reconciler host needs `parent` anyway.
+- `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt / getChildIndex / numChildren`, `name` (`h2d/Object.hx:411-443` vs `void2d/node.ms:305-309`, where one node can sit under two parents). A reconciler host needs `parent` anyway.
 - **`TileGroup`** — a retained multi-quad node on one texture (`h2d/TileGroup.hx:562-718`); `Text` is built on it (`h2d/Text.hx:187-189`). It maps onto a persistent instance range and is the h2d-native form of the non-overlap hint.
 - ~~**`Tile.dx/dy`** with `center()` / `setCenterRatio()` (`h2d/Tile.hx:26-30, 166-175`)~~ **Landed at P2**. Sprite, Anim and ScaleGrid consume the offset and scale it with an overridden draw size; flips mirror the offset with the UVs. Node `pivotX/Y` now lives in the affine, so it moves every node kind and its children around the same local point. `center()` remains the value-returning method; `setCenterRatio` is a free writer until MetaScript supports `ref this` receivers.
 - `Mask.scrollX/Y` (`h2d/Mask.hx:70-125`) — the scroll mechanism in [VOID2D.md](VOID2D.md) "Clip and scroll".
 - The `Text` metric surface and `Align` enum; `lineSpacing` in pixels (void2d's is a multiplier, `text.ms:49`).
 - ~~`smooth` as a tri-state with a scene default; `tileWrap`, with clamp as the default sampler.~~ **Landed at P1**: `Smooth.Inherit/Off/On` in `void2d/types.ms` resolving against `Scene.defaultSmooth`, and `Node2D.tileWrap` with clamp by default. The scene default is **linear**, not h2d's nearest - that is the "Do not copy from h2d" entry below, applied.
 - ~~Filter semantics (`h2d/Object.hx:896-956`)~~ **Landed at P1**, all six: the node itself goes into the target, alpha applied once (on every filter kind - the Glow and DropShadow branch took a second pass of the review to get right), the target in object-local space through a filter matrix that the emitter subtracts as it records rather than a second sync, bounds clipped to the viewport, a frame-linear target pool (`h3d/impl/TextureCache.hx`) capped at 16, and clip state saved and cleared per target.
-- `localToGlobal` after a mutation and before `present` returns last frame's matrix (`node.ms:174-180`); h2d calls `syncPos()` first (`Object.hx:359`).
-- `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:65-78` vs `h2d/Scene.hx:415-427`).
+- `localToGlobal` after a mutation and before `present` returns last frame's matrix (`node.ms:344-350`); h2d calls `syncPos()` first (`Object.hx:359`).
+- `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:77-92` vs `h2d/Scene.hx:415-427`).
 
 ### Do not copy from h2d
 
@@ -333,7 +333,7 @@ Missing from void2d today:
 - Render-target drop shadows as the way to shadow a panel (`h2d/filter/DropShadow.hx:42-54`): two targets plus blur per box per frame.
 - Ignoring DPI (`displayScale` has no reader) and nearest sampling by default (`h2d/RenderContext.hx:52`).
 - The two-corner rotated mask (`h2d/Mask.hx:26-43`) — void2d's four-corner AABB is already more correct.
-- Scrolling by mutating child positions, which re-syncs the subtree (`Flow.hx:728-733`, `Mask.hx:109-125`). void2d's variant — the camera baked into every world matrix, so a camera move re-multiplies the tree (`scene.ms:91-99`) — is the same mistake; in h2d the camera is one uniform (`RenderContext.hx:275-283`).
+- Scrolling by mutating child positions, which re-syncs the subtree (`Flow.hx:728-733`, `Mask.hx:109-125`). void2d's variant — the camera baked into every world matrix, so a camera move re-multiplies the tree (`scene.ms:115-121`) — is the same mistake; in h2d the camera is one uniform (`RenderContext.hx:275-283`).
 - One draw per Bitmap: h2d's default path does **not** batch — `BUFFERING` is a compile flag, off by default (`RenderContext.hx:24`); throughput comes from user-chosen `TileGroup`/`SpriteBatch`. That does not survive a reconciler that emits thousands of small nodes.
 
 ## Key Heaps Design Decisions — Adopt or Skip
