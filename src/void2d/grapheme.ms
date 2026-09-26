@@ -93,7 +93,8 @@ export function breaksBefore(ref cursor: GraphemeCursor, codepoint: int32): bool
 	const next: GraphemeProperty = graphemeProperty(codepoint);
 	const boundary: boolean = !cursor.started || boundaryBefore(cursor, next);
 	const regional: boolean = next.cluster == ClusterBreak.RegionalIndicator;
-	const extendsPictograph: boolean = cursor.pictographicRun && next.cluster == ClusterBreak.Extend;
+	const extendsPictograph: boolean = cursor.pictographicRun &&
+		next.cluster == ClusterBreak.Extend;
 	cursor.pictographicJoiner = cursor.pictographicRun && next.cluster == ClusterBreak.ZWJ;
 	cursor.pictographicRun = next.pictographic || extendsPictograph;
 	cursor.regionalRun = regional ? cursor.regionalRun + 1 : 0;
