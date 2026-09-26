@@ -273,7 +273,7 @@ function step(
 ): Step {
 	if (isControl(codepoint.value)) {
 		let next: float32 = pen;
-		if (codepoint.value == TAB) {
+		if (codepoint.value == TAB && stop > 0.0) {
 			next = ((Math.floor(pen / stop) as float32) + 1.0) * stop;
 		}
 		return {

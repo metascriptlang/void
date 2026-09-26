@@ -415,6 +415,12 @@ test "a wrapped row measures its tabs from its own start" {
 	for (const line of l.lines) { assert line.width <= room; }
 }
 
+test "a tab at size 0 advances nothing and places every glyph at a number" {
+	const l = TextLayout.layout("a\tb", { ...style(), size: 0.0 });
+	for (const g of l.glyphs) { assert g.x == g.x && g.advance == g.advance; }
+	assert l.width == l.width;
+}
+
 test "a click past a row that wraps with no separator keeps the caret on that row" {
 	const l = wrapped("well-known", calcTextWidth("well-", style()) + 1.0, PLAIN_LINES);
 	assert (l.lines.length as int32) == 2;
