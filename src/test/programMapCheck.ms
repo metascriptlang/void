@@ -1,4 +1,4 @@
-import { Mat4, identity } from "../math/math3d";
+import { Mat4, Vec4, identity } from "../math/math3d";
 import {
 	Program,
 	VERTEX_UNIFORM_LENGTH,
@@ -10,6 +10,12 @@ import { DrawContext, DrawItem, addMaterial } from "../void3d/draw";
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import { pixelArtPrograms } from "../void3d/pixelArtRenderer";
+import {
+	ForwardRenderer,
+	ForwardError,
+	FORWARD_UNIFORM_LENGTH,
+	renderFrame,
+} from "../void3d/forwardRenderer";
 
 const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit,
@@ -93,5 +99,34 @@ test "the core refuses a material it does not draw before it writes the camera" 
 			beginFrame(core, context, items, camera, lights);
 		assert !began.ok && began.error == RendererError.ProgramNotDrawn;
 		assert context.uniforms[core.cameraBlock.offset] == 0.0 && core.generation == 0;
+	}
+}
+
+test "the forward preset takes the core's blocks and a copy material and draws core programs" {
+	let small: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH - 1);
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	const refused: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(small, background);
+	assert !refused.ok && refused.error == ForwardError.UniformPoolFull;
+	let context: DrawContext = contextNaming(Program.Billboard, FORWARD_UNIFORM_LENGTH);
+	const created: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(context, background);
+	assert created.ok;
+	if (created.ok) {
+		let forward: ForwardRenderer = created.value;
+		assert context.uniformsUsed == FORWARD_UNIFORM_LENGTH;
+		assert context.materials[forward.copyMaterial].program == Program.Copy;
+		assert forward.core.programs.draws(Program.Lit);
+		assert !forward.core.programs.draws(Program.Copy);
+		const items: Vec<DrawItem> = [itemOf(0)];
+		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const unsized: Result<int32, ForwardError> =
+			renderFrame(forward, context, items, camera, lights, 0, 480);
+		assert !unsized.ok && unsized.error == ForwardError.TargetSize;
+		const billboard: Result<int32, ForwardError> =
+			renderFrame(forward, context, items, camera, lights, 640, 480);
+		assert !billboard.ok && billboard.error == ForwardError.ProgramNotDrawn;
+		assert forward.core.generation == 0 && forward.colorTarget.image == 0;
 	}
 }
