@@ -922,7 +922,7 @@ verification found one more.
 | `indexAt` past a row's end returned the index that row shares with the next at such a wrap, and the caret drew on the next row | `72e7ecd`: that index belongs to the upper row, GPUI's `WrappedLineLayout::position_for_index` (`line_layout.rs:427-454`); the trade is in VOID2D.md P4 |
 | `splitAt`'s halves kept the whole line's `byteStart` and `byteEnd` | `7396fb4`: each half keeps its own bytes; T0 through `splitText` on a three-byte character |
 | The check for a text run starting inside a surrogate pair could never fire | `15d18b2`: it compares the run's end with the codepoint's last unit; `tests/aborts/runSplitsSurrogate.ms`, and the 1/2/1 T0 is the control |
-| A label's bounds left out what an editing label draws past its text | `74802dd`: while it shows a selection or a caret, a label pads its bounds by `SELECTION_GLOOP`, as the Selection node does. Narrower than stated: the smooth-min union fills concave corners inside the rows' box, so only the empty-row tail and a caret after the widest line escaped |
+| A label's bounds left out what an editing label draws past its text | `74802dd`: while it shows a selection or a caret, a label pads its bounds by `SELECTION_GLOOP`, as the Selection node does. The reason first given here was wrong, and the design pass caught it: the polynomial smooth-min (k 8, corner radius 2) bulges 1.46 px past the shared edge where two flush rows join, as Makepad's does, so the bulge escaped as well as the tail and the caret; the pad covers all three |
 | Under colorMatrix, colorAdd or colorKey a label's runs, selection and caret were dropped in silence | `a69a79e`: refused aloud, once, as underline, box and image styles are, and counted (`labelEditingRefusals`) so T1 can see it |
 | `breakAfter` measured tabs from the paragraph's start while `pushLine` measures them from the row's, so a wrapped row with a tab could overrun `maxWidth` | `8736317`: both take the advance from `rowAdvance`; T0 on `xxxxx yy\tzz`, 43.6 px in 42.6 before |
 | A tab stop of 0 (size 0, or a face whose space has no advance) made every x after a tab NaN | `bb7ee12` |
@@ -930,8 +930,35 @@ verification found one more.
 | The node text setters stopped on a bare `unreachable` and repeated the allocation | `0bdd391` and `b5a6b2c` (the gate's allocation stage reads `requireLabel` in its new module): every setter names its call and the node's kind, `requireLabel` moved into `node.ms`, `labelEntry` allocates once; `setBoxStyle` and `setImageStyle` name theirs too. `tests/aborts/selectionOnRect.ms` |
 | Found while verifying: letter spacing went between a letter and its combining mark, so an accent drew 4 px off its base at `letterSpacing` 4 | `f8aff30`: spacing goes after a grapheme, not inside it |
 
-`sh scripts/gate.sh --web` was GREEN after them, at `f8aff30` on msc 0.2.55 (BUILD `2925176a`):
+`sh scripts/gate.sh --web` was GREEN after them, at `f8aff30` on msc 0.2.55 (BUILD `598ca62e`):
 923 tests, D3D11 72 / 72, WebGL2 68 / 72 (48 byte-identical, 20 pending, the four listed
 failures), 25 PENDING rows, the four abort programs stopping with their messages, and the bench
 counters unchanged. `0bdd391` alone would have failed the allocation stage, which looked for
 `requireLabel` in `render.ms`; `b5a6b2c` points it at `node.ms`.
+
+### Design pass: **SEND BACK** — a frame-path copy and a selection that stopped short
+
+A fresh Claude subagent that had written none of P4 read `4d357f7..caba415` against the brief, the
+guardrails, the decision rule and TESTING.md, with GPUI, Heaps and the emitted C to hand, and built
+nothing. It found every carried follow-up fixed rather than moved, both compiler cards matching
+their parked sites, no hidden workaround, the tiers right and no test that cannot fail. It refused
+the phase on two code defects and the measurements they would have poisoned. Each finding was read
+against the code in the main session before it was fixed.
+
+| id | Finding | Resolution |
+|---|---|---|
+| B1 | `selectedRow` bound `const layout = text.layout`, which deep-copies the whole `TextLayout`, glyphs and line boxes, on every call: three calls per selected row and one per line, every frame, about 226 copies of 16 000 glyphs on the editor scene. The allocation stage could not see it, because no P4 frame function was on `FRAME_PATH` | `39eaafa`: the row reads `text.layout` in place. `FRAME_PATH` now names P4's 15 frame functions, and with them the stage reported `selectedRow=1` before the fix and passes after. The editor's first 6.12 ms carried the copy |
+| B2 | A selected row ended at `line.width`, which stops at the last ink, so it never covered trailing spaces, a selected blank indented line showed only the 4 px tail, and a caret after trailing spaces sat outside both the highlight and the bounds | `e131c19`: a row runs to its last glyph (`rowEnd`), and an editing label's bounds reach the widest row's end, kept in the `LabelText` side table. T1 on `ab  \n    \ncd` |
+| B3 | Owed after B1: the `present` A/B, the editor's numbers in VOID2D.md P4 and the whole-phase wasm delta | The wasm delta and the editor's counters are in VOID2D.md P4 "Measured in P4 so far"; the A/B follows below |
+| F1 | With `lineSpacing` above 0, selected rows left gaps, since the shader takes each neighbour to sit directly against the row | `9e3fb7d`: each row covers half the spacing above and below, so rows meet at any spacing, and an editing label's bounds grow by the same half. h2d's TextInput ignores line spacing here, Makepad's rows touch; decided in the phase and written in VOID2D.md P4 rather than carried |
+| F2 | A run's colour replaces the label's, as GPUI's does, where h2d's `setColorSegments` multiplies by the text colour | Sent to the human on 2026-09-26 with app code, recommending h2d's multiply; not changed until answered |
+| F3 | Decorations were one segment per run, where GPUI merges consecutive runs that share an underline, strikethrough or background (`line.rs:633-663`), so a squiggle across syntax runs restarted its phase at every run | `3285b08`: a decoration runs on across the runs that share it. T0 that fails on the old code |
+| F4 | Two divergences not written down: Middle truncation split the room in halves where GPUI gives the front two thirds (`line_wrapper.rs:215-216`), and an overlong word overflows where GPUI breaks it | `999af72`: Middle takes GPUI's two thirds. The overflow is h2d's, `wordBreak` off by default (`Text.hx:113-118`), written as a W in VOID2D.md P4 |
+| F5 | The colour-effect refusal of label editing had no PENDING row or owner | `tests/PENDING.md ui-box-color-effect` names it, owned by P6 with the styled box |
+| F6 | `calcTextWidth` and `splitText` on a Label ignored its line options | `7f7885d`: they lay the text they are given out with the label's style and line options; runs and shaping breaks stay out, since they index the label's own text |
+| F7 | New struct-first free functions (CODE-STYLE §14), and a counted `while` in `pushTruncated` | `2db1718`: `step`, `unitEnd`, `rowAdvance`, `lineOfIndex`, `tabStop`, `runDecorations`, `lineDecorations`, `xOnRow`, `rowEnd`, `selectedRow` and `boundaryBefore` are extensions, and the loop is a `for`. Kept: `render.ms`'s per-node emitters that take a `Node2D` first were free functions before P4 (`drawContent`, `emitLabel`), and turning them is a pass over the whole file, not this phase's. `underline()` keeping its wavy flag in `borderL` is the Selection node's idiom of reusing the border fields per kind |
+| N1 | The defect pass's reason for finding 5 was wrong | Corrected above |
+| N2 | VOID2D.md cited the deleted row `conformance:uax14-line-break`; `style:line-length` read 246 where the command prints 245; the `!` tailoring was not recorded as the human's | Swept: the P4 bullet points at TESTING.md "T3", the row reads 245 lines over 40 files re-measured 2026-09-26, and the tailoring is written as waiting on the human |
+| N3 | A caret or selection index past the text is drawn at its end in silence; `markShapingBreaks` was O(n·m) and ignored a break inside a surrogate pair | `f6bf861`: a break inside a pair stops and names it (`tests/aborts/breakSplitsSurrogate.ms`), found by binary search. The index is kept as h2d's `getCursorXOffset` treats it (`TextInput.hx:603`) |
+| — | Also caught in the main session while verifying: the installed compiler became BUILD `598ca62e` at 19:20 that day, so the gate's line above had named the wrong build, and every baseline built earlier on `2925176a` was rebuilt before comparing | The line above is corrected; the wasm and A/B trees were rebuilt on `598ca62e` |
+| — | The T1 title "refused, not dropped" asserted that the spans are dropped | `7a16156`: "refused aloud" |
