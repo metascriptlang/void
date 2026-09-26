@@ -61,6 +61,12 @@ import {
 	renderFrame,
 } from "../void3d/pixelArtRenderer";
 import {
+	ForwardRenderer,
+	ForwardError,
+	FORWARD_UNIFORM_LENGTH,
+	renderFrame as renderForwardFrame,
+} from "../void3d/forwardRenderer";
+import {
 	Vec3,
 	Vec4,
 	vec3,
@@ -90,6 +96,7 @@ import {
 	setLightPower,
 	setAmbient,
 	setPickable,
+	setVisible,
 	collectLights,
 	refresh,
 	syncWorld,
@@ -207,14 +214,17 @@ const LOOK_WINTER_AT: int32 = 5;
 const LOOK_GREY_AT: int32 = 10;
 const LOOK_RESTORED_AT: int32 = 15;
 
-// The pool holds the renderer's blocks plus this scene's material blocks: one for the lit
+// The pool holds both renderers' blocks plus this scene's material blocks: one for the lit
 // material, one for the ground's own lit material when it is greyed, and one sprite block
 // shared by grass and flame.
 const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	PIXEL_ART_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
+	PIXEL_ART_UNIFORM_LENGTH + FORWARD_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
 );
 let renderer: PixelArtRenderer = createRenderer();
+let forward: ForwardRenderer = createForward();
+let forwardWanted: boolean = false;
+let grassNode: NodeId = { index: -1, generation: 0 };
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 const sceneItems: Vec<DrawItem> = [];
@@ -377,6 +387,14 @@ function createRenderer(): PixelArtRenderer {
 		PixelArtSettings.full(),
 		campfireLook(),
 	);
+	if (created.ok) { return created.value; }
+	unreachable;
+}
+
+// The pool is sized for the core's blocks too, so create cannot fail.
+function createForward(): ForwardRenderer {
+	const created: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(context, campfireLook().background);
 	if (created.ok) { return created.value; }
 	unreachable;
 }
@@ -760,9 +778,10 @@ function setupDraws(): void {
 		context,
 		GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, grassBuffer, 6, grassCount),
 	);
-	const grassNode: Result<NodeId, SceneError> =
+	const grass: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
-	if (!grassNode.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
+	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
+	grassNode = grass.value;
 	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
@@ -969,6 +988,12 @@ export function configureCampfireParticles(on: boolean): void {
 	particlesWanted = on;
 }
 
+// Draws through the forward preset instead of the pixel-art one. The grass and the flame are
+// hidden: their billboard program is the pixel-art preset's, and the forward preset refuses it.
+export function configureCampfireForward(on: boolean): void {
+	forwardWanted = on;
+}
+
 // The ground's saturation: on a lit material of its own, or, with `onCpu`, baked into its vertex
 // colours through colorSaturated while it keeps the scene's material. 0 leaves it alone.
 export function configureCampfireGreyGround(saturation: float32, onCpu: boolean): void {
@@ -1130,6 +1155,13 @@ export function initCampfire(): void {
 	flamePixels = copyTexturePixels();
 	flameTexture = makeTextureView(flameImage);
 	setupDraws();
+	if (forwardWanted) {
+		const grassHidden: Result<int32, SceneError> = setVisible(tree, grassNode, false);
+		const flameHidden: Result<int32, SceneError> = setVisible(tree, flameNode, false);
+		if (!grassHidden.ok || !flameHidden.ok) {
+			console.log("campfire: the billboards could not be hidden from the forward preset");
+		}
+	}
 	setAmbient(tree, vec3(0.33, 0.36, 0.6));
 	setSettings(renderer, settingsWanted);
 	if (paletteWanted) {
@@ -1140,7 +1172,113 @@ export function initCampfire(): void {
 	}
 }
 
+// Everything a frame moves in the scene before it is drawn, whichever preset draws it.
+function stepScene(): boolean {
+	updateFlicker();
+
+	if (logSpinPerFrame != 0.0) {
+		const spun: Result<int32, AnimationError> = syncPose(logSpin, tree);
+		if (!spun.ok) {
+			console.log(`campfire: the log spin could not pose the logs, ${spun.error.toString()}`);
+			return false;
+		}
+	}
+	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
+	if (!swapped.ok) {
+		console.log(`campfire: the flame could not swap its frame, ${swapped.error.toString()}`);
+		return false;
+	}
+	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree);
+	if (!stoneSwapped.ok) {
+		console.log(`campfire: the stone frame swap was refused, ${stoneSwapped.error.toString()}`);
+		return false;
+	}
+	// Sync the world matrices and rewrite the list in place. The structure only changes once,
+	// at setup, so every later frame takes the rewrite path and allocates nothing.
+	const drawn: int32 = refresh(tree, sceneItems);
+	if (drawn == 0) {
+		console.log("campfire: the scene has nothing to draw");
+		return false;
+	}
+	// Lights are read out of the synced tree: a light's position and direction are its world
+	// matrix, so collecting before `refresh` would read the previous frame's.
+	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
+	if (!lit.ok) {
+		console.log(`campfire: the lights were refused, ${lit.error.toString()}`);
+		return false;
+	}
+	if (particlesWanted) {
+		const stepped: boolean = advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
+		const drawn: boolean = stepped &&
+			drawEmitter(snow, snowNode, snowMesh, snowInstances) &&
+			drawEmitter(embers, emberNode, emberMesh, emberInstances);
+		if (!drawn) { console.log("campfire: a particle emitter failed to step or draw"); return false; }
+	}
+	return true;
+}
+
+function advanceClocks(): void {
+	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
+	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
+	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
+	if (!flameMoved.ok) {
+		console.log(`campfire: the flame clock was refused, ${flameMoved.error.toString()}`);
+		return;
+	}
+	if (!stoneMoved.ok) {
+		console.log(`campfire: the stone clock was refused, ${stoneMoved.error.toString()}`);
+		return;
+	}
+	if (!logsMoved.ok) {
+		console.log(`campfire: the spin clock was refused, ${logsMoved.error.toString()}`);
+		return;
+	}
+	frameIndex = frameIndex + 1;
+	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
+}
+
+// The campfire through the forward preset, at the framebuffer's resolution and unsnapped.
+function frameForward(): void {
+	const width: int32 = fbWidth();
+	const height: int32 = fbHeight();
+	const shortSide: float32 = Math.min(width, height) as float32;
+	const camera: OrthoCamera = {
+		target: vec3(0.0, 0.0, 0.0),
+		yaw: CAMERA_YAW,
+		pitch: CAMERA_PITCH,
+		worldPerTexel: UNITS_ON_SHORT_SIDE / shortSide,
+		nearPlane: -50.0,
+		farPlane: 50.0,
+		snap: false,
+	};
+	const resolved: Result<CameraView, CameraError> = camera.resolve(width, height);
+	if (!resolved.ok) {
+		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
+		return;
+	}
+	resolved.value.writeCameraBlock(cameraParams);
+	if (!stepScene()) { return; }
+	const rendered: Result<int32, ForwardError> = renderForwardFrame(
+		forward,
+		context,
+		sceneItems,
+		cameraParams,
+		lightParams,
+		width,
+		height,
+	);
+	if (!rendered.ok) {
+		console.log(`campfire: the forward frame was refused, ${rendered.error.toString()}`);
+		return;
+	}
+	advanceClocks();
+}
+
 export function frameCampfire(): void {
+	if (forwardWanted) {
+		frameForward();
+		return;
+	}
 	// The low-res target's size does not depend on the camera, so the view is made twice: once
 	// to learn the texel grid the camera snaps to, and once with the remainder that snap left.
 	const noRemainder: float32 = 0.0;
@@ -1190,46 +1328,7 @@ export function frameCampfire(): void {
 	}
 
 	cameraView.writeCameraBlock(cameraParams);
-	updateFlicker();
-
-	if (logSpinPerFrame != 0.0) {
-		const spun: Result<int32, AnimationError> = syncPose(logSpin, tree);
-		if (!spun.ok) {
-			console.log(`campfire: the log spin could not pose the logs, ${spun.error.toString()}`);
-			return;
-		}
-	}
-	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
-	if (!swapped.ok) {
-		console.log(`campfire: the flame could not swap its frame, ${swapped.error.toString()}`);
-		return;
-	}
-	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree);
-	if (!stoneSwapped.ok) {
-		console.log(`campfire: the stone frame swap was refused, ${stoneSwapped.error.toString()}`);
-		return;
-	}
-	// Sync the world matrices and rewrite the list in place. The structure only changes once,
-	// at setup, so every later frame takes the rewrite path and allocates nothing.
-	const drawn: int32 = refresh(tree, sceneItems);
-	if (drawn == 0) {
-		console.log("campfire: the scene has nothing to draw");
-		return;
-	}
-	// Lights are read out of the synced tree: a light's position and direction are its world
-	// matrix, so collecting before `refresh` would read the previous frame's.
-	const lit: Result<int32, LightError> = collectLights(tree, lightParams);
-	if (!lit.ok) {
-		console.log(`campfire: the lights were refused, ${lit.error.toString()}`);
-		return;
-	}
-	if (particlesWanted) {
-		const stepped: boolean = advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
-		const drawn: boolean = stepped &&
-			drawEmitter(snow, snowNode, snowMesh, snowInstances) &&
-			drawEmitter(embers, emberNode, emberMesh, emberInstances);
-		if (!drawn) { console.log("campfire: a particle emitter failed to step or draw"); return; }
-	}
+	if (!stepScene()) { return; }
 	applyLookSchedule();
 	const rendered: Result<int32, PixelArtError> =
 		renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
@@ -1240,21 +1339,5 @@ export function frameCampfire(): void {
 	shownView = cameraView;
 	shownBlit = viewed.value;
 	shownHeight = framebufferHeight;
-	const flameMoved: Result<boolean, AnimationError> = update(flameFrames.clock, 1.0);
-	const stoneMoved: Result<boolean, AnimationError> = update(stoneFrames.clock, 1.0);
-	const logsMoved: Result<boolean, AnimationError> = update(logSpin.clock, 1.0);
-	if (!flameMoved.ok) {
-		console.log(`campfire: the flame clock was refused, ${flameMoved.error.toString()}`);
-		return;
-	}
-	if (!stoneMoved.ok) {
-		console.log(`campfire: the stone clock was refused, ${stoneMoved.error.toString()}`);
-		return;
-	}
-	if (!logsMoved.ok) {
-		console.log(`campfire: the spin clock was refused, ${logsMoved.error.toString()}`);
-		return;
-	}
-	frameIndex = frameIndex + 1;
-	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
+	advanceClocks();
 }
