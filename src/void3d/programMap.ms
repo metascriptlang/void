@@ -1,7 +1,5 @@
-// Which program a renderer draws for the one a material names. Heaps composes a pass's output
-// shaders into whatever the material brings (h3d.scene.Renderer and its passes); with fixed
-// sokol-shdc programs a renderer draws a whole program of its own in the material's place
-// instead. The core draws its programs as themselves; the pixel-art preset draws its own.
+// What a renderer draws for the program a material names. Heaps adds a pass's output shaders to
+// the material's; fixed sokol-shdc programs cannot compose, so a preset swaps the whole program.
 
 import { Program } from "./gpu3d";
 

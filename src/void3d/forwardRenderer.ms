@@ -1,7 +1,5 @@
-// A forward renderer preset, as h3d.scene.fwd.Renderer is on h3d.scene.Renderer: the core's pass
-// lists drawn with the core's own programs, then h3d.pass.Copy to the swapchain. Heaps draws
-// into whatever target is current; here the scene gets a colour and depth target of its own,
-// because the Android swapchain has no depth buffer (src/sokol/bridgeAndroid.c).
+// h3d.scene.fwd.Renderer on the core, then h3d.pass.Copy to the swapchain. The scene gets its own
+// colour and depth targets: the Android swapchain has no depth buffer (bridgeAndroid.c).
 
 import { Vec4 } from "../math/math3d";
 import { Program, PixelFormat, LoadAction, Filter, Wrap, endPass } from "./gpu3d";

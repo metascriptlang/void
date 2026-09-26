@@ -45,10 +45,8 @@ extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
 extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
 extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
 extern function gpu3dUpdateBuffer(buffer: uint32, data: Span<float32>): int32;
-// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the pixel-art preset's);
-// gpu3d.c maps each to its *_shader_desc. A material names Lit, Particle or Billboard, and the
-// renderer draws the program its ProgramMap holds for it (programMap.ms). Billboard is the
-// preset's grass-and-flame program until it has a core form.
+// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in
+// gpu3d.c's PROGRAMS order. Materials name the first three; Billboard is the preset's until M15.
 export enum Program {
 	Lit,
 	Particle,
