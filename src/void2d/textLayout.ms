@@ -819,13 +819,16 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	const rightWidth: float32 = lineWidthOf(right, 0);
 	const whole: boolean = cut >= line.firstGlyph + line.glyphCount;
 	const leftEnd: int32 = whole ? line.indexEnd : l.glyphs[cut].index;
+	const leftByteEnd: int32 = whole ? line.byteEnd : l.glyphs[cut].byteStart;
 	const leftLine: LineBox = {
 		...line, firstGlyph: 0, glyphCount: left.length as int32, width: leftWidth,
 		charEnd: line.charStart + (left.length as int32), indexEnd: leftEnd,
+		byteEnd: leftByteEnd,
 	};
 	const rightLine: LineBox = {
 		...line, firstGlyph: 0, glyphCount: right.length as int32, x: 0.0, width: rightWidth,
 		charStart: line.charStart + (left.length as int32), indexStart: leftEnd,
+		byteStart: leftByteEnd,
 	};
 	const leftLines: Vec<LineBox> = new Array(0);
 	leftLines.push(leftLine);

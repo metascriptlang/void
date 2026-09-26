@@ -360,6 +360,13 @@ test "splitAt cuts one line without shaping it again" {
 	assert approx(left.width + right.width, l.width);
 }
 
+test "each half of splitAt keeps the bytes of its own text" {
+	const text: string = "ab€cd";
+	const [left, right] = TextLayout.layout(text, style()).splitAt(3);
+	assert left.splitText(text) == "ab€";
+	assert right.splitText(text) == "cd";
+}
+
 test "a shaping break splits the kerning pair at its index" {
 	const noRuns: TextRun[] = [];
 	const breaks: int32[] = [1];
