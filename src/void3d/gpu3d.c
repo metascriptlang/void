@@ -97,17 +97,15 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 _Static_assert(COUNT(PROGRAMS) == GPU3D_PROGRAM_TABLE_LENGTH, "PROGRAMS must match Program in gpu3d.ms");
 _Static_assert(ATTR_pixelArt_lit_position == ATTR_lit_position && ATTR_pixelArt_lit_normal == ATTR_lit_normal
 	&& ATTR_pixelArt_lit_color == ATTR_lit_color, "every Lit-layout program must declare the core lit attributes");
-_Static_assert(ATTR_pixelArt_particle_corner == ATTR_particle_corner && ATTR_pixelArt_particle_root == ATTR_particle_root
-	&& ATTR_pixelArt_particle_color == ATTR_particle_color,
+_Static_assert(ATTR_pixelArt_particle_root == ATTR_particle_root && ATTR_pixelArt_particle_color == ATTR_particle_color,
 	"every Particle-layout program must declare the core particle attributes");
-_Static_assert(ATTR_pixelArt_billboard_corner == ATTR_billboard_corner
-	&& ATTR_pixelArt_billboard_position == ATTR_billboard_position
-	&& ATTR_pixelArt_billboard_size == ATTR_billboard_size && ATTR_pixelArt_billboard_tile == ATTR_billboard_tile
-	&& ATTR_pixelArt_billboard_color == ATTR_billboard_color,
+_Static_assert(ATTR_pixelArt_billboard_position == ATTR_billboard_position
+	&& ATTR_pixelArt_billboard_size == ATTR_billboard_size && ATTR_pixelArt_billboard_anchor == ATTR_billboard_anchor
+	&& ATTR_pixelArt_billboard_tile == ATTR_billboard_tile && ATTR_pixelArt_billboard_color == ATTR_billboard_color,
 	"every Billboard-layout program must declare the core billboard attributes");
 _Static_assert(ATTR_lit_position == 0 && ATTR_lit_normal == 1 && ATTR_lit_color == 2
-	&& ATTR_particle_corner == 0 && ATTR_particle_root == 1 && ATTR_particle_color == 2
-	&& ATTR_billboard_corner == 0 && ATTR_billboard_position == 1 && ATTR_billboard_size == 2
+	&& ATTR_particle_root == 0 && ATTR_particle_color == 1
+	&& ATTR_billboard_position == 0 && ATTR_billboard_size == 1 && ATTR_billboard_anchor == 2
 	&& ATTR_billboard_tile == 3 && ATTR_billboard_color == 4,
 	"sokol lays a buffer out in attribute slot order, which must be the order its writer writes:"
 	" meshData.ms, particles.ms writeInstances, billboard.ms pushTo");
@@ -151,27 +149,21 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_lit_color].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
 	case LAYOUT_PARTICLE:
-		// buffer 0: quad corner per vertex; buffer 1: root + rgba per instance
-		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		out->attrs[ATTR_particle_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		// buffer 0: root + rgba per instance; the vertex index makes the corners (quadCorner).
+		// WGPU and Vulkan end the buffer list at the first empty slot: never leave slot 0 empty.
+		out->buffers[0].step_func = SG_VERTEXSTEP_PER_INSTANCE;
 		out->attrs[ATTR_particle_root].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_particle_root].buffer_index = 1;
 		out->attrs[ATTR_particle_color].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_particle_color].buffer_index = 1;
 		break;
 	case LAYOUT_BILLBOARD:
-		// buffer 0: quad corner per vertex; buffer 1: position, size, tile uv rect, rgba per
-		// instance (billboard.ms BILLBOARD_INSTANCE_STRIDE)
-		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		out->attrs[ATTR_billboard_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		// buffer 0: position, size, anchor, tile uv rect, rgba per instance (billboard.ms
+		// BILLBOARD_INSTANCE_STRIDE); the vertex index makes the corners (quadCorner)
+		out->buffers[0].step_func = SG_VERTEXSTEP_PER_INSTANCE;
 		out->attrs[ATTR_billboard_position].format = SG_VERTEXFORMAT_FLOAT3;
-		out->attrs[ATTR_billboard_position].buffer_index = 1;
 		out->attrs[ATTR_billboard_size].format = SG_VERTEXFORMAT_FLOAT2;
-		out->attrs[ATTR_billboard_size].buffer_index = 1;
+		out->attrs[ATTR_billboard_anchor].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_billboard_tile].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_billboard_tile].buffer_index = 1;
 		out->attrs[ATTR_billboard_color].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_billboard_color].buffer_index = 1;
 		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)
@@ -202,6 +194,12 @@ int32_t gpu3dLayoutFloats(int32_t layout, int32_t buffer) {
 		floats += size;
 	}
 	return floats;
+}
+
+int32_t gpu3dLayoutPerInstance(int32_t layout) {
+	sg_vertex_layout_state state = {0};
+	describeLayout((uint32_t)layout, &state);
+	return state.buffers[0].step_func == SG_VERTEXSTEP_PER_INSTANCE ? 1 : 0;
 }
 
 // ---- resources ----

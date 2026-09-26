@@ -70,7 +70,8 @@ import {
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
 // material's block (gpu3d.ms MATERIAL_UNIFORM_SLOT) holds the toon ramp's levels at
 // RAMP_LEVELS. A billboard's (BILLBOARD_UNIFORM_SLOT) holds them at BILLBOARD_RAMP_LEVELS, and
-// at BILLBOARD_LIGHT_HEIGHT how far above its root it takes the point lights.
+// at BILLBOARD_LIGHT_HEIGHT how far above its instance's position, the point its anchor puts
+// on the quad, it takes the point lights.
 export const RAMP_LEVELS: int32 = 0;
 export const BILLBOARD_RAMP_LEVELS: int32 = 4;
 export const BILLBOARD_LIGHT_HEIGHT: int32 = 6;
@@ -153,6 +154,7 @@ export enum PixelArtError {
 	MaterialBlock,
 	VertexLayout,
 	MaterialTexture,
+	QuadMesh,
 	RampLevels,
 }
 
@@ -481,6 +483,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.MaterialBlock => PixelArtError.MaterialBlock,
 		RendererError.VertexLayout => PixelArtError.VertexLayout,
 		RendererError.MaterialTexture => PixelArtError.MaterialTexture,
+		RendererError.QuadMesh => PixelArtError.QuadMesh,
 	};
 }
 

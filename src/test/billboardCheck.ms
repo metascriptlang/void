@@ -5,6 +5,15 @@ import {
 	AtlasError,
 	BillboardInstance,
 	BILLBOARD_INSTANCE_STRIDE,
+	ANCHOR_CENTER,
+	ANCHOR_BOTTOM_LEFT,
+	ANCHOR_BOTTOM_CENTER,
+	ANCHOR_BOTTOM_RIGHT,
+	ANCHOR_CENTER_LEFT,
+	ANCHOR_CENTER_RIGHT,
+	ANCHOR_TOP_LEFT,
+	ANCHOR_TOP_CENTER,
+	ANCHOR_TOP_RIGHT,
 } from "../void3d/billboard";
 
 function tileOf(width: int32, frames: int32, frame: int32): AtlasTile {
@@ -71,8 +80,9 @@ test "a billboard instance is written in the order of the Billboard layout" {
 		position: vec3(1.0, 2.0, 3.0),
 		width: 4.0,
 		height: 5.0,
-		tile: { u: 6.0, v: 7.0, u2: 8.0, v2: 9.0 },
-		color: { red: 10.0, green: 11.0, blue: 12.0, alpha: 13.0 },
+		anchor: { x: 6.0, y: 7.0 },
+		tile: { u: 8.0, v: 9.0, u2: 10.0, v2: 11.0 },
+		color: { red: 12.0, green: 13.0, blue: 14.0, alpha: 15.0 },
 	};
 	let out: Vec<float32> = [];
 	instance.pushTo(out);
@@ -80,6 +90,18 @@ test "a billboard instance is written in the order of the Billboard layout" {
 	for (let i = 0; i < BILLBOARD_INSTANCE_STRIDE; i++) {
 		assert out[i] == ((i + 1) as float32);
 	}
+}
+
+test "Bevy's anchors: the centre is zero, a side is half a quad away" {
+	assert ANCHOR_CENTER.x == 0.0 && ANCHOR_CENTER.y == 0.0;
+	assert ANCHOR_BOTTOM_CENTER.x == 0.0 && ANCHOR_BOTTOM_CENTER.y == -0.5;
+	assert ANCHOR_TOP_CENTER.x == 0.0 && ANCHOR_TOP_CENTER.y == 0.5;
+	assert ANCHOR_CENTER_LEFT.x == -0.5 && ANCHOR_CENTER_LEFT.y == 0.0;
+	assert ANCHOR_CENTER_RIGHT.x == 0.5 && ANCHOR_CENTER_RIGHT.y == 0.0;
+	assert ANCHOR_BOTTOM_LEFT.x == -0.5 && ANCHOR_BOTTOM_LEFT.y == -0.5;
+	assert ANCHOR_BOTTOM_RIGHT.x == 0.5 && ANCHOR_BOTTOM_RIGHT.y == -0.5;
+	assert ANCHOR_TOP_LEFT.x == -0.5 && ANCHOR_TOP_LEFT.y == 0.5;
+	assert ANCHOR_TOP_RIGHT.x == 0.5 && ANCHOR_TOP_RIGHT.y == 0.5;
 }
 
 function near(a: float32, b: float32): boolean {

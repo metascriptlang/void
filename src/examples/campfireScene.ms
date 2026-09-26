@@ -16,7 +16,6 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	Program,
-	VertexLayout,
 	Filter,
 	Wrap,
 	makeVertexBuffer,
@@ -87,6 +86,8 @@ import {
 	AtlasError,
 	BillboardInstance,
 	BILLBOARD_INSTANCE_STRIDE,
+	Anchor,
+	ANCHOR_BOTTOM_CENTER,
 } from "../void3d/billboard";
 import {
 	Scene,
@@ -195,12 +196,6 @@ let texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
 const lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
 
-// Billboard quad corners (x across, y up), two triangles; instances supply root and size.
-const CORNERS: Vec<float32> = [
-	-0.5, 0.0, 0.5, 0.0, 0.5, 1.0,
-	-0.5, 0.0, 0.5, 1.0, -0.5, 1.0,
-];
-
 // A night palette for the palette-LUT check (0xRRGGBB): ground and grass blues, cool stone
 // greys, the warm tones of firelit stone and grass, wood browns and the flame ramp.
 const CAMPFIRE_PALETTE: Vec<uint32> = [
@@ -236,6 +231,7 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 let renderer: PixelArtRenderer = createRenderer();
 let forward: ForwardRenderer = createForward();
 let forwardWanted: boolean = false;
+let flameAnchor: Anchor = ANCHOR_BOTTOM_CENTER;
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 let sceneItems: Vec<DrawItem> = [];
@@ -302,7 +298,6 @@ let flameImage: uint32 = 0;
 // material slots the re-made handles go back into.
 let tuftPixels: Vec<uint32> = [];
 let flamePixels: Vec<uint32> = [];
-let billboardCornerBuffer: uint32 = 0;
 let grassMesh: int32 = 0;
 let grassMaterial: int32 = 0;
 let flameMaterial: int32 = 0;
@@ -576,6 +571,7 @@ function buildGrass(): void {
 				position: vec3(x, 0.0, z),
 				width: size,
 				height: size,
+				anchor: ANCHOR_BOTTOM_CENTER,
 				tile: tuftTiles[variant],
 				color: { red: tint, green: tint, blue: tint, alpha: 1.0 },
 			};
@@ -676,6 +672,7 @@ function buildFlameBuffers(): void {
 			position: vec3(0.0, 0.05, 0.0),
 			width: 0.95,
 			height: 1.2,
+			anchor: flameAnchor,
 			tile: tile,
 			color: UNTINTED,
 		};
@@ -727,7 +724,6 @@ function updateFlicker(): void {
 // discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
 function setupDraws(): void {
 	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
-	billboardCornerBuffer = makeVertexBuffer(CORNERS);
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
@@ -850,7 +846,7 @@ function setupDraws(): void {
 	}
 	grassMesh = addMesh(
 		context,
-		GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, grassBuffer, 6, grassCount),
+		GpuMesh.billboards(grassBuffer, grassCount),
 	);
 	const grass: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
@@ -859,7 +855,7 @@ function setupDraws(): void {
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
 			context,
-			GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, flameBuffer, 6, 1),
+			GpuMesh.billboards(flameBuffer, 1),
 		);
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space
@@ -1070,6 +1066,10 @@ export function configureCampfireForward(on: boolean): void {
 	forwardWanted = on;
 }
 
+export function configureCampfireFlameAnchor(anchor: Anchor): void {
+	flameAnchor = anchor;
+}
+
 // The ground's saturation: on a lit material of its own, or, with `onCpu`, baked into its vertex
 // colours through colorSaturated while it keeps the scene's material. 0 leaves it alone.
 export function configureCampfireGreyGround(saturation: float32, onCpu: boolean): void {
@@ -1089,13 +1089,12 @@ function copyTexturePixels(): Vec<uint32> {
 	return kept;
 }
 
-// Everything this file owns is re-made from its CPU copies — corners and billboard instances back
-// into buffers, the kept pixels back into textures, the sampler afresh — and the re-made
+// Everything this file owns is re-made from its CPU copies — billboard instances back into
+// buffers, the kept pixels back into textures, the sampler afresh — and the re-made
 // handles are written back into the external meshes and materials that hold them. Nothing
 // re-rolls the RNG: the grass and the textures were generated once, and a rebuild replays
 // data, not chance.
 function forceRebuild(): void {
-	destroyBuffer(billboardCornerBuffer);
 	destroyBuffer(grassBuffer);
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
 		destroyBuffer(flameBuffers[i]);
@@ -1105,7 +1104,6 @@ function forceRebuild(): void {
 	destroyView(flameTexture);
 	destroyImage(flameImage);
 	destroySampler(pointSampler.handle);
-	billboardCornerBuffer = makeVertexBuffer(CORNERS);
 	grassBuffer = makeVertexBuffer(grassInstances);
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
 		const at: int32 = i * BILLBOARD_INSTANCE_STRIDE;
@@ -1120,10 +1118,8 @@ function forceRebuild(): void {
 	context.materials[grassMaterial].sampler0 = pointSampler.handle;
 	context.materials[flameMaterial].texture0 = flameTexture;
 	context.materials[flameMaterial].sampler0 = pointSampler.handle;
-	context.meshes[grassMesh].vertexBuffer = billboardCornerBuffer;
 	context.meshes[grassMesh].instanceBuffer = grassBuffer;
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
-		context.meshes[firstFlameMesh + i].vertexBuffer = billboardCornerBuffer;
 		context.meshes[firstFlameMesh + i].instanceBuffer = flameBuffers[i];
 	}
 	for (let i = 0; i < (context.meshes.length as int32); i++) {

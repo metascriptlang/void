@@ -9,6 +9,7 @@ import { Mat4, normalMatrix, writeTo } from "../math/math3d";
 import {
 	VertexLayout,
 	Program,
+	drawsQuads,
 	applyPipeline,
 	applyBindings,
 	applyUniforms,
@@ -32,11 +33,13 @@ import { MeshData } from "./meshData";
 import { PipelineCache, pipelineFor } from "./pipelineCache";
 import { TargetLayout } from "./target";
 
-// GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` feeds vertex
-// buffer slot 1 (billboard instances), 0 when not instanced. `indexBuffer` is 0 for a mesh
-// drawn straight from its vertex buffer, and then `indexCount` is unread; when it is set the
-// draw is indexed and takes `indexCount` elements. The CPU data a lost context rebuilds this
-// from is the MeshData at the same index of `DrawContext.meshData` (addMeshData).
+// GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` holds particle
+// and billboard instances, 0 when not instanced; a quad layout has no vertex buffer, its
+// programs make the corners from the vertex index, and its instances feed vertex buffer slot 0
+// (bindItem). `indexBuffer` is 0 for a mesh drawn straight from its vertex buffer, and then
+// `indexCount` is unread; when it is set the draw is indexed and takes `indexCount` elements.
+// The CPU data a lost context rebuilds this from is the MeshData at the same index of
+// `DrawContext.meshData` (addMeshData).
 //
 // `generation` is the GPU context these handles belong to, 0 for a mesh never uploaded here.
 // It is what keeps rebuildMeshes from re-uploading a mesh that is already current — the first
@@ -71,7 +74,7 @@ export struct DrawItem {
 
 // `meshes` and `meshData` are one index space: meshData[i] is the CPU geometry mesh[i] was
 // uploaded from, or an empty MeshData for a mesh whose data its owner keeps (the screen
-// triangle, billboard corners and instances). Everything with CPU data here comes back on its
+// triangle, billboard instances). Everything with CPU data here comes back on its
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
 // Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
 // other block uses: a program gets the model matrix exactly when it declares that slot.
@@ -157,25 +160,62 @@ export function meshFor(
 // silently zero at a hand-written literal (docs/VOID3D.md, Compiler notes).
 export const EXTERNAL_GENERATION: int32 = -1;
 
-export function external(
+// The vertices a quad layout draws per instance: QUAD_CORNERS in shader3dBlocks.glsl.
+export const QUAD_VERTEX_COUNT: int32 = 6;
+
+export function fullscreen(
 	this typeof GpuMesh,
-	layout: VertexLayout,
 	vertexBuffer: uint32,
-	instanceBuffer: uint32,
 	vertexCount: int32,
-	instanceCount: int32,
 ): GpuMesh {
 	return {
-		layout: layout,
+		layout: VertexLayout.Fullscreen,
 		vertexBuffer: vertexBuffer,
-		instanceBuffer: instanceBuffer,
+		instanceBuffer: 0,
 		indexBuffer: 0,
 		vertexCount: vertexCount,
 		indexCount: 0,
-		instanceCount: instanceCount,
+		instanceCount: 1,
 		instanceCapacity: 0,
 		generation: EXTERNAL_GENERATION,
 	};
+}
+
+function quadMesh(
+	layout: VertexLayout,
+	instanceBuffer: uint32,
+	instanceCount: int32,
+	instanceCapacity: int32,
+	generation: int32,
+): GpuMesh {
+	return {
+		layout: layout,
+		vertexBuffer: 0,
+		instanceBuffer: instanceBuffer,
+		indexBuffer: 0,
+		vertexCount: QUAD_VERTEX_COUNT,
+		indexCount: 0,
+		instanceCount: instanceCount,
+		instanceCapacity: instanceCapacity,
+		generation: generation,
+	};
+}
+
+export function billboards(
+	this typeof GpuMesh,
+	instanceBuffer: uint32,
+	instanceCount: int32,
+): GpuMesh {
+	return quadMesh(VertexLayout.Billboard, instanceBuffer, instanceCount, 0, EXTERNAL_GENERATION);
+}
+
+export function isQuadShaped(this mesh: GpuMesh): boolean {
+	return mesh.vertexBuffer == 0 && mesh.vertexCount == QUAD_VERTEX_COUNT &&
+		(mesh.instanceBuffer != 0 || mesh.instanceCount == 0);
+}
+
+export function hasNothingToDraw(this mesh: GpuMesh): boolean {
+	return mesh.elementCount() == 0 || mesh.instanceCount == 0;
 }
 
 export function isStale(this mesh: GpuMesh, generation: int32): boolean {
@@ -248,13 +288,6 @@ export function addMeshData(
 	return Result.ok(uploaded);
 }
 
-// h3d.parts.Particles' quad: corners at ±0.5 around the instance root, two triangles.
-const STREAM_CORNERS: Vec<float32> = [
-	-0.5, -0.5, 0.5, -0.5, 0.5, 0.5,
-	-0.5, -0.5, 0.5, 0.5, -0.5, 0.5,
-];
-const STREAM_CORNER_COUNT: int32 = 6;
-
 export const STREAM_INSTANCE_STRIDE: int32 = 8;
 
 export enum StreamError {
@@ -272,34 +305,20 @@ export function isStream(this mesh: GpuMesh): boolean {
 export function streamMesh(
 	this typeof GpuMesh,
 	capacity: int32,
-	cornerBuffer: uint32,
 	instanceBuffer: uint32,
 	generation: int32,
 ): GpuMesh {
-	return {
-		layout: VertexLayout.Particle,
-		vertexBuffer: cornerBuffer,
-		instanceBuffer: instanceBuffer,
-		indexBuffer: 0,
-		vertexCount: STREAM_CORNER_COUNT,
-		indexCount: 0,
-		instanceCount: 0,
-		instanceCapacity: capacity,
-		generation: generation,
-	};
+	return quadMesh(VertexLayout.Particle, instanceBuffer, 0, capacity, generation);
 }
 
 function remakeStream(ref context: DrawContext, index: int32): Result<int32, StreamError> {
 	const capacity: int32 = context.meshes[index].instanceCapacity;
-	const corners: uint32 = makeVertexBuffer(STREAM_CORNERS);
 	const instances: uint32 = makeStreamBuffer(capacity * STREAM_INSTANCE_STRIDE);
-	if (corners == 0 || instances == 0) {
-		if (corners != 0) { destroyBuffer(corners); }
-		if (instances != 0) { destroyBuffer(instances); }
-		context.meshes[index] = GpuMesh.streamMesh(capacity, 0, 0, 0);
+	if (instances == 0) {
+		context.meshes[index] = GpuMesh.streamMesh(capacity, 0, 0);
 		return Result.err(StreamError.BufferRefused);
 	}
-	context.meshes[index] = GpuMesh.streamMesh(capacity, corners, instances, contextGeneration());
+	context.meshes[index] = GpuMesh.streamMesh(capacity, instances, contextGeneration());
 	return Result.ok(index);
 }
 
@@ -308,7 +327,7 @@ export function addStreamMesh(
 	capacity: int32,
 ): Result<int32, StreamError> {
 	if (capacity <= 0) { return Result.err(StreamError.OverCapacity); }
-	const index: int32 = addMesh(context, GpuMesh.streamMesh(capacity, 0, 0, 0));
+	const index: int32 = addMesh(context, GpuMesh.streamMesh(capacity, 0, 0));
 	return remakeStream(context, index);
 }
 
@@ -418,8 +437,9 @@ function applyBlock(this context: DrawContext, block: UniformBlock): void {
 }
 
 function bindItem(ref context: DrawContext, mesh: GpuMesh, material: Material): void {
-	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] = mesh.vertexBuffer;
-	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = mesh.instanceBuffer;
+	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] =
+		drawsQuads(mesh.layout) ? mesh.instanceBuffer : mesh.vertexBuffer;
+	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = 0;
 	context.bindings[GPU3D_BINDING_INDEX_BUFFER] = mesh.indexBuffer;
 	context.bindings[GPU3D_BINDING_VIEW] = material.texture0;
 	context.bindings[GPU3D_BINDING_VIEW + 1] = material.texture1;
@@ -441,6 +461,7 @@ export function drawItem(
 	globals: Span<UniformBlock>,
 ): void {
 	const mesh: GpuMesh = context.meshes[item.mesh];
+	if (mesh.hasNothingToDraw()) { return; }
 	const material: Material = context.materials[item.material];
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,

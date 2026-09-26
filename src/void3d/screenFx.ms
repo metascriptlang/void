@@ -4,7 +4,7 @@
 // it goes through the same pipeline cache as the scene.
 
 import { identity } from "../math/math3d";
-import { VertexLayout, makeVertexBuffer } from "./gpu3d";
+import { makeVertexBuffer } from "./gpu3d";
 import { RenderState, Face, Compare } from "./pass";
 import { GpuMesh, DrawItem } from "./draw";
 
@@ -22,7 +22,7 @@ export function screenState(): RenderState {
 
 // The mesh every screen effect draws; `vertexBuffer` from makeScreenTriangle.
 export function screenMesh(vertexBuffer: uint32): GpuMesh {
-	return GpuMesh.external(VertexLayout.Fullscreen, vertexBuffer, 0, 3, 1);
+	return GpuMesh.fullscreen(vertexBuffer, 3);
 }
 
 export function makeScreenTriangle(): uint32 {

@@ -13,7 +13,9 @@
 
 import {
 	Program,
+	VertexLayout,
 	vertexLayoutOf,
+	drawsQuads,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -68,6 +70,7 @@ export enum RendererError {
 	MaterialBlock,
 	VertexLayout,
 	MaterialTexture,
+	QuadMesh,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -130,7 +133,8 @@ export function needsFrame(this renderer: Renderer): boolean {
 // fills the pass lists from `items`. A camera or light span that is not its block's length, an
 // item whose material names a program this renderer does not draw, a material whose block is
 // not the one that program reads or that lacks a texture or sampler it samples, or a mesh
-// whose vertex layout it does not read, is refused before anything changes. Answers true when the
+// whose vertex layout it does not read, or a quad-layout mesh with a vertex buffer or with
+// instances and no instance buffer, is refused before anything changes. Answers true when the
 // context is new: every handle the caller made before is stale then (it may name an object of
 // the new context), so the caller drops its own without destroying them and makes them again
 // before drawing. The core has already dropped the pipelines, remade the screen triangle, and
@@ -151,8 +155,12 @@ export function beginFrame(
 		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
 			return Result.err(RendererError.MaterialBlock);
 		}
-		if (context.meshes[item.mesh].layout != vertexLayoutOf(drawn.value)) {
+		const layout: VertexLayout = context.meshes[item.mesh].layout;
+		if (layout != vertexLayoutOf(drawn.value)) {
 			return Result.err(RendererError.VertexLayout);
+		}
+		if (drawsQuads(layout) && !context.meshes[item.mesh].isQuadShaped()) {
+			return Result.err(RendererError.QuadMesh);
 		}
 		if (!texturesFit(drawn.value, context.materials[material])) {
 			return Result.err(RendererError.MaterialTexture);

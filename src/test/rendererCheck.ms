@@ -1,6 +1,7 @@
 import { Mat4, translation } from "../math/math3d";
 import {
 	Program,
+	VertexLayout,
 	vertexLayoutOf,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
@@ -10,6 +11,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
+import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
 	DrawContext,
@@ -111,7 +113,12 @@ function itemAt(material: int32, depth: float32): DrawItem {
 
 function itemOnItsLayout(ref context: DrawContext, material: int32): DrawItem {
 	const program: Program = context.materials[material].program;
-	const mesh: GpuMesh = GpuMesh.external(vertexLayoutOf(program), 0, 0, 6, 1);
+	const mesh: GpuMesh = match (vertexLayoutOf(program)) {
+		VertexLayout.Lit => MeshData.empty().meshFor(0, 0, 0),
+		VertexLayout.Particle => GpuMesh.streamMesh(1, 0, 0),
+		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
+		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
+	};
 	return { ...itemAt(material, 0.0), mesh: addMesh(context, mesh) };
 }
 

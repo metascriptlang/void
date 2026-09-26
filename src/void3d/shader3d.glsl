@@ -51,11 +51,12 @@ void main() {
 
 @vs particleVs
 @include_block vertexUniforms
-in vec2 corner;
+@include_block quadCorner
 in vec4 root;
 in vec4 color;
 out vec4 particleColor;
 void main() {
+    vec2 corner = QUAD_CORNERS[gl_VertexIndex];
     vec3 p = root.xyz + cameraRight.xyz * (corner.x * root.w) + cameraUp.xyz * (corner.y * root.w);
     gl_Position = viewProj * vec4(p, 1.0);
     particleColor = color;
@@ -76,9 +77,11 @@ void main() {
 
 @vs billboardVs
 @include_block vertexUniforms
-in vec2 corner;
+@include_block quadCorner
+@include_block billboardPoint
 in vec3 position;
 in vec2 size;
+in vec2 anchor;
 in vec4 tile;
 in vec4 color;
 out vec3 worldPosition;
@@ -86,13 +89,13 @@ out vec3 towardCamera;
 out vec2 uv;
 out vec4 instanceColor;
 void main() {
+    vec2 corner = QUAD_CORNERS[gl_VertexIndex];
     // PENDING3D: particle-size-world-units
-    vec3 p = position + cameraRight.xyz * (corner.x * size.x) + cameraUp.xyz * (corner.y * size.y);
+    vec3 p = billboardPoint(position, size, anchor, corner);
     worldPosition = p;
     // PENDING3D: billboard-normal-toward-camera
     towardCamera = cross(cameraRight.xyz, cameraUp.xyz);
     gl_Position = viewProj * vec4(p, 1.0);
-    // PENDING3D: billboard-anchor-is-the-callers
     uv = vec2(corner.x > 0.0 ? tile.z : tile.x, corner.y > 0.0 ? tile.y : tile.w);
     instanceColor = color;
 }

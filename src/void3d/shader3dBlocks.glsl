@@ -13,6 +13,21 @@ layout(binding=4) uniform modelParams {
 };
 @end
 
+@block quadCorner
+// h3d.parts.Particles' quad, ±0.5 around the instance, two triangles, read by the vertex index
+// with no buffer behind it; Bevy's sprite.wgsl makes its four corners from the index's bits.
+const vec2 QUAD_CORNERS[6] = vec2[6](
+    vec2(-0.5, -0.5), vec2(0.5, -0.5), vec2(0.5, 0.5),
+    vec2(-0.5, -0.5), vec2(0.5, 0.5), vec2(-0.5, 0.5));
+@end
+
+@block billboardPoint
+vec3 billboardPoint(vec3 position, vec2 size, vec2 anchor, vec2 corner) {
+    vec2 offset = corner - anchor;
+    return position + cameraRight.xyz * (offset.x * size.x) + cameraUp.xyz * (offset.y * size.y);
+}
+@end
+
 @block billboardUniforms
 layout(binding=2) uniform billboardParams {
     vec4 billboardColor;

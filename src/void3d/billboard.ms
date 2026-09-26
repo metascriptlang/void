@@ -56,8 +56,24 @@ export function split(
 	return Result.ok(tiles);
 }
 
-// position(3), width and height, the tile u, v, u2, v2, then rgba: the Billboard layout (gpu3d.c).
-export const BILLBOARD_INSTANCE_STRIDE: int32 = 13;
+// Bevy's sprite Anchor: the point of the quad that sits at the instance's position, in quad
+// units across and up, centre at 0. Heaps' Particles.draw always centres.
+export struct Anchor {
+	x: float32;
+	y: float32;
+}
+
+export const ANCHOR_CENTER: Anchor = { x: 0.0, y: 0.0 };
+export const ANCHOR_BOTTOM_LEFT: Anchor = { x: -0.5, y: -0.5 };
+export const ANCHOR_BOTTOM_CENTER: Anchor = { x: 0.0, y: -0.5 };
+export const ANCHOR_BOTTOM_RIGHT: Anchor = { x: 0.5, y: -0.5 };
+export const ANCHOR_CENTER_LEFT: Anchor = { x: -0.5, y: 0.0 };
+export const ANCHOR_CENTER_RIGHT: Anchor = { x: 0.5, y: 0.0 };
+export const ANCHOR_TOP_LEFT: Anchor = { x: -0.5, y: 0.5 };
+export const ANCHOR_TOP_CENTER: Anchor = { x: 0.0, y: 0.5 };
+export const ANCHOR_TOP_RIGHT: Anchor = { x: 0.5, y: 0.5 };
+
+export const BILLBOARD_INSTANCE_STRIDE: int32 = 15;
 
 // What Particles.draw writes for a particle, with its root in world space (isAbsolute) and its
 // size in world units. The texel is multiplied by `color`.
@@ -65,6 +81,7 @@ export struct BillboardInstance {
 	position: Vec3;
 	width: float32;
 	height: float32;
+	anchor: Anchor;
 	tile: AtlasTile;
 	color: Rgba;
 }
@@ -75,6 +92,8 @@ export function pushTo(this instance: BillboardInstance, ref out: Vec<float32>):
 	out.push(instance.position.z);
 	out.push(instance.width);
 	out.push(instance.height);
+	out.push(instance.anchor.x);
+	out.push(instance.anchor.y);
 	out.push(instance.tile.u);
 	out.push(instance.tile.v);
 	out.push(instance.tile.u2);

@@ -66,6 +66,7 @@ uint32_t gpu3dSamplerSlotMask(int32_t program);
 // Floats per vertex (or per instance) of vertex buffer `buffer` in `layout`, as describeLayout
 // lays it out; -1 for a format that is not float.
 int32_t gpu3dLayoutFloats(int32_t layout, int32_t buffer);
+int32_t gpu3dLayoutPerInstance(int32_t layout);
 #define GPU3D_UNIFORM_SLOT_TABLE_LENGTH 8
 static const int32_t GPU3D_UNIFORM_SLOTS = GPU3D_UNIFORM_SLOT_TABLE_LENGTH;
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);

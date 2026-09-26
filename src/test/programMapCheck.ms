@@ -7,13 +7,13 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
-	VertexLayout,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	UNIFORM_SLOTS,
 	uniformBlockLength,
 } from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
+import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
 	DrawContext,
@@ -215,7 +215,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	}
 	const heldCore: Result<Renderer, RendererError> = Renderer.create(held);
 	assert heldCore.ok;
-	const litMesh: int32 = addMesh(held, GpuMesh.external(VertexLayout.Lit, 0, 0, 6, 1));
+	const litMesh: int32 = addMesh(held, MeshData.empty().meshFor(0, 0, 0));
 	const litItems: Vec<DrawItem> = [{ ...itemOf(0), mesh: litMesh }];
 	if (heldCore.ok) {
 		let core: Renderer = heldCore.value;
@@ -229,7 +229,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	}
 }
 
-test "the core refuses a billboard without the texture and sampler it samples" {
+test "the core refuses a billboard without its texture and sampler, or off the quad's shape" {
 	const capacity: int32 = RENDERER_UNIFORM_LENGTH + BILLBOARD_UNIFORM_LENGTH;
 	let context: DrawContext = DrawContext.withUniformCapacity(capacity);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
@@ -238,8 +238,7 @@ test "the core refuses a billboard without the texture and sampler it samples" {
 	assert created.ok && block.ok;
 	if (created.ok && block.ok) {
 		let core: Renderer = created.value;
-		const quads: int32 =
-			addMesh(context, GpuMesh.external(VertexLayout.Billboard, 0, 0, 6, 1));
+		const quads: int32 = addMesh(context, GpuMesh.billboards(9, 1));
 		const bare: Material = {
 			...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
 			uniforms: block.value,
@@ -255,6 +254,22 @@ test "the core refuses a billboard without the texture and sampler it samples" {
 				beginFrame(core, context, items, camera, lights);
 			assert !began.ok && began.error == RendererError.MaterialTexture;
 		}
+		const cornered: GpuMesh = { ...GpuMesh.billboards(9, 1), vertexBuffer: 7 };
+		const unbuffered: GpuMesh = GpuMesh.billboards(0, 1);
+		const strip: GpuMesh = { ...GpuMesh.billboards(9, 1), vertexCount: 4 };
+		const material: int32 = addMaterial(context, sampled);
+		for (const offShape of [cornered, unbuffered, strip]) {
+			const mesh: int32 = addMesh(context, offShape);
+			const offItems: Vec<DrawItem> = [{ ...itemOf(material), mesh: mesh }];
+			const refused: Result<boolean, RendererError> =
+				beginFrame(core, context, offItems, camera, lights);
+			assert !refused.ok && refused.error == RendererError.QuadMesh;
+		}
+		const unwritten: int32 = addMesh(context, GpuMesh.billboards(0, 0));
+		const emptyItems: Vec<DrawItem> = [{ ...itemOf(material), mesh: unwritten }];
+		const empty: Result<boolean, RendererError> =
+			beginFrame(core, context, emptyItems, shortCamera, lights);
+		assert !empty.ok && empty.error == RendererError.CameraBlockLength;
 		const items: Vec<DrawItem> = [{ ...itemOf(addMaterial(context, sampled)), mesh: quads }];
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, context, items, shortCamera, lights);

@@ -58,9 +58,11 @@ void main() {
 
 @vs billboardVs
 @include_block vertexUniforms
-in vec2 corner;
+@include_block quadCorner
+@include_block billboardPoint
 in vec3 position;
 in vec2 size;
+in vec2 anchor;
 in vec4 tile;
 in vec4 color;
 out vec2 uv;
@@ -68,7 +70,8 @@ out vec3 rootPosition;
 out vec4 instanceColor;
 out float depth01;
 void main() {
-    vec3 p = position + cameraRight.xyz * (corner.x * size.x) + cameraUp.xyz * (corner.y * size.y);
+    vec2 corner = QUAD_CORNERS[gl_VertexIndex];
+    vec3 p = billboardPoint(position, size, anchor, corner);
     gl_Position = viewProj * vec4(p, 1.0);
     depth01 = gl_Position.z;
     uv = vec2(corner.x > 0.0 ? tile.z : tile.x, corner.y > 0.0 ? tile.y : tile.w);
@@ -215,12 +218,13 @@ void main() {
 
 @vs particleVs
 @include_block vertexUniforms
-in vec2 corner;
+@include_block quadCorner
 in vec4 root;
 in vec4 color;
 out vec4 particleColor;
 out float depth01;
 void main() {
+    vec2 corner = QUAD_CORNERS[gl_VertexIndex];
     vec3 p = root.xyz + cameraRight.xyz * (corner.x * root.w) + cameraUp.xyz * (corner.y * root.w);
     gl_Position = viewProj * vec4(p, 1.0);
     depth01 = gl_Position.z;

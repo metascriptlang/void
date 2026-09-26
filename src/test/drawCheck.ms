@@ -4,7 +4,7 @@
 // readback (docs/VOID3D.md, M5 as built).
 
 import { Vec3, vec3 } from "../math/math3d";
-import { VertexLayout, layoutFloats } from "../void3d/gpu3d";
+import { VertexLayout, layoutFloats, layoutPerInstance, drawsQuads } from "../void3d/gpu3d";
 import {
 	MeshData,
 	MeshError,
@@ -20,6 +20,7 @@ import {
 	GpuMesh,
 	StreamError,
 	STREAM_INSTANCE_STRIDE,
+	QUAD_VERTEX_COUNT,
 	addMesh,
 	staleMeshes,
 	writeStream,
@@ -28,7 +29,7 @@ import {
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UP: Vec3 = { x: 0.0, y: 1.0, z: 0.0 };
 function billboard(): GpuMesh {
-	return GpuMesh.external(VertexLayout.Billboard, 11, 12, 6, 40);
+	return GpuMesh.billboards(12, 40);
 }
 
 function planeData(): MeshData {
@@ -111,7 +112,7 @@ test "a mesh never uploaded is stale on every generation the GPU can be on" {
 }
 
 test "a stream mesh draws nothing until written and is the only kind with a capacity" {
-	const stream: GpuMesh = GpuMesh.streamMesh(64, 11, 12, 1);
+	const stream: GpuMesh = GpuMesh.streamMesh(64, 12, 1);
 	assert stream.isStream();
 	assert stream.layout == VertexLayout.Particle;
 	assert stream.instanceCount == 0;
@@ -123,6 +124,45 @@ test "a stream mesh draws nothing until written and is the only kind with a capa
 	assert !planeData().meshFor(7, 9, 3).isStream();
 }
 
+test "a billboard or stream draws its instances on the quad, the screen triangle its vertices" {
+	const screen: GpuMesh = GpuMesh.fullscreen(12, 3);
+	assert screen.layout == VertexLayout.Fullscreen;
+	assert screen.vertexBuffer == (12 as uint32) && screen.instanceBuffer == (0 as uint32);
+	assert screen.elementCount() == 3 && screen.instanceCount == 1;
+	assert !screen.isQuadShaped() && !screen.hasNothingToDraw();
+	const quads: GpuMesh = billboard();
+	assert quads.layout == VertexLayout.Billboard;
+	assert quads.vertexBuffer == (0 as uint32) && quads.instanceBuffer == (12 as uint32);
+	assert quads.instanceCount == 40 && quads.elementCount() == QUAD_VERTEX_COUNT;
+	assert quads.isQuadShaped() && !quads.hasNothingToDraw();
+	const stream: GpuMesh = GpuMesh.streamMesh(64, 12, 1);
+	assert stream.vertexBuffer == (0 as uint32) && stream.instanceBuffer == (12 as uint32);
+	assert stream.isQuadShaped() && stream.hasNothingToDraw();
+}
+
+test "a quad mesh is off its shape with a vertex buffer, or instances and no buffer for them" {
+	const cornered: GpuMesh = { ...billboard(), vertexBuffer: 7 };
+	const strip: GpuMesh = { ...billboard(), vertexCount: 4 };
+	assert !cornered.isQuadShaped() && !strip.isQuadShaped();
+	assert !GpuMesh.billboards(0, 1).isQuadShaped();
+	assert GpuMesh.billboards(0, 0).isQuadShaped() && GpuMesh.billboards(0, 0).hasNothingToDraw();
+	assert GpuMesh.streamMesh(4, 0, 0).isQuadShaped();
+}
+
+test "the quad layouts are the layouts whose one buffer steps per instance" {
+	const layouts: Vec<VertexLayout> = [
+		VertexLayout.Lit,
+		VertexLayout.Particle,
+		VertexLayout.Billboard,
+		VertexLayout.Fullscreen,
+	];
+	for (const layout of layouts) {
+		assert drawsQuads(layout) == layoutPerInstance(layout);
+		assert layoutFloats(layout, 1) == 0;
+	}
+	assert drawsQuads(VertexLayout.Particle) && drawsQuads(VertexLayout.Billboard);
+}
+
 function streamError(result: Result<int32, StreamError>): StreamError {
 	return result.ok ? StreamError.BufferRefused : result.error;
 }
@@ -130,7 +170,7 @@ function streamError(result: Result<int32, StreamError>): StreamError {
 test "a stream write is refused before the driver when it names the wrong mesh or too much" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
 	const plain: int32 = addMesh(context, billboard());
-	const stream: int32 = addMesh(context, GpuMesh.streamMesh(4, 11, 12, 1));
+	const stream: int32 = addMesh(context, GpuMesh.streamMesh(4, 12, 1));
 	const four: Vec<float32> = new Array(4 * STREAM_INSTANCE_STRIDE);
 	assert streamError(writeStream(context, 9, four, 1)) == StreamError.MeshOutOfRange;
 	assert streamError(writeStream(context, plain, four, 1)) == StreamError.NotAStream;
@@ -142,11 +182,8 @@ test "a stream write is refused before the driver when it names the wrong mesh o
 
 test "every vertex layout carries the floats its writers write, per vertex and per instance" {
 	assert layoutFloats(VertexLayout.Lit, 0) == LIT_VERTEX_STRIDE;
-	assert layoutFloats(VertexLayout.Lit, 1) == 0;
-	assert layoutFloats(VertexLayout.Particle, 0) == 2;
-	assert layoutFloats(VertexLayout.Particle, 1) == STREAM_INSTANCE_STRIDE;
-	assert layoutFloats(VertexLayout.Particle, 1) == PARTICLE_INSTANCE_STRIDE;
-	assert layoutFloats(VertexLayout.Billboard, 0) == 2;
-	assert layoutFloats(VertexLayout.Billboard, 1) == BILLBOARD_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.Particle, 0) == STREAM_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.Particle, 0) == PARTICLE_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.Billboard, 0) == BILLBOARD_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Fullscreen, 0) == 2;
 }
