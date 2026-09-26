@@ -359,22 +359,23 @@ function adjustedScale(primary: int32, fallback: int32, adjust: SizeAdjust): flo
 
 function fallbackFace(index: int32): int32 {
 	if (fallbacks[index].face == NOT_LOADED) {
-		const entry: Fallback = fallbacks[index];
-		const face = styledAt(entry.path, entry.bold, entry.italic);
+		const face = styledAt(
+			fallbacks[index].path, fallbacks[index].bold, fallbacks[index].italic,
+		);
 		fallbackLoads = fallbackLoads + 1;
 		if (!face.ok) {
 			console.log(
-				`void2d: fallback font ${entry.path} did not load ` +
+				`void2d: fallback font ${fallbacks[index].path} did not load ` +
 				`(${face.error.toString()}); it is skipped`,
 			);
 			fallbacks[index].face = LOAD_FAILED;
 		} else {
 			fallbacks[index].face = face.value;
-			const primary: int32 = fontFace(entry.font);
+			const primary: int32 = fontFace(fallbacks[index].font);
 			fallbacks[index].scale = adjustedScale(
 				primary,
 				face.value,
-				fonts[fontIndex(entry.font)].sizeAdjust,
+				fonts[fontIndex(fallbacks[index].font)].sizeAdjust,
 			);
 		}
 	}
