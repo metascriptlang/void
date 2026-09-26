@@ -139,7 +139,7 @@ Among the references **only GPUI ships a browser renderer**: `BrowserWebGpu` wit
 
 1. **Warm-up matters more.** GPUI rasterizes a glyph synchronously on its first paint, with no pre-warm. On one browser thread that is a visible hitch the first time a file shows new glyphs. Ghostty's warm-up of device, pipelines and the font database off the first-frame path (`renderer/Metal.zig:405-441`) is the model; on the web it is not optional.
 2. **Upload bandwidth is scarcer.** sokol can only replace a whole image, so atlas pages stay small (1024²) and only dirty pages are uploaded — a 2048² page like Makepad's would re-send 16 MB for one new glyph.
-3. **Fractional DPI is the norm**, since `devicePixelRatio` is routinely 1.25 or 1.5. The truncation defect in `scene.ms:89` therefore hurts the web target hardest.
+3. **Fractional DPI is the norm**, since `devicePixelRatio` is routinely 1.25 or 1.5. The logical size is therefore a float, never truncated to int: that defect closed in P1 ("Known defects").
 4. **No OS text system at all.** GPUI's web path is cosmic-text plus a canvas fallback for emoji, which is a third set of pixels beside its macOS and Windows output. Void owns one rasterizer everywhere; this is guardrail 9 and the reason the glyph layer cannot be deferred.
 5. **wasm size is a shipping constraint, not a nicety** — hence guardrail 6 and the per-module measurement in the budget.
 6. Frames are driven by `requestAnimationFrame`, re-armed only when something is dirty (`gpui_web/src/window.rs:918`). That is the host's job, and it is the same "dirty → draw, else nothing" contract as the desktop hosts.
