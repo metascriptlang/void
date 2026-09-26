@@ -47,6 +47,23 @@ test "a frame outside the atlas, no frames, or frames narrower than a pixel are 
 	assert refusal(64, 4, 4) == AtlasError.FrameOutOfRange;
 	assert refusal(64, 4, -1) == AtlasError.FrameOutOfRange;
 	assert refusal(2, 3, 0) == AtlasError.NarrowerThanFrames;
+	assert refusal(0, 4, 0) == AtlasError.NarrowerThanFrames;
+	assert refusal(-64, 4, 1) == AtlasError.NarrowerThanFrames;
+}
+
+test "an atlas split gives every frame's tile in order, and refuses what a frame refuses" {
+	const tiles: Result<Vec<AtlasTile>, AtlasError> = AtlasTile.split(64, 4);
+	assert tiles.ok;
+	if (tiles.ok) {
+		assert (tiles.value.length as int32) == 4;
+		for (let frame = 0; frame < 4; frame++) {
+			assert tiles.value[frame] == tileOf(64, 4, frame);
+		}
+	}
+	const none: Result<Vec<AtlasTile>, AtlasError> = AtlasTile.split(64, 0);
+	assert !none.ok && none.error == AtlasError.NoFrames;
+	const negative: Result<Vec<AtlasTile>, AtlasError> = AtlasTile.split(-64, 4);
+	assert !negative.ok && negative.error == AtlasError.NarrowerThanFrames;
 }
 
 test "a billboard instance is written in the order of the Billboard layout" {

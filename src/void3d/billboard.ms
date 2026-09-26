@@ -30,7 +30,7 @@ export function ofFrame(
 	if (frames <= 0) { return Result.err(AtlasError.NoFrames); }
 	if (frame < 0 || frame >= frames) { return Result.err(AtlasError.FrameOutOfRange); }
 	const stride: int32 = width / frames;
-	if (stride == 0) { return Result.err(AtlasError.NarrowerThanFrames); }
+	if (stride <= 0) { return Result.err(AtlasError.NarrowerThanFrames); }
 	const left: float64 = (frame * stride) as float64;
 	const right: float64 = ((frame + 1) * stride) as float64;
 	const across: float64 = width as float64;
@@ -40,6 +40,20 @@ export function ofFrame(
 		u2: (right / across) as float32,
 		v2: 1.0,
 	});
+}
+
+// h2d.Tile.split(frames) itself: every frame's tile, in order.
+export function split(
+	this typeof AtlasTile,
+	width: int32,
+	frames: int32,
+): Result<Vec<AtlasTile>, AtlasError> {
+	if (frames <= 0) { return Result.err(AtlasError.NoFrames); }
+	let tiles: Vec<AtlasTile> = [];
+	for (let frame = 0; frame < frames; frame++) {
+		tiles.push(try AtlasTile.ofFrame(width, frames, frame));
+	}
+	return Result.ok(tiles);
 }
 
 // position(3), width and height, the tile u, v, u2, v2, then rgba: the Billboard layout (gpu3d.c).
