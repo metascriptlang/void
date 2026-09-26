@@ -947,9 +947,9 @@ against the code in the main session before it was fixed.
 
 | id | Finding | Resolution |
 |---|---|---|
-| B1 | `selectedRow` bound `const layout = text.layout`, which deep-copies the whole `TextLayout`, glyphs and line boxes, on every call: three calls per selected row and one per line, every frame, about 226 copies of 16 000 glyphs on the editor scene. The allocation stage could not see it, because no P4 frame function was on `FRAME_PATH` | `39eaafa`: the row reads `text.layout` in place. `FRAME_PATH` now names P4's 15 frame functions, and with them the stage reported `selectedRow=1` before the fix and passes after. The editor's first 6.12 ms carried the copy |
+| B1 | `selectedRow` bound `const layout = text.layout`, which deep-copies the whole `TextLayout`, glyphs and line boxes, on every call: three calls per selected row and one per line, every frame, about 226 copies of 16 000 glyphs on the editor scene. The allocation stage could not see it, because no P4 frame function was on `FRAME_PATH` | `39eaafa`: the row reads `text.layout` in place. `FRAME_PATH` now names P4's 14 frame functions, 16 with `rowEnd` (B2) and `clusterEnd` (re-review N-d), 67 in all, and with them the stage reported `selectedRow=1` before the fix and passes after. The editor's first 6.12 ms carried the copy |
 | B2 | A selected row ended at `line.width`, which stops at the last ink, so it never covered trailing spaces, a selected blank indented line showed only the 4 px tail, and a caret after trailing spaces sat outside both the highlight and the bounds | `e131c19`: a row runs to its last glyph (`rowEnd`), and an editing label's bounds reach the widest row's end, kept in the `LabelText` side table. T1 on `ab  \n    \ncd` |
-| B3 | Owed after B1: the `present` A/B, the editor's numbers in VOID2D.md P4 and the whole-phase wasm delta | The wasm delta and the editor's counters are in VOID2D.md P4 "Measured in P4 so far"; the A/B follows below |
+| B3 | Owed after B1: the `present` A/B, the editor's numbers in VOID2D.md P4 and the whole-phase wasm delta | The wasm delta, the editor's counters and the A/B are in VOID2D.md P4 "Measured in P4 so far" and in "The A/B and the gate" below |
 | F1 | With `lineSpacing` above 0, selected rows left gaps, since the shader takes each neighbour to sit directly against the row | `9e3fb7d`: each row covers half the spacing above and below, so rows meet at any spacing, and an editing label's bounds grow by the same half. h2d's TextInput ignores line spacing here, Makepad's rows touch; decided in the phase and written in VOID2D.md P4 rather than carried |
 | F2 | A run's colour replaces the label's, as GPUI's does, where h2d's `setColorSegments` multiplies by the text colour | Sent to the human on 2026-09-26 with app code, recommending h2d's multiply; not changed until answered |
 | F3 | Decorations were one segment per run, where GPUI merges consecutive runs that share an underline, strikethrough or background (`line.rs:633-663`), so a squiggle across syntax runs restarted its phase at every run | `3285b08`: a decoration runs on across the runs that share it. T0 that fails on the old code |
@@ -962,3 +962,44 @@ against the code in the main session before it was fixed.
 | N3 | A caret or selection index past the text is drawn at its end in silence; `markShapingBreaks` was O(n·m) and ignored a break inside a surrogate pair | `f6bf861`: a break inside a pair stops and names it (`tests/aborts/breakSplitsSurrogate.ms`), found by binary search. The index is kept as h2d's `getCursorXOffset` treats it (`TextInput.hx:603`) |
 | — | Also caught in the main session while verifying: the installed compiler became BUILD `598ca62e` at 19:20 that day, so the gate's line above had named the wrong build, and every baseline built earlier on `2925176a` was rebuilt before comparing | The line above is corrected; the wasm and A/B trees were rebuilt on `598ca62e` |
 | — | The T1 title "refused, not dropped" asserted that the spans are dropped | `7a16156`: "refused aloud" |
+
+## P4 re-review: **SHIP WITH FOLLOW-UPS**
+
+A second fresh Claude subagent, which had written none of P4 and had not sent it back, read
+`caba415..8dfdd2d` against the first pass's findings and the emitted C, and built nothing. It
+found every blocking finding answered: no P4 frame function copies a layout or builds an array,
+each fix's test fails on the old code by the diff, and the regression sweep (aligned rows with
+trailing whitespace, hanging indent, truncated, empty and last lines, negative `lineSpacing`,
+decorations across a wrap) found nothing. It checked the wasm arithmetic, the editor counters and
+the line-length count. It would refuse nothing in the code, and the land until L1 and L2 are in.
+
+| id | Finding | Resolution |
+|---|---|---|
+| L1 | The `present` A/B against `4d357f7` is on "Done when"; `tests/bench/baseline.json` still held the editor's 6.12 ms, taken with the B1 copy; two sentences promised an A/B that did not follow | Taken, below; `baseline.json` holds the editor's 0.58 ms; both sentences now point at the numbers |
+| L2 | The ship record did not say that exit 5, the Zed look, is unmet and the human's; the HEAD gate was not recorded; the frame-function count read 15 | VOID2D.md P4 exit 5 says it; the count is corrected above; the gate is below |
+| F-a | A run background or underline over trailing spaces drew past a styled label's bounds, since only an editing label reached its rows' end, so culling or a filter target could cut it | `f69c801`: a label with runs reaches its widest row's end. T1 that fails on the old code |
+| F-b | An editing label's `getBounds`, an h2d surface, grows with its caret and selection; h2d's TextInput bounds do not | Carried to P5's host contract, as a Lands bullet: render bounds apart from `getBounds` |
+| F-c | F2, the run colour | Waiting on the human; the P5 bullet above says it lands before the host contract if still open |
+| N-a | A decoration across faces with different metrics steps and restarts its wave; GPUI uses one offset per line | Written in VOID2D.md P4 as a W for metric fidelity |
+| N-b | `advanceBlink` runs every frame and is not on `FRAME_PATH` | Tried: no bench calls `update`, so its body is not in the emitted C the stage reads, and naming it fails the stage as unreachable. Left to P5's allocation stage that follows calls (P3.5 re-review #4) |
+| N-c | `faded(c: Color, …)` was a struct-first free function | `9f28fb8` |
+| N-d | Under `setForceWidth` a row that ends in a combining mark ended short of its cell in `xForIndex` and the selection | `dd98aa0`: a row ends at the rightmost edge of its last grapheme. T0 and T1 that fail on the old code |
+| N-e | With `lineSpacing` the caret is the line box's height while a selected row covers the leading | Kept: h2d's `cursorTile` is the font's line height, and the selection fills the leading only so rows meet. Written in VOID2D.md P4 |
+
+### The A/B and the gate
+
+`sh scripts/gate.sh --web` on `9f28fb8`, msc 0.2.55 BUILD `598ca62e`: GREEN, 931 tests, D3D11
+72 / 72, WebGL2 68 / 72 (48 byte-identical, 20 pending, the four listed failures), 25 PENDING rows,
+five abort programs stopping with their messages, the allocation stage over 67 frame, 29 rebuild
+and 3 measure functions, the bench counters unchanged.
+
+The `present` A/B against `4d357f7`, 8 clean pairs of 8 on each scene, both trees rebuilt on
+`598ca62e`: UI 12.58 → 12.41 ms, no move beyond the window's noise (+0.30 ms at the median pair,
+five pairs slower, three faster); Sprites 1.72 → 1.57 ms. The editor scene, P4 only: 0.58 ms, where
+the first timing with B1's copy read 6.12 ms. The numbers and their conditions are in VOID2D.md P4.
+
+P5 may assume a UI `present` of 12.41 ms read against its own pairs, an editor scene of one draw,
+13 214 instances and about 0.6 ms, selection and caret rows that meet and reach their trailing
+whitespace, and a frame path the allocation stage reads function by function. It may not assume
+the Zed look (the human's), the run-colour rule (F2, the human's), render bounds apart from
+`getBounds` (its own Lands), or an allocation stage that follows calls (`advanceBlink`).
