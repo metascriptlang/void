@@ -982,6 +982,36 @@ run_light_multiplies() {
 	pass "multiply: the greyed ground is the plain ground × grey/ground ($ratios) in 4 frames"
 }
 
+# The forward flame is an unlit billboard of colour 1, so its atlas texels reach the frame
+# unchanged: each of its three colours must be there. None of them is in the forward frame
+# without billboards (measured on the pre-M15 m14forward frames: 0 pixels of each).
+run_unlit_billboard() {
+	colours=$(sed -n 's/.*setTexturePixel(width, cellLeft + x, y, \([0-9]*\), \([0-9]*\), \([0-9]*\));/\1,\2,\3/p' \
+		src/examples/campfireScene.ms)
+	if [ "$(echo $colours | wc -w)" -ne 3 ]; then
+		fail "unlit: the flame's three texel colours were not found in campfireScene.ms (got '$colours')"
+		return
+	fi
+	counts=""
+	for frame in $FRAMES; do
+		got=$CAPTURE/gate/campfireForwardCapture_$frame.ppm
+		if [ ! -f "$got" ]; then
+			fail "unlit: frame $frame of campfireForwardCapture was not captured"
+			return
+		fi
+		for colour in $colours; do
+			n=$(magick "$got" -fill black +opaque "rgb($colour)" -fill white -opaque "rgb($colour)" \
+				-format "%[fx:round(mean*w*h)]" info:)
+			if [ "$n" -eq 0 ]; then
+				fail "unlit: frame $frame of the forward capture has no pixel of the flame texel rgb($colour)"
+				return
+			fi
+			counts="$counts $n"
+		done
+	done
+	pass "unlit: the forward flame writes its 3 texel colours unchanged in 4 frames (pixels:$counts)"
+}
+
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "capture: GATE_SKIP_CAPTURE=1 — the fourteen configurations were not built, not run, not compared"
@@ -1004,6 +1034,7 @@ run_captures() {
 	run_capture campfireGreyCpuCapture     m12greydirect  "ground greyed in its vertex colours"
 	run_capture campfireGreyPaletteCapture m12greypalette "ground greyed by its material, palette on"
 	run_capture campfireForwardCapture     m14forward     "forward preset, core programs, billboards and particles"
+	run_unlit_billboard
 }
 
 # ---- manifest -----------------------------------------------------------------------------
