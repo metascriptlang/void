@@ -411,10 +411,21 @@ function assignRuns(cps: Span<Codepoint>, runs: Span<TextRun>, units: int32): vo
 }
 
 function markShapingBreaks(cps: Span<Codepoint>, breaks: Span<int32>): void {
-	if ((breaks.length as int32) == 0) { return; }
-	for (let i = 0; i < (cps.length as int32); i++) {
-		for (const at of breaks) {
-			if (cps[i].index == at) { cps[i].shapingBreak = true; }
+	const count: int32 = cps.length as int32;
+	for (const at of breaks) {
+		let lo: int32 = 0;
+		let hi: int32 = count;
+		while (lo < hi) {
+			const mid: int32 = (lo + hi) >> 1;
+			if (cps[mid].index < at) { lo = mid + 1; } else { hi = mid; }
+		}
+		if (lo < count && cps[lo].index == at) {
+			cps[lo].shapingBreak = true;
+		} else if (lo > 0 && unitEnd(cps[lo - 1]) > at) {
+			console.log(
+				`void2d: shaping break ${at} falls inside the surrogate pair at ${cps[lo - 1].index}`,
+			);
+			unreachable;
 		}
 	}
 }
