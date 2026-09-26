@@ -270,6 +270,7 @@ function step(
 	previousRun: int32,
 	style: TextStyle,
 	stop: float32,
+	spaced: boolean,
 ): Step {
 	if (isControl(codepoint.value)) {
 		let next: float32 = pen;
@@ -291,9 +292,9 @@ function step(
 		x = pen + glyphKern(face, previous, glyph, size);
 	}
 	const advance: float32 = glyphAdvance(face, glyph, size);
+	const spacing: float32 = spaced ? style.letterSpacing : 0.0;
 	return {
-		face: face, glyph: glyph, size: size, x: x, advance: advance,
-		next: x + advance + style.letterSpacing,
+		face: face, glyph: glyph, size: size, x: x, advance: advance, next: x + advance + spacing,
 	};
 }
 
@@ -454,7 +455,8 @@ export function shapeText(
 			face: cp.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: 0.0, next: pen,
 		};
 		if (cp.value != NEWLINE) {
-			s = step(cp, pen, previous, previousFace, previousRun, style, stop);
+			const spaced: boolean = i + 1 >= count || cps[i + 1].clusterStart;
+			s = step(cp, pen, previous, previousFace, previousRun, style, stop, spaced);
 		}
 		glyphs.push({
 			face: s.face,

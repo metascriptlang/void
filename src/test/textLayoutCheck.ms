@@ -79,6 +79,13 @@ test "letter spacing is added after every glyph but not after the last" {
 	assert approx(spaced.width, plain.width + 2.0);
 }
 
+test "letter spacing goes between graphemes, never between a letter and its mark" {
+	const spaced = TextLayout.layout("e\u{301}x", { ...style(), letterSpacing: 4.0 });
+	const plain = TextLayout.layout("e\u{301}x", style());
+	assert approx(spaced.glyphs[1].x, plain.glyphs[1].x);
+	assert approx(spaced.glyphs[2].x, plain.glyphs[2].x + 4.0);
+}
+
 test "a trailing space hangs outside the line width" {
 	const hung = TextLayout.layout("ab ", style());
 	assert approx(hung.width, TextLayout.layout("ab", style()).width);
