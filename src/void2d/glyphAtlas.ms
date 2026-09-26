@@ -3,6 +3,9 @@ import {
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
 	void2dGlyphPageClear,
+	void2dGlyphPageUploaded,
+	void2dGlyphPageTakeUpload,
+	void2dGlyphPagesFrameBegin,
 } from "./glyph.h";
 
 export const SUBPIXEL_VARIANTS: int32 = 4;
@@ -123,6 +126,18 @@ export function markDrawn(this atlas: GlyphAtlas, page: GlyphPage): void {
 	atlas.pages[page as int32].drawnFrame = atlas.frame;
 }
 
+export function uploadedThisFrame(this atlas: GlyphAtlas, page: GlyphPage): boolean {
+	return void2dGlyphPageUploaded(atlas.pages[page as int32].handle as int32) != 0;
+}
+
+export function takePageUpload(this atlas: GlyphAtlas, page: GlyphPage): boolean {
+	return void2dGlyphPageTakeUpload(atlas.pages[page as int32].handle as int32) != 0;
+}
+
+export function beginUploadFrame(): void {
+	void2dGlyphPagesFrameBegin();
+}
+
 export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 	if ((atlas.pages.length as int32) == 0 && atlas.maxPages > 0) {
 		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize);
@@ -181,7 +196,8 @@ function placeOnPage(
 function reclaimPage(atlas: GlyphAtlas): Result<GlyphPage, AtlasError> {
 	for (let p = 0; p < (atlas.pages.length as int32); p++) {
 		const page: GlyphPage = p as GlyphPage;
-		if (atlas.pages[p].drawnFrame == atlas.frame || liveTilesOn(atlas, page) != 0) { continue; }
+		if (atlas.pages[p].drawnFrame == atlas.frame || atlas.uploadedThisFrame(page)) { continue; }
+		if (liveTilesOn(atlas, page) != 0) { continue; }
 		for (let i = 0; i < (atlas.tiles.length as int32); i++) {
 			if (atlas.tiles[i].page == page) {
 				atlas.index.delete(atlas.tiles[i].key);
@@ -212,6 +228,7 @@ function allocate(
 	const h: int32 = height + GLYPH_GUTTER;
 	if (w > atlas.pageSize || h > atlas.pageSize) { return Result.err(AtlasError.TooLarge); }
 	for (let p = 0; p < (atlas.pages.length as int32); p++) {
+		if (atlas.uploadedThisFrame(p as GlyphPage)) { continue; }
 		const placed = placeOnPage(atlas, p as GlyphPage, w, h);
 		if (placed.ok) { return Result.ok([p as GlyphPage, placed.value[0], placed.value[1]]); }
 	}

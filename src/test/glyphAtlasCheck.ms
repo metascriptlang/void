@@ -10,6 +10,7 @@ import {
 	quantizeX,
 	snapBaseline,
 	NO_GLYPH_PAGE,
+	beginUploadFrame,
 } from "../void2d/glyphAtlas";
 
 let loadedFace: int32 = -1;
@@ -180,6 +181,42 @@ test "a page drawn from in this frame is not reclaimed until the next frame" {
 	if (!blocked.ok) { assert blocked.error == AtlasError.Full; }
 	assert atlas.reclaims == 0;
 	atlas.beginFrame(8);
+	const next = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
+	assert next.ok;
+	assert atlas.reclaims == 1;
+}
+
+test "a page uploaded this frame takes no new tile, so a later bracket's glyph goes elsewhere" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(64, 2);
+	beginUploadFrame();
+	const first = atlas.acquire(keyFor(face, "A".code, 20.0, 0));
+	assert first.ok;
+	const page = atlas.tile(first.value).page;
+	assert atlas.takePageUpload(page);
+	assert atlas.uploadedThisFrame(page);
+	const second = atlas.acquire(keyFor(face, "B".code, 20.0, 0));
+	assert second.ok;
+	assert atlas.tile(second.value).page != page;
+	beginUploadFrame();
+	assert !atlas.uploadedThisFrame(page);
+	const third = atlas.acquire(keyFor(face, "C".code, 20.0, 0));
+	assert third.ok;
+	assert atlas.tile(third.value).page == page;
+}
+
+test "a page uploaded this frame is not reclaimed until the next frame" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(64, 1);
+	beginUploadFrame();
+	const held = fillUntilFull(atlas, face);
+	for (const index of held) { atlas.release(index); }
+	assert atlas.takePageUpload(atlas.tile(held[0]).page);
+	const blocked = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
+	assert !blocked.ok;
+	if (!blocked.ok) { assert blocked.error == AtlasError.Full; }
+	assert atlas.reclaims == 0;
+	beginUploadFrame();
 	const next = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
 	assert next.ok;
 	assert atlas.reclaims == 1;

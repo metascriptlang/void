@@ -29,8 +29,9 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
                           int page, int x, int y, int w, int h);
 int void2dGlyphPageTexel(int page, int x, int y);
 const unsigned char *void2dGlyphPageData(int page);
-int void2dGlyphPageDirty(int page);
-void void2dGlyphPageClean(int page);
+int void2dGlyphPageUploaded(int page);
+int void2dGlyphPageTakeUpload(int page);
+void void2dGlyphPagesFrameBegin(void);
 
 typedef void (*GlyphRasterBox)(const unsigned char *font, int length, int glyph, float sizePx,
                                float shiftX, int *box);

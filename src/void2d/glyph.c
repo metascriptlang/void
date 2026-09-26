@@ -39,6 +39,7 @@ typedef struct {
 	unsigned char *texels;
 	int size;
 	int dirty;
+	int uploaded;
 } GlyphPage;
 
 static GlyphFace *s_faces;
@@ -623,6 +624,7 @@ int void2dGlyphPageCreate(int size) {
 	s_pages[s_pageCount].texels = texels;
 	s_pages[s_pageCount].size = size;
 	s_pages[s_pageCount].dirty = 1;
+	s_pages[s_pageCount].uploaded = 0;
 	return s_pageCount++;
 }
 
@@ -679,8 +681,15 @@ const unsigned char *void2dGlyphPageData(int page) {
 	return validPage(page) ? s_pages[page].texels : NULL;
 }
 
-int void2dGlyphPageDirty(int page) { return validPage(page) ? s_pages[page].dirty : 0; }
+int void2dGlyphPageUploaded(int page) { return validPage(page) ? s_pages[page].uploaded : 0; }
 
-void void2dGlyphPageClean(int page) {
-	if (validPage(page)) { s_pages[page].dirty = 0; }
+int void2dGlyphPageTakeUpload(int page) {
+	if (!validPage(page) || !s_pages[page].dirty || s_pages[page].uploaded) { return 0; }
+	s_pages[page].dirty = 0;
+	s_pages[page].uploaded = 1;
+	return 1;
+}
+
+void void2dGlyphPagesFrameBegin(void) {
+	for (int page = 0; page < s_pageCount; page++) { s_pages[page].uploaded = 0; }
 }

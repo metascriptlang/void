@@ -60,7 +60,6 @@ static sg_sampler s_smp[SMP_COUNT];
 
 static sg_image s_pageImg[VOID2D_MAX_GLYPH_PAGES];
 static sg_view s_pageView[VOID2D_MAX_GLYPH_PAGES];
-static bool s_pageUploaded[VOID2D_MAX_GLYPH_PAGES];
 static int s_atlasMade;
 static int s_glyphUploads;
 static float s_textGamma[4];
@@ -501,7 +500,7 @@ void void2dFrameBegin(void) {
 	}
 	if (s_frameOpen) { return; }
 	s_frameOpen = 1;
-	memset(s_pageUploaded, 0, sizeof(s_pageUploaded));
+	void2dGlyphPagesFrameBegin();
 	releaseRetiredBuffers();
 	s_drawCallCount = 0;
 	s_uploadCount = 0;
@@ -541,14 +540,12 @@ void void2dBlur(uint32_t srcView, float dirX, float dirY) {
 static void uploadGlyphPages(void) {
 	int count = void2dGlyphPageCount();
 	for (int page = 0; page < count && page < VOID2D_MAX_GLYPH_PAGES; page++) {
-		if (s_pageImg[page].id == 0 || !void2dGlyphPageDirty(page) || s_pageUploaded[page]) { continue; }
+		if (s_pageImg[page].id == 0 || !void2dGlyphPageTakeUpload(page)) { continue; }
 		int size = void2dGlyphPageSize(page);
 		sg_image_data id = {0};
 		id.mip_levels[0].ptr = void2dGlyphPageData(page);
 		id.mip_levels[0].size = (size_t)size * (size_t)size;
 		sg_update_image(s_pageImg[page], &id);
-		void2dGlyphPageClean(page);
-		s_pageUploaded[page] = true;
 		s_glyphUploads++;
 		s_glyphUploadBytes += size * size;
 	}
