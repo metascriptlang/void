@@ -54,7 +54,8 @@ import {
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_FLOATS, InstanceMode,
 } from "../../src/void2d/instance";
-import { rgba, tile, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
+import { rgba, tile, identity2d, emptyBounds, BlendMode, Smooth } from "../../src/void2d/types";
+import { CURSOR_WIDTH } from "../../src/void2d/labelText";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
@@ -717,4 +718,18 @@ test "a selection across a wrap with no separator lights only the text it covers
 	const acrossWrap = selectedSpans(s.root, 200.0, 80.0);
 	assert (acrossWrap.length as int32) == 4;
 	assert approx(acrossWrap[1], lines[0].x + lines[0].width);
+}
+
+test "a label's bounds hold its selection tail and a caret after its widest line" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("abcd\nab", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setSelectionRange({ start: 2, length: 4 }, rgba(0.3, 0.5, 0.9, 0.5));
+	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
+	const spans = selectedSpans(s.root, 200.0, 80.0);
+	const bounds = emptyBounds();
+	text.getBounds(bounds);
+	const first = text.textLayout().lines[0];
+	assert first.x + first.width + CURSOR_WIDTH <= bounds.xMax;
+	assert (spans.length as int32) == 4;
+	assert spans[1] <= bounds.xMax;
 }

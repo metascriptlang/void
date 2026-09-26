@@ -40,6 +40,7 @@ import {
 	Decoration,
 	DecorationKind,
 	CURSOR_WIDTH,
+	NO_CURSOR,
 	cursorShown,
 } from "./labelText";
 import {
@@ -105,6 +106,12 @@ function visualTile(n: Node2D): Tile {
 	}
 	return n.sheet;
 }
+function showsEditing(n: Node2D): boolean {
+	if (n.payload == NO_LABEL_TEXT) { return false; }
+	const text: LabelText = labelTexts[n.payload];
+	return text.selectionLength > 0 || text.cursorIndex != NO_CURSOR;
+}
+
 function tileOffsetX(t: Tile, width: float32): float32 {
 	return t.w != 0.0 ? t.dx * width / t.w : t.dx;
 }
@@ -115,6 +122,12 @@ function tileOffsetY(t: Tile, height: float32): float32 {
 
 
 function localBounds(n: Node2D): Bounds {
+	if (n.kind === DrawKind.Label && showsEditing(n)) {
+		return {
+			xMin: n.contentXMin - SELECTION_GLOOP, yMin: n.contentYMin,
+			xMax: n.contentXMax + SELECTION_GLOOP, yMax: n.contentYMax,
+		};
+	}
 	if (n.kind === DrawKind.Graphics || n.kind === DrawKind.Label) {
 		return { xMin: n.contentXMin, yMin: n.contentYMin, xMax: n.contentXMax, yMax: n.contentYMax };
 	}
