@@ -751,8 +751,13 @@ the baseline was re-taken (see "Baseline" (b)):
 - Carried from P3's review (REVIEWS.md P3, follow-ups): a placement stays invalid while any glyph is refused (F1); filter targets snapped to device pixels, with golden `text/filteredDpi125` (F3); `\r` and tab drawn as nothing and a tab stop, C0 controls kept out of the fallback probe, GPUI's break rule, and h2d's `maxWidth` centring for `align` (F4); pins for the page cap, the refusal report and the `sizeAdjust` guard (F8); the font API under CODE-STYLE §14 (F9), and with it the half of F9 no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1`, and private `T[]` parameters remain where CODE-STYLE asks for `Span<T>` (`sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, and `polyArea2`, `isEar` and `triangulate` in `graphics.ms`) (REVIEWS.md P3.5 review). From P3.5's re-review: a line in a `tests/PENDING.md` table that the record check cannot parse fails the gate and names the line, where today it is skipped in silence; and the gate prints `msc --version` and `~/.metascript/BUILD`, so its log names the compiler it certified.
 
 **Steps, in order** (written 2026-09-26, before P4's code). Steps 4-7 build what an app author
-writes or reads; the human was sent the app code before and after on 2026-09-26, and each of them
-waits for that answer, parked at this list. Steps 1-3 do not depend on it.
+writes or reads. The human was sent the app code before and after on 2026-09-26 and approved every
+proposal the same day: the font API as `Result` with a `FontId`; the BoxStyle builders as
+extensions; text metrics on a non-Label failing loud; `textAlign: Align`, centred inside
+`maxWidth`; a Label carrying `setTextRuns`, `setSelectionRange`, `setCursorIndex`, `xForIndex`,
+`indexAt` and `lineBoxAt`, every index a UTF-16 code unit as MetaScript's `string.length` counts
+them; `setTruncate`, `setHangingIndent`, `setForceWidth`, `splitAt` and `setShapingBreaks`, and a
+wrap tailoring for code measured on code before it is fixed.
 
 1. **The gate names what it cannot read and what compiled it** (P3.5 re-review #3, #8). A line in
    a `tests/PENDING.md` table that `pendingRows` cannot parse fails the record stage and is named;
@@ -776,18 +781,18 @@ waits for that answer, parked at this list. Steps 1-3 do not depend on it.
    The break rule moved here from step 2 so the oracle exists before the rule changes. Then
    UAX #14 replaces GPUI's rule (the human, 2026-09-26), held to every `LineBreakTest.txt` row,
    with its table's wasm delta measured.
-4. **The app-facing half of F4 and F9**, waiting on the human: the font API as `Result` with a
+4. **The app-facing half of F4 and F9**: the font API as `Result` with a
    `FontId`, the BoxStyle builders as extensions, text metrics on a non-Label failing loud, `Align`
    with h2d's `maxWidth` centring. Neon's call sites get a note in `.inbox/neon/`.
-5. **`TextRun`**, waiting on the human: run splitting, backgrounds before glyphs, underline,
+5. **`TextRun`**: run splitting, backgrounds before glyphs, underline,
    strikethrough and wavy as UI instances placed from the font's metrics and snapped. T1: a style
    change splits the run; decoration position and thickness as numbers. T2: golden
    `text/decorations`.
-6. **Wrap, truncation and hit-testing over the unwrapped glyph list**, waiting on the human: wrap
+6. **Wrap, truncation and hit-testing over the unwrapped glyph list**: wrap
    boundaries, hanging indent, truncation at start, middle and end, `force_width`, `split_at`, the
    shaping-break input, `x_for_index` / `index_for_x`, line boxes over the tallest face (F11). T0
    for the boundary arithmetic; T1 that a width change lays out no glyph again.
-7. **Caret and selection as their own instances**, waiting on the human: the smooth-min union in
+7. **Caret and selection as their own instances**: the smooth-min union in
    the fragment shader. T1: a blink changes no text instance. T2: golden `text/caretSelection`,
    and a capture check that a ragged selection has no gap and no doubled alpha. The Zed look is
    asked of the human once this renders.
