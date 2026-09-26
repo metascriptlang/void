@@ -17,7 +17,9 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
+	UNIFORM_SLOTS,
 	contextGeneration,
+	uniformBlockLength,
 } from "./gpu3d";
 import { commit } from "../sokol/gpu";
 import { Phase, UniformBlock, NO_UNIFORMS } from "./material";
@@ -30,6 +32,7 @@ import {
 	reserveUniforms,
 	writeUniforms,
 	drawItem,
+	MODEL_SLOT,
 } from "./draw";
 import { forgetPipelines } from "./pipelineCache";
 import { PassList, collect, sortBackToFront, drawPassList } from "./passList";
@@ -44,6 +47,8 @@ export struct Renderer {
 	lightBlock: UniformBlock;
 	sceneGlobals: Vec<UniformBlock>;
 	programs: ProgramMap;
+	// Per item of the frame, the program `programs` draws for its material's.
+	drawn: Vec<Program>;
 	screenMesh: int32;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
@@ -57,6 +62,7 @@ export enum RendererError {
 	CameraBlockLength,
 	LightBlockLength,
 	ProgramNotDrawn,
+	MaterialBlock,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -97,6 +103,7 @@ export function createDrawing(
 		lightBlock: lightBlock,
 		sceneGlobals: [cameraBlock, lightBlock],
 		programs: programs,
+		drawn: [],
 		screenMesh: addMesh(context, screenMesh(0)),
 		generation: 0,
 		changed: true,
@@ -115,14 +122,14 @@ export function needsFrame(this renderer: Renderer): boolean {
 }
 
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and
-// fills the pass lists from `items`. A camera or light span that is not its block's length, or
-// an item whose material names a program this renderer does not draw, is refused before
-// anything changes. Answers true when the context is new: every handle the
-// caller made before is stale then (it may name an object of the new context), so the caller
-// drops its own without destroying them and makes them again before drawing. The core has
-// already dropped the pipelines, remade the screen triangle, and re-uploaded every mesh that
-// carries its CPU data (draw.ms rebuildMeshes); what is left is whatever the caller uploaded
-// from buffers only it keeps.
+// fills the pass lists from `items`. A camera or light span that is not its block's length, an
+// item whose material names a program this renderer does not draw, or a material whose block is
+// not the one that program reads, is refused before anything changes. Answers true when the
+// context is new: every handle the caller made before is stale then (it may name an object of
+// the new context), so the caller drops its own without destroying them and makes them again
+// before drawing. The core has already dropped the pipelines, remade the screen triangle, and
+// re-uploaded every mesh that carries its CPU data (draw.ms rebuildMeshes); what is left is
+// whatever the caller uploaded from buffers only it keeps.
 export function beginFrame(
 	ref renderer: Renderer,
 	ref context: DrawContext,
@@ -130,10 +137,18 @@ export function beginFrame(
 	camera: Span<float32>,
 	lights: Span<float32>,
 ): Result<boolean, RendererError> {
-	for (const item of items) {
-		if (!renderer.programs.draws(context.materials[item.material].program)) {
-			return Result.err(RendererError.ProgramNotDrawn);
+	while ((renderer.drawn.length as int32) < (items.length as int32)) {
+		renderer.drawn.push(Program.Lit);
+	}
+	for (let i = 0; i < (items.length as int32); i++) {
+		const material: int32 = items[i].material;
+		const drawn: Result<Program, ProgramError> =
+			renderer.programs.drawnFor(context.materials[material].program);
+		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
+		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
+			return Result.err(RendererError.MaterialBlock);
 		}
+		renderer.drawn[i] = drawn.value;
 	}
 	if (!writeUniforms(context, renderer.cameraBlock, camera).ok) {
 		return Result.err(RendererError.CameraBlockLength);
@@ -158,25 +173,17 @@ export function beginFrame(
 }
 
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is
-// its attachment layout), with the camera and lights applied to every item. Answers how many
-// items it drew.
+// its attachment layout), with the camera and lights applied to every item and each drawn with
+// the program beginFrame resolved for it.
 export function drawPassLists(
 	ref renderer: Renderer,
 	ref context: DrawContext,
 	items: Span<DrawItem>,
 	targets: TargetLayout,
-): Result<int32, RendererError> {
-	const programs: ProgramMap = renderer.programs;
-	const opaque: Result<int32, ProgramError> =
-		drawPassList(context, renderer.opaque, items, programs, targets, renderer.sceneGlobals);
-	if (!opaque.ok) { return Result.err(RendererError.ProgramNotDrawn); }
-	const alpha: Result<int32, ProgramError> =
-		drawPassList(context, renderer.alpha, items, programs, targets, renderer.sceneGlobals);
-	if (!alpha.ok) { return Result.err(RendererError.ProgramNotDrawn); }
-	const additive: Result<int32, ProgramError> =
-		drawPassList(context, renderer.additive, items, programs, targets, renderer.sceneGlobals);
-	if (!additive.ok) { return Result.err(RendererError.ProgramNotDrawn); }
-	return Result.ok(opaque.value + alpha.value + additive.value);
+): void {
+	drawPassList(context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals);
+	drawPassList(context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals);
+	drawPassList(context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals);
 }
 
 // ScreenFx.render: `material` (a Fullscreen-layout material in `context`, drawn with its own
@@ -189,6 +196,22 @@ export function drawScreen(
 ): void {
 	const program: Program = context.materials[material].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);
+}
+
+// The one block a material brings for `program`: the slot it declares that is neither pass-wide
+// nor the model matrix, at the length its shader declares; none when it declares no such slot.
+function blockFits(program: Program, block: UniformBlock): boolean {
+	let own: int32 = -1;
+	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
+		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT;
+		if (passWide || slot == MODEL_SLOT || uniformBlockLength(program, slot) == 0) {
+			continue;
+		}
+		if (own >= 0) { return false; }
+		own = slot;
+	}
+	if (own < 0) { return block.length == 0; }
+	return block.slot == own && block.length == uniformBlockLength(program, own);
 }
 
 export function endFrame(ref renderer: Renderer): void {

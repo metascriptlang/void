@@ -9,6 +9,8 @@ import "../sokol/gpu";
 import {
 	gpu3dMakeShader,
 	gpu3dUniformSlotMask,
+	gpu3dUniformBlockBytes,
+	GPU3D_UNIFORM_SLOTS,
 	gpu3dMakeTargetImage,
 	gpu3dMakeAttachmentView,
 	gpu3dMakeTextureView,
@@ -122,6 +124,13 @@ export function makeShader(program: Program): uint32 {
 
 export function uniformSlotMask(program: Program): uint32 {
 	return gpu3dUniformSlotMask(program as int32);
+}
+
+export const UNIFORM_SLOTS: int32 = GPU3D_UNIFORM_SLOTS;
+
+// Floats of the block `program` declares at `slot`, 0 for none, read off its shader desc.
+export function uniformBlockLength(program: Program, slot: int32): int32 {
+	return gpu3dUniformBlockBytes(program as int32, slot) / 4;
 }
 
 export function makePipeline(descriptor: Span<uint32>): uint32 {

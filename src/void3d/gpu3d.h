@@ -57,6 +57,10 @@ static const int32_t GPU3D_PROGRAM_COUNT = GPU3D_PROGRAM_TABLE_LENGTH;
 uint32_t gpu3dMakeShader(int32_t program);
 // Bit n set when the program declares a uniform block at slot n, read off its shader desc.
 uint32_t gpu3dUniformSlotMask(int32_t program);
+// Bytes of the block the program declares at `slot`, 0 for none; needs no GPU.
+int32_t gpu3dUniformBlockBytes(int32_t program, int32_t slot);
+#define GPU3D_UNIFORM_SLOT_TABLE_LENGTH 8
+static const int32_t GPU3D_UNIFORM_SLOTS = GPU3D_UNIFORM_SLOT_TABLE_LENGTH;
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);
 uint32_t gpu3dMakeVertexBuffer(const float *data, int64_t length);
 uint32_t gpu3dMakeIndexBuffer(const uint16_t *data, int64_t length);

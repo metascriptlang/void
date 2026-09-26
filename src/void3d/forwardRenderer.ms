@@ -45,6 +45,7 @@ export enum ForwardError {
 	CameraBlockLength,
 	LightBlockLength,
 	ProgramNotDrawn,
+	MaterialBlock,
 	TargetSize,
 }
 
@@ -73,7 +74,7 @@ export function create(
 ): Result<ForwardRenderer, ForwardError> {
 	const core: Result<Renderer, RendererError> = Renderer.create(context);
 	if (!core.ok) {
-		return Result.err(ForwardError.UniformPoolFull);
+		return Result.err(fromCore(core.error));
 	}
 	const copy: Material = Material.plain(Program.Copy, screenState(), Phase.Opaque);
 	return Result.ok({
@@ -94,6 +95,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.CameraBlockLength => ForwardError.CameraBlockLength,
 		RendererError.LightBlockLength => ForwardError.LightBlockLength,
 		RendererError.ProgramNotDrawn => ForwardError.ProgramNotDrawn,
+		RendererError.MaterialBlock => ForwardError.MaterialBlock,
 	};
 }
 
@@ -142,10 +144,8 @@ export function renderFrame(
 	context.materials[renderer.copyMaterial].sampler0 = renderer.sampler.handle;
 
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	const drawn: Result<int32, RendererError> =
-		drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
+	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
 	endPass();
-	if (!drawn.ok) { return Result.err(fromCore(drawn.error)); }
 	beginScreenPass(SCREEN_CLEAR);
 	drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
 	endPass();

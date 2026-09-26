@@ -662,7 +662,7 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:drawPassLists renderer:drawS
 	pipeline67ache:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:resizeTargets
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
-	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampLevelsSet program77ap:draws
+	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampsHaveLevels pixel65rt82enderer:levelsAt
 	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
 	target:beginPass"

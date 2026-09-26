@@ -1,15 +1,37 @@
 import { Mat4, Vec4, identity } from "../math/math3d";
 import {
 	Program,
+	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
+	MATERIAL_UNIFORM_SLOT,
+	MATERIAL_UNIFORM_LENGTH,
+	UNIFORM_SLOTS,
+	uniformBlockLength,
 } from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
-import { Material, Phase } from "../void3d/material";
-import { DrawContext, DrawItem, addMaterial } from "../void3d/draw";
+import { Material, Phase, UniformBlock } from "../void3d/material";
+import {
+	DrawContext,
+	DrawItem,
+	MODEL_SLOT,
+	MODEL_LENGTH,
+	UniformError,
+	addMaterial,
+	reserveUniforms,
+} from "../void3d/draw";
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
-import { pixelArtPrograms } from "../void3d/pixelArtRenderer";
+import {
+	SPRITE_UNIFORM_SLOT,
+	SPRITE_UNIFORM_LENGTH,
+	POST_UNIFORM_SLOT,
+	POST_UNIFORM_LENGTH,
+	BLIT_UNIFORM_SLOT,
+	BLIT_UNIFORM_LENGTH,
+	pixelArtPrograms,
+} from "../void3d/pixelArtRenderer";
 import {
 	ForwardRenderer,
 	ForwardError,
@@ -128,5 +150,82 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 			renderFrame(forward, context, items, camera, lights, 640, 480);
 		assert !billboard.ok && billboard.error == ForwardError.ProgramNotDrawn;
 		assert forward.core.generation == 0 && forward.colorTarget.image == 0;
+	}
+}
+
+function declaredSlots(program: Program): int32 {
+	let count: int32 = 0;
+	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
+		if (uniformBlockLength(program, slot) > 0) { count = count + 1; }
+	}
+	return count;
+}
+
+test "every block the CPU writes is the length its shader declares, read off the shader desc" {
+	for (const lit of [Program.Lit, Program.PixelArtLit]) {
+		assert uniformBlockLength(lit, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
+		assert uniformBlockLength(lit, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
+		assert uniformBlockLength(lit, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
+		assert uniformBlockLength(lit, MODEL_SLOT) == MODEL_LENGTH;
+		assert declaredSlots(lit) == 4;
+	}
+	assert uniformBlockLength(Program.Billboard, SPRITE_UNIFORM_SLOT) == SPRITE_UNIFORM_LENGTH;
+	assert declaredSlots(Program.Billboard) == 3;
+	assert declaredSlots(Program.Particle) == 1 && declaredSlots(Program.PixelArtParticle) == 1;
+	assert uniformBlockLength(Program.PixelArtPost, POST_UNIFORM_SLOT) == POST_UNIFORM_LENGTH;
+	assert uniformBlockLength(Program.PixelArtBlit, BLIT_UNIFORM_SLOT) == BLIT_UNIFORM_LENGTH;
+	assert declaredSlots(Program.Copy) == 0;
+	assert uniformBlockLength(Program.Lit, UNIFORM_SLOTS) == 0;
+}
+
+test "the core refuses a lit material without the block its program reads, and takes one with it" {
+	let bare: DrawContext = contextNaming(Program.Lit, RENDERER_UNIFORM_LENGTH);
+	const bareCore: Result<Renderer, RendererError> = Renderer.create(bare);
+	assert bareCore.ok;
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const items: Vec<DrawItem> = [itemOf(0)];
+	if (bareCore.ok) {
+		let core: Renderer = bareCore.value;
+		const began: Result<boolean, RendererError> = beginFrame(core, bare, items, camera, lights);
+		assert !began.ok && began.error == RendererError.MaterialBlock;
+	}
+	let held: DrawContext =
+		DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(held, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+	assert block.ok;
+	if (block.ok) {
+		addMaterial(held, {
+			...Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque),
+			uniforms: block.value,
+		});
+	}
+	const heldCore: Result<Renderer, RendererError> = Renderer.create(held);
+	assert heldCore.ok;
+	if (heldCore.ok) {
+		let core: Renderer = heldCore.value;
+		const began: Result<boolean, RendererError> =
+			beginFrame(core, held, items, shortCamera, lights);
+		assert !began.ok && began.error == RendererError.CameraBlockLength;
+		assert core.drawn[0] == Program.Lit;
+	}
+}
+
+test "the forward preset refuses a lit material without its block" {
+	let context: DrawContext = contextNaming(Program.Lit, FORWARD_UNIFORM_LENGTH);
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	const created: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(context, background);
+	assert created.ok;
+	if (created.ok) {
+		let forward: ForwardRenderer = created.value;
+		const items: Vec<DrawItem> = [itemOf(0)];
+		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const refused: Result<int32, ForwardError> =
+			renderFrame(forward, context, items, camera, lights, 640, 480);
+		assert !refused.ok && refused.error == ForwardError.MaterialBlock;
 	}
 }

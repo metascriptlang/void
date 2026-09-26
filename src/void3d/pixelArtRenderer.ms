@@ -25,7 +25,7 @@ import {
 	depthZeroToOne,
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
-import { ProgramMap } from "./programMap";
+import { ProgramMap, ProgramError } from "./programMap";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -149,6 +149,7 @@ export enum PixelArtError {
 	LightBlockLength,
 	ScreenBlockLength,
 	ProgramNotDrawn,
+	MaterialBlock,
 	RampLevels,
 }
 
@@ -450,12 +451,10 @@ function drawScene(
 	ref renderer: PixelArtRenderer,
 	ref context: DrawContext,
 	items: Span<DrawItem>,
-): Result<int32, RendererError> {
+): void {
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	const drawn: Result<int32, RendererError> =
-		drawPassLists(renderer.core, context, items, SCENE_LAYOUT);
+	drawPassLists(renderer.core, context, items, SCENE_LAYOUT);
 	endPass();
-	return drawn;
 }
 
 function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
@@ -476,20 +475,30 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.CameraBlockLength => PixelArtError.CameraBlockLength,
 		RendererError.LightBlockLength => PixelArtError.LightBlockLength,
 		RendererError.ProgramNotDrawn => PixelArtError.ProgramNotDrawn,
+		RendererError.MaterialBlock => PixelArtError.MaterialBlock,
 	};
 }
 
-// The toon ramp divides by its levels, so an item whose program steps its lights must carry a
-// block with at least one level; 0 would draw NaN.
-function rampLevelsSet(context: DrawContext, items: Span<DrawItem>): boolean {
+// The toon ramp divides by its levels, so the block of a program that steps its lights needs at
+// least one; 0 draws NaN, and NaN fails the comparison too. A block too short to hold them is
+// the core's to refuse (RendererError.MaterialBlock).
+function levelsAt(context: DrawContext, block: UniformBlock, at: int32): boolean {
+	if (block.length <= at) { return true; }
+	return context.uniforms[block.offset + at] >= 1.0;
+}
+
+function rampsHaveLevels(context: DrawContext, items: Span<DrawItem>): boolean {
+	const programs: ProgramMap = pixelArtPrograms();
 	for (const item of items) {
 		const material: Material = context.materials[item.material];
-		let at: int32 = -1;
-		if (material.program == Program.Lit) { at = RAMP_LEVELS; }
-		if (material.program == Program.Billboard) { at = SPRITE_RAMP_LEVELS; }
-		if (at < 0) { continue; }
-		if (material.uniforms.length <= at) { return false; }
-		if (context.uniforms[material.uniforms.offset + at] < 1.0) { return false; }
+		const drawn: Result<Program, ProgramError> = programs.drawnFor(material.program);
+		if (!drawn.ok) { continue; }
+		const held: boolean = match (drawn.value) {
+			Program.PixelArtLit => levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.Billboard => levelsAt(context, material.uniforms, SPRITE_RAMP_LEVELS),
+			_ => true,
+		};
+		if (!held) { return false; }
 	}
 	return true;
 }
@@ -507,7 +516,7 @@ export function renderFrame(
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
-	if (!rampLevelsSet(context, items)) { return Result.err(PixelArtError.RampLevels); }
+	if (!rampsHaveLevels(context, items)) { return Result.err(PixelArtError.RampLevels); }
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, context, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -532,14 +541,7 @@ export function renderFrame(
 
 	for (const stage of renderer.stages) {
 		match (stage) {
-			Stage.Scene => {
-				const drawn: Result<int32, RendererError> = drawScene(renderer, context, items);
-				if (!drawn.ok) {
-					// PENDING3D: match-arm-return-typed
-					const refused: Result<int32, PixelArtError> = Result.err(fromCore(drawn.error));
-					return refused;
-				}
-			},
+			Stage.Scene => { drawScene(renderer, context, items); },
 			Stage.Post => { drawPost(renderer, context); },
 			Stage.Blit => { drawBlit(renderer, context); },
 		};

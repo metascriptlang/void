@@ -37,6 +37,8 @@ import {
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
 	POST_UNIFORM_LENGTH,
+	SPRITE_UNIFORM_SLOT,
+	SPRITE_UNIFORM_LENGTH,
 	planStages,
 	screenKey,
 	setSettings,
@@ -429,7 +431,7 @@ test "the pixel-art preset refuses a material naming a program it does not draw"
 	assert renderer.core.generation == 0 && renderer.view.width == 0;
 }
 
-test "a lit material without toon ramp levels refuses the pixel-art frame; with them it passes on" {
+test "a lit material without ramp levels or without its block refuses the pixel-art frame" {
 	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH;
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
@@ -446,7 +448,17 @@ test "a lit material without toon ramp levels refuses the pixel-art frame; with 
 	const bareItems: Vec<DrawItem> = [itemAt((bare.materials.length as int32) - 1, 0.0)];
 	const noBlock: Result<int32, PixelArtError> =
 		renderFrame(withoutBlock, bare, bareItems, camera, lights, drawn);
-	assert !noBlock.ok && noBlock.error == PixelArtError.RampLevels;
+	assert !noBlock.ok && noBlock.error == PixelArtError.MaterialBlock;
+	let notANumber: DrawContext = DrawContext.withUniformCapacity(capacity);
+	let atNaN: PixelArtRenderer = presetOver(notANumber, Program.Lit, 4.0);
+	const nanMaterial: int32 = (notANumber.materials.length as int32) - 1;
+	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
+	notANumber.uniforms[levelsAt] = 0.0 / 0.0;
+	assert notANumber.uniforms[levelsAt] != notANumber.uniforms[levelsAt];
+	const nanItems: Vec<DrawItem> = [itemAt(nanMaterial, 0.0)];
+	const nanLevels: Result<int32, PixelArtError> =
+		renderFrame(atNaN, notANumber, nanItems, camera, lights, drawn);
+	assert !nanLevels.ok && nanLevels.error == PixelArtError.RampLevels;
 	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
 	const fourItems: Vec<DrawItem> = [itemAt((four.materials.length as int32) - 1, 0.0)];
@@ -454,4 +466,35 @@ test "a lit material without toon ramp levels refuses the pixel-art frame; with 
 		renderFrame(atFour, four, fourItems, shortCamera, lights, drawn);
 	assert !past.ok && past.error == PixelArtError.CameraBlockLength;
 	assert atZero.core.generation == 0 && withoutBlock.core.generation == 0;
+}
+
+test "a billboard without ramp levels refuses the pixel-art frame; with them it passes on" {
+	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
+	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
+	for (const levels of [0.0, 4.0]) {
+		let context: DrawContext = DrawContext.withUniformCapacity(capacity);
+		const created: Result<PixelArtRenderer, PixelArtError> =
+			PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+		assert created.ok;
+		const block: Result<UniformBlock, UniformError> =
+			reserveUniforms(context, SPRITE_UNIFORM_SLOT, SPRITE_UNIFORM_LENGTH);
+		assert block.ok;
+		if (created.ok && block.ok) {
+			let renderer: PixelArtRenderer = created.value;
+			const values: Vec<float32> = [0.2, 0.3, 0.5, 0.0, levels, 0.0, 0.0, 0.0];
+			assert writeUniforms(context, block.value, values).ok;
+			const material: int32 = addMaterial(context, {
+				...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+				uniforms: block.value,
+			});
+			const items: Vec<DrawItem> = [itemAt(material, 0.0)];
+			const result: Result<int32, PixelArtError> =
+				renderFrame(renderer, context, items, shortCamera, lights, drawn);
+			const expected: PixelArtError =
+				levels == 0.0 ? PixelArtError.RampLevels : PixelArtError.CameraBlockLength;
+			assert !result.ok && result.error == expected;
+		}
+	}
 }

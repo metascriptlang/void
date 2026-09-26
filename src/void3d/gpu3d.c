@@ -161,6 +161,14 @@ uint32_t gpu3dUniformSlotMask(int32_t program) {
 	return mask;
 }
 
+// Every backend's desc carries the same block sizes; D3D11's is always compiled in (hlsl5).
+int32_t gpu3dUniformBlockBytes(int32_t program, int32_t slot) {
+	if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS) return 0;
+	const sg_shader_desc *desc = LOOKUP(PROGRAMS, program)(SG_BACKEND_D3D11);
+	if (desc == 0 || desc->uniform_blocks[slot].stage == SG_SHADERSTAGE_NONE) return 0;
+	return (int32_t)desc->uniform_blocks[slot].size;
+}
+
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length) {
 	if (length < GPU3D_PIPELINE_LENGTH) return SG_INVALID_ID;
 	const uint32_t *d = descriptor;
