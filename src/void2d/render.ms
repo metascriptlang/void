@@ -324,7 +324,7 @@ function sharedGlyphView(): uint32 {
 	return glyphPageView(firstGlyphPageHandle());
 }
 
-function faded(c: Color, alpha: float32): Color {
+function faded(this c: Color, alpha: float32): Color {
 	return rgba(c.r, c.g, c.b, c.a * alpha);
 }
 
@@ -405,9 +405,9 @@ function emitDecorations(
 		if (background != backgrounds) { continue; }
 		const box = segmentBox(d.x, d.x + d.w, d.y, d.h, !background, world, scale);
 		if (background) {
-			emitRunBox(n, world, box, faded(d.color, na));
+			emitRunBox(n, world, box, d.color.faded(na));
 		} else {
-			emitRunLine(n, world, box, d.kind == DecorationKind.WavyUnderline, faded(d.color, na));
+			emitRunLine(n, world, box, d.kind == DecorationKind.WavyUnderline, d.color.faded(na));
 		}
 	}
 }
@@ -456,7 +456,7 @@ function selectedRow(this text: LabelText, li: int32): [float32, float32] {
 // width, unioned by smooth-min in the fragment shader, so a ragged edge is filleted.
 function emitSelection(n: Node2D, text: LabelText, world: Transform2D, na: float32): void {
 	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
-	const fill: Color = faded(text.selectionColor, na);
+	const fill: Color = text.selectionColor.faded(na);
 	for (let li = 0; li < (text.layout.lines.length as int32); li++) {
 		const [x0, x1] = text.selectedRow(li);
 		if (x1 <= x0) { continue; }
@@ -490,7 +490,7 @@ function emitCaret(n: Node2D, text: LabelText, world: Transform2D, na: float32):
 		const snapped = segmentBox(x, x + CURSOR_WIDTH, line.top, line.height, false, world, scale);
 		box = [snapped[0], snapped[1], snapStroke(CURSOR_WIDTH * a) / a, snapped[3]];
 	}
-	emitRunBox(n, world, box, faded(text.cursorColor, na));
+	emitRunBox(n, world, box, text.cursorColor.faded(na));
 }
 
 let refusedLabelEditing: int32 = 0;
@@ -543,7 +543,7 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void
 			x = world.a * p.x + world.c * p.y + world.tx;
 			y = world.b * p.x + world.d * p.y + world.ty;
 		}
-		const fill: Color = styled && p.run != NO_RUN ? faded(text.runs[p.run].color, na) : col;
+		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.faded(na) : col;
 		if (instanced) {
 			drawUiInstance(InstanceMode.Glyph, view, n.blend, affine,
 				x, y, w, h,
