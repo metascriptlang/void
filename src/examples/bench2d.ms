@@ -44,6 +44,7 @@ const CELL_W: float32 = 12.8;
 const CELL_H: float32 = 7.2;
 const WARMUP_FRAMES: int32 = 20;
 const MEASURED_FRAMES: int32 = 120;
+const FRAME_DT: float32 = 1.0 / 60.0;
 const SWEEP_FRAMES: int32 = 64;
 const SWEEP_MIN: float32 = 0.5;
 const SWEEP_MAX: float32 = 4.0;
@@ -262,6 +263,7 @@ export function benchFrame(): void {
 		rasterizationsBeforeMeasure = glyphRasterizations();
 		return;
 	}
+	benchScene.tick(FRAME_DT);
 	const started: float64 = performance.now();
 	benchScene.present();
 	presentMs = presentMs + (performance.now() - started);
