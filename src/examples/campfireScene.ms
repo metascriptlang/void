@@ -11,6 +11,8 @@ import {
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_SATURATION,
+	BILLBOARD_COLOR,
+	BILLBOARD_LIGHT,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	Program,
@@ -55,6 +57,8 @@ import {
 	PixelArtError,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
+	BILLBOARD_RAMP_LEVELS,
+	BILLBOARD_LIGHT_HEIGHT,
 	setLook,
 	setPalette,
 	setSettings,
@@ -174,6 +178,8 @@ const RANDOM_INCREMENT: uint64 = 1442695040888963407;
 const RANDOM_RANGE: float32 = 16777216.0;
 
 const STONE: Rgba = { red: 0.5, green: 0.44, blue: 0.48, alpha: 1.0 };
+const GRASS: Rgba = { red: 0.2, green: 0.26, blue: 0.5, alpha: 1.0 };
+const UNTINTED: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const LOG_WOOD: Rgba = { red: 0.3, green: 0.18, blue: 0.14, alpha: 1.0 };
 const GROUND: Rgba = { red: 0.15, green: 0.17, blue: 0.3, alpha: 1.0 };
 
@@ -184,6 +190,7 @@ const placements: Vec<Transform3D> = [];
 const grassInstances: Vec<float32> = [];
 const stones: Vec<Box> = [];
 const flameBuffers: Vec<uint32> = [];
+const flameInstances: Vec<float32> = [];
 const texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
 const lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
@@ -414,7 +421,14 @@ function absolute(value: float32): float32 {
 	return value < 0.0 ? -value : value;
 }
 
-function stone(x: float32, z: float32, width: float32, depth: float32, height: float32, yaw: float32): Box {
+function stone(
+	x: float32,
+	z: float32,
+	width: float32,
+	depth: float32,
+	height: float32,
+	yaw: float32,
+): Box {
 	return {
 		base: { x: x, y: 0.0, z: z },
 		size: { x: width, y: height, z: depth },
@@ -535,26 +549,34 @@ function insideStone(x: float32, z: float32): boolean {
 }
 
 function buildGrass(): void {
+	const tiles: Result<Vec<AtlasTile>, AtlasError> =
+		AtlasTile.split(TUFT_CELL * ATLAS_CELLS, ATLAS_CELLS);
+	if (!tiles.ok) {
+		console.log(`campfire: the tuft atlas does not split, ${tiles.error.toString()}`);
+		return;
+	}
+	// PENDING3D: nested-loop-narrowing-bound
+	const tuftTiles: Vec<AtlasTile> = tiles.value;
 	const steps: int32 = ((GRASS_RADIUS * 2.0) / GRASS_SPACING) as int32;
 	for (let row = 0; row <= steps; row++) {
 		for (let column = 0; column <= steps; column++) {
-			const x: float32 = -GRASS_RADIUS + (column as float32) * GRASS_SPACING + (nextRandom() - 0.5) * GRASS_SPACING;
-			const z: float32 = -GRASS_RADIUS + (row as float32) * GRASS_SPACING + (nextRandom() - 0.5) * GRASS_SPACING;
+			const x: float32 = -GRASS_RADIUS + (column as float32) * GRASS_SPACING
+				+ (nextRandom() - 0.5) * GRASS_SPACING;
+			const z: float32 = -GRASS_RADIUS + (row as float32) * GRASS_SPACING
+				+ (nextRandom() - 0.5) * GRASS_SPACING;
 			const distanceSquared: float32 = x * x + z * z;
 			if (distanceSquared > GRASS_RADIUS * GRASS_RADIUS) { continue; }
 			if (distanceSquared < FIRE_CLEARING_RADIUS * FIRE_CLEARING_RADIUS) { continue; }
 			if (insideStone(x, z)) { continue; }
-			const variant: int32 = (nextRandom() * 4.0) as int32;
+			const variant: int32 = (nextRandom() * (ATLAS_CELLS as float32)) as int32;
 			const size: float32 = 0.9 * (0.8 + nextRandom() * 0.35);
-			const tint: float32 = nextRandom() < SPROUT_CHANCE ? SPROUT_TINT : 0.8 + nextRandom() * 0.3;
-			const tile: Result<AtlasTile, AtlasError> =
-				AtlasTile.ofFrame(TUFT_CELL * ATLAS_CELLS, ATLAS_CELLS, variant);
-			if (!tile.ok) { console.log("campfire: buildGrass bailed at a tuft's tile"); return; }
+			const tint: float32 =
+				nextRandom() < SPROUT_CHANCE ? SPROUT_TINT : 0.8 + nextRandom() * 0.3;
 			const tuft: BillboardInstance = {
 				position: vec3(x, 0.0, z),
 				width: size,
 				height: size,
-				tile: tile.value,
+				tile: tuftTiles[variant],
 				color: { red: tint, green: tint, blue: tint, alpha: 1.0 },
 			};
 			tuft.pushTo(grassInstances);
@@ -570,12 +592,20 @@ function clearTexturePixels(): void {
 	}
 }
 
-function setTexturePixel(width: int32, x: int32, y: int32, red: int32, green: int32, blue: int32): void {
+function setTexturePixel(
+	width: int32,
+	x: int32,
+	y: int32,
+	red: int32,
+	green: int32,
+	blue: int32,
+): void {
 	const index: int32 = y * width + x;
 	if (x < 0 || y < 0 || x >= width || index >= MAX_TEXTURE_PIXELS) {
 		return;
 	}
-	const packed: uint64 = (255 as uint64) * 16777216 + (blue as uint64) * 65536 + (green as uint64) * 256 + (red as uint64);
+	const packed: uint64 = (255 as uint64) * 16777216 + (blue as uint64) * 65536
+		+ (green as uint64) * 256 + (red as uint64);
 	texturePixels[index] = packed as uint32;
 }
 
@@ -614,7 +644,8 @@ function buildFlameTexture(): uint32 {
 		const sway: float32 = (nextRandom() - 0.5) * 2.0;
 		for (let y = 0; y < height; y++) {
 			const rise: float32 = ((height - 1 - y) as float32) / ((height - 1) as float32);
-			const halfWidth: float32 = 5.5 * (1.0 - rise) * (1.1 - 0.3 * rise) + (nextRandom() - 0.5) * 1.2;
+			const halfWidth: float32 =
+				5.5 * (1.0 - rise) * (1.1 - 0.3 * rise) + (nextRandom() - 0.5) * 1.2;
 			if (halfWidth < 0.5) { continue; }
 			const center: float32 = 8.0 + sway * rise * rise * 3.0;
 			for (let x = 0; x < FLAME_CELL_WIDTH; x++) {
@@ -633,29 +664,39 @@ function buildFlameTexture(): uint32 {
 	return makeImage(texturePixels, width, height);
 }
 
-function deterministicFlameInstance(frame: int32): Vec<float32> {
-	let instance: Vec<float32> = [];
-	const tile: Result<AtlasTile, AtlasError> =
-		AtlasTile.ofFrame(FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_FRAMES, frame);
-	if (!tile.ok) {
-		console.log(`campfire: flame frame ${frame} has no tile, ${tile.error.toString()}`);
-		return instance;
+function buildFlameBuffers(): void {
+	const tiles: Result<Vec<AtlasTile>, AtlasError> =
+		AtlasTile.split(FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_FRAMES);
+	if (!tiles.ok) {
+		console.log(`campfire: the flame atlas does not split, ${tiles.error.toString()}`);
+		return;
 	}
-	const flame: BillboardInstance = {
-		position: vec3(0.0, 0.05, 0.0),
-		width: 0.95,
-		height: 1.2,
-		tile: tile.value,
-		color: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
-	};
-	flame.pushTo(instance);
-	return instance;
+	for (const tile of tiles.value) {
+		const flame: BillboardInstance = {
+			position: vec3(0.0, 0.05, 0.0),
+			width: 0.95,
+			height: 1.2,
+			tile: tile,
+			color: UNTINTED,
+		};
+		flame.pushTo(flameInstances);
+	}
+	for (let frame = 0; frame < FLAME_FRAMES; frame++) {
+		const at: int32 = frame * BILLBOARD_INSTANCE_STRIDE;
+		flameBuffers.push(makeVertexBuffer(flameInstances[at..at + BILLBOARD_INSTANCE_STRIDE]));
+	}
 }
 
-function buildFlameBuffers(): void {
-	for (let frame = 0; frame < FLAME_FRAMES; frame++) {
-		flameBuffers.push(makeVertexBuffer(deterministicFlameInstance(frame)));
-	}
+function billboardValues(color: Rgba, lit: boolean): Vec<float32> {
+	const values: Vec<float32> = new Array(BILLBOARD_UNIFORM_LENGTH);
+	values[BILLBOARD_COLOR] = color.red;
+	values[BILLBOARD_COLOR + 1] = color.green;
+	values[BILLBOARD_COLOR + 2] = color.blue;
+	values[BILLBOARD_COLOR + 3] = color.alpha;
+	values[BILLBOARD_RAMP_LEVELS] = LIGHT_LEVELS;
+	if (lit) { values[BILLBOARD_LIGHT] = 1.0; }
+	values[BILLBOARD_LIGHT_HEIGHT] = BILLBOARD_LIGHT_AT;
+	return values;
 }
 
 function updateFlicker(): void {
@@ -691,8 +732,8 @@ function setupDraws(): void {
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
 	const litToon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
-	const grassValues: Vec<float32> = [0.2, 0.26, 0.5, 1.0, LIGHT_LEVELS, 1.0, BILLBOARD_LIGHT_AT, 0.0];
-	const flameValues: Vec<float32> = [1.0, 1.0, 1.0, 1.0, LIGHT_LEVELS, 0.0, BILLBOARD_LIGHT_AT, 0.0];
+	const grassValues: Vec<float32> = billboardValues(GRASS, true);
+	const flameValues: Vec<float32> = billboardValues(UNTINTED, false);
 	const litBlock: UniformBlock = try reserveUniforms(
 		context,
 		MATERIAL_UNIFORM_SLOT,
@@ -781,12 +822,18 @@ function setupDraws(): void {
 	fireLight = fire.value;
 	logGroup = group.value;
 	const logsPickable: Result<int32, SceneError> = setPickable(tree, logGroup, true);
-	if (!logsPickable.ok) { console.log("campfire: setupDraws bailed at the pickable logs"); return; }
+	if (!logsPickable.ok) {
+		console.log("campfire: setupDraws bailed at the pickable logs");
+		return;
+	}
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
 			const placed: Result<int32, AnimationError> =
 				placeBakedStone(pieces[i], placements[i], root, litMaterial);
-			if (!placed.ok) { console.log("campfire: setupDraws bailed at the baked stone"); return; }
+			if (!placed.ok) {
+				console.log("campfire: setupDraws bailed at the baked stone");
+				return;
+			}
 			continue;
 		}
 		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
@@ -904,8 +951,12 @@ function setupParticles(root: NodeId, state: RenderState): Result<int32, Particl
 	emberNode = emberPlaced.value;
 	const _synced: int32 = syncWorld(tree);
 	for (let i = 0; i < PARTICLE_WARMUP_STEPS; i++) {
-		if (!advanceEmitter(snow, snowNode)) { return Result.err(ParticleSetupError.EmitterRefused); }
-		if (!advanceEmitter(embers, emberNode)) { return Result.err(ParticleSetupError.EmitterRefused); }
+		if (!advanceEmitter(snow, snowNode)) {
+			return Result.err(ParticleSetupError.EmitterRefused);
+		}
+		if (!advanceEmitter(embers, emberNode)) {
+			return Result.err(ParticleSetupError.EmitterRefused);
+		}
 	}
 	return Result.ok(2);
 }
@@ -1038,7 +1089,7 @@ function copyTexturePixels(): Vec<uint32> {
 	return kept;
 }
 
-// Everything this file owns is re-made from its CPU copies — corners and grass instances back
+// Everything this file owns is re-made from its CPU copies — corners and billboard instances back
 // into buffers, the kept pixels back into textures, the sampler afresh — and the re-made
 // handles are written back into the external meshes and materials that hold them. Nothing
 // re-rolls the RNG: the grass and the textures were generated once, and a rebuild replays
@@ -1057,7 +1108,8 @@ function forceRebuild(): void {
 	billboardCornerBuffer = makeVertexBuffer(CORNERS);
 	grassBuffer = makeVertexBuffer(grassInstances);
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
-		flameBuffers[i] = makeVertexBuffer(deterministicFlameInstance(i));
+		const at: int32 = i * BILLBOARD_INSTANCE_STRIDE;
+		flameBuffers[i] = makeVertexBuffer(flameInstances[at..at + BILLBOARD_INSTANCE_STRIDE]);
 	}
 	grassImage = makeImage(tuftPixels, TUFT_CELL * ATLAS_CELLS, TUFT_CELL);
 	flameImage = makeImage(flamePixels, FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_CELL_HEIGHT);
@@ -1076,8 +1128,12 @@ function forceRebuild(): void {
 	}
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (context.meshes[i].generation != EXTERNAL_GENERATION) {
-			if (context.meshes[i].vertexBuffer != 0) { destroyBuffer(context.meshes[i].vertexBuffer); }
-			if (context.meshes[i].indexBuffer != 0) { destroyBuffer(context.meshes[i].indexBuffer); }
+			if (context.meshes[i].vertexBuffer != 0) {
+				destroyBuffer(context.meshes[i].vertexBuffer);
+			}
+			if (context.meshes[i].indexBuffer != 0) {
+				destroyBuffer(context.meshes[i].indexBuffer);
+			}
 			if (context.meshes[i].isStream() && context.meshes[i].instanceBuffer != 0) {
 				destroyBuffer(context.meshes[i].instanceBuffer);
 			}
@@ -1226,11 +1282,15 @@ function stepScene(): boolean {
 		return false;
 	}
 	if (particlesWanted) {
-		const stepped: boolean = advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
+		const stepped: boolean =
+			advanceEmitter(snow, snowNode) && advanceEmitter(embers, emberNode);
 		const drawn: boolean = stepped &&
 			drawEmitter(snow, snowNode, snowMesh, snowInstances) &&
 			drawEmitter(embers, emberNode, emberMesh, emberInstances);
-		if (!drawn) { console.log("campfire: a particle emitter failed to step or draw"); return false; }
+		if (!drawn) {
+			console.log("campfire: a particle emitter failed to step or draw");
+			return false;
+		}
 	}
 	return true;
 }

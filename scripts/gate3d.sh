@@ -617,7 +617,8 @@ run_oracle() {
 #
 # Scoped to what this port owns: src/void3d, its tests, and the campfire. void2d has its own
 # gate and its own backlog.
-STYLE_PATHS="src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms"
+STYLE_PATHS="src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
+	src/examples/campfireScene.ms"
 
 run_style() {
 	long=$(
