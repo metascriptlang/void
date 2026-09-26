@@ -203,6 +203,10 @@ function releasePlacement(entry: LabelText): void {
 	entry.placedValid = false;
 }
 
+export function releaseLabelGlyphs(index: int32): void {
+	releasePlacement(labelTexts[index]);
+}
+
 export function releaseLabelText(index: int32): void {
 	releasePlacement(labelTexts[index]);
 	labelTexts[index].layout = emptyLayout();

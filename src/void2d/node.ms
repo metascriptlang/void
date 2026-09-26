@@ -5,6 +5,7 @@ import {
 	NO_LABEL_TEXT,
 	allocateLabelText,
 	releaseLabelText,
+	releaseLabelGlyphs,
 	setLabelRuns,
 	setLabelShapingBreaks,
 	setLabelLines,
@@ -327,13 +328,21 @@ export function removeChild(this n: Node2D, c: Node2D): void {
 	for (const ch of n.children) {
 		if (ch !== c) { remaining.push(ch); }
 	}
+	if ((remaining.length as int32) == (n.children.length as int32)) { return; }
 	n.children = remaining;
 	n.childrenDirty = true;
+	releaseGlyphs(c);
 }
 
 export function removeChildren(this n: Node2D): void {
+	for (const ch of n.children) { releaseGlyphs(ch); }
 	n.children = [];
 	n.childrenDirty = true;
+}
+
+function releaseGlyphs(n: Node2D): void {
+	if (n.kind === DrawKind.Label && n.payload != NO_LABEL_TEXT) { releaseLabelGlyphs(n.payload); }
+	for (const ch of n.children) { releaseGlyphs(ch); }
 }
 
 export function at(this n: Node2D, x: float32, y: float32): Node2D {
@@ -359,8 +368,6 @@ export function update(this n: Node2D, dt: float32): void {
 	}
 }
 
-// A label dropped without `dispose` keeps its glyph tiles live, and their atlas page is never
-// reclaimed.
 export function dispose(this n: Node2D): void {
 	for (const ch of n.children) {
 		ch.dispose();

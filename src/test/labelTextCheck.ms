@@ -18,7 +18,7 @@ import {
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba, identity2d, emptyBounds } from "../void2d/types";
 import { begin2d, frameEnd } from "../void2d/draw";
-import { label, setTextRuns } from "../void2d/node";
+import { label, group, setTextRuns } from "../void2d/node";
 import { renderTargetsAlive, segmentBox } from "../void2d/render";
 import { approx } from "./helpers";
 
@@ -99,6 +99,29 @@ test "releasing a label drops its tile references" {
 	const held = glyphAtlas.tile(tileIndex).refs;
 	releaseLabelText(index);
 	assert glyphAtlas.tile(tileIndex).refs == held - 1;
+}
+
+test "a label that leaves its parent releases its tiles and places them again when added back" {
+	begin2d(200.0, 100.0, 1.0);
+	const parent = group();
+	const box = parent.addChild(group());
+	const n = box.addChild(label("Qz", 13.0, rgba(1.0, 1.0, 1.0, 1.0)));
+	parent.sync(identity2d(), true);
+	parent.draw(1.0, 200.0, 100.0);
+	assert (labelTexts[n.payload].placed.length as int32) > 0;
+	const tileIndex = labelTexts[n.payload].placed[0].tile;
+	const held = glyphAtlas.tile(tileIndex).refs;
+	parent.removeChild(box);
+	assert (labelTexts[n.payload].placed.length as int32) == 0;
+	assert glyphAtlas.tile(tileIndex).refs == held - 1;
+	parent.addChild(box);
+	parent.sync(identity2d(), true);
+	parent.draw(1.0, 200.0, 100.0);
+	assert glyphAtlas.tile(tileIndex).refs == held;
+	parent.removeChildren();
+	assert glyphAtlas.tile(tileIndex).refs == held - 1;
+	frameEnd();
+	n.dispose();
 }
 
 test "drawing a label fences its glyph page for the frame the bracket belongs to" {
