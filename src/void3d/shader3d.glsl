@@ -86,7 +86,9 @@ layout(binding=0) uniform texture2D sourceTexture;
 layout(binding=0) uniform sampler pointSampler;
 out vec4 fragColor;
 void main() {
-    vec4 texel = texelFetch(sampler2D(sourceTexture, pointSampler), ivec2(gl_FragCoord.xy), 0);
+    ivec2 size = textureSize(sampler2D(sourceTexture, pointSampler), 0);
+    ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));
+    vec4 texel = texelFetch(sampler2D(sourceTexture, pointSampler), p, 0);
     fragColor = vec4(texel.rgb, 1.0);
 }
 @end
