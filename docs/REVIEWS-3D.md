@@ -873,4 +873,4 @@ one `GATE_DEVICE=1 sh scripts/gate3d.sh` run; the commits after it are docs.
 | Device | `pixellight` emulator running the M13 build, 24 colours, largest 38% |
 | GLES3 emulator | pre-M13 against M13 in one boot: 13 306 / 13 540 pixels; noise at most 1 245 |
 | PENDING3D | 24 rows: `dir-light-stepped` deleted, `point-light-toon-quantized` and `billboard-points-added` added |
-| Android | arm64 `libVoidAndroid.so`, **2 791 992 bytes** (2 795 728 before M13 on the same msc, not attributed) |
+| Android | arm64 `libVoidAndroid.so`, **2 791 992 bytes** on msc `2925176a`; 2 795 728 before M13 was on `145f4a08`, so the difference is not M13's |
