@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the fourteen capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the fifteen capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -199,7 +199,11 @@ configureCampfireRebuildAt(3);"
 	write_entry campfireForwardCapture "" "configureCampfire(PixelArtSettings.full(), false);" \
 		"configureCampfireForward(true);
 configureCampfireParticles(true);"
-	note "prepare: fourteen capture entries written to $CAPTURE"
+	write_entry campfireAnchorCapture "" "configureCampfire(PixelArtSettings.full(), false);" \
+		"configureCampfireForward(true);
+configureCampfireParticles(true);
+configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
+	note "prepare: fifteen capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -822,7 +826,7 @@ expected_hash() {
 
 baseline_names() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
-		m12greydirect m12greypalette m14forward; do
+		m12greydirect m12greypalette m14forward m16anchor; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -1012,9 +1016,58 @@ run_unlit_billboard() {
 	pass "unlit: the forward flame writes its 3 texel colours unchanged in 4 frames (pixels:$counts)"
 }
 
+# Every other capture anchors across the centre, so only this one sees a sign or axis slip in
+# `corner - anchor`: bottom left moves the flame right at both edges by one shift, rows fixed.
+flame_box() {
+	image=$1
+	shift
+	for colour in "$@"; do
+		magick "$image" -fill black +opaque "rgb($colour)" -fill white -opaque "rgb($colour)" \
+			-format "%@\n" info:
+	done | awk -F'[x+]' '$1 > 0 {
+		if (!seen || $3 < left) left = $3
+		if (!seen || $3 + $1 > right) right = $3 + $1
+		if (!seen || $4 < top) top = $4
+		if (!seen || $4 + $2 > bottom) bottom = $4 + $2
+		seen = 1
+	} END { if (seen) print left, right, top, bottom }'
+}
+
+run_anchor_moves_flame() {
+	colours=$(sed -n 's/.*setTexturePixel(width, cellLeft + x, y, \([0-9]*\), \([0-9]*\), \([0-9]*\));/\1,\2,\3/p' \
+		src/examples/campfireScene.ms)
+	shifts=""
+	for frame in $FRAMES; do
+		centred=$CAPTURE/gate/campfireForwardCapture_$frame.ppm
+		anchored=$CAPTURE/gate/campfireAnchorCapture_$frame.ppm
+		if [ ! -f "$centred" ] || [ ! -f "$anchored" ]; then
+			fail "anchor: frame $frame of campfireForwardCapture or campfireAnchorCapture was not captured"
+			return
+		fi
+		set -- $(flame_box "$centred" $colours) $(flame_box "$anchored" $colours)
+		if [ $# -ne 8 ]; then
+			fail "anchor: frame $frame, the flame's texels were not found in both frames"
+			return
+		fi
+		dxLeft=$(($5 - $1))
+		dxRight=$(($6 - $2))
+		if [ "$7" -ne "$3" ] || [ "$8" -ne "$4" ]; then
+			fail "anchor: frame $frame, the flame's rows moved from $3..$4 to $7..$8"
+			return
+		fi
+		if [ "$dxLeft" -le 0 ] || [ "$dxRight" -le 0 ] || [ $((dxLeft - dxRight)) -gt 1 ] ||
+			[ $((dxRight - dxLeft)) -gt 1 ]; then
+			fail "anchor: frame $frame, the flame's edges moved by $dxLeft and $dxRight pixels, not one shift right"
+			return
+		fi
+		shifts="$shifts $dxLeft"
+	done
+	pass "anchor: a bottom-left anchor moves the forward flame right by one shift, rows unchanged (pixels:$shifts)"
+}
+
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the fourteen configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the fifteen configurations were not built, not run, not compared"
 		return
 	fi
 	purge_stale_shader_objects
@@ -1035,6 +1088,8 @@ run_captures() {
 	run_capture campfireGreyPaletteCapture m12greypalette "ground greyed by its material, palette on"
 	run_capture campfireForwardCapture     m14forward     "forward preset, core programs, billboards and particles"
 	run_unlit_billboard
+	run_capture campfireAnchorCapture      m16anchor      "forward preset, the flame anchored at its bottom left"
+	run_anchor_moves_flame
 }
 
 # ---- manifest -----------------------------------------------------------------------------
@@ -1102,7 +1157,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the fourteen capture entries are current"
+	pass "prepare: campfireScene.ms and the fifteen capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
