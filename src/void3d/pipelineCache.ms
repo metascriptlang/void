@@ -44,7 +44,7 @@ export const PROGRAM_COUNT: int32 = GPU3D_PROGRAM_COUNT;
 
 // Key layout, low to high: vertex layout (3 bits), indexed (1), program (4), target formats
 // (24), RenderState.bits (32) — 64 bits, exactly full. The indexed flag shares a nibble with
-// the vertex layout because `VertexLayout` has three members and RenderState already owns a
+// the vertex layout because `VertexLayout` has four members and RenderState already owns a
 // whole word; `LAYOUT_LIMIT` is what the tests hold that constraint against.
 const INDEXED_SHIFT: uint64 = 3;
 const PROGRAM_SHIFT: uint64 = 4;
