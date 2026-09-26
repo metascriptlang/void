@@ -487,8 +487,11 @@ function levelsAt(context: DrawContext, block: UniformBlock, at: int32): boolean
 	return context.uniforms[block.offset + at] >= 1.0;
 }
 
-function rampsHaveLevels(context: DrawContext, items: Span<DrawItem>): boolean {
-	const programs: ProgramMap = pixelArtPrograms();
+function rampsHaveLevels(
+	programs: ProgramMap,
+	context: DrawContext,
+	items: Span<DrawItem>,
+): boolean {
 	for (const item of items) {
 		const material: Material = context.materials[item.material];
 		const drawn: Result<Program, ProgramError> = programs.drawnFor(material.program);
@@ -496,7 +499,12 @@ function rampsHaveLevels(context: DrawContext, items: Span<DrawItem>): boolean {
 		const held: boolean = match (drawn.value) {
 			Program.PixelArtLit => levelsAt(context, material.uniforms, RAMP_LEVELS),
 			Program.Billboard => levelsAt(context, material.uniforms, SPRITE_RAMP_LEVELS),
-			_ => true,
+			Program.Lit => true,
+			Program.Particle => true,
+			Program.Copy => true,
+			Program.PixelArtParticle => true,
+			Program.PixelArtPost => true,
+			Program.PixelArtBlit => true,
 		};
 		if (!held) { return false; }
 	}
@@ -516,7 +524,9 @@ export function renderFrame(
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
-	if (!rampsHaveLevels(context, items)) { return Result.err(PixelArtError.RampLevels); }
+	if (!rampsHaveLevels(renderer.core.programs, context, items)) {
+		return Result.err(PixelArtError.RampLevels);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, context, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
