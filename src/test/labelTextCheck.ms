@@ -16,7 +16,7 @@ import {
 	DecorationKind,
 } from "../void2d/labelText";
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
-import { Transform2D, trs2d, rgba, identity2d } from "../void2d/types";
+import { Transform2D, trs2d, rgba, identity2d, emptyBounds } from "../void2d/types";
 import { begin2d, frameEnd } from "../void2d/draw";
 import { label, setTextRuns } from "../void2d/node";
 import { renderTargetsAlive, segmentBox } from "../void2d/render";
@@ -224,6 +224,18 @@ test "calcTextWidth and splitText lay other text out with the label's line optio
 	n.setHangingIndent(n.calcTextWidth("aa "));
 	assert n.splitText(text) == "aa bb\ncc\ndd";
 	cells.dispose();
+	n.dispose();
+}
+
+test "a run background over trailing spaces stays inside the label's bounds" {
+	const n = label("ab  ", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const runs: TextRun[] = [{ ...plainRun(4), background: rgba(0.0, 0.0, 1.0, 1.0) }];
+	n.setTextRuns(runs);
+	n.sync(identity2d(), false);
+	const bounds = emptyBounds();
+	n.getBounds(bounds);
+	const spaces = n.textLayout().glyphs[3];
+	assert spaces.x + spaces.advance <= bounds.xMax;
 	n.dispose();
 }
 

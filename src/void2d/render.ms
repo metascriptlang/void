@@ -135,6 +135,13 @@ function localBounds(n: Node2D): Bounds {
 			xMax: labelTexts[n.payload].rowsXMax + SELECTION_GLOOP, yMax: n.contentYMax + leading,
 		};
 	}
+	if (n.kind === DrawKind.Label && n.payload != NO_LABEL_TEXT &&
+		(labelTexts[n.payload].runs.length as int32) > 0) {
+		return {
+			xMin: n.contentXMin, yMin: n.contentYMin,
+			xMax: labelTexts[n.payload].rowsXMax, yMax: n.contentYMax,
+		};
+	}
 	if (n.kind === DrawKind.Graphics || n.kind === DrawKind.Label) {
 		return { xMin: n.contentXMin, yMin: n.contentYMin, xMax: n.contentXMax, yMax: n.contentYMax };
 	}
