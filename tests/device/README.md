@@ -121,3 +121,20 @@ configureCampfireForward(true);
 
 The build, install and screenshot are the recipe above, with that entry in place of
 `out/tmp/android/campfireEntry.ms` (the file used was `out/tmp/android/campfireForwardEntry.ms`).
+
+## `gles3Billboard.png`
+
+M15's core billboard on GLES3: the forward preset draws the grass and the flame with `Program.Billboard`,
+the grass lit through the core's lights and the flame unlit. Taken on the **Android emulator**
+(`pixellight` AVD, cold boot) on 2026-09-26 at `d7e9fdb`, msc `598ca62e`. The frame has 2 223 colours; two
+screenshots two seconds apart differ in 7 346 pixels, the snow, the embers and the flicker. The flame's
+three texel colours are there exactly (3, 13 and 9 pixels in this shot), as the gate's `unlit` stage holds
+on D3D11; `gles3Forward.png`, M14's, has none of them. `grep -a` finds the billboard's `towardCamera` 32 times
+in the built `libVoidAndroid.so`. The entry is `out/tmp/android/campfireForwardEntry.ms`, as for
+`gles3Forward.png`.
+
+The pixel-art preset's form was run the same way, in the same boot: `campfireGreyOffEntry.ms` built from
+M14 (`cf1b92f`) and from M15 (`d7e9fdb`) on one msc, two screenshots each. M15 against M14 differs in 666 to
+2 034 pixels; two shots of one build differ in 374 (M14) and 1 792 (M15). In all five pairs the
+differences fall inside one box of about 197×125 pixels around the fire, which flickers, and nothing
+differs outside it. That is an emulator claim, not a pixel comparison, and those screenshots are not kept.
