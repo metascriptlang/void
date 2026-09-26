@@ -735,7 +735,7 @@ test "a label's bounds hold its selection tail and a caret after its widest line
 	assert spans[1] <= bounds.xMax;
 }
 
-test "a label's runs, selection and caret under a colour effect are refused, not dropped" {
+test "a label's runs, selection and caret under a colour effect are refused aloud" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 1, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
