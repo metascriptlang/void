@@ -881,8 +881,8 @@ with `--release` on BUILD `598ca62e`, the P4 head `c85f5d0` (tree `2497f5d`) aga
 - `Scene` reports whether it changed and can re-present its last list; scheduling stays the host's.
 - The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:344-350`).
 - The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:115-121`: `presentAt` hands the camera and scale mode to `sync` as the root's parent world).
-- A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`).
-- Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`.
+- A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`). **Landed at P5 step 4** for `removeChild` and `removeChildren`: a removed subtree's Labels release their tiles and keep their shaped layout, so a label added back places again from the atlas's index, hitting the tiles still resident, and only `dispose` frees the layout. `remove()` (step 9) goes through `removeChild`.
+- Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`. **Landed at P5 step 4**: the upload state moved from `batcher.c` into `glyph.c` beside the page's dirty flag (`void2dGlyphPageTakeUpload`), so the atlas asks it directly and T1 drives it with no GPU; a glyph that finds every page full or uploaded this frame at the page cap is refused this frame and placed the next, which is F1's retry.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
 - Render bounds apart from h2d's `getBounds`. Since P4 an editing label's `getBounds` grows by the selection's gloop, half its line spacing and its trailing whitespace once a caret or a selection shows, because the filter target and culling read it; h2d's TextInput bounds do not move with the caret (REVIEWS.md "P4 re-review" F-b). If the human's answer on run colours (P4 F2) is still to be applied, it lands before this contract does.
 
@@ -904,8 +904,8 @@ human has seen it as app code; the phase measurement comes last.
 4. **Glyph pages.** A page uploaded this frame takes no new tile and is not reclaimed (F7, closes
    `glyph-page-second-upload`, T1 over two brackets in one frame); a Label that leaves the scene
    through `removeChild` or `removeChildren` releases its tiles, as h2d's `onRemove` does (F6, T1:
-   a removed Label holds no tile reference). `label-dispose-pins-page` closes when `remove()`
-   does the same in step 9.
+   a removed Label holds no tile reference; closes `label-dispose-pins-page`, since `remove()` in
+   step 9 goes through `removeChild`).
 5. **The change model, measured.** msc 0.2.55 has no property setters, so `n.x = 5` is a store
    nothing observes, and `readonly` on an interface field crashes codegen
    (`~/metascript/.inbox/compiler/2026-09-27-readonly-interface-field-unresolved-type.md`).
@@ -926,7 +926,7 @@ human has seen it as app code; the phase measurement comes last.
 9. **The `Object` surface**, after the human has seen it: `parent`, `remove()`, reparent-on-add
    with a cycle guard that stops and names both nodes, `getChildAt` / `getChildIndex` /
    `numChildren`, `name`, `localToGlobal` syncing first. T0. Closes `h2d-object-surface`,
-   `one-node-two-parents`, `label-dispose-pins-page`.
+   `one-node-two-parents`.
 10. **Scroll**: `Mask.scrollX/Y` as the list-level shift, snapped. T2 golden `clip/maskScroll`; a
     scroll bench over the editor scene, CPU and uploaded bytes per frame, the bytes gated (T4).
 11. **`TileGroup`**, the non-overlap flag and the lane fallback. T1. Closes `h2d-tilegroup`.
@@ -948,7 +948,7 @@ human has seen it as app code; the phase measurement comes last.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
 - One node can no longer sit under two parents (`node.ms:305-309`).
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:clip/maskScroll`, `glyph-page-second-upload`, `label-dispose-pins-page`, `idle-costs-a-walk`, `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `oracle:h2d`. Closed and deleted: the view id row, at step 2.
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:clip/maskScroll`, `idle-costs-a-walk`, `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `oracle:h2d`. Closed and deleted: the view id row, at step 2; the second-upload and dispose-pins rows, at step 4.
 
 **Tests.** T1 carries this phase: mutate one node, assert exactly one dirty range of a known size; assert byte-identical re-records; assert zero instances written on a blink; assert the draw order rebuilds only on structural change. T3: the h2d oracle for `getBounds`, `localToGlobal` / `globalToLocal`, mask intersection and scale modes, with HEAPS.md's deliberate divergences as the seed PENDING list. T4: scroll and idle budgets gated on uploaded bytes, which are deterministic.
 
