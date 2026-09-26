@@ -263,7 +263,7 @@ function shapeIfChanged(n: Node2D): void {
 		}
 		let rowsXMax: float32 = n.contentXMax;
 		for (const line of shaped.layout.lines) {
-			const end: float32 = rowEnd(shaped.layout, line);
+			const end: float32 = shaped.layout.rowEnd(line);
 			if (end > rowsXMax) { rowsXMax = end; }
 		}
 		labelTexts[n.payload].rowsXMax = rowsXMax;
@@ -408,23 +408,23 @@ function emitDecorations(
 
 const EMPTY_ROW_WIDTH: float32 = 4.0;
 
-function rowEnd(layout: TextLayout, line: LineBox): float32 {
+function rowEnd(this layout: TextLayout, line: LineBox): float32 {
 	if (line.glyphCount == 0) { return line.x; }
 	const last: LaidGlyph = layout.glyphs[line.firstGlyph + line.glyphCount - 1];
 	return last.x + last.advance;
 }
 
-function xOnRow(layout: TextLayout, line: LineBox, index: int32): float32 {
+function xOnRow(this layout: TextLayout, line: LineBox, index: int32): float32 {
 	const end: int32 = line.firstGlyph + line.glyphCount;
 	for (let k = line.firstGlyph; k < end; k++) {
 		if (layout.glyphs[k].index >= index) { return layout.glyphs[k].x; }
 	}
-	return rowEnd(layout, line);
+	return layout.rowEnd(line);
 }
 
 // The selected span of one line, [x0, x1] in local units, or x1 < x0 when the line holds none of
 // it. A selected line break shows as a short tail, as an editor draws it.
-function selectedRow(text: LabelText, li: int32): [float32, float32] {
+function selectedRow(this text: LabelText, li: int32): [float32, float32] {
 	const count: int32 = text.layout.lines.length as int32;
 	if (li < 0 || li >= count) { return [0.0, -1.0]; }
 	const start: int32 = text.selectionStart;
@@ -434,9 +434,9 @@ function selectedRow(text: LabelText, li: int32): [float32, float32] {
 	if (end <= line.indexStart || start >= owned || text.selectionLength <= 0) {
 		return [0.0, -1.0];
 	}
-	const lineEnd: float32 = rowEnd(text.layout, line);
-	const x0: float32 = start <= line.indexStart ? line.x : xOnRow(text.layout, line, start);
-	let x1: float32 = end >= line.indexEnd ? lineEnd : xOnRow(text.layout, line, end);
+	const lineEnd: float32 = text.layout.rowEnd(line);
+	const x0: float32 = start <= line.indexStart ? line.x : text.layout.xOnRow(line, start);
+	let x1: float32 = end >= line.indexEnd ? lineEnd : text.layout.xOnRow(line, end);
 	if (end > line.indexEnd && owned > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }
 	return [x0, x1];
 }
@@ -447,10 +447,10 @@ function emitSelection(n: Node2D, text: LabelText, world: Transform2D, na: float
 	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	const fill: Color = faded(text.selectionColor, na);
 	for (let li = 0; li < (text.layout.lines.length as int32); li++) {
-		const [x0, x1] = selectedRow(text, li);
+		const [x0, x1] = text.selectedRow(li);
 		if (x1 <= x0) { continue; }
-		const [p0, p1] = selectedRow(text, li - 1);
-		const [q0, q1] = selectedRow(text, li + 1);
+		const [p0, p1] = text.selectedRow(li - 1);
+		const [q0, q1] = text.selectedRow(li + 1);
 		const line: LineBox = text.layout.lines[li];
 		const w: float32 = x1 - x0;
 		const leading: float32 = text.style.lineSpacing * 0.5;

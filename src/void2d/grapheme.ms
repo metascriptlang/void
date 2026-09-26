@@ -63,7 +63,7 @@ function isBreakControl(c: ClusterBreak): boolean {
 	return c == ClusterBreak.Control || c == ClusterBreak.CR || c == ClusterBreak.LF;
 }
 
-function boundaryBefore(cursor: GraphemeCursor, next: GraphemeProperty): boolean {
+function boundaryBefore(this cursor: GraphemeCursor, next: GraphemeProperty): boolean {
 	const before: ClusterBreak = cursor.previous;
 	const after: ClusterBreak = next.cluster;
 	if (before == ClusterBreak.CR && after == ClusterBreak.LF) { return false; }
@@ -91,7 +91,7 @@ function boundaryBefore(cursor: GraphemeCursor, next: GraphemeProperty): boolean
 // Whether a grapheme boundary falls before `codepoint`, moving the cursor past it (UAX #29).
 export function breaksBefore(ref cursor: GraphemeCursor, codepoint: int32): boolean {
 	const next: GraphemeProperty = graphemeProperty(codepoint);
-	const boundary: boolean = !cursor.started || boundaryBefore(cursor, next);
+	const boundary: boolean = !cursor.started || cursor.boundaryBefore(next);
 	const regional: boolean = next.cluster == ClusterBreak.RegionalIndicator;
 	const extendsPictograph: boolean = cursor.pictographicRun &&
 		next.cluster == ClusterBreak.Extend;

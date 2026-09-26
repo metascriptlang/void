@@ -227,24 +227,28 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	}
 	entry.style = style;
 	entry.layout = wrapText(entry.shaped, style, entry.options);
-	entry.decorations = runDecorations(entry.layout, entry.runs, style.size);
+	entry.decorations = entry.layout.runDecorations(entry.runs, style.size);
 }
 
 // GPUI's segments (line.rs:790-937): one per run per line; the backgrounds fill the line box,
 // underline and strikethrough sit where the run's face puts them.
-function runDecorations(layout: TextLayout, runs: Span<TextRun>, size: float32): Vec<Decoration> {
+function runDecorations(
+	this layout: TextLayout,
+	runs: Span<TextRun>,
+	size: float32,
+): Vec<Decoration> {
 	const out: Vec<Decoration> = new Array(0);
 	if ((runs.length as int32) == 0) { return out; }
 	for (let li = 0; li < (layout.lines.length as int32); li++) {
-		lineDecorations(layout, runs, size, li, DecorationKind.Background, out);
-		lineDecorations(layout, runs, size, li, DecorationKind.Underline, out);
-		lineDecorations(layout, runs, size, li, DecorationKind.Strikethrough, out);
+		layout.lineDecorations(runs, size, li, DecorationKind.Background, out);
+		layout.lineDecorations(runs, size, li, DecorationKind.Underline, out);
+		layout.lineDecorations(runs, size, li, DecorationKind.Strikethrough, out);
 	}
 	return out;
 }
 
 function lineDecorations(
-	layout: TextLayout,
+	this layout: TextLayout,
 	runs: Span<TextRun>,
 	size: float32,
 	li: int32,
