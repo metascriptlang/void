@@ -1,13 +1,21 @@
 import { Mat4, translation } from "../math/math3d";
 import {
 	Program,
-	POST_UNIFORM_LENGTH,
+	MATERIAL_UNIFORM_SLOT,
+	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
-import { Material, Phase } from "../void3d/material";
-import { DrawContext, DrawItem, addMaterial } from "../void3d/draw";
+import { Material, Phase, UniformBlock } from "../void3d/material";
+import {
+	DrawContext,
+	DrawItem,
+	UniformError,
+	addMaterial,
+	reserveUniforms,
+	writeUniforms,
+} from "../void3d/draw";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
 import { PipelineKey } from "../void3d/pipelineCache";
 import { LowResView, ViewError, lowResView } from "../void3d/blit";
@@ -28,6 +36,7 @@ import {
 	Stage,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
+	POST_UNIFORM_LENGTH,
 	planStages,
 	screenKey,
 	setSettings,
@@ -265,14 +274,14 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 }
 
 test "screen passes have one pipeline each, whatever the settings or palette" {
-	const post: string = "program=Post layout=Fullscreen indexType=None" +
+	const post: string = "program=PixelArtPost layout=Fullscreen indexType=None" +
 		" colors=Rgba8 depth=None sampleCount=1" +
 		" culling=None depthWrite=false depthTest=Always blend=One,Zero alphaBlend=One,Zero" +
 		" operation=Add,Add colorMask=15";
 	const postKey: PipelineKey = screenKey(Stage.Post);
 	assert postKey.toString() == post;
 	const blit: string = screenKey(Stage.Blit).toString();
-	const blitHead: string = "program=Blit layout=Fullscreen indexType=None" +
+	const blitHead: string = "program=PixelArtBlit layout=Fullscreen indexType=None" +
 		" colors=Default depth=Default";
 	assert blit.indexOf(blitHead) == 0;
 	assert screenKey(Stage.Post).bits != screenKey(Stage.Blit).bits;
@@ -386,4 +395,63 @@ test "the core reserves the camera and light blocks and one screen mesh, nothing
 		markChanged(core);
 		assert core.needsFrame();
 	}
+}
+
+// A pixel-art renderer over a context whose material 0 names `program` with `levels` in a
+// material block of its own, or with no block when `levels` is negative.
+function presetOver(ref context: DrawContext, program: Program, levels: float32): PixelArtRenderer {
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+	if (!created.ok) { unreachable; }
+	let material: Material = Material.plain(program, RenderState.defaults(), Phase.Opaque);
+	if (levels >= 0.0) {
+		const block: Result<UniformBlock, UniformError> =
+			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+		if (!block.ok) { unreachable; }
+		const values: Vec<float32> = [levels, 0.0, 0.0, 0.0];
+		if (!writeUniforms(context, block.value, values).ok) { unreachable; }
+		material = { ...material, uniforms: block.value };
+	}
+	const index: int32 = addMaterial(context, material);
+	if (index != (context.materials.length as int32) - 1) { unreachable; }
+	return created.value;
+}
+
+test "the pixel-art preset refuses a material naming a program it does not draw" {
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	let renderer: PixelArtRenderer = presetOver(context, Program.Copy, -1.0);
+	const items: Vec<DrawItem> = [itemAt((context.materials.length as int32) - 1, 0.0)];
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const refused: Result<int32, PixelArtError> =
+		renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
+	assert !refused.ok && refused.error == PixelArtError.ProgramNotDrawn;
+	assert renderer.core.generation == 0 && renderer.view.width == 0;
+}
+
+test "a lit material without toon ramp levels refuses the pixel-art frame; with them it passes on" {
+	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH;
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
+	let zero: DrawContext = DrawContext.withUniformCapacity(capacity);
+	let atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
+	const zeroItems: Vec<DrawItem> = [itemAt((zero.materials.length as int32) - 1, 0.0)];
+	const noLevels: Result<int32, PixelArtError> =
+		renderFrame(atZero, zero, zeroItems, camera, lights, drawn);
+	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
+	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
+	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
+	const bareItems: Vec<DrawItem> = [itemAt((bare.materials.length as int32) - 1, 0.0)];
+	const noBlock: Result<int32, PixelArtError> =
+		renderFrame(withoutBlock, bare, bareItems, camera, lights, drawn);
+	assert !noBlock.ok && noBlock.error == PixelArtError.RampLevels;
+	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
+	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
+	const fourItems: Vec<DrawItem> = [itemAt((four.materials.length as int32) - 1, 0.0)];
+	const past: Result<int32, PixelArtError> =
+		renderFrame(atFour, four, fourItems, shortCamera, lights, drawn);
+	assert !past.ok && past.error == PixelArtError.CameraBlockLength;
+	assert atZero.core.generation == 0 && withoutBlock.core.generation == 0;
 }

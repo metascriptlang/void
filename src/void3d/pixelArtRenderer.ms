@@ -4,7 +4,8 @@
 // palettes, look and settings come from the caller.
 //
 //   Scene  low-res MRT: color + normal (depth packed in its alpha) + depth attachment,
-//          drawing the core's pass lists
+//          drawing the core's pass lists with the preset's own programs (pixelArt3d.glsl) in
+//          place of the ones materials name: the toon ramp and the normal target are its look
 //   Post   ScreenFx: outline from depth + normal edges, fog, palette LUT; one pass, since the
 //          palette only reads the pixel it quantizes (docs/VOID3D.md, Open questions)
 //   Blit   ScreenFx to the swapchain: integer scale, nearest, centering + sub-pixel offset
@@ -19,15 +20,12 @@ import {
 	LoadAction,
 	Filter,
 	Wrap,
-	POST_UNIFORM_SLOT,
-	POST_UNIFORM_LENGTH,
-	BLIT_UNIFORM_SLOT,
-	BLIT_UNIFORM_LENGTH,
 	endPass,
 	originTopLeft,
 	depthZeroToOne,
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
+import { ProgramMap } from "./programMap";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -67,6 +65,26 @@ import {
 	drawScreen,
 	endFrame,
 } from "./renderer";
+
+// The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
+// material's block (gpu3d.ms MATERIAL_UNIFORM_SLOT) holds the toon ramp's levels at
+// RAMP_LEVELS; the billboard's block holds its tint, then its levels at SPRITE_RAMP_LEVELS.
+export const RAMP_LEVELS: int32 = 0;
+export const SPRITE_UNIFORM_SLOT: int32 = 2;
+export const SPRITE_UNIFORM_LENGTH: int32 = 8;
+export const SPRITE_RAMP_LEVELS: int32 = 4;
+export const POST_UNIFORM_SLOT: int32 = 0;
+export const POST_UNIFORM_LENGTH: int32 = 24;
+export const BLIT_UNIFORM_SLOT: int32 = 0;
+export const BLIT_UNIFORM_LENGTH: int32 = 4;
+
+// What the scene pass draws for the programs materials name.
+export function pixelArtPrograms(): ProgramMap {
+	return ProgramMap.empty()
+		.drawing(Program.Lit, Program.PixelArtLit)
+		.drawing(Program.Particle, Program.PixelArtParticle)
+		.drawing(Program.Billboard, Program.Billboard);
+}
 
 // The preset's passes, in the order a frame runs them.
 export enum Stage {
@@ -130,6 +148,8 @@ export enum PixelArtError {
 	CameraBlockLength,
 	LightBlockLength,
 	ScreenBlockLength,
+	ProgramNotDrawn,
+	RampLevels,
 }
 
 export struct PixelArtRenderer {
@@ -264,7 +284,7 @@ export function writePostParams(
 
 // The pipelines of the screen stages; the scene's depend on its materials, on SCENE_LAYOUT.
 export function screenKey(stage: Stage): PipelineKey {
-	const program: Program = stage == Stage.Blit ? Program.Blit : Program.Post;
+	const program: Program = stage == Stage.Blit ? Program.PixelArtBlit : Program.PixelArtPost;
 	const targets: TargetLayout = stage == Stage.Blit ? SWAPCHAIN_LAYOUT : POST_LAYOUT;
 	// The screen triangle is three vertices with no index buffer (screenFx.ms).
 	const indexed: boolean = false;
@@ -291,18 +311,19 @@ export function create(
 	if (!palette.ok) {
 		return Result.err(PixelArtError.PaletteLevels);
 	}
-	const core: Result<Renderer, RendererError> = Renderer.create(context);
+	const core: Result<Renderer, RendererError> =
+		Renderer.createDrawing(context, pixelArtPrograms());
 	if (!core.ok) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
 	const postBlock: UniformBlock = reserve(context, POST_UNIFORM_SLOT, POST_UNIFORM_LENGTH);
 	const blitBlock: UniformBlock = reserve(context, BLIT_UNIFORM_SLOT, BLIT_UNIFORM_LENGTH);
 	const postMaterial: Material = {
-		...Material.plain(Program.Post, screenState(), Phase.Opaque),
+		...Material.plain(Program.PixelArtPost, screenState(), Phase.Opaque),
 		uniforms: postBlock,
 	};
 	const blitMaterial: Material = {
-		...Material.plain(Program.Blit, screenState(), Phase.Opaque),
+		...Material.plain(Program.PixelArtBlit, screenState(), Phase.Opaque),
 		uniforms: blitBlock,
 	};
 	return Result.ok({
@@ -429,10 +450,12 @@ function drawScene(
 	ref renderer: PixelArtRenderer,
 	ref context: DrawContext,
 	items: Span<DrawItem>,
-): void {
+): Result<int32, RendererError> {
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	drawPassLists(renderer.core, context, items, SCENE_LAYOUT);
+	const drawn: Result<int32, RendererError> =
+		drawPassLists(renderer.core, context, items, SCENE_LAYOUT);
 	endPass();
+	return drawn;
 }
 
 function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
@@ -452,12 +475,30 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.UniformPoolFull => PixelArtError.UniformPoolFull,
 		RendererError.CameraBlockLength => PixelArtError.CameraBlockLength,
 		RendererError.LightBlockLength => PixelArtError.LightBlockLength,
+		RendererError.ProgramNotDrawn => PixelArtError.ProgramNotDrawn,
 	};
 }
 
+// The toon ramp divides by its levels, so an item whose program steps its lights must carry a
+// block with at least one level; 0 would draw NaN.
+function rampLevelsSet(context: DrawContext, items: Span<DrawItem>): boolean {
+	for (const item of items) {
+		const material: Material = context.materials[item.material];
+		let at: int32 = -1;
+		if (material.program == Program.Lit) { at = RAMP_LEVELS; }
+		if (material.program == Program.Billboard) { at = SPRITE_RAMP_LEVELS; }
+		if (at < 0) { continue; }
+		if (material.uniforms.length <= at) { return false; }
+		if (context.uniforms[material.uniforms.offset + at] < 1.0) { return false; }
+	}
+	return true;
+}
+
 // One frame: `items` index `context`'s meshes and materials; `camera` and `lights` are the
-// scene programs' uniform blocks (shader3d.glsl vertexParams, lightParams); `view` comes from
-// viewFor. Answers how many items it was given. Allocates nothing unless the item count grew.
+// scene programs' uniform blocks (shader3dBlocks.glsl vertexParams, lightParams); `view` comes
+// from viewFor. Answers how many items it was given. Allocates nothing unless the item count
+// grew. An item the preset cannot draw, or whose ramp has no levels, refuses the frame before
+// anything changes.
 export function renderFrame(
 	ref renderer: PixelArtRenderer,
 	ref context: DrawContext,
@@ -466,6 +507,7 @@ export function renderFrame(
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
+	if (!rampLevelsSet(context, items)) { return Result.err(PixelArtError.RampLevels); }
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, context, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -490,7 +532,14 @@ export function renderFrame(
 
 	for (const stage of renderer.stages) {
 		match (stage) {
-			Stage.Scene => { drawScene(renderer, context, items); },
+			Stage.Scene => {
+				const drawn: Result<int32, RendererError> = drawScene(renderer, context, items);
+				if (!drawn.ok) {
+					// PENDING3D: match-arm-return-typed
+					const refused: Result<int32, PixelArtError> = Result.err(fromCore(drawn.error));
+					return refused;
+				}
+			},
 			Stage.Post => { drawPost(renderer, context); },
 			Stage.Blit => { drawBlit(renderer, context); },
 		};

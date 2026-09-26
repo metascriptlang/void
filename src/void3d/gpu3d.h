@@ -44,14 +44,14 @@ static const int32_t GPU3D_PASS_CLEAR_DEPTH = 16;
 static const int32_t GPU3D_PASS_CLEAR_LENGTH = 17;
 
 // Bindings: 0 leaves a slot empty. View and sampler slots are the `binding=` numbers in
-// shader3d.glsl.
+// shader3d.glsl and pixelArt3d.glsl.
 static const int32_t GPU3D_BINDING_VERTEX_BUFFER = 0; // two
 static const int32_t GPU3D_BINDING_INDEX_BUFFER = 2;
 static const int32_t GPU3D_BINDING_VIEW = 3; // four
 static const int32_t GPU3D_BINDING_SAMPLER = 7; // two
 static const int32_t GPU3D_BINDING_LENGTH = 9;
 // Members of Program in gpu3d.ms, and entries of PROGRAMS in gpu3d.c.
-#define GPU3D_PROGRAM_TABLE_LENGTH 5
+#define GPU3D_PROGRAM_TABLE_LENGTH 8
 static const int32_t GPU3D_PROGRAM_COUNT = GPU3D_PROGRAM_TABLE_LENGTH;
 
 uint32_t gpu3dMakeShader(int32_t program);

@@ -313,5 +313,5 @@ test "a pipeline key decodes back into what built it" {
 }
 
 test "the shader table has a slot for every program, the last one included" {
-	assert (Program.Particle as int32) == PROGRAM_COUNT - 1;
+	assert (Program.PixelArtBlit as int32) == PROGRAM_COUNT - 1;
 }

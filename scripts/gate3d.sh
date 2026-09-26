@@ -201,20 +201,22 @@ configureCampfireRebuildAt(3);"
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
 # stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
-# notes). gpu3d.c includes shader3d.glsl.h and gpu3d.h; the gate hashes both and evicts what
+# notes). gpu3d.c includes the two shader headers and gpu3d.h; the gate hashes them and evicts what
 # was built from them in this checkout's build cache. The machine-wide cache is off for the run.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
-	current=$(cat src/void3d/shader3d.glsl.h src/void3d/gpu3d.h 2>/dev/null | md5sum | cut -d' ' -f1)
-	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/gpu3d.h ]; then
-		note "capture: src/void3d/shader3d.glsl.h or gpu3d.h is missing"
+	headers="src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h"
+	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
+	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/pixelArt3d.glsl.h ] ||
+		[ ! -f src/void3d/gpu3d.h ]; then
+		note "capture: a shader header or gpu3d.h is missing"
 		return 0
 	fi
 	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
 		return 0
 	fi
 	note "capture: a header gpu3d.c includes changed since the last gate — evicting the objects built from it"
-	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* 2>/dev/null
+	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* 2>/dev/null
 	echo "$current" > "$stamp"
 }
 
@@ -279,7 +281,8 @@ run_shaders() {
 	fi
 	SHDC_LANGS="metal_macos:glsl300es:wgsl:hlsl5"
 	SHDC_LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
-	for SHDC_SRC in src/sokol/shader.glsl src/void2d/shader2d.glsl src/void3d/shader3d.glsl; do
+	for SHDC_SRC in src/sokol/shader.glsl src/void2d/shader2d.glsl src/void3d/shader3d.glsl \
+		src/void3d/pixelArt3d.glsl; do
 		SHDC_LANGS_PICK="$SHDC_LANGS"
 		case "$SHDC_SRC" in
 			src/sokol/*|src/void3d/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
@@ -656,7 +659,8 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:drawPassLists renderer:drawS
 	pipeline67ache:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:resizeTargets
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
-	pixel65rt82enderer:drawBlit camera:resolve camera:writeCameraBlock blit:writeBlitParams
+	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampLevelsSet program77ap:draws
+	program77ap:drawnFor camera:resolve camera:writeCameraBlock blit:writeBlitParams
 	blit:lowResView palette:upload target:beginPass"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.

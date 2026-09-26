@@ -43,13 +43,19 @@ extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
 extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
 extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
 extern function gpu3dUpdateBuffer(buffer: uint32, data: Span<float32>): int32;
-// One per @program in shader3d.glsl; gpu3d.c maps each to its *_shader_desc.
+// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the pixel-art preset's);
+// gpu3d.c maps each to its *_shader_desc. A material names Lit, Particle or Billboard, and the
+// renderer draws the program its ProgramMap holds for it (programMap.ms). Billboard is the
+// preset's grass-and-flame program until it has a core form.
 export enum Program {
 	Lit,
-	Billboard,
-	Post,
-	Blit,
 	Particle,
+	Billboard,
+	Copy,
+	PixelArtLit,
+	PixelArtParticle,
+	PixelArtPost,
+	PixelArtBlit,
 }
 
 // Vertex buffer layouts gpu3d.c knows how to describe (describeLayout).
@@ -94,7 +100,7 @@ export enum Wrap {
 	Mirror,
 }
 
-// Uniform block slots and sizes in floats, from the `binding=` blocks in shader3d.glsl.
+// Uniform block slots and sizes in floats, from the `binding=` blocks in shader3dBlocks.glsl.
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 24;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;
@@ -103,19 +109,12 @@ export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
 export const MAX_POINT_LIGHTS: int32 = 4;
 export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
-// The material's own block (binding=3): the lit program's toon ramp levels, and the saturation
-// it applies to the material's colour before lighting (0 leaves it alone, -1 is grey); the
-// billboard program's block puts the grass tint beside the levels.
-export const TOON_UNIFORM_SLOT: int32 = 3;
-export const TOON_UNIFORM_LENGTH: int32 = 4;
-export const TOON_LEVELS: int32 = 0;
-export const TOON_SATURATION: int32 = 1;
-export const SPRITE_UNIFORM_SLOT: int32 = 2;
-export const SPRITE_UNIFORM_LENGTH: int32 = 8;
-export const POST_UNIFORM_SLOT: int32 = 0;
-export const POST_UNIFORM_LENGTH: int32 = 24;
-export const BLIT_UNIFORM_SLOT: int32 = 0;
-export const BLIT_UNIFORM_LENGTH: int32 = 4;
+// A lit material's own block (binding=3). The core reads the saturation it applies to the
+// material's colour before lighting (0 leaves it alone, -1 is grey); a preset may give the
+// other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS).
+export const MATERIAL_UNIFORM_SLOT: int32 = 3;
+export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
+export const MATERIAL_SATURATION: int32 = 1;
 
 export function makeShader(program: Program): uint32 {
 	return gpu3dMakeShader(program as int32);

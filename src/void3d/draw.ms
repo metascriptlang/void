@@ -73,10 +73,9 @@ export struct DrawItem {
 // uploaded from, or an empty MeshData for a mesh whose data its owner keeps (the screen
 // triangle, billboard corners and instances). Everything with CPU data here comes back on its
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
-// Slot 2, matching `layout(binding=2) uniform modelParams` in shader3d.glsl. Only the Lit
-// program declares it; the billboard path keeps its roots in world space and the two screen
-// programs have no geometry to place.
-export const MODEL_SLOT: int32 = 2;
+// Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
+// other block uses: a program gets the model matrix exactly when it declares that slot.
+export const MODEL_SLOT: int32 = 4;
 export const MODEL_LENGTH: int32 = 32;
 
 export struct DrawContext {
@@ -431,11 +430,13 @@ function bindItem(ref context: DrawContext, mesh: GpuMesh, material: Material): 
 	applyBindings(context.bindings);
 }
 
-// One item into the current pass, whose attachments match `targets`. `globals` are the
-// pass-wide blocks (camera, lights) applied before the material's own.
+// One item into the current pass, whose attachments match `targets`, drawn with `program`:
+// the material's own, or the one a renderer draws in its place (programMap.ms). `globals` are
+// the pass-wide blocks (camera, lights) applied before the material's own.
 export function drawItem(
 	ref context: DrawContext,
 	item: DrawItem,
+	program: Program,
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
@@ -443,7 +444,7 @@ export function drawItem(
 	const material: Material = context.materials[item.material];
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
-		material.program,
+		program,
 		mesh.layout,
 		mesh.isIndexed(),
 		material.pass,
@@ -451,13 +452,13 @@ export function drawItem(
 	);
 	applyPipeline(pipeline);
 	bindItem(context, mesh, material);
-	if (material.program == Program.Lit) {
+	if (context.pipelines.declaresBlock(program, MODEL_SLOT)) {
 		item.world.writeTo(context.model[0..MODEL_LENGTH], 0);
 		item.world.normalMatrix().writeTo(context.model[0..MODEL_LENGTH], 16);
 		applyUniforms(MODEL_SLOT, context.model[0..MODEL_LENGTH]);
 	}
 	for (const block of globals) {
-		if (context.pipelines.declaresBlock(material.program, block.slot)) {
+		if (context.pipelines.declaresBlock(program, block.slot)) {
 			context.applyBlock(block);
 		}
 	}
@@ -467,7 +468,7 @@ export function drawItem(
 	draw(0, mesh.elementCount(), mesh.instanceCount);
 }
 
-// Draws `items` in order.
+// Draws `items` in order, each with its material's own program.
 export function drawItems(
 	ref context: DrawContext,
 	items: Span<DrawItem>,
@@ -475,6 +476,6 @@ export function drawItems(
 	globals: Span<UniformBlock>,
 ): void {
 	for (const item of items) {
-		drawItem(context, item, targets, globals);
+		drawItem(context, item, context.materials[item.material].program, targets, globals);
 	}
 }

@@ -8,11 +8,9 @@ import { gfxSetup, fbWidth, fbHeight } from "../sokol/gpu";
 import { sinf, cosf } from "../math/mat4";
 import {
 	LIGHT_UNIFORM_LENGTH,
-	TOON_UNIFORM_SLOT,
-	TOON_UNIFORM_LENGTH,
-	TOON_SATURATION,
-	SPRITE_UNIFORM_SLOT,
-	SPRITE_UNIFORM_LENGTH,
+	MATERIAL_UNIFORM_SLOT,
+	MATERIAL_UNIFORM_LENGTH,
+	MATERIAL_SATURATION,
 	Program,
 	VertexLayout,
 	Filter,
@@ -55,6 +53,8 @@ import {
 	PixelArtError,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
+	SPRITE_UNIFORM_SLOT,
+	SPRITE_UNIFORM_LENGTH,
 	setLook,
 	setPalette,
 	setSettings,
@@ -207,12 +207,12 @@ const LOOK_WINTER_AT: int32 = 5;
 const LOOK_GREY_AT: int32 = 10;
 const LOOK_RESTORED_AT: int32 = 15;
 
-// The pool holds the renderer's blocks plus this scene's material blocks: one toon ramp for
-// the lit material, one for the ground's own lit material when it is greyed, and one sprite
-// block shared by grass and flame.
-const MATERIAL_UNIFORM_LENGTH: int32 = 2 * TOON_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
+// The pool holds the renderer's blocks plus this scene's material blocks: one for the lit
+// material, one for the ground's own lit material when it is greyed, and one sprite block
+// shared by grass and flame.
+const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
+	PIXEL_ART_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
 );
 let renderer: PixelArtRenderer = createRenderer();
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
@@ -657,8 +657,8 @@ function setupDraws(): void {
 	const spriteToon: Vec<float32> = [0.2, 0.26, 0.5, 0.0, LIGHT_LEVELS, 0.0, 0.0, 0.0];
 	const litBlock: UniformBlock = try reserveUniforms(
 		context,
-		TOON_UNIFORM_SLOT,
-		TOON_UNIFORM_LENGTH,
+		MATERIAL_UNIFORM_SLOT,
+		MATERIAL_UNIFORM_LENGTH,
 	) catch NO_UNIFORMS;
 	const spriteBlock: UniformBlock = try reserveUniforms(
 		context,
@@ -789,9 +789,9 @@ function setupDraws(): void {
 function groundMaterialFor(state: RenderState, litMaterial: int32): Result<int32, UniformError> {
 	if (groundSaturation == 0.0 || groundGreyOnCpu) { return Result.ok(litMaterial); }
 	const block: UniformBlock =
-		try reserveUniforms(context, TOON_UNIFORM_SLOT, TOON_UNIFORM_LENGTH);
+		try reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	const toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
-	toon[TOON_SATURATION] = groundSaturation;
+	toon[MATERIAL_SATURATION] = groundSaturation;
 	const _written: int32 = try writeUniforms(context, block, toon);
 	return Result.ok(addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),

@@ -2,6 +2,7 @@
 #include "../sokol/bridge.h"
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader3d.glsl.h"
+#include "pixelArt3d.glsl.h"
 
 // ---- enum tables, indexed by MetaScript ordinal (same order as gpu3d.ms / pass.ms) ----
 
@@ -10,10 +11,13 @@ typedef const sg_shader_desc *(*ShaderDescription)(sg_backend backend);
 // Program
 static const ShaderDescription PROGRAMS[] = {
 	lit_shader_desc,
-	billboard_shader_desc,
-	post_shader_desc,
-	blit_shader_desc,
 	particle_shader_desc,
+	pixelArt_billboard_shader_desc,
+	copy_shader_desc,
+	pixelArt_lit_shader_desc,
+	pixelArt_particle_shader_desc,
+	pixelArt_post_shader_desc,
+	pixelArt_blit_shader_desc,
 };
 
 // Face (h3d.mat.Data.Face without Both)
@@ -90,6 +94,14 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 // One entry per MetaScript enum member. These catch a member added on one side only; the
 // order still has to be kept by hand (and is covered by the scene image check).
 _Static_assert(COUNT(PROGRAMS) == GPU3D_PROGRAM_TABLE_LENGTH, "PROGRAMS must match Program in gpu3d.ms");
+_Static_assert(ATTR_pixelArt_lit_position == ATTR_lit_position && ATTR_pixelArt_lit_normal == ATTR_lit_normal
+	&& ATTR_pixelArt_lit_color == ATTR_lit_color, "every Lit-layout program must declare the core lit attributes");
+_Static_assert(ATTR_pixelArt_billboard_corner == ATTR_particle_corner && ATTR_pixelArt_billboard_root == ATTR_particle_root
+	&& ATTR_pixelArt_billboard_shape == ATTR_particle_color && ATTR_pixelArt_particle_corner == ATTR_particle_corner
+	&& ATTR_pixelArt_particle_root == ATTR_particle_root && ATTR_pixelArt_particle_color == ATTR_particle_color,
+	"every Billboard-layout program must declare the core particle attributes");
+_Static_assert(ATTR_pixelArt_post_position == ATTR_copy_position && ATTR_pixelArt_blit_position == ATTR_copy_position,
+	"every Fullscreen-layout program must declare the copy position");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
 _Static_assert(COUNT(COMPARE_FUNCTIONS) == 8, "COMPARE_FUNCTIONS must match Compare in pass.ms");
 _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in pass.ms");
@@ -101,8 +113,10 @@ _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in gpu3d.ms");
 _Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in gpu3d.ms");
 _Static_assert(sizeof(lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
 _Static_assert(sizeof(modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
-_Static_assert(ATTR_particle_corner == ATTR_billboard_corner && ATTR_particle_root == ATTR_billboard_root
-	&& ATTR_particle_color == ATTR_billboard_shape, "particle attributes must match the Billboard layout");
+_Static_assert(sizeof(pixelArt_lightParams_t) == sizeof(lightParams_t)
+	&& sizeof(pixelArt_modelParams_t) == sizeof(modelParams_t)
+	&& sizeof(pixelArt_materialParams_t) == sizeof(materialParams_t),
+	"both shader files must take the blocks of shader3dBlocks.glsl");
 
 // ---- vertex layouts, one per VertexLayout member ----
 
@@ -119,15 +133,15 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 	case LAYOUT_BILLBOARD:
 		// buffer 0: quad corner per vertex; buffer 1: root + shape per instance
 		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		out->attrs[ATTR_billboard_corner].format = SG_VERTEXFORMAT_FLOAT2;
-		out->attrs[ATTR_billboard_root].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_billboard_root].buffer_index = 1;
-		out->attrs[ATTR_billboard_shape].format = SG_VERTEXFORMAT_FLOAT4;
-		out->attrs[ATTR_billboard_shape].buffer_index = 1;
+		out->attrs[ATTR_particle_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_particle_root].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particle_root].buffer_index = 1;
+		out->attrs[ATTR_particle_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_particle_color].buffer_index = 1;
 		break;
 	default:
-		// clip-space position of a fullscreen triangle (post, blit)
-		out->attrs[ATTR_post_position].format = SG_VERTEXFORMAT_FLOAT2;
+		// clip-space position of a fullscreen triangle (copy, post, blit)
+		out->attrs[ATTR_copy_position].format = SG_VERTEXFORMAT_FLOAT2;
 		break;
 	}
 }

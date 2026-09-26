@@ -9,9 +9,11 @@
 import { DrawContext, DrawItem, drawItem } from "./draw";
 import { TargetLayout } from "./target";
 import { Material, Phase, UniformBlock } from "./material";
+import { Program } from "./gpu3d";
+import { ProgramMap, ProgramError } from "./programMap";
 
 // Float offsets of the view-projection column that yields clip z, in the camera block
-// (shader3d.glsl `vertexParams`, viewProj first): Heaps' cam._13, _23, _33, _43.
+// (shader3dBlocks.glsl `vertexParams`, viewProj first): Heaps' cam._13, _23, _33, _43.
 const CLIP_Z_X: int32 = 2;
 const CLIP_Z_Y: int32 = 6;
 const CLIP_Z_Z: int32 = 10;
@@ -81,15 +83,21 @@ export function sortBackToFront(
 	}
 }
 
-// Output.draw: the collected items, in the list's order, into the current pass.
+// Output.draw: the collected items, in the list's order, into the current pass, each with the
+// program `programs` draws for its material's. Answers how many it drew; an item whose program
+// the map does not draw stops the list there.
 export function drawPassList(
 	ref context: DrawContext,
 	list: PassList,
 	items: Span<DrawItem>,
+	programs: ProgramMap,
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
-): void {
+): Result<int32, ProgramError> {
 	for (let i = 0; i < list.count; i++) {
-		drawItem(context, items[list.indices[i]], targets, globals);
+		const item: DrawItem = items[list.indices[i]];
+		const program: Program = try programs.drawnFor(context.materials[item.material].program);
+		drawItem(context, item, program, targets, globals);
 	}
+	return Result.ok(list.count);
 }

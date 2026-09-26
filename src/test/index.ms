@@ -24,6 +24,7 @@ import "./imageStyleCheck";
 import "./uiPipelineCheck";
 import "./snapCheck";
 import "./rendererCheck";
+import "./programMapCheck";
 import "./cameraCheck";
 import "./boundsCheck";
 import "./meshDataCheck";
