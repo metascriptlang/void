@@ -105,6 +105,12 @@ _Static_assert(ATTR_pixelArt_billboard_corner == ATTR_billboard_corner
 	&& ATTR_pixelArt_billboard_size == ATTR_billboard_size && ATTR_pixelArt_billboard_tile == ATTR_billboard_tile
 	&& ATTR_pixelArt_billboard_color == ATTR_billboard_color,
 	"every Billboard-layout program must declare the core billboard attributes");
+_Static_assert(ATTR_lit_position == 0 && ATTR_lit_normal == 1 && ATTR_lit_color == 2
+	&& ATTR_particle_corner == 0 && ATTR_particle_root == 1 && ATTR_particle_color == 2
+	&& ATTR_billboard_corner == 0 && ATTR_billboard_position == 1 && ATTR_billboard_size == 2
+	&& ATTR_billboard_tile == 3 && ATTR_billboard_color == 4,
+	"sokol lays a buffer out in attribute slot order, which must be the order its writer writes:"
+	" meshData.ms, particles.ms writeInstances, billboard.ms pushTo");
 _Static_assert(ATTR_pixelArt_post_position == ATTR_copy_position && ATTR_pixelArt_blit_position == ATTR_copy_position,
 	"every Fullscreen-layout program must declare the copy position");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
@@ -172,6 +178,30 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_copy_position].format = SG_VERTEXFORMAT_FLOAT2;
 		break;
 	}
+}
+
+static int32_t formatFloats(sg_vertex_format format) {
+	switch (format) {
+	case SG_VERTEXFORMAT_FLOAT2: return 2;
+	case SG_VERTEXFORMAT_FLOAT3: return 3;
+	case SG_VERTEXFORMAT_FLOAT4: return 4;
+	default: return -1;
+	}
+}
+
+int32_t gpu3dLayoutFloats(int32_t layout, int32_t buffer) {
+	sg_vertex_layout_state state = {0};
+	describeLayout((uint32_t)layout, &state);
+	int32_t floats = 0;
+	for (int i = 0; i < SG_MAX_VERTEX_ATTRIBUTES; i++) {
+		if (state.attrs[i].format == SG_VERTEXFORMAT_INVALID || state.attrs[i].buffer_index != buffer) {
+			continue;
+		}
+		const int32_t size = formatFloats(state.attrs[i].format);
+		if (size < 0) return -1;
+		floats += size;
+	}
+	return floats;
 }
 
 // ---- resources ----

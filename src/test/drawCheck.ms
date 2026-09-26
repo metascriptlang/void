@@ -4,8 +4,17 @@
 // readback (docs/VOID3D.md, M5 as built).
 
 import { Vec3, vec3 } from "../math/math3d";
-import { VertexLayout } from "../void3d/gpu3d";
-import { MeshData, MeshError, Rgba, addPlane, addVertex } from "../void3d/meshData";
+import { VertexLayout, layoutFloats } from "../void3d/gpu3d";
+import {
+	MeshData,
+	MeshError,
+	Rgba,
+	LIT_VERTEX_STRIDE,
+	addPlane,
+	addVertex,
+} from "../void3d/meshData";
+import { PARTICLE_INSTANCE_STRIDE } from "../void3d/particles";
+import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import {
 	DrawContext,
 	GpuMesh,
@@ -129,4 +138,15 @@ test "a stream write is refused before the driver when it names the wrong mesh o
 	assert streamError(writeStream(context, stream, four, -1)) == StreamError.OverCapacity;
 	assert streamError(writeStream(context, stream, four[0..8], 2)) == StreamError.ShortInstances;
 	assert context.meshes[stream].instanceCount == 0;
+}
+
+test "every vertex layout carries the floats its writers write, per vertex and per instance" {
+	assert layoutFloats(VertexLayout.Lit, 0) == LIT_VERTEX_STRIDE;
+	assert layoutFloats(VertexLayout.Lit, 1) == 0;
+	assert layoutFloats(VertexLayout.Particle, 0) == 2;
+	assert layoutFloats(VertexLayout.Particle, 1) == STREAM_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.Particle, 1) == PARTICLE_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.Billboard, 0) == 2;
+	assert layoutFloats(VertexLayout.Billboard, 1) == BILLBOARD_INSTANCE_STRIDE;
+	assert layoutFloats(VertexLayout.Fullscreen, 0) == 2;
 }

@@ -63,6 +63,9 @@ int32_t gpu3dUniformBlockBytes(int32_t program, int32_t slot);
 // read off the D3D11 desc like gpu3dUniformBlockBytes, so it needs no GPU.
 uint32_t gpu3dTextureSlotMask(int32_t program);
 uint32_t gpu3dSamplerSlotMask(int32_t program);
+// Floats per vertex (or per instance) of vertex buffer `buffer` in `layout`, as describeLayout
+// lays it out; -1 for a format that is not float.
+int32_t gpu3dLayoutFloats(int32_t layout, int32_t buffer);
 #define GPU3D_UNIFORM_SLOT_TABLE_LENGTH 8
 static const int32_t GPU3D_UNIFORM_SLOTS = GPU3D_UNIFORM_SLOT_TABLE_LENGTH;
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);

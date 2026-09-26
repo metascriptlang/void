@@ -12,6 +12,7 @@ import {
 	gpu3dUniformBlockBytes,
 	gpu3dTextureSlotMask,
 	gpu3dSamplerSlotMask,
+	gpu3dLayoutFloats,
 	GPU3D_UNIFORM_SLOTS,
 	gpu3dMakeTargetImage,
 	gpu3dMakeAttachmentView,
@@ -165,6 +166,11 @@ export function textureSlotMask(program: Program): uint32 {
 
 export function samplerSlotMask(program: Program): uint32 {
 	return gpu3dSamplerSlotMask(program as int32);
+}
+
+// Floats per vertex (buffer 0) or per instance (buffer 1) of `layout`, as gpu3d.c lays it out.
+export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
+	return gpu3dLayoutFloats(layout as int32, buffer);
 }
 
 export function makePipeline(descriptor: Span<uint32>): uint32 {
