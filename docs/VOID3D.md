@@ -76,7 +76,7 @@ Ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3
 | M12 | `shader/ColorMatrix` (per-pass colour matrix), `Matrix.colorSaturate` | Saturation as a lit-material parameter, applied to the material's colour before the lights, so one object greys while the scene keeps its colour; a CPU `colorSaturate` pinned against Heaps by the oracle | A11 Fading | **done**, 4 tests, 6 oracle cases |
 | M13 | `shader/AmbientLight` (additive: `pixelColor.rgb *= ambient + lights`), `shader/DirLight` (`calcLighting`) | Every light multiplies the material's colour, point lights included, so a light scales with the object's colour: a dark object stays dark and a grey one takes the light's hue at its own brightness; the directional light is Heaps' Lambert, `max(n·l, 0) × power`, in place of the spike's step. The point lights' toon quantization and the billboard program are not touched: both are the pixel-art look in the core, `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3 | A11 Fading, A4 lights | **done**, 0 tests, the baselines retaken |
 | M14 | `scene/Renderer` (what a renderer's passes draw), `fwd/Renderer`, `pass/Copy` | The pixel-art look leaves the core programs. Core `Lit` and `Particle` shade the way Heaps' forward renderer does, into one colour target, the point lights no longer stepped; the pixel-art preset draws its own programs (toon ramp, normal and depth MRT) in their place through a program map. A frame is refused, by name, for a program the map does not draw or a material block that program does not read, before anything is written. A minimal forward preset (the scene into its own colour and depth targets, `Copy` to the swapchain) proves the core draws without the preset. The pixel-art frames stay byte-identical. `Program.Billboard` stays the preset's until M15 | generality: `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3 | **done**, 11 tests, one new baseline |
-| M15 | `parts/Particles` (`draw`, `hasColor`), `h2d/Tile.split`, `shader/BaseMesh` (`color`, `camera.dir`), `shader/Texture`, `shader/VertexColorAlpha`, `shader/GpuParticle`, `mat/Material` (`particles3D`) | A core `Billboard` in Heaps' textured-particle shape. Each instance is a position, a width and a height, the uv rect of its atlas tile and an rgba colour; a CPU split turns a frame into its tile, as `Tile.split` and `Particles.draw` do. The program multiplies the material's colour, the texel and the instance's colour, discards below half the texel's alpha as the particles do, and on a lit material multiplies in the ambient and the lights with the normal toward the camera (`GpuParticle`'s `camera.dir`). The pixel-art preset draws its own form in its place through the map: the grass-and-flame look (the point lights stepped and added at a point above the root, no normal; normal and depth MRT), its ramp levels in a float the core block reserves, as the lit block reserves `RAMP_LEVELS`. The grass and the flame stay byte-identical, measured before this row: 52 frames with the preset's form on the new layout. The forward preset draws them, and `m14forward_*` is re-baselined in its own commit | generality: `docs/REVIEWS-3D.md` "Audit before M13" finding 2 | in progress |
+| M15 | `parts/Particles` (`draw`, `hasColor`), `h2d/Tile.split`, `shader/BaseMesh` (`color`, `camera.dir`), `shader/Texture`, `shader/VertexColorAlpha`, `shader/GpuParticle`, `mat/Material` (`particles3D`) | A core `Billboard` in Heaps' textured-particle shape. Each instance is a position, a width and a height, the uv rect of its atlas tile and an rgba colour; a CPU split turns a frame into its tile, as `Tile.split` and `Particles.draw` do. The program multiplies the material's colour, the texel and the instance's colour, discards below half the texel's alpha as the particles do, and on a lit material multiplies in the ambient and the lights with the normal toward the camera (`GpuParticle`'s `camera.dir`). The pixel-art preset draws its own form in its place through the map: the grass-and-flame look (the point lights stepped and added at a point above the root, no normal; normal and depth MRT), its ramp levels in a float the core block reserves, as the lit block reserves `RAMP_LEVELS`. The grass and the flame stay byte-identical, measured before this row: 52 frames with the preset's form on the new layout. The forward preset draws them, and `m14forward_*` is re-baselined in its own commit | generality: `docs/REVIEWS-3D.md` "Audit before M13" finding 2 | **done**, 6 tests, one baseline retaken |
 
 ### M2 as built
 
@@ -487,6 +487,52 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 - **Nobody outside `src/void3d` can add a program.** The program table is closed: a game with a look of its own adds its programs and its map here. Programs a caller owns would be a mechanism of their own.
 - **The forward preset is minimal.** It has no sRGB conversion (neither has the pixel-art preset) and no MSAA, and it draws at the framebuffer's size only.
 - **The forward preset's context-loss rebuild is read, not run.** The generation only changes on Android, and the emulator run did not force a loss.
+
+### M15 as built
+
+- **A core billboard in Heaps' textured-particle shape.** `Program.Billboard` is now the core's (`shader3d.glsl` `billboardVs`, `billboardFs`): `h3d.parts.Particles` drawn with a texture.
+  - **The instance** is a position, a width and a height in world units, the uv rect of its atlas tile, and an rgba colour: 13 floats in the new `VertexLayout.Billboard` (`billboard.ms` `BillboardInstance`, `pushTo`). The quad faces the camera along `cameraRight` and `cameraUp`. Its root is in world space, as with Heaps' `isAbsolute`, so the program takes no model matrix.
+  - **The colour** is the material's colour times the texel times the instance's colour, in Heaps' order: `BaseMesh` starts `pixelColor` at `color`, `Texture` multiplies the texel in, `VertexColorAlpha` the vertex colour. A fragment under half the texel's alpha is discarded (`particle-alpha-tested`).
+  - **The light.** A lit material multiplies in the ambient, Lambert and the point lights, as `Lit` does, at the fragment's world position (Heaps' `pixelTransformedPosition`). The normal points toward the camera: Heaps' `GpuParticle` takes `camera.dir`, and `cross(cameraRight, cameraUp)` is its orthographic limit. `billboard-normal-toward-camera` records that, and that Heaps' CPU `ParticleShader` points the other way. `BILLBOARD_LIGHT` 0 leaves the lights out, as Heaps' `particles3D` material does with `light: false`; the flame is drawn that way.
+  - **The atlas.** `AtlasTile.ofFrame` is `h2d.Tile.split(frames)` across a whole texture, then one frame. The stride is truncated to whole pixels, the uv computed in float64 and stored as float32, as `Particles.draw` writes it. It refuses no frames, a frame outside the atlas, and frames narrower than a pixel.
+- **The frame is a uv rect per instance, not a count in the material.** sokol-shdc refuses a uniform block that the vertex and the fragment stage both read ("conflicting uniform block definitions"), and the uv is a vertex output. Heaps' CPU `Particles.draw` also writes each vertex's uv from the particle's `h2d.Tile`. `GpuParticle`'s frame divisions are shader parameters instead, which here would need a second material block for the vertex stage. gpui's sprites carry their `AtlasTile` per instance too.
+- **The preset's floats live in the core block** (decided with the human before the row), as `RAMP_LEVELS` sits in the lit block. `billboardParams` (binding 2, eight floats) holds the colour, then:
+  - at 4 the pixel-art ramp levels (`BILLBOARD_RAMP_LEVELS`);
+  - at 5 the core's `BILLBOARD_LIGHT`;
+  - at 6 the pixel-art `BILLBOARD_LIGHT_HEIGHT`.
+
+  A block per preset, the other route, would have been a new mechanism to carry two floats.
+- **The pixel-art preset's form.** `Program.PixelArtBillboard` (`pixelArt3d.glsl`) reads the same block and layout, and the preset's map draws it for `Billboard`.
+  - Its look is the old grass-and-flame shader's: the point lights stepped to the ramp and added, taken `BILLBOARD_LIGHT_HEIGHT` above the root with no normal; the normal and depth target; alpha 0, so the post pass does not outline it.
+  - What was campfire vocabulary in the core is gone (`docs/REVIEWS-3D.md` "Audit before M13" finding 2). `grassColor` is the material's colour. The `texel.r` mask is the texel, because the tuft texture is grey. The `* 0.25` atlas is the instance's tile. The `0.25` above the root is a material float. `mix(…, emissive)` is `BILLBOARD_LIGHT`.
+  - The ramp check refuses a lit billboard without levels and lets an unlit one through.
+- **Names.** M11's stream layout (root, side, rgba) is `VertexLayout.Particle`; `Billboard` is the new layout. The preset's `SPRITE_*` constants are gone: `gpu3d.ms` has `BILLBOARD_UNIFORM_SLOT`, `BILLBOARD_UNIFORM_LENGTH` and `BILLBOARD_LIGHT`, and `pixelArtRenderer.ms` has `BILLBOARD_RAMP_LEVELS` and `BILLBOARD_LIGHT_HEIGHT`.
+- **The campfire.** Its grass and flame are `BillboardInstance`s with their tiles from `AtlasTile.ofFrame`, one material block each. `configureCampfireForward` no longer hides them: the forward preset draws them with the core billboard.
+
+**Acceptance, at `e4442c6`.** The gate is GREEN with one SKIP (`device`).
+- **Pixels.**
+  - The thirteen pixel-art configurations, 52 frames, are byte-identical to their hashes. That was measured before the row, on a probe of the preset's form on the new layout with no core program yet, and held at every commit after it.
+  - The probe was controlled two ways. Reassociating the colour product, `color × (texel × instance)`, left all 52 frames identical, so the identity does not hang on one evaluation order. Scaling the grass colour by 1.002, about 0.15 of an 8-bit level, broke them: AE 213 568 to 228 616 palette off, 3 380 to 3 408 palette on.
+  - The committed form takes the light height from the block instead of the literal 0.25, and stayed identical.
+  - `m14forward_*` is re-baselined by design in its own commit (`e4442c6`), names kept: the forward frame now draws the grass and the flame. Against the old frames: AE 664 396 to 664 532 (72%), PAE 58 339. The control is the commit before it (`525f6eb`): the same code with the two billboard nodes hidden, which drew `m14forward_*` byte-identical.
+- **Tests.** **888**, six more than M14's 882:
+  - four on the atlas: quarters, the float32 thirds, a width the frames do not divide, and the refusals;
+  - the instance written in the layout's order;
+  - `right × up = −forward` for the camera's basis at four yaws and three pitches, the direction `billboardVs` relies on.
+
+  The map, block and ramp tests were rewritten for the new program: the core draws `Billboard`, the preset draws `PixelArtBillboard` for it, both programs declare the billboard block at its length, and the ramp check is run lit and unlit.
+- **Controls.** Removing the stride truncation fails "a width the frames do not divide…".
+- **Size.** arm64 `libVoidAndroid.so` is 2 972 176 bytes, +68 192 over M14 on the same msc (`2925176a`). The embedded shader sources grew from 120 551 to 145 116 bytes (+24 565): the core billboard in six backends, and the preset's rewritten one. The rest is not attributed.
+- **Bench.** `meshes=40`, as in M14, and `pipelines=5`. There is no frame-state growth.
+- **PENDING3D** has 23 rows:
+  - `billboard-points-added` deleted: the core billboard multiplies the lights in, and the preset's add is its look;
+  - `billboard-normal-toward-camera` added;
+  - `particle-alpha-tested` and `particle-size-world-units` now cover the billboard.
+
+**Still missing after M15.**
+- **An emitter cannot draw textured particles.** `particles.ms` writes the `Particle` layout. Heaps' `Emitter` animates a particle's `frame` over `frames` (`Data.frame`), which would need `writeInstances` for the billboard layout.
+- **`Tile.split`'s other arguments** (`vertical`, `subpixel`) and a grid of frames are not ported.
+- **Billboards have no rotation or ratio** (`particle-size-world-units`), **are alpha-tested** (`particle-alpha-tested`), and **have no saturation** (`material-saturation-only`).
 
 ### Android lifecycle (V6), alongside from M3
 
