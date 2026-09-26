@@ -153,10 +153,15 @@ Today a quad is 6 vertices × 8 floats = **192 B**, re-transformed on the CPU ev
 | Sprite pipeline | affine 4 + origin/size 4 + uv 4 + colour 4 (float) | **64 B, measured** |
 | UI pipeline (single stride for all modes) | affine 4, origin/size 4, uv-or-radii 4, border widths 4, mode/params 4, gradient/shadow params 4 (all `FLOAT4`), three colours as `UBYTE4N` | **108 B, measured** |
 
-**Measured 2026-09-21, not estimated.** Both numbers now come from `sizeof` on the structs in
-`batcher.c` that the vertex layout is built from, checked against the offsets
-`src/void2d/instance.ms` declares — at setup by `void2dInstanceLayoutCheck`, and with no GPU at
-all by `src/test/instanceLayoutCheck.ms`. Moving one offset on one side turns that file red.
+**Measured 2026-09-21, not estimated.** Both numbers come from `sizeof` on the structs the
+vertex layout is built from, and `src/test/instanceLayoutCheck.ms` holds them to the offsets with
+no GPU. Since P5 one lane table, `scripts/instanceLayout.ms`, generates both sides:
+`src/void2d/instanceLayout.h` (the C structs, the vertex attributes, the UI pack) and
+`src/void2d/instanceLayout.ms` (the byte and record offsets). The gate regenerates them and fails
+on any difference, so a field cannot be added to one side alone; the setup-time check that
+compared two hand-written copies is gone with the second copy (REVIEWS.md "Audit before P4" #23).
+Call sites build a `UiInstance` record (`instance.ms`) with named lanes in place of
+`drawUiInstance`'s 25 positional ones (#19).
 
 Two things the estimate got wrong, kept because the phase says *do not defend the estimate*:
 
