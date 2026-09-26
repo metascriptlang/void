@@ -382,21 +382,31 @@ function emitDecorations(
 
 const EMPTY_ROW_WIDTH: float32 = 4.0;
 
+function xOnRow(layout: TextLayout, line: LineBox, index: int32): float32 {
+	const end: int32 = line.firstGlyph + line.glyphCount;
+	for (let k = line.firstGlyph; k < end; k++) {
+		if (layout.glyphs[k].index >= index) { return layout.glyphs[k].x; }
+	}
+	return line.x + line.width;
+}
+
 // The selected span of one line, [x0, x1] in local units, or x1 < x0 when the line holds none of
 // it. A selected line break shows as a short tail, as an editor draws it.
 function selectedRow(text: LabelText, li: int32): [float32, float32] {
 	const layout = text.layout;
-	if (li < 0 || li >= (layout.lines.length as int32)) { return [0.0, -1.0]; }
+	const count: int32 = layout.lines.length as int32;
+	if (li < 0 || li >= count) { return [0.0, -1.0]; }
 	const start: int32 = text.selectionStart;
 	const end: int32 = start + text.selectionLength;
 	const line: LineBox = layout.lines[li];
-	if (end <= line.indexStart || start > line.indexEnd || text.selectionLength <= 0) {
+	const owned: int32 = li + 1 < count ? layout.lines[li + 1].indexStart : line.indexEnd;
+	if (end <= line.indexStart || start >= owned || text.selectionLength <= 0) {
 		return [0.0, -1.0];
 	}
 	const lineEnd: float32 = line.x + line.width;
-	const x0: float32 = start <= line.indexStart ? line.x : layout.xForIndex(start);
-	let x1: float32 = end >= line.indexEnd ? lineEnd : layout.xForIndex(end);
-	if (end > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }
+	const x0: float32 = start <= line.indexStart ? line.x : xOnRow(layout, line, start);
+	let x1: float32 = end >= line.indexEnd ? lineEnd : xOnRow(layout, line, end);
+	if (end > line.indexEnd && owned > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }
 	return [x0, x1];
 }
 

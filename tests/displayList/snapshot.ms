@@ -679,3 +679,42 @@ test "a ragged selection is one row quad per line, each carrying its neighbours"
 	assert uiInstanceField(firstRow + 2, REC_UI_PARAMS1 + 3) == 0.0;
 	frameEnd();
 }
+
+function selectedSpans(root: Node2D, w: float32, h: float32): Vec<float32> {
+	setSceneSmooth(true);
+	begin2d(w, h, 1.0);
+	root.sync(identity2d(), true);
+	root.draw(1.0, w, h);
+	finishRecording();
+	const spans: Vec<float32> = new Array(0);
+	for (let i = 0; i < uiInstanceCount(); i++) {
+		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
+			continue;
+		}
+		const x0: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE) +
+			uiInstanceField(i, REC_UI_BORDERS + 3);
+		const x1: float32 = x0 + uiInstanceField(i, REC_UI_BORDERS) * 2.0;
+		spans.push(x0);
+		spans.push(x1);
+	}
+	frameEnd();
+	return spans;
+}
+
+test "a selection across a wrap with no separator lights only the text it covers" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("well-known", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.maxWidth = text.calcTextWidth("well-") + 1.0;
+	const lines = text.textLayout().lines;
+	assert (lines.length as int32) == 2;
+	assert lines[0].indexEnd == 5 && lines[1].indexStart == 5;
+	const color = rgba(0.3, 0.5, 0.9, 0.5);
+	text.setSelectionRange({ start: 5, length: 5 }, color);
+	const fromWrap = selectedSpans(s.root, 200.0, 80.0);
+	assert (fromWrap.length as int32) == 2;
+	assert approx(fromWrap[0], lines[1].x);
+	text.setSelectionRange({ start: 2, length: 6 }, color);
+	const acrossWrap = selectedSpans(s.root, 200.0, 80.0);
+	assert (acrossWrap.length as int32) == 4;
+	assert approx(acrossWrap[1], lines[0].x + lines[0].width);
+}
