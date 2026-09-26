@@ -52,7 +52,9 @@ import {
 } from "./graphics";
 import { NO_IMAGE_STYLE, imageStyles, fitImage } from "./imageStyle";
 
-function sortByZ(cs: Span<Node2D>): void {
+// Not Span<Node2D>: an interface array passed as a span emits an uncast void ** that emcc refuses
+// (~/metascript/.inbox/compiler/2026-09-26-interface-array-to-span-void-pointer.md).
+function sortByZ(cs: Node2D[]): void {
 	const m: int32 = cs.length as int32;
 	for (let i: int32 = 1; i < m; i++) {
 		const cur = cs[i];
