@@ -874,3 +874,71 @@ one `GATE_DEVICE=1 sh scripts/gate3d.sh` run; the commits after it are docs.
 | GLES3 emulator | pre-M13 against M13 in one boot: 13 306 / 13 540 pixels; noise at most 1 245 |
 | PENDING3D | 24 rows: `dir-light-stepped` deleted, `point-light-toon-quantized` and `billboard-points-added` added |
 | Android | arm64 `libVoidAndroid.so`, **2 791 992 bytes** on msc `2925176a`; 2 795 728 before M13 was on `145f4a08`, so the difference is not M13's |
+
+## M14 — the core's programs and the pixel-art preset's, a program map, a forward preset
+
+**Verdict: SHIP.** Both passes read `git diff 53dd526..d692df8`. The defect pass (`/code-review high`) found ten issues. The design reviewer gave SHIP WITH FOLLOW-UPS: it would have merged the code as it was, but refused two claims in the docs. The human asked for the version that is not redone later. So the design reviewer's follow-ups 1–3 were fixed in M14 rather than carried into M15, and that turned into a change of design, so the same reviewer read the rework (`8d41e7f..0dd99fb`) again. That re-review gave SHIP, with four notes, all fixed in the last commits.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The forward frame never recorded the view it drew, so `campfireTap` and `campfirePixelOf` read the zero view | The frame records it, with a one-to-one blit view (`3f53c34`). This is read, not run: the `pick` stage taps the pixel-art path |
+| 2 | A `Lit` material without its block goes through the forward preset, and slot 3 keeps the previous item's values | `beginFrame` refuses a block the drawn program does not read, decided from the shader desc (`8d41e7f`) |
+| 3 | `copyFs` fetches with no clamp | Clamped, as `blitFs` is (`b408563`). The forward baseline did not move |
+| 4 | Nothing holds `ProgramMap`'s four bits to the program count | `_Static_assert(GPU3D_PROGRAM_TABLE_LENGTH <= 16)` (`e3f2008`) |
+| 5 | The ramp check keys on the named program, ignores the block's slot, and lets NaN through | It keys on the drawn program. The slot and length are the core's check. NaN fails `>= 1` (`8d41e7f`) |
+| 6 | The program is resolved twice, `drawPassList` has a `ProgramNotDrawn` path nothing can reach, and that path needed the compiler workaround | Resolved once in `beginFrame`. `drawPassList` cannot fail. The workaround and its row are gone (`8d41e7f`) |
+| 7 | The example builds a forward renderer for every configuration | Not taken. The example is the harness of both presets, and the extra mesh and material are written down in "M14 as built" |
+| 8 | Forward ignores pan and snap | It takes both. Read, not run (`3f53c34`) |
+| 9 | Three comments longer than three lines | Cut (`6d321f5`) |
+| 10 | The shared-block assert missed `vertexParams` and the slots | All four blocks, by size and by slot (`e3f2008`) |
+
+### Design pass
+
+**First review: SHIP WITH FOLLOW-UPS.** It would not land two claims in the docs as written:
+
+1. **"Core `Lit` is Heaps' forward shading", and the point light "is Heaps' product with the power folded in".** Heaps' `PointLight.calcLighting` divides by `params · (d, d², d³)`. The core keeps the spike's window, `(1 − d/radius)²`. The row, "M14 as built" and `light-params-divergence` now say so.
+2. **"Inside the range of same-build noise".** 1 577 is above every same-build figure. The claim now rests on where the differences fall: in the three pairs located, they are inside one box around the flickering fire, and nothing differs outside it.
+
+Its follow-ups, and what happened:
+- **The map swaps programs but not the data they read.** `beginFrame` refuses a material whose block is not the one the drawn program reads (`RendererError.MaterialBlock`). "The one it reads" is taken from the shader desc through `uniformBlockLength`, not from a hand table, and a test holds every length the CPU writes.
+- **A lit material without a block, in the forward preset.** The same check.
+- **The map's capacity.** The static assert.
+- **`Copy` and the map's Heaps counterpart were half named.** `Copy` is written down as a same-size fetch with alpha 1. The map is written against `Output.setupShaders`, which composes the material's shaders, the outputs and the light system's.
+- **The ramp check.** It became an exhaustive `match` over the drawn program; MetaScript refuses a non-exhaustive enum match (measured).
+- **Two cores on one `DrawContext` would forget each other's pipelines after a context loss.** `PipelineCache.generation` (`5f34ce2`). Read, not run.
+- **The compiler card's parked site would vanish with the worktree.** Moot: nothing is parked.
+- **The test count's origin.** 882 is eleven more than the 871 of the M13 land. Of those 871, seven are void2d's P3.5, which landed in between.
+
+**Re-review of the rework: SHIP.** It confirmed every follow-up closed, and recounted 492 test declarations and the size arithmetic. Its four notes:
+1. A refused `beginFrame` had already grown and written `Renderer.drawn`. It now checks every item and both block lengths before it writes anything; only then does it write the blocks and record the programs. That also closes an older gap it did not name: a good camera with bad lights used to leave the camera block written. `drawPassLists` states that it takes the span `beginFrame` accepted.
+2. The ramp check's `_ => true` would miss M15's billboard. The `match` names every program now, and reads the map the core holds.
+3. `renderer:blockFits` runs per item per frame; it is in the `allocation` list now.
+4. Forward pan, snap and picking are marked "read, not run".
+
+**Found along the way.** `return Result.err(…)` inside a statement `match` arm does not take the function's return type: compiler card `2026-09-26-return-in-match-arm-loses-function-type.md`. Nothing in void is parked on it now.
+
+### Carried into M15 and later
+
+- **The core billboard, and the preset's form of it.** Its block will not be the core one's, and `beginFrame` refuses a mismatch. So the M15 row first decides how a material carries the preset's floats.
+- No program can come from outside `src/void3d`.
+- The forward preset has no sRGB, no MSAA and no scaling, and its context-loss rebuild has never run.
+- The core point light keeps the spike's window. Porting Heaps' `params` is open (`light-params-divergence`).
+- The rest of the audit's carried list.
+
+### Numbers
+
+Taken at tree `1869a4c` (*test(gate): the render path list covers blockFits*, `ab43adc`) from one plain `sh scripts/gate3d.sh` run; the commits after it are docs.
+
+| | |
+|---|---|
+| Gate | GREEN, one SKIP (device) |
+| Tests | **882**: eleven added by M14, seven of the 871 before it were void2d's P3.5 |
+| Capture | 13 standing configurations, 52 frames byte-identical to M13's 40 hashes; `campfireForwardCapture` new, 4 hashes (44) |
+| Multiply | 0 ground pixels off the ratio, 0 clipped |
+| Oracle | 75 agree and 11 declared, over six files |
+| Allocation | frame, render (now with `drawnFor`, `blockFits`, the ramp check and the forward preset) and pick paths, no array copy |
+| GLES3 emulator | the forward preset drawn (`gles3Forward.png`); the pixel-art frames unmoved outside the fire's flicker box |
+| PENDING3D | 23 rows: `point-light-toon-quantized` deleted, `billboard-points-added` moved |
+| Android | arm64 `libVoidAndroid.so`, **2 903 984 bytes** on msc `2925176a` (+111 992 over M13; +32 828 of it embedded shader sources) |
