@@ -84,6 +84,22 @@ test "a word wider than the box overflows on its own line rather than splitting"
 	assert l.lines[0].width > 5.0;
 }
 
+test "ideographs wrap between any two, with no space to break at" {
+	const two: float32 = calcTextWidth("你好", style());
+	const l = TextLayout.layout("你好世界", { ...style(), maxWidth: two });
+	assert l.splitText("你好世界") == "你好\n世界";
+	assert l.lines[1].charStart == 2;
+}
+
+test "a path wraps before a slash, and closing punctuation stays on its word" {
+	const path: string = "src/void2d/text";
+	const l = TextLayout.layout(path, { ...style(), maxWidth: calcTextWidth("src/void2d", style()) });
+	assert l.splitText(path) == "src/void2d\n/text";
+	const shout: string = "ok plz!";
+	const p = TextLayout.layout(shout, { ...style(), maxWidth: calcTextWidth("ok plz", style()) });
+	assert p.splitText(shout) == "ok\nplz!";
+}
+
 test "calcTextWidth ignores the wrap width" {
 	const wrapped: TextStyle = { ...style(), maxWidth: 5.0 };
 	assert approx(calcTextWidth("aa bb", wrapped), TextLayout.layout("aa bb", style()).width);

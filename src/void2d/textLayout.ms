@@ -111,6 +111,32 @@ struct Step {
 	next: float32;
 }
 
+function within(codepoint: int32, first: int32, last: int32): boolean {
+	return codepoint >= first && codepoint <= last;
+}
+
+function isWordChar(codepoint: int32): boolean {
+	const asciiAlphanumeric: boolean = within(codepoint, "0".code, "9".code) ||
+		within(codepoint, "A".code, "Z".code) || within(codepoint, "a".code, "z".code);
+	const latinCyrillicBengali: boolean = within(codepoint, 0x00C0, 0x024F) ||
+		within(codepoint, 0x0300, 0x036F) || within(codepoint, 0x0400, 0x04FF) ||
+		within(codepoint, 0x0980, 0x09FF) || within(codepoint, 0x1E00, 0x1EFF);
+	if (asciiAlphanumeric || latinCyrillicBengali) { return true; }
+	return match (codepoint) {
+		"-".code | "_".code | ".".code | "'".code | "$".code | "%".code | "@".code => true,
+		"#".code | "^".code | "~".code | ",".code | "=".code | ":".code | ";".code => true,
+		"!".code | ")".code | "]".code | "}".code | "\"".code => true,
+		0x2018 | 0x2019 | 0x201D | 0x00BB | 0x2026 | 0x22EF => true,
+		0x202F | 0x00A0 | 0x2011 => true,
+		_ => false,
+	};
+}
+
+export function breakOpportunity(previous: int32, codepoint: int32, inked: boolean): boolean {
+	if (!inked || codepoint == SPACE) { return false; }
+	return isWordChar(codepoint) ? previous == SPACE : true;
+}
+
 function isControl(codepoint: int32): boolean {
 	return codepoint < SPACE || codepoint == DELETE;
 }
@@ -192,26 +218,40 @@ function layRun(
 	return { glyphs: glyphs, width: width };
 }
 
-function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextStyle): int32 {
-	if (style.maxWidth <= 0.0) { return to; }
-	let lastSpace: int32 = -1;
+struct LineBreak {
+	end: int32;
+	next: int32;
+}
+
+function breakAt(cps: Span<Codepoint>, next: int32): LineBreak {
+	const end: int32 = cps[next - 1].value == SPACE ? next - 1 : next;
+	return { end: end, next: next };
+}
+
+function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextStyle): LineBreak {
+	const whole: LineBreak = { end: to, next: to };
+	if (style.maxWidth <= 0.0) { return whole; }
+	let candidate: int32 = -1;
+	let inked: boolean = false;
+	let previousCodepoint: int32 = -1;
 	let pen: float32 = 0.0;
 	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
 		const value: int32 = cps[i].value;
+		if (i > from && breakOpportunity(previousCodepoint, value, inked)) { candidate = i; }
 		const s = step(value, pen, previous, previousFace, style, kerns);
-		if (value == SPACE) {
-			lastSpace = i;
-		} else if (lastSpace >= from && s.x + s.advance > style.maxWidth) {
-			return lastSpace;
+		if (value != SPACE && candidate > from && s.x + s.advance > style.maxWidth) {
+			return breakAt(cps, candidate);
 		}
+		if (value != SPACE) { inked = true; }
+		previousCodepoint = value;
 		pen = s.next;
 		previous = s.glyph;
 		previousFace = s.face;
 	}
-	return to;
+	return whole;
 }
 
 export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
@@ -230,7 +270,8 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		while (paragraphEnd < count && cps[paragraphEnd].value != NEWLINE) {
 			paragraphEnd = paragraphEnd + 1;
 		}
-		const end: int32 = breakAfter(cps, start, paragraphEnd, style);
+		const lineBreak: LineBreak = breakAfter(cps, start, paragraphEnd, style);
+		const end: int32 = lineBreak.end;
 		const lineIndex: int32 = lines.length as int32;
 		const run = layRun(cps, start, end, style, lineIndex);
 		const top: float32 = (lineIndex as float32) * (lineHeight + style.lineSpacing);
@@ -252,8 +293,8 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 			byteEnd: byteEnd,
 		});
 		if (run.width > width) { width = run.width; }
-		if (end < paragraphEnd) {
-			start = end + 1;
+		if (lineBreak.next < paragraphEnd) {
+			start = lineBreak.next;
 		} else if (paragraphEnd < count) {
 			start = paragraphEnd + 1;
 		} else {
