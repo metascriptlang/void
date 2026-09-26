@@ -26,8 +26,8 @@ import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
 import { GlyphAtlas } from "../void2d/glyphAtlas";
 import { Node2D, group, rect, sprite, label, at, addChild } from "../void2d/node";
 import { Scene, scene, add, present } from "../void2d/scene";
-import { rgba, tile } from "../void2d/types";
-import { Align, calcTextWidth } from "../void2d/textLayout";
+import { Color, rgba, tile } from "../void2d/types";
+import { Align, TextRun, calcTextWidth } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
@@ -35,6 +35,7 @@ export enum BenchKind {
 	Ui,
 	Sprites,
 	Text,
+	Editor,
 }
 
 const COLUMNS: int32 = 100;
@@ -49,6 +50,52 @@ const SWEEP_MAX: float32 = 4.0;
 const CODE_LINES: int32 = 40;
 const CODE_LINE: string =
 	"fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
+
+const EDITOR_LINES: int32 = 200;
+const EDITOR_COLUMNS: int32 = 80;
+const EDITOR_SELECTION_FIRST_LINE: int32 = 10;
+const EDITOR_SELECTION_LINES: int32 = 12;
+const EDITOR_KEYWORD: string = "let ";
+const EDITOR_BODY: string = "total = compute(alpha, beta) + table[index] * 3; ";
+const EDITOR_COMMENT: string = "// line of an editor buffer";
+
+function editorRun(len: int32, color: Color): TextRun {
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: len, font: DEFAULT_FONT, color: color, background: clear, underline: clear,
+		wavy: false, strikethrough: clear,
+	};
+}
+
+// 200 lines of 80 columns, three syntax colours per line, a selection over 12 rows and a
+// caret at its end: the editor scene P4 closes on and P5's scroll is measured against.
+function editorLabel(): Node2D {
+	let text: string = "";
+	const runs: TextRun[] = [];
+	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
+	const plain: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	const comment: Color = rgba(0.50, 0.56, 0.62, 1.0);
+	for (let line: int32 = 0; line < EDITOR_LINES; line++) {
+		let row: string = EDITOR_KEYWORD + EDITOR_BODY + EDITOR_COMMENT;
+		while ((row.length as int32) < EDITOR_COLUMNS) { row += "."; }
+		const newline: int32 = line + 1 < EDITOR_LINES ? 1 : 0;
+		text += row + (newline == 1 ? "\n" : "");
+		runs.push(editorRun(EDITOR_KEYWORD.length as int32, keyword));
+		runs.push(editorRun(EDITOR_BODY.length as int32, plain));
+		const rest: int32 = EDITOR_COLUMNS - (EDITOR_KEYWORD.length as int32) -
+			(EDITOR_BODY.length as int32) + newline;
+		runs.push(editorRun(rest, comment));
+	}
+	const lineUnits: int32 = EDITOR_COLUMNS + 1;
+	const start: int32 = EDITOR_SELECTION_FIRST_LINE * lineUnits + 6;
+	const length: int32 = EDITOR_SELECTION_LINES * lineUnits;
+	const editor = label(text, 13.0, plain).at(8.0, 8.0);
+	editor.setTextRuns(runs);
+	editor.setSelectionRange({ start: start, length: length }, rgba(0.30, 0.50, 0.90, 0.45));
+	editor.setCursorBlinkTime(0.0);
+	editor.setCursorIndex(start + length, rgba(1.0, 0.85, 0.3, 1.0));
+	return editor;
+}
 
 let benchScene: Scene | null = null;
 let benchName: string = "ui";
@@ -77,6 +124,9 @@ export function benchInit(kind: BenchKind): void {
 				s.add(card);
 			}
 		}
+	} else if (kind === BenchKind.Editor) {
+		benchName = "editor";
+		s.add(editorLabel());
 	} else if (kind === BenchKind.Text) {
 		benchName = "text";
 		const block = group();
@@ -105,6 +155,9 @@ export function benchInit(kind: BenchKind): void {
 	if (kind === BenchKind.Ui) {
 		nodeCount = ROWS * COLUMNS * 2;
 		retainedNodeCount = ROWS * COLUMNS;
+	} else if (kind === BenchKind.Editor) {
+		nodeCount = 1;
+		retainedNodeCount = 1;
 	} else if (kind === BenchKind.Text) {
 		nodeCount = CODE_LINES + 1;
 		retainedNodeCount = CODE_LINES;
