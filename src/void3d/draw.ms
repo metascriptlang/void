@@ -277,7 +277,7 @@ export function streamMesh(
 	generation: int32,
 ): GpuMesh {
 	return {
-		layout: VertexLayout.Billboard,
+		layout: VertexLayout.Particle,
 		vertexBuffer: cornerBuffer,
 		instanceBuffer: instanceBuffer,
 		indexBuffer: 0,

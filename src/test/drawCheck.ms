@@ -19,7 +19,7 @@ import {
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UP: Vec3 = { x: 0.0, y: 1.0, z: 0.0 };
 function billboard(): GpuMesh {
-	return GpuMesh.external(VertexLayout.Billboard, 11, 12, 6, 40);
+	return GpuMesh.external(VertexLayout.Particle, 11, 12, 6, 40);
 }
 
 function planeData(): MeshData {
@@ -104,7 +104,7 @@ test "a mesh never uploaded is stale on every generation the GPU can be on" {
 test "a stream mesh draws nothing until written and is the only kind with a capacity" {
 	const stream: GpuMesh = GpuMesh.streamMesh(64, 11, 12, 1);
 	assert stream.isStream();
-	assert stream.layout == VertexLayout.Billboard;
+	assert stream.layout == VertexLayout.Particle;
 	assert stream.instanceCount == 0;
 	assert stream.instanceCapacity == 64;
 	assert stream.elementCount() == 6;

@@ -776,7 +776,7 @@ function setupDraws(): void {
 	}
 	grassMesh = addMesh(
 		context,
-		GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, grassBuffer, 6, grassCount),
+		GpuMesh.external(VertexLayout.Particle, billboardCornerBuffer, grassBuffer, 6, grassCount),
 	);
 	const grass: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
@@ -786,7 +786,7 @@ function setupDraws(): void {
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
 			context,
-			GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, flameBuffer, 6, 1),
+			GpuMesh.external(VertexLayout.Particle, billboardCornerBuffer, flameBuffer, 6, 1),
 		);
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space

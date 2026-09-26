@@ -77,7 +77,7 @@ function litKey(indexed: boolean, state: RenderState): PipelineKey {
 }
 
 function billboardKey(state: RenderState, targets: TargetLayout): uint64 {
-	return pipelineKey(Program.Billboard, VertexLayout.Billboard, NOT_INDEXED, state, targets).bits;
+	return pipelineKey(Program.Billboard, VertexLayout.Particle, NOT_INDEXED, state, targets).bits;
 }
 
 test "render state defaults match new h3d.mat.Pass" {
@@ -152,9 +152,9 @@ test "a different state, program, layout or target gives a different key" {
 		billboardKey(state.withCulling(Face.Back), targets),
 		billboardKey(state.withBlendMode(BlendMode.Alpha), targets),
 		billboardKey(state.withColorMask(true, true, true, false), targets),
-		pipelineKey(Program.Lit, VertexLayout.Billboard, NOT_INDEXED, state, targets).bits,
+		pipelineKey(Program.Lit, VertexLayout.Particle, NOT_INDEXED, state, targets).bits,
 		pipelineKey(Program.Billboard, VertexLayout.Lit, NOT_INDEXED, state, targets).bits,
-		pipelineKey(Program.Billboard, VertexLayout.Billboard, true, state, targets).bits,
+		pipelineKey(Program.Billboard, VertexLayout.Particle, true, state, targets).bits,
 		billboardKey(state, { ...targets, depth: PixelFormat.None }),
 		billboardKey(state, { ...targets, color1: PixelFormat.None }),
 		billboardKey(state, { ...targets, sampleCount: 4 }),
@@ -257,7 +257,7 @@ test "a vertex layout ordinal cannot forge the indexed flag" {
 
 test "every vertex layout still fits the three bits the key gives it" {
 	assert (VertexLayout.Lit as int32) < LAYOUT_LIMIT;
-	assert (VertexLayout.Billboard as int32) < LAYOUT_LIMIT;
+	assert (VertexLayout.Particle as int32) < LAYOUT_LIMIT;
 	assert (VertexLayout.Fullscreen as int32) < LAYOUT_LIMIT;
 }
 
@@ -293,13 +293,13 @@ test "a pipeline key decodes back into what built it" {
 		.withColorMask(true, true, true, false);
 	const key: PipelineKey = pipelineKey(
 		Program.Billboard,
-		VertexLayout.Billboard,
+		VertexLayout.Particle,
 		true,
 		state,
 		sceneLayout(),
 	);
 	assert key.program() == Program.Billboard;
-	assert key.vertexLayout() == VertexLayout.Billboard;
+	assert key.vertexLayout() == VertexLayout.Particle;
 	assert key.isIndexed();
 	assert key.indexType() == IndexType.Uint16;
 	assert key.renderState() == state;
@@ -307,7 +307,7 @@ test "a pipeline key decodes back into what built it" {
 	const screen: TargetLayout = TargetLayout.fromFormatBits(SWAPCHAIN_LAYOUT.formatBits());
 	assert screen.toString() == SWAPCHAIN_LAYOUT.toString();
 	const text: string = key.toString();
-	assert text.indexOf("program=Billboard layout=Billboard indexType=Uint16 colors=Rgba8,Rgba8") == 0;
+	assert text.indexOf("program=Billboard layout=Particle indexType=Uint16 colors=Rgba8,Rgba8") == 0;
 	assert text.indexOf("blend=SourceAlpha,OneMinusSourceAlpha") > 0;
 	assert text.indexOf("colorMask=7") > 0;
 }

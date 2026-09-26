@@ -61,7 +61,7 @@ export enum Program {
 // Vertex buffer layouts gpu3d.c knows how to describe (describeLayout).
 export enum VertexLayout {
 	Lit,
-	Billboard,
+	Particle,
 	Fullscreen,
 }
 

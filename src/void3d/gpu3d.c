@@ -99,7 +99,7 @@ _Static_assert(ATTR_pixelArt_lit_position == ATTR_lit_position && ATTR_pixelArt_
 _Static_assert(ATTR_pixelArt_billboard_corner == ATTR_particle_corner && ATTR_pixelArt_billboard_root == ATTR_particle_root
 	&& ATTR_pixelArt_billboard_shape == ATTR_particle_color && ATTR_pixelArt_particle_corner == ATTR_particle_corner
 	&& ATTR_pixelArt_particle_root == ATTR_particle_root && ATTR_pixelArt_particle_color == ATTR_particle_color,
-	"every Billboard-layout program must declare the core particle attributes");
+	"every Particle-layout program must declare the core particle attributes");
 _Static_assert(ATTR_pixelArt_post_position == ATTR_copy_position && ATTR_pixelArt_blit_position == ATTR_copy_position,
 	"every Fullscreen-layout program must declare the copy position");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
@@ -127,7 +127,7 @@ _Static_assert(GPU3D_PROGRAM_TABLE_LENGTH <= 16,
 
 // ---- vertex layouts, one per VertexLayout member ----
 
-enum { LAYOUT_LIT, LAYOUT_BILLBOARD, LAYOUT_FULLSCREEN };
+enum { LAYOUT_LIT, LAYOUT_PARTICLE, LAYOUT_FULLSCREEN };
 
 static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 	switch (layout) {
@@ -137,8 +137,8 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_lit_normal].format = SG_VERTEXFORMAT_FLOAT3;
 		out->attrs[ATTR_lit_color].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
-	case LAYOUT_BILLBOARD:
-		// buffer 0: quad corner per vertex; buffer 1: root + shape per instance
+	case LAYOUT_PARTICLE:
+		// buffer 0: quad corner per vertex; buffer 1: root + rgba per instance
 		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
 		out->attrs[ATTR_particle_corner].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_particle_root].format = SG_VERTEXFORMAT_FLOAT4;
