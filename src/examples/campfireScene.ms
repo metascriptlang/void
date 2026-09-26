@@ -1237,20 +1237,24 @@ function advanceClocks(): void {
 	if (frameIndex == rebuildAtFrame) { forceRebuild(); }
 }
 
-// The campfire through the forward preset, at the framebuffer's resolution and unsnapped.
+// The campfire through the forward preset, one texel per framebuffer pixel. The preset has no
+// sub-pixel blit offset, so a snapped camera stays on the pixel grid.
 function frameForward(): void {
 	const width: int32 = fbWidth();
 	const height: int32 = fbHeight();
 	const shortSide: float32 = Math.min(width, height) as float32;
-	const camera: OrthoCamera = {
+	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE / shortSide;
+	const centred: OrthoCamera = {
 		target: vec3(0.0, 0.0, 0.0),
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
-		worldPerTexel: UNITS_ON_SHORT_SIDE / shortSide,
+		worldPerTexel: worldPerTexel,
 		nearPlane: -50.0,
 		farPlane: 50.0,
-		snap: false,
+		snap: cameraSnap,
 	};
+	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
+	const camera: OrthoCamera = { ...centred, target: centred.basisOf().right.scaled(slide) };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(width, height);
 	if (!resolved.ok) {
 		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
@@ -1271,6 +1275,9 @@ function frameForward(): void {
 		console.log(`campfire: the forward frame was refused, ${rendered.error.toString()}`);
 		return;
 	}
+	shownView = resolved.value;
+	shownBlit = { width: width, height: height, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	shownHeight = height;
 	advanceClocks();
 }
 
