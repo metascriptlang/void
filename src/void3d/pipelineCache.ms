@@ -73,6 +73,8 @@ export struct PipelineCache {
 	shaders: Vec<uint32>;
 	blockSlots: Vec<uint32>;
 	descriptor: Vec<uint32>;
+	// The GPU context its handles belong to: renderers sharing a DrawContext forget them once.
+	generation: int32;
 }
 
 export function empty(this typeof PipelineCache): PipelineCache {
@@ -89,6 +91,7 @@ export function empty(this typeof PipelineCache): PipelineCache {
 		shaders: shaders,
 		blockSlots: blockSlots,
 		descriptor: new Array(GPU3D_PIPELINE_LENGTH),
+		generation: 0,
 	};
 }
 

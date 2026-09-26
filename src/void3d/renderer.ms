@@ -159,7 +159,10 @@ export function beginFrame(
 	const generation: int32 = contextGeneration();
 	const fresh: boolean = generation != renderer.generation;
 	if (fresh) {
-		forgetPipelines(context.pipelines);
+		if (context.pipelines.generation != generation) {
+			forgetPipelines(context.pipelines);
+			context.pipelines.generation = generation;
+		}
 		rebuildMeshes(context);
 		context.meshes[renderer.screenMesh].vertexBuffer = makeScreenTriangle();
 		renderer.generation = generation;
