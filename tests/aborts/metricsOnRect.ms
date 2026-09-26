@@ -1,3 +1,4 @@
+// expect: textWidth asked of a Rect node
 import "../../src/sokol/gpu";
 import { rect } from "../../src/void2d/node";
 import { sync } from "../../src/void2d/render";

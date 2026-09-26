@@ -1,4 +1,4 @@
-import { label, rect } from "../void2d/node";
+import { label } from "../void2d/node";
 import { textLayout, textWidth, textHeight, calcTextWidth, splitText, getBounds } from "../void2d/render";
 import { Align, TextLayout } from "../void2d/textLayout";
 import { Bounds, rgba, emptyBounds, identity2d } from "../void2d/types";
