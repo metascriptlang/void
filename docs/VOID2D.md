@@ -938,6 +938,26 @@ human has seen it as app code; the phase measurement comes last.
 14. **The measurement** listed under "Measure", and the wasm delta against the P4 head built the
     same day on the same compiler.
 
+**Measured in P5 so far (2026-09-27).** The installed msc changed from BUILD `598ca62e` to
+`c54a8671` during step 4. It makes `const` deep through `struct`, `T[N]` and `Vec<T>`, so every
+binding void writes became `let` (`6e90500`, void3d's included; `~/metascript/.inbox/void/`
+has the note). Every number below is on `c54a8671`, and an older tree needs the same lines to
+build on it.
+
+- Step 3, the `UiInstance` record: an interleaved A/B against `e98a67b` was inconclusive on a busy
+  box (UI 10.20 → 10.81 ms at the median over 5 clean pairs of 6, then 4 clean of 10), and a
+  GPU-free emission loop over the UI bench scene, the minimum of 40 × 5 frames, read −0.9 to
+  +0.5 ms pair by pair. The phase A/B reads it again.
+- Step 5, change model A, `tests/experiments/changeModel.ms` (release, D3D11, 1280 × 720): 100 000
+  nodes, 50 000 cards each with a two-digit label, a snapshot of every field that reaches the
+  instance bytes, 120 frames per reading. Of five runs, the two with load under 25 % on both sides
+  read 13.2 and 13.6 ms per frame for the sweep, the same idle or with one node changed; comparing
+  x and y alone read 5.3 and 5.8 ms; `present` on the same scene today read 70.5 and 71.6 ms. The
+  cost is reaching each 71-field `Node2D` object, not the comparisons: about 130 ns a node, so
+  2.7 ms for the 20 000-node UI bench and 0.3 ms for a 2 000-node window, paid on every frame,
+  idle or not. Under B an idle frame costs nothing and a write costs one push onto a dirty list
+  (SCENE-SCALE.md, about 23 ns for the binder path). The choice is the human's.
+
 **Defects closed.** Two "Known defects" lines: the h2d surface — `parent`, `TileGroup`, `Mask.scrollX/Y` and the text metrics it points at — and a sokol view id past 2^24 naming another slot. Also the idle cost: `Scene.present` walking and drawing every frame with nothing knowing whether the tree changed.
 
 **Exit.**
