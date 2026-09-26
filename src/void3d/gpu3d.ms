@@ -10,6 +10,8 @@ import {
 	gpu3dMakeShader,
 	gpu3dUniformSlotMask,
 	gpu3dUniformBlockBytes,
+	gpu3dTextureSlotMask,
+	gpu3dSamplerSlotMask,
 	GPU3D_UNIFORM_SLOTS,
 	gpu3dMakeTargetImage,
 	gpu3dMakeAttachmentView,
@@ -153,6 +155,16 @@ export const UNIFORM_SLOTS: int32 = GPU3D_UNIFORM_SLOTS;
 // Floats of the block `program` declares at `slot`, 0 for none, read off its shader desc.
 export function uniformBlockLength(program: Program, slot: int32): int32 {
 	return gpu3dUniformBlockBytes(program as int32, slot) / 4;
+}
+
+// Bit n set when `program` samples a texture at view slot n (textureSlotMask) or declares
+// sampler slot n (samplerSlotMask), read off its shader desc.
+export function textureSlotMask(program: Program): uint32 {
+	return gpu3dTextureSlotMask(program as int32);
+}
+
+export function samplerSlotMask(program: Program): uint32 {
+	return gpu3dSamplerSlotMask(program as int32);
 }
 
 export function makePipeline(descriptor: Span<uint32>): uint32 {

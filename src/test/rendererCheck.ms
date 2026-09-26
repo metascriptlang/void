@@ -497,6 +497,8 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 				assert writeUniforms(context, block.value, values).ok;
 				const material: int32 = addMaterial(context, {
 					...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+					texture0: 1,
+					sampler0: 1,
 					uniforms: block.value,
 				});
 				const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];

@@ -45,6 +45,7 @@ export enum ForwardError {
 	ProgramNotDrawn,
 	MaterialBlock,
 	VertexLayout,
+	MaterialTexture,
 	TargetSize,
 }
 
@@ -96,6 +97,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.ProgramNotDrawn => ForwardError.ProgramNotDrawn,
 		RendererError.MaterialBlock => ForwardError.MaterialBlock,
 		RendererError.VertexLayout => ForwardError.VertexLayout,
+		RendererError.MaterialTexture => ForwardError.MaterialTexture,
 	};
 }
 

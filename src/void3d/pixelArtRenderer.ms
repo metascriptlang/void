@@ -152,6 +152,7 @@ export enum PixelArtError {
 	ProgramNotDrawn,
 	MaterialBlock,
 	VertexLayout,
+	MaterialTexture,
 	RampLevels,
 }
 
@@ -479,6 +480,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.ProgramNotDrawn => PixelArtError.ProgramNotDrawn,
 		RendererError.MaterialBlock => PixelArtError.MaterialBlock,
 		RendererError.VertexLayout => PixelArtError.VertexLayout,
+		RendererError.MaterialTexture => PixelArtError.MaterialTexture,
 	};
 }
 

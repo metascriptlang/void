@@ -197,6 +197,24 @@ int32_t gpu3dUniformBlockBytes(int32_t program, int32_t slot) {
 	return (int32_t)desc->uniform_blocks[slot].size;
 }
 
+uint32_t gpu3dTextureSlotMask(int32_t program) {
+	const sg_shader_desc *desc = LOOKUP(PROGRAMS, program)(SG_BACKEND_D3D11);
+	uint32_t mask = 0;
+	for (int slot = 0; slot < SG_MAX_VIEW_BINDSLOTS; slot++) {
+		if (desc->views[slot].texture.stage != SG_SHADERSTAGE_NONE) mask |= 1u << slot;
+	}
+	return mask;
+}
+
+uint32_t gpu3dSamplerSlotMask(int32_t program) {
+	const sg_shader_desc *desc = LOOKUP(PROGRAMS, program)(SG_BACKEND_D3D11);
+	uint32_t mask = 0;
+	for (int slot = 0; slot < SG_MAX_SAMPLER_BINDSLOTS; slot++) {
+		if (desc->samplers[slot].stage != SG_SHADERSTAGE_NONE) mask |= 1u << slot;
+	}
+	return mask;
+}
+
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length) {
 	if (length < GPU3D_PIPELINE_LENGTH) return SG_INVALID_ID;
 	const uint32_t *d = descriptor;

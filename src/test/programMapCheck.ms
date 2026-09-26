@@ -229,6 +229,39 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	}
 }
 
+test "the core refuses a billboard without the texture and sampler it samples" {
+	const capacity: int32 = RENDERER_UNIFORM_LENGTH + BILLBOARD_UNIFORM_LENGTH;
+	let context: DrawContext = DrawContext.withUniformCapacity(capacity);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
+	assert created.ok && block.ok;
+	if (created.ok && block.ok) {
+		let core: Renderer = created.value;
+		const quads: int32 =
+			addMesh(context, GpuMesh.external(VertexLayout.Billboard, 0, 0, 6, 1));
+		const bare: Material = {
+			...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+			uniforms: block.value,
+		};
+		const textured: Material = { ...bare, texture0: 5 };
+		const sampled: Material = { ...textured, sampler0: 6 };
+		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		for (const material of [bare, textured]) {
+			const items: Vec<DrawItem> = [{ ...itemOf(addMaterial(context, material)), mesh: quads }];
+			const began: Result<boolean, RendererError> =
+				beginFrame(core, context, items, camera, lights);
+			assert !began.ok && began.error == RendererError.MaterialTexture;
+		}
+		const items: Vec<DrawItem> = [{ ...itemOf(addMaterial(context, sampled)), mesh: quads }];
+		const began: Result<boolean, RendererError> =
+			beginFrame(core, context, items, shortCamera, lights);
+		assert !began.ok && began.error == RendererError.CameraBlockLength;
+	}
+}
+
 test "the forward preset refuses a lit material without its block" {
 	let context: DrawContext = contextNaming(Program.Lit, FORWARD_UNIFORM_LENGTH);
 	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };

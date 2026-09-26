@@ -21,9 +21,11 @@ import {
 	UNIFORM_SLOTS,
 	contextGeneration,
 	uniformBlockLength,
+	textureSlotMask,
+	samplerSlotMask,
 } from "./gpu3d";
 import { commit } from "../sokol/gpu";
-import { Phase, UniformBlock, NO_UNIFORMS } from "./material";
+import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { TargetLayout } from "./target";
 import {
 	DrawContext,
@@ -65,6 +67,7 @@ export enum RendererError {
 	ProgramNotDrawn,
 	MaterialBlock,
 	VertexLayout,
+	MaterialTexture,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -126,8 +129,8 @@ export function needsFrame(this renderer: Renderer): boolean {
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and
 // fills the pass lists from `items`. A camera or light span that is not its block's length, an
 // item whose material names a program this renderer does not draw, a material whose block is
-// not the one that program reads, or a mesh whose vertex layout it does not read, is refused
-// before anything changes. Answers true when the
+// not the one that program reads or that lacks a texture or sampler it samples, or a mesh
+// whose vertex layout it does not read, is refused before anything changes. Answers true when the
 // context is new: every handle the caller made before is stale then (it may name an object of
 // the new context), so the caller drops its own without destroying them and makes them again
 // before drawing. The core has already dropped the pipelines, remade the screen triangle, and
@@ -150,6 +153,9 @@ export function beginFrame(
 		}
 		if (context.meshes[item.mesh].layout != vertexLayoutOf(drawn.value)) {
 			return Result.err(RendererError.VertexLayout);
+		}
+		if (!texturesFit(drawn.value, context.materials[material])) {
+			return Result.err(RendererError.MaterialTexture);
 		}
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
@@ -232,6 +238,21 @@ function blockFits(program: Program, block: UniformBlock): boolean {
 	}
 	if (own < 0) { return block.length == 0; }
 	return block.slot == own && block.length == uniformBlockLength(program, own);
+}
+
+function slotBound(mask: uint32, slot: uint32, handle: uint32): boolean {
+	return (mask & ((1 as uint32) << slot)) == 0 || handle != 0;
+}
+
+// Every texture view and sampler `program` declares is bound on `material`; a slot the
+// material has no field for (views past 3, samplers past 1) never is.
+function texturesFit(program: Program, material: Material): boolean {
+	const views: uint32 = textureSlotMask(program);
+	const samplers: uint32 = samplerSlotMask(program);
+	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }
+	return slotBound(views, 0, material.texture0) && slotBound(views, 1, material.texture1)
+		&& slotBound(views, 2, material.texture2) && slotBound(views, 3, material.texture3)
+		&& slotBound(samplers, 0, material.sampler0) && slotBound(samplers, 1, material.sampler1);
 }
 
 export function endFrame(ref renderer: Renderer): void {

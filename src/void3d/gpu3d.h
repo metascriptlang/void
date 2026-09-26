@@ -59,6 +59,10 @@ uint32_t gpu3dMakeShader(int32_t program);
 uint32_t gpu3dUniformSlotMask(int32_t program);
 // Bytes of the block the program declares at `slot`, 0 for none; needs no GPU.
 int32_t gpu3dUniformBlockBytes(int32_t program, int32_t slot);
+// Bit n set when the program samples a texture at view slot n, or declares sampler slot n;
+// read off the D3D11 desc like gpu3dUniformBlockBytes, so it needs no GPU.
+uint32_t gpu3dTextureSlotMask(int32_t program);
+uint32_t gpu3dSamplerSlotMask(int32_t program);
 #define GPU3D_UNIFORM_SLOT_TABLE_LENGTH 8
 static const int32_t GPU3D_UNIFORM_SLOTS = GPU3D_UNIFORM_SLOT_TABLE_LENGTH;
 uint32_t gpu3dMakePipeline(const uint32_t *descriptor, int64_t length);
