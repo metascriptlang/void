@@ -812,7 +812,7 @@ wrap tailoring for code measured on code before it is fixed.
 
 **Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The five rows P4 owned (the two text goldens, grapheme face selection, the UCD oracle and the UAX #14 divergence) were deleted by the commits that closed them.
 
-**Tests.** T3: the UCD conformance files for grapheme clusters and line-break opportunities, with the divergence from UAX #14 recorded as one PENDING reason — void2d follows GPUI's cheaper rule, and the pass rate against the standard is what says whether that is acceptable. T1: run splitting, wrap boundaries, decoration placement and whole-grapheme face selection as numbers. T2: the editor scenes and the decoration group. T0: truncation and `split_at` boundary arithmetic.
+**Tests.** T3: the UCD conformance files for grapheme clusters and line-break opportunities, every row held (853 / 853 and 19 346 / 19 346) since the human chose UAX #14 over GPUI's rule on those numbers; no PENDING reason is left for either. T1: run splitting, wrap boundaries, decoration placement and whole-grapheme face selection as numbers. T2: the editor scenes and the decoration group. T0: truncation and `split_at` boundary arithmetic.
 
 **Measure.** P4's `present` becomes P5's baseline, so it is taken with `scripts/bench-ab.sh` against the P3.5 head, whose number against the pre-P3 control is the bullet "The P3.5 head" in P3 "Measured at P3 step 8" (REVIEWS.md P3 F10, closed at P3.5); the absolute moves by a millisecond with the box's load, so P4 takes its own pairs. Then a new bench scene — 200 lines × 80 columns with runs, a selection and a caret: draw calls, instances, `present`. It becomes the scroll case P5 is measured on.
 

@@ -904,3 +904,34 @@ the code; a frame path whose named functions copy no array and build none; one g
 glyph in a measure call; and a `present` at or below the pre-P3 control. It may not assume the
 record check reads every PENDING line, the allocation stage sees through calls, or a gate log that
 names its compiler.
+
+## P4 review
+
+The diff is `4d357f7..HEAD`. The defect pass was `/code-review high` in Claude Code, verified
+finding by finding in the main session, each fix with a test that failed before it. The design
+pass was a fresh Claude subagent that had written none of P4.
+
+### Defect pass — `/code-review high`
+
+Ten findings, all confirmed and fixed; two were narrower than the reviewer stated, and the
+verification found one more.
+
+| Finding | Resolution |
+|---|---|
+| A selection that starts where a row wraps with no separator lit the whole row above: `selectedRow` read x through `xForIndex`, which put the shared index on the lower row | `c927388`: a row owns the units up to the next row's start and reads x on itself; the empty-row tail stands only for a selected line break or wrap space. T1 on `well-known` |
+| `indexAt` past a row's end returned the index that row shares with the next at such a wrap, and the caret drew on the next row | `72e7ecd`: that index belongs to the upper row, GPUI's `WrappedLineLayout::position_for_index` (`line_layout.rs:427-454`); the trade is in VOID2D.md P4 |
+| `splitAt`'s halves kept the whole line's `byteStart` and `byteEnd` | `7396fb4`: each half keeps its own bytes; T0 through `splitText` on a three-byte character |
+| The check for a text run starting inside a surrogate pair could never fire | `15d18b2`: it compares the run's end with the codepoint's last unit; `tests/aborts/runSplitsSurrogate.ms`, and the 1/2/1 T0 is the control |
+| A label's bounds left out what an editing label draws past its text | `74802dd`: while it shows a selection or a caret, a label pads its bounds by `SELECTION_GLOOP`, as the Selection node does. Narrower than stated: the smooth-min union fills concave corners inside the rows' box, so only the empty-row tail and a caret after the widest line escaped |
+| Under colorMatrix, colorAdd or colorKey a label's runs, selection and caret were dropped in silence | `a69a79e`: refused aloud, once, as underline, box and image styles are, and counted (`labelEditingRefusals`) so T1 can see it |
+| `breakAfter` measured tabs from the paragraph's start while `pushLine` measures them from the row's, so a wrapped row with a tab could overrun `maxWidth` | `8736317`: both take the advance from `rowAdvance`; T0 on `xxxxx yy\tzz`, 43.6 px in 42.6 before |
+| A tab stop of 0 (size 0, or a face whose space has no advance) made every x after a tab NaN | `bb7ee12` |
+| Truncation kept a base whose mark ran past the budget, and trimmed nothing before its ellipsis | `09477b5`: a grapheme is kept only when all of it fits; an End ellipsis trims whitespace and ASCII punctuation, as GPUI's `truncate_line` does (`line_wrapper.rs:286-290`). Narrower than stated: the finding asked Start and Middle to trim too, and GPUI trims neither |
+| The node text setters stopped on a bare `unreachable` and repeated the allocation | `0bdd391` and `b5a6b2c` (the gate's allocation stage reads `requireLabel` in its new module): every setter names its call and the node's kind, `requireLabel` moved into `node.ms`, `labelEntry` allocates once; `setBoxStyle` and `setImageStyle` name theirs too. `tests/aborts/selectionOnRect.ms` |
+| Found while verifying: letter spacing went between a letter and its combining mark, so an accent drew 4 px off its base at `letterSpacing` 4 | `f8aff30`: spacing goes after a grapheme, not inside it |
+
+`sh scripts/gate.sh --web` was GREEN after them, at `f8aff30` on msc 0.2.55 (BUILD `2925176a`):
+923 tests, D3D11 72 / 72, WebGL2 68 / 72 (48 byte-identical, 20 pending, the four listed
+failures), 25 PENDING rows, the four abort programs stopping with their messages, and the bench
+counters unchanged. `0bdd391` alone would have failed the allocation stage, which looked for
+`requireLabel` in `render.ms`; `b5a6b2c` points it at `node.ms`.
