@@ -1032,3 +1032,76 @@ Taken before the rebase below, at the commit that landed as `4536231` (*docs(dev
 - the same 44 hashes byte for byte, and `unlit` with the same pixel counts;
 - the device stage;
 - the same 2 990 464-byte `.so`.
+
+## M16 — the core's quad from the vertex index, and a billboard's anchor
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one send-back.** The defect pass (`/code-review high`) read the first cut and found nine issues. A fresh design reviewer then read the cut with those fixed and gave SEND BACK with two blocking defects. The same reviewer read the rework and gave SHIP WITH FOLLOW-UPS. The follow-ups that touch the mechanism were fixed in M16. What is left needs a device, a browser or a decision (below). The whole milestone is `967c6b7..7f944d0`: the compiler sweep, the row, the mechanism, the gate stage and the new baseline.
+
+Before the row, three decisions were the human's:
+- **void3d is ordered for any game**, not for Hibernal. Heaps owns the shape; where Heaps has no answer, a reference engine does, Bevy first.
+- **The core owns the quad, and a billboard carries Bevy's anchor per instance.** Heaps always centres; Bevy's `Anchor` defaults to the centre.
+- **The corners come from the vertex index**, Bevy's way, not from a shared corner buffer: a **NEW MECHANISM**, approved on its own.
+
+The compiler moved under the milestone. msc was synced to `c54a8671`, which refuses a write through a `const` binding, and the whole repository stopped building. The sweep is its own commit (`967c6b7`) and gated GREEN alone: 952 tests, the 44 hashes byte for byte, so the compiler moved no pixel.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The pixel-art light point is taken above the instance's position, which is now the anchor's point, and nothing says so | Written at `BILLBOARD_LIGHT_HEIGHT` and in "M16 as built"; no test holds it (carried) |
+| 2 | `GpuMesh.external(layout, buffer, count)` read `count` as vertices or instances by layout | `external` is gone; each constructor fixes its layout (`fullscreen`, `billboards`, `streamMesh`, `meshFor`) |
+| 3 | `QUAD_VERTEX_COUNT` is a hand copy of the GLSL table's length | Kept, with the one-line pointer: no assert can see the table, and the captures fail if the two drift |
+| 4 | `drawsQuads` is a hand copy of `describeLayout` | A test holds it against `layoutPerInstance`, read off `describeLayout` |
+| 5 | Nothing checks an anchor's x; every capture anchors across the centre | `campfireAnchorCapture` and the gate's `anchor` stage (`5ce2819`, baseline `7f944d0`) |
+| 6 | The stream and the billboard mesh built the quad shape twice | One `quadMesh` |
+| 7 | The quad from the vertex index had not run on GLES3 | The emulator ran all three programs (`tests/device/README.md`); no phone has (carried) |
+| 8 | Docs: the row still open, no as-built | Written |
+| 9 | The first cut sat in one `chore` commit | That was a hold commit while the sweep was probed; the milestone is five commits |
+
+### Design pass
+
+**First review: SEND BACK**, two blocking defects, both confirmed in `sokol_gfx.h` before the fix.
+1. **The quad layouts could not make a pipeline on WGPU or Vulkan.** The first cut put every instance attribute in vertex buffer 1 and left slot 0 empty. sokol's validator skips an empty slot, but its WGPU and Vulkan backends end the buffer list at the first slot with no stride (`sokol_gfx.h:19547`, `:22663`), so buffer 1 was never declared. D3D11 and GL never showed it. The instances now step in slot 0, `bindItem` binds them there, and a test holds each quad layout to a per-instance buffer 0 and every layout to no floats in buffer 1. The 44 hashes stayed byte-identical.
+2. **`external` still built any layout.** `external(VertexLayout.Billboard, 0, 6)` passed `beginFrame` and reached sokol with no instance buffer. Now no constructor takes a layout. `beginFrame` refuses a quad-layout mesh with a vertex buffer, with other than six vertices, or with instances and no buffer, as its own member, `RendererError.QuadMesh`. `drawItem` skips a mesh with nothing to draw, so a stream whose remake was refused draws nothing instead of reaching sokol with an empty slot.
+
+Its follow-ups, and what happened:
+- Bevy applies its anchor on the CPU; the quad is a table of six rather than bits; `Tile.dx/dy` is not the anchor. Written in "M16 as built". The reviewer accepted the argument against a PENDING3D row: a zero anchor is Heaps' centre, as M9's stepped sampling was an addition.
+- **The pixel-art preset's placement had no check of the anchor's x.** Both billboard programs now place a corner through one function, `billboardPoint`, so the forward `anchor` stage holds both.
+- Separate refusal members, tests for a four-vertex quad and a quad with no buffer: done.
+- The billboard stride comment restated the layout: removed. The quad comment claimed Bevy's quad was the same table: corrected.
+
+**Re-review of the rework: SHIP WITH FOLLOW-UPS.** It confirmed both blockers fixed, `billboardPoint` shared, and the acceptance on the current tree. Its notes:
+1. **`hasNothingToDraw` was missing from the allocation list:** listed.
+2. **It also skips a lit mesh whose re-upload was refused,** which used to reach sokol: written in "M16 as built".
+3. **The row still said the six corners come "as Bevy's sprite shader makes its quad":** corrected.
+4. **A line of 104 columns in `programMapCheck.ms`, a comment reflow with a stub line:** fixed. That test file is not in the gate's style paths.
+5. **No plain gate had reproduced the four new hashes; both runs that had them were adoptions:** the final gate below is a plain one.
+6. **A struct literal can still build a per-vertex mesh with instances,** and nothing refuses it. Carried.
+
+**Controls,** run in the session. The anchor left out of both programs moves 75% of the pixel-art and forward frames. The anchor's x mirrored in the core billboard alone leaves every standing capture byte-identical and fails only `anchor` (the flame moves 16 pixels left). Leaving out the quad-shape refusal lets the test binary die in `_sg.valid`.
+
+### Carried into M17 and later
+
+- **No phone and no WGPU run** of the quad from the vertex index. The slot-0 layout is what WGPU and Vulkan need, read from sokol, not run.
+- The pixel-art preset's light point above the anchor has no check.
+- A struct literal can build a per-vertex mesh with instances.
+- An emitter that writes billboards (`Data.frame` over `frames`); it can now use the core's anchor.
+- M15's list: two ports of `h2d.Tile`, billboards with no rotation, ratio or saturation, alpha-tested only; M14's: programs from outside `src/void3d`, the forward preset's sRGB, MSAA and scaling, the point light's window.
+- Next, agreed with the human: resource lifetime (M17), a perspective camera with frustum culling, textured meshes.
+
+### Numbers
+
+From `GATE_DEVICE=1 sh scripts/gate3d.sh` at `7f944d0`, a plain run, no adoption, on msc `c54a8671`.
+
+| | |
+|---|---|
+| Gate | GREEN, no SKIP (`GATE_DEVICE=1`, the M16 pixel-art build with particles running on the emulator) |
+| Tests | **956**: four added by M16 |
+| Capture | 15 configurations; 56 standing frames byte-identical to their 44 hashes; `m16anchor_*` new (4 hashes, 48 in the manifest) |
+| Anchor | the bottom-left flame 18 pixels right at both edges, rows unchanged, in all 4 frames |
+| Unlit | the forward flame's 3 texel colours in all 4 frames, 10 to 87 pixels each, the same counts as M15 |
+| Allocation | frame, render (now with `drawsQuads`, `isQuadShaped` and `hasNothingToDraw`) and pick paths, no array copy |
+| Device | `pixellight` emulator, 24 colours, largest 38% |
+| GLES3 emulator | pixel-art, forward and pixel-art-with-particles builds render; the pixel-art frames against M15's move only inside the fire's flicker box |
+| PENDING3D | 24 rows: `billboard-anchor-is-the-callers` deleted |
+| Android | arm64 `libVoidAndroid.so`, **3 023 208 bytes**; the sweep commit, M15's code on the same msc, is 2 996 992: +26 216, not attributed |
