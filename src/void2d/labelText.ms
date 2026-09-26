@@ -236,42 +236,84 @@ function runDecorations(layout: TextLayout, runs: Span<TextRun>, size: float32):
 	const out: Vec<Decoration> = new Array(0);
 	if ((runs.length as int32) == 0) { return out; }
 	for (let li = 0; li < (layout.lines.length as int32); li++) {
-		const line: LineBox = layout.lines[li];
-		const end: int32 = line.firstGlyph + line.glyphCount;
-		let k: int32 = line.firstGlyph;
-		while (k < end) {
-			const run: int32 = layout.glyphs[k].run;
-			const x0: float32 = layout.glyphs[k].x;
-			let last: int32 = k;
-			while (last + 1 < end && layout.glyphs[last + 1].run == run) { last = last + 1; }
-			const w: float32 = layout.glyphs[last].x + layout.glyphs[last].advance - x0;
-			k = last + 1;
-			if (run == NO_RUN) { continue; }
-			const style: TextRun = runs[run];
-			if (style.background.a > 0.0) {
-				out.push({
-					kind: DecorationKind.Background, x: x0, y: line.top, w: w, h: line.height,
-					color: style.background,
-				});
-			}
-			const deco = decorationMetrics(fontFace(style.font), size);
-			if (style.underline.a > 0.0) {
-				out.push({
-					kind: style.wavy ? DecorationKind.WavyUnderline : DecorationKind.Underline,
-					x: x0, y: line.baseline + deco.underlineTop, w: w, h: deco.underlineThickness,
-					color: style.underline,
-				});
-			}
-			if (style.strikethrough.a > 0.0) {
-				out.push({
-					kind: DecorationKind.Strikethrough, x: x0,
-					y: line.baseline + deco.strikethroughTop, w: w,
-					h: deco.strikethroughThickness, color: style.strikethrough,
-				});
-			}
-		}
+		lineDecorations(layout, runs, size, li, DecorationKind.Background, out);
+		lineDecorations(layout, runs, size, li, DecorationKind.Underline, out);
+		lineDecorations(layout, runs, size, li, DecorationKind.Strikethrough, out);
 	}
 	return out;
+}
+
+function lineDecorations(
+	layout: TextLayout,
+	runs: Span<TextRun>,
+	size: float32,
+	li: int32,
+	slot: DecorationKind,
+	ref out: Vec<Decoration>,
+): void {
+	const line: LineBox = layout.lines[li];
+	const end: int32 = line.firstGlyph + line.glyphCount;
+	let open: boolean = false;
+	let openKind: DecorationKind = slot;
+	let openX: float32 = 0.0;
+	let openRight: float32 = 0.0;
+	let openY: float32 = 0.0;
+	let openH: float32 = 0.0;
+	let openColor: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	let k: int32 = line.firstGlyph;
+	while (k < end) {
+		const run: int32 = layout.glyphs[k].run;
+		const x0: float32 = layout.glyphs[k].x;
+		let last: int32 = k;
+		while (last + 1 < end && layout.glyphs[last + 1].run == run) { last = last + 1; }
+		const right: float32 = layout.glyphs[last].x + layout.glyphs[last].advance;
+		k = last + 1;
+		let color: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+		let kind: DecorationKind = slot;
+		let y: float32 = line.top;
+		let h: float32 = line.height;
+		if (run != NO_RUN) {
+			const style: TextRun = runs[run];
+			const deco = decorationMetrics(fontFace(style.font), size);
+			if (slot == DecorationKind.Background) {
+				color = style.background;
+			} else if (slot == DecorationKind.Underline) {
+				color = style.underline;
+				kind = style.wavy ? DecorationKind.WavyUnderline : DecorationKind.Underline;
+				y = line.baseline + deco.underlineTop;
+				h = deco.underlineThickness;
+			} else {
+				color = style.strikethrough;
+				y = line.baseline + deco.strikethroughTop;
+				h = deco.strikethroughThickness;
+			}
+		}
+		const same: boolean = open && color.a > 0.0 && kind == openKind && y == openY &&
+			h == openH && color.r == openColor.r && color.g == openColor.g &&
+			color.b == openColor.b && color.a == openColor.a;
+		if (same) {
+			openRight = right;
+			continue;
+		}
+		if (open) {
+			out.push({
+				kind: openKind, x: openX, y: openY, w: openRight - openX, h: openH,
+				color: openColor,
+			});
+		}
+		open = color.a > 0.0;
+		openKind = kind;
+		openX = x0;
+		openRight = right;
+		openY = y;
+		openH = h;
+		openColor = color;
+	}
+	if (open) {
+		out.push({
+			kind: openKind, x: openX, y: openY, w: openRight - openX, h: openH, color: openColor,
+		});
+	}
 }
 
 export function setLabelRuns(index: int32, runs: Span<TextRun>): void {

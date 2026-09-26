@@ -176,6 +176,33 @@ test "run decorations: a background fills the line box, lines sit on the face's 
 	releaseLabelText(index);
 }
 
+test "a decoration runs on across the runs that share it, as GPUI's does" {
+	const index = allocateLabelText();
+	const squiggle = rgba(1.0, 0.2, 0.2, 1.0);
+	const runs: TextRun[] = [
+		{ ...plainRun(2), color: rgba(0.8, 0.5, 1.0, 1.0), underline: squiggle, wavy: true },
+		{ ...plainRun(3), underline: squiggle, wavy: true },
+		{ ...plainRun(2), underline: squiggle },
+		plainRun(1),
+	];
+	setLabelRuns(index, runs);
+	shapeLabel(index, "abcdefgh", {
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	});
+	const e = labelTexts[index];
+	const g = e.layout.glyphs;
+	assert (e.decorations.length as int32) == 2;
+	assert e.decorations[0].kind == DecorationKind.WavyUnderline;
+	assert approx(e.decorations[0].w, g[4].x + g[4].advance - g[0].x);
+	assert e.decorations[1].kind == DecorationKind.Underline && e.decorations[1].x == g[5].x;
+	releaseLabelText(index);
+}
+
 test "a decoration lands on device pixels at DPI 1.25, a stroke at least one pixel thick" {
 	const world = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
 	const [x, y, w, h] = segmentBox(10.3, 50.3, 20.1, 0.5, true, world, 1.25);

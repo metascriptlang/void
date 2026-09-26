@@ -260,6 +260,7 @@ FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:
 	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
+	label84ext:lineDecorations
 	text76ayout:layout text76ayout:shapeText text76ayout:wrapText text76ayout:pushLine
 	text76ayout:pushTruncated text76ayout:forceCells text76ayout:decodeUtf8
 	text76ayout:assignFaces text76ayout:assignGrapheme text76ayout:graphemeFace
