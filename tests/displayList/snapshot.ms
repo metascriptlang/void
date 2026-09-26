@@ -38,8 +38,8 @@ import {
 } from "../../src/void2d/draw";
 import {
 	commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
-	commandField, targetCommandField, effectField, vertexField,
-	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND,
+	commandField, targetCommandField, effectField, vertexField, commandView,
+	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE,
 	CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN, CMD_CLIP_U_MAX,
 	CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
@@ -90,7 +90,7 @@ function formatStream(): string {
 		const kind: string = commandKindName(commandField(i, CMD_KIND) as int32);
 		const why: string = breakReasonName(commandField(i, CMD_BREAK) as int32);
 		out = out + `cmd ${i} ${kind} break:${why}`;
-		out = out + ` view:${commandField(i, CMD_VIEW) as int32}`;
+		out = out + ` view:${commandView(i)}`;
 		out = out + ` blend:${commandField(i, CMD_BLEND) as int32}`;
 		out = out + ` sampler:${commandField(i, CMD_SAMPLER) as int32}`;
 		out = out + ` effect:${commandField(i, CMD_EFFECT) as int32}`;

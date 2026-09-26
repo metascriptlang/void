@@ -34,8 +34,8 @@ import {
 import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
-	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_BLEND, CMD_SAMPLER,
-	CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R,
+	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND,
+	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R,
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
@@ -99,7 +99,8 @@ let targetsFlushed: boolean = false;
 // past it `beginTarget` still brackets the list correctly, it just stops restoring, and the
 // list's own overflow flag is what reports it.
 const TARGET_SAVE_SLOTS: int32 = 8;
-let savedView: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
+let savedView: Vec<uint32> = new Array(TARGET_SAVE_SLOTS);
+let savedRun: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 3);
 let savedSize: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
 
 export function drawCallCount(): int32 { return void2dDrawCallCount(); }
@@ -265,7 +266,8 @@ export function setup2d(): void {
 	if (void2dLayoutCheck(
 		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
 		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
-		CMD_VIEW, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT, TARGET_SAVE_SLOTS, CMD_CLEAR_R,
+		CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
+		TARGET_SAVE_SLOTS, CMD_CLEAR_R,
 		CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE,
 		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
 		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
@@ -656,11 +658,11 @@ export function beginTarget(
 		return;
 	}
 	closeRun();
-	const slot: int32 = targetDepth() * 4;
-	savedView[slot] = curView as float32;
-	savedView[slot + 1] = (curBlend as int32) as float32;
-	savedView[slot + 2] = curSampler as float32;
-	savedView[slot + 3] = curEffect as float32;
+	const slot: int32 = targetDepth() * 3;
+	savedView[targetDepth()] = curView;
+	savedRun[slot] = (curBlend as int32) as float32;
+	savedRun[slot + 1] = curSampler as float32;
+	savedRun[slot + 2] = curEffect as float32;
 	savedSize[targetDepth() * 4] = fbW;
 	savedSize[targetDepth() * 4 + 1] = fbH;
 	savedSize[targetDepth() * 4 + 2] = originX;
@@ -684,11 +686,11 @@ export function endTarget(): void {
 	const depth: int32 = targetDepth();
 	endTargetList();
 	if (depth > TARGET_SAVE_SLOTS || depth <= 0) { return; }
-	const slot: int32 = (depth - 1) * 4;
-	curView = savedView[slot] as uint32;
-	curBlend = (savedView[slot + 1] as int32) as BlendMode;
-	curSampler = savedView[slot + 2] as int32;
-	curEffect = savedView[slot + 3] as int32;
+	const slot: int32 = (depth - 1) * 3;
+	curView = savedView[depth - 1];
+	curBlend = (savedRun[slot] as int32) as BlendMode;
+	curSampler = savedRun[slot + 1] as int32;
+	curEffect = savedRun[slot + 2] as int32;
 	fbW = savedSize[(depth - 1) * 4];
 	fbH = savedSize[(depth - 1) * 4 + 1];
 	originX = savedSize[(depth - 1) * 4 + 2];

@@ -120,6 +120,7 @@ static int s_retiredBufCount;
 #define CMD_INSTANCE_OFFSET 20
 #define CMD_INSTANCE_COUNT  21
 #define CMD_CLIP_U_X        22
+#define CMD_VIEW_HIGH       30
 
 #define PIPELINE_VERTEX     0
 #define PIPELINE_SPRITE     1
@@ -253,9 +254,14 @@ int void2dInstanceLayoutCheck(int uiStride, int uiAffine, int uiOriginSize, int 
 		&& spriteColor == (int)offsetof(void2dSpriteInstance, color);
 }
 
+uint32_t void2dCommandView(const float *cmd) {
+	return (uint32_t)cmd[CMD_VIEW] | ((uint32_t)cmd[CMD_VIEW_HIGH] << 16);
+}
+
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
-                      int viewField, int blendField, int samplerField, int effectField,
+                      int viewField, int viewHighField, int blendField, int samplerField,
+                      int effectField,
                       int samplerCount, int maxTargetDepth, int clearRField,
                       int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
@@ -268,6 +274,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& vertexOffsetField == CMD_VERTEX_OFFSET
 		&& vertexCountField == CMD_VERTEX_COUNT
 		&& viewField == CMD_VIEW
+		&& viewHighField == CMD_VIEW_HIGH
 		&& blendField == CMD_BLEND
 		&& samplerField == CMD_SAMPLER
 		&& samplerCount == SMP_COUNT
@@ -870,7 +877,7 @@ static void runCommands(const float *commands, int commandCount,
 			continue;
 		}
 		if (kind == CMD_KIND_BLUR) {
-			void2dBlur((uint32_t)cmd[CMD_VIEW], cmd[CMD_ARG0], cmd[CMD_ARG1]);
+			void2dBlur(void2dCommandView(cmd), cmd[CMD_ARG0], cmd[CMD_ARG1]);
 			// It applied its own pipeline and bindings, so everything this loop remembers about
 			// what is bound is now wrong. A Draw after a Blur in the same pass would otherwise
 			// skip its own `sg_apply_pipeline` and draw the quad with the blur pipeline.
@@ -885,7 +892,7 @@ static void runCommands(const float *commands, int commandCount,
 			}
 			fbW = cmd[CMD_ARG0];
 			fbH = cmd[CMD_ARG1];
-			voidBeginRenderTargetPass((uint32_t)cmd[CMD_VIEW],
+			voidBeginRenderTargetPass(void2dCommandView(cmd),
 				cmd[CMD_CLEAR_R], cmd[CMD_CLEAR_R + 1], cmd[CMD_CLEAR_R + 2], cmd[CMD_CLEAR_R + 3]);
 			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
 			continue;
@@ -904,7 +911,7 @@ static void runCommands(const float *commands, int commandCount,
 
 		int blend = (int)cmd[CMD_BLEND];
 		if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
-		uint32_t view = (uint32_t)cmd[CMD_VIEW];
+		uint32_t view = void2dCommandView(cmd);
 		if (view == 0) view = s_whiteView.id;
 
 		// The pipeline branch comes BEFORE the vertex-count guard: a sprite run carries an

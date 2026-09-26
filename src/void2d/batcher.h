@@ -36,11 +36,14 @@ void void2dReplay(const float *commands, int commandCount,
 // command table agrees with the parser" (docs/TESTING.md).
 int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
-                      int viewField, int blendField, int samplerField, int effectField,
+                      int viewField, int viewHighField, int blendField, int samplerField,
+                      int effectField,
                       int samplerCount, int maxTargetDepth, int clearRField,
                       int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd);
+
+uint32_t void2dCommandView(const float *cmd);
 
 void void2dSetDpiScale(float scale);
 int void2dScissorMin(float edge, float scale);

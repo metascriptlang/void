@@ -24,6 +24,7 @@
 // intervals; axis-aligned clips stay in the hardware scissor.
 
 import { Color, BlendMode } from "./types";
+import { void2dCommandView } from "./batcher.h";
 import {
 	UI_STRIDE, SPRITE_STRIDE, UI_PARAM_MODE,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
@@ -107,6 +108,7 @@ export const CMD_CLIP_V_X: int32 = 26;
 export const CMD_CLIP_V_Y: int32 = 27;
 export const CMD_CLIP_V_MIN: int32 = 28;
 export const CMD_CLIP_V_MAX: int32 = 29;
+export const CMD_VIEW_HIGH: int32 = 30;
 export const EFFECT_GRADIENT_META: int32 = 24;
 export const EFFECT_GRADIENT_PARAMS: int32 = 28;
 export const EFFECT_GRADIENT_COLOR0: int32 = 32;
@@ -224,6 +226,23 @@ export function vertexCount(): int32 { return vertexTotal; }
 
 export function commandField(index: int32, field: int32): float32 {
 	return commands[index * COMMAND_FLOATS + field];
+}
+
+export function commandView(index: int32): uint32 {
+	return joinView(commandField(index, CMD_VIEW), commandField(index, CMD_VIEW_HIGH));
+}
+
+export function targetCommandView(index: int32): uint32 {
+	return joinView(targetCommandField(index, CMD_VIEW), targetCommandField(index, CMD_VIEW_HIGH));
+}
+
+function joinView(low: float32, high: float32): uint32 {
+	return ((high as uint32) << 16) | (low as uint32);
+}
+
+function writeView(base: int32, view: uint32): void {
+	commands[base + CMD_VIEW] = (view & 0xFFFF) as float32;
+	commands[base + CMD_VIEW_HIGH] = (view >> 16) as float32;
 }
 
 export function effectField(index: int32, field: int32): float32 {
@@ -479,7 +498,7 @@ export function recordDraw(
 	const base: int32 = startCommand(CommandKind.Draw, reason);
 	commands[base + CMD_VERTEX_OFFSET] = vertexOffset as float32;
 	commands[base + CMD_VERTEX_COUNT] = count as float32;
-	commands[base + CMD_VIEW] = view as float32;
+	writeView(base, view);
 	commands[base + CMD_BLEND] = (blend as int32) as float32;
 	commands[base + CMD_SAMPLER] = sampler as float32;
 	commands[base + CMD_EFFECT] = effectIndex as float32;
@@ -502,7 +521,7 @@ export function recordUiDraw(
 	commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
 	commands[base + CMD_INSTANCE_COUNT] = count as float32;
 	commands[base + CMD_VERTEX_COUNT] = 0.0;
-	commands[base + CMD_VIEW] = view as float32;
+	writeView(base, view);
 	commands[base + CMD_BLEND] = (blend as int32) as float32;
 	commands[base + CMD_SAMPLER] = sampler as float32;
 	commands[base + CMD_EFFECT] = NO_EFFECT as float32;
@@ -524,7 +543,7 @@ export function recordSpriteDraw(
 	commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
 	commands[base + CMD_INSTANCE_COUNT] = count as float32;
 	commands[base + CMD_VERTEX_COUNT] = 0.0;
-	commands[base + CMD_VIEW] = view as float32;
+	writeView(base, view);
 	commands[base + CMD_BLEND] = (blend as int32) as float32;
 	commands[base + CMD_SAMPLER] = sampler as float32;
 	commands[base + CMD_EFFECT] = NO_EFFECT as float32;
@@ -555,7 +574,7 @@ export function beginTargetList(
 	targetClipRecordedSaves[targetDepthNow] = clipRecorded;
 	targetDepthNow = targetDepthNow + 1;
 	const base: int32 = startCommand(CommandKind.TargetBegin, BreakReason.Barrier);
-	commands[base + CMD_VIEW] = rt as float32;
+	writeView(base, rt);
 	commands[base + CMD_ARG0] = w;
 	commands[base + CMD_ARG1] = h;
 	commands[base + CMD_CLEAR_R] = clearR;
@@ -602,7 +621,7 @@ export function recordClip(next: Clip): void {
 
 export function recordBlur(view: uint32, dirX: float32, dirY: float32): void {
 	const base: int32 = startCommand(CommandKind.Blur, BreakReason.Barrier);
-	commands[base + CMD_VIEW] = view as float32;
+	writeView(base, view);
 	commands[base + CMD_ARG0] = dirX;
 	commands[base + CMD_ARG1] = dirY;
 }
@@ -647,6 +666,26 @@ test "a fresh list is empty" {
 	assert effectCount() == 0;
 }
 
+test "a view id past 2^24 reaches the replay whole, in the stream and in a target" {
+	const view: uint32 = (291 << 16) | 5;
+	const oneFloat: float32 = view as float32;
+	assert view > 16777216;
+	assert (oneFloat as uint32) != view;
+	resetList();
+	recordDraw(BreakReason.View, 0, 6, view, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	recordBlur(view, 1.0, 0.0);
+	assert commandView(0) == view;
+	assert commandView(1) == view;
+	assert void2dCommandView(commands[0]) == view;
+	assert void2dCommandView(commands[COMMAND_FLOATS]) == view;
+	resetList();
+	beginTargetList(view, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);
+	recordDraw(BreakReason.First, 0, 6, view, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
+	endTargetList();
+	assert targetCommandView(0) == view;
+	assert targetCommandView(1) == view;
+}
+
 test "a draw command carries its range and its reason" {
 	resetList();
 	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Add, samplerIndex(false, true), NO_EFFECT);
@@ -655,7 +694,7 @@ test "a draw command carries its range and its reason" {
 	assert (commandField(0, CMD_BREAK) as int32) == (BreakReason.View as int32);
 	assert (commandField(0, CMD_VERTEX_OFFSET) as int32) == 12;
 	assert (commandField(0, CMD_VERTEX_COUNT) as int32) == 6;
-	assert (commandField(0, CMD_VIEW) as int32) == 3;
+	assert commandView(0) == 3;
 	assert (commandField(0, CMD_BLEND) as int32) == (BlendMode.Add as int32);
 	assert (commandField(0, CMD_SAMPLER) as int32) == 1;
 	assert (commandField(0, CMD_EFFECT) as int32) == NO_EFFECT;
@@ -679,15 +718,15 @@ test "a closed target block leaves the swapchain list and lands in the target li
 	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	// The swapchain list kept only the sibling before and the consumer after it.
 	assert commandCount() == 2;
-	assert (commandField(0, CMD_VIEW) as int32) == 1;
-	assert (commandField(1, CMD_VIEW) as int32) == 3;
+	assert commandView(0) == 1;
+	assert commandView(1) == 3;
 	// The target's own pass went to the other list, wrapped in its markers.
 	assert targetCommandCount() == 3;
 	assert (targetCommandField(0, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
-	assert (targetCommandField(0, CMD_VIEW) as int32) == 7;
+	assert targetCommandView(0) == 7;
 	assert targetCommandField(0, CMD_ARG0) == 64.0;
 	assert targetCommandField(0, CMD_ARG1) == 32.0;
-	assert (targetCommandField(1, CMD_VIEW) as int32) == 2;
+	assert targetCommandView(1) == 2;
 	assert (targetCommandField(2, CMD_KIND) as int32) == (CommandKind.TargetEnd as int32);
 	assert targetDepth() == 0;
 }
@@ -704,13 +743,13 @@ test "a nested target is replayed before the target that consumes it" {
 	assert commandCount() == 0;
 	// inner: begin(11), draw 200, end — then outer: begin(10), draw 100, draw 300, end.
 	assert (targetCommandField(0, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
-	assert (targetCommandField(0, CMD_VIEW) as int32) == 11;
-	assert (targetCommandField(1, CMD_VIEW) as int32) == 200;
+	assert targetCommandView(0) == 11;
+	assert targetCommandView(1) == 200;
 	assert (targetCommandField(2, CMD_KIND) as int32) == (CommandKind.TargetEnd as int32);
 	assert (targetCommandField(3, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
-	assert (targetCommandField(3, CMD_VIEW) as int32) == 10;
-	assert (targetCommandField(4, CMD_VIEW) as int32) == 100;
-	assert (targetCommandField(5, CMD_VIEW) as int32) == 300;
+	assert targetCommandView(3) == 10;
+	assert targetCommandView(4) == 100;
+	assert targetCommandView(5) == 300;
 	assert (targetCommandField(6, CMD_KIND) as int32) == (CommandKind.TargetEnd as int32);
 	assert targetCommandCount() == 7;
 }
