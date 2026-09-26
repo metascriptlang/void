@@ -942,3 +942,87 @@ Taken at tree `1869a4c` (*test(gate): the render path list covers blockFits*, `a
 | GLES3 emulator | the forward preset drawn (`gles3Forward.png`); the pixel-art frames unmoved outside the fire's flicker box |
 | PENDING3D | 23 rows: `point-light-toon-quantized` deleted, `billboard-points-added` moved |
 | Android | arm64 `libVoidAndroid.so`, **2 903 984 bytes** on msc `2925176a` (+111 992 over M13; +32 828 of it embedded shader sources) |
+
+## M15 — a core billboard in Heaps' textured-particle shape, and the pixel-art preset's form of it
+
+**Verdict: SHIP.** Both passes read `git diff cf1b92f..8d98dc4`. The defect pass (`/code-review high`) found ten issues. The design reviewer gave SHIP WITH FOLLOW-UPS, with nothing blocking. The human's instruction since M14 is the version that is not redone later, so every follow-up that touches the mechanism was fixed in M15 (`961285f..29a8530`). One was left to the human, because it moves pixels. The rework added two refusals to `beginFrame`, which changes its contract, so the same reviewer read the rework again. That re-review gave SHIP.
+
+Before the row, three decisions were the human's, taken with measurements:
+- **The preset's floats** are reserved in the core billboard block, not in a block per preset (a new mechanism for two floats).
+- **The grass and flame stay byte-identical.** A probe of the preset's form on the new layout measured it first: 52 frames identical, with a reassociation control and a 1.002 control.
+- **The forward capture shows the grass**, and `m14forward_*` is re-baselined in its own commit.
+
+A fourth fact came from the probe: sokol-shdc refuses a block read by both stages, so the frame is a uv rect per instance, as Heaps' CPU `Particles.draw` writes it.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | Nothing checks that a mesh's vertex layout is the one its program reads; `Particle` and `Billboard` are two instanced layouts on the same corners | `beginFrame` refuses it, `RendererError.VertexLayout`, through an exhaustive `vertexLayoutOf` (`961285f`) |
+| 2 | `beginFrame` takes a `Billboard` material with no texture or sampler, and sokol aborts | `RendererError.MaterialTexture`, read off the shader desc (`de812da`) |
+| 3 | The billboard discards on the texel's alpha only; the instance and material alpha never hide it | Both programs discard on the whole alpha. The pixel-art frames did not move (`d7b283e`) |
+| 4 | `AtlasTile.ofFrame` takes a negative width | Refused (`3010719`) |
+| 5 | `pipelineCache.ms` still says `VertexLayout` has three members | Four (`e606e4c`) |
+| 6 | `BILLBOARD_INSTANCE_STRIDE` is a hand copy of `describeLayout` | Attribute order asserted in `gpu3d.c`; `layoutFloats` holds every writer's stride in a test (`a5e59a5`) |
+| 7 | The campfire recomputes a tile per tuft and keeps a literal `4.0` | `AtlasTile.split` once, `ATLAS_CELLS` (`09f6185`) |
+| 8 | A flame frame with no tile builds a mesh over an empty buffer | The flame's instances are built once and kept; there is no fallback (`09f6185`) |
+| 9 | `AtlasTile` repeats void2d's `Tile` (`src/void2d/types.ms`) | Not taken. void3d has never imported void2d, and a shared `h2d.Tile` crosses into that lane; void2d's computes its uv in float32 where Heaps uses Float. Written under "Still missing after M15" |
+| 10 | The ramp check's short-block path has no test | A test: a short billboard block is refused by the core through the preset (`15bb941`) |
+
+### Design pass
+
+**First review: SHIP WITH FOLLOW-UPS.** It checked each piece against Heaps by file and line (`Particles.hx`, `Tile.hx`, `BaseMesh.hx`, `Texture.hx`, `VertexColorAlpha.hx`, `GpuParticle.hx`, `Material.hx`), the normal's direction against `camera.ms`, the thirteen floats against `describeLayout`, and the five items of "Audit before M13" finding 2 (gone from `src/void3d`). It ran the tests (888) and looked at `m14forward_1`.
+
+Its follow-ups, and what happened:
+1. **The quad's anchor is the caller's and was not written down.** Heaps centres a particle on its position; the campfire's corners start at the root. Written down as `billboard-anchor-is-the-callers` (`434bc23`). Whether the core owns centred corners is the human's call, because it moves the campfire's pixels.
+2. **Instance and material alpha had no effect.** Defect 3.
+3. **Nothing tied the instance layout to `gpu3d.c`.** Defect 6.
+4. **Nothing checked that a program and a mesh layout go together.** Defect 1.
+5. **Nothing checked the core billboard's colour.** A gate stage, `unlit` (`d7e9fdb`). The flame is unlit with colour 1, so its three texel colours must be in every forward frame; none of them is in the frame without billboards. Lighting the flame fails it. The lit path is held by the baseline alone, and that is written down.
+6. **Style.** The campfire's long lines, the style stage's path list, the block written by position, the empty-`Vec` fallback. `5561281`, `09f6185`; the campfire is inside `style` now.
+7. **Doc accuracy.** The positive control's range was quoted from three configurations; it is 213 208 to 228 616 and 3 228 to 3 488 across all of them. The probe is not kept. Both are corrected (`29a8530`).
+8. **`ofFrame` refuses what Heaps tolerates.** Written down. The negative width is defect 4.
+9. **A zeroed block, and the tile's aspect.** A zeroed block draws nothing (alpha 0). Heaps' height from the tile's aspect is not ported (`particle-size-world-units`).
+10. **`pushTo` was reachable from the simulated context loss.** The rebuild replays the kept flame instances now.
+
+**Re-review of the rework (`8d98dc4..29a8530`): SHIP.** It confirmed every finding closed, or written down where it belongs.
+- It reran the tests (892).
+- It regenerated the shader header after the last comment and found it identical to the committed one.
+- It recounted the GLES3 frame.
+
+Its notes, none blocking:
+1. **The device builds' sizes were in no kept log.** They are in `tests/device/README.md` now (`88bf465`). The emulator pixel counts are not kept, as the README says.
+2. **`vertexLayoutOf` is a hand table.** The static asserts tie each preset program to the core program of its layout, not a program to its layout. A wrong entry would refuse the captures' own items, so the gate would catch it.
+3. **A bad mesh index panics.** A mesh index outside `context.meshes` panics instead of being refused by name, as `drawItem` did before M15.
+4. **The first refusal wins.** A lit billboard without levels and on the wrong layout reports `RampLevels`, because the preset's check runs first. Both refuse before anything is written.
+5. **The texture check sees presence only.** After a context loss it counts stale handles as bound. That is the protocol that has the caller remake its handles.
+
+**Found along the way.**
+- A `Result` narrowed by an early return is not narrowed two loops deep: compiler card `2026-09-26-narrowing-lost-two-loops-deep.md`, row `nested-loop-narrowing-bound`.
+- msc was synced from `2925176a` to `598ca62e` during the milestone, so the gate's `.so` delta is not M15's. The size is given on one msc from the device builds instead.
+
+### Carried into M16 and later
+
+- **Who owns a billboard's corners**, centred as Heaps' or the caller's (`billboard-anchor-is-the-callers`). This is the human's call, before any emitter writes billboards.
+- An emitter that draws textured particles (`Data.frame` over `frames`).
+- Two ports of `h2d.Tile`, void2d's and `AtlasTile`.
+- An exact check of the lit billboard.
+- M14's carried list: programs from outside `src/void3d`, the forward preset's sRGB, MSAA and scaling, the point light's window.
+
+### Numbers
+
+Taken at `88bf465` (*docs(device): record the two pixel-art builds' sizes*) from one `GATE_DEVICE=1 sh scripts/gate3d.sh` run; the commits after it are docs. The code is that of `d7e9fdb`, gated the same way without the device.
+
+| | |
+|---|---|
+| Gate | GREEN, no SKIP (`GATE_DEVICE=1`, the M15 pixel-art build running on the emulator) |
+| Tests | **892**: ten added by M15 |
+| Capture | 14 configurations; 52 pixel-art frames byte-identical to their hashes; `m14forward_*` retaken by design (4 hashes, 44 in the manifest) |
+| Unlit | the forward flame's 3 texel colours in all 4 frames, 10 to 87 pixels each |
+| Multiply | 0 ground pixels off the ratio |
+| Oracle | 75 agree and 11 declared, over six files |
+| Allocation | frame, render (now with `vertexLayoutOf`, `texturesFit`, `slotBound` and `billboardLevels`) and pick paths, no array copy |
+| Device | `pixellight` emulator, 23 colours, largest 38% |
+| GLES3 emulator | the forward billboards drawn (`gles3Billboard.png`); the pixel-art frames unmoved outside the fire's flicker box |
+| PENDING3D | 25 rows: `billboard-points-added` deleted; `billboard-normal-toward-camera`, `billboard-anchor-is-the-callers` and `nested-loop-narrowing-bound` added |
+| Android | arm64 `libVoidAndroid.so`, **2 990 464 bytes** on msc `598ca62e`. On one msc, the pixel-art device entry is +68 360 over M14, of which +24 943 are embedded shader sources |
