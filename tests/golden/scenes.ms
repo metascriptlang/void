@@ -71,6 +71,8 @@ import {
 	AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B,
 	AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B,
 	FILTERED_TEXT_X, FILTERED_TEXT_Y, FILTERED_TEXT_SHIFT,
+	CARET_TEXT, CARET_SIZE, CARET_X, CARET_Y, CARET_SELECTION_START, CARET_SELECTION_LENGTH,
+	CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
 } from "./table";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
@@ -684,6 +686,22 @@ function textDecorations(): Scene {
 	return s;
 }
 
+function textCaretSelection(): Scene {
+	const s = scene(DARK);
+	const code = label(CARET_TEXT, CARET_SIZE, rgba(0.86, 0.90, 0.98, 1.0)).at(CARET_X, CARET_Y);
+	const selection: Color = rgba(
+		CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
+	);
+	code.setSelectionRange(
+		{ start: CARET_SELECTION_START, length: CARET_SELECTION_LENGTH },
+		selection,
+	);
+	code.setCursorBlinkTime(0.0);
+	code.setCursorIndex(CARET_SELECTION_START + CARET_SELECTION_LENGTH, rgba(1.0, 0.85, 0.3, 1.0));
+	s.add(code);
+	return s;
+}
+
 function textWrapped(): Scene {
 	const s = scene(DARK);
 	const paragraph = label(
@@ -1211,6 +1229,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/fontStyles", build: textFontStyles },
 		{ name: "text/filteredDpi125", build: textFilteredDpi125 },
 		{ name: "text/decorations", build: textDecorations },
+		{ name: "text/caretSelection", build: textCaretSelection },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },

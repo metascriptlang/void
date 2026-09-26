@@ -167,7 +167,10 @@ else
 fi
 "$MSC" build tests/golden/invariants.ms --output=out/goldenInvariants.exe > out/gate-invariants.log 2>&1 || true
 if [ -x out/goldenInvariants.exe ] && out/goldenInvariants.exe >> out/gate-invariants.log 2>&1; then
-	pass "$(grep -E '^PASS' out/gate-invariants.log | sed 's/^PASS //')"
+	grep -E '^PASS' out/gate-invariants.log | sed 's/^PASS //' | while read -r held; do
+		echo "PASS  $held"
+	done
+	passes=$((passes + 1))
 else
 	fail "a committed golden breaks what it must hold within itself — see out/gate-invariants.log"
 	grep -E '^FAIL' out/gate-invariants.log | sed 's/^/      /' || true

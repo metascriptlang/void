@@ -61,6 +61,21 @@ export const FILTERED_TEXT_SHIFT: float32 = 48.0;
 export const FILTERED_TEXT_W: float32 = 236.0;
 export const FILTERED_TEXT_H: float32 = 22.0;
 
+// text/caretSelection: a ragged selection over three lines and a caret. The invariant check lays
+// the same text out again to find where the rows meet.
+export const CARET_SCENE: string = "text/caretSelection";
+export const CARET_TEXT: string = "const sum = a + b;\nwhile (sum < max) {\n    return sum;\n}";
+export const CARET_SIZE: float32 = 14.0;
+export const CARET_X: float32 = 10.0;
+export const CARET_Y: float32 = 12.0;
+export const CARET_DPI: float32 = 1.25;
+export const CARET_SELECTION_START: int32 = 6;
+export const CARET_SELECTION_LENGTH: int32 = 45;
+export const CARET_SELECTION_R: float32 = 0.30;
+export const CARET_SELECTION_G: float32 = 0.50;
+export const CARET_SELECTION_B: float32 = 0.90;
+export const CARET_SELECTION_A: float32 = 0.50;
+
 export function sceneRows(): SceneRow[] {
 	return [
 		{ name: "harness/solid", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
@@ -114,6 +129,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/fontStyles", phase: "P3", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/filteredDpi125", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/decorations", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/caretSelection", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
@@ -166,9 +182,9 @@ export function sceneDrawCounts(): int32[] {
 	return [
 		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 2, 2, 2, 1, 6, 2,
-		1, 1, 1, 6, 6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7, 30,
-		30, 30, 30,
+		1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 2, 2, 2, 1, 6,
+		2, 1, 1, 1, 6, 6, 6, 6, 4, 4, 3, 1, 1, 1, 1, 1, 7,
+		30, 30, 30, 30,
 	];
 }
 
@@ -177,8 +193,8 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5, 5,
-		5, 5, 5,
+		0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5,
+		5, 5, 5, 5,
 	];
 }
 

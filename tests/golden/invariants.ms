@@ -1,3 +1,4 @@
+import "../../src/sokol/gpu";
 import { env } from "std/process";
 import {
 	FILTERED_TEXT_SCENE,
@@ -7,7 +8,21 @@ import {
 	FILTERED_TEXT_SHIFT,
 	FILTERED_TEXT_W,
 	FILTERED_TEXT_H,
+	CARET_SCENE,
+	CARET_TEXT,
+	CARET_SIZE,
+	CARET_X,
+	CARET_Y,
+	CARET_DPI,
+	CARET_SELECTION_START,
+	CARET_SELECTION_LENGTH,
+	CARET_SELECTION_R,
+	CARET_SELECTION_G,
+	CARET_SELECTION_B,
+	CARET_SELECTION_A,
 } from "./table";
+import { TextLayout, Align } from "../../src/void2d/textLayout";
+import { DEFAULT_FONT } from "../../src/void2d/font";
 import { voidPngLoad, voidPngWidth, voidPngHeight, voidPngPixel } from "./pngio.h";
 
 const SLOT: int32 = 0;
@@ -66,4 +81,82 @@ function filteredTextMatchesPlain(): int32 {
 	return 0;
 }
 
-process.exit(filteredTextMatchesPlain());
+const JOIN_MARGIN: float32 = 10.0;
+const JOIN_TOLERANCE: int32 = 2;
+
+// Where two selected rows meet, every pixel is the selection composited once over the clear
+// colour: a gap shows the background, a doubled alpha a darker blend.
+function joinHoldsOnce(
+	layout: TextLayout,
+	upper: int32,
+	x0: float32,
+	x1: float32,
+	background: int32[],
+): int32 {
+	const expected: float32[] = [CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B];
+	const boundary: float32 = layout.lines[upper + 1].top;
+	const y: int32 = Math.floor((CARET_Y + boundary) * CARET_DPI + 0.5) as int32;
+	const left: int32 = Math.floor((CARET_X + x0 + JOIN_MARGIN) * CARET_DPI) as int32;
+	const right: int32 = Math.floor((CARET_X + x1 - JOIN_MARGIN) * CARET_DPI) as int32;
+	let wrong: int32 = 0;
+	let checked: int32 = 0;
+	for (let py = y - 1; py <= y; py++) {
+		for (let px = left; px <= right; px++) {
+			for (let c = 0; c < 3; c++) {
+				const once: float32 = expected[c] * CARET_SELECTION_A * 255.0 +
+					(background[c] as float32) * (1.0 - CARET_SELECTION_A);
+				const seen: float32 = voidPngPixel(SLOT, px, py, c) as float32;
+				const delta: float32 = Math.abs(seen - once) as float32;
+				checked = checked + 1;
+				if (delta > (JOIN_TOLERANCE as float32)) { wrong = wrong + 1; }
+			}
+		}
+	}
+	if (checked == 0) {
+		console.log(`FAIL ${CARET_SCENE}: the join under line ${upper} spans no pixel`);
+		return 1;
+	}
+	if (wrong > 0) {
+		console.log(
+			`FAIL ${CARET_SCENE}: ${wrong} of ${checked} channel values where lines ${upper} and ` +
+			`${upper + 1} meet are not the selection composited once`,
+		);
+		return 1;
+	}
+	return 0;
+}
+
+function raggedSelectionJoins(): int32 {
+	const override: string = env.get("VOID_CARET_CAPTURE");
+	const path: string = override.equals("")
+		? `tests/golden/d3d11/${CARET_SCENE}.png`
+		: override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${CARET_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const background: int32[] = [
+		voidPngPixel(SLOT, 2, 2, 0), voidPngPixel(SLOT, 2, 2, 1), voidPngPixel(SLOT, 2, 2, 2),
+	];
+	const l = TextLayout.layout(CARET_TEXT, {
+		font: DEFAULT_FONT,
+		size: CARET_SIZE,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	});
+	const start: float32 = l.xForIndex(CARET_SELECTION_START);
+	const firstEnd: float32 = l.lines[0].x + l.lines[0].width;
+	const end: float32 = l.xForIndex(CARET_SELECTION_START + CARET_SELECTION_LENGTH);
+	const failed: int32 = joinHoldsOnce(l, 0, start, firstEnd, background) +
+		joinHoldsOnce(l, 1, l.lines[2].x, end, background);
+	if (failed > 0) { return 1; }
+	console.log(
+		`PASS ${CARET_SCENE}: where ragged selected rows meet, the selection is composited once, ` +
+		"with no gap",
+	);
+	return 0;
+}
+
+process.exit(filteredTextMatchesPlain() + raggedSelectionJoins());

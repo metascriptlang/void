@@ -96,7 +96,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `clip/` | P5 | mask + scroll offset |
 | `text/` | P0 | a code line at 13 px, DPI 1.0 / 1.25 / 1.5 · wrapped · multilineAlign |
 | `text/` | P3 | mixed Latin + CJK fallback · fontStyles (synthetic bold and italic, size harmonisation) |
-| `text/` | P4 | filteredDpi125 (one line plain and inside a filter target, compared by `tests/golden/invariants.ms`) · decorations (underline, strikethrough, wavy) · caret and selection |
+| `text/` | P4 | filteredDpi125 (one line plain and inside a filter target, compared by `tests/golden/invariants.ms`) · decorations (underline, strikethrough, wavy) · caretSelection (a ragged selection whose row joins `tests/golden/invariants.ms` holds to one composite with no gap) |
 | `text/` | P6 | a ligature line · a colour-emoji line |
 | `image/` | P0 | nearestLinear · subFlip · colorPipeline (colorMatrix, colorAdd, colorKey, Add blend) · scaleGrid |
 | `image/` | P1 | tileWrap (clamp beside repeat, u1 = 3) · sceneSmooth (`Smooth.Inherit` against a scene default of nearest, beside an explicit `Smooth.On`) |
@@ -160,7 +160,7 @@ the last three sessions compared.
 scenes were added; the integration captures still account for nearly half. The lever, if this
 becomes material, remains the demo frames.
 
-**Tolerance: byte-identical is the default.** All **71** live rows are byte-identical to
+**Tolerance: byte-identical is the default.** All **72** live rows are byte-identical to
 their goldens, between two draws in one process and between full suite runs in separate
 processes. `tests/PENDING.md` carries **zero** image budgets. A tolerance is not a property
 of this machine; it is a property of a scene, and a scene that needs one is a finding.
@@ -285,7 +285,7 @@ number typed into the script.
 3. The demo entry builds.
 4. `scripts/golden.sh`: build the runner `--release`, render every scene in its own process,
    twice, compare the two, gate per-scene counters, write the PNG, then
-   `tests/golden/compare.ms` judges all **71** against `tests/golden/d3d11/` and prints
+   `tests/golden/compare.ms` judges all **72** against `tests/golden/d3d11/` and prints
    `N px differ, max delta M, bbox` and a pass rate.
 5. The three coverage oracles and the two font oracles, plus two named SKIPs for oracles not wired yet.
 6. `tests/bench/check.ms` — counters gated against `tests/bench/baseline.json`, milliseconds
@@ -308,13 +308,13 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **71 / 71 scenes byte-identical** | every full gate, this box |
+| D3D11 | **72 / 72 scenes byte-identical** | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
 | WebGPU | no readback in the wasm build, and headless Chrome has no adapter here, so the run is headed. P6 | SKIP |
-| WebGL2 | **67 / 71**: 47 byte-identical, 20 within the cross-backend bound, 4 structural failures (`tests/PENDING.md conformance:webgl2-pixel-centre`); all nine `text/` scenes byte-identical. It runs through ANGLE on D3D11 on the same GPU (the script prints the `RENDERER` line), so it proves the GLSL ES path and GL's conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web`; headless Chrome on this box |
+| WebGL2 | **68 / 72**: 48 byte-identical, 20 within the cross-backend bound, 4 structural failures (`tests/PENDING.md conformance:webgl2-pixel-centre`); all ten `text/` scenes byte-identical. It runs through ANGLE on D3D11 on the same GPU (the script prints the `RENDERER` line), so it proves the GLSL ES path and GL's conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web`; headless Chrome on this box |
 
 So guardrail 9 is a number now, and the number is **2 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
 for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads the built

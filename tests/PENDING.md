@@ -97,7 +97,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | golden-missing:clip/maskScroll | T2 | scene not renderable until P5 — `Mask.scrollX/Y` does not exist | P5 | 2026-09-20 |
-| golden-missing:text/caretSelection | T2 | scene not renderable until P4 | P4 | 2026-09-20 |
 | golden-missing:text/ligature | T2 | scene not renderable until P6 — no shaper, so `calt` never fires | P6 | 2026-09-20 |
 | golden-missing:text/colourEmoji | T2 | scene not renderable until P6 | P6 | 2026-09-20 |
 | golden-missing:image/animatedFrames | T2 | frame-indexed animation exists on `Anim` but has no deterministic frame input yet; folded into P6's animated image frames | P6 | 2026-09-20 |
