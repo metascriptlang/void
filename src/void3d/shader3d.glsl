@@ -92,6 +92,7 @@ void main() {
     // PENDING3D: billboard-normal-toward-camera
     towardCamera = cross(cameraRight.xyz, cameraUp.xyz);
     gl_Position = viewProj * vec4(p, 1.0);
+    // PENDING3D: billboard-anchor-is-the-callers
     uv = vec2(corner.x > 0.0 ? tile.z : tile.x, corner.y > 0.0 ? tile.y : tile.w);
     instanceColor = color;
 }
