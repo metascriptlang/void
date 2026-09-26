@@ -264,7 +264,7 @@ REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	text76ayout:tallestFaces grapheme:breaksBefore line66reak:lineBreaks line66reak:unitBreak
 	glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
 	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"
-MEASURE_PATH="render:textWidth render:textHeight render:requireLabel"
+MEASURE_PATH="render:textWidth render:textHeight node:requireLabel"
 copied=""
 allocated=""
 unreachable=""
