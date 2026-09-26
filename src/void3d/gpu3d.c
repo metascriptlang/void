@@ -113,10 +113,17 @@ _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in gpu3d.ms");
 _Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in gpu3d.ms");
 _Static_assert(sizeof(lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
 _Static_assert(sizeof(modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
-_Static_assert(sizeof(pixelArt_lightParams_t) == sizeof(lightParams_t)
+_Static_assert(sizeof(pixelArt_vertexParams_t) == sizeof(vertexParams_t)
+	&& sizeof(pixelArt_lightParams_t) == sizeof(lightParams_t)
 	&& sizeof(pixelArt_modelParams_t) == sizeof(modelParams_t)
-	&& sizeof(pixelArt_materialParams_t) == sizeof(materialParams_t),
+	&& sizeof(pixelArt_materialParams_t) == sizeof(materialParams_t)
+	&& UB_pixelArt_vertexParams == UB_vertexParams && UB_pixelArt_lightParams == UB_lightParams
+	&& UB_pixelArt_modelParams == UB_modelParams && UB_pixelArt_materialParams == UB_materialParams,
 	"both shader files must take the blocks of shader3dBlocks.glsl");
+_Static_assert(GPU3D_UNIFORM_SLOT_TABLE_LENGTH == SG_MAX_UNIFORMBLOCK_BINDSLOTS,
+	"GPU3D_UNIFORM_SLOTS must be sokol's uniform block slot count");
+_Static_assert(GPU3D_PROGRAM_TABLE_LENGTH <= 16,
+	"Program must fit the four bits PipelineKey and ProgramMap give it (pipelineCache.ms, programMap.ms)");
 
 // ---- vertex layouts, one per VertexLayout member ----
 
