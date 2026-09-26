@@ -141,6 +141,7 @@ export const MATERIAL_SATURATION: int32 = 1;
 // floats a meaning of its own (pixelArtRenderer.ms BILLBOARD_RAMP_LEVELS).
 export const BILLBOARD_UNIFORM_SLOT: int32 = 2;
 export const BILLBOARD_UNIFORM_LENGTH: int32 = 8;
+export const BILLBOARD_COLOR: int32 = 0;
 export const BILLBOARD_LIGHT: int32 = 5;
 
 export function makeShader(program: Program): uint32 {
