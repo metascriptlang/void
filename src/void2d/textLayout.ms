@@ -394,10 +394,9 @@ function assignRuns(cps: Span<Codepoint>, runs: Span<TextRun>, units: int32): vo
 			run = run + 1;
 			runEnd = runEnd + runs[run].len;
 		}
-		const runStart: int32 = runEnd - runs[run].len;
-		if (cps[i].index < runStart) {
+		if (runEnd < unitEnd(cps[i])) {
 			console.log(
-				`void2d: text run ${run} starts inside the surrogate pair at ${cps[i].index}`,
+				`void2d: text run ${run + 1} starts inside the surrogate pair at ${cps[i].index}`,
 			);
 			unreachable;
 		}
