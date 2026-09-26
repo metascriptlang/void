@@ -27,6 +27,7 @@
 #   ANDROID_NDK=<path>     NDK root (default: the Windows SDK location)
 set -u
 cd "$(dirname "$0")/.."
+export MSC_NO_GLOBAL_CACHE=1
 
 FAILURES=0
 SKIPPED=0
@@ -201,7 +202,7 @@ configureCampfireRebuildAt(3);"
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
 # stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
 # notes). gpu3d.c includes shader3d.glsl.h and gpu3d.h; the gate hashes both and evicts what
-# was built from them: this checkout's build cache, and the global object keyed on gpu3d.c.
+# was built from them in this checkout's build cache. The machine-wide cache is off for the run.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
 	current=$(cat src/void3d/shader3d.glsl.h src/void3d/gpu3d.h 2>/dev/null | md5sum | cut -d' ' -f1)
@@ -214,11 +215,6 @@ purge_stale_shader_objects() {
 	fi
 	note "capture: a header gpu3d.c includes changed since the last gate — evicting the objects built from it"
 	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* 2>/dev/null
-	grep -rl --include='*.o' gpu3d "$HOME"/.metascript/cache/objects 2>/dev/null |
-		while read -r object; do
-			note "capture: evicting $object"
-			rm -f "$object"
-		done
 	echo "$current" > "$stamp"
 }
 
