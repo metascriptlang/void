@@ -406,19 +406,18 @@ function xOnRow(layout: TextLayout, line: LineBox, index: int32): float32 {
 // The selected span of one line, [x0, x1] in local units, or x1 < x0 when the line holds none of
 // it. A selected line break shows as a short tail, as an editor draws it.
 function selectedRow(text: LabelText, li: int32): [float32, float32] {
-	const layout = text.layout;
-	const count: int32 = layout.lines.length as int32;
+	const count: int32 = text.layout.lines.length as int32;
 	if (li < 0 || li >= count) { return [0.0, -1.0]; }
 	const start: int32 = text.selectionStart;
 	const end: int32 = start + text.selectionLength;
-	const line: LineBox = layout.lines[li];
-	const owned: int32 = li + 1 < count ? layout.lines[li + 1].indexStart : line.indexEnd;
+	const line: LineBox = text.layout.lines[li];
+	const owned: int32 = li + 1 < count ? text.layout.lines[li + 1].indexStart : line.indexEnd;
 	if (end <= line.indexStart || start >= owned || text.selectionLength <= 0) {
 		return [0.0, -1.0];
 	}
 	const lineEnd: float32 = line.x + line.width;
-	const x0: float32 = start <= line.indexStart ? line.x : xOnRow(layout, line, start);
-	let x1: float32 = end >= line.indexEnd ? lineEnd : xOnRow(layout, line, end);
+	const x0: float32 = start <= line.indexStart ? line.x : xOnRow(text.layout, line, start);
+	let x1: float32 = end >= line.indexEnd ? lineEnd : xOnRow(text.layout, line, end);
 	if (end > line.indexEnd && owned > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }
 	return [x0, x1];
 }

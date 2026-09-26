@@ -254,7 +254,10 @@ FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:
 	display76ist:pushEffect display76ist:recordClip draw:begin2d draw:end2d draw:flushTargets
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
-	draw:drawMeshRange snap:snapBoxEdges"
+	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox
+	render:emitRunBox render:emitRunLine render:emitDecorations render:xOnRow render:selectedRow
+	render:emitSelection render:emitCaret label84ext:cursorShown text76ayout:xForIndex
+	text76ayout:lineBoxAt text76ayout:lineOfIndex"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
 	text76ayout:layout text76ayout:shapeText text76ayout:wrapText text76ayout:pushLine
