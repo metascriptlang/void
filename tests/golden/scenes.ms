@@ -12,7 +12,8 @@ import {
 	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
 import {
-	addFallbackFont, registerFace, Font, FontStyle, FontFeature, SizeAdjust,
+	addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature, SizeAdjust,
+	DEFAULT_FONT,
 } from "../../src/void2d/font";
 import { BoxStyle, CornerRadii, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
@@ -663,7 +664,7 @@ function textWrapped(): Scene {
 }
 
 function textCjkFallback(): Scene {
-	addFallbackFont(0, "tests/fonts/NotoSansSC-subset.ttf");
+	addFallbackFont(DEFAULT_FONT, "tests/fonts/NotoSansSC-subset.ttf");
 	const s = scene(DARK);
 	s.add(label("void2d 渲染测试 — 你好世界", 16.0, rgba(0.86, 0.90, 0.98, 1.0)).at(10.0, 12.0));
 	s.add(label("汉字 fallback: 字体 A你V", 13.0, rgba(0.95, 0.80, 0.45, 1.0)).at(10.5, 44.0));
@@ -680,8 +681,15 @@ function fontOf(weight: int32, style: FontStyle, adjust: SizeAdjust): Font {
 	};
 }
 
+function fontIdOf(font: Font): FontId {
+	const resolved = resolveFont(font);
+	if (resolved.ok) { return resolved.value; }
+	console.log(`golden: font "${font.family}" was refused (${resolved.error.toString()})`);
+	unreachable;
+}
+
 function styledLabel(s: Scene, text: string, font: Font, y: float32): void {
-	s.add(label(text, 16.0, rgba(0.86, 0.90, 0.98, 1.0)).setFont(font).at(10.0, y));
+	s.add(label(text, 16.0, rgba(0.86, 0.90, 0.98, 1.0)).setFont(fontIdOf(font)).at(10.0, y));
 }
 
 function textFontStyles(): Scene {

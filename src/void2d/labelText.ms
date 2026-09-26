@@ -8,6 +8,7 @@ import {
 	snapBaseline,
 } from "./glyphAtlas";
 import { TextLayout, TextStyle, NO_GLYPH } from "./textLayout";
+import { DEFAULT_FONT } from "./font";
 import { Transform2D } from "./types";
 
 export const NO_LABEL_TEXT: int32 = -1;
@@ -106,7 +107,7 @@ export function allocateLabelText(): int32 {
 	const entry: LabelText = {
 		layout: emptyLayout(),
 		style: {
-			font: -1,
+			font: DEFAULT_FONT,
 			size: 0.0,
 			letterSpacing: 0.0,
 			lineSpacing: 0.0,

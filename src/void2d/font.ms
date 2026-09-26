@@ -18,7 +18,10 @@ export struct Font {
 	sizeAdjust: SizeAdjust;
 }
 
-enum FontError {
+export type FontId = distinct int32;
+export const DEFAULT_FONT: FontId = 0 as FontId;
+
+export enum FontError {
 	NoFamily,
 	NoFallbackFamily,
 	NeedsShaper,
@@ -30,7 +33,6 @@ export struct CodepointFace {
 	scale: float32;
 }
 
-export const NO_FONT: int32 = -1;
 const DEFAULT_PATH: string = "assets/font.ttf";
 const DEFAULT_FAMILY: string = "Inter";
 const NO_FACE: int32 = -1;
@@ -67,7 +69,7 @@ struct FontEntry {
 }
 
 struct Fallback {
-	font: int32;
+	font: FontId;
 	path: string;
 	bold: boolean;
 	italic: boolean;
@@ -150,12 +152,12 @@ export function registerFace(path: string, family: string, weight: int32, style:
 	registered.push({ path: path, family: family, weight: weight, style: style });
 }
 
-export function addFont(path: string): int32 {
+export function addFont(path: string): Result<FontId, FontError> {
 	ensureDefaultFont();
 	const face = faceAtPath(path);
-	if (!face.ok) { return NO_FONT; }
+	if (!face.ok) { return Result.err(FontError.NotLoaded); }
 	fonts.push(plainFont(face.value));
-	return (fonts.length as int32) - 1;
+	return Result.ok(((fonts.length as int32) - 1) as FontId);
 }
 
 function weightRank(desired: int32, weight: int32): int32 {
@@ -220,14 +222,12 @@ function sameAs(this a: Font, b: Font): boolean {
 	return true;
 }
 
-export function resolveFont(font: Font): int32 {
-	return try resolve(font) catch NO_FONT;
-}
-
-function resolve(font: Font): Result<int32, FontError> {
+export function resolveFont(font: Font): Result<FontId, FontError> {
 	ensureDefaultFont();
 	for (let i = 0; i < (fonts.length as int32); i++) {
-		if (fonts[i].described && fonts[i].description.sameAs(font)) { return Result.ok(i); }
+		if (fonts[i].described && fonts[i].description.sameAs(font)) {
+			return Result.ok(i as FontId);
+		}
 	}
 	let kern: boolean = true;
 	for (const feature of font.features) {
@@ -272,7 +272,7 @@ function resolve(font: Font): Result<int32, FontError> {
 		);
 		return Result.err(FontError.NotLoaded);
 	}
-	const id: int32 = fonts.length as int32;
+	const id: FontId = (fonts.length as int32) as FontId;
 	const features: FontFeature[] = [];
 	for (const feature of font.features) { features.push(feature); }
 	const fallbackFamilies: string[] = [];
@@ -298,7 +298,7 @@ function resolve(font: Font): Result<int32, FontError> {
 	return Result.ok(id);
 }
 
-export function addFallbackFont(font: int32, path: string): void {
+export function addFallbackFont(font: FontId, path: string): void {
 	fallbacks.push({
 		font: font,
 		path: path,
@@ -310,16 +310,22 @@ export function addFallbackFont(font: int32, path: string): void {
 	resolved = new Map<uint64, int32>();
 }
 
-export function fontFace(font: int32): int32 {
+function fontIndex(font: FontId): int32 {
 	ensureDefaultFont();
-	if (font < 0 || font >= (fonts.length as int32)) { return fonts[0].face; }
-	return fonts[font].face;
+	const index: int32 = font as int32;
+	if (index < 0 || index >= (fonts.length as int32)) {
+		console.log(`void2d: font id ${index} was not made by addFont or resolveFont`);
+		unreachable;
+	}
+	return index;
 }
 
-export function fontKerns(font: int32): boolean {
-	ensureDefaultFont();
-	if (font < 0 || font >= (fonts.length as int32)) { return true; }
-	return fonts[font].kern;
+export function fontFace(font: FontId): int32 {
+	return fonts[fontIndex(font)].face;
+}
+
+export function fontKerns(font: FontId): boolean {
+	return fonts[fontIndex(font)].kern;
 }
 
 export function fallbackFacesLoaded(): int32 {
@@ -368,15 +374,15 @@ function fallbackFace(index: int32): int32 {
 			fallbacks[index].scale = adjustedScale(
 				primary,
 				face.value,
-				fonts[entry.font].sizeAdjust,
+				fonts[fontIndex(entry.font)].sizeAdjust,
 			);
 		}
 	}
 	return fallbacks[index].face;
 }
 
-function codepointSlot(font: int32, codepoint: int32): int32 {
-	const key: uint64 = ((font as uint64) << 32) | (codepoint as uint64);
+function codepointSlot(font: FontId, codepoint: int32): int32 {
+	const key: uint64 = (((font as int32) as uint64) << 32) | (codepoint as uint64);
 	const hit = resolved.get(key);
 	if (hit.present) { return hit.value; }
 	coverageProbes = coverageProbes + 1;
@@ -395,12 +401,12 @@ function codepointSlot(font: int32, codepoint: int32): int32 {
 	return slot;
 }
 
-export function codepointFace(font: int32, codepoint: int32): CodepointFace {
+export function codepointFace(font: FontId, codepoint: int32): CodepointFace {
 	const slot: int32 = codepointSlot(font, codepoint);
 	if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
 	return { face: fallbacks[slot].face, scale: fallbacks[slot].scale };
 }
 
-export function faceForCodepoint(font: int32, codepoint: int32): int32 {
+export function faceForCodepoint(font: FontId, codepoint: int32): int32 {
 	return codepointFace(font, codepoint).face;
 }

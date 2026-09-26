@@ -1,3 +1,4 @@
+import { DEFAULT_FONT } from "../../src/void2d/font";
 // P3's atlas page-kind experiment (docs/VOID2D.md P3, "Atlas page kinds"): one workload through
 // the real glyph atlas and packer, read two ways. R8 pages are what void2d has; the four-plane
 // alternative packs the same tiles into the four channels of RGBA pages, which is the same
@@ -23,7 +24,14 @@ const pageOrder: Vec<int32> = new Array(0);
 
 function place(text: string, size: float32, dpi: float32, x: float32): void {
 	const index = allocateLabelText();
-	shapeLabel(index, text, { font: 0, size: size, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0 });
+	shapeLabel(index, text, {
+		font: DEFAULT_FONT,
+		size: size,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: 0.0,
+	});
 	const placed = placeLabel(index, trs2d(x, 20.0, 0.0, 1.0, 1.0), dpi);
 	for (const p of placed.placed) {
 		if (p.page != NO_GLYPH_PAGE) { pageOrder.push(p.page as int32); }

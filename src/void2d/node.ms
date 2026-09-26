@@ -2,7 +2,7 @@ import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, 
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
 import { NO_LABEL_TEXT, releaseLabelText } from "./labelText";
-import { Font, NO_FONT, resolveFont } from "./font";
+import { FontId, DEFAULT_FONT } from "./font";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
@@ -82,8 +82,8 @@ export interface Node2D {
 	contentYMin: float32;
 	contentXMax: float32;
 	contentYMax: float32;
-	fontId: int32;
-	lastFontId: int32;
+	fontId: FontId;
+	lastFontId: FontId;
 	filter: Filter;
 	layoutStyle: FlexStyle | null;
 	lastLayoutStyle: FlexStyle | null;
@@ -106,7 +106,7 @@ function base(kind: DrawKind): Node2D {
 		textDirty: true, lastText: "", lastSize: 0.0, lastAlign: 0.0, lastLetterSpacing: 0.0,
 		lastLineSpacing: 0.0, lastMaxWidth: 0.0,
 		contentXMin: 0.0, contentYMin: 0.0, contentXMax: 0.0, contentYMax: 0.0,
-		fontId: 0, lastFontId: -1,
+		fontId: DEFAULT_FONT, lastFontId: DEFAULT_FONT,
 		filter: noFilter(),
 		layoutStyle: null, lastLayoutStyle: null, yg: null,
 	};
@@ -148,10 +148,9 @@ export function label(text: string, size: float32, color: Color): Node2D {
 	n.text = text; n.size = size; n.color = color;
 	return n;
 }
-export function setFont(this n: Node2D, font: Font): Node2D {
+export function setFont(this n: Node2D, font: FontId): Node2D {
 	if (n.kind !== DrawKind.Label) { unreachable; }
-	const id: int32 = resolveFont(font);
-	if (id != NO_FONT) { n.fontId = id; }
+	n.fontId = font;
 	return n;
 }
 export function anim(frames: Tile[], fps: float32): Node2D {

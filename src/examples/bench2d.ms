@@ -1,3 +1,4 @@
+import { DEFAULT_FONT } from "../void2d/font";
 // void2d frame budget (docs/TESTING.md "T4"): a UI scene of 10 000 cards, each a Rect with
 // a Label child — box/text alternation in tree order — and a sprite-only scene of the same
 // size. tests/bench/bench{Ui,Sprites}.ms are the entries; each prints one machine-readable
@@ -166,7 +167,7 @@ function report(): void {
 function measureGlyphLookups(): int32 {
 	const before: uint32 = glyphLookups();
 	calcTextWidth(CODE_LINE, {
-		font: 0,
+		font: DEFAULT_FONT,
 		size: 13.0,
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,

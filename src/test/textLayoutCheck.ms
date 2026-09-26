@@ -11,13 +11,17 @@ import {
 	TAB_STOP_SPACES,
 	calcTextWidth,
 } from "../void2d/textLayout";
-import { addFont, fontFace, fallbackProbes } from "../void2d/font";
+import { FontId, DEFAULT_FONT, addFont, fontFace, fallbackProbes } from "../void2d/font";
 import { approx } from "./helpers";
 
-let loadedFont: int32 = -1;
+let loadedFont: FontId = DEFAULT_FONT;
+let fontLoaded: boolean = false;
 
 function style(): TextStyle {
-	if (loadedFont < 0) { loadedFont = addFont("assets/font.ttf"); }
+	if (!fontLoaded) {
+		loadedFont = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+		fontLoaded = true;
+	}
 	return {
 		font: loadedFont,
 		size: 13.0,
@@ -201,7 +205,9 @@ test "a tab already on a stop moves a whole stop, and a trailing one adds no wid
 }
 
 test "control characters never probe the fallback faces" {
-	const fresh: TextStyle = { ...style(), font: addFont("assets/font.ttf") };
+	const id: FontId = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+	assert id != DEFAULT_FONT;
+	const fresh: TextStyle = { ...style(), font: id };
 	TextLayout.layout("x", fresh);
 	const before: int32 = fallbackProbes();
 	TextLayout.layout("x\t\r\u0001\u001B\u001F\u007Fx", fresh);

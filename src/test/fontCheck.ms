@@ -4,7 +4,8 @@ import {
 	FontStyle,
 	FontFeature,
 	SizeAdjust,
-	NO_FONT,
+	FontId,
+	FontError,
 	addFont,
 	addFallbackFont,
 	registerFace,
@@ -49,11 +50,25 @@ function font(family: string, weight: int32, style: FontStyle): Font {
 	};
 }
 
-function faceOfPath(path: string): int32 {
-	return fontFace(addFont(path));
+function added(path: string): FontId {
+	const r = addFont(path);
+	if (r.ok) { return r.value; }
+	console.log(`fontCheck: ${path} did not load (${r.error.toString()})`);
+	unreachable;
 }
 
-function layoutWith(fontId: int32, text: string): TextLayout {
+function resolved(f: Font): FontId {
+	const r = resolveFont(f);
+	if (r.ok) { return r.value; }
+	console.log(`fontCheck: font "${f.family}" was refused (${r.error.toString()})`);
+	unreachable;
+}
+
+function faceOfPath(path: string): int32 {
+	return fontFace(added(path));
+}
+
+function layoutWith(fontId: FontId, text: string): TextLayout {
 	return TextLayout.layout(text, {
 		font: fontId, size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
 	});
@@ -68,7 +83,7 @@ test "the primary face lacks a hanzi the fallback has" {
 }
 
 test "a covered codepoint stays on the primary and a miss moves to the fallback" {
-	const f = addFont(LATIN);
+	const f = added(LATIN);
 	addFallbackFont(f, CJK);
 	assert faceForCodepoint(f, "A".code) == fontFace(f);
 	const face = faceForCodepoint(f, 0x4F60);
@@ -77,7 +92,7 @@ test "a covered codepoint stays on the primary and a miss moves to the fallback"
 }
 
 test "the fallback face loads on the first real miss, and only once" {
-	const f = addFont(LATIN);
+	const f = added(LATIN);
 	addFallbackFont(f, CJK);
 	const before = fallbackFacesLoaded();
 	faceForCodepoint(f, "B".code);
@@ -88,7 +103,7 @@ test "the fallback face loads on the first real miss, and only once" {
 }
 
 test "a codepoint no face has is resolved once and then cached as a miss" {
-	const f = addFont(LATIN);
+	const f = added(LATIN);
 	addFallbackFont(f, CJK);
 	const thai: int32 = 0x0E01;
 	assert faceForCodepoint(f, thai) == fontFace(f);
@@ -98,7 +113,7 @@ test "a codepoint no face has is resolved once and then cached as a miss" {
 }
 
 test "a mixed run takes each glyph from its own face and kerns only within one" {
-	const f = addFont(LATIN);
+	const f = added(LATIN);
 	addFallbackFont(f, CJK);
 	const primary = fontFace(f);
 	const l = layoutWith(f, "A你V");
@@ -112,41 +127,40 @@ test "a mixed run takes each glyph from its own face and kerns only within one" 
 }
 
 test "a font value resolves to its registered face and is interned" {
-	const regular = resolveFont(font("Test Sans", 400, FontStyle.Normal));
-	assert regular != NO_FONT;
+	const regular = resolved(font("Test Sans", 400, FontStyle.Normal));
 	assert fontFace(regular) == faceOfPath(LATIN);
-	assert resolveFont(font("Test Sans", 400, FontStyle.Normal)) == regular;
+	assert resolved(font("Test Sans", 400, FontStyle.Normal)) == regular;
 }
 
 test "weights match in the CSS order: down from 400-500, up from above 500, down below 400" {
-	assert fontFace(resolveFont(font("Weights", 500, FontStyle.Normal))) == faceOfPath(LATIN);
-	assert fontFace(resolveFont(font("Weights", 600, FontStyle.Normal))) == faceOfPath(HEAVY);
-	assert fontFace(resolveFont(font("Weights", 350, FontStyle.Normal))) == faceOfPath(LIGHT);
-	assert fontFace(resolveFont(font("Weights", 900, FontStyle.Normal))) == faceOfPath(HEAVY);
+	assert fontFace(resolved(font("Weights", 500, FontStyle.Normal))) == faceOfPath(LATIN);
+	assert fontFace(resolved(font("Weights", 600, FontStyle.Normal))) == faceOfPath(HEAVY);
+	assert fontFace(resolved(font("Weights", 350, FontStyle.Normal))) == faceOfPath(LIGHT);
+	assert fontFace(resolved(font("Weights", 900, FontStyle.Normal))) == faceOfPath(HEAVY);
 }
 
 test "a registered italic wins over a synthetic one" {
-	assert fontFace(resolveFont(font("Weights", 400, FontStyle.Italic))) == faceOfPath(HEAVY);
+	assert fontFace(resolved(font("Weights", 400, FontStyle.Italic))) == faceOfPath(HEAVY);
 }
 
 test "a missing bold or italic is synthesized from the nearest face" {
 	const regularFace = faceOfPath(LATIN);
-	const bold = fontFace(resolveFont(font("Test Sans", 700, FontStyle.Normal)));
-	const italic = fontFace(resolveFont(font("Test Sans", 400, FontStyle.Italic)));
+	const bold = fontFace(resolved(font("Test Sans", 700, FontStyle.Normal)));
+	const italic = fontFace(resolved(font("Test Sans", 400, FontStyle.Italic)));
 	assert bold != regularFace;
 	assert italic != regularFace;
 	assert bold != italic;
 	const h = glyphIndex(regularFace, "H".code);
 	assert glyphAdvance(bold, h, 13.0) > glyphAdvance(regularFace, h, 13.0);
 	assert glyphAdvance(italic, h, 13.0) == glyphAdvance(regularFace, h, 13.0);
-	assert fontFace(resolveFont(font("Test Sans", 800, FontStyle.Normal))) == bold;
+	assert fontFace(resolved(font("Test Sans", 800, FontStyle.Normal))) == bold;
 }
 
 test "the kern feature set to 0 turns pair kerning off" {
-	const kerned = resolveFont(font("Test Sans", 400, FontStyle.Normal));
+	const kerned = resolved(font("Test Sans", 400, FontStyle.Normal));
 	const plain = font("Test Sans", 400, FontStyle.Normal);
 	plain.features.push({ tag: "kern", value: 0 });
-	const unkerned = resolveFont(plain);
+	const unkerned = resolved(plain);
 	assert unkerned != kerned;
 	const face = fontFace(kerned);
 	const aWidth = glyphAdvance(face, glyphIndex(face, "A".code), 13.0);
@@ -157,11 +171,20 @@ test "the kern feature set to 0 turns pair kerning off" {
 test "a feature the shaper owns, or a family nobody registered, refuses the font" {
 	const ligatures = font("Test Sans", 400, FontStyle.Normal);
 	ligatures.features.push({ tag: "liga", value: 1 });
-	assert resolveFont(ligatures) == NO_FONT;
-	assert resolveFont(font("No Such Family", 400, FontStyle.Normal)) == NO_FONT;
+	const shaped = resolveFont(ligatures);
+	assert !shaped.ok;
+	if (!shaped.ok) { assert shaped.error == FontError.NeedsShaper; }
+	const unknown = resolveFont(font("No Such Family", 400, FontStyle.Normal));
+	assert !unknown.ok;
+	if (!unknown.ok) { assert unknown.error == FontError.NoFamily; }
 	const badFallback = font("Test Sans", 400, FontStyle.Normal);
 	badFallback.fallbacks.push("No Such Family");
-	assert resolveFont(badFallback) == NO_FONT;
+	const fallbackRefused = resolveFont(badFallback);
+	assert !fallbackRefused.ok;
+	if (!fallbackRefused.ok) { assert fallbackRefused.error == FontError.NoFallbackFamily; }
+	const missing = addFont("tests/fonts/noSuchFont.ttf");
+	assert !missing.ok;
+	if (!missing.ok) { assert missing.error == FontError.NotLoaded; }
 }
 
 test "fallback families resolve in the font's weight, synthesized when they lack it" {
@@ -169,8 +192,8 @@ test "fallback families resolve in the font's weight, synthesized when they lack
 	regular.fallbacks.push("Test Hanzi");
 	const bold = font("Test Sans", 700, FontStyle.Normal);
 	bold.fallbacks.push("Test Hanzi");
-	const regularId = resolveFont(regular);
-	const boldId = resolveFont(bold);
+	const regularId = resolved(regular);
+	const boldId = resolved(bold);
 	const regularHanzi = faceForCodepoint(regularId, 0x4F60);
 	const boldHanzi = faceForCodepoint(boldId, 0x4F60);
 	assert regularHanzi == faceOfPath(CJK);
@@ -179,13 +202,11 @@ test "fallback families resolve in the font's weight, synthesized when they lack
 	assert glyphAdvance(boldHanzi, g, 13.0) > glyphAdvance(regularHanzi, g, 13.0);
 }
 
-test "setFont gives a label its font, and a refused font leaves the label as it was" {
+test "setFont gives a label the font a FontId names" {
 	const n = label("void2d", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const bold = font("Test Sans", 700, FontStyle.Normal);
+	const bold: FontId = resolved(font("Test Sans", 700, FontStyle.Normal));
 	n.setFont(bold);
-	assert n.fontId == resolveFont(bold);
-	n.setFont(font("No Such Family", 400, FontStyle.Normal));
-	assert n.fontId == resolveFont(bold);
+	assert n.fontId == bold;
 }
 
 struct AdjustCase {
@@ -193,14 +214,14 @@ struct AdjustCase {
 	ratio: float64;
 }
 
-function withFallback(family: string, fallback: string, adjust: SizeAdjust): int32 {
+function withFallback(family: string, fallback: string, adjust: SizeAdjust): FontId {
 	const f = font(family, 400, FontStyle.Normal);
 	f.fallbacks.push(fallback);
 	f.sizeAdjust = adjust;
-	return resolveFont(f);
+	return resolved(f);
 }
 
-function laidSize(fontId: int32, text: string, index: int32): float32 {
+function laidSize(fontId: FontId, text: string, index: int32): float32 {
 	return layoutWith(fontId, text).glyphs[index].size;
 }
 

@@ -1,3 +1,4 @@
+import { DEFAULT_FONT } from "../void2d/font";
 import {
 	allocateLabelText,
 	releaseLabelText,
@@ -22,7 +23,7 @@ function shaped(text: string): int32 {
 function shapedAt(text: string, size: float32): int32 {
 	const index = allocateLabelText();
 	shapeLabel(index, text, {
-		font: 0,
+		font: DEFAULT_FONT,
 		size: size,
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,

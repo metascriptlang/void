@@ -7,7 +7,7 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "./face";
-import { CodepointFace, codepointFace, fontFace, fontKerns } from "./font";
+import { CodepointFace, FontId, codepointFace, fontFace, fontKerns } from "./font";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 import { lineBreaks } from "./lineBreak";
 
@@ -23,7 +23,7 @@ export const NO_GLYPH: int32 = -1;
 export const TAB_STOP_SPACES: int32 = 8;
 
 export struct TextStyle {
-	font: int32;
+	font: FontId;
 	size: float32;
 	letterSpacing: float32;
 	lineSpacing: float32;
@@ -137,7 +137,7 @@ function tabStop(style: TextStyle): float32 {
 	return (TAB_STOP_SPACES as float32) * space;
 }
 
-function faceOf(font: int32, codepoint: int32): CodepointFace {
+function faceOf(font: FontId, codepoint: int32): CodepointFace {
 	if (isControl(codepoint)) { return { face: fontFace(font), scale: 1.0 }; }
 	return codepointFace(font, codepoint);
 }
@@ -155,7 +155,7 @@ function coversGrapheme(face: int32, cps: Span<Codepoint>, first: int32, end: in
 }
 
 function graphemeFace(
-	font: int32,
+	font: FontId,
 	cps: Span<Codepoint>,
 	first: int32,
 	end: int32,
@@ -168,7 +168,7 @@ function graphemeFace(
 	return Result.err(GraphemeCoverage.NoFaceCoversAll);
 }
 
-function assignGrapheme(font: int32, cps: Span<Codepoint>, first: int32, end: int32): void {
+function assignGrapheme(font: FontId, cps: Span<Codepoint>, first: int32, end: int32): void {
 	if (end - first > 1) {
 		const whole = graphemeFace(font, cps, first, end);
 		if (whole.ok) {
@@ -186,7 +186,7 @@ function assignGrapheme(font: int32, cps: Span<Codepoint>, first: int32, end: in
 	}
 }
 
-function assignFaces(font: int32, cps: Span<Codepoint>): void {
+function assignFaces(font: FontId, cps: Span<Codepoint>): void {
 	let cursor: GraphemeCursor = startGraphemes();
 	let first: int32 = 0;
 	const count: int32 = cps.length as int32;

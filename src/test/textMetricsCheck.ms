@@ -2,13 +2,26 @@ import { label, rect } from "../void2d/node";
 import { textLayout, textWidth, textHeight, calcTextWidth, splitText, getBounds } from "../void2d/render";
 import { TextLayout } from "../void2d/textLayout";
 import { Bounds, rgba, emptyBounds, identity2d } from "../void2d/types";
-import { Font, FontFeature, FontStyle, SizeAdjust, registerFace } from "../void2d/font";
+import {
+	DEFAULT_FONT,
+	Font,
+	FontFeature,
+	FontStyle,
+	SizeAdjust,
+	registerFace,
+	resolveFont,
+} from "../void2d/font";
 import { approx } from "./helpers";
 
 test "textWidth is the width of the layout the label paints" {
 	const n = label("fn main() { }", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const direct = TextLayout.layout("fn main() { }", {
-		font: 0, size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: 0.0,
 	});
 	assert approx(n.textWidth(), direct.width);
 	assert approx(n.textHeight(), direct.height);
@@ -29,7 +42,12 @@ test "calcTextWidth and splitText use the label's font, size and wrap width" {
 	n.maxWidth = fits;
 	assert n.splitText("aa bb cc") == "aa bb\ncc";
 	assert approx(n.calcTextWidth("aa bb cc"), TextLayout.layout("aa bb cc", {
-		font: 0, size: 13.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: 0.0,
 	}).width);
 }
 
@@ -49,7 +67,10 @@ test "a label's bounds hold the ink that overhangs its line box" {
 		family: "Overhang Sans", weight: 400, style: FontStyle.Italic,
 		features: features, fallbacks: fallbacks, sizeAdjust: SizeAdjust.None,
 	};
-	const n = label("ll", 40.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(italic);
+	const resolved = resolveFont(italic);
+	assert resolved.ok;
+	if (!resolved.ok) { return; }
+	const n = label("ll", 40.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(resolved.value);
 	n.sync(identity2d(), false);
 	const b = emptyBounds();
 	n.getBounds(b);

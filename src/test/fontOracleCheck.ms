@@ -1,6 +1,6 @@
 import { readFile } from "std/fs";
 import { loadFace, faceMetrics, decorationMetrics, faceHeights } from "../void2d/face";
-import { addFont } from "../void2d/font";
+import { DEFAULT_FONT, addFont } from "../void2d/font";
 import { TextLayout } from "../void2d/textLayout";
 
 const METRICS_PATH: string = "tests/oracle/metrics.json";
@@ -74,7 +74,12 @@ test "cmap glyph ids and kerned pen positions agree with HarfBuzz, GSUB off" {
 		const glyphs = row.getDynamicField("glyphs");
 		const xs = row.getDynamicField("x");
 		const l = TextLayout.layout(sample, {
-			font: addFont(path), size: em, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0, align: 0.0,
+			font: try addFont(path) catch DEFAULT_FONT,
+			size: em,
+			letterSpacing: 0.0,
+			lineSpacing: 0.0,
+			maxWidth: 0.0,
+			align: 0.0,
 		});
 		const expected: int32 = glyphs.length() as int32;
 		if ((l.glyphs.length as int32) != expected) {
