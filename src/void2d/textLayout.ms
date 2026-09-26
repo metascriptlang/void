@@ -3,6 +3,7 @@ import {
 	glyphAdvance,
 	glyphKern,
 	faceMetrics,
+	FaceMetrics,
 	decorationMetrics,
 	DecorationMetrics,
 } from "./face";
@@ -49,6 +50,7 @@ export struct LineBox {
 	x: float32;
 	top: float32;
 	baseline: float32;
+	height: float32;
 	width: float32;
 	charStart: int32;
 	charEnd: int32;
@@ -307,6 +309,27 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	return whole;
 }
 
+function tallestFaces(glyphs: Span<LaidGlyph>, primary: int32, style: TextStyle): FaceMetrics {
+	const own: FaceMetrics = faceMetrics(primary, style.size);
+	let ascent: float32 = own.ascent;
+	let descent: float32 = own.descent;
+	let measuredFace: int32 = primary;
+	let measuredSize: float32 = style.size;
+	for (let i = 0; i < (glyphs.length as int32); i++) {
+		const face: int32 = glyphs[i].face;
+		const size: float32 = glyphs[i].size;
+		if (glyphs[i].glyph == NO_GLYPH || (face == measuredFace && size == measuredSize)) {
+			continue;
+		}
+		const m: FaceMetrics = faceMetrics(face, size);
+		if (m.ascent > ascent) { ascent = m.ascent; }
+		if (m.descent > descent) { descent = m.descent; }
+		measuredFace = face;
+		measuredSize = size;
+	}
+	return { ascent: ascent, descent: descent, lineGap: own.lineGap };
+}
+
 export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
 	const primary: int32 = fontFace(style.font);
 	const metrics = faceMetrics(primary, style.size);
@@ -319,6 +342,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 	const glyphs: Vec<LaidGlyph> = new Array(0);
 	const lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
+	let top: float32 = 0.0;
 	let start: int32 = 0;
 	while (true) {
 		let paragraphEnd: int32 = start;
@@ -329,7 +353,8 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		const end: int32 = lineBreak.end;
 		const lineIndex: int32 = lines.length as int32;
 		const run = layRun(cps, start, end, style, lineIndex);
-		const top: float32 = (lineIndex as float32) * (lineHeight + style.lineSpacing);
+		const box: FaceMetrics = tallestFaces(run.glyphs, primary, style);
+		const height: float32 = box.ascent + box.descent + box.lineGap;
 		const x: float32 = -run.width * style.align;
 		const firstGlyph: int32 = glyphs.length as int32;
 		for (const g of run.glyphs) { glyphs.push({ ...g, x: g.x + x }); }
@@ -340,7 +365,8 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 			glyphCount: run.glyphs.length as int32,
 			x: x,
 			top: top,
-			baseline: top + metrics.ascent,
+			baseline: top + box.ascent,
+			height: height,
 			width: run.width,
 			charStart: start,
 			charEnd: end,
@@ -348,6 +374,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 			byteEnd: byteEnd,
 		});
 		if (run.width > width) { width = run.width; }
+		top = top + height + style.lineSpacing;
 		if (lineBreak.next < paragraphEnd) {
 			start = lineBreak.next;
 		} else if (paragraphEnd < count) {
@@ -356,8 +383,6 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 			break;
 		}
 	}
-	const lineCount: float32 = lines.length as float32;
-	const gaps: float32 = lineCount - (1 as float32);
 	return {
 		glyphs: glyphs,
 		lines: lines,
@@ -365,7 +390,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		descent: metrics.descent,
 		lineHeight: lineHeight,
 		width: width,
-		height: lineCount * lineHeight + gaps * style.lineSpacing,
+		height: top - style.lineSpacing,
 		decoration: decorationMetrics(primary, style.size),
 	};
 }

@@ -1,4 +1,4 @@
-import { loadFace, glyphIndex, glyphAdvance } from "../void2d/face";
+import { loadFace, glyphIndex, glyphAdvance, faceMetrics } from "../void2d/face";
 import {
 	Font,
 	FontStyle,
@@ -254,4 +254,20 @@ test "a grapheme no one face covers keeps a face per codepoint" {
 	const l = layoutWith(id, "你́");
 	assert l.glyphs[0].face == faceForCodepoint(id, 0x4F60);
 	assert l.glyphs[1].face == fontFace(id);
+}
+
+test "a line box is as tall as the tallest face on it, and a Latin line keeps the font's" {
+	const id = withFallback("Test Sans", "Test Hanzi", SizeAdjust.None);
+	const inter = faceMetrics(fontFace(id), 13.0);
+	const noto = faceMetrics(faceForCodepoint(id, 0x4F60), 13.0);
+	assert noto.ascent > inter.ascent;
+	const l = layoutWith(id, "A\n你A\nA");
+	const latin: float32 = inter.ascent + inter.descent + inter.lineGap;
+	const mixed: float32 = noto.ascent + Math.max(noto.descent, inter.descent) + inter.lineGap;
+	assert approx(l.lines[0].height, latin) && approx(l.lines[2].height, latin);
+	assert approx(l.lines[1].height, mixed);
+	assert approx(l.lines[1].top, latin);
+	assert approx(l.lines[1].baseline, latin + noto.ascent);
+	assert approx(l.lines[2].top, latin + mixed);
+	assert approx(l.height, latin + mixed + latin);
 }
