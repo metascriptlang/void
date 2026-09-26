@@ -797,3 +797,13 @@ test "selected rows meet across line spacing, half of it above each row and half
 	text.getBounds(bounds);
 	assert bounds.yMin <= tops[0] && bottoms[2] <= bounds.yMax;
 }
+
+test "under setForceWidth a selected row that ends in a mark reaches its last cell" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("aé", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setForceWidth(10.0);
+	text.setSelectionRange({ start: 0, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
+	const spans = selectedSpans(s.root, 200.0, 80.0);
+	assert (spans.length as int32) == 2;
+	assert approx(spans[1], 20.0);
+}

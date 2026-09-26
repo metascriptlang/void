@@ -257,7 +257,7 @@ FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox
 	render:emitRunBox render:emitRunLine render:emitDecorations render:rowEnd render:xOnRow
 	render:selectedRow render:emitSelection render:emitCaret label84ext:cursorShown
-	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex"
+	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex text76ayout:clusterEnd"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
 	label84ext:lineDecorations

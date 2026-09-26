@@ -381,6 +381,11 @@ test "force_width puts each base on the cell grid and keeps a mark on its base" 
 	assert l.lines[0].width == 30.0;
 }
 
+test "under force_width a row that ends in a mark ends at its last cell" {
+	const l = wrapped("aé", 0.0, { ...PLAIN_LINES, forceWidth: 10.0 });
+	assert l.xForIndex(3) == 20.0;
+}
+
 test "splitAt cuts one line without shaping it again" {
 	const l = TextLayout.layout("abcdef", style());
 	const [left, right] = l.splitAt(3);

@@ -48,7 +48,6 @@ import {
 	TextLayout,
 	TextStyle,
 	LineBox,
-	LaidGlyph,
 	LineOptions,
 	TextRun,
 	PLAIN_LINES,
@@ -417,8 +416,13 @@ const EMPTY_ROW_WIDTH: float32 = 4.0;
 
 function rowEnd(this layout: TextLayout, line: LineBox): float32 {
 	if (line.glyphCount == 0) { return line.x; }
-	const last: LaidGlyph = layout.glyphs[line.firstGlyph + line.glyphCount - 1];
-	return last.x + last.advance;
+	let right: float32 = line.x;
+	for (let k = line.firstGlyph + line.glyphCount - 1; k >= line.firstGlyph; k--) {
+		const edge: float32 = layout.glyphs[k].x + layout.glyphs[k].advance;
+		if (edge > right) { right = edge; }
+		if (layout.glyphs[k].clusterStart) { break; }
+	}
+	return right;
 }
 
 function xOnRow(this layout: TextLayout, line: LineBox, index: int32): float32 {

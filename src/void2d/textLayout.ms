@@ -796,8 +796,18 @@ export function xForIndex(this l: TextLayout, index: int32): float32 {
 	for (let k = line.firstGlyph; k < end; k++) {
 		if (l.glyphs[k].index >= index) { return l.glyphs[k].x; }
 	}
+	return l.clusterEnd(line);
+}
+
+function clusterEnd(this l: TextLayout, line: LineBox): float32 {
 	if (line.glyphCount == 0) { return line.x; }
-	return l.glyphs[end - 1].x + l.glyphs[end - 1].advance;
+	let right: float32 = line.x;
+	for (let k = line.firstGlyph + line.glyphCount - 1; k >= line.firstGlyph; k--) {
+		const edge: float32 = l.glyphs[k].x + l.glyphs[k].advance;
+		if (edge > right) { right = edge; }
+		if (l.glyphs[k].clusterStart) { break; }
+	}
+	return right;
 }
 
 export function lineBoxAt(this l: TextLayout, index: int32): LineBox {
