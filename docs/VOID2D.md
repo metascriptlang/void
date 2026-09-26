@@ -825,9 +825,11 @@ wrap tailoring for code measured on code before it is fixed.
 - `c593fac`, the grapheme table (1 386 ranges, 5.5 KB of rodata), the UAX #29 segmenter and
   whole-grapheme face selection: +11 924 / +11 932;
 - `d80d723`, UAX #14 (the line-break table, 2 038 ranges, 8.2 KB, and its rules) in place of
-  GPUI's rule: +28 891 / +28 942. That is as much as P3's whole glyph layer (+28 300 / +28 178),
-  and about 20 KB of it is the rules' code, not the table. It ships in every build that links
-  `textLayout.ms`; guardrail 6's module budget is P6's to set.
+  GPUI's rule: +28 891 / +28 942. That is as much as P3's whole glyph layer (+28 300 / +28 178).
+  Taken apart on WebGL2 by building HEAD with a part cut out: the rules are 12 845 B, the table
+  8.2 KB and the rest, 6.4 KB, is building the units, their `Vec`s and the lookup; UAX #14 whole
+  is 27 458 B. A `--release` web build is byte-identical, so these are the shipped sizes. It ships
+  in every build that links `textLayout.ms`; guardrail 6's module budget is P6's to set.
 
 The three older trees carry the `sortByZ` park of `8ef452a` applied by hand, because without it no
 tree after `312dea6` builds for the web (`tests/PENDING.md style:span-of-interface-param`).
