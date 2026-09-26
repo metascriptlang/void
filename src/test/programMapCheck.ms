@@ -209,7 +209,7 @@ test "the core refuses a lit material without the block its program reads, and t
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, held, items, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
-		assert core.drawn[0] == Program.Lit;
+		assert core.drawn.length == 0 && held.uniforms[core.cameraBlock.offset] == 0.0;
 	}
 }
 

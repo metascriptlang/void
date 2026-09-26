@@ -137,24 +137,35 @@ export function beginFrame(
 	camera: Span<float32>,
 	lights: Span<float32>,
 ): Result<boolean, RendererError> {
-	while ((renderer.drawn.length as int32) < (items.length as int32)) {
-		renderer.drawn.push(Program.Lit);
-	}
-	for (let i = 0; i < (items.length as int32); i++) {
-		const material: int32 = items[i].material;
+	for (const item of items) {
+		const material: int32 = item.material;
 		const drawn: Result<Program, ProgramError> =
 			renderer.programs.drawnFor(context.materials[material].program);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
 			return Result.err(RendererError.MaterialBlock);
 		}
-		renderer.drawn[i] = drawn.value;
+	}
+	if ((camera.length as int32) != renderer.cameraBlock.length) {
+		return Result.err(RendererError.CameraBlockLength);
+	}
+	if ((lights.length as int32) != renderer.lightBlock.length) {
+		return Result.err(RendererError.LightBlockLength);
 	}
 	if (!writeUniforms(context, renderer.cameraBlock, camera).ok) {
 		return Result.err(RendererError.CameraBlockLength);
 	}
 	if (!writeUniforms(context, renderer.lightBlock, lights).ok) {
 		return Result.err(RendererError.LightBlockLength);
+	}
+	while ((renderer.drawn.length as int32) < (items.length as int32)) {
+		renderer.drawn.push(Program.Lit);
+	}
+	for (let i = 0; i < (items.length as int32); i++) {
+		const resolved: Result<Program, ProgramError> =
+			renderer.programs.drawnFor(context.materials[items[i].material].program);
+		if (!resolved.ok) { unreachable; }
+		renderer.drawn[i] = resolved.value;
 	}
 	const generation: int32 = contextGeneration();
 	const fresh: boolean = generation != renderer.generation;
@@ -177,7 +188,7 @@ export function beginFrame(
 
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is
 // its attachment layout), with the camera and lights applied to every item and each drawn with
-// the program beginFrame resolved for it.
+// the program beginFrame resolved for it: `items` must be the span that beginFrame accepted.
 export function drawPassLists(
 	ref renderer: Renderer,
 	ref context: DrawContext,
