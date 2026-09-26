@@ -8,6 +8,7 @@ import {
 	DecorationMetrics,
 } from "./face";
 import { CodepointFace, FontId, codepointFace, fontFace, fontKerns } from "./font";
+import { Color } from "./types";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 import { lineBreaks } from "./lineBreak";
 
@@ -48,8 +49,22 @@ export struct LaidGlyph {
 	advance: float32;
 	line: int32;
 	charIndex: int32;
+	index: int32;
 	byteStart: int32;
 	byteEnd: int32;
+	run: int32;
+}
+
+export const NO_RUN: int32 = -1;
+
+export struct TextRun {
+	len: int32;
+	font: FontId;
+	color: Color;
+	background: Color;
+	underline: Color;
+	wavy: boolean;
+	strikethrough: Color;
 }
 
 export struct LineBox {
@@ -62,6 +77,8 @@ export struct LineBox {
 	width: float32;
 	charStart: int32;
 	charEnd: int32;
+	indexStart: int32;
+	indexEnd: int32;
 	byteStart: int32;
 	byteEnd: int32;
 }
@@ -79,8 +96,11 @@ export struct TextLayout {
 
 struct Codepoint {
 	value: int32;
+	index: int32;
 	byteStart: int32;
 	byteEnd: int32;
+	font: FontId;
+	run: int32;
 	face: int32;
 	scale: float32;
 	breakBefore: boolean;
@@ -90,8 +110,9 @@ enum GraphemeCoverage {
 	NoFaceCoversAll,
 }
 
-function decodeUtf8(text: string): Vec<Codepoint> {
+function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 	const out: Vec<Codepoint> = new Array(0);
+	let index: int32 = 0;
 	const bytes: Span<char> = text;
 	const total: int32 = bytes.length as int32;
 	let i: int32 = 0;
@@ -113,9 +134,11 @@ function decodeUtf8(text: string): Vec<Codepoint> {
 		for (let k = 1; k < length; k++) {
 			value = (value << 6) | (((bytes[i + k] as uint8) as int32) & 0x3F);
 		}
-		out.push({ value: value, byteStart: i, byteEnd: i + length, face: -1, scale: 1.0,
-			breakBefore: false,
+		out.push({
+			value: value, index: index, byteStart: i, byteEnd: i + length, font: font,
+			run: NO_RUN, face: -1, scale: 1.0, breakBefore: false,
 		});
+		index = index + (value >= 0x10000 ? 2 : 1);
 		i = i + length;
 	}
 	return out;
@@ -176,7 +199,8 @@ function graphemeFace(
 	return Result.err(GraphemeCoverage.NoFaceCoversAll);
 }
 
-function assignGrapheme(font: FontId, cps: Span<Codepoint>, first: int32, end: int32): void {
+function assignGrapheme(cps: Span<Codepoint>, first: int32, end: int32): void {
+	const font: FontId = cps[first].font;
 	if (end - first > 1) {
 		const whole = graphemeFace(font, cps, first, end);
 		if (whole.ok) {
@@ -188,23 +212,23 @@ function assignGrapheme(font: FontId, cps: Span<Codepoint>, first: int32, end: i
 		}
 	}
 	for (let k = first; k < end; k++) {
-		const source: CodepointFace = faceOf(font, cps[k].value);
+		const source: CodepointFace = faceOf(cps[k].font, cps[k].value);
 		cps[k].face = source.face;
 		cps[k].scale = source.scale;
 	}
 }
 
-function assignFaces(font: FontId, cps: Span<Codepoint>): void {
+function assignFaces(cps: Span<Codepoint>): void {
 	let cursor: GraphemeCursor = startGraphemes();
 	let first: int32 = 0;
 	const count: int32 = cps.length as int32;
 	for (let i = 0; i < count; i++) {
 		if (breaksBefore(cursor, cps[i].value) && i > first) {
-			assignGrapheme(font, cps, first, i);
+			assignGrapheme(cps, first, i);
 			first = i;
 		}
 	}
-	if (count > first) { assignGrapheme(font, cps, first, count); }
+	if (count > first) { assignGrapheme(cps, first, count); }
 }
 
 function assignBreaks(cps: Span<Codepoint>): void {
@@ -219,8 +243,8 @@ function step(
 	pen: float32,
 	previous: int32,
 	previousFace: int32,
+	previousRun: int32,
 	style: TextStyle,
-	kerns: boolean,
 ): Step {
 	if (isControl(codepoint.value)) {
 		let next: float32 = pen;
@@ -237,7 +261,8 @@ function step(
 	const size: float32 = style.size * codepoint.scale;
 	const glyph: int32 = glyphIndex(face, codepoint.value);
 	let x: float32 = pen;
-	if (previous >= 0 && previousFace == face && kerns) {
+	const sameRun: boolean = previousFace == face && previousRun == codepoint.run;
+	if (previous >= 0 && sameRun && fontKerns(codepoint.font)) {
 		x = pen + glyphKern(face, previous, glyph, size);
 	}
 	const advance: float32 = glyphAdvance(face, glyph, size);
@@ -259,10 +284,10 @@ function layRun(
 	let width: float32 = 0.0;
 	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
-	const kerns: boolean = fontKerns(style.font);
+	let previousRun: int32 = NO_RUN;
 	for (let i = from; i < to; i++) {
 		const value: int32 = cps[i].value;
-		const s = step(cps[i], pen, previous, previousFace, style, kerns);
+		const s = step(cps[i], pen, previous, previousFace, previousRun, style);
 		glyphs.push({
 			face: s.face,
 			glyph: s.glyph,
@@ -272,13 +297,16 @@ function layRun(
 			advance: s.advance,
 			line: line,
 			charIndex: i,
+			index: cps[i].index,
 			byteStart: cps[i].byteStart,
 			byteEnd: cps[i].byteEnd,
+			run: cps[i].run,
 		});
 		if (value != SPACE && s.glyph != NO_GLYPH) { width = s.x + s.advance; }
 		pen = s.next;
 		previous = s.glyph;
 		previousFace = s.face;
+		previousRun = cps[i].run;
 	}
 	return { glyphs: glyphs, width: width };
 }
@@ -301,11 +329,11 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	let pen: float32 = 0.0;
 	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
-	const kerns: boolean = fontKerns(style.font);
+	let previousRun: int32 = NO_RUN;
 	for (let i = from; i < to; i++) {
 		const value: int32 = cps[i].value;
 		if (i > from && inked && cps[i].breakBefore) { candidate = i; }
-		const s = step(cps[i], pen, previous, previousFace, style, kerns);
+		const s = step(cps[i], pen, previous, previousFace, previousRun, style);
 		if (value != SPACE && candidate > from && s.x + s.advance > style.maxWidth) {
 			return breakAt(cps, candidate);
 		}
@@ -313,6 +341,7 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 		pen = s.next;
 		previous = s.glyph;
 		previousFace = s.face;
+		previousRun = cps[i].run;
 	}
 	return whole;
 }
@@ -367,15 +396,56 @@ function alignLines(
 	}
 }
 
+function unitEnd(cp: Codepoint): int32 {
+	return cp.index + (cp.value >= 0x10000 ? 2 : 1);
+}
+
+function assignRuns(cps: Span<Codepoint>, runs: Span<TextRun>, units: int32): void {
+	let total: int32 = 0;
+	for (const run of runs) { total = total + run.len; }
+	if (total != units) {
+		console.log(`void2d: text runs cover ${total} UTF-16 units of a text of ${units}`);
+		unreachable;
+	}
+	let run: int32 = 0;
+	let runEnd: int32 = runs.length > 0 ? runs[0].len : 0;
+	for (let i = 0; i < (cps.length as int32); i++) {
+		while (cps[i].index >= runEnd) {
+			run = run + 1;
+			runEnd = runEnd + runs[run].len;
+		}
+		const runStart: int32 = runEnd - runs[run].len;
+		if (cps[i].index < runStart) {
+			console.log(
+				`void2d: text run ${run} starts inside the surrogate pair at ${cps[i].index}`,
+			);
+			unreachable;
+		}
+		cps[i].run = run;
+		cps[i].font = runs[run].font;
+	}
+}
+
 export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
+	const plain: Vec<TextRun> = new Array(0);
+	return layoutRuns(text, style, plain);
+}
+
+export function layoutRuns(
+	text: string,
+	style: TextStyle,
+	runs: Span<TextRun>,
+): TextLayout {
 	const primary: int32 = fontFace(style.font);
 	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
-	const cps: Vec<Codepoint> = decodeUtf8(text);
-	assignFaces(style.font, cps);
-	if (style.maxWidth > 0.0) { assignBreaks(cps); }
+	const cps: Vec<Codepoint> = decodeUtf8(text, style.font);
 	const count: int32 = cps.length as int32;
+	if (runs.length > 0) { assignRuns(cps, runs, count > 0 ? unitEnd(cps[count - 1]) : 0); }
+	assignFaces(cps);
+	if (style.maxWidth > 0.0) { assignBreaks(cps); }
 	const textBytes: int32 = count > 0 ? cps[count - 1].byteEnd : 0;
+	const textUnits: int32 = count > 0 ? unitEnd(cps[count - 1]) : 0;
 	const glyphs: Vec<LaidGlyph> = new Array(0);
 	const lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
@@ -396,6 +466,8 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 		for (const g of run.glyphs) { glyphs.push(g); }
 		const byteStart: int32 = start < count ? cps[start].byteStart : textBytes;
 		const byteEnd: int32 = end > start ? cps[end - 1].byteEnd : byteStart;
+		const indexStart: int32 = start < count ? cps[start].index : textUnits;
+		const indexEnd: int32 = end > start ? unitEnd(cps[end - 1]) : indexStart;
 		lines.push({
 			firstGlyph: firstGlyph,
 			glyphCount: run.glyphs.length as int32,
@@ -406,6 +478,8 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 			width: run.width,
 			charStart: start,
 			charEnd: end,
+			indexStart: indexStart,
+			indexEnd: indexEnd,
 			byteStart: byteStart,
 			byteEnd: byteEnd,
 		});

@@ -7,12 +7,24 @@ import {
 import {
 	TextLayout,
 	TextStyle,
+	TextRun,
 	Align,
 	NO_GLYPH,
+	layoutRuns,
 	TAB_STOP_SPACES,
 	calcTextWidth,
 } from "../void2d/textLayout";
-import { FontId, DEFAULT_FONT, addFont, fontFace, fallbackProbes } from "../void2d/font";
+import {
+	FontId,
+	DEFAULT_FONT,
+	FontStyle,
+	SizeAdjust,
+	addFont,
+	resolveFont,
+	fontFace,
+	fallbackProbes,
+} from "../void2d/font";
+import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
 
 let loadedFont: FontId = DEFAULT_FONT;
@@ -235,4 +247,43 @@ test "control characters never probe the fallback faces" {
 	const before: int32 = fallbackProbes();
 	TextLayout.layout("x\t\r\u0001\u001B\u001F\u007Fx", fresh);
 	assert fallbackProbes() == before;
+}
+
+function runOf(len: int32, font: FontId): TextRun {
+	const clear = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: len, font: font, color: rgba(1.0, 1.0, 1.0, 1.0), background: clear,
+		underline: clear, wavy: false, strikethrough: clear,
+	};
+}
+
+test "a run boundary splits the kerning pair, as a style change splits GPUI's shaping run" {
+	const whole = TextLayout.layout("AV", style());
+	assert whole.glyphs[1].x < advanceOf("A".code) - 0.5;
+	const runs: TextRun[] = [runOf(1, style().font), runOf(1, style().font)];
+	const split = layoutRuns("AV", style(), runs);
+	assert approx(split.glyphs[1].x, advanceOf("A".code));
+	assert split.glyphs[0].run == 0 && split.glyphs[1].run == 1;
+}
+
+test "indices count UTF-16 units, so an astral codepoint spans two" {
+	const font: FontId = style().font;
+	const runs: TextRun[] = [runOf(1, font), runOf(2, font), runOf(1, font)];
+	const l = layoutRuns("a\u{1F600}b", style(), runs);
+	assert l.glyphs[0].index == 0 && l.glyphs[1].index == 1 && l.glyphs[2].index == 3;
+	assert l.glyphs[1].run == 1 && l.glyphs[2].run == 2;
+	assert l.lines[0].indexStart == 0 && l.lines[0].indexEnd == 4;
+}
+
+test "a run draws in its own font" {
+	const bold = resolveFont({
+		family: "Inter", weight: 700, style: FontStyle.Normal, features: [], fallbacks: [],
+		sizeAdjust: SizeAdjust.None,
+	});
+	assert bold.ok;
+	if (!bold.ok) { return; }
+	const runs: TextRun[] = [runOf(1, style().font), runOf(1, bold.value)];
+	const l = layoutRuns("HH", style(), runs);
+	assert l.glyphs[0].face == fontFace(style().font);
+	assert l.glyphs[1].face == fontFace(bold.value);
 }
