@@ -111,10 +111,10 @@ in vec4 instanceColor;
 out vec4 fragColor;
 void main() {
     vec4 texel = texture(sampler2D(billboardTexture, billboardSampler), uv);
-    if (texel.a < 0.5) {
+    vec4 pixel = billboardColor * texel * instanceColor;
+    if (pixel.a < 0.5) {
         discard;
     }
-    vec4 pixel = billboardColor * texel * instanceColor;
     if (billboard.y != 0.0) {
         vec3 n = normalize(towardCamera);
         float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;

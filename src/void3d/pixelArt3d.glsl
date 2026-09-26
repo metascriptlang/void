@@ -81,8 +81,8 @@ void main() {
 @include_block billboardUniforms
 @include_block lightUniforms
 @include_block toonPointLight
-layout(binding=0) uniform texture2D spriteTexture;
-layout(binding=0) uniform sampler spriteSampler;
+layout(binding=0) uniform texture2D billboardTexture;
+layout(binding=0) uniform sampler billboardSampler;
 in vec2 uv;
 in vec3 rootPosition;
 in vec4 instanceColor;
@@ -90,8 +90,8 @@ in float depth01;
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
-    vec4 texel = texture(sampler2D(spriteTexture, spriteSampler), uv);
-    if (texel.a < 0.5) {
+    vec4 texel = texture(sampler2D(billboardTexture, billboardSampler), uv);
+    if (billboardColor.a * texel.a * instanceColor.a < 0.5) {
         discard;
     }
     vec3 points = vec3(0.0);
