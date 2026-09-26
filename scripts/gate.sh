@@ -194,7 +194,20 @@ for oracle in "fontTools metrics" "HarfBuzz kerning"; do
 		*) fail "font oracle: $oracle printed no verdict — see out/gate-t0.log" ;;
 	esac
 done
-skip "UCD segmentation: not wired (P4) — tests/PENDING.md oracle:ucd-segmentation"
+ucd=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E '^ucd oracle: GraphemeBreakTest ' | tail -1)
+rows=$(echo "$ucd" | sed -nE 's|.* ([0-9]+)/([0-9]+) rows agree$|\1 \2|p')
+if [ -n "$rows" ] && [ "${rows% *}" = "${rows#* }" ]; then
+	pass "UCD 18.0.0 ${ucd#ucd oracle: }"
+else
+	fail "UCD grapheme oracle: '${ucd}' — see out/gate-t0.log"
+fi
+ucd=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E '^ucd oracle: LineBreakTest ' | tail -1)
+if [ -n "$ucd" ]; then
+	pass "UCD 18.0.0 ${ucd#ucd oracle: }, pinned in T0"
+	echo "      GPUI's rule, not UAX #14: tests/PENDING.md conformance:uax14-line-break"
+else
+	fail "UCD line-break oracle printed no verdict — see out/gate-t0.log"
+fi
 skip "h2d semantics: not wired (P5) — tests/PENDING.md oracle:h2d"
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 

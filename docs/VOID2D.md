@@ -747,6 +747,7 @@ the baseline was re-taken (see "Baseline" (b)):
 - **Caret and selection as their own instances**, never part of a text range, so a blink dirties nothing else (GHOSTTY.md:90); selection as per-row quads carrying the neighbouring rows' x and width, unioned by smooth-min in the fragment shader, so concave joins are filleted with no geometry (MAKEPAD.md:78).
 - Shaping break at an index, as an input on `Text` (GHOSTTY.md:35) — the mechanism, not Ghostty's terminal defaults.
 - Whole-grapheme face selection: a multi-codepoint grapheme takes the first face that covers all of it (GHOSTTY.md:27), over the grapheme segmentation this phase wires. P3 selects a face per codepoint.
+- Line-break opportunities by UAX #14, computed once per layout, so a width change only picks among them. **W against GPUI's break rule**, decided by the human on 2026-09-26 on the UCD oracle's numbers (`tests/PENDING.md conformance:uax14-line-break`): GPUI's word-character list breaks inside every alphabet it does not name, and OS text systems, browsers and `kb_text_shape` (P6's shaper candidate) all break by UAX #14, so the Void host wraps the same text as Neon's other hosts. A tailoring that keeps code tokens together for the editor surface waits on the human's answer to the wrap surface (step 6).
 - Carried from P3's review (REVIEWS.md P3, follow-ups): a placement stays invalid while any glyph is refused (F1); filter targets snapped to device pixels, with golden `text/filteredDpi125` (F3); `\r` and tab drawn as nothing and a tab stop, C0 controls kept out of the fallback probe, GPUI's break rule, and h2d's `maxWidth` centring for `align` (F4); pins for the page cap, the refusal report and the `sizeAdjust` guard (F8); the font API under CODE-STYLE §14 (F9), and with it the half of F9 no app sees: `faceAtPath`, `bestFace`, `styled`, `loadFace` and `syntheticFace` still answer `-1`, and private `T[]` parameters remain where CODE-STYLE asks for `Span<T>` (`sortByZ`, `effectMatrixSame`, `sameStrings`, `pushEffect`, `setEffect`, and `polyArea2`, `isEar` and `triangulate` in `graphics.ms`) (REVIEWS.md P3.5 review). From P3.5's re-review: a line in a `tests/PENDING.md` table that the record check cannot parse fails the gate and names the line, where today it is skipped in silence; and the gate prints `msc --version` and `~/.metascript/BUILD`, so its log names the compiler it certified.
 
 **Steps, in order** (written 2026-09-26, before P4's code). Steps 4-7 build what an app author
@@ -772,7 +773,9 @@ waits for that answer, parked at this list. Steps 1-3 do not depend on it.
    again after GPUI's break rule replaces it (F4), because that pair of numbers is the argument
    for the cheap rule (TESTING.md "T3"). Then whole-grapheme face selection on top
    (`font-grapheme-selection`), T1 as numbers. Measured: wasm delta of the property tables.
-   The break rule moved here from step 2 so the oracle exists before the rule changes.
+   The break rule moved here from step 2 so the oracle exists before the rule changes. Then
+   UAX #14 replaces GPUI's rule (the human, 2026-09-26), held to every `LineBreakTest.txt` row,
+   with its table's wasm delta measured.
 4. **The app-facing half of F4 and F9**, waiting on the human: the font API as `Result` with a
    `FontId`, the BoxStyle builders as extensions, text metrics on a non-Label failing loud, `Align`
    with h2d's `maxWidth` centring. Neon's call sites get a note in `.inbox/neon/`.
@@ -802,7 +805,7 @@ waits for that answer, parked at this list. Steps 1-3 do not depend on it.
 - Selection across a ragged range joins without gaps or overlapping alpha.
 - The T5 look beside Zed at 13 px, 1× and 1.5× is taken by the human, and its verdict is written into P3 (REVIEWS.md P3 F12).
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/decorations`, `golden-missing:text/caretSelection`, `font-grapheme-selection`, `oracle:ucd-segmentation`.
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/decorations`, `golden-missing:text/caretSelection`, `font-grapheme-selection`, `conformance:uax14-line-break`.
 
 **Tests.** T3: the UCD conformance files for grapheme clusters and line-break opportunities, with the divergence from UAX #14 recorded as one PENDING reason — void2d follows GPUI's cheaper rule, and the pass rate against the standard is what says whether that is acceptable. T1: run splitting, wrap boundaries, decoration placement and whole-grapheme face selection as numbers. T2: the editor scenes and the decoration group. T0: truncation and `split_at` boundary arithmetic.
 

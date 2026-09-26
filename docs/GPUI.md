@@ -128,6 +128,7 @@ How the taken items are adapted — the display list, the unified UI pipeline, S
 | `Font { family, weight, style, features, fallbacks }` → `FontId`; fonts from bytes; per-grapheme fallback by coverage | **Take** | |
 | `TextRun`, run backgrounds, underline / strikethrough / wavy primitive | **Take** | |
 | Wrap boundaries, truncation, `x_for_index` / `index_for_x`, `force_width`, `split_at` — all over shaped glyphs | **Take** | text layout is rendering: native Neon hosts get it from the OS, the Void host gets it from Void |
+| Break rule: after a space, or before any char outside `is_word_char`'s list (`line_wrapper.rs:450`) | **W**, decided 2026-09-26 | UAX #14 instead: against UCD 18.0.0 the list agrees on 58.9 % of `LineBreakTest` rows and breaks inside every alphabet it does not name; OS text systems, browsers and `kb_text_shape` break by UAX #14 (VOID2D.md P4) |
 | Shaping with OpenType features (ligatures, `calt`), colour-change splits the run | **Take**, compile-time module | shaper candidate `kb_text_shape` |
 | Colour emoji as RGBA sprites | **Take**, as P6's compile-time module (decided at P3's review) | stb_truetype has no colour tables, so the module reads CBDT/sbix and COLRv0 itself |
 | Dirty → draw+present / present-only / nothing; retained list re-presented | **Take** (renderer half) | `Scene` reports whether it changed and can replay its last list; scheduling is the host's |
