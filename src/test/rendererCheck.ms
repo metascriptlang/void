@@ -1,6 +1,7 @@
 import { Mat4, translation } from "../math/math3d";
 import {
 	Program,
+	vertexLayoutOf,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
@@ -13,7 +14,9 @@ import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
 	DrawContext,
 	DrawItem,
+	GpuMesh,
 	UniformError,
+	addMesh,
 	addMaterial,
 	reserveUniforms,
 	writeUniforms,
@@ -104,6 +107,12 @@ function contextWith(phases: Span<Phase>): DrawContext {
 function itemAt(material: int32, depth: float32): DrawItem {
 	const world: Mat4 = translation(0.0, 0.0, depth);
 	return { mesh: 0, material: material, world: world };
+}
+
+function itemOnItsLayout(ref context: DrawContext, material: int32): DrawItem {
+	const program: Program = context.materials[material].program;
+	const mesh: GpuMesh = GpuMesh.external(vertexLayoutOf(program), 0, 0, 6, 1);
+	return { ...itemAt(material, 0.0), mesh: addMesh(context, mesh) };
 }
 
 test "a frame runs scene, post, then blit; without the post pass it blits the scene" {
@@ -439,13 +448,13 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 	let zero: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
-	const zeroItems: Vec<DrawItem> = [itemAt((zero.materials.length as int32) - 1, 0.0)];
+	const zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, (zero.materials.length as int32) - 1)];
 	const noLevels: Result<int32, PixelArtError> =
 		renderFrame(atZero, zero, zeroItems, camera, lights, drawn);
 	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
 	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
-	const bareItems: Vec<DrawItem> = [itemAt((bare.materials.length as int32) - 1, 0.0)];
+	const bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, (bare.materials.length as int32) - 1)];
 	const noBlock: Result<int32, PixelArtError> =
 		renderFrame(withoutBlock, bare, bareItems, camera, lights, drawn);
 	assert !noBlock.ok && noBlock.error == PixelArtError.MaterialBlock;
@@ -455,13 +464,13 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
 	notANumber.uniforms[levelsAt] = 0.0 / 0.0;
 	assert notANumber.uniforms[levelsAt] != notANumber.uniforms[levelsAt];
-	const nanItems: Vec<DrawItem> = [itemAt(nanMaterial, 0.0)];
+	const nanItems: Vec<DrawItem> = [itemOnItsLayout(notANumber, nanMaterial)];
 	const nanLevels: Result<int32, PixelArtError> =
 		renderFrame(atNaN, notANumber, nanItems, camera, lights, drawn);
 	assert !nanLevels.ok && nanLevels.error == PixelArtError.RampLevels;
 	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
-	const fourItems: Vec<DrawItem> = [itemAt((four.materials.length as int32) - 1, 0.0)];
+	const fourItems: Vec<DrawItem> = [itemOnItsLayout(four, (four.materials.length as int32) - 1)];
 	const past: Result<int32, PixelArtError> =
 		renderFrame(atFour, four, fourItems, shortCamera, lights, drawn);
 	assert !past.ok && past.error == PixelArtError.CameraBlockLength;
@@ -490,7 +499,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 					...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
 					uniforms: block.value,
 				});
-				const items: Vec<DrawItem> = [itemAt(material, 0.0)];
+				const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
 				const result: Result<int32, PixelArtError> =
 					renderFrame(renderer, context, items, shortCamera, lights, drawn);
 				const stepped: boolean = light != 0.0 && levels == 0.0;

@@ -7,6 +7,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
+	VertexLayout,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	UNIFORM_SLOTS,
@@ -17,9 +18,11 @@ import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
 	DrawContext,
 	DrawItem,
+	GpuMesh,
 	MODEL_SLOT,
 	MODEL_LENGTH,
 	UniformError,
+	addMesh,
 	addMaterial,
 	reserveUniforms,
 } from "../void3d/draw";
@@ -186,7 +189,7 @@ test "every block the CPU writes is the length its shader declares, read off the
 	assert uniformBlockLength(Program.Lit, UNIFORM_SLOTS) == 0;
 }
 
-test "the core refuses a lit material without the block its program reads, and takes one with it" {
+test "the core refuses a lit material without its block, or on a mesh of another layout" {
 	let bare: DrawContext = contextNaming(Program.Lit, RENDERER_UNIFORM_LENGTH);
 	const bareCore: Result<Renderer, RendererError> = Renderer.create(bare);
 	assert bareCore.ok;
@@ -212,10 +215,15 @@ test "the core refuses a lit material without the block its program reads, and t
 	}
 	const heldCore: Result<Renderer, RendererError> = Renderer.create(held);
 	assert heldCore.ok;
+	const litMesh: int32 = addMesh(held, GpuMesh.external(VertexLayout.Lit, 0, 0, 6, 1));
+	const litItems: Vec<DrawItem> = [{ ...itemOf(0), mesh: litMesh }];
 	if (heldCore.ok) {
 		let core: Renderer = heldCore.value;
-		const began: Result<boolean, RendererError> =
+		const onScreen: Result<boolean, RendererError> =
 			beginFrame(core, held, items, shortCamera, lights);
+		assert !onScreen.ok && onScreen.error == RendererError.VertexLayout;
+		const began: Result<boolean, RendererError> =
+			beginFrame(core, held, litItems, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
 		assert core.drawn.length == 0 && held.uniforms[core.cameraBlock.offset] == 0.0;
 	}

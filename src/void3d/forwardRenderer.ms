@@ -44,6 +44,7 @@ export enum ForwardError {
 	LightBlockLength,
 	ProgramNotDrawn,
 	MaterialBlock,
+	VertexLayout,
 	TargetSize,
 }
 
@@ -94,6 +95,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.LightBlockLength => ForwardError.LightBlockLength,
 		RendererError.ProgramNotDrawn => ForwardError.ProgramNotDrawn,
 		RendererError.MaterialBlock => ForwardError.MaterialBlock,
+		RendererError.VertexLayout => ForwardError.VertexLayout,
 	};
 }
 

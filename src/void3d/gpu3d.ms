@@ -67,6 +67,22 @@ export enum VertexLayout {
 	Fullscreen,
 }
 
+// The layout each program reads: gpu3d.c asserts that every program of a layout declares the
+// core program's attribute slots.
+export function vertexLayoutOf(program: Program): VertexLayout {
+	return match (program) {
+		Program.Lit => VertexLayout.Lit,
+		Program.Particle => VertexLayout.Particle,
+		Program.Billboard => VertexLayout.Billboard,
+		Program.Copy => VertexLayout.Fullscreen,
+		Program.PixelArtLit => VertexLayout.Lit,
+		Program.PixelArtParticle => VertexLayout.Particle,
+		Program.PixelArtBillboard => VertexLayout.Billboard,
+		Program.PixelArtPost => VertexLayout.Fullscreen,
+		Program.PixelArtBlit => VertexLayout.Fullscreen,
+	};
+}
+
 // Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
 // sokol bakes the index type into the pipeline, so a mesh drawn from an index buffer and one
 // drawn straight from its vertex buffer need different pipelines (pipelineCache.ms). Only

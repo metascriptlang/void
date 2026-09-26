@@ -656,7 +656,8 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
 	particles:emitterValue particles:writeInstances draw:writeStream"
 
-RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits renderer:drawPassLists renderer:drawScreen
+RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
+	renderer:drawPassLists renderer:drawScreen
 	renderer:endFrame pass76ist:collect pass76ist:sortBackToFront pass76ist:drawPassList
 	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock pipeline67ache:pipelineFor
 	pipeline67ache:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:resizeTargets

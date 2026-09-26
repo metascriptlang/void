@@ -13,6 +13,7 @@
 
 import {
 	Program,
+	vertexLayoutOf,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -63,6 +64,7 @@ export enum RendererError {
 	LightBlockLength,
 	ProgramNotDrawn,
 	MaterialBlock,
+	VertexLayout,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -123,8 +125,9 @@ export function needsFrame(this renderer: Renderer): boolean {
 
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and
 // fills the pass lists from `items`. A camera or light span that is not its block's length, an
-// item whose material names a program this renderer does not draw, or a material whose block is
-// not the one that program reads, is refused before anything changes. Answers true when the
+// item whose material names a program this renderer does not draw, a material whose block is
+// not the one that program reads, or a mesh whose vertex layout it does not read, is refused
+// before anything changes. Answers true when the
 // context is new: every handle the caller made before is stale then (it may name an object of
 // the new context), so the caller drops its own without destroying them and makes them again
 // before drawing. The core has already dropped the pipelines, remade the screen triangle, and
@@ -144,6 +147,9 @@ export function beginFrame(
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
 			return Result.err(RendererError.MaterialBlock);
+		}
+		if (context.meshes[item.mesh].layout != vertexLayoutOf(drawn.value)) {
+			return Result.err(RendererError.VertexLayout);
 		}
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
