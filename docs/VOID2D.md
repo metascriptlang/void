@@ -811,6 +811,22 @@ waits for that answer, parked at this list. Steps 1-3 do not depend on it.
 
 **Measure.** P4's `present` becomes P5's baseline, so it is taken with `scripts/bench-ab.sh` against the P3.5 head, whose number against the pre-P3 control is the bullet "The P3.5 head" in P3 "Measured at P3 step 8" (REVIEWS.md P3 F10, closed at P3.5); the absolute moves by a millisecond with the box's load, so P4 takes its own pairs. Then a new bench scene — 200 lines × 80 columns with runs, a selection and a caret: draw calls, instances, `present`. It becomes the scroll case P5 is measured on.
 
+**Measured in P4 so far (2026-09-26).** wasm, each tree exported with `git archive` and built by
+`scripts/build-web.sh` as the gate builds it, the same day, on msc 0.2.55 BUILD `2925176a`
+(WebGPU / WebGL2 bytes):
+
+- the P3.5 head `4d357f7`: 1 519 453 / 1 291 871;
+- `b402208`, P4 steps 1 and 2 and GPUI's break rule: +3 420 / +3 411;
+- `c593fac`, the grapheme table (1 386 ranges, 5.5 KB of rodata), the UAX #29 segmenter and
+  whole-grapheme face selection: +11 924 / +11 932;
+- `d80d723`, UAX #14 (the line-break table, 2 038 ranges, 8.2 KB, and its rules) in place of
+  GPUI's rule: +28 891 / +28 942. That is as much as P3's whole glyph layer (+28 300 / +28 178),
+  and about 20 KB of it is the rules' code, not the table. It ships in every build that links
+  `textLayout.ms`; guardrail 6's module budget is P6's to set.
+
+The three older trees carry the `sortByZ` park of `8ef452a` applied by hand, because without it no
+tree after `312dea6` builds for the web (`tests/PENDING.md style:span-of-interface-param`).
+
 **Unblocks.** P5's scroll measurement, and the editor claim in "The bar".
 
 **Risk → fallback.** Without the shaper (P6) there are no ligatures, so a code font's `calt` is absent and the editor scene looks wrong to anyone who knows the font. Fallback: state it, capture it, and keep the shaping-break input in place so the shaper drops in without touching this surface. Do not pull the shaper forward — it is the single largest wasm item in guardrail 6 and it needs its own measurement.
