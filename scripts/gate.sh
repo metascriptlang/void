@@ -82,6 +82,17 @@ for isolated in tests/isolated/*.ms; do
 	fi
 done
 	echo "      T1: tests/displayList/*.txt snapshots, recorded with no GPU; VOID_SNAPSHOT=1 rewrites them"
+rm -rf out/instanceLayout && mkdir -p out/instanceLayout
+if INSTANCE_LAYOUT_DIR=out/instanceLayout "$MSC" run scripts/instanceLayout.ms \
+		> out/gate-instance-layout.log 2>&1 \
+	&& diff --strip-trailing-cr out/instanceLayout/instanceLayout.ms src/void2d/instanceLayout.ms \
+		>> out/gate-instance-layout.log 2>&1 \
+	&& diff --strip-trailing-cr out/instanceLayout/instanceLayout.h src/void2d/instanceLayout.h \
+		>> out/gate-instance-layout.log 2>&1; then
+	pass "instance layout: src/void2d/instanceLayout.ms and .h are what scripts/instanceLayout.ms generates"
+else
+	fail "instance layout: the generated files are stale or hand-edited; run 'msc run scripts/instanceLayout.ms' — see out/gate-instance-layout.log"
+fi
 
 echo
 echo "=== 3. the demo still builds and runs ================================="
