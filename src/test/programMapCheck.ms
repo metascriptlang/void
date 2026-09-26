@@ -7,6 +7,8 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
+	BILLBOARD_UNIFORM_SLOT,
+	BILLBOARD_UNIFORM_LENGTH,
 	UNIFORM_SLOTS,
 	uniformBlockLength,
 } from "../void3d/gpu3d";
@@ -24,8 +26,6 @@ import {
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import {
-	SPRITE_UNIFORM_SLOT,
-	SPRITE_UNIFORM_LENGTH,
 	POST_UNIFORM_SLOT,
 	POST_UNIFORM_LENGTH,
 	BLIT_UNIFORM_SLOT,
@@ -46,6 +46,7 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.Copy,
 	Program.PixelArtLit,
 	Program.PixelArtParticle,
+	Program.PixelArtBillboard,
 	Program.PixelArtPost,
 	Program.PixelArtBlit,
 ];
@@ -76,22 +77,24 @@ function itemOf(material: int32): DrawItem {
 	return { mesh: 0, material: material, world: world };
 }
 
-test "the core draws a material's Lit and Particle as themselves, and nothing else" {
+test "the core draws a material's Lit, Particle and Billboard as themselves, and nothing else" {
 	const core: ProgramMap = ProgramMap.core();
 	assert drawnAs(core, Program.Lit) == Program.Lit;
 	assert drawnAs(core, Program.Particle) == Program.Particle;
-	assert namedCount(core) == 2;
-	const billboard: Result<Program, ProgramError> = core.drawnFor(Program.Billboard);
-	assert !billboard.ok && billboard.error == ProgramError.NotDrawn;
+	assert drawnAs(core, Program.Billboard) == Program.Billboard;
+	assert namedCount(core) == 3;
+	const preset: Result<Program, ProgramError> = core.drawnFor(Program.PixelArtBillboard);
+	assert !preset.ok && preset.error == ProgramError.NotDrawn;
 }
 
 test "the pixel-art preset draws its own programs in place of the ones materials name" {
 	const preset: ProgramMap = pixelArtPrograms();
 	assert drawnAs(preset, Program.Lit) == Program.PixelArtLit;
 	assert drawnAs(preset, Program.Particle) == Program.PixelArtParticle;
-	assert drawnAs(preset, Program.Billboard) == Program.Billboard;
+	assert drawnAs(preset, Program.Billboard) == Program.PixelArtBillboard;
 	assert namedCount(preset) == 3;
 	assert !preset.draws(Program.PixelArtLit) && !preset.draws(Program.Copy);
+	assert !preset.draws(Program.PixelArtBillboard);
 }
 
 test "drawing a name again replaces what is drawn for it and leaves the others" {
@@ -108,7 +111,7 @@ test "drawing a name again replaces what is drawn for it and leaves the others" 
 }
 
 test "the core refuses a material it does not draw before it writes the camera" {
-	let context: DrawContext = contextNaming(Program.Billboard, RENDERER_UNIFORM_LENGTH);
+	let context: DrawContext = contextNaming(Program.PixelArtBillboard, RENDERER_UNIFORM_LENGTH);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	assert created.ok;
 	if (created.ok) {
@@ -130,7 +133,7 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 	const refused: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(small, background);
 	assert !refused.ok && refused.error == ForwardError.UniformPoolFull;
-	let context: DrawContext = contextNaming(Program.Billboard, FORWARD_UNIFORM_LENGTH);
+	let context: DrawContext = contextNaming(Program.PixelArtBillboard, FORWARD_UNIFORM_LENGTH);
 	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(context, background);
 	assert created.ok;
@@ -139,6 +142,7 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 		assert context.uniformsUsed == FORWARD_UNIFORM_LENGTH;
 		assert context.materials[forward.copyMaterial].program == Program.Copy;
 		assert forward.core.programs.draws(Program.Lit);
+		assert forward.core.programs.draws(Program.Billboard);
 		assert !forward.core.programs.draws(Program.Copy);
 		const items: Vec<DrawItem> = [itemOf(0)];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -146,9 +150,9 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 		const unsized: Result<int32, ForwardError> =
 			renderFrame(forward, context, items, camera, lights, 0, 480);
 		assert !unsized.ok && unsized.error == ForwardError.TargetSize;
-		const billboard: Result<int32, ForwardError> =
+		const preset: Result<int32, ForwardError> =
 			renderFrame(forward, context, items, camera, lights, 640, 480);
-		assert !billboard.ok && billboard.error == ForwardError.ProgramNotDrawn;
+		assert !preset.ok && preset.error == ForwardError.ProgramNotDrawn;
 		assert forward.core.generation == 0 && forward.colorTarget.image == 0;
 	}
 }
@@ -169,8 +173,12 @@ test "every block the CPU writes is the length its shader declares, read off the
 		assert uniformBlockLength(lit, MODEL_SLOT) == MODEL_LENGTH;
 		assert declaredSlots(lit) == 4;
 	}
-	assert uniformBlockLength(Program.Billboard, SPRITE_UNIFORM_SLOT) == SPRITE_UNIFORM_LENGTH;
-	assert declaredSlots(Program.Billboard) == 3;
+	for (const billboard of [Program.Billboard, Program.PixelArtBillboard]) {
+		assert uniformBlockLength(billboard, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
+		assert uniformBlockLength(billboard, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
+		assert uniformBlockLength(billboard, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
+		assert declaredSlots(billboard) == 3;
+	}
 	assert declaredSlots(Program.Particle) == 1 && declaredSlots(Program.PixelArtParticle) == 1;
 	assert uniformBlockLength(Program.PixelArtPost, POST_UNIFORM_SLOT) == POST_UNIFORM_LENGTH;
 	assert uniformBlockLength(Program.PixelArtBlit, BLIT_UNIFORM_SLOT) == BLIT_UNIFORM_LENGTH;

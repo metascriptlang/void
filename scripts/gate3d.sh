@@ -663,6 +663,7 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits renderer:drawPassL
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
 	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampsHaveLevels pixel65rt82enderer:levelsAt
+	pixel65rt82enderer:billboardLevels
 	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
 	target:beginPass"

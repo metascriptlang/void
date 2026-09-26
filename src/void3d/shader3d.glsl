@@ -74,6 +74,60 @@ void main() {
 }
 @end
 
+@vs billboardVs
+@include_block vertexUniforms
+in vec2 corner;
+in vec3 position;
+in vec2 size;
+in vec4 tile;
+in vec4 color;
+out vec3 worldPosition;
+out vec3 towardCamera;
+out vec2 uv;
+out vec4 instanceColor;
+void main() {
+    // PENDING3D: particle-size-world-units
+    vec3 p = position + cameraRight.xyz * (corner.x * size.x) + cameraUp.xyz * (corner.y * size.y);
+    worldPosition = p;
+    // PENDING3D: billboard-normal-toward-camera
+    towardCamera = cross(cameraRight.xyz, cameraUp.xyz);
+    gl_Position = viewProj * vec4(p, 1.0);
+    uv = vec2(corner.x > 0.0 ? tile.z : tile.x, corner.y > 0.0 ? tile.y : tile.w);
+    instanceColor = color;
+}
+@end
+
+@fs billboardFs
+// PENDING3D: particle-alpha-tested
+@include_block billboardUniforms
+@include_block lightUniforms
+@include_block pointLight
+layout(binding=0) uniform texture2D billboardTexture;
+layout(binding=0) uniform sampler billboardSampler;
+in vec3 worldPosition;
+in vec3 towardCamera;
+in vec2 uv;
+in vec4 instanceColor;
+out vec4 fragColor;
+void main() {
+    vec4 texel = texture(sampler2D(billboardTexture, billboardSampler), uv);
+    if (texel.a < 0.5) {
+        discard;
+    }
+    vec4 pixel = billboardColor * texel * instanceColor;
+    if (billboard.y != 0.0) {
+        vec3 n = normalize(towardCamera);
+        float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+        vec3 light = ambient.rgb + dirColor.rgb * lambert;
+        for (int i = 0; i < int(ambient.a + 0.5); i++) {
+            light += pointLightAt(i, worldPosition, n);
+        }
+        pixel.rgb *= light;
+    }
+    fragColor = pixel;
+}
+@end
+
 @vs fullscreenVs
 in vec2 position;
 void main() {
@@ -95,4 +149,5 @@ void main() {
 
 @program lit litVs litFs
 @program particle particleVs particleFs
+@program billboard billboardVs billboardFs
 @program copy fullscreenVs copyFs

@@ -12,10 +12,11 @@ typedef const sg_shader_desc *(*ShaderDescription)(sg_backend backend);
 static const ShaderDescription PROGRAMS[] = {
 	lit_shader_desc,
 	particle_shader_desc,
-	pixelArt_billboard_shader_desc,
+	billboard_shader_desc,
 	copy_shader_desc,
 	pixelArt_lit_shader_desc,
 	pixelArt_particle_shader_desc,
+	pixelArt_billboard_shader_desc,
 	pixelArt_post_shader_desc,
 	pixelArt_blit_shader_desc,
 };
@@ -96,10 +97,14 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 _Static_assert(COUNT(PROGRAMS) == GPU3D_PROGRAM_TABLE_LENGTH, "PROGRAMS must match Program in gpu3d.ms");
 _Static_assert(ATTR_pixelArt_lit_position == ATTR_lit_position && ATTR_pixelArt_lit_normal == ATTR_lit_normal
 	&& ATTR_pixelArt_lit_color == ATTR_lit_color, "every Lit-layout program must declare the core lit attributes");
-_Static_assert(ATTR_pixelArt_billboard_corner == ATTR_particle_corner && ATTR_pixelArt_billboard_root == ATTR_particle_root
-	&& ATTR_pixelArt_billboard_shape == ATTR_particle_color && ATTR_pixelArt_particle_corner == ATTR_particle_corner
-	&& ATTR_pixelArt_particle_root == ATTR_particle_root && ATTR_pixelArt_particle_color == ATTR_particle_color,
+_Static_assert(ATTR_pixelArt_particle_corner == ATTR_particle_corner && ATTR_pixelArt_particle_root == ATTR_particle_root
+	&& ATTR_pixelArt_particle_color == ATTR_particle_color,
 	"every Particle-layout program must declare the core particle attributes");
+_Static_assert(ATTR_pixelArt_billboard_corner == ATTR_billboard_corner
+	&& ATTR_pixelArt_billboard_position == ATTR_billboard_position
+	&& ATTR_pixelArt_billboard_size == ATTR_billboard_size && ATTR_pixelArt_billboard_tile == ATTR_billboard_tile
+	&& ATTR_pixelArt_billboard_color == ATTR_billboard_color,
+	"every Billboard-layout program must declare the core billboard attributes");
 _Static_assert(ATTR_pixelArt_post_position == ATTR_copy_position && ATTR_pixelArt_blit_position == ATTR_copy_position,
 	"every Fullscreen-layout program must declare the copy position");
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in pass.ms");
@@ -117,8 +122,10 @@ _Static_assert(sizeof(pixelArt_vertexParams_t) == sizeof(vertexParams_t)
 	&& sizeof(pixelArt_lightParams_t) == sizeof(lightParams_t)
 	&& sizeof(pixelArt_modelParams_t) == sizeof(modelParams_t)
 	&& sizeof(pixelArt_materialParams_t) == sizeof(materialParams_t)
+	&& sizeof(pixelArt_billboardParams_t) == sizeof(billboardParams_t)
 	&& UB_pixelArt_vertexParams == UB_vertexParams && UB_pixelArt_lightParams == UB_lightParams
-	&& UB_pixelArt_modelParams == UB_modelParams && UB_pixelArt_materialParams == UB_materialParams,
+	&& UB_pixelArt_modelParams == UB_modelParams && UB_pixelArt_materialParams == UB_materialParams
+	&& UB_pixelArt_billboardParams == UB_billboardParams,
 	"both shader files must take the blocks of shader3dBlocks.glsl");
 _Static_assert(GPU3D_UNIFORM_SLOT_TABLE_LENGTH == SG_MAX_UNIFORMBLOCK_BINDSLOTS,
 	"GPU3D_UNIFORM_SLOTS must be sokol's uniform block slot count");
@@ -127,7 +134,7 @@ _Static_assert(GPU3D_PROGRAM_TABLE_LENGTH <= 16,
 
 // ---- vertex layouts, one per VertexLayout member ----
 
-enum { LAYOUT_LIT, LAYOUT_PARTICLE, LAYOUT_FULLSCREEN };
+enum { LAYOUT_LIT, LAYOUT_PARTICLE, LAYOUT_BILLBOARD, LAYOUT_FULLSCREEN };
 
 static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 	switch (layout) {
@@ -145,6 +152,20 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_particle_root].buffer_index = 1;
 		out->attrs[ATTR_particle_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_particle_color].buffer_index = 1;
+		break;
+	case LAYOUT_BILLBOARD:
+		// buffer 0: quad corner per vertex; buffer 1: position, size, tile uv rect, rgba per
+		// instance (billboard.ms BILLBOARD_INSTANCE_STRIDE)
+		out->buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		out->attrs[ATTR_billboard_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_billboard_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_billboard_position].buffer_index = 1;
+		out->attrs[ATTR_billboard_size].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_billboard_size].buffer_index = 1;
+		out->attrs[ATTR_billboard_tile].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_billboard_tile].buffer_index = 1;
+		out->attrs[ATTR_billboard_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_billboard_color].buffer_index = 1;
 		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)

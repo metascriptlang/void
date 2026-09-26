@@ -19,7 +19,7 @@ import {
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UP: Vec3 = { x: 0.0, y: 1.0, z: 0.0 };
 function billboard(): GpuMesh {
-	return GpuMesh.external(VertexLayout.Particle, 11, 12, 6, 40);
+	return GpuMesh.external(VertexLayout.Billboard, 11, 12, 6, 40);
 }
 
 function planeData(): MeshData {

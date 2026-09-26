@@ -11,6 +11,8 @@ import {
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_SATURATION,
+	BILLBOARD_UNIFORM_SLOT,
+	BILLBOARD_UNIFORM_LENGTH,
 	Program,
 	VertexLayout,
 	Filter,
@@ -53,8 +55,6 @@ import {
 	PixelArtError,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
-	SPRITE_UNIFORM_SLOT,
-	SPRITE_UNIFORM_LENGTH,
 	setLook,
 	setPalette,
 	setSettings,
@@ -78,6 +78,12 @@ import {
 	colorSaturated,
 } from "../math/math3d";
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
+import {
+	AtlasTile,
+	AtlasError,
+	BillboardInstance,
+	BILLBOARD_INSTANCE_STRIDE,
+} from "../void3d/billboard";
 import {
 	Scene,
 	NodeId,
@@ -155,13 +161,13 @@ const ATLAS_CELLS: int32 = 4;
 const TUFT_CELL: int32 = 16;
 const FLAME_CELL_WIDTH: int32 = 16;
 const FLAME_CELL_HEIGHT: int32 = 20;
-const BILLBOARD_STRIDE: int32 = 8;
 const MAX_TEXTURE_PIXELS: int32 = 64 * 20;
 
 const FIRE_HEIGHT: float32 = 0.55;
 const FIRE_INTENSITY: float32 = 1.35;
 const FIRE_RADIUS: float32 = 9.0;
 const LIGHT_LEVELS: float32 = 4.0;
+const BILLBOARD_LIGHT_AT: float32 = 0.25;
 const LOG_RING_RADIUS: float32 = 0.42;
 
 const RANDOM_MULTIPLIER: uint64 = 6364136223846793005;
@@ -215,9 +221,9 @@ const LOOK_GREY_AT: int32 = 10;
 const LOOK_RESTORED_AT: int32 = 15;
 
 // The pool holds both renderers' blocks plus this scene's material blocks: one for the lit
-// material, one for the ground's own lit material when it is greyed, and one sprite block
-// shared by grass and flame.
-const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
+// material, one for the ground's own lit material when it is greyed, and a billboard block each
+// for the grass and the flame.
+const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + 2 * BILLBOARD_UNIFORM_LENGTH;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + FORWARD_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
 );
@@ -540,20 +546,23 @@ function buildGrass(): void {
 			if (distanceSquared > GRASS_RADIUS * GRASS_RADIUS) { continue; }
 			if (distanceSquared < FIRE_CLEARING_RADIUS * FIRE_CLEARING_RADIUS) { continue; }
 			if (insideStone(x, z)) { continue; }
-			const variant: float32 = ((nextRandom() * 4.0) as int32) as float32;
+			const variant: int32 = (nextRandom() * 4.0) as int32;
 			const size: float32 = 0.9 * (0.8 + nextRandom() * 0.35);
 			const tint: float32 = nextRandom() < SPROUT_CHANCE ? SPROUT_TINT : 0.8 + nextRandom() * 0.3;
-			grassInstances.push(x);
-			grassInstances.push(0.0 as float32);
-			grassInstances.push(z);
-			grassInstances.push(variant);
-			grassInstances.push(size);
-			grassInstances.push(size);
-			grassInstances.push(tint);
-			grassInstances.push(0.0 as float32);
+			const tile: Result<AtlasTile, AtlasError> =
+				AtlasTile.ofFrame(TUFT_CELL * ATLAS_CELLS, ATLAS_CELLS, variant);
+			if (!tile.ok) { console.log("campfire: buildGrass bailed at a tuft's tile"); return; }
+			const tuft: BillboardInstance = {
+				position: vec3(x, 0.0, z),
+				width: size,
+				height: size,
+				tile: tile.value,
+				color: { red: tint, green: tint, blue: tint, alpha: 1.0 },
+			};
+			tuft.pushTo(grassInstances);
 		}
 	}
-	grassCount = (grassInstances.length as int32) / BILLBOARD_STRIDE;
+	grassCount = (grassInstances.length as int32) / BILLBOARD_INSTANCE_STRIDE;
 	grassBuffer = makeVertexBuffer(grassInstances);
 }
 
@@ -627,10 +636,22 @@ function buildFlameTexture(): uint32 {
 }
 
 function deterministicFlameInstance(frame: int32): Vec<float32> {
-	return [
-		0.0, 0.05, 0.0, frame as float32,
-		0.95, 1.2, 1.0, 1.0,
-	];
+	let instance: Vec<float32> = [];
+	const tile: Result<AtlasTile, AtlasError> =
+		AtlasTile.ofFrame(FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_FRAMES, frame);
+	if (!tile.ok) {
+		console.log(`campfire: flame frame ${frame} has no tile, ${tile.error.toString()}`);
+		return instance;
+	}
+	const flame: BillboardInstance = {
+		position: vec3(0.0, 0.05, 0.0),
+		width: 0.95,
+		height: 1.2,
+		tile: tile.value,
+		color: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
+	};
+	flame.pushTo(instance);
+	return instance;
 }
 
 function buildFlameBuffers(): void {
@@ -672,21 +693,29 @@ function setupDraws(): void {
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
 	const litToon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
-	const spriteToon: Vec<float32> = [0.2, 0.26, 0.5, 0.0, LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	const grassValues: Vec<float32> = [0.2, 0.26, 0.5, 1.0, LIGHT_LEVELS, 1.0, BILLBOARD_LIGHT_AT, 0.0];
+	const flameValues: Vec<float32> = [1.0, 1.0, 1.0, 1.0, LIGHT_LEVELS, 0.0, BILLBOARD_LIGHT_AT, 0.0];
 	const litBlock: UniformBlock = try reserveUniforms(
 		context,
 		MATERIAL_UNIFORM_SLOT,
 		MATERIAL_UNIFORM_LENGTH,
 	) catch NO_UNIFORMS;
-	const spriteBlock: UniformBlock = try reserveUniforms(
+	const grassBlock: UniformBlock = try reserveUniforms(
 		context,
-		SPRITE_UNIFORM_SLOT,
-		SPRITE_UNIFORM_LENGTH,
+		BILLBOARD_UNIFORM_SLOT,
+		BILLBOARD_UNIFORM_LENGTH,
+	) catch NO_UNIFORMS;
+	const flameBlock: UniformBlock = try reserveUniforms(
+		context,
+		BILLBOARD_UNIFORM_SLOT,
+		BILLBOARD_UNIFORM_LENGTH,
 	) catch NO_UNIFORMS;
 	const litWritten: Result<int32, UniformError> = writeUniforms(context, litBlock, litToon);
-	const spriteWritten: Result<int32, UniformError> =
-		writeUniforms(context, spriteBlock, spriteToon);
-	if (!litWritten.ok || !spriteWritten.ok) {
+	const grassWritten: Result<int32, UniformError> =
+		writeUniforms(context, grassBlock, grassValues);
+	const flameWritten: Result<int32, UniformError> =
+		writeUniforms(context, flameBlock, flameValues);
+	if (!litWritten.ok || !grassWritten.ok || !flameWritten.ok) {
 		console.log("campfire: setupDraws bailed at the toon blocks");
 		return;
 	}
@@ -703,13 +732,13 @@ function setupDraws(): void {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
 		sampler0: pointSampler.handle,
-		uniforms: spriteBlock,
+		uniforms: grassBlock,
 	});
 	flameMaterial = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: flameTexture,
 		sampler0: pointSampler.handle,
-		uniforms: spriteBlock,
+		uniforms: flameBlock,
 	});
 	const root: NodeId = tree.rootId();
 	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
@@ -776,7 +805,7 @@ function setupDraws(): void {
 	}
 	grassMesh = addMesh(
 		context,
-		GpuMesh.external(VertexLayout.Particle, billboardCornerBuffer, grassBuffer, 6, grassCount),
+		GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, grassBuffer, 6, grassCount),
 	);
 	const grass: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
@@ -786,7 +815,7 @@ function setupDraws(): void {
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
 			context,
-			GpuMesh.external(VertexLayout.Particle, billboardCornerBuffer, flameBuffer, 6, 1),
+			GpuMesh.external(VertexLayout.Billboard, billboardCornerBuffer, flameBuffer, 6, 1),
 		);
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space

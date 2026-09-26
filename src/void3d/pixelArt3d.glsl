@@ -1,13 +1,6 @@
 @module pixelArt
 @include shader3dBlocks.glsl
 
-@block spriteUniforms
-layout(binding=2) uniform spriteParams {
-    vec4 grassColor;
-    vec4 toon;
-};
-@end
-
 @block toonPointLight
 vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight, float levels) {
     vec3 toLight = pointLight[i].xyz - position;
@@ -66,35 +59,33 @@ void main() {
 @vs billboardVs
 @include_block vertexUniforms
 in vec2 corner;
-in vec4 root;
-in vec4 shape;
+in vec3 position;
+in vec2 size;
+in vec4 tile;
+in vec4 color;
 out vec2 uv;
 out vec3 rootPosition;
-out float tint;
-out float emissive;
+out vec4 instanceColor;
 out float depth01;
 void main() {
-    vec3 p = root.xyz + cameraRight.xyz * (corner.x * shape.x) + cameraUp.xyz * (corner.y * shape.y);
+    vec3 p = position + cameraRight.xyz * (corner.x * size.x) + cameraUp.xyz * (corner.y * size.y);
     gl_Position = viewProj * vec4(p, 1.0);
     depth01 = gl_Position.z;
-    uv = vec2((corner.x + 0.5 + root.w) * 0.25, 1.0 - corner.y);
-    rootPosition = root.xyz;
-    tint = shape.z;
-    emissive = shape.w;
+    uv = vec2(corner.x > 0.0 ? tile.z : tile.x, corner.y > 0.0 ? tile.y : tile.w);
+    rootPosition = position;
+    instanceColor = color;
 }
 @end
 
 @fs billboardFs
-// PENDING3D: billboard-points-added
-@include_block spriteUniforms
+@include_block billboardUniforms
 @include_block lightUniforms
 @include_block toonPointLight
 layout(binding=0) uniform texture2D spriteTexture;
 layout(binding=0) uniform sampler spriteSampler;
 in vec2 uv;
 in vec3 rootPosition;
-in float tint;
-in float emissive;
+in vec4 instanceColor;
 in float depth01;
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
@@ -104,11 +95,13 @@ void main() {
         discard;
     }
     vec3 points = vec3(0.0);
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        points += pointLightAt(i, rootPosition + vec3(0.0, 0.25, 0.0), vec3(0.0, 1.0, 0.0), 0.0, toon.x);
+    if (billboard.y != 0.0) {
+        vec3 lightPoint = rootPosition + vec3(0.0, billboard.z, 0.0);
+        for (int i = 0; i < int(ambient.a + 0.5); i++) {
+            points += pointLightAt(i, lightPoint, vec3(0.0, 1.0, 0.0), 0.0, billboard.x);
+        }
     }
-    vec3 grass = grassColor.rgb * texel.r * tint + points;
-    fragColor = vec4(mix(grass, texel.rgb, emissive), 0.0);
+    fragColor = vec4(billboardColor.rgb * texel.rgb * instanceColor.rgb + points, 0.0);
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
 }
 @end

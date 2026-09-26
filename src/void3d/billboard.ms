@@ -1,4 +1,8 @@
-// h3d.parts.Particles drawn with a texture: the frames a billboard's atlas splits into.
+// h3d.parts.Particles drawn with a texture: a billboard's instance, and the frames its atlas
+// splits into.
+
+import { Vec3 } from "../math/math3d";
+import { Rgba } from "./meshData";
 
 // h2d.Tile's uv rect: (u, v) the top left and (u2, v2) the bottom right, in [0, 1].
 export struct AtlasTile {
@@ -36,4 +40,33 @@ export function ofFrame(
 		u2: (right / across) as float32,
 		v2: 1.0,
 	});
+}
+
+// position(3), width and height, the tile u, v, u2, v2, then rgba: the Billboard layout (gpu3d.c).
+export const BILLBOARD_INSTANCE_STRIDE: int32 = 13;
+
+// What Particles.draw writes for a particle, with its root in world space (isAbsolute) and its
+// size in world units. The texel is multiplied by `color`.
+export struct BillboardInstance {
+	position: Vec3;
+	width: float32;
+	height: float32;
+	tile: AtlasTile;
+	color: Rgba;
+}
+
+export function pushTo(this instance: BillboardInstance, ref out: Vec<float32>): void {
+	out.push(instance.position.x);
+	out.push(instance.position.y);
+	out.push(instance.position.z);
+	out.push(instance.width);
+	out.push(instance.height);
+	out.push(instance.tile.u);
+	out.push(instance.tile.v);
+	out.push(instance.tile.u2);
+	out.push(instance.tile.v2);
+	out.push(instance.color.red);
+	out.push(instance.color.green);
+	out.push(instance.color.blue);
+	out.push(instance.color.alpha);
 }

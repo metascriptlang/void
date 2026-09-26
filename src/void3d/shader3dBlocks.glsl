@@ -13,6 +13,13 @@ layout(binding=4) uniform modelParams {
 };
 @end
 
+@block billboardUniforms
+layout(binding=2) uniform billboardParams {
+    vec4 billboardColor;
+    vec4 billboard;
+};
+@end
+
 @block materialUniforms
 layout(binding=3) uniform materialParams {
     vec4 material;

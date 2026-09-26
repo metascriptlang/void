@@ -3,6 +3,8 @@ import {
 	Program,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
+	BILLBOARD_UNIFORM_SLOT,
+	BILLBOARD_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
@@ -37,8 +39,6 @@ import {
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
 	POST_UNIFORM_LENGTH,
-	SPRITE_UNIFORM_SLOT,
-	SPRITE_UNIFORM_LENGTH,
 	planStages,
 	screenKey,
 	setSettings,
@@ -468,33 +468,36 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	assert atZero.core.generation == 0 && withoutBlock.core.generation == 0;
 }
 
-test "a billboard without ramp levels refuses the pixel-art frame; with them it passes on" {
-	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + SPRITE_UNIFORM_LENGTH;
+test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or with them, not" {
+	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + BILLBOARD_UNIFORM_LENGTH;
 	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 	for (const levels of [0.0, 4.0]) {
-		let context: DrawContext = DrawContext.withUniformCapacity(capacity);
-		const created: Result<PixelArtRenderer, PixelArtError> =
-			PixelArtRenderer.create(context, PixelArtSettings.full(), look());
-		assert created.ok;
-		const block: Result<UniformBlock, UniformError> =
-			reserveUniforms(context, SPRITE_UNIFORM_SLOT, SPRITE_UNIFORM_LENGTH);
-		assert block.ok;
-		if (created.ok && block.ok) {
-			let renderer: PixelArtRenderer = created.value;
-			const values: Vec<float32> = [0.2, 0.3, 0.5, 0.0, levels, 0.0, 0.0, 0.0];
-			assert writeUniforms(context, block.value, values).ok;
-			const material: int32 = addMaterial(context, {
-				...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
-				uniforms: block.value,
-			});
-			const items: Vec<DrawItem> = [itemAt(material, 0.0)];
-			const result: Result<int32, PixelArtError> =
-				renderFrame(renderer, context, items, shortCamera, lights, drawn);
-			const expected: PixelArtError =
-				levels == 0.0 ? PixelArtError.RampLevels : PixelArtError.CameraBlockLength;
-			assert !result.ok && result.error == expected;
+		for (const light of [0.0, 1.0]) {
+			let context: DrawContext = DrawContext.withUniformCapacity(capacity);
+			const created: Result<PixelArtRenderer, PixelArtError> =
+				PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+			assert created.ok;
+			const block: Result<UniformBlock, UniformError> =
+				reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
+			assert block.ok;
+			if (created.ok && block.ok) {
+				let renderer: PixelArtRenderer = created.value;
+				const values: Vec<float32> = [0.2, 0.3, 0.5, 1.0, levels, light, 0.25, 0.0];
+				assert writeUniforms(context, block.value, values).ok;
+				const material: int32 = addMaterial(context, {
+					...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+					uniforms: block.value,
+				});
+				const items: Vec<DrawItem> = [itemAt(material, 0.0)];
+				const result: Result<int32, PixelArtError> =
+					renderFrame(renderer, context, items, shortCamera, lights, drawn);
+				const stepped: boolean = light != 0.0 && levels == 0.0;
+				const expected: PixelArtError =
+					stepped ? PixelArtError.RampLevels : PixelArtError.CameraBlockLength;
+				assert !result.ok && result.error == expected;
+			}
 		}
 	}
 }

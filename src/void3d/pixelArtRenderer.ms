@@ -15,6 +15,7 @@
 import { Vec4 } from "../math/math3d";
 import {
 	Program,
+	BILLBOARD_LIGHT,
 	VertexLayout,
 	PixelFormat,
 	LoadAction,
@@ -68,11 +69,11 @@ import {
 
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
 // material's block (gpu3d.ms MATERIAL_UNIFORM_SLOT) holds the toon ramp's levels at
-// RAMP_LEVELS; the billboard's block holds its tint, then its levels at SPRITE_RAMP_LEVELS.
+// RAMP_LEVELS. A billboard's (BILLBOARD_UNIFORM_SLOT) holds them at BILLBOARD_RAMP_LEVELS, and
+// at BILLBOARD_LIGHT_HEIGHT how far above its root it takes the point lights.
 export const RAMP_LEVELS: int32 = 0;
-export const SPRITE_UNIFORM_SLOT: int32 = 2;
-export const SPRITE_UNIFORM_LENGTH: int32 = 8;
-export const SPRITE_RAMP_LEVELS: int32 = 4;
+export const BILLBOARD_RAMP_LEVELS: int32 = 4;
+export const BILLBOARD_LIGHT_HEIGHT: int32 = 6;
 export const POST_UNIFORM_SLOT: int32 = 0;
 export const POST_UNIFORM_LENGTH: int32 = 24;
 export const BLIT_UNIFORM_SLOT: int32 = 0;
@@ -83,7 +84,7 @@ export function pixelArtPrograms(): ProgramMap {
 	return ProgramMap.empty()
 		.drawing(Program.Lit, Program.PixelArtLit)
 		.drawing(Program.Particle, Program.PixelArtParticle)
-		.drawing(Program.Billboard, Program.Billboard);
+		.drawing(Program.Billboard, Program.PixelArtBillboard);
 }
 
 // The preset's passes, in the order a frame runs them.
@@ -487,6 +488,12 @@ function levelsAt(context: DrawContext, block: UniformBlock, at: int32): boolean
 	return context.uniforms[block.offset + at] >= 1.0;
 }
 
+function billboardLevels(context: DrawContext, block: UniformBlock): boolean {
+	if (block.length <= BILLBOARD_LIGHT) { return true; }
+	if (context.uniforms[block.offset + BILLBOARD_LIGHT] == 0.0) { return true; }
+	return levelsAt(context, block, BILLBOARD_RAMP_LEVELS);
+}
+
 function rampsHaveLevels(
 	programs: ProgramMap,
 	context: DrawContext,
@@ -498,9 +505,10 @@ function rampsHaveLevels(
 		if (!drawn.ok) { continue; }
 		const held: boolean = match (drawn.value) {
 			Program.PixelArtLit => levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.Billboard => levelsAt(context, material.uniforms, SPRITE_RAMP_LEVELS),
+			Program.PixelArtBillboard => billboardLevels(context, material.uniforms),
 			Program.Lit => true,
 			Program.Particle => true,
+			Program.Billboard => true,
 			Program.Copy => true,
 			Program.PixelArtParticle => true,
 			Program.PixelArtPost => true,

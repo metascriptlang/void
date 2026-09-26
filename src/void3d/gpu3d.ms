@@ -46,7 +46,7 @@ extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
 extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
 extern function gpu3dUpdateBuffer(buffer: uint32, data: Span<float32>): int32;
 // One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in
-// gpu3d.c's PROGRAMS order. Materials name the first three; Billboard is the preset's until M15.
+// gpu3d.c's PROGRAMS order. Materials name the first three.
 export enum Program {
 	Lit,
 	Particle,
@@ -54,6 +54,7 @@ export enum Program {
 	Copy,
 	PixelArtLit,
 	PixelArtParticle,
+	PixelArtBillboard,
 	PixelArtPost,
 	PixelArtBlit,
 }
@@ -62,6 +63,7 @@ export enum Program {
 export enum VertexLayout {
 	Lit,
 	Particle,
+	Billboard,
 	Fullscreen,
 }
 
@@ -115,6 +117,12 @@ export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
 export const MATERIAL_UNIFORM_SLOT: int32 = 3;
 export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
 export const MATERIAL_SATURATION: int32 = 1;
+// A billboard material's block (binding=2): its colour, then at BILLBOARD_LIGHT 0 to leave the
+// lights out (Heaps' `particles3D` material has `light: true`). A preset may give the other
+// floats a meaning of its own (pixelArtRenderer.ms BILLBOARD_RAMP_LEVELS).
+export const BILLBOARD_UNIFORM_SLOT: int32 = 2;
+export const BILLBOARD_UNIFORM_LENGTH: int32 = 8;
+export const BILLBOARD_LIGHT: int32 = 5;
 
 export function makeShader(program: Program): uint32 {
 	return gpu3dMakeShader(program as int32);
