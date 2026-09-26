@@ -1000,7 +1000,7 @@ run_captures() {
 	run_light_multiplies
 	run_capture campfireGreyCpuCapture     m12greydirect  "ground greyed in its vertex colours"
 	run_capture campfireGreyPaletteCapture m12greypalette "ground greyed by its material, palette on"
-	run_capture campfireForwardCapture     m14forward     "forward preset, core programs, particles"
+	run_capture campfireForwardCapture     m14forward     "forward preset, core programs, billboards and particles"
 }
 
 # ---- manifest -----------------------------------------------------------------------------
