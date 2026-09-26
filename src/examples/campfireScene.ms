@@ -102,7 +102,6 @@ import {
 	setLightPower,
 	setAmbient,
 	setPickable,
-	setVisible,
 	collectLights,
 	refresh,
 	syncWorld,
@@ -230,7 +229,6 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 let renderer: PixelArtRenderer = createRenderer();
 let forward: ForwardRenderer = createForward();
 let forwardWanted: boolean = false;
-let grassNode: NodeId = { index: -1, generation: 0 };
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 const sceneItems: Vec<DrawItem> = [];
@@ -810,7 +808,6 @@ function setupDraws(): void {
 	const grass: Result<NodeId, SceneError> =
 		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
 	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
-	grassNode = grass.value;
 	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
 		addMesh(
@@ -1017,8 +1014,7 @@ export function configureCampfireParticles(on: boolean): void {
 	particlesWanted = on;
 }
 
-// Draws through the forward preset instead of the pixel-art one. The grass and the flame are
-// hidden: their billboard program is the pixel-art preset's, and the forward preset refuses it.
+// Draws through the forward preset instead of the pixel-art one.
 export function configureCampfireForward(on: boolean): void {
 	forwardWanted = on;
 }
@@ -1184,13 +1180,6 @@ export function initCampfire(): void {
 	flamePixels = copyTexturePixels();
 	flameTexture = makeTextureView(flameImage);
 	setupDraws();
-	if (forwardWanted) {
-		const grassHidden: Result<int32, SceneError> = setVisible(tree, grassNode, false);
-		const flameHidden: Result<int32, SceneError> = setVisible(tree, flameNode, false);
-		if (!grassHidden.ok || !flameHidden.ok) {
-			console.log("campfire: the billboards could not be hidden from the forward preset");
-		}
-	}
 	setAmbient(tree, vec3(0.33, 0.36, 0.6));
 	setSettings(renderer, settingsWanted);
 	if (paletteWanted) {
