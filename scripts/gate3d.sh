@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the thirteen capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the fourteen capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -196,7 +196,10 @@ configureCampfireRebuildAt(3);"
 		"configureCampfireGreyGround($GREY_GROUND, true);"
 	write_entry campfireGreyPaletteCapture "" "configureCampfire(PixelArtSettings.full(), true);" \
 		"configureCampfireGreyGround($GREY_GROUND, false);"
-	note "prepare: thirteen capture entries written to $CAPTURE"
+	write_entry campfireForwardCapture "" "configureCampfire(PixelArtSettings.full(), false);" \
+		"configureCampfireForward(true);
+configureCampfireParticles(true);"
+	note "prepare: fourteen capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -660,8 +663,9 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:drawPassLists renderer:drawS
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
 	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampLevelsSet program77ap:draws
-	program77ap:drawnFor camera:resolve camera:writeCameraBlock blit:writeBlitParams
-	blit:lowResView palette:upload target:beginPass"
+	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:resizeTargets
+	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
+	target:beginPass"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
@@ -814,7 +818,7 @@ expected_hash() {
 
 baseline_names() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
-		m12greydirect m12greypalette; do
+		m12greydirect m12greypalette m14forward; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -976,7 +980,7 @@ run_light_multiplies() {
 
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the thirteen configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the fourteen configurations were not built, not run, not compared"
 		return
 	fi
 	purge_stale_shader_objects
@@ -995,6 +999,7 @@ run_captures() {
 	run_light_multiplies
 	run_capture campfireGreyCpuCapture     m12greydirect  "ground greyed in its vertex colours"
 	run_capture campfireGreyPaletteCapture m12greypalette "ground greyed by its material, palette on"
+	run_capture campfireForwardCapture     m14forward     "forward preset, core programs, particles"
 }
 
 # ---- manifest -----------------------------------------------------------------------------
@@ -1062,7 +1067,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the thirteen capture entries are current"
+	pass "prepare: campfireScene.ms and the fourteen capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
