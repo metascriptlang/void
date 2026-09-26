@@ -9,6 +9,7 @@
 
 int void2dGraphemeClass(int codepoint) {
 	if (codepoint < 0 || codepoint > 0x10FFFF) { return 0; }
+	if (codepoint >= 0x20 && codepoint < 0x7F) { return 0; }
 	if (codepoint >= HANGUL_FIRST && codepoint <= HANGUL_LAST) {
 		return (codepoint - HANGUL_FIRST) % HANGUL_T_COUNT == 0 ? CLASS_LV : CLASS_LVT;
 	}

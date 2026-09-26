@@ -6,12 +6,16 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "./face";
-import { codepointFace, fontFace, fontKerns } from "./font";
+import { CodepointFace, codepointFace, fontFace, fontKerns } from "./font";
+import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
 const TAB: int32 = 9;
 const DELETE: int32 = 127;
+const TEXT_PRESENTATION: int32 = 0xFE0E;
+const EMOJI_PRESENTATION: int32 = 0xFE0F;
+const ZERO_WIDTH_JOINER: int32 = 0x200D;
 
 export const NO_GLYPH: int32 = -1;
 export const TAB_STOP_SPACES: int32 = 8;
@@ -66,6 +70,12 @@ struct Codepoint {
 	value: int32;
 	byteStart: int32;
 	byteEnd: int32;
+	face: int32;
+	scale: float32;
+}
+
+enum GraphemeCoverage {
+	NoFaceCoversAll,
 }
 
 function decodeUtf8(text: string): Vec<Codepoint> {
@@ -91,7 +101,7 @@ function decodeUtf8(text: string): Vec<Codepoint> {
 		for (let k = 1; k < length; k++) {
 			value = (value << 6) | (((bytes[i + k] as uint8) as int32) & 0x3F);
 		}
-		out.push({ value: value, byteStart: i, byteEnd: i + length });
+		out.push({ value: value, byteStart: i, byteEnd: i + length, face: -1, scale: 1.0 });
 		i = i + length;
 	}
 	return out;
@@ -147,30 +157,90 @@ function tabStop(style: TextStyle): float32 {
 	return (TAB_STOP_SPACES as float32) * space;
 }
 
+function faceOf(font: int32, codepoint: int32): CodepointFace {
+	if (isControl(codepoint)) { return { face: fontFace(font), scale: 1.0 }; }
+	return codepointFace(font, codepoint);
+}
+
+function isJoiner(codepoint: int32): boolean {
+	return codepoint == ZERO_WIDTH_JOINER || codepoint == TEXT_PRESENTATION ||
+		codepoint == EMOJI_PRESENTATION;
+}
+
+function coversGrapheme(face: int32, cps: Span<Codepoint>, first: int32, end: int32): boolean {
+	for (let k = first; k < end; k++) {
+		if (!isJoiner(cps[k].value) && glyphIndex(face, cps[k].value) == 0) { return false; }
+	}
+	return true;
+}
+
+function graphemeFace(
+	font: int32,
+	cps: Span<Codepoint>,
+	first: int32,
+	end: int32,
+): Result<CodepointFace, GraphemeCoverage> {
+	for (let k = first; k < end; k++) {
+		if (k > first && isJoiner(cps[k].value)) { continue; }
+		const candidate: CodepointFace = faceOf(font, cps[k].value);
+		if (coversGrapheme(candidate.face, cps, first, end)) { return Result.ok(candidate); }
+	}
+	return Result.err(GraphemeCoverage.NoFaceCoversAll);
+}
+
+function assignGrapheme(font: int32, cps: Span<Codepoint>, first: int32, end: int32): void {
+	if (end - first > 1) {
+		const whole = graphemeFace(font, cps, first, end);
+		if (whole.ok) {
+			for (let k = first; k < end; k++) {
+				cps[k].face = whole.value.face;
+				cps[k].scale = whole.value.scale;
+			}
+			return;
+		}
+	}
+	for (let k = first; k < end; k++) {
+		const source: CodepointFace = faceOf(font, cps[k].value);
+		cps[k].face = source.face;
+		cps[k].scale = source.scale;
+	}
+}
+
+function assignFaces(font: int32, cps: Span<Codepoint>): void {
+	let cursor: GraphemeCursor = startGraphemes();
+	let first: int32 = 0;
+	const count: int32 = cps.length as int32;
+	for (let i = 0; i < count; i++) {
+		if (breaksBefore(cursor, cps[i].value) && i > first) {
+			assignGrapheme(font, cps, first, i);
+			first = i;
+		}
+	}
+	if (count > first) { assignGrapheme(font, cps, first, count); }
+}
+
 function step(
-	codepoint: int32,
+	codepoint: Codepoint,
 	pen: float32,
 	previous: int32,
 	previousFace: int32,
 	style: TextStyle,
 	kerns: boolean,
 ): Step {
-	if (isControl(codepoint)) {
-		const primary: int32 = fontFace(style.font);
+	if (isControl(codepoint.value)) {
 		let next: float32 = pen;
-		if (codepoint == TAB) {
+		if (codepoint.value == TAB) {
 			const stop: float32 = tabStop(style);
 			next = ((Math.floor(pen / stop) as float32) + 1.0) * stop;
 		}
 		return {
-			face: primary, glyph: NO_GLYPH, size: style.size, x: pen, advance: next - pen,
+			face: codepoint.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: next - pen,
 			next: next,
 		};
 	}
-	const source = codepointFace(style.font, codepoint);
-	const face: int32 = source.face;
-	const size: float32 = style.size * source.scale;
-	const glyph: int32 = glyphIndex(face, codepoint);
+	const face: int32 = codepoint.face;
+	const size: float32 = style.size * codepoint.scale;
+	const glyph: int32 = glyphIndex(face, codepoint.value);
 	let x: float32 = pen;
 	if (previous >= 0 && previousFace == face && kerns) {
 		x = pen + glyphKern(face, previous, glyph, size);
@@ -197,7 +267,7 @@ function layRun(
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
 		const value: int32 = cps[i].value;
-		const s = step(value, pen, previous, previousFace, style, kerns);
+		const s = step(cps[i], pen, previous, previousFace, style, kerns);
 		glyphs.push({
 			face: s.face,
 			glyph: s.glyph,
@@ -241,7 +311,7 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	for (let i = from; i < to; i++) {
 		const value: int32 = cps[i].value;
 		if (i > from && breakOpportunity(previousCodepoint, value, inked)) { candidate = i; }
-		const s = step(value, pen, previous, previousFace, style, kerns);
+		const s = step(cps[i], pen, previous, previousFace, style, kerns);
 		if (value != SPACE && candidate > from && s.x + s.advance > style.maxWidth) {
 			return breakAt(cps, candidate);
 		}
@@ -259,6 +329,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 	const metrics = faceMetrics(primary, style.size);
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const cps: Vec<Codepoint> = decodeUtf8(text);
+	assignFaces(style.font, cps);
 	const count: int32 = cps.length as int32;
 	const textBytes: int32 = count > 0 ? cps[count - 1].byteEnd : 0;
 	const glyphs: Vec<LaidGlyph> = new Array(0);

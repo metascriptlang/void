@@ -240,3 +240,18 @@ test "a primary face with no line height leaves a line-height fallback at the la
 	assert l.glyphs[1].face != l.glyphs[0].face;
 	assert l.glyphs[1].size == 13.0;
 }
+
+test "a grapheme takes the first face that covers all of it, and a lone codepoint its own" {
+	const id = withFallback("Test Sans", "Test Hanzi", SizeAdjust.None);
+	const l = layoutWith(id, "A〪 B");
+	const hanzi: int32 = faceForCodepoint(id, 0x4F60);
+	assert l.glyphs[0].face == hanzi && l.glyphs[1].face == hanzi;
+	assert l.glyphs[3].face == fontFace(id);
+}
+
+test "a grapheme no one face covers keeps a face per codepoint" {
+	const id = withFallback("Test Sans", "Test Hanzi", SizeAdjust.None);
+	const l = layoutWith(id, "你́");
+	assert l.glyphs[0].face == faceForCodepoint(id, 0x4F60);
+	assert l.glyphs[1].face == fontFace(id);
+}
