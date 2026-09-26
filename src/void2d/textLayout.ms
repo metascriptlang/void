@@ -310,13 +310,17 @@ function breakAt(glyphs: Span<LaidGlyph>, next: int32): LineBreak {
 function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): LineBreak {
 	const whole: LineBreak = { end: to, next: to };
 	if (from >= to) { return whole; }
-	const origin: float32 = shaped.glyphs[from].x;
+	let delta: float32 = -shaped.glyphs[from].x;
 	let candidate: int32 = -1;
 	let inked: boolean = false;
 	for (let k = from; k < to; k++) {
-		const value: int32 = shaped.glyphs[k].codepoint;
+		const g: LaidGlyph = shaped.glyphs[k];
+		const value: int32 = g.codepoint;
 		if (k > from && inked && shaped.breaks[k]) { candidate = k; }
-		const right: float32 = shaped.glyphs[k].x + shaped.glyphs[k].advance - origin;
+		const x: float32 = g.x + delta;
+		const advance: float32 = rowAdvance(g, x, shaped.tabStop);
+		delta = delta + advance - g.advance;
+		const right: float32 = x + advance;
 		if (value != SPACE && candidate > from && right > room) {
 			return breakAt(shaped.glyphs, candidate);
 		}
@@ -535,15 +539,16 @@ function pushLine(
 	for (let k = from; k < end; k++) {
 		const g: LaidGlyph = shaped.glyphs[k];
 		const x: float32 = g.x + delta;
-		let advance: float32 = g.advance;
-		if (g.codepoint == TAB && shaped.tabStop > 0.0) {
-			const stops: float32 = (Math.floor(x / shaped.tabStop) as float32) + 1.0;
-			const next: float32 = stops * shaped.tabStop;
-			delta = delta + (next - x) - advance;
-			advance = next - x;
-		}
+		const advance: float32 = rowAdvance(g, x, shaped.tabStop);
+		delta = delta + advance - g.advance;
 		out.push({ ...g, x: x, advance: advance, line: lineIndex });
 	}
+}
+
+function rowAdvance(g: LaidGlyph, x: float32, stop: float32): float32 {
+	if (g.codepoint != TAB || stop <= 0.0) { return g.advance; }
+	const next: float32 = ((Math.floor(x / stop) as float32) + 1.0) * stop;
+	return next - x;
 }
 
 function ellipsisGlyph(shaped: ShapedText): LaidGlyph {

@@ -408,6 +408,13 @@ test "the caret, the hit test and the line box agree across lines" {
 	assert l.indexAt(l.glyphs[1].x + 0.1, 0.0) == 1;
 }
 
+test "a wrapped row measures its tabs from its own start" {
+	const room: float32 = calcTextWidth("yy\tzz", style()) - 1.0;
+	const l = wrapped("xxxxx yy\tzz", room, PLAIN_LINES);
+	assert (l.lines.length as int32) == 3;
+	for (const line of l.lines) { assert line.width <= room; }
+}
+
 test "a click past a row that wraps with no separator keeps the caret on that row" {
 	const l = wrapped("well-known", calcTextWidth("well-", style()) + 1.0, PLAIN_LINES);
 	assert (l.lines.length as int32) == 2;
