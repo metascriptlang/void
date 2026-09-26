@@ -18,7 +18,7 @@ import {
 	CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT, CMD_VERTEX_COUNT, CMD_BREAK,
 	Pipeline, breakReasonName,
 } from "../void2d/displayList";
-import { InstanceMode } from "../void2d/instance";
+import { InstanceMode, uiInstance } from "../void2d/instance";
 import { Color, BlendMode, identity2d } from "../void2d/types";
 
 const WHITE: Color = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
@@ -30,15 +30,13 @@ function frame(): void {
 }
 
 function card(mode: InstanceMode, x: float32, size: float32, radius: float32): void {
-	drawUiInstance(
-		mode, 0 as uint32, BlendMode.Alpha, identity2d(),
-		x, 0.0, size, size,
-		radius, radius, radius, radius,
-		1.0, 1.0, 1.0, 1.0,
-		0.0, 0.0, 0.0,
-		0.0, 0.0, 0.0, 0.0,
-		WHITE, RED, CLEAR,
-	);
+	drawUiInstance(0 as uint32, BlendMode.Alpha, {
+		...uiInstance(mode, identity2d(), x, 0.0, size, size, WHITE),
+		uvRadii: [radius, radius, radius, radius],
+		borders: [1.0, 1.0, 1.0, 1.0],
+		border: RED,
+		extra: CLEAR,
+	});
 }
 
 function sprite(x: float32): void {

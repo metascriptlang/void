@@ -5,14 +5,14 @@
 // streams — the bug T1 already caught once for the clip rect, where a stale value survived a
 // frame boundary and only showed up as a test depending on what ran before it.
 
-import { Color, rgba } from "../void2d/types";
+import { Color, rgba, identity2d } from "../void2d/types";
+import { InstanceMode, uiInstance } from "../void2d/instance";
 import {
-	InstanceMode,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
 	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	UI_STRIDE, SPRITE_STRIDE,
-} from "../void2d/instance";
+} from "../void2d/instanceLayout";
 import {
 	resetList, pushUiInstance, pushSpriteInstance,
 	uiInstanceCount, spriteInstanceCount, uiInstanceField, spriteInstanceField,
@@ -20,16 +20,14 @@ import {
 } from "../void2d/displayList";
 
 function box(mode: InstanceMode, x: float32, fill: Color): void {
-	pushUiInstance(
-		1.0 as float32, 0.0 as float32, 0.0 as float32, 1.0 as float32,
-		x, 2.0 as float32, 30.0 as float32, 40.0 as float32,
-		3.0 as float32, 4.0 as float32, 5.0 as float32, 6.0 as float32,
-		1.0 as float32, 1.0 as float32, 1.0 as float32, 1.0 as float32,
-		(mode as int32) as float32, 7.0 as float32, 8.0 as float32, 9.0 as float32,
-		10.0 as float32, 11.0 as float32, 12.0 as float32, 13.0 as float32,
-		fill, rgba(0.0 as float32, 0.0 as float32, 0.0 as float32, 1.0 as float32),
-		rgba(0.0 as float32, 0.0 as float32, 0.0 as float32, 0.0 as float32),
-	);
+	pushUiInstance({
+		...uiInstance(mode, identity2d(), x + 5.0, 2.0 + 7.0, 30.0, 40.0, fill),
+		uvRadii: [3.0, 4.0, 5.0, 6.0],
+		borders: [1.0, 1.0, 1.0, 1.0],
+		params: [7.0, 8.0, 9.0],
+		params1: [10.0, 11.0, 12.0, 13.0],
+		border: rgba(0.0, 0.0, 0.0, 1.0),
+	}, 5.0, 7.0);
 }
 
 function sprite(x: float32): void {

@@ -52,8 +52,9 @@ import {
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
-	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_FLOATS, InstanceMode,
-} from "../../src/void2d/instance";
+	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_FLOATS,
+} from "../../src/void2d/instanceLayout";
+import { InstanceMode } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, emptyBounds, BlendMode, Smooth } from "../../src/void2d/types";
 import { CURSOR_WIDTH } from "../../src/void2d/labelText";
 import { TextLayout } from "../../src/void2d/textLayout";

@@ -7,17 +7,19 @@
 // change either side alone and this file goes red before a pixel is drawn.
 
 import {
-	InstanceMode, UI_MODE_COUNT, MAX_WEB_STRIDE,
+	InstanceMode, UI_MODE_COUNT, MAX_WEB_STRIDE, LEGACY_QUAD_BYTES,
+	uiInstanceBytes, spriteInstanceBytes, oneStrideFitsWeb, packChannel,
+} from "../void2d/instance";
+import {
 	UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
 	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, UI_STRIDE, UI_ATTRIBUTES,
 	SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR, SPRITE_STRIDE,
-	SPRITE_ATTRIBUTES, LEGACY_QUAD_BYTES,
-	uiInstanceBytes, spriteInstanceBytes, oneStrideFitsWeb, packChannel,
+	SPRITE_ATTRIBUTES,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
 	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
 	REC_UI_FLOATS, REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV,
 	REC_SPRITE_COLOR, REC_SPRITE_FLOATS,
-} from "../void2d/instance";
+} from "../void2d/instanceLayout";
 import { uiInstanceStride, spriteInstanceStride, packChannelC } from "../void2d/draw";
 
 const FLOAT4: int32 = 16;

@@ -19,18 +19,14 @@ import {
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
 	void2dScissorMin, void2dScissorMax,
-	void2dUiInstanceStride, void2dSpriteInstanceStride, void2dInstanceLayoutCheck,
+	void2dUiInstanceStride, void2dSpriteInstanceStride,
 	void2dPackChannel,
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
 import { beginGlyphFrame } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
-import {
-	UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
-	UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA, InstanceMode,
-	SPRITE_STRIDE, SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR,
-} from "./instance";
+import { UiInstance } from "./instance";
 import {
 	CommandKind, BreakReason,
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
@@ -273,14 +269,6 @@ export function setup2d(): void {
 		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
 	) == 0) {
 		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
-		unreachable;
-	}
-	if (void2dInstanceLayoutCheck(
-		UI_STRIDE, UI_AFFINE, UI_ORIGIN_SIZE, UI_UV_RADII, UI_BORDERS, UI_PARAMS0, UI_PARAMS1,
-		UI_COLOR_FILL, UI_COLOR_BORDER, UI_COLOR_EXTRA,
-		SPRITE_STRIDE, SPRITE_AFFINE, SPRITE_ORIGIN_SIZE, SPRITE_UV, SPRITE_COLOR,
-	) == 0) {
-		console.log("void2d: the instance layout in instance.ms and batcher.c disagree");
 		unreachable;
 	}
 }
@@ -806,33 +794,9 @@ export function drawSpriteAffine(
 // which is what forces its BoundsTree (guardrail 1).
 //
 // The modes that leave a lane unused pass zeros; `instance.ms` says which lane means what.
-export function drawUiInstance(
-	mode: InstanceMode,
-	view: uint32,
-	blend: BlendMode,
-	world: Transform2D,
-	originX: float32,
-	originY: float32,
-	sizeX: float32,
-	sizeY: float32,
-	uvr0: float32, uvr1: float32, uvr2: float32, uvr3: float32,
-	borderL: float32, borderT: float32, borderR: float32, borderB: float32,
-	p1: float32, p2: float32, p3: float32,
-	q0: float32, q1: float32, q2: float32, q3: float32,
-	fill: Color,
-	border: Color,
-	extra: Color,
-): void {
+export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance): void {
 	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, blend);
-	pushUiInstance(
-		world.a, world.b, world.c, world.d,
-		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,
-		uvr0, uvr1, uvr2, uvr3,
-		borderL, borderT, borderR, borderB,
-		(mode as int32) as float32, p1, p2, p3,
-		q0, q1, q2, q3,
-		fill, border, extra,
-	);
+	pushUiInstance(inst, originXOffset(), originYOffset());
 }
 
 // True when the unified UI pipeline is legal for the state the emitter is in. Same single

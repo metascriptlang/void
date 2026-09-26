@@ -26,7 +26,7 @@ import {
 	rtViewId,
 	currentRenderScale,
 } from "./draw";
-import { InstanceMode } from "./instance";
+import { InstanceMode, uiInstance } from "./instance";
 import {
 	NO_LABEL_TEXT,
 	allocateLabelText,
@@ -359,14 +359,9 @@ function emitRunBox(
 ): void {
 	const [x, y, w, h] = box;
 	if (w <= 0.0 || h <= 0.0) { return; }
-	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	const origin = vec2(x, y) * world;
-	drawUiInstance(InstanceMode.Box, sharedGlyphView(), n.blend, world, origin.x, origin.y, w, h,
-		0.0, 0.0, 0.0, 0.0,
-		0.0, 0.0, 0.0, 0.0,
-		0.0, 0.0, 0.0,
-		0.0, 0.0, 0.0, 0.0,
-		fill, transparent, transparent);
+	drawUiInstance(sharedGlyphView(), n.blend,
+		uiInstance(InstanceMode.Box, world, origin.x, origin.y, w, h, fill));
 }
 
 function emitRunLine(
@@ -378,17 +373,13 @@ function emitRunLine(
 ): void {
 	const [x, y, w, h] = box;
 	if (w <= 0.0 || h <= 0.0) { return; }
-	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	const quadY: float32 = wavy ? y - h : y;
 	const quadH: float32 = wavy ? h * 3.0 : h;
 	const origin = vec2(x, quadY) * world;
-	drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
-		origin.x, origin.y, w, quadH,
-		0.0, 0.0, 0.0, 0.0,
-		h, wavy ? 1.0 : 0.0, 0.0, 0.0,
-		0.0, 0.0, 0.0,
-		0.0, 0.0, 0.0, 0.0,
-		fill, transparent, transparent);
+	drawUiInstance(sharedGlyphView(), n.blend, {
+		...uiInstance(InstanceMode.Underline, world, origin.x, origin.y, w, quadH, fill),
+		borders: [h, wavy ? 1.0 : 0.0, 0.0, 0.0],
+	});
 }
 
 function emitDecorations(
@@ -455,7 +446,6 @@ function selectedRow(this text: LabelText, li: int32): [float32, float32] {
 // Makepad's selection (draw_selection.rs:5-113): a quad per row carrying its neighbours' x and
 // width, unioned by smooth-min in the fragment shader, so a ragged edge is filleted.
 function emitSelection(n: Node2D, text: LabelText, world: Transform2D, na: float32): void {
-	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	const fill: Color = text.selectionColor.faded(na);
 	for (let li = 0; li < (text.layout.lines.length as int32); li++) {
 		const [x0, x1] = text.selectedRow(li);
@@ -467,14 +457,16 @@ function emitSelection(n: Node2D, text: LabelText, world: Transform2D, na: float
 		const leading: float32 = text.style.lineSpacing * 0.5;
 		const h: float32 = line.height + text.style.lineSpacing;
 		const origin = vec2(x0 - SELECTION_GLOOP, line.top - leading) * world;
-		drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
-			origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h,
-			0.0, 0.0, 0.0, 0.0,
-			w * 0.5, h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
-			0.0, 0.0, 0.0,
-			p1 > p0 ? p0 - x0 : 0.0, p1 > p0 ? p1 - p0 : 0.0,
-			q1 > q0 ? q0 - x0 : 0.0, q1 > q0 ? q1 - q0 : 0.0,
-			fill, transparent, transparent);
+		drawUiInstance(sharedGlyphView(), n.blend, {
+			...uiInstance(
+				InstanceMode.Selection, world, origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h, fill,
+			),
+			borders: [w * 0.5, h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
+			params1: [
+				p1 > p0 ? p0 - x0 : 0.0, p1 > p0 ? p1 - p0 : 0.0,
+				q1 > q0 ? q0 - x0 : 0.0, q1 > q0 ? q1 - q0 : 0.0,
+			],
+		});
 	}
 }
 
@@ -517,7 +509,6 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void
 	if (text.selectionLength > 0 && uiInstancingAvailable()) { emitSelection(n, text, world, na); }
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
-	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 	const instanced: boolean = uiInstancingAvailable();
 	const exact: boolean = text.pixelExact;
 	const affine: Transform2D = exact ? deviceGrid : world;
@@ -545,13 +536,10 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void
 		}
 		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.faded(na) : col;
 		if (instanced) {
-			drawUiInstance(InstanceMode.Glyph, view, n.blend, affine,
-				x, y, w, h,
-				p.u0, p.v0, p.u1, p.v1,
-				0.0, 0.0, 0.0, 0.0,
-				0.0, 0.0, 0.0,
-				0.0, 0.0, 0.0, 0.0,
-				fill, transparent, transparent);
+			drawUiInstance(view, n.blend, {
+				...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
+				uvRadii: [p.u0, p.v0, p.u1, p.v1],
+			});
 		} else {
 			const rx: float32 = affine.a * w;
 			const ry: float32 = affine.b * w;
@@ -595,14 +583,15 @@ function emitStyledImage(
 	const fitted = fitImage(t, sizeX, sizeY, style.fit);
 	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
 	const origin = vec2(lbMin.x + fitted.x, lbMin.y + fitted.y) * world;
-	drawUiInstance(InstanceMode.Image, t.view, n.blend, world,
-		origin.x, origin.y, fitted.w, fitted.h,
-		fitted.u0, fitted.v0, fitted.u1, fitted.v1,
-		style.radii.topLeft, style.radii.topRight,
-		style.radii.bottomRight, style.radii.bottomLeft,
-		0.0, 0.0, 0.0,
-		style.grayscale ? 1.0 : 0.0, 0.0, 0.0, 0.0,
-		col, transparent, transparent);
+	drawUiInstance(t.view, n.blend, {
+		...uiInstance(InstanceMode.Image, world, origin.x, origin.y, fitted.w, fitted.h, col),
+		uvRadii: [fitted.u0, fitted.v0, fitted.u1, fitted.v1],
+		borders: [
+			style.radii.topLeft, style.radii.topRight,
+			style.radii.bottomRight, style.radii.bottomLeft,
+		],
+		params1: [style.grayscale ? 1.0 : 0.0, 0.0, 0.0, 0.0],
+	});
 	return true;
 }
 
@@ -707,12 +696,15 @@ function emitNode(
 					const sc: Color = st.shadowColor;
 					shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 				}
-				drawUiInstance(InstanceMode.Box, sharedGlyphView(), n.blend, world, qx, qy, qw, qh,
-					radiusTL, radiusTR, radiusBR, radiusBL,
-					borderL, borderT, borderR, borderB,
-					borderStyle, 0.0, 0.0,
-					sp0, sp1, sp2, sp3,
-					col, edge, shadowColor);
+				drawUiInstance(sharedGlyphView(), n.blend, {
+					...uiInstance(InstanceMode.Box, world, qx, qy, qw, qh, col),
+					uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
+					borders: [borderL, borderT, borderR, borderB],
+					params: [borderStyle, 0.0, 0.0],
+					params1: [sp0, sp1, sp2, sp3],
+					border: edge,
+					extra: shadowColor,
+				});
 			} else {
 				fillQuad(tl, tr, br, bl, col, n.blend);
 			}
@@ -744,13 +736,10 @@ function emitNode(
 		},
 		DrawKind.Underline => {
 			if (uiInstancingAvailable()) {
-				drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
-					tl.x, tl.y, sizeX, sizeY,
-					0.0, 0.0, 0.0, 0.0,
-					n.size, n.borderL, 0.0, 0.0,
-					0.0, 0.0, 0.0,
-					0.0, 0.0, 0.0, 0.0,
-					col, transparent, transparent);
+				drawUiInstance(sharedGlyphView(), n.blend, {
+					...uiInstance(InstanceMode.Underline, world, tl.x, tl.y, sizeX, sizeY, col),
+					borders: [n.size, n.borderL, 0.0, 0.0],
+				});
 			} else if (!textPrimitiveEffectRejectedReported) {
 				console.log(TEXT_PRIMITIVE_EFFECT_REFUSED);
 				textPrimitiveEffectRejectedReported = true;
@@ -758,13 +747,11 @@ function emitNode(
 		},
 		DrawKind.Selection => {
 			if (uiInstancingAvailable()) {
-				drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
-					tl.x, tl.y, sizeX, sizeY,
-					0.0, 0.0, 0.0, 0.0,
-					n.w * 0.5, n.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
-					0.0, 0.0, 0.0,
-					n.borderL, n.borderT, n.borderR, n.borderB,
-					col, transparent, transparent);
+				drawUiInstance(sharedGlyphView(), n.blend, {
+					...uiInstance(InstanceMode.Selection, world, tl.x, tl.y, sizeX, sizeY, col),
+					borders: [n.w * 0.5, n.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
+					params1: [n.borderL, n.borderT, n.borderR, n.borderB],
+				});
 			} else if (!textPrimitiveEffectRejectedReported) {
 				console.log(TEXT_PRIMITIVE_EFFECT_REFUSED);
 				textPrimitiveEffectRejectedReported = true;

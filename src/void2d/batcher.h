@@ -88,19 +88,11 @@ int void2dGlyphUploadCount(void);
 void void2dSetTextGamma(float r0, float r1, float r2, float r3, float contrast);
 int void2dGlyphUploadBytes(void);
 
-// The instance strides sokol is handed, from sizeof rather than a literal, and the offsets
-// the emitter in src/void2d/instance.ms claims it writes. void2dInstanceLayoutCheck fails at
-// setup if the two ever disagree.
 int void2dUiInstanceStride(void);
 
 // One colour channel packed as the GPU stores it. Exported so a test can hold it against
 // instance.ms's packChannel instead of guardrail 9 resting on two copies that look alike.
 int void2dPackChannel(float value);
 int void2dSpriteInstanceStride(void);
-int void2dInstanceLayoutCheck(int uiStride, int uiAffine, int uiOriginSize, int uiUvRadii,
-                              int uiBorders, int uiParams0, int uiParams1, int uiColorFill,
-                              int uiColorBorder, int uiColorExtra,
-                              int spriteStride, int spriteAffine, int spriteOriginSize,
-                              int spriteUv, int spriteColor);
 
 #endif

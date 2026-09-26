@@ -25,14 +25,15 @@
 
 import { Color, BlendMode } from "./types";
 import { void2dCommandView } from "./batcher.h";
+import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
-	UI_STRIDE, SPRITE_STRIDE, UI_PARAM_MODE,
+	UI_STRIDE, SPRITE_STRIDE,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0,
 	REC_UI_PARAMS1, REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA,
 	REC_UI_FLOATS,
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	REC_SPRITE_FLOATS,
-} from "./instance";
+} from "./instanceLayout";
 
 export enum CommandKind {
 	Draw,
@@ -286,34 +287,30 @@ export function pushVertex(
 // Append one UI instance. The caller passes the six float4 lanes and three colours; the
 // packing to UBYTE4N happens in `batcher.c` on the way to the GPU (instance.ms, "the RECORD
 // layout").
-export function pushUiInstance(
-	a: float32, b: float32, c: float32, d: float32,
-	tx: float32, ty: float32, w: float32, h: float32,
-	uvr0: float32, uvr1: float32, uvr2: float32, uvr3: float32,
-	borderL: float32, borderT: float32, borderR: float32, borderB: float32,
-	mode: float32, p1: float32, p2: float32, p3: float32,
-	q0: float32, q1: float32, q2: float32, q3: float32,
-	fill: Color, border: Color, extra: Color,
-): void {
+export function pushUiInstance(inst: UiInstance, originX: float32, originY: float32): void {
 	const base: int32 = uiInstanceTotal * REC_UI_FLOATS;
 	growTo(uiInstances, base + REC_UI_FLOATS);
-	uiInstances[base + REC_UI_AFFINE] = a;
-	uiInstances[base + REC_UI_AFFINE + 1] = b;
-	uiInstances[base + REC_UI_AFFINE + 2] = c;
-	uiInstances[base + REC_UI_AFFINE + 3] = d;
-	uiInstances[base + REC_UI_ORIGIN_SIZE] = tx;
-	uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = ty;
-	uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = w;
-	uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = h;
-	uiInstances[base + REC_UI_UV_RADII] = uvr0;
-	uiInstances[base + REC_UI_UV_RADII + 1] = uvr1;
-	uiInstances[base + REC_UI_UV_RADII + 2] = uvr2;
-	uiInstances[base + REC_UI_UV_RADII + 3] = uvr3;
-	uiInstances[base + REC_UI_BORDERS] = borderL;
-	uiInstances[base + REC_UI_BORDERS + 1] = borderT;
-	uiInstances[base + REC_UI_BORDERS + 2] = borderR;
-	uiInstances[base + REC_UI_BORDERS + 3] = borderB;
-	uiInstances[base + REC_UI_PARAMS0] = mode;
+	const [u0, u1, u2, u3] = inst.uvRadii;
+	const [bl, bt, br, bb] = inst.borders;
+	const [p1, p2, p3] = inst.params;
+	const [q0, q1, q2, q3] = inst.params1;
+	uiInstances[base + REC_UI_AFFINE] = inst.affine.a;
+	uiInstances[base + REC_UI_AFFINE + 1] = inst.affine.b;
+	uiInstances[base + REC_UI_AFFINE + 2] = inst.affine.c;
+	uiInstances[base + REC_UI_AFFINE + 3] = inst.affine.d;
+	uiInstances[base + REC_UI_ORIGIN_SIZE] = inst.x - originX;
+	uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = inst.y - originY;
+	uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = inst.w;
+	uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = inst.h;
+	uiInstances[base + REC_UI_UV_RADII] = u0;
+	uiInstances[base + REC_UI_UV_RADII + 1] = u1;
+	uiInstances[base + REC_UI_UV_RADII + 2] = u2;
+	uiInstances[base + REC_UI_UV_RADII + 3] = u3;
+	uiInstances[base + REC_UI_BORDERS] = bl;
+	uiInstances[base + REC_UI_BORDERS + 1] = bt;
+	uiInstances[base + REC_UI_BORDERS + 2] = br;
+	uiInstances[base + REC_UI_BORDERS + 3] = bb;
+	uiInstances[base + REC_UI_PARAMS0] = (inst.mode as int32) as float32;
 	uiInstances[base + REC_UI_PARAMS0 + 1] = p1;
 	uiInstances[base + REC_UI_PARAMS0 + 2] = p2;
 	uiInstances[base + REC_UI_PARAMS0 + 3] = p3;
@@ -321,18 +318,18 @@ export function pushUiInstance(
 	uiInstances[base + REC_UI_PARAMS1 + 1] = q1;
 	uiInstances[base + REC_UI_PARAMS1 + 2] = q2;
 	uiInstances[base + REC_UI_PARAMS1 + 3] = q3;
-	uiInstances[base + REC_UI_COLOR_FILL] = fill.r;
-	uiInstances[base + REC_UI_COLOR_FILL + 1] = fill.g;
-	uiInstances[base + REC_UI_COLOR_FILL + 2] = fill.b;
-	uiInstances[base + REC_UI_COLOR_FILL + 3] = fill.a;
-	uiInstances[base + REC_UI_COLOR_BORDER] = border.r;
-	uiInstances[base + REC_UI_COLOR_BORDER + 1] = border.g;
-	uiInstances[base + REC_UI_COLOR_BORDER + 2] = border.b;
-	uiInstances[base + REC_UI_COLOR_BORDER + 3] = border.a;
-	uiInstances[base + REC_UI_COLOR_EXTRA] = extra.r;
-	uiInstances[base + REC_UI_COLOR_EXTRA + 1] = extra.g;
-	uiInstances[base + REC_UI_COLOR_EXTRA + 2] = extra.b;
-	uiInstances[base + REC_UI_COLOR_EXTRA + 3] = extra.a;
+	uiInstances[base + REC_UI_COLOR_FILL] = inst.fill.r;
+	uiInstances[base + REC_UI_COLOR_FILL + 1] = inst.fill.g;
+	uiInstances[base + REC_UI_COLOR_FILL + 2] = inst.fill.b;
+	uiInstances[base + REC_UI_COLOR_FILL + 3] = inst.fill.a;
+	uiInstances[base + REC_UI_COLOR_BORDER] = inst.border.r;
+	uiInstances[base + REC_UI_COLOR_BORDER + 1] = inst.border.g;
+	uiInstances[base + REC_UI_COLOR_BORDER + 2] = inst.border.b;
+	uiInstances[base + REC_UI_COLOR_BORDER + 3] = inst.border.a;
+	uiInstances[base + REC_UI_COLOR_EXTRA] = inst.extra.r;
+	uiInstances[base + REC_UI_COLOR_EXTRA + 1] = inst.extra.g;
+	uiInstances[base + REC_UI_COLOR_EXTRA + 2] = inst.extra.b;
+	uiInstances[base + REC_UI_COLOR_EXTRA + 3] = inst.extra.a;
 	uiInstanceTotal = uiInstanceTotal + 1;
 }
 

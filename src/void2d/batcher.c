@@ -4,6 +4,7 @@
 #include "../sokol/bridge.h"
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader2d.glsl.h"
+#include "instanceLayout.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,15 +127,6 @@ static int s_retiredBufCount;
 #define PIPELINE_SPRITE     1
 #define PIPELINE_UI         2
 
-// The sprite record and its GPU struct are the same bytes in the same order, so the upload is
-// a memcpy and not a pack. src/test/instanceLayoutCheck.ms asserts that.
-#define SPRITE_REC_FLOATS   16
-
-// The UI record is 36 floats where the GPU instance is 108 bytes: six float4 lanes copy
-// straight through and the three trailing colours pack to UBYTE4N.
-// src/test/instanceLayoutCheck.ms asserts both numbers against instance.ms.
-#define UI_REC_FLOATS       36
-
 #define EFFECT_FLOATS       44
 #define VERTEX_FLOATS       8
 
@@ -183,33 +175,12 @@ void void2dSetTextGamma(float r0, float r1, float r2, float r3, float contrast) 
 }
 int void2dGlyphUploadBytes(void) { return s_glyphUploadBytes; }
 
-// P2's two instance layouts. These structs are what the vertex-buffer layout is built from,
-// so sizeof is the stride and src/void2d/instance.ms's constants are checked against it.
-typedef struct {
-	float affine[4];
-	float originSize[4];
-	float uvRadii[4];
-	float borders[4];
-	float params0[4];
-	float params1[4];
-	uint32_t colorFill;
-	uint32_t colorBorder;
-	uint32_t colorExtra;
-} void2dUiInstance;
-
 // The UI record is 36 floats and the GPU instance is 108 bytes, so unlike the sprite stream
 // this one cannot be uploaded as it was recorded — the three colours pack to UBYTE4N on the
 // way in. That is one staging buffer, grown and never shrunk, rather than bit-twiddling in
 // the emitter where a Vec<float32> would lose the low bits to the mantissa anyway.
 static void2dUiInstance *s_uiStage;
 static int s_uiStageCap;
-
-typedef struct {
-	float affine[4];
-	float originSize[4];
-	float uv[4];
-	float color[4];
-} void2dSpriteInstance;
 
 // One colour channel as the GPU will store it. Rounding, not truncation: truncation loses a
 // full level at every channel and turns 1.0 into 254. src/void2d/instance.ms holds the same
@@ -231,28 +202,6 @@ static uint32_t packColor(const float *c) {
 
 int void2dUiInstanceStride(void) { return (int)sizeof(void2dUiInstance); }
 int void2dSpriteInstanceStride(void) { return (int)sizeof(void2dSpriteInstance); }
-
-int void2dInstanceLayoutCheck(int uiStride, int uiAffine, int uiOriginSize, int uiUvRadii,
-                              int uiBorders, int uiParams0, int uiParams1, int uiColorFill,
-                              int uiColorBorder, int uiColorExtra,
-                              int spriteStride, int spriteAffine, int spriteOriginSize,
-                              int spriteUv, int spriteColor) {
-	return uiStride == (int)sizeof(void2dUiInstance)
-		&& uiAffine == (int)offsetof(void2dUiInstance, affine)
-		&& uiOriginSize == (int)offsetof(void2dUiInstance, originSize)
-		&& uiUvRadii == (int)offsetof(void2dUiInstance, uvRadii)
-		&& uiBorders == (int)offsetof(void2dUiInstance, borders)
-		&& uiParams0 == (int)offsetof(void2dUiInstance, params0)
-		&& uiParams1 == (int)offsetof(void2dUiInstance, params1)
-		&& uiColorFill == (int)offsetof(void2dUiInstance, colorFill)
-		&& uiColorBorder == (int)offsetof(void2dUiInstance, colorBorder)
-		&& uiColorExtra == (int)offsetof(void2dUiInstance, colorExtra)
-		&& spriteStride == (int)sizeof(void2dSpriteInstance)
-		&& spriteAffine == (int)offsetof(void2dSpriteInstance, affine)
-		&& spriteOriginSize == (int)offsetof(void2dSpriteInstance, originSize)
-		&& spriteUv == (int)offsetof(void2dSpriteInstance, uv)
-		&& spriteColor == (int)offsetof(void2dSpriteInstance, color);
-}
 
 uint32_t void2dCommandView(const float *cmd) {
 	return (uint32_t)cmd[CMD_VIEW] | ((uint32_t)cmd[CMD_VIEW_HIGH] << 16);
@@ -386,14 +335,7 @@ void void2dSetup(void) {
 		sd.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
 		sd.layout.attrs[ATTR_sprite_corner].format = SG_VERTEXFORMAT_FLOAT2;
 		sd.layout.attrs[ATTR_sprite_corner].buffer_index = 0;
-		sd.layout.attrs[ATTR_sprite_iAffine].format = SG_VERTEXFORMAT_FLOAT4;
-		sd.layout.attrs[ATTR_sprite_iAffine].buffer_index = 1;
-		sd.layout.attrs[ATTR_sprite_iOriginSize].format = SG_VERTEXFORMAT_FLOAT4;
-		sd.layout.attrs[ATTR_sprite_iOriginSize].buffer_index = 1;
-		sd.layout.attrs[ATTR_sprite_iUv].format = SG_VERTEXFORMAT_FLOAT4;
-		sd.layout.attrs[ATTR_sprite_iUv].buffer_index = 1;
-		sd.layout.attrs[ATTR_sprite_iColor].format = SG_VERTEXFORMAT_FLOAT4;
-		sd.layout.attrs[ATTR_sprite_iColor].buffer_index = 1;
+		VOID2D_SPRITE_ATTRIBUTES(sd);
 		sd.colors[0].blend.enabled = modes[i].on;
 		sd.colors[0].blend.src_factor_rgb = modes[i].srgb;
 		sd.colors[0].blend.dst_factor_rgb = modes[i].drgb;
@@ -413,27 +355,7 @@ void void2dSetup(void) {
 		ud.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
 		ud.layout.attrs[ATTR_ui_corner].format = SG_VERTEXFORMAT_FLOAT2;
 		ud.layout.attrs[ATTR_ui_corner].buffer_index = 0;
-		ud.layout.attrs[ATTR_ui_iAffine].format = SG_VERTEXFORMAT_FLOAT4;
-		ud.layout.attrs[ATTR_ui_iAffine].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iOriginSize].format = SG_VERTEXFORMAT_FLOAT4;
-		ud.layout.attrs[ATTR_ui_iOriginSize].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iUvRadii].format = SG_VERTEXFORMAT_FLOAT4;
-		ud.layout.attrs[ATTR_ui_iUvRadii].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iBorders].format = SG_VERTEXFORMAT_FLOAT4;
-		ud.layout.attrs[ATTR_ui_iBorders].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iParams0].format = SG_VERTEXFORMAT_FLOAT4;
-		ud.layout.attrs[ATTR_ui_iParams0].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iParams1].format = SG_VERTEXFORMAT_FLOAT4;
-		ud.layout.attrs[ATTR_ui_iParams1].buffer_index = 1;
-		// The three colours are UBYTE4N on the GPU and four floats in the record — the pack
-		// happens on the way into the buffer (instance.ms, "the RECORD layout"), because a
-		// Vec<float32> cannot hold a packed RGBA8 without losing the low bits to the mantissa.
-		ud.layout.attrs[ATTR_ui_iColorFill].format = SG_VERTEXFORMAT_UBYTE4N;
-		ud.layout.attrs[ATTR_ui_iColorFill].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iColorBorder].format = SG_VERTEXFORMAT_UBYTE4N;
-		ud.layout.attrs[ATTR_ui_iColorBorder].buffer_index = 1;
-		ud.layout.attrs[ATTR_ui_iColorExtra].format = SG_VERTEXFORMAT_UBYTE4N;
-		ud.layout.attrs[ATTR_ui_iColorExtra].buffer_index = 1;
+		VOID2D_UI_ATTRIBUTES(ud);
 		ud.colors[0].blend.enabled = modes[i].on;
 		ud.colors[0].blend.src_factor_rgb = modes[i].srgb;
 		ud.colors[0].blend.dst_factor_rgb = modes[i].drgb;
@@ -709,12 +631,8 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 			s_uiStageCap = uiInstanceCount;
 		}
 		for (int i = 0; i < uiInstanceCount; i++) {
-			const float *rec = uiInstances + (size_t)i * UI_REC_FLOATS;
-			void2dUiInstance *dst = s_uiStage + i;
-			memcpy(dst->affine, rec, 24 * sizeof(float));
-			dst->colorFill = packColor(rec + 24);
-			dst->colorBorder = packColor(rec + 28);
-			dst->colorExtra = packColor(rec + 32);
+			void2dPackUiInstance(s_uiStage + i,
+				uiInstances + (size_t)i * VOID2D_UI_REC_FLOATS, packColor);
 		}
 		sg_range data = { .ptr = s_uiStage, .size = uiBytes };
 		s_uiInstanceBase = sg_append_buffer(s_vbuf, &data);
