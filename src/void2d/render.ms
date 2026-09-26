@@ -462,10 +462,25 @@ function emitCaret(n: Node2D, text: LabelText, world: Transform2D, na: float32):
 	emitRunBox(n, world, box, faded(text.cursorColor, na));
 }
 
+let refusedLabelEditing: int32 = 0;
+const LABEL_EDITING_EFFECT_REFUSED: string =
+	"void2d: text runs, a selection and a caret cannot be combined with colorMatrix, " +
+	"colorAdd, or colorKey";
+
+export function labelEditingRefusals(): int32 {
+	return refusedLabelEditing;
+}
+
 function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void {
 	if (n.payload == NO_LABEL_TEXT) { return; }
 	const scale: float32 = currentRenderScale();
 	const text = placeLabel(n.payload, world, scale);
+	const editing: boolean = (text.runs.length as int32) > 0 || text.selectionLength > 0 ||
+		text.cursorIndex != NO_CURSOR;
+	if (editing && !uiInstancingAvailable()) {
+		if (refusedLabelEditing == 0) { console.log(LABEL_EDITING_EFFECT_REFUSED); }
+		refusedLabelEditing = refusedLabelEditing + 1;
+	}
 	const styled: boolean = (text.runs.length as int32) > 0 && uiInstancingAvailable();
 	if (styled) { emitDecorations(n, text, world, na, true); }
 	if (text.selectionLength > 0 && uiInstancingAvailable()) { emitSelection(n, text, world, na); }

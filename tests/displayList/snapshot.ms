@@ -24,7 +24,7 @@ import {
 	Node2D, rect, mask, at, addChild, setBoxStyle, setImageStyle, label, graphics, sprite,
 	underline, selection,
 } from "../../src/void2d/node";
-import { sync, draw } from "../../src/void2d/render";
+import { sync, draw, labelEditingRefusals } from "../../src/void2d/render";
 import {
 	begin2d,
 	beginTarget,
@@ -732,4 +732,18 @@ test "a label's bounds hold its selection tail and a caret after its widest line
 	assert first.x + first.width + CURSOR_WIDTH <= bounds.xMax;
 	assert (spans.length as int32) == 4;
 	assert spans[1] <= bounds.xMax;
+}
+
+test "a label's runs, selection and caret under a colour effect are refused, not dropped" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setSelectionRange({ start: 1, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
+	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
+	const before: int32 = labelEditingRefusals();
+	selectedSpans(s.root, 200.0, 80.0);
+	assert labelEditingRefusals() == before;
+	text.colorMatrix = colorMatrixGrayscale(1.0);
+	const spans = selectedSpans(s.root, 200.0, 80.0);
+	assert (spans.length as int32) == 0;
+	assert labelEditingRefusals() == before + 1;
 }
