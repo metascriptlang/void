@@ -134,7 +134,12 @@ export function rect(w: float32, h: float32, color: Color): Node2D {
 }
 
 export function setBoxStyle(this n: Node2D, style: BoxStyle): Node2D {
-	if (n.kind !== DrawKind.Rect) { unreachable; }
+	if (n.kind !== DrawKind.Rect) {
+		console.log(
+			`void2d: setBoxStyle asked of a ${n.kind.toString()} node; only a Rect has a box style`,
+		);
+		unreachable;
+	}
 	if (n.payload == NO_BOX_STYLE) {
 		n.payload = allocateBoxStyle(style);
 	} else {
@@ -149,7 +154,13 @@ export function sprite(t: Tile): Node2D {
 	return n;
 }
 export function setImageStyle(this n: Node2D, style: ImageStyle): Node2D {
-	if (n.kind !== DrawKind.Sprite && n.kind !== DrawKind.Anim) { unreachable; }
+	if (n.kind !== DrawKind.Sprite && n.kind !== DrawKind.Anim) {
+		console.log(
+			`void2d: setImageStyle asked of a ${n.kind.toString()} node; only a Sprite or an ` +
+			"Anim has an image style",
+		);
+		unreachable;
+	}
 	if (n.payload == NO_IMAGE_STYLE) {
 		n.payload = allocateImageStyle(style);
 	} else {
@@ -162,31 +173,42 @@ export function label(text: string, size: float32, color: Color): Node2D {
 	n.text = text; n.size = size; n.color = color;
 	return n;
 }
-function labelPayload(n: Node2D): int32 {
-	if (n.kind !== DrawKind.Label) { unreachable; }
+export function requireLabel(n: Node2D, call: string): void {
+	if (n.kind === DrawKind.Label) { return; }
+	console.log(`void2d: ${call} asked of a ${n.kind.toString()} node; only a Label has text`);
+	unreachable;
+}
+
+function labelEntry(n: Node2D, call: string): int32 {
+	requireLabel(n, call);
 	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
-	n.textDirty = true;
 	return n.payload;
 }
 
+function labelPayload(n: Node2D, call: string): int32 {
+	const index: int32 = labelEntry(n, call);
+	n.textDirty = true;
+	return index;
+}
+
 export function setTextRuns(this n: Node2D, runs: Span<TextRun>): Node2D {
-	setLabelRuns(labelPayload(n), runs);
+	setLabelRuns(labelPayload(n, "setTextRuns"), runs);
 	return n;
 }
 
 export function setShapingBreaks(this n: Node2D, breaks: Span<int32>): Node2D {
-	setLabelShapingBreaks(labelPayload(n), breaks);
+	setLabelShapingBreaks(labelPayload(n, "setShapingBreaks"), breaks);
 	return n;
 }
 
 export function setTruncate(this n: Node2D, truncate: Truncate): Node2D {
-	const index: int32 = labelPayload(n);
+	const index: int32 = labelPayload(n, "setTruncate");
 	setLabelLines(index, { ...labelLines(index), truncate: truncate });
 	return n;
 }
 
 export function setHangingIndent(this n: Node2D, indent: float32): Node2D {
-	const index: int32 = labelPayload(n);
+	const index: int32 = labelPayload(n, "setHangingIndent");
 	setLabelLines(index, { ...labelLines(index), hangingIndent: indent });
 	return n;
 }
@@ -198,37 +220,31 @@ export struct SelectionRange {
 }
 
 export function setSelectionRange(this n: Node2D, range: SelectionRange, color: Color): Node2D {
-	if (n.kind !== DrawKind.Label) { unreachable; }
-	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
-	setLabelSelection(n.payload, range.start, range.length, color);
+	setLabelSelection(labelEntry(n, "setSelectionRange"), range.start, range.length, color);
 	return n;
 }
 
 // h2d's TextInput.cursorIndex; -1 hides the caret, and moving it restarts the blink.
 export function setCursorIndex(this n: Node2D, index: int32, color: Color): Node2D {
-	if (n.kind !== DrawKind.Label) { unreachable; }
-	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
-	setLabelCursor(n.payload, index, color);
+	setLabelCursor(labelEntry(n, "setCursorIndex"), index, color);
 	return n;
 }
 
 // h2d's TextInput.cursorBlinkTime, 0.5 s by default; 0 keeps the caret on, for a host that
 // blinks it itself through setCursorIndex.
 export function setCursorBlinkTime(this n: Node2D, seconds: float32): Node2D {
-	if (n.kind !== DrawKind.Label) { unreachable; }
-	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
-	setLabelBlinkTime(n.payload, seconds);
+	setLabelBlinkTime(labelEntry(n, "setCursorBlinkTime"), seconds);
 	return n;
 }
 
 export function setForceWidth(this n: Node2D, cell: float32): Node2D {
-	const index: int32 = labelPayload(n);
+	const index: int32 = labelPayload(n, "setForceWidth");
 	setLabelLines(index, { ...labelLines(index), forceWidth: cell });
 	return n;
 }
 
 export function setFont(this n: Node2D, font: FontId): Node2D {
-	if (n.kind !== DrawKind.Label) { unreachable; }
+	requireLabel(n, "setFont");
 	n.fontId = font;
 	return n;
 }

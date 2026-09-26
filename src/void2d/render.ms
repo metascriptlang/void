@@ -1,7 +1,7 @@
 // void2d rendering — sync (transform cache + content bounds), draw (dispatch + cull + filter),
 // getBounds. Extracted from node.ms so each file has one responsibility.
 
-import { Node2D, DrawKind } from "./node";
+import { Node2D, DrawKind, requireLabel } from "./node";
 import {
 	fillQuad,
 	drawSpriteAffine,
@@ -1080,12 +1080,6 @@ export function getBounds(this n: Node2D, ref out: Bounds): void {
 	for (const ch of n.children) {
 		if (ch.visible) { ch.getBounds(out); }
 	}
-}
-
-function requireLabel(n: Node2D, call: string): void {
-	if (n.kind === DrawKind.Label) { return; }
-	console.log(`void2d: ${call} asked of a ${n.kind.toString()} node; only a Label has text`);
-	unreachable;
 }
 
 export function textLayout(this n: Node2D): TextLayout {
