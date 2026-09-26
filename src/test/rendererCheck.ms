@@ -512,3 +512,29 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 		}
 	}
 }
+
+test "a billboard block too short to hold the ramp levels is refused by the core" {
+	const short: int32 = BILLBOARD_UNIFORM_LENGTH / 2;
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + short);
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, short);
+	assert created.ok && block.ok;
+	if (created.ok && block.ok) {
+		let renderer: PixelArtRenderer = created.value;
+		const material: int32 = addMaterial(context, {
+			...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+			texture0: 1,
+			sampler0: 1,
+			uniforms: block.value,
+		});
+		const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const result: Result<int32, PixelArtError> =
+			renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
+		assert !result.ok && result.error == PixelArtError.MaterialBlock;
+		assert renderer.core.generation == 0;
+	}
+}
