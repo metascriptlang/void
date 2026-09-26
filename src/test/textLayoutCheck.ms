@@ -400,3 +400,14 @@ test "the caret, the hit test and the line box agree across lines" {
 	assert l.indexAt(1000.0, second.top + 1.0) == second.indexEnd;
 	assert l.indexAt(l.glyphs[1].x + 0.1, 0.0) == 1;
 }
+
+test "a click past a row that wraps with no separator keeps the caret on that row" {
+	const l = wrapped("well-known", calcTextWidth("well-", style()) + 1.0, PLAIN_LINES);
+	assert (l.lines.length as int32) == 2;
+	const first = l.lines[0];
+	assert first.indexEnd == 5 && l.lines[1].indexStart == 5;
+	const index: int32 = l.indexAt(1000.0, first.top + 1.0);
+	assert index == 5;
+	assert l.lineBoxAt(index).top == first.top;
+	assert approx(l.xForIndex(index), first.x + first.width);
+}

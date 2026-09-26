@@ -746,11 +746,8 @@ export function splitText(this l: TextLayout, text: string): string {
 
 function lineOfIndex(l: TextLayout, index: int32): int32 {
 	const last: int32 = (l.lines.length as int32) - 1;
-	for (let i = 0; i <= last; i++) {
-		if (index < l.lines[i].indexEnd || (index == l.lines[i].indexEnd && i == last)) {
-			return i;
-		}
-		if (i < last && index < l.lines[i + 1].indexStart) { return i; }
+	for (let i = 0; i < last; i++) {
+		if (index <= l.lines[i].indexEnd || index < l.lines[i + 1].indexStart) { return i; }
 	}
 	return last;
 }
