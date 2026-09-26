@@ -7,16 +7,12 @@ import {
 	startGraphemes,
 	breaksBefore,
 } from "../void2d/grapheme";
-import { breakOpportunity } from "../void2d/textLayout";
+import { lineBreaks } from "../void2d/lineBreak";
 
 const GRAPHEME_ROWS: string = "tests/oracle/ucd/GraphemeBreakTest-18.0.0.txt";
 const LINE_ROWS: string = "tests/oracle/ucd/LineBreakTest-18.0.0.txt";
 const BREAK: string = "÷";
-const NEWLINE: int32 = 10;
-const SPACE: int32 = 32;
 const SHOWN_FAILURES: int32 = 8;
-const LINE_ROWS_AGREEING: int32 = 11398;
-const LINE_POSITIONS_AGREEING: int32 = 32774;
 
 struct Row {
 	codepoints: Vec<int32>;
@@ -65,21 +61,10 @@ function graphemesAgree(row: Row): boolean {
 }
 
 function lineBreaksDisagree(row: Row): int32 {
-	let previous: int32 = -1;
-	let inked: boolean = false;
+	const ours = lineBreaks(row.codepoints);
 	let disagree: int32 = 0;
-	for (let i = 0; i < (row.codepoints.length as int32); i++) {
-		const codepoint: int32 = row.codepoints[i];
-		if (i > 0) {
-			const ours: boolean = previous == NEWLINE || breakOpportunity(previous, codepoint, inked);
-			if (ours != row.breaks[i]) { disagree = disagree + 1; }
-		}
-		if (codepoint == NEWLINE) {
-			inked = false;
-		} else if (codepoint != SPACE) {
-			inked = true;
-		}
-		previous = codepoint;
+	for (let i = 1; i < (row.codepoints.length as int32); i++) {
+		if (ours[i] != row.breaks[i]) { disagree = disagree + 1; }
 	}
 	return disagree;
 }
@@ -129,20 +114,26 @@ test "grapheme boundaries agree with every row of the UCD's GraphemeBreakTest" {
 	assert (all.length as int32) > 0 && agreed == (all.length as int32);
 }
 
-test "line breaks against the UCD's LineBreakTest, printed as a pass rate" {
+test "line breaks agree with every row of the UCD's LineBreakTest" {
 	const all = rows(LINE_ROWS);
 	let agreed: int32 = 0;
 	let positions: int32 = 0;
 	let wrong: int32 = 0;
+	let shown: int32 = 0;
 	for (const row of all) {
 		const disagree: int32 = lineBreaksDisagree(row);
-		if (disagree == 0) { agreed = agreed + 1; }
+		if (disagree == 0) {
+			agreed = agreed + 1;
+		} else if (shown < SHOWN_FAILURES) {
+			shown = shown + 1;
+			console.log(`ucd oracle: line row disagrees: ${described(row)}`);
+		}
 		wrong = wrong + disagree;
 		positions = positions + (row.codepoints.length as int32) - 1;
 	}
 	console.log(
 		`ucd oracle: LineBreakTest ${agreed}/${all.length} rows and ` +
-		`${positions - wrong}/${positions} positions agree with void2d's rule`,
+		`${positions - wrong}/${positions} positions agree`,
 	);
-	assert agreed == LINE_ROWS_AGREEING && positions - wrong == LINE_POSITIONS_AGREEING;
+	assert (all.length as int32) > 0 && agreed == (all.length as int32);
 }

@@ -8,6 +8,7 @@ import {
 } from "./face";
 import { CodepointFace, codepointFace, fontFace, fontKerns } from "./font";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
+import { lineBreaks } from "./lineBreak";
 
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
@@ -72,6 +73,7 @@ struct Codepoint {
 	byteEnd: int32;
 	face: int32;
 	scale: float32;
+	breakBefore: boolean;
 }
 
 enum GraphemeCoverage {
@@ -101,7 +103,9 @@ function decodeUtf8(text: string): Vec<Codepoint> {
 		for (let k = 1; k < length; k++) {
 			value = (value << 6) | (((bytes[i + k] as uint8) as int32) & 0x3F);
 		}
-		out.push({ value: value, byteStart: i, byteEnd: i + length, face: -1, scale: 1.0 });
+		out.push({ value: value, byteStart: i, byteEnd: i + length, face: -1, scale: 1.0,
+			breakBefore: false,
+		});
 		i = i + length;
 	}
 	return out;
@@ -119,32 +123,6 @@ struct Step {
 	x: float32;
 	advance: float32;
 	next: float32;
-}
-
-function within(codepoint: int32, first: int32, last: int32): boolean {
-	return codepoint >= first && codepoint <= last;
-}
-
-function isWordChar(codepoint: int32): boolean {
-	const asciiAlphanumeric: boolean = within(codepoint, "0".code, "9".code) ||
-		within(codepoint, "A".code, "Z".code) || within(codepoint, "a".code, "z".code);
-	const latinCyrillicBengali: boolean = within(codepoint, 0x00C0, 0x024F) ||
-		within(codepoint, 0x0300, 0x036F) || within(codepoint, 0x0400, 0x04FF) ||
-		within(codepoint, 0x0980, 0x09FF) || within(codepoint, 0x1E00, 0x1EFF);
-	if (asciiAlphanumeric || latinCyrillicBengali) { return true; }
-	return match (codepoint) {
-		"-".code | "_".code | ".".code | "'".code | "$".code | "%".code | "@".code => true,
-		"#".code | "^".code | "~".code | ",".code | "=".code | ":".code | ";".code => true,
-		"!".code | ")".code | "]".code | "}".code | "\"".code => true,
-		0x2018 | 0x2019 | 0x201D | 0x00BB | 0x2026 | 0x22EF => true,
-		0x202F | 0x00A0 | 0x2011 => true,
-		_ => false,
-	};
-}
-
-export function breakOpportunity(previous: int32, codepoint: int32, inked: boolean): boolean {
-	if (!inked || codepoint == SPACE) { return false; }
-	return isWordChar(codepoint) ? previous == SPACE : true;
 }
 
 function isControl(codepoint: int32): boolean {
@@ -217,6 +195,13 @@ function assignFaces(font: int32, cps: Span<Codepoint>): void {
 		}
 	}
 	if (count > first) { assignGrapheme(font, cps, first, count); }
+}
+
+function assignBreaks(cps: Span<Codepoint>): void {
+	const values: Vec<int32> = new Array(0);
+	for (const cp of cps) { values.push(cp.value); }
+	const breaks = lineBreaks(values);
+	for (let i = 0; i < (cps.length as int32); i++) { cps[i].breakBefore = breaks[i]; }
 }
 
 function step(
@@ -303,20 +288,18 @@ function breakAfter(cps: Span<Codepoint>, from: int32, to: int32, style: TextSty
 	if (style.maxWidth <= 0.0) { return whole; }
 	let candidate: int32 = -1;
 	let inked: boolean = false;
-	let previousCodepoint: int32 = -1;
 	let pen: float32 = 0.0;
 	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
 	const kerns: boolean = fontKerns(style.font);
 	for (let i = from; i < to; i++) {
 		const value: int32 = cps[i].value;
-		if (i > from && breakOpportunity(previousCodepoint, value, inked)) { candidate = i; }
+		if (i > from && inked && cps[i].breakBefore) { candidate = i; }
 		const s = step(cps[i], pen, previous, previousFace, style, kerns);
 		if (value != SPACE && candidate > from && s.x + s.advance > style.maxWidth) {
 			return breakAt(cps, candidate);
 		}
 		if (value != SPACE) { inked = true; }
-		previousCodepoint = value;
 		pen = s.next;
 		previous = s.glyph;
 		previousFace = s.face;
@@ -330,6 +313,7 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 	const lineHeight: float32 = metrics.ascent + metrics.descent + metrics.lineGap;
 	const cps: Vec<Codepoint> = decodeUtf8(text);
 	assignFaces(style.font, cps);
+	if (style.maxWidth > 0.0) { assignBreaks(cps); }
 	const count: int32 = cps.length as int32;
 	const textBytes: int32 = count > 0 ? cps[count - 1].byteEnd : 0;
 	const glyphs: Vec<LaidGlyph> = new Array(0);

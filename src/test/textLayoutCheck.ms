@@ -91,10 +91,18 @@ test "ideographs wrap between any two, with no space to break at" {
 	assert l.lines[1].charStart == 2;
 }
 
-test "a path wraps before a slash, and closing punctuation stays on its word" {
+test "a word of any alphabet stays whole, as UAX #14 keeps it" {
+	const greek: string = "Ελληνικά κείμενα";
+	const word: float32 = calcTextWidth("Ελληνικά", style());
+	const l = TextLayout.layout(greek, { ...style(), maxWidth: word });
+	assert l.splitText(greek) == "Ελληνικά\nκείμενα";
+}
+
+test "a path wraps after a slash, and closing punctuation stays on its word" {
 	const path: string = "src/void2d/text";
-	const l = TextLayout.layout(path, { ...style(), maxWidth: calcTextWidth("src/void2d", style()) });
-	assert l.splitText(path) == "src/void2d\n/text";
+	const fits: float32 = calcTextWidth("src/void2d", style());
+	const l = TextLayout.layout(path, { ...style(), maxWidth: fits });
+	assert l.splitText(path) == "src/\nvoid2d/\ntext";
 	const shout: string = "ok plz!";
 	const p = TextLayout.layout(shout, { ...style(), maxWidth: calcTextWidth("ok plz", style()) });
 	assert p.splitText(shout) == "ok\nplz!";
