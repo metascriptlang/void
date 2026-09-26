@@ -139,3 +139,20 @@ M14 (`cf1b92f`) and from M15 (`6e1f1be`) on one msc (`598ca62e`), two screenshot
 2 034 pixels; two shots of one build differ in 374 (M14) and 1 792 (M15). In all five pairs the
 differences fall inside one box of about 197×125 pixels around the fire, which flickers, and nothing
 differs outside it. That is an emulator claim, not a pixel comparison, and those screenshots are not kept.
+
+## M16: the quad from the vertex index
+
+M16's particle and billboard programs make their corners from `gl_VertexID` and read every
+attribute per instance from vertex buffer 0. Three builds ran on the **Android emulator**
+(`pixellight` AVD, one boot, cold starts) on 2026-09-27 from the tree of `7f944d0`, msc
+`c54a8671`; `grep -a` finds `gl_VertexID` 8 times in each `libVoidAndroid.so`. The screenshots
+are not kept.
+
+- `campfireGreyOffEntry.ms`, the pixel-art preset: 23 colours. Against M15's build of the same
+  entry (msc `598ca62e`, still installed), two shots differ in 769 and 1 484 pixels, inside a box
+  of about 190×125 around the fire. Two shots of the M15 build differ in 1 970.
+- `campfireForwardEntry.ms`, the core programs: 2 273 and 2 274 colours, and the flame's three
+  texel colours exactly (5, 14, 9 and 2, 16, 9 pixels in the two shots).
+- `campfireParticlesEntry.ms`, the pixel-art preset with snow and embers: 24 colours.
+
+The build is the recipe at the top with that entry, after evicting `out/debug/.cache/*gpu3d*`.
