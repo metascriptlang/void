@@ -87,7 +87,18 @@ export interface LabelText {
 	reshape: boolean;
 	options: LineOptions;
 	shapingBreaks: Vec<int32>;
+	selectionStart: int32;
+	selectionLength: int32;
+	selectionColor: Color;
+	cursorIndex: int32;
+	cursorColor: Color;
+	cursorBlinkTime: float32;
+	blinkClock: float32;
 }
+
+export const NO_CURSOR: int32 = -1;
+export const CURSOR_WIDTH: float32 = 2.0;
+export const CURSOR_BLINK_TIME: float32 = 0.5;
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
 export const labelTexts: Vec<LabelText> = [];
@@ -167,6 +178,13 @@ export function allocateLabelText(): int32 {
 		reshape: true,
 		options: PLAIN_LINES,
 		shapingBreaks: new Array(0),
+		selectionStart: 0,
+		selectionLength: 0,
+		selectionColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+		cursorIndex: NO_CURSOR,
+		cursorColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+		cursorBlinkTime: CURSOR_BLINK_TIME,
+		blinkClock: 0.0,
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -274,6 +292,35 @@ export function setLabelLines(index: int32, options: LineOptions): void {
 
 export function labelLines(index: int32): LineOptions {
 	return labelTexts[index].options;
+}
+
+export function setLabelSelection(index: int32, start: int32, length: int32, color: Color): void {
+	labelTexts[index].selectionStart = start;
+	labelTexts[index].selectionLength = length;
+	labelTexts[index].selectionColor = color;
+}
+
+export function setLabelCursor(index: int32, at: int32, color: Color): void {
+	labelTexts[index].cursorIndex = at;
+	labelTexts[index].cursorColor = color;
+	labelTexts[index].blinkClock = 0.0;
+}
+
+export function setLabelBlinkTime(index: int32, seconds: float32): void {
+	labelTexts[index].cursorBlinkTime = seconds;
+	labelTexts[index].blinkClock = 0.0;
+}
+
+export function advanceBlink(index: int32, dt: float32): void {
+	labelTexts[index].blinkClock = labelTexts[index].blinkClock + dt;
+}
+
+// h2d's TextInput blink (h2d/TextInput.hx `cursorBlinkTime`): on for one period, off for the next.
+export function cursorShown(entry: LabelText): boolean {
+	if (entry.cursorIndex == NO_CURSOR) { return false; }
+	if (entry.cursorBlinkTime <= 0.0) { return true; }
+	const periods: int32 = Math.floor(entry.blinkClock / entry.cursorBlinkTime) as int32;
+	return periods % 2 == 0;
 }
 
 export function isPixelExact(world: Transform2D): boolean {

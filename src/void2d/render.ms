@@ -39,6 +39,8 @@ import {
 	LabelText,
 	Decoration,
 	DecorationKind,
+	CURSOR_WIDTH,
+	cursorShown,
 } from "./labelText";
 import {
 	TextLayout,
@@ -378,12 +380,72 @@ function emitDecorations(
 	}
 }
 
+const EMPTY_ROW_WIDTH: float32 = 4.0;
+
+// The selected span of one line, [x0, x1] in local units, or x1 < x0 when the line holds none of
+// it. A selected line break shows as a short tail, as an editor draws it.
+function selectedRow(text: LabelText, li: int32): [float32, float32] {
+	const layout = text.layout;
+	if (li < 0 || li >= (layout.lines.length as int32)) { return [0.0, -1.0]; }
+	const start: int32 = text.selectionStart;
+	const end: int32 = start + text.selectionLength;
+	const line: LineBox = layout.lines[li];
+	if (end <= line.indexStart || start > line.indexEnd || text.selectionLength <= 0) {
+		return [0.0, -1.0];
+	}
+	const lineEnd: float32 = line.x + line.width;
+	const x0: float32 = start <= line.indexStart ? line.x : layout.xForIndex(start);
+	let x1: float32 = end >= line.indexEnd ? lineEnd : layout.xForIndex(end);
+	if (end > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }
+	return [x0, x1];
+}
+
+// Makepad's selection (draw_selection.rs:5-113): a quad per row carrying its neighbours' x and
+// width, unioned by smooth-min in the fragment shader, so a ragged edge is filleted.
+function emitSelection(n: Node2D, text: LabelText, world: Transform2D, na: float32): void {
+	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const fill: Color = faded(text.selectionColor, na);
+	for (let li = 0; li < (text.layout.lines.length as int32); li++) {
+		const [x0, x1] = selectedRow(text, li);
+		if (x1 <= x0) { continue; }
+		const [p0, p1] = selectedRow(text, li - 1);
+		const [q0, q1] = selectedRow(text, li + 1);
+		const line: LineBox = text.layout.lines[li];
+		const w: float32 = x1 - x0;
+		const origin = vec2(x0 - SELECTION_GLOOP, line.top) * world;
+		drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
+			origin.x, origin.y, w + SELECTION_GLOOP * 2.0, line.height,
+			0.0, 0.0, 0.0, 0.0,
+			w * 0.5, line.height * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
+			0.0, 0.0, 0.0,
+			p1 > p0 ? p0 - x0 : 0.0, p1 > p0 ? p1 - p0 : 0.0,
+			q1 > q0 ? q0 - x0 : 0.0, q1 > q0 ? q1 - q0 : 0.0,
+			fill, transparent, transparent);
+	}
+}
+
+// Ghostty's caret (GHOSTTY.md:90): an instance of its own, so a blink rewrites no glyph.
+function emitCaret(n: Node2D, text: LabelText, world: Transform2D, na: float32): void {
+	if (!cursorShown(text) || (text.layout.lines.length as int32) == 0) { return; }
+	const line: LineBox = text.layout.lineBoxAt(text.cursorIndex);
+	const x: float32 = text.layout.xForIndex(text.cursorIndex);
+	const scale: float32 = currentRenderScale();
+	let box: [float32, float32, float32, float32] = [x, line.top, CURSOR_WIDTH, line.height];
+	if (axisAligned(world.a, world.b, world.c, world.d)) {
+		const a: float32 = world.a * scale;
+		const snapped = segmentBox(x, x + CURSOR_WIDTH, line.top, line.height, false, world, scale);
+		box = [snapped[0], snapped[1], snapStroke(CURSOR_WIDTH * a) / a, snapped[3]];
+	}
+	emitRunBox(n, world, box, faded(text.cursorColor, na));
+}
+
 function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void {
 	if (n.payload == NO_LABEL_TEXT) { return; }
 	const scale: float32 = currentRenderScale();
 	const text = placeLabel(n.payload, world, scale);
 	const styled: boolean = (text.runs.length as int32) > 0 && uiInstancingAvailable();
 	if (styled) { emitDecorations(n, text, world, na, true); }
+	if (text.selectionLength > 0 && uiInstancingAvailable()) { emitSelection(n, text, world, na); }
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
 	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
@@ -435,6 +497,7 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void
 		}
 	}
 	if (styled) { emitDecorations(n, text, world, na, false); }
+	if (uiInstancingAvailable()) { emitCaret(n, text, world, na); }
 }
 let textPrimitiveEffectRejectedReported: boolean = false;
 const TEXT_PRIMITIVE_EFFECT_REFUSED: string =

@@ -9,6 +9,10 @@ import {
 	setLabelShapingBreaks,
 	setLabelLines,
 	labelLines,
+	setLabelSelection,
+	setLabelCursor,
+	setLabelBlinkTime,
+	advanceBlink,
 } from "./labelText";
 import { FontId, DEFAULT_FONT } from "./font";
 import { Align, TextRun, Truncate } from "./textLayout";
@@ -187,6 +191,36 @@ export function setHangingIndent(this n: Node2D, indent: float32): Node2D {
 	return n;
 }
 
+// h2d's TextInput.selectionRange; a length of 0 clears it.
+export struct SelectionRange {
+	start: int32;
+	length: int32;
+}
+
+export function setSelectionRange(this n: Node2D, range: SelectionRange, color: Color): Node2D {
+	if (n.kind !== DrawKind.Label) { unreachable; }
+	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
+	setLabelSelection(n.payload, range.start, range.length, color);
+	return n;
+}
+
+// h2d's TextInput.cursorIndex; -1 hides the caret, and moving it restarts the blink.
+export function setCursorIndex(this n: Node2D, index: int32, color: Color): Node2D {
+	if (n.kind !== DrawKind.Label) { unreachable; }
+	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
+	setLabelCursor(n.payload, index, color);
+	return n;
+}
+
+// h2d's TextInput.cursorBlinkTime, 0.5 s by default; 0 keeps the caret on, for a host that
+// blinks it itself through setCursorIndex.
+export function setCursorBlinkTime(this n: Node2D, seconds: float32): Node2D {
+	if (n.kind !== DrawKind.Label) { unreachable; }
+	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
+	setLabelBlinkTime(n.payload, seconds);
+	return n;
+}
+
 export function setForceWidth(this n: Node2D, cell: float32): Node2D {
 	const index: int32 = labelPayload(n);
 	setLabelLines(index, { ...labelLines(index), forceWidth: cell });
@@ -303,6 +337,7 @@ export function update(this n: Node2D, dt: float32): void {
 	if (n.kind === DrawKind.Anim) {
 		n.clock = n.clock + dt;
 	}
+	if (n.kind === DrawKind.Label && n.payload != NO_LABEL_TEXT) { advanceBlink(n.payload, dt); }
 	for (const ch of n.children) {
 		ch.update(dt);
 	}

@@ -52,7 +52,7 @@ import {
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
-	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, InstanceMode,
+	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_FLOATS, InstanceMode,
 } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
@@ -618,4 +618,64 @@ test "the growth policy: max(2x, pow2), no shrink, and a drop past the cap" {
 	// it silently, which is the defect this replaced (VOID2D.md P1).
 	assert growthTarget(cap, cap + 1) == 0;
 	assert growthTarget(0, cap + 1) == 0;
+}
+
+function recordedInstances(root: Node2D, w: float32, h: float32): Vec<float32> {
+	setSceneSmooth(true);
+	begin2d(w, h, 1.0);
+	root.sync(identity2d(), true);
+	root.draw(1.0, w, h);
+	finishRecording();
+	const out: Vec<float32> = new Array(0);
+	for (let i = 0; i < uiInstanceCount(); i++) {
+		for (let f = 0; f < REC_UI_FLOATS; f++) { out.push(uiInstanceField(i, f)); }
+	}
+	frameEnd();
+	return out;
+}
+
+test "a caret blink changes no instance but the caret's" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("let x = 1;\nx + 2", 16.0, rgba(0.9, 0.9, 0.9, 1.0)).at(8.0, 6.0));
+	text.setSelectionRange({ start: 4, length: 9 }, rgba(0.3, 0.5, 0.9, 0.5));
+	text.setCursorIndex(13, rgba(1.0, 1.0, 1.0, 1.0));
+	const shown = recordedInstances(s.root, 160.0, 64.0);
+	text.update(0.6);
+	const hidden = recordedInstances(s.root, 160.0, 64.0);
+	assert (shown.length as int32) == (hidden.length as int32) + REC_UI_FLOATS;
+	let differing: int32 = 0;
+	for (let i = 0; i < (hidden.length as int32); i++) {
+		if (shown[i] != hidden[i]) { differing = differing + 1; }
+	}
+	if (differing > 0) { console.log(`t1: ${differing} instance floats moved on a blink`); }
+	assert differing == 0;
+	text.update(0.5);
+	const back = recordedInstances(s.root, 160.0, 64.0);
+	assert (back.length as int32) == (shown.length as int32);
+}
+
+test "a ragged selection is one row quad per line, each carrying its neighbours" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("abcdef\nab\nabcdefgh", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setSelectionRange({ start: 2, length: 14 }, rgba(0.3, 0.5, 0.9, 0.5));
+	setSceneSmooth(true);
+	begin2d(200.0, 80.0, 1.0);
+	s.root.sync(identity2d(), true);
+	s.root.draw(1.0, 200.0, 80.0);
+	finishRecording();
+	let rows: int32 = 0;
+	let firstRow: int32 = -1;
+	for (let i = 0; i < uiInstanceCount(); i++) {
+		if (uiInstanceField(i, REC_UI_PARAMS0) == (InstanceMode.Selection as int32) as float32) {
+			if (firstRow < 0) { firstRow = i; }
+			rows = rows + 1;
+		}
+	}
+	assert rows == 3;
+	assert uiInstanceField(firstRow, REC_UI_PARAMS1 + 1) == 0.0;
+	assert uiInstanceField(firstRow, REC_UI_PARAMS1 + 3) > 0.0;
+	assert uiInstanceField(firstRow + 1, REC_UI_PARAMS1 + 1) > 0.0;
+	assert uiInstanceField(firstRow + 1, REC_UI_PARAMS1 + 3) > 0.0;
+	assert uiInstanceField(firstRow + 2, REC_UI_PARAMS1 + 3) == 0.0;
+	frameEnd();
 }
