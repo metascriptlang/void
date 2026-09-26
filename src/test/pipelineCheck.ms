@@ -191,7 +191,7 @@ function described(
 	state: RenderState,
 	targets: TargetLayout,
 ): Vec<uint32> {
-	const descriptor: Vec<uint32> = new Array(DESCRIPTOR_ROOM);
+	let descriptor: Vec<uint32> = new Array(DESCRIPTOR_ROOM);
 	for (let i = 0; i < DESCRIPTOR_ROOM; i++) {
 		descriptor[i] = 0;
 	}

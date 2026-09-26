@@ -59,7 +59,7 @@ test "selection factory retains adjacent-row geometry and gloop bounds" {
 	assert approx(n.borderR, 8.0);
 	assert approx(n.borderB, 90.0);
 	n.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	n.getBounds(b);
 	assert approx(b.xMin, 32.0);
 	assert approx(b.xMax, 128.0);
@@ -143,7 +143,7 @@ test "a centered Tile scales its visual offset with Sprite size" {
 	n.w = 64.0;
 	n.h = 32.0;
 	n.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	n.getBounds(b);
 	assert approx(b.xMin, 68.0);
 	assert approx(b.yMin, 34.0);
@@ -178,7 +178,7 @@ test "sync without changes keeps cached world stable" {
 test "getBounds covers single rect" {
 	const n = rect(30.0, 40.0, rgba(1.0, 1.0, 1.0, 1.0)).at(10.0, 20.0);
 	n.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	n.getBounds(b);
 	assert approx(b.xMin, 10.0);
 	assert approx(b.yMin, 20.0);
@@ -194,7 +194,7 @@ test "getBounds includes an outset analytic box shadow" {
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadow(rgba(0.0, 0.0, 0.0, 0.8), 2.0, -3.0, 4.0));
 	n.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	n.getBounds(b);
 	assert approx(b.xMin, 41.0);
 	assert approx(b.yMin, 30.0);
@@ -207,7 +207,7 @@ test "getBounds covers parent and child" {
 	const child = rect(5.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0)).at(20.0, 20.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	root.getBounds(b);
 	assert approx(b.xMin, 0.0);
 	assert approx(b.yMin, 0.0);
@@ -221,7 +221,7 @@ test "getBounds skips invisible children" {
 	child.visible = false;
 	root.addChild(child);
 	root.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	root.getBounds(b);
 	assert approx(b.xMin, 0.0);
 	assert approx(b.yMin, 0.0);
@@ -236,7 +236,7 @@ test "getBounds applies parent scale" {
 	const child = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 5.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	root.getBounds(b);
 	assert approx(b.xMin, 10.0);
 	assert approx(b.yMin, 10.0);

@@ -98,8 +98,8 @@ export const SWAPCHAIN_LAYOUT: TargetLayout = {
 
 const FORMAT_BITS: int32 = 4;
 
-const passDescriptor: Vec<uint32> = new Array(GPU3D_PASS_LENGTH);
-const passClear: Vec<float32> = new Array(GPU3D_PASS_CLEAR_LENGTH);
+let passDescriptor: Vec<uint32> = new Array(GPU3D_PASS_LENGTH);
+let passClear: Vec<float32> = new Array(GPU3D_PASS_CLEAR_LENGTH);
 
 // A `sampled` target also gets a texture view, for a later pass to read it.
 export function allocate(

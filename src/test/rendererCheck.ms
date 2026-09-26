@@ -269,7 +269,7 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 	assert additive.count == 1 && additive.indices[0] == 3;
 	assert alpha.count == 3 && alpha.indices[0] == 1 && alpha.indices[1] == 4;
 	// Clip z = world z: the camera block's third column is (0, 0, 1, 0).
-	const camera: Vec<float32> = new Array(24);
+	let camera: Vec<float32> = new Array(24);
 	for (let i = 0; i < 24; i++) {
 		camera[i] = 0.0;
 	}

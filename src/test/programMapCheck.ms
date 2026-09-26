@@ -120,7 +120,7 @@ test "the core refuses a material it does not draw before it writes the camera" 
 	if (created.ok) {
 		let core: Renderer = created.value;
 		const items: Vec<DrawItem> = [itemOf(0)];
-		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		camera[0] = 7.0;
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const began: Result<boolean, RendererError> =

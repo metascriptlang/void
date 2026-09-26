@@ -148,19 +148,19 @@ export const NO_CLIP: Clip = {
 // frame that records no effect at all would otherwise index an empty array to take its
 // address. Counts come from the `*Total` variables, never from `.length`, so the seed is
 // invisible to every reader.
-export const commands: Vec<float32> = new Array(COMMAND_FLOATS);
-export const effects: Vec<float32> = new Array(EFFECT_FLOATS);
-export const vertices: Vec<float32> = new Array(VERTEX_FLOATS);
+export let commands: Vec<float32> = new Array(COMMAND_FLOATS);
+export let effects: Vec<float32> = new Array(EFFECT_FLOATS);
+export let vertices: Vec<float32> = new Array(VERTEX_FLOATS);
 
 // P2's two instance streams, seeded like the others so index 0 is always in bounds.
-export const uiInstances: Vec<float32> = new Array(REC_UI_FLOATS);
-export const spriteInstances: Vec<float32> = new Array(REC_SPRITE_FLOATS);
+export let uiInstances: Vec<float32> = new Array(REC_UI_FLOATS);
+export let spriteInstances: Vec<float32> = new Array(REC_SPRITE_FLOATS);
 
 // Every closed render-target pass, in the order the replay must run them: a target's block
 // is appended here when it closes, so an inner target lands ahead of the outer one that
 // consumes it. The swapchain list in `commands` only ever holds the quad that samples the
 // finished target.
-export const targetCommands: Vec<float32> = new Array(COMMAND_FLOATS);
+export let targetCommands: Vec<float32> = new Array(COMMAND_FLOATS);
 
 let commandTotal: int32 = 0;
 let targetCommandTotal: int32 = 0;
@@ -174,10 +174,10 @@ let spriteInstanceTotal: int32 = 0;
 // a copy plus a count, never a hole. 8 is deeper than any filter tree h2d composes; going
 // past it records into the parent instead of corrupting the stack, and says so.
 const MAX_TARGET_DEPTH: int32 = 8;
-const targetMarks: Vec<int32> = new Array(MAX_TARGET_DEPTH);
-const targetClipSaves: Vec<Clip> = new Array(MAX_TARGET_DEPTH);
-const targetClipRecordedSaves: Vec<boolean> = new Array(MAX_TARGET_DEPTH);
-const targetScaleSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH);
+let targetMarks: Vec<int32> = new Array(MAX_TARGET_DEPTH);
+let targetClipSaves: Vec<Clip> = new Array(MAX_TARGET_DEPTH);
+let targetClipRecordedSaves: Vec<boolean> = new Array(MAX_TARGET_DEPTH);
+let targetScaleSaves: Vec<float32> = new Array(MAX_TARGET_DEPTH);
 let targetDepthNow: int32 = 0;
 let targetOverflowed: boolean = false;
 

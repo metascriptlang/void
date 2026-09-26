@@ -228,7 +228,7 @@ function loadMesh(
 		colorView = decoded.value;
 	}
 	const count: int32 = positions.value.count;
-	const data: MeshData = MeshData.empty();
+	let data: MeshData = MeshData.empty();
 	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
 	for (let i = 0; i < count; i++) {
 		const position: Vec3 = vec3At(buffer, positions.value.offset, i);
@@ -302,7 +302,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 		|| !isNull(fieldOf(node, "weights"))) {
 		return Result.err(GltfError.Unsupported);
 	}
-	const local: GltfTransform = {
+	let local: GltfTransform = {
 		position: vec3(0.0, 0.0, 0.0),
 		rotation: identityQuat(),
 		scale: vec3(1.0, 1.0, 1.0),
@@ -391,7 +391,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 }
 
 export function validateGltfGraph(data: GltfData): Result<int32, GltfError> {
-	const states: Vec<int32> = new Array(data.nodes.length as int32);
+	let states: Vec<int32> = new Array(data.nodes.length as int32);
 	for (let i = 0; i < (states.length as int32); i++) { states[i] = 0; }
 	const stack: Vec<int32> = [];
 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {

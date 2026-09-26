@@ -232,7 +232,7 @@ test "a run background over trailing spaces stays inside the label's bounds" {
 	const runs: TextRun[] = [{ ...plainRun(4), background: rgba(0.0, 0.0, 1.0, 1.0) }];
 	n.setTextRuns(runs);
 	n.sync(identity2d(), false);
-	const bounds = emptyBounds();
+	let bounds = emptyBounds();
 	n.getBounds(bounds);
 	const spaces = n.textLayout().glyphs[3];
 	assert spaces.x + spaces.advance <= bounds.xMax;

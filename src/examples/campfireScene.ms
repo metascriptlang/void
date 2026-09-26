@@ -187,11 +187,11 @@ const GROUND: Rgba = { red: 0.15, green: 0.17, blue: 0.3, alpha: 1.0 };
 // that piece goes. The tree is what turns the two into draws.
 const pieces: Vec<MeshData> = [];
 const placements: Vec<Transform3D> = [];
-const grassInstances: Vec<float32> = [];
+let grassInstances: Vec<float32> = [];
 const stones: Vec<Box> = [];
-const flameBuffers: Vec<uint32> = [];
-const flameInstances: Vec<float32> = [];
-const texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
+let flameBuffers: Vec<uint32> = [];
+let flameInstances: Vec<float32> = [];
+let texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
 const lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
 
@@ -238,7 +238,7 @@ let forward: ForwardRenderer = createForward();
 let forwardWanted: boolean = false;
 let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
-const sceneItems: Vec<DrawItem> = [];
+let sceneItems: Vec<DrawItem> = [];
 let tree: Scene = Scene.create();
 let flameNode: NodeId = { index: -1, generation: 0 };
 // The logs hang under their own group rather than off the root, so the tree has a real nested
@@ -688,7 +688,7 @@ function buildFlameBuffers(): void {
 }
 
 function billboardValues(color: Rgba, lit: boolean): Vec<float32> {
-	const values: Vec<float32> = new Array(BILLBOARD_UNIFORM_LENGTH);
+	let values: Vec<float32> = new Array(BILLBOARD_UNIFORM_LENGTH);
 	values[BILLBOARD_COLOR] = color.red;
 	values[BILLBOARD_COLOR + 1] = color.green;
 	values[BILLBOARD_COLOR + 2] = color.blue;
@@ -882,7 +882,7 @@ function groundMaterialFor(state: RenderState, litMaterial: int32): Result<int32
 	if (groundSaturation == 0.0 || groundGreyOnCpu) { return Result.ok(litMaterial); }
 	const block: UniformBlock =
 		try reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
-	const toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
+	let toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
 	toon[MATERIAL_SATURATION] = groundSaturation;
 	const _written: int32 = try writeUniforms(context, block, toon);
 	return Result.ok(addMaterial(context, {
@@ -1084,7 +1084,7 @@ export function configureCampfireLookSchedule(on: boolean): void {
 }
 
 function copyTexturePixels(): Vec<uint32> {
-	const kept: Vec<uint32> = new Array(texturePixels.length as int32);
+	let kept: Vec<uint32> = new Array(texturePixels.length as int32);
 	for (let i = 0; i < (texturePixels.length as int32); i++) { kept[i] = texturePixels[i]; }
 	return kept;
 }

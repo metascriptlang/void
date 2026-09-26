@@ -452,7 +452,7 @@ export function shapeText(
 	markShapingBreaks(cps, shapingBreaks);
 	assignFaces(cps);
 	const stop: float32 = hasTab(cps) ? style.tabStop() : 0.0;
-	const glyphs: Vec<LaidGlyph> = new Array(0);
+	let glyphs: Vec<LaidGlyph> = new Array(0);
 	const values: Vec<int32> = new Array(0);
 	let pen: float32 = 0.0;
 	let previous: int32 = NO_GLYPH;
@@ -673,7 +673,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
 		shaped.breaks = lineBreaks(shaped.values);
 	}
-	const glyphs: Vec<LaidGlyph> = new Array(0);
+	let glyphs: Vec<LaidGlyph> = new Array(0);
 	const lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
 	let top: float32 = 0.0;

@@ -836,7 +836,7 @@ const MAX_POOLED_TARGETS: int32 = 16;
 const poolRT: Vec<uint32> = [];
 const poolW: Vec<int32> = [];
 const poolH: Vec<int32> = [];
-const poolBusy: Vec<boolean> = [];
+let poolBusy: Vec<boolean> = [];
 let poolExhaustedReported: boolean = false;
 
 // Called once per frame, before the walk: every target from last frame becomes available.
@@ -995,7 +995,7 @@ function drawContent(n: Node2D, a: float32, vw: float32, vh: float32): void {
 //     build, a frame of nothing but the clear colour in release, because the nested `begin2d`
 //     also reset the list the frame was being recorded into.
 function drawFiltered(n: Node2D, a: float32, vw: float32, vh: float32): void {
-	const b = emptyBounds();
+	let b = emptyBounds();
 	n.getBounds(b);
 	if (b.xMin >= b.xMax || b.yMin >= b.yMax) { return; }
 	const pad: float32 = n.filter.radius;

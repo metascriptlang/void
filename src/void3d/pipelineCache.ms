@@ -78,11 +78,11 @@ export struct PipelineCache {
 }
 
 export function empty(this typeof PipelineCache): PipelineCache {
-	const shaders: Vec<uint32> = new Array(PROGRAM_COUNT);
+	let shaders: Vec<uint32> = new Array(PROGRAM_COUNT);
 	for (let i = 0; i < PROGRAM_COUNT; i++) {
 		shaders[i] = 0;
 	}
-	const blockSlots: Vec<uint32> = new Array(PROGRAM_COUNT);
+	let blockSlots: Vec<uint32> = new Array(PROGRAM_COUNT);
 	for (let i = 0; i < PROGRAM_COUNT; i++) {
 		blockSlots[i] = 0;
 	}

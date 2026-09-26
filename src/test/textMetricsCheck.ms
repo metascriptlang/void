@@ -72,7 +72,7 @@ test "a label's bounds hold the ink that overhangs its line box" {
 	if (!resolved.ok) { return; }
 	const n = label("ll", 40.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(resolved.value);
 	n.sync(identity2d(), false);
-	const b = emptyBounds();
+	let b = emptyBounds();
 	n.getBounds(b);
 	assert b.xMax > n.textWidth() + 1.0;
 	assert b.yMin <= 0.0;

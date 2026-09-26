@@ -220,9 +220,9 @@ export function create(
 		randomIndex: 0,
 		randomsDrawn: 0,
 	};
-	const particles: Vec<Particle> = new Array(state.maxParts);
+	let particles: Vec<Particle> = new Array(state.maxParts);
 	for (let i = 0; i < state.maxParts; i++) { particles[i] = idle; }
-	const randoms: Vec<float32> = new Array(state.maxParts * PARTICLE_RANDOM_SLOTS);
+	let randoms: Vec<float32> = new Array(state.maxParts * PARTICLE_RANDOM_SLOTS);
 	for (let i = 0; i < state.maxParts * PARTICLE_RANDOM_SLOTS; i++) { randoms[i] = 0.0; }
 	return Result.ok({
 		state: state,

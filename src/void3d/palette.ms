@@ -53,7 +53,7 @@ export function withLevels(
 	if (levels < 2 || levels > MAX_PALETTE_LEVELS) {
 		return Result.err(PaletteError.LevelsOutOfRange);
 	}
-	const pixels: Vec<uint32> = new Array(levels * levels * levels);
+	let pixels: Vec<uint32> = new Array(levels * levels * levels);
 	const step: float32 = BYTE_RANGE / ((levels - 1) as float32);
 	for (let green = 0; green < levels; green++) {
 		for (let blue = 0; blue < levels; blue++) {

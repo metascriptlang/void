@@ -727,7 +727,7 @@ test "a label's bounds hold its selection tail and a caret after its widest line
 	text.setSelectionRange({ start: 2, length: 4 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
 	const spans = selectedSpans(s.root, 200.0, 80.0);
-	const bounds = emptyBounds();
+	let bounds = emptyBounds();
 	text.getBounds(bounds);
 	const first = text.textLayout().lines[0];
 	assert first.x + first.width + CURSOR_WIDTH <= bounds.xMax;
@@ -761,7 +761,7 @@ test "a selected row covers its trailing spaces, and a blank indented row its in
 	assert (spans.length as int32) == 6;
 	assert spans[1] > spaces.x + spaces.advance;
 	assert spans[3] > indent.x + indent.advance;
-	const bounds = emptyBounds();
+	let bounds = emptyBounds();
 	text.getBounds(bounds);
 	assert l.xForIndex(4) + CURSOR_WIDTH <= bounds.xMax;
 	assert spans[1] <= bounds.xMax && spans[3] <= bounds.xMax;
@@ -793,7 +793,7 @@ test "selected rows meet across line spacing, half of it above each row and half
 	assert (tops.length as int32) == 3;
 	assert approx(bottoms[0], tops[1]) && approx(bottoms[1], tops[2]);
 	assert approx(tops[0], lines[0].top - 3.0);
-	const bounds = emptyBounds();
+	let bounds = emptyBounds();
 	text.getBounds(bounds);
 	assert bounds.yMin <= tops[0] && bottoms[2] <= bounds.yMax;
 }

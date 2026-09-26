@@ -102,7 +102,7 @@ export const CURSOR_WIDTH: float32 = 2.0;
 export const CURSOR_BLINK_TIME: float32 = 0.5;
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
-export const labelTexts: Vec<LabelText> = [];
+export let labelTexts: Vec<LabelText> = [];
 const freeLabelTexts: Vec<int32> = [];
 let refusedGlyphs: int32 = 0;
 let refusalReports: int32 = 0;
@@ -237,7 +237,7 @@ function runDecorations(
 	runs: Span<TextRun>,
 	size: float32,
 ): Vec<Decoration> {
-	const out: Vec<Decoration> = new Array(0);
+	let out: Vec<Decoration> = new Array(0);
 	if ((runs.length as int32) == 0) { return out; }
 	for (let li = 0; li < (layout.lines.length as int32); li++) {
 		layout.lineDecorations(runs, size, li, DecorationKind.Background, out);

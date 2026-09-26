@@ -20,7 +20,7 @@ function pushLe32(ref out: Vec<uint8>, bits: uint32): void {
 // positions at 0: (0,0,0) (1,0,0) (0,1,0); normals at 36: three times (0,0,1);
 // colors at 72: (1,0,0) (0,1,0) (0,0,1); indices at 108: 0, 1, 2.
 function triangleBuffer(): Vec<uint8> {
-	const out: Vec<uint8> = [];
+	let out: Vec<uint8> = [];
 	pushLe32(out, F32_ZERO); pushLe32(out, F32_ZERO); pushLe32(out, F32_ZERO);
 	pushLe32(out, F32_ONE); pushLe32(out, F32_ZERO); pushLe32(out, F32_ZERO);
 	pushLe32(out, F32_ZERO); pushLe32(out, F32_ONE); pushLe32(out, F32_ZERO);

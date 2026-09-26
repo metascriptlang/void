@@ -220,7 +220,7 @@ struct AdjustCase {
 }
 
 function withFallback(family: string, fallback: string, adjust: SizeAdjust): FontId {
-	const f = font(family, 400, FontStyle.Normal);
+	let f = font(family, 400, FontStyle.Normal);
 	f.fallbacks.push(fallback);
 	f.sizeAdjust = adjust;
 	return resolved(f);

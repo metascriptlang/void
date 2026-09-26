@@ -99,8 +99,8 @@ let targetsFlushed: boolean = false;
 // past it `beginTarget` still brackets the list correctly, it just stops restoring, and the
 // list's own overflow flag is what reports it.
 const TARGET_SAVE_SLOTS: int32 = 8;
-const savedView: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
-const savedSize: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
+let savedView: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
+let savedSize: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
 
 export function drawCallCount(): int32 { return void2dDrawCallCount(); }
 export function uploadCount(): int32 { return void2dUploadCount(); }
@@ -149,7 +149,7 @@ export function recordedVertexCount(): int32 { return vertexCount(); }
 // h2d.Drawable colour pipeline as batch state. An identity matrix with a zero add and no key
 // is `NO_EFFECT`, so effect-free nodes — almost all of them — share one batch and cost no
 // row in the effect table.
-const curMat: Vec<float32> = [
+let curMat: Vec<float32> = [
 	1.0, 0.0, 0.0, 0.0,
 	0.0, 1.0, 0.0, 0.0,
 	0.0, 0.0, 1.0, 0.0,
@@ -182,7 +182,7 @@ const NO_MASK_CLIP: MaskClip = {
 	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
 };
 
-const clipStack: Vec<MaskClip> = new Array(16);
+let clipStack: Vec<MaskClip> = new Array(16);
 let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {

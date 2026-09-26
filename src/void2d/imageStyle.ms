@@ -100,7 +100,7 @@ export function fitImage(t: Tile, boxW: float32, boxH: float32, fit: ObjectFit):
 	};
 }
 
-export const imageStyles: Vec<ImageStyle> = [];
+export let imageStyles: Vec<ImageStyle> = [];
 const freeImageStyles: Vec<int32> = [];
 
 export function allocateImageStyle(style: ImageStyle): int32 {

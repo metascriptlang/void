@@ -102,11 +102,11 @@ export enum MeshUploadError {
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
 export function withUniformCapacity(this typeof DrawContext, capacity: int32): DrawContext {
-	const bindings: Vec<uint32> = new Array(GPU3D_BINDING_LENGTH);
+	let bindings: Vec<uint32> = new Array(GPU3D_BINDING_LENGTH);
 	for (let i = 0; i < GPU3D_BINDING_LENGTH; i++) {
 		bindings[i] = 0;
 	}
-	const model: Vec<float32> = new Array(MODEL_LENGTH);
+	let model: Vec<float32> = new Array(MODEL_LENGTH);
 	for (let i = 0; i < MODEL_LENGTH; i++) {
 		model[i] = 0.0;
 	}
