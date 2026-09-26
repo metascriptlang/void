@@ -582,6 +582,17 @@ function elided(
 
 // GPUI's truncation (line_wrapper.rs:141-446): the line keeps what fits beside an ellipsis,
 // cut only where a grapheme starts.
+function trimsBeforeEllipsis(codepoint: int32): boolean {
+	if (codepoint < 0x80) {
+		return (codepoint >= 0x09 && codepoint <= 0x0D) || codepoint == SPACE ||
+			(codepoint >= 0x21 && codepoint <= 0x2F) || (codepoint >= 0x3A && codepoint <= 0x40) ||
+			(codepoint >= 0x5B && codepoint <= 0x60) || (codepoint >= 0x7B && codepoint <= 0x7E);
+	}
+	return codepoint == 0x85 || codepoint == 0xA0 || codepoint == 0x1680 ||
+		(codepoint >= 0x2000 && codepoint <= 0x200A) || codepoint == 0x2028 ||
+		codepoint == 0x2029 || codepoint == 0x202F || codepoint == 0x205F || codepoint == 0x3000;
+}
+
 function pushTruncated(
 	shaped: ShapedText,
 	from: int32,
@@ -604,11 +615,19 @@ function pushTruncated(
 	let head: int32 = 0;
 	if (truncate != Truncate.Start) {
 		while (head < count) {
-			const fits: boolean = line[head].x + line[head].advance <= budget;
-			if (line[head].clusterStart && !fits) { break; }
-			head = head + 1;
+			let next: int32 = head + 1;
+			let right: float32 = line[head].x + line[head].advance;
+			while (next < count && !line[next].clusterStart) {
+				const markRight: float32 = line[next].x + line[next].advance;
+				if (markRight > right) { right = markRight; }
+				next = next + 1;
+			}
+			if (right > budget) { break; }
+			head = next;
 		}
-		while (head > 0 && head < count && !line[head].clusterStart) { head = head - 1; }
+	}
+	if (truncate == Truncate.End) {
+		while (head > 0 && trimsBeforeEllipsis(line[head - 1].codepoint)) { head = head - 1; }
 	}
 	let tail: int32 = count;
 	if (truncate != Truncate.End) {

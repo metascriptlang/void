@@ -314,6 +314,20 @@ test "End truncation keeps what fits beside an ellipsis" {
 	assert l.glyphs[last].index == l.glyphs[last - 1].index + 1;
 }
 
+test "truncation keeps a cluster only when its marks fit too" {
+	const room: float32 = 36.0;
+	const l = wrapped("ae\u{20DD}xyz", room, { ...PLAIN_LINES, truncate: Truncate.End });
+	assert l.lines[0].width <= room;
+}
+
+test "End truncation trims the spaces and punctuation before its ellipsis, as GPUI does" {
+	const room: float32 = calcTextWidth("hello, w", style());
+	const l = wrapped("hello, world", room, { ...PLAIN_LINES, truncate: Truncate.End });
+	const last: int32 = (l.glyphs.length as int32) - 1;
+	assert l.glyphs[last].codepoint == 0x2026;
+	assert l.glyphs[last - 1].codepoint == "o".code;
+}
+
 test "Start truncation keeps the end, Middle keeps both ends" {
 	const room: float32 = calcTextWidth("abcde", style());
 	const start = wrapped("abcdefghij", room, { ...PLAIN_LINES, truncate: Truncate.Start });
