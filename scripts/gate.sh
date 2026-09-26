@@ -242,7 +242,7 @@ fi
 # The counters cannot see an allocation that moves no length, so read the emitted C. It sees
 # array copies and fresh arrays; not aliases (`let b = vec` emits no copy on msc 0.2.55, card
 # 2026-09-23-vec-param-copy-corrupts-heap), not stream growth, not allocation inside C.
-FRAME_PATH="scene:present scene:presentAt render:draw render:drawContent render:sync
+FRAME_PATH="scene:tick scene:present scene:presentAt render:draw render:drawContent render:sync
 	render:emitNode render:emitLabel render:emitStyledImage render:labelStyle render:localBounds
 	render:boxRenderBounds render:visualTile render:sortByZ render:sharedGlyphView
 	render:renderScaleGrid label84ext:placementCurrent label84ext:placementKey label84ext:uvRect
@@ -270,6 +270,7 @@ REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"
 MEASURE_PATH="render:textWidth render:textHeight node:requireLabel"
 copied=""
+followed=0
 allocated=""
 unreachable=""
 : > out/gate-allocation.log
@@ -281,29 +282,18 @@ read_emitted_c() {
 		unreachable="$unreachable (emitting C for $1 failed)"
 		return 0
 	fi
-	for entry in $2 $3; do
-		module=${entry%%:*}
-		fn=${entry#*:}
-		emitted=$(ls out/debug/*ZsrcZvoid2dZ${module}Oms.c 2>/dev/null | head -1)
-		# A definition, never a call that happens to start a line.
-		start="^[A-Za-z_][A-Za-z0-9_ ]*[* ]+${fn}__M[A-Za-z0-9_]*\(.*\{[[:space:]]*\$"
-		if [ -z "$emitted" ] || ! grep -qE "$start" "$emitted"; then
-			unreachable="$unreachable $entry"
-			continue
-		fi
-		body=$(awk "/${start}/,/^}/" "$emitted")
-		copies=$(printf '%s\n' "$body" | grep -cE 'ArrayCopy\(|OmsCopy\(' || true)
-		[ "$copies" -gt 0 ] && copied="$copied ${fn}=${copies}"
-		for callee in $4; do
-			printf '%s\n' "$body" | grep -q "[^A-Za-z0-9_]${callee}__M" \
-				&& copied="$copied ${fn}->${callee}"
-		done
-		case " $(echo $2) " in *" $entry "*)
-			allocs=$(printf '%s\n' "$body" \
-				| grep -cE 'msAllocTyped\(|[^a-z]calloc\(|[^a-z]malloc\(|ArrayPush\(&\(?T[0-9]+_' || true)
-			[ "$allocs" -gt 0 ] && allocated="$allocated ${fn}=${allocs}" ;;
+	awk -v frame="$(echo $2)" -v copyOnly="$(echo $3)" -v forbidden="$4" \
+		-v named="$(echo $FRAME_PATH $REBUILD_PATH $MEASURE_PATH)" \
+		-f scripts/allocation.awk out/debug/*ZsrcZvoid2dZ*Oms.c > out/gate-allocation-rows.log
+	cat out/gate-allocation-rows.log >> out/gate-allocation.log
+	while read -r kind what; do
+		case "$kind" in
+			UNREACHABLE) unreachable="$unreachable $what" ;;
+			COPIED) copied="$copied $what" ;;
+			ALLOCATED) allocated="$allocated $what" ;;
+			FOLLOWED) followed=$((followed + what)) ;;
 		esac
-	done
+	done < out/gate-allocation-rows.log
 	return 0
 }
 read_emitted_c tests/bench/benchUi.ms "$FRAME_PATH" "$REBUILD_PATH" ""
@@ -315,7 +305,7 @@ elif [ -n "$copied" ] || [ -n "$allocated" ]; then
 	[ -n "$allocated" ] && fail "allocation: the frame path builds a fresh array — in:$allocated"
 	echo "         CODE-STYLE section 5: index the field, take a Span view, or return a tuple"
 else
-	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none"
+	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
 skip "wasm size budget: no budget committed yet (P6 makes guardrail 6 real)"
 
