@@ -766,3 +766,34 @@ test "a selected row covers its trailing spaces, and a blank indented row its in
 	assert l.xForIndex(4) + CURSOR_WIDTH <= bounds.xMax;
 	assert spans[1] <= bounds.xMax && spans[3] <= bounds.xMax;
 }
+
+test "selected rows meet across line spacing, half of it above each row and half below" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(label("ab\ncd\nef", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.lineSpacing = 6.0;
+	text.setSelectionRange({ start: 0, length: 8 }, rgba(0.3, 0.5, 0.9, 0.5));
+	setSceneSmooth(true);
+	begin2d(200.0, 100.0, 1.0);
+	s.root.sync(identity2d(), true);
+	s.root.draw(1.0, 200.0, 100.0);
+	finishRecording();
+	const tops: Vec<float32> = new Array(0);
+	const bottoms: Vec<float32> = new Array(0);
+	for (let i = 0; i < uiInstanceCount(); i++) {
+		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
+			continue;
+		}
+		const top: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE + 1);
+		const bottom: float32 = top + uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3);
+		tops.push(top);
+		bottoms.push(bottom);
+	}
+	frameEnd();
+	const lines = text.textLayout().lines;
+	assert (tops.length as int32) == 3;
+	assert approx(bottoms[0], tops[1]) && approx(bottoms[1], tops[2]);
+	assert approx(tops[0], lines[0].top - 3.0);
+	const bounds = emptyBounds();
+	text.getBounds(bounds);
+	assert bounds.yMin <= tops[0] && bottoms[2] <= bounds.yMax;
+}

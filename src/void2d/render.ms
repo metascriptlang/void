@@ -124,9 +124,10 @@ function tileOffsetY(t: Tile, height: float32): float32 {
 
 function localBounds(n: Node2D): Bounds {
 	if (n.kind === DrawKind.Label && showsEditing(n)) {
+		const leading: float32 = n.lineSpacing > 0.0 ? n.lineSpacing * 0.5 : 0.0;
 		return {
-			xMin: n.contentXMin - SELECTION_GLOOP, yMin: n.contentYMin,
-			xMax: labelTexts[n.payload].rowsXMax + SELECTION_GLOOP, yMax: n.contentYMax,
+			xMin: n.contentXMin - SELECTION_GLOOP, yMin: n.contentYMin - leading,
+			xMax: labelTexts[n.payload].rowsXMax + SELECTION_GLOOP, yMax: n.contentYMax + leading,
 		};
 	}
 	if (n.kind === DrawKind.Graphics || n.kind === DrawKind.Label) {
@@ -447,11 +448,13 @@ function emitSelection(n: Node2D, text: LabelText, world: Transform2D, na: float
 		const [q0, q1] = selectedRow(text, li + 1);
 		const line: LineBox = text.layout.lines[li];
 		const w: float32 = x1 - x0;
-		const origin = vec2(x0 - SELECTION_GLOOP, line.top) * world;
+		const leading: float32 = text.style.lineSpacing * 0.5;
+		const h: float32 = line.height + text.style.lineSpacing;
+		const origin = vec2(x0 - SELECTION_GLOOP, line.top - leading) * world;
 		drawUiInstance(InstanceMode.Selection, sharedGlyphView(), n.blend, world,
-			origin.x, origin.y, w + SELECTION_GLOOP * 2.0, line.height,
+			origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h,
 			0.0, 0.0, 0.0, 0.0,
-			w * 0.5, line.height * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
+			w * 0.5, h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP,
 			0.0, 0.0, 0.0,
 			p1 > p0 ? p0 - x0 : 0.0, p1 > p0 ? p1 - p0 : 0.0,
 			q1 > q0 ? q0 - x0 : 0.0, q1 > q0 ? q1 - q0 : 0.0,
