@@ -134,7 +134,8 @@ in the built `libVoidAndroid.so`. The entry is `out/tmp/android/campfireForwardE
 `gles3Forward.png`.
 
 The pixel-art preset's form was run the same way, in the same boot: `campfireGreyOffEntry.ms` built from
-M14 (`cf1b92f`) and from M15 (`d7e9fdb`) on one msc, two screenshots each. M15 against M14 differs in 666 to
+M14 (`cf1b92f`) and from M15 (`d7e9fdb`) on one msc (`598ca62e`), two screenshots each. Their `libVoidAndroid.so` are 2 923 856 and
+2 992 216 bytes. M15 against M14 differs in 666 to
 2 034 pixels; two shots of one build differ in 374 (M14) and 1 792 (M15). In all five pairs the
 differences fall inside one box of about 197×125 pixels around the fire, which flickers, and nothing
 differs outside it. That is an emulator claim, not a pixel comparison, and those screenshots are not kept.
