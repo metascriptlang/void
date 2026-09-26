@@ -35,38 +35,19 @@ export struct BoxStyle {
 	shadowInset: boolean;
 }
 
-export function cornerRadii(
-	topLeft: float32,
-	topRight: float32,
-	bottomRight: float32,
-	bottomLeft: float32,
-): CornerRadii {
-	return {
-		topLeft: topLeft,
-		topRight: topRight,
-		bottomRight: bottomRight,
-		bottomLeft: bottomLeft,
-	};
-}
-
+// Free functions, not CornerRadii.uniform / BorderWidths.uniform: two same-name static extensions
+// exported from one module resolve only the first in an importer
+// (~/metascript/.inbox/compiler/2026-09-26-same-name-static-extensions-one-module.md).
 export function uniformRadii(radius: float32): CornerRadii {
-	return cornerRadii(radius, radius, radius, radius);
+	return { topLeft: radius, topRight: radius, bottomRight: radius, bottomLeft: radius };
 }
 
-export function borderWidths(
-	left: float32,
-	top: float32,
-	right: float32,
-	bottom: float32,
-): BorderWidths {
-	return { left: left, top: top, right: right, bottom: bottom };
-}
 export function uniformBorders(width: float32): BorderWidths {
-	return borderWidths(width, width, width, width);
+	return { left: width, top: width, right: width, bottom: width };
 }
 
-
-export function boxStyle(
+export function create(
+	this typeof BoxStyle,
 	radii: CornerRadii,
 	borders: BorderWidths,
 	borderColor: Color,
@@ -84,14 +65,14 @@ export function boxStyle(
 	};
 }
 
-export function dashedBorder(s: BoxStyle): BoxStyle {
+export function dashed(this s: BoxStyle): BoxStyle {
 	return { ...s, borderStyle: BorderStyle.Dashed };
 }
 
 // A drop shadow cast by the box: offset in local units, positive down-right. The colour's
 // alpha is the strength.
 export function castShadow(
-	s: BoxStyle,
+	this s: BoxStyle,
 	color: Color,
 	blur: float32,
 	offsetX: float32,
@@ -108,7 +89,7 @@ export function castShadow(
 }
 
 // An inset shadow: the blurred hole's complement, clipped to the element.
-export function castInsetShadow(s: BoxStyle, color: Color, blur: float32): BoxStyle {
+export function castInsetShadow(this s: BoxStyle, color: Color, blur: float32): BoxStyle {
 	return {
 		...s,
 		shadowColor: color,

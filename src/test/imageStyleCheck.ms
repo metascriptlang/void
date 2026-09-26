@@ -1,6 +1,5 @@
 import { tile } from "../void2d/types";
 import { graphics, sprite, setImageStyle, dispose } from "../void2d/node";
-import { cornerRadii } from "../void2d/boxStyle";
 import { ObjectFit, imageStyle, fitImage, NO_IMAGE_STYLE } from "../void2d/imageStyle";
 
 function near(a: float32, b: float32): boolean {
@@ -40,15 +39,27 @@ test "ObjectFit None clips from the image origin and advances its UV" {
 
 test "image styles update in place and dispose returns their side-table slot" {
 	const first = sprite(tile(0, 32.0, 16.0));
-	first.setImageStyle(imageStyle(cornerRadii(1.0, 2.0, 3.0, 4.0), false, ObjectFit.Fill));
+	first.setImageStyle(imageStyle(
+		{ topLeft: 1.0, topRight: 2.0, bottomRight: 3.0, bottomLeft: 4.0 },
+		false,
+		ObjectFit.Fill,
+	));
 	const slot: int32 = first.payload;
-	first.setImageStyle(imageStyle(cornerRadii(5.0, 6.0, 7.0, 8.0), true, ObjectFit.Cover));
+	first.setImageStyle(imageStyle(
+		{ topLeft: 5.0, topRight: 6.0, bottomRight: 7.0, bottomLeft: 8.0 },
+		true,
+		ObjectFit.Cover,
+	));
 	assert first.payload == slot;
 	first.dispose();
 	assert first.payload == NO_IMAGE_STYLE;
 
 	const second = sprite(tile(0, 16.0, 16.0));
-	second.setImageStyle(imageStyle(cornerRadii(0.0, 0.0, 0.0, 0.0), false, ObjectFit.Contain));
+	second.setImageStyle(imageStyle(
+		{ topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
+		false,
+		ObjectFit.Contain,
+	));
 	assert second.payload == slot;
 	second.dispose();
 

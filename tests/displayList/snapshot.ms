@@ -55,7 +55,7 @@ import {
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, InstanceMode,
 } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, BlendMode, Smooth } from "../../src/void2d/types";
-import { boxStyle, cornerRadii, borderWidths, uniformRadii, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
+import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
 } from "../../src/void2d/graphics";
@@ -366,18 +366,18 @@ function boxStyleScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.alpha = 0.5;
-	box.setBoxStyle(dashedBorder(boxStyle(
-		cornerRadii(2.0, 4.0, 6.0, 8.0),
-		borderWidths(1.0, 2.0, 3.0, 4.0),
+	box.setBoxStyle(BoxStyle.create(
+		{ topLeft: 2.0, topRight: 4.0, bottomRight: 6.0, bottomLeft: 8.0 },
+		{ left: 1.0, top: 2.0, right: 3.0, bottom: 4.0 },
 		rgba(0.9, 0.7, 0.5, 0.6),
-	)));
+	).dashed());
 	return s.root;
 }
 
 function rejectedBoxEffectScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
-	box.setBoxStyle(boxStyle(
+	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(6.0),
 		uniformBorders(2.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
@@ -390,9 +390,9 @@ function snapScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
 	const boxed = s.add(rect(30.0, 20.0, rgba(0.3, 0.5, 0.9, 1.0)).at(64.35, 16.8));
-	boxed.setBoxStyle(boxStyle(
+	boxed.setBoxStyle(BoxStyle.create(
 		uniformRadii(4.0),
-		borderWidths(0.8, 1.3, 0.0, 2.2),
+		{ left: 0.8, top: 1.3, right: 0.0, bottom: 2.2 },
 		rgba(0.95, 0.95, 1.0, 1.0),
 	));
 	return s.root;
@@ -401,7 +401,7 @@ function snapScene(): Node2D {
 function glyphScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const card = s.add(rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
-	card.setBoxStyle(boxStyle(
+	card.setBoxStyle(BoxStyle.create(
 		uniformRadii(6.0),
 		uniformBorders(2.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
@@ -413,28 +413,28 @@ function glyphScene(): Node2D {
 function boxShadowScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
-	box.setBoxStyle(castShadow(boxStyle(
-		cornerRadii(4.0, 6.0, 8.0, 10.0),
+	box.setBoxStyle(BoxStyle.create(
+		{ topLeft: 4.0, topRight: 6.0, bottomRight: 8.0, bottomLeft: 10.0 },
 		uniformBorders(1.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
-	), rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0));
+	).castShadow(rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0));
 	const well = s.add(rect(36.0, 22.0, rgba(0.85, 0.88, 0.94, 1.0)).at(64.0, 16.0));
-	well.setBoxStyle(castInsetShadow(boxStyle(
+	well.setBoxStyle(BoxStyle.create(
 		uniformRadii(5.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
-	), rgba(0.0, 0.0, 0.05, 0.6), 2.5));
+	).castInsetShadow(rgba(0.0, 0.0, 0.05, 0.6), 2.5));
 	return s.root;
 }
 
 function shadowOnlyVisibleScene(): Node2D {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(rect(20.0, 20.0, rgba(0.2, 0.4, 0.6, 0.8)).at(104.0, 10.0));
-	box.setBoxStyle(castShadow(boxStyle(
+	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(4.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
-	), rgba(0.0, 0.0, 0.0, 0.8), 3.0, -6.0, 0.0));
+	).castShadow(rgba(0.0, 0.0, 0.0, 0.8), 3.0, -6.0, 0.0));
 	return s.root;
 }
 
@@ -458,7 +458,11 @@ function imageStyleScene(): Node2D {
 	const image = sprite(tile(17, 200.0, 100.0)).at(10.0, 12.0);
 	image.w = 100.0;
 	image.h = 80.0;
-	image.setImageStyle(imageStyle(cornerRadii(3.0, 6.0, 9.0, 12.0), true, ObjectFit.Cover));
+	image.setImageStyle(imageStyle(
+		{ topLeft: 3.0, topRight: 6.0, bottomRight: 9.0, bottomLeft: 12.0 },
+		true,
+		ObjectFit.Cover,
+	));
 	s.add(image);
 	return s.root;
 }

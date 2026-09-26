@@ -9,7 +9,7 @@ import {
 	dropShadowFilter, FilterKind,
 } from "../void2d/types";
 import { approx } from "./helpers";
-import { boxStyle, uniformRadii, uniformBorders, castShadow } from "../void2d/boxStyle";
+import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
 
 const HALF_PI: float32 = 1.5707963;
 
@@ -188,11 +188,11 @@ test "getBounds covers single rect" {
 
 test "getBounds includes an outset analytic box shadow" {
 	const n = rect(20.0, 10.0, rgba(0.3, 0.5, 0.8, 1.0)).at(50.0, 40.0);
-	n.setBoxStyle(castShadow(boxStyle(
+	n.setBoxStyle(BoxStyle.create(
 		uniformRadii(0.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
-	), rgba(0.0, 0.0, 0.0, 0.8), 2.0, -3.0, 4.0));
+	).castShadow(rgba(0.0, 0.0, 0.0, 0.8), 2.0, -3.0, 4.0));
 	n.sync(identity2d(), false);
 	const b = emptyBounds();
 	n.getBounds(b);

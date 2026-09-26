@@ -14,7 +14,7 @@ import {
 import {
 	addFallbackFont, registerFace, Font, FontStyle, FontFeature, SizeAdjust,
 } from "../../src/void2d/font";
-import { CornerRadii, boxStyle, cornerRadii, uniformRadii, borderWidths, uniformBorders, dashedBorder, castShadow, castInsetShadow } from "../../src/void2d/boxStyle";
+import { BoxStyle, CornerRadii, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
 	strokeRect,
@@ -293,8 +293,8 @@ function primPerCornerRadii(): Scene {
 	box.pivotY = 44.0;
 	box.rotation = 0.31;
 	box.alpha = 0.78;
-	box.setBoxStyle(boxStyle(
-		cornerRadii(4.0, 14.0, 28.0, 40.0),
+	box.setBoxStyle(BoxStyle.create(
+		{ topLeft: 4.0, topRight: 14.0, bottomRight: 28.0, bottomLeft: 40.0 },
 		uniformBorders(3.0),
 		rgba(0.94, 0.96, 1.0, 1.0),
 	));
@@ -309,9 +309,9 @@ function primPerSideBorders(): Scene {
 	box.pivotY = 44.0;
 	box.rotation = -0.27;
 	box.alpha = 0.74;
-	box.setBoxStyle(boxStyle(
+	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(18.0),
-		borderWidths(0.2, 6.0, 10.0, 14.0),
+		{ left: 0.2, top: 6.0, right: 10.0, bottom: 14.0 },
 		rgba(0.98, 0.65, 0.24, 1.0),
 	));
 	s.add(box);
@@ -324,25 +324,25 @@ function primDashedBorder(): Scene {
 	rounded.pivotX = 75.0;
 	rounded.pivotY = 44.0;
 	rounded.rotation = 0.24;
-	rounded.setBoxStyle(dashedBorder(boxStyle(
-		cornerRadii(8.0, 24.0, 36.0, 16.0),
-		borderWidths(3.0, 5.0, 8.0, 4.0),
+	rounded.setBoxStyle(BoxStyle.create(
+		{ topLeft: 8.0, topRight: 24.0, bottomRight: 36.0, bottomLeft: 16.0 },
+		{ left: 3.0, top: 5.0, right: 8.0, bottom: 4.0 },
 		rgba(0.98, 0.65, 0.24, 1.0),
-	)));
+	).dashed());
 	s.add(rounded);
 	const shadowed = rect(116.0, 58.0, rgba(0.30, 0.72, 0.48, 0.9)).at(40.0, 168.0);
-	shadowed.setBoxStyle(castShadow(dashedBorder(boxStyle(
+	shadowed.setBoxStyle(BoxStyle.create(
 		uniformRadii(14.0),
 		uniformBorders(4.0),
 		rgba(0.94, 0.96, 1.0, 1.0),
-	)), rgba(0.01, 0.01, 0.06, 0.6), 6.0, 7.0, 8.0));
+	).dashed().castShadow(rgba(0.01, 0.01, 0.06, 0.6), 6.0, 7.0, 8.0));
 	s.add(shadowed);
 	const square = rect(112.0, 58.0, rgba(0.42, 0.24, 0.62, 0.9)).at(184.0, 172.0);
-	square.setBoxStyle(dashedBorder(boxStyle(
+	square.setBoxStyle(BoxStyle.create(
 		uniformRadii(0.0),
-		borderWidths(2.0, 5.0, 8.0, 3.0),
+		{ left: 2.0, top: 5.0, right: 8.0, bottom: 3.0 },
 		rgba(0.92, 0.95, 1.0, 1.0),
-	)));
+	).dashed());
 	s.add(square);
 	return s;
 }
@@ -354,8 +354,8 @@ function primCardWithLabel(): Scene {
 	card.pivotY = 48.0;
 	card.rotation = 0.27;
 	card.alpha = 0.9;
-	card.setBoxStyle(boxStyle(
-		cornerRadii(18.0, 6.0, 14.0, 4.0),
+	card.setBoxStyle(BoxStyle.create(
+		{ topLeft: 18.0, topRight: 6.0, bottomRight: 14.0, bottomLeft: 4.0 },
 		uniformBorders(2.5),
 		rgba(0.92, 0.95, 1.0, 1.0),
 	));
@@ -377,18 +377,18 @@ function primDropShadow(): Scene {
 	box.pivotY = 44.0;
 	box.rotation = 0.31;
 	box.alpha = 0.88;
-	box.setBoxStyle(castShadow(boxStyle(
-		cornerRadii(4.0, 14.0, 28.0, 40.0),
+	box.setBoxStyle(BoxStyle.create(
+		{ topLeft: 4.0, topRight: 14.0, bottomRight: 28.0, bottomLeft: 40.0 },
 		uniformBorders(2.0),
 		rgba(0.94, 0.96, 1.0, 1.0),
-	), rgba(0.01, 0.01, 0.06, 0.55), 9.0, 7.0, 10.0));
+	).castShadow(rgba(0.01, 0.01, 0.06, 0.55), 9.0, 7.0, 10.0));
 	s.add(box);
 	const hard = rect(56.0, 32.0, rgba(0.30, 0.72, 0.48, 1.0)).at(16.0, 8.0);
-	hard.setBoxStyle(castShadow(boxStyle(
+	hard.setBoxStyle(BoxStyle.create(
 		uniformRadii(8.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
-	), rgba(0.0, 0.0, 0.03, 0.8), 0.0, 5.0, 4.0));
+	).castShadow(rgba(0.0, 0.0, 0.03, 0.8), 0.0, 5.0, 4.0));
 	s.add(hard);
 	return s;
 }
@@ -396,18 +396,18 @@ function primDropShadow(): Scene {
 function primInsetShadow(): Scene {
 	const s = scene(DARK);
 	const well = rect(180.0, 110.0, rgba(0.88, 0.90, 0.95, 1.0)).at(70.0, 60.0);
-	well.setBoxStyle(castInsetShadow(boxStyle(
+	well.setBoxStyle(BoxStyle.create(
 		uniformRadii(16.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
-	), rgba(0.04, 0.05, 0.12, 0.7), 12.0));
+	).castInsetShadow(rgba(0.04, 0.05, 0.12, 0.7), 12.0));
 	s.add(well);
 	const pill = rect(120.0, 56.0, rgba(0.82, 0.88, 1.0, 1.0)).at(100.0, 190.0);
-	pill.setBoxStyle(castInsetShadow(boxStyle(
-		cornerRadii(28.0, 28.0, 28.0, 28.0),
+	pill.setBoxStyle(BoxStyle.create(
+		{ topLeft: 28.0, topRight: 28.0, bottomRight: 28.0, bottomLeft: 28.0 },
 		uniformBorders(1.5),
 		rgba(0.3, 0.5, 0.8, 1.0),
-	), rgba(0.0, 0.0, 0.04, 0.55), 5.0));
+	).castInsetShadow(rgba(0.0, 0.0, 0.04, 0.55), 5.0));
 	s.add(pill);
 	return s;
 }
@@ -420,11 +420,11 @@ function primInsetShadow(): Scene {
 function primAaShadow(): Scene {
 	const s = scene(DARK);
 	const box = rect(120.0, 70.0, rgba(0.30, 0.62, 0.92, 1.0)).at(90.0, 60.0);
-	box.setBoxStyle(castShadow(boxStyle(
+	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(12.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
-	), rgba(0.90, 0.45, 0.15, 0.85), 6.0, 30.0, 22.0));
+	).castShadow(rgba(0.90, 0.45, 0.15, 0.85), 6.0, 30.0, 22.0));
 	s.add(box);
 	return s;
 }
@@ -440,11 +440,11 @@ function primCardOneInstance(): Scene {
 	clip.pivotY = 60.0;
 	clip.rotation = 0.6458;
 	const card = rect(180.0, 96.0, rgba(0.24, 0.44, 0.66, 0.82)).at(5.0, 8.0);
-	card.setBoxStyle(castShadow(boxStyle(
-		cornerRadii(22.0, 8.0, 18.0, 4.0),
-		borderWidths(3.0, 1.5, 3.0, 1.5),
+	card.setBoxStyle(BoxStyle.create(
+		{ topLeft: 22.0, topRight: 8.0, bottomRight: 18.0, bottomLeft: 4.0 },
+		{ left: 3.0, top: 1.5, right: 3.0, bottom: 1.5 },
 		rgba(0.93, 0.95, 1.0, 1.0),
-	), rgba(0.01, 0.01, 0.05, 0.5), 8.0, 9.0, 12.0));
+	).castShadow(rgba(0.01, 0.01, 0.05, 0.5), 8.0, 9.0, 12.0));
 	clip.addChild(card);
 	s.add(clip);
 	return s;
@@ -575,7 +575,7 @@ function snapZeroBorder(): Scene {
 	for (let i: int32 = 0; i < 4; i++) {
 		const box = rect(56.0, 52.0, rgba(0.30, 0.55, 0.85, 0.82))
 			.at(18.0 + (i as float32) * 74.0, 34.0);
-		box.setBoxStyle(boxStyle(
+		box.setBoxStyle(BoxStyle.create(
 			uniformRadii(4.0 + (i as float32) * 5.0),
 			uniformBorders(0.0),
 			rgba(1.0, 0.0, 0.8, 1.0),
@@ -857,7 +857,7 @@ function imageObjectFit(): Scene {
 function imageCornerRadii(): Scene {
 	const s = scene(DARK);
 	const image = styledImage(sheet(), 86.0, 48.0, 148.0, 112.0, ObjectFit.Cover,
-		cornerRadii(5.0, 18.0, 38.0, 12.0), false);
+		{ topLeft: 5.0, topRight: 18.0, bottomRight: 38.0, bottomLeft: 12.0 }, false);
 	image.pivotX = 74.0;
 	image.pivotY = 56.0;
 	image.rotation = 0.31;
@@ -918,11 +918,11 @@ function filterBlur(): Scene {
 	const card = host.addChild(
 		rect(40.0, 26.0, rgba(0.25, 0.55, 0.95, 1.0)).at(95.0, 14.0),
 	);
-	card.setBoxStyle(castShadow(boxStyle(
+	card.setBoxStyle(BoxStyle.create(
 		uniformRadii(7.0),
 		uniformBorders(1.0),
 		rgba(0.85, 0.92, 1.0, 1.0),
-	), rgba(0.0, 0.0, 0.0, 0.7), 5.0, 8.0, 4.0));
+	).castShadow(rgba(0.0, 0.0, 0.0, 0.7), 5.0, 8.0, 4.0));
 	s.add(host);
 	return s;
 }
