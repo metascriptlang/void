@@ -7,9 +7,19 @@ import {
 	quantizeX,
 	snapBaseline,
 } from "./glyphAtlas";
-import { Align, TextLayout, TextStyle, NO_GLYPH } from "./textLayout";
-import { DEFAULT_FONT } from "./font";
-import { Transform2D } from "./types";
+import {
+	Align,
+	TextLayout,
+	TextStyle,
+	TextRun,
+	LineBox,
+	NO_GLYPH,
+	NO_RUN,
+	layoutRuns,
+} from "./textLayout";
+import { decorationMetrics } from "./face";
+import { DEFAULT_FONT, fontFace } from "./font";
+import { Transform2D, Color } from "./types";
 
 export const NO_LABEL_TEXT: int32 = -1;
 const MAX_GLYPH_PAGES: int32 = 16;
@@ -25,6 +35,7 @@ export struct PlacedGlyph {
 	v0: float32;
 	u1: float32;
 	v1: float32;
+	run: int32;
 }
 
 struct PlacementKey {
@@ -41,6 +52,22 @@ const NO_PLACEMENT_KEY: PlacementKey = {
 	a: 0.0, b: 0.0, c: 0.0, d: 0.0, scale: 0.0, fracX: 0.0, fracY: 0.0,
 };
 
+export enum DecorationKind {
+	Background,
+	Underline,
+	WavyUnderline,
+	Strikethrough,
+}
+
+export struct Decoration {
+	kind: DecorationKind;
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	color: Color;
+}
+
 export interface LabelText {
 	layout: TextLayout;
 	style: TextStyle;
@@ -49,6 +76,8 @@ export interface LabelText {
 	pixelExact: boolean;
 	key: PlacementKey;
 	refused: int32;
+	runs: Vec<TextRun>;
+	decorations: Vec<Decoration>;
 }
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
@@ -119,6 +148,8 @@ export function allocateLabelText(): int32 {
 		pixelExact: false,
 		key: NO_PLACEMENT_KEY,
 		refused: 0,
+		runs: new Array(0),
+		decorations: new Array(0),
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -145,7 +176,58 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	releasePlacement(entry);
 	entry.style = style;
-	entry.layout = TextLayout.layout(text, style);
+	entry.layout = layoutRuns(text, style, entry.runs);
+	entry.decorations = runDecorations(entry.layout, entry.runs, style.size);
+}
+
+// GPUI's segments (line.rs:790-937): one per run per line; the backgrounds fill the line box,
+// underline and strikethrough sit where the run's face puts them.
+function runDecorations(layout: TextLayout, runs: Span<TextRun>, size: float32): Vec<Decoration> {
+	const out: Vec<Decoration> = new Array(0);
+	if ((runs.length as int32) == 0) { return out; }
+	for (let li = 0; li < (layout.lines.length as int32); li++) {
+		const line: LineBox = layout.lines[li];
+		const end: int32 = line.firstGlyph + line.glyphCount;
+		let k: int32 = line.firstGlyph;
+		while (k < end) {
+			const run: int32 = layout.glyphs[k].run;
+			const x0: float32 = layout.glyphs[k].x;
+			let last: int32 = k;
+			while (last + 1 < end && layout.glyphs[last + 1].run == run) { last = last + 1; }
+			const w: float32 = layout.glyphs[last].x + layout.glyphs[last].advance - x0;
+			k = last + 1;
+			if (run == NO_RUN) { continue; }
+			const style: TextRun = runs[run];
+			if (style.background.a > 0.0) {
+				out.push({
+					kind: DecorationKind.Background, x: x0, y: line.top, w: w, h: line.height,
+					color: style.background,
+				});
+			}
+			const deco = decorationMetrics(fontFace(style.font), size);
+			if (style.underline.a > 0.0) {
+				out.push({
+					kind: style.wavy ? DecorationKind.WavyUnderline : DecorationKind.Underline,
+					x: x0, y: line.baseline + deco.underlineTop, w: w, h: deco.underlineThickness,
+					color: style.underline,
+				});
+			}
+			if (style.strikethrough.a > 0.0) {
+				out.push({
+					kind: DecorationKind.Strikethrough, x: x0,
+					y: line.baseline + deco.strikethroughTop, w: w,
+					h: deco.strikethroughThickness, color: style.strikethrough,
+				});
+			}
+		}
+	}
+	return out;
+}
+
+export function setLabelRuns(index: int32, runs: Span<TextRun>): void {
+	const kept: Vec<TextRun> = new Array(0);
+	for (const run of runs) { kept.push(run); }
+	labelTexts[index].runs = kept;
 }
 
 export function isPixelExact(world: Transform2D): boolean {
@@ -233,7 +315,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				placed.push({
 					tile: tileIndex, page: t.page,
 					x: (whole + t.left) as float32, y: (baselineDevice + t.top) as float32,
-					w: w, h: h, u0: u0, v0: v0, u1: u1, v1: v1,
+					w: w, h: h, u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
 				});
 			} else {
 				placed.push({
@@ -241,7 +323,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 					x: g.x + (t.left as float32) / devicePerLocal,
 					y: baseline + (t.top as float32) / devicePerLocal,
 					w: w / devicePerLocal, h: h / devicePerLocal,
-					u0: u0, v0: v0, u1: u1, v1: v1,
+					u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
 				});
 			}
 		}

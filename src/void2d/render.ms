@@ -37,8 +37,16 @@ import {
 	markGlyphPageDrawn,
 	labelTexts,
 	LabelText,
+	Decoration,
+	DecorationKind,
 } from "./labelText";
-import { TextLayout, TextStyle, NO_GLYPH, calcTextWidth as layoutWidth } from "./textLayout";
+import {
+	TextLayout,
+	TextStyle,
+	NO_GLYPH,
+	NO_RUN,
+	calcTextWidth as layoutWidth,
+} from "./textLayout";
 import { GlyphPage, NO_GLYPH_PAGE } from "./glyphAtlas";
 import { glyphInkBox } from "./face";
 import { Vec2, Color, Tile, Transform2D, Bounds, FilterKind, BlendMode, Smooth, vec2, rgba, tile, trs2d, emptyBounds } from "./types";
@@ -281,10 +289,100 @@ function sharedGlyphView(): uint32 {
 	return glyphPageView(firstGlyphPageHandle());
 }
 
-function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
+function faded(c: Color, alpha: float32): Color {
+	return rgba(c.r, c.g, c.b, c.a * alpha);
+}
+
+// A run segment's box in local units, its edges on device pixels when the label is
+// axis-aligned; `thickness` > 0 makes the height a stroke of at least one device pixel.
+export function segmentBox(
+	x0: float32,
+	x1: float32,
+	y: float32,
+	height: float32,
+	stroke: boolean,
+	world: Transform2D,
+	scale: float32,
+): [float32, float32, float32, float32] {
+	if (!axisAligned(world.a, world.b, world.c, world.d)) { return [x0, y, x1 - x0, height]; }
+	const a: float32 = world.a * scale;
+	const d: float32 = world.d * scale;
+	const tx: float32 = world.tx * scale;
+	const ty: float32 = world.ty * scale;
+	const left: float32 = snapEdge(a * x0 + tx);
+	const right: float32 = snapEdge(a * x1 + tx);
+	const top: float32 = snapEdge(d * y + ty);
+	const bottom: float32 = stroke ? top + snapStroke(height * d) : snapEdge(d * (y + height) + ty);
+	return [(left - tx) / a, (top - ty) / d, (right - left) / a, (bottom - top) / d];
+}
+
+function emitRunBox(
+	n: Node2D,
+	world: Transform2D,
+	box: [float32, float32, float32, float32],
+	fill: Color,
+): void {
+	const [x, y, w, h] = box;
+	if (w <= 0.0 || h <= 0.0) { return; }
+	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const origin = vec2(x, y) * world;
+	drawUiInstance(InstanceMode.Box, sharedGlyphView(), n.blend, world, origin.x, origin.y, w, h,
+		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0, 0.0,
+		fill, transparent, transparent);
+}
+
+function emitRunLine(
+	n: Node2D,
+	world: Transform2D,
+	box: [float32, float32, float32, float32],
+	wavy: boolean,
+	fill: Color,
+): void {
+	const [x, y, w, h] = box;
+	if (w <= 0.0 || h <= 0.0) { return; }
+	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const quadY: float32 = wavy ? y - h : y;
+	const quadH: float32 = wavy ? h * 3.0 : h;
+	const origin = vec2(x, quadY) * world;
+	drawUiInstance(InstanceMode.Underline, sharedGlyphView(), n.blend, world,
+		origin.x, origin.y, w, quadH,
+		0.0, 0.0, 0.0, 0.0,
+		h, wavy ? 1.0 : 0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0,
+		0.0, 0.0, 0.0, 0.0,
+		fill, transparent, transparent);
+}
+
+function emitDecorations(
+	n: Node2D,
+	text: LabelText,
+	world: Transform2D,
+	na: float32,
+	backgrounds: boolean,
+): void {
+	const scale: float32 = currentRenderScale();
+	for (let i = 0; i < (text.decorations.length as int32); i++) {
+		const d: Decoration = text.decorations[i];
+		const background: boolean = d.kind == DecorationKind.Background;
+		if (background != backgrounds) { continue; }
+		const box = segmentBox(d.x, d.x + d.w, d.y, d.h, !background, world, scale);
+		if (background) {
+			emitRunBox(n, world, box, faded(d.color, na));
+		} else {
+			emitRunLine(n, world, box, d.kind == DecorationKind.WavyUnderline, faded(d.color, na));
+		}
+	}
+}
+
+function emitLabel(n: Node2D, world: Transform2D, col: Color, na: float32): void {
 	if (n.payload == NO_LABEL_TEXT) { return; }
 	const scale: float32 = currentRenderScale();
 	const text = placeLabel(n.payload, world, scale);
+	const styled: boolean = (text.runs.length as int32) > 0 && uiInstancingAvailable();
+	if (styled) { emitDecorations(n, text, world, na, true); }
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
 	const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
@@ -313,6 +411,7 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 			x = world.a * p.x + world.c * p.y + world.tx;
 			y = world.b * p.x + world.d * p.y + world.ty;
 		}
+		const fill: Color = styled && p.run != NO_RUN ? faded(text.runs[p.run].color, na) : col;
 		if (instanced) {
 			drawUiInstance(InstanceMode.Glyph, view, n.blend, affine,
 				x, y, w, h,
@@ -320,7 +419,7 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 				0.0, 0.0, 0.0, 0.0,
 				0.0, 0.0, 0.0,
 				0.0, 0.0, 0.0, 0.0,
-				col, transparent, transparent);
+				fill, transparent, transparent);
 		} else {
 			const rx: float32 = affine.a * w;
 			const ry: float32 = affine.b * w;
@@ -331,9 +430,10 @@ function emitLabel(n: Node2D, world: Transform2D, col: Color): void {
 				vec2(x + rx, y + ry),
 				vec2(x + rx + dx, y + ry + dy),
 				vec2(x + dx, y + dy),
-				col, n.blend);
+				fill, n.blend);
 		}
 	}
+	if (styled) { emitDecorations(n, text, world, na, false); }
 }
 let textPrimitiveEffectRejectedReported: boolean = false;
 const TEXT_PRIMITIVE_EFFECT_REFUSED: string =
@@ -538,7 +638,7 @@ function emitNode(
 			}
 		},
 		DrawKind.Label => {
-			emitLabel(n, world, col);
+			emitLabel(n, world, col, na);
 		},
 		DrawKind.Graphics => {
 			const ops: float32[] = n.records;

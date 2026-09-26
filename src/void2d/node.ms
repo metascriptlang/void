@@ -1,9 +1,9 @@
 import { Vec2, Color, Tile, Transform2D, Filter, BlendMode, Smooth, rgba, tile, identity2d, inverse2d, noFilter } from "./types";
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
-import { NO_LABEL_TEXT, releaseLabelText } from "./labelText";
+import { NO_LABEL_TEXT, allocateLabelText, releaseLabelText, setLabelRuns } from "./labelText";
 import { FontId, DEFAULT_FONT } from "./font";
-import { Align } from "./textLayout";
+import { Align, TextRun } from "./textLayout";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
@@ -150,6 +150,14 @@ export function label(text: string, size: float32, color: Color): Node2D {
 	n.text = text; n.size = size; n.color = color;
 	return n;
 }
+export function setTextRuns(this n: Node2D, runs: Span<TextRun>): Node2D {
+	if (n.kind !== DrawKind.Label) { unreachable; }
+	if (n.payload == NO_LABEL_TEXT) { n.payload = allocateLabelText(); }
+	setLabelRuns(n.payload, runs);
+	n.textDirty = true;
+	return n;
+}
+
 export function setFont(this n: Node2D, font: FontId): Node2D {
 	if (n.kind !== DrawKind.Label) { unreachable; }
 	n.fontId = font;

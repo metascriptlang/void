@@ -11,7 +11,7 @@ import {
 	Node2D, group, rect, sprite, label, graphics, mask, scaleGrid, underline, selection,
 	at, addChild, setBoxStyle, setImageStyle,
 } from "../../src/void2d/node";
-import { Align } from "../../src/void2d/textLayout";
+import { Align, TextRun } from "../../src/void2d/textLayout";
 import {
 	addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature, SizeAdjust,
 	DEFAULT_FONT,
@@ -650,6 +650,40 @@ function textFilteredDpi125(): Scene {
 	return s;
 }
 
+function decoratedRun(len: int32, color: Color): TextRun {
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: len, font: DEFAULT_FONT, color: color, background: clear, underline: clear,
+		wavy: false, strikethrough: clear,
+	};
+}
+
+function textDecorations(): Scene {
+	const s = scene(DARK);
+	const plain: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
+	const code: TextRun[] = [
+		decoratedRun(3, keyword),
+		decoratedRun(1, plain),
+		{ ...decoratedRun(5, rgba(0.98, 0.85, 0.45, 1.0)), background: rgba(0.30, 0.34, 0.46, 1.0) },
+		decoratedRun(6, plain),
+	];
+	s.add(label("let total = 42;", 13.0, plain).setTextRuns(code).at(10.3, 8.3));
+	const wavy: TextRun[] = [
+		decoratedRun(5, plain),
+		{ ...decoratedRun(5, plain), underline: rgba(0.95, 0.35, 0.30, 1.0), wavy: true },
+		decoratedRun(5, plain),
+	];
+	s.add(label("wavy error here", 16.0, plain).setTextRuns(wavy).at(10.0, 40.0));
+	const lines: TextRun[] = [
+		{ ...decoratedRun(6, plain), strikethrough: rgba(0.95, 0.60, 0.40, 1.0) },
+		decoratedRun(5, plain),
+		{ ...decoratedRun(10, plain), underline: rgba(0.45, 0.80, 0.95, 1.0) },
+	];
+	s.add(label("struck and underlined", 16.0, plain).setTextRuns(lines).at(10.5, 76.4));
+	return s;
+}
+
 function textWrapped(): Scene {
 	const s = scene(DARK);
 	const paragraph = label(
@@ -1176,6 +1210,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/cjkFallback", build: textCjkFallback },
 		{ name: "text/fontStyles", build: textFontStyles },
 		{ name: "text/filteredDpi125", build: textFilteredDpi125 },
+		{ name: "text/decorations", build: textDecorations },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },

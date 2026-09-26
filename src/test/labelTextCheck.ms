@@ -1,5 +1,6 @@
-import { Align } from "../void2d/textLayout";
-import { DEFAULT_FONT } from "../void2d/font";
+import { Align, TextRun } from "../void2d/textLayout";
+import { DEFAULT_FONT, fontFace } from "../void2d/font";
+import { decorationMetrics } from "../void2d/face";
 import {
 	allocateLabelText,
 	releaseLabelText,
@@ -10,12 +11,16 @@ import {
 	glyphRefusals,
 	glyphRefusalReports,
 	isPixelExact,
+	labelTexts,
+	setLabelRuns,
+	DecorationKind,
 } from "../void2d/labelText";
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba, identity2d } from "../void2d/types";
 import { begin2d, frameEnd } from "../void2d/draw";
-import { label } from "../void2d/node";
-import { renderTargetsAlive } from "../void2d/render";
+import { label, setTextRuns } from "../void2d/node";
+import { renderTargetsAlive, segmentBox } from "../void2d/render";
+import { approx } from "./helpers";
 
 function shaped(text: string): int32 {
 	return shapedAt(text, 13.0);
@@ -125,4 +130,69 @@ test "a placement that loses a glyph stays invalid, is retried, and is reported 
 	assert glyphRefusals() == refusals + 3 && glyphRefusalReports() == reports + 2;
 	releaseLabelText(first);
 	releaseLabelText(second);
+}
+
+const CLEAR = rgba(0.0, 0.0, 0.0, 0.0);
+
+function plainRun(len: int32): TextRun {
+	return {
+		len: len, font: DEFAULT_FONT, color: rgba(1.0, 1.0, 1.0, 1.0), background: CLEAR,
+		underline: CLEAR, wavy: false, strikethrough: CLEAR,
+	};
+}
+
+test "run decorations: a background fills the line box, lines sit on the face's metrics" {
+	const index = allocateLabelText();
+	const runs: TextRun[] = [
+		{ ...plainRun(3), background: rgba(0.0, 0.0, 1.0, 1.0) },
+		{ ...plainRun(3), underline: rgba(0.0, 1.0, 0.0, 1.0), wavy: true },
+		{ ...plainRun(2), strikethrough: rgba(1.0, 0.0, 0.0, 1.0) },
+	];
+	setLabelRuns(index, runs);
+	shapeLabel(index, "abcdefgh", {
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: 0.0,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	});
+	const e = labelTexts[index];
+	const g = e.layout.glyphs;
+	const line = e.layout.lines[0];
+	const deco = decorationMetrics(fontFace(DEFAULT_FONT), 13.0);
+	assert (e.decorations.length as int32) == 3;
+	assert e.decorations[0].kind == DecorationKind.Background;
+	assert e.decorations[0].x == g[0].x && e.decorations[0].y == line.top;
+	assert approx(e.decorations[0].w, g[2].x + g[2].advance - g[0].x);
+	assert e.decorations[0].h == line.height;
+	assert e.decorations[1].kind == DecorationKind.WavyUnderline;
+	assert e.decorations[1].x == g[3].x;
+	assert approx(e.decorations[1].y, line.baseline + deco.underlineTop);
+	assert e.decorations[1].h == deco.underlineThickness;
+	assert e.decorations[2].kind == DecorationKind.Strikethrough;
+	assert approx(e.decorations[2].y, line.baseline + deco.strikethroughTop);
+	assert g[7].run == 2 && g[0].run == 0;
+	releaseLabelText(index);
+}
+
+test "a decoration lands on device pixels at DPI 1.25, a stroke at least one pixel thick" {
+	const world = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+	const [x, y, w, h] = segmentBox(10.3, 50.3, 20.1, 0.5, true, world, 1.25);
+	assert approx(x * 1.25, 13.0) && approx((x + w) * 1.25, 63.0);
+	assert approx(y * 1.25, 25.0) && approx(h * 1.25, 1.0);
+	const [bx, by, bw, bh] = segmentBox(10.3, 50.3, 20.1, 16.2, false, world, 1.25);
+	assert approx(by * 1.25, 25.0) && approx((by + bh) * 1.25, 45.0);
+	assert approx(bx * 1.25, 13.0) && approx(bw * 1.25, 50.0);
+}
+
+test "setTextRuns styles a label, and each placed glyph carries its run" {
+	const n = label("ab", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const runs: TextRun[] = [plainRun(1), plainRun(1)];
+	n.setTextRuns(runs);
+	n.sync(identity2d(), false);
+	assert n.textWidth() > 0.0;
+	const placed = placeLabel(n.payload, identity2d(), 1.0).placed;
+	assert placed[0].run == 0 && placed[1].run == 1;
+	n.dispose();
 }

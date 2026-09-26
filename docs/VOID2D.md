@@ -412,7 +412,7 @@ P1 needs only P0. P2 needs P1's instance stream. P3 needs P2's instance layout, 
 - `tests/golden/{table,scenes,runner,compare}.ms` and `tests/golden/pngio.{c,h}` — the table
   as data (no GPU, so the comparator links no sokol), the builders, a one-scene-per-process
   runner and a comparator that applies the tolerance and PENDING policy.
-- `tests/golden/d3d11/` — **37 scenes** at P0, **48** after P1 turned the filter rows on, **67** after P2 added the instanced primitives and their boundary cases, **69** after P3's `text/cjkFallback` and `text/fontStyles`, and **70** with P4's `text/filteredDpi125`.
+- `tests/golden/d3d11/` — **37 scenes** at P0, **48** after P1 turned the filter rows on, **67** after P2 added the instanced primitives and their boundary cases, **69** after P3's `text/cjkFallback` and `text/fontStyles`, and **71** with P4's `text/filteredDpi125` and `text/decorations`.
 - `tests/bench/bench{Ui,Sprites}.ms`, `check.ms` and `baseline.json`; `bench2d.ms` emits one
   machine-readable row per metric.
 - `tests/PENDING.md`, opening with an index that maps every "Known defects" line to the row
@@ -647,7 +647,7 @@ render-target drawing must not combine an arbitrary colour matrix with that sour
 shader has an explicit unpremultiply-transform-premultiply path.
 
 Every golden row now gates its draw count and live pooled-render-target count as well as pixels.
-The expectations, 67 at P2, 69 at P3 and 70 in P4, live in table order beside the scene table; a pixel-identical draw-call
+The expectations, 67 at P2, 69 at P3 and 71 in P4, live in table order beside the scene table; a pixel-identical draw-call
 regression or target leak fails before the PNG is written. T1 also closes the batch-reason
 cross-check: production `breaks`, `gradients` and `clip` scenes reach first/view/blend/sampler/
 pipeline/effect/clip, and a no-GPU target bracket reaches barrier.
@@ -810,7 +810,7 @@ wrap tailoring for code measured on code before it is fixed.
 - Selection across a ragged range joins without gaps or overlapping alpha.
 - The T5 look beside Zed at 13 px, 1× and 1.5× is taken by the human, and its verdict is written into P3 (REVIEWS.md P3 F12).
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/decorations`, `golden-missing:text/caretSelection`.
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/caretSelection`.
 
 **Tests.** T3: the UCD conformance files for grapheme clusters and line-break opportunities, with the divergence from UAX #14 recorded as one PENDING reason — void2d follows GPUI's cheaper rule, and the pass rate against the standard is what says whether that is acceptable. T1: run splitting, wrap boundaries, decoration placement and whole-grapheme face selection as numbers. T2: the editor scenes and the decoration group. T0: truncation and `split_at` boundary arithmetic.
 
