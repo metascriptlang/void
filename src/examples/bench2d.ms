@@ -25,7 +25,7 @@ import { renderTargetsAlive } from "../void2d/render";
 import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
 import { GlyphAtlas } from "../void2d/glyphAtlas";
 import { NodeRef, Scene } from "../void2d/node";
-import { scene, add, present } from "../void2d/scene";
+import { scene, add, present, isDirty } from "../void2d/scene";
 import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
@@ -206,6 +206,8 @@ function report(): void {
 	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
 	console.log(`${benchName}.firstPaintUploadBytes ${firstPaintUploadBytes}`);
+	const idle: boolean = benchScene !== null && (benchScene as Scene).isDirty();
+	console.log(`${benchName}.idleDirty ${idle ? 1 : 0}`);
 	console.log(`${benchName}.sweepPeakPages ${sweepPeakPages}`);
 	const swept: int32 = rasterizationsBeforeMeasure - firstPaintRasterizations;
 	console.log(`${benchName}.sweepRasterizations ${swept}`);

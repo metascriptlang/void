@@ -114,7 +114,7 @@ function runCheck(): int32 {
 		"nodes", "retainedNodes", "draws", "buffersAlive", "vertices",
 		"uiInstances", "spriteInstances", "uploads", "uploadBytes", "atlasImages",
 		"renderTargets", "droppedFrames", "glyphRasterizationsSteady", "glyphPages", "glyphBytes",
-		"firstPaintRasterizations", "firstPaintUploadBytes", "sweepPeakPages", "sweepRasterizations",
+		"firstPaintRasterizations", "firstPaintUploadBytes", "idleDirty", "sweepPeakPages", "sweepRasterizations",
 	];
 	for (const metric of metrics) {
 		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) { failed = failed + 1; }

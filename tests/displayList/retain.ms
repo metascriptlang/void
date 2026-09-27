@@ -1,6 +1,6 @@
 import { scene, add } from "../../src/void2d/scene";
 import { Scene, NodeRef, NO_SLOT } from "../../src/void2d/node";
-import { paint } from "../../src/void2d/scene";
+import { paint, isDirty, tick } from "../../src/void2d/scene";
 import { sync, draw, syncOrder, drawOrder } from "../../src/void2d/render";
 import { begin2d, finishRecording, frameEnd, setSceneSmooth } from "../../src/void2d/draw";
 import {
@@ -414,4 +414,34 @@ test "a caret blink writes the caret's instance and nothing else" {
 	assert s.list.dirtyUi[1] == end.uiInstances;
 	assert !s.list.dirtySprites && !s.list.dirtyVertices;
 	assert same(hidden, fullFrame(s));
+}
+
+test "a scene is dirty until a frame draws what changed, and a still frame leaves it clean" {
+	const c: Corpus = corpus();
+	const s: Scene = c.s;
+	assert s.isDirty();
+	frame(s);
+	assert !s.isDirty();
+	s.tick(0.1);
+	assert !s.isDirty();
+	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
+	assert s.isDirty();
+	frame(s);
+	assert !s.isDirty();
+	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
+	assert !s.isDirty();
+	s.tick(0.2);
+	assert s.isDirty();
+	frame(s);
+	s.cam.x = 12.0;
+	assert s.isDirty();
+	frame(s);
+	assert !s.isDirty();
+	s.defaultSmooth = false;
+	assert s.isDirty();
+	frame(s);
+	c.other.addChild(s.group());
+	assert s.isDirty();
+	frame(s);
+	assert !s.isDirty();
 }

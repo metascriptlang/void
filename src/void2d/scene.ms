@@ -124,6 +124,13 @@ export function present(this s: Scene): void {
 // `present()` takes the host's ratio; `presentAt` takes an explicit one, which is how a
 // golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
 // "Determinism preconditions").
+export function isDirty(this s: Scene): boolean {
+	const l: DisplayList = s.list;
+	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
+	if (s.defaultSmooth != l.paintedSmooth) { return true; }
+	return sceneViewMatrix(s, l.paintedW, l.paintedH) != s.viewMat;
+}
+
 export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): void {
 	// Before recording begins, never during the walk: begin2d captures this default in the
 	// first run's sampler state.
