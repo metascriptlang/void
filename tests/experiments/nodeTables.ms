@@ -28,6 +28,12 @@ function writes(cards: NodeRef[], pass: int32): void {
 	for (const card of cards) { card.setX(x); }
 }
 
+function visit(cards: NodeRef[]): int32 {
+	let sum: int32 = 0;
+	for (const card of cards) { sum = sum + card.id.index; }
+	return sum;
+}
+
 function main(): void {
 	for (let round: int32 = 0; round < ROUNDS; round++) {
 		const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
@@ -39,6 +45,12 @@ function main(): void {
 		const written: float64 = performance.now();
 		for (let pass: int32 = 0; pass < WRITE_PASSES; pass++) { writes(cards, pass); }
 		const writeMs: float64 = performance.now() - written;
+		const visited: float64 = performance.now();
+		let checksum: int32 = 0;
+		for (let pass: int32 = 0; pass < WRITE_PASSES; pass++) {
+			checksum = checksum + visit(cards);
+		}
+		const visitMs: float64 = performance.now() - visited;
 		const equal: float64 = performance.now();
 		writes(cards, WRITE_PASSES - 1);
 		const equalMs: float64 = performance.now() - equal;
@@ -50,6 +62,8 @@ function main(): void {
 		console.log(
 			`nodeTables round ${round} nodes ${s.kinds.length - 1} build.ms ${buildMs} ` +
 			`write.ns ${writeMs * 1000000.0 / (count * (WRITE_PASSES as float64))} ` +
+			`visit.ns ${visitMs * 1000000.0 / (count * (WRITE_PASSES as float64))} ` +
+			`checksum ${checksum} ` +
 			`equalWrite.ns ${equalMs * 1000000.0 / count} teardown.ms ${teardownMs} ` +
 			`live ${s.nodeCount()}`,
 		);
