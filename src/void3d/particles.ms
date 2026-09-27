@@ -303,19 +303,22 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 			position = vec3(0.0, height, 0.0);
 		},
 		ShapeKind.Sphere => {
+			const radiusValue: ParticleValue = emitter.state.shape.radius;
 			const theta: float64 = unitRandom(emitter) * TWO_PI;
 			const phi: float64 = Math.acos(unitRandom(emitter) * 2.0 - 1.0);
-			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
+			let radius: float32 = emitterValue(emitter, radiusValue, time);
 			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
 			position = direction.scaled(radius);
 		},
 		ShapeKind.Cone => {
+			const angleValue: ParticleValue = emitter.state.shape.angle;
+			const radiusValue: ParticleValue = emitter.state.shape.radius;
 			const theta: float64 = unitRandom(emitter) * TWO_PI;
-			const angle: float32 = emitterValue(emitter, emitter.state.shape.angle, time);
+			const angle: float32 = emitterValue(emitter, angleValue, time);
 			const spread: float64 = angle as float64;
 			const phi: float64 = spread * unitRandom(emitter);
-			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
+			let radius: float32 = emitterValue(emitter, radiusValue, time);
 			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
 			position = direction.scaled(radius);
