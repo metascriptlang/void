@@ -39,7 +39,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~Culling tests the viewport rather than the active clip~~ | **closed** — T1 `active-clip culling drops rows outside a Mask` records four visible instances from forty rows; `clip/scrolledList` keeps the pixels | done |
 | ~~No fallback chain; integer glyph origins, rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, ≤ 16 fonts, the R8→RGBA CPU expansion~~ closed at P3 steps 3 and 5. What the collection model still lacks is row `font-colour-emoji`; whole-grapheme selection landed in P4 | goldens `text/*`, `text/cjkFallback` | done / P3 |
 | The h2d surface still missing — `TileGroup`, `Mask.scrollX/Y`; `parent`, `remove()`, reparenting and the index queries closed at P5 step 6, `Tile.dx/dy`, uniform node pivots and the text metrics before it | rows `h2d-tilegroup`, `golden-missing:clip/maskScroll` | P5 |
-| Idle costs a full walk and draw | row `idle-costs-a-walk` | P5 |
+| Idle costs a draw; the walk and the upload went at P5 step 7 | row `idle-costs-a-walk` | P5 |
 | ~~A sokol view id past 2^24 names another slot in the replay~~ | **closed in P5** — the id travels as two 16-bit halves; T1 "a view id past 2^24 reaches the replay whole" in `displayList.ms` | P5 |
 | ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `7b7f163`, on `main` in `3860752`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
 
@@ -114,7 +114,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | style:uniform-box-constructors | T0 | `uniformRadii` and `uniformBorders` in `src/void2d/boxStyle.ms` stay free functions where the human approved `CornerRadii.uniform` and `BorderWidths.uniform` (P4 step 4): two same-name static extensions exported from one module resolve only the first in an importer. Compiler card `../../.inbox/compiler/2026-09-26-same-name-static-extensions-one-module.md` | compiler | 2026-09-26 |
 | ui-box-color-effect | T1 | A styled Rect, and since P4 a Label's text runs, selection and caret, combined with `colorMatrix`, `colorAdd` or `colorKey` are rejected loudly rather than rendered as a square flat fallback or dropped (`render.ms` `emitLabel`, counted by `labelEditingRefusals`). P6 carries the existing colour-effect record through the unified UI shader, then adds a production-emitter assertion before this row is removed | P6 | 2026-09-23 |
 | sdf-non-uniform-bound | T3 | Local-space box and `erf` shadow AA use the affine axes' geometric mean under non-uniform scale. P6 must bound that approximation with an independent coverage case; the legacy `xform/nonUniform` golden only pins its pixels and cannot prove the error | P6 | 2026-09-23 |
-| idle-costs-a-walk | T4 | `Scene.present` walks and draws every frame; nothing knows whether the tree changed | P5 | 2026-09-20 |
+| idle-costs-a-walk | T4 | `Scene.present` replays its draws every frame; nothing tells the host whether the tree changed | P5 | 2026-09-20 |
 | h2d-tilegroup | T1 | `TileGroup` does not exist | P5 | 2026-09-20 |
 
 ## Debug-build aborts

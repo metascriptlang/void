@@ -190,7 +190,7 @@ Also worth taking: `UninitBufferVec` (`buffer_vec.rs:453-473`) reserves GPU slot
 
 ## Open
 
-- The child arena, upward dirty marking and flattened draw order are **read, not measured**. Build them and measure, including Bevy's recorded spawn-heavy regression, and against the simpler descend-from-the-dirty-list alternative.
+- The child arena is **read, not measured**; void2d kept a `Vec` of children per parent, and its 100 000-node build is measured in VOID2D.md P5 step 6. The flattened draw order was built at void2d P5 step 7, and upward marking was measured there against the descend-from-the-dirty-list alternative, which won every case (VOID2D.md P5 step 7). Bevy's spawn-heavy regression was not measured.
 - 0.92 ms benefits from a cache warmed by the preceding loop; ~3.7 ms is the honest figure for a cold full sweep.
 - Heaps figures are JS/V8 and extrapolated ×10 from 100k. A HashLink number would be better and could not be obtained on this machine.
 - Single run, single thread, no averaging, except the column-kind table, which is a median of six. The single-run figures are the ones that produced the one wrong rule in this document; treat any of them that carries a decision as provisional until repeated.
