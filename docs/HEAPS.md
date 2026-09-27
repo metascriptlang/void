@@ -81,7 +81,7 @@ Key pattern: **parent-child hierarchy with transform propagation**. Changes to p
 
 ## Rendering Pipeline — OWNED IN void2d, STILL NEEDED FOR void3d
 
-sokol gives us pipelines, render passes, bindings, buffers — but the orchestration is ours to build. **void2d now owns the 2D orchestration** (batcher flushes, Node2D tree walk, clip stack, render-target passes — see `src/void2d/draw.ms`); the items below remain open for the 3D path.
+sokol gives us pipelines, render passes, bindings, buffers — but the orchestration is ours to build. **void2d now owns the 2D orchestration** (batcher flushes, the node tree walk, clip stack, render-target passes — see `src/void2d/draw.ms`); the items below remain open for the 3D path.
 
 - ~~`driver.beginFrame()`~~ — sokol: `sg_begin_pass` from `sglue_swapchain()`
 - `scene.render(engine)`
@@ -250,7 +250,7 @@ Statuses reflect the **sokol** era (Dawn/SDL3 removed). void2d is the active fro
 | ~~Graphics driver~~ | ~~h3d/impl/ (multi-backend)~~ | **Done** — `sokol_gfx` (Metal/D3D11/GL/Vulkan/WebGPU/WebGL2) | - |
 | ~~Shader compiler~~ | ~~hxsl/ (33 files, custom DSL)~~ | **Done** — `sokol-shdc` (annotated GLSL → GLSL/GLES/HLSL/MSL/WGSL) | - |
 | 2D render engine | h2d batcher + drawables | **Done** — `src/void2d/draw.ms` quad batcher + clip stack | - |
-| 2D scene graph | `h2d.Object` retained tree | **Done** — `Node2D` (`src/void2d/node.ms`, translate + scale + alpha inheritance) | - |
+| 2D scene graph | `h2d.Object` retained tree | **Done** — nodes as rows of the `Scene`'s tables behind `NodeRef` handles since P5 step 6 (`src/void2d/node.ms`, translate + scale + alpha inheritance, h2d's `Object` tree operations) | - |
 | 2D text | `h2d.Font` / `Text` | **Done** — the void2d glyph layer: stb_truetype 1.26 faces (`src/void2d/glyph.{h,c}`), R8 atlas pages (`glyphAtlas.ms`), float layout (`textLayout.ms`) | - |
 | 2D gradients | — | **Done** — linear + radial fill (`src/void2d/graphics.ms`) | - |
 | Render targets + post | h3d render-target stack | **Done** (void2d) — offscreen RT + separable gaussian blur (`src/void2d/effect.ms`) | - |
@@ -263,7 +263,7 @@ Statuses reflect the **sokol** era (Dawn/SDL3 removed). void2d is the active fro
 | Animation | h3d/anim/ (skeletal, blend) | **None** | Later |
 | Audio | hxd/snd/ | **None** | Later |
 
-sokol eliminates 2 entire layers (driver + shader compiler) that were Heaps' biggest investments; `sokol_app` folds in platform. Void's done work concentrates in the **2D middle layers** (batcher, Node2D, text, gradients, RT/blur). The remaining open tiers are the **3D path** (scene graph + materials + mesh loading) and **input routing** — all of which sit above the GPU bridge, not below it.
+sokol eliminates 2 entire layers (driver + shader compiler) that were Heaps' biggest investments; `sokol_app` folds in platform. Void's done work concentrates in the **2D middle layers** (batcher, node tree, text, gradients, RT/blur). The remaining open tiers are the **3D path** (scene graph + materials + mesh loading) and **input routing** — all of which sit above the GPU bridge, not below it.
 
 > ⚠️ **The feature table above is a feature checklist, not a quality verdict.** void2d has *coverage* on most 2D rows, but internal quality is not yet at Heaps parity — see the next section. **Direction lock (2026-07): 2D reaches full Heaps parity BEFORE 3D resumes.** The reconciler + any real UI inherits every 2D quality defect, so finishing 2D is a dependency for 3D/Neon, not a detour.
 
@@ -353,7 +353,7 @@ Missing from void2d today:
 1. **Tier 0 — 2D correctness** (transform cache, premultiplied alpha, DPI/ScaleMode). Blocks the reconciler. **~2–3 days.**
 2. **Tier 1 — 2D perf at scale** (`getBounds`+culling, texture-bucketed batching, `MAX_VERTS` grow). **~3–5 days.**
 3. **Tier 2 — 2D API surface** (filter stack, optional stencil, text richness). **~1 week+.**
-4. **Void Host adapter** — implement Neon's `Host` contract (`~/metascript/neon/src/render/host.ms`) over Node2D: ~50–100 lines mapping `createElement`/`setAttr`/`append` → Node2D ops. NOT a reconciler (that's Neon's Layer A); the reconciler already exists renderer-agnostic in Neon. Now safe to land; inherits a solid 2D host. See `~/metascript/neon/docs/RENDER-LAYERS.md`.
+4. **Void Host adapter** — implement Neon's `Host` contract (`~/metascript/neon/src/render/host.ms`) over the node tables: ~50–100 lines mapping `createElement`/`setAttr`/`append` → `NodeRef` binders and tree operations. NOT a reconciler (that's Neon's Layer A); the reconciler already exists renderer-agnostic in Neon. Now safe to land; inherits a solid 2D host. See `~/metascript/neon/docs/RENDER-LAYERS.md`.
 5. **3D path (deferred)** — `Object3D` scene graph, materials, mesh loading, 3D renderer. Resumes once 2D is parity-grade.
 6. **Input routing** — hit-testing over sokol_app events (needed before interactive UI).
 7. **Animation** — keyframe then skeletal, once models load.
