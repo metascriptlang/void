@@ -906,14 +906,40 @@ human has seen it as app code; the phase measurement comes last.
    through `removeChild` or `removeChildren` releases its tiles, as h2d's `onRemove` does (F6, T1:
    a removed Label holds no tile reference; closes `label-dispose-pins-page`, since `remove()` in
    step 9 goes through `removeChild`).
-5. **The change model, measured.** msc 0.2.55 has no property setters, so `n.x = 5` is a store
-   nothing observes, and `readonly` on an interface field crashes codegen
-   (`~/metascript/.inbox/compiler/2026-09-27-readonly-interface-field-unresolved-type.md`).
-   "An unchanged node costs nothing" therefore needs a compare sweep over the flattened order (A,
-   no app change), setters that mark the node dirty (B, h2d's `setPosition` / `move` / `setScale`
-   / `rotate` forms), or a call the writer must not forget (C, refused by "fail loud"). Measured
-   first: A's sweep on a static 100 000-node frame and on the editor scroll, beside today's
-   `present`. Then the human chooses A or B from app code and the numbers.
+5. **The change model — decided by the human on 2026-09-27: void3d's data model, Bevy's change
+   detection.** "An unchanged node costs nothing" needs the write itself to mark the node, and
+   `n.x = 5` on today's `Node2D` is a store nothing observes. What was weighed, and what ruled
+   each out:
+   - A compare sweep over every node (A): 13.2-13.6 ms a frame at 100 000 nodes even when idle,
+     5.3-5.8 ms comparing x and y alone ("Measured in P5 so far"). The cost is reaching each
+     71-field object, so fewer comparisons do not rescue it.
+   - h2d's own answer, a property whose setter sets `posChanged` (`h2d/Object.hx:51`, `995-997`):
+     msc has no accessors; `get x()` / `set x(v)` in a class parse and vanish
+     (`~/metascript/.inbox/compiler/2026-09-27-ts-accessors-parse-and-vanish.md`). h2d also walks
+     and draws every object every frame (`Object.hx:600-626`, `963-990`), so its answer only saves
+     the matrix, never the walk.
+   - `setDynamicField` / `getDynamicField` (LANG.md "Convention-based dispatch protocols"): built
+     for open shapes such as JSON, so the fields leave the type. A misspelt field compiles, one
+     value type per protocol makes reads of `n.x` and `n.color` ambiguous, `n.x += 1.0` is refused,
+     and every access compares strings at run time (probes `out/tmp/p5probes/dyn*.ms`).
+   - A `valueOf`-style protocol on the field's type: it sees the value, never the node holding it,
+     so it cannot mark the owner.
+   - `readonly` fields behind setters: `readonly` on an interface field crashes codegen
+     (`~/metascript/.inbox/compiler/2026-09-27-readonly-interface-field-unresolved-type.md`).
+
+   **Chosen:** SCENE-SCALE.md's model, which void3d already cut its types by (VOID3D.md "Data
+   types", `src/void3d/scene.ms` `Scene`, `NodeId`, `setLocal`): nodes are handles into a scene's
+   tables, per-node state is value structs grouped by the pass that reads them, and a write is a
+   binder that replaces a group, skips an equal value (Bevy's `set_if_neq`), sets the group's bit
+   and pushes the node onto a dirty list. The handle an app holds is a `NodeRef` (the scene plus a
+   `NodeId`), with binders named after h2d's own methods: `setPosition`, `move`, `setScale`,
+   `rotate`, `setAlpha`, `setColor`, and a per-field `setX` where h2d has a property. The h2d
+   model stays (retained tree, painter's order, an affine on every node, alpha down the tree, Mask
+   as a node, filters as a property); what changes is the call shape, from a field store to a
+   binder. `card.x = 20` returns as sugar over the binder once msc has accessors (the card
+   above; parked there). Neon's `Host` ops (`setText`, `setStyle`, `setStyleProp`) map one to one
+   onto binders. The plan for steps 6-12 is rewritten around this data model, as a step of its
+   own before retention, and goes to the human before it is built.
 6. **Retention** under the chosen model: a draw order flattened and rebuilt only on a structural
    change (SCENE-SCALE.md "Flatten traversal order"), persistent instance ranges, dirty-range
    upload, identical bytes skipping the upload, the dirty booleans as a `BitSet` (#24), a filtered
