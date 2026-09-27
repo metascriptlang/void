@@ -35,8 +35,8 @@ import {
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
-	commands, effects, vertices, targetCommands, spriteInstances, spriteInstanceCount,
-	uiInstances, uiInstanceCount, pushUiInstance, recordUiDraw,
+	DisplayList, currentList, useDefaultList, spriteInstanceCount, effectField,
+	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
@@ -285,6 +285,11 @@ export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStrid
 // are stated per device pixel. The logical size is a float — the `as int32` truncation that
 // put every glyph off-grid at DPI 1.25 and 1.5 is gone (VOID2D.md "Known defects").
 export function begin2d(w: float32, h: float32, dpi: float32): void {
+	useDefaultList();
+	beginList(w, h, dpi);
+}
+
+export function beginList(w: float32, h: float32, dpi: float32): void {
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
 	beginGlyphFrame(void2dFrameSerial());
@@ -317,12 +322,13 @@ export function flushTargets(): void {
 	if (targetStackOverflowed()) {
 		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
 	}
+	const l: DisplayList = currentList();
 	frameLive = void2dReplayTargets(
-		targetCommands[0], targetCommandCount(),
-		effects[0], effectCount(),
-		vertices[0], vertexCount(),
-		spriteInstances[0], spriteInstanceCount(),
-		uiInstances[0], uiInstanceCount(),
+		l.targetCommands[0], targetCommandCount(),
+		l.effects[0], effectCount(),
+		l.vertices[0], vertexCount(),
+		l.spriteInstances[0], spriteInstanceCount(),
+		l.uiInstances[0], uiInstanceCount(),
 	) != 0;
 	targetsFlushed = true;
 }
@@ -339,9 +345,10 @@ export function end2d(): void {
 		return;
 	}
 	if (!frameLive || commandCount() == 0) { return; }
+	const l: DisplayList = currentList();
 	void2dReplay(
-		commands[0], commandCount(),
-		effects[0], effectCount(),
+		l.commands[0], commandCount(),
+		l.effects[0], effectCount(),
 		fbW, fbH,
 	);
 }
@@ -504,7 +511,7 @@ export function popClip(): void {
 // matching texels go transparent).
 function currentGradientKind(): int32 {
 	if (curEffect == NO_EFFECT) { return 0; }
-	return effects[curEffect * EFFECT_FLOATS + EFFECT_GRADIENT_META] as int32;
+	return effectField(curEffect, EFFECT_GRADIENT_META) as int32;
 }
 export function setEffect(mat: Span<float32>, add: Color, key: Color): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
@@ -542,28 +549,27 @@ export function setGradientEffect(
 	c2: Color,
 ): void {
 	const hasMat: boolean = (mat.length as int32) >= 16;
-	const base: int32 = curEffect * EFFECT_FLOATS;
 	if (curHasEffect && curEffect != NO_EFFECT
-		&& (effects[base + EFFECT_GRADIENT_META] as int32) == kind
-		&& (effects[base + EFFECT_GRADIENT_META + 1] as int32) == space
-		&& effects[base + EFFECT_GRADIENT_META + 2] == (dither ? 1.0 : 0.0)
-		&& effects[base + EFFECT_GRADIENT_META + 3] == middle
-		&& effects[base + EFFECT_GRADIENT_PARAMS] == p0
-		&& effects[base + EFFECT_GRADIENT_PARAMS + 1] == p1
-		&& effects[base + EFFECT_GRADIENT_PARAMS + 2] == p2
-		&& effects[base + EFFECT_GRADIENT_PARAMS + 3] == p3
-		&& effects[base + EFFECT_GRADIENT_COLOR0] == c0.r
-		&& effects[base + EFFECT_GRADIENT_COLOR0 + 1] == c0.g
-		&& effects[base + EFFECT_GRADIENT_COLOR0 + 2] == c0.b
-		&& effects[base + EFFECT_GRADIENT_COLOR0 + 3] == c0.a
-		&& effects[base + EFFECT_GRADIENT_COLOR1] == c1.r
-		&& effects[base + EFFECT_GRADIENT_COLOR1 + 1] == c1.g
-		&& effects[base + EFFECT_GRADIENT_COLOR1 + 2] == c1.b
-		&& effects[base + EFFECT_GRADIENT_COLOR1 + 3] == c1.a
-		&& effects[base + EFFECT_GRADIENT_COLOR2] == c2.r
-		&& effects[base + EFFECT_GRADIENT_COLOR2 + 1] == c2.g
-		&& effects[base + EFFECT_GRADIENT_COLOR2 + 2] == c2.b
-		&& effects[base + EFFECT_GRADIENT_COLOR2 + 3] == c2.a
+		&& (effectField(curEffect, EFFECT_GRADIENT_META) as int32) == kind
+		&& (effectField(curEffect, EFFECT_GRADIENT_META + 1) as int32) == space
+		&& effectField(curEffect, EFFECT_GRADIENT_META + 2) == (dither ? 1.0 : 0.0)
+		&& effectField(curEffect, EFFECT_GRADIENT_META + 3) == middle
+		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS) == p0
+		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS + 1) == p1
+		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS + 2) == p2
+		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS + 3) == p3
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0) == c0.r
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0 + 1) == c0.g
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0 + 2) == c0.b
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0 + 3) == c0.a
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1) == c1.r
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1 + 1) == c1.g
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1 + 2) == c1.b
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1 + 3) == c1.a
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2) == c2.r
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2 + 1) == c2.g
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2 + 2) == c2.b
+		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2 + 3) == c2.a
 		&& add == curAdd && key == curKey
 		&& effectMatrixSame(mat, hasMat)) { return; }
 	closeRun();

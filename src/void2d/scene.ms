@@ -4,7 +4,8 @@
 
 import { Scene, NodeRef, DrawKind, NO_NODE } from "./node";
 import { sync, draw, releaseTargets } from "./render";
-import { begin2d, end2d, flushTargets, setSceneSmooth } from "./draw";
+import { beginList, end2d, flushTargets, setSceneSmooth } from "./draw";
+import { displayList, useList } from "./displayList";
 import { advanceBlink, NO_LABEL_TEXT } from "./labelText";
 import { Color, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
@@ -15,6 +16,7 @@ export function scene(clear: Color): Scene {
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], localMatrices: [], worlds: [], bounds: [],
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], stack: [], root: NO_NODE,
+		list: displayList(),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
 		viewMat: identity2d(), viewInit: false, defaultSmooth: true,
 	};
@@ -111,7 +113,8 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	// Before recording begins, never during the walk: begin2d captures this default in the
 	// first run's sampler state.
 	setSceneSmooth(s.defaultSmooth);
-	begin2d(wf, hf, dpi);
+	useList(s.list);
+	beginList(wf, hf, dpi);
 	releaseTargets();
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const viewChanged: boolean = !s.viewInit || nv != s.viewMat;

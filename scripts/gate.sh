@@ -263,7 +263,7 @@ FRAME_PATH="scene:tick scene:present scene:presentAt render:draw render:drawRow 
 	display76ist:resetList display76ist:growTo display76ist:pushUiInstance
 	display76ist:pushSpriteInstance display76ist:pushVertex display76ist:recordDraw
 	display76ist:recordUiDraw display76ist:recordSpriteDraw display76ist:startCommand
-	display76ist:pushEffect display76ist:recordClip draw:begin2d draw:end2d draw:flushTargets
+	display76ist:pushEffect display76ist:recordClip draw:beginList draw:end2d draw:flushTargets
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox

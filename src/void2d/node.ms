@@ -39,6 +39,7 @@ import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
+import { DisplayList } from "./displayList";
 
 export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid, Underline, Selection }
 
@@ -156,6 +157,7 @@ export interface Scene {
 	freeMeshes: Vec<int32>;
 	stack: Vec<int32>;
 	root: int32;
+	list: DisplayList;
 	clear: Color;
 	cam: Camera;
 	scaleMode: ScaleMode;
