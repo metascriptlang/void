@@ -1106,6 +1106,24 @@ build on it.
   2.7 ms for the 20 000-node UI bench and 0.3 ms for a 2 000-node window, paid on every frame,
   idle or not. Under B an idle frame costs nothing and a write costs one push onto a dirty list
   (SCENE-SCALE.md, about 23 ns for the binder path). The human chose binders over tables, step 5.
+- Step 6, the tables, on BUILD `3f6873ee`, release, a quiet box (load 3-12 % around every run),
+  `out/tmp/abStep6.sh`. Tree A is `2cfc821`, the step 5 head plus the `faceAtPath` fix; the fix
+  alone is neutral, `ff232e7` against `2cfc821` reads UI 10.61 against 10.61 ms (6 clean pairs of
+  8) and sprites 1.70 against 1.59 ms (8 of 8). `scripts/bench-ab.sh`, 8 interleaved pairs:
+  **UI `present` 11.78 → 5.58 ms** (5 clean pairs of 8; B ranged 5.22-5.74), **sprites 1.91 →
+  1.05 ms** (8 of 8). The frame still walks and draws every node, so this is what the old
+  frame spent reaching 71-field objects and comparing seven transform fields, eight text
+  fields and a string per label every frame, which a `Local` bit and a `stale` flag replace.
+- Step 6, `tests/experiments/nodeTables.ms` against the same loops over `Node2D` built in
+  `2cfc821` (`out/tmp/p6probes/node2dControl.ms`), 100 000 nodes (50 000 cards, each with a
+  two-digit label), 3 interleaved pairs of 5 rounds: **build 61-81 ms against 48-62 ms**, the
+  tables slower because a label takes its side-table row, with an empty shaped text, when it is
+  made instead of at its first sync; **teardown 27-33 ms against 87-131 ms**
+  (`removeChildren` on the root, then `dispose` on each card). A `setX` that changes the value
+  costs **51-63 ns**, an equal one **34 ns**, over a loop that alone costs 0.33 ns a node:
+  twice SCENE-SCALE.md's 23 ns estimate, which had no generation check and no `trs2d`. The
+  same loop storing `card.x` on `Node2D` read 288-445 ns against 2.3-3.8 ns for reading it,
+  unexplained and not pursued, since the field store is gone.
 
 **Defects closed.** Two "Known defects" lines: the h2d surface — `parent`, `TileGroup`, `Mask.scrollX/Y` and the text metrics it points at — and a sokol view id past 2^24 naming another slot. Also the idle cost: `Scene.present` walking and drawing every frame with nothing knowing whether the tree changed.
 
