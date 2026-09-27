@@ -1212,6 +1212,29 @@ human has seen it as app code; the phase measurement comes last.
     `scrollTo` and `scrollBy` (`h2d/Mask.hx:70-104`) as binders, applied as the list-level shift,
     snapped. T2 golden `clip/maskScroll`; a scroll bench over the editor scene, CPU and uploaded
     bytes per frame, the bytes gated (T4).
+
+    **The plan, 2026-09-28**, on the human's hand-off of mechanism calls to the references. h2d
+    moves a Mask's children by `-scroll` in `calcAbsPos` and keeps the clip where the Mask is
+    (`Mask.hx:115-119`, `maskWith`); `scrollBounds` clamps (`:103-113`). The call shape is step 5's:
+    `mask.scrollTo(x, y)`, `mask.scrollBy(dx, dy)`, `mask.setScrollX(x)`, `mask.setScrollY(y)`,
+    `mask.setScrollBounds(b)`, read as `mask.scroll().x`; a Mask keeps its scroll in a side
+    table behind its payload.
+    - **10a, h2d's meaning.** The scroll enters the children's world matrices, as `calcAbsPos`
+      does, so culling, `getBounds`, `localToGlobal` and `globalToLocal` all answer in scrolled
+      space and a scroll write is a change the retained frame patches or splices. T2 golden
+      `clip/maskScroll`; T1 on the queries.
+    - **10b, the list-level shift.** Makepad's `clamp(clamp(p, clip) + shift, viewClip)`
+      (MAKEPAD.md:111), which Makepad wrote and never used: a Mask that has scrolled records its
+      subtree unscrolled and uncut by its own clip, every command recorded inside it names the
+      Mask's scroll scope, and the replay adds the scope's shift, snapped to a device pixel, to
+      positions and to the clips recorded inside it, and cuts with the Mask's own clip. A scroll
+      write then changes one entry of the scope table: no instance byte, no command, no walk. The
+      price is that a scrolled Mask's content is emitted whole rather than culled to the Mask;
+      content far larger than the view is the app's to virtualize, as GPUI's `uniform_list` is.
+      A rotated Mask keeps 10a's path. T1: a scroll changes no instance and no command; T4: the
+      editor scene scrolled every frame uploads nothing and re-emits nothing.
+    - **The camera** (moved from step 9) takes the same shift at the root after 10b, with a cull
+      pass over the rows the shift brings into the viewport, since the viewport culls there.
 11. **`TileGroup`**, after the human has seen it: the non-overlap flag and the lane fallback.
     T1. Closes `h2d-tilegroup`.
 12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
