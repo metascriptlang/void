@@ -642,16 +642,20 @@ test "a caret blink changes no instance but the caret's" {
 	const shown = recordedInstances(s.refOf(s.root), 160.0, 64.0);
 	s.tick(0.6);
 	const hidden = recordedInstances(s.refOf(s.root), 160.0, 64.0);
-	assert (shown.length as int32) == (hidden.length as int32) + REC_UI_FLOATS;
+	assert (shown.length as int32) == (hidden.length as int32);
+	const caretAlpha: int32 = (hidden.length as int32) - REC_UI_FLOATS + REC_UI_COLOR_FILL + 3;
 	let differing: int32 = 0;
 	for (let i = 0; i < (hidden.length as int32); i++) {
-		if (shown[i] != hidden[i]) { differing = differing + 1; }
+		if (shown[i] != hidden[i] && i != caretAlpha) { differing = differing + 1; }
 	}
 	if (differing > 0) { console.log(`t1: ${differing} instance floats moved on a blink`); }
 	assert differing == 0;
+	assert shown[caretAlpha] == 1.0;
+	assert hidden[caretAlpha] == 0.0;
 	s.tick(0.5);
 	const back = recordedInstances(s.refOf(s.root), 160.0, 64.0);
 	assert (back.length as int32) == (shown.length as int32);
+	assert back[caretAlpha] == 1.0;
 }
 
 test "a ragged selection is one row quad per line, each carrying its neighbours" {

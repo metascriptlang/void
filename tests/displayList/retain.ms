@@ -251,7 +251,7 @@ test "a retained frame records what a full frame records, write by write" {
 	s.tick(0.3);
 	assert check(s, "an Anim frame", true);
 	s.tick(0.3);
-	assert check(s, "a caret that flips", false);
+	assert check(s, "a caret that flips", true);
 	c.label.setText("5");
 	assert check(s, "text of another length", false);
 	c.other.addChild(c.card);
@@ -340,4 +340,33 @@ test "a card's colour marks one UI range one record long, and an undone write ma
 	assert s.list.repainted == 1;
 	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
 	assert !s.list.dirtySprites && !s.list.dirtyVertices;
+}
+
+function caretScene(): Scene {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const editor = s.label("caret", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
+	editor.setCursorIndex(2, rgba(1.0, 0.8, 0.3, 1.0));
+	s.add(editor);
+	return s;
+}
+
+test "a caret blink writes the caret's instance and nothing else" {
+	const s: Scene = caretScene();
+	const editor: int32 = s.children[s.root][0];
+	frame(s);
+	uploaded();
+	s.tick(0.3);
+	frame(s);
+	assert s.list.repainted == 0 && s.list.dirtyUiTotal == 0;
+	const patches: int32 = s.list.patches;
+	s.tick(0.3);
+	const hidden: Recording = frame(s);
+	assert s.list.patches == patches + 1;
+	assert s.list.repainted == 1;
+	const end: PaintIndex = paintEndOf(editor);
+	assert s.list.dirtyUiTotal == 1;
+	assert s.list.dirtyUi[0] == end.uiInstances - 1;
+	assert s.list.dirtyUi[1] == end.uiInstances;
+	assert !s.list.dirtySprites && !s.list.dirtyVertices;
+	assert same(hidden, fullFrame(s));
 }

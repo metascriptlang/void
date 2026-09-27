@@ -494,7 +494,7 @@ function emitSelection(blend: BlendMode, text: LabelText, world: Transform2D, na
 
 // Ghostty's caret (GHOSTTY.md:90): an instance of its own, so a blink rewrites no glyph.
 function emitCaret(blend: BlendMode, text: LabelText, world: Transform2D, na: float32): void {
-	if (!cursorShown(text) || (text.layout.lines.length as int32) == 0) { return; }
+	if (text.cursorIndex == NO_CURSOR || (text.layout.lines.length as int32) == 0) { return; }
 	const line: LineBox = text.layout.lineBoxAt(text.cursorIndex);
 	const x: float32 = text.layout.xForIndex(text.cursorIndex);
 	const scale: float32 = currentRenderScale();
@@ -504,7 +504,7 @@ function emitCaret(blend: BlendMode, text: LabelText, world: Transform2D, na: fl
 		const snapped = segmentBox(x, x + CURSOR_WIDTH, line.top, line.height, false, world, scale);
 		box = [snapped[0], snapped[1], snapStroke(CURSOR_WIDTH * a) / a, snapped[3]];
 	}
-	emitRunBox(blend, world, box, text.cursorColor.faded(na));
+	emitRunBox(blend, world, box, text.cursorColor.faded(cursorShown(text) ? na : 0.0));
 }
 
 let refusedLabelEditing: int32 = 0;
