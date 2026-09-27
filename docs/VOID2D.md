@@ -1153,6 +1153,34 @@ human has seen it as app code; the phase measurement comes last.
      root 0.72 against 0.77-0.80 ms, both writing the same worlds. Upward marking scans the top
      level on every frame and walks up once per changed node; it wins no case here, and the
      descent is what the frame runs.
+   - **A shape change splices the next frame from the last** (`5dd8a9a`), GPUI's `reuse_paint`
+     (`window.rs:3887`) over its `rendered_frame` / `next_frame` pair: the scene holds two lists,
+     and when the in-place patch cannot keep a row's shape, or the order changed, it scans its
+     draw order into the other list, copying the bytes of each clean row whose recorded run state
+     and mask match the running ones, one `memcpy` per run of adjacent clean rows, and emitting
+     the rest; then the two swap. A clean row with a command or an effect of its own is emitted,
+     since commands are not copied. The in-place attempt writes through a window bounded by the
+     row's recorded end, so a row that grew spills past the frame's end and the old list stays
+     a whole source. The full record is left to a first frame and a viewport, DPI, camera or
+     scene-sampler change. The oracle now compares the paint ranges too, and caught the first
+     batching, which ran rows with a command of their own into a copy.
+   - **What a shape change costs.** A probe shaped like terminator's grid
+     (`out/tmp/p7probes/termGrid.ms`, 60 labels of 150-200 monospace cells with three runs,
+     release, windowed), before the splice, quiet box: a still frame 0.013-0.016 ms and 0 B; one
+     row rewritten at its length 0.17 ms and 972 000 B, patched; one row one cell longer
+     0.52-0.58 ms, recorded whole; every row rewritten 2.5-2.7 ms, most of it shaping. On the UI
+     bench scene (`hoverUi.ms`), one card's colour 0.30-0.31 ms and 5 280 120 B, one label's
+     length 5.4-5.8 ms. With the splice, headless on the UI bench scene with every row clean,
+     interleaved in one process: 1.09-1.41 ms against 5.36-5.93 for a full record, and
+     1.77-2.75 against 7.65-9.75 on a loaded box; the windowed probes were not re-read on a quiet
+     box. Step 14's A/B reads them again.
+   - **A changed range re-uploads its stream, and stays so.** No reference writes a range of a
+     persistent buffer: GPUI uploads every instance on every drawn frame
+     (`wgpu_renderer.rs:1542-1579`), Ghostty its whole buffer (`generic.zig:1817-1819`), Makepad a
+     whole draw item. void2d uploads nothing on an unchanged frame and one stream on a changed
+     one; on the UI bench that stream is 5 280 120 B and 0.30 ms. sokol's `write_persistent` is
+     taken if upstream ships it; the fork gets no patch for it. Decided 2026-09-28, when the
+     human handed mechanism calls to the references.
 8. **The paint-only patch**: a `Paint2D` write and a caret blink rewrite the node's instance
    floats in place. T1: a blink writes the caret's instance and nothing else; a colour write
    uploads a known number of bytes.
@@ -1164,8 +1192,8 @@ human has seen it as app code; the phase measurement comes last.
    and is patched where step 7 took the full frame; P4's T1 "a caret blink changes no instance
    but the caret's" now pins the same length and the caret's fill alpha, and
    `tests/displayList/retain.ms` pins that a blink marks the label's last record and nothing
-   else. A hidden caret still costs its quad. Not met: the bytes a colour write or a blink sends
-   to the GPU are the whole UI stream, step 7's open range write.
+   else. A hidden caret still costs its quad. The bytes a colour write or a blink sends to the
+   GPU are the whole UI stream, which step 7 keeps: no reference writes a range of a buffer.
 9. **The change flag and the camera uniform.** T4: an idle frame issues no draw and no upload
    (closes `idle-costs-a-walk`); T1: a camera move re-multiplies no node.
 10. **Scroll**, after the human has seen it as app code: `Mask.scrollX/Y` with h2d's
@@ -1234,7 +1262,7 @@ build on it.
 **Exit.**
 
 - Scrolling the P4 editor scene uploads only the shift and walks no tree.
-- A caret blink and a hover upload a known small number of bytes and cause no structural change.
+- A caret blink and a hover re-emit their one node, upload only the stream it changed, and cause no structural change. Amended 2026-09-28 from "upload a known small number of bytes": no reference writes a range of a buffer (step 7).
 - An idle frame issues no draw and no upload.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
 - One node can no longer sit under two parents (`node.ms:305-309`).
