@@ -919,9 +919,13 @@ human has seen it as app code; the phase measurement comes last.
      and draws every object every frame (`Object.hx:600-626`, `963-990`), so its answer only saves
      the matrix, never the walk.
    - `setDynamicField` / `getDynamicField` (LANG.md "Convention-based dispatch protocols"): built
-     for open shapes such as JSON, so the fields leave the type. A misspelt field compiles, one
-     value type per protocol makes reads of `n.x` and `n.color` ambiguous, `n.x += 1.0` is refused,
-     and every access compares strings at run time (probes `out/tmp/p5probes/dyn*.ms`).
+     for open shapes such as JSON. With `key: string` a misspelt field compiles; typed as a
+     string-literal union, TypeScript's way, it is a compile error (`out/tmp/p5probes/kf/sdf1.ms`,
+     `sdf2.ms`). What still rules it out for writes: a write compares its key at run time, 15-19 ns
+     against 13 ns for a binder (release, `kf/cost.exe`); `n.x += 1.0` and a `const` handle are
+     refused; each field is named twice, in the union and in the `match`; and a second value type
+     needs overloads that differ by a literal type, which msc drops
+     (`~/metascript/.inbox/compiler/2026-09-27-overloads-by-literal-type-drop-all-but-first.md`).
    - A `valueOf`-style protocol on the field's type: it sees the value, never the node holding it,
      so it cannot mark the owner.
    - `readonly` fields behind setters: `readonly` on an interface field crashes codegen
@@ -936,10 +940,34 @@ human has seen it as app code; the phase measurement comes last.
    `rotate`, `setAlpha`, `setColor`, and a per-field `setX` where h2d has a property. The h2d
    model stays (retained tree, painter's order, an affine on every node, alpha down the tree, Mask
    as a node, filters as a property); what changes is the call shape, from a field store to a
-   binder. `card.x = 20` returns as sugar over the binder once msc has accessors (the card
-   above; parked there). Neon's `Host` ops (`setText`, `setStyle`, `setStyleProp`) map one to one
-   onto binders. Steps 6-14 were rewritten around this data model the same day; step 6 is what
-   an app author writes, and goes to the human as app code before it is built.
+   binder. Neon's `Host` ops (`setText`, `setStyle`, `setStyleProp`) map one to one onto binders.
+   Steps 6-14 were rewritten around this data model the same day.
+
+   **The call shape, decided by the human the same day.** A write is a call: `card.setLocal(l)`
+   for a group, and h2d's names over it (`setPosition`, `move`, `rotate`, `setX`). A read is a
+   call: `card.local().x`, which is the handle's row lookup and generation check, not an
+   observation, and the form every handle-based store has (Bevy `query.get(e)`, EnTT
+   `registry.get<T>(e)`, flecs `e.get<T>()`). Property syntax on the handle was weighed and not
+   taken:
+   - Write sugar. The data-oriented stores write through calls: EnTT `patch` / `replace` (a write
+     through a reference fires no `on_update`), flecs `set`, or `ensure` then `modified`, Godot's
+     `RenderingServer.canvas_item_set_transform(rid, …)`. Unity deprecated Aspects, C# properties
+     on a struct handle over component storage, in Entities 1.4 ("use component and query APIs
+     directly"). Bevy's `Mut<T>` and becsy's `write()` mark a component changed on mutable access
+     even when nothing is written. Swift has the form only through a language feature,
+     `nonmutating set`. msc has none, and `setDynamicField` is ruled out above, so Zig's rule, no
+     hidden control flow, is the one kept.
+   - Read sugar through `valueOf` on the handle works today (`out/tmp/p5probes/vo/local1.ms`, C and
+     JS), but `valueOf` does not see the member's name, so every read builds the whole node view:
+     16 ns against 9.5 ns for `local().x` (release, `vo/readcost.exe`). A `local()` method and
+     `card.local.x` cannot share the name (`vo/local2.ms`), and `card.local.x = 20` fails as
+     "Property 'local' does not exist".
+   - Read sugar through `getDynamicField` keyed by a literal reads the same bytes at the same
+     cost, 8.9 ns each (`vo/gdfcost.exe`), but only one group can have it (the overload card
+     above), and `msc lsp` does not see the member: `card.` does not list `local`, and hover on
+     `.x` shows `getDynamicField` (`vo/lspProbe.mjs` over `vo/lsp1.ms`). `card.local().x` hovers
+     right at every level; completion after any call is empty
+     (`~/metascript/.inbox/compiler/2026-09-27-lsp-no-completion-after-a-call.md`).
 6. **The data model** (#24; closes `h2d-object-surface`, `one-node-two-parents`).
    - **Rows.** `Scene` owns the tables, and a node is a row: a `NodeId` (index, generation;
      void3d's shape), stable rows, the generation bumped by `dispose`, a LIFO free list
@@ -957,7 +985,8 @@ human has seen it as app code; the phase measurement comes last.
      mesh and records, and an Anim's frames. What a pass computes, the world matrix and the
      content bounds, is a column only passes write. The `last*` fields and `sync`'s compare are
      deleted; a binder that skips an equal value replaces them.
-   - **Binders**, one per h2d property or method: `setX`, `setY`, `setPosition`, `move` (along
+   - **Binders**, one per group (`setLocal`, `setPaint`, void3d's names) and over them one per h2d
+     property or method: `setX`, `setY`, `setPosition`, `move` (along
      the rotation, `h2d/Object.hx:1023-1026`), `setRotation`, `rotate`, `setScale`, `scale`,
      `setScaleX`, `setScaleY`, `setAlpha`, `setColor`, `setVisible`, `setText`, `setFilter`,
      `setSize`, `setTile` and the rest; `at` stays as the chaining form of `setPosition`. A
