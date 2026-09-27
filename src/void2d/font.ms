@@ -87,8 +87,8 @@ let fallbackLoads: int32 = 0;
 let coverageProbes: int32 = 0;
 
 function faceAtPath(path: string): Result<int32, FaceError> {
-	for (const loaded of loadedPaths) {
-		if (loaded.path.equals(path)) { return loaded.face; }
+	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
+		if (loadedPaths[i].path.equals(path)) { return loadedPaths[i].face; }
 	}
 	const face = loadFace(path);
 	loadedPaths.push({ path: path, face: face });
