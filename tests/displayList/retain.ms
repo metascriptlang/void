@@ -19,8 +19,10 @@ import {
 	EFFECT_FLOATS,
 	VERTEX_FLOATS,
 	PaintIndex,
+	PaintState,
 	paintStartOf,
 	paintEndOf,
+	paintStateOf,
 	uploaded,
 } from "../../src/void2d/displayList";
 import { REC_UI_FLOATS, REC_SPRITE_FLOATS } from "../../src/void2d/instanceLayout";
@@ -174,13 +176,54 @@ function fullFrame(s: Scene): Recording {
 	return frame(s);
 }
 
-function check(s: Scene, what: string, kept: boolean): boolean {
-	const before: int32 = s.list.patches;
-	const retained: Recording = frame(s);
-	const patched: boolean = s.list.patches == before + 1;
-	const full: Recording = fullFrame(s);
-	if (patched != kept) {
-		console.log(`${what}: patched ${patched}, expected ${kept}`);
+let reusedByRetained: int32 = 0;
+
+function ranges(s: Scene): Vec<int32> {
+	const out: Vec<int32> = [];
+	for (let r: int32 = 0; r < (s.kinds.length as int32); r++) {
+		if (s.slots[r] == NO_SLOT || paintStateOf(r) != PaintState.Painted) { continue; }
+		const a: PaintIndex = paintStartOf(r);
+		const b: PaintIndex = paintEndOf(r);
+		out.push(r);
+		out.push(a.commands); out.push(a.uiInstances); out.push(a.spriteInstances); out.push(a.vertices);
+		out.push(a.runStart); out.push(a.reason as int32); out.push(a.mask);
+		out.push(b.commands); out.push(b.uiInstances); out.push(b.spriteInstances); out.push(b.vertices);
+		out.push(b.runStart); out.push(b.reason as int32); out.push(b.mask);
+	}
+	return out;
+}
+
+function check(s: Scene, what: string, path: string): boolean {
+	const patches: int32 = s.patches;
+	const splices: int32 = s.splices;
+	s.paint(W, H, 1.0);
+	const retained: Recording = capture();
+	const retainedRanges: Vec<int32> = ranges(s);
+	frameEnd();
+	s.clearChanges();
+	s.retryRefused();
+	reusedByRetained = s.reused;
+	const taken: string = s.patches > patches ? "patch" : (s.splices > splices ? "splice" : "full");
+	s.list.painted = false;
+	s.viewInit = false;
+	s.paint(W, H, 1.0);
+	const full: Recording = capture();
+	const fullRanges: Vec<int32> = ranges(s);
+	frameEnd();
+	s.clearChanges();
+	s.retryRefused();
+	if ((retainedRanges.length as int32) != (fullRanges.length as int32)) {
+		console.log(`${what}: ${retainedRanges.length} paint range values against ${fullRanges.length}`);
+		return false;
+	}
+	for (let k: int32 = 0; k < (fullRanges.length as int32); k++) {
+		if (retainedRanges[k] != fullRanges[k]) {
+			console.log(`${what}: paint range value ${k} is ${retainedRanges[k]} against ${fullRanges[k]}`);
+			return false;
+		}
+	}
+	if (!taken.equals(path)) {
+		console.log(`${what}: took the ${taken} path, expected the ${path} path`);
 		return false;
 	}
 	if (!same(retained, full)) {
@@ -227,6 +270,7 @@ function corpus(): Corpus {
 	s.add(editor);
 	const mask = s.mask(60.0, 30.0).at(100.0, 60.0);
 	mask.addChild(s.rect(80.0, 10.0, rgba(1.0, 0.0, 0.0, 1.0)).at(-5.0, 5.0));
+	mask.addChild(s.rect(8.0, 8.0, rgba(0.0, 1.0, 1.0, 1.0)).at(50.0, 18.0));
 	s.add(mask);
 	const other = s.group().at(4.0, 90.0);
 	s.add(other);
@@ -239,31 +283,32 @@ test "a retained frame records what a full frame records, write by write" {
 	const c: Corpus = corpus();
 	const s: Scene = c.s;
 	frame(s);
-	assert check(s, "a still frame", true);
+	assert check(s, "a still frame", "patch");
 	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
-	assert check(s, "a colour", true);
+	assert check(s, "a colour", "patch");
 	c.card.setX(4.5);
-	assert check(s, "a move", true);
+	assert check(s, "a move", "patch");
 	c.group.setAlpha(0.5);
-	assert check(s, "a group's alpha", true);
+	assert check(s, "a group's alpha", "patch");
 	c.label.setText("34");
-	assert check(s, "text of the same length", true);
+	assert check(s, "text of the same length", "patch");
 	s.tick(0.3);
-	assert check(s, "an Anim frame", true);
+	assert check(s, "an Anim frame", "patch");
 	s.tick(0.3);
-	assert check(s, "a caret that flips", true);
+	assert check(s, "a caret that flips", "patch");
 	c.label.setText("5");
-	assert check(s, "text of another length", false);
+	assert check(s, "text of another length", "splice");
+	assert reusedByRetained > 10;
 	c.other.addChild(c.card);
-	assert check(s, "a reparent", false);
+	assert check(s, "a reparent", "splice");
 	c.group.setZIndex(3);
-	assert check(s, "setZIndex", false);
+	assert check(s, "setZIndex", "splice");
 	c.group.setVisible(false);
-	assert check(s, "a visibility flip", false);
+	assert check(s, "a visibility flip", "splice");
 	c.mask.setSize(40.0, 30.0);
-	assert check(s, "a mask resize", false);
+	assert check(s, "a mask resize", "splice");
 	c.card.setX(6.0);
-	assert check(s, "a move after the fallbacks", true);
+	assert check(s, "a move after the splices", "patch");
 }
 
 test "a card's colour rewrites its one UI record and nothing else" {
@@ -276,7 +321,7 @@ test "a card's colour rewrites its one UI record and nothing else" {
 	const after: Recording = capture();
 	frameEnd();
 	s.clearChanges();
-	assert s.list.repainted == 1;
+	assert s.repainted == 1;
 	const start: PaintIndex = paintStartOf(c.card.id.index);
 	const end: PaintIndex = paintEndOf(c.card.id.index);
 	assert end.uiInstances == start.uiInstances + 1;
@@ -323,7 +368,7 @@ test "a card's colour marks one UI range one record long, and an undone write ma
 	frame(s);
 	uploaded();
 	frame(s);
-	assert s.list.repainted == 0;
+	assert s.repainted == 0;
 	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
 	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
 	frame(s);
@@ -337,7 +382,7 @@ test "a card's colour marks one UI range one record long, and an undone write ma
 	c.label.setText("99");
 	c.label.setText("12");
 	frame(s);
-	assert s.list.repainted == 1;
+	assert s.repainted == 1;
 	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
 	assert !s.list.dirtySprites && !s.list.dirtyVertices;
 }
@@ -357,12 +402,12 @@ test "a caret blink writes the caret's instance and nothing else" {
 	uploaded();
 	s.tick(0.3);
 	frame(s);
-	assert s.list.repainted == 0 && s.list.dirtyUiTotal == 0;
-	const patches: int32 = s.list.patches;
+	assert s.repainted == 0 && s.list.dirtyUiTotal == 0;
+	const patches: int32 = s.patches;
 	s.tick(0.3);
 	const hidden: Recording = frame(s);
-	assert s.list.patches == patches + 1;
-	assert s.list.repainted == 1;
+	assert s.patches == patches + 1;
+	assert s.repainted == 1;
 	const end: PaintIndex = paintEndOf(editor);
 	assert s.list.dirtyUiTotal == 1;
 	assert s.list.dirtyUi[0] == end.uiInstances - 1;

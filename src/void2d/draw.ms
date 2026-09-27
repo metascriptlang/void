@@ -274,6 +274,72 @@ export function resumePaint(p: PaintIndex): void {
 	l.clip = clipOf(clipStack[0]);
 }
 
+function streamOf(p: PaintIndex, pipeline: Pipeline): int32 {
+	return match (pipeline) {
+		Pipeline.Sprite => p.spriteInstances,
+		Pipeline.Ui => p.uiInstances,
+		Pipeline.Vertex => p.vertices,
+	};
+}
+
+export function continuesLike(old: DisplayList, start: PaintIndex, end: PaintIndex): boolean {
+	if (start.hasEffect || end.hasEffect || curHasEffect) { return false; }
+	if (start.commands != end.commands || start.effects != end.effects) { return false; }
+	if (runOpen != start.runOpen || curPipeline != start.pipeline || curView != start.view) {
+		return false;
+	}
+	if (curBlend != start.blend || curSampler != start.sampler) { return false; }
+	const l: DisplayList = currentList();
+	const cursor: int32 = match (curPipeline) {
+		Pipeline.Sprite => l.spriteInstanceTotal,
+		Pipeline.Ui => l.uiInstanceTotal,
+		Pipeline.Vertex => l.vertexTotal,
+	};
+	const emptyThen: boolean = start.runStart == streamOf(start, start.pipeline);
+	if ((runStart == cursor) != emptyThen) { return false; }
+	const maskNow: int32 = clipDepth > 0 ? maskIndices[clipDepth - 1] : NO_MASK;
+	if (maskNow == NO_MASK || start.mask == NO_MASK) { return maskNow == start.mask; }
+	return clipStack[clipDepth - 1] == old.masks[start.mask];
+}
+
+export function carried(pi: PaintIndex, first: PaintIndex, at: PaintIndex): PaintIndex {
+	const reopened: boolean = pi.pipeline != first.pipeline || pi.runStart != first.runStart ||
+		pi.reason != first.reason;
+	return {
+		commands: pi.commands - first.commands + at.commands,
+		effects: pi.effects - first.effects + at.effects,
+		vertices: pi.vertices - first.vertices + at.vertices,
+		uiInstances: pi.uiInstances - first.uiInstances + at.uiInstances,
+		spriteInstances: pi.spriteInstances - first.spriteInstances + at.spriteInstances,
+		runOpen: pi.runOpen,
+		runStart: reopened
+			? pi.runStart - streamOf(first, pi.pipeline) + streamOf(at, pi.pipeline)
+			: at.runStart,
+		pipeline: pi.pipeline,
+		reason: reopened ? pi.reason : at.reason,
+		view: pi.view,
+		blend: pi.blend,
+		sampler: pi.sampler,
+		effect: pi.effect,
+		hasEffect: pi.hasEffect,
+		mask: at.mask,
+	};
+}
+
+export function continueAfter(start: PaintIndex, end: PaintIndex, at: PaintIndex): void {
+	const reopened: boolean = end.pipeline != start.pipeline || end.runStart != start.runStart ||
+		end.reason != start.reason;
+	runOpen = end.runOpen;
+	curPipeline = end.pipeline;
+	curView = end.view;
+	curBlend = end.blend;
+	curSampler = end.sampler;
+	if (reopened) {
+		runStart = end.runStart - streamOf(start, end.pipeline) + streamOf(at, end.pipeline);
+		runReason = end.reason;
+	}
+}
+
 export function endPatch(end: PaintIndex): void {
 	resumePaint(end);
 	runOpen = false;

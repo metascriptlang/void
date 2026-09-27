@@ -164,6 +164,11 @@ export interface Scene {
 	queued: Vec<int32>;
 	patchSerial: int32;
 	retry: Vec<int32>;
+	scanNeeded: boolean;
+	patches: int32;
+	splices: int32;
+	repainted: int32;
+	reused: int32;
 	anims: Vec<AnimFrames>;
 	freeAnims: Vec<int32>;
 	meshes: Vec<GraphicsMesh>;
@@ -171,6 +176,7 @@ export interface Scene {
 	stack: Vec<int32>;
 	root: int32;
 	list: DisplayList;
+	spare: DisplayList;
 	clear: Color;
 	cam: Camera;
 	scaleMode: ScaleMode;

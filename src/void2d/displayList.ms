@@ -24,7 +24,7 @@
 // intervals; axis-aligned clips stay in the hardware scissor.
 
 import { Color, BlendMode } from "./types";
-import { void2dCommandView } from "./batcher.h";
+import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
 	UI_STRIDE, SPRITE_STRIDE,
@@ -235,14 +235,15 @@ export interface DisplayList {
 	paintedH: float32;
 	paintedDpi: float32;
 	paintedSmooth: boolean;
-	patches: int32;
-	repainted: int32;
 	targetsPending: boolean;
 	uploadAll: boolean;
 	dirtyVertices: boolean;
 	dirtySprites: boolean;
 	dirtyUi: Vec<int32>;
 	dirtyUiTotal: int32;
+	limited: boolean;
+	limit: PaintIndex;
+	spill: PaintIndex;
 }
 
 let serials: Vec<int32> = [];
@@ -253,8 +254,12 @@ let serials: Vec<int32> = [];
 // invisible to every reader.
 export function displayList(): DisplayList {
 	serials.push(0);
+	return twinList((serials.length as int32) - 1);
+}
+
+export function twinList(id: int32): DisplayList {
 	return {
-		id: (serials.length as int32) - 1,
+		id: id,
 		commands: new Array(COMMAND_FLOATS),
 		effects: new Array(EFFECT_FLOATS),
 		vertices: new Array(VERTEX_FLOATS),
@@ -287,14 +292,15 @@ export function displayList(): DisplayList {
 		paintedH: 0.0,
 		paintedDpi: 0.0,
 		paintedSmooth: false,
-		patches: 0,
-		repainted: 0,
 		targetsPending: false,
 		uploadAll: false,
 		dirtyVertices: false,
 		dirtySprites: false,
 		dirtyUi: new Array(2),
 		dirtyUiTotal: 0,
+		limited: false,
+		limit: NO_PAINT,
+		spill: NO_PAINT,
 	};
 }
 
@@ -326,6 +332,7 @@ export function resetList(): void {
 	list.maskTotal = 0;
 	list.targetsPending = true;
 	list.uploadAll = true;
+	list.limited = false;
 	list.dirtyVertices = false;
 	list.dirtySprites = false;
 	list.dirtyUiTotal = 0;
@@ -494,6 +501,78 @@ export function vertexField(index: int32, field: int32): float32 {
 }
 
 // Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
+export function copyPainted(old: DisplayList, a: PaintIndex, b: PaintIndex): void {
+	const ui: int32 = b.uiInstances - a.uiInstances;
+	if (ui > 0) {
+		const to: int32 = list.uiInstanceTotal * REC_UI_FLOATS;
+		const from: int32 = a.uiInstances * REC_UI_FLOATS;
+		growTo(list.uiInstances, to + ui * REC_UI_FLOATS);
+		void2dCopyFloats(list.uiInstances[to], old.uiInstances[from], ui * REC_UI_FLOATS);
+		list.uiInstanceTotal = list.uiInstanceTotal + ui;
+	}
+	const sprites: int32 = b.spriteInstances - a.spriteInstances;
+	if (sprites > 0) {
+		const to: int32 = list.spriteInstanceTotal * REC_SPRITE_FLOATS;
+		const from: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
+		growTo(list.spriteInstances, to + sprites * REC_SPRITE_FLOATS);
+		void2dCopyFloats(list.spriteInstances[to], old.spriteInstances[from], sprites * REC_SPRITE_FLOATS);
+		list.spriteInstanceTotal = list.spriteInstanceTotal + sprites;
+	}
+	const vertices: int32 = b.vertices - a.vertices;
+	if (vertices > 0) {
+		const to: int32 = list.vertexTotal * VERTEX_FLOATS;
+		const from: int32 = a.vertices * VERTEX_FLOATS;
+		growTo(list.vertices, to + vertices * VERTEX_FLOATS);
+		void2dCopyFloats(list.vertices[to], old.vertices[from], vertices * VERTEX_FLOATS);
+		list.vertexTotal = list.vertexTotal + vertices;
+	}
+}
+
+export function limitWrites(end: PaintIndex): void {
+	list.limited = true;
+	list.limit = end;
+	list.spill = list.paintEnd;
+}
+
+export function unlimitWrites(): void { list.limited = false; }
+
+function vertexSlot(): int32 {
+	if (!list.limited || list.vertexTotal < list.limit.vertices) { return list.vertexTotal; }
+	const at: int32 = list.spill.vertices;
+	list.spill = { ...list.spill, vertices: at + 1 };
+	return at;
+}
+
+function uiSlot(): int32 {
+	if (!list.limited || list.uiInstanceTotal < list.limit.uiInstances) { return list.uiInstanceTotal; }
+	const at: int32 = list.spill.uiInstances;
+	list.spill = { ...list.spill, uiInstances: at + 1 };
+	return at;
+}
+
+function spriteSlot(): int32 {
+	if (!list.limited || list.spriteInstanceTotal < list.limit.spriteInstances) {
+		return list.spriteInstanceTotal;
+	}
+	const at: int32 = list.spill.spriteInstances;
+	list.spill = { ...list.spill, spriteInstances: at + 1 };
+	return at;
+}
+
+function effectSlot(): int32 {
+	if (!list.limited || list.effectTotal < list.limit.effects) { return list.effectTotal; }
+	const at: int32 = list.spill.effects;
+	list.spill = { ...list.spill, effects: at + 1 };
+	return at;
+}
+
+function commandSlot(): int32 {
+	if (!list.limited || list.commandTotal < list.limit.commands) { return list.commandTotal; }
+	const at: int32 = list.spill.commands;
+	list.spill = { ...list.spill, commands: at + 1 };
+	return at;
+}
+
 function growTo(ref stream: Vec<float32>, length: int32): void {
 	while ((stream.length as int32) < length) { stream.push(0.0 as float32); }
 }
@@ -510,7 +589,7 @@ export function pushVertex(
 	b: float32,
 	a: float32,
 ): void {
-	const base: int32 = list.vertexTotal * VERTEX_FLOATS;
+	const base: int32 = vertexSlot() * VERTEX_FLOATS;
 	growTo(list.vertices, base + VERTEX_FLOATS);
 	list.vertices[base] = x;
 	list.vertices[base + 1] = y;
@@ -527,7 +606,7 @@ export function pushVertex(
 // packing to UBYTE4N happens in `batcher.c` on the way to the GPU (instance.ms, "the RECORD
 // layout").
 export function pushUiInstance(inst: UiInstance, originX: float32, originY: float32): void {
-	const base: int32 = list.uiInstanceTotal * REC_UI_FLOATS;
+	const base: int32 = uiSlot() * REC_UI_FLOATS;
 	growTo(list.uiInstances, base + REC_UI_FLOATS);
 	const [u0, u1, u2, u3] = inst.uvRadii;
 	const [bl, bt, br, bb] = inst.borders;
@@ -582,7 +661,7 @@ export function pushSpriteInstance(
 	u0: float32, v0: float32, u1: float32, v1: float32,
 	color: Color,
 ): void {
-	const base: int32 = list.spriteInstanceTotal * REC_SPRITE_FLOATS;
+	const base: int32 = spriteSlot() * REC_SPRITE_FLOATS;
 	growTo(list.spriteInstances, base + REC_SPRITE_FLOATS);
 	list.spriteInstances[base + REC_SPRITE_AFFINE] = a;
 	list.spriteInstances[base + REC_SPRITE_AFFINE + 1] = b;
@@ -631,8 +710,11 @@ export function uiModeCount(mode: int32): int32 {
 }
 
 // The colour pipeline as a row of its own. Returns the index a command should carry.
+let effectBase: int32 = 0;
+
 export function pushEffect(matrix: Span<float32>, add: Color, key: Color): int32 {
-	const base: int32 = list.effectTotal * EFFECT_FLOATS;
+	const base: int32 = effectSlot() * EFFECT_FLOATS;
+	effectBase = base;
 	growTo(list.effects, base + EFFECT_FLOATS);
 	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { list.effects[base + i] = 0.0; }
 	const hasMatrix: boolean = (matrix.length as int32) >= 16;
@@ -668,7 +750,7 @@ export function pushGradientEffect(
 	c2: Color,
 ): int32 {
 	const index: int32 = pushEffect(matrix, add, key);
-	const base: int32 = index * EFFECT_FLOATS;
+	const base: int32 = effectBase;
 	list.effects[base + EFFECT_GRADIENT_META] = kind as float32;
 	list.effects[base + EFFECT_GRADIENT_META + 1] = space as float32;
 	list.effects[base + EFFECT_GRADIENT_META + 2] = dither ? 1.0 : 0.0;
@@ -693,7 +775,7 @@ export function pushGradientEffect(
 }
 
 function startCommand(kind: CommandKind, reason: BreakReason): int32 {
-	const base: int32 = list.commandTotal * COMMAND_FLOATS;
+	const base: int32 = commandSlot() * COMMAND_FLOATS;
 	growTo(list.commands, base + COMMAND_FLOATS);
 	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { list.commands[base + i] = 0.0; }
 	list.commands[base + CMD_KIND] = (kind as int32) as float32;

@@ -15,6 +15,9 @@ import {
 	paintEndOf,
 	saveRange,
 	noteRange,
+	copyPainted,
+	limitWrites,
+	unlimitWrites,
 } from "./displayList";
 import {
 	fillQuad,
@@ -41,6 +44,9 @@ import {
 	currentRenderScale,
 	paintIndex,
 	resumePaint,
+	continuesLike,
+	continueAfter,
+	carried,
 } from "./draw";
 import { InstanceMode, uiInstance } from "./instance";
 import {
@@ -1005,6 +1011,23 @@ function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, 
 }
 
 export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
+	scanOrder(s, vw, vh, null);
+}
+
+export function spliceOrder(this s: Scene, old: DisplayList, vw: float32, vh: float32): void {
+	scanOrder(s, vw, vh, old);
+}
+
+function reusable(s: Scene, i: int32, old: DisplayList): boolean {
+	if (i >= (old.paintStates.length as int32) || old.paintStates[i] != PaintState.Painted) {
+		return false;
+	}
+	if (s.queued[i] == s.patchSerial || !s.changed[i].isEmpty()) { return false; }
+	return continuesLike(old, old.paintStarts[i], old.paintEnds[i]);
+}
+
+function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null): void {
+	s.reused = 0;
 	const n: int32 = s.order.length as int32;
 	let p: int32 = 0;
 	while (p < n) {
@@ -1026,9 +1049,35 @@ export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
 			const na: float32 = a * s.paints[i].alpha;
 			s.alphas[i] = na;
 			const start: PaintIndex = paintIndex();
-			drawOwn(s, i, na, vw, vh);
-			recordPaint(i, start, paintIndex());
-			if (s.kinds[i] !== DrawKind.Mask) {
+			let q: int32 = p + 1;
+			if (old !== null && reusable(s, i, old as DisplayList)) {
+				const source: DisplayList = old as DisplayList;
+				const first: PaintIndex = source.paintStarts[i];
+				let last: PaintIndex = source.paintEnds[i];
+				if (s.kinds[i] !== DrawKind.Mask) {
+					while (q < n && joins(s, source, q, last)) {
+						last = source.paintEnds[s.order[q]];
+						q = q + 1;
+					}
+				}
+				copyPainted(source, first, last);
+				continueAfter(first, last, start);
+				for (let r: int32 = p; r < q; r++) {
+					const j: int32 = s.order[r];
+					recordPaint(
+						j,
+						carried(source.paintStarts[j], first, start),
+						carried(source.paintEnds[j], first, start),
+					);
+				}
+				s.reused = s.reused + (q - p);
+			} else {
+				drawOwn(s, i, na, vw, vh);
+				recordPaint(i, start, paintIndex());
+			}
+			if (q > p + 1) {
+				p = q;
+			} else if (s.kinds[i] !== DrawKind.Mask) {
 				p = p + 1;
 			} else if (pushMask(s, i)) {
 				s.maskEnds.push(end);
@@ -1046,18 +1095,35 @@ export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
 	}
 }
 
+function joins(s: Scene, source: DisplayList, q: int32, last: PaintIndex): boolean {
+	const ends: int32 = s.maskEnds.length as int32;
+	if (ends > 0 && s.maskEnds[ends - 1] <= q) { return false; }
+	const j: int32 = s.order[q];
+	if (!s.orders[j].visible || s.filters[j].kind !== FilterKind.None) { return false; }
+	if (s.kinds[j] === DrawKind.Mask) { return false; }
+	if (j >= (source.paintStates.length as int32) || source.paintStates[j] != PaintState.Painted) {
+		return false;
+	}
+	if (s.queued[j] == s.patchSerial || !s.changed[j].isEmpty()) { return false; }
+	const end: PaintIndex = source.paintEnds[j];
+	if (end.commands != last.commands || end.effects != last.effects || end.hasEffect) {
+		return false;
+	}
+	return source.paintStarts[j] == last;
+}
+
 function markRows(s: Scene, from: int32, to: int32, state: PaintState): void {
 	for (let p: int32 = from; p < to; p++) { markPaintState(s.order[p], state); }
 }
 
-function descend(s: Scene, d: int32): boolean {
+function descend(s: Scene, d: int32): void {
 	const top: int32 = s.slots[d];
-	if (top == NO_SLOT) { return true; }
+	if (top == NO_SLOT) { return; }
 	const bits: BitSet<Changed> = s.changed[d];
 	if (bits.has(Changed.Tree) || bits.has(Changed.Order) || bits.has(Changed.Filter)) {
-		return false;
+		s.scanNeeded = true;
 	}
-	if (s.kinds[d] === DrawKind.Mask) { return false; }
+	if (s.kinds[d] === DrawKind.Mask) { s.scanNeeded = true; }
 	const end: int32 = s.orderEnd[top];
 	let p: int32 = top;
 	while (p < end) {
@@ -1070,8 +1136,8 @@ function descend(s: Scene, d: int32): boolean {
 			p = s.orderEnd[p];
 		} else {
 			const state: PaintState = paintStateOf(i);
-			if (state == PaintState.InTarget) { return false; }
-			if (moved && s.kinds[i] === DrawKind.Mask) { return false; }
+			if (state == PaintState.InTarget) { s.scanNeeded = true; }
+			if (moved && s.kinds[i] === DrawKind.Mask) { s.scanNeeded = true; }
 			s.worlds[i] = world;
 			s.alphas[i] = alpha;
 			if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
@@ -1083,23 +1149,25 @@ function descend(s: Scene, d: int32): boolean {
 			p = p + 1;
 		}
 	}
-	return true;
 }
 
 export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
 	s.patchSerial = s.patchSerial + 1;
 	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
-	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
-		if (!descend(s, s.dirty[k])) { return false; }
-	}
+	s.scanNeeded = s.structureChanged;
+	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) { descend(s, s.dirty[k]); }
+	if (s.scanNeeded) { return false; }
 	for (let k: int32 = 0; k < (s.repaint.length as int32); k++) {
 		const i: int32 = s.repaint[k];
 		const start: PaintIndex = paintStartOf(i);
 		const end: PaintIndex = paintEndOf(i);
 		saveRange(start, end);
+		limitWrites(end);
 		resumePaint(start);
 		drawOwn(s, i, s.alphas[i], vw, vh);
-		if (paintIndex() != end) { return false; }
+		const kept: boolean = paintIndex() == end;
+		unlimitWrites();
+		if (!kept) { return false; }
 		noteRange(start, end);
 	}
 	return true;

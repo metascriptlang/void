@@ -3,7 +3,7 @@
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
 import { Scene, NodeRef, DrawKind, Changed, NO_NODE } from "./node";
-import { syncOrder, drawOrder, patchOrder } from "./render";
+import { syncOrder, drawOrder, spliceOrder, patchOrder } from "./render";
 import {
 	openBracket,
 	startList,
@@ -14,20 +14,22 @@ import {
 	paintIndex,
 	endPatch,
 } from "./draw";
-import { DisplayList, NO_REPAINT, displayList, useList } from "./displayList";
+import { DisplayList, NO_REPAINT, displayList, twinList, useList } from "./displayList";
 import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
 import { Color, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
 export function scene(clear: Color): Scene {
+	const list: DisplayList = displayList();
 	const s: Scene = {
 		generations: [], free: [], retired: 0, kinds: [], payloads: [], changed: [], dirty: [],
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
-		maskEnds: [], repaint: [], queued: [], patchSerial: 0, retry: [],
+		maskEnds: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
+		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], stack: [], root: NO_NODE,
-		list: displayList(),
+		list: list, spare: twinList(list.id),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
 		viewMat: identity2d(), viewInit: false, defaultSmooth: true,
 	};
@@ -136,26 +138,38 @@ export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): vo
 	}
 	s.refreshOrder();
 	const l: DisplayList = s.list;
-	const kept: boolean = l.painted && !s.structureChanged && !viewChanged &&
+	const kept: boolean = l.painted && !viewChanged &&
 		l.paintedW == wf && l.paintedH == hf && l.paintedDpi == dpi &&
 		l.paintedSmooth == s.defaultSmooth;
 	if (kept && s.patchOrder(wf, hf)) {
 		endPatch(l.paintEnd);
-		l.patches = l.patches + 1;
-		l.repainted = s.repaint.length as int32;
+		s.patches = s.patches + 1;
+		s.repainted = s.repaint.length as int32;
 		return;
 	}
-	startList();
-	s.syncOrder(s.viewMat, viewChanged);
-	s.drawOrder(wf, hf);
+	if (kept) {
+		const next: DisplayList = s.spare;
+		useList(next);
+		startList();
+		s.spliceOrder(l, wf, hf);
+		s.spare = l;
+		s.list = next;
+		s.splices = s.splices + 1;
+		s.repainted = s.repaint.length as int32;
+	} else {
+		startList();
+		s.syncOrder(s.viewMat, viewChanged);
+		s.drawOrder(wf, hf);
+		s.repainted = NO_REPAINT;
+	}
+	const done: DisplayList = s.list;
 	finishRecording();
-	l.paintEnd = paintIndex();
-	l.painted = true;
-	l.paintedW = wf;
-	l.paintedH = hf;
-	l.paintedDpi = dpi;
-	l.paintedSmooth = s.defaultSmooth;
-	l.repainted = NO_REPAINT;
+	done.paintEnd = paintIndex();
+	done.painted = true;
+	done.paintedW = wf;
+	done.paintedH = hf;
+	done.paintedDpi = dpi;
+	done.paintedSmooth = s.defaultSmooth;
 }
 
 export function presentAt(this s: Scene, dpi: float32): void {

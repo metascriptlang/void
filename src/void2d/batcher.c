@@ -208,6 +208,10 @@ static uint32_t packColor(const float *c) {
 int void2dUiInstanceStride(void) { return (int)sizeof(void2dUiInstance); }
 int void2dSpriteInstanceStride(void) { return (int)sizeof(void2dSpriteInstance); }
 
+void void2dCopyFloats(float *dst, const float *src, int count) {
+	if (count > 0) { memcpy(dst, src, (size_t)count * sizeof(float)); }
+}
+
 uint32_t void2dCommandView(const float *cmd) {
 	return (uint32_t)cmd[CMD_VIEW] | ((uint32_t)cmd[CMD_VIEW_HIGH] << 16);
 }
