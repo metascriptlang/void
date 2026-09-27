@@ -13,6 +13,8 @@ import {
 	paintStateOf,
 	paintStartOf,
 	paintEndOf,
+	saveRange,
+	noteRange,
 } from "./displayList";
 import {
 	fillQuad,
@@ -1092,9 +1094,13 @@ export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
 	}
 	for (let k: int32 = 0; k < (s.repaint.length as int32); k++) {
 		const i: int32 = s.repaint[k];
-		resumePaint(paintStartOf(i));
+		const start: PaintIndex = paintStartOf(i);
+		const end: PaintIndex = paintEndOf(i);
+		saveRange(start, end);
+		resumePaint(start);
 		drawOwn(s, i, s.alphas[i], vw, vh);
-		if (paintIndex() != paintEndOf(i)) { return false; }
+		if (paintIndex() != end) { return false; }
+		noteRange(start, end);
 	}
 	return true;
 }

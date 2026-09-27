@@ -26,6 +26,13 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
                         const float *spriteInstances, int spriteInstanceCount,
                         const float *uiInstances, int uiInstanceCount);
 
+int void2dReplayList(int list, const float *targetCommands, int targetCommandCount,
+                     const float *effects, int effectCount,
+                     const float *vertices, int vertexCount, int vertexDirty,
+                     const float *spriteInstances, int spriteInstanceCount, int spriteDirty,
+                     const float *uiInstances, int uiInstanceCount,
+                     const int *uiRanges, int uiRangeCount);
+
 // Replays the swapchain list inside the pass the caller has already opened.
 void void2dReplay(const float *commands, int commandCount,
                   const float *effects, int effectCount,

@@ -106,6 +106,7 @@ let frameIndex: int32 = 0;
 let presentMs: float64 = 0.0;
 let firstPaintMs: float64 = 0.0;
 let firstPaintRasterizations: int32 = 0;
+let firstPaintUploadBytes: int32 = 0;
 let rasterizationsBeforeMeasure: int32 = 0;
 let sweepPeakPages: int32 = 0;
 let codeBlock: NodeRef | null = null;
@@ -204,6 +205,7 @@ function report(): void {
 	console.log(`${benchName}.glyphPages ${glyphAtlas.pageCount()}`);
 	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
+	console.log(`${benchName}.firstPaintUploadBytes ${firstPaintUploadBytes}`);
 	console.log(`${benchName}.sweepPeakPages ${sweepPeakPages}`);
 	const swept: int32 = rasterizationsBeforeMeasure - firstPaintRasterizations;
 	console.log(`${benchName}.sweepRasterizations ${swept}`);
@@ -254,6 +256,7 @@ export function benchFrame(): void {
 		benchScene.present();
 		firstPaintMs = performance.now() - firstStarted;
 		firstPaintRasterizations = glyphRasterizations();
+		firstPaintUploadBytes = uploadBytes();
 		return;
 	}
 	if (frameIndex <= warmupFrames) {

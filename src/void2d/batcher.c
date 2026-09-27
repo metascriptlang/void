@@ -44,6 +44,12 @@ static int s_uiInstanceCount;
 static sg_buffer s_unitQuad;          // six corners (0,0)..(1,1), made once, stepped per vertex
 static int s_spriteInstanceBase;      // where this frame's sprite instances start in s_vbuf
 static int s_spriteInstanceCount;
+static sg_buffer s_srcVertex;
+static sg_buffer s_srcSprite;
+static sg_buffer s_srcUi;
+static int s_srcVertexBase;
+static int s_srcSpriteBase;
+static int s_srcUiBase;
 // sokol's origin convention does not change after setup, and it was being queried twice per
 // draw command - 40 000 times a frame on the UI bench whose `present` this phase reports as
 // not met.
@@ -637,6 +643,139 @@ int void2dReplayTargets(const float *targetCommands, int targetCommandCount,
 		s_uploadBytes += (int)uiBytes;
 	}
 	if (vertexBytes > 0 || spriteBytes > 0 || uiBytes > 0) { s_frameVertexBytes = (int)frameBytes; }
+	s_srcVertex = s_vbuf;
+	s_srcSprite = s_vbuf;
+	s_srcUi = s_vbuf;
+	s_srcVertexBase = s_frameBaseOffset;
+	s_srcSpriteBase = s_spriteInstanceBase;
+	s_srcUiBase = s_uiInstanceBase;
+	s_frameUploaded = 1;
+	if (targetCommandCount > 0) {
+		runCommands(targetCommands, targetCommandCount, effects, effectCount, 0.0f, 0.0f);
+	}
+	return 1;
+}
+
+#define LIST_VERTEX 0
+#define LIST_SPRITE 1
+#define LIST_UI 2
+
+typedef struct {
+	sg_buffer buf[3];
+	int cap[3];
+	int updatedFrame;
+	void2dUiInstance *stage;
+	int stageCap;
+} void2dList;
+
+static void2dList *s_lists;
+static int s_listCap;
+
+static void2dList *listAt(int id) {
+	if (id >= s_listCap) {
+		int want = s_listCap > 0 ? s_listCap : 4;
+		while (want <= id) { want *= 2; }
+		void2dList *grown = (void2dList *)realloc(s_lists, (size_t)want * sizeof(void2dList));
+		if (!grown) { return NULL; }
+		memset(grown + s_listCap, 0, (size_t)(want - s_listCap) * sizeof(void2dList));
+		for (int i = s_listCap; i < want; i++) { grown[i].updatedFrame = -1; }
+		s_lists = grown;
+		s_listCap = want;
+	}
+	return &s_lists[id];
+}
+
+static int ensureListBuffer(void2dList *l, int which, int bytes) {
+	if (l->buf[which].id && bytes <= l->cap[which]) { return 1; }
+	int want = void2dGrowthTarget(l->cap[which], bytes);
+	if (want == 0) { return 0; }
+	if (l->buf[which].id) {
+		if (s_retiredBufCount >= VOID2D_MAX_RETIRED_BUFFERS) { return 0; }
+		s_retiredBuf[s_retiredBufCount] = l->buf[which];
+		s_retiredBufCount++;
+	}
+	sg_buffer_desc bd = {0};
+	bd.usage.vertex_buffer = true;
+	bd.usage.dynamic_update = true;
+	bd.size = (size_t)want;
+	l->buf[which] = sg_make_buffer(&bd);
+	s_buffersMade++;
+	l->cap[which] = want;
+	return 1;
+}
+
+static int writeListBuffer(void2dList *l, int which, const void *data, size_t bytes) {
+	if (bytes == 0) { return 1; }
+	if (!ensureListBuffer(l, which, (int)bytes)) { return 0; }
+	sg_range range = { .ptr = data, .size = bytes };
+	sg_update_buffer(l->buf[which], &range);
+	s_uploadCount++;
+	s_uploadBytes += (int)bytes;
+	return 1;
+}
+
+int void2dReplayList(int list, const float *targetCommands, int targetCommandCount,
+                     const float *effects, int effectCount,
+                     const float *vertices, int vertexCount, int vertexDirty,
+                     const float *spriteInstances, int spriteInstanceCount, int spriteDirty,
+                     const float *uiInstances, int uiInstanceCount,
+                     const int *uiRanges, int uiRangeCount) {
+	void2dList *l = listAt(list);
+	int dirty = vertexDirty || spriteDirty || uiRangeCount != 0;
+	if (!l || (dirty && l->updatedFrame == s_frameSerial)) {
+		return void2dReplayTargets(targetCommands, targetCommandCount, effects, effectCount,
+			vertices, vertexCount, spriteInstances, spriteInstanceCount,
+			uiInstances, uiInstanceCount);
+	}
+	s_frameUploaded = 0;
+	s_spriteInstanceCount = spriteInstanceCount;
+	s_uiInstanceCount = uiInstanceCount;
+	uploadGlyphPages();
+	size_t vertexBytes = (size_t)vertexCount * VERTEX_FLOATS * sizeof(float);
+	size_t spriteBytes = (size_t)spriteInstanceCount * sizeof(void2dSpriteInstance);
+	size_t uiBytes = (size_t)uiInstanceCount * sizeof(void2dUiInstance);
+	if (vertexDirty && !writeListBuffer(l, LIST_VERTEX, vertices, vertexBytes)) {
+		s_droppedFrames++;
+		return 0;
+	}
+	if (spriteDirty && !writeListBuffer(l, LIST_SPRITE, spriteInstances, spriteBytes)) {
+		s_droppedFrames++;
+		return 0;
+	}
+	if (uiRangeCount != 0 && uiInstanceCount > 0) {
+		if (uiInstanceCount > l->stageCap) {
+			void2dUiInstance *grown = (void2dUiInstance *)realloc(
+				l->stage, (size_t)uiInstanceCount * sizeof(void2dUiInstance));
+			if (!grown) {
+				s_droppedFrames++;
+				fprintf(stderr, "void2d: no room to stage %d UI instances — frame dropped\n",
+					uiInstanceCount);
+				return 0;
+			}
+			l->stage = grown;
+			l->stageCap = uiInstanceCount;
+		}
+		int ranges = uiRangeCount < 0 ? 1 : uiRangeCount;
+		for (int r = 0; r < ranges; r++) {
+			int from = uiRangeCount < 0 ? 0 : uiRanges[r * 2];
+			int to = uiRangeCount < 0 ? uiInstanceCount : uiRanges[r * 2 + 1];
+			for (int i = from; i < to && i < uiInstanceCount; i++) {
+				void2dPackUiInstance(l->stage + i,
+					uiInstances + (size_t)i * VOID2D_UI_REC_FLOATS, packColor);
+			}
+		}
+		if (!writeListBuffer(l, LIST_UI, l->stage, uiBytes)) {
+			s_droppedFrames++;
+			return 0;
+		}
+	}
+	if (dirty) { l->updatedFrame = s_frameSerial; }
+	s_srcVertex = l->buf[LIST_VERTEX];
+	s_srcSprite = l->buf[LIST_SPRITE];
+	s_srcUi = l->buf[LIST_UI];
+	s_srcVertexBase = 0;
+	s_srcSpriteBase = 0;
+	s_srcUiBase = 0;
 	s_frameUploaded = 1;
 	if (targetCommandCount > 0) {
 		runCommands(targetCommands, targetCommandCount, effects, effectCount, 0.0f, 0.0f);
@@ -678,8 +817,8 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 
 	sg_bindings b = {0};
 	b.vertex_buffers[0] = s_unitQuad;
-	b.vertex_buffers[1] = s_vbuf;
-	b.vertex_buffer_offsets[1] = s_spriteInstanceBase
+	b.vertex_buffers[1] = s_srcSprite;
+	b.vertex_buffer_offsets[1] = s_srcSpriteBase
 		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dSpriteInstance);
 	b.views[VIEW_spriteTex] = (sg_view){ .id = view };
 	int smpIndex = (int)cmd[CMD_SAMPLER];
@@ -730,8 +869,8 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 
 	sg_bindings b = {0};
 	b.vertex_buffers[0] = s_unitQuad;
-	b.vertex_buffers[1] = s_vbuf;
-	b.vertex_buffer_offsets[1] = s_uiInstanceBase
+	b.vertex_buffers[1] = s_srcUi;
+	b.vertex_buffer_offsets[1] = s_srcUiBase
 		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dUiInstance);
 	b.views[VIEW_uiTex] = (sg_view){ .id = view };
 	int smpIndex = (int)cmd[CMD_SAMPLER];
@@ -856,8 +995,8 @@ static void runCommands(const float *commands, int commandCount,
 			fxValid = 0;
 		}
 		sg_bindings b = {0};
-		b.vertex_buffers[0] = s_vbuf;
-		b.vertex_buffer_offsets[0] = s_frameBaseOffset + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
+		b.vertex_buffers[0] = s_srcVertex;
+		b.vertex_buffer_offsets[0] = s_srcVertexBase + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
 		b.views[VIEW_tex] = (sg_view){ .id = view };
 		int smpIndex = (int)cmd[CMD_SAMPLER];
 		if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }

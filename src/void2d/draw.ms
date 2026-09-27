@@ -14,7 +14,7 @@
 import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
 	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes, void2dSetTextGamma,
-	void2dReplay, void2dReplayTargets, void2dLayoutCheck,
+	void2dReplay, void2dReplayTargets, void2dReplayList, void2dLayoutCheck,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
@@ -35,7 +35,8 @@ import {
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
-	DisplayList, currentList, useDefaultList, spriteInstanceCount, effectField,
+	DisplayList, currentList, useDefaultList, isDefaultList, uploaded, spriteInstanceCount,
+	effectField,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
@@ -381,13 +382,25 @@ export function flushTargets(): void {
 	const l: DisplayList = currentList();
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
 	l.targetsPending = false;
-	frameLive = void2dReplayTargets(
-		l.targetCommands[0], targets,
-		l.effects[0], effectCount(),
-		l.vertices[0], vertexCount(),
-		l.spriteInstances[0], spriteInstanceCount(),
-		l.uiInstances[0], uiInstanceCount(),
-	) != 0;
+	if (isDefaultList(l)) {
+		frameLive = void2dReplayTargets(
+			l.targetCommands[0], targets,
+			l.effects[0], effectCount(),
+			l.vertices[0], vertexCount(),
+			l.spriteInstances[0], spriteInstanceCount(),
+			l.uiInstances[0], uiInstanceCount(),
+		) != 0;
+	} else {
+		frameLive = void2dReplayList(
+			l.id, l.targetCommands[0], targets,
+			l.effects[0], effectCount(),
+			l.vertices[0], vertexCount(), (l.uploadAll || l.dirtyVertices) ? 1 : 0,
+			l.spriteInstances[0], spriteInstanceCount(), (l.uploadAll || l.dirtySprites) ? 1 : 0,
+			l.uiInstances[0], uiInstanceCount(),
+			l.dirtyUi[0], l.uploadAll ? -1 : l.dirtyUiTotal,
+		) != 0;
+	}
+	uploaded();
 	targetsFlushed = true;
 }
 

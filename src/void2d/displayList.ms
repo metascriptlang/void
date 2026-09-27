@@ -238,6 +238,11 @@ export interface DisplayList {
 	patches: int32;
 	repainted: int32;
 	targetsPending: boolean;
+	uploadAll: boolean;
+	dirtyVertices: boolean;
+	dirtySprites: boolean;
+	dirtyUi: Vec<int32>;
+	dirtyUiTotal: int32;
 }
 
 let serials: Vec<int32> = [];
@@ -285,6 +290,11 @@ export function displayList(): DisplayList {
 		patches: 0,
 		repainted: 0,
 		targetsPending: false,
+		uploadAll: false,
+		dirtyVertices: false,
+		dirtySprites: false,
+		dirtyUi: new Array(2),
+		dirtyUiTotal: 0,
 	};
 }
 
@@ -292,6 +302,7 @@ const defaultList: DisplayList = displayList();
 let list: DisplayList = defaultList;
 
 export function useList(next: DisplayList): void { list = next; }
+export function isDefaultList(l: DisplayList): boolean { return l === defaultList; }
 export function useDefaultList(): void { list = defaultList; }
 export function currentList(): DisplayList { return list; }
 
@@ -314,6 +325,10 @@ export function resetList(): void {
 	list.targetOverflowed = false;
 	list.maskTotal = 0;
 	list.targetsPending = true;
+	list.uploadAll = true;
+	list.dirtyVertices = false;
+	list.dirtySprites = false;
+	list.dirtyUiTotal = 0;
 	serials[list.id] = serials[list.id] + 1;
 }
 
@@ -358,6 +373,73 @@ export function paintStateOf(row: int32): PaintState {
 }
 
 export function paintStartOf(row: int32): PaintIndex { return list.paintStarts[row]; }
+
+export function uploaded(): void {
+	list.uploadAll = false;
+	list.dirtyVertices = false;
+	list.dirtySprites = false;
+	list.dirtyUiTotal = 0;
+}
+
+let saved: Vec<float32> = [];
+
+function keep(at: int32, value: float32): void {
+	if (at < (saved.length as int32)) {
+		saved[at] = value;
+	} else {
+		saved.push(value);
+	}
+}
+
+export function saveRange(a: PaintIndex, b: PaintIndex): void {
+	let k: int32 = 0;
+	for (let i: int32 = a.uiInstances * REC_UI_FLOATS; i < b.uiInstances * REC_UI_FLOATS; i++) {
+		keep(k, list.uiInstances[i]);
+		k = k + 1;
+	}
+	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
+		keep(k, list.spriteInstances[i]);
+		k = k + 1;
+	}
+	for (let i: int32 = a.vertices * VERTEX_FLOATS; i < b.vertices * VERTEX_FLOATS; i++) {
+		keep(k, list.vertices[i]);
+		k = k + 1;
+	}
+}
+
+function addDirtyUi(from: int32, to: int32): void {
+	const pairs: int32 = list.dirtyUiTotal;
+	if (pairs > 0 && list.dirtyUi[pairs * 2 - 1] == from) {
+		list.dirtyUi[pairs * 2 - 1] = to;
+		return;
+	}
+	while ((list.dirtyUi.length as int32) < (pairs + 1) * 2) { list.dirtyUi.push(0); }
+	list.dirtyUi[pairs * 2] = from;
+	list.dirtyUi[pairs * 2 + 1] = to;
+	list.dirtyUiTotal = pairs + 1;
+}
+
+export function noteRange(a: PaintIndex, b: PaintIndex): void {
+	let k: int32 = 0;
+	let changed: boolean = false;
+	for (let i: int32 = a.uiInstances * REC_UI_FLOATS; i < b.uiInstances * REC_UI_FLOATS; i++) {
+		if (saved[k] != list.uiInstances[i]) { changed = true; }
+		k = k + 1;
+	}
+	if (changed) { addDirtyUi(a.uiInstances, b.uiInstances); }
+	changed = false;
+	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
+		if (saved[k] != list.spriteInstances[i]) { changed = true; }
+		k = k + 1;
+	}
+	if (changed) { list.dirtySprites = true; }
+	changed = false;
+	for (let i: int32 = a.vertices * VERTEX_FLOATS; i < b.vertices * VERTEX_FLOATS; i++) {
+		if (saved[k] != list.vertices[i]) { changed = true; }
+		k = k + 1;
+	}
+	if (changed) { list.dirtyVertices = true; }
+}
 export function paintEndOf(row: int32): PaintIndex { return list.paintEnds[row]; }
 
 // Which pipeline set and device scale every command recorded from here will ask the replay
