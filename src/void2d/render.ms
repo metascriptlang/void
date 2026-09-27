@@ -307,6 +307,21 @@ function syncRow(s: Scene, i: int32, parentWorld: Transform2D, parentChanged: bo
 export function sync(this n: NodeRef, parentWorld: Transform2D, parentChanged: boolean): void {
 	syncRow(n.scene, n.liveRow("sync"), parentWorld, parentChanged);
 }
+
+export function syncOrder(this s: Scene, view: Transform2D, viewChanged: boolean): void {
+	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
+		const i: int32 = s.order[p];
+		const up: int32 = s.parents[i];
+		const parentMoved: boolean = p == 0 ? viewChanged : s.moved[up];
+		const moved: boolean = parentMoved || s.changed[i].has(Changed.Local);
+		if (moved) {
+			s.worlds[i] = (p == 0 ? view : s.worlds[up]) * s.localMatrices[i];
+		}
+		s.moved[i] = moved;
+		if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
+		if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
+	}
+}
 let imageEffectRejectedReported: boolean = false;
 const deviceGrid: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
 
@@ -931,9 +946,8 @@ export function draw(this n: NodeRef, a: float32, vw: float32, vh: float32): voi
 	drawRow(n.scene, n.liveRow("draw"), a, vw, vh);
 }
 
-function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, vh: float32): void {
+function drawOwn(s: Scene, i: int32, na: float32, vw: float32, vh: float32): void {
 	const world = s.worlds[i];
-	const na: float32 = a * own;
 	const color: Color = s.paints[i].color;
 	const col = rgba(color.r, color.g, color.b, color.a * na);
 	const lb = localBounds(s, i);
@@ -956,17 +970,66 @@ function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, 
 			lb.xMax - lb.xMin, lb.yMax - lb.yMin, vec2(lb.xMin, lb.yMin), vb,
 		);
 	}
+}
+
+function pushMask(s: Scene, i: int32): boolean {
+	const world = s.worlds[i];
+	const lb = localBounds(s, i);
+	return pushClip(
+		vec2(lb.xMin, lb.yMin) * world,
+		vec2(lb.xMax, lb.yMin) * world,
+		vec2(lb.xMax, lb.yMax) * world,
+		vec2(lb.xMin, lb.yMax) * world,
+	);
+}
+
+function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, vh: float32): void {
+	const na: float32 = a * own;
+	drawOwn(s, i, na, vw, vh);
 	const masking: boolean = s.kinds[i] === DrawKind.Mask;
-	let clipSupported: boolean = true;
-	if (masking) {
-		clipSupported = pushClip(tl, tr, br, bl);
-	}
-	if (clipSupported) {
+	if (!masking || pushMask(s, i)) {
 		for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 			drawRow(s, s.children[i][k], na, vw, vh);
 		}
 	}
 	if (masking) {
+		popClip();
+	}
+}
+
+export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
+	const n: int32 = s.order.length as int32;
+	let p: int32 = 0;
+	while (p < n) {
+		while ((s.maskEnds.length as int32) > 0 && s.maskEnds[(s.maskEnds.length as int32) - 1] <= p) {
+			s.maskEnds.pop();
+			popClip();
+		}
+		const i: int32 = s.order[p];
+		const end: int32 = s.orderEnd[p];
+		const a: float32 = p == 0 ? 1.0 : s.alphas[s.parents[i]];
+		if (!s.orders[i].visible) {
+			p = end;
+		} else if (s.filters[i].kind !== FilterKind.None) {
+			drawFiltered(s, i, a, vw, vh);
+			p = end;
+		} else {
+			const na: float32 = a * s.paints[i].alpha;
+			s.alphas[i] = na;
+			drawOwn(s, i, na, vw, vh);
+			if (s.kinds[i] !== DrawKind.Mask) {
+				p = p + 1;
+			} else if (pushMask(s, i)) {
+				s.maskEnds.push(end);
+				p = p + 1;
+			} else {
+				popClip();
+				p = end;
+			}
+		}
+	}
+	while ((s.maskEnds.length as int32) > 0) {
+		s.maskEnds.pop();
 		popClip();
 	}
 }

@@ -54,6 +54,7 @@ export enum Changed {
 }
 
 export const NO_NODE: int32 = -1;
+export const NO_SLOT: int32 = -1;
 const NO_PAYLOAD: int32 = -1;
 const LAST_GENERATION: int32 = 2147483647;
 const NO_COLOR_MATRIX: float32[] = [];
@@ -148,9 +149,16 @@ export interface Scene {
 	layouts: Vec<Layout2D>;
 	parents: Vec<int32>;
 	children: Vec<Vec<int32>>;
+	order: Vec<int32>;
+	orderEnd: Vec<int32>;
+	slots: Vec<int32>;
+	orderBuilds: int32;
 	localMatrices: Vec<Transform2D>;
 	worlds: Vec<Transform2D>;
 	bounds: Vec<Bounds>;
+	alphas: Vec<float32>;
+	moved: Vec<boolean>;
+	maskEnds: Vec<int32>;
 	anims: Vec<AnimFrames>;
 	freeAnims: Vec<int32>;
 	meshes: Vec<GraphicsMesh>;
@@ -227,6 +235,9 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 		s.localMatrices[i] = identity2d();
 		s.worlds[i] = identity2d();
 		s.bounds[i] = noBounds;
+		s.slots[i] = NO_SLOT;
+		s.alphas[i] = 1.0;
+		s.moved[i] = false;
 		const listed: boolean = !s.changed[i].isEmpty();
 		s.changed[i] = freshBits();
 		if (!listed) { s.dirty.push(i); }
@@ -249,6 +260,9 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 	s.localMatrices.push(identity2d());
 	s.worlds.push(identity2d());
 	s.bounds.push(noBounds);
+	s.slots.push(NO_SLOT);
+	s.alphas.push(1.0);
+	s.moved.push(false);
 	return i;
 }
 
@@ -284,6 +298,31 @@ export function markChanged(this s: Scene, i: int32, what: Changed): void {
 	if (bits.has(what)) { return; }
 	if (bits.isEmpty()) { s.dirty.push(i); }
 	s.changed[i] = bits.incl(what);
+}
+
+export function refreshOrder(this s: Scene): void {
+	if (!s.structureChanged) { return; }
+	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
+		s.slots[s.order[p]] = NO_SLOT;
+	}
+	while ((s.order.length as int32) > 0) { s.order.pop(); }
+	while ((s.orderEnd.length as int32) > 0) { s.orderEnd.pop(); }
+	s.stack.push(s.root);
+	while ((s.stack.length as int32) > 0) {
+		const i: int32 = s.stack.pop();
+		s.slots[i] = s.order.length as int32;
+		s.order.push(i);
+		s.orderEnd.push(0);
+		for (let k: int32 = (s.children[i].length as int32) - 1; k >= 0; k--) {
+			s.stack.push(s.children[i][k]);
+		}
+	}
+	for (let p: int32 = (s.order.length as int32) - 1; p >= 0; p--) {
+		const i: int32 = s.order[p];
+		const count: int32 = s.children[i].length as int32;
+		s.orderEnd[p] = count > 0 ? s.orderEnd[s.slots[s.children[i][count - 1]]] : p + 1;
+	}
+	s.orderBuilds = s.orderBuilds + 1;
 }
 
 export function clearChanges(this s: Scene): void {

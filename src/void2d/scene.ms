@@ -3,7 +3,7 @@
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
 import { Scene, NodeRef, DrawKind, NO_NODE } from "./node";
-import { sync, draw, releaseTargets } from "./render";
+import { syncOrder, drawOrder, releaseTargets } from "./render";
 import { beginList, end2d, flushTargets, setSceneSmooth } from "./draw";
 import { displayList, useList } from "./displayList";
 import { advanceBlink, NO_LABEL_TEXT } from "./labelText";
@@ -14,7 +14,9 @@ export function scene(clear: Color): Scene {
 	const s: Scene = {
 		generations: [], free: [], retired: 0, kinds: [], payloads: [], changed: [], dirty: [],
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
-		layouts: [], parents: [], children: [], localMatrices: [], worlds: [], bounds: [],
+		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
+		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
+		maskEnds: [],
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], stack: [], root: NO_NODE,
 		list: displayList(),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
@@ -122,9 +124,9 @@ export function presentAt(this s: Scene, dpi: float32): void {
 		s.viewMat = nv;
 		s.viewInit = true;
 	}
-	const root: NodeRef = s.refOf(s.root);
-	root.sync(s.viewMat, viewChanged);
-	root.draw(1.0, wf, hf);
+	s.refreshOrder();
+	s.syncOrder(s.viewMat, viewChanged);
+	s.drawOrder(wf, hf);
 	// Every render-target pass first, with no pass open, then one swapchain pass that is only
 	// draws. That ordering is what stops a filter nesting a pass inside the frame's pass, and
 	// it is the GPUI frame shape (GPUI.md:18).
