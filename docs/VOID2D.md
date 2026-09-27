@@ -881,7 +881,7 @@ with `--release` on BUILD `598ca62e`, the P4 head `c85f5d0` (tree `2497f5d`) aga
 - `Scene` reports whether it changed and can re-present its last list; scheduling stays the host's.
 - The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:344-350`).
 - The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:115-121`: `presentAt` hands the camera and scale mode to `sync` as the root's parent world).
-- A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`). **Landed at P5 step 4** for `removeChild` and `removeChildren`: a removed subtree's Labels release their tiles and keep their shaped layout, so a label added back places again from the atlas's index, hitting the tiles still resident, and only `dispose` frees the layout. `remove()` (step 9) goes through `removeChild`.
+- A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`). **Landed at P5 step 4** for `removeChild` and `removeChildren`: a removed subtree's Labels release their tiles and keep their shaped layout, so a label added back places again from the atlas's index, hitting the tiles still resident, and only `dispose` frees the layout. `remove()` (step 6) goes through `removeChild`.
 - Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`. **Landed at P5 step 4**: the upload state moved from `batcher.c` into `glyph.c` beside the page's dirty flag (`void2dGlyphPageTakeUpload`), so the atlas asks it directly and T1 drives it with no GPU; a glyph that finds every page full or uploaded this frame at the page cap is refused this frame and placed the next, which is F1's retry.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
 - Render bounds apart from h2d's `getBounds`. Since P4 an editing label's `getBounds` grows by the selection's gloop, half its line spacing and its trailing whitespace once a caret or a selection shows, because the filter target and culling read it; h2d's TextInput bounds do not move with the caret (REVIEWS.md "P4 re-review" F-b). If the human's answer on run colours (P4 F2) is still to be applied, it lands before this contract does.
@@ -905,7 +905,7 @@ human has seen it as app code; the phase measurement comes last.
    `glyph-page-second-upload`, T1 over two brackets in one frame); a Label that leaves the scene
    through `removeChild` or `removeChildren` releases its tiles, as h2d's `onRemove` does (F6, T1:
    a removed Label holds no tile reference; closes `label-dispose-pins-page`, since `remove()` in
-   step 9 goes through `removeChild`).
+   step 6 goes through `removeChild`).
 5. **The change model — decided by the human on 2026-09-27: void3d's data model, Bevy's change
    detection.** "An unchanged node costs nothing" needs the write itself to mark the node, and
    `n.x = 5` on today's `Node2D` is a store nothing observes. What was weighed, and what ruled
@@ -938,26 +938,83 @@ human has seen it as app code; the phase measurement comes last.
    as a node, filters as a property); what changes is the call shape, from a field store to a
    binder. `card.x = 20` returns as sugar over the binder once msc has accessors (the card
    above; parked there). Neon's `Host` ops (`setText`, `setStyle`, `setStyleProp`) map one to one
-   onto binders. The plan for steps 6-12 is rewritten around this data model, as a step of its
-   own before retention, and goes to the human before it is built.
-6. **Retention** under the chosen model: a draw order flattened and rebuilt only on a structural
-   change (SCENE-SCALE.md "Flatten traversal order"), persistent instance ranges, dirty-range
-   upload, identical bytes skipping the upload, the dirty booleans as a `BitSet` (#24), a filtered
-   node that did not change reusing its target (#21). T1: one mutated node, one dirty range of a
-   known size; byte-identical re-records; the order rebuilt only on a structural change.
-7. **The paint-only patch.** T1: a blink writes the caret's instance and nothing else; a colour
-   write uploads a known number of bytes.
-8. **The change flag and the camera uniform.** T4: an idle frame issues no draw and no upload
+   onto binders. Steps 6-14 were rewritten around this data model the same day; step 6 is what
+   an app author writes, and goes to the human as app code before it is built.
+6. **The data model** (#24; closes `h2d-object-surface`, `one-node-two-parents`).
+   - **Rows.** `Scene` owns the tables, and a node is a row: a `NodeId` (index, generation;
+     void3d's shape), stable rows, the generation bumped by `dispose`, a LIFO free list
+     (SCENE-SCALE.md "Confirmed, not challenged"). The app holds a `NodeRef`, the scene plus a
+     `NodeId`, 16 bytes, compared with `==`. A stale ref stops and names the node and both
+     generations.
+   - **Groups, by the pass that reads them** (SCENE-SCALE.md rule 1), each a `Vec` of a value
+     struct: `Local2D` (x, y, scaleX, scaleY, rotation, pivotX, pivotY) for the transform pass;
+     `Paint2D` (color, alpha, colorAdd, colorKey, blend, smooth, tileWrap) for emission, the
+     group step 8 patches in place; the content group (w, h, tile, and the per-kind numbers
+     `Node2D` overloads today: ScaleGrid borders, an underline's thickness and wave, a
+     selection's neighbours); the filter; the order group (zIndex, visible, name) and the tree
+     (parent, children). Per-kind state stays behind `payload` in side tables: box and image
+     styles and label text as today, joined by the label's text and text style, a Graphics'
+     mesh and records, and an Anim's frames. What a pass computes, the world matrix and the
+     content bounds, is a column only passes write. The `last*` fields and `sync`'s compare are
+     deleted; a binder that skips an equal value replaces them.
+   - **Binders**, one per h2d property or method: `setX`, `setY`, `setPosition`, `move` (along
+     the rotation, `h2d/Object.hx:1023-1026`), `setRotation`, `rotate`, `setScale`, `scale`,
+     `setScaleX`, `setScaleY`, `setAlpha`, `setColor`, `setVisible`, `setText`, `setFilter`,
+     `setSize`, `setTile` and the rest; `at` stays as the chaining form of `setPosition`. A
+     binder replaces its group, returns when the value is equal (Bevy's `set_if_neq`), and
+     otherwise calls the scene's one `markChanged`, which sets the group's bit in the node's
+     `BitSet<Changed>` and pushes the node onto the dirty list the first time. The push lives
+     there and not in each binder: "set the bit, push once" has one owner, and a mutating builtin
+     through a `NodeRef` parameter is refused by the checker today
+     (`~/metascript/.inbox/compiler/2026-09-27-value-param-mutator-crosses-reference.md`;
+     `out/tmp/p5probes/noderef2.ms` is the shape, green on C and JS). A group is read whole,
+     `card.local().x`. The binders that exist (`setBoxStyle`, `setTextRuns`, `setCursorIndex`,
+     ...) move from `Node2D` to `NodeRef` unchanged, and `tick` sweeps the Anim and label side
+     tables instead of walking the tree.
+   - **The tree**, h2d's `Object` surface: `addChild` takes the child out of its old parent
+     first and stops, naming both nodes, when the child is the parent or one of its ancestors
+     (`Object.hx:411-430`); `addChildAt`, `removeChild`, `removeChildren`, `remove()`,
+     `parent()`, `getChildAt`, `getChildIndex`, `numChildren`, `name`; `localToGlobal` and
+     `globalToLocal` sync the node's ancestors first (`Object.hx:359`). A structural change sets
+     the scene's `structureChanged`, which step 7's draw order reads. Children are one
+     `Vec<int32>` per parent, Bevy's `Children`; SCENE-SCALE.md's shared arena replaces it only if
+     the 100 000-node build measures the per-parent allocation.
+   - **Constructors on the scene**: `s.rect(w, h, color)`, `s.label(text, size, color)`,
+     `s.sprite(t)` and the rest return a detached `NodeRef`; `s.add(c)` stays.
+   - **The frame does not change yet.** `present` still syncs and draws every node from the
+     tables, `sync` reads the `Local` bit where it compared seven fields, and `present` clears
+     the bits and the list. Every golden byte-identical, the bench counters unchanged, UI
+     `present` A/B'd against the step 5 head.
+   - T0: an equal write marks nothing; a write sets one bit and pushes once; a stale ref stops;
+     reparenting, the cycle stop, `remove()`, the index queries; `dispose` frees the row.
+     Measured: ns per binder write, and build and teardown of the 100 000-node scene against
+     `Node2D`.
+   - Every consumer moves in the commit that moves the renderer, since `Node2D` and the tables
+     cannot both hold the truth: the examples, the benches, the golden scenes, the tests,
+     `graphics.ms` and `layout.ms`. Neon's `host.ms` is Neon's to move, through
+     `~/metascript/.inbox/neon/`, once the human has approved the API.
+7. **Retention**, consuming the dirty list: a draw order flattened and rebuilt only when
+   `structureChanged` (SCENE-SCALE.md "Flatten traversal order"), persistent instance ranges,
+   re-recording only the dirty nodes and, for a transform, alpha or filter change, what inherits
+   it, found by descending from the changed set with value-equality pruning (the Bevy form
+   SCENE-SCALE.md says to measure against upward marking); dirty-range upload, identical bytes
+   skipping the upload, a filtered node that did not change reusing its target (#21). T1: one
+   mutated node, one dirty range of a known size; byte-identical re-records; the order rebuilt
+   only on a structural change.
+8. **The paint-only patch**: a `Paint2D` write and a caret blink rewrite the node's instance
+   floats in place. T1: a blink writes the caret's instance and nothing else; a colour write
+   uploads a known number of bytes.
+9. **The change flag and the camera uniform.** T4: an idle frame issues no draw and no upload
    (closes `idle-costs-a-walk`); T1: a camera move re-multiplies no node.
-9. **The `Object` surface**, after the human has seen it: `parent`, `remove()`, reparent-on-add
-   with a cycle guard that stops and names both nodes, `getChildAt` / `getChildIndex` /
-   `numChildren`, `name`, `localToGlobal` syncing first. T0. Closes `h2d-object-surface`,
-   `one-node-two-parents`.
-10. **Scroll**: `Mask.scrollX/Y` as the list-level shift, snapped. T2 golden `clip/maskScroll`; a
-    scroll bench over the editor scene, CPU and uploaded bytes per frame, the bytes gated (T4).
-11. **`TileGroup`**, the non-overlap flag and the lane fallback. T1. Closes `h2d-tilegroup`.
+10. **Scroll**, after the human has seen it as app code: `Mask.scrollX/Y` with h2d's
+    `scrollTo` and `scrollBy` (`h2d/Mask.hx:70-104`) as binders, applied as the list-level shift,
+    snapped. T2 golden `clip/maskScroll`; a scroll bench over the editor scene, CPU and uploaded
+    bytes per frame, the bytes gated (T4).
+11. **`TileGroup`**, after the human has seen it: the non-overlap flag and the lane fallback.
+    T1. Closes `h2d-tilegroup`.
 12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
-    F-b). The run-colour rule (P4 F2) lands first if the human has answered it.
+    F-b), shown to the human first as Neon's `host.ms` before and after. The run-colour rule
+    (P4 F2) lands first if the human has answered it.
 13. **`oracle:h2d`** (T3), Heaps compiled to JS and run on node by SCENE-SCALE.md "Reproducing";
     `haxe` 4.3.7, `heaps` and `format` are on this box (2026-09-27). HEAPS.md's deliberate
     divergences seed its PENDING list.
@@ -982,7 +1039,7 @@ build on it.
   cost is reaching each 71-field `Node2D` object, not the comparisons: about 130 ns a node, so
   2.7 ms for the 20 000-node UI bench and 0.3 ms for a 2 000-node window, paid on every frame,
   idle or not. Under B an idle frame costs nothing and a write costs one push onto a dirty list
-  (SCENE-SCALE.md, about 23 ns for the binder path). The choice is the human's.
+  (SCENE-SCALE.md, about 23 ns for the binder path). The human chose binders over tables, step 5.
 
 **Defects closed.** Two "Known defects" lines: the h2d surface — `parent`, `TileGroup`, `Mask.scrollX/Y` and the text metrics it points at — and a sokol view id past 2^24 naming another slot. Also the idle cost: `Scene.present` walking and drawing every frame with nothing knowing whether the tree changed.
 
