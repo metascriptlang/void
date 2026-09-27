@@ -303,6 +303,8 @@ export function beginList(w: float32, h: float32, dpi: float32): void {
 	originY = 0.0;
 	runOpen = false;
 	runStart = 0;
+	curPipeline = Pipeline.Ui;
+	runReason = BreakReason.First;
 	curView = void2dWhiteView();
 	curBlend = BlendMode.Alpha;
 	curSampler = samplerIndex(sceneSmooth, false);

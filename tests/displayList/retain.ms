@@ -153,3 +153,18 @@ test "the draw order is rebuilt on a structural change and on nothing else" {
 	assert s.orderBuilds == built + 3;
 	assert s.slots[b.id.index] == NO_SLOT;
 }
+
+function spriteLast(): Scene {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(s.sprite(tile(11, 8.0, 8.0)).at(4.0, 4.0));
+	return s;
+}
+
+test "a bracket records the same stream whatever the bracket before it ended in" {
+	const s = maskedScene();
+	walked(spriteLast());
+	const afterSprites: Recording = walked(s);
+	walked(maskedScene());
+	const afterUi: Recording = walked(s);
+	assert same(afterSprites, afterUi);
+}
