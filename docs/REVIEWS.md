@@ -951,7 +951,7 @@ against the code in the main session before it was fixed.
 | B2 | A selected row ended at `line.width`, which stops at the last ink, so it never covered trailing spaces, a selected blank indented line showed only the 4 px tail, and a caret after trailing spaces sat outside both the highlight and the bounds | `4ac709c`: a row runs to its last glyph (`rowEnd`), and an editing label's bounds reach the widest row's end, kept in the `LabelText` side table. T1 on `ab  \n    \ncd` |
 | B3 | Owed after B1: the `present` A/B, the editor's numbers in VOID2D.md P4 and the whole-phase wasm delta | The wasm delta, the editor's counters and the A/B are in VOID2D.md P4 "Measured in P4 so far" and in "The A/B and the gate" below |
 | F1 | With `lineSpacing` above 0, selected rows left gaps, since the shader takes each neighbour to sit directly against the row | `8ba1df5`: each row covers half the spacing above and below, so rows meet at any spacing, and an editing label's bounds grow by the same half. h2d's TextInput ignores line spacing here, Makepad's rows touch; decided in the phase and written in VOID2D.md P4 rather than carried |
-| F2 | A run's colour replaces the label's, as GPUI's does, where h2d's `setColorSegments` multiplies by the text colour | Sent to the human on 2026-09-26 with app code, recommending h2d's multiply; not changed until answered |
+| F2 | A run's colour replaces the label's, as GPUI's does, where h2d's `setColorSegments` multiplies by the text colour | Sent to the human on 2026-09-26 with app code, recommending h2d's multiply. Answered 2026-09-27: multiply, as h2d; it lands in P5 before the host contract |
 | F3 | Decorations were one segment per run, where GPUI merges consecutive runs that share an underline, strikethrough or background (`line.rs:633-663`), so a squiggle across syntax runs restarted its phase at every run | `eb7d7e4`: a decoration runs on across the runs that share it. T0 that fails on the old code |
 | F4 | Two divergences not written down: Middle truncation split the room in halves where GPUI gives the front two thirds (`line_wrapper.rs:215-216`), and an overlong word overflows where GPUI breaks it | `6fdea54`: Middle takes GPUI's two thirds. The overflow is h2d's, `wordBreak` off by default (`Text.hx:113-118`), written as a W in VOID2D.md P4 |
 | F5 | The colour-effect refusal of label editing had no PENDING row or owner | `tests/PENDING.md ui-box-color-effect` names it, owned by P6 with the styled box |
@@ -979,7 +979,7 @@ the line-length count. It would refuse nothing in the code, and the land until L
 | L2 | The ship record did not say that exit 5, the Zed look, is unmet and the human's; the HEAD gate was not recorded; the frame-function count read 15 | VOID2D.md P4 exit 5 says it; the count is corrected above; the gate is below |
 | F-a | A run background or underline over trailing spaces drew past a styled label's bounds, since only an editing label reached its rows' end, so culling or a filter target could cut it | `e819d36`: a label with runs reaches its widest row's end. T1 that fails on the old code |
 | F-b | An editing label's `getBounds`, an h2d surface, grows with its caret and selection; h2d's TextInput bounds do not | Carried to P5's host contract, as a Lands bullet: render bounds apart from `getBounds` |
-| F-c | F2, the run colour | Waiting on the human; the P5 bullet above says it lands before the host contract if still open |
+| F-c | F2, the run colour | Answered by the human on 2026-09-27: multiply, as h2d. It lands in P5 before the host contract (VOID2D.md P5 step 12) |
 | N-a | A decoration across faces with different metrics steps and restarts its wave; GPUI uses one offset per line | Written in VOID2D.md P4 as a W for metric fidelity |
 | N-b | `advanceBlink` runs every frame and is not on `FRAME_PATH` | Tried: no bench calls `update`, so its body is not in the emitted C the stage reads, and naming it fails the stage as unreachable. Left to P5's allocation stage that follows calls (P3.5 re-review #4) |
 | N-c | `faded(c: Color, …)` was a struct-first free function | `c85f5d0` |
@@ -1001,5 +1001,5 @@ the first timing with B1's copy read 6.12 ms. The numbers and their conditions a
 P5 may assume a UI `present` of 12.41 ms read against its own pairs, an editor scene of one draw,
 13 214 instances and about 0.6 ms, selection and caret rows that meet and reach their trailing
 whitespace, and a frame path the allocation stage reads function by function. It may not assume
-the Zed look (the human's), the run-colour rule (F2, the human's), render bounds apart from
+the Zed look (the human's), the run-colour rule (F2, answered 2026-09-27 as h2d's multiply, built in P5), render bounds apart from
 `getBounds` (its own Lands), or an allocation stage that follows calls (`advanceBlink`).
