@@ -50,3 +50,4 @@ import "../../tests/harness/benchRows";
 import "../../tests/harness/record";
 // T1 - the display list, asserted as data with no GPU (docs/TESTING.md "T1").
 import "../../tests/displayList/snapshot";
+import "../../tests/displayList/retain";
