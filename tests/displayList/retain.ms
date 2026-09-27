@@ -21,6 +21,7 @@ import {
 	PaintIndex,
 	paintStartOf,
 	paintEndOf,
+	uploaded,
 } from "../../src/void2d/displayList";
 import { REC_UI_FLOATS, REC_SPRITE_FLOATS } from "../../src/void2d/instanceLayout";
 import { rgba, tile, identity2d, Tile } from "../../src/void2d/types";
@@ -314,4 +315,29 @@ test "a bracket records the same stream whatever the bracket before it ended in"
 	walked(maskedScene());
 	const afterUi: Recording = walked(s);
 	assert same(afterSprites, afterUi);
+}
+
+test "a card's colour marks one UI range one record long, and an undone write marks none" {
+	const c: Corpus = corpus();
+	const s: Scene = c.s;
+	frame(s);
+	uploaded();
+	frame(s);
+	assert s.list.repainted == 0;
+	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
+	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
+	frame(s);
+	const start: PaintIndex = paintStartOf(c.card.id.index);
+	assert !s.list.uploadAll;
+	assert s.list.dirtyUiTotal == 1;
+	assert s.list.dirtyUi[0] == start.uiInstances;
+	assert s.list.dirtyUi[1] == start.uiInstances + 1;
+	assert !s.list.dirtySprites && !s.list.dirtyVertices;
+	uploaded();
+	c.label.setText("99");
+	c.label.setText("12");
+	frame(s);
+	assert s.list.repainted == 1;
+	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
+	assert !s.list.dirtySprites && !s.list.dirtyVertices;
 }
