@@ -304,6 +304,24 @@ test "a child is stacked by zIndex, ties keeping the order they were added in" {
 	assert root.getChildIndex(b) == 2;
 }
 
+test "addChildAt into a stacked list lands where a stable sort by zIndex puts it" {
+	const s = fresh();
+	const root = s.group();
+	const a = root.addChild(s.rect(1.0, 1.0, white));
+	const b = root.addChild(s.rect(1.0, 1.0, white));
+	const c = root.addChild(s.rect(1.0, 1.0, white).setZIndex(1));
+	const d = root.addChild(s.rect(1.0, 1.0, white).setZIndex(1));
+	const low = root.addChildAt(s.rect(1.0, 1.0, white), 3);
+	assert root.getChildIndex(low) == 2;
+	const high = root.addChildAt(s.rect(1.0, 1.0, white).setZIndex(1), 0);
+	assert root.getChildIndex(a) == 0;
+	assert root.getChildIndex(b) == 1;
+	assert root.getChildIndex(low) == 2;
+	assert root.getChildIndex(high) == 3;
+	assert root.getChildIndex(c) == 4;
+	assert root.getChildIndex(d) == 5;
+}
+
 test "removeChild removes correct node and marks the parent's tree" {
 	const s = fresh();
 	const root = s.group();

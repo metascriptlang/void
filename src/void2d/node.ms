@@ -369,7 +369,9 @@ function putOrder(this s: Scene, i: int32, o: Order2D): void {
 	s.markChanged(i, Changed.Order);
 	const parent: int32 = s.parents[i];
 	if (restack && parent != NO_NODE) {
-		s.sortChildren(parent);
+		for (let k: int32 = 0; k < (s.children[parent].length as int32); k++) {
+			if (s.children[parent][k] == i) { s.settle(parent, k); break; }
+		}
 		s.markChanged(parent, Changed.Tree);
 		s.structureChanged = true;
 	}
@@ -848,18 +850,20 @@ export function setForceWidth(this n: NodeRef, cell: float32): NodeRef {
 	return n;
 }
 
-export function sortChildren(this s: Scene, parent: int32): void {
-	const m: int32 = s.children[parent].length as int32;
-	for (let k: int32 = 1; k < m; k++) {
-		const cur: int32 = s.children[parent][k];
-		const z: int32 = s.orders[cur].zIndex;
-		let j: int32 = k - 1;
-		while (j >= 0 && s.orders[s.children[parent][j]].zIndex > z) {
-			s.children[parent][j + 1] = s.children[parent][j];
-			j = j - 1;
-		}
-		s.children[parent][j + 1] = cur;
+function settle(this s: Scene, parent: int32, at: int32): void {
+	const child: int32 = s.children[parent][at];
+	const z: int32 = s.orders[child].zIndex;
+	let k: int32 = at;
+	while (k > 0 && s.orders[s.children[parent][k - 1]].zIndex > z) {
+		s.children[parent][k] = s.children[parent][k - 1];
+		k = k - 1;
 	}
+	const last: int32 = (s.children[parent].length as int32) - 1;
+	while (k < last && s.orders[s.children[parent][k + 1]].zIndex < z) {
+		s.children[parent][k] = s.children[parent][k + 1];
+		k = k + 1;
+	}
+	s.children[parent][k] = child;
 }
 
 function detach(this s: Scene, child: int32): void {
@@ -935,7 +939,7 @@ export function addChildAt(this n: NodeRef, c: NodeRef, index: int32): NodeRef {
 	}
 	s.children[parent][at] = child;
 	s.parents[child] = parent;
-	s.sortChildren(parent);
+	s.settle(parent, at);
 	s.markChanged(parent, Changed.Tree);
 	s.markChanged(child, Changed.Local);
 	s.structureChanged = true;
