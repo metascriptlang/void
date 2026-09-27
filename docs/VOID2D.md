@@ -1066,6 +1066,52 @@ human has seen it as app code; the phase measurement comes last.
    skipping the upload, a filtered node that did not change reusing its target (#21). T1: one
    mutated node, one dirty range of a known size; byte-identical re-records; the order rebuilt
    only on a structural change.
+
+   **The plan, 2026-09-28.** Measured first on the step 6 head: the UI bench's `present`, 20 000
+   nodes, spends 4.0-4.4 ms of 4.9-5.5 walking the tree and emitting, 0.39-0.47 ms in `sync`,
+   0.49-0.55 ms packing and uploading and 0.02 ms replaying (release, load 6-19 %, three runs of
+   `out/tmp/p7probes/presentSplit.ms`). Emission is what retention removes.
+   - **7a. The list belongs to its scene.** The display list becomes a record the scene owns, as
+     void3d's `Renderer` owns its `PassList`s; the emitter writes into the list in use, and a
+     bare `begin2d` bracket (the manual targets, the T1 snapshots) uses a module default. Two
+     scenes presented in one process (`tests/integration/twoViews.ms`) each keep their own last
+     frame. Every golden and snapshot byte-identical.
+   - **7b. The draw order, flattened** (Bevy `UiStack`, `stack.rs:11-19, 94`): the rows in
+     painter's order, each position's subtree end, each row's position and whether a filter sits
+     above it, rebuilt from the root only when `structureChanged`. A scene's full frame syncs and
+     records by scanning it: a Mask pushes its clip before its children and pops at its subtree's
+     end, an invisible node skips its subtree, and a filtered node hands its subtree to
+     `drawFiltered`, which keeps the recursive walk, h2d's `drawRec` of a subtree into a target, as
+     `NodeRef.draw` does. The accumulated alpha becomes a column beside `worlds`. T1: a paint or a
+     move rebuilds no order, an add, a remove and a `setZIndex` do.
+   - **7c. Paint ranges.** A full frame records, for each row it emits, the emitter's position in
+     every stream and its run state before and after the row's own content: GPUI's `PaintIndex`
+     and `Range<PaintIndex>` (`window.rs:1014`, `3887`), kept in place instead of copied into the
+     next frame. A frame with no structural change, and the same viewport, DPI, view matrix and
+     scene sampler, emits again only the rows that changed and what inherits from them: from each
+     dirty row it descends the row's positions recomputing world and alpha, and prunes a
+     descendant whose two values came out equal and that has no bit of its own (Bevy `set_if_neq`,
+     `systems.rs:450-459`, in the descend-from-the-changed-set form of
+     `visibility_propagate_system`, `mod.rs:419-456`). Each such row is emitted again from its
+     recorded start and kept when the emitter ends exactly at its recorded end, the same cursors
+     and the same run state; otherwise the frame records in full, which is Makepad's granularity
+     and the phase's stated fallback. The full frame is also taken for a structural change, an
+     order change, a change to a Mask or a filter or anything under a filter, and a label whose
+     glyphs were refused (F1's retry). `tick` marks an Anim whose frame index moved and a label
+     whose caret flipped; step 8 turns the second into a patch. Upward marking is measured
+     against the descent in `tests/experiments/`, as SCENE-SCALE.md asks. T1: after each write of
+     a corpus (a move, a colour, a group's alpha, text of the same length and of another, a
+     reparent, `setZIndex`, a visibility flip, a mask resize, an Anim frame, a caret) the retained
+     streams equal a full record of the same scene byte for byte, and a card's colour rewrites one
+     UI record and nothing else.
+   - **7d. Upload what changed.** A scene's list gets its own GPU buffer, written only when a
+     range changed; the pack to GPU records runs over the changed ranges alone, and a range whose
+     bytes came out identical is dropped (MAKEPAD.md:117). A frame that changed nothing uploads
+     nothing, and a frame that re-records no target runs no target pass, so a filtered node that
+     did not change keeps its target (#21); a target goes back to the pool of the list that
+     holds it. At the pinned sokol a written buffer is replaced whole, once a frame
+     (`sg_update_buffer`); a range write is the `write_persistent` upstream has announced
+     (SOKOL.md). T4: the bench counters of a still frame.
 8. **The paint-only patch**: a `Paint2D` write and a caret blink rewrite the node's instance
    floats in place. T1: a blink writes the caret's instance and nothing else; a colour write
    uploads a known number of bytes.
