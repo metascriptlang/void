@@ -421,13 +421,19 @@ function addDirtyUi(from: int32, to: int32): void {
 
 export function noteRange(a: PaintIndex, b: PaintIndex): void {
 	let k: int32 = 0;
-	let changed: boolean = false;
-	for (let i: int32 = a.uiInstances * REC_UI_FLOATS; i < b.uiInstances * REC_UI_FLOATS; i++) {
-		if (saved[k] != list.uiInstances[i]) { changed = true; }
-		k = k + 1;
+	let first: int32 = -1;
+	let last: int32 = -1;
+	for (let r: int32 = a.uiInstances; r < b.uiInstances; r++) {
+		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) {
+			if (saved[k] != list.uiInstances[r * REC_UI_FLOATS + f]) {
+				if (first < 0) { first = r; }
+				last = r;
+			}
+			k = k + 1;
+		}
 	}
-	if (changed) { addDirtyUi(a.uiInstances, b.uiInstances); }
-	changed = false;
+	if (first >= 0) { addDirtyUi(first, last + 1); }
+	let changed: boolean = false;
 	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
 		if (saved[k] != list.spriteInstances[i]) { changed = true; }
 		k = k + 1;
