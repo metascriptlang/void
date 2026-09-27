@@ -1116,9 +1116,11 @@ build on it.
   fields and a string per label every frame, which a `Local` bit and a `stale` flag replace.
 - Step 6, `tests/experiments/nodeTables.ms` against the same loops over `Node2D` built in
   `2cfc821` (`out/tmp/p6probes/node2dControl.ms`), 100 000 nodes (50 000 cards, each with a
-  two-digit label), 3 interleaved pairs of 5 rounds: **build 61-81 ms against 48-62 ms**, the
-  tables slower because a label takes its side-table row, with an empty shaped text, when it is
-  made instead of at its first sync; **teardown 27-33 ms against 87-131 ms**
+  two-digit label), 3 interleaved pairs of 5 rounds: **build 61-81 ms against 48-62 ms**. A
+  label takes its side-table row, with an empty shaped text, when it is made instead of at its
+  first sync, and 50 000 `allocateLabelText` calls alone take 21-23 ms
+  (`out/tmp/p6probes/alloc/labelAlloc.ms`), which is the gap; **teardown 27-33 ms against
+  87-131 ms**
   (`removeChildren` on the root, then `dispose` on each card). A `setX` that changes the value
   costs **51-63 ns**, an equal one **34 ns**, over a loop that alone costs 0.33 ns a node:
   twice SCENE-SCALE.md's 23 ns estimate, which had no generation check and no `trs2d`. The
