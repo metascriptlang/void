@@ -2,8 +2,8 @@
 // its view, and a panel drawn over a transparent clear. They are laid out in logical pixels
 // from the size of the view that draws them.
 
-import { Node2D, rect, at, addChild } from "../void2d/node";
-import { Scene, scene, add } from "../void2d/scene";
+import { NodeRef, Scene } from "../void2d/node";
+import { scene, add } from "../void2d/scene";
 import { Color, rgba } from "../void2d/types";
 
 const MARGIN: float32 = 24.0;
@@ -21,8 +21,8 @@ export interface BoardState {
 	cols: int32;
 	rows: int32;
 	lit: boolean[];
-	tiles: Node2D[];
-	edges: Node2D[];
+	tiles: NodeRef[];
+	edges: NodeRef[];
 	tileW: float32;
 	tileH: float32;
 }
@@ -36,12 +36,12 @@ export function boardState(cols: int32, rows: int32): BoardState {
 export function boardScene(b: BoardState): Scene {
 	const s = scene(rgba(0.07, 0.08, 0.11, 1.0));
 	for (let i: int32 = 0 as int32; i < b.cols * b.rows; i++) {
-		const t = rect(1.0, 1.0, TILE_OFF);
+		const t = s.rect(1.0, 1.0, TILE_OFF);
 		b.tiles.push(t);
 		s.add(t);
 	}
 	for (let i = 0; i < 4; i++) {
-		const e = rect(1.0, 1.0, EDGE_COLOR);
+		const e = s.rect(1.0, 1.0, EDGE_COLOR);
 		b.edges.push(e);
 		s.add(e);
 	}
@@ -56,9 +56,8 @@ export function layoutBoard(b: BoardState, w: float32, h: float32): void {
 		const col: int32 = i % b.cols;
 		const row: int32 = (i / b.cols) as int32;
 		t.at(MARGIN + (col as float32) * (b.tileW + GAP), MARGIN + (row as float32) * (b.tileH + GAP));
-		t.w = Math.max(b.tileW, 0.0);
-		t.h = Math.max(b.tileH, 0.0);
-		t.color = b.lit[i] ? TILE_ON : TILE_OFF;
+		t.setSize(Math.max(b.tileW, 0.0), Math.max(b.tileH, 0.0));
+		t.setColor(b.lit[i] ? TILE_ON : TILE_OFF);
 	}
 	placeEdge(b.edges[0], 0.0, 0.0, w, EDGE);
 	placeEdge(b.edges[1], 0.0, h - EDGE, w, EDGE);
@@ -66,10 +65,8 @@ export function layoutBoard(b: BoardState, w: float32, h: float32): void {
 	placeEdge(b.edges[3], w - EDGE, 0.0, EDGE, h);
 }
 
-function placeEdge(e: Node2D, x: float32, y: float32, w: float32, h: float32): void {
-	e.at(x, y);
-	e.w = w;
-	e.h = h;
+function placeEdge(e: NodeRef, x: float32, y: float32, w: float32, h: float32): void {
+	e.at(x, y).setSize(w, h);
 }
 
 export function toggleTileAt(b: BoardState, x: float32, y: float32): boolean {
@@ -88,22 +85,27 @@ export function toggleTileAt(b: BoardState, x: float32, y: float32): boolean {
 }
 
 export interface OverlayState {
+	scene: Scene;
 	clicks: int32;
 	x: float32;
 	y: float32;
-	panel: Node2D;
-	bars: Node2D[];
+	panel: NodeRef;
+	bars: NodeRef[];
 }
 
 export function overlayState(): OverlayState {
-	return { clicks: 0 as int32, x: 0.0, y: 0.0, panel: rect(PANEL_W, PANEL_H, rgba(0.85, 0.30, 0.40, 0.92)), bars: [] };
+	const s = scene(rgba(0.0, 0.0, 0.0, 0.0));
+	return {
+		scene: s, clicks: 0 as int32, x: 0.0, y: 0.0,
+		panel: s.rect(PANEL_W, PANEL_H, rgba(0.85, 0.30, 0.40, 0.92)), bars: [],
+	};
 }
 
 export function overlayScene(o: OverlayState): Scene {
-	const s = scene(rgba(0.0, 0.0, 0.0, 0.0));
+	const s = o.scene;
 	const barW: float32 = (PANEL_W - 2.0 * GAP) / (BAR_SLOTS as float32);
 	for (let i: int32 = 0 as int32; i < BAR_SLOTS; i++) {
-		const bar = rect(barW - 4.0, PANEL_H - 2.0 * GAP, rgba(1.0, 1.0, 1.0, 0.9)).at(GAP + (i as float32) * barW, GAP);
+		const bar = s.rect(barW - 4.0, PANEL_H - 2.0 * GAP, rgba(1.0, 1.0, 1.0, 0.9)).at(GAP + (i as float32) * barW, GAP);
 		o.bars.push(bar);
 		o.panel.addChild(bar);
 	}
@@ -116,7 +118,7 @@ export function layoutOverlay(o: OverlayState, w: float32, h: float32): void {
 	o.y = MARGIN;
 	o.panel.at(o.x, o.y);
 	const shown: int32 = o.clicks % (BAR_SLOTS + 1);
-	for (let i: int32 = 0 as int32; i < BAR_SLOTS; i++) o.bars[i].visible = i < shown;
+	for (let i: int32 = 0 as int32; i < BAR_SLOTS; i++) o.bars[i].setVisible(i < shown);
 }
 
 export function overlayHit(o: OverlayState, x: float32, y: float32): boolean {

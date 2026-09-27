@@ -253,9 +253,10 @@ fi
 # The counters cannot see an allocation that moves no length, so read the emitted C. It sees
 # array copies and fresh arrays; not aliases (`let b = vec` emits no copy on msc 0.2.55, card
 # 2026-09-23-vec-param-copy-corrupts-heap), not stream growth, not allocation inside C.
-FRAME_PATH="scene:tick scene:present scene:presentAt render:draw render:drawContent render:sync
-	render:emitNode render:emitLabel render:emitStyledImage render:labelStyle render:localBounds
-	render:boxRenderBounds render:visualTile render:sortByZ render:sharedGlyphView
+FRAME_PATH="scene:tick scene:present scene:presentAt render:draw render:drawRow render:drawContent
+	render:sync render:syncRow render:meshBounds render:emitNode render:emitLabel
+	render:emitStyledImage render:localBounds render:boxRenderBounds render:visualTile
+	render:sharedGlyphView node:clearChanges node:refOf node:liveRow node:imageStyleOf
 	render:renderScaleGrid label84ext:placementCurrent label84ext:placementKey label84ext:uvRect
 	label84ext:markGlyphPageDrawn label84ext:beginGlyphFrame label84ext:glyphPageHandle
 	glyph65tlas:tile glyph65tlas:markDrawn glyph65tlas:beginFrame glyph65tlas:pageHandle
@@ -279,7 +280,8 @@ REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	text76ayout:tallestFaces grapheme:breaksBefore line66reak:lineBreaks line66reak:unitBreak
 	glyph65tlas:acquire glyph65tlas:allocate glyph65tlas:placeOnPage
 	glyph65tlas:ensurePage glyph65tlas:reclaimPage glyph65tlas:release"
-MEASURE_PATH="render:textWidth render:textHeight node:requireLabel"
+MEASURE_PATH="render:textWidth render:textHeight render:shapedPayload node:labelRow
+	node:requireKind"
 copied=""
 followed=0
 allocated=""

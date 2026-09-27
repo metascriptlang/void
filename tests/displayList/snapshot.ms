@@ -20,10 +20,7 @@ import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { GLYPH_PAGE_SIZE } from "../../src/void2d/glyphAtlas";
 import { scene, add } from "../../src/void2d/scene";
-import {
-	Node2D, rect, mask, at, addChild, setBoxStyle, setImageStyle, label, graphics, sprite,
-	underline, selection,
-} from "../../src/void2d/node";
+import { NodeRef, Scene } from "../../src/void2d/node";
 import { sync, draw, labelEditingRefusals } from "../../src/void2d/render";
 import {
 	begin2d,
@@ -238,7 +235,7 @@ function formatStream(): string {
 }
 
 // Record one scene and stop. No pass is opened and no upload happens, which is the point.
-function record(root: Node2D, w: float32, h: float32, dpi: float32): string {
+function record(root: NodeRef, w: float32, h: float32, dpi: float32): string {
 	setSceneSmooth(true);
 	begin2d(w, h, dpi);
 	root.sync(identity2d(), true);
@@ -251,7 +248,8 @@ function record(root: Node2D, w: float32, h: float32, dpi: float32): string {
 
 test "scene smoothing seeds the first run before recording begins" {
 	setSceneSmooth(false);
-	const root = rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const root = s.rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
 	begin2d(16.0, 16.0, 1.0);
 	root.sync(identity2d(), true);
 	root.draw(1.0, 16.0, 16.0);
@@ -299,13 +297,13 @@ function snapshot(name: string, actual: string): boolean {
 
 // Painter order: three siblings and a child, drawn in array order, each a later range in one
 // shared vertex stream. A reordering shows up as the ranges swapping.
-function orderScene(): Node2D {
+function orderScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	s.add(rect(10.0, 10.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
-	const middle = s.add(rect(10.0, 10.0, rgba(0.0, 1.0, 0.0, 1.0)).at(20.0, 0.0));
-	middle.addChild(rect(4.0, 4.0, rgba(0.0, 0.0, 1.0, 1.0)).at(1.0, 1.0));
-	s.add(rect(10.0, 10.0, rgba(1.0, 1.0, 0.0, 1.0)).at(40.0, 0.0));
-	return s.root;
+	s.add(s.rect(10.0, 10.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
+	const middle = s.add(s.rect(10.0, 10.0, rgba(0.0, 1.0, 0.0, 1.0)).at(20.0, 0.0));
+	middle.addChild(s.rect(4.0, 4.0, rgba(0.0, 0.0, 1.0, 1.0)).at(1.0, 1.0));
+	s.add(s.rect(10.0, 10.0, rgba(1.0, 1.0, 0.0, 1.0)).at(40.0, 0.0));
+	return s.refOf(s.root);
 }
 
 // One batch per reason: the same geometry with one piece of state different each time, so
@@ -317,133 +315,132 @@ function orderScene(): Node2D {
 // first one opened is empty, `closeRun` records nothing for it, and the reason that survives
 // is the *last* cause rather than the first. The field is therefore "a reason", not "the only
 // reason" - enough to name a regression, not enough to conclude from alone.
-function breaksScene(): Node2D {
+function breaksScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	s.add(rect(8.0, 8.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
-	const added = s.add(rect(8.0, 8.0, rgba(0.0, 1.0, 0.0, 1.0)).at(10.0, 0.0));
-	added.blend = BlendMode.Add;
-	const nearest = s.add(rect(8.0, 8.0, rgba(0.0, 0.0, 1.0, 1.0)).at(20.0, 0.0));
-	nearest.smooth = Smooth.Off;
-	const wrapped = s.add(rect(8.0, 8.0, rgba(1.0, 1.0, 0.0, 1.0)).at(30.0, 0.0));
-	wrapped.tileWrap = true;
-	const firstView = s.add(sprite(tile(11, 8.0, 8.0)).at(40.0, 0.0));
-	firstView.smooth = Smooth.On;
-	const secondView = s.add(sprite(tile(12, 8.0, 8.0)).at(50.0, 0.0));
-	secondView.smooth = Smooth.On;
-	return s.root;
+	s.add(s.rect(8.0, 8.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
+	const added = s.add(s.rect(8.0, 8.0, rgba(0.0, 1.0, 0.0, 1.0)).at(10.0, 0.0));
+	added.setBlend(BlendMode.Add);
+	const nearest = s.add(s.rect(8.0, 8.0, rgba(0.0, 0.0, 1.0, 1.0)).at(20.0, 0.0));
+	nearest.setSmooth(Smooth.Off);
+	const wrapped = s.add(s.rect(8.0, 8.0, rgba(1.0, 1.0, 0.0, 1.0)).at(30.0, 0.0));
+	wrapped.setTileWrap(true);
+	const firstView = s.add(s.sprite(tile(11, 8.0, 8.0)).at(40.0, 0.0));
+	firstView.setSmooth(Smooth.On);
+	const secondView = s.add(s.sprite(tile(12, 8.0, 8.0)).at(50.0, 0.0));
+	secondView.setSmooth(Smooth.On);
+	return s.refOf(s.root);
 }
 
 // A Mask records a scissor, its children inherit it, and the clip is given back afterwards.
-function clipScene(): Node2D {
+function clipScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	s.add(rect(6.0, 6.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
-	const m = mask(24.0, 16.0).at(10.0, 4.0);
-	m.addChild(rect(40.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)).at(0.0, 0.0));
+	s.add(s.rect(6.0, 6.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
+	const m = s.mask(24.0, 16.0).at(10.0, 4.0);
+	m.addChild(s.rect(40.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)).at(0.0, 0.0));
 	s.add(m);
-	s.add(rect(6.0, 6.0, rgba(0.0, 0.0, 1.0, 1.0)).at(60.0, 0.0));
-	return s.root;
+	s.add(s.rect(6.0, 6.0, rgba(0.0, 0.0, 1.0, 1.0)).at(60.0, 0.0));
+	return s.refOf(s.root);
 }
-function rotatedClipScene(): Node2D {
+function rotatedClipScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const m = mask(40.0, 24.0).at(44.0, 24.0);
-	m.pivotX = 20.0;
-	m.pivotY = 12.0;
-	m.rotation = 0.4;
-	m.addChild(rect(80.0, 64.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-20.0, -20.0));
+	const m = s.mask(40.0, 24.0).at(44.0, 24.0);
+	m.setPivot(20.0, 12.0);
+	m.setRotation(0.4);
+	m.addChild(s.rect(80.0, 64.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-20.0, -20.0));
 	s.add(m);
-	return s.root;
+	return s.refOf(s.root);
 }
 
-function culledListScene(): Node2D {
+function culledListScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const m = mask(200.0, 90.0).at(28.0, 30.0);
+	const m = s.mask(200.0, 90.0).at(28.0, 30.0);
 	for (let i: int32 = 0; i < 40; i++) {
-		m.addChild(rect(190.0, 18.0, rgba(0.0, 1.0, 0.0, 1.0))
+		m.addChild(s.rect(190.0, 18.0, rgba(0.0, 1.0, 0.0, 1.0))
 			.at(5.0, (i as float32) * 22.0 - 240.0));
 	}
 	s.add(m);
-	return s.root;
+	return s.refOf(s.root);
 }
 
-function boxStyleScene(): Node2D {
+function boxStyleScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
-	box.alpha = 0.5;
+	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
+	box.setAlpha(0.5);
 	box.setBoxStyle(BoxStyle.create(
 		{ topLeft: 2.0, topRight: 4.0, bottomRight: 6.0, bottomLeft: 8.0 },
 		{ left: 1.0, top: 2.0, right: 3.0, bottom: 4.0 },
 		rgba(0.9, 0.7, 0.5, 0.6),
 	).dashed());
-	return s.root;
+	return s.refOf(s.root);
 }
 
-function rejectedBoxEffectScene(): Node2D {
+function rejectedBoxEffectScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
+	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(6.0),
 		uniformBorders(2.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
 	));
-	box.colorMatrix = colorMatrixGrayscale(1.0);
-	return s.root;
+	box.setColorMatrix(colorMatrixGrayscale(1.0));
+	return s.refOf(s.root);
 }
 
-function snapScene(): Node2D {
+function snapScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	s.add(rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
-	const boxed = s.add(rect(30.0, 20.0, rgba(0.3, 0.5, 0.9, 1.0)).at(64.35, 16.8));
+	s.add(s.rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
+	const boxed = s.add(s.rect(30.0, 20.0, rgba(0.3, 0.5, 0.9, 1.0)).at(64.35, 16.8));
 	boxed.setBoxStyle(BoxStyle.create(
 		uniformRadii(4.0),
 		{ left: 0.8, top: 1.3, right: 0.0, bottom: 2.2 },
 		rgba(0.95, 0.95, 1.0, 1.0),
 	));
-	return s.root;
+	return s.refOf(s.root);
 }
 
-function glyphScene(): Node2D {
+function glyphScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const card = s.add(rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
+	const card = s.add(s.rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
 	card.setBoxStyle(BoxStyle.create(
 		uniformRadii(6.0),
 		uniformBorders(2.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
 	));
-	s.add(label("Hi void", 16.0, rgba(0.95, 0.96, 1.0, 1.0)).at(16.0, 14.0));
-	return s.root;
+	s.add(s.label("Hi void", 16.0, rgba(0.95, 0.96, 1.0, 1.0)).at(16.0, 14.0));
+	return s.refOf(s.root);
 }
 
-function boxShadowScene(): Node2D {
+function boxShadowScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const box = s.add(rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
+	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.setBoxStyle(BoxStyle.create(
 		{ topLeft: 4.0, topRight: 6.0, bottomRight: 8.0, bottomLeft: 10.0 },
 		uniformBorders(1.0),
 		rgba(0.9, 0.9, 0.95, 1.0),
 	).castShadow(rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0));
-	const well = s.add(rect(36.0, 22.0, rgba(0.85, 0.88, 0.94, 1.0)).at(64.0, 16.0));
+	const well = s.add(s.rect(36.0, 22.0, rgba(0.85, 0.88, 0.94, 1.0)).at(64.0, 16.0));
 	well.setBoxStyle(BoxStyle.create(
 		uniformRadii(5.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castInsetShadow(rgba(0.0, 0.0, 0.05, 0.6), 2.5));
-	return s.root;
+	return s.refOf(s.root);
 }
 
-function shadowOnlyVisibleScene(): Node2D {
+function shadowOnlyVisibleScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const box = s.add(rect(20.0, 20.0, rgba(0.2, 0.4, 0.6, 0.8)).at(104.0, 10.0));
+	const box = s.add(s.rect(20.0, 20.0, rgba(0.2, 0.4, 0.6, 0.8)).at(104.0, 10.0));
 	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(4.0),
 		uniformBorders(0.0),
 		rgba(0.0, 0.0, 0.0, 0.0),
 	).castShadow(rgba(0.0, 0.0, 0.0, 0.8), 3.0, -6.0, 0.0));
-	return s.root;
+	return s.refOf(s.root);
 }
 
-function gradientScene(): Node2D {
+function gradientScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const g = s.add(graphics());
+	const g = s.add(s.graphics());
 	g.fillRect(0.0, 0.0, 8.0, 8.0, rgba(0.2, 0.3, 0.4, 1.0));
 	g.fillGradientRectOklab(10.0, 0.0, 16.0, 8.0,
 		rgba(1.0, 0.0, 0.0, 1.0), rgba(0.0, 0.0, 1.0, 0.8), 0.0);
@@ -454,29 +451,28 @@ function gradientScene(): Node2D {
 		rgba(0.1, 0.1, 0.1, 1.0), rgba(0.8, 0.6, 0.2, 1.0), 6.0, 2.0);
 	g.fillCheckerRect(64.0, 0.0, 16.0, 8.0,
 		rgba(0.2, 0.2, 0.2, 1.0), rgba(0.8, 0.8, 0.8, 1.0), 4.0);
-	return s.root;
+	return s.refOf(s.root);
 }
-function imageStyleScene(): Node2D {
+function imageStyleScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const image = sprite(tile(17, 200.0, 100.0)).at(10.0, 12.0);
-	image.w = 100.0;
-	image.h = 80.0;
+	const image = s.sprite(tile(17, 200.0, 100.0)).at(10.0, 12.0);
+	image.setSize(100.0, 80.0);
 	image.setImageStyle(imageStyle(
 		{ topLeft: 3.0, topRight: 6.0, bottomRight: 9.0, bottomLeft: 12.0 },
 		true,
 		ObjectFit.Cover,
 	));
 	s.add(image);
-	return s.root;
+	return s.refOf(s.root);
 }
-function textPrimitiveScene(): Node2D {
+function textPrimitiveScene(): NodeRef {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	s.add(underline(72.0, 2.0, rgba(0.9, 0.3, 0.2, 1.0), false).at(8.0, 8.0));
-	const wave = s.add(underline(84.0, 3.0, rgba(0.3, 0.7, 1.0, 0.8), true).at(8.0, 18.0));
-	wave.rotation = 0.2;
-	s.add(selection(80.0, 18.0, rgba(0.2, 0.5, 0.9, 0.65),
+	s.add(s.underline(72.0, 2.0, rgba(0.9, 0.3, 0.2, 1.0), false).at(8.0, 8.0));
+	const wave = s.add(s.underline(84.0, 3.0, rgba(0.3, 0.7, 1.0, 0.8), true).at(8.0, 18.0));
+	wave.setRotation(0.2);
+	s.add(s.selection(80.0, 18.0, rgba(0.2, 0.5, 0.9, 0.65),
 		-6.0, 58.0, 12.0, 92.0).at(28.0, 42.0));
-	return s.root;
+	return s.refOf(s.root);
 }
 
 
@@ -507,7 +503,8 @@ test "T1 production emitters reach every batch-break reason" {
 	assert currentRenderScale() == 1.5;
 	beginTarget(1, 16.0, 16.0, 1.25, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));
 	assert currentRenderScale() == 1.25;
-	const targetRoot = rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const targetRoot = s.rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
 	targetRoot.sync(identity2d(), true);
 	targetRoot.draw(1.0, 16.0, 16.0);
 	endTarget();
@@ -623,7 +620,7 @@ test "the growth policy: max(2x, pow2), no shrink, and a drop past the cap" {
 	assert growthTarget(0, cap + 1) == 0;
 }
 
-function recordedInstances(root: Node2D, w: float32, h: float32): Vec<float32> {
+function recordedInstances(root: NodeRef, w: float32, h: float32): Vec<float32> {
 	setSceneSmooth(true);
 	begin2d(w, h, 1.0);
 	root.sync(identity2d(), true);
@@ -639,12 +636,12 @@ function recordedInstances(root: Node2D, w: float32, h: float32): Vec<float32> {
 
 test "a caret blink changes no instance but the caret's" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("let x = 1;\nx + 2", 16.0, rgba(0.9, 0.9, 0.9, 1.0)).at(8.0, 6.0));
+	const text = s.add(s.label("let x = 1;\nx + 2", 16.0, rgba(0.9, 0.9, 0.9, 1.0)).at(8.0, 6.0));
 	text.setSelectionRange({ start: 4, length: 9 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(13, rgba(1.0, 1.0, 1.0, 1.0));
-	const shown = recordedInstances(s.root, 160.0, 64.0);
-	text.update(0.6);
-	const hidden = recordedInstances(s.root, 160.0, 64.0);
+	const shown = recordedInstances(s.refOf(s.root), 160.0, 64.0);
+	s.tick(0.6);
+	const hidden = recordedInstances(s.refOf(s.root), 160.0, 64.0);
 	assert (shown.length as int32) == (hidden.length as int32) + REC_UI_FLOATS;
 	let differing: int32 = 0;
 	for (let i = 0; i < (hidden.length as int32); i++) {
@@ -652,19 +649,19 @@ test "a caret blink changes no instance but the caret's" {
 	}
 	if (differing > 0) { console.log(`t1: ${differing} instance floats moved on a blink`); }
 	assert differing == 0;
-	text.update(0.5);
-	const back = recordedInstances(s.root, 160.0, 64.0);
+	s.tick(0.5);
+	const back = recordedInstances(s.refOf(s.root), 160.0, 64.0);
 	assert (back.length as int32) == (shown.length as int32);
 }
 
 test "a ragged selection is one row quad per line, each carrying its neighbours" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("abcdef\nab\nabcdefgh", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	const text = s.add(s.label("abcdef\nab\nabcdefgh", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 2, length: 14 }, rgba(0.3, 0.5, 0.9, 0.5));
 	setSceneSmooth(true);
 	begin2d(200.0, 80.0, 1.0);
-	s.root.sync(identity2d(), true);
-	s.root.draw(1.0, 200.0, 80.0);
+	s.refOf(s.root).sync(identity2d(), true);
+	s.refOf(s.root).draw(1.0, 200.0, 80.0);
 	finishRecording();
 	let rows: int32 = 0;
 	let firstRow: int32 = -1;
@@ -683,7 +680,7 @@ test "a ragged selection is one row quad per line, each carrying its neighbours"
 	frameEnd();
 }
 
-function selectedSpans(root: Node2D, w: float32, h: float32): Vec<float32> {
+function selectedSpans(root: NodeRef, w: float32, h: float32): Vec<float32> {
 	setSceneSmooth(true);
 	begin2d(w, h, 1.0);
 	root.sync(identity2d(), true);
@@ -706,28 +703,28 @@ function selectedSpans(root: Node2D, w: float32, h: float32): Vec<float32> {
 
 test "a selection across a wrap with no separator lights only the text it covers" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("well-known", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
-	text.maxWidth = text.calcTextWidth("well-") + 1.0;
+	const text = s.add(s.label("well-known", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setMaxWidth(text.calcTextWidth("well-") + 1.0);
 	const lines = text.textLayout().lines;
 	assert (lines.length as int32) == 2;
 	assert lines[0].indexEnd == 5 && lines[1].indexStart == 5;
 	const color = rgba(0.3, 0.5, 0.9, 0.5);
 	text.setSelectionRange({ start: 5, length: 5 }, color);
-	const fromWrap = selectedSpans(s.root, 200.0, 80.0);
+	const fromWrap = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	assert (fromWrap.length as int32) == 2;
 	assert approx(fromWrap[0], lines[1].x);
 	text.setSelectionRange({ start: 2, length: 6 }, color);
-	const acrossWrap = selectedSpans(s.root, 200.0, 80.0);
+	const acrossWrap = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	assert (acrossWrap.length as int32) == 4;
 	assert approx(acrossWrap[1], lines[0].x + lines[0].width);
 }
 
 test "a label's bounds hold its selection tail and a caret after its widest line" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("abcd\nab", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	const text = s.add(s.label("abcd\nab", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 2, length: 4 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
-	const spans = selectedSpans(s.root, 200.0, 80.0);
+	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	let bounds = emptyBounds();
 	text.getBounds(bounds);
 	const first = text.textLayout().lines[0];
@@ -738,24 +735,24 @@ test "a label's bounds hold its selection tail and a caret after its widest line
 
 test "a label's runs, selection and caret under a colour effect are refused aloud" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	const text = s.add(s.label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 1, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
 	const before: int32 = labelEditingRefusals();
-	selectedSpans(s.root, 200.0, 80.0);
+	selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	assert labelEditingRefusals() == before;
-	text.colorMatrix = colorMatrixGrayscale(1.0);
-	const spans = selectedSpans(s.root, 200.0, 80.0);
+	text.setColorMatrix(colorMatrixGrayscale(1.0));
+	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	assert (spans.length as int32) == 0;
 	assert labelEditingRefusals() == before + 1;
 }
 
 test "a selected row covers its trailing spaces, and a blank indented row its indent" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("ab  \n    \ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	const text = s.add(s.label("ab  \n    \ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 0, length: 11 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
-	const spans = selectedSpans(s.root, 200.0, 80.0);
+	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	const l = text.textLayout();
 	const spaces = l.glyphs[3];
 	const indent = l.glyphs[l.lines[1].firstGlyph + 3];
@@ -770,13 +767,13 @@ test "a selected row covers its trailing spaces, and a blank indented row its in
 
 test "selected rows meet across line spacing, half of it above each row and half below" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("ab\ncd\nef", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
-	text.lineSpacing = 6.0;
+	const text = s.add(s.label("ab\ncd\nef", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setLineSpacing(6.0);
 	text.setSelectionRange({ start: 0, length: 8 }, rgba(0.3, 0.5, 0.9, 0.5));
 	setSceneSmooth(true);
 	begin2d(200.0, 100.0, 1.0);
-	s.root.sync(identity2d(), true);
-	s.root.draw(1.0, 200.0, 100.0);
+	s.refOf(s.root).sync(identity2d(), true);
+	s.refOf(s.root).draw(1.0, 200.0, 100.0);
 	finishRecording();
 	const tops: Vec<float32> = new Array(0);
 	const bottoms: Vec<float32> = new Array(0);
@@ -801,10 +798,10 @@ test "selected rows meet across line spacing, half of it above each row and half
 
 test "under setForceWidth a selected row that ends in a mark reaches its last cell" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(label("aé", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	const text = s.add(s.label("aé", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setForceWidth(10.0);
 	text.setSelectionRange({ start: 0, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
-	const spans = selectedSpans(s.root, 200.0, 80.0);
+	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	assert (spans.length as int32) == 2;
 	assert approx(spans[1], 20.0);
 }

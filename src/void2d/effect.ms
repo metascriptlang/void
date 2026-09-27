@@ -1,6 +1,5 @@
 // Void 2D colour effects — h2d.Drawable colorMatrix factories. A 4x4 RGBA transform
-// packed column-major for GLSL `colorMatrix * rgba`; identity = no-op. Assign to
-// Node2D.colorMatrix; colorAdd (Node2D.colorAdd) is just a Color added afterwards.
+// packed column-major for GLSL `colorMatrix * rgba`; identity = no-op.
 
 // Luminance grayscale (Rec.601). amount 0 = original .. 1 = fully gray.
 export function colorMatrixGrayscale(amount: float32): float32[] {

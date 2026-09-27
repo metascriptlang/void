@@ -28,7 +28,8 @@ import {
 	backendDirectory,
 } from "./table";
 import { SceneBuilder, sceneBuilders } from "./scenes";
-import { Scene, presentAt } from "../../src/void2d/scene";
+import { Scene } from "../../src/void2d/node";
+import { presentAt } from "../../src/void2d/scene";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
 import { renderTargetsAlive } from "../../src/void2d/render";

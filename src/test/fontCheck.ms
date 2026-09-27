@@ -15,7 +15,8 @@ import {
 	fallbackFacesLoaded,
 	fallbackProbes,
 } from "../void2d/font";
-import { label } from "../void2d/node";
+import { Scene } from "../void2d/node";
+import { scene } from "../void2d/scene";
 import { Align, TextLayout } from "../void2d/textLayout";
 import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
@@ -208,10 +209,11 @@ test "fallback families resolve in the font's weight, synthesized when they lack
 }
 
 test "setFont gives a label the font a FontId names" {
-	const n = label("void2d", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const n = s.label("void2d", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const bold: FontId = resolved(font("Test Sans", 700, FontStyle.Normal));
 	n.setFont(bold);
-	assert n.fontId == bold;
+	assert n.textStyle().font == bold;
 }
 
 struct AdjustCase {

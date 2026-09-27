@@ -73,6 +73,8 @@ export struct Decoration {
 }
 
 export interface LabelText {
+	text: string;
+	stale: boolean;
 	layout: TextLayout;
 	style: TextStyle;
 	placed: Vec<PlacedGlyph>;
@@ -165,6 +167,8 @@ export function allocateLabelText(): int32 {
 	const noRuns: Vec<TextRun> = new Array(0);
 	const noBreaks: Vec<int32> = new Array(0);
 	const entry: LabelText = {
+		text: "",
+		stale: true,
 		layout: emptyLayout(),
 		style: style,
 		placed: new Array(0),

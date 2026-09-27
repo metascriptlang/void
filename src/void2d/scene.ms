@@ -2,38 +2,28 @@
 // entry that owns the GPU pass. Heaps: `s2d.addChild(o); s2d.render(engine)`.
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
-import { Node2D, group, addChild, update } from "./node";
+import { Scene, NodeRef, DrawKind, NO_NODE } from "./node";
 import { sync, draw, releaseTargets } from "./render";
 import { begin2d, end2d, flushTargets, setSceneSmooth } from "./draw";
-import { Color, Camera, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
+import { advanceBlink, NO_LABEL_TEXT } from "./labelText";
+import { Color, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
-export interface Scene {
-	root: Node2D;
-	clear: Color;
-	cam: Camera;
-	scaleMode: ScaleMode;
-	designW: float32;
-	designH: float32;
-	viewMat: Transform2D;
-	viewInit: boolean;
-	// What a node's `Smooth.Inherit` resolves to. h2d keeps this on the render context and
-	// defaults it to nearest (`h2d/RenderContext.hx:52`); HEAPS.md "Do not copy from h2d"
-	// rejects that default, because scaled UI and text are the common case here, not pixel
-	// art. A pixel-art scene sets it false once instead of tagging every node.
-	defaultSmooth: boolean;
-}
-
 export function scene(clear: Color): Scene {
-	return {
-		root: group(), clear: clear, cam: camera(),
-		scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
-		viewMat: identity2d(), viewInit: false, defaultSmooth: true
+	const s: Scene = {
+		generations: [], free: [], retired: 0, kinds: [], payloads: [], changed: [], dirty: [],
+		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
+		layouts: [], parents: [], children: [], localMatrices: [], worlds: [], bounds: [],
+		anims: [], freeAnims: [], meshes: [], freeMeshes: [], stack: [], root: NO_NODE,
+		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
+		viewMat: identity2d(), viewInit: false, defaultSmooth: true,
 	};
+	s.root = s.newRow(DrawKind.Group, NO_NODE);
+	return s;
 }
 
-export function add(this s: Scene, c: Node2D): Node2D {
-	return s.root.addChild(c);
+export function add(this s: Scene, c: NodeRef): NodeRef {
+	return s.refOf(s.root).addChild(c);
 }
 
 export function setScaleMode(this s: Scene, mode: ScaleMode, designW: float32, designH: float32): void {
@@ -43,7 +33,18 @@ export function setScaleMode(this s: Scene, mode: ScaleMode, designW: float32, d
 }
 
 export function tick(this s: Scene, dt: float32): void {
-	s.root.update(dt);
+	for (let i: int32 = 0; i < (s.kinds.length as int32); i++) {
+		const payload: int32 = s.payloads[i];
+		match (s.kinds[i]) {
+			DrawKind.Anim => {
+				s.anims[payload].clock = s.anims[payload].clock + dt;
+			},
+			DrawKind.Label => {
+				if (payload != NO_LABEL_TEXT) { advanceBlink(payload, dt); }
+			},
+			_ => {},
+		}
+	}
 }
 
 export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D {
@@ -118,8 +119,9 @@ export function presentAt(this s: Scene, dpi: float32): void {
 		s.viewMat = nv;
 		s.viewInit = true;
 	}
-	s.root.sync(s.viewMat, viewChanged);
-	s.root.draw(1.0, wf, hf);
+	const root: NodeRef = s.refOf(s.root);
+	root.sync(s.viewMat, viewChanged);
+	root.draw(1.0, wf, hf);
 	// Every render-target pass first, with no pass open, then one swapchain pass that is only
 	// draws. That ordering is what stops a filter nesting a pass inside the frame's pass, and
 	// it is the GPUI frame shape (GPUI.md:18).
@@ -128,4 +130,5 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	end2d();
 	endPass();
 	commit();
+	s.clearChanges();
 }

@@ -8,7 +8,8 @@ import {
 	fbWidth, fbHeight, dpiScale, gfxSetup, ViewId, ViewInvalid,
 } from "../../src/sokol/gpu";
 import { setup2d } from "../../src/void2d/draw";
-import { Scene, present } from "../../src/void2d/scene";
+import { Scene } from "../../src/void2d/node";
+import { present } from "../../src/void2d/scene";
 import {
 	BoardState, boardState, boardScene, layoutBoard, toggleTileAt,
 	OverlayState, overlayState, overlayScene, layoutOverlay,

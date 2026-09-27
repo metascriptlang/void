@@ -5,18 +5,18 @@
 import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, makeRenderTarget, renderTargetView, beginRenderTargetPass, endPass, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d, begin2d, flushTargets, beginTarget, endTarget, drawRect, drawImage } from "../void2d/draw";
 import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
-import { Node2D, rect, sprite, label, anim, graphics, mask, scaleGrid, at, addChild } from "../void2d/node";
+import { NodeRef, Scene } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Align } from "../void2d/textLayout";
-import { Scene, scene, add, present, tick } from "../void2d/scene";
+import { scene, add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode, Smooth } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene | null = null;
-let panel: Node2D | null = null;
-let logo: Node2D | null = null;
-let green: Node2D | null = null;
+let panel: NodeRef | null = null;
+let logo: NodeRef | null = null;
+let green: NodeRef | null = null;
 let t: float32 = 0.0;
 let dir: float32 = 1.0;
 // The camera is recomputed from the surface size on every draw, so a pan cannot live in
@@ -32,6 +32,7 @@ let rtShadow: uint32 = 0;
 export function init2d(): void {
 	gfxSetup();
 	setup2d();
+	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 
 	const img = loadImageSync("assets/test.png", 4);
 	const iw: int32 = imageWidth();
@@ -41,20 +42,14 @@ export function init2d(): void {
 	const logoH: float32 = 180.0;
 	const logoW: float32 = logoH * (iw as float32) / (ih as float32);
 
-	const logoNode = sprite(tile(logoView, logoW, logoH)).at(30.0, 200.0);
+	const logoNode = sceneObj.sprite(tile(logoView, logoW, logoH)).at(30.0, 200.0);
 
 	const sheet = tile(logoView, iw as float32, ih as float32);
-	const cropNode = sprite(sheet.sub(0.0, 0.0, (iw as float32) * 0.5, (ih as float32) * 0.5)).at(210.0, 30.0);
-	cropNode.w = 120.0;
-	cropNode.h = 120.0;
-	cropNode.colorAdd = rgba(0.35, 0.0, 0.0, 0.0);
+	const cropNode = sceneObj.sprite(sheet.sub(0.0, 0.0, (iw as float32) * 0.5, (ih as float32) * 0.5)).at(210.0, 30.0);
+	cropNode.setSize(120.0, 120.0).setColorAdd(rgba(0.35, 0.0, 0.0, 0.0));
 
-	const greenNode = rect(140.0, 140.0, rgba(0.35, 0.80, 0.45, 1.0)).at(180.0, 180.0);
-	greenNode.alpha = 0.6;
-	greenNode.blend = BlendMode.Add;
-	greenNode.pivotX = 70.0;
-	greenNode.pivotY = 70.0;
-	greenNode.zIndex = 10;
+	const greenNode = sceneObj.rect(140.0, 140.0, rgba(0.35, 0.80, 0.45, 1.0)).at(180.0, 180.0);
+	greenNode.setAlpha(0.6).setBlend(BlendMode.Add).setPivot(70.0, 70.0).setZIndex(10);
 
 	const hw: float32 = (iw as float32) * 0.5;
 	const hh: float32 = (ih as float32) * 0.5;
@@ -62,21 +57,20 @@ export function init2d(): void {
 		sheet.sub(0.0, 0.0, hw, hh), sheet.sub(hw, 0.0, hw, hh),
 		sheet.sub(hw, hh, hw, hh), sheet.sub(0.0, hh, hw, hh),
 	];
-	const animNode = anim(frames, 6.0).at(250.0, 250.0);
-	animNode.w = 90.0;
-	animNode.h = 90.0;
+	const animNode = sceneObj.anim(frames, 6.0).at(250.0, 250.0);
+	animNode.setSize(90.0, 90.0);
 
-	const panelNode = rect(360.0, 380.0, rgba(0.16, 0.18, 0.24, 1.0)).at(60.0, 60.0);
-	const redNode = rect(160.0, 70.0, rgba(0.90, 0.30, 0.35, 1.0)).at(30.0, 30.0);
-	redNode.colorMatrix = colorMatrixGrayscale(1.0);
+	const panelNode = sceneObj.rect(360.0, 380.0, rgba(0.16, 0.18, 0.24, 1.0)).at(60.0, 60.0);
+	const redNode = sceneObj.rect(160.0, 70.0, rgba(0.90, 0.30, 0.35, 1.0)).at(30.0, 30.0);
+	redNode.setColorMatrix(colorMatrixGrayscale(1.0));
 	panelNode.addChild(redNode);
 	panelNode.addChild(cropNode);
 	panelNode.addChild(greenNode);
 	panelNode.addChild(logoNode);
 	panelNode.addChild(animNode);
-	panelNode.addChild(label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0));
+	panelNode.addChild(sceneObj.label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0));
 
-	const gfxNode = graphics().at(460.0, 40.0);
+	const gfxNode = sceneObj.graphics().at(460.0, 40.0);
 	gfxNode.fillRoundedRect(0.0, 0.0, 170.0, 90.0, 22.0, rgba(0.30, 0.55, 0.85, 1.0));
 	gfxNode.strokeRect(0.0, 0.0, 170.0, 90.0, 4.0, rgba(0.85, 0.92, 1.0, 1.0));
 	gfxNode.fillEllipse(45.0, 165.0, 45.0, 28.0, rgba(0.95, 0.75, 0.25, 1.0));
@@ -90,49 +84,42 @@ export function init2d(): void {
 	];
 	gfxNode.fillPolygon(arrow, rgba(0.62, 0.50, 0.92, 1.0));
 
-	const gradNode = graphics().at(40.0, 452.0);
+	const gradNode = sceneObj.graphics().at(40.0, 452.0);
 	gradNode.fillGradientRect(0.0, 0.0, 150.0, 95.0, rgba(0.20, 0.45, 0.95, 1.0), rgba(0.95, 0.30, 0.55, 1.0), 0.0);
 	gradNode.fillGradientRect(170.0, 0.0, 150.0, 95.0, rgba(0.15, 0.75, 0.55, 1.0), rgba(0.98, 0.85, 0.25, 1.0), 1.5708);
 	gradNode.fillRadialGradient(385.0, 47.0, 42.0, rgba(1.0, 1.0, 1.0, 1.0), rgba(0.30, 0.15, 0.60, 1.0));
 
-	const maskNode = mask(150.0, 120.0).at(470.0, 380.0);
-	maskNode.addChild(rect(240.0, 240.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-40.0, -40.0));
-	maskNode.addChild(label("clipped", 40.0, rgba(0.1, 0.1, 0.14, 1.0)).at(8.0, 50.0));
+	const maskNode = sceneObj.mask(150.0, 120.0).at(470.0, 380.0);
+	maskNode.addChild(sceneObj.rect(240.0, 240.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-40.0, -40.0));
+	maskNode.addChild(sceneObj.label("clipped", 40.0, rgba(0.1, 0.1, 0.14, 1.0)).at(8.0, 50.0));
 
-	const sgNode = scaleGrid(sheet, 36.0, 36.0, 36.0, 36.0).at(650.0, 380.0);
-	sgNode.w = 270.0;
-	sgNode.h = 150.0;
+	const sgNode = sceneObj.scaleGrid(sheet, 36.0, 36.0, 36.0, 36.0).at(650.0, 380.0);
+	sgNode.setSize(270.0, 150.0);
 
-	const keyBg = rect(120.0, 120.0, rgba(0.20, 0.85, 0.85, 1.0)).at(470.0, 530.0);
-	const keyed = sprite(tile(logoView, 120.0, 120.0)).at(470.0, 530.0);
-	keyed.colorKey = rgba(0.05, 0.05, 0.07, 1.0);
+	const keyBg = sceneObj.rect(120.0, 120.0, rgba(0.20, 0.85, 0.85, 1.0)).at(470.0, 530.0);
+	const keyed = sceneObj.sprite(tile(logoView, 120.0, 120.0)).at(470.0, 530.0);
+	keyed.setColorKey(rgba(0.05, 0.05, 0.07, 1.0));
 
-	const flipped = sprite(tile(logoView, 90.0, 90.0).flipX()).at(610.0, 545.0);
+	const flipped = sceneObj.sprite(tile(logoView, 90.0, 90.0).flipX()).at(610.0, 545.0);
 	const pixTile = sheet.sub((iw as float32) * 0.40, (ih as float32) * 0.38, 14.0, 14.0);
-	const nearestNode = sprite(pixTile).at(720.0, 555.0);
-	nearestNode.w = 80.0;
-	nearestNode.h = 80.0;
-	nearestNode.smooth = Smooth.Off;
-	const linearNode = sprite(pixTile).at(810.0, 555.0);
-	linearNode.w = 80.0;
-	linearNode.h = 80.0;
+	const nearestNode = sceneObj.sprite(pixTile).at(720.0, 555.0);
+	nearestNode.setSize(80.0, 80.0).setSmooth(Smooth.Off);
+	const linearNode = sceneObj.sprite(pixTile).at(810.0, 555.0);
+	linearNode.setSize(80.0, 80.0);
 
-	const ml = label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0)).at(800.0, 285.0);
-	ml.textAlign = Align.Center;
+	const ml = sceneObj.label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0)).at(800.0, 285.0);
+	ml.setTextAlign(Align.Center);
 
-	const para = label("The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0)).at(40.0, 565.0);
-	para.maxWidth = 330.0;
-	para.lineSpacing = 5.0;
-	para.letterSpacing = 1.0;
+	const para = sceneObj.label("The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0)).at(40.0, 565.0);
+	para.setMaxWidth(330.0).setLineSpacing(5.0).setLetterSpacing(1.0);
 
-	const texGfx = graphics().at(815.0, 170.0);
+	const texGfx = sceneObj.graphics().at(815.0, 170.0);
 	const texArrow: Vec2[] = [
 		vec2(0.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(95.0, 52.0),
 		vec2(48.0, 98.0), vec2(48.0, 72.0), vec2(0.0, 72.0),
 	];
 	texGfx.fillTexPolygon(sheet, texArrow, 0.0, 0.0, 100.0, 100.0, rgba(1.0, 1.0, 1.0, 1.0));
 
-	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
 	sceneObj.add(panelNode);
 	sceneObj.add(gfxNode);
 	sceneObj.add(gradNode);
@@ -152,8 +139,8 @@ export function init2d(): void {
 	rtB = makeRenderTarget(256, 256);
 	rtGlow = makeRenderTarget(256, 256);
 	rtShadow = makeRenderTarget(256, 256);
-	sceneObj.add(sprite(tile(renderTargetView(rtGlow), 120.0, 120.0)).at(700.0, 262.0));
-	sceneObj.add(sprite(tile(renderTargetView(rtShadow), 120.0, 120.0)).at(828.0, 262.0));
+	sceneObj.add(sceneObj.sprite(tile(renderTargetView(rtGlow), 120.0, 120.0)).at(700.0, 262.0));
+	sceneObj.add(sceneObj.sprite(tile(renderTargetView(rtShadow), 120.0, 120.0)).at(828.0, 262.0));
 
 	logo = logoNode;
 	green = greenNode;
@@ -179,11 +166,10 @@ export function step2d(dt: float32): void {
 	t = t + dir * 1.6;
 	if (t > 140.0) { dir = -1.0; }
 	if (t < 0.0) { dir = 1.0; }
-	logo.x = 30.0 + t;
+	logo.setX(30.0 + t);
 	const s: float32 = 0.85 + t / 466.0;
-	panel.scaleX = s;
-	panel.scaleY = s;
-	green.rotation = green.rotation + 0.03;
+	panel.setScale(s);
+	green.setRotation(green.local().rotation + 0.03);
 
 	const panSpeed: float32 = 5.0;
 	if (keyDown(KEY_D)) { panX = panX + panSpeed; }

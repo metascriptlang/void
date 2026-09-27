@@ -1060,7 +1060,8 @@ build on it.
   box (UI 10.20 → 10.81 ms at the median over 5 clean pairs of 6, then 4 clean of 10), and a
   GPU-free emission loop over the UI bench scene, the minimum of 40 × 5 frames, read −0.9 to
   +0.5 ms pair by pair. The phase A/B reads it again.
-- Step 5, change model A, `tests/experiments/changeModel.ms` (release, D3D11, 1280 × 720): 100 000
+- Step 5, change model A, `tests/experiments/changeModel.ms` at `6a0e682`, deleted with `Node2D` at
+  step 6 (release, D3D11, 1280 × 720): 100 000
   nodes, 50 000 cards each with a two-digit label, a snapshot of every field that reaches the
   instance bytes, 120 frames per reading. Of five runs, the two with load under 25 % on both sides
   read 13.2 and 13.6 ms per frame for the sweep, the same idle or with one node changed; comparing
@@ -1080,7 +1081,7 @@ build on it.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
 - One node can no longer sit under two parents (`node.ms:305-309`).
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:clip/maskScroll`, `idle-costs-a-walk`, `h2d-object-surface`, `h2d-tilegroup`, `one-node-two-parents`, `oracle:h2d`. Closed and deleted: the view id row, at step 2; the second-upload and dispose-pins rows, at step 4.
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:clip/maskScroll`, `idle-costs-a-walk`, `h2d-tilegroup`, `oracle:h2d`. Closed and deleted: the view id row, at step 2; the second-upload and dispose-pins rows, at step 4; the object-surface and two-parents rows, at step 6, with the span-of-interface style row, whose sortByZ step 6 deleted.
 
 **Tests.** T1 carries this phase: mutate one node, assert exactly one dirty range of a known size; assert byte-identical re-records; assert zero instances written on a blink; assert the draw order rebuilds only on structural change. T3: the h2d oracle for `getBounds`, `localToGlobal` / `globalToLocal`, mask intersection and scale modes, with HEAPS.md's deliberate divergences as the seed PENDING list. T4: scroll and idle budgets gated on uploaded bytes, which are deterministic.
 

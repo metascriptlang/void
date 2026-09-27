@@ -1,63 +1,84 @@
-import {
-	DrawKind, group, rect, sprite, label, anim, graphics, mask, scaleGrid, underline, selection,
-	addChild, addChildAt, removeChild, removeChildren, at, update, dispose, localToGlobal,
-	globalToLocal, setBoxStyle,
-} from "../void2d/node";
+// NodeId is named only so `==` on NodeRef resolves its NodeId helper
+// (~/metascript/.inbox/compiler/2026-09-28-struct-eq-nested-type-not-imported.md).
+import { DrawKind, Changed, NodeRef, NodeId, Scene } from "../void2d/node";
+import { scene } from "../void2d/scene";
 import { sync, getBounds } from "../void2d/render";
 import {
-	Tile, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter, glowFilter,
-	dropShadowFilter, FilterKind,
+	Tile, Transform2D, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter,
+	glowFilter, dropShadowFilter, FilterKind,
 } from "../void2d/types";
 import { approx } from "./helpers";
 import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
 
 const HALF_PI: float32 = 1.5707963;
+const white = rgba(1.0, 1.0, 1.0, 1.0);
+
+function fresh(): Scene { return scene(rgba(0.0, 0.0, 0.0, 1.0)); }
+
+function worldOf(n: NodeRef): Transform2D { return n.scene.worlds[n.id.index]; }
+
+function marked(n: NodeRef, what: Changed): boolean {
+	return n.scene.changed[n.id.index].has(what);
+}
+
+function listed(n: NodeRef): int32 {
+	let count: int32 = 0;
+	for (const i of n.scene.dirty) {
+		if (i == n.id.index) { count = count + 1; }
+	}
+	return count;
+}
 
 test "rect factory sets fields and defaults" {
-	const n = rect(10.0, 5.0, rgba(1.0, 0.0, 0.0, 1.0));
-	assert n.kind === DrawKind.Rect;
-	assert approx(n.w, 10.0);
-	assert approx(n.h, 5.0);
-	assert approx(n.color.r, 1.0);
-	assert approx(n.alpha, 1.0);
-	assert n.visible;
-	assert approx(n.scaleX, 1.0);
-	assert approx(n.scaleY, 1.0);
-	assert n.blend === BlendMode.Alpha;
-	assert n.dirty;
+	const s = fresh();
+	const n = s.rect(10.0, 5.0, rgba(1.0, 0.0, 0.0, 1.0));
+	assert n.kind() === DrawKind.Rect;
+	assert approx(n.content().w, 10.0);
+	assert approx(n.content().h, 5.0);
+	assert approx(n.paint().color.r, 1.0);
+	assert approx(n.paint().alpha, 1.0);
+	assert n.order().visible;
+	assert approx(n.local().scaleX, 1.0);
+	assert approx(n.local().scaleY, 1.0);
+	assert n.paint().blend === BlendMode.Alpha;
+	assert marked(n, Changed.Local);
+	assert listed(n) == 1;
 }
 
 test "sprite takes size from tile" {
-	const n = sprite(tile(0, 32.0, 16.0));
-	assert n.kind === DrawKind.Sprite;
-	assert approx(n.w, 32.0);
-	assert approx(n.h, 16.0);
+	const n = fresh().sprite(tile(0, 32.0, 16.0));
+	assert n.kind() === DrawKind.Sprite;
+	assert approx(n.content().w, 32.0);
+	assert approx(n.content().h, 16.0);
 }
 
 test "anim takes size from first frame" {
 	const frames: Tile[] = [tile(0, 8.0, 8.0), tile(0, 8.0, 8.0)];
-	const n = anim(frames, 12.0);
-	assert n.kind === DrawKind.Anim;
-	assert approx(n.w, 8.0);
-	assert approx(n.fps, 12.0);
+	const n = fresh().anim(frames, 12.0);
+	assert n.kind() === DrawKind.Anim;
+	assert approx(n.content().w, 8.0);
+	assert approx(n.animFrames().fps, 12.0);
 }
+
 test "underline factory reserves GPUI's three-thickness wavy bounds" {
-	const straight = underline(80.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0), false);
-	const wavy = underline(80.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0), true);
-	assert straight.kind === DrawKind.Underline;
-	assert approx(straight.h, 2.0);
-	assert approx(wavy.h, 6.0);
-	assert approx(wavy.size, 2.0);
-	assert approx(wavy.borderL, 1.0);
+	const s = fresh();
+	const straight = s.underline(80.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0), false);
+	const wavy = s.underline(80.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0), true);
+	assert straight.kind() === DrawKind.Underline;
+	assert approx(straight.content().h, 2.0);
+	assert approx(wavy.content().h, 6.0);
+	assert approx(wavy.content().borderL, 2.0);
+	assert approx(wavy.content().borderT, 1.0);
 }
 
 test "selection factory retains adjacent-row geometry and gloop bounds" {
-	const n = selection(80.0, 20.0, rgba(0.2, 0.4, 0.8, 0.6), -12.0, 60.0, 8.0, 90.0).at(40.0, 30.0);
-	assert n.kind === DrawKind.Selection;
-	assert approx(n.borderL, -12.0);
-	assert approx(n.borderT, 60.0);
-	assert approx(n.borderR, 8.0);
-	assert approx(n.borderB, 90.0);
+	const n = fresh().selection(80.0, 20.0, rgba(0.2, 0.4, 0.8, 0.6), -12.0, 60.0, 8.0, 90.0)
+		.at(40.0, 30.0);
+	assert n.kind() === DrawKind.Selection;
+	assert approx(n.content().borderL, -12.0);
+	assert approx(n.content().borderT, 60.0);
+	assert approx(n.content().borderR, 8.0);
+	assert approx(n.content().borderB, 90.0);
 	n.sync(identity2d(), false);
 	let b = emptyBounds();
 	n.getBounds(b);
@@ -65,83 +86,79 @@ test "selection factory retains adjacent-row geometry and gloop bounds" {
 	assert approx(b.xMax, 128.0);
 }
 
-
-test "addChild appends and marks dirty" {
-	const p = group();
-	p.childrenDirty = false;
-	p.addChild(rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)));
-	assert (p.children.length as int32) === 1;
-	assert p.childrenDirty;
+test "addChild appends and marks the parent's tree" {
+	const s = fresh();
+	const p = s.group();
+	s.clearChanges();
+	p.addChild(s.rect(1.0, 1.0, white));
+	assert p.numChildren() === 1;
+	assert marked(p, Changed.Tree);
+	assert s.structureChanged;
 }
 
 test "at positions and chains" {
-	const n = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)).at(3.0, 4.0);
-	assert approx(n.x, 3.0);
-	assert approx(n.y, 4.0);
+	const n = fresh().rect(1.0, 1.0, white).at(3.0, 4.0);
+	assert approx(n.local().x, 3.0);
+	assert approx(n.local().y, 4.0);
 }
 
-test "update advances anim clocks recursively" {
-	const root = group();
-	const a = anim([tile(0, 8.0, 8.0)], 10.0);
-	root.addChild(a);
-	root.update(0.5);
-	assert approx(a.clock, 0.5);
-	root.update(0.25);
-	assert approx(a.clock, 0.75);
+test "tick advances anim clocks" {
+	const s = fresh();
+	const a = s.anim([tile(0, 8.0, 8.0)], 10.0);
+	s.add(a);
+	s.tick(0.5);
+	assert approx(a.animFrames().clock, 0.5);
+	s.tick(0.25);
+	assert approx(a.animFrames().clock, 0.75);
 }
 
 test "sync composes child world from parent translate" {
-	const root = group().at(10.0, 20.0);
-	const child = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 5.0);
+	const s = fresh();
+	const root = s.group().at(10.0, 20.0);
+	const child = s.rect(1.0, 1.0, white).at(5.0, 5.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
-	assert approx(child.cachedWorld.tx, 15.0);
-	assert approx(child.cachedWorld.ty, 25.0);
+	assert approx(worldOf(child).tx, 15.0);
+	assert approx(worldOf(child).ty, 25.0);
 }
 
 test "sync propagates parent scale to child offset" {
-	const root = group();
-	root.scaleX = 2.0;
-	root.scaleY = 2.0;
-	const child = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 0.0);
+	const s = fresh();
+	const root = s.group().setScale(2.0);
+	const child = s.rect(1.0, 1.0, white).at(5.0, 0.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
-	assert approx(child.cachedWorld.tx, 10.0);
-	assert approx(child.cachedWorld.a, 2.0);
+	assert approx(worldOf(child).tx, 10.0);
+	assert approx(worldOf(child).a, 2.0);
 }
 
 test "sync writes rotation into world matrix" {
-	const n = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0));
-	n.rotation = HALF_PI;
+	const n = fresh().rect(1.0, 1.0, white).setRotation(HALF_PI);
 	n.sync(identity2d(), false);
-	assert approx(n.cachedWorld.a, 0.0);
-	assert approx(n.cachedWorld.b, 1.0);
-	assert approx(n.cachedWorld.c, -1.0);
-	assert approx(n.cachedWorld.d, 0.0);
+	assert approx(worldOf(n).a, 0.0);
+	assert approx(worldOf(n).b, 1.0);
+	assert approx(worldOf(n).c, -1.0);
+	assert approx(worldOf(n).d, 0.0);
 }
 test "pivot shifts the node transform and its children around one local point" {
-	const root = group().at(100.0, 80.0);
-	root.pivotX = 10.0;
-	root.pivotY = 20.0;
-	const child = rect(4.0, 6.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const s = fresh();
+	const root = s.group().at(100.0, 80.0).setPivot(10.0, 20.0);
+	const child = s.rect(4.0, 6.0, white);
 	root.addChild(child);
 	root.sync(identity2d(), false);
 	const pivotWorld = root.localToGlobal(vec2(10.0, 20.0));
 	assert approx(pivotWorld.x, 100.0);
 	assert approx(pivotWorld.y, 80.0);
-	assert approx(child.cachedWorld.tx, 90.0);
-	assert approx(child.cachedWorld.ty, 60.0);
-	root.pivotX = 20.0;
-	root.pivotY = 30.0;
+	assert approx(worldOf(child).tx, 90.0);
+	assert approx(worldOf(child).ty, 60.0);
+	root.setPivot(20.0, 30.0);
 	root.sync(identity2d(), false);
-	assert approx(child.cachedWorld.tx, 80.0);
-	assert approx(child.cachedWorld.ty, 50.0);
+	assert approx(worldOf(child).tx, 80.0);
+	assert approx(worldOf(child).ty, 50.0);
 }
 
 test "a centered Tile scales its visual offset with Sprite size" {
-	const n = sprite(tile(1, 32.0, 16.0).center()).at(100.0, 50.0);
-	n.w = 64.0;
-	n.h = 32.0;
+	const n = fresh().sprite(tile(1, 32.0, 16.0).center()).at(100.0, 50.0).setSize(64.0, 32.0);
 	n.sync(identity2d(), false);
 	let b = emptyBounds();
 	n.getBounds(b);
@@ -153,30 +170,33 @@ test "a centered Tile scales its visual offset with Sprite size" {
 
 
 test "resync after parent move updates clean child" {
-	const root = group().at(10.0, 0.0);
-	const child = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 0.0);
+	const s = fresh();
+	const root = s.group().at(10.0, 0.0);
+	const child = s.rect(1.0, 1.0, white).at(5.0, 0.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
-	assert approx(child.cachedWorld.tx, 15.0);
-	root.x = 30.0;
+	assert approx(worldOf(child).tx, 15.0);
+	s.clearChanges();
+	root.setX(30.0);
 	root.sync(identity2d(), false);
-	assert approx(child.cachedWorld.tx, 35.0);
+	assert approx(worldOf(child).tx, 35.0);
 }
 
 test "sync without changes keeps cached world stable" {
-	const root = group().at(7.0, 0.0);
-	const child = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)).at(1.0, 2.0);
+	const s = fresh();
+	const root = s.group().at(7.0, 0.0);
+	const child = s.rect(1.0, 1.0, white).at(1.0, 2.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
+	s.clearChanges();
 	root.sync(identity2d(), false);
-	assert approx(child.cachedWorld.tx, 8.0);
-	assert approx(child.cachedWorld.ty, 2.0);
-	assert !root.dirty;
-	assert !child.dirty;
+	assert approx(worldOf(child).tx, 8.0);
+	assert approx(worldOf(child).ty, 2.0);
+	assert (s.dirty.length as int32) == 0;
 }
 
 test "getBounds covers single rect" {
-	const n = rect(30.0, 40.0, rgba(1.0, 1.0, 1.0, 1.0)).at(10.0, 20.0);
+	const n = fresh().rect(30.0, 40.0, white).at(10.0, 20.0);
 	n.sync(identity2d(), false);
 	let b = emptyBounds();
 	n.getBounds(b);
@@ -187,7 +207,7 @@ test "getBounds covers single rect" {
 }
 
 test "getBounds includes an outset analytic box shadow" {
-	const n = rect(20.0, 10.0, rgba(0.3, 0.5, 0.8, 1.0)).at(50.0, 40.0);
+	const n = fresh().rect(20.0, 10.0, rgba(0.3, 0.5, 0.8, 1.0)).at(50.0, 40.0);
 	n.setBoxStyle(BoxStyle.create(
 		uniformRadii(0.0),
 		uniformBorders(0.0),
@@ -203,8 +223,9 @@ test "getBounds includes an outset analytic box shadow" {
 }
 
 test "getBounds covers parent and child" {
-	const root = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(0.0, 0.0);
-	const child = rect(5.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0)).at(20.0, 20.0);
+	const s = fresh();
+	const root = s.rect(10.0, 10.0, white).at(0.0, 0.0);
+	const child = s.rect(5.0, 5.0, white).at(20.0, 20.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
 	let b = emptyBounds();
@@ -216,9 +237,9 @@ test "getBounds covers parent and child" {
 }
 
 test "getBounds skips invisible children" {
-	const root = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const child = rect(5.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0)).at(20.0, 20.0);
-	child.visible = false;
+	const s = fresh();
+	const root = s.rect(10.0, 10.0, white);
+	const child = s.rect(5.0, 5.0, white).at(20.0, 20.0).setVisible(false);
 	root.addChild(child);
 	root.sync(identity2d(), false);
 	let b = emptyBounds();
@@ -230,10 +251,9 @@ test "getBounds skips invisible children" {
 }
 
 test "getBounds applies parent scale" {
-	const root = group();
-	root.scaleX = 2.0;
-	root.scaleY = 2.0;
-	const child = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 5.0);
+	const s = fresh();
+	const root = s.group().setScale(2.0);
+	const child = s.rect(10.0, 10.0, white).at(5.0, 5.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
 	let b = emptyBounds();
@@ -245,58 +265,224 @@ test "getBounds applies parent scale" {
 }
 
 test "addChildAt inserts at correct index" {
-	const root = group();
-	const a = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const b = rect(2.0, 2.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const c = rect(3.0, 3.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const s = fresh();
+	const root = s.group();
+	const a = s.rect(1.0, 1.0, white);
+	const b = s.rect(2.0, 2.0, white);
+	const c = s.rect(3.0, 3.0, white);
 	root.addChild(a);
 	root.addChild(c);
 	root.addChildAt(b, 1);
-	assert root.children[0] === a;
-	assert root.children[1] === b;
-	assert root.children[2] === c;
+	assert root.getChildAt(0) == a;
+	assert root.getChildAt(1) == b;
+	assert root.getChildAt(2) == c;
+	assert root.getChildIndex(c) == 2;
 }
 
 test "addChildAt negative index clamps to 0" {
-	const root = group();
-	const a = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const b = rect(2.0, 2.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const s = fresh();
+	const root = s.group();
+	const a = s.rect(1.0, 1.0, white);
+	const b = s.rect(2.0, 2.0, white);
 	root.addChild(a);
 	root.addChildAt(b, -1);
-	assert root.children[0] === b;
+	assert root.getChildAt(0) == b;
 }
 
-test "removeChild removes correct node and marks dirty" {
-	const root = group();
-	const a = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const b = rect(2.0, 2.0, rgba(1.0, 1.0, 1.0, 1.0));
+test "a child is stacked by zIndex, ties keeping the order they were added in" {
+	const s = fresh();
+	const root = s.group();
+	const a = root.addChild(s.rect(1.0, 1.0, white).setZIndex(1));
+	const b = root.addChild(s.rect(1.0, 1.0, white));
+	const c = root.addChild(s.rect(1.0, 1.0, white));
+	assert root.getChildIndex(b) == 0;
+	assert root.getChildIndex(c) == 1;
+	assert root.getChildIndex(a) == 2;
+	b.setZIndex(2);
+	assert root.getChildIndex(c) == 0;
+	assert root.getChildIndex(a) == 1;
+	assert root.getChildIndex(b) == 2;
+}
+
+test "removeChild removes correct node and marks the parent's tree" {
+	const s = fresh();
+	const root = s.group();
+	const a = s.rect(1.0, 1.0, white);
+	const b = s.rect(2.0, 2.0, white);
 	root.addChild(a);
 	root.addChild(b);
-	root.childrenDirty = false;
+	s.clearChanges();
 	root.removeChild(a);
-	assert (root.children.length as int32) === 1;
-	assert root.children[0] === b;
-	assert root.childrenDirty;
+	assert root.numChildren() === 1;
+	assert root.getChildAt(0) == b;
+	assert marked(root, Changed.Tree);
+	assert a.parent() === null;
+	assert a.isLive();
+}
+
+test "removeChild of a node that is not a child changes nothing" {
+	const s = fresh();
+	const root = s.group();
+	const other = s.group();
+	const a = other.addChild(s.rect(1.0, 1.0, white));
+	s.clearChanges();
+	root.removeChild(a);
+	assert other.numChildren() == 1;
+	assert (s.dirty.length as int32) == 0;
 }
 
 test "removeChildren clears all" {
-	const root = group();
-	root.addChild(rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)));
-	root.addChild(rect(2.0, 2.0, rgba(1.0, 1.0, 1.0, 1.0)));
+	const s = fresh();
+	const root = s.group();
+	root.addChild(s.rect(1.0, 1.0, white));
+	root.addChild(s.rect(2.0, 2.0, white));
 	root.removeChildren();
-	assert (root.children.length as int32) === 0;
+	assert root.numChildren() === 0;
+}
+
+test "remove takes a node out of its parent and leaves it alive" {
+	const s = fresh();
+	const root = s.group();
+	const a = root.addChild(s.rect(1.0, 1.0, white));
+	a.remove();
+	assert root.numChildren() == 0;
+	assert a.parent() === null;
+	assert a.isLive();
+	a.remove();
+	assert root.numChildren() == 0;
+}
+
+test "addChild moves a child out of its old parent first" {
+	const s = fresh();
+	const panel = s.group();
+	const other = s.group();
+	const b = panel.addChild(s.rect(1.0, 1.0, white));
+	other.addChild(b);
+	assert panel.numChildren() == 0;
+	assert other.numChildren() == 1;
+	const up = b.parent();
+	assert up !== null;
+	if (up !== null) { assert up == other; }
+}
+
+test "addChild of a child that is already there moves it to the top" {
+	const s = fresh();
+	const root = s.group();
+	const a = root.addChild(s.rect(1.0, 1.0, white));
+	const b = root.addChild(s.rect(1.0, 1.0, white));
+	root.addChild(a);
+	assert root.numChildren() == 2;
+	assert root.getChildAt(0) == b;
+	assert root.getChildAt(1) == a;
+}
+
+test "a reparented node's world follows its new parent" {
+	const s = fresh();
+	const left = s.group().at(10.0, 0.0);
+	const right = s.group().at(100.0, 0.0);
+	const child = left.addChild(s.rect(1.0, 1.0, white).at(1.0, 0.0));
+	left.sync(identity2d(), false);
+	right.sync(identity2d(), false);
+	s.clearChanges();
+	right.addChild(child);
+	right.sync(identity2d(), false);
+	assert approx(worldOf(child).tx, 101.0);
+}
+
+test "a node moved while detached is drawn where it was moved once added back" {
+	const s = fresh();
+	const card = s.group();
+	const title = card.addChild(s.rect(1.0, 1.0, white));
+	s.clearChanges();
+	title.setX(7.0);
+	s.clearChanges();
+	s.add(card.at(10.0, 0.0));
+	s.refOf(s.root).sync(identity2d(), false);
+	assert approx(worldOf(title).tx, 17.0);
+}
+
+test "an equal write marks nothing" {
+	const s = fresh();
+	const n = s.rect(4.0, 4.0, white).at(3.0, 4.0).setAlpha(0.5);
+	s.clearChanges();
+	n.at(3.0, 4.0).setAlpha(0.5).setColor(white).setSize(4.0, 4.0).setVisible(true);
+	assert (s.dirty.length as int32) == 0;
+	assert s.changed[n.id.index].isEmpty();
+}
+
+test "a write sets its group's bit and lists the node once" {
+	const s = fresh();
+	const n = s.rect(4.0, 4.0, white);
+	s.clearChanges();
+	n.setX(1.0);
+	n.setX(2.0);
+	n.move(1.0, 1.0);
+	assert marked(n, Changed.Local);
+	assert !marked(n, Changed.Paint);
+	assert listed(n) == 1;
+	n.setColor(rgba(1.0, 0.0, 0.0, 1.0));
+	assert marked(n, Changed.Paint);
+	assert listed(n) == 1;
+	assert (s.dirty.length as int32) == 1;
+	s.clearChanges();
+	assert s.changed[n.id.index].isEmpty();
+	assert (s.dirty.length as int32) == 0;
+}
+
+test "move follows the node's rotation, as h2d's does" {
+	const s = fresh();
+	const n = s.rect(1.0, 1.0, white).at(10.0, 10.0);
+	n.move(4.0, 2.0);
+	assert approx(n.local().x, 14.0);
+	assert approx(n.local().y, 12.0);
+	n.setRotation(HALF_PI).move(3.0, 0.0);
+	assert approx(n.local().x, 14.0);
+	assert approx(n.local().y, 15.0);
+}
+
+test "rotate, scale and setScale compose as h2d's" {
+	const n = fresh().rect(1.0, 1.0, white).setRotation(0.25).rotate(0.5).setScale(2.0).scale(1.5);
+	assert approx(n.local().rotation, 0.75);
+	assert approx(n.local().scaleX, 3.0);
+	assert approx(n.local().scaleY, 3.0);
+}
+
+test "dispose frees the row, its subtree and the handle" {
+	const s = fresh();
+	const before: int32 = s.nodeCount();
+	const card = s.add(s.rect(10.0, 10.0, white));
+	const title = card.addChild(s.label("Untitled", 16.0, white));
+	assert s.nodeCount() == before + 2;
+	card.dispose();
+	assert s.nodeCount() == before;
+	assert !card.isLive();
+	assert !title.isLive();
+	assert s.refOf(s.root).numChildren() == 0;
+	const next = s.group();
+	assert next.id.index == title.id.index;
+	assert next.id.generation == title.id.generation + 1;
+	assert next != title;
 }
 
 test "localToGlobal transforms point through world matrix" {
-	const n = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(100.0, 200.0);
+	const n = fresh().rect(10.0, 10.0, white).at(100.0, 200.0);
 	n.sync(identity2d(), false);
 	const gp = n.localToGlobal(vec2(5.0, 5.0));
 	assert approx(gp.x, 105.0);
 	assert approx(gp.y, 205.0);
 }
 
+test "localToGlobal answers after a write, before any sync" {
+	const s = fresh();
+	const root = s.group().at(10.0, 0.0);
+	const child = root.addChild(s.rect(1.0, 1.0, white).at(5.0, 0.0));
+	root.setX(30.0);
+	const gp = child.localToGlobal(vec2(0.0, 0.0));
+	assert approx(gp.x, 35.0);
+}
+
 test "globalToLocal inverse-transforms a point" {
-	const n = rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(100.0, 200.0);
+	const n = fresh().rect(10.0, 10.0, white).at(100.0, 200.0);
 	n.sync(identity2d(), false);
 	const lp = n.globalToLocal(vec2(105.0, 205.0));
 	assert approx(lp.x, 5.0);
@@ -304,10 +490,9 @@ test "globalToLocal inverse-transforms a point" {
 }
 
 test "localToGlobal respects parent scale" {
-	const root = group();
-	root.scaleX = 2.0;
-	root.scaleY = 3.0;
-	const child = rect(1.0, 1.0, rgba(1.0, 1.0, 1.0, 1.0)).at(10.0, 10.0);
+	const s = fresh();
+	const root = s.group().setScaleX(2.0).setScaleY(3.0);
+	const child = s.rect(1.0, 1.0, white).at(10.0, 10.0);
 	root.addChild(child);
 	root.sync(identity2d(), false);
 	const gp = child.localToGlobal(vec2(5.0, 5.0));
@@ -316,28 +501,39 @@ test "localToGlobal respects parent scale" {
 }
 
 test "label factory sets text size and color" {
-	const n = label("Hello", 16.0, rgba(1.0, 0.5, 0.0, 1.0));
-	assert n.kind === DrawKind.Label;
-	assert n.text.equals("Hello");
-	assert approx(n.size, 16.0);
-	assert approx(n.color.r, 1.0);
-	assert approx(n.color.g, 0.5);
+	const n = fresh().label("Hello", 16.0, rgba(1.0, 0.5, 0.0, 1.0));
+	assert n.kind() === DrawKind.Label;
+	assert n.text().equals("Hello");
+	assert approx(n.textStyle().size, 16.0);
+	assert approx(n.paint().color.r, 1.0);
+	assert approx(n.paint().color.g, 0.5);
+}
+
+test "setText marks the label and an equal text marks nothing" {
+	const s = fresh();
+	const n = s.label("Untitled", 16.0, white);
+	s.clearChanges();
+	n.setText("Untitled");
+	assert (s.dirty.length as int32) == 0;
+	n.setText("Saved");
+	assert marked(n, Changed.Text);
+	assert n.text().equals("Saved");
 }
 
 test "mask factory sets dimensions" {
-	const n = mask(200.0, 100.0);
-	assert n.kind === DrawKind.Mask;
-	assert approx(n.w, 200.0);
-	assert approx(n.h, 100.0);
+	const n = fresh().mask(200.0, 100.0);
+	assert n.kind() === DrawKind.Mask;
+	assert approx(n.content().w, 200.0);
+	assert approx(n.content().h, 100.0);
 }
 
 test "scaleGrid factory sets sheet and borders" {
 	const t = tile(0, 100.0, 50.0);
-	const n = scaleGrid(t, 10.0, 5.0, 10.0, 5.0);
-	assert n.kind === DrawKind.ScaleGrid;
-	assert approx(n.w, 100.0);
-	assert approx(n.borderL, 10.0);
-	assert approx(n.borderT, 5.0);
+	const n = fresh().scaleGrid(t, 10.0, 5.0, 10.0, 5.0);
+	assert n.kind() === DrawKind.ScaleGrid;
+	assert approx(n.content().w, 100.0);
+	assert approx(n.content().borderL, 10.0);
+	assert approx(n.content().borderT, 5.0);
 }
 
 test "noFilter produces kind None" {
@@ -370,27 +566,29 @@ test "add hands back the node that was added, not the parent" {
 	// It used to hand back the parent, so `const n = s.add(node); n.alpha = 0.5;` - the h2d
 	// idiom with the handle kept - configured the scene root instead, in silence. Found by
 	// writing a T1 scene the way a Heaps user would.
-	const parent = group();
-	const child = rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0));
+	const s = fresh();
+	const parent = s.group();
+	const child = s.rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0));
 	const handle = parent.addChild(child);
-	handle.alpha = 0.25;
-	assert (parent.children.length as int32) == 1;
-	assert parent.children[0].alpha == 0.25;
-	assert parent.alpha == 1.0;
+	handle.setAlpha(0.25);
+	assert parent.numChildren() == 1;
+	assert parent.getChildAt(0).paint().alpha == 0.25;
+	assert parent.paint().alpha == 1.0;
 
 	// And a second child through the handle becomes a grandchild, not a sibling.
-	const grand = handle.addChild(rect(2.0, 2.0, rgba(0.0, 1.0, 0.0, 1.0)));
-	assert (parent.children.length as int32) == 1;
-	assert (parent.children[0].children.length as int32) == 1;
-	grand.alpha = 0.5;
-	assert parent.children[0].children[0].alpha == 0.5;
+	const grand = handle.addChild(s.rect(2.0, 2.0, rgba(0.0, 1.0, 0.0, 1.0)));
+	assert parent.numChildren() == 1;
+	assert parent.getChildAt(0).numChildren() == 1;
+	grand.setAlpha(0.5);
+	assert parent.getChildAt(0).getChildAt(0).paint().alpha == 0.5;
 }
 
 test "addChildAt hands back the node that was added too" {
-	const parent = group();
-	parent.addChild(rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0)));
-	const inserted = parent.addChildAt(rect(2.0, 2.0, rgba(0.0, 1.0, 0.0, 1.0)), 0);
-	inserted.alpha = 0.75;
-	assert (parent.children.length as int32) == 2;
-	assert parent.children[0].alpha == 0.75;
+	const s = fresh();
+	const parent = s.group();
+	parent.addChild(s.rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0)));
+	const inserted = parent.addChildAt(s.rect(2.0, 2.0, rgba(0.0, 1.0, 0.0, 1.0)), 0);
+	inserted.setAlpha(0.75);
+	assert parent.numChildren() == 2;
+	assert parent.getChildAt(0).paint().alpha == 0.75;
 }

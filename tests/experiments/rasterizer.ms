@@ -8,8 +8,8 @@
 
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d } from "../../src/void2d/draw";
-import { label } from "../../src/void2d/node";
-import { Scene, scene, add, presentAt } from "../../src/void2d/scene";
+import { Scene } from "../../src/void2d/node";
+import { scene, add, presentAt } from "../../src/void2d/scene";
 import { rgba } from "../../src/void2d/types";
 import {
 	voidCaptureGrab,
@@ -60,7 +60,7 @@ function init(): void {
 	const s = scene(rgba((BACKGROUND as float32) / 255.0, (BACKGROUND as float32) / 255.0, (BACKGROUND as float32) / 255.0, 1.0));
 	const ink = (FOREGROUND as float32) / 255.0;
 	for (let i: int32 = 0; i < (LINES.length as int32); i++) {
-		s.add(label(LINES[i], SIZES[sample], rgba(ink, ink, ink, 1.0)).at(8.0, 6.0 + (i as float32) * SIZES[sample] * 1.4));
+		s.add(s.label(LINES[i], SIZES[sample], rgba(ink, ink, ink, 1.0)).at(8.0, 6.0 + (i as float32) * SIZES[sample] * 1.4));
 	}
 	current = s;
 }

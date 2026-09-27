@@ -1,6 +1,9 @@
-import { tile } from "../void2d/types";
-import { graphics, sprite, setImageStyle, dispose } from "../void2d/node";
+import { Color, tile, rgba } from "../void2d/types";
+import { Scene } from "../void2d/node";
+import { scene } from "../void2d/scene";
 import { ObjectFit, imageStyle, fitImage, NO_IMAGE_STYLE } from "../void2d/imageStyle";
+
+function tileClear(): Color { return rgba(0.0, 0.0, 0.0, 1.0); }
 
 function near(a: float32, b: float32): boolean {
 	const d: float32 = a > b ? a - b : b - a;
@@ -38,31 +41,32 @@ test "ObjectFit None clips from the image origin and advances its UV" {
 }
 
 test "image styles update in place and dispose returns their side-table slot" {
-	const first = sprite(tile(0, 32.0, 16.0));
+	const s: Scene = scene(tileClear());
+	const first = s.sprite(tile(0, 32.0, 16.0));
 	first.setImageStyle(imageStyle(
 		{ topLeft: 1.0, topRight: 2.0, bottomRight: 3.0, bottomLeft: 4.0 },
 		false,
 		ObjectFit.Fill,
 	));
-	const slot: int32 = first.payload;
+	const slot: int32 = s.payloads[first.id.index];
 	first.setImageStyle(imageStyle(
 		{ topLeft: 5.0, topRight: 6.0, bottomRight: 7.0, bottomLeft: 8.0 },
 		true,
 		ObjectFit.Cover,
 	));
-	assert first.payload == slot;
+	assert s.payloads[first.id.index] == slot;
 	first.dispose();
-	assert first.payload == NO_IMAGE_STYLE;
+	assert s.payloads[first.id.index] == NO_IMAGE_STYLE;
 
-	const second = sprite(tile(0, 16.0, 16.0));
+	const second = s.sprite(tile(0, 16.0, 16.0));
 	second.setImageStyle(imageStyle(
 		{ topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
 		false,
 		ObjectFit.Contain,
 	));
-	assert second.payload == slot;
+	assert s.payloads[second.id.index] == slot;
 	second.dispose();
 
-	const notImage = graphics();
-	assert notImage.payload == NO_IMAGE_STYLE;
+	const notImage = s.graphics();
+	assert s.imageStyleOf(notImage.id.index) == NO_IMAGE_STYLE;
 }

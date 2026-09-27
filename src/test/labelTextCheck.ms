@@ -18,9 +18,14 @@ import {
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba, identity2d, emptyBounds } from "../void2d/types";
 import { begin2d, frameEnd } from "../void2d/draw";
-import { label, group, setTextRuns } from "../void2d/node";
+import { NodeRef, Scene } from "../void2d/node";
+import { scene } from "../void2d/scene";
 import { renderTargetsAlive, segmentBox } from "../void2d/render";
 import { approx } from "./helpers";
+
+const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+
+function payloadOf(n: NodeRef): int32 { return n.scene.payloads[n.id.index]; }
 
 function shaped(text: string): int32 {
 	return shapedAt(text, 13.0);
@@ -103,16 +108,16 @@ test "releasing a label drops its tile references" {
 
 test "a label that leaves its parent releases its tiles and places them again when added back" {
 	begin2d(200.0, 100.0, 1.0);
-	const parent = group();
-	const box = parent.addChild(group());
-	const n = box.addChild(label("Qz", 13.0, rgba(1.0, 1.0, 1.0, 1.0)));
+	const parent = s.group();
+	const box = parent.addChild(s.group());
+	const n = box.addChild(s.label("Qz", 13.0, rgba(1.0, 1.0, 1.0, 1.0)));
 	parent.sync(identity2d(), true);
 	parent.draw(1.0, 200.0, 100.0);
-	assert (labelTexts[n.payload].placed.length as int32) > 0;
-	const tileIndex = labelTexts[n.payload].placed[0].tile;
+	assert (labelTexts[payloadOf(n)].placed.length as int32) > 0;
+	const tileIndex = labelTexts[payloadOf(n)].placed[0].tile;
 	const held = glyphAtlas.tile(tileIndex).refs;
 	parent.removeChild(box);
-	assert (labelTexts[n.payload].placed.length as int32) == 0;
+	assert (labelTexts[payloadOf(n)].placed.length as int32) == 0;
 	assert glyphAtlas.tile(tileIndex).refs == held - 1;
 	parent.addChild(box);
 	parent.sync(identity2d(), true);
@@ -127,10 +132,11 @@ test "a label that leaves its parent releases its tiles and places them again wh
 test "drawing a label fences its glyph page for the frame the bracket belongs to" {
 	begin2d(200.0, 100.0, 1.0);
 	const frame = glyphAtlas.frame;
-	const n = label("fence", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const n = s.label("fence", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	n.sync(identity2d(), false);
 	n.draw(1.0, 200.0, 100.0);
-	const page = glyphAtlas.tile(placeLabel(n.payload, n.cachedWorld, 1.0).placed[0].tile).page;
+	const placed = placeLabel(payloadOf(n), n.scene.worlds[n.id.index], 1.0).placed;
+	const page = glyphAtlas.tile(placed[0].tile).page;
 	assert glyphAtlas.pages[page as int32].drawnFrame == frame;
 	frameEnd();
 	begin2d(200.0, 100.0, 1.0);
@@ -237,12 +243,12 @@ test "a decoration lands on device pixels at DPI 1.25, a stroke at least one pix
 }
 
 test "calcTextWidth and splitText lay other text out with the label's line options" {
-	const cells = label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const cells = s.label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	cells.setForceWidth(10.0);
 	assert cells.calcTextWidth("abc") == 30.0;
 	const text: string = "aa bb cc dd";
-	const n = label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	n.maxWidth = n.calcTextWidth("aa bb") + 1.0;
+	const n = s.label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.setMaxWidth(n.calcTextWidth("aa bb") + 1.0);
 	assert n.splitText(text) == "aa bb\ncc dd";
 	n.setHangingIndent(n.calcTextWidth("aa "));
 	assert n.splitText(text) == "aa bb\ncc\ndd";
@@ -251,7 +257,7 @@ test "calcTextWidth and splitText lay other text out with the label's line optio
 }
 
 test "a run background over trailing spaces stays inside the label's bounds" {
-	const n = label("ab  ", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const n = s.label("ab  ", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const runs: TextRun[] = [{ ...plainRun(4), background: rgba(0.0, 0.0, 1.0, 1.0) }];
 	n.setTextRuns(runs);
 	n.sync(identity2d(), false);
@@ -263,23 +269,23 @@ test "a run background over trailing spaces stays inside the label's bounds" {
 }
 
 test "setTextRuns styles a label, and each placed glyph carries its run" {
-	const n = label("ab", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const n = s.label("ab", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	const runs: TextRun[] = [plainRun(1), plainRun(1)];
 	n.setTextRuns(runs);
 	n.sync(identity2d(), false);
 	assert n.textWidth() > 0.0;
-	const placed = placeLabel(n.payload, identity2d(), 1.0).placed;
+	const placed = placeLabel(payloadOf(n), identity2d(), 1.0).placed;
 	assert placed[0].run == 0 && placed[1].run == 1;
 	n.dispose();
 }
 
 test "a label wraps again on a width change without looking a glyph up" {
-	const n = label("aa bb cc dd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	n.maxWidth = 400.0;
+	const n = s.label("aa bb cc dd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.setMaxWidth(400.0);
 	n.sync(identity2d(), false);
 	const one: float32 = n.textHeight();
 	const before: uint32 = glyphLookups();
-	n.maxWidth = 30.0;
+	n.setMaxWidth(30.0);
 	const many: float32 = n.textHeight();
 	assert glyphLookups() == before;
 	assert many > one;
@@ -287,8 +293,8 @@ test "a label wraps again on a width change without looking a glyph up" {
 }
 
 test "a label's line options reach its layout, and its hit tests read it" {
-	const n = label("aa bb cc dd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	n.maxWidth = 30.0;
+	const n = s.label("aa bb cc dd", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
+	n.setMaxWidth(30.0);
 	n.setHangingIndent(6.0);
 	n.sync(identity2d(), false);
 	assert n.textLayout().lines[1].x == 6.0;

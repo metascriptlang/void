@@ -24,8 +24,8 @@ import {
 import { renderTargetsAlive } from "../void2d/render";
 import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
 import { GlyphAtlas } from "../void2d/glyphAtlas";
-import { Node2D, group, rect, sprite, label, at, addChild } from "../void2d/node";
-import { Scene, scene, add, present } from "../void2d/scene";
+import { NodeRef, Scene } from "../void2d/node";
+import { scene, add, present } from "../void2d/scene";
 import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
@@ -70,7 +70,7 @@ function editorRun(len: int32, color: Color): TextRun {
 
 // 200 lines of 80 columns, three syntax colours per line, a selection over 12 rows and a
 // caret at its end: the editor scene P4 closes on and P5's scroll is measured against.
-function editorLabel(): Node2D {
+function editorLabel(s: Scene): NodeRef {
 	let text: string = "";
 	const runs: TextRun[] = [];
 	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
@@ -90,7 +90,7 @@ function editorLabel(): Node2D {
 	const lineUnits: int32 = EDITOR_COLUMNS + 1;
 	const start: int32 = EDITOR_SELECTION_FIRST_LINE * lineUnits + 6;
 	const length: int32 = EDITOR_SELECTION_LINES * lineUnits;
-	const editor = label(text, 13.0, plain).at(8.0, 8.0);
+	const editor = s.label(text, 13.0, plain).at(8.0, 8.0);
 	editor.setTextRuns(runs);
 	editor.setSelectionRange({ start: start, length: length }, rgba(0.30, 0.50, 0.90, 0.45));
 	editor.setCursorBlinkTime(0.0);
@@ -108,7 +108,7 @@ let firstPaintMs: float64 = 0.0;
 let firstPaintRasterizations: int32 = 0;
 let rasterizationsBeforeMeasure: int32 = 0;
 let sweepPeakPages: int32 = 0;
-let codeBlock: Node2D | null = null;
+let codeBlock: NodeRef | null = null;
 let warmupFrames: int32 = WARMUP_FRAMES;
 
 export function benchInit(kind: BenchKind): void {
@@ -119,21 +119,22 @@ export function benchInit(kind: BenchKind): void {
 		benchName = "ui";
 		for (let row: int32 = 0; row < ROWS; row++) {
 			for (let column: int32 = 0; column < COLUMNS; column++) {
-				const card = rect(CELL_W - 1.0, CELL_H - 1.0, rgba(0.2, 0.3, 0.5, 1.0))
+				const card = s.rect(CELL_W - 1.0, CELL_H - 1.0, rgba(0.2, 0.3, 0.5, 1.0))
 					.at((column as float32) * CELL_W, (row as float32) * CELL_H);
-				card.addChild(label(String(row * COLUMNS + column), 6.0, rgba(1.0, 1.0, 1.0, 1.0)));
+				const name: string = String(row * COLUMNS + column);
+				card.addChild(s.label(name, 6.0, rgba(1.0, 1.0, 1.0, 1.0)));
 				s.add(card);
 			}
 		}
 	} else if (kind === BenchKind.Editor) {
 		benchName = "editor";
-		s.add(editorLabel());
+		s.add(editorLabel(s));
 	} else if (kind === BenchKind.Text) {
 		benchName = "text";
-		const block = group();
+		const block = s.group();
 		for (let line: int32 = 0; line < CODE_LINES; line++) {
 			const y: float32 = 8.0 + (line as float32) * 17.0;
-			block.addChild(label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, y));
+			block.addChild(s.label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, y));
 		}
 		s.add(block);
 		codeBlock = block;
@@ -145,7 +146,7 @@ export function benchInit(kind: BenchKind): void {
 		freeImage(pixels);
 		for (let row: int32 = 0; row < ROWS; row++) {
 			for (let column: int32 = 0; column < COLUMNS; column++) {
-				s.add(sprite(tile(view, CELL_W - 1.0, CELL_H - 1.0))
+				s.add(s.sprite(tile(view, CELL_W - 1.0, CELL_H - 1.0))
 					.at((column as float32) * CELL_W, (row as float32) * CELL_H));
 			}
 		}
@@ -210,7 +211,7 @@ function report(): void {
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
 	if (codeBlock !== null) {
 		console.log(`${benchName}.measureGlyphLookups ${measureGlyphLookups()}`);
-		const first: Node2D = codeBlock.children[0];
+		const first: NodeRef = codeBlock.getChildAt(0);
 		console.log(`${benchName}.lineWidth ${first.textWidth()}`);
 		console.log(`${benchName}.lineHeight ${first.textHeight()}`);
 	}
@@ -242,8 +243,7 @@ function sweep(frame: int32): void {
 		const span: float32 = (SWEEP_FRAMES - 1) as float32;
 		scale = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * (step as float32) / span;
 	}
-	codeBlock.scaleX = scale;
-	codeBlock.scaleY = scale;
+	codeBlock.setScale(scale);
 }
 
 export function benchFrame(): void {
