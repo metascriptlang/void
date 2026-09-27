@@ -1143,9 +1143,9 @@ human has seen it as app code; the phase measurement comes last.
      known; its GPU write is the whole stream until sokol has a range write (`write_persistent`,
      SOKOL.md), so a colour write re-uploads the list's whole UI stream.
    - **What takes the full frame**, read off the corpus: a structural change, `setZIndex`, any
-     order change (a visibility flip), a Mask's size, text of another length, a caret that flips
-     (its instance appears or disappears; step 8), and anything under a filter. A move, a colour,
-     a group's alpha, text of the same length and an Anim frame are emitted in place.
+     order change (a visibility flip), a Mask's size, text of another length, and anything under
+     a filter. A move, a colour, a group's alpha, text of the same length and an Anim frame are
+     emitted in place, and since step 8 a caret that flips.
    - **Descent from the changed set against upward marking** (`tests/experiments/propagate.ms`,
      100 251 nodes: 250 column groups of 200 cards with a label each, release, load 6 %, three
      rounds of 20 passes): one card 0.07-0.10 µs against 1.4 µs, every 50th card 0.019 against
@@ -1156,6 +1156,16 @@ human has seen it as app code; the phase measurement comes last.
 8. **The paint-only patch**: a `Paint2D` write and a caret blink rewrite the node's instance
    floats in place. T1: a blink writes the caret's instance and nothing else; a colour write
    uploads a known number of bytes.
+
+   **Landed at P5 step 8** (`e060562`, `a9a9b92`), on step 7's paint ranges rather than a second
+   path: a paint write re-emits the node's own content in place, which walks no tree, and the
+   changed range is now the first to the last record whose bytes moved, not the row's whole
+   range. A hidden caret keeps its instance at alpha 0, so a blink changes one float and no count,
+   and is patched where step 7 took the full frame; P4's T1 "a caret blink changes no instance
+   but the caret's" now pins the same length and the caret's fill alpha, and
+   `tests/displayList/retain.ms` pins that a blink marks the label's last record and nothing
+   else. A hidden caret still costs its quad. Not met: the bytes a colour write or a blink sends
+   to the GPU are the whole UI stream, step 7's open range write.
 9. **The change flag and the camera uniform.** T4: an idle frame issues no draw and no upload
    (closes `idle-costs-a-walk`); T1: a camera move re-multiplies no node.
 10. **Scroll**, after the human has seen it as app code: `Mask.scrollX/Y` with h2d's
