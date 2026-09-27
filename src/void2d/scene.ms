@@ -2,11 +2,20 @@
 // entry that owns the GPU pass. Heaps: `s2d.addChild(o); s2d.render(engine)`.
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
-import { Scene, NodeRef, DrawKind, NO_NODE } from "./node";
-import { syncOrder, drawOrder, releaseTargets } from "./render";
-import { beginList, end2d, flushTargets, setSceneSmooth } from "./draw";
-import { displayList, useList } from "./displayList";
-import { advanceBlink, NO_LABEL_TEXT } from "./labelText";
+import { Scene, NodeRef, DrawKind, Changed, NO_NODE } from "./node";
+import { syncOrder, drawOrder, patchOrder } from "./render";
+import {
+	openBracket,
+	startList,
+	end2d,
+	flushTargets,
+	finishRecording,
+	setSceneSmooth,
+	paintIndex,
+	endPatch,
+} from "./draw";
+import { DisplayList, NO_REPAINT, displayList, useList } from "./displayList";
+import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
 import { Color, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
@@ -16,7 +25,7 @@ export function scene(clear: Color): Scene {
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
-		maskEnds: [],
+		maskEnds: [], repaint: [], queued: [], patchSerial: 0, retry: [],
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], stack: [], root: NO_NODE,
 		list: displayList(),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
@@ -41,10 +50,16 @@ export function tick(this s: Scene, dt: float32): void {
 		const payload: int32 = s.payloads[i];
 		match (s.kinds[i]) {
 			DrawKind.Anim => {
+				const shown: int32 = s.anims[payload].frameIndex();
 				s.anims[payload].clock = s.anims[payload].clock + dt;
+				if (s.anims[payload].frameIndex() != shown) { s.markChanged(i, Changed.Content); }
 			},
 			DrawKind.Label => {
-				if (payload != NO_LABEL_TEXT) { advanceBlink(payload, dt); }
+				if (payload != NO_LABEL_TEXT) {
+					const shown: boolean = cursorShown(labelTexts[payload]);
+					advanceBlink(payload, dt);
+					if (cursorShown(labelTexts[payload]) != shown) { s.markChanged(i, Changed.Text); }
+				}
 			},
 			_ => {},
 		}
@@ -107,17 +122,12 @@ export function present(this s: Scene): void {
 // `present()` takes the host's ratio; `presentAt` takes an explicit one, which is how a
 // golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
 // "Determinism preconditions").
-export function presentAt(this s: Scene, dpi: float32): void {
-	const fw: int32 = fbWidth();
-	const fh: int32 = fbHeight();
-	const wf: float32 = (fw as float32) / dpi;
-	const hf: float32 = (fh as float32) / dpi;
+export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): void {
 	// Before recording begins, never during the walk: begin2d captures this default in the
 	// first run's sampler state.
 	setSceneSmooth(s.defaultSmooth);
 	useList(s.list);
-	beginList(wf, hf, dpi);
-	releaseTargets();
+	openBracket(wf, hf, dpi);
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const viewChanged: boolean = !s.viewInit || nv != s.viewMat;
 	if (viewChanged) {
@@ -125,8 +135,33 @@ export function presentAt(this s: Scene, dpi: float32): void {
 		s.viewInit = true;
 	}
 	s.refreshOrder();
+	const l: DisplayList = s.list;
+	const kept: boolean = l.painted && !s.structureChanged && !viewChanged &&
+		l.paintedW == wf && l.paintedH == hf && l.paintedDpi == dpi &&
+		l.paintedSmooth == s.defaultSmooth;
+	if (kept && s.patchOrder(wf, hf)) {
+		endPatch(l.paintEnd);
+		l.patches = l.patches + 1;
+		l.repainted = s.repaint.length as int32;
+		return;
+	}
+	startList();
 	s.syncOrder(s.viewMat, viewChanged);
 	s.drawOrder(wf, hf);
+	finishRecording();
+	l.paintEnd = paintIndex();
+	l.painted = true;
+	l.paintedW = wf;
+	l.paintedH = hf;
+	l.paintedDpi = dpi;
+	l.paintedSmooth = s.defaultSmooth;
+	l.repainted = NO_REPAINT;
+}
+
+export function presentAt(this s: Scene, dpi: float32): void {
+	const fw: int32 = fbWidth();
+	const fh: int32 = fbHeight();
+	s.paint((fw as float32) / dpi, (fh as float32) / dpi, dpi);
 	// Every render-target pass first, with no pass open, then one swapchain pass that is only
 	// draws. That ordering is what stops a filter nesting a pass inside the frame's pass, and
 	// it is the GPUI frame shape (GPUI.md:18).
@@ -136,4 +171,5 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	endPass();
 	commit();
 	s.clearChanges();
+	s.retryRefused();
 }

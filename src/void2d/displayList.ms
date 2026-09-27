@@ -143,9 +143,64 @@ export const NO_CLIP: Clip = {
 	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
 };
 
+export struct MaskClip {
+	x0: float32;
+	y0: float32;
+	x1: float32;
+	y1: float32;
+	ux: float32;
+	uy: float32;
+	uMin: float32;
+	uMax: float32;
+	vx: float32;
+	vy: float32;
+	vMin: float32;
+	vMax: float32;
+}
+
+export const NO_MASK_CLIP: MaskClip = {
+	x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0,
+	ux: 0.0, uy: 0.0, uMin: 0.0, uMax: 0.0,
+	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
+};
+
+export const NO_MASK: int32 = -1;
+export const NO_REPAINT: int32 = -1;
+
+export enum PaintState {
+	Unpainted,
+	Painted,
+	InTarget,
+}
+
+export struct PaintIndex {
+	commands: int32;
+	effects: int32;
+	vertices: int32;
+	uiInstances: int32;
+	spriteInstances: int32;
+	runOpen: boolean;
+	runStart: int32;
+	pipeline: Pipeline;
+	reason: BreakReason;
+	view: uint32;
+	blend: BlendMode;
+	sampler: int32;
+	effect: int32;
+	hasEffect: boolean;
+	mask: int32;
+}
+
+export const NO_PAINT: PaintIndex = {
+	commands: 0, effects: 0, vertices: 0, uiInstances: 0, spriteInstances: 0,
+	runOpen: false, runStart: 0, pipeline: Pipeline.Vertex, reason: BreakReason.First, view: 0,
+	blend: BlendMode.Alpha, sampler: 0, effect: NO_EFFECT, hasEffect: false, mask: NO_MASK,
+};
+
 const MAX_TARGET_DEPTH: int32 = 8;
 
 export interface DisplayList {
+	id: int32;
 	commands: Vec<float32>;
 	effects: Vec<float32>;
 	vertices: Vec<float32>;
@@ -169,14 +224,32 @@ export interface DisplayList {
 	clip: Clip;
 	clipRecorded: boolean;
 	renderTargetScale: float32;
+	masks: Vec<MaskClip>;
+	maskTotal: int32;
+	paintStarts: Vec<PaintIndex>;
+	paintEnds: Vec<PaintIndex>;
+	paintStates: Vec<PaintState>;
+	paintEnd: PaintIndex;
+	painted: boolean;
+	paintedW: float32;
+	paintedH: float32;
+	paintedDpi: float32;
+	paintedSmooth: boolean;
+	patches: int32;
+	repainted: int32;
+	targetsPending: boolean;
 }
+
+let serials: Vec<int32> = [];
 
 // Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
 // frame that records no effect at all would otherwise index an empty array to take its
 // address. Counts come from the `*Total` variables, never from `.length`, so the seed is
 // invisible to every reader.
 export function displayList(): DisplayList {
+	serials.push(0);
 	return {
+		id: (serials.length as int32) - 1,
 		commands: new Array(COMMAND_FLOATS),
 		effects: new Array(EFFECT_FLOATS),
 		vertices: new Array(VERTEX_FLOATS),
@@ -198,6 +271,20 @@ export function displayList(): DisplayList {
 		clip: NO_CLIP,
 		clipRecorded: false,
 		renderTargetScale: 0.0,
+		masks: [],
+		maskTotal: 0,
+		paintStarts: [],
+		paintEnds: [],
+		paintStates: [],
+		paintEnd: NO_PAINT,
+		painted: false,
+		paintedW: 0.0,
+		paintedH: 0.0,
+		paintedDpi: 0.0,
+		paintedSmooth: false,
+		patches: 0,
+		repainted: 0,
+		targetsPending: false,
 	};
 }
 
@@ -225,7 +312,53 @@ export function resetList(): void {
 	list.renderTargetScale = 0.0;
 	list.targetDepthNow = 0;
 	list.targetOverflowed = false;
+	list.maskTotal = 0;
+	list.targetsPending = true;
+	serials[list.id] = serials[list.id] + 1;
 }
+
+export function listSerial(id: int32): int32 { return serials[id]; }
+
+export function pushMaskClip(c: MaskClip): int32 {
+	const at: int32 = list.maskTotal;
+	if (at < (list.masks.length as int32)) {
+		list.masks[at] = c;
+	} else {
+		list.masks.push(c);
+	}
+	list.maskTotal = at + 1;
+	return at;
+}
+
+export function maskClipAt(index: int32): MaskClip { return list.masks[index]; }
+
+function growPaint(row: int32): void {
+	while ((list.paintStates.length as int32) <= row) {
+		list.paintStarts.push(NO_PAINT);
+		list.paintEnds.push(NO_PAINT);
+		list.paintStates.push(PaintState.Unpainted);
+	}
+}
+
+export function recordPaint(row: int32, start: PaintIndex, end: PaintIndex): void {
+	growPaint(row);
+	list.paintStarts[row] = start;
+	list.paintEnds[row] = end;
+	list.paintStates[row] = PaintState.Painted;
+}
+
+export function markPaintState(row: int32, state: PaintState): void {
+	growPaint(row);
+	list.paintStates[row] = state;
+}
+
+export function paintStateOf(row: int32): PaintState {
+	if (row >= (list.paintStates.length as int32)) { return PaintState.Unpainted; }
+	return list.paintStates[row];
+}
+
+export function paintStartOf(row: int32): PaintIndex { return list.paintStarts[row]; }
+export function paintEndOf(row: int32): PaintIndex { return list.paintEnds[row]; }
 
 // Which pipeline set and device scale every command recorded from here will ask the replay
 // to use. A zero scale is the swapchain, whose scale belongs to the frame.

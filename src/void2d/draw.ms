@@ -40,7 +40,7 @@ import {
 	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
-	Pipeline, NO_CLIP,
+	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
 	pushSpriteInstance, recordSpriteDraw,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
@@ -158,28 +158,8 @@ let curHasEffect: boolean = false;
 
 // The hardware scissor carries the intersection AABB. A rotated Mask additionally carries
 // one pair of projection intervals: four exact edges, interpolated by the vertex shader.
-struct MaskClip {
-	x0: float32;
-	y0: float32;
-	x1: float32;
-	y1: float32;
-	ux: float32;
-	uy: float32;
-	uMin: float32;
-	uMax: float32;
-	vx: float32;
-	vy: float32;
-	vMin: float32;
-	vMax: float32;
-}
-
-const NO_MASK_CLIP: MaskClip = {
-	x0: 0.0, y0: 0.0, x1: 0.0, y1: 0.0,
-	ux: 0.0, uy: 0.0, uMin: 0.0, uMax: 0.0,
-	vx: 0.0, vy: 0.0, vMin: 0.0, vMax: 0.0,
-};
-
 let clipStack: Vec<MaskClip> = new Array(16);
+let maskIndices: Vec<int32> = new Array(16);
 let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {
@@ -230,6 +210,72 @@ function closeRun(): void {
 // replay is the one part that is not.
 export function finishRecording(): void {
 	closeRun();
+}
+
+export function paintIndex(): PaintIndex {
+	const l: DisplayList = currentList();
+	return {
+		commands: l.commandTotal,
+		effects: l.effectTotal,
+		vertices: l.vertexTotal,
+		uiInstances: l.uiInstanceTotal,
+		spriteInstances: l.spriteInstanceTotal,
+		runOpen: runOpen,
+		runStart: runStart,
+		pipeline: curPipeline,
+		reason: runReason,
+		view: curView,
+		blend: curBlend,
+		sampler: curSampler,
+		effect: curEffect,
+		hasEffect: curHasEffect,
+		mask: clipDepth > 0 ? maskIndices[clipDepth - 1] : NO_MASK,
+	};
+}
+
+export function resumePaint(p: PaintIndex): void {
+	const l: DisplayList = currentList();
+	l.commandTotal = p.commands;
+	l.effectTotal = p.effects;
+	l.vertexTotal = p.vertices;
+	l.uiInstanceTotal = p.uiInstances;
+	l.spriteInstanceTotal = p.spriteInstances;
+	runOpen = p.runOpen;
+	runStart = p.runStart;
+	curPipeline = p.pipeline;
+	runReason = p.reason;
+	curView = p.view;
+	curBlend = p.blend;
+	curSampler = p.sampler;
+	curEffect = p.effect;
+	curHasEffect = p.hasEffect;
+	if (p.hasEffect) {
+		for (let i: int32 = 0; i < 16; i++) { curMat[i] = effectField(p.effect, i); }
+		curAdd = rgba(
+			effectField(p.effect, 16), effectField(p.effect, 17),
+			effectField(p.effect, 18), effectField(p.effect, 19),
+		);
+		curKey = rgba(
+			effectField(p.effect, 20), effectField(p.effect, 21),
+			effectField(p.effect, 22), effectField(p.effect, 23),
+		);
+	}
+	originX = 0.0;
+	originY = 0.0;
+	if (p.mask == NO_MASK) {
+		clipDepth = 0;
+		l.clip = NO_CLIP;
+		return;
+	}
+	clipStack[0] = maskClipAt(p.mask);
+	maskIndices[0] = p.mask;
+	clipDepth = 1;
+	l.clip = clipOf(clipStack[0]);
+}
+
+export function endPatch(end: PaintIndex): void {
+	resumePaint(end);
+	runOpen = false;
 }
 
 function openRun(reason: BreakReason): void {
@@ -289,7 +335,7 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 	beginList(w, h, dpi);
 }
 
-export function beginList(w: float32, h: float32, dpi: float32): void {
+export function openBracket(w: float32, h: float32, dpi: float32): void {
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
 	beginGlyphFrame(void2dFrameSerial());
@@ -297,10 +343,18 @@ export function beginList(w: float32, h: float32, dpi: float32): void {
 	fbW = w;
 	fbH = h;
 	targetsFlushed = false;
-	resetList();
 	frameLive = true;
 	originX = 0.0;
 	originY = 0.0;
+}
+
+export function beginList(w: float32, h: float32, dpi: float32): void {
+	openBracket(w, h, dpi);
+	startList();
+}
+
+export function startList(): void {
+	resetList();
 	runOpen = false;
 	runStart = 0;
 	curPipeline = Pipeline.Ui;
@@ -325,8 +379,10 @@ export function flushTargets(): void {
 		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
 	}
 	const l: DisplayList = currentList();
+	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
+	l.targetsPending = false;
 	frameLive = void2dReplayTargets(
-		l.targetCommands[0], targetCommandCount(),
+		l.targetCommands[0], targets,
 		l.effects[0], effectCount(),
 		l.vertices[0], vertexCount(),
 		l.spriteInstances[0], spriteInstanceCount(),
@@ -371,8 +427,7 @@ function maxFour(a: float32, b: float32, c: float32, d: float32): float32 {
 	return out;
 }
 
-function applyClip(d: int32): void {
-	const c: MaskClip = clipStack[d];
+function clipOf(c: MaskClip): Clip {
 	let ix: float32 = c.x0;
 	let iy: float32 = c.y0;
 	let iw: float32 = c.x1 - c.x0;
@@ -383,12 +438,16 @@ function applyClip(d: int32): void {
 	if (ih < 0.0) { ih = 0.0; }
 	const uShift: float32 = originX * c.ux + originY * c.uy;
 	const vShift: float32 = originX * c.vx + originY * c.vy;
-	closeRun();
-	recordClip({
+	return {
 		x: ix - originX, y: iy - originY, w: iw, h: ih,
 		ux: c.ux, uy: c.uy, uMin: c.uMin - uShift, uMax: c.uMax - uShift,
 		vx: c.vx, vy: c.vy, vMin: c.vMin - vShift, vMax: c.vMax - vShift,
-	});
+	};
+}
+
+function applyClip(d: int32): void {
+	closeRun();
+	recordClip(clipOf(clipStack[d]));
 	openRun(BreakReason.Clip);
 }
 
@@ -429,6 +488,7 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 		if (next.y1 < y1) { y1 = next.y1; }
 	}
 	while (clipDepth >= clipStack.length as int32) { clipStack.push(NO_MASK_CLIP); }
+	while (clipDepth >= maskIndices.length as int32) { maskIndices.push(NO_MASK); }
 	const d: int32 = clipDepth;
 
 	const ex: float32 = tr.x - tl.x;
@@ -492,6 +552,7 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 		}
 	}
 	clipStack[d] = { ...next, x0: x0, y0: y0, x1: x1, y1: y1 };
+	maskIndices[d] = pushMaskClip(clipStack[d]);
 	clipDepth = clipDepth + 1;
 	applyClip(d);
 	return supported;

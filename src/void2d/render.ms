@@ -1,7 +1,19 @@
 // void2d rendering — sync (transform cache + content bounds), draw (dispatch + cull + filter),
 // getBounds. Extracted from node.ms so each file has one responsibility.
 
-import { Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh } from "./node";
+import { Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, NO_SLOT } from "./node";
+import {
+	DisplayList,
+	currentList,
+	listSerial,
+	PaintIndex,
+	PaintState,
+	recordPaint,
+	markPaintState,
+	paintStateOf,
+	paintStartOf,
+	paintEndOf,
+} from "./displayList";
 import {
 	fillQuad,
 	drawSpriteAffine,
@@ -25,6 +37,8 @@ import {
 	allocRenderTarget,
 	rtViewId,
 	currentRenderScale,
+	paintIndex,
+	resumePaint,
 } from "./draw";
 import { InstanceMode, uiInstance } from "./instance";
 import {
@@ -506,6 +520,7 @@ function emitLabel(s: Scene, i: int32, world: Transform2D, col: Color, na: float
 	const blend: BlendMode = s.paints[i].blend;
 	const scale: float32 = currentRenderScale();
 	const text = placeLabel(payload, world, scale);
+	if (!text.placedValid) { s.retry.push(i); }
 	const editing: boolean = (text.runs.length as int32) > 0 || text.selectionLength > 0 ||
 		text.cursorIndex != NO_CURSOR;
 	if (editing && !uiInstancingAvailable()) {
@@ -827,14 +842,6 @@ function emitNode(
 // A filter target always starts empty: what is not drawn into it must not composite.
 const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 
-// ===== the frame-linear render-target pool (h3d/impl/TextureCache.hx) =====
-//
-// No node owns a target any more. A target is taken for the length of one frame and handed
-// back at the start of the next, so two filters that never overlap in time share one, and a
-// node that stops being filtered stops holding a texture it is not using. Reuse is by exact
-// size, because a golden has to be reproducible and a size-bucketed pool would make the
-// contents of a target depend on which frame allocated it first.
-//
 // The cap matters: sokol's default pools hold 128 images, 128 views and 128 attachment sets,
 // and a render target costs one of each. 16 is far below that and still more filters than
 // h2d composes in one frame; past it the filter is skipped and says so once, rather than
@@ -843,23 +850,20 @@ const MAX_POOLED_TARGETS: int32 = 16;
 const poolRT: Vec<uint32> = [];
 const poolW: Vec<int32> = [];
 const poolH: Vec<int32> = [];
-let poolBusy: Vec<boolean> = [];
+let poolOwner: Vec<int32> = [];
+let poolSerial: Vec<int32> = [];
 let poolExhaustedReported: boolean = false;
 
-// Called once per frame, before the walk: every target from last frame becomes available.
-// Exported so `filter.ms` can take a scratch target for its own downsample chain rather
-// than carrying a second, weaker kernel.
 export function acquireFrameTarget(w: int32, h: int32): uint32 { return acquireTarget(w, h); }
 export function renderTargetsAlive(): int32 { return poolRT.length as int32; }
 
-export function releaseTargets(): void {
-	for (let i: int32 = 0; i < (poolBusy.length as int32); i++) { poolBusy[i] = false; }
-}
-
 function acquireTarget(w: int32, h: int32): uint32 {
+	const owner: DisplayList = currentList();
 	for (let i: int32 = 0; i < (poolRT.length as int32); i++) {
-		if (!poolBusy[i] && poolW[i] == w && poolH[i] == h) {
-			poolBusy[i] = true;
+		const free: boolean = listSerial(poolOwner[i]) != poolSerial[i];
+		if (free && poolW[i] == w && poolH[i] == h) {
+			poolOwner[i] = owner.id;
+			poolSerial[i] = listSerial(owner.id);
 			return poolRT[i];
 		}
 	}
@@ -875,7 +879,8 @@ function acquireTarget(w: int32, h: int32): uint32 {
 	poolRT.push(rt);
 	poolW.push(w);
 	poolH.push(h);
-	poolBusy.push(true);
+	poolOwner.push(owner.id);
+	poolSerial.push(listSerial(owner.id));
 	return rt;
 }
 
@@ -1009,14 +1014,18 @@ export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
 		const end: int32 = s.orderEnd[p];
 		const a: float32 = p == 0 ? 1.0 : s.alphas[s.parents[i]];
 		if (!s.orders[i].visible) {
+			markRows(s, p, end, PaintState.Unpainted);
 			p = end;
 		} else if (s.filters[i].kind !== FilterKind.None) {
+			markRows(s, p, end, PaintState.InTarget);
 			drawFiltered(s, i, a, vw, vh);
 			p = end;
 		} else {
 			const na: float32 = a * s.paints[i].alpha;
 			s.alphas[i] = na;
+			const start: PaintIndex = paintIndex();
 			drawOwn(s, i, na, vw, vh);
+			recordPaint(i, start, paintIndex());
 			if (s.kinds[i] !== DrawKind.Mask) {
 				p = p + 1;
 			} else if (pushMask(s, i)) {
@@ -1024,6 +1033,7 @@ export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
 				p = p + 1;
 			} else {
 				popClip();
+				markRows(s, p + 1, end, PaintState.Unpainted);
 				p = end;
 			}
 		}
@@ -1032,6 +1042,61 @@ export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
 		s.maskEnds.pop();
 		popClip();
 	}
+}
+
+function markRows(s: Scene, from: int32, to: int32, state: PaintState): void {
+	for (let p: int32 = from; p < to; p++) { markPaintState(s.order[p], state); }
+}
+
+function descend(s: Scene, d: int32): boolean {
+	const top: int32 = s.slots[d];
+	if (top == NO_SLOT) { return true; }
+	const bits: BitSet<Changed> = s.changed[d];
+	if (bits.has(Changed.Tree) || bits.has(Changed.Order) || bits.has(Changed.Filter)) {
+		return false;
+	}
+	if (s.kinds[d] === DrawKind.Mask) { return false; }
+	const end: int32 = s.orderEnd[top];
+	let p: int32 = top;
+	while (p < end) {
+		const i: int32 = s.order[p];
+		const up: int32 = s.parents[i];
+		const world: Transform2D = (p == 0 ? s.viewMat : s.worlds[up]) * s.localMatrices[i];
+		const alpha: float32 = (p == 0 ? 1.0 : s.alphas[up]) * s.paints[i].alpha;
+		const moved: boolean = world != s.worlds[i];
+		if (p > top && !moved && alpha == s.alphas[i] && s.changed[i].isEmpty()) {
+			p = s.orderEnd[p];
+		} else {
+			const state: PaintState = paintStateOf(i);
+			if (state == PaintState.InTarget) { return false; }
+			if (moved && s.kinds[i] === DrawKind.Mask) { return false; }
+			s.worlds[i] = world;
+			s.alphas[i] = alpha;
+			if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
+			if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
+			if (state == PaintState.Painted && s.queued[i] != s.patchSerial) {
+				s.queued[i] = s.patchSerial;
+				s.repaint.push(i);
+			}
+			p = p + 1;
+		}
+	}
+	return true;
+}
+
+export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
+	s.patchSerial = s.patchSerial + 1;
+	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
+	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
+		if (!descend(s, s.dirty[k])) { return false; }
+	}
+	for (let k: int32 = 0; k < (s.repaint.length as int32); k++) {
+		const i: int32 = s.repaint[k];
+		resumePaint(paintStartOf(i));
+		drawOwn(s, i, s.alphas[i], vw, vh);
+		if (paintIndex() != paintEndOf(i)) { return false; }
+	}
+	return true;
 }
 
 // h2d.Object.drawFilters (`h2d/Object.hx:896-956`), which the pre-P1 version got wrong in

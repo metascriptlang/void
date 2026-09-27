@@ -59,6 +59,7 @@ const NO_PAYLOAD: int32 = -1;
 const LAST_GENERATION: int32 = 2147483647;
 const NO_COLOR_MATRIX: float32[] = [];
 const NO_FRAMES: Tile[] = [];
+export const NO_FRAME: int32 = -1;
 
 export struct NodeId {
 	index: int32;
@@ -159,6 +160,10 @@ export interface Scene {
 	alphas: Vec<float32>;
 	moved: Vec<boolean>;
 	maskEnds: Vec<int32>;
+	repaint: Vec<int32>;
+	queued: Vec<int32>;
+	patchSerial: int32;
+	retry: Vec<int32>;
 	anims: Vec<AnimFrames>;
 	freeAnims: Vec<int32>;
 	meshes: Vec<GraphicsMesh>;
@@ -178,6 +183,12 @@ export interface Scene {
 	// rejects that default, because scaled UI and text are the common case here, not pixel
 	// art. A pixel-art scene sets it false once instead of tagging every node.
 	defaultSmooth: boolean;
+}
+
+export function frameIndex(this a: AnimFrames): int32 {
+	const len: int32 = a.frames.length as int32;
+	if (len == 0) { return NO_FRAME; }
+	return ((a.clock * a.fps) as int32) % len;
 }
 
 function freshBits(): BitSet<Changed> {
@@ -238,6 +249,7 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 		s.slots[i] = NO_SLOT;
 		s.alphas[i] = 1.0;
 		s.moved[i] = false;
+		s.queued[i] = 0;
 		const listed: boolean = !s.changed[i].isEmpty();
 		s.changed[i] = freshBits();
 		if (!listed) { s.dirty.push(i); }
@@ -263,6 +275,7 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 	s.slots.push(NO_SLOT);
 	s.alphas.push(1.0);
 	s.moved.push(false);
+	s.queued.push(0);
 	return i;
 }
 
@@ -298,6 +311,10 @@ export function markChanged(this s: Scene, i: int32, what: Changed): void {
 	if (bits.has(what)) { return; }
 	if (bits.isEmpty()) { s.dirty.push(i); }
 	s.changed[i] = bits.incl(what);
+}
+
+export function retryRefused(this s: Scene): void {
+	while ((s.retry.length as int32) > 0) { s.markChanged(s.retry.pop(), Changed.Text); }
 }
 
 export function refreshOrder(this s: Scene): void {
