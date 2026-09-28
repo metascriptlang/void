@@ -103,7 +103,7 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Per-instance attributes + `vertexAttribDivisor` on WebGL2; **255-byte stride ceiling** | **Confirms**, adds a number | the planned 92–128 B UI stride fits |
 | Device loss = drop all, re-arm dirty, redraw; fault injection | **Confirms**, take the test switch | |
 | **`Area` + paint-only animation**: the animator writes instance fields in place | **Take** | the missing half of "dirty-range upload": hover, focus, caret blink never walk the tree |
-| **Lane batching** (backgrounds may cross a content barrier of the same parent) | **Take, adapted** | fallback where the unified UI pipeline cannot absorb a draw (custom shader, second atlas page). Needs the non-overlap flag; Makepad needs a depth buffer for it |
+| **Lane batching** (backgrounds may cross a content barrier of the same parent) | **Take, adapted** | fallback where the unified UI pipeline cannot absorb a draw (custom shader, second atlas page). Needs the non-overlap flag; Makepad needs a depth buffer for it. Landed at VOID2D.md P5 step 11, a lane being a run's place in its child's sequence |
 | `begin_many_instances` — resolve the command once, append N | **Take** | inner loop of glyph runs and `TileGroup` |
 | Shadow + fill + border in **one instance**, quad inflated by the shadow extent | **Take** | half the instances of GPUI's separate shadow primitive for the common card; keep a standalone shadow mode too |
 | Selection as per-row quads with neighbour x/w and a smooth-min union | **Take** | a mode of the UI pipeline; editor-grade selection with no geometry |

@@ -134,7 +134,7 @@ How the taken items are adapted — the display list, the unified UI pipeline, S
 | Dirty → draw+present / present-only / nothing; retained list re-presented | **Take** (renderer half) | `Scene` reports whether it changed and can replay its last list; scheduling is the host's |
 | Frame profiler: `dirty_to_present`, draw time, input latency; overlay drawn outside invalidation | **Take**, plus draw-call / instance / upload-byte counters GPUI lacks | |
 | Device-loss path: drop atlas + GPU resources, force a full redraw | **Take** | generalises `s_atlasGen` |
-| `paint_layer` non-overlap hint | **Take, adapted** | as h2d `TileGroup` + a node flag |
+| `paint_layer` non-overlap hint | **Take, adapted** | as h2d `TileGroup` + a node flag, both landed at VOID2D.md P5 step 11 |
 | Cached-view replay | **Take, adapted** | persistent instance ranges with dirty upload ([SCENE-SCALE.md](SCENE-SCALE.md)) |
 | Line-layout cache, two generations | **W** | exists because GPUI rebuilds its tree; in Void the node holds its layout. A keyed cache only if measure and paint shape the same string twice |
 | BoundsTree reordering, per-kind `Vec`s, `BatchIterator` | **W** | VOID2D.md guardrail 1 |
