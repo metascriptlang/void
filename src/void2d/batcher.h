@@ -52,6 +52,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 
 uint32_t void2dCommandView(const float *cmd);
 void void2dCopyFloats(float *dst, const float *src, int count);
+void void2dSetScopes(const float *scopes, int count);
 
 void void2dSetDpiScale(float scale);
 int void2dScissorMin(float edge, float scale);

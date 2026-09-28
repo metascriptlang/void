@@ -50,6 +50,13 @@ static sg_buffer s_srcUi;
 static int s_srcVertexBase;
 static int s_srcSpriteBase;
 static int s_srcUiBase;
+static const float *s_scopes;
+static int s_scopeCount;
+
+void void2dSetScopes(const float *scopes, int count) {
+	s_scopes = scopes;
+	s_scopeCount = count;
+}
 // sokol's origin convention does not change after setup, and it was being queried twice per
 // draw command - 40 000 times a frame on the UI bench whose `present` this phase reports as
 // not met.
@@ -127,6 +134,8 @@ static int s_retiredBufCount;
 #define CMD_INSTANCE_COUNT  21
 #define CMD_CLIP_U_X        22
 #define CMD_VIEW_HIGH       30
+#define CMD_SCOPE           31
+#define SCOPE_FLOATS        8
 
 #define PIPELINE_VERTEX     0
 #define PIPELINE_SPRITE     1
@@ -463,6 +472,12 @@ int void2dScissorMax(float edge, float scale) {
 
 // A clip is a command in the stream now, applied here during replay rather than by the tree
 // walk. The whole viewport is w == 0, which is how displayList.ms records "no clip".
+static const float *scopeOf(const float *cmd) {
+	int scope = (int)cmd[CMD_SCOPE];
+	if (scope < 0 || scope >= s_scopeCount || !s_scopes) { return NULL; }
+	return s_scopes + (size_t)scope * SCOPE_FLOATS;
+}
+
 static void applyScissor(const float *cmd, float fbW, float fbH) {
 	// Floor the near edge and ceil the far edge in device pixels. Letting sokol truncate
 	// x/y/w/h independently can discard a pixel the exact clip planes accept.
@@ -470,16 +485,40 @@ static void applyScissor(const float *cmd, float fbW, float fbH) {
 	float scale = targetScale != 0.0f ? targetScale : s_dpiScale;
 	int limitW = void2dScissorMax(fbW, scale);
 	int limitH = void2dScissorMax(fbH, scale);
+	float x = cmd[CMD_CLIP_X];
+	float y = cmd[CMD_CLIP_Y];
 	float w = cmd[CMD_CLIP_W];
 	float h = cmd[CMD_CLIP_H];
+	const float *scope = scopeOf(cmd);
+	if (scope) {
+		if (w > 0.0f && h > 0.0f) {
+			float left = x + scope[0] > scope[2] ? x + scope[0] : scope[2];
+			float top = y + scope[1] > scope[3] ? y + scope[1] : scope[3];
+			float right = x + scope[0] + w < scope[2] + scope[4] ? x + scope[0] + w : scope[2] + scope[4];
+			float bottom = y + scope[1] + h < scope[3] + scope[5] ? y + scope[1] + h : scope[3] + scope[5];
+			x = left;
+			y = top;
+			w = right - left;
+			h = bottom - top;
+		} else {
+			x = scope[2];
+			y = scope[3];
+			w = scope[4];
+			h = scope[5];
+		}
+		if (w <= 0.0f || h <= 0.0f) {
+			sg_apply_scissor_rectf(0.0f, 0.0f, 0.0f, 0.0f, true);
+			return;
+		}
+	}
 	if (w <= 0.0f || h <= 0.0f) {
 		sg_apply_scissor_rectf(0.0f, 0.0f, (float)limitW, (float)limitH, true);
 		return;
 	}
-	int x0 = void2dScissorMin(cmd[CMD_CLIP_X], scale);
-	int y0 = void2dScissorMin(cmd[CMD_CLIP_Y], scale);
-	int x1 = void2dScissorMax(cmd[CMD_CLIP_X] + w, scale);
-	int y1 = void2dScissorMax(cmd[CMD_CLIP_Y] + h, scale);
+	int x0 = void2dScissorMin(x, scale);
+	int y0 = void2dScissorMin(y, scale);
+	int x1 = void2dScissorMax(x + w, scale);
+	int y1 = void2dScissorMax(y + h, scale);
 	if (x0 < 0) x0 = 0;
 	if (y0 < 0) y0 = 0;
 	if (x0 > limitW) x0 = limitW;
@@ -841,6 +880,8 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	bool isRT = voidIsRenderTargetView(view);
 	sp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
 	sp.viewport[3] = isRT ? 1.0f : 0.0f;
+	const float *spriteScope = scopeOf(cmd);
+	if (spriteScope) { sp.shift[0] = spriteScope[0]; sp.shift[1] = spriteScope[1]; }
 	copyClipParams(sp.clipU, sp.clipV, cmd);
 	sg_range u = { .ptr = &sp, .size = sizeof(sp) };
 	sg_apply_uniforms(UB_sprite_params, &u);
@@ -892,6 +933,8 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	up.viewport[1] = fbH;
 	up.viewport[2] = (voidIsRenderTargetView(view) && !s_originTopLeft) ? 1.0f : 0.0f;
 	up.viewport[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
+	const float *uiScope = scopeOf(cmd);
+	if (uiScope) { up.shift[0] = uiScope[0]; up.shift[1] = uiScope[1]; }
 	copyClipParams(up.clipU, up.clipV, cmd);
 	sg_range u = { .ptr = &up, .size = sizeof(up) };
 	sg_apply_uniforms(UB_ui_params, &u);
@@ -926,9 +969,15 @@ static void runCommands(const float *commands, int commandCount,
 	uint32_t lastPipeline = 0;
 
 	int scissorApplied = 0;
+	int lastScope = -1;
 	for (int i = 0; i < commandCount; i++) {
 		const float *cmd = commands + (size_t)i * CMD_FLOATS;
 		int kind = (int)cmd[CMD_KIND];
+		int scope = (int)cmd[CMD_SCOPE];
+		if (scope != lastScope) {
+			lastScope = scope;
+			scissorApplied = 0;
+		}
 		if (kind == CMD_KIND_SCISSOR) {
 			applyScissor(cmd, fbW, fbH);
 			scissorApplied = 1;
@@ -1037,6 +1086,8 @@ static void runCommands(const float *commands, int commandCount,
 		vp.model1[2] = isGlyphPageView(view) ? 1.0f : 0.0f;
 		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
+		const float *vertexScope = scopeOf(cmd);
+		if (vertexScope) { vp.shift[0] = vertexScope[0]; vp.shift[1] = vertexScope[1]; }
 		copyClipParams(vp.clipU, vp.clipV, cmd);
 		if (!paramsValid || memcmp(&vp, &lastParams, sizeof(vp)) != 0) {
 			sg_range u = { .ptr = &vp, .size = sizeof(vp) };

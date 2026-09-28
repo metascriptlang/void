@@ -651,5 +651,6 @@ test "scrollBounds clamps a scroll as h2d's setters do, and an equal scroll mark
 	m.scrollTo(0.0, 230.0);
 	assert s.changed[m.id.index].isEmpty();
 	m.setScrollY(231.0);
-	assert s.changed[m.id.index].has(Changed.Local);
+	assert s.changed[m.id.index].has(Changed.Scroll);
+	assert !s.changed[m.id.index].has(Changed.Local);
 }

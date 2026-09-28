@@ -14,7 +14,7 @@
 import {
 	void2dSetup, void2dWhiteView, void2dSetDpiScale, void2dFrameBegin,
 	void2dGlyphPageView, void2dGlyphUploadCount, void2dGlyphUploadBytes, void2dSetTextGamma,
-	void2dReplay, void2dReplayTargets, void2dReplayList, void2dLayoutCheck,
+	void2dReplay, void2dReplayTargets, void2dReplayList, void2dLayoutCheck, void2dSetScopes,
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
@@ -42,6 +42,7 @@ import {
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
+	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, recordSpriteDraw,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
@@ -231,6 +232,7 @@ export function paintIndex(): PaintIndex {
 		effect: curEffect,
 		hasEffect: curHasEffect,
 		mask: clipDepth > 0 ? maskIndices[clipDepth - 1] : NO_MASK,
+		scope: l.scopeNow,
 	};
 }
 
@@ -250,6 +252,7 @@ export function resumePaint(p: PaintIndex): void {
 	curSampler = p.sampler;
 	curEffect = p.effect;
 	curHasEffect = p.hasEffect;
+	l.scopeNow = p.scope;
 	if (p.hasEffect) {
 		for (let i: int32 = 0; i < 16; i++) { curMat[i] = effectField(p.effect, i); }
 		curAdd = rgba(
@@ -297,6 +300,7 @@ export function continuesLike(old: DisplayList, start: PaintIndex, end: PaintInd
 	};
 	const emptyThen: boolean = start.runStart == streamOf(start, start.pipeline);
 	if ((runStart == cursor) != emptyThen) { return false; }
+	if (scopeRow(l, l.scopeNow) != scopeRow(old, start.scope)) { return false; }
 	const maskNow: int32 = clipDepth > 0 ? maskIndices[clipDepth - 1] : NO_MASK;
 	if (maskNow == NO_MASK || start.mask == NO_MASK) { return maskNow == start.mask; }
 	return clipStack[clipDepth - 1] == old.masks[start.mask];
@@ -323,6 +327,7 @@ export function carried(pi: PaintIndex, first: PaintIndex, at: PaintIndex): Pain
 		effect: pi.effect,
 		hasEffect: pi.hasEffect,
 		mask: at.mask,
+		scope: at.scope,
 	};
 }
 
@@ -435,6 +440,7 @@ export function startList(): void {
 	curKey = rgba(0.0, 0.0, 0.0, 0.0);
 	curHasEffect = false;
 	clipDepth = 0;
+	while ((scopeDepths.length as int32) > 0) { scopeDepths.pop(); }
 }
 
 // Upload the frame and run every render-target pass. Called with NO pass open, before the
@@ -446,6 +452,8 @@ export function flushTargets(): void {
 		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
 	}
 	const l: DisplayList = currentList();
+	resolveScopes();
+	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
 	l.targetsPending = false;
 	if (isDefaultList(l)) {
@@ -635,6 +643,57 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 	clipDepth = clipDepth + 1;
 	applyClip(d);
 	return supported;
+}
+
+let scopeDepths: Vec<int32> = [];
+
+export function inScope(): boolean { return currentList().scopeNow != NO_SCOPE; }
+
+export function enterScope(
+	row: int32, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, dx: float32, dy: float32,
+): void {
+	let x0: float32 = minFour(tl.x, tr.x, br.x, bl.x);
+	let y0: float32 = minFour(tl.y, tr.y, br.y, bl.y);
+	let x1: float32 = maxFour(tl.x, tr.x, br.x, bl.x);
+	let y1: float32 = maxFour(tl.y, tr.y, br.y, bl.y);
+	if (clipDepth > 0) {
+		const outer: MaskClip = clipStack[clipDepth - 1];
+		if (outer.x0 > x0) { x0 = outer.x0; }
+		if (outer.y0 > y0) { y0 = outer.y0; }
+		if (outer.x1 < x1) { x1 = outer.x1; }
+		if (outer.y1 < y1) { y1 = outer.y1; }
+	}
+	closeRun();
+	const l: DisplayList = currentList();
+	const record: ScopeRecord = {
+		row: row,
+		parent: l.scopeNow,
+		scale: currentRenderScale(),
+		dx: dx,
+		dy: dy,
+		x: x0 - originX,
+		y: y0 - originY,
+		w: x1 > x0 ? x1 - x0 : 0.0,
+		h: y1 > y0 ? y1 - y0 : 0.0,
+	};
+	l.scopeNow = pushScope(record);
+	scopeDepths.push(clipDepth);
+	clipDepth = 0;
+	l.clip = NO_CLIP;
+	openRun(BreakReason.Clip);
+}
+
+export function leaveScope(): void {
+	closeRun();
+	const l: DisplayList = currentList();
+	l.scopeNow = l.scopes[l.scopeNow].parent;
+	clipDepth = scopeDepths.pop();
+	if (clipDepth > 0) {
+		applyClip(clipDepth - 1);
+		return;
+	}
+	recordClip(NO_CLIP);
+	openRun(BreakReason.Clip);
 }
 
 export function popClip(): void {

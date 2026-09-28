@@ -51,6 +51,7 @@ export enum Changed {
 	Filter,
 	Order,
 	Tree,
+	Scroll,
 }
 
 export const NO_NODE: int32 = -1;
@@ -171,6 +172,7 @@ export interface Scene {
 	alphas: Vec<float32>;
 	moved: Vec<boolean>;
 	maskEnds: Vec<int32>;
+	maskScopes: Vec<boolean>;
 	repaint: Vec<int32>;
 	queued: Vec<int32>;
 	patchSerial: int32;
@@ -772,7 +774,9 @@ function putScroll(n: NodeRef, call: string, x: float32, y: float32): void {
 	const i: int32 = n.liveRow(call);
 	requireKind(n, i, DrawKind.Mask, call, "a scroll");
 	const s: Scene = n.scene;
+	const fresh: boolean = s.payloads[i] == NO_PAYLOAD;
 	const row: int32 = scrollRow(s, i);
+	if (fresh) { s.markChanged(i, Changed.Local); }
 	const now: Scroll2D = s.scrolls[row];
 	let nx: float32 = x;
 	let ny: float32 = y;
@@ -782,7 +786,19 @@ function putScroll(n: NodeRef, call: string, x: float32, y: float32): void {
 	}
 	if (nx == now.x && ny == now.y) { return; }
 	s.scrolls[row] = { ...now, x: nx, y: ny };
-	s.markChanged(i, Changed.Local);
+	s.markChanged(i, s.scrollScope(i) ? Changed.Scroll : Changed.Local);
+}
+
+export function scrollScope(this s: Scene, i: int32): boolean {
+	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return false; }
+	let up: int32 = i;
+	while (up != NO_NODE) {
+		if (s.kinds[up] === DrawKind.Mask && (s.worlds[up].b != 0.0 || s.worlds[up].c != 0.0)) {
+			return false;
+		}
+		up = s.parents[up];
+	}
+	return true;
 }
 
 export function setScrollX(this n: NodeRef, x: float32): NodeRef {
@@ -809,7 +825,9 @@ export function scrollBy(this n: NodeRef, dx: float32, dy: float32): NodeRef {
 export function setScrollBounds(this n: NodeRef, bounds: Bounds | null): NodeRef {
 	const i: int32 = n.liveRow("setScrollBounds");
 	requireKind(n, i, DrawKind.Mask, "setScrollBounds", "a scroll");
+	const fresh: boolean = n.scene.payloads[i] == NO_PAYLOAD;
 	const row: int32 = scrollRow(n.scene, i);
+	if (fresh) { n.scene.markChanged(i, Changed.Local); }
 	const now: Scroll2D = n.scene.scrolls[row];
 	if (bounds === null) {
 		n.scene.scrolls[row] = { ...now, bounded: false };
@@ -821,6 +839,7 @@ export function setScrollBounds(this n: NodeRef, bounds: Bounds | null): NodeRef
 
 export function childWorld(this s: Scene, up: int32): Transform2D {
 	if (s.kinds[up] !== DrawKind.Mask || s.payloads[up] == NO_PAYLOAD) { return s.worlds[up]; }
+	if (s.scrollScope(up)) { return s.worlds[up]; }
 	const sc: Scroll2D = s.scrolls[s.payloads[up]];
 	return s.worlds[up] * trs2d(-sc.x, -sc.y, 0.0, 1.0, 1.0);
 }

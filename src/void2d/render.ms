@@ -1,7 +1,9 @@
 // void2d rendering — sync (transform cache + content bounds), draw (dispatch + cull + filter),
 // getBounds. Extracted from node.ms so each file has one responsibility.
 
-import { Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, NO_SLOT } from "./node";
+import {
+	Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, NO_SLOT, NO_NODE,
+} from "./node";
 import {
 	DisplayList,
 	currentList,
@@ -47,6 +49,9 @@ import {
 	continuesLike,
 	continueAfter,
 	carried,
+	enterScope,
+	leaveScope,
+	inScope,
 } from "./draw";
 import { InstanceMode, uiInstance } from "./instance";
 import {
@@ -974,9 +979,9 @@ function drawOwn(s: Scene, i: int32, na: float32, vw: float32, vh: float32): voi
 	const vtr = vec2(vb.xMax, vb.yMin) * world;
 	const vbr = vec2(vb.xMax, vb.yMax) * world;
 	const vbl = vec2(vb.xMin, vb.yMax) * world;
-	const onscreen: boolean =
+	const onscreen: boolean = (inScope() ||
 		fmax4(vtl.x, vtr.x, vbr.x, vbl.x) >= 0.0 && fmin4(vtl.x, vtr.x, vbr.x, vbl.x) <= vw
-		&& fmax4(vtl.y, vtr.y, vbr.y, vbl.y) >= 0.0 && fmin4(vtl.y, vtr.y, vbr.y, vbl.y) <= vh
+		&& fmax4(vtl.y, vtr.y, vbr.y, vbl.y) >= 0.0 && fmin4(vtl.y, vtr.y, vbr.y, vbl.y) <= vh)
 		&& clipIntersectsQuad(vtl, vtr, vbr, vbl);
 	if (onscreen) {
 		emitNode(
@@ -997,9 +1002,51 @@ function pushMask(s: Scene, i: int32): boolean {
 	);
 }
 
+function snappedShift(v: float32, scale: float32): float32 {
+	if (scale <= 0.0) { return v; }
+	return (Math.round((v * scale) as float64) as float32) / scale;
+}
+
+function localShift(s: Scene, i: int32, scale: float32): Vec2 {
+	const by: Vec2 = scopeShift(s, i);
+	return vec2(snappedShift(by.x, scale), snappedShift(by.y, scale));
+}
+
+function enterScopeOf(s: Scene, i: int32): void {
+	const world = s.worlds[i];
+	const lb = localBounds(s, i);
+	const by: Vec2 = localShift(s, i, currentRenderScale());
+	enterScope(
+		i,
+		vec2(lb.xMin, lb.yMin) * world,
+		vec2(lb.xMax, lb.yMin) * world,
+		vec2(lb.xMax, lb.yMax) * world,
+		vec2(lb.xMin, lb.yMax) * world,
+		by.x,
+		by.y,
+	);
+}
+
+export function refreshScopes(this s: Scene): void {
+	const l: DisplayList = s.list;
+	for (let k: int32 = 0; k < l.scopeTotal; k++) {
+		const r = l.scopes[k];
+		const by: Vec2 = localShift(s, r.row, r.scale);
+		l.scopes[k] = { ...r, dx: by.x, dy: by.y };
+	}
+}
+
 function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, vh: float32): void {
 	const na: float32 = a * own;
 	drawOwn(s, i, na, vw, vh);
+	if (s.scrollScope(i)) {
+		enterScopeOf(s, i);
+		for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
+			drawRow(s, s.children[i][k], na, vw, vh);
+		}
+		leaveScope();
+		return;
+	}
 	const masking: boolean = s.kinds[i] === DrawKind.Mask;
 	if (!masking || pushMask(s, i)) {
 		for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
@@ -1034,7 +1081,7 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 	while (p < n) {
 		while ((s.maskEnds.length as int32) > 0 && s.maskEnds[(s.maskEnds.length as int32) - 1] <= p) {
 			s.maskEnds.pop();
-			popClip();
+			if (s.maskScopes.pop()) { leaveScope(); } else { popClip(); }
 		}
 		const i: int32 = s.order[p];
 		const end: int32 = s.orderEnd[p];
@@ -1080,8 +1127,14 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 				p = q;
 			} else if (s.kinds[i] !== DrawKind.Mask) {
 				p = p + 1;
+			} else if (s.scrollScope(i)) {
+				enterScopeOf(s, i);
+				s.maskEnds.push(end);
+				s.maskScopes.push(true);
+				p = p + 1;
 			} else if (pushMask(s, i)) {
 				s.maskEnds.push(end);
+				s.maskScopes.push(false);
 				p = p + 1;
 			} else {
 				popClip();
@@ -1092,7 +1145,7 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 	}
 	while ((s.maskEnds.length as int32) > 0) {
 		s.maskEnds.pop();
-		popClip();
+		if (s.maskScopes.pop()) { leaveScope(); } else { popClip(); }
 	}
 }
 
@@ -1121,6 +1174,7 @@ function descend(s: Scene, d: int32): void {
 	const top: int32 = s.slots[d];
 	if (top == NO_SLOT) { return; }
 	const bits: BitSet<Changed> = s.changed[d];
+	if (bits == (0 as BitSet<Changed>).incl(Changed.Scroll) && s.scrollScope(d)) { return; }
 	if (bits.has(Changed.Tree) || bits.has(Changed.Order) || bits.has(Changed.Filter)) {
 		s.scanNeeded = true;
 	}
@@ -1209,10 +1263,12 @@ function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32):
 		if (f.offsetY < 0.0) { yMin = yMin + f.offsetY; } else { yMax = yMax + f.offsetY; }
 	}
 	// Clipped to the viewport: a target is only ever needed for the part that can be seen.
-	if (xMin < 0.0) { xMin = 0.0; }
-	if (yMin < 0.0) { yMin = 0.0; }
-	if (xMax > vw) { xMax = vw; }
-	if (yMax > vh) { yMax = vh; }
+	if (!inScope()) {
+		if (xMin < 0.0) { xMin = 0.0; }
+		if (yMin < 0.0) { yMin = 0.0; }
+		if (xMax > vw) { xMax = vw; }
+		if (yMax > vh) { yMax = vh; }
+	}
 	if (xMax <= xMin || yMax <= yMin) { return; }
 	const dpi: float32 = currentRenderScale();
 	xMin = (Math.floor(xMin * dpi) as float32) / dpi;
@@ -1280,7 +1336,16 @@ function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32):
 		rgba(1.0, 1.0, 1.0, na), blend);
 }
 
+function scopeShift(s: Scene, i: int32): Vec2 {
+	const sc: Scroll2D = s.scrolls[s.payloads[i]];
+	return vec2(-sc.x * s.worlds[i].a, -sc.y * s.worlds[i].d);
+}
+
 function boundsRow(s: Scene, i: int32, ref out: Bounds): void {
+	shiftedBounds(s, i, out, vec2(0.0, 0.0), false);
+}
+
+function shiftedBounds(s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped: boolean): void {
 	const lb = localBounds(s, i);
 	const world = s.worlds[i];
 	const vb = boxRenderBounds(s, i, world, lb);
@@ -1289,23 +1354,39 @@ function boundsRow(s: Scene, i: int32, ref out: Bounds): void {
 		const btr = vec2(vb.xMax, vb.yMin) * world;
 		const bbr = vec2(vb.xMax, vb.yMax) * world;
 		const bbl = vec2(vb.xMin, vb.yMax) * world;
-		const bxMin: float32 = fmin4(btl.x, btr.x, bbr.x, bbl.x);
-		const byMin: float32 = fmin4(btl.y, btr.y, bbr.y, bbl.y);
-		const bxMax: float32 = fmax4(btl.x, btr.x, bbr.x, bbl.x);
-		const byMax: float32 = fmax4(btl.y, btr.y, bbr.y, bbl.y);
+		const bxMin: float32 = fmin4(btl.x, btr.x, bbr.x, bbl.x) + shift.x;
+		const byMin: float32 = fmin4(btl.y, btr.y, bbr.y, bbl.y) + shift.y;
+		const bxMax: float32 = fmax4(btl.x, btr.x, bbr.x, bbl.x) + shift.x;
+		const byMax: float32 = fmax4(btl.y, btr.y, bbr.y, bbl.y) + shift.y;
 		if (bxMin < out.xMin) { out.xMin = bxMin; }
 		if (byMin < out.yMin) { out.yMin = byMin; }
 		if (bxMax > out.xMax) { out.xMax = bxMax; }
 		if (byMax > out.yMax) { out.yMax = byMax; }
 	}
+	let inner: Vec2 = shift;
+	if (scoped && s.scrollScope(i)) {
+		const by: Vec2 = scopeShift(s, i);
+		inner = vec2(shift.x + by.x, shift.y + by.y);
+	}
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 		const child: int32 = s.children[i][k];
-		if (s.orders[child].visible) { boundsRow(s, child, out); }
+		if (s.orders[child].visible) { shiftedBounds(s, child, out, inner, scoped); }
 	}
 }
 
 export function getBounds(this n: NodeRef, ref out: Bounds): void {
-	boundsRow(n.scene, n.liveRow("getBounds"), out);
+	const s: Scene = n.scene;
+	const i: int32 = n.liveRow("getBounds");
+	let shift: Vec2 = vec2(0.0, 0.0);
+	let up: int32 = s.parents[i];
+	while (up != NO_NODE) {
+		if (s.scrollScope(up)) {
+			const by: Vec2 = scopeShift(s, up);
+			shift = vec2(shift.x + by.x, shift.y + by.y);
+		}
+		up = s.parents[up];
+	}
+	shiftedBounds(s, i, out, shift, true);
 }
 
 function shapedPayload(n: NodeRef, call: string): int32 {

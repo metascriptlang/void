@@ -1,6 +1,7 @@
 import { scene, add } from "../../src/void2d/scene";
 import { Scene, NodeRef, NO_SLOT } from "../../src/void2d/node";
 import { paint, isDirty, tick } from "../../src/void2d/scene";
+import { refreshScopes } from "../../src/void2d/render";
 import { sync, draw, syncOrder, drawOrder } from "../../src/void2d/render";
 import { begin2d, finishRecording, frameEnd, setSceneSmooth } from "../../src/void2d/draw";
 import {
@@ -18,6 +19,7 @@ import {
 	COMMAND_FLOATS,
 	EFFECT_FLOATS,
 	VERTEX_FLOATS,
+	CMD_SCOPE,
 	PaintIndex,
 	PaintState,
 	paintStartOf,
@@ -308,7 +310,9 @@ test "a retained frame records what a full frame records, write by write" {
 	c.mask.setSize(40.0, 30.0);
 	assert check(s, "a mask resize", "splice");
 	c.mask.scrollTo(0.0, 6.0);
-	assert check(s, "a scroll", "splice");
+	assert check(s, "a mask's first scroll", "splice");
+	c.mask.scrollBy(0.0, 3.0);
+	assert check(s, "a scroll", "patch");
 	c.card.setX(6.0);
 	assert check(s, "a move after the splices", "patch");
 }
@@ -446,4 +450,32 @@ test "a scene is dirty until a frame draws what changed, and a still frame leave
 	assert s.isDirty();
 	frame(s);
 	assert !s.isDirty();
+}
+
+test "a scroll writes no instance and no command, only its scope's shift" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(100.0, 40.0).at(10.0, 10.0);
+	for (let i: int32 = 0; i < 12; i++) {
+		const row = s.rect(90.0, 18.0, rgba(0.2, 0.3, 0.5, 1.0)).at(5.0, (i as float32) * 22.0);
+		row.addChild(s.label(String(i), 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 2.0));
+		m.addChild(row);
+	}
+	s.add(m);
+	m.scrollTo(0.0, 30.0);
+	frame(s);
+	const before: Recording = frame(s);
+	s.refreshScopes();
+	assert s.list.scopeTotal == 1;
+	assert s.list.scopes[0].dy == -30.0;
+	assert s.list.commands[CMD_SCOPE] == 0.0 || s.list.commandTotal > 1;
+	const patches: int32 = s.patches;
+	m.scrollBy(0.0, 22.0);
+	assert s.isDirty();
+	const after: Recording = frame(s);
+	assert s.patches == patches + 1;
+	assert s.repainted == 0;
+	assert same(before, after);
+	s.refreshScopes();
+	assert s.list.scopes[0].dy == -52.0;
+	assert s.list.uiInstanceTotal == 26;
 }

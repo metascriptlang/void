@@ -110,6 +110,9 @@ export const CMD_CLIP_V_Y: int32 = 27;
 export const CMD_CLIP_V_MIN: int32 = 28;
 export const CMD_CLIP_V_MAX: int32 = 29;
 export const CMD_VIEW_HIGH: int32 = 30;
+export const CMD_SCOPE: int32 = 31;
+export const SCOPE_FLOATS: int32 = 8;
+export const NO_SCOPE: int32 = -1;
 export const EFFECT_GRADIENT_META: int32 = 24;
 export const EFFECT_GRADIENT_PARAMS: int32 = 28;
 export const EFFECT_GRADIENT_COLOR0: int32 = 32;
@@ -189,12 +192,26 @@ export struct PaintIndex {
 	effect: int32;
 	hasEffect: boolean;
 	mask: int32;
+	scope: int32;
+}
+
+export struct ScopeRecord {
+	row: int32;
+	parent: int32;
+	scale: float32;
+	dx: float32;
+	dy: float32;
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
 }
 
 export const NO_PAINT: PaintIndex = {
 	commands: 0, effects: 0, vertices: 0, uiInstances: 0, spriteInstances: 0,
 	runOpen: false, runStart: 0, pipeline: Pipeline.Vertex, reason: BreakReason.First, view: 0,
 	blend: BlendMode.Alpha, sampler: 0, effect: NO_EFFECT, hasEffect: false, mask: NO_MASK,
+	scope: NO_SCOPE,
 };
 
 const MAX_TARGET_DEPTH: int32 = 8;
@@ -244,6 +261,11 @@ export interface DisplayList {
 	limited: boolean;
 	limit: PaintIndex;
 	spill: PaintIndex;
+	scopes: Vec<ScopeRecord>;
+	scopeTotal: int32;
+	scopeNow: int32;
+	scopeValues: Vec<float32>;
+	targetScopeSaves: Vec<int32>;
 }
 
 let serials: Vec<int32> = [];
@@ -301,6 +323,11 @@ export function twinList(id: int32): DisplayList {
 		limited: false,
 		limit: NO_PAINT,
 		spill: NO_PAINT,
+		scopes: [],
+		scopeTotal: 0,
+		scopeNow: NO_SCOPE,
+		scopeValues: new Array(SCOPE_FLOATS),
+		targetScopeSaves: new Array(MAX_TARGET_DEPTH),
 	};
 }
 
@@ -333,6 +360,8 @@ export function resetList(): void {
 	list.targetsPending = true;
 	list.uploadAll = true;
 	list.limited = false;
+	list.scopeTotal = 0;
+	list.scopeNow = NO_SCOPE;
 	list.dirtyVertices = false;
 	list.dirtySprites = false;
 	list.dirtyUiTotal = 0;
@@ -340,6 +369,59 @@ export function resetList(): void {
 }
 
 export function listSerial(id: int32): int32 { return serials[id]; }
+
+export function pushScope(record: ScopeRecord): int32 {
+	const at: int32 = list.scopeTotal;
+	if (at < (list.scopes.length as int32)) {
+		list.scopes[at] = record;
+	} else {
+		list.scopes.push(record);
+	}
+	list.scopeTotal = at + 1;
+	return at;
+}
+
+export function resolveScopes(): void {
+	const floats: int32 = list.scopeTotal * SCOPE_FLOATS;
+	while ((list.scopeValues.length as int32) < floats) { list.scopeValues.push(0.0); }
+	for (let k: int32 = 0; k < list.scopeTotal; k++) {
+		const r: ScopeRecord = list.scopes[k];
+		const base: int32 = k * SCOPE_FLOATS;
+		let x: float32 = r.x;
+		let y: float32 = r.y;
+		let right: float32 = r.x + r.w;
+		let bottom: float32 = r.y + r.h;
+		let sx: float32 = r.dx;
+		let sy: float32 = r.dy;
+		if (r.parent != NO_SCOPE) {
+			const up: int32 = r.parent * SCOPE_FLOATS;
+			const px: float32 = list.scopeValues[up];
+			const py: float32 = list.scopeValues[up + 1];
+			x = x + px;
+			y = y + py;
+			right = right + px;
+			bottom = bottom + py;
+			const vx: float32 = list.scopeValues[up + 2];
+			const vy: float32 = list.scopeValues[up + 3];
+			if (vx > x) { x = vx; }
+			if (vy > y) { y = vy; }
+			if (vx + list.scopeValues[up + 4] < right) { right = vx + list.scopeValues[up + 4]; }
+			if (vy + list.scopeValues[up + 5] < bottom) { bottom = vy + list.scopeValues[up + 5]; }
+			sx = sx + px;
+			sy = sy + py;
+		}
+		list.scopeValues[base] = sx;
+		list.scopeValues[base + 1] = sy;
+		list.scopeValues[base + 2] = x;
+		list.scopeValues[base + 3] = y;
+		list.scopeValues[base + 4] = right > x ? right - x : 0.0;
+		list.scopeValues[base + 5] = bottom > y ? bottom - y : 0.0;
+	}
+}
+
+export function scopeRow(l: DisplayList, scope: int32): int32 {
+	return scope == NO_SCOPE ? NO_SCOPE : l.scopes[scope].row;
+}
 
 export function pushMaskClip(c: MaskClip): int32 {
 	const at: int32 = list.maskTotal;
@@ -794,6 +876,7 @@ function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	list.commands[base + CMD_CLIP_V_MIN] = list.clip.vMin;
 	list.commands[base + CMD_CLIP_V_MAX] = list.clip.vMax;
 	list.commands[base + CMD_RT_MODE] = list.renderTargetScale;
+	list.commands[base + CMD_SCOPE] = list.scopeNow as float32;
 	list.commandTotal = list.commandTotal + 1;
 	return base;
 }
@@ -888,6 +971,7 @@ export function beginTargetList(
 	}
 	list.targetMarks[list.targetDepthNow] = list.commandTotal;
 	list.targetScaleSaves[list.targetDepthNow] = list.renderTargetScale;
+	list.targetScopeSaves[list.targetDepthNow] = list.scopeNow;
 	list.targetClipSaves[list.targetDepthNow] = list.clip;
 	list.targetClipRecordedSaves[list.targetDepthNow] = list.clipRecorded;
 	list.targetDepthNow = list.targetDepthNow + 1;
@@ -903,6 +987,7 @@ export function beginTargetList(
 	list.clipRecorded = false;
 	list.clip = NO_CLIP;
 	list.renderTargetScale = scale;
+	list.scopeNow = NO_SCOPE;
 }
 
 // Close the open target and move its block out of the swapchain list. Because targets close
@@ -926,6 +1011,7 @@ export function endTargetList(): void {
 	list.clip = list.targetClipSaves[list.targetDepthNow];
 	list.clipRecorded = list.targetClipRecordedSaves[list.targetDepthNow];
 	list.renderTargetScale = list.targetScaleSaves[list.targetDepthNow];
+	list.scopeNow = list.targetScopeSaves[list.targetDepthNow];
 }
 
 // The clip the replay should be under from here on. The rect is a coarse hardware scissor;

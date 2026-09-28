@@ -3,7 +3,7 @@
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
 import { Scene, NodeRef, DrawKind, Changed, NO_NODE } from "./node";
-import { syncOrder, drawOrder, spliceOrder, patchOrder } from "./render";
+import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes } from "./render";
 import {
 	openBracket,
 	startList,
@@ -26,7 +26,7 @@ export function scene(clear: Color): Scene {
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
-		maskEnds: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
+		maskEnds: [], maskScopes: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
 		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], scrolls: [], freeScrolls: [],
 		stack: [], root: NO_NODE,
@@ -184,6 +184,7 @@ export function presentAt(this s: Scene, dpi: float32): void {
 	const fw: int32 = fbWidth();
 	const fh: int32 = fbHeight();
 	s.paint((fw as float32) / dpi, (fh as float32) / dpi, dpi);
+	s.refreshScopes();
 	// Every render-target pass first, with no pass open, then one swapchain pass that is only
 	// draws. That ordering is what stops a filter nesting a pass inside the frame's pass, and
 	// it is the GPUI frame shape (GPUI.md:18).
