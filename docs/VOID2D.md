@@ -1285,6 +1285,28 @@ human has seen it as app code; the phase measurement comes last.
     - T1 (`tests/displayList/retain.ms`): a pan that crosses no row patches, writes no instance,
       leaves every world matrix alone and moves `localToGlobal`. A pan that uncovers rows or
       takes them off splices and records what a full frame records. A zoom takes the full frame.
+    - **A pan is a pure translation, to the byte.** Golden `clip/cameraPan` (DPI 1.25, a camera
+      at (-140, -8.3)) was captured once as it is and once with no camera and every node placed
+      where the camera shows it: the two PNGs are identical. Three things stood between them,
+      each fixed on its own:
+      - GPUI rounds an edge half toward zero (`snap_bounds`) in screen space, where every
+        coordinate it snaps is positive, so in effect half down. Under the camera or a scroll
+        scope void2d snaps in unshifted space, where negative coordinates are ordinary, and
+        toward zero put such an edge a device pixel off. `snapEdge` now rounds half down
+        everywhere, GPUI's result for whatever lands on screen. A shadow offset is a
+        distance, not a position, and keeps half toward zero (`snapOffset`).
+      - A filter's target was sized as `ceil((xMax - xMin) * dpi)` after flooring `xMin`, which
+        read 65 device pixels in one place and 64 in the other for the same target (a
+        204.8-wide logical viewport is not exact in float32). Each edge is now floored or
+        ceiled on its own and cut against the framebuffer's integer size less the shift.
+      - `clipOf` clamped a clip to zero when it was recorded. A Mask left of zero lost its
+        clip, and one wholly left of it recorded width 0, which the replay reads as no clip,
+        so a child reaching the screen drew uncut. That was a defect before the camera too,
+        for a Mask wholly left of the viewport, and the camera made it common. The record
+        keeps the true rect and the replay, which already clamps, cuts it. A Mask nested
+        outside its parent had the same symptom through an empty intersection, and an empty
+        clip now culls every quad under it. T1 in `tests/displayList/snapshot.ms`.
+      None of the other 73 goldens moved.
     - Measured, `out/tmp/p7probes/panCost.ms` (release, 1280 × 720, a grid of 40 000 nodes twice
       the viewport's width, three runs, not an A/B):
       - a still frame: 0.020-0.022 ms;
