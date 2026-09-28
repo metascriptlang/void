@@ -69,7 +69,8 @@ import {
 	beginFrame,
 	drawPassLists,
 	drawScreen,
-	endFrame,
+	closePrepare,
+	openScreen,
 } from "./renderer";
 
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
@@ -188,7 +189,6 @@ export struct PixelArtRenderer {
 	blitMaterial: MaterialId;
 	// The view the last frame drew.
 	view: LowResView;
-	prepared: boolean;
 }
 
 // Floats of the uniform pool the preset needs, the core's blocks included.
@@ -370,7 +370,6 @@ export function create(
 		postMaterial: post.value,
 		blitMaterial: blit.value,
 		view: NO_VIEW,
-		prepared: false,
 	});
 }
 
@@ -480,7 +479,7 @@ function drawScene(
 	endPass();
 }
 
-// renderFrame refused the frame before any pass if either screen material or the screen mesh
+// prepareFrame refused the frame before any pass if either screen material or the screen mesh
 // were gone.
 function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	beginPass(renderer.postColors, NO_DEPTH);
@@ -493,7 +492,12 @@ function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): voi
 function drawBlit(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	const drawn: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
-	if (!drawn.ok) { unreachable; }
+	if (!drawn.ok) {
+		console.log(
+			"void3d: drawToScreen after the preset's blit material or screen mesh was released",
+		);
+		unreachable;
+	}
 }
 
 function fromCore(error: RendererError): PixelArtError {
@@ -566,10 +570,7 @@ export function prepareFrame(
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
-	if (renderer.prepared) {
-		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
-		unreachable;
-	}
+	renderer.core.openPrepare();
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);
 	if (!screens) { return Result.err(PixelArtError.StaleMaterial); }
@@ -606,19 +607,14 @@ export function prepareFrame(
 		};
 	}
 	renderer.view = view;
-	renderer.prepared = true;
+	closePrepare(renderer.core);
 	return Result.ok(items.length as int32);
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 export function drawToScreen(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
-	if (!renderer.prepared) {
-		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
-		unreachable;
-	}
+	openScreen(renderer.core);
 	drawBlit(renderer, context);
-	endFrame(renderer.core);
-	renderer.prepared = false;
 }
 
 export function renderFrame(

@@ -25,7 +25,8 @@ import {
 	beginFrame,
 	drawPassLists,
 	drawScreen,
-	endFrame,
+	closePrepare,
+	openScreen,
 } from "./renderer";
 
 export struct ForwardRenderer {
@@ -37,7 +38,6 @@ export struct ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
-	prepared: boolean;
 }
 
 export enum ForwardError {
@@ -72,7 +72,7 @@ const FAR_DEPTH: float32 = 1.0;
 const SCREEN_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 
 // Creates the core and adds the copy material to `context`. No GPU object is made here: the
-// first renderFrame makes them.
+// first prepareFrame makes them.
 export function create(
 	this typeof ForwardRenderer,
 	ref context: DrawContext,
@@ -94,7 +94,6 @@ export function create(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
-		prepared: false,
 	});
 }
 
@@ -145,10 +144,7 @@ export function prepareFrame(
 	width: int32,
 	height: int32,
 ): Result<int32, ForwardError> {
-	if (renderer.prepared) {
-		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
-		unreachable;
-	}
+	renderer.core.openPrepare();
 	if (width <= 0 || height <= 0) {
 		return Result.err(ForwardError.TargetSize);
 	}
@@ -168,21 +164,21 @@ export function prepareFrame(
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
 	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
 	endPass();
-	renderer.prepared = true;
+	closePrepare(renderer.core);
 	return Result.ok(items.length as int32);
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 export function drawToScreen(ref renderer: ForwardRenderer, ref context: DrawContext): void {
-	if (!renderer.prepared) {
-		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
-		unreachable;
-	}
+	openScreen(renderer.core);
 	const copied: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
-	if (!copied.ok) { unreachable; }
-	endFrame(renderer.core);
-	renderer.prepared = false;
+	if (!copied.ok) {
+		console.log(
+			"void3d: drawToScreen after the preset's copy material or screen mesh was released",
+		);
+		unreachable;
+	}
 }
 
 export function renderFrame(

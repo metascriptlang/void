@@ -363,7 +363,7 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 		assert context.uniforms.used == PIXEL_ART_UNIFORM_LENGTH;
 		const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 		assert renderer.needsFrame(drawn);
-		// What renderFrame records once it has drawn `drawn`.
+		// What prepareFrame records once it has taken `drawn`.
 		renderer.view = drawn;
 		renderer.core.changed = false;
 		renderer.core.generation = 1;

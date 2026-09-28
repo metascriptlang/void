@@ -5,7 +5,8 @@
 // pass lists (Opaque, Alpha back to front, Additive), the scene's camera and light uniform
 // blocks, the screen triangle every ScreenFx draws, and the GPU context bookkeeping. A preset
 // (pixelArtRenderer.ms, as fwd.Renderer / pbr.Renderer are in Heaps) owns targets and passes
-// and calls beginFrame, drawPassLists, drawScreen and endFrame in its own order.
+// and calls beginFrame, drawPassLists and drawScreen in its own order, between openPrepare,
+// closePrepare and openScreen, which hold its two halves to one sokol frame.
 //
 // It takes a Span<DrawItem> and the camera block, never a scene (docs/VOID3D.md, Porting
 // rules); the items' meshes and materials live in the caller's DrawContext. What it draws for
@@ -22,6 +23,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	UNIFORM_SLOTS,
 	contextGeneration,
+	frameIndex,
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
@@ -64,6 +66,8 @@ export struct Renderer {
 	// Something changed since the last frame (V6: the host skips frames that would draw the
 	// same image).
 	changed: boolean;
+	prepared: boolean;
+	preparedFrame: uint32;
 }
 
 export enum RendererError {
@@ -131,6 +135,8 @@ export function createDrawing(
 		screenMesh: screen.value,
 		generation: 0,
 		changed: true,
+		prepared: false,
+		preparedFrame: 0,
 	});
 }
 
@@ -289,6 +295,28 @@ function texturesFit(program: Program, material: Material): boolean {
 		&& slotBound(samplers, 0, material.sampler0) && slotBound(samplers, 1, material.sampler1);
 }
 
-export function endFrame(ref renderer: Renderer): void {
+export function openPrepare(this renderer: Renderer): void {
+	if (renderer.prepared) {
+		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
+		unreachable;
+	}
+}
+
+// The frame's inputs are taken here, so a change made before the screen half is kept.
+export function closePrepare(ref renderer: Renderer): void {
+	renderer.prepared = true;
+	renderer.preparedFrame = frameIndex();
 	renderer.changed = false;
+}
+
+export function openScreen(ref renderer: Renderer): void {
+	if (!renderer.prepared) {
+		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
+		unreachable;
+	}
+	if (renderer.preparedFrame != frameIndex()) {
+		console.log("void3d: drawToScreen in a later sokol frame than the prepareFrame it draws");
+		unreachable;
+	}
+	renderer.prepared = false;
 }
