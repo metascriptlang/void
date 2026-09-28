@@ -80,8 +80,8 @@ export function pickNearest(
 			const nearer: boolean = best.distance < 0.0 || hit.distance < best.distance;
 			if (hit.distance >= 0.0 && nearer) {
 				best = {
-					owner: { index: owner, generation: scene.generations[owner] },
-					mesh: { index: index, generation: scene.generations[index] },
+					owner: scene.nodeIdAt(owner),
+					mesh: scene.nodeIdAt(index),
 					distance: hit.distance,
 					point: hit.point,
 				};

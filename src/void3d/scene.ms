@@ -13,16 +13,15 @@
 //   - children are a contiguous array and there are no sibling links, the same reason the draw
 //     list is flat (`bevy_ecs/src/hierarchy.rs:154`, `pub struct Children(Vec<Entity>)`);
 //   - descent uses an explicit stack, not firstChild/nextSibling pointer-chasing;
-//   - a row is addressed by index plus a generation, with a dense LIFO free list, and a
-//     generation that would wrap retires the slot instead of aliasing it silently
-//     (`entity/mod.rs:710-755`, `:885-892`). A silently reused node id in a scene graph is
-//     unfindable from the symptom it produces.
+//   - a row is addressed by index plus a generation (slots.ms). A silently reused node id in a
+//     scene graph is unfindable from the symptom it produces.
 import {
 	Vec3, vec3, transformDirection, normalized, Quat, identityQuat, Mat4, identity,
 	composeTransform, multiplyAffine,
 } from "../math/math3d";
 import { MAX_POINT_LIGHTS } from "./gpu3d";
 import { DrawItem } from "./draw";
+import { Slots, claim, vacate } from "./slots";
 
 export enum NodeFlag {
 	Visible,
@@ -112,9 +111,7 @@ export struct MeshInstance {
 
 export struct Scene {
 	nodes: Vec<Object3D>;
-	generations: Vec<int32>;
-	retired: Vec<boolean>;
-	free: Vec<int32>;
+	slots: Slots;
 	meshes: Vec<MeshInstance>;
 	lights: Vec<LightInstance>;
 	meshOwners: Vec<int32>;
@@ -150,42 +147,34 @@ export function isVisible(this node: Object3D): boolean {
 }
 
 export function nodeCount(this scene: Scene): int32 {
-	let retired: int32 = 0;
-	for (const gone of scene.retired) {
-		if (gone) { retired = retired + 1; }
-	}
-	return (scene.nodes.length as int32) - (scene.free.length as int32) - retired;
+	return scene.slots.liveCount();
 }
 
 // True when `id` still names the node it was handed out for.
 export function isLive(this scene: Scene, id: NodeId): boolean {
-	if (id.index < 0 || id.index >= (scene.nodes.length as int32)) { return false; }
-	return scene.generations[id.index] == id.generation;
+	return scene.slots.isCurrent(id.index, id.generation);
+}
+
+// The id of the node now at `index`.
+export function nodeIdAt(this scene: Scene, index: int32): NodeId {
+	return { index: index, generation: scene.slots.generations[index] };
 }
 
 function newSlot(ref scene: Scene, node: Object3D): NodeId {
-	const reusable: int32 = scene.free.length as int32;
-	if (reusable > 0) {
-		// Dense LIFO: the last freed slot is the next handed out.
-		const index: int32 = scene.free[reusable - 1];
-		scene.free.pop();
+	const index: int32 = claim(scene.slots);
+	if (index == (scene.nodes.length as int32)) {
+		scene.nodes.push(node);
+		scene.stack.push(NO_NODE);
+	} else {
 		scene.nodes[index] = node;
-		return { index: index, generation: scene.generations[index] };
 	}
-	const index: int32 = scene.nodes.length as int32;
-	scene.nodes.push(node);
-	scene.generations.push(1);
-	scene.retired.push(false);
-	scene.stack.push(NO_NODE);
-	return { index: index, generation: 1 };
+	return scene.nodeIdAt(index);
 }
 
 export function create(this typeof Scene): Scene {
 	let scene: Scene = {
 		nodes: [],
-		generations: [],
-		retired: [],
-		free: [],
+		slots: Slots.empty(),
 		meshes: [],
 		lights: [],
 		meshOwners: [],
@@ -211,7 +200,7 @@ export function create(this typeof Scene): Scene {
 }
 
 export function rootId(this scene: Scene): NodeId {
-	return { index: scene.root, generation: scene.generations[scene.root] };
+	return scene.nodeIdAt(scene.root);
 }
 
 // Adds an empty group under `parent`. Structure changed, so the draw list is rebuilt next collect.
@@ -341,8 +330,7 @@ function releasePayload(ref scene: Scene, index: int32): void {
 	scene.nodes[index].payload = NO_NODE;
 }
 
-// Frees `id` and everything under it. The slots go on the free list with their generation bumped;
-// a slot whose generation would wrap is retired instead, so an id can never come back aliased.
+// Frees `id` and everything under it; their ids go stale (slots.ms).
 export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (id.index == scene.root) { return Result.err(SceneError.RootCannotBeRemoved); }
@@ -361,19 +349,7 @@ export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> 
 		scene.nodes[index].children = [];
 		scene.nodes[index].parent = NO_NODE;
 		releasePayload(scene, index);
-		const generation: int32 = scene.generations[index];
-		if (generation == 2147483647) {
-			// Wrap detected rather than silent. Withholding the slot from the free list is only
-			// half of it: the generation has to stop matching any id ever issued, or `isLive`
-			// keeps answering true for the dead node and every guarded entry point lets a caller
-			// through — including adopting a child under it, which would be unreachable from the
-			// root forever. Generation 0 is issued by nothing; `newSlot` starts at 1.
-			scene.retired[index] = true;
-			scene.generations[index] = 0;
-		} else {
-			scene.generations[index] = generation + 1;
-			scene.free.push(index);
-		}
+		vacate(scene.slots, index);
 		removed = removed + 1;
 	}
 	scene.structureChanged = true;
@@ -479,7 +455,7 @@ export function findByName(
 		const index: int32 = stack[last];
 		stack.pop();
 		if (scene.nodes[index].name == name) {
-			return Result.ok({ index: index, generation: scene.generations[index] });
+			return Result.ok(scene.nodeIdAt(index));
 		}
 		const count: int32 = scene.nodes[index].children.length as int32;
 		for (let i = count - 1; i >= 0; i--) {

@@ -31,6 +31,7 @@ import "./boundsCheck";
 import "./meshDataCheck";
 import "./drawCheck";
 import "./gltfCheck";
+import "./slotsCheck";
 import "./scene3dCheck";
 import "./animationCheck";
 import "./pickCheck";
