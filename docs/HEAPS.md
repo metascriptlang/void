@@ -323,7 +323,7 @@ Missing from void2d today:
 - ~~`smooth` as a tri-state with a scene default; `tileWrap`, with clamp as the default sampler.~~ **Landed at P1**: `Smooth.Inherit/Off/On` in `void2d/types.ms` resolving against `Scene.defaultSmooth`, and `Node2D.tileWrap` with clamp by default. The scene default is **linear**, not h2d's nearest - that is the "Do not copy from h2d" entry below, applied.
 - ~~Filter semantics (`h2d/Object.hx:896-956`)~~ **Landed at P1**, all six: the node itself goes into the target, alpha applied once (on every filter kind - the Glow and DropShadow branch took a second pass of the review to get right), the target in object-local space through a filter matrix that the emitter subtracts as it records rather than a second sync, bounds clipped to the viewport, a frame-linear target pool (`h3d/impl/TextureCache.hx`) capped at 16, and clip state saved and cleared per target.
 - `localToGlobal` after a mutation and before `present` returns last frame's matrix (`node.ms:344-350`); h2d calls `syncPos()` first (`Object.hx:359`).
-- `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:77-92` vs `h2d/Scene.hx:415-427`).
+- `ScaleMode.Zoom` / `AutoZoom` mean something different from h2d's (`scene.ms:77-92` vs `h2d/Scene.hx:415-427`). The h2d oracle (P5 step 13) lists both, and the other four modes agree with `checkResize`.
 
 ### Do not copy from h2d
 

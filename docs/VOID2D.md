@@ -1323,6 +1323,34 @@ human has seen it as app code; the phase measurement comes last.
 13. **`oracle:h2d`** (T3), Heaps compiled to JS and run on node by SCENE-SCALE.md "Reproducing";
     `haxe` 4.3.7, `heaps` and `format` are on this box (2026-09-27). HEAPS.md's deliberate
     divergences seed its PENDING list.
+
+    **Landed at P5 step 13.** `sh tests/oracle/h2d.sh` compiles `tests/oracle/h2d/Oracle.hx`
+    against Heaps `b9aa6dcb`, runs it on node and writes `tests/oracle/h2d.json`: fifteen trees of
+    `h2d.Object`, `Bitmap` and `Mask`, and what Heaps answers for `getBounds`, `localToGlobal` and
+    `globalToLocal` on every node. The scale modes come from h2d's own `checkResize`, run on an
+    engine and a scene made with `Type.createEmptyInstance`, since a real `h2d.Scene` needs a
+    window. `src/test/h2dOracleCheck.ms` rebuilds each tree in void2d inside T0. The first run
+    agreed on 8 of 15 trees and found three places void2d had left h2d's meaning, all on
+    surfaces HEAPS.md keeps as h2d's. Each is fixed:
+    - `getBounds` of a Mask is its content cut to the Mask's rect (`Mask.hx` `getBoundsRec`),
+      where void2d joined the rect with the uncut content.
+    - `getBounds` of a node with nothing to bound is a point at its origin, and the answer
+      replaces what `out` held, as h2d empties it (`Object.hx:146-158`).
+    - A Mask's own space is scrolled: `mask.localToGlobal` and `globalToLocal` subtract its
+      scroll, as `calcAbsPos` does (`Mask.hx:115-119`), while its clip stays where the Mask is.
+      Step 10a's T1 had asserted the opposite and is corrected.
+    - `LetterBox` and `Fixed` centre on whole scene units, as `checkResize` floors. The margin is
+      taken in float64, since a float32 one read -1 px at 801 x 599.
+
+    The render bounds that filters and culling read are unchanged; they are step 12's. `Zoom`
+    and `AutoZoom` mean something else in void2d, a design size where h2d takes a zoom level.
+    Which meaning void2d takes is asked of the human, and the two are listed until then
+    (`tests/PENDING.md` "h2d oracle divergences"). The gate now reads **15 / 15 trees and 4 / 6
+    scale modes**. Two compiler cards came out of it:
+    `2026-09-28-narrowed-ref-union-loses-extensions` and
+    `2026-09-28-c-backend-fuses-multiply-add`. The second is why `wholeSceneUnits` keeps its
+    product in a binding of its own: C fused `window - design * zoom` into one rounding where
+    JavaScript did not.
 14. **The measurement** listed under "Measure", and the wasm delta against the P4 head built the
     same day on the same compiler.
 
