@@ -22,6 +22,7 @@ layout(binding=0) uniform void2d_params {
     vec4 globalColor;  // multiplied into the per-vertex tint
     vec4 clipU;        // xy = edge axis; zw = accepted projection interval (disabled when w <= z)
     vec4 clipV;
+    vec4 shift;
 };
 in vec2 pos;
 in vec2 uv0;
@@ -35,8 +36,9 @@ out vec2 pixel;
 void main() {
     vec2 world = vec2(model0.x * pos.x + model0.z * pos.y + model1.x,
                       model0.y * pos.x + model0.w * pos.y + model1.y);
-    pixel = world * model1.w;
-    vec2 ndc = vec2(world.x / viewport.x * 2.0 - 1.0, 1.0 - world.y / viewport.y * 2.0);
+    vec2 moved = world + shift.xy;
+    pixel = moved * model1.w;
+    vec2 ndc = vec2(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     uv = (viewport.z > 0.5) ? vec2(uv0.x, 1.0 - uv0.y) : uv0;
     color = color0 * globalColor;
@@ -212,6 +214,7 @@ layout(binding=0) uniform sprite_params {
     vec4 viewport;     // xy = framebuffer size in px; z = flipV; w = srcAlreadyPremult
     vec4 clipU;
     vec4 clipV;
+    vec4 shift;
 };
 in vec2 corner;
 in vec4 iAffine;      // a,b,c,d
@@ -226,7 +229,8 @@ void main() {
     vec2 local = corner * iOriginSize.zw;
     vec2 world = vec2(iAffine.x * local.x + iAffine.z * local.y + iOriginSize.x,
                       iAffine.y * local.x + iAffine.w * local.y + iOriginSize.y);
-    vec2 ndc = vec2(world.x / viewport.x * 2.0 - 1.0, 1.0 - world.y / viewport.y * 2.0);
+    vec2 moved = world + shift.xy;
+    vec2 ndc = vec2(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0);
     gl_Position = vec4(ndc, 0.0, 1.0);
     vec2 t = mix(iUv.xy, iUv.zw, corner);
     uv = (viewport.z > 0.5) ? vec2(t.x, 1.0 - t.y) : t;
@@ -279,6 +283,7 @@ layout(binding=0) uniform ui_params {
     vec4 viewport;     // xy = logical size; z = flipV; w = physical pixels per logical pixel
     vec4 clipU;
     vec4 clipV;
+    vec4 shift;
 };
 in vec2 corner;
 in vec4 iAffine;      // a,b,c,d
@@ -320,7 +325,8 @@ void main() {
     vec2 local = corner * (size + 2.0 * inflate) - inflate;
     vec2 world = vec2(iAffine.x * local.x + iAffine.z * local.y + iOriginSize.x,
                       iAffine.y * local.x + iAffine.w * local.y + iOriginSize.y);
-    gl_Position = vec4(world.x / viewport.x * 2.0 - 1.0, 1.0 - world.y / viewport.y * 2.0, 0.0, 1.0);
+    vec2 moved = world + shift.xy;
+    gl_Position = vec4(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0, 0.0, 1.0);
 
     vec2 t = mix(iUvRadii.xy, iUvRadii.zw, size.x > 0.0 && size.y > 0.0 ? local / size : vec2(0.0));
     vLocalHalf = vec4(local - size * 0.5, size * 0.5);
