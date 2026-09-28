@@ -610,3 +610,46 @@ test "addChildAt hands back the node that was added too" {
 	assert parent.numChildren() == 2;
 	assert parent.getChildAt(0).paint().alpha == 0.75;
 }
+
+test "a Mask's scroll moves its children and not the Mask, as h2d's calcAbsPos does" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
+	const child = s.rect(20.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 100.0);
+	m.addChild(child);
+	s.add(m);
+	m.scrollTo(3.0, 90.0);
+	const p = child.localToGlobal(vec2(0.0, 0.0));
+	assert approx(p.x, 12.0);
+	assert approx(p.y, 30.0);
+	const back = child.globalToLocal(vec2(12.0, 30.0));
+	assert approx(back.x, 0.0);
+	assert approx(back.y, 0.0);
+	const corner = m.localToGlobal(vec2(0.0, 0.0));
+	assert approx(corner.x, 10.0);
+	assert approx(corner.y, 20.0);
+	s.refOf(s.root).sync(identity2d(), true);
+	let b = emptyBounds();
+	child.getBounds(b);
+	assert approx(b.xMin, 12.0);
+	assert approx(b.yMin, 30.0);
+	assert approx(b.xMax, 32.0);
+	assert approx(b.yMax, 40.0);
+}
+
+test "scrollBounds clamps a scroll as h2d's setters do, and an equal scroll marks nothing" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(80.0, 60.0);
+	s.add(m);
+	m.setScrollBounds({ xMin: 0.0, yMin: 0.0, xMax: 100.0, yMax: 300.0 });
+	m.scrollTo(50.0, 400.0);
+	assert m.scroll().x == 20.0;
+	assert m.scroll().y == 240.0;
+	m.scrollBy(-30.0, -10.0);
+	assert m.scroll().x == 0.0;
+	assert m.scroll().y == 230.0;
+	s.clearChanges();
+	m.scrollTo(0.0, 230.0);
+	assert s.changed[m.id.index].isEmpty();
+	m.setScrollY(231.0);
+	assert s.changed[m.id.index].has(Changed.Local);
+}

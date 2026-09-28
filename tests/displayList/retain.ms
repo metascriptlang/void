@@ -307,6 +307,8 @@ test "a retained frame records what a full frame records, write by write" {
 	assert check(s, "a visibility flip", "splice");
 	c.mask.setSize(40.0, 30.0);
 	assert check(s, "a mask resize", "splice");
+	c.mask.scrollTo(0.0, 6.0);
+	assert check(s, "a scroll", "splice");
 	c.card.setX(6.0);
 	assert check(s, "a move after the splices", "patch");
 }

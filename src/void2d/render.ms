@@ -321,8 +321,9 @@ function syncRow(s: Scene, i: int32, parentWorld: Transform2D, parentChanged: bo
 	}
 	if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
 	if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
+	const inner: Transform2D = s.childWorld(i);
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
-		syncRow(s, s.children[i][k], s.worlds[i], worldChanged);
+		syncRow(s, s.children[i][k], inner, worldChanged);
 	}
 }
 
@@ -337,7 +338,7 @@ export function syncOrder(this s: Scene, view: Transform2D, viewChanged: boolean
 		const parentMoved: boolean = p == 0 ? viewChanged : s.moved[up];
 		const moved: boolean = parentMoved || s.changed[i].has(Changed.Local);
 		if (moved) {
-			s.worlds[i] = (p == 0 ? view : s.worlds[up]) * s.localMatrices[i];
+			s.worlds[i] = (p == 0 ? view : s.childWorld(up)) * s.localMatrices[i];
 		}
 		s.moved[i] = moved;
 		if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
@@ -1129,7 +1130,7 @@ function descend(s: Scene, d: int32): void {
 	while (p < end) {
 		const i: int32 = s.order[p];
 		const up: int32 = s.parents[i];
-		const world: Transform2D = (p == 0 ? s.viewMat : s.worlds[up]) * s.localMatrices[i];
+		const world: Transform2D = (p == 0 ? s.viewMat : s.childWorld(up)) * s.localMatrices[i];
 		const alpha: float32 = (p == 0 ? 1.0 : s.alphas[up]) * s.paints[i].alpha;
 		const moved: boolean = world != s.worlds[i];
 		if (p > top && !moved && alpha == s.alphas[i] && s.changed[i].isEmpty()) {

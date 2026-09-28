@@ -118,6 +118,17 @@ export struct Layout2D {
 	yg: Ptr<void> | null;
 }
 
+export struct Scroll2D {
+	x: float32;
+	y: float32;
+	bounded: boolean;
+	bounds: Bounds;
+}
+
+const NO_SCROLL: Scroll2D = {
+	x: 0.0, y: 0.0, bounded: false, bounds: { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 },
+};
+
 export struct AnimFrames {
 	frames: Tile[];
 	fps: float32;
@@ -173,6 +184,8 @@ export interface Scene {
 	freeAnims: Vec<int32>;
 	meshes: Vec<GraphicsMesh>;
 	freeMeshes: Vec<int32>;
+	scrolls: Vec<Scroll2D>;
+	freeScrolls: Vec<int32>;
 	stack: Vec<int32>;
 	root: int32;
 	list: DisplayList;
@@ -729,6 +742,89 @@ export function selection(
 	return s.refOf(i);
 }
 
+export function scroll(this n: NodeRef): Scroll2D {
+	const i: int32 = n.liveRow("scroll");
+	requireKind(n, i, DrawKind.Mask, "scroll", "a scroll");
+	const payload: int32 = n.scene.payloads[i];
+	return payload == NO_PAYLOAD ? NO_SCROLL : n.scene.scrolls[payload];
+}
+
+function scrollRow(s: Scene, i: int32): int32 {
+	if (s.payloads[i] != NO_PAYLOAD) { return s.payloads[i]; }
+	let row: int32 = s.scrolls.length as int32;
+	if ((s.freeScrolls.length as int32) > 0) {
+		row = s.freeScrolls.pop();
+		s.scrolls[row] = NO_SCROLL;
+	} else {
+		s.scrolls.push(NO_SCROLL);
+	}
+	s.payloads[i] = row;
+	return row;
+}
+
+function clampScroll(v: float32, min: float32, max: float32): float32 {
+	if (v < min) { return min; }
+	if (v > max) { return max; }
+	return v;
+}
+
+function putScroll(n: NodeRef, call: string, x: float32, y: float32): void {
+	const i: int32 = n.liveRow(call);
+	requireKind(n, i, DrawKind.Mask, call, "a scroll");
+	const s: Scene = n.scene;
+	const row: int32 = scrollRow(s, i);
+	const now: Scroll2D = s.scrolls[row];
+	let nx: float32 = x;
+	let ny: float32 = y;
+	if (now.bounded) {
+		nx = clampScroll(x, now.bounds.xMin, now.bounds.xMax - s.contents[i].w);
+		ny = clampScroll(y, now.bounds.yMin, now.bounds.yMax - s.contents[i].h);
+	}
+	if (nx == now.x && ny == now.y) { return; }
+	s.scrolls[row] = { ...now, x: nx, y: ny };
+	s.markChanged(i, Changed.Local);
+}
+
+export function setScrollX(this n: NodeRef, x: float32): NodeRef {
+	putScroll(n, "setScrollX", x, n.scroll().y);
+	return n;
+}
+
+export function setScrollY(this n: NodeRef, y: float32): NodeRef {
+	putScroll(n, "setScrollY", n.scroll().x, y);
+	return n;
+}
+
+export function scrollTo(this n: NodeRef, x: float32, y: float32): NodeRef {
+	putScroll(n, "scrollTo", x, y);
+	return n;
+}
+
+export function scrollBy(this n: NodeRef, dx: float32, dy: float32): NodeRef {
+	const now: Scroll2D = n.scroll();
+	putScroll(n, "scrollBy", now.x + dx, now.y + dy);
+	return n;
+}
+
+export function setScrollBounds(this n: NodeRef, bounds: Bounds | null): NodeRef {
+	const i: int32 = n.liveRow("setScrollBounds");
+	requireKind(n, i, DrawKind.Mask, "setScrollBounds", "a scroll");
+	const row: int32 = scrollRow(n.scene, i);
+	const now: Scroll2D = n.scene.scrolls[row];
+	if (bounds === null) {
+		n.scene.scrolls[row] = { ...now, bounded: false };
+	} else {
+		n.scene.scrolls[row] = { ...now, bounded: true, bounds: bounds as Bounds };
+	}
+	return n;
+}
+
+export function childWorld(this s: Scene, up: int32): Transform2D {
+	if (s.kinds[up] !== DrawKind.Mask || s.payloads[up] == NO_PAYLOAD) { return s.worlds[up]; }
+	const sc: Scroll2D = s.scrolls[s.payloads[up]];
+	return s.worlds[up] * trs2d(-sc.x, -sc.y, 0.0, 1.0, 1.0);
+}
+
 export function animFrames(this n: NodeRef): AnimFrames {
 	const i: int32 = n.liveRow("animFrames");
 	requireKind(n, i, DrawKind.Anim, "animFrames", "frames");
@@ -1075,6 +1171,10 @@ function absoluteMatrix(s: Scene, i: int32): Transform2D {
 	let top: int32 = i;
 	while (s.parents[top] != NO_NODE) {
 		top = s.parents[top];
+		if (s.kinds[top] === DrawKind.Mask && s.payloads[top] != NO_PAYLOAD) {
+			const sc: Scroll2D = s.scrolls[s.payloads[top]];
+			m = trs2d(-sc.x, -sc.y, 0.0, 1.0, 1.0) * m;
+		}
 		m = s.localMatrices[top] * m;
 	}
 	return top == s.root ? s.viewMat * m : m;
@@ -1111,7 +1211,10 @@ function releasePayload(this s: Scene, i: int32): void {
 			s.meshes[payload].records = [];
 			s.freeMeshes.push(payload);
 		},
-		DrawKind.Group | DrawKind.Mask | DrawKind.ScaleGrid => {},
+		DrawKind.Mask => {
+			if (payload != NO_PAYLOAD) { s.freeScrolls.push(payload); }
+		},
+		DrawKind.Group | DrawKind.ScaleGrid => {},
 		DrawKind.Underline | DrawKind.Selection => {},
 	}
 	s.payloads[i] = NO_PAYLOAD;
