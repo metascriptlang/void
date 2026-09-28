@@ -1235,6 +1235,35 @@ human has seen it as app code; the phase measurement comes last.
       editor scene scrolled every frame uploads nothing and re-emits nothing.
     - **The camera** (moved from step 9) takes the same shift at the root after 10b, with a cull
       pass over the rows the shift brings into the viewport, since the viewport culls there.
+
+    **Landed at P5 step 10** (10a `063c691`, golden `de200e5`; the shader `cc30261`; 10b below).
+    `clip/maskScroll` is byte-identical under both paths. What the build decided:
+    - **A scope is a Mask with a scroll whose world, and every Mask world above it, is
+      axis-aligned** (`scrollScope`). Anything else keeps 10a's meaning, the scroll in its
+      children's worlds, because a rotated clip outside the scope would have to cut shifted
+      positions while clips inside it cut unshifted ones.
+    - **The shift lives in three places**: every 2D vertex stage adds a `shift` uniform after the
+      clip distances are taken, so a clip recorded inside the scope cuts unshifted positions; a
+      command names its scope in its last spare float (`CMD_SCOPE`); the list keeps a scope record
+      per Mask, its local shift snapped to a device pixel and its view, which `resolveScopes`
+      chains through the parents at every flush and the replay reads for the shift uniform and
+      for the scissor, `(clip + shift) ∩ view`, an empty one drawing nothing.
+    - **Inside a scope the clip starts empty**: a Mask nested in the scrolled content intersects
+      only with Masks inside the same scope, and leaving the scope records the outer clip again.
+      Viewport culling and a filter's viewport crop are off inside a scope, since both would
+      compare unshifted positions with the screen.
+    - **A scroll write marks `Changed.Scroll`**, which the descent skips for a scope: the frame
+      patches nothing and `refreshScopes` writes the new shift. The first scroll of a Mask, or its
+      first `scrollBounds`, marks `Local` instead, since it turns the Mask into a scope and
+      changes how its subtree records: the oracle caught that one, a first scroll that patched
+      the old recording.
+    - `getBounds` answers in scrolled space by adding the scopes above and inside the node;
+      filters keep the unshifted bounds they record in. `localToGlobal` already did.
+    - Measured, the gate's bench, one run: the scroll scene (the editor label in a 1264 x 704
+      Mask, a new offset every frame) presents in **0.031 ms and uploads 0 bytes a frame**, one
+      draw over the 13 214 instances of the whole content; the editor scene before step 7
+      uploaded 1 427 112 B every frame, and P4 measured its `present` at 0.58 ms. Content far
+      larger than its Mask costs its whole instance count, since a scope does not cull.
 11. **`TileGroup`**, after the human has seen it: the non-overlap flag and the lane fallback.
     T1. Closes `h2d-tilegroup`.
 12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
@@ -1296,7 +1325,7 @@ build on it.
 
 **Exit.**
 
-- Scrolling the P4 editor scene uploads only the shift and walks no tree.
+- Scrolling the P4 editor scene uploads only the shift and walks no tree. Met at step 10 for a Mask that is a scroll scope: the scroll bench uploads 0 bytes a frame.
 - A caret blink and a hover re-emit their one node, upload only the stream it changed, and cause no structural change. Amended 2026-09-28 from "upload a known small number of bytes": no reference writes a range of a buffer (step 7).
 - An idle frame issues no draw and no upload.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
