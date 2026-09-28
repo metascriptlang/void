@@ -1019,11 +1019,16 @@ function setupAnimations(): Result<int32, AnimationError> {
 	const perFlicker: float64 = 1.0 / (FLICKER_FRAMES as float64);
 	const flameClock: AnimationClock =
 		try AnimationClock.forFrames(FLAME_FRAMES, perFlicker, Interpolation.Step);
-	flameFrames = try MeshFrameAnimation.forMeshes(flameClock, "flame", flameMeshes);
+	flameFrames = try MeshFrameAnimation.forMeshes(context, flameClock, "flame", flameMeshes);
 	const _flame: int32 = try bindMeshFrames(flameFrames, tree, tree.rootId());
 	const stoneClock: AnimationClock =
 		try AnimationClock.forFrames(2, perFlicker, Interpolation.Step);
-	stoneFrames = try MeshFrameAnimation.forMeshes(stoneClock, "bakedStone", stoneFrameMeshes);
+	stoneFrames = try MeshFrameAnimation.forMeshes(
+		context,
+		stoneClock,
+		"bakedStone",
+		stoneFrameMeshes,
+	);
 	const _stone: int32 = try bindMeshFrames(stoneFrames, tree, tree.rootId());
 	if (logSpinPerFrame == 0.0) { return Result.ok(0); }
 	let spinClock: AnimationClock =

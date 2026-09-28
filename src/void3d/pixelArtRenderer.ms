@@ -16,6 +16,8 @@ import { Vec4 } from "../math/math3d";
 import {
 	Program,
 	BILLBOARD_LIGHT,
+	VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_LENGTH,
 	VertexLayout,
 	PixelFormat,
 	LoadAction,
@@ -314,7 +316,13 @@ export function create(
 	settings: PixelArtSettings,
 	look: PixelArtLook,
 ): Result<PixelArtRenderer, PixelArtError> {
-	if (context.uniforms.unreserved() < PIXEL_ART_UNIFORM_LENGTH) {
+	const blocks: Vec<int32> = [
+		VERTEX_UNIFORM_LENGTH,
+		LIGHT_UNIFORM_LENGTH,
+		POST_UNIFORM_LENGTH,
+		BLIT_UNIFORM_LENGTH,
+	];
+	if (!context.uniforms.fits(blocks)) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
 	const palette: Result<PaletteLut, PaletteError> = PaletteLut.withLevels(DEFAULT_PALETTE_LEVELS);
@@ -551,6 +559,9 @@ export function renderFrame(
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
+	const screens: boolean =
+		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);
+	if (!screens) { return Result.err(PixelArtError.StaleMaterial); }
 	if (!rampsHaveLevels(renderer.core.programs, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}

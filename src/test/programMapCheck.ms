@@ -27,6 +27,7 @@ import {
 	addMesh,
 	addMaterial,
 	releaseMaterial,
+	releaseMesh,
 	reserveUniforms,
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
@@ -314,4 +315,25 @@ test "the forward preset refuses a lit material without its block" {
 			renderFrame(forward, context, items, camera, lights, 640, 480);
 		assert !refused.ok && refused.error == ForwardError.MaterialBlock;
 	}
+}
+
+test "the forward preset refuses a frame once its own copy material or screen mesh is gone" {
+	let context: DrawContext = contextNaming(Program.Lit, FORWARD_UNIFORM_LENGTH);
+	const created: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
+	assert created.ok;
+	if (!created.ok) { return; }
+	let forward: ForwardRenderer = created.value;
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const none: Vec<DrawItem> = [];
+	assert releaseMesh(context, forward.core.screenMesh).ok;
+	const noScreen: Result<int32, ForwardError> =
+		renderFrame(forward, context, none, camera, lights, 64, 64);
+	assert !noScreen.ok && noScreen.error == ForwardError.StaleMesh;
+	assert releaseMaterial(context, forward.copyMaterial).ok;
+	const noCopy: Result<int32, ForwardError> =
+		renderFrame(forward, context, none, camera, lights, 64, 64);
+	assert !noCopy.ok && noCopy.error == ForwardError.StaleMaterial;
+	assert forward.core.generation == 0;
 }

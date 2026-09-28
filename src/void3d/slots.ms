@@ -46,14 +46,18 @@ export function claim(ref slots: Slots): int32 {
 	return slots.slotCount() - 1;
 }
 
-// Generation 0 is never handed out, so a retired slot matches no id at all.
+// The generation a freed slot takes; 0, which is never handed out and so matches no id, when
+// `generation` would wrap and the slot has to be retired instead.
+export function nextGeneration(generation: int32): int32 {
+	return generation == LAST_GENERATION ? 0 : generation + 1;
+}
+
 export function vacate(ref slots: Slots, index: int32): void {
-	const generation: int32 = slots.generations[index];
-	if (generation == LAST_GENERATION) {
+	const next: int32 = nextGeneration(slots.generations[index]);
+	slots.generations[index] = next;
+	if (next == 0) {
 		slots.retired[index] = true;
-		slots.generations[index] = 0;
 		return;
 	}
-	slots.generations[index] = generation + 1;
 	slots.free.push(index);
 }

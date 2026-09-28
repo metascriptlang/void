@@ -474,7 +474,7 @@ test "a baked frame swapped in by its animation is the geometry picked" {
 	assert clock.ok;
 	if (!clock.ok) { return; }
 	const made: Result<MeshFrameAnimation, AnimationError> =
-		MeshFrameAnimation.forMeshes(clock.value, "body", frames);
+		MeshFrameAnimation.forMeshes(context, clock.value, "body", frames);
 	assert made.ok;
 	if (!made.ok) { return; }
 	let animation: MeshFrameAnimation = made.value;

@@ -9,6 +9,7 @@ import {
 	HandleError,
 	MeshUploadError,
 	addMeshData,
+	retainMesh,
 	releaseMesh,
 } from "./draw";
 import {
@@ -284,9 +285,11 @@ export function syncPose(
 }
 
 // Vertex-baked frames only step: blending two of them would mean writing vertices into a live
-// buffer every frame, and each frame is instead its own uploaded mesh.
+// buffer every frame, and each frame is instead its own uploaded mesh. The animation holds every
+// frame, the ones off screen too, until releaseMeshFrames.
 export function forMeshes(
 	this typeof MeshFrameAnimation,
+	ref context: DrawContext,
 	clock: AnimationClock,
 	name: string,
 	meshes: Span<MeshId>,
@@ -298,9 +301,13 @@ export function forMeshes(
 	if ((meshes.length as int32) != clock.frameCount) {
 		return Result.err(AnimationError.TrackLength);
 	}
+	for (const mesh of meshes) {
+		if (!context.hasMesh(mesh)) { return Result.err(AnimationError.BadMesh); }
+	}
 	const kept: Vec<MeshId> = [];
 	for (const mesh of meshes) {
-		if (mesh.index < 0) { return Result.err(AnimationError.BadMesh); }
+		const held: Result<int32, HandleError> = retainMesh(context, mesh);
+		if (!held.ok) { unreachable; }
 		kept.push(mesh);
 	}
 	return Result.ok({
@@ -311,6 +318,19 @@ export function forMeshes(
 		bound: false,
 		shown: NO_MESH,
 	});
+}
+
+// The animation lets go of its frames and holds none after; the node keeps the one it shows.
+export function releaseMeshFrames(
+	ref animation: MeshFrameAnimation,
+	ref context: DrawContext,
+): Result<int32, AnimationError> {
+	for (const mesh of animation.meshes) {
+		if (!releaseMesh(context, mesh).ok) { return Result.err(AnimationError.StaleMesh); }
+	}
+	const count: int32 = animation.meshes.length as int32;
+	while ((animation.meshes.length as int32) > 0) { animation.meshes.pop(); }
+	return Result.ok(count);
 }
 
 export function bindMeshFrames(

@@ -145,6 +145,9 @@ export function renderFrame(
 	if (width <= 0 || height <= 0) {
 		return Result.err(ForwardError.TargetSize);
 	}
+	if (!context.hasMaterial(renderer.copyMaterial)) {
+		return Result.err(ForwardError.StaleMaterial);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, context, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }

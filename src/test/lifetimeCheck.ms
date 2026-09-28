@@ -30,8 +30,20 @@ import {
 	addGroup,
 	addMeshNode,
 	remove,
+	removeChildren,
 	setMeshOf,
+	setName,
 } from "../void3d/scene";
+import {
+	AnimationClock,
+	AnimationError,
+	Interpolation,
+	MeshFrameAnimation,
+	bindMeshFrames,
+	releaseMeshFrames,
+	syncMeshFrame,
+	update,
+} from "../void3d/animation";
 
 const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
 
@@ -117,7 +129,7 @@ test "a material takes its uniform range with it when its last holder lets go" {
 	if (!added.ok) { return; }
 	const owned: Result<int32, UniformError> = releaseUniforms(context, block);
 	assert !owned.ok;
-	if (!owned.ok) { assert owned.error == UniformError.OwnedByMaterial; }
+	if (!owned.ok) { assert owned.error == UniformError.Owned; }
 	assert holders(retainMaterial(context, added.value)) == 2;
 	assert holders(releaseMaterial(context, added.value)) == 1;
 	assert context.uniforms.holds(block);
@@ -238,4 +250,80 @@ test "a loader that lets go of its own with defer leaves its meshes to the nodes
 	const refused: Result<int32, SceneError> = loadRocks(scene, context, level);
 	assert !refused.ok;
 	assert context.liveMeshes() == 0 && context.liveMaterials() == 0;
+}
+
+test "a caller that would take a mesh node's hold is refused, and the mesh stays" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const mesh: MeshId = addMesh(context, quad());
+	const material: MaterialId = plainMaterial(context);
+	let scene: Scene = Scene.create();
+	const node: NodeId =
+		try addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh, material)
+		catch NO_ID;
+	assert holders(releaseMesh(context, mesh)) == 1;
+	assert handleError(releaseMesh(context, mesh)) == HandleError.HeldOnlyByNodes;
+	assert holders(releaseMaterial(context, material)) == 1;
+	assert handleError(releaseMaterial(context, material)) == HandleError.HeldOnlyByNodes;
+	assert context.hasMesh(mesh) && context.hasMaterial(material);
+	assert holders(retainMesh(context, mesh)) == 2;
+	assert holders(releaseMesh(context, mesh)) == 1;
+	assert remove(scene, context, node).ok;
+	assert !context.hasMesh(mesh) && !context.hasMaterial(material);
+}
+
+test "removeChildren lets go of everything under a node and keeps the node" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const mesh: MeshId = addMesh(context, quad());
+	const material: MaterialId = plainMaterial(context);
+	let scene: Scene = Scene.create();
+	const level: NodeId = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
+	const _first: NodeId =
+		try addMeshNode(scene, context, level, identityTransform(), mesh, material) catch NO_ID;
+	const _second: NodeId = try addMeshNode(
+		scene,
+		context,
+		scene.rootId(),
+		identityTransform(),
+		mesh,
+		material,
+	) catch NO_ID;
+	assert holders(releaseMesh(context, mesh)) == 2;
+	assert holders(releaseMaterial(context, material)) == 2;
+	const removed: Result<int32, SceneError> = removeChildren(scene, context, scene.rootId());
+	assert removed.ok;
+	if (removed.ok) { assert removed.value == 3; }
+	assert scene.nodeCount() == 1 && scene.isLive(scene.rootId());
+	assert !context.hasMesh(mesh) && !context.hasMaterial(material);
+}
+
+test "a baked animation holds its frames, the ones off screen too, until it lets them go" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const first: MeshId = addMesh(context, quad());
+	const second: MeshId = addMesh(context, quad());
+	const material: MaterialId = plainMaterial(context);
+	let scene: Scene = Scene.create();
+	const node: NodeId =
+		try addMeshNode(scene, context, scene.rootId(), identityTransform(), first, material)
+		catch NO_ID;
+	const _named: int32 = try setName(scene, node, "pet") catch -1;
+	const clock: Result<AnimationClock, AnimationError> =
+		AnimationClock.forFrames(2, 1.0, Interpolation.Step);
+	assert clock.ok;
+	if (!clock.ok) { return; }
+	const frames: Vec<MeshId> = [first, second];
+	const made: Result<MeshFrameAnimation, AnimationError> =
+		MeshFrameAnimation.forMeshes(context, clock.value, "pet", frames);
+	assert made.ok;
+	if (!made.ok) { return; }
+	let animation: MeshFrameAnimation = made.value;
+	assert holders(releaseMesh(context, first)) == 2;
+	assert holders(releaseMesh(context, second)) == 1;
+	assert context.hasMesh(second);
+	const _bound: int32 = try bindMeshFrames(animation, scene, scene.rootId()) catch -1;
+	const _stepped: boolean = try update(animation.clock, 1.0) catch false;
+	assert syncMeshFrame(animation, scene, context).ok;
+	const released: Result<int32, AnimationError> = releaseMeshFrames(animation, context);
+	assert released.ok;
+	assert !context.hasMesh(first) && context.hasMesh(second);
+	assert context.meshHolders[second.index] == 1;
 }

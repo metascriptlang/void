@@ -567,7 +567,7 @@ test "a material's block is its own, and a block put in by hand after release is
 	const material: MaterialId = context.lastMaterial();
 	const block: UniformBlock = context.materials[material.index].uniforms;
 	const owned: Result<int32, UniformError> = releaseUniforms(context, block);
-	assert !owned.ok && owned.error == UniformError.OwnedByMaterial;
+	assert !owned.ok && owned.error == UniformError.Owned;
 	const twice: Result<MaterialId, MaterialError> =
 		addMaterial(context, context.materials[material.index]);
 	assert !twice.ok && twice.error == MaterialError.SharedUniforms;

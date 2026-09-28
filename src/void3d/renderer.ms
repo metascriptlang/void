@@ -104,7 +104,8 @@ export function createDrawing(
 	ref context: DrawContext,
 	programs: ProgramMap,
 ): Result<Renderer, RendererError> {
-	if (context.uniforms.unreserved() < RENDERER_UNIFORM_LENGTH) {
+	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH];
+	if (!context.uniforms.fits(blocks)) {
 		return Result.err(RendererError.UniformPoolFull);
 	}
 	const cameraBlock: UniformBlock = reserve(context, VERTEX_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH);
@@ -153,6 +154,7 @@ export function beginFrame(
 	camera: Span<float32>,
 	lights: Span<float32>,
 ): Result<boolean, RendererError> {
+	if (!context.hasMesh(renderer.screenMesh)) { return Result.err(RendererError.StaleMesh); }
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(RendererError.StaleMesh); }
 		if (!context.hasMaterial(item.material)) { return Result.err(RendererError.StaleMaterial); }

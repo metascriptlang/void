@@ -313,11 +313,21 @@ test "mesh frames only step, and carry one mesh per frame" {
 	let context: DrawContext = contextOf(8, 1);
 	const meshes: Vec<MeshId> = [context.meshAt(4), context.meshAt(5), context.meshAt(6)];
 	const blended: Result<MeshFrameAnimation, AnimationError> =
-		MeshFrameAnimation.forMeshes(clockOf(3, 12.0, Interpolation.Linear), "flame", meshes);
+		MeshFrameAnimation.forMeshes(
+			context,
+			clockOf(3, 12.0, Interpolation.Linear),
+			"flame",
+			meshes,
+		);
 	assert !blended.ok;
 	if (!blended.ok) { assert blended.error == AnimationError.InterpolatedMeshFrames; }
 	const short: Result<MeshFrameAnimation, AnimationError> =
-		MeshFrameAnimation.forMeshes(clockOf(4, 12.0, Interpolation.Step), "flame", meshes);
+		MeshFrameAnimation.forMeshes(
+			context,
+			clockOf(4, 12.0, Interpolation.Step),
+			"flame",
+			meshes,
+		);
 	assert !short.ok;
 	if (!short.ok) { assert short.error == AnimationError.TrackLength; }
 }
@@ -331,7 +341,7 @@ test "mesh frames swap the node's mesh, and the draw list follows without a rebu
 	const _first: int32 = refresh(scene, items);
 	const meshes: Vec<MeshId> = [context.meshAt(4), context.meshAt(5), context.meshAt(6)];
 	const made: Result<MeshFrameAnimation, AnimationError> =
-		MeshFrameAnimation.forMeshes(clockOf(3, 1.0, Interpolation.Step), "flame", meshes);
+		MeshFrameAnimation.forMeshes(context, clockOf(3, 1.0, Interpolation.Step), "flame", meshes);
 	assert made.ok;
 	if (made.ok) {
 		let animation: MeshFrameAnimation = made.value;
@@ -427,6 +437,7 @@ test "a one-key linear clock reports no change, so an idle host can stop drawing
 }
 
 test "a clock with no frames is refused by every animation built on it" {
+	let context: DrawContext = contextOf(8, 1);
 	const empty: AnimationClock = {
 		frameCount: 0,
 		sampling: 1.0,
@@ -443,7 +454,7 @@ test "a clock with no frames is refused by every animation built on it" {
 	if (!track.ok) { assert track.error == AnimationError.NoFrames; }
 	const noMeshes: Vec<MeshId> = [];
 	const frames: Result<MeshFrameAnimation, AnimationError> =
-		MeshFrameAnimation.forMeshes(empty, "flame", noMeshes);
+		MeshFrameAnimation.forMeshes(context, empty, "flame", noMeshes);
 	assert !frames.ok;
 	assert empty.keys().samePair(pair(0, 0, 0.0));
 }
@@ -452,7 +463,12 @@ test "mesh frames refuse a negative mesh index" {
 	let context: DrawContext = contextOf(8, 1);
 	const meshes: Vec<MeshId> = [context.meshAt(3), { index: -1, generation: 0 }];
 	const refused: Result<MeshFrameAnimation, AnimationError> =
-		MeshFrameAnimation.forMeshes(clockOf(2, 12.0, Interpolation.Step), "flame", meshes);
+		MeshFrameAnimation.forMeshes(
+			context,
+			clockOf(2, 12.0, Interpolation.Step),
+			"flame",
+			meshes,
+		);
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == AnimationError.BadMesh; }
 }

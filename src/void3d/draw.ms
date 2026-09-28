@@ -33,7 +33,15 @@ import { Material, UniformBlock, NO_UNIFORMS } from "./material";
 import { MeshData } from "./meshData";
 import { PipelineCache, pipelineFor } from "./pipelineCache";
 import { TargetLayout } from "./target";
-import { UniformPool, UniformError, reserveRange, releaseRange, writeRange } from "./uniformPool";
+import {
+	UniformPool,
+	UniformError,
+	reserveRange,
+	releaseRange,
+	ownRange,
+	disownRange,
+	writeRange,
+} from "./uniformPool";
 import { Slots, claim, vacate } from "./slots";
 
 // GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` holds particle
@@ -106,14 +114,17 @@ export struct DoomedBuffer {
 // triangle, billboard instances). Everything with CPU data here comes back on its
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
 // A slot's holders are Heaps' `Primitive.refCount`: the mesh or material goes when they reach 0.
+// `…NodeHolds` counts the scene's mesh nodes among them, whose holds only the scene lets go.
 export struct DrawContext {
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
 	meshSlots: Slots;
 	meshHolders: Vec<int32>;
+	meshNodeHolds: Vec<int32>;
 	materials: Vec<Material>;
 	materialSlots: Slots;
 	materialHolders: Vec<int32>;
+	materialNodeHolds: Vec<int32>;
 	uniforms: UniformPool;
 	doomed: Vec<DoomedBuffer>;
 	pipelines: PipelineCache;
@@ -130,6 +141,7 @@ export enum MeshUploadError {
 export enum HandleError {
 	StaleMesh,
 	StaleMaterial,
+	HeldOnlyByNodes,
 }
 
 export enum MaterialError {
@@ -152,9 +164,11 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		meshData: [],
 		meshSlots: Slots.empty(),
 		meshHolders: [],
+		meshNodeHolds: [],
 		materials: [],
 		materialSlots: Slots.empty(),
 		materialHolders: [],
+		materialNodeHolds: [],
 		uniforms: UniformPool.withCapacity(capacity),
 		doomed: [],
 		pipelines: PipelineCache.empty(),
@@ -186,16 +200,20 @@ function newMesh(ref context: DrawContext, mesh: GpuMesh, data: MeshData): MeshI
 		context.meshes.push(mesh);
 		context.meshData.push(data);
 		context.meshHolders.push(1);
+		context.meshNodeHolds.push(0);
 	} else {
 		context.meshes[index] = mesh;
 		context.meshData[index] = data;
 		context.meshHolders[index] = 1;
+		context.meshNodeHolds[index] = 0;
 	}
 	return { index: index, generation: context.meshSlots.generations[index] };
 }
 
-// A mesh whose buffers the caller made and keeps: no CPU data here, so a lost context is the
-// caller's to repair, and releasing it destroys none of them.
+// A mesh with no CPU data here, so a lost context is its maker's to repair. Whose buffers they
+// are is the mesh's generation: EXTERNAL_GENERATION (fullscreen, billboards) keeps them the
+// caller's, never rebuilt and never destroyed here; any other makes them the context's, which
+// dooms them when the mesh is freed.
 export function addMesh(ref context: DrawContext, mesh: GpuMesh): MeshId {
 	return newMesh(context, mesh, MeshData.empty());
 }
@@ -530,27 +548,43 @@ export function retainMesh(ref context: DrawContext, id: MeshId): Result<int32, 
 	return Result.ok(context.meshHolders[id.index]);
 }
 
-// One holder lets go, as `Primitive.decref`; at none the mesh is freed and `id` goes stale.
-// Answers how many still hold it.
-export function releaseMesh(ref context: DrawContext, id: MeshId): Result<int32, HandleError> {
-	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
-	const left: int32 = context.meshHolders[id.index] - 1;
+function letGoOfMesh(ref context: DrawContext, index: int32): int32 {
+	const left: int32 = context.meshHolders[index] - 1;
 	if (left > 0) {
-		context.meshHolders[id.index] = left;
-		return Result.ok(left);
+		context.meshHolders[index] = left;
+		return left;
 	}
-	freeMesh(context, id.index);
-	return Result.ok(0);
+	freeMesh(context, index);
+	return 0;
 }
 
-function ownsUniforms(this context: DrawContext, block: UniformBlock): boolean {
-	if (block.length == 0) { return false; }
-	for (let i = 0; i < (context.materials.length as int32); i++) {
-		if (context.materialHolders[i] == 0) { continue; }
-		const held: UniformBlock = context.materials[i].uniforms;
-		if (held.length > 0 && held.offset == block.offset) { return true; }
+// One holder lets go, as `Primitive.decref`; at none the mesh is freed and `id` goes stale.
+// Answers how many still hold it. A caller whose release would take a mesh node's hold has
+// released it once too often, and is refused.
+export function releaseMesh(ref context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	if (context.meshHolders[id.index] == context.meshNodeHolds[id.index]) {
+		return Result.err(HandleError.HeldOnlyByNodes);
 	}
-	return false;
+	return Result.ok(letGoOfMesh(context, id.index));
+}
+
+// A mesh node holds `id` (scene.ms addMeshNode, setMeshOf).
+export function nodeHoldsMesh(ref context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	context.meshNodeHolds[id.index] = context.meshNodeHolds[id.index] + 1;
+	context.meshHolders[id.index] = context.meshHolders[id.index] + 1;
+	return Result.ok(context.meshHolders[id.index]);
+}
+
+export function nodeLetsGoOfMesh(
+	ref context: DrawContext,
+	id: MeshId,
+): Result<int32, HandleError> {
+	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	if (context.meshNodeHolds[id.index] == 0) { return Result.err(HandleError.StaleMesh); }
+	context.meshNodeHolds[id.index] = context.meshNodeHolds[id.index] - 1;
+	return Result.ok(letGoOfMesh(context, id.index));
 }
 
 // The material takes its uniform range with it: the range returns to the pool when the material
@@ -559,19 +593,20 @@ export function addMaterial(
 	ref context: DrawContext,
 	material: Material,
 ): Result<MaterialId, MaterialError> {
-	if (!context.uniforms.holds(material.uniforms)) {
-		return Result.err(MaterialError.ReleasedUniforms);
-	}
-	if (context.ownsUniforms(material.uniforms)) {
-		return Result.err(MaterialError.SharedUniforms);
+	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
+	if (!owned.ok) {
+		const shared: boolean = owned.error == UniformError.Owned;
+		return Result.err(shared ? MaterialError.SharedUniforms : MaterialError.ReleasedUniforms);
 	}
 	const index: int32 = claim(context.materialSlots);
 	if (index == (context.materials.length as int32)) {
 		context.materials.push(material);
 		context.materialHolders.push(1);
+		context.materialNodeHolds.push(0);
 	} else {
 		context.materials[index] = material;
 		context.materialHolders[index] = 1;
+		context.materialNodeHolds[index] = 0;
 	}
 	return Result.ok({ index: index, generation: context.materialSlots.generations[index] });
 }
@@ -585,22 +620,50 @@ export function retainMaterial(
 	return Result.ok(context.materialHolders[id.index]);
 }
 
+function letGoOfMaterial(ref context: DrawContext, index: int32): int32 {
+	const left: int32 = context.materialHolders[index] - 1;
+	if (left > 0) {
+		context.materialHolders[index] = left;
+		return left;
+	}
+	const owned: UniformBlock = context.materials[index].uniforms;
+	const disowned: Result<int32, UniformError> = disownRange(context.uniforms, owned);
+	if (!disowned.ok) { unreachable; }
+	context.materials[index].uniforms = NO_UNIFORMS;
+	context.materialHolders[index] = 0;
+	vacate(context.materialSlots, index);
+	return 0;
+}
+
 export function releaseMaterial(
 	ref context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
 	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
-	const left: int32 = context.materialHolders[id.index] - 1;
-	if (left > 0) {
-		context.materialHolders[id.index] = left;
-		return Result.ok(left);
+	if (context.materialHolders[id.index] == context.materialNodeHolds[id.index]) {
+		return Result.err(HandleError.HeldOnlyByNodes);
 	}
-	const owned: UniformBlock = context.materials[id.index].uniforms;
-	const _released: Result<int32, UniformError> = releaseRange(context.uniforms, owned);
-	context.materials[id.index].uniforms = NO_UNIFORMS;
-	context.materialHolders[id.index] = 0;
-	vacate(context.materialSlots, id.index);
-	return Result.ok(0);
+	return Result.ok(letGoOfMaterial(context, id.index));
+}
+
+export function nodeHoldsMaterial(
+	ref context: DrawContext,
+	id: MaterialId,
+): Result<int32, HandleError> {
+	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	context.materialNodeHolds[id.index] = context.materialNodeHolds[id.index] + 1;
+	context.materialHolders[id.index] = context.materialHolders[id.index] + 1;
+	return Result.ok(context.materialHolders[id.index]);
+}
+
+export function nodeLetsGoOfMaterial(
+	ref context: DrawContext,
+	id: MaterialId,
+): Result<int32, HandleError> {
+	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	if (context.materialNodeHolds[id.index] == 0) { return Result.err(HandleError.StaleMaterial); }
+	context.materialNodeHolds[id.index] = context.materialNodeHolds[id.index] - 1;
+	return Result.ok(letGoOfMaterial(context, id.index));
 }
 
 // How many doomed buffers the next beginFrame on `generation` destroys; the rest are dropped.
@@ -634,14 +697,12 @@ export function reserveUniforms(
 }
 
 // Once released, `block` is refused wherever it is written, and its range goes to the next
-// reserve of the same length. A material's range goes with the material, never before it.
+// reserve of the same length. A material's range goes with the material, never before it
+// (UniformError.Owned).
 export function releaseUniforms(
 	ref context: DrawContext,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
-	if (context.uniforms.holds(block) && context.ownsUniforms(block)) {
-		return Result.err(UniformError.OwnedByMaterial);
-	}
 	return releaseRange(context.uniforms, block);
 }
 
@@ -681,7 +742,9 @@ export function drawItem(
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
-	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { return; }
+	// beginFrame refused every stale item and the presets their own screen meshes and materials,
+	// so only a release in the middle of a frame reaches here, which nothing may do.
+	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { unreachable; }
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
 	const material: Material = context.materials[item.material.index];

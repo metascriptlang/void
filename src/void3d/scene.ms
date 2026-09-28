@@ -26,10 +26,10 @@ import {
 	MeshId,
 	MaterialId,
 	HandleError,
-	retainMesh,
-	releaseMesh,
-	retainMaterial,
-	releaseMaterial,
+	nodeHoldsMesh,
+	nodeLetsGoOfMesh,
+	nodeHoldsMaterial,
+	nodeLetsGoOfMaterial,
 } from "./draw";
 import { Slots, claim, vacate } from "./slots";
 
@@ -255,11 +255,11 @@ export function addMeshNode(
 	material: MaterialId,
 ): Result<NodeId, SceneError> {
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
-	if (!retainMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
-	if (!retainMaterial(context, material).ok) {
-		const _left: Result<int32, HandleError> = releaseMesh(context, mesh);
-		return Result.err(SceneError.StaleMaterial);
-	}
+	if (!context.hasMesh(mesh)) { return Result.err(SceneError.StaleMesh); }
+	if (!context.hasMaterial(material)) { return Result.err(SceneError.StaleMaterial); }
+	const heldMesh: Result<int32, HandleError> = nodeHoldsMesh(context, mesh);
+	const heldMaterial: Result<int32, HandleError> = nodeHoldsMaterial(context, material);
+	if (!heldMesh.ok || !heldMaterial.ok) { unreachable; }
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material });
 	const id: NodeId = newSlot(scene, {
@@ -322,15 +322,17 @@ function detach(ref scene: Scene, index: int32): void {
 	scene.nodes[parent].children = siblings;
 }
 
-// A mesh node lets go of its mesh and material. A caller that released one more time than it
-// held has freed it under the node already, and there is nothing left to let go of.
+// A mesh node lets go of its mesh and material. Nothing but the node can take its hold
+// (draw.ms releaseMesh), so a refusal here is a scene removed through another context.
 function releasePayload(ref scene: Scene, ref context: DrawContext, index: int32): void {
 	const row: int32 = scene.nodes[index].payload;
 	match (scene.nodes[index].kind) {
 		NodeKind.Mesh => {
-			const _mesh: Result<int32, HandleError> = releaseMesh(context, scene.meshes[row].mesh);
-			const _material: Result<int32, HandleError> =
-				releaseMaterial(context, scene.meshes[row].material);
+			const mesh: Result<int32, HandleError> =
+				nodeLetsGoOfMesh(context, scene.meshes[row].mesh);
+			const material: Result<int32, HandleError> =
+				nodeLetsGoOfMaterial(context, scene.meshes[row].material);
+			if (!mesh.ok || !material.ok) { unreachable; }
 			const last: int32 = (scene.meshes.length as int32) - 1;
 			const mover: int32 = scene.meshOwners[last];
 			scene.meshes[row] = scene.meshes[last];
@@ -381,6 +383,22 @@ export function remove(
 		removed = removed + 1;
 	}
 	scene.structureChanged = true;
+	return Result.ok(removed);
+}
+
+// h3d.scene.Object.removeChildren: every node under `id` goes, and `id` stays. Replacing a Scene
+// value instead lets go of nothing its mesh nodes hold.
+export function removeChildren(
+	ref scene: Scene,
+	ref context: DrawContext,
+	id: NodeId,
+): Result<int32, SceneError> {
+	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	let removed: int32 = 0;
+	while ((scene.nodes[id.index].children.length as int32) > 0) {
+		const child: NodeId = scene.nodeIdAt(scene.nodes[id.index].children[0]);
+		removed = removed + (try remove(scene, context, child));
+	}
 	return Result.ok(removed);
 }
 
@@ -438,9 +456,10 @@ export function setMeshOf(
 	if (scene.nodes[id.index].kind != NodeKind.Mesh) {
 		return Result.err(SceneError.NotAMeshNode);
 	}
-	if (!retainMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
+	if (!nodeHoldsMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
 	const row: int32 = scene.nodes[id.index].payload;
-	const _shown: Result<int32, HandleError> = releaseMesh(context, scene.meshes[row].mesh);
+	const shown: Result<int32, HandleError> = nodeLetsGoOfMesh(context, scene.meshes[row].mesh);
+	if (!shown.ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
 	return Result.ok(id.index);
 }

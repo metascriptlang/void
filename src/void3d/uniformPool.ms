@@ -3,13 +3,13 @@
 // and a renderer hold their block's offset.
 
 import { UniformBlock } from "./material";
-import { LAST_GENERATION } from "./slots";
+import { nextGeneration } from "./slots";
 
 export enum UniformError {
 	PoolFull,
 	WrongLength,
 	Released,
-	OwnedByMaterial,
+	Owned,
 }
 
 export struct UniformPool {
@@ -17,21 +17,25 @@ export struct UniformPool {
 	used: int32;
 	lengths: Vec<int32>;
 	generations: Vec<int32>;
+	owned: Vec<boolean>;
 	free: Vec<int32>;
 }
 
 export function withCapacity(this typeof UniformPool, capacity: int32): UniformPool {
 	let lengths: Vec<int32> = new Array(capacity);
 	let generations: Vec<int32> = new Array(capacity);
+	let owned: Vec<boolean> = new Array(capacity);
 	for (let i = 0; i < capacity; i++) {
 		lengths[i] = 0;
 		generations[i] = 0;
+		owned[i] = false;
 	}
 	return {
 		values: new Array(capacity),
 		used: 0,
 		lengths: lengths,
 		generations: generations,
+		owned: owned,
 		free: [],
 	};
 }
@@ -46,6 +50,30 @@ export function unreserved(this pool: UniformPool): int32 {
 
 export function freeRanges(this pool: UniformPool): int32 {
 	return pool.free.length as int32;
+}
+
+// Whether blocks of these lengths could all be reserved now, from released ranges of each length
+// first and the rest from what was never reserved.
+export function fits(this pool: UniformPool, lengths: Span<int32>): boolean {
+	let taken: Vec<boolean> = new Array(pool.free.length);
+	for (let i = 0; i < (pool.free.length as int32); i++) { taken[i] = false; }
+	let fresh: int32 = 0;
+	for (const length of lengths) {
+		let found: boolean = false;
+		for (let i = 0; i < (pool.free.length as int32); i++) {
+			if (taken[i] || pool.lengths[pool.free[i]] != length) { continue; }
+			taken[i] = true;
+			found = true;
+			break;
+		}
+		if (!found) { fresh = fresh + length; }
+	}
+	return fresh <= pool.unreserved();
+}
+
+// Held by one owner (a material), which alone may give it back.
+export function isOwned(this pool: UniformPool, block: UniformBlock): boolean {
+	return block.length > 0 && pool.holds(block) && pool.owned[block.offset];
 }
 
 // A block of no floats names no range and is always held.
@@ -88,20 +116,37 @@ export function reserveRange(
 	return Result.ok(pool.blockAt(slot, offset));
 }
 
-// A range whose generation would wrap is retired rather than handed out again.
+// Takes `block` for one owner, which releases it with disownRange. A range of no floats has
+// nothing to own.
+export function ownRange(ref pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
+	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
+	if (block.length == 0) { return Result.ok(0); }
+	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
+	pool.owned[block.offset] = true;
+	return Result.ok(block.length);
+}
+
+// The owner gives its range back, released as releaseRange releases an unowned one.
+export function disownRange(
+	ref pool: UniformPool,
+	block: UniformBlock,
+): Result<int32, UniformError> {
+	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
+	if (block.length > 0) { pool.owned[block.offset] = false; }
+	return releaseRange(pool, block);
+}
+
+// A range whose generation would wrap is retired rather than handed out again (slots.ms).
 export function releaseRange(
 	ref pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
 	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
 	if (block.length == 0) { return Result.ok(0); }
-	const generation: int32 = pool.generations[block.offset];
-	if (generation == LAST_GENERATION) {
-		pool.generations[block.offset] = 0;
-		return Result.ok(block.length);
-	}
-	pool.generations[block.offset] = generation + 1;
-	pool.free.push(block.offset);
+	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
+	const next: int32 = nextGeneration(pool.generations[block.offset]);
+	pool.generations[block.offset] = next;
+	if (next != 0) { pool.free.push(block.offset); }
 	return Result.ok(block.length);
 }
 

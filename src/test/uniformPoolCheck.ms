@@ -6,6 +6,8 @@ import {
 	reserveRange,
 	releaseRange,
 	writeRange,
+	ownRange,
+	disownRange,
 } from "../void3d/uniformPool";
 
 const NONE: UniformBlock = { slot: 0, offset: -1, length: 0, generation: 0 };
@@ -69,4 +71,33 @@ test "a range whose generation would wrap is retired, not handed out again" {
 	assert !pool.holds(last) && pool.freeRanges() == 0;
 	const next: UniformBlock = reserved(pool, 4);
 	assert next.offset == 4;
+}
+
+test "blocks fit from released ranges of their length first, then from the rest" {
+	let pool: UniformPool = UniformPool.withCapacity(12);
+	const four: UniformBlock = reserved(pool, 4);
+	const eight: UniformBlock = reserved(pool, 8);
+	assert pool.unreserved() == 0;
+	assert releaseRange(pool, four).ok && releaseRange(pool, eight).ok;
+	const both: Vec<int32> = [8, 4];
+	const twoFours: Vec<int32> = [4, 4];
+	assert pool.fits(both);
+	assert !pool.fits(twoFours);
+	const none: Vec<int32> = [];
+	assert pool.fits(none);
+}
+
+test "an owned range is released only by its owner" {
+	let pool: UniformPool = UniformPool.withCapacity(8);
+	const block: UniformBlock = reserved(pool, 4);
+	assert ownRange(pool, block).ok;
+	assert pool.isOwned(block);
+	const again: Result<int32, UniformError> = ownRange(pool, block);
+	assert !again.ok && again.error == UniformError.Owned;
+	const loose: Result<int32, UniformError> = releaseRange(pool, block);
+	assert !loose.ok && loose.error == UniformError.Owned;
+	assert disownRange(pool, block).ok;
+	assert !pool.holds(block) && pool.freeRanges() == 1;
+	const reused: UniformBlock = reserved(pool, 4);
+	assert !pool.isOwned(reused);
 }
