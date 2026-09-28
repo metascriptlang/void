@@ -7,8 +7,6 @@ import {
 	Transform3D,
 	SceneError,
 	NO_NODE_3D,
-	identityTransform,
-	transformAt,
 	addGroup,
 	addMeshNode,
 	setName,
@@ -62,32 +60,36 @@ function pair(first: int32, second: int32, weight: float32): KeyPair {
 }
 
 function named(ref scene: Scene3D, parent: NodeId3D, name: string): NodeId3D {
-	const added: Result<NodeId3D, SceneError> = addGroup(scene, parent, identityTransform());
-	if (!added.ok) { return { index: NO_NODE_3D, generation: 0 }; }
-	const renamed: Result<int32, SceneError> = setName(scene, added.value, name);
-	return renamed.ok ? added.value : { index: NO_NODE_3D, generation: 0 };
+	const added: NodeId3D = addGroup(scene, parent, Transform3D.identity());
+	setName(scene, added, name);
+	return added;
 }
 
-function namedMesh(ref scene: Scene3D, ref context: DrawContext, name: string, mesh: int32): NodeId3D {
+function namedMesh(
+	ref scene: Scene3D,
+	ref context: DrawContext,
+	name: string,
+	mesh: int32,
+): NodeId3D {
 	const added: Result<NodeId3D, SceneError> = addMeshNode(
 		scene,
 		context,
 		scene.rootId(),
-		identityTransform(),
+		Transform3D.identity(),
 		context.meshAt(mesh),
 		context.materialAt(0),
 	);
 	if (!added.ok) { return { index: NO_NODE_3D, generation: 0 }; }
-	const renamed: Result<int32, SceneError> = setName(scene, added.value, name);
-	return renamed.ok ? added.value : { index: NO_NODE_3D, generation: 0 };
+	setName(scene, added.value, name);
+	return added.value;
 }
 
 function slide(x: float32): Transform3D {
-	return transformAt(vec3(x, 0.0, 0.0));
+	return Transform3D.fromTranslation(vec3(x, 0.0, 0.0));
 }
 
 function turn(angle: float32): Transform3D {
-	return { ...identityTransform(), rotation: eulerQuat(0.0, angle, 0.0) };
+	return { ...Transform3D.identity(), rotation: eulerQuat(0.0, angle, 0.0) };
 }
 
 function localX(scene: Scene3D, id: NodeId3D): float32 {
@@ -209,7 +211,7 @@ test "blendTo lerps translation and scale and takes the short way round in rotat
 	assert approx(half.scale.x, 2.0);
 	const q: Quat = eulerQuat(0.0, 0.5, 0.0);
 	const flipped: Transform3D = {
-		...identityTransform(),
+		...Transform3D.identity(),
 		rotation: { x: -q.x, y: -q.y, z: -q.z, w: -q.w },
 	};
 	const mid: Transform3D = turn(0.5).blendTo(flipped, 0.5);
@@ -521,7 +523,7 @@ test "forgetSync makes the next sync write over a node someone else moved" {
 	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
 	const _first: Result<int32, AnimationError> = syncPose(animation, scene);
-	const _moved: Result<int32, SceneError> = setLocal(scene, arm, slide(99.0));
+	setLocal(scene, arm, slide(99.0));
 	const cached: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert cached.ok;
 	if (cached.ok) { assert cached.value == 0; }

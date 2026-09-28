@@ -56,12 +56,11 @@
 # ms-prelude: 	return tf(px, py, pz, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 # ms-prelude: }
 # ms-prelude: function node(ref s: Scene3D, p: NodeId3D, t: Transform3D): NodeId3D {
-# ms-prelude: 	const r: Result<NodeId3D, SceneError> = addGroup(s, p, t);
-# ms-prelude: 	return r.ok ? r.value : { index: NO_NODE_3D, generation: 0 };
+# ms-prelude: 	return addGroup(s, p, t);
 # ms-prelude: }
 # ms-prelude: function moveTo(ref s: Scene3D, id: NodeId3D, t: Transform3D): int32 {
-# ms-prelude: 	const r: Result<int32, SceneError> = setLocal(s, id, t);
-# ms-prelude: 	return r.ok ? r.value : NO_NODE_3D;
+# ms-prelude: 	setLocal(s, id, t);
+# ms-prelude: 	return id.index;
 # ms-prelude: }
 # ms-prelude: function wm(s: Scene3D, id: NodeId3D): Mat4 {
 # ms-prelude: 	const r: Result<Mat4, SceneError> = s.worldOf(id);

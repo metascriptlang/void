@@ -55,7 +55,7 @@
 #
 # ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
 # ms-prelude: import {
-# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, setName, syncWorld, transformAt,
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, setName, syncWorld,
 # ms-prelude: } from "../../../src/void3d/scene";
 # ms-prelude: import {
 # ms-prelude: 	AnimationClock, AnimationError, Interpolation, ObjectAnimation,
@@ -76,10 +76,9 @@
 # ms-prelude: function run(keys: Vec<Transform3D>, sampling: float64, loop: boolean,
 # ms-prelude: 		dts: Vec<float64>, restX: float32): Mat4 {
 # ms-prelude: 	let scene: Scene3D = Scene3D.create();
-# ms-prelude: 	const added: Result<NodeId3D, SceneError> =
-# ms-prelude: 		addGroup(scene, scene.rootId(), transformAt(vec3(restX, 0.0, 0.0)));
-# ms-prelude: 	if (!added.ok) { return identity(); }
-# ms-prelude: 	const _named: Result<int32, SceneError> = setName(scene, added.value, "o");
+# ms-prelude: 	const added: NodeId3D =
+# ms-prelude: 		addGroup(scene, scene.rootId(), Transform3D.fromTranslation(vec3(restX, 0.0, 0.0)));
+# ms-prelude: 	setName(scene, added, "o");
 # ms-prelude: 	const made: Result<AnimationClock, AnimationError> = AnimationClock.forFrames(
 # ms-prelude: 		keys.length as int32, sampling, Interpolation.Linear);
 # ms-prelude: 	if (!made.ok) { return identity(); }
@@ -94,16 +93,15 @@
 # ms-prelude: 	}
 # ms-prelude: 	const _posed: Result<int32, AnimationError> = syncPose(animation, scene);
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);
-# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added.value);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added);
 # ms-prelude: 	return world.ok ? world.value : identity();
 # ms-prelude: }
 # ms-prelude: function at(keys: Vec<Transform3D>, loop: boolean, frame: float64, speed: float64,
 # ms-prelude: 		dt: float64): Mat4 {
 # ms-prelude: 	let scene: Scene3D = Scene3D.create();
-# ms-prelude: 	const added: Result<NodeId3D, SceneError> =
-# ms-prelude: 		addGroup(scene, scene.rootId(), transformAt(vec3(0.0, 0.0, 0.0)));
-# ms-prelude: 	if (!added.ok) { return identity(); }
-# ms-prelude: 	const _named: Result<int32, SceneError> = setName(scene, added.value, "o");
+# ms-prelude: 	const added: NodeId3D =
+# ms-prelude: 		addGroup(scene, scene.rootId(), Transform3D.fromTranslation(vec3(0.0, 0.0, 0.0)));
+# ms-prelude: 	setName(scene, added, "o");
 # ms-prelude: 	const made: Result<AnimationClock, AnimationError> = AnimationClock.forFrames(
 # ms-prelude: 		keys.length as int32, 1.0, Interpolation.Linear);
 # ms-prelude: 	if (!made.ok) { return identity(); }
@@ -118,7 +116,7 @@
 # ms-prelude: 	const _moved: Result<boolean, AnimationError> = update(animation.clock, dt);
 # ms-prelude: 	const _posed: Result<int32, AnimationError> = syncPose(animation, scene);
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);
-# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added.value);
+# ms-prelude: 	const world: Result<Mat4, SceneError> = scene.worldOf(added);
 # ms-prelude: 	return world.ok ? world.value : identity();
 # ms-prelude: }
 

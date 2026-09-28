@@ -34,11 +34,11 @@ import {
 	writeUniforms,
 } from "../void3d/draw";
 import {
+	Transform3D,
 	Scene3D,
 	NodeId3D,
 	SceneError,
 	NO_NODE_3D,
-	identityTransform,
 	addGroup,
 	addMeshNode,
 	remove,
@@ -175,16 +175,15 @@ function fillStream(stream: MeshId): Result<int32, ChurnError> {
 
 function place(level: NodeId3D, mesh: MeshId, material: MaterialId): Result<NodeId3D, ChurnError> {
 	const placed: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, context, level, identityTransform(), mesh, material);
+		addMeshNode(scene, context, level, Transform3D.identity(), mesh, material);
 	if (!placed.ok) { return Result.err(ChurnError.NodeRefused); }
 	return Result.ok(placed.value);
 }
 
 function loadLevel(): Result<NodeId3D, ChurnError> {
-	const group: Result<NodeId3D, SceneError> =
-		addGroup(scene, scene.rootId(), identityTransform());
-	if (!group.ok) { return Result.err(ChurnError.GroupRefused); }
-	const level: NodeId3D = group.value;
+	const group: NodeId3D =
+		addGroup(scene, scene.rootId(), Transform3D.identity());
+	const level: NodeId3D = group;
 	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, box);
 	if (!mesh.ok) { return Result.err(ChurnError.MeshRefused); }
 	const stream: Result<MeshId, StreamError> = addStreamMesh(context, STREAM_CAPACITY);

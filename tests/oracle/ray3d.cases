@@ -111,7 +111,7 @@
 # ms-prelude: 	const made: Result<NodeId3D, SceneError> =
 # ms-prelude: 		addMeshNode(scene, context, scene.rootId(), t, mesh.value, material.value);
 # ms-prelude: 	const id: NodeId3D = made.ok ? made.value : NO_ID;
-# ms-prelude: 	const _marked: boolean = setPickable(scene, id, true).ok;
+# ms-prelude: 	setPickable(scene, id, true);
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);
 # ms-prelude: 	return { scene: scene, node: id };
 # ms-prelude: }

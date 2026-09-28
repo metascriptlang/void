@@ -34,13 +34,13 @@ import {
 	writeUniforms,
 } from "../../src/void3d/draw";
 import {
+	Transform3D,
 	Scene3D,
 	NodeId3D,
 	SceneError,
 	LightError,
 	LightKind,
 	LightInstance,
-	identityTransform,
 	addMeshNode,
 	addLightNode,
 	refresh,
@@ -143,7 +143,7 @@ function buildScene(): void {
 	if (!mesh.ok) { unreachable; }
 	const material: MaterialId = litMaterial();
 	const placed: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh.value, material);
+		addMeshNode(scene, context, scene.rootId(), Transform3D.identity(), mesh.value, material);
 	if (!placed.ok) { unreachable; }
 	const sun: LightInstance = {
 		kind: LightKind.Directional,
@@ -152,9 +152,8 @@ function buildScene(): void {
 		power: 1.0,
 		priority: 0,
 	};
-	const lit: Result<NodeId3D, SceneError> =
-		addLightNode(scene, scene.rootId(), identityTransform(), sun);
-	if (!lit.ok) { unreachable; }
+	const lit: NodeId3D =
+		addLightNode(scene, scene.rootId(), Transform3D.identity(), sun);
 	const _drawn: int32 = refresh(scene, items);
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }

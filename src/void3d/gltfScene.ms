@@ -58,10 +58,7 @@ export function addGltfNodes(
 		let id: NodeId3D = { index: -1, generation: 0 };
 		const mesh: int32 = data.nodes[index].mesh;
 		if (mesh < 0) {
-			const added: Result<NodeId3D, SceneError> =
-				addGroup(scene, under, transformOf(data, index));
-			if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
-			id = added.value;
+			id = addGroup(scene, under, transformOf(data, index));
 		} else {
 			const added: Result<NodeId3D, SceneError> = addMeshNode(
 				scene, context, under, transformOf(data, index),
@@ -70,8 +67,7 @@ export function addGltfNodes(
 			if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
 			id = added.value;
 		}
-		const named: Result<int32, SceneError> = setName(scene, id, data.nodes[index].name);
-		if (!named.ok) { return Result.err(GltfSceneError.SceneRefused); }
+		setName(scene, id, data.nodes[index].name);
 		count = count + 1;
 		const childCount: int32 = data.nodes[index].children.length as int32;
 		for (let i = childCount - 1; i >= 0; i--) {

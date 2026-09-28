@@ -280,9 +280,9 @@ export function syncPose(
 			animation.keys[base + pair.second],
 			pair.weight,
 		);
-		const written: Result<int32, SceneError> =
-			setLocal(scene, animation.tracks[track].target, pose);
-		if (!written.ok) { return Result.err(AnimationError.StaleTarget); }
+		const target: NodeId3D = animation.tracks[track].target;
+		if (!scene.isLive(target)) { return Result.err(AnimationError.StaleTarget); }
+		setLocal(scene, target, pose);
 	}
 	animation.synced = pair;
 	animation.hasSynced = true;

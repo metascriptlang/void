@@ -104,8 +104,6 @@ import {
 	LightError,
 	LightKind,
 	NodeKind,
-	identityTransform,
-	transformAt,
 	addGroup,
 	addMeshNode,
 	addLightNode,
@@ -490,7 +488,7 @@ function layoutStones(): void {
 // this one agrees to 1.19e-7, one float32 ulp at this magnitude.
 function placementOf(block: Box): Transform3D {
 	return {
-		...identityTransform(),
+		...Transform3D.identity(),
 		position: block.base,
 		rotation: eulerQuat(block.tilt, block.yaw, 0.0),
 	};
@@ -522,7 +520,7 @@ function buildScene(): void {
 		console.log(`campfire: buildScene bailed at the ground, ${plane.error.toString()}`);
 		return;
 	}
-	addPiece(ground, identityTransform());
+	addPiece(ground, Transform3D.identity());
 	for (const block of stones) {
 		let geometry: MeshData = MeshData.empty();
 		const added: Result<int32, MeshError> = addBox(geometry, unplaced(block));
@@ -724,21 +722,12 @@ function updateFlicker(): void {
 	fireOffsetY = (nextRandom() - 0.5) * 0.12;
 	fireOffsetZ = (nextRandom() - 0.5) * 0.16;
 	fireFlicker = 1.0 + (nextRandom() - 0.5) * 0.14;
-	const moved: Result<int32, SceneError> = setLocal(
+	setLocal(
 		tree,
 		fireLight,
-		transformAt(vec3(fireOffsetX, FIRE_HEIGHT + fireOffsetY, fireOffsetZ)),
+		Transform3D.fromTranslation(vec3(fireOffsetX, FIRE_HEIGHT + fireOffsetY, fireOffsetZ)),
 	);
-	if (!moved.ok) {
-		console.log(`campfire: the flicker could not move the fire, ${moved.error.toString()}`);
-		return;
-	}
-	const powered: Result<int32, SceneError> =
-		setLightPower(tree, fireLight, FIRE_INTENSITY * fireFlicker);
-	if (!powered.ok) {
-		console.log(`campfire: the fire's power was refused, ${powered.error.toString()}`);
-		return;
-	}
+	setLightPower(tree, fireLight, FIRE_INTENSITY * fireFlicker);
 }
 
 
@@ -806,19 +795,17 @@ function setupDraws(): void {
 	grassMaterial = grassAdded.value;
 	flameMaterial = flameAdded.value;
 	const root: NodeId3D = tree.rootId();
-	const group: Result<NodeId3D, SceneError> = addGroup(tree, root, identityTransform());
-	if (!group.ok) { console.log("campfire: setupDraws bailed at addGroup"); return; }
-	const logsNamed: Result<int32, SceneError> = setName(tree, group.value, "logs");
-	if (!logsNamed.ok) { console.log("campfire: setupDraws bailed at naming the logs"); return; }
+	const group: NodeId3D = addGroup(tree, root, Transform3D.identity());
+	setName(tree, group, "logs");
 	// The moon as h3d.scene.fwd.DirLight: its direction is the node's front vector, and the
 	// shader wants the vector at the light, so the node faces away from it. Priority 100, the
 	// value Heaps' DirLight sorts at.
 	const moonToward: Vec3 = vec3(0.35, 0.9, 0.25).normalized();
-	const moon: Result<NodeId3D, SceneError> = addLightNode(
+	const moon: NodeId3D = addLightNode(
 		tree,
 		root,
 		{
-			...identityTransform(),
+			...Transform3D.identity(),
 			rotation: quatBetween(vec3(0.0, 0.0, 1.0), moonToward.scaled(-1.0)),
 		},
 		{
@@ -829,13 +816,12 @@ function setupDraws(): void {
 			priority: 100,
 		},
 	);
-	if (!moon.ok) { console.log("campfire: setupDraws bailed at the moon light"); return; }
 	// The fire as h3d.scene.fwd.PointLight: its position is the node's world translation, and
 	// the flicker below moves both that and its power.
-	const fire: Result<NodeId3D, SceneError> = addLightNode(
+	const fire: NodeId3D = addLightNode(
 		tree,
 		root,
-		transformAt(vec3(0.0, FIRE_HEIGHT, 0.0)),
+		Transform3D.fromTranslation(vec3(0.0, FIRE_HEIGHT, 0.0)),
 		{
 			kind: LightKind.Point,
 			color: vec3(1.0, 0.45, 0.16),
@@ -844,14 +830,9 @@ function setupDraws(): void {
 			priority: 0,
 		},
 	);
-	if (!fire.ok) { console.log("campfire: setupDraws bailed at the fire light"); return; }
-	fireLight = fire.value;
-	logGroup = group.value;
-	const logsPickable: Result<int32, SceneError> = setPickable(tree, logGroup, true);
-	if (!logsPickable.ok) {
-		console.log("campfire: setupDraws bailed at the pickable logs");
-		return;
-	}
+	fireLight = fire;
+	logGroup = group;
+	setPickable(tree, logGroup, true);
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
 			const placed: Result<int32, AnimationError> =
@@ -882,7 +863,7 @@ function setupDraws(): void {
 	}
 	grassMesh = grassMeshAdded.value;
 	const grass: Result<NodeId3D, SceneError> =
-		addMeshNode(tree, context, root, identityTransform(), grassMesh, grassMaterial);
+		addMeshNode(tree, context, root, Transform3D.identity(), grassMesh, grassMaterial);
 	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
 	for (const flameBuffer of flameBuffers) {
 		const flameAdded: Result<MeshId, MeshUploadError> =
@@ -893,11 +874,10 @@ function setupDraws(): void {
 	// The billboard programs ignore the model matrix — their roots are already world-space
 	// instance data — so these two nodes sit at the identity and only carry draw order.
 	const flame: Result<NodeId3D, SceneError> =
-		addMeshNode(tree, context, root, identityTransform(), flameMeshes[0], flameMaterial);
+		addMeshNode(tree, context, root, Transform3D.identity(), flameMeshes[0], flameMaterial);
 	if (!flame.ok) { console.log("campfire: setupDraws bailed at the flame node"); return; }
 	flameNode = flame.value;
-	const flameNamed: Result<int32, SceneError> = setName(tree, flameNode, "flame");
-	if (!flameNamed.ok) { console.log("campfire: setupDraws bailed at naming the flame"); return; }
+	setName(tree, flameNode, "flame");
 	if (particlesWanted) {
 		const particles: Result<int32, ParticleSetupError> = setupParticles(root, state);
 		if (!particles.ok) { console.log("campfire: setupDraws bailed at the particles"); return; }
@@ -944,10 +924,8 @@ function placeBakedStone(
 	const placed: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, where, stoneFrameMeshes[0], material);
 	if (!placed.ok) { return Result.err(AnimationError.StaleTarget); }
-	const named: Result<int32, SceneError> = setName(tree, placed.value, "bakedStone");
-	if (!named.ok) { return Result.err(AnimationError.StaleTarget); }
-	const marked: Result<int32, SceneError> = setPickable(tree, placed.value, true);
-	if (!marked.ok) { return Result.err(AnimationError.StaleTarget); }
+	setName(tree, placed.value, "bakedStone");
+	setPickable(tree, placed.value, true);
 	bakedStoneNode = placed.value;
 	return Result.ok(placed.value.index);
 }
@@ -973,7 +951,7 @@ function setupParticles(root: NodeId3D, state: RenderState): Result<int32, Parti
 		tree,
 		context,
 		root,
-		transformAt(vec3(0.0, SNOW_HEIGHT, 0.0)),
+		Transform3D.fromTranslation(vec3(0.0, SNOW_HEIGHT, 0.0)),
 		snowMesh,
 		particleMaterial,
 	);
@@ -981,7 +959,7 @@ function setupParticles(root: NodeId3D, state: RenderState): Result<int32, Parti
 		tree,
 		context,
 		root,
-		transformAt(vec3(0.0, EMBER_HEIGHT, 0.0)),
+		Transform3D.fromTranslation(vec3(0.0, EMBER_HEIGHT, 0.0)),
 		emberMesh,
 		particleMaterial,
 	);
@@ -1061,7 +1039,7 @@ function setupAnimations(): Result<int32, AnimationError> {
 	const turns: Vec<Transform3D> = [];
 	for (let i = 0; i < SPIN_KEYS; i++) {
 		const angle: float32 = logSpinPerFrame * (i as float32);
-		turns.push({ ...identityTransform(), rotation: eulerQuat(0.0, angle, 0.0) });
+		turns.push({ ...Transform3D.identity(), rotation: eulerQuat(0.0, angle, 0.0) });
 	}
 	const _track: int32 = try addTrack(logSpin, "logs", turns);
 	return bindTracks(logSpin, tree, tree.rootId());
@@ -1247,7 +1225,7 @@ function flipRowIfGl(row: float32): float32 {
 export function campfirePixelOf(id: NodeId3D): Result<Vec3, SceneError> {
 	if (!tree.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (tree.nodes[id.index].kind != NodeKind.Mesh) {
-		return Result.err(SceneError.NotAMeshNode);
+		return Result.err(SceneError.NodeNotFound);
 	}
 	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh.index;
 	if (mesh < 0 || mesh >= (context.meshData.length as int32)) {

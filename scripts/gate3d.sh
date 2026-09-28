@@ -903,7 +903,7 @@ run_style() {
 # mtime, which can hold another entry's or a reverted build. A `Vec` of structs with owned
 # fields copies through `<T>ArrayCopy`, not `msArrayCopy`.
 FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:collectLights
-	scene:setLocal scene:setMeshOf animation:update animation:keys animation:blendTo
+	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow animation:update animation:keys animation:blendTo
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
 	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh

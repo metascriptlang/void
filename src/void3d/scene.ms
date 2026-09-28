@@ -75,9 +75,6 @@ export struct LightInstance {
 
 export enum SceneError {
 	StaleNode,
-	RootCannotBeRemoved,
-	NotAMeshNode,
-	NotALightNode,
 	NodeNotFound,
 	StaleMesh,
 	StaleMaterial,
@@ -143,12 +140,13 @@ export struct Scene3D {
 	structureChanged: boolean;
 }
 
-export function identityTransform(): Transform3D {
+// Bevy's `Transform::IDENTITY` and `Transform::from_translation`.
+export function identity(this typeof Transform3D): Transform3D {
 	return { position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), scale: vec3(1.0, 1.0, 1.0) };
 }
 
-export function transformAt(position: Vec3): Transform3D {
-	return { ...identityTransform(), position: position };
+export function fromTranslation(this typeof Transform3D, position: Vec3): Transform3D {
+	return { ...Transform3D.identity(), position: position };
 }
 
 // The matrix a node's own transform describes, before its parent is applied.
@@ -176,6 +174,28 @@ export function isLive(this scene: Scene3D, id: NodeId3D): boolean {
 // The id of the node now at `index`.
 export function nodeIdAt(this scene: Scene3D, index: int32): NodeId3D {
 	return { index: index, generation: scene.slots.generations[index] };
+}
+
+function liveRow(this scene: Scene3D, id: NodeId3D, call: string): int32 {
+	if (scene.isLive(id)) { return id.index; }
+	const rows: int32 = scene.slots.generations.length as int32;
+	const now: int32 = id.index >= 0 && id.index < rows ? scene.slots.generations[id.index] : 0;
+	console.log(
+		`void3d: ${call} on stale node ${id.index}: the handle has generation ` +
+		`${id.generation}, the row ${now}`,
+	);
+	unreachable;
+}
+
+function kindRow(this scene: Scene3D, id: NodeId3D, kind: NodeKind, call: string): int32 {
+	const row: int32 = scene.liveRow(id, call);
+	const actual: NodeKind = scene.nodes[row].kind;
+	if (actual == kind) { return row; }
+	console.log(
+		`void3d: ${call} asked of a ${actual.toString()} node ${row}; ` +
+		`only a ${kind.toString()} node has it`,
+	);
+	unreachable;
 }
 
 function newSlot(ref scene: Scene3D, node: Object3D): NodeId3D {
@@ -209,7 +229,7 @@ export function create(this typeof Scene3D): Scene3D {
 		parent: NO_NODE_3D,
 		payload: NO_NODE_3D,
 		name: "",
-		local: identityTransform(),
+		local: Transform3D.identity(),
 		world: identity(),
 		children: [],
 	});
@@ -222,12 +242,8 @@ export function rootId(this scene: Scene3D): NodeId3D {
 }
 
 // Adds an empty group under `parent`. Structure changed, so the draw list is rebuilt next collect.
-export function addGroup(
-	ref scene: Scene3D,
-	parent: NodeId3D,
-	local: Transform3D,
-): Result<NodeId3D, SceneError> {
-	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
+export function addGroup(ref scene: Scene3D, parent: NodeId3D, local: Transform3D): NodeId3D {
+	const _parent: int32 = scene.liveRow(parent, "addGroup");
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: freshFlags(),
@@ -240,7 +256,7 @@ export function addGroup(
 	});
 	scene.nodes[parent.index].children.push(id.index);
 	scene.structureChanged = true;
-	return Result.ok(id);
+	return id;
 }
 
 // h3d.scene.Mesh: an object that carries a primitive and a material, and holds both.
@@ -259,7 +275,7 @@ export function addMeshNode(
 	mesh: MeshId,
 	material: MaterialId,
 ): Result<NodeId3D, SceneError> {
-	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
+	const _parent: int32 = scene.liveRow(parent, "addMeshNode");
 	if (!context.hasMesh(mesh)) { return Result.err(SceneError.StaleMesh); }
 	if (!context.hasMaterial(material)) { return Result.err(SceneError.StaleMaterial); }
 	const pinnedMesh: Result<int32, HandleError> = pinMesh(context, mesh);
@@ -290,8 +306,8 @@ export function addLightNode(
 	parent: NodeId3D,
 	local: Transform3D,
 	light: LightInstance,
-): Result<NodeId3D, SceneError> {
-	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
+): NodeId3D {
+	const _parent: int32 = scene.liveRow(parent, "addLightNode");
 	const payload: int32 = scene.lights.length as int32;
 	scene.lights.push(light);
 	const id: NodeId3D = newSlot(scene, {
@@ -307,7 +323,7 @@ export function addLightNode(
 	scene.lightOwners.push(id.index);
 	scene.nodes[parent.index].children.push(id.index);
 	scene.structureChanged = true;
-	return Result.ok(id);
+	return id;
 }
 
 function detach(ref scene: Scene3D, index: int32): void {
@@ -413,9 +429,12 @@ export function remove(
 	ref context: DrawContext,
 	id: NodeId3D,
 ): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	if (id.index == scene.root) { return Result.err(SceneError.RootCannotBeRemoved); }
-	const count: int32 = collectSubtree(scene, id.index);
+	const row: int32 = scene.liveRow(id, "remove");
+	if (row == scene.root) {
+		console.log("void3d: remove asked of the scene root; removeChildren empties it");
+		unreachable;
+	}
+	const count: int32 = collectSubtree(scene, row);
 	const _checked: int32 = try checkPins(scene, context, count);
 	detach(scene, id.index);
 	for (let k = 0; k < count; k++) {
@@ -436,7 +455,7 @@ export function removeChildren(
 	ref context: DrawContext,
 	id: NodeId3D,
 ): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	const _row: int32 = scene.liveRow(id, "removeChildren");
 	let removed: int32 = 0;
 	while ((scene.nodes[id.index].children.length as int32) > 0) {
 		const child: NodeId3D = scene.nodeIdAt(scene.nodes[id.index].children[0]);
@@ -446,45 +465,30 @@ export function removeChildren(
 }
 
 // Heaps' `posChanged`: writing a transform marks only this node, and the descent propagates it.
-export function setLocal(
-	ref scene: Scene3D,
-	id: NodeId3D,
-	local: Transform3D,
-): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	scene.nodes[id.index].local = local;
-	scene.nodes[id.index].flags = scene.nodes[id.index].flags.incl(NodeFlag.PosChanged);
-	return Result.ok(id.index);
+export function setLocal(ref scene: Scene3D, id: NodeId3D, local: Transform3D): void {
+	const row: int32 = scene.liveRow(id, "setLocal");
+	scene.nodes[row].local = local;
+	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
 }
 
-export function setVisible(
-	ref scene: Scene3D,
-	id: NodeId3D,
-	visible: boolean,
-): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	const flags: BitSet<NodeFlag> = scene.nodes[id.index].flags;
-	scene.nodes[id.index].flags = visible ?
+export function setVisible(ref scene: Scene3D, id: NodeId3D, visible: boolean): void {
+	const row: int32 = scene.liveRow(id, "setVisible");
+	const flags: BitSet<NodeFlag> = scene.nodes[row].flags;
+	scene.nodes[row].flags = visible ?
 		flags.incl(NodeFlag.Visible) :
 		flags.excl(NodeFlag.Visible);
 	// Visibility does not move anything, so the world matrices stay valid; only the draw list
 	// changes, and `collect` reads the flag as it walks.
 	scene.structureChanged = true;
-	return Result.ok(id.index);
 }
 
 // h3d.scene.Interactive cut to a flag: a pickable node owns every hit on the meshes under it.
-export function setPickable(
-	ref scene: Scene3D,
-	id: NodeId3D,
-	pickable: boolean,
-): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	const flags: BitSet<NodeFlag> = scene.nodes[id.index].flags;
-	scene.nodes[id.index].flags = pickable ?
+export function setPickable(ref scene: Scene3D, id: NodeId3D, pickable: boolean): void {
+	const row: int32 = scene.liveRow(id, "setPickable");
+	const flags: BitSet<NodeFlag> = scene.nodes[row].flags;
+	scene.nodes[row].flags = pickable ?
 		flags.incl(NodeFlag.Pickable) :
 		flags.excl(NodeFlag.Pickable);
-	return Result.ok(id.index);
 }
 
 // The node pins `mesh` and unpins the one it showed, unless that one was freed already; pinning
@@ -495,43 +499,31 @@ export function setMeshOf(
 	id: NodeId3D,
 	mesh: MeshId,
 ): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	if (scene.nodes[id.index].kind != NodeKind.Mesh) {
-		return Result.err(SceneError.NotAMeshNode);
-	}
-	const row: int32 = scene.nodes[id.index].payload;
+	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setMeshOf");
+	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
 	const holds: boolean = context.hasMesh(shown);
 	if (holds && context.meshPinned(shown) < 1) { return Result.err(SceneError.NotPinned); }
 	if (!pinMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
 	if (holds && !unpinMesh(context, shown).ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
-	return Result.ok(id.index);
+	return Result.ok(node);
 }
 
 // The flicker path: power moves every few frames, and `collectLights` re-reads it, so nothing
 // else needs to hear about the change.
-export function setLightPower(
-	ref scene: Scene3D,
-	id: NodeId3D,
-	power: float32,
-): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	if (scene.nodes[id.index].kind != NodeKind.Light) {
-		return Result.err(SceneError.NotALightNode);
-	}
-	scene.lights[scene.nodes[id.index].payload].power = power;
-	return Result.ok(id.index);
+export function setLightPower(ref scene: Scene3D, id: NodeId3D, power: float32): void {
+	const node: int32 = scene.kindRow(id, NodeKind.Light, "setLightPower");
+	scene.lights[scene.nodes[node].payload].power = power;
 }
 
 export function setAmbient(ref scene: Scene3D, ambient: Vec3): void {
 	scene.ambientLight = ambient;
 }
 
-export function setName(ref scene: Scene3D, id: NodeId3D, name: string): Result<int32, SceneError> {
-	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
-	scene.nodes[id.index].name = name;
-	return Result.ok(id.index);
+export function setName(ref scene: Scene3D, id: NodeId3D, name: string): void {
+	const row: int32 = scene.liveRow(id, "setName");
+	scene.nodes[row].name = name;
 }
 
 export function nameOf(this scene: Scene3D, id: NodeId3D): Result<string, SceneError> {
