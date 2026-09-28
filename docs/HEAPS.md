@@ -307,7 +307,7 @@ Feature-Done ≠ quality-parity. This section tracks the **internal quality** of
 
 ## The h2d contract — status (2026-09-20)
 
-What void2d keeps of h2d, what it still lacks, and what it must not copy. void2d stays h2d in **interface and semantics**; how pixels are produced comes from the rendering references ([VOID2D.md](VOID2D.md)).
+What void2d keeps of h2d, what it still lacks, and what it must not copy. Since 2026-09-29 void2d takes h2d's names and meanings only where they cost no power, and Void is not Heaps ([VOID2D.md](VOID2D.md) "The bar"); how pixels are produced comes from the rendering references.
 
 ### Keep, and still add
 

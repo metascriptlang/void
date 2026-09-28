@@ -6,7 +6,7 @@ Void's 2D layer: draw the **same pixels on every platform** (Metal / D3D11 / GL 
 
 | Doc | Role |
 |---|---|
-| [HEAPS.md](HEAPS.md) | **The model.** Heaps `h2d`: the interface and semantics void2d keeps. |
+| [HEAPS.md](HEAPS.md) | **The vocabulary reference.** Heaps `h2d`: the scene-graph names and meanings void2d takes where they cost no power ("The rule"). |
 | [GPUI.md](GPUI.md) | **Rendering reference 1.** Zed's renderer: the primitive look, the text path, the frame shape. The only reference with a shipped WebGPU-in-the-browser path. |
 | [MAKEPAD.md](MAKEPAD.md) | **Rendering reference 2.** GPUI's model under Void's constraints: own shader fan-out, own text stack, WebGL2 and mobile. |
 | [GHOSTTY.md](GHOSTTY.md) | **Rendering reference 3.** Dense text only: font stack, atlas, blend space, frame discipline. |
@@ -45,15 +45,21 @@ Both required from day one: face 1 ships HUD/game now; face 2 is what the reconc
 
 ## The bar (2026-09-20)
 
-Heaps is a game engine. Void is a rendering engine, and void2d must carry **application-UI rendering** when Void is a Neon backend — concretely, render a code editor like Zed: fine font control, high-quality antialiasing, fast and smooth — while staying recognisably h2d in interface and feel. Decisions are judged against "a 13 px code font at 1× and 1.5× DPI looks and scrolls like Zed", not against HUD needs.
+Heaps is a game engine. Void is a rendering engine, and void2d must carry **application-UI rendering** when Void is a Neon backend — concretely, render a code editor like Zed: fine font control, high-quality antialiasing, fast and smooth. Decisions are judged against "a 13 px code font at 1× and 1.5× DPI looks and scrolls like Zed", not against HUD needs.
 
-**The rule.** void2d keeps the **h2d model** (retained tree, painter's order, an affine on every node, render-target filters, blend modes) and takes **everything in the rendering layer of its references**, except where one of three reasons applies:
+**The spirit (the human, 2026-09-29).** Void is a pure rendering engine and was never Heaps: WebGPU and sokol are first-class, and P5 step 5 already replaced h2d's objects with void3d's data model. Rendering power and performance come first. void2d exposes raw capability and leaves the app as much control as it can; convenience (policies, defaults, widgets, layout) is Neon's layer. Its syntax is the one that fits MetaScript's power and idiom best, not the one a Heaps user expects.
 
-- **N** — Neon or its Void host already covers it (component model, layout, events, focus, lists, a11y). Void renders; Neon + Void is the combination.
-- **W** — the reference's mechanism is worse than one Void has or plans, or repairs a problem Void does not have.
-- **P** — not portable to sokol_gfx / GLES3 / WebGL2, or against "same pixels on every platform".
+**The rule.** For every surface and every mechanism:
 
-Every item of each reference carries one of these in its doc's disposition table.
+- **Capability first.** Expose what the GPU and the mechanism can do: bulk writes over spans, explicit promises that buy speed (children that do not overlap), raw transforms. A policy built on a capability is a helper, or Neon's.
+- **The call shape is MetaScript's**, as void3d writes it: handles, binders, spans, value tables. h2d supplies a name or a meaning where it costs no power, and a divergence from it is recorded in HEAPS.md "Do not copy from h2d".
+- **Low level is not unsafe.** The workspace rules hold: the same result on every backend, and fail loud. A promise the app makes to go faster is checked where it can be, and a misuse stops with an error that names it.
+- **The mechanism comes from the references**: GPUI first, then Makepad and Ghostty where GPUI is weak, Bevy and void3d for data. void2d takes **everything in their rendering layer**, except where one of three reasons applies:
+  - **N** — Neon or its Void host already covers it (component model, layout, events, focus, lists, a11y). Void renders; Neon + Void is the combination.
+  - **W** — the reference's mechanism is worse than one Void has or plans, or repairs a problem Void does not have.
+  - **P** — not portable to sokol_gfx / GLES3 / WebGL2, or against "same pixels on every platform".
+
+  Every item of each reference carries one of these in its doc's disposition table.
 
 ## Conclusions
 
