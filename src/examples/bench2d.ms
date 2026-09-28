@@ -36,6 +36,7 @@ export enum BenchKind {
 	Sprites,
 	Text,
 	Editor,
+	Scroll,
 }
 
 const COLUMNS: int32 = 100;
@@ -110,6 +111,7 @@ let firstPaintUploadBytes: int32 = 0;
 let rasterizationsBeforeMeasure: int32 = 0;
 let sweepPeakPages: int32 = 0;
 let codeBlock: NodeRef | null = null;
+let scrollArea: NodeRef | null = null;
 let warmupFrames: int32 = WARMUP_FRAMES;
 
 export function benchInit(kind: BenchKind): void {
@@ -130,6 +132,12 @@ export function benchInit(kind: BenchKind): void {
 	} else if (kind === BenchKind.Editor) {
 		benchName = "editor";
 		s.add(editorLabel(s));
+	} else if (kind === BenchKind.Scroll) {
+		benchName = "scroll";
+		const area = s.mask(1264.0, 704.0).at(8.0, 8.0);
+		area.addChild(editorLabel(s));
+		s.add(area);
+		scrollArea = area;
 	} else if (kind === BenchKind.Text) {
 		benchName = "text";
 		const block = s.group();
@@ -160,6 +168,9 @@ export function benchInit(kind: BenchKind): void {
 		retainedNodeCount = ROWS * COLUMNS;
 	} else if (kind === BenchKind.Editor) {
 		nodeCount = 1;
+		retainedNodeCount = 1;
+	} else if (kind === BenchKind.Scroll) {
+		nodeCount = 2;
 		retainedNodeCount = 1;
 	} else if (kind === BenchKind.Text) {
 		nodeCount = CODE_LINES + 1;
@@ -269,6 +280,9 @@ export function benchFrame(): void {
 		return;
 	}
 	benchScene.tick(FRAME_DT);
+	if (scrollArea !== null) {
+		(scrollArea as NodeRef).scrollTo(0.0, ((frameIndex * 37) % 2600) as float32);
+	}
 	const started: float64 = performance.now();
 	benchScene.present();
 	presentMs = presentMs + (performance.now() - started);

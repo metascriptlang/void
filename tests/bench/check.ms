@@ -9,7 +9,7 @@
 
 import { readFile } from "std/fs";
 import { execFileCapture } from "std/process";
-import { parseRows } from "../harness/benchRows";
+import { BenchRow, parseRows } from "../harness/benchRows";
 
 // Counted across both bench binaries, reported once at the end.
 let unreadableRows: int32 = 0;
@@ -20,13 +20,7 @@ const UI_BINARY: string = "out/benchUi.exe";
 const SPRITES_BINARY: string = "out/benchSprites.exe";
 const TEXT_BINARY: string = "out/benchText.exe";
 const EDITOR_BINARY: string = "out/benchEditor.exe";
-
-// One `scene.metric value` row as the bench prints it.
-interface BenchRow {
-	scene: string;
-	metric: string;
-	value: float64;
-}
+const SCROLL_BINARY: string = "out/benchScroll.exe";
 
 function runBench(binary: string): BenchRow[] {
 	const result = execFileCapture(binary, []);
@@ -103,8 +97,10 @@ function runCheck(): int32 {
 	const spriteRows = runBench(SPRITES_BINARY);
 	const textRows = runBench(TEXT_BINARY);
 	const editorRows = runBench(EDITOR_BINARY);
+	const scrollRows = runBench(SCROLL_BINARY);
 	const empty: boolean = (uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0
-		|| (textRows.length as int32) == 0 || (editorRows.length as int32) == 0;
+		|| (textRows.length as int32) == 0 || (editorRows.length as int32) == 0
+		|| (scrollRows.length as int32) == 0;
 	if (empty) {
 		return 1;
 	}
@@ -130,6 +126,10 @@ function runCheck(): int32 {
 		const expected: int32 = counters.editor.getDynamicField(metric).asInt32();
 		if (!checkCounter(editorRows, "editor", metric, expected)) { failed = failed + 1; }
 	}
+	for (const metric of metrics) {
+		const expected: int32 = counters.scroll.getDynamicField(metric).asInt32();
+		if (!checkCounter(scrollRows, "scroll", metric, expected)) { failed = failed + 1; }
+	}
 	const lookups: int32 = counters.text.getDynamicField("measureGlyphLookups").asInt32();
 	if (!checkCounter(textRows, "text", "measureGlyphLookups", lookups)) { failed = failed + 1; }
 
@@ -138,10 +138,12 @@ function runCheck(): int32 {
 	reportMilliseconds(spriteRows, "sprites", milliseconds.sprites.present.asNumber(), warnFactor);
 	reportMilliseconds(textRows, "text", milliseconds.text.present.asNumber(), warnFactor);
 	reportMilliseconds(editorRows, "editor", milliseconds.editor.present.asNumber(), warnFactor);
+	reportMilliseconds(scrollRows, "scroll", milliseconds.scroll.present.asNumber(), warnFactor);
 	reportFirstPaint(uiRows, "ui");
 	reportFirstPaint(spriteRows, "sprites");
 	reportFirstPaint(textRows, "text");
 	reportFirstPaint(editorRows, "editor");
+	reportFirstPaint(scrollRows, "scroll");
 
 	console.log("");
 	if (unreadableRows > 0) {
