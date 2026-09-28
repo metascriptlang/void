@@ -215,6 +215,7 @@ function newMesh(ref context: DrawContext, mesh: GpuMesh, data: MeshData): MeshI
 		context.meshData[index] = data;
 		context.meshHolders[index] = 1;
 		context.meshPins[index] = 0;
+		context.meshTally[index] = 0;
 	}
 	return { index: index, generation: context.meshSlots.generations[index] };
 }
@@ -223,11 +224,14 @@ function newMesh(ref context: DrawContext, mesh: GpuMesh, data: MeshData): MeshI
 // EXTERNAL_GENERATION (fullscreen, billboards) keeps them the caller's, never rebuilt and never
 // destroyed here; any other makes them the context's, which dooms them when the mesh is freed and
 // remakes them after a context loss. Only a stream can be remade from nothing, so any other mesh
-// that is not the caller's is refused.
+// that is not the caller's is refused, and so is one that names buffers made in no context.
 export function addMesh(ref context: DrawContext, mesh: GpuMesh): Result<MeshId, MeshUploadError> {
 	if (mesh.generation != EXTERNAL_GENERATION && !mesh.isStream()) {
 		return Result.err(MeshUploadError.Unrebuildable);
 	}
+	const buffers: boolean =
+		mesh.vertexBuffer != 0 || mesh.indexBuffer != 0 || mesh.instanceBuffer != 0;
+	if (mesh.generation == 0 && buffers) { return Result.err(MeshUploadError.Unrebuildable); }
 	return Result.ok(newMesh(context, mesh, MeshData.empty()));
 }
 
@@ -636,6 +640,7 @@ export function addMaterial(
 		context.materials[index] = material;
 		context.materialHolders[index] = 1;
 		context.materialPins[index] = 0;
+		context.materialTally[index] = 0;
 		context.materialBlocks[index] = material.uniforms;
 	}
 	return Result.ok({ index: index, generation: context.materialSlots.generations[index] });

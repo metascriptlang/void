@@ -126,6 +126,7 @@ test "addMesh refuses a mesh made in a context that it could not remake" {
 	assert addMesh(context, GpuMesh.streamMesh(4, 77, 5)).ok;
 	assert !addMesh(context, MeshData.empty().meshFor(0, 0, 0)).ok;
 	assert !addMesh(context, { ...GpuMesh.billboards(12, 4), generation: 0 }).ok;
+	assert !addMesh(context, GpuMesh.streamMesh(16, 9, 0)).ok;
 	assert addMesh(context, GpuMesh.fullscreen(9, 3)).ok;
 }
 
