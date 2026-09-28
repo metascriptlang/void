@@ -880,7 +880,7 @@ with `--release` on BUILD `598ca62e`, the P4 head `c85f5d0` (tree `2497f5d`) aga
 - `Mask.scrollX/Y` applied as a list-level shift after the per-instance clip: `clamp(clamp(p, clip) + shift, viewClip)` — the formulation Makepad wrote and never used (MAKEPAD.md:111) — with the offset snapped to a device pixel, so a text run's subpixel variants survive the translation.
 - `Scene` reports whether it changed and can re-present its last list; scheduling stays the host's.
 - The missing `Object` surface: `parent`, `remove()`, reparent-on-add with a cycle guard, `getChildAt` / `getChildIndex` / `numChildren`, `name`; `localToGlobal` syncing first instead of returning last frame's matrix (`node.ms:344-350`). **Landed at P5 step 6**: `localToGlobal` and `globalToLocal` multiply the node's ancestors' local matrices when asked, so they answer after a write and before any frame.
-- The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:115-121`: `presentAt` hands the camera and scale mode to `sync` as the root's parent world).
+- The camera out of every world matrix and into a uniform, as h2d has it, so a camera move stops re-multiplying the tree (`scene.ms:115-121`: `presentAt` hands the camera and scale mode to `sync` as the root's parent world). **Landed at P5 step 10 for the translation**, as the root's scroll scope; a zoom or a rotation still re-multiplies the tree, since a label is rasterised at the scale it is drawn at.
 - A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`). **Landed at P5 step 4** for `removeChild` and `removeChildren`: a removed subtree's Labels release their tiles and keep their shaped layout, so a label added back places again from the atlas's index, hitting the tiles still resident, and only `dispose` frees the layout. `remove()` (step 6) goes through `removeChild`.
 - Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`. **Landed at P5 step 4**: the upload state moved from `batcher.c` into `glyph.c` beside the page's dirty flag (`void2dGlyphPageTakeUpload`), so the atlas asks it directly and T1 drives it with no GPU; a glyph that finds every page full or uploaded this frame at the page cap is refused this frame and placed the next, which is F1's retry.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
@@ -1264,6 +1264,35 @@ human has seen it as app code; the phase measurement comes last.
       draw over the 13 214 instances of the whole content; the editor scene before step 7
       uploaded 1 427 112 B every frame, and P4 measured its `present` at 0.58 ms. Content far
       larger than its Mask costs its whole instance count, since a scope does not cull.
+
+    **The camera half landed** after 10b. The view's translation leaves the world matrices for a
+    scope every scene list opens at its root (`enterCamera`), and the worlds keep the view's
+    linear part.
+    - **The translation is snapped to a device pixel**, as h2d rounds its camera's
+      (`h2d/Camera.hx:227`). A pan by less than half a device pixel is no change. The demo, the
+      only golden with a camera, moved: its fitted camera sits at (8.163, 14.286) and now draws at
+      (8, 14). Its four goldens were regenerated. Every other scene stayed byte-identical, and so
+      did `clip/maskScroll`, whose Mask scope now chains under the root's.
+    - **A zoom or a rotation still re-multiplies the tree.** A label is rasterised at the scale
+      it is drawn at (P3), so moving the linear part into a uniform would scale finished glyphs.
+      GPUI and Makepad have no camera zoom to take from.
+    - **Culling stays exact.** Each painted row keeps the box its viewport test read (`culls`).
+      A pan runs one pass over the order and queues the rows whose test flips between the old
+      and the new shift, and the patch or the splice redraws them. A filtered node whose
+      viewport crop moves takes the splice, which re-renders its target.
+    - **`localToGlobal`, `globalToLocal` and `getBounds` add the root's shift**, so they answer
+      where the node is drawn.
+    - T1 (`tests/displayList/retain.ms`): a pan that crosses no row patches, writes no instance,
+      leaves every world matrix alone and moves `localToGlobal`. A pan that uncovers rows or
+      takes them off splices and records what a full frame records. A zoom takes the full frame.
+    - Measured, `out/tmp/p7probes/panCost.ms` (release, 1280 × 720, a grid of 40 000 nodes twice
+      the viewport's width, three runs, not an A/B):
+      - a still frame: 0.020-0.022 ms;
+      - a pan of 1 px a frame: **0.25-0.26 ms and 81 810 B a frame** on average (111 frames
+        patched, 9 spliced where a column crossed an edge);
+      - a pan of one column a frame: 1.65-1.74 ms and 1 090 800 B (all spliced);
+      - the same 1 px pan forced through the full frame, what every pan cost before: 8.3-10.7 ms
+        and 1 090 800 B.
 11. **`TileGroup`**, after the human has seen it: the non-overlap flag and the lane fallback.
     T1. Closes `h2d-tilegroup`.
 12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
