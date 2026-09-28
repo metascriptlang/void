@@ -1323,6 +1323,26 @@ human has seen it as app code; the phase measurement comes last.
         and 1 090 800 B.
 11. **`TileGroup`**, after the human has seen it: the non-overlap flag and the lane fallback.
     T1. Closes `h2d-tilegroup`.
+
+    **The surface, decided by the human on 2026-09-29** under "The rule": raw capability, and
+    every capability of h2d's `TileGroup` kept (`h2d/TileGroup.hx:562-718`,
+    `h2d/impl/BatchDrawState.hx:43-61`). Only its conveniences are cut.
+    ```ts
+    const map = scene.tileGroup();
+    map.setTiles(cells);        // replace all; a tile: position, a Tile (any texture), RGBA, scale and rotation
+    map.appendTiles(more);      // grow without rewriting the tiles already there
+    map.setTile(42, cell);      // rewrite one tile in place
+    map.setRange(100, 500);     // draw tiles 100..599 only (h2d's rangeMin / rangeMax)
+    map.clear(); map.count();
+    list.setNoOverlap(true);    // a promise that buys batching; a debug build checks it and names the overlap
+    ```
+    - **Kept as capability:** tiles from several textures in one group, drawn as one run per
+      texture as h2d's `BatchDrawState` splits them; a tint and a transform per tile; appending
+      without a full rewrite, since `setTiles` alone would make growth quadratic; the sub-range.
+    - **Cut as convenience:** `add`, `addColor`, `addAlpha` and `addTransform`, which are one
+      appended tile with fields filled in; `setDefaultColor`, since the colour is in the tile;
+      `invalidate`, since a write marks the group itself. Neon can wrap any of them.
+    - The group's own tint, alpha, blend and filter are the node's, as for every node.
 12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
     F-b), shown to the human first as Neon's `host.ms` before and after. The run-colour rule
     (P4 F2, h2d's multiply, answered 2026-09-27) landed first.
