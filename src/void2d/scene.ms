@@ -81,6 +81,12 @@ export function tick(this s: Scene, dt: float32): void {
 	}
 }
 
+function wholeSceneUnits(window: float32, design: float32, zoom: float64): float32 {
+	const covered: float64 = (design as float64) * zoom;
+	const margin: float64 = ((window as float64) - covered) / (2.0 * zoom);
+	return (Math.floor(margin) * zoom) as float32;
+}
+
 export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D {
 	if (s.designW <= 0.0 || s.designH <= 0.0) {
 		return s.cam.viewMatrix(wf, hf);
@@ -101,13 +107,16 @@ export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D
 		},
 		ScaleMode.LetterBox => {
 			const r: float32 = wf / dw < hf / dh ? wf / dw : hf / dh;
+			const across: float64 = (wf as float64) / (dw as float64);
+			const down: float64 = (hf as float64) / (dh as float64);
+			const zoom: float64 = across < down ? across : down;
 			scaleX = r; scaleY = r;
-			offsetX = (wf - dw * r) * 0.5;
-			offsetY = (hf - dh * r) * 0.5;
+			offsetX = wholeSceneUnits(wf, dw, zoom);
+			offsetY = wholeSceneUnits(hf, dh, zoom);
 		},
 		ScaleMode.Fixed => {
-			offsetX = (wf - dw) * 0.5;
-			offsetY = (hf - dh) * 0.5;
+			offsetX = wholeSceneUnits(wf, dw, 1.0);
+			offsetY = wholeSceneUnits(hf, dh, 1.0);
 		},
 		ScaleMode.Zoom => {
 			const r: float32 = wf / dw > hf / dh ? wf / dw : hf / dh;

@@ -54,13 +54,13 @@ test "LetterBox centers with uniform scale" {
 	assert approx(m.ty, 0.0);
 }
 
-test "LetterBox portrait centers vertically" {
+test "LetterBox portrait centers on whole scene units, as h2d's checkResize floors" {
 	const s = scene(rgba(0, 0, 0, 1));
 	s.setScaleMode(ScaleMode.LetterBox, 300.0, 400.0);
 	const m = sceneViewMatrix(s, 800.0, 600.0);
 	assert approx(m.a, 1.5);
 	assert approx(m.d, 1.5);
-	assert approx(m.tx, 175.0);
+	assert approx(m.tx, 174.0);
 	assert approx(m.ty, 0.0);
 }
 
