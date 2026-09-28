@@ -1350,7 +1350,13 @@ hud_mismatch() {
 	magick "$1" -crop "$HUD_PANEL" +repage -evaluate divide 2 "$WORK/hudHalf.ppm"
 	magick "$2" -crop "$HUD_PANEL" +repage "$WORK/hudPanel.ppm"
 	panel=$(magick "$WORK/hudHalf.ppm" "$WORK/hudPanel.ppm" -compose difference -composite \
-		-separate -append -format "%[fx:round(maxima*255)]" info:)
+		-separate -append -format "%[fx:round(maxima*255)]" info: 2>&1)
+	case "$panel" in
+		'' | *[!0-9]*)
+			echo "the panel difference could not be measured: $panel"
+			return
+			;;
+	esac
 	if [ "$panel" -gt 1 ]; then
 		echo "the panel is off half of the campfire under it by up to $panel in a channel"
 	fi
@@ -1377,9 +1383,9 @@ run_hud_over_campfire() {
 			fail "hud: frame $frame, $wrong"
 			return
 		fi
-		if [ -n "$(hud_mismatch "$under" "$swapped")" ]; then
-			caught=$((caught + 1))
-		fi
+		case "$(hud_mismatch "$under" "$swapped")" in
+			*"of the opaque bar are not its colour"*) caught=$((caught + 1)) ;;
+		esac
 	done
 	if [ "$caught" -ne 4 ]; then
 		fail "hud: the control, the campfire drawn over the HUD, passed the checks in $((4 - caught)) of 4 frames"
@@ -1417,8 +1423,8 @@ run_captures() {
 }
 
 # A 3D preset and void2d in one screen pass and one commit (tests/integration/mixedFrame.ms, also
-# in void2d's gate); the same run with the 3D drawn over void2d, which must fail; and one preparing
-# twice, which must stop and say so. The test exits 3 when the build has no readback.
+# in void2d's gate); the same run with the 3D drawn over void2d, which must fail; and runs preparing
+# twice and drawing after a commit, which must stop and say so. It exits 3 with no readback.
 run_compose() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "compose: GATE_SKIP_CAPTURE=1 — the mixed frame was not run"
@@ -1446,7 +1452,7 @@ run_compose() {
 	pass "compose: $summary"
 	status=0
 	VOID_MIXED_3D_OVER_2D=1 out/tmp/mixedFrame.exe > "$WORK/compose.swapped.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] && grep -q '^FAIL mixed frame' "$WORK/compose.swapped.log"; then
+	if [ "$status" -ne 0 ] && grep -q '^FAIL mixed frame: .* inside the quad' "$WORK/compose.swapped.log"; then
 		pass "compose: the control, the 3D drawn over void2d, fails: $(grep -E '^FAIL' \
 			"$WORK/compose.swapped.log" | head -1 | sed 's/^FAIL mixed frame: //')"
 	else
@@ -1458,6 +1464,13 @@ run_compose() {
 		pass "compose: a second prepareFrame before drawToScreen stops and names the call"
 	else
 		fail "compose: a second prepareFrame did not stop (exit $status)"
+	fi
+	status=0
+	VOID_MIXED_SCREEN_NEXT_FRAME=1 out/tmp/mixedFrame.exe > "$WORK/compose.next.log" 2>&1 || status=$?
+	if [ "$status" -ne 0 ] && grep -q 'drawToScreen in a later sokol frame' "$WORK/compose.next.log"; then
+		pass "compose: a drawToScreen after a commit stops and names the call"
+	else
+		fail "compose: a drawToScreen after a commit did not stop (exit $status)"
 	fi
 }
 

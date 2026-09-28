@@ -169,6 +169,9 @@ export function prepareFrame(
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
+// PENDING3D: screen-pass-unchecked
+// PENDING3D: screen-output-swapchain-only
+// PENDING3D: copy-opaque
 export function drawToScreen(ref renderer: ForwardRenderer, ref context: DrawContext): void {
 	openScreen(renderer.core);
 	const copied: Result<int32, RendererError> =

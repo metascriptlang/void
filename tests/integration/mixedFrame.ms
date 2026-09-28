@@ -48,6 +48,7 @@ import {
 } from "../../src/void3d/scene";
 import { OrthoCamera, CameraView, CameraError } from "../../src/void3d/camera";
 import { beginScreenPass } from "../../src/void3d/target";
+import { markChanged } from "../../src/void3d/renderer";
 import {
 	ForwardRenderer,
 	ForwardError,
@@ -188,6 +189,7 @@ function drawMixed(withQuad: boolean): void {
 		const _again: Result<int32, ForwardError> =
 			prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
 	}
+	markChanged(forward.core);
 	const swapped: boolean = voidCaptureEnvInt("VOID_MIXED_3D_OVER_2D", 0) != 0;
 	begin2d(fbWidth() as float32, fbHeight() as float32, 1.0);
 	if (withQuad) {
@@ -204,6 +206,30 @@ function drawMixed(withQuad: boolean): void {
 	if (swapped) { drawToScreen(forward, context); }
 	endPass();
 	commit();
+	if (!forward.core.needsFrame()) {
+		fail("a change marked between prepareFrame and drawToScreen was lost");
+	}
+}
+
+function drawAcrossCommit(): void {
+	if (stage == 0) {
+		const prepared: Result<int32, ForwardError> =
+			prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
+		if (!prepared.ok) {
+			fail(`the 3D frame was refused, ${prepared.error.toString()}`);
+			return;
+		}
+		beginScreenPass(SCREEN_CLEAR);
+		endPass();
+		commit();
+		stage = 1;
+		return;
+	}
+	beginScreenPass(SCREEN_CLEAR);
+	drawToScreen(forward, context);
+	endPass();
+	commit();
+	fail("drawToScreen drew a frame prepared before the last commit");
 }
 
 function grab(slot: int32): void {
@@ -271,6 +297,10 @@ function checkComposition(): void {
 }
 
 function frame(): void {
+	if (voidCaptureEnvInt("VOID_MIXED_SCREEN_NEXT_FRAME", 0) != 0) {
+		drawAcrossCommit();
+		return;
+	}
 	const withQuad: boolean = stage != 2;
 	drawMixed(withQuad);
 	const draws: int32 = withQuad ? 1 : 0;

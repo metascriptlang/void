@@ -311,7 +311,7 @@ function reserve(ref context: DrawContext, slot: int32, length: int32): UniformB
 }
 
 // Creates the core, reserves the post and blit blocks and adds their materials to `context`.
-// No GPU object is made here: the first renderFrame makes them.
+// No GPU object is made here: the first prepareFrame makes them.
 export function create(
 	this typeof PixelArtRenderer,
 	ref context: DrawContext,
@@ -612,6 +612,9 @@ export function prepareFrame(
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
+// PENDING3D: screen-pass-unchecked
+// PENDING3D: screen-output-swapchain-only
+// PENDING3D: copy-opaque
 export function drawToScreen(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	openScreen(renderer.core);
 	drawBlit(renderer, context);

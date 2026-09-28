@@ -1375,13 +1375,19 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
 	const camera: OrthoCamera = { ...centred, target: centred.basisOf().right.scaled(slide) };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(width, height);
-	if (!resolved.ok) { return Result.err(CampfireError.CameraRefused); }
+	if (!resolved.ok) {
+		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
+		return Result.err(CampfireError.CameraRefused);
+	}
 	resolved.value.writeCameraBlock(cameraParams);
 	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
 	const rendered: Result<int32, ForwardError> = share == FrameShare.Alone ?
 		renderForwardFrame(forward, context, sceneItems, cameraParams, lightParams, width, height) :
 		prepareForwardFrame(forward, context, sceneItems, cameraParams, lightParams, width, height);
-	if (!rendered.ok) { return Result.err(CampfireError.ForwardFrameRefused); }
+	if (!rendered.ok) {
+		console.log(`campfire: the forward frame was refused, ${rendered.error.toString()}`);
+		return Result.err(CampfireError.ForwardFrameRefused);
+	}
 	shownView = resolved.value;
 	shownBlit = { width: width, height: height, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	shownHeight = height;
@@ -1390,12 +1396,9 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 }
 
 export function frameCampfire(): void {
-	const drawn: Result<int32, CampfireError> = forwardWanted ?
+	const _drawn: Result<int32, CampfireError> = forwardWanted ?
 		frameForward(FrameShare.Alone) :
 		framePixelArt(FrameShare.Alone);
-	if (!drawn.ok) {
-		console.log(`campfire: the frame was refused, ${drawn.error.toString()}`);
-	}
 }
 
 // Refused: nothing to draw to the screen, and the caller still owns the screen pass and commit.
@@ -1422,7 +1425,10 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 		noRemainder,
 		noRemainder,
 	);
-	if (!sized.ok) { return Result.err(CampfireError.ViewRefused); }
+	if (!sized.ok) {
+		console.log(`campfire: the low-res view was refused, ${sized.error.toString()}`);
+		return Result.err(CampfireError.ViewRefused);
+	}
 	const grid: LowResView = sized.value;
 
 	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
@@ -1440,7 +1446,10 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 	const target: Vec3 = centred.basisOf().right.scaled(slide);
 	const camera: OrthoCamera = { ...centred, target: target };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
-	if (!resolved.ok) { return Result.err(CampfireError.CameraRefused); }
+	if (!resolved.ok) {
+		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
+		return Result.err(CampfireError.CameraRefused);
+	}
 	const cameraView: CameraView = resolved.value;
 
 	const viewed: Result<LowResView, ViewError> = renderer.viewFor(
@@ -1449,7 +1458,10 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 		cameraView.remainderX,
 		cameraView.remainderY,
 	);
-	if (!viewed.ok) { return Result.err(CampfireError.ViewRefused); }
+	if (!viewed.ok) {
+		console.log(`campfire: the remainder view was refused, ${viewed.error.toString()}`);
+		return Result.err(CampfireError.ViewRefused);
+	}
 
 	cameraView.writeCameraBlock(cameraParams);
 	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
@@ -1457,7 +1469,10 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 	const rendered: Result<int32, PixelArtError> = share == FrameShare.Alone ?
 		renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value) :
 		prepareFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
-	if (!rendered.ok) { return Result.err(CampfireError.PixelArtFrameRefused); }
+	if (!rendered.ok) {
+		console.log(`campfire: the frame was refused, ${rendered.error.toString()}`);
+		return Result.err(CampfireError.PixelArtFrameRefused);
+	}
 	shownView = cameraView;
 	shownBlit = viewed.value;
 	shownHeight = framebufferHeight;
