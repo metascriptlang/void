@@ -1349,10 +1349,9 @@ human has seen it as app code; the phase measurement comes last.
       taken in float64, since a float32 one read -1 px at 801 x 599.
 
     The render bounds that filters and culling read are unchanged; they are step 12's. `Zoom`
-    and `AutoZoom` mean something else in void2d, a design size where h2d takes a zoom level.
-    Which meaning void2d takes is asked of the human, and the two are listed until then
-    (`tests/PENDING.md` "h2d oracle divergences"). The gate now reads **15 / 15 trees and 4 / 6
-    scale modes**. Two compiler cards came out of it:
+    and `AutoZoom` mean something else in void2d, a design size where h2d takes a zoom level;
+    the human kept void2d's on 2026-09-29 (HEAPS.md "Do not copy from h2d"), so the oracle
+    compares the other four. The gate now reads **15 / 15 trees and 4 / 4 scale modes**. Two compiler cards came out of it:
     `2026-09-28-narrowed-ref-union-loses-extensions` and
     `2026-09-28-c-backend-fuses-multiply-add`. The second is why `wholeSceneUnits` keeps its
     product in a binding of its own: C fused `window - design * zoom` into one rounding where
