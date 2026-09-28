@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-09-29):** M1–M18 are built and reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light; M14 gives the core Heaps' forward programs, moves the pixel-art look into its preset's own programs, and adds a forward preset; M15 gives the core a textured billboard in Heaps' particle shape, and the pixel-art preset its own form of it. M16 makes the quad of every particle and billboard from the vertex index, and gives a billboard Bevy's anchor. M17 releases meshes, materials and uniform ranges behind generational ids whose holders are counted, mesh nodes among them. M18 splits a preset's frame in two, so a 3D preset and void2d share one screen pass and one commit. The gate is `sh scripts/gate3d.sh`.
+**Status (2026-09-29):** M1–M18 are built and reviewed, M19 is built (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light; M14 gives the core Heaps' forward programs, moves the pixel-art look into its preset's own programs, and adds a forward preset; M15 gives the core a textured billboard in Heaps' particle shape, and the pixel-art preset its own form of it. M16 makes the quad of every particle and billboard from the vertex index, and gives a billboard Bevy's anchor. M17 releases meshes, materials and uniform ranges behind generational ids whose holders are counted, mesh nodes among them. M18 splits a preset's frame in two, so a 3D preset and void2d share one screen pass and one commit. M19 gives the names void2d also exports a 3D suffix and makes a misused node handle stop by name. The gate is `sh scripts/gate3d.sh`.
 
 ## What Hibernal needs
 
@@ -705,6 +705,32 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   - The embed entries draw one layer and keep `renderFrame`. A refused `renderFrame` returns without committing, and in an embedded view that aborts as "returned without commit()", which names the wrong cause. That was so before M18.
   - The screen pass still opens through the bridge's `voidBeginPass`, which always clears. M20's door owns it.
 
+### M19 as built
+
+- **The names void2d also exports take the suffix.** `Scene` → `Scene3D`, `NodeId` → `NodeId3D`, `Bounds` → `Bounds3D`, `NO_NODE` → `NO_NODE_3D`. The sampler filter `Filter` → `FilterMode`, which is Bevy's and wgpu's word; void2d's `Filter` is a node filter, a different thing. `AtlasError` → `AtlasTileError`, beside `AtlasTile`. The as-built sections above keep the names they were written with.
+  - The rename is mechanical, and every capture is byte-identical across it.
+  - Heaps' names in comments and in the oracles' `haxe>` lines are untouched. `Stage.Scene`, the pixel-art stage, is not the type and keeps its name.
+  - `BlendMode` is not renamed: it becomes the one type both layers share, in M20's door.
+- **Identity values are statics** (CODE-STYLE §5): `Transform3D.identity()` and `Transform3D.fromTranslation(position)`, Bevy's `Transform::IDENTITY` and `Transform::from_translation`, in place of `identityTransform()` and `transformAt()`. A static named `identity` on `Transform3D` lives beside math3d's free `identity()` for `Mat4`. That was measured on C (`out/tmp/staticProbe`) before it was relied on, since CODE-STYLE warns of same-named statics in one module.
+- **A call on a node handle that cannot be right stops.** It stops with a message naming the call and the node: `scene.ms` `liveRow` and `kindRow`, void2d's format. The cases:
+  - a stale node given to a setter, to `remove` or `removeChildren`, or as the parent of `addGroup`, `addMeshNode` or `addLightNode`;
+  - `remove` of the root;
+  - `setMeshOf` on a node that is not a mesh, and `setLightPower` on one that is not a light.
+
+  So `addGroup` and `addLightNode` answer the id, and `setLocal`, `setVisible`, `setPickable`, `setLightPower` and `setName` answer nothing. `SceneError` loses `RootCannotBeRemoved`, `NotAMeshNode` and `NotALightNode`.
+- **What keeps `Result`, and why.**
+  - The questions (`nameOf`, `findByName`, `worldOf`): Bevy's `World::get_entity` answers a `Result`.
+  - The context's ids (`StaleMesh`, `StaleMaterial` from `addMeshNode` and `setMeshOf`): Bevy's `Assets::get` answers an `Option`, and an asset may go while a scene still names it.
+  - `NotPinned`: a pin taken through a copy of a scene is state the caller could not have seen.
+- **Code that keeps ids across removals asks first.** `syncPose` checks each track's target with `isLive` and still answers `AnimationError.StaleTarget`, since an animation outlives the nodes it drives. The test loader `loadRocks` asks `isLive(under)` before it attaches, and its `defer`s still hand back what it made.
+- **Acceptance.** Measured by the gate on tree `1a4d62041ed2` (commit `9b89af2`) (msc `35601908`, D3D11). Every number below is D3D11 only.
+  - The fifteen capture configurations are byte-identical, and so are the HUD and compose checks.
+  - The oracles: 75 cases agree with Heaps and 11 diverge as declared, their MetaScript preludes on the new names.
+  - Tests: 992, three fewer. The three that asserted a refused misuse are abort programs now, with two more beside them. `tests/aborts3d` holds nine: a setter on a stale node, a stale parent, the root removed, a mesh call and a light call on a group, and M18's four.
+  - The allocation stage reads `liveRow` and `kindRow`, which `setLocal` and `setMeshOf` call every frame. They build their message only on the path that stops.
+- **Found on the way:** `try … catch` on a call that no longer answers a `Result` kept type-checking. C then failed in clang, and JS took the fallback silently. Card `2026-09-29-try-on-a-non-result-passes-the-checker.md`. The callers drop the `try`.
+- **Not done here.** void2d's side of the names (`Scene2D` and the rest, `scene()` → `Scene2D.create`) is void2d's arc. The context's ids keep their M17 contract.
+
 ### Android lifecycle (V6), alongside from M3
 
 - The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
@@ -845,6 +871,7 @@ What the tools say about the entries above (measured 2026-09-20): the Borrow cop
 - An `extern function` gets no C prototype from msc: the call compiles only if an imported header (or `@include`) declares it. On the Android clang an extern inside `when (android)` with no header was `call to undeclared function` (`-Wimplicit-function-declaration` is an error there). `gpu3d.c` wraps the Android-only `voidGpuGeneration` behind `#if defined(__ANDROID__)` instead.
 - **A write through a `const` binding is refused since msc `c54a8671`** (synced 2026-09-27; recompiler `21bafd7e`, pinned by its `bug210_const_binding_write`). That is the language rule, not a bug. `const col: Vec<int32> = [10, 20]; const hoisted = col; hoisted[0] = 99;` is `cannot write 'hoisted[…]' — 'hoisted' is const (use 'let')`, and `fill(col)` into a `ref` parameter is `cannot pass 'col' to a 'ref' parameter` (measured on a scratch file). Every binding void writes is `let` since *refactor: written bindings are let under the deep-const rule*. CODE-STYLE §5's copy-trap example (`const hoisted = col; hoisted[0] = 99;`) no longer compiles.
 - **`assert` on a `Result` passes the checker and fails in clang** (card `~/metascript/.inbox/compiler/2026-09-29-assert-accepts-a-result.md`, repro `out/tmp/assertResult`): `assert check()` for a `Result<int32, E>` is `OK` from `msc check` and `invalid argument type 'Result_…' to unary expression` from clang. Hit in M17 when `UniformPool.fits` began answering a `Result`; the tests read `.ok`.
+- **`try … catch` on a call that answers no `Result` passes the checker** (card `2026-09-29-try-on-a-non-result-passes-the-checker.md`, repro `out/tmp/tryNonResult`): C fails in clang (`no member named 'ok'`), and JS takes the fallback silently. Hit in M19, when `addGroup` stopped answering a `Result`; the callers drop the `try`.
 - **A struct literal as the value of `try … catch` fails in clang** (card `2026-09-23-catch-struct-literal-clang.md`, second sighting in M17): the tests name a typed default (`NO_MATERIAL`, as `NO_ID` and `NO_VIEW`).
 
 ### Waiting on msc
