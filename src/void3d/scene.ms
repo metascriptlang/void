@@ -20,7 +20,17 @@ import {
 	composeTransform, multiplyAffine,
 } from "../math/math3d";
 import { MAX_POINT_LIGHTS } from "./gpu3d";
-import { DrawItem } from "./draw";
+import {
+	DrawContext,
+	DrawItem,
+	MeshId,
+	MaterialId,
+	HandleError,
+	retainMesh,
+	releaseMesh,
+	retainMaterial,
+	releaseMaterial,
+} from "./draw";
 import { Slots, claim, vacate } from "./slots";
 
 export enum NodeFlag {
@@ -65,6 +75,8 @@ export enum SceneError {
 	NotAMeshNode,
 	NotALightNode,
 	NodeNotFound,
+	StaleMesh,
+	StaleMaterial,
 }
 
 export enum LightError {
@@ -102,11 +114,12 @@ export struct Object3D {
 	children: Vec<int32>;
 }
 
-// The Mesh side table: what h3d.scene.Mesh carries beyond an Object. Both are indices into the
-// DrawContext, so a draw item built from one is a plain value.
+// The Mesh side table: what h3d.scene.Mesh carries beyond an Object. Both are ids into the
+// DrawContext, so a draw item built from one is a plain value, and the node holds both
+// (draw.ms retainMesh) from addMeshNode until remove, as h3d.scene.Mesh increfs its primitive.
 export struct MeshInstance {
-	mesh: int32;
-	material: int32;
+	mesh: MeshId;
+	material: MaterialId;
 }
 
 export struct Scene {
@@ -225,8 +238,7 @@ export function addGroup(
 	return Result.ok(id);
 }
 
-// h3d.scene.Mesh: an object that carries a primitive and a material. Both are DrawContext
-// indices, so this node adds exactly one draw item.
+// h3d.scene.Mesh: an object that carries a primitive and a material, and holds both.
 //
 // Named `addMeshNode` rather than Heaps' `Mesh`, because `draw.ms` already exports
 // `addMesh(ref context: DrawContext, ...)` and two `ref`-receiver free functions with one name
@@ -236,12 +248,18 @@ export function addGroup(
 // PENDING3D: mesh-node-name-collision
 export function addMeshNode(
 	ref scene: Scene,
+	ref context: DrawContext,
 	parent: NodeId,
 	local: Transform3D,
-	mesh: int32,
-	material: int32,
+	mesh: MeshId,
+	material: MaterialId,
 ): Result<NodeId, SceneError> {
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
+	if (!retainMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
+	if (!retainMaterial(context, material).ok) {
+		const _left: Result<int32, HandleError> = releaseMesh(context, mesh);
+		return Result.err(SceneError.StaleMaterial);
+	}
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material });
 	const id: NodeId = newSlot(scene, {
@@ -304,10 +322,15 @@ function detach(ref scene: Scene, index: int32): void {
 	scene.nodes[parent].children = siblings;
 }
 
-function releasePayload(ref scene: Scene, index: int32): void {
+// A mesh node lets go of its mesh and material. A caller that released one more time than it
+// held has freed it under the node already, and there is nothing left to let go of.
+function releasePayload(ref scene: Scene, ref context: DrawContext, index: int32): void {
 	const row: int32 = scene.nodes[index].payload;
 	match (scene.nodes[index].kind) {
 		NodeKind.Mesh => {
+			const _mesh: Result<int32, HandleError> = releaseMesh(context, scene.meshes[row].mesh);
+			const _material: Result<int32, HandleError> =
+				releaseMaterial(context, scene.meshes[row].material);
 			const last: int32 = (scene.meshes.length as int32) - 1;
 			const mover: int32 = scene.meshOwners[last];
 			scene.meshes[row] = scene.meshes[last];
@@ -330,8 +353,13 @@ function releasePayload(ref scene: Scene, index: int32): void {
 	scene.nodes[index].payload = NO_NODE;
 }
 
-// Frees `id` and everything under it; their ids go stale (slots.ms).
-export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> {
+// Frees `id` and everything under it; their ids go stale (slots.ms), and each mesh node lets go of
+// its mesh and material.
+export function remove(
+	ref scene: Scene,
+	ref context: DrawContext,
+	id: NodeId,
+): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (id.index == scene.root) { return Result.err(SceneError.RootCannotBeRemoved); }
 	detach(scene, id.index);
@@ -348,7 +376,7 @@ export function remove(ref scene: Scene, id: NodeId): Result<int32, SceneError> 
 		}
 		scene.nodes[index].children = [];
 		scene.nodes[index].parent = NO_NODE;
-		releasePayload(scene, index);
+		releasePayload(scene, context, index);
 		vacate(scene.slots, index);
 		removed = removed + 1;
 	}
@@ -398,16 +426,22 @@ export function setPickable(
 	return Result.ok(id.index);
 }
 
+// The node holds `mesh` and lets go of the one it showed; holding first keeps a mesh swapped for
+// itself alive.
 export function setMeshOf(
 	ref scene: Scene,
+	ref context: DrawContext,
 	id: NodeId,
-	mesh: int32,
+	mesh: MeshId,
 ): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (scene.nodes[id.index].kind != NodeKind.Mesh) {
 		return Result.err(SceneError.NotAMeshNode);
 	}
-	scene.meshes[scene.nodes[id.index].payload].mesh = mesh;
+	if (!retainMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
+	const row: int32 = scene.nodes[id.index].payload;
+	const _shown: Result<int32, HandleError> = releaseMesh(context, scene.meshes[row].mesh);
+	scene.meshes[row].mesh = mesh;
 	return Result.ok(id.index);
 }
 

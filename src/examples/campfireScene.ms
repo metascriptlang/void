@@ -35,6 +35,9 @@ import {
 	DrawContext,
 	DrawItem,
 	GpuMesh,
+	MeshId,
+	MaterialId,
+	MaterialError,
 	MeshUploadError,
 	StreamError,
 	addMesh,
@@ -225,6 +228,8 @@ const LOOK_RESTORED_AT: int32 = 15;
 // material, one for the ground's own lit material when it is greyed, and a billboard block each
 // for the grass and the flame.
 const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + 2 * BILLBOARD_UNIFORM_LENGTH;
+const UNSET_MESH: MeshId = { index: -1, generation: 0 };
+const UNSET_MATERIAL: MaterialId = { index: -1, generation: 0 };
 let context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + FORWARD_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
 );
@@ -261,13 +266,13 @@ let flameFrames: MeshFrameAnimation = {
 	target: { index: -1, generation: 0 },
 	meshes: [],
 	bound: false,
-	shown: -1,
+	shown: UNSET_MESH,
 };
 let logSpin: ObjectAnimation = ObjectAnimation.forClock(flameFrames.clock);
 let stoneFrames: MeshFrameAnimation = flameFrames;
-let firstStoneFrame: int32 = 0;
+let stoneFrameMeshes: Vec<MeshId> = [];
 const NEVER_REBUILD: int32 = -1;
-let firstFlameMesh: int32 = 0;
+let flameMeshes: Vec<MeshId> = [];
 let settingsWanted: PixelArtSettings = PixelArtSettings.full();
 let paletteWanted: boolean = false;
 let cameraSnap: boolean = true;
@@ -277,13 +282,13 @@ let particlesWanted: boolean = false;
 let lookScheduleWanted: boolean = false;
 let groundSaturation: float32 = 0.0;
 let groundGreyOnCpu: boolean = false;
-let particleMaterial: int32 = 0;
+let particleMaterial: MaterialId = UNSET_MATERIAL;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
 let snowNode: NodeId = { index: -1, generation: 0 };
 let emberNode: NodeId = { index: -1, generation: 0 };
-let snowMesh: int32 = 0;
-let emberMesh: int32 = 0;
+let snowMesh: MeshId = UNSET_MESH;
+let emberMesh: MeshId = UNSET_MESH;
 const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
 const emberInstances: Vec<float32> = new Array(emberState().maxParts * PARTICLE_INSTANCE_STRIDE);
 
@@ -298,9 +303,9 @@ let flameImage: uint32 = 0;
 // material slots the re-made handles go back into.
 let tuftPixels: Vec<uint32> = [];
 let flamePixels: Vec<uint32> = [];
-let grassMesh: int32 = 0;
-let grassMaterial: int32 = 0;
-let flameMaterial: int32 = 0;
+let grassMesh: MeshId = UNSET_MESH;
+let grassMaterial: MaterialId = UNSET_MATERIAL;
+let flameMaterial: MaterialId = UNSET_MATERIAL;
 let frameIndex: int32 = 0;
 let randomState: uint64 = 88172645463325252;
 let fireOffsetX: float32 = 0.0;
@@ -754,27 +759,35 @@ function setupDraws(): void {
 		console.log("campfire: setupDraws bailed at the toon blocks");
 		return;
 	}
-	const litMaterial: int32 = addMaterial(context, {
+	const litAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: litBlock,
 	});
-	const groundMaterial: Result<int32, UniformError> = groundMaterialFor(state, litMaterial);
+	if (!litAdded.ok) { console.log("campfire: setupDraws bailed at the lit material"); return; }
+	const litMaterial: MaterialId = litAdded.value;
+	const groundMaterial: Result<MaterialId, UniformError> = groundMaterialFor(state, litMaterial);
 	if (!groundMaterial.ok) {
 		console.log("campfire: setupDraws bailed at the ground material");
 		return;
 	}
-	grassMaterial = addMaterial(context, {
+	const grassAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
 		sampler0: pointSampler.handle,
 		uniforms: grassBlock,
 	});
-	flameMaterial = addMaterial(context, {
+	const flameAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: flameTexture,
 		sampler0: pointSampler.handle,
 		uniforms: flameBlock,
 	});
+	if (!grassAdded.ok || !flameAdded.ok) {
+		console.log("campfire: setupDraws bailed at the billboard materials");
+		return;
+	}
+	grassMaterial = grassAdded.value;
+	flameMaterial = flameAdded.value;
 	const root: NodeId = tree.rootId();
 	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
 	if (!group.ok) { console.log("campfire: setupDraws bailed at addGroup"); return; }
@@ -832,14 +845,14 @@ function setupDraws(): void {
 			}
 			continue;
 		}
-		const uploaded: Result<int32, MeshUploadError> = addMeshData(context, pieces[i]);
+		const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, pieces[i]);
 		if (!uploaded.ok) { console.log("campfire: setupDraws bailed at addMeshData"); return; }
 		// The ground and the stones hang off the root; the logs hang off the group, so their
 		// world matrix is the two-level product the flat pieces never exercise.
 		const under: NodeId = i >= firstLogPiece ? logGroup : root;
-		const material: int32 = i == 0 ? groundMaterial.value : litMaterial;
+		const material: MaterialId = i == 0 ? groundMaterial.value : litMaterial;
 		const placed: Result<NodeId, SceneError> =
-			addMeshNode(tree, under, placements[i], uploaded.value, material);
+			addMeshNode(tree, context, under, placements[i], uploaded.value, material);
 		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
 		if (i == firstLogPiece) { firstLogNode = placed.value; }
 		if (i == BAKED_STONE + 1) { plainStoneNode = placed.value; }
@@ -849,19 +862,15 @@ function setupDraws(): void {
 		GpuMesh.billboards(grassBuffer, grassCount),
 	);
 	const grass: Result<NodeId, SceneError> =
-		addMeshNode(tree, root, identityTransform(), grassMesh, grassMaterial);
+		addMeshNode(tree, context, root, identityTransform(), grassMesh, grassMaterial);
 	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
-	firstFlameMesh = context.meshes.length as int32;
 	for (const flameBuffer of flameBuffers) {
-		addMesh(
-			context,
-			GpuMesh.billboards(flameBuffer, 1),
-		);
+		flameMeshes.push(addMesh(context, GpuMesh.billboards(flameBuffer, 1)));
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space
 	// instance data — so these two nodes sit at the identity and only carry draw order.
 	const flame: Result<NodeId, SceneError> =
-		addMeshNode(tree, root, identityTransform(), firstFlameMesh, flameMaterial);
+		addMeshNode(tree, context, root, identityTransform(), flameMeshes[0], flameMaterial);
 	if (!flame.ok) { console.log("campfire: setupDraws bailed at the flame node"); return; }
 	flameNode = flame.value;
 	const flameNamed: Result<int32, SceneError> = setName(tree, flameNode, "flame");
@@ -874,17 +883,22 @@ function setupDraws(): void {
 	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
 }
 
-function groundMaterialFor(state: RenderState, litMaterial: int32): Result<int32, UniformError> {
+function groundMaterialFor(
+	state: RenderState,
+	litMaterial: MaterialId,
+): Result<MaterialId, UniformError> {
 	if (groundSaturation == 0.0 || groundGreyOnCpu) { return Result.ok(litMaterial); }
 	const block: UniformBlock =
 		try reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	let toon: Vec<float32> = [LIGHT_LEVELS, 0.0, 0.0, 0.0];
 	toon[MATERIAL_SATURATION] = groundSaturation;
 	const _written: int32 = try writeUniforms(context, block, toon);
-	return Result.ok(addMaterial(context, {
+	const ground: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: block,
-	}));
+	});
+	if (!ground.ok) { unreachable; }
+	return Result.ok(ground.value);
 }
 
 function groundColor(): Rgba {
@@ -900,12 +914,12 @@ function placeBakedStone(
 	stone: MeshData,
 	where: Transform3D,
 	root: NodeId,
-	material: int32,
+	material: MaterialId,
 ): Result<int32, AnimationError> {
 	const frames: Vec<MeshData> = [stone, stone];
-	firstStoneFrame = try addBakedFrames(context, frames);
+	stoneFrameMeshes = try addBakedFrames(context, frames);
 	const placed: Result<NodeId, SceneError> =
-		addMeshNode(tree, root, where, firstStoneFrame, material);
+		addMeshNode(tree, context, root, where, stoneFrameMeshes[0], material);
 	if (!placed.ok) { return Result.err(AnimationError.StaleTarget); }
 	const named: Result<int32, SceneError> = setName(tree, placed.value, "bakedStone");
 	if (!named.ok) { return Result.err(AnimationError.StaleTarget); }
@@ -916,20 +930,25 @@ function placeBakedStone(
 }
 
 enum ParticleSetupError {
+	MaterialRefused,
 	StreamRefused,
 	NodeRefused,
 	EmitterRefused,
 }
 
 function setupParticles(root: NodeId, state: RenderState): Result<int32, ParticleSetupError> {
-	particleMaterial = addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
-	const snowStream: Result<int32, StreamError> = addStreamMesh(context, snow.capacity);
-	const emberStream: Result<int32, StreamError> = addStreamMesh(context, embers.capacity);
+	const particleAdded: Result<MaterialId, MaterialError> =
+		addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
+	if (!particleAdded.ok) { return Result.err(ParticleSetupError.MaterialRefused); }
+	particleMaterial = particleAdded.value;
+	const snowStream: Result<MeshId, StreamError> = addStreamMesh(context, snow.capacity);
+	const emberStream: Result<MeshId, StreamError> = addStreamMesh(context, embers.capacity);
 	if (!snowStream.ok || !emberStream.ok) { return Result.err(ParticleSetupError.StreamRefused); }
 	snowMesh = snowStream.value;
 	emberMesh = emberStream.value;
 	const snowPlaced: Result<NodeId, SceneError> = addMeshNode(
 		tree,
+		context,
 		root,
 		transformAt(vec3(0.0, SNOW_HEIGHT, 0.0)),
 		snowMesh,
@@ -937,6 +956,7 @@ function setupParticles(root: NodeId, state: RenderState): Result<int32, Particl
 	);
 	const emberPlaced: Result<NodeId, SceneError> = addMeshNode(
 		tree,
+		context,
 		root,
 		transformAt(vec3(0.0, EMBER_HEIGHT, 0.0)),
 		emberMesh,
@@ -966,7 +986,7 @@ function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId): boolean {
 function drawEmitter(
 	ref emitter: ParticleEmitter,
 	node: NodeId,
-	mesh: int32,
+	mesh: MeshId,
 	instances: Span<float32>,
 ): boolean {
 	const world: Result<Mat4, SceneError> = tree.worldOf(node);
@@ -999,14 +1019,11 @@ function setupAnimations(): Result<int32, AnimationError> {
 	const perFlicker: float64 = 1.0 / (FLICKER_FRAMES as float64);
 	const flameClock: AnimationClock =
 		try AnimationClock.forFrames(FLAME_FRAMES, perFlicker, Interpolation.Step);
-	const cells: Vec<int32> = [];
-	for (let i = 0; i < FLAME_FRAMES; i++) { cells.push(firstFlameMesh + i); }
-	flameFrames = try MeshFrameAnimation.forMeshes(flameClock, "flame", cells);
+	flameFrames = try MeshFrameAnimation.forMeshes(flameClock, "flame", flameMeshes);
 	const _flame: int32 = try bindMeshFrames(flameFrames, tree, tree.rootId());
 	const stoneClock: AnimationClock =
 		try AnimationClock.forFrames(2, perFlicker, Interpolation.Step);
-	const stoneMeshes: Vec<int32> = [firstStoneFrame, firstStoneFrame + 1];
-	stoneFrames = try MeshFrameAnimation.forMeshes(stoneClock, "bakedStone", stoneMeshes);
+	stoneFrames = try MeshFrameAnimation.forMeshes(stoneClock, "bakedStone", stoneFrameMeshes);
 	const _stone: int32 = try bindMeshFrames(stoneFrames, tree, tree.rootId());
 	if (logSpinPerFrame == 0.0) { return Result.ok(0); }
 	let spinClock: AnimationClock =
@@ -1114,13 +1131,13 @@ function forceRebuild(): void {
 	grassTexture = makeTextureView(grassImage);
 	flameTexture = makeTextureView(flameImage);
 	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
-	context.materials[grassMaterial].texture0 = grassTexture;
-	context.materials[grassMaterial].sampler0 = pointSampler.handle;
-	context.materials[flameMaterial].texture0 = flameTexture;
-	context.materials[flameMaterial].sampler0 = pointSampler.handle;
-	context.meshes[grassMesh].instanceBuffer = grassBuffer;
+	context.materials[grassMaterial.index].texture0 = grassTexture;
+	context.materials[grassMaterial.index].sampler0 = pointSampler.handle;
+	context.materials[flameMaterial.index].texture0 = flameTexture;
+	context.materials[flameMaterial.index].sampler0 = pointSampler.handle;
+	context.meshes[grassMesh.index].instanceBuffer = grassBuffer;
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
-		context.meshes[firstFlameMesh + i].instanceBuffer = flameBuffers[i];
+		context.meshes[flameMeshes[i].index].instanceBuffer = flameBuffers[i];
 	}
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (context.meshes[i].generation != EXTERNAL_GENERATION) {
@@ -1204,7 +1221,7 @@ export function campfirePixelOf(id: NodeId): Result<Vec3, SceneError> {
 	if (tree.nodes[id.index].kind != NodeKind.Mesh) {
 		return Result.err(SceneError.NotAMeshNode);
 	}
-	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh;
+	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh.index;
 	if (mesh < 0 || mesh >= (context.meshData.length as int32)) {
 		return Result.err(SceneError.NodeNotFound);
 	}
@@ -1253,12 +1270,12 @@ function stepScene(): boolean {
 			return false;
 		}
 	}
-	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
+	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree, context);
 	if (!swapped.ok) {
 		console.log(`campfire: the flame could not swap its frame, ${swapped.error.toString()}`);
 		return false;
 	}
-	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree);
+	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree, context);
 	if (!stoneSwapped.ok) {
 		console.log(`campfire: the stone frame swap was refused, ${stoneSwapped.error.toString()}`);
 		return false;

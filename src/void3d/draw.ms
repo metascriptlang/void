@@ -28,11 +28,12 @@ import {
 	GPU3D_BINDING_SAMPLER,
 	GPU3D_BINDING_LENGTH,
 } from "./gpu3d.h";
-import { Material, UniformBlock } from "./material";
+import { Material, UniformBlock, NO_UNIFORMS } from "./material";
 import { MeshData } from "./meshData";
 import { PipelineCache, pipelineFor } from "./pipelineCache";
 import { TargetLayout } from "./target";
 import { UniformPool, UniformError, reserveRange, releaseRange, writeRange } from "./uniformPool";
+import { Slots, claim, vacate } from "./slots";
 
 // GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` holds particle
 // and billboard instances, 0 when not instanced; a quad layout has no vertex buffer, its
@@ -67,26 +68,51 @@ export function elementCount(this mesh: GpuMesh): int32 {
 	return mesh.isIndexed() ? mesh.indexCount : mesh.vertexCount;
 }
 
+// A mesh or a material of a DrawContext, named as M6 names a node (slots.ms). It names nothing
+// once its last holder has released it.
+export struct MeshId {
+	index: int32;
+	generation: int32;
+}
+
+export struct MaterialId {
+	index: int32;
+	generation: int32;
+}
+
 export struct DrawItem {
-	mesh: int32;
-	material: int32;
+	mesh: MeshId;
+	material: MaterialId;
 	world: Mat4;
+}
+
+// Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
+// other block uses: a program gets the model matrix exactly when it declares that slot.
+export const MODEL_SLOT: int32 = 4;
+export const MODEL_LENGTH: int32 = 32;
+
+// A buffer of a released mesh, destroyed by the next beginFrame if it is still of the GPU
+// context it was made in.
+export struct DoomedBuffer {
+	buffer: uint32;
+	generation: int32;
 }
 
 // `meshes` and `meshData` are one index space: meshData[i] is the CPU geometry mesh[i] was
 // uploaded from, or an empty MeshData for a mesh whose data its owner keeps (the screen
 // triangle, billboard instances). Everything with CPU data here comes back on its
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
-// Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
-// other block uses: a program gets the model matrix exactly when it declares that slot.
-export const MODEL_SLOT: int32 = 4;
-export const MODEL_LENGTH: int32 = 32;
-
+// A slot's holders are Heaps' `Primitive.refCount`: the mesh or material goes when they reach 0.
 export struct DrawContext {
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
+	meshSlots: Slots;
+	meshHolders: Vec<int32>;
 	materials: Vec<Material>;
+	materialSlots: Slots;
+	materialHolders: Vec<int32>;
 	uniforms: UniformPool;
+	doomed: Vec<DoomedBuffer>;
 	pipelines: PipelineCache;
 	bindings: Vec<uint32>;
 	model: Vec<float32>;
@@ -96,6 +122,16 @@ export enum MeshUploadError {
 	EmptyMesh,
 	VertexBufferRefused,
 	IndexBufferRefused,
+}
+
+export enum HandleError {
+	StaleMesh,
+	StaleMaterial,
+}
+
+export enum MaterialError {
+	ReleasedUniforms,
+	SharedUniforms,
 }
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
@@ -111,20 +147,54 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 	return {
 		meshes: [],
 		meshData: [],
+		meshSlots: Slots.empty(),
+		meshHolders: [],
 		materials: [],
+		materialSlots: Slots.empty(),
+		materialHolders: [],
 		uniforms: UniformPool.withCapacity(capacity),
+		doomed: [],
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
 		model: model,
 	};
 }
 
+export function hasMesh(this context: DrawContext, id: MeshId): boolean {
+	return context.meshSlots.isCurrent(id.index, id.generation);
+}
+
+export function hasMaterial(this context: DrawContext, id: MaterialId): boolean {
+	return context.materialSlots.isCurrent(id.index, id.generation);
+}
+
+export function liveMeshes(this context: DrawContext): int32 {
+	return context.meshSlots.liveCount();
+}
+
+export function liveMaterials(this context: DrawContext): int32 {
+	return context.materialSlots.liveCount();
+}
+
+// The caller holds the new mesh once.
+function newMesh(ref context: DrawContext, mesh: GpuMesh, data: MeshData): MeshId {
+	const index: int32 = claim(context.meshSlots);
+	if (index == (context.meshes.length as int32)) {
+		context.meshes.push(mesh);
+		context.meshData.push(data);
+		context.meshHolders.push(1);
+	} else {
+		context.meshes[index] = mesh;
+		context.meshData[index] = data;
+		context.meshHolders[index] = 1;
+	}
+	return { index: index, generation: context.meshSlots.generations[index] };
+}
+
 // A mesh whose buffers the caller made and keeps: no CPU data here, so a lost context is the
-// caller's to repair.
-export function addMesh(ref context: DrawContext, mesh: GpuMesh): int32 {
-	context.meshes.push(mesh);
-	context.meshData.push(MeshData.empty());
-	return (context.meshes.length as int32) - 1;
+// caller's to repair, and releasing it destroys none of them.
+export function addMesh(ref context: DrawContext, mesh: GpuMesh): MeshId {
+	return newMesh(context, mesh, MeshData.empty());
 }
 
 // The GpuMesh that `data` describes once its buffers exist. Pure: what the counts and the
@@ -238,7 +308,7 @@ function drawsNothing(this mesh: GpuMesh): GpuMesh {
 // refused would silently become a non-indexed draw over an indexed vertex array — 194 wrong
 // triangles instead of 292 right ones, with no diagnostic. The mesh is emptied instead.
 // PENDING3D: upload-mesh-leaks-on-replace
-export function uploadMesh(ref context: DrawContext, index: int32): Result<int32, MeshUploadError> {
+function uploadMesh(ref context: DrawContext, index: int32): Result<int32, MeshUploadError> {
 	// sokol validates a buffer's size > 0 and panics rather than returning an invalid id, so an
 	// empty mesh must never reach the driver.
 	if (context.meshData[index].vertexCount() == 0) {
@@ -268,24 +338,25 @@ export function uploadMesh(ref context: DrawContext, index: int32): Result<int32
 	return Result.ok(index);
 }
 
-// Takes a copy of `data` — pushing a MeshData into the table copies its two Vec (CODE-STYLE
-// §5) — uploads it, and returns the index both tables now share. The entry is kept even when
-// the upload is refused: the CPU data is what a later rebuild works from.
+// Takes a copy of `data`, since storing a MeshData in the table copies its two Vec (CODE-STYLE
+// §5), and uploads it. A refused upload frees the slot: the caller gets no id to release it with.
 export function addMeshData(
 	ref context: DrawContext,
 	data: MeshData,
-): Result<int32, MeshUploadError> {
-	const index: int32 = context.meshes.length as int32;
-	context.meshData.push(data);
-	context.meshes.push(data.meshFor(0, 0, 0));
-	const uploaded: int32 = try uploadMesh(context, index);
-	return Result.ok(uploaded);
+): Result<MeshId, MeshUploadError> {
+	const id: MeshId = newMesh(context, data.meshFor(0, 0, 0), data);
+	const uploaded: Result<int32, MeshUploadError> = uploadMesh(context, id.index);
+	if (!uploaded.ok) {
+		freeMesh(context, id.index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok(id);
 }
 
 export const STREAM_INSTANCE_STRIDE: int32 = 8;
 
 export enum StreamError {
-	MeshOutOfRange,
+	StaleMesh,
 	NotAStream,
 	OverCapacity,
 	ShortInstances,
@@ -316,26 +387,31 @@ function remakeStream(ref context: DrawContext, index: int32): Result<int32, Str
 	return Result.ok(index);
 }
 
+// A refused buffer frees the slot, as a refused addMeshData does.
 export function addStreamMesh(
 	ref context: DrawContext,
 	capacity: int32,
-): Result<int32, StreamError> {
+): Result<MeshId, StreamError> {
 	if (capacity <= 0) { return Result.err(StreamError.OverCapacity); }
-	const index: int32 = addMesh(context, GpuMesh.streamMesh(capacity, 0, 0));
-	return remakeStream(context, index);
+	const id: MeshId = addMesh(context, GpuMesh.streamMesh(capacity, 0, 0));
+	const made: Result<int32, StreamError> = remakeStream(context, id.index);
+	if (!made.ok) {
+		freeMesh(context, id.index);
+		return Result.err(made.error);
+	}
+	return Result.ok(id);
 }
 
 // A stream whose handles are from an older context is made again first: the write that follows
 // a context loss is also its rebuild.
 export function writeStream(
 	ref context: DrawContext,
-	index: int32,
+	id: MeshId,
 	instances: Span<float32>,
 	count: int32,
 ): Result<int32, StreamError> {
-	if (index < 0 || index >= (context.meshes.length as int32)) {
-		return Result.err(StreamError.MeshOutOfRange);
-	}
+	if (!context.hasMesh(id)) { return Result.err(StreamError.StaleMesh); }
+	const index: int32 = id.index;
 	if (!context.meshes[index].isStream()) { return Result.err(StreamError.NotAStream); }
 	if (count < 0 || count > context.meshes[index].instanceCapacity) {
 		return Result.err(StreamError.OverCapacity);
@@ -368,7 +444,7 @@ export function rebuildableMeshes(this context: DrawContext): int32 {
 function sweepStaleMeshes(ref context: DrawContext, generation: int32, upload: boolean): int32 {
 	let count: int32 = 0;
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
-		if (!context.meshes[i].isStale(generation)) { continue; }
+		if (context.meshHolders[i] == 0 || !context.meshes[i].isStale(generation)) { continue; }
 		if (!upload) {
 			count = count + 1;
 			continue;
@@ -396,9 +472,137 @@ export function rebuildMeshes(ref context: DrawContext): int32 {
 	return sweepStaleMeshes(context, contextGeneration(), true);
 }
 
-export function addMaterial(ref context: DrawContext, material: Material): int32 {
-	context.materials.push(material);
-	return (context.materials.length as int32) - 1;
+const VACANT_MESH: GpuMesh = {
+	layout: VertexLayout.Lit,
+	vertexBuffer: 0,
+	instanceBuffer: 0,
+	indexBuffer: 0,
+	vertexCount: 0,
+	indexCount: 0,
+	instanceCount: 0,
+	instanceCapacity: 0,
+	generation: 0,
+};
+
+function doom(ref context: DrawContext, buffer: uint32, generation: int32): void {
+	if (buffer != 0) { context.doomed.push({ buffer: buffer, generation: generation }); }
+}
+
+// The buffers go to the next beginFrame, so a pass list of this frame that still names the
+// mesh never reaches a destroyed buffer; a caller's buffers (EXTERNAL_GENERATION) are not ours.
+function freeMesh(ref context: DrawContext, index: int32): void {
+	const mesh: GpuMesh = context.meshes[index];
+	if (mesh.generation != EXTERNAL_GENERATION && mesh.generation != 0) {
+		doom(context, mesh.vertexBuffer, mesh.generation);
+		doom(context, mesh.indexBuffer, mesh.generation);
+		doom(context, mesh.instanceBuffer, mesh.generation);
+	}
+	context.meshes[index] = VACANT_MESH;
+	context.meshData[index] = MeshData.empty();
+	context.meshHolders[index] = 0;
+	vacate(context.meshSlots, index);
+}
+
+// Another holder of `id`, as Heaps' `Primitive.incref`; answers how many hold it now.
+export function retainMesh(ref context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	context.meshHolders[id.index] = context.meshHolders[id.index] + 1;
+	return Result.ok(context.meshHolders[id.index]);
+}
+
+// One holder lets go, as `Primitive.decref`; at none the mesh is freed and `id` goes stale.
+// Answers how many still hold it.
+export function releaseMesh(ref context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	const left: int32 = context.meshHolders[id.index] - 1;
+	if (left > 0) {
+		context.meshHolders[id.index] = left;
+		return Result.ok(left);
+	}
+	freeMesh(context, id.index);
+	return Result.ok(0);
+}
+
+function ownsUniforms(this context: DrawContext, block: UniformBlock): boolean {
+	if (block.length == 0) { return false; }
+	for (let i = 0; i < (context.materials.length as int32); i++) {
+		if (context.materialHolders[i] == 0) { continue; }
+		const held: UniformBlock = context.materials[i].uniforms;
+		if (held.length > 0 && held.offset == block.offset) { return true; }
+	}
+	return false;
+}
+
+// The material takes its uniform range with it: the range returns to the pool when the material
+// is freed, so one range under two materials is refused.
+export function addMaterial(
+	ref context: DrawContext,
+	material: Material,
+): Result<MaterialId, MaterialError> {
+	if (!context.uniforms.holds(material.uniforms)) {
+		return Result.err(MaterialError.ReleasedUniforms);
+	}
+	if (context.ownsUniforms(material.uniforms)) {
+		return Result.err(MaterialError.SharedUniforms);
+	}
+	const index: int32 = claim(context.materialSlots);
+	if (index == (context.materials.length as int32)) {
+		context.materials.push(material);
+		context.materialHolders.push(1);
+	} else {
+		context.materials[index] = material;
+		context.materialHolders[index] = 1;
+	}
+	return Result.ok({ index: index, generation: context.materialSlots.generations[index] });
+}
+
+export function retainMaterial(
+	ref context: DrawContext,
+	id: MaterialId,
+): Result<int32, HandleError> {
+	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	context.materialHolders[id.index] = context.materialHolders[id.index] + 1;
+	return Result.ok(context.materialHolders[id.index]);
+}
+
+export function releaseMaterial(
+	ref context: DrawContext,
+	id: MaterialId,
+): Result<int32, HandleError> {
+	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	const left: int32 = context.materialHolders[id.index] - 1;
+	if (left > 0) {
+		context.materialHolders[id.index] = left;
+		return Result.ok(left);
+	}
+	const owned: UniformBlock = context.materials[id.index].uniforms;
+	const _released: Result<int32, UniformError> = releaseRange(context.uniforms, owned);
+	context.materials[id.index].uniforms = NO_UNIFORMS;
+	context.materialHolders[id.index] = 0;
+	vacate(context.materialSlots, id.index);
+	return Result.ok(0);
+}
+
+// How many doomed buffers the next beginFrame on `generation` destroys; the rest are dropped.
+export function doomedFor(this context: DrawContext, generation: int32): int32 {
+	let count: int32 = 0;
+	for (const doomed of context.doomed) {
+		if (doomed.generation == generation) { count = count + 1; }
+	}
+	return count;
+}
+
+// A buffer of an older GPU context died with it, and its handle may name an object of the new
+// one (docs/VOID3D.md, Android lifecycle): it is dropped, never destroyed.
+export function buryDoomed(ref context: DrawContext, generation: int32): int32 {
+	let destroyed: int32 = 0;
+	for (const doomed of context.doomed) {
+		if (doomed.generation != generation) { continue; }
+		destroyBuffer(doomed.buffer);
+		destroyed = destroyed + 1;
+	}
+	while ((context.doomed.length as int32) > 0) { context.doomed.pop(); }
+	return destroyed;
 }
 
 export function reserveUniforms(
@@ -410,11 +614,14 @@ export function reserveUniforms(
 }
 
 // Once released, `block` is refused wherever it is written, and its range goes to the next
-// reserve of the same length.
+// reserve of the same length. A material's range goes with the material, never before it.
 export function releaseUniforms(
 	ref context: DrawContext,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
+	if (context.uniforms.holds(block) && context.ownsUniforms(block)) {
+		return Result.err(UniformError.OwnedByMaterial);
+	}
 	return releaseRange(context.uniforms, block);
 }
 
@@ -454,9 +661,10 @@ export function drawItem(
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
-	const mesh: GpuMesh = context.meshes[item.mesh];
+	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { return; }
+	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
-	const material: Material = context.materials[item.material];
+	const material: Material = context.materials[item.material.index];
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
 		program,
@@ -491,6 +699,6 @@ export function drawItems(
 	globals: Span<UniformBlock>,
 ): void {
 	for (const item of items) {
-		drawItem(context, item, context.materials[item.material].program, targets, globals);
+		drawItem(context, item, context.materials[item.material.index].program, targets, globals);
 	}
 }

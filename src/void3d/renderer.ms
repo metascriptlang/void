@@ -32,7 +32,10 @@ import { TargetLayout } from "./target";
 import {
 	DrawContext,
 	DrawItem,
+	MeshId,
+	MaterialId,
 	addMesh,
+	buryDoomed,
 	rebuildMeshes,
 	reserveUniforms,
 	writeUniforms,
@@ -55,7 +58,7 @@ export struct Renderer {
 	programs: ProgramMap;
 	// Per item of the frame, the program `programs` draws for its material's.
 	drawn: Vec<Program>;
-	screenMesh: int32;
+	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
 	// Something changed since the last frame (V6: the host skips frames that would draw the
@@ -73,6 +76,8 @@ export enum RendererError {
 	MaterialTexture,
 	QuadMesh,
 	ReleasedUniforms,
+	StaleMesh,
+	StaleMaterial,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -149,7 +154,9 @@ export function beginFrame(
 	lights: Span<float32>,
 ): Result<boolean, RendererError> {
 	for (const item of items) {
-		const material: int32 = item.material;
+		if (!context.hasMesh(item.mesh)) { return Result.err(RendererError.StaleMesh); }
+		if (!context.hasMaterial(item.material)) { return Result.err(RendererError.StaleMaterial); }
+		const material: int32 = item.material.index;
 		const drawn: Result<Program, ProgramError> =
 			renderer.programs.drawnFor(context.materials[material].program);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
@@ -159,11 +166,11 @@ export function beginFrame(
 		if (!context.uniforms.holds(context.materials[material].uniforms)) {
 			return Result.err(RendererError.ReleasedUniforms);
 		}
-		const layout: VertexLayout = context.meshes[item.mesh].layout;
+		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
 		if (layout != vertexLayoutOf(drawn.value)) {
 			return Result.err(RendererError.VertexLayout);
 		}
-		if (drawsQuads(layout) && !context.meshes[item.mesh].isQuadShaped()) {
+		if (drawsQuads(layout) && !context.meshes[item.mesh.index].isQuadShaped()) {
 			return Result.err(RendererError.QuadMesh);
 		}
 		if (!texturesFit(drawn.value, context.materials[material])) {
@@ -187,11 +194,12 @@ export function beginFrame(
 	}
 	for (let i = 0; i < (items.length as int32); i++) {
 		const resolved: Result<Program, ProgramError> =
-			renderer.programs.drawnFor(context.materials[items[i].material].program);
+			renderer.programs.drawnFor(context.materials[items[i].material.index].program);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
 	}
 	const generation: int32 = contextGeneration();
+	const _buried: int32 = buryDoomed(context, generation);
 	const fresh: boolean = generation != renderer.generation;
 	if (fresh) {
 		if (context.pipelines.generation != generation) {
@@ -199,7 +207,7 @@ export function beginFrame(
 			context.pipelines.generation = generation;
 		}
 		rebuildMeshes(context);
-		context.meshes[renderer.screenMesh].vertexBuffer = makeScreenTriangle();
+		context.meshes[renderer.screenMesh.index].vertexBuffer = makeScreenTriangle();
 		renderer.generation = generation;
 		renderer.changed = true;
 	}
@@ -229,10 +237,10 @@ export function drawPassLists(
 export function drawScreen(
 	ref renderer: Renderer,
 	ref context: DrawContext,
-	material: int32,
+	material: MaterialId,
 	targets: TargetLayout,
 ): void {
-	const program: Program = context.materials[material].program;
+	const program: Program = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);
 }
 

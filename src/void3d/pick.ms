@@ -64,8 +64,8 @@ export function pickNearest(
 			? scene.pickableOwner(index)
 			: NO_NODE;
 		if (owner != NO_NODE) {
-			const mesh: int32 = scene.meshes[scene.nodes[index].payload].mesh;
-			const material: int32 = scene.meshes[scene.nodes[index].payload].material;
+			const mesh: int32 = scene.meshes[scene.nodes[index].payload].mesh.index;
+			const material: int32 = scene.meshes[scene.nodes[index].payload].material.index;
 			if (mesh < 0 || mesh >= (meshData.length as int32)) {
 				return Result.err(PickError.MeshOutOfRange);
 			}

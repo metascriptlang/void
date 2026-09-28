@@ -1,6 +1,6 @@
 import { Vec3, vec3, Quat, eulerQuat } from "../math/math3d";
 import { MeshData, Rgba, MeshError, addVertex, addTriangle } from "../void3d/meshData";
-import { DrawItem } from "../void3d/draw";
+import { DrawContext, DrawItem, MeshId } from "../void3d/draw";
 import {
 	Scene,
 	NodeId,
@@ -35,6 +35,7 @@ import {
 	checkBakedFrames,
 } from "../void3d/animation";
 import { approx } from "./helpers";
+import { contextOf } from "./drawHelpers";
 
 function clockOf(frames: int32, sampling: float64, interpolation: Interpolation): AnimationClock {
 	const made: Result<AnimationClock, AnimationError> =
@@ -67,9 +68,15 @@ function named(ref scene: Scene, parent: NodeId, name: string): NodeId {
 	return renamed.ok ? added.value : { index: NO_NODE, generation: 0 };
 }
 
-function namedMesh(ref scene: Scene, name: string, mesh: int32): NodeId {
-	const added: Result<NodeId, SceneError> =
-		addMeshNode(scene, scene.rootId(), identityTransform(), mesh, 0);
+function namedMesh(ref scene: Scene, ref context: DrawContext, name: string, mesh: int32): NodeId {
+	const added: Result<NodeId, SceneError> = addMeshNode(
+		scene,
+		context,
+		scene.rootId(),
+		identityTransform(),
+		context.meshAt(mesh),
+		context.materialAt(0),
+	);
 	if (!added.ok) { return { index: NO_NODE, generation: 0 }; }
 	const renamed: Result<int32, SceneError> = setName(scene, added.value, name);
 	return renamed.ok ? added.value : { index: NO_NODE, generation: 0 };
@@ -288,6 +295,7 @@ test "syncPose writes nothing while the sampled keys have not moved" {
 }
 
 test "syncPose refuses a target that was removed after binding" {
+	let context: DrawContext = contextOf(8, 1);
 	let scene: Scene = Scene.create();
 	const arm: NodeId = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
@@ -295,14 +303,15 @@ test "syncPose refuses a target that was removed after binding" {
 	const keys: Vec<Transform3D> = [slide(1.0)];
 	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
-	const _gone: Result<int32, SceneError> = remove(scene, arm);
+	const _gone: Result<int32, SceneError> = remove(scene, context, arm);
 	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert !stale.ok;
 	if (!stale.ok) { assert stale.error == AnimationError.StaleTarget; }
 }
 
 test "mesh frames only step, and carry one mesh per frame" {
-	const meshes: Vec<int32> = [4, 5, 6];
+	let context: DrawContext = contextOf(8, 1);
+	const meshes: Vec<MeshId> = [context.meshAt(4), context.meshAt(5), context.meshAt(6)];
 	const blended: Result<MeshFrameAnimation, AnimationError> =
 		MeshFrameAnimation.forMeshes(clockOf(3, 12.0, Interpolation.Linear), "flame", meshes);
 	assert !blended.ok;
@@ -314,12 +323,13 @@ test "mesh frames only step, and carry one mesh per frame" {
 }
 
 test "mesh frames swap the node's mesh, and the draw list follows without a rebuild" {
+	let context: DrawContext = contextOf(8, 1);
 	let scene: Scene = Scene.create();
-	const _flame: NodeId = namedMesh(scene, "flame", 4);
+	const _flame: NodeId = namedMesh(scene, context, "flame", 4);
 	const _group: NodeId = named(scene, scene.rootId(), "group");
 	let items: Vec<DrawItem> = [];
 	const _first: int32 = refresh(scene, items);
-	const meshes: Vec<int32> = [4, 5, 6];
+	const meshes: Vec<MeshId> = [context.meshAt(4), context.meshAt(5), context.meshAt(6)];
 	const made: Result<MeshFrameAnimation, AnimationError> =
 		MeshFrameAnimation.forMeshes(clockOf(3, 1.0, Interpolation.Step), "flame", meshes);
 	assert made.ok;
@@ -333,19 +343,19 @@ test "mesh frames swap the node's mesh, and the draw list follows without a rebu
 		if (!refused.ok) { assert refused.error == AnimationError.NotAMeshNode; }
 		const _bound: Result<int32, AnimationError> =
 			bindMeshFrames(animation, scene, scene.rootId());
-		const shown: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
+		const shown: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
 		assert shown.ok;
 		if (shown.ok) { assert shown.value == 1; }
-		const same: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
+		const same: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
 		assert same.ok;
 		if (same.ok) { assert same.value == 0; }
 		const _moved: boolean = moved(animation.clock, 2.0);
-		const swapped: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
+		const swapped: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
 		assert swapped.ok;
 		if (swapped.ok) { assert swapped.value == 1; }
 		assert !scene.structureChanged;
 		const _drawn: int32 = refresh(scene, items);
-		assert items[0].mesh == 6;
+		assert items[0].mesh.index == 6;
 	}
 }
 
@@ -431,7 +441,7 @@ test "a clock with no frames is refused by every animation built on it" {
 	const track: Result<int32, AnimationError> = addTrack(animation, "arm", none);
 	assert !track.ok;
 	if (!track.ok) { assert track.error == AnimationError.NoFrames; }
-	const noMeshes: Vec<int32> = [];
+	const noMeshes: Vec<MeshId> = [];
 	const frames: Result<MeshFrameAnimation, AnimationError> =
 		MeshFrameAnimation.forMeshes(empty, "flame", noMeshes);
 	assert !frames.ok;
@@ -439,7 +449,8 @@ test "a clock with no frames is refused by every animation built on it" {
 }
 
 test "mesh frames refuse a negative mesh index" {
-	const meshes: Vec<int32> = [3, -1];
+	let context: DrawContext = contextOf(8, 1);
+	const meshes: Vec<MeshId> = [context.meshAt(3), { index: -1, generation: 0 }];
 	const refused: Result<MeshFrameAnimation, AnimationError> =
 		MeshFrameAnimation.forMeshes(clockOf(2, 12.0, Interpolation.Step), "flame", meshes);
 	assert !refused.ok;
@@ -470,6 +481,7 @@ test "a rebind that fails keeps the previous binding whole" {
 }
 
 test "a target removed after a sync is refused even while the keys stand still" {
+	let context: DrawContext = contextOf(8, 1);
 	let scene: Scene = Scene.create();
 	const arm: NodeId = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
@@ -479,7 +491,7 @@ test "a target removed after a sync is refused even while the keys stand still" 
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
 	const first: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert first.ok;
-	const _gone: Result<int32, SceneError> = remove(scene, arm);
+	const _gone: Result<int32, SceneError> = remove(scene, context, arm);
 	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert !stale.ok;
 }

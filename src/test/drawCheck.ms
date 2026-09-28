@@ -18,10 +18,12 @@ import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
 import {
 	DrawContext,
 	GpuMesh,
+	MeshId,
 	StreamError,
 	STREAM_INSTANCE_STRIDE,
 	QUAD_VERTEX_COUNT,
 	addMesh,
+	releaseMesh,
 	staleMeshes,
 	writeStream,
 } from "../void3d/draw";
@@ -76,16 +78,17 @@ test "an empty MeshData describes a mesh that draws nothing" {
 test "addMesh keeps the two tables one index space" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
 	assert (context.meshes.length as int32) == 0 && (context.meshData.length as int32) == 0;
-	const first: int32 = addMesh(context, billboard());
-	const second: int32 = addMesh(context, billboard());
-	assert first == 0 && second == 1;
+	const first: MeshId = addMesh(context, billboard());
+	const second: MeshId = addMesh(context, billboard());
+	assert first.index == 0 && second.index == 1;
+	assert first.generation == 1 && context.hasMesh(first) && context.hasMesh(second);
 	assert (context.meshes.length as int32) == (context.meshData.length as int32);
-	assert context.meshData[first].vertexCount() == 0;
+	assert context.meshData[first.index].vertexCount() == 0;
 }
 
 test "a mesh whose buffers the caller keeps is not one the renderer can rebuild" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
-	assert addMesh(context, billboard()) == 0;
+	assert addMesh(context, billboard()).index == 0;
 	assert context.rebuildableMeshes() == 0;
 	// Not stale on any generation: the sentinel says the caller owns the buffers, and the
 	// renderer must not touch them.
@@ -169,15 +172,19 @@ function streamError(result: Result<int32, StreamError>): StreamError {
 
 test "a stream write is refused before the driver when it names the wrong mesh or too much" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
-	const plain: int32 = addMesh(context, billboard());
-	const stream: int32 = addMesh(context, GpuMesh.streamMesh(4, 12, 1));
+	const plain: MeshId = addMesh(context, billboard());
+	const stream: MeshId = addMesh(context, GpuMesh.streamMesh(4, 12, 1));
 	const four: Vec<float32> = new Array(4 * STREAM_INSTANCE_STRIDE);
-	assert streamError(writeStream(context, 9, four, 1)) == StreamError.MeshOutOfRange;
+	const never: MeshId = { index: 9, generation: 1 };
+	assert streamError(writeStream(context, never, four, 1)) == StreamError.StaleMesh;
+	const gone: MeshId = addMesh(context, GpuMesh.streamMesh(4, 13, 1));
+	assert releaseMesh(context, gone).ok;
+	assert streamError(writeStream(context, gone, four, 1)) == StreamError.StaleMesh;
 	assert streamError(writeStream(context, plain, four, 1)) == StreamError.NotAStream;
 	assert streamError(writeStream(context, stream, four, 5)) == StreamError.OverCapacity;
 	assert streamError(writeStream(context, stream, four, -1)) == StreamError.OverCapacity;
 	assert streamError(writeStream(context, stream, four[0..8], 2)) == StreamError.ShortInstances;
-	assert context.meshes[stream].instanceCount == 0;
+	assert context.meshes[stream.index].instanceCount == 0;
 }
 
 test "every vertex layout carries the floats its writers write, per vertex and per instance" {

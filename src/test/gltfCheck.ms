@@ -1,4 +1,6 @@
 import { approx } from "./helpers";
+import { contextOf } from "./drawHelpers";
+import { DrawContext, MeshId, releaseMesh } from "../void3d/draw";
 import { Mat4 } from "../math/math3d";
 import { loadGltf, GltfError } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
@@ -128,22 +130,27 @@ test "a node's TRS comes through with glTF's defaults when a field is absent" {
 }
 
 test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
+	let context: DrawContext = contextOf(8, 10);
 	const loaded = loadGltf(treeGltf(), triangleBuffer());
 	assert loaded.ok;
 	if (!loaded.ok) { return; }
 	let scene: Scene = Scene.create();
 	const missing: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, scene.rootId(), loaded.value, []);
+		addGltfNodes(scene, context, scene.rootId(), loaded.value, []);
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error == GltfSceneError.BadMeshBinding; }
-	const invalidBindings: Vec<GltfMeshBinding> = [{ mesh: -1, material: 9 }];
+	const released: MeshId = context.meshAt(6);
+	assert releaseMesh(context, released).ok;
+	const invalidBindings: Vec<GltfMeshBinding> =
+		[{ mesh: released, material: context.materialAt(9) }];
 	const invalid: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, scene.rootId(), loaded.value, invalidBindings);
+		addGltfNodes(scene, context, scene.rootId(), loaded.value, invalidBindings);
 	assert !invalid.ok;
 	if (!invalid.ok) { assert invalid.error == GltfSceneError.BadMeshBinding; }
-	const bindings: Vec<GltfMeshBinding> = [{ mesh: 7, material: 9 }];
+	const bindings: Vec<GltfMeshBinding> =
+		[{ mesh: context.meshAt(7), material: context.materialAt(9) }];
 	const added: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, scene.rootId(), loaded.value, bindings);
+		addGltfNodes(scene, context, scene.rootId(), loaded.value, bindings);
 	assert added.ok;
 	if (!added.ok) { return; }
 	assert added.value == 2;
@@ -160,8 +167,9 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 	assert approx(world.value.m33, 4.0);
 	assert approx(world.value.m41, 2.0);
 	const payload: int32 = scene.nodes[tri.value.index].payload;
-	assert scene.meshes[payload].mesh == 7;
-	assert scene.meshes[payload].material == 9;
+	assert scene.meshes[payload].mesh.index == 7;
+	assert scene.meshes[payload].material.index == 9;
+	assert context.meshHolders[7] == 2 && context.materialHolders[9] == 2;
 }
 
 test "COLOR_0 absent means white, and a wrong count is refused" {

@@ -19,10 +19,15 @@ import {
 	GpuMesh,
 	addMesh,
 	addMaterial,
+	MaterialId,
+	MaterialError,
 	reserveUniforms,
 	releaseUniforms,
+	releaseMaterial,
+	releaseMesh,
 	writeUniforms,
 } from "../void3d/draw";
+import { lastMaterial } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
 import { PipelineKey } from "../void3d/pipelineCache";
@@ -102,25 +107,32 @@ function texelOf(pixel: int32, scale: int32, offset: float32): int32 {
 function contextWith(phases: Span<Phase>): DrawContext {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (const phase of phases) {
-		addMaterial(context, Material.plain(Program.Lit, RenderState.defaults(), phase));
+		const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), phase);
+		const _added: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 	}
 	return context;
 }
 
+// Drawn with the first mesh of its context, which a renderer adds when it is made (its screen
+// triangle), and the material at `material` in a context that has released none.
 function itemAt(material: int32, depth: float32): DrawItem {
 	const world: Mat4 = translation(0.0, 0.0, depth);
-	return { mesh: 0, material: material, world: world };
+	return {
+		mesh: { index: 0, generation: 1 },
+		material: { index: material, generation: 1 },
+		world: world,
+	};
 }
 
-function itemOnItsLayout(ref context: DrawContext, material: int32): DrawItem {
-	const program: Program = context.materials[material].program;
+function itemOnItsLayout(ref context: DrawContext, material: MaterialId): DrawItem {
+	const program: Program = context.materials[material.index].program;
 	const mesh: GpuMesh = match (vertexLayoutOf(program)) {
 		VertexLayout.Lit => MeshData.empty().meshFor(0, 0, 0),
 		VertexLayout.Particle => GpuMesh.streamMesh(1, 0, 0),
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
 	};
-	return { ...itemAt(material, 0.0), mesh: addMesh(context, mesh) };
+	return { ...itemAt(material.index, 0.0), mesh: addMesh(context, mesh) };
 }
 
 test "a frame runs scene, post, then blit; without the post pass it blits the scene" {
@@ -431,8 +443,8 @@ function presetOver(ref context: DrawContext, program: Program, levels: float32)
 		if (!writeUniforms(context, block.value, values).ok) { unreachable; }
 		material = { ...material, uniforms: block.value };
 	}
-	const index: int32 = addMaterial(context, material);
-	if (index != (context.materials.length as int32) - 1) { unreachable; }
+	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
+	if (!added.ok) { unreachable; }
 	return created.value;
 }
 
@@ -456,13 +468,13 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 	let zero: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
-	const zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, (zero.materials.length as int32) - 1)];
+	const zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, zero.lastMaterial())];
 	const noLevels: Result<int32, PixelArtError> =
 		renderFrame(atZero, zero, zeroItems, camera, lights, drawn);
 	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
 	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
-	const bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, (bare.materials.length as int32) - 1)];
+	const bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, bare.lastMaterial())];
 	const noBlock: Result<int32, PixelArtError> =
 		renderFrame(withoutBlock, bare, bareItems, camera, lights, drawn);
 	assert !noBlock.ok && noBlock.error == PixelArtError.MaterialBlock;
@@ -472,13 +484,16 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
 	notANumber.uniforms.values[levelsAt] = 0.0 / 0.0;
 	assert notANumber.uniforms.values[levelsAt] != notANumber.uniforms.values[levelsAt];
-	const nanItems: Vec<DrawItem> = [itemOnItsLayout(notANumber, nanMaterial)];
+	const nanItems: Vec<DrawItem> = [itemOnItsLayout(
+		notANumber,
+		notANumber.materialAt(nanMaterial),
+	)];
 	const nanLevels: Result<int32, PixelArtError> =
 		renderFrame(atNaN, notANumber, nanItems, camera, lights, drawn);
 	assert !nanLevels.ok && nanLevels.error == PixelArtError.RampLevels;
 	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
-	const fourItems: Vec<DrawItem> = [itemOnItsLayout(four, (four.materials.length as int32) - 1)];
+	const fourItems: Vec<DrawItem> = [itemOnItsLayout(four, four.lastMaterial())];
 	const past: Result<int32, PixelArtError> =
 		renderFrame(atFour, four, fourItems, shortCamera, lights, drawn);
 	assert !past.ok && past.error == PixelArtError.CameraBlockLength;
@@ -503,13 +518,15 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 				let renderer: PixelArtRenderer = created.value;
 				const values: Vec<float32> = [0.2, 0.3, 0.5, 1.0, levels, light, 0.25, 0.0];
 				assert writeUniforms(context, block.value, values).ok;
-				const material: int32 = addMaterial(context, {
+				const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 					...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
 					texture0: 1,
 					sampler0: 1,
 					uniforms: block.value,
 				});
-				const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+				assert material.ok;
+				if (!material.ok) { return; }
+				const items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
 				const result: Result<int32, PixelArtError> =
 					renderFrame(renderer, context, items, shortCamera, lights, drawn);
 				const stepped: boolean = light != 0.0 && levels == 0.0;
@@ -521,13 +538,49 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 	}
 }
 
-test "a material whose block was released refuses the frame by name" {
+test "a released material or mesh refuses the frame by name" {
 	let context: DrawContext =
 		DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
 	let renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
-	const material: int32 = (context.materials.length as int32) - 1;
-	const block: UniformBlock = context.materials[material].uniforms;
-	assert releaseUniforms(context, block).ok;
+	const material: MaterialId = context.lastMaterial();
+	const item: DrawItem = itemOnItsLayout(context, material);
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
+	assert releaseMesh(context, item.mesh).ok;
+	const noMesh: Vec<DrawItem> = [item];
+	const meshGone: Result<int32, PixelArtError> =
+		renderFrame(renderer, context, noMesh, camera, lights, drawn);
+	assert !meshGone.ok && meshGone.error == PixelArtError.StaleMesh;
+	assert releaseMaterial(context, material).ok;
+	const noMaterial: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+	const materialGone: Result<int32, PixelArtError> =
+		renderFrame(renderer, context, noMaterial, camera, lights, drawn);
+	assert !materialGone.ok && materialGone.error == PixelArtError.StaleMaterial;
+	assert renderer.core.generation == 0;
+}
+
+test "a material's block is its own, and a block put in by hand after release is refused" {
+	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH * 2;
+	let context: DrawContext = DrawContext.withUniformCapacity(capacity);
+	let renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
+	const material: MaterialId = context.lastMaterial();
+	const block: UniformBlock = context.materials[material.index].uniforms;
+	const owned: Result<int32, UniformError> = releaseUniforms(context, block);
+	assert !owned.ok && owned.error == UniformError.OwnedByMaterial;
+	const twice: Result<MaterialId, MaterialError> =
+		addMaterial(context, context.materials[material.index]);
+	assert !twice.ok && twice.error == MaterialError.SharedUniforms;
+	const spare: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+	assert spare.ok;
+	if (!spare.ok) { return; }
+	assert releaseUniforms(context, spare.value).ok;
+	let stale: Material = context.materials[material.index];
+	stale.uniforms = spare.value;
+	const readded: Result<MaterialId, MaterialError> = addMaterial(context, stale);
+	assert !readded.ok && readded.error == MaterialError.ReleasedUniforms;
+	context.materials[material.index].uniforms = spare.value;
 	const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -547,13 +600,15 @@ test "a billboard block too short to hold the ramp levels is refused by the core
 	assert created.ok && block.ok;
 	if (created.ok && block.ok) {
 		let renderer: PixelArtRenderer = created.value;
-		const material: int32 = addMaterial(context, {
+		const material: Result<MaterialId, MaterialError> = addMaterial(context, {
 			...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
 			texture0: 1,
 			sampler0: 1,
 			uniforms: block.value,
 		});
-		const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+		assert material.ok;
+		if (!material.ok) { return; }
+		const items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const result: Result<int32, PixelArtError> =

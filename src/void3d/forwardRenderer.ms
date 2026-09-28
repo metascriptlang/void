@@ -15,7 +15,7 @@ import {
 	beginPass,
 	beginScreenPass,
 } from "./target";
-import { DrawContext, DrawItem, addMaterial } from "./draw";
+import { DrawContext, DrawItem, MaterialId, MaterialError, addMaterial } from "./draw";
 import { screenState } from "./screenFx";
 import {
 	Renderer,
@@ -35,7 +35,7 @@ export struct ForwardRenderer {
 	sampler: Sampler;
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
-	copyMaterial: int32;
+	copyMaterial: MaterialId;
 }
 
 export enum ForwardError {
@@ -48,6 +48,8 @@ export enum ForwardError {
 	MaterialTexture,
 	QuadMesh,
 	ReleasedUniforms,
+	StaleMesh,
+	StaleMaterial,
 	TargetSize,
 }
 
@@ -78,7 +80,9 @@ export function create(
 	if (!core.ok) {
 		return Result.err(fromCore(core.error));
 	}
-	const copy: Material = Material.plain(Program.Copy, screenState(), Phase.Opaque);
+	const copy: Result<MaterialId, MaterialError> =
+		addMaterial(context, Material.plain(Program.Copy, screenState(), Phase.Opaque));
+	if (!copy.ok) { unreachable; }
 	return Result.ok({
 		core: core.value,
 		background: background,
@@ -87,7 +91,7 @@ export function create(
 		sampler: { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 },
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
-		copyMaterial: addMaterial(context, copy),
+		copyMaterial: copy.value,
 	});
 }
 
@@ -102,6 +106,8 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.MaterialTexture => ForwardError.MaterialTexture,
 		RendererError.QuadMesh => ForwardError.QuadMesh,
 		RendererError.ReleasedUniforms => ForwardError.ReleasedUniforms,
+		RendererError.StaleMesh => ForwardError.StaleMesh,
+		RendererError.StaleMaterial => ForwardError.StaleMaterial,
 	};
 }
 
@@ -146,8 +152,8 @@ export function renderFrame(
 		adoptContext(renderer);
 	}
 	resizeTargets(renderer, width, height);
-	context.materials[renderer.copyMaterial].texture0 = renderer.colorTarget.texture;
-	context.materials[renderer.copyMaterial].sampler0 = renderer.sampler.handle;
+	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.texture;
+	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.handle;
 
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
 	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);

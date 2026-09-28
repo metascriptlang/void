@@ -1,4 +1,5 @@
 import { GltfData, validateGltfGraph } from "./gltf";
+import { DrawContext, MeshId, MaterialId } from "./draw";
 import {
 	Scene, NodeId, SceneError, Transform3D,
 	addGroup, addMeshNode, setName, isLive,
@@ -11,8 +12,8 @@ export enum GltfSceneError {
 }
 
 export struct GltfMeshBinding {
-	mesh: int32;
-	material: int32;
+	mesh: MeshId;
+	material: MaterialId;
 }
 
 function transformOf(data: GltfData, index: int32): Transform3D {
@@ -25,6 +26,7 @@ function transformOf(data: GltfData, index: int32): Transform3D {
 
 export function addGltfNodes(
 	ref scene: Scene,
+	ref context: DrawContext,
 	parent: NodeId,
 	data: GltfData,
 	bindings: Span<GltfMeshBinding>,
@@ -34,7 +36,7 @@ export function addGltfNodes(
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}
 	for (const binding of bindings) {
-		if (binding.mesh < 0 || binding.material < 0) {
+		if (!context.hasMesh(binding.mesh) || !context.hasMaterial(binding.material)) {
 			return Result.err(GltfSceneError.BadMeshBinding);
 		}
 	}
@@ -62,7 +64,7 @@ export function addGltfNodes(
 			id = added.value;
 		} else {
 			const added: Result<NodeId, SceneError> = addMeshNode(
-				scene, under, transformOf(data, index),
+				scene, context, under, transformOf(data, index),
 				bindings[mesh].mesh, bindings[mesh].material,
 			);
 			if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }

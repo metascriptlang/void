@@ -6,7 +6,7 @@
 import { identity } from "../math/math3d";
 import { makeVertexBuffer } from "./gpu3d";
 import { RenderState, Face, Compare } from "./pass";
-import { GpuMesh, DrawItem } from "./draw";
+import { GpuMesh, DrawItem, MeshId, MaterialId } from "./draw";
 
 // One triangle covering clip space; the rasterizer clips it to the target.
 const FULLSCREEN_TRIANGLE: Vec<float32> = [
@@ -29,6 +29,6 @@ export function makeScreenTriangle(): uint32 {
 	return makeVertexBuffer(FULLSCREEN_TRIANGLE);
 }
 
-export function screenItem(mesh: int32, material: int32): DrawItem {
+export function screenItem(mesh: MeshId, material: MaterialId): DrawItem {
 	return { mesh: mesh, material: material, world: identity() };
 }

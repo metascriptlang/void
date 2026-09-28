@@ -3,7 +3,14 @@
 // swap which uploaded mesh a node draws. docs/VOID3D.md "M9 as built" lists what is not ported.
 import { vec3 } from "../math/math3d";
 import { MeshData } from "./meshData";
-import { DrawContext, addMeshData, MeshUploadError } from "./draw";
+import {
+	DrawContext,
+	MeshId,
+	HandleError,
+	MeshUploadError,
+	addMeshData,
+	releaseMesh,
+} from "./draw";
 import {
 	Scene, NodeId, NodeKind, Transform3D, SceneError, NO_NODE,
 	setLocal, setMeshOf,
@@ -27,6 +34,7 @@ export enum AnimationError {
 	InterpolatedMeshFrames,
 	FrameTopology,
 	UploadRefused,
+	StaleMesh,
 }
 
 // Animation's `frameCount`, `sampling` (frames per second), `speed`, `frame`, `loop`, `pause`.
@@ -68,13 +76,13 @@ export struct MeshFrameAnimation {
 	clock: AnimationClock;
 	name: string;
 	target: NodeId;
-	meshes: Vec<int32>;
+	meshes: Vec<MeshId>;
 	bound: boolean;
-	shown: int32;
+	shown: MeshId;
 }
 
 const UNBOUND: NodeId = { index: NO_NODE, generation: 0 };
-const NO_MESH: int32 = -1;
+const NO_MESH: MeshId = { index: -1, generation: 0 };
 const PLAYING_EPSILON: float64 = 0.000001;
 const HOLD_FIRST: KeyPair = { first: 0, second: 0, weight: 0.0 };
 
@@ -281,7 +289,7 @@ export function forMeshes(
 	this typeof MeshFrameAnimation,
 	clock: AnimationClock,
 	name: string,
-	meshes: Span<int32>,
+	meshes: Span<MeshId>,
 ): Result<MeshFrameAnimation, AnimationError> {
 	if (clock.interpolation != Interpolation.Step) {
 		return Result.err(AnimationError.InterpolatedMeshFrames);
@@ -290,9 +298,9 @@ export function forMeshes(
 	if ((meshes.length as int32) != clock.frameCount) {
 		return Result.err(AnimationError.TrackLength);
 	}
-	const kept: Vec<int32> = [];
+	const kept: Vec<MeshId> = [];
 	for (const mesh of meshes) {
-		if (mesh < 0) { return Result.err(AnimationError.BadMesh); }
+		if (mesh.index < 0) { return Result.err(AnimationError.BadMesh); }
 		kept.push(mesh);
 	}
 	return Result.ok({
@@ -326,14 +334,18 @@ export function bindMeshFrames(
 export function syncMeshFrame(
 	ref animation: MeshFrameAnimation,
 	ref scene: Scene,
+	ref context: DrawContext,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if ((animation.meshes.length as int32) < 1) { return Result.err(AnimationError.NoFrames); }
 	if (!scene.isLive(animation.target)) { return Result.err(AnimationError.StaleTarget); }
-	const mesh: int32 = animation.meshes[animation.clock.keys().first];
+	const mesh: MeshId = animation.meshes[animation.clock.keys().first];
 	if (mesh == animation.shown) { return Result.ok(0); }
-	const swapped: Result<int32, SceneError> = setMeshOf(scene, animation.target, mesh);
-	if (!swapped.ok) { return Result.err(AnimationError.StaleTarget); }
+	const swapped: Result<int32, SceneError> = setMeshOf(scene, context, animation.target, mesh);
+	if (!swapped.ok) {
+		const released: boolean = swapped.error == SceneError.StaleMesh;
+		return Result.err(released ? AnimationError.StaleMesh : AnimationError.StaleTarget);
+	}
 	animation.shown = mesh;
 	return Result.ok(1);
 }
@@ -359,20 +371,23 @@ export function checkBakedFrames(frames: Span<MeshData>): Result<int32, Animatio
 	return Result.ok(count);
 }
 
-// Every frame goes through `addMeshData`, so the frames always take the `frames.length` slots
-// starting at the context's mesh count before the call, and a frame whose upload was refused
-// keeps its CPU data for the next rebuild — the error says only that one did not draw yet.
+// The caller holds each frame once. When one upload is refused, the frames already added are
+// released and none is kept.
 export function addBakedFrames(
 	ref context: DrawContext,
 	frames: Span<MeshData>,
-): Result<int32, AnimationError> {
+): Result<Vec<MeshId>, AnimationError> {
 	const count: int32 = try checkBakedFrames(frames);
-	const first: int32 = context.meshes.length as int32;
-	let refused: boolean = false;
+	let added: Vec<MeshId> = [];
 	for (let f = 0; f < count; f++) {
-		const added: Result<int32, MeshUploadError> = addMeshData(context, frames[f]);
-		if (!added.ok) { refused = true; }
+		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, frames[f]);
+		if (!frame.ok) {
+			for (const mesh of added) {
+				const _left: Result<int32, HandleError> = releaseMesh(context, mesh);
+			}
+			return Result.err(AnimationError.UploadRefused);
+		}
+		added.push(frame.value);
 	}
-	if (refused) { return Result.err(AnimationError.UploadRefused); }
-	return Result.ok(first);
+	return Result.ok(added);
 }

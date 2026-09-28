@@ -9,6 +9,7 @@ export enum UniformError {
 	PoolFull,
 	WrongLength,
 	Released,
+	OwnedByMaterial,
 }
 
 export struct UniformPool {

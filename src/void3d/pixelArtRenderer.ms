@@ -41,6 +41,8 @@ import {
 import {
 	DrawContext,
 	DrawItem,
+	MaterialId,
+	MaterialError,
 	addMaterial,
 	reserveUniforms,
 	writeUniforms,
@@ -156,6 +158,8 @@ export enum PixelArtError {
 	MaterialTexture,
 	QuadMesh,
 	ReleasedUniforms,
+	StaleMesh,
+	StaleMaterial,
 	RampLevels,
 }
 
@@ -177,8 +181,8 @@ export struct PixelArtRenderer {
 	blitBlock: UniformBlock;
 	postValues: Vec<float32>;
 	blitValues: Vec<float32>;
-	postMaterial: int32;
-	blitMaterial: int32;
+	postMaterial: MaterialId;
+	blitMaterial: MaterialId;
 	// The view the last frame drew.
 	view: LowResView;
 }
@@ -332,6 +336,9 @@ export function create(
 		...Material.plain(Program.PixelArtBlit, screenState(), Phase.Opaque),
 		uniforms: blitBlock,
 	};
+	const post: Result<MaterialId, MaterialError> = addMaterial(context, postMaterial);
+	const blit: Result<MaterialId, MaterialError> = addMaterial(context, blitMaterial);
+	if (!post.ok || !blit.ok) { unreachable; }
 	return Result.ok({
 		core: core.value,
 		settings: settings,
@@ -350,8 +357,8 @@ export function create(
 		blitBlock: blitBlock,
 		postValues: new Array(POST_UNIFORM_LENGTH),
 		blitValues: new Array(BLIT_UNIFORM_LENGTH),
-		postMaterial: addMaterial(context, postMaterial),
-		blitMaterial: addMaterial(context, blitMaterial),
+		postMaterial: post.value,
+		blitMaterial: blit.value,
 		view: NO_VIEW,
 	});
 }
@@ -436,7 +443,7 @@ function resizeTargets(ref renderer: PixelArtRenderer, width: int32, height: int
 function bindScreenTextures(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	const sampler: uint32 = renderer.sampler.handle;
 	const packedDepth: boolean = renderer.settings.depthSource == DepthSource.NormalAlpha;
-	const post: int32 = renderer.postMaterial;
+	const post: int32 = renderer.postMaterial.index;
 	context.materials[post].texture0 = renderer.colorTarget.texture;
 	context.materials[post].texture1 = renderer.normalTarget.texture;
 	context.materials[post].texture2 = packedDepth ?
@@ -445,7 +452,7 @@ function bindScreenTextures(ref renderer: PixelArtRenderer, ref context: DrawCon
 	context.materials[post].texture3 = renderer.palette.texture;
 	context.materials[post].sampler0 = sampler;
 	context.materials[post].sampler1 = sampler;
-	const blit: int32 = renderer.blitMaterial;
+	const blit: int32 = renderer.blitMaterial.index;
 	context.materials[blit].texture0 = renderer.settings.postPass ?
 		renderer.postTarget.texture :
 		renderer.colorTarget.texture;
@@ -485,6 +492,8 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.MaterialTexture => PixelArtError.MaterialTexture,
 		RendererError.QuadMesh => PixelArtError.QuadMesh,
 		RendererError.ReleasedUniforms => PixelArtError.ReleasedUniforms,
+		RendererError.StaleMesh => PixelArtError.StaleMesh,
+		RendererError.StaleMaterial => PixelArtError.StaleMaterial,
 	};
 }
 
@@ -508,7 +517,9 @@ function rampsHaveLevels(
 	items: Span<DrawItem>,
 ): boolean {
 	for (const item of items) {
-		const material: Material = context.materials[item.material];
+		if (!context.hasMaterial(item.material)) { continue; }
+		const material: Material = context.materials[item.material.index];
+		if (!context.uniforms.holds(material.uniforms)) { continue; }
 		const drawn: Result<Program, ProgramError> = programs.drawnFor(material.program);
 		if (!drawn.ok) { continue; }
 		const held: boolean = match (drawn.value) {

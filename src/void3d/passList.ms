@@ -41,7 +41,7 @@ export function collect(
 	}
 	let count: int32 = 0;
 	for (let i = 0; i < (items.length as int32); i++) {
-		if (materials[items[i].material].phase == list.phase) {
+		if (materials[items[i].material.index].phase == list.phase) {
 			list.indices[count] = i;
 			count = count + 1;
 		}

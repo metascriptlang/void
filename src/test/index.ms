@@ -33,6 +33,7 @@ import "./drawCheck";
 import "./gltfCheck";
 import "./slotsCheck";
 import "./uniformPoolCheck";
+import "./lifetimeCheck";
 import "./scene3dCheck";
 import "./animationCheck";
 import "./pickCheck";
