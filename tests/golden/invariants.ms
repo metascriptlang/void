@@ -20,6 +20,12 @@ import {
 	CARET_SELECTION_G,
 	CARET_SELECTION_B,
 	CARET_SELECTION_A,
+	LANES_SCENE,
+	LANES_X,
+	LANES_Y,
+	LANES_W,
+	LANES_H,
+	LANES_SHIFT,
 } from "./table";
 import { TextLayout, Align } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -159,4 +165,45 @@ function raggedSelectionJoins(): int32 {
 	return 0;
 }
 
-process.exit(filteredTextMatchesPlain() + raggedSelectionJoins());
+function lanesMatchPainter(): int32 {
+	const override: string = env.get("VOID_LANES_CAPTURE");
+	const path: string = override.equals("") ? `tests/golden/d3d11/${LANES_SCENE}.png` : override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${LANES_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const x0: int32 = (LANES_X as int32) - 2;
+	const y0: int32 = (LANES_Y as int32) - 2;
+	const x1: int32 = ((LANES_X + LANES_W) as int32) + 2;
+	const y1: int32 = Math.min(((LANES_Y + LANES_H) as int32) + 2, voidPngHeight(SLOT));
+	const shift: int32 = LANES_SHIFT as int32;
+	if (x1 + shift > voidPngWidth(SLOT)) {
+		console.log(`FAIL ${LANES_SCENE}: the list drawn without the promise runs off the capture`);
+		return 1;
+	}
+	let differ: int32 = 0;
+	let inked: int32 = 0;
+	for (let y = y0; y < y1; y++) {
+		for (let x = x0; x < x1; x++) {
+			for (let channel = 0; channel < 3; channel++) {
+				const promised: int32 = voidPngPixel(SLOT, x, y, channel);
+				if (promised != voidPngPixel(SLOT, 0, 0, channel)) { inked = inked + 1; }
+				if (promised != voidPngPixel(SLOT, x + shift, y, channel)) { differ = differ + 1; }
+			}
+		}
+	}
+	if (inked == 0 || differ > 0) {
+		console.log(
+			`FAIL ${LANES_SCENE}: the list that promises no overlap differs from the same list ` +
+			`in painter's order in ${differ} channel values (${inked} inked)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${LANES_SCENE}: a list drawn in lanes is byte-identical to the same list in ` +
+		`painter's order (${inked} inked channel values)`,
+	);
+	return 0;
+}
+
+process.exit(filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter());

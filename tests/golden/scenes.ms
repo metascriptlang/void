@@ -70,6 +70,7 @@ import {
 	FILTERED_TEXT_X, FILTERED_TEXT_Y, FILTERED_TEXT_SHIFT,
 	CARET_TEXT, CARET_SIZE, CARET_X, CARET_Y, CARET_SELECTION_START, CARET_SELECTION_LENGTH,
 	CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
+	LANES_X, LANES_Y, LANES_W, LANES_SHIFT,
 } from "./table";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
@@ -966,6 +967,29 @@ function imageScaleGrid(): Scene {
 	return s;
 }
 
+function laneList(s: Scene, x: float32, promise: boolean): NodeRef {
+	const t = sheet();
+	const icon: Tile = { ...t.sub(0.0, 0.0, t.texW * 0.5, t.texH * 0.5), w: 14.0, h: 14.0 };
+	const list = s.add(s.group().at(x, LANES_Y));
+	for (let k: int32 = 0; k < 7; k++) {
+		const shade: Color = k % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
+		const row = s.rect(LANES_W, 18.0, shade).at(0.0, (k as float32) * 20.0);
+		row.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(0.4, 0.5, 0.7, 1.0)));
+		row.addChild(s.sprite(icon).at(3.0, 2.0));
+		row.addChild(s.label(`row ${k}`, 11.0, rgba(0.86, 0.90, 0.98, 1.0)).at(22.0, 2.0));
+		list.addChild(row);
+	}
+	list.setNoOverlap(promise);
+	return list;
+}
+
+function orderNoOverlapLanes(): Scene {
+	const s = scene(DARK);
+	laneList(s, LANES_X, true);
+	laneList(s, LANES_X + LANES_SHIFT, false);
+	return s;
+}
+
 function tileCellAt(x: float32, y: float32, t: Tile, color: Color): TileCell {
 	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
 }
@@ -1317,5 +1341,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "demo/frame200", build: demoPlaceholder },
 		{ name: "clip/maskScroll", build: clipMaskScroll },
 		{ name: "clip/cameraPan", build: clipCameraPan },
+		{ name: "order/noOverlapLanes", build: orderNoOverlapLanes },
 	];
 }
