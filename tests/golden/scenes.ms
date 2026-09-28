@@ -634,6 +634,33 @@ function clipMaskScroll(): Scene {
 	return s;
 }
 
+function clipCameraPan(): Scene {
+	const s = scene(DARK);
+	const left = s.mask(100.0, 60.0).at(-130.0, 10.0);
+	left.addChild(s.rect(150.0, 24.0, rgba(0.30, 0.62, 0.92, 1.0)).at(-10.0, 6.0));
+	left.addChild(s.label("left of zero", 12.0, rgba(0.95, 0.95, 0.98, 1.0)).at(4.0, 36.0));
+	const outside = s.mask(40.0, 40.0).at(150.0, 0.0);
+	outside.addChild(s.rect(120.0, 20.0, rgba(0.95, 0.20, 0.20, 1.0)).at(-90.0, 10.0));
+	left.addChild(outside);
+	s.add(left);
+	const list = s.mask(90.0, 70.0).at(-20.0, 10.0);
+	for (let i: int32 = 0; i < 12; i++) {
+		const stripe: Color = i % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
+		const row = s.rect(86.0, 16.0, stripe).at(2.0, (i as float32) * 18.0);
+		row.addChild(s.label(String(i), 11.0, rgba(0.86, 0.90, 0.98, 1.0)).at(4.0, 1.0));
+		list.addChild(row);
+	}
+	list.scrollTo(0.0, 31.0);
+	s.add(list);
+	const card = s.rect(40.0, 30.0, rgba(0.95, 0.75, 0.30, 1.0)).at(20.0, 80.0);
+	card.setFilter(glowFilter(rgba(1.0, 0.70, 0.25, 1.0), 6.0, 1.6));
+	s.add(card);
+	s.add(s.label("camera", 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(-134.0, 100.0));
+	s.cam.x = -140.0;
+	s.cam.y = -8.3;
+	return s;
+}
+
 // ===== text/ =====
 
 const CODE_LINE: string = "fn main() { let x: i32 = 42; }";
@@ -1251,5 +1278,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "demo/frame090", build: demoPlaceholder },
 		{ name: "demo/frame200", build: demoPlaceholder },
 		{ name: "clip/maskScroll", build: clipMaskScroll },
+		{ name: "clip/cameraPan", build: clipCameraPan },
 	];
 }

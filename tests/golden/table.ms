@@ -171,6 +171,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "demo/frame090", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 90, demo: true },
 		{ name: "demo/frame200", phase: "P0", width: 800, height: 600, dpi: 1.0, steps: 200, demo: true },
 		{ name: "clip/maskScroll", phase: "P5", width: 256, height: 150, dpi: 1.0, steps: 0, demo: false },
+		{ name: "clip/cameraPan", phase: "P5", width: 256, height: 160, dpi: 1.25, steps: 0, demo: false },
 	];
 }
 
@@ -185,7 +186,7 @@ export function sceneDrawCounts(): int32[] {
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1, 6,
 		2, 1, 1, 1, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1, 1, 3,
-		30, 30, 30, 30, 2,
+		30, 30, 30, 30, 2, 5,
 	];
 }
 
@@ -195,7 +196,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5,
-		5, 5, 5, 5, 0,
+		5, 5, 5, 5, 0, 5,
 	];
 }
 
