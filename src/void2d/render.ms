@@ -3,7 +3,7 @@
 
 import {
 	Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
-	NO_NODE,
+	NO_NODE, Enclosure, LaneFrame,
 } from "./node";
 import {
 	DisplayList,
@@ -21,6 +21,25 @@ import {
 	copyPainted,
 	limitWrites,
 	unlimitWrites,
+	layLanes,
+	lanesReorderable,
+	laneSourceHolding,
+	laneOutputOf,
+	laneOffsetOf,
+	laneSourceOffsetOf,
+	commandField,
+	commandView,
+	commandCount,
+	targetCommandCount,
+	Pipeline,
+	BreakReason,
+	NO_EFFECT,
+	CMD_EFFECT,
+	CMD_VERTEX_OFFSET,
+	CMD_INSTANCE_OFFSET,
+	CMD_BREAK,
+	CMD_BLEND,
+	CMD_SAMPLER,
 } from "./displayList";
 import {
 	fillQuad,
@@ -56,6 +75,10 @@ import {
 	enterScope,
 	leaveScope,
 	inScope,
+	splitRun,
+	closeLaneRun,
+	restoreLaneRun,
+	reopenLast,
 } from "./draw";
 import { InstanceMode, uiInstance } from "./instance";
 import {
@@ -1126,6 +1149,8 @@ function panOrder(s: Scene, vw: float32, vh: float32): void {
 					!= targetRect(reach, now, vw, vh, dpi, false)) {
 				s.scanNeeded = true;
 			}
+		} else if (state == PaintState.InLanes) {
+			if (seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) { s.scanNeeded = true; }
 		} else if (state == PaintState.Painted && s.queued[i] != s.patchSerial
 			&& seenAt(reach, was, vw, vh) != seenAt(reach, now, vw, vh)) {
 			s.queued[i] = s.patchSerial;
@@ -1217,17 +1242,184 @@ function reusable(s: Scene, i: int32, old: DisplayList): boolean {
 	return continuesLike(old, old.paintStarts[i], old.paintEnds[i]);
 }
 
+let overlapRows: Vec<int32> = [];
+let overlapBoxes: Vec<Bounds> = [];
+
+function keyOf(b: Bounds, alongX: boolean): float32 { return alongX ? b.xMin : b.yMin; }
+
+when (debug) {
+	function checkNoOverlap(s: Scene, parent: int32): void {
+		while ((overlapRows.length as int32) > 0) { overlapRows.pop(); }
+		while ((overlapBoxes.length as int32) > 0) { overlapBoxes.pop(); }
+		let spanX0: float32 = 1e30;
+		let spanX1: float32 = -1e30;
+		let spanY0: float32 = 1e30;
+		let spanY1: float32 = -1e30;
+		let widths: float32 = 0.0;
+		let heights: float32 = 0.0;
+		for (let k: int32 = 0; k < (s.children[parent].length as int32); k++) {
+			const c: int32 = s.children[parent][k];
+			if (!s.orders[c].visible) { continue; }
+			let b: Bounds = emptyBounds();
+			shiftedBounds(s, c, b, vec2(0.0, 0.0), true);
+			if (b.xMax <= b.xMin || b.yMax <= b.yMin) { continue; }
+			overlapRows.push(c);
+			overlapBoxes.push(b);
+			if (b.xMin < spanX0) { spanX0 = b.xMin; }
+			if (b.xMax > spanX1) { spanX1 = b.xMax; }
+			if (b.yMin < spanY0) { spanY0 = b.yMin; }
+			if (b.yMax > spanY1) { spanY1 = b.yMax; }
+			widths = widths + (b.xMax - b.xMin);
+			heights = heights + (b.yMax - b.yMin);
+		}
+		const alongX: boolean = widths * (spanY1 - spanY0) <= heights * (spanX1 - spanX0);
+		const m: int32 = overlapRows.length as int32;
+		for (let a: int32 = 1; a < m; a++) {
+			const row: int32 = overlapRows[a];
+			const box: Bounds = overlapBoxes[a];
+			let k: int32 = a - 1;
+			while (k >= 0 && keyOf(overlapBoxes[k], alongX) > keyOf(box, alongX)) {
+				overlapRows[k + 1] = overlapRows[k];
+				overlapBoxes[k + 1] = overlapBoxes[k];
+				k = k - 1;
+			}
+			overlapRows[k + 1] = row;
+			overlapBoxes[k + 1] = box;
+		}
+		for (let a: int32 = 0; a < m; a++) {
+			const ba: Bounds = overlapBoxes[a];
+			const reach: float32 = alongX ? ba.xMax : ba.yMax;
+			for (let b: int32 = a + 1; b < m && keyOf(overlapBoxes[b], alongX) < reach; b++) {
+				const bb: Bounds = overlapBoxes[b];
+				if (ba.xMin < bb.xMax && bb.xMin < ba.xMax && ba.yMin < bb.yMax && bb.yMin < ba.yMax) {
+					console.log(
+						`void2d: node ${parent} promised setNoOverlap, but its children ` +
+						`${overlapRows[a]} and ${overlapRows[b]} overlap`,
+					);
+					unreachable;
+				}
+			}
+		}
+	}
+} else {
+	function checkNoOverlap(s: Scene, parent: int32): void {}
+}
+
+function lanesFor(s: Scene, i: int32): boolean {
+	return s.orders[i].noOverlap && (s.children[i].length as int32) >= 2;
+}
+
+function laneParent(s: Scene): int32 {
+	const frames: int32 = s.lanes.length as int32;
+	return frames > 0 ? s.lanes[frames - 1].row : NO_NODE;
+}
+
+function openLanes(s: Scene, i: int32, end: int32): void {
+	const split: boolean = splitRun();
+	s.lanes.push({
+		row: i, marks: s.laneMarks.length as int32, opened: paintIndex(), openSplit: split,
+		targets: targetCommandCount(),
+	});
+	s.maskEnds.push(end);
+	s.maskKinds.push(Enclosure.Lanes);
+}
+
+function closeEnclosure(s: Scene): void {
+	s.maskEnds.pop();
+	match (s.maskKinds.pop()) {
+		Enclosure.Clip => { popClip(); },
+		Enclosure.Scope => { leaveScope(); },
+		Enclosure.Lanes => { closeLanes(s); },
+	}
+}
+
+function closeLanes(s: Scene): void {
+	const frame: LaneFrame = s.lanes.pop();
+	const recorded: boolean = closeLaneRun();
+	const c0: int32 = frame.opened.commands;
+	const c1: int32 = commandCount();
+	const marks: Span<int32> = s.laneMarks;
+	const children: Span<int32> = marks[frame.marks..(s.laneMarks.length as int32)];
+	const reorder: boolean = targetCommandCount() == frame.targets &&
+		(children.length as int32) > 0 && children[0] == c0 && lanesReorderable(c0, c1);
+	layLanes(c0, c1, children, reorder, frame.openSplit ? c0 - 1 : -1, frame.opened);
+	remapLaneRows(s, frame.row, c0, c1);
+	if (recorded) {
+		reopenLast();
+	} else {
+		restoreLaneRun();
+	}
+	while ((s.laneMarks.length as int32) > frame.marks) { s.laneMarks.pop(); }
+	checkNoOverlap(s, frame.row);
+}
+
+function remapLaneRows(s: Scene, parent: int32, c0: int32, c1: int32): void {
+	const top: int32 = s.slots[parent];
+	for (let q: int32 = top + 1; q < s.orderEnd[top]; q++) {
+		const r: int32 = s.order[q];
+		if (paintStateOf(r) != PaintState.Painted) { continue; }
+		const start: PaintIndex = paintStartOf(r);
+		const end: PaintIndex = paintEndOf(r);
+		const sprites: int32 = end.spriteInstances - start.spriteInstances;
+		const ui: int32 = end.uiInstances - start.uiInstances;
+		const vertices: int32 = end.vertices - start.vertices;
+		const streams: int32 = (sprites > 0 ? 1 : 0) + (ui > 0 ? 1 : 0) + (vertices > 0 ? 1 : 0);
+		if (streams == 0) { continue; }
+		let pipeline: Pipeline = Pipeline.Vertex;
+		let at: int32 = start.vertices;
+		let count: int32 = vertices;
+		if (sprites > 0) { pipeline = Pipeline.Sprite; at = start.spriteInstances; count = sprites; }
+		if (ui > 0) { pipeline = Pipeline.Ui; at = start.uiInstances; count = ui; }
+		const src: int32 = streams == 1 ? laneSourceHolding(pipeline, at, count, c0) : -1;
+		if (src < 0) {
+			markPaintState(r, PaintState.InLanes);
+			continue;
+		}
+		const out: int32 = laneOutputOf(src, c0);
+		const moved: int32 = laneOffsetOf(src, c0) + (at - laneSourceOffsetOf(src, c0));
+		const effect: int32 = commandField(out, CMD_EFFECT) as int32;
+		const lane: PaintIndex = {
+			...start,
+			commands: out,
+			effects: start.effects,
+			runOpen: true,
+			runStart: commandField(out, pipeline == Pipeline.Vertex ? CMD_VERTEX_OFFSET : CMD_INSTANCE_OFFSET) as int32,
+			pipeline: pipeline,
+			reason: (commandField(out, CMD_BREAK) as int32) as BreakReason,
+			view: commandView(out),
+			blend: (commandField(out, CMD_BLEND) as int32) as BlendMode,
+			sampler: commandField(out, CMD_SAMPLER) as int32,
+			effect: effect,
+			hasEffect: effect != NO_EFFECT,
+		};
+		const placed: PaintIndex = match (pipeline) {
+			Pipeline.Sprite => ({ ...lane, spriteInstances: moved }),
+			Pipeline.Ui => ({ ...lane, uiInstances: moved }),
+			Pipeline.Vertex => ({ ...lane, vertices: moved }),
+		};
+		const past: PaintIndex = match (pipeline) {
+			Pipeline.Sprite => ({ ...placed, spriteInstances: moved + count }),
+			Pipeline.Ui => ({ ...placed, uiInstances: moved + count }),
+			Pipeline.Vertex => ({ ...placed, vertices: moved + count }),
+		};
+		recordPaint(r, placed, past);
+	}
+}
+
 function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null): void {
 	s.reused = 0;
 	const n: int32 = s.order.length as int32;
 	let p: int32 = 0;
 	while (p < n) {
 		while ((s.maskEnds.length as int32) > 0 && s.maskEnds[(s.maskEnds.length as int32) - 1] <= p) {
-			s.maskEnds.pop();
-			if (s.maskScopes.pop()) { leaveScope(); } else { popClip(); }
+			closeEnclosure(s);
 		}
 		const i: int32 = s.order[p];
 		const end: int32 = s.orderEnd[p];
+		if (s.parents[i] != NO_NODE && s.parents[i] == laneParent(s)) {
+			splitRun();
+			s.laneMarks.push(commandCount());
+		}
 		const a: float32 = p == 0 ? 1.0 : s.alphas[s.parents[i]];
 		if (!s.orders[i].visible) {
 			markRows(s, p, end, PaintState.Unpainted);
@@ -1245,7 +1437,7 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 				const source: DisplayList = old as DisplayList;
 				const first: PaintIndex = source.paintStarts[i];
 				let last: PaintIndex = source.paintEnds[i];
-				if (s.kinds[i] !== DrawKind.Mask) {
+				if (s.kinds[i] !== DrawKind.Mask && !lanesFor(s, i)) {
 					while (q < n && joins(s, source, q, last)) {
 						last = source.paintEnds[s.order[q]];
 						q = q + 1;
@@ -1266,30 +1458,27 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 				drawOwn(s, i, na, vw, vh);
 				recordPaint(i, start, paintIndex());
 			}
-			if (q > p + 1) {
-				p = q;
-			} else if (s.kinds[i] !== DrawKind.Mask) {
-				p = p + 1;
-			} else if (s.scrollScope(i)) {
-				enterScopeOf(s, i);
-				s.maskEnds.push(end);
-				s.maskScopes.push(true);
-				p = p + 1;
-			} else if (pushMask(s, i)) {
-				s.maskEnds.push(end);
-				s.maskScopes.push(false);
-				p = p + 1;
-			} else {
-				popClip();
-				markRows(s, p + 1, end, PaintState.Unpainted);
-				p = end;
+			let into: boolean = q == p + 1;
+			if (into && s.kinds[i] === DrawKind.Mask) {
+				if (s.scrollScope(i)) {
+					enterScopeOf(s, i);
+					s.maskEnds.push(end);
+					s.maskKinds.push(Enclosure.Scope);
+				} else if (pushMask(s, i)) {
+					s.maskEnds.push(end);
+					s.maskKinds.push(Enclosure.Clip);
+				} else {
+					popClip();
+					markRows(s, p + 1, end, PaintState.Unpainted);
+					into = false;
+					q = end;
+				}
 			}
+			if (into && lanesFor(s, i)) { openLanes(s, i, end); }
+			p = into ? p + 1 : q;
 		}
 	}
-	while ((s.maskEnds.length as int32) > 0) {
-		s.maskEnds.pop();
-		if (s.maskScopes.pop()) { leaveScope(); } else { popClip(); }
-	}
+	while ((s.maskEnds.length as int32) > 0) { closeEnclosure(s); }
 }
 
 function joins(s: Scene, source: DisplayList, q: int32, last: PaintIndex): boolean {
@@ -1297,7 +1486,9 @@ function joins(s: Scene, source: DisplayList, q: int32, last: PaintIndex): boole
 	if (ends > 0 && s.maskEnds[ends - 1] <= q) { return false; }
 	const j: int32 = s.order[q];
 	if (!s.orders[j].visible || s.filters[j].kind !== FilterKind.None) { return false; }
-	if (s.kinds[j] === DrawKind.Mask) { return false; }
+	if (s.kinds[j] === DrawKind.Mask || lanesFor(s, j) || s.parents[j] == laneParent(s)) {
+		return false;
+	}
 	if (j >= (source.paintStates.length as int32) || source.paintStates[j] != PaintState.Painted) {
 		return false;
 	}
@@ -1379,7 +1570,7 @@ function descend(s: Scene, d: int32): void {
 			p = s.orderEnd[p];
 		} else {
 			const state: PaintState = paintStateOf(i);
-			if (state == PaintState.InTarget) { s.scanNeeded = true; }
+			if (state == PaintState.InTarget || state == PaintState.InLanes) { s.scanNeeded = true; }
 			if (moved && s.kinds[i] === DrawKind.Mask) { s.scanNeeded = true; }
 			const faded: boolean = alpha != s.alphas[i];
 			s.worlds[i] = world;

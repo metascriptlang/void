@@ -281,7 +281,11 @@ FRAME_PATH="scene:tick scene:present scene:presentAt render:drawOrder render:dra
 	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex text76ayout:clusterEnd
 	render:emitTiles render:cellMatrix render:tileBounds render:drawnEnd render:tileTint
 	render:retilable render:queueRetile render:retileRow node:settleTiles draw:beginSprites
-	draw:appendSprite draw:rewriteSprite display76ist:putSpriteInstance"
+	draw:appendSprite draw:rewriteSprite display76ist:putSpriteInstance render:lanesFor
+	render:laneParent render:openLanes render:closeEnclosure render:closeLanes
+	render:remapLaneRows render:checkNoOverlap draw:splitRun draw:closeLaneRun
+	draw:restoreLaneRun draw:reopenLast display76ist:layLanes display76ist:lanesReorderable
+	display76ist:laneSourceHolding"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
 	label84ext:lineDecorations

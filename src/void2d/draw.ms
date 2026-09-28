@@ -43,7 +43,7 @@ import {
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
-	pushSpriteInstance, putSpriteInstance, recordSpriteDraw,
+	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
@@ -343,6 +343,50 @@ export function continueAfter(start: PaintIndex, end: PaintIndex, at: PaintIndex
 		runStart = end.runStart - streamOf(start, end.pipeline) + streamOf(at, end.pipeline);
 		runReason = end.reason;
 	}
+}
+
+function runCursor(): int32 {
+	return match (curPipeline) {
+		Pipeline.Sprite => spriteInstanceCount(),
+		Pipeline.Ui => uiInstanceCount(),
+		Pipeline.Vertex => vertexCount(),
+	};
+}
+
+export function splitRun(): boolean {
+	if (!runOpen || runCursor() == runStart) { return false; }
+	const reason: BreakReason = runReason;
+	closeRun();
+	openRun(reason);
+	return true;
+}
+
+let laneRunWasOpen: boolean = false;
+
+export function closeLaneRun(): boolean {
+	laneRunWasOpen = runOpen;
+	const before: int32 = commandCount();
+	closeRun();
+	return commandCount() > before;
+}
+
+export function restoreLaneRun(): void {
+	runOpen = laneRunWasOpen;
+}
+
+export function reopenLast(): void {
+	const l: DisplayList = currentList();
+	const last: int32 = l.commandTotal - 1;
+	const base: int32 = last * COMMAND_FLOATS;
+	curPipeline = pipelineAt(l.commands, base);
+	curView = commandView(last);
+	curBlend = ((l.commands[base + CMD_BLEND] as int32) as BlendMode);
+	curSampler = l.commands[base + CMD_SAMPLER] as int32;
+	curEffect = l.commands[base + CMD_EFFECT] as int32;
+	runReason = (l.commands[base + CMD_BREAK] as int32) as BreakReason;
+	runStart = runOffset(l.commands, base);
+	runOpen = true;
+	l.commandTotal = last;
 }
 
 export function endPatch(end: PaintIndex): void {

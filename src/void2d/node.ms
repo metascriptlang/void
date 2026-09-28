@@ -41,7 +41,7 @@ import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
-import { DisplayList } from "./displayList";
+import { DisplayList, PaintIndex } from "./displayList";
 
 export enum DrawKind {
 	Group,
@@ -126,6 +126,21 @@ export struct Order2D {
 	zIndex: int32;
 	visible: boolean;
 	name: string;
+	noOverlap: boolean;
+}
+
+export enum Enclosure {
+	Clip,
+	Scope,
+	Lanes,
+}
+
+export struct LaneFrame {
+	row: int32;
+	marks: int32;
+	opened: PaintIndex;
+	openSplit: boolean;
+	targets: int32;
 }
 
 export struct Layout2D {
@@ -206,7 +221,9 @@ export interface Scene {
 	alphas: Vec<float32>;
 	moved: Vec<boolean>;
 	maskEnds: Vec<int32>;
-	maskScopes: Vec<boolean>;
+	maskKinds: Vec<Enclosure>;
+	lanes: Vec<LaneFrame>;
+	laneMarks: Vec<int32>;
 	repaint: Vec<int32>;
 	queued: Vec<int32>;
 	patchSerial: int32;
@@ -293,7 +310,7 @@ function localMatrix(l: Local2D): Transform2D {
 
 export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 	const noBounds: Bounds = { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 };
-	const order: Order2D = { zIndex: 0, visible: true, name: "" };
+	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false };
 	const reusable: int32 = s.free.length as int32;
 	if (reusable > 0) {
 		const i: int32 = s.free.pop();
@@ -652,6 +669,12 @@ export function setVisible(this n: NodeRef, visible: boolean): NodeRef {
 export function setZIndex(this n: NodeRef, zIndex: int32): NodeRef {
 	const i: int32 = n.liveRow("setZIndex");
 	n.scene.putOrder(i, { ...n.scene.orders[i], zIndex: zIndex });
+	return n;
+}
+
+export function setNoOverlap(this n: NodeRef, promise: boolean): NodeRef {
+	const i: int32 = n.liveRow("setNoOverlap");
+	n.scene.putOrder(i, { ...n.scene.orders[i], noOverlap: promise });
 	return n;
 }
 
@@ -1454,7 +1477,7 @@ function freeRow(this s: Scene, i: int32): void {
 	s.parents[i] = NO_NODE;
 	s.children[i] = new Array(0);
 	s.paints[i] = defaultPaint();
-	s.orders[i] = { zIndex: 0, visible: true, name: "" };
+	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false };
 	s.layouts[i] = noLayout();
 	const generation: int32 = s.generations[i];
 	if (generation == LAST_GENERATION) {

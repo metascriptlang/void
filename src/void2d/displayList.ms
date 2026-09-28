@@ -174,6 +174,7 @@ export enum PaintState {
 	Unpainted,
 	Painted,
 	InTarget,
+	InLanes,
 }
 
 export struct PaintIndex {
@@ -1042,6 +1043,294 @@ export function recordBlur(view: uint32, dirX: float32, dirY: float32): void {
 	writeView(base, view);
 	list.commands[base + CMD_ARG0] = dirX;
 	list.commands[base + CMD_ARG1] = dirY;
+}
+
+const RUN_FIELDS: int32[] = [
+	CMD_PIPELINE, CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X,
+	CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE, CMD_CLIP_U_X, CMD_CLIP_U_Y, CMD_CLIP_U_MIN,
+	CMD_CLIP_U_MAX, CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX, CMD_SCOPE,
+];
+const PLACE_FIELDS: int32[] = [
+	CMD_CLIP_X, CMD_CLIP_Y, CMD_CLIP_W, CMD_CLIP_H, CMD_RT_MODE, CMD_CLIP_U_X, CMD_CLIP_U_Y,
+	CMD_CLIP_U_MIN, CMD_CLIP_U_MAX, CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
+	CMD_SCOPE,
+];
+
+let laneOrder: Vec<int32> = [];
+let laneSourceOffsets: Vec<int32> = [];
+let laneSourceCounts: Vec<int32> = [];
+let laneOutputs: Vec<int32> = [];
+let laneOffsets: Vec<int32> = [];
+let laneOut: Vec<float32> = [];
+let laneScratch: Vec<float32> = [];
+let laneBySprite: Vec<int32> = [];
+let laneByUi: Vec<int32> = [];
+let laneByVertex: Vec<int32> = [];
+
+function isDraw(cmds: Span<float32>, base: int32): boolean {
+	return (cmds[base + CMD_KIND] as int32) == (CommandKind.Draw as int32);
+}
+
+export function pipelineAt(cmds: Span<float32>, base: int32): Pipeline {
+	return (cmds[base + CMD_PIPELINE] as int32) as Pipeline;
+}
+
+function offsetField(cmds: Span<float32>, base: int32): int32 {
+	return pipelineAt(cmds, base) == Pipeline.Vertex ? CMD_VERTEX_OFFSET : CMD_INSTANCE_OFFSET;
+}
+
+function countField(cmds: Span<float32>, base: int32): int32 {
+	return pipelineAt(cmds, base) == Pipeline.Vertex ? CMD_VERTEX_COUNT : CMD_INSTANCE_COUNT;
+}
+
+export function runOffset(cmds: Span<float32>, base: int32): int32 {
+	return cmds[base + offsetField(cmds, base)] as int32;
+}
+
+export function runCount(cmds: Span<float32>, base: int32): int32 {
+	return cmds[base + countField(cmds, base)] as int32;
+}
+
+function sameRun(a: Span<float32>, ab: int32, b: Span<float32>, bb: int32): boolean {
+	if (!isDraw(a, ab) || !isDraw(b, bb)) { return false; }
+	for (const f of RUN_FIELDS) {
+		if (a[ab + f] != b[bb + f]) { return false; }
+	}
+	return true;
+}
+
+function breakBetween(prev: Span<float32>, pb: int32, next: Span<float32>, nb: int32): float32 {
+	if (prev[pb + CMD_PIPELINE] != next[nb + CMD_PIPELINE]) {
+		return (BreakReason.Pipeline as int32) as float32;
+	}
+	if (prev[pb + CMD_VIEW] != next[nb + CMD_VIEW] || prev[pb + CMD_VIEW_HIGH] != next[nb + CMD_VIEW_HIGH]) {
+		return (BreakReason.View as int32) as float32;
+	}
+	if (prev[pb + CMD_BLEND] != next[nb + CMD_BLEND]) {
+		return (BreakReason.Blend as int32) as float32;
+	}
+	if (prev[pb + CMD_SAMPLER] != next[nb + CMD_SAMPLER]) {
+		return (BreakReason.Sampler as int32) as float32;
+	}
+	return next[nb + CMD_BREAK];
+}
+
+function floatsOf(pipeline: Pipeline): int32 {
+	return match (pipeline) {
+		Pipeline.Sprite => REC_SPRITE_FLOATS,
+		Pipeline.Ui => REC_UI_FLOATS,
+		Pipeline.Vertex => VERTEX_FLOATS,
+	};
+}
+
+function streamTotal(pipeline: Pipeline): int32 {
+	return match (pipeline) {
+		Pipeline.Sprite => list.spriteInstanceTotal,
+		Pipeline.Ui => list.uiInstanceTotal,
+		Pipeline.Vertex => list.vertexTotal,
+	};
+}
+
+function sized(ref v: Vec<int32>, n: int32): void {
+	while ((v.length as int32) < n) { v.push(0); }
+}
+
+export function lanesReorderable(c0: int32, c1: int32): boolean {
+	if (c1 <= c0) { return false; }
+	for (let c: int32 = c0; c < c1; c++) {
+		const base: int32 = c * COMMAND_FLOATS;
+		if (!isDraw(list.commands, base)) { return false; }
+		if ((list.commands[base + CMD_EFFECT] as int32) != NO_EFFECT) { return false; }
+		for (const f of PLACE_FIELDS) {
+			if (list.commands[base + f] != list.commands[c0 * COMMAND_FLOATS + f]) { return false; }
+		}
+	}
+	return true;
+}
+
+function orderLanes(c0: int32, c1: int32, marks: Span<int32>, reorder: boolean): void {
+	while ((laneOrder.length as int32) > 0) { laneOrder.pop(); }
+	if (!reorder) {
+		for (let c: int32 = c0; c < c1; c++) { laneOrder.push(c); }
+		return;
+	}
+	const children: int32 = marks.length as int32;
+	let lane: int32 = 0;
+	let any: boolean = true;
+	while (any) {
+		any = false;
+		for (let k: int32 = 0; k < children; k++) {
+			const to: int32 = k + 1 < children ? marks[k + 1] : c1;
+			if (marks[k] + lane < to) {
+				laneOrder.push(marks[k] + lane);
+				any = true;
+			}
+		}
+		lane = lane + 1;
+	}
+}
+
+function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
+	const width: int32 = floatsOf(pipeline);
+	const total: int32 = streamTotal(pipeline);
+	if (total <= lo) { return; }
+	const span: int32 = (total - lo) * width;
+	while ((laneScratch.length as int32) < span) { laneScratch.push(0.0 as float32); }
+	let covered: int32 = 0;
+	for (const src of laneOrder) {
+		if (pipelineAt(list.commands, src * COMMAND_FLOATS) == pipeline) {
+			covered = covered + laneSourceCounts[src - c0];
+		}
+	}
+	if (covered != total - lo) {
+		console.log(
+			`void2d: a lane region's ${pipeline.toString()} runs cover ${covered} of its ` +
+			`${total - lo} records`,
+		);
+		unreachable;
+	}
+	match (pipeline) {
+		Pipeline.Sprite => { void2dCopyFloats(laneScratch[0], list.spriteInstances[lo * width], span); },
+		Pipeline.Ui => { void2dCopyFloats(laneScratch[0], list.uiInstances[lo * width], span); },
+		Pipeline.Vertex => { void2dCopyFloats(laneScratch[0], list.vertices[lo * width], span); },
+	}
+	for (const src of laneOrder) {
+		if (pipelineAt(list.commands, src * COMMAND_FLOATS) != pipeline) { continue; }
+		const n: int32 = laneSourceCounts[src - c0] * width;
+		if (n == 0) { continue; }
+		const from: int32 = (laneSourceOffsets[src - c0] - lo) * width;
+		const to: int32 = laneOffsets[src - c0] * width;
+		match (pipeline) {
+			Pipeline.Sprite => { void2dCopyFloats(list.spriteInstances[to], laneScratch[from], n); },
+			Pipeline.Ui => { void2dCopyFloats(list.uiInstances[to], laneScratch[from], n); },
+			Pipeline.Vertex => { void2dCopyFloats(list.vertices[to], laneScratch[from], n); },
+		}
+	}
+}
+
+export function layLanes(
+	c0: int32, c1: int32, marks: Span<int32>, reorder: boolean, pred: int32, lo: PaintIndex,
+): void {
+	const sources: int32 = c1 - c0;
+	sized(laneSourceOffsets, sources);
+	sized(laneSourceCounts, sources);
+	sized(laneOutputs, sources);
+	sized(laneOffsets, sources);
+	while ((laneOut.length as int32) < sources * COMMAND_FLOATS) { laneOut.push(0.0 as float32); }
+	while ((laneBySprite.length as int32) > 0) { laneBySprite.pop(); }
+	while ((laneByUi.length as int32) > 0) { laneByUi.pop(); }
+	while ((laneByVertex.length as int32) > 0) { laneByVertex.pop(); }
+	for (let c: int32 = c0; c < c1; c++) {
+		const base: int32 = c * COMMAND_FLOATS;
+		const drawn: boolean = isDraw(list.commands, base);
+		laneSourceOffsets[c - c0] = drawn ? runOffset(list.commands, base) : 0;
+		laneSourceCounts[c - c0] = drawn ? runCount(list.commands, base) : 0;
+		if (drawn) {
+			match (pipelineAt(list.commands, base)) {
+				Pipeline.Sprite => { laneBySprite.push(c); },
+				Pipeline.Ui => { laneByUi.push(c); },
+				Pipeline.Vertex => { laneByVertex.push(c); },
+			}
+		}
+	}
+	orderLanes(c0, c1, marks, reorder);
+	let cursorSprite: int32 = lo.spriteInstances;
+	let cursorUi: int32 = lo.uiInstances;
+	let cursorVertex: int32 = lo.vertices;
+	let outputs: int32 = 0;
+	let previous: int32 = -1;
+	for (const src of laneOrder) {
+		const sb: int32 = src * COMMAND_FLOATS;
+		const count: int32 = laneSourceCounts[src - c0];
+		const pipeline: Pipeline = pipelineAt(list.commands, sb);
+		let at: int32 = laneSourceOffsets[src - c0];
+		if (reorder) {
+			at = match (pipeline) {
+				Pipeline.Sprite => cursorSprite,
+				Pipeline.Ui => cursorUi,
+				Pipeline.Vertex => cursorVertex,
+			};
+			match (pipeline) {
+				Pipeline.Sprite => { cursorSprite = cursorSprite + count; },
+				Pipeline.Ui => { cursorUi = cursorUi + count; },
+				Pipeline.Vertex => { cursorVertex = cursorVertex + count; },
+			}
+		}
+		laneOffsets[src - c0] = at;
+		const last: int32 = (outputs - 1) * COMMAND_FLOATS;
+		if (outputs > 0 && sameRun(laneOut, last, list.commands, sb)
+			&& runOffset(laneOut, last) + runCount(laneOut, last) == at) {
+			laneOut[last + countField(laneOut, last)] = (runCount(laneOut, last) + count) as float32;
+			laneOutputs[src - c0] = c0 + outputs - 1;
+		} else {
+			const ob: int32 = outputs * COMMAND_FLOATS;
+			for (let f: int32 = 0; f < COMMAND_FLOATS; f++) { laneOut[ob + f] = list.commands[sb + f]; }
+			if (isDraw(list.commands, sb)) { laneOut[ob + offsetField(laneOut, ob)] = at as float32; }
+			if (outputs > 0 && previous != src - 1 && isDraw(laneOut, last) && isDraw(laneOut, ob)) {
+				laneOut[ob + CMD_BREAK] = breakBetween(laneOut, last, laneOut, ob);
+			}
+			laneOutputs[src - c0] = c0 + outputs;
+			outputs = outputs + 1;
+		}
+		previous = src;
+	}
+	if (reorder) {
+		permuteStream(Pipeline.Sprite, lo.spriteInstances, c0);
+		permuteStream(Pipeline.Ui, lo.uiInstances, c0);
+		permuteStream(Pipeline.Vertex, lo.vertices, c0);
+	}
+	let skip: int32 = 0;
+	if (pred >= 0 && outputs > 0) {
+		const pb: int32 = pred * COMMAND_FLOATS;
+		if (sameRun(list.commands, pb, laneOut, 0)
+			&& runOffset(list.commands, pb) + runCount(list.commands, pb) == runOffset(laneOut, 0)) {
+			list.commands[pb + countField(list.commands, pb)] =
+				(runCount(list.commands, pb) + runCount(laneOut, 0)) as float32;
+			skip = 1;
+			for (let k: int32 = 0; k < sources; k++) {
+				laneOutputs[k] = laneOutputs[k] == c0 ? pred : laneOutputs[k] - 1;
+			}
+		}
+	}
+	for (let o: int32 = skip; o < outputs; o++) {
+		for (let f: int32 = 0; f < COMMAND_FLOATS; f++) {
+			list.commands[(c0 + o - skip) * COMMAND_FLOATS + f] = laneOut[o * COMMAND_FLOATS + f];
+		}
+	}
+	list.commandTotal = c0 + outputs - skip;
+}
+
+function holding(ids: Span<int32>, at: int32, count: int32, c0: int32): int32 {
+	let low: int32 = 0;
+	let high: int32 = (ids.length as int32) - 1;
+	let found: int32 = -1;
+	while (low <= high) {
+		const middle: int32 = (low + high) / 2;
+		if (laneSourceOffsets[ids[middle] - c0] <= at) {
+			found = middle;
+			low = middle + 1;
+		} else {
+			high = middle - 1;
+		}
+	}
+	if (found < 0) { return -1; }
+	const src: int32 = ids[found];
+	const end: int32 = laneSourceOffsets[src - c0] + laneSourceCounts[src - c0];
+	return at + count <= end ? src : -1;
+}
+
+export function laneSourceHolding(pipeline: Pipeline, at: int32, count: int32, c0: int32): int32 {
+	return match (pipeline) {
+		Pipeline.Sprite => holding(laneBySprite, at, count, c0),
+		Pipeline.Ui => holding(laneByUi, at, count, c0),
+		Pipeline.Vertex => holding(laneByVertex, at, count, c0),
+	};
+}
+
+export function laneOutputOf(command: int32, c0: int32): int32 { return laneOutputs[command - c0]; }
+export function laneOffsetOf(command: int32, c0: int32): int32 { return laneOffsets[command - c0]; }
+export function laneSourceOffsetOf(command: int32, c0: int32): int32 {
+	return laneSourceOffsets[command - c0];
 }
 
 // How many Draw commands are in the stream — the draw-call count, known before a single

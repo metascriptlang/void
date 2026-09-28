@@ -37,7 +37,7 @@ export function scene(clear: Color): Scene {
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
-		maskEnds: [], maskScopes: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
+		maskEnds: [], maskKinds: [], lanes: [], laneMarks: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
 		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], tileGroups: [], tileCells: [],
 		tileEdits: [], freeTileGroups: [], retile: [], retiled: 0, scrolls: [], freeScrolls: [],
