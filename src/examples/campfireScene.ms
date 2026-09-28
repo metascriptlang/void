@@ -37,7 +37,6 @@ import {
 	GpuMesh,
 	MeshUploadError,
 	StreamError,
-	UniformError,
 	addMesh,
 	addMeshData,
 	addMaterial,
@@ -47,6 +46,7 @@ import {
 	reserveUniforms,
 	writeUniforms,
 } from "../void3d/draw";
+import { UniformError } from "../void3d/uniformPool";
 import { LowResView, ViewError } from "../void3d/blit";
 import { Bounds } from "../void3d/bounds";
 import { PaletteError } from "../void3d/palette";
@@ -1170,7 +1170,7 @@ export function campfireStats(): CampfireStats {
 		meshes: context.meshes.length as int32,
 		rebuildable: rebuildable,
 		pipelines: context.pipelines.entries.length as int32,
-		uniforms: context.uniforms.length as int32,
+		uniforms: context.uniforms.used,
 		stack: tree.stack.length as int32,
 	};
 }

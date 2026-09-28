@@ -40,6 +40,7 @@ import {
 	MODEL_SLOT,
 } from "./draw";
 import { forgetPipelines } from "./pipelineCache";
+import { UniformError } from "./uniformPool";
 import { PassList, collect, sortBackToFront, drawPassList } from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
@@ -71,6 +72,7 @@ export enum RendererError {
 	VertexLayout,
 	MaterialTexture,
 	QuadMesh,
+	ReleasedUniforms,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -97,8 +99,7 @@ export function createDrawing(
 	ref context: DrawContext,
 	programs: ProgramMap,
 ): Result<Renderer, RendererError> {
-	const free: int32 = (context.uniforms.length as int32) - context.uniformsUsed;
-	if (free < RENDERER_UNIFORM_LENGTH) {
+	if (context.uniforms.unreserved() < RENDERER_UNIFORM_LENGTH) {
 		return Result.err(RendererError.UniformPoolFull);
 	}
 	const cameraBlock: UniformBlock = reserve(context, VERTEX_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH);
@@ -129,17 +130,17 @@ export function needsFrame(this renderer: Renderer): boolean {
 	return renderer.changed || renderer.generation != contextGeneration();
 }
 
-// Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and
-// fills the pass lists from `items`. A camera or light span that is not its block's length, an
-// item whose material names a program this renderer does not draw, a material whose block is
-// not the one that program reads or that lacks a texture or sampler it samples, or a mesh
+// Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and fills
+// the pass lists from `items`. A camera or light span that is not its block's length, an item whose
+// material names a program this renderer does not draw, a material whose block is not the one that
+// program reads or has been released, or that lacks a texture or sampler it samples, or a mesh
 // whose vertex layout it does not read, or a quad-layout mesh with a vertex buffer or with
 // instances and no instance buffer, is refused before anything changes. Answers true when the
-// context is new: every handle the caller made before is stale then (it may name an object of
-// the new context), so the caller drops its own without destroying them and makes them again
-// before drawing. The core has already dropped the pipelines, remade the screen triangle, and
-// re-uploaded every mesh that carries its CPU data (draw.ms rebuildMeshes); what is left is
-// whatever the caller uploaded from buffers only it keeps.
+// context is new: every handle the caller made before is stale then (it may name an object of the
+// new context), so the caller drops its own without destroying them and makes them again before
+// drawing. The core has already dropped the pipelines, remade the screen triangle, and re-uploaded
+// every mesh that carries its CPU data (draw.ms rebuildMeshes); what is left is whatever the caller
+// uploaded from buffers only it keeps.
 export function beginFrame(
 	ref renderer: Renderer,
 	ref context: DrawContext,
@@ -154,6 +155,9 @@ export function beginFrame(
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
 			return Result.err(RendererError.MaterialBlock);
+		}
+		if (!context.uniforms.holds(context.materials[material].uniforms)) {
+			return Result.err(RendererError.ReleasedUniforms);
 		}
 		const layout: VertexLayout = context.meshes[item.mesh].layout;
 		if (layout != vertexLayoutOf(drawn.value)) {
@@ -172,12 +176,12 @@ export function beginFrame(
 	if ((lights.length as int32) != renderer.lightBlock.length) {
 		return Result.err(RendererError.LightBlockLength);
 	}
-	if (!writeUniforms(context, renderer.cameraBlock, camera).ok) {
-		return Result.err(RendererError.CameraBlockLength);
-	}
-	if (!writeUniforms(context, renderer.lightBlock, lights).ok) {
-		return Result.err(RendererError.LightBlockLength);
-	}
+	const cameraWritten: Result<int32, UniformError> =
+		writeUniforms(context, renderer.cameraBlock, camera);
+	if (!cameraWritten.ok) { return Result.err(RendererError.CameraBlockLength); }
+	const lightsWritten: Result<int32, UniformError> =
+		writeUniforms(context, renderer.lightBlock, lights);
+	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(Program.Lit);
 	}

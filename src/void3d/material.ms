@@ -15,11 +15,13 @@ export enum Phase {
 	Additive,
 }
 
-// A uniform block: `length` floats at `offset` in the pool, uploaded to shader slot `slot`.
+// A uniform block: `length` floats at `offset` in the pool, uploaded to shader slot `slot`,
+// held while `generation` is the pool's for that range (uniformPool.ms).
 export struct UniformBlock {
 	slot: int32;
 	offset: int32;
 	length: int32;
+	generation: int32;
 }
 
 export struct Material {
@@ -37,7 +39,7 @@ export struct Material {
 	uniforms: UniformBlock;
 }
 
-export const NO_UNIFORMS: UniformBlock = { slot: 0, offset: 0, length: 0 };
+export const NO_UNIFORMS: UniformBlock = { slot: 0, offset: 0, length: 0, generation: 0 };
 
 // A material that samples nothing and has no uniforms of its own; add those with spread.
 export function plain(

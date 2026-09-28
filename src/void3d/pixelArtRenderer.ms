@@ -41,11 +41,11 @@ import {
 import {
 	DrawContext,
 	DrawItem,
-	UniformError,
 	addMaterial,
 	reserveUniforms,
 	writeUniforms,
 } from "./draw";
+import { UniformError } from "./uniformPool";
 import { PipelineKey, pipelineKey } from "./pipelineCache";
 import { LowResView, ViewError, lowResView } from "./blit";
 import {
@@ -155,6 +155,7 @@ export enum PixelArtError {
 	VertexLayout,
 	MaterialTexture,
 	QuadMesh,
+	ReleasedUniforms,
 	RampLevels,
 }
 
@@ -309,8 +310,7 @@ export function create(
 	settings: PixelArtSettings,
 	look: PixelArtLook,
 ): Result<PixelArtRenderer, PixelArtError> {
-	const free: int32 = (context.uniforms.length as int32) - context.uniformsUsed;
-	if (free < PIXEL_ART_UNIFORM_LENGTH) {
+	if (context.uniforms.unreserved() < PIXEL_ART_UNIFORM_LENGTH) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
 	const palette: Result<PaletteLut, PaletteError> = PaletteLut.withLevels(DEFAULT_PALETTE_LEVELS);
@@ -484,6 +484,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.VertexLayout => PixelArtError.VertexLayout,
 		RendererError.MaterialTexture => PixelArtError.MaterialTexture,
 		RendererError.QuadMesh => PixelArtError.QuadMesh,
+		RendererError.ReleasedUniforms => PixelArtError.ReleasedUniforms,
 	};
 }
 
@@ -492,12 +493,12 @@ function fromCore(error: RendererError): PixelArtError {
 // the core's to refuse (RendererError.MaterialBlock).
 function levelsAt(context: DrawContext, block: UniformBlock, at: int32): boolean {
 	if (block.length <= at) { return true; }
-	return context.uniforms[block.offset + at] >= 1.0;
+	return context.uniforms.values[block.offset + at] >= 1.0;
 }
 
 function billboardLevels(context: DrawContext, block: UniformBlock): boolean {
 	if (block.length <= BILLBOARD_LIGHT) { return true; }
-	if (context.uniforms[block.offset + BILLBOARD_LIGHT] == 0.0) { return true; }
+	if (context.uniforms.values[block.offset + BILLBOARD_LIGHT] == 0.0) { return true; }
 	return levelsAt(context, block, BILLBOARD_RAMP_LEVELS);
 }
 

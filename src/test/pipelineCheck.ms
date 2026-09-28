@@ -24,7 +24,8 @@ import {
 	PROGRAM_COUNT,
 } from "../void3d/pipelineCache";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
-import { DrawContext, UniformError, reserveUniforms, writeUniforms } from "../void3d/draw";
+import { DrawContext, reserveUniforms, writeUniforms } from "../void3d/draw";
+import { UniformError } from "../void3d/uniformPool";
 import { Vec4 } from "../math/math3d";
 
 // The campfire scene pass: unculled, depth-tested with LessEqual.
@@ -277,7 +278,7 @@ test "uniform pool hands out ranges once and refuses to overflow" {
 	assert !writeUniforms(context, third, tooFew).ok;
 	const exact: Vec<float32> = [1.0, 2.0];
 	assert writeUniforms(context, third, exact).ok;
-	assert context.uniforms[6] == 1.0 && context.uniforms[7] == 2.0;
+	assert context.uniforms.values[6] == 1.0 && context.uniforms.values[7] == 2.0;
 }
 
 test "render state and target layout print one readable line" {

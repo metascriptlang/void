@@ -32,6 +32,7 @@ import "./meshDataCheck";
 import "./drawCheck";
 import "./gltfCheck";
 import "./slotsCheck";
+import "./uniformPoolCheck";
 import "./scene3dCheck";
 import "./animationCheck";
 import "./pickCheck";

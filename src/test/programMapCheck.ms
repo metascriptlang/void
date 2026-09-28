@@ -21,11 +21,11 @@ import {
 	GpuMesh,
 	MODEL_SLOT,
 	MODEL_LENGTH,
-	UniformError,
 	addMesh,
 	addMaterial,
 	reserveUniforms,
 } from "../void3d/draw";
+import { UniformError } from "../void3d/uniformPool";
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import {
@@ -126,7 +126,7 @@ test "the core refuses a material it does not draw before it writes the camera" 
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, context, items, camera, lights);
 		assert !began.ok && began.error == RendererError.ProgramNotDrawn;
-		assert context.uniforms[core.cameraBlock.offset] == 0.0 && core.generation == 0;
+		assert context.uniforms.values[core.cameraBlock.offset] == 0.0 && core.generation == 0;
 	}
 }
 
@@ -142,7 +142,7 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 	assert created.ok;
 	if (created.ok) {
 		let forward: ForwardRenderer = created.value;
-		assert context.uniformsUsed == FORWARD_UNIFORM_LENGTH;
+		assert context.uniforms.used == FORWARD_UNIFORM_LENGTH;
 		assert context.materials[forward.copyMaterial].program == Program.Copy;
 		assert forward.core.programs.draws(Program.Lit);
 		assert forward.core.programs.draws(Program.Billboard);
@@ -225,7 +225,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, held, litItems, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
-		assert core.drawn.length == 0 && held.uniforms[core.cameraBlock.offset] == 0.0;
+		assert core.drawn.length == 0 && held.uniforms.values[core.cameraBlock.offset] == 0.0;
 	}
 }
 

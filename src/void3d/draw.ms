@@ -32,6 +32,7 @@ import { Material, UniformBlock } from "./material";
 import { MeshData } from "./meshData";
 import { PipelineCache, pipelineFor } from "./pipelineCache";
 import { TargetLayout } from "./target";
+import { UniformPool, UniformError, reserveRange, releaseRange, writeRange } from "./uniformPool";
 
 // GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` holds particle
 // and billboard instances, 0 when not instanced; a quad layout has no vertex buffer, its
@@ -85,16 +86,10 @@ export struct DrawContext {
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
 	materials: Vec<Material>;
-	uniforms: Vec<float32>;
-	uniformsUsed: int32;
+	uniforms: UniformPool;
 	pipelines: PipelineCache;
 	bindings: Vec<uint32>;
 	model: Vec<float32>;
-}
-
-export enum UniformError {
-	PoolFull,
-	WrongLength,
 }
 
 export enum MeshUploadError {
@@ -117,8 +112,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		meshes: [],
 		meshData: [],
 		materials: [],
-		uniforms: new Array(capacity),
-		uniformsUsed: 0,
+		uniforms: UniformPool.withCapacity(capacity),
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
 		model: model,
@@ -412,12 +406,16 @@ export function reserveUniforms(
 	slot: int32,
 	length: int32,
 ): Result<UniformBlock, UniformError> {
-	const offset: int32 = context.uniformsUsed;
-	if (offset + length > (context.uniforms.length as int32)) {
-		return Result.err(UniformError.PoolFull);
-	}
-	context.uniformsUsed = offset + length;
-	return Result.ok({ slot: slot, offset: offset, length: length });
+	return reserveRange(context.uniforms, slot, length);
+}
+
+// Once released, `block` is refused wherever it is written, and its range goes to the next
+// reserve of the same length.
+export function releaseUniforms(
+	ref context: DrawContext,
+	block: UniformBlock,
+): Result<int32, UniformError> {
+	return releaseRange(context.uniforms, block);
 }
 
 export function writeUniforms(
@@ -425,15 +423,11 @@ export function writeUniforms(
 	block: UniformBlock,
 	values: Span<float32>,
 ): Result<int32, UniformError> {
-	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
-	for (let i = 0; i < block.length; i++) {
-		context.uniforms[block.offset + i] = values[i];
-	}
-	return Result.ok(block.length);
+	return writeRange(context.uniforms, block, values);
 }
 
 function applyBlock(this context: DrawContext, block: UniformBlock): void {
-	applyUniforms(block.slot, context.uniforms[block.offset..block.offset + block.length]);
+	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + block.length]);
 }
 
 function bindItem(ref context: DrawContext, mesh: GpuMesh, material: Material): void {

@@ -17,12 +17,13 @@ import {
 	DrawContext,
 	DrawItem,
 	GpuMesh,
-	UniformError,
 	addMesh,
 	addMaterial,
 	reserveUniforms,
+	releaseUniforms,
 	writeUniforms,
 } from "../void3d/draw";
+import { UniformError } from "../void3d/uniformPool";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
 import { PipelineKey } from "../void3d/pipelineCache";
 import { LowResView, ViewError, lowResView } from "../void3d/blit";
@@ -347,7 +348,7 @@ test "a renderer needs a frame until one is drawn, then only when something chan
 	if (created.ok) {
 		let renderer: PixelArtRenderer = created.value;
 		assert (context.materials.length as int32) == 2 && (context.meshes.length as int32) == 1;
-		assert context.uniformsUsed == PIXEL_ART_UNIFORM_LENGTH;
+		assert context.uniforms.used == PIXEL_ART_UNIFORM_LENGTH;
 		const drawn: LowResView = view(1080, 2400, 360, 1, 0);
 		assert renderer.needsFrame(drawn);
 		// What renderFrame records once it has drawn `drawn`.
@@ -402,7 +403,7 @@ test "the core reserves the camera and light blocks and one screen mesh, nothing
 	assert created.ok;
 	if (created.ok) {
 		let core: Renderer = created.value;
-		assert context.uniformsUsed == RENDERER_UNIFORM_LENGTH;
+		assert context.uniforms.used == RENDERER_UNIFORM_LENGTH;
 		assert (context.meshes.length as int32) == 1 && (context.materials.length as int32) == 0;
 		assert core.cameraBlock.offset == 0 && core.lightBlock.offset == core.cameraBlock.length;
 		assert core.sceneGlobals.length == 2;
@@ -469,8 +470,8 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	let atNaN: PixelArtRenderer = presetOver(notANumber, Program.Lit, 4.0);
 	const nanMaterial: int32 = (notANumber.materials.length as int32) - 1;
 	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
-	notANumber.uniforms[levelsAt] = 0.0 / 0.0;
-	assert notANumber.uniforms[levelsAt] != notANumber.uniforms[levelsAt];
+	notANumber.uniforms.values[levelsAt] = 0.0 / 0.0;
+	assert notANumber.uniforms.values[levelsAt] != notANumber.uniforms.values[levelsAt];
 	const nanItems: Vec<DrawItem> = [itemOnItsLayout(notANumber, nanMaterial)];
 	const nanLevels: Result<int32, PixelArtError> =
 		renderFrame(atNaN, notANumber, nanItems, camera, lights, drawn);
@@ -518,6 +519,22 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 			}
 		}
 	}
+}
+
+test "a material whose block was released refuses the frame by name" {
+	let context: DrawContext =
+		DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
+	let renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
+	const material: int32 = (context.materials.length as int32) - 1;
+	const block: UniformBlock = context.materials[material].uniforms;
+	assert releaseUniforms(context, block).ok;
+	const items: Vec<DrawItem> = [itemOnItsLayout(context, material)];
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const refused: Result<int32, PixelArtError> =
+		renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
+	assert !refused.ok && refused.error == PixelArtError.ReleasedUniforms;
+	assert renderer.core.generation == 0;
 }
 
 test "a billboard block too short to hold the ramp levels is refused by the core" {

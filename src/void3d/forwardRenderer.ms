@@ -47,6 +47,7 @@ export enum ForwardError {
 	VertexLayout,
 	MaterialTexture,
 	QuadMesh,
+	ReleasedUniforms,
 	TargetSize,
 }
 
@@ -100,6 +101,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.VertexLayout => ForwardError.VertexLayout,
 		RendererError.MaterialTexture => ForwardError.MaterialTexture,
 		RendererError.QuadMesh => ForwardError.QuadMesh,
+		RendererError.ReleasedUniforms => ForwardError.ReleasedUniforms,
 	};
 }
 
