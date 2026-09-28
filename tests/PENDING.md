@@ -115,6 +115,16 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | sdf-non-uniform-bound | T3 | Local-space box and `erf` shadow AA use the affine axes' geometric mean under non-uniform scale. P6 must bound that approximation with an independent coverage case; the legacy `xform/nonUniform` golden only pins its pixels and cannot prove the error | P6 | 2026-09-23 |
 | h2d-tilegroup | T1 | `TileGroup` does not exist | P5 | 2026-09-20 |
 
+## h2d oracle divergences
+
+`src/test/h2dOracleCheck.ms` reads a row `h2d:<case>` or `h2d:scale-<Mode>` here as a listed
+divergence from `tests/oracle/h2d.json` ([docs/TESTING.md](../docs/TESTING.md) "T3").
+
+| id | tier | reason | phase | date |
+|---|---|---|---|---|
+| h2d:scale-Zoom | T3 | void2d's `ScaleMode.Zoom` takes a design size and fills the window with it, cropping; h2d's `Zoom(level)` takes a zoom level and sizes the scene to `ceil(window / level)` (`h2d/Scene.hx` `checkResize`). Which one void2d means is an app-facing change, asked of the human 2026-09-28 | P5 | 2026-09-28 |
+| h2d:scale-AutoZoom | T3 | void2d centres the integer-zoomed design; h2d's `AutoZoom(minWidth, minHeight, integerScaling)` sizes the scene to `ceil(window / zoom)` from the top-left, with no offset. Asked with `h2d:scale-Zoom` | P5 | 2026-09-28 |
+
 ## Debug-build aborts
 
 Found at P0 and not previously recorded. The golden suite is captured from a `--release`
@@ -144,5 +154,4 @@ Guardrail 9 is "same pixels on every platform", and today it is measured on two 
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| oracle:h2d | T3 | Heaps compiled to JS, for `getBounds`, `localToGlobal`, mask intersection and scale modes | P5 | 2026-09-20 |
 | oracle:harfbuzz-full | T3 | the full shaping oracle | P6 | 2026-09-20 |

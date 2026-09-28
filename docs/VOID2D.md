@@ -1382,7 +1382,7 @@ build on it.
 - A fully static 100 000-node frame costs a column sweep, not a tree walk (the SCENE-SCALE.md budget).
 - One node can no longer sit under two parents (`node.ms:305-309`).
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `h2d-tilegroup`, `oracle:h2d`. Closed and deleted: the view id row, at step 2; the second-upload and dispose-pins rows, at step 4; the object-surface and two-parents rows, at step 6, with the span-of-interface style row, whose sortByZ step 6 deleted; the idle row, at step 9; the scroll golden row, at step 10.
+**Closes** (`tests/PENDING.md`, checked by the gate): `h2d-tilegroup`, `h2d:scale-Zoom`, `h2d:scale-AutoZoom`. Closed and deleted: the view id row, at step 2; the second-upload and dispose-pins rows, at step 4; the object-surface and two-parents rows, at step 6, with the span-of-interface style row, whose sortByZ step 6 deleted; the idle row, at step 9; the scroll golden row, at step 10; the h2d oracle row, at step 13.
 
 **Tests.** T1 carries this phase: mutate one node, assert exactly one dirty range of a known size; assert byte-identical re-records; assert zero instances written on a blink; assert the draw order rebuilds only on structural change. T3: the h2d oracle for `getBounds`, `localToGlobal` / `globalToLocal`, mask intersection and scale modes, with HEAPS.md's deliberate divergences as the seed PENDING list. T4: scroll and idle budgets gated on uploaded bytes, which are deterministic.
 

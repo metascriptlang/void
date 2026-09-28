@@ -231,7 +231,14 @@ for oracle in GraphemeBreakTest LineBreakTest; do
 		fail "UCD oracle $oracle: '${ucd}' — see out/gate-t0.log"
 	fi
 done
-skip "h2d semantics: not wired (P5) — tests/PENDING.md oracle:h2d"
+for oracle in "cases" "scale modes"; do
+	line=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E "^h2d oracle: [0-9]+/[0-9]+ $oracle agree" | tail -1)
+	if [ -n "$line" ]; then
+		pass "h2d semantics against Heaps: ${line#h2d oracle: }"
+	else
+		fail "h2d oracle: $oracle printed no verdict — see out/gate-t0.log"
+	fi
+done
 t3_report="$((passes - t3_pass_before)) wired, $((skips - t3_skip_before)) not"
 
 echo
