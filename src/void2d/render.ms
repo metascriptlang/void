@@ -1410,6 +1410,10 @@ function boundsRow(s: Scene, i: int32, ref out: Bounds): void {
 function shiftedBounds(s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped: boolean): void {
 	const lb = localBounds(s, i);
 	const world = s.worlds[i];
+	if (scoped && s.kinds[i] === DrawKind.Mask) {
+		maskedBounds(s, i, out, shift, lb, world);
+		return;
+	}
 	const vb = boxRenderBounds(s, i, world, lb);
 	if (vb.xMax > vb.xMin && vb.yMax > vb.yMin) {
 		const btl = vec2(vb.xMin, vb.yMin) * world;
@@ -1436,6 +1440,38 @@ function shiftedBounds(s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped:
 	}
 }
 
+function maskedBounds(
+	s: Scene, i: int32, ref out: Bounds, shift: Vec2, lb: Bounds, world: Transform2D,
+): void {
+	let inner: Vec2 = shift;
+	if (s.scrollScope(i)) {
+		const by: Vec2 = scopeShift(s, i);
+		inner = vec2(shift.x + by.x, shift.y + by.y);
+	}
+	let content: Bounds = emptyBounds();
+	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
+		const child: int32 = s.children[i][k];
+		if (s.orders[child].visible) { shiftedBounds(s, child, content, inner, true); }
+	}
+	const mtl = vec2(lb.xMin, lb.yMin) * world;
+	const mtr = vec2(lb.xMax, lb.yMin) * world;
+	const mbr = vec2(lb.xMax, lb.yMax) * world;
+	const mbl = vec2(lb.xMin, lb.yMax) * world;
+	const xMin: float32 = fmin4(mtl.x, mtr.x, mbr.x, mbl.x) + shift.x;
+	const yMin: float32 = fmin4(mtl.y, mtr.y, mbr.y, mbl.y) + shift.y;
+	const xMax: float32 = fmax4(mtl.x, mtr.x, mbr.x, mbl.x) + shift.x;
+	const yMax: float32 = fmax4(mtl.y, mtr.y, mbr.y, mbl.y) + shift.y;
+	if (content.xMin < xMin) { content.xMin = xMin; }
+	if (content.yMin < yMin) { content.yMin = yMin; }
+	if (content.xMax > xMax) { content.xMax = xMax; }
+	if (content.yMax > yMax) { content.yMax = yMax; }
+	if (content.xMax <= content.xMin || content.yMax <= content.yMin) { return; }
+	if (content.xMin < out.xMin) { out.xMin = content.xMin; }
+	if (content.yMin < out.yMin) { out.yMin = content.yMin; }
+	if (content.xMax > out.xMax) { out.xMax = content.xMax; }
+	if (content.yMax > out.yMax) { out.yMax = content.yMax; }
+}
+
 export function getBounds(this n: NodeRef, ref out: Bounds): void {
 	const s: Scene = n.scene;
 	const i: int32 = n.liveRow("getBounds");
@@ -1451,7 +1487,21 @@ export function getBounds(this n: NodeRef, ref out: Bounds): void {
 		up = s.parents[up];
 	}
 	if (top == s.root) { shift = vec2(shift.x + s.viewShift.x, shift.y + s.viewShift.y); }
+	out = emptyBounds();
 	shiftedBounds(s, i, out, shift, true);
+	if (out.xMax <= out.xMin || out.yMax <= out.yMin) {
+		const origin: Vec2 = vec2(0.0, 0.0) * ownWorld(s, i);
+		out = {
+			xMin: origin.x + shift.x, yMin: origin.y + shift.y,
+			xMax: origin.x + shift.x, yMax: origin.y + shift.y,
+		};
+	}
+}
+
+function ownWorld(s: Scene, i: int32): Transform2D {
+	const by: Vec2 = s.ownScroll(i);
+	if (by.x == 0.0 && by.y == 0.0) { return s.worlds[i]; }
+	return s.worlds[i] * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);
 }
 
 function shapedPayload(n: NodeRef, call: string): int32 {
