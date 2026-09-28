@@ -111,5 +111,7 @@ int32_t gpu3dDepthZeroToOne(void);
 int32_t gpu3dContextGeneration(void);
 // sokol's index of the frame being recorded, the one its update-once-per-frame rule counts in.
 uint32_t gpu3dFrameIndex(void);
+// How many buffers sokol's pool holds alive, whoever made them.
+int32_t gpu3dLiveBuffers(void);
 
 #endif

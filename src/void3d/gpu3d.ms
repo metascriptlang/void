@@ -35,6 +35,7 @@ import {
 	gpu3dDepthZeroToOne,
 	gpu3dContextGeneration,
 	gpu3dFrameIndex,
+	gpu3dLiveBuffers,
 } from "./gpu3d.h";
 
 // The functions that take arrays are declared here instead: an `extern` Span<T> parameter
@@ -260,6 +261,10 @@ export function contextGeneration(): int32 {
 
 export function frameIndex(): uint32 {
 	return gpu3dFrameIndex();
+}
+
+export function liveBuffers(): int32 {
+	return gpu3dLiveBuffers();
 }
 
 export function destroyShader(shader: uint32): void { gpu3dDestroyShader(shader); }

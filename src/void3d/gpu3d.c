@@ -470,6 +470,10 @@ uint32_t gpu3dFrameIndex(void) {
 	return sg_query_stats().prev_frame.frame_index + 1;
 }
 
+int32_t gpu3dLiveBuffers(void) {
+	return (int32_t)sg_query_stats().total.buffers.alive;
+}
+
 int32_t gpu3dContextGeneration(void) {
 #if defined(__ANDROID__)
 	return voidGpuGeneration();
