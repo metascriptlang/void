@@ -1,6 +1,6 @@
-import { NodeRef, GraphicsMesh, Scene } from "../void2d/node";
+import { NodeRef, GraphicsMesh, Scene, clear } from "../void2d/node";
 import { scene } from "../void2d/scene";
-import { clear, fillTriangle, fillRect, fillConvex, fillPolygon, fillCircle, fillEllipse, fillPie, fillRing, fillRoundedRect, fillTexRect, fillTexPolygon, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier } from "../void2d/graphics";
+import { fillTriangle, fillRect, fillConvex, fillPolygon, fillCircle, fillEllipse, fillPie, fillRing, fillRoundedRect, fillTexRect, fillTexPolygon, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier } from "../void2d/graphics";
 import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
 import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV } from "./helpers";
 

@@ -278,7 +278,10 @@ FRAME_PATH="scene:tick scene:present scene:presentAt render:drawOrder render:dra
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox
 	render:emitRunBox render:emitRunLine render:emitDecorations render:rowEnd render:xOnRow
 	render:selectedRow render:emitSelection render:emitCaret label84ext:cursorShown
-	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex text76ayout:clusterEnd"
+	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex text76ayout:clusterEnd
+	render:emitTiles render:cellMatrix render:tileBounds render:drawnEnd render:tileTint
+	render:retilable render:queueRetile render:retileRow node:settleTiles draw:beginSprites
+	draw:appendSprite draw:rewriteSprite display76ist:putSpriteInstance"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
 	label84ext:lineDecorations

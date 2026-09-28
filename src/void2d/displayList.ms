@@ -746,8 +746,20 @@ export function pushSpriteInstance(
 	u0: float32, v0: float32, u1: float32, v1: float32,
 	color: Color,
 ): void {
-	const base: int32 = spriteSlot() * REC_SPRITE_FLOATS;
-	growTo(list.spriteInstances, base + REC_SPRITE_FLOATS);
+	const at: int32 = spriteSlot();
+	growTo(list.spriteInstances, (at + 1) * REC_SPRITE_FLOATS);
+	putSpriteInstance(at, a, b, c, d, tx, ty, w, h, u0, v0, u1, v1, color);
+	list.spriteInstanceTotal = list.spriteInstanceTotal + 1;
+}
+
+export function putSpriteInstance(
+	index: int32,
+	a: float32, b: float32, c: float32, d: float32,
+	tx: float32, ty: float32, w: float32, h: float32,
+	u0: float32, v0: float32, u1: float32, v1: float32,
+	color: Color,
+): void {
+	const base: int32 = index * REC_SPRITE_FLOATS;
 	list.spriteInstances[base + REC_SPRITE_AFFINE] = a;
 	list.spriteInstances[base + REC_SPRITE_AFFINE + 1] = b;
 	list.spriteInstances[base + REC_SPRITE_AFFINE + 2] = c;
@@ -764,7 +776,6 @@ export function pushSpriteInstance(
 	list.spriteInstances[base + REC_SPRITE_COLOR + 1] = color.g;
 	list.spriteInstances[base + REC_SPRITE_COLOR + 2] = color.b;
 	list.spriteInstances[base + REC_SPRITE_COLOR + 3] = color.a;
-	list.spriteInstanceTotal = list.spriteInstanceTotal + 1;
 }
 
 export function uiInstanceCount(): int32 { return list.uiInstanceTotal; }

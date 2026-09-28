@@ -43,7 +43,19 @@ import {
 } from "./imageStyle";
 import { DisplayList } from "./displayList";
 
-export enum DrawKind { Group, Rect, Sprite, Label, Anim, Graphics, Mask, ScaleGrid, Underline, Selection }
+export enum DrawKind {
+	Group,
+	Rect,
+	Sprite,
+	Label,
+	Anim,
+	Graphics,
+	Mask,
+	ScaleGrid,
+	Underline,
+	Selection,
+	TileGroup,
+}
 
 export enum Changed {
 	Local,
@@ -63,6 +75,7 @@ const LAST_GENERATION: int32 = 2147483647;
 const NO_COLOR_MATRIX: float32[] = [];
 const NO_FRAMES: Tile[] = [];
 export const NO_FRAME: int32 = -1;
+export const ALL_TILES: int32 = 2147483647;
 
 export struct NodeId {
 	index: int32;
@@ -147,6 +160,24 @@ export interface GraphicsMesh {
 	stale: boolean;
 }
 
+export struct TileCell {
+	x: float32;
+	y: float32;
+	tile: Tile;
+	color: Color;
+	scaleX: float32;
+	scaleY: float32;
+	rotation: float32;
+}
+
+export struct TileGroupRow {
+	first: int32;
+	count: int32;
+	boundsStale: boolean;
+	reshaped: boolean;
+	retileSerial: int32;
+}
+
 export interface Scene {
 	generations: Vec<int32>;
 	free: Vec<int32>;
@@ -189,6 +220,12 @@ export interface Scene {
 	freeAnims: Vec<int32>;
 	meshes: Vec<GraphicsMesh>;
 	freeMeshes: Vec<int32>;
+	tileGroups: Vec<TileGroupRow>;
+	tileCells: Vec<Vec<TileCell>>;
+	tileEdits: Vec<Vec<int32>>;
+	freeTileGroups: Vec<int32>;
+	retile: Vec<int32>;
+	retiled: int32;
 	scrolls: Vec<Scroll2D>;
 	freeScrolls: Vec<int32>;
 	stack: Vec<int32>;
@@ -374,6 +411,7 @@ export function clearChanges(this s: Scene): void {
 	while ((s.dirty.length as int32) > 0) {
 		const i: int32 = s.dirty.pop();
 		s.changed[i] = 0 as BitSet<Changed>;
+		if (s.kinds[i] === DrawKind.TileGroup) { s.settleTiles(i); }
 	}
 	s.structureChanged = false;
 }
@@ -689,6 +727,155 @@ export function graphics(this s: Scene): NodeRef {
 
 export function mask(this s: Scene, w: float32, h: float32): NodeRef {
 	return s.refOf(s.sized(DrawKind.Mask, NO_PAYLOAD, w, h));
+}
+
+export function tileGroup(this s: Scene): NodeRef {
+	const row: TileGroupRow = {
+		first: 0, count: ALL_TILES, boundsStale: false, reshaped: true, retileSerial: -1,
+	};
+	let payload: int32 = s.tileGroups.length as int32;
+	if ((s.freeTileGroups.length as int32) > 0) {
+		payload = s.freeTileGroups.pop();
+		s.tileGroups[payload] = row;
+	} else {
+		s.tileGroups.push(row);
+		s.tileCells.push(new Array(0));
+		s.tileEdits.push(new Array(0));
+	}
+	return s.refOf(s.newRow(DrawKind.TileGroup, payload));
+}
+
+function reshape(this s: Scene, i: int32): void {
+	const p: int32 = s.payloads[i];
+	s.tileGroups[p].boundsStale = true;
+	s.tileGroups[p].reshaped = true;
+	s.markChanged(i, Changed.Content);
+}
+
+function sameShape(a: TileCell, b: TileCell): boolean {
+	return a.x == b.x && a.y == b.y && a.scaleX == b.scaleX && a.scaleY == b.scaleY &&
+		a.rotation == b.rotation && a.tile.view == b.tile.view && a.tile.w == b.tile.w &&
+		a.tile.h == b.tile.h && a.tile.dx == b.tile.dx && a.tile.dy == b.tile.dy;
+}
+
+export function settleTiles(this s: Scene, i: int32): void {
+	const p: int32 = s.payloads[i];
+	s.tileGroups[p].reshaped = false;
+	while ((s.tileEdits[p].length as int32) > 0) { s.tileEdits[p].pop(); }
+}
+
+function tileGroupRow(n: NodeRef, call: string): int32 {
+	const i: int32 = n.liveRow(call);
+	requireKind(n, i, DrawKind.TileGroup, call, "tiles");
+	return i;
+}
+
+function putTiles(this s: Scene, i: int32, cells: Span<TileCell>): void {
+	const p: int32 = s.payloads[i];
+	const have: int32 = s.tileCells[p].length as int32;
+	const want: int32 = cells.length as int32;
+	let same: boolean = have == want;
+	for (let k: int32 = 0; k < want && same; k++) { same = s.tileCells[p][k] == cells[k]; }
+	if (same) { return; }
+	for (let k: int32 = 0; k < want; k++) {
+		if (k < have) {
+			s.tileCells[p][k] = cells[k];
+		} else {
+			s.tileCells[p].push(cells[k]);
+		}
+	}
+	while ((s.tileCells[p].length as int32) > want) { s.tileCells[p].pop(); }
+	s.reshape(i);
+}
+
+export function setTiles(this n: NodeRef, cells: Span<TileCell>): NodeRef {
+	n.scene.putTiles(tileGroupRow(n, "setTiles"), cells);
+	return n;
+}
+
+function pushTiles(this s: Scene, i: int32, cells: Span<TileCell>): void {
+	if ((cells.length as int32) == 0) { return; }
+	const p: int32 = s.payloads[i];
+	for (let k: int32 = 0; k < (cells.length as int32); k++) { s.tileCells[p].push(cells[k]); }
+	s.reshape(i);
+}
+
+export function appendTiles(this n: NodeRef, cells: Span<TileCell>): NodeRef {
+	n.scene.pushTiles(tileGroupRow(n, "appendTiles"), cells);
+	return n;
+}
+
+function putTile(this s: Scene, i: int32, index: int32, cell: TileCell): void {
+	const p: int32 = s.payloads[i];
+	const count: int32 = s.tileCells[p].length as int32;
+	if (index < 0 || index >= count) {
+		console.log(`void2d: setTile(${index}) on tile group ${i}, which holds ${count} tiles`);
+		unreachable;
+	}
+	if (s.tileCells[p][index] == cell) { return; }
+	const kept: boolean = sameShape(s.tileCells[p][index], cell);
+	s.tileCells[p][index] = cell;
+	const edits: int32 = s.tileEdits[p].length as int32;
+	if (!kept || s.tileGroups[p].reshaped || edits >= Math.max(16, count / 8)) {
+		s.reshape(i);
+		return;
+	}
+	s.tileEdits[p].push(index);
+	s.markChanged(i, Changed.Content);
+}
+
+export function setTile(this n: NodeRef, index: int32, cell: TileCell): NodeRef {
+	n.scene.putTile(tileGroupRow(n, "setTile"), index, cell);
+	return n;
+}
+
+export function setRange(this n: NodeRef, first: int32, count: int32): NodeRef {
+	const i: int32 = tileGroupRow(n, "setRange");
+	if (first < 0 || count < 0) {
+		console.log(
+			`void2d: setRange(${first}, ${count}) on tile group ${i}: a range starts at tile 0 ` +
+			"or later and holds 0 tiles or more",
+		);
+		unreachable;
+	}
+	const s: Scene = n.scene;
+	const p: int32 = s.payloads[i];
+	const row: TileGroupRow = s.tileGroups[p];
+	if (row.first == first && row.count == count) { return n; }
+	s.tileGroups[p] = { ...row, first: first, count: count, reshaped: true };
+	s.markChanged(i, Changed.Content);
+	return n;
+}
+
+export function count(this n: NodeRef): int32 {
+	const i: int32 = tileGroupRow(n, "count");
+	return n.scene.tileCells[n.scene.payloads[i]].length as int32;
+}
+
+export function clear(this n: NodeRef): NodeRef {
+	const i: int32 = n.liveRow("clear");
+	const s: Scene = n.scene;
+	const kind: DrawKind = s.kinds[i];
+	if (kind !== DrawKind.Graphics && kind !== DrawKind.TileGroup) {
+		console.log(
+			`void2d: clear asked of a ${kind.toString()} node; only a Graphics or a TileGroup ` +
+			"can be cleared",
+		);
+		unreachable;
+	}
+	const p: int32 = s.payloads[i];
+	if (kind === DrawKind.TileGroup) {
+		if ((s.tileCells[p].length as int32) == 0) { return n; }
+		s.tileCells[p] = new Array(0);
+		s.reshape(i);
+		return n;
+	}
+	s.meshes[p].mesh = [];
+	s.meshes[p].records = [];
+	s.meshes[p].view = 0;
+	s.meshes[p].stale = true;
+	s.markChanged(i, Changed.Content);
+	return n;
 }
 
 export function scaleGrid(
@@ -1249,6 +1436,11 @@ function releasePayload(this s: Scene, i: int32): void {
 		},
 		DrawKind.Mask => {
 			if (payload != NO_PAYLOAD) { s.freeScrolls.push(payload); }
+		},
+		DrawKind.TileGroup => {
+			s.tileCells[payload] = new Array(0);
+			s.tileEdits[payload] = new Array(0);
+			s.freeTileGroups.push(payload);
 		},
 		DrawKind.Group | DrawKind.ScaleGrid => {},
 		DrawKind.Underline | DrawKind.Selection => {},

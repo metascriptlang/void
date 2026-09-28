@@ -173,15 +173,6 @@ function meshOf(g: NodeRef, call: string): GraphicsMesh {
 	return g.scene.meshes[g.scene.payloads[i]];
 }
 
-export function clear(this g: NodeRef): NodeRef {
-	const target: GraphicsMesh = meshOf(g, "clear");
-	target.mesh = [];
-	target.records = [];
-	target.view = 0;
-	target.stale = true;
-	return g;
-}
-
 export function fillTriangle(this g: NodeRef, a: Vec2, b: Vec2, c: Vec2, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTriangle");
 	tri(target, a, b, c, color);

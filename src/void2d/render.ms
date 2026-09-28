@@ -2,7 +2,8 @@
 // getBounds. Extracted from node.ms so each file has one responsibility.
 
 import {
-	Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, NO_SLOT, NO_NODE,
+	Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
+	NO_NODE,
 } from "./node";
 import {
 	DisplayList,
@@ -24,6 +25,9 @@ import {
 import {
 	fillQuad,
 	drawSpriteAffine,
+	beginSprites,
+	appendSprite,
+	rewriteSprite,
 	spriteInstancingAvailable,
 	drawUiInstance,
 	uiInstancingAvailable,
@@ -154,6 +158,42 @@ function tileOffsetY(t: Tile, height: float32): float32 {
 	return t.h != 0.0 ? t.dy * height / t.h : t.dy;
 }
 
+function cellMatrix(c: TileCell): Transform2D {
+	if (c.rotation == 0.0) {
+		return { a: c.scaleX, b: 0.0, c: 0.0, d: c.scaleY, tx: c.x, ty: c.y };
+	}
+	return trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
+}
+
+function tileBounds(s: Scene, i: int32): void {
+	const p: int32 = s.payloads[i];
+	if (!s.tileGroups[p].boundsStale) { return; }
+	const cells: Span<TileCell> = s.tileCells[p];
+	let xMin: float32 = 1e30;
+	let yMin: float32 = 1e30;
+	let xMax: float32 = -1e30;
+	let yMax: float32 = -1e30;
+	for (let k: int32 = 0; k < (cells.length as int32); k++) {
+		const m: Transform2D = cellMatrix(cells[k]);
+		const t: Tile = cells[k].tile;
+		const a = vec2(t.dx, t.dy) * m;
+		const b = vec2(t.dx + t.w, t.dy) * m;
+		const c = vec2(t.dx + t.w, t.dy + t.h) * m;
+		const d = vec2(t.dx, t.dy + t.h) * m;
+		const x0: float32 = fmin4(a.x, b.x, c.x, d.x);
+		const y0: float32 = fmin4(a.y, b.y, c.y, d.y);
+		const x1: float32 = fmax4(a.x, b.x, c.x, d.x);
+		const y1: float32 = fmax4(a.y, b.y, c.y, d.y);
+		if (x0 < xMin) { xMin = x0; }
+		if (y0 < yMin) { yMin = y0; }
+		if (x1 > xMax) { xMax = x1; }
+		if (y1 > yMax) { yMax = y1; }
+	}
+	if (xMin > xMax) { xMin = 0.0; xMax = 0.0; yMin = 0.0; yMax = 0.0; }
+	s.bounds[i] = { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
+	s.tileGroups[p].boundsStale = false;
+}
+
 
 function localBounds(s: Scene, i: int32): Bounds {
 	const kind: DrawKind = s.kinds[i];
@@ -174,6 +214,10 @@ function localBounds(s: Scene, i: int32): Bounds {
 			xMin: s.bounds[i].xMin, yMin: s.bounds[i].yMin,
 			xMax: labelTexts[payload].rowsXMax, yMax: s.bounds[i].yMax,
 		};
+	}
+	if (kind === DrawKind.TileGroup) {
+		tileBounds(s, i);
+		return s.bounds[i];
 	}
 	if (kind === DrawKind.Graphics || kind === DrawKind.Label) {
 		return s.bounds[i];
@@ -640,6 +684,46 @@ function emitStyledImage(
 	return true;
 }
 
+function drawnEnd(s: Scene, p: int32): int32 {
+	const total: int32 = s.tileCells[p].length as int32;
+	const first: int32 = s.tileGroups[p].first;
+	const window: int32 = s.tileGroups[p].count;
+	return window >= total - first ? total : first + window;
+}
+
+function tileTint(c: Color, col: Color): Color {
+	return rgba(c.r * col.r, c.g * col.g, c.b * col.b, c.a * col.a);
+}
+
+function emitTiles(
+	s: Scene, i: int32, world: Transform2D, col: Color, blend: BlendMode, instanced: boolean,
+): void {
+	const p: int32 = s.payloads[i];
+	const cells: Span<TileCell> = s.tileCells[p];
+	const end: int32 = drawnEnd(s, p);
+	let open: boolean = false;
+	let view: uint32 = 0;
+	for (let k: int32 = s.tileGroups[p].first; k < end; k++) {
+		const t: Tile = cells[k].tile;
+		const m: Transform2D = world * cellMatrix(cells[k]);
+		const tint: Color = tileTint(cells[k].color, col);
+		const origin = vec2(t.dx, t.dy) * m;
+		if (instanced) {
+			if (!open || t.view != view) {
+				beginSprites(t.view, blend);
+				open = true;
+				view = t.view;
+			}
+			appendSprite(m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
+		} else {
+			imageQuad(
+				t, origin, vec2(t.dx + t.w, t.dy) * m, vec2(t.dx + t.w, t.dy + t.h) * m,
+				vec2(t.dx, t.dy + t.h) * m, tint, blend,
+			);
+		}
+	}
+}
+
 function emitNode(
 	s: Scene, i: int32, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
@@ -852,6 +936,9 @@ function emitNode(
 		},
 		DrawKind.ScaleGrid => {
 			renderScaleGrid(s, i, world, col);
+		},
+		DrawKind.TileGroup => {
+			emitTiles(s, i, world, col, blend, instanced);
 		},
 		DrawKind.Group | DrawKind.Mask => {},
 	}
@@ -1226,6 +1313,51 @@ function markRows(s: Scene, from: int32, to: int32, state: PaintState): void {
 	for (let p: int32 = from; p < to; p++) { markPaintState(s.order[p], state); }
 }
 
+function retilable(s: Scene, i: int32, redrawn: boolean): boolean {
+	if (s.kinds[i] !== DrawKind.TileGroup || redrawn) { return false; }
+	if (s.changed[i] != (0 as BitSet<Changed>).incl(Changed.Content)) { return false; }
+	const p: int32 = s.payloads[i];
+	if (s.tileGroups[p].reshaped) { return false; }
+	const start: PaintIndex = paintStartOf(i);
+	const end: PaintIndex = paintEndOf(i);
+	if (end.vertices != start.vertices || end.uiInstances != start.uiInstances) { return false; }
+	const drawn: int32 = Math.max(0, drawnEnd(s, p) - s.tileGroups[p].first);
+	return end.spriteInstances - start.spriteInstances == drawn;
+}
+
+function queueRetile(s: Scene, i: int32): void {
+	const p: int32 = s.payloads[i];
+	if (s.tileGroups[p].retileSerial == s.patchSerial) { return; }
+	s.tileGroups[p].retileSerial = s.patchSerial;
+	s.retile.push(i);
+}
+
+function retileRow(s: Scene, i: int32): void {
+	const p: int32 = s.payloads[i];
+	const start: PaintIndex = paintStartOf(i);
+	const world: Transform2D = s.worlds[i];
+	const color: Color = s.paints[i].color;
+	const col: Color = rgba(color.r, color.g, color.b, color.a * s.alphas[i]);
+	const first: int32 = s.tileGroups[p].first;
+	const end: int32 = drawnEnd(s, p);
+	const cells: Span<TileCell> = s.tileCells[p];
+	for (let e: int32 = 0; e < (s.tileEdits[p].length as int32); e++) {
+		const k: int32 = s.tileEdits[p][e];
+		if (k < first || k >= end) { continue; }
+		const at: PaintIndex = { ...start, spriteInstances: start.spriteInstances + (k - first) };
+		const past: PaintIndex = { ...at, spriteInstances: at.spriteInstances + 1 };
+		const t: Tile = cells[k].tile;
+		const m: Transform2D = world * cellMatrix(cells[k]);
+		const origin = vec2(t.dx, t.dy) * m;
+		saveRange(at, past);
+		rewriteSprite(
+			at.spriteInstances, m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1,
+			tileTint(cells[k].color, col),
+		);
+		noteRange(at, past);
+	}
+}
+
 function descend(s: Scene, d: int32): void {
 	const top: int32 = s.slots[d];
 	if (top == NO_SLOT) { return; }
@@ -1249,13 +1381,18 @@ function descend(s: Scene, d: int32): void {
 			const state: PaintState = paintStateOf(i);
 			if (state == PaintState.InTarget) { s.scanNeeded = true; }
 			if (moved && s.kinds[i] === DrawKind.Mask) { s.scanNeeded = true; }
+			const faded: boolean = alpha != s.alphas[i];
 			s.worlds[i] = world;
 			s.alphas[i] = alpha;
 			if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
 			if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
 			if (state == PaintState.Painted && s.queued[i] != s.patchSerial) {
-				s.queued[i] = s.patchSerial;
-				s.repaint.push(i);
+				if (retilable(s, i, moved || faded)) {
+					queueRetile(s, i);
+				} else {
+					s.queued[i] = s.patchSerial;
+					s.repaint.push(i);
+				}
 			}
 			p = p + 1;
 		}
@@ -1265,6 +1402,7 @@ function descend(s: Scene, d: int32): void {
 export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
 	s.patchSerial = s.patchSerial + 1;
 	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
+	while ((s.retile.length as int32) > 0) { s.retile.pop(); }
 	s.scanNeeded = s.structureChanged;
 	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) { descend(s, s.dirty[k]); }
 	if (s.viewShift != s.culledShift) { panOrder(s, vw, vh); }
@@ -1281,6 +1419,13 @@ export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
 		unlimitWrites();
 		if (!kept) { return false; }
 		noteRange(start, end);
+	}
+	for (let k: int32 = 0; k < (s.retile.length as int32); k++) {
+		const i: int32 = s.retile[k];
+		if (s.queued[i] != s.patchSerial) {
+			retileRow(s, i);
+			s.retiled = s.retiled + 1;
+		}
 	}
 	return true;
 }

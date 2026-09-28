@@ -43,7 +43,7 @@ import {
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
-	pushSpriteInstance, recordSpriteDraw,
+	pushSpriteInstance, putSpriteInstance, recordSpriteDraw,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
@@ -1001,7 +1001,39 @@ export function drawSpriteAffine(
 	u0: float32, v0: float32, u1: float32, v1: float32,
 	color: Color,
 ): void {
+	beginSprites(view, blend);
+	appendSprite(world, originX, originY, sizeX, sizeY, u0, v0, u1, v1, color);
+}
+
+export function rewriteSprite(
+	index: int32,
+	world: Transform2D,
+	originX: float32,
+	originY: float32,
+	sizeX: float32,
+	sizeY: float32,
+	u0: float32, v0: float32, u1: float32, v1: float32,
+	color: Color,
+): void {
+	putSpriteInstance(
+		index, world.a, world.b, world.c, world.d, originX, originY, sizeX, sizeY,
+		u0, v0, u1, v1, color,
+	);
+}
+
+export function beginSprites(view: uint32, blend: BlendMode): void {
 	useRun(Pipeline.Sprite, view == 0 ? void2dWhiteView() : view, blend);
+}
+
+export function appendSprite(
+	world: Transform2D,
+	originX: float32,
+	originY: float32,
+	sizeX: float32,
+	sizeY: float32,
+	u0: float32, v0: float32, u1: float32, v1: float32,
+	color: Color,
+): void {
 	pushSpriteInstance(
 		world.a, world.b, world.c, world.d,
 		originX - originXOffset(), originY - originYOffset(), sizeX, sizeY,

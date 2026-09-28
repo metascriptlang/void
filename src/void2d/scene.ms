@@ -39,7 +39,8 @@ export function scene(clear: Color): Scene {
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
 		maskEnds: [], maskScopes: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
 		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
-		anims: [], freeAnims: [], meshes: [], freeMeshes: [], scrolls: [], freeScrolls: [],
+		anims: [], freeAnims: [], meshes: [], freeMeshes: [], tileGroups: [], tileCells: [],
+		tileEdits: [], freeTileGroups: [], retile: [], retiled: 0, scrolls: [], freeScrolls: [],
 		stack: [], root: NO_NODE,
 		list: list, spare: twinList(list.id),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
@@ -166,6 +167,7 @@ export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): vo
 	// Before recording begins, never during the walk: begin2d captures this default in the
 	// first run's sampler state.
 	setSceneSmooth(s.defaultSmooth);
+	s.retiled = 0;
 	useList(s.list);
 	openBracket(wf, hf, dpi);
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
