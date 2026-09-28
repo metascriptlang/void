@@ -34,6 +34,7 @@ import {
 	gpu3dOriginTopLeft,
 	gpu3dDepthZeroToOne,
 	gpu3dContextGeneration,
+	gpu3dFrameIndex,
 } from "./gpu3d.h";
 
 // The functions that take arrays are declared here instead: an `extern` Span<T> parameter
@@ -255,6 +256,10 @@ export function depthZeroToOne(): boolean {
 // bridge ever loses its context.
 export function contextGeneration(): int32 {
 	return gpu3dContextGeneration();
+}
+
+export function frameIndex(): uint32 {
+	return gpu3dFrameIndex();
 }
 
 export function destroyShader(shader: uint32): void { gpu3dDestroyShader(shader); }

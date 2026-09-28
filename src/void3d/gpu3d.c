@@ -464,6 +464,12 @@ int32_t gpu3dDepthZeroToOne(void) {
 	return backend == SG_BACKEND_GLCORE || backend == SG_BACKEND_GLES3 ? 0 : 1;
 }
 
+// sg_commit files the frame it ends as prev_frame and then counts on, and sg_setup starts at 1
+// (sokol_gfx.h sg_commit, _sg_update_stats), so this is the index sg_update_buffer checks.
+uint32_t gpu3dFrameIndex(void) {
+	return sg_query_stats().prev_frame.frame_index + 1;
+}
+
 int32_t gpu3dContextGeneration(void) {
 #if defined(__ANDROID__)
 	return voidGpuGeneration();

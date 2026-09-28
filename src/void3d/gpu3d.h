@@ -109,5 +109,7 @@ int32_t gpu3dDepthZeroToOne(void);
 // Changes when the host rebuilt a lost GPU context (only the Android bridge does); every
 // handle made before is stale then.
 int32_t gpu3dContextGeneration(void);
+// sokol's index of the frame being recorded, the one its update-once-per-frame rule counts in.
+uint32_t gpu3dFrameIndex(void);
 
 #endif

@@ -20,6 +20,7 @@ import {
 	updateBuffer,
 	destroyBuffer,
 	contextGeneration,
+	frameIndex,
 } from "./gpu3d";
 import {
 	GPU3D_BINDING_VERTEX_BUFFER,
@@ -57,6 +58,8 @@ export struct GpuMesh {
 	instanceCount: int32;
 	instanceCapacity: int32;
 	generation: int32;
+	// sokol's frame of the last write into a stream's buffer, 0 before one (frameIndex).
+	writtenFrame: uint32;
 }
 
 export function isIndexed(this mesh: GpuMesh): boolean {
@@ -215,6 +218,7 @@ export function meshFor(
 		instanceCount: 1,
 		instanceCapacity: 0,
 		generation: generation,
+		writtenFrame: 0,
 	};
 }
 
@@ -242,6 +246,7 @@ export function fullscreen(
 		instanceCount: 1,
 		instanceCapacity: 0,
 		generation: EXTERNAL_GENERATION,
+		writtenFrame: 0,
 	};
 }
 
@@ -262,6 +267,7 @@ function quadMesh(
 		instanceCount: instanceCount,
 		instanceCapacity: instanceCapacity,
 		generation: generation,
+		writtenFrame: 0,
 	};
 }
 
@@ -361,6 +367,7 @@ export enum StreamError {
 	OverCapacity,
 	ShortInstances,
 	BufferRefused,
+	WrittenThisFrame,
 }
 
 export function isStream(this mesh: GpuMesh): boolean {
@@ -403,7 +410,8 @@ export function addStreamMesh(
 }
 
 // A stream whose handles are from an older context is made again first: the write that follows
-// a context loss is also its rebuild.
+// a context loss is also its rebuild. sokol takes one update per buffer per frame and panics on a
+// second in a debug build, so a second write in one frame is refused here instead.
 export function writeStream(
 	ref context: DrawContext,
 	id: MeshId,
@@ -421,11 +429,20 @@ export function writeStream(
 	if (context.meshes[index].isStale(contextGeneration())) {
 		const _remade: int32 = try remakeStream(context, index);
 	}
-	if (count > 0 && !updateBuffer(context.meshes[index].instanceBuffer, instances[0..length])) {
+	if (count == 0) {
+		context.meshes[index].instanceCount = 0;
+		return Result.ok(0);
+	}
+	const frame: uint32 = frameIndex();
+	if (context.meshes[index].writtenFrame == frame) {
+		return Result.err(StreamError.WrittenThisFrame);
+	}
+	if (!updateBuffer(context.meshes[index].instanceBuffer, instances[0..length])) {
 		context.meshes[index].instanceCount = 0;
 		return Result.err(StreamError.BufferRefused);
 	}
 	context.meshes[index].instanceCount = count;
+	context.meshes[index].writtenFrame = frame;
 	return Result.ok(count);
 }
 
@@ -482,6 +499,7 @@ const VACANT_MESH: GpuMesh = {
 	instanceCount: 0,
 	instanceCapacity: 0,
 	generation: 0,
+	writtenFrame: 0,
 };
 
 function doom(ref context: DrawContext, buffer: uint32, generation: int32): void {
