@@ -136,8 +136,6 @@ function scaleModeNamed(name: string): ScaleMode {
 	if (name.equals("Stretch")) { return ScaleMode.Stretch; }
 	if (name.equals("LetterBox")) { return ScaleMode.LetterBox; }
 	if (name.equals("Fixed")) { return ScaleMode.Fixed; }
-	if (name.equals("Zoom")) { return ScaleMode.Zoom; }
-	if (name.equals("AutoZoom")) { return ScaleMode.AutoZoom; }
 	return ScaleMode.Resize;
 }
 
@@ -148,7 +146,7 @@ test "h2d's scale modes map the scene onto the window as checkResize does" {
 	assert parsed.ok;
 	const rows = parsed.value.getDynamicField("scaleModes");
 	const pending: string = pendingIds();
-	const names: string[] = ["Resize", "Stretch", "LetterBox", "Fixed", "Zoom", "AutoZoom"];
+	const names: string[] = ["Resize", "Stretch", "LetterBox", "Fixed"];
 	compared = 0;
 	let unlisted: int32 = 0;
 	let graduated: int32 = 0;

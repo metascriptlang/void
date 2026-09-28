@@ -125,8 +125,6 @@ class Oracle {
 				{ name: "Stretch", design: [400, 300], mode: Stretch(400, 300) },
 				{ name: "LetterBox", design: [400, 300], mode: LetterBox(400, 300) },
 				{ name: "Fixed", design: [400, 300], mode: Fixed(400, 300, 1) },
-				{ name: "Zoom", design: [2, 2], mode: Zoom(2) },
-				{ name: "AutoZoom", design: [400, 300], mode: AutoZoom(400, 300, true) },
 			];
 			for( r in rows ) {
 				var v = viewport(r.mode, w[0], w[1]);

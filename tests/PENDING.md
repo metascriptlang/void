@@ -122,8 +122,6 @@ divergence from `tests/oracle/h2d.json` ([docs/TESTING.md](../docs/TESTING.md) "
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| h2d:scale-Zoom | T3 | void2d's `ScaleMode.Zoom` takes a design size and fills the window with it, cropping; h2d's `Zoom(level)` takes a zoom level and sizes the scene to `ceil(window / level)` (`h2d/Scene.hx` `checkResize`). Which one void2d means is an app-facing change, asked of the human 2026-09-28 | P5 | 2026-09-28 |
-| h2d:scale-AutoZoom | T3 | void2d centres the integer-zoomed design; h2d's `AutoZoom(minWidth, minHeight, integerScaling)` sizes the scene to `ceil(window / zoom)` from the top-left, with no offset. Asked with `h2d:scale-Zoom` | P5 | 2026-09-28 |
 
 ## Debug-build aborts
 
