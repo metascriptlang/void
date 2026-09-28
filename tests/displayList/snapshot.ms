@@ -524,6 +524,45 @@ test "T1 active-clip culling drops rows outside a Mask" {
 	assert uiInstanceCount() == 4;
 }
 
+function disjointMaskScene(): NodeRef {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const outer = s.mask(100.0, 60.0).at(0.0, 0.0);
+	const inner = s.mask(40.0, 40.0).at(150.0, 10.0);
+	inner.addChild(s.rect(100.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-60.0, 0.0));
+	outer.addChild(inner);
+	s.add(outer);
+	return s.refOf(s.root);
+}
+
+function leftMaskScene(): NodeRef {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(100.0, 40.0).at(-200.0, 10.0);
+	m.addChild(s.rect(200.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)).at(50.0, 0.0));
+	s.add(m);
+	return s.refOf(s.root);
+}
+
+function clipWidthOfDraws(): float32 {
+	let width: float32 = -1.0;
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		if (commandField(i, CMD_INSTANCE_COUNT) > 0.0) { width = commandField(i, CMD_CLIP_W); }
+	}
+	return width;
+}
+
+test "T1 a Mask nested outside its parent's clip draws none of its children" {
+	record(disjointMaskScene(), 256.0, 150.0, 1.0);
+	assert uiInstanceCount() == 0;
+}
+
+test "T1 a Mask left of the viewport keeps its clip, so what it reaches on screen is cut" {
+	record(leftMaskScene(), 256.0, 150.0, 1.0);
+	assert uiInstanceCount() == 1;
+	const width: float32 = clipWidthOfDraws();
+	console.log(`the left Mask's draw carries a clip ${width} wide`);
+	assert width == 100.0;
+}
+
 test "T1 snapshot: dashed box style reaches the per-corner and per-side instance lanes" {
 	assert snapshot("boxStyle", record(boxStyleScene(), 128.0, 64.0, 1.0));
 }

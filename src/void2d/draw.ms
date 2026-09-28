@@ -515,12 +515,10 @@ function maxFour(a: float32, b: float32, c: float32, d: float32): float32 {
 }
 
 function clipOf(c: MaskClip): Clip {
-	let ix: float32 = c.x0;
-	let iy: float32 = c.y0;
+	const ix: float32 = c.x0;
+	const iy: float32 = c.y0;
 	let iw: float32 = c.x1 - c.x0;
 	let ih: float32 = c.y1 - c.y0;
-	if (ix < 0.0) { iw = iw + ix; ix = 0.0; }
-	if (iy < 0.0) { ih = ih + iy; iy = 0.0; }
 	if (iw < 0.0) { iw = 0.0; }
 	if (ih < 0.0) { ih = 0.0; }
 	const uShift: float32 = originX * c.ux + originY * c.uy;
@@ -541,6 +539,7 @@ function applyClip(d: int32): void {
 export function clipIntersectsQuad(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 	if (clipDepth <= 0) { return true; }
 	const c: MaskClip = clipStack[clipDepth - 1];
+	if (c.x1 <= c.x0 || c.y1 <= c.y0) { return false; }
 	if (maxFour(tl.x, tr.x, br.x, bl.x) <= c.x0
 		|| minFour(tl.x, tr.x, br.x, bl.x) >= c.x1
 		|| maxFour(tl.y, tr.y, br.y, bl.y) <= c.y0
