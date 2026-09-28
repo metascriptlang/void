@@ -361,6 +361,10 @@ function faded(this c: Color, alpha: float32): Color {
 	return rgba(c.r, c.g, c.b, c.a * alpha);
 }
 
+function tinted(this c: Color, by: Color): Color {
+	return rgba(c.r * by.r, c.g * by.g, c.b * by.b, c.a * by.a);
+}
+
 // A run segment's box in local units, its edges on device pixels when the label is
 // axis-aligned; `thickness` > 0 makes the height a stroke of at least one device pixel.
 export function segmentBox(
@@ -573,7 +577,7 @@ function emitLabel(s: Scene, i: int32, world: Transform2D, col: Color, na: float
 			x = world.a * p.x + world.c * p.y + world.tx;
 			y = world.b * p.x + world.d * p.y + world.ty;
 		}
-		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.faded(na) : col;
+		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
 		if (instanced) {
 			drawUiInstance(view, blend, {
 				...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),

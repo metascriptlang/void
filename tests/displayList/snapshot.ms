@@ -54,7 +54,8 @@ import {
 import { InstanceMode } from "../../src/void2d/instance";
 import { rgba, tile, identity2d, emptyBounds, BlendMode, Smooth } from "../../src/void2d/types";
 import { CURSOR_WIDTH } from "../../src/void2d/labelText";
-import { TextLayout } from "../../src/void2d/textLayout";
+import { TextLayout, TextRun } from "../../src/void2d/textLayout";
+import { DEFAULT_FONT } from "../../src/void2d/font";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
@@ -611,6 +612,27 @@ test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lane
 }
 test "T1 snapshot: retained underline and selection nodes reach their UI modes" {
 	assert snapshot("textPrimitives", record(textPrimitiveScene(), 160.0, 96.0, 1.0));
+}
+
+test "T1 a run's colour multiplies with its label's, as h2d's colour segments do" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const clear = rgba(0.0, 0.0, 0.0, 0.0);
+	const runs: TextRun[] = [{
+		len: 2, font: DEFAULT_FONT, color: rgba(1.0, 0.5, 0.25, 1.0), background: clear,
+		underline: clear, wavy: false, strikethrough: clear,
+	}];
+	s.add(s.label("Hi", 12.0, rgba(0.5, 1.0, 1.0, 0.5)).setTextRuns(runs).at(4.0, 4.0));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	let glyphs: int32 = 0;
+	for (let i: int32 = 0; i < uiInstanceCount(); i++) {
+		if (uiInstanceField(i, REC_UI_COLOR_FILL + 3) <= 0.0) { continue; }
+		assert uiInstanceField(i, REC_UI_COLOR_FILL) == 0.5;
+		assert uiInstanceField(i, REC_UI_COLOR_FILL + 1) == 0.5;
+		assert uiInstanceField(i, REC_UI_COLOR_FILL + 2) == 0.25;
+		assert uiInstanceField(i, REC_UI_COLOR_FILL + 3) == 0.5;
+		glyphs = glyphs + 1;
+	}
+	assert glyphs == 2;
 }
 
 

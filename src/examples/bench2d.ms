@@ -91,7 +91,7 @@ function editorLabel(s: Scene): NodeRef {
 	const lineUnits: int32 = EDITOR_COLUMNS + 1;
 	const start: int32 = EDITOR_SELECTION_FIRST_LINE * lineUnits + 6;
 	const length: int32 = EDITOR_SELECTION_LINES * lineUnits;
-	const editor = s.label(text, 13.0, plain).at(8.0, 8.0);
+	const editor = s.label(text, 13.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0);
 	editor.setTextRuns(runs);
 	editor.setSelectionRange({ start: start, length: length }, rgba(0.30, 0.50, 0.90, 0.45));
 	editor.setCursorBlinkTime(0.0);

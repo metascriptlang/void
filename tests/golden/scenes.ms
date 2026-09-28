@@ -695,6 +695,7 @@ function decoratedRun(len: int32, color: Color): TextRun {
 
 function textDecorations(): Scene {
 	const s = scene(DARK);
+	const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
 	const plain: Color = rgba(0.86, 0.90, 0.98, 1.0);
 	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
 	const code: TextRun[] = [
@@ -703,19 +704,19 @@ function textDecorations(): Scene {
 		{ ...decoratedRun(5, rgba(0.98, 0.85, 0.45, 1.0)), background: rgba(0.30, 0.34, 0.46, 1.0) },
 		decoratedRun(6, plain),
 	];
-	s.add(s.label("let total = 42;", 13.0, plain).setTextRuns(code).at(10.3, 8.3));
+	s.add(s.label("let total = 42;", 13.0, white).setTextRuns(code).at(10.3, 8.3));
 	const wavy: TextRun[] = [
 		decoratedRun(5, plain),
 		{ ...decoratedRun(5, plain), underline: rgba(0.95, 0.35, 0.30, 1.0), wavy: true },
 		decoratedRun(5, plain),
 	];
-	s.add(s.label("wavy error here", 16.0, plain).setTextRuns(wavy).at(10.0, 40.0));
+	s.add(s.label("wavy error here", 16.0, white).setTextRuns(wavy).at(10.0, 40.0));
 	const lines: TextRun[] = [
 		{ ...decoratedRun(6, plain), strikethrough: rgba(0.95, 0.60, 0.40, 1.0) },
 		decoratedRun(5, plain),
 		{ ...decoratedRun(10, plain), underline: rgba(0.45, 0.80, 0.95, 1.0) },
 	];
-	s.add(s.label("struck and underlined", 16.0, plain).setTextRuns(lines).at(10.5, 76.4));
+	s.add(s.label("struck and underlined", 16.0, white).setTextRuns(lines).at(10.5, 76.4));
 	return s;
 }
 
