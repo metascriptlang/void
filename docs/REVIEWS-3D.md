@@ -1105,3 +1105,88 @@ From `GATE_DEVICE=1 sh scripts/gate3d.sh` at `7f944d0`, a plain run, no adoption
 | GLES3 emulator | pixel-art, forward and pixel-art-with-particles builds render; the pixel-art frames against M15's move only inside the fire's flicker box |
 | PENDING3D | 24 rows: `billboard-anchor-is-the-callers` deleted |
 | Android | arm64 `libVoidAndroid.so`, **3 023 208 bytes**; the sweep commit, M15's code on the same msc, is 2 996 992: +26 216, not attributed |
+
+## M17 — resources released behind counted generational ids
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one send-back and two re-reviews.** The defect pass (`/code-review high`) read the first build and found ten issues, eight fixed in `aa80932` and two rejected with measurements. A fresh design reviewer then read that tree and gave SEND BACK with one blocking defect; the rework is `3e89bf0` and the docs after it. The same reviewer read the rework twice more and gave SHIP WITH FOLLOW-UPS both times; those follow-ups were fixed in M17 as well (`9a0cfee`, `51f6d25`). The milestone is `47bb114` onwards: the row, the slot table's move, the pool, the ids and holders, the upload and stream fixes, the churn example and stage, both passes' fixes and the docs.
+
+Before the row, the human decided the model:
+- **Explicit release on generational ids, with counted holders.** Asked which of Heaps' `dispose` and Bevy's strong `Handle` to follow, the human asked what Bevy does; read from source, Bevy is both layers (an `AssetIndex` value in the draw path, an `Arc` handle that frees on its last drop). The model taken is the lower layer with the count in the table: whoever adds holds once, a mesh node holds its mesh and material, a loader lets go with `defer`. A **NEW MECHANISM**, approved on its own.
+- `defer` was the human's pointer: with counting, a plain `defer` is enough, and no `errdefer` (which MetaScript does not have) is needed.
+
+The compiler moved under the milestone once more: M16's land waited on recompiler `19c3d513` (the for-of copy), synced as `35601908` before the row. A first gate on it failed every link (`libmingw32.lib … UnableToWriteArchive`); a plain `zig cc` rebuilt zig's cache and nothing in void changed.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | A baked animation stored its frame ids without holding them: a loader that released its frames freed every frame the node did not show | The animation holds its frames from `forMeshes` until `releaseMeshFrames` |
+| 2 | `doomBuffersOf` reads ownership from the generation, and `addMesh`'s comment promised it destroyed none of a caller's buffers | The generation is the ownership marker since M5; the comment says so. The design pass and its re-reviews later made `addMesh` refuse every mesh that is neither the caller's nor a stream, and any that names buffers made in no context |
+| 3 | The presets wrote into their own screen material slots without checking the id | `renderFrame` refuses a preset whose screen material or mesh is gone, by name |
+| 4 | `drawItem` returned silently on a stale id, and the scene discarded failed releases | `drawItem` is `unreachable` on a stale id; an over-release is refused at the caller (`HeldOnlyByNodes`, later `OnlyPinned`), so the scene's own releases cannot fail |
+| 5 | A write, then a context loss, then `beginFrame` would drop the write or allow a second | Rejected: the Android bridge restores the context in `voidPlatformSurfaceAcquire`, before the frame callback, so one callback sees one generation |
+| 6 | The renderers' pool check read only fresh floats | `UniformPool.fits` counts released ranges of each length first |
+| 7 | No way to drop a level's holds but `remove` per subtree | Heaps' `removeChildren` |
+| 8 | `sg_query_stats` per stream write copies a large struct | Rejected: measured 1 344 bytes, a few writes a frame; a commit listener would have to be registered again after every `sg_setup` |
+| 9 | Material range ownership was an O(N) scan per `addMaterial` | An owned flag per range in the pool |
+| 10 | The generation-wrap rule was written twice | `nextGeneration` in `slots.ms`; the three claim-and-grow sequences stay, since each grows its own tables |
+
+### Design pass
+
+**First review: SEND BACK**, one blocking defect, confirmed in the code before the fix.
+1. **A material's release freed whatever range its public `uniforms` field named at the time, not the range it owned.** The table is written by hand (the presets write textures), and a block written into a material by hand was a state the as-built itself called reachable. Releasing such a material trapped, or freed another material's range so that two materials came to share floats silently. The context now keeps the range each material was added with (`materialBlocks`) and releases that; `beginFrame` refuses a material whose field no longer names it (`UniformsReplaced`).
+
+Its follow-ups, and what happened:
+- **Only node holds were protected** from an over-release: pins now cover a node's and a baked animation's holds (`OnlyPinned`, `NotPinned`), and `releaseMeshFrames` checks all pins first and goes all or none.
+- **Value copies of holders** (a `Scene`, an animation) and **ids that carry no context:** `remove` checks every pin of the subtree before it changes anything, so a second remove through a copy is refused by name; a copy that finds another holder's pin can still take it. Written in "M17 as built" and carried.
+- **The renderers' own blocks could be released by anyone:** the core owns them.
+- **The allocation stage did not list the new per-frame functions:** listed, and they pass.
+- **`doomedFor` was a copy of `buryDoomed`'s predicate under test:** gone; the drop branch of `buryDoomed` itself runs in a test. `remakeStream` dooms what it replaces. `addMesh` refuses a mesh made in a context that it could not remake (`Unrebuildable`).
+- **Three divergences from Heaps were not written:** Heaps counts no materials (the material hold is Bevy's `MeshMaterial3d`), Heaps' zero is not final (it allocates again on the next render), and `set_primitive` decrefs first. Written; the claim that Heaps' over-release disposes under live meshes is gone.
+- **The churn stage's blind spots:** rows for free ranges, doomed buffers and the scene's tables, every row required, and the control required to grow each one a release would hold flat.
+- **Gate headers named `HEAD` while the tree held the next commit:** the header says so now.
+- Comments: the deferral's stated reason was wrong (a stale item is refused before any draw), corrected; WHAT-comments removed; `fits` answers a `Result`.
+- `drawItems` (unused) is gone; `drawScreen` answers a named error.
+- Carried: checked setters for the tables.
+
+**Re-review of the rework: SHIP WITH FOLLOW-UPS.** It confirmed the blocker fixed and the follow-ups done, and found six more, all fixed in `9a0cfee`:
+1. **A node whose pin a copy took could never be removed:** `remove` and `setMeshOf` refused it, since its freed mesh counted as no pin. A freed id now holds no pin, and such a node lets go of nothing.
+2. **`releaseMeshFrames` answered `StaleMesh` for a missing pin:** `AnimationError.NotPinned`.
+3. **`addMesh` still took a mesh at generation 0 that named buffers:** it takes only the caller's meshes and streams.
+4. **The pin checks were quadratic** in the nodes of a subtree: a count per slot (`tallyMeshPin`), linear.
+5. **"A renderer made again after an unload is not refused"** claimed more than holds, since a renderer has no release: corrected.
+6. **`beginFrame` named a replaced block `MaterialBlock`** when its slot or length differed: `keepsItsUniforms` is checked first.
+
+**Last review: SHIP WITH FOLLOW-UPS.** It proved the gate had run the committed tree (the diff hash in the header matched `git diff 3e89bf0 5fba6a4`), and found five small things, fixed in `51f6d25` and the docs:
+- "it can always be removed" was too strong: a robbed node stays `NotPinned` while another holder keeps its mesh or material live;
+- the size was the gate before last's;
+- `addMesh` took a stream at generation 0 that named a buffer;
+- a reused slot did not reset its tally;
+- git's line-ending warnings leaked into the gate header.
+
+### Carried into M18 and later
+
+- **Copies and contexts:** an uncounted copy of a holder, and ids that name no context.
+- **The tables are written by index,** with no checked setter.
+- **Textures, images, samplers and views have no lifetime;** a renderer has no release.
+- **The pool reuses a range only at its exact length.** Bevy's slab allocator packs meshes into shared buffers; here each mesh takes one to three.
+- **No device run** of anything in M17; the emulator was down for the whole milestone.
+- M16's list: no phone and no WGPU run of the quad, the pixel-art light point above the anchor, a struct literal can build a per-vertex mesh with instances, an emitter that writes billboards; M15's and M14's lists.
+- Next, agreed with the human: a perspective camera with frustum culling, then textured meshes.
+
+### Numbers
+
+From `sh scripts/gate3d.sh` on the tree committed as `51f6d25` (the header's diff hash `6e4a084a578b` matched the tree before the commit), on msc `35601908`.
+
+| | |
+|---|---|
+| Gate | GREEN with the `device` stage skipped: the emulator had been shut down for memory before the milestone, and the human chose to land M16 without it |
+| Tests | **995**: 34 added by M17 (slots 5, the pool 7, lifetime 18, the renderers' refusals 4) |
+| Capture | 15 configurations, 60 frames byte-identical to their 48 hashes; no baseline added or retaken |
+| Churn | 310 frames: every growth row 0 (mesh and material slots, live meshes and materials, reserved floats, free ranges, doomed buffers, the scene's live nodes and its table, sokol's 4 live buffers); 310 second stream writes refused; the control out of buffers after 42 frames, 127 live |
+| Allocation | frame, render and pick paths, M17's functions included, no array copy |
+| Oracle | 75 agree with real Heaps, 11 diverge as declared |
+| Bench | `meshes=40 pipelines=5`, no frame-state growth |
+| PENDING3D | 23 rows: `upload-mesh-leaks-on-replace` deleted |
+| Android | arm64 `libVoidAndroid.so`, **3 294 232 bytes**, +128 800 on M16's 3 165 432 on the same msc |
+| Compiler | `2026-09-29-assert-accepts-a-result.md` opened; `2026-09-23-catch-struct-literal-clang.md` has a second sighting |
