@@ -611,7 +611,7 @@ test "addChildAt hands back the node that was added too" {
 	assert parent.getChildAt(0).paint().alpha == 0.75;
 }
 
-test "a Mask's scroll moves its children and not the Mask, as h2d's calcAbsPos does" {
+test "a Mask's scroll moves its own space and its children, and its clip stays, as in h2d" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
 	const child = s.rect(20.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 100.0);
@@ -624,7 +624,10 @@ test "a Mask's scroll moves its children and not the Mask, as h2d's calcAbsPos d
 	const back = child.globalToLocal(vec2(12.0, 30.0));
 	assert approx(back.x, 0.0);
 	assert approx(back.y, 0.0);
-	const corner = m.localToGlobal(vec2(0.0, 0.0));
+	const origin = m.localToGlobal(vec2(0.0, 0.0));
+	assert approx(origin.x, 7.0);
+	assert approx(origin.y, -70.0);
+	const corner = m.localToGlobal(vec2(3.0, 90.0));
 	assert approx(corner.x, 10.0);
 	assert approx(corner.y, 20.0);
 	s.refOf(s.root).sync(identity2d(), true);

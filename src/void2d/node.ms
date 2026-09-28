@@ -14,6 +14,7 @@ import {
 	identity2d,
 	inverse2d,
 	trs2d,
+	vec2,
 	noFilter,
 	emptyBounds,
 } from "./types";
@@ -1191,16 +1192,24 @@ export function getChildIndex(this n: NodeRef, c: NodeRef): int32 {
 	return -1;
 }
 
+export function ownScroll(this s: Scene, i: int32): Vec2 {
+	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return vec2(0.0, 0.0); }
+	const sc: Scroll2D = s.scrolls[s.payloads[i]];
+	return vec2(sc.x, sc.y);
+}
+
+function scrolledLocal(s: Scene, i: int32): Transform2D {
+	const by: Vec2 = s.ownScroll(i);
+	if (by.x == 0.0 && by.y == 0.0) { return s.localMatrices[i]; }
+	return s.localMatrices[i] * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);
+}
+
 function absoluteMatrix(s: Scene, i: int32): Transform2D {
-	let m: Transform2D = s.localMatrices[i];
+	let m: Transform2D = scrolledLocal(s, i);
 	let top: int32 = i;
 	while (s.parents[top] != NO_NODE) {
 		top = s.parents[top];
-		if (s.kinds[top] === DrawKind.Mask && s.payloads[top] != NO_PAYLOAD) {
-			const sc: Scroll2D = s.scrolls[s.payloads[top]];
-			m = trs2d(-sc.x, -sc.y, 0.0, 1.0, 1.0) * m;
-		}
-		m = s.localMatrices[top] * m;
+		m = scrolledLocal(s, top) * m;
 	}
 	if (top != s.root) { return m; }
 	const view: Transform2D = { ...s.viewMat, tx: s.viewShift.x, ty: s.viewShift.y };
