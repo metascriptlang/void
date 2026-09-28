@@ -657,3 +657,17 @@ test "scrollBounds clamps a scroll as h2d's setters do, and an equal scroll mark
 	assert s.changed[m.id.index].has(Changed.Scroll);
 	assert !s.changed[m.id.index].has(Changed.Local);
 }
+
+test "setNoOverlap is a write to the order group; the same promise again marks nothing" {
+	const s = fresh();
+	const list = s.add(s.group());
+	assert !list.order().noOverlap;
+	s.clearChanges();
+	list.setNoOverlap(true);
+	assert list.order().noOverlap;
+	assert marked(list, Changed.Order);
+	s.clearChanges();
+	list.setNoOverlap(true);
+	assert !marked(list, Changed.Order);
+	assert s.dirty.length == 0;
+}

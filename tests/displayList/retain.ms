@@ -17,6 +17,15 @@ import {
 	uiInstanceField,
 	spriteInstanceField,
 	COMMAND_FLOATS,
+	CMD_PIPELINE,
+	CMD_VIEW,
+	CMD_VIEW_HIGH,
+	CMD_BLEND,
+	CMD_SAMPLER,
+	CMD_VERTEX_OFFSET,
+	CMD_VERTEX_COUNT,
+	CMD_INSTANCE_OFFSET,
+	CMD_INSTANCE_COUNT,
 	EFFECT_FLOATS,
 	VERTEX_FLOATS,
 	SCOPE_FLOATS,
@@ -28,7 +37,9 @@ import {
 	paintStateOf,
 	uploaded,
 } from "../../src/void2d/displayList";
-import { REC_UI_FLOATS, REC_SPRITE_FLOATS } from "../../src/void2d/instanceLayout";
+import {
+	REC_UI_FLOATS, REC_SPRITE_FLOATS, REC_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE,
+} from "../../src/void2d/instanceLayout";
 import { rgba, tile, identity2d, vec2, Tile } from "../../src/void2d/types";
 
 const W: float32 = 200.0;
@@ -738,4 +749,172 @@ test "a tile edit re-records a group that took another write, drew through the v
 	const blue: TileCell = { ...red, color: rgba(0.0, 0.0, 1.0, 1.0) };
 	t.map.setTile(1, blue);
 	assert check(s, "an edit on a culled group", "patch");
+}
+
+function iconList(promise: boolean, icons: boolean): Scene {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(s.rect(8.0, 8.0, rgba(0.9, 0.9, 0.9, 1.0)).at(180.0, 4.0));
+	const list = s.add(s.group().at(4.0, 4.0));
+	for (let k: int32 = 0; k < 6; k++) {
+		const row = s.rect(120.0, 16.0, rgba(0.2, 0.3, 0.5, 1.0)).at(0.0, (k as float32) * 18.0);
+		if (icons) { row.addChild(s.sprite(tile(21, 12.0, 12.0)).at(2.0, 2.0)); }
+		row.addChild(s.label(String(10 + k), 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(18.0, 3.0));
+		list.addChild(row);
+	}
+	list.setNoOverlap(promise);
+	s.add(s.rect(8.0, 8.0, rgba(0.9, 0.9, 0.9, 1.0)).at(180.0, 20.0));
+	return s;
+}
+
+function draws(r: Recording): int32 {
+	let count: int32 = 0;
+	for (let c: int32 = 0; c < r.counts[0]; c++) {
+		if (r.floats[c * COMMAND_FLOATS] == 0.0) { count = count + 1; }
+	}
+	return count;
+}
+
+test "a list that promises no overlap draws each of its rows' runs once, not once a row" {
+	const painter: Recording = frame(iconList(false, true));
+	const lanes: Recording = frame(iconList(true, true));
+	assert draws(painter) == 13;
+	assert draws(lanes) == 3;
+	assert lanes.counts[3] == painter.counts[3] && lanes.counts[4] == painter.counts[4];
+}
+
+test "a promise with nothing to gain records what no promise records, byte for byte" {
+	const without: Recording = frame(iconList(false, false));
+	const promised: Recording = frame(iconList(true, false));
+	assert draws(promised) == 1;
+	assert same(without, promised);
+}
+
+test "a region holding a clip keeps painter's order, byte for byte" {
+	const plain = iconList(false, true);
+	const promised = iconList(true, true);
+	for (const s of [plain, promised]) {
+		const list = s.refOf(s.children[s.root][1]);
+		const clip = s.mask(40.0, 10.0).at(60.0, 2.0);
+		clip.addChild(s.rect(80.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)));
+		list.getChildAt(2).addChild(clip);
+	}
+	assert same(frame(plain), frame(promised));
+}
+
+test "writes inside a list that promises no overlap record what a full frame records" {
+	const s = iconList(true, true);
+	const list = s.refOf(s.children[s.root][1]);
+	frame(s);
+	assert check(s, "a still frame", "patch");
+	list.getChildAt(2).setColor(rgba(0.8, 0.2, 0.2, 1.0));
+	assert check(s, "a row's colour", "patch");
+	list.getChildAt(3).getChildAt(1).setText("99");
+	assert check(s, "a label's text, the same length", "patch");
+	list.getChildAt(3).getChildAt(0).setTile(tile(22, 12.0, 12.0));
+	assert check(s, "an icon's texture", "splice");
+	list.getChildAt(4).setX(2.0);
+	assert check(s, "a row moved", "patch");
+	list.getChildAt(1).getChildAt(1).setText("123");
+	assert check(s, "a label's text, longer", "splice");
+	const extra = s.rect(120.0, 16.0, rgba(0.3, 0.3, 0.3, 1.0)).at(0.0, 110.0);
+	extra.addChild(s.sprite(tile(21, 12.0, 12.0)).at(2.0, 2.0));
+	list.addChild(extra);
+	assert check(s, "a row added", "splice");
+	list.getChildAt(0).setVisible(false);
+	assert check(s, "a row hidden", "splice");
+	list.setNoOverlap(false);
+	assert check(s, "the promise withdrawn", "splice");
+	list.setNoOverlap(true);
+	assert check(s, "the promise made again", "splice");
+	s.cam.x = 3.0;
+	assert check(s, "a camera pan", "patch");
+}
+
+test "a row of a promised list that is itself a promised list lays out both" {
+	const s = iconList(true, true);
+	const list = s.refOf(s.children[s.root][1]);
+	const inner = list.getChildAt(5);
+	inner.addChild(s.sprite(tile(21, 12.0, 12.0)).at(60.0, 2.0));
+	inner.addChild(s.label("x", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(80.0, 3.0));
+	inner.setNoOverlap(true);
+	frame(s);
+	assert check(s, "nested promises", "patch");
+	inner.getChildAt(2).setTile(tile(21, 10.0, 12.0));
+	assert check(s, "an icon resized inside the inner list", "patch");
+}
+
+function drawnInstances(r: Recording): Map<string, int32> {
+	const out = new Map<string, int32>();
+	const vertexBase: int32 = r.counts[0] * COMMAND_FLOATS + r.counts[1] * EFFECT_FLOATS;
+	const uiBase: int32 = vertexBase + r.counts[2] * VERTEX_FLOATS;
+	const spriteBase: int32 = uiBase + r.counts[3] * REC_UI_FLOATS;
+	for (let c: int32 = 0; c < r.counts[0]; c++) {
+		const base: int32 = c * COMMAND_FLOATS;
+		if (r.floats[base] != 0.0) { continue; }
+		const pipeline: int32 = r.floats[base + CMD_PIPELINE] as int32;
+		const state: string = `${pipeline} ${r.floats[base + CMD_VIEW]} ${r.floats[base + CMD_VIEW_HIGH]}` +
+			` ${r.floats[base + CMD_BLEND]} ${r.floats[base + CMD_SAMPLER]}`;
+		let first: int32 = r.floats[base + CMD_INSTANCE_OFFSET] as int32;
+		let count: int32 = r.floats[base + CMD_INSTANCE_COUNT] as int32;
+		let width: int32 = pipeline == 1 ? REC_SPRITE_FLOATS : REC_UI_FLOATS;
+		let at: int32 = pipeline == 1 ? spriteBase : uiBase;
+		if (pipeline == 0) {
+			first = r.floats[base + CMD_VERTEX_OFFSET] as int32;
+			count = r.floats[base + CMD_VERTEX_COUNT] as int32;
+			width = VERTEX_FLOATS;
+			at = vertexBase;
+		}
+		for (let k: int32 = first; k < first + count; k++) {
+			let key: string = state;
+			for (let f: int32 = 0; f < width; f++) { key = key + ` ${r.floats[at + k * width + f]}`; }
+			out.set(key, (out.get(key) ?? 0) + 1);
+		}
+	}
+	return out;
+}
+
+test "lanes draw every instance of painter's order under the same draw state, only regrouped" {
+	const painter = drawnInstances(frame(iconList(false, true)));
+	const lanes = drawnInstances(frame(iconList(true, true)));
+	assert painter.size == lanes.size;
+	let kinds: int32 = 0;
+	for (const key of painter) {
+		assert (lanes.get(key) ?? 0) == (painter.get(key) ?? 0);
+		kinds = kinds + 1;
+	}
+	assert kinds > 12;
+}
+
+function rowSequence(r: Recording, row: int32): string {
+	const vertexBase: int32 = r.counts[0] * COMMAND_FLOATS + r.counts[1] * EFFECT_FLOATS;
+	const uiBase: int32 = vertexBase + r.counts[2] * VERTEX_FLOATS;
+	const spriteBase: int32 = uiBase + r.counts[3] * REC_UI_FLOATS;
+	let out: string = "";
+	for (let c: int32 = 0; c < r.counts[0]; c++) {
+		const base: int32 = c * COMMAND_FLOATS;
+		if (r.floats[base] != 0.0) { continue; }
+		const sprite: boolean = (r.floats[base + CMD_PIPELINE] as int32) == 1;
+		const width: int32 = sprite ? REC_SPRITE_FLOATS : REC_UI_FLOATS;
+		const at: int32 = sprite ? spriteBase : uiBase;
+		const origin: int32 = sprite ? REC_SPRITE_ORIGIN_SIZE : REC_UI_ORIGIN_SIZE;
+		const first: int32 = r.floats[base + CMD_INSTANCE_OFFSET] as int32;
+		const count: int32 = r.floats[base + CMD_INSTANCE_COUNT] as int32;
+		for (let k: int32 = first; k < first + count; k++) {
+			const x: float32 = r.floats[at + k * width + origin];
+			const y: float32 = r.floats[at + k * width + origin + 1];
+			if (x > 150.0 || ((y - 4.0) / 18.0) as int32 != row) { continue; }
+			out = out + `${sprite ? "s" : "u"}(${x},${y}) `;
+		}
+	}
+	return out;
+}
+
+test "lanes keep each row's own draws in painter's order" {
+	const painter: Recording = frame(iconList(false, true));
+	const lanes: Recording = frame(iconList(true, true));
+	for (let row: int32 = 0; row < 6; row++) {
+		const want: string = rowSequence(painter, row);
+		assert want.length > 10;
+		assert rowSequence(lanes, row).equals(want);
+	}
 }
