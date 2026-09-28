@@ -1190,3 +1190,74 @@ From `sh scripts/gate3d.sh` on the tree committed as `51f6d25` (the header's dif
 | PENDING3D | 23 rows: `upload-mesh-leaks-on-replace` deleted |
 | Android | arm64 `libVoidAndroid.so`, **3 294 232 bytes**, +128 800 on M16's 3 165 432 on the same msc |
 | Compiler | `2026-09-29-assert-accepts-a-result.md` opened; `2026-09-23-catch-struct-literal-clang.md` has a second sighting |
+
+## M18 — several layers in one frame
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one send-back and one re-review.** The defect pass (`/code-review high`) read the first build and found ten issues: eight were fixed and two rejected. A fresh design reviewer read the same tree and gave SEND BACK, with three blocking defects that overlapped the defect pass. The rework is `279dfde` and `476301a`, and the docs after them. The same reviewer read the rework and gave SHIP WITH FOLLOW-UPS; those follow-ups were fixed in M18 as well (`e2c1184`). The milestone is `9739a3b` onwards: the decisions shared with void2d, the row, the split, the mixed frame, the compose, aborts and HUD stages, both passes' fixes and the docs.
+
+Before the row, on 2026-09-29, the human handed the unification of void2d and void3d to the references, relayed by the main void session and said in this window: approvals the references settle are taken, and direction stays his. The four decisions are in VOID3D.md "Shared with void2d". M18 is the first of them because it gives an app author something at once, a HUD over a 3D scene, with no new mechanism and no file of void2d's touched.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The allocation stage listed only the two `renderFrame`s, now five-line shorthands, so neither half was read | Both halves of both presets are listed, and so are the core's three guards |
+| 2 | `drawToScreen` cleared the changed flag, erasing a change made between the halves | Cleared at the end of a successful prepare, when the inputs are taken |
+| 3 | `compose` failed where the test answers SKIP (exit 3, no readback) and ignored `GATE_SKIP_CAPTURE` | Both are SKIP |
+| 4 | The draw count was checked on the first frame only | Checked on all three frames: 1, 1, 0 |
+| 5 | The as-built said `mixedFrame` prepares the 3D frame first; it did not | The test prepares first now, which is the order the doc argues for |
+| 6 | The HUD panel had to equal ImageMagick's half exactly | Within 1 per channel: the claim is the composition, not the GPU's rounding. D3D11 measures 0 |
+| 7 | `magick` was called with no guard | SKIP without it |
+| 8 | A centred quad hides a flipped layer | The quad sits off centre |
+| 9 | Two comments were left wrong by the change (`drawPost`'s, the pick entry's placement) | Fixed |
+| 10 | The empty `Stage.Blit` arm keeps two sources of truth for the last stage | Rejected: `planStages` describes the whole frame and `screenKey(Stage.Blit)` reads it; the prepare half runs the offscreen stages and the screen half the last |
+
+### Design pass
+
+**First review: SEND BACK.** It confirmed the design: the split falls where Heaps' base renderer ends a frame (`process` up to `resetTarget`, then `copy(from, null)`), and the caller owns the pass and the commit, as `Engine.render` does. It found three blocking defects, each confirmed in the code before the fix: the allocation stage's blind spot (defect 1 above), the flag cleared in the wrong half (defect 2), and the false as-built sentence (defect 5).
+
+Its follow-ups, and what happened:
+- **Which pass is open is not checked.** Carried to M20. Tracking the open pass needs every pass to open in one place, and void2d opens its target passes itself. Written in "Not done here".
+- **The prepared flag was not tied to a frame, and each preset had its own copy.** The core now holds it (`openPrepare`, `closePrepare`, `openScreen`), stamped with sokol's `frameIndex`. A screen draw in a later frame than its prepare stops.
+- **Bare `unreachable`s became reachable by a release between the halves.** They now print named messages, and the stale comments are corrected.
+- **Divergences not written:** `drawToScreen` is swapchain-only and full-screen, where Heaps renders into any target (`setOutputTarget`); the copy is opaque, so 3D over 3D is not delivered; and the row credited `fwd.Renderer` with a copy that is `pbr.Renderer`'s. All written.
+- **Acceptance gaps:**
+  - The pixel-art prepare-twice guard had no test. Both presets now have headless abort tests.
+  - The controls were run by hand. Both are gate lines now.
+  - `compose` passed without its summary line. The line is required.
+  - `aborts` searched the build log. It reads only the run log.
+- **§14:** the example's frame functions answered `false` after a `console.log` and took a boolean mode. They answer `Result<int32, CampfireError>` and take `FrameShare`. `stepScene`'s older booleans are unchanged.
+- **A refused layer in an embedded view:** the HUD entry still opens the screen pass and commits when the campfire refuses, and EMBED.md says a closure must.
+
+**Re-review of the rework: SHIP WITH FOLLOW-UPS.** It confirmed the three blockers fixed and the follow-ups done or argued, accepted both rejections, and found six more:
+1. **The kept flag had no test:** moving the clear back into the screen half left every stage green. `mixedFrame` now marks the renderer changed between the halves and requires `needsFrame` after the commit; with the old placement it fails.
+2. **The later-frame stop had no test:** `VOID_MIXED_SCREEN_NEXT_FRAME=1` prepares, commits and draws the next frame, and must stop.
+3. **Gate checks that could pass for the wrong reason:** the panel's number is checked to be a number, and the controls must fail for the intended reason ("inside the quad", "the opaque bar").
+4. **The new deferrals had no PENDING3D rows:** `screen-pass-unchecked`, `screen-output-swapchain-only` and `copy-opaque`, with sentinels at both screen halves.
+5. **Stale text:** a "first renderFrame" comment and the status line, fixed. VOID2D.md's audit still says `mixedFrame` draws the cube and that `renderer.endFrame` imports the bridge's commit: void2d's file, left to its arc and named in its card's neighbours.
+6. **The campfire's refusals lost their cause:** the inner error is logged where the frame is refused.
+
+### Carried into M19 and later
+
+- **The open pass is not checked** (M20's door).
+- **3D over 3D and a 3D view in a UI panel** (M20's targets, and a blended copy).
+- **void2d's `Scene` has no halves** (void2d's arc).
+- A refused `renderFrame` in an embedded view aborts as "returned without commit()"; that was so before M18.
+- M17's list: copies and contexts, the tables written by index, textures and renderers without a lifetime, the pool's exact-length reuse, no device run.
+
+### Numbers
+
+From `sh scripts/gate3d.sh` on the code of `e2c1184` (the header's diff hash `d57d28799fb2` is that commit plus VOID3D.md's status line), on msc `35601908`.
+
+| | |
+|---|---|
+| Gate | GREEN with the `device` stage skipped: no emulator |
+| Tests | **995**, none added: the new checks are abort programs and gate stages |
+| Capture | 15 configurations, 60 frames byte-identical to their 48 hashes; no baseline added or retaken |
+| Compose | 7 200 quad pixels blended over the 3D frame, 69 600 outside identical; the control fails all 7 200; a second prepare and a screen draw after a commit each stop |
+| HUD | 4 frames, byte-identical outside, bar exact, panel within 1 (0 measured); the control fails 4 of 4 |
+| Aborts | 4 programs, each stops and names the call |
+| Allocation | frame, render and pick paths, M18's functions included, no array copy |
+| Android | arm64 `libVoidAndroid.so`, **3 312 448 bytes**, +18 216 on M17's 3 294 232 |
+| PENDING3D | 26 rows: three added |
+| Compiler | `2026-09-29-static-extension-on-aliased-same-name-type-ambiguous.md` and `2026-09-29-duplicate-import-name-binds-first-silently.md` opened, from the naming probes for M19 |
