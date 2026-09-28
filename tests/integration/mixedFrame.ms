@@ -1,5 +1,12 @@
 import { gfxSetup, fbWidth, fbHeight, commit } from "../../src/sokol/gpu";
-import { setup2d, begin2d, flushTargets, end2d, fillQuad, drawCallCount } from "../../src/void2d/draw";
+import {
+	setup2d,
+	begin2d,
+	flushTargets,
+	end2d,
+	fillQuad,
+	drawCallCount,
+} from "../../src/void2d/draw";
 import { BlendMode, vec2, rgba } from "../../src/void2d/types";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import {
@@ -32,6 +39,7 @@ import {
 	SceneError,
 	LightError,
 	LightKind,
+	LightInstance,
 	identityTransform,
 	addMeshNode,
 	addLightNode,
@@ -77,10 +85,10 @@ const QUAD_ALPHA: float32 = 0.5;
 const QUAD_RED: float32 = 0.15;
 const QUAD_GREEN: float32 = 0.72;
 const QUAD_BLUE: float32 = 0.92;
-const QUAD_LEFT: float32 = 120.0;
-const QUAD_TOP: float32 = 80.0;
-const QUAD_RIGHT: float32 = 200.0;
-const QUAD_BOTTOM: float32 = 160.0;
+const QUAD_LEFT: float32 = 100.0;
+const QUAD_TOP: float32 = 60.0;
+const QUAD_RIGHT: float32 = 190.0;
+const QUAD_BOTTOM: float32 = 140.0;
 const WITH_QUAD: int32 = 0;
 const WITHOUT_QUAD: int32 = 1;
 
@@ -132,16 +140,19 @@ function buildScene(): void {
 	if (!boxed.ok) { unreachable; }
 	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, data);
 	if (!mesh.ok) { unreachable; }
+	const material: MaterialId = litMaterial();
 	const placed: Result<NodeId, SceneError> =
-		addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh.value, litMaterial());
+		addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh.value, material);
 	if (!placed.ok) { unreachable; }
-	const lit: Result<NodeId, SceneError> = addLightNode(scene, scene.rootId(), identityTransform(), {
+	const sun: LightInstance = {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0,
 		power: 1.0,
 		priority: 0,
-	});
+	};
+	const lit: Result<NodeId, SceneError> =
+		addLightNode(scene, scene.rootId(), identityTransform(), sun);
 	if (!lit.ok) { unreachable; }
 	const _drawn: int32 = refresh(scene, items);
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
@@ -167,15 +178,6 @@ function initMixed(): void {
 }
 
 function drawMixed(withQuad: boolean): void {
-	begin2d(fbWidth() as float32, fbHeight() as float32, 1.0);
-	if (withQuad) {
-		fillQuad(
-			vec2(QUAD_LEFT, QUAD_TOP), vec2(QUAD_RIGHT, QUAD_TOP),
-			vec2(QUAD_RIGHT, QUAD_BOTTOM), vec2(QUAD_LEFT, QUAD_BOTTOM),
-			rgba(QUAD_RED, QUAD_GREEN, QUAD_BLUE, QUAD_ALPHA), BlendMode.Alpha,
-		);
-	}
-	flushTargets();
 	const prepared: Result<int32, ForwardError> =
 		prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
 	if (!prepared.ok) {
@@ -186,9 +188,20 @@ function drawMixed(withQuad: boolean): void {
 		const _again: Result<int32, ForwardError> =
 			prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
 	}
+	const swapped: boolean = voidCaptureEnvInt("VOID_MIXED_3D_OVER_2D", 0) != 0;
+	begin2d(fbWidth() as float32, fbHeight() as float32, 1.0);
+	if (withQuad) {
+		fillQuad(
+			vec2(QUAD_LEFT, QUAD_TOP), vec2(QUAD_RIGHT, QUAD_TOP),
+			vec2(QUAD_RIGHT, QUAD_BOTTOM), vec2(QUAD_LEFT, QUAD_BOTTOM),
+			rgba(QUAD_RED, QUAD_GREEN, QUAD_BLUE, QUAD_ALPHA), BlendMode.Alpha,
+		);
+	}
+	flushTargets();
 	beginScreenPass(SCREEN_CLEAR);
-	drawToScreen(forward, context);
+	if (!swapped) { drawToScreen(forward, context); }
 	end2d();
+	if (swapped) { drawToScreen(forward, context); }
 	endPass();
 	commit();
 }
@@ -258,9 +271,11 @@ function checkComposition(): void {
 }
 
 function frame(): void {
-	drawMixed(stage != 2);
-	if (stage == 0 && drawCallCount() != 1) {
-		fail(`void2d draw counter is ${drawCallCount()}, expected one fresh draw`);
+	const withQuad: boolean = stage != 2;
+	drawMixed(withQuad);
+	const draws: int32 = withQuad ? 1 : 0;
+	if (drawCallCount() != draws) {
+		fail(`void2d draw counter is ${drawCallCount()} in frame ${stage}, expected ${draws}`);
 	}
 	grab(stage == 2 ? WITHOUT_QUAD : stage);
 	stage = stage + 1;

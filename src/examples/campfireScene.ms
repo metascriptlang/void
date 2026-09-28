@@ -234,6 +234,19 @@ const LOOK_RESTORED_AT: int32 = 15;
 const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + 2 * BILLBOARD_UNIFORM_LENGTH;
 const UNSET_MESH: MeshId = { index: -1, generation: 0 };
 const UNSET_MATERIAL: MaterialId = { index: -1, generation: 0 };
+export enum CampfireError {
+	ViewRefused,
+	CameraRefused,
+	SceneStepFailed,
+	ForwardFrameRefused,
+	PixelArtFrameRefused,
+}
+
+enum FrameShare {
+	Alone,
+	Shared,
+}
+
 let context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + FORWARD_UNIFORM_LENGTH + MATERIAL_POOL_LENGTH,
 );
@@ -1345,7 +1358,7 @@ function advanceClocks(): void {
 
 // The campfire through the forward preset, one texel per framebuffer pixel. The preset has no
 // sub-pixel blit offset, so a snapped camera stays on the pixel grid.
-function frameForward(alone: boolean): boolean {
+function frameForward(share: FrameShare): Result<int32, CampfireError> {
 	const width: int32 = fbWidth();
 	const height: int32 = fbHeight();
 	const shortSide: float32 = Math.min(width, height) as float32;
@@ -1362,33 +1375,32 @@ function frameForward(alone: boolean): boolean {
 	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
 	const camera: OrthoCamera = { ...centred, target: centred.basisOf().right.scaled(slide) };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(width, height);
-	if (!resolved.ok) {
-		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
-		return false;
-	}
+	if (!resolved.ok) { return Result.err(CampfireError.CameraRefused); }
 	resolved.value.writeCameraBlock(cameraParams);
-	if (!stepScene()) { return false; }
-	const rendered: Result<int32, ForwardError> = alone ?
+	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
+	const rendered: Result<int32, ForwardError> = share == FrameShare.Alone ?
 		renderForwardFrame(forward, context, sceneItems, cameraParams, lightParams, width, height) :
 		prepareForwardFrame(forward, context, sceneItems, cameraParams, lightParams, width, height);
-	if (!rendered.ok) {
-		console.log(`campfire: the forward frame was refused, ${rendered.error.toString()}`);
-		return false;
-	}
+	if (!rendered.ok) { return Result.err(CampfireError.ForwardFrameRefused); }
 	shownView = resolved.value;
 	shownBlit = { width: width, height: height, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	shownHeight = height;
 	advanceClocks();
-	return true;
+	return Result.ok(rendered.value);
 }
 
 export function frameCampfire(): void {
-	const _drawn: boolean = forwardWanted ? frameForward(true) : framePixelArt(true);
+	const drawn: Result<int32, CampfireError> = forwardWanted ?
+		frameForward(FrameShare.Alone) :
+		framePixelArt(FrameShare.Alone);
+	if (!drawn.ok) {
+		console.log(`campfire: the frame was refused, ${drawn.error.toString()}`);
+	}
 }
 
-// False when the frame was refused: then there is nothing to draw to the screen.
-export function prepareCampfire(): boolean {
-	return forwardWanted ? frameForward(false) : framePixelArt(false);
+// Refused: nothing to draw to the screen, and the caller still owns the screen pass and commit.
+export function prepareCampfire(): Result<int32, CampfireError> {
+	return forwardWanted ? frameForward(FrameShare.Shared) : framePixelArt(FrameShare.Shared);
 }
 
 export function drawCampfireToScreen(): void {
@@ -1399,7 +1411,7 @@ export function drawCampfireToScreen(): void {
 	}
 }
 
-function framePixelArt(alone: boolean): boolean {
+function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 	// The low-res target's size does not depend on the camera, so the view is made twice: once
 	// to learn the texel grid the camera snaps to, and once with the remainder that snap left.
 	const noRemainder: float32 = 0.0;
@@ -1410,10 +1422,7 @@ function framePixelArt(alone: boolean): boolean {
 		noRemainder,
 		noRemainder,
 	);
-	if (!sized.ok) {
-		console.log(`campfire: the low-res view was refused, ${sized.error.toString()}`);
-		return false;
-	}
+	if (!sized.ok) { return Result.err(CampfireError.ViewRefused); }
 	const grid: LowResView = sized.value;
 
 	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
@@ -1431,10 +1440,7 @@ function framePixelArt(alone: boolean): boolean {
 	const target: Vec3 = centred.basisOf().right.scaled(slide);
 	const camera: OrthoCamera = { ...centred, target: target };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
-	if (!resolved.ok) {
-		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
-		return false;
-	}
+	if (!resolved.ok) { return Result.err(CampfireError.CameraRefused); }
 	const cameraView: CameraView = resolved.value;
 
 	const viewed: Result<LowResView, ViewError> = renderer.viewFor(
@@ -1443,24 +1449,18 @@ function framePixelArt(alone: boolean): boolean {
 		cameraView.remainderX,
 		cameraView.remainderY,
 	);
-	if (!viewed.ok) {
-		console.log(`campfire: the remainder view was refused, ${viewed.error.toString()}`);
-		return false;
-	}
+	if (!viewed.ok) { return Result.err(CampfireError.ViewRefused); }
 
 	cameraView.writeCameraBlock(cameraParams);
-	if (!stepScene()) { return false; }
+	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
 	applyLookSchedule();
-	const rendered: Result<int32, PixelArtError> = alone ?
+	const rendered: Result<int32, PixelArtError> = share == FrameShare.Alone ?
 		renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value) :
 		prepareFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
-	if (!rendered.ok) {
-		console.log(`campfire: the frame was refused, ${rendered.error.toString()}`);
-		return false;
-	}
+	if (!rendered.ok) { return Result.err(CampfireError.PixelArtFrameRefused); }
 	shownView = cameraView;
 	shownBlit = viewed.value;
 	shownHeight = framebufferHeight;
 	advanceClocks();
-	return true;
+	return Result.ok(rendered.value);
 }
