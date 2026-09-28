@@ -25,7 +25,8 @@ whatever view is current.
 
 Several layers can share one view frame. Each layer's offscreen passes run first, then one screen
 pass that a 3D preset and void2d both draw into, then the one `commit()` (docs/VOID3D.md, M18 as
-built).
+built). A layer that refuses its frame skips only its screen half: the screen pass and the commit
+still happen, or the view frame aborts.
 
 **Why this shape.** Three options were weighed on 2026-09-24:
 
