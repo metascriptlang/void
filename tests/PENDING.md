@@ -38,7 +38,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~A rotated Mask clips to its AABB~~ | **closed** — T1 snapshot `rotatedClip` carries the two projection intervals; T2 golden `clip/rotatedMask` is the exact rotated rectangle rather than its AABB | done |
 | ~~Culling tests the viewport rather than the active clip~~ | **closed** — T1 `active-clip culling drops rows outside a Mask` records four visible instances from forty rows; `clip/scrolledList` keeps the pixels | done |
 | ~~No fallback chain; integer glyph origins, rounded advances, `kern`-only metrics, `split(" ")` wrapping, no `textWidth`, ≤ 16 fonts, the R8→RGBA CPU expansion~~ closed at P3 steps 3 and 5. What the collection model still lacks is row `font-colour-emoji`; whole-grapheme selection landed in P4 | goldens `text/*`, `text/cjkFallback` | done / P3 |
-| The h2d surface still missing — `TileGroup`, `Mask.scrollX/Y`; `parent`, `remove()`, reparenting and the index queries closed at P5 step 6, `Tile.dx/dy`, uniform node pivots and the text metrics before it | rows `h2d-tilegroup`, `golden-missing:clip/maskScroll` | P5 |
+| The h2d surface still missing — `TileGroup`; `Mask.scrollX/Y` closed at P5 step 10, `parent`, `remove()`, reparenting and the index queries closed at P5 step 6, `Tile.dx/dy`, uniform node pivots and the text metrics before it | row `h2d-tilegroup` | P5 |
 | ~~Idle costs a draw~~ | **closed at P5 step 9** — `Scene.isDirty()` gates the host's frame; T4 `idleDirty` 0 on every bench scene | P5 |
 | ~~A sokol view id past 2^24 names another slot in the replay~~ | **closed in P5** — the id travels as two 16-bit halves; T1 "a view id past 2^24 reaches the replay whole" in `displayList.ms` | P5 |
 | ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `7b7f163`, on `main` in `3860752`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
@@ -96,7 +96,6 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:clip/maskScroll | T2 | scene not renderable until P5 — `Mask.scrollX/Y` does not exist | P5 | 2026-09-20 |
 | golden-missing:text/ligature | T2 | scene not renderable until P6 — no shaper, so `calt` never fires | P6 | 2026-09-20 |
 | golden-missing:text/colourEmoji | T2 | scene not renderable until P6 | P6 | 2026-09-20 |
 | golden-missing:image/animatedFrames | T2 | frame-indexed animation exists on `Anim` but has no deterministic frame input yet; folded into P6's animated image frames | P6 | 2026-09-20 |
