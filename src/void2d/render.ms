@@ -898,11 +898,6 @@ function acquireTarget(w: int32, h: int32): uint32 {
 	return rt;
 }
 
-function ceilToInt(v: float32): int32 {
-	const t: int32 = v as int32;
-	return (v > (t as float32)) ? t + 1 : t;
-}
-
 // Guardrail 3: downsample by 2^k, then blur at a one-texel step - never widen the tap
 // spacing. The shader is a five-tap linear-sampled Gaussian whose offsets (1.384615 and
 // 3.230769 texels) are the classic sigma-2 kernel, so it is only a Gaussian when `dir` is one
@@ -1001,22 +996,34 @@ function seenAt(b: Bounds, shift: Vec2, vw: float32, vh: float32): boolean {
 		&& b.yMax >= 0.0 - shift.y && b.yMin <= vh - shift.y;
 }
 
-function croppedAt(b: Bounds, shift: Vec2, vw: float32, vh: float32): Bounds {
-	const left: float32 = 0.0 - shift.x;
-	const top: float32 = 0.0 - shift.y;
-	const right: float32 = vw - shift.x;
-	const bottom: float32 = vh - shift.y;
-	return {
-		xMin: b.xMin < left ? left : b.xMin,
-		yMin: b.yMin < top ? top : b.yMin,
-		xMax: b.xMax > right ? right : b.xMax,
-		yMax: b.yMax > bottom ? bottom : b.yMax,
-	};
+function deviceRound(v: float32): float32 {
+	return Math.round(v as float64) as float32;
+}
+
+function targetRect(
+	b: Bounds, shift: Vec2, vw: float32, vh: float32, dpi: float32, scoped: boolean,
+): Bounds {
+	let x0: float32 = Math.floor((b.xMin * dpi) as float64) as float32;
+	let y0: float32 = Math.floor((b.yMin * dpi) as float64) as float32;
+	let x1: float32 = Math.ceil((b.xMax * dpi) as float64) as float32;
+	let y1: float32 = Math.ceil((b.yMax * dpi) as float64) as float32;
+	if (!scoped) {
+		const sx: float32 = deviceRound(shift.x * dpi);
+		const sy: float32 = deviceRound(shift.y * dpi);
+		const right: float32 = deviceRound(vw * dpi) - sx;
+		const bottom: float32 = deviceRound(vh * dpi) - sy;
+		if (x0 < 0.0 - sx) { x0 = 0.0 - sx; }
+		if (y0 < 0.0 - sy) { y0 = 0.0 - sy; }
+		if (x1 > right) { x1 = right; }
+		if (y1 > bottom) { y1 = bottom; }
+	}
+	return { xMin: x0, yMin: y0, xMax: x1, yMax: y1 };
 }
 
 function panOrder(s: Scene, vw: float32, vh: float32): void {
 	const was: Vec2 = s.culledShift;
 	const now: Vec2 = s.viewShift;
+	const dpi: float32 = currentRenderScale();
 	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
 		const i: int32 = s.order[p];
 		const reach: Bounds = s.culls[i];
@@ -1024,7 +1031,8 @@ function panOrder(s: Scene, vw: float32, vh: float32): void {
 		const state: PaintState = paintStateOf(i);
 		if (state == PaintState.InTarget) {
 			if (s.filters[i].kind !== FilterKind.None
-				&& croppedAt(reach, was, vw, vh) != croppedAt(reach, now, vw, vh)) {
+				&& targetRect(reach, was, vw, vh, dpi, false)
+					!= targetRect(reach, now, vw, vh, dpi, false)) {
 				s.scanNeeded = true;
 			}
 		} else if (state == PaintState.Painted && s.queued[i] != s.patchSerial
@@ -1317,19 +1325,14 @@ function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32):
 	}
 	// Clipped to the viewport: a target is only ever needed for the part that can be seen.
 	const reach: Bounds = inScope() ? emptyBounds() : padded;
-	const seen: Bounds = inScope() ? padded : croppedAt(padded, s.viewShift, vw, vh);
 	s.culls[i] = reach;
-	let xMin: float32 = seen.xMin;
-	let yMin: float32 = seen.yMin;
-	const xMax: float32 = seen.xMax;
-	const yMax: float32 = seen.yMax;
-	if (xMax <= xMin || yMax <= yMin) { return; }
 	const dpi: float32 = currentRenderScale();
-	xMin = (Math.floor(xMin * dpi) as float32) / dpi;
-	yMin = (Math.floor(yMin * dpi) as float32) / dpi;
-	const rtW: int32 = ceilToInt((xMax - xMin) * dpi);
-	const rtH: int32 = ceilToInt((yMax - yMin) * dpi);
-	if (rtW <= 0 || rtH <= 0) { return; }
+	const device: Bounds = targetRect(padded, s.viewShift, vw, vh, dpi, inScope());
+	if (device.xMax <= device.xMin || device.yMax <= device.yMin) { return; }
+	const xMin: float32 = device.xMin / dpi;
+	const yMin: float32 = device.yMin / dpi;
+	const rtW: int32 = (device.xMax - device.xMin) as int32;
+	const rtH: int32 = (device.yMax - device.yMin) as int32;
 	const logicalW: float32 = (rtW as float32) / dpi;
 	const logicalH: float32 = (rtH as float32) / dpi;
 	const rt: uint32 = acquireTarget(rtW, rtH);
