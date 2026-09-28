@@ -23,6 +23,10 @@ frame, they abort with a message that names the call. A closure that returns wit
 Void2d's API did not change for this: `Scene.present()` reads the size and the DPI scale of
 whatever view is current.
 
+Several layers can share one view frame. Each layer's offscreen passes run first, then one screen
+pass that a 3D preset and void2d both draw into, then the one `commit()` (docs/VOID3D.md, M18 as
+built).
+
 **Why this shape.** Three options were weighed on 2026-09-24:
 
 - *A current view that persists across frames*, as `wglMakeCurrent`/`eglMakeCurrent` and D3D11's

@@ -665,6 +665,36 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 - **No device run.** The destroy branch of `buryDoomed` has run on D3D11 only, and its drop branch across a real context loss nowhere.
 - The rest of M16's list stands.
 
+### M18 as built
+
+- **Two halves, one owner.** Each preset exports `prepareFrame` and `drawToScreen` (`forwardRenderer.ms`, `pixelArtRenderer.ms`).
+  - `prepareFrame` takes what `renderFrame` took and refuses what it refused. It runs every pass that is not the screen: the forward scene into its own targets, or the pixel-art Scene and Post stages. It leaves no pass open.
+  - `drawToScreen` draws the last stage (`Copy`, or the pixel-art `Blit`) into the screen pass the caller has open, and ends the core's frame.
+  - The caller owns that pass and the commit, which is where Heaps puts them: `Engine.render` clears at `begin` and presents at `end`, and `hxd.App.render` only draws `s3d`, then `s2d`. The core's `endFrame` clears the changed flag and no longer commits.
+  - `renderFrame` is the one-layer shorthand: prepare, a cleared screen pass, the screen half, `endPass`, `commit`. Every capture configuration still goes through it and stays byte-identical, so the shorthand draws what the single call drew.
+- **Calling out of order stops.** A screen draw with no prepared frame, or a second `prepareFrame` before the screen draw, stops with a message that names the call. That is how a view frame reports misuse (`views.c`, `docs/EMBED.md`), and how void2d does. The flag is the preset's own `prepared`, set only when `prepareFrame` succeeds, so a refused frame leaves nothing to draw and nothing to stop on.
+- **The order a composing caller uses.** The HUD entry and `mixedFrame.ms` prepare the 3D frame before void2d's `begin2d`, so a refused 3D frame leaves no void2d bracket recorded. void2d's `flushTargets` must run with no pass open, and it still comes before the screen pass. sokol would take the two prepares in either order, since neither leaves a pass open.
+- **The campfire exposes its halves** (`prepareCampfire`, `drawCampfireToScreen`), and `frameCampfire` still calls `renderFrame`. The example does not import void2d, so the arm64 `.so` does not link it. The HUD lives in the gate's generated entry, as the pick entry does. The `.so` is 3 308 704 bytes, 14 472 more than at M17: both presets' halves are linked.
+- **Acceptance.** Measured by the gate on tree `c18a75e4b6df` (commit `3a8f1cb`, msc `35601908`, D3D11). Every number below is D3D11 only.
+  - The fifteen existing capture configurations are all byte-identical, and the tests are unchanged at 995.
+  - `tests/integration/mixedFrame.ms`, in void2d's gate as before and in this one as the `compose` stage:
+    - It draws a lit box through `ForwardRenderer` (where it drew the spike cube) with a half-transparent void2d quad over it, in one screen pass and one commit.
+    - The frame is captured with the quad and without it. Outside the quad all 70 400 pixels are identical. Inside, all 6 400 are the quad's premultiplied colour over the pixel the 3D pass left, within 1 per channel.
+    - Control: with `drawToScreen` moved after `end2d`, all 6 400 fail.
+    - With `VOID_MIXED_PREPARE_TWICE=1` the run stops on the second prepare.
+  - The `hud` stage draws the palette-off campfire with an opaque bar and a half-black panel over it:
+    - Outside the two rectangles it is byte-identical to `campfireCapture` in all four frames.
+    - The bar is its exact colour.
+    - The panel is exactly half of the campfire under it, with no tolerance on D3D11.
+    - Without the mask the two frames differ in 118 240 pixels, the two rectangles' whole area.
+    - Control: with the screen half drawn after `end2d`, all 10 240 bar pixels are wrong, and the frame is the plain campfire.
+    - The stage has no hash of its own. What the frame must be follows from the campfire's baseline, so a change of void2d's pixels fails void2d's gate and not this manifest.
+  - `tests/aborts3d/`, run by the `aborts` stage with void2d's `// expect:` protocol: `drawToScreen` with no prepared frame stops, for both presets, headless.
+- **Not done here.**
+  - void2d's `Scene` has no halves of its own. `present()` still opens its pass and commits, so today a composing caller uses the immediate face (`begin2d` … `end2d`). A `Scene` over 3D waits for void2d's arc (P5, the host contract).
+  - The embed entries draw one layer and keep `renderFrame`.
+  - The screen pass still opens through the bridge's `voidBeginPass`, which always clears. M20's door owns it.
+
 ### Android lifecycle (V6), alongside from M3
 
 - The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
