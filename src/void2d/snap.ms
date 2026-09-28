@@ -11,11 +11,11 @@
 // centres half a ramp away - full coverage inside, none outside, a crisp edge with no
 // half-covered seam. A fractional edge puts that seam half-way into a pixel row instead.
 
-// Round half TOWARD ZERO, each edge independently - GPUI's `snap_bounds`. Half toward zero
-// (and not away) because two adjacent boxes sharing a fractional edge must round it to the
-// SAME integer whichever side each box is on, and any deterministic rule gives them that;
-// toward zero is GPUI's choice and halves never grow a box by a pixel on their own.
 export function snapEdge(v: float32): float32 {
+	return Math.ceil((v - 0.5) as float64) as float32;
+}
+
+export function snapOffset(v: float32): float32 {
 	if (v >= 0.0) {
 		return Math.ceil((v - 0.5) as float64) as float32;
 	}

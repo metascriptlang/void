@@ -2,17 +2,29 @@
 // exit criterion is stated per device pixel, so the arithmetic is pinned here where it is
 // exact, and the display-list tier pins that the emitter actually applies it.
 
-import { snapEdge, snapStroke, snapBoxEdges, axisAligned, dilateStroke } from "../void2d/snap";
+import {
+	snapEdge, snapOffset, snapStroke, snapBoxEdges, axisAligned, dilateStroke,
+} from "../void2d/snap";
 import { scissorMinDevice, scissorMaxDevice } from "../void2d/draw";
 import { approx } from "./helpers";
 
-test "an edge rounds half toward zero, each edge independently" {
+test "an edge rounds half down, each edge independently, so a whole-pixel shift moves it whole" {
 	assert snapEdge(2.0) == 2.0;
 	assert snapEdge(2.4) == 2.0;
 	assert snapEdge(2.5) == 2.0;
 	assert snapEdge(2.6) == 3.0;
-	assert snapEdge(-2.5) == -2.0;
+	assert snapEdge(-2.5) == -3.0;
 	assert snapEdge(-2.6) == -3.0;
+	for (let k: int32 = -8; k <= 8; k++) {
+		const v: float32 = (k as float32) * 1.25 + 0.5;
+		assert snapEdge(v - 175.0) == snapEdge(v) - 175.0;
+	}
+}
+
+test "a shadow offset rounds half toward zero, the same distance either way" {
+	assert snapOffset(2.5) == 2.0;
+	assert snapOffset(-2.5) == -2.0;
+	assert snapOffset(-2.6) == -3.0;
 }
 
 test "a stroke width is zero or at least one device pixel" {

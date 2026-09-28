@@ -102,7 +102,7 @@ import {
 } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
-import { axisAligned, snapEdge, snapBoxEdges, snapStroke } from "./snap";
+import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
 import {
 	GraphicsOpKind, GRAPHICS_OP_FLOATS, GFX_OP_KIND, GFX_OP_VERTEX_OFFSET,
 	GFX_OP_VERTEX_COUNT, GFX_OP_SPACE, GFX_OP_DITHER, GFX_OP_MIDDLE,
@@ -220,8 +220,8 @@ function boxRenderBounds(s: Scene, i: int32, world: Transform2D, lb: Bounds): Bo
 		let offsetX: float32 = st.shadowOffsetX;
 		let offsetY: float32 = st.shadowOffsetY;
 		if (aligned) {
-			offsetX = snapEdge(offsetX * deviceAX) / deviceAX;
-			offsetY = snapEdge(offsetY * deviceDX) / deviceDX;
+			offsetX = snapOffset(offsetX * deviceAX) / deviceAX;
+			offsetY = snapOffset(offsetY * deviceDX) / deviceDX;
 		}
 		const absX: float32 = offsetX < 0.0 ? -offsetX : offsetX;
 		const absY: float32 = offsetY < 0.0 ? -offsetY : offsetY;
@@ -729,8 +729,8 @@ function emitNode(
 					let offsetX: float32 = st.shadowOffsetX;
 					let offsetY: float32 = st.shadowOffsetY;
 					if (aligned) {
-						offsetX = snapEdge(offsetX * deviceAX) / deviceAX;
-						offsetY = snapEdge(offsetY * deviceDX) / deviceDX;
+						offsetX = snapOffset(offsetX * deviceAX) / deviceAX;
+						offsetY = snapOffset(offsetY * deviceDX) / deviceDX;
 					}
 					sp0 = offsetX;
 					sp1 = offsetY;
