@@ -26,7 +26,6 @@ import {
 	textureSlotMask,
 	samplerSlotMask,
 } from "./gpu3d";
-import { commit } from "../sokol/gpu";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { TargetLayout } from "./target";
 import {
@@ -291,6 +290,5 @@ function texturesFit(program: Program, material: Material): boolean {
 }
 
 export function endFrame(ref renderer: Renderer): void {
-	commit();
 	renderer.changed = false;
 }

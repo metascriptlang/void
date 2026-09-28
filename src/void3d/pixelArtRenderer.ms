@@ -27,6 +27,7 @@ import {
 	originTopLeft,
 	depthZeroToOne,
 } from "./gpu3d";
+import { commit } from "../sokol/gpu";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { ProgramMap, ProgramError } from "./programMap";
 import {
@@ -187,6 +188,7 @@ export struct PixelArtRenderer {
 	blitMaterial: MaterialId;
 	// The view the last frame drew.
 	view: LowResView;
+	prepared: boolean;
 }
 
 // Floats of the uniform pool the preset needs, the core's blocks included.
@@ -368,6 +370,7 @@ export function create(
 		postMaterial: post.value,
 		blitMaterial: blit.value,
 		view: NO_VIEW,
+		prepared: false,
 	});
 }
 
@@ -488,11 +491,9 @@ function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): voi
 }
 
 function drawBlit(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
-	beginScreenPass(SCREEN_CLEAR);
 	const drawn: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
 	if (!drawn.ok) { unreachable; }
-	endPass();
 }
 
 function fromCore(error: RendererError): PixelArtError {
@@ -557,7 +558,7 @@ function rampsHaveLevels(
 // from viewFor. Answers how many items it was given. Allocates nothing unless the item count
 // grew. An item the preset cannot draw, or whose ramp has no levels, refuses the frame before
 // anything changes.
-export function renderFrame(
+export function prepareFrame(
 	ref renderer: PixelArtRenderer,
 	ref context: DrawContext,
 	items: Span<DrawItem>,
@@ -565,6 +566,10 @@ export function renderFrame(
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
+	if (renderer.prepared) {
+		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
+		unreachable;
+	}
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);
 	if (!screens) { return Result.err(PixelArtError.StaleMaterial); }
@@ -597,10 +602,37 @@ export function renderFrame(
 		match (stage) {
 			Stage.Scene => { drawScene(renderer, context, items); },
 			Stage.Post => { drawPost(renderer, context); },
-			Stage.Blit => { drawBlit(renderer, context); },
+			Stage.Blit => {},
 		};
 	}
-	endFrame(renderer.core);
 	renderer.view = view;
+	renderer.prepared = true;
 	return Result.ok(items.length as int32);
+}
+
+// Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
+export function drawToScreen(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
+	if (!renderer.prepared) {
+		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
+		unreachable;
+	}
+	drawBlit(renderer, context);
+	endFrame(renderer.core);
+	renderer.prepared = false;
+}
+
+export function renderFrame(
+	ref renderer: PixelArtRenderer,
+	ref context: DrawContext,
+	items: Span<DrawItem>,
+	camera: Span<float32>,
+	lights: Span<float32>,
+	view: LowResView,
+): Result<int32, PixelArtError> {
+	const drawn: int32 = try prepareFrame(renderer, context, items, camera, lights, view);
+	beginScreenPass(SCREEN_CLEAR);
+	drawToScreen(renderer, context);
+	endPass();
+	commit();
+	return Result.ok(drawn);
 }

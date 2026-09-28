@@ -3,6 +3,7 @@
 
 import { Vec4 } from "../math/math3d";
 import { Program, PixelFormat, LoadAction, Filter, Wrap, endPass } from "./gpu3d";
+import { commit } from "../sokol/gpu";
 import { Material, Phase } from "./material";
 import {
 	RenderTarget,
@@ -36,6 +37,7 @@ export struct ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
+	prepared: boolean;
 }
 
 export enum ForwardError {
@@ -92,6 +94,7 @@ export function create(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
+		prepared: false,
 	});
 }
 
@@ -133,7 +136,7 @@ function resizeTargets(ref renderer: ForwardRenderer, width: int32, height: int3
 // materials; `camera` and `lights` are the scene programs' uniform blocks (shader3dBlocks.glsl
 // vertexParams, lightParams). Answers how many items it was given. An item whose material names
 // a program the core does not draw refuses the frame before anything changes.
-export function renderFrame(
+export function prepareFrame(
 	ref renderer: ForwardRenderer,
 	ref context: DrawContext,
 	items: Span<DrawItem>,
@@ -142,6 +145,10 @@ export function renderFrame(
 	width: int32,
 	height: int32,
 ): Result<int32, ForwardError> {
+	if (renderer.prepared) {
+		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
+		unreachable;
+	}
 	if (width <= 0 || height <= 0) {
 		return Result.err(ForwardError.TargetSize);
 	}
@@ -161,11 +168,37 @@ export function renderFrame(
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
 	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
 	endPass();
-	beginScreenPass(SCREEN_CLEAR);
+	renderer.prepared = true;
+	return Result.ok(items.length as int32);
+}
+
+// Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
+export function drawToScreen(ref renderer: ForwardRenderer, ref context: DrawContext): void {
+	if (!renderer.prepared) {
+		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
+		unreachable;
+	}
 	const copied: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
 	if (!copied.ok) { unreachable; }
-	endPass();
 	endFrame(renderer.core);
-	return Result.ok(items.length as int32);
+	renderer.prepared = false;
+}
+
+export function renderFrame(
+	ref renderer: ForwardRenderer,
+	ref context: DrawContext,
+	items: Span<DrawItem>,
+	camera: Span<float32>,
+	lights: Span<float32>,
+	width: int32,
+	height: int32,
+): Result<int32, ForwardError> {
+	const drawn: int32 =
+		try prepareFrame(renderer, context, items, camera, lights, width, height);
+	beginScreenPass(SCREEN_CLEAR);
+	drawToScreen(renderer, context);
+	endPass();
+	commit();
+	return Result.ok(drawn);
 }
