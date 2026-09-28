@@ -26,10 +26,10 @@ import {
 	MeshId,
 	MaterialId,
 	HandleError,
-	nodeHoldsMesh,
-	nodeLetsGoOfMesh,
-	nodeHoldsMaterial,
-	nodeLetsGoOfMaterial,
+	pinMesh,
+	unpinMesh,
+	pinMaterial,
+	unpinMaterial,
 } from "./draw";
 import { Slots, claim, vacate } from "./slots";
 
@@ -77,6 +77,7 @@ export enum SceneError {
 	NodeNotFound,
 	StaleMesh,
 	StaleMaterial,
+	NotPinned,
 }
 
 export enum LightError {
@@ -115,8 +116,8 @@ export struct Object3D {
 }
 
 // The Mesh side table: what h3d.scene.Mesh carries beyond an Object. Both are ids into the
-// DrawContext, so a draw item built from one is a plain value, and the node holds both
-// (draw.ms retainMesh) from addMeshNode until remove, as h3d.scene.Mesh increfs its primitive.
+// DrawContext, so a draw item built from one is a plain value, and the node pins both
+// (draw.ms pinMesh) from addMeshNode until remove, as h3d.scene.Mesh increfs its primitive.
 export struct MeshInstance {
 	mesh: MeshId;
 	material: MaterialId;
@@ -257,9 +258,9 @@ export function addMeshNode(
 	if (!scene.isLive(parent)) { return Result.err(SceneError.StaleNode); }
 	if (!context.hasMesh(mesh)) { return Result.err(SceneError.StaleMesh); }
 	if (!context.hasMaterial(material)) { return Result.err(SceneError.StaleMaterial); }
-	const heldMesh: Result<int32, HandleError> = nodeHoldsMesh(context, mesh);
-	const heldMaterial: Result<int32, HandleError> = nodeHoldsMaterial(context, material);
-	if (!heldMesh.ok || !heldMaterial.ok) { unreachable; }
+	const pinnedMesh: Result<int32, HandleError> = pinMesh(context, mesh);
+	const pinnedMaterial: Result<int32, HandleError> = pinMaterial(context, material);
+	if (!pinnedMesh.ok || !pinnedMaterial.ok) { unreachable; }
 	const payload: int32 = scene.meshes.length as int32;
 	scene.meshes.push({ mesh: mesh, material: material });
 	const id: NodeId = newSlot(scene, {
@@ -322,16 +323,14 @@ function detach(ref scene: Scene, index: int32): void {
 	scene.nodes[parent].children = siblings;
 }
 
-// A mesh node lets go of its mesh and material. Nothing but the node can take its hold
-// (draw.ms releaseMesh), so a refusal here is a scene removed through another context.
+// A mesh node unpins its mesh and material; remove checked the pins first (checkPins).
 function releasePayload(ref scene: Scene, ref context: DrawContext, index: int32): void {
 	const row: int32 = scene.nodes[index].payload;
 	match (scene.nodes[index].kind) {
 		NodeKind.Mesh => {
-			const mesh: Result<int32, HandleError> =
-				nodeLetsGoOfMesh(context, scene.meshes[row].mesh);
+			const mesh: Result<int32, HandleError> = unpinMesh(context, scene.meshes[row].mesh);
 			const material: Result<int32, HandleError> =
-				nodeLetsGoOfMaterial(context, scene.meshes[row].material);
+				unpinMaterial(context, scene.meshes[row].material);
 			if (!mesh.ok || !material.ok) { unreachable; }
 			const last: int32 = (scene.meshes.length as int32) - 1;
 			const mover: int32 = scene.meshOwners[last];
@@ -355,8 +354,55 @@ function releasePayload(ref scene: Scene, ref context: DrawContext, index: int32
 	scene.nodes[index].payload = NO_NODE;
 }
 
-// Frees `id` and everything under it; their ids go stale (slots.ms), and each mesh node lets go of
-// its mesh and material.
+// `index` and every node under it into scene.stack, parents before children; answers how many.
+function collectSubtree(ref scene: Scene, index: int32): int32 {
+	scene.stack[0] = index;
+	let read: int32 = 0;
+	let written: int32 = 1;
+	while (read < written) {
+		const at: int32 = scene.stack[read];
+		read = read + 1;
+		for (const child of scene.nodes[at].children) {
+			scene.stack[written] = child;
+			written = written + 1;
+		}
+	}
+	return written;
+}
+
+// Every mesh node of the first `count` in scene.stack still has the pins it is about to let go.
+// A Scene is a value: a copy of it that removed the same nodes has already unpinned them, and so
+// has a remove through another context.
+function checkPins(
+	ref scene: Scene,
+	ref context: DrawContext,
+	count: int32,
+): Result<int32, SceneError> {
+	for (let k = 0; k < count; k++) {
+		const node: int32 = scene.stack[k];
+		if (scene.nodes[node].kind != NodeKind.Mesh) { continue; }
+		const instance: MeshInstance = scene.meshes[scene.nodes[node].payload];
+		let meshUses: int32 = 1;
+		let materialUses: int32 = 1;
+		for (let j = 0; j < k; j++) {
+			const earlier: int32 = scene.stack[j];
+			if (scene.nodes[earlier].kind != NodeKind.Mesh) { continue; }
+			const other: MeshInstance = scene.meshes[scene.nodes[earlier].payload];
+			if (other.mesh == instance.mesh) { meshUses = meshUses + 1; }
+			if (other.material == instance.material) { materialUses = materialUses + 1; }
+		}
+		if (context.meshPinned(instance.mesh) < meshUses) {
+			return Result.err(SceneError.NotPinned);
+		}
+		if (context.materialPinned(instance.material) < materialUses) {
+			return Result.err(SceneError.NotPinned);
+		}
+	}
+	return Result.ok(count);
+}
+
+// Frees `id` and everything under it; their ids go stale (slots.ms), and each mesh node unpins its
+// mesh and material. Nothing changes when a pin is gone (checkPins).
 export function remove(
 	ref scene: Scene,
 	ref context: DrawContext,
@@ -364,26 +410,18 @@ export function remove(
 ): Result<int32, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (id.index == scene.root) { return Result.err(SceneError.RootCannotBeRemoved); }
+	const count: int32 = collectSubtree(scene, id.index);
+	const _checked: int32 = try checkPins(scene, context, count);
 	detach(scene, id.index);
-	let removed: int32 = 0;
-	let top: int32 = 0;
-	scene.stack[top] = id.index;
-	top = top + 1;
-	while (top > 0) {
-		top = top - 1;
-		const index: int32 = scene.stack[top];
-		for (const child of scene.nodes[index].children) {
-			scene.stack[top] = child;
-			top = top + 1;
-		}
+	for (let k = 0; k < count; k++) {
+		const index: int32 = scene.stack[k];
 		scene.nodes[index].children = [];
 		scene.nodes[index].parent = NO_NODE;
 		releasePayload(scene, context, index);
 		vacate(scene.slots, index);
-		removed = removed + 1;
 	}
 	scene.structureChanged = true;
-	return Result.ok(removed);
+	return Result.ok(count);
 }
 
 // h3d.scene.Object.removeChildren: every node under `id` goes, and `id` stays. Replacing a Scene
@@ -444,8 +482,8 @@ export function setPickable(
 	return Result.ok(id.index);
 }
 
-// The node holds `mesh` and lets go of the one it showed; holding first keeps a mesh swapped for
-// itself alive.
+// The node pins `mesh` and unpins the one it showed; pinning first keeps a mesh swapped for itself
+// alive.
 export function setMeshOf(
 	ref scene: Scene,
 	ref context: DrawContext,
@@ -456,9 +494,10 @@ export function setMeshOf(
 	if (scene.nodes[id.index].kind != NodeKind.Mesh) {
 		return Result.err(SceneError.NotAMeshNode);
 	}
-	if (!nodeHoldsMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
 	const row: int32 = scene.nodes[id.index].payload;
-	const shown: Result<int32, HandleError> = nodeLetsGoOfMesh(context, scene.meshes[row].mesh);
+	if (context.meshPinned(scene.meshes[row].mesh) < 1) { return Result.err(SceneError.NotPinned); }
+	if (!pinMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
+	const shown: Result<int32, HandleError> = unpinMesh(context, scene.meshes[row].mesh);
 	if (!shown.ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
 	return Result.ok(id.index);

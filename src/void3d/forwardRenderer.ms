@@ -47,7 +47,7 @@ export enum ForwardError {
 	VertexLayout,
 	MaterialTexture,
 	QuadMesh,
-	ReleasedUniforms,
+	UniformsReplaced,
 	StaleMesh,
 	StaleMaterial,
 	TargetSize,
@@ -105,7 +105,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.VertexLayout => ForwardError.VertexLayout,
 		RendererError.MaterialTexture => ForwardError.MaterialTexture,
 		RendererError.QuadMesh => ForwardError.QuadMesh,
-		RendererError.ReleasedUniforms => ForwardError.ReleasedUniforms,
+		RendererError.UniformsReplaced => ForwardError.UniformsReplaced,
 		RendererError.StaleMesh => ForwardError.StaleMesh,
 		RendererError.StaleMaterial => ForwardError.StaleMaterial,
 	};
@@ -162,7 +162,9 @@ export function renderFrame(
 	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
 	endPass();
 	beginScreenPass(SCREEN_CLEAR);
-	drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
+	const copied: Result<int32, RendererError> =
+		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
+	if (!copied.ok) { unreachable; }
 	endPass();
 	endFrame(renderer.core);
 	return Result.ok(items.length as int32);

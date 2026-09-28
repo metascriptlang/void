@@ -9,7 +9,8 @@ import {
 	HandleError,
 	MeshUploadError,
 	addMeshData,
-	retainMesh,
+	pinMesh,
+	unpinMesh,
 	releaseMesh,
 } from "./draw";
 import {
@@ -286,7 +287,7 @@ export function syncPose(
 
 // Vertex-baked frames only step: blending two of them would mean writing vertices into a live
 // buffer every frame, and each frame is instead its own uploaded mesh. The animation holds every
-// frame, the ones off screen too, until releaseMeshFrames.
+// frame, the ones off screen too, with a pin (draw.ms pinMesh), until releaseMeshFrames.
 export function forMeshes(
 	this typeof MeshFrameAnimation,
 	ref context: DrawContext,
@@ -306,8 +307,8 @@ export function forMeshes(
 	}
 	const kept: Vec<MeshId> = [];
 	for (const mesh of meshes) {
-		const held: Result<int32, HandleError> = retainMesh(context, mesh);
-		if (!held.ok) { unreachable; }
+		const pinned: Result<int32, HandleError> = pinMesh(context, mesh);
+		if (!pinned.ok) { unreachable; }
 		kept.push(mesh);
 	}
 	return Result.ok({
@@ -320,15 +321,26 @@ export function forMeshes(
 	});
 }
 
-// The animation lets go of its frames and holds none after; the node keeps the one it shows.
+// The animation unpins its frames and holds none after; the node keeps the one it shows. A copy of
+// the animation that let them go already has taken the pins, and nothing changes then.
 export function releaseMeshFrames(
 	ref animation: MeshFrameAnimation,
 	ref context: DrawContext,
 ): Result<int32, AnimationError> {
-	for (const mesh of animation.meshes) {
-		if (!releaseMesh(context, mesh).ok) { return Result.err(AnimationError.StaleMesh); }
-	}
 	const count: int32 = animation.meshes.length as int32;
+	for (let k = 0; k < count; k++) {
+		let uses: int32 = 1;
+		for (let j = 0; j < k; j++) {
+			if (animation.meshes[j] == animation.meshes[k]) { uses = uses + 1; }
+		}
+		if (context.meshPinned(animation.meshes[k]) < uses) {
+			return Result.err(AnimationError.StaleMesh);
+		}
+	}
+	for (const mesh of animation.meshes) {
+		const unpinned: Result<int32, HandleError> = unpinMesh(context, mesh);
+		if (!unpinned.ok) { unreachable; }
+	}
 	while ((animation.meshes.length as int32) > 0) { animation.meshes.pop(); }
 	return Result.ok(count);
 }

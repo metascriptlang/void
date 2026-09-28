@@ -857,15 +857,21 @@ function setupDraws(): void {
 		if (i == firstLogPiece) { firstLogNode = placed.value; }
 		if (i == BAKED_STONE + 1) { plainStoneNode = placed.value; }
 	}
-	grassMesh = addMesh(
-		context,
-		GpuMesh.billboards(grassBuffer, grassCount),
-	);
+	const grassMeshAdded: Result<MeshId, MeshUploadError> =
+		addMesh(context, GpuMesh.billboards(grassBuffer, grassCount));
+	if (!grassMeshAdded.ok) {
+		console.log("campfire: setupDraws bailed at the grass mesh");
+		return;
+	}
+	grassMesh = grassMeshAdded.value;
 	const grass: Result<NodeId, SceneError> =
 		addMeshNode(tree, context, root, identityTransform(), grassMesh, grassMaterial);
 	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
 	for (const flameBuffer of flameBuffers) {
-		flameMeshes.push(addMesh(context, GpuMesh.billboards(flameBuffer, 1)));
+		const flameAdded: Result<MeshId, MeshUploadError> =
+			addMesh(context, GpuMesh.billboards(flameBuffer, 1));
+		if (!flameAdded.ok) { console.log("campfire: setupDraws bailed at a flame mesh"); return; }
+		flameMeshes.push(flameAdded.value);
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space
 	// instance data — so these two nodes sit at the identity and only carry draw order.

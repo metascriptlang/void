@@ -57,7 +57,8 @@
 # ms-prelude: } from "../../../src/void3d/scene";
 # ms-prelude: import { PickHit, PickError, pickNearest } from "../../../src/void3d/pick";
 # ms-prelude: import {
-# ms-prelude: 	DrawContext, GpuMesh, MeshId, MaterialId, MaterialError, addMesh, addMaterial,
+# ms-prelude: 	DrawContext, GpuMesh, MeshId, MaterialId, MaterialError, MeshUploadError,
+# ms-prelude: 	addMesh, addMaterial,
 # ms-prelude: } from "../../../src/void3d/draw";
 # ms-prelude:
 # ms-prelude: const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -102,12 +103,13 @@
 # ms-prelude: function onePickable(t: Transform3D): Picked {
 # ms-prelude: 	let scene: Scene = Scene.create();
 # ms-prelude: 	let context: DrawContext = DrawContext.withUniformCapacity(0);
-# ms-prelude: 	const mesh: MeshId = addMesh(context, GpuMesh.fullscreen(0, 3));
+# ms-prelude: 	const mesh: Result<MeshId, MeshUploadError> = addMesh(context, GpuMesh.fullscreen(0, 3));
+# ms-prelude: 	if (!mesh.ok) { return { scene: scene, node: NO_ID }; }
 # ms-prelude: 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 # ms-prelude: 	const material: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 # ms-prelude: 	if (!material.ok) { return { scene: scene, node: NO_ID }; }
 # ms-prelude: 	const made: Result<NodeId, SceneError> =
-# ms-prelude: 		addMeshNode(scene, context, scene.rootId(), t, mesh, material.value);
+# ms-prelude: 		addMeshNode(scene, context, scene.rootId(), t, mesh.value, material.value);
 # ms-prelude: 	const id: NodeId = made.ok ? made.value : NO_ID;
 # ms-prelude: 	const _marked: boolean = setPickable(scene, id, true).ok;
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);

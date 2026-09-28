@@ -34,6 +34,7 @@ import {
 	DrawItem,
 	MeshId,
 	MaterialId,
+	MeshUploadError,
 	addMesh,
 	buryDoomed,
 	rebuildMeshes,
@@ -43,7 +44,7 @@ import {
 	MODEL_SLOT,
 } from "./draw";
 import { forgetPipelines } from "./pipelineCache";
-import { UniformError } from "./uniformPool";
+import { UniformError, ownRange } from "./uniformPool";
 import { PassList, collect, sortBackToFront, drawPassList } from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
@@ -75,7 +76,7 @@ export enum RendererError {
 	VertexLayout,
 	MaterialTexture,
 	QuadMesh,
-	ReleasedUniforms,
+	UniformsReplaced,
 	StaleMesh,
 	StaleMaterial,
 }
@@ -85,8 +86,13 @@ export const RENDERER_UNIFORM_LENGTH: int32 = VERTEX_UNIFORM_LENGTH + LIGHT_UNIF
 
 const NO_GLOBALS: Vec<UniformBlock> = [];
 
-function reserve(ref context: DrawContext, slot: int32, length: int32): UniformBlock {
-	return try reserveUniforms(context, slot, length) catch NO_UNIFORMS;
+// createDrawing checked that the pool fits the block, and the renderer owns it, so nothing but
+// the renderer can release it.
+function reserveOwned(ref context: DrawContext, slot: int32, length: int32): UniformBlock {
+	const reserved: Result<UniformBlock, UniformError> = reserveUniforms(context, slot, length);
+	if (!reserved.ok) { unreachable; }
+	if (!ownRange(context.uniforms, reserved.value).ok) { unreachable; }
+	return reserved.value;
 }
 
 // Reserves the camera and light blocks and adds the screen triangle's mesh to `context`. No
@@ -105,11 +111,15 @@ export function createDrawing(
 	programs: ProgramMap,
 ): Result<Renderer, RendererError> {
 	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH];
-	if (!context.uniforms.fits(blocks)) {
+	if (!context.uniforms.fits(blocks).ok) {
 		return Result.err(RendererError.UniformPoolFull);
 	}
-	const cameraBlock: UniformBlock = reserve(context, VERTEX_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH);
-	const lightBlock: UniformBlock = reserve(context, LIGHT_UNIFORM_SLOT, LIGHT_UNIFORM_LENGTH);
+	const cameraBlock: UniformBlock =
+		reserveOwned(context, VERTEX_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH);
+	const lightBlock: UniformBlock =
+		reserveOwned(context, LIGHT_UNIFORM_SLOT, LIGHT_UNIFORM_LENGTH);
+	const screen: Result<MeshId, MeshUploadError> = addMesh(context, screenMesh(0));
+	if (!screen.ok) { unreachable; }
 	return Result.ok({
 		opaque: PassList.forPhase(Phase.Opaque),
 		alpha: PassList.forPhase(Phase.Alpha),
@@ -119,7 +129,7 @@ export function createDrawing(
 		sceneGlobals: [cameraBlock, lightBlock],
 		programs: programs,
 		drawn: [],
-		screenMesh: addMesh(context, screenMesh(0)),
+		screenMesh: screen.value,
 		generation: 0,
 		changed: true,
 	});
@@ -165,8 +175,8 @@ export function beginFrame(
 		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
 			return Result.err(RendererError.MaterialBlock);
 		}
-		if (!context.uniforms.holds(context.materials[material].uniforms)) {
-			return Result.err(RendererError.ReleasedUniforms);
+		if (!context.keepsItsUniforms(item.material)) {
+			return Result.err(RendererError.UniformsReplaced);
 		}
 		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
 		if (layout != vertexLayoutOf(drawn.value)) {
@@ -241,9 +251,12 @@ export function drawScreen(
 	ref context: DrawContext,
 	material: MaterialId,
 	targets: TargetLayout,
-): void {
+): Result<int32, RendererError> {
+	if (!context.hasMesh(renderer.screenMesh)) { return Result.err(RendererError.StaleMesh); }
+	if (!context.hasMaterial(material)) { return Result.err(RendererError.StaleMaterial); }
 	const program: Program = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);
+	return Result.ok(1);
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide

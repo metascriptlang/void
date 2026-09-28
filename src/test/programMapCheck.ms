@@ -28,9 +28,11 @@ import {
 	addMaterial,
 	releaseMaterial,
 	releaseMesh,
+	releaseUniforms,
 	reserveUniforms,
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
+import { added } from "./drawHelpers";
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import {
@@ -243,7 +245,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	}
 	const heldCore: Result<Renderer, RendererError> = Renderer.create(held);
 	assert heldCore.ok;
-	const litMesh: MeshId = addMesh(held, MeshData.empty().meshFor(0, 0, 0));
+	const litMesh: MeshId = added(held, MeshData.empty().meshFor(0, 0, 0));
 	const litItems: Vec<DrawItem> = [{ ...itemOf(FIRST_MATERIAL), mesh: litMesh }];
 	if (heldCore.ok) {
 		let core: Renderer = heldCore.value;
@@ -264,7 +266,7 @@ test "the core refuses a billboard without its texture and sampler, or off the q
 	assert created.ok;
 	if (created.ok) {
 		let core: Renderer = created.value;
-		const quads: MeshId = addMesh(context, GpuMesh.billboards(9, 1));
+		const quads: MeshId = added(context, GpuMesh.billboards(9, 1));
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -282,13 +284,13 @@ test "the core refuses a billboard without its texture and sampler, or off the q
 		const strip: GpuMesh = { ...GpuMesh.billboards(9, 1), vertexCount: 4 };
 		const material: MaterialId = billboardMaterial(context, 5, 6);
 		for (const offShape of [cornered, unbuffered, strip]) {
-			const mesh: MeshId = addMesh(context, offShape);
+			const mesh: MeshId = added(context, offShape);
 			const offItems: Vec<DrawItem> = [{ ...itemOf(material), mesh: mesh }];
 			const refused: Result<boolean, RendererError> =
 				beginFrame(core, context, offItems, camera, lights);
 			assert !refused.ok && refused.error == RendererError.QuadMesh;
 		}
-		const unwritten: MeshId = addMesh(context, GpuMesh.billboards(0, 0));
+		const unwritten: MeshId = added(context, GpuMesh.billboards(0, 0));
 		const emptyItems: Vec<DrawItem> = [{ ...itemOf(material), mesh: unwritten }];
 		const empty: Result<boolean, RendererError> =
 			beginFrame(core, context, emptyItems, shortCamera, lights);
@@ -336,4 +338,15 @@ test "the forward preset refuses a frame once its own copy material or screen me
 		renderFrame(forward, context, none, camera, lights, 64, 64);
 	assert !noCopy.ok && noCopy.error == ForwardError.StaleMaterial;
 	assert forward.core.generation == 0;
+}
+
+test "the core owns its camera and light blocks, so only it could give them back" {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	const camera: Result<int32, UniformError> = releaseUniforms(context, created.value.cameraBlock);
+	assert !camera.ok && camera.error == UniformError.Owned;
+	const lights: Result<int32, UniformError> = releaseUniforms(context, created.value.lightBlock);
+	assert !lights.ok && lights.error == UniformError.Owned;
 }

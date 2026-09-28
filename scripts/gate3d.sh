@@ -411,7 +411,11 @@ write_churn_entry() {
 		echo "	liveMeshes: 0,"
 		echo "	liveMaterials: 0,"
 		echo "	uniformsUsed: 0,"
+		echo "	freeRanges: 0,"
+		echo "	doomed: 0,"
 		echo "	liveBuffers: 0,"
+		echo "	sceneNodes: 0,"
+		echo "	sceneSlots: 0,"
 		echo "	secondWritesRefused: 0,"
 		echo "	stopped: false,"
 		echo "	stoppedBy: ChurnError.FrameRefused,"
@@ -433,6 +437,10 @@ write_churn_entry() {
 		echo "	console.log(\`CHURN growth.liveMaterials \${now.liveMaterials - base.liveMaterials}\`);"
 		echo "	console.log(\`CHURN growth.uniformsUsed \${now.uniformsUsed - base.uniformsUsed}\`);"
 		echo "	console.log(\`CHURN growth.liveBuffers \${now.liveBuffers - base.liveBuffers}\`);"
+		echo "	console.log(\`CHURN growth.freeRanges \${now.freeRanges - base.freeRanges}\`);"
+		echo "	console.log(\`CHURN growth.doomed \${now.doomed - base.doomed}\`);"
+		echo "	console.log(\`CHURN growth.sceneNodes \${now.sceneNodes - base.sceneNodes}\`);"
+		echo "	console.log(\`CHURN growth.sceneSlots \${now.sceneSlots - base.sceneSlots}\`);"
 		echo "}"
 		echo ""
 		echo "function frame(): void {"
@@ -654,11 +662,13 @@ run_churn() {
 		return
 	fi
 	grew=""
-	for row in $(grep '^CHURN growth\.' "$WORK/churnBench.log" | awk '{print $2 "=" $3}'); do
-		case "$row" in
-			*=0) ;;
-			*) grew="$grew $row" ;;
-		esac
+	for row in $CHURN_ROWS; do
+		value=$(churn_rows churnBench "growth.$row")
+		if [ -z "$value" ]; then
+			fail "churn: the releasing run printed no growth.$row row"
+			return
+		fi
+		[ "$value" = "0" ] || grew="$grew $row=$value"
 	done
 	if [ -n "$grew" ]; then
 		fail "churn: releasing every frame, something still grew:$grew"
@@ -673,6 +683,17 @@ run_churn() {
 			return
 			;;
 	esac
+	still=""
+	for row in $CHURN_CONTROL_ROWS; do
+		value=$(churn_rows churnControl "growth.$row")
+		case "$value" in
+			""|0|-*) still="$still $row=${value:-missing}" ;;
+		esac
+	done
+	if [ -n "$still" ]; then
+		fail "churn: the control, never releasing, did not grow what the flat rows claim to hold:$still"
+		return
+	fi
 	buffers=$(churn_rows churnBench liveBuffers)
 	pass "churn: $total frames loading and unloading a level, tables, uniform pool and $buffers live sokol buffers flat; every second stream write refused"
 	note "churn: the control, never releasing, ran out of sokol's buffers after $controlFrames frames ($controlStop)"
@@ -806,7 +827,8 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	scene:setLocal scene:setMeshOf animation:update animation:keys animation:blendTo
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
-	particles:emitterValue particles:writeInstances draw:writeStream"
+	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh
+	draw:letGoOfMesh draw:meshPinned draw:hasMesh slots:isCurrent gpu3d:frameIndex"
 
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit renderer:slotBound gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
@@ -820,11 +842,12 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	pixel65rt82enderer:billboardLevels
 	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
-	target:beginPass"
+	target:beginPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
+	uniform80ool:holds uniform80ool:writeRange"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
-	mesh68ata:rayIntersection mesh68ata:cornerOf ray:transformed"
+	mesh68ata:rayIntersection mesh68ata:cornerOf ray:transformed scene:nodeIdAt"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
@@ -1247,6 +1270,12 @@ BENCH_WARMUP=${GATE_BENCH_WARMUP:-30}
 BENCH_FRAMES=${GATE_BENCH_FRAMES:-300}
 CHURN_WARMUP=${GATE_CHURN_WARMUP:-10}
 CHURN_FRAMES=${GATE_CHURN_FRAMES:-300}
+# Every row the releasing run must hold flat, and the ones the control must grow: a release that
+# never happens leaves doomed buffers and free ranges at zero, so those two have no control.
+CHURN_ROWS="meshSlots materialSlots liveMeshes liveMaterials uniformsUsed freeRanges doomed
+	liveBuffers sceneNodes sceneSlots"
+CHURN_CONTROL_ROWS="meshSlots materialSlots liveMeshes liveMaterials uniformsUsed liveBuffers
+	sceneNodes sceneSlots"
 PICK_FRAME=12
 GREY_GROUND=-0.75
 
@@ -1300,7 +1329,9 @@ run_android() {
 
 echo "void3d gate"
 echo "  msc      $(msc --version 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r\n')"
-echo "  commit   $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+dirty=""
+[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] && dirty=" with uncommitted changes"
+echo "  commit   $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)$dirty"
 echo
 
 if prepare_scene; then

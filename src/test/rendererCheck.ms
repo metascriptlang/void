@@ -27,7 +27,7 @@ import {
 	releaseMesh,
 	writeUniforms,
 } from "../void3d/draw";
-import { lastMaterial } from "./drawHelpers";
+import { lastMaterial, added } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
 import { PipelineKey } from "../void3d/pipelineCache";
@@ -132,7 +132,7 @@ function itemOnItsLayout(ref context: DrawContext, material: MaterialId): DrawIt
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
 	};
-	return { ...itemAt(material.index, 0.0), mesh: addMesh(context, mesh) };
+	return { ...itemAt(material.index, 0.0), mesh: added(context, mesh) };
 }
 
 test "a frame runs scene, post, then blit; without the post pass it blits the scene" {
@@ -560,7 +560,7 @@ test "a released material or mesh refuses the frame by name" {
 	assert renderer.core.generation == 0;
 }
 
-test "a material's block is its own, and a block put in by hand after release is refused" {
+test "a material's block is its own, and a block put in by hand is refused" {
 	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH * 2;
 	let context: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let renderer: PixelArtRenderer = presetOver(context, Program.Lit, 4.0);
@@ -586,7 +586,7 @@ test "a material's block is its own, and a block put in by hand after release is
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const refused: Result<int32, PixelArtError> =
 		renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
-	assert !refused.ok && refused.error == PixelArtError.ReleasedUniforms;
+	assert !refused.ok && refused.error == PixelArtError.UniformsReplaced;
 	assert renderer.core.generation == 0;
 }
 

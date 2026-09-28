@@ -159,7 +159,7 @@ export enum PixelArtError {
 	VertexLayout,
 	MaterialTexture,
 	QuadMesh,
-	ReleasedUniforms,
+	UniformsReplaced,
 	StaleMesh,
 	StaleMaterial,
 	RampLevels,
@@ -322,7 +322,7 @@ export function create(
 		POST_UNIFORM_LENGTH,
 		BLIT_UNIFORM_LENGTH,
 	];
-	if (!context.uniforms.fits(blocks)) {
+	if (!context.uniforms.fits(blocks).ok) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
 	const palette: Result<PaletteLut, PaletteError> = PaletteLut.withLevels(DEFAULT_PALETTE_LEVELS);
@@ -477,15 +477,21 @@ function drawScene(
 	endPass();
 }
 
+// renderFrame refused the frame before any pass if either screen material or the screen mesh
+// were gone.
 function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	beginPass(renderer.postColors, NO_DEPTH);
-	drawScreen(renderer.core, context, renderer.postMaterial, POST_LAYOUT);
+	const drawn: Result<int32, RendererError> =
+		drawScreen(renderer.core, context, renderer.postMaterial, POST_LAYOUT);
+	if (!drawn.ok) { unreachable; }
 	endPass();
 }
 
 function drawBlit(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	beginScreenPass(SCREEN_CLEAR);
-	drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
+	const drawn: Result<int32, RendererError> =
+		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
+	if (!drawn.ok) { unreachable; }
 	endPass();
 }
 
@@ -499,7 +505,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.VertexLayout => PixelArtError.VertexLayout,
 		RendererError.MaterialTexture => PixelArtError.MaterialTexture,
 		RendererError.QuadMesh => PixelArtError.QuadMesh,
-		RendererError.ReleasedUniforms => PixelArtError.ReleasedUniforms,
+		RendererError.UniformsReplaced => PixelArtError.UniformsReplaced,
 		RendererError.StaleMesh => PixelArtError.StaleMesh,
 		RendererError.StaleMaterial => PixelArtError.StaleMaterial,
 	};
@@ -527,7 +533,7 @@ function rampsHaveLevels(
 	for (const item of items) {
 		if (!context.hasMaterial(item.material)) { continue; }
 		const material: Material = context.materials[item.material.index];
-		if (!context.uniforms.holds(material.uniforms)) { continue; }
+		if (!context.keepsItsUniforms(item.material)) { continue; }
 		const drawn: Result<Program, ProgramError> = programs.drawnFor(material.program);
 		if (!drawn.ok) { continue; }
 		const held: boolean = match (drawn.value) {

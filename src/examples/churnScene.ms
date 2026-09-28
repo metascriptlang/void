@@ -70,7 +70,11 @@ export struct ChurnStats {
 	liveMeshes: int32;
 	liveMaterials: int32;
 	uniformsUsed: int32;
+	freeRanges: int32;
+	doomed: int32;
 	liveBuffers: int32;
+	sceneNodes: int32;
+	sceneSlots: int32;
 	secondWritesRefused: int32;
 	stopped: boolean;
 	stoppedBy: ChurnError;
@@ -237,7 +241,11 @@ export function churnStats(): ChurnStats {
 		liveMeshes: context.liveMeshes(),
 		liveMaterials: context.liveMaterials(),
 		uniformsUsed: context.uniforms.used,
+		freeRanges: context.uniforms.freeRanges(),
+		doomed: context.doomed.length as int32,
 		liveBuffers: liveBuffers(),
+		sceneNodes: scene.nodeCount(),
+		sceneSlots: scene.nodes.length as int32,
 		secondWritesRefused: secondWritesRefused,
 		stopped: stopped,
 		stoppedBy: stoppedBy,

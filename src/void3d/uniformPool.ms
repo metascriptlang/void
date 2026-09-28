@@ -52,9 +52,7 @@ export function freeRanges(this pool: UniformPool): int32 {
 	return pool.free.length as int32;
 }
 
-// Whether blocks of these lengths could all be reserved now, from released ranges of each length
-// first and the rest from what was never reserved.
-export function fits(this pool: UniformPool, lengths: Span<int32>): boolean {
+export function fits(this pool: UniformPool, lengths: Span<int32>): Result<int32, UniformError> {
 	let taken: Vec<boolean> = new Array(pool.free.length);
 	for (let i = 0; i < (pool.free.length as int32); i++) { taken[i] = false; }
 	let fresh: int32 = 0;
@@ -68,15 +66,14 @@ export function fits(this pool: UniformPool, lengths: Span<int32>): boolean {
 		}
 		if (!found) { fresh = fresh + length; }
 	}
-	return fresh <= pool.unreserved();
+	if (fresh > pool.unreserved()) { return Result.err(UniformError.PoolFull); }
+	return Result.ok(fresh);
 }
 
-// Held by one owner (a material), which alone may give it back.
 export function isOwned(this pool: UniformPool, block: UniformBlock): boolean {
 	return block.length > 0 && pool.holds(block) && pool.owned[block.offset];
 }
 
-// A block of no floats names no range and is always held.
 export function holds(this pool: UniformPool, block: UniformBlock): boolean {
 	if (block.length == 0) { return true; }
 	if (block.offset < 0 || block.offset >= pool.used) { return false; }
@@ -116,8 +113,6 @@ export function reserveRange(
 	return Result.ok(pool.blockAt(slot, offset));
 }
 
-// Takes `block` for one owner, which releases it with disownRange. A range of no floats has
-// nothing to own.
 export function ownRange(ref pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
 	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
 	if (block.length == 0) { return Result.ok(0); }
@@ -126,7 +121,6 @@ export function ownRange(ref pool: UniformPool, block: UniformBlock): Result<int
 	return Result.ok(block.length);
 }
 
-// The owner gives its range back, released as releaseRange releases an unowned one.
 export function disownRange(
 	ref pool: UniformPool,
 	block: UniformBlock,
@@ -136,7 +130,6 @@ export function disownRange(
 	return releaseRange(pool, block);
 }
 
-// A range whose generation would wrap is retired rather than handed out again (slots.ms).
 export function releaseRange(
 	ref pool: UniformPool,
 	block: UniformBlock,

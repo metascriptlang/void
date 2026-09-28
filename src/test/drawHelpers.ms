@@ -7,6 +7,7 @@ import {
 	MeshId,
 	MaterialId,
 	MaterialError,
+	MeshUploadError,
 	addMesh,
 	addMaterial,
 } from "../void3d/draw";
@@ -16,13 +17,20 @@ import {
 export function contextOf(meshes: int32, materials: int32): DrawContext {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (let i = 0; i < meshes; i++) {
-		const _mesh: MeshId = addMesh(context, GpuMesh.fullscreen(0, 3));
+		const _mesh: MeshId = added(context, GpuMesh.fullscreen(0, 3));
 	}
 	for (let i = 0; i < materials; i++) {
 		const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 		const _material: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 	}
 	return context;
+}
+
+// A mesh addMesh takes: the caller's, a stream, or one never made in a context.
+export function added(ref context: DrawContext, mesh: GpuMesh): MeshId {
+	const result: Result<MeshId, MeshUploadError> = addMesh(context, mesh);
+	if (!result.ok) { unreachable; }
+	return result.value;
 }
 
 export function meshAt(this context: DrawContext, index: int32): MeshId {

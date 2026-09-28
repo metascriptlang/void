@@ -15,6 +15,7 @@ import {
 } from "../void3d/meshData";
 import { PARTICLE_INSTANCE_STRIDE } from "../void3d/particles";
 import { BILLBOARD_INSTANCE_STRIDE } from "../void3d/billboard";
+import { added } from "./drawHelpers";
 import {
 	DrawContext,
 	GpuMesh,
@@ -22,7 +23,6 @@ import {
 	StreamError,
 	STREAM_INSTANCE_STRIDE,
 	QUAD_VERTEX_COUNT,
-	addMesh,
 	releaseMesh,
 	staleMeshes,
 	writeStream,
@@ -78,8 +78,8 @@ test "an empty MeshData describes a mesh that draws nothing" {
 test "addMesh keeps the two tables one index space" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
 	assert (context.meshes.length as int32) == 0 && (context.meshData.length as int32) == 0;
-	const first: MeshId = addMesh(context, billboard());
-	const second: MeshId = addMesh(context, billboard());
+	const first: MeshId = added(context, billboard());
+	const second: MeshId = added(context, billboard());
 	assert first.index == 0 && second.index == 1;
 	assert first.generation == 1 && context.hasMesh(first) && context.hasMesh(second);
 	assert (context.meshes.length as int32) == (context.meshData.length as int32);
@@ -88,7 +88,7 @@ test "addMesh keeps the two tables one index space" {
 
 test "a mesh whose buffers the caller keeps is not one the renderer can rebuild" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
-	assert addMesh(context, billboard()).index == 0;
+	assert added(context, billboard()).index == 0;
 	assert context.rebuildableMeshes() == 0;
 	// Not stale on any generation: the sentinel says the caller owns the buffers, and the
 	// renderer must not touch them.
@@ -172,12 +172,12 @@ function streamError(result: Result<int32, StreamError>): StreamError {
 
 test "a stream write is refused before the driver when it names the wrong mesh or too much" {
 	let context: DrawContext = DrawContext.withUniformCapacity(8);
-	const plain: MeshId = addMesh(context, billboard());
-	const stream: MeshId = addMesh(context, GpuMesh.streamMesh(4, 12, 1));
+	const plain: MeshId = added(context, billboard());
+	const stream: MeshId = added(context, GpuMesh.streamMesh(4, 12, 1));
 	const four: Vec<float32> = new Array(4 * STREAM_INSTANCE_STRIDE);
 	const never: MeshId = { index: 9, generation: 1 };
 	assert streamError(writeStream(context, never, four, 1)) == StreamError.StaleMesh;
-	const gone: MeshId = addMesh(context, GpuMesh.streamMesh(4, 13, 1));
+	const gone: MeshId = added(context, GpuMesh.streamMesh(4, 13, 1));
 	assert releaseMesh(context, gone).ok;
 	assert streamError(writeStream(context, gone, four, 1)) == StreamError.StaleMesh;
 	assert streamError(writeStream(context, plain, four, 1)) == StreamError.NotAStream;

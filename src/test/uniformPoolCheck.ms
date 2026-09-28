@@ -81,10 +81,10 @@ test "blocks fit from released ranges of their length first, then from the rest"
 	assert releaseRange(pool, four).ok && releaseRange(pool, eight).ok;
 	const both: Vec<int32> = [8, 4];
 	const twoFours: Vec<int32> = [4, 4];
-	assert pool.fits(both);
-	assert !pool.fits(twoFours);
+	assert pool.fits(both).ok;
+	assert !pool.fits(twoFours).ok;
 	const none: Vec<int32> = [];
-	assert pool.fits(none);
+	assert pool.fits(none).ok;
 }
 
 test "an owned range is released only by its owner" {
