@@ -140,6 +140,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "image/cornerRadii", phase: "P2", width: 320, height: 220, dpi: 1.25, steps: 0, demo: false },
 		{ name: "image/grayscale", phase: "P2", width: 320, height: 188, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/scaleGrid", phase: "P0", width: 256, height: 148, dpi: 1.0, steps: 0, demo: false },
+		{ name: "image/tileGroup", phase: "P5", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 
 		// Turned on at P1, once the per-target command lists were hoisted out of the swapchain
 		// list: a filter no longer opens a pass during the walk, it brackets a region of the
@@ -185,8 +186,8 @@ export function sceneDrawCounts(): int32[] {
 		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1, 6,
-		2, 1, 1, 1, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1, 1, 3,
-		30, 30, 30, 30, 2, 5,
+		2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1, 1,
+		3, 30, 30, 30, 30, 2, 5,
 	];
 }
 
@@ -195,8 +196,8 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0, 5,
-		5, 5, 5, 5, 0, 5,
+		0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0,
+		5, 5, 5, 5, 5, 0, 5,
 	];
 }
 

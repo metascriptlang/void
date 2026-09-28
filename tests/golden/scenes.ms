@@ -7,7 +7,7 @@
 // draw a known defect on purpose, so that the commit which fixes the defect has to
 // regenerate exactly that group and nothing else.
 
-import { NodeRef, Scene } from "../../src/void2d/node";
+import { NodeRef, Scene, TileCell } from "../../src/void2d/node";
 import { Align, TextRun } from "../../src/void2d/textLayout";
 import {
 	addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature, SizeAdjust,
@@ -966,6 +966,42 @@ function imageScaleGrid(): Scene {
 	return s;
 }
 
+function tileCellAt(x: float32, y: float32, t: Tile, color: Color): TileCell {
+	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
+}
+
+function imageTileGroup(): Scene {
+	const s = scene(DARK);
+	const t = sheet();
+	const white = rgba(1.0, 1.0, 1.0, 1.0);
+	const topLeft: Tile = { ...t.sub(0.0, 0.0, t.texW * 0.5, t.texH * 0.5), w: 40.0, h: 40.0 };
+	const topRight: Tile = {
+		...t.sub(t.texW * 0.5, 0.0, t.texW * 0.5, t.texH * 0.5), w: 40.0, h: 40.0,
+	};
+	const bottomLeft: Tile = {
+		...t.sub(0.0, t.texH * 0.5, t.texW * 0.5, t.texH * 0.5), w: 40.0, h: 40.0,
+	};
+	const whole: Tile = { ...t, w: 40.0, h: 40.0 };
+	const plain: Tile = tile(0, 40.0, 40.0);
+	const cells: TileCell[] = [
+		tileCellAt(0.0, 0.0, topLeft, white),
+		tileCellAt(44.0, 0.0, topRight, rgba(1.0, 0.6, 0.6, 1.0)),
+		tileCellAt(88.0, 0.0, plain, rgba(0.3, 0.8, 0.4, 1.0)),
+		tileCellAt(132.0, 0.0, bottomLeft, rgba(0.6, 0.8, 1.0, 1.0)),
+		tileCellAt(176.0, 0.0, whole, white),
+		{ ...tileCellAt(40.0, 80.0, { ...whole, dx: -20.0, dy: -20.0 }, white),
+			scaleX: 1.2, scaleY: 1.2, rotation: 0.5 },
+		{ ...tileCellAt(80.0, 64.0, plain, rgba(1.0, 0.6, 0.2, 0.7)), scaleX: 2.0, scaleY: 0.5 },
+		tileCellAt(176.0, 56.0, topLeft.flipX(), white),
+		tileCellAt(0.0, 0.0, { ...plain, w: 220.0, h: 110.0 }, rgba(1.0, 0.0, 0.0, 1.0)),
+	];
+	const map = s.add(s.tileGroup()).at(12.0, 12.0);
+	map.setColor(rgba(1.0, 0.95, 0.9, 1.0));
+	map.setTiles(cells);
+	map.setRange(0, map.count() - 1);
+	return s;
+}
+
 // ===== filter/ — built, but not in tests/golden/table.ms until P1 =====
 // Nothing here can be captured today. drawFiltered (render.ms:216-283) calls beginRT while
 // the swapchain pass is open; a debug build trips sokol's `!_sg.cur_pass.valid` assertion
@@ -1258,6 +1294,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "image/cornerRadii", build: imageCornerRadii },
 		{ name: "image/grayscale", build: imageGrayscale },
 		{ name: "image/scaleGrid", build: imageScaleGrid },
+		{ name: "image/tileGroup", build: imageTileGroup },
 
 		{ name: "filter/blur", build: filterBlur },
 		{ name: "filter/glow", build: filterGlow },
