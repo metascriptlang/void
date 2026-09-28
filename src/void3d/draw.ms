@@ -300,15 +300,15 @@ function drawsNothing(this mesh: GpuMesh): GpuMesh {
 }
 
 // Makes the buffers for mesh `index` from its CPU data and points the GpuMesh at them. The
-// old handles are dropped rather than destroyed: after a context loss they may already name an
-// object of the new context (docs/VOID3D.md, Android lifecycle).
+// buffers it replaces are doomed (freeMesh), so a live mesh uploaded again leaks nothing and one
+// whose context was lost drops them at the next beginFrame.
 //
 // A buffer the driver refuses comes back as handle 0. That must not reach `meshFor`: whether a
 // GpuMesh is indexed is read off `indexBuffer`, so an indexed mesh whose index buffer was
 // refused would silently become a non-indexed draw over an indexed vertex array — 194 wrong
 // triangles instead of 292 right ones, with no diagnostic. The mesh is emptied instead.
-// PENDING3D: upload-mesh-leaks-on-replace
 function uploadMesh(ref context: DrawContext, index: int32): Result<int32, MeshUploadError> {
+	doomBuffersOf(context, context.meshes[index]);
 	// sokol validates a buffer's size > 0 and panics rather than returning an invalid id, so an
 	// empty mesh must never reach the driver.
 	if (context.meshData[index].vertexCount() == 0) {
@@ -490,13 +490,15 @@ function doom(ref context: DrawContext, buffer: uint32, generation: int32): void
 
 // The buffers go to the next beginFrame, so a pass list of this frame that still names the
 // mesh never reaches a destroyed buffer; a caller's buffers (EXTERNAL_GENERATION) are not ours.
+function doomBuffersOf(ref context: DrawContext, mesh: GpuMesh): void {
+	if (mesh.generation == EXTERNAL_GENERATION || mesh.generation == 0) { return; }
+	doom(context, mesh.vertexBuffer, mesh.generation);
+	doom(context, mesh.indexBuffer, mesh.generation);
+	doom(context, mesh.instanceBuffer, mesh.generation);
+}
+
 function freeMesh(ref context: DrawContext, index: int32): void {
-	const mesh: GpuMesh = context.meshes[index];
-	if (mesh.generation != EXTERNAL_GENERATION && mesh.generation != 0) {
-		doom(context, mesh.vertexBuffer, mesh.generation);
-		doom(context, mesh.indexBuffer, mesh.generation);
-		doom(context, mesh.instanceBuffer, mesh.generation);
-	}
+	doomBuffersOf(context, context.meshes[index]);
 	context.meshes[index] = VACANT_MESH;
 	context.meshData[index] = MeshData.empty();
 	context.meshHolders[index] = 0;
