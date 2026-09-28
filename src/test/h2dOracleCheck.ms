@@ -1,10 +1,12 @@
 import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
 import { scene, add, paint, setScaleMode, sceneViewMatrix } from "../void2d/scene";
-import { Scene, NodeRef } from "../void2d/node";
+import { Scene, NodeRef, TileCell } from "../void2d/node";
 import { getBounds } from "../void2d/render";
 import { frameEnd } from "../void2d/draw";
-import { Bounds, Vec2, Transform2D, ScaleMode, vec2, tile, emptyBounds } from "../void2d/types";
+import {
+	Bounds, Vec2, Transform2D, ScaleMode, vec2, tile, rgba, emptyBounds,
+} from "../void2d/types";
 
 const ORACLE_PATH: string = "tests/oracle/h2d.json";
 const PENDING_PATH: string = "tests/PENDING.md";
@@ -14,6 +16,28 @@ const VIEW_H: float32 = 256.0;
 
 function field(spec: JsonValue, name: string, fallback: float32): float32 {
 	return spec.getDynamicField(name).asNumber(fallback as float64) as float32;
+}
+
+function tilesOf(rows: JsonValue): Vec<TileCell> {
+	const out: Vec<TileCell> = [];
+	for (let k: int32 = 0; k < (rows.length() as int32); k++) {
+		const c = rows.at(k);
+		const transformed: boolean = (c.length() as int32) > 6;
+		out.push({
+			x: c.at(0).asNumber() as float32,
+			y: c.at(1).asNumber() as float32,
+			tile: {
+				...tile(0, c.at(2).asNumber() as float32, c.at(3).asNumber() as float32),
+				dx: c.at(4).asNumber() as float32,
+				dy: c.at(5).asNumber() as float32,
+			},
+			color: rgba(1.0, 1.0, 1.0, 1.0),
+			scaleX: transformed ? c.at(6).asNumber() as float32 : 1.0,
+			scaleY: transformed ? c.at(7).asNumber() as float32 : 1.0,
+			rotation: transformed ? c.at(8).asNumber() as float32 : 0.0,
+		});
+	}
+	return out;
 }
 
 function build(s: Scene, spec: JsonValue, parent: NodeRef | null, ref nodes: Vec<NodeRef>): void {
@@ -27,6 +51,14 @@ function build(s: Scene, spec: JsonValue, parent: NodeRef | null, ref nodes: Vec
 	} else if (kind.equals("mask")) {
 		n.remove();
 		n = s.mask(w, h);
+	} else if (kind.equals("tilegroup")) {
+		n.remove();
+		n = s.tileGroup();
+		n.setTiles(tilesOf(spec.getDynamicField("tiles")));
+		const range = spec.getDynamicField("range");
+		if ((range.length() as int32) == 2) {
+			n.setRange(range.at(0).asNumber() as int32, range.at(1).asNumber() as int32);
+		}
 	}
 	n.setX(field(spec, "x", 0.0)).setY(field(spec, "y", 0.0));
 	n.setScaleX(field(spec, "scaleX", 1.0)).setScaleY(field(spec, "scaleY", 1.0));

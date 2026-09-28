@@ -13,6 +13,8 @@ typedef Spec = {
 	@:optional var scrollY : Float;
 	@:optional var scrollBounds : Array<Float>;
 	@:optional var visible : Bool;
+	@:optional var tiles : Array<Array<Float>>;
+	@:optional var range : Array<Int>;
 	@:optional var children : Array<Spec>;
 }
 
@@ -28,6 +30,18 @@ class Oracle {
 				new h2d.Bitmap(t, parent);
 			case "mask":
 				new h2d.Mask(Std.int(spec.w), Std.int(spec.h), parent);
+			case "tilegroup":
+				var g = new h2d.TileGroup(null, parent);
+				for( c in spec.tiles ) {
+					var t = @:privateAccess new h2d.Tile(null, 0, 0, c[2], c[3], c[4], c[5]);
+					if( c.length > 6 ) g.addTransform(c[0], c[1], c[6], c[7], c[8], t);
+					else g.add(c[0], c[1], t);
+				}
+				if( spec.range != null ) {
+					g.rangeMin = spec.range[0];
+					g.rangeMax = spec.range[0] + spec.range[1];
+				}
+				g;
 			default:
 				new h2d.Object(parent);
 		}
@@ -94,6 +108,20 @@ class Oracle {
 			] } },
 			{ name: "maskInsideContent", tree: { kind: "mask", w: 80, h: 80, children: [
 				bitmap(20, 20, [10, 10]),
+			] } },
+			{ name: "tileGroup", tree: { kind: "tilegroup", x: 10, y: 5, tiles: [
+				[0, 0, 10, 10, 0, 0], [20, 4, 8, 6, -4, -3],
+			] } },
+			{ name: "tileGroupTransformed", tree: { kind: "tilegroup", x: 40, y: 30, rotation: 0.3, scaleX: 1.5, tiles: [
+				[0, 0, 10, 10, 0, 0, 1, 1, 0], [20, 4, 8, 6, -4, -3, 2, 0.5, 1.2], [-6, 12, 5, 5, 0, 0, -1, 1, 0],
+			] } },
+			{ name: "tileGroupRange", tree: { kind: "tilegroup", range: [1, 1], tiles: [
+				[0, 0, 10, 10, 0, 0], [30, 30, 10, 10, 0, 0], [60, 0, 10, 10, 0, 0],
+			] } },
+			{ name: "tileGroupEmpty", tree: { kind: "tilegroup", x: 7, y: 9, tiles: [] } },
+			{ name: "tileGroupChild", tree: { kind: "object", x: 5, y: 5, children: [
+				{ kind: "tilegroup", x: 10, y: 0, scaleY: 2, tiles: [ [0, 0, 4, 4, 0, 0], [8, 8, 4, 4, 0, 0] ] },
+				bitmap(6, 6, [0, 20]),
 			] } },
 		];
 	}
