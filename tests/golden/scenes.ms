@@ -615,6 +615,25 @@ function clipScrolledList(): Scene {
 	return s;
 }
 
+function clipMaskScroll(): Scene {
+	const s = scene(DARK);
+	const m = s.mask(200.0, 90.0).at(28.0, 30.0);
+	for (let i: int32 = 0; i < 40; i++) {
+		const stripe: Color = i % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
+		const row = s.rect(190.0, 18.0, stripe).at(5.0, (i as float32) * 22.0);
+		row.addChild(s.label(String(i), 12.0, rgba(0.86, 0.90, 0.98, 1.0)).at(6.0, 2.0));
+		m.addChild(row);
+	}
+	const inner = s.mask(60.0, 12.0).at(120.0, 12.0 * 22.0 + 3.0);
+	inner.addChild(s.rect(90.0, 30.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-10.0, -8.0));
+	m.addChild(inner);
+	m.setScrollBounds({ xMin: 0.0, yMin: 0.0, xMax: 200.0, yMax: 880.0 });
+	m.scrollTo(4.0, 1000.0);
+	m.scrollBy(-4.0, -549.0);
+	s.add(m);
+	return s;
+}
+
 // ===== text/ =====
 
 const CODE_LINE: string = "fn main() { let x: i32 = 42; }";
@@ -1231,5 +1250,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "demo/frame030", build: demoPlaceholder },
 		{ name: "demo/frame090", build: demoPlaceholder },
 		{ name: "demo/frame200", build: demoPlaceholder },
+		{ name: "clip/maskScroll", build: clipMaskScroll },
 	];
 }
