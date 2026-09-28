@@ -3,7 +3,7 @@
 // Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
 import { Scene, NodeRef, DrawKind, Changed, NO_NODE } from "./node";
-import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes } from "./render";
+import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift } from "./render";
 import {
 	openBracket,
 	startList,
@@ -13,10 +13,21 @@ import {
 	setSceneSmooth,
 	paintIndex,
 	endPatch,
+	enterCamera,
 } from "./draw";
 import { DisplayList, NO_REPAINT, displayList, twinList, useList } from "./displayList";
 import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
-import { Color, Transform2D, ScaleMode, camera, viewMatrix, identity2d, trs2d } from "./types";
+import {
+	Color,
+	Transform2D,
+	ScaleMode,
+	Vec2,
+	camera,
+	viewMatrix,
+	identity2d,
+	trs2d,
+	vec2,
+} from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
 export function scene(clear: Color): Scene {
@@ -32,7 +43,8 @@ export function scene(clear: Color): Scene {
 		stack: [], root: NO_NODE,
 		list: list, spare: twinList(list.id),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
-		viewMat: identity2d(), viewInit: false, defaultSmooth: true,
+		viewMat: identity2d(), viewShift: vec2(0.0, 0.0), culledShift: vec2(0.0, 0.0),
+		viewInit: false, defaultSmooth: true, culls: [],
 	};
 	s.root = s.newRow(DrawKind.Group, NO_NODE);
 	return s;
@@ -129,7 +141,16 @@ export function isDirty(this s: Scene): boolean {
 	const l: DisplayList = s.list;
 	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
 	if (s.defaultSmooth != l.paintedSmooth) { return true; }
-	return sceneViewMatrix(s, l.paintedW, l.paintedH) != s.viewMat;
+	const nv: Transform2D = sceneViewMatrix(s, l.paintedW, l.paintedH);
+	return linearPart(nv) != s.viewMat || shiftOf(nv, l.paintedDpi) != s.viewShift;
+}
+
+function linearPart(m: Transform2D): Transform2D {
+	return { ...m, tx: 0.0, ty: 0.0 };
+}
+
+function shiftOf(m: Transform2D, dpi: float32): Vec2 {
+	return vec2(snappedShift(m.tx, dpi), snappedShift(m.ty, dpi));
 }
 
 export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): void {
@@ -139,11 +160,13 @@ export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): vo
 	useList(s.list);
 	openBracket(wf, hf, dpi);
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
-	const viewChanged: boolean = !s.viewInit || nv != s.viewMat;
+	const linear: Transform2D = linearPart(nv);
+	const viewChanged: boolean = !s.viewInit || linear != s.viewMat;
 	if (viewChanged) {
-		s.viewMat = nv;
+		s.viewMat = linear;
 		s.viewInit = true;
 	}
+	s.viewShift = shiftOf(nv, dpi);
 	s.refreshOrder();
 	const l: DisplayList = s.list;
 	const kept: boolean = l.painted && !viewChanged &&
@@ -153,12 +176,14 @@ export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): vo
 		endPatch(l.paintEnd);
 		s.patches = s.patches + 1;
 		s.repainted = s.repaint.length as int32;
+		s.culledShift = s.viewShift;
 		return;
 	}
 	if (kept) {
 		const next: DisplayList = s.spare;
 		useList(next);
 		startList();
+		enterCamera(s.root, s.viewShift.x, s.viewShift.y);
 		s.spliceOrder(l, wf, hf);
 		s.spare = l;
 		s.list = next;
@@ -166,10 +191,12 @@ export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): vo
 		s.repainted = s.repaint.length as int32;
 	} else {
 		startList();
+		enterCamera(s.root, s.viewShift.x, s.viewShift.y);
 		s.syncOrder(s.viewMat, viewChanged);
 		s.drawOrder(wf, hf);
 		s.repainted = NO_REPAINT;
 	}
+	s.culledShift = s.viewShift;
 	const done: DisplayList = s.list;
 	finishRecording();
 	done.paintEnd = paintIndex();

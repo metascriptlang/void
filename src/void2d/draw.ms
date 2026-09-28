@@ -647,7 +647,27 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 
 let scopeDepths: Vec<int32> = [];
 
-export function inScope(): boolean { return currentList().scopeNow != NO_SCOPE; }
+export function inScope(): boolean {
+	const l: DisplayList = currentList();
+	return l.scopeNow != NO_SCOPE && l.scopeNow != l.cameraScope;
+}
+
+export function enterCamera(row: int32, dx: float32, dy: float32): void {
+	const l: DisplayList = currentList();
+	const record: ScopeRecord = {
+		row: row,
+		parent: NO_SCOPE,
+		scale: currentRenderScale(),
+		dx: dx,
+		dy: dy,
+		x: 0.0,
+		y: 0.0,
+		w: fbW,
+		h: fbH,
+	};
+	l.scopeNow = pushScope(record);
+	l.cameraScope = l.scopeNow;
+}
 
 export function enterScope(
 	row: int32, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, dx: float32, dy: float32,

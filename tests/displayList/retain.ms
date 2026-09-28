@@ -19,7 +19,8 @@ import {
 	COMMAND_FLOATS,
 	EFFECT_FLOATS,
 	VERTEX_FLOATS,
-	CMD_SCOPE,
+	SCOPE_FLOATS,
+	resolveScopes,
 	PaintIndex,
 	PaintState,
 	paintStartOf,
@@ -28,7 +29,7 @@ import {
 	uploaded,
 } from "../../src/void2d/displayList";
 import { REC_UI_FLOATS, REC_SPRITE_FLOATS } from "../../src/void2d/instanceLayout";
-import { rgba, tile, identity2d, Tile } from "../../src/void2d/types";
+import { rgba, tile, identity2d, vec2, Tile } from "../../src/void2d/types";
 
 const W: float32 = 200.0;
 const H: float32 = 120.0;
@@ -315,6 +316,10 @@ test "a retained frame records what a full frame records, write by write" {
 	assert check(s, "a scroll", "patch");
 	c.card.setX(6.0);
 	assert check(s, "a move after the splices", "patch");
+	s.cam.x = 3.0;
+	assert check(s, "a camera pan", "patch");
+	s.cam.x = 150.0;
+	assert check(s, "a camera pan that takes rows off", "splice");
 }
 
 test "a card's colour rewrites its one UI record and nothing else" {
@@ -465,9 +470,9 @@ test "a scroll writes no instance and no command, only its scope's shift" {
 	frame(s);
 	const before: Recording = frame(s);
 	s.refreshScopes();
-	assert s.list.scopeTotal == 1;
-	assert s.list.scopes[0].dy == -30.0;
-	assert s.list.commands[CMD_SCOPE] == 0.0 || s.list.commandTotal > 1;
+	assert s.list.scopeTotal == 2;
+	assert s.list.cameraScope == 0;
+	assert s.list.scopes[1].dy == -30.0;
 	const patches: int32 = s.patches;
 	m.scrollBy(0.0, 22.0);
 	assert s.isDirty();
@@ -476,6 +481,62 @@ test "a scroll writes no instance and no command, only its scope's shift" {
 	assert s.repainted == 0;
 	assert same(before, after);
 	s.refreshScopes();
-	assert s.list.scopes[0].dy == -52.0;
+	assert s.list.scopes[1].dy == -52.0;
 	assert s.list.uiInstanceTotal == 26;
+}
+
+function strip(): Scene {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	for (let k: int32 = 0; k < 10; k++) {
+		const cell = s.rect(40.0, 20.0, rgba(0.2, 0.3, 0.5, 1.0)).at(10.0 + 50.0 * (k as float32), 30.0);
+		cell.addChild(s.label(String(k), 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(2.0, 2.0));
+		s.add(cell);
+	}
+	const m = s.mask(60.0, 30.0).at(20.0, 70.0);
+	m.addChild(s.rect(50.0, 60.0, rgba(0.0, 1.0, 0.0, 1.0)).at(5.0, 0.0));
+	m.scrollTo(0.0, 10.0);
+	s.add(m);
+	return s;
+}
+
+test "a camera pan writes no instance and re-multiplies no node, only the root's shift" {
+	const s = strip();
+	const cell = s.refOf(s.children[s.root][2]);
+	frame(s);
+	const before: Recording = frame(s);
+	const world = s.worlds[cell.id.index];
+	const at: float32 = cell.localToGlobal(vec2(0.0, 0.0)).x;
+	const patches: int32 = s.patches;
+	s.cam.x = 7.0;
+	assert s.isDirty();
+	const after: Recording = frame(s);
+	assert s.patches == patches + 1;
+	assert s.repainted == 0;
+	assert same(before, after);
+	assert s.worlds[cell.id.index] == world;
+	assert cell.localToGlobal(vec2(0.0, 0.0)).x == at - 7.0;
+	assert !s.isDirty();
+	s.refreshScopes();
+	resolveScopes();
+	assert s.list.scopeValues[0] == -7.0;
+	assert s.list.scopeValues[SCOPE_FLOATS] == -7.0;
+	assert s.list.scopeValues[SCOPE_FLOATS + 1] == -10.0;
+	assert s.list.scopeValues[SCOPE_FLOATS + 2] == 13.0;
+}
+
+test "a camera pan emits the rows it brings on screen and drops the rows it takes off" {
+	const s = strip();
+	frame(s);
+	const shown: int32 = s.list.uiInstanceTotal;
+	s.cam.x = 60.0;
+	assert check(s, "a pan that uncovers rows", "splice");
+	s.cam.x = 61.0;
+	assert check(s, "a pan that uncovers nothing", "patch");
+	s.cam.x = 0.0;
+	assert check(s, "a pan back", "splice");
+	assert s.list.uiInstanceTotal == shown;
+	s.cam.x = 0.4;
+	assert check(s, "a pan under half a device pixel", "patch");
+	s.cam.zoom = 1.5;
+	assert check(s, "a zoom", "full");
 }

@@ -15,6 +15,7 @@ import {
 	inverse2d,
 	trs2d,
 	noFilter,
+	emptyBounds,
 } from "./types";
 import { sinf, cosf } from "../math/mat4";
 import { FlexStyle } from "../../../yoga/src/index";
@@ -169,6 +170,7 @@ export interface Scene {
 	localMatrices: Vec<Transform2D>;
 	worlds: Vec<Transform2D>;
 	bounds: Vec<Bounds>;
+	culls: Vec<Bounds>;
 	alphas: Vec<float32>;
 	moved: Vec<boolean>;
 	maskEnds: Vec<int32>;
@@ -198,6 +200,8 @@ export interface Scene {
 	designW: float32;
 	designH: float32;
 	viewMat: Transform2D;
+	viewShift: Vec2;
+	culledShift: Vec2;
 	viewInit: boolean;
 	// What a node's `Smooth.Inherit` resolves to. h2d keeps this on the render context and
 	// defaults it to nearest (`h2d/RenderContext.hx:52`); HEAPS.md "Do not copy from h2d"
@@ -267,6 +271,7 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 		s.localMatrices[i] = identity2d();
 		s.worlds[i] = identity2d();
 		s.bounds[i] = noBounds;
+		s.culls[i] = emptyBounds();
 		s.slots[i] = NO_SLOT;
 		s.alphas[i] = 1.0;
 		s.moved[i] = false;
@@ -293,6 +298,7 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 	s.localMatrices.push(identity2d());
 	s.worlds.push(identity2d());
 	s.bounds.push(noBounds);
+	s.culls.push(emptyBounds());
 	s.slots.push(NO_SLOT);
 	s.alphas.push(1.0);
 	s.moved.push(false);
@@ -1196,7 +1202,9 @@ function absoluteMatrix(s: Scene, i: int32): Transform2D {
 		}
 		m = s.localMatrices[top] * m;
 	}
-	return top == s.root ? s.viewMat * m : m;
+	if (top != s.root) { return m; }
+	const view: Transform2D = { ...s.viewMat, tx: s.viewShift.x, ty: s.viewShift.y };
+	return view * m;
 }
 
 export function localToGlobal(this n: NodeRef, p: Vec2): Vec2 {

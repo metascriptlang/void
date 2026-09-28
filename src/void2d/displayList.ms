@@ -264,6 +264,7 @@ export interface DisplayList {
 	scopes: Vec<ScopeRecord>;
 	scopeTotal: int32;
 	scopeNow: int32;
+	cameraScope: int32;
 	scopeValues: Vec<float32>;
 	targetScopeSaves: Vec<int32>;
 }
@@ -326,6 +327,7 @@ export function twinList(id: int32): DisplayList {
 		scopes: [],
 		scopeTotal: 0,
 		scopeNow: NO_SCOPE,
+		cameraScope: NO_SCOPE,
 		scopeValues: new Array(SCOPE_FLOATS),
 		targetScopeSaves: new Array(MAX_TARGET_DEPTH),
 	};
@@ -362,6 +364,7 @@ export function resetList(): void {
 	list.limited = false;
 	list.scopeTotal = 0;
 	list.scopeNow = NO_SCOPE;
+	list.cameraScope = NO_SCOPE;
 	list.dirtyVertices = false;
 	list.dirtySprites = false;
 	list.dirtyUiTotal = 0;
