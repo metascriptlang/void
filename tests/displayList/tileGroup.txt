@@ -1,0 +1,15 @@
+commands 4 draws 4 vertices 6 uiInstances 0 spriteInstances 4
+cmd 0 draw break:first view:11 blend:0 sampler:2 effect:-1 rt:0 pipe:sprite inst:0+2 clip:0.00,0.00,0.00,0.00
+cmd 1 draw break:view view:12 blend:0 sampler:2 effect:-1 rt:0 pipe:sprite inst:2+1 clip:0.00,0.00,0.00,0.00
+cmd 2 draw break:view view:11 blend:0 sampler:2 effect:-1 rt:0 pipe:sprite inst:3+1 clip:0.00,0.00,0.00,0.00
+cmd 3 draw break:pipeline view:13 blend:0 sampler:2 effect:0 rt:0 pipe:vertex verts:0+6 clip:0.00,0.00,0.00,0.00
+v 0 10.00 30.00 uv 0.00 0.00 rgba 1.00 1.00 1.00 1.00
+v 1 14.00 30.00 uv 1.00 0.00 rgba 1.00 1.00 1.00 1.00
+v 2 14.00 34.00 uv 1.00 1.00 rgba 1.00 1.00 1.00 1.00
+v 3 10.00 30.00 uv 0.00 0.00 rgba 1.00 1.00 1.00 1.00
+v 4 14.00 34.00 uv 1.00 1.00 rgba 1.00 1.00 1.00 1.00
+v 5 10.00 34.00 uv 0.00 1.00 rgba 1.00 1.00 1.00 1.00
+s 0 affine 1.00 0.00 0.00 1.00 at 10.00 5.00 size 8.00 8.00 uv 0.00 0.00 1.00 1.00 rgba 1.00 0.50 1.00 0.50
+s 1 affine 1.00 0.00 0.00 1.00 at 18.00 5.00 size 8.00 8.00 uv 0.00 0.00 1.00 1.00 rgba 1.00 0.00 0.00 0.50
+s 2 affine 1.00 0.00 0.00 1.00 at 26.00 5.00 size 8.00 8.00 uv 0.50 0.00 1.00 1.00 rgba 1.00 0.50 1.00 0.50
+s 3 affine 0.00 2.00 -0.50 0.00 at 40.00 1.00 size 8.00 8.00 uv 0.00 0.00 1.00 1.00 rgba 1.00 0.50 1.00 0.50

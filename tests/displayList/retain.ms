@@ -1,5 +1,5 @@
 import { scene, add } from "../../src/void2d/scene";
-import { Scene, NodeRef, NO_SLOT } from "../../src/void2d/node";
+import { Scene, NodeRef, TileCell, NO_SLOT } from "../../src/void2d/node";
 import { paint, isDirty, tick } from "../../src/void2d/scene";
 import { refreshScopes } from "../../src/void2d/render";
 import { sync, draw, syncOrder, drawOrder } from "../../src/void2d/render";
@@ -539,4 +539,203 @@ test "a camera pan emits the rows it brings on screen and drops the rows it take
 	assert check(s, "a pan under half a device pixel", "patch");
 	s.cam.zoom = 1.5;
 	assert check(s, "a zoom", "full");
+}
+
+function tileCell(x: float32, y: float32, view: uint32): TileCell {
+	return {
+		x: x, y: y, tile: tile(view, 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0,
+		scaleY: 1.0, rotation: 0.0,
+	};
+}
+
+function fourTiles(): TileCell[] {
+	return [tileCell(0.0, 0.0, 11), tileCell(8.0, 0.0, 11), tileCell(16.0, 0.0, 12),
+		tileCell(24.0, 0.0, 11)];
+}
+
+struct Tiles {
+	s: Scene;
+	map: NodeRef;
+}
+
+function tiles(): Tiles {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(s.rect(20.0, 20.0, rgba(0.2, 0.3, 0.5, 1.0)).at(4.0, 4.0));
+	const map = s.add(s.tileGroup().at(30.0, 4.0));
+	map.setTiles(fourTiles());
+	s.add(s.sprite(tile(11, 8.0, 8.0)).at(80.0, 4.0));
+	s.add(s.label("after", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 40.0));
+	return { s: s, map: map };
+}
+
+test "a tile group's writes record what a full frame records, write by write" {
+	const t: Tiles = tiles();
+	const s: Scene = t.s;
+	frame(s);
+	assert s.list.spriteInstanceTotal == 5;
+	assert check(s, "a still frame", "patch");
+	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	t.map.setTile(1, red);
+	assert check(s, "a tile's colour", "patch");
+	const other: TileCell = tileCell(8.0, 2.0, 12);
+	t.map.setTile(1, other);
+	assert check(s, "a tile's texture, the runs kept", "patch");
+	const back: TileCell = tileCell(8.0, 0.0, 11);
+	t.map.setTile(1, back);
+	const joined: TileCell = tileCell(16.0, 0.0, 11);
+	t.map.setTile(2, joined);
+	assert check(s, "a tile's texture, two runs joined", "splice");
+	const more: TileCell[] = [tileCell(32.0, 0.0, 12)];
+	t.map.appendTiles(more);
+	assert check(s, "tiles appended", "splice");
+	t.map.setRange(1, 2);
+	assert check(s, "a range", "splice");
+	t.map.setRange(1, 2);
+	assert check(s, "the same range", "patch");
+	t.map.setAlpha(0.5);
+	assert check(s, "the group's alpha", "patch");
+	t.map.setX(31.0);
+	assert check(s, "the group moved", "patch");
+	t.map.clear();
+	assert check(s, "cleared", "splice");
+	t.map.setTiles(fourTiles());
+	assert check(s, "tiles set again", "splice");
+}
+
+test "a tile's colour rewrites its one sprite record and nothing else" {
+	const t: Tiles = tiles();
+	const s: Scene = t.s;
+	frame(s);
+	const before: Recording = frame(s);
+	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	t.map.setTile(1, red);
+	const after: Recording = frame(s);
+	assert s.retiled == 1 && s.repainted == 0;
+	const start: PaintIndex = paintStartOf(t.map.id.index);
+	const spriteBase: int32 = before.counts[0] * COMMAND_FLOATS + before.counts[1] * EFFECT_FLOATS +
+		before.counts[2] * VERTEX_FLOATS + before.counts[3] * REC_UI_FLOATS;
+	const from: int32 = spriteBase + (start.spriteInstances + 1) * REC_SPRITE_FLOATS;
+	const to: int32 = from + REC_SPRITE_FLOATS;
+	let changed: int32 = 0;
+	for (let k: int32 = 0; k < (before.floats.length as int32); k++) {
+		if (before.floats[k] != after.floats[k]) {
+			if (k < from || k >= to) {
+				console.log(`float ${k} changed outside the tile's record [${from}, ${to})`);
+				assert false;
+			}
+			changed = changed + 1;
+		}
+	}
+	assert changed == 2;
+	assert s.list.dirtySprites && s.list.dirtyUiTotal == 0 && !s.list.dirtyVertices;
+}
+
+test "a tile edit writes in place only while the group keeps its shape, place and alpha" {
+	const t: Tiles = tiles();
+	const s: Scene = t.s;
+	frame(s);
+	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	t.map.setTile(1, red);
+	assert check(s, "a colour, in place", "patch");
+	const shifted: TileCell = { ...red, y: 3.0 };
+	t.map.setTile(1, shifted);
+	frame(s);
+	assert s.retiled == 0 && s.repainted == 1;
+	const green: TileCell = { ...shifted, color: rgba(0.0, 1.0, 0.0, 1.0) };
+	t.map.setTile(1, green);
+	t.map.setX(32.0);
+	assert check(s, "an edit and a move", "patch");
+	frame(s);
+	const blue: TileCell = { ...green, color: rgba(0.0, 0.0, 1.0, 1.0) };
+	t.map.setTile(1, blue);
+	t.map.setAlpha(0.5);
+	frame(s);
+	assert s.retiled == 0 && s.repainted == 1;
+	t.map.setRange(0, 2);
+	frame(s);
+	uploaded();
+	const past: TileCell = { ...tileCell(24.0, 0.0, 11), color: rgba(1.0, 1.0, 0.0, 1.0) };
+	t.map.setTile(3, past);
+	frame(s);
+	assert s.retiled == 1 && !s.list.dirtySprites;
+	assert check(s, "an edit outside the range", "patch");
+}
+
+test "tile edits past an eighth of the group's tiles re-record the group" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const map = s.add(s.tileGroup());
+	const cells: Vec<TileCell> = [];
+	for (let k: int32 = 0; k < 200; k++) {
+		cells.push(tileCell((k % 20) as float32 * 8.0, (k / 20) as float32 * 8.0, 11));
+	}
+	map.setTiles(cells);
+	frame(s);
+	for (let k: int32 = 0; k < 24; k++) {
+		const warm: TileCell = { ...cells[k * 3], color: rgba(1.0, 0.5, 0.0, 1.0) };
+		map.setTile(k * 3, warm);
+	}
+	const edited: Recording = frame(s);
+	assert s.retiled == 1 && s.repainted == 0;
+	assert same(edited, fullFrame(s));
+	for (let k: int32 = 0; k < 26; k++) {
+		const cool: TileCell = { ...cells[k * 3], color: rgba(0.0, 0.5, 1.0, 1.0) };
+		map.setTile(k * 3, cool);
+	}
+	frame(s);
+	assert s.retiled == 0 && s.repainted == 1;
+}
+
+test "a camera pan that takes a group off screen wins over its tile edit" {
+	const t: Tiles = tiles();
+	const s: Scene = t.s;
+	frame(s);
+	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	t.map.setTile(1, red);
+	s.cam.x = 70.0;
+	assert check(s, "an edit under a pan that hides the group", "splice");
+	const green: TileCell = { ...red, color: rgba(0.0, 1.0, 0.0, 1.0) };
+	t.map.setTile(1, green);
+	s.cam.x = 0.0;
+	assert check(s, "an edit under a pan that shows it again", "splice");
+}
+
+test "a tile edit under a parent that moved or faded re-records the group" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const holder = s.add(s.group().at(10.0, 10.0));
+	const map = holder.addChild(s.tileGroup());
+	map.setTiles(fourTiles());
+	frame(s);
+	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	map.setTile(1, red);
+	holder.setX(14.0);
+	assert check(s, "an edit under a parent that moved", "patch");
+	const green: TileCell = { ...red, color: rgba(0.0, 1.0, 0.0, 1.0) };
+	map.setTile(1, green);
+	holder.setAlpha(0.5);
+	assert check(s, "an edit under a parent that faded", "patch");
+	holder.setY(12.0);
+	const blue: TileCell = { ...red, color: rgba(0.0, 0.0, 1.0, 1.0) };
+	map.setTile(1, blue);
+	assert check(s, "a parent that moved, then an edit", "patch");
+}
+
+test "a tile edit re-records a group that took another write, drew through the vertex path or was culled" {
+	const t: Tiles = tiles();
+	const s: Scene = t.s;
+	frame(s);
+	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	t.map.setTile(1, red);
+	t.map.setColor(rgba(0.5, 1.0, 1.0, 1.0));
+	assert check(s, "an edit and the group's colour", "patch");
+	t.map.setColorAdd(rgba(0.1, 0.0, 0.0, 0.0));
+	frame(s);
+	const green: TileCell = { ...red, color: rgba(0.0, 1.0, 0.0, 1.0) };
+	t.map.setTile(1, green);
+	assert check(s, "an edit on the vertex path", "patch");
+	t.map.setColorAdd(rgba(0.0, 0.0, 0.0, 0.0));
+	t.map.setX(260.0);
+	frame(s);
+	const blue: TileCell = { ...red, color: rgba(0.0, 0.0, 1.0, 1.0) };
+	t.map.setTile(1, blue);
+	assert check(s, "an edit on a culled group", "patch");
 }

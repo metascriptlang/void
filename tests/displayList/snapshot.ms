@@ -20,7 +20,7 @@ import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { GLYPH_PAGE_SIZE } from "../../src/void2d/glyphAtlas";
 import { scene, add } from "../../src/void2d/scene";
-import { NodeRef, Scene } from "../../src/void2d/node";
+import { NodeRef, Scene, TileCell } from "../../src/void2d/node";
 import { sync, draw, labelEditingRefusals } from "../../src/void2d/render";
 import {
 	begin2d,
@@ -52,7 +52,9 @@ import {
 	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_FLOATS,
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
-import { rgba, tile, identity2d, emptyBounds, BlendMode, Smooth } from "../../src/void2d/types";
+import {
+	Tile, rgba, tile, identity2d, emptyBounds, BlendMode, Smooth,
+} from "../../src/void2d/types";
 import { CURSOR_WIDTH } from "../../src/void2d/labelText";
 import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -476,6 +478,32 @@ function textPrimitiveScene(): NodeRef {
 		-6.0, 58.0, 12.0, 92.0).at(28.0, 42.0));
 	return s.refOf(s.root);
 }
+function tileAt(x: float32, y: float32, t: Tile): TileCell {
+	return {
+		x: x, y: y, tile: t, color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0, scaleY: 1.0,
+		rotation: 0.0,
+	};
+}
+function tileGroupScene(): NodeRef {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const map = s.add(s.tileGroup()).at(10.0, 5.0);
+	map.setColor(rgba(1.0, 0.5, 1.0, 1.0)).setAlpha(0.5);
+	const turned: Tile = { ...tile(11, 8.0, 8.0), dx: -4.0, dy: -4.0 };
+	const cells: TileCell[] = [
+		tileAt(0.0, 0.0, tile(11, 8.0, 8.0)),
+		{ ...tileAt(8.0, 0.0, tile(11, 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) },
+		tileAt(16.0, 0.0, { ...tile(12, 8.0, 8.0), u0: 0.5 }),
+		{ ...tileAt(28.0, 4.0, turned), scaleX: 2.0, scaleY: 0.5, rotation: 1.5707963 },
+		tileAt(40.0, 0.0, tile(12, 8.0, 8.0)),
+	];
+	map.setTiles(cells);
+	map.setRange(0, 4);
+	const keyed = s.add(s.tileGroup()).at(10.0, 30.0);
+	keyed.setColorAdd(rgba(0.1, 0.0, 0.0, 0.0));
+	const plain: TileCell[] = [tileAt(0.0, 0.0, tile(13, 4.0, 4.0))];
+	keyed.setTiles(plain);
+	return s.refOf(s.root);
+}
 
 
 test "T1 snapshot: painter order" {
@@ -484,6 +512,10 @@ test "T1 snapshot: painter order" {
 
 test "T1 snapshot: every batch names why it broke" {
 	assert snapshot("breaks", record(breaksScene(), 128.0, 64.0, 1.0));
+}
+
+test "T1 snapshot: a tile group draws its range as one sprite run per texture, in order" {
+	assert snapshot("tileGroup", record(tileGroupScene(), 128.0, 64.0, 1.0));
 }
 
 test "T1 snapshot: a Mask scissors its children and gives the clip back" {

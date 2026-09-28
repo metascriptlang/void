@@ -3,6 +3,7 @@ import "./transformCheck";
 import "./tileCheck";
 import "./graphicsCheck";
 import "./nodeCheck";
+import "./tileGroupCheck";
 import "./sceneCheck";
 import "./effectCheck";
 import "./faceCheck";
