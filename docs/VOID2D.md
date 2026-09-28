@@ -51,7 +51,7 @@ Heaps is a game engine. Void is a rendering engine, and void2d must carry **appl
 
 **The rule.** For every surface and every mechanism:
 
-- **Capability first.** Expose what the GPU and the mechanism can do: bulk writes over spans, explicit promises that buy speed (children that do not overlap), raw transforms. A policy built on a capability is a helper, or Neon's.
+- **Capability first.** Expose what the GPU and the mechanism can do: bulk writes over spans, explicit promises that buy speed (children that do not overlap), raw transforms. A policy built on a capability is a helper, or Neon's. A convenience may be cut, since Neon can cover it; a capability never is (the human, 2026-09-29). Before dropping a reference's call, check that what it could do is still reachable.
 - **The call shape is MetaScript's**, as void3d writes it: handles, binders, spans, value tables. h2d supplies a name or a meaning where it costs no power, and a divergence from it is recorded in HEAPS.md "Do not copy from h2d".
 - **Low level is not unsafe.** The workspace rules hold: the same result on every backend, and fail loud. A promise the app makes to go faster is checked where it can be, and a misuse stops with an error that names it.
 - **The mechanism comes from the references**: GPUI first, then Makepad and Ghostty where GPUI is weak, Bevy and void3d for data. void2d takes **everything in their rendering layer**, except where one of three reasons applies:
