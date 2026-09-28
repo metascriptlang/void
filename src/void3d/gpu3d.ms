@@ -122,7 +122,7 @@ export enum LoadAction {
 }
 
 // h3d.mat.Data.Filter / Wrap, the members sokol has.
-export enum Filter {
+export enum FilterMode {
 	Nearest,
 	Linear,
 }
@@ -219,7 +219,7 @@ export function makeTextureView(image: uint32): uint32 {
 	return gpu3dMakeTextureView(image);
 }
 
-export function makeSampler(filter: Filter, wrap: Wrap): uint32 {
+export function makeSampler(filter: FilterMode, wrap: Wrap): uint32 {
 	return gpu3dMakeSampler(filter as int32, wrap as int32);
 }
 

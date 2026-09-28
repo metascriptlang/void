@@ -34,10 +34,10 @@ import {
 	writeUniforms,
 } from "../void3d/draw";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	SceneError,
-	NO_NODE,
+	NO_NODE_3D,
 	identityTransform,
 	addGroup,
 	addMeshNode,
@@ -88,13 +88,13 @@ const STREAM_WRITTEN: int32 = 4;
 const WIDTH: int32 = 640;
 const HEIGHT: int32 = 360;
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
+const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
-let scene: Scene = Scene.create();
+let scene: Scene3D = Scene3D.create();
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = zeros(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = zeros(LIGHT_UNIFORM_LENGTH);
@@ -173,26 +173,26 @@ function fillStream(stream: MeshId): Result<int32, ChurnError> {
 	return Result.ok(STREAM_WRITTEN);
 }
 
-function place(level: NodeId, mesh: MeshId, material: MaterialId): Result<NodeId, ChurnError> {
-	const placed: Result<NodeId, SceneError> =
+function place(level: NodeId3D, mesh: MeshId, material: MaterialId): Result<NodeId3D, ChurnError> {
+	const placed: Result<NodeId3D, SceneError> =
 		addMeshNode(scene, context, level, identityTransform(), mesh, material);
 	if (!placed.ok) { return Result.err(ChurnError.NodeRefused); }
 	return Result.ok(placed.value);
 }
 
-function loadLevel(): Result<NodeId, ChurnError> {
-	const group: Result<NodeId, SceneError> =
+function loadLevel(): Result<NodeId3D, ChurnError> {
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	if (!group.ok) { return Result.err(ChurnError.GroupRefused); }
-	const level: NodeId = group.value;
+	const level: NodeId3D = group.value;
 	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, box);
 	if (!mesh.ok) { return Result.err(ChurnError.MeshRefused); }
 	const stream: Result<MeshId, StreamError> = addStreamMesh(context, STREAM_CAPACITY);
 	if (!stream.ok) { return Result.err(ChurnError.StreamRefused); }
 	const lit: MaterialId = try litMaterial();
 	const particles: MaterialId = try particleMaterial();
-	const _box: NodeId = try place(level, mesh.value, lit);
-	const _stream: NodeId = try place(level, stream.value, particles);
+	const _box: NodeId3D = try place(level, mesh.value, lit);
+	const _stream: NodeId3D = try place(level, stream.value, particles);
 	const _written: int32 = try fillStream(stream.value);
 	if (releasing) {
 		const _mesh: Result<int32, HandleError> = releaseMesh(context, mesh.value);
@@ -210,7 +210,7 @@ function stop(error: ChurnError): void {
 
 export function frameChurn(): void {
 	if (stopped) { return; }
-	const loaded: Result<NodeId, ChurnError> = loadLevel();
+	const loaded: Result<NodeId3D, ChurnError> = loadLevel();
 	if (!loaded.ok) {
 		stop(loaded.error);
 		return;

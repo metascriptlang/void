@@ -2,11 +2,11 @@ import { Vec3, vec3, Quat, eulerQuat } from "../math/math3d";
 import { MeshData, Rgba, MeshError, addVertex, addTriangle } from "../void3d/meshData";
 import { DrawContext, DrawItem, MeshId } from "../void3d/draw";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	Transform3D,
 	SceneError,
-	NO_NODE,
+	NO_NODE_3D,
 	identityTransform,
 	transformAt,
 	addGroup,
@@ -61,15 +61,15 @@ function pair(first: int32, second: int32, weight: float32): KeyPair {
 	return { first: first, second: second, weight: weight };
 }
 
-function named(ref scene: Scene, parent: NodeId, name: string): NodeId {
-	const added: Result<NodeId, SceneError> = addGroup(scene, parent, identityTransform());
-	if (!added.ok) { return { index: NO_NODE, generation: 0 }; }
+function named(ref scene: Scene3D, parent: NodeId3D, name: string): NodeId3D {
+	const added: Result<NodeId3D, SceneError> = addGroup(scene, parent, identityTransform());
+	if (!added.ok) { return { index: NO_NODE_3D, generation: 0 }; }
 	const renamed: Result<int32, SceneError> = setName(scene, added.value, name);
-	return renamed.ok ? added.value : { index: NO_NODE, generation: 0 };
+	return renamed.ok ? added.value : { index: NO_NODE_3D, generation: 0 };
 }
 
-function namedMesh(ref scene: Scene, ref context: DrawContext, name: string, mesh: int32): NodeId {
-	const added: Result<NodeId, SceneError> = addMeshNode(
+function namedMesh(ref scene: Scene3D, ref context: DrawContext, name: string, mesh: int32): NodeId3D {
+	const added: Result<NodeId3D, SceneError> = addMeshNode(
 		scene,
 		context,
 		scene.rootId(),
@@ -77,9 +77,9 @@ function namedMesh(ref scene: Scene, ref context: DrawContext, name: string, mes
 		context.meshAt(mesh),
 		context.materialAt(0),
 	);
-	if (!added.ok) { return { index: NO_NODE, generation: 0 }; }
+	if (!added.ok) { return { index: NO_NODE_3D, generation: 0 }; }
 	const renamed: Result<int32, SceneError> = setName(scene, added.value, name);
-	return renamed.ok ? added.value : { index: NO_NODE, generation: 0 };
+	return renamed.ok ? added.value : { index: NO_NODE_3D, generation: 0 };
 }
 
 function slide(x: float32): Transform3D {
@@ -90,7 +90,7 @@ function turn(angle: float32): Transform3D {
 	return { ...identityTransform(), rotation: eulerQuat(0.0, angle, 0.0) };
 }
 
-function localX(scene: Scene, id: NodeId): float32 {
+function localX(scene: Scene3D, id: NodeId3D): float32 {
 	return scene.nodes[id.index].local.position.x;
 }
 
@@ -232,10 +232,10 @@ test "a track must carry one key per frame of its clock" {
 }
 
 test "tracks bind by name under a base node, and a missing name is refused" {
-	let scene: Scene = Scene.create();
-	const body: NodeId = named(scene, scene.rootId(), "body");
-	const arm: NodeId = named(scene, body, "arm");
-	assert arm.index != NO_NODE;
+	let scene: Scene3D = Scene3D.create();
+	const body: NodeId3D = named(scene, scene.rootId(), "body");
+	const arm: NodeId3D = named(scene, body, "arm");
+	assert arm.index != NO_NODE_3D;
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(2, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(0.0), slide(1.0)];
@@ -253,9 +253,9 @@ test "tracks bind by name under a base node, and a missing name is refused" {
 }
 
 test "syncPose writes the sampled pose into the node and its world follows" {
-	let scene: Scene = Scene.create();
-	const body: NodeId = named(scene, scene.rootId(), "body");
-	const arm: NodeId = named(scene, body, "arm");
+	let scene: Scene3D = Scene3D.create();
+	const body: NodeId3D = named(scene, scene.rootId(), "body");
+	const arm: NodeId3D = named(scene, body, "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(4, 1.0, Interpolation.Linear));
 	const keys: Vec<Transform3D> = [slide(0.0), slide(2.0), slide(4.0), slide(6.0)];
@@ -271,8 +271,8 @@ test "syncPose writes the sampled pose into the node and its world follows" {
 }
 
 test "syncPose writes nothing while the sampled keys have not moved" {
-	let scene: Scene = Scene.create();
-	const arm: NodeId = named(scene, scene.rootId(), "arm");
+	let scene: Scene3D = Scene3D.create();
+	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(4, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(0.0), slide(1.0), slide(2.0), slide(3.0)];
@@ -296,8 +296,8 @@ test "syncPose writes nothing while the sampled keys have not moved" {
 
 test "syncPose refuses a target that was removed after binding" {
 	let context: DrawContext = contextOf(8, 1);
-	let scene: Scene = Scene.create();
-	const arm: NodeId = named(scene, scene.rootId(), "arm");
+	let scene: Scene3D = Scene3D.create();
+	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(1.0)];
@@ -334,9 +334,9 @@ test "mesh frames only step, and carry one mesh per frame" {
 
 test "mesh frames swap the node's mesh, and the draw list follows without a rebuild" {
 	let context: DrawContext = contextOf(8, 1);
-	let scene: Scene = Scene.create();
-	const _flame: NodeId = namedMesh(scene, context, "flame", 4);
-	const _group: NodeId = named(scene, scene.rootId(), "group");
+	let scene: Scene3D = Scene3D.create();
+	const _flame: NodeId3D = namedMesh(scene, context, "flame", 4);
+	const _group: NodeId3D = named(scene, scene.rootId(), "group");
 	let items: Vec<DrawItem> = [];
 	const _first: int32 = refresh(scene, items);
 	const meshes: Vec<MeshId> = [context.meshAt(4), context.meshAt(5), context.meshAt(6)];
@@ -474,12 +474,12 @@ test "mesh frames refuse a negative mesh index" {
 }
 
 test "a rebind that fails keeps the previous binding whole" {
-	let scene: Scene = Scene.create();
-	const a: NodeId = named(scene, scene.rootId(), "a");
-	const armA: NodeId = named(scene, a, "arm");
-	const _legA: NodeId = named(scene, a, "leg");
-	const b: NodeId = named(scene, scene.rootId(), "b");
-	const _armB: NodeId = named(scene, b, "arm");
+	let scene: Scene3D = Scene3D.create();
+	const a: NodeId3D = named(scene, scene.rootId(), "a");
+	const armA: NodeId3D = named(scene, a, "arm");
+	const _legA: NodeId3D = named(scene, a, "leg");
+	const b: NodeId3D = named(scene, scene.rootId(), "b");
+	const _armB: NodeId3D = named(scene, b, "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(3.0)];
@@ -498,8 +498,8 @@ test "a rebind that fails keeps the previous binding whole" {
 
 test "a target removed after a sync is refused even while the keys stand still" {
 	let context: DrawContext = contextOf(8, 1);
-	let scene: Scene = Scene.create();
-	const arm: NodeId = named(scene, scene.rootId(), "arm");
+	let scene: Scene3D = Scene3D.create();
+	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(1.0)];
@@ -513,8 +513,8 @@ test "a target removed after a sync is refused even while the keys stand still" 
 }
 
 test "forgetSync makes the next sync write over a node someone else moved" {
-	let scene: Scene = Scene.create();
-	const arm: NodeId = named(scene, scene.rootId(), "arm");
+	let scene: Scene3D = Scene3D.create();
+	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(1.0)];

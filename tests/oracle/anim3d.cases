@@ -55,7 +55,7 @@
 #
 # ms-prelude: import { vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
 # ms-prelude: import {
-# ms-prelude: 	Scene, NodeId, Transform3D, SceneError, addGroup, setName, syncWorld, transformAt,
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, setName, syncWorld, transformAt,
 # ms-prelude: } from "../../../src/void3d/scene";
 # ms-prelude: import {
 # ms-prelude: 	AnimationClock, AnimationError, Interpolation, ObjectAnimation,
@@ -75,8 +75,8 @@
 # ms-prelude: function slid(x: float32): Transform3D { return key(x, 0.0, 0.0, 0.0, 1.0, false); }
 # ms-prelude: function run(keys: Vec<Transform3D>, sampling: float64, loop: boolean,
 # ms-prelude: 		dts: Vec<float64>, restX: float32): Mat4 {
-# ms-prelude: 	let scene: Scene = Scene.create();
-# ms-prelude: 	const added: Result<NodeId, SceneError> =
+# ms-prelude: 	let scene: Scene3D = Scene3D.create();
+# ms-prelude: 	const added: Result<NodeId3D, SceneError> =
 # ms-prelude: 		addGroup(scene, scene.rootId(), transformAt(vec3(restX, 0.0, 0.0)));
 # ms-prelude: 	if (!added.ok) { return identity(); }
 # ms-prelude: 	const _named: Result<int32, SceneError> = setName(scene, added.value, "o");
@@ -99,8 +99,8 @@
 # ms-prelude: }
 # ms-prelude: function at(keys: Vec<Transform3D>, loop: boolean, frame: float64, speed: float64,
 # ms-prelude: 		dt: float64): Mat4 {
-# ms-prelude: 	let scene: Scene = Scene.create();
-# ms-prelude: 	const added: Result<NodeId, SceneError> =
+# ms-prelude: 	let scene: Scene3D = Scene3D.create();
+# ms-prelude: 	const added: Result<NodeId3D, SceneError> =
 # ms-prelude: 		addGroup(scene, scene.rootId(), transformAt(vec3(0.0, 0.0, 0.0)));
 # ms-prelude: 	if (!added.ok) { return identity(); }
 # ms-prelude: 	const _named: Result<int32, SceneError> = setName(scene, added.value, "o");

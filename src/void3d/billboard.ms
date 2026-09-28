@@ -12,7 +12,7 @@ export struct AtlasTile {
 	v2: float32;
 }
 
-export enum AtlasError {
+export enum AtlasTileError {
 	NoFrames,
 	FrameOutOfRange,
 	NarrowerThanFrames,
@@ -26,11 +26,11 @@ export function ofFrame(
 	width: int32,
 	frames: int32,
 	frame: int32,
-): Result<AtlasTile, AtlasError> {
-	if (frames <= 0) { return Result.err(AtlasError.NoFrames); }
-	if (frame < 0 || frame >= frames) { return Result.err(AtlasError.FrameOutOfRange); }
+): Result<AtlasTile, AtlasTileError> {
+	if (frames <= 0) { return Result.err(AtlasTileError.NoFrames); }
+	if (frame < 0 || frame >= frames) { return Result.err(AtlasTileError.FrameOutOfRange); }
 	const stride: int32 = width / frames;
-	if (stride <= 0) { return Result.err(AtlasError.NarrowerThanFrames); }
+	if (stride <= 0) { return Result.err(AtlasTileError.NarrowerThanFrames); }
 	const left: float64 = (frame * stride) as float64;
 	const right: float64 = ((frame + 1) * stride) as float64;
 	const across: float64 = width as float64;
@@ -47,8 +47,8 @@ export function split(
 	this typeof AtlasTile,
 	width: int32,
 	frames: int32,
-): Result<Vec<AtlasTile>, AtlasError> {
-	if (frames <= 0) { return Result.err(AtlasError.NoFrames); }
+): Result<Vec<AtlasTile>, AtlasTileError> {
+	if (frames <= 0) { return Result.err(AtlasTileError.NoFrames); }
 	let tiles: Vec<AtlasTile> = [];
 	for (let frame = 0; frame < frames; frame++) {
 		tiles.push(try AtlasTile.ofFrame(width, frames, frame));

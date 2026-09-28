@@ -2,8 +2,8 @@ import { Vec3, vec3, Mat4, eulerQuat } from "../math/math3d";
 import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS } from "../void3d/gpu3d";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	NodeKind,
 	Transform3D,
 	SceneError,
@@ -14,7 +14,7 @@ import {
 	NodeFlag,
 	identityTransform,
 	transformAt,
-	NO_NODE,
+	NO_NODE_3D,
 	addGroup,
 	addMeshNode,
 	addLightNode,
@@ -44,8 +44,8 @@ function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 
 // A mesh node under the root, at `where`. A failure comes back as NO_NODE rather than an
 // assert, which only a test block may use; every caller checks the index it gets.
-function oneMesh(ref scene: Scene, ref context: DrawContext, where: Vec3, mesh: int32): NodeId {
-	const added: Result<NodeId, SceneError> = addMeshNode(
+function oneMesh(ref scene: Scene3D, ref context: DrawContext, where: Vec3, mesh: int32): NodeId3D {
+	const added: Result<NodeId3D, SceneError> = addMeshNode(
 		scene,
 		context,
 		scene.rootId(),
@@ -53,22 +53,22 @@ function oneMesh(ref scene: Scene, ref context: DrawContext, where: Vec3, mesh: 
 		context.meshAt(mesh),
 		context.materialAt(0),
 	);
-	return added.ok ? added.value : { index: NO_NODE, generation: 0 };
+	return added.ok ? added.value : { index: NO_NODE_3D, generation: 0 };
 }
 
 test "a new scene is one root group and nothing else" {
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	assert scene.nodeCount() == 1;
-	assert scene.root != NO_NODE;
+	assert scene.root != NO_NODE_3D;
 	assert scene.isLive(scene.rootId());
 	assert scene.nodes[scene.root].kind == NodeKind.Group;
-	assert scene.nodes[scene.root].parent == NO_NODE;
+	assert scene.nodes[scene.root].parent == NO_NODE_3D;
 }
 
 test "a child is parented both ways, and the structure is marked" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const child: NodeId = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 7);
+	let scene: Scene3D = Scene3D.create();
+	const child: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 7);
 	assert scene.nodeCount() == 2;
 	assert scene.nodes[child.index].parent == scene.root;
 	assert (scene.nodes[scene.root].children.length as int32) == 1;
@@ -78,12 +78,12 @@ test "a child is parented both ways, and the structure is marked" {
 
 test "sync places a child at local times parent, in that order" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), transformAt(vec3(10.0, 0.0, 0.0)));
 	assert group.ok;
 	if (!group.ok) { return; }
-	const child: Result<NodeId, SceneError> =
+	const child: Result<NodeId3D, SceneError> =
 		addMeshNode(
 			scene,
 			context,
@@ -105,17 +105,17 @@ test "sync places a child at local times parent, in that order" {
 // in row-vector order means and what `parent * local` would get backwards.
 test "a parent's rotation carries its child around, not the other way" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	const quarter: float32 = 1.5707963;
 	const turned: Transform3D = {
 		position: vec3(0.0, 0.0, 0.0),
 		rotation: eulerQuat(0.0, quarter, 0.0),
 		scale: vec3(1.0, 1.0, 1.0),
 	};
-	const group: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), turned);
+	const group: Result<NodeId3D, SceneError> = addGroup(scene, scene.rootId(), turned);
 	assert group.ok;
 	if (!group.ok) { return; }
-	const child: Result<NodeId, SceneError> =
+	const child: Result<NodeId3D, SceneError> =
 		addMeshNode(
 			scene,
 			context,
@@ -135,20 +135,20 @@ test "a parent's rotation carries its child around, not the other way" {
 
 test "a synced tree is clean, and syncing again moves nothing" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const _child: NodeId = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
+	let scene: Scene3D = Scene3D.create();
+	const _child: NodeId3D = oneMesh(scene, context, vec3(1.0, 0.0, 0.0), 0);
 	assert syncWorld(scene) == 2;
 	assert syncWorld(scene) == 0;
 }
 
 test "moving a parent re-syncs its children and nothing above it" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
-	const child: Result<NodeId, SceneError> =
+	const child: Result<NodeId3D, SceneError> =
 		addMeshNode(
 			scene,
 			context,
@@ -170,10 +170,10 @@ test "moving a parent re-syncs its children and nothing above it" {
 
 test "collect emits one item per mesh node, in sibling order" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const _first: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
-	const _second: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
-	const _third: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 33);
+	let scene: Scene3D = Scene3D.create();
+	const _first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
+	const _third: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 33);
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
 	assert collectDrawList(scene, items) == 3;
@@ -185,12 +185,12 @@ test "collect emits one item per mesh node, in sibling order" {
 
 test "a group contributes no draw item but its children still do" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
-	const under: Result<NodeId, SceneError> =
+	const under: Result<NodeId3D, SceneError> =
 		addMeshNode(
 			scene,
 			context,
@@ -208,8 +208,8 @@ test "a group contributes no draw item but its children still do" {
 
 test "collect carries the synced world matrix onto the draw item" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const _mesh: NodeId = oneMesh(scene, context, vec3(3.0, 4.0, 5.0), 1);
+	let scene: Scene3D = Scene3D.create();
+	const _mesh: NodeId3D = oneMesh(scene, context, vec3(3.0, 4.0, 5.0), 1);
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
 	assert collectDrawList(scene, items) == 1;
@@ -218,8 +218,8 @@ test "collect carries the synced world matrix onto the draw item" {
 
 test "an invisible node takes its whole subtree out of the draw list" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -239,7 +239,7 @@ test "an invisible node takes its whole subtree out of the draw list" {
 		context.meshAt(2),
 		context.materialAt(0),
 	).ok;
-	const _visible: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 9);
+	const _visible: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 9);
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
 	assert collectDrawList(scene, items) == 3;
@@ -250,8 +250,8 @@ test "an invisible node takes its whole subtree out of the draw list" {
 
 test "refresh rewrites world matrices without rebuilding the list" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const moving: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 4);
+	let scene: Scene3D = Scene3D.create();
+	const moving: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 4);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 1;
 	assert !scene.structureChanged;
@@ -265,8 +265,8 @@ test "refresh rewrites world matrices without rebuilding the list" {
 
 test "removing a node takes its subtree with it and unlinks it from its parent" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -296,13 +296,13 @@ test "removing a node takes its subtree with it and unlinks it from its parent" 
 
 test "an id that named a removed node is refused, not silently reused" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const gone: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
+	let scene: Scene3D = Scene3D.create();
+	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert scene.isLive(gone);
 	assert remove(scene, context, gone).ok;
 	assert !scene.isLive(gone);
 	// The slot comes back under a new generation, and the old id still does not address it.
-	const fresh: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
+	const fresh: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
 	assert fresh.index == gone.index;
 	assert fresh.generation != gone.generation;
 	assert !scene.isLive(gone);
@@ -312,19 +312,19 @@ test "an id that named a removed node is refused, not silently reused" {
 
 test "the free list hands slots back in LIFO order" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const first: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
-	const second: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
+	let scene: Scene3D = Scene3D.create();
+	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
+	const second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
 	assert remove(scene, context, first).ok;
 	assert remove(scene, context, second).ok;
 	// `second` was freed last, so it is handed out first.
-	const next: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
+	const next: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
 	assert next.index == second.index;
 }
 
 test "the root cannot be removed" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	const refused: Result<int32, SceneError> = remove(scene, context, scene.rootId());
 	assert !refused.ok;
 	if (!refused.ok) { assert refused.error == SceneError.RootCannotBeRemoved; }
@@ -333,10 +333,10 @@ test "the root cannot be removed" {
 
 test "a stale parent is refused rather than adopting the child into a dead slot" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const gone: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
+	let scene: Scene3D = Scene3D.create();
+	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert remove(scene, context, gone).ok;
-	const orphan: Result<NodeId, SceneError> = addMeshNode(
+	const orphan: Result<NodeId3D, SceneError> = addMeshNode(
 		scene,
 		context,
 		gone,
@@ -349,7 +349,7 @@ test "a stale parent is refused rather than adopting the child into a dead slot"
 }
 
 test "an empty scene collects nothing and syncs only its root" {
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	let items: Vec<DrawItem> = [];
 	assert syncWorld(scene) == 1;
 	assert collectDrawList(scene, items) == 0;
@@ -362,9 +362,9 @@ test "an empty scene collects nothing and syncs only its root" {
 // not set `structureChanged` — if it did, the fast path would never be taken.
 test "a node culled after collection leaves the list, and does not leave a ghost behind" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const first: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
-	const _second: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
+	let scene: Scene3D = Scene3D.create();
+	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 2;
 	scene.nodes[first.index].flags = scene.nodes[first.index].flags.incl(NodeFlag.Culled);
@@ -375,9 +375,9 @@ test "a node culled after collection leaves the list, and does not leave a ghost
 
 test "un-culling a node puts it back without writing past the end" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const first: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
-	const _second: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
+	let scene: Scene3D = Scene3D.create();
+	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 11);
+	const _second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 22);
 	let items: Vec<DrawItem> = [];
 	scene.nodes[first.index].flags = scene.nodes[first.index].flags.incl(NodeFlag.Culled);
 	assert refresh(scene, items) == 1;
@@ -390,8 +390,8 @@ test "un-culling a node puts it back without writing past the end" {
 // setMeshOf runs on every campfire frame and had no test at all: its only evidence was pixels.
 test "a mesh node can swap which mesh it draws without the structure changing" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const node: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 5);
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 5);
 	let items: Vec<DrawItem> = [];
 	assert refresh(scene, items) == 1;
 	assert items[0].mesh.index == 5;
@@ -403,8 +403,8 @@ test "a mesh node can swap which mesh it draws without the structure changing" {
 
 test "setMeshOf refuses a group and refuses a stale id" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -416,7 +416,7 @@ test "setMeshOf refuses a group and refuses a stale id" {
 	);
 	assert !wrongKind.ok;
 	if (!wrongKind.ok) { assert wrongKind.error == SceneError.NotAMeshNode; }
-	const gone: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
+	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert remove(scene, context, gone).ok;
 	const stale: Result<int32, SceneError> = setMeshOf(scene, context, gone, context.meshAt(2));
 	assert !stale.ok;
@@ -425,8 +425,8 @@ test "setMeshOf refuses a group and refuses a stale id" {
 
 test "a hidden subtree comes back when it is shown again" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -452,11 +452,11 @@ test "a hidden subtree comes back when it is shown again" {
 // Removing an only child never exercises that loop; removing the middle one does.
 test "removing a middle child keeps its siblings in order" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const _a: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
-	const b: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
-	const _c: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
-	const _d: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 40);
+	let scene: Scene3D = Scene3D.create();
+	const _a: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
+	const b: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
+	const _c: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
+	const _d: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 40);
 	assert remove(scene, context, b).ok;
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
@@ -468,8 +468,8 @@ test "removing a middle child keeps its siblings in order" {
 
 test "a removed subtree leaves the draw list" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -489,7 +489,7 @@ test "a removed subtree leaves the draw list" {
 		context.meshAt(2),
 		context.materialAt(0),
 	).ok;
-	const kept: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
+	const kept: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
 	assert collectDrawList(scene, items) == 3;
@@ -501,8 +501,8 @@ test "a removed subtree leaves the draw list" {
 
 test "every guarded entry point refuses a stale id" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const gone: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
+	let scene: Scene3D = Scene3D.create();
+	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert remove(scene, context, gone).ok;
 	assert !addGroup(scene, gone, identityTransform()).ok;
 	assert !addMeshNode(
@@ -526,43 +526,44 @@ test "every guarded entry point refuses a stale id" {
 // ---- names, in the role of h3d.scene.Object.name / getObjectByName ----
 
 test "findByName walks self first, then children in order" {
-	let scene: Scene = Scene.create();
-	const root: NodeId = scene.rootId();
-	const _a: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
-	const b: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
+	let scene: Scene3D = Scene3D.create();
+	const root: NodeId3D = scene.rootId();
+	const _a: Result<NodeId3D, SceneError> = addGroup(scene, root, identityTransform());
+	const b: Result<NodeId3D, SceneError> = addGroup(scene, root, identityTransform());
 	assert b.ok;
 	if (!b.ok) { return; }
-	const _c: Result<NodeId, SceneError> = addGroup(scene, b.value, identityTransform());
+	const _c: Result<NodeId3D, SceneError> = addGroup(scene, b.value, identityTransform());
 	assert setName(scene, b.value, "arm").ok;
 	assert setName(scene, root, "root").ok;
-	const named: Result<NodeId, SceneError> = scene.findByName(root, "arm");
+	const named: Result<NodeId3D, SceneError> = scene.findByName(root, "arm");
 	assert named.ok;
 	if (named.ok) { assert named.value.index == b.value.index; }
-	const missed: Result<NodeId, SceneError> = scene.findByName(root, "leg");
+	const missed: Result<NodeId3D, SceneError> = scene.findByName(root, "leg");
 	assert !missed.ok;
 	if (!missed.ok) { assert missed.error == SceneError.NodeNotFound; }
 }
 
 test "a name given twice finds the first in walk order, not the last set" {
-	let scene: Scene = Scene.create();
-	const root: NodeId = scene.rootId();
-	const first: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
-	const second: Result<NodeId, SceneError> = addGroup(scene, root, identityTransform());
+	let scene: Scene3D = Scene3D.create();
+	const root: NodeId3D = scene.rootId();
+	const first: Result<NodeId3D, SceneError> = addGroup(scene, root, identityTransform());
+	const second: Result<NodeId3D, SceneError> = addGroup(scene, root, identityTransform());
 	assert first.ok && second.ok;
 	if (!first.ok || !second.ok) { return; }
 	assert setName(scene, second.value, "twin").ok;
 	assert setName(scene, first.value, "twin").ok;
-	const named: Result<NodeId, SceneError> = scene.findByName(root, "twin");
+	const named: Result<NodeId3D, SceneError> = scene.findByName(root, "twin");
 	assert named.ok;
 	if (named.ok) { assert named.value.index == first.value.index; }
-	const deep: Result<NodeId, SceneError> = scene.findByName(second.value, "twin");
+	const deep: Result<NodeId3D, SceneError> = scene.findByName(second.value, "twin");
 	assert deep.ok;
 	if (deep.ok) { assert deep.value.index == second.value.index; }
 }
 
 test "nameOf reads back what setName wrote, and a fresh node is unnamed" {
-	let scene: Scene = Scene.create();
-	const fresh: Result<NodeId, SceneError> = addGroup(scene, scene.rootId(), identityTransform());
+	let scene: Scene3D = Scene3D.create();
+	const fresh: Result<NodeId3D, SceneError> =
+		addGroup(scene, scene.rootId(), identityTransform());
 	assert fresh.ok;
 	if (!fresh.ok) { return; }
 	const before: Result<string, SceneError> = scene.nameOf(fresh.value);
@@ -589,18 +590,18 @@ function blockOf(): Vec<float32> {
 }
 
 function oneLight(
-	ref scene: Scene,
+	ref scene: Scene3D,
 	where: Vec3,
 	light: LightInstance,
-): NodeId {
-	const added: Result<NodeId, SceneError> =
+): NodeId3D {
+	const added: Result<NodeId3D, SceneError> =
 		addLightNode(scene, scene.rootId(), transformAt(where), light);
-	return added.ok ? added.value : { index: NO_NODE, generation: 0 };
+	return added.ok ? added.value : { index: NO_NODE_3D, generation: 0 };
 }
 
 test "a light node is a node whose payload indexes the lights table" {
-	let scene: Scene = Scene.create();
-	const light: NodeId = oneLight(scene, vec3(1.0, 2.0, 3.0), {
+	let scene: Scene3D = Scene3D.create();
+	const light: NodeId3D = oneLight(scene, vec3(1.0, 2.0, 3.0), {
 		kind: LightKind.Point,
 		color: vec3(1.0, 0.45, 0.16),
 		radius: 9.0,
@@ -618,8 +619,8 @@ function nearAt(block: Vec<float32>, at: int32, x: float32, y: float32, z: float
 }
 
 test "collectLights writes a point light's world place, color and radius" {
-	let scene: Scene = Scene.create();
-	const _light: NodeId = oneLight(scene, vec3(1.0, 2.0, 3.0), {
+	let scene: Scene3D = Scene3D.create();
+	const _light: NodeId3D = oneLight(scene, vec3(1.0, 2.0, 3.0), {
 		kind: LightKind.Point,
 		color: vec3(1.0, 0.45, 0.16),
 		radius: 9.0,
@@ -638,12 +639,12 @@ test "collectLights writes a point light's world place, color and radius" {
 }
 
 test "a point light under a moved parent carries the parent's place" {
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), transformAt(vec3(10.0, 0.0, 0.0)));
 	assert group.ok;
 	if (!group.ok) { return; }
-	const added: Result<NodeId, SceneError> = addLightNode(
+	const added: Result<NodeId3D, SceneError> = addLightNode(
 		scene,
 		group.value,
 		transformAt(vec3(0.0, 2.0, 0.0)),
@@ -663,10 +664,10 @@ test "a point light under a moved parent carries the parent's place" {
 }
 
 test "a directional light's direction is its front vector negated and normalized" {
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	const quarter: float32 = 1.5707963;
 	const turned: Transform3D = { ...identityTransform(), rotation: eulerQuat(0.0, quarter, 0.0) };
-	const added: Result<NodeId, SceneError> = addLightNode(scene, scene.rootId(), turned, {
+	const added: Result<NodeId3D, SceneError> = addLightNode(scene, scene.rootId(), turned, {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0,
@@ -683,14 +684,14 @@ test "a directional light's direction is its front vector negated and normalized
 }
 
 test "point lights sort by priority and keep declaration order on ties" {
-	let scene: Scene = Scene.create();
-	const _low: NodeId = oneLight(scene, vec3(1.0, 0.0, 0.0), {
+	let scene: Scene3D = Scene3D.create();
+	const _low: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 0.0, 0.0), radius: 1.0, power: 1.0, priority: 0,
 	});
-	const _high: NodeId = oneLight(scene, vec3(2.0, 0.0, 0.0), {
+	const _high: NodeId3D = oneLight(scene, vec3(2.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(0.0, 1.0, 0.0), radius: 1.0, power: 1.0, priority: 5,
 	});
-	const _tie: NodeId = oneLight(scene, vec3(3.0, 0.0, 0.0), {
+	const _tie: NodeId3D = oneLight(scene, vec3(3.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(0.0, 0.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
 	const block: Vec<float32> = blockOf();
@@ -703,9 +704,9 @@ test "point lights sort by priority and keep declaration order on ties" {
 }
 
 test "a light beyond the block's slots is an error, not a silent drop" {
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	for (let i = 0; i <= MAX_POINT_LIGHTS; i++) {
-		const _each: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+		const _each: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 		});
 	}
@@ -716,15 +717,15 @@ test "a light beyond the block's slots is an error, not a silent drop" {
 }
 
 test "a second directional light is an error" {
-	let scene: Scene = Scene.create();
-	const _first: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+	let scene: Scene3D = Scene3D.create();
+	const _first: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0,
 		power: 0.2,
 		priority: 100,
 	});
-	const _second: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+	const _second: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 		kind: LightKind.Directional,
 		color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0,
@@ -738,8 +739,8 @@ test "a second directional light is an error" {
 }
 
 test "an invisible light is not collected" {
-	let scene: Scene = Scene.create();
-	const light: NodeId = oneLight(scene, vec3(1.0, 0.0, 0.0), {
+	let scene: Scene3D = Scene3D.create();
+	const light: NodeId3D = oneLight(scene, vec3(1.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
 	assert setVisible(scene, light, false).ok;
@@ -751,7 +752,7 @@ test "an invisible light is not collected" {
 }
 
 test "ambient comes from the scene and zeroed slots mean unlit" {
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	setAmbient(scene, vec3(0.33, 0.36, 0.6));
 	const block: Vec<float32> = blockOf();
 	assert collectLights(scene, block).ok;
@@ -761,11 +762,11 @@ test "ambient comes from the scene and zeroed slots mean unlit" {
 
 test "setLightPower moves what the flicker drives, and refuses a non-light" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const light: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), {
+	let scene: Scene3D = Scene3D.create();
+	const light: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
-	const mesh: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 0);
+	const mesh: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 0);
 	const powered: Result<int32, SceneError> = setLightPower(scene, light, 1.4);
 	assert powered.ok;
 	const refused: Result<int32, SceneError> = setLightPower(scene, mesh, 1.4);
@@ -780,13 +781,13 @@ test "setLightPower moves what the flicker drives, and refuses a non-light" {
 
 test "churning mesh and light nodes keeps both side tables at the live count" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	const light: LightInstance = {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	};
 	for (let round = 0; round < 50; round++) {
-		const mesh: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), round);
-		const lit: NodeId = oneLight(scene, vec3(0.0, 0.0, 0.0), light);
+		const mesh: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), round);
+		const lit: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), light);
 		assert remove(scene, context, mesh).ok;
 		assert remove(scene, context, lit).ok;
 	}
@@ -799,10 +800,10 @@ test "churning mesh and light nodes keeps both side tables at the live count" {
 
 test "removing an early mesh node repoints the node whose row moved, and draws the same" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const a: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
-	const b: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
-	const c: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
+	let scene: Scene3D = Scene3D.create();
+	const a: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
+	const b: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
+	const c: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
 	assert remove(scene, context, a).ok;
 	assert (scene.meshes.length as int32) == 2;
 	assert scene.meshes[scene.nodes[b.index].payload].mesh.index == 20;
@@ -818,8 +819,8 @@ test "removing an early mesh node repoints the node whose row moved, and draws t
 
 test "removing a subtree gives back every row under it and keeps the rest addressable" {
 	let context: DrawContext = contextOf(64, 1);
-	let scene: Scene = Scene.create();
-	const group: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const group: Result<NodeId3D, SceneError> =
 		addGroup(scene, scene.rootId(), identityTransform());
 	assert group.ok;
 	if (!group.ok) { return; }
@@ -843,8 +844,8 @@ test "removing a subtree gives back every row under it and keeps the rest addres
 		context.meshAt(2),
 		context.materialAt(0),
 	).ok;
-	const kept: NodeId = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
-	const keptLight: NodeId = oneLight(scene, vec3(1.0, 2.0, 3.0), { ...light, power: 0.75 });
+	const kept: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
+	const keptLight: NodeId3D = oneLight(scene, vec3(1.0, 2.0, 3.0), { ...light, power: 0.75 });
 	assert remove(scene, context, group.value).ok;
 	assert (scene.meshes.length as int32) == 1;
 	assert (scene.lights.length as int32) == 1;

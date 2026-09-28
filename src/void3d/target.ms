@@ -7,7 +7,7 @@ import { Vec4 } from "../math/math3d";
 import {
 	PixelFormat,
 	LoadAction,
-	Filter,
+	FilterMode,
 	Wrap,
 	makeTargetImage,
 	makeAttachmentView,
@@ -67,7 +67,7 @@ export struct TargetLayout {
 
 // A sampler keeps its settings for the same reason a target does.
 export struct Sampler {
-	filter: Filter;
+	filter: FilterMode;
 	wrap: Wrap;
 	handle: uint32;
 }
@@ -175,7 +175,7 @@ export function asDepth(
 	return { view: target.attachment, format: target.format, load: load, clear: clear };
 }
 
-export function create(this typeof Sampler, filter: Filter, wrap: Wrap): Sampler {
+export function create(this typeof Sampler, filter: FilterMode, wrap: Wrap): Sampler {
 	return { filter: filter, wrap: wrap, handle: makeSampler(filter, wrap) };
 }
 

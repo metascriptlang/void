@@ -1,5 +1,5 @@
 import { Vec3, vec3 } from "../math/math3d";
-import { Bounds } from "../void3d/bounds";
+import { Bounds3D } from "../void3d/bounds";
 import {
 	MeshData,
 	MeshError,
@@ -182,7 +182,7 @@ test "the box's first quad is its top face, normal up" {
 test "recomputeBounds agrees with the bounds the builders kept" {
 	let data: MeshData = MeshData.empty();
 	assert addBox(data, { ...plainBox(2.5), yaw: 0.7, tilt: -0.3 }).ok;
-	const kept: Bounds = data.bounds;
+	const kept: Bounds3D = data.bounds;
 	recomputeBounds(data);
 	assert near(data.bounds.min, kept.min.x, kept.min.y, kept.min.z);
 	assert near(data.bounds.max, kept.max.x, kept.max.y, kept.max.z);

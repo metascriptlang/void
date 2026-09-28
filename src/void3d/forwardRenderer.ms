@@ -2,7 +2,7 @@
 // colour and depth targets: the Android swapchain has no depth buffer (bridgeAndroid.c).
 
 import { Vec4 } from "../math/math3d";
-import { Program, PixelFormat, LoadAction, Filter, Wrap, endPass } from "./gpu3d";
+import { Program, PixelFormat, LoadAction, FilterMode, Wrap, endPass } from "./gpu3d";
 import { commit } from "../sokol/gpu";
 import { Material, Phase } from "./material";
 import {
@@ -90,7 +90,7 @@ export function create(
 		background: background,
 		colorTarget: RenderTarget.unallocated(PixelFormat.Rgba8, true),
 		depthTarget: RenderTarget.unallocated(PixelFormat.Depth, false),
-		sampler: { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 },
+		sampler: { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0 },
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,

@@ -1,7 +1,7 @@
 import { GltfData, validateGltfGraph } from "./gltf";
 import { DrawContext, MeshId, MaterialId } from "./draw";
 import {
-	Scene, NodeId, SceneError, Transform3D,
+	Scene3D, NodeId3D, SceneError, Transform3D,
 	addGroup, addMeshNode, setName, isLive,
 } from "./scene";
 
@@ -25,9 +25,9 @@ function transformOf(data: GltfData, index: int32): Transform3D {
 }
 
 export function addGltfNodes(
-	ref scene: Scene,
+	ref scene: Scene3D,
 	ref context: DrawContext,
-	parent: NodeId,
+	parent: NodeId3D,
 	data: GltfData,
 	bindings: Span<GltfMeshBinding>,
 ): Result<int32, GltfSceneError> {
@@ -43,7 +43,7 @@ export function addGltfNodes(
 	const valid = validateGltfGraph(data);
 	if (!valid.ok) { return Result.err(GltfSceneError.InvalidData); }
 	const nodes: Vec<int32> = [];
-	const parents: Vec<NodeId> = [];
+	const parents: Vec<NodeId3D> = [];
 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
 		nodes.push(data.sceneRoots[i]);
 		parents.push(parent);
@@ -52,18 +52,18 @@ export function addGltfNodes(
 	while ((nodes.length as int32) > 0) {
 		const last: int32 = (nodes.length as int32) - 1;
 		const index: int32 = nodes[last];
-		const under: NodeId = parents[last];
+		const under: NodeId3D = parents[last];
 		nodes.pop();
 		parents.pop();
-		let id: NodeId = { index: -1, generation: 0 };
+		let id: NodeId3D = { index: -1, generation: 0 };
 		const mesh: int32 = data.nodes[index].mesh;
 		if (mesh < 0) {
-			const added: Result<NodeId, SceneError> =
+			const added: Result<NodeId3D, SceneError> =
 				addGroup(scene, under, transformOf(data, index));
 			if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }
 			id = added.value;
 		} else {
-			const added: Result<NodeId, SceneError> = addMeshNode(
+			const added: Result<NodeId3D, SceneError> = addMeshNode(
 				scene, context, under, transformOf(data, index),
 				bindings[mesh].mesh, bindings[mesh].material,
 			);

@@ -19,7 +19,7 @@
 
 import { Vec3, vec3 } from "../math/math3d";
 import { sinf, cosf } from "../math/mat4";
-import { Bounds, addPoint } from "./bounds";
+import { Bounds3D, addPoint } from "./bounds";
 import { Ray } from "./ray";
 import { Face } from "./pass";
 
@@ -41,7 +41,7 @@ export struct Rgba {
 export struct MeshData {
 	vertices: Vec<float32>;
 	indices: Vec<uint16>;
-	bounds: Bounds;
+	bounds: Bounds3D;
 }
 
 export enum MeshError {
@@ -50,7 +50,7 @@ export enum MeshError {
 }
 
 export function empty(this typeof MeshData): MeshData {
-	return { vertices: [], indices: [], bounds: Bounds.empty() };
+	return { vertices: [], indices: [], bounds: Bounds3D.empty() };
 }
 
 export function vertexCount(this data: MeshData): int32 {
@@ -146,7 +146,7 @@ export function addQuad(
 // bounds current, so this is for a caller that edited `vertices` itself — a vertex-baked
 // animation frame (M9) swapping positions under a mesh that keeps its indices.
 export function recomputeBounds(ref data: MeshData): void {
-	let box: Bounds = Bounds.empty();
+	let box: Bounds3D = Bounds3D.empty();
 	const count: int32 = data.vertexCount();
 	for (let i = 0; i < count; i++) {
 		const base: int32 = i * LIT_VERTEX_STRIDE;

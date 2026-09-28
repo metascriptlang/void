@@ -2,7 +2,7 @@ import { Vec3, vec3 } from "../math/math3d";
 import { OrthoCamera, CameraBasis } from "../void3d/camera";
 import {
 	AtlasTile,
-	AtlasError,
+	AtlasTileError,
 	BillboardInstance,
 	BILLBOARD_INSTANCE_STRIDE,
 	ANCHOR_CENTER,
@@ -17,14 +17,14 @@ import {
 } from "../void3d/billboard";
 
 function tileOf(width: int32, frames: int32, frame: int32): AtlasTile {
-	const tile: Result<AtlasTile, AtlasError> = AtlasTile.ofFrame(width, frames, frame);
+	const tile: Result<AtlasTile, AtlasTileError> = AtlasTile.ofFrame(width, frames, frame);
 	if (tile.ok) { return tile.value; }
 	console.log(`frame ${frame} of ${frames} across ${width}: ${tile.error.toString()}`);
 	unreachable;
 }
 
-function refusal(width: int32, frames: int32, frame: int32): AtlasError {
-	const tile: Result<AtlasTile, AtlasError> = AtlasTile.ofFrame(width, frames, frame);
+function refusal(width: int32, frames: int32, frame: int32): AtlasTileError {
+	const tile: Result<AtlasTile, AtlasTileError> = AtlasTile.ofFrame(width, frames, frame);
 	if (!tile.ok) { return tile.error; }
 	console.log(`frame ${frame} of ${frames} across ${width} was a tile`);
 	unreachable;
@@ -52,16 +52,16 @@ test "a width the frames do not divide leaves its last columns out, as Tile.spli
 }
 
 test "a frame outside the atlas, no frames, or frames narrower than a pixel are refused" {
-	assert refusal(64, 0, 0) == AtlasError.NoFrames;
-	assert refusal(64, 4, 4) == AtlasError.FrameOutOfRange;
-	assert refusal(64, 4, -1) == AtlasError.FrameOutOfRange;
-	assert refusal(2, 3, 0) == AtlasError.NarrowerThanFrames;
-	assert refusal(0, 4, 0) == AtlasError.NarrowerThanFrames;
-	assert refusal(-64, 4, 1) == AtlasError.NarrowerThanFrames;
+	assert refusal(64, 0, 0) == AtlasTileError.NoFrames;
+	assert refusal(64, 4, 4) == AtlasTileError.FrameOutOfRange;
+	assert refusal(64, 4, -1) == AtlasTileError.FrameOutOfRange;
+	assert refusal(2, 3, 0) == AtlasTileError.NarrowerThanFrames;
+	assert refusal(0, 4, 0) == AtlasTileError.NarrowerThanFrames;
+	assert refusal(-64, 4, 1) == AtlasTileError.NarrowerThanFrames;
 }
 
 test "an atlas split gives every frame's tile in order, and refuses what a frame refuses" {
-	const tiles: Result<Vec<AtlasTile>, AtlasError> = AtlasTile.split(64, 4);
+	const tiles: Result<Vec<AtlasTile>, AtlasTileError> = AtlasTile.split(64, 4);
 	assert tiles.ok;
 	if (tiles.ok) {
 		assert (tiles.value.length as int32) == 4;
@@ -69,10 +69,10 @@ test "an atlas split gives every frame's tile in order, and refuses what a frame
 			assert tiles.value[frame] == tileOf(64, 4, frame);
 		}
 	}
-	const none: Result<Vec<AtlasTile>, AtlasError> = AtlasTile.split(64, 0);
-	assert !none.ok && none.error == AtlasError.NoFrames;
-	const negative: Result<Vec<AtlasTile>, AtlasError> = AtlasTile.split(-64, 4);
-	assert !negative.ok && negative.error == AtlasError.NarrowerThanFrames;
+	const none: Result<Vec<AtlasTile>, AtlasTileError> = AtlasTile.split(64, 0);
+	assert !none.ok && none.error == AtlasTileError.NoFrames;
+	const negative: Result<Vec<AtlasTile>, AtlasTileError> = AtlasTile.split(-64, 4);
+	assert !negative.ok && negative.error == AtlasTileError.NarrowerThanFrames;
 }
 
 test "a billboard instance is written in the order of the Billboard layout" {

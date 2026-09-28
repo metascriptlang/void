@@ -16,7 +16,7 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	Program,
-	Filter,
+	FilterMode,
 	Wrap,
 	makeVertexBuffer,
 	makeImage,
@@ -51,7 +51,7 @@ import {
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
 import { LowResView, ViewError } from "../void3d/blit";
-import { Bounds } from "../void3d/bounds";
+import { Bounds3D } from "../void3d/bounds";
 import { PaletteError } from "../void3d/palette";
 import {
 	PixelArtRenderer,
@@ -90,15 +90,15 @@ import {
 import { MeshData, MeshError, Rgba, Box, addBox, addPlane } from "../void3d/meshData";
 import {
 	AtlasTile,
-	AtlasError,
+	AtlasTileError,
 	BillboardInstance,
 	BILLBOARD_INSTANCE_STRIDE,
 	Anchor,
 	ANCHOR_BOTTOM_CENTER,
 } from "../void3d/billboard";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	Transform3D,
 	SceneError,
 	LightError,
@@ -254,19 +254,19 @@ let renderer: PixelArtRenderer = createRenderer();
 let forward: ForwardRenderer = createForward();
 let forwardWanted: boolean = false;
 let flameAnchor: Anchor = ANCHOR_BOTTOM_CENTER;
-let pointSampler: Sampler = { filter: Filter.Nearest, wrap: Wrap.Clamp, handle: 0 };
+let pointSampler: Sampler = { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 let sceneItems: Vec<DrawItem> = [];
-let tree: Scene = Scene.create();
-let flameNode: NodeId = { index: -1, generation: 0 };
+let tree: Scene3D = Scene3D.create();
+let flameNode: NodeId3D = { index: -1, generation: 0 };
 // The logs hang under their own group rather than off the root, so the tree has a real nested
 // transform to propagate through. The group sits at the identity unless a check turns it, and
 // `local * identity` is exact, so the six standing configurations see the same pixels.
-let logGroup: NodeId = { index: -1, generation: 0 };
-let firstLogNode: NodeId = { index: -1, generation: 0 };
-let bakedStoneNode: NodeId = { index: -1, generation: 0 };
-let plainStoneNode: NodeId = { index: -1, generation: 0 };
-let fireLight: NodeId = { index: -1, generation: 0 };
+let logGroup: NodeId3D = { index: -1, generation: 0 };
+let firstLogNode: NodeId3D = { index: -1, generation: 0 };
+let bakedStoneNode: NodeId3D = { index: -1, generation: 0 };
+let plainStoneNode: NodeId3D = { index: -1, generation: 0 };
+let fireLight: NodeId3D = { index: -1, generation: 0 };
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
 let flameFrames: MeshFrameAnimation = {
@@ -302,8 +302,8 @@ let groundGreyOnCpu: boolean = false;
 let particleMaterial: MaterialId = UNSET_MATERIAL;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
-let snowNode: NodeId = { index: -1, generation: 0 };
-let emberNode: NodeId = { index: -1, generation: 0 };
+let snowNode: NodeId3D = { index: -1, generation: 0 };
+let emberNode: NodeId3D = { index: -1, generation: 0 };
 let snowMesh: MeshId = UNSET_MESH;
 let emberMesh: MeshId = UNSET_MESH;
 const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
@@ -566,7 +566,7 @@ function insideStone(x: float32, z: float32): boolean {
 }
 
 function buildGrass(): void {
-	const tiles: Result<Vec<AtlasTile>, AtlasError> =
+	const tiles: Result<Vec<AtlasTile>, AtlasTileError> =
 		AtlasTile.split(TUFT_CELL * ATLAS_CELLS, ATLAS_CELLS);
 	if (!tiles.ok) {
 		console.log(`campfire: the tuft atlas does not split, ${tiles.error.toString()}`);
@@ -683,7 +683,7 @@ function buildFlameTexture(): uint32 {
 }
 
 function buildFlameBuffers(): void {
-	const tiles: Result<Vec<AtlasTile>, AtlasError> =
+	const tiles: Result<Vec<AtlasTile>, AtlasTileError> =
 		AtlasTile.split(FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_FRAMES);
 	if (!tiles.ok) {
 		console.log(`campfire: the flame atlas does not split, ${tiles.error.toString()}`);
@@ -745,7 +745,7 @@ function updateFlicker(): void {
 // Materials, meshes and items: lit geometry, grass and one flame, all opaque (the billboards
 // discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
 function setupDraws(): void {
-	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
+	pointSampler = Sampler.create(FilterMode.Nearest, Wrap.Clamp);
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(true, Compare.LessEqual);
@@ -805,8 +805,8 @@ function setupDraws(): void {
 	}
 	grassMaterial = grassAdded.value;
 	flameMaterial = flameAdded.value;
-	const root: NodeId = tree.rootId();
-	const group: Result<NodeId, SceneError> = addGroup(tree, root, identityTransform());
+	const root: NodeId3D = tree.rootId();
+	const group: Result<NodeId3D, SceneError> = addGroup(tree, root, identityTransform());
 	if (!group.ok) { console.log("campfire: setupDraws bailed at addGroup"); return; }
 	const logsNamed: Result<int32, SceneError> = setName(tree, group.value, "logs");
 	if (!logsNamed.ok) { console.log("campfire: setupDraws bailed at naming the logs"); return; }
@@ -814,7 +814,7 @@ function setupDraws(): void {
 	// shader wants the vector at the light, so the node faces away from it. Priority 100, the
 	// value Heaps' DirLight sorts at.
 	const moonToward: Vec3 = vec3(0.35, 0.9, 0.25).normalized();
-	const moon: Result<NodeId, SceneError> = addLightNode(
+	const moon: Result<NodeId3D, SceneError> = addLightNode(
 		tree,
 		root,
 		{
@@ -832,7 +832,7 @@ function setupDraws(): void {
 	if (!moon.ok) { console.log("campfire: setupDraws bailed at the moon light"); return; }
 	// The fire as h3d.scene.fwd.PointLight: its position is the node's world translation, and
 	// the flicker below moves both that and its power.
-	const fire: Result<NodeId, SceneError> = addLightNode(
+	const fire: Result<NodeId3D, SceneError> = addLightNode(
 		tree,
 		root,
 		transformAt(vec3(0.0, FIRE_HEIGHT, 0.0)),
@@ -866,9 +866,9 @@ function setupDraws(): void {
 		if (!uploaded.ok) { console.log("campfire: setupDraws bailed at addMeshData"); return; }
 		// The ground and the stones hang off the root; the logs hang off the group, so their
 		// world matrix is the two-level product the flat pieces never exercise.
-		const under: NodeId = i >= firstLogPiece ? logGroup : root;
+		const under: NodeId3D = i >= firstLogPiece ? logGroup : root;
 		const material: MaterialId = i == 0 ? groundMaterial.value : litMaterial;
-		const placed: Result<NodeId, SceneError> =
+		const placed: Result<NodeId3D, SceneError> =
 			addMeshNode(tree, context, under, placements[i], uploaded.value, material);
 		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
 		if (i == firstLogPiece) { firstLogNode = placed.value; }
@@ -881,7 +881,7 @@ function setupDraws(): void {
 		return;
 	}
 	grassMesh = grassMeshAdded.value;
-	const grass: Result<NodeId, SceneError> =
+	const grass: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, identityTransform(), grassMesh, grassMaterial);
 	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
 	for (const flameBuffer of flameBuffers) {
@@ -892,7 +892,7 @@ function setupDraws(): void {
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space
 	// instance data — so these two nodes sit at the identity and only carry draw order.
-	const flame: Result<NodeId, SceneError> =
+	const flame: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, identityTransform(), flameMeshes[0], flameMaterial);
 	if (!flame.ok) { console.log("campfire: setupDraws bailed at the flame node"); return; }
 	flameNode = flame.value;
@@ -936,12 +936,12 @@ function groundColor(): Rgba {
 function placeBakedStone(
 	stone: MeshData,
 	where: Transform3D,
-	root: NodeId,
+	root: NodeId3D,
 	material: MaterialId,
 ): Result<int32, AnimationError> {
 	const frames: Vec<MeshData> = [stone, stone];
 	stoneFrameMeshes = try addBakedFrames(context, frames);
-	const placed: Result<NodeId, SceneError> =
+	const placed: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, where, stoneFrameMeshes[0], material);
 	if (!placed.ok) { return Result.err(AnimationError.StaleTarget); }
 	const named: Result<int32, SceneError> = setName(tree, placed.value, "bakedStone");
@@ -959,7 +959,7 @@ enum ParticleSetupError {
 	EmitterRefused,
 }
 
-function setupParticles(root: NodeId, state: RenderState): Result<int32, ParticleSetupError> {
+function setupParticles(root: NodeId3D, state: RenderState): Result<int32, ParticleSetupError> {
 	const particleAdded: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
 	if (!particleAdded.ok) { return Result.err(ParticleSetupError.MaterialRefused); }
@@ -969,7 +969,7 @@ function setupParticles(root: NodeId, state: RenderState): Result<int32, Particl
 	if (!snowStream.ok || !emberStream.ok) { return Result.err(ParticleSetupError.StreamRefused); }
 	snowMesh = snowStream.value;
 	emberMesh = emberStream.value;
-	const snowPlaced: Result<NodeId, SceneError> = addMeshNode(
+	const snowPlaced: Result<NodeId3D, SceneError> = addMeshNode(
 		tree,
 		context,
 		root,
@@ -977,7 +977,7 @@ function setupParticles(root: NodeId, state: RenderState): Result<int32, Particl
 		snowMesh,
 		particleMaterial,
 	);
-	const emberPlaced: Result<NodeId, SceneError> = addMeshNode(
+	const emberPlaced: Result<NodeId3D, SceneError> = addMeshNode(
 		tree,
 		context,
 		root,
@@ -1000,7 +1000,7 @@ function setupParticles(root: NodeId, state: RenderState): Result<int32, Particl
 	return Result.ok(2);
 }
 
-function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId): boolean {
+function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId3D): boolean {
 	const world: Result<Mat4, SceneError> = tree.worldOf(node);
 	if (!world.ok) { return false; }
 	return updateEmitter(emitter, PARTICLE_STEP, world.value).ok;
@@ -1008,7 +1008,7 @@ function advanceEmitter(ref emitter: ParticleEmitter, node: NodeId): boolean {
 
 function drawEmitter(
 	ref emitter: ParticleEmitter,
-	node: NodeId,
+	node: NodeId3D,
 	mesh: MeshId,
 	instances: Span<float32>,
 ): boolean {
@@ -1158,7 +1158,7 @@ function forceRebuild(): void {
 	flameImage = makeImage(flamePixels, FLAME_CELL_WIDTH * FLAME_FRAMES, FLAME_CELL_HEIGHT);
 	grassTexture = makeTextureView(grassImage);
 	flameTexture = makeTextureView(flameImage);
-	pointSampler = Sampler.create(Filter.Nearest, Wrap.Clamp);
+	pointSampler = Sampler.create(FilterMode.Nearest, Wrap.Clamp);
 	context.materials[grassMaterial.index].texture0 = grassTexture;
 	context.materials[grassMaterial.index].sampler0 = pointSampler.handle;
 	context.materials[flameMaterial.index].texture0 = flameTexture;
@@ -1221,10 +1221,10 @@ export function campfireStats(): CampfireStats {
 }
 
 export struct CampfireTargets {
-	logs: NodeId;
-	firstLog: NodeId;
-	bakedStone: NodeId;
-	plainStone: NodeId;
+	logs: NodeId3D;
+	firstLog: NodeId3D;
+	bakedStone: NodeId3D;
+	plainStone: NodeId3D;
 }
 
 export function campfireTargets(): CampfireTargets {
@@ -1244,7 +1244,7 @@ function flipRowIfGl(row: float32): float32 {
 }
 
 // The host pixel under the centre of a mesh node's bounds in the last frame drawn.
-export function campfirePixelOf(id: NodeId): Result<Vec3, SceneError> {
+export function campfirePixelOf(id: NodeId3D): Result<Vec3, SceneError> {
 	if (!tree.isLive(id)) { return Result.err(SceneError.StaleNode); }
 	if (tree.nodes[id.index].kind != NodeKind.Mesh) {
 		return Result.err(SceneError.NotAMeshNode);
@@ -1253,7 +1253,7 @@ export function campfirePixelOf(id: NodeId): Result<Vec3, SceneError> {
 	if (mesh < 0 || mesh >= (context.meshData.length as int32)) {
 		return Result.err(SceneError.NodeNotFound);
 	}
-	const box: Bounds = context.meshData[mesh].bounds;
+	const box: Bounds3D = context.meshData[mesh].bounds;
 	const centre: Vec3 = box.center() * tree.nodes[id.index].world;
 	const pixel: Vec3 = shownView.project(centre, shownBlit, originTopLeft());
 	return Result.ok(vec3(pixel.x, flipRowIfGl(pixel.y), pixel.z));

@@ -3,23 +3,23 @@
 // against its bounds and then its triangles, the nearest hit kept.
 
 import { Vec3, Mat4 } from "../math/math3d";
-import { Bounds } from "./bounds";
+import { Bounds3D } from "./bounds";
 import { MeshData } from "./meshData";
 import { Material } from "./material";
 import { Face } from "./pass";
 import { Ray } from "./ray";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	NodeKind,
 	NodeFlag,
-	NO_NODE,
+	NO_NODE_3D,
 	syncWorld,
 } from "./scene";
 
 export struct PickHit {
-	owner: NodeId;
-	mesh: NodeId;
+	owner: NodeId3D;
+	mesh: NodeId3D;
 	distance: float32;
 	point: Vec3;
 }
@@ -41,15 +41,15 @@ const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 } };
 // PENDING3D: pick-owner-is-a-flag
 // PENDING3D: pick-distance-from-ray-origin
 export function pickNearest(
-	ref scene: Scene,
+	ref scene: Scene3D,
 	meshData: Span<MeshData>,
 	materials: Span<Material>,
 	ray: Ray,
 ): Result<PickHit, PickError> {
 	const _synced: int32 = syncWorld(scene);
 	let best: PickHit = {
-		owner: { index: NO_NODE, generation: 0 },
-		mesh: { index: NO_NODE, generation: 0 },
+		owner: { index: NO_NODE_3D, generation: 0 },
+		mesh: { index: NO_NODE_3D, generation: 0 },
 		distance: -1.0,
 		point: ray.origin,
 	};
@@ -62,8 +62,8 @@ export function pickNearest(
 		if (!scene.nodes[index].flags.has(NodeFlag.Visible)) { continue; }
 		const owner: int32 = scene.nodes[index].kind == NodeKind.Mesh
 			? scene.pickableOwner(index)
-			: NO_NODE;
-		if (owner != NO_NODE) {
+			: NO_NODE_3D;
+		if (owner != NO_NODE_3D) {
 			const mesh: int32 = scene.meshes[scene.nodes[index].payload].mesh.index;
 			const material: int32 = scene.meshes[scene.nodes[index].payload].material.index;
 			if (mesh < 0 || mesh >= (meshData.length as int32)) {
@@ -97,13 +97,13 @@ export function pickNearest(
 	return Result.ok(best);
 }
 
-function pickableOwner(this scene: Scene, index: int32): int32 {
+function pickableOwner(this scene: Scene3D, index: int32): int32 {
 	let at: int32 = index;
-	while (at != NO_NODE) {
+	while (at != NO_NODE_3D) {
 		if (scene.nodes[at].flags.has(NodeFlag.Pickable)) { return at; }
 		at = scene.nodes[at].parent;
 	}
-	return NO_NODE;
+	return NO_NODE_3D;
 }
 
 // Heaps' ObjectCollider over OptimizedCollider(bounds, polygon), except that a ray starting
@@ -111,7 +111,7 @@ function pickableOwner(this scene: Scene, index: int32): int32 {
 // OptimizedCollider that rayCastEventTargets would set checkInside on (Scene.hx:331).
 // PENDING3D: pick-origin-inside-bounds
 function meshHit(this data: MeshData, culling: Face, world: Mat4, ray: Ray): MeshHit {
-	const box: Bounds = data.bounds;
+	const box: Bounds3D = data.bounds;
 	if (box.isEmpty()) { return MISS; }
 	const local: Ray = ray.transformed(world.inverseAffine());
 	if (box.rayIntersection(local) < 0.0 && !box.contains(local.origin)) { return MISS; }

@@ -34,8 +34,8 @@ import {
 	writeUniforms,
 } from "../../src/void3d/draw";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	SceneError,
 	LightError,
 	LightKind,
@@ -97,7 +97,7 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
-let scene: Scene = Scene.create();
+let scene: Scene3D = Scene3D.create();
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -142,7 +142,7 @@ function buildScene(): void {
 	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, data);
 	if (!mesh.ok) { unreachable; }
 	const material: MaterialId = litMaterial();
-	const placed: Result<NodeId, SceneError> =
+	const placed: Result<NodeId3D, SceneError> =
 		addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh.value, material);
 	if (!placed.ok) { unreachable; }
 	const sun: LightInstance = {
@@ -152,7 +152,7 @@ function buildScene(): void {
 		power: 1.0,
 		priority: 0,
 	};
-	const lit: Result<NodeId, SceneError> =
+	const lit: Result<NodeId3D, SceneError> =
 		addLightNode(scene, scene.rootId(), identityTransform(), sun);
 	if (!lit.ok) { unreachable; }
 	const _drawn: int32 = refresh(scene, items);

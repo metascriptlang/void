@@ -16,7 +16,7 @@ import {
 	releaseMesh,
 } from "./draw";
 import {
-	Scene, NodeId, NodeKind, Transform3D, SceneError, NO_NODE,
+	Scene3D, NodeId3D, NodeKind, Transform3D, SceneError, NO_NODE_3D,
 	setLocal, setMeshOf,
 } from "./scene";
 
@@ -63,7 +63,7 @@ export struct KeyPair {
 
 export struct ObjectTrack {
 	name: string;
-	target: NodeId;
+	target: NodeId3D;
 }
 
 // LinearAnimation's per-object `frames`, stored track-major in one table:
@@ -80,13 +80,13 @@ export struct ObjectAnimation {
 export struct MeshFrameAnimation {
 	clock: AnimationClock;
 	name: string;
-	target: NodeId;
+	target: NodeId3D;
 	meshes: Vec<MeshId>;
 	bound: boolean;
 	shown: MeshId;
 }
 
-const UNBOUND: NodeId = { index: NO_NODE, generation: 0 };
+const UNBOUND: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 const NO_MESH: MeshId = { index: -1, generation: 0 };
 const PLAYING_EPSILON: float64 = 0.000001;
 const HOLD_FIRST: KeyPair = { first: 0, second: 0, weight: 0.0 };
@@ -233,14 +233,15 @@ export function addTrack(
 // PENDING3D: anim-missing-target-refused
 export function bindTracks(
 	ref animation: ObjectAnimation,
-	scene: Scene,
-	base: NodeId,
+	scene: Scene3D,
+	base: NodeId3D,
 ): Result<int32, AnimationError> {
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const count: int32 = animation.tracks.length as int32;
-	const found: Vec<NodeId> = [];
+	const found: Vec<NodeId3D> = [];
 	for (let i = 0; i < count; i++) {
-		const named: Result<NodeId, SceneError> = scene.findByName(base, animation.tracks[i].name);
+		const named: Result<NodeId3D, SceneError> =
+			scene.findByName(base, animation.tracks[i].name);
 		if (!named.ok) { return Result.err(AnimationError.TargetNotFound); }
 		found.push(named.value);
 	}
@@ -260,7 +261,7 @@ export function forgetSync(ref animation: ObjectAnimation): void {
 // Heaps prepends it through `defaultTransform`. PENDING3D: anim-pose-replaces-local
 export function syncPose(
 	ref animation: ObjectAnimation,
-	ref scene: Scene,
+	ref scene: Scene3D,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
@@ -347,11 +348,11 @@ export function releaseMeshFrames(
 
 export function bindMeshFrames(
 	ref animation: MeshFrameAnimation,
-	scene: Scene,
-	base: NodeId,
+	scene: Scene3D,
+	base: NodeId3D,
 ): Result<int32, AnimationError> {
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
-	const found: Result<NodeId, SceneError> = scene.findByName(base, animation.name);
+	const found: Result<NodeId3D, SceneError> = scene.findByName(base, animation.name);
 	if (!found.ok) { return Result.err(AnimationError.TargetNotFound); }
 	if (scene.nodes[found.value.index].kind != NodeKind.Mesh) {
 		return Result.err(AnimationError.NotAMeshNode);
@@ -365,7 +366,7 @@ export function bindMeshFrames(
 // Returns 1 when the node was given a new mesh, 0 when the frame it shows is still current.
 export function syncMeshFrame(
 	ref animation: MeshFrameAnimation,
-	ref scene: Scene,
+	ref scene: Scene3D,
 	ref context: DrawContext,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }

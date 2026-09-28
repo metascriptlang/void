@@ -10,7 +10,7 @@
 import { Vec3, Mat4, vec3 } from "../math/math3d";
 import { Ray } from "./ray";
 
-export struct Bounds {
+export struct Bounds3D {
 	min: Vec3;
 	max: Vec3;
 }
@@ -18,32 +18,32 @@ export struct Bounds {
 // Heaps uses 1e20; float32 carries it exactly enough (max ~3.4e38) for the same role.
 const EXTENT: float32 = 1e20;
 
-export function empty(this typeof Bounds): Bounds {
+export function empty(this typeof Bounds3D): Bounds3D {
 	return { min: vec3(EXTENT, EXTENT, EXTENT), max: vec3(-EXTENT, -EXTENT, -EXTENT) };
 }
 
-export function all(this typeof Bounds): Bounds {
+export function all(this typeof Bounds3D): Bounds3D {
 	return { min: vec3(-EXTENT, -EXTENT, -EXTENT), max: vec3(EXTENT, EXTENT, EXTENT) };
 }
 
-export function fromPoints(this typeof Bounds, min: Vec3, max: Vec3): Bounds {
+export function fromPoints(this typeof Bounds3D, min: Vec3, max: Vec3): Bounds3D {
 	return { min: min, max: max };
 }
 
 // h3d.col.Bounds.fromValues(x, y, z, dx, dy, dz): a corner and a size.
 export function fromValues(
-	this typeof Bounds,
+	this typeof Bounds3D,
 	x: float32,
 	y: float32,
 	z: float32,
 	sizeX: float32,
 	sizeY: float32,
 	sizeZ: float32,
-): Bounds {
+): Bounds3D {
 	return { min: vec3(x, y, z), max: vec3(x + sizeX, y + sizeY, z + sizeZ) };
 }
 
-export function addPos(ref bounds: Bounds, x: float32, y: float32, z: float32): void {
+export function addPos(ref bounds: Bounds3D, x: float32, y: float32, z: float32): void {
 	if (x < bounds.min.x) { bounds.min.x = x; }
 	if (x > bounds.max.x) { bounds.max.x = x; }
 	if (y < bounds.min.y) { bounds.min.y = y; }
@@ -52,31 +52,31 @@ export function addPos(ref bounds: Bounds, x: float32, y: float32, z: float32): 
 	if (z > bounds.max.z) { bounds.max.z = z; }
 }
 
-export function addPoint(ref bounds: Bounds, point: Vec3): void {
+export function addPoint(ref bounds: Bounds3D, point: Vec3): void {
 	addPos(bounds, point.x, point.y, point.z);
 }
 
 // Heaps calls this `add`; that name is taken here by std's Set.add / HashSet.add, and a free
 // function with a `ref` receiver takes part in that overload set (Compiler notes).
-export function addBounds(ref bounds: Bounds, other: Bounds): void {
+export function addBounds(ref bounds: Bounds3D, other: Bounds3D): void {
 	if (other.isEmpty()) { return; }
 	addPos(bounds, other.min.x, other.min.y, other.min.z);
 	addPos(bounds, other.max.x, other.max.y, other.max.z);
 }
 
-export function isEmpty(this bounds: Bounds): boolean {
+export function isEmpty(this bounds: Bounds3D): boolean {
 	return bounds.max.x < bounds.min.x ||
 		bounds.max.y < bounds.min.y ||
 		bounds.max.z < bounds.min.z;
 }
 
 // PENDING3D: bounds-empty-size-zero
-export function size(this bounds: Bounds): Vec3 {
+export function size(this bounds: Bounds3D): Vec3 {
 	if (bounds.isEmpty()) { return vec3(0.0, 0.0, 0.0); }
 	return bounds.max - bounds.min;
 }
 
-export function center(this bounds: Bounds): Vec3 {
+export function center(this bounds: Bounds3D): Vec3 {
 	if (bounds.isEmpty()) { return vec3(0.0, 0.0, 0.0); }
 	return (bounds.min + bounds.max).scaled(0.5);
 }
@@ -87,35 +87,35 @@ export function center(this bounds: Bounds): Vec3 {
 // (continued below)
 
 // Heaps' contains: min inclusive, max exclusive, so touching boxes do not both own a point.
-export function contains(this bounds: Bounds, point: Vec3): boolean {
+export function contains(this bounds: Bounds3D, point: Vec3): boolean {
 	return point.x >= bounds.min.x && point.x < bounds.max.x &&
 		point.y >= bounds.min.y && point.y < bounds.max.y &&
 		point.z >= bounds.min.z && point.z < bounds.max.z;
 }
 
-export function containsBounds(this bounds: Bounds, other: Bounds): boolean {
+export function containsBounds(this bounds: Bounds3D, other: Bounds3D): boolean {
 	return bounds.min.x <= other.min.x && bounds.min.y <= other.min.y &&
 		bounds.min.z <= other.min.z && bounds.max.x >= other.max.x &&
 		bounds.max.y >= other.max.y && bounds.max.z >= other.max.z;
 }
 
 // Heaps' collide: overlap on all three axes, touching counts.
-export function collide(this bounds: Bounds, other: Bounds): boolean {
+export function collide(this bounds: Bounds3D, other: Bounds3D): boolean {
 	return !(bounds.min.x > other.max.x || bounds.min.y > other.max.y ||
 		bounds.min.z > other.max.z || bounds.max.x < other.min.x ||
 		bounds.max.y < other.min.y || bounds.max.z < other.min.z);
 }
 
-export function offsetBy(this bounds: Bounds, delta: Vec3): Bounds {
+export function offsetBy(this bounds: Bounds3D, delta: Vec3): Bounds3D {
 	return { min: bounds.min + delta, max: bounds.max + delta };
 }
 
 // h3d.col.Bounds.transform(m): the eight corners through the matrix, re-bounded. An empty
 // bounds stays empty, as in Heaps, rather than collapsing onto the matrix translation.
 // PENDING3D: bounds-transformed-or
-export function transformed(this bounds: Bounds, matrix: Mat4): Bounds {
+export function transformed(this bounds: Bounds3D, matrix: Mat4): Bounds3D {
 	if (bounds.isEmpty()) { return bounds; }
-	let out: Bounds = Bounds.empty();
+	let out: Bounds3D = Bounds3D.empty();
 	for (let corner = 0; corner < 8; corner++) {
 		const point: Vec3 = vec3(
 			(corner & 1) == 0 ? bounds.min.x : bounds.max.x,
@@ -130,7 +130,7 @@ export function transformed(this bounds: Bounds, matrix: Mat4): Bounds {
 // h3d.col.Bounds.rayIntersection: the distance at which the ray enters the box, or -1 when the
 // slabs do not overlap. As in Heaps, a box around the origin or behind it answers a negative
 // entry, so a caller that counts an origin inside as a hit also tests `contains`.
-export function rayIntersection(this bounds: Bounds, ray: Ray): float32 {
+export function rayIntersection(this bounds: Bounds3D, ray: Ray): float32 {
 	const x: Slab = slabOf(bounds.min.x, bounds.max.x, ray.origin.x, ray.direction.x);
 	const y: Slab = slabOf(bounds.min.y, bounds.max.y, ray.origin.y, ray.direction.y);
 	const z: Slab = slabOf(bounds.min.z, bounds.max.z, ray.origin.z, ray.direction.z);
@@ -166,7 +166,7 @@ function slabOf(low: float32, high: float32, origin: float32, direction: float32
 const UNBOUNDED: float32 = 3.0e38;
 
 // The longest edge (Heaps' dimension), and the radius of the sphere around the box.
-export function dimension(this bounds: Bounds): float32 {
+export function dimension(this bounds: Bounds3D): float32 {
 	const extent: Vec3 = bounds.size();
 	let longest: float32 = extent.x;
 	if (extent.y > longest) { longest = extent.y; }
@@ -179,7 +179,7 @@ export function dimension(this bounds: Bounds): float32 {
 // Bounds.all() spans 2e20 per axis and (2e20)² is infinity in float32 long before the square
 // root could bring it back.
 // PENDING3D: bounds-sphere-rescale
-export function boundingSphereRadius(this bounds: Bounds): float32 {
+export function boundingSphereRadius(this bounds: Bounds3D): float32 {
 	if (bounds.isEmpty()) { return 0.0; }
 	const longest: float32 = bounds.dimension();
 	if (longest == 0.0) { return 0.0; }
@@ -192,7 +192,7 @@ export function boundingSphereRadius(this bounds: Bounds): float32 {
 // Zero for an empty box, as `size` and `center` answer, rather than clamping to the +1e20
 // corner — the distance from that overflows float32 to infinity, and M10 would read it as a
 // very far hit instead of no hit. A picker still has to test `isEmpty` itself.
-export function closestPoint(this bounds: Bounds, point: Vec3): Vec3 {
+export function closestPoint(this bounds: Bounds3D, point: Vec3): Vec3 {
 	if (bounds.isEmpty()) { return vec3(0.0, 0.0, 0.0); }
 	return vec3(
 		clamp(point.x, bounds.min.x, bounds.max.x),
@@ -209,9 +209,9 @@ function clamp(value: float32, low: float32, high: float32): float32 {
 
 // `Bounds{min=(0, 0, 0) size=(1, 2, 3)}`, Heaps' toString in the same shape. Allocates, so it
 // stays out of the frame loop.
-export function toString(this bounds: Bounds): string {
+export function toString(this bounds: Bounds3D): string {
 	if (bounds.isEmpty()) { return "Bounds{empty}"; }
 	const extent: Vec3 = bounds.size();
-	return `Bounds{min=(${bounds.min.x}, ${bounds.min.y}, ${bounds.min.z}) ` +
+	return `Bounds3D{min=(${bounds.min.x}, ${bounds.min.y}, ${bounds.min.z}) ` +
 		`size=(${extent.x}, ${extent.y}, ${extent.z})}`;
 }

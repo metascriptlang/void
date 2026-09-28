@@ -46,14 +46,14 @@
 # haxe-prelude: }
 #
 # ms-prelude: import { Vec3, vec3, Mat4, identity, eulerQuat } from "../../../src/math/math3d";
-# ms-prelude: import { Bounds } from "../../../src/void3d/bounds";
+# ms-prelude: import { Bounds3D } from "../../../src/void3d/bounds";
 # ms-prelude: import { Ray } from "../../../src/void3d/ray";
 # ms-prelude: import { MeshData, Rgba, addVertex, addTriangle } from "../../../src/void3d/meshData";
 # ms-prelude: import { Face, RenderState } from "../../../src/void3d/pass";
 # ms-prelude: import { Material, Phase } from "../../../src/void3d/material";
 # ms-prelude: import { Program } from "../../../src/void3d/gpu3d";
 # ms-prelude: import {
-# ms-prelude: 	Scene, NodeId, Transform3D, SceneError, NO_NODE, addMeshNode, setPickable, syncWorld,
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, NO_NODE_3D, addMeshNode, setPickable, syncWorld,
 # ms-prelude: } from "../../../src/void3d/scene";
 # ms-prelude: import { PickHit, PickError, pickNearest } from "../../../src/void3d/pick";
 # ms-prelude: import {
@@ -62,7 +62,7 @@
 # ms-prelude: } from "../../../src/void3d/draw";
 # ms-prelude:
 # ms-prelude: const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-# ms-prelude: function box(): Bounds { return Bounds.fromValues(-1.0, -1.0, -1.0, 2.0, 2.0, 2.0); }
+# ms-prelude: function box(): Bounds3D { return Bounds3D.fromValues(-1.0, -1.0, -1.0, 2.0, 2.0, 2.0); }
 # ms-prelude: function ray(ox: float32, oy: float32, oz: float32,
 # ms-prelude: 		dx: float32, dy: float32, dz: float32): Ray {
 # ms-prelude: 	return Ray.fromPoints(vec3(ox, oy, oz), vec3(ox + dx, oy + dy, oz + dz));
@@ -95,31 +95,31 @@
 # ms-prelude: 	const state: RenderState = RenderState.defaults();
 # ms-prelude: 	return [Material.plain(Program.Lit, state.withCulling(Face.Back), Phase.Opaque)];
 # ms-prelude: }
-# ms-prelude: const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
+# ms-prelude: const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 # ms-prelude: const NO_HIT: PickHit = {
 # ms-prelude: 	owner: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 },
 # ms-prelude: };
-# ms-prelude: struct Picked { scene: Scene; node: NodeId; }
+# ms-prelude: struct Picked { scene: Scene3D; node: NodeId3D; }
 # ms-prelude: function onePickable(t: Transform3D): Picked {
-# ms-prelude: 	let scene: Scene = Scene.create();
+# ms-prelude: 	let scene: Scene3D = Scene3D.create();
 # ms-prelude: 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 # ms-prelude: 	const mesh: Result<MeshId, MeshUploadError> = addMesh(context, GpuMesh.fullscreen(0, 3));
 # ms-prelude: 	if (!mesh.ok) { return { scene: scene, node: NO_ID }; }
 # ms-prelude: 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 # ms-prelude: 	const material: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 # ms-prelude: 	if (!material.ok) { return { scene: scene, node: NO_ID }; }
-# ms-prelude: 	const made: Result<NodeId, SceneError> =
+# ms-prelude: 	const made: Result<NodeId3D, SceneError> =
 # ms-prelude: 		addMeshNode(scene, context, scene.rootId(), t, mesh.value, material.value);
-# ms-prelude: 	const id: NodeId = made.ok ? made.value : NO_ID;
+# ms-prelude: 	const id: NodeId3D = made.ok ? made.value : NO_ID;
 # ms-prelude: 	const _marked: boolean = setPickable(scene, id, true).ok;
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);
 # ms-prelude: 	return { scene: scene, node: id };
 # ms-prelude: }
-# ms-prelude: function through(scene: Scene, id: NodeId, x: float32, y: float32): Ray {
+# ms-prelude: function through(scene: Scene3D, id: NodeId3D, x: float32, y: float32): Ray {
 # ms-prelude: 	const w: Mat4 = scene.nodes[id.index].world;
 # ms-prelude: 	return Ray.fromPoints(vec3(x, y, 5.0) * w, vec3(x, y, 0.0) * w);
 # ms-prelude: }
-# ms-prelude: function pickIn(ref scene: Scene, mesh: MeshData, r: Ray): PickHit {
+# ms-prelude: function pickIn(ref scene: Scene3D, mesh: MeshData, r: Ray): PickHit {
 # ms-prelude: 	const meshes: Vec<MeshData> = [mesh];
 # ms-prelude: 	const materials: Vec<Material> = culledBack();
 # ms-prelude: 	const picked: Result<PickHit, PickError> = pickNearest(scene, meshes, materials, r);

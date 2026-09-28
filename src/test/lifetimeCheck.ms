@@ -24,10 +24,10 @@ import {
 import { added } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
 import {
-	Scene,
-	NodeId,
+	Scene3D,
+	NodeId3D,
 	SceneError,
-	NO_NODE,
+	NO_NODE_3D,
 	identityTransform,
 	addGroup,
 	addMeshNode,
@@ -47,7 +47,7 @@ import {
 	update,
 } from "../void3d/animation";
 
-const NO_ID: NodeId = { index: NO_NODE, generation: 0 };
+const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 const NO_MATERIAL: MaterialId = { index: -1, generation: 0 };
 
 function quad(): GpuMesh {
@@ -166,8 +166,8 @@ test "a mesh node holds its mesh and material from addMeshNode until remove" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const node: NodeId =
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh, material)
 		catch NO_ID;
 	assert context.meshHolders[mesh.index] == 2 && context.materialHolders[material.index] == 2;
@@ -182,10 +182,10 @@ test "removing a group lets go once for every mesh node under it" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const group: NodeId = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
+	let scene: Scene3D = Scene3D.create();
+	const group: NodeId3D = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
 	for (let i = 0; i < 3; i++) {
-		const _node: NodeId =
+		const _node: NodeId3D =
 			try addMeshNode(scene, context, group, identityTransform(), mesh, material) catch NO_ID;
 	}
 	assert context.meshHolders[mesh.index] == 4;
@@ -197,8 +197,8 @@ test "setMeshOf holds the new mesh before it lets go of the one shown, even when
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const shown: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const node: NodeId =
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), shown, material)
 		catch NO_ID;
 	assert holders(releaseMesh(context, shown)) == 1;
@@ -217,18 +217,18 @@ test "a node refuses a released mesh or material, and holds nothing then" {
 	const goneMaterial: MaterialId = plainMaterial(context);
 	assert holders(releaseMesh(context, goneMesh)) == 0;
 	assert holders(releaseMaterial(context, goneMaterial)) == 0;
-	let scene: Scene = Scene.create();
-	const noMesh: Result<NodeId, SceneError> =
+	let scene: Scene3D = Scene3D.create();
+	const noMesh: Result<NodeId3D, SceneError> =
 		addMeshNode(scene, context, scene.rootId(), identityTransform(), goneMesh, material);
 	assert !noMesh.ok;
 	if (!noMesh.ok) { assert noMesh.error == SceneError.StaleMesh; }
-	const noMaterial: Result<NodeId, SceneError> =
+	const noMaterial: Result<NodeId3D, SceneError> =
 		addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh, goneMaterial);
 	assert !noMaterial.ok;
 	if (!noMaterial.ok) { assert noMaterial.error == SceneError.StaleMaterial; }
 	assert context.meshHolders[mesh.index] == 1 && context.materialHolders[material.index] == 1;
 	assert scene.nodeCount() == 1;
-	const node: NodeId =
+	const node: NodeId3D =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh, material)
 		catch NO_ID;
 	const swapped: Result<int32, SceneError> = setMeshOf(scene, context, node, goneMesh);
@@ -238,16 +238,17 @@ test "a node refuses a released mesh or material, and holds nothing then" {
 }
 
 function loadRocks(
-	ref scene: Scene,
+	ref scene: Scene3D,
 	ref context: DrawContext,
-	under: NodeId,
+	under: NodeId3D,
 ): Result<int32, SceneError> {
 	const rock: MeshId = added(context, quad());
 	defer releaseMesh(context, rock);
 	const stone: MaterialId = plainMaterial(context);
 	defer releaseMaterial(context, stone);
-	const _first: NodeId = try addMeshNode(scene, context, under, identityTransform(), rock, stone);
-	const _second: NodeId = try addMeshNode(
+	const _first: NodeId3D =
+		try addMeshNode(scene, context, under, identityTransform(), rock, stone);
+	const _second: NodeId3D = try addMeshNode(
 		scene,
 		context,
 		under,
@@ -260,8 +261,8 @@ function loadRocks(
 
 test "a loader that lets go of its own with defer leaves its meshes to the nodes, or to no one" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
-	let scene: Scene = Scene.create();
-	const level: NodeId = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
+	let scene: Scene3D = Scene3D.create();
+	const level: NodeId3D = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
 	const loaded: Result<int32, SceneError> = loadRocks(scene, context, level);
 	assert loaded.ok;
 	assert context.liveMeshes() == 1 && context.liveMaterials() == 1;
@@ -277,8 +278,8 @@ test "a caller that would take a mesh node's hold is refused, and the mesh stays
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const node: NodeId =
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), mesh, material)
 		catch NO_ID;
 	assert holders(releaseMesh(context, mesh)) == 1;
@@ -296,11 +297,11 @@ test "removeChildren lets go of everything under a node and keeps the node" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const level: NodeId = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
-	const _first: NodeId =
+	let scene: Scene3D = Scene3D.create();
+	const level: NodeId3D = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
+	const _first: NodeId3D =
 		try addMeshNode(scene, context, level, identityTransform(), mesh, material) catch NO_ID;
-	const _second: NodeId = try addMeshNode(
+	const _second: NodeId3D = try addMeshNode(
 		scene,
 		context,
 		scene.rootId(),
@@ -322,8 +323,8 @@ test "a baked animation holds its frames, the ones off screen too, until it lets
 	const first: MeshId = added(context, quad());
 	const second: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const node: NodeId =
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), first, material)
 		catch NO_ID;
 	const _named: int32 = try setName(scene, node, "pet") catch -1;
@@ -354,8 +355,8 @@ test "an over-release is refused while only pins hold a frame, and frames go all
 	const shown: MeshId = added(context, quad());
 	const offScreen: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const node: NodeId =
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), shown, material)
 		catch NO_ID;
 	const clock: Result<AnimationClock, AnimationError> =
@@ -388,13 +389,13 @@ test "a copy of a scene that removed the same nodes is refused by name, and noth
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const mesh: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
-	let scene: Scene = Scene.create();
-	const level: NodeId = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
+	let scene: Scene3D = Scene3D.create();
+	const level: NodeId3D = try addGroup(scene, scene.rootId(), identityTransform()) catch NO_ID;
 	for (let i = 0; i < 2; i++) {
-		const _node: NodeId =
+		const _node: NodeId3D =
 			try addMeshNode(scene, context, level, identityTransform(), mesh, material) catch NO_ID;
 	}
-	let copy: Scene = scene;
+	let copy: Scene3D = scene;
 	assert remove(scene, context, level).ok;
 	assert context.meshHolders[mesh.index] == 1;
 	const again: Result<int32, SceneError> = remove(copy, context, level);

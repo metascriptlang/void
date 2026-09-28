@@ -4,7 +4,7 @@ import { DrawContext, MeshId, releaseMesh } from "../void3d/draw";
 import { Mat4 } from "../math/math3d";
 import { loadGltf, GltfError } from "../void3d/gltf";
 import { addGltfNodes, GltfMeshBinding, GltfSceneError } from "../void3d/gltfScene";
-import { Scene, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
+import { Scene3D, SceneError, syncWorld, findByName, worldOf, rootId } from "../void3d/scene";
 import { vertexCount, triangleCount } from "../void3d/meshData";
 // The buffer a test builds by hand, in the bit patterns the decoder must see: every float
 // here is 0.0 (0x00000000) or 1.0 (0x3F800000), so the bytes below are the IEEE-754
@@ -134,7 +134,7 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 	const loaded = loadGltf(treeGltf(), triangleBuffer());
 	assert loaded.ok;
 	if (!loaded.ok) { return; }
-	let scene: Scene = Scene.create();
+	let scene: Scene3D = Scene3D.create();
 	const missing: Result<int32, GltfSceneError> =
 		addGltfNodes(scene, context, scene.rootId(), loaded.value, []);
 	assert !missing.ok;
