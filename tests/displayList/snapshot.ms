@@ -71,11 +71,12 @@ const SNAPSHOT_DIR: string = "tests/displayList";
 function f2(v: float32): string {
 	const d: float64 = v as float64;
 	const scaled: int32 = (d * 100.0 + (d >= 0.0 ? 0.5 : -0.5)) as int32;
-	const whole: int32 = scaled / 100;
-	let frac: int32 = scaled % 100;
-	if (frac < 0) { frac = -frac; }
+	const sign: string = scaled < 0 ? "-" : "";
+	const magnitude: int32 = scaled < 0 ? -scaled : scaled;
+	const whole: int32 = magnitude / 100;
+	const frac: int32 = magnitude % 100;
 	const pad: string = frac < 10 ? "0" : "";
-	return `${whole}.${pad}${frac}`;
+	return `${sign}${whole}.${pad}${frac}`;
 }
 
 // One line per command, then one per vertex. The break reason is a word and not a number: a
