@@ -1262,6 +1262,50 @@ run_captures() {
 	run_anchor_moves_flame
 }
 
+# A 3D preset and void2d in one screen pass and one commit (tests/integration/mixedFrame.ms, also
+# in void2d's gate), and the same run preparing twice, which must stop and say so.
+run_compose() {
+	rm -f out/tmp/mixedFrame.exe
+	if ! msc build tests/integration/mixedFrame.ms --release --output=out/tmp/mixedFrame.exe \
+		> "$WORK/compose.build.log" 2>&1; then
+		fail "compose: tests/integration/mixedFrame.ms does not build"
+		tail -30 "$WORK/compose.build.log"
+		return
+	fi
+	if out/tmp/mixedFrame.exe > "$WORK/compose.run.log" 2>&1; then
+		pass "compose: $(grep -E '^mixed frame:' "$WORK/compose.run.log" | sed 's/^mixed frame: //')"
+	else
+		fail "compose: the mixed frame failed"
+		grep -E '^FAIL' "$WORK/compose.run.log" | sed 's/^/      /'
+	fi
+	status=0
+	VOID_MIXED_PREPARE_TWICE=1 out/tmp/mixedFrame.exe > "$WORK/compose.twice.log" 2>&1 || status=$?
+	if [ "$status" -ne 0 ] && grep -q 'prepareFrame again before drawToScreen' "$WORK/compose.twice.log"; then
+		pass "compose: a second prepareFrame before drawToScreen stops and names the call"
+	else
+		fail "compose: a second prepareFrame did not stop (exit $status)"
+	fi
+}
+
+# The tests/aborts protocol of void2d's gate: the first line names what the program must say as it
+# stops, and a program that runs to the end fails.
+run_aborts() {
+	for program in tests/aborts3d/*.ms; do
+		name=$(basename "$program" .ms)
+		expected=$(sed -n '1s#^// expect: ##p' "$program" | tr -d '\r')
+		log="$WORK/abort-$name.log"
+		status=0
+		rm -f "out/tmp/abort-$name.exe"
+		msc build "$program" --output="out/tmp/abort-$name.exe" > "$log" 2>&1 || true
+		"out/tmp/abort-$name.exe" >> "$log" 2>&1 || status=$?
+		if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
+			pass "aborts: $name stops and says: $expected"
+		else
+			fail "aborts: $name did not stop with '$expected' (exit $status) — see $log"
+		fi
+	done
+}
+
 # ---- manifest -----------------------------------------------------------------------------
 
 MANIFEST=docs/baselines3d.sha256
@@ -1349,6 +1393,8 @@ run_pending
 run_tests
 run_gltf_cpu
 run_captures
+run_compose
+run_aborts
 run_manifest
 run_allocation
 run_oracle
