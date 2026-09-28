@@ -30,6 +30,10 @@ import {
 	unpinMesh,
 	pinMaterial,
 	unpinMaterial,
+	tallyMeshPin,
+	clearMeshTally,
+	tallyMaterialPin,
+	clearMaterialTally,
 } from "./draw";
 import { Slots, claim, vacate } from "./slots";
 
@@ -323,15 +327,20 @@ function detach(ref scene: Scene, index: int32): void {
 	scene.nodes[parent].children = siblings;
 }
 
-// A mesh node unpins its mesh and material; remove checked the pins first (checkPins).
+// A mesh node unpins its mesh and material; remove checked the pins first (checkPins). A freed id
+// holds no pin: whoever freed it took the node's.
 function releasePayload(ref scene: Scene, ref context: DrawContext, index: int32): void {
 	const row: int32 = scene.nodes[index].payload;
 	match (scene.nodes[index].kind) {
 		NodeKind.Mesh => {
-			const mesh: Result<int32, HandleError> = unpinMesh(context, scene.meshes[row].mesh);
-			const material: Result<int32, HandleError> =
-				unpinMaterial(context, scene.meshes[row].material);
-			if (!mesh.ok || !material.ok) { unreachable; }
+			const instance: MeshInstance = scene.meshes[row];
+			if (context.hasMesh(instance.mesh) && !unpinMesh(context, instance.mesh).ok) {
+				unreachable;
+			}
+			const material: MaterialId = instance.material;
+			if (context.hasMaterial(material) && !unpinMaterial(context, material).ok) {
+				unreachable;
+			}
 			const last: int32 = (scene.meshes.length as int32) - 1;
 			const mover: int32 = scene.meshOwners[last];
 			scene.meshes[row] = scene.meshes[last];
@@ -370,34 +379,30 @@ function collectSubtree(ref scene: Scene, index: int32): int32 {
 	return written;
 }
 
-// Every mesh node of the first `count` in scene.stack still has the pins it is about to let go.
-// A Scene is a value: a copy of it that removed the same nodes has already unpinned them, and so
-// has a remove through another context.
+// Every live mesh and material of the mesh nodes among the first `count` in scene.stack has a pin
+// for each node about to let one go. A Scene is a value: a copy of it that removed the same nodes
+// has taken those pins, and so has a remove through another context.
 function checkPins(
 	ref scene: Scene,
 	ref context: DrawContext,
 	count: int32,
 ): Result<int32, SceneError> {
+	let covered: boolean = true;
 	for (let k = 0; k < count; k++) {
 		const node: int32 = scene.stack[k];
 		if (scene.nodes[node].kind != NodeKind.Mesh) { continue; }
 		const instance: MeshInstance = scene.meshes[scene.nodes[node].payload];
-		let meshUses: int32 = 1;
-		let materialUses: int32 = 1;
-		for (let j = 0; j < k; j++) {
-			const earlier: int32 = scene.stack[j];
-			if (scene.nodes[earlier].kind != NodeKind.Mesh) { continue; }
-			const other: MeshInstance = scene.meshes[scene.nodes[earlier].payload];
-			if (other.mesh == instance.mesh) { meshUses = meshUses + 1; }
-			if (other.material == instance.material) { materialUses = materialUses + 1; }
-		}
-		if (context.meshPinned(instance.mesh) < meshUses) {
-			return Result.err(SceneError.NotPinned);
-		}
-		if (context.materialPinned(instance.material) < materialUses) {
-			return Result.err(SceneError.NotPinned);
-		}
+		if (!tallyMeshPin(context, instance.mesh)) { covered = false; }
+		if (!tallyMaterialPin(context, instance.material)) { covered = false; }
 	}
+	for (let k = 0; k < count; k++) {
+		const node: int32 = scene.stack[k];
+		if (scene.nodes[node].kind != NodeKind.Mesh) { continue; }
+		const instance: MeshInstance = scene.meshes[scene.nodes[node].payload];
+		clearMeshTally(context, instance.mesh);
+		clearMaterialTally(context, instance.material);
+	}
+	if (!covered) { return Result.err(SceneError.NotPinned); }
 	return Result.ok(count);
 }
 
@@ -482,8 +487,8 @@ export function setPickable(
 	return Result.ok(id.index);
 }
 
-// The node pins `mesh` and unpins the one it showed; pinning first keeps a mesh swapped for itself
-// alive.
+// The node pins `mesh` and unpins the one it showed, unless that one was freed already; pinning
+// first keeps a mesh swapped for itself alive.
 export function setMeshOf(
 	ref scene: Scene,
 	ref context: DrawContext,
@@ -495,10 +500,11 @@ export function setMeshOf(
 		return Result.err(SceneError.NotAMeshNode);
 	}
 	const row: int32 = scene.nodes[id.index].payload;
-	if (context.meshPinned(scene.meshes[row].mesh) < 1) { return Result.err(SceneError.NotPinned); }
+	const shown: MeshId = scene.meshes[row].mesh;
+	const holds: boolean = context.hasMesh(shown);
+	if (holds && context.meshPinned(shown) < 1) { return Result.err(SceneError.NotPinned); }
 	if (!pinMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
-	const shown: Result<int32, HandleError> = unpinMesh(context, scene.meshes[row].mesh);
-	if (!shown.ok) { unreachable; }
+	if (holds && !unpinMesh(context, shown).ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
 	return Result.ok(id.index);
 }

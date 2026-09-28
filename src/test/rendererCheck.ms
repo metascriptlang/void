@@ -27,7 +27,7 @@ import {
 	releaseMesh,
 	writeUniforms,
 } from "../void3d/draw";
-import { lastMaterial, added } from "./drawHelpers";
+import { lastMaterial, added, litShape } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
 import { PipelineKey } from "../void3d/pipelineCache";
@@ -127,7 +127,7 @@ function itemAt(material: int32, depth: float32): DrawItem {
 function itemOnItsLayout(ref context: DrawContext, material: MaterialId): DrawItem {
 	const program: Program = context.materials[material.index].program;
 	const mesh: GpuMesh = match (vertexLayoutOf(program)) {
-		VertexLayout.Lit => MeshData.empty().meshFor(0, 0, 0),
+		VertexLayout.Lit => litShape(),
 		VertexLayout.Particle => GpuMesh.streamMesh(1, 0, 0),
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),

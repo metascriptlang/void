@@ -1,6 +1,7 @@
 import { Program } from "../void3d/gpu3d";
 import { RenderState } from "../void3d/pass";
 import { Material, Phase } from "../void3d/material";
+import { MeshData } from "../void3d/meshData";
 import {
 	DrawContext,
 	GpuMesh,
@@ -8,6 +9,7 @@ import {
 	MaterialId,
 	MaterialError,
 	MeshUploadError,
+	EXTERNAL_GENERATION,
 	addMesh,
 	addMaterial,
 } from "../void3d/draw";
@@ -26,7 +28,12 @@ export function contextOf(meshes: int32, materials: int32): DrawContext {
 	return context;
 }
 
-// A mesh addMesh takes: the caller's, a stream, or one never made in a context.
+// A Lit mesh with nothing to draw, marked the caller's so that addMesh takes it.
+export function litShape(): GpuMesh {
+	return { ...MeshData.empty().meshFor(0, 0, 0), generation: EXTERNAL_GENERATION };
+}
+
+// A mesh addMesh takes: the caller's, or a stream.
 export function added(ref context: DrawContext, mesh: GpuMesh): MeshId {
 	const result: Result<MeshId, MeshUploadError> = addMesh(context, mesh);
 	if (!result.ok) { unreachable; }

@@ -121,10 +121,12 @@ export struct DrawContext {
 	meshSlots: Slots;
 	meshHolders: Vec<int32>;
 	meshPins: Vec<int32>;
+	meshTally: Vec<int32>;
 	materials: Vec<Material>;
 	materialSlots: Slots;
 	materialHolders: Vec<int32>;
 	materialPins: Vec<int32>;
+	materialTally: Vec<int32>;
 	materialBlocks: Vec<UniformBlock>;
 	uniforms: UniformPool;
 	doomed: Vec<DoomedBuffer>;
@@ -168,10 +170,12 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		meshSlots: Slots.empty(),
 		meshHolders: [],
 		meshPins: [],
+		meshTally: [],
 		materials: [],
 		materialSlots: Slots.empty(),
 		materialHolders: [],
 		materialPins: [],
+		materialTally: [],
 		materialBlocks: [],
 		uniforms: UniformPool.withCapacity(capacity),
 		doomed: [],
@@ -205,6 +209,7 @@ function newMesh(ref context: DrawContext, mesh: GpuMesh, data: MeshData): MeshI
 		context.meshData.push(data);
 		context.meshHolders.push(1);
 		context.meshPins.push(0);
+		context.meshTally.push(0);
 	} else {
 		context.meshes[index] = mesh;
 		context.meshData[index] = data;
@@ -217,11 +222,12 @@ function newMesh(ref context: DrawContext, mesh: GpuMesh, data: MeshData): MeshI
 // A mesh with no CPU data here. Whose buffers they are is the mesh's generation:
 // EXTERNAL_GENERATION (fullscreen, billboards) keeps them the caller's, never rebuilt and never
 // destroyed here; any other makes them the context's, which dooms them when the mesh is freed and
-// remakes them after a context loss. A stream can be remade empty; any other mesh made in a
-// context and handed over with no CPU data could not be, and is refused.
+// remakes them after a context loss. Only a stream can be remade from nothing, so any other mesh
+// that is not the caller's is refused.
 export function addMesh(ref context: DrawContext, mesh: GpuMesh): Result<MeshId, MeshUploadError> {
-	const owned: boolean = mesh.generation != EXTERNAL_GENERATION && mesh.generation != 0;
-	if (owned && !mesh.isStream()) { return Result.err(MeshUploadError.Unrebuildable); }
+	if (mesh.generation != EXTERNAL_GENERATION && !mesh.isStream()) {
+		return Result.err(MeshUploadError.Unrebuildable);
+	}
 	return Result.ok(newMesh(context, mesh, MeshData.empty()));
 }
 
@@ -595,6 +601,19 @@ export function meshPinned(this context: DrawContext, id: MeshId): int32 {
 	return context.hasMesh(id) ? context.meshPins[id.index] : 0;
 }
 
+// Counts one more holder about to unpin `id`, and answers whether its pins still cover every one
+// counted since the last clearMeshTally. A freed id counts nothing: whoever pinned it let go.
+// Linear where a pairwise count would be quadratic in the holders checked.
+export function tallyMeshPin(ref context: DrawContext, id: MeshId): boolean {
+	if (!context.hasMesh(id)) { return true; }
+	context.meshTally[id.index] = context.meshTally[id.index] + 1;
+	return context.meshTally[id.index] <= context.meshPins[id.index];
+}
+
+export function clearMeshTally(ref context: DrawContext, id: MeshId): void {
+	if (context.hasMesh(id)) { context.meshTally[id.index] = 0; }
+}
+
 // The material takes its uniform range with it: the range returns to the pool when the material
 // is freed, so one range under two materials is refused.
 export function addMaterial(
@@ -611,6 +630,7 @@ export function addMaterial(
 		context.materials.push(material);
 		context.materialHolders.push(1);
 		context.materialPins.push(0);
+		context.materialTally.push(0);
 		context.materialBlocks.push(material.uniforms);
 	} else {
 		context.materials[index] = material;
@@ -683,8 +703,14 @@ export function unpinMaterial(
 	return Result.ok(letGoOfMaterial(context, id.index));
 }
 
-export function materialPinned(this context: DrawContext, id: MaterialId): int32 {
-	return context.hasMaterial(id) ? context.materialPins[id.index] : 0;
+export function tallyMaterialPin(ref context: DrawContext, id: MaterialId): boolean {
+	if (!context.hasMaterial(id)) { return true; }
+	context.materialTally[id.index] = context.materialTally[id.index] + 1;
+	return context.materialTally[id.index] <= context.materialPins[id.index];
+}
+
+export function clearMaterialTally(ref context: DrawContext, id: MaterialId): void {
+	if (context.hasMaterial(id)) { context.materialTally[id.index] = 0; }
 }
 
 // Destroys the doomed buffers of GPU context `generation` and drops the rest: a buffer of an

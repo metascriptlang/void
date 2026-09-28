@@ -172,11 +172,11 @@ export function beginFrame(
 		const drawn: Result<Program, ProgramError> =
 			renderer.programs.drawnFor(context.materials[material].program);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
-		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
-			return Result.err(RendererError.MaterialBlock);
-		}
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
+		}
+		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
+			return Result.err(RendererError.MaterialBlock);
 		}
 		const layout: VertexLayout = context.meshes[item.mesh.index].layout;
 		if (layout != vertexLayoutOf(drawn.value)) {

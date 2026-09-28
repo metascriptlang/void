@@ -1330,7 +1330,9 @@ run_android() {
 echo "void3d gate"
 echo "  msc      $(msc --version 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | tr -d '\r\n')"
 dirty=""
-[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ] && dirty=" with uncommitted changes"
+if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+	dirty=" with uncommitted changes $(git diff HEAD | git hash-object --stdin | cut -c1-12)"
+fi
 echo "  commit   $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)$dirty"
 echo
 

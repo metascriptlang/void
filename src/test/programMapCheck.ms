@@ -32,7 +32,7 @@ import {
 	reserveUniforms,
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
-import { added } from "./drawHelpers";
+import { added, litShape } from "./drawHelpers";
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import {
@@ -245,7 +245,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	}
 	const heldCore: Result<Renderer, RendererError> = Renderer.create(held);
 	assert heldCore.ok;
-	const litMesh: MeshId = added(held, MeshData.empty().meshFor(0, 0, 0));
+	const litMesh: MeshId = added(held, litShape());
 	const litItems: Vec<DrawItem> = [{ ...itemOf(FIRST_MATERIAL), mesh: litMesh }];
 	if (heldCore.ok) {
 		let core: Renderer = heldCore.value;

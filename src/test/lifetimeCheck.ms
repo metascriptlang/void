@@ -124,7 +124,8 @@ test "addMesh refuses a mesh made in a context that it could not remake" {
 	if (!lit.ok) { assert lit.error == MeshUploadError.Unrebuildable; }
 	assert context.liveMeshes() == 0;
 	assert addMesh(context, GpuMesh.streamMesh(4, 77, 5)).ok;
-	assert addMesh(context, MeshData.empty().meshFor(0, 0, 0)).ok;
+	assert !addMesh(context, MeshData.empty().meshFor(0, 0, 0)).ok;
+	assert !addMesh(context, { ...GpuMesh.billboards(12, 4), generation: 0 }).ok;
 	assert addMesh(context, GpuMesh.fullscreen(9, 3)).ok;
 }
 
@@ -353,7 +354,7 @@ test "an over-release is refused while only pins hold a frame, and frames go all
 	const offScreen: MeshId = added(context, quad());
 	const material: MaterialId = plainMaterial(context);
 	let scene: Scene = Scene.create();
-	const _node: NodeId =
+	const node: NodeId =
 		try addMeshNode(scene, context, scene.rootId(), identityTransform(), shown, material)
 		catch NO_ID;
 	const clock: Result<AnimationClock, AnimationError> =
@@ -367,16 +368,19 @@ test "an over-release is refused while only pins hold a frame, and frames go all
 	if (!made.ok) { return; }
 	let animation: MeshFrameAnimation = made.value;
 	assert holders(releaseMesh(context, shown)) == 2;
-	assert holders(releaseMesh(context, offScreen)) == 1;
 	assert handleError(releaseMesh(context, shown)) == HandleError.OnlyPinned;
-	assert handleError(releaseMesh(context, offScreen)) == HandleError.OnlyPinned;
 	let copy: MeshFrameAnimation = animation;
 	assert releaseMeshFrames(animation, context).ok;
-	assert !context.hasMesh(offScreen) && context.meshPinned(shown) == 1;
+	assert context.meshPinned(shown) == 1 && context.meshPinned(offScreen) == 0;
 	const twice: Result<int32, AnimationError> = releaseMeshFrames(copy, context);
 	assert !twice.ok;
-	if (!twice.ok) { assert twice.error == AnimationError.StaleMesh; }
+	if (!twice.ok) { assert twice.error == AnimationError.NotPinned; }
 	assert context.meshPinned(shown) == 1 && (copy.meshes.length as int32) == 2;
+	assert holders(releaseMesh(context, offScreen)) == 0;
+	assert releaseMeshFrames(copy, context).ok;
+	assert !context.hasMesh(shown);
+	assert remove(scene, context, node).ok;
+	assert context.hasMaterial(material) && context.materialPins[material.index] == 0;
 }
 
 test "a copy of a scene that removed the same nodes is refused by name, and nothing changes" {

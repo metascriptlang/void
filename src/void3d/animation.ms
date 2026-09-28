@@ -11,6 +11,8 @@ import {
 	addMeshData,
 	pinMesh,
 	unpinMesh,
+	tallyMeshPin,
+	clearMeshTally,
 	releaseMesh,
 } from "./draw";
 import {
@@ -37,6 +39,7 @@ export enum AnimationError {
 	FrameTopology,
 	UploadRefused,
 	StaleMesh,
+	NotPinned,
 }
 
 // Animation's `frameCount`, `sampling` (frames per second), `speed`, `frame`, `loop`, `pause`.
@@ -321,25 +324,22 @@ export function forMeshes(
 	});
 }
 
-// The animation unpins its frames and holds none after; the node keeps the one it shows. A copy of
-// the animation that let them go already has taken the pins, and nothing changes then.
+// The animation unpins its frames and holds none after; the node keeps the one it shows. A freed
+// frame holds no pin. A live frame short of pins was let go already by a copy of the animation,
+// and nothing changes then.
 export function releaseMeshFrames(
 	ref animation: MeshFrameAnimation,
 	ref context: DrawContext,
 ): Result<int32, AnimationError> {
 	const count: int32 = animation.meshes.length as int32;
-	for (let k = 0; k < count; k++) {
-		let uses: int32 = 1;
-		for (let j = 0; j < k; j++) {
-			if (animation.meshes[j] == animation.meshes[k]) { uses = uses + 1; }
-		}
-		if (context.meshPinned(animation.meshes[k]) < uses) {
-			return Result.err(AnimationError.StaleMesh);
-		}
-	}
+	let covered: boolean = true;
 	for (const mesh of animation.meshes) {
-		const unpinned: Result<int32, HandleError> = unpinMesh(context, mesh);
-		if (!unpinned.ok) { unreachable; }
+		if (!tallyMeshPin(context, mesh)) { covered = false; }
+	}
+	for (const mesh of animation.meshes) { clearMeshTally(context, mesh); }
+	if (!covered) { return Result.err(AnimationError.NotPinned); }
+	for (const mesh of animation.meshes) {
+		if (context.hasMesh(mesh) && !unpinMesh(context, mesh).ok) { unreachable; }
 	}
 	while ((animation.meshes.length as int32) > 0) { animation.meshes.pop(); }
 	return Result.ok(count);
