@@ -99,6 +99,7 @@ import {
 import {
 	Scene3D,
 	NodeId3D,
+	NO_NODE_3D,
 	Transform3D,
 	SceneError,
 	LightError,
@@ -233,11 +234,18 @@ const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + 2 * BILLBOARD_
 const UNSET_MESH: MeshId = { index: -1, generation: 0 };
 const UNSET_MATERIAL: MaterialId = { index: -1, generation: 0 };
 export enum CampfireError {
+	SetupRefused,
 	ViewRefused,
 	CameraRefused,
 	SceneStepFailed,
 	ForwardFrameRefused,
 	PixelArtFrameRefused,
+}
+
+export enum PixelOfError {
+	StaleNode,
+	NotAMeshNode,
+	NoMeshData,
 }
 
 enum FrameShare {
@@ -251,20 +259,21 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 let renderer: PixelArtRenderer = createRenderer();
 let forward: ForwardRenderer = createForward();
 let forwardWanted: boolean = false;
+let campfireReady: boolean = false;
 let flameAnchor: Anchor = ANCHOR_BOTTOM_CENTER;
 let pointSampler: Sampler = { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 let sceneItems: Vec<DrawItem> = [];
 let tree: Scene3D = Scene3D.create();
-let flameNode: NodeId3D = { index: -1, generation: 0 };
+let flameNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 // The logs hang under their own group rather than off the root, so the tree has a real nested
 // transform to propagate through. The group sits at the identity unless a check turns it, and
 // `local * identity` is exact, so the six standing configurations see the same pixels.
-let logGroup: NodeId3D = { index: -1, generation: 0 };
-let firstLogNode: NodeId3D = { index: -1, generation: 0 };
-let bakedStoneNode: NodeId3D = { index: -1, generation: 0 };
-let plainStoneNode: NodeId3D = { index: -1, generation: 0 };
-let fireLight: NodeId3D = { index: -1, generation: 0 };
+let logGroup: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let firstLogNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let bakedStoneNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let plainStoneNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let fireLight: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
 let flameFrames: MeshFrameAnimation = {
@@ -278,7 +287,7 @@ let flameFrames: MeshFrameAnimation = {
 		interpolation: Interpolation.Step,
 	},
 	name: "",
-	target: { index: -1, generation: 0 },
+	target: { index: NO_NODE_3D, generation: 0 },
 	meshes: [],
 	bound: false,
 	shown: UNSET_MESH,
@@ -300,8 +309,8 @@ let groundGreyOnCpu: boolean = false;
 let particleMaterial: MaterialId = UNSET_MATERIAL;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
-let snowNode: NodeId3D = { index: -1, generation: 0 };
-let emberNode: NodeId3D = { index: -1, generation: 0 };
+let snowNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let emberNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 let snowMesh: MeshId = UNSET_MESH;
 let emberMesh: MeshId = UNSET_MESH;
 const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
@@ -733,7 +742,7 @@ function updateFlicker(): void {
 
 // Materials, meshes and items: lit geometry, grass and one flame, all opaque (the billboards
 // discard their transparent texels). The spike draws unculled, depth-tested with LessEqual.
-function setupDraws(): void {
+function setupDraws(): Result<int32, CampfireError> {
 	pointSampler = Sampler.create(FilterMode.Nearest, Wrap.Clamp);
 	const state: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
@@ -763,18 +772,21 @@ function setupDraws(): void {
 		writeUniforms(context, flameBlock, flameValues);
 	if (!litWritten.ok || !grassWritten.ok || !flameWritten.ok) {
 		console.log("campfire: setupDraws bailed at the toon blocks");
-		return;
+		return Result.err(CampfireError.SetupRefused);
 	}
 	const litAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Lit, state, Phase.Opaque),
 		uniforms: litBlock,
 	});
-	if (!litAdded.ok) { console.log("campfire: setupDraws bailed at the lit material"); return; }
+	if (!litAdded.ok) {
+		console.log("campfire: setupDraws bailed at the lit material");
+		return Result.err(CampfireError.SetupRefused);
+	}
 	const litMaterial: MaterialId = litAdded.value;
 	const groundMaterial: Result<MaterialId, UniformError> = groundMaterialFor(state, litMaterial);
 	if (!groundMaterial.ok) {
 		console.log("campfire: setupDraws bailed at the ground material");
-		return;
+		return Result.err(CampfireError.SetupRefused);
 	}
 	const grassAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
@@ -790,7 +802,7 @@ function setupDraws(): void {
 	});
 	if (!grassAdded.ok || !flameAdded.ok) {
 		console.log("campfire: setupDraws bailed at the billboard materials");
-		return;
+		return Result.err(CampfireError.SetupRefused);
 	}
 	grassMaterial = grassAdded.value;
 	flameMaterial = flameAdded.value;
@@ -835,23 +847,29 @@ function setupDraws(): void {
 	setPickable(tree, logGroup, true);
 	for (let i = 0; i < (pieces.length as int32); i++) {
 		if (i == BAKED_STONE) {
-			const placed: Result<int32, AnimationError> =
+			const placed: Result<int32, CampfireError> =
 				placeBakedStone(pieces[i], placements[i], root, litMaterial);
 			if (!placed.ok) {
 				console.log("campfire: setupDraws bailed at the baked stone");
-				return;
+				return Result.err(CampfireError.SetupRefused);
 			}
 			continue;
 		}
 		const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, pieces[i]);
-		if (!uploaded.ok) { console.log("campfire: setupDraws bailed at addMeshData"); return; }
+		if (!uploaded.ok) {
+			console.log("campfire: setupDraws bailed at addMeshData");
+			return Result.err(CampfireError.SetupRefused);
+		}
 		// The ground and the stones hang off the root; the logs hang off the group, so their
 		// world matrix is the two-level product the flat pieces never exercise.
 		const under: NodeId3D = i >= firstLogPiece ? logGroup : root;
 		const material: MaterialId = i == 0 ? groundMaterial.value : litMaterial;
 		const placed: Result<NodeId3D, SceneError> =
 			addMeshNode(tree, context, under, placements[i], uploaded.value, material);
-		if (!placed.ok) { console.log("campfire: setupDraws bailed at placing a piece"); return; }
+		if (!placed.ok) {
+			console.log("campfire: setupDraws bailed at placing a piece");
+			return Result.err(CampfireError.SetupRefused);
+		}
 		if (i == firstLogPiece) { firstLogNode = placed.value; }
 		if (i == BAKED_STONE + 1) { plainStoneNode = placed.value; }
 	}
@@ -859,31 +877,47 @@ function setupDraws(): void {
 		addMesh(context, GpuMesh.billboards(grassBuffer, grassCount));
 	if (!grassMeshAdded.ok) {
 		console.log("campfire: setupDraws bailed at the grass mesh");
-		return;
+		return Result.err(CampfireError.SetupRefused);
 	}
 	grassMesh = grassMeshAdded.value;
 	const grass: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, Transform3D.identity(), grassMesh, grassMaterial);
-	if (!grass.ok) { console.log("campfire: setupDraws bailed at the grass node"); return; }
+	if (!grass.ok) {
+		console.log("campfire: setupDraws bailed at the grass node");
+		return Result.err(CampfireError.SetupRefused);
+	}
 	for (const flameBuffer of flameBuffers) {
 		const flameAdded: Result<MeshId, MeshUploadError> =
 			addMesh(context, GpuMesh.billboards(flameBuffer, 1));
-		if (!flameAdded.ok) { console.log("campfire: setupDraws bailed at a flame mesh"); return; }
+		if (!flameAdded.ok) {
+			console.log("campfire: setupDraws bailed at a flame mesh");
+			return Result.err(CampfireError.SetupRefused);
+		}
 		flameMeshes.push(flameAdded.value);
 	}
 	// The billboard programs ignore the model matrix — their roots are already world-space
 	// instance data — so these two nodes sit at the identity and only carry draw order.
 	const flame: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, Transform3D.identity(), flameMeshes[0], flameMaterial);
-	if (!flame.ok) { console.log("campfire: setupDraws bailed at the flame node"); return; }
+	if (!flame.ok) {
+		console.log("campfire: setupDraws bailed at the flame node");
+		return Result.err(CampfireError.SetupRefused);
+	}
 	flameNode = flame.value;
 	setName(tree, flameNode, "flame");
 	if (particlesWanted) {
 		const particles: Result<int32, ParticleSetupError> = setupParticles(root, state);
-		if (!particles.ok) { console.log("campfire: setupDraws bailed at the particles"); return; }
+		if (!particles.ok) {
+			console.log("campfire: setupDraws bailed at the particles");
+			return Result.err(CampfireError.SetupRefused);
+		}
 	}
 	const animated: Result<int32, AnimationError> = setupAnimations();
-	if (!animated.ok) { console.log("campfire: setupDraws bailed at the animations"); return; }
+	if (!animated.ok) {
+		console.log("campfire: setupDraws bailed at the animations");
+		return Result.err(CampfireError.SetupRefused);
+	}
+	return Result.ok(0);
 }
 
 function groundMaterialFor(
@@ -918,12 +952,14 @@ function placeBakedStone(
 	where: Transform3D,
 	root: NodeId3D,
 	material: MaterialId,
-): Result<int32, AnimationError> {
+): Result<int32, CampfireError> {
 	const frames: Vec<MeshData> = [stone, stone];
-	stoneFrameMeshes = try addBakedFrames(context, frames);
+	const baked: Result<Vec<MeshId>, AnimationError> = addBakedFrames(context, frames);
+	if (!baked.ok) { return Result.err(CampfireError.SetupRefused); }
+	stoneFrameMeshes = baked.value;
 	const placed: Result<NodeId3D, SceneError> =
 		addMeshNode(tree, context, root, where, stoneFrameMeshes[0], material);
-	if (!placed.ok) { return Result.err(AnimationError.StaleTarget); }
+	if (!placed.ok) { return Result.err(CampfireError.SetupRefused); }
 	setName(tree, placed.value, "bakedStone");
 	setPickable(tree, placed.value, true);
 	bakedStoneNode = placed.value;
@@ -1222,14 +1258,14 @@ function flipRowIfGl(row: float32): float32 {
 }
 
 // The host pixel under the centre of a mesh node's bounds in the last frame drawn.
-export function campfirePixelOf(id: NodeId3D): Result<Vec3, SceneError> {
-	if (!tree.isLive(id)) { return Result.err(SceneError.StaleNode); }
+export function campfirePixelOf(id: NodeId3D): Result<Vec3, PixelOfError> {
+	if (!tree.isLive(id)) { return Result.err(PixelOfError.StaleNode); }
 	if (tree.nodes[id.index].kind != NodeKind.Mesh) {
-		return Result.err(SceneError.NodeNotFound);
+		return Result.err(PixelOfError.NotAMeshNode);
 	}
 	const mesh: int32 = tree.meshes[tree.nodes[id.index].payload].mesh.index;
 	if (mesh < 0 || mesh >= (context.meshData.length as int32)) {
-		return Result.err(SceneError.NodeNotFound);
+		return Result.err(PixelOfError.NoMeshData);
 	}
 	const box: Bounds3D = context.meshData[mesh].bounds;
 	const centre: Vec3 = box.center() * tree.nodes[id.index].world;
@@ -1254,7 +1290,7 @@ export function initCampfire(): void {
 	flameImage = buildFlameTexture();
 	flamePixels = copyTexturePixels();
 	flameTexture = makeTextureView(flameImage);
-	setupDraws();
+	campfireReady = setupDraws().ok;
 	setAmbient(tree, vec3(0.33, 0.36, 0.6));
 	setSettings(renderer, settingsWanted);
 	if (paletteWanted) {
@@ -1337,6 +1373,7 @@ function advanceClocks(): void {
 // The campfire through the forward preset, one texel per framebuffer pixel. The preset has no
 // sub-pixel blit offset, so a snapped camera stays on the pixel grid.
 function frameForward(share: FrameShare): Result<int32, CampfireError> {
+	if (!campfireReady) { return Result.err(CampfireError.SetupRefused); }
 	const width: int32 = fbWidth();
 	const height: int32 = fbHeight();
 	const shortSide: float32 = Math.min(width, height) as float32;
@@ -1393,6 +1430,7 @@ export function drawCampfireToScreen(): void {
 }
 
 function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
+	if (!campfireReady) { return Result.err(CampfireError.SetupRefused); }
 	// The low-res target's size does not depend on the camera, so the view is made twice: once
 	// to learn the texel grid the camera snaps to, and once with the remainder that snap left.
 	const noRemainder: float32 = 0.0;

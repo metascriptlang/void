@@ -140,7 +140,7 @@ test "a bounds empty on one axis only is still treated as empty" {
 	assert near(box.max, 1.0, 2.0, 3.0);
 }
 
-// Bounds.all() spans 2e20 per axis; squaring that directly is infinity in float32.
+// Bounds3D.all() spans 2e20 per axis; squaring that directly is infinity in float32.
 test "the bounding sphere of an unbounded box is finite" {
 	const radius: float32 = Bounds3D.all().boundingSphereRadius();
 	assert radius > 0.0;

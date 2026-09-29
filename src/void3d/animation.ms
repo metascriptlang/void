@@ -280,9 +280,7 @@ export function syncPose(
 			animation.keys[base + pair.second],
 			pair.weight,
 		);
-		const target: NodeId3D = animation.tracks[track].target;
-		if (!scene.isLive(target)) { return Result.err(AnimationError.StaleTarget); }
-		setLocal(scene, target, pose);
+		setLocal(scene, animation.tracks[track].target, pose);
 	}
 	animation.synced = pair;
 	animation.hasSynced = true;
@@ -377,7 +375,7 @@ export function syncMeshFrame(
 	const swapped: Result<int32, SceneError> = setMeshOf(scene, context, animation.target, mesh);
 	if (!swapped.ok) {
 		const released: boolean = swapped.error == SceneError.StaleMesh;
-		return Result.err(released ? AnimationError.StaleMesh : AnimationError.StaleTarget);
+		return Result.err(released ? AnimationError.StaleMesh : AnimationError.NotPinned);
 	}
 	animation.shown = mesh;
 	return Result.ok(1);

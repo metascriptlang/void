@@ -554,10 +554,11 @@ write_pick_entry() {
 		echo "	campfireTargets,"
 		echo "	campfirePixelOf,"
 		echo "	campfireTap,"
+		echo "	PixelOfError,"
 		echo "	CampfireTargets,"
 		echo "} from \"../campfireScene\";"
 		echo "import { PixelArtSettings } from \"../../../src/void3d/pixelArtRenderer\";"
-		echo "import { NodeId3D, SceneError } from \"../../../src/void3d/scene\";"
+		echo "import { NodeId3D } from \"../../../src/void3d/scene\";"
 		echo "import { PickHit, PickError } from \"../../../src/void3d/pick\";"
 		echo "import { Vec3 } from \"../../../src/math/math3d\";"
 		echo "@include(\"../../../src/sokol/bridge.h\");"
@@ -569,7 +570,7 @@ write_pick_entry() {
 		echo "let frames: int32 = 0;"
 		echo ""
 		echo "function tap(label: string, on: NodeId3D, owner: NodeId3D, expectHit: boolean): void {"
-		echo "	const aimed: Result<Vec3, SceneError> = campfirePixelOf(on);"
+		echo "	const aimed: Result<Vec3, PixelOfError> = campfirePixelOf(on);"
 		echo "	if (!aimed.ok) {"
 		echo "		console.log(\`PICK \${label} FAIL the target is not a live mesh node\`);"
 		echo "		return;"
@@ -939,6 +940,7 @@ check_array_copies() {
 		return 1
 	fi
 	offenders=""
+	builders=""
 	for entry in $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
@@ -947,13 +949,20 @@ check_array_copies() {
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1
 		fi
-		copies=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted" |
-			grep -c 'ArrayCopy(' || true)
+		body=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted")
+		copies=$(echo "$body" | grep -c 'ArrayCopy(' || true)
 		[ "$copies" -gt 0 ] && offenders="$offenders ${fn}=${copies}"
+		strings=$(echo "$body" | grep -cE 'msStringConcat|msNumberToString|toString__M' || true)
+		[ "$strings" -gt 0 ] && builders="$builders ${fn}=${strings}"
 	done
 	if [ -n "$offenders" ]; then
 		fail "allocation: the $2 copies an array — ArrayCopy in:$offenders"
 		echo "         CODE-STYLE section 5, the copy trap: index the field or take a Span view"
+		return 1
+	fi
+	if [ -n "$builders" ]; then
+		fail "allocation: the $2 builds a string:$builders"
+		echo "         a message belongs in a function only the stopping path calls (scene.ms stopOnDeadId)"
 		return 1
 	fi
 	return 0

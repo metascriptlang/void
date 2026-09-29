@@ -3,6 +3,7 @@ import { DrawContext, MeshId, MaterialId } from "./draw";
 import {
 	Scene3D, NodeId3D, SceneError, Transform3D,
 	addGroup, addMeshNode, setName, isLive,
+	NO_NODE_3D,
 } from "./scene";
 
 export enum GltfSceneError {
@@ -31,7 +32,7 @@ export function addGltfNodes(
 	data: GltfData,
 	bindings: Span<GltfMeshBinding>,
 ): Result<int32, GltfSceneError> {
-	if (!isLive(scene, parent)) { return Result.err(GltfSceneError.SceneRefused); }
+	const _under: int32 = scene.liveRow(parent, "addGltfNodes");
 	if ((bindings.length as int32) != (data.meshes.length as int32)) {
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}
@@ -55,7 +56,7 @@ export function addGltfNodes(
 		const under: NodeId3D = parents[last];
 		nodes.pop();
 		parents.pop();
-		let id: NodeId3D = { index: -1, generation: 0 };
+		let id: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 		const mesh: int32 = data.nodes[index].mesh;
 		if (mesh < 0) {
 			id = addGroup(scene, under, transformOf(data, index));

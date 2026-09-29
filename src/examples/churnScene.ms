@@ -181,9 +181,7 @@ function place(level: NodeId3D, mesh: MeshId, material: MaterialId): Result<Node
 }
 
 function loadLevel(): Result<NodeId3D, ChurnError> {
-	const group: NodeId3D =
-		addGroup(scene, scene.rootId(), Transform3D.identity());
-	const level: NodeId3D = group;
+	const level: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, box);
 	if (!mesh.ok) { return Result.err(ChurnError.MeshRefused); }
 	const stream: Result<MeshId, StreamError> = addStreamMesh(context, STREAM_CAPACITY);

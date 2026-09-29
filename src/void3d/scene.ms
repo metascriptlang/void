@@ -176,23 +176,33 @@ export function nodeIdAt(this scene: Scene3D, index: int32): NodeId3D {
 	return { index: index, generation: scene.slots.generations[index] };
 }
 
-function liveRow(this scene: Scene3D, id: NodeId3D, call: string): int32 {
+export function liveRow(this scene: Scene3D, id: NodeId3D, call: string): int32 {
 	if (scene.isLive(id)) { return id.index; }
+	return scene.stopOnDeadId(id, call);
+}
+
+function stopOnDeadId(this scene: Scene3D, id: NodeId3D, call: string): int32 {
 	const rows: int32 = scene.slots.generations.length as int32;
-	const now: int32 = id.index >= 0 && id.index < rows ? scene.slots.generations[id.index] : 0;
+	if (id.index < 0 || id.index >= rows) {
+		console.log(`void3d: ${call} on node id ${id.index}, which names no node of this scene`);
+		unreachable;
+	}
 	console.log(
 		`void3d: ${call} on stale node ${id.index}: the handle has generation ` +
-		`${id.generation}, the row ${now}`,
+		`${id.generation}, the row ${scene.slots.generations[id.index]}`,
 	);
 	unreachable;
 }
 
 function kindRow(this scene: Scene3D, id: NodeId3D, kind: NodeKind, call: string): int32 {
 	const row: int32 = scene.liveRow(id, call);
-	const actual: NodeKind = scene.nodes[row].kind;
-	if (actual == kind) { return row; }
+	if (scene.nodes[row].kind == kind) { return row; }
+	return scene.stopOnWrongKind(row, kind, call);
+}
+
+function stopOnWrongKind(this scene: Scene3D, row: int32, kind: NodeKind, call: string): int32 {
 	console.log(
-		`void3d: ${call} asked of a ${actual.toString()} node ${row}; ` +
+		`void3d: ${call} asked of a ${scene.nodes[row].kind.toString()} node ${row}; ` +
 		`only a ${kind.toString()} node has it`,
 	);
 	unreachable;
@@ -243,18 +253,18 @@ export function rootId(this scene: Scene3D): NodeId3D {
 
 // Adds an empty group under `parent`. Structure changed, so the draw list is rebuilt next collect.
 export function addGroup(ref scene: Scene3D, parent: NodeId3D, local: Transform3D): NodeId3D {
-	const _parent: int32 = scene.liveRow(parent, "addGroup");
+	const under: int32 = scene.liveRow(parent, "addGroup");
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: freshFlags(),
-		parent: parent.index,
+		parent: under,
 		payload: NO_NODE_3D,
 		name: "",
 		local: local,
 		world: identity(),
 		children: [],
 	});
-	scene.nodes[parent.index].children.push(id.index);
+	scene.nodes[under].children.push(id.index);
 	scene.structureChanged = true;
 	return id;
 }
@@ -275,7 +285,7 @@ export function addMeshNode(
 	mesh: MeshId,
 	material: MaterialId,
 ): Result<NodeId3D, SceneError> {
-	const _parent: int32 = scene.liveRow(parent, "addMeshNode");
+	const under: int32 = scene.liveRow(parent, "addMeshNode");
 	if (!context.hasMesh(mesh)) { return Result.err(SceneError.StaleMesh); }
 	if (!context.hasMaterial(material)) { return Result.err(SceneError.StaleMaterial); }
 	const pinnedMesh: Result<int32, HandleError> = pinMesh(context, mesh);
@@ -286,7 +296,7 @@ export function addMeshNode(
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
-		parent: parent.index,
+		parent: under,
 		payload: payload,
 		name: "",
 		local: local,
@@ -294,7 +304,7 @@ export function addMeshNode(
 		children: [],
 	});
 	scene.meshOwners.push(id.index);
-	scene.nodes[parent.index].children.push(id.index);
+	scene.nodes[under].children.push(id.index);
 	scene.structureChanged = true;
 	return Result.ok(id);
 }
@@ -307,13 +317,13 @@ export function addLightNode(
 	local: Transform3D,
 	light: LightInstance,
 ): NodeId3D {
-	const _parent: int32 = scene.liveRow(parent, "addLightNode");
+	const under: int32 = scene.liveRow(parent, "addLightNode");
 	const payload: int32 = scene.lights.length as int32;
 	scene.lights.push(light);
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Light,
 		flags: freshFlags(),
-		parent: parent.index,
+		parent: under,
 		payload: payload,
 		name: "",
 		local: local,
@@ -321,7 +331,7 @@ export function addLightNode(
 		children: [],
 	});
 	scene.lightOwners.push(id.index);
-	scene.nodes[parent.index].children.push(id.index);
+	scene.nodes[under].children.push(id.index);
 	scene.structureChanged = true;
 	return id;
 }
@@ -455,10 +465,10 @@ export function removeChildren(
 	ref context: DrawContext,
 	id: NodeId3D,
 ): Result<int32, SceneError> {
-	const _row: int32 = scene.liveRow(id, "removeChildren");
+	const row: int32 = scene.liveRow(id, "removeChildren");
 	let removed: int32 = 0;
-	while ((scene.nodes[id.index].children.length as int32) > 0) {
-		const child: NodeId3D = scene.nodeIdAt(scene.nodes[id.index].children[0]);
+	while ((scene.nodes[row].children.length as int32) > 0) {
+		const child: NodeId3D = scene.nodeIdAt(scene.nodes[row].children[0]);
 		removed = removed + (try remove(scene, context, child));
 	}
 	return Result.ok(removed);

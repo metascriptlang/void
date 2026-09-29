@@ -176,7 +176,7 @@ export function dimension(this bounds: Bounds3D): float32 {
 
 // Half the diagonal, computed on the extent scaled down by its longest edge. Heaps squares the
 // edges directly (Bounds.hx getBoundingSphereRadius) because its floats are 64-bit; here
-// Bounds.all() spans 2e20 per axis and (2e20)² is infinity in float32 long before the square
+// Bounds3D.all() spans 2e20 per axis and (2e20)² is infinity in float32 long before the square
 // root could bring it back.
 // PENDING3D: bounds-sphere-rescale
 export function boundingSphereRadius(this bounds: Bounds3D): float32 {
@@ -212,6 +212,6 @@ function clamp(value: float32, low: float32, high: float32): float32 {
 export function toString(this bounds: Bounds3D): string {
 	if (bounds.isEmpty()) { return "Bounds{empty}"; }
 	const extent: Vec3 = bounds.size();
-	return `Bounds3D{min=(${bounds.min.x}, ${bounds.min.y}, ${bounds.min.z}) ` +
+	return `Bounds{min=(${bounds.min.x}, ${bounds.min.y}, ${bounds.min.z}) ` +
 		`size=(${extent.x}, ${extent.y}, ${extent.z})}`;
 }
