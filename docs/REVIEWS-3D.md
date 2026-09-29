@@ -1261,3 +1261,65 @@ From `sh scripts/gate3d.sh` on the code of `e2c1184` (the header's diff hash `d5
 | Android | arm64 `libVoidAndroid.so`, **3 312 448 bytes**, +18 216 on M17's 3 294 232 |
 | PENDING3D | 26 rows: three added |
 | Compiler | `2026-09-29-static-extension-on-aliased-same-name-type-ambiguous.md` and `2026-09-29-duplicate-import-name-binds-first-silently.md` opened, from the naming probes for M19 |
+
+## M19 — the names shared with void2d, and the stop on a misused handle
+
+**Verdict: SHIP WITH FOLLOW-UPS, every follow-up fixed in the milestone.** The defect pass (`/code-review high`) read the build and found ten issues; nine were fixed and one rejected. A fresh design reviewer read the same tree and gave SHIP WITH FOLLOW-UPS with eight findings, and every one was fixed in M19 (`5074202`, `ada6f91`). The same reviewer then read the fixes (below). The milestone is `22dd074` onwards: the row, the rename, the error rule and the statics, the as-built, the fixes.
+
+The rule came from the references before the row ("Shared with void2d"). Heaps throws on misuse, `h3d.scene.Object.toMesh` and `h2d.Object.addChildAt` both do, and Bevy's `World::entity` panics. void2d's P5, which the human decided, stops on a stale handle. The split between stopping and answering is Bevy's: `World::entity` panics and `get_entity` answers, and `Assets::get` answers an `Option` for an asset. So a node call stops, and a question or an asset id answers.
+
+### Defect pass
+
+| # | Finding | What I did |
+|---|---|---|
+| 1 | The campfire's flicker drove `fireLight` even when setup had bailed before it was set, and now stopped with a misleading message | `setupDraws` answers `CampfireError.SetupRefused`, and no frame runs after a refused setup |
+| 2 | `liveRow` called an id that names no row "stale, the row 0" | It says the id names no node of this scene |
+| 3 | The row named `Transform3D.at` and still read **planned** | `fromTranslation`; done at the end |
+| 4 | The rename made `Bounds3D`'s `toString` say `Bounds3D{…}` beside `Bounds{empty}` | Back to Heaps' `Bounds{…}` shape for both |
+| 5 | `syncMeshFrame` reported a pin taken through a copy as `StaleTarget` | `AnimationError.NotPinned` |
+| 6 | `syncPose` checks liveness twice per track | Rejected as a cost: two integer compares per track. The check was dead anyway (design finding 6), and is gone |
+| 7 | `campfirePixelOf` answered `NodeNotFound` for a live node that is not a mesh | Its own `PixelOfError` |
+| 8 | Only two of the stopping entries had an abort program | One per entry: nineteen programs |
+| 9 | `churnScene` kept an alias left by the unwrap | Gone |
+| 10 | A comment named `NO_NODE`; an abort declared a context it never used | Fixed |
+
+### Design pass
+
+**SHIP WITH FOLLOW-UPS.** It read every node-handle entry: each checks before it touches state. It read the emitted C: the live path allocates nothing, and no type still collides with void2d but `BlendMode`, which M20 owns. Its findings, and what happened:
+1. **The aborts measured two entries of about ten.** One program per entry, nineteen in all, and the as-built lists them.
+2. **The campfire stopped on a failed setup, with the wrong cause.** Same as defect 1. `liveRow` names an id that is not a row.
+3. **`addGltfNodes` answered `SceneRefused` for a stale parent** while the calls it wraps stop. It stops too, through the exported `liveRow`, as void2d exports its own.
+4. **The allocation stage could not see a string built on the live path.** The messages moved into `stopOnDeadId` and `stopOnWrongKind`, which only the stopping path calls. The stage now fails any listed frame- or render-path function that builds a string, a rule for all of them rather than a check on two.
+5. **Three error mappings named the wrong error.** `NotPinned` in `syncMeshFrame`, `PixelOfError` in the campfire, and the baked stone's setup error.
+6. **A dead liveness check in `syncPose`,** already made for every track before the loop. Gone.
+7. **"void2d and void3d in one file" was not measured.** `tests/integration/bothLayers.ms` and the `both layers` stage cover it: every function name both layers export resolves to its own layer on `main`'s void2d.
+8. **Doc leftovers:** the row, stale names in `gpu3d.c`, `bounds.ms`, `boundsCheck.ms`, `scene3dCheck.ms` and PENDING3D, and Heaps' `toMesh` as the kind check's precedent. Fixed.
+
+**Last review: SHIP WITH FOLLOW-UPS.** It confirmed every fix: the nineteen aborts, of which the two whose mesh ids are also stale guard the order of the checks; the setup guard; the string check, which finds nothing in `liveRow` and `kindRow` and six hits in `stopOnDeadId` on the emitted C; the error names; and `bothLayers.ms` covering every shared function name. Its follow-ups, fixed in `1a4dbc0`:
+- the acceptance named the tree before the fixes;
+- `addGltfNodes` stops but had no abort program: `gltfUnderStaleParent`, twenty in all;
+- the fixes left unused imports in `gltfScene.ms` and eight aborts;
+- `syncMeshFrame`'s `NotPinned` had no test: a copy of the scene takes the pin of a mesh no frame holds, and the swap answers `NotPinned`. "No frame after a refused setup" is marked as read from the code.
+
+### Carried into M20 and later
+
+- **`BlendMode`**, the one shared type left, goes through M20's door.
+- **void2d's P5 names** (`setVisible`, `remove`, `setName`, …) join `bothLayers.ms` when its arc rebases, with its own renames.
+- M18's list: the open pass unchecked, 3D over 3D, a 3D view in a UI panel, void2d's `Scene` halves.
+- M17's list.
+
+### Numbers
+
+From `sh scripts/gate3d.sh` on tree `5238df235a32` (commit `1a4dbc0`), on msc `35601908`.
+
+| | |
+|---|---|
+| Gate | GREEN with the `device` stage skipped: no emulator |
+| Tests | **993**: three moved into abort programs, one added (`NotPinned` through a copy) |
+| Aborts | **20** programs, each stops and names the call: one per stopping entry, and M18's four |
+| Capture | 15 configurations, 60 frames byte-identical to their 48 hashes; the HUD and compose checks unchanged |
+| Both layers | every function name the two layers export resolves to its own layer (void2d as on `main`) |
+| Allocation | frame, render and pick paths: no array copy, and now no string built |
+| Oracle | 75 agree with real Heaps, 11 diverge as declared; the MetaScript preludes on the new names |
+| Android | arm64 `libVoidAndroid.so`, **3 301 672 bytes**, -10 776 on M18's 3 312 448 |
+| Compiler | `2026-09-29-try-on-a-non-result-passes-the-checker.md` opened |
