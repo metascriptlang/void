@@ -890,7 +890,7 @@ with `--release` on BUILD `598ca62e`, the P4 head `c85f5d0` (tree `2497f5d`) aga
 - A Label that leaves the scene without `dispose` stops pinning its glyph pages. h2d ties allocation to `onAdd` / `onRemove`, and this phase's `remove()`, like the existing `removeChild` and `removeChildren`, is where void does the same; T1 asserts that a removed Label holds no tile reference (closes `tests/PENDING.md label-dispose-pins-page`). **Landed at P5 step 4** for `removeChild` and `removeChildren`: a removed subtree's Labels release their tiles and keep their shaped layout, so a label added back places again from the atlas's index, hitting the tiles still resident, and only `dispose` frees the layout. `remove()` (step 6) goes through `removeChild`.
 - Multi-bracket frames draw every glyph in the frame that first asks for it: a page already uploaded this frame takes no new tile and is not reclaimed (C tracks `s_pageUploaded`), which closes `tests/PENDING.md glyph-page-second-upload`. **Landed at P5 step 4**: the upload state moved from `batcher.c` into `glyph.c` beside the page's dirty flag (`void2dGlyphPageTakeUpload`), so the atlas asks it directly and T1 drives it with no GPU; a glyph that finds every page full or uploaded this frame at the page cap is refused this frame and placed the next, which is F1's retry.
 - Host-facing rendering services collected into one surface: text measurement, text geometry, hit geometry (`globalToLocal`, world bounds, clip-aware containment), the change flag, and the frame counters from P1.
-- Render bounds apart from h2d's `getBounds`. Since P4 an editing label's `getBounds` grows by the selection's gloop, half its line spacing and its trailing whitespace once a caret or a selection shows, because the filter target and culling read it; h2d's TextInput bounds do not move with the caret (REVIEWS.md "P4 re-review" F-b). A run's colour multiplying with the label's, h2d's rule (P4 F2, answered 2026-09-27), landed before this contract.
+- Render bounds apart from h2d's `getBounds`. P4 grew an editing label's query with the selection's gloop and leading because culling and filters shared that box (REVIEWS.md "P4 re-review" F-b). **Built at P5 step 12:** the query excludes editing growth; culling and filters retain it. A run's colour multiplying with the label's, h2d's rule (P4 F2, answered 2026-09-27), landed before this contract.
 
 - Carried from P3.5's audit (REVIEWS.md "Audit before P4"): a view id stored as its two 16-bit halves in the command stream's two spare floats, rejoined by the replay and the T1 printer, with a T1 test on an id past 2^24 (#18, `tests/PENDING.md display-list-view-id-float32`); the UI instance as one record the persistent ranges store, replacing `drawUiInstance`'s 25 positional lanes, with the 108-byte layout generated for `instance.ms` and C from one table instead of held together by a runtime check (#19, #23); a retained node's dirty booleans as a `BitSet` once retention redefines them (#24); a filtered node that did not change reusing its target instead of rebuilding two arrays and a blur every frame (#21); and the allocation stage following calls out of its listed functions, so a copy one call deeper fails (P3.5 re-review).
 
@@ -1178,8 +1178,8 @@ human has seen it as app code; the phase measurement comes last.
      bench scene (`hoverUi.ms`), one card's colour 0.30-0.31 ms and 5 280 120 B, one label's
      length 5.4-5.8 ms. With the splice, headless on the UI bench scene with every row clean,
      interleaved in one process: 1.09-1.41 ms against 5.36-5.93 for a full record, and
-     1.77-2.75 against 7.65-9.75 on a loaded box; the windowed probes were not re-read on a quiet
-     box. Step 14's A/B reads them again.
+     1.77-2.75 against 7.65-9.75 on a loaded box; the windowed probes were re-read on a quiet
+     box at step 14, below.
    - **A changed range re-uploads its stream, and stays so.** No reference writes a range of a
      persistent buffer: GPUI uploads every instance on every drawn frame
      (`wgpu_renderer.rs:1542-1579`), Ghostty its whole buffer (`generic.zig:1817-1819`), Makepad a
@@ -1457,6 +1457,28 @@ human has seen it as app code; the phase measurement comes last.
 12. **The host services** in one surface, and render bounds apart from `getBounds` (P4 re-review
     F-b), shown to the human first as Neon's `host.ms` before and after. The run-colour rule
     (P4 F2, h2d's multiply, answered 2026-09-27) landed first.
+
+    **Built at P5 step 12, approved 2026-09-30.** `render.ms` `hitTest` supplies the geometric
+    query; Neon owns dispatch and picking order. It reads the live local matrices rather than
+    the last frame's world cache, takes the same inverse-affine and scroll composition as
+    `node.ms` `globalToLocal`, and tests each ancestor Mask before entering its scrolled content.
+    Invisible subtrees and collapsed geometry do not hit. It tests content bounds, not texture
+    alpha, glyph coverage, shadows or editing gloop; it adds no event system.
+
+    `getBounds` now excludes a label's editing gloop and leading, recursively through parent
+    and Mask queries. The render path keeps both for culling and filter crops. T0
+    `src/test/nodeCheck.ms` holds cursor, selection, parent, live-transform, nested rotated Mask,
+    scroll and collapsed-node cases. T1 `tests/displayList/snapshot.ms` holds the seam: text wholly
+    outside the viewport still records the selection whose gloop reaches it. The old bounds
+    assertions requiring a query to enclose editing pixels were removed, not re-pinned.
+
+    Font-true measurement already exists: `render.ms` `calcTextWidth`, `textWidth`, `textHeight`,
+    `xForIndex`, `indexAt` and `lineBoxAt`; no callback or second measurer is added. A standalone
+    consumer built with `MSC_NO_GLOBAL_CACHE=1 msc build hostServices.ms --release` under
+    `out/tmp/p14probes`, run from the repo root, read CJK text at 32 px and identical bounds
+    before and after editing. Neon receives the host migration note; Yoga receives the missing
+    measure-hook request, rather than a binding change made from this worktree.
+
 13. **`oracle:h2d`** (T3), Heaps compiled to JS and run on node by SCENE-SCALE.md "Reproducing";
     `haxe` 4.3.7, `heaps` and `format` are on this box (2026-09-27). HEAPS.md's deliberate
     divergences seed its PENDING list.
@@ -1493,13 +1515,13 @@ human has seen it as app code; the phase measurement comes last.
 **Measured in P5 so far (2026-09-27).** The installed msc changed from BUILD `598ca62e` to
 `c54a8671` during step 4. It makes `const` deep through `struct`, `T[N]` and `Vec<T>`, so every
 binding void writes became `let` (`6e90500`, void3d's included; `~/metascript/.inbox/void/`
-has the note). Every number below is on `c54a8671`, and an older tree needs the same lines to
-build on it.
+has the note). An older tree needs the same binding changes to build on it. The step 3 and
+step 5 readings used `c54a8671`; later readings name their own BUILD below.
 
 - Step 3, the `UiInstance` record: an interleaved A/B against `e98a67b` was inconclusive on a busy
   box (UI 10.20 → 10.81 ms at the median over 5 clean pairs of 6, then 4 clean of 10), and a
   GPU-free emission loop over the UI bench scene, the minimum of 40 × 5 frames, read −0.9 to
-  +0.5 ms pair by pair. The phase A/B reads it again.
+  +0.5 ms pair by pair. Step 14 measures the net phase, not this record change in isolation.
 - Step 5, change model A, `tests/experiments/changeModel.ms` at `6a0e682`, deleted with `Node2D` at
   step 6 (release, D3D11, 1280 × 720): 100 000
   nodes, 50 000 cards each with a two-digit label, a snapshot of every field that reaches the
@@ -1534,7 +1556,52 @@ build on it.
   frame's `present` reads **UI 0.014-0.016 ms, sprites 0.013-0.015 ms, text 0.010-0.012 ms,
   editor 0.018 ms**, uploading 0 bytes (`uploads` 0 on every bench scene; frame 1's upload is
   the new `firstPaintUploadBytes` row). With 7c alone, when a still frame emitted nothing but
-  still packed and uploaded the whole list, UI read 0.58-0.63 ms. Step 14's A/B reads them again.
+  still packed and uploaded the whole list, UI read 0.58-0.63 ms. Step 14's readings follow.
+
+**P5 step 14 measured, 2026-09-30.** All native binaries are release, D3D11, 1280 × 720,
+sample count 1, high DPI off, 20 warm-up plus 120 measured frames, msc 0.2.55 BUILD `35601908`.
+The B arm is `44887f7`, tree `81722cbb846ae1e6b6ef789b9d8690f8a2bb08e2`, before step 12's
+host queries. A arms are archived `8a473f3`, tree
+`5c2ddf9a967800a2fba91fd0729f8118b8ec15e1`, and P4's measured head `c85f5d0`, tree
+`9754328484f77e9604b4e18718e288a5340f8c42`. Both archives need the `const` → `let` binding
+changes described above on today's compiler; the P4 web archive also takes its recorded
+`sortByZ` span park. `4d357f7` is the P3.5 head, not the P4 head.
+
+- `sh scripts/bench-ab.sh out/snap/8a473f3 . 8 Ui Sprites`: the fourth run has **8/8 clean
+  pairs on both scenes**, no broken or noisy pair, load 6.4–16.0 %. Median UI `present`
+  **15.269 → 0.01895 ms** (A 13.81–19.10, B 0.01594–0.02225); sprites **3.6247 →
+  0.01727 ms** (A 3.53–4.48, B 0.01572–0.02317). The pre-P3 timing exit holds by its
+  every-pair-clean rule. The earlier three noisy runs are discarded.
+- The same command against `out/snap/c85f5d0`: UI **15.389 → 0.01817 ms**, 8/8 clean
+  pairs; sprites **3.5005 → 0.01644 ms**, 7/8 clean pairs, one noisy pair discarded under
+  T4's rule. These are unchanged-frame `present` costs: A walks and uploads every frame,
+  B replays a retained list without uploading. They are not a claim about a frame that
+  changes every node, nor about first-paint cost.
+- HEAD-only bench readings at load 7–16 %: UI 0.0190, sprites 0.0188, text 0.0164,
+  editor 0.0267 and scroll **0.0349 ms**, all uploading **0 B**. Scroll retains the editor's
+  13 214 instances and one draw; P4's recorded editor reading was 0.58 ms and 1 427 112 B
+  per frame, on its earlier BUILD, not a same-scene scroll A/B. `idleDirty` is 0: a host
+  that gates presentation on `isDirty` issues no idle draw. Calling `present` anyway still
+  replays its one draw, by contract.
+- `out/tmp/p14probes/static100k.ms`, run from the repo root, load 21 %, one reading:
+  **100 251 nodes** (50 000 cards, each with a label, 250 groups and the root), static
+  `present` **0.0333 ms, 0 B**. The probe prints its card count, 50 000. One card's colour
+  write presents in 1.206 ms and uploads 15 660 000 B, the whole UI stream, as step 7 requires.
+  These are 120-frame averages, not A/B deltas.
+- Windowed probes, rebuilt on this BUILD and run from the repo root: `termGrid.ms`, load
+  20 %, still 0.0247 ms / 0 B, same-length row 0.232 ms / 972 000 B, one growing row
+  0.562 ms / 980 694 B (120 splices), every row rewritten 3.413 ms / 987 120 B.
+  `hoverUi.ms`, load 13 %, still 0.0288 ms / 0 B, colour 0.511 ms / 5 280 120 B,
+  changing a label's length **1.692 ms / 5 280 174 B** (120 splices). These re-read step 7's
+  windowed cases, not an A/B against the older BUILD.
+- `out/tmp/p7probes/spliceCost.ms`, headless, load 7 %, three interleaved rounds of 20:
+  splice **1.022–1.318 ms** against full record **5.635–5.779 ms**. Its printed `reused`
+  is sampled after the full record resets it, so that row proves no reuse count.
+- Both archived web trees built today through `scripts/build-web.sh`, same compiler and
+  dependencies: B WebGPU / WebGL2 **2 110 022 / 1 882 147 B**, P4 **1 703 539 /
+  1 474 971 B**, delta **+406 483 / +407 176 B**. This is the pre-host-query tree above,
+  not a post-rebase size. P6 owns module weight and the wasm budget; no size threshold is
+  claimed here.
 
 **Defects closed.** Two "Known defects" lines: the h2d surface — `parent`, `TileGroup`, `Mask.scrollX/Y` and the text metrics it points at — and a sokol view id past 2^24 naming another slot. Also the idle cost: `Scene.present` walking and drawing every frame with nothing knowing whether the tree changed.
 

@@ -55,7 +55,6 @@ import { InstanceMode } from "../../src/void2d/instance";
 import {
 	Tile, rgba, tile, identity2d, emptyBounds, BlendMode, Smooth,
 } from "../../src/void2d/types";
-import { CURSOR_WIDTH } from "../../src/void2d/labelText";
 import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
@@ -817,20 +816,6 @@ test "a selection across a wrap with no separator lights only the text it covers
 	assert approx(acrossWrap[1], lines[0].x + lines[0].width);
 }
 
-test "a label's bounds hold its selection tail and a caret after its widest line" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
-	const text = s.add(s.label("abcd\nab", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
-	text.setSelectionRange({ start: 2, length: 4 }, rgba(0.3, 0.5, 0.9, 0.5));
-	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
-	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
-	let bounds = emptyBounds();
-	text.getBounds(bounds);
-	const first = text.textLayout().lines[0];
-	assert first.x + first.width + CURSOR_WIDTH <= bounds.xMax;
-	assert (spans.length as int32) == 4;
-	assert spans[1] <= bounds.xMax;
-}
-
 test "a label's runs, selection and caret under a colour effect are refused aloud" {
 	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
@@ -857,10 +842,6 @@ test "a selected row covers its trailing spaces, and a blank indented row its in
 	assert (spans.length as int32) == 6;
 	assert spans[1] > spaces.x + spaces.advance;
 	assert spans[3] > indent.x + indent.advance;
-	let bounds = emptyBounds();
-	text.getBounds(bounds);
-	assert l.xForIndex(4) + CURSOR_WIDTH <= bounds.xMax;
-	assert spans[1] <= bounds.xMax && spans[3] <= bounds.xMax;
 }
 
 test "selected rows meet across line spacing, half of it above each row and half below" {
@@ -889,9 +870,6 @@ test "selected rows meet across line spacing, half of it above each row and half
 	assert (tops.length as int32) == 3;
 	assert approx(bottoms[0], tops[1]) && approx(bottoms[1], tops[2]);
 	assert approx(tops[0], lines[0].top - 3.0);
-	let bounds = emptyBounds();
-	text.getBounds(bounds);
-	assert bounds.yMin <= tops[0] && bottoms[2] <= bounds.yMax;
 }
 
 test "under setForceWidth a selected row that ends in a mark reaches its last cell" {
@@ -902,4 +880,30 @@ test "under setForceWidth a selected row that ends in a mark reaches its last ce
 	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
 	assert (spans.length as int32) == 2;
 	assert approx(spans[1], 20.0);
+}
+
+test "text query bounds exclude editing gloop while its visible selection still records" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const text = s.add(s.label("ab", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
+	text.setX(-text.textWidth() - 4.0);
+	text.setSelectionRange({ start: 0, length: 2 }, rgba(0.3, 0.5, 0.9, 0.5));
+	begin2d(200.0, 80.0, 1.0);
+	s.refOf(s.root).sync(identity2d(), true);
+	let bounds = emptyBounds();
+	text.getBounds(bounds);
+	assert bounds.xMax < 0.0;
+	s.refOf(s.root).draw(1.0, 200.0, 80.0);
+	finishRecording();
+	let selections: int32 = 0;
+	for (let i = 0; i < uiInstanceCount(); i++) {
+		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
+			continue;
+		}
+		selections = selections + 1;
+		const x: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE);
+		const w: float32 = uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2);
+		assert x < 0.0 && x + w > 0.0;
+	}
+	assert selections == 1;
+	frameEnd();
 }

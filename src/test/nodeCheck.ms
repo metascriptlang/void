@@ -2,7 +2,7 @@
 // (~/metascript/.inbox/compiler/2026-09-28-struct-eq-nested-type-not-imported.md).
 import { DrawKind, Changed, NodeRef, NodeId, Scene } from "../void2d/node";
 import { scene } from "../void2d/scene";
-import { sync, getBounds } from "../void2d/render";
+import { sync, getBounds, hitTest } from "../void2d/render";
 import {
 	Tile, Transform2D, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter,
 	glowFilter, dropShadowFilter, FilterKind,
@@ -670,4 +670,121 @@ test "setNoOverlap is a write to the order group; the same promise again marks n
 	list.setNoOverlap(true);
 	assert !marked(list, Changed.Order);
 	assert s.dirty.length == 0;
+}
+
+test "getBounds of an editing label is its text alone, as h2d's TextInput" {
+	const s = fresh();
+	const plain = s.label("hello", 10.0, white).at(0.0, 0.0);
+	plain.sync(identity2d(), false);
+	let a = emptyBounds();
+	let b = emptyBounds();
+	let c = emptyBounds();
+	plain.getBounds(a);
+	const editing = s.label("hello", 10.0, white);
+	editing.setCursorIndex(2, white);
+	editing.sync(identity2d(), false);
+	editing.getBounds(b);
+	assert approx(b.xMin, a.xMin);
+	assert approx(b.yMin, a.yMin);
+	assert approx(b.xMax, a.xMax);
+	assert approx(b.yMax, a.yMax);
+	assert !editing.hitTest(vec2(a.xMax + 4.0, (a.yMin + a.yMax) * 0.5));
+	const parent = s.group();
+	parent.addChild(editing);
+	parent.sync(identity2d(), false);
+	parent.getBounds(c);
+	assert approx(c.xMin, a.xMin);
+	assert approx(c.yMin, a.yMin);
+	assert approx(c.xMax, a.xMax);
+	assert approx(c.yMax, a.yMax);
+	editing.setSelectionRange({ start: 1, length: 3 }, white);
+	editing.setLineSpacing(6.0);
+	plain.setLineSpacing(6.0);
+	parent.sync(identity2d(), false);
+	plain.sync(identity2d(), false);
+	plain.getBounds(a);
+	parent.getBounds(c);
+	assert approx(c.xMin, a.xMin);
+	assert approx(c.yMin, a.yMin);
+	assert approx(c.xMax, a.xMax);
+	assert approx(c.yMax, a.yMax);
+}
+
+test "hitTest answers through the node's own transform" {
+	const s = fresh();
+	const n = s.rect(10.0, 10.0, white).at(20.0, 0.0);
+	n.sync(identity2d(), false);
+	assert n.hitTest(vec2(25.0, 5.0));
+	assert !n.hitTest(vec2(35.0, 5.0));
+	const root = s.add(s.group().setRotation(HALF_PI));
+	const turned = s.rect(10.0, 10.0, white).at(20.0, 0.0);
+	root.addChild(turned);
+	root.sync(identity2d(), false);
+	assert turned.hitTest(vec2(0.0, 20.0));
+	assert turned.hitTest(vec2(-5.0, 25.0));
+	assert !turned.hitTest(vec2(5.0, 25.0));
+}
+
+test "hitTest is cut by every Mask above the node" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
+	const child = s.rect(20.0, 10.0, white).at(5.0, 55.0);
+	m.addChild(child);
+	s.add(m);
+	assert child.hitTest(vec2(20.0, 78.0));
+	assert !child.hitTest(vec2(20.0, 82.0));
+}
+
+test "hitTest follows a scroll scope's shift" {
+	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
+	const child = s.rect(20.0, 10.0, white).at(5.0, 5.0);
+	m.addChild(child);
+	s.add(m);
+	assert child.hitTest(vec2(20.0, 30.0));
+	m.scrollTo(0.0, 10.0);
+	assert child.hitTest(vec2(20.0, 23.0));
+	assert !child.hitTest(vec2(20.0, 17.0));
+	assert !child.hitTest(vec2(20.0, 30.0));
+}
+
+test "hitTest is false on an invisible node or through an invisible parent" {
+	const s = fresh();
+	const root = s.group();
+	const child = s.rect(10.0, 10.0, white).at(0.0, 0.0);
+	root.addChild(child);
+	s.add(root);
+	root.sync(identity2d(), false);
+	assert child.hitTest(vec2(5.0, 5.0));
+	child.setVisible(false);
+	assert !child.hitTest(vec2(5.0, 5.0));
+	child.setVisible(true);
+	root.setVisible(false);
+	assert !child.hitTest(vec2(5.0, 5.0));
+}
+
+test "hitTest reads changed transforms before any frame and rejects collapsed geometry" {
+	const s = fresh();
+	const root = s.add(s.group());
+	const child = root.addChild(s.rect(10.0, 10.0, white));
+	assert child.hitTest(vec2(5.0, 5.0));
+	child.at(20.0, 30.0);
+	assert !child.hitTest(vec2(5.0, 5.0));
+	assert child.hitTest(vec2(25.0, 35.0));
+	root.setScale(0.0);
+	assert !child.hitTest(vec2(0.0, 0.0));
+	root.setScale(1.0);
+	child.setSize(0.0, 10.0);
+	assert !child.hitTest(vec2(20.0, 35.0));
+}
+
+test "hitTest intersects nested Mask clips through a rotated Mask" {
+	const s = fresh();
+	const outer = s.add(s.mask(50.0, 25.0).at(10.0, 20.0));
+	const inner = outer.addChild(s.mask(20.0, 20.0).at(30.0, 10.0).setRotation(HALF_PI));
+	const child = inner.addChild(s.rect(30.0, 10.0, white).at(5.0, 5.0));
+	assert child.hitTest(vec2(30.0, 40.0));
+	assert !child.hitTest(vec2(30.0, 48.0));
+	outer.setSize(50.0, 50.0);
+	assert !child.hitTest(vec2(30.0, 55.0));
 }

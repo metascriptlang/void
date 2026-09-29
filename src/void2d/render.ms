@@ -125,6 +125,7 @@ import {
 	rgba,
 	tile,
 	trs2d,
+	inverse2d,
 	emptyBounds,
 } from "./types";
 import { colorMatrixAlphaOnly } from "./effect";
@@ -218,12 +219,12 @@ function tileBounds(s: Scene, i: int32): void {
 }
 
 
-function localBounds(s: Scene, i: int32): Bounds {
+function localBounds(s: Scene, i: int32, query: boolean): Bounds {
 	const kind: DrawKind = s.kinds[i];
 	const payload: int32 = s.payloads[i];
 	const w: float32 = s.contents[i].w;
 	const h: float32 = s.contents[i].h;
-	if (kind === DrawKind.Label && showsEditing(s, i)) {
+	if (kind === DrawKind.Label && !query && showsEditing(s, i)) {
 		const lineSpacing: float32 = labelTexts[payload].style.lineSpacing;
 		const leading: float32 = lineSpacing > 0.0 ? lineSpacing * 0.5 : 0.0;
 		return {
@@ -1078,7 +1079,7 @@ function drawOwn(s: Scene, i: int32, na: float32, vw: float32, vh: float32): voi
 	const world = s.worlds[i];
 	const color: Color = s.paints[i].color;
 	const col = rgba(color.r, color.g, color.b, color.a * na);
-	const lb = localBounds(s, i);
+	const lb = localBounds(s, i, false);
 	const tl = vec2(lb.xMin, lb.yMin) * world;
 	const tr = vec2(lb.xMax, lb.yMin) * world;
 	const br = vec2(lb.xMax, lb.yMax) * world;
@@ -1161,7 +1162,7 @@ function panOrder(s: Scene, vw: float32, vh: float32): void {
 
 function pushMask(s: Scene, i: int32): boolean {
 	const world = s.worlds[i];
-	const lb = localBounds(s, i);
+	const lb = localBounds(s, i, false);
 	return pushClip(
 		vec2(lb.xMin, lb.yMin) * world,
 		vec2(lb.xMax, lb.yMin) * world,
@@ -1182,7 +1183,7 @@ function localShift(s: Scene, i: int32, scale: float32): Vec2 {
 
 function enterScopeOf(s: Scene, i: int32): void {
 	const world = s.worlds[i];
-	const lb = localBounds(s, i);
+	const lb = localBounds(s, i, false);
 	const by: Vec2 = localShift(s, i, currentRenderScale());
 	enterScope(
 		i,
@@ -1261,7 +1262,7 @@ when (debug) {
 			const c: int32 = s.children[parent][k];
 			if (!s.orders[c].visible) { continue; }
 			let b: Bounds = emptyBounds();
-			shiftedBounds(s, c, b, vec2(0.0, 0.0), true);
+			shiftedBounds(s, c, b, vec2(0.0, 0.0), true, false);
 			if (b.xMax <= b.xMin || b.yMax <= b.yMin) { continue; }
 			overlapRows.push(c);
 			overlapBoxes.push(b);
@@ -1740,14 +1741,16 @@ function scopeShift(s: Scene, i: int32): Vec2 {
 }
 
 function boundsRow(s: Scene, i: int32, ref out: Bounds): void {
-	shiftedBounds(s, i, out, vec2(0.0, 0.0), false);
+	shiftedBounds(s, i, out, vec2(0.0, 0.0), false, false);
 }
 
-function shiftedBounds(s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped: boolean): void {
-	const lb = localBounds(s, i);
+function shiftedBounds(
+	s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped: boolean, query: boolean,
+): void {
+	const lb = localBounds(s, i, query);
 	const world = s.worlds[i];
 	if (scoped && s.kinds[i] === DrawKind.Mask) {
-		maskedBounds(s, i, out, shift, lb, world);
+		maskedBounds(s, i, out, shift, lb, world, query);
 		return;
 	}
 	const vb = boxRenderBounds(s, i, world, lb);
@@ -1772,12 +1775,13 @@ function shiftedBounds(s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped:
 	}
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 		const child: int32 = s.children[i][k];
-		if (s.orders[child].visible) { shiftedBounds(s, child, out, inner, scoped); }
+		if (s.orders[child].visible) { shiftedBounds(s, child, out, inner, scoped, query); }
 	}
 }
 
 function maskedBounds(
 	s: Scene, i: int32, ref out: Bounds, shift: Vec2, lb: Bounds, world: Transform2D,
+	query: boolean,
 ): void {
 	let inner: Vec2 = shift;
 	if (s.scrollScope(i)) {
@@ -1787,7 +1791,7 @@ function maskedBounds(
 	let content: Bounds = emptyBounds();
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 		const child: int32 = s.children[i][k];
-		if (s.orders[child].visible) { shiftedBounds(s, child, content, inner, true); }
+		if (s.orders[child].visible) { shiftedBounds(s, child, content, inner, true, query); }
 	}
 	const mtl = vec2(lb.xMin, lb.yMin) * world;
 	const mtr = vec2(lb.xMax, lb.yMin) * world;
@@ -1824,7 +1828,7 @@ export function getBounds(this n: NodeRef, ref out: Bounds): void {
 	}
 	if (top == s.root) { shift = vec2(shift.x + s.viewShift.x, shift.y + s.viewShift.y); }
 	out = emptyBounds();
-	shiftedBounds(s, i, out, shift, true);
+	shiftedBounds(s, i, out, shift, true, true);
 	if (out.xMax <= out.xMin || out.yMax <= out.yMin) {
 		const origin: Vec2 = vec2(0.0, 0.0) * ownWorld(s, i);
 		out = {
@@ -1832,6 +1836,43 @@ export function getBounds(this n: NodeRef, ref out: Bounds): void {
 			xMax: origin.x + shift.x, yMax: origin.y + shift.y,
 		};
 	}
+}
+
+function hitLocal(s: Scene, i: int32, ref p: Vec2): boolean {
+	if (!s.orders[i].visible) { return false; }
+	const up: int32 = s.parents[i];
+	if (up != NO_NODE) {
+		if (!hitLocal(s, up, p)) { return false; }
+	} else if (i == s.root) {
+		const view: Transform2D = { ...s.viewMat, tx: s.viewShift.x, ty: s.viewShift.y };
+		if (view.a * view.d - view.b * view.c == 0.0) { return false; }
+		p = p * inverse2d(view);
+	}
+	const m: Transform2D = s.localMatrices[i];
+	if (m.a * m.d - m.b * m.c == 0.0) { return false; }
+	p = p * inverse2d(m);
+	if (s.kinds[i] === DrawKind.Mask) {
+		if (s.contents[i].w <= 0.0 || s.contents[i].h <= 0.0 ||
+			p.x < 0.0 || p.x > s.contents[i].w || p.y < 0.0 || p.y > s.contents[i].h) {
+			return false;
+		}
+		const by: Vec2 = s.ownScroll(i);
+		p = vec2(p.x + by.x, p.y + by.y);
+	}
+	return true;
+}
+
+export function hitTest(this n: NodeRef, p: Vec2): boolean {
+	const s: Scene = n.scene;
+	const i: int32 = n.liveRow("hitTest");
+	let local: Vec2 = p;
+	if (!hitLocal(s, i, local)) { return false; }
+	if (s.kinds[i] === DrawKind.Mask) { return true; }
+	if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
+	if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
+	const lb: Bounds = localBounds(s, i, true);
+	return lb.xMax > lb.xMin && lb.yMax > lb.yMin &&
+		local.x >= lb.xMin && local.x <= lb.xMax && local.y >= lb.yMin && local.y <= lb.yMax;
 }
 
 function ownWorld(s: Scene, i: int32): Transform2D {
