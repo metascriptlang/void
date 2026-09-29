@@ -1482,8 +1482,10 @@ human has seen it as app code; the phase measurement comes last.
     `xForIndex`, `indexAt` and `lineBoxAt`; no callback or second measurer is added. A standalone
     consumer built with `MSC_NO_GLOBAL_CACHE=1 msc build hostServices.ms --release` under
     `out/tmp/p14probes`, run from the repo root, read CJK text at 32 px and identical bounds
-    before and after editing. Neon receives the host migration note; Yoga receives the missing
-    measure-hook request, rather than a binding change made from this worktree.
+    before and after editing. The temporary consumer was removed after proof; the permanent
+    measurement contracts remain in `src/test/textMetricsCheck.ms`. Neon receives the host
+    migration note; Yoga receives the missing measure-hook request, rather than a binding
+    change made from this worktree.
 
 13. **`oracle:h2d`** (T3), Heaps compiled to JS and run on node by SCENE-SCALE.md "Reproducing";
     `haxe` 4.3.7, `heaps` and `format` are on this box (2026-09-27). HEAPS.md's deliberate
