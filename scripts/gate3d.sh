@@ -918,7 +918,8 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:prepareFrame
 	forward82enderer:drawToScreen forward82enderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
-	target:beginPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
+	target:beginPass target:beginScreenPass door:passState door:beginPassWith
+	door:beginScreenPassWith door:endPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
 	uniform80ool:holds uniform80ool:writeRange"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.

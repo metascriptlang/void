@@ -30,6 +30,7 @@ import {
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { TargetLayout } from "../gpu/target";
+import { PassState, passState } from "../gpu/door";
 import {
 	DrawContext,
 	DrawItem,
@@ -300,6 +301,12 @@ export function openPrepare(this renderer: Renderer): void {
 		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
 		unreachable;
 	}
+	// sokol cannot nest passes, and the prepare opens its own (the door tracks which pass is
+	// open, M18's screen-pass-unchecked).
+	if (passState() != PassState.None) {
+		console.log("void3d: prepareFrame with a pass already open; it would nest inside it");
+		unreachable;
+	}
 }
 
 // The frame's inputs are taken here, so a change made before the screen half is kept.
@@ -314,6 +321,12 @@ export function openScreen(ref renderer: Renderer): void {
 		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
 		unreachable;
 	}
+	if (passState() != PassState.Screen) {
+		console.log("void3d: drawToScreen outside a screen pass; open one with beginScreenPass");
+		unreachable;
+	}
+	// frameIndex counts sokol frames, so it is read only once a screen pass proves one is
+	// being recorded; a headless caller stops above before touching it.
 	if (renderer.preparedFrame != frameIndex()) {
 		console.log("void3d: drawToScreen in a later sokol frame than the prepareFrame it draws");
 		unreachable;
