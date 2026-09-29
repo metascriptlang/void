@@ -1323,3 +1323,72 @@ From `sh scripts/gate3d.sh` on tree `5238df235a32` (commit `1a4dbc0`), on msc `3
 | Oracle | 75 agree with real Heaps, 11 diverge as declared; the MetaScript preludes on the new names |
 | Android | arm64 `libVoidAndroid.so`, **3 301 672 bytes**, -10 776 on M18's 3 312 448 |
 | Compiler | `2026-09-29-try-on-a-non-result-passes-the-checker.md` opened |
+
+## M20 — one GPU door, programs and layouts by registration
+
+**Verdict: SHIP.** The first defect and fresh principal-engineer design passes both
+returned SEND BACK. After the repairs, the defect re-review returned SHIP and the
+design re-review returned SHIP WITH FOLLOW-UPS: document the migration boundary,
+bounded registry contract and final acceptance. Those documentation follow-ups are
+recorded here and in VOID3D.md "M20 as built"; the final read-only documentation
+review returned SHIP with no factual mismatch or remaining blocker.
+The reviewers read source/docs only; the owning session ran the reproduction and gate.
+
+### Defect pass and repairs
+
+| Finding | Repair and proof |
+|---|---|
+| A foreign layout registered first shifts void3d's layout base, but its program table kept local ordinals | `gpu3d.c` `registerOnce` translates the table. `gpu3d.ms` `vertexLayoutOf` reads the registered mapping instead of maintaining a second map. The foreign-first consumer exercises the shifted layouts. |
+| `drawItem` indexed the shared uniform-mask cache with local program ordinals | Both mask queries use `doorProgram`. Before the repair, the real foreign-first lit draw stopped with `VALIDATE_DRAW_REQUIRED_BINDINGS_OR_UNIFORMS_MISSING`; after it, both registration orders pass the readback. |
+| Signed registration counts could underflow or overflow the registry cursor | `door.c` refuses negative counts before mutation and compares capacity against `limit - current`. Four abort programs cover negative and `INT32_MAX` counts after a seeded registration. |
+| Invalid registry ids silently selected entry zero | Invalid program/layout ids now stop by name; two abort programs cover them. |
+| Diagnostic-text snapshots and a duplicated layout table did not prove a consumer | Three incidental tests were removed, not re-pinned. The foreign C unit has its own generated shader and draws through the door in `mixedFrame.ms`. Obsolete backend-forwarding and test-only wrappers were removed. |
+
+### Design pass
+
+The shared ownership matches Heaps' `h2d.RenderContext` (`RenderContext.hx` inheritance,
+`pass`, `pushTarget`) using h3d's engine, textures and passes. Bevy supplies the
+[shared resource-creation precedent](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_render/src/renderer/render_device.rs)
+and [shader handles plus vertex layouts](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_material/src/descriptor.rs).
+The bounded C registry is **NEW MECHANISM**, not a literal port of Bevy's implementation.
+`src/gpu` imports no void3d code; the foreign shader/table lives under `tests/integration`.
+
+Registration ids live for the process and depend on import order; they are not persistent
+asset ids. The 64-bit key supports sixteen registered programs and eight layouts.
+Beyond either limit the key needs another word; registration refuses rather than truncating.
+The source/acceptance re-review found no remaining blocker in the offsets, bounds,
+pass guards, context reconstruction or steady-path allocation.
+
+### Acceptance
+
+`sh scripts/gate3d.sh` on code tree `2d357a5ffe7de6c3eea20f4759427b213f41e7c9`
+(`3388622`; gate header: `fca803a` plus tracked diff `965a60f031f6`), msc
+`35601908`, D3D11, 2026-09-30: **GATE GREEN with 1 skipped stage**.
+
+- **990 tests**, versus M19's 993: three incidental text/table tests removed.
+- **34 abort programs**, versus 20: pass misuse, malformed registration counts and
+  unknown registry ids added. Every program stops with its expected message.
+- **15 capture configurations, 60 frames byte-identical to 48 hashes**; no baseline
+  added or retaken. HUD, compose, both-layers and three picking probes pass.
+- **Foreign registration in both orders**, fresh processes:
+  `VOID_GPU_REGISTRATION=1` and `=2`. Each fills the registry to sixteen programs/eight
+  layouts. The foreign shader replaces the forward copy in one frame; the two complete
+  readbacks match, the lit box is independently visible, all 7,200 HUD pixels blend
+  correctly and the cache reuses the foreign pipeline.
+- **Allocation:** no array copy or built string in the listed frame/render/pick functions,
+  now including the door's pass methods. This is emitted-code coverage, not a global
+  allocator audit. First-use cache misses and changed sizes remain setup boundaries.
+- **Churn:** 310 frames, tables/uniform pool/four live buffers flat; every second stream
+  write refused. The never-release control exhausts sokol buffers after 42 frames.
+- **Oracle:** 75 agree, 11 diverge as declared. **Android arm64:** 3,324,648 bytes.
+- **Device skipped:** no GLES3 or real context-loss proof was added.
+
+### Carried into void2d and later
+
+- void2d's pipelines/targets still move onto the door in its own arc. Its raw bridge
+  passes are not tracked yet; the pass guarantee here covers door-mediated calls.
+- `gpu/state.ms` owns the twelve-member `BlendMode` ready for void2d. The old independently
+  ordered five-member void2d enum is not migrated here.
+- Full-swapchain-only output, opaque copy, void2d scene halves and M17's lifetime gaps
+  remain as scoped. The camera follows this milestone; the spike remains.
+

@@ -2,7 +2,11 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-09-29):** M1–M18 are built and reviewed, M19 is built (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light; M14 gives the core Heaps' forward programs, moves the pixel-art look into its preset's own programs, and adds a forward preset; M15 gives the core a textured billboard in Heaps' particle shape, and the pixel-art preset its own form of it. M16 makes the quad of every particle and billboard from the vertex index, and gives a billboard Bevy's anchor. M17 releases meshes, materials and uniform ranges behind generational ids whose holders are counted, mesh nodes among them. M18 splits a preset's frame in two, so a 3D preset and void2d share one screen pass and one commit. M19 gives the names void2d also exports a 3D suffix and makes a misused node handle stop by name. The gate is `sh scripts/gate3d.sh`.
+**Status (2026-09-30):** M1–M20 are built and reviewed (`docs/REVIEWS-3D.md`); M18–M20 are on this branch, not landed. The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light; M14 gives the core Heaps' forward programs, moves the pixel-art look into its preset's own programs, and adds a forward preset; M15 gives the core a textured billboard in Heaps' particle shape, and the pixel-art preset its own form of it. M16 makes the quad of every particle and billboard from the vertex index, and gives a billboard Bevy's anchor. M17 releases meshes, materials and uniform ranges behind generational ids whose holders are counted, mesh nodes among them. M18 splits a preset's frame in two, so a 3D preset and void2d share one screen pass and one commit. M19 gives the names void2d also exports a 3D suffix and makes a misused node handle stop by name. M20 opens the layer-neutral GPU door to registered programs and checks door-mediated pass ownership; void2d's cutover remains its own arc. The gate is `sh scripts/gate3d.sh`.
+
+Earlier as-built sections record the APIs at their milestone. Current names and ownership
+are mapped in "M19 as built" and "M20 as built"; old `pass.ms`, `target.ms` and
+`pipelineCache.ms` references below are historical, not current import paths.
 
 ## What Hibernal needs
 
@@ -93,7 +97,7 @@ M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 
 | M17 | `prim/Primitive` (`refCount`, `incref`, `decref`: disposed at zero), `scene/Mesh` (`onRemove` decrefs its primitive), `mat/Texture` and `Buffer` (`dispose`); Bevy at `main`: `bevy_asset` `AssetIndex` (index and generation, recycled with the generation bumped), the strong `Handle` that frees its asset when the last one drops, `Assets::remove`; `bevy_render` `RenderAsset` (a freed asset's GPU copy goes in the next `prepare_assets`) | Resources are released. A mesh and a material are named by `MeshId` and `MaterialId`, index and generation as M6's `NodeId` and Bevy's `AssetIndex`, from one slot table that the scene's moves into; `DrawItem`, a mesh node, the glTF bindings and a baked animation's frames carry them. Each slot counts its holders, as Heaps' `Primitive.refCount`: whoever adds a mesh or material holds one; a mesh node holds its mesh and material from `addMeshNode` until `remove`, or until `setMeshOf` swaps the mesh, so the scene calls that attach or detach one take the context; `releaseMesh` and `releaseMaterial` give one back, which a loader does with `defer`. At zero the id goes stale, the slot, its CPU data and the material's uniform range return to the context, and the buffers the context made for it are destroyed at the next `beginFrame`, or dropped when a context loss has already taken them; a caller's own buffers stay the caller's. A stale id is a named error at every entry point, and `beginFrame` refuses an item that names one. The uniform pool reuses a released range of the same length and never compacts, since a material holds its offset; a material owns the range it is added with, and a range under two materials is refused. An upload the driver refuses frees its slot, since the caller gets no id to release. `uploadMesh` destroys the live buffers it replaces (`upload-mesh-leaks-on-replace`), and a stream written twice in one sokol frame is `StreamError.WrittenThisFrame` rather than a validation panic. A `churn` stage adds and releases meshes, materials and streams every frame for 300 frames, with the tables, the pool and sokol's live buffer count flat; the same run without the releases runs out of sokol's buffer pool. Every capture stays byte-identical. **NEW MECHANISM**, approved before the row: reference counts on the context's tables | generality: loading and unloading a level, an effect that makes its own stream | **done**, 34 tests |
 | M18 | `hxd.App.render` (`s3d.render(e); s2d.render(e)` inside one `Engine.render`, which clears once at `begin` and presents at `end`), `scene/Renderer` (`process` up to `resetTarget`, then `copy(from, null)` into the current target, the shape `pbr.Renderer` ends with); Bevy at `main`: `Camera.order`, `ClearColorConfig::None` | Several layers in one frame ("Shared with void2d"). Each preset splits its frame in two. `prepareFrame` runs every pass that is not the screen (the scene, the pixel-art post) and leaves no pass open. `drawToScreen` draws the last stage (`Copy`, `Blit`) into a screen pass the caller has opened. The caller owns that pass and the commit, so a 3D preset and void2d share one pass and one commit: the 3D image first, then void2d's `end2d` over it. `renderFrame` stays as the one-layer shorthand over the two halves. The core holds both halves to one sokol frame, and `endFrame` is gone. Calling out of order (a screen draw with no prepared frame or in a later frame, a second prepare before the screen draw) stops with a message naming the call, as a view frame does (`docs/EMBED.md`). `tests/integration/mixedFrame.ms` draws the forward preset under void2d in place of the spike cube. A campfire with a void2d HUD over the pixel-art preset is checked against the plain campfire: byte-identical outside the HUD, with no hash of its own. Every other capture stays byte-identical. Existing mechanism: void2d's split of its frame | generality: a HUD over any 3D scene, Neon over void3d | **done**, 4 abort tests, 2 gate stages |
 | M19 | Heaps: packages keep `h2d.Scene` and `h3d.scene.Scene` apart, `h3d.mat.BlendMode` is h2d's (`h3d/mat/BlendMode.hx:3`), `h3d.scene.Object.toMesh` throws on a node that is not a mesh (`h3d/scene/Object.hx:668-673`), `h2d.Object.addChildAt` on a cycle (`h2d/Object.hx:416`); Bevy at `main`: `Camera2d`/`Camera3d`, `Mesh2d`/`Mesh3d`, `World::entity` panics and `World::get_entity` answers a `Result`, `Assets::get` answers an `Option` | Names and conventions shared with void2d ("Shared with void2d"). The names both layers export take the suffix void3d already writes: `Scene3D`, `NodeId3D`, `Bounds3D`, `NO_NODE_3D`; the sampler filter is `FilterMode` and the atlas split's error `AtlasTileError`. Identity values are statics, `Transform3D.identity()` and `Transform3D.fromTranslation(position)`. A call on a node handle that cannot be right stops with a message naming the call and the node: a stale node, the root removed, a mesh call on a node that is not a mesh; so the setters answer nothing. The questions (`nameOf`, `findByName`, `worldOf`; `isLive` answers a boolean), the context's ids (Bevy's `Assets::get`) and real failures keep `Result`. Every capture byte-identical | generality: void2d and void3d in one file, one error rule in both layers | **done**, 1 test, 20 abort programs, 1 gate stage |
-| M20 | Heaps: h2d draws through h3d's engine, textures and passes (`h2d/RenderContext.hx:22`, `:95`, `:144`, `:386`); Bevy at `main`: one `RenderDevice` for every renderer, shaders by handle (`bevy_material/src/descriptor.rs:30`, `:70`) | One GPU door ("Shared with void2d"). A layer-neutral module out of `src/void3d` — the pipeline descriptor and key, targets and formats, passes, samplers, `BlendMode` — that both layers draw through, while `bridge.c` keeps the device, the swapchain, the views and the commit. Programs and vertex layouts come in by registration, as Bevy's handles do: a layer's C unit registers its sokol-shdc table and layouts and gets ids back, so a program can be added outside `src/void3d` (M14's finding); the registry holds sixteen programs and eight layouts, the pipeline key's whole width. Every pass opens through the door, which then knows which pass is open: `drawToScreen` stops outside a screen pass and `prepareFrame` inside one, and the door itself stops on a nested or unmatched pass (`screen-pass-unchecked`). Every capture stays byte-identical | **NEW MECHANISM**: program registration, taken on the references under the delegation of 2026-09-29 | generality: void2d's `batcher.c` moves onto the door in its own arc | **planned** |
+| M20 | Heaps: `h2d/RenderContext.hx` inheritance, `pass`, `pushTarget`; Bevy at `0f38358f`: `RenderDevice`, shader handles and vertex layouts | One GPU door in `src/gpu`, void3d through it; programs/layouts by registration, checked pass ownership and an external shader consumer in both registration orders. **NEW MECHANISM**: bounded program registration, taken on the references under the delegation of 2026-09-29. Every standing capture stays byte-identical | generality: void2d's pipelines/targets and `BlendMode` adopt the door in its own arc | **done**, 14 new abort programs, 2 registration runs |
 
 ### M2 as built
 
@@ -733,6 +737,73 @@ The control fails where the fire lights the ground and holds elsewhere, which is
 - **Found on the way:** `try … catch` on a call that no longer answers a `Result` kept type-checking. C then failed in clang, and JS took the fallback silently. Card `2026-09-29-try-on-a-non-result-passes-the-checker.md`. The callers drop the `try`.
 - **Not done here.** void2d's side of the names (`Scene2D` and the rest, `scene()` → `Scene2D.create`) is void2d's arc. The context's ids keep their M17 contract.
 
+### M20 as built
+
+- **The door is layer-neutral; void3d is its first migrated layer.** Current owners are
+  `src/gpu/door.{c,h,ms}`, `state.ms`, `target.ms` and `pipeline.ms`.
+  The old void3d `pass.ms`, `target.ms` and `pipelineCache.ms` imports are gone.
+  `src/void3d/gpu3d.c` remains the layer's registration/upload/draw unit; platform
+  device, swapchain, host views and commit remain under `src/sokol`.
+  This is Heaps' shared engine/texture/pass boundary: `h2d.RenderContext` inherits
+  h3d's context and uses its `pass` and `engine.pushTarget` (`h2d/RenderContext.hx`).
+  Bevy's [RenderDevice](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_render/src/renderer/render_device.rs)
+  and [shader-handle descriptors](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_material/src/descriptor.rs)
+  supply the open registration precedent, not the literal implementation.
+- **NEW MECHANISM: registration.** See `door.h` `doorRegisterLayouts` /
+  `doorRegisterPrograms` and `gpu3d.c` `registerOnce`. Register once per layer on the
+  renderer thread. Returned ids live for the process and depend on import order;
+  they are not serialized asset ids. CPU registrations survive GPU context loss;
+  `pipeline.ms` `forgetPipelines` and `target.ms` `forgotten` retain the existing
+  rebuild convention.
+  The door is open to other C units; void3d's `Material` / `ProgramMap` still name
+  its local `Program` enum. No arbitrary external-program support is claimed for
+  those two types.
+- **A deliberately bounded key.** `gpu/pipeline.ms` `PipelineKey` keeps the full
+  64-bit signature: sixteen programs, eight layouts, the existing state/target
+  domain. Void3d occupies nine programs/four layouts, leaving seven/four.
+  A seventeenth program or ninth layout needs a second key word, not truncation.
+  Negative/overflowing counts and unregistered ids stop by name. Reflection still
+  reads D3D11 metadata without a GPU, so a registered sokol-shdc table must include
+  `hlsl5` as well as every backend the consumer targets; `scripts/regen-shaders.sh`
+  supplies that set.
+- **Pass ownership is checked at the door boundary.** Preset calls are held by
+  `renderer.ms` `openPrepare` / `openScreen`; the pass methods are in `gpu/door.ms`,
+  with the typed attachment scratch in `gpu/target.ms`. A prepare with any pass
+  open, a screen draw outside a screen pass, a nested pass and an unmatched end
+  stop before the offending sokol call. The screen-pass check precedes the frame
+  counter read: a headless misuse stops by name rather than asserting inside
+  `sg_query_stats`.
+- **Registration order was a real defect, not a theoretical edge.** The first
+  reviews returned SEND BACK: program layouts and cached uniform-mask queries
+  mixed local ordinals with global ids. `VOID_GPU_REGISTRATION=2` stopped the
+  actual lit draw with `VALIDATE_DRAW_REQUIRED_BINDINGS_OR_UNIFORMS_MISSING`.
+  The repairs are in `gpu3d.c` `registerOnce`, `gpu3d.ms` `vertexLayoutOf` and
+  `draw.ms` `drawItem`; the duplicate layout map is gone.
+  `tests/integration/gpuRegistrationFixture.c` now registers its own generated
+  `gpuCopy` shader outside void3d. `mixedFrame.ms` replaces the preset's copy
+  with it in one frame and compares the complete readbacks, independently
+  requiring a visible lit box and correct quad blending.
+- **Acceptance, 2026-09-30, D3D11 only.** `sh scripts/gate3d.sh`, code tree
+  `2d357a5ffe7de6c3eea20f4759427b213f41e7c9` (`3388622`, msc `35601908`):
+  **GATE GREEN with 1 skipped stage**. 990 tests (three incidental text/table tests
+  removed), 34 abort programs, 25 PENDING3D rows; 15 capture configurations /
+  60 frames byte-identical against 48 hashes, with HUD/compose/both-layers/picking
+  checks passing. Both fresh-process registration orders pass at sixteen
+  programs/eight layouts and reuse the foreign pipeline.
+  Listed frame/render/pick functions have no array copy or built string;
+  310 churn frames keep tables, uniform pool and four live buffers flat.
+  The oracle remains 75 agreeing / 11 declared divergences.
+  Android arm64 builds at **3,324,648 bytes**, +22,976 on M19 with the same compiler.
+  `docs/REVIEWS-3D.md` records the two initial SEND BACKs and repaired verdicts.
+- **Boundary still open.** void2d's `batcher.c` pipelines/targets and its
+  independently ordered five-member `BlendMode` have not migrated; the shared
+  twelve-member enum is ready in `gpu/state.ms`. Raw bridge/void2d passes are
+  invisible to door state until that arc's cutover, so the closed
+  `screen-pass-unchecked` row means door-mediated calls, not every raw sokol call.
+  Swapchain-only full-screen output, opaque copy, scene halves in void2d and
+  M17's lifetime follow-ups remain. The spike is untouched. No GLES3/device
+  or real context-loss run was added; the camera follows M20.
+
 ### Android lifecycle (V6), alongside from M3
 
 - The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
@@ -835,7 +906,7 @@ of multiplying campfire configurations.
 
 - **Depth for edge detection, answered for the code, open for the device.** In the vendored sokol (read at 6c3fa5ac, unchanged at 2e75443d) `SG_PIXELFORMAT_DEPTH` is `GL_DEPTH_COMPONENT32F` on GLES3, created as a real texture when single-sampled and marked sampleable but not filterable (`_sg_pixelformat_srmd`); a shader reads it with `texelFetch` through `@image_sample_type … unfilterable_float` and a `nonfiltering` sampler, which GLES 3.0 allows for sized depth formats with compare mode off. D3D11 uses `R32_TYPELESS` with an `R32_FLOAT` view. So the renderer takes it as a setting, `DepthSource.NormalAlpha` (default, the spike's 8-bit copy) or `DepthTexture`; GL stores (z + 1) / 2, which the post pass unpacks (`depthUnpack`). On D3D11 `DepthTexture` changes about 15% of the campfire's pixels: fog loses its 8-bit banding, and the normal-edge test (`|Δdepth| < depthThreshold`) flips on sloped stone faces, peak difference 85/255. The outline thresholds were tuned against 8-bit depth, so switching means retuning them. Which source ships is decided on the Seeker with RENDERER-BRIEF §10 Q4 (`RGB10_A2` vs `RGBA8` normals); M3 depends on neither.
 - **One post pass or two, answered: one.** The palette quantizes the pixel the outline and fog just produced and reads no neighbor, so it runs at the end of the same fragment (`postFs`).
-- **The pipeline key is now exactly full, and the next thing that selects a pipeline needs a second word.** 64 bits: vertex layout 3, indexed 1, program 4, target formats 24, `RenderState.bits` 32 — with `LAYOUT_LIMIT` holding the layout count at 8 and `TargetLayout.formatBits` already giving `sampleCount` only four bits, so a sample count of 16 would overflow into the state field. A fourth vertex layout is fine, a ninth is not; uint32 indices would need a second bit. When one of those arrives, `PipelineKey` grows a second `uint64` and `contains` / `pipelineFor` compare both — cheap, but it should be done deliberately rather than by finding a free bit.
+- **The pipeline key is exactly full; wider registrations need a second word.** `src/gpu/pipeline.ms` `PipelineKey`: vertex layout 3, indexed 1, program 4, target formats 24, `RenderState.bits` 32. `door.c` refuses registration beyond sixteen programs/eight layouts; the foreign-consumer gate exercises both limits. `TargetLayout.formatBits` still reserves only four bits for `sampleCount`, so 16 is outside the key's supported domain. More programs/layouts, uint32 indices or wider target fields require a second `uint64` and comparison of both words in `contains` / `pipelineFor`. This remains a deliberate extension, not a search for a free bit.
 - **Instance data has no CPU-side owner, answered at M11 for the per-frame case.** A buffer rewritten every frame is a stream mesh: a `GpuMesh` in the same table, with a capacity and no CPU copy, remade empty by the same rebuild loop and refilled by its owner's next write (M11 as built). Static instance data (the campfire's grass) is still the caller's, kept and re-made by the example (M7 as built); an owner in void3d for it arrives with the first library feature that needs one.
 - **How baked animation arrives from the exporter, open until T1 exists.** M9's `MeshFrameAnimation` takes any list of `MeshData` with one topology, and M8 decodes one mesh per node with morph targets refused. A Blender generator can bake as glTF morph targets with a weights channel, as one mesh per frame, or as node TRS channels. The first needs M8 to accept `targets` and a decoder for `animations`; the second needs only a naming convention, which belongs to Hibernal, not here. Decide with the first real export.
 - **Device.** Nothing here has run on the Seeker or any other phone. The GLES3 path has run only on the Android emulator (`gles3-emulator-only`, `tests/device/README.md`): the campfire with its palette, the particles and the greyed ground. Not yet run on any GLES3 driver: a real context loss (`voidEmbedLoseContext`, simulated on D3D11 only), the depth-texture path, and the snap's remainder under GL's row order, which is tested for both row orders and seen on D3D11 only.
