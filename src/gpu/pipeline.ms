@@ -6,41 +6,52 @@
 // over a few dozen uint64s. Entries keep their key after `forgetPipelines`,
 // and every `pipelineFor` call brings the full description, so a pipeline lost with the GPU
 // context is built again from CPU data on its next use.
+//
+// A program or layout here is a door registry id (door.ms), not a layer's enum: the door is
+// what both render layers build pipelines through, and each adds its own base to its
+// ordinals (void3d: gpu3d.ms doorProgram / doorLayout).
 
-import { RenderState } from "./pass";
+import { RenderState } from "./state";
 import { TargetLayout } from "./target";
 import {
-	Program,
-	VertexLayout,
-	IndexType,
 	makeShader,
 	uniformSlotMask,
 	makePipeline,
 	destroyShader,
 	destroyPipeline,
-} from "./gpu3d";
+	MAX_PROGRAMS,
+	MAX_LAYOUTS,
+} from "./door";
 import {
-	GPU3D_PIPELINE_SHADER,
-	GPU3D_PIPELINE_LAYOUT,
-	GPU3D_PIPELINE_CULLING,
-	GPU3D_PIPELINE_DEPTH_TEST,
-	GPU3D_PIPELINE_DEPTH_WRITE,
-	GPU3D_PIPELINE_BLEND_SOURCE,
-	GPU3D_PIPELINE_BLEND_DESTINATION,
-	GPU3D_PIPELINE_BLEND_ALPHA_SOURCE,
-	GPU3D_PIPELINE_BLEND_ALPHA_DESTINATION,
-	GPU3D_PIPELINE_BLEND_OPERATION,
-	GPU3D_PIPELINE_BLEND_ALPHA_OPERATION,
-	GPU3D_PIPELINE_COLOR_MASK,
-	GPU3D_PIPELINE_COLOR_FORMAT,
-	GPU3D_PIPELINE_DEPTH_FORMAT,
-	GPU3D_PIPELINE_SAMPLE_COUNT,
-	GPU3D_PIPELINE_INDEX_TYPE,
-	GPU3D_PIPELINE_LENGTH,
-	GPU3D_PROGRAM_COUNT,
-} from "./gpu3d.h";
+	DOOR_PIPELINE_SHADER,
+	DOOR_PIPELINE_LAYOUT,
+	DOOR_PIPELINE_CULLING,
+	DOOR_PIPELINE_DEPTH_TEST,
+	DOOR_PIPELINE_DEPTH_WRITE,
+	DOOR_PIPELINE_BLEND_SOURCE,
+	DOOR_PIPELINE_BLEND_DESTINATION,
+	DOOR_PIPELINE_BLEND_ALPHA_SOURCE,
+	DOOR_PIPELINE_BLEND_ALPHA_DESTINATION,
+	DOOR_PIPELINE_BLEND_OPERATION,
+	DOOR_PIPELINE_BLEND_ALPHA_OPERATION,
+	DOOR_PIPELINE_COLOR_MASK,
+	DOOR_PIPELINE_COLOR_FORMAT,
+	DOOR_PIPELINE_DEPTH_FORMAT,
+	DOOR_PIPELINE_SAMPLE_COUNT,
+	DOOR_PIPELINE_INDEX_TYPE,
+	DOOR_PIPELINE_LENGTH,
+} from "./door.h";
 
-export const PROGRAM_COUNT: int32 = GPU3D_PROGRAM_COUNT;
+export const PROGRAM_COUNT: int32 = MAX_PROGRAMS;
+
+// sokol bakes the index type into the pipeline, so a mesh drawn from an index buffer and one
+// drawn straight from its vertex buffer need different pipelines. Only uint16 is offered: it
+// caps a mesh at 65536 vertices, far above Hibernal's budget, and widening the format is a
+// decision, not a fallback (meshData.ms MAX_MESH_VERTICES).
+export enum IndexType {
+	None,
+	Uint16,
+}
 
 // Key layout, low to high: vertex layout (3 bits), indexed (1), program (4), target formats
 // (24), RenderState.bits (32) — 64 bits, exactly full. The indexed flag shares a nibble with
@@ -55,8 +66,10 @@ const NIBBLE: uint64 = 15;
 const TARGETS_MASK: uint64 = 16777215;
 const STATE_MASK: uint64 = 4294967295;
 
-// One more VertexLayout than this and the key needs a second word.
-export const LAYOUT_LIMIT: int32 = 8;
+// The door's registry widths: one more registered layout or program than this and the key
+// needs a second word, so the door refuses registration past them.
+export const LAYOUT_LIMIT: int32 = MAX_LAYOUTS;
+export const PROGRAM_LIMIT: int32 = MAX_PROGRAMS;
 
 // Everything that selects a pipeline, packed; decodes back into its parts.
 export struct PipelineKey {
@@ -90,7 +103,7 @@ export function empty(this typeof PipelineCache): PipelineCache {
 		entries: [],
 		shaders: shaders,
 		blockSlots: blockSlots,
-		descriptor: new Array(GPU3D_PIPELINE_LENGTH),
+		descriptor: new Array(DOOR_PIPELINE_LENGTH),
 		generation: 0,
 	};
 }
@@ -100,8 +113,8 @@ function ordinal(value: int32): uint64 {
 }
 
 export function pipelineKey(
-	program: Program,
-	layout: VertexLayout,
+	program: int32,
+	layout: int32,
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
@@ -109,16 +122,16 @@ export function pipelineKey(
 	return {
 		// Masked on encode as well as on decode: an ordinal of 8 would otherwise set bit 3 and
 		// be indistinguishable from `indexed` on layout 0 (LAYOUT_LIMIT is the real guard).
-		bits: (ordinal(layout as int32) & LAYOUT_MASK) |
+		bits: (ordinal(layout) & LAYOUT_MASK) |
 			(((indexed ? 1 : 0) as uint64) << INDEXED_SHIFT) |
-			(ordinal(program as int32) << PROGRAM_SHIFT) |
+			(ordinal(program) << PROGRAM_SHIFT) |
 			((targets.formatBits() as uint64) << TARGETS_SHIFT) |
 			((state.bits() as uint64) << STATE_SHIFT),
 	};
 }
 
-export function vertexLayout(this key: PipelineKey): VertexLayout {
-	return ((key.bits & LAYOUT_MASK) as int32) as VertexLayout;
+export function vertexLayout(this key: PipelineKey): int32 {
+	return (key.bits & LAYOUT_MASK) as int32;
 }
 
 export function isIndexed(this key: PipelineKey): boolean {
@@ -129,8 +142,8 @@ export function indexType(this key: PipelineKey): IndexType {
 	return key.isIndexed() ? IndexType.Uint16 : IndexType.None;
 }
 
-export function program(this key: PipelineKey): Program {
-	return (((key.bits >> PROGRAM_SHIFT) & NIBBLE) as int32) as Program;
+export function program(this key: PipelineKey): int32 {
+	return ((key.bits >> PROGRAM_SHIFT) & NIBBLE) as int32;
 }
 
 export function targetLayout(this key: PipelineKey): TargetLayout {
@@ -141,8 +154,8 @@ export function renderState(this key: PipelineKey): RenderState {
 	return RenderState.fromBits(((key.bits >> STATE_SHIFT) & STATE_MASK) as uint32);
 }
 
-// `program=Lit layout=Lit colors=… depth=… sampleCount=… culling=…`: which pipeline a
-// cache entry is, for logs and for comparing two entries by eye.
+// `program=<id> layout=<id> colors=… depth=… sampleCount=… culling=…`: which pipeline a cache
+// entry is, for logs and for comparing two entries by eye.
 export function toString(this key: PipelineKey): string {
 	return `program=${key.program().toString()} layout=${key.vertexLayout().toString()} ` +
 		`indexType=${key.indexType().toString()} ` +
@@ -153,35 +166,35 @@ function unsigned(value: int32): uint32 {
 	return value as uint32;
 }
 
-// The flat sg_pipeline_desc that gpu3d.c reads (GPU3D_PIPELINE_*).
+// The flat sg_pipeline_desc that door.c reads (DOOR_PIPELINE_*).
 export function describePipeline(
 	out: Span<uint32>,
 	shader: uint32,
-	layout: VertexLayout,
+	layout: int32,
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
 ): void {
-	out[GPU3D_PIPELINE_SHADER] = shader;
-	out[GPU3D_PIPELINE_LAYOUT] = unsigned(layout as int32);
-	out[GPU3D_PIPELINE_CULLING] = unsigned(state.culling as int32);
-	out[GPU3D_PIPELINE_DEPTH_TEST] = unsigned(state.depthTest as int32);
-	out[GPU3D_PIPELINE_DEPTH_WRITE] = state.depthWrite ? 1 : 0;
-	out[GPU3D_PIPELINE_BLEND_SOURCE] = unsigned(state.blendSource as int32);
-	out[GPU3D_PIPELINE_BLEND_DESTINATION] = unsigned(state.blendDestination as int32);
-	out[GPU3D_PIPELINE_BLEND_ALPHA_SOURCE] = unsigned(state.blendAlphaSource as int32);
-	out[GPU3D_PIPELINE_BLEND_ALPHA_DESTINATION] = unsigned(state.blendAlphaDestination as int32);
-	out[GPU3D_PIPELINE_BLEND_OPERATION] = unsigned(state.blendOperation as int32);
-	out[GPU3D_PIPELINE_BLEND_ALPHA_OPERATION] = unsigned(state.blendAlphaOperation as int32);
-	out[GPU3D_PIPELINE_COLOR_MASK] = state.colorMask as uint32;
-	out[GPU3D_PIPELINE_COLOR_FORMAT] = unsigned(targets.color0 as int32);
-	out[GPU3D_PIPELINE_COLOR_FORMAT + 1] = unsigned(targets.color1 as int32);
-	out[GPU3D_PIPELINE_COLOR_FORMAT + 2] = unsigned(targets.color2 as int32);
-	out[GPU3D_PIPELINE_COLOR_FORMAT + 3] = unsigned(targets.color3 as int32);
-	out[GPU3D_PIPELINE_DEPTH_FORMAT] = unsigned(targets.depth as int32);
-	out[GPU3D_PIPELINE_SAMPLE_COUNT] = unsigned(targets.sampleCount);
+	out[DOOR_PIPELINE_SHADER] = shader;
+	out[DOOR_PIPELINE_LAYOUT] = unsigned(layout);
+	out[DOOR_PIPELINE_CULLING] = unsigned(state.culling as int32);
+	out[DOOR_PIPELINE_DEPTH_TEST] = unsigned(state.depthTest as int32);
+	out[DOOR_PIPELINE_DEPTH_WRITE] = state.depthWrite ? 1 : 0;
+	out[DOOR_PIPELINE_BLEND_SOURCE] = unsigned(state.blendSource as int32);
+	out[DOOR_PIPELINE_BLEND_DESTINATION] = unsigned(state.blendDestination as int32);
+	out[DOOR_PIPELINE_BLEND_ALPHA_SOURCE] = unsigned(state.blendAlphaSource as int32);
+	out[DOOR_PIPELINE_BLEND_ALPHA_DESTINATION] = unsigned(state.blendAlphaDestination as int32);
+	out[DOOR_PIPELINE_BLEND_OPERATION] = unsigned(state.blendOperation as int32);
+	out[DOOR_PIPELINE_BLEND_ALPHA_OPERATION] = unsigned(state.blendAlphaOperation as int32);
+	out[DOOR_PIPELINE_COLOR_MASK] = state.colorMask as uint32;
+	out[DOOR_PIPELINE_COLOR_FORMAT] = unsigned(targets.color0 as int32);
+	out[DOOR_PIPELINE_COLOR_FORMAT + 1] = unsigned(targets.color1 as int32);
+	out[DOOR_PIPELINE_COLOR_FORMAT + 2] = unsigned(targets.color2 as int32);
+	out[DOOR_PIPELINE_COLOR_FORMAT + 3] = unsigned(targets.color3 as int32);
+	out[DOOR_PIPELINE_DEPTH_FORMAT] = unsigned(targets.depth as int32);
+	out[DOOR_PIPELINE_SAMPLE_COUNT] = unsigned(targets.sampleCount);
 	const indexType: IndexType = indexed ? IndexType.Uint16 : IndexType.None;
-	out[GPU3D_PIPELINE_INDEX_TYPE] = unsigned(indexType as int32);
+	out[DOOR_PIPELINE_INDEX_TYPE] = unsigned(indexType as int32);
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
@@ -191,25 +204,24 @@ export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
 	return false;
 }
 
-export function shaderFor(ref cache: PipelineCache, program: Program): uint32 {
-	const index: int32 = program as int32;
-	if (cache.shaders[index] == 0) {
-		cache.shaders[index] = makeShader(program);
-		cache.blockSlots[index] = uniformSlotMask(program);
+export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
+	if (cache.shaders[program] == 0) {
+		cache.shaders[program] = makeShader(program);
+		cache.blockSlots[program] = uniformSlotMask(program);
 	}
-	return cache.shaders[index];
+	return cache.shaders[program];
 }
 
 // Whether `program` declares a uniform block at `slot`; known once its shader has been made.
-export function declaresBlock(this cache: PipelineCache, program: Program, slot: int32): boolean {
-	return (cache.blockSlots[program as int32] & ((1 as uint32) << (slot as uint32))) != 0;
+export function declaresBlock(this cache: PipelineCache, program: int32, slot: int32): boolean {
+	return (cache.blockSlots[program] & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
 // PipelineBuilder.lookup + the driver's makePipeline on a miss.
 export function pipelineFor(
 	ref cache: PipelineCache,
-	program: Program,
-	layout: VertexLayout,
+	program: int32,
+	layout: int32,
 	indexed: boolean,
 	state: RenderState,
 	targets: TargetLayout,
@@ -250,7 +262,7 @@ export function releasePipelines(ref cache: PipelineCache): void {
 		if (entry.pipeline != 0) { destroyPipeline(entry.pipeline); }
 	}
 	for (const shader of cache.shaders) {
-		if (shader != 0) { destroyShader(shader); }
+		destroyShader(shader);
 	}
 	forgetPipelines(cache);
 }

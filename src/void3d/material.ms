@@ -4,7 +4,7 @@
 // Uniform values live in the DrawContext's pool (draw.ms), a Vec<float32> allocated once;
 // a material holds the block's position in it, so materials stay plain values in a table.
 
-import { RenderState } from "./pass";
+import { RenderState } from "../gpu/state";
 import { Program } from "./gpu3d";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer

@@ -10,7 +10,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	liveBuffers,
 } from "../void3d/gpu3d";
-import { RenderState } from "../void3d/pass";
+import { RenderState } from "../gpu/state";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, MeshError, Rgba, addBox } from "../void3d/meshData";
 import { UniformError } from "../void3d/uniformPool";

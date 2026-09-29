@@ -217,18 +217,18 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 # was built from them in this checkout's build cache. The machine-wide cache is off for the run.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
-	headers="src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h"
+	headers="src/gpu/door.h src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h"
 	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
 	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/pixelArt3d.glsl.h ] ||
-		[ ! -f src/void3d/gpu3d.h ]; then
-		note "capture: a shader header or gpu3d.h is missing"
+		[ ! -f src/void3d/gpu3d.h ] || [ ! -f src/gpu/door.h ]; then
+		note "capture: a shader header, gpu3d.h or door.h is missing"
 		return 0
 	fi
 	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
 		return 0
 	fi
-	note "capture: a header gpu3d.c includes changed since the last gate — evicting the objects built from it"
-	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* 2>/dev/null
+	note "capture: a header gpu3d.c or door.c includes changed since the last gate — evicting the objects built from it"
+	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* out/debug/.cache/*door* 2>/dev/null
 	echo "$current" > "$stamp"
 }
 
@@ -478,8 +478,8 @@ import {
 } from "../campfireScene";
 import { PixelArtSettings } from "../../../src/void3d/pixelArtRenderer";
 import { CampfireError } from "../campfireScene";
-import { beginScreenPass } from "../../../src/void3d/target";
-import { endPass } from "../../../src/void3d/gpu3d";
+import { beginScreenPass } from "../../../src/gpu/target";
+import { endPass } from "../../../src/gpu/door";
 import { Vec4 } from "../../../src/math/math3d";
 import { fbWidth, fbHeight, commit } from "../../../src/sokol/gpu";
 import { setup2d, begin2d, flushTargets, end2d, fillQuad } from "../../../src/void2d/draw";
@@ -863,11 +863,7 @@ run_oracle() {
 
 # CODE-STYLE section 16 caps a line at 100 columns with a tab counted as 4. The M5 review found
 # five over-long lines and the M6 review found thirteen more, in the files M5 had just fixed. A
-# finding that recurs the next milestone is infrastructure, not a third review comment.
-#
-# Scoped to what this port owns: src/void3d, its tests, and the campfire. void2d has its own
-# gate and its own backlog.
-STYLE_PATHS="src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
+STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/aborts3d"
@@ -908,15 +904,13 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
 	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh
-	draw:letGoOfMesh draw:meshPinned draw:hasMesh slots:isCurrent gpu3d:frameIndex"
-
+	draw:letGoOfMesh draw:meshPinned draw:hasMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit renderer:slotBound gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
 	renderer:drawPassLists renderer:drawScreen renderer:openPrepare renderer:closePrepare
 	renderer:openScreen pass76ist:collect pass76ist:sortBackToFront pass76ist:drawPassList
-	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock pipeline67ache:pipelineFor
-	pipeline67ache:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:prepareFrame
-	pixel65rt82enderer:drawToScreen pixel65rt82enderer:resizeTargets
+	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock pipeline:pipelineFor
+	pipeline:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:prepareFrame
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
 	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampsHaveLevels pixel65rt82enderer:levelsAt
@@ -934,7 +928,7 @@ PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:ray
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
 check_array_copies() {
-	rm -f out/debug/*ZsrcZvoid3dZ*Oms.c
+	rm -f out/debug/*ZsrcZgpuZ*Oms.c out/debug/*ZsrcZvoid3dZ*Oms.c
 	if ! msc build "$1" --emit=c > "$WORK/allocation.log" 2>&1; then
 		fail "allocation: emitting C for $1 failed; see $WORK/allocation.log"
 		return 1
@@ -944,7 +938,7 @@ check_array_copies() {
 	for entry in $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
-		emitted=$(ls out/debug/*ZsrcZvoid3dZ${module}Oms.c 2>/dev/null | head -1)
+		emitted=$(ls out/debug/*ZsrcZvoid3dZ${module}Oms.c out/debug/*ZsrcZgpuZ${module}Oms.c 2>/dev/null | head -1)
 		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1

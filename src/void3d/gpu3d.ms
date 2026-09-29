@@ -1,58 +1,76 @@
-// void3d GPU bridge, MetaScript side. gpu3d.c only turns flat arrays into sokol descriptor
-// structs; everything that decides what to build and when lives above this file.
+// void3d's programs and draw path, MetaScript side. void3d's programs and vertex layouts are
+// registered with the GPU door (src/gpu/door.c) once at module load, and the ids handed back
+// are what every door call takes: doorProgram / doorLayout add this layer's base to a Program
+// or VertexLayout ordinal, because registration order is import order and no layer's enum may
+// assume another's base. Buffers, plain and dynamic images, bindings, uniforms and the draw
+// call stay here (gpu3d.c); what both render layers share — programs, pipelines, targets,
+// formats, passes, samplers — is the door's (src/gpu).
 //
-// Enum members are sent to C as ordinals and mapped by tables in gpu3d.c, so a member added
+// Enum members are sent to C as ordinals and mapped by tables in door.c, so a member added
 // here must be added there in the same position. Handles are sokol ids as uint32, 0 = none.
-// The descriptor layouts (GPU3D_PIPELINE_*, GPU3D_PASS_*, GPU3D_BINDING_*) come from gpu3d.h.
+// The bindings layout (GPU3D_BINDING_*) comes from gpu3d.h.
 
-import "../sokol/gpu";
 import {
-	gpu3dMakeShader,
-	gpu3dUniformSlotMask,
-	gpu3dUniformBlockBytes,
-	gpu3dTextureSlotMask,
-	gpu3dSamplerSlotMask,
-	gpu3dLayoutFloats,
-	gpu3dLayoutPerInstance,
-	GPU3D_UNIFORM_SLOTS,
-	gpu3dMakeTargetImage,
-	gpu3dMakeAttachmentView,
-	gpu3dMakeTextureView,
-	gpu3dMakeSampler,
+	makeShader as doorMakeShader,
+	uniformSlotMask as doorUniformSlotMask,
+	uniformBlockBytes as doorUniformBlockBytes,
+	textureSlotMask as doorTextureSlotMask,
+	samplerSlotMask as doorSamplerSlotMask,
+	layoutFloats as doorLayoutFloats,
+	layoutPerInstance as doorLayoutPerInstance,
+	programLayout as doorProgramLayout,
+	originTopLeft as doorOriginTopLeft,
+	depthZeroToOne as doorDepthZeroToOne,
+	contextGeneration as doorContextGeneration,
+	frameIndex as doorFrameIndex,
+	liveBuffers as doorLiveBuffers,
+	UNIFORM_SLOTS as DOOR_UNIFORM_SLOTS,
+} from "../gpu/door";
+import {
+	PipelineCache,
+	PipelineKey,
+	pipelineFor as pipelineForIds,
+	pipelineKey as pipelineKeyIds,
+} from "../gpu/pipeline";
+import { RenderState } from "../gpu/state";
+import { TargetLayout } from "../gpu/target";
+import {
+	gpu3dProgramBase,
+	gpu3dLayoutBase,
 	gpu3dMakeDynamicImage,
 	gpu3dMakeStreamBuffer,
-	gpu3dDestroyShader,
-	gpu3dDestroyPipeline,
 	gpu3dDestroyBuffer,
 	gpu3dDestroyImage,
-	gpu3dDestroyView,
-	gpu3dDestroySampler,
-	gpu3dBeginSwapchainPass,
 	gpu3dApplyPipeline,
 	gpu3dDraw,
-	gpu3dEndPass,
-	gpu3dOriginTopLeft,
-	gpu3dDepthZeroToOne,
-	gpu3dContextGeneration,
-	gpu3dFrameIndex,
-	gpu3dLiveBuffers,
 } from "./gpu3d.h";
 
 // The functions that take arrays are declared here instead: an `extern` Span<T> parameter
 // lowers to the (pointer, int64 length) pair gpu3d.h declares. Importing them from the header
 // maps the pointer to Borrow<T>, and on msc 0.2.53 `span[0]` passed there is the address of a
 // one-element copy (docs/VOID3D.md, Compiler notes).
-extern function gpu3dMakePipeline(descriptor: Span<uint32>): uint32;
 extern function gpu3dMakeVertexBuffer(data: Span<float32>): uint32;
 extern function gpu3dMakeIndexBuffer(data: Span<uint16>): uint32;
 extern function gpu3dMakeImage(rgba: Span<uint32>, width: int32, height: int32): uint32;
-extern function gpu3dBeginPass(descriptor: Span<uint32>, clear: Span<float32>): void;
-extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
-extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
 extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
 extern function gpu3dUpdateBuffer(buffer: uint32, data: Span<float32>): int32;
-// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in
-// gpu3d.c's PROGRAMS order. Materials name the first three.
+extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
+extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
+
+let programBase: int32 = gpu3dProgramBase();
+let layoutBase: int32 = gpu3dLayoutBase();
+
+// The door id of one of void3d's programs / layouts, from this layer's own ordinal.
+export function doorProgram(program: Program): int32 {
+	return programBase + (program as int32);
+}
+
+export function doorLayout(layout: VertexLayout): int32 {
+	return layoutBase + (layout as int32);
+}
+
+// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in the
+// order gpu3d.c registers them. Materials name the first three.
 export enum Program {
 	Lit,
 	Particle,
@@ -65,7 +83,7 @@ export enum Program {
 	PixelArtBlit,
 }
 
-// Vertex buffer layouts gpu3d.c knows how to describe (describeLayout).
+// Vertex buffer layouts gpu3d.c describes (describeLayout).
 export enum VertexLayout {
 	Lit,
 	Particle,
@@ -74,7 +92,8 @@ export enum VertexLayout {
 }
 
 // The layout each program reads: gpu3d.c asserts that every program of a layout declares the
-// core program's attribute slots.
+// core program's attribute slots, and tests hold this map against the registration's own
+// answer (door programLayout).
 export function vertexLayoutOf(program: Program): VertexLayout {
 	return match (program) {
 		Program.Lit => VertexLayout.Lit,
@@ -96,41 +115,6 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Billboard => true,
 		VertexLayout.Fullscreen => false,
 	};
-}
-
-// Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
-// sokol bakes the index type into the pipeline, so a mesh drawn from an index buffer and one
-// drawn straight from its vertex buffer need different pipelines (pipelineCache.ms). Only
-// uint16 is offered: it caps a mesh at 65536 vertices, far above Hibernal's budget, and
-// widening the format is a decision, not a fallback (meshData.ms MAX_MESH_VERTICES).
-export enum IndexType {
-	None,
-	Uint16,
-}
-
-export enum PixelFormat {
-	None,
-	Default,
-	Rgba8,
-	Depth,
-}
-
-export enum LoadAction {
-	Clear,
-	Load,
-	DontCare,
-}
-
-// h3d.mat.Data.Filter / Wrap, the members sokol has.
-export enum FilterMode {
-	Nearest,
-	Linear,
-}
-
-export enum Wrap {
-	Clamp,
-	Repeat,
-	Mirror,
 }
 
 // Uniform block slots and sizes in floats, from the `binding=` blocks in shader3dBlocks.glsl.
@@ -156,42 +140,68 @@ export const BILLBOARD_UNIFORM_LENGTH: int32 = 8;
 export const BILLBOARD_COLOR: int32 = 0;
 export const BILLBOARD_LIGHT: int32 = 5;
 
-export function makeShader(program: Program): uint32 {
-	return gpu3dMakeShader(program as int32);
+export const UNIFORM_SLOTS: int32 = DOOR_UNIFORM_SLOTS;
+
+// The layout the door's registration gives one of void3d's programs, as an id.
+export function registeredLayout(program: Program): int32 {
+	return doorProgramLayout(doorProgram(program));
 }
 
 export function uniformSlotMask(program: Program): uint32 {
-	return gpu3dUniformSlotMask(program as int32);
+	return doorUniformSlotMask(doorProgram(program));
 }
-
-export const UNIFORM_SLOTS: int32 = GPU3D_UNIFORM_SLOTS;
 
 // Floats of the block `program` declares at `slot`, 0 for none, read off its shader desc.
 export function uniformBlockLength(program: Program, slot: int32): int32 {
-	return gpu3dUniformBlockBytes(program as int32, slot) / 4;
+	return doorUniformBlockBytes(doorProgram(program), slot) / 4;
 }
 
 // Bit n set when `program` samples a texture at view slot n (textureSlotMask) or declares
 // sampler slot n (samplerSlotMask), read off its shader desc.
 export function textureSlotMask(program: Program): uint32 {
-	return gpu3dTextureSlotMask(program as int32);
+	return doorTextureSlotMask(doorProgram(program));
 }
 
 export function samplerSlotMask(program: Program): uint32 {
-	return gpu3dSamplerSlotMask(program as int32);
+	return doorSamplerSlotMask(doorProgram(program));
 }
 
-// Floats per element of vertex buffer `buffer` of `layout`, as gpu3d.c lays it out.
+// Floats per element of vertex buffer `buffer` of `layout`, as gpu3d.c registered it.
 export function layoutFloats(layout: VertexLayout, buffer: int32): int32 {
-	return gpu3dLayoutFloats(layout as int32, buffer);
+	return doorLayoutFloats(doorLayout(layout), buffer);
 }
 
 export function layoutPerInstance(layout: VertexLayout): boolean {
-	return gpu3dLayoutPerInstance(layout as int32) != 0;
+	return doorLayoutPerInstance(doorLayout(layout));
 }
 
-export function makePipeline(descriptor: Span<uint32>): uint32 {
-	return gpu3dMakePipeline(descriptor);
+// PipelineBuilder.lookup, on void3d's own enums: the key and the cache are the door's.
+export function pipelineFor(
+	ref cache: PipelineCache,
+	program: Program,
+	layout: VertexLayout,
+	indexed: boolean,
+	state: RenderState,
+	targets: TargetLayout,
+): uint32 {
+	return pipelineForIds(
+		cache,
+		doorProgram(program),
+		doorLayout(layout),
+		indexed,
+		state,
+		targets,
+	);
+}
+
+export function pipelineKey(
+	program: Program,
+	layout: VertexLayout,
+	indexed: boolean,
+	state: RenderState,
+	targets: TargetLayout,
+): PipelineKey {
+	return pipelineKeyIds(doorProgram(program), doorLayout(layout), indexed, state, targets);
 }
 
 export function makeVertexBuffer(data: Span<float32>): uint32 {
@@ -205,22 +215,6 @@ export function makeIndexBuffer(data: Span<uint16>): uint32 {
 
 export function makeImage(rgba: Span<uint32>, width: int32, height: int32): uint32 {
 	return gpu3dMakeImage(rgba, width, height);
-}
-
-export function makeTargetImage(width: int32, height: int32, format: PixelFormat): uint32 {
-	return gpu3dMakeTargetImage(width, height, format as int32);
-}
-
-export function makeAttachmentView(image: uint32, format: PixelFormat): uint32 {
-	return gpu3dMakeAttachmentView(image, format as int32);
-}
-
-export function makeTextureView(image: uint32): uint32 {
-	return gpu3dMakeTextureView(image);
-}
-
-export function makeSampler(filter: FilterMode, wrap: Wrap): uint32 {
-	return gpu3dMakeSampler(filter as int32, wrap as int32);
 }
 
 // An RGBA8 image the CPU rewrites with updateImage; its pixels start undefined.
@@ -244,48 +238,31 @@ export function updateBuffer(buffer: uint32, data: Span<float32>): boolean {
 
 // Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).
 export function originTopLeft(): boolean {
-	return gpu3dOriginTopLeft() != 0;
+	return doorOriginTopLeft();
 }
 
 // The depth buffer holds clip z as is (0..1); GL stores (z + 1) / 2 instead.
 export function depthZeroToOne(): boolean {
-	return gpu3dDepthZeroToOne() != 0;
+	return doorDepthZeroToOne();
 }
 
 // Counts GPU contexts: it changes when the host lost the context and made a new one, and every
 // handle from before is then stale (docs/VOID3D.md, Android lifecycle). Only the Android
 // bridge ever loses its context.
 export function contextGeneration(): int32 {
-	return gpu3dContextGeneration();
+	return doorContextGeneration();
 }
 
 export function frameIndex(): uint32 {
-	return gpu3dFrameIndex();
+	return doorFrameIndex();
 }
 
 export function liveBuffers(): int32 {
-	return gpu3dLiveBuffers();
+	return doorLiveBuffers();
 }
 
-export function destroyShader(shader: uint32): void { gpu3dDestroyShader(shader); }
-export function destroyPipeline(pipeline: uint32): void { gpu3dDestroyPipeline(pipeline); }
 export function destroyBuffer(buffer: uint32): void { gpu3dDestroyBuffer(buffer); }
 export function destroyImage(image: uint32): void { gpu3dDestroyImage(image); }
-export function destroyView(view: uint32): void { gpu3dDestroyView(view); }
-export function destroySampler(sampler: uint32): void { gpu3dDestroySampler(sampler); }
-
-export function beginPassWith(descriptor: Span<uint32>, clear: Span<float32>): void {
-	gpu3dBeginPass(descriptor, clear);
-}
-
-export function beginSwapchainPass(
-	red: float32,
-	green: float32,
-	blue: float32,
-	alpha: float32,
-): void {
-	gpu3dBeginSwapchainPass(red, green, blue, alpha);
-}
 
 export function applyPipeline(pipeline: uint32): void { gpu3dApplyPipeline(pipeline); }
 
@@ -300,5 +277,3 @@ export function applyUniforms(slot: int32, data: Span<float32>): void {
 export function draw(base: int32, count: int32, instances: int32): void {
 	gpu3dDraw(base, count, instances);
 }
-
-export function endPass(): void { gpu3dEndPass(); }

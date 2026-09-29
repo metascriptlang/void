@@ -21,7 +21,7 @@ import { Vec3, vec3 } from "../math/math3d";
 import { sinf, cosf } from "../math/mat4";
 import { Bounds3D, addPoint } from "./bounds";
 import { Ray } from "./ray";
-import { Face } from "./pass";
+import { Face } from "../gpu/state";
 
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
 export const LIT_VERTEX_STRIDE: int32 = 10;
@@ -103,7 +103,7 @@ export function hasRoomFor(this data: MeshData, count: int32): boolean {
 	return data.vertexCount() + count <= MAX_MESH_VERTICES;
 }
 
-// Three vertex indices, counter-clockwise as seen from the front (gpu3d.c sets CCW winding).
+// Three vertex indices, counter-clockwise as seen from the front (door.c sets CCW winding).
 // Returns the index of the triangle it added, as addVertex returns the index of its vertex.
 export function addTriangle(
 	ref data: MeshData,
@@ -157,7 +157,7 @@ export function recomputeBounds(ref data: MeshData): void {
 
 // h3d.col.PolygonBuffer.rayIntersection (Moller-Trumbore), with bestMatch: the nearest
 // triangle the ray hits among the faces `culling` keeps, or -1. Front is counter-clockwise
-// (gpu3d.c).
+// (door.c).
 // PENDING3D: pick-culling-follows-material
 export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): float32 {
 	let best: float32 = -1.0;

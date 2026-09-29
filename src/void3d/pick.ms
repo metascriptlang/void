@@ -6,7 +6,7 @@ import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
 import { MeshData } from "./meshData";
 import { Material } from "./material";
-import { Face } from "./pass";
+import { Face } from "../gpu/state";
 import { Ray } from "./ray";
 import {
 	Scene3D,

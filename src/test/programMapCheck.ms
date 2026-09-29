@@ -12,7 +12,7 @@ import {
 	UNIFORM_SLOTS,
 	uniformBlockLength,
 } from "../void3d/gpu3d";
-import { RenderState } from "../void3d/pass";
+import { RenderState } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import {

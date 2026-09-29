@@ -6,8 +6,16 @@ import {
 	Operation,
 	BlendMode,
 	COLOR_MASK_ALL,
-} from "../void3d/pass";
-import { Program, VertexLayout, IndexType, PixelFormat, LoadAction } from "../void3d/gpu3d";
+} from "../gpu/state";
+import {
+	Program,
+	VertexLayout,
+	vertexLayoutOf,
+	doorProgram,
+	doorLayout,
+	registeredLayout,
+} from "../void3d/gpu3d";
+import { PixelFormat, LoadAction, MAX_PROGRAMS } from "../gpu/door";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -15,14 +23,15 @@ import {
 	NO_DEPTH,
 	SWAPCHAIN_LAYOUT,
 	layoutOf,
-} from "../void3d/target";
+} from "../gpu/target";
 import {
 	PipelineKey,
 	pipelineKey,
 	describePipeline,
+	IndexType,
 	LAYOUT_LIMIT,
 	PROGRAM_COUNT,
-} from "../void3d/pipelineCache";
+} from "../gpu/pipeline";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, reserveUniforms, writeUniforms } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
@@ -74,11 +83,17 @@ function blendModes(): Vec<BlendMode> {
 const NOT_INDEXED: boolean = false;
 
 function litKey(indexed: boolean, state: RenderState): PipelineKey {
-	return pipelineKey(Program.Lit, VertexLayout.Lit, indexed, state, sceneLayout());
+	return pipelineKey(doorProgram(Program.Lit), doorLayout(VertexLayout.Lit), indexed, state, sceneLayout());
 }
 
 function billboardKey(state: RenderState, targets: TargetLayout): uint64 {
-	return pipelineKey(Program.Billboard, VertexLayout.Billboard, NOT_INDEXED, state, targets).bits;
+	return pipelineKey(
+		doorProgram(Program.Billboard),
+		doorLayout(VertexLayout.Billboard),
+		NOT_INDEXED,
+		state,
+		targets,
+	).bits;
 }
 
 test "render state defaults match new h3d.mat.Pass" {
@@ -153,9 +168,9 @@ test "a different state, program, layout or target gives a different key" {
 		billboardKey(state.withCulling(Face.Back), targets),
 		billboardKey(state.withBlendMode(BlendMode.Alpha), targets),
 		billboardKey(state.withColorMask(true, true, true, false), targets),
-		pipelineKey(Program.Lit, VertexLayout.Billboard, NOT_INDEXED, state, targets).bits,
-		pipelineKey(Program.Billboard, VertexLayout.Lit, NOT_INDEXED, state, targets).bits,
-		pipelineKey(Program.Billboard, VertexLayout.Billboard, true, state, targets).bits,
+		pipelineKey(doorProgram(Program.Lit), doorLayout(VertexLayout.Billboard), NOT_INDEXED, state, targets).bits,
+		pipelineKey(doorProgram(Program.Billboard), doorLayout(VertexLayout.Lit), NOT_INDEXED, state, targets).bits,
+		pipelineKey(doorProgram(Program.Billboard), doorLayout(VertexLayout.Billboard), true, state, targets).bits,
 		billboardKey(state, { ...targets, depth: PixelFormat.None }),
 		billboardKey(state, { ...targets, color1: PixelFormat.None }),
 		billboardKey(state, { ...targets, sampleCount: 4 }),
@@ -182,8 +197,8 @@ test "target layout of a pass reads its attachment formats" {
 	assert layoutOf(post, NO_DEPTH).formatBits() != layout.formatBits();
 }
 
-// Enough for any descriptor; the exact length lives in gpu3d.h, which this directory must not
-// import (msc 0.2.53 would compile gpu3d.c a second time, see docs/VOID3D.md).
+// Enough for any descriptor; the exact length lives in door.h, which this directory must not
+// import (msc 0.2.53 would compile door.c a second time, see docs/VOID3D.md).
 const DESCRIPTOR_ROOM: int32 = 32;
 
 function described(
@@ -196,7 +211,7 @@ function described(
 	for (let i = 0; i < DESCRIPTOR_ROOM; i++) {
 		descriptor[i] = 0;
 	}
-	describePipeline(descriptor, 7, layout, indexed, state, targets);
+	describePipeline(descriptor, 7, doorLayout(layout), indexed, state, targets);
 	return descriptor;
 }
 
@@ -236,7 +251,7 @@ test "the descriptor carries the index type, and only the index type, for an ind
 }
 
 // The key packs the vertex layout in three bits and the indexed flag in the fourth; one more
-// layout than this and it needs a second word (pipelineCache.ms).
+// layout than this and it needs a second word (../gpu/pipeline.ms).
 // The indexed flag is bit 3 of the layout field. If the layout were written unmasked, an
 // ordinal of 8 would set that bit and be indistinguishable from an indexed layout 0.
 test "a vertex layout ordinal cannot forge the indexed flag" {
@@ -247,8 +262,8 @@ test "a vertex layout ordinal cannot forge the indexed flag" {
 	assert !plain.isIndexed() && indexed.isIndexed();
 	assert plain.bits != indexed.bits;
 	const forged: PipelineKey = pipelineKey(
-		Program.Lit,
-		(8 as int32) as VertexLayout,
+		doorProgram(Program.Lit),
+		doorLayout((8 as int32) as VertexLayout),
 		NOT_INDEXED,
 		state,
 		targets,
@@ -294,26 +309,41 @@ test "a pipeline key decodes back into what built it" {
 		.withBlendMode(BlendMode.Alpha)
 		.withColorMask(true, true, true, false);
 	const key: PipelineKey = pipelineKey(
-		Program.Billboard,
-		VertexLayout.Billboard,
+		doorProgram(Program.Billboard),
+		doorLayout(VertexLayout.Billboard),
 		true,
 		state,
 		sceneLayout(),
 	);
-	assert key.program() == Program.Billboard;
-	assert key.vertexLayout() == VertexLayout.Billboard;
+	assert key.program() == doorProgram(Program.Billboard);
+	assert key.vertexLayout() == doorLayout(VertexLayout.Billboard);
 	assert key.isIndexed();
 	assert key.indexType() == IndexType.Uint16;
 	assert key.renderState() == state;
 	assert key.targetLayout().formatBits() == sceneLayout().formatBits();
 	const screen: TargetLayout = TargetLayout.fromFormatBits(SWAPCHAIN_LAYOUT.formatBits());
 	assert screen.toString() == SWAPCHAIN_LAYOUT.toString();
-	const text: string = key.toString();
-	assert text.indexOf("program=Billboard layout=Billboard indexType=Uint16 colors=Rgba8,Rgba8") == 0;
-	assert text.indexOf("blend=SourceAlpha,OneMinusSourceAlpha") > 0;
-	assert text.indexOf("colorMask=7") > 0;
+	const head: string = `program=${key.program()} layout=${key.vertexLayout()}` +
+		" indexType=Uint16 colors=Rgba8,Rgba8";
+	assert key.toString().indexOf(head) == 0;
+	assert key.toString().indexOf("blend=SourceAlpha,OneMinusSourceAlpha") > 0;
+	assert key.toString().indexOf("colorMask=7") > 0;
 }
 
-test "the shader table has a slot for every program, the last one included" {
-	assert (Program.PixelArtBlit as int32) == PROGRAM_COUNT - 1;
+test "void3d's registration fits the door's registry and names each program's layout" {
+	assert doorProgram(Program.PixelArtBlit) < MAX_PROGRAMS;
+	assert (Program.PixelArtBlit as int32) + 1 <= PROGRAM_COUNT;
+	for (const program of [
+		Program.Lit,
+		Program.Particle,
+		Program.Billboard,
+		Program.Copy,
+		Program.PixelArtLit,
+		Program.PixelArtParticle,
+		Program.PixelArtBillboard,
+		Program.PixelArtPost,
+		Program.PixelArtBlit,
+	]) {
+		assert registeredLayout(program) == doorLayout(vertexLayoutOf(program));
+	}
 }

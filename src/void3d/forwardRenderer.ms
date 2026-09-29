@@ -2,7 +2,8 @@
 // colour and depth targets: the Android swapchain has no depth buffer (bridgeAndroid.c).
 
 import { Vec4 } from "../math/math3d";
-import { Program, PixelFormat, LoadAction, FilterMode, Wrap, endPass } from "./gpu3d";
+import { Program } from "./gpu3d";
+import { PixelFormat, LoadAction, FilterMode, Wrap, endPass } from "../gpu/door";
 import { commit } from "../sokol/gpu";
 import { Material, Phase } from "./material";
 import {
@@ -15,7 +16,7 @@ import {
 	SWAPCHAIN_LAYOUT,
 	beginPass,
 	beginScreenPass,
-} from "./target";
+} from "../gpu/target";
 import { DrawContext, DrawItem, MaterialId, MaterialError, addMaterial } from "./draw";
 import { screenState } from "./screenFx";
 import {

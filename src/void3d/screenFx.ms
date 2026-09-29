@@ -5,7 +5,7 @@
 
 import { identity } from "../math/math3d";
 import { makeVertexBuffer } from "./gpu3d";
-import { RenderState, Face, Compare } from "./pass";
+import { RenderState, Face, Compare } from "../gpu/state";
 import { GpuMesh, DrawItem, MeshId, MaterialId } from "./draw";
 
 // One triangle covering clip space; the rasterizer clips it to the target.

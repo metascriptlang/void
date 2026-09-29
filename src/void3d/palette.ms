@@ -7,13 +7,8 @@
 // a palette swap (day/night, a season, a faded look) rewrites pixels and touches no pipeline,
 // and the image is rebuilt from `pixels` after a context loss.
 
-import {
-	makeDynamicImage,
-	makeTextureView,
-	updateImage,
-	destroyImage,
-	destroyView,
-} from "./gpu3d";
+import { makeDynamicImage, updateImage, destroyImage } from "./gpu3d";
+import { makeTextureView, destroyView } from "../gpu/door";
 
 export const DEFAULT_PALETTE_LEVELS: int32 = 16;
 // 32 * 32 = 1024 texels across, half of GLES3's minimum texture size limit.

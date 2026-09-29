@@ -7,7 +7,7 @@
 // count does (a structural change), so a frame allocates nothing.
 
 import { DrawContext, DrawItem, drawItem } from "./draw";
-import { TargetLayout } from "./target";
+import { TargetLayout } from "../gpu/target";
 import { Material, Phase, UniformBlock } from "./material";
 import { Program } from "./gpu3d";
 

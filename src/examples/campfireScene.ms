@@ -16,20 +16,22 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	Program,
-	FilterMode,
-	Wrap,
 	makeVertexBuffer,
 	makeImage,
-	makeTextureView,
 	destroyBuffer,
 	destroyImage,
+} from "../void3d/gpu3d";
+import {
+	FilterMode,
+	Wrap,
+	makeTextureView,
 	destroyView,
 	destroySampler,
 	originTopLeft,
-} from "../void3d/gpu3d";
-import { RenderState, Face, Compare } from "../void3d/pass";
+} from "../gpu/door";
+import { RenderState, Face, Compare } from "../gpu/state";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
-import { Sampler } from "../void3d/target";
+import { Sampler } from "../gpu/target";
 import {
 	EXTERNAL_GENERATION,
 	DrawContext,

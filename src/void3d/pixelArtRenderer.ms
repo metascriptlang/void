@@ -19,14 +19,10 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 	VertexLayout,
-	PixelFormat,
-	LoadAction,
-	FilterMode,
-	Wrap,
-	endPass,
 	originTopLeft,
 	depthZeroToOne,
 } from "./gpu3d";
+import { PixelFormat, LoadAction, FilterMode, Wrap, endPass } from "../gpu/door";
 import { commit } from "../sokol/gpu";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { ProgramMap, ProgramError } from "./programMap";
@@ -40,7 +36,7 @@ import {
 	SWAPCHAIN_LAYOUT,
 	beginPass,
 	beginScreenPass,
-} from "./target";
+} from "../gpu/target";
 import {
 	DrawContext,
 	DrawItem,
@@ -51,7 +47,8 @@ import {
 	writeUniforms,
 } from "./draw";
 import { UniformError } from "./uniformPool";
-import { PipelineKey, pipelineKey } from "./pipelineCache";
+import { PipelineKey } from "../gpu/pipeline";
+import { pipelineKey } from "./gpu3d";
 import { LowResView, ViewError, lowResView } from "./blit";
 import {
 	PaletteLut,

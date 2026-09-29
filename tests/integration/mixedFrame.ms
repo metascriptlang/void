@@ -15,9 +15,9 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
-	endPass,
 } from "../../src/void3d/gpu3d";
-import { RenderState } from "../../src/void3d/pass";
+import { endPass } from "../../src/gpu/door";
+import { RenderState } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addBox } from "../../src/void3d/meshData";
 import { UniformError } from "../../src/void3d/uniformPool";
@@ -47,7 +47,7 @@ import {
 	collectLights,
 } from "../../src/void3d/scene";
 import { OrthoCamera, CameraView, CameraError } from "../../src/void3d/camera";
-import { beginScreenPass } from "../../src/void3d/target";
+import { beginScreenPass } from "../../src/gpu/target";
 import { markChanged } from "../../src/void3d/renderer";
 import {
 	ForwardRenderer,

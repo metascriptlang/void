@@ -1,9 +1,12 @@
 // Render state of a material pass: port of the fixed-function half of h3d.mat.Pass
-// (culling, depth, blend, colorMask). Shader lists, stencil, depth clamp and wireframe are
-// not ported: a Material names one sokol-shdc program instead (docs/VOID3D.md).
+// (culling, depth, blend, colorMask), the one render-state value both render layers share —
+// h3d.mat.BlendMode is h2d's (`h3d/mat/BlendMode.hx:3`), so it goes through the GPU door
+// with the state it selects (docs/VOID3D.md, "Shared with void2d"). Shader lists, stencil,
+// depth clamp and wireframe are not ported: a Material names one sokol-shdc program instead.
 //
 // The state is a plain value; `bits()` packs it into the uint32 that the pipeline cache keys
 // on, the way Heaps' BitsBuilder packs Pass.bits, and `RenderState.fromBits` reads it back.
+// The members are sent to door.c as ordinals and mapped by its tables, in this order.
 
 // h3d.mat.Data.Face; Both is not ported (sokol has no cull-all mode).
 export enum Face {

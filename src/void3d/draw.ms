@@ -31,8 +31,9 @@ import {
 } from "./gpu3d.h";
 import { Material, UniformBlock, NO_UNIFORMS } from "./material";
 import { MeshData } from "./meshData";
-import { PipelineCache, pipelineFor } from "./pipelineCache";
-import { TargetLayout } from "./target";
+import { PipelineCache } from "../gpu/pipeline";
+import { pipelineFor } from "./gpu3d";
+import { TargetLayout } from "../gpu/target";
 import {
 	UniformPool,
 	UniformError,

@@ -3,6 +3,8 @@ import {
 	Program,
 	VertexLayout,
 	vertexLayoutOf,
+	doorProgram,
+	doorLayout,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
@@ -10,7 +12,7 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { RenderState } from "../void3d/pass";
+import { RenderState } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
@@ -30,7 +32,7 @@ import {
 import { lastMaterial, added, litShape } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
-import { PipelineKey } from "../void3d/pipelineCache";
+import { PipelineKey } from "../gpu/pipeline";
 import { LowResView, ViewError, lowResView } from "../void3d/blit";
 import {
 	PaletteLut,
@@ -305,14 +307,16 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 }
 
 test "screen passes have one pipeline each, whatever the settings or palette" {
-	const post: string = "program=PixelArtPost layout=Fullscreen indexType=None" +
+	const postHead: string = `program=${doorProgram(Program.PixelArtPost)}` +
+		` layout=${doorLayout(VertexLayout.Fullscreen)} indexType=None` +
 		" colors=Rgba8 depth=None sampleCount=1" +
 		" culling=None depthWrite=false depthTest=Always blend=One,Zero alphaBlend=One,Zero" +
 		" operation=Add,Add colorMask=15";
 	const postKey: PipelineKey = screenKey(Stage.Post);
-	assert postKey.toString() == post;
+	assert postKey.toString() == postHead;
 	const blit: string = screenKey(Stage.Blit).toString();
-	const blitHead: string = "program=PixelArtBlit layout=Fullscreen indexType=None" +
+	const blitHead: string = `program=${doorProgram(Program.PixelArtBlit)}` +
+		` layout=${doorLayout(VertexLayout.Fullscreen)} indexType=None` +
 		" colors=Default depth=Default";
 	assert blit.indexOf(blitHead) == 0;
 	assert screenKey(Stage.Post).bits != screenKey(Stage.Blit).bits;

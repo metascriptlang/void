@@ -18,7 +18,7 @@ import {
 	removeChildren,
 } from "../../src/void3d/scene";
 import { Renderer, RendererError, beginFrame } from "../../src/void3d/renderer";
-import { RenderTarget } from "../../src/void3d/target";
+import { RenderTarget } from "../../src/gpu/target";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 

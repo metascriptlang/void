@@ -1,7 +1,8 @@
-// Render targets and passes: the target half of h3d.mat.Texture (a texture allocated with
-// TextureFlags.Target) plus the attachments + clear that Heaps splits between
-// Engine.pushTargets and Engine.clear. sokol wants both at sg_begin_pass, so here they are one
-// call. A target keeps its size and format, so it can be allocated again after context loss.
+// Render targets and passes, through the GPU door: the target half of h3d.mat.Texture (a
+// texture allocated with TextureFlags.Target) plus the attachments + clear that Heaps splits
+// between Engine.pushTargets and Engine.clear. sokol wants both at sg_begin_pass, so here they
+// are one call. A target keeps its size and format, so it can be allocated again after context
+// loss. Any layer draws through this (docs/VOID3D.md, "Shared with void2d").
 
 import { Vec4 } from "../math/math3d";
 import {
@@ -17,18 +18,18 @@ import {
 	destroyView,
 	destroySampler,
 	beginPassWith,
-	beginSwapchainPass,
-} from "./gpu3d";
+	beginScreenPassWith,
+} from "./door";
 import {
-	GPU3D_MAX_COLOR_ATTACHMENTS,
-	GPU3D_PASS_COLOR_VIEW,
-	GPU3D_PASS_COLOR_LOAD,
-	GPU3D_PASS_DEPTH_VIEW,
-	GPU3D_PASS_DEPTH_LOAD,
-	GPU3D_PASS_LENGTH,
-	GPU3D_PASS_CLEAR_DEPTH,
-	GPU3D_PASS_CLEAR_LENGTH,
-} from "./gpu3d.h";
+	DOOR_MAX_COLOR_ATTACHMENTS,
+	DOOR_PASS_COLOR_VIEW,
+	DOOR_PASS_COLOR_LOAD,
+	DOOR_PASS_DEPTH_VIEW,
+	DOOR_PASS_DEPTH_LOAD,
+	DOOR_PASS_LENGTH,
+	DOOR_PASS_CLEAR_DEPTH,
+	DOOR_PASS_CLEAR_LENGTH,
+} from "./door.h";
 
 export struct RenderTarget {
 	width: int32;
@@ -98,8 +99,8 @@ export const SWAPCHAIN_LAYOUT: TargetLayout = {
 
 const FORMAT_BITS: int32 = 4;
 
-let passDescriptor: Vec<uint32> = new Array(GPU3D_PASS_LENGTH);
-let passClear: Vec<float32> = new Array(GPU3D_PASS_CLEAR_LENGTH);
+let passDescriptor: Vec<uint32> = new Array(DOOR_PASS_LENGTH);
+let passClear: Vec<float32> = new Array(DOOR_PASS_CLEAR_LENGTH);
 
 // A `sampled` target also gets a texture view, for a later pass to read it.
 export function allocate(
@@ -187,7 +188,7 @@ function formatAt(colors: Span<ColorAttachment>, index: int32): PixelFormat {
 	return index < (colors.length as int32) ? colors[index].format : PixelFormat.None;
 }
 
-// Offscreen targets are single-sampled (gpu3d.c makes them with sample_count 1).
+// Offscreen targets are single-sampled (door.c makes them with sample_count 1).
 export function layoutOf(colors: Span<ColorAttachment>, depth: DepthAttachment): TargetLayout {
 	return {
 		color0: formatAt(colors, 0),
@@ -240,24 +241,25 @@ export function toString(this layout: TargetLayout): string {
 	return `colors=${colors} depth=${layout.depth.toString()} sampleCount=${layout.sampleCount}`;
 }
 
-// sg_begin_pass on up to four color attachments and an optional depth attachment.
+// sg_begin_pass on up to four color attachments and an optional depth attachment. The door
+// stops while a pass is already open, naming the call.
 export function beginPass(colors: Span<ColorAttachment>, depth: DepthAttachment): void {
-	for (let i = 0; i < GPU3D_MAX_COLOR_ATTACHMENTS; i++) {
+	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		const color: ColorAttachment = i < (colors.length as int32) ? colors[i] : UNUSED_COLOR;
-		passDescriptor[GPU3D_PASS_COLOR_VIEW + i] = color.view;
-		passDescriptor[GPU3D_PASS_COLOR_LOAD + i] = (color.load as int32) as uint32;
+		passDescriptor[DOOR_PASS_COLOR_VIEW + i] = color.view;
+		passDescriptor[DOOR_PASS_COLOR_LOAD + i] = (color.load as int32) as uint32;
 		passClear[i * 4] = color.clear.x;
 		passClear[i * 4 + 1] = color.clear.y;
 		passClear[i * 4 + 2] = color.clear.z;
 		passClear[i * 4 + 3] = color.clear.w;
 	}
-	passDescriptor[GPU3D_PASS_DEPTH_VIEW] = depth.view;
-	passDescriptor[GPU3D_PASS_DEPTH_LOAD] = (depth.load as int32) as uint32;
-	passClear[GPU3D_PASS_CLEAR_DEPTH] = depth.clear;
+	passDescriptor[DOOR_PASS_DEPTH_VIEW] = depth.view;
+	passDescriptor[DOOR_PASS_DEPTH_LOAD] = (depth.load as int32) as uint32;
+	passClear[DOOR_PASS_CLEAR_DEPTH] = depth.clear;
 	beginPassWith(passDescriptor, passClear);
 }
 
 // The host's swapchain, color cleared to `clear` and depth to 1; pipelines use SWAPCHAIN_LAYOUT.
 export function beginScreenPass(clear: Vec4): void {
-	beginSwapchainPass(clear.x, clear.y, clear.z, clear.w);
+	beginScreenPassWith(clear.x, clear.y, clear.z, clear.w);
 }

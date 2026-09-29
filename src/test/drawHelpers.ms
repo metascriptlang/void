@@ -1,5 +1,5 @@
 import { Program } from "../void3d/gpu3d";
-import { RenderState } from "../void3d/pass";
+import { RenderState } from "../gpu/state";
 import { Material, Phase } from "../void3d/material";
 import { MeshData } from "../void3d/meshData";
 import {

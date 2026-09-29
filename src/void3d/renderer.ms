@@ -29,7 +29,7 @@ import {
 	samplerSlotMask,
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
-import { TargetLayout } from "./target";
+import { TargetLayout } from "../gpu/target";
 import {
 	DrawContext,
 	DrawItem,
@@ -44,7 +44,7 @@ import {
 	drawItem,
 	MODEL_SLOT,
 } from "./draw";
-import { forgetPipelines } from "./pipelineCache";
+import { forgetPipelines } from "../gpu/pipeline";
 import { UniformError, ownRange } from "./uniformPool";
 import { PassList, collect, sortBackToFront, drawPassList } from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";

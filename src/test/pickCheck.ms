@@ -2,7 +2,7 @@ import { Vec3, vec3, eulerQuat, translation, scaling, identity } from "../math/m
 import { Bounds3D } from "../void3d/bounds";
 import { MeshData, Rgba, addBox, addPlane, addVertex, addTriangle } from "../void3d/meshData";
 import { Material, Phase } from "../void3d/material";
-import { RenderState, Face } from "../void3d/pass";
+import { RenderState, Face } from "../gpu/state";
 import { Program } from "../void3d/gpu3d";
 import { Ray } from "../void3d/ray";
 import {

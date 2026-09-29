@@ -49,7 +49,7 @@
 # ms-prelude: import { Bounds3D } from "../../../src/void3d/bounds";
 # ms-prelude: import { Ray } from "../../../src/void3d/ray";
 # ms-prelude: import { MeshData, Rgba, addVertex, addTriangle } from "../../../src/void3d/meshData";
-# ms-prelude: import { Face, RenderState } from "../../../src/void3d/pass";
+# ms-prelude: import { Face, RenderState } from "../../../src/gpu/state";
 # ms-prelude: import { Material, Phase } from "../../../src/void3d/material";
 # ms-prelude: import { Program } from "../../../src/void3d/gpu3d";
 # ms-prelude: import {
