@@ -870,7 +870,7 @@ run_oracle() {
 STYLE_PATHS="src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
-	tests/integration/mixedFrame.ms tests/aborts3d"
+	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/aborts3d"
 
 run_style() {
 	long=$(
@@ -1483,6 +1483,24 @@ run_compose() {
 	fi
 }
 
+# A file that imports both layers: every function name void2d and void3d both export resolves to
+# its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
+run_both_layers() {
+	rm -f out/tmp/bothLayers.exe
+	if ! msc build tests/integration/bothLayers.ms --output=out/tmp/bothLayers.exe \
+		> "$WORK/both.build.log" 2>&1; then
+		fail "both layers: tests/integration/bothLayers.ms does not build"
+		tail -30 "$WORK/both.build.log"
+		return
+	fi
+	if out/tmp/bothLayers.exe > "$WORK/both.run.log" 2>&1 && grep -q '^PASS both layers' "$WORK/both.run.log"; then
+		pass "$(grep '^PASS both layers' "$WORK/both.run.log" | sed 's/^PASS //')"
+	else
+		fail "both layers: a shared name resolved to the other layer"
+		grep -E '^FAIL' "$WORK/both.run.log" | sed 's/^/      /'
+	fi
+}
+
 # The tests/aborts protocol of void2d's gate: the first line names what the program must say as it
 # stops, and a program that runs to the end fails.
 run_aborts() {
@@ -1593,6 +1611,7 @@ run_tests
 run_gltf_cpu
 run_captures
 run_compose
+run_both_layers
 run_aborts
 run_manifest
 run_allocation
