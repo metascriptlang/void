@@ -114,7 +114,11 @@ static void registerOnce(void) {
 		describeLayout(i, &layouts[i]);
 	}
 	g_layoutBase = doorRegisterLayouts(layouts, 4);
-	g_programBase = doorRegisterPrograms(PROGRAMS, PROGRAM_LAYOUTS, GPU3D_PROGRAM_TABLE_LENGTH);
+	int32_t programLayouts[GPU3D_PROGRAM_TABLE_LENGTH];
+	for (int32_t i = 0; i < GPU3D_PROGRAM_TABLE_LENGTH; i++) {
+		programLayouts[i] = g_layoutBase + PROGRAM_LAYOUTS[i];
+	}
+	g_programBase = doorRegisterPrograms(PROGRAMS, programLayouts, GPU3D_PROGRAM_TABLE_LENGTH);
 }
 
 int32_t gpu3dProgramBase(void) {

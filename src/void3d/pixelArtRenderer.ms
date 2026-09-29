@@ -18,11 +18,9 @@ import {
 	BILLBOARD_LIGHT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
-	VertexLayout,
-	originTopLeft,
-	depthZeroToOne,
 } from "./gpu3d";
 import { PixelFormat, LoadAction, FilterMode, Wrap, endPass } from "../gpu/door";
+import { originTopLeft, depthZeroToOne } from "../gpu/door";
 import { commit } from "../sokol/gpu";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { ProgramMap, ProgramError } from "./programMap";
@@ -47,8 +45,6 @@ import {
 	writeUniforms,
 } from "./draw";
 import { UniformError } from "./uniformPool";
-import { PipelineKey } from "../gpu/pipeline";
-import { pipelineKey } from "./gpu3d";
 import { LowResView, ViewError, lowResView } from "./blit";
 import {
 	PaletteLut,
@@ -294,14 +290,6 @@ export function writePostParams(
 	out[POST_COLOR_ADJUST + 3] = OFF;
 }
 
-// The pipelines of the screen stages; the scene's depend on its materials, on SCENE_LAYOUT.
-export function screenKey(stage: Stage): PipelineKey {
-	const program: Program = stage == Stage.Blit ? Program.PixelArtBlit : Program.PixelArtPost;
-	const targets: TargetLayout = stage == Stage.Blit ? SWAPCHAIN_LAYOUT : POST_LAYOUT;
-	// The screen triangle is three vertices with no index buffer (screenFx.ms).
-	const indexed: boolean = false;
-	return pipelineKey(program, VertexLayout.Fullscreen, indexed, screenState(), targets);
-}
 
 function reserve(ref context: DrawContext, slot: int32, length: int32): UniformBlock {
 	return try reserveUniforms(context, slot, length) catch NO_UNIFORMS;

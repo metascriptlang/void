@@ -1,36 +1,15 @@
-// void3d's programs and draw path, MetaScript side. void3d's programs and vertex layouts are
-// registered with the GPU door (src/gpu/door.c) once at module load, and the ids handed back
-// are what every door call takes: doorProgram / doorLayout add this layer's base to a Program
-// or VertexLayout ordinal, because registration order is import order and no layer's enum may
-// assume another's base. Buffers, plain and dynamic images, bindings, uniforms and the draw
-// call stay here (gpu3d.c); what both render layers share — programs, pipelines, targets,
-// formats, passes, samplers — is the door's (src/gpu).
-//
-// Enum members are sent to C as ordinals and mapped by tables in door.c, so a member added
-// here must be added there in the same position. Handles are sokol ids as uint32, 0 = none.
-// The bindings layout (GPU3D_BINDING_*) comes from gpu3d.h.
 
 import {
-	makeShader as doorMakeShader,
-	uniformSlotMask as doorUniformSlotMask,
 	uniformBlockBytes as doorUniformBlockBytes,
 	textureSlotMask as doorTextureSlotMask,
 	samplerSlotMask as doorSamplerSlotMask,
 	layoutFloats as doorLayoutFloats,
 	layoutPerInstance as doorLayoutPerInstance,
 	programLayout as doorProgramLayout,
-	originTopLeft as doorOriginTopLeft,
-	depthZeroToOne as doorDepthZeroToOne,
-	contextGeneration as doorContextGeneration,
-	frameIndex as doorFrameIndex,
-	liveBuffers as doorLiveBuffers,
-	UNIFORM_SLOTS as DOOR_UNIFORM_SLOTS,
 } from "../gpu/door";
 import {
 	PipelineCache,
-	PipelineKey,
 	pipelineFor as pipelineForIds,
-	pipelineKey as pipelineKeyIds,
 } from "../gpu/pipeline";
 import { RenderState } from "../gpu/state";
 import { TargetLayout } from "../gpu/target";
@@ -91,21 +70,8 @@ export enum VertexLayout {
 	Fullscreen,
 }
 
-// The layout each program reads: gpu3d.c asserts that every program of a layout declares the
-// core program's attribute slots, and tests hold this map against the registration's own
-// answer (door programLayout).
 export function vertexLayoutOf(program: Program): VertexLayout {
-	return match (program) {
-		Program.Lit => VertexLayout.Lit,
-		Program.Particle => VertexLayout.Particle,
-		Program.Billboard => VertexLayout.Billboard,
-		Program.Copy => VertexLayout.Fullscreen,
-		Program.PixelArtLit => VertexLayout.Lit,
-		Program.PixelArtParticle => VertexLayout.Particle,
-		Program.PixelArtBillboard => VertexLayout.Billboard,
-		Program.PixelArtPost => VertexLayout.Fullscreen,
-		Program.PixelArtBlit => VertexLayout.Fullscreen,
-	};
+	return (doorProgramLayout(doorProgram(program)) - layoutBase) as VertexLayout;
 }
 
 export function drawsQuads(layout: VertexLayout): boolean {
@@ -139,17 +105,6 @@ export const BILLBOARD_UNIFORM_SLOT: int32 = 2;
 export const BILLBOARD_UNIFORM_LENGTH: int32 = 8;
 export const BILLBOARD_COLOR: int32 = 0;
 export const BILLBOARD_LIGHT: int32 = 5;
-
-export const UNIFORM_SLOTS: int32 = DOOR_UNIFORM_SLOTS;
-
-// The layout the door's registration gives one of void3d's programs, as an id.
-export function registeredLayout(program: Program): int32 {
-	return doorProgramLayout(doorProgram(program));
-}
-
-export function uniformSlotMask(program: Program): uint32 {
-	return doorUniformSlotMask(doorProgram(program));
-}
 
 // Floats of the block `program` declares at `slot`, 0 for none, read off its shader desc.
 export function uniformBlockLength(program: Program, slot: int32): int32 {
@@ -194,15 +149,6 @@ export function pipelineFor(
 	);
 }
 
-export function pipelineKey(
-	program: Program,
-	layout: VertexLayout,
-	indexed: boolean,
-	state: RenderState,
-	targets: TargetLayout,
-): PipelineKey {
-	return pipelineKeyIds(doorProgram(program), doorLayout(layout), indexed, state, targets);
-}
 
 export function makeVertexBuffer(data: Span<float32>): uint32 {
 	return gpu3dMakeVertexBuffer(data);
@@ -236,30 +182,6 @@ export function updateBuffer(buffer: uint32, data: Span<float32>): boolean {
 	return gpu3dUpdateBuffer(buffer, data) != 0;
 }
 
-// Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).
-export function originTopLeft(): boolean {
-	return doorOriginTopLeft();
-}
-
-// The depth buffer holds clip z as is (0..1); GL stores (z + 1) / 2 instead.
-export function depthZeroToOne(): boolean {
-	return doorDepthZeroToOne();
-}
-
-// Counts GPU contexts: it changes when the host lost the context and made a new one, and every
-// handle from before is then stale (docs/VOID3D.md, Android lifecycle). Only the Android
-// bridge ever loses its context.
-export function contextGeneration(): int32 {
-	return doorContextGeneration();
-}
-
-export function frameIndex(): uint32 {
-	return doorFrameIndex();
-}
-
-export function liveBuffers(): int32 {
-	return doorLiveBuffers();
-}
 
 export function destroyBuffer(buffer: uint32): void { gpu3dDestroyBuffer(buffer); }
 export function destroyImage(image: uint32): void { gpu3dDestroyImage(image); }

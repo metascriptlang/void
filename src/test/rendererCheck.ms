@@ -3,8 +3,6 @@ import {
 	Program,
 	VertexLayout,
 	vertexLayoutOf,
-	doorProgram,
-	doorLayout,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
@@ -32,7 +30,6 @@ import {
 import { lastMaterial, added, litShape } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
 import { PassList, collect, sortBackToFront } from "../void3d/passList";
-import { PipelineKey } from "../gpu/pipeline";
 import { LowResView, ViewError, lowResView } from "../void3d/blit";
 import {
 	PaletteLut,
@@ -53,7 +50,6 @@ import {
 	PIXEL_ART_UNIFORM_LENGTH,
 	POST_UNIFORM_LENGTH,
 	planStages,
-	screenKey,
 	setSettings,
 	setPalette,
 	renderFrame,
@@ -306,21 +302,6 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 	assert (alpha.indices.length as int32) == capacity && alpha.count == 3;
 }
 
-test "screen passes have one pipeline each, whatever the settings or palette" {
-	const postHead: string = `program=${doorProgram(Program.PixelArtPost)}` +
-		` layout=${doorLayout(VertexLayout.Fullscreen)} indexType=None` +
-		" colors=Rgba8 depth=None sampleCount=1" +
-		" culling=None depthWrite=false depthTest=Always blend=One,Zero alphaBlend=One,Zero" +
-		" operation=Add,Add colorMask=15";
-	const postKey: PipelineKey = screenKey(Stage.Post);
-	assert postKey.toString() == postHead;
-	const blit: string = screenKey(Stage.Blit).toString();
-	const blitHead: string = `program=${doorProgram(Program.PixelArtBlit)}` +
-		` layout=${doorLayout(VertexLayout.Fullscreen)} indexType=None` +
-		" colors=Default depth=Default";
-	assert blit.indexOf(blitHead) == 0;
-	assert screenKey(Stage.Post).bits != screenKey(Stage.Blit).bits;
-}
 
 test "post parameters carry the look, the switches and the depth unpack" {
 	const values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);

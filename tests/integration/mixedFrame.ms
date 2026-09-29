@@ -1,3 +1,13 @@
+import {
+	registrationPreload,
+	foreignProgram,
+	foreignLayout,
+	drawForeign,
+} from "./gpuRegistrationFixture";
+import { PipelineCache, pipelineFor } from "../../src/gpu/pipeline";
+import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
+import { screenState } from "../../src/void3d/screenFx";
+import { openScreen } from "../../src/void3d/renderer";
 import { gfxSetup, fbWidth, fbHeight, commit } from "../../src/sokol/gpu";
 import {
 	setup2d,
@@ -102,6 +112,7 @@ let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
+let foreignCache: PipelineCache = PipelineCache.empty();
 
 function createForward(): ForwardRenderer {
 	const created: Result<ForwardRenderer, ForwardError> =
@@ -175,6 +186,18 @@ function initMixed(): void {
 	gfxSetup();
 	setup2d();
 	buildScene();
+	if (voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) != 0) {
+		let program: int32 = foreignProgram();
+		let layout: int32 = foreignLayout();
+		let before: boolean = voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) == 2;
+		if ((registrationPreload >= 0) != before) {
+			fail("the registration preload ran in the wrong order");
+		}
+		if ((before && (program != 6 || layout != 3)) ||
+			(!before && (program != 15 || layout != 7))) {
+			fail("the foreign consumer did not reach the expected registry boundary");
+		}
+	}
 }
 
 function drawMixed(withQuad: boolean): void {
@@ -200,7 +223,23 @@ function drawMixed(withQuad: boolean): void {
 	}
 	flushTargets();
 	beginScreenPass(SCREEN_CLEAR);
-	if (!swapped) { drawToScreen(forward, context); }
+	if (!swapped) {
+		if (voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) != 0 && stage == 1) {
+			openScreen(forward.core);
+			let pipeline: uint32 = pipelineFor(
+				foreignCache, foreignProgram(), foreignLayout(), false,
+				screenState(), SWAPCHAIN_LAYOUT,
+			);
+			let reused: uint32 = pipelineFor(
+				foreignCache, foreignProgram(), foreignLayout(), false,
+				screenState(), SWAPCHAIN_LAYOUT,
+			);
+			if (pipeline != reused) { fail("the door did not reuse the foreign pipeline"); }
+			drawForeign(pipeline, forward.colorTarget.texture, forward.sampler.handle);
+		} else {
+			drawToScreen(forward, context);
+		}
+	}
 	end2d();
 	if (swapped) { drawToScreen(forward, context); }
 	endPass();

@@ -217,18 +217,21 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 # was built from them in this checkout's build cache. The machine-wide cache is off for the run.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
-	headers="src/gpu/door.h src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h"
+	headers="src/gpu/door.h src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h
+		tests/integration/gpuCopy.glsl.h tests/integration/gpuRegistrationFixture.h"
 	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
 	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/pixelArt3d.glsl.h ] ||
-		[ ! -f src/void3d/gpu3d.h ] || [ ! -f src/gpu/door.h ]; then
-		note "capture: a shader header, gpu3d.h or door.h is missing"
+		[ ! -f src/void3d/gpu3d.h ] || [ ! -f src/gpu/door.h ] ||
+		[ ! -f tests/integration/gpuCopy.glsl.h ] || [ ! -f tests/integration/gpuRegistrationFixture.h ]; then
+		note "capture: a shader or GPU bridge header is missing"
 		return 0
 	fi
 	if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$current" ]; then
 		return 0
 	fi
 	note "capture: a header gpu3d.c or door.c includes changed since the last gate — evicting the objects built from it"
-	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* out/debug/.cache/*door* 2>/dev/null
+	rm -f out/debug/.cache/*gpu3d* out/debug/.cache/*shader3d* out/debug/.cache/*pixelArt3d* \
+		out/debug/.cache/*door* out/debug/.cache/*gpuRegistrationFixture* 2>/dev/null
 	echo "$current" > "$stamp"
 }
 
@@ -294,10 +297,10 @@ run_shaders() {
 	SHDC_LANGS="metal_macos:glsl300es:wgsl:hlsl5"
 	SHDC_LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
 	for SHDC_SRC in src/sokol/shader.glsl src/void2d/shader2d.glsl src/void3d/shader3d.glsl \
-		src/void3d/pixelArt3d.glsl; do
+		src/void3d/pixelArt3d.glsl tests/integration/gpuCopy.glsl; do
 		SHDC_LANGS_PICK="$SHDC_LANGS"
 		case "$SHDC_SRC" in
-			src/sokol/*|src/void3d/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
+			src/sokol/*|src/void3d/*|tests/integration/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
 		esac
 		SHDC_OUT="$WORK/fresh_$(basename "$SHDC_SRC" .glsl).h"
 		if ! "$SHDC" -i "$SHDC_SRC" -o "$SHDC_OUT" -l "$SHDC_LANGS_PICK" -f sokol >/dev/null 2>&1; then
@@ -866,7 +869,8 @@ run_oracle() {
 STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
-	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/aborts3d"
+	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms
+	tests/integration/gpuRegistrationFixture.ms tests/aborts3d"
 
 run_style() {
 	long=$(
@@ -1476,6 +1480,16 @@ run_compose() {
 	else
 		fail "compose: a drawToScreen after a commit did not stop (exit $status)"
 	fi
+	for order in 1 2; do
+		status=0
+		VOID_GPU_REGISTRATION=$order out/tmp/mixedFrame.exe \
+			> "$WORK/registration-$order.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] && grep -q '^PASS mixed frame:' "$WORK/registration-$order.log"; then
+			pass "registration: order $order, foreign shader draws the same lit frame at the registry limits"
+		else
+			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log"
+		fi
+	done
 }
 
 # A file that imports both layers: every function name void2d and void3d both export resolves to

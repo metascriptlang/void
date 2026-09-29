@@ -1,16 +1,3 @@
-// The GPU door, MetaScript side. door.c holds the registries (programs, vertex layouts),
-// turns flat arrays into sokol descriptor structs and tracks which pass is open; which
-// pipelines, targets and passes exist, and in what order they run, is decided above this
-// file (state.ms, target.ms, pipeline.ms, and the render layer that imports them).
-//
-// Enum members are sent to C as ordinals and mapped by tables in door.c, so a member added
-// here must be added there in the same position. Handles are sokol ids as uint32, 0 = none.
-// Program and layout ids are registry ids: a layer registers once (void3d: gpu3d.c) and
-// adds its base to its own ordinals (gpu3d.ms doorProgram / doorLayout).
-
-// The platform bridge is a side-effect import: door.c calls sokol_gfx, whose implementation
-// and the device/swapchain/commit it wraps are linked in by src/sokol/gpu.ms, so every door
-// consumer carries them (bridge.c keeps the device, the swapchain, the views and the commit).
 import "../sokol/gpu";
 
 import {

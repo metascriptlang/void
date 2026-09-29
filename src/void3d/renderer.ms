@@ -21,16 +21,13 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
-	UNIFORM_SLOTS,
-	contextGeneration,
-	frameIndex,
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { TargetLayout } from "../gpu/target";
-import { PassState, passState } from "../gpu/door";
+import { PassState, passState, UNIFORM_SLOTS, contextGeneration, frameIndex } from "../gpu/door";
 import {
 	DrawContext,
 	DrawItem,

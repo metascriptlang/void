@@ -27,5 +27,6 @@ echo "Regenerating shader headers..."
 "$SHDC" -i src/void2d/shader2d.glsl  -o src/void2d/shader2d.glsl.h  -l "$LANGS" -f sokol
 "$SHDC" -i src/void3d/shader3d.glsl  -o src/void3d/shader3d.glsl.h  -l "$LANGS_IOS" -f sokol
 "$SHDC" -i src/void3d/pixelArt3d.glsl -o src/void3d/pixelArt3d.glsl.h -l "$LANGS_IOS" -f sokol
+"$SHDC" -i tests/integration/gpuCopy.glsl -o tests/integration/gpuCopy.glsl.h -l "$LANGS_IOS" -f sokol
 
 echo "OK: shader headers regenerated"

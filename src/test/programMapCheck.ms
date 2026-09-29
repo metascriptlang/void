@@ -9,9 +9,9 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
-	UNIFORM_SLOTS,
 	uniformBlockLength,
 } from "../void3d/gpu3d";
+import { UNIFORM_SLOTS } from "../gpu/door";
 import { RenderState } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";

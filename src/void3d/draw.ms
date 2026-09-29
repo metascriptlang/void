@@ -10,6 +10,7 @@ import {
 	VertexLayout,
 	Program,
 	drawsQuads,
+	doorProgram,
 	applyPipeline,
 	applyBindings,
 	applyUniforms,
@@ -19,9 +20,8 @@ import {
 	makeStreamBuffer,
 	updateBuffer,
 	destroyBuffer,
-	contextGeneration,
-	frameIndex,
 } from "./gpu3d";
+import { contextGeneration, frameIndex } from "../gpu/door";
 import {
 	GPU3D_BINDING_VERTEX_BUFFER,
 	GPU3D_BINDING_INDEX_BUFFER,
@@ -803,13 +803,14 @@ export function drawItem(
 	);
 	applyPipeline(pipeline);
 	bindItem(context, mesh, material);
-	if (context.pipelines.declaresBlock(program, MODEL_SLOT)) {
+	let globalProgram: int32 = doorProgram(program);
+	if (context.pipelines.declaresBlock(globalProgram, MODEL_SLOT)) {
 		item.world.writeTo(context.model[0..MODEL_LENGTH], 0);
 		item.world.normalMatrix().writeTo(context.model[0..MODEL_LENGTH], 16);
 		applyUniforms(MODEL_SLOT, context.model[0..MODEL_LENGTH]);
 	}
 	for (const block of globals) {
-		if (context.pipelines.declaresBlock(program, block.slot)) {
+		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {
 			context.applyBlock(block);
 		}
 	}

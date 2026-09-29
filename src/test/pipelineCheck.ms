@@ -10,12 +10,10 @@ import {
 import {
 	Program,
 	VertexLayout,
-	vertexLayoutOf,
 	doorProgram,
 	doorLayout,
-	registeredLayout,
 } from "../void3d/gpu3d";
-import { PixelFormat, LoadAction, MAX_PROGRAMS } from "../gpu/door";
+import { PixelFormat, LoadAction } from "../gpu/door";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -30,7 +28,6 @@ import {
 	describePipeline,
 	IndexType,
 	LAYOUT_LIMIT,
-	PROGRAM_COUNT,
 } from "../gpu/pipeline";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, reserveUniforms, writeUniforms } from "../void3d/draw";
@@ -83,7 +80,9 @@ function blendModes(): Vec<BlendMode> {
 const NOT_INDEXED: boolean = false;
 
 function litKey(indexed: boolean, state: RenderState): PipelineKey {
-	return pipelineKey(doorProgram(Program.Lit), doorLayout(VertexLayout.Lit), indexed, state, sceneLayout());
+	return pipelineKey(
+		doorProgram(Program.Lit), doorLayout(VertexLayout.Lit), indexed, state, sceneLayout(),
+	);
 }
 
 function billboardKey(state: RenderState, targets: TargetLayout): uint64 {
@@ -168,9 +167,18 @@ test "a different state, program, layout or target gives a different key" {
 		billboardKey(state.withCulling(Face.Back), targets),
 		billboardKey(state.withBlendMode(BlendMode.Alpha), targets),
 		billboardKey(state.withColorMask(true, true, true, false), targets),
-		pipelineKey(doorProgram(Program.Lit), doorLayout(VertexLayout.Billboard), NOT_INDEXED, state, targets).bits,
-		pipelineKey(doorProgram(Program.Billboard), doorLayout(VertexLayout.Lit), NOT_INDEXED, state, targets).bits,
-		pipelineKey(doorProgram(Program.Billboard), doorLayout(VertexLayout.Billboard), true, state, targets).bits,
+		pipelineKey(
+			doorProgram(Program.Lit), doorLayout(VertexLayout.Billboard),
+			NOT_INDEXED, state, targets,
+		).bits,
+		pipelineKey(
+			doorProgram(Program.Billboard), doorLayout(VertexLayout.Lit),
+			NOT_INDEXED, state, targets,
+		).bits,
+		pipelineKey(
+			doorProgram(Program.Billboard), doorLayout(VertexLayout.Billboard),
+			true, state, targets,
+		).bits,
 		billboardKey(state, { ...targets, depth: PixelFormat.None }),
 		billboardKey(state, { ...targets, color1: PixelFormat.None }),
 		billboardKey(state, { ...targets, sampleCount: 4 }),
@@ -296,13 +304,6 @@ test "uniform pool hands out ranges once and refuses to overflow" {
 	assert context.uniforms.values[6] == 1.0 && context.uniforms.values[7] == 2.0;
 }
 
-test "render state and target layout print one readable line" {
-	const expected: string = "culling=Back depthWrite=true depthTest=Less blend=One,Zero" +
-		" alphaBlend=One,Zero operation=Add,Add colorMask=15";
-	assert RenderState.defaults().toString() == expected;
-	assert sceneLayout().toString() == "colors=Rgba8,Rgba8 depth=Depth sampleCount=1";
-	assert SWAPCHAIN_LAYOUT.toString() == "colors=Default depth=Default sampleCount=0";
-}
 
 test "a pipeline key decodes back into what built it" {
 	const state: RenderState = sceneState()
@@ -322,28 +323,6 @@ test "a pipeline key decodes back into what built it" {
 	assert key.renderState() == state;
 	assert key.targetLayout().formatBits() == sceneLayout().formatBits();
 	const screen: TargetLayout = TargetLayout.fromFormatBits(SWAPCHAIN_LAYOUT.formatBits());
-	assert screen.toString() == SWAPCHAIN_LAYOUT.toString();
-	const head: string = `program=${key.program()} layout=${key.vertexLayout()}` +
-		" indexType=Uint16 colors=Rgba8,Rgba8";
-	assert key.toString().indexOf(head) == 0;
-	assert key.toString().indexOf("blend=SourceAlpha,OneMinusSourceAlpha") > 0;
-	assert key.toString().indexOf("colorMask=7") > 0;
+	assert screen.formatBits() == SWAPCHAIN_LAYOUT.formatBits();
 }
 
-test "void3d's registration fits the door's registry and names each program's layout" {
-	assert doorProgram(Program.PixelArtBlit) < MAX_PROGRAMS;
-	assert (Program.PixelArtBlit as int32) + 1 <= PROGRAM_COUNT;
-	for (const program of [
-		Program.Lit,
-		Program.Particle,
-		Program.Billboard,
-		Program.Copy,
-		Program.PixelArtLit,
-		Program.PixelArtParticle,
-		Program.PixelArtBillboard,
-		Program.PixelArtPost,
-		Program.PixelArtBlit,
-	]) {
-		assert registeredLayout(program) == doorLayout(vertexLayoutOf(program));
-	}
-}

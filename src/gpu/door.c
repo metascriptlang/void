@@ -76,7 +76,6 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 
 #define COUNT(table) ((uint32_t)(sizeof(table) / sizeof(table[0])))
 #define LOOKUP(table, index) ((uint32_t)(index) < COUNT(table) ? table[(uint32_t)(index)] : table[0])
-#define LOOKUP_INDEX(index, limit) ((uint32_t)(index) < (uint32_t)(limit) ? (uint32_t)(index) : 0)
 
 // One entry per MetaScript enum member; these catch a member added on one side only. The
 // order still has to be kept by hand, and is covered by the scene image check.
@@ -112,7 +111,13 @@ static void refused(const char *what, int32_t limit) {
 }
 
 int32_t doorRegisterLayouts(const sg_vertex_layout_state *layouts, int32_t count) {
-	if (g_layoutCount + count > DOOR_LAYOUT_REGISTRY_LIMIT) refused("vertex layout", DOOR_LAYOUT_REGISTRY_LIMIT);
+	if (count < 0) {
+		fprintf(stderr, "gpu door: registerLayouts count is negative\n");
+		abort();
+	}
+	if (count > DOOR_LAYOUT_REGISTRY_LIMIT - g_layoutCount) {
+		refused("vertex layout", DOOR_LAYOUT_REGISTRY_LIMIT);
+	}
 	const int32_t base = g_layoutCount;
 	for (int32_t i = 0; i < count; i++) {
 		g_layouts[base + i] = layouts[i];
@@ -122,7 +127,13 @@ int32_t doorRegisterLayouts(const sg_vertex_layout_state *layouts, int32_t count
 }
 
 int32_t doorRegisterPrograms(const door_shader_fn *shaders, const int32_t *layouts, int32_t count) {
-	if (g_programCount + count > DOOR_PROGRAM_REGISTRY_LIMIT) refused("program", DOOR_PROGRAM_REGISTRY_LIMIT);
+	if (count < 0) {
+		fprintf(stderr, "gpu door: registerPrograms count is negative\n");
+		abort();
+	}
+	if (count > DOOR_PROGRAM_REGISTRY_LIMIT - g_programCount) {
+		refused("program", DOOR_PROGRAM_REGISTRY_LIMIT);
+	}
 	const int32_t base = g_programCount;
 	for (int32_t i = 0; i < count; i++) {
 		g_programs[base + i].shader = shaders[i];
@@ -133,12 +144,28 @@ int32_t doorRegisterPrograms(const door_shader_fn *shaders, const int32_t *layou
 }
 
 
+static int32_t programIndex(int32_t program) {
+	if ((uint32_t)program >= (uint32_t)g_programCount) {
+		fprintf(stderr, "gpu door: unregistered program id\n");
+		abort();
+	}
+	return program;
+}
+
+static const sg_vertex_layout_state *layoutOf(int32_t layout) {
+	if ((uint32_t)layout >= (uint32_t)g_layoutCount) {
+		fprintf(stderr, "gpu door: unregistered layout id\n");
+		abort();
+	}
+	return &g_layouts[layout];
+}
+
 int32_t doorProgramLayout(int32_t program) {
-	return (uint32_t)program < (uint32_t)g_programCount ? g_programs[program].layout : g_programs[0].layout;
+	return g_programs[programIndex(program)].layout;
 }
 
 static door_shader_fn shaderOf(int32_t program) {
-	return (uint32_t)program < (uint32_t)g_programCount ? g_programs[program].shader : g_programs[0].shader;
+	return g_programs[programIndex(program)].shader;
 }
 
 uint32_t doorMakeShader(int32_t program) {
@@ -190,7 +217,7 @@ static int32_t formatFloats(sg_vertex_format format) {
 }
 
 int32_t doorLayoutFloats(int32_t layout, int32_t buffer) {
-	const sg_vertex_layout_state *state = &g_layouts[LOOKUP_INDEX(layout, g_layoutCount)];
+	const sg_vertex_layout_state *state = layoutOf(layout);
 	int32_t floats = 0;
 	for (int i = 0; i < SG_MAX_VERTEX_ATTRIBUTES; i++) {
 		if (state->attrs[i].format == SG_VERTEXFORMAT_INVALID || state->attrs[i].buffer_index != buffer) {
@@ -204,7 +231,7 @@ int32_t doorLayoutFloats(int32_t layout, int32_t buffer) {
 }
 
 int32_t doorLayoutPerInstance(int32_t layout) {
-	const sg_vertex_layout_state *state = &g_layouts[LOOKUP_INDEX(layout, g_layoutCount)];
+	const sg_vertex_layout_state *state = layoutOf(layout);
 	return state->buffers[0].step_func == SG_VERTEXSTEP_PER_INSTANCE ? 1 : 0;
 }
 
@@ -215,7 +242,7 @@ uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length) {
 	const uint32_t *d = descriptor;
 	sg_pipeline_desc desc = {0};
 	desc.shader = (sg_shader){.id = d[DOOR_PIPELINE_SHADER]};
-	desc.layout = g_layouts[LOOKUP_INDEX(d[DOOR_PIPELINE_LAYOUT], g_layoutCount)];
+	desc.layout = *layoutOf((int32_t)d[DOOR_PIPELINE_LAYOUT]);
 	desc.cull_mode = LOOKUP(CULL_MODES, d[DOOR_PIPELINE_CULLING]);
 	// glTF, the Blender exporter and the spike wind front faces counter-clockwise.
 	desc.face_winding = SG_FACEWINDING_CCW;

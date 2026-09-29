@@ -1,23 +1,3 @@
-// The GPU door: the one layer-neutral surface both render layers (void2d, void3d) make
-// programs, pipelines, targets, samplers and passes through (docs/VOID3D.md, "Shared with
-// void2d"). It owns the registries that say which programs and vertex layouts exist, as
-// Bevy's RenderDevice owns what every renderer describes its pipelines through; the
-// platform bridge (src/sokol/bridge.c) keeps the device, the swapchain, the views and the
-// commit, and the layer above decides what to build and when.
-//
-// Programs and layouts come in by registration: a layer's C unit registers its sokol-shdc
-// table and vertex layouts once and gets ids back, in link order. Which unit registers is
-// open — that closes M14's "nobody outside src/void3d can add a program". The limits are
-// the pipeline key's whole width (pipeline.ms): sixteen programs, eight layouts; past them
-// the door refuses loudly, because a wider key is a design change, not runtime data.
-//
-// Every pass opens through the door, so it is the one place that knows which pass is open;
-// MetaScript reads doorPassState() and stops misuse with a message naming the call. A pass
-// opened through the bridge directly (the spike, void2d's own targets until its arc moves
-// them onto the door) is invisible to it.
-//
-// Enum arguments are MetaScript ordinals mapped by tables in door.c, so both sides must
-// list the members in the same order (state.ms, target.ms, pipeline.ms).
 #ifndef VOID_GPU_DOOR_H
 #define VOID_GPU_DOOR_H
 

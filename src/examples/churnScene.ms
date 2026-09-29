@@ -8,8 +8,8 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
-	liveBuffers,
 } from "../void3d/gpu3d";
+import { liveBuffers } from "../gpu/door";
 import { RenderState } from "../gpu/state";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, MeshError, Rgba, addBox } from "../void3d/meshData";
