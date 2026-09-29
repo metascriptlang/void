@@ -707,6 +707,7 @@ typedef struct {
 	sg_buffer buf[3];
 	int cap[3];
 	int updatedFrame;
+	int stale;
 	void2dUiInstance *stage;
 	int stageCap;
 } void2dList;
@@ -764,8 +765,14 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
                      const float *uiInstances, int uiInstanceCount,
                      const int *uiRanges, int uiRangeCount) {
 	void2dList *l = listAt(list);
+	if (l && l->stale) {
+		vertexDirty = 1;
+		spriteDirty = 1;
+		uiRangeCount = -1;
+	}
 	int dirty = vertexDirty || spriteDirty || uiRangeCount != 0;
 	if (!l || (dirty && l->updatedFrame == s_frameSerial)) {
+		if (l) { l->stale = 1; }
 		return void2dReplayTargets(targetCommands, targetCommandCount, effects, effectCount,
 			vertices, vertexCount, spriteInstances, spriteInstanceCount,
 			uiInstances, uiInstanceCount);
@@ -813,6 +820,7 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
 		}
 	}
 	if (dirty) { l->updatedFrame = s_frameSerial; }
+	l->stale = 0;
 	s_srcVertex = l->buf[LIST_VERTEX];
 	s_srcSprite = l->buf[LIST_SPRITE];
 	s_srcUi = l->buf[LIST_UI];

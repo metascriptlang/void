@@ -42,6 +42,7 @@ A defect that is in neither column is a hole, and the index is how that stays vi
 | ~~Idle costs a draw~~ | **closed at P5 step 9** — `Scene.isDirty()` gates the host's frame; T4 `idleDirty` 0 on every bench scene | P5 |
 | ~~A sokol view id past 2^24 names another slot in the replay~~ | **closed in P5** — the id travels as two 16-bit halves; T1 "a view id past 2^24 reaches the replay whole" in `displayList.ms` | P5 |
 | ~~Entry points declare `function main()` and nothing calls it~~ | **closed.** `src/examples/mainSokol2d.ms` at P0, and the gate runs the demo rather than only building it; the four void3d entries by the void3d arc at `7b7f163`, on `main` in `3860752`. Row `entry-main-not-called` deleted here, in the commit that rebased onto that main | P0 / void3d arc |
+| P5 retained lists outlive a closed Scene | `scene-retained-lifetime`: permanent Scene teardown is blocked by the compiler's BitSet-vector reset destructor; P5 review B1 and its real scene-churn repro are in REVIEWS.md | P5, blocked on compiler |
 
 ## How a row is read
 
@@ -113,6 +114,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 | style:uniform-box-constructors | T0 | `uniformRadii` and `uniformBorders` in `src/void2d/boxStyle.ms` stay free functions where the human approved `CornerRadii.uniform` and `BorderWidths.uniform` (P4 step 4): two same-name static extensions exported from one module resolve only the first in an importer. Compiler card `../../.inbox/compiler/2026-09-26-same-name-static-extensions-one-module.md` | compiler | 2026-09-26 |
 | ui-box-color-effect | T1 | A styled Rect, and since P4 a Label's text runs, selection and caret, combined with `colorMatrix`, `colorAdd` or `colorKey` are rejected loudly rather than rendered as a square flat fallback or dropped (`render.ms` `emitLabel`, counted by `labelEditingRefusals`). P6 carries the existing colour-effect record through the unified UI shader, then adds a production-emitter assertion before this row is removed | P6 | 2026-09-23 |
 | sdf-non-uniform-bound | T3 | Local-space box and `erf` shadow AA use the affine axes' geometric mean under non-uniform scale. P6 must bound that approximation with an independent coverage case; the legacy `xform/nonUniform` golden only pins its pixels and cannot prove the error | P6 | 2026-09-23 |
+| scene-retained-lifetime | T4 | P5 Scene teardown cannot ship: clearing `Vec<BitSet<E>>` invokes a reference-array destructor and panics; compiler card `2026-09-30-bitset-vec-reset-reference-destructor` holds independent 8-bit and 16-bit repros. The GPU lifecycle implementation is parked, not replaced by an int mask or leaked column | compiler | 2026-09-30 |
 
 ## h2d oracle divergences
 

@@ -1003,3 +1003,126 @@ P5 may assume a UI `present` of 12.41 ms read against its own pairs, an editor s
 whitespace, and a frame path the allocation stage reads function by function. It may not assume
 the Zed look (the human's), the run-colour rule (F2, answered 2026-09-27 as h2d's multiply, built in P5), render bounds apart from
 `getBounds` (its own Lands), or an allocation stage that follows calls (`advanceBlink`).
+
+## P5 review — SEND BACK (2026-09-30)
+
+**Verdict: SEND BACK.** The phase is not ready to land. The retained-list ownership transition
+has no permanent Scene teardown. Same-frame replay coherence was also wrong and is corrected
+below. Neither belongs to P6's different device-loss/occlusion work.
+
+**Passes and scope.** The main-session defect pass inspected the P5 diff's retained upload,
+patch/splice, lane, node ownership and teardown boundaries, and ran the actual failing
+consumers. A fresh `reviewer` agent, `P5DesignPass`, independently reviewed
+`8140882` through the host-services and measurement work (`8ec34ff`), against P5's exits,
+guardrails, TESTING.md and the decision rule. It edited nothing and ran no checks. Its ten
+answers are recorded below; runtime evidence is the main session's, not the reviewer's.
+`src/void3d/particles.ms` is the deliberate main-equivalent overlay, excluded from phase work.
+
+### Findings and resolutions
+
+**B1 — Permanent Scene lifetime, P1, P5-owned: still open.** `displayList.ms` `displayList`
+allocates an id; `scene.ms` owns the list/twin pair; `batcher.c` `listAt` / `ensureListBuffer`
+keep list-private GPU buffers and UI staging. No owner-death transition releases them.
+`node.ms` `dispose` rejects the root. `render.ms` `poolOwner` makes filter targets reusable only
+when their list's serial changes, so an abandoned owner also keeps its filter targets pinned.
+
+The real release consumer `out/tmp/p14probes/sceneLifetime.ms` creates and drops one local
+one-Rect scene per frame. On BUILD `35601908`, 16 frames report live buffers **4, 5, …, 19**.
+This proves permanent owner churn is not covered by the otherwise constant per-node counters.
+The required transition follows h2d's `Scene.dispose` / context disposal
+(`h2d/Scene.hx:727-730`), with existing deferred GPU retirement: release list buffers/staging,
+relinquish targets, release payloads and invalidate old handles. It is not a new mechanism.
+
+An implementation and consumer covering 16 filtered-scene closures plus an unchanged surviving
+scene were attempted. Cleanup reached an installed-compiler bug: resetting
+`Scene.changed: Vec<BitSet<Changed>>` emits `msArrayRefDestroy` for `msUint8Array`, interpreting
+primitive bits as managed pointers. Cache eviction and `MSC_NO_GLOBAL_CACHE=1` did not change it.
+Independent compiler-only 8-bit and 16-bit vectors both panic in `msRefArrayDestroy`; ordinary
+struct-vector reset controls pass. Debug source attribution to a nearby filter assignment was
+misleading; the emitted primitive-vector destructor and tiny repro identify the boundary.
+
+Card: `~/metascript/.inbox/compiler/2026-09-30-bitset-vec-reset-reference-destructor.md`.
+The crashing teardown prototype was **reverted**, not shipped; the work is preserved as
+`out/tmp/p14probes/sceneDisposeBlocked.patch`. No int-mask replacement, draining workaround or
+leaked change column is used. `tests/PENDING.md` scene-retained-lifetime is compiler-blocked;
+the renderer finding remains P5-owned. Unpark only on an installed fixed compiler, prove real
+filtered-scene churn and survivor pixels, then obtain a fresh re-review.
+
+**B2 — Same-frame append fallback versus retained copies, P1: corrected.**
+`batcher.c` `void2dReplayList` sent a second dirty replay before commit through append storage,
+but kept the first contents in its private buffers. `draw.ms` `flushTargets` then called
+`displayList.ms` `uploaded`, clearing the dirty flags. A clean third bracket or later clean
+frame selected the obsolete private copies.
+
+`tests/integration/retainedReplay.ms` paints red, changes to blue, draws a second dirty bracket,
+a third clean bracket and the next clean frame, checking actual captured pixels for vertex,
+sprite and UI streams. Before the fix: third bracket, stream 0, **4278190335 (red)** instead of
+**65535 (blue)**. After the fix: **PASS retained replay: vertex, sprite and UI retain the last
+same-frame write**. The gate now runs this consumer.
+
+The per-list stale latch invalidates all persistent copies on append fallback. Further brackets
+in that same frame stay on append storage; the next legal update refreshes all streams and
+clears the latch. This extends the existing cache-validity rule while retaining sokol's
+one-buffer-update-per-frame protection; it adds no upload API or alternate renderer.
+
+### The ten design questions
+
+1. **Exits met?** Cheap axis-aligned scroll, paint/caret patching, idle scheduling,
+   static-scale timing, unique parenting and host queries are evidenced. B1 prevents SHIP.
+   `present` of a clean scene still replays: zero idle draws means the host gates it on
+   `isDirty`, not that replay silently does nothing.
+2. **Measurements real?** The reviewer read the raw logs. The pre-P3 control has 8/8 clean pairs
+   on both scenes; P4 has UI 8/8 and sprites 7/8, with its one noisy pair declared. Medians and
+   wasm arithmetic match VOID2D.md step 14. These compare unchanged-frame presentation, not
+   dirty-frame or first-paint cost. Single probe readings and pre-host wasm scope are explicit.
+3. **Guardrails 1–9?** No relaxation: painter's order except the explicit checked promise;
+   value-group tables and side data; filters and hoisted passes; no new AA/MSAA dependency;
+   module budgets remain P6; no ClearType; a separate sprite stream; D3D11 proof only.
+   B1 violates the lifetime side of paying only for current use and must be fixed.
+4. **GPUI/reference fidelity?** Paint indices/twin-frame splice, Makepad paint-only writes,
+   equal-byte suppression and clamp/shift scopes match the recorded mechanisms. Full changed
+   stream uploads are deliberate until sokol has range writes. Scheduling/events/virtualization
+   stay N; BoundsTree is W; storage-buffer/base-instance portability is P. Existing dispositions
+   are not reopened.
+5. **Capability and API spirit?** Handles, binders, spans and tables fit MetaScript/void3d.
+   TileGroup retains mixed textures, tint/transform, append, edits and ranges; only sugar is
+   cut. Void supplies hit and text geometry; Neon owns dispatch/layout policy. Scene disposal
+   completes ownership, not convenience.
+6. **Named defects fixed or moved?** Original P5 rows are genuinely closed: Object parenting,
+   scroll, TileGroup, idle signal, glyph detach/second-upload and view-id halves. The independent
+   Heaps oracle holds 20 trees and 4 retained scale modes. B1/B2 are new retention defects, not
+   evidence that an empty original closure list meant the new lifecycle was complete.
+7. **Test tiers appropriate?** T0 covers live handle/query maths; T1 holds stream ranges/order,
+   idempotence, caret/scroll and query/render bounds; T3 supplies independent semantics; T2/T4
+   prove GPU pixels and uploads. The host gate passed 1026 tests plus 299 isolated and 76/76
+   D3D11 images; the added off-viewport seam brought `msc test` to 1027/1027. Stream equality
+   alone cannot prove which GPU buffer a later clean replay binds: B2 now has that GPU pin;
+   permanent Scene death still needs B1's consumer.
+8. **Compiler workaround hidden?** No: existing cards/parks remain named. B1's newly isolated
+   compiler failure is carded and the prototype removed. No compiler repository was edited,
+   no bitset model loosened, and no fallback masks the missing teardown.
+9. **CODE-STYLE §14?** No merge-blocking style defect found in the audited changes. Vec columns,
+   Span inputs, BitSet changes and sized generational ids remain. Line-length hardening is P6.
+   The allocation stage proved 103 frame functions plus 232 reached callees, within its declared
+   limits; it is not a claim about C allocation, growth or every possible path.
+10. **Refuse to merge?** B1 until real permanent teardown holds on the installed compiler and a
+    fresh re-review accepts it. The reviewer initially refused both B1/B2; main's B2 runtime
+    proof corrects that finding but does not replace the owed re-review or post-rebase web gate.
+
+### Owners and next assumptions
+
+P6 keeps device-loss/occlusion, optional module/wasm budgets, shaper/SDF/emoji/deferred fonts,
+zero-area reclamation, styled-box effects, line length and available backend conformance.
+Hardware/T5 captures remain the human's. Neon/Yoga own their host migration and measure hook,
+through their inbox notes. None of those owners can absorb B1 by declaration.
+
+Steps 12 and 14 may be used as their recorded capability and measurement evidence, but **P5 is
+not shipped**. No rebase, land or P6 start is authorised by this SEND BACK. The compiler fix,
+B1 consumer and fresh review are prerequisites, not optional follow-ups.
+
+**Verification after B2, prototype removed:** `sh scripts/gate.sh` on BUILD `35601908` is GREEN:
+1027/1027 tests, 299/299 isolated glyph-page tests, D3D11 76/76 unchanged plus all three golden
+invariants, the retained replay consumer, demo, mixed frame and two-view consumers pass.
+Bench counters match; allocation checks 103 frame functions and 232 callees; the record checks
+16 PENDING rows with zero mismatch. Eight platform/budget skips remain explicit; `--web` was not
+run. This green verifies the reachable changes, **not** B1's missing teardown or a SHIP verdict.

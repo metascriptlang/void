@@ -119,6 +119,14 @@ else
 	fail "mixed 3D/void2d frame lifecycle — see out/gate-mixed-frame.log and out/gate-mixed-frame-run.log"
 fi
 
+if "$MSC" build tests/integration/retainedReplay.ms --release --output=out/retainedReplay.exe \
+		> out/gate-retained-replay.log 2>&1 \
+		&& out/retainedReplay.exe > out/gate-retained-replay-run.log 2>&1; then
+	pass "retained replay: vertex, sprite and UI keep the last same-frame write"
+else
+	fail "retained replay coherence — see out/gate-retained-replay.log and out/gate-retained-replay-run.log"
+fi
+
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
 		&& out/twoViews.exe > out/gate-two-views-run.log 2>&1; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
