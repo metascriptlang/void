@@ -1,8 +1,13 @@
 import { GltfData, validateGltfGraph } from "./gltf";
 import { DrawContext, MeshId, MaterialId } from "./draw";
 import {
-	Scene3D, NodeId3D, SceneError, Transform3D,
-	addGroup, addMeshNode, setName, isLive,
+	Scene3D,
+	NodeId3D,
+	SceneError,
+	Transform3D,
+	addGroup,
+	addMeshNode,
+	setName,
 	NO_NODE_3D,
 } from "./scene";
 

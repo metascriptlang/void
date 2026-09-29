@@ -320,6 +320,36 @@ test "removeChildren lets go of everything under a node and keeps the node" {
 	assert !context.hasMesh(mesh) && !context.hasMaterial(material);
 }
 
+test "a frame swap on a node whose pin a copy of the scene took answers NotPinned" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const shown: MeshId = added(context, quad());
+	const first: MeshId = added(context, quad());
+	const second: MeshId = added(context, quad());
+	const material: MaterialId = plainMaterial(context);
+	let scene: Scene3D = Scene3D.create();
+	const node: NodeId3D =
+		try addMeshNode(scene, context, scene.rootId(), Transform3D.identity(), shown, material)
+		catch NO_ID;
+	setName(scene, node, "pet");
+	const clock: Result<AnimationClock, AnimationError> =
+		AnimationClock.forFrames(2, 1.0, Interpolation.Step);
+	assert clock.ok;
+	if (!clock.ok) { return; }
+	const frames: Vec<MeshId> = [first, second];
+	const made: Result<MeshFrameAnimation, AnimationError> =
+		MeshFrameAnimation.forMeshes(context, clock.value, "pet", frames);
+	assert made.ok;
+	if (!made.ok) { return; }
+	let animation: MeshFrameAnimation = made.value;
+	const _bound: int32 = try bindMeshFrames(animation, scene, scene.rootId()) catch -1;
+	let copy: Scene3D = scene;
+	assert remove(copy, context, node).ok;
+	assert context.hasMesh(shown) && context.meshPinned(shown) == 0;
+	const swapped: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
+	assert !swapped.ok;
+	if (!swapped.ok) { assert swapped.error == AnimationError.NotPinned; }
+}
+
 test "a baked animation holds its frames, the ones off screen too, until it lets them go" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const first: MeshId = added(context, quad());

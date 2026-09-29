@@ -1,5 +1,5 @@
 // expect: void3d: setLightPower on stale node 1: the handle has generation 1, the row 2
-import { DrawContext, MeshId, MaterialId } from "../../src/void3d/draw";
+import { DrawContext } from "../../src/void3d/draw";
 import {
 	Scene3D,
 	NodeId3D,
