@@ -41,7 +41,7 @@ import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
-import { DisplayList, PaintIndex } from "./displayList";
+import { DrawContext2D, PaintIndex } from "./displayList";
 
 export enum DrawKind {
 	Group,
@@ -247,8 +247,8 @@ export interface Scene2D {
 	freeScrolls: Vec<int32>;
 	stack: Vec<int32>;
 	root: int32;
-	list: DisplayList;
-	spare: DisplayList;
+	context: DrawContext2D;
+	spareContext: DrawContext2D;
 	clear: Color;
 	cam: Camera;
 	scaleMode: ScaleMode;

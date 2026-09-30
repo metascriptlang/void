@@ -33,6 +33,9 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
                      const float *uiInstances, int uiInstanceCount,
                      const int *uiRanges, int uiRangeCount);
 
+void void2dRememberContext(int id, int live);
+int void2dActivateContext(int id);
+
 // Replays the swapchain list inside the pass the caller has already opened.
 void void2dReplay(const float *commands, int commandCount,
                   const float *effects, int effectCount,

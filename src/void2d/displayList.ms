@@ -23,7 +23,7 @@
 // carries an index into it, or NO_EFFECT. The active rotated clip adds two projection
 // intervals; axis-aligned clips stay in the hardware scissor.
 
-import { Color, BlendMode } from "./types";
+import { Color, BlendMode, rgba } from "./types";
 import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
@@ -217,7 +217,7 @@ export const NO_PAINT: PaintIndex = {
 
 const MAX_TARGET_DEPTH: int32 = 8;
 
-export interface DisplayList {
+export interface DrawContext2D {
 	id: int32;
 	commands: Vec<float32>;
 	effects: Vec<float32>;
@@ -268,6 +268,46 @@ export interface DisplayList {
 	cameraScope: int32;
 	scopeValues: Vec<float32>;
 	targetScopeSaves: Vec<int32>;
+	originX: float32;
+	originY: float32;
+	runStart: int32;
+	runOpen: boolean;
+	curPipeline: Pipeline;
+	runReason: BreakReason;
+	curView: uint32;
+	curBlend: BlendMode;
+	curSampler: int32;
+	sceneSmooth: boolean;
+	curEffect: int32;
+	frameLive: boolean;
+	fbW: float32;
+	fbH: float32;
+	frameDpi: float32;
+	targetsFlushed: boolean;
+	savedView: Vec<uint32>;
+	savedRun: Vec<float32>;
+	savedSize: Vec<float32>;
+	curMat: Vec<float32>;
+	curAdd: Color;
+	curKey: Color;
+	curHasEffect: boolean;
+	clipStack: Vec<MaskClip>;
+	maskIndices: Vec<int32>;
+	clipDepth: int32;
+	laneRunWasOpen: boolean;
+	scopeDepths: Vec<int32>;
+	saved: Vec<float32>;
+	effectBase: int32;
+	laneOrder: Vec<int32>;
+	laneSourceOffsets: Vec<int32>;
+	laneSourceCounts: Vec<int32>;
+	laneOutputs: Vec<int32>;
+	laneOffsets: Vec<int32>;
+	laneOut: Vec<float32>;
+	laneScratch: Vec<float32>;
+	laneBySprite: Vec<int32>;
+	laneByUi: Vec<int32>;
+	laneByVertex: Vec<int32>;
 }
 
 let serials: Vec<int32> = [];
@@ -276,12 +316,12 @@ let serials: Vec<int32> = [];
 // frame that records no effect at all would otherwise index an empty array to take its
 // address. Counts come from the `*Total` variables, never from `.length`, so the seed is
 // invisible to every reader.
-export function displayList(): DisplayList {
+export function create(this typeof DrawContext2D): DrawContext2D {
 	serials.push(0);
-	return twinList((serials.length as int32) - 1);
+	return DrawContext2D.twin((serials.length as int32) - 1);
 }
 
-export function twinList(id: int32): DisplayList {
+export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 	return {
 		id: id,
 		commands: new Array(COMMAND_FLOATS),
@@ -331,65 +371,110 @@ export function twinList(id: int32): DisplayList {
 		cameraScope: NO_SCOPE,
 		scopeValues: new Array(SCOPE_FLOATS),
 		targetScopeSaves: new Array(MAX_TARGET_DEPTH),
+		originX: 0.0,
+		originY: 0.0,
+		runStart: 0,
+		runOpen: false,
+		curPipeline: Pipeline.Vertex,
+		runReason: BreakReason.First,
+		curView: 0,
+		curBlend: BlendMode.Alpha,
+		curSampler: 0,
+		sceneSmooth: true,
+		curEffect: NO_EFFECT,
+		frameLive: true,
+		fbW: 0.0,
+		fbH: 0.0,
+		frameDpi: 1.0,
+		targetsFlushed: false,
+		savedView: new Array(MAX_TARGET_DEPTH),
+		savedRun: new Array(MAX_TARGET_DEPTH * 3),
+		savedSize: new Array(MAX_TARGET_DEPTH * 4),
+		curMat: [
+			1.0, 0.0, 0.0, 0.0,
+			0.0, 1.0, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			0.0, 0.0, 0.0, 1.0,
+		],
+		curAdd: rgba(0.0, 0.0, 0.0, 0.0),
+		curKey: rgba(0.0, 0.0, 0.0, 0.0),
+		curHasEffect: false,
+		clipStack: new Array(16),
+		maskIndices: new Array(16),
+		clipDepth: 0,
+		laneRunWasOpen: false,
+		scopeDepths: [],
+		saved: [],
+		effectBase: 0,
+		laneOrder: [],
+		laneSourceOffsets: [],
+		laneSourceCounts: [],
+		laneOutputs: [],
+		laneOffsets: [],
+		laneOut: [],
+		laneScratch: [],
+		laneBySprite: [],
+		laneByUi: [],
+		laneByVertex: [],
 	};
 }
 
-const defaultList: DisplayList = displayList();
-let list: DisplayList = defaultList;
+const defaultContext: DrawContext2D = DrawContext2D.create();
+let activeContext: DrawContext2D = defaultContext;
 
-export function useList(next: DisplayList): void { list = next; }
-export function isDefaultList(l: DisplayList): boolean { return l === defaultList; }
-export function useDefaultList(): void { list = defaultList; }
-export function currentList(): DisplayList { return list; }
+export function useContext(next: DrawContext2D): void { activeContext = next; }
+export function isDefaultContext(context: DrawContext2D): boolean { return context === defaultContext; }
+export function useDefaultContext(): void { activeContext = defaultContext; }
+export function currentContext(): DrawContext2D { return activeContext; }
 
-export function resetList(): void {
-	list.commandTotal = 0;
-	list.targetCommandTotal = 0;
-	list.effectTotal = 0;
-	list.vertexTotal = 0;
-	list.uiInstanceTotal = 0;
-	list.spriteInstanceTotal = 0;
-	list.clipRecorded = false;
+export function resetContext(): void {
+	activeContext.commandTotal = 0;
+	activeContext.targetCommandTotal = 0;
+	activeContext.effectTotal = 0;
+	activeContext.vertexTotal = 0;
+	activeContext.uiInstanceTotal = 0;
+	activeContext.spriteInstanceTotal = 0;
+	activeContext.clipRecorded = false;
 	// The rect too, not only the flag. Leaving it meant the first command of a new frame
 	// carried the last clip of the previous one; `popClip` records (0,0,0,0) at depth zero so
 	// a balanced frame always ended clear and production never noticed, but an unbalanced one
 	// would have scissored to a stale rect - and T1 found it at once, because a snapshot then
 	// depended on which test had run before it in the same process.
-	list.clip = NO_CLIP;
-	list.renderTargetScale = 0.0;
-	list.targetDepthNow = 0;
-	list.targetOverflowed = false;
-	list.maskTotal = 0;
-	list.targetsPending = true;
-	list.uploadAll = true;
-	list.limited = false;
-	list.scopeTotal = 0;
-	list.scopeNow = NO_SCOPE;
-	list.cameraScope = NO_SCOPE;
-	list.dirtyVertices = false;
-	list.dirtySprites = false;
-	list.dirtyUiTotal = 0;
-	serials[list.id] = serials[list.id] + 1;
+	activeContext.clip = NO_CLIP;
+	activeContext.renderTargetScale = 0.0;
+	activeContext.targetDepthNow = 0;
+	activeContext.targetOverflowed = false;
+	activeContext.maskTotal = 0;
+	activeContext.targetsPending = true;
+	activeContext.uploadAll = true;
+	activeContext.limited = false;
+	activeContext.scopeTotal = 0;
+	activeContext.scopeNow = NO_SCOPE;
+	activeContext.cameraScope = NO_SCOPE;
+	activeContext.dirtyVertices = false;
+	activeContext.dirtySprites = false;
+	activeContext.dirtyUiTotal = 0;
+	serials[activeContext.id] = serials[activeContext.id] + 1;
 }
 
-export function listSerial(id: int32): int32 { return serials[id]; }
+export function contextSerial(id: int32): int32 { return serials[id]; }
 
 export function pushScope(record: ScopeRecord): int32 {
-	const at: int32 = list.scopeTotal;
-	if (at < (list.scopes.length as int32)) {
-		list.scopes[at] = record;
+	const at: int32 = activeContext.scopeTotal;
+	if (at < (activeContext.scopes.length as int32)) {
+		activeContext.scopes[at] = record;
 	} else {
-		list.scopes.push(record);
+		activeContext.scopes.push(record);
 	}
-	list.scopeTotal = at + 1;
+	activeContext.scopeTotal = at + 1;
 	return at;
 }
 
 export function resolveScopes(): void {
-	const floats: int32 = list.scopeTotal * SCOPE_FLOATS;
-	while ((list.scopeValues.length as int32) < floats) { list.scopeValues.push(0.0); }
-	for (let k: int32 = 0; k < list.scopeTotal; k++) {
-		const r: ScopeRecord = list.scopes[k];
+	const floats: int32 = activeContext.scopeTotal * SCOPE_FLOATS;
+	while ((activeContext.scopeValues.length as int32) < floats) { activeContext.scopeValues.push(0.0); }
+	for (let k: int32 = 0; k < activeContext.scopeTotal; k++) {
+		const r: ScopeRecord = activeContext.scopes[k];
 		const base: int32 = k * SCOPE_FLOATS;
 		let x: float32 = r.x;
 		let y: float32 = r.y;
@@ -399,117 +484,116 @@ export function resolveScopes(): void {
 		let sy: float32 = r.dy;
 		if (r.parent != NO_SCOPE) {
 			const up: int32 = r.parent * SCOPE_FLOATS;
-			const px: float32 = list.scopeValues[up];
-			const py: float32 = list.scopeValues[up + 1];
+			const px: float32 = activeContext.scopeValues[up];
+			const py: float32 = activeContext.scopeValues[up + 1];
 			x = x + px;
 			y = y + py;
 			right = right + px;
 			bottom = bottom + py;
-			const vx: float32 = list.scopeValues[up + 2];
-			const vy: float32 = list.scopeValues[up + 3];
+			const vx: float32 = activeContext.scopeValues[up + 2];
+			const vy: float32 = activeContext.scopeValues[up + 3];
 			if (vx > x) { x = vx; }
 			if (vy > y) { y = vy; }
-			if (vx + list.scopeValues[up + 4] < right) { right = vx + list.scopeValues[up + 4]; }
-			if (vy + list.scopeValues[up + 5] < bottom) { bottom = vy + list.scopeValues[up + 5]; }
+			if (vx + activeContext.scopeValues[up + 4] < right) { right = vx + activeContext.scopeValues[up + 4]; }
+			if (vy + activeContext.scopeValues[up + 5] < bottom) { bottom = vy + activeContext.scopeValues[up + 5]; }
 			sx = sx + px;
 			sy = sy + py;
 		}
-		list.scopeValues[base] = sx;
-		list.scopeValues[base + 1] = sy;
-		list.scopeValues[base + 2] = x;
-		list.scopeValues[base + 3] = y;
-		list.scopeValues[base + 4] = right > x ? right - x : 0.0;
-		list.scopeValues[base + 5] = bottom > y ? bottom - y : 0.0;
+		activeContext.scopeValues[base] = sx;
+		activeContext.scopeValues[base + 1] = sy;
+		activeContext.scopeValues[base + 2] = x;
+		activeContext.scopeValues[base + 3] = y;
+		activeContext.scopeValues[base + 4] = right > x ? right - x : 0.0;
+		activeContext.scopeValues[base + 5] = bottom > y ? bottom - y : 0.0;
 	}
 }
 
-export function scopeRow(l: DisplayList, scope: int32): int32 {
+export function scopeRow(l: DrawContext2D, scope: int32): int32 {
 	return scope == NO_SCOPE ? NO_SCOPE : l.scopes[scope].row;
 }
 
 export function pushMaskClip(c: MaskClip): int32 {
-	const at: int32 = list.maskTotal;
-	if (at < (list.masks.length as int32)) {
-		list.masks[at] = c;
+	const at: int32 = activeContext.maskTotal;
+	if (at < (activeContext.masks.length as int32)) {
+		activeContext.masks[at] = c;
 	} else {
-		list.masks.push(c);
+		activeContext.masks.push(c);
 	}
-	list.maskTotal = at + 1;
+	activeContext.maskTotal = at + 1;
 	return at;
 }
 
-export function maskClipAt(index: int32): MaskClip { return list.masks[index]; }
+export function maskClipAt(index: int32): MaskClip { return activeContext.masks[index]; }
 
 function growPaint(row: int32): void {
-	while ((list.paintStates.length as int32) <= row) {
-		list.paintStarts.push(NO_PAINT);
-		list.paintEnds.push(NO_PAINT);
-		list.paintStates.push(PaintState.Unpainted);
+	while ((activeContext.paintStates.length as int32) <= row) {
+		activeContext.paintStarts.push(NO_PAINT);
+		activeContext.paintEnds.push(NO_PAINT);
+		activeContext.paintStates.push(PaintState.Unpainted);
 	}
 }
 
 export function recordPaint(row: int32, start: PaintIndex, end: PaintIndex): void {
 	growPaint(row);
-	list.paintStarts[row] = start;
-	list.paintEnds[row] = end;
-	list.paintStates[row] = PaintState.Painted;
+	activeContext.paintStarts[row] = start;
+	activeContext.paintEnds[row] = end;
+	activeContext.paintStates[row] = PaintState.Painted;
 }
 
 export function markPaintState(row: int32, state: PaintState): void {
 	growPaint(row);
-	list.paintStates[row] = state;
+	activeContext.paintStates[row] = state;
 }
 
 export function paintStateOf(row: int32): PaintState {
-	if (row >= (list.paintStates.length as int32)) { return PaintState.Unpainted; }
-	return list.paintStates[row];
+	if (row >= (activeContext.paintStates.length as int32)) { return PaintState.Unpainted; }
+	return activeContext.paintStates[row];
 }
 
-export function paintStartOf(row: int32): PaintIndex { return list.paintStarts[row]; }
+export function paintStartOf(row: int32): PaintIndex { return activeContext.paintStarts[row]; }
 
 export function uploaded(): void {
-	list.uploadAll = false;
-	list.dirtyVertices = false;
-	list.dirtySprites = false;
-	list.dirtyUiTotal = 0;
+	activeContext.uploadAll = false;
+	activeContext.dirtyVertices = false;
+	activeContext.dirtySprites = false;
+	activeContext.dirtyUiTotal = 0;
 }
 
-let saved: Vec<float32> = [];
 
 function keep(at: int32, value: float32): void {
-	if (at < (saved.length as int32)) {
-		saved[at] = value;
+	if (at < (activeContext.saved.length as int32)) {
+		activeContext.saved[at] = value;
 	} else {
-		saved.push(value);
+		activeContext.saved.push(value);
 	}
 }
 
 export function saveRange(a: PaintIndex, b: PaintIndex): void {
 	let k: int32 = 0;
 	for (let i: int32 = a.uiInstances * REC_UI_FLOATS; i < b.uiInstances * REC_UI_FLOATS; i++) {
-		keep(k, list.uiInstances[i]);
+		keep(k, activeContext.uiInstances[i]);
 		k = k + 1;
 	}
 	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
-		keep(k, list.spriteInstances[i]);
+		keep(k, activeContext.spriteInstances[i]);
 		k = k + 1;
 	}
 	for (let i: int32 = a.vertices * VERTEX_FLOATS; i < b.vertices * VERTEX_FLOATS; i++) {
-		keep(k, list.vertices[i]);
+		keep(k, activeContext.vertices[i]);
 		k = k + 1;
 	}
 }
 
 function addDirtyUi(from: int32, to: int32): void {
-	const pairs: int32 = list.dirtyUiTotal;
-	if (pairs > 0 && list.dirtyUi[pairs * 2 - 1] == from) {
-		list.dirtyUi[pairs * 2 - 1] = to;
+	const pairs: int32 = activeContext.dirtyUiTotal;
+	if (pairs > 0 && activeContext.dirtyUi[pairs * 2 - 1] == from) {
+		activeContext.dirtyUi[pairs * 2 - 1] = to;
 		return;
 	}
-	while ((list.dirtyUi.length as int32) < (pairs + 1) * 2) { list.dirtyUi.push(0); }
-	list.dirtyUi[pairs * 2] = from;
-	list.dirtyUi[pairs * 2 + 1] = to;
-	list.dirtyUiTotal = pairs + 1;
+	while ((activeContext.dirtyUi.length as int32) < (pairs + 1) * 2) { activeContext.dirtyUi.push(0); }
+	activeContext.dirtyUi[pairs * 2] = from;
+	activeContext.dirtyUi[pairs * 2 + 1] = to;
+	activeContext.dirtyUiTotal = pairs + 1;
 }
 
 export function noteRange(a: PaintIndex, b: PaintIndex): void {
@@ -518,7 +602,7 @@ export function noteRange(a: PaintIndex, b: PaintIndex): void {
 	let last: int32 = -1;
 	for (let r: int32 = a.uiInstances; r < b.uiInstances; r++) {
 		for (let f: int32 = 0; f < REC_UI_FLOATS; f++) {
-			if (saved[k] != list.uiInstances[r * REC_UI_FLOATS + f]) {
+			if (activeContext.saved[k] != activeContext.uiInstances[r * REC_UI_FLOATS + f]) {
 				if (first < 0) { first = r; }
 				last = r;
 			}
@@ -528,37 +612,37 @@ export function noteRange(a: PaintIndex, b: PaintIndex): void {
 	if (first >= 0) { addDirtyUi(first, last + 1); }
 	let changed: boolean = false;
 	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
-		if (saved[k] != list.spriteInstances[i]) { changed = true; }
+		if (activeContext.saved[k] != activeContext.spriteInstances[i]) { changed = true; }
 		k = k + 1;
 	}
-	if (changed) { list.dirtySprites = true; }
+	if (changed) { activeContext.dirtySprites = true; }
 	changed = false;
 	for (let i: int32 = a.vertices * VERTEX_FLOATS; i < b.vertices * VERTEX_FLOATS; i++) {
-		if (saved[k] != list.vertices[i]) { changed = true; }
+		if (activeContext.saved[k] != activeContext.vertices[i]) { changed = true; }
 		k = k + 1;
 	}
-	if (changed) { list.dirtyVertices = true; }
+	if (changed) { activeContext.dirtyVertices = true; }
 }
-export function paintEndOf(row: int32): PaintIndex { return list.paintEnds[row]; }
+export function paintEndOf(row: int32): PaintIndex { return activeContext.paintEnds[row]; }
 
 // Which pipeline set and device scale every command recorded from here will ask the replay
 // to use. A zero scale is the swapchain, whose scale belongs to the frame.
-export function setRenderTargetMode(on: boolean): void { list.renderTargetScale = on ? 1.0 : 0.0; }
-export function renderTargetScaleNow(): float32 { return list.renderTargetScale; }
+export function setRenderTargetMode(on: boolean): void { activeContext.renderTargetScale = on ? 1.0 : 0.0; }
+export function renderTargetScaleNow(): float32 { return activeContext.renderTargetScale; }
 
-export function commandCount(): int32 { return list.commandTotal; }
-export function targetCommandCount(): int32 { return list.targetCommandTotal; }
-export function targetDepth(): int32 { return list.targetDepthNow; }
-export function targetStackOverflowed(): boolean { return list.targetOverflowed; }
+export function commandCount(): int32 { return activeContext.commandTotal; }
+export function targetCommandCount(): int32 { return activeContext.targetCommandTotal; }
+export function targetDepth(): int32 { return activeContext.targetDepthNow; }
+export function targetStackOverflowed(): boolean { return activeContext.targetOverflowed; }
 
 export function targetCommandField(index: int32, field: int32): float32 {
-	return list.targetCommands[index * COMMAND_FLOATS + field];
+	return activeContext.targetCommands[index * COMMAND_FLOATS + field];
 }
-export function effectCount(): int32 { return list.effectTotal; }
-export function vertexCount(): int32 { return list.vertexTotal; }
+export function effectCount(): int32 { return activeContext.effectTotal; }
+export function vertexCount(): int32 { return activeContext.vertexTotal; }
 
 export function commandField(index: int32, field: int32): float32 {
-	return list.commands[index * COMMAND_FLOATS + field];
+	return activeContext.commands[index * COMMAND_FLOATS + field];
 }
 
 export function commandView(index: int32): uint32 {
@@ -574,88 +658,88 @@ function joinView(low: float32, high: float32): uint32 {
 }
 
 function writeView(base: int32, view: uint32): void {
-	list.commands[base + CMD_VIEW] = (view & 0xFFFF) as float32;
-	list.commands[base + CMD_VIEW_HIGH] = (view >> 16) as float32;
+	activeContext.commands[base + CMD_VIEW] = (view & 0xFFFF) as float32;
+	activeContext.commands[base + CMD_VIEW_HIGH] = (view >> 16) as float32;
 }
 
 export function effectField(index: int32, field: int32): float32 {
-	return list.effects[index * EFFECT_FLOATS + field];
+	return activeContext.effects[index * EFFECT_FLOATS + field];
 }
 
 export function vertexField(index: int32, field: int32): float32 {
-	return list.vertices[index * VERTEX_FLOATS + field];
+	return activeContext.vertices[index * VERTEX_FLOATS + field];
 }
 
 // Grown in place and never shrunk, so a frame that peaked once does not reallocate again.
-export function copyPainted(old: DisplayList, a: PaintIndex, b: PaintIndex): void {
+export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): void {
 	const ui: int32 = b.uiInstances - a.uiInstances;
 	if (ui > 0) {
-		const to: int32 = list.uiInstanceTotal * REC_UI_FLOATS;
+		const to: int32 = activeContext.uiInstanceTotal * REC_UI_FLOATS;
 		const from: int32 = a.uiInstances * REC_UI_FLOATS;
-		growTo(list.uiInstances, to + ui * REC_UI_FLOATS);
-		void2dCopyFloats(list.uiInstances[to], old.uiInstances[from], ui * REC_UI_FLOATS);
-		list.uiInstanceTotal = list.uiInstanceTotal + ui;
+		growTo(activeContext.uiInstances, to + ui * REC_UI_FLOATS);
+		void2dCopyFloats(activeContext.uiInstances[to], old.uiInstances[from], ui * REC_UI_FLOATS);
+		activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + ui;
 	}
 	const sprites: int32 = b.spriteInstances - a.spriteInstances;
 	if (sprites > 0) {
-		const to: int32 = list.spriteInstanceTotal * REC_SPRITE_FLOATS;
+		const to: int32 = activeContext.spriteInstanceTotal * REC_SPRITE_FLOATS;
 		const from: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
-		growTo(list.spriteInstances, to + sprites * REC_SPRITE_FLOATS);
-		void2dCopyFloats(list.spriteInstances[to], old.spriteInstances[from], sprites * REC_SPRITE_FLOATS);
-		list.spriteInstanceTotal = list.spriteInstanceTotal + sprites;
+		growTo(activeContext.spriteInstances, to + sprites * REC_SPRITE_FLOATS);
+		void2dCopyFloats(activeContext.spriteInstances[to], old.spriteInstances[from], sprites * REC_SPRITE_FLOATS);
+		activeContext.spriteInstanceTotal = activeContext.spriteInstanceTotal + sprites;
 	}
 	const vertices: int32 = b.vertices - a.vertices;
 	if (vertices > 0) {
-		const to: int32 = list.vertexTotal * VERTEX_FLOATS;
+		const to: int32 = activeContext.vertexTotal * VERTEX_FLOATS;
 		const from: int32 = a.vertices * VERTEX_FLOATS;
-		growTo(list.vertices, to + vertices * VERTEX_FLOATS);
-		void2dCopyFloats(list.vertices[to], old.vertices[from], vertices * VERTEX_FLOATS);
-		list.vertexTotal = list.vertexTotal + vertices;
+		growTo(activeContext.vertices, to + vertices * VERTEX_FLOATS);
+		void2dCopyFloats(activeContext.vertices[to], old.vertices[from], vertices * VERTEX_FLOATS);
+		activeContext.vertexTotal = activeContext.vertexTotal + vertices;
 	}
 }
 
 export function limitWrites(end: PaintIndex): void {
-	list.limited = true;
-	list.limit = end;
-	list.spill = list.paintEnd;
+	activeContext.limited = true;
+	activeContext.limit = end;
+	activeContext.spill = activeContext.paintEnd;
 }
 
-export function unlimitWrites(): void { list.limited = false; }
+export function unlimitWrites(): void { activeContext.limited = false; }
 
 function vertexSlot(): int32 {
-	if (!list.limited || list.vertexTotal < list.limit.vertices) { return list.vertexTotal; }
-	const at: int32 = list.spill.vertices;
-	list.spill = { ...list.spill, vertices: at + 1 };
+	if (!activeContext.limited || activeContext.vertexTotal < activeContext.limit.vertices) { return activeContext.vertexTotal; }
+	const at: int32 = activeContext.spill.vertices;
+	activeContext.spill = { ...activeContext.spill, vertices: at + 1 };
 	return at;
 }
 
 function uiSlot(): int32 {
-	if (!list.limited || list.uiInstanceTotal < list.limit.uiInstances) { return list.uiInstanceTotal; }
-	const at: int32 = list.spill.uiInstances;
-	list.spill = { ...list.spill, uiInstances: at + 1 };
+	if (!activeContext.limited || activeContext.uiInstanceTotal < activeContext.limit.uiInstances) { return activeContext.uiInstanceTotal; }
+	const at: int32 = activeContext.spill.uiInstances;
+	activeContext.spill = { ...activeContext.spill, uiInstances: at + 1 };
 	return at;
 }
 
 function spriteSlot(): int32 {
-	if (!list.limited || list.spriteInstanceTotal < list.limit.spriteInstances) {
-		return list.spriteInstanceTotal;
+	if (!activeContext.limited || activeContext.spriteInstanceTotal < activeContext.limit.spriteInstances) {
+		return activeContext.spriteInstanceTotal;
 	}
-	const at: int32 = list.spill.spriteInstances;
-	list.spill = { ...list.spill, spriteInstances: at + 1 };
+	const at: int32 = activeContext.spill.spriteInstances;
+	activeContext.spill = { ...activeContext.spill, spriteInstances: at + 1 };
 	return at;
 }
 
 function effectSlot(): int32 {
-	if (!list.limited || list.effectTotal < list.limit.effects) { return list.effectTotal; }
-	const at: int32 = list.spill.effects;
-	list.spill = { ...list.spill, effects: at + 1 };
+	if (!activeContext.limited || activeContext.effectTotal < activeContext.limit.effects) { return activeContext.effectTotal; }
+	const at: int32 = activeContext.spill.effects;
+	activeContext.spill = { ...activeContext.spill, effects: at + 1 };
 	return at;
 }
 
 function commandSlot(): int32 {
-	if (!list.limited || list.commandTotal < list.limit.commands) { return list.commandTotal; }
-	const at: int32 = list.spill.commands;
-	list.spill = { ...list.spill, commands: at + 1 };
+	if (!activeContext.limited || activeContext.commandTotal < activeContext.limit.commands) { return activeContext.commandTotal; }
+	const at: int32 = activeContext.spill.commands;
+	activeContext.spill = { ...activeContext.spill, commands: at + 1 };
 	return at;
 }
 
@@ -676,16 +760,16 @@ export function pushVertex(
 	a: float32,
 ): void {
 	const base: int32 = vertexSlot() * VERTEX_FLOATS;
-	growTo(list.vertices, base + VERTEX_FLOATS);
-	list.vertices[base] = x;
-	list.vertices[base + 1] = y;
-	list.vertices[base + 2] = u;
-	list.vertices[base + 3] = v;
-	list.vertices[base + 4] = r;
-	list.vertices[base + 5] = g;
-	list.vertices[base + 6] = b;
-	list.vertices[base + 7] = a;
-	list.vertexTotal = list.vertexTotal + 1;
+	growTo(activeContext.vertices, base + VERTEX_FLOATS);
+	activeContext.vertices[base] = x;
+	activeContext.vertices[base + 1] = y;
+	activeContext.vertices[base + 2] = u;
+	activeContext.vertices[base + 3] = v;
+	activeContext.vertices[base + 4] = r;
+	activeContext.vertices[base + 5] = g;
+	activeContext.vertices[base + 6] = b;
+	activeContext.vertices[base + 7] = a;
+	activeContext.vertexTotal = activeContext.vertexTotal + 1;
 }
 
 // Append one UI instance. The caller passes the six float4 lanes and three colours; the
@@ -693,48 +777,48 @@ export function pushVertex(
 // layout").
 export function pushUiInstance(inst: UiInstance, originX: float32, originY: float32): void {
 	const base: int32 = uiSlot() * REC_UI_FLOATS;
-	growTo(list.uiInstances, base + REC_UI_FLOATS);
+	growTo(activeContext.uiInstances, base + REC_UI_FLOATS);
 	const [u0, u1, u2, u3] = inst.uvRadii;
 	const [bl, bt, br, bb] = inst.borders;
 	const [p1, p2, p3] = inst.params;
 	const [q0, q1, q2, q3] = inst.params1;
-	list.uiInstances[base + REC_UI_AFFINE] = inst.affine.a;
-	list.uiInstances[base + REC_UI_AFFINE + 1] = inst.affine.b;
-	list.uiInstances[base + REC_UI_AFFINE + 2] = inst.affine.c;
-	list.uiInstances[base + REC_UI_AFFINE + 3] = inst.affine.d;
-	list.uiInstances[base + REC_UI_ORIGIN_SIZE] = inst.x - originX;
-	list.uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = inst.y - originY;
-	list.uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = inst.w;
-	list.uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = inst.h;
-	list.uiInstances[base + REC_UI_UV_RADII] = u0;
-	list.uiInstances[base + REC_UI_UV_RADII + 1] = u1;
-	list.uiInstances[base + REC_UI_UV_RADII + 2] = u2;
-	list.uiInstances[base + REC_UI_UV_RADII + 3] = u3;
-	list.uiInstances[base + REC_UI_BORDERS] = bl;
-	list.uiInstances[base + REC_UI_BORDERS + 1] = bt;
-	list.uiInstances[base + REC_UI_BORDERS + 2] = br;
-	list.uiInstances[base + REC_UI_BORDERS + 3] = bb;
-	list.uiInstances[base + REC_UI_PARAMS0] = (inst.mode as int32) as float32;
-	list.uiInstances[base + REC_UI_PARAMS0 + 1] = p1;
-	list.uiInstances[base + REC_UI_PARAMS0 + 2] = p2;
-	list.uiInstances[base + REC_UI_PARAMS0 + 3] = p3;
-	list.uiInstances[base + REC_UI_PARAMS1] = q0;
-	list.uiInstances[base + REC_UI_PARAMS1 + 1] = q1;
-	list.uiInstances[base + REC_UI_PARAMS1 + 2] = q2;
-	list.uiInstances[base + REC_UI_PARAMS1 + 3] = q3;
-	list.uiInstances[base + REC_UI_COLOR_FILL] = inst.fill.r;
-	list.uiInstances[base + REC_UI_COLOR_FILL + 1] = inst.fill.g;
-	list.uiInstances[base + REC_UI_COLOR_FILL + 2] = inst.fill.b;
-	list.uiInstances[base + REC_UI_COLOR_FILL + 3] = inst.fill.a;
-	list.uiInstances[base + REC_UI_COLOR_BORDER] = inst.border.r;
-	list.uiInstances[base + REC_UI_COLOR_BORDER + 1] = inst.border.g;
-	list.uiInstances[base + REC_UI_COLOR_BORDER + 2] = inst.border.b;
-	list.uiInstances[base + REC_UI_COLOR_BORDER + 3] = inst.border.a;
-	list.uiInstances[base + REC_UI_COLOR_EXTRA] = inst.extra.r;
-	list.uiInstances[base + REC_UI_COLOR_EXTRA + 1] = inst.extra.g;
-	list.uiInstances[base + REC_UI_COLOR_EXTRA + 2] = inst.extra.b;
-	list.uiInstances[base + REC_UI_COLOR_EXTRA + 3] = inst.extra.a;
-	list.uiInstanceTotal = list.uiInstanceTotal + 1;
+	activeContext.uiInstances[base + REC_UI_AFFINE] = inst.affine.a;
+	activeContext.uiInstances[base + REC_UI_AFFINE + 1] = inst.affine.b;
+	activeContext.uiInstances[base + REC_UI_AFFINE + 2] = inst.affine.c;
+	activeContext.uiInstances[base + REC_UI_AFFINE + 3] = inst.affine.d;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE] = inst.x - originX;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 1] = inst.y - originY;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 2] = inst.w;
+	activeContext.uiInstances[base + REC_UI_ORIGIN_SIZE + 3] = inst.h;
+	activeContext.uiInstances[base + REC_UI_UV_RADII] = u0;
+	activeContext.uiInstances[base + REC_UI_UV_RADII + 1] = u1;
+	activeContext.uiInstances[base + REC_UI_UV_RADII + 2] = u2;
+	activeContext.uiInstances[base + REC_UI_UV_RADII + 3] = u3;
+	activeContext.uiInstances[base + REC_UI_BORDERS] = bl;
+	activeContext.uiInstances[base + REC_UI_BORDERS + 1] = bt;
+	activeContext.uiInstances[base + REC_UI_BORDERS + 2] = br;
+	activeContext.uiInstances[base + REC_UI_BORDERS + 3] = bb;
+	activeContext.uiInstances[base + REC_UI_PARAMS0] = (inst.mode as int32) as float32;
+	activeContext.uiInstances[base + REC_UI_PARAMS0 + 1] = p1;
+	activeContext.uiInstances[base + REC_UI_PARAMS0 + 2] = p2;
+	activeContext.uiInstances[base + REC_UI_PARAMS0 + 3] = p3;
+	activeContext.uiInstances[base + REC_UI_PARAMS1] = q0;
+	activeContext.uiInstances[base + REC_UI_PARAMS1 + 1] = q1;
+	activeContext.uiInstances[base + REC_UI_PARAMS1 + 2] = q2;
+	activeContext.uiInstances[base + REC_UI_PARAMS1 + 3] = q3;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL] = inst.fill.r;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 1] = inst.fill.g;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 2] = inst.fill.b;
+	activeContext.uiInstances[base + REC_UI_COLOR_FILL + 3] = inst.fill.a;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER] = inst.border.r;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 1] = inst.border.g;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 2] = inst.border.b;
+	activeContext.uiInstances[base + REC_UI_COLOR_BORDER + 3] = inst.border.a;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA] = inst.extra.r;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 1] = inst.extra.g;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 2] = inst.extra.b;
+	activeContext.uiInstances[base + REC_UI_COLOR_EXTRA + 3] = inst.extra.a;
+	activeContext.uiInstanceTotal = activeContext.uiInstanceTotal + 1;
 }
 
 // The sprite stream is separate rather than a wide record with unused lanes: guardrail 8
@@ -748,9 +832,9 @@ export function pushSpriteInstance(
 	color: Color,
 ): void {
 	const at: int32 = spriteSlot();
-	growTo(list.spriteInstances, (at + 1) * REC_SPRITE_FLOATS);
+	growTo(activeContext.spriteInstances, (at + 1) * REC_SPRITE_FLOATS);
 	putSpriteInstance(at, a, b, c, d, tx, ty, w, h, u0, v0, u1, v1, color);
-	list.spriteInstanceTotal = list.spriteInstanceTotal + 1;
+	activeContext.spriteInstanceTotal = activeContext.spriteInstanceTotal + 1;
 }
 
 export function putSpriteInstance(
@@ -761,73 +845,72 @@ export function putSpriteInstance(
 	color: Color,
 ): void {
 	const base: int32 = index * REC_SPRITE_FLOATS;
-	list.spriteInstances[base + REC_SPRITE_AFFINE] = a;
-	list.spriteInstances[base + REC_SPRITE_AFFINE + 1] = b;
-	list.spriteInstances[base + REC_SPRITE_AFFINE + 2] = c;
-	list.spriteInstances[base + REC_SPRITE_AFFINE + 3] = d;
-	list.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE] = tx;
-	list.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 1] = ty;
-	list.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 2] = w;
-	list.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 3] = h;
-	list.spriteInstances[base + REC_SPRITE_UV] = u0;
-	list.spriteInstances[base + REC_SPRITE_UV + 1] = v0;
-	list.spriteInstances[base + REC_SPRITE_UV + 2] = u1;
-	list.spriteInstances[base + REC_SPRITE_UV + 3] = v1;
-	list.spriteInstances[base + REC_SPRITE_COLOR] = color.r;
-	list.spriteInstances[base + REC_SPRITE_COLOR + 1] = color.g;
-	list.spriteInstances[base + REC_SPRITE_COLOR + 2] = color.b;
-	list.spriteInstances[base + REC_SPRITE_COLOR + 3] = color.a;
+	activeContext.spriteInstances[base + REC_SPRITE_AFFINE] = a;
+	activeContext.spriteInstances[base + REC_SPRITE_AFFINE + 1] = b;
+	activeContext.spriteInstances[base + REC_SPRITE_AFFINE + 2] = c;
+	activeContext.spriteInstances[base + REC_SPRITE_AFFINE + 3] = d;
+	activeContext.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE] = tx;
+	activeContext.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 1] = ty;
+	activeContext.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 2] = w;
+	activeContext.spriteInstances[base + REC_SPRITE_ORIGIN_SIZE + 3] = h;
+	activeContext.spriteInstances[base + REC_SPRITE_UV] = u0;
+	activeContext.spriteInstances[base + REC_SPRITE_UV + 1] = v0;
+	activeContext.spriteInstances[base + REC_SPRITE_UV + 2] = u1;
+	activeContext.spriteInstances[base + REC_SPRITE_UV + 3] = v1;
+	activeContext.spriteInstances[base + REC_SPRITE_COLOR] = color.r;
+	activeContext.spriteInstances[base + REC_SPRITE_COLOR + 1] = color.g;
+	activeContext.spriteInstances[base + REC_SPRITE_COLOR + 2] = color.b;
+	activeContext.spriteInstances[base + REC_SPRITE_COLOR + 3] = color.a;
 }
 
-export function uiInstanceCount(): int32 { return list.uiInstanceTotal; }
-export function spriteInstanceCount(): int32 { return list.spriteInstanceTotal; }
+export function uiInstanceCount(): int32 { return activeContext.uiInstanceTotal; }
+export function spriteInstanceCount(): int32 { return activeContext.spriteInstanceTotal; }
 
 export function uiInstanceField(index: int32, field: int32): float32 {
-	return list.uiInstances[index * REC_UI_FLOATS + field];
+	return activeContext.uiInstances[index * REC_UI_FLOATS + field];
 }
 
 export function spriteInstanceField(index: int32, field: int32): float32 {
-	return list.spriteInstances[index * REC_SPRITE_FLOATS + field];
+	return activeContext.spriteInstances[index * REC_SPRITE_FLOATS + field];
 }
 
 // What the frame will upload for its instances, in GPU bytes rather than record floats.
 export function instanceUploadBytes(): int32 {
-	return list.uiInstanceTotal * UI_STRIDE + list.spriteInstanceTotal * SPRITE_STRIDE;
+	return activeContext.uiInstanceTotal * UI_STRIDE + activeContext.spriteInstanceTotal * SPRITE_STRIDE;
 }
 
 // How many instances carry each mode. The counter A4 asks for a negative control on: it
 // moves when an emitter changes mode, and a sprite-only frame reads zero across the board.
 export function uiModeCount(mode: int32): int32 {
 	let n: int32 = 0;
-	for (let i: int32 = 0; i < list.uiInstanceTotal; i++) {
-		const m: float32 = list.uiInstances[i * REC_UI_FLOATS + REC_UI_PARAMS0 + UI_PARAM_MODE];
+	for (let i: int32 = 0; i < activeContext.uiInstanceTotal; i++) {
+		const m: float32 = activeContext.uiInstances[i * REC_UI_FLOATS + REC_UI_PARAMS0 + UI_PARAM_MODE];
 		if ((m as int32) == mode) { n = n + 1; }
 	}
 	return n;
 }
 
 // The colour pipeline as a row of its own. Returns the index a command should carry.
-let effectBase: int32 = 0;
 
 export function pushEffect(matrix: Span<float32>, add: Color, key: Color): int32 {
 	const base: int32 = effectSlot() * EFFECT_FLOATS;
-	effectBase = base;
-	growTo(list.effects, base + EFFECT_FLOATS);
-	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { list.effects[base + i] = 0.0; }
+	activeContext.effectBase = base;
+	growTo(activeContext.effects, base + EFFECT_FLOATS);
+	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { activeContext.effects[base + i] = 0.0; }
 	const hasMatrix: boolean = (matrix.length as int32) >= 16;
 	for (let i: int32 = 0; i < 16; i++) {
-		list.effects[base + i] = hasMatrix ? matrix[i] : (i % 5 == 0 ? 1.0 : 0.0);
+		activeContext.effects[base + i] = hasMatrix ? matrix[i] : (i % 5 == 0 ? 1.0 : 0.0);
 	}
-	list.effects[base + 16] = add.r;
-	list.effects[base + 17] = add.g;
-	list.effects[base + 18] = add.b;
-	list.effects[base + 19] = add.a;
-	list.effects[base + 20] = key.r;
-	list.effects[base + 21] = key.g;
-	list.effects[base + 22] = key.b;
-	list.effects[base + 23] = key.a;
-	list.effectTotal = list.effectTotal + 1;
-	return list.effectTotal - 1;
+	activeContext.effects[base + 16] = add.r;
+	activeContext.effects[base + 17] = add.g;
+	activeContext.effects[base + 18] = add.b;
+	activeContext.effects[base + 19] = add.a;
+	activeContext.effects[base + 20] = key.r;
+	activeContext.effects[base + 21] = key.g;
+	activeContext.effects[base + 22] = key.b;
+	activeContext.effects[base + 23] = key.a;
+	activeContext.effectTotal = activeContext.effectTotal + 1;
+	return activeContext.effectTotal - 1;
 }
 
 export function pushGradientEffect(
@@ -847,52 +930,52 @@ export function pushGradientEffect(
 	c2: Color,
 ): int32 {
 	const index: int32 = pushEffect(matrix, add, key);
-	const base: int32 = effectBase;
-	list.effects[base + EFFECT_GRADIENT_META] = kind as float32;
-	list.effects[base + EFFECT_GRADIENT_META + 1] = space as float32;
-	list.effects[base + EFFECT_GRADIENT_META + 2] = dither ? 1.0 : 0.0;
-	list.effects[base + EFFECT_GRADIENT_META + 3] = middle;
-	list.effects[base + EFFECT_GRADIENT_PARAMS] = p0;
-	list.effects[base + EFFECT_GRADIENT_PARAMS + 1] = p1;
-	list.effects[base + EFFECT_GRADIENT_PARAMS + 2] = p2;
-	list.effects[base + EFFECT_GRADIENT_PARAMS + 3] = p3;
-	list.effects[base + EFFECT_GRADIENT_COLOR0] = c0.r;
-	list.effects[base + EFFECT_GRADIENT_COLOR0 + 1] = c0.g;
-	list.effects[base + EFFECT_GRADIENT_COLOR0 + 2] = c0.b;
-	list.effects[base + EFFECT_GRADIENT_COLOR0 + 3] = c0.a;
-	list.effects[base + EFFECT_GRADIENT_COLOR1] = c1.r;
-	list.effects[base + EFFECT_GRADIENT_COLOR1 + 1] = c1.g;
-	list.effects[base + EFFECT_GRADIENT_COLOR1 + 2] = c1.b;
-	list.effects[base + EFFECT_GRADIENT_COLOR1 + 3] = c1.a;
-	list.effects[base + EFFECT_GRADIENT_COLOR2] = c2.r;
-	list.effects[base + EFFECT_GRADIENT_COLOR2 + 1] = c2.g;
-	list.effects[base + EFFECT_GRADIENT_COLOR2 + 2] = c2.b;
-	list.effects[base + EFFECT_GRADIENT_COLOR2 + 3] = c2.a;
+	const base: int32 = activeContext.effectBase;
+	activeContext.effects[base + EFFECT_GRADIENT_META] = kind as float32;
+	activeContext.effects[base + EFFECT_GRADIENT_META + 1] = space as float32;
+	activeContext.effects[base + EFFECT_GRADIENT_META + 2] = dither ? 1.0 : 0.0;
+	activeContext.effects[base + EFFECT_GRADIENT_META + 3] = middle;
+	activeContext.effects[base + EFFECT_GRADIENT_PARAMS] = p0;
+	activeContext.effects[base + EFFECT_GRADIENT_PARAMS + 1] = p1;
+	activeContext.effects[base + EFFECT_GRADIENT_PARAMS + 2] = p2;
+	activeContext.effects[base + EFFECT_GRADIENT_PARAMS + 3] = p3;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR0] = c0.r;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR0 + 1] = c0.g;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR0 + 2] = c0.b;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR0 + 3] = c0.a;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR1] = c1.r;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR1 + 1] = c1.g;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR1 + 2] = c1.b;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR1 + 3] = c1.a;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR2] = c2.r;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR2 + 1] = c2.g;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR2 + 2] = c2.b;
+	activeContext.effects[base + EFFECT_GRADIENT_COLOR2 + 3] = c2.a;
 	return index;
 }
 
 function startCommand(kind: CommandKind, reason: BreakReason): int32 {
 	const base: int32 = commandSlot() * COMMAND_FLOATS;
-	growTo(list.commands, base + COMMAND_FLOATS);
-	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { list.commands[base + i] = 0.0; }
-	list.commands[base + CMD_KIND] = (kind as int32) as float32;
-	list.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
-	list.commands[base + CMD_BREAK] = (reason as int32) as float32;
-	list.commands[base + CMD_CLIP_X] = list.clip.x;
-	list.commands[base + CMD_CLIP_Y] = list.clip.y;
-	list.commands[base + CMD_CLIP_W] = list.clip.w;
-	list.commands[base + CMD_CLIP_H] = list.clip.h;
-	list.commands[base + CMD_CLIP_U_X] = list.clip.ux;
-	list.commands[base + CMD_CLIP_U_Y] = list.clip.uy;
-	list.commands[base + CMD_CLIP_U_MIN] = list.clip.uMin;
-	list.commands[base + CMD_CLIP_U_MAX] = list.clip.uMax;
-	list.commands[base + CMD_CLIP_V_X] = list.clip.vx;
-	list.commands[base + CMD_CLIP_V_Y] = list.clip.vy;
-	list.commands[base + CMD_CLIP_V_MIN] = list.clip.vMin;
-	list.commands[base + CMD_CLIP_V_MAX] = list.clip.vMax;
-	list.commands[base + CMD_RT_MODE] = list.renderTargetScale;
-	list.commands[base + CMD_SCOPE] = list.scopeNow as float32;
-	list.commandTotal = list.commandTotal + 1;
+	growTo(activeContext.commands, base + COMMAND_FLOATS);
+	for (let i: int32 = 0; i < COMMAND_FLOATS; i++) { activeContext.commands[base + i] = 0.0; }
+	activeContext.commands[base + CMD_KIND] = (kind as int32) as float32;
+	activeContext.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
+	activeContext.commands[base + CMD_BREAK] = (reason as int32) as float32;
+	activeContext.commands[base + CMD_CLIP_X] = activeContext.clip.x;
+	activeContext.commands[base + CMD_CLIP_Y] = activeContext.clip.y;
+	activeContext.commands[base + CMD_CLIP_W] = activeContext.clip.w;
+	activeContext.commands[base + CMD_CLIP_H] = activeContext.clip.h;
+	activeContext.commands[base + CMD_CLIP_U_X] = activeContext.clip.ux;
+	activeContext.commands[base + CMD_CLIP_U_Y] = activeContext.clip.uy;
+	activeContext.commands[base + CMD_CLIP_U_MIN] = activeContext.clip.uMin;
+	activeContext.commands[base + CMD_CLIP_U_MAX] = activeContext.clip.uMax;
+	activeContext.commands[base + CMD_CLIP_V_X] = activeContext.clip.vx;
+	activeContext.commands[base + CMD_CLIP_V_Y] = activeContext.clip.vy;
+	activeContext.commands[base + CMD_CLIP_V_MIN] = activeContext.clip.vMin;
+	activeContext.commands[base + CMD_CLIP_V_MAX] = activeContext.clip.vMax;
+	activeContext.commands[base + CMD_RT_MODE] = activeContext.renderTargetScale;
+	activeContext.commands[base + CMD_SCOPE] = activeContext.scopeNow as float32;
+	activeContext.commandTotal = activeContext.commandTotal + 1;
 	return base;
 }
 
@@ -912,12 +995,12 @@ export function recordDraw(
 	effectIndex: int32,
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
-	list.commands[base + CMD_VERTEX_OFFSET] = vertexOffset as float32;
-	list.commands[base + CMD_VERTEX_COUNT] = count as float32;
+	activeContext.commands[base + CMD_VERTEX_OFFSET] = vertexOffset as float32;
+	activeContext.commands[base + CMD_VERTEX_COUNT] = count as float32;
 	writeView(base, view);
-	list.commands[base + CMD_BLEND] = (blend as int32) as float32;
-	list.commands[base + CMD_SAMPLER] = sampler as float32;
-	list.commands[base + CMD_EFFECT] = effectIndex as float32;
+	activeContext.commands[base + CMD_BLEND] = (blend as int32) as float32;
+	activeContext.commands[base + CMD_SAMPLER] = sampler as float32;
+	activeContext.commands[base + CMD_EFFECT] = effectIndex as float32;
 }
 
 // A run of unified-UI instances. Same shape as a sprite run - an instance range and a zero
@@ -933,14 +1016,14 @@ export function recordUiDraw(
 	sampler: int32,
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
-	list.commands[base + CMD_PIPELINE] = (Pipeline.Ui as int32) as float32;
-	list.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
-	list.commands[base + CMD_INSTANCE_COUNT] = count as float32;
-	list.commands[base + CMD_VERTEX_COUNT] = 0.0;
+	activeContext.commands[base + CMD_PIPELINE] = (Pipeline.Ui as int32) as float32;
+	activeContext.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
+	activeContext.commands[base + CMD_INSTANCE_COUNT] = count as float32;
+	activeContext.commands[base + CMD_VERTEX_COUNT] = 0.0;
 	writeView(base, view);
-	list.commands[base + CMD_BLEND] = (blend as int32) as float32;
-	list.commands[base + CMD_SAMPLER] = sampler as float32;
-	list.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
+	activeContext.commands[base + CMD_BLEND] = (blend as int32) as float32;
+	activeContext.commands[base + CMD_SAMPLER] = sampler as float32;
+	activeContext.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
 }
 
 // A run of instanced sprites. It carries an instance range and a vertex count of zero; the
@@ -955,14 +1038,14 @@ export function recordSpriteDraw(
 	sampler: int32,
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
-	list.commands[base + CMD_PIPELINE] = (Pipeline.Sprite as int32) as float32;
-	list.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
-	list.commands[base + CMD_INSTANCE_COUNT] = count as float32;
-	list.commands[base + CMD_VERTEX_COUNT] = 0.0;
+	activeContext.commands[base + CMD_PIPELINE] = (Pipeline.Sprite as int32) as float32;
+	activeContext.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
+	activeContext.commands[base + CMD_INSTANCE_COUNT] = count as float32;
+	activeContext.commands[base + CMD_VERTEX_COUNT] = 0.0;
 	writeView(base, view);
-	list.commands[base + CMD_BLEND] = (blend as int32) as float32;
-	list.commands[base + CMD_SAMPLER] = sampler as float32;
-	list.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
+	activeContext.commands[base + CMD_BLEND] = (blend as int32) as float32;
+	activeContext.commands[base + CMD_SAMPLER] = sampler as float32;
+	activeContext.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
 }
 
 // Open a render-target pass. Everything recorded until the matching `endTargetList` belongs
@@ -978,71 +1061,70 @@ export function beginTargetList(
 	clearB: float32,
 	clearA: float32,
 ): void {
-	if (list.targetDepthNow >= MAX_TARGET_DEPTH) {
+	if (activeContext.targetDepthNow >= MAX_TARGET_DEPTH) {
 		// Recording into the parent is wrong, but it is visibly wrong rather than a stack
 		// smash, and the flag makes the frame say so instead of the picture.
-		list.targetOverflowed = true;
+		activeContext.targetOverflowed = true;
 		return;
 	}
-	list.targetMarks[list.targetDepthNow] = list.commandTotal;
-	list.targetScaleSaves[list.targetDepthNow] = list.renderTargetScale;
-	list.targetScopeSaves[list.targetDepthNow] = list.scopeNow;
-	list.targetClipSaves[list.targetDepthNow] = list.clip;
-	list.targetClipRecordedSaves[list.targetDepthNow] = list.clipRecorded;
-	list.targetDepthNow = list.targetDepthNow + 1;
+	activeContext.targetMarks[activeContext.targetDepthNow] = activeContext.commandTotal;
+	activeContext.targetScaleSaves[activeContext.targetDepthNow] = activeContext.renderTargetScale;
+	activeContext.targetScopeSaves[activeContext.targetDepthNow] = activeContext.scopeNow;
+	activeContext.targetClipSaves[activeContext.targetDepthNow] = activeContext.clip;
+	activeContext.targetClipRecordedSaves[activeContext.targetDepthNow] = activeContext.clipRecorded;
+	activeContext.targetDepthNow = activeContext.targetDepthNow + 1;
 	const base: int32 = startCommand(CommandKind.TargetBegin, BreakReason.Barrier);
 	writeView(base, rt);
-	list.commands[base + CMD_ARG0] = w;
-	list.commands[base + CMD_ARG1] = h;
-	list.commands[base + CMD_CLEAR_R] = clearR;
-	list.commands[base + CMD_CLEAR_G] = clearG;
-	list.commands[base + CMD_CLEAR_B] = clearB;
-	list.commands[base + CMD_CLEAR_A] = clearA;
+	activeContext.commands[base + CMD_ARG0] = w;
+	activeContext.commands[base + CMD_ARG1] = h;
+	activeContext.commands[base + CMD_CLEAR_R] = clearR;
+	activeContext.commands[base + CMD_CLEAR_G] = clearG;
+	activeContext.commands[base + CMD_CLEAR_B] = clearB;
+	activeContext.commands[base + CMD_CLEAR_A] = clearA;
 	// Inside a target the clip starts empty and the offscreen pipeline set applies.
-	list.clipRecorded = false;
-	list.clip = NO_CLIP;
-	list.renderTargetScale = scale;
-	list.scopeNow = NO_SCOPE;
+	activeContext.clipRecorded = false;
+	activeContext.clip = NO_CLIP;
+	activeContext.renderTargetScale = scale;
+	activeContext.scopeNow = NO_SCOPE;
 }
 
-// Close the open target and move its block out of the swapchain list. Because targets close
 // in LIFO order the block is the tail of `commands`, so this is a copy of a few records and
 // a count, and an inner target has already moved ahead of its consumer.
 export function endTargetList(): void {
-	if (list.targetDepthNow <= 0) { return; }
+	if (activeContext.targetDepthNow <= 0) { return; }
 	startCommand(CommandKind.TargetEnd, BreakReason.Barrier);
-	list.targetDepthNow = list.targetDepthNow - 1;
-	const mark: int32 = list.targetMarks[list.targetDepthNow];
+	activeContext.targetDepthNow = activeContext.targetDepthNow - 1;
+	const mark: int32 = activeContext.targetMarks[activeContext.targetDepthNow];
 	const from: int32 = mark * COMMAND_FLOATS;
-	const upto: int32 = list.commandTotal * COMMAND_FLOATS;
-	let write: int32 = list.targetCommandTotal * COMMAND_FLOATS;
-	growTo(list.targetCommands, write + (upto - from));
+	const upto: int32 = activeContext.commandTotal * COMMAND_FLOATS;
+	let write: int32 = activeContext.targetCommandTotal * COMMAND_FLOATS;
+	growTo(activeContext.targetCommands, write + (upto - from));
 	for (let i: int32 = from; i < upto; i++) {
-		list.targetCommands[write] = list.commands[i];
+		activeContext.targetCommands[write] = activeContext.commands[i];
 		write = write + 1;
 	}
-	list.targetCommandTotal = list.targetCommandTotal + (list.commandTotal - mark);
-	list.commandTotal = mark;
-	list.clip = list.targetClipSaves[list.targetDepthNow];
-	list.clipRecorded = list.targetClipRecordedSaves[list.targetDepthNow];
-	list.renderTargetScale = list.targetScaleSaves[list.targetDepthNow];
-	list.scopeNow = list.targetScopeSaves[list.targetDepthNow];
+	activeContext.targetCommandTotal = activeContext.targetCommandTotal + (activeContext.commandTotal - mark);
+	activeContext.commandTotal = mark;
+	activeContext.clip = activeContext.targetClipSaves[activeContext.targetDepthNow];
+	activeContext.clipRecorded = activeContext.targetClipRecordedSaves[activeContext.targetDepthNow];
+	activeContext.renderTargetScale = activeContext.targetScaleSaves[activeContext.targetDepthNow];
+	activeContext.scopeNow = activeContext.targetScopeSaves[activeContext.targetDepthNow];
 }
 
 // The clip the replay should be under from here on. The rect is a coarse hardware scissor;
 // the two projection intervals are the exact four edges of a rotated Mask.
 export function recordClip(next: Clip): void {
-	if (list.clipRecorded && next == list.clip) { return; }
-	list.clip = next;
-	list.clipRecorded = true;
+	if (activeContext.clipRecorded && next == activeContext.clip) { return; }
+	activeContext.clip = next;
+	activeContext.clipRecorded = true;
 	startCommand(CommandKind.Scissor, BreakReason.Clip);
 }
 
 export function recordBlur(view: uint32, dirX: float32, dirY: float32): void {
 	const base: int32 = startCommand(CommandKind.Blur, BreakReason.Barrier);
 	writeView(base, view);
-	list.commands[base + CMD_ARG0] = dirX;
-	list.commands[base + CMD_ARG1] = dirY;
+	activeContext.commands[base + CMD_ARG0] = dirX;
+	activeContext.commands[base + CMD_ARG1] = dirY;
 }
 
 const RUN_FIELDS: int32[] = [
@@ -1056,16 +1138,6 @@ const PLACE_FIELDS: int32[] = [
 	CMD_SCOPE,
 ];
 
-let laneOrder: Vec<int32> = [];
-let laneSourceOffsets: Vec<int32> = [];
-let laneSourceCounts: Vec<int32> = [];
-let laneOutputs: Vec<int32> = [];
-let laneOffsets: Vec<int32> = [];
-let laneOut: Vec<float32> = [];
-let laneScratch: Vec<float32> = [];
-let laneBySprite: Vec<int32> = [];
-let laneByUi: Vec<int32> = [];
-let laneByVertex: Vec<int32> = [];
 
 function isDraw(cmds: Span<float32>, base: int32): boolean {
 	return (cmds[base + CMD_KIND] as int32) == (CommandKind.Draw as int32);
@@ -1125,9 +1197,9 @@ function floatsOf(pipeline: Pipeline): int32 {
 
 function streamTotal(pipeline: Pipeline): int32 {
 	return match (pipeline) {
-		Pipeline.Sprite => list.spriteInstanceTotal,
-		Pipeline.Ui => list.uiInstanceTotal,
-		Pipeline.Vertex => list.vertexTotal,
+		Pipeline.Sprite => activeContext.spriteInstanceTotal,
+		Pipeline.Ui => activeContext.uiInstanceTotal,
+		Pipeline.Vertex => activeContext.vertexTotal,
 	};
 }
 
@@ -1139,19 +1211,19 @@ export function lanesReorderable(c0: int32, c1: int32): boolean {
 	if (c1 <= c0) { return false; }
 	for (let c: int32 = c0; c < c1; c++) {
 		const base: int32 = c * COMMAND_FLOATS;
-		if (!isDraw(list.commands, base)) { return false; }
-		if ((list.commands[base + CMD_EFFECT] as int32) != NO_EFFECT) { return false; }
+		if (!isDraw(activeContext.commands, base)) { return false; }
+		if ((activeContext.commands[base + CMD_EFFECT] as int32) != NO_EFFECT) { return false; }
 		for (const f of PLACE_FIELDS) {
-			if (list.commands[base + f] != list.commands[c0 * COMMAND_FLOATS + f]) { return false; }
+			if (activeContext.commands[base + f] != activeContext.commands[c0 * COMMAND_FLOATS + f]) { return false; }
 		}
 	}
 	return true;
 }
 
 function orderLanes(c0: int32, c1: int32, marks: Span<int32>, reorder: boolean): void {
-	while ((laneOrder.length as int32) > 0) { laneOrder.pop(); }
+	while ((activeContext.laneOrder.length as int32) > 0) { activeContext.laneOrder.pop(); }
 	if (!reorder) {
-		for (let c: int32 = c0; c < c1; c++) { laneOrder.push(c); }
+		for (let c: int32 = c0; c < c1; c++) { activeContext.laneOrder.push(c); }
 		return;
 	}
 	const children: int32 = marks.length as int32;
@@ -1162,7 +1234,7 @@ function orderLanes(c0: int32, c1: int32, marks: Span<int32>, reorder: boolean):
 		for (let k: int32 = 0; k < children; k++) {
 			const to: int32 = k + 1 < children ? marks[k + 1] : c1;
 			if (marks[k] + lane < to) {
-				laneOrder.push(marks[k] + lane);
+				activeContext.laneOrder.push(marks[k] + lane);
 				any = true;
 			}
 		}
@@ -1175,11 +1247,11 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 	const total: int32 = streamTotal(pipeline);
 	if (total <= lo) { return; }
 	const span: int32 = (total - lo) * width;
-	while ((laneScratch.length as int32) < span) { laneScratch.push(0.0 as float32); }
+	while ((activeContext.laneScratch.length as int32) < span) { activeContext.laneScratch.push(0.0 as float32); }
 	let covered: int32 = 0;
-	for (const src of laneOrder) {
-		if (pipelineAt(list.commands, src * COMMAND_FLOATS) == pipeline) {
-			covered = covered + laneSourceCounts[src - c0];
+	for (const src of activeContext.laneOrder) {
+		if (pipelineAt(activeContext.commands, src * COMMAND_FLOATS) == pipeline) {
+			covered = covered + activeContext.laneSourceCounts[src - c0];
 		}
 	}
 	if (covered != total - lo) {
@@ -1190,20 +1262,20 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 		unreachable;
 	}
 	match (pipeline) {
-		Pipeline.Sprite => { void2dCopyFloats(laneScratch[0], list.spriteInstances[lo * width], span); },
-		Pipeline.Ui => { void2dCopyFloats(laneScratch[0], list.uiInstances[lo * width], span); },
-		Pipeline.Vertex => { void2dCopyFloats(laneScratch[0], list.vertices[lo * width], span); },
+		Pipeline.Sprite => { void2dCopyFloats(activeContext.laneScratch[0], activeContext.spriteInstances[lo * width], span); },
+		Pipeline.Ui => { void2dCopyFloats(activeContext.laneScratch[0], activeContext.uiInstances[lo * width], span); },
+		Pipeline.Vertex => { void2dCopyFloats(activeContext.laneScratch[0], activeContext.vertices[lo * width], span); },
 	}
-	for (const src of laneOrder) {
-		if (pipelineAt(list.commands, src * COMMAND_FLOATS) != pipeline) { continue; }
-		const n: int32 = laneSourceCounts[src - c0] * width;
+	for (const src of activeContext.laneOrder) {
+		if (pipelineAt(activeContext.commands, src * COMMAND_FLOATS) != pipeline) { continue; }
+		const n: int32 = activeContext.laneSourceCounts[src - c0] * width;
 		if (n == 0) { continue; }
-		const from: int32 = (laneSourceOffsets[src - c0] - lo) * width;
-		const to: int32 = laneOffsets[src - c0] * width;
+		const from: int32 = (activeContext.laneSourceOffsets[src - c0] - lo) * width;
+		const to: int32 = activeContext.laneOffsets[src - c0] * width;
 		match (pipeline) {
-			Pipeline.Sprite => { void2dCopyFloats(list.spriteInstances[to], laneScratch[from], n); },
-			Pipeline.Ui => { void2dCopyFloats(list.uiInstances[to], laneScratch[from], n); },
-			Pipeline.Vertex => { void2dCopyFloats(list.vertices[to], laneScratch[from], n); },
+			Pipeline.Sprite => { void2dCopyFloats(activeContext.spriteInstances[to], activeContext.laneScratch[from], n); },
+			Pipeline.Ui => { void2dCopyFloats(activeContext.uiInstances[to], activeContext.laneScratch[from], n); },
+			Pipeline.Vertex => { void2dCopyFloats(activeContext.vertices[to], activeContext.laneScratch[from], n); },
 		}
 	}
 }
@@ -1212,24 +1284,24 @@ export function layLanes(
 	c0: int32, c1: int32, marks: Span<int32>, reorder: boolean, pred: int32, lo: PaintIndex,
 ): void {
 	const sources: int32 = c1 - c0;
-	sized(laneSourceOffsets, sources);
-	sized(laneSourceCounts, sources);
-	sized(laneOutputs, sources);
-	sized(laneOffsets, sources);
-	while ((laneOut.length as int32) < sources * COMMAND_FLOATS) { laneOut.push(0.0 as float32); }
-	while ((laneBySprite.length as int32) > 0) { laneBySprite.pop(); }
-	while ((laneByUi.length as int32) > 0) { laneByUi.pop(); }
-	while ((laneByVertex.length as int32) > 0) { laneByVertex.pop(); }
+	sized(activeContext.laneSourceOffsets, sources);
+	sized(activeContext.laneSourceCounts, sources);
+	sized(activeContext.laneOutputs, sources);
+	sized(activeContext.laneOffsets, sources);
+	while ((activeContext.laneOut.length as int32) < sources * COMMAND_FLOATS) { activeContext.laneOut.push(0.0 as float32); }
+	while ((activeContext.laneBySprite.length as int32) > 0) { activeContext.laneBySprite.pop(); }
+	while ((activeContext.laneByUi.length as int32) > 0) { activeContext.laneByUi.pop(); }
+	while ((activeContext.laneByVertex.length as int32) > 0) { activeContext.laneByVertex.pop(); }
 	for (let c: int32 = c0; c < c1; c++) {
 		const base: int32 = c * COMMAND_FLOATS;
-		const drawn: boolean = isDraw(list.commands, base);
-		laneSourceOffsets[c - c0] = drawn ? runOffset(list.commands, base) : 0;
-		laneSourceCounts[c - c0] = drawn ? runCount(list.commands, base) : 0;
+		const drawn: boolean = isDraw(activeContext.commands, base);
+		activeContext.laneSourceOffsets[c - c0] = drawn ? runOffset(activeContext.commands, base) : 0;
+		activeContext.laneSourceCounts[c - c0] = drawn ? runCount(activeContext.commands, base) : 0;
 		if (drawn) {
-			match (pipelineAt(list.commands, base)) {
-				Pipeline.Sprite => { laneBySprite.push(c); },
-				Pipeline.Ui => { laneByUi.push(c); },
-				Pipeline.Vertex => { laneByVertex.push(c); },
+			match (pipelineAt(activeContext.commands, base)) {
+				Pipeline.Sprite => { activeContext.laneBySprite.push(c); },
+				Pipeline.Ui => { activeContext.laneByUi.push(c); },
+				Pipeline.Vertex => { activeContext.laneByVertex.push(c); },
 			}
 		}
 	}
@@ -1239,11 +1311,11 @@ export function layLanes(
 	let cursorVertex: int32 = lo.vertices;
 	let outputs: int32 = 0;
 	let previous: int32 = -1;
-	for (const src of laneOrder) {
+	for (const src of activeContext.laneOrder) {
 		const sb: int32 = src * COMMAND_FLOATS;
-		const count: int32 = laneSourceCounts[src - c0];
-		const pipeline: Pipeline = pipelineAt(list.commands, sb);
-		let at: int32 = laneSourceOffsets[src - c0];
+		const count: int32 = activeContext.laneSourceCounts[src - c0];
+		const pipeline: Pipeline = pipelineAt(activeContext.commands, sb);
+		let at: int32 = activeContext.laneSourceOffsets[src - c0];
 		if (reorder) {
 			at = match (pipeline) {
 				Pipeline.Sprite => cursorSprite,
@@ -1256,20 +1328,20 @@ export function layLanes(
 				Pipeline.Vertex => { cursorVertex = cursorVertex + count; },
 			}
 		}
-		laneOffsets[src - c0] = at;
+		activeContext.laneOffsets[src - c0] = at;
 		const last: int32 = (outputs - 1) * COMMAND_FLOATS;
-		if (outputs > 0 && sameRun(laneOut, last, list.commands, sb)
-			&& runOffset(laneOut, last) + runCount(laneOut, last) == at) {
-			laneOut[last + countField(laneOut, last)] = (runCount(laneOut, last) + count) as float32;
-			laneOutputs[src - c0] = c0 + outputs - 1;
+		if (outputs > 0 && sameRun(activeContext.laneOut, last, activeContext.commands, sb)
+			&& runOffset(activeContext.laneOut, last) + runCount(activeContext.laneOut, last) == at) {
+			activeContext.laneOut[last + countField(activeContext.laneOut, last)] = (runCount(activeContext.laneOut, last) + count) as float32;
+			activeContext.laneOutputs[src - c0] = c0 + outputs - 1;
 		} else {
 			const ob: int32 = outputs * COMMAND_FLOATS;
-			for (let f: int32 = 0; f < COMMAND_FLOATS; f++) { laneOut[ob + f] = list.commands[sb + f]; }
-			if (isDraw(list.commands, sb)) { laneOut[ob + offsetField(laneOut, ob)] = at as float32; }
-			if (outputs > 0 && previous != src - 1 && isDraw(laneOut, last) && isDraw(laneOut, ob)) {
-				laneOut[ob + CMD_BREAK] = breakBetween(laneOut, last, laneOut, ob);
+			for (let f: int32 = 0; f < COMMAND_FLOATS; f++) { activeContext.laneOut[ob + f] = activeContext.commands[sb + f]; }
+			if (isDraw(activeContext.commands, sb)) { activeContext.laneOut[ob + offsetField(activeContext.laneOut, ob)] = at as float32; }
+			if (outputs > 0 && previous != src - 1 && isDraw(activeContext.laneOut, last) && isDraw(activeContext.laneOut, ob)) {
+				activeContext.laneOut[ob + CMD_BREAK] = breakBetween(activeContext.laneOut, last, activeContext.laneOut, ob);
 			}
-			laneOutputs[src - c0] = c0 + outputs;
+			activeContext.laneOutputs[src - c0] = c0 + outputs;
 			outputs = outputs + 1;
 		}
 		previous = src;
@@ -1282,22 +1354,22 @@ export function layLanes(
 	let skip: int32 = 0;
 	if (pred >= 0 && outputs > 0) {
 		const pb: int32 = pred * COMMAND_FLOATS;
-		if (sameRun(list.commands, pb, laneOut, 0)
-			&& runOffset(list.commands, pb) + runCount(list.commands, pb) == runOffset(laneOut, 0)) {
-			list.commands[pb + countField(list.commands, pb)] =
-				(runCount(list.commands, pb) + runCount(laneOut, 0)) as float32;
+		if (sameRun(activeContext.commands, pb, activeContext.laneOut, 0)
+			&& runOffset(activeContext.commands, pb) + runCount(activeContext.commands, pb) == runOffset(activeContext.laneOut, 0)) {
+			activeContext.commands[pb + countField(activeContext.commands, pb)] =
+				(runCount(activeContext.commands, pb) + runCount(activeContext.laneOut, 0)) as float32;
 			skip = 1;
 			for (let k: int32 = 0; k < sources; k++) {
-				laneOutputs[k] = laneOutputs[k] == c0 ? pred : laneOutputs[k] - 1;
+				activeContext.laneOutputs[k] = activeContext.laneOutputs[k] == c0 ? pred : activeContext.laneOutputs[k] - 1;
 			}
 		}
 	}
 	for (let o: int32 = skip; o < outputs; o++) {
 		for (let f: int32 = 0; f < COMMAND_FLOATS; f++) {
-			list.commands[(c0 + o - skip) * COMMAND_FLOATS + f] = laneOut[o * COMMAND_FLOATS + f];
+			activeContext.commands[(c0 + o - skip) * COMMAND_FLOATS + f] = activeContext.laneOut[o * COMMAND_FLOATS + f];
 		}
 	}
-	list.commandTotal = c0 + outputs - skip;
+	activeContext.commandTotal = c0 + outputs - skip;
 }
 
 function holding(ids: Span<int32>, at: int32, count: int32, c0: int32): int32 {
@@ -1306,7 +1378,7 @@ function holding(ids: Span<int32>, at: int32, count: int32, c0: int32): int32 {
 	let found: int32 = -1;
 	while (low <= high) {
 		const middle: int32 = (low + high) / 2;
-		if (laneSourceOffsets[ids[middle] - c0] <= at) {
+		if (activeContext.laneSourceOffsets[ids[middle] - c0] <= at) {
 			found = middle;
 			low = middle + 1;
 		} else {
@@ -1315,29 +1387,29 @@ function holding(ids: Span<int32>, at: int32, count: int32, c0: int32): int32 {
 	}
 	if (found < 0) { return -1; }
 	const src: int32 = ids[found];
-	const end: int32 = laneSourceOffsets[src - c0] + laneSourceCounts[src - c0];
+	const end: int32 = activeContext.laneSourceOffsets[src - c0] + activeContext.laneSourceCounts[src - c0];
 	return at + count <= end ? src : -1;
 }
 
 export function laneSourceHolding(pipeline: Pipeline, at: int32, count: int32, c0: int32): int32 {
 	return match (pipeline) {
-		Pipeline.Sprite => holding(laneBySprite, at, count, c0),
-		Pipeline.Ui => holding(laneByUi, at, count, c0),
-		Pipeline.Vertex => holding(laneByVertex, at, count, c0),
+		Pipeline.Sprite => holding(activeContext.laneBySprite, at, count, c0),
+		Pipeline.Ui => holding(activeContext.laneByUi, at, count, c0),
+		Pipeline.Vertex => holding(activeContext.laneByVertex, at, count, c0),
 	};
 }
 
-export function laneOutputOf(command: int32, c0: int32): int32 { return laneOutputs[command - c0]; }
-export function laneOffsetOf(command: int32, c0: int32): int32 { return laneOffsets[command - c0]; }
+export function laneOutputOf(command: int32, c0: int32): int32 { return activeContext.laneOutputs[command - c0]; }
+export function laneOffsetOf(command: int32, c0: int32): int32 { return activeContext.laneOffsets[command - c0]; }
 export function laneSourceOffsetOf(command: int32, c0: int32): int32 {
-	return laneSourceOffsets[command - c0];
+	return activeContext.laneSourceOffsets[command - c0];
 }
 
 // How many Draw commands are in the stream — the draw-call count, known before a single
 // sg_* call is made, which is what lets T4 gate it with no GPU.
 export function drawCommandCount(): int32 {
 	let count: int32 = 0;
-	for (let i: int32 = 0; i < list.commandTotal; i++) {
+	for (let i: int32 = 0; i < activeContext.commandTotal; i++) {
 		if ((commandField(i, CMD_KIND) as int32) == (CommandKind.Draw as int32)) { count = count + 1; }
 	}
 	return count;
@@ -1366,8 +1438,8 @@ export function commandKindName(kind: int32): string {
 	};
 }
 
-test "a fresh list is empty" {
-	resetList();
+test "a fresh activeContext is empty" {
+	resetContext();
 	assert commandCount() == 0;
 	assert vertexCount() == 0;
 	assert effectCount() == 0;
@@ -1378,14 +1450,14 @@ test "a view id past 2^24 reaches the replay whole, in the stream and in a targe
 	const oneFloat: float32 = view as float32;
 	assert view > 16777216;
 	assert (oneFloat as uint32) != view;
-	resetList();
+	resetContext();
 	recordDraw(BreakReason.View, 0, 6, view, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	recordBlur(view, 1.0, 0.0);
 	assert commandView(0) == view;
 	assert commandView(1) == view;
-	assert void2dCommandView(list.commands[0]) == view;
-	assert void2dCommandView(list.commands[COMMAND_FLOATS]) == view;
-	resetList();
+	assert void2dCommandView(activeContext.commands[0]) == view;
+	assert void2dCommandView(activeContext.commands[COMMAND_FLOATS]) == view;
+	resetContext();
 	beginTargetList(view, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 0, 6, view, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	endTargetList();
@@ -1394,7 +1466,7 @@ test "a view id past 2^24 reaches the replay whole, in the stream and in a targe
 }
 
 test "a draw command carries its range and its reason" {
-	resetList();
+	resetContext();
 	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Add, samplerIndex(false, true), NO_EFFECT);
 	assert commandCount() == 1;
 	assert (commandField(0, CMD_KIND) as int32) == (CommandKind.Draw as int32);
@@ -1416,18 +1488,16 @@ test "the sampler index packs smooth and tileWrap into the four combinations" {
 	assert samplerIndex(true, true) + 1 == SAMPLER_COUNT;
 }
 
-test "a closed target block leaves the swapchain list and lands in the target list" {
-	resetList();
+test "a closed target block leaves the swapchain activeContext and lands in the target activeContext" {
+	resetContext();
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	beginTargetList(7, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	endTargetList();
 	recordDraw(BreakReason.View, 12, 6, 3, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
-	// The swapchain list kept only the sibling before and the consumer after it.
 	assert commandCount() == 2;
 	assert commandView(0) == 1;
 	assert commandView(1) == 3;
-	// The target's own pass went to the other list, wrapped in its markers.
 	assert targetCommandCount() == 3;
 	assert (targetCommandField(0, CMD_KIND) as int32) == (CommandKind.TargetBegin as int32);
 	assert targetCommandView(0) == 7;
@@ -1439,7 +1509,7 @@ test "a closed target block leaves the swapchain list and lands in the target li
 }
 
 test "a nested target is replayed before the target that consumes it" {
-	resetList();
+	resetContext();
 	beginTargetList(10, 8.0, 8.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	recordDraw(BreakReason.First, 0, 6, 100, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	beginTargetList(11, 4.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.0);
@@ -1462,11 +1532,10 @@ test "a nested target is replayed before the target that consumes it" {
 }
 
 test "a target starts with no clip and gives the outer clip back when it closes" {
-	resetList();
+	resetContext();
 	recordClip({ ...NO_CLIP, x: 5.0, y: 6.0, w: 7.0, h: 8.0 });
 	beginTargetList(3, 16.0, 16.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	// The outer Mask must not scissor the target: its coordinates are the target's own.
-	// Recording the same rect the outer list holds therefore has to emit a real scissor.
 	recordClip({ ...NO_CLIP, x: 5.0, y: 6.0, w: 7.0, h: 8.0 });
 	endTargetList();
 	// And back outside, the outer clip is current again, so re-recording it is a no-op.
@@ -1478,7 +1547,7 @@ test "a target starts with no clip and gives the outer clip back when it closes"
 }
 
 test "the target stack refuses to overflow and says so" {
-	resetList();
+	resetContext();
 	for (let i: int32 = 0; i < 9; i++) {
 		beginTargetList(1, 4.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	}
@@ -1489,7 +1558,7 @@ test "the target stack refuses to overflow and says so" {
 }
 
 test "recording the same clip twice records one scissor" {
-	resetList();
+	resetContext();
 	recordClip({ ...NO_CLIP, w: 10.0, h: 10.0 });
 	recordClip({ ...NO_CLIP, w: 10.0, h: 10.0 });
 	assert commandCount() == 1;
@@ -1498,7 +1567,7 @@ test "recording the same clip twice records one scissor" {
 }
 
 test "a draw inherits the clip that was recorded before it" {
-	resetList();
+	resetContext();
 	recordClip({
 		x: 4.0, y: 5.0, w: 6.0, h: 7.0,
 		ux: 1.0, uy: 0.0, uMin: 4.0, uMax: 10.0,
@@ -1516,7 +1585,7 @@ test "a draw inherits the clip that was recorded before it" {
 }
 
 test "an empty matrix records the identity" {
-	resetList();
+	resetContext();
 	const index: int32 = pushEffect([], { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
 	assert index == 0;
 	assert effectField(0, 0) == 1.0;
@@ -1531,7 +1600,7 @@ test "an empty matrix records the identity" {
 // 0.4 fails on the last bit, and a harness test that fails for its own reasons is worse than
 // no test.
 test "vertices land where the offset says" {
-	resetList();
+	resetContext();
 	pushVertex(1.0, 2.0, 0.25, 0.5, 0.125, 0.375, 0.625, 0.875);
 	assert vertexCount() == 1;
 	assert vertexField(0, 0) == 1.0;
@@ -1543,7 +1612,7 @@ test "vertices land where the offset says" {
 }
 
 test "drawCommandCount counts draws and not scissors" {
-	resetList();
+	resetContext();
 	recordClip({ ...NO_CLIP, w: 8.0, h: 8.0 });
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	recordDraw(BreakReason.View, 6, 6, 2, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
@@ -1552,7 +1621,7 @@ test "drawCommandCount counts draws and not scissors" {
 }
 
 test "a command carries the pipeline set the replay must bind" {
-	resetList();
+	resetContext();
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	assert commandField(0, CMD_RT_MODE) == 0.0;
 	setRenderTargetMode(true);

@@ -1,7 +1,6 @@
 // T1 — the instance streams as recorded data, with no GPU (docs/TESTING.md "T1").
 //
 // `instanceLayoutCheck.ms` says where the fields are. This says the emitter puts them there,
-// that a frame's counters move with what it recorded, and that `resetList` clears both
 // streams — the bug T1 already caught once for the clip rect, where a stale value survived a
 // frame boundary and only showed up as a test depending on what ran before it.
 
@@ -14,7 +13,7 @@ import {
 	UI_STRIDE, SPRITE_STRIDE,
 } from "../void2d/instanceLayout";
 import {
-	resetList, pushUiInstance, pushSpriteInstance,
+	resetContext, pushUiInstance, pushSpriteInstance,
 	uiInstanceCount, spriteInstanceCount, uiInstanceField, spriteInstanceField,
 	uiModeCount, instanceUploadBytes,
 } from "../void2d/displayList";
@@ -40,7 +39,7 @@ function sprite(x: float32): void {
 }
 
 test "a recorded UI instance reads back in every lane it was given" {
-	resetList();
+	resetContext();
 	box(InstanceMode.Box, 1.0 as float32,
 		rgba(0.25 as float32, 0.5 as float32, 0.75 as float32, 1.0 as float32));
 	assert uiInstanceCount() == 1;
@@ -59,7 +58,7 @@ test "a recorded UI instance reads back in every lane it was given" {
 }
 
 test "a recorded sprite instance reads back in every lane it was given" {
-	resetList();
+	resetContext();
 	sprite(5.0 as float32);
 	assert spriteInstanceCount() == 1;
 	assert spriteInstanceField(0, REC_SPRITE_AFFINE) == (2.0 as float32);
@@ -69,7 +68,7 @@ test "a recorded sprite instance reads back in every lane it was given" {
 }
 
 test "instances land at their own index and do not overwrite each other" {
-	resetList();
+	resetContext();
 	box(InstanceMode.Box, 100.0 as float32,
 		rgba(1.0 as float32, 0.0 as float32, 0.0 as float32, 1.0 as float32));
 	box(InstanceMode.Glyph, 200.0 as float32,
@@ -84,7 +83,7 @@ test "instances land at their own index and do not overwrite each other" {
 // A2's counter, and A4's negative control for it in one test: the mode count is not a
 // constant, it moves with what was recorded, and it reads zero for a mode nothing emitted.
 test "the per-mode count moves with what was recorded" {
-	resetList();
+	resetContext();
 	assert uiModeCount(InstanceMode.Box as int32) == 0;
 	box(InstanceMode.Box, 0.0 as float32,
 		rgba(1.0 as float32, 1.0 as float32, 1.0 as float32, 1.0 as float32));
@@ -105,7 +104,7 @@ test "the per-mode count moves with what was recorded" {
 // count cannot say this - zero of every mode is also what an empty frame reads - so the
 // assertion is on the stream that would have had to grow.
 test "a sprite-only frame records no UI instance" {
-	resetList();
+	resetContext();
 	sprite(1.0 as float32);
 	sprite(2.0 as float32);
 	sprite(3.0 as float32);
@@ -114,7 +113,7 @@ test "a sprite-only frame records no UI instance" {
 }
 
 test "upload bytes are the GPU strides, not the wider record" {
-	resetList();
+	resetContext();
 	assert instanceUploadBytes() == 0;
 	box(InstanceMode.Box, 0.0 as float32,
 		rgba(1.0 as float32, 1.0 as float32, 1.0 as float32, 1.0 as float32));
@@ -123,14 +122,14 @@ test "upload bytes are the GPU strides, not the wider record" {
 	assert instanceUploadBytes() == UI_STRIDE + SPRITE_STRIDE;
 }
 
-test "resetList clears both streams, so a frame cannot inherit the last one" {
-	resetList();
+test "resetContext clears both streams, so a frame cannot inherit the last one" {
+	resetContext();
 	box(InstanceMode.Box, 0.0 as float32,
 		rgba(1.0 as float32, 1.0 as float32, 1.0 as float32, 1.0 as float32));
 	sprite(0.0 as float32);
 	assert uiInstanceCount() == 1;
 	assert spriteInstanceCount() == 1;
-	resetList();
+	resetContext();
 	assert uiInstanceCount() == 0;
 	assert spriteInstanceCount() == 0;
 	assert instanceUploadBytes() == 0;

@@ -569,6 +569,95 @@ void void2dFrameEnd(void) {
 
 int void2dFrameSerial(void) { return s_frameSerial; }
 
+typedef struct {
+	sg_buffer srcVertex;
+	sg_buffer srcSprite;
+	sg_buffer srcUi;
+	int srcVertexBase;
+	int srcSpriteBase;
+	int srcUiBase;
+	int spriteInstanceCount;
+	int uiInstanceCount;
+	int frameUploaded;
+	int frameSerial;
+	int prepared;
+	int live;
+} void2dPreparedContext;
+
+static void2dPreparedContext *s_contexts;
+static size_t s_contextCap;
+
+void void2dRememberContext(int id, int live) {
+	if (id < 0) {
+		fprintf(stderr, "void2d: cannot remember context %d — invalid id\n", id);
+		abort();
+	}
+	if ((size_t)id >= s_contextCap) {
+		size_t want = s_contextCap > 0 ? s_contextCap : 4;
+		while (want <= (size_t)id) {
+			if (want > SIZE_MAX / 2) {
+				fprintf(stderr, "void2d: cannot remember context %d — metadata capacity overflow\n", id);
+				abort();
+			}
+			want *= 2;
+		}
+		if (want > SIZE_MAX / sizeof(void2dPreparedContext)) {
+			fprintf(stderr, "void2d: cannot remember context %d — metadata size overflow\n", id);
+			abort();
+		}
+		void2dPreparedContext *grown = (void2dPreparedContext *)realloc(
+			s_contexts, want * sizeof(void2dPreparedContext));
+		if (!grown) {
+			fprintf(stderr, "void2d: cannot remember context %d — no room for prepared bindings\n", id);
+			abort();
+		}
+		memset(grown + s_contextCap, 0,
+			(want - s_contextCap) * sizeof(void2dPreparedContext));
+		s_contexts = grown;
+		s_contextCap = want;
+	}
+	void2dPreparedContext *c = &s_contexts[id];
+	c->srcVertex = s_srcVertex;
+	c->srcSprite = s_srcSprite;
+	c->srcUi = s_srcUi;
+	c->srcVertexBase = s_srcVertexBase;
+	c->srcSpriteBase = s_srcSpriteBase;
+	c->srcUiBase = s_srcUiBase;
+	c->spriteInstanceCount = s_spriteInstanceCount;
+	c->uiInstanceCount = s_uiInstanceCount;
+	c->frameUploaded = s_frameUploaded;
+	c->frameSerial = s_frameSerial;
+	c->prepared = 1;
+	c->live = live != 0;
+}
+
+int void2dActivateContext(int id) {
+	if (id < 0 || (size_t)id >= s_contextCap || !s_contexts[id].prepared) {
+		fprintf(stderr, "void2d: cannot activate context %d — never prepared\n", id);
+		abort();
+	}
+	const void2dPreparedContext *c = &s_contexts[id];
+	if (c->frameSerial != s_frameSerial) {
+		fprintf(stderr, "void2d: cannot activate context %d — prepared frame %d expired (current %d)\n",
+			id, c->frameSerial, s_frameSerial);
+		abort();
+	}
+	if (c->live && !c->frameUploaded) {
+		fprintf(stderr, "void2d: cannot activate context %d — prepared draw has no uploaded sources\n", id);
+		abort();
+	}
+	s_srcVertex = c->srcVertex;
+	s_srcSprite = c->srcSprite;
+	s_srcUi = c->srcUi;
+	s_srcVertexBase = c->srcVertexBase;
+	s_srcSpriteBase = c->srcSpriteBase;
+	s_srcUiBase = c->srcUiBase;
+	s_spriteInstanceCount = c->spriteInstanceCount;
+	s_uiInstanceCount = c->uiInstanceCount;
+	s_frameUploaded = c->live ? c->frameUploaded : 0;
+	return c->live;
+}
+
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
 // 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging
 // between two RTs. dir = (radius/texW,0) horizontal, (0,radius/texH) vertical.

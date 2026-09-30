@@ -18,6 +18,7 @@ import {
 	void2dDrawCallCount, void2dUploadCount, void2dUploadBytes, void2dBuffersAlive,
 	void2dVertexBufferBytes, void2dDroppedFrames, void2dGrowthTarget,
 	void2dAtlasImagesAlive, void2dFrameEnd, void2dFrameSerial, void2dFailPendingTargets,
+	void2dRememberContext, void2dActivateContext,
 	void2dScissorMin, void2dScissorMax,
 	void2dUiInstanceStride, void2dSpriteInstanceStride,
 	void2dPackChannel,
@@ -35,10 +36,10 @@ import {
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
-	DisplayList, currentList, useDefaultList, isDefaultList, uploaded, spriteInstanceCount,
+	DrawContext2D, currentContext, useDefaultContext, isDefaultContext, uploaded, spriteInstanceCount,
 	effectField,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
-	resetList, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
+	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
@@ -52,54 +53,16 @@ export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRende
 export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
 export function rtViewId(rt: uint32): uint32 { return renderTargetView(rt); }
 
-// h2d puts a filtered subtree into its target through a filter matrix rather than re-syncing
-// the subtree against a second world matrix (`h2d/Object.hx:896-956`). The matrix is a pure
-// translation here, so it is one subtraction at the point a vertex is recorded - and because
-// it is applied to the *stream* rather than to the tree, the subtree keeps the single sync it
-// already had and `localToGlobal` keeps answering in screen coordinates.
-let originX: float32 = 0.0;
-let originY: float32 = 0.0;
 
 function pushVertex(
 	x: float32, y: float32, u: float32, v: float32,
 	r: float32, g: float32, b: float32, a: float32,
 ): void {
-	pushVertexRaw(x - originX, y - originY, u, v, r, g, b, a);
+	const ctx: DrawContext2D = currentContext();
+	pushVertexRaw(x - ctx.originX, y - ctx.originY, u, v, r, g, b, a);
 }
 
-// The batch the emitter is accumulating: a run of vertices that share every piece of state
-// the replay would otherwise have to change between them.
-let runStart: int32 = 0;
-let runOpen: boolean = false;
-// Which stream the open run is accumulating into. It is batch state like the view or the
-// blend: the two pipelines read different streams and bind different programs, so a change
-// here can only ever end the run.
-let curPipeline: Pipeline = Pipeline.Vertex;
-let runReason: BreakReason = BreakReason.First;
-let curView: uint32 = 0;
-let curBlend: BlendMode = BlendMode.Alpha;
-// The sampler this run wants, packed by `samplerIndex`. Its default is the scene default
-// with clamp, which is what a node that sets neither `smooth` nor `tileWrap` asks for.
-let curSampler: int32 = 0;
-// h2d resolves a node's null `smooth` against the scene. h2d's own default is nearest
-// (`h2d/RenderContext.hx:52`), which HEAPS.md "Do not copy from h2d" rejects: text and
-// scaled UI are the common case here, so the default is linear.
-let sceneSmooth: boolean = true;
-let curEffect: int32 = NO_EFFECT;
-// False when the frame's geometry blew the cap: the swapchain list must not draw either.
-let frameLive: boolean = true;
-let fbW: float32 = 0.0;
-let fbH: float32 = 0.0;
-let frameDpi: float32 = 1.0;
-let targetsFlushed: boolean = false;
-
-// The emitter state each open target has to give back. Same depth as displayList.ms's stack;
-// past it `beginTarget` still brackets the list correctly, it just stops restoring, and the
-// list's own overflow flag is what reports it.
 const TARGET_SAVE_SLOTS: int32 = 8;
-let savedView: Vec<uint32> = new Array(TARGET_SAVE_SLOTS);
-let savedRun: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 3);
-let savedSize: Vec<float32> = new Array(TARGET_SAVE_SLOTS * 4);
 
 export function drawCallCount(): int32 { return void2dDrawCallCount(); }
 export function uploadCount(): int32 { return void2dUploadCount(); }
@@ -108,8 +71,9 @@ export function buffersAlive(): int32 { return void2dBuffersAlive(); }
 export function vertexBufferBytes(): int32 { return void2dVertexBufferBytes(); }
 export function droppedFrames(): int32 { return void2dDroppedFrames(); }
 export function currentRenderScale(): float32 {
+	const ctx: DrawContext2D = currentContext();
 	const targetScale: float32 = renderTargetScaleNow();
-	return targetScale != 0.0 ? targetScale : frameDpi;
+	return targetScale != 0.0 ? targetScale : ctx.frameDpi;
 }
 
 export function scissorMinDevice(edge: float32, scale: float32): int32 {
@@ -145,36 +109,20 @@ export function recordedDrawCount(): int32 { return drawCommandCount(); }
 export function recordedCommandCount(): int32 { return commandCount(); }
 export function recordedVertexCount(): int32 { return vertexCount(); }
 
-// h2d.Drawable colour pipeline as batch state. An identity matrix with a zero add and no key
-// is `NO_EFFECT`, so effect-free nodes — almost all of them — share one batch and cost no
-// row in the effect table.
-let curMat: Vec<float32> = [
-	1.0, 0.0, 0.0, 0.0,
-	0.0, 1.0, 0.0, 0.0,
-	0.0, 0.0, 1.0, 0.0,
-	0.0, 0.0, 0.0, 1.0,
-];
-let curAdd: Color = rgba(0.0, 0.0, 0.0, 0.0);
-let curKey: Color = rgba(0.0, 0.0, 0.0, 0.0);
-let curHasEffect: boolean = false;
-
-// The hardware scissor carries the intersection AABB. A rotated Mask additionally carries
-// one pair of projection intervals: four exact edges, interpolated by the vertex shader.
-let clipStack: Vec<MaskClip> = new Array(16);
-let maskIndices: Vec<int32> = new Array(16);
-let clipDepth: int32 = 0;
 
 function setIdentityMat(): void {
-	for (let i: int32 = 0; i < 16; i++) { curMat[i] = i % 5 == 0 ? 1.0 : 0.0; }
+	const ctx: DrawContext2D = currentContext();
+	for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = i % 5 == 0 ? 1.0 : 0.0; }
 }
 
 function effectMatrixSame(mat: Span<float32>, hasMat: boolean): boolean {
+	const ctx: DrawContext2D = currentContext();
 	if (hasMat) {
-		for (let i: int32 = 0; i < 16; i++) { if (mat[i] != curMat[i]) { return false; } }
+		for (let i: int32 = 0; i < 16; i++) { if (mat[i] != ctx.curMat[i]) { return false; } }
 		return true;
 	}
 	for (let i: int32 = 0; i < 16; i++) {
-		if (curMat[i] != (i % 5 == 0 ? 1.0 : 0.0)) { return false; }
+		if (ctx.curMat[i] != (i % 5 == 0 ? 1.0 : 0.0)) { return false; }
 	}
 	return true;
 }
@@ -182,28 +130,36 @@ function effectMatrixSame(mat: Span<float32>, hasMat: boolean): boolean {
 // Close the open run as one Draw command. Called when the state changes, when a clip moves,
 // and at the end of the bracket — never in the middle of a primitive.
 function closeRun(): void {
-	if (!runOpen) { return; }
-	match (curPipeline) {
+	const ctx: DrawContext2D = currentContext();
+	if (!ctx.runOpen) { return; }
+	match (ctx.curPipeline) {
 		Pipeline.Sprite => {
-			const instances: int32 = spriteInstanceCount() - runStart;
+			const instances: int32 = spriteInstanceCount() - ctx.runStart;
 			if (instances > 0) {
-				recordSpriteDraw(runReason, runStart, instances, curView, curBlend, curSampler);
+				recordSpriteDraw(
+					ctx.runReason, ctx.runStart, instances, ctx.curView, ctx.curBlend, ctx.curSampler,
+				);
 			}
 		},
 		Pipeline.Ui => {
-			const instances: int32 = uiInstanceCount() - runStart;
+			const instances: int32 = uiInstanceCount() - ctx.runStart;
 			if (instances > 0) {
-				recordUiDraw(runReason, runStart, instances, curView, curBlend, curSampler);
+				recordUiDraw(
+					ctx.runReason, ctx.runStart, instances, ctx.curView, ctx.curBlend, ctx.curSampler,
+				);
 			}
 		},
 		Pipeline.Vertex => {
-			const count: int32 = vertexCount() - runStart;
+			const count: int32 = vertexCount() - ctx.runStart;
 			if (count > 0) {
-				recordDraw(runReason, runStart, count, curView, curBlend, curSampler, curEffect);
+				recordDraw(
+					ctx.runReason, ctx.runStart, count, ctx.curView, ctx.curBlend, ctx.curSampler,
+					ctx.curEffect,
+				);
 			}
 		},
 	}
-	runOpen = false;
+	ctx.runOpen = false;
 }
 
 // Close the open run so the streams are final. Naming the step separates *recording is
@@ -215,66 +171,68 @@ export function finishRecording(): void {
 }
 
 export function paintIndex(): PaintIndex {
-	const l: DisplayList = currentList();
+	const ctx: DrawContext2D = currentContext();
+	const l: DrawContext2D = currentContext();
 	return {
 		commands: l.commandTotal,
 		effects: l.effectTotal,
 		vertices: l.vertexTotal,
 		uiInstances: l.uiInstanceTotal,
 		spriteInstances: l.spriteInstanceTotal,
-		runOpen: runOpen,
-		runStart: runStart,
-		pipeline: curPipeline,
-		reason: runReason,
-		view: curView,
-		blend: curBlend,
-		sampler: curSampler,
-		effect: curEffect,
-		hasEffect: curHasEffect,
-		mask: clipDepth > 0 ? maskIndices[clipDepth - 1] : NO_MASK,
+		runOpen: ctx.runOpen,
+		runStart: ctx.runStart,
+		pipeline: ctx.curPipeline,
+		reason: ctx.runReason,
+		view: ctx.curView,
+		blend: ctx.curBlend,
+		sampler: ctx.curSampler,
+		effect: ctx.curEffect,
+		hasEffect: ctx.curHasEffect,
+		mask: ctx.clipDepth > 0 ? ctx.maskIndices[ctx.clipDepth - 1] : NO_MASK,
 		scope: l.scopeNow,
 	};
 }
 
 export function resumePaint(p: PaintIndex): void {
-	const l: DisplayList = currentList();
+	const ctx: DrawContext2D = currentContext();
+	const l: DrawContext2D = currentContext();
 	l.commandTotal = p.commands;
 	l.effectTotal = p.effects;
 	l.vertexTotal = p.vertices;
 	l.uiInstanceTotal = p.uiInstances;
 	l.spriteInstanceTotal = p.spriteInstances;
-	runOpen = p.runOpen;
-	runStart = p.runStart;
-	curPipeline = p.pipeline;
-	runReason = p.reason;
-	curView = p.view;
-	curBlend = p.blend;
-	curSampler = p.sampler;
-	curEffect = p.effect;
-	curHasEffect = p.hasEffect;
+	ctx.runOpen = p.runOpen;
+	ctx.runStart = p.runStart;
+	ctx.curPipeline = p.pipeline;
+	ctx.runReason = p.reason;
+	ctx.curView = p.view;
+	ctx.curBlend = p.blend;
+	ctx.curSampler = p.sampler;
+	ctx.curEffect = p.effect;
+	ctx.curHasEffect = p.hasEffect;
 	l.scopeNow = p.scope;
 	if (p.hasEffect) {
-		for (let i: int32 = 0; i < 16; i++) { curMat[i] = effectField(p.effect, i); }
-		curAdd = rgba(
+		for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = effectField(p.effect, i); }
+		ctx.curAdd = rgba(
 			effectField(p.effect, 16), effectField(p.effect, 17),
 			effectField(p.effect, 18), effectField(p.effect, 19),
 		);
-		curKey = rgba(
+		ctx.curKey = rgba(
 			effectField(p.effect, 20), effectField(p.effect, 21),
 			effectField(p.effect, 22), effectField(p.effect, 23),
 		);
 	}
-	originX = 0.0;
-	originY = 0.0;
+	ctx.originX = 0.0;
+	ctx.originY = 0.0;
 	if (p.mask == NO_MASK) {
-		clipDepth = 0;
+		ctx.clipDepth = 0;
 		l.clip = NO_CLIP;
 		return;
 	}
-	clipStack[0] = maskClipAt(p.mask);
-	maskIndices[0] = p.mask;
-	clipDepth = 1;
-	l.clip = clipOf(clipStack[0]);
+	ctx.clipStack[0] = maskClipAt(p.mask);
+	ctx.maskIndices[0] = p.mask;
+	ctx.clipDepth = 1;
+	l.clip = clipOf(ctx.clipStack[0]);
 }
 
 function streamOf(p: PaintIndex, pipeline: Pipeline): int32 {
@@ -285,25 +243,26 @@ function streamOf(p: PaintIndex, pipeline: Pipeline): int32 {
 	};
 }
 
-export function continuesLike(old: DisplayList, start: PaintIndex, end: PaintIndex): boolean {
-	if (start.hasEffect || end.hasEffect || curHasEffect) { return false; }
+export function continuesLike(old: DrawContext2D, start: PaintIndex, end: PaintIndex): boolean {
+	const ctx: DrawContext2D = currentContext();
+	if (start.hasEffect || end.hasEffect || ctx.curHasEffect) { return false; }
 	if (start.commands != end.commands || start.effects != end.effects) { return false; }
-	if (runOpen != start.runOpen || curPipeline != start.pipeline || curView != start.view) {
+	if (ctx.runOpen != start.runOpen || ctx.curPipeline != start.pipeline || ctx.curView != start.view) {
 		return false;
 	}
-	if (curBlend != start.blend || curSampler != start.sampler) { return false; }
-	const l: DisplayList = currentList();
-	const cursor: int32 = match (curPipeline) {
+	if (ctx.curBlend != start.blend || ctx.curSampler != start.sampler) { return false; }
+	const l: DrawContext2D = currentContext();
+	const cursor: int32 = match (ctx.curPipeline) {
 		Pipeline.Sprite => l.spriteInstanceTotal,
 		Pipeline.Ui => l.uiInstanceTotal,
 		Pipeline.Vertex => l.vertexTotal,
 	};
 	const emptyThen: boolean = start.runStart == streamOf(start, start.pipeline);
-	if ((runStart == cursor) != emptyThen) { return false; }
+	if ((ctx.runStart == cursor) != emptyThen) { return false; }
 	if (scopeRow(l, l.scopeNow) != scopeRow(old, start.scope)) { return false; }
-	const maskNow: int32 = clipDepth > 0 ? maskIndices[clipDepth - 1] : NO_MASK;
+	const maskNow: int32 = ctx.clipDepth > 0 ? ctx.maskIndices[ctx.clipDepth - 1] : NO_MASK;
 	if (maskNow == NO_MASK || start.mask == NO_MASK) { return maskNow == start.mask; }
-	return clipStack[clipDepth - 1] == old.masks[start.mask];
+	return ctx.clipStack[ctx.clipDepth - 1] == old.masks[start.mask];
 }
 
 export function carried(pi: PaintIndex, first: PaintIndex, at: PaintIndex): PaintIndex {
@@ -332,21 +291,23 @@ export function carried(pi: PaintIndex, first: PaintIndex, at: PaintIndex): Pain
 }
 
 export function continueAfter(start: PaintIndex, end: PaintIndex, at: PaintIndex): void {
+	const ctx: DrawContext2D = currentContext();
 	const reopened: boolean = end.pipeline != start.pipeline || end.runStart != start.runStart ||
 		end.reason != start.reason;
-	runOpen = end.runOpen;
-	curPipeline = end.pipeline;
-	curView = end.view;
-	curBlend = end.blend;
-	curSampler = end.sampler;
+	ctx.runOpen = end.runOpen;
+	ctx.curPipeline = end.pipeline;
+	ctx.curView = end.view;
+	ctx.curBlend = end.blend;
+	ctx.curSampler = end.sampler;
 	if (reopened) {
-		runStart = end.runStart - streamOf(start, end.pipeline) + streamOf(at, end.pipeline);
-		runReason = end.reason;
+		ctx.runStart = end.runStart - streamOf(start, end.pipeline) + streamOf(at, end.pipeline);
+		ctx.runReason = end.reason;
 	}
 }
 
 function runCursor(): int32 {
-	return match (curPipeline) {
+	const ctx: DrawContext2D = currentContext();
+	return match (ctx.curPipeline) {
 		Pipeline.Sprite => spriteInstanceCount(),
 		Pipeline.Ui => uiInstanceCount(),
 		Pipeline.Vertex => vertexCount(),
@@ -354,65 +315,71 @@ function runCursor(): int32 {
 }
 
 export function splitRun(): boolean {
-	if (!runOpen || runCursor() == runStart) { return false; }
-	const reason: BreakReason = runReason;
+	const ctx: DrawContext2D = currentContext();
+	if (!ctx.runOpen || runCursor() == ctx.runStart) { return false; }
+	const reason: BreakReason = ctx.runReason;
 	closeRun();
 	openRun(reason);
 	return true;
 }
 
-let laneRunWasOpen: boolean = false;
 
 export function closeLaneRun(): boolean {
-	laneRunWasOpen = runOpen;
+	const ctx: DrawContext2D = currentContext();
+	ctx.laneRunWasOpen = ctx.runOpen;
 	const before: int32 = commandCount();
 	closeRun();
 	return commandCount() > before;
 }
 
 export function restoreLaneRun(): void {
-	runOpen = laneRunWasOpen;
+	const ctx: DrawContext2D = currentContext();
+	ctx.runOpen = ctx.laneRunWasOpen;
 }
 
 export function reopenLast(): void {
-	const l: DisplayList = currentList();
+	const ctx: DrawContext2D = currentContext();
+	const l: DrawContext2D = currentContext();
 	const last: int32 = l.commandTotal - 1;
 	const base: int32 = last * COMMAND_FLOATS;
-	curPipeline = pipelineAt(l.commands, base);
-	curView = commandView(last);
-	curBlend = ((l.commands[base + CMD_BLEND] as int32) as BlendMode);
-	curSampler = l.commands[base + CMD_SAMPLER] as int32;
-	curEffect = l.commands[base + CMD_EFFECT] as int32;
-	runReason = (l.commands[base + CMD_BREAK] as int32) as BreakReason;
-	runStart = runOffset(l.commands, base);
-	runOpen = true;
+	ctx.curPipeline = pipelineAt(l.commands, base);
+	ctx.curView = commandView(last);
+	ctx.curBlend = ((l.commands[base + CMD_BLEND] as int32) as BlendMode);
+	ctx.curSampler = l.commands[base + CMD_SAMPLER] as int32;
+	ctx.curEffect = l.commands[base + CMD_EFFECT] as int32;
+	ctx.runReason = (l.commands[base + CMD_BREAK] as int32) as BreakReason;
+	ctx.runStart = runOffset(l.commands, base);
+	ctx.runOpen = true;
 	l.commandTotal = last;
 }
 
 export function endPatch(end: PaintIndex): void {
+	const ctx: DrawContext2D = currentContext();
 	resumePaint(end);
-	runOpen = false;
+	ctx.runOpen = false;
 }
 
 function openRun(reason: BreakReason): void {
-	runStart = match (curPipeline) {
+	const ctx: DrawContext2D = currentContext();
+	ctx.runStart = match (ctx.curPipeline) {
 		Pipeline.Sprite => spriteInstanceCount(),
 		Pipeline.Ui => uiInstanceCount(),
 		Pipeline.Vertex => vertexCount(),
 	};
-	runReason = reason;
-	runOpen = true;
+	ctx.runReason = reason;
+	ctx.runOpen = true;
 }
 
 function useRun(pipeline: Pipeline, view: uint32, blend: BlendMode): void {
-	if (runOpen && view == curView && blend == curBlend && curPipeline == pipeline) { return; }
-	const reason: BreakReason = !runOpen ? BreakReason.First
-		: (curPipeline != pipeline ? BreakReason.Pipeline
-		: (view != curView ? BreakReason.View : BreakReason.Blend));
+	const ctx: DrawContext2D = currentContext();
+	if (ctx.runOpen && view == ctx.curView && blend == ctx.curBlend && ctx.curPipeline == pipeline) { return; }
+	const reason: BreakReason = !ctx.runOpen ? BreakReason.First
+		: (ctx.curPipeline != pipeline ? BreakReason.Pipeline
+		: (view != ctx.curView ? BreakReason.View : BreakReason.Blend));
 	closeRun();
-	curView = view;
-	curBlend = blend;
-	curPipeline = pipeline;
+	ctx.curView = view;
+	ctx.curBlend = blend;
+	ctx.curPipeline = pipeline;
 	openRun(reason);
 }
 
@@ -447,61 +414,65 @@ export function spriteInstanceStride(): int32 { return void2dSpriteInstanceStrid
 // are stated per device pixel. The logical size is a float — the `as int32` truncation that
 // put every glyph off-grid at DPI 1.25 and 1.5 is gone (VOID2D.md "Known defects").
 export function begin2d(w: float32, h: float32, dpi: float32): void {
-	useDefaultList();
-	beginList(w, h, dpi);
+	useDefaultContext();
+	beginContext(w, h, dpi);
 }
 
 export function openBracket(w: float32, h: float32, dpi: float32): void {
+	const ctx: DrawContext2D = currentContext();
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
 	beginGlyphFrame(void2dFrameSerial());
-	frameDpi = dpi;
-	fbW = w;
-	fbH = h;
-	targetsFlushed = false;
-	frameLive = true;
-	originX = 0.0;
-	originY = 0.0;
+	ctx.frameDpi = dpi;
+	ctx.fbW = w;
+	ctx.fbH = h;
+	ctx.targetsFlushed = false;
+	ctx.frameLive = true;
+	ctx.originX = 0.0;
+	ctx.originY = 0.0;
 }
 
-export function beginList(w: float32, h: float32, dpi: float32): void {
+export function beginContext(w: float32, h: float32, dpi: float32): void {
 	openBracket(w, h, dpi);
-	startList();
+	startContext();
 }
 
-export function startList(): void {
-	resetList();
-	runOpen = false;
-	runStart = 0;
-	curPipeline = Pipeline.Ui;
-	runReason = BreakReason.First;
-	curView = void2dWhiteView();
-	curBlend = BlendMode.Alpha;
-	curSampler = samplerIndex(sceneSmooth, false);
-	curEffect = NO_EFFECT;
+export function startContext(): void {
+	const ctx: DrawContext2D = currentContext();
+	resetContext();
+	ctx.runOpen = false;
+	ctx.runStart = 0;
+	ctx.curPipeline = Pipeline.Ui;
+	ctx.runReason = BreakReason.First;
+	ctx.curView = void2dWhiteView();
+	ctx.curBlend = BlendMode.Alpha;
+	ctx.curSampler = samplerIndex(ctx.sceneSmooth, false);
+	ctx.curEffect = NO_EFFECT;
 	setIdentityMat();
-	curAdd = rgba(0.0, 0.0, 0.0, 0.0);
-	curKey = rgba(0.0, 0.0, 0.0, 0.0);
-	curHasEffect = false;
-	clipDepth = 0;
-	while ((scopeDepths.length as int32) > 0) { scopeDepths.pop(); }
+	ctx.curAdd = rgba(0.0, 0.0, 0.0, 0.0);
+	ctx.curKey = rgba(0.0, 0.0, 0.0, 0.0);
+	ctx.curHasEffect = false;
+	ctx.clipDepth = 0;
+	while ((ctx.scopeDepths.length as int32) > 0) { ctx.scopeDepths.pop(); }
 }
 
 // Upload the frame and run every render-target pass. Called with NO pass open, before the
 // swapchain pass is begun: that ordering is the phase's whole point, because a target pass
 // opened inside the swapchain pass is what sokol asserts on.
 export function flushTargets(): void {
+	const ctx: DrawContext2D = currentContext();
 	finishRecording();
 	if (targetStackOverflowed()) {
 		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
 	}
-	const l: DisplayList = currentList();
+	const l: DrawContext2D = currentContext();
 	resolveScopes();
+	void2dSetDpiScale(l.frameDpi);
 	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;
 	l.targetsPending = false;
-	if (isDefaultList(l)) {
-		frameLive = void2dReplayTargets(
+	if (isDefaultContext(l)) {
+		ctx.frameLive = void2dReplayTargets(
 			l.targetCommands[0], targets,
 			l.effects[0], effectCount(),
 			l.vertices[0], vertexCount(),
@@ -509,7 +480,7 @@ export function flushTargets(): void {
 			l.uiInstances[0], uiInstanceCount(),
 		) != 0;
 	} else {
-		frameLive = void2dReplayList(
+		ctx.frameLive = void2dReplayList(
 			l.id, l.targetCommands[0], targets,
 			l.effects[0], effectCount(),
 			l.vertices[0], vertexCount(), (l.uploadAll || l.dirtyVertices) ? 1 : 0,
@@ -518,27 +489,29 @@ export function flushTargets(): void {
 			l.dirtyUi[0], l.uploadAll ? -1 : l.dirtyUiTotal,
 		) != 0;
 	}
+	void2dRememberContext(l.id, l.frameLive ? 1 : 0);
 	uploaded();
-	targetsFlushed = true;
+	ctx.targetsFlushed = true;
 }
 
 // Replay the swapchain list into the pass the caller already has open. Together with
 // `flushTargets` this is the only place the GPU is touched, and both happen after the walk.
 export function end2d(): void {
+	const ctx: DrawContext2D = currentContext();
 	finishRecording();
-	// A caller that opened render targets and forgot `flushTargets()` used to get silence: the
-	// hoisted blocks sat in `targetCommands` and the next `resetList()` threw them away, so a
-	// filtered subtree simply did not appear and nothing said why.
-	if (targetCommandCount() > 0 && !targetsFlushed) {
+	if (targetCommandCount() > 0 && !ctx.targetsFlushed) {
 		void2dFailPendingTargets();
 		return;
 	}
-	if (!frameLive || commandCount() == 0) { return; }
-	const l: DisplayList = currentList();
+	if (commandCount() == 0) { return; }
+	const l: DrawContext2D = currentContext();
+	void2dSetDpiScale(l.frameDpi);
+	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
+	if (void2dActivateContext(l.id) == 0) { return; }
 	void2dReplay(
 		l.commands[0], commandCount(),
 		l.effects[0], effectCount(),
-		fbW, fbH,
+		ctx.fbW, ctx.fbH,
 	);
 }
 
@@ -559,30 +532,33 @@ function maxFour(a: float32, b: float32, c: float32, d: float32): float32 {
 }
 
 function clipOf(c: MaskClip): Clip {
+	const ctx: DrawContext2D = currentContext();
 	const ix: float32 = c.x0;
 	const iy: float32 = c.y0;
 	let iw: float32 = c.x1 - c.x0;
 	let ih: float32 = c.y1 - c.y0;
 	if (iw < 0.0) { iw = 0.0; }
 	if (ih < 0.0) { ih = 0.0; }
-	const uShift: float32 = originX * c.ux + originY * c.uy;
-	const vShift: float32 = originX * c.vx + originY * c.vy;
+	const uShift: float32 = ctx.originX * c.ux + ctx.originY * c.uy;
+	const vShift: float32 = ctx.originX * c.vx + ctx.originY * c.vy;
 	return {
-		x: ix - originX, y: iy - originY, w: iw, h: ih,
+		x: ix - ctx.originX, y: iy - ctx.originY, w: iw, h: ih,
 		ux: c.ux, uy: c.uy, uMin: c.uMin - uShift, uMax: c.uMax - uShift,
 		vx: c.vx, vy: c.vy, vMin: c.vMin - vShift, vMax: c.vMax - vShift,
 	};
 }
 
 function applyClip(d: int32): void {
+	const ctx: DrawContext2D = currentContext();
 	closeRun();
-	recordClip(clipOf(clipStack[d]));
+	recordClip(clipOf(ctx.clipStack[d]));
 	openRun(BreakReason.Clip);
 }
 
 export function clipIntersectsQuad(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
-	if (clipDepth <= 0) { return true; }
-	const c: MaskClip = clipStack[clipDepth - 1];
+	const ctx: DrawContext2D = currentContext();
+	if (ctx.clipDepth <= 0) { return true; }
+	const c: MaskClip = ctx.clipStack[ctx.clipDepth - 1];
 	if (c.x1 <= c.x0 || c.y1 <= c.y0) { return false; }
 	if (maxFour(tl.x, tr.x, br.x, bl.x) <= c.x0
 		|| minFour(tl.x, tr.x, br.x, bl.x) >= c.x1
@@ -604,22 +580,23 @@ export function clipIntersectsQuad(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): bool
 }
 
 export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
+	const ctx: DrawContext2D = currentContext();
 	let x0: float32 = minFour(tl.x, tr.x, br.x, bl.x);
 	let y0: float32 = minFour(tl.y, tr.y, br.y, bl.y);
 	let x1: float32 = maxFour(tl.x, tr.x, br.x, bl.x);
 	let y1: float32 = maxFour(tl.y, tr.y, br.y, bl.y);
-	const parent: int32 = clipDepth - 1;
+	const parent: int32 = ctx.clipDepth - 1;
 	let next: MaskClip = NO_MASK_CLIP;
 	if (parent >= 0) {
-		next = clipStack[parent];
+		next = ctx.clipStack[parent];
 		if (next.x0 > x0) { x0 = next.x0; }
 		if (next.y0 > y0) { y0 = next.y0; }
 		if (next.x1 < x1) { x1 = next.x1; }
 		if (next.y1 < y1) { y1 = next.y1; }
 	}
-	while (clipDepth >= clipStack.length as int32) { clipStack.push(NO_MASK_CLIP); }
-	while (clipDepth >= maskIndices.length as int32) { maskIndices.push(NO_MASK); }
-	const d: int32 = clipDepth;
+	while (ctx.clipDepth >= ctx.clipStack.length as int32) { ctx.clipStack.push(NO_MASK_CLIP); }
+	while (ctx.clipDepth >= ctx.maskIndices.length as int32) { ctx.maskIndices.push(NO_MASK); }
+	const d: int32 = ctx.clipDepth;
 
 	const ex: float32 = tr.x - tl.x;
 	const ey: float32 = tr.y - tl.y;
@@ -681,22 +658,22 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 			};
 		}
 	}
-	clipStack[d] = { ...next, x0: x0, y0: y0, x1: x1, y1: y1 };
-	maskIndices[d] = pushMaskClip(clipStack[d]);
-	clipDepth = clipDepth + 1;
+	ctx.clipStack[d] = { ...next, x0: x0, y0: y0, x1: x1, y1: y1 };
+	ctx.maskIndices[d] = pushMaskClip(ctx.clipStack[d]);
+	ctx.clipDepth = ctx.clipDepth + 1;
 	applyClip(d);
 	return supported;
 }
 
-let scopeDepths: Vec<int32> = [];
 
 export function inScope(): boolean {
-	const l: DisplayList = currentList();
+	const l: DrawContext2D = currentContext();
 	return l.scopeNow != NO_SCOPE && l.scopeNow != l.cameraScope;
 }
 
 export function enterCamera(row: int32, dx: float32, dy: float32): void {
-	const l: DisplayList = currentList();
+	const ctx: DrawContext2D = currentContext();
+	const l: DrawContext2D = currentContext();
 	const record: ScopeRecord = {
 		row: row,
 		parent: NO_SCOPE,
@@ -705,8 +682,8 @@ export function enterCamera(row: int32, dx: float32, dy: float32): void {
 		dy: dy,
 		x: 0.0,
 		y: 0.0,
-		w: fbW,
-		h: fbH,
+		w: ctx.fbW,
+		h: ctx.fbH,
 	};
 	l.scopeNow = pushScope(record);
 	l.cameraScope = l.scopeNow;
@@ -715,44 +692,46 @@ export function enterCamera(row: int32, dx: float32, dy: float32): void {
 export function enterScope(
 	row: int32, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, dx: float32, dy: float32,
 ): void {
+	const ctx: DrawContext2D = currentContext();
 	let x0: float32 = minFour(tl.x, tr.x, br.x, bl.x);
 	let y0: float32 = minFour(tl.y, tr.y, br.y, bl.y);
 	let x1: float32 = maxFour(tl.x, tr.x, br.x, bl.x);
 	let y1: float32 = maxFour(tl.y, tr.y, br.y, bl.y);
-	if (clipDepth > 0) {
-		const outer: MaskClip = clipStack[clipDepth - 1];
+	if (ctx.clipDepth > 0) {
+		const outer: MaskClip = ctx.clipStack[ctx.clipDepth - 1];
 		if (outer.x0 > x0) { x0 = outer.x0; }
 		if (outer.y0 > y0) { y0 = outer.y0; }
 		if (outer.x1 < x1) { x1 = outer.x1; }
 		if (outer.y1 < y1) { y1 = outer.y1; }
 	}
 	closeRun();
-	const l: DisplayList = currentList();
+	const l: DrawContext2D = currentContext();
 	const record: ScopeRecord = {
 		row: row,
 		parent: l.scopeNow,
 		scale: currentRenderScale(),
 		dx: dx,
 		dy: dy,
-		x: x0 - originX,
-		y: y0 - originY,
+		x: x0 - ctx.originX,
+		y: y0 - ctx.originY,
 		w: x1 > x0 ? x1 - x0 : 0.0,
 		h: y1 > y0 ? y1 - y0 : 0.0,
 	};
 	l.scopeNow = pushScope(record);
-	scopeDepths.push(clipDepth);
-	clipDepth = 0;
+	ctx.scopeDepths.push(ctx.clipDepth);
+	ctx.clipDepth = 0;
 	l.clip = NO_CLIP;
 	openRun(BreakReason.Clip);
 }
 
 export function leaveScope(): void {
+	const ctx: DrawContext2D = currentContext();
 	closeRun();
-	const l: DisplayList = currentList();
+	const l: DrawContext2D = currentContext();
 	l.scopeNow = l.scopes[l.scopeNow].parent;
-	clipDepth = scopeDepths.pop();
-	if (clipDepth > 0) {
-		applyClip(clipDepth - 1);
+	ctx.clipDepth = ctx.scopeDepths.pop();
+	if (ctx.clipDepth > 0) {
+		applyClip(ctx.clipDepth - 1);
 		return;
 	}
 	recordClip(NO_CLIP);
@@ -760,9 +739,10 @@ export function leaveScope(): void {
 }
 
 export function popClip(): void {
-	if (clipDepth > 0) { clipDepth = clipDepth - 1; }
-	if (clipDepth > 0) {
-		applyClip(clipDepth - 1);
+	const ctx: DrawContext2D = currentContext();
+	if (ctx.clipDepth > 0) { ctx.clipDepth = ctx.clipDepth - 1; }
+	if (ctx.clipDepth > 0) {
+		applyClip(ctx.clipDepth - 1);
 	} else {
 		closeRun();
 		recordClip(NO_CLIP);
@@ -774,26 +754,28 @@ export function popClip(): void {
 // (empty/<16 = identity); add = rgba added after; key = chroma colorKey (a>0 enables,
 // matching texels go transparent).
 function currentGradientKind(): int32 {
-	if (curEffect == NO_EFFECT) { return 0; }
-	return effectField(curEffect, EFFECT_GRADIENT_META) as int32;
+	const ctx: DrawContext2D = currentContext();
+	if (ctx.curEffect == NO_EFFECT) { return 0; }
+	return effectField(ctx.curEffect, EFFECT_GRADIENT_META) as int32;
 }
 export function setEffect(mat: Span<float32>, add: Color, key: Color): void {
+	const ctx: DrawContext2D = currentContext();
 	const hasMat: boolean = (mat.length as int32) >= 16;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
-	if (!wantsEffect && !curHasEffect) { return; }
-	if (wantsEffect && curHasEffect && currentGradientKind() == 0
-		&& add == curAdd && key == curKey
+	if (!wantsEffect && !ctx.curHasEffect) { return; }
+	if (wantsEffect && ctx.curHasEffect && currentGradientKind() == 0
+		&& add == ctx.curAdd && key == ctx.curKey
 		&& effectMatrixSame(mat, hasMat)) { return; }
 	closeRun();
 	if (hasMat) {
-		for (let i: int32 = 0; i < 16; i++) { curMat[i] = mat[i]; }
+		for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = mat[i]; }
 	} else {
 		setIdentityMat();
 	}
-	curAdd = add;
-	curKey = key;
-	curHasEffect = wantsEffect;
-	curEffect = wantsEffect ? pushEffect(mat, add, key) : NO_EFFECT;
+	ctx.curAdd = add;
+	ctx.curKey = key;
+	ctx.curHasEffect = wantsEffect;
+	ctx.curEffect = wantsEffect ? pushEffect(mat, add, key) : NO_EFFECT;
 	openRun(BreakReason.Effect);
 }
 export function setGradientEffect(
@@ -812,40 +794,41 @@ export function setGradientEffect(
 	c1: Color,
 	c2: Color,
 ): void {
+	const ctx: DrawContext2D = currentContext();
 	const hasMat: boolean = (mat.length as int32) >= 16;
-	if (curHasEffect && curEffect != NO_EFFECT
-		&& (effectField(curEffect, EFFECT_GRADIENT_META) as int32) == kind
-		&& (effectField(curEffect, EFFECT_GRADIENT_META + 1) as int32) == space
-		&& effectField(curEffect, EFFECT_GRADIENT_META + 2) == (dither ? 1.0 : 0.0)
-		&& effectField(curEffect, EFFECT_GRADIENT_META + 3) == middle
-		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS) == p0
-		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS + 1) == p1
-		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS + 2) == p2
-		&& effectField(curEffect, EFFECT_GRADIENT_PARAMS + 3) == p3
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0) == c0.r
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0 + 1) == c0.g
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0 + 2) == c0.b
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR0 + 3) == c0.a
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1) == c1.r
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1 + 1) == c1.g
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1 + 2) == c1.b
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR1 + 3) == c1.a
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2) == c2.r
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2 + 1) == c2.g
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2 + 2) == c2.b
-		&& effectField(curEffect, EFFECT_GRADIENT_COLOR2 + 3) == c2.a
-		&& add == curAdd && key == curKey
+	if (ctx.curHasEffect && ctx.curEffect != NO_EFFECT
+		&& (effectField(ctx.curEffect, EFFECT_GRADIENT_META) as int32) == kind
+		&& (effectField(ctx.curEffect, EFFECT_GRADIENT_META + 1) as int32) == space
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_META + 2) == (dither ? 1.0 : 0.0)
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_META + 3) == middle
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_PARAMS) == p0
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_PARAMS + 1) == p1
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_PARAMS + 2) == p2
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_PARAMS + 3) == p3
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR0) == c0.r
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR0 + 1) == c0.g
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR0 + 2) == c0.b
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR0 + 3) == c0.a
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR1) == c1.r
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR1 + 1) == c1.g
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR1 + 2) == c1.b
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR1 + 3) == c1.a
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR2) == c2.r
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR2 + 1) == c2.g
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR2 + 2) == c2.b
+		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR2 + 3) == c2.a
+		&& add == ctx.curAdd && key == ctx.curKey
 		&& effectMatrixSame(mat, hasMat)) { return; }
 	closeRun();
 	if (hasMat) {
-		for (let i: int32 = 0; i < 16; i++) { curMat[i] = mat[i]; }
+		for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = mat[i]; }
 	} else {
 		setIdentityMat();
 	}
-	curAdd = add;
-	curKey = key;
-	curHasEffect = true;
-	curEffect = pushGradientEffect(mat, add, key, kind, space, dither, middle,
+	ctx.curAdd = add;
+	ctx.curKey = key;
+	ctx.curHasEffect = true;
+	ctx.curEffect = pushGradientEffect(mat, add, key, kind, space, dither, middle,
 		p0, p1, p2, p3, c0, c1, c2);
 	openRun(BreakReason.Effect);
 }
@@ -854,22 +837,25 @@ export function setGradientEffect(
 // `Scene.present`, before the walk; changing it mid-walk would make two nodes with identical
 // state sample differently, which is exactly the bug a tri-state invites.
 export function setSceneSmooth(s: boolean): void {
-	sceneSmooth = s;
+	const ctx: DrawContext2D = currentContext();
+	ctx.sceneSmooth = s;
 }
 
 export function sceneSmoothDefault(): boolean {
-	return sceneSmooth;
+	const ctx: DrawContext2D = currentContext();
+	return ctx.sceneSmooth;
 }
 
 // h2d.Drawable.smooth and h2d.Drawable.tileWrap, resolved: linear vs nearest sampling, and
 // repeat vs clamp at the tile's edge. Batch state — a change closes the run, because a
 // sampler is bound per draw.
 export function setSampler(smooth: Smooth, tileWrap: boolean): void {
-	const on: boolean = smooth == Smooth.Inherit ? sceneSmooth : smooth == Smooth.On;
+	const ctx: DrawContext2D = currentContext();
+	const on: boolean = smooth == Smooth.Inherit ? ctx.sceneSmooth : smooth == Smooth.On;
 	const want: int32 = samplerIndex(on, tileWrap);
-	if (want == curSampler) { return; }
+	if (want == ctx.curSampler) { return; }
 	closeRun();
-	curSampler = want;
+	ctx.curSampler = want;
 	openRun(BreakReason.Sampler);
 }
 
@@ -910,49 +896,51 @@ export function beginTarget(
 	oy: float32,
 	clear: Color,
 ): void {
-	targetsFlushed = false;
+	const ctx: DrawContext2D = currentContext();
+	ctx.targetsFlushed = false;
 	if (targetDepth() >= TARGET_SAVE_SLOTS) {
 		beginTargetList(rt, w, h, scale, clear.r, clear.g, clear.b, clear.a);
 		return;
 	}
 	closeRun();
 	const slot: int32 = targetDepth() * 3;
-	savedView[targetDepth()] = curView;
-	savedRun[slot] = (curBlend as int32) as float32;
-	savedRun[slot + 1] = curSampler as float32;
-	savedRun[slot + 2] = curEffect as float32;
-	savedSize[targetDepth() * 4] = fbW;
-	savedSize[targetDepth() * 4 + 1] = fbH;
-	savedSize[targetDepth() * 4 + 2] = originX;
-	savedSize[targetDepth() * 4 + 3] = originY;
+	ctx.savedView[targetDepth()] = ctx.curView;
+	ctx.savedRun[slot] = (ctx.curBlend as int32) as float32;
+	ctx.savedRun[slot + 1] = ctx.curSampler as float32;
+	ctx.savedRun[slot + 2] = ctx.curEffect as float32;
+	ctx.savedSize[targetDepth() * 4] = ctx.fbW;
+	ctx.savedSize[targetDepth() * 4 + 1] = ctx.fbH;
+	ctx.savedSize[targetDepth() * 4 + 2] = ctx.originX;
+	ctx.savedSize[targetDepth() * 4 + 3] = ctx.originY;
 	beginTargetList(rt, w, h, scale, clear.r, clear.g, clear.b, clear.a);
-	fbW = w;
-	fbH = h;
-	originX = ox;
-	originY = oy;
+	ctx.fbW = w;
+	ctx.fbH = h;
+	ctx.originX = ox;
+	ctx.originY = oy;
 	// A fresh pass has nothing bound, so the first draw in it must not be told it can skip a
 	// bind it never made.
-	curView = void2dWhiteView();
-	curBlend = BlendMode.Alpha;
-	curSampler = samplerIndex(sceneSmooth, false);
-	curEffect = NO_EFFECT;
+	ctx.curView = void2dWhiteView();
+	ctx.curBlend = BlendMode.Alpha;
+	ctx.curSampler = samplerIndex(ctx.sceneSmooth, false);
+	ctx.curEffect = NO_EFFECT;
 	openRun(BreakReason.Barrier);
 }
 
 export function endTarget(): void {
+	const ctx: DrawContext2D = currentContext();
 	closeRun();
 	const depth: int32 = targetDepth();
 	endTargetList();
 	if (depth > TARGET_SAVE_SLOTS || depth <= 0) { return; }
 	const slot: int32 = (depth - 1) * 3;
-	curView = savedView[depth - 1];
-	curBlend = (savedRun[slot] as int32) as BlendMode;
-	curSampler = savedRun[slot + 1] as int32;
-	curEffect = savedRun[slot + 2] as int32;
-	fbW = savedSize[(depth - 1) * 4];
-	fbH = savedSize[(depth - 1) * 4 + 1];
-	originX = savedSize[(depth - 1) * 4 + 2];
-	originY = savedSize[(depth - 1) * 4 + 3];
+	ctx.curView = ctx.savedView[depth - 1];
+	ctx.curBlend = (ctx.savedRun[slot] as int32) as BlendMode;
+	ctx.curSampler = ctx.savedRun[slot + 1] as int32;
+	ctx.curEffect = ctx.savedRun[slot + 2] as int32;
+	ctx.fbW = ctx.savedSize[(depth - 1) * 4];
+	ctx.fbH = ctx.savedSize[(depth - 1) * 4 + 1];
+	ctx.originX = ctx.savedSize[(depth - 1) * 4 + 2];
+	ctx.originY = ctx.savedSize[(depth - 1) * 4 + 3];
 	openRun(BreakReason.Barrier);
 }
 
@@ -1031,7 +1019,6 @@ function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec
 // its local size. The shader rebuilds the corners, so the walk stops writing six transformed
 // vertices and writes 64 unchanged bytes instead.
 //
-// `curEffect` is the gate. The sprite program carries no colour pipeline - no colorMatrix, no
 // colorAdd, no colorKey - so a node with one stays on the vertex path. That is a decision the
 // caller makes, not a silent fallback: `spriteInstancingAvailable` is what render.ms asks.
 export function drawSpriteAffine(
@@ -1106,7 +1093,8 @@ export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance)
 // node with a colorMatrix, colorAdd or colorKey stays on the vertex path - a decision the
 // caller makes, never a silent fallback.
 export function uiInstancingAvailable(): boolean {
-	return curEffect == NO_EFFECT;
+	const ctx: DrawContext2D = currentContext();
+	return ctx.curEffect == NO_EFFECT;
 }
 
 // Counted from the stream rather than from the GPU, so T1 reads them with no GPU at all.
@@ -1117,13 +1105,16 @@ export function recordedSpriteInstanceCount(): int32 { return spriteInstanceCoun
 // origin as each vertex is written. An instance carries its origin once, so the same
 // subtraction applies there - and it has to be the same two numbers, or a filtered sprite
 // lands somewhere else than a filtered anything else.
-function originXOffset(): float32 { return originX; }
-function originYOffset(): float32 { return originY; }
+function originXOffset(): float32 {
+	const ctx: DrawContext2D = currentContext(); return ctx.originX; }
+function originYOffset(): float32 {
+	const ctx: DrawContext2D = currentContext(); return ctx.originY; }
 
 // True when the instanced path is legal for the state the emitter is in. The only thing that
 // disqualifies it is a colour pipeline, which the sprite program does not have.
 export function spriteInstancingAvailable(): boolean {
-	return curEffect == NO_EFFECT;
+	const ctx: DrawContext2D = currentContext();
+	return ctx.curEffect == NO_EFFECT;
 }
 
 export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {

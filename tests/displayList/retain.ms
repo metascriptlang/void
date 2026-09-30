@@ -185,7 +185,7 @@ function frame(s: Scene2D): Recording {
 }
 
 function fullFrame(s: Scene2D): Recording {
-	s.list.painted = false;
+	s.context.painted = false;
 	s.viewInit = false;
 	return frame(s);
 }
@@ -218,7 +218,7 @@ function check(s: Scene2D, what: string, path: string): boolean {
 	s.retryRefused();
 	reusedByRetained = s.reused;
 	const taken: string = s.patches > patches ? "patch" : (s.splices > splices ? "splice" : "full");
-	s.list.painted = false;
+	s.context.painted = false;
 	s.viewInit = false;
 	s.paint(W, H, 1.0);
 	const full: Recording = capture();
@@ -391,22 +391,22 @@ test "a card's colour marks one UI range one record long, and an undone write ma
 	uploaded();
 	frame(s);
 	assert s.repainted == 0;
-	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
+	assert !s.context.uploadAll && s.context.dirtyUiTotal == 0;
 	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
 	frame(s);
 	const start: PaintIndex = paintStartOf(c.card.id.index);
-	assert !s.list.uploadAll;
-	assert s.list.dirtyUiTotal == 1;
-	assert s.list.dirtyUi[0] == start.uiInstances;
-	assert s.list.dirtyUi[1] == start.uiInstances + 1;
-	assert !s.list.dirtySprites && !s.list.dirtyVertices;
+	assert !s.context.uploadAll;
+	assert s.context.dirtyUiTotal == 1;
+	assert s.context.dirtyUi[0] == start.uiInstances;
+	assert s.context.dirtyUi[1] == start.uiInstances + 1;
+	assert !s.context.dirtySprites && !s.context.dirtyVertices;
 	uploaded();
 	c.label.setText("99");
 	c.label.setText("12");
 	frame(s);
 	assert s.repainted == 1;
-	assert !s.list.uploadAll && s.list.dirtyUiTotal == 0;
-	assert !s.list.dirtySprites && !s.list.dirtyVertices;
+	assert !s.context.uploadAll && s.context.dirtyUiTotal == 0;
+	assert !s.context.dirtySprites && !s.context.dirtyVertices;
 }
 
 function caretScene(): Scene2D {
@@ -424,17 +424,17 @@ test "a caret blink writes the caret's instance and nothing else" {
 	uploaded();
 	s.tick(0.3);
 	frame(s);
-	assert s.repainted == 0 && s.list.dirtyUiTotal == 0;
+	assert s.repainted == 0 && s.context.dirtyUiTotal == 0;
 	const patches: int32 = s.patches;
 	s.tick(0.3);
 	const hidden: Recording = frame(s);
 	assert s.patches == patches + 1;
 	assert s.repainted == 1;
 	const end: PaintIndex = paintEndOf(editor);
-	assert s.list.dirtyUiTotal == 1;
-	assert s.list.dirtyUi[0] == end.uiInstances - 1;
-	assert s.list.dirtyUi[1] == end.uiInstances;
-	assert !s.list.dirtySprites && !s.list.dirtyVertices;
+	assert s.context.dirtyUiTotal == 1;
+	assert s.context.dirtyUi[0] == end.uiInstances - 1;
+	assert s.context.dirtyUi[1] == end.uiInstances;
+	assert !s.context.dirtySprites && !s.context.dirtyVertices;
 	assert same(hidden, fullFrame(s));
 }
 
@@ -481,9 +481,9 @@ test "a scroll writes no instance and no command, only its scope's shift" {
 	frame(s);
 	const before: Recording = frame(s);
 	s.refreshScopes();
-	assert s.list.scopeTotal == 2;
-	assert s.list.cameraScope == 0;
-	assert s.list.scopes[1].dy == -30.0;
+	assert s.context.scopeTotal == 2;
+	assert s.context.cameraScope == 0;
+	assert s.context.scopes[1].dy == -30.0;
 	const patches: int32 = s.patches;
 	m.scrollBy(0.0, 22.0);
 	assert s.isDirty();
@@ -492,8 +492,8 @@ test "a scroll writes no instance and no command, only its scope's shift" {
 	assert s.repainted == 0;
 	assert same(before, after);
 	s.refreshScopes();
-	assert s.list.scopes[1].dy == -52.0;
-	assert s.list.uiInstanceTotal == 26;
+	assert s.context.scopes[1].dy == -52.0;
+	assert s.context.uiInstanceTotal == 26;
 }
 
 function strip(): Scene2D {
@@ -529,23 +529,23 @@ test "a camera pan writes no instance and re-multiplies no node, only the root's
 	assert !s.isDirty();
 	s.refreshScopes();
 	resolveScopes();
-	assert s.list.scopeValues[0] == -7.0;
-	assert s.list.scopeValues[SCOPE_FLOATS] == -7.0;
-	assert s.list.scopeValues[SCOPE_FLOATS + 1] == -10.0;
-	assert s.list.scopeValues[SCOPE_FLOATS + 2] == 13.0;
+	assert s.context.scopeValues[0] == -7.0;
+	assert s.context.scopeValues[SCOPE_FLOATS] == -7.0;
+	assert s.context.scopeValues[SCOPE_FLOATS + 1] == -10.0;
+	assert s.context.scopeValues[SCOPE_FLOATS + 2] == 13.0;
 }
 
 test "a camera pan emits the rows it brings on screen and drops the rows it takes off" {
 	const s = strip();
 	frame(s);
-	const shown: int32 = s.list.uiInstanceTotal;
+	const shown: int32 = s.context.uiInstanceTotal;
 	s.cam.x = 60.0;
 	assert check(s, "a pan that uncovers rows", "splice");
 	s.cam.x = 61.0;
 	assert check(s, "a pan that uncovers nothing", "patch");
 	s.cam.x = 0.0;
 	assert check(s, "a pan back", "splice");
-	assert s.list.uiInstanceTotal == shown;
+	assert s.context.uiInstanceTotal == shown;
 	s.cam.x = 0.4;
 	assert check(s, "a pan under half a device pixel", "patch");
 	s.cam.zoom = 1.5;
@@ -583,7 +583,7 @@ test "a tile group's writes record what a full frame records, write by write" {
 	const t: Tiles = tiles();
 	const s: Scene2D = t.s;
 	frame(s);
-	assert s.list.spriteInstanceTotal == 5;
+	assert s.context.spriteInstanceTotal == 5;
 	assert check(s, "a still frame", "patch");
 	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
 	t.map.setTile(1, red);
@@ -638,7 +638,7 @@ test "a tile's colour rewrites its one sprite record and nothing else" {
 		}
 	}
 	assert changed == 2;
-	assert s.list.dirtySprites && s.list.dirtyUiTotal == 0 && !s.list.dirtyVertices;
+	assert s.context.dirtySprites && s.context.dirtyUiTotal == 0 && !s.context.dirtyVertices;
 }
 
 test "a tile edit writes in place only while the group keeps its shape, place and alpha" {
@@ -668,7 +668,7 @@ test "a tile edit writes in place only while the group keeps its shape, place an
 	const past: TileCell = { ...tileCell(24.0, 0.0, 11), color: rgba(1.0, 1.0, 0.0, 1.0) };
 	t.map.setTile(3, past);
 	frame(s);
-	assert s.retiled == 1 && !s.list.dirtySprites;
+	assert s.retiled == 1 && !s.context.dirtySprites;
 	assert check(s, "an edit outside the range", "patch");
 }
 

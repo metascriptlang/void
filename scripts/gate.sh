@@ -127,6 +127,23 @@ else
 	fail "retained replay coherence — see out/gate-retained-replay.log and out/gate-retained-replay-run.log"
 fi
 
+if "$MSC" build tests/integration/drawContexts.ms --release --output=out/drawContexts.exe \
+		> out/gate-draw-contexts.log 2>&1 \
+		&& out/drawContexts.exe > out/gate-draw-contexts-run.log 2>&1; then
+	pass "draw contexts: interleaved records, native sources, DPI and default append"
+else
+	fail "draw context isolation — see out/gate-draw-contexts.log and out/gate-draw-contexts-run.log"
+fi
+context_status=0
+VOID_DRAW_CONTEXT_EXPIRED=1 out/drawContexts.exe \
+	> out/gate-context-expired.log 2>&1 || context_status=$?
+if [ "$context_status" -ne 0 ] \
+		&& grep -q 'cannot activate context.*prepared frame.*expired' out/gate-context-expired.log; then
+	pass "prepared draw context expires at commit and stops with its id"
+else
+	fail "expired draw context did not stop with its named error"
+fi
+
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
 		&& out/twoViews.exe > out/gate-two-views-run.log 2>&1; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
@@ -276,10 +293,10 @@ FRAME_PATH="scene:tick scene:present scene:presentAt render:drawOrder render:dra
 	render:renderScaleGrid label84ext:placementCurrent label84ext:placementKey label84ext:uvRect
 	label84ext:markGlyphPageDrawn label84ext:beginGlyphFrame label84ext:glyphPageHandle
 	glyph65tlas:tile glyph65tlas:markDrawn glyph65tlas:beginFrame glyph65tlas:pageHandle
-	display76ist:resetList display76ist:growTo display76ist:pushUiInstance
+	display76ist:resetContext display76ist:growTo display76ist:pushUiInstance
 	display76ist:pushSpriteInstance display76ist:pushVertex display76ist:recordDraw
 	display76ist:recordUiDraw display76ist:recordSpriteDraw display76ist:startCommand
-	display76ist:pushEffect display76ist:recordClip draw:openBracket draw:startList draw:end2d
+	display76ist:pushEffect display76ist:recordClip draw:openBracket draw:startContext draw:end2d
 	draw:flushTargets
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect

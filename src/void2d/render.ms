@@ -6,9 +6,9 @@ import {
 	NO_NODE_2D, Enclosure, LaneFrame,
 } from "./node";
 import {
-	DisplayList,
-	currentList,
-	listSerial,
+	DrawContext2D,
+	currentContext,
+	contextSerial,
 	PaintIndex,
 	PaintState,
 	recordPaint,
@@ -987,12 +987,12 @@ export function acquireFrameTarget(w: int32, h: int32): uint32 { return acquireT
 export function renderTargetsAlive(): int32 { return poolRT.length as int32; }
 
 function acquireTarget(w: int32, h: int32): uint32 {
-	const owner: DisplayList = currentList();
+	const owner: DrawContext2D = currentContext();
 	for (let i: int32 = 0; i < (poolRT.length as int32); i++) {
-		const free: boolean = listSerial(poolOwner[i]) != poolSerial[i];
+		const free: boolean = contextSerial(poolOwner[i]) != poolSerial[i];
 		if (free && poolW[i] == w && poolH[i] == h) {
 			poolOwner[i] = owner.id;
-			poolSerial[i] = listSerial(owner.id);
+			poolSerial[i] = contextSerial(owner.id);
 			return poolRT[i];
 		}
 	}
@@ -1009,7 +1009,7 @@ function acquireTarget(w: int32, h: int32): uint32 {
 	poolW.push(w);
 	poolH.push(h);
 	poolOwner.push(owner.id);
-	poolSerial.push(listSerial(owner.id));
+	poolSerial.push(contextSerial(owner.id));
 	return rt;
 }
 
@@ -1197,7 +1197,7 @@ function enterScopeOf(s: Scene2D, i: int32): void {
 }
 
 export function refreshScopes(this s: Scene2D): void {
-	const l: DisplayList = s.list;
+	const l: DrawContext2D = s.context;
 	for (let k: int32 = 0; k < l.scopeTotal; k++) {
 		const r = l.scopes[k];
 		const by: Vec2 = k == l.cameraScope ? s.viewShift : localShift(s, r.row, r.scale);
@@ -1231,11 +1231,11 @@ export function drawOrder(this s: Scene2D, vw: float32, vh: float32): void {
 	scanOrder(s, vw, vh, null);
 }
 
-export function spliceOrder(this s: Scene2D, old: DisplayList, vw: float32, vh: float32): void {
+export function spliceOrder(this s: Scene2D, old: DrawContext2D, vw: float32, vh: float32): void {
 	scanOrder(s, vw, vh, old);
 }
 
-function reusable(s: Scene2D, i: int32, old: DisplayList): boolean {
+function reusable(s: Scene2D, i: int32, old: DrawContext2D): boolean {
 	if (i >= (old.paintStates.length as int32) || old.paintStates[i] != PaintState.Painted) {
 		return false;
 	}
@@ -1407,7 +1407,7 @@ function remapLaneRows(s: Scene2D, parent: int32, c0: int32, c1: int32): void {
 	}
 }
 
-function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DisplayList | null): void {
+function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DrawContext2D | null): void {
 	s.reused = 0;
 	const n: int32 = s.order.length as int32;
 	let p: int32 = 0;
@@ -1434,8 +1434,8 @@ function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DisplayList | null
 			s.alphas[i] = na;
 			const start: PaintIndex = paintIndex();
 			let q: int32 = p + 1;
-			if (old !== null && reusable(s, i, old as DisplayList)) {
-				const source: DisplayList = old as DisplayList;
+			if (old !== null && reusable(s, i, old as DrawContext2D)) {
+				const source: DrawContext2D = old as DrawContext2D;
 				const first: PaintIndex = source.paintStarts[i];
 				let last: PaintIndex = source.paintEnds[i];
 				if (s.kinds[i] !== DrawKind.Mask && !lanesFor(s, i)) {
@@ -1482,7 +1482,7 @@ function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DisplayList | null
 	while ((s.maskEnds.length as int32) > 0) { closeEnclosure(s); }
 }
 
-function joins(s: Scene2D, source: DisplayList, q: int32, last: PaintIndex): boolean {
+function joins(s: Scene2D, source: DrawContext2D, q: int32, last: PaintIndex): boolean {
 	const ends: int32 = s.maskEnds.length as int32;
 	if (ends > 0 && s.maskEnds[ends - 1] <= q) { return false; }
 	const j: int32 = s.order[q];

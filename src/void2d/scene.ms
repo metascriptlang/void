@@ -5,7 +5,7 @@ import { Scene2D, NodeRef, DrawKind, Changed, NO_NODE_2D } from "./node";
 import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift } from "./render";
 import {
 	openBracket,
-	startList,
+	startContext,
 	end2d,
 	flushTargets,
 	finishRecording,
@@ -14,7 +14,7 @@ import {
 	endPatch,
 	enterCamera,
 } from "./draw";
-import { DisplayList, NO_REPAINT, displayList, twinList, useList } from "./displayList";
+import { DrawContext2D, NO_REPAINT, useContext } from "./displayList";
 import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
 import {
 	Color,
@@ -30,7 +30,7 @@ import {
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
 export function create(this typeof Scene2D, clear: Color): Scene2D {
-	const list: DisplayList = displayList();
+	const context: DrawContext2D = DrawContext2D.create();
 	const s: Scene2D = {
 		generations: [], free: [], retired: 0, kinds: [], payloads: [], changed: [], dirty: [],
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
@@ -41,7 +41,7 @@ export function create(this typeof Scene2D, clear: Color): Scene2D {
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], tileGroups: [], tileCells: [],
 		tileEdits: [], freeTileGroups: [], retile: [], retiled: 0, scrolls: [], freeScrolls: [],
 		stack: [], root: NO_NODE_2D,
-		list: list, spare: twinList(list.id),
+		context: context, spareContext: DrawContext2D.twin(context.id),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
 		viewMat: identity2d(), viewShift: vec2(0.0, 0.0), culledShift: vec2(0.0, 0.0),
 		viewInit: false, defaultSmooth: true, culls: [],
@@ -147,7 +147,7 @@ export function present(this s: Scene2D): void {
 // golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
 // "Determinism preconditions").
 export function isDirty(this s: Scene2D): boolean {
-	const l: DisplayList = s.list;
+	const l: DrawContext2D = s.context;
 	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
 	if (s.defaultSmooth != l.paintedSmooth) { return true; }
 	const nv: Transform2D = sceneViewMatrix(s, l.paintedW, l.paintedH);
@@ -163,11 +163,9 @@ function shiftOf(m: Transform2D, dpi: float32): Vec2 {
 }
 
 export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
-	// Before recording begins, never during the walk: begin2d captures this default in the
-	// first run's sampler state.
-	setSceneSmooth(s.defaultSmooth);
 	s.retiled = 0;
-	useList(s.list);
+	useContext(s.context);
+	setSceneSmooth(s.defaultSmooth);
 	openBracket(wf, hf, dpi);
 	const nv: Transform2D = sceneViewMatrix(s, wf, hf);
 	const linear: Transform2D = linearPart(nv);
@@ -178,7 +176,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 	}
 	s.viewShift = shiftOf(nv, dpi);
 	s.refreshOrder();
-	const l: DisplayList = s.list;
+	const l: DrawContext2D = s.context;
 	const kept: boolean = l.painted && !viewChanged &&
 		l.paintedW == wf && l.paintedH == hf && l.paintedDpi == dpi &&
 		l.paintedSmooth == s.defaultSmooth;
@@ -190,24 +188,32 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 		return;
 	}
 	if (kept) {
-		const next: DisplayList = s.spare;
-		useList(next);
-		startList();
+		const next: DrawContext2D = s.spareContext;
+		useContext(next);
+		next.frameDpi = dpi;
+		next.fbW = wf;
+		next.fbH = hf;
+		next.targetsFlushed = false;
+		next.frameLive = true;
+		next.originX = 0.0;
+		next.originY = 0.0;
+		setSceneSmooth(s.defaultSmooth);
+		startContext();
 		enterCamera(s.root, s.viewShift.x, s.viewShift.y);
 		s.spliceOrder(l, wf, hf);
-		s.spare = l;
-		s.list = next;
+		s.spareContext = l;
+		s.context = next;
 		s.splices = s.splices + 1;
 		s.repainted = s.repaint.length as int32;
 	} else {
-		startList();
+		startContext();
 		enterCamera(s.root, s.viewShift.x, s.viewShift.y);
 		s.syncOrder(s.viewMat, viewChanged);
 		s.drawOrder(wf, hf);
 		s.repainted = NO_REPAINT;
 	}
 	s.culledShift = s.viewShift;
-	const done: DisplayList = s.list;
+	const done: DrawContext2D = s.context;
 	finishRecording();
 	done.paintEnd = paintIndex();
 	done.painted = true;

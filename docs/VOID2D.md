@@ -1712,8 +1712,33 @@ WebGPU / WebGL2 builds are 2 109 977 / 1 882 102 B; GL demo liveness passes, hea
 WebGPU remains the no-adapter skip. Allocation still holds 103 frame functions plus
 232 callees, and the record has 16 PENDING rows with zero mismatch.
 
-**Next cutovers:** prepare/drawScreen and explicit frame state, then pipelines/targets and
-the shared BlendMode through the door. These are not claimed complete by a name migration.
+**Frame ownership built:** `displayList.ms` `DrawContext2D` now owns streams, emitter state
+and frame scratch; Scene2D owns a context/twin pair sharing GPU-owner identity. There is no
+DisplayList alias. The selector remains private behind `useContext` / `currentContext`,
+the original stream API's idiom, rather than exposing a mutable module global.
+
+CPU state alone was insufficient: preparing another context overwrites native source bindings.
+`batcher.c` `void2dRememberContext` / `void2dActivateContext` retain the actual buffer handles,
+append offsets, counts, readiness and frame stamp per context. Replay restores those sources,
+while the MS context restores its DPI and scope values; activation uploads nothing and opens
+no pass. The existing same-frame stale-copy latch remains intact.
+
+Real D3D11 `tests/integration/drawContexts.ms` interleaves A/B recording, prepares both and
+the default append context, then replays A/B/default at two DPIs across two frames. Captured
+red/green/blue interior pixels hold; an expired context after commit stops with its id/frame.
+The native gate is GREEN: 1058 tests plus 299 isolated, D3D11 76/76 unchanged, the same-frame
+replay and context consumers, three invariants, 103 frame functions/232 callees, 16 PENDING.
+This context pass did not run web; the preceding naming pass's WebGL2 measurement remains above.
+
+One attempted optimisation exported the mutable selector for direct cross-module field access.
+That unnecessary exposure was reversed: a compiler-only public global alias destroys the
+still-live original reference on C, while private-global and JS controls retain it.
+Card `2026-09-30-exported-global-reference-alias-not-retained` owns that failure; no manual
+retain, extra ownership holder or crash suppression was added. The private-selector contract
+provides the same selection capability and its real default-context replay is proven.
+
+**Next cutovers:** prepare/drawScreen, then pipelines/targets and the shared BlendMode through
+the door. The context consumer proves isolated replay, not those still-in-flight cutovers.
 The P5 Scene-lifetime blocker stays owned by P5, and P6 is not started.
 
 **Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
