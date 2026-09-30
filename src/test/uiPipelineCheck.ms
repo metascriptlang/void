@@ -192,8 +192,122 @@ test "a premultiplied source never scales its colour by its alpha again" {
 	];
 	for (const mode of modes) {
 		const state: RenderState = premultipliedBlend(mode);
-		assert state.blendSource != Blend.SourceAlpha;
+		assert state.blendSource != Blend.SourceAlpha && state.blendAlphaSource != Blend.SourceAlpha;
 		assert state.culling == Face.None && !state.depthWrite;
 		assert state.depthTest == Compare.Always;
+	}
+}
+
+function channel(color: Color, index: int32): float32 {
+	return match (index) {
+		0 => color.r,
+		1 => color.g,
+		2 => color.b,
+		_ => color.a,
+	};
+}
+
+function factorOf(factor: Blend, src: Color, dst: Color, index: int32): float32 {
+	return match (factor) {
+		Blend.One => 1.0,
+		Blend.Zero => 0.0,
+		Blend.SourceAlpha => src.a,
+		Blend.SourceColor => channel(src, index),
+		Blend.DestinationAlpha => dst.a,
+		Blend.DestinationColor => channel(dst, index),
+		Blend.OneMinusSourceAlpha => 1.0 - src.a,
+		Blend.OneMinusSourceColor => 1.0 - channel(src, index),
+		Blend.OneMinusDestinationAlpha => 1.0 - dst.a,
+		Blend.OneMinusDestinationColor => 1.0 - channel(dst, index),
+	};
+}
+
+function combine(operation: Operation, source: float32, destination: float32): float32 {
+	const raw: float32 = match (operation) {
+		Operation.Add => source + destination,
+		Operation.Subtract => source - destination,
+		Operation.ReverseSubtract => destination - source,
+		Operation.Min => source < destination ? source : destination,
+		Operation.Max => source > destination ? source : destination,
+	};
+	if (raw < 0.0) { return 0.0; }
+	if (raw > 1.0) { return 1.0; }
+	return raw;
+}
+
+function blended(mode: BlendMode, src: Color, dst: Color): Color {
+	const state: RenderState = premultipliedBlend(mode);
+	let out: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
+	for (let i: int32 = 0; i < 4; i++) {
+		const alpha: boolean = i == 3;
+		const s: Blend = alpha ? state.blendAlphaSource : state.blendSource;
+		const d: Blend = alpha ? state.blendAlphaDestination : state.blendDestination;
+		const op: Operation = alpha ? state.blendAlphaOperation : state.blendOperation;
+		const minMax: boolean = op == Operation.Min || op == Operation.Max;
+		const source: float32 = minMax ? channel(src, i) : channel(src, i) * factorOf(s, src, dst, i);
+		const destination: float32 =
+			minMax ? channel(dst, i) : channel(dst, i) * factorOf(d, src, dst, i);
+		out[i] = combine(op, source, destination);
+	}
+	return { r: out[0], g: out[1], b: out[2], a: out[3] };
+}
+
+function near(a: Color, b: Color): boolean {
+	const e: float32 = 0.0001;
+	return a.r - b.r < e && b.r - a.r < e && a.g - b.g < e && b.g - a.g < e
+		&& a.b - b.b < e && b.b - a.b < e && a.a - b.a < e && b.a - a.a < e;
+}
+
+function stillPremultiplied(color: Color): boolean {
+	const e: float32 = 0.0001;
+	return color.r <= color.a + e && color.g <= color.a + e && color.b <= color.a + e;
+}
+
+const DESTINATIONS: Vec<Color> = [
+	{ r: 1.0, g: 1.0, b: 1.0, a: 1.0 },
+	{ r: 0.2, g: 0.4, b: 0.1, a: 0.5 },
+	{ r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+];
+
+const SOURCES: Vec<Color> = [
+	{ r: 0.0, g: 0.0, b: 0.0, a: 0.5 },
+	{ r: 0.3, g: 0.1, b: 0.25, a: 0.3 },
+	{ r: 0.9, g: 0.6, b: 0.2, a: 1.0 },
+];
+
+test "a transparent source leaves the destination under the compositing modes" {
+	const transparent: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	const modes: Vec<BlendMode> = [
+		BlendMode.Alpha, BlendMode.AlphaAdd, BlendMode.Add, BlendMode.SoftAdd,
+		BlendMode.AlphaMultiply, BlendMode.Erase, BlendMode.Screen, BlendMode.Subtract,
+		BlendMode.Max,
+	];
+	for (const mode of modes) {
+		for (const dst of DESTINATIONS) {
+			assert near(blended(mode, transparent, dst), dst);
+		}
+	}
+}
+
+test "Multiply and Min are arithmetic: a transparent source writes transparent black" {
+	const transparent: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	for (const dst of DESTINATIONS) {
+		assert near(blended(BlendMode.Multiply, transparent, dst), transparent);
+		assert near(blended(BlendMode.Min, transparent, dst), transparent);
+	}
+}
+
+test "premultiplied operands stay premultiplied under every mode but Subtract" {
+	const modes: Vec<BlendMode> = [
+		BlendMode.None, BlendMode.Alpha, BlendMode.Add, BlendMode.AlphaAdd,
+		BlendMode.SoftAdd, BlendMode.Multiply, BlendMode.AlphaMultiply, BlendMode.Erase,
+		BlendMode.Screen, BlendMode.Max, BlendMode.Min,
+	];
+	for (const mode of modes) {
+		for (const src of SOURCES) {
+			for (const dst of DESTINATIONS) {
+				assert stillPremultiplied(blended(mode, src, dst));
+			}
+		}
 	}
 }

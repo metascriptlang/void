@@ -69,13 +69,21 @@ const OFFSCREEN_LAYOUT: TargetLayout = {
 let pipelines: PipelineCache = PipelineCache.empty();
 let resolvedPipelines: Vec<boolean> = noPipelines();
 
+function premultipliedSource(factor: Blend): Blend {
+	return factor == Blend.SourceAlpha ? Blend.One : factor;
+}
+
 export function premultipliedBlend(mode: BlendMode): RenderState {
 	const straight: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
 		.withDepth(false, Compare.Always)
 		.withBlendMode(mode);
-	if (straight.blendSource != Blend.SourceAlpha) { return straight; }
-	return { ...straight, blendSource: Blend.One };
+	if (mode == BlendMode.Erase) { return straight.withBlend(Blend.Zero, Blend.OneMinusSourceAlpha); }
+	return {
+		...straight,
+		blendSource: premultipliedSource(straight.blendSource),
+		blendAlphaSource: premultipliedSource(straight.blendAlphaSource),
+	};
 }
 
 function resolvePipelines(): void {
