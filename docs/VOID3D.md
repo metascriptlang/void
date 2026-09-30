@@ -1045,8 +1045,14 @@ further. Timing is report-only.
 - Every texture keeps its CPU pixels; nothing drops the copy.
 - The pixel-art preset's depth under a perspective camera (above).
 - No GLES3/device run and no real context loss; the rebuild is the simulated one.
-- The spike (`src/examples/rendererSokol.ms`, `cubedata.ms`, `src/sokol/shader.glsl`) is
-  untouched; deleting it is the human's call.
+
+**The spike is gone.** After the M22 reviews the human asked for it to be deleted: the textured
+cube demo (`rendererSokol.ms`, `cubedata.ms`, `mainSokol.ms`, `androidCubeEntry.ms`), its shader
+(`src/sokol/shader.glsl`), the cube-only bridge calls in `bridge.c`, `bridgeEmbed.m`,
+`bridge.h`, `gpu.ms` and `gpu.wms` (vertex and index buffers, the cube shader and pipeline, the
+sampler, bindings, the MVP upload, the draw), the global MVP matrices in `src/math/mat4`, and
+`web/index.html`, which loaded it. `build-android.sh` now builds the campfire entry by default.
+The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's replacement.
 
 ### Android lifecycle (V6), alongside from M3
 

@@ -255,10 +255,10 @@ Statuses reflect the **sokol** era (Dawn/SDL3 removed). void2d is the active fro
 | 2D gradients | — | **Done** — linear + radial fill (`src/void2d/graphics.ms`) | - |
 | Render targets + post | h3d render-target stack | **Done** (void2d) — offscreen RT + separable gaussian blur (`src/void2d/effect.ms`) | - |
 | Texture loading | hxd/Res bitmaps | **Partial** — PNG/JPEG via stb_image (`src/assets/image.{h,c,ms}`); no mesh loaders yet | Medium |
-| 3D render engine | h3d/Engine + Renderer | **Minimal** — manual draw calls, cube demo only (`src/examples/rendererSokol.ms`) | High |
-| 3D scene graph | `h3d.scene.Object` | **None** | High |
-| Materials | h3d/mat/ (Pass + ShaderList) | **None** (über-shader uniforms are the Tier 2 plan, see `docs/SHADER.md`) | High |
-| Mesh asset loading | hxd/Res models | **None** — cube is hand-authored in MetaScript (`src/examples/cubedata.ms`) | Medium |
+| 3D render engine | h3d/Engine + Renderer | **Done** (void3d) — core renderer, forward and pixel-art presets, perspective and ortho cameras (`docs/VOID3D.md`) | - |
+| 3D scene graph | `h3d.scene.Object` | **Done** (void3d) — `Object3D` tree over generational ids (`src/void3d/scene.ms`) | - |
+| Materials | h3d/mat/ (Pass + ShaderList) | **Done** (void3d) — `Material` over fixed programs, a program map per preset, textures held by materials (`docs/VOID3D.md`, M14, M22) | - |
+| Mesh asset loading | hxd/Res models | **Partial** — a glTF subset without textures (`src/void3d/gltf.ms`) | Medium |
 | Input routing | hxd/SceneEvents + Interactive | **None** (sokol_app delivers raw events; no hit-testing layer) | Later |
 | Animation | h3d/anim/ (skeletal, blend) | **None** | Later |
 | Audio | hxd/snd/ | **None** | Later |
