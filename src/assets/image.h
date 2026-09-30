@@ -11,6 +11,6 @@ int void_image_height(void);
 void void_free_image(void *data);
 
 int64_t void_image_size(const uint8_t *bytes, int64_t length);
-int32_t void_decode_image(const uint8_t *bytes, int64_t length, const uint32_t *pixels, int64_t count);
+int32_t void_decode_image(const uint8_t *bytes, int64_t length, uint32_t *pixels, int64_t count);
 
 #endif
