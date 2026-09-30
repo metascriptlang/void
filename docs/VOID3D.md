@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-09-30):** M1–M21 are built and reviewed (`REVIEWS-3D.md`); M21's repaired design verdict is SHIP. See "M21 as built" for the perspective/culling proof, numeric refusals and gate receipt. The gate is `sh scripts/gate3d.sh`; device coverage remains separate. Deployment receipts live in the workspace arc card.
+**Status (2026-09-30):** M1–M22 are built and reviewed (`REVIEWS-3D.md`); M22, textured meshes, is SHIP WITH FOLLOW-UPS with every follow-up taken. See "M22 as built" for the textured cube, the texture lifetime and the gate receipt. The gate is `sh scripts/gate3d.sh`; device coverage remains separate. Deployment receipts live in the workspace arc card.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built" and "M21 as built"; old `pass.ms`, `target.ms` and
@@ -99,7 +99,7 @@ M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 
 | M19 | Heaps: packages keep `h2d.Scene` and `h3d.scene.Scene` apart, `h3d.mat.BlendMode` is h2d's (`h3d/mat/BlendMode.hx:3`), `h3d.scene.Object.toMesh` throws on a node that is not a mesh (`h3d/scene/Object.hx:668-673`), `h2d.Object.addChildAt` on a cycle (`h2d/Object.hx:416`); Bevy at `main`: `Camera2d`/`Camera3d`, `Mesh2d`/`Mesh3d`, `World::entity` panics and `World::get_entity` answers a `Result`, `Assets::get` answers an `Option` | Names and conventions shared with void2d ("Shared with void2d"). The names both layers export take the suffix void3d already writes: `Scene3D`, `NodeId3D`, `Bounds3D`, `NO_NODE_3D`; the sampler filter is `FilterMode` and the atlas split's error `AtlasTileError`. Identity values are statics, `Transform3D.identity()` and `Transform3D.fromTranslation(position)`. A call on a node handle that cannot be right stops with a message naming the call and the node: a stale node, the root removed, a mesh call on a node that is not a mesh; so the setters answer nothing. The questions (`nameOf`, `findByName`, `worldOf`; `isLive` answers a boolean), the context's ids (Bevy's `Assets::get`) and real failures keep `Result`. Every capture byte-identical | generality: void2d and void3d in one file, one error rule in both layers | **done**, 1 test, 20 abort programs, 1 gate stage |
 | M20 | Heaps: `h2d/RenderContext.hx` inheritance, `pass`, `pushTarget`; Bevy at `0f38358f`: `RenderDevice`, shader handles and vertex layouts | One GPU door in `src/gpu`, void3d through it; programs/layouts by registration, checked pass ownership and an external shader consumer in both registration orders. **NEW MECHANISM**: bounded program registration, taken on the references under the delegation of 2026-09-29. Every standing capture stays byte-identical | generality: void2d's pipelines/targets and `BlendMode` adopt the door in its own arc | **done**, 14 new abort programs, 2 registration runs |
 | M21 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `Camera.makeFrustumMatrix`, `col.Frustum`, `scene.Object.cullingCollider`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Projection`, `Aabb.relative_radius`, `Frustum.intersects_obb`, `check_visibility_cpu_culling` | One `Camera3D` with orthographic/perspective projection, vertical FOV in radians, finite near/far depth in `[0,1]`; snap remains orthographic only. View-local frustum filtering of pass lists each frame, using transformed CPU mesh bounds without changing scene visibility. Perspective capture, half-off-screen culling count and picking; every existing ortho capture byte-identical. Textured meshes remain the next milestone | generality: perspective scenes without the pixel-art camera | **built and reviewed SHIP**, 1004 suite tests, 35 aborts, 4 new baseline hashes |
-| M22 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `prim/Polygon` (`uvs`, `getBufferFormat`: position, normal, uv, colour), `prim/Cube.addUVs`, `shader/Texture` (`pixelColor *= texture.get(uv)` after `BaseMesh`), `mat/Material.texture`, `mat/Texture` (`filter`, `wrap`, `realloc`, `dispose`), `hxd/BufferFormat.resolveMapping`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Image.data` and `Image.sampler`, `GpuImage` (texture, view, sampler), `StandardMaterial.base_color_texture: Option<Handle<Image>>` | Textured meshes. A mesh with UVs is its own vertex layout, `LitTextured` (position, normal, uv, rgba, Heaps' order), recorded on its `MeshData`; the lit programs get a textured twin, the core's `LitTextured` and the pixel-art preset's `PixelArtLitTextured`, which multiply the texel into the colour before saturation and the lights, where Heaps' `Texture` shader follows `BaseMesh`. A textured material on a mesh without UVs is the existing `RendererError.VertexLayout`, where Heaps throws "Missing buffer input 'uv'". A texture is the context's third asset beside meshes and materials: a `TextureId` from the same slot table, its RGBA8 pixels, filter and wrap kept as CPU data (Heaps keeps sampling on the texture, Bevy on the `Image`), its image, view and sampler made from them, remade after a context loss, counted by holders and doomed at zero. A material names at most one context texture, bound at view and sampler 0 when it draws, and pins it from `addMaterial` until the material is freed, as Bevy's material holds its image's strong handle; a material whose texture no longer names the one it holds is refused. Heaps binds a grey loading texture for a missing or disposed one; here a missing texture is refused by name. Acceptance: a textured cube drawn by the real renderer in perspective through both presets, its texel colours and UV orientation checked from the readback independently of the new hashes; a mid-run rebuild of every mesh and texture byte-identical; a churn run that adds and releases textures with sokol's live images, views and samplers flat; every existing capture byte-identical. Not in this row: glTF `TEXCOORD_0` and images, decoding an image file, mipmaps, sRGB, Heaps' `killAlpha`, moving billboard atlases onto context textures, and deleting the spike. Existing mechanisms: M5's rebuild, M17's holders and pins, M20's registration | generality: textured content for any game; the spike's textured cube on the real renderer | **open** |
+| M22 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `prim/Polygon` (`uvs`, `getBufferFormat`: position, normal, uv, colour), `prim/Cube.addUVs`, `shader/Texture` (`pixelColor *= texture.get(uv)` after `BaseMesh`), `mat/Material.texture`, `mat/Texture` (`filter`, `wrap`, `realloc`, `dispose`), `hxd/BufferFormat.resolveMapping`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Image.data` and `Image.sampler`, `GpuImage` (texture, view, sampler), `StandardMaterial.base_color_texture: Option<Handle<Image>>` | Textured meshes. A mesh with UVs is its own vertex layout, `LitTextured` (position, normal, uv, rgba, Heaps' order), recorded on its `MeshData`; the lit programs get a textured twin, the core's `LitTextured` and the pixel-art preset's `PixelArtLitTextured`, which multiply the texel into the colour before saturation and the lights, where Heaps' `Texture` shader follows `BaseMesh`. A textured material on a mesh without UVs is the existing `RendererError.VertexLayout`, where Heaps throws "Missing buffer input 'uv'". A texture is the context's third asset beside meshes and materials: a `TextureId` from the same slot table, its RGBA8 pixels, filter and wrap kept as CPU data (Heaps keeps sampling on the texture, Bevy on the `Image`), its image, view and sampler made from them, remade after a context loss, counted by holders and doomed at zero. A material names at most one context texture, bound at view and sampler 0 when it draws, and pins it from `addMaterial` until the material is freed, as Bevy's material holds its image's strong handle; a material whose texture no longer names the one it holds is refused. Heaps binds a grey loading texture for a missing or disposed one; here a missing texture is refused by name. Acceptance: a textured cube drawn by the real renderer in perspective through both presets, its texel colours and UV orientation checked from the readback independently of the new hashes; a mid-run rebuild of every mesh and texture byte-identical; a churn run that adds and releases textures with sokol's live images, views and samplers flat; every existing capture byte-identical. Not in this row: glTF `TEXCOORD_0` and images, decoding an image file, mipmaps, sRGB, Heaps' `killAlpha`, moving billboard atlases onto context textures, and deleting the spike. Existing mechanisms: M5's rebuild, M17's holders and pins, M20's registration | generality: textured content for any game; the spike's textured cube on the real renderer | **built and reviewed**, 1022 suite tests, 35 aborts, 12 new baseline hashes |
 
 ### M2 as built
 
@@ -891,6 +891,162 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   No hierarchical/group culling, dynamic stream bounds, textured meshes, shader changes
   or new GPU resources. The constant billboard normal remains a declared divergence in
   PENDING3D with perspective too. No GLES3 or real context-loss claim is added.
+
+### M22 as built
+
+- **A mesh with uvs is its own vertex layout.** `meshData.ms` `MeshData.hasUvs` (set by
+  `MeshData.withUvs()`) picks the stride, 10 or 12 floats, and `draw.ms` `meshFor` the layout,
+  `Lit` or `LitTextured`. The textured layout is position, normal, uv, rgba: the order Heaps'
+  `Polygon.getBufferFormat` appends them in, colour last. Heaps' format is per primitive and the
+  shader asks for its inputs by name; here the two formats are the two layouts the fixed programs
+  read, and M15's `RendererError.VertexLayout` already refuses a textured material on a mesh
+  without uvs, where Heaps throws "Missing buffer input 'uv'" (`hxd/BufferFormat.hx:302`).
+  - `addTexturedVertex` takes a `Uv` (Heaps' `h3d.prim.UV`); `addVertex` on a mesh with uvs and
+    `addTexturedVertex` on one without are `MeshError.UvMismatch`, before anything is written.
+  - `addTexturedQuad` maps the whole texture onto `a b c d`, counter-clockwise from the bottom
+    left, face on: the texture's first row runs along `d c`. `addTexturedCube` is Heaps' `Cube`
+    with `addUVs` (`h3d/prim/Cube.hx`): every face the whole texture, from the origin to `size`
+    or centred, 24 vertices and 36 indices. The orientation per face is this port's: every face
+    reads upright and unmirrored face on, the top with its first row at the back, the bottom with
+    it at the front. Heaps' table is laid out for its own frame, Z up and left-handed by default
+    (`h3d/Camera.hx:69`, `rightHanded = false`), and its top and bottom both put the first row
+    toward its +y.
+  - Bounds and picking read the mesh's own stride. glTF still produces `Lit` meshes.
+- **Two programs, each preset's.** `shader3d.glsl` `litTextured` and `pixelArt3d.glsl`
+  `litTextured` sample view and sampler 0 and multiply the texel into the vertex colour before
+  saturation and the lights, where Heaps' `Texture` shader follows `BaseMesh`
+  (`pixelColor *= texture.get(uv)`, `h3d/shader/Texture.hx`). The core map draws
+  `LitTextured` as itself; the pixel-art map draws `PixelArtLitTextured`, whose point lights step
+  to the material's ramp levels and which writes the normal and depth target, so its ramp check
+  covers it. `gpu3d.c` holds both to the core's attribute slots and the slot order to the writer.
+  - The registry now holds void3d's 11 of 16 programs and 5 of 8 layouts. The registration
+    fixture registers 5 programs and 3 layouts, so both orders still meet the limits exactly.
+    void2d's pipelines join the same registry in its arc; five programs remain.
+- **A texture is the context's third asset** (`texture.ms`, `draw.ms`).
+  - `TextureData` is the CPU copy: RGBA8 pixels as 0xAABBGGRR words, first row on top, and the
+    filter and wrap Heaps keeps on the texture (`Texture.filter`, `Texture.wrap`) and Bevy on the
+    `Image` (`image.rs:639`, `:654` at `157e1ce6`). It imports nothing of the GPU:
+    `FilterMode` and `Wrap` moved from `gpu/door.ms` to `gpu/state.ms`, beside the other
+    `h3d.mat.Data` enums.
+  - `addTexture` takes a copy, uploads the image and view at once and answers a `TextureId` from
+    a `Slots` table of its own, as meshes and materials have. A size that does not match its
+    pixels is `TextureUploadError.BadSize`, before anything is made; a refused upload frees the
+    slot. Upload is eager, as `addMeshData` is, so a refusal is reported where it happens. Heaps
+    allocates on first use and Bevy prepares the next frame; neither reports to the caller.
+  - Holders, pins and doom are M17's, extended to a new holder: a material. The caller holds a
+    new texture once; `retainTexture` and `releaseTexture` count; a caller release that would take
+    a material's pin is `OnlyPinned`; at zero the id goes stale and the image and view are doomed
+    and destroyed by the next `beginFrame` (`buryDoomed`), or dropped when they belong to a lost
+    context. Heaps counts no textures (`dispose`, the resource cache, auto-dispose by
+    `lastFrame`); the count is Bevy's strong `Handle`, as M17 took for materials.
+  - `beginFrame` remakes every texture of an older context from its `TextureData`
+    (`rebuildTextures`), beside `rebuildMeshes`. Heaps' `Texture.realloc` is a callback its
+    caller supplies; here the context keeps every texture's pixels for the texture's whole life,
+    which costs their size in RAM (Bevy's `RenderAssetUsages` is the way to drop the copy, not
+    ported).
+  - Samplers are shared, one per filter and wrap, made on first use; like `PipelineCache` the
+    cache carries the GPU context it belongs to and forgets its handles on a new one
+    (`samplerFor`). At most six live per context and none is destroyed while it lives, as with
+    pipelines. Heaps' `DirectXDriver` caches one sampler state per setting (`samplerStates`,
+    `h3d/impl/DirectXDriver.hx:104`, `:1352-1368`); Bevy's default-sampled images share one
+    (`gpu_image.rs:165-175`). A sampler per texture would exhaust sokol's 64-entry pool at 64
+    textures.
+- **A material holds its texture.** `Material.texture` is Heaps' `Material.texture`, drawn at
+  view and sampler 0; Bevy's `StandardMaterial.base_color_texture` is the same slot
+  (`pbr_material.rs:58`).
+  - `addMaterial` refuses, before it owns the uniform range: a material that also names a view or
+    sampler at slot 0 (`MaterialError.TextureNamedTwice`), one whose program samples nothing at
+    slot 0 (`TextureNotSampled`: sokol validates only the bindings a shader expects, so the texture
+    would be bound nowhere and still pinned), and a texture that is not live (`StaleTexture`). It
+    pins the texture; freeing the material lets it go. Any program that samples slot 0 takes one,
+    the billboards and screen programs included.
+  - A material's texture is fixed when it is added, as its uniform range is: `beginFrame` and
+    `drawScreen` refuse a material whose field no longer names the texture it holds
+    (`RendererError.TextureReplaced`, passed on by both presets, whose `prepareFrame` checks their
+    own screen materials the same way), and `texturesFit` holds the drawn program to view and
+    sampler 0. Heaps' setter is not ported; another texture is another material.
+  - `bindItem` resolves the id to the texture's view and the shared sampler. A texture whose
+    remake the driver refused has no view, and its items draw nothing until the next rebuild,
+    as a mesh with nothing to draw does (M16); the count `rebuildTextures` answers is not reported.
+  - Heaps binds a grey loading texture for a missing or disposed one
+    (`h3d/impl/DirectXDriver.hx:1308-1312`); here a program's texture slot with nothing bound is
+    M15's `RendererError.MaterialTexture`.
+- **Found on the way.**
+  - The gate's `style` stage counted bytes, so a line with four `…` passed under a UTF-8 locale
+    and failed without one (`src/gpu/pipeline.ms:157`, 94 columns, 102 bytes). It counts
+    characters now (`332d25b`).
+  - The pixel-art post pass does not outline a perspective scene. Measured: the outlined
+    capture run with the perspective camera fails its silhouette check, no texel shaded where
+    the cube meets the background. Read from the source, not measured: the pixel-art programs
+    write `gl_Position.z` as their depth, which is `[0, 1]` only when `w` is 1, and the post pass
+    compares it with the cleared 1.0. This predates M22 (M21 claimed perspective without the
+    pixel-art post pass); it is the PENDING3D row `pixel-art-depth-orthographic`, and the
+    outlined textured capture looks orthographically.
+  - msc `35601908` exits 127 with no diagnostic on a C-style `for` inside `if (false)`, in
+    `msc check` too. Hit by a hand-made control, rewritten as a live condition; card
+    `2026-09-30-c-style-for-under-if-false-exits-127.md`, repro in `out/tmp/ifFalse`.
+
+**Acceptance.** `sh scripts/gate3d.sh` on the committed code (`c67b5e5`), installed msc
+`35601908`, D3D11 on the shared Windows workstation: **GATE GREEN with 1 skipped stage**
+(`device`). **1022/1022 tests**, +18 on M21: 7 for meshes with uvs, 11 for texture refusals and
+the sampler key. **35 abort programs**, unchanged. **20 configurations / 80 frames match 64
+hashes**: all 52 earlier hashes unchanged; `m22textured_*` and `m22texturedpixelart_*` added in
+their own commit (`a142397`), `m22texturedoutline_*` in another (`b9be806`). Oracle 75 agree /
+11 declared divergences; PENDING3D 26 rows (`pixel-art-depth-orthographic` added). The
+allocation scan adds `keepsItsTexture`, `namesTexture`, `isTexture` and `stride`. Churn: 310
+frames, 6 live sokol buffers, 3 images and 2 samplers flat; the control, never releasing, runs
+out of sokol's pools after 25 frames. Android arm64 builds at **3,479,656 bytes**, +107,416 on
+M21 with the same compiler: two programs in six backends and the texture tables, not attributed
+further. Timing is report-only.
+
+- `tests/integration/texturedFrame.ms`, four gate configurations at 320×240: a 1.2-unit textured
+  cube from a 2×2 texture (red, green / blue, yellow), nearest, clamp. Forward and pixel-art
+  (post pass off) look in perspective; the outlined pixel-art one orthographically.
+  - Frame 1, face on at full ambient: each quadrant of the front face projects onto its texel's
+    exact bytes. Frames 1, 6 (turned 0.6 rad) and 11 (turned and tipped, three faces), forward and
+    pixel-art: every pixel is the background or one of the four texels, and all four show.
+  - Frame 16, forward: ambient 0.25 and a directional light of 0.25 toward the face give each
+    quadrant half its texel, within 1. Pixel-art, both: one point light, stepped by the preset:
+    every pixel of the red quadrant is red at a ramp level k/4, at least two levels showing.
+  - Outlined: frame 1 has texels at the depth shade (0.55) while its quadrant centres stay exact,
+    which needs the program's depth in the normal target; frame 11 has texels lifted by
+    `rgb * 1.35 + 0.02`, which needs its normals. The checks count such texels anywhere in the
+    frame; that they sit on the silhouette and on the creases is held by the hashes, not by a
+    readback check.
+  - Before the first frame, on the real driver: two textures on one setting make two images, two
+    views and one sampler, and two more settings one sampler each; retain and release; a
+    material's pin and `OnlyPinned`; two materials on one texture, the texture outliving the first
+    and freed with the second; a material freed while the caller still holds its texture;
+    the stale id refused; `buryDoomed` destroys four images and views and keeps the samplers.
+  - `texturedRebuildCapture` loses the context at frame 3 through `beginFrame`'s own
+    new-context branch: every mesh with data, the texture and the sampler cache marked as
+    another context's, the core as not having seen this one. The texture comes back on a new
+    view and a new sampler, and the frames match the forward hashes.
+  - The pixel-art frames 1, 6 and 11 equal the forward ones byte for byte: with no point light
+    and no post pass the two programs compute the same thing.
+- Controls, run in the session: the quad's v flipped fails quadrant 0 (blue where red is); the
+  texel dropped from the core program fails quadrant 0 (white); the pixel-art map drawing the
+  core `LitTextured` fails the stepped check (red 140, not a ramp level); a constant normal from
+  `PixelArtLitTextured` fails the crease check; a sampler cache that ignores a new context fails
+  the rebuild (`sampler 65537` kept). Before the point light was added, the program-map control
+  passed: the pixel-art configuration could not tell the two programs apart.
+- Churn: every frame also loads a textured cube, a texture and a textured material, and
+  releases them.
+
+**Still missing after M22.**
+- glTF `TEXCOORD_0` and images; decoding an image file into `TextureData` (the spike loads
+  `assets/test.png` through stb; no loader turns that into a texture here).
+- Mipmaps, anisotropy, sRGB (neither preset converts), Heaps' `killAlpha` and `additive`.
+- Billboard atlases are still the caller's views (M15), though a billboard material now takes a
+  context texture.
+- A material's texture cannot be swapped in place; the `Material.texture` setter is not ported.
+- Texture lifetime is proven in the GPU consumer on D3D11, not headless: `addTexture` uploads at
+  once and the suite has no device. The headless tests cover the refusals and the sampler key.
+- Every texture keeps its CPU pixels; nothing drops the copy.
+- The pixel-art preset's depth under a perspective camera (above).
+- No GLES3/device run and no real context loss; the rebuild is the simulated one.
+- The spike (`src/examples/rendererSokol.ms`, `cubedata.ms`, `src/sokol/shader.glsl`) is
+  untouched; deleting it is the human's call.
 
 ### Android lifecycle (V6), alongside from M3
 

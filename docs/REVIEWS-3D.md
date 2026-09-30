@@ -1479,3 +1479,74 @@ as `44f2f3c`, tree `95d9475bfaf2a2d248287ec80f934452b57d0bb6`; the run's header 
 - Inherited group colliders, hierarchical culling, textured meshes and the earlier
   M17–M20 lifetime/output/void2d boundary gaps.
 
+
+## M22 — textured meshes
+
+**Design verdict: SHIP WITH FOLLOW-UPS, every follow-up taken in the milestone; the re-review
+of those, SHIP WITH FOLLOW-UPS, its last points taken too.** The owning session ran the defect
+pass and every control. A fresh principal-engineer reviewer read the diff, the pinned Heaps and
+Bevy sources and the gate logs, without running builds; its findings were checked in the session
+before anything was changed.
+
+### Defect pass
+
+| Finding | Repair and evidence |
+|---|---|
+| A context texture on a material whose program samples nothing was bound to a slot the shader does not declare, silently unused and still pinned: sokol validates only the bindings a shader expects (`sokol_gfx.h:25196-25199`) | `addMaterial` refuses `MaterialError.TextureNotSampled`; `texturesFit` holds the drawn program to view and sampler 0 (`b2b43a1`); headless test (`57484d4`) |
+| The pixel-art configuration could not tell its program from the core's: mapping `LitTextured` to itself in the preset passed every check | The pixel-art lit frame uses a point light, which the preset steps: the same control now fails at red 140, not a ramp level |
+| The gate's style stage counted bytes, so its answer depended on the caller's locale | `332d25b`: `LC_ALL=C.UTF-8` for the count |
+| A hand-made control (`if (false)` in `samplerFor`) made msc exit 127 with no output | Compiler card `2026-09-30-c-style-for-under-if-false-exits-127.md`; the control was rewritten as a live condition |
+
+### Fresh design pass
+
+No correctness defect found by reading; holders ≥ pins throughout, no leak or double destroy,
+the frame path allocation-free. Findings on what the acceptance proves, and what was done:
+
+| Finding | Done |
+|---|---|
+| M1: the rebuild called `rebuildTextures` directly; `samplerFor`'s reset and `beginFrame`'s call never ran with a texture | The rebuild configuration loses the context through `beginFrame`'s own new-context branch, sampler cache included, and requires a new view and sampler. Control: a cache that ignores the new context fails the run |
+| M2: the sampler key was never observed | Headless test: six settings, six slots; the GPU lifetime check requires one new sampler per new setting |
+| M3: texture lifetime only on D3D11, missing cases | Added: two materials on one texture, a material freed while the caller holds its texture. Still not headless: eager upload and no device in the suite, written down |
+| M4: the pixel-art program's normal and depth output never read | Fourth configuration, outlined, orthographic: silhouette shaded by depth, crease lifted by normals. Control: a constant normal fails the crease check. Found: the pixel-art post pass does not outline a perspective scene (measured), predating M22; recorded |
+| L1: `drawScreen` indexed the texture field unchecked; context textures on screen and billboard programs | `drawScreen` refuses `TextureReplaced` (`765b54c`, test `29e1e3c`); any program sampling slot 0 takes a context texture, written down |
+| L2: the cube's top and bottom orientation not traced to Heaps | Written down as this port's own orientation: every face upright and unmirrored face on; Heaps' top and bottom both put the first row toward its +y |
+| L3: "same Slots table"; `realloc` is Heaps' caller callback | Corrected; the CPU copy's RAM cost written down, Bevy's `RenderAssetUsages` named |
+| L4: a refused remake draws nothing, silently | Kept on M16's precedent; written down |
+| Style: comments restating code, a missing PENDING sentinel, unnamed reused mechanisms | Comments trimmed; sentinel on `litTexturedFs`; the sampler cache named as `PipelineCache`'s context idiom and the material's pin as M17's |
+| Style: `let` where `const` would do; a fixed-size `Vec`; `Result<int32>` of the index | Kept: `let` is the arc's rule since msc refuses writes through `const`; the `Vec` and the result mirror `bindings` and `uploadMesh` |
+
+### Re-review of the follow-ups
+
+SHIP WITH FOLLOW-UPS, nothing blocking. It confirmed M1 to M4 and L1 to L3 closed and accepted
+the reasons for what was kept. Its remaining points, all taken:
+
+| Finding | Done |
+|---|---|
+| Neither preset checked its own screen materials' textures: a replaced one reached `unreachable` in the pixel-art post draw, and the forward one stopped naming a release | Both `prepareFrame`s refuse `TextureReplaced` by name before any pass; the stop messages name the texture; headless test |
+| `checkOutline` counts matching texels anywhere, while the draft said where | The as-built says what it checks: shaded and lifted texels exist, the quadrant centres stay exact, and where they sit is held by the hashes |
+| The pixel-art post pass under a perspective camera was only a "still missing" line | PENDING3D row `pixel-art-depth-orthographic`, sentinel at the first `depth01` write in `pixelArt3d.glsl` |
+| Heaps' cube side orientation claimed in a right-handed reading; Heaps defaults to left-handed (`Camera.hx:69`) | The sentence now says only that Heaps' table is laid out for its Z-up, left-handed frame; the top/bottom claim stands |
+| The final gate had to compare the outline frames, not adopt them | Done: the gate on `b9be806` passed all four outline frames against their hashes |
+
+### Final acceptance
+
+`sh scripts/gate3d.sh`, installed msc `35601908`, D3D11, 2026-09-30, on the committed code
+(`c67b5e5`): **GATE GREEN with 1 skipped stage** (`device`).
+
+- **1022/1022 tests**, +18 on M21; **35 abort programs**, unchanged.
+- **20 configurations / 80 frames match 64 hashes**: the 52 earlier hashes untouched; the twelve
+  `m22textured*` hashes added in their own commits.
+- The textured stage: uv orientation, exact texels, texel times light, the preset's stepped
+  point light, the outline's depth and normals, texture lifetime on the driver and a context
+  rebuild through `beginFrame`, both presets. Five controls fail where they should.
+- Allocation scan clean with the texture functions listed; churn flat at 6 buffers, 3 images and
+  2 samplers over 310 frames; the control runs out of sokol's pools.
+- **75 oracle agreements / 11 declared divergences**, **26 PENDING3D rows**.
+- **Android arm64 3,479,656 bytes**. No GLES3/device run and no real context loss.
+
+### Scope still separate
+
+- GLES3/device and a real context loss; the rebuild is simulated on D3D11.
+- glTF `TEXCOORD_0` and images, image-file decoding, mipmaps, sRGB, `killAlpha`.
+- The pixel-art preset under a perspective camera.
+- Deleting the spike, the human's call.
