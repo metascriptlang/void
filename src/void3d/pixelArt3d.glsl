@@ -29,6 +29,7 @@ void main() {
     worldNormal = mat3(normalModel) * normal;
     baseColor = color;
     gl_Position = viewProj * world;
+    // PENDING3D: pixel-art-depth-orthographic
     depth01 = gl_Position.z;
 }
 @end
