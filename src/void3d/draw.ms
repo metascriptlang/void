@@ -22,6 +22,8 @@ import {
 	updateBuffer,
 	destroyBuffer,
 	destroyImage,
+	textureSlotMask,
+	samplerSlotMask,
 } from "./gpu3d";
 import {
 	contextGeneration,
@@ -182,6 +184,7 @@ export enum MaterialError {
 	SharedUniforms,
 	StaleTexture,
 	TextureNamedTwice,
+	TextureNotSampled,
 }
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
@@ -671,6 +674,11 @@ export function addMaterial(
 	if (material.namesTexture()) {
 		if (material.texture0 != 0 || material.sampler0 != 0) {
 			return Result.err(MaterialError.TextureNamedTwice);
+		}
+		let views: uint32 = textureSlotMask(material.program);
+		let samplers: uint32 = samplerSlotMask(material.program);
+		if ((views & 1) == 0 || (samplers & 1) == 0) {
+			return Result.err(MaterialError.TextureNotSampled);
 		}
 		if (!context.hasTexture(material.texture)) {
 			return Result.err(MaterialError.StaleTexture);

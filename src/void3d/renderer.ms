@@ -158,15 +158,15 @@ export function needsFrame(this renderer: Renderer): boolean {
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and fills
 // the pass lists from `items`. A camera or light span that is not its block's length, an item whose
 // material names a program this renderer does not draw, a material whose block is not the one that
-// program reads or has been released, or that lacks a texture or sampler it samples or names
-// another texture than it was added with, or a mesh whose vertex layout it does not read, or a
-// quad-layout mesh with a vertex buffer or with instances and no instance buffer, is refused
-// before anything changes. Answers true when the context is new: every handle the caller made
-// before is stale then (it may name an object of the new context), so the caller drops its own
-// without destroying them and makes them again before drawing. The core has already dropped the
-// pipelines, remade the screen triangle, and remade every mesh and texture that carries its CPU
-// data (draw.ms rebuildMeshes, rebuildTextures); what is left is whatever the caller uploaded
-// from buffers only it keeps.
+// program reads or has been released, or that lacks a texture or sampler it samples, names a
+// texture it does not sample or another than it was added with, or a mesh whose vertex layout it
+// does not read, or a quad-layout mesh with a vertex buffer or with instances and no instance
+// buffer, is refused before anything changes. Answers true when the context is new: every handle
+// the caller made before is stale then (it may name an object of the new context), so the caller
+// drops its own without destroying them and makes them again before drawing. The core has already
+// dropped the pipelines, remade the screen triangle, and remade every mesh and texture that
+// carries its CPU data (draw.ms rebuildMeshes, rebuildTextures); what is left is whatever the
+// caller uploaded from buffers only it keeps.
 export function beginFrame(
 	ref renderer: Renderer,
 	ref context: DrawContext,
@@ -312,6 +312,7 @@ function texturesFit(program: Program, material: Material): boolean {
 	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }
 	let texture: boolean = material.namesTexture();
 	if (texture && (material.texture0 != 0 || material.sampler0 != 0)) { return false; }
+	if (texture && ((views & 1) == 0 || (samplers & 1) == 0)) { return false; }
 	return slotBound(views, 0, texture || material.texture0 != 0)
 		&& slotBound(views, 1, material.texture1 != 0)
 		&& slotBound(views, 2, material.texture2 != 0)
