@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the twenty-two capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -290,7 +290,7 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_gltf_entry gltfCapture "configureGltf(false, -1);"
 	write_gltf_entry gltfPixelArtCapture "configureGltf(true, -1);"
 	write_gltf_entry gltfRebuildCapture "configureGltf(false, 3);"
-	note "prepare: twenty-two capture entries written to $CAPTURE"
+	note "prepare: capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -1820,7 +1820,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the twenty-two capture entries are current"
+	pass "prepare: campfireScene.ms and the capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
