@@ -11,7 +11,7 @@ import {
 } from "../../src/gpu/door";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addTexturedCube } from "../../src/void3d/meshData";
-import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
+import { TextureData, TextureId, GpuTexture, TextureUploadError } from "../../src/void3d/texture";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
 	Program,
@@ -90,14 +90,17 @@ let GREEN: uint32 = 0xFF00FF00;
 let BLUE: uint32 = 0xFFFF0000;
 let YELLOW: uint32 = 0xFF00FFFF;
 let HALF: float32 = 0.6;
+let DEPTH_THRESHOLD: float32 = 0.006;
+let DEPTH_SHADE: float32 = 0.55;
 let SCREEN_MAPPING: LowResView = {
 	width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0,
 };
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 2 * MATERIAL_UNIFORM_LENGTH,
+	FORWARD_UNIFORM_LENGTH + 2 * PIXEL_ART_UNIFORM_LENGTH + 3 * MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
-let preset: PixelArtRenderer = createPreset();
+let preset: PixelArtRenderer = createPreset(false);
+let outlinedPreset: PixelArtRenderer = createPreset(true);
 let scene: Scene3D = Scene3D.create();
 let items: Vec<DrawItem> = [];
 let cube: NodeId3D = { index: 0, generation: 0 };
@@ -107,7 +110,10 @@ let texture: TextureId = { index: 0, generation: 0 };
 let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let pixelArt: boolean = false;
+let outlined: boolean = false;
 let rebuildAt: int32 = -1;
+let viewBefore: uint32 = 0;
+let samplerBefore: uint32 = 0;
 
 function createForward(): ForwardRenderer {
 	let created: Result<ForwardRenderer, ForwardError> =
@@ -116,11 +122,16 @@ function createForward(): ForwardRenderer {
 	unreachable;
 }
 
-function createPreset(): PixelArtRenderer {
-	let settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: false };
+function createPreset(postPass: boolean): PixelArtRenderer {
+	let settings: PixelArtSettings = { ...PixelArtSettings.full(), postPass: postPass };
 	let look: PixelArtLook = {
 		background: BACKGROUND,
-		outline: { depthThreshold: 1.0, normalThreshold: -1.0, depthShade: 1.0, normalShade: 1.0 },
+		outline: {
+			depthThreshold: DEPTH_THRESHOLD,
+			normalThreshold: 0.6,
+			depthShade: DEPTH_SHADE,
+			normalShade: 1.35,
+		},
 		fog: { start: 1.0, end: 1.0, strength: 0.0, color: BACKGROUND },
 		saturation: 0.0,
 	};
@@ -135,10 +146,16 @@ function fail(message: string): void {
 	voidCaptureExit(1);
 }
 
-export function configureTextured(throughPixelArt: boolean, rebuildFrame: int32): void {
-	pixelArt = throughPixelArt;
+export function configureTextured(
+	throughPixelArt: boolean,
+	withOutline: boolean,
+	rebuildFrame: int32,
+): void {
+	pixelArt = throughPixelArt || withOutline;
+	outlined = withOutline;
 	rebuildAt = rebuildFrame;
 }
+
 
 function quadrants(): TextureData {
 	return {
@@ -173,50 +190,74 @@ function holders(result: Result<int32, HandleError>): int32 {
 	unreachable;
 }
 
+function made(data: TextureData): TextureId {
+	let added: Result<TextureId, TextureUploadError> = addTexture(context, data);
+	if (added.ok) { return added.value; }
+	fail(`the driver refused a two-by-two texture: ${added.error.toString()}`);
+	unreachable;
+}
+
+function releasedMaterial(material: MaterialId): int32 {
+	let freed: Result<int32, HandleError> = releaseMaterial(context, material);
+	if (freed.ok) { return freed.value; }
+	fail(`a material release was refused: ${freed.error.toString()}`);
+	unreachable;
+}
+
 function checkLifetime(): void {
 	let images: int32 = liveImages();
 	let views: int32 = liveViews();
 	let samplers: int32 = liveSamplers();
-	let first: Result<TextureId, TextureUploadError> = addTexture(context, quadrants());
-	let second: Result<TextureId, TextureUploadError> = addTexture(context, quadrants());
-	if (!first.ok || !second.ok) {
-		fail("the driver refused a two-by-two texture");
-		return;
-	}
+	let first: TextureId = made(quadrants());
+	let second: TextureId = made(quadrants());
 	if (liveImages() != images + 2 || liveViews() != views + 2 || liveSamplers() != samplers + 1) {
 		fail(
 			`two textures on one filter and wrap made images=${liveImages() - images} ` +
 			`views=${liveViews() - views} samplers=${liveSamplers() - samplers}, expected 2 2 1`,
 		);
 	}
-	if (holders(retainTexture(context, first.value)) != 2) { fail("a retain added no holder"); }
-	if (holders(releaseTexture(context, first.value)) != 1) { fail("a release let none go"); }
-	let material: MaterialId = texturedMaterial(first.value);
-	if (context.texturePinned(first.value) != 1) { fail("the material does not pin its texture"); }
-	if (holders(releaseTexture(context, first.value)) != 1) { fail("the release took the pin"); }
-	let pinned: Result<int32, HandleError> = releaseTexture(context, first.value);
+	let linear: TextureId = made({ ...quadrants(), filter: FilterMode.Linear, wrap: Wrap.Repeat });
+	let mirrored: TextureId = made({ ...quadrants(), wrap: Wrap.Mirror });
+	if (liveSamplers() != samplers + 3) {
+		fail(`three filter and wrap settings made ${liveSamplers() - samplers} samplers, not 3`);
+	}
+	if (holders(retainTexture(context, first)) != 2) { fail("a retain added no holder"); }
+	if (holders(releaseTexture(context, first)) != 1) { fail("a release let none go"); }
+	let once: MaterialId = texturedMaterial(first);
+	if (context.texturePinned(first) != 1) { fail("the material does not pin its texture"); }
+	if (holders(releaseTexture(context, first)) != 1) { fail("the release took the pin"); }
+	let pinned: Result<int32, HandleError> = releaseTexture(context, first);
 	if (pinned.ok || pinned.error != HandleError.OnlyPinned) {
 		fail("a release past the loader's hold was taken while the material pins the texture");
 	}
-	let freed: Result<int32, HandleError> = releaseMaterial(context, material);
-	if (!freed.ok || freed.value != 0 || context.hasTexture(first.value)) {
-		fail("freeing the material did not free the texture it pinned");
+	let twice: MaterialId = texturedMaterial(first);
+	if (context.texturePinned(first) != 2) { fail("a second material did not pin the texture"); }
+	if (releasedMaterial(once) != 0 || !context.hasTexture(first)) {
+		fail("freeing one of two materials freed the texture both pin");
 	}
-	let stale: Result<int32, HandleError> = retainTexture(context, first.value);
+	if (releasedMaterial(twice) != 0 || context.hasTexture(first)) {
+		fail("freeing the last material did not free the texture it pinned");
+	}
+	let stale: Result<int32, HandleError> = retainTexture(context, first);
 	if (stale.ok || stale.error != HandleError.StaleTexture) {
 		fail("a freed texture's id was not refused as stale");
 	}
-	if (holders(releaseTexture(context, second.value)) != 0 || context.liveTextures() != 0) {
-		fail("the last release did not free the second texture");
+	let held: MaterialId = texturedMaterial(second);
+	if (releasedMaterial(held) != 0 || !context.hasTexture(second)) {
+		fail("freeing a material freed the texture its caller still holds");
 	}
-	if (liveImages() != images + 2 || liveViews() != views + 2) {
+	if (holders(releaseTexture(context, second)) != 0) { fail("the caller's release kept it"); }
+	if (holders(releaseTexture(context, linear)) != 0) { fail("a linear texture outlived it"); }
+	if (holders(releaseTexture(context, mirrored)) != 0) { fail("a mirrored one outlived it"); }
+	if (context.liveTextures() != 0) { fail("a released texture is still live"); }
+	if (liveImages() != images + 4 || liveViews() != views + 4) {
 		fail("a freed texture's image or view was destroyed before it was buried");
 	}
-	if (buryDoomed(context, contextGeneration()) != 2) {
-		fail("the two freed textures were not buried");
+	if (buryDoomed(context, contextGeneration()) != 4) {
+		fail("the four freed textures were not buried");
 	}
-	if (liveImages() != images || liveViews() != views || liveSamplers() != samplers + 1) {
-		fail("burying the freed textures left an image or view, or took the shared sampler");
+	if (liveImages() != images || liveViews() != views || liveSamplers() != samplers + 3) {
+		fail("burying the freed textures left an image or view, or took a shared sampler");
 	}
 }
 
@@ -264,8 +305,10 @@ export function initTextured(): void {
 	);
 }
 
+// The outlined configuration looks orthographically: the pixel-art programs write clip z as their
+// depth, which is [0, 1] only when w is 1 (VOID3D.md, "M22 as built", still missing).
 function viewOf(): CameraView {
-	let camera: Camera3D = {
+	let perspective: Camera3D = {
 		position: vec3(0.0, 0.0, 3.0),
 		yaw: 0.0,
 		pitch: 0.0,
@@ -273,6 +316,12 @@ function viewOf(): CameraView {
 		farPlane: 30.0,
 		projection: { kind: ProjectionKind.Perspective, fovY: 1.0471975512 },
 	};
+	let orthographic: Camera3D = {
+		...perspective,
+		farPlane: 6.0,
+		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: 0.01, snap: false },
+	};
+	let camera: Camera3D = outlined ? orthographic : perspective;
 	let resolved: Result<CameraView, CameraError> = camera.resolve(WIDTH, HEIGHT);
 	if (resolved.ok) { return resolved.value; }
 	unreachable;
@@ -398,30 +447,71 @@ function checkOnlyTexels(): void {
 	}
 }
 
-// A lost context on a live one: every handle is marked as another context's and remade.
-function rebuildEverything(): void {
-	let before: uint32 = context.textures[texture.index].view;
+function isShadeOf(channel: int32, full: float32): boolean {
+	let difference: int32 = channel - ((full * 255.0 + 0.5) as int32);
+	return difference >= -1 && difference <= 1;
+}
+
+// postFs shades a pixel whose neighbour lies behind it by the depth shade, which needs the
+// program's depth in the normal target's alpha; and lifts a crease, where the normals it wrote
+// part, by `rgb * normalShade + 0.02`, which leaves a texel's zero channels at 5.
+function checkOutline(silhouette: boolean): void {
+	let found: int32 = 0;
+	for (let y = 0; y < HEIGHT; y++) {
+		for (let x = 0; x < WIDTH; x++) {
+			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
+			let shaded: int32 = 0;
+			let clear: int32 = 0;
+			let shifts: Vec<uint32> = [16, 8, 0];
+			for (const shift of shifts) {
+				let channel: int32 = channelOf(got, shift);
+				let low: boolean = silhouette ? channel == 0 : isShadeOf(channel, 0.02);
+				let high: boolean = silhouette ? isShadeOf(channel, DEPTH_SHADE) : channel == 255;
+				if (low) { clear = clear + 1; }
+				if (high) { shaded = shaded + 1; }
+			}
+			if (shaded + clear == 3 && shaded > 0 && clear > 0) { found = found + 1; }
+		}
+	}
+	if (found == 0) {
+		fail(silhouette ? "no texel is shaded where the cube meets the background" :
+			"no crease between the cube's faces is lifted");
+	}
+}
+
+// A lost context simulated on a live one, through beginFrame's own new-context branch.
+function loseContext(): void {
+	viewBefore = context.textures[texture.index].view;
+	samplerBefore = context.textures[texture.index].sampler;
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (context.meshData[i].vertexCount() > 0) { context.meshes[i].generation = 0; }
 	}
 	context.textures[texture.index].generation = 0;
-	let meshes: int32 = rebuildMeshes(context);
-	let textures: int32 = rebuildTextures(context);
-	let after: uint32 = context.textures[texture.index].view;
-	if (meshes != 1 || textures != 1 || after == before || after == 0) {
-		fail(`the rebuild remade ${meshes} meshes and ${textures} textures onto view ${after}`);
+	context.samplerGeneration = 0;
+	forward.core.generation = 0;
+	preset.core.generation = 0;
+	outlinedPreset.core.generation = 0;
+}
+
+function checkRemade(): void {
+	let remade: GpuTexture = context.textures[texture.index];
+	if (remade.view == viewBefore || remade.view == 0 || remade.sampler == samplerBefore ||
+		remade.sampler == 0 || remade.generation != contextGeneration()) {
+		fail(`the new context kept view ${remade.view} or sampler ${remade.sampler}`);
 	}
 }
 
+function presetFrame(ref renderer: PixelArtRenderer): int32 {
+	let frame: Result<int32, PixelArtError> =
+		renderPixelArt(renderer, context, items, cameraBlock, lights, SCREEN_MAPPING);
+	if (frame.ok) { return frame.value; }
+	fail(`the pixel-art preset refused the textured cube: ${frame.error.toString()}`);
+	return 0;
+}
+
 function drawn(): int32 {
-	if (pixelArt) {
-		let lowRes: LowResView = SCREEN_MAPPING;
-		let frame: Result<int32, PixelArtError> =
-			renderPixelArt(preset, context, items, cameraBlock, lights, lowRes);
-		if (frame.ok) { return frame.value; }
-		fail(`the pixel-art preset refused the textured cube: ${frame.error.toString()}`);
-		return 0;
-	}
+	if (outlined) { return presetFrame(outlinedPreset); }
+	if (pixelArt) { return presetFrame(preset); }
 	let frame: Result<int32, ForwardError> =
 		prepareFrame(forward, context, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
@@ -437,7 +527,7 @@ function drawn(): int32 {
 
 export function frameTextured(frameIndex: int32): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
-	if (frameIndex == rebuildAt) { rebuildEverything(); }
+	if (frameIndex == rebuildAt) { loseContext(); }
 	pose(frameIndex);
 	if (refresh(scene, items) != 1) { fail("the scene does not draw exactly the cube"); }
 	let collected: Result<int32, LightError> = collectLights(scene, lights);
@@ -445,13 +535,16 @@ export function frameTextured(frameIndex: int32): void {
 	let view: CameraView = viewOf();
 	view.writeCameraBlock(cameraBlock);
 	if (drawn() != 1) { fail("the frame did not draw the cube"); }
+	if (frameIndex == rebuildAt) { checkRemade(); }
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {
 		if (voidCaptureGrab(0) == 0 || voidCaptureGrab(1) == 0) { fail("D3D11 readback failed"); }
 		if (voidCaptureSlotsDiffer() != 0) { fail("two readbacks of the same frame differ"); }
 		let lit: boolean = stage(frameIndex) == 3;
 		if (stage(frameIndex) == 0 || (lit && !pixelArt)) { checkQuadrants(view, lit); }
 		if (lit && pixelArt) { checkStepped(view); }
-		if (!lit) { checkOnlyTexels(); }
+		if (!lit && !outlined) { checkOnlyTexels(); }
+		if (outlined && stage(frameIndex) == 0) { checkOutline(true); }
+		if (outlined && stage(frameIndex) == 2) { checkOutline(false); }
 		console.log(`textured frame: frame ${frameIndex} checked`);
 	}
 	if (frameIndex == 16) {

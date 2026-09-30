@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the twenty-one capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the twenty-two capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -274,10 +274,11 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_hud_entry campfireHudCapture false
 	write_hud_entry campfireHudSwappedCapture true
 	write_perspective_entry
-	write_textured_entry texturedCapture "configureTextured(false, -1);"
-	write_textured_entry texturedPixelArtCapture "configureTextured(true, -1);"
-	write_textured_entry texturedRebuildCapture "configureTextured(false, 3);"
-	note "prepare: twenty-one capture entries written to $CAPTURE"
+	write_textured_entry texturedCapture "configureTextured(false, false, -1);"
+	write_textured_entry texturedPixelArtCapture "configureTextured(true, false, -1);"
+	write_textured_entry texturedOutlineCapture "configureTextured(true, true, -1);"
+	write_textured_entry texturedRebuildCapture "configureTextured(false, false, 3);"
+	note "prepare: twenty-two capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -1182,7 +1183,7 @@ expected_hash() {
 baseline_names() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
 		m12greydirect m12greypalette m14forward m16anchor m21perspective m22textured \
-		m22texturedpixelart; do
+		m22texturedpixelart m22texturedoutline; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -1635,20 +1636,21 @@ run_textured() {
 		skip "textured: GATE_SKIP_CAPTURE=1 — the textured cube was not drawn"
 		return
 	fi
-	for entry in texturedCapture texturedPixelArtCapture texturedRebuildCapture; do
+	for entry in texturedCapture texturedPixelArtCapture texturedOutlineCapture texturedRebuildCapture; do
 		rm -f "$WORK/$entry.run.log"
 	done
 	run_capture texturedCapture m22textured "textured cube, forward preset"
 	run_capture texturedPixelArtCapture m22texturedpixelart "textured cube, pixel-art, postPass off"
+	run_capture texturedOutlineCapture m22texturedoutline "textured cube, pixel-art outline, orthographic"
 	run_capture texturedRebuildCapture m22textured "textured cube, every mesh and texture rebuilt"
-	for entry in texturedCapture texturedPixelArtCapture texturedRebuildCapture; do
+	for entry in texturedCapture texturedPixelArtCapture texturedOutlineCapture texturedRebuildCapture; do
 		if ! textured_checked "$entry"; then
 			fail "textured: $entry did not finish its readback checks"
 			grep '^FAIL' "$WORK/$entry.run.log" | head -3 | sed 's/^/         /'
 			return
 		fi
 	done
-	pass "textured: uv orientation, exact texels, texel times light and texture lifetime, both presets and a rebuild"
+	pass "textured: uv orientation, exact texels, texel times light, outline, texture lifetime and a context rebuild, both presets"
 }
 
 # A file that imports both layers: every function name void2d and void3d both export resolves to
@@ -1770,7 +1772,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the twenty-one capture entries are current"
+	pass "prepare: campfireScene.ms and the twenty-two capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
