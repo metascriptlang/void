@@ -203,7 +203,6 @@ function formatField(format: PixelFormat, index: int32): uint32 {
 	return ((format as int32) as uint32) << ((index * FORMAT_BITS) as uint32);
 }
 
-// 4 bits per format, then the sample count: 24 bits.
 export function formatBits(this layout: TargetLayout): uint32 {
 	return formatField(layout.color0, 0) |
 		formatField(layout.color1, 1) |
