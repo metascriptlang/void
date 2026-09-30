@@ -328,6 +328,18 @@ uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length) {
 	return pipeline.id;
 }
 
+static uint32_t validImage(sg_image image) {
+	if (sg_query_image_state(image) == SG_RESOURCESTATE_VALID) return image.id;
+	sg_destroy_image(image);
+	return SG_INVALID_ID;
+}
+
+static uint32_t validView(sg_view view) {
+	if (sg_query_view_state(view) == SG_RESOURCESTATE_VALID) return view.id;
+	sg_destroy_view(view);
+	return SG_INVALID_ID;
+}
+
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 	if (width <= 0 || height <= 0) return SG_INVALID_ID;
 	sg_image_desc desc = {0};
@@ -340,7 +352,7 @@ uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 	desc.height = height;
 	desc.pixel_format = LOOKUP(PIXEL_FORMATS, format);
 	desc.sample_count = 1;
-	return sg_make_image(&desc).id;
+	return validImage(sg_make_image(&desc));
 }
 
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format) {
@@ -350,13 +362,13 @@ uint32_t doorMakeAttachmentView(uint32_t image, int32_t format) {
 	} else {
 		desc.color_attachment.image = (sg_image){.id = image};
 	}
-	return sg_make_view(&desc).id;
+	return validView(sg_make_view(&desc));
 }
 
 uint32_t doorMakeTextureView(uint32_t image) {
 	sg_view_desc desc = {0};
 	desc.texture.image = (sg_image){.id = image};
-	return sg_make_view(&desc).id;
+	return validView(sg_make_view(&desc));
 }
 
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap) {
@@ -378,8 +390,6 @@ void doorDestroySampler(uint32_t sampler) { sg_destroy_sampler((sg_sampler){.id 
 
 static int32_t g_openPass = DOOR_PASS_NONE;
 
-// The open-pass state is set in these three functions and read nowhere else in C. The stops
-// that name the call live in MetaScript (door.ms), which every layer passes through.
 void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clear, int64_t clearLength) {
 	if (length < DOOR_PASS_LENGTH || clearLength < DOOR_PASS_CLEAR_LENGTH) return;
 	sg_pass pass = {0};
@@ -398,6 +408,10 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha) {
 	if (g_openPass != DOOR_PASS_NONE) {
 		fprintf(stderr, "gpu door: beginColorPass with a pass already open; endPass ends it\n");
+		abort();
+	}
+	if (sg_query_view_state((sg_view){.id = view}) != SG_RESOURCESTATE_VALID) {
+		fprintf(stderr, "gpu door: beginColorPass on view %u, which is not a live attachment\n", view);
 		abort();
 	}
 	sg_pass pass = {0};
