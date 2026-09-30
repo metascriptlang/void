@@ -39,6 +39,7 @@ void main() {
 @include_block lightUniforms
 @include_block toonPointLight
 @include_block saturation
+@include_block facingNormal
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -46,7 +47,7 @@ in float depth01;
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
-    vec3 n = normalize(worldNormal);
+    vec3 n = facingNormal(normalize(worldNormal), material.z);
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
     vec3 light = ambient.rgb + dirColor.rgb * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
@@ -85,6 +86,7 @@ void main() {
 @include_block lightUniforms
 @include_block toonPointLight
 @include_block saturation
+@include_block facingNormal
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 in vec3 worldPosition;
@@ -96,7 +98,7 @@ layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
     vec4 surface = baseColor * texture(sampler2D(baseTexture, baseSampler), surfaceUv);
-    vec3 n = normalize(worldNormal);
+    vec3 n = facingNormal(normalize(worldNormal), material.z);
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
     vec3 light = ambient.rgb + dirColor.rgb * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {

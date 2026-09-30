@@ -97,11 +97,13 @@ export const LIGHT_UNIFORM_SLOT: int32 = 1;
 export const MAX_POINT_LIGHTS: int32 = 4;
 export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
-// material's colour before lighting (0 leaves it alone, -1 is grey); a preset may give the
+// material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
+// MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal; a preset may give the
 // other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS).
 export const MATERIAL_UNIFORM_SLOT: int32 = 3;
 export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
 export const MATERIAL_SATURATION: int32 = 1;
+export const MATERIAL_DOUBLE_SIDED: int32 = 2;
 // A billboard material's block (binding=2): its colour, then at BILLBOARD_LIGHT 0 to leave the
 // lights out (Heaps' `particles3D` material has `light: true`). A preset may give the other
 // floats a meaning of its own (pixelArtRenderer.ms BILLBOARD_RAMP_LEVELS).

@@ -53,6 +53,13 @@ vec3 saturated(vec3 rgb, float amount) {
 }
 @end
 
+@block facingNormal
+// h3d.shader.FlipBackFaceNormal, on when the material says so (glTF doubleSided).
+vec3 facingNormal(vec3 normal, float doubleSided) {
+    return (doubleSided > 0.5 && !gl_FrontFacing) ? -normal : normal;
+}
+@end
+
 @block lightUniforms
 layout(binding=1) uniform lightParams {
     vec4 ambient;
