@@ -9,10 +9,11 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { liveBuffers } from "../gpu/door";
-import { RenderState } from "../gpu/state";
+import { liveBuffers, liveImages, liveViews, liveSamplers } from "../gpu/door";
+import { RenderState, FilterMode, Wrap } from "../gpu/state";
 import { Material, Phase, UniformBlock } from "../void3d/material";
-import { MeshData, MeshError, Rgba, addBox } from "../void3d/meshData";
+import { MeshData, MeshError, Rgba, addBox, addTexturedCube } from "../void3d/meshData";
+import { TextureData, TextureId, TextureUploadError, NO_TEXTURE } from "../void3d/texture";
 import { UniformError } from "../void3d/uniformPool";
 import {
 	DrawContext,
@@ -26,6 +27,8 @@ import {
 	STREAM_INSTANCE_STRIDE,
 	addMeshData,
 	addMaterial,
+	addTexture,
+	releaseTexture,
 	addStreamMesh,
 	writeStream,
 	releaseMesh,
@@ -54,6 +57,7 @@ import {
 export enum ChurnError {
 	GroupRefused,
 	MeshRefused,
+	TextureRefused,
 	StreamRefused,
 	UniformsRefused,
 	MaterialRefused,
@@ -73,6 +77,12 @@ export struct ChurnStats {
 	freeRanges: int32;
 	doomed: int32;
 	liveBuffers: int32;
+	textureSlots: int32;
+	liveTextures: int32;
+	doomedTextures: int32;
+	liveImages: int32;
+	liveViews: int32;
+	liveSamplers: int32;
 	sceneNodes: int32;
 	sceneSlots: int32;
 	secondWritesRefused: int32;
@@ -91,7 +101,7 @@ const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
+	FORWARD_UNIFORM_LENGTH + 2 * MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
 let scene: Scene3D = Scene3D.create();
@@ -100,6 +110,7 @@ let camera: Vec<float32> = zeros(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = zeros(LIGHT_UNIFORM_LENGTH);
 let instances: Vec<float32> = zeros(STREAM_CAPACITY * STREAM_INSTANCE_STRIDE);
 let box: MeshData = boxData();
+let texturedBox: MeshData = texturedBoxData();
 let releasing: boolean = true;
 let frames: int32 = 0;
 let secondWritesRefused: int32 = 0;
@@ -131,6 +142,23 @@ function boxData(): MeshData {
 	return data;
 }
 
+function texturedBoxData(): MeshData {
+	let data: MeshData = MeshData.withUvs();
+	let _added: Result<int32, MeshError> =
+		addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE);
+	return data;
+}
+
+function checker(): TextureData {
+	return {
+		pixels: [0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF],
+		width: 2,
+		height: 2,
+		filter: FilterMode.Nearest,
+		wrap: Wrap.Repeat,
+	};
+}
+
 export function configureChurn(release: boolean): void {
 	releasing = release;
 }
@@ -139,16 +167,16 @@ export function initChurn(): void {
 	gfxSetup();
 }
 
-function litMaterial(): Result<MaterialId, ChurnError> {
+function litMaterial(program: Program, texture: TextureId): Result<MaterialId, ChurnError> {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { return Result.err(ChurnError.UniformsRefused); }
 	const levels: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 	const written: Result<int32, UniformError> = writeUniforms(context, reserved.value, levels);
 	if (!written.ok) { return Result.err(ChurnError.UniformsRefused); }
-	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
+	const plain: Material = Material.plain(program, RenderState.defaults(), Phase.Opaque);
 	const added: Result<MaterialId, MaterialError> =
-		addMaterial(context, { ...plain, uniforms: reserved.value });
+		addMaterial(context, { ...plain, texture: texture, uniforms: reserved.value });
 	if (!added.ok) { return Result.err(ChurnError.MaterialRefused); }
 	return Result.ok(added.value);
 }
@@ -186,15 +214,24 @@ function loadLevel(): Result<NodeId3D, ChurnError> {
 	if (!mesh.ok) { return Result.err(ChurnError.MeshRefused); }
 	const stream: Result<MeshId, StreamError> = addStreamMesh(context, STREAM_CAPACITY);
 	if (!stream.ok) { return Result.err(ChurnError.StreamRefused); }
-	const lit: MaterialId = try litMaterial();
+	let texturedMesh: Result<MeshId, MeshUploadError> = addMeshData(context, texturedBox);
+	if (!texturedMesh.ok) { return Result.err(ChurnError.MeshRefused); }
+	let texture: Result<TextureId, TextureUploadError> = addTexture(context, checker());
+	if (!texture.ok) { return Result.err(ChurnError.TextureRefused); }
+	const lit: MaterialId = try litMaterial(Program.Lit, NO_TEXTURE);
+	let textured: MaterialId = try litMaterial(Program.LitTextured, texture.value);
 	const particles: MaterialId = try particleMaterial();
 	const _box: NodeId3D = try place(level, mesh.value, lit);
+	let _texturedBox: NodeId3D = try place(level, texturedMesh.value, textured);
 	const _stream: NodeId3D = try place(level, stream.value, particles);
 	const _written: int32 = try fillStream(stream.value);
 	if (releasing) {
 		const _mesh: Result<int32, HandleError> = releaseMesh(context, mesh.value);
+		let _texturedMesh: Result<int32, HandleError> = releaseMesh(context, texturedMesh.value);
 		const _particles: Result<int32, HandleError> = releaseMesh(context, stream.value);
+		let _texture: Result<int32, HandleError> = releaseTexture(context, texture.value);
 		const _lit: Result<int32, HandleError> = releaseMaterial(context, lit);
+		let _textured: Result<int32, HandleError> = releaseMaterial(context, textured);
 		const _particle: Result<int32, HandleError> = releaseMaterial(context, particles);
 	}
 	return Result.ok(level);
@@ -241,6 +278,12 @@ export function churnStats(): ChurnStats {
 		freeRanges: context.uniforms.freeRanges(),
 		doomed: context.doomed.length as int32,
 		liveBuffers: liveBuffers(),
+		textureSlots: context.textures.length as int32,
+		liveTextures: context.liveTextures(),
+		doomedTextures: context.doomedTextures.length as int32,
+		liveImages: liveImages(),
+		liveViews: liveViews(),
+		liveSamplers: liveSamplers(),
 		sceneNodes: scene.nodeCount(),
 		sceneSlots: scene.nodes.length as int32,
 		secondWritesRefused: secondWritesRefused,

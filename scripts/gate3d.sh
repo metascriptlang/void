@@ -488,6 +488,12 @@ write_churn_entry() {
 		echo "	freeRanges: 0,"
 		echo "	doomed: 0,"
 		echo "	liveBuffers: 0,"
+		echo "	textureSlots: 0,"
+		echo "	liveTextures: 0,"
+		echo "	doomedTextures: 0,"
+		echo "	liveImages: 0,"
+		echo "	liveViews: 0,"
+		echo "	liveSamplers: 0,"
 		echo "	sceneNodes: 0,"
 		echo "	sceneSlots: 0,"
 		echo "	secondWritesRefused: 0,"
@@ -502,6 +508,8 @@ write_churn_entry() {
 		echo "	console.log(\`CHURN stopped \${now.stopped ? now.stoppedBy.toString() : \"no\"}\`);"
 		echo "	console.log(\`CHURN secondWritesRefused \${now.secondWritesRefused}\`);"
 		echo "	console.log(\`CHURN liveBuffers \${now.liveBuffers}\`);"
+		echo "	console.log(\`CHURN liveImages \${now.liveImages}\`);"
+		echo "	console.log(\`CHURN liveSamplers \${now.liveSamplers}\`);"
 		echo "	console.log(\`CHURN liveMeshes \${now.liveMeshes}\`);"
 		echo "	console.log(\`CHURN meshSlots \${now.meshSlots}\`);"
 		echo "	console.log(\`CHURN uniformsUsed \${now.uniformsUsed}\`);"
@@ -515,6 +523,9 @@ write_churn_entry() {
 		echo "	console.log(\`CHURN growth.doomed \${now.doomed - base.doomed}\`);"
 		echo "	console.log(\`CHURN growth.sceneNodes \${now.sceneNodes - base.sceneNodes}\`);"
 		echo "	console.log(\`CHURN growth.sceneSlots \${now.sceneSlots - base.sceneSlots}\`);"
+		for row in textureSlots liveTextures doomedTextures liveImages liveViews liveSamplers; do
+			echo "	console.log(\`CHURN growth.$row \${now.$row - base.$row}\`);"
+		done
 		echo "}"
 		echo ""
 		echo "function frame(): void {"
@@ -828,7 +839,7 @@ run_churn() {
 	controlFrames=$(churn_rows churnControl frames)
 	controlStop=$(churn_rows churnControl stopped)
 	case "$controlStop" in
-		MeshRefused|StreamRefused) ;;
+		MeshRefused|StreamRefused|TextureRefused) ;;
 		*)
 			fail "churn: the control never released and still did not run out of buffers (stopped: $controlStop after $controlFrames frames)"
 			return
@@ -846,8 +857,10 @@ run_churn() {
 		return
 	fi
 	buffers=$(churn_rows churnBench liveBuffers)
-	pass "churn: $total frames loading and unloading a level, tables, uniform pool and $buffers live sokol buffers flat; every second stream write refused"
-	note "churn: the control, never releasing, ran out of sokol's buffers after $controlFrames frames ($controlStop)"
+	images=$(churn_rows churnBench liveImages)
+	samplers=$(churn_rows churnBench liveSamplers)
+	pass "churn: $total frames loading and unloading a level, tables, uniform pool, $buffers live sokol buffers, $images images and $samplers samplers flat; every second stream write refused"
+	note "churn: the control, never releasing, ran out of sokol's pools after $controlFrames frames ($controlStop)"
 }
 
 # ---- device -------------------------------------------------------------------------------
@@ -1687,11 +1700,13 @@ BENCH_FRAMES=${GATE_BENCH_FRAMES:-300}
 CHURN_WARMUP=${GATE_CHURN_WARMUP:-10}
 CHURN_FRAMES=${GATE_CHURN_FRAMES:-300}
 # Every row the releasing run must hold flat, and the ones the control must grow: a release that
-# never happens leaves doomed buffers and free ranges at zero, so those two have no control.
+# never happens leaves doomed buffers, doomed textures and free ranges at zero, and one sampler is
+# shared by every texture, so those have no control.
 CHURN_ROWS="meshSlots materialSlots liveMeshes liveMaterials uniformsUsed freeRanges doomed
-	liveBuffers sceneNodes sceneSlots"
+	liveBuffers sceneNodes sceneSlots textureSlots liveTextures doomedTextures liveImages liveViews
+	liveSamplers"
 CHURN_CONTROL_ROWS="meshSlots materialSlots liveMeshes liveMaterials uniformsUsed liveBuffers
-	sceneNodes sceneSlots"
+	sceneNodes sceneSlots textureSlots liveTextures liveImages liveViews"
 PICK_FRAME=12
 GREY_GROUND=-0.75
 
