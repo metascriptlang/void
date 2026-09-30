@@ -175,11 +175,6 @@ struct AccessorView {
 	count: int32;
 }
 
-function accessorError(error: GltfError): Result<AccessorView, GltfError> {
-	const result: Result<AccessorView, GltfError> = Result.err(error);
-	return result;
-}
-
 function accessorView(
 	accessors: JsonValue,
 	views: JsonValue,
@@ -190,46 +185,46 @@ function accessorView(
 	components: int32,
 ): Result<AccessorView, GltfError> {
 	if (index < 0 || index >= countOf(accessors)) {
-		return accessorError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	const accessor: JsonValue = accessors.at(index);
-	if (isNull(accessor)) { return accessorError(GltfError.Unsupported); }
+	if (isNull(accessor)) { return Result.err(GltfError.Unsupported); }
 	if (intField(accessor, "componentType", 0) != component) {
-		return accessorError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	const typeField: JsonValue = fieldOf(accessor, "type");
-	if (typeField.asString() != typeName) { return accessorError(GltfError.Unsupported); }
-	if (!isNull(fieldOf(accessor, "sparse"))) { return accessorError(GltfError.Unsupported); }
+	if (typeField.asString() != typeName) { return Result.err(GltfError.Unsupported); }
+	if (!isNull(fieldOf(accessor, "sparse"))) { return Result.err(GltfError.Unsupported); }
 	const count: int32 = intField(accessor, "count", -1);
 	const viewIndex: int32 = intField(accessor, "bufferView", -1);
 	if (viewIndex < 0 || viewIndex >= countOf(views)) {
-		return accessorError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	const view: JsonValue = views.at(viewIndex);
-	if (isNull(view)) { return accessorError(GltfError.Unsupported); }
-	if (intField(view, "buffer", 0) != 0) { return accessorError(GltfError.Unsupported); }
+	if (isNull(view)) { return Result.err(GltfError.Unsupported); }
+	if (intField(view, "buffer", 0) != 0) { return Result.err(GltfError.Unsupported); }
 	const componentBytes: int32 = component == COMPONENT_FLOAT ? 4 : 2;
 	const elementBytes: int32 = componentBytes * components;
 	const stride: int32 = intField(view, "byteStride", 0);
 	if ((component == COMPONENT_UNSIGNED_SHORT && stride != 0)
 		|| (stride != 0 && stride != elementBytes)) {
-		return accessorError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	const viewOffset: int32 = intField(view, "byteOffset", 0);
 	const viewLength: int32 = intField(view, "byteLength", -1);
 	const accessorOffset: int32 = intField(accessor, "byteOffset", 0);
 	if (viewOffset < 0 || viewLength < 0 || accessorOffset < 0 || count <= 0) {
-		return accessorError(GltfError.OutOfRange);
+		return Result.err(GltfError.OutOfRange);
 	}
 	if (viewOffset > bufferLength || viewLength > bufferLength - viewOffset) {
-		return accessorError(GltfError.OutOfRange);
+		return Result.err(GltfError.OutOfRange);
 	}
 	if (accessorOffset > viewLength
 		|| count > (viewLength - accessorOffset) / elementBytes) {
-		return accessorError(GltfError.OutOfRange);
+		return Result.err(GltfError.OutOfRange);
 	}
 	if (viewOffset % componentBytes != 0 || accessorOffset % componentBytes != 0) {
-		return accessorError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	const out: AccessorView = { offset: viewOffset + accessorOffset, count: count };
 	return Result.ok(out);
@@ -519,33 +514,23 @@ function wrapOf(code: int32): int32 {
 	};
 }
 
-function samplingError(): Result<Sampling, GltfError> {
-	const result: Result<Sampling, GltfError> = Result.err(GltfError.UnsupportedSampler);
-	return result;
-}
-
 function loadSampler(sampler: JsonValue): Result<Sampling, GltfError> {
-	if (sampler === null || sampler.kind != JsonKind.Object) { return samplingError(); }
+	if (sampler === null || sampler.kind != JsonKind.Object) { return Result.err(GltfError.UnsupportedSampler); }
 	const magField: JsonValue = fieldOf(sampler, "magFilter");
 	const minField: JsonValue = fieldOf(sampler, "minFilter");
 	const mag: int32 = isNull(magField) ? FILTER_LINEAR : intValue(magField);
 	const min: int32 = isNull(minField) ? mag : filterBase(intValue(minField));
-	if (mag != FILTER_NEAREST && mag != FILTER_LINEAR) { return samplingError(); }
-	if (min == INVALID_INT) { return samplingError(); }
-	if (!isNull(magField) && min != mag) { return samplingError(); }
+	if (mag != FILTER_NEAREST && mag != FILTER_LINEAR) { return Result.err(GltfError.UnsupportedSampler); }
+	if (min == INVALID_INT) { return Result.err(GltfError.UnsupportedSampler); }
+	if (!isNull(magField) && min != mag) { return Result.err(GltfError.UnsupportedSampler); }
 	const wrapS: int32 = wrapOf(intField(sampler, "wrapS", WRAP_REPEAT));
 	const wrapT: int32 = wrapOf(intField(sampler, "wrapT", WRAP_REPEAT));
-	if (wrapS == INVALID_INT || wrapS != wrapT) { return samplingError(); }
+	if (wrapS == INVALID_INT || wrapS != wrapT) { return Result.err(GltfError.UnsupportedSampler); }
 	const out: Sampling = {
 		filter: min == FILTER_NEAREST ? FilterMode.Nearest : FilterMode.Linear,
 		wrap: wrapS as Wrap,
 	};
 	return Result.ok(out);
-}
-
-function imageError(error: GltfError): Result<ImageView, GltfError> {
-	const result: Result<ImageView, GltfError> = Result.err(error);
-	return result;
 }
 
 function loadImageView(
@@ -554,31 +539,30 @@ function loadImageView(
 	bufferLength: int32,
 ): Result<ImageView, GltfError> {
 	if (image === null || image.kind != JsonKind.Object) {
-		return imageError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(image, "uri"))) { return imageError(GltfError.ImageByUri); }
+	if (!isNull(fieldOf(image, "uri"))) { return Result.err(GltfError.ImageByUri); }
 	const viewIndex: int32 = intField(image, "bufferView", INVALID_INT);
 	if (viewIndex < 0 || viewIndex >= countOf(views)) {
-		return imageError(GltfError.BadReference);
+		return Result.err(GltfError.BadReference);
 	}
-	const mimeType: string = fieldOf(image, "mimeType").asString();
-	let format: ImageFormat = ImageFormat.Png;
-	if (mimeType == "image/jpeg") {
-		format = ImageFormat.Jpeg;
-	} else if (mimeType != "image/png") {
-		return imageError(GltfError.BadImage);
-	}
+	const format: Result<ImageFormat, GltfError> = match (fieldOf(image, "mimeType").asString()) {
+		"image/png" => Result.ok(ImageFormat.Png),
+		"image/jpeg" => Result.ok(ImageFormat.Jpeg),
+		_ => Result.err(GltfError.BadImage),
+	};
+	if (!format.ok) { return Result.err(format.error); }
 	const view: JsonValue = views.at(viewIndex);
 	if (isNull(view) || intField(view, "buffer", 0) != 0
 		|| !isNull(fieldOf(view, "byteStride"))) {
-		return imageError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	const offset: int32 = intField(view, "byteOffset", 0);
 	const length: int32 = intField(view, "byteLength", INVALID_INT);
 	if (offset < 0 || length <= 0 || offset > bufferLength || length > bufferLength - offset) {
-		return imageError(GltfError.OutOfRange);
+		return Result.err(GltfError.OutOfRange);
 	}
-	const out: ImageView = { offset: offset, length: length, format: format };
+	const out: ImageView = { offset: offset, length: length, format: format.value };
 	return Result.ok(out);
 }
 
@@ -622,11 +606,6 @@ function loadTexture(
 	});
 }
 
-function materialError(error: GltfError): Result<MaterialRead, GltfError> {
-	const result: Result<MaterialRead, GltfError> = Result.err(error);
-	return result;
-}
-
 function unitNumberAt(values: JsonValue, index: int32): Result<float32, GltfError> {
 	const value: float32 = try numberAt(values, index);
 	if (value < 0.0 || value > 1.0) { return Result.err(GltfError.OutOfRange); }
@@ -635,40 +614,40 @@ function unitNumberAt(values: JsonValue, index: int32): Result<float32, GltfErro
 
 function loadMaterial(material: JsonValue, textureCount: int32): Result<MaterialRead, GltfError> {
 	if (material === null || material.kind != JsonKind.Object) {
-		return materialError(GltfError.Unsupported);
+		return Result.err(GltfError.Unsupported);
 	}
 	if (!isNull(fieldOf(material, "normalTexture"))
 		|| !isNull(fieldOf(material, "occlusionTexture"))
 		|| !isNull(fieldOf(material, "emissiveTexture"))) {
-		return materialError(GltfError.UnsupportedMaterial);
+		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	const emissive: JsonValue = fieldOf(material, "emissiveFactor");
 	if (!isNull(emissive)) {
 		if (emissive.kind != JsonKind.Array || countOf(emissive) != 3) {
-			return materialError(GltfError.Unsupported);
+			return Result.err(GltfError.Unsupported);
 		}
 		for (let i = 0; i < 3; i++) {
 			const channel: float32 = try unitNumberAt(emissive, i);
-			if (channel != 0.0) { return materialError(GltfError.UnsupportedMaterial); }
+			if (channel != 0.0) { return Result.err(GltfError.UnsupportedMaterial); }
 		}
 	}
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
 	if (!isNull(alphaMode) && alphaMode.asString() != "OPAQUE") {
-		return materialError(GltfError.UnsupportedMaterial);
+		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	let read: MaterialRead = DEFAULT_READ;
 	const doubleSided: JsonValue = fieldOf(material, "doubleSided");
 	if (!isNull(doubleSided)) {
-		if (doubleSided.kind != JsonKind.Bool) { return materialError(GltfError.Unsupported); }
+		if (doubleSided.kind != JsonKind.Bool) { return Result.err(GltfError.Unsupported); }
 		read.material.doubleSided = doubleSided.boolVal;
 	}
 	const pbr: JsonValue = fieldOf(material, "pbrMetallicRoughness");
 	if (isNull(pbr)) { return Result.ok(read); }
-	if (pbr.kind != JsonKind.Object) { return materialError(GltfError.Unsupported); }
+	if (pbr.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
 	const factor: JsonValue = fieldOf(pbr, "baseColorFactor");
 	if (!isNull(factor)) {
 		if (factor.kind != JsonKind.Array || countOf(factor) != 4) {
-			return materialError(GltfError.Unsupported);
+			return Result.err(GltfError.Unsupported);
 		}
 		read.factor = {
 			red: try unitNumberAt(factor, 0),
@@ -679,12 +658,12 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 	}
 	const info: JsonValue = fieldOf(pbr, "baseColorTexture");
 	if (isNull(info)) { return Result.ok(read); }
-	if (info.kind != JsonKind.Object) { return materialError(GltfError.Unsupported); }
+	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
 	if (intField(info, "texCoord", 0) != 0 || !isNull(fieldOf(info, "extensions"))) {
-		return materialError(GltfError.UnsupportedMaterial);
+		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	const index: int32 = intField(info, "index", INVALID_INT);
-	if (index < 0 || index >= textureCount) { return materialError(GltfError.BadReference); }
+	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
 	read.material.texture = index;
 	return Result.ok(read);
 }
