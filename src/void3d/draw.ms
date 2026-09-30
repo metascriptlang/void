@@ -245,7 +245,7 @@ export function meshFor(
 	generation: int32,
 ): GpuMesh {
 	return {
-		layout: VertexLayout.Lit,
+		layout: data.hasUvs ? VertexLayout.LitTextured : VertexLayout.Lit,
 		vertexBuffer: vertexBuffer,
 		instanceBuffer: 0,
 		indexBuffer: data.isIndexed() ? indexBuffer : (0 as uint32),

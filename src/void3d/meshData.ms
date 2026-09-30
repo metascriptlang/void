@@ -4,10 +4,10 @@
 // the headless tests can check.
 //
 // Heaps keeps points, normals, uvs and colors as four parallel arrays and interleaves them in
-// `getCPUBuffer` at upload. Here the interleave is the storage: one `Vec<float32>` in the Lit
-// layout gpu3d.c describes (position 3, normal 3, rgba 4). There is one layout, it is the one
-// this renderer's content has, and keeping four arrays would only pay off for a format switch
-// that the fixed sokol-shdc programs do not have (docs/VOID3D.md, Porting rules).
+// `getCPUBuffer` at upload. Here the interleave is the storage: one `Vec<float32>` in the layout
+// gpu3d.c describes for it, `Lit` (position 3, normal 3, rgba 4) or, for a mesh that carries
+// uvs, `LitTextured` (position 3, normal 3, uv 2, rgba 4: `getBufferFormat`'s order). The fixed
+// sokol-shdc programs read exactly those two, so four arrays would buy nothing.
 //
 // Bounds are maintained as vertices arrive rather than computed on demand as in Heaps'
 // `Polygon.getBounds`: the builders are the only writers, so the bounds cannot go stale, and
@@ -25,6 +25,7 @@ import { Face } from "../gpu/state";
 
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
 export const LIT_VERTEX_STRIDE: int32 = 10;
+export const LIT_TEXTURED_VERTEX_STRIDE: int32 = 12;
 
 // uint16 indices, so one MeshData holds at most 65536 vertices. The content budget this port
 // was sized against is three orders of magnitude under that (RENDERER-BRIEF §4.4); a mesh that
@@ -38,23 +39,39 @@ export struct Rgba {
 	alpha: float32;
 }
 
+// h3d.prim.UV.
+export struct Uv {
+	u: float32;
+	v: float32;
+}
+
 export struct MeshData {
 	vertices: Vec<float32>;
 	indices: Vec<uint16>;
 	bounds: Bounds3D;
+	hasUvs: boolean;
 }
 
 export enum MeshError {
 	TooManyVertices,
 	IndexOutOfRange,
+	UvMismatch,
 }
 
 export function empty(this typeof MeshData): MeshData {
-	return { vertices: [], indices: [], bounds: Bounds3D.empty() };
+	return { vertices: [], indices: [], bounds: Bounds3D.empty(), hasUvs: false };
+}
+
+export function withUvs(this typeof MeshData): MeshData {
+	return { ...MeshData.empty(), hasUvs: true };
+}
+
+export function stride(this data: MeshData): int32 {
+	return data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE;
 }
 
 export function vertexCount(this data: MeshData): int32 {
-	return (data.vertices.length as int32) / LIT_VERTEX_STRIDE;
+	return (data.vertices.length as int32) / data.stride();
 }
 
 export function indexCount(this data: MeshData): int32 {
@@ -79,6 +96,7 @@ export function addVertex(
 	normal: Vec3,
 	color: Rgba,
 ): Result<int32, MeshError> {
+	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	const index: int32 = data.vertexCount();
 	if (index >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
 	data.vertices.push(position.x);
@@ -87,6 +105,32 @@ export function addVertex(
 	data.vertices.push(normal.x);
 	data.vertices.push(normal.y);
 	data.vertices.push(normal.z);
+	data.vertices.push(color.red);
+	data.vertices.push(color.green);
+	data.vertices.push(color.blue);
+	data.vertices.push(color.alpha);
+	addPoint(data.bounds, position);
+	return Result.ok(index);
+}
+
+export function addTexturedVertex(
+	ref data: MeshData,
+	position: Vec3,
+	normal: Vec3,
+	uv: Uv,
+	color: Rgba,
+): Result<int32, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	let index: int32 = data.vertexCount();
+	if (index >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+	data.vertices.push(position.x);
+	data.vertices.push(position.y);
+	data.vertices.push(position.z);
+	data.vertices.push(normal.x);
+	data.vertices.push(normal.y);
+	data.vertices.push(normal.z);
+	data.vertices.push(uv.u);
+	data.vertices.push(uv.v);
 	data.vertices.push(color.red);
 	data.vertices.push(color.green);
 	data.vertices.push(color.blue);
@@ -142,6 +186,27 @@ export function addQuad(
 	return Result.ok(first);
 }
 
+// addQuad over the whole texture: `a b c d` run counter-clockwise from its bottom left, face on.
+export function addTexturedQuad(
+	ref data: MeshData,
+	a: Vec3,
+	b: Vec3,
+	c: Vec3,
+	d: Vec3,
+	normal: Vec3,
+	color: Rgba,
+): Result<int32, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (!data.hasRoomFor(4)) { return Result.err(MeshError.TooManyVertices); }
+	let first: int32 = try addTexturedVertex(data, a, normal, { u: 0.0, v: 1.0 }, color);
+	let second: int32 = try addTexturedVertex(data, b, normal, { u: 1.0, v: 1.0 }, color);
+	let third: int32 = try addTexturedVertex(data, c, normal, { u: 1.0, v: 0.0 }, color);
+	let fourth: int32 = try addTexturedVertex(data, d, normal, { u: 0.0, v: 0.0 }, color);
+	let _lower: int32 = try addTriangle(data, first, second, third);
+	let _upper: int32 = try addTriangle(data, first, third, fourth);
+	return Result.ok(first);
+}
+
 // Recomputes the bounds from the vertices, h3d.prim.Polygon.getBounds. The builders keep the
 // bounds current, so this is for a caller that edited `vertices` itself — a vertex-baked
 // animation frame (M9) swapping positions under a mesh that keeps its indices.
@@ -149,7 +214,7 @@ export function recomputeBounds(ref data: MeshData): void {
 	let box: Bounds3D = Bounds3D.empty();
 	const count: int32 = data.vertexCount();
 	for (let i = 0; i < count; i++) {
-		const base: int32 = i * LIT_VERTEX_STRIDE;
+		const base: int32 = i * data.stride();
 		addPoint(box, vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]));
 	}
 	data.bounds = box;
@@ -197,7 +262,7 @@ function facesKept(det: float32, culling: Face): boolean {
 function cornerOf(this data: MeshData, triangle: int32, corner: int32): Vec3 {
 	const at: int32 = triangle * 3 + corner;
 	const vertex: int32 = data.isIndexed() ? (data.indices[at] as int32) : at;
-	const base: int32 = vertex * LIT_VERTEX_STRIDE;
+	const base: int32 = vertex * data.stride();
 	return vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]);
 }
 
@@ -311,4 +376,53 @@ export function addPlane(
 		vec3(0.0, 1.0, 0.0),
 		color,
 	);
+}
+
+export const CUBE_VERTICES: int32 = 24;
+
+// h3d.prim.Cube with `addUVs`: every face takes the whole texture. Heaps' faces are upright in
+// its Z-up frame; here the sides stand along +y and the top and bottom read from the front.
+export function addTexturedCube(
+	ref data: MeshData,
+	size: Vec3,
+	centered: boolean,
+	color: Rgba,
+): Result<int32, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (!data.hasRoomFor(CUBE_VERTICES)) { return Result.err(MeshError.TooManyVertices); }
+	let low: Vec3 = centered ? size.scaled(-0.5) : vec3(0.0, 0.0, 0.0);
+	let high: Vec3 = low + size;
+	let leftBottomBack: Vec3 = vec3(low.x, low.y, low.z);
+	let rightBottomBack: Vec3 = vec3(high.x, low.y, low.z);
+	let leftTopBack: Vec3 = vec3(low.x, high.y, low.z);
+	let rightTopBack: Vec3 = vec3(high.x, high.y, low.z);
+	let leftBottomFront: Vec3 = vec3(low.x, low.y, high.z);
+	let rightBottomFront: Vec3 = vec3(high.x, low.y, high.z);
+	let leftTopFront: Vec3 = vec3(low.x, high.y, high.z);
+	let rightTopFront: Vec3 = vec3(high.x, high.y, high.z);
+	let first: int32 = try addTexturedQuad(
+		data, leftBottomFront, rightBottomFront, rightTopFront, leftTopFront,
+		vec3(0.0, 0.0, 1.0), color,
+	);
+	let _right: int32 = try addTexturedQuad(
+		data, rightBottomFront, rightBottomBack, rightTopBack, rightTopFront,
+		vec3(1.0, 0.0, 0.0), color,
+	);
+	let _back: int32 = try addTexturedQuad(
+		data, rightBottomBack, leftBottomBack, leftTopBack, rightTopBack,
+		vec3(0.0, 0.0, -1.0), color,
+	);
+	let _left: int32 = try addTexturedQuad(
+		data, leftBottomBack, leftBottomFront, leftTopFront, leftTopBack,
+		vec3(-1.0, 0.0, 0.0), color,
+	);
+	let _top: int32 = try addTexturedQuad(
+		data, leftTopFront, rightTopFront, rightTopBack, leftTopBack,
+		vec3(0.0, 1.0, 0.0), color,
+	);
+	let _bottom: int32 = try addTexturedQuad(
+		data, leftBottomBack, rightBottomBack, rightBottomFront, leftBottomFront,
+		vec3(0.0, -1.0, 0.0), color,
+	);
+	return Result.ok(first);
 }
