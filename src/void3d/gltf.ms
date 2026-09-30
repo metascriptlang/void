@@ -67,6 +67,7 @@ const GLB_CHUNK_JSON: uint32 = 0x4E4F534A;
 const GLB_CHUNK_BIN: uint32 = 0x004E4942;
 const GLB_HEADER_LENGTH: int32 = 12;
 const GLB_CHUNK_HEADER_LENGTH: int32 = 8;
+const OPAQUE_TEXEL: uint32 = 0xFF000000;
 
 export const DEFAULT_MATERIAL: int32 = -1;
 export const NO_TEXTURE_INDEX: int32 = -1;
@@ -609,8 +610,11 @@ function loadTexture(
 	if (!format.ok || format.value != view.format) { return Result.err(GltfError.BadImage); }
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) { return Result.err(GltfError.BadImage); }
+	// glTF 2.0 §3.9.4: an OPAQUE material ignores alpha, and loadMaterial refuses MASK and BLEND.
+	let pixels: Vec<uint32> = decoded.value.pixels;
+	for (let i = 0; i < (pixels.length as int32); i++) { pixels[i] = pixels[i] | OPAQUE_TEXEL; }
 	return Result.ok({
-		pixels: decoded.value.pixels,
+		pixels: pixels,
 		width: decoded.value.width,
 		height: decoded.value.height,
 		filter: sampling.filter,

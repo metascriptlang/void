@@ -32,7 +32,7 @@ const F32_HALF: uint32 = 0x3F000000;
 const F32_ONE: uint32 = 0x3F800000;
 const IMAGE_OFFSET: int32 = 188;
 const RED: uint32 = 0xFF0000FF;
-const YELLOW_HALF_ALPHA: uint32 = 0x8000FFFF;
+const YELLOW: uint32 = 0xFF00FFFF;
 
 function pushLe32(ref out: Vec<uint8>, bits: uint32): void {
 	out.push((bits & (0xFF as uint32)) as uint8);
@@ -176,7 +176,7 @@ function jsonThenBin(): Vec<uint32> {
 	return [0x4E4F534A as uint32, 0x004E4942 as uint32];
 }
 
-test "a textured primitive decodes with uvs, its material and its texture" {
+test "a textured primitive decodes with uvs, its material and its texture, alpha ignored" {
 	const result: Result<GltfData, GltfError> = loaded(texturedParts());
 	assert result.ok;
 	if (!result.ok) { return; }
@@ -196,7 +196,7 @@ test "a textured primitive decodes with uvs, its material and its texture" {
 	assert (data.textures.length as int32) == 1;
 	assert data.textures[0].width == 2 && data.textures[0].height == 2;
 	assert data.textures[0].pixels[0] == RED;
-	assert data.textures[0].pixels[3] == YELLOW_HALF_ALPHA;
+	assert data.textures[0].pixels[3] == YELLOW;
 	assert data.textures[0].filter == FilterMode.Nearest;
 	assert data.textures[0].wrap == Wrap.Clamp;
 }
@@ -208,7 +208,7 @@ test "loadGlb reads the same document from a binary container" {
 	assert result.ok;
 	if (!result.ok) { return; }
 	assert result.value.meshes[0].vertices[9] == 0.125;
-	assert result.value.textures[0].pixels[3] == YELLOW_HALF_ALPHA;
+	assert result.value.textures[0].pixels[3] == YELLOW;
 	const trailing: Vec<uint32> =
 		[0x4E4F534A as uint32, 0x004E4942 as uint32, 0x12345678 as uint32];
 	assert loadGlb(glbOf(documentOf(texturedParts()), buffer, trailing)).ok;
