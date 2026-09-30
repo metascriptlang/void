@@ -1,4 +1,6 @@
 import { Vec3, vec3 } from "../math/math3d";
+import { Face } from "../gpu/state";
+import { Ray } from "../void3d/ray";
 import { Bounds3D } from "../void3d/bounds";
 import {
 	MeshData,
@@ -6,9 +8,15 @@ import {
 	Rgba,
 	Box,
 	LIT_VERTEX_STRIDE,
+	LIT_TEXTURED_VERTEX_STRIDE,
+	CUBE_VERTICES,
+	Uv,
 	MAX_MESH_VERTICES,
 	BOX_VERTICES,
 	addVertex,
+	addTexturedVertex,
+	addTexturedQuad,
+	addTexturedCube,
 	addTriangle,
 	addQuad,
 	addBox,
@@ -247,4 +255,139 @@ test "every index a builder writes is within the vertex count" {
 		assert (index as int32) < count;
 	}
 	assert data.indexCount() == 36;
+}
+
+function uvAt(data: MeshData, index: int32): Uv {
+	let base: int32 = index * data.stride();
+	return { u: data.vertices[base + 6], v: data.vertices[base + 7] };
+}
+
+function texturedPositionAt(data: MeshData, index: int32): Vec3 {
+	let base: int32 = index * data.stride();
+	return vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]);
+}
+
+function texturedNormalAt(data: MeshData, index: int32): Vec3 {
+	let base: int32 = index * data.stride();
+	return vec3(data.vertices[base + 3], data.vertices[base + 4], data.vertices[base + 5]);
+}
+
+function isUv(uv: Uv, u: float32, v: float32): boolean {
+	return uv.u == u && uv.v == v;
+}
+
+test "a vertex of a mesh with uvs is twelve floats: position, normal, uv, then colour" {
+	let data: MeshData = MeshData.withUvs();
+	let red: Rgba = { red: 1.0, green: 0.0, blue: 0.0, alpha: 0.5 };
+	let added: Result<int32, MeshError> =
+		addTexturedVertex(data, vec3(1.0, 2.0, 3.0), UP, { u: 0.25, v: 0.75 }, red);
+	assert added.ok;
+	assert data.stride() == LIT_TEXTURED_VERTEX_STRIDE;
+	assert MeshData.empty().stride() == LIT_VERTEX_STRIDE;
+	assert (data.vertices.length as int32) == LIT_TEXTURED_VERTEX_STRIDE;
+	assert data.vertexCount() == 1;
+	assert near(texturedPositionAt(data, 0), 1.0, 2.0, 3.0);
+	assert near(texturedNormalAt(data, 0), 0.0, 1.0, 0.0);
+	assert isUv(uvAt(data, 0), 0.25, 0.75);
+	assert data.vertices[8] == 1.0 && data.vertices[9] == 0.0 && data.vertices[11] == 0.5;
+	assert near(data.bounds.min, 1.0, 2.0, 3.0);
+}
+
+test "a vertex without a uv is refused on a mesh with uvs, and one with a uv on a mesh without" {
+	let textured: MeshData = MeshData.withUvs();
+	let plain: Result<int32, MeshError> = addVertex(textured, vec3(0.0, 0.0, 0.0), UP, WHITE);
+	assert !plain.ok && plain.error == MeshError.UvMismatch;
+	let flatQuad: Result<int32, MeshError> = addQuad(
+		textured, vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0),
+		vec3(0.0, 1.0, 0.0), UP, WHITE,
+	);
+	assert !flatQuad.ok && flatQuad.error == MeshError.UvMismatch;
+	assert textured.vertexCount() == 0 && textured.indexCount() == 0 && textured.bounds.isEmpty();
+	let untextured: MeshData = MeshData.empty();
+	let withUv: Result<int32, MeshError> =
+		addTexturedVertex(untextured, vec3(0.0, 0.0, 0.0), UP, { u: 0.0, v: 0.0 }, WHITE);
+	assert !withUv.ok && withUv.error == MeshError.UvMismatch;
+	let quad: Result<int32, MeshError> = addTexturedQuad(
+		untextured, vec3(0.0, 0.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(1.0, 1.0, 0.0),
+		vec3(0.0, 1.0, 0.0), UP, WHITE,
+	);
+	assert !quad.ok && quad.error == MeshError.UvMismatch;
+	let cube: Result<int32, MeshError> =
+		addTexturedCube(untextured, vec3(1.0, 1.0, 1.0), true, WHITE);
+	assert !cube.ok && cube.error == MeshError.UvMismatch;
+	assert untextured.vertexCount() == 0 && untextured.indexCount() == 0;
+}
+
+test "a textured quad spans the whole texture, its first row along its top edge" {
+	let data: MeshData = MeshData.withUvs();
+	let added: Result<int32, MeshError> = addTexturedQuad(
+		data, vec3(0.0, 0.0, 0.0), vec3(2.0, 0.0, 0.0), vec3(2.0, 1.0, 0.0),
+		vec3(0.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), WHITE,
+	);
+	assert added.ok;
+	assert isUv(uvAt(data, 0), 0.0, 1.0) && isUv(uvAt(data, 1), 1.0, 1.0);
+	assert isUv(uvAt(data, 2), 1.0, 0.0) && isUv(uvAt(data, 3), 0.0, 0.0);
+	assert data.indexCount() == 6;
+	assert data.indices[0] == 0 && data.indices[1] == 1 && data.indices[2] == 2;
+	assert data.indices[3] == 0 && data.indices[4] == 2 && data.indices[5] == 3;
+}
+
+test "a textured cube is Heaps' Cube with addUVs: 24 vertices, each face the whole texture" {
+	let data: MeshData = MeshData.withUvs();
+	let added: Result<int32, MeshError> =
+		addTexturedCube(data, vec3(1.0, 2.0, 4.0), true, WHITE);
+	assert added.ok;
+	if (added.ok) { assert added.value == 0; }
+	assert data.vertexCount() == CUBE_VERTICES && data.indexCount() == 36;
+	assert near(data.bounds.min, -0.5, -1.0, -2.0) && near(data.bounds.max, 0.5, 1.0, 2.0);
+	for (let face = 0; face < 6; face++) {
+		let a: Vec3 = texturedPositionAt(data, face * 4);
+		let b: Vec3 = texturedPositionAt(data, face * 4 + 1);
+		let c: Vec3 = texturedPositionAt(data, face * 4 + 2);
+		let d: Vec3 = texturedPositionAt(data, face * 4 + 3);
+		let normal: Vec3 = texturedNormalAt(data, face * 4);
+		let winding: Vec3 = (b - a).cross(c - a).normalized();
+		assert near(winding, normal.x, normal.y, normal.z);
+		let centre: Vec3 = (a + c).scaled(0.5);
+		assert centre.dot(normal) > 0.0;
+		assert isUv(uvAt(data, face * 4), 0.0, 1.0) && isUv(uvAt(data, face * 4 + 3), 0.0, 0.0);
+		assert isUv(uvAt(data, face * 4 + 1), 1.0, 1.0) && isUv(uvAt(data, face * 4 + 2), 1.0, 0.0);
+		if (normal.y > 0.5) {
+			assert d.z < a.z;
+		} else if (normal.y < -0.5) {
+			assert d.z > a.z;
+		} else {
+			assert d.y > a.y;
+		}
+	}
+	let corner: MeshData = MeshData.withUvs();
+	assert addTexturedCube(corner, vec3(1.0, 2.0, 4.0), false, WHITE).ok;
+	assert near(corner.bounds.min, 0.0, 0.0, 0.0) && near(corner.bounds.max, 1.0, 2.0, 4.0);
+}
+
+test "bounds and picking read a mesh with uvs at its own stride" {
+	let data: MeshData = MeshData.withUvs();
+	assert addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE).ok;
+	let kept: Bounds3D = data.bounds;
+	recomputeBounds(data);
+	assert near(data.bounds.min, kept.min.x, kept.min.y, kept.min.z);
+	assert near(data.bounds.max, kept.max.x, kept.max.y, kept.max.z);
+	let toward: Ray = { origin: vec3(0.1, 0.2, 5.0), direction: vec3(0.0, 0.0, -1.0) };
+	assert approx(data.rayIntersection(toward, Face.Back), 4.5);
+	let beside: Ray = { origin: vec3(2.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
+	assert data.rayIntersection(beside, Face.Back) == -1.0;
+}
+
+test "a builder with uvs that does not fit leaves the mesh exactly as it was" {
+	let data: MeshData = MeshData.withUvs();
+	let room: int32 = MAX_MESH_VERTICES - CUBE_VERTICES + 1;
+	for (let i = 0; i < room; i++) {
+		let uv: Uv = { u: 0.0, v: 0.0 };
+		if (!addTexturedVertex(data, vec3(0.0, 0.0, 0.0), UP, uv, WHITE).ok) { break; }
+	}
+	assert data.vertexCount() == room;
+	let rejected: Result<int32, MeshError> =
+		addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE);
+	assert !rejected.ok && rejected.error == MeshError.TooManyVertices;
+	assert data.vertexCount() == room && data.indexCount() == 0;
 }

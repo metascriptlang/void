@@ -10,6 +10,7 @@ import {
 	MeshError,
 	Rgba,
 	LIT_VERTEX_STRIDE,
+	LIT_TEXTURED_VERTEX_STRIDE,
 	addPlane,
 	addVertex,
 } from "../void3d/meshData";
@@ -190,8 +191,14 @@ test "a stream write is refused before the driver when it names the wrong mesh o
 
 test "every vertex layout carries the floats its writers write, per vertex and per instance" {
 	assert layoutFloats(VertexLayout.Lit, 0) == LIT_VERTEX_STRIDE;
+	assert layoutFloats(VertexLayout.LitTextured, 0) == LIT_TEXTURED_VERTEX_STRIDE;
 	assert layoutFloats(VertexLayout.Particle, 0) == STREAM_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Particle, 0) == PARTICLE_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Billboard, 0) == BILLBOARD_INSTANCE_STRIDE;
 	assert layoutFloats(VertexLayout.Fullscreen, 0) == 2;
+}
+
+test "a mesh uploaded from data with uvs is drawn on the LitTextured layout, without on Lit" {
+	assert MeshData.withUvs().meshFor(1, 2, 1).layout == VertexLayout.LitTextured;
+	assert MeshData.empty().meshFor(1, 2, 1).layout == VertexLayout.Lit;
 }
