@@ -1002,9 +1002,15 @@ export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: Bl
 // moved into the hoisted target list when `endTarget` closes them, and the pass itself is
 // opened by the replay, outside the swapchain pass. The emitter's run state is saved because
 // the target has its own viewport and its own idea of what is already bound.
-function stopOnTarget(target: RenderTarget): void {
-	console.log(`void2d: beginTarget needs an allocated Rgba8 target, got ` +
-		`${target.format.toString()} ${target.width}x${target.height} view ${target.attachment}`);
+function stopOnTarget(target: RenderTarget, scale: float32): void {
+	console.log(`void2d: beginTarget needs an allocated Rgba8 target and a positive scale, got ` +
+		`${target.format.toString()} ${target.width}x${target.height} view ${target.attachment}` +
+		` at scale ${scale}`);
+	unreachable;
+}
+
+function stopOnBlurOutsideTarget(): void {
+	console.log("void2d: blurPass outside beginTarget; the blur draws only into a target");
 	unreachable;
 }
 
@@ -1017,7 +1023,9 @@ export function beginTarget(
 	oy: float32,
 	clear: Color,
 ): void {
-	if (target.format != PixelFormat.Rgba8 || target.attachment == 0) { stopOnTarget(target); }
+	if (target.format != PixelFormat.Rgba8 || target.attachment == 0 || scale <= 0.0) {
+		stopOnTarget(target, scale);
+	}
 	const rt: uint32 = target.attachment;
 	const ctx: DrawContext2D = currentContext();
 	ctx.targetsFlushed = false;
@@ -1070,6 +1078,7 @@ export function endTarget(): void {
 // One separable-blur tap pass (h2d.filter.Blur) recorded into the stream. `step` is the
 // per-tap UV offset; run horizontal (step,0) then vertical (0,step) ping-ponging two RTs.
 export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void {
+	if (targetDepth() == 0) { stopOnBlurOutsideTarget(); }
 	closeRun();
 	recordBlur(srcView, stepX, stepY);
 	openRun(BreakReason.Barrier);
