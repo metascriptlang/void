@@ -1737,9 +1737,29 @@ Card `2026-09-30-exported-global-reference-alias-not-retained` owns that failure
 retain, extra ownership holder or crash suppression was added. The private-selector contract
 provides the same selection capability and its real default-context replay is proven.
 
-**Next cutovers:** prepare/drawScreen, then pipelines/targets and the shared BlendMode through
-the door. The context consumer proves isolated replay, not those still-in-flight cutovers.
-The P5 Scene-lifetime blocker stays owned by P5, and P6 is not started.
+**D2 frame halves built:** `scene.ms` and `draw.ms` `prepare` / `drawScreen` use void3d's
+existing prepare/consume frame stamp, with one caller owning the screen pass and commit.
+`presentAt` composes those halves for the one-layer caller. Dirty flags are cleared at prepare,
+not screen draw: a node write between them belongs to the next frame instead of disappearing.
+`tests/integration/preparedScenes.ms` proves filtered snapshots, independent DPI and that
+transition with captured pixels; `mixedFrame.ms` uses the immediate context halves beside 3D.
+The gate also exercises missing prepare, double prepare, absent/nested pass, consumed and
+expired frame errors. This reuses the existing frame mechanism, not a new scheduler.
+
+**D1 design decision still open:** void3d registers four vertex layouts; void2d's current
+vertex, sprite, UI and blur input shapes add four distinct layouts. The door admits eight.
+Both built-in layers fit exactly, but leave no slot for a foreign layout; the existing
+foreign-consumer fixture registers four. A CPU-only registry control on BUILD `35601908`
+registered the four 3D layouts, reserved four more (base 4), then one more: it stopped with
+`gpu door: the vertex layout registry is full (8); a wider pipeline key is a design change`,
+exit 9. The extra descriptors were zeroed: this measured registry width, not migrated 2D GPUs.
+`src/gpu/pipeline.ms` `PipelineKey` packs exactly 64 bits, including three layout bits.
+Both this branch and latest main retain that width. More layouts need a second key word —
+**NEW MECHANISM**, requiring the human's call. No limit has been raised, no foreign fixture
+suppressed and no shader padded or rewritten to hide the capacity seam.
+
+Pipelines/targets and shared BlendMode are not yet migrated through the door. P5's independent
+Scene-lifetime blocker remains parked, and P6 is not started.
 
 **Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
 audit on the pre-integration source: mutating a caller's `Paint2D.colorMatrix: float32[]`, or

@@ -144,6 +144,31 @@ else
 	fail "expired draw context did not stop with its named error"
 fi
 
+if "$MSC" build tests/integration/preparedScenes.ms --release --output=out/preparedScenes.exe \
+		> out/gate-prepared-scenes.log 2>&1 \
+		&& out/preparedScenes.exe > out/gate-prepared-scenes-run.log 2>&1; then
+	pass "prepared scenes: filtered snapshots, two DPIs and writes between frame halves"
+else
+	fail "prepared Scene2D lifecycle — see out/gate-prepared-scenes-run.log"
+fi
+for misuse in unprepared twice no-pass nested consumed expired; do
+	case "$misuse" in
+		unprepared|consumed) expected='with no prepared frame' ;;
+		twice) expected='again before drawScreen' ;;
+		no-pass) expected='outside a screen pass' ;;
+		nested) expected='with a pass already open' ;;
+		expired) expected='prepared frame expired' ;;
+	esac
+	prepared_status=0
+	VOID_PREPARED_MISUSE="$misuse" out/preparedScenes.exe \
+		> "out/gate-prepared-$misuse.log" 2>&1 || prepared_status=$?
+	if [ "$prepared_status" -ne 0 ] && grep -q "$expected" "out/gate-prepared-$misuse.log"; then
+		pass "prepared Scene2D $misuse stops with its lifecycle error"
+	else
+		fail "prepared Scene2D $misuse did not name its lifecycle error"
+	fi
+done
+
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
 		&& out/twoViews.exe > out/gate-two-views-run.log 2>&1; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
@@ -286,7 +311,7 @@ fi
 # The counters cannot see an allocation that moves no length, so read the emitted C. It sees
 # array copies and fresh arrays; not aliases (`let b = vec` emits no copy on msc 0.2.55, card
 # 2026-09-23-vec-param-copy-corrupts-heap), not stream growth, not allocation inside C.
-FRAME_PATH="scene:tick scene:present scene:presentAt render:drawOrder render:drawRow
+FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScreen render:drawOrder render:drawRow
 	render:drawContent render:drawOwn render:pushMask render:syncOrder node:refreshOrder render:meshBounds render:emitNode render:emitLabel
 	render:emitStyledImage render:localBounds render:boxRenderBounds render:visualTile
 	render:sharedGlyphView node:clearChanges node:refOf node:liveRow node:imageStyleOf
@@ -297,7 +322,7 @@ FRAME_PATH="scene:tick scene:present scene:presentAt render:drawOrder render:dra
 	display76ist:pushSpriteInstance display76ist:pushVertex display76ist:recordDraw
 	display76ist:recordUiDraw display76ist:recordSpriteDraw display76ist:startCommand
 	display76ist:pushEffect display76ist:recordClip draw:openBracket draw:startContext draw:end2d
-	draw:flushTargets
+	draw:flushTargets draw:prepare draw:drawScreen
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox

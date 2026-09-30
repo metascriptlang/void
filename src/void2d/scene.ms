@@ -1,13 +1,8 @@
-// Void 2D Scene — functional take on h2d.Scene: a root container (Object) + the render
-// entry that owns the GPU pass. Heaps: `s2d.addChild(o); s2d.render(engine)`.
-
 import { Scene2D, NodeRef, DrawKind, Changed, NO_NODE_2D } from "./node";
 import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift } from "./render";
 import {
 	openBracket,
 	startContext,
-	end2d,
-	flushTargets,
 	finishRecording,
 	setSceneSmooth,
 	paintIndex,
@@ -27,7 +22,8 @@ import {
 	trs2d,
 	vec2,
 } from "./types";
-import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
+import { commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
+import { PassState, passState, beginScreenPassWith, endPass } from "../gpu/door";
 
 export function create(this typeof Scene2D, clear: Color): Scene2D {
 	const context: DrawContext2D = DrawContext2D.create();
@@ -223,19 +219,30 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 	done.paintedSmooth = s.defaultSmooth;
 }
 
-export function presentAt(this s: Scene2D, dpi: float32): void {
-	const fw: int32 = fbWidth();
-	const fh: int32 = fbHeight();
-	s.paint((fw as float32) / dpi, (fh as float32) / dpi, dpi);
+export function prepare(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
+	if (s.context.prepared) {
+		console.log(`void2d: prepare Scene2D context ${s.context.id} again before drawScreen`);
+		unreachable;
+	}
+	if (passState() != PassState.None) {
+		console.log("void2d: prepare Scene2D with a pass already open");
+		unreachable;
+	}
+	s.paint(wf, hf, dpi);
 	s.refreshScopes();
-	// Every render-target pass first, with no pass open, then one swapchain pass that is only
-	// draws. That ordering is what stops a filter nesting a pass inside the frame's pass, and
-	// it is the GPUI frame shape (GPUI.md:18).
-	flushTargets();
-	beginPass(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
-	end2d();
-	endPass();
-	commit();
+	s.context.prepare();
 	s.clearChanges();
 	s.retryRefused();
+}
+
+export function drawScreen(this s: Scene2D): void {
+	s.context.drawScreen();
+}
+
+export function presentAt(this s: Scene2D, dpi: float32): void {
+	s.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
+	beginScreenPassWith(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
+	s.drawScreen();
+	endPass();
+	commit();
 }

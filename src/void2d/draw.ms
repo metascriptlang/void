@@ -36,7 +36,7 @@ import {
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
-	DrawContext2D, currentContext, useDefaultContext, isDefaultContext, uploaded, spriteInstanceCount,
+	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded, spriteInstanceCount,
 	effectField,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
@@ -48,6 +48,7 @@ import {
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
+import { PassState, passState, frameIndex } from "../gpu/door";
 
 export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
 export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
@@ -420,6 +421,10 @@ export function begin2d(w: float32, h: float32, dpi: float32): void {
 
 export function openBracket(w: float32, h: float32, dpi: float32): void {
 	const ctx: DrawContext2D = currentContext();
+	if (ctx.prepared) {
+		console.log(`void2d: record context ${ctx.id} before drawScreen consumed its prepared frame`);
+		unreachable;
+	}
 	void2dSetDpiScale(dpi);
 	void2dFrameBegin();
 	beginGlyphFrame(void2dFrameSerial());
@@ -439,6 +444,10 @@ export function beginContext(w: float32, h: float32, dpi: float32): void {
 
 export function startContext(): void {
 	const ctx: DrawContext2D = currentContext();
+	if (ctx.prepared) {
+		console.log(`void2d: reset context ${ctx.id} before drawScreen consumed its prepared frame`);
+		unreachable;
+	}
 	resetContext();
 	ctx.runOpen = false;
 	ctx.runStart = 0;
@@ -492,6 +501,39 @@ export function flushTargets(): void {
 	void2dRememberContext(l.id, l.frameLive ? 1 : 0);
 	uploaded();
 	ctx.targetsFlushed = true;
+}
+
+export function prepare(this ctx: DrawContext2D): void {
+	if (ctx.prepared) {
+		console.log(`void2d: prepare context ${ctx.id} again before drawScreen`);
+		unreachable;
+	}
+	if (passState() != PassState.None) {
+		console.log(`void2d: prepare context ${ctx.id} with a pass already open`);
+		unreachable;
+	}
+	useContext(ctx);
+	flushTargets();
+	ctx.prepared = true;
+	ctx.preparedFrame = frameIndex();
+}
+
+export function drawScreen(this ctx: DrawContext2D): void {
+	if (!ctx.prepared) {
+		console.log(`void2d: drawScreen context ${ctx.id} with no prepared frame`);
+		unreachable;
+	}
+	if (passState() != PassState.Screen) {
+		console.log(`void2d: drawScreen context ${ctx.id} outside a screen pass`);
+		unreachable;
+	}
+	if (ctx.preparedFrame != frameIndex()) {
+		console.log(`void2d: drawScreen context ${ctx.id} after its prepared frame expired`);
+		unreachable;
+	}
+	ctx.prepared = false;
+	useContext(ctx);
+	end2d();
 }
 
 // Replay the swapchain list into the pass the caller already has open. Together with

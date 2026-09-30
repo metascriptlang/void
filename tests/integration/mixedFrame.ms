@@ -12,11 +12,10 @@ import { gfxSetup, fbWidth, fbHeight, commit } from "../../src/sokol/gpu";
 import {
 	setup2d,
 	begin2d,
-	flushTargets,
-	end2d,
 	fillQuad,
 	drawCallCount,
 } from "../../src/void2d/draw";
+import { currentContext } from "../../src/void2d/displayList";
 import { BlendMode, vec2, rgba } from "../../src/void2d/types";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import {
@@ -224,7 +223,8 @@ function drawMixed(withQuad: boolean): void {
 			rgba(QUAD_RED, QUAD_GREEN, QUAD_BLUE, QUAD_ALPHA), BlendMode.Alpha,
 		);
 	}
-	flushTargets();
+	const overlay = currentContext();
+	overlay.prepare();
 	beginScreenPass(SCREEN_CLEAR);
 	if (!swapped) {
 		if (voidCaptureEnvInt("VOID_GPU_REGISTRATION", 0) != 0 && stage == 1) {
@@ -243,7 +243,7 @@ function drawMixed(withQuad: boolean): void {
 			drawToScreen(forward, context);
 		}
 	}
-	end2d();
+	overlay.drawScreen();
 	if (swapped) { drawToScreen(forward, context); }
 	endPass();
 	commit();
