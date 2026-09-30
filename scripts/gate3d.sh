@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the eighteen capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the twenty-one capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -178,6 +178,40 @@ write_perspective_entry() {
 	replace_if_changed "$WORK/perspectiveCapture.new" "$CAPTURE/perspectiveCapture.ms"
 }
 
+write_textured_entry() {
+	{
+		echo 'import { initTextured, frameTextured, configureTextured } from "../../../tests/integration/texturedFrame";'
+		echo '@include("../../../src/sokol/bridge.h");'
+		echo '@include("capture.h");'
+		echo '@compile("./capture.c");'
+		echo 'extern function voidRunConfigured('
+		echo '	w: int32,'
+		echo '	h: int32,'
+		echo '	sampleCount: int32,'
+		echo '	highDpi: int32,'
+		echo '	init: () => void,'
+		echo '	frame: () => void,'
+		echo '): void;'
+		echo 'extern function captureSwapchain(frame: int32): void;'
+		echo 'extern function captureQuit(): void;'
+		echo 'let frames: int32 = 0;'
+		echo 'function frame(): void {'
+		echo '	frameTextured(frames);'
+		echo '	if (frames == 1 || frames == 6 || frames == 11 || frames == 16) {'
+		echo '		captureSwapchain(frames);'
+		echo '	}'
+		echo '	if (frames == 16) { captureQuit(); }'
+		echo '	frames = frames + 1;'
+		echo '}'
+		echo 'function main(): void {'
+		echo "	$2"
+		echo '	voidRunConfigured(320, 240, 1, 0, initTextured, frame);'
+		echo '}'
+		echo 'main();'
+	} > "$WORK/$1.new"
+	replace_if_changed "$WORK/$1.new" "$CAPTURE/$1.ms"
+}
+
 prepare_entries() {
 	write_entry campfireCapture "" \
 		"configureCampfire(PixelArtSettings.full(), false);"
@@ -240,7 +274,10 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_hud_entry campfireHudCapture false
 	write_hud_entry campfireHudSwappedCapture true
 	write_perspective_entry
-	note "prepare: eighteen capture entries written to $CAPTURE"
+	write_textured_entry texturedCapture "configureTextured(false, -1);"
+	write_textured_entry texturedPixelArtCapture "configureTextured(true, -1);"
+	write_textured_entry texturedRebuildCapture "configureTextured(false, 3);"
+	note "prepare: twenty-one capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -899,9 +936,9 @@ run_oracle() {
 # CODE-STYLE section 16 caps a line at 100 columns with a tab counted as 4. The M5 review found
 # five over-long lines and the M6 review found thirteen more, in the files M5 had just fixed. A
 STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
-	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms
+	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms src/test/textureCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
-	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms
+	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/integration/texturedFrame.ms
 	tests/integration/perspectiveFrame.ms
 	tests/integration/gpuRegistrationFixture.ms tests/aborts3d"
 
@@ -1131,7 +1168,8 @@ expected_hash() {
 
 baseline_names() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
-		m12greydirect m12greypalette m14forward m16anchor m21perspective; do
+		m12greydirect m12greypalette m14forward m16anchor m21perspective m22textured \
+		m22texturedpixelart; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -1573,6 +1611,33 @@ run_perspective() {
 	fi
 }
 
+textured_checked() {
+	log=$WORK/$1.run.log
+	grep -q '^PASS textured frame: uv orientation, exact texels, texel times light, lifetime$' "$log" &&
+		[ "$(grep -c '^textured frame: frame [0-9]* checked$' "$log")" = "4" ]
+}
+
+run_textured() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "textured: GATE_SKIP_CAPTURE=1 — the textured cube was not drawn"
+		return
+	fi
+	for entry in texturedCapture texturedPixelArtCapture texturedRebuildCapture; do
+		rm -f "$WORK/$entry.run.log"
+	done
+	run_capture texturedCapture m22textured "textured cube, forward preset"
+	run_capture texturedPixelArtCapture m22texturedpixelart "textured cube, pixel-art, postPass off"
+	run_capture texturedRebuildCapture m22textured "textured cube, every mesh and texture rebuilt"
+	for entry in texturedCapture texturedPixelArtCapture texturedRebuildCapture; do
+		if ! textured_checked "$entry"; then
+			fail "textured: $entry did not finish its readback checks"
+			grep '^FAIL' "$WORK/$entry.run.log" | head -3 | sed 's/^/         /'
+			return
+		fi
+	done
+	pass "textured: uv orientation, exact texels, texel times light and texture lifetime, both presets and a rebuild"
+}
+
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
@@ -1690,7 +1755,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the eighteen capture entries are current"
+	pass "prepare: campfireScene.ms and the twenty-one capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
@@ -1702,6 +1767,7 @@ run_gltf_cpu
 run_captures
 run_compose
 run_perspective
+run_textured
 run_both_layers
 run_aborts
 run_manifest
