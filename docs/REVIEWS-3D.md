@@ -1478,5 +1478,4 @@ as `44f2f3c`, tree `95d9475bfaf2a2d248287ec80f934452b57d0bb6`; the run's header 
   is asked for; missing CPU bounds stay drawn as Bevy's no-Aabb branch does.
 - Inherited group colliders, hierarchical culling, textured meshes and the earlier
   M17–M20 lifetime/output/void2d boundary gaps.
-- Landing and pushing this milestone require a new human decision.
 
