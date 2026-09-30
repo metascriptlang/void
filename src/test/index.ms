@@ -34,6 +34,7 @@ import "./boundsCheck";
 import "./meshDataCheck";
 import "./drawCheck";
 import "./gltfCheck";
+import "./gltfMaterialCheck";
 import "./slotsCheck";
 import "./uniformPoolCheck";
 import "./lifetimeCheck";
