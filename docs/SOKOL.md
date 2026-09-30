@@ -34,7 +34,7 @@ Ordered by how soon Void hits them. None is started; each waits for the Void nee
 | GPU→CPU readback | Golden-image tests on every backend | No API. `out/tmp/capture/capture.c` does it for D3D11 through native handles. Async `read-buffer`/`read-image` is announced. |
 | Android host-owned EGL: context loss, preview and live side by side | Hibernal V6 (`hibernal/docs/ROADMAP.md`) | `sokol_gfx` works on an external GL context (`SOKOL_EXTERNAL_GL_LOADER`, hand-filled `sg_environment`/`sg_swapchain`), but has no context-loss rebuild. `sokol_app` on Android is NativeActivity only. |
 | Embedding `sokol_app` in a host view | Neon hosts, host views (docs/EMBED.md) | No embed mode (issues #520, #335, per the 2026-09 research; not re-read). Void keeps its own host glue: `views.c` and a `voidPlatform*` half per OS. |
-| Async pipeline creation on WebGPU | Only if first-frame hitches show up on the web | Pipelines are created with synchronous `wgpuDeviceCreateRenderPipeline`. void2d needs about two pipelines, created at init. |
+| Async pipeline creation on WebGPU | Only if first-frame hitches show up on the web | The pin calls synchronous `wgpuDeviceCreateRenderPipeline`, forwarded by emdawn to Browser `device.createRenderPipeline`. Current startup is `batcher.c` `void2dSetup`; D1's cache/creation decision is in VOID2D.md "D1 direction agreed for the fresh session". No Browser hitch measurement or async implementation is claimed. |
 
 ## Why sokol stays
 

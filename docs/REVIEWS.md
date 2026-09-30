@@ -1131,8 +1131,9 @@ run. This green verifies the reachable changes, **not** B1's missing teardown or
 ## Unify D3/D4, frame context and D2 — SHIP within scope (2026-09-30)
 
 **Verdict: SHIP for `f97f47d`, `4c31b74` and `e222011` only.** P5 remains SEND BACK on B1.
-D1 is unimplemented and its registry-capacity decision is reserved to the human; this review
-authorises neither P6, landing nor push.
+D1 was unimplemented and its registry-capacity decision was reserved at this review; the later
+human-approved direction is VOID2D.md "D1 direction agreed for the fresh session".
+This bounded review authorises neither P6, landing nor push.
 
 **Passes:** the main-session defect pass read CPU ownership, context/twin swaps, native source
 snapshots/restoration, retained append fallback, frame stamps, pass guards and dirty clearing;
@@ -1171,5 +1172,6 @@ with void3d"; the review does not substitute source inspection for unmeasured pl
    a performance timing claim.
 10. **Refuse to merge:** no new blocker within these three cutovers. Full P5 still cannot
     land without B1's installed-compiler proof, permanent teardown consumer and fresh P5 review.
-    D1 needs the explicit key-capacity decision before implementation, not this SHIP label.
+    The later D1 direction comes from the human's decision, not this SHIP label; D1 still owes
+    implementation, consumer proof and review.
 

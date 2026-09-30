@@ -1757,17 +1757,106 @@ WebGPU / WebGL2 builds are 2 282 599 / 2 054 751 B, up 172 622 / 172 649 B from 
 baseline above. That delta includes both the context move and frame halves, not D2 alone;
 no module budget exists until P6. GL demo liveness passes; WebGPU remains the no-adapter skip.
 
-**D1 design decision still open:** void3d registers four vertex layouts; void2d's current
+**D1 capacity seam, measured before the cutover:** void3d registers four vertex layouts; void2d's current
 vertex, sprite, UI and blur input shapes add four distinct layouts. The door admits eight.
 Both built-in layers fit exactly, but leave no slot for a foreign layout; the existing
 foreign-consumer fixture registers four. A CPU-only registry control on BUILD `35601908`
 registered the four 3D layouts, reserved four more (base 4), then one more: it stopped with
 `gpu door: the vertex layout registry is full (8); a wider pipeline key is a design change`,
 exit 9. The extra descriptors were zeroed: this measured registry width, not migrated 2D GPUs.
-`src/gpu/pipeline.ms` `PipelineKey` packs exactly 64 bits, including three layout bits.
-Both this branch and latest main retain that width. More layouts need a second key word —
-**NEW MECHANISM**, requiring the human's call. No limit has been raised, no foreign fixture
-suppressed and no shader padded or rewritten to hide the capacity seam.
+At source tree `59cb0902720cdf31db112125e46c5a6cc6ac21b4`, `src/gpu/pipeline.ms` `PipelineKey`
+still packs exactly 64 bits, including three layout bits. Simply raising the registry limit
+would alias ids in that encoding. No limit has been raised, no foreign fixture suppressed and
+no shader padded or rewritten to hide the seam.
+The implementation direction below was settled after reading the references, not inferred
+from that count-only control.
+
+### D1 direction agreed for the fresh session (2026-09-30)
+
+The human asked for Heaps/Bevy research, then explicitly added Sokol and Browser WebGPU, and
+closed the discussion with “chốt được rồi thì và mình sẽ làm theo hướng đã chốt trong session
+mới nha”. Implement the full value-identity direction in the next session; not a second-word
+patch by default and not a new raw-WebGPU layer. D1 remains unimplemented in this tree.
+
+**Decision:** reuse the existing descriptor/equality cache and GPU door; remove the global
+program/layout bit budget from pipeline identity. Resource ids must retain their complete
+meaning, while finite render-state flags may remain packed. Key the supported semantics of
+the Sokol pipeline, not only the immutable fields of a raw WebGPU pipeline. Resolve defaults
+consistently within the GPU environment and keep GPU handles scoped to the owning device
+lifetime. Registration metadata and shader lookup storage must move with the identity;
+changing only the key leaves the old 8/16 arrays as a separate ceiling.
+
+This is the approved representation/registration cutover raised as **NEW MECHANISM**, reusing
+reference identity/equality rather than inventing a scheduler or descriptor-specialization
+framework. Keep real resource limits and named errors. It is not approval for P6, device-loss
+recovery, arbitrary new shader features, a Sokol fork change, land or push.
+
+**Why this instead of two packed words:**
+
+- Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `h2d/RenderContext.hx` `RenderContext`
+  uses h3d's engine; `h3d/impl/DX12Driver.hx` `CompiledShader.pipelines` / `flushPipeline`
+  scope the cache to a shader. `h3d/impl/PipelineCache.hx` `PipelineBuilder.lookup` hashes a
+  variable-length byte signature and compares its full size/content on a hit. Its scratch is
+  64 **bytes**, not a global 64-bit identity. `hxd/BufferFormat.hx` `uid` / `resolveMapping`
+  and `GlDriver.hx` `selectShader` / `selectBuffer` keep shader and input-format identities.
+- Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `bevy_render` `pipeline_specializer.rs`
+  `SpecializedMeshPipelines` keys on `(MeshVertexBufferLayoutRef, S::Key)` with full equality;
+  compatible resulting vertex layouts have a second reuse path. `bevy_sprite_render`
+  `mesh2d/mesh.rs` and `bevy_pbr` `render/mesh.rs` pass layout separately from their u64 variant
+  flags. `pipeline_cache.rs` `queue_render_pipeline` stores descriptors under unique ids and
+  explicitly does not auto-deduplicate. One device does not require one universal packed key.
+- Vendored Sokol `2e75443dbd4940b5aa8d76a8e479f8e4b270b9a3`: `sokol_gfx.h`
+  `sg_pipeline_desc`, `_sg_pipeline_desc_defaults`, `_sg_pipeline_common_init` and
+  `_sg_wgpu_create_pipeline` are the actual object contract. Resource layouts are derived from
+  the shader; `_sg_wgpu_apply_pipeline` also applies pipeline-carried blend constant and stencil
+  reference. If Void exposes them, they belong to Sokol identity even though WebGPU applies
+  them dynamically. Views, textures and uniform contents stay draw bindings, not pipeline keys.
+- Browser path: `scripts/build-web.sh` and `src/sokol/sokolWeb.c` select SOKOL_WGPU with
+  emdawnwebgpu. Its `library_webgpu.js` `wgpuDeviceCreateRenderPipeline` forwards to Browser
+  `GPUDevice.createRenderPipeline`; it is not a native wgpu renderer. Emdawn's package README
+  describes that bridge at
+  https://dawn.googlesource.com/dawn/+/01940842b667a7812d0e4ca0ef4367fbec294241/src/emdawnwebgpu/pkg/README.md.
+  Sokol's pinned path is synchronous and already owns bind-group caching; do not duplicate it.
+
+**Measured controls, not a shipped cache or FPS claim:** on installed BUILD `35601908` and
+the source tree above, a standalone native value-identity experiment distinguished 800
+program/layout/index combinations, reused identical keys and distinguished state/target
+changes; the backend-neutral control passed on C and JS. The prototypes were a value key of
+int32 program/layout, boolean indexed and uint32 state/targets, or two uint64 words; each entry
+adds one uint32 pipeline. C key/entry sizes were old 8/16 B, two-word 16/24 B and named-field
+20/24 B. Named fields did not cost more entry storage than the two-word prototype on this ABI;
+equality work and browser timing were not benchmarked.
+
+A real D3D11 Sokol object-creation control resolved implicit/explicit vertex inputs to stride
+32 and offsets 8/16. Equivalent descriptors still created distinct valid handles 65537/65538,
+confirming that `sg_make_pipeline` does not memoize them. Screen 4x/BGRA/depth and offscreen
+1x/RGBA/no-depth pipelines both created successfully. Configured pools were 32 shaders and
+64 pipelines: metadata growth is not permission for unlimited live GPU objects. Create used
+variants and expose/control preparation deliberately rather than blindly precreating a Cartesian
+product; this is not a promised async pipeline compiler.
+
+Commands from the worktree were `MSC_NO_GLOBAL_CACHE=1 msc build
+out/tmp/refCacheResearch/keyProbe.ms --release --output=out/refKeyProbe.exe` plus that
+executable; `msc build out/tmp/refCacheResearch/valueOnly.ms --target=js
+--output=out/refValueProbe.js` plus Node; and `MSC_NO_GLOBAL_CACHE=1 msc build
+out/tmp/sokolResearch/main.ms --output=out/sokolIdentity.exe` plus that debug C executable.
+Temporary sources/outputs were removed; these are isolated research observations, not permanent
+regression pins. Heaps/Bevy tracing was not an engine runtime benchmark. HashLink was unavailable;
+a Haxe interpreter attempt could not compile the HashLink-specific `Single` type. A Node attempt
+importing native GPU modules failed on a C-header constant; only the separate value-only JS
+result is claimed. No Browser WebGPU pipeline execution/pixels were proved.
+
+**Relaunch receipt:** after this documentation-only decision record, `sh scripts/gate.sh`
+on the unchanged renderer source is GREEN: 1058 + 299 tests, D3D11 76/76 plus three invariants,
+all mixed/context/prepared/replay consumers and six lifecycle refusals pass, 107 frame functions /
+232 callees, 16 PENDING with zero mismatch, eight explicit skips and no new red.
+This close-out did not rerun web; the D2 source-tree `--web` evidence above remains the web baseline.
+
+**Implementation boundary:** finish this identity/storage cutover, migrate void2d
+programs/pipelines/targets and shared BlendMode through the door without aliases, then prove
+foreign registration order/boundaries and real mixed layers. Preserve the completed frame halves,
+retained coherence and capability; do not hide compiler cards, collapse distinct vertex inputs
+to fit a count, or treat the prototype key's five fields as the entire WebGPU API.
 
 Pipelines/targets and shared BlendMode are not yet migrated through the door. P5's independent
 Scene-lifetime blocker remains parked, and P6 is not started.
