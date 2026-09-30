@@ -515,12 +515,16 @@ function wrapOf(code: int32): int32 {
 }
 
 function loadSampler(sampler: JsonValue): Result<Sampling, GltfError> {
-	if (sampler === null || sampler.kind != JsonKind.Object) { return Result.err(GltfError.UnsupportedSampler); }
+	if (sampler === null || sampler.kind != JsonKind.Object) {
+		return Result.err(GltfError.UnsupportedSampler);
+	}
 	const magField: JsonValue = fieldOf(sampler, "magFilter");
 	const minField: JsonValue = fieldOf(sampler, "minFilter");
 	const mag: int32 = isNull(magField) ? FILTER_LINEAR : intValue(magField);
 	const min: int32 = isNull(minField) ? mag : filterBase(intValue(minField));
-	if (mag != FILTER_NEAREST && mag != FILTER_LINEAR) { return Result.err(GltfError.UnsupportedSampler); }
+	if (mag != FILTER_NEAREST && mag != FILTER_LINEAR) {
+		return Result.err(GltfError.UnsupportedSampler);
+	}
 	if (min == INVALID_INT) { return Result.err(GltfError.UnsupportedSampler); }
 	if (!isNull(magField) && min != mag) { return Result.err(GltfError.UnsupportedSampler); }
 	const wrapS: int32 = wrapOf(intField(sampler, "wrapS", WRAP_REPEAT));
@@ -595,10 +599,10 @@ function loadTexture(
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) { return Result.err(GltfError.BadImage); }
 	// glTF 2.0 §3.9.4: an OPAQUE material ignores alpha, and loadMaterial refuses MASK and BLEND.
-	let pixels: Vec<uint32> = decoded.value.pixels;
-	for (let i = 0; i < (pixels.length as int32); i++) { pixels[i] = pixels[i] | OPAQUE_TEXEL; }
+	const texels: Span<uint32> = decoded.value.pixels;
+	for (let i = 0; i < (texels.length as int32); i++) { texels[i] = texels[i] | OPAQUE_TEXEL; }
 	return Result.ok({
-		pixels: pixels,
+		pixels: decoded.value.pixels,
 		width: decoded.value.width,
 		height: decoded.value.height,
 		filter: sampling.filter,
