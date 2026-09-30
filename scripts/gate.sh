@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/mixedFrame.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/mixedFrame.exe out/doorBlendModes.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -117,6 +117,14 @@ if "$MSC" build tests/integration/mixedFrame.ms --release --output=out/mixedFram
 	pass "mixed frame: 3D + void2d, one shared commit, two fresh frames"
 else
 	fail "mixed 3D/void2d frame lifecycle — see out/gate-mixed-frame.log and out/gate-mixed-frame-run.log"
+fi
+
+if "$MSC" build tests/integration/doorBlendModes.ms --release --output=out/doorBlendModes.exe \
+		> out/gate-door-blend-modes.log 2>&1 \
+		&& out/doorBlendModes.exe > out/gate-door-blend-modes-run.log 2>&1; then
+	pass "door blend modes: every shared BlendMode makes its own pipeline on this backend"
+else
+	fail "door blend modes — see out/gate-door-blend-modes.log and out/gate-door-blend-modes-run.log"
 fi
 
 if "$MSC" build tests/integration/retainedReplay.ms --release --output=out/retainedReplay.exe \

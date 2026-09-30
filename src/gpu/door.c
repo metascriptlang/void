@@ -39,6 +39,19 @@ static const sg_blend_factor BLEND_FACTORS[] = {
 	SG_BLENDFACTOR_ONE_MINUS_DST_COLOR,
 };
 
+static const sg_blend_factor ALPHA_CHANNEL_BLEND_FACTORS[] = {
+	SG_BLENDFACTOR_ONE,
+	SG_BLENDFACTOR_ZERO,
+	SG_BLENDFACTOR_SRC_ALPHA,
+	SG_BLENDFACTOR_SRC_ALPHA,
+	SG_BLENDFACTOR_DST_ALPHA,
+	SG_BLENDFACTOR_DST_ALPHA,
+	SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+	SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+	SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+	SG_BLENDFACTOR_ONE_MINUS_DST_ALPHA,
+};
+
 // Operation (h3d.mat.Data.Operation)
 static const sg_blend_op BLEND_OPERATIONS[] = {
 	SG_BLENDOP_ADD,
@@ -82,6 +95,8 @@ static const sg_wrap WRAPS[] = { SG_WRAP_CLAMP_TO_EDGE, SG_WRAP_REPEAT, SG_WRAP_
 _Static_assert(COUNT(CULL_MODES) == 3, "CULL_MODES must match Face in state.ms");
 _Static_assert(COUNT(COMPARE_FUNCTIONS) == 8, "COMPARE_FUNCTIONS must match Compare in state.ms");
 _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in state.ms");
+_Static_assert(COUNT(ALPHA_CHANNEL_BLEND_FACTORS) == 10,
+	"ALPHA_CHANNEL_BLEND_FACTORS must match Blend in state.ms");
 _Static_assert(COUNT(BLEND_OPERATIONS) == 5, "BLEND_OPERATIONS must match Operation in state.ms");
 _Static_assert(COUNT(PIXEL_FORMATS) == 4, "PIXEL_FORMATS must match PixelFormat in door.ms");
 _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in door.ms");
@@ -278,8 +293,9 @@ uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length) {
 	sg_blend_state blend = {0};
 	blend.src_factor_rgb = LOOKUP(BLEND_FACTORS, d[DOOR_PIPELINE_BLEND_SOURCE]);
 	blend.dst_factor_rgb = LOOKUP(BLEND_FACTORS, d[DOOR_PIPELINE_BLEND_DESTINATION]);
-	blend.src_factor_alpha = LOOKUP(BLEND_FACTORS, d[DOOR_PIPELINE_BLEND_ALPHA_SOURCE]);
-	blend.dst_factor_alpha = LOOKUP(BLEND_FACTORS, d[DOOR_PIPELINE_BLEND_ALPHA_DESTINATION]);
+	blend.src_factor_alpha = LOOKUP(ALPHA_CHANNEL_BLEND_FACTORS, d[DOOR_PIPELINE_BLEND_ALPHA_SOURCE]);
+	blend.dst_factor_alpha =
+		LOOKUP(ALPHA_CHANNEL_BLEND_FACTORS, d[DOOR_PIPELINE_BLEND_ALPHA_DESTINATION]);
 	blend.op_rgb = LOOKUP(BLEND_OPERATIONS, d[DOOR_PIPELINE_BLEND_OPERATION]);
 	blend.op_alpha = LOOKUP(BLEND_OPERATIONS, d[DOOR_PIPELINE_BLEND_ALPHA_OPERATION]);
 	// One/Zero/Add on both channels is Heaps' "no blending" (Pass.blend(One, Zero)).
