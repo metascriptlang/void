@@ -953,6 +953,8 @@ run_oracle() {
 STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms src/test/meshDataCheck.ms src/test/drawCheck.ms src/test/billboardCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms src/test/textureCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
+	src/assets/image.ms src/test/imageBytes.ms src/test/imageDecodeCheck.ms
+	src/test/gltfMaterialCheck.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/integration/texturedFrame.ms
 	tests/integration/perspectiveFrame.ms
 	tests/integration/gpuRegistrationFixture.ms tests/aborts3d"
@@ -1150,9 +1152,10 @@ run_tests() {
 
 run_gltf_cpu() {
 	printf '%s\n' \
-		'import { loadGltf } from "../../../src/void3d/gltf";' \
+		'import { loadGltf, loadGlb } from "../../../src/void3d/gltf";' \
 		'const loaded = loadGltf("{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[]}],\"nodes\":[],\"meshes\":[],\"accessors\":[],\"bufferViews\":[],\"buffers\":[]}", []);' \
 		'console.log(loaded.ok);' \
+		'console.log(loadGlb([]).ok);' \
 		> "$WORK/gltfCpu.ms"
 	rm -f out/debug/gltfCpu.exe
 	if ! msc build "$WORK/gltfCpu.ms" > "$WORK/gltfCpu.build.log" 2>&1; then
@@ -1160,11 +1163,15 @@ run_gltf_cpu() {
 		tail -20 "$WORK/gltfCpu.build.log"
 		return
 	fi
-	if [ "$(./out/debug/gltfCpu.exe 2>&1 | tr -d '\r\n')" != "true" ]; then
-		fail "gltf-cpu: the CPU-only smoke did not decode an empty glTF scene"
+	if [ "$(./out/debug/gltfCpu.exe 2>&1 | tr -d '\r\n')" != "truefalse" ]; then
+		fail "gltf-cpu: the smoke did not decode an empty glTF scene and refuse an empty GLB"
 		return
 	fi
-	pass "gltf-cpu: decoder builds and runs without the sokol GPU bridge"
+	if grep -aq 'sg_setup' out/debug/gltfCpu.exe; then
+		fail "gltf-cpu: the decoder binary links sokol (sg_setup is in it)"
+		return
+	fi
+	pass "gltf-cpu: glTF, GLB and image decoding build and run without the sokol GPU bridge"
 }
 
 # ---- capture ------------------------------------------------------------------------------
