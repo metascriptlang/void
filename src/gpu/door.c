@@ -187,7 +187,12 @@ static door_shader_fn shaderOf(int32_t program) {
 }
 
 uint32_t doorMakeShader(int32_t program) {
-	return sg_make_shader(shaderOf(program)(sg_query_backend())).id;
+	sg_shader shader = sg_make_shader(shaderOf(program)(sg_query_backend()));
+	if (sg_query_shader_state(shader) != SG_RESOURCESTATE_VALID) {
+		sg_destroy_shader(shader);
+		return SG_INVALID_ID;
+	}
+	return shader.id;
 }
 
 uint32_t doorUniformSlotMask(int32_t program) {
@@ -295,7 +300,12 @@ uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length) {
 		colorCount = i + 1;
 	}
 	desc.color_count = colorCount;
-	return sg_make_pipeline(&desc).id;
+	sg_pipeline pipeline = sg_make_pipeline(&desc);
+	if (sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID) {
+		sg_destroy_pipeline(pipeline);
+		return SG_INVALID_ID;
+	}
+	return pipeline.id;
 }
 
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
