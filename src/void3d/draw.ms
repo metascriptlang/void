@@ -799,7 +799,7 @@ export function clearMaterialTally(ref context: DrawContext, id: MaterialId): vo
 
 const SAMPLER_SETTINGS: int32 = 6;
 
-function samplerSlot(filter: FilterMode, wrap: Wrap): int32 {
+export function samplerSlot(filter: FilterMode, wrap: Wrap): int32 {
 	let row: int32 = match (filter) {
 		FilterMode.Nearest => 0,
 		FilterMode.Linear => 3,

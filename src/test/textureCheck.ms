@@ -1,5 +1,6 @@
 import { Mat4, Vec4, identity } from "../math/math3d";
 import { RenderState, FilterMode, Wrap } from "../gpu/state";
+import { SWAPCHAIN_LAYOUT } from "../gpu/target";
 import {
 	Program,
 	VertexLayout,
@@ -23,6 +24,7 @@ import {
 	retainTexture,
 	releaseTexture,
 	rebuildTextures,
+	samplerSlot,
 	reserveUniforms,
 } from "../void3d/draw";
 import {
@@ -30,6 +32,7 @@ import {
 	RendererError,
 	RENDERER_UNIFORM_LENGTH,
 	beginFrame,
+	drawScreen,
 } from "../void3d/renderer";
 import {
 	ForwardRenderer,
@@ -189,4 +192,34 @@ test "a material names a texture only on a program that samples one at slot 0" {
 	};
 	assert materialError(addMaterial(context, particle)) == MaterialError.TextureNotSampled;
 	assert context.liveMaterials() == 0;
+}
+
+test "each filter and wrap has a sampler slot of its own" {
+	let taken: Vec<int32> = [0, 0, 0, 0, 0, 0];
+	let filters: Vec<FilterMode> = [FilterMode.Nearest, FilterMode.Linear];
+	let wraps: Vec<Wrap> = [Wrap.Clamp, Wrap.Repeat, Wrap.Mirror];
+	for (const filter of filters) {
+		for (const wrap of wraps) {
+			let slot: int32 = samplerSlot(filter, wrap);
+			assert slot >= 0 && slot < 6;
+			taken[slot] = taken[slot] + 1;
+		}
+	}
+	for (const count of taken) { assert count == 1; }
+}
+
+test "a screen draw refuses a material whose texture changed" {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	let created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	let core: Renderer = created.value;
+	let copy: Material = Material.plain(Program.Copy, RenderState.defaults(), Phase.Opaque);
+	let added: Result<MaterialId, MaterialError> = addMaterial(context, copy);
+	assert added.ok;
+	if (!added.ok) { return; }
+	context.materials[added.value.index].texture = FIRST_SLOT;
+	let drawn: Result<int32, RendererError> =
+		drawScreen(core, context, added.value, SWAPCHAIN_LAYOUT);
+	assert !drawn.ok && drawn.error == RendererError.TextureReplaced;
 }
