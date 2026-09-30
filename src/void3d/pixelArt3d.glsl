@@ -56,6 +56,56 @@ void main() {
 }
 @end
 
+@vs litTexturedVs
+@include_block vertexUniforms
+@include_block modelUniforms
+in vec3 position;
+in vec3 normal;
+in vec2 uv;
+in vec4 color;
+out vec3 worldPosition;
+out vec3 worldNormal;
+out vec2 surfaceUv;
+out vec4 baseColor;
+out float depth01;
+void main() {
+    vec4 world = model * vec4(position, 1.0);
+    worldPosition = world.xyz;
+    worldNormal = mat3(normalModel) * normal;
+    surfaceUv = uv;
+    baseColor = color;
+    gl_Position = viewProj * world;
+    depth01 = gl_Position.z;
+}
+@end
+
+@fs litTexturedFs
+@include_block materialUniforms
+@include_block lightUniforms
+@include_block toonPointLight
+@include_block saturation
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec2 surfaceUv;
+in vec4 baseColor;
+in float depth01;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fragNormal;
+void main() {
+    vec4 surface = baseColor * texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    vec3 n = normalize(worldNormal);
+    float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+    vec3 light = ambient.rgb + dirColor.rgb * lambert;
+    for (int i = 0; i < int(ambient.a + 0.5); i++) {
+        light += pointLightAt(i, worldPosition, n, 1.0, material.x);
+    }
+    fragColor = vec4(saturated(surface.rgb, material.y) * light, surface.a);
+    fragNormal = vec4(n * 0.5 + 0.5, depth01);
+}
+@end
+
 @vs billboardVs
 @include_block vertexUniforms
 @include_block quadCorner
@@ -252,3 +302,4 @@ void main() {
 @program post fullscreenVs postFs
 @program blit fullscreenVs blitFs
 @program particle particleVs particleFs
+@program litTextured litTexturedVs litTexturedFs

@@ -49,7 +49,7 @@ export function doorLayout(layout: VertexLayout): int32 {
 }
 
 // One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in the
-// order gpu3d.c registers them. Materials name the first three.
+// order gpu3d.c registers them. Materials name Lit, Particle, Billboard and LitTextured.
 export enum Program {
 	Lit,
 	Particle,
@@ -60,6 +60,8 @@ export enum Program {
 	PixelArtBillboard,
 	PixelArtPost,
 	PixelArtBlit,
+	LitTextured,
+	PixelArtLitTextured,
 }
 
 // Vertex buffer layouts gpu3d.c describes (describeLayout).
@@ -68,6 +70,7 @@ export enum VertexLayout {
 	Particle,
 	Billboard,
 	Fullscreen,
+	LitTextured,
 }
 
 export function vertexLayoutOf(program: Program): VertexLayout {
@@ -80,6 +83,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Particle => true,
 		VertexLayout.Billboard => true,
 		VertexLayout.Fullscreen => false,
+		VertexLayout.LitTextured => false,
 	};
 }
 

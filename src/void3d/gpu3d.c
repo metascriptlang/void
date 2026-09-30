@@ -18,11 +18,20 @@ static const ShaderDescription PROGRAMS[] = {
 	pixelArt_billboard_shader_desc,
 	pixelArt_post_shader_desc,
 	pixelArt_blit_shader_desc,
+	litTextured_shader_desc,
+	pixelArt_litTextured_shader_desc,
 };
 
 // ---- vertex layouts, one per VertexLayout member ----
 
-enum { LAYOUT_LIT, LAYOUT_PARTICLE, LAYOUT_BILLBOARD, LAYOUT_FULLSCREEN };
+enum {
+	LAYOUT_LIT,
+	LAYOUT_PARTICLE,
+	LAYOUT_BILLBOARD,
+	LAYOUT_FULLSCREEN,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_COUNT,
+};
 
 // The layout each program reads, in PROGRAMS order. gpu3d.ms vertexLayoutOf is the MetaScript
 // twin of this table; tests hold the two together through the door's own answer
@@ -38,6 +47,8 @@ static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {
 	LAYOUT_BILLBOARD,
 	LAYOUT_FULLSCREEN,
 	LAYOUT_FULLSCREEN,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
 };
 
 static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
@@ -65,6 +76,12 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_billboard_tile].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_billboard_color].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
+	case LAYOUT_LIT_TEXTURED:
+		out->attrs[ATTR_litTextured_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTextured_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTextured_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_litTextured_color].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)
 		out->attrs[ATTR_copy_position].format = SG_VERTEXFORMAT_FLOAT2;
@@ -84,10 +101,17 @@ _Static_assert(ATTR_pixelArt_billboard_position == ATTR_billboard_position
 	&& ATTR_pixelArt_billboard_size == ATTR_billboard_size && ATTR_pixelArt_billboard_anchor == ATTR_billboard_anchor
 	&& ATTR_pixelArt_billboard_tile == ATTR_billboard_tile && ATTR_pixelArt_billboard_color == ATTR_billboard_color,
 	"every Billboard-layout program must declare the core billboard attributes");
+_Static_assert(ATTR_pixelArt_litTextured_position == ATTR_litTextured_position
+	&& ATTR_pixelArt_litTextured_normal == ATTR_litTextured_normal
+	&& ATTR_pixelArt_litTextured_uv == ATTR_litTextured_uv
+	&& ATTR_pixelArt_litTextured_color == ATTR_litTextured_color,
+	"every LitTextured-layout program must declare the core textured lit attributes");
 _Static_assert(ATTR_lit_position == 0 && ATTR_lit_normal == 1 && ATTR_lit_color == 2
 	&& ATTR_particle_root == 0 && ATTR_particle_color == 1
 	&& ATTR_billboard_position == 0 && ATTR_billboard_size == 1 && ATTR_billboard_anchor == 2
-	&& ATTR_billboard_tile == 3 && ATTR_billboard_color == 4,
+	&& ATTR_billboard_tile == 3 && ATTR_billboard_color == 4
+	&& ATTR_litTextured_position == 0 && ATTR_litTextured_normal == 1
+	&& ATTR_litTextured_uv == 2 && ATTR_litTextured_color == 3,
 	"sokol lays a buffer out in attribute slot order, which must be the order its writer writes:"
 	" meshData.ms, particles.ms writeInstances, billboard.ms pushTo");
 _Static_assert(ATTR_pixelArt_post_position == ATTR_copy_position && ATTR_pixelArt_blit_position == ATTR_copy_position,
@@ -109,11 +133,11 @@ static int32_t g_layoutBase = -1;
 
 static void registerOnce(void) {
 	if (g_programBase >= 0) { return; }
-	sg_vertex_layout_state layouts[4] = {0};
-	for (uint32_t i = 0; i < 4; i++) {
+	sg_vertex_layout_state layouts[LAYOUT_COUNT] = {0};
+	for (uint32_t i = 0; i < LAYOUT_COUNT; i++) {
 		describeLayout(i, &layouts[i]);
 	}
-	g_layoutBase = doorRegisterLayouts(layouts, 4);
+	g_layoutBase = doorRegisterLayouts(layouts, LAYOUT_COUNT);
 	int32_t programLayouts[GPU3D_PROGRAM_TABLE_LENGTH];
 	for (int32_t i = 0; i < GPU3D_PROGRAM_TABLE_LENGTH; i++) {
 		programLayouts[i] = g_layoutBase + PROGRAM_LAYOUTS[i];

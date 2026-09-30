@@ -59,6 +59,8 @@ const EVERY_PROGRAM: Vec<Program> = [
 	Program.PixelArtBillboard,
 	Program.PixelArtPost,
 	Program.PixelArtBlit,
+	Program.LitTextured,
+	Program.PixelArtLitTextured,
 ];
 
 function drawnAs(map: ProgramMap, named: Program): Program {
@@ -110,12 +112,13 @@ function billboardMaterial(ref context: DrawContext, texture: uint32, sampler: u
 	return added.value;
 }
 
-test "the core draws a material's Lit, Particle and Billboard as themselves, and nothing else" {
+test "the core draws a material's Lit, Particle, Billboard and LitTextured as themselves" {
 	const core: ProgramMap = ProgramMap.core();
 	assert drawnAs(core, Program.Lit) == Program.Lit;
 	assert drawnAs(core, Program.Particle) == Program.Particle;
 	assert drawnAs(core, Program.Billboard) == Program.Billboard;
-	assert namedCount(core) == 3;
+	assert drawnAs(core, Program.LitTextured) == Program.LitTextured;
+	assert namedCount(core) == 4;
 	const preset: Result<Program, ProgramError> = core.drawnFor(Program.PixelArtBillboard);
 	assert !preset.ok && preset.error == ProgramError.NotDrawn;
 }
@@ -125,7 +128,8 @@ test "the pixel-art preset draws its own programs in place of the ones materials
 	assert drawnAs(preset, Program.Lit) == Program.PixelArtLit;
 	assert drawnAs(preset, Program.Particle) == Program.PixelArtParticle;
 	assert drawnAs(preset, Program.Billboard) == Program.PixelArtBillboard;
-	assert namedCount(preset) == 3;
+	assert drawnAs(preset, Program.LitTextured) == Program.PixelArtLitTextured;
+	assert namedCount(preset) == 4;
 	assert !preset.draws(Program.PixelArtLit) && !preset.draws(Program.Copy);
 	assert !preset.draws(Program.PixelArtBillboard);
 }
@@ -199,7 +203,12 @@ function declaredSlots(program: Program): int32 {
 }
 
 test "every block the CPU writes is the length its shader declares, read off the shader desc" {
-	for (const lit of [Program.Lit, Program.PixelArtLit]) {
+	for (const lit of [
+		Program.Lit,
+		Program.PixelArtLit,
+		Program.LitTextured,
+		Program.PixelArtLitTextured,
+	]) {
 		assert uniformBlockLength(lit, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;

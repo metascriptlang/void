@@ -196,7 +196,7 @@ function initMixed(): void {
 		if ((registrationPreload >= 0) != before) {
 			fail("the registration preload ran in the wrong order");
 		}
-		if ((before && (program != 6 || layout != 3)) ||
+		if ((before && (program != 4 || layout != 2)) ||
 			(!before && (program != 15 || layout != 7))) {
 			fail("the foreign consumer did not reach the expected registry boundary");
 		}

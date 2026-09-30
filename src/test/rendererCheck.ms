@@ -129,6 +129,7 @@ function itemOnItsLayout(ref context: DrawContext, material: MaterialId): DrawIt
 		VertexLayout.Particle => GpuMesh.streamMesh(1, 0, 0),
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
+		VertexLayout.LitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),
 	};
 	return { ...itemAt(material.index, 0.0), mesh: added(context, mesh) };
 }
@@ -442,7 +443,7 @@ test "the pixel-art preset refuses a material naming a program it does not draw"
 	assert renderer.core.generation == 0 && renderer.view.width == 0;
 }
 
-test "a lit material without ramp levels or without its block refuses the pixel-art frame" {
+test "a lit or textured lit material without ramp levels or its block refuses the pixel-art frame" {
 	const capacity: int32 = PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH;
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
@@ -454,6 +455,14 @@ test "a lit material without ramp levels or without its block refuses the pixel-
 	const noLevels: Result<int32, PixelArtError> =
 		renderFrame(atZero, zero, zeroItems, camera, lights, drawn);
 	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
+	let texturedZero: DrawContext = DrawContext.withUniformCapacity(capacity);
+	let texturedAtZero: PixelArtRenderer = presetOver(texturedZero, Program.LitTextured, 0.0);
+	let texturedItems: Vec<DrawItem> = [
+		itemOnItsLayout(texturedZero, texturedZero.lastMaterial()),
+	];
+	let texturedLevels: Result<int32, PixelArtError> =
+		renderFrame(texturedAtZero, texturedZero, texturedItems, camera, lights, drawn);
+	assert !texturedLevels.ok && texturedLevels.error == PixelArtError.RampLevels;
 	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
 	const bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, bare.lastMaterial())];
