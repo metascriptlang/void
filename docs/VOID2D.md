@@ -1034,7 +1034,7 @@ human has seen it as app code; the phase measurement comes last.
      `graphics.ms` and `layout.ms`. Neon's `host.ms` is Neon's to move, through
      `~/metascript/.inbox/neon/`, once the human has approved the API.
 
-   **Landed at P5 step 6** (`92b73a2`, `ac1b647`): the renderer and every consumer in this repo on
+   **Landed at P5 step 6** (`bbcc975`, `20453c8`): the renderer and every consumer in this repo on
    the tables in one commit, `Node2D` deleted, every D3D11 golden byte-identical (72/72), the bench
    counters unchanged, T0 in `src/test/nodeCheck.ms` (51 tests) and two aborts, `staleNode` and
    `addChildCycle`. Neon's note is `~/metascript/.inbox/neon/2026-09-28-void2d-noderef.md`. What
@@ -1050,7 +1050,7 @@ human has seen it as app code; the phase measurement comes last.
      `getChildAt` answers in drawn order. `setZIndex` on a child re-stacks it at once, where a
      field store waited for the next add or remove. The first version re-sorted the whole sibling
      list on every add, which made the 100 000-node build quadratic (1.1 to 1.9 s against 51 to
-     121 ms for `Node2D`); `ac1b647` moves only the child that changed.
+     121 ms for `Node2D`); `20453c8` moves only the child that changed.
    - **`tick` sweeps the scene's rows** by kind, advancing an Anim's clock and a label's blink.
      The label side table is shared by every scene, so sweeping it would blink a second scene's
      caret twice as fast; a row sweep advances this scene's nodes, attached or not.
@@ -1068,7 +1068,7 @@ human has seen it as app code; the phase measurement comes last.
    - The allocation stage lists the new frame path (`drawRow`, `syncRow`, `meshBounds`,
      `clearChanges`, `refOf`, `liveRow`, `imageStyleOf`). On BUILD `3f6873ee` it also found
      `faceAtPath` copying each `LoadedPath` in a `for..of` on the rebuild path, already so on
-     the step 5 head built on that compiler; `a10680a` reads it by index.
+     the step 5 head built on that compiler; `c139456` reads it by index.
 7. **Retention**, consuming the dirty list: a draw order flattened and rebuilt only when
    `structureChanged` (SCENE-SCALE.md "Flatten traversal order"), persistent instance ranges,
    re-recording only the dirty nodes and, for a transform, alpha or filter change, what inherits
@@ -1124,8 +1124,8 @@ human has seen it as app code; the phase measurement comes last.
      (`sg_update_buffer`); a range write is the `write_persistent` upstream has announced
      (SOKOL.md). T4: the bench counters of a still frame.
 
-   **Landed at P5 step 7** (7a `8dc5dfe`; 7b `092e64f`, `19ab774`; 7c `8c3a5b7`, `7def7c6`,
-   `2f08e7e`; 7d `d796c83`, `fb3ea4e`, `6bd2c53`): every D3D11 golden byte-identical (72/72), now
+   **Landed at P5 step 7** (7a `bbf7aca`; 7b `50b18fb`, `b26c73e`; 7c `2429d22`, `16a55ed`,
+   `91cc7c0`; 7d `cfd83ea`, `6797d6f`, `74dc2e8`): every D3D11 golden byte-identical (72/72), now
    captured on retained frames, since the runner's second and third draws of a scene change
    nothing. What the build decided that the plan does not say:
    - **The oracle resyncs every world.** `tests/displayList/retain.ms` compares, after each write
@@ -1133,7 +1133,7 @@ human has seen it as app code; the phase measurement comes last.
      record recomputes every world from the locals. The first version did not: a patch that
      left a descendant's world stale copied it into both sides, and a mutation skipping the
      descent passed. It fails now, as does one skipping the in-place emission.
-   - **A bracket starts its runs in the UI pipeline** (`8c3a5b7`). `begin2d` never reset the
+   - **A bracket starts its runs in the UI pipeline** (`2429d22`). `begin2d` never reset the
      open run's pipeline, so the reason recorded for the first draw after a scissor or a target
      barrier depended on where the previous bracket ended. The stored snapshots had been written
      after brackets that ended in the UI pipeline, so starting there keeps every one of them;
@@ -1164,7 +1164,7 @@ human has seen it as app code; the phase measurement comes last.
      root 0.72 against 0.77-0.80 ms, both writing the same worlds. Upward marking scans the top
      level on every frame and walks up once per changed node; it wins no case here, and the
      descent is what the frame runs.
-   - **A shape change splices the next frame from the last** (`4eb0ab7`), GPUI's `reuse_paint`
+   - **A shape change splices the next frame from the last** (`adf81a7`), GPUI's `reuse_paint`
      (`window.rs:3887`) over its `rendered_frame` / `next_frame` pair: the scene holds two lists,
      and when the in-place patch cannot keep a row's shape, or the order changed, it scans its
      draw order into the other list, copying the bytes of each clean row whose recorded run state
@@ -1196,7 +1196,7 @@ human has seen it as app code; the phase measurement comes last.
    floats in place. T1: a blink writes the caret's instance and nothing else; a colour write
    uploads a known number of bytes.
 
-   **Landed at P5 step 8** (`e768cbb`, `f68165b`), on step 7's paint ranges rather than a second
+   **Landed at P5 step 8** (`213e55e`, `b4dec89`), on step 7's paint ranges rather than a second
    path: a paint write re-emits the node's own content in place, which walks no tree, and the
    changed range is now the first to the last record whose bytes moved, not the row's whole
    range. A hidden caret keeps its instance at alpha 0, so a blink changes one float and no count,
@@ -1247,7 +1247,7 @@ human has seen it as app code; the phase measurement comes last.
     - **The camera** (moved from step 9) takes the same shift at the root after 10b, with a cull
       pass over the rows the shift brings into the viewport, since the viewport culls there.
 
-    **Landed at P5 step 10** (10a `70664b6`, golden `f499797`; the shader `0ce9c52`; 10b below).
+    **Landed at P5 step 10** (10a `a5e2b45`, golden `9da2a4f`; the shader `022d376`; 10b below).
     `clip/maskScroll` is byte-identical under both paths. What the build decided:
     - **A scope is a Mask with a scroll whose world, and every Mask world above it, is
       axis-aligned** (`scrollScope`). Anything else keeps 10a's meaning, the scroll in its
@@ -1685,8 +1685,16 @@ Checked and recorded per phase, from `tests/bench/`: draw calls, instances and u
 ## Unify with void3d (2026-09-30)
 
 The human approved independent unify work while P5 review B1 remains compiler-blocked.
-The dependency baseline is landed M18–M20 at `f625aaa`; integration is not a P5 SHIP or land.
-`backup/void2d-before-unify-20260930` retains the pre-integration history and measured trees.
+The dependency baseline is main `9f41458` (void3d M18–M22 and the spike deletion, landed and
+pushed); integration is not a P5 SHIP or land. The first integration onto M18–M20 at `f625aaa`
+is kept by `backup/void2d-before-unify-20260930`; the rebase onto `9f41458`, approved by the
+human before D1, by `backup/void2d-before-m22-rebase-20260930`. After that rebase,
+`sh scripts/gate.sh --web` on source tree `fa3f2c5b9aed9cb181f15ed0ec0e43af499cf42a`, BUILD
+`35601908`, is GREEN with eight explicit skips: 1090 tests plus 299 isolated, D3D11 76/76
+unchanged plus three invariants, WebGL2 54 identical / 18 bounded / the same four known-red,
+every mixed/context/prepared/replay consumer and six lifecycle refusals, 107 frame functions /
+232 callees, 16 PENDING with zero mismatch; web builds 2 282 599 / 2 054 751 B, as before it.
+M22 registers five layouts and eleven programs of the door's eight and sixteen.
 Live P5 implementation citations were paired by subject; measurement records retain their
 original source trees rather than pretending the rebased whole-repo tree was benchmarked.
 

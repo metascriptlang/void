@@ -1013,7 +1013,7 @@ below. Neither belongs to P6's different device-loss/occlusion work.
 **Passes and scope.** The main-session defect pass inspected the P5 diff's retained upload,
 patch/splice, lane, node ownership and teardown boundaries, and ran the actual failing
 consumers. A fresh `reviewer` agent, `P5DesignPass`, independently reviewed
-`8140882` through the host-services and measurement work (`b6a695b`), against P5's exits,
+`8140882` through the host-services and measurement work (`1158206`), against P5's exits,
 guardrails, TESTING.md and the decision rule. It edited nothing and ran no checks. Its ten
 answers are recorded below; runtime evidence is the main session's, not the reviewer's.
 `src/void3d/particles.ms` is the deliberate main-equivalent overlay, excluded from phase work.
@@ -1130,7 +1130,7 @@ run. This green verifies the reachable changes, **not** B1's missing teardown or
 
 ## Unify D3/D4, frame context and D2 — SHIP within scope (2026-09-30)
 
-**Verdict: SHIP for `f97f47d`, `4c31b74` and `e222011` only.** P5 remains SEND BACK on B1.
+**Verdict: SHIP for `86dcb5a`, `2110c63` and `e76d9e7` only.** P5 remains SEND BACK on B1.
 D1 was unimplemented and its registry-capacity decision was reserved at this review; the later
 human-approved direction is VOID2D.md "D1 direction agreed for the fresh session".
 This bounded review authorises neither P6, landing nor push.
