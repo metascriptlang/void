@@ -1203,7 +1203,7 @@ expected_hash() {
 baseline_names() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
 		m12greydirect m12greypalette m14forward m16anchor m21perspective m22textured \
-		m22texturedpixelart m22texturedoutline; do
+		m22texturedpixelart m22texturedoutline m23gltf m23gltfpixelart; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -1213,6 +1213,10 @@ baseline_names() {
 # GATE_ADOPT=1 only: writes the hash of a baseline the manifest does not have yet, keeping the
 # manifest in baseline_names order.
 record_hash() {
+	if ! baseline_names | grep -qx "$1"; then
+		fail "capture: $1 is not in baseline_names, so the manifest would drop its hash"
+		return 1
+	fi
 	tr -d '\r' < "$MANIFEST" | grep -v " \*$1\$" > "$WORK/manifest.old"
 	echo "$2 *$1" >> "$WORK/manifest.old"
 	: > "$WORK/manifest.new"
@@ -1268,7 +1272,7 @@ run_capture() {
 		expected=$(expected_hash "$key")
 		if [ -z "$expected" ]; then
 			if [ "${GATE_ADOPT:-0}" = "1" ]; then
-				record_hash "$key" "$hash"
+				record_hash "$key" "$hash" || return
 				cp "$got" "$want"
 				adopted=$((adopted + 1))
 			else
