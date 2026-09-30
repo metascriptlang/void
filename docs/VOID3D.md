@@ -1094,16 +1094,16 @@ The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's
   and glTF's default material when a primitive names none, all from `GltfMaterialSetup`, which
   plays Heaps' `MaterialSetup` (the pass, and the lit block's values), and one mesh per decoded
   mesh. A setup that sets the double-sided flag itself is `BadSetup`: the material decides it. It
-  answers M8's bindings for `addGltfNodes`.
+  answers M8's bindings for `addGltfNodes`. A refusal after the first upload releases everything
+  the call made and names what refused. `releaseGltfAssets` gives back the loader's hold on each
+  asset; the nodes keep theirs, so the model draws on, and removing its nodes frees it (M17's
+  holders).
   - Every mesh that names a glTF material shares its one `MaterialId`. **That is Bevy's loader,
     not Heaps'.** `makeMaterial` caches one material per file material and hands each object a
     `deepCopyMaterial` (`hxd/fmt/hmd/Library.hx:355`), so a change to one object's material stays
     on that object. Bevy loads a material once per label and every primitive shares the handle
     (`bevy_gltf/src/loader/mod.rs:1639-1646`), and void3d's nodes already share materials by id
-    (M17's holders). A game that greys one node of a model gives that node its own material. A refusal after the first upload releases
-  everything the call made and names what refused. `releaseGltfAssets` gives back the loader's
-  hold on each asset; the nodes keep theirs, so the model draws on, and removing its nodes frees
-  it (M17's holders).
+    (M17's holders). A game that greys one node of a model gives that node its own material.
 - **Double-sided** (`shader3dBlocks.glsl` `facingNormal`, used by the four lit programs). A
   `doubleSided` material draws with culling `None` and sets `MATERIAL_DOUBLE_SIDED` in the lit
   block, and the programs reverse a back face's normal when it is set: Heaps'
