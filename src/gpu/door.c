@@ -391,6 +391,19 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 	g_openPass = DOOR_PASS_TARGET;
 }
 
+void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha) {
+	if (g_openPass != DOOR_PASS_NONE) {
+		fprintf(stderr, "gpu door: beginColorPass with a pass already open; endPass ends it\n");
+		abort();
+	}
+	sg_pass pass = {0};
+	pass.attachments.colors[0] = (sg_view){.id = view};
+	pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
+	pass.action.colors[0].clear_value = (sg_color){red, green, blue, alpha};
+	sg_begin_pass(&pass);
+	g_openPass = DOOR_PASS_TARGET;
+}
+
 void doorBeginScreenPass(float red, float green, float blue, float alpha) {
 	voidBeginPass(red, green, blue, alpha);
 	g_openPass = DOOR_PASS_SCREEN;

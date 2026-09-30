@@ -2,7 +2,9 @@
 // methods (rect/sprite/label, .at, .addChild), then s.present() each frame (owns the pass).
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
-import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, makeRenderTarget, renderTargetView, beginRenderTargetPass, endPass, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
+import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
+import { RenderTarget } from "../gpu/target";
+import { PixelFormat } from "../gpu/door";
 import { setup2d, begin2d, flushTargets, beginTarget, endTarget, drawRect, drawImage } from "../void2d/draw";
 import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
 import { NodeRef, Scene2D } from "../void2d/node";
@@ -24,11 +26,11 @@ let dir: float32 = 1.0;
 // cam.x/y — the fit would overwrite it. It accumulates here and the fit adds it.
 let panX: float32 = 0.0;
 let panY: float32 = 0.0;
-let rtSrc: uint32 = 0;
-let rtA: uint32 = 0;
-let rtB: uint32 = 0;
-let rtGlow: uint32 = 0;
-let rtShadow: uint32 = 0;
+let rtSrc: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+let rtA: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+let rtB: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+let rtGlow: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
+let rtShadow: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 
 export function init2d(): void {
 	gfxSetup();
@@ -135,13 +137,13 @@ export function init2d(): void {
 	sceneObj.add(para);
 	sceneObj.add(texGfx);
 
-	rtSrc = makeRenderTarget(256, 256);
-	rtA = makeRenderTarget(256, 256);
-	rtB = makeRenderTarget(256, 256);
-	rtGlow = makeRenderTarget(256, 256);
-	rtShadow = makeRenderTarget(256, 256);
-	sceneObj.add(sceneObj.sprite(tile(renderTargetView(rtGlow), 120.0, 120.0)).at(700.0, 262.0));
-	sceneObj.add(sceneObj.sprite(tile(renderTargetView(rtShadow), 120.0, 120.0)).at(828.0, 262.0));
+	rtSrc = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
+	rtA = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
+	rtB = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
+	rtGlow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
+	rtShadow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
+	sceneObj.add(sceneObj.sprite(tile(rtGlow.texture, 120.0, 120.0)).at(700.0, 262.0));
+	sceneObj.add(sceneObj.sprite(tile(rtShadow.texture, 120.0, 120.0)).at(828.0, 262.0));
 
 	logo = logoNode;
 	green = greenNode;
@@ -205,7 +207,7 @@ export function present2d(): void {
 	// pass with nothing else open. The swapchain list stays empty here - the visible frame is
 	// `sc.present()` just below, which starts its own list.
 	const plus = rgba(1.0, 0.82, 0.35, 1.0);
-	const orig = tile(renderTargetView(rtSrc), 256.0, 256.0);
+	const orig = tile(rtSrc.texture, 256.0, 256.0);
 	const clearNone = rgba(0.0, 0.0, 0.0, 0.0);
 	begin2d(256.0, 256.0, 1.0);
 	beginTarget(rtSrc, 256.0, 256.0, 1.0, 0.0, 0.0, clearNone);

@@ -64,8 +64,6 @@ import {
 	beginTarget,
 	endTarget,
 	blurPass,
-	allocRenderTarget,
-	rtViewId,
 	currentRenderScale,
 	paintIndex,
 	resumePaint,
@@ -128,6 +126,8 @@ import {
 	emptyBounds,
 } from "./types";
 import { BlendMode } from "../gpu/state";
+import { RenderTarget } from "../gpu/target";
+import { PixelFormat } from "../gpu/door";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
@@ -976,41 +976,45 @@ const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 // h2d composes in one frame; past it the filter is skipped and says so once, rather than
 // failing inside sokol where the message names no node.
 const MAX_POOLED_TARGETS: int32 = 16;
-const poolRT: Vec<uint32> = [];
-const poolW: Vec<int32> = [];
-const poolH: Vec<int32> = [];
+const poolTargets: Vec<RenderTarget> = [];
+const NO_TARGET: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 let poolOwner: Vec<int32> = [];
 let poolSerial: Vec<int32> = [];
 let poolExhaustedReported: boolean = false;
 
-export function acquireFrameTarget(w: int32, h: int32): uint32 { return acquireTarget(w, h); }
-export function renderTargetsAlive(): int32 { return poolRT.length as int32; }
+export function acquireFrameTarget(w: int32, h: int32): RenderTarget { return acquireTarget(w, h); }
+export function renderTargetsAlive(): int32 { return poolTargets.length as int32; }
 
-function acquireTarget(w: int32, h: int32): uint32 {
+function stopOnRefusedTarget(w: int32, h: int32): RenderTarget {
+	console.log(`void2d: sokol refused a ${w}x${h} filter target; its image or view pool is full`);
+	unreachable;
+}
+
+function acquireTarget(w: int32, h: int32): RenderTarget {
 	const owner: DrawContext2D = currentContext();
-	for (let i: int32 = 0; i < (poolRT.length as int32); i++) {
+	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {
 		const free: boolean = contextSerial(poolOwner[i]) != poolSerial[i];
-		if (free && poolW[i] == w && poolH[i] == h) {
+		if (free && poolTargets[i].width == w && poolTargets[i].height == h) {
 			poolOwner[i] = owner.id;
 			poolSerial[i] = contextSerial(owner.id);
-			return poolRT[i];
+			return poolTargets[i];
 		}
 	}
-	if ((poolRT.length as int32) >= MAX_POOLED_TARGETS) {
+	if ((poolTargets.length as int32) >= MAX_POOLED_TARGETS) {
 		if (!poolExhaustedReported) {
 			poolExhaustedReported = true;
 			console.log(`void2d: more than ${MAX_POOLED_TARGETS} filter targets in one frame - the rest are drawn unfiltered`);
 		}
-		return 0;
+		return NO_TARGET;
 	}
-	const rt: uint32 = allocRenderTarget(w, h);
-	if (rt == 0) { return 0; }
-	poolRT.push(rt);
-	poolW.push(w);
-	poolH.push(h);
+	const target: RenderTarget = RenderTarget.allocate(w, h, PixelFormat.Rgba8, true);
+	if (target.image == 0 || target.attachment == 0 || target.texture == 0) {
+		return stopOnRefusedTarget(w, h);
+	}
+	poolTargets.push(target);
 	poolOwner.push(owner.id);
 	poolSerial.push(contextSerial(owner.id));
-	return rt;
+	return target;
 }
 
 // Guardrail 3: downsample by 2^k, then blur at a one-texel step - never widen the tap
@@ -1020,16 +1024,21 @@ function acquireTarget(w: int32, h: int32): uint32 {
 // texels: at radius 12 that samples 39 texels away and the result is a comb, not a blur.
 // Halving until the radius is about two texels keeps the kernel in its valid regime and makes
 // a wide blur cheaper rather than more wrong.
-export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32): uint32 {
-	let src: uint32 = rt;
+export function blurTargetPooled(
+	rt: RenderTarget,
+	w: int32,
+	h: int32,
+	radius: float32,
+): RenderTarget {
+	let src: RenderTarget = rt;
 	let sw: int32 = w;
 	let sh: int32 = h;
 	let r: float32 = radius;
 	while (r > 2.0 && sw >= 8 && sh >= 8) {
 		const dw: int32 = sw / 2;
 		const dh: int32 = sh / 2;
-		const dst: uint32 = acquireTarget(dw, dh);
-		if (dst == 0) { return 0; }
+		const dst: RenderTarget = acquireTarget(dw, dh);
+		if (dst.attachment == 0) { return NO_TARGET; }
 		beginTarget(dst, dw as float32, dh as float32, 1.0, 0.0, 0.0, transparent);
 		blitTarget(src, dw as float32, dh as float32);
 		endTarget();
@@ -1038,27 +1047,27 @@ export function blurTargetPooled(rt: uint32, w: int32, h: int32, radius: float32
 		sh = dh;
 		r = r * 0.5;
 	}
-	const tmp: uint32 = acquireTarget(sw, sh);
-	if (tmp == 0) { return 0; }
+	const tmp: RenderTarget = acquireTarget(sw, sh);
+	if (tmp.attachment == 0) { return NO_TARGET; }
 	beginTarget(tmp, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
-	blurPass(rtViewId(src), 1.0 / (sw as float32), 0.0);
+	blurPass(src.texture, 1.0 / (sw as float32), 0.0);
 	endTarget();
-	const out: uint32 = acquireTarget(sw, sh);
-	if (out == 0) { return 0; }
+	const out: RenderTarget = acquireTarget(sw, sh);
+	if (out.attachment == 0) { return NO_TARGET; }
 	beginTarget(out, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
-	blurPass(rtViewId(tmp), 0.0, 1.0 / (sh as float32));
+	blurPass(tmp.texture, 0.0, 1.0 / (sh as float32));
 	endTarget();
 	return out;
 }
 
 // One half-scale copy. `BlendMode.None` writes the source through instead of compositing it
 // over the target's transparent black, which would otherwise darken every edge texel.
-function blitTarget(src: uint32, w: float32, h: float32): void {
+function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	// The target starts with no colour effect, but its sampler inherits the scene default.
 	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
 	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
-	imageQuad(tile(rtViewId(src), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
+	imageQuad(tile(src.texture, w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 
@@ -1676,8 +1685,8 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	const rtH: int32 = (device.yMax - device.yMin) as int32;
 	const logicalW: float32 = (rtW as float32) / dpi;
 	const logicalH: float32 = (rtH as float32) / dpi;
-	const rt: uint32 = acquireTarget(rtW, rtH);
-	if (rt == 0) { return; }
+	const rt: RenderTarget = acquireTarget(rtW, rtH);
+	if (rt.attachment == 0) { return; }
 
 	// The subtree at alpha 1, in target space. One walk, one sync, no GPU call.
 	beginTarget(rt, logicalW, logicalH, dpi, xMin, yMin, transparent);
@@ -1685,17 +1694,17 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	endTarget();
 	s.culls[i] = reach;
 
-	let src: uint32 = rt;
+	let src: RenderTarget = rt;
 	if (f.radius > 0.0) {
 		src = blurTargetPooled(rt, rtW, rtH, f.radius * dpi);
-		if (src == 0) { return; }
+		if (src.attachment == 0) { return; }
 	}
 
 	const na: float32 = a * s.paints[i].alpha;
 	// Composite at the exact logical extent represented by the physical target.
 	const qx1: float32 = xMin + logicalW;
 	const qy1: float32 = yMin + logicalH;
-	const rtTile = tile(rtViewId(src), rtW as float32, rtH as float32);
+	const rtTile = tile(src.texture, rtW as float32, rtH as float32);
 	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
 	// target is always composited linear-clamp with no colour pipeline; the silhouette below
@@ -1730,7 +1739,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	const sharpTile = tile(rtViewId(rt), rtW as float32, rtH as float32);
+	const sharpTile = tile(rt.texture, rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
 }

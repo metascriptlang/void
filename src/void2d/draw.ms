@@ -49,11 +49,10 @@ import {
 	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted, noPipelines,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
-import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
 import { PassState, PixelFormat, passState, frameIndex } from "../gpu/door";
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
-import { TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
+import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
 
 const programBase: int32 = void2dProgramBase();
 const layoutBase: int32 = void2dLayoutBase();
@@ -98,9 +97,6 @@ function resolvePipelines(): void {
 	}
 }
 
-export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
-export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
-export function rtViewId(rt: uint32): uint32 { return renderTargetView(rt); }
 
 
 function pushVertex(
@@ -980,8 +976,14 @@ export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: Bl
 // moved into the hoisted target list when `endTarget` closes them, and the pass itself is
 // opened by the replay, outside the swapchain pass. The emitter's run state is saved because
 // the target has its own viewport and its own idea of what is already bound.
+function stopOnTarget(target: RenderTarget): void {
+	console.log(`void2d: beginTarget needs an allocated Rgba8 target, got ` +
+		`${target.format.toString()} ${target.width}x${target.height} view ${target.attachment}`);
+	unreachable;
+}
+
 export function beginTarget(
-	rt: uint32,
+	target: RenderTarget,
 	w: float32,
 	h: float32,
 	scale: float32,
@@ -989,6 +991,8 @@ export function beginTarget(
 	oy: float32,
 	clear: Color,
 ): void {
+	if (target.format != PixelFormat.Rgba8 || target.attachment == 0) { stopOnTarget(target); }
+	const rt: uint32 = target.attachment;
 	const ctx: DrawContext2D = currentContext();
 	ctx.targetsFlushed = false;
 	if (targetDepth() >= TARGET_SAVE_SLOTS) {

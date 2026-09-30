@@ -389,6 +389,12 @@ void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t 
 	s_pipelines[program][target][blend] = pipeline;
 }
 
+static bool sampledTarget(uint32_t view) {
+	if (view == 0) { return false; }
+	const sg_image image = sg_query_view_image((sg_view){ .id = view });
+	return image.id != SG_INVALID_ID && sg_query_image_usage(image).color_attachment;
+}
+
 static sg_pipeline pipelineAt(int program, int target, int blend) {
 	const bool inRange = program >= 0 && program < VOID2D_PROGRAM_COUNT
 		&& target >= 0 && target <= 1 && blend >= 0 && blend < VOID2D_BLEND_COUNT;
@@ -987,7 +993,7 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	sprite_params_t sp = {0};
 	sp.viewport[0] = fbW;
 	sp.viewport[1] = fbH;
-	bool isRT = voidIsRenderTargetView(view);
+	bool isRT = sampledTarget(view);
 	sp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
 	sp.viewport[3] = isRT ? 1.0f : 0.0f;
 	const float *spriteScope = scopeOf(cmd);
@@ -1041,7 +1047,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	ui_params_t up = {0};
 	up.viewport[0] = fbW;
 	up.viewport[1] = fbH;
-	up.viewport[2] = (voidIsRenderTargetView(view) && !s_originTopLeft) ? 1.0f : 0.0f;
+	up.viewport[2] = (sampledTarget(view) && !s_originTopLeft) ? 1.0f : 0.0f;
 	up.viewport[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
 	const float *uiScope = scopeOf(cmd);
 	if (uiScope) { up.shift[0] = uiScope[0]; up.shift[1] = uiScope[1]; }
@@ -1109,13 +1115,13 @@ static void runCommands(const float *commands, int commandCount,
 			}
 			fbW = cmd[CMD_ARG0];
 			fbH = cmd[CMD_ARG1];
-			voidBeginRenderTargetPass(void2dCommandView(cmd),
+			doorBeginColorPass(void2dCommandView(cmd),
 				cmd[CMD_CLEAR_R], cmd[CMD_CLEAR_R + 1], cmd[CMD_CLEAR_R + 2], cmd[CMD_CLEAR_R + 3]);
 			lastPipeline = 0; paramsValid = 0; fxValid = 0; scissorApplied = 0;
 			continue;
 		}
 		if (kind == CMD_KIND_TGT_END) {
-			voidEndPass();
+			doorEndPass();
 			if (sizeDepth > 0) {
 				sizeDepth--;
 				fbW = sizeStack[sizeDepth][0];
@@ -1185,8 +1191,7 @@ static void runCommands(const float *commands, int commandCount,
 		void2d_params_t vp = {0};
 		vp.viewport[0] = fbW;
 		vp.viewport[1] = fbH;
-		// One lookup, not two: `voidIsRenderTargetView` is a linear scan of the 16-slot table.
-		bool isRT = voidIsRenderTargetView(view);
+		bool isRT = sampledTarget(view);
 		bool effectIsIdentity = memcmp(matrix, s_identityMatrix, sizeof(s_identityMatrix)) == 0
 			&& addR == 0.0f && addG == 0.0f && addB == 0.0f && addA == 0.0f;
 		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
