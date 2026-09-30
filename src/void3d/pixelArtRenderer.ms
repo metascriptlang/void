@@ -157,6 +157,7 @@ export enum PixelArtError {
 	MaterialTexture,
 	QuadMesh,
 	UniformsReplaced,
+	TextureReplaced,
 	StaleMesh,
 	StaleMaterial,
 	RampLevels,
@@ -498,6 +499,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.MaterialTexture => PixelArtError.MaterialTexture,
 		RendererError.QuadMesh => PixelArtError.QuadMesh,
 		RendererError.UniformsReplaced => PixelArtError.UniformsReplaced,
+		RendererError.TextureReplaced => PixelArtError.TextureReplaced,
 		RendererError.StaleMesh => PixelArtError.StaleMesh,
 		RendererError.StaleMaterial => PixelArtError.StaleMaterial,
 	};

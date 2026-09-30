@@ -6,6 +6,7 @@
 
 import { RenderState } from "../gpu/state";
 import { Program } from "./gpu3d";
+import { TextureId, NO_TEXTURE } from "./texture";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer
 // draws, in this order ("default", "alpha" back to front, "additive").
@@ -36,6 +37,8 @@ export struct Material {
 	texture3: uint32;
 	sampler0: uint32;
 	sampler1: uint32;
+	// Heaps' `Material.texture`: a context texture, bound at view and sampler 0 in their place.
+	texture: TextureId;
 	uniforms: UniformBlock;
 }
 
@@ -58,6 +61,11 @@ export function plain(
 		texture3: 0,
 		sampler0: 0,
 		sampler1: 0,
+		texture: NO_TEXTURE,
 		uniforms: NO_UNIFORMS,
 	};
+}
+
+export function namesTexture(this material: Material): boolean {
+	return material.texture.isTexture();
 }

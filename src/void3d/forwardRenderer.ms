@@ -52,6 +52,7 @@ export enum ForwardError {
 	MaterialTexture,
 	QuadMesh,
 	UniformsReplaced,
+	TextureReplaced,
 	StaleMesh,
 	StaleMaterial,
 	TargetSize,
@@ -110,6 +111,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.MaterialTexture => ForwardError.MaterialTexture,
 		RendererError.QuadMesh => ForwardError.QuadMesh,
 		RendererError.UniformsReplaced => ForwardError.UniformsReplaced,
+		RendererError.TextureReplaced => ForwardError.TextureReplaced,
 		RendererError.StaleMesh => ForwardError.StaleMesh,
 		RendererError.StaleMaterial => ForwardError.StaleMaterial,
 	};

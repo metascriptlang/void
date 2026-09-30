@@ -37,6 +37,7 @@ import {
 	addMesh,
 	buryDoomed,
 	rebuildMeshes,
+	rebuildTextures,
 	reserveUniforms,
 	writeUniforms,
 	drawItem,
@@ -81,6 +82,7 @@ export enum RendererError {
 	MaterialTexture,
 	QuadMesh,
 	UniformsReplaced,
+	TextureReplaced,
 	StaleMesh,
 	StaleMaterial,
 }
@@ -156,14 +158,15 @@ export function needsFrame(this renderer: Renderer): boolean {
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and fills
 // the pass lists from `items`. A camera or light span that is not its block's length, an item whose
 // material names a program this renderer does not draw, a material whose block is not the one that
-// program reads or has been released, or that lacks a texture or sampler it samples, or a mesh
-// whose vertex layout it does not read, or a quad-layout mesh with a vertex buffer or with
-// instances and no instance buffer, is refused before anything changes. Answers true when the
-// context is new: every handle the caller made before is stale then (it may name an object of the
-// new context), so the caller drops its own without destroying them and makes them again before
-// drawing. The core has already dropped the pipelines, remade the screen triangle, and re-uploaded
-// every mesh that carries its CPU data (draw.ms rebuildMeshes); what is left is whatever the caller
-// uploaded from buffers only it keeps.
+// program reads or has been released, or that lacks a texture or sampler it samples or names
+// another texture than it was added with, or a mesh whose vertex layout it does not read, or a
+// quad-layout mesh with a vertex buffer or with instances and no instance buffer, is refused
+// before anything changes. Answers true when the context is new: every handle the caller made
+// before is stale then (it may name an object of the new context), so the caller drops its own
+// without destroying them and makes them again before drawing. The core has already dropped the
+// pipelines, remade the screen triangle, and remade every mesh and texture that carries its CPU
+// data (draw.ms rebuildMeshes, rebuildTextures); what is left is whatever the caller uploaded
+// from buffers only it keeps.
 export function beginFrame(
 	ref renderer: Renderer,
 	ref context: DrawContext,
@@ -181,6 +184,9 @@ export function beginFrame(
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
+		}
+		if (!context.keepsItsTexture(item.material)) {
+			return Result.err(RendererError.TextureReplaced);
 		}
 		if (!blockFits(drawn.value, context.materials[material].uniforms)) {
 			return Result.err(RendererError.MaterialBlock);
@@ -226,6 +232,7 @@ export function beginFrame(
 			context.pipelines.generation = generation;
 		}
 		rebuildMeshes(context);
+		rebuildTextures(context);
 		context.meshes[renderer.screenMesh.index].vertexBuffer = makeScreenTriangle();
 		renderer.generation = generation;
 		renderer.changed = true;
@@ -293,8 +300,8 @@ function blockFits(program: Program, block: UniformBlock): boolean {
 	return block.slot == own && block.length == uniformBlockLength(program, own);
 }
 
-function slotBound(mask: uint32, slot: uint32, handle: uint32): boolean {
-	return (mask & ((1 as uint32) << slot)) == 0 || handle != 0;
+function slotBound(mask: uint32, slot: uint32, bound: boolean): boolean {
+	return (mask & ((1 as uint32) << slot)) == 0 || bound;
 }
 
 // Every texture view and sampler `program` declares is bound on `material`; a slot the
@@ -303,9 +310,14 @@ function texturesFit(program: Program, material: Material): boolean {
 	const views: uint32 = textureSlotMask(program);
 	const samplers: uint32 = samplerSlotMask(program);
 	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }
-	return slotBound(views, 0, material.texture0) && slotBound(views, 1, material.texture1)
-		&& slotBound(views, 2, material.texture2) && slotBound(views, 3, material.texture3)
-		&& slotBound(samplers, 0, material.sampler0) && slotBound(samplers, 1, material.sampler1);
+	let texture: boolean = material.namesTexture();
+	if (texture && (material.texture0 != 0 || material.sampler0 != 0)) { return false; }
+	return slotBound(views, 0, texture || material.texture0 != 0)
+		&& slotBound(views, 1, material.texture1 != 0)
+		&& slotBound(views, 2, material.texture2 != 0)
+		&& slotBound(views, 3, material.texture3 != 0)
+		&& slotBound(samplers, 0, texture || material.sampler0 != 0)
+		&& slotBound(samplers, 1, material.sampler1 != 0);
 }
 
 export function openPrepare(this renderer: Renderer): void {

@@ -959,11 +959,12 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	door:beginScreenPassWith door:endPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
 	uniform80ool:holds uniform80ool:writeRange"
 RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
-	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds"
+	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds
+	draw:keepsItsTexture material:namesTexture texture:isTexture"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
-	mesh68ata:rayIntersection mesh68ata:cornerOf ray:transformed scene:nodeIdAt"
+	mesh68ata:rayIntersection mesh68ata:cornerOf mesh68ata:stride ray:transformed scene:nodeIdAt"
 PERSPECTIVE_PATH_FUNCTIONS="camera:resolve camera:basisOf camera:sine camera:cosine
 	camera:makeCameraMatrix camera:orthoBounds camera:projectionMatrix camera:snapEye camera:floored
 	camera:writeCameraBlock camera:project camera:rayFromScreen camera:unproject camera:pointAt

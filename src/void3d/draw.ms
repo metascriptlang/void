@@ -2,8 +2,8 @@
 // scene tree (docs/VOID3D.md, Porting rules): a scene flattens into items when its structure
 // changes, and every frame only rewrites their world matrices.
 //
-// DrawContext owns everything items point into: GPU meshes, materials, the uniform pool and the
-// pipeline cache. Items and materials are plain values holding indices and handles.
+// DrawContext owns everything items point into: GPU meshes, materials, textures, the uniform pool
+// and the pipeline cache. Items and materials are plain values holding indices and handles.
 
 import { Mat4, normalMatrix, writeTo } from "../math/math3d";
 import {
@@ -18,10 +18,26 @@ import {
 	makeVertexBuffer,
 	makeIndexBuffer,
 	makeStreamBuffer,
+	makeImage,
 	updateBuffer,
 	destroyBuffer,
+	destroyImage,
 } from "./gpu3d";
-import { contextGeneration, frameIndex } from "../gpu/door";
+import {
+	contextGeneration,
+	frameIndex,
+	makeTextureView,
+	makeSampler,
+	destroyView,
+} from "../gpu/door";
+import { FilterMode, Wrap } from "../gpu/state";
+import {
+	TextureData,
+	TextureId,
+	GpuTexture,
+	TextureUploadError,
+	NO_TEXTURE,
+} from "./texture";
 import {
 	GPU3D_BINDING_VERTEX_BUFFER,
 	GPU3D_BINDING_INDEX_BUFFER,
@@ -114,8 +130,9 @@ export struct DoomedBuffer {
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
 // A slot's holders are Heaps' `Primitive.refCount`: the mesh or material goes when they reach 0.
 // `…Pins` counts the holds among them that only their holder lets go: a mesh node's, a baked
-// animation's. `materialBlocks` is the range each material was added with, whatever its
-// `uniforms` field says later.
+// animation's, a material's hold on its texture. `materialBlocks` and `materialTextures` are the
+// range and the texture each material was added with, whatever its fields say later. `textures`
+// and `textureData` are one index space, as `meshes` and `meshData` are.
 export struct DrawContext {
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
@@ -129,6 +146,15 @@ export struct DrawContext {
 	materialPins: Vec<int32>;
 	materialTally: Vec<int32>;
 	materialBlocks: Vec<UniformBlock>;
+	materialTextures: Vec<TextureId>;
+	textures: Vec<GpuTexture>;
+	textureData: Vec<TextureData>;
+	textureSlots: Slots;
+	textureHolders: Vec<int32>;
+	texturePins: Vec<int32>;
+	doomedTextures: Vec<GpuTexture>;
+	samplers: Vec<uint32>;
+	samplerGeneration: int32;
 	uniforms: UniformPool;
 	doomed: Vec<DoomedBuffer>;
 	pipelines: PipelineCache;
@@ -148,11 +174,14 @@ export enum HandleError {
 	StaleMaterial,
 	OnlyPinned,
 	NotPinned,
+	StaleTexture,
 }
 
 export enum MaterialError {
 	ReleasedUniforms,
 	SharedUniforms,
+	StaleTexture,
+	TextureNamedTwice,
 }
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
@@ -164,6 +193,10 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 	let model: Vec<float32> = new Array(MODEL_LENGTH);
 	for (let i = 0; i < MODEL_LENGTH; i++) {
 		model[i] = 0.0;
+	}
+	let samplers: Vec<uint32> = new Array(SAMPLER_SETTINGS);
+	for (let i = 0; i < SAMPLER_SETTINGS; i++) {
+		samplers[i] = 0;
 	}
 	return {
 		meshes: [],
@@ -178,6 +211,15 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		materialPins: [],
 		materialTally: [],
 		materialBlocks: [],
+		materialTextures: [],
+		textures: [],
+		textureData: [],
+		textureSlots: Slots.empty(),
+		textureHolders: [],
+		texturePins: [],
+		doomedTextures: [],
+		samplers: samplers,
+		samplerGeneration: 0,
 		uniforms: UniformPool.withCapacity(capacity),
 		doomed: [],
 		pipelines: PipelineCache.empty(),
@@ -620,11 +662,20 @@ export function clearMeshTally(ref context: DrawContext, id: MeshId): void {
 }
 
 // The material takes its uniform range with it: the range returns to the pool when the material
-// is freed, so one range under two materials is refused.
+// is freed, so one range under two materials is refused. It pins its texture until it is freed,
+// as a Bevy material holds its image's strong handle.
 export function addMaterial(
 	ref context: DrawContext,
 	material: Material,
 ): Result<MaterialId, MaterialError> {
+	if (material.namesTexture()) {
+		if (material.texture0 != 0 || material.sampler0 != 0) {
+			return Result.err(MaterialError.TextureNamedTwice);
+		}
+		if (!context.hasTexture(material.texture)) {
+			return Result.err(MaterialError.StaleTexture);
+		}
+	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {
 		const shared: boolean = owned.error == UniformError.Owned;
@@ -637,12 +688,19 @@ export function addMaterial(
 		context.materialPins.push(0);
 		context.materialTally.push(0);
 		context.materialBlocks.push(material.uniforms);
+		context.materialTextures.push(material.texture);
 	} else {
 		context.materials[index] = material;
 		context.materialHolders[index] = 1;
 		context.materialPins[index] = 0;
 		context.materialTally[index] = 0;
 		context.materialBlocks[index] = material.uniforms;
+		context.materialTextures[index] = material.texture;
+	}
+	if (material.namesTexture()) {
+		let texture: int32 = material.texture.index;
+		context.texturePins[texture] = context.texturePins[texture] + 1;
+		context.textureHolders[texture] = context.textureHolders[texture] + 1;
 	}
 	return Result.ok({ index: index, generation: context.materialSlots.generations[index] });
 }
@@ -651,6 +709,10 @@ export function addMaterial(
 // material that does not.
 export function keepsItsUniforms(this context: DrawContext, id: MaterialId): boolean {
 	return context.materials[id.index].uniforms == context.materialBlocks[id.index];
+}
+
+export function keepsItsTexture(this context: DrawContext, id: MaterialId): boolean {
+	return context.materials[id.index].texture == context.materialTextures[id.index];
 }
 
 export function retainMaterial(
@@ -671,8 +733,16 @@ function letGoOfMaterial(ref context: DrawContext, index: int32): int32 {
 	const disowned: Result<int32, UniformError> =
 		disownRange(context.uniforms, context.materialBlocks[index]);
 	if (!disowned.ok) { unreachable; }
+	let held: TextureId = context.materialTextures[index];
+	if (held.isTexture()) {
+		if (!context.hasTexture(held)) { unreachable; }
+		context.texturePins[held.index] = context.texturePins[held.index] - 1;
+		let _left: int32 = letGoOfTexture(context, held.index);
+	}
 	context.materials[index].uniforms = NO_UNIFORMS;
+	context.materials[index].texture = NO_TEXTURE;
 	context.materialBlocks[index] = NO_UNIFORMS;
+	context.materialTextures[index] = NO_TEXTURE;
 	context.materialHolders[index] = 0;
 	vacate(context.materialSlots, index);
 	return 0;
@@ -719,9 +789,165 @@ export function clearMaterialTally(ref context: DrawContext, id: MaterialId): vo
 	if (context.hasMaterial(id)) { context.materialTally[id.index] = 0; }
 }
 
-// Destroys the doomed buffers of GPU context `generation` and drops the rest: a buffer of an
-// older context died with it, and its handle may name an object of the new one (docs/VOID3D.md,
-// Android lifecycle).
+const SAMPLER_SETTINGS: int32 = 6;
+
+function samplerSlot(filter: FilterMode, wrap: Wrap): int32 {
+	let row: int32 = match (filter) {
+		FilterMode.Nearest => 0,
+		FilterMode.Linear => 3,
+	};
+	let column: int32 = match (wrap) {
+		Wrap.Clamp => 0,
+		Wrap.Repeat => 1,
+		Wrap.Mirror => 2,
+	};
+	return row + column;
+}
+
+// Heaps' DirectXDriver makes one sampler state per setting and shares it (`samplerStates`); a
+// context's are made on first use and dropped with the GPU context that made them.
+function samplerFor(ref context: DrawContext, filter: FilterMode, wrap: Wrap): uint32 {
+	let generation: int32 = contextGeneration();
+	if (context.samplerGeneration != generation) {
+		for (let i = 0; i < SAMPLER_SETTINGS; i++) { context.samplers[i] = 0; }
+		context.samplerGeneration = generation;
+	}
+	let at: int32 = samplerSlot(filter, wrap);
+	if (context.samplers[at] == 0) { context.samplers[at] = makeSampler(filter, wrap); }
+	return context.samplers[at];
+}
+
+const VACANT_TEXTURE: GpuTexture = { image: 0, view: 0, sampler: 0, generation: 0 };
+
+function doomTexture(ref context: DrawContext, texture: GpuTexture): void {
+	if (texture.image != 0 || texture.view != 0) { context.doomedTextures.push(texture); }
+}
+
+function uploadTexture(ref context: DrawContext, index: int32): Result<int32, TextureUploadError> {
+	doomTexture(context, context.textures[index]);
+	context.textures[index] = VACANT_TEXTURE;
+	let sampler: uint32 = samplerFor(
+		context,
+		context.textureData[index].filter,
+		context.textureData[index].wrap,
+	);
+	if (sampler == 0) { return Result.err(TextureUploadError.SamplerRefused); }
+	let image: uint32 = makeImage(
+		context.textureData[index].pixels,
+		context.textureData[index].width,
+		context.textureData[index].height,
+	);
+	if (image == 0) { return Result.err(TextureUploadError.ImageRefused); }
+	let view: uint32 = makeTextureView(image);
+	if (view == 0) {
+		destroyImage(image);
+		return Result.err(TextureUploadError.ViewRefused);
+	}
+	context.textures[index] = {
+		image: image,
+		view: view,
+		sampler: sampler,
+		generation: contextGeneration(),
+	};
+	return Result.ok(index);
+}
+
+function freeTexture(ref context: DrawContext, index: int32): void {
+	doomTexture(context, context.textures[index]);
+	context.textures[index] = VACANT_TEXTURE;
+	context.textureData[index] = TextureData.empty();
+	context.textureHolders[index] = 0;
+	context.texturePins[index] = 0;
+	vacate(context.textureSlots, index);
+}
+
+// Takes a copy of `data` and makes its image, view and sampler; the caller holds the texture
+// once. A refused upload frees the slot, as addMeshData does.
+export function addTexture(
+	ref context: DrawContext,
+	data: TextureData,
+): Result<TextureId, TextureUploadError> {
+	if (!data.isWellFormed()) { return Result.err(TextureUploadError.BadSize); }
+	let index: int32 = claim(context.textureSlots);
+	if (index == (context.textures.length as int32)) {
+		context.textures.push(VACANT_TEXTURE);
+		context.textureData.push(data);
+		context.textureHolders.push(1);
+		context.texturePins.push(0);
+	} else {
+		context.textures[index] = VACANT_TEXTURE;
+		context.textureData[index] = data;
+		context.textureHolders[index] = 1;
+		context.texturePins[index] = 0;
+	}
+	let uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
+	if (!uploaded.ok) {
+		freeTexture(context, index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok({ index: index, generation: context.textureSlots.generations[index] });
+}
+
+export function hasTexture(this context: DrawContext, id: TextureId): boolean {
+	return context.textureSlots.isCurrent(id.index, id.generation);
+}
+
+export function liveTextures(this context: DrawContext): int32 {
+	return context.textureSlots.liveCount();
+}
+
+export function texturePinned(this context: DrawContext, id: TextureId): int32 {
+	return context.hasTexture(id) ? context.texturePins[id.index] : 0;
+}
+
+export function retainTexture(
+	ref context: DrawContext,
+	id: TextureId,
+): Result<int32, HandleError> {
+	if (!context.hasTexture(id)) { return Result.err(HandleError.StaleTexture); }
+	context.textureHolders[id.index] = context.textureHolders[id.index] + 1;
+	return Result.ok(context.textureHolders[id.index]);
+}
+
+function letGoOfTexture(ref context: DrawContext, index: int32): int32 {
+	let left: int32 = context.textureHolders[index] - 1;
+	if (left > 0) {
+		context.textureHolders[index] = left;
+		return left;
+	}
+	freeTexture(context, index);
+	return 0;
+}
+
+export function releaseTexture(
+	ref context: DrawContext,
+	id: TextureId,
+): Result<int32, HandleError> {
+	if (!context.hasTexture(id)) { return Result.err(HandleError.StaleTexture); }
+	if (context.textureHolders[id.index] == context.texturePins[id.index]) {
+		return Result.err(HandleError.OnlyPinned);
+	}
+	return Result.ok(letGoOfTexture(context, id.index));
+}
+
+// Remakes every texture whose image is from an older GPU context, and answers how many came
+// back. A refused one is left without a view and stale, so it is retried on the next rebuild and
+// its materials draw nothing meanwhile (drawItem).
+export function rebuildTextures(ref context: DrawContext): int32 {
+	let generation: int32 = contextGeneration();
+	let count: int32 = 0;
+	for (let i = 0; i < (context.textures.length as int32); i++) {
+		if (context.textureHolders[i] == 0 || context.textures[i].generation == generation) {
+			continue;
+		}
+		if (uploadTexture(context, i).ok) { count = count + 1; }
+	}
+	return count;
+}
+
+// Destroys the doomed buffers, images and views of GPU context `generation` and drops the rest:
+// one of an older context died with it, and its handle may name an object of the new one
+// (docs/VOID3D.md, Android lifecycle).
 export function buryDoomed(ref context: DrawContext, generation: int32): int32 {
 	let destroyed: int32 = 0;
 	for (const doomed of context.doomed) {
@@ -730,6 +956,13 @@ export function buryDoomed(ref context: DrawContext, generation: int32): int32 {
 		destroyed = destroyed + 1;
 	}
 	while ((context.doomed.length as int32) > 0) { context.doomed.pop(); }
+	for (const doomed of context.doomedTextures) {
+		if (doomed.generation != generation) { continue; }
+		destroyView(doomed.view);
+		destroyImage(doomed.image);
+		destroyed = destroyed + 1;
+	}
+	while ((context.doomedTextures.length as int32) > 0) { context.doomedTextures.pop(); }
 	return destroyed;
 }
 
@@ -774,6 +1007,10 @@ function bindItem(ref context: DrawContext, mesh: GpuMesh, material: Material): 
 	context.bindings[GPU3D_BINDING_VIEW + 3] = material.texture3;
 	context.bindings[GPU3D_BINDING_SAMPLER] = material.sampler0;
 	context.bindings[GPU3D_BINDING_SAMPLER + 1] = material.sampler1;
+	if (material.namesTexture()) {
+		context.bindings[GPU3D_BINDING_VIEW] = context.textures[material.texture.index].view;
+		context.bindings[GPU3D_BINDING_SAMPLER] = context.textures[material.texture.index].sampler;
+	}
 	applyBindings(context.bindings);
 }
 
@@ -793,6 +1030,9 @@ export function drawItem(
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
 	const material: Material = context.materials[item.material.index];
+	if (material.namesTexture() && context.textures[material.texture.index].view == 0) {
+		return;
+	}
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
 		program,
