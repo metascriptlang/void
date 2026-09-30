@@ -366,11 +366,11 @@ run_shaders() {
 	fi
 	SHDC_LANGS="metal_macos:glsl300es:wgsl:hlsl5"
 	SHDC_LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
-	for SHDC_SRC in src/sokol/shader.glsl src/void2d/shader2d.glsl src/void3d/shader3d.glsl \
+	for SHDC_SRC in src/void2d/shader2d.glsl src/void3d/shader3d.glsl \
 		src/void3d/pixelArt3d.glsl tests/integration/gpuCopy.glsl; do
 		SHDC_LANGS_PICK="$SHDC_LANGS"
 		case "$SHDC_SRC" in
-			src/sokol/*|src/void3d/*|tests/integration/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
+			src/void3d/*|tests/integration/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
 		esac
 		SHDC_OUT="$WORK/fresh_$(basename "$SHDC_SRC" .glsl).h"
 		if ! "$SHDC" -i "$SHDC_SRC" -o "$SHDC_OUT" -l "$SHDC_LANGS_PICK" -f sokol >/dev/null 2>&1; then

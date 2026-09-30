@@ -18,12 +18,11 @@ case "$(uname -s)-$(uname -m)" in
 	*) echo "no sokol-shdc for $(uname -s)-$(uname -m)"; exit 1 ;;
 esac
 
-# The cube and void3d shaders also ship to iOS (device + simulator); void2d does not.
+# The void3d shaders also ship to iOS (device + simulator); void2d does not.
 LANGS="metal_macos:glsl300es:wgsl:hlsl5"
 LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
 
 echo "Regenerating shader headers..."
-"$SHDC" -i src/sokol/shader.glsl     -o src/sokol/shader.glsl.h     -l "$LANGS_IOS" -f sokol
 "$SHDC" -i src/void2d/shader2d.glsl  -o src/void2d/shader2d.glsl.h  -l "$LANGS" -f sokol
 "$SHDC" -i src/void3d/shader3d.glsl  -o src/void3d/shader3d.glsl.h  -l "$LANGS_IOS" -f sokol
 "$SHDC" -i src/void3d/pixelArt3d.glsl -o src/void3d/pixelArt3d.glsl.h -l "$LANGS_IOS" -f sokol

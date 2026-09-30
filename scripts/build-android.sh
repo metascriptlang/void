@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NDK="${ANDROID_NDK:-$HOME/Library/Android/sdk/ndk/28.0.13004108}"
-ENTRY="${ENTRY:-src/examples/androidCubeEntry.ms}"
+ENTRY="${ENTRY:-src/examples/androidCampfireEntry.ms}"
 CC="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android26-clang"
 DEST="android/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$DEST"
