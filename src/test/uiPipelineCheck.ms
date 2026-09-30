@@ -12,6 +12,7 @@
 import {
 	begin2d, finishRecording, drawRect, drawUiInstance, drawSpriteAffine,
 	uiInstancingAvailable, recordedUiInstanceCount, recordedSpriteInstanceCount,
+	premultipliedBlend,
 } from "../void2d/draw";
 import {
 	drawCommandCount, commandField, vertexCount,
@@ -19,7 +20,8 @@ import {
 	Pipeline, breakReasonName,
 } from "../void2d/displayList";
 import { InstanceMode, uiInstance } from "../void2d/instance";
-import { Color, BlendMode, identity2d } from "../void2d/types";
+import { Color, identity2d } from "../void2d/types";
+import { BlendMode, Blend, Operation, Face, Compare, RenderState } from "../gpu/state";
 
 const WHITE: Color = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
 const RED: Color = { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
@@ -138,4 +140,60 @@ test "a sprite-only frame opens no UI run" {
 test "a colour pipeline is what disqualifies the instanced path, and it says so" {
 	frame();
 	assert uiInstancingAvailable();
+}
+
+function alphaSpelling(factor: Blend): Blend {
+	return match (factor) {
+		Blend.SourceColor => Blend.SourceAlpha,
+		Blend.DestinationColor => Blend.DestinationAlpha,
+		Blend.OneMinusSourceColor => Blend.OneMinusSourceAlpha,
+		Blend.OneMinusDestinationColor => Blend.OneMinusDestinationAlpha,
+		_ => factor,
+	};
+}
+
+function keepsFactors(
+	mode: BlendMode,
+	source: Blend,
+	destination: Blend,
+	alphaSource: Blend,
+	alphaDestination: Blend,
+): boolean {
+	const state: RenderState = premultipliedBlend(mode);
+	return state.blendSource == source && state.blendDestination == destination
+		&& alphaSpelling(state.blendAlphaSource) == alphaSource
+		&& alphaSpelling(state.blendAlphaDestination) == alphaDestination
+		&& state.blendOperation == Operation.Add && state.blendAlphaOperation == Operation.Add;
+}
+
+test "the five old 2D blend modes keep the premultiplied factors batcher.c had" {
+	assert keepsFactors(
+		BlendMode.Alpha,
+		Blend.One, Blend.OneMinusSourceAlpha, Blend.One, Blend.OneMinusSourceAlpha,
+	);
+	assert keepsFactors(BlendMode.Add, Blend.One, Blend.One, Blend.One, Blend.One);
+	assert keepsFactors(
+		BlendMode.AlphaMultiply,
+		Blend.DestinationColor, Blend.OneMinusSourceAlpha,
+		Blend.DestinationAlpha, Blend.OneMinusSourceAlpha,
+	);
+	assert keepsFactors(
+		BlendMode.Screen,
+		Blend.One, Blend.OneMinusSourceColor, Blend.One, Blend.OneMinusSourceAlpha,
+	);
+	assert keepsFactors(BlendMode.None, Blend.One, Blend.Zero, Blend.One, Blend.Zero);
+}
+
+test "a premultiplied source never scales its colour by its alpha again" {
+	const modes: Vec<BlendMode> = [
+		BlendMode.None, BlendMode.Alpha, BlendMode.Add, BlendMode.AlphaAdd,
+		BlendMode.SoftAdd, BlendMode.Multiply, BlendMode.AlphaMultiply, BlendMode.Erase,
+		BlendMode.Screen, BlendMode.Subtract, BlendMode.Max, BlendMode.Min,
+	];
+	for (const mode of modes) {
+		const state: RenderState = premultipliedBlend(mode);
+		assert state.blendSource != Blend.SourceAlpha;
+		assert state.culling == Face.None && !state.depthWrite;
+		assert state.depthTest == Compare.Always;
+	}
 }

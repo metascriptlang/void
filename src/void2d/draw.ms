@@ -48,11 +48,11 @@ import {
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
 	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted, noPipelines,
 } from "./displayList";
-import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
+import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
 import { PassState, PixelFormat, passState, frameIndex } from "../gpu/door";
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
-import { RenderState, Face, Compare, Blend } from "../gpu/state";
+import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
 
 const programBase: int32 = void2dProgramBase();
@@ -70,23 +70,13 @@ const OFFSCREEN_LAYOUT: TargetLayout = {
 let pipelines: PipelineCache = PipelineCache.empty();
 let resolvedPipelines: Vec<boolean> = noPipelines();
 
-function blendState(mode: BlendMode): RenderState {
-	const base: RenderState = RenderState.defaults()
+export function premultipliedBlend(mode: BlendMode): RenderState {
+	const straight: RenderState = RenderState.defaults()
 		.withCulling(Face.None)
-		.withDepth(false, Compare.Always);
-	return match (mode) {
-		BlendMode.Alpha => base.withBlend(Blend.One, Blend.OneMinusSourceAlpha),
-		BlendMode.Add => base.withBlend(Blend.One, Blend.One),
-		BlendMode.Multiply => ({
-			...base.withBlend(Blend.DestinationColor, Blend.OneMinusSourceAlpha),
-			blendAlphaSource: Blend.DestinationAlpha,
-		}),
-		BlendMode.Screen => ({
-			...base.withBlend(Blend.One, Blend.OneMinusSourceColor),
-			blendAlphaDestination: Blend.OneMinusSourceAlpha,
-		}),
-		BlendMode.None => base.withBlend(Blend.One, Blend.Zero),
-	};
+		.withDepth(false, Compare.Always)
+		.withBlendMode(mode);
+	if (straight.blendSource != Blend.SourceAlpha) { return straight; }
+	return { ...straight, blendSource: Blend.One };
 }
 
 function resolvePipelines(): void {
@@ -100,7 +90,7 @@ function resolvePipelines(): void {
 			programBase + program,
 			layoutBase + program,
 			false,
-			blendState(blend as BlendMode),
+			premultipliedBlend(blend as BlendMode),
 			target == 1 ? OFFSCREEN_LAYOUT : SWAPCHAIN_LAYOUT,
 		);
 		void2dSetPipeline(program, target, blend, pipeline);

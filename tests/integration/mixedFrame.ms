@@ -16,7 +16,7 @@ import {
 	drawCallCount,
 } from "../../src/void2d/draw";
 import { currentContext } from "../../src/void2d/displayList";
-import { BlendMode, vec2, rgba } from "../../src/void2d/types";
+import { vec2, rgba } from "../../src/void2d/types";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import {
 	Program,
@@ -26,7 +26,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 } from "../../src/void3d/gpu3d";
 import { endPass } from "../../src/gpu/door";
-import { RenderState } from "../../src/gpu/state";
+import { RenderState, BlendMode } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addBox } from "../../src/void3d/meshData";
 import { UniformError } from "../../src/void3d/uniformPool";

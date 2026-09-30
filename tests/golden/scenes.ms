@@ -45,12 +45,12 @@ import {
 	flipY,
 	setCenterRatio,
 	vec2,
-	BlendMode,
 	Smooth,
 	blurFilter,
 	glowFilter,
 	dropShadowFilter,
 } from "../../src/void2d/types";
+import { BlendMode } from "../../src/gpu/state";
 import { makeImage, makeView } from "../../src/sokol/gpu";
 import {
 	HARNESS_CLEAR_R,

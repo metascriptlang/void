@@ -8,7 +8,8 @@ import { renderTargetView } from "../sokol/gpu";
 import { drawImage, setEffect, beginTarget, endTarget } from "./draw";
 import { blurTargetPooled } from "./render";
 import { colorMatrixAlphaOnly } from "./effect";
-import { Color, BlendMode, tile, vec2, rgba } from "./types";
+import { Color, tile, vec2, rgba } from "./types";
+import { BlendMode } from "../gpu/state";
 
 const zeroColor: Color = rgba(0.0, 0.0, 0.0, 0.0);
 const white: Color = rgba(1.0, 1.0, 1.0, 1.0);

@@ -53,8 +53,9 @@ import {
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
-	Tile, rgba, tile, identity2d, emptyBounds, BlendMode, Smooth,
+	Tile, rgba, tile, identity2d, emptyBounds, Smooth,
 } from "../../src/void2d/types";
+import { BlendMode } from "../../src/gpu/state";
 import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";

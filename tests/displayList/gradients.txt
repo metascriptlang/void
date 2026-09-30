@@ -1,9 +1,9 @@
 commands 5 draws 5 vertices 30 uiInstances 0 spriteInstances 0
-cmd 0 draw break:first view:0 blend:0 sampler:2 effect:-1 rt:0 pipe:vertex verts:0+6 clip:0.00,0.00,0.00,0.00
-cmd 1 draw break:effect view:0 blend:0 sampler:2 effect:0 rt:0 pipe:vertex verts:6+6 clip:0.00,0.00,0.00,0.00
-cmd 2 draw break:effect view:0 blend:0 sampler:2 effect:1 rt:0 pipe:vertex verts:12+6 clip:0.00,0.00,0.00,0.00
-cmd 3 draw break:effect view:0 blend:0 sampler:2 effect:2 rt:0 pipe:vertex verts:18+6 clip:0.00,0.00,0.00,0.00
-cmd 4 draw break:effect view:0 blend:0 sampler:2 effect:3 rt:0 pipe:vertex verts:24+6 clip:0.00,0.00,0.00,0.00
+cmd 0 draw break:first view:0 blend:1 sampler:2 effect:-1 rt:0 pipe:vertex verts:0+6 clip:0.00,0.00,0.00,0.00
+cmd 1 draw break:effect view:0 blend:1 sampler:2 effect:0 rt:0 pipe:vertex verts:6+6 clip:0.00,0.00,0.00,0.00
+cmd 2 draw break:effect view:0 blend:1 sampler:2 effect:1 rt:0 pipe:vertex verts:12+6 clip:0.00,0.00,0.00,0.00
+cmd 3 draw break:effect view:0 blend:1 sampler:2 effect:2 rt:0 pipe:vertex verts:18+6 clip:0.00,0.00,0.00,0.00
+cmd 4 draw break:effect view:0 blend:1 sampler:2 effect:3 rt:0 pipe:vertex verts:24+6 clip:0.00,0.00,0.00,0.00
 fx 0 gradient:1 space:1 dither:1 middle:-1.00 params:0.00,0.00,0.00,0.00 c0:1.00,0.00,0.00,1.00 c1:0.00,0.00,1.00,0.80 c2:0.00,0.00,1.00,0.80
 fx 1 gradient:1 space:0 dither:1 middle:0.35 params:0.00,0.00,0.00,0.00 c0:0.00,0.00,0.00,1.00 c1:0.50,0.70,0.20,0.90 c2:1.00,1.00,1.00,0.70
 fx 2 gradient:3 space:0 dither:0 middle:-1.00 params:6.00,2.00,0.00,0.00 c0:0.10,0.10,0.10,1.00 c1:0.80,0.60,0.20,1.00 c2:0.80,0.60,0.20,1.00

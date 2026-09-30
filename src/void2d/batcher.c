@@ -14,7 +14,7 @@
 #include <math.h>
 #include "glyph.h"
 
-#define VOID2D_BLEND_COUNT 5
+#define VOID2D_BLEND_COUNT 12
 #define VOID2D_PROGRAM_COUNT 4
 
 // One growing vertex buffer for the whole frame, replacing both the fixed 65 536-vertex

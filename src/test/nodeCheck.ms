@@ -2,9 +2,10 @@ import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D } from "../void2d/node";
 import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
-	Tile, Transform2D, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter,
+	Tile, Transform2D, rgba, identity2d, emptyBounds, vec2, tile, noFilter, blurFilter,
 	glowFilter, dropShadowFilter, FilterKind,
 } from "../void2d/types";
+import { BlendMode } from "../gpu/state";
 import { approx } from "./helpers";
 import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
 

@@ -10,7 +10,8 @@ import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygo
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Align } from "../void2d/textLayout";
 import { add, present, tick } from "../void2d/scene";
-import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode, Smooth } from "../void2d/types";
+import { Tile, Vec2, rgba, tile, sub, flipX, vec2, Smooth } from "../void2d/types";
+import { BlendMode } from "../gpu/state";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
 let sc: Scene2D | null = null;

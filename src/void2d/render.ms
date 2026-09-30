@@ -119,7 +119,6 @@ import {
 	Bounds2D,
 	Filter,
 	FilterKind,
-	BlendMode,
 	Smooth,
 	vec2,
 	rgba,
@@ -128,6 +127,7 @@ import {
 	inverse2d,
 	emptyBounds,
 } from "./types";
+import { BlendMode } from "../gpu/state";
 import { colorMatrixAlphaOnly } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";

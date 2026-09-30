@@ -1,5 +1,5 @@
 commands 1 draws 1 vertices 0 uiInstances 7 spriteInstances 0
-cmd 0 draw break:first view:0 blend:0 sampler:2 effect:-1 rt:0 pipe:ui inst:0+7 clip:0.00,0.00,0.00,0.00
+cmd 0 draw break:first view:0 blend:1 sampler:2 effect:-1 rt:0 pipe:ui inst:0+7 clip:0.00,0.00,0.00,0.00
 u 0 mode 0 affine 1.00 0.00 0.00 1.00 at 8.00 6.00 size 64.00 40.00 uvr 6.00 6.00 6.00 6.00 border 2.00 2.00 2.00 2.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.20 0.40 0.60 0.80 edge 0.90 0.90 0.95 1.00
 u 1 mode 2 affine 1.00 0.00 0.00 1.00 at 17.00 18.00 size 10.00 12.00 tile 10.00 12.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.95 0.96 1.00 1.00 edge 0.00 0.00 0.00 0.00
 u 2 mode 2 affine 1.00 0.00 0.00 1.00 at 28.00 17.00 size 3.00 13.00 tile 3.00 13.00 border 0.00 0.00 0.00 0.00 params 0.00 0.00 0.00 0.00 0.00 0.00 0.00 fill 0.95 0.96 1.00 1.00 edge 0.00 0.00 0.00 0.00

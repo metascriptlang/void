@@ -5,7 +5,6 @@ import {
 	Transform2D,
 	Bounds2D,
 	Filter,
-	BlendMode,
 	Smooth,
 	Camera,
 	ScaleMode,
@@ -18,6 +17,7 @@ import {
 	noFilter,
 	emptyBounds,
 } from "./types";
+import { BlendMode } from "../gpu/state";
 import { sinf, cosf } from "../math/mat4";
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";

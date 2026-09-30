@@ -6,7 +6,8 @@ import {
 	setup2d, openBracket, startContext, finishRecording, fillQuad, flushTargets, end2d, begin2d,
 } from "../../src/void2d/draw";
 import { DrawContext2D, useContext, currentContext } from "../../src/void2d/displayList";
-import { rgba, vec2, BlendMode } from "../../src/void2d/types";
+import { rgba, vec2 } from "../../src/void2d/types";
+import { BlendMode } from "../../src/gpu/state";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";

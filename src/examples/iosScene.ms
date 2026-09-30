@@ -7,7 +7,8 @@ import { setup2d } from "../void2d/draw";
 import { NodeRef, Scene2D } from "../void2d/node";
 import { fillCircle, strokeLine, fillConvex } from "../void2d/graphics";
 import { add, present, tick } from "../void2d/scene";
-import { Vec2, rgba, vec2, BlendMode } from "../void2d/types";
+import { Vec2, rgba, vec2 } from "../void2d/types";
+import { BlendMode } from "../gpu/state";
 
 let sc: Scene2D | null = null;
 let panel: NodeRef | null = null;

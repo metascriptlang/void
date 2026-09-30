@@ -23,7 +23,8 @@
 // carries an index into it, or NO_EFFECT. The active rotated clip adds two projection
 // intervals; axis-aligned clips stay in the hardware scissor.
 
-import { Color, BlendMode, rgba } from "./types";
+import { Color, rgba } from "./types";
+import { BlendMode } from "../gpu/state";
 import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
 import {
@@ -133,7 +134,7 @@ export enum Program2D {
 }
 
 export const PROGRAMS_2D: int32 = (Program2D.Blur as int32) + 1;
-export const BLEND_MODES: int32 = (BlendMode.None as int32) + 1;
+export const BLEND_MODES: int32 = (BlendMode.Min as int32) + 1;
 export const PIPELINE_SLOTS: int32 = PROGRAMS_2D * 2 * BLEND_MODES;
 
 export function noPipelines(): Vec<boolean> {
