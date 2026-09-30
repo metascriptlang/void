@@ -93,21 +93,41 @@ _Static_assert(DOOR_UNIFORM_SLOT_TABLE_LENGTH == SG_MAX_UNIFORMBLOCK_BINDSLOTS,
 
 // ---- the registries ----
 
-static sg_vertex_layout_state g_layouts[DOOR_LAYOUT_REGISTRY_LIMIT];
+static sg_vertex_layout_state *g_layouts = NULL;
 static int32_t g_layoutCount = 0;
+static int32_t g_layoutCapacity = 0;
 
-static struct {
+typedef struct {
 	door_shader_fn shader;
 	int32_t layout;
-} g_programs[DOOR_PROGRAM_REGISTRY_LIMIT];
-static int32_t g_programCount = 0;
+} DoorProgram;
 
-// A full registry is a build-shape change (pipeline.ms keys on four program bits and three
-// layout bits), so it refuses here rather than handing out an id the key cannot hold.
-static void refused(const char *what, int32_t limit) {
-	fprintf(stderr, "gpu door: the %s registry is full (%d); a wider pipeline key is a design change\n",
-		what, limit);
-	abort();
+static DoorProgram *g_programs = NULL;
+static int32_t g_programCount = 0;
+static int32_t g_programCapacity = 0;
+
+static void *grownRegistry(void *entries, int32_t *capacity, int32_t count, int32_t more,
+	size_t entrySize, const char *what) {
+	if (more > INT32_MAX - count) {
+		fprintf(stderr, "gpu door: %d more %s ids overflow int32 after %d registered\n",
+			more, what, count);
+		abort();
+	}
+	const int32_t need = count + more;
+	if (need <= *capacity) return entries;
+	int64_t grown = *capacity > 0 ? (int64_t)*capacity * 2 : 16;
+	if (grown < need) grown = need;
+	if (grown > INT32_MAX) grown = INT32_MAX;
+	void *moved = (uint64_t)grown > SIZE_MAX / entrySize
+		? NULL
+		: realloc(entries, (size_t)grown * entrySize);
+	if (moved == NULL) {
+		fprintf(stderr, "gpu door: out of memory registering %d more %s ids after %d\n",
+			more, what, count);
+		abort();
+	}
+	*capacity = (int32_t)grown;
+	return moved;
 }
 
 int32_t doorRegisterLayouts(const sg_vertex_layout_state *layouts, int32_t count) {
@@ -115,9 +135,8 @@ int32_t doorRegisterLayouts(const sg_vertex_layout_state *layouts, int32_t count
 		fprintf(stderr, "gpu door: registerLayouts count is negative\n");
 		abort();
 	}
-	if (count > DOOR_LAYOUT_REGISTRY_LIMIT - g_layoutCount) {
-		refused("vertex layout", DOOR_LAYOUT_REGISTRY_LIMIT);
-	}
+	g_layouts = grownRegistry(g_layouts, &g_layoutCapacity, g_layoutCount, count,
+		sizeof(sg_vertex_layout_state), "vertex layout");
 	const int32_t base = g_layoutCount;
 	for (int32_t i = 0; i < count; i++) {
 		g_layouts[base + i] = layouts[i];
@@ -131,9 +150,8 @@ int32_t doorRegisterPrograms(const door_shader_fn *shaders, const int32_t *layou
 		fprintf(stderr, "gpu door: registerPrograms count is negative\n");
 		abort();
 	}
-	if (count > DOOR_PROGRAM_REGISTRY_LIMIT - g_programCount) {
-		refused("program", DOOR_PROGRAM_REGISTRY_LIMIT);
-	}
+	g_programs = grownRegistry(g_programs, &g_programCapacity, g_programCount, count,
+		sizeof(DoorProgram), "program");
 	const int32_t base = g_programCount;
 	for (int32_t i = 0; i < count; i++) {
 		g_programs[base + i].shader = shaders[i];

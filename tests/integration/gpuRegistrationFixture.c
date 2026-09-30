@@ -9,18 +9,18 @@ static sg_buffer vertices;
 
 int32_t fixtureProgram(void) {
 	if (program >= 0) return program;
-	sg_vertex_layout_state layouts[3] = {0};
-	for (int i = 0; i < 3; i++) {
+	sg_vertex_layout_state layouts[4] = {0};
+	for (int i = 0; i < 4; i++) {
 		layouts[i].attrs[ATTR_gpuCopy_position].format = SG_VERTEXFORMAT_FLOAT2;
 	}
-	layout = doorRegisterLayouts(layouts, 3) + 2;
-	door_shader_fn shaders[5];
-	int32_t programLayouts[5];
-	for (int i = 0; i < 5; i++) {
+	layout = doorRegisterLayouts(layouts, 4) + 3;
+	door_shader_fn shaders[6];
+	int32_t programLayouts[6];
+	for (int i = 0; i < 6; i++) {
 		shaders[i] = gpuCopy_shader_desc;
 		programLayouts[i] = layout;
 	}
-	program = doorRegisterPrograms(shaders, programLayouts, 5) + 4;
+	program = doorRegisterPrograms(shaders, programLayouts, 6) + 5;
 	return program;
 }
 

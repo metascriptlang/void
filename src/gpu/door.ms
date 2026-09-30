@@ -31,8 +31,6 @@ import {
 	doorLiveViews,
 	doorLiveSamplers,
 	DOOR_MAX_COLOR_ATTACHMENTS,
-	DOOR_MAX_PROGRAMS,
-	DOOR_MAX_LAYOUTS,
 	DOOR_UNIFORM_SLOTS,
 } from "./door.h";
 
@@ -66,8 +64,6 @@ export enum PassState {
 
 export const UNIFORM_SLOTS: int32 = DOOR_UNIFORM_SLOTS;
 export const MAX_COLOR_ATTACHMENTS: int32 = DOOR_MAX_COLOR_ATTACHMENTS;
-export const MAX_PROGRAMS: int32 = DOOR_MAX_PROGRAMS;
-export const MAX_LAYOUTS: int32 = DOOR_MAX_LAYOUTS;
 
 // A registered program, by id: what a PipelineKey holds and materials name through their
 // layer's own enum.

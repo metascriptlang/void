@@ -1583,7 +1583,7 @@ run_compose() {
 		VOID_GPU_REGISTRATION=$order out/tmp/mixedFrame.exe \
 			> "$WORK/registration-$order.log" 2>&1 || status=$?
 		if [ "$status" -eq 0 ] && grep -q '^PASS mixed frame:' "$WORK/registration-$order.log"; then
-			pass "registration: order $order, foreign shader draws the same lit frame at the registry limits"
+			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
 		else
 			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log"
 		fi

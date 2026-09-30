@@ -44,13 +44,6 @@ static const int32_t DOOR_PASS_LENGTH = 10;
 static const int32_t DOOR_PASS_CLEAR_DEPTH = 16;
 static const int32_t DOOR_PASS_CLEAR_LENGTH = 17;
 
-// The registries' whole width, the pipeline key's (pipeline.ms). DOOR_MAX_PROGRAMS is also
-// what the pipeline cache sizes its shader table by.
-#define DOOR_PROGRAM_REGISTRY_LIMIT 16
-#define DOOR_LAYOUT_REGISTRY_LIMIT 8
-static const int32_t DOOR_MAX_PROGRAMS = DOOR_PROGRAM_REGISTRY_LIMIT;
-static const int32_t DOOR_MAX_LAYOUTS = DOOR_LAYOUT_REGISTRY_LIMIT;
-
 // Which pass the door has open, read by MetaScript to stop misuse naming the call.
 enum {
 	DOOR_PASS_NONE = 0,
