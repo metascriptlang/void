@@ -179,7 +179,6 @@ export function addGltfAssets(
 	return Result.ok(assets);
 }
 
-// Gives back the loader's hold on each asset (M17): the nodes addGltfNodes made keep theirs.
 export function releaseGltfAssets(
 	ref context: DrawContext,
 	assets: GltfAssets,
