@@ -71,6 +71,8 @@ export enum ChurnError {
 	UniformsRefused,
 	MaterialRefused,
 	NodeRefused,
+	ModelRefused,
+	ReleaseRefused,
 	FirstWriteRefused,
 	SecondWriteTaken,
 	FrameRefused,
@@ -197,7 +199,10 @@ function churnErrorOf(error: GltfSceneError): ChurnError {
 		GltfSceneError.MeshRefused => ChurnError.MeshRefused,
 		GltfSceneError.UniformsFull => ChurnError.UniformsRefused,
 		GltfSceneError.MaterialRefused => ChurnError.MaterialRefused,
-		_ => ChurnError.NodeRefused,
+		GltfSceneError.SceneRefused => ChurnError.NodeRefused,
+		GltfSceneError.InvalidData => ChurnError.ModelRefused,
+		GltfSceneError.BadMeshBinding => ChurnError.ModelRefused,
+		GltfSceneError.BadSetup => ChurnError.ModelRefused,
 	};
 }
 
@@ -210,7 +215,7 @@ function loadModel(level: NodeId3D): Result<int32, ChurnError> {
 	if (!added.ok) { return Result.err(churnErrorOf(added.error)); }
 	if (releasing) {
 		const released: Result<void, HandleError> = releaseGltfAssets(context, assets.value);
-		if (!released.ok) { return Result.err(ChurnError.NodeRefused); }
+		if (!released.ok) { return Result.err(ChurnError.ReleaseRefused); }
 	}
 	return Result.ok(added.value);
 }
