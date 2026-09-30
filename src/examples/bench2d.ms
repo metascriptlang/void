@@ -9,8 +9,10 @@ import { DEFAULT_FONT } from "../void2d/font";
 // fail a commit, because this is a shared developer box.
 
 import { gfxSetup, makeImage, makeView } from "../sokol/gpu";
+import { BlendMode } from "../gpu/state";
 import {
 	setup2d,
+	preparePipelines,
 	drawCallCount,
 	buffersAlive,
 	uploadCount,
@@ -117,6 +119,8 @@ let warmupFrames: int32 = WARMUP_FRAMES;
 export function benchInit(kind: BenchKind): void {
 	gfxSetup();
 	setup2d();
+	const prepared: Vec<BlendMode> = [BlendMode.Alpha];
+	preparePipelines(prepared);
 	const s = Scene2D.create(rgba(0.08, 0.09, 0.11, 1.0));
 	if (kind === BenchKind.Ui) {
 		benchName = "ui";

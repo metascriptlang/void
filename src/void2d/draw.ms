@@ -47,10 +47,11 @@ import {
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
 	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted, noPipelines,
+	pipelineSlot, wantPipelineSlot,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
-import { PassState, PixelFormat, passState, frameIndex } from "../gpu/door";
-import { PipelineCache, pipelineFor } from "../gpu/pipeline";
+import { PassState, PixelFormat, passState, frameIndex, contextGeneration } from "../gpu/door";
+import { PipelineCache, pipelineFor, forgetPipelines } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
 
@@ -87,6 +88,12 @@ export function premultipliedBlend(mode: BlendMode): RenderState {
 }
 
 function resolvePipelines(): void {
+	const generation: int32 = contextGeneration();
+	if (generation != pipelines.generation) {
+		forgetPipelines(pipelines);
+		pipelines.generation = generation;
+		for (let slot: int32 = 0; slot < PIPELINE_SLOTS; slot++) { resolvedPipelines[slot] = false; }
+	}
 	for (let slot: int32 = 0; slot < PIPELINE_SLOTS; slot++) {
 		if (resolvedPipelines[slot] || !pipelineWanted(slot)) { continue; }
 		const blend: int32 = slot % BLEND_MODES;
@@ -106,6 +113,17 @@ function resolvePipelines(): void {
 }
 
 
+
+export function preparePipelines(modes: Span<BlendMode>): void {
+	for (const mode of modes) {
+		for (let program: int32 = 0; program < (Program2D.Blur as int32); program++) {
+			wantPipelineSlot(pipelineSlot(program, 0, mode as int32));
+			wantPipelineSlot(pipelineSlot(program, 1, mode as int32));
+		}
+	}
+	wantPipelineSlot(pipelineSlot(Program2D.Blur as int32, 1, BlendMode.None as int32));
+	resolvePipelines();
+}
 
 function pushVertex(
 	x: float32, y: float32, u: float32, v: float32,

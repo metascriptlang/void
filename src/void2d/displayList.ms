@@ -151,6 +151,8 @@ export function pipelineSlot(program: int32, target: int32, blend: int32): int32
 
 export function pipelineWanted(slot: int32): boolean { return wantedPipelines[slot]; }
 
+export function wantPipelineSlot(slot: int32): void { wantedPipelines[slot] = true; }
+
 function wantPipeline(program: Program2D, blend: BlendMode): void {
 	const target: int32 = activeContext.renderTargetScale != 0.0 ? 1 : 0;
 	wantedPipelines[pipelineSlot(program as int32, target, blend as int32)] = true;

@@ -2,10 +2,14 @@
 // methods (rect/sprite/label, .at, .addChild), then s.present() each frame (owns the pass).
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
-import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
+import {
+	gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, KEY_W, KEY_A, KEY_S, KEY_D,
+} from "../sokol/gpu";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat } from "../gpu/door";
-import { setup2d, begin2d, flushTargets, beginTarget, endTarget, drawRect, drawImage } from "../void2d/draw";
+import {
+	setup2d, preparePipelines, begin2d, flushTargets, beginTarget, endTarget, drawRect, drawImage,
+} from "../void2d/draw";
 import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
 import { NodeRef, Scene2D } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
@@ -35,6 +39,8 @@ let rtShadow: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 export function init2d(): void {
 	gfxSetup();
 	setup2d();
+	const prepared: Vec<BlendMode> = [BlendMode.Alpha, BlendMode.Add, BlendMode.None];
+	preparePipelines(prepared);
 	const sceneObj = Scene2D.create(rgba(0.08, 0.09, 0.12, 1.0));
 
 	const img = loadImageSync("assets/test.png", 4);
