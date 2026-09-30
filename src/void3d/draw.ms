@@ -812,8 +812,8 @@ export function samplerSlot(filter: FilterMode, wrap: Wrap): int32 {
 	return row + column;
 }
 
-// Heaps' DirectXDriver makes one sampler state per setting and shares it (`samplerStates`); a
-// context's are made on first use and dropped with the GPU context that made them.
+// Heaps' DirectXDriver shares one sampler state per setting (`samplerStates`), as PipelineCache
+// shares a pipeline per key, and like it the cache belongs to one GPU context.
 function samplerFor(ref context: DrawContext, filter: FilterMode, wrap: Wrap): uint32 {
 	let generation: int32 = contextGeneration();
 	if (context.samplerGeneration != generation) {
@@ -869,8 +869,8 @@ function freeTexture(ref context: DrawContext, index: int32): void {
 	vacate(context.textureSlots, index);
 }
 
-// Takes a copy of `data` and makes its image, view and sampler; the caller holds the texture
-// once. A refused upload frees the slot, as addMeshData does.
+// Takes a copy of `data` (CODE-STYLE §5); the caller holds the texture once. A refused upload
+// frees the slot, as addMeshData does.
 export function addTexture(
 	ref context: DrawContext,
 	data: TextureData,

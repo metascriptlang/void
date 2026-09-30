@@ -71,6 +71,7 @@ void main() {
 @end
 
 @fs litTexturedFs
+// PENDING3D: material-saturation-only
 @include_block materialUniforms
 @include_block lightUniforms
 @include_block pointLight
