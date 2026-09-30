@@ -174,3 +174,19 @@ test "the forward preset passes a replaced texture on by name" {
 	assert !refused.ok && refused.error == ForwardError.TextureReplaced;
 	assert forward.core.generation == 0 && forward.colorTarget.image == 0;
 }
+
+test "a material names a texture only on a program that samples one at slot 0" {
+	let context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
+	let lit: Material = {
+		...texturedLit(context),
+		program: Program.Lit,
+		texture: FIRST_SLOT,
+	};
+	assert materialError(addMaterial(context, lit)) == MaterialError.TextureNotSampled;
+	let particle: Material = {
+		...Material.plain(Program.Particle, RenderState.defaults(), Phase.Opaque),
+		texture: FIRST_SLOT,
+	};
+	assert materialError(addMaterial(context, particle)) == MaterialError.TextureNotSampled;
+	assert context.liveMaterials() == 0;
+}
