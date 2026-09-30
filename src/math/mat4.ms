@@ -1,39 +1,10 @@
-// Void Math — Mat4 wrapper for C bridge
+// Void Math — C float32 math for MetaScript
 
 import {
-	void_math_set_perspective,
-	void_math_set_look_at,
-	void_math_set_rotate_y,
-	void_math_multiply_mvp,
-	void_math_get_mvp,
 	void_math_sinf,
 	void_math_cosf,
 	void_math_sqrtf
 } from "./mat4.h";
-
-export function setPerspective(fovY: float32, aspect: float32, nearZ: float32, farZ: float32): void {
-	void_math_set_perspective(fovY, aspect, nearZ, farZ);
-}
-
-export function setLookAt(
-	eyeX: float32, eyeY: float32, eyeZ: float32,
-	targetX: float32, targetY: float32, targetZ: float32,
-	upX: float32, upY: float32, upZ: float32
-): void {
-	void_math_set_look_at(eyeX, eyeY, eyeZ, targetX, targetY, targetZ, upX, upY, upZ);
-}
-
-export function setRotateY(angle: float32): void {
-	void_math_set_rotate_y(angle);
-}
-
-export function multiplyMVP(): void {
-	void_math_multiply_mvp();
-}
-
-export function getMVP(): Ptr<void> {
-	return void_math_get_mvp();
-}
 
 export function sinf(x: float32): float32 {
 	return void_math_sinf(x);
