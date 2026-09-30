@@ -5,10 +5,11 @@ by zlib and the container is packed by struct, so the decoder is checked against
 reading of the same specification.
 
 Nodes, left to right on the x axis, all facing the camera at +z:
-  factorQuad   untextured, COLOR_0 (1, 0.5, 0.5) times baseColorFactor (0.5, 0.5, 1, 1)
-  cube         the 2x2 texture (red, green / blue, yellow) on every face, nearest, clamp
-  doubleQuad   doubleSided, turned half a turn about y: the camera sees its back
-  singleQuad   the same, single-sided: its back is culled
+  factorQuad          untextured, COLOR_0 (1, 0.5, 0.5) times baseColorFactor (0.5, 0.5, 1, 1)
+  cube                the 2x2 texture (red, green / blue, yellow) on every face, nearest, clamp
+  doubleQuad          doubleSided, turned half a turn about y: the camera sees its back
+  doubleTexturedQuad  the same with the texture, seen mirrored from behind
+  singleQuad          untextured and single-sided, turned the same way: its back is culled
 
 Run: python tests/fixtures/gltf/makeTexturedGlb.py
 """
@@ -69,8 +70,8 @@ def cube():
 
 
 def quad():
-    corners, _ = face((0, 0, 1), (0, 1, 0))
-    return corners, [(0, 0, 1)] * 4, [0, 1, 2, 0, 2, 3]
+    corners, uvs = face((0, 0, 1), (0, 1, 0))
+    return corners, [(0, 0, 1)] * 4, uvs, [0, 1, 2, 0, 2, 3]
 
 
 class Buffer:
@@ -114,9 +115,10 @@ def main():
         "NORMAL": buffer.floats(normals, "VEC3"),
         "TEXCOORD_0": buffer.floats(uvs, "VEC2")},
         "indices": buffer.indices(indices), "material": 0}]}
-    quad_positions, quad_normals, quad_indices = quad()
+    quad_positions, quad_normals, quad_uvs, quad_indices = quad()
     quad_attributes = {"POSITION": buffer.floats(quad_positions, "VEC3"),
                        "NORMAL": buffer.floats(quad_normals, "VEC3")}
+    textured_quad = dict(quad_attributes, TEXCOORD_0=buffer.floats(quad_uvs, "VEC2"))
     quad_index = buffer.indices(quad_indices)
     tinted = dict(quad_attributes, COLOR_0=buffer.floats([(1.0, 0.5, 0.5)] * 4, "VEC3"))
     texture = png_rgba(2, 2, [[255, 0, 0, 255, 0, 255, 0, 255],
@@ -128,18 +130,21 @@ def main():
     document = {
         "asset": {"version": "2.0", "generator": "tests/fixtures/gltf/makeTexturedGlb.py"},
         "scene": 0,
-        "scenes": [{"nodes": [0, 1, 2, 3]}],
+        "scenes": [{"nodes": [0, 1, 2, 3, 4]}],
         "nodes": [
-            {"name": "factorQuad", "mesh": 1, "translation": [-2.4, 0.0, 0.0]},
-            {"name": "cube", "mesh": 0, "translation": [-0.6, 0.0, 0.0]},
-            {"name": "doubleQuad", "mesh": 2, "translation": [1.2, 0.0, 0.0], "rotation": turned},
-            {"name": "singleQuad", "mesh": 3, "translation": [2.8, 0.0, 0.0], "rotation": turned},
+            {"name": "factorQuad", "mesh": 1, "translation": [-3.2, 0.0, 0.0]},
+            {"name": "cube", "mesh": 0, "translation": [-1.4, 0.0, 0.0]},
+            {"name": "doubleQuad", "mesh": 2, "translation": [0.4, 0.0, 0.0], "rotation": turned},
+            {"name": "doubleTexturedQuad", "mesh": 4, "translation": [2.0, 0.0, 0.0],
+             "rotation": turned},
+            {"name": "singleQuad", "mesh": 3, "translation": [3.6, 0.0, 0.0], "rotation": turned},
         ],
         "meshes": [
             cube_mesh,
             {"primitives": [{"attributes": tinted, "indices": quad_index, "material": 1}]},
             {"primitives": [{"attributes": quad_attributes, "indices": quad_index, "material": 2}]},
             {"primitives": [{"attributes": quad_attributes, "indices": quad_index, "material": 3}]},
+            {"primitives": [{"attributes": textured_quad, "indices": quad_index, "material": 4}]},
         ],
         "materials": [
             {"name": "texel", "pbrMetallicRoughness": {"baseColorTexture": {"index": 0},
@@ -149,6 +154,8 @@ def main():
             {"name": "double", "doubleSided": True,
              "pbrMetallicRoughness": {"metallicFactor": 0.0}},
             {"name": "single", "pbrMetallicRoughness": {"metallicFactor": 0.0}},
+            {"name": "doubleTexel", "doubleSided": True,
+             "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}, "metallicFactor": 0.0}},
         ],
         "textures": [{"source": 0, "sampler": 0}],
         "samplers": [{"magFilter": 9728, "minFilter": 9728, "wrapS": 33071, "wrapT": 33071}],
