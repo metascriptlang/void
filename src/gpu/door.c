@@ -387,3 +387,15 @@ uint32_t doorFrameIndex(void) {
 int32_t doorLiveBuffers(void) {
 	return (int32_t)sg_query_stats().total.buffers.alive;
 }
+
+int32_t doorLiveImages(void) {
+	return (int32_t)sg_query_stats().total.images.alive;
+}
+
+int32_t doorLiveViews(void) {
+	return (int32_t)sg_query_stats().total.views.alive;
+}
+
+int32_t doorLiveSamplers(void) {
+	return (int32_t)sg_query_stats().total.samplers.alive;
+}

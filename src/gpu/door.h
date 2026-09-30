@@ -117,7 +117,10 @@ int32_t doorDepthZeroToOne(void);
 int32_t doorContextGeneration(void);
 // sokol's index of the frame being recorded, the one its update-once-per-frame rule counts in.
 uint32_t doorFrameIndex(void);
-// How many buffers sokol's pool holds alive, whoever made them.
+// How many buffers, images, views and samplers sokol's pools hold alive, whoever made them.
 int32_t doorLiveBuffers(void);
+int32_t doorLiveImages(void);
+int32_t doorLiveViews(void);
+int32_t doorLiveSamplers(void);
 
 #endif

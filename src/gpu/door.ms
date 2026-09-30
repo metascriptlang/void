@@ -27,6 +27,9 @@ import {
 	doorContextGeneration,
 	doorFrameIndex,
 	doorLiveBuffers,
+	doorLiveImages,
+	doorLiveViews,
+	doorLiveSamplers,
 	DOOR_MAX_COLOR_ATTACHMENTS,
 	DOOR_MAX_PROGRAMS,
 	DOOR_MAX_LAYOUTS,
@@ -189,4 +192,16 @@ export function frameIndex(): uint32 {
 
 export function liveBuffers(): int32 {
 	return doorLiveBuffers();
+}
+
+export function liveImages(): int32 {
+	return doorLiveImages();
+}
+
+export function liveViews(): int32 {
+	return doorLiveViews();
+}
+
+export function liveSamplers(): int32 {
+	return doorLiveSamplers();
 }
