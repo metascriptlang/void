@@ -1550,3 +1550,95 @@ the reasons for what was kept. Its remaining points, all taken:
 - glTF `TEXCOORD_0` and images, image-file decoding, mipmaps, sRGB, `killAlpha`.
 - The pixel-art preset under a perspective camera.
 - Deleting the spike, the human's call.
+
+## M23 — textured content from files
+
+**Design verdict: SEND BACK on one defect, taken; the re-review, SHIP WITH FOLLOW-UPS, its last points taken.** The
+owning session ran the defect pass, verified each of its candidates against the code and the
+pinned references, and ran every control. A fresh principal-engineer reviewer read the diff, the
+Heaps source at `b9aa6dcb` and Bevy at `157e1ce6`, the gate logs and the captured frames, and
+measured its blocking finding with a modified fixture; its findings were checked in the session
+before anything was changed.
+
+### Defect pass
+
+`/code-review high` on `0d222dd..6d67b8b`: ten candidates, each read against the code.
+
+| Finding | Done |
+|---|---|
+| Churn named a failed release and bad model data `NodeRefused` | `ReleaseRefused` and `ModelRefused`, the match exhaustive (`de4efae`) |
+| A comment named a milestone | Removed (`0db8c72`) |
+| The gate's prose counted "twenty-two" capture entries, wrong once M23 added three | No count (`f0d5cf0`) |
+| `gltf_parked` built the entry twice | Moot: the park came out with the sync (`5c18ed2`) |
+| `facingNormal` under a mirrored node | Not a loader case: a non-positive scale product and `matrix` are refused (`gltf.ms:463-465`, `:409`); scene-API mirroring behaves as Heaps' `FlipBackFaceNormal`, written down |
+| The generator does not pad the BIN chunk | It does, after the PNG (`makeTexturedGlb.py:127-128`) |
+| A single-sided material takes the setup's culling verbatim | The setup is Heaps' `MaterialSetup` pass, by the row |
+| `releaseGltfAssets` stops at the first stale handle | Kept: fail loud; the rollback's handles are the call's own |
+| Two textures on one image decode twice | Bevy's `load_image` does the same; written down |
+| No decode memory budget beyond 16384 per side | Neither reference has one (Bevy's loader calls `no_limits()`, `bevy_image/src/image.rs:1632`); written down |
+| An OPAQUE texel's alpha reaches the target | Recorded, with the claim that nothing reads it: **wrong**, see the design pass |
+
+Found by the adopt run, not the pass: `GATE_ADOPT=1` reported the M23 hashes recorded and wrote
+none, since `record_hash` rebuilds the manifest from `baseline_names`, which did not list them.
+Listed, and an unlisted key now fails its capture (`7e95e01`); control: an unlisted key on a copy
+of the manifest fails and leaves it unchanged.
+
+### Fresh design pass
+
+SEND BACK on one finding. Frame loop allocation-free (no function added to the frame path, the
+scan unchanged and passing), no new kind of GPU resource, no Hibernal leak, the asBytes card
+parked and unparked correctly, the readback run for real (the reviewer re-ran the pixel-art
+entry fresh against the adopted hashes).
+
+| Finding | Done |
+|---|---|
+| **Blocking:** the pixel-art post pass scales both outline terms by the colour target's alpha (`pixelArt3d.glsl:242-243`), the outline is on by default, and an OPAQUE texel's alpha reached it. Measured by the reviewer: a fixture texel at alpha 0 changes 376, 188 and 334 pixels of frames 1, 6 and 11 in an outlined orthographic configuration, the cube's silhouette unoutlined. The headless test pinned the violation | Texels load with alpha 255 (`27eab5a`), exact while only OPAQUE is accepted; the tests assert it; control: the texel alpha kept fails both tests. The as-built says why, and that the alpha moves to the program, as Bevy's `alpha_discard`, when MASK or BLEND arrive |
+| Factor and `COLOR_0` are linear in glTF and drawn as stored | Written into Still missing with the fixture's (128, 64, 128) against about (188, 137, 188), and Bevy's `linear_rgba` |
+| Materials are shared per glTF material, while `makeMaterial` deep-copies per object and the doc said "as `makeMaterial` does" | Kept and argued: Bevy's loader shares one handle per material label and void3d's nodes share materials by id (M17); a per-node look is a per-node material |
+| The decode cap is D3D11's; GLES3 guarantees 2048 and `addTexture` never checks the device limit | Still missing, with sokol's limit read and its size validation |
+| An absent `magFilter` takes the min filter's base | Written down beside Bevy's default |
+| The setup's own double-sided value was overwritten silently | `BadSetup` (`0a68cd3`); control: the check removed fails the setup test |
+| The decoder's output pointer was `const` and cast | `uint32_t *` (`166ce7b`) |
+| Four typed-local error helpers, needed by nothing on msc `5791eadd` | Removed, `accessorError` included (`4e3a31e`); whether msc `35601908` needed them cannot be checked, that binary is gone |
+| An if-chain over the two mime literals | A `match` (`4e3a31e`) |
+| Provenance comments belong in the doc | Kept: they name the external authority the port follows, the idiom of the void3d sources |
+
+### Re-review of the send-back
+
+SHIP WITH FOLLOW-UPS, nothing blocking. It rebuilt the new head and reran its measurement: with
+the fixture's texel at alpha 0 and at 255, frames 1, 6, 11 and 16 differ by 0 pixels, and the
+outline is still drawn (94 outlined-red pixels in frame 1). It accepted holding the property
+headless, since no texel below 255 reaches the GPU from glTF, and read Bevy's material labels
+itself. Its remaining points:
+
+| Finding | Done |
+|---|---|
+| Two sampler refusals over 100 columns after the helpers went, which the style stage would fail | Wrapped (`114266a`) |
+| The context paragraph's last sentences had landed inside the sharing sub-bullet | Moved back (`4916e23`) |
+| `let pixels = decoded.value.pixels` copies the image once more at load (CODE-STYLE §5) | The texels are written through a `Span` view of the decoded words (`114266a`); the alpha tests still pass, so the view writes through |
+| Carried: the colour-space decision, `addTexture` against the device limit, alpha moving to the program with MASK and BLEND | In "Still missing after M23" |
+
+### Final acceptance
+
+`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on the reviewed code
+(`4916e23`, clean tree): **GATE GREEN with 1 skipped stage** (`device`).
+
+- **1037/1037 tests**, +15 on M22; **35 abort programs**, unchanged.
+- **24 configurations / 96 frames match 72 hashes**: the 64 earlier hashes untouched; the eight
+  `m23gltf*` hashes adopted in their own commit (`88c868e`). The pixel-art frames 1, 11 and 16
+  equal the forward ones; the rebuild configuration matches the forward hashes.
+- The `gltf` stage: the fixture read from disk, texels, factor colour, both sides lit, culling,
+  rollback, release and a rebuild, both presets. Five consumer controls and the headless ones
+  fail where they should.
+- `gltf-cpu` links no sokol; allocation scan clean; churn flat at 10 buffers, 4 images and 2
+  samplers over 310 frames with a glTF model loaded and released every frame; the control runs
+  out of sokol's pools after 14 frames.
+- **75 oracle agreements / 11 declared divergences**, **26 PENDING3D rows**.
+- **Android arm64 3,469,312 bytes**. No GLES3/device run and no real context loss.
+
+### Scope still separate
+
+- GLES3/device, a real context loss, and the device's texture size limit.
+- Colour spaces for texels, factors and `COLOR_0`; alpha as a material's (MASK, BLEND).
+- Images by URI, `KHR_texture_transform`, normal, occlusion and emissive maps, mipmaps.
+- A real Blender export (`gltf-real-export-not-exercised`).
