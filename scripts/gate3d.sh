@@ -217,6 +217,10 @@ write_textured_entry() {
 	write_frame_entry "$1" "$2" texturedFrame initTextured frameTextured configureTextured
 }
 
+write_gltf_entry() {
+	write_frame_entry "$1" "$2" gltfFrame initGltf frameGltf configureGltf
+}
+
 prepare_entries() {
 	write_entry campfireCapture "" \
 		"configureCampfire(PixelArtSettings.full(), false);"
@@ -283,6 +287,9 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_textured_entry texturedPixelArtCapture "configureTextured(true, false, -1);"
 	write_textured_entry texturedOutlineCapture "configureTextured(true, true, -1);"
 	write_textured_entry texturedRebuildCapture "configureTextured(false, false, 3);"
+	write_gltf_entry gltfCapture "configureGltf(false, -1);"
+	write_gltf_entry gltfPixelArtCapture "configureGltf(true, -1);"
+	write_gltf_entry gltfRebuildCapture "configureGltf(false, 3);"
 	note "prepare: twenty-two capture entries written to $CAPTURE"
 }
 
@@ -961,7 +968,7 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/assets/image.ms src/test/imageBytes.ms src/test/imageDecodeCheck.ms
 	src/test/gltfMaterialCheck.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/integration/texturedFrame.ms
-	tests/integration/perspectiveFrame.ms
+	tests/integration/perspectiveFrame.ms tests/integration/gltfFrame.ms
 	tests/integration/gpuRegistrationFixture.ms tests/aborts3d"
 
 run_style() {
@@ -1667,6 +1674,53 @@ run_textured() {
 	pass "textured: uv orientation, exact texels, texel times light, outline, texture lifetime and a context rebuild, both presets"
 }
 
+gltf_checked() {
+	log=$WORK/$1.run.log
+	grep -q '^PASS gltf frame: texels, factor, both sides, culling, rollback, release$' "$log" &&
+		[ "$(grep -c '^gltf frame: frame [0-9]* checked$' "$log")" = "4" ]
+}
+
+# The M23 consumer reads its fixture from disk into loadGlb through `asBytes()`, which msc
+# 35601908 miscompiles (compiler card 2026-09-30-asbytes-to-span-fails-in-clang.md). A build that
+# fails with exactly that clang error and no other is the parked state, a loud skip; any other
+# failure is a failure.
+gltf_parked() {
+	log=$WORK/gltfCapture.build.log
+	rm -f out/debug/gltfCapture.exe
+	if msc build "$CAPTURE/gltfCapture.ms" > "$log" 2>&1; then
+		return 1
+	fi
+	clean=$(sed 's/\[[0-9;]*m//g' "$log")
+	echo "$clean" | grep -q "gltfFrame.ms:[0-9]*:[0-9]*: error: assigning to 'msUint8Array' from incompatible type 'msUint8Array \*'" &&
+		[ "$(echo "$clean" | grep -c ' error: ')" = "1" ] &&
+		echo "$clean" | grep -q '^1 warning and 1 error generated\.$\|^1 error generated\.$'
+}
+
+run_gltf() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "gltf: GATE_SKIP_CAPTURE=1 — the glTF fixture was not drawn"
+		return
+	fi
+	if gltf_parked; then
+		skip "gltf: parked on compiler card 2026-09-30-asbytes-to-span-fails-in-clang.md (asBytes into a Span fails in clang); the consumer builds up to that error"
+		return
+	fi
+	for entry in gltfCapture gltfPixelArtCapture gltfRebuildCapture; do
+		rm -f "$WORK/$entry.run.log"
+	done
+	run_capture gltfCapture m23gltf "glTF fixture from disk, forward preset"
+	run_capture gltfPixelArtCapture m23gltfpixelart "glTF fixture from disk, pixel-art, postPass off"
+	run_capture gltfRebuildCapture m23gltf "glTF fixture, every mesh and texture rebuilt"
+	for entry in gltfCapture gltfPixelArtCapture gltfRebuildCapture; do
+		if ! gltf_checked "$entry"; then
+			fail "gltf: $entry did not finish its readback checks"
+			grep '^FAIL' "$WORK/$entry.run.log" | head -3 | sed 's/^/         /'
+			return
+		fi
+	done
+	pass "gltf: texels, factor colour, both sides lit, culling, rollback, release and a rebuild, both presets"
+}
+
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
@@ -1799,6 +1853,7 @@ run_captures
 run_compose
 run_perspective
 run_textured
+run_gltf
 run_both_layers
 run_aborts
 run_manifest
