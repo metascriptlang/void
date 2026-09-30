@@ -467,8 +467,8 @@ function drawScene(
 	endPass();
 }
 
-// prepareFrame refused the frame before any pass if either screen material or the screen mesh
-// were gone.
+// prepareFrame refused the frame before any pass if either screen material, its texture or the
+// screen mesh were gone.
 function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
 	beginPass(renderer.postColors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
@@ -482,7 +482,7 @@ function drawBlit(ref renderer: PixelArtRenderer, ref context: DrawContext): voi
 		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
 	if (!drawn.ok) {
 		console.log(
-			"void3d: drawToScreen after the preset's blit material or screen mesh was released",
+			"void3d: drawToScreen after the preset's blit material, texture or screen mesh changed",
 		);
 		unreachable;
 	}
@@ -565,6 +565,9 @@ export function prepareFrame(
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);
 	if (!screens) { return Result.err(PixelArtError.StaleMaterial); }
+	let kept: boolean = context.keepsItsTexture(renderer.postMaterial) &&
+		context.keepsItsTexture(renderer.blitMaterial);
+	if (!kept) { return Result.err(PixelArtError.TextureReplaced); }
 	if (!rampsHaveLevels(renderer.core.programs, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}

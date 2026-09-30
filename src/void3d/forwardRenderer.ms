@@ -155,6 +155,9 @@ export function prepareFrame(
 	if (!context.hasMaterial(renderer.copyMaterial)) {
 		return Result.err(ForwardError.StaleMaterial);
 	}
+	if (!context.keepsItsTexture(renderer.copyMaterial)) {
+		return Result.err(ForwardError.TextureReplaced);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, context, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -181,7 +184,7 @@ export function drawToScreen(ref renderer: ForwardRenderer, ref context: DrawCon
 		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
 	if (!copied.ok) {
 		console.log(
-			"void3d: drawToScreen after the preset's copy material or screen mesh was released",
+			"void3d: drawToScreen after the preset's copy material, texture or screen mesh changed",
 		);
 		unreachable;
 	}
