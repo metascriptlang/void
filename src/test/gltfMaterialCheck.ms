@@ -1,6 +1,29 @@
-import { FilterMode, Wrap } from "../gpu/state";
-import { loadGltf, loadGlb, GltfData, GltfError, DEFAULT_MATERIAL } from "../void3d/gltf";
-import { stride, vertexCount } from "../void3d/meshData";
+import { FilterMode, Wrap, RenderState, Face } from "../gpu/state";
+import {
+	loadGltf,
+	loadGlb,
+	GltfData,
+	GltfError,
+	GltfMaterial,
+	DEFAULT_MATERIAL,
+} from "../void3d/gltf";
+import {
+	addGltfAssets,
+	releaseGltfAssets,
+	GltfAssets,
+	GltfMaterialSetup,
+	GltfSceneError,
+} from "../void3d/gltfScene";
+import { DrawContext, HandleError, reserveUniforms } from "../void3d/draw";
+import {
+	Program,
+	MATERIAL_UNIFORM_SLOT,
+	MATERIAL_UNIFORM_LENGTH,
+	MATERIAL_DOUBLE_SIDED,
+} from "../void3d/gpu3d";
+import { Material, UniformBlock } from "../void3d/material";
+import { MeshData, stride, vertexCount } from "../void3d/meshData";
+import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
 
 const F32_ZERO: uint32 = 0x00000000;
@@ -337,4 +360,90 @@ test "a binary container that is not one is refused as NotGlb" {
 	const noBin = loadGlb(glbOf(json, buffer, [0x4E4F534A as uint32]));
 	assert !noBin.ok;
 	if (!noBin.ok) { assert noBin.error == GltfError.OutOfRange; }
+}
+
+function setupOf(values: Span<float32>): GltfMaterialSetup {
+	let block: Vec<float32> = [];
+	for (const value of values) { block.push(value); }
+	return { pass: RenderState.defaults(), block: block };
+}
+
+function materialsOnly(materials: Span<GltfMaterial>): GltfData {
+	let list: Vec<GltfMaterial> = [];
+	for (const material of materials) { list.push(material); }
+	return {
+		meshes: [],
+		meshMaterials: [],
+		materials: list,
+		textures: [],
+		nodes: [],
+		sceneRoots: [],
+	};
+}
+
+function twoMaterials(): GltfData {
+	return materialsOnly([
+		{ texture: -1, doubleSided: false },
+		{ texture: -1, doubleSided: true },
+	]);
+}
+
+test "addGltfAssets refuses a setup or data it cannot use before it makes anything" {
+	let context: DrawContext = DrawContext.withUniformCapacity(64);
+	const short: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0]));
+	assert !short.ok;
+	if (!short.ok) { assert short.error == GltfSceneError.BadSetup; }
+	let texturedWithoutUvs: GltfData = materialsOnly([{ texture: 0, doubleSided: false }]);
+	texturedWithoutUvs.meshes.push(MeshData.empty());
+	texturedWithoutUvs.meshMaterials.push(0);
+	let farTexture: GltfData = materialsOnly([{ texture: 3, doubleSided: false }]);
+	let unmatched: GltfData = twoMaterials();
+	unmatched.meshes.push(MeshData.empty());
+	let uvsUntextured: GltfData = twoMaterials();
+	uvsUntextured.meshes.push(MeshData.withUvs());
+	uvsUntextured.meshMaterials.push(0);
+	for (const data of [texturedWithoutUvs, farTexture, unmatched, uvsUntextured]) {
+		const refused = addGltfAssets(context, data, setupOf([0.0, 0.0, 0.0, 0.0]));
+		assert !refused.ok;
+		if (!refused.ok) { assert refused.error == GltfSceneError.InvalidData; }
+	}
+	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
+}
+
+test "a glTF material is the setup's block and pass, double sides unculled and flagged" {
+	let context: DrawContext = DrawContext.withUniformCapacity(64);
+	const made: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, twoMaterials(), setupOf([3.0, -1.0, 7.0, 0.5]));
+	assert made.ok;
+	if (!made.ok) { return; }
+	assert (made.value.materials.length as int32) == 2 && context.liveMaterials() == 2;
+	const single: Material = context.materials[made.value.materials[0].index];
+	const double: Material = context.materials[made.value.materials[1].index];
+	assert single.program == Program.Lit && double.program == Program.Lit;
+	assert single.pass.culling == Face.Back && double.pass.culling == Face.None;
+	assert !single.namesTexture();
+	const values: Vec<float32> = context.uniforms.values;
+	assert values[single.uniforms.offset] == 3.0 && values[single.uniforms.offset + 1] == -1.0;
+	assert values[single.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 0.0;
+	assert values[double.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 1.0;
+	assert values[double.uniforms.offset + 3] == 0.5;
+	const released: Result<void, HandleError> = releaseGltfAssets(context, made.value);
+	assert released.ok;
+	assert context.liveMaterials() == 0;
+	const again: Result<void, HandleError> = releaseGltfAssets(context, made.value);
+	assert !again.ok;
+	if (!again.ok) { assert again.error == HandleError.StaleMaterial; }
+}
+
+test "a full uniform pool is named and gives back the materials already made" {
+	let context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
+	const full: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0, 0.0]));
+	assert !full.ok;
+	if (!full.ok) { assert full.error == GltfSceneError.UniformsFull; }
+	assert context.liveMaterials() == 0;
+	const reserved: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+	assert reserved.ok;
 }
