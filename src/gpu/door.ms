@@ -10,6 +10,7 @@ import {
 	doorLayoutFloats,
 	doorLayoutPerInstance,
 	doorProgramLayout,
+	doorProgramCount,
 	doorMakeTargetImage,
 	doorMakeAttachmentView,
 	doorMakeTextureView,
@@ -93,6 +94,10 @@ export function samplerSlotMask(program: int32): uint32 {
 // The layout a registered program reads; the registration's own answer.
 export function programLayout(program: int32): int32 {
 	return doorProgramLayout(program);
+}
+
+export function programCount(): int32 {
+	return doorProgramCount();
 }
 
 // Floats per element of vertex buffer `buffer` of the registered layout `layout`.

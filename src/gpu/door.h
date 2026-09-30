@@ -65,6 +65,7 @@ int32_t doorRegisterPrograms(const door_shader_fn *shaders, const int32_t *layou
 // The layout a registered program reads; the registration's own answer, so a layer's
 // MetaScript map of its programs can be held against it.
 int32_t doorProgramLayout(int32_t program);
+int32_t doorProgramCount(void);
 
 uint32_t doorMakeShader(int32_t program);
 // Bit n set when the program declares a uniform block at slot n, read off its shader desc.

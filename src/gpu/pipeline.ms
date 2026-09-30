@@ -13,6 +13,7 @@ import {
 	makePipeline,
 	destroyShader,
 	destroyPipeline,
+	programCount,
 } from "./door";
 import {
 	DOOR_PIPELINE_SHADER,
@@ -167,7 +168,7 @@ function stopOnRefusedPipeline(key: PipelineKey): uint32 {
 }
 
 export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
-	if (program < 0) { return stopOnUnregisteredProgram(program); }
+	if (program < 0 || program >= programCount()) { return stopOnUnregisteredProgram(program); }
 	for (let i = cache.shaders.length as int32; i <= program; i++) {
 		cache.shaders.push(0);
 		cache.blockSlots.push(0);

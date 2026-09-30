@@ -193,6 +193,10 @@ static const sg_vertex_layout_state *layoutOf(int32_t layout) {
 	return &g_layouts[layout];
 }
 
+int32_t doorProgramCount(void) {
+	return g_programCount;
+}
+
 int32_t doorProgramLayout(int32_t program) {
 	return g_programs[programIndex(program)].layout;
 }
