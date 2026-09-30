@@ -5,7 +5,7 @@
 #
 # Stages, each printing one PASS / FAIL / SKIP line:
 #
-#   prepare   regenerate out/tmp/campfireScene.ms and the seventeen capture entries
+#   prepare   regenerate out/tmp/campfireScene.ms and the eighteen capture entries
 #   tests     msc test out/tmp/test2d.ms
 #   capture   build + run each capture entry, cmp every frame against its baseline
 #   manifest  check the baselines against the committed SHA-256 list
@@ -147,6 +147,37 @@ prepare_harness() {
 	replace_if_changed "$WORK/androidEntry.new" "$TMP/android/campfireEntry.ms"
 }
 
+write_perspective_entry() {
+	{
+		echo 'import { initPerspective, framePerspective } from "../../../tests/integration/perspectiveFrame";'
+		echo '@include("../../../src/sokol/bridge.h");'
+		echo '@include("capture.h");'
+		echo '@compile("./capture.c");'
+		echo 'extern function voidRunConfigured('
+		echo '	w: int32,'
+		echo '	h: int32,'
+		echo '	sampleCount: int32,'
+		echo '	highDpi: int32,'
+		echo '	init: () => void,'
+		echo '	frame: () => void,'
+		echo '): void;'
+		echo 'extern function captureSwapchain(frame: int32): void;'
+		echo 'extern function captureQuit(): void;'
+		echo 'let frames: int32 = 0;'
+		echo 'function frame(): void {'
+		echo '	framePerspective(frames);'
+		echo '	if (frames == 1 || frames == 6 || frames == 11 || frames == 16) {'
+		echo '		captureSwapchain(frames);'
+		echo '	}'
+		echo '	if (frames == 16) { captureQuit(); }'
+		echo '	frames = frames + 1;'
+		echo '}'
+		echo 'function main(): void { voidRunConfigured(320, 240, 1, 0, initPerspective, frame); }'
+		echo 'main();'
+	} > "$WORK/perspectiveCapture.new"
+	replace_if_changed "$WORK/perspectiveCapture.new" "$CAPTURE/perspectiveCapture.ms"
+}
+
 prepare_entries() {
 	write_entry campfireCapture "" \
 		"configureCampfire(PixelArtSettings.full(), false);"
@@ -208,7 +239,8 @@ configureCampfireParticles(true);
 configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_hud_entry campfireHudCapture false
 	write_hud_entry campfireHudSwappedCapture true
-	note "prepare: seventeen capture entries written to $CAPTURE"
+	write_perspective_entry
+	note "prepare: eighteen capture entries written to $CAPTURE"
 }
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
@@ -870,6 +902,7 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms
+	tests/integration/perspectiveFrame.ms
 	tests/integration/gpuRegistrationFixture.ms tests/aborts3d"
 
 run_style() {
@@ -925,10 +958,18 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	target:beginPass target:beginScreenPass door:passState door:beginPassWith
 	door:beginScreenPassWith door:endPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
 	uniform80ool:holds uniform80ool:writeRange"
+RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
+	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
 	mesh68ata:rayIntersection mesh68ata:cornerOf ray:transformed scene:nodeIdAt"
+PERSPECTIVE_PATH_FUNCTIONS="camera:resolve camera:basisOf camera:sine camera:cosine
+	camera:makeCameraMatrix camera:orthoBounds camera:projectionMatrix camera:snapEye camera:floored
+	camera:writeCameraBlock camera:project camera:rayFromScreen camera:unproject camera:pointAt
+	camera:ndcOf camera:texelOf camera:finitePoint camera:supportsScreenRays
+	renderer:beginFrame pass76ist:filterFrustum
+	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
@@ -968,16 +1009,20 @@ check_array_copies() {
 }
 
 run_allocation() {
-	if [ ! -f "$CAPTURE/campfireBench.ms" ] || [ ! -f "$CAPTURE/campfirePick.ms" ]; then
-		skip "allocation: $CAPTURE/campfireBench.ms or campfirePick.ms is missing"
+	if [ ! -f "$CAPTURE/campfireBench.ms" ] || [ ! -f "$CAPTURE/campfirePick.ms" ] ||
+		[ ! -f "$CAPTURE/perspectiveCapture.ms" ]; then
+		skip "allocation: campfireBench.ms, campfirePick.ms or perspectiveCapture.ms is missing"
 		return
 	fi
 	check_array_copies "$CAPTURE/campfireBench.ms" "frame path" \
 		"$FRAME_PATH_FUNCTIONS $RENDER_PATH_FUNCTIONS" || return
 	check_array_copies "$CAPTURE/campfirePick.ms" "pick path" "$PICK_PATH_FUNCTIONS" || return
+	check_array_copies "$CAPTURE/perspectiveCapture.ms" "perspective path" \
+		"$PERSPECTIVE_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
+	note "allocation: nor in the perspective path ($(echo $PERSPECTIVE_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1085,7 +1130,7 @@ expected_hash() {
 
 baseline_names() {
 	for prefix in before m3palette m3preview m3direct m3depth m6spin m11particles m11look \
-		m12greydirect m12greypalette m14forward m16anchor; do
+		m12greydirect m12greypalette m14forward m16anchor m21perspective; do
 		for frame in $FRAMES; do
 			echo "${prefix}_$frame.ppm"
 		done
@@ -1404,7 +1449,7 @@ run_hud_over_campfire() {
 
 run_captures() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
-		skip "capture: GATE_SKIP_CAPTURE=1 — the seventeen configurations were not built, not run, not compared"
+		skip "capture: GATE_SKIP_CAPTURE=1 — the ortho captures and HUD were not built, run or compared"
 		return
 	fi
 	purge_stale_shader_objects
@@ -1490,6 +1535,41 @@ run_compose() {
 			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log"
 		fi
 	done
+}
+
+run_perspective() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "perspective: GATE_SKIP_CAPTURE=1 — the perspective consumer was not run"
+		return
+	fi
+	rm -f "$WORK/perspectiveCapture.run.log"
+	run_capture perspectiveCapture m21perspective "perspective, retained per-view culling"
+	if [ ! -f "$WORK/perspectiveCapture.run.log" ] ||
+		! grep -q '^PASS perspective frame: retained views, culling, nearest and off-center picks, lit pixels$' \
+			"$WORK/perspectiveCapture.run.log"; then
+		fail "perspective: the GPU consumer did not finish its semantic proof"
+		return
+	fi
+	for row in "1 4 4 2 3" "6 4 4 6 7" "11 5 3 6 7" "16 4 4 2 3"; do
+		set -- $row
+		if ! grep -Fxq \
+			"perspective frame: frame $1 opaque=$2 culled=$3 nearest=$4 offcenter=$5" \
+			"$WORK/perspectiveCapture.run.log"; then
+			fail "perspective: frame $1 did not report its exact culling and pick results"
+			return
+		fi
+	done
+	pass "perspective: counts 4/4, 4/4, 5/3, 4/4; nearest + off-center picks; lit RGB pixels"
+	status=0
+	VOID_PERSPECTIVE_SHIFT_CONTROL=1 ./out/debug/perspectiveCapture.exe \
+		> "$WORK/perspective.control.log" 2>&1 || status=$?
+	if [ "$status" -ne 0 ] &&
+		grep -Fxq 'FAIL perspective frame: culling count at frame 0: opaque=0 culled=8, expected opaque=4 culled=4' \
+			"$WORK/perspective.control.log"; then
+		pass "perspective: the distant-camera control fails at the intended count proof"
+	else
+		fail "perspective: the distant-camera control did not fail at the intended count proof"
+	fi
 }
 
 # A file that imports both layers: every function name void2d and void3d both export resolves to
@@ -1609,7 +1689,7 @@ echo
 if prepare_scene; then
 	prepare_harness
 	prepare_entries
-	pass "prepare: campfireScene.ms and the seventeen capture entries are current"
+	pass "prepare: campfireScene.ms and the eighteen capture entries are current"
 else
 	fail "prepare: the capture entries were not written"
 fi
@@ -1620,6 +1700,7 @@ run_tests
 run_gltf_cpu
 run_captures
 run_compose
+run_perspective
 run_both_layers
 run_aborts
 run_manifest
