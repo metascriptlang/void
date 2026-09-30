@@ -149,8 +149,6 @@ function decoded(): GltfData {
 		fail(`${FIXTURE} could not be read`);
 		unreachable;
 	}
-	// Parked on ~/metascript/.inbox/compiler/2026-09-30-asbytes-to-span-fails-in-clang.md: on msc
-	// 35601908 this line fails in clang, where `asBytes()` reaches a Span parameter.
 	let data: Result<GltfData, GltfError> = loadGlb(file.value.asBytes());
 	if (data.ok) { return data.value; }
 	fail(`the fixture was refused: ${data.error.toString()}`);

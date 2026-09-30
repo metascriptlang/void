@@ -1680,29 +1680,9 @@ gltf_checked() {
 		[ "$(grep -c '^gltf frame: frame [0-9]* checked$' "$log")" = "4" ]
 }
 
-# The M23 consumer reads its fixture from disk into loadGlb through `asBytes()`, which msc
-# 35601908 miscompiles (compiler card 2026-09-30-asbytes-to-span-fails-in-clang.md). A build that
-# fails with exactly that clang error and no other is the parked state, a loud skip; any other
-# failure is a failure.
-gltf_parked() {
-	log=$WORK/gltfCapture.build.log
-	rm -f out/debug/gltfCapture.exe
-	if msc build "$CAPTURE/gltfCapture.ms" > "$log" 2>&1; then
-		return 1
-	fi
-	clean=$(sed 's/\[[0-9;]*m//g' "$log")
-	echo "$clean" | grep -q "gltfFrame.ms:[0-9]*:[0-9]*: error: assigning to 'msUint8Array' from incompatible type 'msUint8Array \*'" &&
-		[ "$(echo "$clean" | grep -c ' error: ')" = "1" ] &&
-		echo "$clean" | grep -q '^1 warning and 1 error generated\.$\|^1 error generated\.$'
-}
-
 run_gltf() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "gltf: GATE_SKIP_CAPTURE=1 — the glTF fixture was not drawn"
-		return
-	fi
-	if gltf_parked; then
-		skip "gltf: parked on compiler card 2026-09-30-asbytes-to-span-fails-in-clang.md (asBytes into a Span fails in clang); the consumer builds up to that error"
 		return
 	fi
 	for entry in gltfCapture gltfPixelArtCapture gltfRebuildCapture; do
