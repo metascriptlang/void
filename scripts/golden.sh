@@ -155,12 +155,13 @@ capture() {
 			# same as the scene having been captured, and taking the pipeline's status would
 			# make a run where every scene printed `SKIP this build has no readback path`
 			# report success and then let --update overwrite the goldens with nothing.
-			VOID_SCENE="$index" "$RUNNER" > out/golden/scene.log 2>&1 || true
+			VOID_SCENE="$index" "$RUNNER" > out/golden/scene.log 2> out/golden/scene.err || true
 			verdict="$(grep -E '^(CAPTURED|FAIL|SKIP)' out/golden/scene.log || true)"
 			if [ -n "$verdict" ]; then
 				echo "$verdict"
 			else
 				echo "FAIL $name produced no verdict"
+				tail -3 out/golden/scene.err | sed 's/^/      stderr: /'
 			fi
 			if verdictOk "$verdict"; then
 				# A printed word is not a file. The runner could say CAPTURED and then die, or
@@ -178,7 +179,7 @@ capture() {
 		fi
 		index=$((index + 1))
 	done < out/golden/table.tsv
-	rm -f out/golden/scene.log
+	rm -f out/golden/scene.log out/golden/scene.err
 	# A filter naming no scene is a typo, not an empty job. Reporting success for it is the
 	# same defect as reporting success for an empty table, one layer up: measured before this
 	# check existed, `--capture zzz/nothing` exited 0 having printed nothing at all.

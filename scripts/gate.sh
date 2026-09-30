@@ -178,7 +178,7 @@ for misuse in unprepared twice no-pass nested consumed expired; do
 done
 
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
-		&& out/twoViews.exe > out/gate-two-views-run.log 2>&1; then
+		&& out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
 else
 	fail "two host views in one process — see out/gate-two-views.log and out/gate-two-views-run.log"

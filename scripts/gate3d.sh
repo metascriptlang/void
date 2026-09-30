@@ -1544,7 +1544,7 @@ run_compose() {
 		return
 	fi
 	status=0
-	out/tmp/mixedFrame.exe > "$WORK/compose.run.log" 2>&1 || status=$?
+	out/tmp/mixedFrame.exe > "$WORK/compose.run.log" 2> "$WORK/compose.run.err" || status=$?
 	if [ "$status" -eq 3 ]; then
 		skip "compose: $(grep -E '^SKIP' "$WORK/compose.run.log" | head -1)"
 		return
@@ -1557,7 +1557,8 @@ run_compose() {
 	fi
 	pass "compose: $summary"
 	status=0
-	VOID_MIXED_3D_OVER_2D=1 out/tmp/mixedFrame.exe > "$WORK/compose.swapped.log" 2>&1 || status=$?
+	VOID_MIXED_3D_OVER_2D=1 out/tmp/mixedFrame.exe > "$WORK/compose.swapped.log" \
+		2> "$WORK/compose.swapped.err" || status=$?
 	if [ "$status" -ne 0 ] && grep -q '^FAIL mixed frame: .* inside the quad' "$WORK/compose.swapped.log"; then
 		pass "compose: the control, the 3D drawn over void2d, fails: $(grep -E '^FAIL' \
 			"$WORK/compose.swapped.log" | head -1 | sed 's/^FAIL mixed frame: //')"
@@ -1581,7 +1582,7 @@ run_compose() {
 	for order in 1 2; do
 		status=0
 		VOID_GPU_REGISTRATION=$order out/tmp/mixedFrame.exe \
-			> "$WORK/registration-$order.log" 2>&1 || status=$?
+			> "$WORK/registration-$order.log" 2> "$WORK/registration-$order.err" || status=$?
 		if [ "$status" -eq 0 ] && grep -q '^PASS mixed frame:' "$WORK/registration-$order.log"; then
 			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
 		else
@@ -1663,7 +1664,7 @@ run_both_layers() {
 		tail -30 "$WORK/both.build.log"
 		return
 	fi
-	if out/tmp/bothLayers.exe > "$WORK/both.run.log" 2>&1 && grep -q '^PASS both layers' "$WORK/both.run.log"; then
+	if out/tmp/bothLayers.exe > "$WORK/both.run.log" 2> "$WORK/both.run.err" && grep -q '^PASS both layers' "$WORK/both.run.log"; then
 		pass "$(grep '^PASS both layers' "$WORK/both.run.log" | sed 's/^PASS //')"
 	else
 		fail "both layers: a shared name resolved to the other layer"
