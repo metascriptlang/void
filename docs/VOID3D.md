@@ -1075,8 +1075,15 @@ The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's
   view. Each glTF texture is decoded into one `TextureData`, as Bevy's `load_image` makes one
   `Image` per texture. Min and mag must name one filter, a mipmap min filter counting as its base
   (Bevy `texture_sampler`), and `wrapS` must equal `wrapT`, because Heaps keeps one of each per
-  texture; a texture with no sampler is `Linear` and `Repeat`. A material's `baseColorFactor` is
-  multiplied into its primitive's vertex colours with alpha 1. Refused by name before anything is
+  texture; a texture with no sampler is `Linear` and `Repeat`. A sampler with no `magFilter` takes
+  its min filter's base, where Bevy keeps its default mag filter
+  (`bevy_gltf/src/loader/gltf_ext/texture.rs:20-25`). A material's `baseColorFactor` is multiplied
+  into its primitive's vertex colours with alpha 1, and every texel loads with alpha 255: each
+  material the loader accepts is `OPAQUE`, whose alpha glTF ignores (§3.9.4), and the pixel-art
+  post pass reads the colour target's alpha as its outline mask (`pixelArt3d.glsl:242-243`).
+  Bevy writes alpha 1 for an opaque material in the shader instead
+  (`bevy_pbr/src/render/pbr_functions.wesl:101-104`); while only `OPAQUE` is accepted, loading
+  the texels opaque is exact. Refused by name before anything is
   made: `ImageByUri`, `BadImage`, `UnsupportedSampler`, `UnsupportedMaterial` (`MASK`, `BLEND`,
   normal, occlusion and emissive textures, a non-zero emissive, `texCoord` other than 0,
   extensions on a texture reference), `MissingTexCoord`, `BadReference`, `NotGlb`. A node scale
@@ -1086,7 +1093,14 @@ The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's
   makes anything. It makes one context texture per glTF texture, one material per glTF material
   and glTF's default material when a primitive names none, all from `GltfMaterialSetup`, which
   plays Heaps' `MaterialSetup` (the pass, and the lit block's values), and one mesh per decoded
-  mesh. It answers M8's bindings for `addGltfNodes`. A refusal after the first upload releases
+  mesh. A setup that sets the double-sided flag itself is `BadSetup`: the material decides it. It
+  answers M8's bindings for `addGltfNodes`.
+  - Every mesh that names a glTF material shares its one `MaterialId`. **That is Bevy's loader,
+    not Heaps'.** `makeMaterial` caches one material per file material and hands each object a
+    `deepCopyMaterial` (`hxd/fmt/hmd/Library.hx:355`), so a change to one object's material stays
+    on that object. Bevy loads a material once per label and every primitive shares the handle
+    (`bevy_gltf/src/loader/mod.rs:1639-1646`), and void3d's nodes already share materials by id
+    (M17's holders). A game that greys one node of a model gives that node its own material. A refusal after the first upload releases
   everything the call made and names what refused. `releaseGltfAssets` gives back the loader's
   hold on each asset; the nodes keep theirs, so the model draws on, and removing its nodes frees
   it (M17's holders).
@@ -1149,7 +1163,8 @@ land gate (`9f41458`), which msc `35601908` built; not attributed further. Timin
   skipped; a texture release skipped (the consumer's refused load leaves an asset live); the
   consumer never releasing its holds (removing the nodes frees nothing); churn without
   `releaseGltfAssets` (tables grow, stops at frame 29, `MeshRefused`); the `gltf-cpu` smoke
-  importing `gltfScene`, which links sokol (the stage fails).
+  importing `gltfScene`, which links sokol (the stage fails); a texel's alpha kept at load
+  (`gltfMaterialCheck`, two tests); a setup's own double-sided flag accepted (the setup test).
 - **Found on the way.**
   - msc `35601908` put the byte view where the span belongs for `asBytes()` into a `Span`
     parameter (Compiler notes). The consumer kept the direct form and was parked on the card,
@@ -1162,14 +1177,24 @@ land gate (`9f41458`), which msc `35601908` built; not attributed further. Timin
 
 **Still missing after M23.**
 - Images by URI and data URIs, `KHR_texture_transform`, a second uv set, alpha mask and blend
-  (Heaps' `killAlpha`), normal, occlusion and emissive maps, sRGB (texels are drawn as stored, as
-  Heaps does by default), mipmaps, a material colour uniform (Heaps' `BaseMesh.color`; the factor
-  is baked instead), a Blender export (`gltf-real-export-not-exercised` stays), decoding on the JS
-  backend, and moving void2d's image loading.
-- An `OPAQUE` material's texture alpha still reaches the colour target's alpha. Nothing reads it
-  today: both presets draw to the screen through `Copy`, which writes alpha 1. Bevy forces alpha
-  1 for an opaque material (`bevy_pbr/src/render/pbr_functions.wesl:101-104` at `157e1ce6`);
-  Heaps multiplies the texel's alpha in (`h3d/shader/Texture.hx:30`).
+  (Heaps' `killAlpha`), normal, occlusion and emissive maps, mipmaps, a material colour uniform
+  (Heaps' `BaseMesh.color`; the factor is baked instead), a Blender export
+  (`gltf-real-export-not-exercised` stays), decoding on the JS backend, and moving void2d's image
+  loading.
+- Colour spaces. Texels, factors and `COLOR_0` are all drawn as stored, as Heaps does by default,
+  and neither preset converts. glTF's base colour texture is sRGB, while its factor and `COLOR_0`
+  are linear, and Bevy reads the factor with `Color::linear_rgba`
+  (`bevy_gltf/src/loader/mod.rs:1435`). So a factor draws darker here than in a viewer that
+  follows the spec: the fixture's factor quad is (128, 64, 128) here and about (188, 137, 188)
+  there. Decide this before `gltf-real-export-not-exercised` closes.
+- Alpha as a material's, not a texture's: MASK and BLEND need it, and then the load-time alpha of
+  255 moves to the program, as Bevy's `alpha_discard` does. Textures a caller adds (M22) still
+  feed the outline mask with their alpha, as Heaps multiplies the texel's alpha in
+  (`h3d/shader/Texture.hx:30`).
+- `addTexture` does not check the device's largest texture. GLES3 guarantees 2048 per side, the
+  decoder takes up to 16384 (D3D11's), and sokol reads the limit (`sokol_gfx.h:10436`) but
+  validates only a size above 0 (`:24073-24074`). On such a device an oversized image is not
+  refused by name.
 - A decode has no memory budget beyond the 16384 side, as neither reference has one (Bevy's
   loader calls `no_limits()`, `bevy_image/src/image.rs:1632`): the largest accepted image takes
   1 GiB for its words and as much again in stb while it decodes.
