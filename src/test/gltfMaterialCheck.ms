@@ -394,6 +394,10 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0]));
 	assert !short.ok;
 	if (!short.ok) { assert short.error == GltfSceneError.BadSetup; }
+	const flagged: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 1.0, 0.0]));
+	assert !flagged.ok;
+	if (!flagged.ok) { assert flagged.error == GltfSceneError.BadSetup; }
 	let texturedWithoutUvs: GltfData = materialsOnly([{ texture: 0, doubleSided: false }]);
 	texturedWithoutUvs.meshes.push(MeshData.empty());
 	texturedWithoutUvs.meshMaterials.push(0);
@@ -414,7 +418,7 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 test "a glTF material is the setup's block and pass, double sides unculled and flagged" {
 	let context: DrawContext = DrawContext.withUniformCapacity(64);
 	const made: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, twoMaterials(), setupOf([3.0, -1.0, 7.0, 0.5]));
+		addGltfAssets(context, twoMaterials(), setupOf([3.0, -1.0, 0.0, 0.5]));
 	assert made.ok;
 	if (!made.ok) { return; }
 	assert (made.value.materials.length as int32) == 2 && context.liveMaterials() == 2;
