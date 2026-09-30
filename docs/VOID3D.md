@@ -1056,6 +1056,128 @@ sampler, bindings, the MVP upload, the draw), the global MVP matrices in `src/ma
 `web/index.html`, which loaded it. `build-android.sh` now builds the campfire entry by default.
 The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's replacement.
 
+### M23 as built
+
+- **Images decode from bytes, sized per call** (`src/assets/image.ms`, `image.c`).
+  `imageFormatOf` tells PNG from JPEG by their signatures, as `hxd.res.Image.getInfo` does.
+  `decodeImage` asks stb for the size first (`void_image_size`, `stbi_info_from_memory`), refuses
+  a side over 16384 (`D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION`) or an encoded length over `INT_MAX`
+  as `TooLarge`, and decodes into a `Vec<uint32>` it sized itself (`void_decode_image`,
+  `stbi_load_from_memory` to four channels, copied only when the decoded size is the one asked).
+  The words are `hxd.Pixels`' RGBA8, first row on top. Nothing is kept in C globals: a refusal
+  after a decode answers its own error, not the last size. The path loader void2d calls
+  (`void_load_image` and its width and height globals) is untouched, with its stale-size defect,
+  for its arc.
+- **glTF grows by textures and materials** (`src/void3d/gltf.ms`). `loadGlb` reads GLB 2 (magic,
+  version, total length, the JSON chunk first, an optional BIN chunk second, every chunk length a
+  multiple of 4) into M8's `loadGltf`. The subset adds `TEXCOORD_0` as float VEC2 into a mesh with
+  uvs, `primitive.material`, and `materials`, `textures`, `samplers` and `images` from a buffer
+  view. Each glTF texture is decoded into one `TextureData`, as Bevy's `load_image` makes one
+  `Image` per texture. Min and mag must name one filter, a mipmap min filter counting as its base
+  (Bevy `texture_sampler`), and `wrapS` must equal `wrapT`, because Heaps keeps one of each per
+  texture; a texture with no sampler is `Linear` and `Repeat`. A material's `baseColorFactor` is
+  multiplied into its primitive's vertex colours with alpha 1. Refused by name before anything is
+  made: `ImageByUri`, `BadImage`, `UnsupportedSampler`, `UnsupportedMaterial` (`MASK`, `BLEND`,
+  normal, occlusion and emissive textures, a non-zero emissive, `texCoord` other than 0,
+  extensions on a texture reference), `MissingTexCoord`, `BadReference`, `NotGlb`. A node scale
+  whose product is not positive stays `Unsupported`, so the loader makes no mirrored node.
+- **Into the context** (`src/void3d/gltfScene.ms`). `addGltfAssets(context, data, setup)` refuses
+  a lit block of the wrong length (`BadSetup`) and inconsistent data (`InvalidData`) before it
+  makes anything. It makes one context texture per glTF texture, one material per glTF material
+  and glTF's default material when a primitive names none, all from `GltfMaterialSetup`, which
+  plays Heaps' `MaterialSetup` (the pass, and the lit block's values), and one mesh per decoded
+  mesh. It answers M8's bindings for `addGltfNodes`. A refusal after the first upload releases
+  everything the call made and names what refused. `releaseGltfAssets` gives back the loader's
+  hold on each asset; the nodes keep theirs, so the model draws on, and removing its nodes frees
+  it (M17's holders).
+- **Double-sided** (`shader3dBlocks.glsl` `facingNormal`, used by the four lit programs). A
+  `doubleSided` material draws with culling `None` and sets `MATERIAL_DOUBLE_SIDED` in the lit
+  block, and the programs reverse a back face's normal when it is set: Heaps'
+  `FlipBackFaceNormal`, Bevy's `double_sided`, and what glTF requires. Refusing `doubleSided` was
+  rejected because it refuses Blender's default material. Every existing material leaves the flag
+  0, and every capture from before M23 keeps its hash.
+- **The fixture** `tests/fixtures/gltf/texturedScene.glb`, 4,172 bytes, is written by
+  `makeTexturedGlb.py`, which shares no code with the loader: five nodes (a textured cube, a
+  tinted quad with a factor, a double-sided quad, a double-sided textured quad, a single-sided
+  quad), five materials, one 2×2 PNG (red, green / blue, yellow), nearest and clamp. Khronos
+  glTF-Validator 2.0.0-dev.3.10 reports 0 errors, warnings, infos and hints. `.gitattributes`
+  keeps `*.glb` byte for byte.
+
+**Acceptance.** `GATE_ADOPT=1 sh scripts/gate3d.sh` on `7e95e01`, installed msc `5791eadd`,
+D3D11 on the shared Windows workstation: **GATE GREEN**, with `device` skipped and the two new
+baselines recorded; the hashes are their own commit (`88c868e`). The first gate with the `gltf`
+stage running, on `6d67b8b` without adoption, failed only on the missing `m23gltf*` hashes, and
+its readback checks passed. **1037/1037 tests**, +15 on M22: 5 image decoding, 7 glTF reading,
+3 glTF into the context. **35 abort programs**, unchanged. **24 configurations / 96 frames
+match 72 hashes**: all 64 earlier hashes unchanged. Oracle 75 agree / 11 declared divergences;
+PENDING3D 26 rows. Churn: 310 frames, now also loading and releasing the glTF model every frame,
+10 live sokol buffers, 4 images and 2 samplers flat; the control, never releasing, runs out of
+sokol's pools after 14 frames. Android arm64 builds at **3,469,312 bytes**, +14,184 on the M22
+land gate (`9f41458`), which msc `35601908` built; not attributed further. Timing is report-only.
+
+- `tests/integration/gltfFrame.ms` reads the fixture from disk (`readFile`, then
+  `loadGlb(file.value.asBytes())`) and draws it through the real renderer in three configurations
+  at 320×240: forward, pixel-art with the post pass off, and forward with the context lost at
+  frame 3. Frames 0–4 are face on at full ambient, 5–9 lit, 10–14 turned 0.6 rad, and from 15 the
+  model's group is removed.
+  - Frames 1, and 6 forward (ambient 0.25 and a sun of 0.75 toward the faces): each quadrant of
+    the cube is its texel's exact bytes; the double-sided textured quad, seen from behind, shows
+    the same texels mirrored; the white double-sided quad's back is white; the factor quad is
+    (128, 64, 128) within 1, its tint (1, 0.5, 0.5) times the factor (0.5, 0.5, 1); the
+    single-sided quad's back is culled to the background.
+  - Frame 6, pixel-art: two lamps (x 0.4 and 2.0, power 3) light the double-sided backs only
+    through their reversed normals; every pixel there is a ramp level and at least two show.
+  - Frame 11: every pixel is the background or a colour of the model. Frame 16: nothing draws,
+    the context's meshes, materials and textures are back where they started, and the burial took
+    the model's 10 buffers, 1 image and 1 view.
+  - Before the first frame: five materials in a uniform pool sized for two are refused as
+    `UniformsFull`, leave no asset live and bury what was uploaded; the model makes five
+    materials and five meshes; two textured materials pin its texture twice; releasing the
+    loader's holds keeps what the nodes draw.
+  - The context-loss configuration marks every mesh with data, the texture and the sampler cache
+    as another context's at frame 3; the texture comes back on a new view and sampler, and the
+    frames match the forward hashes. The pixel-art frames 1, 11 and 16 equal the forward ones byte
+    for byte: no light reaches those stages and the post pass is off.
+- `gltf-cpu` builds a smoke of `loadGltf` and `loadGlb` (the image decoder with them), runs it,
+  and fails when `sg_setup` is in the binary.
+- Controls, run in the sessions, each failing at the named check and then restored: the image
+  decoded upside down (`imageDecodeCheck`); the factor not baked (`gltfMaterialCheck`, two tests;
+  the consumer's factor quad, 0xFF7F7F); `MASK` accepted; a mipmap filter mapped to the wrong
+  base; a BIN chunk accepted third; double-sided culling left on (headless, and the consumer's
+  mirrored quadrant shows the background); the normal not reversed (the consumer's quadrant 0 is
+  red at ambient only, and a lamp shows 0 levels on a back face); `addGltfAssets`' rollback
+  skipped; a texture release skipped (the consumer's refused load leaves an asset live); the
+  consumer never releasing its holds (removing the nodes frees nothing); churn without
+  `releaseGltfAssets` (tables grow, stops at frame 29, `MeshRefused`); the `gltf-cpu` smoke
+  importing `gltfScene`, which links sokol (the stage fails).
+- **Found on the way.**
+  - msc `35601908` put the byte view where the span belongs for `asBytes()` into a `Span`
+    parameter (Compiler notes). The consumer kept the direct form and was parked on the card,
+    with the gate's stage skipping by the card's name; msc `5791eadd` builds it.
+  - The gate's `GATE_ADOPT=1` reported "recorded 4 new hashes" for the M23 baselines and wrote
+    none: `record_hash` rebuilds the manifest from `baseline_names`, which did not list them. The
+    names are listed now, and a key the list lacks fails its capture (`7e95e01`).
+  - Three gate lines counted "twenty-two" capture entries, right at `9f41458` and wrong once M23
+    added three; they give no count now.
+
+**Still missing after M23.**
+- Images by URI and data URIs, `KHR_texture_transform`, a second uv set, alpha mask and blend
+  (Heaps' `killAlpha`), normal, occlusion and emissive maps, sRGB (texels are drawn as stored, as
+  Heaps does by default), mipmaps, a material colour uniform (Heaps' `BaseMesh.color`; the factor
+  is baked instead), a Blender export (`gltf-real-export-not-exercised` stays), decoding on the JS
+  backend, and moving void2d's image loading.
+- An `OPAQUE` material's texture alpha still reaches the colour target's alpha. Nothing reads it
+  today: both presets draw to the screen through `Copy`, which writes alpha 1. Bevy forces alpha
+  1 for an opaque material (`bevy_pbr/src/render/pbr_functions.wesl:101-104` at `157e1ce6`);
+  Heaps multiplies the texel's alpha in (`h3d/shader/Texture.hx:30`).
+- A decode has no memory budget beyond the 16384 side, as neither reference has one (Bevy's
+  loader calls `no_limits()`, `bevy_image/src/image.rs:1632`): the largest accepted image takes
+  1 GiB for its words and as much again in stb while it decodes.
+- Two glTF textures on one image decode it twice and upload two images, as Bevy does.
+- A mirrored node made through the scene API over a double-sided material reverses the normals
+  of the faces it shows, as Heaps' `FlipBackFaceNormal` does; the loader makes no mirrored node.
+- No GLES3/device run and no real context loss; the rebuild is the simulated one.
+
 ### Android lifecycle (V6), alongside from M3
 
 - The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
