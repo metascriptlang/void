@@ -2,10 +2,10 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-09-30):** M1–M20 are built and reviewed (`docs/REVIEWS-3D.md`). The campfire runs through the retained scene, scene lights and the pixel-art preset; M8 adds the CPU-only glTF subset and maps its named node hierarchy into that scene; M9 animates that scene's nodes and swaps baked mesh frames; M10 turns a framebuffer tap into the nearest pickable object; M11 puts CPU particles on a per-frame stream mesh and adds saturation to the look; M12 gives a lit material a saturation of its own, so one object can grey alone; M13 multiplies every light into the material's colour, with Heaps' Lambert for the directional light; M14 gives the core Heaps' forward programs, moves the pixel-art look into its preset's own programs, and adds a forward preset; M15 gives the core a textured billboard in Heaps' particle shape, and the pixel-art preset its own form of it. M16 makes the quad of every particle and billboard from the vertex index, and gives a billboard Bevy's anchor. M17 releases meshes, materials and uniform ranges behind generational ids whose holders are counted, mesh nodes among them. M18 splits a preset's frame in two, so a 3D preset and void2d share one screen pass and one commit. M19 gives the names void2d also exports a 3D suffix and makes a misused node handle stop by name. M20 opens the layer-neutral GPU door to registered programs and checks door-mediated pass ownership; void2d's cutover remains its own arc. The gate is `sh scripts/gate3d.sh`.
+**Status (2026-09-30):** M1–M20 are landed. M21 is built, reviewed SHIP and gated; it remains unlanded in `wt/void3d-m5`. See "M21 as built" for the perspective/culling proof and numeric refusals, and `REVIEWS-3D.md` for the SEND BACK and repairs. The gate is `sh scripts/gate3d.sh`; device coverage remains separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
-are mapped in "M19 as built" and "M20 as built"; old `pass.ms`, `target.ms` and
+are mapped in "M19 as built", "M20 as built" and "M21 as built"; old `pass.ms`, `target.ms` and
 `pipelineCache.ms` references below are historical, not current import paths.
 
 ## What Hibernal needs
@@ -98,7 +98,7 @@ M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 
 | M18 | `hxd.App.render` (`s3d.render(e); s2d.render(e)` inside one `Engine.render`, which clears once at `begin` and presents at `end`), `scene/Renderer` (`process` up to `resetTarget`, then `copy(from, null)` into the current target, the shape `pbr.Renderer` ends with); Bevy at `main`: `Camera.order`, `ClearColorConfig::None` | Several layers in one frame ("Shared with void2d"). Each preset splits its frame in two. `prepareFrame` runs every pass that is not the screen (the scene, the pixel-art post) and leaves no pass open. `drawToScreen` draws the last stage (`Copy`, `Blit`) into a screen pass the caller has opened. The caller owns that pass and the commit, so a 3D preset and void2d share one pass and one commit: the 3D image first, then void2d's `end2d` over it. `renderFrame` stays as the one-layer shorthand over the two halves. The core holds both halves to one sokol frame, and `endFrame` is gone. Calling out of order (a screen draw with no prepared frame or in a later frame, a second prepare before the screen draw) stops with a message naming the call, as a view frame does (`docs/EMBED.md`). `tests/integration/mixedFrame.ms` draws the forward preset under void2d in place of the spike cube. A campfire with a void2d HUD over the pixel-art preset is checked against the plain campfire: byte-identical outside the HUD, with no hash of its own. Every other capture stays byte-identical. Existing mechanism: void2d's split of its frame | generality: a HUD over any 3D scene, Neon over void3d | **done**, 4 abort tests, 2 gate stages |
 | M19 | Heaps: packages keep `h2d.Scene` and `h3d.scene.Scene` apart, `h3d.mat.BlendMode` is h2d's (`h3d/mat/BlendMode.hx:3`), `h3d.scene.Object.toMesh` throws on a node that is not a mesh (`h3d/scene/Object.hx:668-673`), `h2d.Object.addChildAt` on a cycle (`h2d/Object.hx:416`); Bevy at `main`: `Camera2d`/`Camera3d`, `Mesh2d`/`Mesh3d`, `World::entity` panics and `World::get_entity` answers a `Result`, `Assets::get` answers an `Option` | Names and conventions shared with void2d ("Shared with void2d"). The names both layers export take the suffix void3d already writes: `Scene3D`, `NodeId3D`, `Bounds3D`, `NO_NODE_3D`; the sampler filter is `FilterMode` and the atlas split's error `AtlasTileError`. Identity values are statics, `Transform3D.identity()` and `Transform3D.fromTranslation(position)`. A call on a node handle that cannot be right stops with a message naming the call and the node: a stale node, the root removed, a mesh call on a node that is not a mesh; so the setters answer nothing. The questions (`nameOf`, `findByName`, `worldOf`; `isLive` answers a boolean), the context's ids (Bevy's `Assets::get`) and real failures keep `Result`. Every capture byte-identical | generality: void2d and void3d in one file, one error rule in both layers | **done**, 1 test, 20 abort programs, 1 gate stage |
 | M20 | Heaps: `h2d/RenderContext.hx` inheritance, `pass`, `pushTarget`; Bevy at `0f38358f`: `RenderDevice`, shader handles and vertex layouts | One GPU door in `src/gpu`, void3d through it; programs/layouts by registration, checked pass ownership and an external shader consumer in both registration orders. **NEW MECHANISM**: bounded program registration, taken on the references under the delegation of 2026-09-29. Every standing capture stays byte-identical | generality: void2d's pipelines/targets and `BlendMode` adopt the door in its own arc | **done**, 14 new abort programs, 2 registration runs |
-| M21 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `Camera.makeFrustumMatrix`, `col.Frustum`, `scene.Object.cullingCollider`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Projection`, `Aabb.relative_radius`, `Frustum.intersects_obb`, `check_visibility_cpu_culling` | One `Camera3D` with orthographic/perspective projection, vertical FOV in radians, finite near/far depth in `[0,1]`; snap remains orthographic only. View-local frustum filtering of pass lists each frame, using transformed CPU mesh bounds without changing scene visibility. Perspective capture, half-off-screen culling count and picking; every existing ortho capture byte-identical. Textured meshes remain the next milestone | generality: perspective scenes without the pixel-art camera | **in progress** |
+| M21 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `Camera.makeFrustumMatrix`, `col.Frustum`, `scene.Object.cullingCollider`; Bevy at `157e1ce6bc66fadca9f57260c18a16d743c11ed5`: `Projection`, `Aabb.relative_radius`, `Frustum.intersects_obb`, `check_visibility_cpu_culling` | One `Camera3D` with orthographic/perspective projection, vertical FOV in radians, finite near/far depth in `[0,1]`; snap remains orthographic only. View-local frustum filtering of pass lists each frame, using transformed CPU mesh bounds without changing scene visibility. Perspective capture, half-off-screen culling count and picking; every existing ortho capture byte-identical. Textured meshes remain the next milestone | generality: perspective scenes without the pixel-art camera | **reviewed SHIP, ready to land**, 1004 suite tests, 35 aborts, 4 new baseline hashes |
 
 ### M2 as built
 
@@ -804,6 +804,92 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   Swapchain-only full-screen output, opaque copy, scene halves in void2d and
   M17's lifetime follow-ups remain. The spike is untouched. No GLES3/device
   or real context-loss run was added; the camera follows M20.
+
+### M21 as built
+
+- **One request, one resolved view.** `camera.ms` `Camera3D` replaces the orthographic-only
+  request; the project callers migrate without an alias. A tagged projection follows Bevy's
+  [Projection](https://github.com/bevyengine/bevy/blob/157e1ce6bc66fadca9f57260c18a16d743c11ed5/crates/bevy_camera/src/projection.rs),
+  while the finite, non-reversed `[0,1]` depth matrix follows Heaps'
+  `Camera.makeFrustumMatrix` at `b9aa6dcbb2307b03c1f435e87bdb036060100984`.
+  FOV is vertical radians instead of Heaps' degrees; aspect comes from the resolved target.
+  `position` names the eye before snapping, replacing M4's orthographic `target`.
+  Snap and texel scale belong only to the orthographic branch: perspective has no uniform
+  world-space texel size. Both projections reuse the basis, camera block and blit-based
+  project/unproject path. `CameraView`'s unread texel-scale field is removed.
+- **Culling is per view, not retained scene state.** `renderer.ms` `beginFrame` and
+  `passList.ms` `filterFrustum` filter each pass after validating the complete input.
+  This is Bevy's
+  [check_visibility_cpu_culling](https://github.com/bevyengine/bevy/blob/157e1ce6bc66fadca9f57260c18a16d743c11ed5/crates/bevy_camera/src/visibility/mod.rs),
+  placed at this renderer's draw-list boundary rather than Heaps' tree walk.
+  A camera or node can move back into view without rebuilding the structural list, and
+  one view does not write another's visibility. Each preset reports the filtered count.
+  The test is the current CPU mesh bounds transformed by the item's world matrix, not
+  an origin test or an expanded world AABB.
+- **Planes and bounds.** `frustum.ms` `Frustum3D.fromMatrix` takes Heaps'
+  `col/Plane.hx` `frustumLeft` through `frustumFar`; `intersectsBounds` takes the support
+  radius from Bevy's
+  [Aabb.relative_radius / Frustum.intersects_obb](https://github.com/bevyengine/bevy/blob/157e1ce6bc66fadca9f57260c18a16d743c11ed5/crates/bevy_camera/src/primitives.rs).
+  Normalizing is unnecessary for a sign test: signed value and support radius scale
+  together. Touching remains visible, Heaps' strict-negative rejection instead of
+  Bevy's non-positive rejection. Reflection, nonuniform scale, rotation and shear use
+  the transformed local axes; no inverse, eight-corner expansion or new frame scratch.
+  Alpha sorting now uses Heaps' `scene/Renderer.hx` `depthSort` (`z / abs(w)`), not the
+  orthographic-only clip z.
+- **D3D11 consumer measured before the full gate.**
+  `msc build out/tmp/capture/perspectiveCapture.ms` followed by
+  `CAPTURE_PREFIX=out/tmp/capture/perspectiveSmoke ./out/debug/perspectiveCapture.exe`
+  on msc `35601908`, 2026-09-30: eight retained boxes; visible/culled counts
+  **4/4, 4/4, 5/3, 4/4** at frames 1/6/11/16. The camera shifts from x=0 to x=20,
+  a previously excluded node moves into view without a structural change, then both
+  return. Center rays aimed at the far box pick the nearer box (nodes 2, then 6);
+  off-center rays pick nodes 3, then 7. Readbacks independently check lit front-face RGB
+  and background, so a blank new baseline fails. Frame 11 was visually inspected.
+  With `filterFrustum` temporarily bypassed, the real consumer exits 1 at frame 0:
+  `opaque=8 culled=0, expected opaque=4 culled=4`. The bypass is removed.
+  The distant-camera control also exits 1 at its intended count proof.
+- **Refuse unsupported finite views at resolution, not during a tap.** The design review
+  found near/far `1/100000000` and `0.1/10000000` rounding the float32 depth coefficient
+  to one: the far plane disappears, an object beyond far remains visible, and the far
+  endpoint unprojects to infinity. `resolve` refuses this as `UnrepresentableDepthRange`;
+  the two-variant regression was red before the guard and green after.
+  The owning defect pass also measured a zero inverse at near/far `1e-12/1e-10`, from
+  the existing `Mat4.inverse` precision threshold. The `1e-12` and `2e-12` scale variants
+  were red before `UnprojectableView`. The center and four corner screen rays must be
+  finite and nonzero before a perspective view is accepted. A separate test refuses
+  overflowing corner rays at FOV `3.1415925`, near/far `1e9/1e15`, while the same range at
+  FOV `1.0` retains a unit corner ray.
+  The resolved view retains the inverse used for this check and reuses it for picking:
+  Heaps' `Camera.getInverseViewProj` cache, eagerly filled here because acceptance needs
+  it, instead of recomputing the inverse at every tap. No matrix threshold is loosened,
+  no zero inverse is repaired, and the orthographic snap/projection arithmetic is unchanged.
+  A resolved `CameraView` is a snapshot: change the request and resolve again rather than
+  editing one of its derived matrices independently.
+- **Final gate, 2026-09-30.** `sh scripts/gate3d.sh`, installed msc `35601908`, D3D11
+  on the shared Windows workstation: **GATE GREEN with 1 skipped stage** (`device`).
+  The tested source and baseline snapshot is committed as `44f2f3c`, tree
+  `95d9475bfaf2a2d248287ec80f934452b57d0bb6`; the run preceded those commits and its
+  header records `d688548` plus tracked diff `da63d5f8ed3a`.
+  **1004/1004 tests**, +14 net on M20 (eight camera cases and seven frustum cases added,
+  one forwarding-only camera case removed); **35 abort programs**, +1.
+  **16 configurations / 64 frames match 52 hashes**: every original ortho frame is
+  byte-identical, and only the four `m21perspective` hashes were added in their own commit.
+  HUD/compose/both-layer/registration-order checks and three campfire picking probes pass.
+  The perspective consumer reports **4/4, 4/4, 5/3, 4/4** visible/culled, with nearest
+  and off-center picks, lit RGB and the distant-camera control passing.
+  Listed frame/render/pick/perspective paths contain no array copy or built string;
+  steady frame state stays flat over 300 frames, and 310 churn frames retain four live
+  buffers and flat tables/pool. The oracle remains **75 agree / 11 declared divergences**;
+  PENDING3D stays at 25 rows. Android arm64 builds at **3,372,240 bytes**, +47,592 on M20
+  with the same compiler. Timing is report-only, not a controlled performance lane.
+  The fresh design re-review is **SHIP** after the numeric repairs; landing is not implied.
+- **Deliberately not included.** Automatic mesh-bounds culling is Bevy's shape; Heaps'
+  optional collider and inherited group-collider interfaces are not ported.
+  Empty CPU bounds mean unavailable, so external GPU-only meshes, particle and billboard
+  streams remain drawn, as Bevy's no-Aabb branch does. Their shader still clips geometry.
+  No hierarchical/group culling, dynamic stream bounds, textured meshes, shader changes
+  or new GPU resources. The constant billboard normal remains a declared divergence in
+  PENDING3D with perspective too. No GLES3 or real context-loss claim is added.
 
 ### Android lifecycle (V6), alongside from M3
 

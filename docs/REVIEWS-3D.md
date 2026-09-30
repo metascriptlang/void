@@ -1392,3 +1392,91 @@ pass guards, context reconstruction or steady-path allocation.
 - Full-swapchain-only output, opaque copy, void2d scene halves and M17's lifetime gaps
   remain as scoped. The camera follows this milestone; the spike remains.
 
+## M21 — perspective camera and per-view frustum culling
+
+**Design verdict: SHIP after one SEND BACK and the numeric repairs.** The owning session
+performed the defect pass and verified each finding. A fresh principal-engineer reviewer
+read the pinned reference sources and the implementation, without running builds or tests.
+Its initial SEND BACK, first repaired SHIP and final inverse-boundary SHIP are retained here.
+
+### Defect pass
+
+| Finding | Repair and evidence |
+|---|---|
+| Foreign `near`/`far` plane names repeat the recorded Windows-header macro trap | `Frustum3D.nearPlane` / `farPlane`; caught against the handoff before compiling, not claimed as a new compiler bug |
+| Culling changed the drawn set, but both presets still returned the input length | Both `prepareFrame` paths return the filtered count; the real perspective consumer requires that result to equal its pass-list count |
+| Resetting the new counter before validation violated the existing refusal boundary | The counter changes only with an accepted frame; source inspection, not a separately exercised refusal test |
+| A proposed control changed only the expected count | Rejected before execution. The kept control changes the actual camera to x=200 and fails with 0 visible / 8 culled instead of 4/4. A separate temporary production-filter bypass fails with 8/0 |
+| Tiny finite perspective depths produced a zero inverse and invalid picking rays | `UnprojectableView` at resolve, using the same inverse and screen-ray arithmetic the consumer uses. Two scale variants were red before the repair; no inverse threshold or fallback is changed |
+| Test helper used `assert` outside a test block | The installed compiler refused it; the helper now unwraps or stops, and assertions remain inside test blocks |
+
+The copy/forwarding-only camera-block test was deleted, not re-pinned. A storage-capacity
+assertion was removed from the existing alpha-order test; actual item ordering stays tested.
+No renderer shader, GPU resource, main checkout, recompiler file or neighbour-owned path
+was changed.
+
+### Fresh design pass and re-reviews
+
+**Initial SEND BACK.** `Camera3D.resolve` accepted near/far `1/100000000` and
+`0.1/10000000`, where float32 rounds the depth coefficient to one. The far plane then has
+zero normal, an object at twice far stays visible, and `rayFromScreen` unprojects an
+infinite far endpoint. The owning session reproduced all three facts on msc `35601908`.
+The ordinary `1/100` control retained a far-plane normal, rejected the outside object
+and returned a finite ray.
+
+The declaration now refuses `depth <= 1` as `UnrepresentableDepthRange`. The permanent
+two-variant regression in `cameraCheck.ms` failed before the guard:
+**314 passed / 1 failed**, `AssertionError: ! result . ok`; after it, **315/315**.
+The design re-review returned SHIP for that repair, explicitly awaiting the final gate.
+
+The owning defect pass then measured the separate inverse precision boundary at
+`1e-12/1e-10`. Both that scale and `2e-12/2e-10` were pinned: **315 passed / 1 failed**
+before the inverse/ray check. The resolved inverse is retained and reused for picking,
+as Heaps' `Camera.getInverseViewProj` caches it; eager validation is the documented
+deviation from its lazy cache. The center and four corner rays must have finite endpoints
+and nonzero finite directions. A near-π FOV overflow test additionally keeps a supported
+large-view control. The final camera lane is **317/317**, including **19 local tests**.
+
+**Final design re-review: SHIP, no remaining source/design blocker.** It confirmed:
+- the projection union and clean caller migration, with no `OrthoCamera` compatibility path;
+- view-local filtering on every frame, with the original draw list and scene flags preserved;
+- transformed-local support-radius bounds, covering reflection, rotation, nonuniform scale
+  and shear without an inverse per item or new scratch allocation;
+- the numeric refusal at declaration, the cached inverse, updated literal callers and
+  allocation-list coverage, without a fake matrix or a looser math threshold;
+- no customer-shaped renderer policy, new GPU-resource lifetime or hidden compiler workaround;
+- independently expected lit RGB and picking in the capture consumer, not blank-image hashes.
+
+The references and deliberate differences are in VOID3D.md "M21 as built":
+Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`; Bevy
+`157e1ce6bc66fadca9f57260c18a16d743c11ed5`. The reviewer did not claim runtime evidence
+it had not run; the owning session supplies it.
+
+### Final acceptance
+
+`sh scripts/gate3d.sh`, msc binary/support `35601908`, D3D11, 2026-09-30:
+**GATE GREEN with 1 skipped stage** (`device`). The source/baseline snapshot is committed
+as `44f2f3c`, tree `95d9475bfaf2a2d248287ec80f934452b57d0bb6`; the run's header was
+`d688548` plus tracked diff `da63d5f8ed3a`, before the logical commits.
+
+- **1004/1004 tests**, +14 net against M20; **35 abort programs**, +1. No new failing stage.
+- **16 capture configurations / 64 matching frames / 52 hashes**. All 48 old hashes
+  remain untouched; the four perspective hashes are the only additions, in their own commit.
+- Perspective visible/culled counts **4/4, 4/4, 5/3, 4/4**, nearest and off-center picking,
+  independently checked lit RGB and background. The distant-camera control fails correctly.
+- Existing HUD, compose, both-layer, both registration-order and campfire picking checks pass.
+- The allocation scan includes the inverse/ray guards and frustum functions: no array copy
+  or built string in listed paths. No frame-state growth over 300 frames; 310 churn frames
+  keep tables/pool/four live buffers flat; second stream writes are refused.
+- **75 oracle agreements / 11 declared divergences**, 25 PENDING3D rows.
+- **Android arm64 3,372,240 bytes**. No GLES3/device or real context-loss execution added.
+
+### Scope still separate
+
+- Perspective GLES3/device coverage; this milestone's pixel proof is D3D11.
+- Bounds for external GPU-only meshes and particle/billboard streams, when that capability
+  is asked for; missing CPU bounds stay drawn as Bevy's no-Aabb branch does.
+- Inherited group colliders, hierarchical culling, textured meshes and the earlier
+  M17–M20 lifetime/output/void2d boundary gaps.
+- Landing and pushing this milestone require a new human decision.
+
