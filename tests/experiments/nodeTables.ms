@@ -1,6 +1,6 @@
 import "../../src/sokol/gpu";
-import { NodeRef, Scene } from "../../src/void2d/node";
-import { scene, add } from "../../src/void2d/scene";
+import { NodeRef, Scene2D } from "../../src/void2d/node";
+import { add } from "../../src/void2d/scene";
 import { rgba } from "../../src/void2d/types";
 
 const COLUMNS: int32 = 250;
@@ -10,7 +10,7 @@ const CELL_H: float32 = 3.6;
 const ROUNDS: int32 = 5;
 const WRITE_PASSES: int32 = 4;
 
-function build(s: Scene, cards: NodeRef[]): void {
+function build(s: Scene2D, cards: NodeRef[]): void {
 	for (let row: int32 = 0; row < ROWS; row++) {
 		for (let column: int32 = 0; column < COLUMNS; column++) {
 			const card = s.rect(CELL_W - 1.0, CELL_H - 1.0, rgba(0.2, 0.3, 0.5, 1.0))
@@ -36,7 +36,7 @@ function visit(cards: NodeRef[]): int32 {
 
 function main(): void {
 	for (let round: int32 = 0; round < ROUNDS; round++) {
-		const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 		const cards: NodeRef[] = [];
 		const built: float64 = performance.now();
 		build(s, cards);

@@ -18,12 +18,12 @@ import {
 import { quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba, identity2d, emptyBounds } from "../void2d/types";
 import { begin2d, frameEnd } from "../void2d/draw";
-import { NodeRef, Scene } from "../void2d/node";
-import { scene } from "../void2d/scene";
+import { NodeRef, Scene2D } from "../void2d/node";
+import "../void2d/scene";
 import { renderTargetsAlive, segmentBox } from "../void2d/render";
 import { approx } from "./helpers";
 
-const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
 function payloadOf(n: NodeRef): int32 { return n.scene.payloads[n.id.index]; }
 

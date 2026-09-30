@@ -39,7 +39,7 @@ Neon (parent)            component model: View, Text, Flexbox, events, state, di
 ## Two faces of void2d (load-bearing)
 
 1. **Immediate quad batcher** — thin over the GPU bridge: accumulate textured/colored quads CPU-side, flush as few draw calls. For HUD / games that just draw each frame.
-2. **Retained node tree** — since P5 step 6 a node is a row of its `Scene`'s tables (transform, paint, content, order, tree), held as a `NodeRef` handle and written through binders. This is the **host the JSX/Solid reconciler binds to** (R3F maps `<mesh>` → a retained `THREE.Object3D`; Solid-on-Void maps JSX → a retained node). Each frame, walk the tree → emit batcher calls.
+2. **Retained node tree** — since P5 step 6 a node is a row in its scene's tables, held as a `NodeRef` and written through binders. Current ownership is `node.ms` `Scene2D`; construction is `scene.ms` `Scene2D.create`. This is the host the JSX/Solid reconciler binds to. Retention records changed rows or replays the unchanged list rather than walking every node on every frame.
 
 Both required from day one: face 1 ships HUD/game now; face 2 is what the reconciler (`createNode` / `setProp` / `appendChild`) will drive later. A pure immediate-mode 2D layer would have no host for the JSX layer to reconcile onto. With the display list below, face 1 becomes "append to the list" and face 2 "a tree that appends to the list".
 
@@ -256,12 +256,11 @@ passed while WebGPU remained an explicit adapter SKIP.
 **Findings, in closure order:**
 
 1. ~~**The mixed void3d → void2d frame boundary was unproved and wrong.**~~ **Closed after
-   this audit.** `renderer.endFrame` now imports the bridge's shared `commit`; the duplicate
-   `gpu3dCommit` declaration, wrapper and direct `sg_commit` site are gone. The permanent
-   `tests/integration/mixedFrame.ms` capture draws the cube and a void2d overlay in one
-   swapchain pass, commits once, starts a second frame, and requires the two fixed-state
-   captures to match. Its per-frame void2d draw-count assertion is the regression guard:
-   the old path left that count accumulating because `void2dFrameEnd` never ran.
+   this audit.** P2 unified the commit path; after M18–M20 the caller owns it explicitly.
+   `tests/integration/mixedFrame.ms` prepares the `ForwardRenderer`, opens one shared screen
+   pass, draws its lit scene and the void2d overlay, ends the pass and commits once. Its real
+   readbacks also exercise a foreign registered shader, blending and both registration orders.
+   The old cube-only/endFrame description no longer names this consumer.
 2. **Guardrail 9 is two measured surfaces of seven since P3 step 8.** WebGL2 has golden
    readback through headless Chrome: **65 / 69** against the D3D11 set, four structural failures
    named in `tests/PENDING.md conformance:webgl2-pixel-centre`; the first run also found and fixed
@@ -1035,7 +1034,7 @@ human has seen it as app code; the phase measurement comes last.
      `graphics.ms` and `layout.ms`. Neon's `host.ms` is Neon's to move, through
      `~/metascript/.inbox/neon/`, once the human has approved the API.
 
-   **Landed at P5 step 6** (`0eec46f`, `e64af7f`): the renderer and every consumer in this repo on
+   **Landed at P5 step 6** (`92b73a2`, `ac1b647`): the renderer and every consumer in this repo on
    the tables in one commit, `Node2D` deleted, every D3D11 golden byte-identical (72/72), the bench
    counters unchanged, T0 in `src/test/nodeCheck.ms` (51 tests) and two aborts, `staleNode` and
    `addChildCycle`. Neon's note is `~/metascript/.inbox/neon/2026-09-28-void2d-noderef.md`. What
@@ -1051,7 +1050,7 @@ human has seen it as app code; the phase measurement comes last.
      `getChildAt` answers in drawn order. `setZIndex` on a child re-stacks it at once, where a
      field store waited for the next add or remove. The first version re-sorted the whole sibling
      list on every add, which made the 100 000-node build quadratic (1.1 to 1.9 s against 51 to
-     121 ms for `Node2D`); `e64af7f` moves only the child that changed.
+     121 ms for `Node2D`); `ac1b647` moves only the child that changed.
    - **`tick` sweeps the scene's rows** by kind, advancing an Anim's clock and a label's blink.
      The label side table is shared by every scene, so sweeping it would blink a second scene's
      caret twice as fast; a row sweep advances this scene's nodes, attached or not.
@@ -1069,7 +1068,7 @@ human has seen it as app code; the phase measurement comes last.
    - The allocation stage lists the new frame path (`drawRow`, `syncRow`, `meshBounds`,
      `clearChanges`, `refOf`, `liveRow`, `imageStyleOf`). On BUILD `3f6873ee` it also found
      `faceAtPath` copying each `LoadedPath` in a `for..of` on the rebuild path, already so on
-     the step 5 head built on that compiler; `2cfc821` reads it by index.
+     the step 5 head built on that compiler; `a10680a` reads it by index.
 7. **Retention**, consuming the dirty list: a draw order flattened and rebuilt only when
    `structureChanged` (SCENE-SCALE.md "Flatten traversal order"), persistent instance ranges,
    re-recording only the dirty nodes and, for a transform, alpha or filter change, what inherits
@@ -1125,8 +1124,8 @@ human has seen it as app code; the phase measurement comes last.
      (`sg_update_buffer`); a range write is the `write_persistent` upstream has announced
      (SOKOL.md). T4: the bench counters of a still frame.
 
-   **Landed at P5 step 7** (7a `ffe1f48`; 7b `a1cca15`, `dddf379`; 7c `e4bc00c`, `cce59f3`,
-   `70092c6`; 7d `ebc5a5f`, `d013f58`, `2802c7a`): every D3D11 golden byte-identical (72/72), now
+   **Landed at P5 step 7** (7a `8dc5dfe`; 7b `092e64f`, `19ab774`; 7c `8c3a5b7`, `7def7c6`,
+   `2f08e7e`; 7d `d796c83`, `fb3ea4e`, `6bd2c53`): every D3D11 golden byte-identical (72/72), now
    captured on retained frames, since the runner's second and third draws of a scene change
    nothing. What the build decided that the plan does not say:
    - **The oracle resyncs every world.** `tests/displayList/retain.ms` compares, after each write
@@ -1134,7 +1133,7 @@ human has seen it as app code; the phase measurement comes last.
      record recomputes every world from the locals. The first version did not: a patch that
      left a descendant's world stale copied it into both sides, and a mutation skipping the
      descent passed. It fails now, as does one skipping the in-place emission.
-   - **A bracket starts its runs in the UI pipeline** (`e4bc00c`). `begin2d` never reset the
+   - **A bracket starts its runs in the UI pipeline** (`8c3a5b7`). `begin2d` never reset the
      open run's pipeline, so the reason recorded for the first draw after a scissor or a target
      barrier depended on where the previous bracket ended. The stored snapshots had been written
      after brackets that ended in the UI pipeline, so starting there keeps every one of them;
@@ -1165,7 +1164,7 @@ human has seen it as app code; the phase measurement comes last.
      root 0.72 against 0.77-0.80 ms, both writing the same worlds. Upward marking scans the top
      level on every frame and walks up once per changed node; it wins no case here, and the
      descent is what the frame runs.
-   - **A shape change splices the next frame from the last** (`5dd8a9a`), GPUI's `reuse_paint`
+   - **A shape change splices the next frame from the last** (`4eb0ab7`), GPUI's `reuse_paint`
      (`window.rs:3887`) over its `rendered_frame` / `next_frame` pair: the scene holds two lists,
      and when the in-place patch cannot keep a row's shape, or the order changed, it scans its
      draw order into the other list, copying the bytes of each clean row whose recorded run state
@@ -1197,7 +1196,7 @@ human has seen it as app code; the phase measurement comes last.
    floats in place. T1: a blink writes the caret's instance and nothing else; a colour write
    uploads a known number of bytes.
 
-   **Landed at P5 step 8** (`e060562`, `a9a9b92`), on step 7's paint ranges rather than a second
+   **Landed at P5 step 8** (`e768cbb`, `f68165b`), on step 7's paint ranges rather than a second
    path: a paint write re-emits the node's own content in place, which walks no tree, and the
    changed range is now the first to the last record whose bytes moved, not the row's whole
    range. A hidden caret keeps its instance at alpha 0, so a blink changes one float and no count,
@@ -1248,7 +1247,7 @@ human has seen it as app code; the phase measurement comes last.
     - **The camera** (moved from step 9) takes the same shift at the root after 10b, with a cull
       pass over the rows the shift brings into the viewport, since the viewport culls there.
 
-    **Landed at P5 step 10** (10a `063c691`, golden `de200e5`; the shader `cc30261`; 10b below).
+    **Landed at P5 step 10** (10a `70664b6`, golden `f499797`; the shader `0ce9c52`; 10b below).
     `clip/maskScroll` is byte-identical under both paths. What the build decided:
     - **A scope is a Mask with a scroll whose world, and every Mask world above it, is
       axis-aligned** (`scrollScope`). Anything else keeps 10a's meaning, the scroll in its
@@ -1522,15 +1521,15 @@ human has seen it as app code; the phase measurement comes last.
 
 **Measured in P5 so far (2026-09-27).** The installed msc changed from BUILD `598ca62e` to
 `c54a8671` during step 4. It makes `const` deep through `struct`, `T[N]` and `Vec<T>`, so every
-binding void writes became `let` (`6e90500`, void3d's included; `~/metascript/.inbox/void/`
+binding void writes became `let` (`b06e7e9703507b9228d93517cc1dbf59b875e02a`, void3d's included; `~/metascript/.inbox/void/`
 has the note). An older tree needs the same binding changes to build on it. The step 3 and
 step 5 readings used `c54a8671`; later readings name their own BUILD below.
 
-- Step 3, the `UiInstance` record: an interleaved A/B against `e98a67b` was inconclusive on a busy
+- Step 3, the `UiInstance` record: an interleaved A/B against `2ee05c2af670e499f478be4103c95a1c0af6354e` was inconclusive on a busy
   box (UI 10.20 → 10.81 ms at the median over 5 clean pairs of 6, then 4 clean of 10), and a
   GPU-free emission loop over the UI bench scene, the minimum of 40 × 5 frames, read −0.9 to
   +0.5 ms pair by pair. Step 14 measures the net phase, not this record change in isolation.
-- Step 5, change model A, `tests/experiments/changeModel.ms` at `6a0e682`, deleted with `Node2D` at
+- Step 5, change model A, `tests/experiments/changeModel.ms` at `754dc9fff61a47d2e805c8d01624600e780eb418`, deleted with `Node2D` at
   step 6 (release, D3D11, 1280 × 720): 100 000
   nodes, 50 000 cards each with a two-digit label, a snapshot of every field that reaches the
   instance bytes, 120 frames per reading. Of five runs, the two with load under 25 % on both sides
@@ -1541,15 +1540,15 @@ step 5 readings used `c54a8671`; later readings name their own BUILD below.
   idle or not. Under B an idle frame costs nothing and a write costs one push onto a dirty list
   (SCENE-SCALE.md, about 23 ns for the binder path). The human chose binders over tables, step 5.
 - Step 6, the tables, on BUILD `3f6873ee`, release, a quiet box (load 3-12 % around every run),
-  `out/tmp/abStep6.sh`. Tree A is `2cfc821`, the step 5 head plus the `faceAtPath` fix; the fix
-  alone is neutral, `ff232e7` against `2cfc821` reads UI 10.61 against 10.61 ms (6 clean pairs of
+  `out/tmp/abStep6.sh`. Tree A is `d7a2c72192c3c3750932c553e2473a810eed3e23`, the step 5 head plus the `faceAtPath` fix; the fix
+  alone is neutral, `5d4bf10a3aabddae0f5a7feaf758c27cb5d6e237` against `d7a2c72192c3c3750932c553e2473a810eed3e23` reads UI 10.61 against 10.61 ms (6 clean pairs of
   8) and sprites 1.70 against 1.59 ms (8 of 8). `scripts/bench-ab.sh`, 8 interleaved pairs:
   **UI `present` 11.78 → 5.58 ms** (5 clean pairs of 8; B ranged 5.22-5.74), **sprites 1.91 →
   1.05 ms** (8 of 8). The frame still walks and draws every node, so this is what the old
   frame spent reaching 71-field objects and comparing seven transform fields, eight text
   fields and a string per label every frame, which a `Local` bit and a `stale` flag replace.
 - Step 6, `tests/experiments/nodeTables.ms` against the same loops over `Node2D` built in
-  `2cfc821` (`out/tmp/p6probes/node2dControl.ms`), 100 000 nodes (50 000 cards, each with a
+  `d7a2c72192c3c3750932c553e2473a810eed3e23` (`out/tmp/p6probes/node2dControl.ms`), 100 000 nodes (50 000 cards, each with a
   two-digit label), 3 interleaved pairs of 5 rounds: **build 61-81 ms against 48-62 ms**. A
   label takes its side-table row, with an empty shaped text, when it is made instead of at its
   first sync, and 50 000 `allocateLabelText` calls alone take 21-23 ms
@@ -1568,7 +1567,7 @@ step 5 readings used `c54a8671`; later readings name their own BUILD below.
 
 **P5 step 14 measured, 2026-09-30.** All native binaries are release, D3D11, 1280 × 720,
 sample count 1, high DPI off, 20 warm-up plus 120 measured frames, msc 0.2.55 BUILD `35601908`.
-The B arm is `44887f7`, tree `81722cbb846ae1e6b6ef789b9d8690f8a2bb08e2`, before step 12's
+The B arm is original tree `81722cbb846ae1e6b6ef789b9d8690f8a2bb08e2`, before step 12's
 host queries. A arms are archived `8a473f3`, tree
 `5c2ddf9a967800a2fba91fd0729f8118b8ec15e1`, and P4's measured head `c85f5d0`, tree
 `9754328484f77e9604b4e18718e288a5340f8c42`. Both archives need the `const` → `let` binding
@@ -1682,6 +1681,48 @@ changes described above on today's compiler; the P4 web archive also takes its r
 ### The budget, at every phase
 
 Checked and recorded per phase, from `tests/bench/`: draw calls, instances and uploaded bytes at 10 000 Box + 10 000 Label; frame time of the sprite-only scene, which must not regress (guardrail 8); CPU time of a fully static 100 000-node frame and of the scrolling 200-line text view from P5 on; atlas pages and bytes after a zoom sweep; wasm size per backend and per module. Counters gate; milliseconds are reported with a warn threshold and never fail a commit — the reasoning is in [TESTING.md](TESTING.md) "T4".
+
+## Unify with void3d (2026-09-30)
+
+The human approved independent unify work while P5 review B1 remains compiler-blocked.
+The dependency baseline is landed M18–M20 at `f625aaa`; integration is not a P5 SHIP or land.
+`backup/void2d-before-unify-20260930` retains the pre-integration history and measured trees.
+Live P5 implementation citations were paired by subject; measurement records retain their
+original source trees rather than pretending the rebased whole-repo tree was benchmarked.
+
+Earlier phase snippets record the API at that phase; current source names and constructor
+ownership are the D3/D4 entry below, not compatibility aliases.
+
+**D3/D4 names and construction:** `node.ms` owns `Scene2D`, `NodeId2D` and `NO_NODE_2D`;
+`types.ms` owns `Bounds2D`; `scene.ms` supplies `Scene2D.create`. There is no old-name alias
+or forwarding factory. The source names, not import aliases, separate 2D from `Scene3D` /
+`NodeId3D` / `Bounds3D`. This follows the shared contract in VOID3D.md "Shared with void2d"
+and avoids the already-carded same-source-name alias ambiguity.
+
+Every in-repo retained caller moved with the constructor. `tests/integration/bothLayers.ms`
+builds and runs the actual 2D and 3D constructors together and dispatches their tree operations
+to their own layer. Existing snapshot/golden geometry did not change. The two Scene factory
+default/field-forwarding tests were removed, not re-pinned under the new names.
+
+**Measured after the naming cutover:** `sh scripts/gate.sh --web`, BUILD `35601908`, GREEN:
+1058 tests plus 299 isolated, D3D11 76/76 unchanged plus three invariants, WebGL2 54
+byte-identical / 18 within the existing bound / four listed structural failures (72/76).
+The same four known-red names remain; no golden or tolerance was widened.
+WebGPU / WebGL2 builds are 2 109 977 / 1 882 102 B; GL demo liveness passes, headless
+WebGPU remains the no-adapter skip. Allocation still holds 103 frame functions plus
+232 callees, and the record has 16 PENDING rows with zero mismatch.
+
+**Next cutovers:** prepare/drawScreen and explicit frame state, then pipelines/targets and
+the shared BlendMode through the door. These are not claimed complete by a name migration.
+The P5 Scene-lifetime blocker stays owned by P5, and P6 is not started.
+
+**Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
+audit on the pre-integration source: mutating a caller's `Paint2D.colorMatrix: float32[]`, or
+that reference inside a `paint()` result, changes stored paint while `isDirty` stays false;
+calling `setPaint` again with that same array still skips as equal. This is ordinary shared-field
+aliasing, not a compiler failure. That audit captured dirty-state values, not pixels, and this
+lane has not independently reproduced or implemented a separate fix. Frame-context ownership
+must not treat a copied value wrapper as a deep-frozen snapshot of its reference fields.
 
 ## Open
 

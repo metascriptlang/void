@@ -1013,7 +1013,7 @@ below. Neither belongs to P6's different device-loss/occlusion work.
 **Passes and scope.** The main-session defect pass inspected the P5 diff's retained upload,
 patch/splice, lane, node ownership and teardown boundaries, and ran the actual failing
 consumers. A fresh `reviewer` agent, `P5DesignPass`, independently reviewed
-`8140882` through the host-services and measurement work (`8ec34ff`), against P5's exits,
+`8140882` through the host-services and measurement work (`b6a695b`), against P5's exits,
 guardrails, TESTING.md and the decision rule. It edited nothing and ran no checks. Its ten
 answers are recorded below; runtime evidence is the main session's, not the reviewer's.
 `src/void3d/particles.ms` is the deliberate main-equivalent overlay, excluded from phase work.
@@ -1117,8 +1117,9 @@ Hardware/T5 captures remain the human's. Neon/Yoga own their host migration and 
 through their inbox notes. None of those owners can absorb B1 by declaration.
 
 Steps 12 and 14 may be used as their recorded capability and measurement evidence, but **P5 is
-not shipped**. No rebase, land or P6 start is authorised by this SEND BACK. The compiler fix,
-B1 consumer and fresh review are prerequisites, not optional follow-ups.
+not shipped**. This SEND BACK authorises no land or P6 start. On 2026-09-30 the human separately
+approved private integration onto M18–M20 and independent unify work while the compiler owner
+fixes B1; that is neither a P5 SHIP verdict nor permission to bypass teardown and re-review.
 
 **Verification after B2, prototype removed:** `sh scripts/gate.sh` on BUILD `35601908` is GREEN:
 1027/1027 tests, 299/299 isolated glyph-page tests, D3D11 76/76 unchanged plus all three golden

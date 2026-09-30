@@ -28,7 +28,7 @@ import {
 	backendDirectory,
 } from "./table";
 import { SceneBuilder, sceneBuilders } from "./scenes";
-import { Scene } from "../../src/void2d/node";
+import { Scene2D } from "../../src/void2d/node";
 import { presentAt } from "../../src/void2d/scene";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
@@ -67,7 +67,7 @@ const expectedDraws: int32[] = sceneDrawCounts();
 const expectedRenderTargets: int32[] = sceneRenderTargetCounts();
 const builders: SceneBuilder[] = sceneBuilders();
 let index: int32 = 0;
-let current: Scene | null = null;
+let current: Scene2D | null = null;
 let stage: int32 = 0;
 
 function describeTable(): void {

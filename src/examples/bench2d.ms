@@ -24,8 +24,8 @@ import {
 import { renderTargetsAlive } from "../void2d/render";
 import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
 import { GlyphAtlas } from "../void2d/glyphAtlas";
-import { NodeRef, Scene } from "../void2d/node";
-import { scene, add, present, isDirty } from "../void2d/scene";
+import { NodeRef, Scene2D } from "../void2d/node";
+import { add, present, isDirty } from "../void2d/scene";
 import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
@@ -71,7 +71,7 @@ function editorRun(len: int32, color: Color): TextRun {
 
 // 200 lines of 80 columns, three syntax colours per line, a selection over 12 rows and a
 // caret at its end: the editor scene P4 closes on and P5's scroll is measured against.
-function editorLabel(s: Scene): NodeRef {
+function editorLabel(s: Scene2D): NodeRef {
 	let text: string = "";
 	const runs: TextRun[] = [];
 	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
@@ -99,7 +99,7 @@ function editorLabel(s: Scene): NodeRef {
 	return editor;
 }
 
-let benchScene: Scene | null = null;
+let benchScene: Scene2D | null = null;
 let benchName: string = "ui";
 let nodeCount: int32 = 0;
 let retainedNodeCount: int32 = 0;
@@ -117,7 +117,7 @@ let warmupFrames: int32 = WARMUP_FRAMES;
 export function benchInit(kind: BenchKind): void {
 	gfxSetup();
 	setup2d();
-	const s = scene(rgba(0.08, 0.09, 0.11, 1.0));
+	const s = Scene2D.create(rgba(0.08, 0.09, 0.11, 1.0));
 	if (kind === BenchKind.Ui) {
 		benchName = "ui";
 		for (let row: int32 = 0; row < ROWS; row++) {
@@ -217,7 +217,7 @@ function report(): void {
 	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
 	console.log(`${benchName}.firstPaintUploadBytes ${firstPaintUploadBytes}`);
-	const idle: boolean = benchScene !== null && (benchScene as Scene).isDirty();
+	const idle: boolean = benchScene !== null && (benchScene as Scene2D).isDirty();
 	console.log(`${benchName}.idleDirty ${idle ? 1 : 0}`);
 	console.log(`${benchName}.sweepPeakPages ${sweepPeakPages}`);
 	const swept: int32 = rasterizationsBeforeMeasure - firstPaintRasterizations;

@@ -1,5 +1,6 @@
 import { Vec3, vec3 } from "../../src/math/math3d";
-import { Node2D, rect } from "../../src/void2d/node";
+import { NodeRef, Scene2D } from "../../src/void2d/node";
+import { tick } from "../../src/void2d/scene";
 import { renderTargetsAlive } from "../../src/void2d/render";
 import { Tile, tile, rgba } from "../../src/void2d/types";
 import { vertexCount } from "../../src/void2d/displayList";
@@ -31,7 +32,7 @@ function check(what: string, holds: boolean): void {
 }
 
 function resolvesOnGpu(
-	box: Node2D,
+	box: NodeRef,
 	atlas: GlyphAtlas,
 	target: RenderTarget,
 	renderer: Renderer,
@@ -50,11 +51,14 @@ function resolvesOnGpu(
 }
 
 function main(): int32 {
-	let box: Node2D = rect(4.0, 4.0, rgba(1.0, 1.0, 1.0, 1.0));
-	box.addChild(rect(2.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0)));
+	const layer: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const box: NodeRef = layer.rect(4.0, 4.0, rgba(1.0, 1.0, 1.0, 1.0));
+	box.addChild(layer.rect(2.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0)));
 	box.removeChildren();
-	check("void2d removeChildren on a node", (box.children.length as int32) == 0);
-	box.update(0.5);
+	check("void2d removeChildren on a node", box.numChildren() == 0);
+	box.setVisible(false);
+	check("void2d visibility binder", !box.order().visible);
+	layer.tick(0.5);
 	const centred: Tile = tile(0, 8.0, 8.0).center();
 	check("void2d center on a tile", centred.dx == -4.0 && centred.dy == -4.0);
 	check("void2d vertexCount of the display list", vertexCount() == 0);

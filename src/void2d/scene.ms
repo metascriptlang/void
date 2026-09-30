@@ -1,8 +1,7 @@
 // Void 2D Scene — functional take on h2d.Scene: a root container (Object) + the render
 // entry that owns the GPU pass. Heaps: `s2d.addChild(o); s2d.render(engine)`.
-// Here: `const s = scene(clear); s.add(o); s.present();` — extension methods, no OOP.
 
-import { Scene, NodeRef, DrawKind, Changed, NO_NODE } from "./node";
+import { Scene2D, NodeRef, DrawKind, Changed, NO_NODE_2D } from "./node";
 import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift } from "./render";
 import {
 	openBracket,
@@ -30,9 +29,9 @@ import {
 } from "./types";
 import { beginPass, endPass, commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 
-export function scene(clear: Color): Scene {
+export function create(this typeof Scene2D, clear: Color): Scene2D {
 	const list: DisplayList = displayList();
-	const s: Scene = {
+	const s: Scene2D = {
 		generations: [], free: [], retired: 0, kinds: [], payloads: [], changed: [], dirty: [],
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
@@ -41,27 +40,27 @@ export function scene(clear: Color): Scene {
 		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
 		anims: [], freeAnims: [], meshes: [], freeMeshes: [], tileGroups: [], tileCells: [],
 		tileEdits: [], freeTileGroups: [], retile: [], retiled: 0, scrolls: [], freeScrolls: [],
-		stack: [], root: NO_NODE,
+		stack: [], root: NO_NODE_2D,
 		list: list, spare: twinList(list.id),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
 		viewMat: identity2d(), viewShift: vec2(0.0, 0.0), culledShift: vec2(0.0, 0.0),
 		viewInit: false, defaultSmooth: true, culls: [],
 	};
-	s.root = s.newRow(DrawKind.Group, NO_NODE);
+	s.root = s.newRow(DrawKind.Group, NO_NODE_2D);
 	return s;
 }
 
-export function add(this s: Scene, c: NodeRef): NodeRef {
+export function add(this s: Scene2D, c: NodeRef): NodeRef {
 	return s.refOf(s.root).addChild(c);
 }
 
-export function setScaleMode(this s: Scene, mode: ScaleMode, designW: float32, designH: float32): void {
+export function setScaleMode(this s: Scene2D, mode: ScaleMode, designW: float32, designH: float32): void {
 	s.scaleMode = mode;
 	s.designW = designW;
 	s.designH = designH;
 }
 
-export function tick(this s: Scene, dt: float32): void {
+export function tick(this s: Scene2D, dt: float32): void {
 	for (let i: int32 = 0; i < (s.kinds.length as int32); i++) {
 		const payload: int32 = s.payloads[i];
 		match (s.kinds[i]) {
@@ -88,7 +87,7 @@ function wholeSceneUnits(window: float32, design: float32, zoom: float64): float
 	return (Math.floor(margin) * zoom) as float32;
 }
 
-export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D {
+export function sceneViewMatrix(s: Scene2D, wf: float32, hf: float32): Transform2D {
 	if (s.designW <= 0.0 || s.designH <= 0.0) {
 		return s.cam.viewMatrix(wf, hf);
 	}
@@ -138,7 +137,7 @@ export function sceneViewMatrix(s: Scene, wf: float32, hf: float32): Transform2D
 	return trs2d(offsetX, offsetY, 0.0, scaleX, scaleY) * s.cam.viewMatrix(dw, dh);
 }
 
-export function present(this s: Scene): void {
+export function present(this s: Scene2D): void {
 	s.presentAt(dpiScale());
 }
 
@@ -147,7 +146,7 @@ export function present(this s: Scene): void {
 // `present()` takes the host's ratio; `presentAt` takes an explicit one, which is how a
 // golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
 // "Determinism preconditions").
-export function isDirty(this s: Scene): boolean {
+export function isDirty(this s: Scene2D): boolean {
 	const l: DisplayList = s.list;
 	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
 	if (s.defaultSmooth != l.paintedSmooth) { return true; }
@@ -163,7 +162,7 @@ function shiftOf(m: Transform2D, dpi: float32): Vec2 {
 	return vec2(snappedShift(m.tx, dpi), snappedShift(m.ty, dpi));
 }
 
-export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): void {
+export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
 	// Before recording begins, never during the walk: begin2d captures this default in the
 	// first run's sampler state.
 	setSceneSmooth(s.defaultSmooth);
@@ -218,7 +217,7 @@ export function paint(this s: Scene, wf: float32, hf: float32, dpi: float32): vo
 	done.paintedSmooth = s.defaultSmooth;
 }
 
-export function presentAt(this s: Scene, dpi: float32): void {
+export function presentAt(this s: Scene2D, dpi: float32): void {
 	const fw: int32 = fbWidth();
 	const fh: int32 = fbHeight();
 	s.paint((fw as float32) / dpi, (fh as float32) / dpi, dpi);

@@ -4,12 +4,12 @@
 
 import { gfxSetup } from "../sokol/gpu";
 import { setup2d } from "../void2d/draw";
-import { NodeRef, Scene } from "../void2d/node";
+import { NodeRef, Scene2D } from "../void2d/node";
 import { fillCircle, strokeLine, fillConvex } from "../void2d/graphics";
-import { scene, add, present, tick } from "../void2d/scene";
+import { add, present, tick } from "../void2d/scene";
 import { Vec2, rgba, vec2, BlendMode } from "../void2d/types";
 
-let sc: Scene | null = null;
+let sc: Scene2D | null = null;
 let panel: NodeRef | null = null;
 let green: NodeRef | null = null;
 let t: float32 = 0.0;
@@ -19,7 +19,7 @@ export function initIos(): void {
 	gfxSetup();
 	setup2d();
 
-	const root = scene(rgba(0.08, 0.09, 0.12, 1.0));
+	const root = Scene2D.create(rgba(0.08, 0.09, 0.12, 1.0));
 
 	const p = root.rect(360.0, 380.0, rgba(0.16, 0.18, 0.24, 1.0)).at(60.0, 60.0);
 	p.addChild(root.rect(160.0, 70.0, rgba(0.90, 0.30, 0.35, 1.0)).at(30.0, 30.0));

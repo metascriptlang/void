@@ -1,6 +1,6 @@
 import "../../src/sokol/gpu";
-import { NodeRef, Scene, NO_SLOT, NO_NODE } from "../../src/void2d/node";
-import { scene, add } from "../../src/void2d/scene";
+import { NodeRef, Scene2D, NO_SLOT, NO_NODE_2D } from "../../src/void2d/node";
+import { add } from "../../src/void2d/scene";
 import { syncOrder } from "../../src/void2d/render";
 import { rgba, identity2d, Transform2D } from "../../src/void2d/types";
 
@@ -11,13 +11,13 @@ const CELL_H: float32 = 3.6;
 const PASSES: int32 = 20;
 
 struct Built {
-	s: Scene;
+	s: Scene2D;
 	columns: NodeRef[];
 	cards: NodeRef[];
 }
 
 function build(): Built {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const columns: NodeRef[] = [];
 	const cards: NodeRef[] = [];
 	for (let column: int32 = 0; column < COLUMNS; column++) {
@@ -38,7 +38,7 @@ function build(): Built {
 	return { s: s, columns: columns, cards: cards };
 }
 
-function descent(s: Scene): int32 {
+function descent(s: Scene2D): int32 {
 	let visited: int32 = 0;
 	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
 		const top: int32 = s.slots[s.dirty[k]];
@@ -67,13 +67,13 @@ let marks: Vec<int32> = [];
 let movedAt: Vec<int32> = [];
 let serial: int32 = 0;
 
-function upward(s: Scene): int32 {
+function upward(s: Scene2D): int32 {
 	serial = serial + 1;
 	while ((marks.length as int32) < (s.kinds.length as int32)) { marks.push(0); movedAt.push(0); }
 	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
 		let up: int32 = s.dirty[k];
 		if (s.slots[up] == NO_SLOT) { continue; }
-		while (up != NO_NODE && marks[up] != serial) {
+		while (up != NO_NODE_2D && marks[up] != serial) {
 			marks[up] = serial;
 			up = s.parents[up];
 		}
@@ -100,7 +100,7 @@ function upward(s: Scene): int32 {
 	return visited;
 }
 
-function checksum(s: Scene): float64 {
+function checksum(s: Scene2D): float64 {
 	let sum: float64 = 0.0;
 	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
 		sum = sum + (s.worlds[s.order[p]].tx as float64) + (s.worlds[s.order[p]].ty as float64);

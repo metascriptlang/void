@@ -7,7 +7,7 @@
 // draw a known defect on purpose, so that the commit which fixes the defect has to
 // regenerate exactly that group and nothing else.
 
-import { NodeRef, Scene, TileCell } from "../../src/void2d/node";
+import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
 import { Align, TextRun } from "../../src/void2d/textLayout";
 import {
 	addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature, SizeAdjust,
@@ -33,7 +33,7 @@ import {
 import { GradientSpace } from "../../src/void2d/gradient";
 import { colorMatrixGrayscale } from "../../src/void2d/effect";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
-import { scene, add } from "../../src/void2d/scene";
+import { add } from "../../src/void2d/scene";
 import {
 	Tile,
 	Vec2,
@@ -100,8 +100,8 @@ function byteColor(r: int32, g: int32, b: int32): Color {
 	return rgba((r as float32) / 255.0, (g as float32) / 255.0, (b as float32) / 255.0, 1.0);
 }
 
-function harnessSolid(): Scene {
-	const s = scene(byteColor(HARNESS_CLEAR_R, HARNESS_CLEAR_G, HARNESS_CLEAR_B));
+function harnessSolid(): Scene2D {
+	const s = Scene2D.create(byteColor(HARNESS_CLEAR_R, HARNESS_CLEAR_G, HARNESS_CLEAR_B));
 	s.add(s.rect(
 		HARNESS_RECT_W as float32,
 		HARNESS_RECT_H as float32,
@@ -112,8 +112,8 @@ function harnessSolid(): Scene {
 
 // ===== prim/ =====
 
-function primRoundedRect(): Scene {
-	const s = scene(DARK);
+function primRoundedRect(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(12.0, 12.0);
 	g.fillRoundedRect(0.0, 0.0, 100.0, 60.0, 0.0, rgba(0.30, 0.55, 0.85, 1.0));
 	g.fillRoundedRect(116.0, 0.0, 100.0, 60.0, 12.0, rgba(0.30, 0.55, 0.85, 1.0));
@@ -123,8 +123,8 @@ function primRoundedRect(): Scene {
 	return s;
 }
 
-function primStrokeRect(): Scene {
-	const s = scene(DARK);
+function primStrokeRect(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(12.0, 12.0);
 	g.strokeRect(0.0, 0.0, 100.0, 60.0, 1.0, rgba(0.92, 0.95, 1.0, 1.0));
 	g.strokeRect(116.0, 0.0, 100.0, 60.0, 4.0, rgba(0.92, 0.95, 1.0, 1.0));
@@ -134,8 +134,8 @@ function primStrokeRect(): Scene {
 	return s;
 }
 
-function primEllipsePieRing(): Scene {
-	const s = scene(DARK);
+function primEllipsePieRing(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics();
 	g.fillEllipse(56.0, 56.0, 44.0, 28.0, rgba(0.95, 0.75, 0.25, 1.0));
 	g.fillPie(160.0, 56.0, 44.0, 0.0, 4.2, rgba(0.85, 0.40, 0.55, 1.0));
@@ -144,8 +144,8 @@ function primEllipsePieRing(): Scene {
 	return s;
 }
 
-function primPolygonBezier(): Scene {
-	const s = scene(DARK);
+function primPolygonBezier(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics();
 	const arrow: Vec2[] = [
 		vec2(14.0, 30.0),
@@ -177,8 +177,8 @@ function primPolygonBezier(): Scene {
 }
 
 // Horizontal, vertical and low-contrast bands pin per-pixel interpolation and dithering.
-function primGradientLinear(): Scene {
-	const s = scene(DARK);
+function primGradientLinear(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(12.0, 12.0);
 	g.fillGradientRect(0.0, 0.0, 100.0, 60.0, rgba(0.20, 0.45, 0.95, 1.0), rgba(0.95, 0.30, 0.55, 1.0), 0.0);
 	g.fillGradientRect(116.0, 0.0, 100.0, 60.0, rgba(0.15, 0.75, 0.55, 1.0), rgba(0.98, 0.85, 0.25, 1.0), 1.5708);
@@ -187,16 +187,16 @@ function primGradientLinear(): Scene {
 	return s;
 }
 
-function primGradientRadial(): Scene {
-	const s = scene(DARK);
+function primGradientRadial(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics();
 	g.fillRadialGradient(72.0, 80.0, 60.0, rgba(1.0, 1.0, 1.0, 1.0), rgba(0.30, 0.15, 0.60, 1.0));
 	g.fillRadialGradient(186.0, 80.0, 52.0, rgba(0.98, 0.85, 0.25, 1.0), rgba(0.98, 0.85, 0.25, 0.0));
 	s.add(g);
 	return s;
 }
-function primGradientOklab(): Scene {
-	const s = scene(DARK);
+function primGradientOklab(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(42.0, 44.0);
 	g.setPivot(112.0, 54.0);
 	g.setRotation(0.22);
@@ -209,8 +209,8 @@ function primGradientOklab(): Scene {
 	return s;
 }
 
-function primGradientMultiStop(): Scene {
-	const s = scene(DARK);
+function primGradientMultiStop(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(20.0, 30.0);
 	g.fillGradientRectStops(0.0, 0.0, 280.0, 70.0,
 		rgba(0.08, 0.20, 0.80, 1.0), rgba(0.95, 0.25, 0.18, 0.75),
@@ -222,8 +222,8 @@ function primGradientMultiStop(): Scene {
 	return s;
 }
 
-function primDitherBand(): Scene {
-	const s = scene(rgba(0.025, 0.025, 0.03, 1.0));
+function primDitherBand(): Scene2D {
+	const s = Scene2D.create(rgba(0.025, 0.025, 0.03, 1.0));
 	const g = s.graphics().at(16.0, 28.0);
 	g.fillGradientRect(0.0, 0.0, 288.0, 150.0,
 		rgba(0.075, 0.08, 0.095, 1.0), rgba(0.14, 0.15, 0.17, 1.0), 0.0);
@@ -231,8 +231,8 @@ function primDitherBand(): Scene {
 	return s;
 }
 
-function primPatterns(): Scene {
-	const s = scene(DARK);
+function primPatterns(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(20.0, 28.0);
 	g.fillSlashRect(0.0, 0.0, 130.0, 160.0,
 		rgba(0.12, 0.16, 0.22, 1.0), rgba(0.35, 0.72, 0.92, 1.0), 14.0, 5.0);
@@ -241,8 +241,8 @@ function primPatterns(): Scene {
 	s.add(g);
 	return s;
 }
-function primTextModes(): Scene {
-	const s = scene(DARK);
+function primTextModes(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const modes = s.group().at(46.0, 30.0);
 	modes.setRotation(0.12);
 	modes.setAlpha(0.84);
@@ -261,7 +261,7 @@ function primTextModes(): Scene {
 
 // ===== xform/ =====
 
-function card(s: Scene, w: float32, h: float32): NodeRef {
+function card(s: Scene2D, w: float32, h: float32): NodeRef {
 	const g = s.graphics();
 	g.fillRoundedRect(0.0, 0.0, w, h, 10.0, rgba(0.30, 0.55, 0.85, 1.0));
 	g.strokeRect(0.0, 0.0, w, h, 2.0, rgba(0.92, 0.95, 1.0, 1.0));
@@ -275,8 +275,8 @@ function card(s: Scene, w: float32, h: float32): NodeRef {
 //
 // The numbers live in table.ms, not here, because the oracle needs the same ones and a
 // geometry copied into two files is a geometry with two definitions.
-function primAaRotatedBox(): Scene {
-	const s = scene(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
+function primAaRotatedBox(): Scene2D {
+	const s = Scene2D.create(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
 	const box = s.rect(AA_BOX_W, AA_BOX_H,
 		rgba(AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B, 1.0)).at(AA_BOX_X, AA_BOX_Y);
 	box.setPivot(AA_BOX_PIVOT_X, AA_BOX_PIVOT_Y);
@@ -286,8 +286,8 @@ function primAaRotatedBox(): Scene {
 	return s;
 }
 
-function primPerCornerRadii(): Scene {
-	const s = scene(DARK);
+function primPerCornerRadii(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const box = s.rect(150.0, 88.0, rgba(0.28, 0.58, 0.90, 1.0)).at(128.0, 100.0);
 	box.setPivot(75.0, 44.0);
 	box.setRotation(0.31);
@@ -301,8 +301,8 @@ function primPerCornerRadii(): Scene {
 	return s;
 }
 
-function primPerSideBorders(): Scene {
-	const s = scene(DARK);
+function primPerSideBorders(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const box = s.rect(150.0, 88.0, rgba(0.30, 0.72, 0.48, 1.0)).at(128.0, 100.0);
 	box.setPivot(75.0, 44.0);
 	box.setRotation(-0.27);
@@ -316,8 +316,8 @@ function primPerSideBorders(): Scene {
 	return s;
 }
 
-function primDashedBorder(): Scene {
-	const s = scene(DARK);
+function primDashedBorder(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const rounded = s.rect(150.0, 88.0, rgba(0.20, 0.34, 0.52, 0.92)).at(128.0, 64.0);
 	rounded.setPivot(75.0, 44.0);
 	rounded.setRotation(0.24);
@@ -344,8 +344,8 @@ function primDashedBorder(): Scene {
 	return s;
 }
 
-function primCardWithLabel(): Scene {
-	const s = scene(DARK);
+function primCardWithLabel(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const card = s.rect(220.0, 96.0, rgba(0.20, 0.34, 0.52, 0.92)).at(56.0, 66.0);
 	card.setPivot(110.0, 48.0);
 	card.setRotation(0.27);
@@ -366,8 +366,8 @@ function primCardWithLabel(): Scene {
 	return s;
 }
 
-function primDropShadow(): Scene {
-	const s = scene(DARK);
+function primDropShadow(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const box = s.rect(150.0, 88.0, rgba(0.28, 0.58, 0.90, 1.0)).at(140.0, 92.0);
 	box.setPivot(75.0, 44.0);
 	box.setRotation(0.31);
@@ -388,8 +388,8 @@ function primDropShadow(): Scene {
 	return s;
 }
 
-function primInsetShadow(): Scene {
-	const s = scene(DARK);
+function primInsetShadow(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const well = s.rect(180.0, 110.0, rgba(0.88, 0.90, 0.95, 1.0)).at(70.0, 60.0);
 	well.setBoxStyle(BoxStyle.create(
 		uniformRadii(16.0),
@@ -412,8 +412,8 @@ function primInsetShadow(): Scene {
 // offset (30, 22) leaves a band of penumbra outside the box on the right and bottom, and a
 // full-coverage reference point at (212, 115) - outside the box, four sigma inside the
 // shadow. The fill is opaque so under-box pixels read as fill and are skipped by geometry.
-function primAaShadow(): Scene {
-	const s = scene(DARK);
+function primAaShadow(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const box = s.rect(120.0, 70.0, rgba(0.30, 0.62, 0.92, 1.0)).at(90.0, 60.0);
 	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(12.0),
@@ -428,8 +428,8 @@ function primAaShadow(): Scene {
 // rotated Mask supplies the 37-degree world affine, so the corner AA, border width, shadow
 // extent and exact clip planes are exercised together; the card's corners stay visible while
 // the shadow crosses the Mask's right and bottom edges.
-function primCardOneInstance(): Scene {
-	const s = scene(DARK);
+function primCardOneInstance(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const clip = s.mask(190.0, 120.0).at(65.0, 85.0);
 	clip.setPivot(95.0, 60.0);
 	clip.setRotation(0.6458);
@@ -444,8 +444,8 @@ function primCardOneInstance(): Scene {
 	return s;
 }
 
-function xformRotate(): Scene {
-	const s = scene(DARK);
+function xformRotate(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const upright = card(s, 56.0, 36.0).at(40.0, 44.0);
 	const tilted = card(s, 56.0, 36.0).at(120.0, 44.0);
 	tilted.setRotation(0.122173);
@@ -460,8 +460,8 @@ function xformRotate(): Scene {
 	return s;
 }
 
-function xformScale(): Scene {
-	const s = scene(DARK);
+function xformScale(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const half = card(s, 56.0, 36.0).at(20.0, 60.0);
 	half.setScaleX(0.5);
 	half.setScaleY(0.5);
@@ -477,8 +477,8 @@ function xformScale(): Scene {
 
 // Both nodes have the same local geometry and pivot. The pivot now lives in the affine, so it
 // moves Rect and Graphics content and their children by the same amount.
-function xformPivot(): Scene {
-	const s = scene(DARK);
+function xformPivot(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const pivotedRect = s.rect(56.0, 36.0, rgba(0.30, 0.55, 0.85, 1.0)).at(70.0, 50.0);
 	pivotedRect.setPivot(28.0, 18.0);
 	pivotedRect.setRotation(0.5236);
@@ -490,8 +490,8 @@ function xformPivot(): Scene {
 	return s;
 }
 
-function xformTilePivot(): Scene {
-	const s = scene(DARK);
+function xformTilePivot(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const source = sheet().sub(0.0, 0.0, 64.0, 64.0);
 	const centered = s.sprite(source.center()).at(88.0, 90.0);
 	centered.setRotation(0.5236);
@@ -507,8 +507,8 @@ function xformTilePivot(): Scene {
 }
 
 // The approximation VOID2D.md "Open" records: non-uniform scale on a rounded corner.
-function xformNonUniform(): Scene {
-	const s = scene(DARK);
+function xformNonUniform(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const wide = card(s, 56.0, 36.0).at(20.0, 30.0);
 	wide.setScaleX(3.0);
 	const tall = card(s, 56.0, 36.0).at(20.0, 90.0);
@@ -528,8 +528,8 @@ function xformNonUniform(): Scene {
 // Hairlines at three DPIs. The emitter rounds both edges on the active target's device grid;
 // these one-, two- and half-logical-pixel strips make the DPI-dependent rounding visible
 // instead of relying on the rasterizer to choose fractional coverage.
-function snapHairlines(): Scene {
-	const s = scene(DARK);
+function snapHairlines(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 8; i++) {
 		s.add(s.rect(180.0, 1.0, LIGHT).at(14.0, 12.0 + (i as float32) * 9.0));
 	}
@@ -542,8 +542,8 @@ function snapHairlines(): Scene {
 // A 7-logical-pixel box split in two at a moving fraction. Complementary rounding
 // (GHOSTTY.md:61) is what makes the halves touch with no gap and no overlap; today each
 // half rounds on its own.
-function snapFractionalSplit(): Scene {
-	const s = scene(DARK);
+function snapFractionalSplit(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 6; i++) {
 		const x: float32 = 16.0 + (i as float32) * 34.0;
 		const fraction: float32 = 0.5 + (i as float32) * 0.07;
@@ -554,8 +554,8 @@ function snapFractionalSplit(): Scene {
 	return s;
 }
 
-function snapFractionalOrigin(): Scene {
-	const s = scene(DARK);
+function snapFractionalOrigin(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 8; i++) {
 		const x: float32 = 14.0 + (i as float32) * 28.125;
 		s.add(s.rect(20.0, 40.0, LIGHT).at(x, 20.0 + (i as float32) * 0.125));
@@ -563,8 +563,8 @@ function snapFractionalOrigin(): Scene {
 	return s;
 }
 
-function snapZeroBorder(): Scene {
-	const s = scene(DARK);
+function snapZeroBorder(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 4; i++) {
 		const box = s.rect(56.0, 52.0, rgba(0.30, 0.55, 0.85, 0.82))
 			.at(18.0 + (i as float32) * 74.0, 34.0);
@@ -580,8 +580,8 @@ function snapZeroBorder(): Scene {
 
 // ===== clip/ =====
 
-function clipNestedMasks(): Scene {
-	const s = scene(DARK);
+function clipNestedMasks(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const outer = s.mask(160.0, 110.0).at(30.0, 20.0);
 	const inner = s.mask(90.0, 70.0).at(40.0, 25.0);
 	inner.addChild(s.rect(200.0, 200.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-30.0, -30.0));
@@ -593,8 +593,8 @@ function clipNestedMasks(): Scene {
 
 // The coarse scissor is this rotated Mask's AABB; the two projection intervals carried by
 // the draw command provide its four exact fragment edges.
-function clipRotatedMask(): Scene {
-	const s = scene(DARK);
+function clipRotatedMask(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const m = s.mask(120.0, 80.0).at(128.0, 80.0);
 	m.setRotation(0.5236);
 	m.setPivot(60.0, 40.0);
@@ -605,8 +605,8 @@ function clipRotatedMask(): Scene {
 
 // Forty rows with only four overlapping the active clip. T1 asserts that off-clip rows emit
 // no instances; this golden keeps the resulting picture pinned.
-function clipScrolledList(): Scene {
-	const s = scene(DARK);
+function clipScrolledList(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const m = s.mask(200.0, 90.0).at(28.0, 30.0);
 	for (let i: int32 = 0; i < 40; i++) {
 		const stripe: Color = i % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
@@ -616,8 +616,8 @@ function clipScrolledList(): Scene {
 	return s;
 }
 
-function clipMaskScroll(): Scene {
-	const s = scene(DARK);
+function clipMaskScroll(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const m = s.mask(200.0, 90.0).at(28.0, 30.0);
 	for (let i: int32 = 0; i < 40; i++) {
 		const stripe: Color = i % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
@@ -635,8 +635,8 @@ function clipMaskScroll(): Scene {
 	return s;
 }
 
-function clipCameraPan(): Scene {
-	const s = scene(DARK);
+function clipCameraPan(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const left = s.mask(100.0, 60.0).at(-130.0, 10.0);
 	left.addChild(s.rect(150.0, 24.0, rgba(0.30, 0.62, 0.92, 1.0)).at(-10.0, 6.0));
 	left.addChild(s.label("left of zero", 12.0, rgba(0.95, 0.95, 0.98, 1.0)).at(4.0, 36.0));
@@ -666,8 +666,8 @@ function clipCameraPan(): Scene {
 
 const CODE_LINE: string = "fn main() { let x: i32 = 42; }";
 
-function textCode(): Scene {
-	const s = scene(DARK);
+function textCode(): Scene2D {
+	const s = Scene2D.create(DARK);
 	s.add(s.label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(10.0, 14.0));
 	s.add(s.label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(10.5, 36.0));
 	s.add(s.label("0123456789 iiiimmmm WAVE", 13.0, rgba(0.95, 0.80, 0.45, 1.0)).at(10.0, 58.0));
@@ -675,8 +675,8 @@ function textCode(): Scene {
 	return s;
 }
 
-function textFilteredDpi125(): Scene {
-	const s = scene(DARK);
+function textFilteredDpi125(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const color: Color = rgba(0.86, 0.90, 0.98, 1.0);
 	s.add(s.label(CODE_LINE, 13.0, color).at(FILTERED_TEXT_X, FILTERED_TEXT_Y));
 	const host = s.group().at(FILTERED_TEXT_X, FILTERED_TEXT_Y + FILTERED_TEXT_SHIFT);
@@ -694,8 +694,8 @@ function decoratedRun(len: int32, color: Color): TextRun {
 	};
 }
 
-function textDecorations(): Scene {
-	const s = scene(DARK);
+function textDecorations(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
 	const plain: Color = rgba(0.86, 0.90, 0.98, 1.0);
 	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
@@ -721,8 +721,8 @@ function textDecorations(): Scene {
 	return s;
 }
 
-function textCaretSelection(): Scene {
-	const s = scene(DARK);
+function textCaretSelection(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const code = s.label(CARET_TEXT, CARET_SIZE, rgba(0.86, 0.90, 0.98, 1.0)).at(CARET_X, CARET_Y);
 	const selection: Color = rgba(
 		CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
@@ -737,8 +737,8 @@ function textCaretSelection(): Scene {
 	return s;
 }
 
-function textWrapped(): Scene {
-	const s = scene(DARK);
+function textWrapped(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const paragraph = s.label(
 		"The quick brown fox jumps over the lazy void dog and keeps running.",
 		16.0,
@@ -751,9 +751,9 @@ function textWrapped(): Scene {
 	return s;
 }
 
-function textCjkFallback(): Scene {
+function textCjkFallback(): Scene2D {
 	addFallbackFont(DEFAULT_FONT, "tests/fonts/NotoSansSC-subset.ttf");
-	const s = scene(DARK);
+	const s = Scene2D.create(DARK);
 	s.add(s.label("void2d 渲染测试 — 你好世界", 16.0, rgba(0.86, 0.90, 0.98, 1.0)).at(10.0, 12.0));
 	s.add(s.label("汉字 fallback: 字体 A你V", 13.0, rgba(0.95, 0.80, 0.45, 1.0)).at(10.5, 44.0));
 	s.add(s.label("中文 and Latin, one run", 13.0, rgba(0.82, 0.88, 1.0, 1.0)).at(10.0, 70.0));
@@ -776,13 +776,13 @@ function fontIdOf(font: Font): FontId {
 	unreachable;
 }
 
-function styledLabel(s: Scene, text: string, font: Font, y: float32): void {
+function styledLabel(s: Scene2D, text: string, font: Font, y: float32): void {
 	s.add(s.label(text, 16.0, rgba(0.86, 0.90, 0.98, 1.0)).setFont(fontIdOf(font)).at(10.0, y));
 }
 
-function textFontStyles(): Scene {
+function textFontStyles(): Scene2D {
 	registerFace("tests/fonts/NotoSansSC-subset.ttf", "Noto Sans SC", 400, FontStyle.Normal);
-	const s = scene(DARK);
+	const s = Scene2D.create(DARK);
 	styledLabel(s, "Regular 400 你好 void2d", fontOf(400, FontStyle.Normal, SizeAdjust.None), 4.0);
 	styledLabel(s, "Bold 700 你好 void2d", fontOf(700, FontStyle.Normal, SizeAdjust.None), 26.0);
 	styledLabel(s, "Italic 你好 void2d", fontOf(400, FontStyle.Italic, SizeAdjust.None), 48.0);
@@ -791,8 +791,8 @@ function textFontStyles(): Scene {
 	return s;
 }
 
-function textMultilineAlign(): Scene {
-	const s = scene(DARK);
+function textMultilineAlign(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const left = s.label("void2d\nleft\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0)).at(14.0, 12.0);
 	const centred = s.label("void2d\ncentred\naligned", 20.0, rgba(0.92, 0.96, 1.0, 1.0))
 		.at(160.0, 12.0);
@@ -808,8 +808,8 @@ function textMultilineAlign(): Scene {
 
 // ===== image/ =====
 
-function imageNearestLinear(): Scene {
-	const s = scene(DARK);
+function imageNearestLinear(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const pixels = t.sub(t.texW * 0.40, t.texH * 0.38, 14.0, 14.0);
 	const nearest = s.sprite(pixels).at(16.0, 20.0);
@@ -826,8 +826,8 @@ function imageNearestLinear(): Scene {
 // under CLAMP_TO_EDGE the last row and column stretch across the whole sprite, under REPEAT
 // the sheet tiles 3x3. The two halves of this scene differ in nothing but `tileWrap`, so a
 // golden that shows them identical means the flag reached no sampler.
-function imageTileWrap(): Scene {
-	const s = scene(DARK);
+function imageTileWrap(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const thrice = t.sub(0.0, 0.0, t.texW * 3.0, t.texH * 3.0);
 	const clamped = s.sprite(thrice).at(16.0, 16.0);
@@ -843,8 +843,8 @@ function imageTileWrap(): Scene {
 // The `smooth` tri-state resolved against a scene whose default is nearest. The left sprite
 // says nothing and must follow the scene; the right one says `Smooth.On` and must win over
 // it. If `Smooth.Inherit` were treated as "on", the two halves would be identical.
-function imageSceneSmooth(): Scene {
-	const s = scene(DARK);
+function imageSceneSmooth(): Scene2D {
+	const s = Scene2D.create(DARK);
 	s.defaultSmooth = false;
 	const t = sheet();
 	const pixels = t.sub(t.texW * 0.40, t.texH * 0.38, 14.0, 14.0);
@@ -858,8 +858,8 @@ function imageSceneSmooth(): Scene {
 	return s;
 }
 
-function imageSubFlip(): Scene {
-	const s = scene(DARK);
+function imageSubFlip(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const half = t.sub(0.0, 0.0, t.texW * 0.5, t.texH * 0.5);
 	const plain = s.sprite(half).at(10.0, 16.0);
@@ -877,8 +877,8 @@ function imageSubFlip(): Scene {
 	return s;
 }
 
-function imageColorPipeline(): Scene {
-	const s = scene(DARK);
+function imageColorPipeline(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const greyed = s.sprite(t).at(10.0, 16.0);
 	greyed.setSize(64.0, 64.0);
@@ -903,7 +903,7 @@ function imageColorPipeline(): Scene {
 	return s;
 }
 function styledImage(
-	s: Scene,
+	s: Scene2D,
 	t: Tile,
 	x: float32,
 	y: float32,
@@ -919,8 +919,8 @@ function styledImage(
 	return image;
 }
 
-function imageObjectFit(): Scene {
-	const s = scene(DARK);
+function imageObjectFit(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const wide = t.sub(0.0, 0.0, t.texW, t.texH * 0.5);
 	const small = t.sub(t.texW * 0.35, t.texH * 0.35, 48.0, 24.0);
@@ -938,8 +938,8 @@ function imageObjectFit(): Scene {
 	return s;
 }
 
-function imageCornerRadii(): Scene {
-	const s = scene(DARK);
+function imageCornerRadii(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const image = styledImage(s, sheet(), 86.0, 48.0, 148.0, 112.0, ObjectFit.Cover,
 		{ topLeft: 5.0, topRight: 18.0, bottomRight: 38.0, bottomLeft: 12.0 }, false);
 	image.setPivot(74.0, 56.0);
@@ -949,8 +949,8 @@ function imageCornerRadii(): Scene {
 	return s;
 }
 
-function imageGrayscale(): Scene {
-	const s = scene(DARK);
+function imageGrayscale(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const radii: CornerRadii = uniformRadii(12.0);
 	s.add(styledImage(s, sheet(), 18.0, 28.0, 132.0, 132.0,
 		ObjectFit.Cover, radii, false));
@@ -959,15 +959,15 @@ function imageGrayscale(): Scene {
 	return s;
 }
 
-function imageScaleGrid(): Scene {
-	const s = scene(DARK);
+function imageScaleGrid(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const nine = s.scaleGrid(sheet(), 36.0, 36.0, 36.0, 36.0).at(14.0, 14.0);
 	nine.setSize(220.0, 120.0);
 	s.add(nine);
 	return s;
 }
 
-function laneList(s: Scene, x: float32, promise: boolean): NodeRef {
+function laneList(s: Scene2D, x: float32, promise: boolean): NodeRef {
 	const t = sheet();
 	const icon: Tile = { ...t.sub(0.0, 0.0, t.texW * 0.5, t.texH * 0.5), w: 14.0, h: 14.0 };
 	const list = s.add(s.group().at(x, LANES_Y));
@@ -983,8 +983,8 @@ function laneList(s: Scene, x: float32, promise: boolean): NodeRef {
 	return list;
 }
 
-function orderNoOverlapLanes(): Scene {
-	const s = scene(DARK);
+function orderNoOverlapLanes(): Scene2D {
+	const s = Scene2D.create(DARK);
 	laneList(s, LANES_X, true);
 	laneList(s, LANES_X + LANES_SHIFT, false);
 	return s;
@@ -994,8 +994,8 @@ function tileCellAt(x: float32, y: float32, t: Tile, color: Color): TileCell {
 	return { x: x, y: y, tile: t, color: color, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
 }
 
-function imageTileGroup(): Scene {
-	const s = scene(DARK);
+function imageTileGroup(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const white = rgba(1.0, 1.0, 1.0, 1.0);
 	const topLeft: Tile = { ...t.sub(0.0, 0.0, t.texW * 0.5, t.texH * 0.5), w: 40.0, h: 40.0 };
@@ -1039,21 +1039,21 @@ function imageTileGroup(): Scene {
 // batch (VOID2D.md "Known defects"). These four rows are what P1 has to move, and nothing
 // else may move with them.
 
-function filterSubject(s: Scene): NodeRef {
+function filterSubject(s: Scene2D): NodeRef {
 	const g = s.graphics();
 	g.fillRoundedRect(0.0, 0.0, 90.0, 60.0, 14.0, rgba(1.0, 0.82, 0.35, 1.0));
 	g.fillEllipse(45.0, 30.0, 22.0, 14.0, rgba(0.30, 0.20, 0.55, 1.0));
 	return g;
 }
 
-function filterHost(s: Scene, x: float32, y: float32): NodeRef {
+function filterHost(s: Scene2D, x: float32, y: float32): NodeRef {
 	const host = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(x, y);
 	host.addChild(filterSubject(s));
 	return host;
 }
 
-function filterBlur(): Scene {
-	const s = scene(DARK);
+function filterBlur(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const host = filterHost(s, 40.0, 40.0);
 	host.setFilter(blurFilter(6.0));
 	const card = host.addChild(
@@ -1068,8 +1068,8 @@ function filterBlur(): Scene {
 	return s;
 }
 
-function filterGlow(): Scene {
-	const s = scene(DARK);
+function filterGlow(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const host = filterHost(s, 40.0, 40.0);
 	host.setFilter(glowFilter(rgba(1.0, 0.70, 0.25, 1.0), 8.0, 1.8));
 	s.add(host);
@@ -1090,8 +1090,8 @@ function filterGlow(): Scene {
 // downsample steps inherited them: the blur came out grayscale and point-sampled, which also
 // turns guardrail 3's "downsample by 2^k then blur at one texel" back into a comb. Nothing
 // covered it, because every other filter scene has the filter first or alone.
-function filterAfterTintedSibling(): Scene {
-	const s = scene(DARK);
+function filterAfterTintedSibling(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const tinted = s.rect(60.0, 40.0, rgba(0.95, 0.35, 0.30, 1.0)).at(10.0, 10.0);
 	tinted.setColorMatrix(colorMatrixGrayscale(1.0));
 	tinted.setSmooth(Smooth.Off);
@@ -1105,8 +1105,8 @@ function filterAfterTintedSibling(): Scene {
 
 // A Mask inside a filtered subtree, at DPI 1.5. The target is allocated in device pixels
 // while its viewport stays logical, so the exact Mask edges and the blur retain 1.5× density.
-function filterMaskAtDpi(): Scene {
-	const s = scene(DARK);
+function filterMaskAtDpi(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const host = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(16.0, 12.0);
 	host.setFilter(blurFilter(2.0));
 	const m = s.mask(60.0, 40.0);
@@ -1116,8 +1116,8 @@ function filterMaskAtDpi(): Scene {
 	return s;
 }
 
-function filterDropShadowAlpha(): Scene {
-	const s = scene(DARK);
+function filterDropShadowAlpha(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const host = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(20.0, 20.0);
 	host.setAlpha(0.5);
 	host.setFilter(dropShadowFilter(rgba(0.10, 0.10, 0.16, 1.0), 4.0, 60.0, 60.0));
@@ -1126,8 +1126,8 @@ function filterDropShadowAlpha(): Scene {
 	return s;
 }
 
-function filterDropShadow(): Scene {
-	const s = scene(LIGHT);
+function filterDropShadow(): Scene2D {
+	const s = Scene2D.create(LIGHT);
 	const host = filterHost(s, 40.0, 36.0);
 	host.setFilter(dropShadowFilter(rgba(0.08, 0.08, 0.14, 1.0), 7.0, 10.0, 12.0));
 	s.add(host);
@@ -1138,8 +1138,8 @@ function filterDropShadow(): Scene {
 // does not darken. Today alpha multiplies down the tree and each child blends on its own.
 // The right-hand pair goes through a zero-radius filter, which is the render-target path,
 // so the two halves of the row show the divergence side by side.
-function filterGroupOpacity(): Scene {
-	const s = scene(DARK);
+function filterGroupOpacity(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const direct = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(30.0, 30.0);
 	direct.setAlpha(0.5);
 	direct.addChild(s.rect(90.0, 70.0, rgba(0.95, 0.35, 0.30, 1.0)));
@@ -1158,8 +1158,8 @@ function filterGroupOpacity(): Scene {
 
 // Twenty-two sizes of a 62-glyph line. Under fontstash they overflowed its 512² atlas (the
 // table row says what that cost); the glyph layer's paged atlas has to place all of them.
-function regressAtlasFull(): Scene {
-	const s = scene(DARK);
+function regressAtlasFull(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 22; i++) {
 		const size: float32 = 9.0 + (i as float32) * 2.0;
 		s.add(s.label(
@@ -1173,8 +1173,8 @@ function regressAtlasFull(): Scene {
 
 // Every Label and Graphics owns an sg_buffer and sokol's default pool holds 128, so past
 // about 126 of them the rest silently do not draw. P1 replaces them with one growing buffer.
-function regressNodeCap(): Scene {
-	const s = scene(DARK);
+function regressNodeCap(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 200; i++) {
 		const column: float32 = ((i % 20) as float32) * 26.0 + 4.0;
 		const row: float32 = ((i / 20) as float32) * 16.0 + 4.0;
@@ -1187,8 +1187,8 @@ function regressNodeCap(): Scene {
 // begin2d resets the batch state, so the vertices pending when the filter is reached are
 // dropped and the siblings after it draw with the filter's leftover state. The red bar is
 // emitted before the filtered node and the blue one after it.
-function regressFilterNestedPass(): Scene {
-	const s = scene(DARK);
+function regressFilterNestedPass(): Scene2D {
+	const s = Scene2D.create(DARK);
 	s.add(s.rect(220.0, 22.0, rgba(0.95, 0.35, 0.30, 1.0)).at(18.0, 14.0));
 	const host = filterHost(s, 60.0, 46.0);
 	host.setFilter(blurFilter(5.0));
@@ -1200,8 +1200,8 @@ function regressFilterNestedPass(): Scene {
 // scene.ms:89 passes the logical size to begin2d as `wf as int32`, so at DPI 1.5 a 256-pixel
 // framebuffer becomes 170 logical pixels instead of 170.666 and the NDC mapping carries the
 // fraction as an error that grows with x. The right column sits against the truncated edge.
-function regressDpiTruncation(): Scene {
-	const s = scene(DARK);
+function regressDpiTruncation(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 9; i++) {
 		const y: float32 = 6.0 + (i as float32) * 11.0;
 		s.add(s.rect(6.0, 8.0, rgba(0.95, 0.80, 0.45, 1.0)).at(164.0, y));
@@ -1214,8 +1214,8 @@ function regressDpiTruncation(): Scene {
 // batcher.c:141-148 hard-wires both samplers to SG_WRAP_REPEAT, so a tile that reaches the
 // edge of its texture blends in the opposite edge instead of clamping. P1's own commit,
 // because it changes edge pixels everywhere.
-function regressSamplerRepeat(): Scene {
-	const s = scene(DARK);
+function regressSamplerRepeat(): Scene2D {
+	const s = Scene2D.create(DARK);
 	const t = sheet();
 	const rightEdge = s.sprite(t.sub(t.texW - 6.0, 0.0, 6.0, t.texH)).at(20.0, 16.0);
 	rightEdge.setSize(60.0, 120.0);
@@ -1230,8 +1230,8 @@ function regressSamplerRepeat(): Scene {
 // same, but sg_append_buffer accumulates across flushes within a frame, so once the frame's
 // total passes the cap sokol drops the appends and the rest of the scene disappears.
 // 12000 quads is 72000 vertices.
-function regressVertexCap(): Scene {
-	const s = scene(DARK);
+function regressVertexCap(): Scene2D {
+	const s = Scene2D.create(DARK);
 	for (let i: int32 = 0; i < 12000; i++) {
 		const column: float32 = ((i % 120) as float32) * 2.0;
 		const row: float32 = ((i / 120) as float32) * 1.6;
@@ -1245,14 +1245,14 @@ function regressVertexCap(): Scene {
 
 // The demo rows drive src/examples/renderer2d.ms through its own init/step/present and never
 // call a builder; this stands in for their slot so the two lists stay the same length.
-function demoPlaceholder(): Scene { return scene(DARK); }
+function demoPlaceholder(): Scene2D { return Scene2D.create(DARK); }
 
 // Paired with the row name, not just positional. A length check cannot catch a builder
 // inserted at the wrong index — and the failure that follows is the worst kind: a correct
 // image written under the wrong name, which `--update` would then commit as the golden.
 export interface SceneBuilder {
 	name: string;
-	build: () => Scene;
+	build: () => Scene2D;
 }
 export function sceneBuilders(): SceneBuilder[] {
 	return [

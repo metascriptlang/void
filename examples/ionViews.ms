@@ -13,7 +13,7 @@ import {
 	gfxSetup, ViewId, ViewInvalid,
 } from "../src/sokol/gpu";
 import { setup2d } from "../src/void2d/draw";
-import { Scene } from "../src/void2d/node";
+import { Scene2D } from "../src/void2d/node";
 import { present } from "../src/void2d/scene";
 import {
 	BoardState, boardState, boardScene, layoutBoard, toggleTileAt,
@@ -40,8 +40,8 @@ let _board: Surface = surface(RenderSurfaceInvalid);
 let _overlay: Surface = surface(RenderSurfaceInvalid);
 let _boardState: BoardState = boardState(6 as int32, 4 as int32);
 let _overlayState: OverlayState = overlayState();
-let _boardScene: Scene | null = null;
-let _overlayScene: Scene | null = null;
+let _boardScene: Scene2D | null = null;
+let _overlayScene: Scene2D | null = null;
 
 function initViews(): void {
 	gfxSetup();

@@ -1,13 +1,13 @@
 // expect: text run 1 starts inside the surrogate pair at 1
 import "../../src/sokol/gpu";
-import { Scene } from "../../src/void2d/node";
-import { scene } from "../../src/void2d/scene";
+import { Scene2D } from "../../src/void2d/node";
+import "../../src/void2d/scene";
 import { sync } from "../../src/void2d/render";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { TextRun } from "../../src/void2d/textLayout";
 import { rgba, identity2d } from "../../src/void2d/types";
 
-const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 const clear = rgba(0.0, 0.0, 0.0, 0.0);
 const white = rgba(1.0, 1.0, 1.0, 1.0);
 const runs: TextRun[] = [

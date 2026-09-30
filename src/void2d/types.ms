@@ -189,13 +189,13 @@ export function viewMatrix(this c: Camera, fbW: float32, fbH: float32): Transfor
 	return trs2d(c.anchorX * fbW, c.anchorY * fbH, c.rotation, c.zoom, c.zoom) * trs2d(-c.x, -c.y, 0.0, 1.0, 1.0);
 }
 
-export struct Bounds {
+export struct Bounds2D {
 	xMin: float32;
 	yMin: float32;
 	xMax: float32;
 	yMax: float32;
 }
 
-export function emptyBounds(): Bounds {
+export function emptyBounds(): Bounds2D {
 	return { xMin: 1e30, yMin: 1e30, xMax: -1e30, yMax: -1e30 };
 }

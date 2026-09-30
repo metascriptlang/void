@@ -3,7 +3,7 @@ import {
 	Color,
 	Tile,
 	Transform2D,
-	Bounds,
+	Bounds2D,
 	Filter,
 	BlendMode,
 	Smooth,
@@ -68,7 +68,7 @@ export enum Changed {
 	Scroll,
 }
 
-export const NO_NODE: int32 = -1;
+export const NO_NODE_2D: int32 = -1;
 export const NO_SLOT: int32 = -1;
 const NO_PAYLOAD: int32 = -1;
 const LAST_GENERATION: int32 = 2147483647;
@@ -77,14 +77,14 @@ const NO_FRAMES: Tile[] = [];
 export const NO_FRAME: int32 = -1;
 export const ALL_TILES: int32 = 2147483647;
 
-export struct NodeId {
+export struct NodeId2D {
 	index: int32;
 	generation: int32;
 }
 
 export struct NodeRef {
-	scene: Scene;
-	id: NodeId;
+	scene: Scene2D;
+	id: NodeId2D;
 }
 
 export struct Local2D {
@@ -153,7 +153,7 @@ export struct Scroll2D {
 	x: float32;
 	y: float32;
 	bounded: boolean;
-	bounds: Bounds;
+	bounds: Bounds2D;
 }
 
 const NO_SCROLL: Scroll2D = {
@@ -193,7 +193,7 @@ export struct TileGroupRow {
 	retileSerial: int32;
 }
 
-export interface Scene {
+export interface Scene2D {
 	generations: Vec<int32>;
 	free: Vec<int32>;
 	retired: int32;
@@ -216,8 +216,8 @@ export interface Scene {
 	orderBuilds: int32;
 	localMatrices: Vec<Transform2D>;
 	worlds: Vec<Transform2D>;
-	bounds: Vec<Bounds>;
-	culls: Vec<Bounds>;
+	bounds: Vec<Bounds2D>;
+	culls: Vec<Bounds2D>;
 	alphas: Vec<float32>;
 	moved: Vec<boolean>;
 	maskEnds: Vec<int32>;
@@ -308,8 +308,8 @@ function localMatrix(l: Local2D): Transform2D {
 		trs2d(-l.pivotX, -l.pivotY, 0.0, 1.0, 1.0);
 }
 
-export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
-	const noBounds: Bounds = { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 };
+export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
+	const noBounds: Bounds2D = { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 };
 	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false };
 	const reusable: int32 = s.free.length as int32;
 	if (reusable > 0) {
@@ -322,7 +322,7 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 		s.filters[i] = noFilter();
 		s.orders[i] = order;
 		s.layouts[i] = noLayout();
-		s.parents[i] = NO_NODE;
+		s.parents[i] = NO_NODE_2D;
 		s.localMatrices[i] = identity2d();
 		s.worlds[i] = identity2d();
 		s.bounds[i] = noBounds;
@@ -348,7 +348,7 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 	s.filters.push(noFilter());
 	s.orders.push(order);
 	s.layouts.push(noLayout());
-	s.parents.push(NO_NODE);
+	s.parents.push(NO_NODE_2D);
 	s.children.push(new Array(0));
 	s.localMatrices.push(identity2d());
 	s.worlds.push(identity2d());
@@ -361,11 +361,11 @@ export function newRow(this s: Scene, kind: DrawKind, payload: int32): int32 {
 	return i;
 }
 
-export function refOf(this s: Scene, i: int32): NodeRef {
+export function refOf(this s: Scene2D, i: int32): NodeRef {
 	return { scene: s, id: { index: i, generation: s.generations[i] } };
 }
 
-export function nodeCount(this s: Scene): int32 {
+export function nodeCount(this s: Scene2D): int32 {
 	return (s.kinds.length as int32) - (s.free.length as int32) - s.retired;
 }
 
@@ -388,18 +388,18 @@ export function liveRow(this n: NodeRef, call: string): int32 {
 	return i;
 }
 
-export function markChanged(this s: Scene, i: int32, what: Changed): void {
+export function markChanged(this s: Scene2D, i: int32, what: Changed): void {
 	const bits: BitSet<Changed> = s.changed[i];
 	if (bits.has(what)) { return; }
 	if (bits.isEmpty()) { s.dirty.push(i); }
 	s.changed[i] = bits.incl(what);
 }
 
-export function retryRefused(this s: Scene): void {
+export function retryRefused(this s: Scene2D): void {
 	while ((s.retry.length as int32) > 0) { s.markChanged(s.retry.pop(), Changed.Text); }
 }
 
-export function refreshOrder(this s: Scene): void {
+export function refreshOrder(this s: Scene2D): void {
 	if (!s.structureChanged) { return; }
 	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
 		s.slots[s.order[p]] = NO_SLOT;
@@ -424,7 +424,7 @@ export function refreshOrder(this s: Scene): void {
 	s.orderBuilds = s.orderBuilds + 1;
 }
 
-export function clearChanges(this s: Scene): void {
+export function clearChanges(this s: Scene2D): void {
 	while ((s.dirty.length as int32) > 0) {
 		const i: int32 = s.dirty.pop();
 		s.changed[i] = 0 as BitSet<Changed>;
@@ -458,7 +458,7 @@ export function content(this n: NodeRef): Content2D {
 export function filter(this n: NodeRef): Filter { return n.scene.filters[n.liveRow("filter")]; }
 export function order(this n: NodeRef): Order2D { return n.scene.orders[n.liveRow("order")]; }
 
-function putLocal(this s: Scene, i: int32, l: Local2D): void {
+function putLocal(this s: Scene2D, i: int32, l: Local2D): void {
 	if (s.locals[i] == l) { return; }
 	s.locals[i] = l;
 	s.localMatrices[i] = localMatrix(l);
@@ -470,7 +470,7 @@ export function setLocal(this n: NodeRef, l: Local2D): NodeRef {
 	return n;
 }
 
-function putPaint(this s: Scene, i: int32, p: Paint2D): void {
+function putPaint(this s: Scene2D, i: int32, p: Paint2D): void {
 	if (s.paints[i] == p) { return; }
 	s.paints[i] = p;
 	s.markChanged(i, Changed.Paint);
@@ -481,7 +481,7 @@ export function setPaint(this n: NodeRef, p: Paint2D): NodeRef {
 	return n;
 }
 
-function putContent(this s: Scene, i: int32, c: Content2D): void {
+function putContent(this s: Scene2D, i: int32, c: Content2D): void {
 	if (s.contents[i] == c) { return; }
 	s.contents[i] = c;
 	s.markChanged(i, Changed.Content);
@@ -492,7 +492,7 @@ export function setContent(this n: NodeRef, c: Content2D): NodeRef {
 	return n;
 }
 
-function putFilter(this s: Scene, i: int32, f: Filter): void {
+function putFilter(this s: Scene2D, i: int32, f: Filter): void {
 	if (s.filters[i] == f) { return; }
 	s.filters[i] = f;
 	s.markChanged(i, Changed.Filter);
@@ -503,13 +503,13 @@ export function setFilter(this n: NodeRef, f: Filter): NodeRef {
 	return n;
 }
 
-function putOrder(this s: Scene, i: int32, o: Order2D): void {
+function putOrder(this s: Scene2D, i: int32, o: Order2D): void {
 	if (s.orders[i] == o) { return; }
 	const restack: boolean = s.orders[i].zIndex != o.zIndex;
 	s.orders[i] = o;
 	s.markChanged(i, Changed.Order);
 	const parent: int32 = s.parents[i];
-	if (restack && parent != NO_NODE) {
+	if (restack && parent != NO_NODE_2D) {
 		for (let k: int32 = 0; k < (s.children[parent].length as int32); k++) {
 			if (s.children[parent][k] == i) { s.settle(parent, k); break; }
 		}
@@ -690,29 +690,29 @@ export function setLayoutStyle(this n: NodeRef, style: FlexStyle | null): NodeRe
 	return n;
 }
 
-export function group(this s: Scene): NodeRef {
+export function group(this s: Scene2D): NodeRef {
 	return s.refOf(s.newRow(DrawKind.Group, NO_PAYLOAD));
 }
 
-function sized(this s: Scene, kind: DrawKind, payload: int32, w: float32, h: float32): int32 {
+function sized(this s: Scene2D, kind: DrawKind, payload: int32, w: float32, h: float32): int32 {
 	const i: int32 = s.newRow(kind, payload);
 	s.contents[i] = { ...s.contents[i], w: w, h: h };
 	return i;
 }
 
-export function rect(this s: Scene, w: float32, h: float32, color: Color): NodeRef {
+export function rect(this s: Scene2D, w: float32, h: float32, color: Color): NodeRef {
 	const i: int32 = s.sized(DrawKind.Rect, NO_BOX_STYLE, w, h);
 	s.paints[i] = { ...s.paints[i], color: color };
 	return s.refOf(i);
 }
 
-export function sprite(this s: Scene, t: Tile): NodeRef {
+export function sprite(this s: Scene2D, t: Tile): NodeRef {
 	const i: int32 = s.sized(DrawKind.Sprite, NO_IMAGE_STYLE, t.w, t.h);
 	s.contents[i] = { ...s.contents[i], tile: t };
 	return s.refOf(i);
 }
 
-export function label(this s: Scene, text: string, size: float32, color: Color): NodeRef {
+export function label(this s: Scene2D, text: string, size: float32, color: Color): NodeRef {
 	const payload: int32 = allocateLabelText();
 	labelTexts[payload].text = text;
 	labelTexts[payload].style = { ...labelTexts[payload].style, size: size };
@@ -721,7 +721,7 @@ export function label(this s: Scene, text: string, size: float32, color: Color):
 	return s.refOf(i);
 }
 
-export function anim(this s: Scene, frames: Tile[], fps: float32): NodeRef {
+export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
 	const row: AnimFrames = { frames: frames, fps: fps, clock: 0.0, imageStyle: NO_IMAGE_STYLE };
 	let payload: int32 = s.anims.length as int32;
 	if ((s.freeAnims.length as int32) > 0) {
@@ -736,7 +736,7 @@ export function anim(this s: Scene, frames: Tile[], fps: float32): NodeRef {
 	return s.refOf(s.sized(DrawKind.Anim, payload, w, h));
 }
 
-export function graphics(this s: Scene): NodeRef {
+export function graphics(this s: Scene2D): NodeRef {
 	const row: GraphicsMesh = { mesh: [], vertexCount: 0, records: [], view: 0, stale: true };
 	let payload: int32 = s.meshes.length as int32;
 	if ((s.freeMeshes.length as int32) > 0) {
@@ -748,11 +748,11 @@ export function graphics(this s: Scene): NodeRef {
 	return s.refOf(s.newRow(DrawKind.Graphics, payload));
 }
 
-export function mask(this s: Scene, w: float32, h: float32): NodeRef {
+export function mask(this s: Scene2D, w: float32, h: float32): NodeRef {
 	return s.refOf(s.sized(DrawKind.Mask, NO_PAYLOAD, w, h));
 }
 
-export function tileGroup(this s: Scene): NodeRef {
+export function tileGroup(this s: Scene2D): NodeRef {
 	const row: TileGroupRow = {
 		first: 0, count: ALL_TILES, boundsStale: false, reshaped: true, retileSerial: -1,
 	};
@@ -768,7 +768,7 @@ export function tileGroup(this s: Scene): NodeRef {
 	return s.refOf(s.newRow(DrawKind.TileGroup, payload));
 }
 
-function reshape(this s: Scene, i: int32): void {
+function reshape(this s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	s.tileGroups[p].boundsStale = true;
 	s.tileGroups[p].reshaped = true;
@@ -781,7 +781,7 @@ function sameShape(a: TileCell, b: TileCell): boolean {
 		a.tile.h == b.tile.h && a.tile.dx == b.tile.dx && a.tile.dy == b.tile.dy;
 }
 
-export function settleTiles(this s: Scene, i: int32): void {
+export function settleTiles(this s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	s.tileGroups[p].reshaped = false;
 	while ((s.tileEdits[p].length as int32) > 0) { s.tileEdits[p].pop(); }
@@ -793,7 +793,7 @@ function tileGroupRow(n: NodeRef, call: string): int32 {
 	return i;
 }
 
-function putTiles(this s: Scene, i: int32, cells: Span<TileCell>): void {
+function putTiles(this s: Scene2D, i: int32, cells: Span<TileCell>): void {
 	const p: int32 = s.payloads[i];
 	const have: int32 = s.tileCells[p].length as int32;
 	const want: int32 = cells.length as int32;
@@ -816,7 +816,7 @@ export function setTiles(this n: NodeRef, cells: Span<TileCell>): NodeRef {
 	return n;
 }
 
-function pushTiles(this s: Scene, i: int32, cells: Span<TileCell>): void {
+function pushTiles(this s: Scene2D, i: int32, cells: Span<TileCell>): void {
 	if ((cells.length as int32) == 0) { return; }
 	const p: int32 = s.payloads[i];
 	for (let k: int32 = 0; k < (cells.length as int32); k++) { s.tileCells[p].push(cells[k]); }
@@ -828,7 +828,7 @@ export function appendTiles(this n: NodeRef, cells: Span<TileCell>): NodeRef {
 	return n;
 }
 
-function putTile(this s: Scene, i: int32, index: int32, cell: TileCell): void {
+function putTile(this s: Scene2D, i: int32, index: int32, cell: TileCell): void {
 	const p: int32 = s.payloads[i];
 	const count: int32 = s.tileCells[p].length as int32;
 	if (index < 0 || index >= count) {
@@ -861,7 +861,7 @@ export function setRange(this n: NodeRef, first: int32, count: int32): NodeRef {
 		);
 		unreachable;
 	}
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	const p: int32 = s.payloads[i];
 	const row: TileGroupRow = s.tileGroups[p];
 	if (row.first == first && row.count == count) { return n; }
@@ -877,7 +877,7 @@ export function count(this n: NodeRef): int32 {
 
 export function clear(this n: NodeRef): NodeRef {
 	const i: int32 = n.liveRow("clear");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	const kind: DrawKind = s.kinds[i];
 	if (kind !== DrawKind.Graphics && kind !== DrawKind.TileGroup) {
 		console.log(
@@ -902,7 +902,7 @@ export function clear(this n: NodeRef): NodeRef {
 }
 
 export function scaleGrid(
-	this s: Scene,
+	this s: Scene2D,
 	t: Tile,
 	borderL: float32,
 	borderT: float32,
@@ -918,7 +918,7 @@ export function scaleGrid(
 }
 
 export function underline(
-	this s: Scene,
+	this s: Scene2D,
 	w: float32,
 	thickness: float32,
 	color: Color,
@@ -938,7 +938,7 @@ export function underline(
 }
 
 export function selection(
-	this s: Scene,
+	this s: Scene2D,
 	w: float32,
 	h: float32,
 	color: Color,
@@ -968,7 +968,7 @@ export function scroll(this n: NodeRef): Scroll2D {
 	return payload == NO_PAYLOAD ? NO_SCROLL : n.scene.scrolls[payload];
 }
 
-function scrollRow(s: Scene, i: int32): int32 {
+function scrollRow(s: Scene2D, i: int32): int32 {
 	if (s.payloads[i] != NO_PAYLOAD) { return s.payloads[i]; }
 	let row: int32 = s.scrolls.length as int32;
 	if ((s.freeScrolls.length as int32) > 0) {
@@ -990,7 +990,7 @@ function clampScroll(v: float32, min: float32, max: float32): float32 {
 function putScroll(n: NodeRef, call: string, x: float32, y: float32): void {
 	const i: int32 = n.liveRow(call);
 	requireKind(n, i, DrawKind.Mask, call, "a scroll");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	const fresh: boolean = s.payloads[i] == NO_PAYLOAD;
 	const row: int32 = scrollRow(s, i);
 	if (fresh) { s.markChanged(i, Changed.Local); }
@@ -1006,10 +1006,10 @@ function putScroll(n: NodeRef, call: string, x: float32, y: float32): void {
 	s.markChanged(i, s.scrollScope(i) ? Changed.Scroll : Changed.Local);
 }
 
-export function scrollScope(this s: Scene, i: int32): boolean {
+export function scrollScope(this s: Scene2D, i: int32): boolean {
 	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return false; }
 	let up: int32 = i;
-	while (up != NO_NODE) {
+	while (up != NO_NODE_2D) {
 		if (s.kinds[up] === DrawKind.Mask && (s.worlds[up].b != 0.0 || s.worlds[up].c != 0.0)) {
 			return false;
 		}
@@ -1039,7 +1039,7 @@ export function scrollBy(this n: NodeRef, dx: float32, dy: float32): NodeRef {
 	return n;
 }
 
-export function setScrollBounds(this n: NodeRef, bounds: Bounds | null): NodeRef {
+export function setScrollBounds(this n: NodeRef, bounds: Bounds2D | null): NodeRef {
 	const i: int32 = n.liveRow("setScrollBounds");
 	requireKind(n, i, DrawKind.Mask, "setScrollBounds", "a scroll");
 	const fresh: boolean = n.scene.payloads[i] == NO_PAYLOAD;
@@ -1049,12 +1049,12 @@ export function setScrollBounds(this n: NodeRef, bounds: Bounds | null): NodeRef
 	if (bounds === null) {
 		n.scene.scrolls[row] = { ...now, bounded: false };
 	} else {
-		n.scene.scrolls[row] = { ...now, bounded: true, bounds: bounds as Bounds };
+		n.scene.scrolls[row] = { ...now, bounded: true, bounds: bounds as Bounds2D };
 	}
 	return n;
 }
 
-export function childWorld(this s: Scene, up: int32): Transform2D {
+export function childWorld(this s: Scene2D, up: int32): Transform2D {
 	if (s.kinds[up] !== DrawKind.Mask || s.payloads[up] == NO_PAYLOAD) { return s.worlds[up]; }
 	if (s.scrollScope(up)) { return s.worlds[up]; }
 	const sc: Scroll2D = s.scrolls[s.payloads[up]];
@@ -1070,7 +1070,7 @@ export function animFrames(this n: NodeRef): AnimFrames {
 export function setBoxStyle(this n: NodeRef, style: BoxStyle): NodeRef {
 	const i: int32 = n.liveRow("setBoxStyle");
 	requireKind(n, i, DrawKind.Rect, "setBoxStyle", "a box style");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	if (s.payloads[i] == NO_BOX_STYLE) {
 		s.payloads[i] = allocateBoxStyle(style);
 	} else {
@@ -1082,7 +1082,7 @@ export function setBoxStyle(this n: NodeRef, style: BoxStyle): NodeRef {
 
 export function setImageStyle(this n: NodeRef, style: ImageStyle): NodeRef {
 	const i: int32 = n.liveRow("setImageStyle");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	const kind: DrawKind = s.kinds[i];
 	if (kind !== DrawKind.Sprite && kind !== DrawKind.Anim) {
 		console.log(
@@ -1107,7 +1107,7 @@ export function setImageStyle(this n: NodeRef, style: ImageStyle): NodeRef {
 	return n;
 }
 
-export function imageStyleOf(this s: Scene, i: int32): int32 {
+export function imageStyleOf(this s: Scene2D, i: int32): int32 {
 	match (s.kinds[i]) {
 		DrawKind.Sprite => { return s.payloads[i]; },
 		DrawKind.Anim => { return s.anims[s.payloads[i]].imageStyle; },
@@ -1246,7 +1246,7 @@ export function setForceWidth(this n: NodeRef, cell: float32): NodeRef {
 	return n;
 }
 
-function settle(this s: Scene, parent: int32, at: int32): void {
+function settle(this s: Scene2D, parent: int32, at: int32): void {
 	const child: int32 = s.children[parent][at];
 	const z: int32 = s.orders[child].zIndex;
 	let k: int32 = at;
@@ -1262,9 +1262,9 @@ function settle(this s: Scene, parent: int32, at: int32): void {
 	s.children[parent][k] = child;
 }
 
-function detach(this s: Scene, child: int32): void {
+function detach(this s: Scene2D, child: int32): void {
 	const parent: int32 = s.parents[child];
-	if (parent == NO_NODE) { return; }
+	if (parent == NO_NODE_2D) { return; }
 	const count: int32 = s.children[parent].length as int32;
 	for (let k: int32 = 0; k < count; k++) {
 		if (s.children[parent][k] == child) {
@@ -1275,12 +1275,12 @@ function detach(this s: Scene, child: int32): void {
 			break;
 		}
 	}
-	s.parents[child] = NO_NODE;
+	s.parents[child] = NO_NODE_2D;
 	s.markChanged(parent, Changed.Tree);
 	s.structureChanged = true;
 }
 
-function releaseGlyphs(this s: Scene, top: int32): void {
+function releaseGlyphs(this s: Scene2D, top: int32): void {
 	s.stack.push(top);
 	while ((s.stack.length as int32) > 0) {
 		const i: int32 = s.stack.pop();
@@ -1307,7 +1307,7 @@ export function addChild(this n: NodeRef, c: NodeRef): NodeRef {
 export function addChildAt(this n: NodeRef, c: NodeRef, index: int32): NodeRef {
 	const parent: int32 = n.liveRow("addChildAt");
 	const child: int32 = c.liveRow("addChildAt");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	if (c.scene !== s) {
 		console.log(`void2d: addChild of node ${child} from another scene under node ${parent}`);
 		unreachable;
@@ -1317,7 +1317,7 @@ export function addChildAt(this n: NodeRef, c: NodeRef, index: int32): NodeRef {
 		unreachable;
 	}
 	let up: int32 = parent;
-	while (up != NO_NODE) {
+	while (up != NO_NODE_2D) {
 		if (up == child) {
 			console.log(
 				`void2d: addChild would put node ${child} under node ${parent}, which is inside it`,
@@ -1352,12 +1352,12 @@ export function removeChild(this n: NodeRef, c: NodeRef): void {
 
 export function removeChildren(this n: NodeRef): void {
 	const parent: int32 = n.liveRow("removeChildren");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	const count: int32 = s.children[parent].length as int32;
 	if (count == 0) { return; }
 	for (let k: int32 = 0; k < count; k++) {
 		const child: int32 = s.children[parent][k];
-		s.parents[child] = NO_NODE;
+		s.parents[child] = NO_NODE_2D;
 		s.releaseGlyphs(child);
 	}
 	s.children[parent] = new Array(0);
@@ -1368,13 +1368,13 @@ export function removeChildren(this n: NodeRef): void {
 export function remove(this n: NodeRef): void {
 	const i: int32 = n.liveRow("remove");
 	const parent: int32 = n.scene.parents[i];
-	if (parent == NO_NODE) { return; }
+	if (parent == NO_NODE_2D) { return; }
 	n.scene.refOf(parent).removeChild(n);
 }
 
 export function parent(this n: NodeRef): NodeRef | null {
 	const up: int32 = n.scene.parents[n.liveRow("parent")];
-	if (up == NO_NODE) { return null; }
+	if (up == NO_NODE_2D) { return null; }
 	return n.scene.refOf(up);
 }
 
@@ -1402,22 +1402,22 @@ export function getChildIndex(this n: NodeRef, c: NodeRef): int32 {
 	return -1;
 }
 
-export function ownScroll(this s: Scene, i: int32): Vec2 {
+export function ownScroll(this s: Scene2D, i: int32): Vec2 {
 	if (s.kinds[i] !== DrawKind.Mask || s.payloads[i] == NO_PAYLOAD) { return vec2(0.0, 0.0); }
 	const sc: Scroll2D = s.scrolls[s.payloads[i]];
 	return vec2(sc.x, sc.y);
 }
 
-function scrolledLocal(s: Scene, i: int32): Transform2D {
+function scrolledLocal(s: Scene2D, i: int32): Transform2D {
 	const by: Vec2 = s.ownScroll(i);
 	if (by.x == 0.0 && by.y == 0.0) { return s.localMatrices[i]; }
 	return s.localMatrices[i] * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);
 }
 
-function absoluteMatrix(s: Scene, i: int32): Transform2D {
+function absoluteMatrix(s: Scene2D, i: int32): Transform2D {
 	let m: Transform2D = scrolledLocal(s, i);
 	let top: int32 = i;
-	while (s.parents[top] != NO_NODE) {
+	while (s.parents[top] != NO_NODE_2D) {
 		top = s.parents[top];
 		m = scrolledLocal(s, top) * m;
 	}
@@ -1434,7 +1434,7 @@ export function globalToLocal(this n: NodeRef, p: Vec2): Vec2 {
 	return p * inverse2d(absoluteMatrix(n.scene, n.liveRow("globalToLocal")));
 }
 
-function releasePayload(this s: Scene, i: int32): void {
+function releasePayload(this s: Scene2D, i: int32): void {
 	const payload: int32 = s.payloads[i];
 	match (s.kinds[i]) {
 		DrawKind.Rect => {
@@ -1471,10 +1471,10 @@ function releasePayload(this s: Scene, i: int32): void {
 	s.payloads[i] = NO_PAYLOAD;
 }
 
-function freeRow(this s: Scene, i: int32): void {
+function freeRow(this s: Scene2D, i: int32): void {
 	s.releasePayload(i);
 	s.kinds[i] = DrawKind.Group;
-	s.parents[i] = NO_NODE;
+	s.parents[i] = NO_NODE_2D;
 	s.children[i] = new Array(0);
 	s.paints[i] = defaultPaint();
 	s.orders[i] = { zIndex: 0, visible: true, name: "", noOverlap: false };
@@ -1491,7 +1491,7 @@ function freeRow(this s: Scene, i: int32): void {
 
 export function dispose(this n: NodeRef): void {
 	const top: int32 = n.liveRow("dispose");
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	if (top == s.root) {
 		console.log("void2d: dispose asked of the scene root");
 		unreachable;

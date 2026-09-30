@@ -19,8 +19,8 @@
 import { readFile, writeFile, ensureDir } from "std/fs";
 import { env } from "std/process";
 import { GLYPH_PAGE_SIZE } from "../../src/void2d/glyphAtlas";
-import { scene, add } from "../../src/void2d/scene";
-import { NodeRef, Scene, TileCell } from "../../src/void2d/node";
+import { add } from "../../src/void2d/scene";
+import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
 import { sync, draw, labelEditingRefusals } from "../../src/void2d/render";
 import {
 	begin2d,
@@ -251,7 +251,7 @@ function record(root: NodeRef, w: float32, h: float32, dpi: float32): string {
 
 test "scene smoothing seeds the first run before recording begins" {
 	setSceneSmooth(false);
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const root = s.rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
 	begin2d(16.0, 16.0, 1.0);
 	root.sync(identity2d(), true);
@@ -301,7 +301,7 @@ function snapshot(name: string, actual: string): boolean {
 // Painter order: three siblings and a child, drawn in array order, each a later range in one
 // shared vertex stream. A reordering shows up as the ranges swapping.
 function orderScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(10.0, 10.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
 	const middle = s.add(s.rect(10.0, 10.0, rgba(0.0, 1.0, 0.0, 1.0)).at(20.0, 0.0));
 	middle.addChild(s.rect(4.0, 4.0, rgba(0.0, 0.0, 1.0, 1.0)).at(1.0, 1.0));
@@ -319,7 +319,7 @@ function orderScene(): NodeRef {
 // is the *last* cause rather than the first. The field is therefore "a reason", not "the only
 // reason" - enough to name a regression, not enough to conclude from alone.
 function breaksScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(8.0, 8.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
 	const added = s.add(s.rect(8.0, 8.0, rgba(0.0, 1.0, 0.0, 1.0)).at(10.0, 0.0));
 	added.setBlend(BlendMode.Add);
@@ -336,7 +336,7 @@ function breaksScene(): NodeRef {
 
 // A Mask records a scissor, its children inherit it, and the clip is given back afterwards.
 function clipScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(6.0, 6.0, rgba(1.0, 0.0, 0.0, 1.0)).at(0.0, 0.0));
 	const m = s.mask(24.0, 16.0).at(10.0, 4.0);
 	m.addChild(s.rect(40.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)).at(0.0, 0.0));
@@ -345,7 +345,7 @@ function clipScene(): NodeRef {
 	return s.refOf(s.root);
 }
 function rotatedClipScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(40.0, 24.0).at(44.0, 24.0);
 	m.setPivot(20.0, 12.0);
 	m.setRotation(0.4);
@@ -355,7 +355,7 @@ function rotatedClipScene(): NodeRef {
 }
 
 function culledListScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(200.0, 90.0).at(28.0, 30.0);
 	for (let i: int32 = 0; i < 40; i++) {
 		m.addChild(s.rect(190.0, 18.0, rgba(0.0, 1.0, 0.0, 1.0))
@@ -366,7 +366,7 @@ function culledListScene(): NodeRef {
 }
 
 function boxStyleScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.setAlpha(0.5);
 	box.setBoxStyle(BoxStyle.create(
@@ -378,7 +378,7 @@ function boxStyleScene(): NodeRef {
 }
 
 function rejectedBoxEffectScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(6.0),
@@ -390,7 +390,7 @@ function rejectedBoxEffectScene(): NodeRef {
 }
 
 function snapScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
 	const boxed = s.add(s.rect(30.0, 20.0, rgba(0.3, 0.5, 0.9, 1.0)).at(64.35, 16.8));
 	boxed.setBoxStyle(BoxStyle.create(
@@ -402,7 +402,7 @@ function snapScene(): NodeRef {
 }
 
 function glyphScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const card = s.add(s.rect(64.0, 40.0, rgba(0.2, 0.4, 0.6, 0.8)).at(8.0, 6.0));
 	card.setBoxStyle(BoxStyle.create(
 		uniformRadii(6.0),
@@ -414,7 +414,7 @@ function glyphScene(): NodeRef {
 }
 
 function boxShadowScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
 	box.setBoxStyle(BoxStyle.create(
 		{ topLeft: 4.0, topRight: 6.0, bottomRight: 8.0, bottomLeft: 10.0 },
@@ -431,7 +431,7 @@ function boxShadowScene(): NodeRef {
 }
 
 function shadowOnlyVisibleScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const box = s.add(s.rect(20.0, 20.0, rgba(0.2, 0.4, 0.6, 0.8)).at(104.0, 10.0));
 	box.setBoxStyle(BoxStyle.create(
 		uniformRadii(4.0),
@@ -442,7 +442,7 @@ function shadowOnlyVisibleScene(): NodeRef {
 }
 
 function gradientScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const g = s.add(s.graphics());
 	g.fillRect(0.0, 0.0, 8.0, 8.0, rgba(0.2, 0.3, 0.4, 1.0));
 	g.fillGradientRectOklab(10.0, 0.0, 16.0, 8.0,
@@ -457,7 +457,7 @@ function gradientScene(): NodeRef {
 	return s.refOf(s.root);
 }
 function imageStyleScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const image = s.sprite(tile(17, 200.0, 100.0)).at(10.0, 12.0);
 	image.setSize(100.0, 80.0);
 	image.setImageStyle(imageStyle(
@@ -469,7 +469,7 @@ function imageStyleScene(): NodeRef {
 	return s.refOf(s.root);
 }
 function textPrimitiveScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.underline(72.0, 2.0, rgba(0.9, 0.3, 0.2, 1.0), false).at(8.0, 8.0));
 	const wave = s.add(s.underline(84.0, 3.0, rgba(0.3, 0.7, 1.0, 0.8), true).at(8.0, 18.0));
 	wave.setRotation(0.2);
@@ -484,7 +484,7 @@ function tileAt(x: float32, y: float32, t: Tile): TileCell {
 	};
 }
 function tileGroupScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const map = s.add(s.tileGroup()).at(10.0, 5.0);
 	map.setColor(rgba(1.0, 0.5, 1.0, 1.0)).setAlpha(0.5);
 	const turned: Tile = { ...tile(11, 8.0, 8.0), dx: -4.0, dy: -4.0 };
@@ -536,7 +536,7 @@ test "T1 production emitters reach every batch-break reason" {
 	assert currentRenderScale() == 1.5;
 	beginTarget(1, 16.0, 16.0, 1.25, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));
 	assert currentRenderScale() == 1.25;
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const targetRoot = s.rect(8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0));
 	targetRoot.sync(identity2d(), true);
 	targetRoot.draw(1.0, 16.0, 16.0);
@@ -558,7 +558,7 @@ test "T1 active-clip culling drops rows outside a Mask" {
 }
 
 function disjointMaskScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const outer = s.mask(100.0, 60.0).at(0.0, 0.0);
 	const inner = s.mask(40.0, 40.0).at(150.0, 10.0);
 	inner.addChild(s.rect(100.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-60.0, 0.0));
@@ -568,7 +568,7 @@ function disjointMaskScene(): NodeRef {
 }
 
 function leftMaskScene(): NodeRef {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(100.0, 40.0).at(-200.0, 10.0);
 	m.addChild(s.rect(200.0, 20.0, rgba(0.0, 1.0, 0.0, 1.0)).at(50.0, 0.0));
 	s.add(m);
@@ -647,7 +647,7 @@ test "T1 snapshot: retained underline and selection nodes reach their UI modes" 
 }
 
 test "T1 a run's colour multiplies with its label's, as h2d's colour segments do" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const clear = rgba(0.0, 0.0, 0.0, 0.0);
 	const runs: TextRun[] = [{
 		len: 2, font: DEFAULT_FONT, color: rgba(1.0, 0.5, 0.25, 1.0), background: clear,
@@ -728,7 +728,7 @@ function recordedInstances(root: NodeRef, w: float32, h: float32): Vec<float32> 
 }
 
 test "a caret blink changes no instance but the caret's" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("let x = 1;\nx + 2", 16.0, rgba(0.9, 0.9, 0.9, 1.0)).at(8.0, 6.0));
 	text.setSelectionRange({ start: 4, length: 9 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(13, rgba(1.0, 1.0, 1.0, 1.0));
@@ -752,7 +752,7 @@ test "a caret blink changes no instance but the caret's" {
 }
 
 test "a ragged selection is one row quad per line, each carrying its neighbours" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("abcdef\nab\nabcdefgh", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 2, length: 14 }, rgba(0.3, 0.5, 0.9, 0.5));
 	setSceneSmooth(true);
@@ -799,7 +799,7 @@ function selectedSpans(root: NodeRef, w: float32, h: float32): Vec<float32> {
 }
 
 test "a selection across a wrap with no separator lights only the text it covers" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("well-known", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setMaxWidth(text.calcTextWidth("well-") + 1.0);
 	const lines = text.textLayout().lines;
@@ -817,7 +817,7 @@ test "a selection across a wrap with no separator lights only the text it covers
 }
 
 test "a label's runs, selection and caret under a colour effect are refused aloud" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 1, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
@@ -831,7 +831,7 @@ test "a label's runs, selection and caret under a colour effect are refused alou
 }
 
 test "a selected row covers its trailing spaces, and a blank indented row its indent" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("ab  \n    \ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 0, length: 11 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
@@ -845,7 +845,7 @@ test "a selected row covers its trailing spaces, and a blank indented row its in
 }
 
 test "selected rows meet across line spacing, half of it above each row and half below" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("ab\ncd\nef", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setLineSpacing(6.0);
 	text.setSelectionRange({ start: 0, length: 8 }, rgba(0.3, 0.5, 0.9, 0.5));
@@ -873,7 +873,7 @@ test "selected rows meet across line spacing, half of it above each row and half
 }
 
 test "under setForceWidth a selected row that ends in a mark reaches its last cell" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("aé", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setForceWidth(10.0);
 	text.setSelectionRange({ start: 0, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
@@ -883,7 +883,7 @@ test "under setForceWidth a selected row that ends in a mark reaches its last ce
 }
 
 test "text query bounds exclude editing gloop while its visible selection still records" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("ab", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setX(-text.textWidth() - 4.0);
 	text.setSelectionRange({ start: 0, length: 2 }, rgba(0.3, 0.5, 0.9, 0.5));

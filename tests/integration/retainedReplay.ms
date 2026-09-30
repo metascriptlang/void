@@ -1,7 +1,7 @@
 import { gfxSetup, beginPass, endPass, commit } from "../../src/sokol/gpu";
 import { setup2d, flushTargets, end2d } from "../../src/void2d/draw";
-import { Scene, NodeRef } from "../../src/void2d/node";
-import { scene, add, paint } from "../../src/void2d/scene";
+import { Scene2D, NodeRef } from "../../src/void2d/node";
+import { add, paint } from "../../src/void2d/scene";
 import { refreshScopes } from "../../src/void2d/render";
 import { fillRect } from "../../src/void2d/graphics";
 import { rgba, tile } from "../../src/void2d/types";
@@ -15,7 +15,7 @@ extern function voidRunConfigured(
 	init: () => void, frame: () => void,
 ): void;
 
-const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 const red = rgba(1.0, 0.0, 0.0, 1.0);
 const blue = rgba(0.0, 0.0, 1.0, 1.0);
 const box: NodeRef = s.add(s.rect(20.0, 20.0, red).at(10.0, 10.0));

@@ -1,12 +1,12 @@
-import { NodeRef, GraphicsMesh, Scene, clear } from "../void2d/node";
-import { scene } from "../void2d/scene";
+import { NodeRef, GraphicsMesh, Scene2D, clear } from "../void2d/node";
+import "../void2d/scene";
 import { fillTriangle, fillRect, fillConvex, fillPolygon, fillCircle, fillEllipse, fillPie, fillRing, fillRoundedRect, fillTexRect, fillTexPolygon, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier } from "../void2d/graphics";
 import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
 import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV } from "./helpers";
 
 const QUARTER: float32 = 1.5707963;
 const PI_AREA_R10: float32 = 314.159;
-const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
 function geometry(g: NodeRef): GraphicsMesh { return g.scene.meshes[g.scene.payloads[g.id.index]]; }
 

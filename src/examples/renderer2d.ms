@@ -5,15 +5,15 @@
 import { gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, makeRenderTarget, renderTargetView, beginRenderTargetPass, endPass, KEY_W, KEY_A, KEY_S, KEY_D } from "../sokol/gpu";
 import { setup2d, begin2d, flushTargets, beginTarget, endTarget, drawRect, drawImage } from "../void2d/draw";
 import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
-import { NodeRef, Scene } from "../void2d/node";
+import { NodeRef, Scene2D } from "../void2d/node";
 import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Align } from "../void2d/textLayout";
-import { scene, add, present, tick } from "../void2d/scene";
+import { add, present, tick } from "../void2d/scene";
 import { Tile, Vec2, rgba, tile, sub, flipX, vec2, BlendMode, Smooth } from "../void2d/types";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
-let sc: Scene | null = null;
+let sc: Scene2D | null = null;
 let panel: NodeRef | null = null;
 let logo: NodeRef | null = null;
 let green: NodeRef | null = null;
@@ -32,7 +32,7 @@ let rtShadow: uint32 = 0;
 export function init2d(): void {
 	gfxSetup();
 	setup2d();
-	const sceneObj = scene(rgba(0.08, 0.09, 0.12, 1.0));
+	const sceneObj = Scene2D.create(rgba(0.08, 0.09, 0.12, 1.0));
 
 	const img = loadImageSync("assets/test.png", 4);
 	const iw: int32 = imageWidth();

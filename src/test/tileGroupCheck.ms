@@ -1,13 +1,13 @@
-import { DrawKind, Changed, NodeRef, Scene, TileCell, ALL_TILES } from "../void2d/node";
-import { scene } from "../void2d/scene";
+import { DrawKind, Changed, NodeRef, Scene2D, TileCell, ALL_TILES } from "../void2d/node";
+import "../void2d/scene";
 import { sync, getBounds } from "../void2d/render";
-import { Bounds, Color, Tile, rgba, tile, identity2d, emptyBounds } from "../void2d/types";
+import { Bounds2D, Color, Tile, rgba, tile, identity2d, emptyBounds } from "../void2d/types";
 import { approx } from "./helpers";
 
 const HALF_PI: float32 = 1.5707963;
 const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
 
-function fresh(): Scene { return scene(rgba(0.0, 0.0, 0.0, 1.0)); }
+function fresh(): Scene2D { return Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)); }
 
 function cell(x: float32, y: float32, t: Tile): TileCell {
 	return { x: x, y: y, tile: t, color: white, scaleX: 1.0, scaleY: 1.0, rotation: 0.0 };
@@ -127,7 +127,7 @@ test "a group's bounds hold every tile's corners, turned and scaled, whatever it
 	g.setTiles(cells);
 	g.setRange(0, 1);
 	settled(g);
-	let b: Bounds = emptyBounds();
+	let b: Bounds2D = emptyBounds();
 	g.getBounds(b);
 	assert approx(b.xMin, 100.0) && approx(b.yMin, 50.0);
 	assert approx(b.xMax, 114.0) && approx(b.yMax, 78.0);
@@ -137,7 +137,7 @@ test "an empty group bounds as a point at its origin" {
 	const s = fresh();
 	const g = s.add(s.tileGroup()).at(7.0, 9.0);
 	settled(g);
-	let b: Bounds = emptyBounds();
+	let b: Bounds2D = emptyBounds();
 	g.getBounds(b);
 	assert approx(b.xMin, 7.0) && approx(b.xMax, 7.0) && approx(b.yMin, 9.0) && approx(b.yMax, 9.0);
 }

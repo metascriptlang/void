@@ -1,10 +1,10 @@
-import { NodeRef, Scene } from "../void2d/node";
-import { scene } from "../void2d/scene";
+import { NodeRef, Scene2D } from "../void2d/node";
+import "../void2d/scene";
 import { layoutPass, freeLayout } from "../void2d/layout";
 import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
 
-const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
 function white(): NodeRef { return s.rect(10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)); }
 

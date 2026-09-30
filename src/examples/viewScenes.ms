@@ -2,8 +2,8 @@
 // its view, and a panel drawn over a transparent clear. They are laid out in logical pixels
 // from the size of the view that draws them.
 
-import { NodeRef, Scene } from "../void2d/node";
-import { scene, add } from "../void2d/scene";
+import { NodeRef, Scene2D } from "../void2d/node";
+import { add } from "../void2d/scene";
 import { Color, rgba } from "../void2d/types";
 
 const MARGIN: float32 = 24.0;
@@ -33,8 +33,8 @@ export function boardState(cols: int32, rows: int32): BoardState {
 	return { cols, rows, lit, tiles: [], edges: [], tileW: 0.0, tileH: 0.0 };
 }
 
-export function boardScene(b: BoardState): Scene {
-	const s = scene(rgba(0.07, 0.08, 0.11, 1.0));
+export function boardScene(b: BoardState): Scene2D {
+	const s = Scene2D.create(rgba(0.07, 0.08, 0.11, 1.0));
 	for (let i: int32 = 0 as int32; i < b.cols * b.rows; i++) {
 		const t = s.rect(1.0, 1.0, TILE_OFF);
 		b.tiles.push(t);
@@ -85,7 +85,7 @@ export function toggleTileAt(b: BoardState, x: float32, y: float32): boolean {
 }
 
 export interface OverlayState {
-	scene: Scene;
+	scene: Scene2D;
 	clicks: int32;
 	x: float32;
 	y: float32;
@@ -94,14 +94,14 @@ export interface OverlayState {
 }
 
 export function overlayState(): OverlayState {
-	const s = scene(rgba(0.0, 0.0, 0.0, 0.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
 	return {
 		scene: s, clicks: 0 as int32, x: 0.0, y: 0.0,
 		panel: s.rect(PANEL_W, PANEL_H, rgba(0.85, 0.30, 0.40, 0.92)), bars: [],
 	};
 }
 
-export function overlayScene(o: OverlayState): Scene {
+export function overlayScene(o: OverlayState): Scene2D {
 	const s = o.scene;
 	const barW: float32 = (PANEL_W - 2.0 * GAP) / (BAR_SLOTS as float32);
 	for (let i: int32 = 0 as int32; i < BAR_SLOTS; i++) {

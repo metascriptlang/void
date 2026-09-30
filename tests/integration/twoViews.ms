@@ -8,7 +8,7 @@ import {
 	fbWidth, fbHeight, dpiScale, gfxSetup, ViewId, ViewInvalid,
 } from "../../src/sokol/gpu";
 import { setup2d } from "../../src/void2d/draw";
-import { Scene } from "../../src/void2d/node";
+import { Scene2D } from "../../src/void2d/node";
 import { present } from "../../src/void2d/scene";
 import {
 	BoardState, boardState, boardScene, layoutBoard, toggleTileAt,
@@ -33,8 +33,8 @@ const TILE_ON_RGB: int64 = 0xF2B840 as int64;
 
 let _board: BoardState = boardState(6 as int32, 4 as int32);
 let _overlay: OverlayState = overlayState();
-let _boardScene: Scene | null = null;
-let _overlayScene: Scene | null = null;
+let _boardScene: Scene2D | null = null;
+let _overlayScene: Scene2D | null = null;
 let _boardView: ViewId = ViewInvalid;
 let _overlayView: ViewId = ViewInvalid;
 let _seenW: int32 = 0 as int32;

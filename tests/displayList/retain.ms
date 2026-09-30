@@ -1,5 +1,5 @@
-import { scene, add } from "../../src/void2d/scene";
-import { Scene, NodeRef, TileCell, NO_SLOT } from "../../src/void2d/node";
+import { add } from "../../src/void2d/scene";
+import { Scene2D, NodeRef, TileCell, NO_SLOT } from "../../src/void2d/node";
 import { paint, isDirty, tick } from "../../src/void2d/scene";
 import { refreshScopes } from "../../src/void2d/render";
 import { sync, draw, syncOrder, drawOrder } from "../../src/void2d/render";
@@ -92,7 +92,7 @@ function same(a: Recording, b: Recording): boolean {
 	return true;
 }
 
-function walked(s: Scene): Recording {
+function walked(s: Scene2D): Recording {
 	setSceneSmooth(true);
 	begin2d(W, H, 1.0);
 	s.refOf(s.root).sync(identity2d(), true);
@@ -103,7 +103,7 @@ function walked(s: Scene): Recording {
 	return out;
 }
 
-function scanned(s: Scene): Recording {
+function scanned(s: Scene2D): Recording {
 	setSceneSmooth(true);
 	begin2d(W, H, 1.0);
 	s.refreshOrder();
@@ -115,8 +115,8 @@ function scanned(s: Scene): Recording {
 	return out;
 }
 
-function maskedScene(): Scene {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+function maskedScene(): Scene2D {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const panel = s.mask(120.0, 80.0).at(10.0, 10.0);
 	panel.addChild(s.rect(200.0, 20.0, rgba(1.0, 0.0, 0.0, 1.0)).at(-10.0, 5.0));
 	const inner = s.mask(60.0, 30.0).at(20.0, 30.0);
@@ -146,7 +146,7 @@ test "the flat order records what the tree walk records" {
 }
 
 test "the draw order is rebuilt on a structural change and on nothing else" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const a = s.rect(10.0, 10.0, rgba(1.0, 0.0, 0.0, 1.0));
 	const b = s.rect(10.0, 10.0, rgba(0.0, 1.0, 0.0, 1.0));
 	s.add(a);
@@ -175,7 +175,7 @@ test "the draw order is rebuilt on a structural change and on nothing else" {
 	assert s.slots[b.id.index] == NO_SLOT;
 }
 
-function frame(s: Scene): Recording {
+function frame(s: Scene2D): Recording {
 	s.paint(W, H, 1.0);
 	const out: Recording = capture();
 	frameEnd();
@@ -184,7 +184,7 @@ function frame(s: Scene): Recording {
 	return out;
 }
 
-function fullFrame(s: Scene): Recording {
+function fullFrame(s: Scene2D): Recording {
 	s.list.painted = false;
 	s.viewInit = false;
 	return frame(s);
@@ -192,7 +192,7 @@ function fullFrame(s: Scene): Recording {
 
 let reusedByRetained: int32 = 0;
 
-function ranges(s: Scene): Vec<int32> {
+function ranges(s: Scene2D): Vec<int32> {
 	const out: Vec<int32> = [];
 	for (let r: int32 = 0; r < (s.kinds.length as int32); r++) {
 		if (s.slots[r] == NO_SLOT || paintStateOf(r) != PaintState.Painted) { continue; }
@@ -207,7 +207,7 @@ function ranges(s: Scene): Vec<int32> {
 	return out;
 }
 
-function check(s: Scene, what: string, path: string): boolean {
+function check(s: Scene2D, what: string, path: string): boolean {
 	const patches: int32 = s.patches;
 	const splices: int32 = s.splices;
 	s.paint(W, H, 1.0);
@@ -248,7 +248,7 @@ function check(s: Scene, what: string, path: string): boolean {
 }
 
 struct Corpus {
-	s: Scene;
+	s: Scene2D;
 	card: NodeRef;
 	label: NodeRef;
 	group: NodeRef;
@@ -258,7 +258,7 @@ struct Corpus {
 }
 
 function corpus(): Corpus {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const white = rgba(1.0, 1.0, 1.0, 1.0);
 	for (let k: int32 = 0; k < 4; k++) {
 		const row = s.rect(40.0, 16.0, rgba(0.2, 0.3, 0.5, 1.0)).at(4.0 + 44.0 * (k as float32), 4.0);
@@ -295,7 +295,7 @@ function corpus(): Corpus {
 
 test "a retained frame records what a full frame records, write by write" {
 	const c: Corpus = corpus();
-	const s: Scene = c.s;
+	const s: Scene2D = c.s;
 	frame(s);
 	assert check(s, "a still frame", "patch");
 	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
@@ -335,7 +335,7 @@ test "a retained frame records what a full frame records, write by write" {
 
 test "a card's colour rewrites its one UI record and nothing else" {
 	const c: Corpus = corpus();
-	const s: Scene = c.s;
+	const s: Scene2D = c.s;
 	frame(s);
 	const before: Recording = frame(s);
 	c.card.setColor(rgba(0.9, 0.1, 0.1, 1.0));
@@ -369,8 +369,8 @@ test "a card's colour rewrites its one UI record and nothing else" {
 	assert same({ counts: before.counts, floats: before.floats }, fullFrame(s)) == false;
 }
 
-function spriteLast(): Scene {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+function spriteLast(): Scene2D {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.sprite(tile(11, 8.0, 8.0)).at(4.0, 4.0));
 	return s;
 }
@@ -386,7 +386,7 @@ test "a bracket records the same stream whatever the bracket before it ended in"
 
 test "a card's colour marks one UI range one record long, and an undone write marks none" {
 	const c: Corpus = corpus();
-	const s: Scene = c.s;
+	const s: Scene2D = c.s;
 	frame(s);
 	uploaded();
 	frame(s);
@@ -409,8 +409,8 @@ test "a card's colour marks one UI range one record long, and an undone write ma
 	assert !s.list.dirtySprites && !s.list.dirtyVertices;
 }
 
-function caretScene(): Scene {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+function caretScene(): Scene2D {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const editor = s.label("caret", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 4.0);
 	editor.setCursorIndex(2, rgba(1.0, 0.8, 0.3, 1.0));
 	s.add(editor);
@@ -418,7 +418,7 @@ function caretScene(): Scene {
 }
 
 test "a caret blink writes the caret's instance and nothing else" {
-	const s: Scene = caretScene();
+	const s: Scene2D = caretScene();
 	const editor: int32 = s.children[s.root][0];
 	frame(s);
 	uploaded();
@@ -440,7 +440,7 @@ test "a caret blink writes the caret's instance and nothing else" {
 
 test "a scene is dirty until a frame draws what changed, and a still frame leaves it clean" {
 	const c: Corpus = corpus();
-	const s: Scene = c.s;
+	const s: Scene2D = c.s;
 	assert s.isDirty();
 	frame(s);
 	assert !s.isDirty();
@@ -469,7 +469,7 @@ test "a scene is dirty until a frame draws what changed, and a still frame leave
 }
 
 test "a scroll writes no instance and no command, only its scope's shift" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(100.0, 40.0).at(10.0, 10.0);
 	for (let i: int32 = 0; i < 12; i++) {
 		const row = s.rect(90.0, 18.0, rgba(0.2, 0.3, 0.5, 1.0)).at(5.0, (i as float32) * 22.0);
@@ -496,8 +496,8 @@ test "a scroll writes no instance and no command, only its scope's shift" {
 	assert s.list.uiInstanceTotal == 26;
 }
 
-function strip(): Scene {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+function strip(): Scene2D {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	for (let k: int32 = 0; k < 10; k++) {
 		const cell = s.rect(40.0, 20.0, rgba(0.2, 0.3, 0.5, 1.0)).at(10.0 + 50.0 * (k as float32), 30.0);
 		cell.addChild(s.label(String(k), 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(2.0, 2.0));
@@ -565,12 +565,12 @@ function fourTiles(): TileCell[] {
 }
 
 struct Tiles {
-	s: Scene;
+	s: Scene2D;
 	map: NodeRef;
 }
 
 function tiles(): Tiles {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(20.0, 20.0, rgba(0.2, 0.3, 0.5, 1.0)).at(4.0, 4.0));
 	const map = s.add(s.tileGroup().at(30.0, 4.0));
 	map.setTiles(fourTiles());
@@ -581,7 +581,7 @@ function tiles(): Tiles {
 
 test "a tile group's writes record what a full frame records, write by write" {
 	const t: Tiles = tiles();
-	const s: Scene = t.s;
+	const s: Scene2D = t.s;
 	frame(s);
 	assert s.list.spriteInstanceTotal == 5;
 	assert check(s, "a still frame", "patch");
@@ -615,7 +615,7 @@ test "a tile group's writes record what a full frame records, write by write" {
 
 test "a tile's colour rewrites its one sprite record and nothing else" {
 	const t: Tiles = tiles();
-	const s: Scene = t.s;
+	const s: Scene2D = t.s;
 	frame(s);
 	const before: Recording = frame(s);
 	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
@@ -643,7 +643,7 @@ test "a tile's colour rewrites its one sprite record and nothing else" {
 
 test "a tile edit writes in place only while the group keeps its shape, place and alpha" {
 	const t: Tiles = tiles();
-	const s: Scene = t.s;
+	const s: Scene2D = t.s;
 	frame(s);
 	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
 	t.map.setTile(1, red);
@@ -673,7 +673,7 @@ test "a tile edit writes in place only while the group keeps its shape, place an
 }
 
 test "tile edits past an eighth of the group's tiles re-record the group" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const map = s.add(s.tileGroup());
 	const cells: Vec<TileCell> = [];
 	for (let k: int32 = 0; k < 200; k++) {
@@ -698,7 +698,7 @@ test "tile edits past an eighth of the group's tiles re-record the group" {
 
 test "a camera pan that takes a group off screen wins over its tile edit" {
 	const t: Tiles = tiles();
-	const s: Scene = t.s;
+	const s: Scene2D = t.s;
 	frame(s);
 	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
 	t.map.setTile(1, red);
@@ -711,7 +711,7 @@ test "a camera pan that takes a group off screen wins over its tile edit" {
 }
 
 test "a tile edit under a parent that moved or faded re-records the group" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const holder = s.add(s.group().at(10.0, 10.0));
 	const map = holder.addChild(s.tileGroup());
 	map.setTiles(fourTiles());
@@ -732,7 +732,7 @@ test "a tile edit under a parent that moved or faded re-records the group" {
 
 test "a tile edit re-records a group that took another write, drew through the vertex path or was culled" {
 	const t: Tiles = tiles();
-	const s: Scene = t.s;
+	const s: Scene2D = t.s;
 	frame(s);
 	const red: TileCell = { ...tileCell(8.0, 0.0, 11), color: rgba(1.0, 0.0, 0.0, 1.0) };
 	t.map.setTile(1, red);
@@ -751,8 +751,8 @@ test "a tile edit re-records a group that took another write, drew through the v
 	assert check(s, "an edit on a culled group", "patch");
 }
 
-function iconList(promise: boolean, icons: boolean): Scene {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+function iconList(promise: boolean, icons: boolean): Scene2D {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(8.0, 8.0, rgba(0.9, 0.9, 0.9, 1.0)).at(180.0, 4.0));
 	const list = s.add(s.group().at(4.0, 4.0));
 	for (let k: int32 = 0; k < 6; k++) {

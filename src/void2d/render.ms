@@ -2,8 +2,8 @@
 // getBounds. Extracted from node.ms so each file has one responsibility.
 
 import {
-	Scene, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
-	NO_NODE, Enclosure, LaneFrame,
+	Scene2D, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
+	NO_NODE_2D, Enclosure, LaneFrame,
 } from "./node";
 import {
 	DisplayList,
@@ -116,7 +116,7 @@ import {
 	Color,
 	Tile,
 	Transform2D,
-	Bounds,
+	Bounds2D,
 	Filter,
 	FilterKind,
 	BlendMode,
@@ -157,7 +157,7 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 const SELECTION_RADIUS: float32 = 2.0;
 const SELECTION_GLOOP: float32 = 8.0;
 
-function visualTile(s: Scene, i: int32): Tile {
+function visualTile(s: Scene2D, i: int32): Tile {
 	if (s.kinds[i] === DrawKind.Anim) {
 		const row: int32 = s.payloads[i];
 		const len: int32 = s.anims[row].frames.length as int32;
@@ -168,7 +168,7 @@ function visualTile(s: Scene, i: int32): Tile {
 	}
 	return s.contents[i].tile;
 }
-function showsEditing(s: Scene, i: int32): boolean {
+function showsEditing(s: Scene2D, i: int32): boolean {
 	if (s.payloads[i] == NO_LABEL_TEXT) { return false; }
 	const text: LabelText = labelTexts[s.payloads[i]];
 	return text.selectionLength > 0 || text.cursorIndex != NO_CURSOR;
@@ -189,7 +189,7 @@ function cellMatrix(c: TileCell): Transform2D {
 	return trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
 }
 
-function tileBounds(s: Scene, i: int32): void {
+function tileBounds(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	if (!s.tileGroups[p].boundsStale) { return; }
 	const cells: Span<TileCell> = s.tileCells[p];
@@ -219,7 +219,7 @@ function tileBounds(s: Scene, i: int32): void {
 }
 
 
-function localBounds(s: Scene, i: int32, query: boolean): Bounds {
+function localBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 	const kind: DrawKind = s.kinds[i];
 	const payload: int32 = s.payloads[i];
 	const w: float32 = s.contents[i].w;
@@ -258,7 +258,7 @@ function localBounds(s: Scene, i: int32, query: boolean): Bounds {
 	return { xMin: 0.0, yMin: 0.0, xMax: w, yMax: h };
 }
 
-function boxRenderBounds(s: Scene, i: int32, world: Transform2D, lb: Bounds): Bounds {
+function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D): Bounds2D {
 	if (s.kinds[i] !== DrawKind.Rect) { return lb; }
 	let xMin: float32 = lb.xMin;
 	let yMin: float32 = lb.yMin;
@@ -303,7 +303,7 @@ function boxRenderBounds(s: Scene, i: int32, world: Transform2D, lb: Bounds): Bo
 	return { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
 }
 
-function renderScaleGrid(s: Scene, i: int32, world: Transform2D, col: Color): void {
+function renderScaleGrid(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
 	const grid: Content2D = s.contents[i];
 	const blend: BlendMode = s.paints[i].blend;
 	const t = grid.tile;
@@ -333,7 +333,7 @@ function renderScaleGrid(s: Scene, i: int32, world: Transform2D, col: Color): vo
 	}
 }
 
-function shapeIfChanged(s: Scene, i: int32): void {
+function shapeIfChanged(s: Scene2D, i: int32): void {
 	const payload: int32 = s.payloads[i];
 	const shaped: LabelText = labelTexts[payload];
 	if (!shaped.stale) { return; }
@@ -366,7 +366,7 @@ function shapeIfChanged(s: Scene, i: int32): void {
 	shaped.stale = false;
 }
 
-function meshBounds(s: Scene, i: int32): void {
+function meshBounds(s: Scene2D, i: int32): void {
 	const m: GraphicsMesh = s.meshes[s.payloads[i]];
 	if (!m.stale) { return; }
 	let xMin: float32 = 1e30;
@@ -387,7 +387,7 @@ function meshBounds(s: Scene, i: int32): void {
 	m.stale = false;
 }
 
-function syncRow(s: Scene, i: int32, parentWorld: Transform2D, parentChanged: boolean): void {
+function syncRow(s: Scene2D, i: int32, parentWorld: Transform2D, parentChanged: boolean): void {
 	const worldChanged: boolean = parentChanged || s.changed[i].has(Changed.Local);
 	if (worldChanged) {
 		s.worlds[i] = parentWorld * s.localMatrices[i];
@@ -404,7 +404,7 @@ export function sync(this n: NodeRef, parentWorld: Transform2D, parentChanged: b
 	syncRow(n.scene, n.liveRow("sync"), parentWorld, parentChanged);
 }
 
-export function syncOrder(this s: Scene, view: Transform2D, viewChanged: boolean): void {
+export function syncOrder(this s: Scene2D, view: Transform2D, viewChanged: boolean): void {
 	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
 		const i: int32 = s.order[p];
 		const up: int32 = s.parents[i];
@@ -600,7 +600,7 @@ export function labelEditingRefusals(): int32 {
 	return refusedLabelEditing;
 }
 
-function emitLabel(s: Scene, i: int32, world: Transform2D, col: Color, na: float32): void {
+function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: float32): void {
 	const payload: int32 = s.payloads[i];
 	if (payload == NO_LABEL_TEXT) { return; }
 	const blend: BlendMode = s.paints[i].blend;
@@ -674,7 +674,7 @@ let boxEffectRejectedReported: boolean = false;
 
 
 function emitStyledImage(
-	s: Scene,
+	s: Scene2D,
 	i: int32,
 	t: Tile,
 	world: Transform2D,
@@ -708,7 +708,7 @@ function emitStyledImage(
 	return true;
 }
 
-function drawnEnd(s: Scene, p: int32): int32 {
+function drawnEnd(s: Scene2D, p: int32): int32 {
 	const total: int32 = s.tileCells[p].length as int32;
 	const first: int32 = s.tileGroups[p].first;
 	const window: int32 = s.tileGroups[p].count;
@@ -720,7 +720,7 @@ function tileTint(c: Color, col: Color): Color {
 }
 
 function emitTiles(
-	s: Scene, i: int32, world: Transform2D, col: Color, blend: BlendMode, instanced: boolean,
+	s: Scene2D, i: int32, world: Transform2D, col: Color, blend: BlendMode, instanced: boolean,
 ): void {
 	const p: int32 = s.payloads[i];
 	const cells: Span<TileCell> = s.tileCells[p];
@@ -749,9 +749,9 @@ function emitTiles(
 }
 
 function emitNode(
-	s: Scene, i: int32, world: Transform2D, na: float32, col: Color,
+	s: Scene2D, i: int32, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
-	boxBounds: Bounds,
+	boxBounds: Bounds2D,
 ): void {
 	const blend: BlendMode = s.paints[i].blend;
 	const payload: int32 = s.payloads[i];
@@ -1062,7 +1062,7 @@ function blitTarget(src: uint32, w: float32, h: float32): void {
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 
-function drawRow(s: Scene, i: int32, a: float32, vw: float32, vh: float32): void {
+function drawRow(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32): void {
 	if (!s.orders[i].visible) { return; }
 	if (s.filters[i].kind !== FilterKind.None) {
 		drawFiltered(s, i, a, vw, vh);
@@ -1075,7 +1075,7 @@ export function draw(this n: NodeRef, a: float32, vw: float32, vh: float32): voi
 	drawRow(n.scene, n.liveRow("draw"), a, vw, vh);
 }
 
-function drawOwn(s: Scene, i: int32, na: float32, vw: float32, vh: float32): void {
+function drawOwn(s: Scene2D, i: int32, na: float32, vw: float32, vh: float32): void {
 	const world = s.worlds[i];
 	const color: Color = s.paints[i].color;
 	const col = rgba(color.r, color.g, color.b, color.a * na);
@@ -1089,7 +1089,7 @@ function drawOwn(s: Scene, i: int32, na: float32, vw: float32, vh: float32): voi
 	const vtr = vec2(vb.xMax, vb.yMin) * world;
 	const vbr = vec2(vb.xMax, vb.yMax) * world;
 	const vbl = vec2(vb.xMin, vb.yMax) * world;
-	const reach: Bounds = {
+	const reach: Bounds2D = {
 		xMin: fmin4(vtl.x, vtr.x, vbr.x, vbl.x), yMin: fmin4(vtl.y, vtr.y, vbr.y, vbl.y),
 		xMax: fmax4(vtl.x, vtr.x, vbr.x, vbl.x), yMax: fmax4(vtl.y, vtr.y, vbr.y, vbl.y),
 	};
@@ -1106,7 +1106,7 @@ function drawOwn(s: Scene, i: int32, na: float32, vw: float32, vh: float32): voi
 	}
 }
 
-function seenAt(b: Bounds, shift: Vec2, vw: float32, vh: float32): boolean {
+function seenAt(b: Bounds2D, shift: Vec2, vw: float32, vh: float32): boolean {
 	return b.xMax >= 0.0 - shift.x && b.xMin <= vw - shift.x
 		&& b.yMax >= 0.0 - shift.y && b.yMin <= vh - shift.y;
 }
@@ -1116,8 +1116,8 @@ function deviceRound(v: float32): float32 {
 }
 
 function targetRect(
-	b: Bounds, shift: Vec2, vw: float32, vh: float32, dpi: float32, scoped: boolean,
-): Bounds {
+	b: Bounds2D, shift: Vec2, vw: float32, vh: float32, dpi: float32, scoped: boolean,
+): Bounds2D {
 	let x0: float32 = Math.floor((b.xMin * dpi) as float64) as float32;
 	let y0: float32 = Math.floor((b.yMin * dpi) as float64) as float32;
 	let x1: float32 = Math.ceil((b.xMax * dpi) as float64) as float32;
@@ -1135,13 +1135,13 @@ function targetRect(
 	return { xMin: x0, yMin: y0, xMax: x1, yMax: y1 };
 }
 
-function panOrder(s: Scene, vw: float32, vh: float32): void {
+function panOrder(s: Scene2D, vw: float32, vh: float32): void {
 	const was: Vec2 = s.culledShift;
 	const now: Vec2 = s.viewShift;
 	const dpi: float32 = currentRenderScale();
 	for (let p: int32 = 0; p < (s.order.length as int32); p++) {
 		const i: int32 = s.order[p];
-		const reach: Bounds = s.culls[i];
+		const reach: Bounds2D = s.culls[i];
 		if (reach.xMin > reach.xMax) { continue; }
 		const state: PaintState = paintStateOf(i);
 		if (state == PaintState.InTarget) {
@@ -1160,7 +1160,7 @@ function panOrder(s: Scene, vw: float32, vh: float32): void {
 	}
 }
 
-function pushMask(s: Scene, i: int32): boolean {
+function pushMask(s: Scene2D, i: int32): boolean {
 	const world = s.worlds[i];
 	const lb = localBounds(s, i, false);
 	return pushClip(
@@ -1176,12 +1176,12 @@ export function snappedShift(v: float32, scale: float32): float32 {
 	return (Math.round((v * scale) as float64) as float32) / scale;
 }
 
-function localShift(s: Scene, i: int32, scale: float32): Vec2 {
+function localShift(s: Scene2D, i: int32, scale: float32): Vec2 {
 	const by: Vec2 = scopeShift(s, i);
 	return vec2(snappedShift(by.x, scale), snappedShift(by.y, scale));
 }
 
-function enterScopeOf(s: Scene, i: int32): void {
+function enterScopeOf(s: Scene2D, i: int32): void {
 	const world = s.worlds[i];
 	const lb = localBounds(s, i, false);
 	const by: Vec2 = localShift(s, i, currentRenderScale());
@@ -1196,7 +1196,7 @@ function enterScopeOf(s: Scene, i: int32): void {
 	);
 }
 
-export function refreshScopes(this s: Scene): void {
+export function refreshScopes(this s: Scene2D): void {
 	const l: DisplayList = s.list;
 	for (let k: int32 = 0; k < l.scopeTotal; k++) {
 		const r = l.scopes[k];
@@ -1205,7 +1205,7 @@ export function refreshScopes(this s: Scene): void {
 	}
 }
 
-function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, vh: float32): void {
+function drawContent(s: Scene2D, i: int32, a: float32, own: float32, vw: float32, vh: float32): void {
 	const na: float32 = a * own;
 	drawOwn(s, i, na, vw, vh);
 	if (s.scrollScope(i)) {
@@ -1227,15 +1227,15 @@ function drawContent(s: Scene, i: int32, a: float32, own: float32, vw: float32, 
 	}
 }
 
-export function drawOrder(this s: Scene, vw: float32, vh: float32): void {
+export function drawOrder(this s: Scene2D, vw: float32, vh: float32): void {
 	scanOrder(s, vw, vh, null);
 }
 
-export function spliceOrder(this s: Scene, old: DisplayList, vw: float32, vh: float32): void {
+export function spliceOrder(this s: Scene2D, old: DisplayList, vw: float32, vh: float32): void {
 	scanOrder(s, vw, vh, old);
 }
 
-function reusable(s: Scene, i: int32, old: DisplayList): boolean {
+function reusable(s: Scene2D, i: int32, old: DisplayList): boolean {
 	if (i >= (old.paintStates.length as int32) || old.paintStates[i] != PaintState.Painted) {
 		return false;
 	}
@@ -1244,12 +1244,12 @@ function reusable(s: Scene, i: int32, old: DisplayList): boolean {
 }
 
 let overlapRows: Vec<int32> = [];
-let overlapBoxes: Vec<Bounds> = [];
+let overlapBoxes: Vec<Bounds2D> = [];
 
-function keyOf(b: Bounds, alongX: boolean): float32 { return alongX ? b.xMin : b.yMin; }
+function keyOf(b: Bounds2D, alongX: boolean): float32 { return alongX ? b.xMin : b.yMin; }
 
 when (debug) {
-	function checkNoOverlap(s: Scene, parent: int32): void {
+	function checkNoOverlap(s: Scene2D, parent: int32): void {
 		while ((overlapRows.length as int32) > 0) { overlapRows.pop(); }
 		while ((overlapBoxes.length as int32) > 0) { overlapBoxes.pop(); }
 		let spanX0: float32 = 1e30;
@@ -1261,7 +1261,7 @@ when (debug) {
 		for (let k: int32 = 0; k < (s.children[parent].length as int32); k++) {
 			const c: int32 = s.children[parent][k];
 			if (!s.orders[c].visible) { continue; }
-			let b: Bounds = emptyBounds();
+			let b: Bounds2D = emptyBounds();
 			shiftedBounds(s, c, b, vec2(0.0, 0.0), true, false);
 			if (b.xMax <= b.xMin || b.yMax <= b.yMin) { continue; }
 			overlapRows.push(c);
@@ -1277,7 +1277,7 @@ when (debug) {
 		const m: int32 = overlapRows.length as int32;
 		for (let a: int32 = 1; a < m; a++) {
 			const row: int32 = overlapRows[a];
-			const box: Bounds = overlapBoxes[a];
+			const box: Bounds2D = overlapBoxes[a];
 			let k: int32 = a - 1;
 			while (k >= 0 && keyOf(overlapBoxes[k], alongX) > keyOf(box, alongX)) {
 				overlapRows[k + 1] = overlapRows[k];
@@ -1288,10 +1288,10 @@ when (debug) {
 			overlapBoxes[k + 1] = box;
 		}
 		for (let a: int32 = 0; a < m; a++) {
-			const ba: Bounds = overlapBoxes[a];
+			const ba: Bounds2D = overlapBoxes[a];
 			const reach: float32 = alongX ? ba.xMax : ba.yMax;
 			for (let b: int32 = a + 1; b < m && keyOf(overlapBoxes[b], alongX) < reach; b++) {
-				const bb: Bounds = overlapBoxes[b];
+				const bb: Bounds2D = overlapBoxes[b];
 				if (ba.xMin < bb.xMax && bb.xMin < ba.xMax && ba.yMin < bb.yMax && bb.yMin < ba.yMax) {
 					console.log(
 						`void2d: node ${parent} promised setNoOverlap, but its children ` +
@@ -1303,19 +1303,19 @@ when (debug) {
 		}
 	}
 } else {
-	function checkNoOverlap(s: Scene, parent: int32): void {}
+	function checkNoOverlap(s: Scene2D, parent: int32): void {}
 }
 
-function lanesFor(s: Scene, i: int32): boolean {
+function lanesFor(s: Scene2D, i: int32): boolean {
 	return s.orders[i].noOverlap && (s.children[i].length as int32) >= 2;
 }
 
-function laneParent(s: Scene): int32 {
+function laneParent(s: Scene2D): int32 {
 	const frames: int32 = s.lanes.length as int32;
-	return frames > 0 ? s.lanes[frames - 1].row : NO_NODE;
+	return frames > 0 ? s.lanes[frames - 1].row : NO_NODE_2D;
 }
 
-function openLanes(s: Scene, i: int32, end: int32): void {
+function openLanes(s: Scene2D, i: int32, end: int32): void {
 	const split: boolean = splitRun();
 	s.lanes.push({
 		row: i, marks: s.laneMarks.length as int32, opened: paintIndex(), openSplit: split,
@@ -1325,7 +1325,7 @@ function openLanes(s: Scene, i: int32, end: int32): void {
 	s.maskKinds.push(Enclosure.Lanes);
 }
 
-function closeEnclosure(s: Scene): void {
+function closeEnclosure(s: Scene2D): void {
 	s.maskEnds.pop();
 	match (s.maskKinds.pop()) {
 		Enclosure.Clip => { popClip(); },
@@ -1334,7 +1334,7 @@ function closeEnclosure(s: Scene): void {
 	}
 }
 
-function closeLanes(s: Scene): void {
+function closeLanes(s: Scene2D): void {
 	const frame: LaneFrame = s.lanes.pop();
 	const recorded: boolean = closeLaneRun();
 	const c0: int32 = frame.opened.commands;
@@ -1354,7 +1354,7 @@ function closeLanes(s: Scene): void {
 	checkNoOverlap(s, frame.row);
 }
 
-function remapLaneRows(s: Scene, parent: int32, c0: int32, c1: int32): void {
+function remapLaneRows(s: Scene2D, parent: int32, c0: int32, c1: int32): void {
 	const top: int32 = s.slots[parent];
 	for (let q: int32 = top + 1; q < s.orderEnd[top]; q++) {
 		const r: int32 = s.order[q];
@@ -1407,7 +1407,7 @@ function remapLaneRows(s: Scene, parent: int32, c0: int32, c1: int32): void {
 	}
 }
 
-function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null): void {
+function scanOrder(s: Scene2D, vw: float32, vh: float32, old: DisplayList | null): void {
 	s.reused = 0;
 	const n: int32 = s.order.length as int32;
 	let p: int32 = 0;
@@ -1417,7 +1417,7 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 		}
 		const i: int32 = s.order[p];
 		const end: int32 = s.orderEnd[p];
-		if (s.parents[i] != NO_NODE && s.parents[i] == laneParent(s)) {
+		if (s.parents[i] != NO_NODE_2D && s.parents[i] == laneParent(s)) {
 			splitRun();
 			s.laneMarks.push(commandCount());
 		}
@@ -1482,7 +1482,7 @@ function scanOrder(s: Scene, vw: float32, vh: float32, old: DisplayList | null):
 	while ((s.maskEnds.length as int32) > 0) { closeEnclosure(s); }
 }
 
-function joins(s: Scene, source: DisplayList, q: int32, last: PaintIndex): boolean {
+function joins(s: Scene2D, source: DisplayList, q: int32, last: PaintIndex): boolean {
 	const ends: int32 = s.maskEnds.length as int32;
 	if (ends > 0 && s.maskEnds[ends - 1] <= q) { return false; }
 	const j: int32 = s.order[q];
@@ -1501,11 +1501,11 @@ function joins(s: Scene, source: DisplayList, q: int32, last: PaintIndex): boole
 	return source.paintStarts[j] == last;
 }
 
-function markRows(s: Scene, from: int32, to: int32, state: PaintState): void {
+function markRows(s: Scene2D, from: int32, to: int32, state: PaintState): void {
 	for (let p: int32 = from; p < to; p++) { markPaintState(s.order[p], state); }
 }
 
-function retilable(s: Scene, i: int32, redrawn: boolean): boolean {
+function retilable(s: Scene2D, i: int32, redrawn: boolean): boolean {
 	if (s.kinds[i] !== DrawKind.TileGroup || redrawn) { return false; }
 	if (s.changed[i] != (0 as BitSet<Changed>).incl(Changed.Content)) { return false; }
 	const p: int32 = s.payloads[i];
@@ -1517,14 +1517,14 @@ function retilable(s: Scene, i: int32, redrawn: boolean): boolean {
 	return end.spriteInstances - start.spriteInstances == drawn;
 }
 
-function queueRetile(s: Scene, i: int32): void {
+function queueRetile(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	if (s.tileGroups[p].retileSerial == s.patchSerial) { return; }
 	s.tileGroups[p].retileSerial = s.patchSerial;
 	s.retile.push(i);
 }
 
-function retileRow(s: Scene, i: int32): void {
+function retileRow(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	const start: PaintIndex = paintStartOf(i);
 	const world: Transform2D = s.worlds[i];
@@ -1550,7 +1550,7 @@ function retileRow(s: Scene, i: int32): void {
 	}
 }
 
-function descend(s: Scene, d: int32): void {
+function descend(s: Scene2D, d: int32): void {
 	const top: int32 = s.slots[d];
 	if (top == NO_SLOT) { return; }
 	const bits: BitSet<Changed> = s.changed[d];
@@ -1591,7 +1591,7 @@ function descend(s: Scene, d: int32): void {
 	}
 }
 
-export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
+export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 	s.patchSerial = s.patchSerial + 1;
 	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
 	while ((s.retile.length as int32) > 0) { s.retile.pop(); }
@@ -1641,7 +1641,7 @@ export function patchOrder(this s: Scene, vw: float32, vh: float32): boolean {
 //     inside the open swapchain pass - sokol's `!_sg.cur_pass.valid` assertion in a debug
 //     build, a frame of nothing but the clear colour in release, because the nested `begin2d`
 //     also reset the list the frame was being recorded into.
-function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32): void {
+function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32): void {
 	const f: Filter = s.filters[i];
 	const blend: BlendMode = s.paints[i].blend;
 	let b = emptyBounds();
@@ -1649,7 +1649,7 @@ function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32):
 	s.culls[i] = emptyBounds();
 	if (b.xMin >= b.xMax || b.yMin >= b.yMax) { return; }
 	const pad: float32 = f.radius;
-	let padded: Bounds = {
+	let padded: Bounds2D = {
 		xMin: b.xMin - pad, yMin: b.yMin - pad, xMax: b.xMax + pad, yMax: b.yMax + pad,
 	};
 	if (f.kind === FilterKind.DropShadow) {
@@ -1665,10 +1665,10 @@ function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32):
 		}
 	}
 	// Clipped to the viewport: a target is only ever needed for the part that can be seen.
-	const reach: Bounds = inScope() ? emptyBounds() : padded;
+	const reach: Bounds2D = inScope() ? emptyBounds() : padded;
 	s.culls[i] = reach;
 	const dpi: float32 = currentRenderScale();
-	const device: Bounds = targetRect(padded, s.viewShift, vw, vh, dpi, inScope());
+	const device: Bounds2D = targetRect(padded, s.viewShift, vw, vh, dpi, inScope());
 	if (device.xMax <= device.xMin || device.yMax <= device.yMin) { return; }
 	const xMin: float32 = device.xMin / dpi;
 	const yMin: float32 = device.yMin / dpi;
@@ -1735,17 +1735,17 @@ function drawFiltered(s: Scene, i: int32, a: float32, vw: float32, vh: float32):
 		rgba(1.0, 1.0, 1.0, na), blend);
 }
 
-function scopeShift(s: Scene, i: int32): Vec2 {
+function scopeShift(s: Scene2D, i: int32): Vec2 {
 	const sc: Scroll2D = s.scrolls[s.payloads[i]];
 	return vec2(-sc.x * s.worlds[i].a, -sc.y * s.worlds[i].d);
 }
 
-function boundsRow(s: Scene, i: int32, ref out: Bounds): void {
+function boundsRow(s: Scene2D, i: int32, ref out: Bounds2D): void {
 	shiftedBounds(s, i, out, vec2(0.0, 0.0), false, false);
 }
 
 function shiftedBounds(
-	s: Scene, i: int32, ref out: Bounds, shift: Vec2, scoped: boolean, query: boolean,
+	s: Scene2D, i: int32, ref out: Bounds2D, shift: Vec2, scoped: boolean, query: boolean,
 ): void {
 	const lb = localBounds(s, i, query);
 	const world = s.worlds[i];
@@ -1780,7 +1780,7 @@ function shiftedBounds(
 }
 
 function maskedBounds(
-	s: Scene, i: int32, ref out: Bounds, shift: Vec2, lb: Bounds, world: Transform2D,
+	s: Scene2D, i: int32, ref out: Bounds2D, shift: Vec2, lb: Bounds2D, world: Transform2D,
 	query: boolean,
 ): void {
 	let inner: Vec2 = shift;
@@ -1788,7 +1788,7 @@ function maskedBounds(
 		const by: Vec2 = scopeShift(s, i);
 		inner = vec2(shift.x + by.x, shift.y + by.y);
 	}
-	let content: Bounds = emptyBounds();
+	let content: Bounds2D = emptyBounds();
 	for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 		const child: int32 = s.children[i][k];
 		if (s.orders[child].visible) { shiftedBounds(s, child, content, inner, true, query); }
@@ -1812,13 +1812,13 @@ function maskedBounds(
 	if (content.yMax > out.yMax) { out.yMax = content.yMax; }
 }
 
-export function getBounds(this n: NodeRef, ref out: Bounds): void {
-	const s: Scene = n.scene;
+export function getBounds(this n: NodeRef, ref out: Bounds2D): void {
+	const s: Scene2D = n.scene;
 	const i: int32 = n.liveRow("getBounds");
 	let shift: Vec2 = vec2(0.0, 0.0);
 	let top: int32 = i;
 	let up: int32 = s.parents[i];
-	while (up != NO_NODE) {
+	while (up != NO_NODE_2D) {
 		if (s.scrollScope(up)) {
 			const by: Vec2 = scopeShift(s, up);
 			shift = vec2(shift.x + by.x, shift.y + by.y);
@@ -1838,10 +1838,10 @@ export function getBounds(this n: NodeRef, ref out: Bounds): void {
 	}
 }
 
-function hitLocal(s: Scene, i: int32, ref p: Vec2): boolean {
+function hitLocal(s: Scene2D, i: int32, ref p: Vec2): boolean {
 	if (!s.orders[i].visible) { return false; }
 	const up: int32 = s.parents[i];
-	if (up != NO_NODE) {
+	if (up != NO_NODE_2D) {
 		if (!hitLocal(s, up, p)) { return false; }
 	} else if (i == s.root) {
 		const view: Transform2D = { ...s.viewMat, tx: s.viewShift.x, ty: s.viewShift.y };
@@ -1863,19 +1863,19 @@ function hitLocal(s: Scene, i: int32, ref p: Vec2): boolean {
 }
 
 export function hitTest(this n: NodeRef, p: Vec2): boolean {
-	const s: Scene = n.scene;
+	const s: Scene2D = n.scene;
 	const i: int32 = n.liveRow("hitTest");
 	let local: Vec2 = p;
 	if (!hitLocal(s, i, local)) { return false; }
 	if (s.kinds[i] === DrawKind.Mask) { return true; }
 	if (s.kinds[i] === DrawKind.Label) { shapeIfChanged(s, i); }
 	if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
-	const lb: Bounds = localBounds(s, i, true);
+	const lb: Bounds2D = localBounds(s, i, true);
 	return lb.xMax > lb.xMin && lb.yMax > lb.yMin &&
 		local.x >= lb.xMin && local.x <= lb.xMax && local.y >= lb.yMin && local.y <= lb.yMax;
 }
 
-function ownWorld(s: Scene, i: int32): Transform2D {
+function ownWorld(s: Scene2D, i: int32): Transform2D {
 	const by: Vec2 = s.ownScroll(i);
 	if (by.x == 0.0 && by.y == 0.0) { return s.worlds[i]; }
 	return s.worlds[i] * trs2d(-by.x, -by.y, 0.0, 1.0, 1.0);

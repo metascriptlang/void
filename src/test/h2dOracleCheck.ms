@@ -1,11 +1,11 @@
 import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
-import { scene, add, paint, setScaleMode, sceneViewMatrix } from "../void2d/scene";
-import { Scene, NodeRef, TileCell } from "../void2d/node";
+import { add, paint, setScaleMode, sceneViewMatrix } from "../void2d/scene";
+import { Scene2D, NodeRef, TileCell } from "../void2d/node";
 import { getBounds } from "../void2d/render";
 import { frameEnd } from "../void2d/draw";
 import {
-	Bounds, Vec2, Transform2D, ScaleMode, vec2, tile, rgba, emptyBounds,
+	Bounds2D, Vec2, Transform2D, ScaleMode, vec2, tile, rgba, emptyBounds,
 } from "../void2d/types";
 
 const ORACLE_PATH: string = "tests/oracle/h2d.json";
@@ -40,7 +40,7 @@ function tilesOf(rows: JsonValue): Vec<TileCell> {
 	return out;
 }
 
-function build(s: Scene, spec: JsonValue, parent: NodeRef | null, ref nodes: Vec<NodeRef>): void {
+function build(s: Scene2D, spec: JsonValue, parent: NodeRef | null, ref nodes: Vec<NodeRef>): void {
 	const kind: string = spec.getDynamicField("kind").asString();
 	const w: float32 = field(spec, "w", 0.0);
 	const h: float32 = field(spec, "h", 0.0);
@@ -118,7 +118,7 @@ test "h2d's getBounds, localToGlobal and globalToLocal, over Heaps compiled to J
 	for (let c: int32 = 0; c < (cases.length() as int32); c++) {
 		const row = cases.at(c);
 		const name: string = row.getDynamicField("name").asString();
-		const s = scene({ r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
+		const s = Scene2D.create({ r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
 		let nodes: Vec<NodeRef> = [];
 		build(s, row.getDynamicField("tree"), null, nodes);
 		let same: boolean = true;
@@ -137,7 +137,7 @@ test "h2d's getBounds, localToGlobal and globalToLocal, over Heaps compiled to J
 		frameEnd();
 		s.clearChanges();
 		for (let k: int32 = 0; k < (nodes.length as int32); k++) {
-			let b: Bounds = emptyBounds();
+			let b: Bounds2D = emptyBounds();
 			nodes[k].getBounds(b);
 			const oracle = results.at(k).getDynamicField("bounds");
 			const where: string = `${name} node ${k} getBounds`;
@@ -192,7 +192,7 @@ test "h2d's scale modes map the scene onto the window as checkResize does" {
 			const window = row.getDynamicField("window");
 			const w: float32 = window.at(0).asNumber() as float32;
 			const h: float32 = window.at(1).asNumber() as float32;
-			const s = scene({ r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
+			const s = Scene2D.create({ r: 0.0, g: 0.0, b: 0.0, a: 1.0 });
 			s.setScaleMode(scaleModeNamed(name), design.at(0).asNumber() as float32,
 				design.at(1).asNumber() as float32);
 			const m: Transform2D = sceneViewMatrix(s, w, h);

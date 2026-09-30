@@ -1,10 +1,10 @@
 // expect: setTile(3) on tile group 1, which holds 3 tiles
 import "../../src/sokol/gpu";
-import { Scene, TileCell } from "../../src/void2d/node";
-import { scene } from "../../src/void2d/scene";
+import { Scene2D, TileCell } from "../../src/void2d/node";
+import "../../src/void2d/scene";
 import { rgba, tile } from "../../src/void2d/types";
 
-const s: Scene = scene(rgba(0.0, 0.0, 0.0, 1.0));
+const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 const map = s.add(s.tileGroup());
 const one: TileCell = {
 	x: 0.0, y: 0.0, tile: tile(11, 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0,

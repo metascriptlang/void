@@ -1,6 +1,6 @@
 import { Color, tile, rgba } from "../void2d/types";
-import { Scene } from "../void2d/node";
-import { scene } from "../void2d/scene";
+import { Scene2D } from "../void2d/node";
+import "../void2d/scene";
 import { ObjectFit, imageStyle, fitImage, NO_IMAGE_STYLE } from "../void2d/imageStyle";
 
 function tileClear(): Color { return rgba(0.0, 0.0, 0.0, 1.0); }
@@ -41,7 +41,7 @@ test "ObjectFit None clips from the image origin and advances its UV" {
 }
 
 test "image styles update in place and dispose returns their side-table slot" {
-	const s: Scene = scene(tileClear());
+	const s: Scene2D = Scene2D.create(tileClear());
 	const first = s.sprite(tile(0, 32.0, 16.0));
 	first.setImageStyle(imageStyle(
 		{ topLeft: 1.0, topRight: 2.0, bottomRight: 3.0, bottomLeft: 4.0 },

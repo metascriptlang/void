@@ -1,7 +1,5 @@
-// NodeId is named only so `==` on NodeRef resolves its NodeId helper
-// (~/metascript/.inbox/compiler/2026-09-28-struct-eq-nested-type-not-imported.md).
-import { DrawKind, Changed, NodeRef, NodeId, Scene } from "../void2d/node";
-import { scene } from "../void2d/scene";
+import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D } from "../void2d/node";
+import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
 	Tile, Transform2D, rgba, identity2d, emptyBounds, BlendMode, vec2, tile, noFilter, blurFilter,
@@ -13,7 +11,7 @@ import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
 const HALF_PI: float32 = 1.5707963;
 const white = rgba(1.0, 1.0, 1.0, 1.0);
 
-function fresh(): Scene { return scene(rgba(0.0, 0.0, 0.0, 1.0)); }
+function fresh(): Scene2D { return Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0)); }
 
 function worldOf(n: NodeRef): Transform2D { return n.scene.worlds[n.id.index]; }
 
@@ -612,7 +610,7 @@ test "addChildAt hands back the node that was added too" {
 }
 
 test "a Mask's scroll moves its own space and its children, and its clip stays, as in h2d" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
 	const child = s.rect(20.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).at(5.0, 100.0);
 	m.addChild(child);
@@ -640,7 +638,7 @@ test "a Mask's scroll moves its own space and its children, and its clip stays, 
 }
 
 test "scrollBounds clamps a scroll as h2d's setters do, and an equal scroll marks nothing" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(80.0, 60.0);
 	s.add(m);
 	m.setScrollBounds({ xMin: 0.0, yMin: 0.0, xMax: 100.0, yMax: 300.0 });
@@ -726,7 +724,7 @@ test "hitTest answers through the node's own transform" {
 }
 
 test "hitTest is cut by every Mask above the node" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
 	const child = s.rect(20.0, 10.0, white).at(5.0, 55.0);
 	m.addChild(child);
@@ -736,7 +734,7 @@ test "hitTest is cut by every Mask above the node" {
 }
 
 test "hitTest follows a scroll scope's shift" {
-	const s = scene(rgba(0.0, 0.0, 0.0, 1.0));
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const m = s.mask(80.0, 60.0).at(10.0, 20.0);
 	const child = s.rect(20.0, 10.0, white).at(5.0, 5.0);
 	m.addChild(child);
