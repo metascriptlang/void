@@ -22,14 +22,12 @@ import {
 	destroyImage,
 } from "../void3d/gpu3d";
 import {
-	FilterMode,
-	Wrap,
 	makeTextureView,
 	destroyView,
 	destroySampler,
 	originTopLeft,
 } from "../gpu/door";
-import { RenderState, Face, Compare } from "../gpu/state";
+import { RenderState, Face, Compare, FilterMode, Wrap } from "../gpu/state";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { Sampler } from "../gpu/target";
 import {

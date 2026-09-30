@@ -73,6 +73,18 @@ export enum ColorChannel {
 	Alpha,
 }
 
+// h3d.mat.Data.Filter / Wrap, the members sokol has.
+export enum FilterMode {
+	Nearest,
+	Linear,
+}
+
+export enum Wrap {
+	Clamp,
+	Repeat,
+	Mirror,
+}
+
 export struct RenderState {
 	culling: Face;
 	depthWrite: boolean;

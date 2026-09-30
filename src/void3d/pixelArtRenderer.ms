@@ -19,7 +19,8 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "./gpu3d";
-import { PixelFormat, LoadAction, FilterMode, Wrap, endPass } from "../gpu/door";
+import { PixelFormat, LoadAction, endPass } from "../gpu/door";
+import { FilterMode, Wrap } from "../gpu/state";
 import { originTopLeft, depthZeroToOne } from "../gpu/door";
 import { commit } from "../sokol/gpu";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";

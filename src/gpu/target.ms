@@ -8,8 +8,6 @@ import { Vec4 } from "../math/math3d";
 import {
 	PixelFormat,
 	LoadAction,
-	FilterMode,
-	Wrap,
 	makeTargetImage,
 	makeAttachmentView,
 	makeTextureView,
@@ -20,6 +18,7 @@ import {
 	beginPassWith,
 	beginScreenPassWith,
 } from "./door";
+import { FilterMode, Wrap } from "./state";
 import {
 	DOOR_MAX_COLOR_ATTACHMENTS,
 	DOOR_PASS_COLOR_VIEW,

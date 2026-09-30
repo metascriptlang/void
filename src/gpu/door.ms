@@ -1,4 +1,5 @@
 import "../sokol/gpu";
+import { FilterMode, Wrap } from "./state";
 
 import {
 	doorMakeShader,
@@ -51,18 +52,6 @@ export enum LoadAction {
 	Clear,
 	Load,
 	DontCare,
-}
-
-// h3d.mat.Data.Filter / Wrap, the members sokol has.
-export enum FilterMode {
-	Nearest,
-	Linear,
-}
-
-export enum Wrap {
-	Clamp,
-	Repeat,
-	Mirror,
 }
 
 // Which pass the door has open; read by the render layers to stop misuse naming the call.
