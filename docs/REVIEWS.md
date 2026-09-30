@@ -1127,3 +1127,49 @@ invariants, the retained replay consumer, demo, mixed frame and two-view consume
 Bench counters match; allocation checks 103 frame functions and 232 callees; the record checks
 16 PENDING rows with zero mismatch. Eight platform/budget skips remain explicit; `--web` was not
 run. This green verifies the reachable changes, **not** B1's missing teardown or a SHIP verdict.
+
+## Unify D3/D4, frame context and D2 — SHIP within scope (2026-09-30)
+
+**Verdict: SHIP for `f97f47d`, `4c31b74` and `e222011` only.** P5 remains SEND BACK on B1.
+D1 is unimplemented and its registry-capacity decision is reserved to the human; this review
+authorises neither P6, landing nor push.
+
+**Passes:** the main-session defect pass read CPU ownership, context/twin swaps, native source
+snapshots/restoration, retained append fallback, frame stamps, pass guards and dirty clearing;
+its actual consumers and `gate --web` supplied runtime evidence. Fresh read-only `reviewer`
+agent `UnifyHalvesDesign` independently read the three cutovers against the shared contract,
+decision rule and guardrails. It wrote no code and ran no checks. No new correctness blocker
+was confirmed. The measured source tree and complete gate numbers are in VOID2D.md "Unify
+with void3d"; the review does not substitute source inspection for unmeasured platforms.
+
+1. **Exits:** distinct source names/no aliases, state-owning construction, isolated CPU/native
+   contexts and caller-owned frame halves hold. The raw context, filtered retained scene and
+   actual 3D composition consumers distinguish wrong sources, DPI and post-prepare mutation.
+   This bounded verdict does not claim D1 or permanent Scene death.
+2. **Measurements:** parent evidence is 1058 + 299 tests, D3D11 76/76 plus three invariants,
+   WebGL2 54 identical + 18 bounded + the same four known-red; eight skips, 16 PENDING and
+   zero record mismatch. Web size growth includes context plus halves; no isolated D2 or
+   quiet-box timing conclusion is made.
+3. **Guardrails 1–9:** no new relaxation. Order, filters, stream separation and old goldens
+   remain; the unmeasured backends and P6 module budgets are explicit.
+4. **Reference fidelity:** GPUI's build/prepare/draw separation and the existing void3d
+   prepare/consume frame stamp are reused. No scheduler, registry widening or N/W/P change.
+5. **Capability/control:** raw recording remains; the caller chooses layer order and owns
+   screen begin/end and commit. `presentAt` only composes the same halves for one layer.
+6. **Defects fixed or moved:** A/B native source interference is corrected, not hidden by
+   drawing immediately after each prepare. B2's stale latch remains intact and its three-stream
+   consumer passes. B1 teardown and the paint-array alias seam remain separately visible.
+7. **Test tiers:** stream contracts remain T1; actual pixel consumers hold GPU source selection,
+   filtered snapshots and mutation transitions. Six misuse processes hold frame/pass boundaries.
+   Contrasting per-context scroll scopes are source-traced through `end2d`, `scopeOf` and
+   `applyScissor`, not independently pixel-tested by the new isolated-context fixture.
+8. **Compiler workaround:** none added. The unnecessary exported selector experiment was
+   reverted to the original private selector API; no manual retain or extra holder hides the
+   compiler-only public-global alias failure, whose separate card remains open.
+9. **Style/allocation:** no merge-blocking §14 violation found. The stage holds 107 frame
+   functions/232 callees against its emitted-MS rules, not C allocation, capacity growth or
+   a performance timing claim.
+10. **Refuse to merge:** no new blocker within these three cutovers. Full P5 still cannot
+    land without B1's installed-compiler proof, permanent teardown consumer and fresh P5 review.
+    D1 needs the explicit key-capacity decision before implementation, not this SHIP label.
+

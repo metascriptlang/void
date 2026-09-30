@@ -1746,6 +1746,17 @@ transition with captured pixels; `mixedFrame.ms` uses the immediate context halv
 The gate also exercises missing prepare, double prepare, absent/nested pass, consumed and
 expired frame errors. This reuses the existing frame mechanism, not a new scheduler.
 
+**Measured on source tree `0410fb1d58b8295e5a12560c69544107bc943858` (D2, before this
+record update):** `sh scripts/gate.sh --web`, BUILD `35601908`, GREEN with eight explicit skips:
+1058 tests plus 299 isolated; D3D11 76/76 unchanged and three invariants; WebGL2 54 identical,
+18 within the existing bound, the same four structural known-red (72/76), no new red.
+Mixed layers, raw context interleave/default append and prepared retained consumers pass,
+as do all six lifecycle-error processes. Allocation covers 107 frame functions and
+232 callees; the record remains 16 PENDING with zero mismatch.
+WebGPU / WebGL2 builds are 2 282 599 / 2 054 751 B, up 172 622 / 172 649 B from the naming
+baseline above. That delta includes both the context move and frame halves, not D2 alone;
+no module budget exists until P6. GL demo liveness passes; WebGPU remains the no-adapter skip.
+
 **D1 design decision still open:** void3d registers four vertex layouts; void2d's current
 vertex, sprite, UI and blur input shapes add four distinct layouts. The door admits eight.
 Both built-in layers fit exactly, but leave no slot for a foreign layout; the existing
