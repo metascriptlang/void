@@ -1,12 +1,6 @@
 // Port of h3d.impl.PipelineCache / PipelineBuilder: render state + program + vertex layout +
 // target formats → one key → one sokol pipeline, created on first use and reused after.
 //
-// Heaps hashes a byte signature and compares it on collision. Everything that selects a
-// pipeline here packs into 64 bits, so the key is the signature itself and a lookup is a scan
-// over a few dozen uint64s. Entries keep their key after `forgetPipelines`,
-// and every `pipelineFor` call brings the full description, so a pipeline lost with the GPU
-// context is built again from CPU data on its next use.
-//
 // A program or layout here is a door registry id (door.ms), not a layer's enum: the door is
 // what both render layers build pipelines through, and each adds its own base to its
 // ordinals (void3d: gpu3d.ms doorProgram / doorLayout).
@@ -19,8 +13,6 @@ import {
 	makePipeline,
 	destroyShader,
 	destroyPipeline,
-	MAX_PROGRAMS,
-	MAX_LAYOUTS,
 } from "./door";
 import {
 	DOOR_PIPELINE_SHADER,
@@ -42,8 +34,6 @@ import {
 	DOOR_PIPELINE_LENGTH,
 } from "./door.h";
 
-export const PROGRAM_COUNT: int32 = MAX_PROGRAMS;
-
 // sokol bakes the index type into the pipeline, so a mesh drawn from an index buffer and one
 // drawn straight from its vertex buffer need different pipelines. Only uint16 is offered: it
 // caps a mesh at 65536 vertices, far above Hibernal's budget, and widening the format is a
@@ -53,27 +43,12 @@ export enum IndexType {
 	Uint16,
 }
 
-// Key layout, low to high: vertex layout (3 bits), indexed (1), program (4), target formats
-// (24), RenderState.bits (32) — 64 bits, exactly full. The indexed flag shares a nibble with
-// the vertex layout because `VertexLayout` has four members and RenderState already owns a
-// whole word; `LAYOUT_LIMIT` is what the tests hold that constraint against.
-const INDEXED_SHIFT: uint64 = 3;
-const PROGRAM_SHIFT: uint64 = 4;
-const TARGETS_SHIFT: uint64 = 8;
-const STATE_SHIFT: uint64 = 32;
-const LAYOUT_MASK: uint64 = 7;
-const NIBBLE: uint64 = 15;
-const TARGETS_MASK: uint64 = 16777215;
-const STATE_MASK: uint64 = 4294967295;
-
-// The door's registry widths: one more registered layout or program than this and the key
-// needs a second word, so the door refuses registration past them.
-export const LAYOUT_LIMIT: int32 = MAX_LAYOUTS;
-export const PROGRAM_LIMIT: int32 = MAX_PROGRAMS;
-
-// Everything that selects a pipeline, packed; decodes back into its parts.
 export struct PipelineKey {
-	bits: uint64;
+	program: int32;
+	layout: int32;
+	indexType: IndexType;
+	state: uint32;
+	targets: uint32;
 }
 
 export struct PipelineEntry {
@@ -91,25 +66,13 @@ export struct PipelineCache {
 }
 
 export function empty(this typeof PipelineCache): PipelineCache {
-	let shaders: Vec<uint32> = new Array(PROGRAM_COUNT);
-	for (let i = 0; i < PROGRAM_COUNT; i++) {
-		shaders[i] = 0;
-	}
-	let blockSlots: Vec<uint32> = new Array(PROGRAM_COUNT);
-	for (let i = 0; i < PROGRAM_COUNT; i++) {
-		blockSlots[i] = 0;
-	}
 	return {
 		entries: [],
-		shaders: shaders,
-		blockSlots: blockSlots,
+		shaders: [],
+		blockSlots: [],
 		descriptor: new Array(DOOR_PIPELINE_LENGTH),
 		generation: 0,
 	};
-}
-
-function ordinal(value: int32): uint64 {
-	return (value as uint32) as uint64;
 }
 
 export function pipelineKey(
@@ -120,45 +83,27 @@ export function pipelineKey(
 	targets: TargetLayout,
 ): PipelineKey {
 	return {
-		// Masked on encode as well as on decode: an ordinal of 8 would otherwise set bit 3 and
-		// be indistinguishable from `indexed` on layout 0 (LAYOUT_LIMIT is the real guard).
-		bits: (ordinal(layout) & LAYOUT_MASK) |
-			(((indexed ? 1 : 0) as uint64) << INDEXED_SHIFT) |
-			(ordinal(program) << PROGRAM_SHIFT) |
-			((targets.formatBits() as uint64) << TARGETS_SHIFT) |
-			((state.bits() as uint64) << STATE_SHIFT),
+		program: program,
+		layout: layout,
+		indexType: indexed ? IndexType.Uint16 : IndexType.None,
+		state: state.bits(),
+		targets: targets.formatBits(),
 	};
 }
 
-export function vertexLayout(this key: PipelineKey): int32 {
-	return (key.bits & LAYOUT_MASK) as int32;
-}
-
-export function isIndexed(this key: PipelineKey): boolean {
-	return ((key.bits >> INDEXED_SHIFT) & 1) != 0;
-}
-
-export function indexType(this key: PipelineKey): IndexType {
-	return key.isIndexed() ? IndexType.Uint16 : IndexType.None;
-}
-
-export function program(this key: PipelineKey): int32 {
-	return ((key.bits >> PROGRAM_SHIFT) & NIBBLE) as int32;
-}
-
 export function targetLayout(this key: PipelineKey): TargetLayout {
-	return TargetLayout.fromFormatBits(((key.bits >> TARGETS_SHIFT) & TARGETS_MASK) as uint32);
+	return TargetLayout.fromFormatBits(key.targets);
 }
 
 export function renderState(this key: PipelineKey): RenderState {
-	return RenderState.fromBits(((key.bits >> STATE_SHIFT) & STATE_MASK) as uint32);
+	return RenderState.fromBits(key.state);
 }
 
 // `program=<id> layout=<id> colors=… depth=… sampleCount=… culling=…`: which pipeline a cache
 // entry is, for logs and for comparing two entries by eye.
 export function toString(this key: PipelineKey): string {
-	return `program=${key.program().toString()} layout=${key.vertexLayout().toString()} ` +
-		`indexType=${key.indexType().toString()} ` +
+	return `program=${key.program} layout=${key.layout} ` +
+		`indexType=${key.indexType.toString()} ` +
 		`${key.targetLayout().toString()} ${key.renderState().toString()}`;
 }
 
@@ -199,14 +144,38 @@ export function describePipeline(
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
 	for (const entry of cache.entries) {
-		if (entry.key.bits == key.bits) { return true; }
+		if (entry.key == key) { return true; }
 	}
 	return false;
 }
 
+function stopOnUnregisteredProgram(program: int32): uint32 {
+	console.log(`gpu door: program id ${program} was never registered`);
+	unreachable;
+}
+
+function stopOnRefusedShader(program: int32): uint32 {
+	console.log(`gpu door: sokol refused the shader of program ${program}; ` +
+		"its pool is full or it did not compile");
+	unreachable;
+}
+
+function stopOnRefusedPipeline(key: PipelineKey): uint32 {
+	console.log(`gpu door: sokol refused pipeline ${key.toString()}; ` +
+		"its pool is full or its description is invalid");
+	unreachable;
+}
+
 export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
+	if (program < 0) { return stopOnUnregisteredProgram(program); }
+	for (let i = cache.shaders.length as int32; i <= program; i++) {
+		cache.shaders.push(0);
+		cache.blockSlots.push(0);
+	}
 	if (cache.shaders[program] == 0) {
-		cache.shaders[program] = makeShader(program);
+		const shader: uint32 = makeShader(program);
+		if (shader == 0) { return stopOnRefusedShader(program); }
+		cache.shaders[program] = shader;
 		cache.blockSlots[program] = uniformSlotMask(program);
 	}
 	return cache.shaders[program];
@@ -214,6 +183,7 @@ export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
 
 // Whether `program` declares a uniform block at `slot`; known once its shader has been made.
 export function declaresBlock(this cache: PipelineCache, program: int32, slot: int32): boolean {
+	if (program < 0 || program >= (cache.blockSlots.length as int32)) { return false; }
 	return (cache.blockSlots[program] & ((1 as uint32) << (slot as uint32))) != 0;
 }
 
@@ -229,7 +199,7 @@ export function pipelineFor(
 	const key: PipelineKey = pipelineKey(program, layout, indexed, state, targets);
 	let found: int32 = cache.entries.length as int32;
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
-		if (cache.entries[i].key.bits == key.bits) {
+		if (cache.entries[i].key == key) {
 			if (cache.entries[i].pipeline != 0) { return cache.entries[i].pipeline; }
 			found = i;
 		}
@@ -237,6 +207,7 @@ export function pipelineFor(
 	const shader: uint32 = shaderFor(cache, program);
 	describePipeline(cache.descriptor, shader, layout, indexed, state, targets);
 	const pipeline: uint32 = makePipeline(cache.descriptor);
+	if (pipeline == 0) { return stopOnRefusedPipeline(key); }
 	if (found == (cache.entries.length as int32)) {
 		cache.entries.push({ key: key, pipeline: pipeline });
 	} else {
@@ -251,7 +222,7 @@ export function forgetPipelines(ref cache: PipelineCache): void {
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		cache.entries[i].pipeline = 0;
 	}
-	for (let i = 0; i < PROGRAM_COUNT; i++) {
+	for (let i = 0; i < (cache.shaders.length as int32); i++) {
 		cache.shaders[i] = 0;
 	}
 }

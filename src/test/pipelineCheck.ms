@@ -27,7 +27,6 @@ import {
 	pipelineKey,
 	describePipeline,
 	IndexType,
-	LAYOUT_LIMIT,
 } from "../gpu/pipeline";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import { DrawContext, reserveUniforms, writeUniforms } from "../void3d/draw";
@@ -85,14 +84,14 @@ function litKey(indexed: boolean, state: RenderState): PipelineKey {
 	);
 }
 
-function billboardKey(state: RenderState, targets: TargetLayout): uint64 {
+function billboardKey(state: RenderState, targets: TargetLayout): PipelineKey {
 	return pipelineKey(
 		doorProgram(Program.Billboard),
 		doorLayout(VertexLayout.Billboard),
 		NOT_INDEXED,
 		state,
 		targets,
-	).bits;
+	);
 }
 
 test "render state defaults match new h3d.mat.Pass" {
@@ -145,8 +144,8 @@ test "every blend mode packs to different bits" {
 }
 
 test "same pipeline inputs give the same key" {
-	const a: uint64 = litKey(NOT_INDEXED, sceneState()).bits;
-	const b: uint64 = litKey(NOT_INDEXED, sceneState()).bits;
+	const a: PipelineKey = litKey(NOT_INDEXED, sceneState());
+	const b: PipelineKey = litKey(NOT_INDEXED, sceneState());
 	assert a == b;
 	// Built another way to the same fields.
 	const rebuilt: RenderState = RenderState.defaults()
@@ -154,13 +153,13 @@ test "same pipeline inputs give the same key" {
 		.withBlendMode(BlendMode.None)
 		.withDepth(true, Compare.LessEqual)
 		.withCulling(Face.None);
-	assert litKey(NOT_INDEXED, rebuilt).bits == a;
+	assert litKey(NOT_INDEXED, rebuilt) == a;
 }
 
 test "a different state, program, layout or target gives a different key" {
 	const state: RenderState = sceneState();
 	const targets: TargetLayout = sceneLayout();
-	const keys: Vec<uint64> = [
+	const keys: Vec<PipelineKey> = [
 		billboardKey(state, targets),
 		billboardKey(state.withDepth(false, Compare.LessEqual), targets),
 		billboardKey(state.withDepth(true, Compare.Less), targets),
@@ -170,15 +169,15 @@ test "a different state, program, layout or target gives a different key" {
 		pipelineKey(
 			doorProgram(Program.Lit), doorLayout(VertexLayout.Billboard),
 			NOT_INDEXED, state, targets,
-		).bits,
+		),
 		pipelineKey(
 			doorProgram(Program.Billboard), doorLayout(VertexLayout.Lit),
 			NOT_INDEXED, state, targets,
-		).bits,
+		),
 		pipelineKey(
 			doorProgram(Program.Billboard), doorLayout(VertexLayout.Billboard),
 			true, state, targets,
-		).bits,
+		),
 		billboardKey(state, { ...targets, depth: PixelFormat.None }),
 		billboardKey(state, { ...targets, color1: PixelFormat.None }),
 		billboardKey(state, { ...targets, sampleCount: 4 }),
@@ -186,7 +185,7 @@ test "a different state, program, layout or target gives a different key" {
 	];
 	for (let i = 0; i < (keys.length as int32); i++) {
 		for (let j = i + 1; j < (keys.length as int32); j++) {
-			assert keys[i] != keys[j];
+			assert !(keys[i] == keys[j]);
 		}
 	}
 }
@@ -258,32 +257,39 @@ test "the descriptor carries the index type, and only the index type, for an ind
 	assert differing == 1;
 }
 
-// The key packs the vertex layout in three bits and the indexed flag in the fourth; one more
-// layout than this and it needs a second word (../gpu/pipeline.ms).
-// The indexed flag is bit 3 of the layout field. If the layout were written unmasked, an
-// ordinal of 8 would set that bit and be indistinguishable from an indexed layout 0.
-test "a vertex layout ordinal cannot forge the indexed flag" {
+test "the indexed flag keys apart from every layout id" {
 	const state: RenderState = sceneState();
 	const targets: TargetLayout = sceneLayout();
 	const plain: PipelineKey = litKey(NOT_INDEXED, state);
 	const indexed: PipelineKey = litKey(true, state);
-	assert !plain.isIndexed() && indexed.isIndexed();
-	assert plain.bits != indexed.bits;
-	const forged: PipelineKey = pipelineKey(
-		doorProgram(Program.Lit),
-		doorLayout((8 as int32) as VertexLayout),
-		NOT_INDEXED,
-		state,
-		targets,
-	);
-	assert !forged.isIndexed();
+	assert plain.indexType == IndexType.None && indexed.indexType == IndexType.Uint16;
+	assert !(plain == indexed);
+	const layoutEight: PipelineKey = pipelineKey(0, 8, NOT_INDEXED, state, targets);
+	assert layoutEight.indexType == IndexType.None && layoutEight.layout == 8;
+	assert !(layoutEight == pipelineKey(0, 0, NOT_INDEXED, state, targets));
+	assert !(layoutEight == pipelineKey(0, 0, true, state, targets));
 }
 
-test "every vertex layout still fits the three bits the key gives it" {
-	assert (VertexLayout.Lit as int32) < LAYOUT_LIMIT;
-	assert (VertexLayout.Particle as int32) < LAYOUT_LIMIT;
-	assert (VertexLayout.Billboard as int32) < LAYOUT_LIMIT;
-	assert (VertexLayout.Fullscreen as int32) < LAYOUT_LIMIT;
+test "a program id past sixteen keys apart from a target format" {
+	const state: RenderState = sceneState();
+	const targets: TargetLayout = sceneLayout();
+	const sixteen: PipelineKey = pipelineKey(16, 0, NOT_INDEXED, state, targets);
+	assert sixteen.program == 16;
+	assert !(sixteen == pipelineKey(0, 0, NOT_INDEXED, state, targets));
+	const depthColor: TargetLayout = { ...targets, color0: PixelFormat.Depth };
+	assert !(sixteen == pipelineKey(0, 0, NOT_INDEXED, state, depthColor));
+}
+
+test "a sample count of sixteen keys apart from the render state" {
+	const state: RenderState = sceneState();
+	const targets: TargetLayout = sceneLayout();
+	const sixteen: PipelineKey =
+		pipelineKey(0, 0, NOT_INDEXED, state, { ...targets, sampleCount: 16 });
+	assert sixteen.targetLayout().sampleCount == 16;
+	const culled: PipelineKey = pipelineKey(
+		0, 0, NOT_INDEXED, state.withCulling(Face.Back), { ...targets, sampleCount: 0 },
+	);
+	assert !(sixteen == culled);
 }
 
 test "uniform pool hands out ranges once and refuses to overflow" {
@@ -316,10 +322,9 @@ test "a pipeline key decodes back into what built it" {
 		state,
 		sceneLayout(),
 	);
-	assert key.program() == doorProgram(Program.Billboard);
-	assert key.vertexLayout() == doorLayout(VertexLayout.Billboard);
-	assert key.isIndexed();
-	assert key.indexType() == IndexType.Uint16;
+	assert key.program == doorProgram(Program.Billboard);
+	assert key.layout == doorLayout(VertexLayout.Billboard);
+	assert key.indexType == IndexType.Uint16;
 	assert key.renderState() == state;
 	assert key.targetLayout().formatBits() == sceneLayout().formatBits();
 	const screen: TargetLayout = TargetLayout.fromFormatBits(SWAPCHAIN_LAYOUT.formatBits());
