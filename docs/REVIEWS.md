@@ -1175,3 +1175,87 @@ with void3d"; the review does not substitute source inspection for unmeasured pl
     The later D1 direction comes from the human's decision, not this SHIP label; D1 still owes
     implementation, consumer proof and review.
 
+
+## Unify D1 — pipeline identity through the GPU door — SHIP WITH FOLLOW-UPS (2026-09-30)
+
+**Verdict: SHIP WITH FOLLOW-UPS for `330fc09..c745179`**, built on main `9f41458` after the
+human-approved rebase. The mechanism follow-ups were fixed inside D1; the ones carried are
+listed last. P5 remains SEND BACK on B1, and this verdict authorises no P6, land or push.
+
+**Passes.** The defect pass was `/code-review high` on `3c48456..HEAD`, run as a forked agent;
+the main session read each of its ten findings against the code before acting on it. The design
+pass was a fresh read-only agent, briefed as the owner for five years, against the D1 direction,
+"The bar", the guardrails, TESTING.md and CODE-STYLE §14. It edited nothing and ran nothing
+long; runtime evidence is the main session's.
+
+### Defect pass — ten findings
+
+1. **gate3d's HUD entry imported `BlendMode` from `void2d/types`** — real; the generated entry no
+   longer built. Fixed in `dc1dbea` and gated green before the commit.
+2. **`Multiply` changed meaning in 2D** — intended: sent to the human as before/after app code,
+   recorded in HEAPS.md "Do not copy from h2d"; no in-repo or Neon caller used it.
+3. **`premultipliedBlend` left `SourceAlpha` on the alpha channel**, so Subtract computed
+   dstA − srcA² — real. Every `SourceAlpha` source factor becomes `One` (`32c6016`).
+4. **`shaderFor` grew its tables to any non-negative id before the door could refuse it** —
+   real: an id of 2 000 000 000 would allocate before any message. Checked against the door's
+   `programCount` first (`44f84f0`), abort test `unregisteredProgram`.
+5. **`sampledTarget` treats every colour-attachment view as a render target** — not a defect:
+   void3d renders targets in GL's row order (`blit.ms:71-79`), so the flip is what GL needs.
+   Carried: no WebGL2 golden samples a void3d target through void2d.
+6. **`doorBeginColorPass` validated no view, and door.c's "three functions" comment went
+   stale** — real. It stops on a view that is not live; the comment is gone (`aa29ff0`).
+7. **Gate failures named only the `.log` after stderr moved to `.err`** — real (`98e1c19`).
+8. **`Program2D` beside `Pipeline`, and a slot memo beside the cache** — kept: `Pipeline` is the
+   command's stream kind and has exhaustive matches where a blur has no stream; the memo spares
+   the replay a cache scan per slot per flush. `void2dLayoutCheck` holds the two orders together.
+9. **2D pipelines survived a context generation change** — real against D1's "do not reuse old
+   GPU handles after a reset": the 2D cache now forgets on a new `contextGeneration` and
+   re-resolves every slot (`364243b`).
+10. **Five-field equality in the lookup scan** — kept: a second packed word is the rejected
+    two-word patch. Not timed; VOID2D.md records the scan and names hashing as the next step.
+
+### Design pass — SHIP WITH FOLLOW-UPS, and what was done with each
+
+- **F1, record sweep and receipt** — done in the D1 doc commit: VOID3D.md's present-tense
+  bounded-key statements point at D1, target.ms and door.c lost their stale comments
+  (`7f453b7`, `aa29ff0`), the scan-versus-hash note is in VOID2D.md, and the receipt is below.
+- **F2, explicit preparation and its cost** — built: `preparePipelines(modes)` (`364243b`).
+  Measured on D3D11: shader compile 69 / 6 / 124 / 4 ms for vertex / sprite / UI / blur, one
+  more pipeline about 0.01 ms. Without preparation the gate's first-paint reports rose from
+  37 / 3 / 7 ms to 179 / 126 / 164 ms (ui / text / scroll); the bench and demo prepare at setup
+  and read 42 / 2.4 / 6.6 ms. Neon's host has a note. WebGPU's cost is not measured.
+- **F3, stops** — done: `beginTarget` without a positive scale, `blurPass` outside a target,
+  an unregistered program id, refused target images and views (`8fc3a19`, `44f84f0`,
+  `aa29ff0`), each unregistered or misuse path with a `tests/aborts` program.
+- **F4, premultiplied meaning** — partly: every mode's equation is evaluated in T0 on
+  premultiplied operands, Erase became destination-out after that test showed colour above
+  alpha, and Multiply and Min are recorded as arithmetic modes (`32c6016`). Carried: a declared
+  premultiplied property for app targets, and the WebGL2 golden of finding 5.
+- **F5, `Default` resolved against the environment, not the view** — carried, recorded as open.
+  Two host views with different sample counts would share one pipeline, as before D1.
+- **F6, the slot memo under the cache's generation** — done (finding 9).
+- **F7, `.err` names and a struct `!=` card** — the names are done; no card, because struct `!=`
+  compiles and answers correctly on C and JS (probe on BUILD `35601908`, a 20-byte struct), so
+  the tests use it (`c745179`).
+
+### The ten questions, in short
+
+Exits: complete value identity, growable registries, void2d programs, pipelines, targets and
+BlendMode through the door, foreign ids past 16/8 in both orders. Measurements: the receipt below
+and VOID2D.md "D1 as built". Guardrails: none relaxed; G8 improves, since a sprite-only frame no
+longer makes the UI pipeline. References: Heaps' `BLEND_ALPHA` and `setBlendMode` are cited; the
+premultiplied translation is recorded as a divergence. Capability grows: seven more 2D blend
+modes, app targets in the door's shape, explicit preparation. Test tiers: the blend equations are
+T0, stream slots stay T1, pixel identity is T2, creation is a GPU consumer. Compiler: no
+workaround, no card needed. §14: the one new over-long import line was wrapped; older long lines
+stay P6's. Refuse to merge: nothing once the record lands with its receipt.
+
+**Measured on source tree `75d8022122190f65535078576e483e601c98e6a9` (`c745179`, before this
+record update):** `sh scripts/gate.sh --web`, BUILD `35601908`, GREEN with eight explicit skips:
+1096 tests plus 299 isolated, D3D11 76/76 unchanged plus three invariants, WebGL2 54 identical /
+18 bounded / the same four known-red, every consumer including door blend modes and the four new
+aborts, 107 frame functions / 239 callees, 16 PENDING with zero mismatch; web builds 2 351 747 /
+2 123 985 B, 69 148 / 69 234 B above the rebased baseline. `sh scripts/gate3d.sh` on the same
+tree is GREEN with its one device skip: HUD over the campfire, compose and its control, foreign
+registration past 16/8 in both orders, both layers, and every door abort including the two
+overflow refusals.

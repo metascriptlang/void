@@ -1784,7 +1784,7 @@ from that count-only control.
 The human asked for Heaps/Bevy research, then explicitly added Sokol and Browser WebGPU, and
 closed the discussion with “chốt được rồi thì và mình sẽ làm theo hướng đã chốt trong session
 mới nha”. Implement the full value-identity direction in the next session; not a second-word
-patch by default and not a new raw-WebGPU layer. D1 remains unimplemented in this tree.
+patch by default and not a new raw-WebGPU layer. Built: "D1 as built" below.
 
 **Decision:** reuse the existing descriptor/equality cache and GPU door; remove the global
 program/layout bit budget from pipeline identity. Resource ids must retain their complete
@@ -1866,8 +1866,106 @@ foreign registration order/boundaries and real mixed layers. Preserve the comple
 retained coherence and capability; do not hide compiler cards, collapse distinct vertex inputs
 to fit a count, or treat the prototype key's five fields as the entire WebGPU API.
 
-Pipelines/targets and shared BlendMode are not yet migrated through the door. P5's independent
+### D1 as built (2026-09-30)
+
+Built on main `9f41458` (M22), after the human approved that rebase. P5's independent
 Scene-lifetime blocker remains parked, and P6 is not started.
+
+**Identity.** `pipeline.ms` `PipelineKey` is {program, layout, index type, `RenderState.bits`,
+`TargetLayout.formatBits`}, compared by equality in the existing cache. Program and layout ids
+keep their int32 meaning; the two bit words stay packed because they are lossless finite
+encodings, and a sample count now has twelve bits. T0 pins the three aliases the 64-bit word had:
+layout 8 beside layout 0, program 16 beside a colour-format bit, sample count 16 beside the
+culling bit. A control applying the old masks turns those tests red.
+
+**Storage and limits.** The door registries grow and refuse only int32 id exhaustion or an
+allocation failure, by name; `PipelineCache` shader and block tables grow with the program id,
+after the id is checked against the door's `programCount`. The limits left are sokol's pools,
+32 shaders and 64 pipelines as configured here. A refused shader, pipeline, target image or view
+stops and names what was refused, where it used to hand back 0 or a failed id and draw nothing.
+Lookup stays a linear scan, now with 20-byte key equality where it compared one word: a cache
+holds dozens of entries. Heaps hashes the signature first (`h3d/impl/PipelineCache.hx`
+`PipelineBuilder.lookup`); that is the step if a measured cache grows. Neither was timed.
+
+**Measured on the way: three shared blend modes were broken on D3D11.** Through the door,
+`AlphaMultiply`, `Erase` and `Screen` failed `CreateBlendState()` (probe on BUILD `35601908`):
+D3D11 refuses a *_COLOR factor on the alpha channel. door.c now spells alpha-channel factors as
+Heaps' DirectXDriver does (`h3d/impl/DirectXDriver.hx` `BLEND_ALPHA`, `:1493-1509`, used at
+`:766-767`); for the alpha component both spellings are the same number, so no backend's pixels
+change. `tests/integration/doorBlendModes.ms`, a gate consumer, makes all twelve modes; without
+the table it stops naming AlphaMultiply's key.
+
+**void2d through the door.** batcher.c registers four programs and their layouts (vertex,
+sprite, UI, blur). Recording marks each (program, target, blend) slot it uses; `flushTargets`
+resolves new slots through a 2D `PipelineCache` and hands the handles to the replay, which stops
+on a slot it was not given. Nothing is created eagerly: the 4 × 2 × 12 slots exceed the pipeline
+pool, so a process holds only what it recorded. Goldens stayed byte-identical through the move.
+The 2D cache follows the owner model void3d already has: when `contextGeneration` changes it
+forgets its handles and re-resolves every slot it hands the replay. The rest of a 2D context-loss
+rebuild (buffers, glyph pages, samplers) remains P6's.
+
+**Preparation is the host's, and it is measured.** Creating a program's first pipeline compiles
+its shader, which the pipelines after it do not pay. On D3D11, release, BUILD `35601908`, shared
+box: vertex about 69 ms (the first compile in the process), UI about 124 ms, sprite 6 ms, blur
+4 ms, three runs each; one more pipeline about 0.01 ms. Before D1 all four compiled in
+`setup2d`; now a frame pays for the first program it records. `preparePipelines(modes)` makes
+the three drawing programs' screen and offscreen pipelines for each mode, plus the blur, when the
+host calls it. Measured without it, the gate's first-paint reports moved from ui 37 / text 3 /
+scroll 7 ms to 179 / 126 / 164 ms; the bench and the demo now prepare at setup, as a host should,
+and the Neon host note says so. WebGPU's first-use cost is not measured (no adapter here).
+
+**Shared BlendMode.** 2D takes `gpu/state.ms` `BlendMode`. Its content is premultiplied, so
+`draw.ms` `premultipliedBlend` applies h3d's `setBlendMode` and turns every `SourceAlpha` source
+factor, colour and alpha, into `One`; `Erase` becomes destination-out, (Zero,
+OneMinusSourceAlpha), because h3d's per-channel (Zero, OneMinusSourceColor) leaves colour above
+alpha. `Alpha`, `Add`, `Screen` and `None` keep their names and factors. The old 2D `Multiply`
+was h3d's `AlphaMultiply` and is spelled so now. New to 2D: `AlphaAdd` (the same as `Alpha` on
+premultiplied content), `SoftAdd`, `Erase`, `Subtract` (destination minus source, alpha
+included), `Max`, and the two arithmetic modes `Multiply` (src × dst) and `Min`, where a
+transparent source writes transparent black, as h3d's do on opaque sources. T0 holds the five old
+modes to batcher.c's former factor table and evaluates every mode's equation on premultiplied
+operands: a transparent source leaves the destination under the compositing modes, Multiply and
+Min write transparent black, and every mode but Subtract stays premultiplied; without the Erase
+rule that last test fails. HEAPS.md "Do not copy from h2d" records the divergence.
+T1 snapshots print blend ordinals, so they moved: Alpha 0 → 1 on 25 rows, Add 1 → 2 on one, and
+nothing else changed.
+
+**Targets.** The filter pool, `beginTarget` and `filter.ms` take the door's `RenderTarget`;
+`beginTarget` stops on a target that is not an allocated Rgba8 one or a scale that is not
+positive, and `blurPass` stops outside a target; `tests/aborts` holds each stop and an
+unregistered program id. The replay opens and ends target passes through `doorBeginColorPass`
+/ `doorEndPass`, which stops on a view that is not live, so the door's pass state holds during
+2D replay. A sampled view counts as a render target when sokol reports its image as a colour
+attachment (`sg_query_view_image`, `sg_query_image_usage`) rather than by membership in a
+table, so a void3d target drawn by void2d is now flipped on GL and read as premultiplied; no
+current scene samples one. The bridge's sixteen-slot render targets are deleted.
+
+**Harness finding.** Lazy shader creation moved D3D compiler warnings into the first frame.
+sokol_log truncates a line at 512 bytes and drops its newline (`deps/sokol/sokol_log.h`
+`_slog_func`), so a verdict printed after it joined that line and anchored greps missed it; the
+eager setup had closed the line by accident. golden.sh, gate.sh's two-view pass and gate3d's four
+anchored mixed-frame and both-layers checks read stdout apart from stderr.
+
+**Registration.** mixedFrame's foreign consumer gets program 5 / layout 3 registering first and
+20 / 12 after both layers (void3d 11 / 5, void2d 4 / 4, fixture 5 / 3 more), both past the old
+16 / 8; gate3d draws the same lit frame through it in both orders.
+
+**Measured on source tree `75d8022122190f65535078576e483e601c98e6a9` (`c745179`, before this
+record update):** `sh scripts/gate.sh --web`, BUILD `35601908`, GREEN with eight explicit
+skips: 1096 tests plus 299 isolated, D3D11 76/76 unchanged plus three invariants, WebGL2 54
+identical / 18 bounded / the same four known-red, every consumer and abort, 107 frame
+functions / 239 callees, 16 PENDING with zero mismatch. Web builds are 2 351 747 / 2 123 985 B,
+69 148 / 69 234 B above the rebased baseline; no module budget exists until P6. `sh
+scripts/gate3d.sh` on the same tree is GREEN with its device skip. REVIEWS.md "Unify D1" has
+the review.
+
+**Not proved, not built.** Browser WebGPU pipeline creation, pixels and first-use cost (headless
+Chrome has no adapter here). `SWAPCHAIN_LAYOUT` resolves against sokol's environment defaults,
+not the pass's swapchain: two host views with different sample counts would share one pipeline,
+as they did before D1; open. A caller spelling the resolved formats explicitly would get a second,
+equivalent pipeline; no caller does. Premultiplied content is inferred from colour-attachment
+usage, with no way for an app to declare a straight target, and no WebGL2 golden samples a void3d
+target through void2d.
 
 **Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
 audit on the pre-integration source: mutating a caller's `Paint2D.colorMatrix: float32[]`, or
