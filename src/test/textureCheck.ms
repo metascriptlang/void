@@ -40,6 +40,15 @@ import {
 	FORWARD_UNIFORM_LENGTH,
 	renderFrame,
 } from "../void3d/forwardRenderer";
+import {
+	PixelArtRenderer,
+	PixelArtSettings,
+	PixelArtLook,
+	PixelArtError,
+	PIXEL_ART_UNIFORM_LENGTH,
+	renderFrame as renderPixelArt,
+} from "../void3d/pixelArtRenderer";
+import { LowResView } from "../void3d/blit";
 import { added, litShape } from "./drawHelpers";
 
 let FIRST_SLOT: TextureId = { index: 0, generation: 1 };
@@ -222,4 +231,47 @@ test "a screen draw refuses a material whose texture changed" {
 	let drawn: Result<int32, RendererError> =
 		drawScreen(core, context, added.value, SWAPCHAIN_LAYOUT);
 	assert !drawn.ok && drawn.error == RendererError.TextureReplaced;
+}
+
+test "both presets refuse a frame whose own screen material's texture changed" {
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	let none: Vec<DrawItem> = [];
+	let background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	let forwardContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+	let forward: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(forwardContext, background);
+	assert forward.ok;
+	if (!forward.ok) { return; }
+	let copy: ForwardRenderer = forward.value;
+	forwardContext.materials[copy.copyMaterial.index].texture = FIRST_SLOT;
+	let copied: Result<int32, ForwardError> =
+		renderFrame(copy, forwardContext, none, camera, lights, 640, 480);
+	assert !copied.ok && copied.error == ForwardError.TextureReplaced;
+	let look: PixelArtLook = {
+		background: background,
+		outline: {
+			depthThreshold: 0.006,
+			normalThreshold: 0.6,
+			depthShade: 0.55,
+			normalShade: 1.35,
+		},
+		fog: { start: 0.5, end: 0.8, strength: 0.0, color: background },
+		saturation: 0.0,
+	};
+	let view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	for (const post of [true, false]) {
+		let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+		let created: Result<PixelArtRenderer, PixelArtError> =
+			PixelArtRenderer.create(context, PixelArtSettings.full(), look);
+		assert created.ok;
+		if (!created.ok) { return; }
+		let preset: PixelArtRenderer = created.value;
+		let screen: MaterialId = post ? preset.postMaterial : preset.blitMaterial;
+		context.materials[screen.index].texture = FIRST_SLOT;
+		let drawn: Result<int32, PixelArtError> =
+			renderPixelArt(preset, context, none, camera, lights, view);
+		assert !drawn.ok && drawn.error == PixelArtError.TextureReplaced;
+		assert preset.core.generation == 0;
+	}
 }
