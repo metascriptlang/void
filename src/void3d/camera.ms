@@ -1,52 +1,26 @@
-// Port of h3d.Camera, the orthographic subset void3d needs: `makeCameraMatrix`, the
-// `orthoBounds` branch of `makeFrustumMatrix`, `project` and `rayFromScreen` — plus the snap to
-// the low-res texel grid, which Heaps has no equivalent of and which RENDERER-BRIEF §3.3 calls
-// the single most important part of the look: a camera that moves by less than one low-res texel
-// makes the whole image shimmer.
-//
-// Two structs, because what the caller wants and where the camera ends up are different things
-// once the snap is in play. `OrthoCamera` is the request: a target point, a fixed yaw and pitch,
-// how many world units one low-res texel covers, and the depth range around it.
-// `CameraView` is the resolved frame: the snapped eye and its basis, the viewProj the scene
-// programs read, and the remainder the snap left over, which `pixelArtRenderer.viewFor` hands to
-// the blit (blit.ms `withRemainder`).
-//
-// Conventions, as everywhere in void3d: Y up, right-handed, row vectors (`p * m`, `local *
-// parent`), depth in [0, 1]. Heaps' `rightHanded` flag negates the camera matrix's third column
-// and then negates the projection's z back; both are folded away here, so the third column is
-// the view direction itself and z maps [near, far] onto [0, 1] with no sign play. The result is
-// Heaps with `rightHanded = true`.
-//
-// Everything is a value and nothing allocates or touches the GPU, so a lost context costs the
-// camera nothing and all of it is tested headless (src/test/cameraCheck.ms).
-
 import { Vec3, Vec4, Mat4, vec3 } from "../math/math3d";
 import { LowResView, ViewPoint } from "./blit";
 import { Ray } from "./ray";
 
-// Floats in the scene programs' camera block: viewProj, then cameraRight and cameraUp
-// (shader3d.glsl `vertexParams`). It is gpu3d's VERTEX_UNIFORM_LENGTH, which cameraCheck.ms
-// asserts so the two cannot drift.
 export const CAMERA_BLOCK_LENGTH: int32 = 24;
 
-export struct OrthoCamera {
-	// The point the view is centred on, before snapping.
-	target: Vec3;
-	// Fixed orientation: yaw turns around Y, pitch tilts the view down from the horizon.
+export enum ProjectionKind {
+	Orthographic,
+	Perspective,
+}
+
+export type CameraProjection = match (kind: ProjectionKind) {
+	ProjectionKind.Orthographic => { worldPerTexel: float32, snap: boolean },
+	ProjectionKind.Perspective => { fovY: float32 },
+};
+
+export struct Camera3D {
+	position: Vec3;
 	yaw: float32;
 	pitch: float32;
-	// World units one low-res texel covers. It sets both the ortho extents and the snap grid.
-	worldPerTexel: float32;
-	// What the camera sees in front of and behind the target, along the view direction. An
-	// orthographic camera has no position along that axis — sliding it there moves nothing but
-	// the clip planes — so the target is the eye and there is no distance to set.
-	// Named for the plane, not `near`/`far`: those are macros in the Windows C headers
-	// (docs/VOID3D.md, Compiler notes).
 	nearPlane: float32;
 	farPlane: float32;
-	// Snap the eye to the texel grid and report the remainder. Off leaves the eye where it is
-	// and the remainder at zero, which is what the shimmer looks like.
-	snap: boolean;
+	projection: CameraProjection;
 }
 
 // The camera's own axes. With world up at +Y this is exactly Heaps' lookAt basis (`ax =
@@ -70,10 +44,10 @@ export struct OrthoBounds {
 }
 
 export struct CameraView {
-	// Where the camera actually is, after the snap.
 	eye: Vec3;
 	basis: CameraBasis;
 	viewProj: Mat4;
+	inverseViewProj: Mat4;
 	// What the snap left over: the true eye minus the snapped one, in low-res texels along
 	// `right` and `up`, each in [0, 1). blit.ms `withRemainder` puts it back as a blit offset,
 	// so the image shows the true position while the scene is drawn from the snapped one.
@@ -82,13 +56,17 @@ export struct CameraView {
 	// The low-res target this view was resolved for.
 	texelWidth: int32;
 	texelHeight: int32;
-	worldPerTexel: float32;
 }
 
 export enum CameraError {
 	EmptyTarget,
 	BadWorldPerTexel,
 	EmptyDepthRange,
+	BadFov,
+	NonFinitePose,
+	NonFiniteProjection,
+	UnrepresentableDepthRange,
+	UnprojectableView,
 }
 
 // Where the eye landed and by how much it missed, in texels.
@@ -104,7 +82,7 @@ function floored(a: float32): float32 { return Math.floor(a) as float32; }
 
 // ---- Basis, camera matrix, projection ----
 
-export function basisOf(this camera: OrthoCamera): CameraBasis {
+export function basisOf(this camera: Camera3D): CameraBasis {
 	const yawSin: float32 = sine(camera.yaw);
 	const yawCos: float32 = cosine(camera.yaw);
 	const pitchSin: float32 = sine(camera.pitch);
@@ -134,11 +112,16 @@ export function makeCameraMatrix(this basis: CameraBasis, eye: Vec3): Mat4 {
 // visible world grows with the target and the margin the blit asks for is rendered rather than
 // invented.
 export function orthoBounds(
-	this camera: OrthoCamera,
+	this camera: Camera3D,
 	texelWidth: int32,
 	texelHeight: int32,
 ): OrthoBounds {
-	const half: float32 = camera.worldPerTexel * 0.5;
+	let projection: CameraProjection = camera.projection;
+	if (projection.kind != ProjectionKind.Orthographic) {
+		console.log("void3d: orthoBounds asked of a perspective camera");
+		unreachable;
+	}
+	let half: float32 = projection.worldPerTexel * 0.5;
 	const halfWidth: float32 = (texelWidth as float32) * half;
 	const halfHeight: float32 = (texelHeight as float32) * half;
 	return {
@@ -187,37 +170,79 @@ function snapEye(this basis: CameraBasis, eye: Vec3, worldPerTexel: float32): Sn
 	return { eye: eye - back, remainderX: remainderX, remainderY: remainderY };
 }
 
-// The frame this camera draws on a `texelWidth` x `texelHeight` low-res target: the snapped eye,
-// its viewProj, and the remainder the blit needs. Pure arithmetic — call it every frame.
 export function resolve(
-	this camera: OrthoCamera,
+	this camera: Camera3D,
 	texelWidth: int32,
 	texelHeight: int32,
 ): Result<CameraView, CameraError> {
 	if (texelWidth <= 0 || texelHeight <= 0) {
 		return Result.err(CameraError.EmptyTarget);
 	}
-	if (camera.worldPerTexel <= 0.0) {
-		return Result.err(CameraError.BadWorldPerTexel);
+	if (!Number.isFinite(camera.position.x) || !Number.isFinite(camera.position.y) ||
+		!Number.isFinite(camera.position.z) || !Number.isFinite(camera.yaw) ||
+		!Number.isFinite(camera.pitch)) {
+		return Result.err(CameraError.NonFinitePose);
 	}
-	if (camera.farPlane <= camera.nearPlane) {
+	if (!Number.isFinite(camera.nearPlane) || !Number.isFinite(camera.farPlane) ||
+		camera.farPlane <= camera.nearPlane) {
 		return Result.err(CameraError.EmptyDepthRange);
 	}
-	const basis: CameraBasis = camera.basisOf();
-	const placed: SnappedEye = camera.snap ?
-		basis.snapEye(camera.target, camera.worldPerTexel) :
-		{ eye: camera.target, remainderX: 0.0, remainderY: 0.0 };
-	const cameraMatrix: Mat4 = basis.makeCameraMatrix(placed.eye);
-	const projection: Mat4 = camera.orthoBounds(texelWidth, texelHeight).projectionMatrix();
+	let basis: CameraBasis = camera.basisOf();
+	let placed: SnappedEye = { eye: camera.position, remainderX: 0.0, remainderY: 0.0 };
+	let matrix: Mat4;
+	let projection: CameraProjection = camera.projection;
+	match (projection.kind) {
+		ProjectionKind.Orthographic => {
+			if (!Number.isFinite(projection.worldPerTexel) || projection.worldPerTexel <= 0.0) {
+				return Result.err(CameraError.BadWorldPerTexel);
+			}
+			if (projection.snap) {
+				placed = basis.snapEye(camera.position, projection.worldPerTexel);
+			}
+			matrix = camera.orthoBounds(texelWidth, texelHeight).projectionMatrix();
+		},
+		ProjectionKind.Perspective => {
+			if (!Number.isFinite(projection.fovY) ||
+				projection.fovY <= 0.0 || projection.fovY >= 3.141592653589793) {
+				return Result.err(CameraError.BadFov);
+			}
+			if (camera.nearPlane <= 0.0) {
+				return Result.err(CameraError.EmptyDepthRange);
+			}
+			let scaleY: float32 = (1.0 / Math.tan(projection.fovY * 0.5)) as float32;
+			let scaleX: float32 = scaleY * (texelHeight as float32) / (texelWidth as float32);
+			let depth: float32 = camera.farPlane / (camera.farPlane - camera.nearPlane);
+			if (depth <= 1.0) {
+				return Result.err(CameraError.UnrepresentableDepthRange);
+			}
+			let offsetZ: float32 = -camera.nearPlane * depth;
+			matrix = {
+				m11: scaleX, m12: 0.0, m13: 0.0, m14: 0.0,
+				m21: 0.0, m22: scaleY, m23: 0.0, m24: 0.0,
+				m31: 0.0, m32: 0.0, m33: depth, m34: 1.0,
+				m41: 0.0, m42: 0.0, m43: offsetZ, m44: 0.0,
+			};
+		},
+	}
+	if (!Number.isFinite(matrix.m11) || !Number.isFinite(matrix.m22) ||
+		!Number.isFinite(matrix.m33) || !Number.isFinite(matrix.m43)) {
+		return Result.err(CameraError.NonFiniteProjection);
+	}
+	let cameraMatrix: Mat4 = basis.makeCameraMatrix(placed.eye);
+	let viewProj: Mat4 = cameraMatrix * matrix;
+	let inverseViewProj: Mat4 = viewProj.inverse();
+	if (projection.kind == ProjectionKind.Perspective && !inverseViewProj.supportsScreenRays()) {
+		return Result.err(CameraError.UnprojectableView);
+	}
 	return Result.ok({
 		eye: placed.eye,
 		basis: basis,
-		viewProj: cameraMatrix * projection,
+		viewProj: viewProj,
+		inverseViewProj: inverseViewProj,
 		remainderX: placed.remainderX,
 		remainderY: placed.remainderY,
 		texelWidth: texelWidth,
 		texelHeight: texelHeight,
-		worldPerTexel: camera.worldPerTexel,
 	});
 }
 
@@ -279,8 +304,7 @@ export function project(
 // h3d.Camera.rayFromScreen: the ray through a framebuffer pixel, from the near plane to the far
 // one. Going back through the blit is what makes the argument a framebuffer pixel and not a
 // low-res texel — the same `texel = (fragment + offset) / scale` the blit shader runs, minus its
-// floor (blit.ms `texelAt`). Orthographic, so the direction comes out the same for every pixel
-// and only the origin moves; reading it off the matrix anyway is what checks the matrix.
+// floor (blit.ms `texelAt`).
 export function rayFromScreen(
 	this view: CameraView,
 	framebufferX: float32,
@@ -290,9 +314,8 @@ export function rayFromScreen(
 ): Ray {
 	const texel: ViewPoint = blit.texelAt(framebufferX, framebufferY);
 	const ndc: ViewPoint = ndcOf(texel, view.texelWidth, view.texelHeight, originTopLeft);
-	const backwards: Mat4 = view.viewProj.inverse();
-	const atNear: Vec3 = unproject(ndc, 0.0, backwards);
-	const atFar: Vec3 = unproject(ndc, 1.0, backwards);
+	let atNear: Vec3 = unproject(ndc, 0.0, view.inverseViewProj);
+	let atFar: Vec3 = unproject(ndc, 1.0, view.inverseViewProj);
 	return Ray.fromPoints(atNear, atFar);
 }
 
@@ -306,4 +329,22 @@ function unproject(ndc: ViewPoint, depth: float32, inverseViewProj: Mat4): Vec3 
 	const clip: Vec4 = volume * inverseViewProj;
 	const inverseW: float32 = 1.0 / clip.w;
 	return vec3(clip.x * inverseW, clip.y * inverseW, clip.z * inverseW);
+}
+
+function finitePoint(this point: Vec3): boolean {
+	return Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z);
+}
+
+function supportsScreenRays(this inverseViewProj: Mat4): boolean {
+	for (let sample = 0; sample < 5; sample++) {
+		let x: float32 = sample == 4 ? 0.0 : (sample & 1) == 0 ? -1.0 : 1.0;
+		let y: float32 = sample == 4 ? 0.0 : (sample & 2) == 0 ? -1.0 : 1.0;
+		let ndc: ViewPoint = { x: x, y: y };
+		let atNear: Vec3 = unproject(ndc, 0.0, inverseViewProj);
+		let atFar: Vec3 = unproject(ndc, 1.0, inverseViewProj);
+		if (!atNear.finitePoint() || !atFar.finitePoint()) { return false; }
+		let ray: Ray = Ray.fromPoints(atNear, atFar);
+		if (!ray.direction.finitePoint() || ray.direction.lengthSquared() <= 0.0) { return false; }
+	}
+	return true;
 }

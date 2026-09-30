@@ -27,7 +27,7 @@ import {
 	syncMeshFrame,
 } from "../void3d/animation";
 import { PickHit, PickError, pickNearest } from "../void3d/pick";
-import { OrthoCamera, CameraView, CameraBasis } from "../void3d/camera";
+import { Camera3D, ProjectionKind, CameraView, CameraBasis } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
 import { approx } from "./helpers";
 import { contextOf } from "./drawHelpers";
@@ -57,11 +57,11 @@ const NO_VIEW: CameraView = {
 	eye: vec3(0.0, 0.0, 0.0),
 	basis: NO_BASIS,
 	viewProj: identity(),
+	inverseViewProj: identity(),
 	remainderX: 0.0,
 	remainderY: 0.0,
 	texelWidth: 0,
 	texelHeight: 0,
-	worldPerTexel: 0.0,
 };
 
 function nearVec(a: Vec3, b: Vec3): boolean {
@@ -493,14 +493,13 @@ test "a framebuffer pixel a box is drawn at picks that box and not its neighbour
 	let context: DrawContext = contextOf(16, 16);
 	const blit: LowResView = try lowResView(1280, 720, 360, 1, 1) catch NO_LOW_RES;
 	const texel: float32 = 20.0 / 360.0;
-	const camera: OrthoCamera = {
-		target: vec3(0.3, 0.0, 0.2),
+	let camera: Camera3D = {
+		position: vec3(0.3, 0.0, 0.2),
 		yaw: 0.785398,
 		pitch: 0.6,
-		worldPerTexel: texel,
+		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: texel, snap: true },
 		nearPlane: -50.0,
 		farPlane: 50.0,
-		snap: true,
 	};
 	const resolved: CameraView = try camera.resolve(blit.width, blit.height) catch NO_VIEW;
 	const shifted: LowResView = blit.withRemainder(resolved.remainderX, resolved.remainderY, true);

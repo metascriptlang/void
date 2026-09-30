@@ -1,5 +1,5 @@
 import { Vec3, vec3 } from "../math/math3d";
-import { OrthoCamera, CameraBasis } from "../void3d/camera";
+import { Camera3D, ProjectionKind, CameraBasis } from "../void3d/camera";
 import {
 	AtlasTile,
 	AtlasTileError,
@@ -114,14 +114,13 @@ test "the billboard program normal, right cross up, points back toward the camer
 	const pitches: Vec<float32> = [0.2, 0.6, 1.2];
 	for (const yaw of yaws) {
 		for (const pitch of pitches) {
-			const camera: OrthoCamera = {
-				target: vec3(0.0, 0.0, 0.0),
+			let camera: Camera3D = {
+				position: vec3(0.0, 0.0, 0.0),
 				yaw: yaw,
 				pitch: pitch,
-				worldPerTexel: 0.05,
+				projection: { kind: ProjectionKind.Orthographic, worldPerTexel: 0.05, snap: false },
 				nearPlane: -50.0,
 				farPlane: 50.0,
-				snap: false,
 			};
 			const basis: CameraBasis = camera.basisOf();
 			const normal: Vec3 = basis.right.cross(basis.up);

@@ -134,7 +134,8 @@ import {
 	addBakedFrames,
 } from "../void3d/animation";
 import {
-	OrthoCamera,
+	Camera3D,
+	ProjectionKind,
 	CameraView,
 	CameraError,
 	CAMERA_BLOCK_LENGTH,
@@ -346,11 +347,11 @@ let shownView: CameraView = {
 		forward: vec3(0.0, 0.0, 0.0),
 	},
 	viewProj: identity(),
+	inverseViewProj: identity(),
 	remainderX: 0.0,
 	remainderY: 0.0,
 	texelWidth: 0,
 	texelHeight: 0,
-	worldPerTexel: 0.0,
 };
 let shownBlit: LowResView = { width: 0, height: 0, scale: 0, offsetX: 0.0, offsetY: 0.0 };
 let shownHeight: int32 = 0;
@@ -1380,17 +1381,18 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 	const height: int32 = fbHeight();
 	const shortSide: float32 = Math.min(width, height) as float32;
 	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE / shortSide;
-	const centred: OrthoCamera = {
-		target: vec3(0.0, 0.0, 0.0),
+	let centred: Camera3D = {
+		position: vec3(0.0, 0.0, 0.0),
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
-		worldPerTexel: worldPerTexel,
+		projection: {
+			kind: ProjectionKind.Orthographic, worldPerTexel: worldPerTexel, snap: cameraSnap,
+		},
 		nearPlane: -50.0,
 		farPlane: 50.0,
-		snap: cameraSnap,
 	};
 	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
-	const camera: OrthoCamera = { ...centred, target: centred.basisOf().right.scaled(slide) };
+	let camera: Camera3D = { ...centred, position: centred.basisOf().right.scaled(slide) };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(width, height);
 	if (!resolved.ok) {
 		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);
@@ -1451,18 +1453,19 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 
 	const shortSide: float32 = Math.min(grid.width, grid.height) as float32;
 	const worldPerTexel: float32 = UNITS_ON_SHORT_SIDE / shortSide;
-	const centred: OrthoCamera = {
-		target: vec3(0.0, 0.0, 0.0),
+	let centred: Camera3D = {
+		position: vec3(0.0, 0.0, 0.0),
 		yaw: CAMERA_YAW,
 		pitch: CAMERA_PITCH,
-		worldPerTexel: worldPerTexel,
+		projection: {
+			kind: ProjectionKind.Orthographic, worldPerTexel: worldPerTexel, snap: cameraSnap,
+		},
 		nearPlane: -50.0,
 		farPlane: 50.0,
-		snap: cameraSnap,
 	};
 	const slide: float32 = panTexelsPerFrame * (frameIndex as float32) * worldPerTexel;
 	const target: Vec3 = centred.basisOf().right.scaled(slide);
-	const camera: OrthoCamera = { ...centred, target: target };
+	let camera: Camera3D = { ...centred, position: target };
 	const resolved: Result<CameraView, CameraError> = camera.resolve(grid.width, grid.height);
 	if (!resolved.ok) {
 		console.log(`campfire: the camera was refused, ${resolved.error.toString()}`);

@@ -56,7 +56,7 @@ import {
 	refresh,
 	collectLights,
 } from "../../src/void3d/scene";
-import { OrthoCamera, CameraView, CameraError } from "../../src/void3d/camera";
+import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { beginScreenPass } from "../../src/gpu/target";
 import { markChanged } from "../../src/void3d/renderer";
 import {
@@ -168,14 +168,17 @@ function buildScene(): void {
 	const _drawn: int32 = refresh(scene, items);
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
-	const view: OrthoCamera = {
-		target: vec3(0.0, 0.0, 0.0),
+	let view: Camera3D = {
+		position: vec3(0.0, 0.0, 0.0),
 		yaw: 0.5,
 		pitch: 0.5,
-		worldPerTexel: WORLD_ON_HEIGHT / (HEIGHT as float32),
+		projection: {
+			kind: ProjectionKind.Orthographic,
+			worldPerTexel: WORLD_ON_HEIGHT / (HEIGHT as float32),
+			snap: false,
+		},
 		nearPlane: -10.0,
 		farPlane: 10.0,
-		snap: false,
 	};
 	const resolved: Result<CameraView, CameraError> = view.resolve(WIDTH, HEIGHT);
 	if (!resolved.ok) { unreachable; }
