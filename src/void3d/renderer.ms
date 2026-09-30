@@ -279,6 +279,7 @@ export function drawScreen(
 ): Result<int32, RendererError> {
 	if (!context.hasMesh(renderer.screenMesh)) { return Result.err(RendererError.StaleMesh); }
 	if (!context.hasMaterial(material)) { return Result.err(RendererError.StaleMaterial); }
+	if (!context.keepsItsTexture(material)) { return Result.err(RendererError.TextureReplaced); }
 	const program: Program = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);
 	return Result.ok(1);
