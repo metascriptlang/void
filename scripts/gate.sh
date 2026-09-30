@@ -181,7 +181,7 @@ if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/ga
 		&& out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
 else
-	fail "two host views in one process — see out/gate-two-views.log and out/gate-two-views-run.log"
+	fail "two host views in one process — see out/gate-two-views.log, out/gate-two-views-run.log and .err"
 	grep -E '^FAIL' out/gate-two-views-run.log | sed 's/^/      /' || true
 fi
 outside_status=0

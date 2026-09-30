@@ -1552,7 +1552,7 @@ run_compose() {
 	fi
 	summary=$(grep -E '^mixed frame:' "$WORK/compose.run.log" | sed 's/^mixed frame: //')
 	if [ "$status" -ne 0 ] || [ -z "$summary" ]; then
-		fail "compose: the mixed frame failed (exit $status)"
+		fail "compose: the mixed frame failed (exit $status) — see $WORK/compose.run.log and .err"
 		grep -E '^FAIL' "$WORK/compose.run.log" | sed 's/^/      /'
 		return
 	fi
@@ -1564,7 +1564,7 @@ run_compose() {
 		pass "compose: the control, the 3D drawn over void2d, fails: $(grep -E '^FAIL' \
 			"$WORK/compose.swapped.log" | head -1 | sed 's/^FAIL mixed frame: //')"
 	else
-		fail "compose: the control, the 3D drawn over void2d, passed (exit $status)"
+		fail "compose: the control, the 3D drawn over void2d, passed (exit $status) — see $WORK/compose.swapped.log and .err"
 	fi
 	status=0
 	VOID_MIXED_PREPARE_TWICE=1 out/tmp/mixedFrame.exe > "$WORK/compose.twice.log" 2>&1 || status=$?
@@ -1587,7 +1587,7 @@ run_compose() {
 		if [ "$status" -eq 0 ] && grep -q '^PASS mixed frame:' "$WORK/registration-$order.log"; then
 			pass "registration: order $order, foreign shader draws the same lit frame past the old 16/8 registry widths"
 		else
-			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log"
+			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log and .err"
 		fi
 	done
 }
@@ -1668,7 +1668,7 @@ run_both_layers() {
 	if out/tmp/bothLayers.exe > "$WORK/both.run.log" 2> "$WORK/both.run.err" && grep -q '^PASS both layers' "$WORK/both.run.log"; then
 		pass "$(grep '^PASS both layers' "$WORK/both.run.log" | sed 's/^PASS //')"
 	else
-		fail "both layers: a shared name resolved to the other layer"
+		fail "both layers: a shared name resolved to the other layer — see $WORK/both.run.log and .err"
 		grep -E '^FAIL' "$WORK/both.run.log" | sed 's/^/      /'
 	fi
 }
