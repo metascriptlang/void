@@ -27,6 +27,7 @@ import "./snapCheck";
 import "./rendererCheck";
 import "./programMapCheck";
 import "./cameraCheck";
+import "./frustumCheck";
 import "./boundsCheck";
 import "./meshDataCheck";
 import "./drawCheck";

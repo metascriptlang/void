@@ -10,6 +10,8 @@ import { DrawContext, DrawItem, drawItem } from "./draw";
 import { TargetLayout } from "../gpu/target";
 import { Material, Phase, UniformBlock } from "./material";
 import { Program } from "./gpu3d";
+import { MeshData } from "./meshData";
+import { Frustum3D } from "./frustum";
 
 // Float offsets of the view-projection column that yields clip z, in the camera block
 // (shader3dBlocks.glsl `vertexParams`, viewProj first): Heaps' cam._13, _23, _33, _43.
@@ -49,13 +51,36 @@ export function collect(
 	list.count = count;
 }
 
-// Clip-space depth of the item's origin (its world translation), as Heaps' depthSort takes
-// it from absPos row 4. The camera is orthographic, so w is 1 and z is the depth.
+export function filterFrustum(
+	ref list: PassList,
+	items: Span<DrawItem>,
+	meshes: Span<MeshData>,
+	frustum: Frustum3D,
+): int32 {
+	let count: int32 = 0;
+	let excluded: int32 = 0;
+	for (let i = 0; i < list.count; i++) {
+		let index: int32 = list.indices[i];
+		if (frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world)) {
+			list.indices[count] = index;
+			count = count + 1;
+		} else {
+			excluded = excluded + 1;
+		}
+	}
+	list.count = count;
+	return excluded;
+}
+
 function depthOf(item: DrawItem, camera: Span<float32>): float32 {
-	return item.world.m41 * camera[CLIP_Z_X] +
+	let z: float32 = item.world.m41 * camera[CLIP_Z_X] +
 		item.world.m42 * camera[CLIP_Z_Y] +
 		item.world.m43 * camera[CLIP_Z_Z] +
 		camera[CLIP_Z_W];
+	let w: float32 = item.world.m41 * camera[3] +
+		item.world.m42 * camera[7] +
+		item.world.m43 * camera[11] + camera[15];
+	return w > 0.0 ? z / w : -z / w;
 }
 
 // Renderer.backToFront: farthest first, items at the same depth keep their order. An

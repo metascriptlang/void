@@ -166,7 +166,7 @@ export function prepareFrame(
 	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
 	endPass();
 	closePrepare(renderer.core);
-	return Result.ok(items.length as int32);
+	return Result.ok((items.length as int32) - renderer.core.culledCount);
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.

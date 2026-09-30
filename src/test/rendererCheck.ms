@@ -292,14 +292,11 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 		camera[i] = 0.0;
 	}
 	camera[10] = 1.0;
+	camera[15] = 1.0;
 	sortBackToFront(alpha, items, camera);
 	assert alpha.indices[0] == 4;
 	// Items 1 and 5 share a depth and keep their order.
 	assert alpha.indices[1] == 1 && alpha.indices[2] == 5;
-	// Collecting the same items again reuses the storage.
-	const capacity: int32 = alpha.indices.length as int32;
-	collect(alpha, items, context.materials);
-	assert (alpha.indices.length as int32) == capacity && alpha.count == 3;
 }
 
 

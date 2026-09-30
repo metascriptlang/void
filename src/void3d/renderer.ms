@@ -44,9 +44,11 @@ import {
 } from "./draw";
 import { forgetPipelines } from "../gpu/pipeline";
 import { UniformError, ownRange } from "./uniformPool";
-import { PassList, collect, sortBackToFront, drawPassList } from "./passList";
+import { PassList, collect, filterFrustum, sortBackToFront, drawPassList } from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
+import { Mat4 } from "../math/math3d";
+import { Frustum3D } from "./frustum";
 
 export struct Renderer {
 	opaque: PassList;
@@ -66,6 +68,7 @@ export struct Renderer {
 	changed: boolean;
 	prepared: boolean;
 	preparedFrame: uint32;
+	culledCount: int32;
 }
 
 export enum RendererError {
@@ -135,6 +138,7 @@ export function createDrawing(
 		changed: true,
 		prepared: false,
 		preparedFrame: 0,
+		culledCount: 0,
 	});
 }
 
@@ -229,6 +233,17 @@ export function beginFrame(
 	collect(renderer.opaque, items, context.materials);
 	collect(renderer.alpha, items, context.materials);
 	collect(renderer.additive, items, context.materials);
+	let viewProj: Mat4 = {
+		m11: camera[0], m12: camera[1], m13: camera[2], m14: camera[3],
+		m21: camera[4], m22: camera[5], m23: camera[6], m24: camera[7],
+		m31: camera[8], m32: camera[9], m33: camera[10], m34: camera[11],
+		m41: camera[12], m42: camera[13], m43: camera[14], m44: camera[15],
+	};
+	let frustum: Frustum3D = Frustum3D.fromMatrix(viewProj);
+	renderer.culledCount =
+		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
+		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
+		filterFrustum(renderer.additive, items, context.meshData, frustum);
 	sortBackToFront(renderer.alpha, items, camera);
 	return Result.ok(fresh);
 }
