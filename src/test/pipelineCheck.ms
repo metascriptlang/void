@@ -185,7 +185,7 @@ test "a different state, program, layout or target gives a different key" {
 	];
 	for (let i = 0; i < (keys.length as int32); i++) {
 		for (let j = i + 1; j < (keys.length as int32); j++) {
-			assert !(keys[i] == keys[j]);
+			assert keys[i] != keys[j];
 		}
 	}
 }
@@ -263,11 +263,11 @@ test "the indexed flag keys apart from every layout id" {
 	const plain: PipelineKey = litKey(NOT_INDEXED, state);
 	const indexed: PipelineKey = litKey(true, state);
 	assert plain.indexType == IndexType.None && indexed.indexType == IndexType.Uint16;
-	assert !(plain == indexed);
+	assert plain != indexed;
 	const layoutEight: PipelineKey = pipelineKey(0, 8, NOT_INDEXED, state, targets);
 	assert layoutEight.indexType == IndexType.None && layoutEight.layout == 8;
-	assert !(layoutEight == pipelineKey(0, 0, NOT_INDEXED, state, targets));
-	assert !(layoutEight == pipelineKey(0, 0, true, state, targets));
+	assert layoutEight != pipelineKey(0, 0, NOT_INDEXED, state, targets);
+	assert layoutEight != pipelineKey(0, 0, true, state, targets);
 }
 
 test "a program id past sixteen keys apart from a target format" {
@@ -275,9 +275,9 @@ test "a program id past sixteen keys apart from a target format" {
 	const targets: TargetLayout = sceneLayout();
 	const sixteen: PipelineKey = pipelineKey(16, 0, NOT_INDEXED, state, targets);
 	assert sixteen.program == 16;
-	assert !(sixteen == pipelineKey(0, 0, NOT_INDEXED, state, targets));
+	assert sixteen != pipelineKey(0, 0, NOT_INDEXED, state, targets);
 	const depthColor: TargetLayout = { ...targets, color0: PixelFormat.Depth };
-	assert !(sixteen == pipelineKey(0, 0, NOT_INDEXED, state, depthColor));
+	assert sixteen != pipelineKey(0, 0, NOT_INDEXED, state, depthColor);
 }
 
 test "a sample count of sixteen keys apart from the render state" {
@@ -289,7 +289,7 @@ test "a sample count of sixteen keys apart from the render state" {
 	const culled: PipelineKey = pipelineKey(
 		0, 0, NOT_INDEXED, state.withCulling(Face.Back), { ...targets, sampleCount: 0 },
 	);
-	assert !(sixteen == culled);
+	assert sixteen != culled;
 }
 
 test "uniform pool hands out ranges once and refuses to overflow" {
