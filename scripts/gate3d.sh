@@ -178,9 +178,10 @@ write_perspective_entry() {
 	replace_if_changed "$WORK/perspectiveCapture.new" "$CAPTURE/perspectiveCapture.ms"
 }
 
-write_textured_entry() {
+# $1 entry, $2 the configure call, $3 the consumer module, then its init, frame and configure.
+write_frame_entry() {
 	{
-		echo 'import { initTextured, frameTextured, configureTextured } from "../../../tests/integration/texturedFrame";'
+		echo "import { $4, $5, $6 } from \"../../../tests/integration/$3\";"
 		echo '@include("../../../src/sokol/bridge.h");'
 		echo '@include("capture.h");'
 		echo '@compile("./capture.c");'
@@ -196,7 +197,7 @@ write_textured_entry() {
 		echo 'extern function captureQuit(): void;'
 		echo 'let frames: int32 = 0;'
 		echo 'function frame(): void {'
-		echo '	frameTextured(frames);'
+		echo "	$5(frames);"
 		echo '	if (frames == 1 || frames == 6 || frames == 11 || frames == 16) {'
 		echo '		captureSwapchain(frames);'
 		echo '	}'
@@ -205,11 +206,15 @@ write_textured_entry() {
 		echo '}'
 		echo 'function main(): void {'
 		echo "	$2"
-		echo '	voidRunConfigured(320, 240, 1, 0, initTextured, frame);'
+		echo "	voidRunConfigured(320, 240, 1, 0, $4, frame);"
 		echo '}'
 		echo 'main();'
 	} > "$WORK/$1.new"
 	replace_if_changed "$WORK/$1.new" "$CAPTURE/$1.ms"
+}
+
+write_textured_entry() {
+	write_frame_entry "$1" "$2" texturedFrame initTextured frameTextured configureTextured
 }
 
 prepare_entries() {
