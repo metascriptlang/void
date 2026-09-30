@@ -1,7 +1,7 @@
 // The gate's churn stage runs this, releasing (churnBench) and not releasing (churnControl).
 
 import { gfxSetup } from "../sokol/gpu";
-import { vec3 } from "../math/math3d";
+import { vec3, identityQuat } from "../math/math3d";
 import {
 	Program,
 	MATERIAL_UNIFORM_SLOT,
@@ -15,6 +15,15 @@ import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, MeshError, Rgba, addBox, addTexturedCube } from "../void3d/meshData";
 import { TextureData, TextureId, TextureUploadError, NO_TEXTURE } from "../void3d/texture";
 import { UniformError } from "../void3d/uniformPool";
+import { GltfData, GltfTransform, DEFAULT_MATERIAL } from "../void3d/gltf";
+import {
+	GltfAssets,
+	GltfMaterialSetup,
+	GltfSceneError,
+	addGltfAssets,
+	addGltfNodes,
+	releaseGltfAssets,
+} from "../void3d/gltfScene";
 import {
 	DrawContext,
 	DrawItem,
@@ -90,8 +99,8 @@ export struct ChurnStats {
 	stoppedBy: ChurnError;
 }
 
-// Room for a block every frame of a run that never releases, so that run meets sokol's buffer
-// pool, not this one.
+// Room for the four blocks a frame takes in a run that never releases, so that run meets sokol's
+// buffer pool, not this one.
 const MAX_FRAMES: int32 = 400;
 const STREAM_CAPACITY: int32 = 16;
 const STREAM_WRITTEN: int32 = 4;
@@ -101,7 +110,7 @@ const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + 2 * MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
+	FORWARD_UNIFORM_LENGTH + 4 * MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
 let scene: Scene3D = Scene3D.create();
@@ -111,6 +120,7 @@ let lights: Vec<float32> = zeros(LIGHT_UNIFORM_LENGTH);
 let instances: Vec<float32> = zeros(STREAM_CAPACITY * STREAM_INSTANCE_STRIDE);
 let box: MeshData = boxData();
 let texturedBox: MeshData = texturedBoxData();
+let model: GltfData = modelData();
 let releasing: boolean = true;
 let frames: int32 = 0;
 let secondWritesRefused: int32 = 0;
@@ -157,6 +167,52 @@ function checker(): TextureData {
 		filter: FilterMode.Nearest,
 		wrap: Wrap.Repeat,
 	};
+}
+
+function modelData(): GltfData {
+	return {
+		meshes: [texturedBoxData(), boxData()],
+		meshMaterials: [0, DEFAULT_MATERIAL],
+		materials: [{ texture: 0, doubleSided: true }],
+		textures: [checker()],
+		nodes: [
+			{ name: "cube", mesh: 0, local: modelTransform(), children: [1] },
+			{ name: "box", mesh: 1, local: modelTransform(), children: [] },
+		],
+		sceneRoots: [0],
+	};
+}
+
+function modelTransform(): GltfTransform {
+	return { position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), scale: vec3(1.0, 1.0, 1.0) };
+}
+
+function modelSetup(): GltfMaterialSetup {
+	return { pass: RenderState.defaults(), block: [4.0, 0.0, 0.0, 0.0] };
+}
+
+function churnErrorOf(error: GltfSceneError): ChurnError {
+	return match (error) {
+		GltfSceneError.TextureRefused => ChurnError.TextureRefused,
+		GltfSceneError.MeshRefused => ChurnError.MeshRefused,
+		GltfSceneError.UniformsFull => ChurnError.UniformsRefused,
+		GltfSceneError.MaterialRefused => ChurnError.MaterialRefused,
+		_ => ChurnError.NodeRefused,
+	};
+}
+
+function loadModel(level: NodeId3D): Result<int32, ChurnError> {
+	const assets: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, model, modelSetup());
+	if (!assets.ok) { return Result.err(churnErrorOf(assets.error)); }
+	const added: Result<int32, GltfSceneError> =
+		addGltfNodes(scene, context, level, model, assets.value.bindings);
+	if (!added.ok) { return Result.err(churnErrorOf(added.error)); }
+	if (releasing) {
+		const released: Result<void, HandleError> = releaseGltfAssets(context, assets.value);
+		if (!released.ok) { return Result.err(ChurnError.NodeRefused); }
+	}
+	return Result.ok(added.value);
 }
 
 export function configureChurn(release: boolean): void {
@@ -225,6 +281,7 @@ function loadLevel(): Result<NodeId3D, ChurnError> {
 	let _texturedBox: NodeId3D = try place(level, texturedMesh.value, textured);
 	const _stream: NodeId3D = try place(level, stream.value, particles);
 	const _written: int32 = try fillStream(stream.value);
+	const _model: int32 = try loadModel(level);
 	if (releasing) {
 		const _mesh: Result<int32, HandleError> = releaseMesh(context, mesh.value);
 		let _texturedMesh: Result<int32, HandleError> = releaseMesh(context, texturedMesh.value);
