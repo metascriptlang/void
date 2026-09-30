@@ -125,6 +125,36 @@ export enum Pipeline {
 	Ui,
 }
 
+export enum Program2D {
+	Vertex,
+	Sprite,
+	Ui,
+	Blur,
+}
+
+export const PROGRAMS_2D: int32 = (Program2D.Blur as int32) + 1;
+export const BLEND_MODES: int32 = (BlendMode.None as int32) + 1;
+export const PIPELINE_SLOTS: int32 = PROGRAMS_2D * 2 * BLEND_MODES;
+
+export function noPipelines(): Vec<boolean> {
+	let slots: Vec<boolean> = [];
+	for (let i: int32 = 0; i < PIPELINE_SLOTS; i++) { slots.push(false); }
+	return slots;
+}
+
+let wantedPipelines: Vec<boolean> = noPipelines();
+
+export function pipelineSlot(program: int32, target: int32, blend: int32): int32 {
+	return (program * 2 + target) * BLEND_MODES + blend;
+}
+
+export function pipelineWanted(slot: int32): boolean { return wantedPipelines[slot]; }
+
+function wantPipeline(program: Program2D, blend: BlendMode): void {
+	const target: int32 = activeContext.renderTargetScale != 0.0 ? 1 : 0;
+	wantedPipelines[pipelineSlot(program as int32, target, blend as int32)] = true;
+}
+
 export struct Clip {
 	x: float32;
 	y: float32;
@@ -1005,6 +1035,7 @@ export function recordDraw(
 	activeContext.commands[base + CMD_BLEND] = (blend as int32) as float32;
 	activeContext.commands[base + CMD_SAMPLER] = sampler as float32;
 	activeContext.commands[base + CMD_EFFECT] = effectIndex as float32;
+	wantPipeline(Program2D.Vertex, blend);
 }
 
 // A run of unified-UI instances. Same shape as a sprite run - an instance range and a zero
@@ -1021,6 +1052,7 @@ export function recordUiDraw(
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
 	activeContext.commands[base + CMD_PIPELINE] = (Pipeline.Ui as int32) as float32;
+	wantPipeline(Program2D.Ui, blend);
 	activeContext.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
 	activeContext.commands[base + CMD_INSTANCE_COUNT] = count as float32;
 	activeContext.commands[base + CMD_VERTEX_COUNT] = 0.0;
@@ -1043,6 +1075,7 @@ export function recordSpriteDraw(
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
 	activeContext.commands[base + CMD_PIPELINE] = (Pipeline.Sprite as int32) as float32;
+	wantPipeline(Program2D.Sprite, blend);
 	activeContext.commands[base + CMD_INSTANCE_OFFSET] = instanceOffset as float32;
 	activeContext.commands[base + CMD_INSTANCE_COUNT] = count as float32;
 	activeContext.commands[base + CMD_VERTEX_COUNT] = 0.0;
@@ -1129,6 +1162,8 @@ export function recordBlur(view: uint32, dirX: float32, dirY: float32): void {
 	writeView(base, view);
 	activeContext.commands[base + CMD_ARG0] = dirX;
 	activeContext.commands[base + CMD_ARG1] = dirY;
+	activeContext.commands[base + CMD_BLEND] = (BlendMode.None as int32) as float32;
+	wantedPipelines[pipelineSlot(Program2D.Blur as int32, 1, BlendMode.None as int32)] = true;
 }
 
 const RUN_FIELDS: int32[] = [

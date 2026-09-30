@@ -2,6 +2,7 @@
 
 #include "batcher.h"
 #include "../sokol/bridge.h"
+#include "../gpu/door.h"
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader2d.glsl.h"
 #include "instanceLayout.h"
@@ -14,6 +15,7 @@
 #include "glyph.h"
 
 #define VOID2D_BLEND_COUNT 5
+#define VOID2D_PROGRAM_COUNT 4
 
 // One growing vertex buffer for the whole frame, replacing both the fixed 65 536-vertex
 // stream and the per-node static buffers (VOID2D.md "Known defects", closed here). Growth is
@@ -27,18 +29,7 @@ static sg_buffer s_vbuf;
 static int s_vbufBytes;
 static int s_frameBaseOffset;   // where this frame's vertices start in s_vbuf
 static int s_frameUploaded;     // 0 when the frame was dropped, and then nothing may draw
-static sg_pipeline s_pips[VOID2D_BLEND_COUNT];
-static sg_pipeline s_pipsRT[VOID2D_BLEND_COUNT];   // offscreen variant: single-sample RGBA8, no depth
-// P2's flat sprite pipeline: one instance per quad, no SDF maths, its own program. Guardrail
-// 8 is that a sprite-only scene must not pay for the UI pipeline, and a separate program is
-// the only form of that promise a reviewer can check.
-static sg_pipeline s_spritePips[VOID2D_BLEND_COUNT];
-static sg_pipeline s_spritePipsRT[VOID2D_BLEND_COUNT];
-// P2's unified UI pipeline: one program, one 108-byte stride, a per-instance mode. It is a
-// third pipeline and needs no new machinery — a run carries its pipeline, so switching it
-// closes the run and records break:pipeline exactly like a view or a blend change does.
-static sg_pipeline s_uiPips[VOID2D_BLEND_COUNT];
-static sg_pipeline s_uiPipsRT[VOID2D_BLEND_COUNT];
+static uint32_t s_pipelines[VOID2D_PROGRAM_COUNT][2][VOID2D_BLEND_COUNT];
 static int s_uiInstanceBase;          // where this frame's UI instances start in s_vbuf
 static int s_uiInstanceCount;
 static sg_buffer s_unitQuad;          // six corners (0,0)..(1,1), made once, stepped per vertex
@@ -62,8 +53,7 @@ void void2dSetScopes(const float *scopes, int count) {
 // not met.
 static bool s_originTopLeft;
 static float s_dpiScale = 1.0f;                    // framebuffer / logical pixel ratio (retina = 2.0)
-static sg_pipeline s_blurPip;                      // separable-blur fullscreen pass (offscreen format)
-static sg_buffer s_fsQuad;                         // fullscreen quad (pos2+uv2) for filter passes
+static sg_buffer s_fsQuad;                        // fullscreen quad (pos2+uv2) for filter passes
 static sg_view s_whiteView;
 // Indexed by `smooth * 2 + tileWrap`, the packing displayList.ms `samplerIndex` writes into
 // CMD_SAMPLER. Clamp is the default: a tile is a sub-rect of an atlas, so REPEAT on a tile
@@ -140,6 +130,7 @@ static int s_retiredBufCount;
 #define PIPELINE_VERTEX     0
 #define PIPELINE_SPRITE     1
 #define PIPELINE_UI         2
+#define PIPELINE_BLUR       3
 
 #define EFFECT_FLOATS       44
 #define VERTEX_FLOATS       8
@@ -232,8 +223,16 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int samplerCount, int maxTargetDepth, int clearRField,
                       int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
-                      int kindTargetBegin, int kindTargetEnd) {
-	return commandFloats == CMD_FLOATS
+                      int kindTargetBegin, int kindTargetEnd,
+                      int programVertex, int programSprite, int programUi, int programBlur,
+                      int programCount, int blendCount) {
+	return programVertex == PIPELINE_VERTEX
+		&& programSprite == PIPELINE_SPRITE
+		&& programUi == PIPELINE_UI
+		&& programBlur == PIPELINE_BLUR
+		&& programCount == VOID2D_PROGRAM_COUNT
+		&& blendCount == VOID2D_BLEND_COUNT
+		&& commandFloats == CMD_FLOATS
 		&& effectFloats == EFFECT_FLOATS
 		&& vertexFloats == VERTEX_FLOATS
 		&& kindField == CMD_KIND
@@ -315,76 +314,99 @@ static int ensureVertexBuffer(int bytes) {
 }
 
 
+static const door_shader_fn VOID2D_PROGRAMS[VOID2D_PROGRAM_COUNT] = {
+	void2d_shader_desc,
+	sprite_shader_desc,
+	ui_shader_desc,
+	blur_shader_desc,
+};
+
+static void describeLayout(int32_t program, sg_vertex_layout_state *out) {
+	sg_pipeline_desc desc = {0};
+	switch (program) {
+	case PIPELINE_VERTEX:
+		desc.layout.attrs[ATTR_void2d_pos].format = SG_VERTEXFORMAT_FLOAT2;
+		desc.layout.attrs[ATTR_void2d_uv0].format = SG_VERTEXFORMAT_FLOAT2;
+		desc.layout.attrs[ATTR_void2d_color0].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case PIPELINE_SPRITE:
+		desc.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		desc.layout.attrs[ATTR_sprite_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		desc.layout.attrs[ATTR_sprite_corner].buffer_index = 0;
+		VOID2D_SPRITE_ATTRIBUTES(desc);
+		break;
+	case PIPELINE_UI:
+		desc.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+		desc.layout.attrs[ATTR_ui_corner].format = SG_VERTEXFORMAT_FLOAT2;
+		desc.layout.attrs[ATTR_ui_corner].buffer_index = 0;
+		VOID2D_UI_ATTRIBUTES(desc);
+		break;
+	case PIPELINE_BLUR:
+		desc.layout.attrs[ATTR_blur_pos].format = SG_VERTEXFORMAT_FLOAT2;
+		desc.layout.attrs[ATTR_blur_uv0].format = SG_VERTEXFORMAT_FLOAT2;
+		break;
+	default:
+		fprintf(stderr, "void2d: no vertex layout for program %d\n", program);
+		abort();
+	}
+	*out = desc.layout;
+}
+
+static int32_t s_programBase = -1;
+static int32_t s_layoutBase = -1;
+
+static void registerOnce(void) {
+	if (s_programBase >= 0) { return; }
+	sg_vertex_layout_state layouts[VOID2D_PROGRAM_COUNT];
+	int32_t programLayouts[VOID2D_PROGRAM_COUNT];
+	for (int32_t i = 0; i < VOID2D_PROGRAM_COUNT; i++) {
+		describeLayout(i, &layouts[i]);
+	}
+	s_layoutBase = doorRegisterLayouts(layouts, VOID2D_PROGRAM_COUNT);
+	for (int32_t i = 0; i < VOID2D_PROGRAM_COUNT; i++) {
+		programLayouts[i] = s_layoutBase + i;
+	}
+	s_programBase = doorRegisterPrograms(VOID2D_PROGRAMS, programLayouts, VOID2D_PROGRAM_COUNT);
+}
+
+int32_t void2dProgramBase(void) {
+	registerOnce();
+	return s_programBase;
+}
+
+int32_t void2dLayoutBase(void) {
+	registerOnce();
+	return s_layoutBase;
+}
+
+void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t pipeline) {
+	if (program < 0 || program >= VOID2D_PROGRAM_COUNT || target < 0 || target > 1
+		|| blend < 0 || blend >= VOID2D_BLEND_COUNT) {
+		fprintf(stderr, "void2d: no pipeline slot for program %d, target %d, blend %d\n",
+			program, target, blend);
+		abort();
+	}
+	s_pipelines[program][target][blend] = pipeline;
+}
+
+static sg_pipeline pipelineAt(int program, int target, int blend) {
+	const bool inRange = program >= 0 && program < VOID2D_PROGRAM_COUNT
+		&& target >= 0 && target <= 1 && blend >= 0 && blend < VOID2D_BLEND_COUNT;
+	const uint32_t id = inRange ? s_pipelines[program][target][blend] : 0;
+	if (id == 0) {
+		fprintf(stderr, "void2d: replay reached program %d, %s target, blend %d, "
+			"which flushTargets did not prepare\n",
+			program, target ? "offscreen" : "screen", blend);
+		abort();
+	}
+	return (sg_pipeline){ .id = id };
+}
+
 void void2dSetup(void) {
 	voidSetCommitHook(void2dFrameEnd);
 	(void)ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
 	s_originTopLeft = sg_query_features().origin_top_left;
-	sg_shader shd = sg_make_shader(void2d_shader_desc(sg_query_backend()));
-	struct { bool on; sg_blend_factor srgb, drgb, sa, da; } modes[VOID2D_BLEND_COUNT] = {
-		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 0 Alpha (premult)
-		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE,                 SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE                 }, // 1 Add (premult)
-		{ true,  SG_BLENDFACTOR_DST_COLOR, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SG_BLENDFACTOR_DST_ALPHA, SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 2 Multiply
-		{ true,  SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_COLOR, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA }, // 3 Screen
-		{ false, SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ZERO,                SG_BLENDFACTOR_ONE,       SG_BLENDFACTOR_ZERO                }, // 4 None
-	};
-	for (int i = 0; i < VOID2D_BLEND_COUNT; i++) {
-		sg_pipeline_desc pd = {0};
-		pd.shader = shd;
-		pd.layout.attrs[ATTR_void2d_pos].format = SG_VERTEXFORMAT_FLOAT2;
-		pd.layout.attrs[ATTR_void2d_uv0].format = SG_VERTEXFORMAT_FLOAT2;
-		pd.layout.attrs[ATTR_void2d_color0].format = SG_VERTEXFORMAT_FLOAT4;
-		pd.colors[0].blend.enabled = modes[i].on;
-		pd.colors[0].blend.src_factor_rgb = modes[i].srgb;
-		pd.colors[0].blend.dst_factor_rgb = modes[i].drgb;
-		pd.colors[0].blend.src_factor_alpha = modes[i].sa;
-		pd.colors[0].blend.dst_factor_alpha = modes[i].da;
-		s_pips[i] = sg_make_pipeline(&pd);
-		pd.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-		pd.sample_count = 1;
-		pd.depth.pixel_format = SG_PIXELFORMAT_NONE;
-		s_pipsRT[i] = sg_make_pipeline(&pd);
-	}
-
-	sg_shader spriteShd = sg_make_shader(sprite_shader_desc(sg_query_backend()));
-	for (int i = 0; i < VOID2D_BLEND_COUNT; i++) {
-		sg_pipeline_desc sd = {0};
-		sd.shader = spriteShd;
-		sd.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		sd.layout.attrs[ATTR_sprite_corner].format = SG_VERTEXFORMAT_FLOAT2;
-		sd.layout.attrs[ATTR_sprite_corner].buffer_index = 0;
-		VOID2D_SPRITE_ATTRIBUTES(sd);
-		sd.colors[0].blend.enabled = modes[i].on;
-		sd.colors[0].blend.src_factor_rgb = modes[i].srgb;
-		sd.colors[0].blend.dst_factor_rgb = modes[i].drgb;
-		sd.colors[0].blend.src_factor_alpha = modes[i].sa;
-		sd.colors[0].blend.dst_factor_alpha = modes[i].da;
-		s_spritePips[i] = sg_make_pipeline(&sd);
-		sd.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-		sd.sample_count = 1;
-		sd.depth.pixel_format = SG_PIXELFORMAT_NONE;
-		s_spritePipsRT[i] = sg_make_pipeline(&sd);
-	}
-
-	sg_shader uiShd = sg_make_shader(ui_shader_desc(sg_query_backend()));
-	for (int i = 0; i < VOID2D_BLEND_COUNT; i++) {
-		sg_pipeline_desc ud = {0};
-		ud.shader = uiShd;
-		ud.layout.buffers[1].step_func = SG_VERTEXSTEP_PER_INSTANCE;
-		ud.layout.attrs[ATTR_ui_corner].format = SG_VERTEXFORMAT_FLOAT2;
-		ud.layout.attrs[ATTR_ui_corner].buffer_index = 0;
-		VOID2D_UI_ATTRIBUTES(ud);
-		ud.colors[0].blend.enabled = modes[i].on;
-		ud.colors[0].blend.src_factor_rgb = modes[i].srgb;
-		ud.colors[0].blend.dst_factor_rgb = modes[i].drgb;
-		ud.colors[0].blend.src_factor_alpha = modes[i].sa;
-		ud.colors[0].blend.dst_factor_alpha = modes[i].da;
-		s_uiPips[i] = sg_make_pipeline(&ud);
-		ud.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-		ud.sample_count = 1;
-		ud.depth.pixel_format = SG_PIXELFORMAT_NONE;
-		s_uiPipsRT[i] = sg_make_pipeline(&ud);
-	}
 
 	// Six corners rather than four plus an index buffer. VOID2D.md records that the two have
 	// not been compared on a Mali or an Adreno; until they have, this is one 48-byte static
@@ -398,15 +420,6 @@ void void2dSetup(void) {
 	uqd.data = (sg_range){ .ptr = unit, .size = sizeof(unit) };
 	s_unitQuad = sg_make_buffer(&uqd);
 	s_buffersMade++;
-
-	sg_pipeline_desc bpd = {0};
-	bpd.shader = sg_make_shader(blur_shader_desc(sg_query_backend()));
-	bpd.layout.attrs[ATTR_blur_pos].format = SG_VERTEXFORMAT_FLOAT2;
-	bpd.layout.attrs[ATTR_blur_uv0].format = SG_VERTEXFORMAT_FLOAT2;
-	bpd.colors[0].pixel_format = SG_PIXELFORMAT_RGBA8;
-	bpd.sample_count = 1;
-	bpd.depth.pixel_format = SG_PIXELFORMAT_NONE;
-	s_blurPip = sg_make_pipeline(&bpd);
 
 	static const float fsq[24] = {
 		-1.0f, -1.0f, 0.0f, 0.0f,   1.0f, -1.0f, 1.0f, 0.0f,   1.0f, 1.0f, 1.0f, 1.0f,
@@ -661,8 +674,8 @@ int void2dActivateContext(int id) {
 // One separable-blur tap pass into the active offscreen RT pass: sample srcView with the
 // 9-tap kernel offset by (dirX,dirY) in UV space. Caller runs it twice (H then V) ping-ponging
 // between two RTs. dir = (radius/texW,0) horizontal, (0,radius/texH) vertical.
-void void2dBlur(uint32_t srcView, float dirX, float dirY) {
-	sg_apply_pipeline(s_blurPip);
+static void void2dBlur(uint32_t srcView, float dirX, float dirY, int blend) {
+	sg_apply_pipeline(pipelineAt(PIPELINE_BLUR, 1, blend));
 	sg_bindings b = {0};
 	b.vertex_buffers[0] = s_fsQuad;
 	b.views[VIEW_srcTex] = (sg_view){ .id = srcView };
@@ -946,7 +959,7 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	int count = (int)cmd[CMD_INSTANCE_COUNT];
 	if (count <= 0) { return; }
 
-	sg_pipeline pip = (rt ? s_spritePipsRT : s_spritePips)[blend];
+	sg_pipeline pip = pipelineAt(PIPELINE_SPRITE, rt, blend);
 	if (pip.id != *lastPipeline) {
 		sg_apply_pipeline(pip);
 		*lastPipeline = pip.id;
@@ -1000,7 +1013,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	int count = (int)cmd[CMD_INSTANCE_COUNT];
 	if (count <= 0) { return; }
 
-	sg_pipeline pip = (rt ? s_uiPipsRT : s_uiPips)[blend];
+	sg_pipeline pip = pipelineAt(PIPELINE_UI, rt, blend);
 	if (pip.id != *lastPipeline) {
 		sg_apply_pipeline(pip);
 		*lastPipeline = pip.id;
@@ -1081,7 +1094,7 @@ static void runCommands(const float *commands, int commandCount,
 			continue;
 		}
 		if (kind == CMD_KIND_BLUR) {
-			void2dBlur(void2dCommandView(cmd), cmd[CMD_ARG0], cmd[CMD_ARG1]);
+			void2dBlur(void2dCommandView(cmd), cmd[CMD_ARG0], cmd[CMD_ARG1], (int)cmd[CMD_BLEND]);
 			// It applied its own pipeline and bindings, so everything this loop remembers about
 			// what is bound is now wrong. A Draw after a Blur in the same pass would otherwise
 			// skip its own `sg_apply_pipeline` and draw the quad with the blur pipeline.
@@ -1114,7 +1127,6 @@ static void runCommands(const float *commands, int commandCount,
 		if (kind != CMD_KIND_DRAW) continue;
 
 		int blend = (int)cmd[CMD_BLEND];
-		if (blend < 0 || blend >= VOID2D_BLEND_COUNT) blend = 0;
 		uint32_t view = void2dCommandView(cmd);
 		if (view == 0) view = s_whiteView.id;
 
@@ -1135,7 +1147,7 @@ static void runCommands(const float *commands, int commandCount,
 
 		int count = (int)cmd[CMD_VERTEX_COUNT];
 		if (count <= 0) continue;
-		sg_pipeline pip = (rt ? s_pipsRT : s_pips)[blend];
+		sg_pipeline pip = pipelineAt(PIPELINE_VERTEX, rt, blend);
 		if (pip.id != lastPipeline) {
 			sg_apply_pipeline(pip);
 			lastPipeline = pip.id;

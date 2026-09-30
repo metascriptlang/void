@@ -22,6 +22,7 @@ import {
 	void2dScissorMin, void2dScissorMax,
 	void2dUiInstanceStride, void2dSpriteInstanceStride,
 	void2dPackChannel,
+	void2dProgramBase, void2dLayoutBase, void2dSetPipeline,
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
 import { beginGlyphFrame } from "./labelText";
@@ -45,10 +46,67 @@ import {
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
 	pushSpriteInstance, putSpriteInstance, recordSpriteDraw, pipelineAt, runOffset, commandView,
+	Program2D, PROGRAMS_2D, BLEND_MODES, PIPELINE_SLOTS, pipelineWanted, noPipelines,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, BlendMode, Smooth, rgba } from "./types";
 import { makeRenderTarget, destroyRenderTarget, renderTargetView } from "../sokol/gpu";
-import { PassState, passState, frameIndex } from "../gpu/door";
+import { PassState, PixelFormat, passState, frameIndex } from "../gpu/door";
+import { PipelineCache, pipelineFor } from "../gpu/pipeline";
+import { RenderState, Face, Compare, Blend } from "../gpu/state";
+import { TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
+
+const programBase: int32 = void2dProgramBase();
+const layoutBase: int32 = void2dLayoutBase();
+
+const OFFSCREEN_LAYOUT: TargetLayout = {
+	color0: PixelFormat.Rgba8,
+	color1: PixelFormat.None,
+	color2: PixelFormat.None,
+	color3: PixelFormat.None,
+	depth: PixelFormat.None,
+	sampleCount: 1,
+};
+
+let pipelines: PipelineCache = PipelineCache.empty();
+let resolvedPipelines: Vec<boolean> = noPipelines();
+
+function blendState(mode: BlendMode): RenderState {
+	const base: RenderState = RenderState.defaults()
+		.withCulling(Face.None)
+		.withDepth(false, Compare.Always);
+	return match (mode) {
+		BlendMode.Alpha => base.withBlend(Blend.One, Blend.OneMinusSourceAlpha),
+		BlendMode.Add => base.withBlend(Blend.One, Blend.One),
+		BlendMode.Multiply => ({
+			...base.withBlend(Blend.DestinationColor, Blend.OneMinusSourceAlpha),
+			blendAlphaSource: Blend.DestinationAlpha,
+		}),
+		BlendMode.Screen => ({
+			...base.withBlend(Blend.One, Blend.OneMinusSourceColor),
+			blendAlphaDestination: Blend.OneMinusSourceAlpha,
+		}),
+		BlendMode.None => base.withBlend(Blend.One, Blend.Zero),
+	};
+}
+
+function resolvePipelines(): void {
+	for (let slot: int32 = 0; slot < PIPELINE_SLOTS; slot++) {
+		if (resolvedPipelines[slot] || !pipelineWanted(slot)) { continue; }
+		const blend: int32 = slot % BLEND_MODES;
+		const target: int32 = (slot / BLEND_MODES) % 2;
+		const program: int32 = slot / (BLEND_MODES * 2);
+		const pipeline: uint32 = pipelineFor(
+			pipelines,
+			programBase + program,
+			layoutBase + program,
+			false,
+			blendState(blend as BlendMode),
+			target == 1 ? OFFSCREEN_LAYOUT : SWAPCHAIN_LAYOUT,
+		);
+		void2dSetPipeline(program, target, blend, pipeline);
+		resolvedPipelines[slot] = true;
+	}
+}
 
 export function allocRenderTarget(w: int32, h: int32): uint32 { return makeRenderTarget(w, h); }
 export function freeRenderTarget(rt: uint32): void { destroyRenderTarget(rt); }
@@ -397,6 +455,8 @@ export function setup2d(): void {
 		CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE,
 		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
 		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
+		Program2D.Vertex as int32, Program2D.Sprite as int32, Program2D.Ui as int32,
+		Program2D.Blur as int32, PROGRAMS_2D, BLEND_MODES,
 	) == 0) {
 		console.log("void2d: the display-list layout in displayList.ms and batcher.c disagree");
 		unreachable;
@@ -476,6 +536,7 @@ export function flushTargets(): void {
 	}
 	const l: DrawContext2D = currentContext();
 	resolveScopes();
+	resolvePipelines();
 	void2dSetDpiScale(l.frameDpi);
 	void2dSetScopes(l.scopeValues[0], l.scopeTotal);
 	const targets: int32 = l.targetsPending ? targetCommandCount() : 0;

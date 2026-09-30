@@ -196,8 +196,9 @@ function initMixed(): void {
 			fail("the registration preload ran in the wrong order");
 		}
 		if ((before && (program != 5 || layout != 3)) ||
-			(!before && (program != 16 || layout != 8))) {
-			fail("the foreign consumer did not get ids past the old 16-program, 8-layout width");
+			(!before && (program != 20 || layout != 12))) {
+			fail(`the foreign consumer got program ${program}, layout ${layout}, ` +
+				"not the ids past the old 16-program, 8-layout width");
 		}
 	}
 }

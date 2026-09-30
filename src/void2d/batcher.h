@@ -8,6 +8,9 @@
 
 void void2dSetup(void);
 uint32_t void2dWhiteView(void);
+int32_t void2dProgramBase(void);
+int32_t void2dLayoutBase(void);
+void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t pipeline);
 
 // Replay one frame's display list (src/void2d/displayList.ms) into the pass that is already
 // open. This is the ONLY function in this file that issues a draw, and it is called once per
@@ -51,7 +54,9 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int samplerCount, int maxTargetDepth, int clearRField,
                       int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
-                      int kindTargetBegin, int kindTargetEnd);
+                      int kindTargetBegin, int kindTargetEnd,
+                      int programVertex, int programSprite, int programUi, int programBlur,
+                      int programCount, int blendCount);
 
 uint32_t void2dCommandView(const float *cmd);
 void void2dCopyFloats(float *dst, const float *src, int count);
@@ -69,10 +74,6 @@ void void2dFrameBegin(void);
 // a frame may hold several; only this closes the frame.
 void void2dFrameEnd(void);
 int void2dFrameSerial(void);
-
-// One separable-blur tap pass (fullscreen) into the active offscreen RT pass — sample srcView
-// with a 9-tap Gaussian offset by (dirX,dirY) in UV. Run twice (H then V) ping-ponging two RTs.
-void void2dBlur(uint32_t srcView, float dirX, float dirY);
 
 // Frame counters, read by T1 and gated by T4 (docs/TESTING.md). GPUI counts none of them
 // (GPUI.md:62). `buffersAlive` is every sg_buffer this layer holds — one, now that the
