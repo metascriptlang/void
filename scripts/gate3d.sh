@@ -910,7 +910,7 @@ run_style() {
 		for path in $STYLE_PATHS; do
 			find "$path" -name '*.ms' 2>/dev/null
 		done | while read -r file; do
-			expand -t 4 "$file" | awk -v f="$file" 'length($0) > 100 { print f ":" FNR " (" length($0) " cols)" }'
+			expand -t 4 "$file" | LC_ALL=C.UTF-8 awk -v f="$file" 'length($0) > 100 { print f ":" FNR " (" length($0) " cols)" }'
 		done
 	)
 	if [ -n "$long" ]; then
