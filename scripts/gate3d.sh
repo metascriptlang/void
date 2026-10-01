@@ -966,10 +966,10 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms src/test/textureCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
 	src/assets/image.ms src/test/imageBytes.ms src/test/imageDecodeCheck.ms
-	src/test/gltfMaterialCheck.ms
+	src/test/gltfMaterialCheck.ms src/test/storeCheck.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/integration/texturedFrame.ms
 	tests/integration/perspectiveFrame.ms tests/integration/gltfFrame.ms
-	tests/integration/gpuRegistrationFixture.ms tests/aborts3d"
+	tests/integration/gpuRegistrationFixture.ms tests/integration/storeIdentity.ms tests/aborts3d"
 
 run_style() {
 	long=$(
@@ -1707,6 +1707,31 @@ run_gltf() {
 
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
+run_stores() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "stores: GATE_SKIP_CAPTURE=1 — the store identity consumer was not run"
+		return
+	fi
+	rm -f out/tmp/storeIdentity.exe
+	if ! msc build tests/integration/storeIdentity.ms --release --output=out/tmp/storeIdentity.exe 		> "$WORK/stores.build.log" 2>&1; then
+		fail "stores: tests/integration/storeIdentity.ms does not build"
+		tail -30 "$WORK/stores.build.log"
+		return
+	fi
+	status=0
+	out/tmp/storeIdentity.exe > "$WORK/stores.run.log" 2> "$WORK/stores.run.err" || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "stores: no readback backend — the store identity consumer was not run"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS store identity:' "$WORK/stores.run.log"; then
+		fail "stores: the store identity consumer failed (exit $status) — see $WORK/stores.run.log"
+		grep -E '^FAIL' "$WORK/stores.run.log" | sed 's/^/      /'
+		return
+	fi
+	pass "stores: two contexts refuse each other's meshes, materials, textures and blocks by name; an alias releases once"
+}
+
 run_both_layers() {
 	rm -f out/tmp/bothLayers.exe
 	if ! msc build tests/integration/bothLayers.ms --output=out/tmp/bothLayers.exe \
@@ -1839,6 +1864,7 @@ run_perspective
 run_textured
 run_gltf
 run_both_layers
+run_stores
 run_aborts
 run_manifest
 run_allocation
