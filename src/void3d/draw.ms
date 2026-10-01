@@ -1113,6 +1113,16 @@ function stopOnUnheldBlock(slot: int32): void {
 	unreachable;
 }
 
+function stopOnReplacedBlock(): void {
+	console.log("void3d: drawItem with a material whose block is not the one it was added with");
+	unreachable;
+}
+
+function stopOnReplacedTexture(): void {
+	console.log("void3d: drawItem with a material whose texture is not the one it was added with");
+	unreachable;
+}
+
 // One item into the current pass, whose attachments match `targets`, drawn with `program`:
 // the material's own, or the one a renderer draws in its place (programMap.ms). `globals` are
 // the pass-wide blocks (camera, lights) applied before the material's own.
@@ -1127,8 +1137,9 @@ export function drawItem(
 	for (const block of globals) {
 		if (!context.uniforms.holds(block)) { stopOnUnheldBlock(block.slot); }
 	}
+	if (!context.keepsItsUniforms(item.material)) { stopOnReplacedBlock(); }
+	if (!context.keepsItsTexture(item.material)) { stopOnReplacedTexture(); }
 	const material: Material = context.materials[item.material.index];
-	if (!context.uniforms.holds(material.uniforms)) { stopOnUnheldBlock(material.uniforms.slot); }
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
 	if (material.namesTexture() && context.textures[material.texture.index].view == 0) {
