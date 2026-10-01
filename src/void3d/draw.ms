@@ -140,6 +140,7 @@ export struct DoomedBuffer {
 // animation's, a material's hold on its texture. `materialBlocks` and `materialTextures` are the
 // range and the texture each material was added with, whatever its fields say later. `textures`
 // and `textureData` are one index space, as `meshes` and `meshData` are.
+// PENDING3D: store-serial-writable
 export interface DrawContext {
 	serial: int32;
 	meshes: Vec<GpuMesh>;
@@ -705,6 +706,10 @@ export function meshPinned(this context: DrawContext, id: MeshId): int32 {
 // counted since the last clearMeshTally. A freed id counts nothing: whoever pinned it let go.
 // Linear where a pairwise count would be quadratic in the holders checked.
 export function tallyMeshPin(context: DrawContext, id: MeshId): boolean {
+	if (!context.issuedMesh(id)) {
+		console.log("void3d: tallyMeshPin through a context that did not issue the mesh");
+		unreachable;
+	}
 	if (!context.hasMesh(id)) { return true; }
 	context.meshTally[id.index] = context.meshTally[id.index] + 1;
 	return context.meshTally[id.index] <= context.meshPins[id.index];
@@ -714,12 +719,18 @@ export function clearMeshTally(context: DrawContext, id: MeshId): void {
 	if (context.hasMesh(id)) { context.meshTally[id.index] = 0; }
 }
 
-function uniformsError(error: UniformError): MaterialError {
-	if (error == UniformError.Owned) { return MaterialError.SharedUniforms; }
-	if (error == UniformError.Foreign) { return MaterialError.ForeignUniforms; }
-	if (error == UniformError.Released) { return MaterialError.ReleasedUniforms; }
+function stopOnOwnError(error: UniformError): MaterialError {
 	console.log(`void3d: addMaterial got ${error.toString()} from the uniform pool`);
 	unreachable;
+}
+
+function uniformsError(error: UniformError): MaterialError {
+	return match (error) {
+		UniformError.Owned => MaterialError.SharedUniforms,
+		UniformError.Foreign => MaterialError.ForeignUniforms,
+		UniformError.Released => MaterialError.ReleasedUniforms,
+		UniformError.PoolFull | UniformError.WrongLength => stopOnOwnError(error),
+	};
 }
 
 // The material takes its uniform range with it: the range returns to the pool when the material
@@ -850,6 +861,10 @@ export function unpinMaterial(
 }
 
 export function tallyMaterialPin(context: DrawContext, id: MaterialId): boolean {
+	if (!context.issuedMaterial(id)) {
+		console.log("void3d: tallyMaterialPin through a context that did not issue the material");
+		unreachable;
+	}
 	if (!context.hasMaterial(id)) { return true; }
 	context.materialTally[id.index] = context.materialTally[id.index] + 1;
 	return context.materialTally[id.index] <= context.materialPins[id.index];

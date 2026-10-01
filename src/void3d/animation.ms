@@ -373,15 +373,22 @@ export function bindMeshFrames(
 	return Result.ok(found.value.index);
 }
 
-// Returns 1 when the node was given a new mesh, 0 when the frame it shows is still current.
-function frameError(error: SceneError): AnimationError {
-	if (error == SceneError.StaleMesh) { return AnimationError.StaleMesh; }
-	if (error == SceneError.ForeignMesh) { return AnimationError.ForeignMesh; }
-	if (error == SceneError.NotPinned) { return AnimationError.NotPinned; }
+function stopOnFrameError(error: SceneError): AnimationError {
 	console.log(`void3d: syncMeshFrame got ${error.toString()} from setMeshOf`);
 	unreachable;
 }
 
+function frameError(error: SceneError): AnimationError {
+	return match (error) {
+		SceneError.StaleMesh => AnimationError.StaleMesh,
+		SceneError.ForeignMesh => AnimationError.ForeignMesh,
+		SceneError.NotPinned => AnimationError.NotPinned,
+		SceneError.StaleNode | SceneError.NodeNotFound | SceneError.StaleMaterial |
+			SceneError.ForeignMaterial => stopOnFrameError(error),
+	};
+}
+
+// Returns 1 when the node was given a new mesh, 0 when the frame it shows is still current.
 export function syncMeshFrame(
 	ref animation: MeshFrameAnimation,
 	ref scene: Scene3D,

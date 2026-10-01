@@ -482,9 +482,11 @@ function drawBlit(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	const drawn: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
 	if (!drawn.ok) {
-		console.log(
-			"void3d: drawToScreen after the preset's blit material, texture or screen mesh changed",
-		);
+		const foreign: boolean = drawn.error == RendererError.ForeignMesh ||
+			drawn.error == RendererError.ForeignMaterial;
+		console.log(foreign ?
+			"void3d: drawToScreen through a context that did not make the preset" :
+			"void3d: drawToScreen after the preset's blit material, texture or screen mesh changed");
 		unreachable;
 	}
 }

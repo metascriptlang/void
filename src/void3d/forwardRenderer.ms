@@ -187,9 +187,11 @@ export function drawToScreen(ref renderer: ForwardRenderer, context: DrawContext
 	const copied: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
 	if (!copied.ok) {
-		console.log(
-			"void3d: drawToScreen after the preset's copy material, texture or screen mesh changed",
-		);
+		const foreign: boolean = copied.error == RendererError.ForeignMesh ||
+			copied.error == RendererError.ForeignMaterial;
+		console.log(foreign ?
+			"void3d: drawToScreen through a context that did not make the preset" :
+			"void3d: drawToScreen after the preset's copy material, texture or screen mesh changed");
 		unreachable;
 	}
 }

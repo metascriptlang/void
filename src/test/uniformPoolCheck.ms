@@ -10,7 +10,7 @@ import {
 	disownRange,
 } from "../void3d/uniformPool";
 
-const NONE: UniformBlock = { slot: 0, offset: -1, length: 0, generation: 0 };
+const NONE: UniformBlock = { store: 0, slot: 0, offset: -1, length: 0, generation: 0 };
 
 function reserved(pool: UniformPool, length: int32): UniformBlock {
 	return try reserveRange(pool, 2, length) catch NONE;

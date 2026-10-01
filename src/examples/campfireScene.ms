@@ -37,6 +37,8 @@ import {
 	GpuMesh,
 	MeshId,
 	MaterialId,
+	NO_MESH,
+	NO_MATERIAL,
 	MaterialError,
 	MeshUploadError,
 	StreamError,
@@ -232,8 +234,6 @@ const LOOK_RESTORED_AT: int32 = 15;
 // material, one for the ground's own lit material when it is greyed, and a billboard block each
 // for the grass and the flame.
 const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + 2 * BILLBOARD_UNIFORM_LENGTH;
-const UNSET_MESH: MeshId = { store: 0, index: -1, generation: 0 };
-const UNSET_MATERIAL: MaterialId = { store: 0, index: -1, generation: 0 };
 export enum CampfireError {
 	SetupRefused,
 	ViewRefused,
@@ -291,7 +291,7 @@ let flameFrames: MeshFrameAnimation = {
 	target: { index: NO_NODE_3D, generation: 0 },
 	meshes: [],
 	bound: false,
-	shown: UNSET_MESH,
+	shown: NO_MESH,
 };
 let logSpin: ObjectAnimation = ObjectAnimation.forClock(flameFrames.clock);
 let stoneFrames: MeshFrameAnimation = flameFrames;
@@ -307,13 +307,13 @@ let particlesWanted: boolean = false;
 let lookScheduleWanted: boolean = false;
 let groundSaturation: float32 = 0.0;
 let groundGreyOnCpu: boolean = false;
-let particleMaterial: MaterialId = UNSET_MATERIAL;
+let particleMaterial: MaterialId = NO_MATERIAL;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
 let snowNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
 let emberNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-let snowMesh: MeshId = UNSET_MESH;
-let emberMesh: MeshId = UNSET_MESH;
+let snowMesh: MeshId = NO_MESH;
+let emberMesh: MeshId = NO_MESH;
 const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
 const emberInstances: Vec<float32> = new Array(emberState().maxParts * PARTICLE_INSTANCE_STRIDE);
 
@@ -328,9 +328,9 @@ let flameImage: uint32 = 0;
 // material slots the re-made handles go back into.
 let tuftPixels: Vec<uint32> = [];
 let flamePixels: Vec<uint32> = [];
-let grassMesh: MeshId = UNSET_MESH;
-let grassMaterial: MaterialId = UNSET_MATERIAL;
-let flameMaterial: MaterialId = UNSET_MATERIAL;
+let grassMesh: MeshId = NO_MESH;
+let grassMaterial: MaterialId = NO_MATERIAL;
+let flameMaterial: MaterialId = NO_MATERIAL;
 let frameIndex: int32 = 0;
 let randomState: uint64 = 88172645463325252;
 let fireOffsetX: float32 = 0.0;
