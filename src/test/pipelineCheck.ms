@@ -381,7 +381,7 @@ test "releasing a cache of another GPU context drops its handles without destroy
 	assert cache.entries[0].pipeline == 0 && cache.shaders[0] == 0;
 }
 
-test "closing a cache of another GPU context forgets its handles and answers false after" {
+test "closing a cache of another GPU context empties it and answers false after" {
 	const cache: PipelineCache = PipelineCache.empty();
 	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
 	cache.shaders.push(9);
@@ -391,6 +391,7 @@ test "closing a cache of another GPU context forgets its handles and answers fal
 	assert cache.contains(litKey(false, sceneState())) && cache.declaresBlock(0, 0);
 	closePipelines(cache);
 	assert cache.isClosed();
-	assert cache.entries[0].pipeline == 0 && cache.shaders[0] == 0;
+	assert cache.entries.length == 0 && cache.shaders.length == 0;
+	assert cache.blockSlots.length == 0 && cache.descriptor.length == 0;
 	assert !cache.contains(litKey(false, sceneState())) && !cache.declaresBlock(0, 0);
 }

@@ -282,6 +282,10 @@ export function closePipelines(cache: PipelineCache): void {
 	if (cache.closed) { stopOnClosed("closePipelines"); }
 	if (passState() != PassState.None) { stopInsidePass("closePipelines"); }
 	releasePipelines(cache);
+	cache.entries = [];
+	cache.shaders = [];
+	cache.blockSlots = [];
+	cache.descriptor = [];
 	cache.closed = true;
 }
 
