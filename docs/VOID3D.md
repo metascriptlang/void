@@ -1117,11 +1117,13 @@ The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's
   glTF-Validator 2.0.0-dev.3.10 reports 0 errors, warnings, infos and hints. `.gitattributes`
   keeps `*.glb` byte for byte.
 
-**Acceptance.** `sh scripts/gate3d.sh` on the reviewed code (`4916e23`), installed msc
+**Acceptance.** `sh scripts/gate3d.sh` on the reviewed code (`b9860c0`), installed msc
 `5791eadd`, D3D11 on the shared Windows workstation: **GATE GREEN with 1 skipped stage**
-(`device`). The new hashes were adopted on `7e95e01` in their own commit (`88c868e`). The first
-gate with the `gltf` stage running, on `6d67b8b` without adoption, failed only on the missing
-`m23gltf*` hashes, and its readback checks passed. **1037/1037 tests**, +15 on M22: 5 image decoding, 7 glTF reading,
+(`device`). Every gate named here ran before the rebase over void2d's D1; the commits are named
+as they are on main. The new hashes were adopted on `e6563c4` in their own commit (`b77bff2`).
+The first gate with the `gltf` stage running, on `bde391d` without adoption, failed only on the
+missing `m23gltf*` hashes, and its readback checks passed. **1037/1037 tests**, +15 on M22:
+5 image decoding, 7 glTF reading,
 3 glTF into the context. **35 abort programs**, unchanged. **24 configurations / 96 frames
 match 72 hashes**: all 64 earlier hashes unchanged. Oracle 75 agree / 11 declared divergences;
 PENDING3D 26 rows. Churn: 310 frames, now also loading and releasing the glTF model every frame,
@@ -1171,7 +1173,7 @@ land gate (`9f41458`), which msc `35601908` built; not attributed further. Timin
     with the gate's stage skipping by the card's name; msc `5791eadd` builds it.
   - The gate's `GATE_ADOPT=1` reported "recorded 4 new hashes" for the M23 baselines and wrote
     none: `record_hash` rebuilds the manifest from `baseline_names`, which did not list them. The
-    names are listed now, and a key the list lacks fails its capture (`7e95e01`).
+    names are listed now, and a key the list lacks fails its capture (`e6563c4`).
   - Three gate lines counted "twenty-two" capture entries, right at `9f41458` and wrong once M23
     added three; they give no count now.
 
