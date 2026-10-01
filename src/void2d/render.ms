@@ -127,7 +127,7 @@ import {
 } from "./types";
 import { BlendMode } from "../gpu/state";
 import { RenderTarget } from "../gpu/target";
-import { PixelFormat } from "../gpu/door";
+import { PixelFormat, contextGeneration } from "../gpu/door";
 import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
@@ -985,7 +985,7 @@ const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 // h2d composes in one frame; past it the filter is skipped and says so once, rather than
 // failing inside sokol where the message names no node.
 const MAX_POOLED_TARGETS: int32 = 16;
-const poolTargets: Vec<RenderTarget> = [];
+let poolTargets: Vec<RenderTarget> = [];
 const NO_TARGET: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 let poolOwner: Vec<int32> = [];
 let poolSerial: Vec<int32> = [];
@@ -999,7 +999,17 @@ function stopOnRefusedTarget(w: int32, h: int32): RenderTarget {
 	unreachable;
 }
 
+function adoptPoolContext(): void {
+	const generation: int32 = contextGeneration();
+	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {
+		if (poolTargets[i].generation == generation) { continue; }
+		const stale: RenderTarget = poolTargets[i].forgotten();
+		poolTargets[i] = stale.resized(stale.width, stale.height);
+	}
+}
+
 function acquireTarget(w: int32, h: int32): RenderTarget {
+	adoptPoolContext();
 	const owner: DrawContext2D = currentContext();
 	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {
 		const free: boolean = contextSerial(poolOwner[i]) != poolSerial[i];
