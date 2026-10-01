@@ -42,7 +42,7 @@ import {
 	CMD_CLIP_V_X, CMD_CLIP_V_Y, CMD_CLIP_V_MIN, CMD_CLIP_V_MAX,
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
-	commandKindName, breakReasonName,
+	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
 	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField,
 } from "../../src/void2d/displayList";
@@ -917,5 +917,20 @@ test "text query bounds exclude editing gloop while its visible selection still 
 		assert x < 0.0 && x + w > 0.0;
 	}
 	assert selections == 1;
+	frameEnd();
+}
+
+test "a premultiplied tile carries its bit into the command and splits the run" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const straight = s.sprite(tile(11, 8.0, 8.0));
+	straight.addChild(s.sprite(tile(11, 8.0, 8.0).premultiplied()).at(8.0, 0.0));
+	begin2d(16.0, 16.0, 1.0);
+	straight.sync(identity2d(), true);
+	straight.draw(1.0, 16.0, 16.0);
+	finishRecording();
+	assert commandCount() == 2;
+	assert commandField(0, CMD_SAMPLER) < (SOURCE_PREMULTIPLIED as float32);
+	assert commandField(1, CMD_SAMPLER) >= (SOURCE_PREMULTIPLIED as float32);
+	assert commandField(1, CMD_BREAK) == (BreakReason.View as int32) as float32;
 	frameEnd();
 }
