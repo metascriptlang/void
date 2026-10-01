@@ -1,8 +1,8 @@
-import { gfxSetup, fbWidth, fbHeight, commit } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
-import { endPass } from "../../src/gpu/door";
+import { endPass, commit } from "../../src/gpu/door";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addBox } from "../../src/void3d/meshData";
 import { UniformError } from "../../src/void3d/uniformPool";

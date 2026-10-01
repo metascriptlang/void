@@ -3,9 +3,8 @@
 
 import { Vec4 } from "../math/math3d";
 import { Program } from "./gpu3d";
-import { PixelFormat, LoadAction, endPass } from "../gpu/door";
+import { PixelFormat, LoadAction, endPass, commit } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
-import { commit } from "../sokol/gpu";
 import { Material, Phase } from "./material";
 import {
 	RenderTarget,

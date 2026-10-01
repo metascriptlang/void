@@ -1,4 +1,6 @@
-import { gfxSetup, beginPass, endPass, commit } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/sokol/gpu";
+import { endPass, commit } from "../../src/gpu/door";
+import { beginScreenPass } from "../../src/gpu/target";
 import { setup2d, flushTargets, end2d } from "../../src/void2d/draw";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { add, paint } from "../../src/void2d/scene";
@@ -28,7 +30,7 @@ function drawScene(): void {
 	s.paint(120.0, 60.0, 1.0);
 	s.refreshScopes();
 	flushTargets();
-	beginPass(0.0, 0.0, 0.0, 1.0);
+	beginScreenPass({ x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
 	end2d();
 	endPass();
 	s.clearChanges();

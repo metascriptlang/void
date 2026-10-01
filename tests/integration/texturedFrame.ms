@@ -1,9 +1,10 @@
-import { gfxSetup, fbWidth, fbHeight, commit } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3, eulerQuat } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
 import {
 	endPass,
+	commit,
 	contextGeneration,
 	liveImages,
 	liveViews,

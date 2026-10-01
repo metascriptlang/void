@@ -22,8 +22,8 @@ import {
 	trs2d,
 	vec2,
 } from "./types";
-import { commit, fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
-import { PassState, passState, beginScreenPassWith, endPass } from "../gpu/door";
+import { fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
+import { PassState, passState, beginScreenPassWith, endPass, commit } from "../gpu/door";
 
 export function create(this typeof Scene2D, clear: Color): Scene2D {
 	const context: DrawContext2D = DrawContext2D.create();

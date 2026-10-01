@@ -575,9 +575,9 @@ import {
 import { PixelArtSettings } from "../../../src/void3d/pixelArtRenderer";
 import { CampfireError } from "../campfireScene";
 import { beginScreenPass } from "../../../src/gpu/target";
-import { endPass } from "../../../src/gpu/door";
+import { endPass, commit } from "../../../src/gpu/door";
 import { Vec4 } from "../../../src/math/math3d";
-import { fbWidth, fbHeight, commit } from "../../../src/sokol/gpu";
+import { fbWidth, fbHeight } from "../../../src/sokol/gpu";
 import { setup2d, begin2d, flushTargets, end2d, fillQuad } from "../../../src/void2d/draw";
 import { Color, vec2, rgba } from "../../../src/void2d/types";
 import { BlendMode } from "../../../src/gpu/state";

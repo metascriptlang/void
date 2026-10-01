@@ -8,7 +8,7 @@ import { PipelineCache, pipelineFor } from "../../src/gpu/pipeline";
 import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
 import { screenState } from "../../src/void3d/screenFx";
 import { openScreen } from "../../src/void3d/renderer";
-import { gfxSetup, fbWidth, fbHeight, commit } from "../../src/sokol/gpu";
+import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import {
 	setup2d,
 	begin2d,
@@ -25,7 +25,7 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../../src/void3d/gpu3d";
-import { endPass } from "../../src/gpu/door";
+import { endPass, commit } from "../../src/gpu/door";
 import { RenderState, BlendMode } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addBox } from "../../src/void3d/meshData";

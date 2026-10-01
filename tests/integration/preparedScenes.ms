@@ -1,7 +1,7 @@
 import { env } from "std/process";
-import { gfxSetup, commit } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/sokol/gpu";
 import { beginScreenPass } from "../../src/gpu/target";
-import { endPass } from "../../src/gpu/door";
+import { endPass, commit } from "../../src/gpu/door";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d } from "../../src/void2d/draw";
