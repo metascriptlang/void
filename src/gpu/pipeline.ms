@@ -14,6 +14,7 @@ import {
 	destroyShader,
 	destroyPipeline,
 	programCount,
+	contextGeneration,
 } from "./door";
 import {
 	DOOR_PIPELINE_SHADER,
@@ -171,8 +172,16 @@ function registered(program: int32): boolean {
 	return program >= 0 && program < programCount();
 }
 
+function adoptContext(ref cache: PipelineCache): void {
+	const generation: int32 = contextGeneration();
+	if (cache.generation == generation) { return; }
+	forgetPipelines(cache);
+	cache.generation = generation;
+}
+
 export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
 	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
+	adoptContext(cache);
 	for (let i = cache.shaders.length as int32; i <= program; i++) {
 		cache.shaders.push(0);
 		cache.blockSlots.push(0);
@@ -202,6 +211,7 @@ export function pipelineFor(
 	targets: TargetLayout,
 ): uint32 {
 	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
+	adoptContext(cache);
 	const concrete: TargetLayout = targets.resolved();
 	const key: PipelineKey = pipelineKey(program, layout, indexed, state, concrete);
 	let found: int32 = cache.entries.length as int32;
@@ -236,11 +246,13 @@ export function forgetPipelines(ref cache: PipelineCache): void {
 
 // Destroys every pipeline and shader, then forgets them.
 export function releasePipelines(ref cache: PipelineCache): void {
-	for (const entry of cache.entries) {
-		if (entry.pipeline != 0) { destroyPipeline(entry.pipeline); }
-	}
-	for (const shader of cache.shaders) {
-		destroyShader(shader);
+	if (cache.generation == contextGeneration()) {
+		for (const entry of cache.entries) {
+			if (entry.pipeline != 0) { destroyPipeline(entry.pipeline); }
+		}
+		for (const shader of cache.shaders) {
+			if (shader != 0) { destroyShader(shader); }
+		}
 	}
 	forgetPipelines(cache);
 }

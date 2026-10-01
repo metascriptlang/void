@@ -13,7 +13,7 @@ import {
 	doorProgram,
 	doorLayout,
 } from "../void3d/gpu3d";
-import { PixelFormat, LoadAction } from "../gpu/door";
+import { PixelFormat, LoadAction, contextGeneration } from "../gpu/door";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -24,8 +24,10 @@ import {
 } from "../gpu/target";
 import {
 	PipelineKey,
+	PipelineCache,
 	pipelineKey,
 	describePipeline,
+	releasePipelines,
 	IndexType,
 } from "../gpu/pipeline";
 import { UniformBlock, NO_UNIFORMS } from "../void3d/material";
@@ -369,3 +371,11 @@ test "a layout that names its formats is left as it is" {
 	assert resolved.depth == PixelFormat.DepthStencil && resolved.sampleCount == 4;
 }
 
+test "releasing a cache of another GPU context drops its handles without destroying them" {
+	let cache: PipelineCache = PipelineCache.empty();
+	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
+	cache.shaders.push(9);
+	cache.generation = contextGeneration() + 1;
+	releasePipelines(cache);
+	assert cache.entries[0].pipeline == 0 && cache.shaders[0] == 0;
+}
