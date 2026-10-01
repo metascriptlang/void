@@ -156,7 +156,7 @@ export function mixedVoid3dTarget(): Scene2D {
 		forward.colorTarget.asTexture(),
 		TARGET_WIDTH as float32,
 		TARGET_HEIGHT as float32,
-	);
+	).premultiplied();
 	s.add(s.sprite(view).at(TARGET_X, TARGET_Y));
 	return s;
 }

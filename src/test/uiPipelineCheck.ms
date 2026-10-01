@@ -32,7 +32,7 @@ function frame(): void {
 }
 
 function card(mode: InstanceMode, x: float32, size: float32, radius: float32): void {
-	drawUiInstance(0 as uint32, BlendMode.Alpha, {
+	drawUiInstance(0 as uint32, false, BlendMode.Alpha, {
 		...uiInstance(mode, identity2d(), x, 0.0, size, size, WHITE),
 		uvRadii: [radius, radius, radius, radius],
 		borders: [1.0, 1.0, 1.0, 1.0],
@@ -43,7 +43,7 @@ function card(mode: InstanceMode, x: float32, size: float32, radius: float32): v
 
 function sprite(x: float32): void {
 	drawSpriteAffine(
-		0 as uint32, BlendMode.Alpha, identity2d(),
+		0 as uint32, false, BlendMode.Alpha, identity2d(),
 		x, 0.0, 8.0, 8.0,
 		0.0, 0.0, 1.0, 1.0,
 		WHITE,

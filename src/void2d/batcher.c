@@ -389,6 +389,15 @@ void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t 
 	s_pipelines[program][target][blend] = pipeline;
 }
 
+static int samplerOf(const float *cmd) {
+	const int source = (int)cmd[CMD_SAMPLER];
+	return source < 0 || source >= 2 * SMP_COUNT ? 2 : source % SMP_COUNT;
+}
+
+static bool premultipliedSource(const float *cmd) {
+	return (int)cmd[CMD_SAMPLER] >= SMP_COUNT;
+}
+
 static bool sampledTarget(uint32_t view) {
 	if (view == 0) { return false; }
 	const sg_image image = sg_query_view_image((sg_view){ .id = view });
@@ -980,9 +989,7 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	b.vertex_buffer_offsets[1] = s_srcSpriteBase
 		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dSpriteInstance);
 	b.views[VIEW_spriteTex] = (sg_view){ .id = view };
-	int smpIndex = (int)cmd[CMD_SAMPLER];
-	if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }
-	b.samplers[SMP_spriteSmp] = s_smp[smpIndex];
+	b.samplers[SMP_spriteSmp] = s_smp[samplerOf(cmd)];
 	sg_apply_bindings(&b);
 
 	if (!*scissorApplied) {
@@ -993,9 +1000,8 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 	sprite_params_t sp = {0};
 	sp.viewport[0] = fbW;
 	sp.viewport[1] = fbH;
-	bool isRT = sampledTarget(view);
-	sp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
-	sp.viewport[3] = isRT ? 1.0f : 0.0f;
+	sp.viewport[2] = (sampledTarget(view) && !s_originTopLeft) ? 1.0f : 0.0f;
+	sp.viewport[3] = premultipliedSource(cmd) ? 1.0f : 0.0f;
 	const float *spriteScope = scopeOf(cmd);
 	if (spriteScope) { sp.shift[0] = spriteScope[0]; sp.shift[1] = spriteScope[1]; }
 	copyClipParams(sp.clipU, sp.clipV, cmd);
@@ -1034,9 +1040,7 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	b.vertex_buffer_offsets[1] = s_srcUiBase
 		+ (int)cmd[CMD_INSTANCE_OFFSET] * (int)sizeof(void2dUiInstance);
 	b.views[VIEW_uiTex] = (sg_view){ .id = view };
-	int smpIndex = (int)cmd[CMD_SAMPLER];
-	if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }
-	b.samplers[SMP_uiSmp] = s_smp[smpIndex];
+	b.samplers[SMP_uiSmp] = s_smp[samplerOf(cmd)];
 	sg_apply_bindings(&b);
 
 	if (!*scissorApplied) {
@@ -1166,9 +1170,7 @@ static void runCommands(const float *commands, int commandCount,
 		b.vertex_buffers[0] = s_srcVertex;
 		b.vertex_buffer_offsets[0] = s_srcVertexBase + (int)cmd[CMD_VERTEX_OFFSET] * VERTEX_FLOATS * (int)sizeof(float);
 		b.views[VIEW_tex] = (sg_view){ .id = view };
-		int smpIndex = (int)cmd[CMD_SAMPLER];
-		if (smpIndex < 0 || smpIndex >= SMP_COUNT) { smpIndex = 2; }
-		b.samplers[SMP_smp] = s_smp[smpIndex];
+		b.samplers[SMP_smp] = s_smp[samplerOf(cmd)];
 		sg_apply_bindings(&b);
 
 		// After a pipeline change the scissor is no longer in force, and the clip a command
@@ -1195,7 +1197,7 @@ static void runCommands(const float *commands, int commandCount,
 		bool effectIsIdentity = memcmp(matrix, s_identityMatrix, sizeof(s_identityMatrix)) == 0
 			&& addR == 0.0f && addG == 0.0f && addB == 0.0f && addA == 0.0f;
 		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
-		vp.viewport[3] = (isRT && effectIsIdentity) ? 1.0f : 0.0f;
+		vp.viewport[3] = (premultipliedSource(cmd) && effectIsIdentity) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.model1[2] = isGlyphPageView(view) ? 1.0f : 0.0f;
 		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;

@@ -328,7 +328,7 @@ function renderScaleGrid(s: Scene2D, i: int32, world: Transform2D, col: Color): 
 			const b = vec2(dx[ci + 1], dy[cj]) * world;
 			const c = vec2(dx[ci + 1], dy[cj + 1]) * world;
 			const d = vec2(dx[ci], dy[cj + 1]) * world;
-			imageQuadUV(t.view, u0, v0, u1, v1, a, b, c, d, col, blend);
+			imageQuadUV(t.view, t.alphaPremultiplied, u0, v0, u1, v1, a, b, c, d, col, blend);
 		}
 	}
 }
@@ -465,7 +465,7 @@ function emitRunBox(
 	const [x, y, w, h] = box;
 	if (w <= 0.0 || h <= 0.0) { return; }
 	const origin = vec2(x, y) * world;
-	drawUiInstance(sharedGlyphView(), blend,
+	drawUiInstance(sharedGlyphView(), false, blend,
 		uiInstance(InstanceMode.Box, world, origin.x, origin.y, w, h, fill));
 }
 
@@ -481,7 +481,7 @@ function emitRunLine(
 	const quadY: float32 = wavy ? y - h : y;
 	const quadH: float32 = wavy ? h * 3.0 : h;
 	const origin = vec2(x, quadY) * world;
-	drawUiInstance(sharedGlyphView(), blend, {
+	drawUiInstance(sharedGlyphView(), false, blend, {
 		...uiInstance(InstanceMode.Underline, world, origin.x, origin.y, w, quadH, fill),
 		borders: [h, wavy ? 1.0 : 0.0, 0.0, 0.0],
 	});
@@ -563,7 +563,7 @@ function emitSelection(blend: BlendMode, text: LabelText, world: Transform2D, na
 		const leading: float32 = text.style.lineSpacing * 0.5;
 		const h: float32 = line.height + text.style.lineSpacing;
 		const origin = vec2(x0 - SELECTION_GLOOP, line.top - leading) * world;
-		drawUiInstance(sharedGlyphView(), blend, {
+		drawUiInstance(sharedGlyphView(), false, blend, {
 			...uiInstance(
 				InstanceMode.Selection, world, origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h, fill,
 			),
@@ -647,7 +647,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		}
 		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
 		if (instanced) {
-			drawUiInstance(view, blend, {
+			drawUiInstance(view, false, blend, {
 				...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
 				uvRadii: [p.u0, p.v0, p.u1, p.v1],
 			});
@@ -656,7 +656,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 			const ry: float32 = affine.b * w;
 			const dx: float32 = affine.c * h;
 			const dy: float32 = affine.d * h;
-			imageQuadUV(view, p.u0, p.v0, p.u1, p.v1,
+			imageQuadUV(view, false, p.u0, p.v0, p.u1, p.v1,
 				vec2(x, y),
 				vec2(x + rx, y + ry),
 				vec2(x + rx + dx, y + ry + dy),
@@ -696,7 +696,7 @@ function emitStyledImage(
 	const fitted = fitImage(t, sizeX, sizeY, style.fit);
 	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
 	const origin = vec2(lbMin.x + fitted.x, lbMin.y + fitted.y) * world;
-	drawUiInstance(t.view, s.paints[i].blend, {
+	drawUiInstance(t.view, t.alphaPremultiplied, s.paints[i].blend, {
 		...uiInstance(InstanceMode.Image, world, origin.x, origin.y, fitted.w, fitted.h, col),
 		uvRadii: [fitted.u0, fitted.v0, fitted.u1, fitted.v1],
 		borders: [
@@ -727,16 +727,18 @@ function emitTiles(
 	const end: int32 = drawnEnd(s, p);
 	let open: boolean = false;
 	let view: uint32 = 0;
+	let premultiplied: boolean = false;
 	for (let k: int32 = s.tileGroups[p].first; k < end; k++) {
 		const t: Tile = cells[k].tile;
 		const m: Transform2D = world * cellMatrix(cells[k]);
 		const tint: Color = tileTint(cells[k].color, col);
 		const origin = vec2(t.dx, t.dy) * m;
 		if (instanced) {
-			if (!open || t.view != view) {
-				beginSprites(t.view, blend);
+			if (!open || t.view != view || t.alphaPremultiplied != premultiplied) {
+				beginSprites(t.view, t.alphaPremultiplied, blend);
 				open = true;
 				view = t.view;
+				premultiplied = t.alphaPremultiplied;
 			}
 			appendSprite(m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
 		} else {
@@ -851,7 +853,7 @@ function emitNode(
 					const sc: Color = st.shadowColor;
 					shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 				}
-				drawUiInstance(sharedGlyphView(), blend, {
+				drawUiInstance(sharedGlyphView(), false, blend, {
 					...uiInstance(InstanceMode.Box, world, qx, qy, qw, qh, col),
 					uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
 					borders: [borderL, borderT, borderR, borderB],
@@ -868,7 +870,7 @@ function emitNode(
 			const sheet: Tile = s.contents[i].tile;
 			if (!emitStyledImage(s, i, sheet, world, col, sizeX, sizeY, lbMin)) {
 				if (instanced) {
-					drawSpriteAffine(sheet.view, blend, world, tl.x, tl.y, sizeX, sizeY,
+					drawSpriteAffine(sheet.view, sheet.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
 						sheet.u0, sheet.v0, sheet.u1, sheet.v1, col);
 				} else {
 					imageQuad(sheet, tl, tr, br, bl, col, blend);
@@ -882,7 +884,7 @@ function emitNode(
 				const fr = s.anims[payload].frames[fi];
 				if (!emitStyledImage(s, i, fr, world, col, sizeX, sizeY, lbMin)) {
 					if (instanced) {
-						drawSpriteAffine(fr.view, blend, world, tl.x, tl.y, sizeX, sizeY,
+						drawSpriteAffine(fr.view, fr.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
 							fr.u0, fr.v0, fr.u1, fr.v1, col);
 					} else {
 						imageQuad(fr, tl, tr, br, bl, col, blend);
@@ -892,7 +894,7 @@ function emitNode(
 		},
 		DrawKind.Underline => {
 			if (uiInstancingAvailable()) {
-				drawUiInstance(sharedGlyphView(), blend, {
+				drawUiInstance(sharedGlyphView(), false, blend, {
 					...uiInstance(InstanceMode.Underline, world, tl.x, tl.y, sizeX, sizeY, col),
 					borders: [s.contents[i].borderL, s.contents[i].borderT, 0.0, 0.0],
 				});
@@ -904,7 +906,7 @@ function emitNode(
 		DrawKind.Selection => {
 			if (uiInstancingAvailable()) {
 				const band: Content2D = s.contents[i];
-				drawUiInstance(sharedGlyphView(), blend, {
+				drawUiInstance(sharedGlyphView(), false, blend, {
 					...uiInstance(InstanceMode.Selection, world, tl.x, tl.y, sizeX, sizeY, col),
 					borders: [band.w * 0.5, band.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
 					params1: [band.borderL, band.borderT, band.borderR, band.borderB],
@@ -922,7 +924,7 @@ function emitNode(
 			const ops: float32[] = geometry.records;
 			const opTotal: int32 = ops.length as int32;
 			if (opTotal == 0) {
-				drawMesh(geometry.mesh, geometry.view, blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
+				drawMesh(geometry.mesh, geometry.view, geometry.alphaPremultiplied, blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
 			} else {
 				const stride: int32 = GRAPHICS_OP_FLOATS;
 				for (let oi: int32 = 0; oi + stride <= opTotal; oi += stride) {
@@ -933,7 +935,7 @@ function emitNode(
 						setEffect(
 							s.paints[i].colorMatrix, s.paints[i].colorAdd, s.paints[i].colorKey,
 						);
-						drawMeshRange(geometry.mesh, offset, count, geometry.view, blend, world,
+						drawMeshRange(geometry.mesh, offset, count, geometry.view, geometry.alphaPremultiplied, blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					} else {
 						const c0: Color = rgba(
@@ -952,7 +954,7 @@ function emitNode(
 							ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
 							ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
 							c0, c1, c2);
-						drawMeshRange(geometry.mesh, offset, count, 0, blend, world,
+						drawMeshRange(geometry.mesh, offset, count, 0, false, blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					}
 				}
@@ -1067,7 +1069,7 @@ function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
-	imageQuad(tile(src.asTexture(), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
+	imageQuad(tile(src.asTexture(), w, h).premultiplied(), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 
@@ -1704,7 +1706,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// Composite at the exact logical extent represented by the physical target.
 	const qx1: float32 = xMin + logicalW;
 	const qy1: float32 = yMin + logicalH;
-	const rtTile = tile(src.asTexture(), rtW as float32, rtH as float32);
+	const rtTile = tile(src.asTexture(), rtW as float32, rtH as float32).premultiplied();
 	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
 	// target is always composited linear-clamp with no colour pipeline; the silhouette below
@@ -1739,7 +1741,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	const sharpTile = tile(rt.asTexture(), rtW as float32, rtH as float32);
+	const sharpTile = tile(rt.asTexture(), rtW as float32, rtH as float32).premultiplied();
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
 }

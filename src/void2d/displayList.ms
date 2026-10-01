@@ -82,6 +82,7 @@ export const CMD_BLEND: int32 = 5;
 // single bit when `tileWrap` arrived, so it is an index and not a flag.
 export const CMD_SAMPLER: int32 = 6;
 export const SAMPLER_COUNT: int32 = 4;
+export const SOURCE_PREMULTIPLIED: int32 = SAMPLER_COUNT;
 export const CMD_EFFECT: int32 = 7;
 export const CMD_CLIP_X: int32 = 8;
 export const CMD_CLIP_Y: int32 = 9;

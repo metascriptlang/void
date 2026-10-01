@@ -36,7 +36,7 @@ import {
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R,
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
-	SAMPLER_COUNT, samplerIndex,
+	SAMPLER_COUNT, SOURCE_PREMULTIPLIED, samplerIndex,
 	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded, spriteInstanceCount,
 	effectField, effectMatrix,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
@@ -431,14 +431,18 @@ function openRun(reason: BreakReason): void {
 	ctx.runOpen = true;
 }
 
-function useRun(pipeline: Pipeline, view: uint32, blend: BlendMode): void {
+function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend: BlendMode): void {
 	const ctx: DrawContext2D = currentContext();
-	if (ctx.runOpen && view == ctx.curView && blend == ctx.curBlend && ctx.curPipeline == pipeline) { return; }
+	const sampler: int32 = (ctx.curSampler % SOURCE_PREMULTIPLIED) +
+		(premultiplied ? SOURCE_PREMULTIPLIED : 0);
+	if (ctx.runOpen && view == ctx.curView && sampler == ctx.curSampler && blend == ctx.curBlend
+		&& ctx.curPipeline == pipeline) { return; }
 	const reason: BreakReason = !ctx.runOpen ? BreakReason.First
 		: (ctx.curPipeline != pipeline ? BreakReason.Pipeline
-		: (view != ctx.curView ? BreakReason.View : BreakReason.Blend));
+		: (view != ctx.curView || sampler != ctx.curSampler ? BreakReason.View : BreakReason.Blend));
 	closeRun();
 	ctx.curView = view;
+	ctx.curSampler = sampler;
 	ctx.curBlend = blend;
 	ctx.curPipeline = pipeline;
 	openRun(reason);
@@ -945,15 +949,16 @@ export function sceneSmoothDefault(): boolean {
 export function setSampler(smooth: Smooth, tileWrap: boolean): void {
 	const ctx: DrawContext2D = currentContext();
 	const on: boolean = smooth == Smooth.Inherit ? ctx.sceneSmooth : smooth == Smooth.On;
-	const want: int32 = samplerIndex(on, tileWrap);
+	const want: int32 = samplerIndex(on, tileWrap) +
+		(ctx.curSampler >= SOURCE_PREMULTIPLIED ? SOURCE_PREMULTIPLIED : 0);
 	if (want == ctx.curSampler) { return; }
 	closeRun();
 	ctx.curSampler = want;
 	openRun(BreakReason.Sampler);
 }
 
-function quad(view: uint32, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {
-	useRun(Pipeline.Vertex, view, blend);
+function quad(view: uint32, premultiplied: boolean, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {
+	useRun(Pipeline.Vertex, view, premultiplied, blend);
 	const x1: float32 = x + w;
 	const y1: float32 = y + h;
 	pushVertex(x, y, u0, v0, c.r, c.g, c.b, c.a);
@@ -965,11 +970,11 @@ function quad(view: uint32, blend: BlendMode, x: float32, y: float32, w: float32
 }
 
 export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode): void {
-	quad(void2dWhiteView(), blend, pos.x, pos.y, size.x, size.y, color, 0.0, 0.0, 1.0, 1.0);
+	quad(void2dWhiteView(), false, blend, pos.x, pos.y, size.x, size.y, color, 0.0, 0.0, 1.0, 1.0);
 }
 
 export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: BlendMode): void {
-	quad(t.view, blend, pos.x, pos.y, size.x, size.y, tint, t.u0, t.v0, t.u1, t.v1);
+	quad(t.view, t.alphaPremultiplied, blend, pos.x, pos.y, size.x, size.y, tint, t.u0, t.v0, t.u1, t.v1);
 }
 
 // Which pipeline set the following draws need: the offscreen one (single sample, no depth)
@@ -1075,6 +1080,7 @@ export function drawMeshRange(
 	vertexOffset: int32,
 	vertexTotal: int32,
 	view: uint32,
+	premultiplied: boolean,
 	blend: BlendMode,
 	m: Transform2D,
 	tint: Color,
@@ -1084,7 +1090,7 @@ export function drawMeshRange(
 	let upto: int32 = first + vertexTotal * VERTEX_FLOATS;
 	if (first < 0 || first >= (mesh.length as int32)) { return; }
 	if (upto > (mesh.length as int32)) { upto = mesh.length as int32; }
-	useRun(Pipeline.Vertex, view == 0 ? void2dWhiteView() : view, blend);
+	useRun(Pipeline.Vertex, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
 	for (let i: int32 = first; i + VERTEX_FLOATS <= upto; i = i + VERTEX_FLOATS) {
 		const lx: float32 = mesh[i];
 		const ly: float32 = mesh[i + 1];
@@ -1104,19 +1110,20 @@ export function drawMeshRange(
 export function drawMesh(
 	mesh: float32[],
 	view: uint32,
+	premultiplied: boolean,
 	blend: BlendMode,
 	m: Transform2D,
 	tint: Color,
 	alpha: float32,
 ): void {
 	drawMeshRange(mesh, 0, (mesh.length as int32) / VERTEX_FLOATS,
-		view, blend, m, tint, alpha);
+		view, premultiplied, blend, m, tint, alpha);
 }
 
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
 
-function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2, u0: float32, v0: float32, u1: float32, v1: float32, color: Color): void {
-	useRun(Pipeline.Vertex, view, blend);
+function quad4(view: uint32, premultiplied: boolean, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2, u0: float32, v0: float32, u1: float32, v1: float32, color: Color): void {
+	useRun(Pipeline.Vertex, view, premultiplied, blend);
 	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
 	pushVertex(b.x, b.y, u1, v0, color.r, color.g, color.b, color.a);
 	pushVertex(c.x, c.y, u1, v1, color.r, color.g, color.b, color.a);
@@ -1133,6 +1140,7 @@ function quad4(view: uint32, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec
 // caller makes, not a silent fallback: `spriteInstancingAvailable` is what render.ms asks.
 export function drawSpriteAffine(
 	view: uint32,
+	premultiplied: boolean,
 	blend: BlendMode,
 	world: Transform2D,
 	originX: float32,
@@ -1142,7 +1150,7 @@ export function drawSpriteAffine(
 	u0: float32, v0: float32, u1: float32, v1: float32,
 	color: Color,
 ): void {
-	beginSprites(view, blend);
+	beginSprites(view, premultiplied, blend);
 	appendSprite(world, originX, originY, sizeX, sizeY, u0, v0, u1, v1, color);
 }
 
@@ -1162,8 +1170,8 @@ export function rewriteSprite(
 	);
 }
 
-export function beginSprites(view: uint32, blend: BlendMode): void {
-	useRun(Pipeline.Sprite, view == 0 ? void2dWhiteView() : view, blend);
+export function beginSprites(view: uint32, premultiplied: boolean, blend: BlendMode): void {
+	useRun(Pipeline.Sprite, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
 }
 
 export function appendSprite(
@@ -1193,8 +1201,8 @@ export function appendSprite(
 // which is what forces its BoundsTree (guardrail 1).
 //
 // The modes that leave a lane unused pass zeros; `instance.ms` says which lane means what.
-export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance): void {
-	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, blend);
+export function drawUiInstance(view: uint32, premultiplied: boolean, blend: BlendMode, inst: UiInstance): void {
+	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
 	pushUiInstance(inst, originXOffset(), originYOffset());
 }
 
@@ -1228,14 +1236,14 @@ export function spriteInstancingAvailable(): boolean {
 }
 
 export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
-	quad4(void2dWhiteView(), blend, a, b, c, d, 0.0, 0.0, 1.0, 1.0, color);
+	quad4(void2dWhiteView(), false, blend, a, b, c, d, 0.0, 0.0, 1.0, 1.0, color);
 }
 
 export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
-	quad4(t.view, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
+	quad4(t.view, t.alphaPremultiplied, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
 }
 
 // explicit-UV textured quad — ScaleGrid 9-slice cells carry their own UV sub-rect.
-export function imageQuadUV(view: uint32, u0: float32, v0: float32, u1: float32, v1: float32, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
-	quad4(view, blend, a, b, c, d, u0, v0, u1, v1, color);
+export function imageQuadUV(view: uint32, premultiplied: boolean, u0: float32, v0: float32, u1: float32, v1: float32, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
+	quad4(view, premultiplied, blend, a, b, c, d, u0, v0, u1, v1, color);
 }

@@ -148,8 +148,8 @@ export function init2d(): void {
 	rtB = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
 	rtGlow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
 	rtShadow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
-	sceneObj.add(sceneObj.sprite(tile(rtGlow.asTexture(), 120.0, 120.0)).at(700.0, 262.0));
-	sceneObj.add(sceneObj.sprite(tile(rtShadow.asTexture(), 120.0, 120.0)).at(828.0, 262.0));
+	sceneObj.add(sceneObj.sprite(tile(rtGlow.asTexture(), 120.0, 120.0).premultiplied()).at(700.0, 262.0));
+	sceneObj.add(sceneObj.sprite(tile(rtShadow.asTexture(), 120.0, 120.0).premultiplied()).at(828.0, 262.0));
 
 	logo = logoNode;
 	green = greenNode;
@@ -213,7 +213,7 @@ export function present2d(): void {
 	// pass with nothing else open. The swapchain list stays empty here - the visible frame is
 	// `sc.present()` just below, which starts its own list.
 	const plus = rgba(1.0, 0.82, 0.35, 1.0);
-	const orig = tile(rtSrc.asTexture(), 256.0, 256.0);
+	const orig = tile(rtSrc.asTexture(), 256.0, 256.0).premultiplied();
 	const clearNone = rgba(0.0, 0.0, 0.0, 0.0);
 	begin2d(256.0, 256.0, 1.0);
 	beginTarget(rtSrc, 256.0, 256.0, 1.0, 0.0, 0.0, clearNone);
