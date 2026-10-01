@@ -5,6 +5,9 @@
 #include "bridge.h"
 #include "views.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+
 // --- Resource creation (sokol handle .id ↔ uint32) ---
 
 uint32_t voidMakeImage(const void *rgba, int w, int h) {
@@ -27,6 +30,25 @@ uint32_t voidMakeView(uint32_t image) {
 
 // --- Frame sequence ---
 
+static void stopOnSwapchainOutsideEnvironment(const sg_swapchain *swapchain) {
+	const sg_environment_defaults environment = sg_query_desc().environment.defaults;
+	const sg_pixel_format color = swapchain->color_format != _SG_PIXELFORMAT_DEFAULT
+		? swapchain->color_format : environment.color_format;
+	const sg_pixel_format depth = swapchain->depth_format != _SG_PIXELFORMAT_DEFAULT
+		? swapchain->depth_format : environment.depth_format;
+	const int samples = swapchain->sample_count != 0
+		? swapchain->sample_count : environment.sample_count;
+	if (color == environment.color_format && depth == environment.depth_format
+		&& samples == environment.sample_count) {
+		return;
+	}
+	fprintf(stderr, "void: the swapchain is color format %d, depth format %d, %d samples, but "
+		"screen pipelines are made for the environment's color format %d, depth format %d, "
+		"%d samples (sokol pixel formats)\n", (int)color, (int)depth, samples,
+		(int)environment.color_format, (int)environment.depth_format, environment.sample_count);
+	abort();
+}
+
 void voidBeginPass(float r, float g, float b, float a) {
 	sg_pass pass = {0};
 	pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
@@ -34,6 +56,7 @@ void voidBeginPass(float r, float g, float b, float a) {
 	pass.action.depth.load_action = SG_LOADACTION_CLEAR;
 	pass.action.depth.clear_value = 1.0f;
 	pass.swapchain = voidDriverSwapchain();
+	stopOnSwapchainOutsideEnvironment(&pass.swapchain);
 	sg_begin_pass(&pass);
 }
 
