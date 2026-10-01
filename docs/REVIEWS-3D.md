@@ -1655,22 +1655,22 @@ in the session before anything changed.
 
 ### Defect pass
 
-`/code-review high` on `431dc90..fcd5492`: ten candidates, each read against the code.
+`/code-review high` on `0048b18..801a0ab`: ten candidates, each read against the code.
 
 | Finding | Done |
 |---|---|
-| `pickNearest` reads a caller's tables with no store check | Carried to M25's row (`254965c`): the scene holds its context there. The headless pick tests build their tables without a GPU, so taking a context now would break them for one milestone |
-| `syncMeshFrame` and `addMaterial` map errors through a `_` arm | Every case named, the impossible ones stopping by name (`5e270cb`); made exhaustive `match`es again in `0abdf3f` after the design pass |
+| `pickNearest` reads a caller's tables with no store check | Carried to M25's row (`6bf51d5`): the scene holds its context there. The headless pick tests build their tables without a GPU, so taking a context now would break them for one milestone |
+| `syncMeshFrame` and `addMaterial` map errors through a `_` arm | Every case named, the impossible ones stopping by name (`ac3b615`); made exhaustive `match`es again in `13f478a` after the design pass |
 | Stale-or-foreign is chosen at about ten call sites | Kept: each layer maps to its own error enum, and the one predicate, `issued*`, is defined once in `draw.ms` |
-| `admitted` and `holds` both compare the store | One compare on success; `admitted` classifies only a refusal (`5e270cb`) |
-| `forMeshes` and `addGltfNodes` compare twice | `hasMesh` first, the classification only on failure (`5e270cb`) |
-| The `addMeshNode` comment says two `ref`-receiver functions collide | Measured with a value interface parameter (`out/tmp/overload/value`): the call is now refused at compile time, not silently wrong; comment and PENDING3D row rewritten (`254965c`) |
-| `run_stores` sat under the both-layers comment, its line continuation lost | Moved, continuation restored (`396315d`) |
-| Id literals leave `store` at 0 | `NO_MESH` and `NO_MATERIAL` exported, every literal writes its store (`5e270cb`, `0abdf3f`) |
-| The serial counters can overflow `int32` | They stop by name at the last value (`5e270cb`) |
+| `admitted` and `holds` both compare the store | One compare on success; `admitted` classifies only a refusal (`ac3b615`) |
+| `forMeshes` and `addGltfNodes` compare twice | `hasMesh` first, the classification only on failure (`ac3b615`) |
+| The `addMeshNode` comment says two `ref`-receiver functions collide | Measured with a value interface parameter (`out/tmp/overload/value`): the call is now refused at compile time, not silently wrong; comment and PENDING3D row rewritten (`6bf51d5`) |
+| `run_stores` sat under the both-layers comment, its line continuation lost | Moved, continuation restored (`a2d8cb6`) |
+| Id literals leave `store` at 0 | `NO_MESH` and `NO_MATERIAL` exported, every literal writes its store (`ac3b615`, `13f478a`) |
+| The serial counters can overflow `int32` | They stop by name at the last value (`ac3b615`) |
 
 Found by the gate, not the pass: the churn example's exhaustive `match` over `GltfSceneError`
-missed the new `ForeignMeshBinding` and stopped the churn build (`3a5e44f`).
+missed the new `ForeignMeshBinding` and stopped the churn build (`6acafbd`).
 
 ### Fresh design pass
 
@@ -1680,17 +1680,17 @@ frame loop allocates nothing; the rebuild captures stay byte-identical; no compi
 
 | Finding | Done |
 |---|---|
-| **Blocking:** `drawItem`, which is public, applied its pass-wide blocks without checking their pool, so another pool's block drew silently, and `applyBlock` would read past this pool's values for a block of a larger pool; `drawScreen` skipped `keepsItsUniforms` | `drawItem` stops by name on an item, a pass-wide block or a material block its context does not hold, before any GPU call; `drawScreen` returns `UniformsReplaced` (`d915bed`). Abort `drawItemForeignBlock`; control: without the check it runs past and stops later, unnamed. The first gate on it failed allocation (a string built in `drawItem`) and style; the messages moved into stop helpers off the frame path (`74e2b75`) |
+| **Blocking:** `drawItem`, which is public, applied its pass-wide blocks without checking their pool, so another pool's block drew silently, and `applyBlock` would read past this pool's values for a block of a larger pool; `drawScreen` skipped `keepsItsUniforms` | `drawItem` stops by name on an item, a pass-wide block or a material block its context does not hold, before any GPU call; `drawScreen` returns `UniformsReplaced` (`0112560`). Abort `drawItemForeignBlock`; control: without the check it runs past and stops later, unnamed. The first gate on it failed allocation (a string built in `drawItem`) and style; the messages moved into stop helpers off the frame path (`90b4cbd`) |
 | The draft's account of the red run did not match its log | Rewritten from `red-431dc90.log`, and the red program's first form named |
 | Texture and block had no control | Measured: each forced open fails exactly its own checks, four lines each |
-| The allocation stage did not list the new callees | `issuedMesh`, `issuedMaterial`, `uniformPool:admitted` listed (`a4bf5d6`) |
-| The review fix turned `match` into `if` chains | Exhaustive `match` with a stop helper as the arm value (`0abdf3f`) |
-| A comment moved off `syncMeshFrame` | Back above it (`0abdf3f`) |
+| The allocation stage did not list the new callees | `issuedMesh`, `issuedMaterial`, `uniformPool:admitted` listed (`b86bac7`) |
+| The review fix turned `match` into `if` chains | Exhaustive `match` with a stop helper as the arm value (`13f478a`) |
+| A comment moved off `syncMeshFrame` | Back above it (`13f478a`) |
 | Still missing left out `RenderTarget`, `Sampler`, `collect`, `filterFrustum`; "Data types" still said index and generation | Both written; "Data types" names the store (docs commit) |
-| `tallyMeshPin` and `tallyMaterialPin` answered "covered" for a foreign id | They stop by name (`0abdf3f`) |
+| `tallyMeshPin` and `tallyMaterialPin` answered "covered" for a foreign id | They stop by name (`13f478a`) |
 | The pick deferral's reason was weak | The as-built says how it is M25's to settle, not that it cannot be done |
 | Foreign as a `Result`, misuse as a stop: the rule was not written down | Written in the as-built, with Bevy's `Assets::get` and M19 |
-| `serial` is writable | PENDING3D `store-serial-writable`, a Parked-at site on card `2026-09-27-readonly-interface-field-unresolved-type.md` (`0abdf3f`) |
+| `serial` is writable | PENDING3D `store-serial-writable`, a Parked-at site on card `2026-09-27-readonly-interface-field-unresolved-type.md` (`13f478a`) |
 | Messages that misname a foreign case | `drawToScreen` names a context that did not make the preset; the camera and light writes cannot meet a foreign block, since the screen mesh is checked first |
 | The cost line counted only `DrawItem`; "neither reference has one" undersold Heaps' and Bevy's handles | Rewritten: `Material`, `MeshInstance`, `GltfMeshBinding` +8 bytes, a context two heap objects; both references route a release through the handle's store |
 
@@ -1712,20 +1712,21 @@ check. Bench CPU per frame 0.0966 ms against 0.0968 ms before. Its remaining poi
 
 ### The coordinating session's source review
 
-After the re-review, the session coordinating the unification read `drawItem` at `74e2b75` and
+After the re-review, the session coordinating the unification read `drawItem` at `90b4cbd` and
 found the same class as B1 one field over. Each finding was read against the code here first.
 
 | Finding | Done |
 |---|---|
-| `drawItem` and `bindItem` index the texture table at the material's `texture` without `keepsItsTexture`, so a caller who rewrites it to another store's id, a stale id or an index past the table reaches that index | `drawItem` requires `keepsItsTexture` before any index (`fa66e8d`); three abort programs, each with a control (`1b98e42`) |
-| `holds` on the material's block admits another live block of the same pool the material does not own | `keepsItsUniforms` in its place; two abort programs, live and released, each with a control (`1b98e42`) |
-| The presets' new screen-block checks had no red control | Headless, without each of the three a frame passes `prepareFrame` and makes its first GPU object (`sg_make_buffer` from `makeScreenTriangle`), and can run no further. On D3D11 in the `stores` consumer (`8d70170`): each replaced block refused before any pass, no new GPU object, a surviving context's frame its own colour; without each check the frame runs into its passes and fails late, the copy and the blit at `drawToScreen`'s stop, the post on a bare stop (exit 132) |
+| `drawItem` and `bindItem` index the texture table at the material's `texture` without `keepsItsTexture`, so a caller who rewrites it to another store's id, a stale id or an index past the table reaches that index | `drawItem` requires `keepsItsTexture` before any index (`4ca3705`); three abort programs, each with a control (`66eb1d3`) |
+| `holds` on the material's block admits another live block of the same pool the material does not own | `keepsItsUniforms` in its place; two abort programs, live and released, each with a control (`66eb1d3`) |
+| The presets' new screen-block checks had no red control | Headless, without each of the three a frame passes `prepareFrame` and makes its first GPU object (`sg_make_buffer` from `makeScreenTriangle`), and can run no further. On D3D11 in the `stores` consumer (`3e7101f`): each replaced block refused before any pass, no new GPU object, a surviving context's frame its own colour; without each check the frame runs into its passes and fails late, the copy and the blit at `drawToScreen`'s stop, the post on a bare stop (exit 132) |
 
 ### Final acceptance
 
-`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on `8d70170` (tree `5e255a4`,
-"test(void3d): replaced screen blocks refused before a pass on D3D11", clean): **GATE GREEN with
-1 skipped stage** (`device`).
+`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on the reviewed code
+(`3e7101f`, "test(void3d): replaced screen blocks refused before a pass on D3D11", clean tree)
+before the rebase over void2d's GPU-door closure (`122e515`): **GATE GREEN with 1 skipped stage**
+(`device`). Commits are named as rebased.
 The workstation's native capacity was rationed between sessions; each native run here had its own
 go from the coordinating session.
 
@@ -1735,7 +1736,7 @@ go from the coordinating session.
   materials, textures and blocks by name, an alias releases once, a reused slot is stale, and both
   presets refuse a replaced screen block before any pass while another context draws. Its
   controls (one kind forced open at a time) fail exactly that kind's checks; the red run on
-  `431dc90` failed 23.
+  `0048b18` failed 23.
 - Allocation scan clean, with the store checks on its lists; style clean; churn flat at 10
   buffers, 4 images and 2 samplers over 310 frames; bench flat.
 - **75 oracle agreements / 11 declared divergences**, **27 PENDING3D rows** (+1,

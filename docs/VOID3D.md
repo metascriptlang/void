@@ -1209,10 +1209,10 @@ land gate (`9f41458`), which msc `35601908` built; not attributed further. Timin
 
 ### M24 as built
 
-The rows are `3fb5ba1` and `431dc90`; the milestone is the commits after them on `wt/void3d-m5`,
-over main `e22b1fc`. The before control is the unify audit's
+The rows are `500cc09` and `0048b18`; the milestone is the commits after them on `wt/void3d-m5`,
+rebased over main `122e515`, void2d's GPU-door closure. The before control is the unify audit's
 (`void/out/tmp/unifyAcceptanceD0/evidence.zip`, run by the main Void session) and this
-milestone's consumer run on `431dc90`.
+milestone's consumer run on `0048b18`.
 
 - **The store is one reference** (`src/void3d/draw.ms`, `uniformPool.ms`). `DrawContext` and the
   `UniformPool` it holds are interfaces, as `Scene2D` and `DrawContext2D` are, so `let b = a` and
@@ -1271,7 +1271,7 @@ milestone's consumer run on `431dc90`.
 
 **Acceptance.** D3D11 on the shared Windows workstation, msc 0.2.55 at `5791eadd`.
 - Before: the audit's owner controls printed `BUG owner namespace` for a material and a texture.
-  On `431dc90`, `tests/integration/storeIdentity.ms` in its first form, which checked only that a
+  On `0048b18`, `tests/integration/storeIdentity.ms` in its first form, which checked only that a
   call was refused and had no mesh-alias checks (its source was not kept), failed 23 checks
   (`out/tmp/m24/red-431dc90.log`): B took each of A's four kinds; every retain, pin and release of
   A's ids went through on B's slots, so B's own block was released; B accepted a material naming
@@ -1303,11 +1303,13 @@ milestone's consumer run on `431dc90`.
   sokol frame reads back as its own background. Their controls, each check removed in turn, run
   into the frame's passes and fail late: the copy's and the blit's at `drawToScreen`'s stop, the
   post's on a bare stop with no message (exit 132), where `drawPost` meets `drawScreen`'s refusal.
+- Every run and control named here ran before the rebase over `122e515`; the commits are named
+  as rebased.
 - `sh scripts/gate3d.sh`: the receipt is in `docs/REVIEWS-3D.md` "M24", "Final acceptance". Two
-  runs failed on the way. On `396315d` the churn example's exhaustive `match` over
-  `GltfSceneError` missed `ForeignMeshBinding` and the example did not build (`3a5e44f`). On
-  `a4bf5d6` the allocation stage found a string built inside `drawItem`, and the style stage four
-  long lines (`74e2b75`).
+  runs failed on the way. On `a2d8cb6` the churn example's exhaustive `match` over
+  `GltfSceneError` missed `ForeignMeshBinding` and the example did not build (`6acafbd`). On
+  `b86bac7` the allocation stage found a string built inside `drawItem`, and the style stage four
+  long lines (`90b4cbd`).
 
 **Still missing after M24.**
 - Owners are still values: `Scene3D`, the renderers, `MeshFrameAnimation`, `GltfAssets` and
