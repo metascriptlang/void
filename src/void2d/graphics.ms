@@ -517,6 +517,7 @@ export function fillCheckerRect(
 export function fillTexRect(this g: NodeRef, t: Tile, x: float32, y: float32, w: float32, h: float32, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTexRect");
 	target.view = t.view;
+	target.alphaPremultiplied = t.alphaPremultiplied;
 	const a = vec2(x, y);
 	const b = vec2(x + w, y);
 	const c = vec2(x + w, y + h);
@@ -532,6 +533,7 @@ export function fillTexRect(this g: NodeRef, t: Tile, x: float32, y: float32, w:
 export function fillTexPolygon(this g: NodeRef, t: Tile, pts: Vec2[], originX: float32, originY: float32, tileW: float32, tileH: float32, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTexPolygon");
 	target.view = t.view;
+	target.alphaPremultiplied = t.alphaPremultiplied;
 	const idx: int32[] = triangulate(pts);
 	const tc: int32 = idx.length as int32;
 	const du: float32 = t.u1 - t.u0;

@@ -173,6 +173,7 @@ export interface GraphicsMesh {
 	vertexCount: int32;
 	records: float32[];
 	view: uint32;
+	alphaPremultiplied: boolean;
 	stale: boolean;
 }
 
@@ -738,7 +739,7 @@ export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
 }
 
 export function graphics(this s: Scene2D): NodeRef {
-	const row: GraphicsMesh = { mesh: [], vertexCount: 0, records: [], view: 0, stale: true };
+	const row: GraphicsMesh = { mesh: [], vertexCount: 0, records: [], view: 0, alphaPremultiplied: false, stale: true };
 	let payload: int32 = s.meshes.length as int32;
 	if ((s.freeMeshes.length as int32) > 0) {
 		payload = s.freeMeshes.pop();
@@ -897,6 +898,7 @@ export function clear(this n: NodeRef): NodeRef {
 	s.meshes[p].mesh = [];
 	s.meshes[p].records = [];
 	s.meshes[p].view = 0;
+	s.meshes[p].alphaPremultiplied = false;
 	s.meshes[p].stale = true;
 	s.markChanged(i, Changed.Content);
 	return n;
