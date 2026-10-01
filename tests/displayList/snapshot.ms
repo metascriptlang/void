@@ -57,7 +57,7 @@ import {
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
-import { PixelFormat } from "../../src/gpu/door";
+import { PixelFormat, contextGeneration } from "../../src/gpu/door";
 import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
@@ -545,6 +545,7 @@ test "T1 production emitters reach every batch-break reason" {
 		image: 1,
 		attachment: 2,
 		texture: 3,
+		generation: contextGeneration(),
 	};
 	beginTarget(target, 16.0, 16.0, 1.25, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));
 	assert currentRenderScale() == 1.25;

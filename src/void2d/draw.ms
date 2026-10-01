@@ -1009,6 +1009,7 @@ export function beginTarget(
 	if (target.format != PixelFormat.Rgba8 || target.attachment == 0 || scale <= 0.0) {
 		stopOnTarget(target, scale);
 	}
+	target.requireCurrent("beginTarget");
 	const rt: uint32 = target.attachment;
 	const ctx: DrawContext2D = currentContext();
 	ctx.targetsFlushed = false;
