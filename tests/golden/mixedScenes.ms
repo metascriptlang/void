@@ -3,6 +3,7 @@ import { add } from "../../src/void2d/scene";
 import { Color, tile } from "../../src/void2d/types";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
+import { RenderTarget } from "../../src/gpu/target";
 import {
 	Program,
 	MATERIAL_UNIFORM_SLOT,
@@ -152,7 +153,7 @@ export function mixedVoid3dTarget(): Scene2D {
 	}
 	const s = Scene2D.create(CLEAR_2D);
 	const view = tile(
-		forward.colorTarget.texture,
+		forward.colorTarget.asTexture(),
 		TARGET_WIDTH as float32,
 		TARGET_HEIGHT as float32,
 	);

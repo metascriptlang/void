@@ -792,13 +792,13 @@ function setupDraws(): Result<int32, CampfireError> {
 	const grassAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: grassTexture,
-		sampler0: pointSampler.handle,
+		sampler0: pointSampler.asHandle(),
 		uniforms: grassBlock,
 	});
 	const flameAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.plain(Program.Billboard, state, Phase.Opaque),
 		texture0: flameTexture,
-		sampler0: pointSampler.handle,
+		sampler0: pointSampler.asHandle(),
 		uniforms: flameBlock,
 	});
 	if (!grassAdded.ok || !flameAdded.ok) {
@@ -1163,7 +1163,7 @@ function forceRebuild(): void {
 	destroyImage(grassImage);
 	destroyView(flameTexture);
 	destroyImage(flameImage);
-	destroySampler(pointSampler.handle);
+	pointSampler = pointSampler.released();
 	grassBuffer = makeVertexBuffer(grassInstances);
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
 		const at: int32 = i * BILLBOARD_INSTANCE_STRIDE;
@@ -1175,9 +1175,9 @@ function forceRebuild(): void {
 	flameTexture = makeTextureView(flameImage);
 	pointSampler = Sampler.create(FilterMode.Nearest, Wrap.Clamp);
 	context.materials[grassMaterial.index].texture0 = grassTexture;
-	context.materials[grassMaterial.index].sampler0 = pointSampler.handle;
+	context.materials[grassMaterial.index].sampler0 = pointSampler.asHandle();
 	context.materials[flameMaterial.index].texture0 = flameTexture;
-	context.materials[flameMaterial.index].sampler0 = pointSampler.handle;
+	context.materials[flameMaterial.index].sampler0 = pointSampler.asHandle();
 	context.meshes[grassMesh.index].instanceBuffer = grassBuffer;
 	for (let i = 0; i < (flameBuffers.length as int32); i++) {
 		context.meshes[flameMeshes[i].index].instanceBuffer = flameBuffers[i];

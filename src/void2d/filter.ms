@@ -39,7 +39,7 @@ export function blurToTarget(
 	// The pooled result is smaller than `dst` by 2^k; the upscale is the linear filter doing
 	// the last, widest step of the blur, which is the point of downsampling in the first place.
 	beginTarget(dst, size, size, 1.0, 0.0, 0.0, zeroColor);
-	drawImage(tile(blurred.texture, size, size), vec2(0.0, 0.0), vec2(size, size),
+	drawImage(tile(blurred.asTexture(), size, size), vec2(0.0, 0.0), vec2(size, size),
 		white, BlendMode.None);
 	endTarget();
 }
@@ -58,7 +58,7 @@ export function drawSilhouette(
 	blend: BlendMode,
 ): void {
 	setEffect(colorMatrixAlphaOnly(gain), rgba(color.r, color.g, color.b, 0.0), zeroColor);
-	drawImage(tile(blurredRT.texture, w, h), vec2(x, y), vec2(w, h), white, blend);
+	drawImage(tile(blurredRT.asTexture(), w, h), vec2(x, y), vec2(w, h), white, blend);
 	setEffect(noMat, zeroColor, zeroColor);
 }
 

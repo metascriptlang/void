@@ -239,7 +239,7 @@ function drawMixed(withQuad: boolean): void {
 				screenState(), SWAPCHAIN_LAYOUT,
 			);
 			if (pipeline != reused) { fail("the door did not reuse the foreign pipeline"); }
-			drawForeign(pipeline, forward.colorTarget.texture, forward.sampler.handle);
+			drawForeign(pipeline, forward.colorTarget.asTexture(), forward.sampler.asHandle());
 		} else {
 			drawToScreen(forward, context);
 		}

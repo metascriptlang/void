@@ -164,8 +164,8 @@ export function prepareFrame(
 		adoptContext(renderer);
 	}
 	resizeTargets(renderer, width, height);
-	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.texture;
-	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.handle;
+	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.asTexture();
+	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.asHandle();
 
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
 	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);

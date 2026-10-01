@@ -438,21 +438,21 @@ function resizeTargets(ref renderer: PixelArtRenderer, width: int32, height: int
 // The screen materials sample the targets and the LUT, whose views change with a resize, a
 // palette upload or a new context; rewriting them each frame costs a few stores.
 function bindScreenTextures(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
-	const sampler: uint32 = renderer.sampler.handle;
+	const sampler: uint32 = renderer.sampler.asHandle();
 	const packedDepth: boolean = renderer.settings.depthSource == DepthSource.NormalAlpha;
 	const post: int32 = renderer.postMaterial.index;
-	context.materials[post].texture0 = renderer.colorTarget.texture;
-	context.materials[post].texture1 = renderer.normalTarget.texture;
+	context.materials[post].texture0 = renderer.colorTarget.asTexture();
+	context.materials[post].texture1 = renderer.normalTarget.asTexture();
 	context.materials[post].texture2 = packedDepth ?
-		renderer.normalTarget.texture :
-		renderer.depthTarget.texture;
+		renderer.normalTarget.asTexture() :
+		renderer.depthTarget.asTexture();
 	context.materials[post].texture3 = renderer.palette.texture;
 	context.materials[post].sampler0 = sampler;
 	context.materials[post].sampler1 = sampler;
 	const blit: int32 = renderer.blitMaterial.index;
 	context.materials[blit].texture0 = renderer.settings.postPass ?
-		renderer.postTarget.texture :
-		renderer.colorTarget.texture;
+		renderer.postTarget.asTexture() :
+		renderer.colorTarget.asTexture();
 	context.materials[blit].sampler0 = sampler;
 }
 

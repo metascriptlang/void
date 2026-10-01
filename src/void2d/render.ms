@@ -1050,12 +1050,12 @@ export function blurTargetPooled(
 	const tmp: RenderTarget = acquireTarget(sw, sh);
 	if (tmp.attachment == 0) { return NO_TARGET; }
 	beginTarget(tmp, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
-	blurPass(src.texture, 1.0 / (sw as float32), 0.0);
+	blurPass(src.asTexture(), 1.0 / (sw as float32), 0.0);
 	endTarget();
 	const out: RenderTarget = acquireTarget(sw, sh);
 	if (out.attachment == 0) { return NO_TARGET; }
 	beginTarget(out, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
-	blurPass(tmp.texture, 0.0, 1.0 / (sh as float32));
+	blurPass(tmp.asTexture(), 0.0, 1.0 / (sh as float32));
 	endTarget();
 	return out;
 }
@@ -1067,7 +1067,7 @@ function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
 	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
-	imageQuad(tile(src.texture, w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
+	imageQuad(tile(src.asTexture(), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 
@@ -1704,7 +1704,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// Composite at the exact logical extent represented by the physical target.
 	const qx1: float32 = xMin + logicalW;
 	const qy1: float32 = yMin + logicalH;
-	const rtTile = tile(src.texture, rtW as float32, rtH as float32);
+	const rtTile = tile(src.asTexture(), rtW as float32, rtH as float32);
 	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
 	// target is always composited linear-clamp with no colour pipeline; the silhouette below
@@ -1739,7 +1739,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	const sharpTile = tile(rt.texture, rtW as float32, rtH as float32);
+	const sharpTile = tile(rt.asTexture(), rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
 }
