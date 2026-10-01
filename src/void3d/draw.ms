@@ -1103,6 +1103,16 @@ function bindItem(context: DrawContext, mesh: GpuMesh, material: Material): void
 	applyBindings(context.bindings);
 }
 
+function stopOnUnheldItem(): void {
+	console.log("void3d: drawItem on an item its context does not hold; beginFrame refuses one");
+	unreachable;
+}
+
+function stopOnUnheldBlock(slot: int32): void {
+	console.log(`void3d: drawItem with a block at slot ${slot} its context does not hold`);
+	unreachable;
+}
+
 // One item into the current pass, whose attachments match `targets`, drawn with `program`:
 // the material's own, or the one a renderer draws in its place (programMap.ms). `globals` are
 // the pass-wide blocks (camera, lights) applied before the material's own.
@@ -1113,20 +1123,12 @@ export function drawItem(
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
-	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) {
-		console.log("void3d: drawItem on an item its context does not hold; beginFrame refuses one");
-		unreachable;
-	}
+	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { stopOnUnheldItem(); }
 	for (const block of globals) {
-		if (!context.uniforms.holds(block)) {
-			console.log(`void3d: drawItem with a block at slot ${block.slot} its context does not hold`);
-			unreachable;
-		}
+		if (!context.uniforms.holds(block)) { stopOnUnheldBlock(block.slot); }
 	}
-	if (!context.uniforms.holds(context.materials[item.material.index].uniforms)) {
-		console.log("void3d: drawItem with a material block its context does not hold");
-		unreachable;
-	}
+	const own: UniformBlock = context.materials[item.material.index].uniforms;
+	if (!context.uniforms.holds(own)) { stopOnUnheldBlock(own.slot); }
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
 	const material: Material = context.materials[item.material.index];

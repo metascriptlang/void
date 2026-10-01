@@ -481,14 +481,7 @@ function drawPost(ref renderer: PixelArtRenderer, context: DrawContext): void {
 function drawBlit(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	const drawn: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
-	if (!drawn.ok) {
-		const foreign: boolean = drawn.error == RendererError.ForeignMesh ||
-			drawn.error == RendererError.ForeignMaterial;
-		console.log(foreign ?
-			"void3d: drawToScreen through a context that did not make the preset" :
-			"void3d: drawToScreen after the preset's blit material, texture or screen mesh changed");
-		unreachable;
-	}
+	if (!drawn.ok) { stopOnScreenDraw(drawn.error); }
 }
 
 function fromCore(error: RendererError): PixelArtError {
@@ -612,6 +605,17 @@ export function prepareFrame(
 	renderer.view = view;
 	closePrepare(renderer.core);
 	return Result.ok((items.length as int32) - renderer.core.culledCount);
+}
+
+function stopOnScreenDraw(error: RendererError): void {
+	if (error == RendererError.ForeignMesh || error == RendererError.ForeignMaterial) {
+		console.log("void3d: drawToScreen through a context that did not make the preset");
+		unreachable;
+	}
+	console.log(
+		"void3d: drawToScreen after the preset's blit material, texture or screen mesh changed",
+	);
+	unreachable;
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.

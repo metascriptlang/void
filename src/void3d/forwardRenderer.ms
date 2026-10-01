@@ -179,6 +179,17 @@ export function prepareFrame(
 	return Result.ok((items.length as int32) - renderer.core.culledCount);
 }
 
+function stopOnScreenDraw(error: RendererError): void {
+	if (error == RendererError.ForeignMesh || error == RendererError.ForeignMaterial) {
+		console.log("void3d: drawToScreen through a context that did not make the preset");
+		unreachable;
+	}
+	console.log(
+		"void3d: drawToScreen after the preset's copy material, texture or screen mesh changed",
+	);
+	unreachable;
+}
+
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 // PENDING3D: screen-output-swapchain-only
 // PENDING3D: copy-opaque
@@ -186,14 +197,7 @@ export function drawToScreen(ref renderer: ForwardRenderer, context: DrawContext
 	openScreen(renderer.core);
 	const copied: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
-	if (!copied.ok) {
-		const foreign: boolean = copied.error == RendererError.ForeignMesh ||
-			copied.error == RendererError.ForeignMaterial;
-		console.log(foreign ?
-			"void3d: drawToScreen through a context that did not make the preset" :
-			"void3d: drawToScreen after the preset's copy material, texture or screen mesh changed");
-		unreachable;
-	}
+	if (!copied.ok) { stopOnScreenDraw(copied.error); }
 }
 
 export function renderFrame(
