@@ -253,8 +253,7 @@ export function pipelineFor(
 
 // After a context loss: the GPU objects are gone, so only the handles are dropped. Keys stay,
 // and each pipeline is rebuilt on its next pipelineFor.
-export function forgetPipelines(cache: PipelineCache): void {
-	if (cache.closed) { stopOnClosed("forgetPipelines"); }
+function forgetPipelines(cache: PipelineCache): void {
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		cache.entries[i].pipeline = 0;
 	}
