@@ -265,3 +265,48 @@ test "mesh frames refuse another context's meshes by name" {
 	assert !synced.ok && synced.error == AnimationError.ForeignMesh;
 	assert b.meshPinned(b.meshAt(1)) == 1;
 }
+
+test "both presets refuse a frame whose own screen material's block was replaced, before any pass" {
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	let none: Vec<DrawItem> = [];
+	let background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	let made: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + 4);
+	const forward: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(made, background);
+	const spare: Result<UniformBlock, UniformError> = reserveUniforms(made, 3, 4);
+	assert forward.ok && spare.ok;
+	if (!forward.ok || !spare.ok) { return; }
+	let copy: ForwardRenderer = forward.value;
+	made.materials[copy.copyMaterial.index].uniforms = spare.value;
+	const copied: Result<int32, ForwardError> =
+		renderFrame(copy, made, none, camera, lights, 640, 480);
+	assert !copied.ok && copied.error == ForwardError.UniformsReplaced;
+	assert copy.core.generation == 0 && copy.colorTarget.image == 0;
+	let look: PixelArtLook = {
+		background: background,
+		outline: {
+			depthThreshold: 0.006,
+			normalThreshold: 0.6,
+			depthShade: 0.55,
+			normalShade: 1.35,
+		},
+		fog: { start: 0.5, end: 0.8, strength: 0.0, color: background },
+		saturation: 0.0,
+	};
+	let view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	for (const post of [true, false]) {
+		let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + 4);
+		const preset: Result<PixelArtRenderer, PixelArtError> =
+			PixelArtRenderer.create(context, PixelArtSettings.full(), look);
+		const block: Result<UniformBlock, UniformError> = reserveUniforms(context, 3, 4);
+		assert preset.ok && block.ok;
+		if (!preset.ok || !block.ok) { return; }
+		let pixelArt: PixelArtRenderer = preset.value;
+		const screen: MaterialId = post ? pixelArt.postMaterial : pixelArt.blitMaterial;
+		context.materials[screen.index].uniforms = block.value;
+		const drawn: Result<int32, PixelArtError> =
+			renderPixelArt(pixelArt, context, none, camera, lights, view);
+		assert !drawn.ok && drawn.error == PixelArtError.UniformsReplaced;
+		assert pixelArt.core.generation == 0;
+	}
+}

@@ -468,8 +468,8 @@ function drawScene(
 	endPass();
 }
 
-// prepareFrame refused the frame before any pass if either screen material, its texture or the
-// screen mesh were gone.
+// prepareFrame refused the frame before any pass if either screen material, its texture, its block
+// or the screen mesh were gone.
 function drawPost(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	beginPass(renderer.postColors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
@@ -570,6 +570,9 @@ export function prepareFrame(
 	let kept: boolean = context.keepsItsTexture(renderer.postMaterial) &&
 		context.keepsItsTexture(renderer.blitMaterial);
 	if (!kept) { return Result.err(PixelArtError.TextureReplaced); }
+	const blocksKept: boolean = context.keepsItsUniforms(renderer.postMaterial) &&
+		context.keepsItsUniforms(renderer.blitMaterial);
+	if (!blocksKept) { return Result.err(PixelArtError.UniformsReplaced); }
 	if (!rampsHaveLevels(renderer.core.programs, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}

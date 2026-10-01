@@ -162,6 +162,9 @@ export function prepareFrame(
 	if (!context.keepsItsTexture(renderer.copyMaterial)) {
 		return Result.err(ForwardError.TextureReplaced);
 	}
+	if (!context.keepsItsUniforms(renderer.copyMaterial)) {
+		return Result.err(ForwardError.UniformsReplaced);
+	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, context, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
