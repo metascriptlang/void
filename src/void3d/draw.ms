@@ -1127,11 +1127,10 @@ export function drawItem(
 	for (const block of globals) {
 		if (!context.uniforms.holds(block)) { stopOnUnheldBlock(block.slot); }
 	}
-	const own: UniformBlock = context.materials[item.material.index].uniforms;
-	if (!context.uniforms.holds(own)) { stopOnUnheldBlock(own.slot); }
+	const material: Material = context.materials[item.material.index];
+	if (!context.uniforms.holds(material.uniforms)) { stopOnUnheldBlock(material.uniforms.slot); }
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
-	const material: Material = context.materials[item.material.index];
 	if (material.namesTexture() && context.textures[material.texture.index].view == 0) {
 		return;
 	}
