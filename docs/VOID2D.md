@@ -2152,6 +2152,12 @@ abort stage) unless named otherwise.
     `shaderFor`'s stops it, without the second-close check release's does, without release's
     own check the then-exported `forgetPipelines`'s did, and without `shaderFor`'s check a
     device-free call reaches the unregistered-program stop.
+  - Measured on tree `e9b879b1ceff` (tip `950f274`), BUILD `5791eadd`, shared box: `sh
+    scripts/gate3d.sh` GREEN, 130 stages, its device SKIP, 73 aborts with the six above;
+    `sh scripts/gate.sh --web` GREEN with its 8 loud skips: 1128 + 299 tests, the consumer's
+    stage, D3D11 78/78, WebGL2 56 identical / 18 bounded / the same four known-red, 107 frame
+    functions / 245 callees, 16 PENDING, web 2 345 812 / 2 118 001 B (1 068 / 1 072 B over
+    `7cf741d`, M24 included). Logs: `out/tmp/cacheOwnerGate/`.
 - **Premultiplied, declared per draw.** A `Tile` says whether its texels are premultiplied
   (`alphaPremultiplied`, set by `.premultiplied()`, false by default, as Heaps' texture flag
   `h3d/mat/Data.hx:110` and Bevy's alpha modes default to straight). Every draw that takes a raw

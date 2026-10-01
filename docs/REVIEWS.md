@@ -1420,6 +1420,13 @@ CPU property kept in the GPU consumer by agreement; every pin can fail. Compiler
 workaround; the writable field is carded and recorded. Â§14: clean. Refuse to merge: only before
 the gates are green.
 
+**Measured on tree `e9b879b1ceff` (tip `950f274`), BUILD `5791eadd`, shared box:** `sh
+scripts/gate3d.sh` is GREEN, 130 stages and its device SKIP, the six cache pins among its 73
+aborts; `sh scripts/gate.sh --web` is GREEN with its 8 loud skips: 1128 tests plus 299
+isolated, the pipeline cache owner stage, D3D11 78/78, WebGL2 56 identical / 18 bounded / the
+same four known-red, 107 frame functions / 245 callees, 16 PENDING, web builds 2 345 812 /
+2 118 001 B. Logs: `out/tmp/cacheOwnerGate/`.
+
 **Carried:** every cache field is writable through any alias (VOID2D.md "Open"); `gate3d.sh`
 evicts only `*door*` objects from `out/debug/.cache`, so a later `door.h` layout or macro edit
 that leaves `pipeline.ms`'s C text unchanged could link a stale object there until the
