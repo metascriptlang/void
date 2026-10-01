@@ -167,8 +167,12 @@ function stopOnRefusedPipeline(key: PipelineKey): uint32 {
 	unreachable;
 }
 
+function registered(program: int32): boolean {
+	return program >= 0 && program < programCount();
+}
+
 export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
-	if (program < 0 || program >= programCount()) { return stopOnUnregisteredProgram(program); }
+	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
 	for (let i = cache.shaders.length as int32; i <= program; i++) {
 		cache.shaders.push(0);
 		cache.blockSlots.push(0);
@@ -197,7 +201,9 @@ export function pipelineFor(
 	state: RenderState,
 	targets: TargetLayout,
 ): uint32 {
-	const key: PipelineKey = pipelineKey(program, layout, indexed, state, targets);
+	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
+	const concrete: TargetLayout = targets.resolved();
+	const key: PipelineKey = pipelineKey(program, layout, indexed, state, concrete);
 	let found: int32 = cache.entries.length as int32;
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		if (cache.entries[i].key == key) {
@@ -206,7 +212,7 @@ export function pipelineFor(
 		}
 	}
 	const shader: uint32 = shaderFor(cache, program);
-	describePipeline(cache.descriptor, shader, layout, indexed, state, targets);
+	describePipeline(cache.descriptor, shader, layout, indexed, state, concrete);
 	const pipeline: uint32 = makePipeline(cache.descriptor);
 	if (pipeline == 0) { return stopOnRefusedPipeline(key); }
 	if (found == (cache.entries.length as int32)) {

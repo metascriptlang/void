@@ -17,6 +17,9 @@ import {
 	destroySampler,
 	beginPassWith,
 	beginScreenPassWith,
+	environmentColorFormat,
+	environmentDepthFormat,
+	environmentSampleCount,
 } from "./door";
 import { FilterMode, Wrap } from "./state";
 import {
@@ -197,6 +200,45 @@ export function layoutOf(colors: Span<ColorAttachment>, depth: DepthAttachment):
 		depth: depth.format,
 		sampleCount: 1,
 	};
+}
+
+export function environment(this typeof TargetLayout): TargetLayout {
+	return {
+		color0: environmentColorFormat(),
+		color1: PixelFormat.None,
+		color2: PixelFormat.None,
+		color3: PixelFormat.None,
+		depth: environmentDepthFormat(),
+		sampleCount: environmentSampleCount(),
+	};
+}
+
+function resolvedFormat(format: PixelFormat, environment: PixelFormat): PixelFormat {
+	return format == PixelFormat.Default ? environment : format;
+}
+
+export function resolvedIn(this layout: TargetLayout, environment: TargetLayout): TargetLayout {
+	return {
+		color0: resolvedFormat(layout.color0, environment.color0),
+		color1: resolvedFormat(layout.color1, environment.color0),
+		color2: resolvedFormat(layout.color2, environment.color0),
+		color3: resolvedFormat(layout.color3, environment.color0),
+		depth: resolvedFormat(layout.depth, environment.depth),
+		sampleCount: layout.sampleCount == 0 ? environment.sampleCount : layout.sampleCount,
+	};
+}
+
+export function namesEnvironment(this layout: TargetLayout): boolean {
+	return layout.color0 == PixelFormat.Default ||
+		layout.color1 == PixelFormat.Default ||
+		layout.color2 == PixelFormat.Default ||
+		layout.color3 == PixelFormat.Default ||
+		layout.depth == PixelFormat.Default ||
+		layout.sampleCount == 0;
+}
+
+export function resolved(this layout: TargetLayout): TargetLayout {
+	return layout.namesEnvironment() ? layout.resolvedIn(TargetLayout.environment()) : layout;
 }
 
 function formatField(format: PixelFormat, index: int32): uint32 {
