@@ -1007,7 +1007,7 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
 	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh
-	draw:letGoOfMesh draw:meshPinned draw:hasMesh slots:isCurrent door:frameIndex"
+	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit renderer:slotBound gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
 	renderer:drawPassLists renderer:drawScreen renderer:openPrepare renderer:closePrepare
@@ -1023,7 +1023,7 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
 	target:beginPass target:beginScreenPass door:passState door:beginPassWith
 	door:beginScreenPassWith door:endPass draw:hasMaterial draw:keepsItsUniforms draw:buryDoomed
-	uniform80ool:holds uniform80ool:writeRange"
+	uniform80ool:holds uniform80ool:writeRange uniform80ool:admitted draw:issuedMaterial"
 RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds
 	draw:keepsItsTexture material:namesTexture texture:isTexture"
@@ -1733,7 +1733,6 @@ run_stores() {
 
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
-
 run_both_layers() {
 	rm -f out/tmp/bothLayers.exe
 	if ! msc build tests/integration/bothLayers.ms --output=out/tmp/bothLayers.exe \
