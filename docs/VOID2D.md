@@ -2053,8 +2053,8 @@ abort stage) unless named otherwise.
   the first resize; `beginPass` then stops on that empty attachment, color or depth, on one of
   another context and, in `door.c`, on a dead view. The pipeline cache adopts the current context
   itself (`pipeline.ms`
-  `adoptContext`), and `releasePipelines` destroys only its own context's objects; forgetting and
-  closing stay two calls. void2d's `beginTarget` checks the generation alone (`requireCurrent`):
+  `adoptContext`), and `releasePipelines` destroys only its own context's objects; forgetting,
+  releasing and closing stay three calls (F). void2d's `beginTarget` checks the generation alone (`requireCurrent`):
   T1 records with no device, and the replay's `doorBeginColorPass` stops on a view that is not
   live. The filter-target pool drops the targets of a lost context and makes them again
   (`render.ms` `adoptPoolContext`), as void3d's presets do; no device here loses its context, so
@@ -2066,14 +2066,52 @@ abort stage) unless named otherwise.
   `targetTextureUnallocated`, `samplerHandleEmpty`, and T0
   `pipelineCheck` "releasing a cache of another GPU context drops its handles without destroying
   them", and `tests/aborts/targetOtherContext2d`.
-- **The cache as a reference owner is parked.** `PipelineCache` as an `interface`, so that a
-  copied holder shares one cache, does not compile on C: an interface field read through a `ref`
-  struct parameter (`void3d/renderer.ms:230`, `ref context: DrawContext`) emits `(*s.f).g`. Card
-  `.inbox/compiler/2026-10-01-ref-struct-interface-field-c-member-access.md`; the change and its
-  test are `out/tmp/doorProbes/pipelineCacheInterface.patch`. Until the card is answered, or
-  void3d's `DrawContext` becomes an interface taken by value (its M24), the cache stays a
-  copyable struct, and a copy can still forget or release the same handles twice. The closure is
-  not accepted while this holds.
+- **F, the pipeline cache as a reference owner (2026-10-02).** `pipeline.ms` `PipelineCache` is
+  an `interface` with `closed` beside `generation`, taken by value by every call, the door's and
+  void3d's `gpu3d.ms` `pipelineFor` alike, so `let c = context.pipelines` or a struct holding the
+  cache names the one cache. As a struct, every copy shared the handles but not the state. The
+  consumer below, run on the struct (`out/tmp/cacheOwner/structRed.receipt.txt`, `7f8507b` plus
+  the struct-era copy of the consumer) showed the hazard in numbers: a generation written through
+  the context read 1 through the holder instead of 8; after a release through the context the
+  holder still held 2 shaders and 4 pipelines that were destroyed; a rebuild through the holder
+  made 2 shaders and 4 pipelines, and the context, still stale, made them again (A held 4 shaders
+  and 8 pipelines alive for the 2 and 4 it wanted); 2 shaders and 4 pipelines outlived the final
+  release.
+  - `releasePipelines` stays a reset: it destroys the current context's objects or forgets a
+    stale context's, and the cache rebuilds on its next `pipelineFor`. `closePipelines` is
+    terminal: it stops while the door has a pass open, before it changes anything, then
+    releases, then sets `closed`. Every later call (`pipelineFor`, `shaderFor`,
+    `forgetPipelines`, `releasePipelines`, `closePipelines`) stops naming itself, `contains` and
+    `declaresBlock` answer false, and `isClosed` lets a parent skip a closed cache. Close is a
+    separate call because release is what context loss and void2d's own cache reuse: a cache
+    closed by its owner must make a later call through a forgotten alias fail loud, where a
+    reset would rebuild objects nobody releases. void3d's M25 `DrawContext.close` calls
+    `closePipelines` once (acked by void3d).
+  - void3d's `renderer.ms` `beginFrame` no longer stamps the cache's epoch by hand; the cache
+    adopts a new context at its next call (`adoptContext`), as C already said. The door counts
+    `liveShaders` and `livePipelines` from `sg_query_stats().total` (`sokol_gfx.h:4640-4647`), as
+    it counts buffers, images, views and samplers.
+  - Unparked by void3d's M24 (`DrawContext` an interface taken by value, on main at `2c9060c`),
+    which removed the one site the C backend could not compile; the compiler card
+    `.inbox/compiler/2026-10-01-ref-struct-interface-field-c-member-access.md` stays open for the
+    shape itself.
+  - Acceptance is `tests/integration/pipelineCacheOwner.ms` (`gate.sh`, D3D11 readback): cache A
+    held through a void3d `DrawContext` field and a struct holder, cache B a second context's
+    drawing a lit box every frame. (a) a generation written through one alias reads back through
+    the other; (b) a release through one destroys A's 2 shaders and 4 pipelines exactly, the
+    other destroys nothing; (c) only after that release is A's epoch marked stale and rebuilt
+    through the holder, and the context reads the same handles and makes nothing; (e) a close
+    through the context destroys A's objects and the holder reads it closed; (d) B's picture is
+    byte-identical in every frame and, after B is closed, shaders and pipelines are back at their
+    count before either cache and the rest at their count after B's first frame. The stale epoch
+    is written by hand: no device here loses its context, so (c) proves adoption, not device
+    loss. Red on the struct for (a), (b), (c) and (d); (e) needs `closePipelines`, so its red is
+    the controls. Pins: aborts3d `pipelinesClosedThroughAlias`, `pipelinesClosedTwice`,
+    `pipelinesReleasedAfterClose`, `pipelinesForgottenAfterClose`, `pipelinesClosedInsidePass`,
+    and T0 `pipelineCheck` "closing a cache of another GPU context forgets its handles and
+    answers false after". Each of the seven checks, removed alone, turned its pin red, and the
+    file was restored by hash (`out/tmp/cacheOwner/controls.txt`); without `pipelineFor`'s own
+    check, `shaderFor`'s stops the same call.
 - **D, view ids with a generation.** `views.c` hands out `(generation << 5) | (slot + 1)`: opaque,
   positive, 0 invalid, sixteen slots. An id kept past its view's destroy stops by name ("was
   destroyed"). A slot whose generation reaches `VOID_VIEW_LAST_GENERATION` is retired, as
