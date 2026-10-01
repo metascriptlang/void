@@ -86,6 +86,9 @@ uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format);
 uint32_t doorMakeTextureView(uint32_t image);
 uint32_t doorMakeSampler(int32_t filter, int32_t wrap);
+int32_t doorImageAlive(uint32_t image);
+int32_t doorViewAlive(uint32_t view);
+int32_t doorSamplerAlive(uint32_t sampler);
 // Destruction of what the door makes. Buffers, plain and dynamic images and the draw-path
 // calls (apply, uniforms, draw) belong to the layer that made them (void3d: gpu3d.c).
 void doorDestroyShader(uint32_t shader);

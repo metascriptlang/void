@@ -15,6 +15,9 @@ import {
 	doorMakeAttachmentView,
 	doorMakeTextureView,
 	doorMakeSampler,
+	doorImageAlive,
+	doorViewAlive,
+	doorSamplerAlive,
 	doorDestroyShader,
 	doorDestroyPipeline,
 	doorDestroyImage,
@@ -134,6 +137,10 @@ export function makeTextureView(image: uint32): uint32 {
 export function makeSampler(filter: FilterMode, wrap: Wrap): uint32 {
 	return doorMakeSampler(filter as int32, wrap as int32);
 }
+
+export function imageAlive(image: uint32): boolean { return doorImageAlive(image) != 0; }
+export function viewAlive(view: uint32): boolean { return doorViewAlive(view) != 0; }
+export function samplerAlive(sampler: uint32): boolean { return doorSamplerAlive(sampler) != 0; }
 
 export function destroyShader(shader: uint32): void { doorDestroyShader(shader); }
 export function destroyPipeline(pipeline: uint32): void { doorDestroyPipeline(pipeline); }

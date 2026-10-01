@@ -396,6 +396,18 @@ uint32_t doorMakeSampler(int32_t filter, int32_t wrap) {
 	return sg_make_sampler(&desc).id;
 }
 
+int32_t doorImageAlive(uint32_t image) {
+	return sg_query_image_state((sg_image){.id = image}) == SG_RESOURCESTATE_VALID ? 1 : 0;
+}
+
+int32_t doorViewAlive(uint32_t view) {
+	return sg_query_view_state((sg_view){.id = view}) == SG_RESOURCESTATE_VALID ? 1 : 0;
+}
+
+int32_t doorSamplerAlive(uint32_t sampler) {
+	return sg_query_sampler_state((sg_sampler){.id = sampler}) == SG_RESOURCESTATE_VALID ? 1 : 0;
+}
+
 void doorDestroyShader(uint32_t shader) { sg_destroy_shader((sg_shader){.id = shader}); }
 void doorDestroyPipeline(uint32_t pipeline) { sg_destroy_pipeline((sg_pipeline){.id = pipeline}); }
 void doorDestroyImage(uint32_t image) { sg_destroy_image((sg_image){.id = image}); }
