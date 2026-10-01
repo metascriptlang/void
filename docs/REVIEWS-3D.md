@@ -1709,3 +1709,29 @@ check. Bench CPU per frame 0.0966 ms against 0.0968 ms before. Its remaining poi
 | "Data types" still said an id is an index and a generation | It names the store |
 | Card `2026-09-27`'s `State:` said nothing waits on it; `uniformPool.ms`'s serial had no sentinel | The state names void3d's sites; a sentinel in `uniformPool.ms` |
 | The as-built pointed "above" at a churn failure it did not describe; `drawItem` read the material slot twice | Described; one read |
+
+### Final acceptance
+
+`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on `17ea45d` (tree `72dc26b`,
+"docs(void3d): M24 as built and reviewed", clean): **GATE GREEN with 1 skipped stage** (`device`).
+The workstation's native capacity was rationed between sessions; each native run here had its own
+go from the coordinating session.
+
+- **1123/1123 tests**, +9 on main's 1114 (`src/test/storeCheck.ms`); **41 abort programs**, +6.
+- **24 configurations / 96 frames match 72 hashes**, none adopted: nothing in M24 moves a pixel.
+- The new `stores` stage: two contexts on real D3D11 objects refuse each other's meshes,
+  materials, textures and blocks by name, an alias releases once, a reused slot is stale. Its
+  controls (one kind forced open at a time) fail exactly that kind's checks; the red run on
+  `431dc90` failed 23.
+- Allocation scan clean, with the store checks on its lists; style clean; churn flat at 10
+  buffers, 4 images and 2 samplers over 310 frames; bench flat.
+- **75 oracle agreements / 11 declared divergences**, **27 PENDING3D rows** (+1,
+  `store-serial-writable`).
+- **Android arm64 3,564,584 bytes**. No GLES3/device run.
+
+### Scope still separate
+
+- M25: owners as references holding their context, their `close`, `pickNearest` on the scene's
+  context, node ids naming their scene. It waits on void2d's `PipelineCache` as a reference owner.
+- void2d's door: `RenderTarget` and `Sampler` generations and checked borrows.
+- The post-M23 list: colour spaces, alpha as a material's, the device's largest texture, device runs.
