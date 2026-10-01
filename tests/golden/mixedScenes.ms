@@ -53,22 +53,26 @@ const TARGET_X: float32 = 48.0;
 const TARGET_Y: float32 = 20.0;
 const WORLD_ON_HEIGHT: float32 = 3.0;
 const BACKGROUND_3D: Vec4 = { x: 0.10, y: 0.14, z: 0.24, w: 1.0 };
+const TRANSLUCENT_3D: Vec4 = { x: 0.05, y: 0.07, z: 0.12, w: 0.5 };
+const STRIPE: Color = { r: 0.9, g: 0.8, b: 0.2, a: 1.0 };
 const CLEAR_2D: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
 const HIGH_BOX: Rgba = { red: 0.95, green: 0.55, blue: 0.2, alpha: 1.0 };
 const LOW_BOX: Rgba = { red: 0.2, green: 0.75, blue: 0.6, alpha: 1.0 };
 
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
+	2 * FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
-let forward: ForwardRenderer = createForward();
+let forward: ForwardRenderer = createForward(BACKGROUND_3D);
+let translucent: ForwardRenderer = createForward(TRANSLUCENT_3D);
+let built: boolean = false;
 let scene: Scene3D = Scene3D.create();
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 
-function createForward(): ForwardRenderer {
+function createForward(background: Vec4): ForwardRenderer {
 	const created: Result<ForwardRenderer, ForwardError> =
-		ForwardRenderer.create(context, BACKGROUND_3D);
+		ForwardRenderer.create(context, background);
 	if (created.ok) { return created.value; }
 	unreachable;
 }
@@ -109,6 +113,8 @@ function twoBoxes(): MeshData {
 }
 
 function buildBoxes(): void {
+	if (built) { return; }
+	built = true;
 	const mesh: Result<MeshId, MeshUploadError> = addMeshData(context, twoBoxes());
 	if (!mesh.ok) { unreachable; }
 	const material: MaterialId = litMaterial();
@@ -154,6 +160,26 @@ export function mixedVoid3dTarget(): Scene2D {
 	const s = Scene2D.create(CLEAR_2D);
 	const view = tile(
 		forward.colorTarget.asTexture(),
+		TARGET_WIDTH as float32,
+		TARGET_HEIGHT as float32,
+	).premultiplied();
+	s.add(s.sprite(view).at(TARGET_X, TARGET_Y));
+	return s;
+}
+
+export function mixedVoid3dTranslucentTarget(): Scene2D {
+	buildBoxes();
+	const prepared: Result<int32, ForwardError> =
+		prepareFrame(translucent, context, items, camera, lights, TARGET_WIDTH, TARGET_HEIGHT);
+	if (!prepared.ok) {
+		console.log(`FAIL mixed/void3dTranslucentTarget: the 3D frame was refused, ` +
+			`${prepared.error.toString()}`);
+		unreachable;
+	}
+	const s = Scene2D.create(CLEAR_2D);
+	s.add(s.rect(256.0, 40.0, STRIPE).at(0.0, 60.0));
+	const view = tile(
+		translucent.colorTarget.asTexture(),
 		TARGET_WIDTH as float32,
 		TARGET_HEIGHT as float32,
 	).premultiplied();

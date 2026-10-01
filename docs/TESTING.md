@@ -103,7 +103,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `image/` | P2 | `ObjectFit` variants · `corner_radii` on an image · the `grayscale` image mode |
 | `image/` | P5 | tileGroup (tiles from two textures, tinted, a turned, a stretched and a flipped tile, and a red tile outside the range covering the rest if the range fails) |
 | `order/` | P5 | noOverlapLanes (one list drawn in lanes beside the same list in painter's order, 128 px apart; `tests/golden/invariants.ms` holds the two byte-identical) |
-| `mixed/` | D1 | void3dTarget (void3d's forward renderer draws two boxes into its own target once; void2d draws that target as a sprite. The WebGL2 capture is judged against the D3D11 golden, so a target read upside down on GL fails it) |
+| `mixed/` | D1 | void3dTarget (void3d's forward renderer draws two boxes into its own target once; void2d draws that target as a sprite. The WebGL2 capture is judged against the D3D11 golden, so a target read upside down on GL fails it), void3dTranslucentTarget (the same target cleared translucent over a 2D stripe and declared premultiplied; the sprite program's premultiplied input decides its pixels, and without the declaration the row fails on D3D11) |
 | `filter/` | P1 | blur · glow · dropShadow · groupOpacity — **built but not capturable at P0**, see below |
 | `regress/` | P0 | nodeCap · dpiTruncation · samplerRepeat · vertexCap |
 | `regress/` | P1 | atlasFull · filterNestedPass — **not capturable at P0**, see below |
@@ -311,7 +311,7 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **77 / 77 scenes byte-identical** | every full gate, this box |
+| D3D11 | **78 / 78 scenes byte-identical** | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |

@@ -72,7 +72,7 @@ import {
 	CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
 	LANES_X, LANES_Y, LANES_W, LANES_SHIFT,
 } from "./table";
-import { mixedVoid3dTarget } from "./mixedScenes";
+import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
 const DARK: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
@@ -1344,5 +1344,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "clip/cameraPan", build: clipCameraPan },
 		{ name: "order/noOverlapLanes", build: orderNoOverlapLanes },
 		{ name: "mixed/void3dTarget", build: mixedVoid3dTarget },
+		{ name: "mixed/void3dTranslucentTarget", build: mixedVoid3dTranslucentTarget },
 	];
 }
