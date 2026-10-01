@@ -148,8 +148,10 @@ export function init2d(): void {
 	rtB = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
 	rtGlow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
 	rtShadow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
-	sceneObj.add(sceneObj.sprite(tile(rtGlow.asTexture(), 120.0, 120.0).premultiplied()).at(700.0, 262.0));
-	sceneObj.add(sceneObj.sprite(tile(rtShadow.asTexture(), 120.0, 120.0).premultiplied()).at(828.0, 262.0));
+	const glowTile: Tile = tile(rtGlow.asTexture(), 120.0, 120.0).premultiplied();
+	sceneObj.add(sceneObj.sprite(glowTile).at(700.0, 262.0));
+	const shadowTile: Tile = tile(rtShadow.asTexture(), 120.0, 120.0).premultiplied();
+	sceneObj.add(sceneObj.sprite(shadowTile).at(828.0, 262.0));
 
 	logo = logoNode;
 	green = greenNode;

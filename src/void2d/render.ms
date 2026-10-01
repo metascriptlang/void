@@ -877,7 +877,9 @@ function emitNode(
 			const sheet: Tile = s.contents[i].tile;
 			if (!emitStyledImage(s, i, sheet, world, col, sizeX, sizeY, lbMin)) {
 				if (instanced) {
-					drawSpriteAffine(sheet.view, sheet.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
+					drawSpriteAffine(
+						sheet.view, sheet.alphaPremultiplied, blend, world,
+						tl.x, tl.y, sizeX, sizeY,
 						sheet.u0, sheet.v0, sheet.u1, sheet.v1, col);
 				} else {
 					imageQuad(sheet, tl, tr, br, bl, col, blend);
@@ -891,7 +893,8 @@ function emitNode(
 				const fr = s.anims[payload].frames[fi];
 				if (!emitStyledImage(s, i, fr, world, col, sizeX, sizeY, lbMin)) {
 					if (instanced) {
-						drawSpriteAffine(fr.view, fr.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
+						drawSpriteAffine(
+							fr.view, fr.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
 							fr.u0, fr.v0, fr.u1, fr.v1, col);
 					} else {
 						imageQuad(fr, tl, tr, br, bl, col, blend);
@@ -931,7 +934,8 @@ function emitNode(
 			const ops: float32[] = geometry.records;
 			const opTotal: int32 = ops.length as int32;
 			if (opTotal == 0) {
-				drawMesh(geometry.mesh, geometry.view, geometry.alphaPremultiplied, blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
+				drawMesh(geometry.mesh, geometry.view, geometry.alphaPremultiplied, blend, world,
+					rgba(1.0, 1.0, 1.0, 1.0), na);
 			} else {
 				const stride: int32 = GRAPHICS_OP_FLOATS;
 				for (let oi: int32 = 0; oi + stride <= opTotal; oi += stride) {
@@ -942,7 +946,9 @@ function emitNode(
 						setEffect(
 							s.paints[i].colorMatrix, s.paints[i].colorAdd, s.paints[i].colorKey,
 						);
-						drawMeshRange(geometry.mesh, offset, count, geometry.view, geometry.alphaPremultiplied, blend, world,
+						drawMeshRange(
+							geometry.mesh, offset, count, geometry.view,
+							geometry.alphaPremultiplied, blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					} else {
 						const c0: Color = rgba(
@@ -1086,7 +1092,9 @@ function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
-	imageQuad(tile(src.asTexture(), w, h).premultiplied(), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
+	imageQuad(
+		tile(src.asTexture(), w, h).premultiplied(),
+		vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
 

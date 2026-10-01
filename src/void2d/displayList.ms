@@ -1627,7 +1627,8 @@ test "a draw inherits the clip that was recorded before it" {
 
 test "no color matrix records the identity" {
 	resetContext();
-	const index: int32 = pushEffect(NO_COLOR_MATRIX, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
+	const none: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	const index: int32 = pushEffect(NO_COLOR_MATRIX, none, none);
 	assert index == 0;
 	assert effectField(0, 0) == 1.0;
 	assert effectField(0, 5) == 1.0;

@@ -1,4 +1,4 @@
-// expect: gpu door: beginPass on color attachment 0, which has no view; resized allocates its target
+// expect: gpu door: beginPass on color attachment 0, which has no view
 import { gfxSetup } from "../../src/sokol/gpu";
 import { PixelFormat, LoadAction, destroyView } from "../../src/gpu/door";
 import { RenderTarget, ColorAttachment, NO_DEPTH, beginPass } from "../../src/gpu/target";

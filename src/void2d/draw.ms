@@ -958,7 +958,11 @@ export function setSampler(smooth: Smooth, tileWrap: boolean): void {
 	openRun(BreakReason.Sampler);
 }
 
-function quad(view: uint32, premultiplied: boolean, blend: BlendMode, x: float32, y: float32, w: float32, h: float32, c: Color, u0: float32, v0: float32, u1: float32, v1: float32): void {
+function quad(
+	view: uint32, premultiplied: boolean, blend: BlendMode,
+	x: float32, y: float32, w: float32, h: float32, c: Color,
+	u0: float32, v0: float32, u1: float32, v1: float32,
+): void {
 	useRun(Pipeline.Vertex, view, premultiplied, blend);
 	const x1: float32 = x + w;
 	const y1: float32 = y + h;
@@ -975,7 +979,8 @@ export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode):
 }
 
 export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: BlendMode): void {
-	quad(t.view, t.alphaPremultiplied, blend, pos.x, pos.y, size.x, size.y, tint, t.u0, t.v0, t.u1, t.v1);
+	quad(t.view, t.alphaPremultiplied, blend, pos.x, pos.y, size.x, size.y, tint,
+		t.u0, t.v0, t.u1, t.v1);
 }
 
 // Which pipeline set the following draws need: the offscreen one (single sample, no depth)
@@ -1124,7 +1129,10 @@ export function drawMesh(
 
 // ===== arbitrary-corner quads (for rotated/affine nodes; a=TL b=TR c=BR d=BL) =====
 
-function quad4(view: uint32, premultiplied: boolean, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2, u0: float32, v0: float32, u1: float32, v1: float32, color: Color): void {
+function quad4(
+	view: uint32, premultiplied: boolean, blend: BlendMode, a: Vec2, b: Vec2, c: Vec2, d: Vec2,
+	u0: float32, v0: float32, u1: float32, v1: float32, color: Color,
+): void {
 	useRun(Pipeline.Vertex, view, premultiplied, blend);
 	pushVertex(a.x, a.y, u0, v0, color.r, color.g, color.b, color.a);
 	pushVertex(b.x, b.y, u1, v0, color.r, color.g, color.b, color.a);
@@ -1246,6 +1254,9 @@ export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Co
 }
 
 // explicit-UV textured quad — ScaleGrid 9-slice cells carry their own UV sub-rect.
-export function imageQuadUV(view: uint32, premultiplied: boolean, u0: float32, v0: float32, u1: float32, v1: float32, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
+export function imageQuadUV(
+	view: uint32, premultiplied: boolean, u0: float32, v0: float32, u1: float32, v1: float32,
+	a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode,
+): void {
 	quad4(view, premultiplied, blend, a, b, c, d, u0, v0, u1, v1, color);
 }

@@ -739,7 +739,9 @@ export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
 }
 
 export function graphics(this s: Scene2D): NodeRef {
-	const row: GraphicsMesh = { mesh: [], vertexCount: 0, records: [], view: 0, alphaPremultiplied: false, stale: true };
+	const row: GraphicsMesh = {
+		mesh: [], vertexCount: 0, records: [], view: 0, alphaPremultiplied: false, stale: true,
+	};
 	let payload: int32 = s.meshes.length as int32;
 	if ((s.freeMeshes.length as int32) > 0) {
 		payload = s.freeMeshes.pop();
