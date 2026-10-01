@@ -43,7 +43,6 @@ import {
 	drawItem,
 	MODEL_SLOT,
 } from "./draw";
-import { forgetPipelines } from "../gpu/pipeline";
 import { UniformError, ownRange } from "./uniformPool";
 import { PassList, collect, filterFrustum, sortBackToFront, drawPassList } from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";
@@ -241,10 +240,6 @@ export function beginFrame(
 	const _buried: int32 = buryDoomed(context, generation);
 	const fresh: boolean = generation != renderer.generation;
 	if (fresh) {
-		if (context.pipelines.generation != generation) {
-			forgetPipelines(context.pipelines);
-			context.pipelines.generation = generation;
-		}
 		rebuildMeshes(context);
 		rebuildTextures(context);
 		context.meshes[renderer.screenMesh.index].vertexBuffer = makeScreenTriangle();

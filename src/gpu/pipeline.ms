@@ -58,7 +58,7 @@ export struct PipelineEntry {
 	pipeline: uint32;
 }
 
-export struct PipelineCache {
+export interface PipelineCache {
 	entries: Vec<PipelineEntry>;
 	shaders: Vec<uint32>;
 	blockSlots: Vec<uint32>;
@@ -172,14 +172,14 @@ function registered(program: int32): boolean {
 	return program >= 0 && program < programCount();
 }
 
-function adoptContext(ref cache: PipelineCache): void {
+function adoptContext(cache: PipelineCache): void {
 	const generation: int32 = contextGeneration();
 	if (cache.generation == generation) { return; }
 	forgetPipelines(cache);
 	cache.generation = generation;
 }
 
-export function shaderFor(ref cache: PipelineCache, program: int32): uint32 {
+export function shaderFor(cache: PipelineCache, program: int32): uint32 {
 	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
 	adoptContext(cache);
 	for (let i = cache.shaders.length as int32; i <= program; i++) {
@@ -203,7 +203,7 @@ export function declaresBlock(this cache: PipelineCache, program: int32, slot: i
 
 // PipelineBuilder.lookup + the driver's makePipeline on a miss.
 export function pipelineFor(
-	ref cache: PipelineCache,
+	cache: PipelineCache,
 	program: int32,
 	layout: int32,
 	indexed: boolean,
@@ -235,7 +235,7 @@ export function pipelineFor(
 
 // After a context loss: the GPU objects are gone, so only the handles are dropped. Keys stay,
 // and each pipeline is rebuilt on its next pipelineFor.
-export function forgetPipelines(ref cache: PipelineCache): void {
+export function forgetPipelines(cache: PipelineCache): void {
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		cache.entries[i].pipeline = 0;
 	}
@@ -245,7 +245,7 @@ export function forgetPipelines(ref cache: PipelineCache): void {
 }
 
 // Destroys every pipeline and shader, then forgets them.
-export function releasePipelines(ref cache: PipelineCache): void {
+export function releasePipelines(cache: PipelineCache): void {
 	if (cache.generation == contextGeneration()) {
 		for (const entry of cache.entries) {
 			if (entry.pipeline != 0) { destroyPipeline(entry.pipeline); }

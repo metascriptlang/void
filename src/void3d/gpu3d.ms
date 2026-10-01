@@ -138,7 +138,7 @@ export function layoutPerInstance(layout: VertexLayout): boolean {
 
 // PipelineBuilder.lookup, on void3d's own enums: the key and the cache are the door's.
 export function pipelineFor(
-	ref cache: PipelineCache,
+	cache: PipelineCache,
 	program: Program,
 	layout: VertexLayout,
 	indexed: boolean,

@@ -372,7 +372,7 @@ test "a layout that names its formats is left as it is" {
 }
 
 test "releasing a cache of another GPU context drops its handles without destroying them" {
-	let cache: PipelineCache = PipelineCache.empty();
+	const cache: PipelineCache = PipelineCache.empty();
 	cache.entries.push({ key: litKey(false, sceneState()), pipeline: 7 });
 	cache.shaders.push(9);
 	cache.generation = contextGeneration() + 1;
