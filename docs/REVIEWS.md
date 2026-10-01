@@ -1356,3 +1356,73 @@ skip. Logs: `out/tmp/closureGate2/`.
 `2026-10-01-ref-struct-interface-field-c-member-access`, or void3d's M24 first), M2, L2, the
 shader comment, and a UI-program premultiplied input. The pool's context-loss path is read, not
 run, until a device that loses its context is in the gate.
+
+## Cache owner, door closure F â€” SHIP WITH FOLLOW-UPS (2026-10-02)
+
+**Verdict: SHIP WITH FOLLOW-UPS for `7f8507b..c6876db`**, built on main `2c9060c` (void3d's M24)
+under coach-c5's GO `Cache-owner-2c9060c`. It takes the item the GPU-door closure carried, the
+pipeline cache as a reference owner, onto the contract agreed with void3d and the coordinator
+(VOID2D.md "Door closure" F). The design pass's one blocker was that no gate had run on the tip;
+the gates below close it. This verdict authorises no land or push.
+
+**Passes.** The defect pass was `/code-review high` on `main..HEAD` at `1745bdb`, run as a forked
+agent told to build, run and edit nothing; the main session read each finding against the code
+before acting. The design pass was a fresh read-only agent on `66057ce`, briefed as the owner for
+five years, against F, "The bar", the guardrails, TESTING.md and CODE-STYLE Â§14; it built and
+ran nothing. Both ran one at a time on the coordinator's named GO.
+
+### Defect pass â€” eight findings
+
+- **`releasePipelines` destroyed inside an open pass**, where only close refused one: it stops
+  by name too (`1644df0`), pinned by `pipelinesReleasedInsidePass`, which ran to its end with
+  its pipeline destroyed before the fix.
+- **A closed cache kept its tables** for every alias: close empties them (`8059423`); the T0
+  row's emptied-table assertions failed before the fix.
+- **void2d's `resolvePipelines` still stamped the cache's epoch by hand**, the duplicate
+  `f77a9d6` removed from void3d: it now only compares the epoch to reset its resolved slots
+  (`d579d64`). The closure's review left the duplicate because the memo reset needs the same
+  event; the reset stays, the forget and the stamp go to `adoptContext`.
+- **The gate stage could show a stale run log** after a failed build: the log is cleared first
+  and the exe joins the gate's list (`5fdfde6`).
+- **VOID3D.md's status line still gave the cache to M25**: swept (`66057ce`).
+- **`closed` is writable**: not expressible here; "Open" records it (no module-private field,
+  and a `readonly` interface field is a compiler card), widened by the design pass.
+- **`declaresBlock` answers false on a closed cache, so `drawItem` could skip a binding**: kept,
+  by contract; `drawItem` calls `pipelineFor` first, which stops.
+- **(c) marks the epoch stale only after the release, so it cannot catch a broken forget**:
+  kept, by contract: a stale mark over live handles leaks real objects on a live device. (c)
+  proves adoption through the alias, and F says it is not a device-loss proof.
+
+### Design pass â€” SHIP WITH FOLLOW-UPS, and what was done with each
+
+1. **The gates had not run on the tip**: the gates below.
+2. **`shaderFor`'s closed stop was unpinned**: `pipelinesShaderAfterClose` (`37bcfbd`), with no
+   device; its control is red by message only (`out/tmp/cacheOwner/controls.followup.txt`).
+3. **`forgetPipelines` was exported with no outside caller**, a way to leak a live epoch's
+   objects: module-private (`16f971e`), and its pin went with the export.
+4. **The "Open" entry named only `closed` and `generation`**: widened to every field.
+5. **Three controls were red by message only**, and the reason for the false queries was
+   unwritten: both in F.
+6. **Three pins opened a device for an empty cache**: two now open none (`c6876db`); the third
+   was the one deleted in 3.
+7. **F sat between C and D**: moved after E.
+
+### The ten questions, in short
+
+Exits: the contract's terms and the five axes are met with the consumer, the pins and the T0 row,
+red on the struct for (a)-(d) and by controls for the rest. Measurements: the receipts match F
+word for word. Guardrails: none touched; G8's cost is one predictable branch per cache call,
+off the per-draw path. References: a reference-type cache is Heaps' `PipelineCache` (a `Map`
+abstract); close with stop-by-name follows void3d's M25 row; GPUI keeps pipelines per renderer,
+as M24 records. Idiom: an interface by value, writers as free functions, readers as extensions,
+as void3d's `DrawContext`; nothing cut. The parked item is fixed, not moved. Tests: (a) is a
+CPU property kept in the GPU consumer by agreement; every pin can fail. Compiler: no
+workaround; the writable field is carded and recorded. Â§14: clean. Refuse to merge: only before
+the gates are green.
+
+**Carried:** every cache field is writable through any alias (VOID2D.md "Open"); `gate3d.sh`
+evicts only `*door*` objects from `out/debug/.cache`, so a later `door.h` layout or macro edit
+that leaves `pipeline.ms`'s C text unchanged could link a stale object there until the
+compiler's object-cache fix is installed (`gate.sh` wipes both caches); the closure-era review
+lines that call the cache parked (`REVIEWS.md` "GPU-door closure", `REVIEWS-3D.md` M24) are
+history and stay.
