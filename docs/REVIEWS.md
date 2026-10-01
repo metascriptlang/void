@@ -1232,7 +1232,8 @@ long; runtime evidence is the main session's.
   alpha, and Multiply and Min are recorded as arithmetic modes (`32c6016`). Carried: a declared
   premultiplied property for app targets, and the WebGL2 golden of finding 5. The golden was
   built 2026-10-01 (`mixed/void3dTarget`, VOID2D.md "D1 follow-ups"); the declared property is
-  a design question put to the human.
+  a design question put to the human, decided 2026-10-01 (a per-draw bit on the tile) and built
+  in VOID2D.md "Door closure".
 - **F5, `Default` resolved against the environment, not the view** — carried, recorded as open.
   Two host views with different sample counts would share one pipeline, as before D1. Closed
   2026-10-01: screen keys hold the environment's formats and a swapchain outside the environment
@@ -1263,3 +1264,95 @@ aborts, 107 frame functions / 239 callees, 16 PENDING with zero mismatch; web bu
 tree is GREEN with its one device skip: HUD over the campfire, compose and its control, foreign
 registration past 16/8 in both orders, both layers, and every door abort including the two
 overflow refusals.
+
+## GPU-door closure — SHIP WITH FOLLOW-UPS, cache ownership not accepted (2026-10-01)
+
+**Verdict: SHIP WITH FOLLOW-UPS for `aea3266..c5dae71`**, built on main `e22b1fc`, approved by
+the human on 2026-10-01. The design pass's two must-fix items and every mechanism follow-up were
+done inside the slice; what is carried is listed last. The slice does **not** accept the
+pipeline cache as a reference owner: that change is parked on a compiler card, and until it
+lands the closure is a slice verification, not a unify SHIP. This verdict authorises no land or
+push.
+
+**Passes.** The defect pass was `/code-review high` on the branch against `main`, run as a
+forked agent; the main session read each finding against the code before acting on it. The
+first full gate added two findings of its own. The design pass was a fresh read-only agent,
+briefed as the owner for five years, against VOID2D.md "Door closure", "The bar", the
+guardrails, TESTING.md and CODE-STYLE §5 and §14; it edited and built nothing.
+
+### Defect pass — nine findings, and two from the gate
+
+- **The filter-target pool kept targets of a lost context**, which the new checked borrows turn
+  into a stop on Android: fixed, the pool makes them again (`b75f348`).
+- **`beginTarget` read `attachment` raw**: fixed, it checks the generation without a device
+  (`6c600c1`), pinned by `tests/aborts/targetOtherContext2d`, red on `182186a`.
+- **A premultiplied tile in an image style was premultiplied twice**: fixed by a stop, since
+  the UI program has no premultiplied input (`f5e4812`), pinned by
+  `tests/aborts/premultipliedStyledImage`, red on `182186a`.
+- **A premultiplied-only change was labelled a View break live and a Sampler break by the
+  stitcher**: fixed to the stitcher's order (`a0ec69b`); the second finding on the same code,
+  `setSampler` carrying the bit into a run, is the same cause.
+- **`samplerOf` fell back to sampler 2 on a bad field**: now stops (`e4975bc`).
+- **E's pin built new values instead of writing the read copy**: rewritten (`86af1b5`).
+- **A sampler from another context was told to call `forgotten()`**: each handle now names its
+  own remedy (`62362ec`).
+- **`resolvePipelines` duplicates the cache's adoption**: not a defect, left; void2d still needs
+  its memo reset on the same event.
+- **Gate, allocation stage**: `beginPass` built its stop messages on the render path; the
+  messages moved to stop-only functions (`62362ec`).
+- **Gate, style stage**: two lines over 100 columns, wrapped with every other new long line
+  (`c355533`).
+
+### Design pass — SHIP WITH FOLLOW-UPS, and what was done with each
+
+- **H1, nothing proved the tip green**: the final gate below.
+- **H2, an empty depth attachment opened a pass**: `beginPass` stops on a depth attachment with
+  no view and a format (`0f6d0bc`), pinned by `depthWithoutView`, red before.
+- **M1, `asTexture` and `asHandle` lent 0 for an empty target or sampler**: they stop
+  (`0f6d0bc`), pinned by `targetTextureUnallocated` and `samplerHandleEmpty`, red before.
+- **M2, a colour effect on a premultiplied source reads it as straight**: predates the slice;
+  written into VOID2D.md "Open" with the glow and shadow silhouettes that rely on it.
+- **M3, no pixel pin on the sprite program's premultiplied input**: golden
+  `mixed/void3dTranslucentTarget` (`c5dae71`); without its declaration it fails on D3D11.
+- **M4, E's inline `Mat4` grew every node's paint**: about 80 B before, 128 B inline, 68 B now,
+  from the emitted field list; the matrix moved to a scene side table (`77624e3`), and
+  `setPaint` cannot move a row (`803e6a3`). Guardrail 2 decided it.
+- **M5, record gaps**: the audit's two cross-store owner bugs are named as void3d's; the parked
+  cache change is written into its card in full; the record names the parking site.
+- **L1, two claims had no saved output**: `out/tmp/paintMatrix/receipt.txt` (the probe built
+  before the fix) and `out/tmp/viewCache/receipt.txt` (a `-D` build, then a plain one).
+- **L2, the bridge still exports `voidBeginPass` and `voidCommit`, and `gpu3d.c` returns
+  silently on a short descriptor**: carried, in "Open"; the second is void3d's file.
+- **L3, stale comments**: the ones in `displayList.ms` ("an index and not a flag") and
+  `target.ms` (a `beginPass` note left above another function) are deleted; `batcher.c`'s is
+  kept, since the sampler table is still indexed by `smooth * 2 + tileWrap`; the one in
+  `shader2d.glsl` waits for the next shader rebuild.
+- **Answer 4, the references**: h2d already decides premultiplied per draw (`inFilterBlend`),
+  so HEAPS.md's row was corrected; GPUI's normalise-at-source is W, and why the bit rides
+  `CMD_SAMPLER` is in "Door closure".
+
+### The ten questions, in short
+
+Exits: A, B, C (with H2 and M1), D, E (side table) and the premultiplied declaration are met
+with pins; the cache owner is parked. Measurements: the audit re-run, the controls and the
+gates match the record. Guardrails: G2 was violated by E's first cut and fixed; G8's new
+per-draw checks are pool lookups; nothing quietly worked around. References: the generation
+idiom and slot retirement are void3d's; the premultiplied shape is h2d's per-draw decision. The
+API exposes the decision to the app and cuts no capability. Tests: every fix has a pin that was
+measured red; context loss is exercised by faking a generation, since no device here loses its
+context. Compiler: two cards, nothing worked around. §14: new lines wrapped. Refuse to merge:
+nothing once the final gate is green on the tip; the cache owner stays open.
+
+**Measured on the tip `7cf741d`, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` ran
+every code stage green: 1118 tests plus 299 isolated, D3D11 78/78, WebGL2 56 identical / 18
+bounded / the same four known-red, 107 frame functions / 245 callees, 16 PENDING; web builds
+2 344 744 / 2 116 929 B, 13 023 B under the D1 follow-ups' on both backends. Its one red was the
+record stage: TESTING.md's WebGL2 row did not yet count the new golden. The row was corrected in
+the docs commit and checked again against the same run (the gate's own claim string, and
+`tests/record/check.ms`: 0 off). `sh scripts/gate3d.sh` on the same tip is GREEN with its device
+skip. Logs: `out/tmp/closureGate2/`.
+
+**Carried:** the cache as a reference owner (card
+`2026-10-01-ref-struct-interface-field-c-member-access`, or void3d's M24 first), M2, L2, the
+shader comment, and a UI-program premultiplied input. The pool's context-loss path is read, not
+run, until a device that loses its context is in the gate.
