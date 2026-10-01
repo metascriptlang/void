@@ -789,12 +789,12 @@ test "hitTest intersects nested Mask clips through a rotated Mask" {
 	assert !child.hitTest(vec2(30.0, 55.0));
 }
 
-test "a paint read from a node is a value: its color matrix reaches the node only through setPaint" {
+test "a paint read from a node is a value: its matrix reaches the node only through setPaint" {
 	const s = fresh();
 	const n = s.rect(4.0, 4.0, white).setColorMatrix(colorMatrixGrayscale(1.0));
 	s.clearChanges();
 	let p = n.paint();
-	p = { ...p, colorMatrix: { ...p.colorMatrix, m11: 2.0 } };
+	p.colorMatrix.m11 = 2.0;
 	assert n.paint().colorMatrix == colorMatrixGrayscale(1.0);
 	assert (s.dirty.length as int32) == 0;
 	n.setPaint(p);
