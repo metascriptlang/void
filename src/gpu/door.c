@@ -561,3 +561,11 @@ int32_t doorLiveViews(void) {
 int32_t doorLiveSamplers(void) {
 	return (int32_t)sg_query_stats().total.samplers.alive;
 }
+
+int32_t doorLiveShaders(void) {
+	return (int32_t)sg_query_stats().total.shaders.alive;
+}
+
+int32_t doorLivePipelines(void) {
+	return (int32_t)sg_query_stats().total.pipelines.alive;
+}

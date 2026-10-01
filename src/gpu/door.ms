@@ -38,6 +38,8 @@ import {
 	doorLiveImages,
 	doorLiveViews,
 	doorLiveSamplers,
+	doorLiveShaders,
+	doorLivePipelines,
 	DOOR_MAX_COLOR_ATTACHMENTS,
 	DOOR_UNIFORM_SLOTS,
 } from "./door.h";
@@ -220,4 +222,12 @@ export function liveViews(): int32 {
 
 export function liveSamplers(): int32 {
 	return doorLiveSamplers();
+}
+
+export function liveShaders(): int32 {
+	return doorLiveShaders();
+}
+
+export function livePipelines(): int32 {
+	return doorLivePipelines();
 }
