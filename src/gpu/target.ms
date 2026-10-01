@@ -135,14 +135,19 @@ export function allocate(
 	};
 }
 
-function stopOnOtherContext(call: string, what: string, generation: int32): void {
+function stopOnOtherContext(call: string, what: string, generation: int32, remedy: string): void {
 	console.log(`gpu door: ${call} on a ${what} of GPU context ${generation}; the context is now ` +
-		`${contextGeneration()}, and forgotten() drops its handles`);
+		`${contextGeneration()}, and ${remedy}`);
 	unreachable;
 }
 
 function stopOnReleased(call: string, what: string): void {
 	console.log(`gpu door: ${call} on a ${what} that was released`);
+	unreachable;
+}
+
+function stopOnDestroyedView(call: string, view: uint32): void {
+	console.log(`gpu door: ${call} on a render target whose view ${view} was destroyed`);
 	unreachable;
 }
 
@@ -152,16 +157,16 @@ function holdsLive(this target: RenderTarget, call: string): boolean {
 	return true;
 }
 
+export function requireCurrent(this target: RenderTarget, call: string): void {
+	if (target.image == 0 || target.generation == contextGeneration()) { return; }
+	stopOnOtherContext(call, "render target", target.generation, "forgotten() drops its handles");
+}
+
 function requireLive(this target: RenderTarget, call: string, view: uint32): void {
 	if (target.image == 0) { return; }
-	if (target.generation != contextGeneration()) {
-		stopOnOtherContext(call, "render target", target.generation);
-	}
+	target.requireCurrent(call);
 	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
-	if (view != 0 && !viewAlive(view)) {
-		console.log(`gpu door: ${call} on a render target whose view ${view} was destroyed`);
-		unreachable;
-	}
+	if (view != 0 && !viewAlive(view)) { stopOnDestroyedView(call, view); }
 }
 
 function destroyHandles(target: RenderTarget): void {
@@ -270,7 +275,8 @@ export function released(this sampler: Sampler): Sampler {
 export function asHandle(this sampler: Sampler): uint32 {
 	if (sampler.handle == 0) { return 0; }
 	if (sampler.generation != contextGeneration()) {
-		stopOnOtherContext("asHandle", "sampler", sampler.generation);
+		stopOnOtherContext("asHandle", "sampler", sampler.generation,
+			"Sampler.create makes it again");
 	}
 	if (!samplerAlive(sampler.handle)) { stopOnReleased("asHandle", "sampler"); }
 	return sampler.handle;
@@ -282,8 +288,8 @@ function formatAt(colors: Span<ColorAttachment>, index: int32): PixelFormat {
 
 function stopOnTooManyColors(call: string, colors: Span<ColorAttachment>): void {
 	if ((colors.length as int32) <= DOOR_MAX_COLOR_ATTACHMENTS) { return; }
-	console.log(`gpu door: ${call} takes at most ${DOOR_MAX_COLOR_ATTACHMENTS} color attachments, ` +
-		`given ${colors.length}`);
+	console.log(`gpu door: ${call} takes at most ${DOOR_MAX_COLOR_ATTACHMENTS} color ` +
+		`attachments, given ${colors.length}`);
 	unreachable;
 }
 
@@ -381,8 +387,14 @@ export function toString(this layout: TargetLayout): string {
 
 // sg_begin_pass on up to four color attachments and an optional depth attachment. The door
 // stops while a pass is already open, naming the call.
-function stopOnStaleAttachment(what: string, generation: int32): void {
-	if (generation == contextGeneration()) { return; }
+function stopOnEmptyColor(index: int32): void {
+	console.log(`gpu door: beginPass on color attachment ${index}, which has no view; ` +
+		"resized allocates its target");
+	unreachable;
+}
+
+function stopOnStaleAttachment(index: int32, generation: int32): void {
+	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
 	console.log(`gpu door: beginPass on ${what} of GPU context ${generation}; the context is now ` +
 		`${contextGeneration()}`);
 	unreachable;
@@ -390,15 +402,14 @@ function stopOnStaleAttachment(what: string, generation: int32): void {
 
 export function beginPass(colors: Span<ColorAttachment>, depth: DepthAttachment): void {
 	stopOnTooManyColors("beginPass", colors);
+	const generation: int32 = contextGeneration();
 	for (let i = 0; i < (colors.length as int32); i++) {
-		if (colors[i].view == 0) {
-			console.log(`gpu door: beginPass on color attachment ${i}, which has no view; ` +
-				"resized allocates its target");
-			unreachable;
-		}
-		stopOnStaleAttachment(`color attachment ${i}`, colors[i].generation);
+		if (colors[i].view == 0) { stopOnEmptyColor(i); }
+		if (colors[i].generation != generation) { stopOnStaleAttachment(i, colors[i].generation); }
 	}
-	if (depth.view != 0) { stopOnStaleAttachment("the depth attachment", depth.generation); }
+	if (depth.view != 0 && depth.generation != generation) {
+		stopOnStaleAttachment(-1, depth.generation);
+	}
 	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		const color: ColorAttachment = i < (colors.length as int32) ? colors[i] : UNUSED_COLOR;
 		passDescriptor[DOOR_PASS_COLOR_VIEW + i] = color.view;
