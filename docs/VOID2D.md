@@ -1987,7 +1987,7 @@ environment format it does not name, or on a resolution before the device exists
 asks the device anything, so `unregisteredProgram` still stops on the id. On D3D11, the window at sample count 1, `SWAPCHAIN_LAYOUT`
 keys as `colors=Bgra8 depth=Depth sampleCount=1`. `tests/integration/doorBlendModes.ms` asserts
 that the explicit spelling reuses the Alpha screen pipeline; with the resolution removed it stops
-on a second pipeline (control, BUILD `35601908`). T0 pins the resolution and that two
+on a second pipeline (control, BUILD `5791eadd`). T0 pins the resolution and that two
 environments differing only in sample count key apart.
 
 The aliasing F5 named, two swapchains of different formats or sample counts sharing one
@@ -2001,7 +2001,7 @@ window through sglue), so no consumer can trip the stop on this box. The macOS e
 builds its own pass (`bridgeEmbed.m` `voidBeginPass`) from the same three constants as its
 environment and has no stop; it is not built here.
 
-**Measured on the F5 source, BUILD `35601908`, shared box:** `sh scripts/gate.sh --web` GREEN
+**Measured on the F5 source, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` GREEN
 with eight explicit skips: 1099 tests plus 299 isolated, D3D11 76/76 unchanged, WebGL2 54
 identical / 18 bounded / the same four known-red, 107 frame functions / 239 callees, 16 PENDING.
 Web builds are 2 357 767 / 2 129 952 B, 6 020 / 5 967 B above D1's. `sh scripts/gate3d.sh` GREEN
