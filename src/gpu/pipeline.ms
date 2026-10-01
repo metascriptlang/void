@@ -15,6 +15,8 @@ import {
 	destroyPipeline,
 	programCount,
 	contextGeneration,
+	passState,
+	PassState,
 } from "./door";
 import {
 	DOOR_PIPELINE_SHADER,
@@ -65,6 +67,7 @@ export interface PipelineCache {
 	descriptor: Vec<uint32>;
 	// The GPU context its handles belong to: renderers sharing a DrawContext forget them once.
 	generation: int32;
+	closed: boolean;
 }
 
 export function empty(this typeof PipelineCache): PipelineCache {
@@ -74,6 +77,7 @@ export function empty(this typeof PipelineCache): PipelineCache {
 		blockSlots: [],
 		descriptor: new Array(DOOR_PIPELINE_LENGTH),
 		generation: 0,
+		closed: false,
 	};
 }
 
@@ -145,6 +149,7 @@ export function describePipeline(
 }
 
 export function contains(this cache: PipelineCache, key: PipelineKey): boolean {
+	if (cache.closed) { return false; }
 	for (const entry of cache.entries) {
 		if (entry.key == key) { return true; }
 	}
@@ -168,6 +173,16 @@ function stopOnRefusedPipeline(key: PipelineKey): uint32 {
 	unreachable;
 }
 
+function stopOnClosed(call: string): void {
+	console.log(`gpu door: ${call} on a pipeline cache that was closed`);
+	unreachable;
+}
+
+function stopOnCloseInsidePass(): void {
+	console.log("gpu door: closePipelines with a pass already open; endPass ends it");
+	unreachable;
+}
+
 function registered(program: int32): boolean {
 	return program >= 0 && program < programCount();
 }
@@ -180,6 +195,7 @@ function adoptContext(cache: PipelineCache): void {
 }
 
 export function shaderFor(cache: PipelineCache, program: int32): uint32 {
+	if (cache.closed) { stopOnClosed("shaderFor"); }
 	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
 	adoptContext(cache);
 	for (let i = cache.shaders.length as int32; i <= program; i++) {
@@ -197,6 +213,7 @@ export function shaderFor(cache: PipelineCache, program: int32): uint32 {
 
 // Whether `program` declares a uniform block at `slot`; known once its shader has been made.
 export function declaresBlock(this cache: PipelineCache, program: int32, slot: int32): boolean {
+	if (cache.closed) { return false; }
 	if (program < 0 || program >= (cache.blockSlots.length as int32)) { return false; }
 	return (cache.blockSlots[program] & ((1 as uint32) << (slot as uint32))) != 0;
 }
@@ -210,6 +227,7 @@ export function pipelineFor(
 	state: RenderState,
 	targets: TargetLayout,
 ): uint32 {
+	if (cache.closed) { stopOnClosed("pipelineFor"); }
 	if (!registered(program)) { return stopOnUnregisteredProgram(program); }
 	adoptContext(cache);
 	const concrete: TargetLayout = targets.resolved();
@@ -236,6 +254,7 @@ export function pipelineFor(
 // After a context loss: the GPU objects are gone, so only the handles are dropped. Keys stay,
 // and each pipeline is rebuilt on its next pipelineFor.
 export function forgetPipelines(cache: PipelineCache): void {
+	if (cache.closed) { stopOnClosed("forgetPipelines"); }
 	for (let i = 0; i < (cache.entries.length as int32); i++) {
 		cache.entries[i].pipeline = 0;
 	}
@@ -246,6 +265,7 @@ export function forgetPipelines(cache: PipelineCache): void {
 
 // Destroys every pipeline and shader, then forgets them.
 export function releasePipelines(cache: PipelineCache): void {
+	if (cache.closed) { stopOnClosed("releasePipelines"); }
 	if (cache.generation == contextGeneration()) {
 		for (const entry of cache.entries) {
 			if (entry.pipeline != 0) { destroyPipeline(entry.pipeline); }
@@ -255,4 +275,15 @@ export function releasePipelines(cache: PipelineCache): void {
 		}
 	}
 	forgetPipelines(cache);
+}
+
+export function closePipelines(cache: PipelineCache): void {
+	if (cache.closed) { stopOnClosed("closePipelines"); }
+	if (passState() != PassState.None) { stopOnCloseInsidePass(); }
+	releasePipelines(cache);
+	cache.closed = true;
+}
+
+export function isClosed(this cache: PipelineCache): boolean {
+	return cache.closed;
 }
