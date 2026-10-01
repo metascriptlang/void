@@ -244,6 +244,11 @@ export function asDepth(
 }
 
 export function asTexture(this target: RenderTarget): uint32 {
+	if (target.image == 0) {
+		console.log("gpu door: asTexture on a render target with no GPU objects; " +
+			"resized allocates it");
+		unreachable;
+	}
 	target.requireLive("asTexture", target.texture);
 	if (target.image != 0 && target.texture == 0) {
 		console.log("gpu door: asTexture on a render target allocated without a texture view");
@@ -273,7 +278,10 @@ export function released(this sampler: Sampler): Sampler {
 }
 
 export function asHandle(this sampler: Sampler): uint32 {
-	if (sampler.handle == 0) { return 0; }
+	if (sampler.handle == 0) {
+		console.log("gpu door: asHandle on a sampler with no handle; Sampler.create makes one");
+		unreachable;
+	}
 	if (sampler.generation != contextGeneration()) {
 		stopOnOtherContext("asHandle", "sampler", sampler.generation,
 			"Sampler.create makes it again");
@@ -387,9 +395,9 @@ export function toString(this layout: TargetLayout): string {
 
 // sg_begin_pass on up to four color attachments and an optional depth attachment. The door
 // stops while a pass is already open, naming the call.
-function stopOnEmptyColor(index: int32): void {
-	console.log(`gpu door: beginPass on color attachment ${index}, which has no view; ` +
-		"resized allocates its target");
+function stopOnEmptyAttachment(index: int32): void {
+	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
+	console.log(`gpu door: beginPass on ${what}, which has no view; resized allocates its target`);
 	unreachable;
 }
 
@@ -404,9 +412,10 @@ export function beginPass(colors: Span<ColorAttachment>, depth: DepthAttachment)
 	stopOnTooManyColors("beginPass", colors);
 	const generation: int32 = contextGeneration();
 	for (let i = 0; i < (colors.length as int32); i++) {
-		if (colors[i].view == 0) { stopOnEmptyColor(i); }
+		if (colors[i].view == 0) { stopOnEmptyAttachment(i); }
 		if (colors[i].generation != generation) { stopOnStaleAttachment(i, colors[i].generation); }
 	}
+	if (depth.view == 0 && depth.format != PixelFormat.None) { stopOnEmptyAttachment(-1); }
 	if (depth.view != 0 && depth.generation != generation) {
 		stopOnStaleAttachment(-1, depth.generation);
 	}
