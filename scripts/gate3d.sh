@@ -1705,15 +1705,14 @@ run_gltf() {
 	pass "gltf: texels, factor colour, both sides lit, culling, rollback, release and a rebuild, both presets"
 }
 
-# A file that imports both layers: every function name void2d and void3d both export resolves to
-# its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_stores() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "stores: GATE_SKIP_CAPTURE=1 — the store identity consumer was not run"
 		return
 	fi
 	rm -f out/tmp/storeIdentity.exe
-	if ! msc build tests/integration/storeIdentity.ms --release --output=out/tmp/storeIdentity.exe 		> "$WORK/stores.build.log" 2>&1; then
+	if ! msc build tests/integration/storeIdentity.ms --release --output=out/tmp/storeIdentity.exe \
+		> "$WORK/stores.build.log" 2>&1; then
 		fail "stores: tests/integration/storeIdentity.ms does not build"
 		tail -30 "$WORK/stores.build.log"
 		return
@@ -1731,6 +1730,9 @@ run_stores() {
 	fi
 	pass "stores: two contexts refuse each other's meshes, materials, textures and blocks by name; an alias releases once"
 }
+
+# A file that imports both layers: every function name void2d and void3d both export resolves to
+# its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 
 run_both_layers() {
 	rm -f out/tmp/bothLayers.exe
