@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-01):** M1–M24 are built and reviewed (`REVIEWS-3D.md`); M24, store identity, is SHIP WITH FOLLOW-UPS after one send-back, its follow-ups taken or carried in "Still missing after M24" (owners, picking and the pipeline cache go to M25). See "M24 as built". M23, textured content from files, is "M23 as built". The gate is `sh scripts/gate3d.sh`; device coverage remains separate. Deployment receipts live in the workspace arc card.
+**Status (2026-10-01):** M1–M24 are built and reviewed (`REVIEWS-3D.md`); M24, store identity, is SHIP WITH FOLLOW-UPS after one send-back, its follow-ups taken or carried in "Still missing after M24" (owners and picking go to M25; the pipeline cache became a reference owner in void2d's door closure F). See "M24 as built". M23, textured content from files, is "M23 as built". The gate is `sh scripts/gate3d.sh`; device coverage remains separate. Deployment receipts live in the workspace arc card.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built" and "M21 as built"; old `pass.ms`, `target.ms` and

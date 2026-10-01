@@ -2079,16 +2079,20 @@ abort stage) unless named otherwise.
   release.
   - `releasePipelines` stays a reset: it destroys the current context's objects or forgets a
     stale context's, and the cache rebuilds on its next `pipelineFor`. `closePipelines` is
-    terminal: it stops while the door has a pass open, before it changes anything, then
-    releases, then sets `closed`. Every later call (`pipelineFor`, `shaderFor`,
+    terminal: it releases, empties its tables and sets `closed`. Both stop while the door has
+    a pass open, before they change anything: a pipeline destroyed inside a pass leaves that
+    pass's later draws on a dead id, and before the defect pass `pipelinesReleasedInsidePass`
+    ran to its end with the pipeline it had made destroyed. Every later call (`pipelineFor`, `shaderFor`,
     `forgetPipelines`, `releasePipelines`, `closePipelines`) stops naming itself, `contains` and
     `declaresBlock` answer false, and `isClosed` lets a parent skip a closed cache. Close is a
     separate call because release is what context loss and void2d's own cache reuse: a cache
     closed by its owner must make a later call through a forgotten alias fail loud, where a
     reset would rebuild objects nobody releases. void3d's M25 `DrawContext.close` calls
     `closePipelines` once (acked by void3d).
-  - void3d's `renderer.ms` `beginFrame` no longer stamps the cache's epoch by hand; the cache
-    adopts a new context at its next call (`adoptContext`), as C already said. The door counts
+  - void3d's `renderer.ms` `beginFrame` and void2d's `draw.ms` `resolvePipelines` no longer
+    stamp the cache's epoch by hand; the cache adopts a new context at its next call
+    (`adoptContext`), as C already said, and void2d only compares the epoch to reset its
+    resolved slots. The door counts
     `liveShaders` and `livePipelines` from `sg_query_stats().total` (`sokol_gfx.h:4640-4647`), as
     it counts buffers, images, views and samplers.
   - Unparked by void3d's M24 (`DrawContext` an interface taken by value, on main at `2c9060c`),
@@ -2108,10 +2112,12 @@ abort stage) unless named otherwise.
     loss. Red on the struct for (a), (b), (c) and (d); (e) needs `closePipelines`, so its red is
     the controls. Pins: aborts3d `pipelinesClosedThroughAlias`, `pipelinesClosedTwice`,
     `pipelinesReleasedAfterClose`, `pipelinesForgottenAfterClose`, `pipelinesClosedInsidePass`,
-    and T0 `pipelineCheck` "closing a cache of another GPU context forgets its handles and
-    answers false after". Each of the seven checks, removed alone, turned its pin red, and the
-    file was restored by hash (`out/tmp/cacheOwner/controls.txt`); without `pipelineFor`'s own
-    check, `shaderFor`'s stops the same call.
+    `pipelinesReleasedInsidePass`, and T0 `pipelineCheck` "closing a cache of another GPU
+    context empties it and answers false after". Each of the seven checks of the first cut,
+    removed alone, turned its pin red, and the file was restored by hash
+    (`out/tmp/cacheOwner/controls.txt`); without `pipelineFor`'s own check, `shaderFor`'s stops
+    the same call. The release guard and the emptied tables were red before their fix
+    (`out/tmp/cacheOwner/reviewRed.txt`).
 - **D, view ids with a generation.** `views.c` hands out `(generation << 5) | (slot + 1)`: opaque,
   positive, 0 invalid, sixteen slots. An id kept past its view's destroy stops by name ("was
   destroyed"). A slot whose generation reaches `VOID_VIEW_LAST_GENERATION` is retired, as
@@ -2187,6 +2193,12 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   silhouettes rely on it; any other colour matrix or `colorAdd` on a premultiplied tile darkens
   its translucent edges, as before the door closure. An unpremultiply-transform-premultiply
   path in the shader closes it.
+- **A pipeline cache's `closed` and `generation` are writable fields** of the public interface,
+  so `cache.closed = false` reopens a closed cache and nothing refuses it. MetaScript has no
+  module-private field, and an interface field cannot be `readonly` on the installed `msc`
+  (compiler card `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as
+  PENDING3D `store-serial-writable`); `readonly` would also stop `closePipelines` writing it.
+  Only `pipeline.ms` writes `closed`; tests write `generation` to fake a stale epoch.
 - **The UI program has no premultiplied input**: a premultiplied tile in an image style stops
   ("Door closure"). Neon images are straight, so nothing hits it today.
 - **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
