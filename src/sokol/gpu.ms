@@ -73,9 +73,6 @@ extern function voidDpiScale(): float32;
 extern function voidKeyDown(keycode: int32): int32;
 extern function voidMakeImage(rgba: Ptr<void>, w: int32, h: int32): uint32;
 extern function voidMakeView(image: uint32): uint32;
-extern function voidBeginPass(r: float32, g: float32, b: float32, a: float32): void;
-extern function voidEndPass(): void;
-extern function voidCommit(): void;
 
 export function gfxSetup(): void { voidGfxSetup(); }
 export function fbWidth(): int32 { return voidFbWidth(); }
@@ -84,9 +81,6 @@ export function dpiScale(): float32 { return voidDpiScale(); }
 export function keyDown(code: int32): boolean { return voidKeyDown(code) !== 0; }
 export function makeImage(rgba: Ptr<void>, w: int32, h: int32): uint32 { return voidMakeImage(rgba, w, h); }
 export function makeView(image: uint32): uint32 { return voidMakeView(image); }
-export function beginPass(r: float32, g: float32, b: float32, a: float32): void { voidBeginPass(r, g, b, a); }
-export function endPass(): void { voidEndPass(); }
-export function commit(): void { voidCommit(); }
 
 // sokol_app keycodes (ASCII-aligned letters) for keyDown polling.
 export const KEY_W: int32 = 87;

@@ -181,7 +181,6 @@ void voidBeginPass(float r, float g, float b, float a) {
 	sg_begin_pass(&pass);
 }
 
-void voidEndPass(void) { sg_end_pass(); }
 static void (*s_commitHook)(void);
 void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
 void voidCommit(void) { sg_commit(); if (s_commitHook) { s_commitHook(); } }

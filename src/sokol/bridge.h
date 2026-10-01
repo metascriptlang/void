@@ -54,7 +54,6 @@ uint32_t voidMakeView(uint32_t image);
 
 // Frame sequence.
 void voidBeginPass(float r, float g, float b, float a);
-void voidEndPass(void);
 void voidCommit(void);
 void voidSetCommitHook(void (*fn)(void));
 
