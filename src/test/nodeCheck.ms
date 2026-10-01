@@ -8,6 +8,7 @@ import {
 import { BlendMode } from "../gpu/state";
 import { approx } from "./helpers";
 import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
+import { colorMatrixGrayscale } from "../void2d/effect";
 
 const HALF_PI: float32 = 1.5707963;
 const white = rgba(1.0, 1.0, 1.0, 1.0);
@@ -786,4 +787,17 @@ test "hitTest intersects nested Mask clips through a rotated Mask" {
 	assert !child.hitTest(vec2(30.0, 48.0));
 	outer.setSize(50.0, 50.0);
 	assert !child.hitTest(vec2(30.0, 55.0));
+}
+
+test "a paint read from a node is a value: its color matrix reaches the node only through setPaint" {
+	const s = fresh();
+	const n = s.rect(4.0, 4.0, white).setColorMatrix(colorMatrixGrayscale(1.0));
+	s.clearChanges();
+	let p = n.paint();
+	p = { ...p, colorMatrix: { ...p.colorMatrix, m11: 2.0 } };
+	assert n.paint().colorMatrix == colorMatrixGrayscale(1.0);
+	assert (s.dirty.length as int32) == 0;
+	n.setPaint(p);
+	assert marked(n, Changed.Paint);
+	assert n.paint().colorMatrix.m11 == 2.0;
 }
