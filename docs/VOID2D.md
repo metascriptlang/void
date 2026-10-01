@@ -1960,9 +1960,9 @@ scripts/gate3d.sh` on the same tree is GREEN with its device skip. REVIEWS.md "U
 the review.
 
 **Not proved, not built.** Browser WebGPU pipeline creation, pixels and first-use cost (headless
-Chrome has no adapter here). Premultiplied content is inferred from colour-attachment usage, with
-no way for an app to declare a straight target. The screen layout's identity and the WebGL2
-golden of a void3d target are closed in "D1 follow-ups" below.
+Chrome has no adapter here). The screen layout's identity and the WebGL2 golden of a void3d
+target are closed in "D1 follow-ups" below; how an app declares premultiplied content, in
+"Door closure".
 
 **Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
 audit on the pre-integration source: mutating a caller's `Paint2D.colorMatrix: float32[]`, or
@@ -1971,6 +1971,7 @@ calling `setPaint` again with that same array still skips as equal. This is ordi
 aliasing, not a compiler failure. That audit captured dirty-state values, not pixels, and this
 lane has not independently reproduced or implemented a separate fix. Frame-context ownership
 must not treat a copied value wrapper as a deep-frozen snapshot of its reference fields.
+Closed by "Door closure" E: the matrix is a `Mat4` value in a scene side table, measured red before.
 
 ### D1 follow-ups (2026-10-01)
 
@@ -2015,8 +2016,144 @@ flip removed from the sprite path in `batcher.c` (control), the row fails on Web
 four other rows that sample a target through a sprite. So `sampledTarget` reads a void3d target
 upright on GL, as finding 5 argued from `blit.ms`.
 
+### Door closure (2026-10-01)
+
+Approved by the human on 2026-10-01 together with the per-draw premultiplied declaration ("ừ đồng
+ý cả 2"). The before-proof is void-unify's real-D3D11 boundary audit
+(`~/metascript/void/out/tmp/unifyAcceptanceD0/evidence.zip`, pinned at `d0f81e6`); re-run on
+`e22b1fc` from this worktree (`out/tmp/doorAudit/run`) it reproduced every BUG line; the two
+cross-store owner lines (a `MaterialId` or `TextureId` of one void3d store accepted by another)
+are void3d's, closed by its store identity (M24), not here. Each finding
+is one fix commit with its own red-before measurement; its pins are in `tests/aborts3d` (gate3d's
+abort stage) unless named otherwise.
+
+- **A, one owner of pass state.** `door.c` holds the pass state and stops, naming the call, on a
+  begin while a pass is open, an end with none, a `commit` with a pass open, and a pass or
+  pipeline descriptor shorter than its layout. `door.ms` only forwards, so a C consumer of
+  `door.h` meets the same stops. `commit` moved to `gpu/door`; `sokol/gpu` lost `beginPass`,
+  `endPass` and `commit` and the bridge lost `voidEndPass`, so nothing reaches sokol's pass state
+  around the door. Red before: a nested C screen pass and an end with none hit sokol's unnamed
+  asserts (debug builds only), the short descriptors returned silently, and the audit's legacy
+  begin and end left the door reporting None and Screen. Pins: `doorForeignScreenPassTwice`,
+  `doorForeignEndPassNone`, `doorShortPassDescriptor`, `doorShortPipelineDescriptor`,
+  `doorCommitInsidePass`.
+- **B, four color attachments.** `beginPass` and `layoutOf` stop on a fifth; before, the fifth was
+  dropped and its target kept its old pixels (the audit read blue where red was cleared). The
+  limit stays sokol's four, which WebGL2 also guarantees. Pins: `doorFiveColorPass`,
+  `doorFiveColorLayout`.
+- **C, handles tied to their GPU context.** `RenderTarget`, `Sampler`, `ColorAttachment` and
+  `DepthAttachment` carry the `contextGeneration()` they were made in, the `GpuTexture.generation`
+  idiom, since sokol ids repeat after `sg_setup`. `released()` replaces `release()`: it destroys
+  only a current-context target or sampler, stops on one already destroyed, and returns the empty
+  value for the caller to assign. `resized` keeps a target only when it is current, alive and the
+  same size, and reallocates a stale one without destroying it. The borrows `asColor`, `asDepth`,
+  `asTexture` and `asHandle` stop on another context, a destroyed image or a destroyed view, and
+  `asTexture` and `asHandle` also on an empty target or sampler. An unallocated target still
+  borrows as a color or depth attachment of view 0, because void3d's `setLook` borrows before
+  the first resize; `beginPass` then stops on that empty attachment, color or depth, on one of
+  another context and, in `door.c`, on a dead view. The pipeline cache adopts the current context
+  itself (`pipeline.ms`
+  `adoptContext`), and `releasePipelines` destroys only its own context's objects; forgetting and
+  closing stay two calls. void2d's `beginTarget` checks the generation alone (`requireCurrent`):
+  T1 records with no device, and the replay's `doorBeginColorPass` stops on a view that is not
+  live. The filter-target pool drops the targets of a lost context and makes them again
+  (`render.ms` `adoptPoolContext`), as void3d's presets do; no device here loses its context, so
+  that path is read, not run. Red before: the audit's same-size resize after a release returned
+  the destroyed view. Pins:
+  `targetResizedAfterRelease`, `targetTextureAfterRelease`, `targetReleasedTwice`,
+  `targetOtherContext`, `targetViewDestroyed`, `samplerHandleAfterRelease`,
+  `attachmentAfterRelease`, `attachmentOtherContext`, `attachmentWithoutView`, `depthWithoutView`,
+  `targetTextureUnallocated`, `samplerHandleEmpty`, and T0
+  `pipelineCheck` "releasing a cache of another GPU context drops its handles without destroying
+  them", and `tests/aborts/targetOtherContext2d`.
+- **The cache as a reference owner is parked.** `PipelineCache` as an `interface`, so that a
+  copied holder shares one cache, does not compile on C: an interface field read through a `ref`
+  struct parameter (`void3d/renderer.ms:230`, `ref context: DrawContext`) emits `(*s.f).g`. Card
+  `.inbox/compiler/2026-10-01-ref-struct-interface-field-c-member-access.md`; the change and its
+  test are `out/tmp/doorProbes/pipelineCacheInterface.patch`. Until the card is answered, or
+  void3d's `DrawContext` becomes an interface taken by value (its M24), the cache stays a
+  copyable struct, and a copy can still forget or release the same handles twice. The closure is
+  not accepted while this holds.
+- **D, view ids with a generation.** `views.c` hands out `(generation << 5) | (slot + 1)`: opaque,
+  positive, 0 invalid, sixteen slots. An id kept past its view's destroy stops by name ("was
+  destroyed"). A slot whose generation reaches `VOID_VIEW_LAST_GENERATION` is retired, as
+  `void3d/slots.ms` retires a row, and `voidViewCreate` stops once all sixteen are in use or
+  retired. The last generation is a compile-time override, so the fixture retires all sixteen in
+  sixteen pairs; a build with the override does not reach the object cache of a plain build
+  (`out/tmp/viewCache/receipt.txt`: a plain build right after it reuses slot 0 at generation 2). Red
+  before: the stale id 1
+  resized the view made after it; with the limit at 1 a seventeenth view was made. Pins:
+  `viewIdAfterRecreate`, `viewSlotsRetired`.
+- **E, the color matrix as a value in a side table.** A node's matrix is a `Mat4` (h2d's
+  `h3d.Matrix`) in the scene's `colorMatrices` rows; `Paint2D` holds only `colorMatrixRow`, -1
+  for none, and the immediate `setEffect` / `setGradientEffect` take a `Mat4`, identity meaning
+  none, written into the effect row in field order (`effect.ms`). `setColorMatrix` claims,
+  rewrites or frees the row and marks the node; `colorMatrix()` reads a copy; `setPaint` stops
+  on a paint that would move the row. The first cut held the `Mat4` inline in `Paint2D`, which
+  the design pass measured against guardrail 2: from the emitted field list `Paint2D` is about
+  80 B before the closure (a `float32[]` is an 8 B reference), about 128 B with the matrix
+  inline and about 68 B with the row, against SCENE-SCALE's 60 B per node; the matrix is read
+  only when emitting, which is box style's side-table case. Red before
+  (`out/tmp/paintMatrix/receipt.txt`, the probe built from the source before the fix): writing
+  the read copy changed the stored matrix (`m[0]` 2) and `setPaint` marked nothing. Pins: T0
+  `nodeCheck` "a color matrix read from a node is a value" and "lives in a side row", and
+  `tests/aborts/paintMovesColorMatrix`. An app reads the matrix with `colorMatrix()`; a
+  `float32[]` literal becomes a `Mat4`; `colorMatrixGrayscale` and `colorMatrixAlphaOnly` keep
+  their names.
+- **Premultiplied, declared per draw.** A `Tile` says whether its texels are premultiplied
+  (`alphaPremultiplied`, set by `.premultiplied()`, false by default, as Heaps' texture flag
+  `h3d/mat/Data.hx:110` and Bevy's alpha modes default to straight). Every draw that takes a raw
+  view takes the bit; it rides `CMD_SAMPLER` above the sampler index (`SOURCE_PREMULTIPLIED`),
+  splits the run when it changes, and the replay reads it. The replay no longer asks sokol
+  whether content is premultiplied, only whether a view is a render target, for the GL row flip.
+  void2d's own target blits and the app's target sprites declare it (`render.ms`, `filter.ms`,
+  the demo, `mixed/void3dTarget`); Neon holds the per-image fact. The UI program reads straight
+  texels only, so a premultiplied tile in an image style stops
+  (`tests/aborts/premultipliedStyledImage`) instead of being premultiplied twice; a UI input for it
+  is open. Control: without the declarations `filter/blur`,
+  `filter/afterTintedSibling` and `filter/maskAtDpi150` fail on D3D11; `mixed/void3dTarget`
+  passes either way, because its target is opaque, so `mixed/void3dTranslucentTarget` clears
+  the same target translucent over a 2D stripe and draws it through the instanced sprite
+  program: without its declaration it fails on D3D11, with it it passes. Pins: that golden and
+  T1 snapshot "a premultiplied tile carries its bit into the command and splits the run". Why this
+  shape: h2d already decides per
+  draw (HEAPS.md "Do not copy from h2d"); GPUI normalises at the source, which is W here, since
+  void2d composites its own premultiplied targets every frame and a conversion pass per target
+  would buy nothing; the bit rides `CMD_SAMPLER` because all 32 command floats are taken and the
+  sampler field already carries the source-read state through runs, target saves and replay.
+
+  ```ts
+  // before: Void guessed premultiplied from how the image was made
+  s.add(s.sprite(tile(forward.colorTarget.asTexture(), 256, 256)));
+  // after: the app declares it; an uploaded straight image says nothing
+  s.add(s.sprite(tile(forward.colorTarget.asTexture(), 256, 256).premultiplied()));
+  ```
+
+**Measured on the tip `7cf741d`, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` ran
+every code stage green: 1118 tests plus 299 isolated, D3D11 78/78, WebGL2 56 identical / 18
+bounded / the same four known-red, 107 frame functions / 245 callees, 16 PENDING; web builds
+2 344 744 / 2 116 929 B, 13 023 B under the D1 follow-ups' on both backends. Its one red was the
+record stage: TESTING.md's WebGL2 row did not yet count the new golden. The row was corrected in
+the docs commit and checked again against the same run (the gate's own claim string, and
+`tests/record/check.ms`: 0 off). `sh scripts/gate3d.sh` on the same tip is GREEN with its device
+skip. Logs: `out/tmp/closureGate2/`.
+
+A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
+checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
+`m[0]` survived the move to `Mat4` in `effectCheck.ms`.
+
 ## Open
 
+- **A colour effect on a premultiplied source reads it as straight** (`batcher.c` sets the
+  shader's premultiplied input only when the effect is the identity). The glow and drop-shadow
+  silhouettes rely on it; any other colour matrix or `colorAdd` on a premultiplied tile darkens
+  its translucent edges, as before the door closure. An unpremultiply-transform-premultiply
+  path in the shader closes it.
+- **The UI program has no premultiplied input**: a premultiplied tile in an image style stops
+  ("Door closure"). Neon images are straight, so nothing hits it today.
+- **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
+  a C consumer that calls them directly goes around the door's pass state. void3d's `gpu3d.c`
+  still returns silently on a short descriptor, the shape A closed in `door.c`.
 - **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame uniform buffer on WebGPU and Metal. Measure at P1 and fold what does not change per draw into fewer blocks if it bites.
 - Reference facts were read from source, not benchmarked. Instance sizes and the one-draw-call claim are from planned layouts, not measured — P2's exit is where they become numbers.
 - Non-uniform scale on SDF boxes and `erf` shadows is approximated; the error has not been characterised. It has a golden scene from P0 (`xform/`) and no bound yet.
