@@ -75,6 +75,7 @@ export const NO_SLOT: int32 = -1;
 const NO_PAYLOAD: int32 = -1;
 const LAST_GENERATION: int32 = 2147483647;
 const NO_FRAMES: Tile[] = [];
+export const NO_COLOR_MATRIX_ROW: int32 = -1;
 export const NO_FRAME: int32 = -1;
 export const ALL_TILES: int32 = 2147483647;
 
@@ -103,7 +104,7 @@ export struct Paint2D {
 	alpha: float32;
 	colorAdd: Color;
 	colorKey: Color;
-	colorMatrix: Mat4;
+	colorMatrixRow: int32;
 	blend: BlendMode;
 	// h2d.Drawable.smooth / .tileWrap. `Smooth.Inherit` takes the scene's default, so a node
 	// that says nothing follows the scene and a node that says something wins over it.
@@ -237,6 +238,8 @@ export interface Scene2D {
 	reused: int32;
 	anims: Vec<AnimFrames>;
 	freeAnims: Vec<int32>;
+	colorMatrices: Vec<Mat4>;
+	freeColorMatrices: Vec<int32>;
 	meshes: Vec<GraphicsMesh>;
 	freeMeshes: Vec<int32>;
 	tileGroups: Vec<TileGroupRow>;
@@ -287,7 +290,7 @@ function defaultPaint(): Paint2D {
 		alpha: 1.0,
 		colorAdd: rgba(0.0, 0.0, 0.0, 0.0),
 		colorKey: rgba(0.0, 0.0, 0.0, 0.0),
-		colorMatrix: NO_COLOR_MATRIX,
+		colorMatrixRow: NO_COLOR_MATRIX_ROW,
 		blend: BlendMode.Alpha,
 		smooth: Smooth.Inherit,
 		tileWrap: false,
@@ -472,8 +475,15 @@ export function setLocal(this n: NodeRef, l: Local2D): NodeRef {
 	return n;
 }
 
+function stopOnMovedColorMatrix(): void {
+	console.log("void2d: setPaint cannot move a node's color matrix row; " +
+		"setColorMatrix sets the matrix");
+	unreachable;
+}
+
 function putPaint(this s: Scene2D, i: int32, p: Paint2D): void {
 	if (s.paints[i] == p) { return; }
+	if (p.colorMatrixRow != s.paints[i].colorMatrixRow) { stopOnMovedColorMatrix(); }
 	s.paints[i] = p;
 	s.markChanged(i, Changed.Paint);
 }
@@ -626,10 +636,43 @@ export function setColorKey(this n: NodeRef, c: Color): NodeRef {
 	return n;
 }
 
+function claimColorMatrix(this s: Scene2D, m: Mat4): int32 {
+	const free: int32 = s.freeColorMatrices.length as int32;
+	if (free > 0) {
+		const row: int32 = s.freeColorMatrices[free - 1];
+		s.freeColorMatrices.pop();
+		s.colorMatrices[row] = m;
+		return row;
+	}
+	s.colorMatrices.push(m);
+	return (s.colorMatrices.length as int32) - 1;
+}
+
 export function setColorMatrix(this n: NodeRef, m: Mat4): NodeRef {
 	const i: int32 = n.liveRow("setColorMatrix");
-	n.scene.putPaint(i, { ...n.scene.paints[i], colorMatrix: m });
+	const s: Scene2D = n.scene;
+	const row: int32 = s.paints[i].colorMatrixRow;
+	if (m == NO_COLOR_MATRIX) {
+		if (row == NO_COLOR_MATRIX_ROW) { return n; }
+		s.freeColorMatrices.push(row);
+		s.paints[i] = { ...s.paints[i], colorMatrixRow: NO_COLOR_MATRIX_ROW };
+	} else if (row == NO_COLOR_MATRIX_ROW) {
+		s.paints[i] = { ...s.paints[i], colorMatrixRow: s.claimColorMatrix(m) };
+	} else {
+		if (s.colorMatrices[row] == m) { return n; }
+		s.colorMatrices[row] = m;
+	}
+	s.markChanged(i, Changed.Paint);
 	return n;
+}
+
+export function colorMatrix(this n: NodeRef): Mat4 {
+	return n.scene.colorMatrixOf(n.liveRow("colorMatrix"));
+}
+
+export function colorMatrixOf(this s: Scene2D, i: int32): Mat4 {
+	const row: int32 = s.paints[i].colorMatrixRow;
+	return row == NO_COLOR_MATRIX_ROW ? NO_COLOR_MATRIX : s.colorMatrices[row];
 }
 
 export function setBlend(this n: NodeRef, blend: BlendMode): NodeRef {
@@ -1478,6 +1521,8 @@ function releasePayload(this s: Scene2D, i: int32): void {
 
 function freeRow(this s: Scene2D, i: int32): void {
 	s.releasePayload(i);
+	const matrixRow: int32 = s.paints[i].colorMatrixRow;
+	if (matrixRow != NO_COLOR_MATRIX_ROW) { s.freeColorMatrices.push(matrixRow); }
 	s.kinds[i] = DrawKind.Group;
 	s.parents[i] = NO_NODE_2D;
 	s.children[i] = new Array(0);

@@ -1,4 +1,4 @@
-import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D } from "../void2d/node";
+import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW } from "../void2d/node";
 import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
@@ -8,7 +8,7 @@ import {
 import { BlendMode } from "../gpu/state";
 import { approx } from "./helpers";
 import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
-import { colorMatrixGrayscale } from "../void2d/effect";
+import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
 const HALF_PI: float32 = 1.5707963;
 const white = rgba(1.0, 1.0, 1.0, 1.0);
@@ -789,15 +789,28 @@ test "hitTest intersects nested Mask clips through a rotated Mask" {
 	assert !child.hitTest(vec2(30.0, 55.0));
 }
 
-test "a paint read from a node is a value: its matrix reaches the node only through setPaint" {
+test "a color matrix read from a node is a value: it reaches the node only through its setter" {
 	const s = fresh();
 	const n = s.rect(4.0, 4.0, white).setColorMatrix(colorMatrixGrayscale(1.0));
 	s.clearChanges();
-	let p = n.paint();
-	p.colorMatrix.m11 = 2.0;
-	assert n.paint().colorMatrix == colorMatrixGrayscale(1.0);
+	let m = n.colorMatrix();
+	m.m11 = 2.0;
+	assert n.colorMatrix() == colorMatrixGrayscale(1.0);
 	assert (s.dirty.length as int32) == 0;
-	n.setPaint(p);
+	n.setColorMatrix(m);
 	assert marked(n, Changed.Paint);
-	assert n.paint().colorMatrix.m11 == 2.0;
+	assert n.colorMatrix().m11 == 2.0;
+}
+
+test "a color matrix lives in a side row that only a node with one holds" {
+	const s = fresh();
+	const plain = s.rect(4.0, 4.0, white);
+	const grey = s.rect(4.0, 4.0, white).setColorMatrix(colorMatrixGrayscale(1.0));
+	assert plain.paint().colorMatrixRow == NO_COLOR_MATRIX_ROW;
+	assert (s.colorMatrices.length as int32) == 1;
+	grey.setColorMatrix(NO_COLOR_MATRIX);
+	assert grey.paint().colorMatrixRow == NO_COLOR_MATRIX_ROW;
+	plain.setColorMatrix(colorMatrixGrayscale(0.5));
+	assert (s.colorMatrices.length as int32) == 1;
+	assert plain.colorMatrix() == colorMatrixGrayscale(0.5);
 }

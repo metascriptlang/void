@@ -764,7 +764,7 @@ function emitNode(
 ): void {
 	const blend: BlendMode = s.paints[i].blend;
 	const payload: int32 = s.payloads[i];
-	setEffect(s.paints[i].colorMatrix, s.paints[i].colorAdd, s.paints[i].colorKey);
+	setEffect(s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey);
 	setSampler(s.paints[i].smooth, s.paints[i].tileWrap);
 	// P2: a flat quad becomes one instance instead of six transformed vertices, whenever the
 	// program can express it. `tl` is the origin because it is what the node's local
@@ -944,7 +944,7 @@ function emitNode(
 					const count: int32 = ops[oi + GFX_OP_VERTEX_COUNT] as int32;
 					if (kind == GraphicsOpKind.Mesh as int32) {
 						setEffect(
-							s.paints[i].colorMatrix, s.paints[i].colorAdd, s.paints[i].colorKey,
+							s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
 						);
 						drawMeshRange(
 							geometry.mesh, offset, count, geometry.view,
@@ -961,7 +961,7 @@ function emitNode(
 							ops[oi + GFX_OP_COLOR2], ops[oi + GFX_OP_COLOR2 + 1],
 							ops[oi + GFX_OP_COLOR2 + 2], ops[oi + GFX_OP_COLOR2 + 3]);
 						setGradientEffect(
-							s.paints[i].colorMatrix, s.paints[i].colorAdd, s.paints[i].colorKey,
+							s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
 							kind, ops[oi + GFX_OP_SPACE] as int32,
 							ops[oi + GFX_OP_DITHER] != 0.0, ops[oi + GFX_OP_MIDDLE],
 							ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
