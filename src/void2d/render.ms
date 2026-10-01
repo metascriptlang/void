@@ -128,7 +128,7 @@ import {
 import { BlendMode } from "../gpu/state";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat } from "../gpu/door";
-import { colorMatrixAlphaOnly } from "./effect";
+import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
 import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
 import {
@@ -1065,7 +1065,7 @@ export function blurTargetPooled(
 function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	// The target starts with no colour effect, but its sampler inherits the scene default.
 	// State both requirements explicitly: downsampling is linear-clamp and effect-free.
-	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
 	imageQuad(tile(src.asTexture(), w, h), vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
@@ -1709,7 +1709,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
 	// target is always composited linear-clamp with no colour pipeline; the silhouette below
 	// sets its own effect and puts this one back afterwards.
-	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
 	if (f.kind === FilterKind.Blur) {
 		imageQuad(rtTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
@@ -1738,7 +1738,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	const fblend: BlendMode = f.kind === FilterKind.Glow ? BlendMode.Add : BlendMode.Alpha;
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
-	setEffect([], rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	const sharpTile = tile(rt.asTexture(), rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);

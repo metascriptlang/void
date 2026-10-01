@@ -19,6 +19,8 @@ import {
 } from "./types";
 import { BlendMode } from "../gpu/state";
 import { sinf, cosf } from "../math/mat4";
+import { Mat4 } from "../math/math3d";
+import { NO_COLOR_MATRIX } from "./effect";
 import { FlexStyle } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
 import {
@@ -72,7 +74,6 @@ export const NO_NODE_2D: int32 = -1;
 export const NO_SLOT: int32 = -1;
 const NO_PAYLOAD: int32 = -1;
 const LAST_GENERATION: int32 = 2147483647;
-const NO_COLOR_MATRIX: float32[] = [];
 const NO_FRAMES: Tile[] = [];
 export const NO_FRAME: int32 = -1;
 export const ALL_TILES: int32 = 2147483647;
@@ -102,7 +103,7 @@ export struct Paint2D {
 	alpha: float32;
 	colorAdd: Color;
 	colorKey: Color;
-	colorMatrix: float32[];
+	colorMatrix: Mat4;
 	blend: BlendMode;
 	// h2d.Drawable.smooth / .tileWrap. `Smooth.Inherit` takes the scene's default, so a node
 	// that says nothing follows the scene and a node that says something wins over it.
@@ -624,7 +625,7 @@ export function setColorKey(this n: NodeRef, c: Color): NodeRef {
 	return n;
 }
 
-export function setColorMatrix(this n: NodeRef, m: float32[]): NodeRef {
+export function setColorMatrix(this n: NodeRef, m: Mat4): NodeRef {
 	const i: int32 = n.liveRow("setColorMatrix");
 	n.scene.putPaint(i, { ...n.scene.paints[i], colorMatrix: m });
 	return n;

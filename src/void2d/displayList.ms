@@ -24,6 +24,8 @@
 // intervals; axis-aligned clips stay in the hardware scissor.
 
 import { Color, rgba } from "./types";
+import { Mat4 } from "../math/math3d";
+import { NO_COLOR_MATRIX, writeColorMatrix, readColorMatrix } from "./effect";
 import { BlendMode } from "../gpu/state";
 import { void2dCommandView, void2dCopyFloats } from "./batcher.h";
 import { UI_PARAM_MODE, UiInstance } from "./instance";
@@ -322,7 +324,7 @@ export interface DrawContext2D {
 	savedView: Vec<uint32>;
 	savedRun: Vec<float32>;
 	savedSize: Vec<float32>;
-	curMat: Vec<float32>;
+	curMat: Mat4;
 	curAdd: Color;
 	curKey: Color;
 	curHasEffect: boolean;
@@ -427,12 +429,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		savedView: new Array(MAX_TARGET_DEPTH),
 		savedRun: new Array(MAX_TARGET_DEPTH * 3),
 		savedSize: new Array(MAX_TARGET_DEPTH * 4),
-		curMat: [
-			1.0, 0.0, 0.0, 0.0,
-			0.0, 1.0, 0.0, 0.0,
-			0.0, 0.0, 1.0, 0.0,
-			0.0, 0.0, 0.0, 1.0,
-		],
+		curMat: NO_COLOR_MATRIX,
 		curAdd: rgba(0.0, 0.0, 0.0, 0.0),
 		curKey: rgba(0.0, 0.0, 0.0, 0.0),
 		curHasEffect: false,
@@ -703,6 +700,10 @@ export function effectField(index: int32, field: int32): float32 {
 	return activeContext.effects[index * EFFECT_FLOATS + field];
 }
 
+export function effectMatrix(index: int32): Mat4 {
+	return readColorMatrix(activeContext.effects, index * EFFECT_FLOATS);
+}
+
 export function vertexField(index: int32, field: int32): float32 {
 	return activeContext.vertices[index * VERTEX_FLOATS + field];
 }
@@ -929,15 +930,12 @@ export function uiModeCount(mode: int32): int32 {
 
 // The colour pipeline as a row of its own. Returns the index a command should carry.
 
-export function pushEffect(matrix: Span<float32>, add: Color, key: Color): int32 {
+export function pushEffect(matrix: Mat4, add: Color, key: Color): int32 {
 	const base: int32 = effectSlot() * EFFECT_FLOATS;
 	activeContext.effectBase = base;
 	growTo(activeContext.effects, base + EFFECT_FLOATS);
 	for (let i: int32 = 0; i < EFFECT_FLOATS; i++) { activeContext.effects[base + i] = 0.0; }
-	const hasMatrix: boolean = (matrix.length as int32) >= 16;
-	for (let i: int32 = 0; i < 16; i++) {
-		activeContext.effects[base + i] = hasMatrix ? matrix[i] : (i % 5 == 0 ? 1.0 : 0.0);
-	}
+	writeColorMatrix(matrix, activeContext.effects, base);
 	activeContext.effects[base + 16] = add.r;
 	activeContext.effects[base + 17] = add.g;
 	activeContext.effects[base + 18] = add.b;
@@ -951,7 +949,7 @@ export function pushEffect(matrix: Span<float32>, add: Color, key: Color): int32
 }
 
 export function pushGradientEffect(
-	matrix: Span<float32>,
+	matrix: Mat4,
 	add: Color,
 	key: Color,
 	kind: int32,
@@ -1626,9 +1624,9 @@ test "a draw inherits the clip that was recorded before it" {
 	assert commandField(1, CMD_CLIP_V_MAX) == 12.0;
 }
 
-test "an empty matrix records the identity" {
+test "no color matrix records the identity" {
 	resetContext();
-	const index: int32 = pushEffect([], { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
+	const index: int32 = pushEffect(NO_COLOR_MATRIX, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 }, { r: 0.0, g: 0.0, b: 0.0, a: 0.0 });
 	assert index == 0;
 	assert effectField(0, 0) == 1.0;
 	assert effectField(0, 5) == 1.0;

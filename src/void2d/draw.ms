@@ -38,7 +38,7 @@ import {
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, samplerIndex,
 	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded, spriteInstanceCount,
-	effectField,
+	effectField, effectMatrix,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
@@ -50,6 +50,8 @@ import {
 	pipelineSlot, wantPipelineSlot,
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
+import { Mat4 } from "../math/math3d";
+import { NO_COLOR_MATRIX } from "./effect";
 import { PassState, PixelFormat, passState, frameIndex, contextGeneration } from "../gpu/door";
 import { PipelineCache, pipelineFor, forgetPipelines } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
@@ -183,19 +185,7 @@ export function recordedVertexCount(): int32 { return vertexCount(); }
 
 function setIdentityMat(): void {
 	const ctx: DrawContext2D = currentContext();
-	for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = i % 5 == 0 ? 1.0 : 0.0; }
-}
-
-function effectMatrixSame(mat: Span<float32>, hasMat: boolean): boolean {
-	const ctx: DrawContext2D = currentContext();
-	if (hasMat) {
-		for (let i: int32 = 0; i < 16; i++) { if (mat[i] != ctx.curMat[i]) { return false; } }
-		return true;
-	}
-	for (let i: int32 = 0; i < 16; i++) {
-		if (ctx.curMat[i] != (i % 5 == 0 ? 1.0 : 0.0)) { return false; }
-	}
-	return true;
+	ctx.curMat = NO_COLOR_MATRIX;
 }
 
 // Close the open run as one Draw command. Called when the state changes, when a clip moves,
@@ -283,7 +273,7 @@ export function resumePaint(p: PaintIndex): void {
 	ctx.curHasEffect = p.hasEffect;
 	l.scopeNow = p.scope;
 	if (p.hasEffect) {
-		for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = effectField(p.effect, i); }
+		ctx.curMat = effectMatrix(p.effect);
 		ctx.curAdd = rgba(
 			effectField(p.effect, 16), effectField(p.effect, 17),
 			effectField(p.effect, 18), effectField(p.effect, 19),
@@ -865,28 +855,21 @@ export function popClip(): void {
 	}
 }
 
-// h2d.Drawable colour pipeline → batch state. mat = 16-float column-major colorMatrix
-// (empty/<16 = identity); add = rgba added after; key = chroma colorKey (a>0 enables,
-// matching texels go transparent).
 function currentGradientKind(): int32 {
 	const ctx: DrawContext2D = currentContext();
 	if (ctx.curEffect == NO_EFFECT) { return 0; }
 	return effectField(ctx.curEffect, EFFECT_GRADIENT_META) as int32;
 }
-export function setEffect(mat: Span<float32>, add: Color, key: Color): void {
+export function setEffect(mat: Mat4, add: Color, key: Color): void {
 	const ctx: DrawContext2D = currentContext();
-	const hasMat: boolean = (mat.length as int32) >= 16;
+	const hasMat: boolean = mat != NO_COLOR_MATRIX;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && !ctx.curHasEffect) { return; }
 	if (wantsEffect && ctx.curHasEffect && currentGradientKind() == 0
 		&& add == ctx.curAdd && key == ctx.curKey
-		&& effectMatrixSame(mat, hasMat)) { return; }
+		&& mat == ctx.curMat) { return; }
 	closeRun();
-	if (hasMat) {
-		for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = mat[i]; }
-	} else {
-		setIdentityMat();
-	}
+	ctx.curMat = mat;
 	ctx.curAdd = add;
 	ctx.curKey = key;
 	ctx.curHasEffect = wantsEffect;
@@ -894,7 +877,7 @@ export function setEffect(mat: Span<float32>, add: Color, key: Color): void {
 	openRun(BreakReason.Effect);
 }
 export function setGradientEffect(
-	mat: Span<float32>,
+	mat: Mat4,
 	add: Color,
 	key: Color,
 	kind: int32,
@@ -910,7 +893,6 @@ export function setGradientEffect(
 	c2: Color,
 ): void {
 	const ctx: DrawContext2D = currentContext();
-	const hasMat: boolean = (mat.length as int32) >= 16;
 	if (ctx.curHasEffect && ctx.curEffect != NO_EFFECT
 		&& (effectField(ctx.curEffect, EFFECT_GRADIENT_META) as int32) == kind
 		&& (effectField(ctx.curEffect, EFFECT_GRADIENT_META + 1) as int32) == space
@@ -933,13 +915,9 @@ export function setGradientEffect(
 		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR2 + 2) == c2.b
 		&& effectField(ctx.curEffect, EFFECT_GRADIENT_COLOR2 + 3) == c2.a
 		&& add == ctx.curAdd && key == ctx.curKey
-		&& effectMatrixSame(mat, hasMat)) { return; }
+		&& mat == ctx.curMat) { return; }
 	closeRun();
-	if (hasMat) {
-		for (let i: int32 = 0; i < 16; i++) { ctx.curMat[i] = mat[i]; }
-	} else {
-		setIdentityMat();
-	}
+	ctx.curMat = mat;
 	ctx.curAdd = add;
 	ctx.curKey = key;
 	ctx.curHasEffect = true;

@@ -7,13 +7,12 @@
 import { RenderTarget } from "../gpu/target";
 import { drawImage, setEffect, beginTarget, endTarget } from "./draw";
 import { blurTargetPooled } from "./render";
-import { colorMatrixAlphaOnly } from "./effect";
+import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
 import { Color, tile, vec2, rgba } from "./types";
 import { BlendMode } from "../gpu/state";
 
 const zeroColor: Color = rgba(0.0, 0.0, 0.0, 0.0);
 const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
-const noMat: float32[] = [];
 
 // Blur `src` into `dst`; `src` is left intact so the caller can still composite the sharp
 // original on top. Both are `size` square.
@@ -59,7 +58,7 @@ export function drawSilhouette(
 ): void {
 	setEffect(colorMatrixAlphaOnly(gain), rgba(color.r, color.g, color.b, 0.0), zeroColor);
 	drawImage(tile(blurredRT.asTexture(), w, h), vec2(x, y), vec2(w, h), white, blend);
-	setEffect(noMat, zeroColor, zeroColor);
+	setEffect(NO_COLOR_MATRIX, zeroColor, zeroColor);
 }
 
 // Additive glow halo (no offset) — draw the sharp original on top afterwards.
