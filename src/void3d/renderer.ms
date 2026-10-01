@@ -85,12 +85,22 @@ export enum RendererError {
 	TextureReplaced,
 	StaleMesh,
 	StaleMaterial,
+	ForeignMesh,
+	ForeignMaterial,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
 export const RENDERER_UNIFORM_LENGTH: int32 = VERTEX_UNIFORM_LENGTH + LIGHT_UNIFORM_LENGTH;
 
 const NO_GLOBALS: Vec<UniformBlock> = [];
+
+function meshError(context: DrawContext, id: MeshId): RendererError {
+	return context.issuedMesh(id) ? RendererError.StaleMesh : RendererError.ForeignMesh;
+}
+
+function materialError(context: DrawContext, id: MaterialId): RendererError {
+	return context.issuedMaterial(id) ? RendererError.StaleMaterial : RendererError.ForeignMaterial;
+}
 
 // createDrawing checked that the pool fits the block, and the renderer owns it, so nothing but
 // the renderer can release it.
@@ -174,10 +184,14 @@ export function beginFrame(
 	camera: Span<float32>,
 	lights: Span<float32>,
 ): Result<boolean, RendererError> {
-	if (!context.hasMesh(renderer.screenMesh)) { return Result.err(RendererError.StaleMesh); }
+	if (!context.hasMesh(renderer.screenMesh)) {
+		return Result.err(meshError(context, renderer.screenMesh));
+	}
 	for (const item of items) {
-		if (!context.hasMesh(item.mesh)) { return Result.err(RendererError.StaleMesh); }
-		if (!context.hasMaterial(item.material)) { return Result.err(RendererError.StaleMaterial); }
+		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
+		if (!context.hasMaterial(item.material)) {
+			return Result.err(materialError(context, item.material));
+		}
 		const material: int32 = item.material.index;
 		const drawn: Result<Program, ProgramError> =
 			renderer.programs.drawnFor(context.materials[material].program);
@@ -277,8 +291,10 @@ export function drawScreen(
 	material: MaterialId,
 	targets: TargetLayout,
 ): Result<int32, RendererError> {
-	if (!context.hasMesh(renderer.screenMesh)) { return Result.err(RendererError.StaleMesh); }
-	if (!context.hasMaterial(material)) { return Result.err(RendererError.StaleMaterial); }
+	if (!context.hasMesh(renderer.screenMesh)) {
+		return Result.err(meshError(context, renderer.screenMesh));
+	}
+	if (!context.hasMaterial(material)) { return Result.err(materialError(context, material)); }
 	if (!context.keepsItsTexture(material)) { return Result.err(RendererError.TextureReplaced); }
 	const program: Program = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);

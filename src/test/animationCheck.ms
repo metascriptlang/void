@@ -463,7 +463,8 @@ test "a clock with no frames is refused by every animation built on it" {
 
 test "mesh frames refuse a negative mesh index" {
 	let context: DrawContext = contextOf(8, 1);
-	const meshes: Vec<MeshId> = [context.meshAt(3), { index: -1, generation: 0 }];
+	const negative: MeshId = { store: context.serial, index: -1, generation: 0 };
+	const meshes: Vec<MeshId> = [context.meshAt(3), negative];
 	const refused: Result<MeshFrameAnimation, AnimationError> =
 		MeshFrameAnimation.forMeshes(
 			context,

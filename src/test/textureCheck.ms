@@ -51,7 +51,11 @@ import {
 import { LowResView } from "../void3d/blit";
 import { added, litShape } from "./drawHelpers";
 
-let FIRST_SLOT: TextureId = { index: 0, generation: 1 };
+let FIRST_SLOT: TextureId = { store: 0, index: 0, generation: 1 };
+
+function firstSlotOf(context: DrawContext): TextureId {
+	return { ...FIRST_SLOT, store: context.serial };
+}
 
 function sized(width: int32, height: int32, pixels: int32): TextureData {
 	let words: Vec<uint32> = new Array(pixels);
@@ -109,16 +113,19 @@ test "no texture has generation 0, so the empty id names none" {
 
 test "a texture id that names nothing is refused by every hold" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
-	let retained: Result<int32, HandleError> = retainTexture(context, FIRST_SLOT);
+	let retained: Result<int32, HandleError> = retainTexture(context, firstSlotOf(context));
 	assert !retained.ok && retained.error == HandleError.StaleTexture;
-	let released: Result<int32, HandleError> = releaseTexture(context, FIRST_SLOT);
+	let released: Result<int32, HandleError> = releaseTexture(context, firstSlotOf(context));
 	assert !released.ok && released.error == HandleError.StaleTexture;
-	assert !context.hasTexture(FIRST_SLOT) && context.texturePinned(FIRST_SLOT) == 0;
+	const slot: TextureId = firstSlotOf(context);
+	assert !context.hasTexture(slot) && context.texturePinned(slot) == 0;
+	let foreign: Result<int32, HandleError> = releaseTexture(context, FIRST_SLOT);
+	assert !foreign.ok && foreign.error == HandleError.ForeignTexture;
 }
 
 test "a material naming a texture refuses a view or sampler at slot 0 too, and a stale one" {
 	let context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
-	let material: Material = { ...texturedLit(context), texture: FIRST_SLOT };
+	let material: Material = { ...texturedLit(context), texture: firstSlotOf(context) };
 	let viewToo: Result<MaterialId, MaterialError> =
 		addMaterial(context, { ...material, texture0: 7 });
 	assert materialError(viewToo) == MaterialError.TextureNamedTwice;
@@ -158,7 +165,7 @@ test "the core refuses a textured material with nothing at slot 0, or whose text
 	let rawFrame: Result<boolean, RendererError> =
 		beginFrame(core, context, rawItems, shortCamera, lights);
 	assert !rawFrame.ok && rawFrame.error == RendererError.CameraBlockLength;
-	context.materials[bare.value.index].texture = FIRST_SLOT;
+	context.materials[bare.value.index].texture = firstSlotOf(context);
 	let swapped: Result<boolean, RendererError> =
 		beginFrame(core, context, bareItems, camera, lights);
 	assert !swapped.ok && swapped.error == RendererError.TextureReplaced;
@@ -177,7 +184,7 @@ test "the forward preset passes a replaced texture on by name" {
 	let material: Result<MaterialId, MaterialError> = addMaterial(context, texturedLit(context));
 	assert material.ok;
 	if (!material.ok) { return; }
-	context.materials[material.value.index].texture = FIRST_SLOT;
+	context.materials[material.value.index].texture = firstSlotOf(context);
 	let items: Vec<DrawItem> = [texturedItem(context, material.value)];
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -192,12 +199,12 @@ test "a material names a texture only on a program that samples one at slot 0" {
 	let lit: Material = {
 		...texturedLit(context),
 		program: Program.Lit,
-		texture: FIRST_SLOT,
+		texture: firstSlotOf(context),
 	};
 	assert materialError(addMaterial(context, lit)) == MaterialError.TextureNotSampled;
 	let particle: Material = {
 		...Material.plain(Program.Particle, RenderState.defaults(), Phase.Opaque),
-		texture: FIRST_SLOT,
+		texture: firstSlotOf(context),
 	};
 	assert materialError(addMaterial(context, particle)) == MaterialError.TextureNotSampled;
 	assert context.liveMaterials() == 0;
@@ -227,7 +234,7 @@ test "a screen draw refuses a material whose texture changed" {
 	let added: Result<MaterialId, MaterialError> = addMaterial(context, copy);
 	assert added.ok;
 	if (!added.ok) { return; }
-	context.materials[added.value.index].texture = FIRST_SLOT;
+	context.materials[added.value.index].texture = firstSlotOf(context);
 	let drawn: Result<int32, RendererError> =
 		drawScreen(core, context, added.value, SWAPCHAIN_LAYOUT);
 	assert !drawn.ok && drawn.error == RendererError.TextureReplaced;
@@ -244,7 +251,7 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 	assert forward.ok;
 	if (!forward.ok) { return; }
 	let copy: ForwardRenderer = forward.value;
-	forwardContext.materials[copy.copyMaterial.index].texture = FIRST_SLOT;
+	forwardContext.materials[copy.copyMaterial.index].texture = firstSlotOf(forwardContext);
 	let copied: Result<int32, ForwardError> =
 		renderFrame(copy, forwardContext, none, camera, lights, 640, 480);
 	assert !copied.ok && copied.error == ForwardError.TextureReplaced;
@@ -268,7 +275,7 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 		if (!created.ok) { return; }
 		let preset: PixelArtRenderer = created.value;
 		let screen: MaterialId = post ? preset.postMaterial : preset.blitMaterial;
-		context.materials[screen.index].texture = FIRST_SLOT;
+		context.materials[screen.index].texture = firstSlotOf(context);
 		let drawn: Result<int32, PixelArtError> =
 			renderPixelArt(preset, context, none, camera, lights, view);
 		assert !drawn.ok && drawn.error == PixelArtError.TextureReplaced;

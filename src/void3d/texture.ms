@@ -15,11 +15,12 @@ export struct TextureData {
 }
 
 export struct TextureId {
+	store: int32;
 	index: int32;
 	generation: int32;
 }
 
-export const NO_TEXTURE: TextureId = { index: 0, generation: 0 };
+export const NO_TEXTURE: TextureId = { store: 0, index: 0, generation: 0 };
 
 // `image` and `view` are the context's, made from the TextureData at the same index; `sampler`
 // is the context's shared one for the texture's filter and wrap (draw.ms samplerFor).

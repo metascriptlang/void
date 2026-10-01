@@ -41,11 +41,19 @@ export function added(context: DrawContext, mesh: GpuMesh): MeshId {
 }
 
 export function meshAt(this context: DrawContext, index: int32): MeshId {
-	return { index: index, generation: context.meshSlots.generations[index] };
+	return {
+		store: context.serial,
+		index: index,
+		generation: context.meshSlots.generations[index],
+	};
 }
 
 export function materialAt(this context: DrawContext, index: int32): MaterialId {
-	return { index: index, generation: context.materialSlots.generations[index] };
+	return {
+		store: context.serial,
+		index: index,
+		generation: context.materialSlots.generations[index],
+	};
 }
 
 export function lastMaterial(this context: DrawContext): MaterialId {

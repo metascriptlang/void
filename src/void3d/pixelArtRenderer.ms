@@ -159,6 +159,8 @@ export enum PixelArtError {
 	TextureReplaced,
 	StaleMesh,
 	StaleMaterial,
+	ForeignMesh,
+	ForeignMaterial,
 	RampLevels,
 }
 
@@ -501,6 +503,8 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.TextureReplaced => PixelArtError.TextureReplaced,
 		RendererError.StaleMesh => PixelArtError.StaleMesh,
 		RendererError.StaleMaterial => PixelArtError.StaleMaterial,
+		RendererError.ForeignMesh => PixelArtError.ForeignMesh,
+		RendererError.ForeignMaterial => PixelArtError.ForeignMaterial,
 	};
 }
 
@@ -563,7 +567,11 @@ export function prepareFrame(
 	renderer.core.openPrepare();
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);
-	if (!screens) { return Result.err(PixelArtError.StaleMaterial); }
+	if (!screens) {
+		const issued: boolean = context.issuedMaterial(renderer.postMaterial) &&
+			context.issuedMaterial(renderer.blitMaterial);
+		return Result.err(issued ? PixelArtError.StaleMaterial : PixelArtError.ForeignMaterial);
+	}
 	let kept: boolean = context.keepsItsTexture(renderer.postMaterial) &&
 		context.keepsItsTexture(renderer.blitMaterial);
 	if (!kept) { return Result.err(PixelArtError.TextureReplaced); }

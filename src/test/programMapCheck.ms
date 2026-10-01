@@ -85,13 +85,19 @@ function contextNaming(program: Program, capacity: int32): DrawContext {
 	return context;
 }
 
-const FIRST_MATERIAL: MaterialId = { index: 0, generation: 1 };
+function firstMaterial(context: DrawContext): MaterialId {
+	return { store: context.serial, index: 0, generation: 1 };
+}
 
 // Drawn with the first mesh of its context, which a renderer adds when it is made (its screen
 // triangle).
-function itemOf(material: MaterialId): DrawItem {
+function itemOf(context: DrawContext, material: MaterialId): DrawItem {
 	const world: Mat4 = identity();
-	return { mesh: { index: 0, generation: 1 }, material: material, world: world };
+	return {
+		mesh: { store: context.serial, index: 0, generation: 1 },
+		material: material,
+		world: world,
+	};
 }
 
 // A billboard material over a block of its own, from what `context` has left.
@@ -153,7 +159,7 @@ test "the core refuses a material it does not draw before it writes the camera" 
 	assert created.ok;
 	if (created.ok) {
 		let core: Renderer = created.value;
-		const items: Vec<DrawItem> = [itemOf(FIRST_MATERIAL)];
+		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		camera[0] = 7.0;
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -181,7 +187,7 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 		assert forward.core.programs.draws(Program.Lit);
 		assert forward.core.programs.draws(Program.Billboard);
 		assert !forward.core.programs.draws(Program.Copy);
-		const items: Vec<DrawItem> = [itemOf(FIRST_MATERIAL)];
+		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const unsized: Result<int32, ForwardError> =
@@ -235,7 +241,7 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	const items: Vec<DrawItem> = [itemOf(FIRST_MATERIAL)];
+	const items: Vec<DrawItem> = [itemOf(bare, firstMaterial(bare))];
 	if (bareCore.ok) {
 		let core: Renderer = bareCore.value;
 		const began: Result<boolean, RendererError> = beginFrame(core, bare, items, camera, lights);
@@ -255,11 +261,12 @@ test "the core refuses a lit material without its block, or on a mesh of another
 	const heldCore: Result<Renderer, RendererError> = Renderer.create(held);
 	assert heldCore.ok;
 	const litMesh: MeshId = added(held, litShape());
-	const litItems: Vec<DrawItem> = [{ ...itemOf(FIRST_MATERIAL), mesh: litMesh }];
+	const heldItems: Vec<DrawItem> = [itemOf(held, firstMaterial(held))];
+	const litItems: Vec<DrawItem> = [{ ...heldItems[0], mesh: litMesh }];
 	if (heldCore.ok) {
 		let core: Renderer = heldCore.value;
 		const onScreen: Result<boolean, RendererError> =
-			beginFrame(core, held, items, shortCamera, lights);
+			beginFrame(core, held, heldItems, shortCamera, lights);
 		assert !onScreen.ok && onScreen.error == RendererError.VertexLayout;
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, held, litItems, shortCamera, lights);
@@ -282,7 +289,7 @@ test "the core refuses a billboard without its texture and sampler, or off the q
 		const textures: Vec<uint32> = [0, 5];
 		for (const texture of textures) {
 			const unsampled: MaterialId = billboardMaterial(context, texture, 0);
-			const items: Vec<DrawItem> = [{ ...itemOf(unsampled), mesh: quads }];
+			const items: Vec<DrawItem> = [{ ...itemOf(context, unsampled), mesh: quads }];
 			const began: Result<boolean, RendererError> =
 				beginFrame(core, context, items, camera, lights);
 			assert !began.ok && began.error == RendererError.MaterialTexture;
@@ -294,17 +301,17 @@ test "the core refuses a billboard without its texture and sampler, or off the q
 		const material: MaterialId = billboardMaterial(context, 5, 6);
 		for (const offShape of [cornered, unbuffered, strip]) {
 			const mesh: MeshId = added(context, offShape);
-			const offItems: Vec<DrawItem> = [{ ...itemOf(material), mesh: mesh }];
+			const offItems: Vec<DrawItem> = [{ ...itemOf(context, material), mesh: mesh }];
 			const refused: Result<boolean, RendererError> =
 				beginFrame(core, context, offItems, camera, lights);
 			assert !refused.ok && refused.error == RendererError.QuadMesh;
 		}
 		const unwritten: MeshId = added(context, GpuMesh.billboards(0, 0));
-		const emptyItems: Vec<DrawItem> = [{ ...itemOf(material), mesh: unwritten }];
+		const emptyItems: Vec<DrawItem> = [{ ...itemOf(context, material), mesh: unwritten }];
 		const empty: Result<boolean, RendererError> =
 			beginFrame(core, context, emptyItems, shortCamera, lights);
 		assert !empty.ok && empty.error == RendererError.CameraBlockLength;
-		const items: Vec<DrawItem> = [{ ...itemOf(material), mesh: quads }];
+		const items: Vec<DrawItem> = [{ ...itemOf(context, material), mesh: quads }];
 		const began: Result<boolean, RendererError> =
 			beginFrame(core, context, items, shortCamera, lights);
 		assert !began.ok && began.error == RendererError.CameraBlockLength;
@@ -319,7 +326,7 @@ test "the forward preset refuses a lit material without its block" {
 	assert created.ok;
 	if (created.ok) {
 		let forward: ForwardRenderer = created.value;
-		const items: Vec<DrawItem> = [itemOf(FIRST_MATERIAL)];
+		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const refused: Result<int32, ForwardError> =

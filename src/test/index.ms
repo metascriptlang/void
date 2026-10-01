@@ -38,6 +38,7 @@ import "./gltfMaterialCheck";
 import "./slotsCheck";
 import "./uniformPoolCheck";
 import "./lifetimeCheck";
+import "./storeCheck";
 import "./textureCheck";
 import "./imageDecodeCheck";
 import "./scene3dCheck";

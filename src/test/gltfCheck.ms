@@ -147,6 +147,13 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 		addGltfNodes(scene, context, scene.rootId(), loaded.value, invalidBindings);
 	assert !invalid.ok;
 	if (!invalid.ok) { assert invalid.error == GltfSceneError.BadMeshBinding; }
+	let other: DrawContext = contextOf(8, 10);
+	const foreignBindings: Vec<GltfMeshBinding> =
+		[{ mesh: other.meshAt(7), material: context.materialAt(9) }];
+	const foreign: Result<int32, GltfSceneError> =
+		addGltfNodes(scene, context, scene.rootId(), loaded.value, foreignBindings);
+	assert !foreign.ok;
+	if (!foreign.ok) { assert foreign.error == GltfSceneError.ForeignMeshBinding; }
 	const bindings: Vec<GltfMeshBinding> =
 		[{ mesh: context.meshAt(7), material: context.materialAt(9) }];
 	const added: Result<int32, GltfSceneError> =

@@ -40,6 +40,7 @@ import {
 export enum GltfSceneError {
 	InvalidData,
 	BadMeshBinding,
+	ForeignMeshBinding,
 	SceneRefused,
 	BadSetup,
 	TextureRefused,
@@ -216,6 +217,9 @@ export function addGltfNodes(
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}
 	for (const binding of bindings) {
+		if (!context.issuedMesh(binding.mesh) || !context.issuedMaterial(binding.material)) {
+			return Result.err(GltfSceneError.ForeignMeshBinding);
+		}
 		if (!context.hasMesh(binding.mesh) || !context.hasMaterial(binding.material)) {
 			return Result.err(GltfSceneError.BadMeshBinding);
 		}

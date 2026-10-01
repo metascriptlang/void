@@ -101,11 +101,13 @@ export function elementCount(this mesh: GpuMesh): int32 {
 // A mesh or a material of a DrawContext, named as M6 names a node (slots.ms). It names nothing
 // once its last holder has released it.
 export struct MeshId {
+	store: int32;
 	index: int32;
 	generation: int32;
 }
 
 export struct MaterialId {
+	store: int32;
 	index: int32;
 	generation: int32;
 }
@@ -136,6 +138,7 @@ export struct DoomedBuffer {
 // range and the texture each material was added with, whatever its fields say later. `textures`
 // and `textureData` are one index space, as `meshes` and `meshData` are.
 export interface DrawContext {
+	serial: int32;
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
 	meshSlots: Slots;
@@ -177,6 +180,9 @@ export enum HandleError {
 	OnlyPinned,
 	NotPinned,
 	StaleTexture,
+	ForeignMesh,
+	ForeignMaterial,
+	ForeignTexture,
 }
 
 export enum MaterialError {
@@ -185,7 +191,11 @@ export enum MaterialError {
 	StaleTexture,
 	TextureNamedTwice,
 	TextureNotSampled,
+	ForeignTexture,
+	ForeignUniforms,
 }
+
+let contextSerials: int32 = 0;
 
 // The uniform pool is sized here, once; reserveUniforms only hands out ranges of it.
 export function withUniformCapacity(this typeof DrawContext, capacity: int32): DrawContext {
@@ -201,7 +211,9 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 	for (let i = 0; i < SAMPLER_SETTINGS; i++) {
 		samplers[i] = 0;
 	}
+	contextSerials = contextSerials + 1;
 	return {
+		serial: contextSerials,
 		meshes: [],
 		meshData: [],
 		meshSlots: Slots.empty(),
@@ -231,12 +243,36 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 	};
 }
 
+export function issuedMesh(this context: DrawContext, id: MeshId): boolean {
+	return id.store == context.serial;
+}
+
+export function issuedMaterial(this context: DrawContext, id: MaterialId): boolean {
+	return id.store == context.serial;
+}
+
+export function issuedTexture(this context: DrawContext, id: TextureId): boolean {
+	return id.store == context.serial;
+}
+
 export function hasMesh(this context: DrawContext, id: MeshId): boolean {
-	return context.meshSlots.isCurrent(id.index, id.generation);
+	return context.issuedMesh(id) && context.meshSlots.isCurrent(id.index, id.generation);
 }
 
 export function hasMaterial(this context: DrawContext, id: MaterialId): boolean {
-	return context.materialSlots.isCurrent(id.index, id.generation);
+	return context.issuedMaterial(id) && context.materialSlots.isCurrent(id.index, id.generation);
+}
+
+function meshRefusal(this context: DrawContext, id: MeshId): HandleError {
+	return context.issuedMesh(id) ? HandleError.StaleMesh : HandleError.ForeignMesh;
+}
+
+function materialRefusal(this context: DrawContext, id: MaterialId): HandleError {
+	return context.issuedMaterial(id) ? HandleError.StaleMaterial : HandleError.ForeignMaterial;
+}
+
+function textureRefusal(this context: DrawContext, id: TextureId): HandleError {
+	return context.issuedTexture(id) ? HandleError.StaleTexture : HandleError.ForeignTexture;
 }
 
 export function liveMeshes(this context: DrawContext): int32 {
@@ -263,7 +299,11 @@ function newMesh(context: DrawContext, mesh: GpuMesh, data: MeshData): MeshId {
 		context.meshPins[index] = 0;
 		context.meshTally[index] = 0;
 	}
-	return { index: index, generation: context.meshSlots.generations[index] };
+	return {
+		store: context.serial,
+		index: index,
+		generation: context.meshSlots.generations[index],
+	};
 }
 
 // A mesh with no CPU data here. Whose buffers they are is the mesh's generation:
@@ -449,6 +489,7 @@ export enum StreamError {
 	ShortInstances,
 	BufferRefused,
 	WrittenThisFrame,
+	ForeignMesh,
 }
 
 export function isStream(this mesh: GpuMesh): boolean {
@@ -500,7 +541,9 @@ export function writeStream(
 	instances: Span<float32>,
 	count: int32,
 ): Result<int32, StreamError> {
-	if (!context.hasMesh(id)) { return Result.err(StreamError.StaleMesh); }
+	if (!context.hasMesh(id)) {
+		return Result.err(context.issuedMesh(id) ? StreamError.StaleMesh : StreamError.ForeignMesh);
+	}
 	const index: int32 = id.index;
 	if (!context.meshes[index].isStream()) { return Result.err(StreamError.NotAStream); }
 	if (count < 0 || count > context.meshes[index].instanceCapacity) {
@@ -606,7 +649,7 @@ function freeMesh(context: DrawContext, index: int32): void {
 
 // Another holder of `id`, as Heaps' `Primitive.incref`; answers how many hold it now.
 export function retainMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
-	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	context.meshHolders[id.index] = context.meshHolders[id.index] + 1;
 	return Result.ok(context.meshHolders[id.index]);
 }
@@ -625,7 +668,7 @@ function letGoOfMesh(context: DrawContext, index: int32): int32 {
 // Answers how many still hold it. A release that would take a pin is a caller releasing once
 // too often, and is refused.
 export function releaseMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
-	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	if (context.meshHolders[id.index] == context.meshPins[id.index]) {
 		return Result.err(HandleError.OnlyPinned);
 	}
@@ -634,14 +677,14 @@ export function releaseMesh(context: DrawContext, id: MeshId): Result<int32, Han
 
 // A hold only its holder lets go (a mesh node's, a baked animation's), with unpinMesh.
 export function pinMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
-	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	context.meshPins[id.index] = context.meshPins[id.index] + 1;
 	context.meshHolders[id.index] = context.meshHolders[id.index] + 1;
 	return Result.ok(context.meshHolders[id.index]);
 }
 
 export function unpinMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
-	if (!context.hasMesh(id)) { return Result.err(HandleError.StaleMesh); }
+	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	if (context.meshPins[id.index] == 0) { return Result.err(HandleError.NotPinned); }
 	context.meshPins[id.index] = context.meshPins[id.index] - 1;
 	return Result.ok(letGoOfMesh(context, id.index));
@@ -681,13 +724,17 @@ export function addMaterial(
 			return Result.err(MaterialError.TextureNotSampled);
 		}
 		if (!context.hasTexture(material.texture)) {
-			return Result.err(MaterialError.StaleTexture);
+			const issued: boolean = context.issuedTexture(material.texture);
+			return Result.err(issued ? MaterialError.StaleTexture : MaterialError.ForeignTexture);
 		}
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {
-		const shared: boolean = owned.error == UniformError.Owned;
-		return Result.err(shared ? MaterialError.SharedUniforms : MaterialError.ReleasedUniforms);
+		return Result.err(match (owned.error) {
+			UniformError.Owned => MaterialError.SharedUniforms,
+			UniformError.Foreign => MaterialError.ForeignUniforms,
+			_ => MaterialError.ReleasedUniforms,
+		});
 	}
 	const index: int32 = claim(context.materialSlots);
 	if (index == (context.materials.length as int32)) {
@@ -710,7 +757,11 @@ export function addMaterial(
 		context.texturePins[texture] = context.texturePins[texture] + 1;
 		context.textureHolders[texture] = context.textureHolders[texture] + 1;
 	}
-	return Result.ok({ index: index, generation: context.materialSlots.generations[index] });
+	return Result.ok({
+		store: context.serial,
+		index: index,
+		generation: context.materialSlots.generations[index],
+	});
 }
 
 // Whether `id`'s `uniforms` still names the range it was added with; beginFrame refuses a
@@ -727,7 +778,7 @@ export function retainMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
-	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	context.materialHolders[id.index] = context.materialHolders[id.index] + 1;
 	return Result.ok(context.materialHolders[id.index]);
 }
@@ -760,7 +811,7 @@ export function releaseMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
-	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	if (context.materialHolders[id.index] == context.materialPins[id.index]) {
 		return Result.err(HandleError.OnlyPinned);
 	}
@@ -771,7 +822,7 @@ export function pinMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
-	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	context.materialPins[id.index] = context.materialPins[id.index] + 1;
 	context.materialHolders[id.index] = context.materialHolders[id.index] + 1;
 	return Result.ok(context.materialHolders[id.index]);
@@ -781,7 +832,7 @@ export function unpinMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
-	if (!context.hasMaterial(id)) { return Result.err(HandleError.StaleMaterial); }
+	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	if (context.materialPins[id.index] == 0) { return Result.err(HandleError.NotPinned); }
 	context.materialPins[id.index] = context.materialPins[id.index] - 1;
 	return Result.ok(letGoOfMaterial(context, id.index));
@@ -893,11 +944,15 @@ export function addTexture(
 		freeTexture(context, index);
 		return Result.err(uploaded.error);
 	}
-	return Result.ok({ index: index, generation: context.textureSlots.generations[index] });
+	return Result.ok({
+		store: context.serial,
+		index: index,
+		generation: context.textureSlots.generations[index],
+	});
 }
 
 export function hasTexture(this context: DrawContext, id: TextureId): boolean {
-	return context.textureSlots.isCurrent(id.index, id.generation);
+	return context.issuedTexture(id) && context.textureSlots.isCurrent(id.index, id.generation);
 }
 
 export function liveTextures(this context: DrawContext): int32 {
@@ -912,7 +967,7 @@ export function retainTexture(
 	context: DrawContext,
 	id: TextureId,
 ): Result<int32, HandleError> {
-	if (!context.hasTexture(id)) { return Result.err(HandleError.StaleTexture); }
+	if (!context.hasTexture(id)) { return Result.err(context.textureRefusal(id)); }
 	context.textureHolders[id.index] = context.textureHolders[id.index] + 1;
 	return Result.ok(context.textureHolders[id.index]);
 }
@@ -931,7 +986,7 @@ export function releaseTexture(
 	context: DrawContext,
 	id: TextureId,
 ): Result<int32, HandleError> {
-	if (!context.hasTexture(id)) { return Result.err(HandleError.StaleTexture); }
+	if (!context.hasTexture(id)) { return Result.err(context.textureRefusal(id)); }
 	if (context.textureHolders[id.index] == context.texturePins[id.index]) {
 		return Result.err(HandleError.OnlyPinned);
 	}

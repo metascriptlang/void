@@ -54,6 +54,8 @@ export enum ForwardError {
 	TextureReplaced,
 	StaleMesh,
 	StaleMaterial,
+	ForeignMesh,
+	ForeignMaterial,
 	TargetSize,
 }
 
@@ -113,6 +115,8 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.TextureReplaced => ForwardError.TextureReplaced,
 		RendererError.StaleMesh => ForwardError.StaleMesh,
 		RendererError.StaleMaterial => ForwardError.StaleMaterial,
+		RendererError.ForeignMesh => ForwardError.ForeignMesh,
+		RendererError.ForeignMaterial => ForwardError.ForeignMaterial,
 	};
 }
 
@@ -152,7 +156,8 @@ export function prepareFrame(
 		return Result.err(ForwardError.TargetSize);
 	}
 	if (!context.hasMaterial(renderer.copyMaterial)) {
-		return Result.err(ForwardError.StaleMaterial);
+		const issued: boolean = context.issuedMaterial(renderer.copyMaterial);
+		return Result.err(issued ? ForwardError.StaleMaterial : ForwardError.ForeignMaterial);
 	}
 	if (!context.keepsItsTexture(renderer.copyMaterial)) {
 		return Result.err(ForwardError.TextureReplaced);

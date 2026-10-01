@@ -113,11 +113,11 @@ function contextWith(phases: Span<Phase>): DrawContext {
 
 // Drawn with the first mesh of its context, which a renderer adds when it is made (its screen
 // triangle), and the material at `material` in a context that has released none.
-function itemAt(material: int32, depth: float32): DrawItem {
+function itemAt(context: DrawContext, material: int32, depth: float32): DrawItem {
 	const world: Mat4 = translation(0.0, 0.0, depth);
 	return {
-		mesh: { index: 0, generation: 1 },
-		material: { index: material, generation: 1 },
+		mesh: { store: context.serial, index: 0, generation: 1 },
+		material: { store: context.serial, index: material, generation: 1 },
 		world: world,
 	};
 }
@@ -131,7 +131,7 @@ function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
 		VertexLayout.LitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),
 	};
-	return { ...itemAt(material.index, 0.0), mesh: added(context, mesh) };
+	return { ...itemAt(context, material.index, 0.0), mesh: added(context, mesh) };
 }
 
 test "a frame runs scene, post, then blit; without the post pass it blits the scene" {
@@ -271,12 +271,12 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 	const phases: Vec<Phase> = [Phase.Opaque, Phase.Alpha, Phase.Additive];
 	const context: DrawContext = contextWith(phases);
 	const items: Vec<DrawItem> = [
-		itemAt(0, 0.1),
-		itemAt(1, 0.2),
-		itemAt(0, 0.3),
-		itemAt(2, 0.4),
-		itemAt(1, 0.7),
-		itemAt(1, 0.2),
+		itemAt(context, 0, 0.1),
+		itemAt(context, 1, 0.2),
+		itemAt(context, 0, 0.3),
+		itemAt(context, 2, 0.4),
+		itemAt(context, 1, 0.7),
+		itemAt(context, 1, 0.2),
 	];
 	let opaque: PassList = PassList.forPhase(Phase.Opaque);
 	let alpha: PassList = PassList.forPhase(Phase.Alpha);
@@ -434,7 +434,7 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 test "the pixel-art preset refuses a material naming a program it does not draw" {
 	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	let renderer: PixelArtRenderer = presetOver(context, Program.Copy, -1.0);
-	const items: Vec<DrawItem> = [itemAt((context.materials.length as int32) - 1, 0.0)];
+	const items: Vec<DrawItem> = [itemAt(context, (context.materials.length as int32) - 1, 0.0)];
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const refused: Result<int32, PixelArtError> =

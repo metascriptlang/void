@@ -2,7 +2,7 @@
 // next reserve of the same length, a generation later, and the pool never compacts: a material
 // and a renderer hold their block's offset.
 
-import { UniformBlock } from "./material";
+import { UniformBlock, NO_UNIFORMS } from "./material";
 import { nextGeneration } from "./slots";
 
 export enum UniformError {
@@ -10,9 +10,11 @@ export enum UniformError {
 	WrongLength,
 	Released,
 	Owned,
+	Foreign,
 }
 
 export interface UniformPool {
+	serial: int32;
 	values: Vec<float32>;
 	used: int32;
 	lengths: Vec<int32>;
@@ -21,7 +23,10 @@ export interface UniformPool {
 	free: Vec<int32>;
 }
 
+let poolSerials: int32 = 0;
+
 export function withCapacity(this typeof UniformPool, capacity: int32): UniformPool {
+	poolSerials = poolSerials + 1;
 	let lengths: Vec<int32> = new Array(capacity);
 	let generations: Vec<int32> = new Array(capacity);
 	let owned: Vec<boolean> = new Array(capacity);
@@ -31,6 +36,7 @@ export function withCapacity(this typeof UniformPool, capacity: int32): UniformP
 		owned[i] = false;
 	}
 	return {
+		serial: poolSerials,
 		values: new Array(capacity),
 		used: 0,
 		lengths: lengths,
@@ -76,6 +82,7 @@ export function isOwned(this pool: UniformPool, block: UniformBlock): boolean {
 
 export function holds(this pool: UniformPool, block: UniformBlock): boolean {
 	if (block.length == 0) { return true; }
+	if (block.store != pool.serial) { return false; }
 	if (block.offset < 0 || block.offset >= pool.used) { return false; }
 	return pool.lengths[block.offset] == block.length &&
 		pool.generations[block.offset] == block.generation;
@@ -83,6 +90,7 @@ export function holds(this pool: UniformPool, block: UniformBlock): boolean {
 
 function blockAt(this pool: UniformPool, slot: int32, offset: int32): UniformBlock {
 	return {
+		store: pool.serial,
 		slot: slot,
 		offset: offset,
 		length: pool.lengths[offset],
@@ -96,7 +104,7 @@ export function reserveRange(
 	length: int32,
 ): Result<UniformBlock, UniformError> {
 	if (length < 0) { return Result.err(UniformError.WrongLength); }
-	if (length == 0) { return Result.ok({ slot: slot, offset: 0, length: 0, generation: 0 }); }
+	if (length == 0) { return Result.ok({ ...NO_UNIFORMS, slot: slot }); }
 	for (let i = (pool.free.length as int32) - 1; i >= 0; i--) {
 		const offset: int32 = pool.free[i];
 		if (pool.lengths[offset] != length) { continue; }
@@ -113,8 +121,14 @@ export function reserveRange(
 	return Result.ok(pool.blockAt(slot, offset));
 }
 
-export function ownRange(pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
+function admitted(this pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
+	if (block.length > 0 && block.store != pool.serial) { return Result.err(UniformError.Foreign); }
 	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
+	return Result.ok(block.length);
+}
+
+export function ownRange(pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
+	const _held: int32 = try pool.admitted(block);
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
 	pool.owned[block.offset] = true;
@@ -125,7 +139,7 @@ export function disownRange(
 	pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
-	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
+	const _held: int32 = try pool.admitted(block);
 	if (block.length > 0) { pool.owned[block.offset] = false; }
 	return releaseRange(pool, block);
 }
@@ -134,7 +148,7 @@ export function releaseRange(
 	pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
-	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
+	const _held: int32 = try pool.admitted(block);
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
 	const next: int32 = nextGeneration(pool.generations[block.offset]);
@@ -149,7 +163,7 @@ export function writeRange(
 	values: Span<float32>,
 ): Result<int32, UniformError> {
 	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
-	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
+	const _held: int32 = try pool.admitted(block);
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}

@@ -39,6 +39,7 @@ export enum AnimationError {
 	FrameTopology,
 	UploadRefused,
 	StaleMesh,
+	ForeignMesh,
 	NotPinned,
 }
 
@@ -305,6 +306,7 @@ export function forMeshes(
 		return Result.err(AnimationError.TrackLength);
 	}
 	for (const mesh of meshes) {
+		if (!context.issuedMesh(mesh)) { return Result.err(AnimationError.ForeignMesh); }
 		if (!context.hasMesh(mesh)) { return Result.err(AnimationError.BadMesh); }
 	}
 	const kept: Vec<MeshId> = [];
@@ -331,6 +333,14 @@ export function releaseMeshFrames(
 	context: DrawContext,
 ): Result<int32, AnimationError> {
 	const count: int32 = animation.meshes.length as int32;
+	for (const mesh of animation.meshes) {
+		if (!context.issuedMesh(mesh)) {
+			console.log(
+				"void3d: releaseMeshFrames through a context that did not issue its frames",
+			);
+			unreachable;
+		}
+	}
 	let covered: boolean = true;
 	for (const mesh of animation.meshes) {
 		if (!tallyMeshPin(context, mesh)) { covered = false; }
@@ -374,8 +384,11 @@ export function syncMeshFrame(
 	if (mesh == animation.shown) { return Result.ok(0); }
 	const swapped: Result<int32, SceneError> = setMeshOf(scene, context, animation.target, mesh);
 	if (!swapped.ok) {
-		const released: boolean = swapped.error == SceneError.StaleMesh;
-		return Result.err(released ? AnimationError.StaleMesh : AnimationError.NotPinned);
+		return Result.err(match (swapped.error) {
+			SceneError.StaleMesh => AnimationError.StaleMesh,
+			SceneError.ForeignMesh => AnimationError.ForeignMesh,
+			_ => AnimationError.NotPinned,
+		});
 	}
 	animation.shown = mesh;
 	return Result.ok(1);

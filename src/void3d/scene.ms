@@ -78,6 +78,8 @@ export enum SceneError {
 	NodeNotFound,
 	StaleMesh,
 	StaleMaterial,
+	ForeignMesh,
+	ForeignMaterial,
 	NotPinned,
 }
 
@@ -200,6 +202,17 @@ function kindRow(this scene: Scene3D, id: NodeId3D, kind: NodeKind, call: string
 	return scene.stopOnWrongKind(row, kind, call);
 }
 
+function meshError(context: DrawContext, mesh: MeshId): SceneError {
+	return context.issuedMesh(mesh) ? SceneError.StaleMesh : SceneError.ForeignMesh;
+}
+
+function stopOnForeignContext(row: int32, call: string): void {
+	console.log(
+		`void3d: ${call} through a context that did not issue the mesh or material of node ${row}`,
+	);
+	unreachable;
+}
+
 function stopOnWrongKind(this scene: Scene3D, row: int32, kind: NodeKind, call: string): int32 {
 	console.log(
 		`void3d: ${call} asked of a ${scene.nodes[row].kind.toString()} node ${row}; ` +
@@ -286,8 +299,11 @@ export function addMeshNode(
 	material: MaterialId,
 ): Result<NodeId3D, SceneError> {
 	const under: int32 = scene.liveRow(parent, "addMeshNode");
-	if (!context.hasMesh(mesh)) { return Result.err(SceneError.StaleMesh); }
-	if (!context.hasMaterial(material)) { return Result.err(SceneError.StaleMaterial); }
+	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
+	if (!context.hasMaterial(material)) {
+		const issued: boolean = context.issuedMaterial(material);
+		return Result.err(issued ? SceneError.StaleMaterial : SceneError.ForeignMaterial);
+	}
 	const pinnedMesh: Result<int32, HandleError> = pinMesh(context, mesh);
 	const pinnedMaterial: Result<int32, HandleError> = pinMaterial(context, material);
 	if (!pinnedMesh.ok || !pinnedMaterial.ok) { unreachable; }
@@ -407,7 +423,7 @@ function collectSubtree(ref scene: Scene3D, index: int32): int32 {
 
 // Every live mesh and material of the mesh nodes among the first `count` in scene.stack has a pin
 // for each node about to let one go. A Scene is a value: a copy of it that removed the same nodes
-// has taken those pins, and so has a remove through another context.
+// has taken those pins.
 function checkPins(
 	ref scene: Scene3D,
 	context: DrawContext,
@@ -418,6 +434,9 @@ function checkPins(
 		const node: int32 = scene.stack[k];
 		if (scene.nodes[node].kind != NodeKind.Mesh) { continue; }
 		const instance: MeshInstance = scene.meshes[scene.nodes[node].payload];
+		if (!context.issuedMesh(instance.mesh) || !context.issuedMaterial(instance.material)) {
+			stopOnForeignContext(node, "remove");
+		}
 		if (!tallyMeshPin(context, instance.mesh)) { covered = false; }
 		if (!tallyMaterialPin(context, instance.material)) { covered = false; }
 	}
@@ -512,9 +531,10 @@ export function setMeshOf(
 	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setMeshOf");
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
+	if (!context.issuedMesh(shown)) { stopOnForeignContext(node, "setMeshOf"); }
 	const holds: boolean = context.hasMesh(shown);
 	if (holds && context.meshPinned(shown) < 1) { return Result.err(SceneError.NotPinned); }
-	if (!pinMesh(context, mesh).ok) { return Result.err(SceneError.StaleMesh); }
+	if (!pinMesh(context, mesh).ok) { return Result.err(meshError(context, mesh)); }
 	if (holds && !unpinMesh(context, shown).ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
 	return Result.ok(node);

@@ -177,8 +177,10 @@ test "a stream write is refused before the driver when it names the wrong mesh o
 	const plain: MeshId = added(context, billboard());
 	const stream: MeshId = added(context, GpuMesh.streamMesh(4, 12, 1));
 	const four: Vec<float32> = new Array(4 * STREAM_INSTANCE_STRIDE);
-	const never: MeshId = { index: 9, generation: 1 };
+	const never: MeshId = { store: context.serial, index: 9, generation: 1 };
 	assert streamError(writeStream(context, never, four, 1)) == StreamError.StaleMesh;
+	const foreign: MeshId = { ...stream, store: context.serial + 1 };
+	assert streamError(writeStream(context, foreign, four, 1)) == StreamError.ForeignMesh;
 	const gone: MeshId = added(context, GpuMesh.streamMesh(4, 13, 1));
 	assert releaseMesh(context, gone).ok;
 	assert streamError(writeStream(context, gone, four, 1)) == StreamError.StaleMesh;
