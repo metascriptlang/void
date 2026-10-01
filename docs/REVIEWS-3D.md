@@ -1643,3 +1643,69 @@ itself. Its remaining points:
 - Colour spaces for texels, factors and `COLOR_0`; alpha as a material's (MASK, BLEND).
 - Images by URI, `KHR_texture_transform`, normal, occlusion and emissive maps, mipmaps.
 - A real Blender export (`gltf-real-export-not-exercised`).
+
+## M24 — store identity
+
+**Design verdict: SEND BACK on one defect, taken; the re-review, SHIP WITH FOLLOW-UPS, its points taken.** The owning
+session ran the defect pass, read every candidate against the code, and measured each control.
+A fresh principal-engineer reviewer read the diff, Heaps at `b9aa6dcb`, Bevy at `157e1ce6` and
+GPUI at `b961b49`, the logs and the C the gate emitted. It built and ran nothing, since the
+workstation's native capacity was rationed between sessions that day. Its findings were checked
+in the session before anything changed.
+
+### Defect pass
+
+`/code-review high` on `431dc90..fcd5492`: ten candidates, each read against the code.
+
+| Finding | Done |
+|---|---|
+| `pickNearest` reads a caller's tables with no store check | Carried to M25's row (`254965c`): the scene holds its context there. The headless pick tests build their tables without a GPU, so taking a context now would break them for one milestone |
+| `syncMeshFrame` and `addMaterial` map errors through a `_` arm | Every case named, the impossible ones stopping by name (`5e270cb`); made exhaustive `match`es again in `0abdf3f` after the design pass |
+| Stale-or-foreign is chosen at about ten call sites | Kept: each layer maps to its own error enum, and the one predicate, `issued*`, is defined once in `draw.ms` |
+| `admitted` and `holds` both compare the store | One compare on success; `admitted` classifies only a refusal (`5e270cb`) |
+| `forMeshes` and `addGltfNodes` compare twice | `hasMesh` first, the classification only on failure (`5e270cb`) |
+| The `addMeshNode` comment says two `ref`-receiver functions collide | Measured with a value interface parameter (`out/tmp/overload/value`): the call is now refused at compile time, not silently wrong; comment and PENDING3D row rewritten (`254965c`) |
+| `run_stores` sat under the both-layers comment, its line continuation lost | Moved, continuation restored (`396315d`) |
+| Id literals leave `store` at 0 | `NO_MESH` and `NO_MATERIAL` exported, every literal writes its store (`5e270cb`, `0abdf3f`) |
+| The serial counters can overflow `int32` | They stop by name at the last value (`5e270cb`) |
+
+Found by the gate, not the pass: the churn example's exhaustive `match` over `GltfSceneError`
+missed the new `ForeignMeshBinding` and stopped the churn build (`3a5e44f`).
+
+### Fresh design pass
+
+SEND BACK on one finding. The mechanism follows the references (the store is one object, as
+Heaps' object and the `Arc` of Bevy and GPUI are); the serial is honestly a NEW MECHANISM; the
+frame loop allocates nothing; the rebuild captures stay byte-identical; no compiler workaround.
+
+| Finding | Done |
+|---|---|
+| **Blocking:** `drawItem`, which is public, applied its pass-wide blocks without checking their pool, so another pool's block drew silently, and `applyBlock` would read past this pool's values for a block of a larger pool; `drawScreen` skipped `keepsItsUniforms` | `drawItem` stops by name on an item, a pass-wide block or a material block its context does not hold, before any GPU call; `drawScreen` returns `UniformsReplaced` (`d915bed`). Abort `drawItemForeignBlock`; control: without the check it runs past and stops later, unnamed. The first gate on it failed allocation (a string built in `drawItem`) and style; the messages moved into stop helpers off the frame path (`74e2b75`) |
+| The draft's account of the red run did not match its log | Rewritten from `red-431dc90.log`, and the red program's first form named |
+| Texture and block had no control | Measured: each forced open fails exactly its own checks, four lines each |
+| The allocation stage did not list the new callees | `issuedMesh`, `issuedMaterial`, `uniformPool:admitted` listed (`a4bf5d6`) |
+| The review fix turned `match` into `if` chains | Exhaustive `match` with a stop helper as the arm value (`0abdf3f`) |
+| A comment moved off `syncMeshFrame` | Back above it (`0abdf3f`) |
+| Still missing left out `RenderTarget`, `Sampler`, `collect`, `filterFrustum`; "Data types" still said index and generation | Both written; "Data types" names the store (docs commit) |
+| `tallyMeshPin` and `tallyMaterialPin` answered "covered" for a foreign id | They stop by name (`0abdf3f`) |
+| The pick deferral's reason was weak | The as-built says how it is M25's to settle, not that it cannot be done |
+| Foreign as a `Result`, misuse as a stop: the rule was not written down | Written in the as-built, with Bevy's `Assets::get` and M19 |
+| `serial` is writable | PENDING3D `store-serial-writable`, a Parked-at site on card `2026-09-27-readonly-interface-field-unresolved-type.md` (`0abdf3f`) |
+| Messages that misname a foreign case | `drawToScreen` names a context that did not make the preset; the camera and light writes cannot meet a foreign block, since the screen mesh is checked first |
+| The cost line counted only `DrawItem`; "neither reference has one" undersold Heaps' and Bevy's handles | Rewritten: `Material`, `MeshInstance`, `GltfMeshBinding` +8 bytes, a context two heap objects; both references route a release through the handle's store |
+
+### Re-review
+
+SHIP WITH FOLLOW-UPS, nothing blocking. B1 closed: `drawItem` stops before any GPU call on an
+item, a pass-wide block or a material block its context does not hold, `holds` comparing the
+store and the generation, so a released block of the same pool stops too; the messages are off
+the frame path; the abort is the right case and its control shows the named stop comes from the
+check. Bench CPU per frame 0.0966 ms against 0.0968 ms before. Its remaining points:
+
+| Finding | Done |
+|---|---|
+| New from the fix: neither preset's `prepareFrame` checked its own screen materials' blocks, so a replaced one was refused mid-frame, after the scene pass, and the post material's ended in a bare `unreachable` | Checked beside their textures, `UniformsReplaced` before any pass; a suite test for both presets |
+| The two tally stops had no abort programs (M19: one per stopping entry) | `tallyMeshPinThroughForeignContext`, `tallyMaterialPinThroughForeignContext` |
+| "Data types" still said an id is an index and a generation | It names the store |
+| Card `2026-09-27`'s `State:` said nothing waits on it; `uniformPool.ms`'s serial had no sentinel | The state names void3d's sites; a sentinel in `uniformPool.ms` |
+| The as-built pointed "above" at a churn failure it did not describe; `drawItem` read the material slot twice | Described; one read |
