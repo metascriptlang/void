@@ -1743,6 +1743,23 @@ go from the coordinating session.
   `store-serial-writable`).
 - **Android arm64 3,566,184 bytes**. No GLES3/device run.
 
+**Rebased before landing.** `main` had moved to `122e515`, void2d's GPU-door closure. The rebase
+had one conflict, `src/void3d/pixelArtRenderer.ms`, where `bindScreenTextures` now takes M24's
+`context` by value and reads main's `renderer.sampler.asHandle()`; nothing else needed adapting.
+Every M24 commit took a new hash; the hashes above are the rebased ones (`2eca4b4`). On the rebased
+code (`2eca4b4`, clean tree), installed msc `5791eadd`, D3D11, 2026-10-01:
+
+- `sh scripts/gate3d.sh`: **GATE GREEN with 1 skipped stage** (`device`). **1127/1127 tests**,
+  main's 1118 + 9; **67 abort programs**, main's 56 + 11; 72 hashes byte-identical; the `stores`
+  consumer prints the same line as before the rebase; oracle 75 / 11, 27 PENDING3D rows, churn
+  flat at 10 buffers, 4 images and 2 samplers. **Android arm64 3,596,448 bytes**, +30,264 on the
+  pre-rebase tip, not measured on main alone.
+- `sh scripts/gate.sh --web`: **GATE GREEN with 8 loud skips**. 1127 tests plus 299 isolated,
+  D3D11 78/78, WebGL2 56 pass / 18 pending / the four `conformance:webgl2-pixel-centre` reds,
+  allocation 107 frame functions / 245 callees, 16 PENDING rows; web builds 2,344,744 /
+  2,116,929 B, the sizes void2d's closure recorded on `7cf741d`.
+- Logs: `out/tmp/m24/rebase/`.
+
 ### Scope still separate
 
 - M25: owners as references holding their context, their `close`, `pickNearest` on the scene's
