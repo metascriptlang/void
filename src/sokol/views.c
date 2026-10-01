@@ -8,10 +8,13 @@
 #define VOID_MAX_VIEWS 16
 #define VIEW_SLOT_BITS 5
 #define VIEW_SLOT_MASK ((1 << VIEW_SLOT_BITS) - 1)
-#define VIEW_GENERATION_LIMIT (1 << (31 - VIEW_SLOT_BITS))
+#ifndef VOID_VIEW_LAST_GENERATION
+#define VOID_VIEW_LAST_GENERATION ((1 << (31 - VIEW_SLOT_BITS)) - 1)
+#endif
 
 typedef struct {
 	int used;
+	int retired;
 	int generation;
 	int w, h;
 	float scale;
@@ -50,7 +53,7 @@ static VoidViewSlot *slotOf(VoidViewId v, const char *op) {
 	if (v <= 0 || slot < 0 || slot >= VOID_MAX_VIEWS) voidFail("%s: view %d does not exist", op, v);
 	VoidViewSlot *s = &s_views[slot];
 	if (s->used && idGeneration(v) == s->generation) return s;
-	if (idGeneration(v) < s->generation) voidFail("%s: view %d was destroyed; a view id names one view only", op, v);
+	if (s->retired || idGeneration(v) < s->generation) voidFail("%s: view %d was destroyed; a view id names one view only", op, v);
 	voidFail("%s: view %d does not exist", op, v);
 }
 
@@ -71,9 +74,9 @@ VoidViewId voidViewCreate(long long native, int w, int h, float scale) {
 	if (w <= 0 || h <= 0 || scale <= 0.0f) voidFail("voidViewCreate: %dx%d at scale %g is not a drawable size", w, h, scale);
 	int slot = -1;
 	for (int i = 0; i < VOID_MAX_VIEWS; i++) {
-		if (!s_views[i].used) { slot = i; break; }
+		if (!s_views[i].used && !s_views[i].retired) { slot = i; break; }
 	}
-	if (slot < 0) voidFail("voidViewCreate: all %d views are in use", VOID_MAX_VIEWS);
+	if (slot < 0) voidFail("voidViewCreate: all %d views are in use or retired", VOID_MAX_VIEWS);
 	voidPlatformDeviceEnsure();
 	void *surface = voidPlatformSurfaceCreate((const void *)(intptr_t)native, w, h);
 	if (surface == NULL) voidFail("voidViewCreate: the platform could not make a %dx%d surface", w, h);
@@ -113,8 +116,8 @@ void voidViewDestroy(VoidViewId v) {
 	VoidViewSlot *s = slotOf(v, "voidViewDestroy");
 	if (s_current != 0) voidFail("voidViewDestroy(%d) inside the frame of view %d", v, s_current);
 	voidPlatformSurfaceDestroy(s->surface);
-	const int next = s->generation + 1;
-	*s = (VoidViewSlot){.generation = next < VIEW_GENERATION_LIMIT ? next : 1};
+	const int next = s->generation == VOID_VIEW_LAST_GENERATION ? 0 : s->generation + 1;
+	*s = (VoidViewSlot){.retired = next == 0, .generation = next};
 }
 
 long long voidViewSwapChain(VoidViewId v) {
