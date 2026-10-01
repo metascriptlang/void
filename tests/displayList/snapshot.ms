@@ -932,6 +932,6 @@ test "a premultiplied tile carries its bit into the command and splits the run" 
 	assert commandCount() == 2;
 	assert commandField(0, CMD_SAMPLER) < (SOURCE_PREMULTIPLIED as float32);
 	assert commandField(1, CMD_SAMPLER) >= (SOURCE_PREMULTIPLIED as float32);
-	assert commandField(1, CMD_BREAK) == (BreakReason.View as int32) as float32;
+	assert commandField(1, CMD_BREAK) == (BreakReason.Sampler as int32) as float32;
 	frameEnd();
 }

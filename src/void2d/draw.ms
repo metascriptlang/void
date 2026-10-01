@@ -439,7 +439,8 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 		&& ctx.curPipeline == pipeline) { return; }
 	const reason: BreakReason = !ctx.runOpen ? BreakReason.First
 		: (ctx.curPipeline != pipeline ? BreakReason.Pipeline
-		: (view != ctx.curView || sampler != ctx.curSampler ? BreakReason.View : BreakReason.Blend));
+		: (view != ctx.curView ? BreakReason.View
+		: (blend != ctx.curBlend ? BreakReason.Blend : BreakReason.Sampler)));
 	closeRun();
 	ctx.curView = view;
 	ctx.curSampler = sampler;
