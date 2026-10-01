@@ -1710,14 +1710,26 @@ check. Bench CPU per frame 0.0966 ms against 0.0968 ms before. Its remaining poi
 | Card `2026-09-27`'s `State:` said nothing waits on it; `uniformPool.ms`'s serial had no sentinel | The state names void3d's sites; a sentinel in `uniformPool.ms` |
 | The as-built pointed "above" at a churn failure it did not describe; `drawItem` read the material slot twice | Described; one read |
 
+### The coordinating session's source review
+
+After the re-review, the session coordinating the unification read `drawItem` at `74e2b75` and
+found the same class as B1 one field over. Each finding was read against the code here first.
+
+| Finding | Done |
+|---|---|
+| `drawItem` and `bindItem` index the texture table at the material's `texture` without `keepsItsTexture`, so a caller who rewrites it to another store's id, a stale id or an index past the table reaches that index | `drawItem` requires `keepsItsTexture` before any index (`fa66e8d`); three abort programs, each with a control (`1b98e42`) |
+| `holds` on the material's block admits another live block of the same pool the material does not own | `keepsItsUniforms` in its place; two abort programs, live and released, each with a control (`1b98e42`) |
+| The presets' new screen-block checks had no red control | Without each of the three, a frame passes `prepareFrame` and makes its first GPU object (`sg_make_buffer` from `makeScreenTriangle`): headless it can run no further |
+
 ### Final acceptance
 
-`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on `17ea45d` (tree `72dc26b`,
-"docs(void3d): M24 as built and reviewed", clean): **GATE GREEN with 1 skipped stage** (`device`).
+`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on `1b98e42` (tree `e7c66fd`,
+"test(void3d): a material whose texture or block was rewritten stops drawItem", clean): **GATE
+GREEN with 1 skipped stage** (`device`).
 The workstation's native capacity was rationed between sessions; each native run here had its own
 go from the coordinating session.
 
-- **1123/1123 tests**, +9 on main's 1114 (`src/test/storeCheck.ms`); **41 abort programs**, +6.
+- **1123/1123 tests**, +9 on main's 1114 (`src/test/storeCheck.ms`); **46 abort programs**, +11.
 - **24 configurations / 96 frames match 72 hashes**, none adopted: nothing in M24 moves a pixel.
 - The new `stores` stage: two contexts on real D3D11 objects refuse each other's meshes,
   materials, textures and blocks by name, an alias releases once, a reused slot is stale. Its
@@ -1727,7 +1739,7 @@ go from the coordinating session.
   buffers, 4 images and 2 samplers over 310 frames; bench flat.
 - **75 oracle agreements / 11 declared divergences**, **27 PENDING3D rows** (+1,
   `store-serial-writable`).
-- **Android arm64 3,564,584 bytes**. No GLES3/device run.
+- **Android arm64 3,566,184 bytes**. No GLES3/device run.
 
 ### Scope still separate
 
