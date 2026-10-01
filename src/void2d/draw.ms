@@ -1203,8 +1203,8 @@ export function appendSprite(
 // which is what forces its BoundsTree (guardrail 1).
 //
 // The modes that leave a lane unused pass zeros; `instance.ms` says which lane means what.
-export function drawUiInstance(view: uint32, premultiplied: boolean, blend: BlendMode, inst: UiInstance): void {
-	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
+export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance): void {
+	useRun(Pipeline.Ui, view == 0 ? void2dWhiteView() : view, false, blend);
 	pushUiInstance(inst, originXOffset(), originYOffset());
 }
 

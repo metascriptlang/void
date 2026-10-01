@@ -465,7 +465,7 @@ function emitRunBox(
 	const [x, y, w, h] = box;
 	if (w <= 0.0 || h <= 0.0) { return; }
 	const origin = vec2(x, y) * world;
-	drawUiInstance(sharedGlyphView(), false, blend,
+	drawUiInstance(sharedGlyphView(), blend,
 		uiInstance(InstanceMode.Box, world, origin.x, origin.y, w, h, fill));
 }
 
@@ -481,7 +481,7 @@ function emitRunLine(
 	const quadY: float32 = wavy ? y - h : y;
 	const quadH: float32 = wavy ? h * 3.0 : h;
 	const origin = vec2(x, quadY) * world;
-	drawUiInstance(sharedGlyphView(), false, blend, {
+	drawUiInstance(sharedGlyphView(), blend, {
 		...uiInstance(InstanceMode.Underline, world, origin.x, origin.y, w, quadH, fill),
 		borders: [h, wavy ? 1.0 : 0.0, 0.0, 0.0],
 	});
@@ -563,7 +563,7 @@ function emitSelection(blend: BlendMode, text: LabelText, world: Transform2D, na
 		const leading: float32 = text.style.lineSpacing * 0.5;
 		const h: float32 = line.height + text.style.lineSpacing;
 		const origin = vec2(x0 - SELECTION_GLOOP, line.top - leading) * world;
-		drawUiInstance(sharedGlyphView(), false, blend, {
+		drawUiInstance(sharedGlyphView(), blend, {
 			...uiInstance(
 				InstanceMode.Selection, world, origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h, fill,
 			),
@@ -647,7 +647,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		}
 		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
 		if (instanced) {
-			drawUiInstance(view, false, blend, {
+			drawUiInstance(view, blend, {
 				...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
 				uvRadii: [p.u0, p.v0, p.u1, p.v1],
 			});
@@ -673,6 +673,12 @@ const TEXT_PRIMITIVE_EFFECT_REFUSED: string =
 let boxEffectRejectedReported: boolean = false;
 
 
+function stopOnPremultipliedImageStyle(): void {
+	console.log("void2d: an image style draws through the UI program, which reads straight " +
+		"texels; a premultiplied tile cannot take one");
+	unreachable;
+}
+
 function emitStyledImage(
 	s: Scene2D,
 	i: int32,
@@ -685,6 +691,7 @@ function emitStyledImage(
 ): boolean {
 	const styleIndex: int32 = s.imageStyleOf(i);
 	if (styleIndex == NO_IMAGE_STYLE) { return false; }
+	if (t.alphaPremultiplied) { stopOnPremultipliedImageStyle(); }
 	if (!uiInstancingAvailable()) {
 		if (!imageEffectRejectedReported) {
 			console.log("void2d: an image style cannot be combined with colorMatrix, colorAdd, or colorKey");
@@ -696,7 +703,7 @@ function emitStyledImage(
 	const fitted = fitImage(t, sizeX, sizeY, style.fit);
 	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
 	const origin = vec2(lbMin.x + fitted.x, lbMin.y + fitted.y) * world;
-	drawUiInstance(t.view, t.alphaPremultiplied, s.paints[i].blend, {
+	drawUiInstance(t.view, s.paints[i].blend, {
 		...uiInstance(InstanceMode.Image, world, origin.x, origin.y, fitted.w, fitted.h, col),
 		uvRadii: [fitted.u0, fitted.v0, fitted.u1, fitted.v1],
 		borders: [
@@ -853,7 +860,7 @@ function emitNode(
 					const sc: Color = st.shadowColor;
 					shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 				}
-				drawUiInstance(sharedGlyphView(), false, blend, {
+				drawUiInstance(sharedGlyphView(), blend, {
 					...uiInstance(InstanceMode.Box, world, qx, qy, qw, qh, col),
 					uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
 					borders: [borderL, borderT, borderR, borderB],
@@ -894,7 +901,7 @@ function emitNode(
 		},
 		DrawKind.Underline => {
 			if (uiInstancingAvailable()) {
-				drawUiInstance(sharedGlyphView(), false, blend, {
+				drawUiInstance(sharedGlyphView(), blend, {
 					...uiInstance(InstanceMode.Underline, world, tl.x, tl.y, sizeX, sizeY, col),
 					borders: [s.contents[i].borderL, s.contents[i].borderT, 0.0, 0.0],
 				});
@@ -906,7 +913,7 @@ function emitNode(
 		DrawKind.Selection => {
 			if (uiInstancingAvailable()) {
 				const band: Content2D = s.contents[i];
-				drawUiInstance(sharedGlyphView(), false, blend, {
+				drawUiInstance(sharedGlyphView(), blend, {
 					...uiInstance(InstanceMode.Selection, world, tl.x, tl.y, sizeX, sizeY, col),
 					borders: [band.w * 0.5, band.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
 					params1: [band.borderL, band.borderT, band.borderR, band.borderB],

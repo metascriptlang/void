@@ -32,7 +32,7 @@ function frame(): void {
 }
 
 function card(mode: InstanceMode, x: float32, size: float32, radius: float32): void {
-	drawUiInstance(0 as uint32, false, BlendMode.Alpha, {
+	drawUiInstance(0 as uint32, BlendMode.Alpha, {
 		...uiInstance(mode, identity2d(), x, 0.0, size, size, WHITE),
 		uvRadii: [radius, radius, radius, radius],
 		borders: [1.0, 1.0, 1.0, 1.0],
