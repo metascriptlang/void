@@ -1,7 +1,15 @@
 import { gfxSetup } from "../../src/sokol/gpu";
-import { contextGeneration } from "../../src/gpu/door";
+import {
+	PassState,
+	contextGeneration,
+	passState,
+	liveBuffers,
+	liveImages,
+	liveViews,
+	liveSamplers,
+} from "../../src/gpu/door";
 import { FilterMode, Wrap, RenderState } from "../../src/gpu/state";
-import { vec3, identity } from "../../src/math/math3d";
+import { Vec4, vec3, identity } from "../../src/math/math3d";
 import {
 	Program,
 	VERTEX_UNIFORM_LENGTH,
@@ -42,7 +50,27 @@ import {
 	RENDERER_UNIFORM_LENGTH,
 	beginFrame,
 } from "../../src/void3d/renderer";
-import { voidCaptureBackend, voidCaptureExit } from "../capture/capture.h";
+import {
+	ForwardRenderer,
+	ForwardError,
+	FORWARD_UNIFORM_LENGTH,
+	renderFrame as renderForward,
+} from "../../src/void3d/forwardRenderer";
+import {
+	PixelArtRenderer,
+	PixelArtSettings,
+	PixelArtLook,
+	PixelArtError,
+	PIXEL_ART_UNIFORM_LENGTH,
+	renderFrame as renderPixelArt,
+} from "../../src/void3d/pixelArtRenderer";
+import { LowResView } from "../../src/void3d/blit";
+import {
+	voidCaptureBackend,
+	voidCaptureExit,
+	voidCaptureGrab,
+	voidCapturePixel,
+} from "../capture/capture.h";
 
 @compile("./storeIdentity.c");
 @include("./storeIdentity.h");
@@ -263,22 +291,141 @@ function reuse(): void {
 		a.hasMaterial(second));
 }
 
+const SIDE: int32 = 32;
+const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+const GREEN: Vec4 = { x: 0.0, y: 1.0, z: 0.0, w: 1.0 };
+const VIEW: LowResView = { width: SIDE, height: SIDE, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+const NO_ITEMS: Vec<DrawItem> = [];
+
+let presetCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+let presetLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+let forwardContext: DrawContext =
+	DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
+let pixelContext: DrawContext =
+	DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH);
+let survivorContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+let forward: ForwardRenderer = forwardOf(forwardContext, BLACK);
+let survivor: ForwardRenderer = forwardOf(survivorContext, GREEN);
+let pixelArt: PixelArtRenderer = pixelArtOf(pixelContext);
+let frames: int32 = 0;
+
+function forwardOf(context: DrawContext, background: Vec4): ForwardRenderer {
+	const made = ForwardRenderer.create(context, background);
+	if (!made.ok) { console.log("UNEXPECTED store identity: forward preset refused"); unreachable; }
+	return made.value;
+}
+
+function pixelArtOf(context: DrawContext): PixelArtRenderer {
+	const look: PixelArtLook = {
+		background: BLACK,
+		outline: {
+			depthThreshold: 0.006,
+			normalThreshold: 0.6,
+			depthShade: 0.55,
+			normalShade: 1.35,
+		},
+		fog: { start: 0.5, end: 0.8, strength: 0.0, color: BLACK },
+		saturation: 0.0,
+	};
+	const made = PixelArtRenderer.create(context, PixelArtSettings.full(), look);
+	if (!made.ok) {
+		console.log("UNEXPECTED store identity: pixel-art preset refused");
+		unreachable;
+	}
+	return made.value;
+}
+
+function spareOf(context: DrawContext): UniformBlock {
+	const made = reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+	if (!made.ok) { console.log("UNEXPECTED store identity: spare block refused"); unreachable; }
+	return made.value;
+}
+
+function gpuObjects(context: DrawContext): int32 {
+	return liveBuffers() + liveImages() + liveViews() + liveSamplers() +
+		(context.pipelines.entries.length as int32);
+}
+
+function forwardReplaced(): void {
+	const spare: UniformBlock = spareOf(forwardContext);
+	const copy: int32 = forward.copyMaterial.index;
+	const own: UniformBlock = forwardContext.materials[copy].uniforms;
+	const objects: int32 = gpuObjects(forwardContext);
+	const generation: int32 = forward.core.generation;
+	forwardContext.materials[copy].uniforms = spare;
+	const refused: Result<int32, ForwardError> = renderForward(
+		forward, forwardContext, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
+	);
+	check("the forward preset refuses its replaced copy block before any pass",
+		!refused.ok && refused.error == ForwardError.UniformsReplaced);
+	check("no pass is open after the forward refusal", passState() == PassState.None);
+	check("the forward refusal made no GPU object", gpuObjects(forwardContext) == objects);
+	check("the forward core is untouched",
+		forward.core.generation == generation && !forward.core.prepared);
+	forwardContext.materials[copy].uniforms = own;
+}
+
+function pixelArtReplaced(post: boolean): void {
+	const spare: UniformBlock = spareOf(pixelContext);
+	const screen: int32 = post ? pixelArt.postMaterial.index : pixelArt.blitMaterial.index;
+	const own: UniformBlock = pixelContext.materials[screen].uniforms;
+	const objects: int32 = gpuObjects(pixelContext);
+	const generation: int32 = pixelArt.core.generation;
+	pixelContext.materials[screen].uniforms = spare;
+	const refused: Result<int32, PixelArtError> = renderPixelArt(
+		pixelArt, pixelContext, NO_ITEMS, presetCamera, presetLights, VIEW,
+	);
+	const which: string = post ? "post" : "blit";
+	check(`the pixel-art preset refuses its replaced ${which} block before any pass`,
+		!refused.ok && refused.error == PixelArtError.UniformsReplaced);
+	check(`no pass is open after the ${which} refusal`, passState() == PassState.None);
+	check(`the ${which} refusal made no GPU object`, gpuObjects(pixelContext) == objects);
+	check(`the pixel-art core is untouched after the ${which} refusal`,
+		pixelArt.core.generation == generation && !pixelArt.core.prepared);
+	pixelContext.materials[screen].uniforms = own;
+	if (!releaseUniforms(pixelContext, spare).ok) { unreachable; }
+}
+
 function init(): void {
 	gfxSetup();
 	twoStores();
 	aliases();
 	reuse();
-	if (failures == 0) {
-		console.log(
-			"PASS store identity: two contexts, an alias, reuse; " +
-			"meshes, materials, textures, blocks",
-		);
-		voidCaptureExit(0);
-	}
-	voidCaptureExit(1);
 }
 
-function frame(): void {}
+function frame(): void {
+	if (frames == 0) {
+		const drawn = renderForward(
+			forward, forwardContext, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
+		);
+		check("the forward preset draws a good frame first", drawn.ok);
+	} else if (frames == 1) {
+		const drawn = renderPixelArt(
+			pixelArt, pixelContext, NO_ITEMS, presetCamera, presetLights, VIEW,
+		);
+		check("the pixel-art preset draws a good frame first", drawn.ok);
+	} else if (frames == 2) {
+		forwardReplaced();
+		pixelArtReplaced(true);
+		pixelArtReplaced(false);
+		const drawn = renderForward(
+			survivor, survivorContext, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
+		);
+		check("a surviving context draws in the same frame", drawn.ok);
+		check("the survivor's frame reads back", voidCaptureGrab(0) == 1);
+		const pixel: int64 = voidCapturePixel(0, SIDE / 2, SIDE / 2);
+		check("the survivor's frame is its own background", ((pixel >> 8) & 0xFFFFFF) == 0x00FF00);
+		if (failures == 0) {
+			console.log(
+				"PASS store identity: two contexts, an alias, reuse; " +
+				"meshes, materials, textures, blocks; replaced screen blocks refused before a pass",
+			);
+			voidCaptureExit(0);
+		}
+		voidCaptureExit(1);
+	}
+	frames = frames + 1;
+}
 
 if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
 voidRunConfigured(32, 32, 1, 0, init, frame);
