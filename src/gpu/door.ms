@@ -25,6 +25,9 @@ import {
 	doorPassState,
 	doorOriginTopLeft,
 	doorDepthZeroToOne,
+	doorEnvironmentColorFormat,
+	doorEnvironmentDepthFormat,
+	doorEnvironmentSampleCount,
 	doorContextGeneration,
 	doorFrameIndex,
 	doorLiveBuffers,
@@ -48,6 +51,8 @@ export enum PixelFormat {
 	Default,
 	Rgba8,
 	Depth,
+	Bgra8,
+	DepthStencil,
 }
 
 export enum LoadAction {
@@ -178,6 +183,18 @@ export function originTopLeft(): boolean {
 // The depth buffer holds clip z as is (0..1); GL stores (z + 1) / 2 instead.
 export function depthZeroToOne(): boolean {
 	return doorDepthZeroToOne() != 0;
+}
+
+export function environmentColorFormat(): PixelFormat {
+	return doorEnvironmentColorFormat() as PixelFormat;
+}
+
+export function environmentDepthFormat(): PixelFormat {
+	return doorEnvironmentDepthFormat() as PixelFormat;
+}
+
+export function environmentSampleCount(): int32 {
+	return doorEnvironmentSampleCount();
 }
 
 // Counts GPU contexts: it changes when the host lost the context and made a new one, and every

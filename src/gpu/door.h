@@ -107,6 +107,9 @@ int32_t doorPassState(void);
 // as is (0..1), 0 when GL maps clip z from -1..1 into it.
 int32_t doorOriginTopLeft(void);
 int32_t doorDepthZeroToOne(void);
+int32_t doorEnvironmentColorFormat(void);
+int32_t doorEnvironmentDepthFormat(void);
+int32_t doorEnvironmentSampleCount(void);
 // Changes when the host rebuilt a lost GPU context (only the Android bridge does); every
 // handle made before is stale then.
 int32_t doorContextGeneration(void);

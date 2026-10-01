@@ -61,14 +61,26 @@ static const sg_blend_op BLEND_OPERATIONS[] = {
 	SG_BLENDOP_MAX,
 };
 
-// PixelFormat: Default (0 in a sokol desc) means "whatever the swapchain uses".
-enum { FORMAT_NONE, FORMAT_DEFAULT, FORMAT_RGBA8, FORMAT_DEPTH };
+enum {
+	FORMAT_NONE,
+	FORMAT_DEFAULT,
+	FORMAT_RGBA8,
+	FORMAT_DEPTH,
+	FORMAT_BGRA8,
+	FORMAT_DEPTH_STENCIL,
+};
 static const sg_pixel_format PIXEL_FORMATS[] = {
 	SG_PIXELFORMAT_NONE,
 	_SG_PIXELFORMAT_DEFAULT,
 	SG_PIXELFORMAT_RGBA8,
 	SG_PIXELFORMAT_DEPTH,
+	SG_PIXELFORMAT_BGRA8,
+	SG_PIXELFORMAT_DEPTH_STENCIL,
 };
+
+static bool isDepthFormat(int32_t format) {
+	return format == FORMAT_DEPTH || format == FORMAT_DEPTH_STENCIL;
+}
 
 // LoadAction
 static const sg_load_action LOAD_ACTIONS[] = {
@@ -98,7 +110,7 @@ _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in st
 _Static_assert(COUNT(ALPHA_CHANNEL_BLEND_FACTORS) == 10,
 	"ALPHA_CHANNEL_BLEND_FACTORS must match Blend in state.ms");
 _Static_assert(COUNT(BLEND_OPERATIONS) == 5, "BLEND_OPERATIONS must match Operation in state.ms");
-_Static_assert(COUNT(PIXEL_FORMATS) == 4, "PIXEL_FORMATS must match PixelFormat in door.ms");
+_Static_assert(COUNT(PIXEL_FORMATS) == 6,"PIXEL_FORMATS must match PixelFormat in door.ms");
 _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in door.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match FilterMode in door.ms");
 _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in door.ms");
@@ -343,7 +355,7 @@ static uint32_t validView(sg_view view) {
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 	if (width <= 0 || height <= 0) return SG_INVALID_ID;
 	sg_image_desc desc = {0};
-	if (format == FORMAT_DEPTH) {
+	if (isDepthFormat(format)) {
 		desc.usage.depth_stencil_attachment = true;
 	} else {
 		desc.usage.color_attachment = true;
@@ -357,7 +369,7 @@ uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format) {
 	sg_view_desc desc = {0};
-	if (format == FORMAT_DEPTH) {
+	if (isDepthFormat(format)) {
 		desc.depth_stencil_attachment.image = (sg_image){.id = image};
 	} else {
 		desc.color_attachment.image = (sg_image){.id = image};
@@ -443,6 +455,35 @@ int32_t doorOriginTopLeft(void) { return sg_query_features().origin_top_left ? 1
 int32_t doorDepthZeroToOne(void) {
 	const sg_backend backend = sg_query_backend();
 	return backend == SG_BACKEND_GLCORE || backend == SG_BACKEND_GLES3 ? 0 : 1;
+}
+
+static int32_t environmentFormat(sg_pixel_format format, const char *role) {
+	for (int32_t i = 0; i < (int32_t)COUNT(PIXEL_FORMATS); i++) {
+		if (i != FORMAT_DEFAULT && PIXEL_FORMATS[i] == format) return i;
+	}
+	fprintf(stderr, "gpu door: the environment's default %s is sokol pixel format %d, "
+		"which PixelFormat does not name\n", role, (int)format);
+	abort();
+}
+
+static sg_environment_defaults environmentDefaults(void) {
+	if (!sg_isvalid()) {
+		fprintf(stderr, "gpu door: a screen layout was resolved before gfxSetup made the device\n");
+		abort();
+	}
+	return sg_query_desc().environment.defaults;
+}
+
+int32_t doorEnvironmentColorFormat(void) {
+	return environmentFormat(environmentDefaults().color_format, "color format");
+}
+
+int32_t doorEnvironmentDepthFormat(void) {
+	return environmentFormat(environmentDefaults().depth_format, "depth format");
+}
+
+int32_t doorEnvironmentSampleCount(void) {
+	return environmentDefaults().sample_count;
 }
 
 int32_t doorContextGeneration(void) {
