@@ -127,6 +127,16 @@ else
 	fail "door blend modes — see out/gate-door-blend-modes.log and out/gate-door-blend-modes-run.log"
 fi
 
+rm -f out/pipelineCacheOwner.exe
+if "$MSC" build tests/integration/pipelineCacheOwner.ms --release --output=out/pipelineCacheOwner.exe \
+		> out/gate-pipeline-cache-owner.log 2>&1 \
+		&& out/pipelineCacheOwner.exe > out/gate-pipeline-cache-owner-run.log 2>&1; then
+	pass "pipeline cache owner: two aliases share one cache through release, a stale epoch and close, while an independent cache keeps drawing"
+else
+	fail "pipeline cache owner — see out/gate-pipeline-cache-owner.log and out/gate-pipeline-cache-owner-run.log"
+	grep -E '^FAIL' out/gate-pipeline-cache-owner-run.log | sed 's/^/      /' || true
+fi
+
 if "$MSC" build tests/integration/retainedReplay.ms --release --output=out/retainedReplay.exe \
 		> out/gate-retained-replay.log 2>&1 \
 		&& out/retainedReplay.exe > out/gate-retained-replay-run.log 2>&1; then
