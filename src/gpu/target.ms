@@ -393,8 +393,6 @@ export function toString(this layout: TargetLayout): string {
 	return `colors=${colors} depth=${layout.depth.toString()} sampleCount=${layout.sampleCount}`;
 }
 
-// sg_begin_pass on up to four color attachments and an optional depth attachment. The door
-// stops while a pass is already open, naming the call.
 function stopOnEmptyAttachment(index: int32): void {
 	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
 	console.log(`gpu door: beginPass on ${what}, which has no view; resized allocates its target`);

@@ -78,8 +78,6 @@ export const CMD_VERTEX_OFFSET: int32 = 2;
 export const CMD_VERTEX_COUNT: int32 = 3;
 export const CMD_VIEW: int32 = 4;
 export const CMD_BLEND: int32 = 5;
-// Which of the four samplers the draw wants: `smooth * 2 + tileWrap`. It stopped being a
-// single bit when `tileWrap` arrived, so it is an index and not a flag.
 export const CMD_SAMPLER: int32 = 6;
 export const SAMPLER_COUNT: int32 = 4;
 export const SOURCE_PREMULTIPLIED: int32 = SAMPLER_COUNT;
