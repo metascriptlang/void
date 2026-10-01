@@ -15,6 +15,9 @@ import {
 	destroyImage,
 	destroyView,
 	destroySampler,
+	imageAlive,
+	samplerAlive,
+	contextGeneration,
 	beginPassWith,
 	beginScreenPassWith,
 	environmentColorFormat,
@@ -41,6 +44,7 @@ export struct RenderTarget {
 	image: uint32;
 	attachment: uint32;
 	texture: uint32;
+	generation: int32;
 }
 
 export struct ColorAttachment {
@@ -73,6 +77,7 @@ export struct Sampler {
 	filter: FilterMode;
 	wrap: Wrap;
 	handle: uint32;
+	generation: int32;
 }
 
 export const NO_DEPTH: DepthAttachment = {
@@ -121,13 +126,44 @@ export function allocate(
 		image: image,
 		attachment: makeAttachmentView(image, format),
 		texture: sampled ? makeTextureView(image) : 0,
+		generation: contextGeneration(),
 	};
 }
 
-export function release(this target: RenderTarget): void {
+function stopOnOtherContext(call: string, what: string, generation: int32): void {
+	console.log(`gpu door: ${call} on a ${what} of GPU context ${generation}; the context is now ` +
+		`${contextGeneration()}, and forgotten() drops its handles`);
+	unreachable;
+}
+
+function stopOnReleased(call: string, what: string): void {
+	console.log(`gpu door: ${call} on a ${what} that was released`);
+	unreachable;
+}
+
+function holdsLive(this target: RenderTarget, call: string): boolean {
+	if (target.image == 0 || target.generation != contextGeneration()) { return false; }
+	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
+	return true;
+}
+
+function requireLive(this target: RenderTarget, call: string): void {
+	if (target.image == 0) { return; }
+	if (target.generation != contextGeneration()) {
+		stopOnOtherContext(call, "render target", target.generation);
+	}
+	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
+}
+
+function destroyHandles(target: RenderTarget): void {
 	if (target.texture != 0) { destroyView(target.texture); }
 	destroyView(target.attachment);
 	destroyImage(target.image);
+}
+
+export function released(this target: RenderTarget): RenderTarget {
+	if (target.holdsLive("released")) { destroyHandles(target); }
+	return target.forgotten();
 }
 
 // A target that knows its format but has no size or GPU objects yet; `resized` allocates it.
@@ -144,21 +180,22 @@ export function unallocated(
 		image: 0,
 		attachment: 0,
 		texture: 0,
+		generation: 0,
 	};
 }
 
 // After a context loss: the same target with its handles dropped, not destroyed (they are
 // stale and may name objects of the new context). `resized` allocates it again.
 export function forgotten(this target: RenderTarget): RenderTarget {
-	return { ...target, image: 0, attachment: 0, texture: 0 };
+	return { ...target, image: 0, attachment: 0, texture: 0, generation: 0 };
 }
 
 // The same target at a new size; the old GPU objects are released when the size changed.
 export function resized(this target: RenderTarget, width: int32, height: int32): RenderTarget {
-	if (target.image != 0 && target.width == width && target.height == height) {
-		return target;
+	if (target.holdsLive("resized")) {
+		if (target.width == width && target.height == height) { return target; }
+		destroyHandles(target);
 	}
-	if (target.image != 0) { target.release(); }
 	return RenderTarget.allocate(width, height, target.format, target.sampled);
 }
 
@@ -167,6 +204,7 @@ export function asColor(
 	load: LoadAction,
 	clear: Vec4,
 ): ColorAttachment {
+	target.requireLive("asColor");
 	return { view: target.attachment, format: target.format, load: load, clear: clear };
 }
 
@@ -175,15 +213,46 @@ export function asDepth(
 	load: LoadAction,
 	clear: float32,
 ): DepthAttachment {
+	target.requireLive("asDepth");
 	return { view: target.attachment, format: target.format, load: load, clear: clear };
 }
 
-export function create(this typeof Sampler, filter: FilterMode, wrap: Wrap): Sampler {
-	return { filter: filter, wrap: wrap, handle: makeSampler(filter, wrap) };
+export function asTexture(this target: RenderTarget): uint32 {
+	target.requireLive("asTexture");
+	if (target.image != 0 && target.texture == 0) {
+		console.log("gpu door: asTexture on a render target allocated without a texture view");
+		unreachable;
+	}
+	return target.texture;
 }
 
-export function release(this sampler: Sampler): void {
-	destroySampler(sampler.handle);
+export function create(this typeof Sampler, filter: FilterMode, wrap: Wrap): Sampler {
+	return {
+		filter: filter,
+		wrap: wrap,
+		handle: makeSampler(filter, wrap),
+		generation: contextGeneration(),
+	};
+}
+
+function holdsLive(this sampler: Sampler, call: string): boolean {
+	if (sampler.handle == 0 || sampler.generation != contextGeneration()) { return false; }
+	if (!samplerAlive(sampler.handle)) { stopOnReleased(call, "sampler"); }
+	return true;
+}
+
+export function released(this sampler: Sampler): Sampler {
+	if (sampler.holdsLive("released")) { destroySampler(sampler.handle); }
+	return { ...sampler, handle: 0, generation: 0 };
+}
+
+export function asHandle(this sampler: Sampler): uint32 {
+	if (sampler.handle == 0) { return 0; }
+	if (sampler.generation != contextGeneration()) {
+		stopOnOtherContext("asHandle", "sampler", sampler.generation);
+	}
+	if (!samplerAlive(sampler.handle)) { stopOnReleased("asHandle", "sampler"); }
+	return sampler.handle;
 }
 
 function formatAt(colors: Span<ColorAttachment>, index: int32): PixelFormat {

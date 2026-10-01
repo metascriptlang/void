@@ -39,15 +39,7 @@ function sceneState(): RenderState {
 }
 
 function target(format: PixelFormat): RenderTarget {
-	return {
-		width: 360,
-		height: 800,
-		format: format,
-		sampled: true,
-		image: 1,
-		attachment: 2,
-		texture: 3,
-	};
+	return RenderTarget.unallocated(format, true);
 }
 
 function sceneLayout(): TargetLayout {
