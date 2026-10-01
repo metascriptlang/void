@@ -16,6 +16,7 @@ import {
 	destroyView,
 	destroySampler,
 	imageAlive,
+	viewAlive,
 	samplerAlive,
 	contextGeneration,
 	beginPassWith,
@@ -52,6 +53,7 @@ export struct ColorAttachment {
 	format: PixelFormat;
 	load: LoadAction;
 	clear: Vec4;
+	generation: int32;
 }
 
 export struct DepthAttachment {
@@ -59,6 +61,7 @@ export struct DepthAttachment {
 	format: PixelFormat;
 	load: LoadAction;
 	clear: float32;
+	generation: int32;
 }
 
 // The attachment formats a pipeline is built for (the render-target half of Heaps'
@@ -85,6 +88,7 @@ export const NO_DEPTH: DepthAttachment = {
 	format: PixelFormat.None,
 	load: LoadAction.DontCare,
 	clear: 1.0,
+	generation: 0,
 };
 
 const UNUSED_COLOR: ColorAttachment = {
@@ -92,6 +96,7 @@ const UNUSED_COLOR: ColorAttachment = {
 	format: PixelFormat.None,
 	load: LoadAction.DontCare,
 	clear: { x: 0.0, y: 0.0, z: 0.0, w: 0.0 },
+	generation: 0,
 };
 
 // The swapchain: formats and MSAA sample count are whatever the host set up.
@@ -147,12 +152,16 @@ function holdsLive(this target: RenderTarget, call: string): boolean {
 	return true;
 }
 
-function requireLive(this target: RenderTarget, call: string): void {
+function requireLive(this target: RenderTarget, call: string, view: uint32): void {
 	if (target.image == 0) { return; }
 	if (target.generation != contextGeneration()) {
 		stopOnOtherContext(call, "render target", target.generation);
 	}
 	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
+	if (view != 0 && !viewAlive(view)) {
+		console.log(`gpu door: ${call} on a render target whose view ${view} was destroyed`);
+		unreachable;
+	}
 }
 
 function destroyHandles(target: RenderTarget): void {
@@ -204,8 +213,14 @@ export function asColor(
 	load: LoadAction,
 	clear: Vec4,
 ): ColorAttachment {
-	target.requireLive("asColor");
-	return { view: target.attachment, format: target.format, load: load, clear: clear };
+	target.requireLive("asColor", target.attachment);
+	return {
+		view: target.attachment,
+		format: target.format,
+		load: load,
+		clear: clear,
+		generation: target.generation,
+	};
 }
 
 export function asDepth(
@@ -213,12 +228,18 @@ export function asDepth(
 	load: LoadAction,
 	clear: float32,
 ): DepthAttachment {
-	target.requireLive("asDepth");
-	return { view: target.attachment, format: target.format, load: load, clear: clear };
+	target.requireLive("asDepth", target.attachment);
+	return {
+		view: target.attachment,
+		format: target.format,
+		load: load,
+		clear: clear,
+		generation: target.generation,
+	};
 }
 
 export function asTexture(this target: RenderTarget): uint32 {
-	target.requireLive("asTexture");
+	target.requireLive("asTexture", target.texture);
 	if (target.image != 0 && target.texture == 0) {
 		console.log("gpu door: asTexture on a render target allocated without a texture view");
 		unreachable;
@@ -360,8 +381,24 @@ export function toString(this layout: TargetLayout): string {
 
 // sg_begin_pass on up to four color attachments and an optional depth attachment. The door
 // stops while a pass is already open, naming the call.
+function stopOnStaleAttachment(what: string, generation: int32): void {
+	if (generation == contextGeneration()) { return; }
+	console.log(`gpu door: beginPass on ${what} of GPU context ${generation}; the context is now ` +
+		`${contextGeneration()}`);
+	unreachable;
+}
+
 export function beginPass(colors: Span<ColorAttachment>, depth: DepthAttachment): void {
 	stopOnTooManyColors("beginPass", colors);
+	for (let i = 0; i < (colors.length as int32); i++) {
+		if (colors[i].view == 0) {
+			console.log(`gpu door: beginPass on color attachment ${i}, which has no view; ` +
+				"resized allocates its target");
+			unreachable;
+		}
+		stopOnStaleAttachment(`color attachment ${i}`, colors[i].generation);
+	}
+	if (depth.view != 0) { stopOnStaleAttachment("the depth attachment", depth.generation); }
 	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		const color: ColorAttachment = i < (colors.length as int32) ? colors[i] : UNUSED_COLOR;
 		passDescriptor[DOOR_PASS_COLOR_VIEW + i] = color.view;

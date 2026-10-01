@@ -431,6 +431,18 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 		abort();
 	}
 	stopOnOpenPass("beginPass");
+	for (int i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
+		const uint32_t view = descriptor[DOOR_PASS_COLOR_VIEW + i];
+		if (view != 0 && sg_query_view_state((sg_view){.id = view}) != SG_RESOURCESTATE_VALID) {
+			fprintf(stderr, "gpu door: beginPass on color attachment %d, whose view %u is not alive\n", i, view);
+			abort();
+		}
+	}
+	const uint32_t depthView = descriptor[DOOR_PASS_DEPTH_VIEW];
+	if (depthView != 0 && sg_query_view_state((sg_view){.id = depthView}) != SG_RESOURCESTATE_VALID) {
+		fprintf(stderr, "gpu door: beginPass on the depth attachment, whose view %u is not alive\n", depthView);
+		abort();
+	}
 	sg_pass pass = {0};
 	for (int i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		pass.attachments.colors[i] = (sg_view){.id = descriptor[DOOR_PASS_COLOR_VIEW + i]};
