@@ -1961,8 +1961,8 @@ the review.
 
 **Not proved, not built.** Browser WebGPU pipeline creation, pixels and first-use cost (headless
 Chrome has no adapter here). Premultiplied content is inferred from colour-attachment usage, with
-no way for an app to declare a straight target, and no WebGL2 golden samples a void3d target
-through void2d. The screen layout's identity is closed in "D1 follow-ups" below.
+no way for an app to declare a straight target. The screen layout's identity and the WebGL2
+golden of a void3d target are closed in "D1 follow-ups" below.
 
 **Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
 audit on the pre-integration source: mutating a caller's `Paint2D.colorMatrix: float32[]`, or
@@ -2006,6 +2006,14 @@ with eight explicit skips: 1099 tests plus 299 isolated, D3D11 76/76 unchanged, 
 identical / 18 bounded / the same four known-red, 107 frame functions / 239 callees, 16 PENDING.
 Web builds are 2 357 767 / 2 129 952 B, 6 020 / 5 967 B above D1's. `sh scripts/gate3d.sh` GREEN
 with its device skip.
+
+**A void3d target drawn by void2d, on WebGL2.** Golden `mixed/void3dTarget`
+(`tests/golden/mixedScenes.ms`): void3d's forward renderer draws two boxes into its own colour
+target once, at build, and void2d draws that target as a sprite. It is the first golden that
+runs void3d on WebGL2. The WebGL2 capture is byte-identical to the D3D11 golden. With the GL row
+flip removed from the sprite path in `batcher.c` (control), the row fails on WebGL2, as do the
+four other rows that sample a target through a sprite. So `sampledTarget` reads a void3d target
+upright on GL, as finding 5 argued from `blit.ms`.
 
 ## Open
 

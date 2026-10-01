@@ -1230,7 +1230,9 @@ long; runtime evidence is the main session's.
 - **F4, premultiplied meaning** — partly: every mode's equation is evaluated in T0 on
   premultiplied operands, Erase became destination-out after that test showed colour above
   alpha, and Multiply and Min are recorded as arithmetic modes (`32c6016`). Carried: a declared
-  premultiplied property for app targets, and the WebGL2 golden of finding 5.
+  premultiplied property for app targets, and the WebGL2 golden of finding 5. The golden was
+  built 2026-10-01 (`mixed/void3dTarget`, VOID2D.md "D1 follow-ups"); the declared property is
+  a design question put to the human.
 - **F5, `Default` resolved against the environment, not the view** — carried, recorded as open.
   Two host views with different sample counts would share one pipeline, as before D1. Closed
   2026-10-01: screen keys hold the environment's formats and a swapchain outside the environment
