@@ -1296,8 +1296,13 @@ milestone's consumer run on `431dc90`.
   rewritten to another live block of the same pool or to a released one. Each `drawItem` case
   has a control with its check removed: it then runs past and stops later without the message,
   reads index 99 of a table of one, or, for the released texture, returns having drawn nothing.
-  The presets' screen-block checks have a control too: without one, a frame passes
-  `prepareFrame` and makes its first GPU object.
+  The presets' screen-block checks are measured on D3D11 in the `stores` consumer: after a good
+  frame from each preset, the forward copy's, the pixel-art post's and the blit's block replaced
+  in turn is `UniformsReplaced` with no pass open, no new sokol buffer, image, view, sampler or
+  pipeline, and the core's generation untouched, and a second context's frame drawn in the same
+  sokol frame reads back as its own background. Their controls, each check removed in turn, run
+  into the frame's passes and fail late: the copy's and the blit's at `drawToScreen`'s stop, the
+  post's on a bare stop with no message (exit 132), where `drawPost` meets `drawScreen`'s refusal.
 - `sh scripts/gate3d.sh`: the receipt is in `docs/REVIEWS-3D.md` "M24", "Final acceptance". Two
   runs failed on the way. On `396315d` the churn example's exhaustive `match` over
   `GltfSceneError` missed `ForeignMeshBinding` and the example did not build (`3a5e44f`). On

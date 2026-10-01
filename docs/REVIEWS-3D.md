@@ -1719,20 +1719,21 @@ found the same class as B1 one field over. Each finding was read against the cod
 |---|---|
 | `drawItem` and `bindItem` index the texture table at the material's `texture` without `keepsItsTexture`, so a caller who rewrites it to another store's id, a stale id or an index past the table reaches that index | `drawItem` requires `keepsItsTexture` before any index (`fa66e8d`); three abort programs, each with a control (`1b98e42`) |
 | `holds` on the material's block admits another live block of the same pool the material does not own | `keepsItsUniforms` in its place; two abort programs, live and released, each with a control (`1b98e42`) |
-| The presets' new screen-block checks had no red control | Without each of the three, a frame passes `prepareFrame` and makes its first GPU object (`sg_make_buffer` from `makeScreenTriangle`): headless it can run no further |
+| The presets' new screen-block checks had no red control | Headless, without each of the three a frame passes `prepareFrame` and makes its first GPU object (`sg_make_buffer` from `makeScreenTriangle`), and can run no further. On D3D11 in the `stores` consumer (`8d70170`): each replaced block refused before any pass, no new GPU object, a surviving context's frame its own colour; without each check the frame runs into its passes and fails late, the copy and the blit at `drawToScreen`'s stop, the post on a bare stop (exit 132) |
 
 ### Final acceptance
 
-`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on `1b98e42` (tree `e7c66fd`,
-"test(void3d): a material whose texture or block was rewritten stops drawItem", clean): **GATE
-GREEN with 1 skipped stage** (`device`).
+`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-01, on `8d70170` (tree `5e255a4`,
+"test(void3d): replaced screen blocks refused before a pass on D3D11", clean): **GATE GREEN with
+1 skipped stage** (`device`).
 The workstation's native capacity was rationed between sessions; each native run here had its own
 go from the coordinating session.
 
 - **1123/1123 tests**, +9 on main's 1114 (`src/test/storeCheck.ms`); **46 abort programs**, +11.
 - **24 configurations / 96 frames match 72 hashes**, none adopted: nothing in M24 moves a pixel.
 - The new `stores` stage: two contexts on real D3D11 objects refuse each other's meshes,
-  materials, textures and blocks by name, an alias releases once, a reused slot is stale. Its
+  materials, textures and blocks by name, an alias releases once, a reused slot is stale, and both
+  presets refuse a replaced screen block before any pass while another context draws. Its
   controls (one kind forced open at a time) fail exactly that kind's checks; the red run on
   `431dc90` failed 23.
 - Allocation scan clean, with the store checks on its lists; style clean; churn flat at 10
