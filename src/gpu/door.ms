@@ -22,6 +22,7 @@ import {
 	doorDestroySampler,
 	doorBeginScreenPass,
 	doorEndPass,
+	doorCommit,
 	doorPassState,
 	doorOriginTopLeft,
 	doorDepthZeroToOne,
@@ -144,13 +145,7 @@ export function passState(): PassState {
 	return doorPassState() as PassState;
 }
 
-// sokol cannot nest passes, so every begin stops while one is open, and endPass stops when
-// none is; the message names the call, as void3d's and void2d's stops do.
 export function beginPassWith(descriptor: Span<uint32>, clear: Span<float32>): void {
-	if (doorPassState() != 0) {
-		console.log("gpu door: beginPass with a pass already open; endPass ends it");
-		unreachable;
-	}
 	doorBeginPass(descriptor, clear);
 }
 
@@ -160,19 +155,15 @@ export function beginScreenPassWith(
 	blue: float32,
 	alpha: float32,
 ): void {
-	if (doorPassState() != 0) {
-		console.log("gpu door: beginScreenPass with a pass already open; endPass ends it");
-		unreachable;
-	}
 	doorBeginScreenPass(red, green, blue, alpha);
 }
 
 export function endPass(): void {
-	if (doorPassState() == 0) {
-		console.log("gpu door: endPass with no pass open");
-		unreachable;
-	}
 	doorEndPass();
+}
+
+export function commit(): void {
+	doorCommit();
 }
 
 // Framebuffer and texture rows start at the top (D3D11, Metal) rather than the bottom (GL).

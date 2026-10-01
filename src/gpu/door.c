@@ -292,7 +292,11 @@ int32_t doorLayoutPerInstance(int32_t layout) {
 // ---- resources ----
 
 uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length) {
-	if (length < DOOR_PIPELINE_LENGTH) return SG_INVALID_ID;
+	if (length < DOOR_PIPELINE_LENGTH) {
+		fprintf(stderr, "gpu door: makePipeline descriptor holds %lld of %d words\n",
+			(long long)length, DOOR_PIPELINE_LENGTH);
+		abort();
+	}
 	const uint32_t *d = descriptor;
 	sg_pipeline_desc desc = {0};
 	desc.shader = (sg_shader){.id = d[DOOR_PIPELINE_SHADER]};
@@ -402,8 +406,19 @@ void doorDestroySampler(uint32_t sampler) { sg_destroy_sampler((sg_sampler){.id 
 
 static int32_t g_openPass = DOOR_PASS_NONE;
 
+static void stopOnOpenPass(const char *call) {
+	if (g_openPass == DOOR_PASS_NONE) return;
+	fprintf(stderr, "gpu door: %s with a pass already open; endPass ends it\n", call);
+	abort();
+}
+
 void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clear, int64_t clearLength) {
-	if (length < DOOR_PASS_LENGTH || clearLength < DOOR_PASS_CLEAR_LENGTH) return;
+	if (length < DOOR_PASS_LENGTH || clearLength < DOOR_PASS_CLEAR_LENGTH) {
+		fprintf(stderr, "gpu door: beginPass descriptor holds %lld of %d words and %lld of %d clear values\n",
+			(long long)length, DOOR_PASS_LENGTH, (long long)clearLength, DOOR_PASS_CLEAR_LENGTH);
+		abort();
+	}
+	stopOnOpenPass("beginPass");
 	sg_pass pass = {0};
 	for (int i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		pass.attachments.colors[i] = (sg_view){.id = descriptor[DOOR_PASS_COLOR_VIEW + i]};
@@ -418,10 +433,7 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 }
 
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha) {
-	if (g_openPass != DOOR_PASS_NONE) {
-		fprintf(stderr, "gpu door: beginColorPass with a pass already open; endPass ends it\n");
-		abort();
-	}
+	stopOnOpenPass("beginColorPass");
 	if (sg_query_view_state((sg_view){.id = view}) != SG_RESOURCESTATE_VALID) {
 		fprintf(stderr, "gpu door: beginColorPass on view %u, which is not a live attachment\n", view);
 		abort();
@@ -435,13 +447,23 @@ void doorBeginColorPass(uint32_t view, float red, float green, float blue, float
 }
 
 void doorBeginScreenPass(float red, float green, float blue, float alpha) {
+	stopOnOpenPass("beginScreenPass");
 	voidBeginPass(red, green, blue, alpha);
 	g_openPass = DOOR_PASS_SCREEN;
 }
 
 void doorEndPass(void) {
+	if (g_openPass == DOOR_PASS_NONE) {
+		fprintf(stderr, "gpu door: endPass with no pass open\n");
+		abort();
+	}
 	sg_end_pass();
 	g_openPass = DOOR_PASS_NONE;
+}
+
+void doorCommit(void) {
+	stopOnOpenPass("commit");
+	voidCommit();
 }
 
 int32_t doorPassState(void) {

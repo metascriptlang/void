@@ -100,6 +100,7 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 void doorBeginScreenPass(float red, float green, float blue, float alpha);
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha);
 void doorEndPass(void);
+void doorCommit(void);
 int32_t doorPassState(void);
 
 // Backend conventions the renderer adapts to: 1 when framebuffer and texture rows start at
