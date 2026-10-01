@@ -1960,12 +1960,9 @@ scripts/gate3d.sh` on the same tree is GREEN with its device skip. REVIEWS.md "U
 the review.
 
 **Not proved, not built.** Browser WebGPU pipeline creation, pixels and first-use cost (headless
-Chrome has no adapter here). `SWAPCHAIN_LAYOUT` resolves against sokol's environment defaults,
-not the pass's swapchain: two host views with different sample counts would share one pipeline,
-as they did before D1; open. A caller spelling the resolved formats explicitly would get a second,
-equivalent pipeline; no caller does. Premultiplied content is inferred from colour-attachment
-usage, with no way for an app to declare a straight target, and no WebGL2 golden samples a void3d
-target through void2d.
+Chrome has no adapter here). Premultiplied content is inferred from colour-attachment usage, with
+no way for an app to declare a straight target, and no WebGL2 golden samples a void3d target
+through void2d. The screen layout's identity is closed in "D1 follow-ups" below.
 
 **Ownership seam to keep visible:** the workspace coordinator reported a real D3D11 host-view
 audit on the pre-integration source: mutating a caller's `Paint2D.colorMatrix: float32[]`, or
@@ -1974,6 +1971,41 @@ calling `setPaint` again with that same array still skips as equal. This is ordi
 aliasing, not a compiler failure. That audit captured dirty-state values, not pixels, and this
 lane has not independently reproduced or implemented a separate fix. Frame-context ownership
 must not treat a copied value wrapper as a deep-frozen snapshot of its reference fields.
+
+### D1 follow-ups (2026-10-01)
+
+The human approved closing the review's carried items after the D1 land.
+
+**Screen pipelines key on the environment's formats (F5).** `pipelineFor` resolves a layout that
+names `Default` or a zero sample count against sokol's environment defaults (`target.ms`
+`TargetLayout.resolved`) before it keys and describes the pipeline, which is the D1 direction's
+"resolve defaults consistently within the GPU environment". A key holds concrete formats, so
+`SWAPCHAIN_LAYOUT` and the environment spelled out are one pipeline. The door's `PixelFormat`
+gained `Bgra8` and `DepthStencil`, the formats the environments here default to, and stops on an
+environment format it does not name, or on a resolution before the device exists
+(`tests/aborts/screenLayoutWithoutDevice.ms`). `pipelineFor` checks the program id before it
+asks the device anything, so `unregisteredProgram` still stops on the id. On D3D11, the window at sample count 1, `SWAPCHAIN_LAYOUT`
+keys as `colors=Bgra8 depth=Depth sampleCount=1`. `tests/integration/doorBlendModes.ms` asserts
+that the explicit spelling reuses the Alpha screen pipeline; with the resolution removed it stops
+on a second pipeline (control, BUILD `35601908`). T0 pins the resolution and that two
+environments differing only in sample count key apart.
+
+The aliasing F5 named, two swapchains of different formats or sample counts sharing one
+pipeline, is refused rather than keyed: `bridge.c` `voidBeginPass` stops on a swapchain the
+environment does not describe and names both. Heaps keys its one back buffer the same way, one
+signature for the screen (`h3d/impl/PipelineCache.hx` `setRenderTarget` with a null texture).
+GPUI and Bevy key per surface or view instead; Void needs that only for a host that drives
+swapchains of different layouts from one device, and none does. Every driver's environment equals
+every swapchain it hands out (the D3D11 and Android views at one sample and no depth, the sokol_app
+window through sglue), so no consumer can trip the stop on this box. The macOS embed bridge
+builds its own pass (`bridgeEmbed.m` `voidBeginPass`) from the same three constants as its
+environment and has no stop; it is not built here.
+
+**Measured on the F5 source, BUILD `35601908`, shared box:** `sh scripts/gate.sh --web` GREEN
+with eight explicit skips: 1099 tests plus 299 isolated, D3D11 76/76 unchanged, WebGL2 54
+identical / 18 bounded / the same four known-red, 107 frame functions / 239 callees, 16 PENDING.
+Web builds are 2 357 767 / 2 129 952 B, 6 020 / 5 967 B above D1's. `sh scripts/gate3d.sh` GREEN
+with its device skip.
 
 ## Open
 

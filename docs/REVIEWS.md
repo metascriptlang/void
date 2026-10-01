@@ -1232,7 +1232,9 @@ long; runtime evidence is the main session's.
   alpha, and Multiply and Min are recorded as arithmetic modes (`32c6016`). Carried: a declared
   premultiplied property for app targets, and the WebGL2 golden of finding 5.
 - **F5, `Default` resolved against the environment, not the view** — carried, recorded as open.
-  Two host views with different sample counts would share one pipeline, as before D1.
+  Two host views with different sample counts would share one pipeline, as before D1. Closed
+  2026-10-01: screen keys hold the environment's formats and a swapchain outside the environment
+  stops (VOID2D.md "D1 follow-ups").
 - **F6, the slot memo under the cache's generation** — done (finding 9).
 - **F7, `.err` names and a struct `!=` card** — the names are done; no card, because struct `!=`
   compiles and answers correctly on C and JS (probe on BUILD `35601908`, a 20-byte struct), so
