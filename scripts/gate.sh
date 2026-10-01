@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/mixedFrame.exe out/doorBlendModes.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -127,7 +127,7 @@ else
 	fail "door blend modes — see out/gate-door-blend-modes.log and out/gate-door-blend-modes-run.log"
 fi
 
-rm -f out/pipelineCacheOwner.exe
+rm -f out/gate-pipeline-cache-owner-run.log
 if "$MSC" build tests/integration/pipelineCacheOwner.ms --release --output=out/pipelineCacheOwner.exe \
 		> out/gate-pipeline-cache-owner.log 2>&1 \
 		&& out/pipelineCacheOwner.exe > out/gate-pipeline-cache-owner-run.log 2>&1; then
