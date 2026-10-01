@@ -65,7 +65,7 @@ function sized(width: int32, height: int32, pixels: int32): TextureData {
 	};
 }
 
-function texturedLit(ref context: DrawContext): Material {
+function texturedLit(context: DrawContext): Material {
 	let block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
@@ -78,7 +78,7 @@ function materialError(result: Result<MaterialId, MaterialError>): MaterialError
 	return result.ok ? MaterialError.ReleasedUniforms : result.error;
 }
 
-function texturedItem(ref context: DrawContext, material: MaterialId): DrawItem {
+function texturedItem(context: DrawContext, material: MaterialId): DrawItem {
 	let world: Mat4 = identity();
 	let mesh: MeshId = added(context, { ...litShape(), layout: VertexLayout.LitTextured });
 	return { mesh: mesh, material: material, world: world };

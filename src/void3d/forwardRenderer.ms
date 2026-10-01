@@ -77,7 +77,7 @@ const SCREEN_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 // first prepareFrame makes them.
 export function create(
 	this typeof ForwardRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	background: Vec4,
 ): Result<ForwardRenderer, ForwardError> {
 	const core: Result<Renderer, RendererError> = Renderer.create(context);
@@ -140,7 +140,7 @@ function resizeTargets(ref renderer: ForwardRenderer, width: int32, height: int3
 // a program the core does not draw refuses the frame before anything changes.
 export function prepareFrame(
 	ref renderer: ForwardRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
@@ -177,7 +177,7 @@ export function prepareFrame(
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 // PENDING3D: screen-output-swapchain-only
 // PENDING3D: copy-opaque
-export function drawToScreen(ref renderer: ForwardRenderer, ref context: DrawContext): void {
+export function drawToScreen(ref renderer: ForwardRenderer, context: DrawContext): void {
 	openScreen(renderer.core);
 	const copied: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
@@ -191,7 +191,7 @@ export function drawToScreen(ref renderer: ForwardRenderer, ref context: DrawCon
 
 export function renderFrame(
 	ref renderer: ForwardRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,

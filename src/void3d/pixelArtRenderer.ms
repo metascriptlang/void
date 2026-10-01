@@ -293,7 +293,7 @@ export function writePostParams(
 }
 
 
-function reserve(ref context: DrawContext, slot: int32, length: int32): UniformBlock {
+function reserve(context: DrawContext, slot: int32, length: int32): UniformBlock {
 	return try reserveUniforms(context, slot, length) catch NO_UNIFORMS;
 }
 
@@ -301,7 +301,7 @@ function reserve(ref context: DrawContext, slot: int32, length: int32): UniformB
 // No GPU object is made here: the first prepareFrame makes them.
 export function create(
 	this typeof PixelArtRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	settings: PixelArtSettings,
 	look: PixelArtLook,
 ): Result<PixelArtRenderer, PixelArtError> {
@@ -437,7 +437,7 @@ function resizeTargets(ref renderer: PixelArtRenderer, width: int32, height: int
 
 // The screen materials sample the targets and the LUT, whose views change with a resize, a
 // palette upload or a new context; rewriting them each frame costs a few stores.
-function bindScreenTextures(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
+function bindScreenTextures(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	const sampler: uint32 = renderer.sampler.asHandle();
 	const packedDepth: boolean = renderer.settings.depthSource == DepthSource.NormalAlpha;
 	const post: int32 = renderer.postMaterial.index;
@@ -458,7 +458,7 @@ function bindScreenTextures(ref renderer: PixelArtRenderer, ref context: DrawCon
 
 function drawScene(
 	ref renderer: PixelArtRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 ): void {
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
@@ -468,7 +468,7 @@ function drawScene(
 
 // prepareFrame refused the frame before any pass if either screen material, its texture or the
 // screen mesh were gone.
-function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
+function drawPost(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	beginPass(renderer.postColors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.postMaterial, POST_LAYOUT);
@@ -476,7 +476,7 @@ function drawPost(ref renderer: PixelArtRenderer, ref context: DrawContext): voi
 	endPass();
 }
 
-function drawBlit(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
+function drawBlit(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	const drawn: Result<int32, RendererError> =
 		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
 	if (!drawn.ok) {
@@ -554,7 +554,7 @@ function rampsHaveLevels(
 // anything changes.
 export function prepareFrame(
 	ref renderer: PixelArtRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
@@ -607,14 +607,14 @@ export function prepareFrame(
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 // PENDING3D: screen-output-swapchain-only
 // PENDING3D: copy-opaque
-export function drawToScreen(ref renderer: PixelArtRenderer, ref context: DrawContext): void {
+export function drawToScreen(ref renderer: PixelArtRenderer, context: DrawContext): void {
 	openScreen(renderer.core);
 	drawBlit(renderer, context);
 }
 
 export function renderFrame(
 	ref renderer: PixelArtRenderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,

@@ -54,7 +54,7 @@ function quad(): GpuMesh {
 	return GpuMesh.billboards(0, 0);
 }
 
-function plainMaterial(ref context: DrawContext): MaterialId {
+function plainMaterial(context: DrawContext): MaterialId {
 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 	if (!added.ok) { unreachable; }
@@ -240,7 +240,7 @@ test "a node refuses a released mesh or material, and holds nothing then" {
 
 function loadRocks(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	under: NodeId3D,
 ): Result<int32, SceneError> {
 	const rock: MeshId = added(context, quad());

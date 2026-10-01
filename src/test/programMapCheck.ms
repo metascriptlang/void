@@ -95,7 +95,7 @@ function itemOf(material: MaterialId): DrawItem {
 }
 
 // A billboard material over a block of its own, from what `context` has left.
-function billboardMaterial(ref context: DrawContext, texture: uint32, sampler: uint32): MaterialId {
+function billboardMaterial(context: DrawContext, texture: uint32, sampler: uint32): MaterialId {
 	const block: UniformBlock =
 		try reserveUniforms(
 			context,

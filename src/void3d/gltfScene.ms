@@ -98,7 +98,7 @@ function isConsistent(data: GltfData): boolean {
 }
 
 function madeMaterial(
-	ref context: DrawContext,
+	context: DrawContext,
 	setup: GltfMaterialSetup,
 	doubleSided: boolean,
 	texture: TextureId,
@@ -128,7 +128,7 @@ function madeMaterial(
 }
 
 function undone(
-	ref context: DrawContext,
+	context: DrawContext,
 	assets: GltfAssets,
 	error: GltfSceneError,
 ): Result<GltfAssets, GltfSceneError> {
@@ -138,7 +138,7 @@ function undone(
 }
 
 export function addGltfAssets(
-	ref context: DrawContext,
+	context: DrawContext,
 	data: GltfData,
 	setup: GltfMaterialSetup,
 ): Result<GltfAssets, GltfSceneError> {
@@ -181,7 +181,7 @@ export function addGltfAssets(
 }
 
 export function releaseGltfAssets(
-	ref context: DrawContext,
+	context: DrawContext,
 	assets: GltfAssets,
 ): Result<void, HandleError> {
 	for (const mesh of assets.meshes) {
@@ -206,7 +206,7 @@ function transformOf(data: GltfData, index: int32): Transform3D {
 
 export function addGltfNodes(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	parent: NodeId3D,
 	data: GltfData,
 	bindings: Span<GltfMeshBinding>,

@@ -110,7 +110,7 @@ export function sortBackToFront(
 // Output.draw: the collected items, in the list's order, into the current pass, each with its
 // program in `drawn`, which is indexed like `items`.
 export function drawPassList(
-	ref context: DrawContext,
+	context: DrawContext,
 	list: PassList,
 	items: Span<DrawItem>,
 	drawn: Span<Program>,

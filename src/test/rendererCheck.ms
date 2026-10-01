@@ -122,7 +122,7 @@ function itemAt(material: int32, depth: float32): DrawItem {
 	};
 }
 
-function itemOnItsLayout(ref context: DrawContext, material: MaterialId): DrawItem {
+function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 	const program: Program = context.materials[material.index].program;
 	const mesh: GpuMesh = match (vertexLayoutOf(program)) {
 		VertexLayout.Lit => litShape(),
@@ -413,7 +413,7 @@ test "the core reserves the camera and light blocks and one screen mesh, nothing
 
 // A pixel-art renderer over a context whose material 0 names `program` with `levels` in a
 // material block of its own, or with no block when `levels` is negative.
-function presetOver(ref context: DrawContext, program: Program, levels: float32): PixelArtRenderer {
+function presetOver(context: DrawContext, program: Program, levels: float32): PixelArtRenderer {
 	const created: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 	if (!created.ok) { unreachable; }

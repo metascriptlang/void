@@ -107,7 +107,7 @@ function facingPlusZ(depth: float32): MeshData {
 
 function meshNode(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	parent: NodeId3D,
 	at: Transform3D,
 	mesh: int32,

@@ -67,7 +67,7 @@ function named(ref scene: Scene3D, parent: NodeId3D, name: string): NodeId3D {
 
 function namedMesh(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	name: string,
 	mesh: int32,
 ): NodeId3D {

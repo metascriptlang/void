@@ -12,7 +12,7 @@ import {
 
 const NONE: UniformBlock = { slot: 0, offset: -1, length: 0, generation: 0 };
 
-function reserved(ref pool: UniformPool, length: int32): UniformBlock {
+function reserved(pool: UniformPool, length: int32): UniformBlock {
 	return try reserveRange(pool, 2, length) catch NONE;
 }
 

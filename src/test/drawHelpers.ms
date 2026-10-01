@@ -34,7 +34,7 @@ export function litShape(): GpuMesh {
 }
 
 // A mesh addMesh takes: the caller's, or a stream.
-export function added(ref context: DrawContext, mesh: GpuMesh): MeshId {
+export function added(context: DrawContext, mesh: GpuMesh): MeshId {
 	const result: Result<MeshId, MeshUploadError> = addMesh(context, mesh);
 	if (!result.ok) { unreachable; }
 	return result.value;

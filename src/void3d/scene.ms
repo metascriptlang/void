@@ -272,14 +272,14 @@ export function addGroup(ref scene: Scene3D, parent: NodeId3D, local: Transform3
 // h3d.scene.Mesh: an object that carries a primitive and a material, and holds both.
 //
 // Named `addMeshNode` rather than Heaps' `Mesh`, because `draw.ms` already exports
-// `addMesh(ref context: DrawContext, ...)` and two `ref`-receiver free functions with one name
+// `addMesh(context: DrawContext, ...)` and two `ref`-receiver free functions with one name
 // do not merely collide — the compiler resolves the call to whichever won and runs it on the
 // wrong type, with no diagnostic. Measured in `out/tmp/overload`; see the compiler card
 // `2026-09-20-ref-receiver-not-an-extension.md`, which lists this as a site to rename back.
 // PENDING3D: mesh-node-name-collision
 export function addMeshNode(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	parent: NodeId3D,
 	local: Transform3D,
 	mesh: MeshId,
@@ -355,7 +355,7 @@ function detach(ref scene: Scene3D, index: int32): void {
 
 // A mesh node unpins its mesh and material; remove checked the pins first (checkPins). A freed id
 // holds no pin: whoever freed it took the node's.
-function releasePayload(ref scene: Scene3D, ref context: DrawContext, index: int32): void {
+function releasePayload(ref scene: Scene3D, context: DrawContext, index: int32): void {
 	const row: int32 = scene.nodes[index].payload;
 	match (scene.nodes[index].kind) {
 		NodeKind.Mesh => {
@@ -410,7 +410,7 @@ function collectSubtree(ref scene: Scene3D, index: int32): int32 {
 // has taken those pins, and so has a remove through another context.
 function checkPins(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	count: int32,
 ): Result<int32, SceneError> {
 	let covered: boolean = true;
@@ -436,7 +436,7 @@ function checkPins(
 // mesh and material. Nothing changes when a pin is gone (checkPins).
 export function remove(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	id: NodeId3D,
 ): Result<int32, SceneError> {
 	const row: int32 = scene.liveRow(id, "remove");
@@ -462,7 +462,7 @@ export function remove(
 // value instead lets go of nothing its mesh nodes hold.
 export function removeChildren(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	id: NodeId3D,
 ): Result<int32, SceneError> {
 	const row: int32 = scene.liveRow(id, "removeChildren");
@@ -505,7 +505,7 @@ export function setPickable(ref scene: Scene3D, id: NodeId3D, pickable: boolean)
 // first keeps a mesh swapped for itself alive.
 export function setMeshOf(
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 	id: NodeId3D,
 	mesh: MeshId,
 ): Result<int32, SceneError> {

@@ -12,7 +12,7 @@ export enum UniformError {
 	Owned,
 }
 
-export struct UniformPool {
+export interface UniformPool {
 	values: Vec<float32>;
 	used: int32;
 	lengths: Vec<int32>;
@@ -91,7 +91,7 @@ function blockAt(this pool: UniformPool, slot: int32, offset: int32): UniformBlo
 }
 
 export function reserveRange(
-	ref pool: UniformPool,
+	pool: UniformPool,
 	slot: int32,
 	length: int32,
 ): Result<UniformBlock, UniformError> {
@@ -113,7 +113,7 @@ export function reserveRange(
 	return Result.ok(pool.blockAt(slot, offset));
 }
 
-export function ownRange(ref pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
+export function ownRange(pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
 	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
@@ -122,7 +122,7 @@ export function ownRange(ref pool: UniformPool, block: UniformBlock): Result<int
 }
 
 export function disownRange(
-	ref pool: UniformPool,
+	pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
 	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
@@ -131,7 +131,7 @@ export function disownRange(
 }
 
 export function releaseRange(
-	ref pool: UniformPool,
+	pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
 	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
@@ -144,7 +144,7 @@ export function releaseRange(
 }
 
 export function writeRange(
-	ref pool: UniformPool,
+	pool: UniformPool,
 	block: UniformBlock,
 	values: Span<float32>,
 ): Result<int32, UniformError> {

@@ -94,7 +94,7 @@ const NO_GLOBALS: Vec<UniformBlock> = [];
 
 // createDrawing checked that the pool fits the block, and the renderer owns it, so nothing but
 // the renderer can release it.
-function reserveOwned(ref context: DrawContext, slot: int32, length: int32): UniformBlock {
+function reserveOwned(context: DrawContext, slot: int32, length: int32): UniformBlock {
 	const reserved: Result<UniformBlock, UniformError> = reserveUniforms(context, slot, length);
 	if (!reserved.ok) { unreachable; }
 	if (!ownRange(context.uniforms, reserved.value).ok) { unreachable; }
@@ -105,7 +105,7 @@ function reserveOwned(ref context: DrawContext, slot: int32, length: int32): Uni
 // GPU object is made here: the first beginFrame makes them. It draws the core's programs.
 export function create(
 	this typeof Renderer,
-	ref context: DrawContext,
+	context: DrawContext,
 ): Result<Renderer, RendererError> {
 	return Renderer.createDrawing(context, ProgramMap.core());
 }
@@ -113,7 +113,7 @@ export function create(
 // The same, drawing `programs` for the programs its materials name: a preset's.
 export function createDrawing(
 	this typeof Renderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	programs: ProgramMap,
 ): Result<Renderer, RendererError> {
 	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH];
@@ -169,7 +169,7 @@ export function needsFrame(this renderer: Renderer): boolean {
 // caller uploaded from buffers only it keeps.
 export function beginFrame(
 	ref renderer: Renderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
@@ -260,7 +260,7 @@ export function beginFrame(
 // the program beginFrame resolved for it: `items` must be the span that beginFrame accepted.
 export function drawPassLists(
 	ref renderer: Renderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	items: Span<DrawItem>,
 	targets: TargetLayout,
 ): void {
@@ -273,7 +273,7 @@ export function drawPassLists(
 // program) over the whole current pass.
 export function drawScreen(
 	ref renderer: Renderer,
-	ref context: DrawContext,
+	context: DrawContext,
 	material: MaterialId,
 	targets: TargetLayout,
 ): Result<int32, RendererError> {

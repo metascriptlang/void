@@ -292,7 +292,7 @@ export function syncPose(
 // frame, the ones off screen too, with a pin (draw.ms pinMesh), until releaseMeshFrames.
 export function forMeshes(
 	this typeof MeshFrameAnimation,
-	ref context: DrawContext,
+	context: DrawContext,
 	clock: AnimationClock,
 	name: string,
 	meshes: Span<MeshId>,
@@ -328,7 +328,7 @@ export function forMeshes(
 // and nothing changes then.
 export function releaseMeshFrames(
 	ref animation: MeshFrameAnimation,
-	ref context: DrawContext,
+	context: DrawContext,
 ): Result<int32, AnimationError> {
 	const count: int32 = animation.meshes.length as int32;
 	let covered: boolean = true;
@@ -365,7 +365,7 @@ export function bindMeshFrames(
 export function syncMeshFrame(
 	ref animation: MeshFrameAnimation,
 	ref scene: Scene3D,
-	ref context: DrawContext,
+	context: DrawContext,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if ((animation.meshes.length as int32) < 1) { return Result.err(AnimationError.NoFrames); }
@@ -405,7 +405,7 @@ export function checkBakedFrames(frames: Span<MeshData>): Result<int32, Animatio
 // The caller holds each frame once. When one upload is refused, the frames already added are
 // released and none is kept.
 export function addBakedFrames(
-	ref context: DrawContext,
+	context: DrawContext,
 	frames: Span<MeshData>,
 ): Result<Vec<MeshId>, AnimationError> {
 	const count: int32 = try checkBakedFrames(frames);

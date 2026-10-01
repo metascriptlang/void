@@ -42,7 +42,7 @@ function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 
 // A mesh node under the root, at `where`. A failure comes back as NO_NODE_3D rather than an
 // assert, which only a test block may use; every caller checks the index it gets.
-function oneMesh(ref scene: Scene3D, ref context: DrawContext, where: Vec3, mesh: int32): NodeId3D {
+function oneMesh(ref scene: Scene3D, context: DrawContext, where: Vec3, mesh: int32): NodeId3D {
 	const added: Result<NodeId3D, SceneError> = addMeshNode(
 		scene,
 		context,
