@@ -3,7 +3,7 @@
 // and a renderer hold their block's offset.
 
 import { UniformBlock, NO_UNIFORMS } from "./material";
-import { nextGeneration } from "./slots";
+import { LAST_GENERATION, nextGeneration } from "./slots";
 
 export enum UniformError {
 	PoolFull,
@@ -26,6 +26,10 @@ export interface UniformPool {
 let poolSerials: int32 = 0;
 
 export function withCapacity(this typeof UniformPool, capacity: int32): UniformPool {
+	if (poolSerials == LAST_GENERATION) {
+		console.log("void3d: UniformPool.withCapacity has no serial left for a new pool");
+		unreachable;
+	}
 	poolSerials = poolSerials + 1;
 	let lengths: Vec<int32> = new Array(capacity);
 	let generations: Vec<int32> = new Array(capacity);
@@ -122,9 +126,8 @@ export function reserveRange(
 }
 
 function admitted(this pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
-	if (block.length > 0 && block.store != pool.serial) { return Result.err(UniformError.Foreign); }
-	if (!pool.holds(block)) { return Result.err(UniformError.Released); }
-	return Result.ok(block.length);
+	if (pool.holds(block)) { return Result.ok(block.length); }
+	return Result.err(block.store == pool.serial ? UniformError.Released : UniformError.Foreign);
 }
 
 export function ownRange(pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {

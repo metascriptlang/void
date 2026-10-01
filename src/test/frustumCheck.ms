@@ -27,8 +27,8 @@ function perspective(): Mat4 {
 
 function item(mesh: int32, material: int32, x: float32, z: float32): DrawItem {
 	return {
-		mesh: { index: mesh, generation: 1 },
-		material: { index: material, generation: 1 },
+		mesh: { store: 0, index: mesh, generation: 1 },
+		material: { store: 0, index: material, generation: 1 },
 		world: translation(x, 0.0, z),
 	};
 }

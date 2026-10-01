@@ -20,6 +20,7 @@ import {
 	reserveUniforms,
 	releaseUniforms,
 	buryDoomed,
+	NO_MATERIAL,
 } from "../void3d/draw";
 import { added } from "./drawHelpers";
 import { UniformError } from "../void3d/uniformPool";
@@ -48,7 +49,6 @@ import {
 } from "../void3d/animation";
 
 const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-const NO_MATERIAL: MaterialId = { index: -1, generation: 0 };
 
 function quad(): GpuMesh {
 	return GpuMesh.billboards(0, 0);

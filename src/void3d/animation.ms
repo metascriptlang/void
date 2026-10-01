@@ -6,6 +6,7 @@ import { MeshData } from "./meshData";
 import {
 	DrawContext,
 	MeshId,
+	NO_MESH,
 	HandleError,
 	MeshUploadError,
 	addMeshData,
@@ -88,7 +89,6 @@ export struct MeshFrameAnimation {
 }
 
 const UNBOUND: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-const NO_MESH: MeshId = { index: -1, generation: 0 };
 const PLAYING_EPSILON: float64 = 0.000001;
 const HOLD_FIRST: KeyPair = { first: 0, second: 0, weight: 0.0 };
 
@@ -306,8 +306,10 @@ export function forMeshes(
 		return Result.err(AnimationError.TrackLength);
 	}
 	for (const mesh of meshes) {
-		if (!context.issuedMesh(mesh)) { return Result.err(AnimationError.ForeignMesh); }
-		if (!context.hasMesh(mesh)) { return Result.err(AnimationError.BadMesh); }
+		if (!context.hasMesh(mesh)) {
+			const issued: boolean = context.issuedMesh(mesh);
+			return Result.err(issued ? AnimationError.BadMesh : AnimationError.ForeignMesh);
+		}
 	}
 	const kept: Vec<MeshId> = [];
 	for (const mesh of meshes) {
@@ -372,6 +374,14 @@ export function bindMeshFrames(
 }
 
 // Returns 1 when the node was given a new mesh, 0 when the frame it shows is still current.
+function frameError(error: SceneError): AnimationError {
+	if (error == SceneError.StaleMesh) { return AnimationError.StaleMesh; }
+	if (error == SceneError.ForeignMesh) { return AnimationError.ForeignMesh; }
+	if (error == SceneError.NotPinned) { return AnimationError.NotPinned; }
+	console.log(`void3d: syncMeshFrame got ${error.toString()} from setMeshOf`);
+	unreachable;
+}
+
 export function syncMeshFrame(
 	ref animation: MeshFrameAnimation,
 	ref scene: Scene3D,
@@ -384,11 +394,7 @@ export function syncMeshFrame(
 	if (mesh == animation.shown) { return Result.ok(0); }
 	const swapped: Result<int32, SceneError> = setMeshOf(scene, context, animation.target, mesh);
 	if (!swapped.ok) {
-		return Result.err(match (swapped.error) {
-			SceneError.StaleMesh => AnimationError.StaleMesh,
-			SceneError.ForeignMesh => AnimationError.ForeignMesh,
-			_ => AnimationError.NotPinned,
-		});
+		return Result.err(frameError(swapped.error));
 	}
 	animation.shown = mesh;
 	return Result.ok(1);

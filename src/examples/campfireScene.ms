@@ -232,8 +232,8 @@ const LOOK_RESTORED_AT: int32 = 15;
 // material, one for the ground's own lit material when it is greyed, and a billboard block each
 // for the grass and the flame.
 const MATERIAL_POOL_LENGTH: int32 = 2 * MATERIAL_UNIFORM_LENGTH + 2 * BILLBOARD_UNIFORM_LENGTH;
-const UNSET_MESH: MeshId = { index: -1, generation: 0 };
-const UNSET_MATERIAL: MaterialId = { index: -1, generation: 0 };
+const UNSET_MESH: MeshId = { store: 0, index: -1, generation: 0 };
+const UNSET_MATERIAL: MaterialId = { store: 0, index: -1, generation: 0 };
 export enum CampfireError {
 	SetupRefused,
 	ViewRefused,

@@ -15,5 +15,5 @@ let scene: Scene3D = Scene3D.create();
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 const _removed: Result<int32, SceneError> = remove(scene, context, gone);
 const _set: Result<int32, SceneError> =
-	setMeshOf(scene, context, gone, { index: 0, generation: 1 });
+	setMeshOf(scene, context, gone, { store: 0, index: 0, generation: 1 });
 console.log("the call returned");

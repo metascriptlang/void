@@ -61,7 +61,7 @@ import {
 	disownRange,
 	writeRange,
 } from "./uniformPool";
-import { Slots, claim, vacate } from "./slots";
+import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
 
 // GPU side of a mesh: buffer handles plus what sg_draw needs. `instanceBuffer` holds particle
 // and billboard instances, 0 when not instanced; a quad layout has no vertex buffer, its
@@ -111,6 +111,9 @@ export struct MaterialId {
 	index: int32;
 	generation: int32;
 }
+
+export const NO_MESH: MeshId = { store: 0, index: -1, generation: 0 };
+export const NO_MATERIAL: MaterialId = { store: 0, index: -1, generation: 0 };
 
 export struct DrawItem {
 	mesh: MeshId;
@@ -210,6 +213,10 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 	let samplers: Vec<uint32> = new Array(SAMPLER_SETTINGS);
 	for (let i = 0; i < SAMPLER_SETTINGS; i++) {
 		samplers[i] = 0;
+	}
+	if (contextSerials == LAST_GENERATION) {
+		console.log("void3d: DrawContext.withUniformCapacity has no serial left for a new context");
+		unreachable;
 	}
 	contextSerials = contextSerials + 1;
 	return {
@@ -707,6 +714,14 @@ export function clearMeshTally(context: DrawContext, id: MeshId): void {
 	if (context.hasMesh(id)) { context.meshTally[id.index] = 0; }
 }
 
+function uniformsError(error: UniformError): MaterialError {
+	if (error == UniformError.Owned) { return MaterialError.SharedUniforms; }
+	if (error == UniformError.Foreign) { return MaterialError.ForeignUniforms; }
+	if (error == UniformError.Released) { return MaterialError.ReleasedUniforms; }
+	console.log(`void3d: addMaterial got ${error.toString()} from the uniform pool`);
+	unreachable;
+}
+
 // The material takes its uniform range with it: the range returns to the pool when the material
 // is freed, so one range under two materials is refused. It pins its texture until it is freed,
 // as a Bevy material holds its image's strong handle.
@@ -730,11 +745,7 @@ export function addMaterial(
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {
-		return Result.err(match (owned.error) {
-			UniformError.Owned => MaterialError.SharedUniforms,
-			UniformError.Foreign => MaterialError.ForeignUniforms,
-			_ => MaterialError.ReleasedUniforms,
-		});
+		return Result.err(uniformsError(owned.error));
 	}
 	const index: int32 = claim(context.materialSlots);
 	if (index == (context.materials.length as int32)) {
