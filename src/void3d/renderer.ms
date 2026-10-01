@@ -295,6 +295,9 @@ export function drawScreen(
 		return Result.err(meshError(context, renderer.screenMesh));
 	}
 	if (!context.hasMaterial(material)) { return Result.err(materialError(context, material)); }
+	if (!context.keepsItsUniforms(material)) {
+		return Result.err(RendererError.UniformsReplaced);
+	}
 	if (!context.keepsItsTexture(material)) { return Result.err(RendererError.TextureReplaced); }
 	const program: Program = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);

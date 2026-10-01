@@ -1098,9 +1098,20 @@ export function drawItem(
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
-	// beginFrame refused every stale item and the presets their own screen meshes and materials,
-	// so only a release in the middle of a frame reaches here, which nothing may do.
-	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { unreachable; }
+	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) {
+		console.log("void3d: drawItem on an item its context does not hold; beginFrame refuses one");
+		unreachable;
+	}
+	for (const block of globals) {
+		if (!context.uniforms.holds(block)) {
+			console.log(`void3d: drawItem with a block at slot ${block.slot} its context does not hold`);
+			unreachable;
+		}
+	}
+	if (!context.uniforms.holds(context.materials[item.material.index].uniforms)) {
+		console.log("void3d: drawItem with a material block its context does not hold");
+		unreachable;
+	}
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
 	const material: Material = context.materials[item.material.index];
