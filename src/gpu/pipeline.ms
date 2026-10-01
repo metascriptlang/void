@@ -178,8 +178,8 @@ function stopOnClosed(call: string): void {
 	unreachable;
 }
 
-function stopOnCloseInsidePass(): void {
-	console.log("gpu door: closePipelines with a pass already open; endPass ends it");
+function stopInsidePass(call: string): void {
+	console.log(`gpu door: ${call} with a pass already open; endPass ends it`);
 	unreachable;
 }
 
@@ -266,6 +266,7 @@ export function forgetPipelines(cache: PipelineCache): void {
 // Destroys every pipeline and shader, then forgets them.
 export function releasePipelines(cache: PipelineCache): void {
 	if (cache.closed) { stopOnClosed("releasePipelines"); }
+	if (passState() != PassState.None) { stopInsidePass("releasePipelines"); }
 	if (cache.generation == contextGeneration()) {
 		for (const entry of cache.entries) {
 			if (entry.pipeline != 0) { destroyPipeline(entry.pipeline); }
@@ -279,7 +280,7 @@ export function releasePipelines(cache: PipelineCache): void {
 
 export function closePipelines(cache: PipelineCache): void {
 	if (cache.closed) { stopOnClosed("closePipelines"); }
-	if (passState() != PassState.None) { stopOnCloseInsidePass(); }
+	if (passState() != PassState.None) { stopInsidePass("closePipelines"); }
 	releasePipelines(cache);
 	cache.closed = true;
 }
