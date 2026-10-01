@@ -389,13 +389,21 @@ void void2dSetPipeline(int32_t program, int32_t target, int32_t blend, uint32_t 
 	s_pipelines[program][target][blend] = pipeline;
 }
 
-static int samplerOf(const float *cmd) {
+static int sourceOf(const float *cmd) {
 	const int source = (int)cmd[CMD_SAMPLER];
-	return source < 0 || source >= 2 * SMP_COUNT ? 2 : source % SMP_COUNT;
+	if (source < 0 || source >= 2 * SMP_COUNT) {
+		fprintf(stderr, "void2d: a command's sampler field is %d, outside 0..%d\n", source, 2 * SMP_COUNT - 1);
+		abort();
+	}
+	return source;
+}
+
+static int samplerOf(const float *cmd) {
+	return sourceOf(cmd) % SMP_COUNT;
 }
 
 static bool premultipliedSource(const float *cmd) {
-	return (int)cmd[CMD_SAMPLER] >= SMP_COUNT;
+	return sourceOf(cmd) >= SMP_COUNT;
 }
 
 static bool sampledTarget(uint32_t view) {
