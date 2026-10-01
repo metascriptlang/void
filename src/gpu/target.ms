@@ -190,8 +190,16 @@ function formatAt(colors: Span<ColorAttachment>, index: int32): PixelFormat {
 	return index < (colors.length as int32) ? colors[index].format : PixelFormat.None;
 }
 
+function stopOnTooManyColors(call: string, colors: Span<ColorAttachment>): void {
+	if ((colors.length as int32) <= DOOR_MAX_COLOR_ATTACHMENTS) { return; }
+	console.log(`gpu door: ${call} takes at most ${DOOR_MAX_COLOR_ATTACHMENTS} color attachments, ` +
+		`given ${colors.length}`);
+	unreachable;
+}
+
 // Offscreen targets are single-sampled (door.c makes them with sample_count 1).
 export function layoutOf(colors: Span<ColorAttachment>, depth: DepthAttachment): TargetLayout {
+	stopOnTooManyColors("layoutOf", colors);
 	return {
 		color0: formatAt(colors, 0),
 		color1: formatAt(colors, 1),
@@ -284,6 +292,7 @@ export function toString(this layout: TargetLayout): string {
 // sg_begin_pass on up to four color attachments and an optional depth attachment. The door
 // stops while a pass is already open, naming the call.
 export function beginPass(colors: Span<ColorAttachment>, depth: DepthAttachment): void {
+	stopOnTooManyColors("beginPass", colors);
 	for (let i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
 		const color: ColorAttachment = i < (colors.length as int32) ? colors[i] : UNUSED_COLOR;
 		passDescriptor[DOOR_PASS_COLOR_VIEW + i] = color.view;
