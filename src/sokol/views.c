@@ -6,9 +6,13 @@
 #include "views.h"
 
 #define VOID_MAX_VIEWS 16
+#define VIEW_SLOT_BITS 5
+#define VIEW_SLOT_MASK ((1 << VIEW_SLOT_BITS) - 1)
+#define VIEW_GENERATION_LIMIT (1 << (31 - VIEW_SLOT_BITS))
 
 typedef struct {
 	int used;
+	int generation;
 	int w, h;
 	float scale;
 	void *surface;
@@ -38,14 +42,21 @@ static void call0(msClosure c) {
 	else ((void (*)(void))c.fn)();
 }
 
+static int slotIndex(VoidViewId v) { return (v & VIEW_SLOT_MASK) - 1; }
+static int idGeneration(VoidViewId v) { return v >> VIEW_SLOT_BITS; }
+
 static VoidViewSlot *slotOf(VoidViewId v, const char *op) {
-	if (v <= 0 || v > VOID_MAX_VIEWS || !s_views[v - 1].used) voidFail("%s: view %d does not exist", op, v);
-	return &s_views[v - 1];
+	const int slot = slotIndex(v);
+	if (v <= 0 || slot < 0 || slot >= VOID_MAX_VIEWS) voidFail("%s: view %d does not exist", op, v);
+	VoidViewSlot *s = &s_views[slot];
+	if (s->used && idGeneration(v) == s->generation) return s;
+	if (idGeneration(v) < s->generation) voidFail("%s: view %d was destroyed; a view id names one view only", op, v);
+	voidFail("%s: view %d does not exist", op, v);
 }
 
 static VoidViewSlot *currentSlot(const char *op) {
 	if (s_current == 0) voidFail("%s outside a view frame: call it between voidViewFrame's begin and commit", op);
-	return &s_views[s_current - 1];
+	return &s_views[slotIndex(s_current)];
 }
 
 void voidEmbedRegister(msClosure init, msClosure frame) {
@@ -66,12 +77,15 @@ VoidViewId voidViewCreate(long long native, int w, int h, float scale) {
 	voidPlatformDeviceEnsure();
 	void *surface = voidPlatformSurfaceCreate((const void *)(intptr_t)native, w, h);
 	if (surface == NULL) voidFail("voidViewCreate: the platform could not make a %dx%d surface", w, h);
-	s_views[slot] = (VoidViewSlot){.used = 1, .w = w, .h = h, .scale = scale, .surface = surface};
+	const int generation = s_views[slot].generation == 0 ? 1 : s_views[slot].generation;
+	s_views[slot] = (VoidViewSlot){
+		.used = 1, .generation = generation, .w = w, .h = h, .scale = scale, .surface = surface,
+	};
 	if (!s_inited) {
 		s_inited = 1;
 		voidPlatformRunInit(s_init);
 	}
-	return slot + 1;
+	return (generation << VIEW_SLOT_BITS) | (slot + 1);
 }
 
 void voidViewResize(VoidViewId v, int w, int h, float scale) {
@@ -99,7 +113,8 @@ void voidViewDestroy(VoidViewId v) {
 	VoidViewSlot *s = slotOf(v, "voidViewDestroy");
 	if (s_current != 0) voidFail("voidViewDestroy(%d) inside the frame of view %d", v, s_current);
 	voidPlatformSurfaceDestroy(s->surface);
-	*s = (VoidViewSlot){0};
+	const int next = s->generation + 1;
+	*s = (VoidViewSlot){.generation = next < VIEW_GENERATION_LIMIT ? next : 1};
 }
 
 long long voidViewSwapChain(VoidViewId v) {
