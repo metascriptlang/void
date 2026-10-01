@@ -1,7 +1,7 @@
 import { gfxSetup } from "../../src/sokol/gpu";
 import { exit } from "std/process";
 import { RenderState, BlendMode } from "../../src/gpu/state";
-import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
+import { SWAPCHAIN_LAYOUT, TargetLayout } from "../../src/gpu/target";
 import { PipelineCache } from "../../src/gpu/pipeline";
 import { Program, VertexLayout, pipelineFor } from "../../src/void3d/gpu3d";
 @include("../../src/sokol/bridge.h");
@@ -27,6 +27,7 @@ function init(): void {
 	gfxSetup();
 	let cache: PipelineCache = PipelineCache.empty();
 	let made: Vec<uint32> = [];
+	let alpha: uint32 = 0;
 	for (const mode of modes()) {
 		const state: RenderState = RenderState.defaults().withBlendMode(mode);
 		const first: uint32 = pipelineFor(
@@ -40,8 +41,22 @@ function init(): void {
 			if (earlier == first) { fail(`${mode.toString()} reused another mode's pipeline`); }
 		}
 		made.push(first);
+		if (mode == BlendMode.Alpha) { alpha = first; }
 	}
 	console.log(`PASS door blend modes: ${made.length} shared modes make distinct pipelines`);
+	const environment: TargetLayout = TargetLayout.environment();
+	const spelled: uint32 = pipelineFor(
+		cache,
+		Program.Copy,
+		VertexLayout.Fullscreen,
+		false,
+		RenderState.defaults().withBlendMode(BlendMode.Alpha),
+		environment,
+	);
+	if (spelled != alpha || cache.entries.length != made.length) {
+		fail(`the environment's own formats (${environment.toString()}) made a second screen pipeline`);
+	}
+	console.log(`PASS door screen layout: SWAPCHAIN_LAYOUT keys as ${environment.toString()}`);
 	exit(0);
 }
 

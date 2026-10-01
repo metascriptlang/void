@@ -122,7 +122,7 @@ fi
 if "$MSC" build tests/integration/doorBlendModes.ms --release --output=out/doorBlendModes.exe \
 		> out/gate-door-blend-modes.log 2>&1 \
 		&& out/doorBlendModes.exe > out/gate-door-blend-modes-run.log 2>&1; then
-	pass "door blend modes: every shared BlendMode makes its own pipeline on this backend"
+	pass "door blend modes: every shared BlendMode makes its own pipeline on this backend, and the screen layout keys as the environment's formats"
 else
 	fail "door blend modes — see out/gate-door-blend-modes.log and out/gate-door-blend-modes-run.log"
 fi

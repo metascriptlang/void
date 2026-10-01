@@ -331,3 +331,49 @@ test "a pipeline key decodes back into what built it" {
 	assert screen.formatBits() == SWAPCHAIN_LAYOUT.formatBits();
 }
 
+function environmentWith(samples: int32): TargetLayout {
+	return {
+		color0: PixelFormat.Bgra8,
+		color1: PixelFormat.None,
+		color2: PixelFormat.None,
+		color3: PixelFormat.None,
+		depth: PixelFormat.DepthStencil,
+		sampleCount: samples,
+	};
+}
+
+function screenKey(targets: TargetLayout): PipelineKey {
+	return pipelineKey(
+		doorProgram(Program.Lit),
+		doorLayout(VertexLayout.Lit),
+		true,
+		sceneState(),
+		targets,
+	);
+}
+
+test "the screen layout resolves to the environment's formats and sample count" {
+	const environment: TargetLayout = environmentWith(4);
+	assert SWAPCHAIN_LAYOUT.namesEnvironment();
+	assert SWAPCHAIN_LAYOUT.resolvedIn(environment) == environment;
+	assert !environment.namesEnvironment();
+	assert screenKey(SWAPCHAIN_LAYOUT.resolvedIn(environment)) == screenKey(environment);
+}
+
+test "screen layouts of two environments that differ only in samples key apart" {
+	const single: TargetLayout = SWAPCHAIN_LAYOUT.resolvedIn(environmentWith(1));
+	const multi: TargetLayout = SWAPCHAIN_LAYOUT.resolvedIn(environmentWith(4));
+	assert screenKey(single) != screenKey(multi);
+	assert screenKey(SWAPCHAIN_LAYOUT) != screenKey(single);
+}
+
+test "a layout that names its formats is left as it is" {
+	assert !sceneLayout().namesEnvironment();
+	assert sceneLayout().resolvedIn(environmentWith(4)) == sceneLayout();
+	const halfNamed: TargetLayout = { ...sceneLayout(), depth: PixelFormat.Default, sampleCount: 0 };
+	assert halfNamed.namesEnvironment();
+	const resolved: TargetLayout = halfNamed.resolvedIn(environmentWith(4));
+	assert resolved.color0 == PixelFormat.Rgba8 && resolved.color1 == PixelFormat.Rgba8;
+	assert resolved.depth == PixelFormat.DepthStencil && resolved.sampleCount == 4;
+}
+
