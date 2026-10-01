@@ -53,7 +53,7 @@ import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
 import { PassState, PixelFormat, passState, frameIndex, contextGeneration } from "../gpu/door";
-import { PipelineCache, pipelineFor, forgetPipelines } from "../gpu/pipeline";
+import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
 
@@ -92,8 +92,6 @@ export function premultipliedBlend(mode: BlendMode): RenderState {
 function resolvePipelines(): void {
 	const generation: int32 = contextGeneration();
 	if (generation != pipelines.generation) {
-		forgetPipelines(pipelines);
-		pipelines.generation = generation;
 		for (let slot: int32 = 0; slot < PIPELINE_SLOTS; slot++) { resolvedPipelines[slot] = false; }
 	}
 	for (let slot: int32 = 0; slot < PIPELINE_SLOTS; slot++) {
