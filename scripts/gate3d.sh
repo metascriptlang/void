@@ -966,10 +966,11 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/slotsCheck.ms src/test/uniformPoolCheck.ms src/test/lifetimeCheck.ms src/test/textureCheck.ms
 	src/test/drawHelpers.ms src/examples/campfireScene.ms src/examples/churnScene.ms
 	src/assets/image.ms src/test/imageBytes.ms src/test/imageDecodeCheck.ms
-	src/test/gltfMaterialCheck.ms src/test/storeCheck.ms
+	src/test/gltfMaterialCheck.ms src/test/storeCheck.ms src/test/closeCheck.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/integration/texturedFrame.ms
 	tests/integration/perspectiveFrame.ms tests/integration/gltfFrame.ms
-	tests/integration/gpuRegistrationFixture.ms tests/integration/storeIdentity.ms tests/aborts3d"
+	tests/integration/gpuRegistrationFixture.ms tests/integration/storeIdentity.ms
+	tests/integration/viewTeardown.ms tests/aborts3d"
 
 run_style() {
 	long=$(
@@ -1731,6 +1732,32 @@ run_stores() {
 	pass "stores: two contexts refuse each other's meshes, materials, textures and blocks by name; an alias releases once"
 }
 
+run_views() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "views: GATE_SKIP_CAPTURE=1 — the view teardown consumer was not run"
+		return
+	fi
+	rm -f out/tmp/viewTeardown.exe
+	if ! msc build tests/integration/viewTeardown.ms --release --output=out/tmp/viewTeardown.exe \
+		> "$WORK/views.build.log" 2>&1; then
+		fail "views: tests/integration/viewTeardown.ms does not build"
+		tail -30 "$WORK/views.build.log"
+		return
+	fi
+	status=0
+	out/tmp/viewTeardown.exe > "$WORK/views.run.log" 2> "$WORK/views.run.err" || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "views: no readback backend — the view teardown consumer was not run"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS view teardown:' "$WORK/views.run.log"; then
+		fail "views: the view teardown consumer failed (exit $status) — see $WORK/views.run.log"
+		grep -E '^FAIL|^growth' "$WORK/views.run.log" | sed 's/^/      /'
+		return
+	fi
+	pass "views: a view drawn by both presets and closed, six times beside a surviving context; buffers, images, views, samplers, shaders and pipelines back at warm each time"
+}
+
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
@@ -1866,6 +1893,7 @@ run_textured
 run_gltf
 run_both_layers
 run_stores
+run_views
 run_aborts
 run_manifest
 run_allocation
