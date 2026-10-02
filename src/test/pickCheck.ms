@@ -9,13 +9,13 @@ import {
 	Scene3D,
 	NodeId3D,
 	Transform3D,
-	NO_NODE_3D,
 	addGroup,
 	addMeshNode,
 	setName,
 	setLocal,
 	setVisible,
 	setPickable,
+	NO_NODE_ID,
 } from "../void3d/scene";
 import {
 	AnimationClock,
@@ -30,14 +30,14 @@ import { PickHit, PickError, pickNearest } from "../void3d/pick";
 import { Camera3D, ProjectionKind, CameraView, CameraBasis } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
 import { approx } from "./helpers";
-import { contextOf } from "./drawHelpers";
+import { contextOf, writeTables } from "./drawHelpers";
 import { DrawContext, MeshId, MaterialId } from "../void3d/draw";
 
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const UNCULLED: int32 = 0;
 const BACK_CULLED: int32 = 1;
 const FRONT_CULLED: int32 = 2;
-const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+const NO_ID: NodeId3D = NO_NODE_ID;
 const NO_HIT: PickHit = {
 	owner: NO_ID,
 	mesh: NO_ID,
@@ -106,24 +106,28 @@ function facingPlusZ(depth: float32): MeshData {
 }
 
 function meshNode(
-	ref scene: Scene3D,
+	scene: Scene3D,
 	context: DrawContext,
 	parent: NodeId3D,
 	at: Transform3D,
 	mesh: int32,
 ): NodeId3D {
 	const material: MaterialId = context.materialAt(UNCULLED);
-	return try addMeshNode(scene, context, parent, at, context.meshAt(mesh), material) catch NO_ID;
+	return try addMeshNode(scene, parent, at, context.meshAt(mesh), material) catch NO_ID;
 }
 
-function pickable(ref scene: Scene3D, id: NodeId3D): NodeId3D {
+function pickable(scene: Scene3D, id: NodeId3D): NodeId3D {
 	setPickable(scene, id, true);
 	return id;
 }
 
-function pickOf(ref scene: Scene3D, meshes: Span<MeshData>, ray: Ray): PickHit {
-	const table: Vec<Material> = materials();
-	return try pickNearest(scene, meshes, table, ray) catch NO_HIT;
+function pickIn(scene: Scene3D, meshes: Span<MeshData>, ray: Ray): Result<PickHit, PickError> {
+	writeTables(scene.context, meshes, materials());
+	return pickNearest(scene, ray);
+}
+
+function pickOf(scene: Scene3D, meshes: Span<MeshData>, ray: Ray): PickHit {
+	return try pickIn(scene, meshes, ray) catch NO_HIT;
 }
 
 function sameId(a: NodeId3D, b: NodeId3D): boolean {
@@ -231,7 +235,7 @@ test "every face addBox and addPlane build faces outward" {
 
 test "only meshes under a pickable node are hit, and the others do not stand in front" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const upper: NodeId3D = meshNode(
 		scene,
@@ -257,7 +261,7 @@ test "only meshes under a pickable node are hit, and the others do not stand in 
 
 test "a hit on a mesh belongs to its nearest pickable ancestor" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const outer: NodeId3D = pickable(
 		scene,
@@ -279,21 +283,21 @@ test "a hit on a mesh belongs to its nearest pickable ancestor" {
 
 test "a mesh under a hidden node is not picked" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _box: NodeId3D =
 		pickable(scene, meshNode(scene, context, group, Transform3D.identity(), 0));
 	setVisible(scene, group, false);
 	const missed: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), down(0.0, 0.0));
+		pickIn(scene, meshes, down(0.0, 0.0));
 	assert !missed.ok;
 	if (!missed.ok) { assert missed.error == PickError.NothingHit; }
 }
 
 test "a turned, scaled and moved node is picked where it is drawn, in world units" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const placed: Transform3D = {
 		position: vec3(4.0, 1.0, -2.0),
@@ -307,59 +311,55 @@ test "a turned, scaled and moved node is picked where it is drawn, in world unit
 	assert nearVec(hit.point, vec3(4.0, 4.0, -2.0));
 	setLocal(scene, box, { ...placed, position: vec3(0.0, 0.0, 0.0) });
 	const missed: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), down(4.0, -2.0));
+		pickIn(scene, meshes, down(4.0, -2.0));
 	assert !missed.ok;
 }
 
 test "a node scaled to nothing and a mesh with no CPU geometry are never hit" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox(), MeshData.empty()];
 	const flat: Transform3D = { ...Transform3D.identity(), scale: vec3(0.0, 0.0, 0.0) };
 	const _gone: NodeId3D = pickable(scene, meshNode(scene, context, scene.rootId(), flat, 0));
 	const _external: NodeId3D =
 		pickable(scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 1));
 	const missed: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), down(0.0, 0.0));
+		pickIn(scene, meshes, down(0.0, 0.0));
 	assert !missed.ok;
 	if (!missed.ok) { assert missed.error == PickError.NothingHit; }
 }
 
-test "a mesh or material index outside the tables is an error, not a miss" {
-	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
-	const meshes: Vec<MeshData> = [unitBox()];
-	const _beyond: NodeId3D =
-		pickable(scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 7));
-	const noMesh: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), down(0.0, 0.0));
-	assert !noMesh.ok;
-	if (!noMesh.ok) { assert noMesh.error == PickError.MeshOutOfRange; }
-	let other: Scene3D = Scene3D.create();
-	const odd: NodeId3D = try addMeshNode(
-		other,
-		context,
-		other.rootId(),
-		Transform3D.identity(),
-		context.meshAt(0),
-		context.materialAt(9),
-	) catch NO_ID;
-	const _marked: NodeId3D = pickable(other, odd);
-	const noMaterial: Result<PickHit, PickError> =
-		pickNearest(other, meshes, materials(), down(0.0, 0.0));
-	assert !noMaterial.ok;
-	if (!noMaterial.ok) { assert noMaterial.error == PickError.MaterialOutOfRange; }
+test "a scene picks the geometry of its own context, not another's at the same index" {
+	let near: DrawContext = contextOf(16, 16);
+	let far: DrawContext = contextOf(16, 16);
+	let nearScene: Scene3D = Scene3D.create(near);
+	let farScene: Scene3D = Scene3D.create(far);
+	const _nearBox: NodeId3D = pickable(
+		nearScene,
+		meshNode(nearScene, near, nearScene.rootId(), Transform3D.identity(), 0),
+	);
+	const _farBox: NodeId3D = pickable(
+		farScene,
+		meshNode(farScene, far, farScene.rootId(), Transform3D.identity(), 0),
+	);
+	const boxes: Vec<MeshData> = [unitBox()];
+	const nothing: Vec<MeshData> = [MeshData.empty()];
+	writeTables(near, boxes, materials());
+	writeTables(far, nothing, materials());
+	assert pickNearest(nearScene, down(0.0, 0.0)).ok;
+	const missed: Result<PickHit, PickError> = pickNearest(farScene, down(0.0, 0.0));
+	assert !missed.ok;
+	if (!missed.ok) { assert missed.error == PickError.NothingHit; }
 }
 
 test "the pick keeps the faces the material draws, turned over by a mirroring node" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [facingPlusZ(0.0)];
 	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	const plain: NodeId3D =
 		try addMeshNode(
 			scene,
-			context,
 			scene.rootId(),
 			Transform3D.identity(),
 			context.meshAt(0),
@@ -369,7 +369,7 @@ test "the pick keeps the faces the material draws, turned over by a mirroring no
 	assert sameId(pickOf(scene, meshes, front).owner, plain);
 	const mirrored: Transform3D = { ...Transform3D.identity(), scale: vec3(-1.0, 1.0, 1.0) };
 	setLocal(scene, plain, mirrored);
-	const missed: Result<PickHit, PickError> = pickNearest(scene, meshes, materials(), front);
+	const missed: Result<PickHit, PickError> = pickIn(scene, meshes, front);
 	assert !missed.ok;
 	const behind: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
 	assert sameId(pickOf(scene, meshes, behind).owner, plain);
@@ -377,7 +377,7 @@ test "the pick keeps the faces the material draws, turned over by a mirroring no
 
 test "a mirroring parent turns a child's faces over, and a second mirror turns them back" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [facingPlusZ(0.0)];
 	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	const behind: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
@@ -386,7 +386,6 @@ test "a mirroring parent turns a child's faces over, and a second mirror turns t
 	const child: NodeId3D =
 		try addMeshNode(
 			scene,
-			context,
 			parent,
 			Transform3D.identity(),
 			context.meshAt(0),
@@ -394,20 +393,20 @@ test "a mirroring parent turns a child's faces over, and a second mirror turns t
 		) catch NO_ID;
 	const _marked: NodeId3D = pickable(scene, child);
 	const drawnFromFront: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), front);
+		pickIn(scene, meshes, front);
 	assert drawnFromFront.ok;
 	const culledFromBehind: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), behind);
+		pickIn(scene, meshes, behind);
 	assert !culledFromBehind.ok;
 	setLocal(scene, child, mirror);
-	assert !pickNearest(scene, meshes, materials(), front).ok;
-	assert pickNearest(scene, meshes, materials(), behind).ok;
+	assert !pickIn(scene, meshes, front).ok;
+	assert pickIn(scene, meshes, behind).ok;
 }
 
 // Heaps never sets checkInside on a getCollider() shape, so it misses this ray.
 test "a ray starting inside a mesh's bounds still reaches its triangles" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const box: NodeId3D =
 		pickable(scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0));
@@ -421,7 +420,7 @@ test "a ray starting inside a mesh's bounds still reaches its triangles" {
 // so the farther mesh here would be the closer one to the eye.
 test "the nearest hit is measured from the ray's origin, not from the camera's eye" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [facingPlusZ(0.5), facingPlusZ(-0.3)];
 	const nearer: NodeId3D =
 		pickable(scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0));
@@ -435,7 +434,7 @@ test "the nearest hit is measured from the ray's origin, not from the camera's e
 
 test "a hidden mesh under a visible pickable node is not picked" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const model: NodeId3D = pickable(
 		scene,
@@ -445,13 +444,13 @@ test "a hidden mesh under a visible pickable node is not picked" {
 	assert sameId(pickOf(scene, meshes, down(0.0, 0.0)).owner, model);
 	setVisible(scene, part, false);
 	const missed: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), down(0.0, 0.0));
+		pickIn(scene, meshes, down(0.0, 0.0));
 	assert !missed.ok;
 }
 
 test "a baked frame swapped in by its animation is the geometry picked" {
 	let context: DrawContext = contextOf(16, 16);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	let moved: MeshData = MeshData.empty();
 	const _shifted: int32 = try addBox(moved, {
 		base: vec3(5.0, 0.0, 0.0),
@@ -477,12 +476,12 @@ test "a baked frame swapped in by its animation is the geometry picked" {
 	if (!made.ok) { return; }
 	let animation: MeshFrameAnimation = made.value;
 	const _bound: int32 = try bindMeshFrames(animation, scene, scene.rootId()) catch -1;
-	const _first: int32 = try syncMeshFrame(animation, scene, context) catch -1;
+	const _first: int32 = try syncMeshFrame(animation, scene) catch -1;
 	assert sameId(pickOf(scene, meshes, down(0.0, 0.0)).owner, pet);
 	const _stepped: boolean = try update(animation.clock, 1.0) catch false;
-	const _second: int32 = try syncMeshFrame(animation, scene, context) catch -1;
+	const _second: int32 = try syncMeshFrame(animation, scene) catch -1;
 	const old: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), down(0.0, 0.0));
+		pickIn(scene, meshes, down(0.0, 0.0));
 	assert !old.ok;
 	assert sameId(pickOf(scene, meshes, down(5.0, 0.0)).owner, pet);
 }
@@ -503,7 +502,7 @@ test "a framebuffer pixel a box is drawn at picks that box and not its neighbour
 	};
 	const resolved: CameraView = try camera.resolve(blit.width, blit.height) catch NO_VIEW;
 	const shifted: LowResView = blit.withRemainder(resolved.remainderX, resolved.remainderY, true);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const meshes: Vec<MeshData> = [unitBox()];
 	const left: NodeId3D =
 		pickable(
@@ -535,6 +534,6 @@ test "a framebuffer pixel a box is drawn at picks that box and not its neighbour
 	const between: Vec3 = resolved.project(vec3(0.0, 0.0, 0.0), shifted, true);
 	const tapBetween: Ray = resolved.rayFromScreen(between.x, between.y, shifted, true);
 	const missed: Result<PickHit, PickError> =
-		pickNearest(scene, meshes, materials(), tapBetween);
+		pickIn(scene, meshes, tapBetween);
 	assert !missed.ok;
 }

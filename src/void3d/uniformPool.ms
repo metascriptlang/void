@@ -22,6 +22,7 @@ export interface UniformPool {
 	generations: Vec<int32>;
 	owned: Vec<boolean>;
 	free: Vec<int32>;
+	closed: boolean;
 }
 
 let poolSerials: int32 = 0;
@@ -48,6 +49,7 @@ export function withCapacity(this typeof UniformPool, capacity: int32): UniformP
 		generations: generations,
 		owned: owned,
 		free: [],
+		closed: false,
 	};
 }
 
@@ -86,6 +88,7 @@ export function isOwned(this pool: UniformPool, block: UniformBlock): boolean {
 }
 
 export function holds(this pool: UniformPool, block: UniformBlock): boolean {
+	if (pool.closed) { return false; }
 	if (block.length == 0) { return true; }
 	if (block.store != pool.serial) { return false; }
 	if (block.offset < 0 || block.offset >= pool.used) { return false; }
@@ -108,6 +111,7 @@ export function reserveRange(
 	slot: int32,
 	length: int32,
 ): Result<UniformBlock, UniformError> {
+	if (pool.closed) { stopOnClosedPool("reserveRange"); }
 	if (length < 0) { return Result.err(UniformError.WrongLength); }
 	if (length == 0) { return Result.ok({ ...NO_UNIFORMS, slot: slot }); }
 	for (let i = (pool.free.length as int32) - 1; i >= 0; i--) {
@@ -132,6 +136,7 @@ function admitted(this pool: UniformPool, block: UniformBlock): Result<int32, Un
 }
 
 export function ownRange(pool: UniformPool, block: UniformBlock): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool("ownRange"); }
 	const _held: int32 = try pool.admitted(block);
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
@@ -143,6 +148,7 @@ export function disownRange(
 	pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool("disownRange"); }
 	const _held: int32 = try pool.admitted(block);
 	if (block.length > 0) { pool.owned[block.offset] = false; }
 	return releaseRange(pool, block);
@@ -152,6 +158,7 @@ export function releaseRange(
 	pool: UniformPool,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool("releaseRange"); }
 	const _held: int32 = try pool.admitted(block);
 	if (block.length == 0) { return Result.ok(0); }
 	if (pool.owned[block.offset]) { return Result.err(UniformError.Owned); }
@@ -166,10 +173,40 @@ export function writeRange(
 	block: UniformBlock,
 	values: Span<float32>,
 ): Result<int32, UniformError> {
+	if (pool.closed) { stopOnClosedPool("writeRange"); }
 	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }
 	const _held: int32 = try pool.admitted(block);
 	for (let i = 0; i < block.length; i++) {
 		pool.values[block.offset + i] = values[i];
 	}
 	return Result.ok(block.length);
+}
+
+export function liveRanges(this pool: UniformPool): int32 {
+	let live: int32 = 0;
+	let offset: int32 = 0;
+	while (offset < pool.used) {
+		if (pool.generations[offset] != 0) { live = live + 1; }
+		offset = offset + pool.lengths[offset];
+	}
+	return live - (pool.free.length as int32);
+}
+
+export function closeUniformPool(pool: UniformPool): void {
+	if (pool.closed) { stopOnClosedPool("closeUniformPool"); }
+	const live: int32 = pool.liveRanges();
+	if (live > 0) {
+		console.log(`void3d: closeUniformPool with ranges still reserved: ${live}`);
+		unreachable;
+	}
+	pool.closed = true;
+}
+
+export function isClosed(this pool: UniformPool): boolean {
+	return pool.closed;
+}
+
+function stopOnClosedPool(call: string): void {
+	console.log(`void3d: ${call} on a uniform pool that was closed`);
+	unreachable;
 }

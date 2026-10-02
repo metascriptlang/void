@@ -1,4 +1,5 @@
 // expect: void3d: setLightPower asked of a Group node 1; only a Light node has it
+import { DrawContext } from "../../src/void3d/draw";
 import {
 	Scene3D,
 	NodeId3D,
@@ -7,7 +8,7 @@ import {
 	setLightPower,
 } from "../../src/void3d/scene";
 
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 setLightPower(scene, group, 1.0);
 console.log("the call returned");

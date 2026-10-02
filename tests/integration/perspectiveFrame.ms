@@ -72,7 +72,7 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
 let nodes: Vec<NodeId3D> = [];
 let positions: Vec<Vec3> = [
@@ -130,7 +130,7 @@ export function initPerspective(): void {
 	let material: MaterialId = litMaterial();
 	for (let position of positions) {
 		let placed: Result<NodeId3D, SceneError> = addMeshNode(
-			scene, context, scene.rootId(), Transform3D.fromTranslation(position),
+			scene, scene.rootId(), Transform3D.fromTranslation(position),
 			mesh.value, material,
 		);
 		if (!placed.ok) { unreachable; }
@@ -178,10 +178,8 @@ function checkPick(view: CameraView, sample: Vec3, expected: NodeId3D): int32 {
 		pixel.y < 0.0 || pixel.y >= (HEIGHT as float32) || pixel.z <= 0.0 || pixel.z >= 1.0) {
 		fail("the perspective pick sample is not inside the view");
 	}
-	let hit: Result<PickHit, PickError> = pickNearest(
-		scene, context.meshData, context.materials,
-		view.rayFromScreen(pixel.x, pixel.y, SCREEN_MAPPING, true),
-	);
+	let hit: Result<PickHit, PickError> =
+		pickNearest(scene, view.rayFromScreen(pixel.x, pixel.y, SCREEN_MAPPING, true));
 	if (!hit.ok) {
 		fail("the perspective screen ray did not hit its projected box");
 		unreachable;

@@ -11,11 +11,11 @@ import {
 } from "../../src/void3d/scene";
 
 let context: DrawContext = DrawContext.withUniformCapacity(0);
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(scene, context, gone);
+const _removed: Result<int32, SceneError> = remove(scene, gone);
 const mesh: MeshId = { store: 0, index: 0, generation: 1 };
 const material: MaterialId = { store: 0, index: 0, generation: 1 };
 const _orphan: Result<NodeId3D, SceneError> =
-	addMeshNode(scene, context, gone, Transform3D.identity(), mesh, material);
+	addMeshNode(scene, gone, Transform3D.identity(), mesh, material);
 console.log("the call returned");

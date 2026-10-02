@@ -26,11 +26,14 @@ import {
 	samplerSlotMask,
 } from "./gpu3d";
 import {
+	PassState,
 	contextGeneration,
 	frameIndex,
 	makeTextureView,
 	makeSampler,
 	destroyView,
+	destroySampler,
+	passState,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import {
@@ -49,7 +52,7 @@ import {
 } from "./gpu3d.h";
 import { Material, UniformBlock, NO_UNIFORMS } from "./material";
 import { MeshData } from "./meshData";
-import { PipelineCache } from "../gpu/pipeline";
+import { PipelineCache, closePipelines } from "../gpu/pipeline";
 import { pipelineFor } from "./gpu3d";
 import { TargetLayout } from "../gpu/target";
 import {
@@ -58,6 +61,7 @@ import {
 	reserveRange,
 	releaseRange,
 	ownRange,
+	closeUniformPool,
 	disownRange,
 	writeRange,
 } from "./uniformPool";
@@ -169,6 +173,7 @@ export interface DrawContext {
 	pipelines: PipelineCache;
 	bindings: Vec<uint32>;
 	model: Vec<float32>;
+	closed: boolean;
 }
 
 export enum MeshUploadError {
@@ -248,6 +253,7 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		pipelines: PipelineCache.empty(),
 		bindings: bindings,
 		model: model,
+		closed: false,
 	};
 }
 
@@ -264,11 +270,13 @@ export function issuedTexture(this context: DrawContext, id: TextureId): boolean
 }
 
 export function hasMesh(this context: DrawContext, id: MeshId): boolean {
-	return context.issuedMesh(id) && context.meshSlots.isCurrent(id.index, id.generation);
+	if (context.closed || !context.issuedMesh(id)) { return false; }
+	return context.meshSlots.isCurrent(id.index, id.generation);
 }
 
 export function hasMaterial(this context: DrawContext, id: MaterialId): boolean {
-	return context.issuedMaterial(id) && context.materialSlots.isCurrent(id.index, id.generation);
+	if (context.closed || !context.issuedMaterial(id)) { return false; }
+	return context.materialSlots.isCurrent(id.index, id.generation);
 }
 
 function meshRefusal(this context: DrawContext, id: MeshId): HandleError {
@@ -320,6 +328,7 @@ function newMesh(context: DrawContext, mesh: GpuMesh, data: MeshData): MeshId {
 // remakes them after a context loss. Only a stream can be remade from nothing, so any other mesh
 // that is not the caller's is refused, and so is one that names buffers made in no context.
 export function addMesh(context: DrawContext, mesh: GpuMesh): Result<MeshId, MeshUploadError> {
+	if (context.closed) { stopOnClosedContext("addMesh"); }
 	if (mesh.generation != EXTERNAL_GENERATION && !mesh.isStream()) {
 		return Result.err(MeshUploadError.Unrebuildable);
 	}
@@ -479,6 +488,7 @@ export function addMeshData(
 	context: DrawContext,
 	data: MeshData,
 ): Result<MeshId, MeshUploadError> {
+	if (context.closed) { stopOnClosedContext("addMeshData"); }
 	const id: MeshId = newMesh(context, data.meshFor(0, 0, 0), data);
 	const uploaded: Result<int32, MeshUploadError> = uploadMesh(context, id.index);
 	if (!uploaded.ok) {
@@ -530,6 +540,7 @@ export function addStreamMesh(
 	context: DrawContext,
 	capacity: int32,
 ): Result<MeshId, StreamError> {
+	if (context.closed) { stopOnClosedContext("addStreamMesh"); }
 	if (capacity <= 0) { return Result.err(StreamError.OverCapacity); }
 	const id: MeshId = newMesh(context, GpuMesh.streamMesh(capacity, 0, 0), MeshData.empty());
 	const made: Result<int32, StreamError> = remakeStream(context, id.index);
@@ -549,6 +560,7 @@ export function writeStream(
 	instances: Span<float32>,
 	count: int32,
 ): Result<int32, StreamError> {
+	if (context.closed) { stopOnClosedContext("writeStream"); }
 	if (!context.hasMesh(id)) {
 		return Result.err(context.issuedMesh(id) ? StreamError.StaleMesh : StreamError.ForeignMesh);
 	}
@@ -619,6 +631,7 @@ export function staleMeshes(context: DrawContext, generation: int32): int32 {
 // not counted here. Nothing on this path allocates: a MeshData parameter is passed by pointer,
 // not copied, because the struct is over 24 bytes (CODE-STYLE §5, measured on 0.2.53).
 export function rebuildMeshes(context: DrawContext): int32 {
+	if (context.closed) { stopOnClosedContext("rebuildMeshes"); }
 	return sweepStaleMeshes(context, contextGeneration(), true);
 }
 
@@ -657,6 +670,7 @@ function freeMesh(context: DrawContext, index: int32): void {
 
 // Another holder of `id`, as Heaps' `Primitive.incref`; answers how many hold it now.
 export function retainMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("retainMesh"); }
 	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	context.meshHolders[id.index] = context.meshHolders[id.index] + 1;
 	return Result.ok(context.meshHolders[id.index]);
@@ -676,6 +690,7 @@ function letGoOfMesh(context: DrawContext, index: int32): int32 {
 // Answers how many still hold it. A release that would take a pin is a caller releasing once
 // too often, and is refused.
 export function releaseMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("releaseMesh"); }
 	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	if (context.meshHolders[id.index] == context.meshPins[id.index]) {
 		return Result.err(HandleError.OnlyPinned);
@@ -685,6 +700,7 @@ export function releaseMesh(context: DrawContext, id: MeshId): Result<int32, Han
 
 // A hold only its holder lets go (a mesh node's, a baked animation's), with unpinMesh.
 export function pinMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("pinMesh"); }
 	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	context.meshPins[id.index] = context.meshPins[id.index] + 1;
 	context.meshHolders[id.index] = context.meshHolders[id.index] + 1;
@@ -692,6 +708,7 @@ export function pinMesh(context: DrawContext, id: MeshId): Result<int32, HandleE
 }
 
 export function unpinMesh(context: DrawContext, id: MeshId): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("unpinMesh"); }
 	if (!context.hasMesh(id)) { return Result.err(context.meshRefusal(id)); }
 	if (context.meshPins[id.index] == 0) { return Result.err(HandleError.NotPinned); }
 	context.meshPins[id.index] = context.meshPins[id.index] - 1;
@@ -706,6 +723,7 @@ export function meshPinned(this context: DrawContext, id: MeshId): int32 {
 // counted since the last clearMeshTally. A freed id counts nothing: whoever pinned it let go.
 // Linear where a pairwise count would be quadratic in the holders checked.
 export function tallyMeshPin(context: DrawContext, id: MeshId): boolean {
+	if (context.closed) { stopOnClosedContext("tallyMeshPin"); }
 	if (!context.issuedMesh(id)) {
 		console.log("void3d: tallyMeshPin through a context that did not issue the mesh");
 		unreachable;
@@ -716,6 +734,7 @@ export function tallyMeshPin(context: DrawContext, id: MeshId): boolean {
 }
 
 export function clearMeshTally(context: DrawContext, id: MeshId): void {
+	if (context.closed) { stopOnClosedContext("clearMeshTally"); }
 	if (context.hasMesh(id)) { context.meshTally[id.index] = 0; }
 }
 
@@ -740,6 +759,7 @@ export function addMaterial(
 	context: DrawContext,
 	material: Material,
 ): Result<MaterialId, MaterialError> {
+	if (context.closed) { stopOnClosedContext("addMaterial"); }
 	if (material.namesTexture()) {
 		if (material.texture0 != 0 || material.sampler0 != 0) {
 			return Result.err(MaterialError.TextureNamedTwice);
@@ -800,6 +820,7 @@ export function retainMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("retainMaterial"); }
 	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	context.materialHolders[id.index] = context.materialHolders[id.index] + 1;
 	return Result.ok(context.materialHolders[id.index]);
@@ -833,6 +854,7 @@ export function releaseMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("releaseMaterial"); }
 	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	if (context.materialHolders[id.index] == context.materialPins[id.index]) {
 		return Result.err(HandleError.OnlyPinned);
@@ -844,6 +866,7 @@ export function pinMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("pinMaterial"); }
 	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	context.materialPins[id.index] = context.materialPins[id.index] + 1;
 	context.materialHolders[id.index] = context.materialHolders[id.index] + 1;
@@ -854,6 +877,7 @@ export function unpinMaterial(
 	context: DrawContext,
 	id: MaterialId,
 ): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("unpinMaterial"); }
 	if (!context.hasMaterial(id)) { return Result.err(context.materialRefusal(id)); }
 	if (context.materialPins[id.index] == 0) { return Result.err(HandleError.NotPinned); }
 	context.materialPins[id.index] = context.materialPins[id.index] - 1;
@@ -861,6 +885,7 @@ export function unpinMaterial(
 }
 
 export function tallyMaterialPin(context: DrawContext, id: MaterialId): boolean {
+	if (context.closed) { stopOnClosedContext("tallyMaterialPin"); }
 	if (!context.issuedMaterial(id)) {
 		console.log("void3d: tallyMaterialPin through a context that did not issue the material");
 		unreachable;
@@ -871,6 +896,7 @@ export function tallyMaterialPin(context: DrawContext, id: MaterialId): boolean 
 }
 
 export function clearMaterialTally(context: DrawContext, id: MaterialId): void {
+	if (context.closed) { stopOnClosedContext("clearMaterialTally"); }
 	if (context.hasMaterial(id)) { context.materialTally[id.index] = 0; }
 }
 
@@ -952,6 +978,7 @@ export function addTexture(
 	context: DrawContext,
 	data: TextureData,
 ): Result<TextureId, TextureUploadError> {
+	if (context.closed) { stopOnClosedContext("addTexture"); }
 	if (!data.isWellFormed()) { return Result.err(TextureUploadError.BadSize); }
 	let index: int32 = claim(context.textureSlots);
 	if (index == (context.textures.length as int32)) {
@@ -978,7 +1005,8 @@ export function addTexture(
 }
 
 export function hasTexture(this context: DrawContext, id: TextureId): boolean {
-	return context.issuedTexture(id) && context.textureSlots.isCurrent(id.index, id.generation);
+	if (context.closed || !context.issuedTexture(id)) { return false; }
+	return context.textureSlots.isCurrent(id.index, id.generation);
 }
 
 export function liveTextures(this context: DrawContext): int32 {
@@ -993,6 +1021,7 @@ export function retainTexture(
 	context: DrawContext,
 	id: TextureId,
 ): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("retainTexture"); }
 	if (!context.hasTexture(id)) { return Result.err(context.textureRefusal(id)); }
 	context.textureHolders[id.index] = context.textureHolders[id.index] + 1;
 	return Result.ok(context.textureHolders[id.index]);
@@ -1012,6 +1041,7 @@ export function releaseTexture(
 	context: DrawContext,
 	id: TextureId,
 ): Result<int32, HandleError> {
+	if (context.closed) { stopOnClosedContext("releaseTexture"); }
 	if (!context.hasTexture(id)) { return Result.err(context.textureRefusal(id)); }
 	if (context.textureHolders[id.index] == context.texturePins[id.index]) {
 		return Result.err(HandleError.OnlyPinned);
@@ -1023,6 +1053,7 @@ export function releaseTexture(
 // back. A refused one is left without a view and stale, so it is retried on the next rebuild and
 // its materials draw nothing meanwhile (drawItem).
 export function rebuildTextures(context: DrawContext): int32 {
+	if (context.closed) { stopOnClosedContext("rebuildTextures"); }
 	let generation: int32 = contextGeneration();
 	let count: int32 = 0;
 	for (let i = 0; i < (context.textures.length as int32); i++) {
@@ -1038,6 +1069,7 @@ export function rebuildTextures(context: DrawContext): int32 {
 // one of an older context died with it, and its handle may name an object of the new one
 // (docs/VOID3D.md, Android lifecycle).
 export function buryDoomed(context: DrawContext, generation: int32): int32 {
+	if (context.closed) { stopOnClosedContext("buryDoomed"); }
 	let destroyed: int32 = 0;
 	for (const doomed of context.doomed) {
 		if (doomed.generation != generation) { continue; }
@@ -1060,6 +1092,7 @@ export function reserveUniforms(
 	slot: int32,
 	length: int32,
 ): Result<UniformBlock, UniformError> {
+	if (context.closed) { stopOnClosedContext("reserveUniforms"); }
 	return reserveRange(context.uniforms, slot, length);
 }
 
@@ -1070,6 +1103,7 @@ export function releaseUniforms(
 	context: DrawContext,
 	block: UniformBlock,
 ): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("releaseUniforms"); }
 	return releaseRange(context.uniforms, block);
 }
 
@@ -1078,6 +1112,7 @@ export function writeUniforms(
 	block: UniformBlock,
 	values: Span<float32>,
 ): Result<int32, UniformError> {
+	if (context.closed) { stopOnClosedContext("writeUniforms"); }
 	return writeRange(context.uniforms, block, values);
 }
 
@@ -1133,6 +1168,7 @@ export function drawItem(
 	targets: TargetLayout,
 	globals: Span<UniformBlock>,
 ): void {
+	if (context.closed) { stopOnClosedContext("drawItem"); }
 	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { stopOnUnheldItem(); }
 	for (const block of globals) {
 		if (!context.uniforms.holds(block)) { stopOnUnheldBlock(block.slot); }
@@ -1170,4 +1206,57 @@ export function drawItem(
 		context.applyBlock(material.uniforms);
 	}
 	draw(0, mesh.elementCount(), mesh.instanceCount);
+}
+
+export function closeContext(context: DrawContext): void {
+	if (context.closed) { stopOnClosedContext("closeContext"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closeContext with a pass open; endPass ends it");
+		unreachable;
+	}
+	const meshes: int32 = context.liveMeshes();
+	const materials: int32 = context.liveMaterials();
+	const textures: int32 = context.liveTextures();
+	const ranges: int32 = context.uniforms.liveRanges();
+	if (meshes + materials + textures + ranges > 0) {
+		stopOnLiveHolds(context, meshes, materials, textures, ranges);
+	}
+	const generation: int32 = contextGeneration();
+	const _buried: int32 = buryDoomed(context, generation);
+	if (context.samplerGeneration == generation) {
+		for (const sampler of context.samplers) {
+			if (sampler != 0) { destroySampler(sampler); }
+		}
+	}
+	for (let i = 0; i < SAMPLER_SETTINGS; i++) { context.samplers[i] = 0; }
+	if (!context.pipelines.closed) { closePipelines(context.pipelines); }
+	if (!context.uniforms.closed) { closeUniformPool(context.uniforms); }
+	context.closed = true;
+}
+
+export function isClosed(this context: DrawContext): boolean {
+	return context.closed;
+}
+
+function stopOnLiveHolds(
+	context: DrawContext,
+	meshes: int32,
+	materials: int32,
+	textures: int32,
+	ranges: int32,
+): void {
+	let pins: int32 = 0;
+	for (const pinned of context.meshPins) { pins = pins + pinned; }
+	for (const pinned of context.materialPins) { pins = pins + pinned; }
+	for (const pinned of context.texturePins) { pins = pins + pinned; }
+	console.log(
+		`void3d: closeContext with holds still live: meshes ${meshes}, materials ${materials}, ` +
+		`textures ${textures}, uniform ranges ${ranges}, pins ${pins}`,
+	);
+	unreachable;
+}
+
+function stopOnClosedContext(call: string): void {
+	console.log(`void3d: ${call} on a draw context that was closed`);
+	unreachable;
 }

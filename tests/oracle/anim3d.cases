@@ -57,6 +57,7 @@
 # ms-prelude: import {
 # ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, addGroup, setName, syncWorld,
 # ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
 # ms-prelude: import {
 # ms-prelude: 	AnimationClock, AnimationError, Interpolation, ObjectAnimation,
 # ms-prelude: 	update, setFrame, addTrack, bindTracks, syncPose,
@@ -75,7 +76,7 @@
 # ms-prelude: function slid(x: float32): Transform3D { return key(x, 0.0, 0.0, 0.0, 1.0, false); }
 # ms-prelude: function run(keys: Vec<Transform3D>, sampling: float64, loop: boolean,
 # ms-prelude: 		dts: Vec<float64>, restX: float32): Mat4 {
-# ms-prelude: 	let scene: Scene3D = Scene3D.create();
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 # ms-prelude: 	const added: NodeId3D =
 # ms-prelude: 		addGroup(scene, scene.rootId(), Transform3D.fromTranslation(vec3(restX, 0.0, 0.0)));
 # ms-prelude: 	setName(scene, added, "o");
@@ -98,7 +99,7 @@
 # ms-prelude: }
 # ms-prelude: function at(keys: Vec<Transform3D>, loop: boolean, frame: float64, speed: float64,
 # ms-prelude: 		dt: float64): Mat4 {
-# ms-prelude: 	let scene: Scene3D = Scene3D.create();
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 # ms-prelude: 	const added: NodeId3D =
 # ms-prelude: 		addGroup(scene, scene.rootId(), Transform3D.fromTranslation(vec3(0.0, 0.0, 0.0)));
 # ms-prelude: 	setName(scene, added, "o");

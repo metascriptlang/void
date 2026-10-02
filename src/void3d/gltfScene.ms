@@ -1,4 +1,5 @@
 import { RenderState, Face } from "../gpu/state";
+import { PassState, passState } from "../gpu/door";
 import { GltfData, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX } from "./gltf";
 import {
 	DrawContext,
@@ -34,7 +35,7 @@ import {
 	addGroup,
 	addMeshNode,
 	setName,
-	NO_NODE_3D,
+	NO_NODE_ID,
 } from "./scene";
 
 export enum GltfSceneError {
@@ -60,12 +61,14 @@ export struct GltfMaterialSetup {
 	block: Vec<float32>;
 }
 
-// Every id is held once, until releaseGltfAssets.
-export struct GltfAssets {
+// Every id is held once, until closeGltfAssets.
+export interface GltfAssets {
+	context: DrawContext;
 	bindings: Vec<GltfMeshBinding>;
 	meshes: Vec<MeshId>;
 	materials: Vec<MaterialId>;
 	textures: Vec<TextureId>;
+	closed: boolean;
 }
 
 function usesDefaultMaterial(data: GltfData): boolean {
@@ -133,7 +136,7 @@ function undone(
 	assets: GltfAssets,
 	error: GltfSceneError,
 ): Result<GltfAssets, GltfSceneError> {
-	const released: Result<void, HandleError> = releaseGltfAssets(context, assets);
+	const released: Result<void, HandleError> = releaseHolds(assets);
 	if (!released.ok) { unreachable; }
 	return Result.err(error);
 }
@@ -148,7 +151,14 @@ export function addGltfAssets(
 		return Result.err(GltfSceneError.BadSetup);
 	}
 	if (!isConsistent(data)) { return Result.err(GltfSceneError.InvalidData); }
-	let assets: GltfAssets = { bindings: [], meshes: [], materials: [], textures: [] };
+	let assets: GltfAssets = {
+		context: context,
+		bindings: [],
+		meshes: [],
+		materials: [],
+		textures: [],
+		closed: false,
+	};
 	for (const texture of data.textures) {
 		const added: Result<TextureId, TextureUploadError> = addTexture(context, texture);
 		if (!added.ok) { return undone(context, assets, GltfSceneError.TextureRefused); }
@@ -181,10 +191,8 @@ export function addGltfAssets(
 	return Result.ok(assets);
 }
 
-export function releaseGltfAssets(
-	context: DrawContext,
-	assets: GltfAssets,
-): Result<void, HandleError> {
+function releaseHolds(assets: GltfAssets): Result<void, HandleError> {
+	const context: DrawContext = assets.context;
 	for (const mesh of assets.meshes) {
 		const _meshLeft: int32 = try releaseMesh(context, mesh);
 	}
@@ -197,6 +205,29 @@ export function releaseGltfAssets(
 	return Result.ok(null);
 }
 
+export function closeGltfAssets(assets: GltfAssets): void {
+	if (assets.closed) { stopOnClosed("closeGltfAssets"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closeGltfAssets with a pass open; endPass ends it");
+		unreachable;
+	}
+	const released: Result<void, HandleError> = releaseHolds(assets);
+	if (!released.ok) {
+		console.log(`void3d: closeGltfAssets found a hold ${released.error.toString()}`);
+		unreachable;
+	}
+	assets.closed = true;
+}
+
+export function isClosed(this assets: GltfAssets): boolean {
+	return assets.closed;
+}
+
+function stopOnClosed(call: string): void {
+	console.log(`void3d: ${call} on glTF assets that were closed`);
+	unreachable;
+}
+
 function transformOf(data: GltfData, index: int32): Transform3D {
 	return {
 		position: data.nodes[index].local.position,
@@ -206,13 +237,13 @@ function transformOf(data: GltfData, index: int32): Transform3D {
 }
 
 export function addGltfNodes(
-	ref scene: Scene3D,
-	context: DrawContext,
+	scene: Scene3D,
 	parent: NodeId3D,
 	data: GltfData,
 	bindings: Span<GltfMeshBinding>,
 ): Result<int32, GltfSceneError> {
 	const _under: int32 = scene.liveRow(parent, "addGltfNodes");
+	const context: DrawContext = scene.context;
 	if ((bindings.length as int32) != (data.meshes.length as int32)) {
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}
@@ -240,13 +271,13 @@ export function addGltfNodes(
 		const under: NodeId3D = parents[last];
 		nodes.pop();
 		parents.pop();
-		let id: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+		let id: NodeId3D = NO_NODE_ID;
 		const mesh: int32 = data.nodes[index].mesh;
 		if (mesh < 0) {
 			id = addGroup(scene, under, transformOf(data, index));
 		} else {
 			const added: Result<NodeId3D, SceneError> = addMeshNode(
-				scene, context, under, transformOf(data, index),
+				scene, under, transformOf(data, index),
 				bindings[mesh].mesh, bindings[mesh].material,
 			);
 			if (!added.ok) { return Result.err(GltfSceneError.SceneRefused); }

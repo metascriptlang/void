@@ -112,7 +112,7 @@ let contextB: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(contextB);
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -224,7 +224,7 @@ function buildScene(): void {
 	if (!mesh.ok) { unreachable; }
 	const material: MaterialId = litMaterial();
 	const placed: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, contextB, scene.rootId(), Transform3D.identity(), mesh.value, material);
+		addMeshNode(scene, scene.rootId(), Transform3D.identity(), mesh.value, material);
 	if (!placed.ok) { unreachable; }
 	const sun: LightInstance = {
 		kind: LightKind.Directional,

@@ -1,9 +1,43 @@
 import { Vec4 } from "../math/math3d";
 import { contextGeneration } from "../gpu/door";
-import { DrawContext } from "../void3d/draw";
-import { UniformPool } from "../void3d/uniformPool";
+import { identity } from "../math/math3d";
+import { Program } from "../void3d/gpu3d";
+import { RenderState } from "../gpu/state";
+import { Material, Phase, UniformBlock } from "../void3d/material";
+import {
+	DrawContext,
+	GpuMesh,
+	MeshId,
+	MaterialId,
+	MaterialError,
+	MeshUploadError,
+	HandleError,
+	addMesh,
+	addMaterial,
+	releaseMesh,
+	releaseMaterial,
+	reserveUniforms,
+	releaseUniforms,
+	closeContext,
+} from "../void3d/draw";
+import { UniformError } from "../void3d/uniformPool";
+import {
+	Scene3D,
+	NodeId3D,
+	SceneError,
+	Transform3D,
+	addMeshNode,
+	addGroup,
+	closeScene,
+} from "../void3d/scene";
+import { contextOf } from "./drawHelpers";
 import { PaletteLut, PaletteError, closePalette, releaseGpu } from "../void3d/palette";
-import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, closeRenderer } from "../void3d/renderer";
+import {
+	Renderer,
+	RendererError,
+	RENDERER_UNIFORM_LENGTH,
+	closeRenderer,
+} from "../void3d/renderer";
 import {
 	ForwardRenderer,
 	ForwardError,
@@ -91,7 +125,8 @@ test "closing a pixel-art preset gives back both screen materials and closes its
 	closePixelArt(pixelArt);
 	assert pixelArt.isClosed() && pixelArt.core.isClosed() && palette.isClosed();
 	assert context.liveMeshes() == 0 && context.liveMaterials() == 0;
-	assert !context.uniforms.holds(pixelArt.postBlock) && !context.uniforms.holds(pixelArt.blitBlock);
+	assert !context.uniforms.holds(pixelArt.postBlock);
+	assert !context.uniforms.holds(pixelArt.blitBlock);
 	let view: LowResView = { width: 32, height: 24, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	assert !pixelArt.needsFrame(view);
 }
@@ -121,4 +156,83 @@ test "a palette table made under an older GPU context forgets its image instead 
 	alias.generation = contextGeneration() + 1;
 	closePalette(alias);
 	assert lut.isClosed() && lut.image == 0 && lut.texture == 0;
+}
+
+test "a renderer made under an older GPU context forgets its screen buffer, destroying nothing" {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const made: Result<Renderer, RendererError> = Renderer.create(context);
+	assert made.ok;
+	if (!made.ok) { return; }
+	let core: Renderer = made.value;
+	const screen: int32 = core.screenMesh.index;
+	context.meshes[screen].vertexBuffer = 7;
+	core.generation = contextGeneration() + 1;
+	closeRenderer(core);
+	assert core.isClosed() && context.meshes[screen].vertexBuffer == 0;
+	assert context.liveMeshes() == 0;
+}
+
+test "closing a scene unpins every node's mesh and material, and its queries answer false" {
+	let context: DrawContext = contextOf(2, 1);
+	let scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const node: Result<NodeId3D, SceneError> = addMeshNode(
+		scene, group, Transform3D.identity(), context.meshAt(0), context.materialAt(0),
+	);
+	assert node.ok;
+	if (!node.ok) { return; }
+	assert context.meshPinned(context.meshAt(0)) == 1;
+	let alias: Scene3D = scene;
+	closeScene(alias);
+	assert scene.isClosed() && scene.nodeCount() == 0 && !scene.isLive(node.value);
+	assert context.meshPinned(context.meshAt(0)) == 0;
+	assert context.materialPins[0] == 0;
+	assert !scene.nameOf(group).ok && !scene.worldOf(group).ok;
+}
+
+test "a node id names its scene: another scene's id at a live index is not live" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let first: Scene3D = Scene3D.create(context);
+	let second: Scene3D = Scene3D.create(context);
+	const theirs: NodeId3D = addGroup(first, first.rootId(), Transform3D.identity());
+	const ours: NodeId3D = addGroup(second, second.rootId(), Transform3D.identity());
+	assert theirs.index == ours.index && theirs.generation == ours.generation;
+	assert first.serial != second.serial && theirs.scene == first.serial;
+	assert !second.isLive(theirs) && second.isLive(ours);
+	assert !second.findByName(theirs, "").ok;
+}
+
+test "a pool counts the ranges it handed out and has not had back" {
+	let context: DrawContext = DrawContext.withUniformCapacity(12);
+	const first: Result<UniformBlock, UniformError> = reserveUniforms(context, 2, 4);
+	const second: Result<UniformBlock, UniformError> = reserveUniforms(context, 2, 4);
+	assert first.ok && second.ok;
+	if (!first.ok || !second.ok) { return; }
+	assert context.uniforms.liveRanges() == 2;
+	assert releaseUniforms(context, first.value).ok;
+	assert context.uniforms.liveRanges() == 1;
+	assert releaseUniforms(context, second.value).ok;
+	assert context.uniforms.liveRanges() == 0;
+}
+
+test "an emptied context closes with its pool and its pipeline cache, and answers false after" {
+	let context: DrawContext = DrawContext.withUniformCapacity(4);
+	const mesh: Result<MeshId, MeshUploadError> = addMesh(context, GpuMesh.fullscreen(0, 3));
+	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
+	const material: Result<MaterialId, MaterialError> = addMaterial(context, plain);
+	assert mesh.ok && material.ok;
+	if (!mesh.ok || !material.ok) { return; }
+	const meshLeft: Result<int32, HandleError> = releaseMesh(context, mesh.value);
+	assert meshLeft.ok;
+	let alias: DrawContext = context;
+	assert context.liveMeshes() == 0 && context.liveMaterials() == 1;
+	closeContextOnceEmpty(alias, material.value);
+	assert context.isClosed() && context.uniforms.isClosed() && context.pipelines.closed;
+	assert !context.hasMesh(mesh.value) && !context.hasMaterial(material.value);
+}
+
+function closeContextOnceEmpty(context: DrawContext, material: MaterialId): void {
+	const left: Result<int32, HandleError> = releaseMaterial(context, material);
+	if (!left.ok) { unreachable; }
+	closeContext(context);
 }

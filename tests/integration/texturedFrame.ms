@@ -56,6 +56,7 @@ import {
 	setLightPower,
 	refresh,
 	collectLights,
+	NO_NODE_ID,
 } from "../../src/void3d/scene";
 import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
@@ -102,11 +103,11 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 let forward: ForwardRenderer = createForward();
 let preset: PixelArtRenderer = createPreset(false);
 let outlinedPreset: PixelArtRenderer = createPreset(true);
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
-let cube: NodeId3D = { index: 0, generation: 0 };
-let sun: NodeId3D = { index: 0, generation: 0 };
-let lamp: NodeId3D = { index: 0, generation: 0 };
+let cube: NodeId3D = NO_NODE_ID;
+let sun: NodeId3D = NO_NODE_ID;
+let lamp: NodeId3D = NO_NODE_ID;
 let texture: TextureId = { store: 0, index: 0, generation: 0 };
 let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -284,7 +285,7 @@ export function initTextured(): void {
 	if (!mesh.ok) { unreachable; }
 	let material: MaterialId = texturedMaterial(texture);
 	let placed: Result<NodeId3D, SceneError> = addMeshNode(
-		scene, context, scene.rootId(), Transform3D.identity(), mesh.value, material,
+		scene, scene.rootId(), Transform3D.identity(), mesh.value, material,
 	);
 	if (!placed.ok) { unreachable; }
 	cube = placed.value;
@@ -502,7 +503,7 @@ function checkRemade(): void {
 	}
 }
 
-function presetFrame(ref renderer: PixelArtRenderer): int32 {
+function presetFrame(renderer: PixelArtRenderer): int32 {
 	let frame: Result<int32, PixelArtError> =
 		renderPixelArt(renderer, items, cameraBlock, lights, SCREEN_MAPPING);
 	if (frame.ok) { return frame.value; }

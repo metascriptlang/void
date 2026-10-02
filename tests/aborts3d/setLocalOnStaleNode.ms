@@ -11,8 +11,8 @@ import {
 } from "../../src/void3d/scene";
 
 let context: DrawContext = DrawContext.withUniformCapacity(0);
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(scene, context, gone);
+const _removed: Result<int32, SceneError> = remove(scene, gone);
 setLocal(scene, gone, Transform3D.identity());
 console.log("the call returned");

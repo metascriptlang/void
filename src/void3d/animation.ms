@@ -2,6 +2,7 @@
 // keyframes that write a node's local transform (LinearAnimation), and vertex-baked frames that
 // swap which uploaded mesh a node draws. docs/VOID3D.md "M9 as built" lists what is not ported.
 import { vec3 } from "../math/math3d";
+import { PassState, passState } from "../gpu/door";
 import { MeshData } from "./meshData";
 import {
 	DrawContext,
@@ -17,7 +18,7 @@ import {
 	releaseMesh,
 } from "./draw";
 import {
-	Scene3D, NodeId3D, NodeKind, Transform3D, SceneError, NO_NODE_3D,
+	Scene3D, NodeId3D, NodeKind, Transform3D, SceneError, NO_NODE_ID,
 	setLocal, setMeshOf,
 } from "./scene";
 
@@ -79,16 +80,18 @@ export struct ObjectAnimation {
 	hasSynced: boolean;
 }
 
-export struct MeshFrameAnimation {
+export interface MeshFrameAnimation {
+	context: DrawContext;
 	clock: AnimationClock;
 	name: string;
 	target: NodeId3D;
 	meshes: Vec<MeshId>;
 	bound: boolean;
 	shown: MeshId;
+	closed: boolean;
 }
 
-const UNBOUND: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+const UNBOUND: NodeId3D = NO_NODE_ID;
 const PLAYING_EPSILON: float64 = 0.000001;
 const HOLD_FIRST: KeyPair = { first: 0, second: 0, weight: 0.0 };
 
@@ -262,7 +265,7 @@ export function forgetSync(ref animation: ObjectAnimation): void {
 // Heaps prepends it through `defaultTransform`. PENDING3D: anim-pose-replaces-local
 export function syncPose(
 	ref animation: ObjectAnimation,
-	ref scene: Scene3D,
+	scene: Scene3D,
 ): Result<int32, AnimationError> {
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
@@ -290,7 +293,7 @@ export function syncPose(
 
 // Vertex-baked frames only step: blending two of them would mean writing vertices into a live
 // buffer every frame, and each frame is instead its own uploaded mesh. The animation holds every
-// frame, the ones off screen too, with a pin (draw.ms pinMesh), until releaseMeshFrames.
+// frame, the ones off screen too, with a pin (draw.ms pinMesh), until closeMeshFrames.
 export function forMeshes(
 	this typeof MeshFrameAnimation,
 	context: DrawContext,
@@ -318,49 +321,64 @@ export function forMeshes(
 		kept.push(mesh);
 	}
 	return Result.ok({
+		context: context,
 		clock: clock,
 		name: name,
 		target: UNBOUND,
 		meshes: kept,
 		bound: false,
 		shown: NO_MESH,
+		closed: false,
 	});
 }
 
 // The animation unpins its frames and holds none after; the node keeps the one it shows. A freed
-// frame holds no pin. A live frame short of pins was let go already by a copy of the animation,
-// and nothing changes then.
-export function releaseMeshFrames(
-	ref animation: MeshFrameAnimation,
-	context: DrawContext,
-): Result<int32, AnimationError> {
-	const count: int32 = animation.meshes.length as int32;
-	for (const mesh of animation.meshes) {
-		if (!context.issuedMesh(mesh)) {
-			console.log(
-				"void3d: releaseMeshFrames through a context that did not issue its frames",
-			);
-			unreachable;
-		}
+// frame holds no pin.
+export function closeMeshFrames(animation: MeshFrameAnimation): void {
+	if (animation.closed) { stopOnClosed("closeMeshFrames"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closeMeshFrames with a pass open; endPass ends it");
+		unreachable;
 	}
+	const context: DrawContext = animation.context;
 	let covered: boolean = true;
 	for (const mesh of animation.meshes) {
 		if (!tallyMeshPin(context, mesh)) { covered = false; }
 	}
 	for (const mesh of animation.meshes) { clearMeshTally(context, mesh); }
-	if (!covered) { return Result.err(AnimationError.NotPinned); }
+	if (!covered) {
+		console.log("void3d: closeMeshFrames found a frame's pin taken through the context");
+		unreachable;
+	}
 	for (const mesh of animation.meshes) {
 		if (context.hasMesh(mesh) && !unpinMesh(context, mesh).ok) { unreachable; }
 	}
 	while ((animation.meshes.length as int32) > 0) { animation.meshes.pop(); }
-	return Result.ok(count);
+	animation.closed = true;
+}
+
+export function isClosed(this animation: MeshFrameAnimation): boolean {
+	return animation.closed;
+}
+
+function stopOnClosed(call: string): void {
+	console.log(`void3d: ${call} on mesh frames that were closed`);
+	unreachable;
+}
+
+function requirePaired(animation: MeshFrameAnimation, scene: Scene3D, call: string): void {
+	if (animation.closed) { stopOnClosed(call); }
+	if (animation.context.serial == scene.context.serial) { return; }
+	console.log(`void3d: ${call} pairs mesh frames with a scene of another context`);
+	unreachable;
 }
 
 export function bindMeshFrames(
-	ref animation: MeshFrameAnimation,
+	animation: MeshFrameAnimation,
 	scene: Scene3D,
 	base: NodeId3D,
 ): Result<int32, AnimationError> {
+	requirePaired(animation, scene, "bindMeshFrames");
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const found: Result<NodeId3D, SceneError> = scene.findByName(base, animation.name);
 	if (!found.ok) { return Result.err(AnimationError.TargetNotFound); }
@@ -390,16 +408,16 @@ function frameError(error: SceneError): AnimationError {
 
 // Returns 1 when the node was given a new mesh, 0 when the frame it shows is still current.
 export function syncMeshFrame(
-	ref animation: MeshFrameAnimation,
-	ref scene: Scene3D,
-	context: DrawContext,
+	animation: MeshFrameAnimation,
+	scene: Scene3D,
 ): Result<int32, AnimationError> {
+	requirePaired(animation, scene, "syncMeshFrame");
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if ((animation.meshes.length as int32) < 1) { return Result.err(AnimationError.NoFrames); }
 	if (!scene.isLive(animation.target)) { return Result.err(AnimationError.StaleTarget); }
 	const mesh: MeshId = animation.meshes[animation.clock.keys().first];
 	if (mesh == animation.shown) { return Result.ok(0); }
-	const swapped: Result<int32, SceneError> = setMeshOf(scene, context, animation.target, mesh);
+	const swapped: Result<int32, SceneError> = setMeshOf(scene, animation.target, mesh);
 	if (!swapped.ok) {
 		return Result.err(frameError(swapped.error));
 	}

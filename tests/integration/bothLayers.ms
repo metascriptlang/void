@@ -64,11 +64,11 @@ function main(): int32 {
 	check("void2d vertexCount of the display list", vertexCount() == 0);
 	check("void2d render module", renderTargetsAlive() == 0);
 
-	let scene: Scene3D = Scene3D.create();
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	let scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _child: NodeId3D = addGroup(scene, group, Transform3D.identity());
-	const removed: Result<int32, SceneError> = removeChildren(scene, context, group);
+	const removed: Result<int32, SceneError> = removeChildren(scene, group);
 	check("void3d removeChildren on a scene", removed.ok && removed.value == 1);
 	const made: Result<AnimationClock, AnimationError> =
 		AnimationClock.forFrames(2, 1.0, Interpolation.Step);

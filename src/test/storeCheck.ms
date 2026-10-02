@@ -55,15 +55,12 @@ import {
 	Transform3D,
 	addMeshNode,
 	setMeshOf,
-	setName,
 } from "../void3d/scene";
 import {
 	AnimationClock,
 	AnimationError,
 	Interpolation,
 	MeshFrameAnimation,
-	bindMeshFrames,
-	syncMeshFrame,
 } from "../void3d/animation";
 import { contextOf } from "./drawHelpers";
 
@@ -226,18 +223,18 @@ test "both presets draw the context they were made on and refuse another's item 
 test "a scene refuses another context's mesh or material by name and keeps its pins" {
 	let a: DrawContext = contextOf(2, 2);
 	let b: DrawContext = contextOf(2, 2);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(b);
 	const meshNode: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, b, scene.rootId(), Transform3D.identity(), a.meshAt(0), b.materialAt(0));
+		addMeshNode(scene, scene.rootId(), Transform3D.identity(), a.meshAt(0), b.materialAt(0));
 	assert !meshNode.ok && meshNode.error == SceneError.ForeignMesh;
 	const materialNode: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, b, scene.rootId(), Transform3D.identity(), b.meshAt(0), a.materialAt(0));
+		addMeshNode(scene, scene.rootId(), Transform3D.identity(), b.meshAt(0), a.materialAt(0));
 	assert !materialNode.ok && materialNode.error == SceneError.ForeignMaterial;
 	const own: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, b, scene.rootId(), Transform3D.identity(), b.meshAt(0), b.materialAt(0));
+		addMeshNode(scene, scene.rootId(), Transform3D.identity(), b.meshAt(0), b.materialAt(0));
 	assert own.ok;
 	if (!own.ok) { return; }
-	const swapped: Result<int32, SceneError> = setMeshOf(scene, b, own.value, a.meshAt(1));
+	const swapped: Result<int32, SceneError> = setMeshOf(scene, own.value, a.meshAt(1));
 	assert !swapped.ok && swapped.error == SceneError.ForeignMesh;
 	assert b.meshPinned(b.meshAt(0)) == 1 && a.meshPinned(a.meshAt(1)) == 0;
 }
@@ -257,17 +254,8 @@ test "mesh frames refuse another context's meshes by name" {
 		MeshFrameAnimation.forMeshes(a, clock.value, "pet", foreign);
 	assert made.ok;
 	if (!made.ok) { return; }
-	let animation: MeshFrameAnimation = made.value;
-	let scene: Scene3D = Scene3D.create();
-	const node: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, b, scene.rootId(), Transform3D.identity(), b.meshAt(1), b.materialAt(0));
-	assert node.ok;
-	if (!node.ok) { return; }
-	setName(scene, node.value, "pet");
-	assert bindMeshFrames(animation, scene, scene.rootId()).ok;
-	const synced: Result<int32, AnimationError> = syncMeshFrame(animation, scene, b);
-	assert !synced.ok && synced.error == AnimationError.ForeignMesh;
-	assert b.meshPinned(b.meshAt(1)) == 1;
+	assert made.value.context.serial == a.serial && a.meshPinned(a.meshAt(0)) == 1;
+	assert b.meshPinned(b.meshAt(0)) == 0;
 }
 
 test "both presets refuse a frame whose own screen material's block was replaced, before any pass" {

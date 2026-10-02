@@ -25,7 +25,7 @@ import {
 	GltfSceneError,
 	addGltfAssets,
 	addGltfNodes,
-	releaseGltfAssets,
+	closeGltfAssets,
 } from "../../src/void3d/gltfScene";
 import {
 	Transform3D,
@@ -43,6 +43,7 @@ import {
 	setLightPower,
 	refresh,
 	collectLights,
+	NO_NODE_ID,
 } from "../../src/void3d/scene";
 import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
@@ -88,10 +89,10 @@ let context: DrawContext = DrawContext.withUniformCapacity(
 );
 let forward: ForwardRenderer = createForward();
 let preset: PixelArtRenderer = createPreset();
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
-let model: NodeId3D = { index: 0, generation: 0 };
-let sun: NodeId3D = { index: 0, generation: 0 };
+let model: NodeId3D = NO_NODE_ID;
+let sun: NodeId3D = NO_NODE_ID;
 let lamps: Vec<NodeId3D> = [];
 let texture: TextureId = { store: 0, index: 0, generation: 0 };
 let cameraBlock: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -192,13 +193,12 @@ function loadModel(data: GltfData): void {
 	if (context.texturePinned(texture) != 2) { fail("two textured materials do not pin it"); }
 	model = addGroup(scene, scene.rootId(), Transform3D.identity());
 	let added: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, model, data, assets.value.bindings);
+		addGltfNodes(scene, model, data, assets.value.bindings);
 	if (!added.ok || added.value != MODEL_NODES) {
 		fail("the model's five nodes did not enter the scene");
 		return;
 	}
-	let released: Result<void, HandleError> = releaseGltfAssets(context, assets.value);
-	if (!released.ok) { fail("the loader's holds were not given back"); }
+	closeGltfAssets(assets.value);
 	if (context.liveMaterials() != materialsBefore + 5 || !context.hasTexture(texture)) {
 		fail("releasing the loader's holds freed what the nodes still draw");
 	}
@@ -450,7 +450,7 @@ export function frameGltf(frameIndex: int32): void {
 		buffersLoaded = liveBuffers();
 		imagesLoaded = liveImages();
 		viewsLoaded = liveViews();
-		let removed: Result<int32, SceneError> = remove(scene, context, model);
+		let removed: Result<int32, SceneError> = remove(scene, model);
 		if (!removed.ok) { fail("the model's group was not removed"); }
 	}
 	pose(frameIndex);

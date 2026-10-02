@@ -118,6 +118,7 @@ import {
 	collectLights,
 	refresh,
 	syncWorld,
+	NO_NODE_ID,
 } from "../void3d/scene";
 import {
 	AnimationClock,
@@ -265,16 +266,16 @@ let flameAnchor: Anchor = ANCHOR_BOTTOM_CENTER;
 let pointSampler: Sampler = { filter: FilterMode.Nearest, wrap: Wrap.Clamp, handle: 0 };
 // The draw list the tree writes into, owned here and reused every frame.
 let sceneItems: Vec<DrawItem> = [];
-let tree: Scene3D = Scene3D.create();
-let flameNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let tree: Scene3D = Scene3D.create(context);
+let flameNode: NodeId3D = NO_NODE_ID;
 // The logs hang under their own group rather than off the root, so the tree has a real nested
 // transform to propagate through. The group sits at the identity unless a check turns it, and
 // `local * identity` is exact, so the six standing configurations see the same pixels.
-let logGroup: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-let firstLogNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-let bakedStoneNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-let plainStoneNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-let fireLight: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let logGroup: NodeId3D = NO_NODE_ID;
+let firstLogNode: NodeId3D = NO_NODE_ID;
+let bakedStoneNode: NodeId3D = NO_NODE_ID;
+let plainStoneNode: NodeId3D = NO_NODE_ID;
+let fireLight: NodeId3D = NO_NODE_ID;
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
 let flameFrames: MeshFrameAnimation = {
@@ -288,7 +289,7 @@ let flameFrames: MeshFrameAnimation = {
 		interpolation: Interpolation.Step,
 	},
 	name: "",
-	target: { index: NO_NODE_3D, generation: 0 },
+	target: NO_NODE_ID,
 	meshes: [],
 	bound: false,
 	shown: NO_MESH,
@@ -310,8 +311,8 @@ let groundGreyOnCpu: boolean = false;
 let particleMaterial: MaterialId = NO_MATERIAL;
 let snow: ParticleEmitter = emitterOf(snowState(), SNOW_SEED);
 let embers: ParticleEmitter = emitterOf(emberState(), EMBER_SEED);
-let snowNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
-let emberNode: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+let snowNode: NodeId3D = NO_NODE_ID;
+let emberNode: NodeId3D = NO_NODE_ID;
 let snowMesh: MeshId = NO_MESH;
 let emberMesh: MeshId = NO_MESH;
 const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
@@ -866,7 +867,7 @@ function setupDraws(): Result<int32, CampfireError> {
 		const under: NodeId3D = i >= firstLogPiece ? logGroup : root;
 		const material: MaterialId = i == 0 ? groundMaterial.value : litMaterial;
 		const placed: Result<NodeId3D, SceneError> =
-			addMeshNode(tree, context, under, placements[i], uploaded.value, material);
+			addMeshNode(tree, under, placements[i], uploaded.value, material);
 		if (!placed.ok) {
 			console.log("campfire: setupDraws bailed at placing a piece");
 			return Result.err(CampfireError.SetupRefused);
@@ -882,7 +883,7 @@ function setupDraws(): Result<int32, CampfireError> {
 	}
 	grassMesh = grassMeshAdded.value;
 	const grass: Result<NodeId3D, SceneError> =
-		addMeshNode(tree, context, root, Transform3D.identity(), grassMesh, grassMaterial);
+		addMeshNode(tree, root, Transform3D.identity(), grassMesh, grassMaterial);
 	if (!grass.ok) {
 		console.log("campfire: setupDraws bailed at the grass node");
 		return Result.err(CampfireError.SetupRefused);
@@ -899,7 +900,7 @@ function setupDraws(): Result<int32, CampfireError> {
 	// The billboard programs ignore the model matrix — their roots are already world-space
 	// instance data — so these two nodes sit at the identity and only carry draw order.
 	const flame: Result<NodeId3D, SceneError> =
-		addMeshNode(tree, context, root, Transform3D.identity(), flameMeshes[0], flameMaterial);
+		addMeshNode(tree, root, Transform3D.identity(), flameMeshes[0], flameMaterial);
 	if (!flame.ok) {
 		console.log("campfire: setupDraws bailed at the flame node");
 		return Result.err(CampfireError.SetupRefused);
@@ -959,7 +960,7 @@ function placeBakedStone(
 	if (!baked.ok) { return Result.err(CampfireError.SetupRefused); }
 	stoneFrameMeshes = baked.value;
 	const placed: Result<NodeId3D, SceneError> =
-		addMeshNode(tree, context, root, where, stoneFrameMeshes[0], material);
+		addMeshNode(tree, root, where, stoneFrameMeshes[0], material);
 	if (!placed.ok) { return Result.err(CampfireError.SetupRefused); }
 	setName(tree, placed.value, "bakedStone");
 	setPickable(tree, placed.value, true);
@@ -986,7 +987,6 @@ function setupParticles(root: NodeId3D, state: RenderState): Result<int32, Parti
 	emberMesh = emberStream.value;
 	const snowPlaced: Result<NodeId3D, SceneError> = addMeshNode(
 		tree,
-		context,
 		root,
 		Transform3D.fromTranslation(vec3(0.0, SNOW_HEIGHT, 0.0)),
 		snowMesh,
@@ -994,7 +994,6 @@ function setupParticles(root: NodeId3D, state: RenderState): Result<int32, Parti
 	);
 	const emberPlaced: Result<NodeId3D, SceneError> = addMeshNode(
 		tree,
-		context,
 		root,
 		Transform3D.fromTranslation(vec3(0.0, EMBER_HEIGHT, 0.0)),
 		emberMesh,
@@ -1277,7 +1276,7 @@ export function campfirePixelOf(id: NodeId3D): Result<Vec3, PixelOfError> {
 export function campfireTap(hostX: float32, hostY: float32): Result<PickHit, PickError> {
 	const ray: Ray =
 		shownView.rayFromScreen(hostX, flipRowIfGl(hostY), shownBlit, originTopLeft());
-	return pickNearest(tree, context.meshData, context.materials, ray);
+	return pickNearest(tree, ray);
 }
 
 export function initCampfire(): void {
@@ -1313,12 +1312,12 @@ function stepScene(): boolean {
 			return false;
 		}
 	}
-	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree, context);
+	const swapped: Result<int32, AnimationError> = syncMeshFrame(flameFrames, tree);
 	if (!swapped.ok) {
 		console.log(`campfire: the flame could not swap its frame, ${swapped.error.toString()}`);
 		return false;
 	}
-	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree, context);
+	const stoneSwapped: Result<int32, AnimationError> = syncMeshFrame(stoneFrames, tree);
 	if (!stoneSwapped.ok) {
 		console.log(`campfire: the stone frame swap was refused, ${stoneSwapped.error.toString()}`);
 		return false;

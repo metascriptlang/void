@@ -9,12 +9,12 @@ import {
 } from "../void3d/gltf";
 import {
 	addGltfAssets,
-	releaseGltfAssets,
+	closeGltfAssets,
 	GltfAssets,
 	GltfMaterialSetup,
 	GltfSceneError,
 } from "../void3d/gltfScene";
-import { DrawContext, HandleError, reserveUniforms } from "../void3d/draw";
+import { DrawContext, reserveUniforms } from "../void3d/draw";
 import {
 	Program,
 	MATERIAL_UNIFORM_SLOT,
@@ -432,12 +432,9 @@ test "a glTF material is the setup's block and pass, double sides unculled and f
 	assert values[single.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 0.0;
 	assert values[double.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 1.0;
 	assert values[double.uniforms.offset + 3] == 0.5;
-	const released: Result<void, HandleError> = releaseGltfAssets(context, made.value);
-	assert released.ok;
-	assert context.liveMaterials() == 0;
-	const again: Result<void, HandleError> = releaseGltfAssets(context, made.value);
-	assert !again.ok;
-	if (!again.ok) { assert again.error == HandleError.StaleMaterial; }
+	let alias: GltfAssets = made.value;
+	closeGltfAssets(alias);
+	assert made.value.isClosed() && context.liveMaterials() == 0;
 }
 
 test "a full uniform pool is named and gives back the materials already made" {

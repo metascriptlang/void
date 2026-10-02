@@ -134,9 +134,9 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 	const loaded = loadGltf(treeGltf(), triangleBuffer());
 	assert loaded.ok;
 	if (!loaded.ok) { return; }
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const missing: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, scene.rootId(), loaded.value, []);
+		addGltfNodes(scene, scene.rootId(), loaded.value, []);
 	assert !missing.ok;
 	if (!missing.ok) { assert missing.error == GltfSceneError.BadMeshBinding; }
 	const released: MeshId = context.meshAt(6);
@@ -144,20 +144,20 @@ test "addGltfNodes preserves names, hierarchy, bindings and non-uniform scale" {
 	const invalidBindings: Vec<GltfMeshBinding> =
 		[{ mesh: released, material: context.materialAt(9) }];
 	const invalid: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, scene.rootId(), loaded.value, invalidBindings);
+		addGltfNodes(scene, scene.rootId(), loaded.value, invalidBindings);
 	assert !invalid.ok;
 	if (!invalid.ok) { assert invalid.error == GltfSceneError.BadMeshBinding; }
 	let other: DrawContext = contextOf(8, 10);
 	const foreignBindings: Vec<GltfMeshBinding> =
 		[{ mesh: other.meshAt(7), material: context.materialAt(9) }];
 	const foreign: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, scene.rootId(), loaded.value, foreignBindings);
+		addGltfNodes(scene, scene.rootId(), loaded.value, foreignBindings);
 	assert !foreign.ok;
 	if (!foreign.ok) { assert foreign.error == GltfSceneError.ForeignMeshBinding; }
 	const bindings: Vec<GltfMeshBinding> =
 		[{ mesh: context.meshAt(7), material: context.materialAt(9) }];
 	const added: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, scene.rootId(), loaded.value, bindings);
+		addGltfNodes(scene, scene.rootId(), loaded.value, bindings);
 	assert added.ok;
 	if (!added.ok) { return; }
 	assert added.value == 2;

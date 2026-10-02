@@ -22,7 +22,7 @@ import {
 	GltfSceneError,
 	addGltfAssets,
 	addGltfNodes,
-	releaseGltfAssets,
+	closeGltfAssets,
 } from "../void3d/gltfScene";
 import {
 	DrawContext,
@@ -55,6 +55,7 @@ import {
 	addMeshNode,
 	remove,
 	refresh,
+	NO_NODE_ID,
 } from "../void3d/scene";
 import {
 	ForwardRenderer,
@@ -72,7 +73,6 @@ export enum ChurnError {
 	MaterialRefused,
 	NodeRefused,
 	ModelRefused,
-	ReleaseRefused,
 	FirstWriteRefused,
 	SecondWriteTaken,
 	FrameRefused,
@@ -109,13 +109,13 @@ const STREAM_WRITTEN: int32 = 4;
 const WIDTH: int32 = 640;
 const HEIGHT: int32 = 360;
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
-const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+const NO_ID: NodeId3D = NO_NODE_ID;
 
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + 4 * MAX_FRAMES * MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 let items: Vec<DrawItem> = [];
 let camera: Vec<float32> = zeros(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = zeros(LIGHT_UNIFORM_LENGTH);
@@ -212,11 +212,10 @@ function loadModel(level: NodeId3D): Result<int32, ChurnError> {
 		addGltfAssets(context, model, modelSetup());
 	if (!assets.ok) { return Result.err(churnErrorOf(assets.error)); }
 	const added: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, level, model, assets.value.bindings);
+		addGltfNodes(scene, level, model, assets.value.bindings);
 	if (!added.ok) { return Result.err(churnErrorOf(added.error)); }
 	if (releasing) {
-		const released: Result<void, HandleError> = releaseGltfAssets(context, assets.value);
-		if (!released.ok) { return Result.err(ChurnError.ReleaseRefused); }
+		closeGltfAssets(assets.value);
 	}
 	return Result.ok(added.value);
 }
@@ -265,7 +264,7 @@ function fillStream(stream: MeshId): Result<int32, ChurnError> {
 
 function place(level: NodeId3D, mesh: MeshId, material: MaterialId): Result<NodeId3D, ChurnError> {
 	const placed: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, context, level, Transform3D.identity(), mesh, material);
+		addMeshNode(scene, level, Transform3D.identity(), mesh, material);
 	if (!placed.ok) { return Result.err(ChurnError.NodeRefused); }
 	return Result.ok(placed.value);
 }
@@ -321,7 +320,7 @@ export function frameChurn(): void {
 		return;
 	}
 	if (releasing) {
-		const removed: Result<int32, SceneError> = remove(scene, context, loaded.value);
+		const removed: Result<int32, SceneError> = remove(scene, loaded.value);
 		if (!removed.ok) {
 			stop(ChurnError.GroupRefused);
 			return;

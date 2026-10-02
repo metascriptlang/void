@@ -45,6 +45,8 @@
 # ms-prelude: import {
 # ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, NO_NODE_3D, addGroup, setLocal, syncWorld,
 # ms-prelude: } from "../../../src/void3d/scene";
+# ms-prelude: import { DrawContext } from "../../../src/void3d/draw";
+# ms-prelude: const CONTEXT: DrawContext = DrawContext.withUniformCapacity(0);
 # ms-prelude:
 # ms-prelude: function tf(px: float32, py: float32, pz: float32, rx: float32, ry: float32,
 # ms-prelude: 		rz: float32, sx: float32, sy: float32, sz: float32): Transform3D {
@@ -74,7 +76,7 @@
 case child-under-translated-parent tol=1e-5
 haxe> var r1 = H.root(); var p1 = H.at(r1, 10, 0, 0); var c1 = H.at(p1, 0, 2, 0);
 haxe> var m1 = c1.getAbsPos(); emit("child-under-translated-parent", [m1._41, m1._42, m1._43]);
-ms> let s1: Scene3D = Scene3D.create();
+ms> let s1: Scene3D = Scene3D.create(CONTEXT);
 ms> const p1: NodeId3D = node(s1, s1.rootId(), at(10.0, 0.0, 0.0));
 ms> const c1: NodeId3D = node(s1, p1, at(0.0, 2.0, 0.0));
 ms> const n1: int32 = syncWorld(s1);
@@ -87,7 +89,7 @@ case child-under-rotated-parent tol=1e-5
 haxe> var r2 = H.root(); var p2 = H.node(r2, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1);
 haxe> var c2 = H.at(p2, 1, 0, 0);
 haxe> var m2 = c2.getAbsPos(); emit("child-under-rotated-parent", [m2._41, m2._42, m2._43]);
-ms> let s2: Scene3D = Scene3D.create();
+ms> let s2: Scene3D = Scene3D.create(CONTEXT);
 ms> const q2: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
 ms> const p2: NodeId3D = node(s2, s2.rootId(), q2);
 ms> const c2: NodeId3D = node(s2, p2, at(1.0, 0.0, 0.0));
@@ -101,7 +103,7 @@ case rotated-parent-child-basis tol=1e-5
 haxe> var r3 = H.root(); var p3 = H.node(r3, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1);
 haxe> var c3 = H.at(p3, 1, 0, 0); var m3 = c3.getAbsPos();
 haxe> emit("rotated-parent-child-basis", [m3._11, m3._13, m3._31, m3._33]);
-ms> let s3: Scene3D = Scene3D.create();
+ms> let s3: Scene3D = Scene3D.create(CONTEXT);
 ms> const q3: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
 ms> const p3: NodeId3D = node(s3, s3.rootId(), q3);
 ms> const c3: NodeId3D = node(s3, p3, at(1.0, 0.0, 0.0));
@@ -115,7 +117,7 @@ case three-level-chain tol=1e-5
 haxe> var r4 = H.root(); var a4 = H.at(r4, 1, 0, 0);
 haxe> var b4 = H.node(a4, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1); var c4 = H.at(b4, 2, 0, 0);
 haxe> var m4 = c4.getAbsPos(); emit("three-level-chain", [m4._41, m4._42, m4._43]);
-ms> let s4: Scene3D = Scene3D.create();
+ms> let s4: Scene3D = Scene3D.create(CONTEXT);
 ms> const q4: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
 ms> const a4: NodeId3D = node(s4, s4.rootId(), at(1.0, 0.0, 0.0));
 ms> const b4: NodeId3D = node(s4, a4, q4);
@@ -129,7 +131,7 @@ ms> emit3("three-level-chain", m4.m41, m4.m42, m4.m43);
 case local-scale-on-the-diagonal tol=1e-5
 haxe> var r5 = H.root(); var o5 = H.node(r5, 1, 2, 3, 0, 0, 0, 2, 3, 4);
 haxe> var m5 = o5.getAbsPos(); emit("local-scale-on-the-diagonal", [m5._11, m5._22, m5._33]);
-ms> let s5: Scene3D = Scene3D.create();
+ms> let s5: Scene3D = Scene3D.create(CONTEXT);
 ms> const q5: Transform3D = tf(1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 2.0, 3.0, 4.0);
 ms> const o5: NodeId3D = node(s5, s5.rootId(), q5);
 ms> const n5: int32 = syncWorld(s5);
@@ -143,7 +145,7 @@ case scale-is-prepended-to-rotation tol=1e-5
 haxe> var r6 = H.root(); var o6 = H.node(r6, 0, 0, 0, 0, Math.PI / 2, 0, 2, 1, 1);
 haxe> var m6 = o6.getAbsPos();
 haxe> emit("scale-is-prepended-to-rotation", [m6._11, m6._13, m6._31, m6._33]);
-ms> let s6: Scene3D = Scene3D.create();
+ms> let s6: Scene3D = Scene3D.create(CONTEXT);
 ms> const q6: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 2.0, 1.0, 1.0);
 ms> const o6: NodeId3D = node(s6, s6.rootId(), q6);
 ms> const n6: int32 = syncWorld(s6);
@@ -157,7 +159,7 @@ haxe> var r7 = H.root(); var p7 = H.node(r7, 0, 0, 0, 0, Math.PI / 2, 0, 1, 1, 1
 haxe> var c7 = H.node(p7, 0, 0, 0, 0, 0, 0, 2, 1, 3); var m7 = c7.getAbsPos();
 haxe> emit("non-uniform-scale-under-rotated-parent",
 haxe> 	[m7._11, m7._12, m7._13, m7._21, m7._22, m7._23, m7._31, m7._32, m7._33]);
-ms> let s7: Scene3D = Scene3D.create();
+ms> let s7: Scene3D = Scene3D.create(CONTEXT);
 ms> const q7: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
 ms> const p7: NodeId3D = node(s7, s7.rootId(), q7);
 ms> const c7: NodeId3D = node(s7, p7, tf(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 1.0, 3.0));
@@ -173,7 +175,7 @@ haxe> var r8 = H.root(); var o8 = H.node(r8, 0, 0, 0, 0.3, 0.7, 0.2, 1, 1, 1);
 haxe> var m8 = o8.getAbsPos();
 haxe> emit("euler-rotation-basis",
 haxe> 	[m8._11, m8._12, m8._13, m8._21, m8._22, m8._23, m8._31, m8._32, m8._33]);
-ms> let s8: Scene3D = Scene3D.create();
+ms> let s8: Scene3D = Scene3D.create(CONTEXT);
 ms> const q8: Transform3D = tf(0.0, 0.0, 0.0, 0.3, 0.7, 0.2, 1.0, 1.0, 1.0);
 ms> const o8: NodeId3D = node(s8, s8.rootId(), q8);
 ms> const n8: int32 = syncWorld(s8);
@@ -190,7 +192,7 @@ case parent-move-reaches-the-child tol=1e-5
 haxe> var r9 = H.root(); var p9 = H.at(r9, 1, 0, 0); var c9 = H.at(p9, 0, 1, 0);
 haxe> c9.getAbsPos(); H.moveTo(p9, 5, 0, 0);
 haxe> var m9 = c9.getAbsPos(); emit("parent-move-reaches-the-child", [m9._41, m9._42, m9._43]);
-ms> let s9: Scene3D = Scene3D.create();
+ms> let s9: Scene3D = Scene3D.create(CONTEXT);
 ms> const p9: NodeId3D = node(s9, s9.rootId(), at(1.0, 0.0, 0.0));
 ms> const c9: NodeId3D = node(s9, p9, at(0.0, 1.0, 0.0));
 ms> const n9: int32 = syncWorld(s9);
@@ -206,7 +208,7 @@ haxe> var ca = H.at(ba, 1, 0, 0); var da = H.at(ca, 1, 0, 0);
 haxe> da.getAbsPos(); H.moveTo(aa, 0, 0, 10);
 haxe> var ma = da.getAbsPos();
 haxe> emit("deep-chain-propagates-to-the-leaf", [ma._41, ma._42, ma._43]);
-ms> let sa: Scene3D = Scene3D.create();
+ms> let sa: Scene3D = Scene3D.create(CONTEXT);
 ms> const aa: NodeId3D = node(sa, sa.rootId(), at(1.0, 0.0, 0.0));
 ms> const ba: NodeId3D = node(sa, aa, at(1.0, 0.0, 0.0));
 ms> const ca: NodeId3D = node(sa, ba, at(1.0, 0.0, 0.0));
@@ -224,7 +226,7 @@ haxe> var bb = H.at(rb, 0, 0, 1); var bcb = H.at(bb, 0, 1, 0);
 haxe> bcb.getAbsPos(); H.moveTo(ab, 9, 0, 0);
 haxe> var mb = bcb.getAbsPos();
 haxe> emit("a-sibling-subtree-does-not-move", [mb._41, mb._42, mb._43]);
-ms> let sb: Scene3D = Scene3D.create();
+ms> let sb: Scene3D = Scene3D.create(CONTEXT);
 ms> const ab: NodeId3D = node(sb, sb.rootId(), at(1.0, 0.0, 0.0));
 ms> const acb: NodeId3D = node(sb, ab, at(0.0, 1.0, 0.0));
 ms> const bb: NodeId3D = node(sb, sb.rootId(), at(0.0, 0.0, 1.0));
@@ -241,7 +243,7 @@ haxe> var rc = H.root(); var pc = H.at(rc, 3, 0, 0); var cc = H.at(pc, 0, 1, 0);
 haxe> cc.getAbsPos(); H.moveTo(cc, 0, 7, 0);
 haxe> var mc = pc.getAbsPos();
 haxe> emit("moving-a-child-leaves-its-parent", [mc._41, mc._42, mc._43]);
-ms> let sc: Scene3D = Scene3D.create();
+ms> let sc: Scene3D = Scene3D.create(CONTEXT);
 ms> const pc: NodeId3D = node(sc, sc.rootId(), at(3.0, 0.0, 0.0));
 ms> const cc: NodeId3D = node(sc, pc, at(0.0, 1.0, 0.0));
 ms> const nc: int32 = syncWorld(sc);
@@ -258,7 +260,7 @@ haxe> var cd = H.at(pd, 0, 1, 0);
 haxe> cd.getAbsPos(); cd.getAbsPos();
 haxe> var md = cd.getAbsPos();
 haxe> emit("resync-with-nothing-changed-is-stable", [md._41, md._42, md._43]);
-ms> let sd: Scene3D = Scene3D.create();
+ms> let sd: Scene3D = Scene3D.create(CONTEXT);
 ms> const qd: Transform3D = tf(2.0, 0.0, 0.0, 0.0, 0.4, 0.0, 1.0, 1.0, 1.0);
 ms> const pd: NodeId3D = node(sd, sd.rootId(), qd);
 ms> const cd: NodeId3D = node(sd, pd, at(0.0, 1.0, 0.0));
@@ -274,7 +276,7 @@ haxe> var re = H.root(); var pe = H.at(re, 1, 0, 0); var ce = H.at(pe, 0, 1, 0);
 haxe> ce.getAbsPos(); H.moveTo(pe, 5, 0, 0); ce.getAbsPos(); H.moveTo(pe, 1, 0, 0);
 haxe> var me = ce.getAbsPos();
 haxe> emit("move-and-move-back-restores-the-world", [me._41, me._42, me._43]);
-ms> let se: Scene3D = Scene3D.create();
+ms> let se: Scene3D = Scene3D.create(CONTEXT);
 ms> const pe: NodeId3D = node(se, se.rootId(), at(1.0, 0.0, 0.0));
 ms> const ce: NodeId3D = node(se, pe, at(0.0, 1.0, 0.0));
 ms> const ne: int32 = syncWorld(se);
@@ -292,7 +294,7 @@ haxe> var rf = H.root(); var pf = H.at(rf, 2, 0, 0); pf.getAbsPos();
 haxe> var cf = H.at(pf, 0, 3, 0);
 haxe> var mf = cf.getAbsPos();
 haxe> emit("a-node-added-after-a-sync-is-placed", [mf._41, mf._42, mf._43]);
-ms> let sf: Scene3D = Scene3D.create();
+ms> let sf: Scene3D = Scene3D.create(CONTEXT);
 ms> const pf: NodeId3D = node(sf, sf.rootId(), at(2.0, 0.0, 0.0));
 ms> const nf: int32 = syncWorld(sf);
 ms> const cf: NodeId3D = node(sf, pf, at(0.0, 3.0, 0.0));
@@ -307,7 +309,7 @@ haxe> var rg = H.root(); var pg = H.at(rg, 0, 0, 0); var cg = H.at(pg, 1, 0, 0);
 haxe> cg.getAbsPos(); pg.setRotation(0, Math.PI / 2, 0);
 haxe> var mg = cg.getAbsPos();
 haxe> emit("rotating-a-parent-after-a-sync-turns-the-child", [mg._41, mg._42, mg._43]);
-ms> let sg: Scene3D = Scene3D.create();
+ms> let sg: Scene3D = Scene3D.create(CONTEXT);
 ms> const qg: Transform3D = tf(0.0, 0.0, 0.0, 0.0, 1.5707963267948966, 0.0, 1.0, 1.0, 1.0);
 ms> const pg: NodeId3D = node(sg, sg.rootId(), at(0.0, 0.0, 0.0));
 ms> const cg: NodeId3D = node(sg, pg, at(1.0, 0.0, 0.0));

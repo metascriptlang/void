@@ -7,6 +7,6 @@ import {
 } from "../../src/void3d/scene";
 
 let context: DrawContext = DrawContext.withUniformCapacity(0);
-let scene: Scene3D = Scene3D.create();
-const _removed: Result<int32, SceneError> = remove(scene, context, scene.rootId());
+let scene: Scene3D = Scene3D.create(context);
+const _removed: Result<int32, SceneError> = remove(scene, scene.rootId());
 console.log("the call returned");

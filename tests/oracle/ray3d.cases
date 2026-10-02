@@ -53,7 +53,7 @@
 # ms-prelude: import { Material, Phase } from "../../../src/void3d/material";
 # ms-prelude: import { Program } from "../../../src/void3d/gpu3d";
 # ms-prelude: import {
-# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, NO_NODE_3D, addMeshNode, setPickable, syncWorld,
+# ms-prelude: 	Scene3D, NodeId3D, Transform3D, SceneError, NO_NODE_ID, addMeshNode, setPickable, syncWorld,
 # ms-prelude: } from "../../../src/void3d/scene";
 # ms-prelude: import { PickHit, PickError, pickNearest } from "../../../src/void3d/pick";
 # ms-prelude: import {
@@ -95,21 +95,21 @@
 # ms-prelude: 	const state: RenderState = RenderState.defaults();
 # ms-prelude: 	return [Material.plain(Program.Lit, state.withCulling(Face.Back), Phase.Opaque)];
 # ms-prelude: }
-# ms-prelude: const NO_ID: NodeId3D = { index: NO_NODE_3D, generation: 0 };
+# ms-prelude: const NO_ID: NodeId3D = NO_NODE_ID;
 # ms-prelude: const NO_HIT: PickHit = {
 # ms-prelude: 	owner: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 },
 # ms-prelude: };
 # ms-prelude: struct Picked { scene: Scene3D; node: NodeId3D; }
 # ms-prelude: function onePickable(t: Transform3D): Picked {
-# ms-prelude: 	let scene: Scene3D = Scene3D.create();
 # ms-prelude: 	let context: DrawContext = DrawContext.withUniformCapacity(0);
+# ms-prelude: 	let scene: Scene3D = Scene3D.create(context);
 # ms-prelude: 	const mesh: Result<MeshId, MeshUploadError> = addMesh(context, GpuMesh.fullscreen(0, 3));
 # ms-prelude: 	if (!mesh.ok) { return { scene: scene, node: NO_ID }; }
 # ms-prelude: 	const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque);
 # ms-prelude: 	const material: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 # ms-prelude: 	if (!material.ok) { return { scene: scene, node: NO_ID }; }
 # ms-prelude: 	const made: Result<NodeId3D, SceneError> =
-# ms-prelude: 		addMeshNode(scene, context, scene.rootId(), t, mesh.value, material.value);
+# ms-prelude: 		addMeshNode(scene, scene.rootId(), t, mesh.value, material.value);
 # ms-prelude: 	const id: NodeId3D = made.ok ? made.value : NO_ID;
 # ms-prelude: 	setPickable(scene, id, true);
 # ms-prelude: 	const _synced: int32 = syncWorld(scene);
@@ -119,10 +119,10 @@
 # ms-prelude: 	const w: Mat4 = scene.nodes[id.index].world;
 # ms-prelude: 	return Ray.fromPoints(vec3(x, y, 5.0) * w, vec3(x, y, 0.0) * w);
 # ms-prelude: }
-# ms-prelude: function pickIn(ref scene: Scene3D, mesh: MeshData, r: Ray): PickHit {
-# ms-prelude: 	const meshes: Vec<MeshData> = [mesh];
-# ms-prelude: 	const materials: Vec<Material> = culledBack();
-# ms-prelude: 	const picked: Result<PickHit, PickError> = pickNearest(scene, meshes, materials, r);
+# ms-prelude: function pickIn(scene: Scene3D, mesh: MeshData, r: Ray): PickHit {
+# ms-prelude: 	scene.context.meshData[0] = mesh;
+# ms-prelude: 	scene.context.materials[0].pass = culledBack()[0].pass;
+# ms-prelude: 	const picked: Result<PickHit, PickError> = pickNearest(scene, r);
 # ms-prelude: 	return picked.ok ? picked.value : NO_HIT;
 # ms-prelude: }
 

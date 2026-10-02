@@ -5,7 +5,7 @@
 import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
 import { MeshData } from "./meshData";
-import { Material } from "./material";
+import { DrawContext } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
 import {
@@ -14,6 +14,7 @@ import {
 	NodeKind,
 	NodeFlag,
 	NO_NODE_3D,
+	NO_NODE_ID,
 	syncWorld,
 } from "./scene";
 
@@ -26,8 +27,6 @@ export struct PickHit {
 
 export enum PickError {
 	NothingHit,
-	MeshOutOfRange,
-	MaterialOutOfRange,
 }
 
 struct MeshHit {
@@ -37,19 +36,14 @@ struct MeshHit {
 
 const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 } };
 
-// `meshData` and `materials` are the DrawContext's tables, read at the node's current mesh.
 // PENDING3D: pick-owner-is-a-flag
 // PENDING3D: pick-distance-from-ray-origin
-export function pickNearest(
-	ref scene: Scene3D,
-	meshData: Span<MeshData>,
-	materials: Span<Material>,
-	ray: Ray,
-): Result<PickHit, PickError> {
+export function pickNearest(scene: Scene3D, ray: Ray): Result<PickHit, PickError> {
 	const _synced: int32 = syncWorld(scene);
+	const context: DrawContext = scene.context;
 	let best: PickHit = {
-		owner: { index: NO_NODE_3D, generation: 0 },
-		mesh: { index: NO_NODE_3D, generation: 0 },
+		owner: NO_NODE_ID,
+		mesh: NO_NODE_ID,
 		distance: -1.0,
 		point: ray.origin,
 	};
@@ -66,14 +60,8 @@ export function pickNearest(
 		if (owner != NO_NODE_3D) {
 			const mesh: int32 = scene.meshes[scene.nodes[index].payload].mesh.index;
 			const material: int32 = scene.meshes[scene.nodes[index].payload].material.index;
-			if (mesh < 0 || mesh >= (meshData.length as int32)) {
-				return Result.err(PickError.MeshOutOfRange);
-			}
-			if (material < 0 || material >= (materials.length as int32)) {
-				return Result.err(PickError.MaterialOutOfRange);
-			}
-			const hit: MeshHit = meshData[mesh].meshHit(
-				materials[material].pass.culling,
+			const hit: MeshHit = context.meshData[mesh].meshHit(
+				context.materials[material].pass.culling,
 				scene.nodes[index].world,
 				ray,
 			);

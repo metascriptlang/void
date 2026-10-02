@@ -11,9 +11,9 @@ import {
 } from "../../src/void3d/scene";
 
 let context: DrawContext = DrawContext.withUniformCapacity(0);
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(scene, context, gone);
+const _removed: Result<int32, SceneError> = remove(scene, gone);
 const _set: Result<int32, SceneError> =
-	setMeshOf(scene, context, gone, { store: 0, index: 0, generation: 1 });
+	setMeshOf(scene, gone, { store: 0, index: 0, generation: 1 });
 console.log("the call returned");

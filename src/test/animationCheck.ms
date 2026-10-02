@@ -14,6 +14,7 @@ import {
 	remove,
 	syncWorld,
 	refresh,
+	NO_NODE_ID,
 } from "../void3d/scene";
 import {
 	AnimationClock,
@@ -59,27 +60,26 @@ function pair(first: int32, second: int32, weight: float32): KeyPair {
 	return { first: first, second: second, weight: weight };
 }
 
-function named(ref scene: Scene3D, parent: NodeId3D, name: string): NodeId3D {
+function named(scene: Scene3D, parent: NodeId3D, name: string): NodeId3D {
 	const added: NodeId3D = addGroup(scene, parent, Transform3D.identity());
 	setName(scene, added, name);
 	return added;
 }
 
 function namedMesh(
-	ref scene: Scene3D,
+	scene: Scene3D,
 	context: DrawContext,
 	name: string,
 	mesh: int32,
 ): NodeId3D {
 	const added: Result<NodeId3D, SceneError> = addMeshNode(
 		scene,
-		context,
 		scene.rootId(),
 		Transform3D.identity(),
 		context.meshAt(mesh),
 		context.materialAt(0),
 	);
-	if (!added.ok) { return { index: NO_NODE_3D, generation: 0 }; }
+	if (!added.ok) { return NO_NODE_ID; }
 	setName(scene, added.value, name);
 	return added.value;
 }
@@ -234,7 +234,7 @@ test "a track must carry one key per frame of its clock" {
 }
 
 test "tracks bind by name under a base node, and a missing name is refused" {
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const body: NodeId3D = named(scene, scene.rootId(), "body");
 	const arm: NodeId3D = named(scene, body, "arm");
 	assert arm.index != NO_NODE_3D;
@@ -255,7 +255,7 @@ test "tracks bind by name under a base node, and a missing name is refused" {
 }
 
 test "syncPose writes the sampled pose into the node and its world follows" {
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const body: NodeId3D = named(scene, scene.rootId(), "body");
 	const arm: NodeId3D = named(scene, body, "arm");
 	let animation: ObjectAnimation =
@@ -273,7 +273,7 @@ test "syncPose writes the sampled pose into the node and its world follows" {
 }
 
 test "syncPose writes nothing while the sampled keys have not moved" {
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(4, 12.0, Interpolation.Step));
@@ -298,14 +298,14 @@ test "syncPose writes nothing while the sampled keys have not moved" {
 
 test "syncPose refuses a target that was removed after binding" {
 	let context: DrawContext = contextOf(8, 1);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
 	const keys: Vec<Transform3D> = [slide(1.0)];
 	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
-	const _gone: Result<int32, SceneError> = remove(scene, context, arm);
+	const _gone: Result<int32, SceneError> = remove(scene, arm);
 	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert !stale.ok;
 	if (!stale.ok) { assert stale.error == AnimationError.StaleTarget; }
@@ -336,7 +336,7 @@ test "mesh frames only step, and carry one mesh per frame" {
 
 test "mesh frames swap the node's mesh, and the draw list follows without a rebuild" {
 	let context: DrawContext = contextOf(8, 1);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const _flame: NodeId3D = namedMesh(scene, context, "flame", 4);
 	const _group: NodeId3D = named(scene, scene.rootId(), "group");
 	let items: Vec<DrawItem> = [];
@@ -355,14 +355,14 @@ test "mesh frames swap the node's mesh, and the draw list follows without a rebu
 		if (!refused.ok) { assert refused.error == AnimationError.NotAMeshNode; }
 		const _bound: Result<int32, AnimationError> =
 			bindMeshFrames(animation, scene, scene.rootId());
-		const shown: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
+		const shown: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
 		assert shown.ok;
 		if (shown.ok) { assert shown.value == 1; }
-		const same: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
+		const same: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
 		assert same.ok;
 		if (same.ok) { assert same.value == 0; }
 		const _moved: boolean = moved(animation.clock, 2.0);
-		const swapped: Result<int32, AnimationError> = syncMeshFrame(animation, scene, context);
+		const swapped: Result<int32, AnimationError> = syncMeshFrame(animation, scene);
 		assert swapped.ok;
 		if (swapped.ok) { assert swapped.value == 1; }
 		assert !scene.structureChanged;
@@ -477,7 +477,7 @@ test "mesh frames refuse a negative mesh index" {
 }
 
 test "a rebind that fails keeps the previous binding whole" {
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const a: NodeId3D = named(scene, scene.rootId(), "a");
 	const armA: NodeId3D = named(scene, a, "arm");
 	const _legA: NodeId3D = named(scene, a, "leg");
@@ -501,7 +501,7 @@ test "a rebind that fails keeps the previous binding whole" {
 
 test "a target removed after a sync is refused even while the keys stand still" {
 	let context: DrawContext = contextOf(8, 1);
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(context);
 	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));
@@ -510,13 +510,13 @@ test "a target removed after a sync is refused even while the keys stand still" 
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
 	const first: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert first.ok;
-	const _gone: Result<int32, SceneError> = remove(scene, context, arm);
+	const _gone: Result<int32, SceneError> = remove(scene, arm);
 	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert !stale.ok;
 }
 
 test "forgetSync makes the next sync write over a node someone else moved" {
-	let scene: Scene3D = Scene3D.create();
+	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	const arm: NodeId3D = named(scene, scene.rootId(), "arm");
 	let animation: ObjectAnimation =
 		ObjectAnimation.forClock(clockOf(1, 12.0, Interpolation.Step));

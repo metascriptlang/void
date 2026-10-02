@@ -16,14 +16,14 @@ const DOCUMENT: string = "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\
 	+ "\"bufferViews\":[],\"buffers\":[]}";
 
 let context: DrawContext = DrawContext.withUniformCapacity(0);
-let scene: Scene3D = Scene3D.create();
+let scene: Scene3D = Scene3D.create(context);
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(scene, context, gone);
+const _removed: Result<int32, SceneError> = remove(scene, gone);
 let bytes: Vec<uint8> = [];
 const loaded: Result<GltfData, GltfError> = loadGltf(DOCUMENT, bytes);
 let bindings: Vec<GltfMeshBinding> = [];
 if (loaded.ok) {
 	const _added: Result<int32, GltfSceneError> =
-		addGltfNodes(scene, context, gone, loaded.value, bindings);
+		addGltfNodes(scene, gone, loaded.value, bindings);
 }
 console.log("the call returned");
