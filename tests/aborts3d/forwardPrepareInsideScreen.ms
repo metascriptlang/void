@@ -29,7 +29,7 @@ function frame(): void {
 	if (created.ok) {
 		let forward: ForwardRenderer = created.value;
 		const _prepared: Result<int32, ForwardError> =
-			prepareFrame(forward, context, items, blocks, blocks, 640, 360);
+			prepareFrame(forward, items, blocks, blocks, 640, 360);
 	}
 }
 

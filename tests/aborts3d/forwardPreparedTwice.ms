@@ -16,6 +16,6 @@ if (created.ok) {
 	let forward: ForwardRenderer = created.value;
 	forward.core.prepared = true;
 	const _again: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, blocks, blocks, 64, 64);
+		prepareFrame(forward, items, blocks, blocks, 64, 64);
 }
 console.log("a second prepareFrame returned");

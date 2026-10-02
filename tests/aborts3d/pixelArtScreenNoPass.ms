@@ -22,6 +22,6 @@ const created: Result<PixelArtRenderer, PixelArtError> =
 if (created.ok) {
 	let renderer: PixelArtRenderer = created.value;
 	renderer.core.prepared = true;
-	drawToScreen(renderer, context);
+	drawToScreen(renderer);
 }
 console.log("drawToScreen outside a screen pass returned");

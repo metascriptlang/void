@@ -27,6 +27,6 @@ if (created.ok) {
 	let renderer: PixelArtRenderer = created.value;
 	renderer.core.prepared = true;
 	const _again: Result<int32, PixelArtError> =
-		prepareFrame(renderer, context, items, blocks, blocks, VIEW);
+		prepareFrame(renderer, items, blocks, blocks, VIEW);
 }
 console.log("a second prepareFrame returned");

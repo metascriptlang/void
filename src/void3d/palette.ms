@@ -8,7 +8,13 @@
 // and the image is rebuilt from `pixels` after a context loss.
 
 import { makeDynamicImage, updateImage, destroyImage } from "./gpu3d";
-import { makeTextureView, destroyView } from "../gpu/door";
+import {
+	PassState,
+	makeTextureView,
+	destroyView,
+	contextGeneration,
+	passState,
+} from "../gpu/door";
 
 export const DEFAULT_PALETTE_LEVELS: int32 = 16;
 // 32 * 32 = 1024 texels across, half of GLES3's minimum texture size limit.
@@ -24,14 +30,16 @@ const RED_WEIGHT: float32 = 2.0;
 const GREEN_WEIGHT: float32 = 4.0;
 const BLUE_WEIGHT: float32 = 3.0;
 
-export struct PaletteLut {
+export interface PaletteLut {
 	levels: int32;
 	// Texture byte order, as makeImage takes it: 0xAABBGGRR.
 	pixels: Vec<uint32>;
 	image: uint32;
 	texture: uint32;
+	generation: int32;
 	// The pixels changed since the last upload.
 	dirty: boolean;
+	closed: boolean;
 }
 
 export enum PaletteError {
@@ -59,7 +67,15 @@ export function withLevels(
 			}
 		}
 	}
-	return Result.ok({ levels: levels, pixels: pixels, image: 0, texture: 0, dirty: true });
+	return Result.ok({
+		levels: levels,
+		pixels: pixels,
+		image: 0,
+		texture: 0,
+		generation: 0,
+		dirty: true,
+		closed: false,
+	});
 }
 
 export function width(this lut: PaletteLut): int32 {
@@ -123,7 +139,8 @@ export function textureColor(color: uint32): uint32 {
 
 // Maps every cell to its nearest palette color (0xRRGGBB each). Allocates nothing; the next
 // upload sends the new pixels. Returns the number of cells written.
-export function fill(ref lut: PaletteLut, palette: Span<uint32>): Result<int32, PaletteError> {
+export function fill(lut: PaletteLut, palette: Span<uint32>): Result<int32, PaletteError> {
+	if (lut.closed) { stopOnClosed("fill"); }
 	if (palette.length == 0) { return Result.err(PaletteError.EmptyPalette); }
 	const levels: int32 = lut.levels;
 	const step: float32 = 1.0 / ((levels - 1) as float32);
@@ -144,12 +161,16 @@ export function fill(ref lut: PaletteLut, palette: Span<uint32>): Result<int32, 
 	return Result.ok(levels * levels * levels);
 }
 
-// Creates the image on first use (and after forgetGpu), then sends the pixels if they changed.
-// Call before the pass that samples the table: sokol takes one update per image per frame.
-export function upload(ref lut: PaletteLut): void {
+// Creates the image on first use (and after forgetGpu or a context loss), then sends the pixels
+// if they changed. Call before the pass that samples the table: sokol takes one update per image
+// per frame.
+export function upload(lut: PaletteLut): void {
+	if (lut.closed) { stopOnClosed("upload"); }
+	if (lut.image != 0 && lut.generation != contextGeneration()) { forgetGpu(lut); }
 	if (lut.image == 0) {
 		lut.image = makeDynamicImage(lut.width(), lut.height());
 		lut.texture = makeTextureView(lut.image);
+		lut.generation = contextGeneration();
 		lut.dirty = true;
 	}
 	if (lut.dirty) {
@@ -160,14 +181,37 @@ export function upload(ref lut: PaletteLut): void {
 
 // After a context loss: the handles are stale (and may name new objects), so they are dropped
 // without destroying anything; the next upload rebuilds the image from `pixels`.
-export function forgetGpu(ref lut: PaletteLut): void {
+export function forgetGpu(lut: PaletteLut): void {
 	lut.image = 0;
 	lut.texture = 0;
+	lut.generation = 0;
 	lut.dirty = true;
 }
 
-export function releaseGpu(ref lut: PaletteLut): void {
-	if (lut.texture != 0) { destroyView(lut.texture); }
-	if (lut.image != 0) { destroyImage(lut.image); }
+export function releaseGpu(lut: PaletteLut): void {
+	if (lut.closed) { stopOnClosed("releaseGpu"); }
+	if (lut.image != 0 && lut.generation == contextGeneration()) {
+		destroyView(lut.texture);
+		destroyImage(lut.image);
+	}
 	forgetGpu(lut);
+}
+
+export function closePalette(lut: PaletteLut): void {
+	if (lut.closed) { stopOnClosed("closePalette"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closePalette with a pass open; endPass ends it");
+		unreachable;
+	}
+	releaseGpu(lut);
+	lut.closed = true;
+}
+
+export function isClosed(this lut: PaletteLut): boolean {
+	return lut.closed;
+}
+
+function stopOnClosed(call: string): void {
+	console.log(`void3d: ${call} on a palette table that was closed`);
+	unreachable;
 }

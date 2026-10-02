@@ -155,7 +155,7 @@ test "the core refuses a textured material with nothing at slot 0, or whose text
 	if (!bare.ok) { return; }
 	let bareItems: Vec<DrawItem> = [texturedItem(context, bare.value)];
 	let unbound: Result<boolean, RendererError> =
-		beginFrame(core, context, bareItems, camera, lights);
+		beginFrame(core, bareItems, camera, lights);
 	assert !unbound.ok && unbound.error == RendererError.MaterialTexture;
 	let raw: Result<MaterialId, MaterialError> =
 		addMaterial(context, { ...texturedLit(context), texture0: 1, sampler0: 1 });
@@ -163,11 +163,11 @@ test "the core refuses a textured material with nothing at slot 0, or whose text
 	if (!raw.ok) { return; }
 	let rawItems: Vec<DrawItem> = [texturedItem(context, raw.value)];
 	let rawFrame: Result<boolean, RendererError> =
-		beginFrame(core, context, rawItems, shortCamera, lights);
+		beginFrame(core, rawItems, shortCamera, lights);
 	assert !rawFrame.ok && rawFrame.error == RendererError.CameraBlockLength;
 	context.materials[bare.value.index].texture = firstSlotOf(context);
 	let swapped: Result<boolean, RendererError> =
-		beginFrame(core, context, bareItems, camera, lights);
+		beginFrame(core, bareItems, camera, lights);
 	assert !swapped.ok && swapped.error == RendererError.TextureReplaced;
 	assert core.generation == 0 && core.drawn.length == 0;
 }
@@ -189,7 +189,7 @@ test "the forward preset passes a replaced texture on by name" {
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	let refused: Result<int32, ForwardError> =
-		renderFrame(forward, context, items, camera, lights, 640, 480);
+		renderFrame(forward, items, camera, lights, 640, 480);
 	assert !refused.ok && refused.error == ForwardError.TextureReplaced;
 	assert forward.core.generation == 0 && forward.colorTarget.image == 0;
 }
@@ -236,7 +236,7 @@ test "a screen draw refuses a material whose texture changed" {
 	if (!added.ok) { return; }
 	context.materials[added.value.index].texture = firstSlotOf(context);
 	let drawn: Result<int32, RendererError> =
-		drawScreen(core, context, added.value, SWAPCHAIN_LAYOUT);
+		drawScreen(core, added.value, SWAPCHAIN_LAYOUT);
 	assert !drawn.ok && drawn.error == RendererError.TextureReplaced;
 }
 
@@ -253,7 +253,7 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 	let copy: ForwardRenderer = forward.value;
 	forwardContext.materials[copy.copyMaterial.index].texture = firstSlotOf(forwardContext);
 	let copied: Result<int32, ForwardError> =
-		renderFrame(copy, forwardContext, none, camera, lights, 640, 480);
+		renderFrame(copy, none, camera, lights, 640, 480);
 	assert !copied.ok && copied.error == ForwardError.TextureReplaced;
 	let look: PixelArtLook = {
 		background: background,
@@ -277,7 +277,7 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 		let screen: MaterialId = post ? preset.postMaterial : preset.blitMaterial;
 		context.materials[screen.index].texture = firstSlotOf(context);
 		let drawn: Result<int32, PixelArtError> =
-			renderPixelArt(preset, context, none, camera, lights, view);
+			renderPixelArt(preset, none, camera, lights, view);
 		assert !drawn.ok && drawn.error == PixelArtError.TextureReplaced;
 		assert preset.core.generation == 0;
 	}

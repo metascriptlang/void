@@ -241,7 +241,7 @@ export function framePerspective(frameIndex: int32): void {
 	let view: CameraView = viewAt(shifted ? 20.0 : 0.0);
 	view.writeCameraBlock(cameraBlock);
 	let prepared: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, cameraBlock, lights, WIDTH, HEIGHT);
+		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!prepared.ok) {
 		fail(`prepareFrame refused the perspective camera: ${prepared.error.toString()}`);
 		return;
@@ -269,7 +269,7 @@ export function framePerspective(frameIndex: int32): void {
 	let offcenter: int32 = checkPick(view, positions[sideBox], nodes[sideBox]);
 	if (moved) { let _moved: int32 = checkPick(view, vec3(20.0, -2.0, -6.0), nodes[1]); }
 	beginScreenPass(BACKGROUND);
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 	endPass();
 	commit();
 	if (frameIndex == 1 || frameIndex == 6 || frameIndex == 11 || frameIndex == 16) {

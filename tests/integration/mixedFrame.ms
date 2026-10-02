@@ -205,14 +205,14 @@ function initMixed(): void {
 
 function drawMixed(withQuad: boolean): void {
 	const prepared: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
+		prepareFrame(forward, items, camera, lights, fbWidth(), fbHeight());
 	if (!prepared.ok) {
 		fail(`the 3D frame was refused, ${prepared.error.toString()}`);
 		return;
 	}
 	if (voidCaptureEnvInt("VOID_MIXED_PREPARE_TWICE", 0) != 0) {
 		const _again: Result<int32, ForwardError> =
-			prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
+			prepareFrame(forward, items, camera, lights, fbWidth(), fbHeight());
 	}
 	markChanged(forward.core);
 	const swapped: boolean = voidCaptureEnvInt("VOID_MIXED_3D_OVER_2D", 0) != 0;
@@ -241,11 +241,11 @@ function drawMixed(withQuad: boolean): void {
 			if (pipeline != reused) { fail("the door did not reuse the foreign pipeline"); }
 			drawForeign(pipeline, forward.colorTarget.asTexture(), forward.sampler.asHandle());
 		} else {
-			drawToScreen(forward, context);
+			drawToScreen(forward);
 		}
 	}
 	overlay.drawScreen();
-	if (swapped) { drawToScreen(forward, context); }
+	if (swapped) { drawToScreen(forward); }
 	endPass();
 	commit();
 	if (!forward.core.needsFrame()) {
@@ -256,7 +256,7 @@ function drawMixed(withQuad: boolean): void {
 function drawAcrossCommit(): void {
 	if (stage == 0) {
 		const prepared: Result<int32, ForwardError> =
-			prepareFrame(forward, context, items, camera, lights, fbWidth(), fbHeight());
+			prepareFrame(forward, items, camera, lights, fbWidth(), fbHeight());
 		if (!prepared.ok) {
 			fail(`the 3D frame was refused, ${prepared.error.toString()}`);
 			return;
@@ -268,7 +268,7 @@ function drawAcrossCommit(): void {
 		return;
 	}
 	beginScreenPass(SCREEN_CLEAR);
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 	endPass();
 	commit();
 	fail("drawToScreen drew a frame prepared before the last commit");

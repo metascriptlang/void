@@ -21,6 +21,6 @@ const created: Result<PixelArtRenderer, PixelArtError> =
 	PixelArtRenderer.create(context, PixelArtSettings.full(), LOOK);
 if (created.ok) {
 	let renderer: PixelArtRenderer = created.value;
-	drawToScreen(renderer, context);
+	drawToScreen(renderer);
 }
 console.log("drawToScreen with no prepared frame returned");

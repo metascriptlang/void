@@ -39,6 +39,7 @@ import "./slotsCheck";
 import "./uniformPoolCheck";
 import "./lifetimeCheck";
 import "./storeCheck";
+import "./closeCheck";
 import "./textureCheck";
 import "./imageDecodeCheck";
 import "./scene3dCheck";

@@ -262,13 +262,13 @@ function init(): void {
 
 function drawB(slot: int32): void {
 	const prepared: Result<int32, ForwardError> =
-		prepareFrame(forward, contextB, items, camera, lights, fbWidth(), fbHeight());
+		prepareFrame(forward, items, camera, lights, fbWidth(), fbHeight());
 	if (!prepared.ok) {
 		stop(`cache B's frame was refused, ${prepared.error.toString()}`);
 		return;
 	}
 	beginScreenPass(SCREEN_CLEAR);
-	drawToScreen(forward, contextB);
+	drawToScreen(forward);
 	endPass();
 	commit();
 	if (voidCaptureGrab(slot) == 0) { stop("D3D11 readback failed"); }

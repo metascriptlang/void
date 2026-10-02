@@ -314,7 +314,7 @@ export function frameChurn(): void {
 	}
 	const _drawn: int32 = refresh(scene, items);
 	const rendered: Result<int32, ForwardError> =
-		renderFrame(forward, context, items, camera, lights, WIDTH, HEIGHT);
+		renderFrame(forward, items, camera, lights, WIDTH, HEIGHT);
 	if (!rendered.ok) {
 		console.log(`churn: the frame was refused, ${rendered.error.toString()}`);
 		stop(ChurnError.FrameRefused);

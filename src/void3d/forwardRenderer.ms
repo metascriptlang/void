@@ -3,7 +3,7 @@
 
 import { Vec4 } from "../math/math3d";
 import { Program } from "./gpu3d";
-import { PixelFormat, LoadAction, endPass, commit } from "../gpu/door";
+import { PixelFormat, LoadAction, PassState, endPass, commit, passState } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { Material, Phase } from "./material";
 import {
@@ -17,7 +17,15 @@ import {
 	beginPass,
 	beginScreenPass,
 } from "../gpu/target";
-import { DrawContext, DrawItem, MaterialId, MaterialError, addMaterial } from "./draw";
+import {
+	DrawContext,
+	DrawItem,
+	MaterialId,
+	MaterialError,
+	HandleError,
+	addMaterial,
+	releaseMaterial,
+} from "./draw";
 import { screenState } from "./screenFx";
 import {
 	Renderer,
@@ -28,9 +36,10 @@ import {
 	drawScreen,
 	closePrepare,
 	openScreen,
+	closeRenderer,
 } from "./renderer";
 
-export struct ForwardRenderer {
+export interface ForwardRenderer {
 	core: Renderer;
 	background: Vec4;
 	colorTarget: RenderTarget;
@@ -39,6 +48,7 @@ export struct ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
+	closed: boolean;
 }
 
 export enum ForwardError {
@@ -98,6 +108,7 @@ export function create(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
+		closed: false,
 	});
 }
 
@@ -121,13 +132,13 @@ function fromCore(error: RendererError): ForwardError {
 }
 
 // A new GPU context: the handles are dropped, not destroyed; the next resize makes the targets.
-function adoptContext(ref renderer: ForwardRenderer): void {
+function adoptContext(renderer: ForwardRenderer): void {
 	renderer.colorTarget = renderer.colorTarget.forgotten();
 	renderer.depthTarget = renderer.depthTarget.forgotten();
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
 }
 
-function resizeTargets(ref renderer: ForwardRenderer, width: int32, height: int32): void {
+function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): void {
 	const color: RenderTarget = renderer.colorTarget;
 	if (color.image != 0 && color.width == width && color.height == height) {
 		return;
@@ -138,20 +149,21 @@ function resizeTargets(ref renderer: ForwardRenderer, width: int32, height: int3
 	renderer.sceneDepth = renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH);
 }
 
-// One frame at the framebuffer's `width` × `height`: `items` index `context`'s meshes and
-// materials; `camera` and `lights` are the scene programs' uniform blocks (shader3dBlocks.glsl
-// vertexParams, lightParams). Answers how many items it was given. An item whose material names
+// One frame at the framebuffer's `width` × `height`: `items` index the meshes and materials of
+// the context the preset was made on; `camera` and `lights` are the scene programs' uniform
+// blocks (shader3dBlocks.glsl vertexParams, lightParams). Answers how many items it was given. An item whose material names
 // a program the core does not draw refuses the frame before anything changes.
 export function prepareFrame(
-	ref renderer: ForwardRenderer,
-	context: DrawContext,
+	renderer: ForwardRenderer,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
 	width: int32,
 	height: int32,
 ): Result<int32, ForwardError> {
+	if (renderer.closed) { stopOnClosed("prepareFrame"); }
 	renderer.core.openPrepare();
+	const context: DrawContext = renderer.core.context;
 	if (width <= 0 || height <= 0) {
 		return Result.err(ForwardError.TargetSize);
 	}
@@ -166,7 +178,7 @@ export function prepareFrame(
 		return Result.err(ForwardError.UniformsReplaced);
 	}
 	const began: Result<boolean, RendererError> =
-		beginFrame(renderer.core, context, items, camera, lights);
+		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
 	if (began.value) {
 		adoptContext(renderer);
@@ -176,7 +188,7 @@ export function prepareFrame(
 	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.asHandle();
 
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	drawPassLists(renderer.core, context, items, FORWARD_LAYOUT);
+	drawPassLists(renderer.core, items, FORWARD_LAYOUT);
 	endPass();
 	closePrepare(renderer.core);
 	return Result.ok((items.length as int32) - renderer.core.culledCount);
@@ -184,7 +196,7 @@ export function prepareFrame(
 
 function stopOnScreenDraw(error: RendererError): void {
 	if (error == RendererError.ForeignMesh || error == RendererError.ForeignMaterial) {
-		console.log("void3d: drawToScreen through a context that did not make the preset");
+		console.log("void3d: drawToScreen with a copy material or screen mesh of another context");
 		unreachable;
 	}
 	console.log(
@@ -196,16 +208,16 @@ function stopOnScreenDraw(error: RendererError): void {
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 // PENDING3D: screen-output-swapchain-only
 // PENDING3D: copy-opaque
-export function drawToScreen(ref renderer: ForwardRenderer, context: DrawContext): void {
+export function drawToScreen(renderer: ForwardRenderer): void {
+	if (renderer.closed) { stopOnClosed("drawToScreen"); }
 	openScreen(renderer.core);
 	const copied: Result<int32, RendererError> =
-		drawScreen(renderer.core, context, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
+		drawScreen(renderer.core, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
 	if (!copied.ok) { stopOnScreenDraw(copied.error); }
 }
 
 export function renderFrame(
-	ref renderer: ForwardRenderer,
-	context: DrawContext,
+	renderer: ForwardRenderer,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
@@ -213,10 +225,38 @@ export function renderFrame(
 	height: int32,
 ): Result<int32, ForwardError> {
 	const drawn: int32 =
-		try prepareFrame(renderer, context, items, camera, lights, width, height);
+		try prepareFrame(renderer, items, camera, lights, width, height);
 	beginScreenPass(SCREEN_CLEAR);
-	drawToScreen(renderer, context);
+	drawToScreen(renderer);
 	endPass();
 	commit();
 	return Result.ok(drawn);
+}
+
+export function closeForward(renderer: ForwardRenderer): void {
+	if (renderer.closed) { stopOnClosed("closeForward"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closeForward with a pass open; endPass ends it");
+		unreachable;
+	}
+	renderer.colorTarget = renderer.colorTarget.released();
+	renderer.depthTarget = renderer.depthTarget.released();
+	renderer.sampler = renderer.sampler.released();
+	const copy: Result<int32, HandleError> =
+		releaseMaterial(renderer.core.context, renderer.copyMaterial);
+	if (!copy.ok) {
+		console.log(`void3d: closeForward found its copy material ${copy.error.toString()}`);
+		unreachable;
+	}
+	if (!renderer.core.isClosed()) { closeRenderer(renderer.core); }
+	renderer.closed = true;
+}
+
+export function isClosed(this renderer: ForwardRenderer): boolean {
+	return renderer.closed;
+}
+
+function stopOnClosed(call: string): void {
+	console.log(`void3d: ${call} on a forward preset that was closed`);
+	unreachable;
 }

@@ -47,7 +47,7 @@ function resolvesOnGpu(
 	let drawing: DrawContext = context;
 	const items: Vec<DrawItem> = [];
 	const blocks: Vec<float32> = [];
-	const _began: Result<boolean, RendererError> = beginFrame(core, drawing, items, blocks, blocks);
+	const _began: Result<boolean, RendererError> = beginFrame(core, items, blocks, blocks);
 }
 
 function main(): int32 {

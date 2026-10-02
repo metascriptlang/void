@@ -9,8 +9,8 @@
 // closePrepare and openScreen, which hold its two halves to one sokol frame.
 //
 // It takes a Span<DrawItem> and the camera block, never a scene (docs/VOID3D.md, Porting
-// rules); the items' meshes and materials live in the caller's DrawContext. What it draws for
-// each material's program is its ProgramMap: the core's own, or the one a preset gives it.
+// rules); the items' meshes and materials live in the DrawContext it was made on. What it draws
+// for each material's program is its ProgramMap: the core's own, or the one a preset gives it.
 
 import {
 	Program,
@@ -24,10 +24,17 @@ import {
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
+	destroyBuffer,
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
 import { TargetLayout } from "../gpu/target";
-import { PassState, passState, UNIFORM_SLOTS, contextGeneration, frameIndex } from "../gpu/door";
+import {
+	PassState,
+	passState,
+	UNIFORM_SLOTS,
+	contextGeneration,
+	frameIndex,
+} from "../gpu/door";
 import {
 	DrawContext,
 	DrawItem,
@@ -35,6 +42,8 @@ import {
 	MaterialId,
 	MeshUploadError,
 	addMesh,
+	releaseMesh,
+	HandleError,
 	buryDoomed,
 	rebuildMeshes,
 	rebuildTextures,
@@ -43,14 +52,15 @@ import {
 	drawItem,
 	MODEL_SLOT,
 } from "./draw";
-import { UniformError, ownRange } from "./uniformPool";
+import { UniformError, ownRange, disownRange } from "./uniformPool";
 import { PassList, collect, filterFrustum, sortBackToFront, drawPassList } from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
 
-export struct Renderer {
+export interface Renderer {
+	context: DrawContext;
 	opaque: PassList;
 	alpha: PassList;
 	additive: PassList;
@@ -69,6 +79,7 @@ export struct Renderer {
 	prepared: boolean;
 	preparedFrame: uint32;
 	culledCount: int32;
+	closed: boolean;
 }
 
 export enum RendererError {
@@ -136,6 +147,7 @@ export function createDrawing(
 	const screen: Result<MeshId, MeshUploadError> = addMesh(context, screenMesh(0));
 	if (!screen.ok) { unreachable; }
 	return Result.ok({
+		context: context,
 		opaque: PassList.forPhase(Phase.Opaque),
 		alpha: PassList.forPhase(Phase.Alpha),
 		additive: PassList.forPhase(Phase.Additive),
@@ -150,17 +162,20 @@ export function createDrawing(
 		prepared: false,
 		preparedFrame: 0,
 		culledCount: 0,
+		closed: false,
 	});
 }
 
 // For whatever the renderer cannot see: the items moved, a material or a light changed.
-export function markChanged(ref renderer: Renderer): void {
+export function markChanged(renderer: Renderer): void {
+	if (renderer.closed) { stopOnClosed("markChanged"); }
 	renderer.changed = true;
 }
 
 // Whether the next frame could differ from the last one drawn: something was marked changed
 // or the GPU context is new. A preset adds its own inputs (the view, its settings).
 export function needsFrame(this renderer: Renderer): boolean {
+	if (renderer.closed) { return false; }
 	return renderer.changed || renderer.generation != contextGeneration();
 }
 
@@ -177,12 +192,13 @@ export function needsFrame(this renderer: Renderer): boolean {
 // carries its CPU data (draw.ms rebuildMeshes, rebuildTextures); what is left is whatever the
 // caller uploaded from buffers only it keeps.
 export function beginFrame(
-	ref renderer: Renderer,
-	context: DrawContext,
+	renderer: Renderer,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
 ): Result<boolean, RendererError> {
+	if (renderer.closed) { stopOnClosed("beginFrame"); }
+	const context: DrawContext = renderer.context;
 	if (!context.hasMesh(renderer.screenMesh)) {
 		return Result.err(meshError(context, renderer.screenMesh));
 	}
@@ -268,11 +284,12 @@ export function beginFrame(
 // its attachment layout), with the camera and lights applied to every item and each drawn with
 // the program beginFrame resolved for it: `items` must be the span that beginFrame accepted.
 export function drawPassLists(
-	ref renderer: Renderer,
-	context: DrawContext,
+	renderer: Renderer,
 	items: Span<DrawItem>,
 	targets: TargetLayout,
 ): void {
+	if (renderer.closed) { stopOnClosed("drawPassLists"); }
+	const context: DrawContext = renderer.context;
 	drawPassList(context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals);
 	drawPassList(context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals);
 	drawPassList(context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals);
@@ -281,11 +298,12 @@ export function drawPassLists(
 // ScreenFx.render: `material` (a Fullscreen-layout material in `context`, drawn with its own
 // program) over the whole current pass.
 export function drawScreen(
-	ref renderer: Renderer,
-	context: DrawContext,
+	renderer: Renderer,
 	material: MaterialId,
 	targets: TargetLayout,
 ): Result<int32, RendererError> {
+	if (renderer.closed) { stopOnClosed("drawScreen"); }
+	const context: DrawContext = renderer.context;
 	if (!context.hasMesh(renderer.screenMesh)) {
 		return Result.err(meshError(context, renderer.screenMesh));
 	}
@@ -337,6 +355,7 @@ function texturesFit(program: Program, material: Material): boolean {
 }
 
 export function openPrepare(this renderer: Renderer): void {
+	if (renderer.closed) { stopOnClosed("prepareFrame"); }
 	if (renderer.prepared) {
 		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
 		unreachable;
@@ -350,13 +369,14 @@ export function openPrepare(this renderer: Renderer): void {
 }
 
 // The frame's inputs are taken here, so a change made before the screen half is kept.
-export function closePrepare(ref renderer: Renderer): void {
+export function closePrepare(renderer: Renderer): void {
 	renderer.prepared = true;
 	renderer.preparedFrame = frameIndex();
 	renderer.changed = false;
 }
 
-export function openScreen(ref renderer: Renderer): void {
+export function openScreen(renderer: Renderer): void {
+	if (renderer.closed) { stopOnClosed("drawToScreen"); }
 	if (!renderer.prepared) {
 		console.log("void3d: drawToScreen with no prepared frame; call prepareFrame first");
 		unreachable;
@@ -372,4 +392,42 @@ export function openScreen(ref renderer: Renderer): void {
 		unreachable;
 	}
 	renderer.prepared = false;
+}
+
+export function closeRenderer(renderer: Renderer): void {
+	if (renderer.closed) { stopOnClosed("closeRenderer"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closeRenderer with a pass open; endPass ends it");
+		unreachable;
+	}
+	const context: DrawContext = renderer.context;
+	if (!context.hasMesh(renderer.screenMesh)) { stopOnLostScreenMesh(context, renderer); }
+	const screen: int32 = renderer.screenMesh.index;
+	const buffer: uint32 = context.meshes[screen].vertexBuffer;
+	if (buffer != 0 && renderer.generation == contextGeneration()) { destroyBuffer(buffer); }
+	context.meshes[screen].vertexBuffer = 0;
+	const released: Result<int32, HandleError> = releaseMesh(context, renderer.screenMesh);
+	if (!released.ok) { stopOnLostScreenMesh(context, renderer); }
+	const camera: Result<int32, UniformError> = disownRange(context.uniforms, renderer.cameraBlock);
+	const light: Result<int32, UniformError> = disownRange(context.uniforms, renderer.lightBlock);
+	if (!camera.ok || !light.ok) {
+		console.log("void3d: closeRenderer found its camera or light block already given back");
+		unreachable;
+	}
+	renderer.closed = true;
+}
+
+export function isClosed(this renderer: Renderer): boolean {
+	return renderer.closed;
+}
+
+function stopOnClosed(call: string): void {
+	console.log(`void3d: ${call} on a renderer that was closed`);
+	unreachable;
+}
+
+function stopOnLostScreenMesh(context: DrawContext, renderer: Renderer): void {
+	const holders: int32 = context.meshHolders[renderer.screenMesh.index];
+	console.log(`void3d: closeRenderer found its screen mesh released (${holders} holders)`);
+	unreachable;
 }

@@ -1399,8 +1399,8 @@ function frameForward(share: FrameShare): Result<int32, CampfireError> {
 	resolved.value.writeCameraBlock(cameraParams);
 	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
 	const rendered: Result<int32, ForwardError> = share == FrameShare.Alone ?
-		renderForwardFrame(forward, context, sceneItems, cameraParams, lightParams, width, height) :
-		prepareForwardFrame(forward, context, sceneItems, cameraParams, lightParams, width, height);
+		renderForwardFrame(forward, sceneItems, cameraParams, lightParams, width, height) :
+		prepareForwardFrame(forward, sceneItems, cameraParams, lightParams, width, height);
 	if (!rendered.ok) {
 		console.log(`campfire: the forward frame was refused, ${rendered.error.toString()}`);
 		return Result.err(CampfireError.ForwardFrameRefused);
@@ -1425,9 +1425,9 @@ export function prepareCampfire(): Result<int32, CampfireError> {
 
 export function drawCampfireToScreen(): void {
 	if (forwardWanted) {
-		drawForwardToScreen(forward, context);
+		drawForwardToScreen(forward);
 	} else {
-		drawToScreen(renderer, context);
+		drawToScreen(renderer);
 	}
 }
 
@@ -1486,8 +1486,8 @@ function framePixelArt(share: FrameShare): Result<int32, CampfireError> {
 	if (!stepScene()) { return Result.err(CampfireError.SceneStepFailed); }
 	applyLookSchedule();
 	const rendered: Result<int32, PixelArtError> = share == FrameShare.Alone ?
-		renderFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value) :
-		prepareFrame(renderer, context, sceneItems, cameraParams, lightParams, viewed.value);
+		renderFrame(renderer, sceneItems, cameraParams, lightParams, viewed.value) :
+		prepareFrame(renderer, sceneItems, cameraParams, lightParams, viewed.value);
 	if (!rendered.ok) {
 		console.log(`campfire: the frame was refused, ${rendered.error.toString()}`);
 		return Result.err(CampfireError.PixelArtFrameRefused);

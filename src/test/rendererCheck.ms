@@ -380,10 +380,10 @@ test "a camera or light block of the wrong length refuses the frame before it ad
 		const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
 		const longLights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH + 1);
 		const noCamera: Result<int32, PixelArtError> =
-			renderFrame(renderer, context, items, shortCamera, lights, drawn);
+			renderFrame(renderer, items, shortCamera, lights, drawn);
 		assert !noCamera.ok && noCamera.error == PixelArtError.CameraBlockLength;
 		const noLights: Result<int32, PixelArtError> =
-			renderFrame(renderer, context, items, camera, longLights, drawn);
+			renderFrame(renderer, items, camera, longLights, drawn);
 		assert !noLights.ok && noLights.error == PixelArtError.LightBlockLength;
 		assert renderer.core.generation == 0 && renderer.view.width == 0;
 	}
@@ -438,7 +438,7 @@ test "the pixel-art preset refuses a material naming a program it does not draw"
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const refused: Result<int32, PixelArtError> =
-		renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
+		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 	assert !refused.ok && refused.error == PixelArtError.ProgramNotDrawn;
 	assert renderer.core.generation == 0 && renderer.view.width == 0;
 }
@@ -453,7 +453,7 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	let atZero: PixelArtRenderer = presetOver(zero, Program.Lit, 0.0);
 	const zeroItems: Vec<DrawItem> = [itemOnItsLayout(zero, zero.lastMaterial())];
 	const noLevels: Result<int32, PixelArtError> =
-		renderFrame(atZero, zero, zeroItems, camera, lights, drawn);
+		renderFrame(atZero, zeroItems, camera, lights, drawn);
 	assert !noLevels.ok && noLevels.error == PixelArtError.RampLevels;
 	let texturedZero: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let texturedAtZero: PixelArtRenderer = presetOver(texturedZero, Program.LitTextured, 0.0);
@@ -461,13 +461,13 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 		itemOnItsLayout(texturedZero, texturedZero.lastMaterial()),
 	];
 	let texturedLevels: Result<int32, PixelArtError> =
-		renderFrame(texturedAtZero, texturedZero, texturedItems, camera, lights, drawn);
+		renderFrame(texturedAtZero, texturedItems, camera, lights, drawn);
 	assert !texturedLevels.ok && texturedLevels.error == PixelArtError.RampLevels;
 	let bare: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let withoutBlock: PixelArtRenderer = presetOver(bare, Program.Lit, -1.0);
 	const bareItems: Vec<DrawItem> = [itemOnItsLayout(bare, bare.lastMaterial())];
 	const noBlock: Result<int32, PixelArtError> =
-		renderFrame(withoutBlock, bare, bareItems, camera, lights, drawn);
+		renderFrame(withoutBlock, bareItems, camera, lights, drawn);
 	assert !noBlock.ok && noBlock.error == PixelArtError.MaterialBlock;
 	let notANumber: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atNaN: PixelArtRenderer = presetOver(notANumber, Program.Lit, 4.0);
@@ -480,13 +480,13 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 		notANumber.materialAt(nanMaterial),
 	)];
 	const nanLevels: Result<int32, PixelArtError> =
-		renderFrame(atNaN, notANumber, nanItems, camera, lights, drawn);
+		renderFrame(atNaN, nanItems, camera, lights, drawn);
 	assert !nanLevels.ok && nanLevels.error == PixelArtError.RampLevels;
 	let four: DrawContext = DrawContext.withUniformCapacity(capacity);
 	let atFour: PixelArtRenderer = presetOver(four, Program.Lit, 4.0);
 	const fourItems: Vec<DrawItem> = [itemOnItsLayout(four, four.lastMaterial())];
 	const past: Result<int32, PixelArtError> =
-		renderFrame(atFour, four, fourItems, shortCamera, lights, drawn);
+		renderFrame(atFour, fourItems, shortCamera, lights, drawn);
 	assert !past.ok && past.error == PixelArtError.CameraBlockLength;
 	assert atZero.core.generation == 0 && withoutBlock.core.generation == 0;
 }
@@ -519,7 +519,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 				if (!material.ok) { return; }
 				const items: Vec<DrawItem> = [itemOnItsLayout(context, material.value)];
 				const result: Result<int32, PixelArtError> =
-					renderFrame(renderer, context, items, shortCamera, lights, drawn);
+					renderFrame(renderer, items, shortCamera, lights, drawn);
 				const stepped: boolean = light != 0.0 && levels == 0.0;
 				const expected: PixelArtError =
 					stepped ? PixelArtError.RampLevels : PixelArtError.CameraBlockLength;
@@ -541,12 +541,12 @@ test "a released material or mesh refuses the frame by name" {
 	assert releaseMesh(context, item.mesh).ok;
 	const noMesh: Vec<DrawItem> = [item];
 	const meshGone: Result<int32, PixelArtError> =
-		renderFrame(renderer, context, noMesh, camera, lights, drawn);
+		renderFrame(renderer, noMesh, camera, lights, drawn);
 	assert !meshGone.ok && meshGone.error == PixelArtError.StaleMesh;
 	assert releaseMaterial(context, material).ok;
 	const noMaterial: Vec<DrawItem> = [itemOnItsLayout(context, material)];
 	const materialGone: Result<int32, PixelArtError> =
-		renderFrame(renderer, context, noMaterial, camera, lights, drawn);
+		renderFrame(renderer, noMaterial, camera, lights, drawn);
 	assert !materialGone.ok && materialGone.error == PixelArtError.StaleMaterial;
 	assert renderer.core.generation == 0;
 }
@@ -576,7 +576,7 @@ test "a material's block is its own, and a block put in by hand is refused" {
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const refused: Result<int32, PixelArtError> =
-		renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
+		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 	assert !refused.ok && refused.error == PixelArtError.UniformsReplaced;
 	assert renderer.core.generation == 0;
 }
@@ -603,7 +603,7 @@ test "a billboard block too short to hold the ramp levels is refused by the core
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 		const result: Result<int32, PixelArtError> =
-			renderFrame(renderer, context, items, camera, lights, view(1080, 2400, 360, 1, 0));
+			renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
 		assert !result.ok && result.error == PixelArtError.MaterialBlock;
 		assert renderer.core.generation == 0;
 	}

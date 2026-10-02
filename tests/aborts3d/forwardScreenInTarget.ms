@@ -22,10 +22,10 @@ function frame(): void {
 	for (let i = 0; i < VERTEX_UNIFORM_LENGTH; i++) { camera[i] = 0.0; }
 	for (let i = 0; i < LIGHT_UNIFORM_LENGTH; i++) { lights[i] = 0.0; }
 	let prepared: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, camera, lights, 64, 64);
+		prepareFrame(forward, items, camera, lights, 64, 64);
 	if (!prepared.ok) { unreachable; }
 	beginPass(forward.sceneColors, forward.sceneDepth);
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 	console.log("drawToScreen into a target returned");
 	process.exit(0);
 }

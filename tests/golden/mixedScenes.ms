@@ -152,7 +152,7 @@ function buildBoxes(): void {
 export function mixedVoid3dTarget(): Scene2D {
 	buildBoxes();
 	const prepared: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, camera, lights, TARGET_WIDTH, TARGET_HEIGHT);
+		prepareFrame(forward, items, camera, lights, TARGET_WIDTH, TARGET_HEIGHT);
 	if (!prepared.ok) {
 		console.log(`FAIL mixed/void3dTarget: the 3D frame was refused, ${prepared.error.toString()}`);
 		unreachable;
@@ -170,7 +170,7 @@ export function mixedVoid3dTarget(): Scene2D {
 export function mixedVoid3dTranslucentTarget(): Scene2D {
 	buildBoxes();
 	const prepared: Result<int32, ForwardError> =
-		prepareFrame(translucent, context, items, camera, lights, TARGET_WIDTH, TARGET_HEIGHT);
+		prepareFrame(translucent, items, camera, lights, TARGET_WIDTH, TARGET_HEIGHT);
 	if (!prepared.ok) {
 		console.log(`FAIL mixed/void3dTranslucentTarget: the 3D frame was refused, ` +
 			`${prepared.error.toString()}`);

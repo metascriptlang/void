@@ -39,7 +39,7 @@ function frame(): void {
 	if (created.ok) {
 		let renderer: PixelArtRenderer = created.value;
 		const _prepared: Result<int32, PixelArtError> =
-			prepareFrame(renderer, context, items, blocks, blocks, VIEW);
+			prepareFrame(renderer, items, blocks, blocks, VIEW);
 	}
 }
 

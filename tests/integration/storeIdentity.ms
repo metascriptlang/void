@@ -236,17 +236,17 @@ function twoStores(): void {
 	for (let i = 0; i < LIGHT_UNIFORM_LENGTH; i++) { lights[i] = 0.0; }
 	const own: Vec<DrawItem> = [{ mesh: meshB, material: materialB, world: identity() }];
 	const ownFrame: Result<boolean, RendererError> =
-		beginFrame(rendererB, b, own, camera, lights);
+		beginFrame(rendererB, own, camera, lights);
 	if (!ownFrame.ok) { console.log(`store identity: own frame ${ownFrame.error.toString()}`); }
 	check("B draws its own item", ownFrame.ok);
 	const foreign: Vec<DrawItem> = [{ mesh: meshA, material: materialA, world: identity() }];
 	const foreignFrame: Result<boolean, RendererError> =
-		beginFrame(rendererB, b, foreign, camera, lights);
+		beginFrame(rendererB, foreign, camera, lights);
 	check("B refuses to draw A's item by name",
 		!foreignFrame.ok && foreignFrame.error == RendererError.ForeignMesh);
 	const crossed: Vec<DrawItem> = [{ mesh: meshB, material: materialA, world: identity() }];
 	const crossedFrame: Result<boolean, RendererError> =
-		beginFrame(rendererB, b, crossed, camera, lights);
+		beginFrame(rendererB, crossed, camera, lights);
 	check("B refuses A's material on its own mesh by name",
 		!crossedFrame.ok && crossedFrame.error == RendererError.ForeignMaterial);
 }
@@ -354,7 +354,7 @@ function forwardReplaced(): void {
 	const generation: int32 = forward.core.generation;
 	forwardContext.materials[copy].uniforms = spare;
 	const refused: Result<int32, ForwardError> = renderForward(
-		forward, forwardContext, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
+		forward, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
 	);
 	check("the forward preset refuses its replaced copy block before any pass",
 		!refused.ok && refused.error == ForwardError.UniformsReplaced);
@@ -373,7 +373,7 @@ function pixelArtReplaced(post: boolean): void {
 	const generation: int32 = pixelArt.core.generation;
 	pixelContext.materials[screen].uniforms = spare;
 	const refused: Result<int32, PixelArtError> = renderPixelArt(
-		pixelArt, pixelContext, NO_ITEMS, presetCamera, presetLights, VIEW,
+		pixelArt, NO_ITEMS, presetCamera, presetLights, VIEW,
 	);
 	const which: string = post ? "post" : "blit";
 	check(`the pixel-art preset refuses its replaced ${which} block before any pass`,
@@ -396,12 +396,12 @@ function init(): void {
 function frame(): void {
 	if (frames == 0) {
 		const drawn = renderForward(
-			forward, forwardContext, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
+			forward, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
 		);
 		check("the forward preset draws a good frame first", drawn.ok);
 	} else if (frames == 1) {
 		const drawn = renderPixelArt(
-			pixelArt, pixelContext, NO_ITEMS, presetCamera, presetLights, VIEW,
+			pixelArt, NO_ITEMS, presetCamera, presetLights, VIEW,
 		);
 		check("the pixel-art preset draws a good frame first", drawn.ok);
 	} else if (frames == 2) {
@@ -409,7 +409,7 @@ function frame(): void {
 		pixelArtReplaced(true);
 		pixelArtReplaced(false);
 		const drawn = renderForward(
-			survivor, survivorContext, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
+			survivor, NO_ITEMS, presetCamera, presetLights, SIDE, SIDE,
 		);
 		check("a surviving context draws in the same frame", drawn.ok);
 		check("the survivor's frame reads back", voidCaptureGrab(0) == 1);

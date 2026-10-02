@@ -19,7 +19,7 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "./gpu3d";
-import { PixelFormat, LoadAction, endPass, commit } from "../gpu/door";
+import { PixelFormat, LoadAction, PassState, endPass, commit, passState } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { originTopLeft, depthZeroToOne } from "../gpu/door";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
@@ -40,7 +40,9 @@ import {
 	DrawItem,
 	MaterialId,
 	MaterialError,
+	HandleError,
 	addMaterial,
+	releaseMaterial,
 	reserveUniforms,
 	writeUniforms,
 } from "./draw";
@@ -53,6 +55,7 @@ import {
 	fill,
 	upload,
 	forgetGpu,
+	closePalette,
 } from "./palette";
 import { screenState } from "./screenFx";
 import {
@@ -64,6 +67,7 @@ import {
 	drawScreen,
 	closePrepare,
 	openScreen,
+	closeRenderer,
 } from "./renderer";
 
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
@@ -164,7 +168,7 @@ export enum PixelArtError {
 	RampLevels,
 }
 
-export struct PixelArtRenderer {
+export interface PixelArtRenderer {
 	core: Renderer;
 	settings: PixelArtSettings;
 	look: PixelArtLook;
@@ -186,6 +190,7 @@ export struct PixelArtRenderer {
 	blitMaterial: MaterialId;
 	// The view the last frame drew.
 	view: LowResView;
+	closed: boolean;
 }
 
 // Floats of the uniform pool the preset needs, the core's blocks included.
@@ -359,16 +364,19 @@ export function create(
 		postMaterial: post.value,
 		blitMaterial: blit.value,
 		view: NO_VIEW,
+		closed: false,
 	});
 }
 
-export function setSettings(ref renderer: PixelArtRenderer, settings: PixelArtSettings): void {
+export function setSettings(renderer: PixelArtRenderer, settings: PixelArtSettings): void {
+	if (renderer.closed) { stopOnClosed("setSettings"); }
 	renderer.settings = settings;
 	renderer.stages = planStages(settings);
 	renderer.core.changed = true;
 }
 
-export function setLook(ref renderer: PixelArtRenderer, look: PixelArtLook): void {
+export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
+	if (renderer.closed) { stopOnClosed("setLook"); }
 	renderer.look = look;
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, look.background);
 	renderer.core.changed = true;
@@ -377,9 +385,10 @@ export function setLook(ref renderer: PixelArtRenderer, look: PixelArtLook): voi
 // Rebuilds the LUT for `palette` (0xRRGGBB colors); the next frame uploads it. Turning the
 // palette on or off is a setting.
 export function setPalette(
-	ref renderer: PixelArtRenderer,
+	renderer: PixelArtRenderer,
 	palette: Span<uint32>,
 ): Result<int32, PaletteError> {
+	if (renderer.closed) { stopOnClosed("setPalette"); }
 	const written: int32 = try fill(renderer.palette, palette);
 	renderer.core.changed = true;
 	return Result.ok(written);
@@ -388,6 +397,7 @@ export function setPalette(
 // Whether a frame with `view` would differ from the last one drawn: the core's inputs, or a
 // new view (size or sub-pixel offset). The host may skip the frame when it would not.
 export function needsFrame(this renderer: PixelArtRenderer, view: LowResView): boolean {
+	if (renderer.closed) { return false; }
 	return renderer.core.needsFrame() || !view.sameAs(renderer.view);
 }
 
@@ -399,6 +409,7 @@ export function viewFor(
 	remainderX: float32,
 	remainderY: float32,
 ): Result<LowResView, ViewError> {
+	if (renderer.closed) { stopOnClosed("viewFor"); }
 	const settings: PixelArtSettings = renderer.settings;
 	const view: LowResView = try lowResView(
 		framebufferWidth,
@@ -412,7 +423,7 @@ export function viewFor(
 
 // A new GPU context: the preset's handles are dropped, not destroyed, and made again from
 // what the CPU side kept (targets by the next resize, the LUT by the next upload).
-function adoptContext(ref renderer: PixelArtRenderer): void {
+function adoptContext(renderer: PixelArtRenderer): void {
 	renderer.colorTarget = renderer.colorTarget.forgotten();
 	renderer.normalTarget = renderer.normalTarget.forgotten();
 	renderer.depthTarget = renderer.depthTarget.forgotten();
@@ -421,7 +432,7 @@ function adoptContext(ref renderer: PixelArtRenderer): void {
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
 }
 
-function resizeTargets(ref renderer: PixelArtRenderer, width: int32, height: int32): void {
+function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32): void {
 	const color: RenderTarget = renderer.colorTarget;
 	if (color.image != 0 && color.width == width && color.height == height) {
 		return;
@@ -439,7 +450,8 @@ function resizeTargets(ref renderer: PixelArtRenderer, width: int32, height: int
 
 // The screen materials sample the targets and the LUT, whose views change with a resize, a
 // palette upload or a new context; rewriting them each frame costs a few stores.
-function bindScreenTextures(ref renderer: PixelArtRenderer, context: DrawContext): void {
+function bindScreenTextures(renderer: PixelArtRenderer): void {
+	const context: DrawContext = renderer.core.context;
 	const sampler: uint32 = renderer.sampler.asHandle();
 	const packedDepth: boolean = renderer.settings.depthSource == DepthSource.NormalAlpha;
 	const post: int32 = renderer.postMaterial.index;
@@ -458,29 +470,25 @@ function bindScreenTextures(ref renderer: PixelArtRenderer, context: DrawContext
 	context.materials[blit].sampler0 = sampler;
 }
 
-function drawScene(
-	ref renderer: PixelArtRenderer,
-	context: DrawContext,
-	items: Span<DrawItem>,
-): void {
+function drawScene(renderer: PixelArtRenderer, items: Span<DrawItem>): void {
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	drawPassLists(renderer.core, context, items, SCENE_LAYOUT);
+	drawPassLists(renderer.core, items, SCENE_LAYOUT);
 	endPass();
 }
 
 // prepareFrame refused the frame before any pass if either screen material, its texture, its block
 // or the screen mesh were gone.
-function drawPost(ref renderer: PixelArtRenderer, context: DrawContext): void {
+function drawPost(renderer: PixelArtRenderer): void {
 	beginPass(renderer.postColors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> =
-		drawScreen(renderer.core, context, renderer.postMaterial, POST_LAYOUT);
+		drawScreen(renderer.core, renderer.postMaterial, POST_LAYOUT);
 	if (!drawn.ok) { unreachable; }
 	endPass();
 }
 
-function drawBlit(ref renderer: PixelArtRenderer, context: DrawContext): void {
+function drawBlit(renderer: PixelArtRenderer): void {
 	const drawn: Result<int32, RendererError> =
-		drawScreen(renderer.core, context, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
+		drawScreen(renderer.core, renderer.blitMaterial, SWAPCHAIN_LAYOUT);
 	if (!drawn.ok) { stopOnScreenDraw(drawn.error); }
 }
 
@@ -546,20 +554,21 @@ function rampsHaveLevels(
 	return true;
 }
 
-// One frame: `items` index `context`'s meshes and materials; `camera` and `lights` are the
-// scene programs' uniform blocks (shader3dBlocks.glsl vertexParams, lightParams); `view` comes
-// from viewFor. Answers how many items it was given. Allocates nothing unless the item count
-// grew. An item the preset cannot draw, or whose ramp has no levels, refuses the frame before
-// anything changes.
+// One frame: `items` index the meshes and materials of the context the preset was made on;
+// `camera` and `lights` are the scene programs' uniform blocks (shader3dBlocks.glsl
+// vertexParams, lightParams); `view` comes from viewFor. Answers how many items it was given.
+// Allocates nothing unless the item count grew. An item the preset cannot draw, or whose ramp
+// has no levels, refuses the frame before anything changes.
 export function prepareFrame(
-	ref renderer: PixelArtRenderer,
-	context: DrawContext,
+	renderer: PixelArtRenderer,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
+	if (renderer.closed) { stopOnClosed("prepareFrame"); }
 	renderer.core.openPrepare();
+	const context: DrawContext = renderer.core.context;
 	const screens: boolean =
 		context.hasMaterial(renderer.postMaterial) && context.hasMaterial(renderer.blitMaterial);
 	if (!screens) {
@@ -577,14 +586,14 @@ export function prepareFrame(
 		return Result.err(PixelArtError.RampLevels);
 	}
 	const began: Result<boolean, RendererError> =
-		beginFrame(renderer.core, context, items, camera, lights);
+		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
 	if (began.value) {
 		adoptContext(renderer);
 	}
 	resizeTargets(renderer, view.width, view.height);
 	upload(renderer.palette);
-	bindScreenTextures(renderer, context);
+	bindScreenTextures(renderer);
 	renderer.look.writePostParams(
 		renderer.settings,
 		renderer.palette.levels,
@@ -600,8 +609,8 @@ export function prepareFrame(
 
 	for (const stage of renderer.stages) {
 		match (stage) {
-			Stage.Scene => { drawScene(renderer, context, items); },
-			Stage.Post => { drawPost(renderer, context); },
+			Stage.Scene => { drawScene(renderer, items); },
+			Stage.Post => { drawPost(renderer); },
 			Stage.Blit => {},
 		};
 	}
@@ -612,7 +621,7 @@ export function prepareFrame(
 
 function stopOnScreenDraw(error: RendererError): void {
 	if (error == RendererError.ForeignMesh || error == RendererError.ForeignMaterial) {
-		console.log("void3d: drawToScreen through a context that did not make the preset");
+		console.log("void3d: drawToScreen with a blit material or screen mesh of another context");
 		unreachable;
 	}
 	console.log(
@@ -624,23 +633,55 @@ function stopOnScreenDraw(error: RendererError): void {
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
 // PENDING3D: screen-output-swapchain-only
 // PENDING3D: copy-opaque
-export function drawToScreen(ref renderer: PixelArtRenderer, context: DrawContext): void {
+export function drawToScreen(renderer: PixelArtRenderer): void {
+	if (renderer.closed) { stopOnClosed("drawToScreen"); }
 	openScreen(renderer.core);
-	drawBlit(renderer, context);
+	drawBlit(renderer);
 }
 
 export function renderFrame(
-	ref renderer: PixelArtRenderer,
-	context: DrawContext,
+	renderer: PixelArtRenderer,
 	items: Span<DrawItem>,
 	camera: Span<float32>,
 	lights: Span<float32>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
-	const drawn: int32 = try prepareFrame(renderer, context, items, camera, lights, view);
+	const drawn: int32 = try prepareFrame(renderer, items, camera, lights, view);
 	beginScreenPass(SCREEN_CLEAR);
-	drawToScreen(renderer, context);
+	drawToScreen(renderer);
 	endPass();
 	commit();
 	return Result.ok(drawn);
+}
+
+export function closePixelArt(renderer: PixelArtRenderer): void {
+	if (renderer.closed) { stopOnClosed("closePixelArt"); }
+	if (passState() != PassState.None) {
+		console.log("void3d: closePixelArt with a pass open; endPass ends it");
+		unreachable;
+	}
+	renderer.colorTarget = renderer.colorTarget.released();
+	renderer.normalTarget = renderer.normalTarget.released();
+	renderer.depthTarget = renderer.depthTarget.released();
+	renderer.postTarget = renderer.postTarget.released();
+	renderer.sampler = renderer.sampler.released();
+	const context: DrawContext = renderer.core.context;
+	const post: Result<int32, HandleError> = releaseMaterial(context, renderer.postMaterial);
+	const blit: Result<int32, HandleError> = releaseMaterial(context, renderer.blitMaterial);
+	if (!post.ok || !blit.ok) {
+		console.log("void3d: closePixelArt found its post or blit material already released");
+		unreachable;
+	}
+	if (!renderer.palette.isClosed()) { closePalette(renderer.palette); }
+	if (!renderer.core.isClosed()) { closeRenderer(renderer.core); }
+	renderer.closed = true;
+}
+
+export function isClosed(this renderer: PixelArtRenderer): boolean {
+	return renderer.closed;
+}
+
+function stopOnClosed(call: string): void {
+	console.log(`void3d: ${call} on a pixel-art preset that was closed`);
+	unreachable;
 }

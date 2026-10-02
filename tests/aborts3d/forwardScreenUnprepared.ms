@@ -12,6 +12,6 @@ const created: Result<ForwardRenderer, ForwardError> =
 	ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
 if (created.ok) {
 	let forward: ForwardRenderer = created.value;
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 }
 console.log("drawToScreen with no prepared frame returned");

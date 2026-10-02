@@ -425,19 +425,19 @@ function checkRemade(): void {
 function drawn(): int32 {
 	if (pixelArt) {
 		let frame: Result<int32, PixelArtError> =
-			renderPixelArt(preset, context, items, cameraBlock, lights, SCREEN_MAPPING);
+			renderPixelArt(preset, items, cameraBlock, lights, SCREEN_MAPPING);
 		if (frame.ok) { return frame.value; }
 		fail(`the pixel-art preset refused the model: ${frame.error.toString()}`);
 		return 0;
 	}
 	let frame: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, cameraBlock, lights, WIDTH, HEIGHT);
+		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
 		fail(`the forward preset refused the model: ${frame.error.toString()}`);
 		return 0;
 	}
 	beginScreenPass(BACKGROUND);
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 	endPass();
 	commit();
 	return frame.value;

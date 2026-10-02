@@ -504,7 +504,7 @@ function checkRemade(): void {
 
 function presetFrame(ref renderer: PixelArtRenderer): int32 {
 	let frame: Result<int32, PixelArtError> =
-		renderPixelArt(renderer, context, items, cameraBlock, lights, SCREEN_MAPPING);
+		renderPixelArt(renderer, items, cameraBlock, lights, SCREEN_MAPPING);
 	if (frame.ok) { return frame.value; }
 	fail(`the pixel-art preset refused the textured cube: ${frame.error.toString()}`);
 	return 0;
@@ -514,13 +514,13 @@ function drawn(): int32 {
 	if (outlined) { return presetFrame(outlinedPreset); }
 	if (pixelArt) { return presetFrame(preset); }
 	let frame: Result<int32, ForwardError> =
-		prepareFrame(forward, context, items, cameraBlock, lights, WIDTH, HEIGHT);
+		prepareFrame(forward, items, cameraBlock, lights, WIDTH, HEIGHT);
 	if (!frame.ok) {
 		fail(`the forward preset refused the textured cube: ${frame.error.toString()}`);
 		return 0;
 	}
 	beginScreenPass(BACKGROUND);
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 	endPass();
 	commit();
 	return frame.value;

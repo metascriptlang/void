@@ -171,30 +171,33 @@ test "the core refuses another context's mesh or material by name before it writ
 	const foreignMesh: Vec<DrawItem> =
 		[{ mesh: a.meshAt(0), material: a.materialAt(0), world: identity() }];
 	const meshFrame: Result<boolean, RendererError> =
-		beginFrame(core, b, foreignMesh, camera, lights);
+		beginFrame(core, foreignMesh, camera, lights);
 	assert !meshFrame.ok && meshFrame.error == RendererError.ForeignMesh;
 	const foreignMaterial: Vec<DrawItem> =
 		[{ mesh: b.meshAt(0), material: a.materialAt(0), world: identity() }];
 	const materialFrame: Result<boolean, RendererError> =
-		beginFrame(core, b, foreignMaterial, camera, lights);
+		beginFrame(core, foreignMaterial, camera, lights);
 	assert !materialFrame.ok && materialFrame.error == RendererError.ForeignMaterial;
 	assert core.generation == 0 && core.drawn.length == 0;
 }
 
-test "both presets refuse a frame through a context that did not make them" {
+test "both presets draw the context they were made on and refuse another's item by name" {
 	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-	let none: Vec<DrawItem> = [];
+	let other: DrawContext = contextOf(1, 1);
+	let foreign: Vec<DrawItem> =
+		[{ mesh: other.meshAt(0), material: other.materialAt(0), world: identity() }];
 	let background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 	let made: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
-	let other: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 	const forward: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(made, background);
 	assert forward.ok;
 	if (!forward.ok) { return; }
 	let copy: ForwardRenderer = forward.value;
+	assert copy.core.context.serial == made.serial;
 	const copied: Result<int32, ForwardError> =
-		renderFrame(copy, other, none, camera, lights, 640, 480);
-	assert !copied.ok && copied.error == ForwardError.ForeignMaterial;
+		renderFrame(copy, foreign, camera, lights, 640, 480);
+	assert !copied.ok && copied.error == ForwardError.ForeignMesh;
+	assert copy.core.generation == 0 && copy.colorTarget.image == 0;
 	let look: PixelArtLook = {
 		background: background,
 		outline: {
@@ -208,15 +211,16 @@ test "both presets refuse a frame through a context that did not make them" {
 	};
 	let view: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	let pixelContext: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
-	let pixelOther: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
 	const preset: Result<PixelArtRenderer, PixelArtError> =
 		PixelArtRenderer.create(pixelContext, PixelArtSettings.full(), look);
 	assert preset.ok;
 	if (!preset.ok) { return; }
 	let pixelArt: PixelArtRenderer = preset.value;
+	assert pixelArt.core.context.serial == pixelContext.serial;
 	const drawn: Result<int32, PixelArtError> =
-		renderPixelArt(pixelArt, pixelOther, none, camera, lights, view);
-	assert !drawn.ok && drawn.error == PixelArtError.ForeignMaterial;
+		renderPixelArt(pixelArt, foreign, camera, lights, view);
+	assert !drawn.ok && drawn.error == PixelArtError.ForeignMesh;
+	assert pixelArt.core.generation == 0 && pixelArt.colorTarget.image == 0;
 }
 
 test "a scene refuses another context's mesh or material by name and keeps its pins" {
@@ -279,7 +283,7 @@ test "both presets refuse a frame whose own screen material's block was replaced
 	let copy: ForwardRenderer = forward.value;
 	made.materials[copy.copyMaterial.index].uniforms = spare.value;
 	const copied: Result<int32, ForwardError> =
-		renderFrame(copy, made, none, camera, lights, 640, 480);
+		renderFrame(copy, none, camera, lights, 640, 480);
 	assert !copied.ok && copied.error == ForwardError.UniformsReplaced;
 	assert copy.core.generation == 0 && copy.colorTarget.image == 0;
 	let look: PixelArtLook = {
@@ -305,7 +309,7 @@ test "both presets refuse a frame whose own screen material's block was replaced
 		const screen: MaterialId = post ? pixelArt.postMaterial : pixelArt.blitMaterial;
 		context.materials[screen.index].uniforms = block.value;
 		const drawn: Result<int32, PixelArtError> =
-			renderPixelArt(pixelArt, context, none, camera, lights, view);
+			renderPixelArt(pixelArt, none, camera, lights, view);
 		assert !drawn.ok && drawn.error == PixelArtError.UniformsReplaced;
 		assert pixelArt.core.generation == 0;
 	}

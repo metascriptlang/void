@@ -13,6 +13,6 @@ const created: Result<ForwardRenderer, ForwardError> =
 if (created.ok) {
 	let forward: ForwardRenderer = created.value;
 	forward.core.prepared = true;
-	drawToScreen(forward, context);
+	drawToScreen(forward);
 }
 console.log("drawToScreen outside a screen pass returned");
