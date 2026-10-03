@@ -186,6 +186,39 @@ function setIdentityMat(): void {
 	ctx.curMat = NO_COLOR_MATRIX;
 }
 
+function clearEffect(): void {
+	const ctx: DrawContext2D = currentContext();
+	ctx.curEffect = NO_EFFECT;
+	setIdentityMat();
+	ctx.curAdd = rgba(0.0, 0.0, 0.0, 0.0);
+	ctx.curKey = rgba(0.0, 0.0, 0.0, 0.0);
+	ctx.curHasEffect = false;
+}
+
+function loadEffect(effect: int32): void {
+	const ctx: DrawContext2D = currentContext();
+	ctx.curMat = effectMatrix(effect);
+	ctx.curAdd = rgba(
+		effectField(effect, 16), effectField(effect, 17),
+		effectField(effect, 18), effectField(effect, 19),
+	);
+	ctx.curKey = rgba(
+		effectField(effect, 20), effectField(effect, 21),
+		effectField(effect, 22), effectField(effect, 23),
+	);
+}
+
+function restoreEffect(effect: int32): void {
+	if (effect == NO_EFFECT) {
+		clearEffect();
+		return;
+	}
+	const ctx: DrawContext2D = currentContext();
+	ctx.curEffect = effect;
+	ctx.curHasEffect = true;
+	loadEffect(effect);
+}
+
 // Close the open run as one Draw command. Called when the state changes, when a clip moves,
 // and at the end of the bracket — never in the middle of a primitive.
 function closeRun(): void {
@@ -270,17 +303,7 @@ export function resumePaint(p: PaintIndex): void {
 	ctx.curEffect = p.effect;
 	ctx.curHasEffect = p.hasEffect;
 	l.scopeNow = p.scope;
-	if (p.hasEffect) {
-		ctx.curMat = effectMatrix(p.effect);
-		ctx.curAdd = rgba(
-			effectField(p.effect, 16), effectField(p.effect, 17),
-			effectField(p.effect, 18), effectField(p.effect, 19),
-		);
-		ctx.curKey = rgba(
-			effectField(p.effect, 20), effectField(p.effect, 21),
-			effectField(p.effect, 22), effectField(p.effect, 23),
-		);
-	}
+	if (p.hasEffect) { loadEffect(p.effect); }
 	ctx.originX = 0.0;
 	ctx.originY = 0.0;
 	if (p.mask == NO_MASK) {
@@ -521,11 +544,7 @@ export function startContext(): void {
 	ctx.curView = void2dWhiteView();
 	ctx.curBlend = BlendMode.Alpha;
 	ctx.curSampler = samplerIndex(ctx.sceneSmooth, false);
-	ctx.curEffect = NO_EFFECT;
-	setIdentityMat();
-	ctx.curAdd = rgba(0.0, 0.0, 0.0, 0.0);
-	ctx.curKey = rgba(0.0, 0.0, 0.0, 0.0);
-	ctx.curHasEffect = false;
+	clearEffect();
 	ctx.clipDepth = 0;
 	while ((ctx.scopeDepths.length as int32) > 0) { ctx.scopeDepths.pop(); }
 }
@@ -1041,7 +1060,7 @@ export function beginTarget(
 	ctx.curView = void2dWhiteView();
 	ctx.curBlend = BlendMode.Alpha;
 	ctx.curSampler = samplerIndex(ctx.sceneSmooth, false);
-	ctx.curEffect = NO_EFFECT;
+	clearEffect();
 	openRun(BreakReason.Barrier);
 }
 
@@ -1055,7 +1074,7 @@ export function endTarget(): void {
 	ctx.curView = ctx.savedView[depth - 1];
 	ctx.curBlend = (ctx.savedRun[slot] as int32) as BlendMode;
 	ctx.curSampler = ctx.savedRun[slot + 1] as int32;
-	ctx.curEffect = ctx.savedRun[slot + 2] as int32;
+	restoreEffect(ctx.savedRun[slot + 2] as int32);
 	ctx.fbW = ctx.savedSize[(depth - 1) * 4];
 	ctx.fbH = ctx.savedSize[(depth - 1) * 4 + 1];
 	ctx.originX = ctx.savedSize[(depth - 1) * 4 + 2];

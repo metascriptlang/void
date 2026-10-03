@@ -26,6 +26,9 @@ import {
 	begin2d,
 	beginTarget,
 	endTarget,
+	setEffect,
+	drawRect,
+	drawImage,
 	finishRecording,
 	frameEnd,
 	uploadCount,
@@ -44,7 +47,7 @@ import {
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
 	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
-	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField,
+	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField, NO_EFFECT,
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
@@ -53,7 +56,7 @@ import {
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
-	Tile, rgba, tile, identity2d, emptyBounds, Smooth,
+	Tile, rgba, tile, identity2d, emptyBounds, Smooth, vec2,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
@@ -64,7 +67,7 @@ import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyl
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
 } from "../../src/void2d/graphics";
-import { colorMatrixGrayscale } from "../../src/void2d/effect";
+import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../src/void2d/effect";
 import { GradientSpace } from "../../src/void2d/gradient";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 import { approx } from "../../src/test/helpers";
@@ -561,6 +564,56 @@ test "T1 production emitters reach every batch-break reason" {
 	assert targetCommandField(1, CMD_RT_MODE) == 1.25;
 	frameEnd();
 }
+
+function effectTestTarget(): RenderTarget {
+	return {
+		width: 16,
+		height: 16,
+		format: PixelFormat.Rgba8,
+		sampled: true,
+		image: 1,
+		attachment: 2,
+		texture: 3,
+		generation: contextGeneration(),
+	};
+}
+
+test "a colour effect drawn before a target does not reach the draw after it" {
+	const none = rgba(0.0, 0.0, 0.0, 0.0);
+	const white = rgba(1.0, 1.0, 1.0, 1.0);
+	begin2d(16.0, 16.0, 1.0);
+	setEffect(colorMatrixGrayscale(1.0), none, none);
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), white, BlendMode.Alpha);
+	beginTarget(effectTestTarget(), 16.0, 16.0, 1.0, 0.0, 0.0, none);
+	setEffect(NO_COLOR_MATRIX, none, none);
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), white, BlendMode.Alpha);
+	endTarget();
+	setEffect(NO_COLOR_MATRIX, none, none);
+	drawImage(
+		tile(11, 8.0, 8.0).premultiplied(), vec2(4.0, 4.0), vec2(8.0, 8.0), white, BlendMode.Alpha,
+	);
+	finishRecording();
+	assert commandField(0, CMD_EFFECT) != (NO_EFFECT as float32);
+	assert commandField(commandCount() - 1, CMD_EFFECT) == (NO_EFFECT as float32);
+	frameEnd();
+}
+
+test "a colour effect inside a target is recorded when the draw before the target had it" {
+	const none = rgba(0.0, 0.0, 0.0, 0.0);
+	const white = rgba(1.0, 1.0, 1.0, 1.0);
+	begin2d(16.0, 16.0, 1.0);
+	setEffect(colorMatrixGrayscale(1.0), none, none);
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), white, BlendMode.Alpha);
+	beginTarget(effectTestTarget(), 16.0, 16.0, 1.0, 0.0, 0.0, none);
+	setEffect(colorMatrixGrayscale(1.0), none, none);
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), white, BlendMode.Alpha);
+	endTarget();
+	finishRecording();
+	assert targetCommandCount() == 3;
+	assert targetCommandField(1, CMD_EFFECT) != (NO_EFFECT as float32);
+	frameEnd();
+}
+
 test "T1 snapshot: a rotated Mask carries four exact edge distances" {
 	assert snapshot("rotatedClip", record(rotatedClipScene(), 128.0, 64.0, 1.0));
 }
