@@ -55,7 +55,9 @@ vec3 saturated(vec3 rgb, float amount) {
 
 @block colorSpace
 // h3d.shader.ColorSpaces' exact pair (ColorSpaces.hx:56-76); bevy_color's gamma_function
-// carries the same constants. Colour inputs and stored targets stay gamma-encoded.
+// carries the same constants. Colour inputs and stored targets stay gamma-encoded. The pow
+// operands clamp at 0 only to keep fxc's X3571 out of consumer stdout: output-neutral, the
+// selects route every input a matrix can make negative to the linear branch.
 vec3 srgbToLinear(vec3 srgb) {
     vec3 low = srgb * 0.0773993808;
     vec3 high = pow(max(srgb * 0.9478672986 + vec3(0.0521327014), vec3(0.0)), vec3(2.4));
