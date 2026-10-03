@@ -27,6 +27,7 @@ import {
 	LANES_H,
 	LANES_SHIFT,
 	PREMULTIPLIED_EFFECT_SCENE,
+	PREMULTIPLIED_STYLE_SCENE,
 	PREMULTIPLIED_X,
 	PREMULTIPLIED_Y,
 	PREMULTIPLIED_SIZE,
@@ -265,5 +266,6 @@ process.exit(
 	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
 	premultipliedMatchesStraight(
 		PREMULTIPLIED_EFFECT_SCENE, "VOID_PREMULTIPLIED_EFFECT_CAPTURE", 2,
-	),
+	) +
+	premultipliedMatchesStraight(PREMULTIPLIED_STYLE_SCENE, "VOID_PREMULTIPLIED_STYLE_CAPTURE", 1),
 );

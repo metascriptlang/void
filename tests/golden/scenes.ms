@@ -1011,6 +1011,17 @@ function imagePremultipliedEffect(): Scene2D {
 	return s;
 }
 
+function imagePremultipliedStyle(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const size: float32 = PREMULTIPLIED_SIZE as float32;
+	for (let k: int32 = 0; k < 2; k++) {
+		s.add(styledImage(s, alphaRampTile(false, k == 1),
+			PREMULTIPLIED_X + (k as float32) * PREMULTIPLIED_SHIFT, PREMULTIPLIED_Y, size, size,
+			ObjectFit.Fill, uniformRadii(10.0), true));
+	}
+	return s;
+}
+
 function imageScaleGrid(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const nine = s.scaleGrid(sheet(), 36.0, 36.0, 36.0, 36.0).at(14.0, 14.0);
@@ -1397,5 +1408,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "mixed/void3dTarget", build: mixedVoid3dTarget },
 		{ name: "mixed/void3dTranslucentTarget", build: mixedVoid3dTranslucentTarget },
 		{ name: "image/premultipliedEffect", build: imagePremultipliedEffect },
+		{ name: "image/premultipliedStyle", build: imagePremultipliedStyle },
 	];
 }

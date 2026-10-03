@@ -84,6 +84,7 @@ export const LANES_H: float32 = 140.0;
 export const LANES_SHIFT: float32 = 128.0;
 
 export const PREMULTIPLIED_EFFECT_SCENE: string = "image/premultipliedEffect";
+export const PREMULTIPLIED_STYLE_SCENE: string = "image/premultipliedStyle";
 export const PREMULTIPLIED_X: float32 = 16.0;
 export const PREMULTIPLIED_Y: float32 = 16.0;
 export const PREMULTIPLIED_SIZE: int32 = 64;
@@ -193,6 +194,8 @@ export function sceneRows(): SceneRow[] {
 			demo: false },
 		{ name: "image/premultipliedEffect", phase: "D1", width: 256, height: 176, dpi: 1.0,
 			steps: 0, demo: false },
+		{ name: "image/premultipliedStyle", phase: "D1", width: 256, height: 96, dpi: 1.0,
+			steps: 0, demo: false },
 	];
 }
 
@@ -207,7 +210,7 @@ export function sceneDrawCounts(): int32[] {
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1, 6,
 		2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1, 1,
-		3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4,
+		3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4, 2,
 	];
 }
 
@@ -217,7 +220,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0,
-		5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0,
+		5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0,
 	];
 }
 

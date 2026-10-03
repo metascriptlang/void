@@ -673,12 +673,6 @@ const TEXT_PRIMITIVE_EFFECT_REFUSED: string =
 let boxEffectRejectedReported: boolean = false;
 
 
-function stopOnPremultipliedImageStyle(): void {
-	console.log("void2d: an image style draws through the UI program, which reads straight " +
-		"texels; a premultiplied tile cannot take one");
-	unreachable;
-}
-
 function emitStyledImage(
 	s: Scene2D,
 	i: int32,
@@ -691,7 +685,6 @@ function emitStyledImage(
 ): boolean {
 	const styleIndex: int32 = s.imageStyleOf(i);
 	if (styleIndex == NO_IMAGE_STYLE) { return false; }
-	if (t.alphaPremultiplied) { stopOnPremultipliedImageStyle(); }
 	if (!uiInstancingAvailable()) {
 		if (!imageEffectRejectedReported) {
 			console.log("void2d: an image style cannot be combined with colorMatrix, colorAdd, or colorKey");
@@ -710,7 +703,7 @@ function emitStyledImage(
 			style.radii.topLeft, style.radii.topRight,
 			style.radii.bottomRight, style.radii.bottomLeft,
 		],
-		params1: [style.grayscale ? 1.0 : 0.0, 0.0, 0.0, 0.0],
+		params1: [style.grayscale ? 1.0 : 0.0, t.alphaPremultiplied ? 1.0 : 0.0, 0.0, 0.0],
 	});
 	return true;
 }

@@ -592,7 +592,8 @@ void main() {
         }
         vec4 fill = texel * vFill;
         float alpha = fill.a * coverage;
-        frag_color = vec4(fill.rgb * alpha, alpha);
+        vec3 rgb = vParams1.y > 0.5 ? fill.rgb * (vFill.a * coverage) : fill.rgb * alpha;
+        frag_color = vec4(rgb, alpha);
         return;
     }
 
