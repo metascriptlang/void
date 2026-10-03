@@ -144,7 +144,7 @@ haxe> var e8 = H.run(s8, 3, 14, 0.1);
 haxe> emit("bursts-and-one-shot", [c7a, e8.count, e8.time]);
 ms> const e7: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(0.0), bursts: [{ time: 0.35, count: 4 }], life: constant(10.0), globalLife: 2.0 }, 3, 5, 0.25);
 ms> const e8: ParticleEmitter = run({ ...EmitterState.defaults(), emitRate: constant(10.0), loop: false, life: constant(0.25) }, 3, 14, 0.1);
-ms> emit3("bursts-and-one-shot", e7.count as float32, e8.count as float32, e8.time);
+ms> emit3("bursts-and-one-shot", e7.count as float32, e8.count as float32, e8.time as float32);
 
 # ---- divergence -----------------------------------------------------------------------------
 
