@@ -475,6 +475,17 @@ function imageStyleScene(): NodeRef {
 	s.add(image);
 	return s.refOf(s.root);
 }
+function premultipliedStyleScene(): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const radii = uniformRadii(4.0);
+	const straight = s.sprite(tile(17, 32.0, 32.0)).at(0.0, 0.0);
+	straight.setImageStyle(imageStyle(radii, true, ObjectFit.Cover));
+	s.add(straight);
+	const premultiplied = s.sprite(tile(18, 32.0, 32.0).premultiplied()).at(40.0, 0.0);
+	premultiplied.setImageStyle(imageStyle(radii, true, ObjectFit.Cover));
+	s.add(premultiplied);
+	return s.refOf(s.root);
+}
 function textPrimitiveScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.underline(72.0, 2.0, rgba(0.9, 0.3, 0.2, 1.0), false).at(8.0, 8.0));
@@ -727,6 +738,13 @@ test "T1 snapshot: gradients and patterns keep draw order and effect records" {
 }
 test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lanes" {
 	assert snapshot("imageStyle", record(imageStyleScene(), 128.0, 108.0, 1.0));
+}
+test "an image style carries its tile's premultiplied bit into its instance" {
+	record(premultipliedStyleScene(), 96.0, 40.0, 1.0);
+	assert uiInstanceCount() == 2;
+	assert uiInstanceField(0, REC_UI_PARAMS1 + 1) == 0.0;
+	assert uiInstanceField(1, REC_UI_PARAMS1 + 1) == 1.0;
+	assert uiInstanceField(1, REC_UI_PARAMS1) == 1.0;
 }
 test "T1 snapshot: retained underline and selection nodes reach their UI modes" {
 	assert snapshot("textPrimitives", record(textPrimitiveScene(), 160.0, 96.0, 1.0));
