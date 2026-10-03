@@ -187,6 +187,34 @@ for misuse in unprepared twice no-pass nested consumed expired; do
 	fi
 done
 
+if "$MSC" build tests/integration/sceneTarget.ms --release --output=out/sceneTarget.exe \
+		> out/gate-scene-target.log 2>&1 \
+		&& out/sceneTarget.exe > out/gate-scene-target-run.log 2>&1; then
+	pass "scene target: DPI, premultiplied RGBA, idle, recreation and prepared snapshots"
+	for misuse in unprepared consumed size released empty generation format open expired \
+		dpi destroyed-view; do
+		case "$misuse" in
+			unprepared|consumed) expected='with no prepared frame' ;;
+			size|dpi) expected='does not match prepared' ;;
+			released|destroyed-view) expected='was released' ;;
+			empty|format) expected='allocated Rgba8' ;;
+			generation) expected='of GPU context' ;;
+			open) expected='with a pass already open' ;;
+			expired) expected='prepared frame expired' ;;
+		esac
+		target_status=0
+		VOID_SCENE_TARGET_MISUSE="$misuse" out/sceneTarget.exe \
+			> "out/gate-scene-target-$misuse.log" 2>&1 || target_status=$?
+		if [ "$target_status" -ne 0 ] && grep -qF "$expected" "out/gate-scene-target-$misuse.log"; then
+			pass "Scene2D drawTarget $misuse stops by name"
+		else
+			fail "Scene2D drawTarget $misuse did not name its lifecycle error"
+		fi
+	done
+else
+	fail "Scene2D caller target — see out/gate-scene-target.log and out/gate-scene-target-run.log"
+fi
+
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
 		&& out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"

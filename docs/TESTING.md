@@ -300,6 +300,14 @@ number typed into the script.
    readback. With `--web`, also `scripts/build-web.sh` and `scripts/web-liveness.sh`.
 8. The tier table, the PENDING count, and the SKIP and FAIL totals.
 
+`tests/integration/sceneTarget.ms` holds the caller-owned target boundary in a native process:
+prepared replay inside the 3D prepare phase, full-RGBA comparisons against direct screen replay,
+premultiplied transparent RGBA, mask/scissor and analytic-edge parity, @2×/@1.5× DPI,
+idle/recreated/resized targets, and writes between prepare and draw. Its named misuse modes cover
+unprepared, consumed, expired, open-pass, wrong-size/DPI, empty, released/destroyed-attachment,
+foreign-context and non-Rgba8 targets; the same gate stage runs each mode in a separate process
+and requires both a nonzero exit and its diagnostic.
+
 Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 40 seconds** on this box, starting
 from a tree with no `out/` directory at all.
 `--quick` skips the golden suite; `--web` adds the two web builds and the headless-Chrome

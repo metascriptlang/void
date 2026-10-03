@@ -1533,3 +1533,56 @@ frame functions / 245 callees, 16 PENDING, web 2 359 062 / 2 131 238 B; its one 
 WebGL2 row itself, corrected and re-checked against the same run — the gate's claim string,
 `tests/record/check.ms` 0 off); `gate3d.sh` GREEN, 240 stages with its device SKIP, 182 aborts.
 Logs: `out/tmp/finalGate/`.
+
+## NEON item 1 — caller-owned Scene2D target (2026-10-03)
+
+**Verdict: SHIP WITH FOLLOW-UPS for the design; land remains blocked by the baseline reds.**
+This is not a P5/P6 verdict and does not certify the unfinished material consumer in NEON item 5.
+The slice is `src/void2d/scene.ms`/`draw.ms` `drawTarget`, `batcher.c` base-pass dispatch and
+`tests/integration/sceneTarget.ms`, on the 0.3.0 migration base `8b879aa`.
+
+**Passes.** Two fresh read-only reviewers through omp `functions.task` (reviewer role), sequential:
+`TargetDefects` inspected the diff and target/door/replay dependencies and returned no confirmed
+defect. `TargetDesign` returned SHIP WITH FOLLOW-UPS and answered the ten work-order questions.
+Neither built, ran tests, formatted or edited. The main session checked their findings against
+the source and existing native receipts; runtime evidence below is the main session's.
+
+1. **Exit:** caller-owned target draw exists, uses same-frame preparation, leaves no pass open and
+   never commits. Wrong size/DPI, empty/released/destroyed/foreign-context/format, stale or
+   consumed preparation and an already-open pass stop by name. The native consumer exercises
+   `Renderer.openPrepare`/`closePrepare`, not a mock of the scheduling seam.
+2. **Measurements:** BUILD `4573591e`, Windows D3D11; the nine-frame consumer exits 0 at @2× and
+   @1.5×, seven caller-gated target redraws, full-image RGBA equality with direct replay.
+   Raw corner RGBA is zero even for a coloured transparent clear; red/UI half coverage is
+   128, the vertex path is within one 8-bit rounding level. Eleven misuse processes terminate
+   nonzero with the expected diagnostics. Native suite: 1153/1153.
+3. **Guardrails:** no node widening, new owner, command/vertex copy or alternate emitter.
+   Painter order, filters, independent sprite path, scissor and analytic AA use existing replay.
+   No claim of cross-backend proof is made before the blocked web path can run.
+4. **GPUI:** existing upload/command-range replay remains. Public scene-to-image targeting is
+   not a GPUI API; the accepted target mechanism is Heaps/Bevy/void3d's, without changing N/W/P
+   dispositions. Only command metadata is scanned to request missing offscreen pipelines.
+5. **h2d:** pushTarget/popTarget's scene-to-texture capability, with Void's handles and extensions.
+   Sokol cannot nest passes, so there is no restoration of an already-open outer pass.
+   Demand scheduling and target recreation stay the caller's, as drei/r3f do.
+6. **Defects:** item 1 is implemented, not moved. Target identity is separate from GPU-context
+   generation; a clean scene still redraws after target recreation. P5 B1 teardown stays parked.
+   Item 5's producer contract is recorded; the straight-input lit-textured consumers remain open.
+7. **Tests:** GPU integration is the right tier for real attachment liveness, pipeline layout
+   and pixels. The reviewer caught the shared comparator's RGB-only limit; this consumer now
+   compares packed RGBA for every pixel. Mask/scissor, AA-edge parity, invalid DPI and destroyed
+   attachment follow-ups were added and the strengthened consumer rerun successfully.
+8. **Compiler:** no new workaround in this slice. Existing parks remain explicit; the campfire
+   attribution record is narrowed by controlled experiments, never solved by blind re-baselining.
+9. **Style/perf:** sized types, explicit narrowing and existing extension/handle idioms.
+   No automated emitted-C no-copy claim: the allocation guard does not yet execute drawTarget.
+10. **Refuse to land:** any still-red baseline gate, or a claim that item 1 alone makes
+    premultiplied UI material sampling correct. The two material-side shaders still decode
+    sampled RGB as straight; NEON.md item 5 records the gap for the next owner.
+
+**Carried follow-ups:** execute this target consumer on WebGL2/devices after Yoga's web linker
+gap closes; add an emitted-C allocation consumer before claiming automated no-copy coverage.
+The full-RGBA, mask/analytic-edge, invalid-DPI and destroyed-view follow-ups are already taken.
+Receipts: `out/tmp/sceneTarget/red.log`, `smoke.log`, `unit.log`, the eleven misuse logs and
+the two visual PNGs. The final slice's gate verdicts are recorded separately; these native
+receipts are not substituted for a green land gate.

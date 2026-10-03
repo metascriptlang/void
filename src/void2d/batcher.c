@@ -958,7 +958,6 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
 	return 1;
 }
 
-// Replay the swapchain list inside the pass the caller already opened.
 void void2dReplay(const float *commands, int commandCount,
                   const float *effects, int effectCount,
                   float fbW, float fbH) {
@@ -1092,6 +1091,7 @@ static void runCommands(const float *commands, int commandCount,
                         float fbW, float fbH) {
 	float sizeStack[VOID2D_MAX_TARGET_DEPTH][2];
 	int sizeDepth = 0;
+	const int baseTarget = doorPassState() == DOOR_PASS_TARGET;
 
 	// A uniform block that has not changed is not re-applied. On WebGPU and Metal every
 	// sg_apply_uniforms costs at least 256 bytes of the per-frame uniform buffer whatever
@@ -1162,7 +1162,7 @@ static void runCommands(const float *commands, int commandCount,
 		// The pipeline branch comes BEFORE the vertex-count guard: a sprite run carries an
 		// instance range and a vertex count of zero, so testing the vertex count first would
 		// skip every instanced draw and the frame would simply be missing its sprites.
-		int rt = cmd[CMD_RT_MODE] != 0.0f;
+		int rt = baseTarget || cmd[CMD_RT_MODE] != 0.0f;
 		if ((int)cmd[CMD_PIPELINE] == PIPELINE_SPRITE) {
 			drawSpriteRun(cmd, blend, rt, view, fbW, fbH, &lastPipeline, &scissorApplied,
 				&paramsValid, &fxValid);

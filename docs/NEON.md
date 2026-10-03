@@ -134,16 +134,25 @@ and `neon/src/platform/ion/window.ms`; say so in `~/metascript/.inbox/neon/`.
 In order. 1, 2 and 4 block UI on a mesh; 3 and 5 make it right to look at; 6 and 7 let the JSX
 above be written without Neon working around Void.
 
-1. **Draw a `Scene2D` into a render target the caller owns.** Today `Scene2D.prepare` paints and
-   `drawScreen` draws into the open screen pass; `presentAt` opens and commits the screen pass
-   (`src/void2d/scene.ms`), with pipelines keyed on the screen's formats (`docs/VOID2D.md` "D1
-   follow-ups", F5). `beginTarget` / `endTarget` (`src/void2d/draw.ms`) draw into a target, but
-   only for a node's filter. The opposite direction exists: golden `mixed/void3dTarget` draws a
-   void3d target as a void2d sprite. Needed: prepare a `Scene2D` at a target's size and DPI and
-   draw it into that target, keyed on the target's layout, during the 3D prepare phase (M18's
-   `openPrepare` … `closePrepare`), and only when `isDirty` says it changed. Heaps: h2d draws into an h3d texture through
-   `h2d/RenderContext.hx` `pushTarget` (`heaps` at `25f9a88f`). Bevy: a UI root targets a camera
-   whose `RenderTarget::Image` is then a material's texture (`examples/ui/render_ui_to_texture.rs`).
+1. **Draw a `Scene2D` into a render target the caller owns.** Implemented in the worktree,
+   not landed: `src/void2d/scene.ms` `drawTarget`, through the existing prepared-context replay.
+   During `openPrepare` … `closePrepare`, prepare at the target's pixel size divided by DPI,
+   then draw it. The call opens and closes its own pass, never commits, and consumes that
+   same-frame preparation just as `drawScreen` does. Existing filter targets finish in prepare.
+   Refused targets and lifecycle misuse stop by name; `tests/integration/sceneTarget.ms` is the
+   native consumer and `scripts/gate.sh` runs its pixel comparisons and misuse cases.
+
+   The redraw policy stays the caller's: `isDirty()` does not know that an image was recreated.
+   Remember the last drawn `target.image` or attachment as well; resize can replace both while
+   `RenderTarget.generation` stays unchanged (that field names the GPU context, not a resize).
+   A recreated target must be drawn even when the scene is clean. The native consumer proves
+   idle, same-size recreation, resize, @2× and @1.5× DPI, and post-prepare writes.
+
+   Reference read: Heaps `h2d/RenderContext.hx` `pushTarget`/`popTarget` at `b9aa6dcb`; Bevy
+   `examples/ui/render_ui_to_texture.rs`. drei `bf6f4ad` `src/core/RenderTexture.tsx` `Container`
+   renders a portal scene into its FBO, restores the outer target and gates by `frames`;
+   `src/core/Fbo.tsx` sizes the FBO by DPR. r3f `d604b18` `packages/fiber/src/core/store.ts`
+   `frameloop`/`invalidate` puts demand policy at the caller, not at the texture.
 2. **A material that samples a render target safely.** `Material.texture` is a `TextureId` made
    from uploaded pixels, generation-checked; `texture0` … `texture3` take raw view ids with no
    generation (`src/void3d/material.ms`). `RenderTarget.asTexture` gives a view
@@ -158,14 +167,20 @@ above be written without Neon working around Void.
 4. **The UV of a pick hit.** `PickHit` carries `owner`, `mesh`, `distance`, `point`
    (`src/void3d/pick.ms`). Needed: the UV interpolated over the hit triangle's UVs, so Neon can
    turn a press on the mesh into a pixel of the texture.
-5. **Premultiplied alpha and colour space across the boundary.** A void2d render target is
-   premultiplied, and void2d declares it per draw: a `Tile` carries `.premultiplied()`
-   (`docs/VOID2D.md` "Door closure", "Premultiplied, declared per draw"). A void3d `Material` has
-   no such declaration, so the material that samples a void2d target needs one, or the edges of
-   UI on a mesh fringe. The colour half is already agreed: M26 takes every texel sRGB-encoded
-   (`docs/VOID3D.md` "M26 as built"), and void2d blends in gamma space on a UNORM target
-   (`docs/VOID2D.md` "Text", the gamma line), so a void2d target's texels are in void3d's
-   convention as they are.
+5. **Premultiplied alpha and colour space across the boundary.** Read for item 1 on 2026-10-03:
+   `src/void2d/shader2d.glsl` emits gamma-encoded RGB multiplied by alpha, and
+   `src/void2d/draw.ms` `premultipliedBlend` blends those values into an Rgba8 UNORM target
+   (`src/gpu/door.c` `doorMakeTargetImage`), not an sRGB-format attachment. Item 1 also
+   premultiplies the clear. Native readback holds a transparent coloured clear at `(0,0,0,0)`
+   and a half-red interior at `(128,0,0,128)`; target replay and direct screen replay agree.
+
+   **Material side still open for items 2/3/5:** `src/void3d/shader3d.glsl` and
+   `src/void3d/pixelArt3d.glsl` `litTexturedFs` treat sampled RGB as straight before sRGB decode.
+   They cannot yet sample these UI targets correctly. Unpremultiply encoded RGB before any
+   nonlinear decode (zero alpha yields zero RGB), then apply the material's declared colour
+   processing and premultiply the encoded output when its blend expects it. Do not decode
+   already-premultiplied channels or multiply coverage twice. This slice establishes the
+   producer's contract; it does not claim that a 3D material already honours it.
 6. **A camera placed by a node's world transform.** `Camera3D` is `position`, `yaw`, `pitch`
    (`src/void3d/camera.ms`) and is not a node (`NodeKind` is `Group`, `Mesh`, `Light`). A
    `<Camera3D>` nested under a moving object needs its position and orientation from the parent's

@@ -24,6 +24,7 @@ import {
 } from "./types";
 import { fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
 import { PassState, passState, beginScreenPassWith, endPass, commit } from "../gpu/door";
+import { RenderTarget } from "../gpu/target";
 
 export function create(this typeof Scene2D, clear: Color): Scene2D {
 	const context: DrawContext2D = DrawContext2D.create();
@@ -238,6 +239,10 @@ export function prepare(this s: Scene2D, wf: float32, hf: float32, dpi: float32)
 
 export function drawScreen(this s: Scene2D): void {
 	s.context.drawScreen();
+}
+
+export function drawTarget(this s: Scene2D, target: RenderTarget): void {
+	s.context.drawTarget(target, s.clear);
 }
 
 export function presentAt(this s: Scene2D, dpi: float32): void {

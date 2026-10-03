@@ -34,6 +34,7 @@ import {
 	COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS, NO_EFFECT,
 	CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT, CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND,
 	CMD_SAMPLER, CMD_EFFECT, CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE, CMD_CLEAR_R,
+	CMD_PIPELINE,
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, SOURCE_PREMULTIPLIED, samplerIndex,
@@ -52,7 +53,10 @@ import {
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
-import { PassState, PixelFormat, passState, frameIndex, contextGeneration } from "../gpu/door";
+import {
+	PassState, PixelFormat, passState, frameIndex, contextGeneration, endPass, imageAlive, viewAlive,
+} from "../gpu/door";
+import { doorBeginColorPass } from "../gpu/door.h";
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
@@ -604,8 +608,53 @@ export function drawScreen(this ctx: DrawContext2D): void {
 	end2d();
 }
 
-// Replay the swapchain list into the pass the caller already has open. Together with
-// `flushTargets` this is the only place the GPU is touched, and both happen after the walk.
+export function drawTarget(this ctx: DrawContext2D, target: RenderTarget, clear: Color): void {
+	if (!ctx.prepared) {
+		console.log(`void2d: drawTarget context ${ctx.id} with no prepared frame`);
+		unreachable;
+	}
+	if (passState() != PassState.None) {
+		console.log(`void2d: drawTarget context ${ctx.id} with a pass already open`);
+		unreachable;
+	}
+	if (ctx.preparedFrame != frameIndex()) {
+		console.log(`void2d: drawTarget context ${ctx.id} after its prepared frame expired`);
+		unreachable;
+	}
+	target.requireCurrent("drawTarget");
+	if (target.format != PixelFormat.Rgba8 || target.width <= 0 || target.height <= 0 ||
+		target.image == 0 || target.attachment == 0) {
+		console.log("void2d: drawTarget needs an allocated Rgba8 target " +
+			"with a positive pixel size");
+		unreachable;
+	}
+	if (!imageAlive(target.image) || !viewAlive(target.attachment)) {
+		console.log("void2d: drawTarget on a render target that was released");
+		unreachable;
+	}
+	if (!(ctx.frameDpi > 0.0) || !Number.isFinite(ctx.frameDpi) ||
+		ctx.fbW != (target.width as float32) / ctx.frameDpi ||
+		ctx.fbH != (target.height as float32) / ctx.frameDpi) {
+		console.log(`void2d: drawTarget ${target.width}x${target.height} does not match prepared ` +
+			`${ctx.fbW}x${ctx.fbH} at DPI ${ctx.frameDpi}`);
+		unreachable;
+	}
+	for (let i: int32 = 0; i < ctx.commandTotal; i++) {
+		const base: int32 = i * COMMAND_FLOATS;
+		if ((ctx.commands[base + CMD_KIND] as int32) != (CommandKind.Draw as int32)) { continue; }
+		const program: int32 = ctx.commands[base + CMD_PIPELINE] as int32;
+		const blend: int32 = ctx.commands[base + CMD_BLEND] as int32;
+		wantPipelineSlot(pipelineSlot(program, 1, blend));
+	}
+	resolvePipelines();
+	ctx.prepared = false;
+	useContext(ctx);
+	doorBeginColorPass(target.attachment,
+		clear.r * clear.a, clear.g * clear.a, clear.b * clear.a, clear.a);
+	end2d();
+	endPass();
+}
+
 export function end2d(): void {
 	const ctx: DrawContext2D = currentContext();
 	finishRecording();
