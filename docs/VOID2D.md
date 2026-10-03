@@ -653,9 +653,10 @@ non-identity RGB matrix is active. That is required for the glow/drop-shadow alp
 it must turn the sampled render target into a new straight-colour silhouette before the shader
 premultiplies it. The same gate would be wrong for an unrelated matrix applied directly to a
 render-target texture because it would multiply coverage twice. The retained filter path avoids
-that combination by applying node effects inside the target and resetting the composite; direct
-render-target drawing must not combine an arbitrary colour matrix with that source until the
-shader has an explicit unpremultiply-transform-premultiply path.
+that combination by applying node effects inside the target and resetting the composite. Since
+2026-10-03 the shader has that path ("Door closure" G): a premultiplied source with any effect is
+unpremultiplied at the sample, and the silhouette's alpha-only matrix draws the same bytes
+through it.
 
 Every golden row now gates its draw count and live pooled-render-target count as well as pixels.
 The expectations, 67 at P2, 69 at P3 and 72 in P4, live in table order beside the scene table; a pixel-identical draw-call
@@ -2165,10 +2166,8 @@ abort stage) unless named otherwise.
   splits the run when it changes, and the replay reads it. The replay no longer asks sokol
   whether content is premultiplied, only whether a view is a render target, for the GL row flip.
   void2d's own target blits and the app's target sprites declare it (`render.ms`, `filter.ms`,
-  the demo, `mixed/void3dTarget`); Neon holds the per-image fact. The UI program reads straight
-  texels only, so a premultiplied tile in an image style stops
-  (`tests/aborts/premultipliedStyledImage`) instead of being premultiplied twice; a UI input for it
-  is open. Control: without the declarations `filter/blur`,
+  the demo, `mixed/void3dTarget`); Neon holds the per-image fact. A colour effect and the UI
+  program read the bit too, since G below. Control: without the declarations `filter/blur`,
   `filter/afterTintedSibling` and `filter/maskAtDpi150` fail on D3D11; `mixed/void3dTarget`
   passes either way, because its target is opaque, so `mixed/void3dTranslucentTarget` clears
   the same target translucent over a 2D stripe and draws it through the instanced sprite
@@ -2186,6 +2185,89 @@ abort stage) unless named otherwise.
   // after: the app declares it; an uploaded straight image says nothing
   s.add(s.sprite(tile(forward.colorTarget.asTexture(), 256, 256).premultiplied()));
   ```
+- **G, a premultiplied source through a colour effect or an image style (2026-10-03).**
+  After the per-draw declaration, a premultiplied source that also took a colour matrix,
+  `colorAdd` or `colorKey` was still read as straight. The replay set the shader's premultiplied
+  input only for an identity effect, so:
+  - the effect's output was premultiplied a second time, and each translucent texel darkened by
+    its own alpha;
+  - a key cleared alpha but kept rgb, and the premultiplied blend then added that rgb to the
+    destination.
+
+  The UI program had no premultiplied input, so an image style on such a tile stopped.
+
+  GPUI is the model. It unpremultiplies a premultiplied source once, at upload
+  (`gpui/src/color.rs:26-34`, called from `svg_renderer.rs:213` and the macOS
+  `text_system.rs:524`). It applies grayscale to straight colour
+  (`gpui_wgpu/src/shaders.wgsl:1306-1309`) and premultiplies only at output (`blend_color`,
+  `:391-395`). void2d composites targets it renders every frame, so it cannot convert at upload
+  (the W above) and converts at the sample instead:
+  - For a premultiplied source with any effect, the replay sets `sourceParams.x` in the effect
+    block (`batcher.c`, where `noEffect` now covers the key).
+  - The fragment then divides rgb by alpha before the key and the matrix, and from there the draw
+    takes the straight path.
+  - A premultiplied draw with no effect keeps its pass-through, so no other golden moved.
+  - The UI image mode needs no division, because grayscale, tint and coverage are linear in rgb.
+    `params1.y` marks a premultiplied tile per instance, beside grayscale in `params1.x`, and the
+    fragment skips the final premultiply.
+
+  h2d's own colour effects run on premultiplied texels (HEAPS.md "Do not copy from h2d").
+
+  **Acceptance** is a pair invariant in `tests/golden/invariants.ms`: the same 64² alpha ramp,
+  uploaded straight and premultiplied, must draw within ±1.
+  - `image/premultipliedEffect` row 1 draws it through grayscale and a `colorAdd`.
+  - Row 2 uses four colour bands at alpha ≥ 128 and keys out one of them.
+  - `image/premultipliedStyle` draws it through a grayscale image style with corner radii.
+
+  **Red before**, on `2be9cf5` plus the scene (`out/tmp/premultEffect/red.txt`):
+  - row 1 was off in 11 896 channel values, max delta 48 (113 against 65 at alpha 0.5);
+  - row 2 was off in 3 072, the whole keyed band, max delta 200;
+  - the style scene stopped at `premultipliedStyledImage`.
+
+  After the fix, both scenes pass at max delta 1.
+
+  **Controls**, each restored by hash (`controlAC.txt`, `controlB.txt`):
+  - without the division, both rows go red (11 896 / 48 and 11 424 / 154);
+  - with the key left out of `noEffect`, only row 2 goes red (3 072 / 200);
+  - without the UI branch, the style scene goes red (11 757 / 49): the double premultiply the
+    stop was there to prevent.
+
+  **Pins:** the two goldens and their invariant. `tests/aborts/premultipliedStyledImage` went with
+  the stop.
+
+  ```ts
+  // a translucent 3D preview, greyed while inactive: before, its edges darkened by their alpha
+  const preview = s.sprite(tile(forward.colorTarget.asTexture(), 256, 256).premultiplied());
+  preview.setColorMatrix(colorMatrixGrayscale(1.0));
+  // before: this stopped; now the image style takes the premultiplied tile
+  preview.setImageStyle(imageStyle(uniformRadii(8.0), true, ObjectFit.Cover));
+  ```
+- **A colour effect across a target (2026-10-03, found by G's golden run).** `beginTarget` reset
+  `curEffect` and `endTarget` restored it, but neither touched `curHasEffect`, nor the matrix,
+  add and key that `setEffect` compares against. That left two failures:
+  - After a target, the parent recorded with its old effect row while believing it had none, so
+    its next `setEffect` to the identity returned early.
+  - Inside a target, a `setEffect` equal to the parent's was taken for a repeat and dropped.
+
+  `filter/afterTintedSibling` had recorded the first. Its filter composite drew with the previous
+  sibling's grayscale, so the yellow subject blurred grey: 5 388 inked pixels, none yellow. Until
+  G, the double premultiply also darkened it.
+
+  Both brackets now set the whole effect state: `draw.ms` `clearEffect`, and `restoreEffect`,
+  which reads the row the way `resumePaint` already did. `reopenLast` restores the effect alone
+  and is right as it is. It runs only after `closeLaneRun` recorded the open run, which without a
+  reorder is the last command, and a reorder needs every command effect-free
+  (`displayList.ms` `lanesReorderable`).
+
+  **Red before:** the T1 tests "a colour effect drawn before a target does not reach the draw
+  after it" and "a colour effect inside a target is recorded when the draw before the target had
+  it" failed at their effect asserts.
+
+  **Re-recording the golden.** A check that does not read its hash came first: 4 156 yellow
+  pixels and none grey. At (100, 70) the capture reads 233, 191, 85, against 234, 192, 84 for the
+  subject composited once over DARK at coverage 0.91. A tree with this fix and without G captures
+  the same bytes, so the fix stands as its own commit. Every other D3D11 golden is byte-identical
+  on the final tree, and T0/T1 run 1130 of 1130.
 
 **Measured on the tip `7cf741d`, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` ran
 every code stage green: 1118 tests plus 299 isolated, D3D11 78/78, WebGL2 56 identical / 18
@@ -2202,11 +2284,6 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
 
 ## Open
 
-- **A colour effect on a premultiplied source reads it as straight** (`batcher.c` sets the
-  shader's premultiplied input only when the effect is the identity). The glow and drop-shadow
-  silhouettes rely on it; any other colour matrix or `colorAdd` on a premultiplied tile darkens
-  its translucent edges, as before the door closure. An unpremultiply-transform-premultiply
-  path in the shader closes it.
 - **Every field of a pipeline cache is writable** through every alias of the public interface:
   `cache.closed = false` reopens a closed cache, and `cache.entries = []` drops live pipelines
   that no alias can release after. MetaScript has no module-private field, and an interface
@@ -2214,8 +2291,6 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
   `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
   `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
-- **The UI program has no premultiplied input**: a premultiplied tile in an image style stops
-  ("Door closure"). Neon images are straight, so nothing hits it today.
 - **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
   a C consumer that calls them directly goes around the door's pass state. void3d's `gpu3d.c`
   still returns silently on a short descriptor, the shape A closed in `door.c`.

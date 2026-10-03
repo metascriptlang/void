@@ -339,6 +339,12 @@ Missing from void2d today:
 - `rangeMin` / `rangeMax` as two indices with -1 for unset, where `drawWith` compares `rangeMax * 2` against a triangle count (`h2d/TileGroup.hx:707-717`): void2d takes `setRange(first, count)` with `ALL_TILES` as the default count, and a negative stops.
 - Scrolling by mutating child positions, which re-syncs the subtree (`Flow.hx:728-733`, `Mask.hx:109-125`). void2d's variant — the camera baked into every world matrix, so a camera move re-multiplies the tree (`scene.ms:115-121`) — is the same mistake; in h2d the camera is one uniform (`RenderContext.hx:275-283`). Fixed at P5 step 10 for the translation, which is the root's scroll scope; a zoom or a rotation still re-multiplies the tree, since a label is rasterised at the scale it is drawn at.
 - h3d's texture flag `AlphaPremultiplied` (`h3d/mat/Data.hx:110`) as the place premultiplied content is declared. h2d itself decides per draw: `drawFiltered` sets `inFilterBlend` and the pass takes a `One` source factor (`h2d/Object.hx:948-958`, `h2d/RenderContext.hx:619-627`). void2d keeps h2d's per-draw shape and lets the tile carry the fact, so an app's own targets get it too (VOID2D.md "Door closure", decided by the human 2026-10-01); Neon keeps it per image. The default is straight, as in both.
+- h2d's colour effects on premultiplied texels. `ColorMatrix.hx` and `ColorAdd.hx` run on whatever
+  `pixelColor` holds, and a filtered object's composite holds premultiplied texels with a `One`
+  source factor (`h2d/RenderContext.hx:619-628`), so the matrix's offset column and `colorAdd` are
+  never scaled by alpha: a `colorAdd` on a filtered object tints its transparent pixels. void2d
+  reads a premultiplied source straight before any colour effect, as GPUI does, where GPUI does it
+  at upload (VOID2D.md "Door closure" G). W.
 - One draw per Bitmap: h2d's default path does **not** batch — `BUFFERING` is a compile flag, off by default (`RenderContext.hx:24`); throughput comes from user-chosen `TileGroup`/`SpriteBatch`. That does not survive a reconciler that emits thousands of small nodes.
 
 ## Key Heaps Design Decisions — Adopt or Skip
