@@ -473,7 +473,7 @@ test "a lit or textured lit material without ramp levels or its block refuses th
 	let atNaN: PixelArtRenderer = presetOver(notANumber, Program.Lit, 4.0);
 	const nanMaterial: int32 = (notANumber.materials.length as int32) - 1;
 	const levelsAt: int32 = notANumber.materials[nanMaterial].uniforms.offset;
-	notANumber.uniforms.values[levelsAt] = 0.0 / 0.0;
+	notANumber.uniforms.values[levelsAt] = (0.0 / 0.0) as float32;
 	assert notANumber.uniforms.values[levelsAt] != notANumber.uniforms.values[levelsAt];
 	const nanItems: Vec<DrawItem> = [itemOnItsLayout(
 		notANumber,
@@ -496,8 +496,10 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 	const shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
 	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 	const drawn: LowResView = view(1080, 2400, 360, 1, 0);
-	for (const levels of [0.0, 4.0]) {
-		for (const light of [0.0, 1.0]) {
+	const levelSteps: Vec<float32> = [0.0, 4.0];
+	const lightSteps: Vec<float32> = [0.0, 1.0];
+	for (const levels of levelSteps) {
+		for (const light of lightSteps) {
 			let context: DrawContext = DrawContext.withUniformCapacity(capacity);
 			const created: Result<PixelArtRenderer, PixelArtError> =
 				PixelArtRenderer.create(context, PixelArtSettings.full(), look());

@@ -1,4 +1,4 @@
-import { NodeRef, Scene2D } from "../void2d/node";
+import { NodeRef, Scene2D, layoutGetYg } from "../void2d/node";
 import "../void2d/scene";
 import { layoutPass, freeLayout } from "../void2d/layout";
 import { rgba } from "../void2d/types";
@@ -89,5 +89,118 @@ test "a pass over an unchanged tree leaves a manual overwrite alone" {
 	a.setX(999.0);
 	layoutPass(root, 50.0, 50.0);
 	assert approx(a.local().x, 999.0);
+	freeLayout(root);
+}
+
+test "a removed node gives up its Yoga node and takes a fresh one when added back" {
+	const a = white();
+	a.setLayoutStyle({ height: 40.0 });
+	const b = white();
+	b.setLayoutStyle({ height: 60.0 });
+	const root = s.group();
+	root.setLayoutStyle({ flexDirection: "column", width: 100.0, height: 200.0 });
+	root.addChild(a);
+	root.addChild(b);
+	layoutPass(root, 100.0, 200.0);
+	assert a.layoutGetYg() !== null;
+
+	root.removeChild(a);
+	assert a.layoutGetYg() === null;
+	layoutPass(root, 100.0, 200.0);
+	assert approx(b.local().y, 0.0);
+
+	root.addChild(a);
+	layoutPass(root, 100.0, 200.0);
+	assert a.layoutGetYg() !== null;
+	assert approx(a.local().y, 60.0);
+	freeLayout(root);
+}
+
+test "removeChildren and remove give up the Yoga nodes of every laid-out descendant" {
+	const leaf = white();
+	leaf.setLayoutStyle({ height: 10.0 });
+	const branch = s.group();
+	branch.setLayoutStyle({ flexDirection: "column" });
+	branch.addChild(leaf);
+	const sibling = white();
+	sibling.setLayoutStyle({ height: 10.0 });
+	const root = s.group();
+	root.setLayoutStyle({ flexDirection: "column", width: 100.0, height: 100.0 });
+	root.addChild(branch);
+	root.addChild(sibling);
+	layoutPass(root, 100.0, 100.0);
+	assert leaf.layoutGetYg() !== null;
+
+	branch.remove();
+	assert branch.layoutGetYg() === null;
+	assert leaf.layoutGetYg() === null;
+	assert sibling.layoutGetYg() !== null;
+
+	root.removeChildren();
+	assert sibling.layoutGetYg() === null;
+	assert root.layoutGetYg() !== null;
+	layoutPass(root, 100.0, 100.0);
+	freeLayout(root);
+}
+
+test "a node moved to another laid-out parent in one frame does not trip Yoga's single owner" {
+	const x = white();
+	x.setLayoutStyle({ height: 20.0 });
+	const from = s.group();
+	from.setLayoutStyle({ height: 100.0 });
+	from.addChild(x);
+	const to = s.group();
+	to.setLayoutStyle({ height: 100.0 });
+	const root = s.group();
+	root.setLayoutStyle({ flexDirection: "column", width: 100.0, height: 200.0 });
+	root.addChild(to);
+	root.addChild(from);
+	layoutPass(root, 100.0, 200.0);
+	assert approx(x.content().h, 20.0);
+
+	to.addChild(x);
+	layoutPass(root, 100.0, 200.0);
+	assert from.numChildren() == 0;
+	assert to.numChildren() == 1;
+	assert approx(x.content().h, 20.0);
+	assert approx(x.local().y, 0.0);
+	freeLayout(root);
+}
+
+test "adding a child again under its own parent keeps its Yoga node" {
+	const a = white();
+	a.setLayoutStyle({ height: 30.0 });
+	const b = white();
+	b.setLayoutStyle({ height: 30.0 });
+	const root = s.group();
+	root.setLayoutStyle({ flexDirection: "column", width: 100.0, height: 100.0 });
+	root.addChild(a);
+	root.addChild(b);
+	layoutPass(root, 100.0, 100.0);
+	const before = a.layoutGetYg();
+	assert before !== null;
+
+	root.addChild(a);
+	layoutPass(root, 100.0, 100.0);
+	assert a.layoutGetYg() === before;
+	assert approx(b.local().y, 0.0);
+	assert approx(a.local().y, 30.0);
+	freeLayout(root);
+}
+
+test "a disposed laid-out child leaves its siblings laid out" {
+	const a = white();
+	a.setLayoutStyle({ height: 40.0 });
+	const b = white();
+	b.setLayoutStyle({ height: 60.0 });
+	const root = s.group();
+	root.setLayoutStyle({ flexDirection: "column", width: 100.0, height: 200.0 });
+	root.addChild(a);
+	root.addChild(b);
+	layoutPass(root, 100.0, 200.0);
+	a.dispose();
+	layoutPass(root, 100.0, 200.0);
+	assert approx(b.local().y, 0.0);
+	assert approx(b.content().h, 60.0);
 	freeLayout(root);
 }

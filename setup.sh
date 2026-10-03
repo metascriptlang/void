@@ -52,4 +52,8 @@ if [ "${VOID_FREETYPE:-0}" = 1 ]; then
 	fetch freetype    freetype/freetype      "$FREETYPE_REV"
 fi
 
+if [ "$(uname -s)" = Darwin ]; then
+	sh scripts/build-sokol-macos.sh
+fi
+
 echo "--- Setup complete ---"

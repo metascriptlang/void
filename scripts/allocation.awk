@@ -1,5 +1,5 @@
 function keyOf(call,    i, name, module) {
-	i = index(call, "__M")
+	i = index(call, "__")
 	name = substr(call, 1, i - 1)
 	module = call
 	sub(/^.*ZsrcZvoid2dZ/, "", module)
@@ -24,8 +24,8 @@ BEGIN {
 	nn = split(named, list, " ")
 	for (i = 1; i <= nn; i++) if (list[i] != "") isNamed[list[i]] = 1
 	nb = split(forbidden, banned, " ")
-	callRe = "[A-Za-z_][A-Za-z0-9_]*__M[A-Za-z0-9]*ZsrcZvoid2dZ[A-Za-z0-9]+Oms_u[0-9]+\\("
-	defRe = "^[A-Za-z_][A-Za-z0-9_ ]*[* ]+[A-Za-z_][A-Za-z0-9_]*__M[A-Za-z0-9_]*\\(.*\\{[[:space:]]*$"
+	callRe = "[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9]*ZsrcZvoid2dZ[A-Za-z0-9]+Oms_u[0-9]+\\("
+	defRe = "^[A-Za-z_][A-Za-z0-9_ ]*[* ]+[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9_]*\\(.*\\{[[:space:]]*$"
 }
 
 FNR == 1 {
@@ -36,9 +36,9 @@ FNR == 1 {
 }
 
 current == "" && $0 ~ defRe {
-	if (match($0, /[A-Za-z_][A-Za-z0-9_]*__M[A-Za-z0-9_]*\(/)) {
+	if (match($0, /[A-Za-z_][A-Za-z0-9_]*__M?[A-Za-z0-9_]*\(/)) {
 		head = substr($0, RSTART, RLENGTH)
-		current = module ":" substr(head, 1, index(head, "__M") - 1)
+		current = module ":" substr(head, 1, index(head, "__") - 1)
 		defined[current] = 1
 	}
 	next
@@ -49,7 +49,7 @@ current != "" {
 	if ($0 ~ /ArrayCopy\(|OmsCopy\(/) copies[current]++
 	if ($0 ~ /msAllocTyped\(|[^a-z]calloc\(|[^a-z]malloc\(|ArrayPush\(&\(?T[0-9]+_/) allocs[current]++
 	for (b = 1; b <= nb; b++) {
-		if (banned[b] != "" && $0 ~ ("[^A-Za-z0-9_]" banned[b] "__M")) bannedCall[current] = bannedCall[current] " " banned[b]
+		if (banned[b] != "" && $0 ~ ("[^A-Za-z0-9_]" banned[b] "__")) bannedCall[current] = bannedCall[current] " " banned[b]
 	}
 	line = $0
 	while (match(line, callRe)) {

@@ -115,10 +115,10 @@ test "a box's device edges land on integers through the affine" {
 		const y0d: float32 = snapped[1] * d + ty;
 		const x1d: float32 = (snapped[0] + snapped[2]) * a + tx;
 		const y1d: float32 = (snapped[1] + snapped[3]) * d + ty;
-		assert approx(x0d as float64, Math.round(x0d as float64));
-		assert approx(y0d as float64, Math.round(y0d as float64));
-		assert approx(x1d as float64, Math.round(x1d as float64));
-		assert approx(y1d as float64, Math.round(y1d as float64));
+		assert approx(x0d, Math.round(x0d) as float32);
+		assert approx(y0d, Math.round(y0d) as float32);
+		assert approx(x1d, Math.round(x1d) as float32);
+		assert approx(y1d, Math.round(y1d) as float32);
 		assert snapped[2] > 0.0;
 		assert snapped[3] > 0.0;
 	}

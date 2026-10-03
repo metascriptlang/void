@@ -69,10 +69,10 @@ test "coverage falls monotonically as a pixel crosses an edge" {
 // ===== the analytic coverage, judged against the oracle =====
 
 test "the distance function is zero on the edge and signed the way the name says" {
-	assert approx(roundedRectDistance(10.0, 0.0, 10.0, 6.0, 0.0) as float64, 0.0);
+	assert approx(roundedRectDistance(10.0, 0.0, 10.0, 6.0, 0.0), 0.0);
 	assert roundedRectDistance(0.0, 0.0, 10.0, 6.0, 0.0) < 0.0;
 	assert roundedRectDistance(12.0, 0.0, 10.0, 6.0, 0.0) > 0.0;
-	assert approx(roundedRectDistance(12.0, 0.0, 10.0, 6.0, 0.0) as float64, 2.0);
+	assert approx(roundedRectDistance(12.0, 0.0, 10.0, 6.0, 0.0), 2.0);
 }
 
 test "a corner's distance is measured to the arc, not to the box" {
@@ -80,11 +80,11 @@ test "a corner's distance is measured to the arc, not to the box" {
 	// the radial distance minus the radius.
 	const s: float32 = 2.8284271;   // 4 / sqrt(2) * 1.0, the 45-degree offset for radius 4
 	const d: float32 = roundedRectDistance(6.0 + s, 2.0 + s, 10.0, 6.0, 4.0);
-	assert approx(d as float64, 0.0);
+	assert approx(d, 0.0);
 }
 
 test "coverage from distance is a half on the edge, and saturates either side" {
-	assert approx(coverageFromDistance(0.0, 1.0) as float64, 0.5);
+	assert approx(coverageFromDistance(0.0, 1.0), 0.5);
 	assert coverageFromDistance(-1.0, 1.0) == 1.0;
 	assert coverageFromDistance(1.0, 1.0) == 0.0;
 }
@@ -95,11 +95,11 @@ test "a zero antialiasing width is a hard edge, not a divide by zero" {
 }
 
 test "the antialiasing width is one device pixel in local units" {
-	assert approx(aaWidthForAffine(1.0, 0.0, 0.0, 1.0) as float64, 1.0);
-	assert approx(aaWidthForAffine(2.0, 0.0, 0.0, 2.0) as float64, 0.5);
+	assert approx(aaWidthForAffine(1.0, 0.0, 0.0, 1.0), 1.0);
+	assert approx(aaWidthForAffine(2.0, 0.0, 0.0, 2.0), 0.5);
 	// A rotation is not a scale, so it must not change the width.
 	const r: float32 = 0.7071068;
-	assert approx(aaWidthForAffine(r, r, -r, r) as float64, 1.0);
+	assert approx(aaWidthForAffine(r, r, -r, r), 1.0);
 }
 test "selection gloop is a hard union outside its radius and fillets a join inside it" {
 	assert smoothUnionDistance(-4.0, 8.0, 8.0) == -4.0;
@@ -112,8 +112,8 @@ test "wavy underline distance follows the sine centreline" {
 	const height: float32 = 6.0;
 	const thickness: float32 = 2.0;
 	const peakX: float32 = 4.5;
-	assert approx(wavyUnderlineDistance(0.0, 0.0, height, thickness) as float64, -1.0);
-	assert approx(wavyUnderlineDistance(peakX, 1.6, height, thickness) as float64, -1.0);
+	assert approx(wavyUnderlineDistance(0.0, 0.0, height, thickness), -1.0);
+	assert approx(wavyUnderlineDistance(peakX, 1.6, height, thickness), -1.0);
 	assert wavyUnderlineDistance(peakX, 0.0, height, thickness) > 0.0;
 }
 
@@ -207,12 +207,12 @@ import { erfApprox, shadowCoverage, insetShadowCoverage } from "../void2d/sdf";
 import { blurredPixelCoverage, maxShadowError } from "../../tests/oracle/coverage";
 
 test "the error function is odd, saturates, and lands on erf(1)" {
-	assert approx(erfApprox(0.0) as float64, 0.0);
+	assert approx(erfApprox(0.0), 0.0);
 	assert erfApprox(3.0) > 0.9999;
 	assert erfApprox(-3.0) < -0.9999;
 	// erf(1) = 0.8427008; the rational form's polynomial error is far below this bound.
 	assert Math.abs((erfApprox(1.0) - 0.8427008) as float64) < 0.001;
-	assert approx(erfApprox(-0.7) as float64, -(erfApprox(0.7) as float64));
+	assert approx(erfApprox(-0.7), -erfApprox(0.7));
 }
 
 // The shadow scene every test below judges: half extents 10x6, radius 3, sigma 2, the caster
@@ -258,7 +258,7 @@ test "per-corner radii mirror exactly under x negation" {
 	// which is exact algebra - a drift here means the two sides are not the two chords.
 	const a: float32 = shadowCoverage(11.5, -4.5, 10.0, 6.0, 5.0, 2.0, 3.0, 6.0, 1.5, -1.0, 2.0, 1.0);
 	const b: float32 = shadowCoverage(-11.5, -4.5, 10.0, 6.0, 2.0, 5.0, 6.0, 3.0, -1.5, -1.0, 2.0, 1.0);
-	assert approx(a as float64, b as float64);
+	assert approx(a, b);
 	assert a != shadowCoverage(11.5, -4.5, 10.0, 6.0, 5.0, 6.0, 3.0, 2.0, 1.5, -1.0, 2.0, 1.0);
 }
 

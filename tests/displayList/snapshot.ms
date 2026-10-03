@@ -720,8 +720,8 @@ test "T1 shadow inflation preserves the snapped visible box" {
 	const margin: float32 = 3.0 * sigma + offsetX;
 	const visibleLeft: float32 = (originX + margin * affineX) * dpi;
 	const visibleRight: float32 = (originX + (quadWidth - margin) * affineX) * dpi;
-	assert approx(visibleLeft as float64, Math.round(visibleLeft as float64));
-	assert approx(visibleRight as float64, Math.round(visibleRight as float64));
+	assert approx(visibleLeft, Math.round(visibleLeft) as float32);
+	assert approx(visibleRight, Math.round(visibleRight) as float32);
 }
 
 test "T1 an offscreen box still emits when its shadow reaches the viewport" {
