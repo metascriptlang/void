@@ -220,7 +220,7 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
                       int kindField, int breakField, int vertexOffsetField, int vertexCountField,
                       int viewField, int viewHighField, int blendField, int samplerField,
                       int effectField,
-                      int samplerCount, int maxTargetDepth, int clearRField,
+                      int samplerCount, int clearRField,
                       int clipXField, int clipUField, int arg0Field, int rtModeField,
                       int kindDraw, int kindScissor, int kindBlur,
                       int kindTargetBegin, int kindTargetEnd,
@@ -254,7 +254,6 @@ int void2dLayoutCheck(int commandFloats, int effectFloats, int vertexFloats,
 		&& kindBlur == CMD_KIND_BLUR
 		&& kindTargetBegin == CMD_KIND_TGT_BEGIN
 		&& kindTargetEnd == CMD_KIND_TGT_END
-		&& maxTargetDepth == VOID2D_MAX_TARGET_DEPTH
 		&& clearRField == CMD_CLEAR_R;
 }
 
@@ -1120,11 +1119,14 @@ static void runCommands(const float *commands, int commandCount,
 			continue;
 		}
 		if (kind == CMD_KIND_TGT_BEGIN) {
-			if (sizeDepth < VOID2D_MAX_TARGET_DEPTH) {
-				sizeStack[sizeDepth][0] = fbW;
-				sizeStack[sizeDepth][1] = fbH;
-				sizeDepth++;
+			if (sizeDepth >= VOID2D_MAX_TARGET_DEPTH) {
+				fprintf(stderr, "void2d: a target list nested %d deep at replay, where its blocks are flat\n",
+					sizeDepth + 1);
+				abort();
 			}
+			sizeStack[sizeDepth][0] = fbW;
+			sizeStack[sizeDepth][1] = fbH;
+			sizeDepth++;
 			fbW = cmd[CMD_ARG0];
 			fbH = cmd[CMD_ARG1];
 			doorBeginColorPass(void2dCommandView(cmd),

@@ -645,6 +645,21 @@ test "a target nested past the save slots ends its own bracket, not the one arou
 	frameEnd();
 }
 
+test "nine nested targets each record their own block" {
+	const none = rgba(0.0, 0.0, 0.0, 0.0);
+	begin2d(16.0, 16.0, 1.0);
+	for (let i: int32 = 0; i < 9; i++) {
+		beginTarget(effectTestTarget(), 16.0, 16.0, 1.0, 0.0, 0.0, none);
+	}
+	assert targetDepth() == 9;
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), rgba(1.0, 1.0, 1.0, 1.0), BlendMode.Alpha);
+	for (let i: int32 = 0; i < 9; i++) { endTarget(); }
+	finishRecording();
+	assert targetDepth() == 0;
+	assert targetCommandCount() == 19;
+	frameEnd();
+}
+
 test "T1 snapshot: a rotated Mask carries four exact edge distances" {
 	assert snapshot("rotatedClip", record(rotatedClipScene(), 128.0, 64.0, 1.0));
 }

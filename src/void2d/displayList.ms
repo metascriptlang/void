@@ -248,7 +248,7 @@ export const NO_PAINT: PaintIndex = {
 	scope: NO_SCOPE,
 };
 
-export const MAX_TARGET_DEPTH: int32 = 8;
+const TARGET_DEPTH_RESERVED: int32 = 8;
 
 export interface DrawContext2D {
 	id: int32;
@@ -269,8 +269,6 @@ export interface DrawContext2D {
 	targetClipRecordedSaves: Vec<boolean>;
 	targetScaleSaves: Vec<float32>;
 	targetDepthNow: int32;
-	targetOverflowed: boolean;
-	unrecordedTargets: int32;
 	// The clip the replay is under. A scissor is a command, not a call, so the emitter tracks
 	// what it last recorded and only records a change.
 	clip: Clip;
@@ -371,13 +369,11 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		vertexTotal: 0,
 		uiInstanceTotal: 0,
 		spriteInstanceTotal: 0,
-		targetMarks: new Array(MAX_TARGET_DEPTH),
-		targetClipSaves: new Array(MAX_TARGET_DEPTH),
-		targetClipRecordedSaves: new Array(MAX_TARGET_DEPTH),
-		targetScaleSaves: new Array(MAX_TARGET_DEPTH),
+		targetMarks: new Array(TARGET_DEPTH_RESERVED),
+		targetClipSaves: new Array(TARGET_DEPTH_RESERVED),
+		targetClipRecordedSaves: new Array(TARGET_DEPTH_RESERVED),
+		targetScaleSaves: new Array(TARGET_DEPTH_RESERVED),
 		targetDepthNow: 0,
-		targetOverflowed: false,
-		unrecordedTargets: 0,
 		clip: NO_CLIP,
 		clipRecorded: false,
 		renderTargetScale: 0.0,
@@ -406,7 +402,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		scopeNow: NO_SCOPE,
 		cameraScope: NO_SCOPE,
 		scopeValues: new Array(SCOPE_FLOATS),
-		targetScopeSaves: new Array(MAX_TARGET_DEPTH),
+		targetScopeSaves: new Array(TARGET_DEPTH_RESERVED),
 		originX: 0.0,
 		originY: 0.0,
 		runStart: 0,
@@ -425,9 +421,9 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		targetsFlushed: false,
 		prepared: false,
 		preparedFrame: 0,
-		savedView: new Array(MAX_TARGET_DEPTH),
-		savedRun: new Array(MAX_TARGET_DEPTH * 3),
-		savedSize: new Array(MAX_TARGET_DEPTH * 4),
+		savedView: new Array(TARGET_DEPTH_RESERVED),
+		savedRun: new Array(TARGET_DEPTH_RESERVED * 3),
+		savedSize: new Array(TARGET_DEPTH_RESERVED * 4),
 		curMat: NO_COLOR_MATRIX,
 		curAdd: rgba(0.0, 0.0, 0.0, 0.0),
 		curKey: rgba(0.0, 0.0, 0.0, 0.0),
@@ -475,8 +471,6 @@ export function resetContext(): void {
 	activeContext.clip = NO_CLIP;
 	activeContext.renderTargetScale = 0.0;
 	activeContext.targetDepthNow = 0;
-	activeContext.targetOverflowed = false;
-	activeContext.unrecordedTargets = 0;
 	activeContext.maskTotal = 0;
 	activeContext.targetsPending = true;
 	activeContext.uploadAll = true;
@@ -666,7 +660,6 @@ export function renderTargetScaleNow(): float32 { return activeContext.renderTar
 export function commandCount(): int32 { return activeContext.commandTotal; }
 export function targetCommandCount(): int32 { return activeContext.targetCommandTotal; }
 export function targetDepth(): int32 { return activeContext.targetDepthNow; }
-export function targetStackOverflowed(): boolean { return activeContext.targetOverflowed; }
 
 export function targetCommandField(index: int32, field: int32): float32 {
 	return activeContext.targetCommands[index * COMMAND_FLOATS + field];
@@ -1098,12 +1091,12 @@ export function beginTargetList(
 	clearB: float32,
 	clearA: float32,
 ): void {
-	if (activeContext.targetDepthNow >= MAX_TARGET_DEPTH) {
-		// Recording into the parent is wrong, but it is visibly wrong rather than a stack
-		// smash, and the flag makes the frame say so instead of the picture.
-		activeContext.targetOverflowed = true;
-		activeContext.unrecordedTargets = activeContext.unrecordedTargets + 1;
-		return;
+	if (activeContext.targetDepthNow == (activeContext.targetMarks.length as int32)) {
+		activeContext.targetMarks.push(0);
+		activeContext.targetScaleSaves.push(0.0 as float32);
+		activeContext.targetScopeSaves.push(0);
+		activeContext.targetClipSaves.push(NO_CLIP);
+		activeContext.targetClipRecordedSaves.push(false);
 	}
 	activeContext.targetMarks[activeContext.targetDepthNow] = activeContext.commandTotal;
 	activeContext.targetScaleSaves[activeContext.targetDepthNow] = activeContext.renderTargetScale;
@@ -1129,10 +1122,6 @@ export function beginTargetList(
 // in LIFO order the block is the tail of `commands`, so this is a copy of a few records and
 // a count, and an inner target has already moved ahead of its consumer.
 export function endTargetList(): boolean {
-	if (activeContext.unrecordedTargets > 0) {
-		activeContext.unrecordedTargets = activeContext.unrecordedTargets - 1;
-		return false;
-	}
 	if (activeContext.targetDepthNow <= 0) { return false; }
 	startCommand(CommandKind.TargetEnd, BreakReason.Barrier);
 	activeContext.targetDepthNow = activeContext.targetDepthNow - 1;
@@ -1591,17 +1580,15 @@ test "a target starts with no clip and gives the outer clip back when it closes"
 	assert (targetCommandField(1, CMD_EFFECT) as int32) == NO_EFFECT;
 }
 
-test "the target stack refuses to overflow and says so" {
+test "the target stack grows past the depth it reserved" {
 	resetContext();
 	for (let i: int32 = 0; i < 9; i++) {
 		beginTargetList(1, 4.0, 4.0, 1.0, 0.0, 0.0, 0.0, 0.0);
 	}
-	assert targetStackOverflowed();
-	assert targetDepth() == 8;
-	assert !endTargetList();
-	assert targetDepth() == 8;
-	for (let i: int32 = 0; i < 8; i++) { assert endTargetList(); }
+	assert targetDepth() == 9;
+	for (let i: int32 = 0; i < 9; i++) { assert endTargetList(); }
 	assert targetDepth() == 0;
+	assert !endTargetList();
 }
 
 test "recording the same clip twice records one scissor" {

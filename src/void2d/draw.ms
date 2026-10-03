@@ -41,8 +41,7 @@ import {
 	effectField, effectMatrix,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
-	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
-	MAX_TARGET_DEPTH,
+	targetDepth, renderTargetScaleNow, beginTargetList, endTargetList,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
@@ -465,7 +464,7 @@ export function setup2d(): void {
 		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
 		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
 		CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
-		MAX_TARGET_DEPTH, CMD_CLEAR_R,
+		CMD_CLEAR_R,
 		CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE,
 		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
 		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
@@ -541,9 +540,6 @@ export function startContext(): void {
 export function flushTargets(): void {
 	const ctx: DrawContext2D = currentContext();
 	finishRecording();
-	if (targetStackOverflowed()) {
-		console.log("void2d: filter nesting deeper than 8 - the innermost targets were recorded into their parent");
-	}
 	const l: DrawContext2D = currentContext();
 	resolveScopes();
 	resolvePipelines();
@@ -1020,11 +1016,12 @@ export function beginTarget(
 	const rt: uint32 = target.attachment;
 	const ctx: DrawContext2D = currentContext();
 	ctx.targetsFlushed = false;
-	if (targetDepth() >= MAX_TARGET_DEPTH) {
-		beginTargetList(rt, w, h, scale, clear.r, clear.g, clear.b, clear.a);
-		return;
-	}
 	closeRun();
+	if (targetDepth() == (ctx.savedView.length as int32)) {
+		ctx.savedView.push(0 as uint32);
+		for (let k: int32 = 0; k < 3; k++) { ctx.savedRun.push(0.0 as float32); }
+		for (let k: int32 = 0; k < 4; k++) { ctx.savedSize.push(0.0 as float32); }
+	}
 	const slot: int32 = targetDepth() * 3;
 	ctx.savedView[targetDepth()] = ctx.curView;
 	ctx.savedRun[slot] = (ctx.curBlend as int32) as float32;
