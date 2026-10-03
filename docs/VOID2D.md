@@ -2411,7 +2411,7 @@ commit on the same code and is GREEN, 240 stages with its device SKIP, 182 abort
 no-op rebase re-ran `gate.sh --web` on `cffb689` and is GREEN with 0 FAIL and the row PASS, every
 number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
 
-- **J, the public bridge's pass entries (resumed after the 0.3.0 migration).** The published
+- **J, two remaining native boundary gaps (resumed after the 0.3.0 migration).** The published
   `src/sokol/bridge.h` no longer advertises begin/commit; `door.c` alone declares its internal
   platform calls. Their implementations stay in `bridge.c` and `bridgeEmbed.m`, preserving the
   environment-format check, present and void2d's commit hook. This is a public-header boundary,
@@ -2424,6 +2424,12 @@ number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
   using `doorBeginScreenPass`/`doorEndPass`/`doorCommit` compiles. `tests/compile/bridgePass.c`
   and `scripts/checkBridgePass.sh` enforce that boundary in `gate.sh`, not by reading source text.
 
+  **Short bindings descriptors now stop by name** in `src/void3d/gpu3d.c` `gpu3dApplyBindings`,
+  before any word is read or bindings are changed, with the same diagnostic shape as door A.
+  The public Span consumer in `tests/aborts3d/gpu3dShortBindingsDescriptor.ms` returned normally
+  before the fix; after it, the process terminates with `applyBindings descriptor holds 8 of
+  9 words`. The minimum-length contract and valid binding path stay unchanged.
+  `gpu3d.c` is void3d's file; the coordinator explicitly granted it to this mechanical slice.
 
 A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
@@ -2438,8 +2444,6 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
   `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
   `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
-- void3d's `gpu3d.c` still returns silently on a short descriptor, the shape A closed in
-  `door.c`; the second half of J closes it in its own commit.
 - **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame uniform buffer on WebGPU and Metal. Measure at P1 and fold what does not change per draw into fewer blocks if it bites.
 - Reference facts were read from source, not benchmarked. Instance sizes and the one-draw-call claim are from planned layouts, not measured — P2's exit is where they become numbers.
 - Non-uniform scale on SDF boxes and `erf` shadows is approximated; the error has not been characterised. It has a golden scene from P0 (`xform/`) and no bound yet.

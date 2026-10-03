@@ -1321,8 +1321,8 @@ guardrails, TESTING.md and CODE-STYLE §5 and §14; it edited and built nothing.
   cache change is written into its card in full; the record names the parking site.
 - **L1, two claims had no saved output**: `out/tmp/paintMatrix/receipt.txt` (the probe built
   before the fix) and `out/tmp/viewCache/receipt.txt` (a `-D` build, then a plain one).
-- **L2, the bridge still exports `voidBeginPass` and `voidCommit`, and `gpu3d.c` returns
-  silently on a short descriptor**: carried, in "Open"; the second is void3d's file.
+- **L2, the public bridge pass entries and the silent short descriptor**: carried at review
+  time, now closed by Door closure J; the coordinator granted the `gpu3d.c` edit to this slice.
 - **L3, stale comments**: the ones in `displayList.ms` ("an index and not a flag") and
   `target.ms` (a `beginPass` note left above another function) are deleted; `batcher.c`'s is
   kept, since the sampler table is still indexed by `smooth * 2 + tileWrap`; the one in

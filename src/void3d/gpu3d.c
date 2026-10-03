@@ -3,6 +3,8 @@
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader3d.glsl.h"
 #include "pixelArt3d.glsl.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 // ---- void3d's programs and layouts, registered with the GPU door ----
 
@@ -236,7 +238,11 @@ void gpu3dApplyPipeline(uint32_t pipeline) {
 }
 
 void gpu3dApplyBindings(const uint32_t *bindings, int64_t length) {
-	if (length < GPU3D_BINDING_LENGTH) return;
+	if (length < GPU3D_BINDING_LENGTH) {
+		fprintf(stderr, "void3d: applyBindings descriptor holds %lld of %d words\n",
+			(long long)length, GPU3D_BINDING_LENGTH);
+		abort();
+	}
 	sg_bindings desc = {0};
 	for (int i = 0; i < 2; i++) {
 		desc.vertex_buffers[i] = (sg_buffer){.id = bindings[GPU3D_BINDING_VERTEX_BUFFER + i]};
