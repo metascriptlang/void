@@ -1357,7 +1357,7 @@ skip. Logs: `out/tmp/closureGate2/`.
 shader comment, and a UI-program premultiplied input. The pool's context-loss path is read, not
 run, until a device that loses its context is in the gate.
 
-## Cache owner, door closure F â€” SHIP WITH FOLLOW-UPS (2026-10-02)
+## Cache owner, door closure F — SHIP WITH FOLLOW-UPS (2026-10-02)
 
 **Verdict: SHIP WITH FOLLOW-UPS for `7f8507b..c6876db`**, built on main `2c9060c` (void3d's M24)
 under coach-c5's GO `Cache-owner-2c9060c`. It takes the item the GPU-door closure carried, the
@@ -1368,10 +1368,10 @@ the gates below close it. This verdict authorises no land or push.
 **Passes.** The defect pass was `/code-review high` on `main..HEAD` at `1745bdb`, run as a forked
 agent told to build, run and edit nothing; the main session read each finding against the code
 before acting. The design pass was a fresh read-only agent on `66057ce`, briefed as the owner for
-five years, against F, "The bar", the guardrails, TESTING.md and CODE-STYLE Â§14; it built and
+five years, against F, "The bar", the guardrails, TESTING.md and CODE-STYLE §14; it built and
 ran nothing. Both ran one at a time on the coordinator's named GO.
 
-### Defect pass â€” eight findings
+### Defect pass — eight findings
 
 - **`releasePipelines` destroyed inside an open pass**, where only close refused one: it stops
   by name too (`1644df0`), pinned by `pipelinesReleasedInsidePass`, which ran to its end with
@@ -1393,7 +1393,7 @@ ran nothing. Both ran one at a time on the coordinator's named GO.
   kept, by contract: a stale mark over live handles leaks real objects on a live device. (c)
   proves adoption through the alias, and F says it is not a device-loss proof.
 
-### Design pass â€” SHIP WITH FOLLOW-UPS, and what was done with each
+### Design pass — SHIP WITH FOLLOW-UPS, and what was done with each
 
 1. **The gates had not run on the tip**: the gates below.
 2. **`shaderFor`'s closed stop was unpinned**: `pipelinesShaderAfterClose` (`37bcfbd`), with no
@@ -1417,7 +1417,7 @@ abstract); close with stop-by-name follows void3d's M25 row; GPUI keeps pipeline
 as M24 records. Idiom: an interface by value, writers as free functions, readers as extensions,
 as void3d's `DrawContext`; nothing cut. The parked item is fixed, not moved. Tests: (a) is a
 CPU property kept in the GPU consumer by agreement; every pin can fail. Compiler: no
-workaround; the writable field is carded and recorded. Â§14: clean. Refuse to merge: only before
+workaround; the writable field is carded and recorded. §14: clean. Refuse to merge: only before
 the gates are green.
 
 **Measured on tree `e9b879b1ceff` (tip `950f274`), BUILD `5791eadd`, shared box:** `sh
@@ -1433,3 +1433,97 @@ that leaves `pipeline.ms`'s C text unchanged could link a stale object there unt
 compiler's object-cache fix is installed (`gate.sh` wipes both caches); the closure-era review
 lines that call the cache parked (`REVIEWS.md` "GPU-door closure", `REVIEWS-3D.md` M24) are
 history and stay.
+
+## Premultiplied colour effect, image-style input, effect state across a target — SHIP WITH FOLLOW-UPS (2026-10-03)
+
+**Verdict: SHIP WITH FOLLOW-UPS for `2be9cf5..c24405b`**, on main `2be9cf5` under the
+coordinator's GO `void2d-premultEffect-1` and the chain that followed it. The commits take the
+first Open item, a colour effect on a premultiplied source, and the second, the UI program's
+missing premultiplied input (VOID2D.md "Door closure" G). They also fix two defects found on the
+way: the effect state across a target, and the pairing of a target nested past the save slots.
+The gates have not run on this tip: by the lease they wait on void3d's M25 land. This verdict
+authorises no land or push.
+
+**Passes.**
+- The defect pass was `/code-review high` on `2be9cf5..503a7f7`, run as a forked agent told to
+  build, run and edit nothing. The main session read each finding against the code before
+  acting.
+- The design pass was a fresh read-only agent on `bcb11a4`. It was briefed as the owner for five
+  years, against G, "The bar", the guardrails, TESTING.md and CODE-STYLE §14
+  (`out/tmp/premultEffect/designReviewBrief.md`), and it built and ran nothing.
+- Both ran one at a time.
+
+**Found before the passes, by G's own golden run.** `filter/afterTintedSibling` moved when G
+landed, and every one of its changed pixels got lighter. The cause was older than G:
+`beginTarget`/`endTarget` saved `curEffect` but not the rest of the effect state. The scene's
+filter composite therefore drew with the previous sibling's grayscale, and its golden had
+recorded a grey blur of a yellow subject. It is fixed as its own commit (`cd352b1`), ahead of G
+so it bisects. That commit carries two T1 pins, both red before. The golden was re-recorded only
+after a check that does not read its hash: VOID2D.md "A colour effect across a target", and
+`out/tmp/premultEffect/yellow.txt`.
+
+### Defect pass — nine findings
+
+1. **A target nested past the eight save slots ended the bracket around it.** This was confirmed,
+   pre-existing since P1, and made worse by nothing in this change. Fixed in `507400f`.
+   `endTargetList` counts the brackets it did not record and ends those first. Red before: the T1
+   test read depth 0 where 1 is right.
+2. **The division magnifies 8-bit rounding at low alpha, and additive targets hold rgb above
+   their alpha.** This is not a code defect: it is what premultiplied 8-bit data can hold. It is
+   written as a limit in G. The key row stays at alpha ≥ 128 for that reason.
+3. **No T1 pin covered `params1.y`.** Pinned in `8a8b5c2`. Its control, dropping the lane, goes
+   red (`controlParams1.log`).
+4. **VOID2D.md's P2 paragraph still described the old gate.** Swept in `bcb11a4`: a key and an
+   alpha-only add now count as an effect.
+5. **The shader comment on `viewport.w` was stale.** Reworded in `bcb11a4`.
+6. **TESTING.md was not swept.** The `image/` family gets a D1 row. The WebGL2 row says the two
+   new scenes are not captured yet; the gate re-measures it (`bcb11a4`).
+7. **`alphaRampTile` uploads through void3d's `makeImage` and caches nothing.** Kept. void2d's own
+   `makeImage` takes a `Ptr<void>`, which a MetaScript function cannot be given from a `Vec`, while
+   void3d's takes a `Span` and checks its length. The runner builds one scene per process, so the
+   images end with it.
+8. **`resumePaint` repeated the restore by hand.** Now one path (`c230522`).
+9. **`setIdentityMat` had one caller.** Inlined (`c230522`).
+
+### Design pass — SHIP WITH FOLLOW-UPS, and what was done with each
+
+- **F1, the app example combined a colour effect with an image style.** That combination is
+  dropped with a log line, so the example drew nothing. It is split into two examples, and the
+  combination is recorded in "Open" (`c24405b`).
+- **F2, a stale test count.** Replaced by the final tree's numbers (`c24405b`).
+- **F3, the pairing fix and the `params1.y` pin were not in the record.** Recorded (`c24405b`).
+- **F4, the Limit paragraph overclaimed for a texel with zero alpha.** Corrected (`c24405b`).
+- **F5, the gates.** Owed, after M25 lands.
+- **F6, one source of truth for the effect state.**
+  - Whether an effect is set is now derived from the effect row (`375d1ad`), in the context and
+    in `PaintIndex`.
+  - `reopenLast` restores through `restoreEffect`.
+  - The cached matrix, add and key stay as a cache, written only where the row is. Reading the
+    row on every `setEffect` would cost a 24-float read per node on the walk.
+- **F7, two depth constants that had to agree.** Now one constant (`0768458`). The dead check
+  went with it.
+- **F8, GPUI's disposition and the reason the bit rides the instance.** GPUI.md has the row, and
+  G gives the reason (`c24405b`).
+- **F9, the yellow check had no receipt.** Saved.
+- **F10, three older paths that log or stay silent where the rule says stop.** An image style
+  beside an effect, an unmatched `endTarget`, and target overflow. These are recorded in "Open"
+  as a design call; G made none of them.
+- **Not taken:**
+  - The literal offsets 16 to 23 in `restoreEffect` stay. They are the ones `pushEffect` writes,
+    and naming them belongs to a sweep of both.
+  - `endTargetList` returning `false` for an unmatched end stays silent. It is the F10 item.
+
+### Measured, BUILD `5791eadd`, D3D11 on the shared box
+
+| Check | Result |
+|---|---|
+| Red before, on `2be9cf5` plus the scene | `image/premultipliedEffect` off in 11 896 channel values (max 48) and 3 072 (max 200); the style scene stopped |
+| After | both pair invariants pass at max delta 1, on fresh captures and on the committed goldens |
+| Controls | the division cut: 11 896 / 48 and 11 424 / 154; the key left out of `noEffect`: only the key row, 3 072 / 200; the UI branch cut: 11 757 / 49; the `params1.y` lane dropped: its T1 pin red |
+| Bisect | the effect-state fix alone captures `afterTintedSibling` byte-identical to the final tree; `ccc2ce2`'s tree builds, captures the committed effect golden byte for byte, and passes its invariant |
+| Full D3D11 golden | four runs; the last, on `375d1ad`'s tree, is 80 / 80 |
+| T0/T1 | 1132 of 1132 |
+
+Receipts are in `out/tmp/premultEffect/`. Not run: `gate.sh --web` (WebGL2, the allocation
+stage, the record check) and `gate3d.sh` (shader freshness, aborts). They are owed after M25
+lands, rebased onto it, once each on one fixed tree.
