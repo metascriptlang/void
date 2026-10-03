@@ -1,5 +1,5 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
-import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
+import { Vec3, Vec4, vec3, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";
@@ -202,10 +202,16 @@ function closeChannel(got: int32, wanted: float32): boolean {
 function checkLitPixel(view: CameraView, position: Vec3): void {
 	let sample: Vec3 = view.project(position, SCREEN_MAPPING, true);
 	let pixel: int64 = voidCapturePixel(0, sample.x as int32, sample.y as int32);
-	let brightness: float32 = (0.125 + 0.75) * 255.0;
-	if (!closeChannel(channel(pixel, 24), BOX_COLOR.red * brightness) ||
-		!closeChannel(channel(pixel, 16), BOX_COLOR.green * brightness) ||
-		!closeChannel(channel(pixel, 8), BOX_COLOR.blue * brightness)) {
+	const light: float32 = srgbToLinear(0.125) + 0.75;
+	const red: int32 =
+		Math.round(linearToSrgb(srgbToLinear(BOX_COLOR.red) * light) * 255.0) as int32;
+	const green: int32 =
+		Math.round(linearToSrgb(srgbToLinear(BOX_COLOR.green) * light) * 255.0) as int32;
+	const blue: int32 =
+		Math.round(linearToSrgb(srgbToLinear(BOX_COLOR.blue) * light) * 255.0) as int32;
+	if (!closeChannel(channel(pixel, 24), red as float32) ||
+		!closeChannel(channel(pixel, 16), green as float32) ||
+		!closeChannel(channel(pixel, 8), blue as float32)) {
 		fail("the projected box is not the visible orange directional-lit front face");
 	}
 }

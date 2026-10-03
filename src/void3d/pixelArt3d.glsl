@@ -9,7 +9,7 @@ vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight, float l
     float facing = mix(1.0, max(dot(normal, toLight / max(distance, 0.0001)), 0.0), normalWeight);
     float energy = falloff * falloff * facing * pointLight[i].w;
     float level = floor(energy * levels + 0.35) / levels;
-    return pointColor[i].rgb * level;
+    return srgbToLinear(pointColor[i].rgb) * level;
 }
 @end
 
@@ -37,6 +37,7 @@ void main() {
 @fs litFs
 @include_block materialUniforms
 @include_block lightUniforms
+@include_block colorSpace
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
@@ -49,11 +50,12 @@ layout(location=1) out vec4 fragNormal;
 void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
-    vec3 light = ambient.rgb + dirColor.rgb * lambert;
+    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
     }
-    fragColor = vec4(saturated(baseColor.rgb, material.y) * light, baseColor.a);
+    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
+    fragColor = vec4(linearToSrgb(surface * light), baseColor.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -84,6 +86,7 @@ void main() {
 @fs litTexturedFs
 @include_block materialUniforms
 @include_block lightUniforms
+@include_block colorSpace
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
@@ -97,14 +100,15 @@ in float depth01;
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
-    vec4 surface = baseColor * texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
-    vec3 light = ambient.rgb + dirColor.rgb * lambert;
+    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
     }
-    fragColor = vec4(saturated(surface.rgb, material.y) * light, surface.a);
+    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y)) * srgbToLinear(texel.rgb);
+    fragColor = vec4(linearToSrgb(surface * light), baseColor.a * texel.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -136,6 +140,7 @@ void main() {
 @fs billboardFs
 @include_block billboardUniforms
 @include_block lightUniforms
+@include_block colorSpace
 @include_block toonPointLight
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
@@ -150,14 +155,16 @@ void main() {
     if (billboardColor.a * texel.a * instanceColor.a < 0.5) {
         discard;
     }
-    vec3 points = vec3(0.0);
+    vec3 rgb = billboardColor.rgb * texel.rgb * instanceColor.rgb;
     if (billboard.y != 0.0) {
         vec3 lightPoint = rootPosition + vec3(0.0, billboard.z, 0.0);
+        vec3 points = vec3(0.0);
         for (int i = 0; i < int(ambient.a + 0.5); i++) {
             points += pointLightAt(i, lightPoint, vec3(0.0, 1.0, 0.0), 0.0, billboard.x);
         }
+        rgb = linearToSrgb(srgbToLinear(rgb) + points);
     }
-    fragColor = vec4(billboardColor.rgb * texel.rgb * instanceColor.rgb + points, 0.0);
+    fragColor = vec4(rgb, 0.0);
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
 }
 @end

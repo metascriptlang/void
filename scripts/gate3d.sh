@@ -1327,16 +1327,34 @@ run_look_restored() {
 	pass "capture look: frames 1 and 16 byte-identical to m3palette_*.ppm around the swap"
 }
 
+# M26: lighting is linear, so the greyed ground is the plain ground's linear light scaled by
+# the saturation ratios and encoded back; a bare per-channel ratio held while the frame was
+# gamma end to end.
+srgb_decode() {
+	magick "$1" -fx "u<=0.04045? u*0.0773993808 : pow(u*0.9478672986+0.0521327014,2.4)" -depth 16 "$2"
+}
+
+srgb_encode() {
+	magick "$1" -fx "u<=0.0031308? u*12.92 : 1.055*pow(u,0.41666)-0.055" -depth 16 "$2"
+}
+
 count_off_ratio() {
-	magick "$1" -channel R -evaluate multiply "$3" -channel G -evaluate multiply "$4" \
-		-channel B -evaluate multiply "$5" +channel "$WORK/ratioPredicted.ppm"
+	srgb_decode "$1" "$WORK/ratioLinear.png"
+	magick "$WORK/ratioLinear.png" -channel R -evaluate multiply "$3" -channel G -evaluate multiply "$4" \
+		-channel B -evaluate multiply "$5" +channel "$WORK/ratioScaled.png"
+	srgb_encode "$WORK/ratioScaled.png" "$WORK/ratioPredicted.png"
 	magick "$1" "$2" -compose difference -composite -separate -evaluate-sequence max \
 		-threshold 0 "$WORK/ratioGround.png"
-	magick "$WORK/ratioPredicted.ppm" "$2" -compose difference -composite -separate \
-		-evaluate-sequence max -threshold 0.6% "$WORK/ratioGround.png" -compose multiply \
-		-composite -format "%[fx:round(mean*w*h)] " info:
+	magick "$WORK/ratioScaled.png" "$1" -separate -evaluate-sequence max \
+		-fx "u >= 0.999 ? 1 : 0" "$WORK/ratioGround.png" -compose multiply -composite "$WORK/ratioClip.png"
+	magick "$WORK/ratioPredicted.png" "$2" -compose difference -composite -separate \
+		-evaluate-sequence max -fx "u > 0.006 ? 1 : 0" "$WORK/ratioGround.png" -compose multiply \
+		-composite "$WORK/ratioOff.png"
+	magick "$WORK/ratioClip.png" -negate "$WORK/ratioOpen.png"
+	magick "$WORK/ratioOff.png" "$WORK/ratioOpen.png" -compose multiply -composite \
+		-format "%[fx:round(mean*w*h)] " info:
 	magick "$WORK/ratioGround.png" -format "%[fx:round(mean*w*h)] " info:
-	magick "$WORK/ratioPredicted.ppm" "$1" -separate -evaluate-sequence max -threshold 99.9% 		"$WORK/ratioGround.png" -compose multiply -composite -format "%[fx:round(mean*w*h)]" info:
+	magick "$WORK/ratioClip.png" -format "%[fx:round(mean*w*h)]" info:
 }
 
 run_light_multiplies() {
@@ -1347,10 +1365,14 @@ run_light_multiplies() {
 		fail "multiply: GROUND in campfireScene.ms or LUMA_* in math3d.ms not found (got '$ground' / '$luma')"
 		return
 	fi
-	ratios=$(echo "$ground $luma $GREY_GROUND" | awk '{
-		l = $1 * $4 + $2 * $5 + $3 * $6
-		for (i = 1; i <= 3; i++) printf "%.9f ", ($i * (1 + $7) - l * $7) / $i
-	}')
+	ratios=$(echo "$ground $luma $GREY_GROUND" | awk '
+		function dec(x) {
+			return x <= 0.04045 ? x * 0.0773993808 : exp(log(x * 0.9478672986 + 0.0521327014) * 2.4)
+		}
+		{
+			l = $1 * $4 + $2 * $5 + $3 * $6
+			for (i = 1; i <= 3; i++) printf "%.9f ", dec($i * (1 + $7) - l * $7) / dec($i)
+		}')
 	for frame in $FRAMES; do
 		plain=$CAPTURE/gate/campfireDirectCapture_$frame.ppm
 		greyed=$CAPTURE/gate/campfireGreyDirectCapture_$frame.ppm
@@ -1363,16 +1385,12 @@ run_light_multiplies() {
 			fail "multiply: frame $frame has no ground pixel that greying changed"
 			return
 		fi
-		if [ "$3" -ne 0 ]; then
-			fail "multiply: frame $frame, $3 ground pixels reach 255 in the plain frame or plain × grey/ground; the ratio cannot hold where a channel clips"
-			return
-		fi
 		if [ "$1" -ne 0 ]; then
-			fail "multiply: frame $frame, $1 of $2 ground pixels are not the plain ground × grey/ground"
+			fail "multiply: frame $frame, $1 of $2 ground pixels are not the plain ground's linear light × grey/ground ($3 of them clip at 255)"
 			return
 		fi
 	done
-	pass "multiply: the greyed ground is the plain ground × grey/ground ($ratios) in 4 frames"
+	pass "multiply: the greyed ground is the plain ground's linear light × grey/ground ($ratios) in 4 frames"
 }
 
 # The forward flame is an unlit billboard of colour 1, so its atlas texels reach the frame

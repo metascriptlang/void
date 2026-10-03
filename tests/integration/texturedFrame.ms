@@ -1,5 +1,5 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
-import { Vec3, Vec4, vec3, eulerQuat } from "../../src/math/math3d";
+import { Vec3, Vec4, vec3, eulerQuat, srgbToLinear, linearToSrgb } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
 import {
@@ -361,11 +361,15 @@ function channelOf(rgb: uint32, shift: uint32): int32 {
 	return ((rgb >> shift) & 0xFF) as int32;
 }
 
-function isHalfOf(got: uint32, texel: uint32): boolean {
+function isSunlitTexel(got: uint32, texel: uint32): boolean {
 	let want: uint32 = rgbOfTexel(texel);
 	let shifts: Vec<uint32> = [16, 8, 0];
+	const light: float32 = srgbToLinear(0.25) + 0.25;
 	for (const shift of shifts) {
-		let difference: int32 = channelOf(got, shift) - (channelOf(want, shift) + 1) / 2;
+		const channel: float32 = (channelOf(want, shift) as float32) / 255.0;
+		const expected: int32 =
+			Math.round(linearToSrgb(srgbToLinear(channel) * light) * 255.0) as int32;
+		let difference: int32 = channelOf(got, shift) - expected;
 		if (difference < -1 || difference > 1) { return false; }
 	}
 	return true;
@@ -385,19 +389,20 @@ function checkQuadrants(view: CameraView, lit: boolean): void {
 	];
 	for (let i = 0; i < 4; i++) {
 		let got: uint32 = pixelAt(view, points[i]);
-		let right: boolean = lit ? isHalfOf(got, expected[i]) : got == rgbOfTexel(expected[i]);
+		let right: boolean = lit ? isSunlitTexel(got, expected[i]) : got == rgbOfTexel(expected[i]);
 		if (!right) {
 			fail(`front quadrant ${i} is ${got}, not its texel ${rgbOfTexel(expected[i])}`);
 		}
 	}
 }
 
-function isRampLevel(channel: int32): boolean {
-	for (let level = 0; level <= 4; level++) {
-		let difference: int32 = channel - (level * 255 + 2) / 4;
-		if (difference >= -1 && difference <= 1) { return true; }
-	}
-	return false;
+function rampLevelOf(channel: int32): int32 {
+	const lit: float64 = srgbToLinear((channel as float32) / 255.0) * 4.0;
+	const step: int32 = Math.round(lit) as int32;
+	let off: float64 = lit - (step as float64);
+	if (off < 0.0) { off = -off; }
+	if (off > 0.02) { return -1; }
+	return step;
 }
 
 // The pixel-art preset steps a point light to the material's four ramp levels, where the core's
@@ -410,11 +415,12 @@ function checkStepped(view: CameraView): void {
 		for (let x = (from.x as int32) + 2; x < (to.x as int32) - 2; x++) {
 			let got: uint32 = rgbOf(voidCapturePixel(0, x, y));
 			let red: int32 = channelOf(got, 16);
-			if (channelOf(got, 8) != 0 || channelOf(got, 0) != 0 || !isRampLevel(red)) {
+			const step: int32 = rampLevelOf(red);
+			if (channelOf(got, 8) != 0 || channelOf(got, 0) != 0 || step < 0) {
 				fail(`pixel (${x}, ${y}) is ${got}, not the red texel at a ramp level`);
 				return;
 			}
-			levels[(red * 4 + 127) / 255] = 1;
+			levels[step > 4 ? 4 : step] = 1;
 		}
 	}
 	if (levels[0] + levels[1] + levels[2] + levels[3] + levels[4] < 2) {

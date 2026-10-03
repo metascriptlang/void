@@ -1,6 +1,6 @@
 import { readFile } from "std/fs";
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
-import { Vec3, Vec4, vec3, eulerQuat } from "../../src/math/math3d";
+import { Vec3, Vec4, vec3, eulerQuat, srgbToLinear } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { beginScreenPass } from "../../src/gpu/target";
 import {
@@ -267,7 +267,7 @@ function pose(frameIndex: int32): void {
 	let sunlit: boolean = lit && !pixelArt;
 	let ambient: float32 = lamplit ? 0.0 : sunlit ? 0.25 : 1.0;
 	setAmbient(scene, vec3(ambient, ambient, ambient));
-	setLightPower(scene, sun, sunlit ? 0.75 : 0.0);
+	setLightPower(scene, sun, sunlit ? 1.0 - srgbToLinear(ambient) : 0.0);
 	for (const lamp of lamps) { setLightPower(scene, lamp, lamplit ? 3.0 : 0.0); }
 }
 
@@ -324,12 +324,13 @@ function checkFaceOn(view: CameraView): void {
 	expectAt(view, vec3(3.6, 0.0, -0.6), background, "the single-sided quad's culled back");
 }
 
-function isRampLevel(channel: int32): boolean {
-	for (let level = 0; level <= 4; level++) {
-		let difference: int32 = channel - (level * 255 + 2) / 4;
-		if (difference >= -1 && difference <= 1) { return true; }
-	}
-	return false;
+function rampLevelOf(channel: int32): int32 {
+	const lit: float64 = srgbToLinear((channel as float32) / 255.0) * 4.0;
+	const step: int32 = Math.round(lit) as int32;
+	let off: float64 = lit - (step as float64);
+	if (off < 0.0) { off = -off; }
+	if (off > 0.02) { return -1; }
+	return step;
 }
 
 // The pixel-art preset steps each lamp to the material's four ramp levels. A back face lit only
@@ -350,11 +351,12 @@ function checkStepped(view: CameraView, centreX: float32, textured: boolean): vo
 			let others: boolean = textured
 				? channelOf(got, 8) == 0 && channelOf(got, 0) == 0
 				: channelOf(got, 8) == red && channelOf(got, 0) == red;
-			if (!others || !isRampLevel(red)) {
+			const step: int32 = rampLevelOf(red);
+			if (!others || step < 0) {
 				fail(`pixel (${x}, ${y}) is ${got}, not a stepped back face`);
 				return;
 			}
-			levels[(red * 4 + 127) / 255] = 1;
+			levels[step > 4 ? 4 : step] = 1;
 		}
 	}
 	let shown: int32 = levels[1] + levels[2] + levels[3] + levels[4];

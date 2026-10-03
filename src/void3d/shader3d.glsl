@@ -6,7 +6,7 @@ vec3 pointLightAt(int i, vec3 position, vec3 normal) {
     float distance = length(toLight);
     float falloff = clamp(1.0 - distance / pointColor[i].a, 0.0, 1.0);
     float facing = max(dot(normal, toLight / max(distance, 0.0001)), 0.0);
-    return pointColor[i].rgb * (falloff * falloff * facing * pointLight[i].w);
+    return srgbToLinear(pointColor[i].rgb) * (falloff * falloff * facing * pointLight[i].w);
 }
 @end
 
@@ -32,6 +32,7 @@ void main() {
 // PENDING3D: material-saturation-only
 @include_block materialUniforms
 @include_block lightUniforms
+@include_block colorSpace
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
@@ -42,11 +43,12 @@ out vec4 fragColor;
 void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
-    vec3 light = ambient.rgb + dirColor.rgb * lambert;
+    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n);
     }
-    fragColor = vec4(saturated(baseColor.rgb, material.y) * light, baseColor.a);
+    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
+    fragColor = vec4(linearToSrgb(surface * light), baseColor.a);
 }
 @end
 
@@ -75,6 +77,7 @@ void main() {
 // PENDING3D: material-saturation-only
 @include_block materialUniforms
 @include_block lightUniforms
+@include_block colorSpace
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
@@ -86,14 +89,15 @@ in vec2 surfaceUv;
 in vec4 baseColor;
 out vec4 fragColor;
 void main() {
-    vec4 surface = baseColor * texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
-    vec3 light = ambient.rgb + dirColor.rgb * lambert;
+    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n);
     }
-    fragColor = vec4(saturated(surface.rgb, material.y) * light, surface.a);
+    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y)) * srgbToLinear(texel.rgb);
+    fragColor = vec4(linearToSrgb(surface * light), baseColor.a * texel.a);
 }
 @end
 
@@ -153,6 +157,7 @@ void main() {
 // PENDING3D: particle-alpha-tested
 @include_block billboardUniforms
 @include_block lightUniforms
+@include_block colorSpace
 @include_block pointLight
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
@@ -170,11 +175,11 @@ void main() {
     if (billboard.y != 0.0) {
         vec3 n = normalize(towardCamera);
         float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
-        vec3 light = ambient.rgb + dirColor.rgb * lambert;
+        vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
         for (int i = 0; i < int(ambient.a + 0.5); i++) {
             light += pointLightAt(i, worldPosition, n);
         }
-        pixel.rgb *= light;
+        pixel.rgb = linearToSrgb(srgbToLinear(pixel.rgb) * light);
     }
     fragColor = pixel;
 }

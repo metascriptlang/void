@@ -58,7 +58,7 @@ vec3 saturated(vec3 rgb, float amount) {
 // carries the same constants. Colour inputs and stored targets stay gamma-encoded.
 vec3 srgbToLinear(vec3 srgb) {
     vec3 low = srgb * 0.0773993808;
-    vec3 high = pow(srgb * 0.9478672986 + vec3(0.0521327014), vec3(2.4));
+    vec3 high = pow(max(srgb * 0.9478672986 + vec3(0.0521327014), vec3(0.0)), vec3(2.4));
     return vec3(
         srgb.x <= 0.04045 ? low.x : high.x,
         srgb.y <= 0.04045 ? low.y : high.y,
@@ -67,7 +67,7 @@ vec3 srgbToLinear(vec3 srgb) {
 
 vec3 linearToSrgb(vec3 rgb) {
     vec3 low = rgb * 12.92;
-    vec3 high = vec3(1.055) * pow(rgb, vec3(0.41666)) - vec3(0.055);
+    vec3 high = vec3(1.055) * pow(max(rgb, vec3(0.0)), vec3(0.41666)) - vec3(0.055);
     return vec3(
         rgb.x <= 0.0031308 ? low.x : high.x,
         rgb.y <= 0.0031308 ? low.y : high.y,
