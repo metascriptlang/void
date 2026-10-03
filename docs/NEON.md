@@ -134,8 +134,8 @@ and `neon/src/platform/ion/window.ms`; say so in `~/metascript/.inbox/neon/`.
 In order. 1, 2 and 4 block UI on a mesh; 3 and 5 make it right to look at; 6 and 7 let the JSX
 above be written without Neon working around Void.
 
-1. **Draw a `Scene2D` into a render target the caller owns.** Implemented in the worktree,
-   not landed: `src/void2d/scene.ms` `drawTarget`, through the existing prepared-context replay.
+1. **Draw a `Scene2D` into a render target the caller owns.** Implemented in branch commit
+   `3626fd7`, not on main yet: `src/void2d/scene.ms` `drawTarget`, using existing prepared replay.
    During `openPrepare` … `closePrepare`, prepare at the target's pixel size divided by DPI,
    then draw it. The call opens and closes its own pass, never commits, and consumes that
    same-frame preparation just as `drawScreen` does. Existing filter targets finish in prepare.
@@ -147,6 +147,8 @@ above be written without Neon working around Void.
    `RenderTarget.generation` stays unchanged (that field names the GPU context, not a resize).
    A recreated target must be drawn even when the scene is clean. The native consumer proves
    idle, same-size recreation, resize, @2× and @1.5× DPI, and post-prepare writes.
+   The caller must also invalidate when its DPI or clear input changes; those host inputs are
+   not node mutations tracked by `isDirty()`. `drawTarget` itself adds no scheduling policy.
 
    Reference read: Heaps `h2d/RenderContext.hx` `pushTarget`/`popTarget` at `b9aa6dcb`; Bevy
    `examples/ui/render_ui_to_texture.rs`. drei `bf6f4ad` `src/core/RenderTexture.tsx` `Container`

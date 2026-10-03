@@ -1586,3 +1586,22 @@ The full-RGBA, mask/analytic-edge, invalid-DPI and destroyed-view follow-ups are
 Receipts: `out/tmp/sceneTarget/red.log`, `smoke.log`, `unit.log`, the eleven misuse logs and
 the two visual PNGs. The final slice's gate verdicts are recorded separately; these native
 receipts are not substituted for a green land gate.
+
+### Exercised gates after the slice
+
+On msc 0.3.0 binary/support BUILD `4573591e`, D3D11, shared workstation:
+`gate.sh --web` on the drawTarget rendering code before the capture-PENDING extension passed
+1153 suite tests, 299 and 318 isolated tests, the nine-frame target consumer and eleven misuse
+stops, all 82 D3D11 goldens byte-identically, nine oracles, allocation 107/29/5 functions with
+249 callees, and the record (19 PENDING rows, 0 off). The demo built and ran for five seconds.
+It was RED only on the two Yoga-dependent web stages, with six loud skips; WebGL2 conformance
+did not run. No passing WebGL2 row or target-backend result is inferred from that failure.
+
+The final full `gate3d.sh` on `9d5244b`, tree `594df9c41ca285a3433987b0e6b70590a26df692`,
+is **GREEN with three loud skips** (2026-10-04): 239 PASS lines, 182 abort cases, 1153 suite
+tests, 29 PENDING3D rows, 75 oracle agreements and 11 declared divergences, Android arm64
+3,778,864 bytes. The skips are unrun GLES3 device and the two exact-held Forward/Anchor
+fingerprints, not acceptance of those frames as correct. The protocol has thirteen permanent
+controls and actual capture-stage acceptance/rejection/stale-row controls.
+Receipt: `out/tmp/sceneTarget/gate3dFinal.log` and `gateReceipt.txt`.
+Yoga's missing emcc provider remains the only external blocker to the web/land gate.
