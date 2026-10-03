@@ -590,14 +590,6 @@ function emitCaret(blend: BlendMode, text: LabelText, world: Transform2D, na: fl
 	emitRunBox(blend, world, box, text.cursorColor.faded(cursorShown(text) ? na : 0.0));
 }
 
-let refusedLabelEditing: int32 = 0;
-const LABEL_EDITING_EFFECT_REFUSED: string =
-	"void2d: text runs, a selection and a caret cannot be combined with colorMatrix, " +
-	"colorAdd, or colorKey";
-
-export function labelEditingRefusals(): int32 {
-	return refusedLabelEditing;
-}
 
 function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: float32): void {
 	const payload: int32 = s.payloads[i];
@@ -608,18 +600,12 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	if (!text.placedValid) { s.retry.push(i); }
 	const editing: boolean = (text.runs.length as int32) > 0 || text.selectionLength > 0 ||
 		text.cursorIndex != NO_CURSOR;
-	if (editing && !uiInstancingAvailable()) {
-		if (refusedLabelEditing == 0) { console.log(LABEL_EDITING_EFFECT_REFUSED); }
-		refusedLabelEditing = refusedLabelEditing + 1;
-	}
-	const styled: boolean = (text.runs.length as int32) > 0 && uiInstancingAvailable();
+	const instanced: boolean = uiInstancingAvailable() || editing;
+	const styled: boolean = (text.runs.length as int32) > 0;
 	if (styled) { emitDecorations(blend, text, world, na, true); }
-	if (text.selectionLength > 0 && uiInstancingAvailable()) {
-		emitSelection(blend, text, world, na);
-	}
+	if (text.selectionLength > 0) { emitSelection(blend, text, world, na); }
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
-	const instanced: boolean = uiInstancingAvailable();
 	const exact: boolean = text.pixelExact;
 	const affine: Transform2D = exact ? deviceGrid : world;
 	let viewPage: GlyphPage = NO_GLYPH_PAGE;
@@ -664,7 +650,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		}
 	}
 	if (styled) { emitDecorations(blend, text, world, na, false); }
-	if (uiInstancingAvailable()) { emitCaret(blend, text, world, na); }
+	if (instanced) { emitCaret(blend, text, world, na); }
 }
 
 

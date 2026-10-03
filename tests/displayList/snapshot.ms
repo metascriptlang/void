@@ -21,7 +21,7 @@ import { env } from "std/process";
 import { GLYPH_PAGE_SIZE } from "../../src/void2d/glyphAtlas";
 import { add } from "../../src/void2d/scene";
 import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
-import { sync, draw, labelEditingRefusals } from "../../src/void2d/render";
+import { sync, draw } from "../../src/void2d/render";
 import {
 	begin2d,
 	beginTarget,
@@ -950,18 +950,17 @@ test "a selection across a wrap with no separator lights only the text it covers
 	assert approx(acrossWrap[1], lines[0].x + lines[0].width);
 }
 
-test "a label's runs, selection and caret under a colour effect are refused aloud" {
+test "a label's runs, selection and caret draw under a colour effect" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("ab\ncd", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
 	text.setSelectionRange({ start: 1, length: 3 }, rgba(0.3, 0.5, 0.9, 0.5));
 	text.setCursorIndex(4, rgba(1.0, 1.0, 1.0, 1.0));
-	const before: int32 = labelEditingRefusals();
-	selectedSpans(s.refOf(s.root), 200.0, 80.0);
-	assert labelEditingRefusals() == before;
+	const plain = selectedSpans(s.refOf(s.root), 200.0, 80.0);
+	assert (plain.length as int32) > 0;
 	text.setColorMatrix(colorMatrixGrayscale(1.0));
 	const spans = selectedSpans(s.refOf(s.root), 200.0, 80.0);
-	assert (spans.length as int32) == 0;
-	assert labelEditingRefusals() == before + 1;
+	assert (spans.length as int32) == (plain.length as int32);
+	assert uiEffects() >= 1;
 }
 
 test "a selected row covers its trailing spaces, and a blank indented row its indent" {
