@@ -1755,7 +1755,7 @@ run_views() {
 		grep -E '^FAIL|^growth' "$WORK/views.run.log" | sed 's/^/      /'
 		return
 	fi
-	pass "views: a view drawn by both presets and closed, six times beside a surviving context; buffers, images, views, samplers, shaders and pipelines back at warm each time"
+	pass "views: six views drawn by both presets and closed beside a surviving context; buffers, images, views, samplers, shaders and pipelines back at the first's counts after each of the other five"
 }
 
 # A file that imports both layers: every function name void2d and void3d both export resolves to

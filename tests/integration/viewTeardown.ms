@@ -315,7 +315,8 @@ function report(): void {
 	if (failures == 0) {
 		console.log(
 			`PASS view teardown: ${CYCLES} views made, drawn by both presets and closed beside ` +
-			"a surviving context; the GPU back at its warm counts after each",
+			`a surviving context; the GPU back at the first's counts after each of the other ` +
+			`${CYCLES - 1}`,
 		);
 		voidCaptureExit(0);
 	}
@@ -328,6 +329,7 @@ function init(): void {
 		voidCaptureExit(3);
 	}
 	gfxSetup();
+	closeView();
 	for (let i = 0; i < LIGHT_UNIFORM_LENGTH; i++) { noLights[i] = 0.0; }
 }
 
