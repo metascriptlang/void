@@ -225,6 +225,7 @@ function closeRun(): void {
 			if (instances > 0) {
 				recordUiDraw(
 					ctx.runReason, ctx.runStart, instances, ctx.curView, ctx.curBlend, ctx.curSampler,
+					ctx.curEffect,
 				);
 			}
 		},

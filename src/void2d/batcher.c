@@ -1028,7 +1028,8 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 // colorAdd or colorKey stays on the vertex path and records the break.
 static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
                       float fbW, float fbH, uint32_t *lastPipeline, int *scissorApplied,
-                      int *paramsValid, int *fxValid) {
+                      int *paramsValid, int *fxValid,
+                      const float *effects, int effectCount) {
 	int count = (int)cmd[CMD_INSTANCE_COUNT];
 	if (count <= 0) { return; }
 
@@ -1065,11 +1066,19 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 	copyClipParams(up.clipU, up.clipV, cmd);
 	sg_range u = { .ptr = &up, .size = sizeof(up) };
 	sg_apply_uniforms(UB_ui_params, &u);
-	ui_text_t tu = {0};
+	ui_fx_t tu = {0};
 	memcpy(tu.gammaRatios, s_textGamma, sizeof(tu.gammaRatios));
 	tu.textParams[0] = s_textContrast;
+	int effectIndex = (int)cmd[CMD_EFFECT];
+	if (effectIndex >= 0 && effectIndex < effectCount) {
+		const float *fx = effects + (size_t)effectIndex * EFFECT_FLOATS;
+		memcpy(tu.colorMatrix, fx, sizeof(tu.colorMatrix));
+		memcpy(tu.colorAdd, fx + 16, sizeof(tu.colorAdd));
+		memcpy(tu.colorKey, fx + 20, sizeof(tu.colorKey));
+		tu.effectParams[0] = 1.0f;
+	}
 	sg_range t = { .ptr = &tu, .size = sizeof(tu) };
-	sg_apply_uniforms(UB_ui_text, &t);
+	sg_apply_uniforms(UB_ui_fx, &t);
 
 	sg_draw(0, 6, count);
 	s_drawCallCount++;
@@ -1161,7 +1170,7 @@ static void runCommands(const float *commands, int commandCount,
 		}
 		if ((int)cmd[CMD_PIPELINE] == PIPELINE_UI) {
 			drawUiRun(cmd, blend, rt, view, fbW, fbH, &lastPipeline, &scissorApplied,
-				&paramsValid, &fxValid);
+				&paramsValid, &fxValid, effects, effectCount);
 			continue;
 		}
 

@@ -1042,6 +1042,7 @@ export function recordUiDraw(
 	view: uint32,
 	blend: BlendMode,
 	sampler: int32,
+	effect: int32,
 ): void {
 	const base: int32 = startCommand(CommandKind.Draw, reason);
 	activeContext.commands[base + CMD_PIPELINE] = (Pipeline.Ui as int32) as float32;
@@ -1052,7 +1053,7 @@ export function recordUiDraw(
 	writeView(base, view);
 	activeContext.commands[base + CMD_BLEND] = (blend as int32) as float32;
 	activeContext.commands[base + CMD_SAMPLER] = sampler as float32;
-	activeContext.commands[base + CMD_EFFECT] = NO_EFFECT as float32;
+	activeContext.commands[base + CMD_EFFECT] = effect as float32;
 }
 
 // A run of instanced sprites. It carries an instance range and a vertex count of zero; the

@@ -361,9 +361,13 @@ void main() {
 @fs uiFs
 layout(binding=0) uniform texture2D uiTex;
 layout(binding=0) uniform sampler uiSmp;
-layout(binding=1) uniform ui_text {
+layout(binding=1) uniform ui_fx {
     vec4 gammaRatios;
     vec4 textParams;   // x = grayscale enhanced contrast
+    mat4 colorMatrix;
+    vec4 colorAdd;
+    vec4 colorKey;
+    vec4 effectParams;
 };
 @include_block textGamma
 in vec4 vLocalHalf;
@@ -377,6 +381,17 @@ in vec4 vBorder;
 in vec4 vExtra;
 in vec4 clipDistance;
 out vec4 frag_color;
+
+vec4 withEffect(vec4 p, vec3 keyTexel) {
+    if (effectParams.x < 0.5 || p.a <= 0.0) { return p; }
+    vec4 s = vec4(p.rgb / p.a, p.a);
+    if (colorKey.a > 0.5) {
+        vec3 d = abs(keyTexel - colorKey.rgb);
+        if (d.r + d.g + d.b < 0.08) { s.a = 0.0; }
+    }
+    s = colorMatrix * s + colorAdd;
+    return vec4(s.rgb * s.a, s.a);
+}
 
 // Negative inside. `r` is clamped to the largest radius the box can hold, because a radius
 // past that is not a rounded rect at all and silently produces a lens shape.
@@ -586,6 +601,7 @@ void main() {
         float coverage = coverageFromDistance(
             roundedRectDistance(p, half_, cornerRadius(p, radii)), aa);
         vec4 texel = texture(sampler2D(uiTex, uiSmp), vUvAa.xy);
+        vec3 keyTexel = vParams1.y > 0.5 && texel.a > 0.0 ? texel.rgb / texel.a : texel.rgb;
         if (vParams1.x > 0.5) {
             float gray = dot(texel.rgb, vec3(0.2126, 0.7152, 0.0722));
             texel.rgb = vec3(gray);
@@ -593,7 +609,7 @@ void main() {
         vec4 fill = texel * vFill;
         float alpha = fill.a * coverage;
         vec3 rgb = vParams1.y > 0.5 ? fill.rgb * (vFill.a * coverage) : fill.rgb * alpha;
-        frag_color = vec4(rgb, alpha);
+        frag_color = withEffect(vec4(rgb, alpha), keyTexel);
         return;
     }
 
@@ -614,7 +630,7 @@ void main() {
         }
         float coverage = coverageFromDistance(d, aa);
         float alpha = vFill.a * coverage;
-        frag_color = vec4(vFill.rgb * alpha, alpha);
+        frag_color = withEffect(vec4(vFill.rgb * alpha, alpha), vec3(1.0));
         return;
     }
 
@@ -641,7 +657,7 @@ void main() {
         }
         float coverage = coverageFromDistance(d, aa);
         float alpha = vFill.a * coverage;
-        frag_color = vec4(vFill.rgb * alpha, alpha);
+        frag_color = withEffect(vec4(vFill.rgb * alpha, alpha), vec3(1.0));
         return;
     }
 
@@ -660,7 +676,7 @@ void main() {
         } else {
             alpha = shadowCoverage(p, halfBox, vRadii, vParams1.xy, sigma, aa);
         }
-        frag_color = vec4(vExtra.rgb * (vExtra.a * alpha), vExtra.a * alpha);
+        frag_color = withEffect(vec4(vExtra.rgb * (vExtra.a * alpha), vExtra.a * alpha), vec3(1.0));
         return;
     }
 
@@ -737,7 +753,7 @@ void main() {
             alpha = alpha + sAlpha * (1.0 - alpha);
         }
     }
-    frag_color = vec4(rgb, alpha);
+    frag_color = withEffect(vec4(rgb, alpha), vec3(1.0));
 }
 @end
 
