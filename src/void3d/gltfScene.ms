@@ -246,6 +246,7 @@ export function addGltfNodes(
 ): Result<int32, GltfSceneError> {
 	const _under: int32 = scene.liveRow(parent, "addGltfNodes");
 	const context: DrawContext = scene.context;
+	context.requireOpen("addGltfNodes");
 	if ((bindings.length as int32) != (data.meshes.length as int32)) {
 		return Result.err(GltfSceneError.BadMeshBinding);
 	}

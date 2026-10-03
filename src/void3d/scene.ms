@@ -323,6 +323,7 @@ export function addMeshNode(
 ): Result<NodeId3D, SceneError> {
 	const under: int32 = scene.liveRow(parent, "addMeshNode");
 	const context: DrawContext = scene.context;
+	context.requireOpen("addMeshNode");
 	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
 	if (!context.hasMaterial(material)) {
 		const issued: boolean = context.issuedMaterial(material);
@@ -545,6 +546,7 @@ export function setPickable(scene: Scene3D, id: NodeId3D, pickable: boolean): vo
 export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<int32, SceneError> {
 	const node: int32 = scene.kindRow(id, NodeKind.Mesh, "setMeshOf");
 	const context: DrawContext = scene.context;
+	context.requireOpen("setMeshOf");
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
 	const holds: boolean = context.hasMesh(shown);
