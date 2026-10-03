@@ -200,10 +200,7 @@ function stopOnDeadId(this scene: Scene3D, id: NodeId3D, call: string): int32 {
 		console.log(`void3d: ${call} on node id ${id.index}, which names no node of this scene`);
 		unreachable;
 	}
-	if (id.scene != scene.serial) {
-		console.log(`void3d: ${call} on node ${id.index} of another scene`);
-		unreachable;
-	}
+	if (id.scene != scene.serial) { stopOnForeignNode(id, call); }
 	console.log(
 		`void3d: ${call} on stale node ${id.index}: the handle has generation ` +
 		`${id.generation}, the row ${scene.slots.generations[id.index]}`,
@@ -853,4 +850,13 @@ export function isClosed(this scene: Scene3D): boolean {
 
 export function requireOpen(this scene: Scene3D, call: string): void {
 	if (scene.closed) { stopOnClosed(call); }
+}
+
+export function requireOwn(this scene: Scene3D, id: NodeId3D, call: string): void {
+	if (id.scene != scene.serial) { stopOnForeignNode(id, call); }
+}
+
+function stopOnForeignNode(id: NodeId3D, call: string): void {
+	console.log(`void3d: ${call} on node ${id.index} of another scene`);
+	unreachable;
 }

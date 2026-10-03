@@ -241,6 +241,7 @@ export function bindTracks(
 	base: NodeId3D,
 ): Result<int32, AnimationError> {
 	scene.requireOpen("bindTracks");
+	scene.requireOwn(base, "bindTracks");
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const count: int32 = animation.tracks.length as int32;
 	const found: Vec<NodeId3D> = [];
@@ -273,6 +274,7 @@ export function syncPose(
 	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
 	const count: int32 = animation.tracks.length as int32;
 	for (let track = 0; track < count; track++) {
+		scene.requireOwn(animation.tracks[track].target, "syncPose");
 		if (!scene.isLive(animation.tracks[track].target)) {
 			return Result.err(AnimationError.StaleTarget);
 		}
@@ -383,6 +385,7 @@ export function bindMeshFrames(
 	base: NodeId3D,
 ): Result<int32, AnimationError> {
 	requirePaired(animation, scene, "bindMeshFrames");
+	scene.requireOwn(base, "bindMeshFrames");
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const found: Result<NodeId3D, SceneError> = scene.findByName(base, animation.name);
 	if (!found.ok) { return Result.err(AnimationError.TargetNotFound); }
@@ -417,6 +420,7 @@ export function syncMeshFrame(
 	requirePaired(animation, scene, "syncMeshFrame");
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if ((animation.meshes.length as int32) < 1) { return Result.err(AnimationError.NoFrames); }
+	scene.requireOwn(animation.target, "syncMeshFrame");
 	if (!scene.isLive(animation.target)) { return Result.err(AnimationError.StaleTarget); }
 	const mesh: MeshId = animation.meshes[animation.clock.keys().first];
 	if (mesh == animation.shown) { return Result.ok(0); }
