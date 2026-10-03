@@ -73,6 +73,7 @@ import {
 	LANES_X, LANES_Y, LANES_W, LANES_SHIFT,
 	PREMULTIPLIED_X, PREMULTIPLIED_Y, PREMULTIPLIED_SIZE, PREMULTIPLIED_SHIFT,
 	PREMULTIPLIED_ROW_STEP,
+	MANY_TARGETS_COUNT, MANY_TARGETS_COLUMNS, MANY_TARGETS_STEP, MANY_TARGETS_ORIGIN,
 } from "./table";
 import { makeImage as makeImageFromTexels } from "../../src/void3d/gpu3d";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
@@ -1217,6 +1218,23 @@ function filterGroupOpacity(): Scene2D {
 	return s;
 }
 
+function filterManyTargets(): Scene2D {
+	const s = Scene2D.create(DARK);
+	for (let k: int32 = 0; k < MANY_TARGETS_COUNT; k++) {
+		const column: float32 = (k % MANY_TARGETS_COLUMNS) as float32;
+		const row: float32 = (k / MANY_TARGETS_COLUMNS) as float32;
+		const x: float32 = MANY_TARGETS_ORIGIN + column * MANY_TARGETS_STEP;
+		const y: float32 = MANY_TARGETS_ORIGIN + row * MANY_TARGETS_STEP;
+		const group = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(x, y);
+		group.setAlpha(0.5);
+		group.setFilter(blurFilter(0.0));
+		group.addChild(s.rect(24.0, 18.0, rgba(0.95, 0.35, 0.30, 1.0)));
+		group.addChild(s.rect(24.0, 18.0, rgba(0.30, 0.75, 0.95, 1.0)).at(10.0, 8.0));
+		s.add(group);
+	}
+	return s;
+}
+
 // ===== regress/ — one row per "Known defects" entry that has pixels =====
 
 // Twenty-two sizes of a 62-glyph line. Under fontstash they overflowed its 512² atlas (the
@@ -1409,5 +1427,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "mixed/void3dTranslucentTarget", build: mixedVoid3dTranslucentTarget },
 		{ name: "image/premultipliedEffect", build: imagePremultipliedEffect },
 		{ name: "image/premultipliedStyle", build: imagePremultipliedStyle },
+		{ name: "filter/manyTargets", build: filterManyTargets },
 	];
 }

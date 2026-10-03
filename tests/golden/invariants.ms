@@ -33,6 +33,12 @@ import {
 	PREMULTIPLIED_SIZE,
 	PREMULTIPLIED_SHIFT,
 	PREMULTIPLIED_ROW_STEP,
+	MANY_TARGETS_SCENE,
+	MANY_TARGETS_COUNT,
+	MANY_TARGETS_COLUMNS,
+	MANY_TARGETS_STEP,
+	MANY_TARGETS_ORIGIN,
+	MANY_TARGETS_EXTENT,
 } from "./table";
 import { TextLayout, Align } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -262,10 +268,71 @@ function premultipliedMatchesStraight(scene: string, captureVariable: string, ro
 	return 0;
 }
 
+function everyTargetFiltered(): int32 {
+	const override: string = env.get("VOID_MANY_TARGETS_CAPTURE");
+	const path: string = override.equals("")
+		? `tests/golden/d3d11/${MANY_TARGETS_SCENE}.png`
+		: override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${MANY_TARGETS_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const x0: int32 = MANY_TARGETS_ORIGIN as int32;
+	const y0: int32 = MANY_TARGETS_ORIGIN as int32;
+	const step: int32 = MANY_TARGETS_STEP as int32;
+	let inked: int32 = 0;
+	let differing: int32 = 0;
+	for (let k: int32 = 1; k < MANY_TARGETS_COUNT; k++) {
+		const dx: int32 = (k % MANY_TARGETS_COLUMNS) * step;
+		const dy: int32 = (k / MANY_TARGETS_COLUMNS) * step;
+		let differ: int32 = 0;
+		for (let y = y0; y < y0 + MANY_TARGETS_EXTENT; y++) {
+			for (let x = x0; x < x0 + MANY_TARGETS_EXTENT; x++) {
+				for (let channel = 0; channel < 3; channel++) {
+					const first: int32 = voidPngPixel(SLOT, x, y, channel);
+					if (k == 1 && first != voidPngPixel(SLOT, 0, 0, channel)) { inked = inked + 1; }
+					const other: int32 = voidPngPixel(SLOT, x + dx, y + dy, channel);
+					if (first != other) { differ = differ + 1; }
+				}
+			}
+		}
+		if (differ > 0) {
+			console.log(`  node ${k} differs from node 0 in ${differ} channel values`);
+			differing = differing + 1;
+		}
+	}
+	const overlapX: int32 = x0 + 15;
+	const overlapY: int32 = y0 + 12;
+	const single: int32[] = [48, 107, 136];
+	for (let channel = 0; channel < 3; channel++) {
+		const got: int32 = voidPngPixel(SLOT, overlapX, overlapY, channel);
+		if ((Math.abs(got - single[channel]) as int32) > 2) {
+			console.log(
+				`FAIL ${MANY_TARGETS_SCENE}: the first group's overlap reads ${got} in channel ` +
+				`${channel}, where one composite at alpha 0.5 gives ${single[channel]}`,
+			);
+			return 1;
+		}
+	}
+	if (inked == 0 || differing > 0) {
+		console.log(
+			`FAIL ${MANY_TARGETS_SCENE}: ${differing} of ${MANY_TARGETS_COUNT - 1} ` +
+			`filtered groups differ from the first (${inked} inked)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${MANY_TARGETS_SCENE}: all ${MANY_TARGETS_COUNT} filtered groups are ` +
+		`byte-identical, so each had a target of its own (${inked} inked channel values)`,
+	);
+	return 0;
+}
+
 process.exit(
 	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
 	premultipliedMatchesStraight(
 		PREMULTIPLIED_EFFECT_SCENE, "VOID_PREMULTIPLIED_EFFECT_CAPTURE", 2,
 	) +
-	premultipliedMatchesStraight(PREMULTIPLIED_STYLE_SCENE, "VOID_PREMULTIPLIED_STYLE_CAPTURE", 1),
+	premultipliedMatchesStraight(PREMULTIPLIED_STYLE_SCENE, "VOID_PREMULTIPLIED_STYLE_CAPTURE", 1) +
+	everyTargetFiltered(),
 );

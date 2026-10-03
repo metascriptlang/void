@@ -106,6 +106,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `order/` | P5 | noOverlapLanes (one list drawn in lanes beside the same list in painter's order, 128 px apart; `tests/golden/invariants.ms` holds the two byte-identical) |
 | `mixed/` | D1 | void3dTarget (void3d's forward renderer draws two boxes into its own target once; void2d draws that target as a sprite. The WebGL2 capture is judged against the D3D11 golden, so a target read upside down on GL fails it), void3dTranslucentTarget (the same target cleared translucent over a 2D stripe and declared premultiplied; the sprite program's premultiplied input decides its pixels, and without the declaration the row fails on D3D11) |
 | `filter/` | P1 | blur · glow · dropShadow · groupOpacity — **built but not capturable at P0**, see below |
+| `filter/` | D1 | manyTargets (eighteen group-opacity filters in one frame, past the pool's old cap of 16; `tests/golden/invariants.ms` holds every group byte-identical to the first, and the first to one composite) |
 | `regress/` | P0 | nodeCap · dpiTruncation · samplerRepeat · vertexCap |
 | `regress/` | P1 | atlasFull · filterNestedPass — **not capturable at P0**, see below |
 | `demo/` | P0 | `src/examples/renderer2d.ms` at 800×600, animation steps 1 / 30 / 90 / 200 |
@@ -312,7 +313,7 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **80 / 80 scenes byte-identical** | every full gate, this box |
+| D3D11 | **81 / 81 scenes byte-identical** | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |

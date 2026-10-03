@@ -978,16 +978,10 @@ function emitNode(
 // A filter target always starts empty: what is not drawn into it must not composite.
 const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 
-// The cap matters: sokol's default pools hold 128 images, 128 views and 128 attachment sets,
-// and a render target costs one of each. 16 is far below that and still more filters than
-// h2d composes in one frame; past it the filter is skipped and says so once, rather than
-// failing inside sokol where the message names no node.
-const MAX_POOLED_TARGETS: int32 = 16;
 let poolTargets: Vec<RenderTarget> = [];
 const NO_TARGET: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 let poolOwner: Vec<int32> = [];
 let poolSerial: Vec<int32> = [];
-let poolExhaustedReported: boolean = false;
 
 export function acquireFrameTarget(w: int32, h: int32): RenderTarget { return acquireTarget(w, h); }
 export function renderTargetsAlive(): int32 { return poolTargets.length as int32; }
@@ -1016,13 +1010,6 @@ function acquireTarget(w: int32, h: int32): RenderTarget {
 			poolSerial[i] = contextSerial(owner.id);
 			return poolTargets[i];
 		}
-	}
-	if ((poolTargets.length as int32) >= MAX_POOLED_TARGETS) {
-		if (!poolExhaustedReported) {
-			poolExhaustedReported = true;
-			console.log(`void2d: more than ${MAX_POOLED_TARGETS} filter targets in one frame - the rest are drawn unfiltered`);
-		}
-		return NO_TARGET;
 	}
 	const target: RenderTarget = RenderTarget.allocate(w, h, PixelFormat.Rgba8, true);
 	if (target.image == 0 || target.attachment == 0 || target.texture == 0) {
