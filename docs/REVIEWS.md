@@ -1436,8 +1436,9 @@ history and stay.
 
 ## Premultiplied colour effect, image-style input, effect state across a target — SHIP WITH FOLLOW-UPS (2026-10-03)
 
-**Verdict: SHIP WITH FOLLOW-UPS for `2be9cf5..c24405b`**, on main `2be9cf5` under the
-coordinator's GO `void2d-premultEffect-1` and the chain that followed it. The commits take the
+**Verdict: SHIP WITH FOLLOW-UPS for `1d312e0..db392be`**, rebased onto main `1d312e0` (void3d's
+M25) after the review, under the coordinator's GO `void2d-premultEffect-1` and the chain that
+followed it. The commits take the
 first Open item, a colour effect on a premultiplied source, and the second, the UI program's
 missing premultiplied input (VOID2D.md "Door closure" G). They also fix two defects found on the
 way: the effect state across a target, and the pairing of a target nested past the save slots.
@@ -1445,10 +1446,10 @@ The gates have not run on this tip: by the lease they wait on void3d's M25 land.
 authorises no land or push.
 
 **Passes.**
-- The defect pass was `/code-review high` on `2be9cf5..503a7f7`, run as a forked agent told to
+- The defect pass was `/code-review high` on `1d312e0..8bf9a8d`, run as a forked agent told to
   build, run and edit nothing. The main session read each finding against the code before
   acting.
-- The design pass was a fresh read-only agent on `bcb11a4`. It was briefed as the owner for five
+- The design pass was a fresh read-only agent on `e1a3ee0`. It was briefed as the owner for five
   years, against G, "The bar", the guardrails, TESTING.md and CODE-STYLE §14
   (`out/tmp/premultEffect/designReviewBrief.md`), and it built and ran nothing.
 - Both ran one at a time.
@@ -1457,7 +1458,7 @@ authorises no land or push.
 landed, and every one of its changed pixels got lighter. The cause was older than G:
 `beginTarget`/`endTarget` saved `curEffect` but not the rest of the effect state. The scene's
 filter composite therefore drew with the previous sibling's grayscale, and its golden had
-recorded a grey blur of a yellow subject. It is fixed as its own commit (`cd352b1`), ahead of G
+recorded a grey blur of a yellow subject. It is fixed as its own commit (`08ddc7a`), ahead of G
 so it bisects. That commit carries two T1 pins, both red before. The golden was re-recorded only
 after a check that does not read its hash: VOID2D.md "A colour effect across a target", and
 `out/tmp/premultEffect/yellow.txt`.
@@ -1465,45 +1466,45 @@ after a check that does not read its hash: VOID2D.md "A colour effect across a t
 ### Defect pass — nine findings
 
 1. **A target nested past the eight save slots ended the bracket around it.** This was confirmed,
-   pre-existing since P1, and made worse by nothing in this change. Fixed in `507400f`.
+   pre-existing since P1, and made worse by nothing in this change. Fixed in `c7a1ff2`.
    `endTargetList` counts the brackets it did not record and ends those first. Red before: the T1
    test read depth 0 where 1 is right.
 2. **The division magnifies 8-bit rounding at low alpha, and additive targets hold rgb above
    their alpha.** This is not a code defect: it is what premultiplied 8-bit data can hold. It is
    written as a limit in G. The key row stays at alpha ≥ 128 for that reason.
-3. **No T1 pin covered `params1.y`.** Pinned in `8a8b5c2`. Its control, dropping the lane, goes
+3. **No T1 pin covered `params1.y`.** Pinned in `2c9b16d`. Its control, dropping the lane, goes
    red (`controlParams1.log`).
-4. **VOID2D.md's P2 paragraph still described the old gate.** Swept in `bcb11a4`: a key and an
+4. **VOID2D.md's P2 paragraph still described the old gate.** Swept in `e1a3ee0`: a key and an
    alpha-only add now count as an effect.
-5. **The shader comment on `viewport.w` was stale.** Reworded in `bcb11a4`.
+5. **The shader comment on `viewport.w` was stale.** Reworded in `e1a3ee0`.
 6. **TESTING.md was not swept.** The `image/` family gets a D1 row. The WebGL2 row says the two
-   new scenes are not captured yet; the gate re-measures it (`bcb11a4`).
+   new scenes are not captured yet; the gate re-measures it (`e1a3ee0`).
 7. **`alphaRampTile` uploads through void3d's `makeImage` and caches nothing.** Kept. void2d's own
    `makeImage` takes a `Ptr<void>`, which a MetaScript function cannot be given from a `Vec`, while
    void3d's takes a `Span` and checks its length. The runner builds one scene per process, so the
    images end with it.
-8. **`resumePaint` repeated the restore by hand.** Now one path (`c230522`).
-9. **`setIdentityMat` had one caller.** Inlined (`c230522`).
+8. **`resumePaint` repeated the restore by hand.** Now one path (`565dac9`).
+9. **`setIdentityMat` had one caller.** Inlined (`565dac9`).
 
 ### Design pass — SHIP WITH FOLLOW-UPS, and what was done with each
 
 - **F1, the app example combined a colour effect with an image style.** That combination is
   dropped with a log line, so the example drew nothing. It is split into two examples, and the
-  combination is recorded in "Open" (`c24405b`).
-- **F2, a stale test count.** Replaced by the final tree's numbers (`c24405b`).
-- **F3, the pairing fix and the `params1.y` pin were not in the record.** Recorded (`c24405b`).
-- **F4, the Limit paragraph overclaimed for a texel with zero alpha.** Corrected (`c24405b`).
+  combination is recorded in "Open" (`db392be`).
+- **F2, a stale test count.** Replaced by the final tree's numbers (`db392be`).
+- **F3, the pairing fix and the `params1.y` pin were not in the record.** Recorded (`db392be`).
+- **F4, the Limit paragraph overclaimed for a texel with zero alpha.** Corrected (`db392be`).
 - **F5, the gates.** Owed, after M25 lands.
 - **F6, one source of truth for the effect state.**
-  - Whether an effect is set is now derived from the effect row (`375d1ad`), in the context and
+  - Whether an effect is set is now derived from the effect row (`52fd1d8`), in the context and
     in `PaintIndex`.
   - `reopenLast` restores through `restoreEffect`.
   - The cached matrix, add and key stay as a cache, written only where the row is. Reading the
     row on every `setEffect` would cost a 24-float read per node on the walk.
-- **F7, two depth constants that had to agree.** Now one constant (`0768458`). The dead check
+- **F7, two depth constants that had to agree.** Now one constant (`8d841b8`). The dead check
   went with it.
 - **F8, GPUI's disposition and the reason the bit rides the instance.** GPUI.md has the row, and
-  G gives the reason (`c24405b`).
+  G gives the reason (`db392be`).
 - **F9, the yellow check had no receipt.** Saved.
 - **F10, three older paths that log or stay silent where the rule says stop.** An image style
   beside an effect, an unmatched `endTarget`, and target overflow. These are recorded in "Open"
@@ -1520,8 +1521,8 @@ after a check that does not read its hash: VOID2D.md "A colour effect across a t
 | Red before, on `2be9cf5` plus the scene | `image/premultipliedEffect` off in 11 896 channel values (max 48) and 3 072 (max 200); the style scene stopped |
 | After | both pair invariants pass at max delta 1, on fresh captures and on the committed goldens |
 | Controls | the division cut: 11 896 / 48 and 11 424 / 154; the key left out of `noEffect`: only the key row, 3 072 / 200; the UI branch cut: 11 757 / 49; the `params1.y` lane dropped: its T1 pin red |
-| Bisect | the effect-state fix alone captures `afterTintedSibling` byte-identical to the final tree; `ccc2ce2`'s tree builds, captures the committed effect golden byte for byte, and passes its invariant |
-| Full D3D11 golden | four runs; the last, on `375d1ad`'s tree, is 80 / 80 |
+| Bisect | the effect-state fix alone captures `afterTintedSibling` byte-identical to the final tree; `722b9ce`'s tree builds, captures the committed effect golden byte for byte, and passes its invariant |
+| Full D3D11 golden | four runs; the last, on `52fd1d8`'s tree, is 80 / 80 |
 | T0/T1 | 1132 of 1132 |
 
 Receipts are in `out/tmp/premultEffect/`. Not run: `gate.sh --web` (WebGL2, the allocation

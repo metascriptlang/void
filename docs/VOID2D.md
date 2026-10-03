@@ -2283,7 +2283,7 @@ abort stage) unless named otherwise.
 
   The defect pass found a second fault beside it. A target nested past the eight save slots was
   recorded into its parent, as P1 chose, but its `endTarget` popped the real target around it, so
-  every bracket outside ended one level early. `507400f` paired the brackets. Red before: the T1
+  every bracket outside ended one level early. `c7a1ff2` paired the brackets. Red before: the T1
   test "a target nested past the save slots ends its own bracket, not the one around it" read
   depth 0 where 1 is right. H then removed the limit itself.
 
@@ -2308,7 +2308,7 @@ abort stage) unless named otherwise.
     and the door's own end-with-none stop (A) already does the same. The pin
     `tests/aborts/endTargetWithoutBegin` ran to its end before the fix.
   - **An image style on a node with a colour matrix, `colorAdd` or `colorKey`**: H first made it
-    stop by name (`713b4a4`), on a reading that no reference draws both on one draw. That reading
+    stop by name (`86b96f1`), on a reading that no reference draws both on one draw. That reading
     was wrong. h2d's `Graphics` fills a rounded rect with a tile (`h2d/Graphics.hx:489`
     `beginTileFill`, `:612` `drawRoundedRect`), and a `Graphics` is a `Drawable` whose colour
     effects apply to every draw. So I composes it. The pin `tests/aborts/styledImageWithEffect`
@@ -2346,7 +2346,7 @@ abort stage) unless named otherwise.
     - A pixel outside every shape stays empty, as h2d draws no geometry there.
     - A plain rect or label under an effect keeps the colour pipeline, as before, so no other
       golden moved.
-  - **Red before:** each kind has a T1 test that went red on `2fe9ec0`:
+  - **Red before:** each kind has a T1 test that went red on `e79759c`:
     - the box, underline and selection tests read no UI instance;
     - the label test read no selection span;
     - the image style test stopped at H's stop.
