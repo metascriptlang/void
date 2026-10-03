@@ -2394,8 +2394,9 @@ frame functions / 245 callees, 16 PENDING; web builds 2 359 062 / 2 131 238 B. I
 the record stage: TESTING.md's WebGL2 row did not yet count the four new goldens. The row was
 corrected in a docs commit (`a8b80fb`, no code) and checked against the same run (the gate's own
 claim string, and `tests/record/check.ms`: 0 off). `sh scripts/gate3d.sh` ran after that docs
-commit on the same code and is GREEN, 240 stages with its device SKIP, 182 aborts. Logs:
-`out/tmp/finalGate/`.
+commit on the same code and is GREEN, 240 stages with its device SKIP, 182 aborts. The land's
+no-op rebase re-ran `gate.sh --web` on `cffb689` and is GREEN with 0 FAIL and the row PASS, every
+number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
 
 A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
