@@ -1,5 +1,5 @@
 import { NodeRef } from "./node";
-import { FlexStyle, layoutPass as runLayoutPass, freeLayoutTree } from "../../../yoga/src/index";
+import { FlexStyle, YGNode, layoutPass as runLayoutPass, freeLayoutTree } from "../../../yoga/src/index";
 
 export function layoutGetChildren(this n: NodeRef): NodeRef[] {
 	const i: int32 = n.liveRow("layoutGetChildren");
@@ -23,11 +23,11 @@ export function layoutSetLastStyle(this n: NodeRef, s: FlexStyle | null): void {
 	n.scene.layouts[i] = { ...n.scene.layouts[i], lastStyle: s };
 }
 
-export function layoutGetYg(this n: NodeRef): Ptr<void> | null {
+export function layoutGetYg(this n: NodeRef): Ptr<YGNode> | null {
 	return n.scene.layouts[n.liveRow("layoutGetYg")].yg;
 }
 
-export function layoutSetYg(this n: NodeRef, yg: Ptr<void> | null): void {
+export function layoutSetYg(this n: NodeRef, yg: Ptr<YGNode> | null): void {
 	const i: int32 = n.liveRow("layoutSetYg");
 	n.scene.layouts[i] = { ...n.scene.layouts[i], yg: yg };
 }

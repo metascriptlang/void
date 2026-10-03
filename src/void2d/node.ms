@@ -21,7 +21,7 @@ import { BlendMode } from "../gpu/state";
 import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
-import { FlexStyle } from "../../../yoga/src/index";
+import { FlexStyle, YGNode } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
 import {
 	LabelText,
@@ -148,7 +148,7 @@ export struct LaneFrame {
 export struct Layout2D {
 	style: FlexStyle | null;
 	lastStyle: FlexStyle | null;
-	yg: Ptr<void> | null;
+	yg: Ptr<YGNode> | null;
 }
 
 export struct Scroll2D {
