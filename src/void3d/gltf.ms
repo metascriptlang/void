@@ -14,7 +14,7 @@ import { parseJson } from "std/serialize/json/parser";
 import { jsonNull } from "std/serialize/json/builder";
 import { asString, asNumber, at } from "std/serialize/json/accessors";
 import { JsonKind, JsonValue } from "std/serialize/json/types";
-import { vec3, Vec3, Quat, identityQuat } from "../math/math3d";
+import { vec3, Vec3, Quat, identityQuat, linearToSrgb } from "../math/math3d";
 import { decodeImage, imageFormatOf, ImageError, ImageFormat, Pixels } from "../assets/image";
 import { FilterMode, Wrap } from "../gpu/state";
 import { float32At } from "./gltfDecode";
@@ -350,10 +350,11 @@ function loadMesh(
 		if (normalLength < 0.999 || normalLength > 1.001) {
 			return Result.err(GltfError.Unsupported);
 		}
+		// glTF's COLOR_0 and baseColorFactor are linear; the API's colours are gamma-encoded.
 		const color: Rgba = {
-			red: rgb.x * read.factor.red,
-			green: rgb.y * read.factor.green,
-			blue: rgb.z * read.factor.blue,
+			red: linearToSrgb(rgb.x * read.factor.red),
+			green: linearToSrgb(rgb.y * read.factor.green),
+			blue: linearToSrgb(rgb.z * read.factor.blue),
 			alpha: 1.0,
 		};
 		const added: Result<int32, MeshError> = textured

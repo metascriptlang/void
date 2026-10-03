@@ -286,7 +286,7 @@ function pixelAt(view: CameraView, point: Vec3): uint32 {
 
 // The factor quad: COLOR_0 (1, 0.5, 0.5) times baseColorFactor (0.5, 0.5, 1), within one step.
 function isFactorColour(got: uint32): boolean {
-	let want: Vec<int32> = [128, 64, 128];
+	let want: Vec<int32> = [188, 137, 188];
 	let shifts: Vec<uint32> = [16, 8, 0];
 	for (let i = 0; i < 3; i++) {
 		let difference: int32 = channelOf(got, shifts[i]) - want[i];
@@ -318,7 +318,7 @@ function checkFaceOn(view: CameraView): void {
 	}
 	expectAt(view, vec3(0.4, 0.0, -0.6), WHITE, "the double-sided quad's back");
 	if (!isFactorColour(pixelAt(view, vec3(-3.2, 0.0, 0.6)))) {
-		fail(`the factor quad is ${pixelAt(view, vec3(-3.2, 0.0, 0.6))}, not (128, 64, 128)`);
+		fail(`the factor quad is ${pixelAt(view, vec3(-3.2, 0.0, 0.6))}, not (188, 137, 188)`);
 	}
 	let background: uint32 = rgbOf(voidCapturePixel(0, 2, 2));
 	expectAt(view, vec3(3.6, 0.0, -0.6), background, "the single-sided quad's culled back");

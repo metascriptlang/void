@@ -1,4 +1,5 @@
 import { FilterMode, Wrap, RenderState, Face } from "../gpu/state";
+import { linearToSrgb } from "../math/math3d";
 import {
 	loadGltf,
 	loadGlb,
@@ -186,9 +187,9 @@ test "a textured primitive decodes with uvs, its material and its texture, alpha
 	assert data.meshes[0].hasUvs && data.meshes[0].stride() == 12;
 	assert data.meshes[0].vertexCount() == 4;
 	assert data.meshes[0].vertices[6] == 0.0 && data.meshes[0].vertices[7] == 1.0;
-	assert data.meshes[0].vertices[8] == 0.25;
-	assert data.meshes[0].vertices[9] == 0.125;
-	assert data.meshes[0].vertices[10] == 0.5;
+	assert data.meshes[0].vertices[8] == linearToSrgb(0.25);
+	assert data.meshes[0].vertices[9] == linearToSrgb(0.125);
+	assert data.meshes[0].vertices[10] == linearToSrgb(0.5);
 	assert data.meshes[0].vertices[11] == 1.0;
 	assert data.meshes[0].vertices[12 + 6] == 1.0 && data.meshes[0].vertices[12 + 7] == 1.0;
 	assert (data.materials.length as int32) == 1;
@@ -207,7 +208,7 @@ test "loadGlb reads the same document from a binary container" {
 	const result: Result<GltfData, GltfError> = loadGlb(glb);
 	assert result.ok;
 	if (!result.ok) { return; }
-	assert result.value.meshes[0].vertices[9] == 0.125;
+	assert result.value.meshes[0].vertices[9] == linearToSrgb(0.125);
 	assert result.value.textures[0].pixels[3] == YELLOW;
 	const trailing: Vec<uint32> =
 		[0x4E4F534A as uint32, 0x004E4942 as uint32, 0x12345678 as uint32];
@@ -255,9 +256,9 @@ test "an untextured factor, the default material and double sides" {
 	assert plain.ok;
 	if (plain.ok) {
 		assert !plain.value.meshes[0].hasUvs && plain.value.meshes[0].stride() == 10;
-		assert plain.value.meshes[0].vertices[6] == 0.25;
-		assert plain.value.meshes[0].vertices[7] == 0.5;
-		assert plain.value.meshes[0].vertices[8] == 0.125;
+		assert plain.value.meshes[0].vertices[6] == linearToSrgb(0.25);
+		assert plain.value.meshes[0].vertices[7] == linearToSrgb(0.5);
+		assert plain.value.meshes[0].vertices[8] == linearToSrgb(0.125);
 		assert plain.value.materials[0].doubleSided && plain.value.materials[0].texture == -1;
 		assert (plain.value.textures.length as int32) == 1;
 	}
@@ -266,7 +267,7 @@ test "an untextured factor, the default material and double sides" {
 	if (unnamed.ok) {
 		assert unnamed.value.meshMaterials[0] == DEFAULT_MATERIAL;
 		assert !unnamed.value.meshes[0].hasUvs;
-		assert unnamed.value.meshes[0].vertices[6] == 0.5;
+		assert unnamed.value.meshes[0].vertices[6] == linearToSrgb(0.5);
 	}
 	const blackEmissive = loaded({
 		...texturedParts(),
