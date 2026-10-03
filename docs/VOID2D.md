@@ -2411,6 +2411,20 @@ commit on the same code and is GREEN, 240 stages with its device SKIP, 182 abort
 no-op rebase re-ran `gate.sh --web` on `cffb689` and is GREEN with 0 FAIL and the row PASS, every
 number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
 
+- **J, the public bridge's pass entries (resumed after the 0.3.0 migration).** The published
+  `src/sokol/bridge.h` no longer advertises begin/commit; `door.c` alone declares its internal
+  platform calls. Their implementations stay in `bridge.c` and `bridgeEmbed.m`, preserving the
+  environment-format check, present and void2d's commit hook. This is a public-header boundary,
+  not an unforgeable linker fence against C code that invents private `extern` declarations.
+  Heaps' Engine owns sequencing and the existing GPU door is Void's same owner; no second pass
+  state or runtime wrapper is introduced.
+
+  **Red before:** both real C consumers naming the bridge entries compiled against the
+  `6da8d3e` header. After removal they are rejected as undeclared identifiers, while a consumer
+  using `doorBeginScreenPass`/`doorEndPass`/`doorCommit` compiles. `tests/compile/bridgePass.c`
+  and `scripts/checkBridgePass.sh` enforce that boundary in `gate.sh`, not by reading source text.
+
+
 A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
 `m[0]` survived the move to `Mat4` in `effectCheck.ms`.
@@ -2424,9 +2438,8 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
   `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
   `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
-- **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
-  a C consumer that calls them directly goes around the door's pass state. void3d's `gpu3d.c`
-  still returns silently on a short descriptor, the shape A closed in `door.c`.
+- void3d's `gpu3d.c` still returns silently on a short descriptor, the shape A closed in
+  `door.c`; the second half of J closes it in its own commit.
 - **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame uniform buffer on WebGPU and Metal. Measure at P1 and fold what does not change per draw into fewer blocks if it bites.
 - Reference facts were read from source, not benchmarked. Instance sizes and the one-draw-call claim are from planned layouts, not measured — P2's exit is where they become numbers.
 - Non-uniform scale on SDF boxes and `erf` shadows is approximated; the error has not been characterised. It has a golden scene from P0 (`xform/`) and no bound yet.

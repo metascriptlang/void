@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+void voidBeginPass(float r, float g, float b, float a);
+void voidCommit(void);
+
 // ---- enum tables, indexed by MetaScript ordinal (same order as state.ms / target.ms) ----
 
 // Face (h3d.mat.Data.Face without Both)

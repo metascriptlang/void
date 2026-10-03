@@ -94,6 +94,12 @@ else
 	fail "instance layout: the generated files are stale or hand-edited; run 'msc run scripts/instanceLayout.ms' — see out/gate-instance-layout.log"
 fi
 
+if sh scripts/checkBridgePass.sh > out/gate-bridge-pass.log 2>&1; then
+	pass "public C pass: only the door header offers begin/end/commit"
+else
+	fail "public C pass surface — see out/gate-bridge-pass.log"
+fi
+
 echo
 echo "=== 3. the demo still builds and runs ================================="
 if "$MSC" build src/examples/mainSokol2d.ms --output=out/demo2d.exe > out/gate-demo.log 2>&1; then

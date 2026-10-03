@@ -98,8 +98,6 @@ void doorDestroyView(uint32_t view);
 void doorDestroySampler(uint32_t sampler);
 
 void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clear, int64_t clearLength);
-// The swapchain is the platform bridge's (bridge.h voidBeginPass), which clears color to
-// the given value and depth to 1.
 void doorBeginScreenPass(float red, float green, float blue, float alpha);
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha);
 void doorEndPass(void);
