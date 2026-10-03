@@ -2300,7 +2300,7 @@ abort stage) unless named otherwise.
   **Measured on the final tree**, after the design pass's fixes, BUILD `5791eadd`, D3D11 only:
   every golden is 80 / 80, the pair invariants pass on the committed goldens
   (`out/tmp/premultEffect/invariants.committed.txt`), and T0/T1 run 1132 of 1132. WebGL2 and the
-  gates wait on void3d's M25 land.
+  gates ran after void3d's M25 land: the last receipt in this section.
 - **H, three paths that logged or stayed silent (2026-10-03).** The coordinator decided them by
   "fail loud" and the references. Each has a red-before pin and its own commit.
   - **An `endTarget` with no target open stops by name** (`draw.ms` `stopOnEndWithoutTarget`).
@@ -2326,8 +2326,8 @@ abort stage) unless named otherwise.
       before the fix, and 9 and 19 after.
 
   **Measured** on BUILD `5791eadd`, D3D11 only: every golden is 80 / 80, T0/T1 run 1133 of 1133,
-  and both abort pins stop with their message (`out/tmp/failLoud/`). The gates wait on M25 with
-  the rest.
+  and both abort pins stop with their message (`out/tmp/failLoud/`). The gates ran with the rest
+  after M25: the last receipt in this section.
 - **I, a colour effect on every UI kind, and filter targets past sixteen (2026-10-03).** The
   coordinator decided both from h2d.
   - **Colour effects compose.** h2d's `Text` and `Graphics` extend `Drawable`
@@ -2386,6 +2386,16 @@ record stage: TESTING.md's WebGL2 row did not yet count the new golden. The row 
 the docs commit and checked again against the same run (the gate's own claim string, and
 `tests/record/check.ms`: 0 off). `sh scripts/gate3d.sh` on the same tip is GREEN with its device
 skip. Logs: `out/tmp/closureGate2/`.
+
+**Measured on `9703390`, tree `3e114386f394`, BUILD `5791eadd`, shared box — the run G, H and I
+were owed once M25 landed:** `sh scripts/gate.sh --web` ran every code stage green: 1145 tests
+plus 299 isolated, D3D11 82/82, WebGL2 60 identical / 18 bounded / the same four known-red, 107
+frame functions / 245 callees, 16 PENDING; web builds 2 359 062 / 2 131 238 B. Its one red was
+the record stage: TESTING.md's WebGL2 row did not yet count the four new goldens. The row was
+corrected in a docs commit (`a8b80fb`, no code) and checked against the same run (the gate's own
+claim string, and `tests/record/check.ms`: 0 off). `sh scripts/gate3d.sh` ran after that docs
+commit on the same code and is GREEN, 240 stages with its device SKIP, 182 aborts. Logs:
+`out/tmp/finalGate/`.
 
 A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when

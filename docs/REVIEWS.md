@@ -1442,8 +1442,8 @@ followed it. The commits take the
 first Open item, a colour effect on a premultiplied source, and the second, the UI program's
 missing premultiplied input (VOID2D.md "Door closure" G). They also fix two defects found on the
 way: the effect state across a target, and the pairing of a target nested past the save slots.
-The gates have not run on this tip: by the lease they wait on void3d's M25 land. This verdict
-authorises no land or push.
+The gates waited on void3d's M25 land by the lease and ran once it landed, on this arc's final
+tree — the receipt at this section's end. This verdict authorises no land or push.
 
 **Passes.**
 - The defect pass was `/code-review high` on `1d312e0..8bf9a8d`, run as a forked agent told to
@@ -1494,7 +1494,7 @@ after a check that does not read its hash: VOID2D.md "A colour effect across a t
 - **F2, a stale test count.** Replaced by the final tree's numbers (`db392be`).
 - **F3, the pairing fix and the `params1.y` pin were not in the record.** Recorded (`db392be`).
 - **F4, the Limit paragraph overclaimed for a texel with zero alpha.** Corrected (`db392be`).
-- **F5, the gates.** Owed, after M25 lands.
+- **F5, the gates.** Ran once M25 landed, on this arc's final tree — the receipt at this section's end.
 - **F6, one source of truth for the effect state.**
   - Whether an effect is set is now derived from the effect row (`52fd1d8`), in the context and
     in `PaintIndex`.
@@ -1525,6 +1525,11 @@ after a check that does not read its hash: VOID2D.md "A colour effect across a t
 | Full D3D11 golden | four runs; the last, on `52fd1d8`'s tree, is 80 / 80 |
 | T0/T1 | 1132 of 1132 |
 
-Receipts are in `out/tmp/premultEffect/`. Not run: `gate.sh --web` (WebGL2, the allocation
-stage, the record check) and `gate3d.sh` (shader freshness, aborts). They are owed after M25
-lands, rebased onto it, once each on one fixed tree.
+Receipts are in `out/tmp/premultEffect/` and `out/tmp/failLoud/`. The gates ran once M25 landed,
+once each on one fixed tree — `9703390`, `3e114386f394`, BUILD `5791eadd`, with the WebGL2-row
+docs commit (`a8b80fb`) changing no code between them: `gate.sh --web` green on every code stage
+(1145 + 299 tests, D3D11 82/82, WebGL2 60 identical / 18 bounded / the same four known-red, 107
+frame functions / 245 callees, 16 PENDING, web 2 359 062 / 2 131 238 B; its one red was the
+WebGL2 row itself, corrected and re-checked against the same run — the gate's claim string,
+`tests/record/check.ms` 0 off); `gate3d.sh` GREEN, 240 stages with its device SKIP, 182 aborts.
+Logs: `out/tmp/finalGate/`.
