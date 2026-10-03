@@ -44,7 +44,8 @@ Storage is a plain retained tree: a Hibernal scene is tens of objects, and at th
 - **Small node, kind data in side tables.** `Object3D` carries `kind`, `flags` (visible, posChanged, culled as bits), `local`, `world`, `children` and a `payload: int32` indexing the scene's `meshes: Vec<MeshInstance>` or `lights: Vec<Light>`. The opposite of `Node2D`'s 71 fields.
 - **Assets are CPU data plus GPU handles.** `MeshData` keeps its vertex/index arrays; GPU buffers are `uint32` handles created from them and can be recreated from them after context loss. The same holds for what the library itself owns: the palette LUT, the render targets, the samplers and the pipelines. Textures and buffers a caller makes (the campfire's billboard atlases and instance buffers) are the caller's to rebuild; the example's `forceRebuild` is that work.
 - **Frame state is preallocated.** Uniform blocks are `Vec<float32>` sized once; the draw list is rebuilt only on structural change; nothing in `frame` allocates.
-- **Handles are values**, not references: a row of a scene table is an index, and a node, a mesh or a material is an index and a generation (M6, M17), so a draw item or a pick result is a plain value. A mesh, a material, a texture and a uniform block also carry the serial of the context or pool that issued them, which is checked where an id comes in (M24); the store itself is one reference, never copied.
+- **Handles are values**, not references: a row of a scene table is an index, and a node, a mesh or a material is an index and a generation (M6, M17), so a draw item or a pick result is a plain value. A mesh, a material, a texture and a uniform block also carry the serial of the context or pool that issued them (M24), and a node the serial of its scene (M25); each is checked where an id comes in. A `NodeId3D` is 12 bytes and a `PickHit` carries two.
+- **Owners are references.** The draw context and its pool (M24), a scene, the core renderer and both presets, a palette table, mesh frames and glTF assets (M25) are interfaces, so `let b = a` names the same owner and its holds count once. Each keeps the context it was made on and ends with a terminal `close`; dropping one releases nothing on the GPU.
 
 **The scope of every pixel claim in this document.** Every byte-identity claim here is D3D11 swapchain readback on one Windows box. Nothing has been compared byte for byte on any other backend, and GLES3 — the backend Hibernal actually ships on, and the one most likely to contract floating-point arithmetic differently — has no byte-level numbers at all.
 
@@ -1326,6 +1327,126 @@ milestone's consumer run on `0048b18`.
   generation and checked borrows are void2d's door contract, acked by void3d.
 - A store's `serial` is writable where it should be `readonly` (PENDING3D `store-serial-writable`).
 
+### M25 as built
+
+The row is `b4f7fc5`; the milestone is the commits after it on `wt/void3d-m5`, over main `2be9cf5`
+(void2d's `PipelineCache` owner). Its reviews and the gate receipt are `docs/REVIEWS-3D.md` "M25".
+
+- **Owners are references holding their context.** `Scene3D`, the core `Renderer`,
+  `ForwardRenderer`, `PixelArtRenderer`, `PaletteLut`, `MeshFrameAnimation` and `GltfAssets` are
+  interfaces, as M24 made the store one ("Data types"). Each keeps the context it was made on, and
+  every call that took a context beside the owner lost it, with every caller moved and no shim.
+  `Scene3D.create(context)` takes one even for a scene of groups and lights: there is no hidden
+  store. `NodeId3D` carries its scene's serial beside index and generation (`NO_NODE_ID`); a setter
+  or structure call given another scene's node stops as "of another scene", and so do
+  `bindTracks`, `syncPose`, `bindMeshFrames` and `syncMeshFrame` (`requireOwn`), where they
+  answered `StaleTarget`.
+- **Picking reads the scene's own context.** `pickNearest(scene, ray)` reads the geometry and
+  materials of `scene.context`, as Bevy's mesh picking reads the world's one store
+  (`bevy_picking/src/mesh_picking/ray_cast/mod.rs:177`, `:283`) and a Heaps collider its
+  primitive's CPU points (`h3d/prim/Polygon.hx:277`). Its headless tests write a context's tables
+  through `writeTables` beside `meshAt` (`src/test/drawHelpers.ms`). A CPU-only upload path, Heaps'
+  allocation at first render (`h3d/prim/Primitive.hx:113-114`), was not taken: `rebuildMeshes` runs
+  only on a new GPU generation, so a deferred mesh would never upload. `PickError.MeshOutOfRange`
+  and `MaterialOutOfRange` went: a node's ids are its context's, pinned, so always in range.
+- **Teardown is explicit, and terminal.** Each owner has a `close` made of the release calls that
+  existed (`closeRenderer`, `closeForward`, `closePixelArt`, `closePalette`, `closeScene`,
+  `closeMeshFrames`, `closeGltfAssets`, `closeContext`, `closeUniformPool`), refused inside a pass.
+  `closeRenderer` destroys the screen triangle's buffer it made, once and only under
+  `renderer.generation`, and releases its `MeshId`. `closeContext` buries the doomed, destroys its
+  samplers under their generation, closes its pipeline cache once (`closePipelines`) and its pool,
+  and stops naming the kind and count of any hold, pin or range still live. A preset skips a core or
+  palette an alias closed first. A closed owner stops every later call by name (`requireOpen` on
+  scenes and contexts, a `closed` check at each entry elsewhere), its queries answer false, it
+  never rebuilds a GPU object, and a second close through an alias stops. `closeGltfAssets` and
+  `closeMeshFrames` empty their id lists. There is no finalizer and no forced close; the device's
+  shutdown stays the host's.
+- **The palette table's GPU generation.** `PaletteLut` records the generation its image was made
+  under, as a `RenderTarget` does: `releaseGpu` and `closePalette` destroy under the current one and
+  forget under a stale one, and `upload` forgets a stale image itself. A preset's first frame no
+  longer forgets the table, which leaked a table the host uploaded or shared before it.
+- **Holds are the program's own state, so losing one stops.** A missing pin under a scene's node
+  stops `remove`, `removeChildren`, `closeScene` and `setMeshOf` ("found a node's pin taken through
+  the context"), as `closeMeshFrames` stops for a frame. M19 kept it a `Result`, `NotPinned`, because
+  "a pin taken through a copy of a scene is state the caller could not have seen" ("M19 as built",
+  "What keeps `Result`"); a scene is one reference now, so no copy exists, and the row's rule for
+  holds applies. `SceneError.NotPinned` and `AnimationError.NotPinned` are gone, and `remove` and
+  `removeChildren` answer the count, as M19's setters answer nothing once they cannot fail. M17's
+  "a copy took the pins" tests became a pin taken through the context; the two that answered
+  `NotPinned` became abort cases. A scene whose context was closed under it (one of groups and
+  lights holds nothing, so `closeContext` lets it) stops `addMeshNode`, `addGltfNodes` and
+  `setMeshOf` naming the closed context, where they answered `StaleMesh` or `BadMeshBinding`.
+- **Divergences, argued.**
+  - A second close stops. Heaps' `Texture.dispose` is idempotent (`h3d/mat/Texture.hx:358-360`,
+    and `MemoryManager.deleteTexture` ignores a texture it no longer holds, `:229-230`), as GPUI's
+    `destroy` is (`resources.take()`, `gpui_wgpu/src/wgpu_renderer.rs:2041-2044`). void3d follows
+    void2d's `closePipelines`: an owner is shared by reference, so a second close is a second
+    holder believing it still owns what the first ended.
+  - `closeContext` refuses live holds. Heaps' `MemoryManager.dispose`, reached from
+    `Engine.dispose`, is a forced close that disposes every texture and buffer
+    (`h3d/impl/MemoryManager.hx:259-275`). A forced close here would leave every owner holding
+    stale ids, so the caller closes renderers, then scenes, animations and glTF models, then its
+    own ids and ranges, then the context.
+  - `closeScene` is Heaps' `Scene.dispose` (`h3d/scene/Scene.hx:412-419`) without the renderer:
+    a Heaps scene owns its renderer and disposes it, and a void3d scene does not own one.
+  - A palette shared between presets (`b.palette = a.palette`) is closed by whichever preset
+    closes first, and the other's next frame stops naming the closed table. That is the alias
+    disposal of Heaps' `Tile.dispose` (`h2d/Tile.hx:248-261`), which the row does not take silently:
+    here it is loud.
+  - The row stops a glTF model paired with another context's scene; as built it is a `Result`.
+    `addGltfNodes` pairs no owner with the scene: it takes the ids a caller passes
+    (`GltfAssets.bindings`), the shape of `addMeshNode`, so M24's rule answers
+    `GltfSceneError.ForeignMeshBinding`. The check runs before any node is added, so a refusal
+    leaves the scene untouched (`gltfCheck`'s foreign-bindings case). The row's stop holds for mesh
+    frames, an owner whose own ids another context issued (`requirePaired`). An `addGltfNodes` that
+    took the `GltfAssets` owner, as Heaps' `Library.makeObject` builds from its library
+    (`hxd/fmt/hmd/Library.hx:477`), is where a stop would be right; it was not taken.
+- **Every stopping entry has a runtime proof, one build per owner module.** M19 writes one abort
+  program per entry that stops. M25's closed checks reach about eighty entries, and a program costs
+  one `msc` build, about 11 s on the shared workstation under load (measured 2026-10-03), in every
+  gate. The `aborts` stage therefore also reads `tests/aborts3d/cases/*.ms`: each names its cases
+  as `// expect <case>: <line>` beside the one-case `// expect:` form, is built once, and is run
+  once per case with the case's name as its argument, which calls only that entry. Each run must
+  stop with its own line. That is how Rust's test harness carries `#[should_panic]`, which Bevy's
+  panicking calls are tested with: one binary built once, each case run on its own. A stop here is
+  `unreachable`, which ends the process, so each case is its own process. A case that does not
+  stop fails the stage (the protocol's control is in REVIEWS-3D "M25"). The one-case programs
+  stay as they were.
+- **NEW MECHANISM**, under the delegation of 2026-09-29: an owner's terminal `close` and `closed`
+  flag beside the GPU generation, as void2d's cache has. It regresses a caller that keeps using an
+  owner after closing it, which now stops. Cost: a `NodeId3D` grows from 8 to 12 bytes and a
+  `PickHit` by 8; each check is a field load and a branch, its message in a stop helper off the
+  frame path, and the allocation stage lists `requireOpen`, `requireOwn` and `requirePaired`.
+
+**Acceptance.** D3D11 on the shared Windows workstation, msc 0.2.55 at `5791eadd`.
+- Red before: the `views` consumer's first form on the row's code (`b4f7fc5`, docs only over
+  `2be9cf5`), making every release call that existed, leaks 2 buffers and 1 sampler a cycle:
+  +10 buffers and +5 samplers over five cycles (`out/tmp/m25/red/`).
+- Green after: `tests/integration/viewTeardown.ms`, the gate's `views` stage, makes a context with
+  a scene, a renderer of each preset and a glTF model six times beside a surviving context, draws
+  each through both presets, checks the model's pixels and the survivor's, and closes them in
+  order. Holders, pins, uniform ranges and sokol's live buffers, images, views, samplers, shaders
+  and pipelines return to the first cycle's counts after each of the other five.
+- Controls, one mechanism removed each: the screen buffer's destroy, +10 buffers; the context's
+  samplers, +5; the cache's close, shaders 7 to 31 and pipelines 11 to 51 before sokol refused a
+  shader; the palette's close, +5 images and +5 views. The preset's old first-frame forget, put
+  back, +5 images and +5 views. closeCheck's two stale-close tests, each with the destroy forced,
+  stop the test binary on sokol's `_sg.valid`: only those tests hold a handle headless.
+- The gate on the reviewed tree: REVIEWS-3D "M25", "Final acceptance".
+
+**Still missing after M25.**
+- The palette's stale paths are read, not run: on D3D11 `contextGeneration()` is always 1
+  (`src/gpu/door.c`), so `upload`'s forget-and-remake and `closeContext`'s stale-sampler branch
+  never execute. closeCheck reaches the stale `releaseGpu`, `closePalette` and `closeRenderer`
+  with fabricated handles. A device run (V6) is what runs them.
+- Owner `context` fields and a scene's `serial` are writable where they should be `readonly`
+  (PENDING3D `store-serial-writable`).
+- An interface literal that leaves out a reference field compiles, the field null
+  (`src/examples/campfireScene.ms` had one; compiler card
+  `2026-10-03-interface-literal-omitted-reference-field.md`).
+- Not in this milestone: the device's shutdown; void2d's scene teardown; the DRC cost of owners as
+  references, beyond the bench stage's frame time.
+
 ### Android lifecycle (V6), alongside from M3
 
 - The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
@@ -1438,6 +1559,7 @@ of multiplying campfire configurations.
 Hit while writing M1 to M12 and worked around in void. Entries marked **re-checked** were probed again on msc 0.2.55 (`~/.metascript/BUILD` `8cdd91c6`) on 2026-09-24; the rest were not.
 
 - **A struct literal may leave fields out; they are zero, with no diagnostic.** `struct Point { x, y, z: int32 }` with `const p: Point = { x: 1, z: 3 }` builds and prints `1 0 3` (repro in `out/tmp/fieldRepro`). Removing `distance` from `OrthoCamera` therefore left every caller compiling while the field stayed in the struct, unread and zero; only a grep found it. The workaround is review, which is why the M4 camera's fields are all written at every literal.
+- **An interface literal may leave a reference field out; it is null, with no diagnostic.** An `Owner` literal without its `store: Store` builds, and the first read through the field dies on a null member access (card `2026-10-03-interface-literal-omitted-reference-field.md`); a left-out `string` reads as `""`. Every void3d owner holds its context this way, so every owner literal writes `context` and `closed`.
 - **`near` and `far` cannot be struct field names on Windows.** `windows.h` still defines them as empty macros, so `camera.near = 0.0` reaches clang as `camera. = 0.0`: `error: expected identifier`, reported at the `.ms` line with no hint of a macro, plus `warning: declaration does not declare anything` on the struct itself. Workaround: `nearPlane` / `farPlane`.
 - **A struct literal in an operator's operand position is not typed by the operator**, and the checker lets it through. `const clip: Vec4 = { x: …, y: …, z: …, w: 1.0 } * inverseViewProj` passes type checking and fails in clang with `invalid operands to binary expression ('__anon4__xf__yf__zf__wn' and 'const Mat4…')`. The same literal in a typed local, then multiplied, is fine. The receiver position at least fails in the checker: `({ ...camera, farPlane: x }).resolve(…)` is `Property 'resolve' does not exist on type '__anon2__…'`. Workaround either way: a typed local.
 
