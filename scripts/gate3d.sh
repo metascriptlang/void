@@ -1797,6 +1797,31 @@ run_aborts() {
 			fail "aborts: $name did not stop with '$expected' (exit $status) — see $log"
 		fi
 	done
+	for program in tests/aborts3d/cases/*.ms; do
+		name=$(basename "$program" .ms)
+		cases=$(sed -n 's#^// expect \([A-Za-z0-9_.]*\): .*#\1#p' "$program" | tr -d '\r')
+		if [ -z "$cases" ]; then
+			fail "aborts: $name names no case"
+			continue
+		fi
+		rm -f "out/tmp/abort-$name.exe"
+		if ! msc build "$program" --output="out/tmp/abort-$name.exe" > "$WORK/abort-$name.build.log" 2>&1; then
+			fail "aborts: $name does not build — see $WORK/abort-$name.build.log"
+			continue
+		fi
+		for case in $cases; do
+			pattern=$(printf '%s' "$case" | sed 's/\./\\./g')
+			expected=$(sed -n "s#^// expect $pattern: ##p" "$program" | tr -d '\r')
+			log="$WORK/abort-$name-$case.log"
+			status=0
+			"out/tmp/abort-$name.exe" "$case" > "$log" 2>&1 || status=$?
+			if [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
+				pass "aborts: $name $case stops and says: $expected"
+			else
+				fail "aborts: $name $case did not stop with '$expected' (exit $status) — see $log"
+			fi
+		done
+	done
 }
 
 # ---- manifest -----------------------------------------------------------------------------
