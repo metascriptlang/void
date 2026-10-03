@@ -1766,3 +1766,70 @@ code (`2eca4b4`, clean tree), installed msc `5791eadd`, D3D11, 2026-10-01:
   context, node ids naming their scene. It waits on void2d's `PipelineCache` as a reference owner.
 - void2d's door: `RenderTarget` and `Sampler` generations and checked borrows.
 - The post-M23 list: colour spaces, alpha as a material's, the device's largest texture, device runs.
+
+## M25 — owners and their teardown
+
+**Design verdict: SHIP WITH FOLLOW-UPS, every follow-up taken inside the milestone.** The owning
+session ran the defect pass through one read-only reviewer and read every finding against the
+code before changing anything. A fresh principal-engineer reviewer then read the diff
+`b4f7fc5..01c9687`, the row, the arc card's measurements, the logs, Heaps at `b9aa6dcb`, GPUI at
+`b961b49` and Bevy at `157e1ce6` (fetched), and built and ran nothing: the workstation's native
+capacity was rationed between sessions. The session coordinating the unification ruled the two
+points put to it.
+
+### Defect pass
+
+`/code-review high` on `b4f7fc5..c070540`: eight findings, none high, each re-read in the session.
+Fixes `cab7b02..01c9687`.
+
+| Finding | Done |
+|---|---|
+| A preset's first frame forgot its palette table, so a table the host uploaded or another preset shared before it leaked its image and view | The forget dropped; `upload` forgets a stale image itself (`cab7b02`). The `views` consumer uploads the table first: with the old line back it grows 5 images and 5 views over five cycles, and none without |
+| A call with a closed scene answered `StaleTarget` or stopped naming `syncWorld`; a pixel-art preset whose core an alias closed could still ask for a frame | `Scene3D.requireOpen` at each entry, `needsFrame` false on a closed core (`43c6413`); abort `syncMeshFrameWithClosedScene` (`65dfe64`), whose control without the check returns |
+| The row stops a glTF model paired with another context's scene; it answers `ForeignMeshBinding` | A divergence, ruled in the design pass below and written in the as-built |
+| A constructor given a closed context did not stop by name | `DrawContext.requireOpen` in `Scene3D.create`, `forMeshes`, `addGltfAssets`, `Renderer.createDrawing` and both presets (`43c6413`); abort `sceneOnClosedContext`, whose control without the check runs on |
+| The campfire's placeholder mesh frames left `context` and `closed` out of their literal | Both written (`0eee5c7`); the hole is a compiler card (design pass finding 7) |
+| closeCheck's two stale-close tests might pass on the wrong branch | Not a defect: each forced destroy alone stops the test binary on sokol's `_sg.valid` (image `sokol_gfx.h:27197`, buffer `:27117`); only those tests hold a handle headless |
+| The `views` consumer never closed its module-level placeholders, and its pass line counted six cycles where five are compared | `closeView()` in `init`; the lines count the compared cycles (`d0618e6`) |
+| `drawScreen`'s comment named a `context` argument that is gone | Rewritten (`83f1557`) |
+
+The fix phase also moved the owners' `context` and the scene's `serial` under PENDING3D
+`store-serial-writable`, with a Parked-at line on card
+`2026-09-27-readonly-interface-field-unresolved-type.md` (`01c9687`).
+
+### Fresh design pass
+
+SHIP WITH FOLLOW-UPS, nothing blocking. The port follows its references: the owner keeps its
+context as a Heaps texture keeps its `mem` (`h3d/mat/Texture.hx:129`) and a `Scene2D` its context;
+a node unpins its mesh on removal as `Mesh.onRemove` decrefs its primitive (`h3d/scene/Mesh.hx:133-137`);
+releases are gated on the generation as the door's `released()` is; picking reads the scene's
+context as Bevy's reads the world's one store. Nothing game-shaped entered `src/void3d`; every
+check on the frame path is a field load and a branch. Its findings, each read against the code
+here first:
+
+| Finding | Done |
+|---|---|
+| Abort coverage below M19's one program per stopping entry | Ruling A below: every closed and pass-open stop has a case |
+| The allocation stage did not list `requirePaired` or `requireOpen`, and `requirePaired` held its message | The message moved to `stopOnUnpaired`; `scene:requireOpen`, `scene:requireOwn`, `draw:requireOpen` and `animation:requirePaired` listed |
+| A scene whose context was closed under it answered `StaleMesh` or `BadMeshBinding` | `addMeshNode`, `addGltfNodes` and `setMeshOf` stop naming the closed context; three cases |
+| `NotPinned` meant two things: a stop in `closeMeshFrames` and `closeScene`, a `Result` in `remove`, `setMeshOf` and `syncMeshFrame` | Ruled with the coordinating session: M19's reason for the `Result` was a pin taken through a copy of a scene (VOID3D.md "M19 as built"), and no copy exists now. A missing pin stops all of them; `SceneError.NotPinned` and `AnimationError.NotPinned` gone; `remove` and `removeChildren` answer the count; the two tests became five cases |
+| Divergences not written down: a second close stops (Heaps `Texture.dispose` and GPUI `destroy` are idempotent), `closeContext` refuses where Heaps' `MemoryManager.dispose` forces, `closeScene` against `Scene.dispose`, the shared palette's alias close, the glTF `Result`; "Data types" still said a node is an index and a generation; the cost of the scene serial | Each in "M25 as built", argued, citations checked against the sources; "Data types" names the serial and the owners as references |
+| Evidence: the capture count overstated (15 configurations and 5 derived checks, not 20); nothing but views, aborts and captures re-ran after the fixes; the bench result was missing | The final gate below is the acceptance, on one recorded tree |
+| An interface literal that omits a reference field compiles | Compiler card `2026-10-03-interface-literal-omitted-reference-field.md` |
+| The palette's stale `upload` path and `closeContext`'s stale-sampler branch are read, not run: `contextGeneration()` is 1 on D3D11 | Written under "Still missing after M25"; a device run is what runs them |
+| `closeGltfAssets` kept its id lists after close | Emptied, as `closeMeshFrames` empties its frames |
+| An animation bound in one scene and synced into another of the same context answered `StaleTarget` where a setter stops | `requireOwn` in `bindTracks`, `syncPose`, `bindMeshFrames` and `syncMeshFrame`: "of another scene"; four cases |
+| Card `2026-10-02-top-level-unreachable-guard-hides-interface-global.md` listed no site; three aborts named their animation for a game | The site listed; the name is `frames` |
+
+**Ruling A, abort coverage.** An abort proves an entry reaches its check before it acts and names
+itself; one per helper proves only the helper's message. Without its check, `bindTracks` and
+`syncPose` answered a `Result` again, and the constructors stopped under another call's name. The
+coordinating session kept M19's rule for every closed and pass-open stop, about eighty, and
+carried it as Rust carries `#[should_panic]`: one program per owner module, built once, each case
+run on its own against its own line (`tests/aborts3d/cases/`, "M25 as built"). The one-case
+programs stay.
+
+**Ruling B, the glTF pairing.** `addGltfNodes` pairs no owner with the scene; it takes ids per
+call, so M24's rule makes another context's model a `Result`, and the row's stop holds for mesh
+frames. Agreed by the coordinating session; the as-built narrows the row for glTF and names the
+alternative not taken.
