@@ -1561,6 +1561,39 @@ land, which moved the D3D11 goldens from 78 to 82); the milestone is the commits
   web backends build and the GL demo draws. Logs: `out/tmp/m26/gate/gate3d.log`, `gateWeb.log`
   (the red first run) and `gateWeb2.log` (the green re-run), each stamped with its tree.
 
+### 0.3.0 baseline: literal promotion control
+
+On BUILD `4573591e`, the unmodified example's float32 evaluation differs from M26's receipt
+on BUILD `5791eadd`. The cause is intended for eight capture configurations: recompiler
+`5c2dc30e` makes a literal beside a float32 operand float32 (LANG.md "Type Promotion Rules").
+The control keeps the compiler, shaders and library fixed and widens only fourteen inspected
+sites in a generated copy of `src/examples/campfireScene.ms`: the log yaw; stone x/z margins;
+grass x/z jitter, size and tint; blade root, height and lean; flame sway, half-width, centre and
+spread. Each expression narrows at its old final store or argument boundary.
+
+All four frames return to the old committed hashes for `campfireCapture`, `Direct`, `Rebuild`,
+`Spin`, `Particles`, `ParticlesRebuild`, `GreyDirect` and `GreyCpu`. Against those hash-validated
+reference frames, the current float32 example differs in exactly **4 pixels per frame**, with
+**PAE 257/65535 = 1/255** (one 8-bit level), in every one of those configurations.
+Only their **20 unique hashes** (`before`, `m3direct`, `m6spin`, `m11particles`,
+`m12greydirect`, four frames each) are adopted. The permanent example is not widened to emulate
+old output. Fresh controls remove the executable first, disable the global object cache, and
+require build and run exit 0 before trusting capture output.
+
+**Forward and Anchor remain open**, with their original hashes unchanged. The fourteen-site
+control, its four-site extension for fire offset/flicker, and an additional transient widening
+control for projection/normalisation/quaternion/animation/particle-colour expressions do not
+return their old hashes. `forwardRenderer`, the billboard anchor writer and shader-block
+writers have no literal arithmetic to widen; the relevant path diff from `7f014ff` to
+`582e539` is empty apart from the particle byte-scale cast at its final store. No permanent
+library widening was kept. A compiler cause for these two remains unproven.
+
+Receipts on the same D3D11 box and compiler: `out/tmp/sceneTarget/literalControl.json`,
+`flickerControl.json`, `libraryWidth.patch` and `libraryControl.json`; controlled capture PPMs
+are in `out/tmp/sceneTarget/controls/`. The baseline still has no green gate receipt: the two
+unexplained capture groups and Yoga's web link remain land blockers.
+
+
 **Still missing after M26.**
 - The converted programs have run on D3D11 only; GLES3 and a device have not run them (the
   standing device gap, `tests/device/README.md`).
