@@ -1385,6 +1385,10 @@ run_light_multiplies() {
 			fail "multiply: frame $frame has no ground pixel that greying changed"
 			return
 		fi
+		if [ "$(($2 - $3))" -le 0 ]; then
+			fail "multiply: frame $frame, every ground pixel the greying changed clips at 255, so the ratio is verified nowhere"
+			return
+		fi
 		if [ "$1" -ne 0 ]; then
 			fail "multiply: frame $frame, $1 of $2 ground pixels are not the plain ground's linear light × grey/ground ($3 of them clip at 255)"
 			return

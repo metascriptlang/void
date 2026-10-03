@@ -107,7 +107,7 @@ void main() {
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
     }
-    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y)) * srgbToLinear(texel.rgb);
+    vec3 surface = srgbToLinear(saturated(baseColor.rgb * texel.rgb, material.y));
     fragColor = vec4(linearToSrgb(surface * light), baseColor.a * texel.a);
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
