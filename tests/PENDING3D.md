@@ -25,18 +25,19 @@ naming a sentinel nobody wrote fails rather than being skipped.
 
 **How far that reaches, measured rather than implied.** The `pending` stage observes that a
 **sentinel is present**, not that the **divergence still holds**. Those are different claims,
-and only nine of the rows below have the second one enforced: `bounds-transformed-or`,
+and nine oracle rows below have the second one enforced: `bounds-transformed-or`,
 `bounds-empty-size-zero` and `bounds-sphere-rescale` each carry a `diverges=` case in
 `tests/oracle/bounds3d.cases`, `anim-never-extrapolates` and `anim-pose-replaces-local` one in
 `tests/oracle/anim3d.cases`, `ray-bounds-parallel-on-face` two, and `pick-origin-inside-bounds`
 and `pick-culling-follows-material` one each in `tests/oracle/ray3d.cases`, and `particle-random-per-life` one in `tests/oracle/particles3d.cases`, which the `oracle`
 stage checks in both directions against real Heaps. The control: making `size()` answer
 Heaps' −2e20 while leaving its `// PENDING3D:` line
-untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines. For
-every other row there is no second stage, so fixing the divergence and forgetting the
-comment keeps the gate green — the row would survive until a reader noticed. The two rows
-whose sentinel is a sentence in `docs/VOID3D.md` are weaker still: they track the *prose*, so
-rewording the sentence reddens the gate and changing the world behind it does not.
+untouched leaves `pending` **green** and turns `oracle` **red** with two GRADUATED lines.
+The two capture rows additionally enforce exact current fingerprints and old-hash graduation
+in the capture stage (below). For every remaining row there is no second stage, so fixing the
+divergence and forgetting the comment keeps the gate green — the row survives until noticed.
+The original two prose-sentinel rows are weaker still: they track the prose, so rewording
+reddens the gate and changing the world behind it does not.
 
 Where a row can be given a behavioural sentinel, it should be. That is what an oracle case is
 for, and it is why the three bounds rows are the ones to copy.
@@ -72,6 +73,27 @@ for, and it is why the three bounds rows are the ones to copy.
 | `copy-opaque` | The screen half's `Copy` and `Blit` are opaque, so a second 3D layer covers the first: M18 delivers 2D over 3D, not Bevy's `ClearColorConfig::None` for 3D over 3D. Heaps' `Copy.run` takes a blend mode. | `src/void3d/forwardRenderer.ms`, `src/void3d/pixelArtRenderer.ms` | a blended copy, when a second 3D layer is asked for |
 | `pixel-art-depth-orthographic` | The pixel-art programs write `gl_Position.z` as the depth their post pass outlines and fogs by, which is `[0, 1]` only when `w` is 1, under an orthographic camera. With a perspective camera the post pass draws no outline: the outlined textured capture run with the perspective camera fails its silhouette check (measured, M22). Found by M22, from M21, which claimed perspective without the pixel-art post pass. | `src/void3d/pixelArt3d.glsl` | when the pixel-art preset is asked to outline a perspective scene |
 | `store-serial-writable` | A store's `serial` (`DrawContext`'s and `UniformPool`'s, M24), a scene's `serial` and the `context` an owner keeps (`Renderer`, `Scene3D`, `MeshFrameAnimation`, `GltfAssets`, M25) are writable interface fields where they should be `readonly`: an interface field cannot be `readonly` on the installed `msc` (compiler card `2026-09-27-readonly-interface-field-unresolved-type.md`). Nothing writes them after their owner is made. | `src/void3d/draw.ms`, `uniformPool.ms`, `renderer.ms`, `scene.ms`, `animation.ms`, `gltfScene.ms` | when the card's "Done when" holds on the installed `msc` |
+| `capture-m14forward` | Unexplained 0.3.0 bytes in the Forward capture; held exactly below, **not accepted as correct**. Card `2026-10-03-msc-030-renders-void3d-campfire-captures-differently.md`. | `docs/VOID3D.md` `capture-m14forward` and the per-frame hash records below | when the card's controlled old-toolchain comparison explains it |
+| `capture-m16anchor` | Unexplained 0.3.0 bytes in the Anchor capture; held exactly below, **not accepted as correct**. Same compiler inbox card as `capture-m14forward`. | `docs/VOID3D.md` `capture-m16anchor` and the per-frame hash records below | when the card's controlled old-toolchain comparison explains it |
+
+## Capture fingerprints — held, not accepted
+
+`scripts/gate3d.sh` holds these two configurations byte for byte while their card is open.
+There is no pixel tolerance. Matching the held 0.3.0 hash is a loud SKIP, not an accepted
+baseline PASS; unknown bytes fail, and a return to the old M26 hash fails with
+`row stale: remove it`. Missing, duplicate, orphan or malformed records fail too.
+The original hashes in `docs/baselines3d.sha256` remain unchanged for these configurations.
+
+| frame | M26 SHA-256 | held 0.3.0 SHA-256 |
+|---|---|---|
+| `m14forward_1.ppm` | `e3293970d43495345f164c6bc0539259f1320243c600858594409f5cceaf0337` | `13e575bca0f543f177a37096dd2cf833ca8d779d81bd2cfc0925efb715b116dc` |
+| `m14forward_6.ppm` | `0abce0b1b23ffd6543a794002c2654c9af2f687ef2717e44c19fe449fcc88c41` | `b0e01c0e34832cf5aa1ac8d53691403993381f804e9e8f5d5591a383e8090b55` |
+| `m14forward_11.ppm` | `9310e64f3dfc6f0122afe906a5fe5a9f46bf9c269ef09248c3be1d2cb6fd43bf` | `f69abe90967fb4b070f50a436dc058a3ade0a02b56fed2e71ccb9ae0f33237ac` |
+| `m14forward_16.ppm` | `a1b163077433c9c02d0adbbc1b9f49d805357bfe397ef3012bb900f85df0c08d` | `67ad748bca2e79093d9482f14630cd8b48f82093b76d5da81f1aa4684c27098d` |
+| `m16anchor_1.ppm` | `aa462187cc65013b0eea512ead1549aaca998abf47b8c7d27170bf5ccb15ceda` | `f0d6884fb0687ff068e6c732106c856481966db49f5f7dd7983f750b5ae3904a` |
+| `m16anchor_6.ppm` | `e28f212c0fea374bc15c2ddb83434c90bef930164d740b8a3a67522b0c9e4010` | `2ea735c7ac87d91b0624eb10d4c13b34128a11c3187bab7547c42565c3a75ce6` |
+| `m16anchor_11.ppm` | `c8afb551f907543a3640792f4a855dbb318ea0c8a9ad2063b68ce190576bd820` | `08a9f74b152a9c444673b0fb389ac8499ef7799bfa0b17b006dc7c772fb21d4c` |
+| `m16anchor_16.ppm` | `2413c186a2bd9f05c5d25cda8ffd56f11ac8edf6ecb24ce966393f9a28aa50aa` | `a6e07a48a3f265346fe7d493bb7420fbc695f697b1414ce9a620c647526fd679` |
 
 ## Not covered here, deliberately
 

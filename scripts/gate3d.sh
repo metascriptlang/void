@@ -28,6 +28,7 @@
 #   ANDROID_NDK=<path>     NDK root (default: the Windows SDK location)
 set -u
 cd "$(dirname "$0")/.."
+. scripts/capturePending.sh
 export MSC_NO_GLOBAL_CACHE=1
 
 FAILURES=0
@@ -1111,6 +1112,20 @@ run_pending() {
 		skip "pending: $PENDING is missing, so nothing holds the known divergences to account"
 		return
 	fi
+	if ! sh scripts/testCapturePending.sh > "$WORK/capture-pending-controls.log" 2>&1; then
+		fail "capture pending protocol controls — see $WORK/capture-pending-controls.log"
+		return
+	fi
+	pass "capture pending: exact held bytes, unknown-byte rejection and stale-row controls"
+	keys=$(capture_pending_keys "$PENDING") || { fail "pending: unreadable capture records"; return; }
+	for key in $keys; do
+		old=$(expected_hash "$key")
+		verdict=$(capture_pending_verdict "$PENDING" "$key" "$old" "") || verdict=invalid
+		if [ "$verdict" != "listed" ]; then
+			fail "pending: orphan, duplicate or invalid capture fingerprint $key"
+			return
+		fi
+	done
 	rows=$(grep -oE '^\| `[a-z0-9-]+`' "$PENDING" | tr -d '|` ' | sort)
 	tags=$(grep -rhoE 'PENDING3D: [a-z0-9-]+' src/ | sed 's/PENDING3D: //' | sort -u)
 	graduated=""
@@ -1120,6 +1135,17 @@ run_pending() {
 				grep -q 'plausible\* M4 images' docs/VOID3D.md || graduated="$graduated $row" ;;
 			gles3-emulator-only)
 				grep -q 'not a device' docs/VOID3D.md || graduated="$graduated $row" ;;
+			capture-m14forward|capture-m16anchor)
+				grep -qF "$row" docs/VOID3D.md || graduated="$graduated $row"
+				for frame in $FRAMES; do
+					key="${row#capture-}_$frame.ppm"
+					old=$(expected_hash "$key")
+					verdict=$(capture_pending_verdict "$PENDING" "$key" "$old" "") || verdict=invalid
+					if [ "$verdict" != "listed" ]; then
+						fail "pending: $row has missing, duplicate or invalid hash data for $key"
+						return
+					fi
+				done ;;
 			*)
 				echo "$tags" | grep -qx "$row" || graduated="$graduated $row" ;;
 		esac
@@ -1262,6 +1288,7 @@ run_capture() {
 	missing=0
 	differing=0
 	adopted=0
+	held=0
 	for frame in $FRAMES; do
 		got=$CAPTURE/gate/${name}_$frame.ppm
 		key=${baseline}_$frame.ppm
@@ -1272,6 +1299,21 @@ run_capture() {
 		fi
 		hash=$(sha256sum "$got" | cut -d' ' -f1)
 		expected=$(expected_hash "$key")
+		verdict=$(capture_pending_verdict "$PENDING" "$key" "$expected" "$hash") || verdict=invalid
+		case "$verdict" in
+			held) held=$((held + 1)); continue ;;
+			stale)
+				fail "capture $name: row stale: remove capture-$baseline (frame $frame returned to M26)"
+				return ;;
+			mismatch)
+				fail "capture $name: frame $frame changed its held 0.3.0 fingerprint"
+				return ;;
+			invalid)
+				fail "capture $name: invalid PENDING3D hash record for $key"
+				return ;;
+			normal) ;;
+			*) fail "capture $name: unknown pending verdict $verdict"; return ;;
+		esac
 		if [ -z "$expected" ]; then
 			if [ "${GATE_ADOPT:-0}" = "1" ]; then
 				record_hash "$key" "$hash" || return
@@ -1303,6 +1345,8 @@ run_capture() {
 		fail "capture $name ($what): $missing of 4 frames have no ${baseline}_* hash in $MANIFEST (GATE_ADOPT=1 records them)"
 	elif [ "$adopted" -gt 0 ]; then
 		skip "capture $name ($what): recorded $adopted new ${baseline}_* hashes in $MANIFEST — commit them, and write down why"
+	elif [ "$held" -gt 0 ]; then
+		skip "capture $name: $held exact 0.3.0 fingerprints held, not accepted — capture-$baseline"
 	else
 		pass "capture $name ($what): 4 frames byte-identical to ${baseline}_*.ppm"
 	fi

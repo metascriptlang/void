@@ -1590,8 +1590,14 @@ library widening was kept. A compiler cause for these two remains unproven.
 
 Receipts on the same D3D11 box and compiler: `out/tmp/sceneTarget/literalControl.json`,
 `flickerControl.json`, `libraryWidth.patch` and `libraryControl.json`; controlled capture PPMs
-are in `out/tmp/sceneTarget/controls/`. The baseline still has no green gate receipt: the two
-unexplained capture groups and Yoga's web link remain land blockers.
+are in `out/tmp/sceneTarget/controls/`. The unresolved configurations are now held by
+`tests/PENDING3D.md` rows `capture-m14forward` and `capture-m16anchor`, not adopted as correct.
+Their M26 hashes remain the accepted baselines. Four exact current 0.3.0 fingerprints per
+configuration are enforced separately: unknown bytes fail, and a return to any old hash fails
+`row stale: remove it`. Matching the held bytes is a loud SKIP. No tolerance against missing
+old images is invented; the measured two-pixel control delta was not an old-baseline bound.
+The protocol controls exercise acceptance, changed bytes, stale old hashes and malformed rows.
+Yoga's web linker gap remains the migration's external land blocker.
 
 
 **Still missing after M26.**
