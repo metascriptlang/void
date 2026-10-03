@@ -349,7 +349,7 @@ test "perspective project and unproject rays agree through both framebuffer row 
 
 test "perspective refuses unsafe FOV and non-positive near depth" {
 	let camera: Camera3D = perspective();
-	let badFovs: Vec<float32> = [0.0, -0.1, 3.141592653589793, 4.0, 0.0 / 0.0, 1.0 / 0.0];
+	let badFovs: Vec<float32> = [0.0, -0.1, 3.141592653589793, 4.0, (0.0 / 0.0) as float32, (1.0 / 0.0) as float32];
 	for (let fov of badFovs) {
 		let bad: Camera3D = {
 			...camera, projection: { kind: ProjectionKind.Perspective, fovY: fov },
@@ -369,7 +369,7 @@ test "perspective refuses unsafe FOV and non-positive near depth" {
 
 test "camera refuses nonfinite poses and projections that overflow" {
 	let camera: Camera3D = perspective();
-	let infinite: float32 = 1.0 / 0.0;
+	let infinite: float32 = (1.0 / 0.0) as float32;
 	let badPose: Camera3D = { ...camera, position: vec3(infinite, 0.0, 0.0) };
 	let posed: Result<CameraView, CameraError> = badPose.resolve(800, 400);
 	assert !posed.ok;
