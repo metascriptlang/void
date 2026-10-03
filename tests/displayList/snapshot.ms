@@ -766,6 +766,16 @@ test "an underline and a selection beside a colour effect draw with it" {
 	assert uiEffects() >= 1;
 }
 
+test "an image style beside a colour effect draws through the UI program with the effect" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const image = s.add(s.sprite(tile(17, 64.0, 64.0)).at(4.0, 4.0));
+	image.setImageStyle(imageStyle(uniformRadii(4.0), false, ObjectFit.Cover));
+	image.setColorMatrix(colorMatrixGrayscale(1.0));
+	record(s.refOf(s.root), 80.0, 80.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+}
+
 test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lanes" {
 	assert snapshot("imageStyle", record(imageStyleScene(), 128.0, 108.0, 1.0));
 }

@@ -653,13 +653,6 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	if (instanced) { emitCaret(blend, text, world, na); }
 }
 
-
-function stopOnStyledImageEffect(): void {
-	console.log("void2d: an image style cannot take a colorMatrix, colorAdd or colorKey; draw the " +
-		"image without a style, or bake the effect into it");
-	unreachable;
-}
-
 function emitStyledImage(
 	s: Scene2D,
 	i: int32,
@@ -672,7 +665,6 @@ function emitStyledImage(
 ): boolean {
 	const styleIndex: int32 = s.imageStyleOf(i);
 	if (styleIndex == NO_IMAGE_STYLE) { return false; }
-	if (!uiInstancingAvailable()) { stopOnStyledImageEffect(); }
 	const style = imageStyles[styleIndex];
 	const fitted = fitImage(t, sizeX, sizeY, style.fit);
 	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
