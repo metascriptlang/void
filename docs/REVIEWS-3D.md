@@ -1870,3 +1870,45 @@ one `gate3d.sh` then one `gate.sh --web`, serial, the BUILD read before each.
   where the GPU generation moves (V6).
 - The post-M23 list: colour spaces, alpha as a material's, the device's largest texture, device
   runs.
+
+## M26 — colour spaces
+
+**Defect pass: two should-fix findings, both taken; two notes, one taken as a note in the
+as-built.** A fresh read-only reviewer read the row, the diff `1d312e0..35047db` (before the
+rebase) and the pinned references, and reported four findings.
+
+| Finding | Done |
+|---|---|
+| Both `litTexturedFs` narrowed M12's saturation operand from the tinted surface to the tint alone (`sat(b·t) ≠ sat(b)·t`), unpinned by any capture, silently ending the CPU-grey equivalence for textured materials | `saturated(baseColor.rgb * texel.rgb, material.y)` before the decode, in both programs (`35047db`); no hash moved, the grey configs being untextured, and the textured stage re-ran green |
+| The row counted void2d's goldens at 78 after main had moved to `75b0d19` with 82 | Branch rebased over that main (no conflict), the row corrected to 82 (`f5e21d4`); the gates below ran on the rebased tree |
+| The multiply stage could pass vacuously if every ground pixel the greying changed clipped at 255 | A guard fails the stage when changed minus clipped reaches zero (`35047db`) |
+| The sRGB constants are hand-copied in the gate's awk and `-fx` beside the GLSL block and the CPU twins | Kept and noted in the as-built: the stage cannot link the shader's code; the parse-from-source form (as `LUMA_*`) is written down as the way out if the curve ever changes |
+
+### Design pass
+
+**Verdict: SHIP WITH FOLLOW-UPS, every follow-up taken.** A fresh principal-engineer reviewer
+read the diff over `75b0d19`, the row, the decision rule, "Porting rules", "Data types" and
+the Heaps sources, and verified the Bevy citations at the pinned commit itself. It confirmed
+the pair constant-for-constant against `ColorSpaces.hx`, the colours-encoded/scalars-linear
+convention stated where a maintainer finds it, no Hibernal-shaped name, the frame loop
+allocation-free with the encode at load, no new GPU resource kind, and the 61/11 hash split
+honest per entry — the eleven byte-identical frames are the unlit stages and the emptied
+scene, provable rather than lucky.
+
+| Finding | Done |
+|---|---|
+| The pow() clamp diverges from Heaps' pair with no record of why | One comment line in the block naming fxc's X3571 and the neutrality argument, plus the as-built's account (`296dff4`) |
+| The re-baseline magnitudes and the 61/11 count lived only outside the tree | "M26 as built" in `docs/VOID3D.md`, magnitudes and count included |
+| void2d's private sRGB pair in `gradient.ms` (encode exponent 1/2.4) coexists with this one | Named in the as-built: layering keeps it, a unification is void2d's and will move its goldens |
+
+### Final acceptance
+
+`sh scripts/gate3d.sh` and `sh scripts/gate.sh --web`, installed msc `5791eadd`, D3D11, on the
+reviewed tree (`296dff4`, clean, over main `75b0d19`), serial, after both reviews. Receipt
+appended below once both have run on that one tree.
+
+### Scope still separate
+
+- GLES3 and a device have not run the converted programs (the standing device gap).
+- The post-M23 list after this row: alpha as a material's, the device's largest texture,
+  device runs.
