@@ -181,31 +181,13 @@ export function recordedCommandCount(): int32 { return commandCount(); }
 export function recordedVertexCount(): int32 { return vertexCount(); }
 
 
-function setIdentityMat(): void {
-	const ctx: DrawContext2D = currentContext();
-	ctx.curMat = NO_COLOR_MATRIX;
-}
-
 function clearEffect(): void {
 	const ctx: DrawContext2D = currentContext();
 	ctx.curEffect = NO_EFFECT;
-	setIdentityMat();
+	ctx.curMat = NO_COLOR_MATRIX;
 	ctx.curAdd = rgba(0.0, 0.0, 0.0, 0.0);
 	ctx.curKey = rgba(0.0, 0.0, 0.0, 0.0);
 	ctx.curHasEffect = false;
-}
-
-function loadEffect(effect: int32): void {
-	const ctx: DrawContext2D = currentContext();
-	ctx.curMat = effectMatrix(effect);
-	ctx.curAdd = rgba(
-		effectField(effect, 16), effectField(effect, 17),
-		effectField(effect, 18), effectField(effect, 19),
-	);
-	ctx.curKey = rgba(
-		effectField(effect, 20), effectField(effect, 21),
-		effectField(effect, 22), effectField(effect, 23),
-	);
 }
 
 function restoreEffect(effect: int32): void {
@@ -216,7 +198,15 @@ function restoreEffect(effect: int32): void {
 	const ctx: DrawContext2D = currentContext();
 	ctx.curEffect = effect;
 	ctx.curHasEffect = true;
-	loadEffect(effect);
+	ctx.curMat = effectMatrix(effect);
+	ctx.curAdd = rgba(
+		effectField(effect, 16), effectField(effect, 17),
+		effectField(effect, 18), effectField(effect, 19),
+	);
+	ctx.curKey = rgba(
+		effectField(effect, 20), effectField(effect, 21),
+		effectField(effect, 22), effectField(effect, 23),
+	);
 }
 
 // Close the open run as one Draw command. Called when the state changes, when a clip moves,
@@ -300,10 +290,8 @@ export function resumePaint(p: PaintIndex): void {
 	ctx.curView = p.view;
 	ctx.curBlend = p.blend;
 	ctx.curSampler = p.sampler;
-	ctx.curEffect = p.effect;
-	ctx.curHasEffect = p.hasEffect;
+	restoreEffect(p.effect);
 	l.scopeNow = p.scope;
-	if (p.hasEffect) { loadEffect(p.effect); }
 	ctx.originX = 0.0;
 	ctx.originY = 0.0;
 	if (p.mask == NO_MASK) {
