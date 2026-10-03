@@ -81,7 +81,6 @@ export enum SceneError {
 	StaleMaterial,
 	ForeignMesh,
 	ForeignMaterial,
-	NotPinned,
 }
 
 export enum LightError {
@@ -449,7 +448,7 @@ function collectSubtree(scene: Scene3D, index: int32): int32 {
 
 // Every live mesh and material of the mesh nodes among the first `count` in scene.stack has a pin
 // for each node about to let one go.
-function checkPins(scene: Scene3D, count: int32): Result<int32, SceneError> {
+function checkPins(scene: Scene3D, count: int32, call: string): void {
 	const context: DrawContext = scene.context;
 	let covered: boolean = true;
 	for (let k = 0; k < count; k++) {
@@ -466,20 +465,28 @@ function checkPins(scene: Scene3D, count: int32): Result<int32, SceneError> {
 		clearMeshTally(context, instance.mesh);
 		clearMaterialTally(context, instance.material);
 	}
-	if (!covered) { return Result.err(SceneError.NotPinned); }
-	return Result.ok(count);
+	if (!covered) { stopOnPinTaken(call); }
+}
+
+function stopOnPinTaken(call: string): void {
+	console.log(`void3d: ${call} found a node's pin taken through the context`);
+	unreachable;
 }
 
 // Frees `id` and everything under it; their ids go stale (slots.ms), and each mesh node unpins its
-// mesh and material. Nothing changes when a pin is gone (checkPins).
-export function remove(scene: Scene3D, id: NodeId3D): Result<int32, SceneError> {
-	const row: int32 = scene.liveRow(id, "remove");
+// mesh and material.
+export function remove(scene: Scene3D, id: NodeId3D): int32 {
+	return removeNode(scene, id, "remove");
+}
+
+function removeNode(scene: Scene3D, id: NodeId3D, call: string): int32 {
+	const row: int32 = scene.liveRow(id, call);
 	if (row == scene.root) {
 		console.log("void3d: remove asked of the scene root; removeChildren empties it");
 		unreachable;
 	}
 	const count: int32 = collectSubtree(scene, row);
-	const _checked: int32 = try checkPins(scene, count);
+	checkPins(scene, count, call);
 	detach(scene, id.index);
 	for (let k = 0; k < count; k++) {
 		const index: int32 = scene.stack[k];
@@ -489,18 +496,21 @@ export function remove(scene: Scene3D, id: NodeId3D): Result<int32, SceneError> 
 		vacate(scene.slots, index);
 	}
 	scene.structureChanged = true;
-	return Result.ok(count);
+	return count;
 }
 
 // h3d.scene.Object.removeChildren: every node under `id` goes, and `id` stays.
-export function removeChildren(scene: Scene3D, id: NodeId3D): Result<int32, SceneError> {
-	const row: int32 = scene.liveRow(id, "removeChildren");
+export function removeChildren(scene: Scene3D, id: NodeId3D): int32 {
+	return emptyRow(scene, scene.liveRow(id, "removeChildren"), "removeChildren");
+}
+
+function emptyRow(scene: Scene3D, row: int32, call: string): int32 {
 	let removed: int32 = 0;
 	while ((scene.nodes[row].children.length as int32) > 0) {
 		const child: NodeId3D = scene.nodeIdAt(scene.nodes[row].children[0]);
-		removed = removed + (try remove(scene, child));
+		removed = removed + removeNode(scene, child, call);
 	}
-	return Result.ok(removed);
+	return removed;
 }
 
 // Heaps' `posChanged`: writing a transform marks only this node, and the descent propagates it.
@@ -538,7 +548,7 @@ export function setMeshOf(scene: Scene3D, id: NodeId3D, mesh: MeshId): Result<in
 	const row: int32 = scene.nodes[node].payload;
 	const shown: MeshId = scene.meshes[row].mesh;
 	const holds: boolean = context.hasMesh(shown);
-	if (holds && context.meshPinned(shown) < 1) { return Result.err(SceneError.NotPinned); }
+	if (holds && context.meshPinned(shown) < 1) { stopOnPinTaken("setMeshOf"); }
 	if (!pinMesh(context, mesh).ok) { return Result.err(meshError(context, mesh)); }
 	if (holds && !unpinMesh(context, shown).ok) { unreachable; }
 	scene.meshes[row].mesh = mesh;
@@ -830,12 +840,7 @@ export function closeScene(scene: Scene3D): void {
 		console.log("void3d: closeScene with a pass open; endPass ends it");
 		unreachable;
 	}
-	const removed: Result<int32, SceneError> = removeChildren(scene, scene.rootId());
-	if (!removed.ok) {
-		const error: string = removed.error.toString();
-		console.log(`void3d: closeScene found a node's mesh or material ${error}`);
-		unreachable;
-	}
+	const _removed: int32 = emptyRow(scene, scene.root, "closeScene");
 	scene.closed = true;
 	scene.structureChanged = true;
 }

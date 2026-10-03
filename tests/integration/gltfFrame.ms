@@ -31,7 +31,6 @@ import {
 	Transform3D,
 	Scene3D,
 	NodeId3D,
-	SceneError,
 	LightError,
 	LightKind,
 	LightInstance,
@@ -450,8 +449,7 @@ export function frameGltf(frameIndex: int32): void {
 		buffersLoaded = liveBuffers();
 		imagesLoaded = liveImages();
 		viewsLoaded = liveViews();
-		let removed: Result<int32, SceneError> = remove(scene, model);
-		if (!removed.ok) { fail("the model's group was not removed"); }
+		if (remove(scene, model) != MODEL_NODES + 1) { fail("the model's group was not removed"); }
 	}
 	pose(frameIndex);
 	let expected: int32 = stage(frameIndex) == 3 ? 0 : MODEL_NODES;

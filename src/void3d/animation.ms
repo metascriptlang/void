@@ -42,7 +42,6 @@ export enum AnimationError {
 	UploadRefused,
 	StaleMesh,
 	ForeignMesh,
-	NotPinned,
 }
 
 // Animation's `frameCount`, `sampling` (frames per second), `speed`, `frame`, `loop`, `pause`.
@@ -405,7 +404,6 @@ function frameError(error: SceneError): AnimationError {
 	return match (error) {
 		SceneError.StaleMesh => AnimationError.StaleMesh,
 		SceneError.ForeignMesh => AnimationError.ForeignMesh,
-		SceneError.NotPinned => AnimationError.NotPinned,
 		SceneError.StaleNode | SceneError.NodeNotFound | SceneError.StaleMaterial |
 			SceneError.ForeignMaterial => stopOnFrameError(error),
 	};

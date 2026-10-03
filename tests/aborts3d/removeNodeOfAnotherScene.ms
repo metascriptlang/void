@@ -3,7 +3,6 @@ import { DrawContext } from "../../src/void3d/draw";
 import {
 	Scene3D,
 	NodeId3D,
-	SceneError,
 	Transform3D,
 	addGroup,
 	remove,
@@ -14,5 +13,5 @@ let first: Scene3D = Scene3D.create(context);
 let second: Scene3D = Scene3D.create(context);
 const theirs: NodeId3D = addGroup(first, first.rootId(), Transform3D.identity());
 const _ours: NodeId3D = addGroup(second, second.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(second, theirs);
+const _removed: int32 = remove(second, theirs);
 console.log("the call returned");

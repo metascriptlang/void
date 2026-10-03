@@ -265,9 +265,7 @@ test "removing a node takes its subtree with it and unlinks it from its parent" 
 		context.materialAt(0),
 	).ok;
 	assert scene.nodeCount() == 4;
-	const freed: Result<int32, SceneError> = remove(scene, group);
-	assert freed.ok;
-	if (freed.ok) { assert freed.value == 3; }
+	assert remove(scene, group) == 3;
 	assert scene.nodeCount() == 1;
 	assert (scene.nodes[scene.root].children.length as int32) == 0;
 }
@@ -277,7 +275,7 @@ test "an id that named a removed node is not live, and its slot's new id is" {
 	let scene: Scene3D = Scene3D.create(context);
 	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	assert scene.isLive(gone);
-	assert remove(scene, gone).ok;
+	assert remove(scene, gone) > 0;
 	assert !scene.isLive(gone);
 	// The slot comes back under a new generation, and the old id still does not address it.
 	const fresh: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
@@ -292,8 +290,8 @@ test "the free list hands slots back in LIFO order" {
 	let scene: Scene3D = Scene3D.create(context);
 	const first: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
 	const second: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 2);
-	assert remove(scene, first).ok;
-	assert remove(scene, second).ok;
+	assert remove(scene, first) > 0;
+	assert remove(scene, second) > 0;
 	// `second` was freed last, so it is handed out first.
 	const next: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
 	assert next.index == second.index;
@@ -383,7 +381,7 @@ test "removing a middle child keeps its siblings in order" {
 	const b: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
 	const _c: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
 	const _d: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 40);
-	assert remove(scene, b).ok;
+	assert remove(scene, b) > 0;
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
 	assert collectDrawList(scene, items) == 3;
@@ -415,7 +413,7 @@ test "a removed subtree leaves the draw list" {
 	let items: Vec<DrawItem> = [];
 	const _synced: int32 = syncWorld(scene);
 	assert collectDrawList(scene, items) == 3;
-	assert remove(scene, group).ok;
+	assert remove(scene, group) > 0;
 	assert refresh(scene, items) == 1;
 	assert items[0].mesh.index == 3;
 	assert scene.isLive(kept);
@@ -425,7 +423,7 @@ test "the questions answer a stale id with an error" {
 	let context: DrawContext = contextOf(64, 1);
 	let scene: Scene3D = Scene3D.create(context);
 	const gone: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 1);
-	assert remove(scene, gone).ok;
+	assert remove(scene, gone) > 0;
 	const world: Result<Mat4, SceneError> = scene.worldOf(gone);
 	assert !world.ok;
 	if (!world.ok) { assert world.error == SceneError.StaleNode; }
@@ -684,8 +682,8 @@ test "churning mesh and light nodes keeps both side tables at the live count" {
 	for (let round = 0; round < 50; round++) {
 		const mesh: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), round);
 		const lit: NodeId3D = oneLight(scene, vec3(0.0, 0.0, 0.0), light);
-		assert remove(scene, mesh).ok;
-		assert remove(scene, lit).ok;
+		assert remove(scene, mesh) > 0;
+		assert remove(scene, lit) > 0;
 	}
 	assert scene.nodeCount() == 1;
 	assert (scene.meshes.length as int32) == 0;
@@ -700,7 +698,7 @@ test "removing an early mesh node repoints the node whose row moved, and draws t
 	const a: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 10);
 	const b: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 20);
 	const c: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 30);
-	assert remove(scene, a).ok;
+	assert remove(scene, a) > 0;
 	assert (scene.meshes.length as int32) == 2;
 	assert scene.meshes[scene.nodes[b.index].payload].mesh.index == 20;
 	assert scene.meshes[scene.nodes[c.index].payload].mesh.index == 30;
@@ -738,7 +736,7 @@ test "removing a subtree gives back every row under it and keeps the rest addres
 	).ok;
 	const kept: NodeId3D = oneMesh(scene, context, vec3(0.0, 0.0, 0.0), 3);
 	const keptLight: NodeId3D = oneLight(scene, vec3(1.0, 2.0, 3.0), { ...light, power: 0.75 });
-	assert remove(scene, group).ok;
+	assert remove(scene, group) > 0;
 	assert (scene.meshes.length as int32) == 1;
 	assert (scene.lights.length as int32) == 1;
 	assert scene.meshes[scene.nodes[kept.index].payload].mesh.index == 3;

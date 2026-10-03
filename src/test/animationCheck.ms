@@ -305,7 +305,7 @@ test "syncPose refuses a target that was removed after binding" {
 	const keys: Vec<Transform3D> = [slide(1.0)];
 	const _arm: Result<int32, AnimationError> = addTrack(animation, "arm", keys);
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
-	const _gone: Result<int32, SceneError> = remove(scene, arm);
+	const _gone: int32 = remove(scene, arm);
 	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert !stale.ok;
 	if (!stale.ok) { assert stale.error == AnimationError.StaleTarget; }
@@ -510,7 +510,7 @@ test "a target removed after a sync is refused even while the keys stand still" 
 	const _bound: Result<int32, AnimationError> = bindTracks(animation, scene, scene.rootId());
 	const first: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert first.ok;
-	const _gone: Result<int32, SceneError> = remove(scene, arm);
+	const _gone: int32 = remove(scene, arm);
 	const stale: Result<int32, AnimationError> = syncPose(animation, scene);
 	assert !stale.ok;
 }

@@ -65,7 +65,6 @@ import {
 } from "../void3d/forwardRenderer";
 
 export enum ChurnError {
-	GroupRefused,
 	MeshRefused,
 	TextureRefused,
 	StreamRefused,
@@ -320,11 +319,7 @@ export function frameChurn(): void {
 		return;
 	}
 	if (releasing) {
-		const removed: Result<int32, SceneError> = remove(scene, loaded.value);
-		if (!removed.ok) {
-			stop(ChurnError.GroupRefused);
-			return;
-		}
+		const _removed: int32 = remove(scene, loaded.value);
 	}
 	frames = frames + 1;
 }

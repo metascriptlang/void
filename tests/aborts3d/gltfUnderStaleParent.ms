@@ -5,7 +5,6 @@ import { GltfMeshBinding, GltfSceneError, addGltfNodes } from "../../src/void3d/
 import {
 	Scene3D,
 	NodeId3D,
-	SceneError,
 	Transform3D,
 	addGroup,
 	remove,
@@ -18,7 +17,7 @@ const DOCUMENT: string = "{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\
 let context: DrawContext = DrawContext.withUniformCapacity(0);
 let scene: Scene3D = Scene3D.create(context);
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(scene, gone);
+const _removed: int32 = remove(scene, gone);
 let bytes: Vec<uint8> = [];
 const loaded: Result<GltfData, GltfError> = loadGltf(DOCUMENT, bytes);
 let bindings: Vec<GltfMeshBinding> = [];

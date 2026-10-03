@@ -13,7 +13,6 @@ import { AnimationClock, AnimationError, Interpolation, update } from "../../src
 import {
 	Scene3D,
 	NodeId3D,
-	SceneError,
 	Transform3D,
 	addGroup,
 	removeChildren,
@@ -68,8 +67,7 @@ function main(): int32 {
 	let scene: Scene3D = Scene3D.create(context);
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const _child: NodeId3D = addGroup(scene, group, Transform3D.identity());
-	const removed: Result<int32, SceneError> = removeChildren(scene, group);
-	check("void3d removeChildren on a scene", removed.ok && removed.value == 1);
+	check("void3d removeChildren on a scene", removeChildren(scene, group) == 1);
 	const made: Result<AnimationClock, AnimationError> =
 		AnimationClock.forFrames(2, 1.0, Interpolation.Step);
 	if (made.ok) {

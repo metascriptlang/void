@@ -13,7 +13,7 @@ import {
 let context: DrawContext = DrawContext.withUniformCapacity(0);
 let scene: Scene3D = Scene3D.create(context);
 const gone: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
-const _removed: Result<int32, SceneError> = remove(scene, gone);
+const _removed: int32 = remove(scene, gone);
 const mesh: MeshId = { store: 0, index: 0, generation: 1 };
 const material: MaterialId = { store: 0, index: 0, generation: 1 };
 const _orphan: Result<NodeId3D, SceneError> =
