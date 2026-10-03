@@ -1833,3 +1833,40 @@ programs stay.
 call, so M24's rule makes another context's model a `Result`, and the row's stop holds for mesh
 frames. Agreed by the coordinating session; the as-built narrows the row for glTF and names the
 alternative not taken.
+
+### Final acceptance
+
+On the reviewed code, `1509a1d` ("test(void3d): the abort cases fit 100 columns", clean tree
+`909d87b54d30`), installed msc `5791eadd`, D3D11, the shared Windows workstation, 2026-10-03;
+one `gate3d.sh` then one `gate.sh --web`, serial, the BUILD read before each.
+
+- `sh scripts/gate3d.sh`: **GATE GREEN with 1 skipped stage** (`device`), 12:22-12:31.
+  **1138/1138 tests**: 1140 on the built code, less the two `NotPinned` tests that became abort
+  cases. **84 abort programs** (main's 73, 12 new, 3 gone with their call shape, 2 from the defect
+  pass) and **98 abort cases** in 10 programs under the new per-case form. 24 configurations /
+  96 frames match **72 hashes**, none adopted: nothing in M25 moves a pixel. The `views` stage
+  holds every live count at the first cycle's after each of the other five; `stores`, `gltf`,
+  `textured`, `perspective`, `compose`, `pick`, both layers green; churn flat at 10 buffers,
+  4 images and 2 samplers over 310 frames; allocation clean with `requireOpen`, `requireOwn` and
+  `requirePaired` on its lists; style clean; **75 oracle agreements / 11 declared divergences**;
+  **27 PENDING3D rows** (`store-serial-writable` widened, none added). Bench 0.0999 ms of CPU a
+  frame, reported only (M24's gate 0.0966). **Android arm64 3,630,416 bytes**. No GLES3 or
+  device run.
+- `sh scripts/gate.sh --web`: **GATE GREEN with 8 loud skips**, 12:32-12:40. 1138 tests plus
+  299 isolated, D3D11 78/78, WebGL2 56 pass / 18 pending / the four
+  `conformance:webgl2-pixel-centre` reds (`prim/strokeRect`, `prim/polygonBezier`,
+  `prim/patterns`, `xform/scale`); allocation 107 frame functions / 245 callees; 16 PENDING rows;
+  web builds 2,345,812 / 2,118,001 B.
+- The per-case protocol's control, run once on the stage's own loop over `paletteCases`: with
+  `fill`'s closed check removed, and with a case the program does not know added to its header,
+  both cases fail the stage and the others pass (`out/tmp/m25/fix2/controlProtocol.log`).
+- Logs: `out/tmp/m25/gate/` (the gate logs and the tree each ran on), `out/tmp/m25/fix1/`,
+  `out/tmp/m25/fix2/`.
+
+### Scope still separate
+
+- The device's shutdown; void2d's scene teardown (its arc's B1).
+- The palette's stale `upload` and `closeContext`'s stale samplers, which run only on a device
+  where the GPU generation moves (V6).
+- The post-M23 list: colour spaces, alpha as a material's, the device's largest texture, device
+  runs.
