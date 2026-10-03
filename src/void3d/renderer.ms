@@ -59,6 +59,7 @@ import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
 
+// PENDING3D: store-serial-writable
 export interface Renderer {
 	context: DrawContext;
 	opaque: PassList;

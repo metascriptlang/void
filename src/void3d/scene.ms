@@ -131,6 +131,7 @@ export struct MeshInstance {
 	material: MaterialId;
 }
 
+// PENDING3D: store-serial-writable
 export interface Scene3D {
 	serial: int32;
 	context: DrawContext;
