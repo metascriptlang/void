@@ -1004,7 +1004,8 @@ run_style() {
 # mtime, which can hold another entry's or a reverted build. A `Vec` of structs with owned
 # fields copies through `<T>ArrayCopy`, not `msArrayCopy`.
 FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:collectLights
-	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow animation:update animation:keys animation:blendTo
+	scene:setLocal scene:setMeshOf scene:liveRow scene:kindRow scene:requireOpen scene:requireOwn
+	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
 	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh
@@ -1030,7 +1031,7 @@ RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:
 	draw:keepsItsTexture material:namesTexture texture:isTexture"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
-PICK_PATH_FUNCTIONS="pick:pickNearest pick:pickableOwner pick:meshHit bounds:rayIntersection
+PICK_PATH_FUNCTIONS="pick:pickNearest scene:requireOpen pick:pickableOwner pick:meshHit bounds:rayIntersection
 	mesh68ata:rayIntersection mesh68ata:cornerOf mesh68ata:stride ray:transformed scene:nodeIdAt"
 PERSPECTIVE_PATH_FUNCTIONS="camera:resolve camera:basisOf camera:sine camera:cosine
 	camera:makeCameraMatrix camera:orthoBounds camera:projectionMatrix camera:snapEye camera:floored
