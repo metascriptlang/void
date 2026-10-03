@@ -218,6 +218,10 @@ export function closeGltfAssets(assets: GltfAssets): void {
 		console.log(`void3d: closeGltfAssets found a hold ${released.error.toString()}`);
 		unreachable;
 	}
+	while ((assets.bindings.length as int32) > 0) { assets.bindings.pop(); }
+	while ((assets.meshes.length as int32) > 0) { assets.meshes.pop(); }
+	while ((assets.materials.length as int32) > 0) { assets.materials.pop(); }
+	while ((assets.textures.length as int32) > 0) { assets.textures.pop(); }
 	assets.closed = true;
 }
 
