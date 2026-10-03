@@ -21,7 +21,7 @@ import { BlendMode } from "../gpu/state";
 import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
-import { FlexStyle, YGNode } from "../../../yoga/src/index";
+import { FlexStyle, YGNode, freeLayoutTree } from "../../../yoga/src/index";
 import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
 import {
 	LabelText,
@@ -735,6 +735,47 @@ export function setLayoutStyle(this n: NodeRef, style: FlexStyle | null): NodeRe
 	return n;
 }
 
+export function layoutGetChildren(this n: NodeRef): NodeRef[] {
+	const i: int32 = n.liveRow("layoutGetChildren");
+	const out: NodeRef[] = [];
+	for (let k: int32 = 0; k < (n.scene.children[i].length as int32); k++) {
+		out.push(n.scene.refOf(n.scene.children[i][k]));
+	}
+	return out;
+}
+
+export function layoutGetStyle(this n: NodeRef): FlexStyle | null {
+	return n.scene.layouts[n.liveRow("layoutGetStyle")].style;
+}
+
+export function layoutGetLastStyle(this n: NodeRef): FlexStyle | null {
+	return n.scene.layouts[n.liveRow("layoutGetLastStyle")].lastStyle;
+}
+
+export function layoutSetLastStyle(this n: NodeRef, s: FlexStyle | null): void {
+	const i: int32 = n.liveRow("layoutSetLastStyle");
+	n.scene.layouts[i] = { ...n.scene.layouts[i], lastStyle: s };
+}
+
+export function layoutGetYg(this n: NodeRef): Ptr<YGNode> | null {
+	return n.scene.layouts[n.liveRow("layoutGetYg")].yg;
+}
+
+export function layoutSetYg(this n: NodeRef, yg: Ptr<YGNode> | null): void {
+	const i: int32 = n.liveRow("layoutSetYg");
+	n.scene.layouts[i] = { ...n.scene.layouts[i], yg: yg };
+}
+
+export function layoutSetFrame(
+	this n: NodeRef,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+): void {
+	n.setPosition(x, y).setSize(w, h);
+}
+
 export function group(this s: Scene2D): NodeRef {
 	return s.refOf(s.newRow(DrawKind.Group, NO_PAYLOAD));
 }
@@ -1374,6 +1415,8 @@ export function addChildAt(this n: NodeRef, c: NodeRef, index: int32): NodeRef {
 		}
 		up = s.parents[up];
 	}
+	const from: int32 = s.parents[child];
+	if (from != NO_NODE_2D && from != parent) { s.releaseLayout(child); }
 	s.detach(child);
 	const count: int32 = s.children[parent].length as int32;
 	const at: int32 = Math.max(0, Math.min(index, count));
@@ -1390,12 +1433,18 @@ export function addChildAt(this n: NodeRef, c: NodeRef, index: int32): NodeRef {
 	return c;
 }
 
+function releaseLayout(this s: Scene2D, top: int32): void {
+	if (s.layouts[top].yg === null) { return; }
+	freeLayoutTree(s.refOf(top));
+}
+
 export function removeChild(this n: NodeRef, c: NodeRef): void {
 	const parent: int32 = n.liveRow("removeChild");
 	const child: int32 = c.liveRow("removeChild");
 	if (c.scene !== n.scene || n.scene.parents[child] != parent) { return; }
 	n.scene.detach(child);
 	n.scene.releaseGlyphs(child);
+	n.scene.releaseLayout(child);
 }
 
 export function removeChildren(this n: NodeRef): void {
@@ -1407,6 +1456,7 @@ export function removeChildren(this n: NodeRef): void {
 		const child: int32 = s.children[parent][k];
 		s.parents[child] = NO_NODE_2D;
 		s.releaseGlyphs(child);
+		s.releaseLayout(child);
 	}
 	s.children[parent] = new Array(0);
 	s.markChanged(parent, Changed.Tree);
@@ -1553,6 +1603,7 @@ export function dispose(this n: NodeRef): void {
 		for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 			s.stack.push(s.children[i][k]);
 		}
+		s.releaseLayout(i);
 		s.freeRow(i);
 	}
 }
