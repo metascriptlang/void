@@ -1909,15 +1909,27 @@ skipped stage** (`device`). 1148 suite tests, 84 abort programs and 98 abort cas
 one per baseline (61 re-recorded by this milestone, 11 untouched), oracle 75/11, bench and
 churn flat, the allocation scan clean, arm64 `libVoidAndroid.so` 3,693,840 bytes.
 
-`sh scripts/gate.sh --web`, same tree and day: **RED on exactly the two mixed goldens** —
-`mixed/void3dTarget` and `mixed/void3dTranslucentTarget` differ from their goldens with no
-`tests/PENDING.md` entry, on D3D11 (80 pass, 2 fail of 82) and on WebGL2 (58 pass, 18 pending,
-6 fail: its four standing `conformance:webgl2-pixel-centre` reds beside the same two), and the
-two `docs/TESTING.md` row checks that repeat those numbers fail with them. Both scenes render
-void3d's lit content through the shared frame (`tests/golden/mixedScenes.ms` lights a sun and
-draws the forward preset), so they change with this milestone by design; their re-golden is
-void2d's, named to its arc, and every other void2d golden is byte-identical. Logs:
-`out/tmp/m26/gate/gate3d.log`, `gateWeb.log`, each stamped with the tree it ran on.
+The first `sh scripts/gate.sh --web`, same tree and day, was **red on exactly the two mixed
+goldens** — `mixed/void3dTarget` and `mixed/void3dTranslucentTarget` differ from their goldens
+with no `tests/PENDING.md` entry, on D3D11 (80 pass, 2 fail of 82) and on WebGL2 (58 pass, 18
+pending, 6 fail: its four standing `conformance:webgl2-pixel-centre` reds beside the same
+two), and the two `docs/TESTING.md` row checks that repeat those numbers fail with them. Both
+scenes render void3d's lit content through the shared frame (`tests/golden/mixedScenes.ms`
+lights a sun and draws the forward preset), so they change with this milestone by design. The
+coordinator ruled that M26 re-records what M26 changed, in its own commit, with a proof that
+names no hash — not a PENDING entry. The proof, measured before the update
+(`out/tmp/m26/proof.py` against `out/tmp/m26/proof3d_1.ppm`, the scene's 3D half rebuilt
+verbatim in `out/tmp/capture/m26proof3d.ms` and read back out of band): outside the sprite's
+160×120 rect, zero of 256×160 pixels differ from the old goldens in either scene; the opaque
+rect equals that capture with a maximum channel delta of 0; the translucent rect equals the
+same capture composited over the known 2D base with the premultiplied 0.5 blend, maximum
+delta 1, its 2,273 box pixels matching the old golden's opaque scene one for one. After the
+two PNGs were re-recorded (`sh scripts/golden.sh mixed/ --update`, the comparator's diff PNGs
+kept as the review artifact), `sh scripts/gate.sh --web` on the tree that adds only them and
+these docs: **GREEN with 8 loud skips** — D3D11 **82 pass, 0 pending, 0 fail of 82**, WebGL2
+**60 pass, 18 pending, 4 fail** (the four standing pixel-centre reds), Guardrail 9's rows
+matching the run unedited. Logs: `out/tmp/m26/gate/gate3d.log`, `gateWeb.log` (the red first
+run), `gateWeb2.log` (the green re-run), each stamped with the tree it ran on.
 
 ### Scope still separate
 
