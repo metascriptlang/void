@@ -71,7 +71,10 @@ import {
 	CARET_TEXT, CARET_SIZE, CARET_X, CARET_Y, CARET_SELECTION_START, CARET_SELECTION_LENGTH,
 	CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
 	LANES_X, LANES_Y, LANES_W, LANES_SHIFT,
+	PREMULTIPLIED_X, PREMULTIPLIED_Y, PREMULTIPLIED_SIZE, PREMULTIPLIED_SHIFT,
+	PREMULTIPLIED_ROW_STEP,
 } from "./table";
+import { makeImage as makeImageFromTexels } from "../../src/void3d/gpu3d";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
@@ -960,6 +963,54 @@ function imageGrayscale(): Scene2D {
 	return s;
 }
 
+function packTexel(r: int32, g: int32, b: int32, a: int32): uint32 {
+	const packed: uint64 = (a as uint64) * 16777216 + (b as uint64) * 65536
+		+ (g as uint64) * 256 + (r as uint64);
+	return packed as uint32;
+}
+
+function byAlpha(c: int32, a: int32): int32 {
+	return (c * a + 127) / 255;
+}
+
+function alphaRampTile(banded: boolean, premultiply: boolean): Tile {
+	const n: int32 = PREMULTIPLIED_SIZE;
+	const bandR: int32[] = [230, 40, 60, 240];
+	const bandG: int32[] = [60, 200, 90, 220];
+	const bandB: int32[] = [40, 90, 220, 60];
+	let texels: Vec<uint32> = new Array(n * n);
+	for (let y: int32 = 0; y < n; y++) {
+		const band: int32 = (y * 4) / n;
+		const r: int32 = banded ? bandR[band] : 230;
+		const g: int32 = banded ? bandG[band] : 40 + (y * 160) / (n - 1);
+		const b: int32 = banded ? bandB[band] : 200 - (y * 150) / (n - 1);
+		for (let x: int32 = 0; x < n; x++) {
+			const a: int32 = banded ? 128 + (x * 127) / (n - 1) : (x * 255) / (n - 1);
+			texels[y * n + x] = premultiply
+				? packTexel(byAlpha(r, a), byAlpha(g, a), byAlpha(b, a), a)
+				: packTexel(r, g, b, a);
+		}
+	}
+	const t = tile(makeView(makeImageFromTexels(texels, n, n)), n as float32, n as float32);
+	return premultiply ? t.premultiplied() : t;
+}
+
+function imagePremultipliedEffect(): Scene2D {
+	const s = Scene2D.create(DARK);
+	for (let k: int32 = 0; k < 2; k++) {
+		const x: float32 = PREMULTIPLIED_X + (k as float32) * PREMULTIPLIED_SHIFT;
+		const tinted = s.sprite(alphaRampTile(false, k == 1)).at(x, PREMULTIPLIED_Y);
+		tinted.setColorMatrix(colorMatrixGrayscale(1.0));
+		tinted.setColorAdd(rgba(0.15, 0.05, 0.0, 0.0));
+		s.add(tinted);
+		const keyed = s.sprite(alphaRampTile(true, k == 1))
+			.at(x, PREMULTIPLIED_Y + PREMULTIPLIED_ROW_STEP);
+		keyed.setColorKey(rgba(40.0 / 255.0, 200.0 / 255.0, 90.0 / 255.0, 1.0));
+		s.add(keyed);
+	}
+	return s;
+}
+
 function imageScaleGrid(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const nine = s.scaleGrid(sheet(), 36.0, 36.0, 36.0, 36.0).at(14.0, 14.0);
@@ -1345,5 +1396,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "order/noOverlapLanes", build: orderNoOverlapLanes },
 		{ name: "mixed/void3dTarget", build: mixedVoid3dTarget },
 		{ name: "mixed/void3dTranslucentTarget", build: mixedVoid3dTranslucentTarget },
+		{ name: "image/premultipliedEffect", build: imagePremultipliedEffect },
 	];
 }

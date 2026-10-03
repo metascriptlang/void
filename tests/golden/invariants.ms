@@ -26,6 +26,12 @@ import {
 	LANES_W,
 	LANES_H,
 	LANES_SHIFT,
+	PREMULTIPLIED_EFFECT_SCENE,
+	PREMULTIPLIED_X,
+	PREMULTIPLIED_Y,
+	PREMULTIPLIED_SIZE,
+	PREMULTIPLIED_SHIFT,
+	PREMULTIPLIED_ROW_STEP,
 } from "./table";
 import { TextLayout, Align } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -206,4 +212,58 @@ function lanesMatchPainter(): int32 {
 	return 0;
 }
 
-process.exit(filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter());
+const PREMULTIPLIED_TOLERANCE: int32 = 1;
+
+function premultipliedMatchesStraight(scene: string, captureVariable: string, rows: int32): int32 {
+	const override: string = env.get(captureVariable);
+	const path: string = override.equals("") ? `tests/golden/d3d11/${scene}.png` : override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${scene}: cannot read ${path}`);
+		return 1;
+	}
+	const x0: int32 = PREMULTIPLIED_X as int32;
+	const y0: int32 = PREMULTIPLIED_Y as int32;
+	const x1: int32 = x0 + PREMULTIPLIED_SIZE;
+	const rowSpan: float32 = ((rows - 1) as float32) * PREMULTIPLIED_ROW_STEP;
+	const y1: int32 = y0 + (rowSpan as int32) + PREMULTIPLIED_SIZE;
+	const shift: int32 = PREMULTIPLIED_SHIFT as int32;
+	if (x1 + shift > voidPngWidth(SLOT) || y1 > voidPngHeight(SLOT)) {
+		console.log(`FAIL ${scene}: the premultiplied copy runs off the capture`);
+		return 1;
+	}
+	let differ: int32 = 0;
+	let inked: int32 = 0;
+	let maxDelta: int32 = 0;
+	for (let y = y0; y < y1; y++) {
+		for (let x = x0; x < x1; x++) {
+			for (let channel = 0; channel < 3; channel++) {
+				const straight: int32 = voidPngPixel(SLOT, x, y, channel);
+				if (straight != voidPngPixel(SLOT, 0, 0, channel)) { inked = inked + 1; }
+				const premultiplied: int32 = voidPngPixel(SLOT, x + shift, y, channel);
+				const delta: int32 = Math.abs(straight - premultiplied) as int32;
+				if (delta > PREMULTIPLIED_TOLERANCE) { differ = differ + 1; }
+				if (delta > maxDelta) { maxDelta = delta; }
+			}
+		}
+	}
+	if (inked == 0 || differ > 0) {
+		console.log(
+			`FAIL ${scene}: the premultiplied copy differs from the straight one by more than ` +
+			`${PREMULTIPLIED_TOLERANCE} in ${differ} channel values, max delta ${maxDelta} ` +
+			`(${inked} inked)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${scene}: a premultiplied source draws what the same straight pixels draw, ` +
+		`max delta ${maxDelta} (${inked} inked channel values)`,
+	);
+	return 0;
+}
+
+process.exit(
+	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
+	premultipliedMatchesStraight(
+		PREMULTIPLIED_EFFECT_SCENE, "VOID_PREMULTIPLIED_EFFECT_CAPTURE", 2,
+	),
+);

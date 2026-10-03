@@ -1202,10 +1202,12 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[0] = fbW;
 		vp.viewport[1] = fbH;
 		bool isRT = sampledTarget(view);
-		bool effectIsIdentity = memcmp(matrix, s_identityMatrix, sizeof(s_identityMatrix)) == 0
-			&& addR == 0.0f && addG == 0.0f && addB == 0.0f && addA == 0.0f;
+		bool noEffect = memcmp(matrix, s_identityMatrix, sizeof(s_identityMatrix)) == 0
+			&& addR == 0.0f && addG == 0.0f && addB == 0.0f && addA == 0.0f
+			&& (!fx || fx[23] <= 0.5f);
+		bool premultiplied = premultipliedSource(cmd);
 		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
-		vp.viewport[3] = (premultipliedSource(cmd) && effectIsIdentity) ? 1.0f : 0.0f;
+		vp.viewport[3] = (premultiplied && noEffect) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
 		vp.model1[2] = isGlyphPageView(view) ? 1.0f : 0.0f;
 		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
@@ -1234,6 +1236,7 @@ static void runCommands(const float *commands, int commandCount,
 		}
 		memcpy(fxu.gammaRatios, s_textGamma, sizeof(fxu.gammaRatios));
 		fxu.textParams[0] = s_textContrast;
+		fxu.sourceParams[0] = (premultiplied && !noEffect) ? 1.0f : 0.0f;
 		if (!fxValid || memcmp(&fxu, &lastFx, sizeof(fxu)) != 0) {
 			sg_range uf = { .ptr = &fxu, .size = sizeof(fxu) };
 			sg_apply_uniforms(UB_void2d_fx, &uf);

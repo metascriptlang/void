@@ -71,6 +71,7 @@ layout(binding=1) uniform void2d_fx {
     vec4 gradientColor2;
     vec4 gammaRatios;
     vec4 textParams;   // x = grayscale enhanced contrast
+    vec4 sourceParams;
 };
 in vec2 uv;
 in vec4 color;
@@ -178,6 +179,9 @@ void main() {
         texel = parity < 1.0 ? gradientColor0 : gradientColor1;
     } else {
         texel = texture(sampler2D(tex, smp), uv);
+        if (sourceParams.x > 0.5) {
+            texel.rgb = texel.a > 0.0 ? texel.rgb / texel.a : vec3(0.0);
+        }
         if (coverageTexture > 0.5) {
             texel = vec4(1.0, 1.0, 1.0, applyContrastAndGamma(texel.r, color.rgb, textParams.x, gammaRatios));
         }
