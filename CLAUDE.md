@@ -108,7 +108,7 @@ Done: sokol + fontstash headers vendored (`deps/sokol/`, `deps/fontstash/`); C b
 
 ## Git and the gate
 
-Void follows the arc model of `~/.claude/CLAUDE.md` and lands with the plain-git recipe of `~/metascript/CLAUDE.md` §Arcs. A compiler or runtime limitation follows the workspace compiler boundary: repro, card in `~/metascript/.inbox/compiler/`, park, move on. A session started here reads `~/metascript/.inbox/void/` first.
+Void follows the worktree playbook enabled by `~/metascript/CLAUDE.md` and uses `~/nerdtools/claude/tools/wt.sh` with both gates below. Shared session context reads this repo's card and `~/metascript/.inbox/void/`. A compiler or runtime limitation follows the workspace compiler boundary: repro, card in `~/metascript/.inbox/compiler/`, park, move on.
 
 The gate is both test entries, native: `msc test src/test/index.ms` (scene, node, transform, graphics, effect, text, tile) and `msc test tests/layout.test.ms` (yoga through `deps/yoga`). A change to the GPU or web path also runs `scripts/build-web.sh` and is looked at on the page: green on native Metal is not evidence for emcc, which is stricter.
 
