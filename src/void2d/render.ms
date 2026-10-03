@@ -1533,7 +1533,7 @@ function descend(s: Scene2D, d: int32): void {
 		const i: int32 = s.order[p];
 		const up: int32 = s.parents[i];
 		const world: Transform2D = (p == 0 ? s.viewMat : s.childWorld(up)) * s.localMatrices[i];
-		const alpha: float32 = (p == 0 ? 1.0 : s.alphas[up]) * s.paints[i].alpha;
+		const alpha: float32 = ((p == 0 ? 1.0 : s.alphas[up]) * s.paints[i].alpha) as float32;
 		const moved: boolean = world != s.worlds[i];
 		if (p > top && !moved && alpha == s.alphas[i] && s.changed[i].isEmpty()) {
 			p = s.orderEnd[p];

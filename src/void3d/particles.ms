@@ -129,7 +129,7 @@ export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
 
 const TWO_PI: float64 = 6.283185307179586;
 const UNIT_SCALE: float32 = 1.0 / 16777216.0;
-const BYTE_SCALE: float32 = 1.0 / 255.0;
+const BYTE_SCALE: float32 = (1.0 / 255.0) as float32;
 const ONE: float32 = 1.0;
 const DEFAULT_SEED: uint32 = 2463534242;
 

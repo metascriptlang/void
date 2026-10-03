@@ -173,7 +173,7 @@ export function shadowCoverage(
 	// The sample variable is the offset from the point, so the scanline sits at (cy - y).
 	const low: float32 = cy - hy;
 	const high: float32 = cy + hy;
-	let start: float32 = -3.0 * sigma;
+	let start: float32 = -(3.0 * sigma);
 	let end: float32 = 3.0 * sigma;
 	if (start < low) { start = low; }
 	if (start > high) { start = high; }

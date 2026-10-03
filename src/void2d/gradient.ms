@@ -55,8 +55,8 @@ export function fromOklab(c: Oklab, alpha: float32): Color {
 	const s: float32 = s0 * s0 * s0;
 	return rgba(
 		clamp01(linearToSrgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s)),
-		clamp01(linearToSrgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s)),
-		clamp01(linearToSrgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)),
+		clamp01(linearToSrgb((-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s) as float32)),
+		clamp01(linearToSrgb((-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s) as float32)),
 		clamp01(alpha),
 	);
 }

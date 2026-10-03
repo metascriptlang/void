@@ -164,7 +164,7 @@ export function init2d(): void {
 // identical before either is compared to a golden (docs/TESTING.md, "Distrust the harness
 // before the engine"); with them fused there is no way to redraw without moving.
 export function frame2d(): void {
-	step2d(1.0 / 60.0);
+	step2d((1.0 / 60.0) as float32);
 	present2d();
 }
 
