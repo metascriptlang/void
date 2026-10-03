@@ -1683,7 +1683,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - WebGL2 and GLES3 desktop show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/ligature`, `golden-missing:text/colourEmoji`, `golden-missing:image/animatedFrames`, `font-colour-emoji`, `style:line-length`, `ui-box-color-effect`, `sdf-non-uniform-bound`, `backend:gles3-desktop`, `backend:metal-macos`, `backend:metal-ios`, `backend:gles3-android`, `backend:webgpu`, `conformance:webgl2-pixel-centre`, `oracle:harfbuzz-full`.
+**Closes** (`tests/PENDING.md`, checked by the gate): `golden-missing:text/ligature`, `golden-missing:text/colourEmoji`, `golden-missing:image/animatedFrames`, `font-colour-emoji`, `style:line-length`, `ui-box-color-effect`, `sdf-non-uniform-bound`, `backend:gles3-desktop`, `backend:metal-macos`, `backend:metal-ios`, `backend:gles3-android`, `backend:webgpu`, `conformance:webgl2-pixel-centre`, `oracle:harfbuzz-full`, `macos:voidRunConfigured`, `macos:view-api`.
 
 **Tests.** T3: the full HarfBuzz shaping oracle, cases as data rows, snapshot committed, CI never needing `hb-shape`. T4: the wasm budget per module — the only gate that makes guardrail 6 real. T2: ligature, emoji, zoom and rotation scenes. Device loss is tested by its own switch, which is why the switch is a deliverable and not a debug aid.
 
