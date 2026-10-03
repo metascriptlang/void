@@ -648,8 +648,9 @@ viewport, and a node filter allocates for that shadow before adding its own radi
 do not enlarge either bound. T0 pins the public bound, T1 pins shadow-only visibility and
 `filter/blur` composes an analytic shadow with a render-target blur.
 
-The vertex path's `srcPremult` correction is intentionally disabled when an RGB colour add or
-non-identity RGB matrix is active. That is required for the glow/drop-shadow alpha-only matrix:
+The vertex path's `srcPremult` correction is intentionally disabled when any colour effect is
+active: a matrix other than the identity, any `colorAdd` lane including alpha, or a `colorKey`
+(the key since G). That is required for the glow/drop-shadow alpha-only matrix:
 it must turn the sampled render target into a new straight-colour silhouette before the shader
 premultiplies it. The same gate would be wrong for an unrelated matrix applied directly to a
 render-target texture because it would multiply coverage twice. The retained filter path avoids
@@ -2225,6 +2226,15 @@ abort stage) unless named otherwise.
   - the style scene stopped at `premultipliedStyledImage`.
 
   After the fix, both scenes pass at max delta 1.
+
+  **Limit, not measured.** The colour recovered by the division is only as exact as 8-bit
+  premultiplied data allows: rgb / a carries an error of up to half a level divided by a. A key
+  is tested on that colour, so it matches the straight copy exactly only where alpha is high,
+  which is why the key row stays at alpha ≥ 128; near-transparent fringes can key differently.
+  A target with additive content holds rgb above its alpha, which no straight colour can
+  express: the division gives a component above 1, so a key never matches it. A matrix with no
+  offset whose alpha row reads only alpha, grayscale for one, still gives the colour it would
+  give on the premultiplied texel directly.
 
   **Controls**, each restored by hash (`controlAC.txt`, `controlB.txt`):
   - without the division, both rows go red (11 896 / 48 and 11 424 / 154);

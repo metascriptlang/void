@@ -16,7 +16,7 @@ float applyContrastAndGamma(float coverage, vec3 color, float contrastFactor, ve
 
 @vs vs
 layout(binding=0) uniform void2d_params {
-    vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = srcAlreadyPremult (1 for RT textures)
+    vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = premultiplied source with no effect
     vec4 model0;       // 2D affine linear part (a,b,c,d): x'=a*x+c*y+tx, y'=b*x+d*y+ty
     vec4 model1;       // xy = translation (tx,ty), z = texture is R8 glyph coverage, w = device pixels per unit
     vec4 globalColor;  // multiplied into the per-vertex tint
