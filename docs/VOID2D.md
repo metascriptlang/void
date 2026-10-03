@@ -2232,9 +2232,11 @@ abort stage) unless named otherwise.
   is tested on that colour, so it matches the straight copy exactly only where alpha is high,
   which is why the key row stays at alpha ≥ 128; near-transparent fringes can key differently.
   A target with additive content holds rgb above its alpha, which no straight colour can
-  express: the division gives a component above 1, so a key never matches it. A matrix with no
-  offset whose alpha row reads only alpha, grayscale for one, still gives the colour it would
-  give on the premultiplied texel directly.
+  express: the division gives a component above 1, so a key never matches it. Where alpha is
+  above zero, a matrix with no offset whose alpha row reads only alpha, grayscale for one, still
+  gives the colour it would give on the premultiplied texel directly. A texel with zero alpha and
+  some colour, which only additive content leaves behind, loses that colour under any effect,
+  because the division has nothing to divide by.
 
   **Controls**, each restored by hash (`controlAC.txt`, `controlB.txt`):
   - without the division, both rows go red (11 896 / 48 and 11 424 / 154);
@@ -2242,16 +2244,25 @@ abort stage) unless named otherwise.
   - without the UI branch, the style scene goes red (11 757 / 49): the double premultiply the
     stop was there to prevent.
 
-  **Pins:** the two goldens and their invariant. `tests/aborts/premultipliedStyledImage` went with
-  the stop.
+  **Pins:** the two goldens and their invariant, and the T1 test "an image style carries its
+  tile's premultiplied bit into its instance", which goes red when `params1.y` is dropped
+  (`controlParams1.log`). `tests/aborts/premultipliedStyledImage` went with the stop. The bit
+  rides the instance, beside grayscale, because the UI program reads per-image state per
+  instance, as GPUI's sprite carries `grayscale` and `opacity` (`shaders.wgsl:1290-1310`). A
+  per-draw lane would split a UI run at every change for a fact the instance already holds.
 
   ```ts
   // a translucent 3D preview, greyed while inactive: before, its edges darkened by their alpha
   const preview = s.sprite(tile(forward.colorTarget.asTexture(), 256, 256).premultiplied());
   preview.setColorMatrix(colorMatrixGrayscale(1.0));
-  // before: this stopped; now the image style takes the premultiplied tile
-  preview.setImageStyle(imageStyle(uniformRadii(8.0), true, ObjectFit.Cover));
+
+  // the same target as a rounded, greyed thumbnail: before, an image style on it stopped
+  const thumb = s.sprite(tile(forward.colorTarget.asTexture(), 256, 256).premultiplied());
+  thumb.setImageStyle(imageStyle(uniformRadii(8.0), true, ObjectFit.Cover));
   ```
+
+  An image style and a colour effect on one node still do not combine: the style is dropped with
+  one log line ("Open").
 - **A colour effect across a target (2026-10-03, found by G's golden run).** `beginTarget` reset
   `curEffect` and `endTarget` restored it, but neither touched `curHasEffect`, nor the matrix,
   add and key that `setEffect` compares against. That left two failures:
@@ -2263,21 +2274,35 @@ abort stage) unless named otherwise.
   sibling's grayscale, so the yellow subject blurred grey: 5 388 inked pixels, none yellow. Until
   G, the double premultiply also darkened it.
 
-  Both brackets now set the whole effect state: `draw.ms` `clearEffect`, and `restoreEffect`,
-  which reads the row the way `resumePaint` already did. `reopenLast` restores the effect alone
-  and is right as it is. It runs only after `closeLaneRun` recorded the open run, which without a
-  reorder is the last command, and a reorder needs every command effect-free
-  (`displayList.ms` `lanesReorderable`).
+  Both brackets now set the whole effect state, through `draw.ms` `clearEffect` and
+  `restoreEffect`. `restoreEffect` reads the row the way `resumePaint` already did, and since the
+  design pass `resumePaint` and `reopenLast` call it too. Whether an effect is set is no longer a
+  field of its own: it is `curEffect != NO_EFFECT`, in the context and in `PaintIndex`. What is
+  left cached, the matrix, add and key `setEffect` compares against, is written only where the
+  row is.
+
+  Found beside it by the defect pass, and fixed: a target nested past the eight save slots was
+  recorded into its parent, as P1 chose, but its `endTarget` popped the real target around it, so
+  every bracket outside ended one level early. `endTargetList` now counts the brackets it did not
+  record and ends those first (`displayList.ms` `unrecordedTargets`). The save slots and the
+  list's depth are one constant (`MAX_TARGET_DEPTH`). Red before: the T1 test "a target nested
+  past the save slots ends its own bracket, not the one around it" read depth 0 where 1 is
+  right.
 
   **Red before:** the T1 tests "a colour effect drawn before a target does not reach the draw
   after it" and "a colour effect inside a target is recorded when the draw before the target had
   it" failed at their effect asserts.
 
-  **Re-recording the golden.** A check that does not read its hash came first: 4 156 yellow
-  pixels and none grey. At (100, 70) the capture reads 233, 191, 85, against 234, 192, 84 for the
+  **Re-recording the golden.** A check that does not read its hash came first
+  (`out/tmp/premultEffect/yellow.txt`): 4 156 yellow pixels and none grey, against none yellow
+  and 5 388 grey before. At (100, 70) the capture reads 233, 191, 85, against 234, 192, 84 for the
   subject composited once over DARK at coverage 0.91. A tree with this fix and without G captures
-  the same bytes, so the fix stands as its own commit. Every other D3D11 golden is byte-identical
-  on the final tree, and T0/T1 run 1130 of 1130.
+  the same bytes, so the fix stands as its own commit.
+
+  **Measured on the final tree**, after the design pass's fixes, BUILD `5791eadd`, D3D11 only:
+  every golden is 80 / 80, the pair invariants pass on the committed goldens
+  (`out/tmp/premultEffect/invariants.committed.txt`), and T0/T1 run 1132 of 1132. WebGL2 and the
+  gates wait on void3d's M25 land.
 
 **Measured on the tip `7cf741d`, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` ran
 every code stage green: 1118 tests plus 299 isolated, D3D11 78/78, WebGL2 56 identical / 18
@@ -2301,6 +2326,15 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
   `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
   `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
+- **Three paths that log or stay silent where the rule says stop.** None was made by G; the design
+  pass of 2026-10-03 listed them.
+  - An image style on a node that also has a colour effect is dropped with one log line
+    (`render.ms` `emitStyledImage`).
+  - An `endTarget` with no target open returns silently.
+  - A target nested past eight is recorded into its parent, with a log at flush (P1's choice,
+    `displayList.ms` `beginTargetList`).
+
+  Whether each stops or composes is a design call.
 - **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
   a C consumer that calls them directly goes around the door's pass state. void3d's `gpu3d.c`
   still returns silently on a short descriptor, the shape A closed in `door.c`.

@@ -119,6 +119,7 @@ How the taken items are adapted — the display list, the unified UI pipeline, S
 | `erf` shadow, drop + inset, own instance | **Take, adapted** | isotropic → rotation is free |
 | Per-pixel gradient, sRGB/Oklab; slash + checkerboard patterns; dither | **Take** | keep Void's radial and multi-stop |
 | `corner_radii` + `grayscale` on image instances; `ObjectFit` math; animated frames keyed by `frame_index` | **Take** | decoding stays in `assets/` |
+| Premultiplied sources made straight once, at upload (`color.rs:26-34`); colour ops on straight colour; premultiply at output (`shaders.wgsl:391-395`) | **Take, adapted (W)** | void2d makes them straight at the sample, only under a colour effect, because it composites render targets it draws every frame, where an upload pass would cost a copy per target per frame (VOID2D.md "Door closure" G) |
 | SVG → R8 mask at 2× → tinted sprite (icons) | **Take**, opt-in module | rasterizer: a single-header C one; resvg is Rust |
 | Clip by four edge distances | **Take, adapted** | extended to a rotated rect; `discard`, not `vec4(0)` (VOID2D.md "Clip and scroll") |
 | Pixel-snapping rules (`snap_bounds`, `snap_stroke` min 1 dp, `cover_bounds`, snapped offsets) | **Take** | applied when the world transform is axis-aligned |
