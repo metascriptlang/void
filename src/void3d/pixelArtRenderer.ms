@@ -54,7 +54,6 @@ import {
 	DEFAULT_PALETTE_LEVELS,
 	fill,
 	upload,
-	forgetGpu,
 	closePalette,
 } from "./palette";
 import { screenState } from "./screenFx";
@@ -428,7 +427,6 @@ function adoptContext(renderer: PixelArtRenderer): void {
 	renderer.normalTarget = renderer.normalTarget.forgotten();
 	renderer.depthTarget = renderer.depthTarget.forgotten();
 	renderer.postTarget = renderer.postTarget.forgotten();
-	forgetGpu(renderer.palette);
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
 }
 

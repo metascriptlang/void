@@ -41,6 +41,7 @@ import {
 } from "../../src/void3d/scene";
 import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
+import { upload } from "../../src/void3d/palette";
 import {
 	ForwardRenderer,
 	ForwardError,
@@ -171,6 +172,7 @@ function openView(): void {
 	viewScene = Scene3D.create(viewContext);
 	viewForward = forwardOf(viewContext, BACKGROUND);
 	viewPixelArt = pixelArtOf(viewContext);
+	upload(viewPixelArt.palette);
 	let setup: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 	let assets: Result<GltfAssets, GltfSceneError> =
 		addGltfAssets(viewContext, data, { pass: RenderState.defaults(), block: setup });
