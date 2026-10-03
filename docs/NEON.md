@@ -4,7 +4,7 @@ What Neon builds on Void, in the syntax an app author writes, and what Void stil
 it to ship. Decided with the person on 2026-10-03 in a Neon session. Neon's own record of the same
 model is `neon/docs/VISION.md` "Inside a Void area"; Neon reads this file for Void's side.
 
-Every Void pointer below was read on `origin/main` at `75b0d19`.
+Every Void pointer below was read on Void's `main` at `fc6efe0`.
 
 ## The intent
 
@@ -105,10 +105,18 @@ under a 3D node; a `Material` lives in a `Mesh` and a `Texture` in a `Material`.
 
 ## What Neon builds now, on what Void already has
 
-Neon's void host (`neon/src/platform/void/host.ms`) maps every element tag to an empty void2d
-`group()` today, and Neon's Ion window draws one `Scene2D` with `present()`
-(`neon/src/platform/ion/window.ms`). The Neon session builds next, using only what is on Void's
-`main`:
+Neon's void host (`neon/src/platform/void/host.ms`) is still written against `Node2D`, which P5
+step 6 deleted, so it does not build on Void's `main`; it also maps every element tag to an empty
+group. Its rewrite onto `Scene2D` / `NodeRef` and binders is Neon's card
+`~/metascript/.wt/void-noderef-host.md`. That card needs the host API the person approved on
+2026-09-30, `~/metascript/.inbox/neon/2026-09-28-void2d-noderef.md`, which was written on the
+Windows machine and is not on the Mac: **send it** (commit it under `docs/` here, or copy it into
+the Neon inbox).
+
+The 3D components follow Void's own model: owners made with `T.create` and ended with their
+`close` in the component's cleanup, handles as values, and each reactive prop written through one
+binder (`setLocal`, `setVisible`, `setLightPower`), so an unchanged value costs nothing. The Neon
+session builds next, using only what is on Void's `main`:
 
 - `Scene3D`, `Group`, `Mesh`, `Light` through `src/void3d/scene.ms`; geometry from
   `src/void3d/meshData.ms` (`addBox`, `addPlane`, `addTexturedQuad`, `addTexturedCube`) and glTF;
@@ -128,10 +136,12 @@ above be written without Neon working around Void.
 
 1. **Draw a `Scene2D` into a render target the caller owns.** Today `Scene2D.prepare` paints and
    `drawScreen` draws into the open screen pass; `presentAt` opens and commits the screen pass
-   (`src/void2d/scene.ms`). `beginTarget` / `endTarget` (`src/void2d/draw.ms`) draw into a target,
-   but only for a node's filter. Needed: prepare a `Scene2D` at a target's size and DPI and draw
-   it into that target, during the 3D prepare phase (M18's `openPrepare` … `closePrepare`), and
-   only when `isDirty` says it changed. Heaps: h2d draws into an h3d texture through
+   (`src/void2d/scene.ms`), with pipelines keyed on the screen's formats (`docs/VOID2D.md` "D1
+   follow-ups", F5). `beginTarget` / `endTarget` (`src/void2d/draw.ms`) draw into a target, but
+   only for a node's filter. The opposite direction exists: golden `mixed/void3dTarget` draws a
+   void3d target as a void2d sprite. Needed: prepare a `Scene2D` at a target's size and DPI and
+   draw it into that target, keyed on the target's layout, during the 3D prepare phase (M18's
+   `openPrepare` … `closePrepare`), and only when `isDirty` says it changed. Heaps: h2d draws into an h3d texture through
    `h2d/RenderContext.hx` `pushTarget` (`heaps` at `25f9a88f`). Bevy: a UI root targets a camera
    whose `RenderTarget::Image` is then a material's texture (`examples/ui/render_ui_to_texture.rs`).
 2. **A material that samples a render target safely.** `Material.texture` is a `TextureId` made
@@ -149,10 +159,13 @@ above be written without Neon working around Void.
    (`src/void3d/pick.ms`). Needed: the UV interpolated over the hit triangle's UVs, so Neon can
    turn a press on the mesh into a pixel of the texture.
 5. **Premultiplied alpha and colour space across the boundary.** A void2d render target is
-   premultiplied (`docs/VOID2D.md`, the closed "Filter semantics differ from h2d" item). The
-   material that samples it has to blend it as premultiplied, and the two sides have to agree on
-   sRGB, or the edges of UI on a mesh fringe and its colours shift. Not read yet; check before 1
-   and 2 land.
+   premultiplied, and void2d declares it per draw: a `Tile` carries `.premultiplied()`
+   (`docs/VOID2D.md` "Door closure", "Premultiplied, declared per draw"). A void3d `Material` has
+   no such declaration, so the material that samples a void2d target needs one, or the edges of
+   UI on a mesh fringe. The colour half is already agreed: M26 takes every texel sRGB-encoded
+   (`docs/VOID3D.md` "M26 as built"), and void2d blends in gamma space on a UNORM target
+   (`docs/VOID2D.md` "Text", the gamma line), so a void2d target's texels are in void3d's
+   convention as they are.
 6. **A camera placed by a node's world transform.** `Camera3D` is `position`, `yaw`, `pitch`
    (`src/void3d/camera.ms`) and is not a node (`NodeKind` is `Group`, `Mesh`, `Light`). A
    `<Camera3D>` nested under a moving object needs its position and orientation from the parent's
