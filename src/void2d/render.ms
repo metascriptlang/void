@@ -1420,7 +1420,6 @@ function remapLaneRows(s: Scene2D, parent: int32, c0: int32, c1: int32): void {
 			blend: (commandField(out, CMD_BLEND) as int32) as BlendMode,
 			sampler: commandField(out, CMD_SAMPLER) as int32,
 			effect: effect,
-			hasEffect: effect != NO_EFFECT,
 		};
 		const placed: PaintIndex = match (pipeline) {
 			Pipeline.Sprite => ({ ...lane, spriteInstances: moved }),
@@ -1524,7 +1523,7 @@ function joins(s: Scene2D, source: DrawContext2D, q: int32, last: PaintIndex): b
 	}
 	if (s.queued[j] == s.patchSerial || !s.changed[j].isEmpty()) { return false; }
 	const end: PaintIndex = source.paintEnds[j];
-	if (end.commands != last.commands || end.effects != last.effects || end.hasEffect) {
+	if (end.commands != last.commands || end.effects != last.effects || end.effect != NO_EFFECT) {
 		return false;
 	}
 	return source.paintStarts[j] == last;

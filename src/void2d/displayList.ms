@@ -225,7 +225,6 @@ export struct PaintIndex {
 	blend: BlendMode;
 	sampler: int32;
 	effect: int32;
-	hasEffect: boolean;
 	mask: int32;
 	scope: int32;
 }
@@ -245,7 +244,7 @@ export struct ScopeRecord {
 export const NO_PAINT: PaintIndex = {
 	commands: 0, effects: 0, vertices: 0, uiInstances: 0, spriteInstances: 0,
 	runOpen: false, runStart: 0, pipeline: Pipeline.Vertex, reason: BreakReason.First, view: 0,
-	blend: BlendMode.Alpha, sampler: 0, effect: NO_EFFECT, hasEffect: false, mask: NO_MASK,
+	blend: BlendMode.Alpha, sampler: 0, effect: NO_EFFECT, mask: NO_MASK,
 	scope: NO_SCOPE,
 };
 
@@ -327,7 +326,6 @@ export interface DrawContext2D {
 	curMat: Mat4;
 	curAdd: Color;
 	curKey: Color;
-	curHasEffect: boolean;
 	clipStack: Vec<MaskClip>;
 	maskIndices: Vec<int32>;
 	clipDepth: int32;
@@ -433,7 +431,6 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		curMat: NO_COLOR_MATRIX,
 		curAdd: rgba(0.0, 0.0, 0.0, 0.0),
 		curKey: rgba(0.0, 0.0, 0.0, 0.0),
-		curHasEffect: false,
 		clipStack: new Array(16),
 		maskIndices: new Array(16),
 		clipDepth: 0,

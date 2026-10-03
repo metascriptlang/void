@@ -187,7 +187,6 @@ function clearEffect(): void {
 	ctx.curMat = NO_COLOR_MATRIX;
 	ctx.curAdd = rgba(0.0, 0.0, 0.0, 0.0);
 	ctx.curKey = rgba(0.0, 0.0, 0.0, 0.0);
-	ctx.curHasEffect = false;
 }
 
 function restoreEffect(effect: int32): void {
@@ -197,7 +196,6 @@ function restoreEffect(effect: int32): void {
 	}
 	const ctx: DrawContext2D = currentContext();
 	ctx.curEffect = effect;
-	ctx.curHasEffect = true;
 	ctx.curMat = effectMatrix(effect);
 	ctx.curAdd = rgba(
 		effectField(effect, 16), effectField(effect, 17),
@@ -269,7 +267,6 @@ export function paintIndex(): PaintIndex {
 		blend: ctx.curBlend,
 		sampler: ctx.curSampler,
 		effect: ctx.curEffect,
-		hasEffect: ctx.curHasEffect,
 		mask: ctx.clipDepth > 0 ? ctx.maskIndices[ctx.clipDepth - 1] : NO_MASK,
 		scope: l.scopeNow,
 	};
@@ -315,7 +312,9 @@ function streamOf(p: PaintIndex, pipeline: Pipeline): int32 {
 
 export function continuesLike(old: DrawContext2D, start: PaintIndex, end: PaintIndex): boolean {
 	const ctx: DrawContext2D = currentContext();
-	if (start.hasEffect || end.hasEffect || ctx.curHasEffect) { return false; }
+	if (start.effect != NO_EFFECT || end.effect != NO_EFFECT || ctx.curEffect != NO_EFFECT) {
+		return false;
+	}
 	if (start.commands != end.commands || start.effects != end.effects) { return false; }
 	if (ctx.runOpen != start.runOpen || ctx.curPipeline != start.pipeline || ctx.curView != start.view) {
 		return false;
@@ -354,7 +353,6 @@ export function carried(pi: PaintIndex, first: PaintIndex, at: PaintIndex): Pain
 		blend: pi.blend,
 		sampler: pi.sampler,
 		effect: pi.effect,
-		hasEffect: pi.hasEffect,
 		mask: at.mask,
 		scope: at.scope,
 	};
@@ -416,7 +414,7 @@ export function reopenLast(): void {
 	ctx.curView = commandView(last);
 	ctx.curBlend = ((l.commands[base + CMD_BLEND] as int32) as BlendMode);
 	ctx.curSampler = l.commands[base + CMD_SAMPLER] as int32;
-	ctx.curEffect = l.commands[base + CMD_EFFECT] as int32;
+	restoreEffect(l.commands[base + CMD_EFFECT] as int32);
 	ctx.runReason = (l.commands[base + CMD_BREAK] as int32) as BreakReason;
 	ctx.runStart = runOffset(l.commands, base);
 	ctx.runOpen = true;
@@ -874,15 +872,14 @@ export function setEffect(mat: Mat4, add: Color, key: Color): void {
 	const ctx: DrawContext2D = currentContext();
 	const hasMat: boolean = mat != NO_COLOR_MATRIX;
 	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
-	if (!wantsEffect && !ctx.curHasEffect) { return; }
-	if (wantsEffect && ctx.curHasEffect && currentGradientKind() == 0
+	if (!wantsEffect && ctx.curEffect == NO_EFFECT) { return; }
+	if (wantsEffect && ctx.curEffect != NO_EFFECT && currentGradientKind() == 0
 		&& add == ctx.curAdd && key == ctx.curKey
 		&& mat == ctx.curMat) { return; }
 	closeRun();
 	ctx.curMat = mat;
 	ctx.curAdd = add;
 	ctx.curKey = key;
-	ctx.curHasEffect = wantsEffect;
 	ctx.curEffect = wantsEffect ? pushEffect(mat, add, key) : NO_EFFECT;
 	openRun(BreakReason.Effect);
 }
@@ -903,7 +900,7 @@ export function setGradientEffect(
 	c2: Color,
 ): void {
 	const ctx: DrawContext2D = currentContext();
-	if (ctx.curHasEffect && ctx.curEffect != NO_EFFECT
+	if (ctx.curEffect != NO_EFFECT
 		&& (effectField(ctx.curEffect, EFFECT_GRADIENT_META) as int32) == kind
 		&& (effectField(ctx.curEffect, EFFECT_GRADIENT_META + 1) as int32) == space
 		&& effectField(ctx.curEffect, EFFECT_GRADIENT_META + 2) == (dither ? 1.0 : 0.0)
@@ -930,7 +927,6 @@ export function setGradientEffect(
 	ctx.curMat = mat;
 	ctx.curAdd = add;
 	ctx.curKey = key;
-	ctx.curHasEffect = true;
 	ctx.curEffect = pushGradientEffect(mat, add, key, kind, space, dither, middle,
 		p0, p1, p2, p3, c0, c1, c2);
 	openRun(BreakReason.Effect);
