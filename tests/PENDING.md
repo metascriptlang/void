@@ -154,3 +154,14 @@ Guardrail 9 is "same pixels on every platform", and today it is measured on two 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
 | oracle:harfbuzz-full | T3 | the full shaping oracle | P6 | 2026-09-20 |
+
+## macOS and compiler gaps (msc e5e932d0)
+
+Measured 2026-10-03 on macOS with `bash scripts/gate.sh --quick`, branch `wt/void-latest-msc`. Each one is red at origin `2be9cf5` and none was caused by that branch.
+
+| id | tier | reason | phase | date |
+|---|---|---|---|---|
+| macos:voidRunConfigured | T1 | the six integration programs, their misuse lines, the expired draw-context line and the five bench executables fail to link: `_voidRunConfigured` has no macOS definition | P6 | 2026-10-03 |
+| macos:view-api | T1 | `twoViews` and its outside-view abort: `src/sokol/gpu.ms` exports no view API on macOS | P6 | 2026-10-03 |
+| compiler:float32-constant-slots | T0 | 19 untyped float constants into `float32` are refused by msc `e5e932d0`, either as "cannot hold … exactly" or as a constant beside a float32 operand. Left as written; recompiler corpus `1032` (`wt/fix-match-arm-cast-literal`) accepts them | next msc sync | 2026-10-03 |
+| compiler:literal-beside-float32 | T0 | `src/void2d/sdf.ms:176` (`-3.0 * …`) and `src/void2d/render.ms:1604` (`(c ? 1.0 : x) * y`): a negated literal and a ternary arm stay float64 beside a float32. Card `~/metascript/.inbox/compiler/2026-10-03-literal-beside-float32-negated-or-in-a-ternary.md` | compiler fix | 2026-10-03 |
