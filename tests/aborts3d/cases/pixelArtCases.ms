@@ -27,7 +27,12 @@ const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 function look(): PixelArtLook {
 	return {
 		background: BLACK,
-		outline: { depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35 },
+		outline: {
+			depthThreshold: 0.006,
+			normalThreshold: 0.6,
+			depthShade: 0.55,
+			normalShade: 1.35,
+		},
 		fog: { start: 0.5, end: 0.8, strength: 0.0, color: BLACK },
 		saturation: 0.0,
 	};

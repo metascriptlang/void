@@ -17,10 +17,10 @@
 // expect closed.pickNearest: void3d: pickNearest on a scene that was closed
 // expect contextClosed.addMeshNode: void3d: addMeshNode on a draw context that was closed
 // expect contextClosed.setMeshOf: void3d: setMeshOf on a draw context that was closed
-// expect pinTaken.remove: void3d: remove found a node's pin taken through the context
-// expect pinTaken.removeChildren: void3d: removeChildren found a node's pin taken through the context
-// expect pinTaken.closeScene: void3d: closeScene found a node's pin taken through the context
-// expect pinTaken.setMeshOf: void3d: setMeshOf found a node's pin taken through the context
+// expect pin.remove: void3d: remove found a node's pin taken through the context
+// expect pin.removeChildren: void3d: removeChildren found a node's pin taken through the context
+// expect pin.closeScene: void3d: closeScene found a node's pin taken through the context
+// expect pin.setMeshOf: void3d: setMeshOf found a node's pin taken through the context
 import { argv } from "std/process";
 import { vec3 } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
@@ -181,13 +181,13 @@ function pinTakenCase(name: string): boolean {
 	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
 	const node: NodeId3D = meshNode(scene, group, mesh, material);
 	const _taken: Result<int32, HandleError> = unpinMesh(context, mesh);
-	if (name == "pinTaken.remove") {
+	if (name == "pin.remove") {
 		const _r: int32 = remove(scene, group);
-	} else if (name == "pinTaken.removeChildren") {
+	} else if (name == "pin.removeChildren") {
 		const _r: int32 = removeChildren(scene, group);
-	} else if (name == "pinTaken.closeScene") {
+	} else if (name == "pin.closeScene") {
 		closeScene(scene);
-	} else if (name == "pinTaken.setMeshOf") {
+	} else if (name == "pin.setMeshOf") {
 		const _r: Result<int32, SceneError> = setMeshOf(scene, node, meshOf(context));
 	} else {
 		return false;

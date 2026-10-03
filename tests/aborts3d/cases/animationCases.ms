@@ -7,7 +7,7 @@
 // expect otherScene.syncPose: void3d: syncPose on node 1 of another scene
 // expect otherScene.bindMeshFrames: void3d: bindMeshFrames on node 0 of another scene
 // expect otherScene.syncMeshFrame: void3d: syncMeshFrame on node 1 of another scene
-// expect pinTaken.syncMeshFrame: void3d: setMeshOf found a node's pin taken through the context
+// expect pin.syncMeshFrame: void3d: setMeshOf found a node's pin taken through the context
 import { argv } from "std/process";
 import { RenderState } from "../../../src/gpu/state";
 import { Program } from "../../../src/void3d/gpu3d";
@@ -149,7 +149,7 @@ function otherSceneCase(name: string): boolean {
 }
 
 function pinTakenCase(name: string): boolean {
-	if (name != "pinTaken.syncMeshFrame") { return false; }
+	if (name != "pin.syncMeshFrame") { return false; }
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	let scene: Scene3D = Scene3D.create(context);
 	let frames: MeshFrameAnimation = framesOf(context);

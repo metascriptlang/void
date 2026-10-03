@@ -27,9 +27,9 @@
 // expect closeContext: void3d: closeContext on a draw context that was closed
 // expect forMeshes: void3d: forMeshes on a draw context that was closed
 // expect addGltfAssets: void3d: addGltfAssets on a draw context that was closed
-// expect Renderer.createDrawing: void3d: Renderer.createDrawing on a draw context that was closed
-// expect ForwardRenderer.create: void3d: ForwardRenderer.create on a draw context that was closed
-// expect PixelArtRenderer.create: void3d: PixelArtRenderer.create on a draw context that was closed
+// expect rendererCreate: void3d: Renderer.createDrawing on a draw context that was closed
+// expect forwardCreate: void3d: ForwardRenderer.create on a draw context that was closed
+// expect pixelArtCreate: void3d: PixelArtRenderer.create on a draw context that was closed
 import { argv } from "std/process";
 import { Vec4, identity } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
@@ -37,7 +37,12 @@ import { SWAPCHAIN_LAYOUT } from "../../../src/gpu/target";
 import { Program } from "../../../src/void3d/gpu3d";
 import { Material, Phase, NO_UNIFORMS, UniformBlock } from "../../../src/void3d/material";
 import { MeshData } from "../../../src/void3d/meshData";
-import { TextureData, TextureId, TextureUploadError, NO_TEXTURE } from "../../../src/void3d/texture";
+import {
+	TextureData,
+	TextureId,
+	TextureUploadError,
+	NO_TEXTURE,
+} from "../../../src/void3d/texture";
 import { UniformError } from "../../../src/void3d/uniformPool";
 import {
 	DrawContext,
@@ -121,7 +126,12 @@ function document(): GltfData {
 function look(): PixelArtLook {
 	return {
 		background: BLACK,
-		outline: { depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35 },
+		outline: {
+			depthThreshold: 0.006,
+			normalThreshold: 0.6,
+			depthShade: 0.55,
+			normalShade: 1.35,
+		},
 		fog: { start: 0.5, end: 0.8, strength: 0.0, color: BLACK },
 		saturation: 0.0,
 	};
@@ -218,11 +228,12 @@ function ownerCase(name: string, context: DrawContext): boolean {
 		let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 		const _r: Result<GltfAssets, GltfSceneError> =
 			addGltfAssets(context, document(), { pass: RenderState.defaults(), block: block });
-	} else if (name == "Renderer.createDrawing") {
-		const _r: Result<Renderer, RendererError> = Renderer.createDrawing(context, ProgramMap.core());
-	} else if (name == "ForwardRenderer.create") {
+	} else if (name == "rendererCreate") {
+		const _r: Result<Renderer, RendererError> =
+			Renderer.createDrawing(context, ProgramMap.core());
+	} else if (name == "forwardCreate") {
 		const _r: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, BLACK);
-	} else if (name == "PixelArtRenderer.create") {
+	} else if (name == "pixelArtCreate") {
 		const _r: Result<PixelArtRenderer, PixelArtError> =
 			PixelArtRenderer.create(context, PixelArtSettings.full(), look());
 	} else {

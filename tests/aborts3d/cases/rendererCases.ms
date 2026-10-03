@@ -60,7 +60,8 @@ function run(name: string): void {
 	} else if (name == "closed.drawPassLists") {
 		drawPassLists(closedCore(), items, SWAPCHAIN_LAYOUT);
 	} else if (name == "closed.drawScreen") {
-		const _r: Result<int32, RendererError> = drawScreen(closedCore(), NO_MATERIAL, SWAPCHAIN_LAYOUT);
+		const _r: Result<int32, RendererError> =
+			drawScreen(closedCore(), NO_MATERIAL, SWAPCHAIN_LAYOUT);
 	} else if (name == "closed.closeRenderer") {
 		closeRenderer(closedCore());
 	} else if (name == "coreClosed.prepareFrame") {
