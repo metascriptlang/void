@@ -262,6 +262,32 @@ export function colorSaturated(this m: Mat4, amount: float32): Mat4 {
 	};
 	return m.multiplyAffine(saturation);
 }
+// h3d.shader.ColorSpaces' srgb2linear/linear2srgb (ColorSpaces.hx:56-76), one channel: the
+// exact piecewise curve. Colours cross the void3d API gamma-encoded; only lighting is linear.
+export function srgbToLinear(channel: float32): float32 {
+	const low: float32 = 0.04045;
+	const linearScale: float32 = 0.0773993808;
+	const curveScale: float32 = 0.9478672986;
+	const curveOffset: float32 = 0.0521327014;
+	const exponent: float32 = 2.4;
+	if (channel <= low) {
+		return channel * linearScale;
+	}
+	return Math.pow(channel * curveScale + curveOffset, exponent) as float32;
+}
+
+export function linearToSrgb(channel: float32): float32 {
+	const low: float32 = 0.0031308;
+	const linearScale: float32 = 12.92;
+	const curveFactor: float32 = 1.055;
+	const curveOffset: float32 = 0.055;
+	const exponent: float32 = 0.41666;
+	if (channel <= low) {
+		return channel * linearScale;
+	}
+	const curved: float32 = Math.pow(channel, exponent) as float32;
+	return curveFactor * curved - curveOffset;
+}
 
 export function transposed(this m: Mat4): Mat4 {
 	return {

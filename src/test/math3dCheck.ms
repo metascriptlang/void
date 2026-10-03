@@ -2,6 +2,7 @@ import {
 	Vec3, Vec4, Mat4, Quat, vec3, vec4, identity, translation, scaling,
 	rotationX, rotationY, rotationZ, rotationEuler, composeTransform,
 	identityQuat, axisAngle, eulerQuat, quatBetween, transformDirection, colorSaturated,
+	srgbToLinear, linearToSrgb,
 } from "../math/math3d";
 import { approx } from "./helpers";
 
@@ -235,4 +236,35 @@ test "colorSaturate applies after the matrix it composes with" {
 		console.log(redOnly.x, redOnly.y, redOnly.z, luma);
 	}
 	assert within(redOnly.x, luma) && within(redOnly.y, luma) && within(redOnly.z, luma);
+}
+
+test "the sRGB pair is exact at the hinges both references share" {
+	assert srgbToLinear(0.0) == 0.0;
+	assert linearToSrgb(0.0) == 0.0;
+	assert within(srgbToLinear(1.0), 1.0);
+	assert within(linearToSrgb(1.0), 1.0);
+	assert within(srgbToLinear(0.04045), 0.04045 * 0.0773993808);
+	assert within(linearToSrgb(0.0031308), 0.0031308 * 12.92);
+}
+
+test "the sRGB pair inverts itself over the byte grid" {
+	// Heaps' encode exponent is 0.41666, not 1/2.4 (ColorSpaces.hx:70), so the pair inverts
+	// to about 2e-5, not float32 epsilon; a byte is 3.9e-3.
+	for (let k = 0; k <= 255; k++) {
+		const channel: float32 = (k as float32) / 255.0;
+		const back: float32 = linearToSrgb(srgbToLinear(channel));
+		let off: float32 = back - channel;
+		if (off < 0.0) { off = -off; }
+		if (off > 0.00002) {
+			console.log(k, back);
+		}
+		assert off <= 0.00002;
+	}
+}
+
+test "a linear half and quarter encode to the fixture's 188 and 137" {
+	const half: float64 = linearToSrgb(0.5) * 255.0;
+	const quarter: float64 = linearToSrgb(0.25) * 255.0;
+	assert Math.round(half) == 188;
+	assert Math.round(quarter) == 137;
 }
