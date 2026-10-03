@@ -136,6 +136,7 @@ export function createDrawing(
 	context: DrawContext,
 	programs: ProgramMap,
 ): Result<Renderer, RendererError> {
+	context.requireOpen("Renderer.createDrawing");
 	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH];
 	if (!context.uniforms.fits(blocks).ok) {
 		return Result.err(RendererError.UniformPoolFull);

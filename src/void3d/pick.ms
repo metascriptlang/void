@@ -39,6 +39,7 @@ const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 } };
 // PENDING3D: pick-owner-is-a-flag
 // PENDING3D: pick-distance-from-ray-origin
 export function pickNearest(scene: Scene3D, ray: Ray): Result<PickHit, PickError> {
+	scene.requireOpen("pickNearest");
 	const _synced: int32 = syncWorld(scene);
 	const context: DrawContext = scene.context;
 	let best: PickHit = {

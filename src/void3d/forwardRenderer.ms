@@ -92,6 +92,7 @@ export function create(
 	context: DrawContext,
 	background: Vec4,
 ): Result<ForwardRenderer, ForwardError> {
+	context.requireOpen("ForwardRenderer.create");
 	const core: Result<Renderer, RendererError> = Renderer.create(context);
 	if (!core.ok) {
 		return Result.err(fromCore(core.error));

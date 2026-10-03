@@ -311,6 +311,7 @@ export function create(
 	settings: PixelArtSettings,
 	look: PixelArtLook,
 ): Result<PixelArtRenderer, PixelArtError> {
+	context.requireOpen("PixelArtRenderer.create");
 	const blocks: Vec<int32> = [
 		VERTEX_UNIFORM_LENGTH,
 		LIGHT_UNIFORM_LENGTH,
@@ -396,7 +397,7 @@ export function setPalette(
 // Whether a frame with `view` would differ from the last one drawn: the core's inputs, or a
 // new view (size or sub-pixel offset). The host may skip the frame when it would not.
 export function needsFrame(this renderer: PixelArtRenderer, view: LowResView): boolean {
-	if (renderer.closed) { return false; }
+	if (renderer.closed || renderer.core.isClosed()) { return false; }
 	return renderer.core.needsFrame() || !view.sameAs(renderer.view);
 }
 

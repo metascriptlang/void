@@ -146,6 +146,7 @@ export function addGltfAssets(
 	data: GltfData,
 	setup: GltfMaterialSetup,
 ): Result<GltfAssets, GltfSceneError> {
+	context.requireOpen("addGltfAssets");
 	if ((setup.block.length as int32) != MATERIAL_UNIFORM_LENGTH
 		|| setup.block[MATERIAL_DOUBLE_SIDED] != 0.0) {
 		return Result.err(GltfSceneError.BadSetup);

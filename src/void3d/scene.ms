@@ -248,6 +248,7 @@ function newSlot(scene: Scene3D, node: Object3D): NodeId3D {
 let sceneSerials: int32 = 0;
 
 export function create(this typeof Scene3D, context: DrawContext): Scene3D {
+	context.requireOpen("Scene3D.create");
 	if (sceneSerials == LAST_GENERATION) {
 		console.log("void3d: Scene3D.create has no serial left for a new scene");
 		unreachable;
@@ -840,4 +841,8 @@ export function closeScene(scene: Scene3D): void {
 
 export function isClosed(this scene: Scene3D): boolean {
 	return scene.closed;
+}
+
+export function requireOpen(this scene: Scene3D, call: string): void {
+	if (scene.closed) { stopOnClosed(call); }
 }

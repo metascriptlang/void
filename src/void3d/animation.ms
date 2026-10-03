@@ -240,6 +240,7 @@ export function bindTracks(
 	scene: Scene3D,
 	base: NodeId3D,
 ): Result<int32, AnimationError> {
+	scene.requireOpen("bindTracks");
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const count: int32 = animation.tracks.length as int32;
 	const found: Vec<NodeId3D> = [];
@@ -267,6 +268,7 @@ export function syncPose(
 	ref animation: ObjectAnimation,
 	scene: Scene3D,
 ): Result<int32, AnimationError> {
+	scene.requireOpen("syncPose");
 	if (!animation.bound) { return Result.err(AnimationError.NotBound); }
 	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
 	const count: int32 = animation.tracks.length as int32;
@@ -301,6 +303,7 @@ export function forMeshes(
 	name: string,
 	meshes: Span<MeshId>,
 ): Result<MeshFrameAnimation, AnimationError> {
+	context.requireOpen("forMeshes");
 	if (clock.interpolation != Interpolation.Step) {
 		return Result.err(AnimationError.InterpolatedMeshFrames);
 	}
@@ -368,6 +371,7 @@ function stopOnClosed(call: string): void {
 
 function requirePaired(animation: MeshFrameAnimation, scene: Scene3D, call: string): void {
 	if (animation.closed) { stopOnClosed(call); }
+	scene.requireOpen(call);
 	if (animation.context.serial == scene.context.serial) { return; }
 	console.log(`void3d: ${call} pairs mesh frames with a scene of another context`);
 	unreachable;

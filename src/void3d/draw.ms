@@ -1238,6 +1238,10 @@ export function isClosed(this context: DrawContext): boolean {
 	return context.closed;
 }
 
+export function requireOpen(this context: DrawContext, call: string): void {
+	if (context.closed) { stopOnClosedContext(call); }
+}
+
 function stopOnLiveHolds(
 	context: DrawContext,
 	meshes: int32,
