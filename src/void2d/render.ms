@@ -666,10 +666,6 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	if (styled) { emitDecorations(blend, text, world, na, false); }
 	if (uiInstancingAvailable()) { emitCaret(blend, text, world, na); }
 }
-let textPrimitiveEffectRejectedReported: boolean = false;
-const TEXT_PRIMITIVE_EFFECT_REFUSED: string =
-	"void2d: underline and selection cannot be combined with colorMatrix, colorAdd, or colorKey";
-let boxEffectRejectedReported: boolean = false;
 
 
 function stopOnStyledImageEffect(): void {
@@ -771,17 +767,7 @@ function emitNode(
 	const instanced: boolean = spriteInstancingAvailable();
 	match (s.kinds[i]) {
 		DrawKind.Rect => {
-			if (!uiInstancingAvailable() && payload != NO_BOX_STYLE) {
-				if (!boxEffectRejectedReported) {
-					console.log(
-						"void2d: a box style cannot be combined with colorMatrix, colorAdd, " +
-						"or colorKey",
-					);
-					boxEffectRejectedReported = true;
-				}
-				return;
-			}
-			if (uiInstancingAvailable()) {
+			if (uiInstancingAvailable() || payload != NO_BOX_STYLE) {
 				let radiusTL: float32 = 0.0;
 				let radiusTR: float32 = 0.0;
 				let radiusBR: float32 = 0.0;
@@ -895,28 +881,18 @@ function emitNode(
 			}
 		},
 		DrawKind.Underline => {
-			if (uiInstancingAvailable()) {
-				drawUiInstance(sharedGlyphView(), blend, {
-					...uiInstance(InstanceMode.Underline, world, tl.x, tl.y, sizeX, sizeY, col),
-					borders: [s.contents[i].borderL, s.contents[i].borderT, 0.0, 0.0],
-				});
-			} else if (!textPrimitiveEffectRejectedReported) {
-				console.log(TEXT_PRIMITIVE_EFFECT_REFUSED);
-				textPrimitiveEffectRejectedReported = true;
-			}
+			drawUiInstance(sharedGlyphView(), blend, {
+				...uiInstance(InstanceMode.Underline, world, tl.x, tl.y, sizeX, sizeY, col),
+				borders: [s.contents[i].borderL, s.contents[i].borderT, 0.0, 0.0],
+			});
 		},
 		DrawKind.Selection => {
-			if (uiInstancingAvailable()) {
-				const band: Content2D = s.contents[i];
-				drawUiInstance(sharedGlyphView(), blend, {
-					...uiInstance(InstanceMode.Selection, world, tl.x, tl.y, sizeX, sizeY, col),
-					borders: [band.w * 0.5, band.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
-					params1: [band.borderL, band.borderT, band.borderR, band.borderB],
-				});
-			} else if (!textPrimitiveEffectRejectedReported) {
-				console.log(TEXT_PRIMITIVE_EFFECT_REFUSED);
-				textPrimitiveEffectRejectedReported = true;
-			}
+			const band: Content2D = s.contents[i];
+			drawUiInstance(sharedGlyphView(), blend, {
+				...uiInstance(InstanceMode.Selection, world, tl.x, tl.y, sizeX, sizeY, col),
+				borders: [band.w * 0.5, band.h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
+				params1: [band.borderL, band.borderT, band.borderR, band.borderB],
+			});
 		},
 		DrawKind.Label => {
 			emitLabel(s, i, world, col, na);

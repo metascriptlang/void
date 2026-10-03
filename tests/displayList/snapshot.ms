@@ -384,18 +384,6 @@ function boxStyleScene(): NodeRef {
 	return s.refOf(s.root);
 }
 
-function rejectedBoxEffectScene(): NodeRef {
-	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const box = s.add(s.rect(40.0, 28.0, rgba(0.2, 0.4, 0.6, 0.8)).at(16.0, 12.0));
-	box.setBoxStyle(BoxStyle.create(
-		uniformRadii(6.0),
-		uniformBorders(2.0),
-		rgba(0.9, 0.9, 0.95, 1.0),
-	));
-	box.setColorMatrix(colorMatrixGrayscale(1.0));
-	return s.refOf(s.root);
-}
-
 function snapScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	s.add(s.rect(40.4, 28.75, rgba(0.9, 0.4, 0.3, 1.0)).at(16.3, 12.6));
@@ -712,13 +700,6 @@ test "T1 snapshot: dashed box style reaches the per-corner and per-side instance
 	assert snapshot("boxStyle", record(boxStyleScene(), 128.0, 64.0, 1.0));
 }
 
-test "T1 styled Rect rejects a color effect instead of losing its style" {
-	record(rejectedBoxEffectScene(), 128.0, 64.0, 1.0);
-	assert uiInstanceCount() == 0;
-	assert vertexCount() == 0;
-	assert drawCommandCount() == 0;
-}
-
 test "T1 snapshot: a card and its label are one UI run of mixed modes" {
 	assert snapshot("glyphs", record(glyphScene(), 128.0, 64.0, 1.0));
 }
@@ -751,6 +732,40 @@ test "T1 an offscreen box still emits when its shadow reaches the viewport" {
 test "T1 snapshot: gradients and patterns keep draw order and effect records" {
 	assert snapshot("gradients", record(gradientScene(), 128.0, 64.0, 1.0));
 }
+function uiEffects(): int32 {
+	let effected: int32 = 0;
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		if ((commandField(i, CMD_PIPELINE) as int32) != (Pipeline.Ui as int32)) { continue; }
+		if (commandField(i, CMD_EFFECT) == (NO_EFFECT as float32)) { return -1; }
+		effected = effected + 1;
+	}
+	return effected;
+}
+
+test "a box style beside a colour effect draws through the UI program with the effect" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
+	box.setBoxStyle(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+	));
+	box.setColorMatrix(colorMatrixGrayscale(1.0));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+}
+
+test "an underline and a selection beside a colour effect draw with it" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const line = s.add(s.underline(72.0, 2.0, rgba(0.9, 0.3, 0.2, 1.0), false).at(8.0, 8.0));
+	line.setColorAdd(rgba(0.1, 0.0, 0.0, 0.0));
+	const band = s.add(s.selection(80.0, 18.0, rgba(0.2, 0.5, 0.9, 0.65),
+		-6.0, 58.0, 12.0, 92.0).at(28.0, 30.0));
+	band.setColorAdd(rgba(0.1, 0.0, 0.0, 0.0));
+	record(s.refOf(s.root), 160.0, 64.0, 1.0);
+	assert uiInstanceCount() == 2;
+	assert uiEffects() >= 1;
+}
+
 test "T1 snapshot: image style reaches UV, radii, grayscale, and image mode lanes" {
 	assert snapshot("imageStyle", record(imageStyleScene(), 128.0, 108.0, 1.0));
 }
