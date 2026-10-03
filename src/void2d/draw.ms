@@ -1219,10 +1219,6 @@ export function drawUiInstance(view: uint32, blend: BlendMode, inst: UiInstance)
 	pushUiInstance(inst, originXOffset(), originYOffset());
 }
 
-// True when the unified UI pipeline is legal for the state the emitter is in. Same single
-// disqualifier as the sprite path: the UI program carries no colour pipeline either, so a
-// node with a colorMatrix, colorAdd or colorKey stays on the vertex path - a decision the
-// caller makes, never a silent fallback.
 export function uiInstancingAvailable(): boolean {
 	const ctx: DrawContext2D = currentContext();
 	return ctx.curEffect == NO_EFFECT;

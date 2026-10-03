@@ -2261,8 +2261,8 @@ abort stage) unless named otherwise.
   thumb.setImageStyle(imageStyle(uniformRadii(8.0), true, ObjectFit.Cover));
   ```
 
-  An image style and a colour effect on one node do not combine. No reference draws both on one
-  draw, so that combination stops by name (H below).
+  An image style and a colour effect on one node compose, through the UI program's effect (I
+  below).
 - **A colour effect across a target (2026-10-03, found by G's golden run).** `beginTarget` reset
   `curEffect` and `endTarget` restored it, but neither touched `curHasEffect`, nor the matrix,
   add and key that `setEffect` compares against. That left two failures:
@@ -2307,12 +2307,13 @@ abort stage) unless named otherwise.
     Heaps' `popTarget` throws "popTarget() with no matching pushTarget()" (`h3d/Engine.hx:366-369`),
     and the door's own end-with-none stop (A) already does the same. The pin
     `tests/aborts/endTargetWithoutBegin` ran to its end before the fix.
-  - **An image style on a node with a colour matrix, `colorAdd` or `colorKey` stops by name**
-    (`render.ms` `stopOnStyledImageEffect`). No reference draws both on one draw. GPUI's
-    `PolychromeSprite` carries grayscale, opacity and corner radii, and no colour matrix
-    (`gpui/src/scene.rs:749-758`). h2d puts colour effects on any `Drawable`, but has no rounded or
-    fitted image. The pin `tests/aborts/styledImageWithEffect` logged and dropped the image before
-    the fix.
+  - **An image style on a node with a colour matrix, `colorAdd` or `colorKey`**: H first made it
+    stop by name (`713b4a4`), on a reading that no reference draws both on one draw. That reading
+    was wrong. h2d's `Graphics` fills a rounded rect with a tile (`h2d/Graphics.hx:489`
+    `beginTileFill`, `:612` `drawRoundedRect`), and a `Graphics` is a `Drawable` whose colour
+    effects apply to every draw. So I composes it. The pin `tests/aborts/styledImageWithEffect`
+    logged and dropped the image before H, and is the proof that it is no longer dropped. Its
+    scenario lives on as a T1 test.
   - **A target nested past eight grows the save slots** instead of recording into its parent.
     Heaps' target stack is unbounded and recycles its nodes (`h3d/Engine.hx:332-345`). The arrays
     grow one level the first time a frame nests that deep, and keep it, which is the streams' rule
@@ -2327,15 +2328,55 @@ abort stage) unless named otherwise.
   **Measured** on BUILD `5791eadd`, D3D11 only: every golden is 80 / 80, T0/T1 run 1133 of 1133,
   and both abort pins stop with their message (`out/tmp/failLoud/`). The gates wait on M25 with
   the rest.
+- **I, a colour effect on every UI kind, and filter targets past sixteen (2026-10-03).** The
+  coordinator decided both from h2d.
+  - **Colour effects compose.** h2d's `Text` and `Graphics` extend `Drawable`
+    (`h2d/Text.hx:60`, `h2d/Graphics.hx:163`), whose `colorMatrix` and `colorAdd` are shaders on
+    every draw of the object (`h2d/Drawable.hx:60-72`, `:121-130`). So text and shapes take the
+    effect in Heaps, and a box style, an underline, a selection, a label's runs, selection and
+    caret, and an image style now do too.
+    - The mechanism is the existing effect row and the command's `CMD_EFFECT` lane, which the UI
+      program's commands now carry (`displayList.ms` `recordUiDraw`).
+    - The replay fills the UI program's fragment block with the row's matrix, add and key
+      (`batcher.c` `drawUiRun`). That block is `ui_fx`, the former `ui_text`, so a UI draw still
+      applies two blocks.
+    - The fragment's `withEffect` reads each output's straight colour, applies the key, the
+      matrix and the add, and premultiplies again. This is the colour pipeline's order, in float
+      and before the blend, so no 8-bit rounding enters it.
+    - A pixel outside every shape stays empty, as h2d draws no geometry there.
+    - A plain rect or label under an effect keeps the colour pipeline, as before, so no other
+      golden moved.
+  - **Red before:** each kind has a T1 test that went red on `2fe9ec0`:
+    - the box, underline and selection tests read no UI instance;
+    - the label test read no selection span;
+    - the image style test stopped at H's stop.
+
+    The golden `prim/effectOnUi` draws every kind plain and under a grayscale matrix on a grey
+    ground. `tests/golden/invariants.ms` holds each grey pixel to its twin's luma within 2 levels,
+    the rounding of two stacked blends; the worst measured is 1.44. Control: with the replay
+    leaving the effect off, 16 050 channel values miss, worst 135.
+  - **The filter target pool grows past sixteen**, as h2d's `pushFilter` appends a filter stack
+    entry when it runs out (`h2d/RenderContext.hx:316-322`) and takes its targets from
+    `allocTarget` (`:208`).
+    - A target is made only when no free one of its size is left, and it stays pooled, so a frame
+      that needs no more than any before it allocates none.
+    - sokol's own pool still bounds it, and running out stops by name (`stopOnRefusedTarget`).
+    - The golden `filter/manyTargets` draws eighteen group-opacity filters. Before the fix, nodes
+      16 and 17 drew unfiltered and differed from node 0 in 2 172 channel values each, and the
+      counters read 16 targets.
+    - After the fix, all eighteen are byte-identical. The first one's overlap reads 48, 107, 137,
+      against 48, 107, 136 for one composite at alpha 0.5, a check that does not read the hash.
 
   ```ts
-  // before: one log line, and the image was not drawn; now it stops, naming the combination
-  const thumb = s.sprite(tile(view, 64, 64));
-  thumb.setImageStyle(imageStyle(uniformRadii(4.0), false, ObjectFit.Cover));
-  thumb.setColorMatrix(colorMatrixGrayscale(1.0));
-  // the supported spelling of a grey thumbnail is the style's own grayscale
-  thumb.setImageStyle(imageStyle(uniformRadii(4.0), true, ObjectFit.Cover));
+  // a disabled card: before, its rounded border and fill were dropped with one log line
+  card.setBoxStyle(BoxStyle.create(uniformRadii(6.0), uniformBorders(1.0), border));
+  card.setColorMatrix(colorMatrixGrayscale(1.0));
+  // a read-only editor line: before, its runs, selection and caret vanished under the effect
+  code.setTextRuns(runs).setColorMatrix(colorMatrixGrayscale(0.6));
   ```
+
+  **Measured** on BUILD `5791eadd`, D3D11 only: every golden is 82 / 82, every pair invariant
+  passes on the committed goldens, and T0/T1 run 1135 of 1135 (`out/tmp/failLoud/`).
 
 **Measured on the tip `7cf741d`, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` ran
 every code stage green: 1118 tests plus 299 isolated, D3D11 78/78, WebGL2 56 identical / 18
@@ -2359,14 +2400,6 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
   `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
   `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
-- **More paths that log once and drop, found while doing H.** Each is the question H answered
-  for the image style, and each is the coordinator's call.
-  - A box style, an underline or a selection on a node with a colour effect (`render.ms`
-    `emitNode`).
-  - A label's runs, selection and caret on a node with a colour effect (`render.ms`, counted by
-    `labelEditingRefusals`).
-  - More than 16 filter targets in one frame draw the rest unfiltered (`render.ms`
-    `acquireTarget`).
 - **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
   a C consumer that calls them directly goes around the door's pass state. void3d's `gpu3d.c`
   still returns silently on a short descriptor, the shape A closed in `door.c`.
