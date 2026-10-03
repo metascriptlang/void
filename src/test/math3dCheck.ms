@@ -231,7 +231,7 @@ test "the scalar form rgb * keep + luma * (1 - keep) is colorSaturate" {
 
 test "colorSaturate applies after the matrix it composes with" {
 	const redOnly: Vec4 = vec4(0.8, 0.5, 0.5, 1.0) * scaling(1.0, 0.0, 0.0).colorSaturated(-1.0);
-	const luma: float32 = 0.8 * 0.212671;
+	const luma: float32 = (0.8 * 0.212671) as float32;
 	if (!(within(redOnly.x, luma) && within(redOnly.y, luma) && within(redOnly.z, luma))) {
 		console.log(redOnly.x, redOnly.y, redOnly.z, luma);
 	}
@@ -243,8 +243,8 @@ test "the sRGB pair is exact at the hinges both references share" {
 	assert linearToSrgb(0.0) == 0.0;
 	assert within(srgbToLinear(1.0), 1.0);
 	assert within(linearToSrgb(1.0), 1.0);
-	assert within(srgbToLinear(0.04045), 0.04045 * 0.0773993808);
-	assert within(linearToSrgb(0.0031308), 0.0031308 * 12.92);
+	assert within(srgbToLinear(0.04045), (0.04045 * 0.0773993808) as float32);
+	assert within(linearToSrgb(0.0031308), (0.0031308 * 12.92) as float32);
 }
 
 test "the sRGB pair inverts itself over the byte grid" {

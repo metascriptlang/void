@@ -238,7 +238,7 @@ test "without sizeAdjust a fallback glyph keeps the label's size" {
 
 test "sizeAdjust scales a fallback face to the primary's metric, in em" {
 	const inter: float32 = 1.0 / 2048.0;
-	const noto: float32 = 1.0 / 1000.0;
+	const noto: float32 = (1.0 / 1000.0) as float32;
 	const cases: AdjustCase[] = [
 		{ adjust: SizeAdjust.IcWidth, ratio: 2450.0 * inter / (1000.0 * noto) },
 		{ adjust: SizeAdjust.ExHeight, ratio: 1118.0 * inter / (543.0 * noto) },

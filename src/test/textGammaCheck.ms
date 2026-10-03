@@ -3,12 +3,12 @@ import { approx } from "./helpers";
 
 test "gamma 1.8 gives GPUI's ratios, the Windows Terminal row normalised" {
 	const g = gammaRatios(DEFAULT_TEXT_GAMMA);
-	const norm13: float32 = 65536.0 / (255.0 * 255.0) * 4.0;
-	const norm24: float32 = 256.0 / 255.0 * 4.0;
-	assert approx(g.r0, 0.1469 / 4.0 * norm13);
-	assert approx(g.r1, -0.8911 / 4.0 * norm24);
-	assert approx(g.r2, 1.4644 / 4.0 * norm13);
-	assert approx(g.r3, -0.3234 / 4.0 * norm24);
+	const norm13: float32 = (65536.0 / (255.0 * 255.0) * 4.0) as float32;
+	const norm24: float32 = (256.0 / 255.0 * 4.0) as float32;
+	assert approx(g.r0, (0.1469 / 4.0 * norm13) as float32);
+	assert approx(g.r1, (-0.8911 / 4.0 * norm24) as float32);
+	assert approx(g.r2, (1.4644 / 4.0 * norm13) as float32);
+	assert approx(g.r3, (-0.3234 / 4.0 * norm24) as float32);
 }
 
 test "gamma is clamped to the table and rounded to its tenth" {
@@ -31,7 +31,7 @@ test "empty and full coverage stay empty and full" {
 
 test "contrast thickens dark text and leaves bright text alone" {
 	const flat: GammaRatios = gammaRatios(1.0);
-	assert approx(correctCoverage(0.5, 0.0, 0.0, 0.0, 1.0, flat), 2.0 / 3.0);
+	assert approx(correctCoverage(0.5, 0.0, 0.0, 0.0, 1.0, flat), (2.0 / 3.0) as float32);
 	assert approx(correctCoverage(0.5, 1.0, 1.0, 1.0, 1.0, flat), 0.5);
 	assert approx(correctCoverage(0.5, 1.0, 1.0, 1.0, 0.0, flat), 0.5);
 }

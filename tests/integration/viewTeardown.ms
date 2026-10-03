@@ -121,7 +121,8 @@ function decoded(): GltfData {
 		console.log(`UNEXPECTED view teardown: ${FIXTURE} could not be read`);
 		unreachable;
 	}
-	let loaded: Result<GltfData, GltfError> = loadGlb(file.value.asBytes());
+	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	let loaded: Result<GltfData, GltfError> = loadGlb(bytes);
 	if (loaded.ok) { return loaded.value; }
 	console.log(`UNEXPECTED view teardown: the fixture was refused: ${loaded.error.toString()}`);
 	unreachable;
@@ -235,8 +236,8 @@ function checkModel(view: CameraView, preset: string): void {
 		return;
 	}
 	let quadrants: Vec<Vec3> = [
-		vec3(-1.4 - HALF, HALF, 0.6), vec3(-1.4 + HALF, HALF, 0.6),
-		vec3(-1.4 - HALF, -HALF, 0.6), vec3(-1.4 + HALF, -HALF, 0.6),
+		vec3((-1.4 - HALF) as float32, HALF, 0.6), vec3((-1.4 + HALF) as float32, HALF, 0.6),
+		vec3((-1.4 - HALF) as float32, -HALF, 0.6), vec3((-1.4 + HALF) as float32, -HALF, 0.6),
 	];
 	let texels: Vec<uint32> = [RED, GREEN, BLUE, YELLOW];
 	for (let i = 0; i < 4; i++) {

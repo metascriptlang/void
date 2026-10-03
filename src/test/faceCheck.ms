@@ -46,7 +46,7 @@ test "kerning reads the GPOS pair adjustment Inter carries instead of a kern tab
 	const face = testFace();
 	const left = glyphIndex(face, "A".code);
 	const kern = glyphKern(face, left, glyphIndex(face, "V".code), 13.0);
-	const unitsPerPixel: float32 = 2048.0 / 13.0;
+	const unitsPerPixel: float32 = (2048.0 / 13.0) as float32;
 	assert Math.abs(kern * unitsPerPixel + 140.0) < 0.01;
 }
 
@@ -83,7 +83,7 @@ test "zeroed decoration tables fall back to the ex height the x glyph measures" 
 	const face = try loadFace("tests/fonts/zeroedDecorations.ttf") catch -1;
 	assert face >= 0;
 	const d = decorationInUnits(face, 2048.0);
-	const thickness: float32 = 0.15 * 1118.0;
+	const thickness: float32 = (0.15 * 1118.0) as float32;
 	assert near(d.underlineThickness, thickness);
 	assert near(d.underlineTop, thickness);
 	assert near(d.strikethroughThickness, thickness);
@@ -94,7 +94,7 @@ test "a zero thickness keeps the table's position and estimates from the ascent"
 	const face = try loadFace("tests/fonts/zeroThickness.ttf") catch -1;
 	assert face >= 0;
 	const d = decorationInUnits(face, 2048.0);
-	const thickness: float32 = 0.15 * 0.75 * 0.75 * 1984.0;
+	const thickness: float32 = (0.15 * 0.75 * 0.75 * 1984.0) as float32;
 	assert near(d.underlineTop, 348.0);
 	assert near(d.underlineThickness, thickness);
 	assert near(d.strikethroughTop, -671.0);

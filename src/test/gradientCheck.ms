@@ -43,7 +43,7 @@ test "the 4 by 4 dither has zero mean and a two-level-per-channel peak" {
 		}
 	}
 	assert near(sum, 0.0, 0.000001);
-	assert near(low, -2.0 / 255.0, 0.000001);
-	assert near(high, 2.0 / 255.0, 0.000001);
+	assert near(low, (-2.0 / 255.0) as float32, 0.000001);
+	assert near(high, (2.0 / 255.0) as float32, 0.000001);
 	assert dither4x4(0, 0) == dither4x4(4, 4);
 }

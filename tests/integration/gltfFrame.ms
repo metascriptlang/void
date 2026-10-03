@@ -150,7 +150,8 @@ function decoded(): GltfData {
 		fail(`${FIXTURE} could not be read`);
 		unreachable;
 	}
-	let data: Result<GltfData, GltfError> = loadGlb(file.value.asBytes());
+	const bytes: Vec<uint8> = [...file.value.asBytes()];
+	let data: Result<GltfData, GltfError> = loadGlb(bytes);
 	if (data.ok) { return data.value; }
 	fail(`the fixture was refused: ${data.error.toString()}`);
 	unreachable;
@@ -304,8 +305,8 @@ function expectAt(view: CameraView, point: Vec3, want: uint32, what: string): vo
 // behind, where the textured one shows its texture mirrored, and the single-sided one is culled.
 function checkFaceOn(view: CameraView): void {
 	let cube: Vec<Vec3> = [
-		vec3(-1.4 - HALF, HALF, 0.6), vec3(-1.4 + HALF, HALF, 0.6),
-		vec3(-1.4 - HALF, -HALF, 0.6), vec3(-1.4 + HALF, -HALF, 0.6),
+		vec3((-1.4 - HALF) as float32, HALF, 0.6), vec3((-1.4 + HALF) as float32, HALF, 0.6),
+		vec3((-1.4 - HALF) as float32, -HALF, 0.6), vec3((-1.4 + HALF) as float32, -HALF, 0.6),
 	];
 	let mirrored: Vec<Vec3> = [
 		vec3(2.0 + HALF, HALF, -0.6), vec3(2.0 - HALF, HALF, -0.6),
@@ -337,7 +338,7 @@ function rampLevelOf(channel: int32): int32 {
 // through its reversed normal shows at least two levels; unreversed, it faces away and is black.
 function checkStepped(view: CameraView, centreX: float32, textured: boolean): void {
 	let left: float32 = textured ? centreX : centreX - 2.0 * HALF;
-	let bottom: float32 = textured ? 0.0 : -2.0 * HALF;
+	let bottom: float32 = textured ? 0.0 : -(2.0 * HALF);
 	let topRight: Vec3 = vec3(centreX + 2.0 * HALF, 2.0 * HALF, -0.6);
 	let from: Vec3 = view.project(topRight, SCREEN_MAPPING, true);
 	let to: Vec3 = view.project(vec3(left, bottom, -0.6), SCREEN_MAPPING, true);

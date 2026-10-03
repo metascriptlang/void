@@ -491,7 +491,7 @@ test "a baked frame swapped in by its animation is the geometry picked" {
 test "a framebuffer pixel a box is drawn at picks that box and not its neighbour" {
 	let context: DrawContext = contextOf(16, 16);
 	const blit: LowResView = try lowResView(1280, 720, 360, 1, 1) catch NO_LOW_RES;
-	const texel: float32 = 20.0 / 360.0;
+	const texel: float32 = (20.0 / 360.0) as float32;
 	let camera: Camera3D = {
 		position: vec3(0.3, 0.0, 0.2),
 		yaw: 0.785398,
