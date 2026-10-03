@@ -2261,8 +2261,8 @@ abort stage) unless named otherwise.
   thumb.setImageStyle(imageStyle(uniformRadii(8.0), true, ObjectFit.Cover));
   ```
 
-  An image style and a colour effect on one node still do not combine: the style is dropped with
-  one log line ("Open").
+  An image style and a colour effect on one node do not combine. No reference draws both on one
+  draw, so that combination stops by name (H below).
 - **A colour effect across a target (2026-10-03, found by G's golden run).** `beginTarget` reset
   `curEffect` and `endTarget` restored it, but neither touched `curHasEffect`, nor the matrix,
   add and key that `setEffect` compares against. That left two failures:
@@ -2281,13 +2281,11 @@ abort stage) unless named otherwise.
   left cached, the matrix, add and key `setEffect` compares against, is written only where the
   row is.
 
-  Found beside it by the defect pass, and fixed: a target nested past the eight save slots was
+  The defect pass found a second fault beside it. A target nested past the eight save slots was
   recorded into its parent, as P1 chose, but its `endTarget` popped the real target around it, so
-  every bracket outside ended one level early. `endTargetList` now counts the brackets it did not
-  record and ends those first (`displayList.ms` `unrecordedTargets`). The save slots and the
-  list's depth are one constant (`MAX_TARGET_DEPTH`). Red before: the T1 test "a target nested
-  past the save slots ends its own bracket, not the one around it" read depth 0 where 1 is
-  right.
+  every bracket outside ended one level early. `507400f` paired the brackets. Red before: the T1
+  test "a target nested past the save slots ends its own bracket, not the one around it" read
+  depth 0 where 1 is right. H then removed the limit itself.
 
   **Red before:** the T1 tests "a colour effect drawn before a target does not reach the draw
   after it" and "a colour effect inside a target is recorded when the draw before the target had
@@ -2303,6 +2301,41 @@ abort stage) unless named otherwise.
   every golden is 80 / 80, the pair invariants pass on the committed goldens
   (`out/tmp/premultEffect/invariants.committed.txt`), and T0/T1 run 1132 of 1132. WebGL2 and the
   gates wait on void3d's M25 land.
+- **H, three paths that logged or stayed silent (2026-10-03).** The coordinator decided them by
+  "fail loud" and the references. Each has a red-before pin and its own commit.
+  - **An `endTarget` with no target open stops by name** (`draw.ms` `stopOnEndWithoutTarget`).
+    Heaps' `popTarget` throws "popTarget() with no matching pushTarget()" (`h3d/Engine.hx:366-369`),
+    and the door's own end-with-none stop (A) already does the same. The pin
+    `tests/aborts/endTargetWithoutBegin` ran to its end before the fix.
+  - **An image style on a node with a colour matrix, `colorAdd` or `colorKey` stops by name**
+    (`render.ms` `stopOnStyledImageEffect`). No reference draws both on one draw. GPUI's
+    `PolychromeSprite` carries grayscale, opacity and corner radii, and no colour matrix
+    (`gpui/src/scene.rs:749-758`). h2d puts colour effects on any `Drawable`, but has no rounded or
+    fitted image. The pin `tests/aborts/styledImageWithEffect` logged and dropped the image before
+    the fix.
+  - **A target nested past eight grows the save slots** instead of recording into its parent.
+    Heaps' target stack is unbounded and recycles its nodes (`h3d/Engine.hx:332-345`). The arrays
+    grow one level the first time a frame nests that deep, and keep it, which is the streams' rule
+    ("Frame shape"). So a frame that nests no deeper than one before it allocates nothing, and the
+    allocation stage reads the growth as stream growth, not a fresh array.
+    - The C replay keeps eight levels for its size stack, because target blocks are flat by
+      construction, and it stops by name if one ever nests.
+    - The cross-language layout check no longer compares a limit the recorder does not have.
+    - T1 "nine nested targets each record their own block" read depth 8 and 17 target commands
+      before the fix, and 9 and 19 after.
+
+  **Measured** on BUILD `5791eadd`, D3D11 only: every golden is 80 / 80, T0/T1 run 1133 of 1133,
+  and both abort pins stop with their message (`out/tmp/failLoud/`). The gates wait on M25 with
+  the rest.
+
+  ```ts
+  // before: one log line, and the image was not drawn; now it stops, naming the combination
+  const thumb = s.sprite(tile(view, 64, 64));
+  thumb.setImageStyle(imageStyle(uniformRadii(4.0), false, ObjectFit.Cover));
+  thumb.setColorMatrix(colorMatrixGrayscale(1.0));
+  // the supported spelling of a grey thumbnail is the style's own grayscale
+  thumb.setImageStyle(imageStyle(uniformRadii(4.0), true, ObjectFit.Cover));
+  ```
 
 **Measured on the tip `7cf741d`, BUILD `5791eadd`, shared box:** `sh scripts/gate.sh --web` ran
 every code stage green: 1118 tests plus 299 isolated, D3D11 78/78, WebGL2 56 identical / 18
@@ -2326,15 +2359,14 @@ checker.md`, a struct indexed like an array passes `msc check` and reads garbage
   `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
   `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
   `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
-- **Three paths that log or stay silent where the rule says stop.** None was made by G; the design
-  pass of 2026-10-03 listed them.
-  - An image style on a node that also has a colour effect is dropped with one log line
-    (`render.ms` `emitStyledImage`).
-  - An `endTarget` with no target open returns silently.
-  - A target nested past eight is recorded into its parent, with a log at flush (P1's choice,
-    `displayList.ms` `beginTargetList`).
-
-  Whether each stops or composes is a design call.
+- **More paths that log once and drop, found while doing H.** Each is the question H answered
+  for the image style, and each is the coordinator's call.
+  - A box style, an underline or a selection on a node with a colour effect (`render.ms`
+    `emitNode`).
+  - A label's runs, selection and caret on a node with a colour effect (`render.ms`, counted by
+    `labelEditingRefusals`).
+  - More than 16 filter targets in one frame draw the rest unfiltered (`render.ms`
+    `acquireTarget`).
 - **The bridge still exports `voidBeginPass` and `voidCommit`** (`bridge.h`), which `door.c` calls;
   a C consumer that calls them directly goes around the door's pass state. void3d's `gpu3d.c`
   still returns silently on a short descriptor, the shape A closed in `door.c`.
