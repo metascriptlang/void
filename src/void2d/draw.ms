@@ -42,6 +42,7 @@ import {
 	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
 	targetDepth, targetStackOverflowed, renderTargetScaleNow, beginTargetList, endTargetList,
+	MAX_TARGET_DEPTH,
 	pushVertex as pushVertexRaw, pushEffect, pushGradientEffect, recordDraw, recordClip, recordBlur,
 	Pipeline, NO_CLIP, Clip, MaskClip, NO_MASK_CLIP, NO_MASK, PaintIndex, pushMaskClip, maskClipAt,
 	ScopeRecord, NO_SCOPE, pushScope, scopeRow, resolveScopes,
@@ -133,7 +134,6 @@ function pushVertex(
 	pushVertexRaw(x - ctx.originX, y - ctx.originY, u, v, r, g, b, a);
 }
 
-const TARGET_SAVE_SLOTS: int32 = 8;
 
 export function drawCallCount(): int32 { return void2dDrawCallCount(); }
 export function uploadCount(): int32 { return void2dUploadCount(); }
@@ -467,7 +467,7 @@ export function setup2d(): void {
 		COMMAND_FLOATS, EFFECT_FLOATS, VERTEX_FLOATS,
 		CMD_KIND, CMD_BREAK, CMD_VERTEX_OFFSET, CMD_VERTEX_COUNT,
 		CMD_VIEW, CMD_VIEW_HIGH, CMD_BLEND, CMD_SAMPLER, CMD_EFFECT, SAMPLER_COUNT,
-		TARGET_SAVE_SLOTS, CMD_CLEAR_R,
+		MAX_TARGET_DEPTH, CMD_CLEAR_R,
 		CMD_CLIP_X, CMD_CLIP_U_X, CMD_ARG0, CMD_RT_MODE,
 		CommandKind.Draw as int32, CommandKind.Scissor as int32, CommandKind.Blur as int32,
 		CommandKind.TargetBegin as int32, CommandKind.TargetEnd as int32,
@@ -1024,7 +1024,7 @@ export function beginTarget(
 	const rt: uint32 = target.attachment;
 	const ctx: DrawContext2D = currentContext();
 	ctx.targetsFlushed = false;
-	if (targetDepth() >= TARGET_SAVE_SLOTS) {
+	if (targetDepth() >= MAX_TARGET_DEPTH) {
 		beginTargetList(rt, w, h, scale, clear.r, clear.g, clear.b, clear.a);
 		return;
 	}
@@ -1056,7 +1056,7 @@ export function endTarget(): void {
 	const ctx: DrawContext2D = currentContext();
 	closeRun();
 	const depth: int32 = targetDepth();
-	if (!endTargetList() || depth > TARGET_SAVE_SLOTS) { return; }
+	if (!endTargetList()) { return; }
 	const slot: int32 = (depth - 1) * 3;
 	ctx.curView = ctx.savedView[depth - 1];
 	ctx.curBlend = (ctx.savedRun[slot] as int32) as BlendMode;

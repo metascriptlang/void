@@ -249,7 +249,7 @@ export const NO_PAINT: PaintIndex = {
 	scope: NO_SCOPE,
 };
 
-const MAX_TARGET_DEPTH: int32 = 8;
+export const MAX_TARGET_DEPTH: int32 = 8;
 
 export interface DrawContext2D {
 	id: int32;
