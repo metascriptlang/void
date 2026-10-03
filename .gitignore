@@ -19,3 +19,6 @@ web/.claude/
 
 .playwright-mcp/
 /*.png
+
+# Blender exports (docs/BLENDER.md)
+exports/
