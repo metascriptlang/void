@@ -418,7 +418,6 @@ export function syncOrder(this s: Scene2D, view: Transform2D, viewChanged: boole
 		if (s.kinds[i] === DrawKind.Graphics) { meshBounds(s, i); }
 	}
 }
-let imageEffectRejectedReported: boolean = false;
 const deviceGrid: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
 
 function sharedGlyphView(): uint32 {
@@ -673,6 +672,12 @@ const TEXT_PRIMITIVE_EFFECT_REFUSED: string =
 let boxEffectRejectedReported: boolean = false;
 
 
+function stopOnStyledImageEffect(): void {
+	console.log("void2d: an image style cannot take a colorMatrix, colorAdd or colorKey; draw the " +
+		"image without a style, or bake the effect into it");
+	unreachable;
+}
+
 function emitStyledImage(
 	s: Scene2D,
 	i: int32,
@@ -685,13 +690,7 @@ function emitStyledImage(
 ): boolean {
 	const styleIndex: int32 = s.imageStyleOf(i);
 	if (styleIndex == NO_IMAGE_STYLE) { return false; }
-	if (!uiInstancingAvailable()) {
-		if (!imageEffectRejectedReported) {
-			console.log("void2d: an image style cannot be combined with colorMatrix, colorAdd, or colorKey");
-			imageEffectRejectedReported = true;
-		}
-		return true;
-	}
+	if (!uiInstancingAvailable()) { stopOnStyledImageEffect(); }
 	const style = imageStyles[styleIndex];
 	const fitted = fitImage(t, sizeX, sizeY, style.fit);
 	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
