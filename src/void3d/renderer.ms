@@ -296,8 +296,8 @@ export function drawPassLists(
 	drawPassList(context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals);
 }
 
-// ScreenFx.render: `material` (a Fullscreen-layout material in `context`, drawn with its own
-// program) over the whole current pass.
+// ScreenFx.render: `material` (a Fullscreen-layout material of the renderer's context, drawn
+// with its own program) over the whole current pass.
 export function drawScreen(
 	renderer: Renderer,
 	material: MaterialId,
