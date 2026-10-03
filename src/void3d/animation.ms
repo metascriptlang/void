@@ -374,7 +374,10 @@ function stopOnClosed(call: string): void {
 function requirePaired(animation: MeshFrameAnimation, scene: Scene3D, call: string): void {
 	if (animation.closed) { stopOnClosed(call); }
 	scene.requireOpen(call);
-	if (animation.context.serial == scene.context.serial) { return; }
+	if (animation.context.serial != scene.context.serial) { stopOnUnpaired(call); }
+}
+
+function stopOnUnpaired(call: string): void {
 	console.log(`void3d: ${call} pairs mesh frames with a scene of another context`);
 	unreachable;
 }
