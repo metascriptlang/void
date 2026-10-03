@@ -48,6 +48,7 @@ import {
 	commandKindName, breakReasonName, SOURCE_PREMULTIPLIED,
 	Pipeline, BreakReason, CMD_PIPELINE, CMD_INSTANCE_OFFSET, CMD_INSTANCE_COUNT,
 	uiInstanceCount, spriteInstanceCount, spriteInstanceField, uiInstanceField, NO_EFFECT,
+	targetDepth,
 } from "../../src/void2d/displayList";
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
@@ -611,6 +612,25 @@ test "a colour effect inside a target is recorded when the draw before the targe
 	finishRecording();
 	assert targetCommandCount() == 3;
 	assert targetCommandField(1, CMD_EFFECT) != (NO_EFFECT as float32);
+	frameEnd();
+}
+
+test "a target nested past the save slots ends its own bracket, not the one around it" {
+	const none = rgba(0.0, 0.0, 0.0, 0.0);
+	const white = rgba(1.0, 1.0, 1.0, 1.0);
+	begin2d(16.0, 16.0, 1.0);
+	setEffect(colorMatrixGrayscale(1.0), none, none);
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), white, BlendMode.Alpha);
+	for (let i: int32 = 0; i < 9; i++) {
+		beginTarget(effectTestTarget(), 16.0, 16.0, 1.0, 0.0, 0.0, none);
+	}
+	for (let i: int32 = 0; i < 8; i++) { endTarget(); }
+	assert targetDepth() == 1;
+	drawRect(vec2(0.0, 0.0), vec2(4.0, 4.0), white, BlendMode.Alpha);
+	endTarget();
+	assert targetDepth() == 0;
+	finishRecording();
+	assert commandCount() == 1;
 	frameEnd();
 }
 

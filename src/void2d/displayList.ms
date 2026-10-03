@@ -271,6 +271,7 @@ export interface DrawContext2D {
 	targetScaleSaves: Vec<float32>;
 	targetDepthNow: int32;
 	targetOverflowed: boolean;
+	unrecordedTargets: int32;
 	// The clip the replay is under. A scissor is a command, not a call, so the emitter tracks
 	// what it last recorded and only records a change.
 	clip: Clip;
@@ -378,6 +379,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		targetScaleSaves: new Array(MAX_TARGET_DEPTH),
 		targetDepthNow: 0,
 		targetOverflowed: false,
+		unrecordedTargets: 0,
 		clip: NO_CLIP,
 		clipRecorded: false,
 		renderTargetScale: 0.0,
@@ -477,6 +479,7 @@ export function resetContext(): void {
 	activeContext.renderTargetScale = 0.0;
 	activeContext.targetDepthNow = 0;
 	activeContext.targetOverflowed = false;
+	activeContext.unrecordedTargets = 0;
 	activeContext.maskTotal = 0;
 	activeContext.targetsPending = true;
 	activeContext.uploadAll = true;
@@ -1102,6 +1105,7 @@ export function beginTargetList(
 		// Recording into the parent is wrong, but it is visibly wrong rather than a stack
 		// smash, and the flag makes the frame say so instead of the picture.
 		activeContext.targetOverflowed = true;
+		activeContext.unrecordedTargets = activeContext.unrecordedTargets + 1;
 		return;
 	}
 	activeContext.targetMarks[activeContext.targetDepthNow] = activeContext.commandTotal;
@@ -1127,8 +1131,12 @@ export function beginTargetList(
 
 // in LIFO order the block is the tail of `commands`, so this is a copy of a few records and
 // a count, and an inner target has already moved ahead of its consumer.
-export function endTargetList(): void {
-	if (activeContext.targetDepthNow <= 0) { return; }
+export function endTargetList(): boolean {
+	if (activeContext.unrecordedTargets > 0) {
+		activeContext.unrecordedTargets = activeContext.unrecordedTargets - 1;
+		return false;
+	}
+	if (activeContext.targetDepthNow <= 0) { return false; }
 	startCommand(CommandKind.TargetEnd, BreakReason.Barrier);
 	activeContext.targetDepthNow = activeContext.targetDepthNow - 1;
 	const mark: int32 = activeContext.targetMarks[activeContext.targetDepthNow];
@@ -1146,6 +1154,7 @@ export function endTargetList(): void {
 	activeContext.clipRecorded = activeContext.targetClipRecordedSaves[activeContext.targetDepthNow];
 	activeContext.renderTargetScale = activeContext.targetScaleSaves[activeContext.targetDepthNow];
 	activeContext.scopeNow = activeContext.targetScopeSaves[activeContext.targetDepthNow];
+	return true;
 }
 
 // The clip the replay should be under from here on. The rect is a coarse hardware scissor;
@@ -1592,7 +1601,9 @@ test "the target stack refuses to overflow and says so" {
 	}
 	assert targetStackOverflowed();
 	assert targetDepth() == 8;
-	for (let i: int32 = 0; i < 8; i++) { endTargetList(); }
+	assert !endTargetList();
+	assert targetDepth() == 8;
+	for (let i: int32 = 0; i < 8; i++) { assert endTargetList(); }
 	assert targetDepth() == 0;
 }
 

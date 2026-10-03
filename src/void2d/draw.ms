@@ -1068,8 +1068,7 @@ export function endTarget(): void {
 	const ctx: DrawContext2D = currentContext();
 	closeRun();
 	const depth: int32 = targetDepth();
-	endTargetList();
-	if (depth > TARGET_SAVE_SLOTS || depth <= 0) { return; }
+	if (!endTargetList() || depth > TARGET_SAVE_SLOTS) { return; }
 	const slot: int32 = (depth - 1) * 3;
 	ctx.curView = ctx.savedView[depth - 1];
 	ctx.curBlend = (ctx.savedRun[slot] as int32) as BlendMode;
