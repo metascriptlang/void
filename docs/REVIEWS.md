@@ -1605,3 +1605,47 @@ fingerprints, not acceptance of those frames as correct. The protocol has thirte
 controls and actual capture-stage acceptance/rejection/stale-row controls.
 Receipt: `out/tmp/sceneTarget/gate3dFinal.log` and `gateReceipt.txt`.
 Yoga's missing emcc provider remains the only external blocker to the web/land gate.
+
+## Door closure J — published C pass surface and short bindings (2026-10-04)
+
+**Verdict: SHIP WITH FOLLOW-UPS for the bounded source/native fixes**, `92a6168` and `dd9df4a`,
+on `6da8d3e`. No permission to land, fresh combined web/native gate claim, or P5/P6 verdict.
+
+**Passes:** sequential fresh read-only reviewers via omp `functions.task` (reviewer role).
+`JDefects` found no confirmed correctness defects; `JDesign` returned SHIP WITH FOLLOW-UPS.
+Neither edited, built, tested or formatted. The main session checked the source and receipts;
+runtime/compiler results below are its executions, not the reviewers'.
+
+1. **Exit:** bridge begin/commit no longer appear in the published header; door.c's private
+   declarations match both implementations. The short bindings check precedes every descriptor
+   read. Valid nine-word bindings and the existing minimum-length contract stay unchanged.
+2. **Measurements:** BUILD `4573591e`, D3D11: native suite 1153/1153; all 82 goldens
+   byte-identical; fresh release `mixedFrame` passes its real 3D/2D composition and two-frame,
+   one-screen-pass/one-commit proof. No new perf, allocation or wasm numbers are inferred.
+3. **Guardrails:** ordering, table widths, filters, AA, sample control and text unchanged.
+   One hot-path integer guard, no new allocation. Other backend runtime execution is not claimed.
+4. **Reference:** Heaps Engine's begin/render/end ownership is the applicable seam; the existing
+   GPU door retains that owner. GPUI's rendering mechanism and decided N/W/P dispositions do not move.
+5. **Capability:** handles, spans and explicit door passes remain; the two C declarations
+   remove an advertised bypass, not MetaScript rendering power. No shim or duplicate pass state.
+6. **Defects:** the two carried L2 cases are closed in Door closure J, not moved.
+   Native bridge environment checks, commit hook and present remain; embed behavior is preserved.
+   This is header publication, not an unforgeable native-linker permission boundary.
+7. **Tests:** real C consumers, not source text: old bridge begin/commit consumers compile
+   (negative pins red), current ones are rejected by undeclared identifiers, and the sanctioned
+   door consumer compiles. The abort program calls the real Span wrapper, terminates nonzero
+   with its actual/required count, and prints/returns normally if the old silent behavior survives.
+8. **Compiler:** no new renderer workaround or B1 bypass. Array extern/Span lowering remains
+   the existing FFI idiom. The C compiler selection belongs only to the header-consumer pin.
+9. **Style:** sized types, ordinary C guard, process-isolated abort pin and explicit native
+   entry; no new shared aliases or forwarding abstraction. All discovered callers migrated.
+10. **Merge refusal:** do not claim a combined-tip gate until Yoga's web provider is fixed
+    and the requested `gate.sh --web` plus `gate3d.sh` run. Land/push need the human's words.
+
+**Receipt follow-up taken:** the initial Zig syntax-only FileNotFound attempt is explicitly
+not red-before evidence. `out/tmp/openPins/pinReceipt.json` records the successful C11 object
+compile commands/statuses and diagnostics separately (`before-*.object.log`, `after-*.object.log`),
+and the observed nonzero abort status. Native suite, golden and mixed logs are beside it.
+**Carried:** renew demo liveness and all combined-tip backend/gate proofs after Yoga answers;
+arbitrary C code declaring private symbols or calling sokol directly is outside this public-header
+contract. The exact-held Forward/Anchor rows are not certified correct by this review.

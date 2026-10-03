@@ -308,6 +308,12 @@ unprepared, consumed, expired, open-pass, wrong-size/DPI, empty, released/destro
 foreign-context and non-Rgba8 targets; the same gate stage runs each mode in a separate process
 and requires both a nonzero exit and its diagnostic.
 
+`scripts/checkBridgePass.sh` compiles real C consumers of the public pass surface
+(`tests/compile/bridgePass.c`): the door consumer must compile, while bridge begin/commit
+consumers must be rejected by the missing identifiers. An unavailable compiler or broken
+header graph fails the positive control, not the negative pins. This is a published-header
+boundary, not a linker permission claim about C clients declaring private symbols themselves.
+
 Measured 2026-09-20: **GATE GREEN, 13 loud skips, about 40 seconds** on this box, starting
 from a tree with no `out/` directory at all.
 `--quick` skips the golden suite; `--web` adds the two web builds and the headless-Chrome
