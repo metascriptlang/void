@@ -81,7 +81,7 @@ function initScene(): void {
 	if (row.demo) {
 		init2d();
 		for (let i: int32 = 0; i < row.steps; i++) {
-			step2d(1.0 / 60.0);
+			step2d((1.0 / 60.0) as float32);
 		}
 		return;
 	}

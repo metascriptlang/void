@@ -1007,7 +1007,7 @@ function imagePremultipliedEffect(): Scene2D {
 		s.add(tinted);
 		const keyed = s.sprite(alphaRampTile(true, k == 1))
 			.at(x, PREMULTIPLIED_Y + PREMULTIPLIED_ROW_STEP);
-		keyed.setColorKey(rgba(40.0 / 255.0, 200.0 / 255.0, 90.0 / 255.0, 1.0));
+		keyed.setColorKey(rgba((40.0 / 255.0) as float32, (200.0 / 255.0) as float32, (90.0 / 255.0) as float32, 1.0));
 		s.add(keyed);
 	}
 	return s;
