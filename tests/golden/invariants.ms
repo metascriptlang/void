@@ -39,6 +39,8 @@ import {
 	MANY_TARGETS_STEP,
 	MANY_TARGETS_ORIGIN,
 	MANY_TARGETS_EXTENT,
+	EFFECT_UI_SCENE,
+	EFFECT_UI_SHIFT,
 } from "./table";
 import { TextLayout, Align } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -328,11 +330,58 @@ function everyTargetFiltered(): int32 {
 	return 0;
 }
 
+const LUMA_TOLERANCE: float32 = 2.0;
+
+function uiEffectIsLuma(): int32 {
+	const override: string = env.get("VOID_EFFECT_UI_CAPTURE");
+	const path: string = override.equals("")
+		? `tests/golden/d3d11/${EFFECT_UI_SCENE}.png`
+		: override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${EFFECT_UI_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const shift: int32 = EFFECT_UI_SHIFT as int32;
+	let coloured: int32 = 0;
+	let differ: int32 = 0;
+	let worst: float32 = 0.0;
+	for (let y: int32 = 0; y < voidPngHeight(SLOT); y++) {
+		for (let x: int32 = 0; x < shift; x++) {
+			const r: int32 = voidPngPixel(SLOT, x, y, 0);
+			const g: int32 = voidPngPixel(SLOT, x, y, 1);
+			const b: int32 = voidPngPixel(SLOT, x, y, 2);
+			if (r != g || g != b) { coloured = coloured + 1; }
+			const luma: float32 = 0.299 * (r as float32) + 0.587 * (g as float32)
+				+ 0.114 * (b as float32);
+			for (let channel = 0; channel < 3; channel++) {
+				const got: float32 = voidPngPixel(SLOT, x + shift, y, channel) as float32;
+				const delta: float32 = Math.abs(got - luma) as float32;
+				if (delta > LUMA_TOLERANCE) { differ = differ + 1; }
+				if (delta > worst) { worst = delta; }
+			}
+		}
+	}
+	if (coloured == 0 || differ > 0) {
+		console.log(
+			`FAIL ${EFFECT_UI_SCENE}: the grayscale copy is off its twin's luma by more than ` +
+			`${LUMA_TOLERANCE} ` +
+			`in ${differ} channel values, worst ${worst} (${coloured} coloured pixels)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${EFFECT_UI_SCENE}: every UI kind under a grayscale matrix draws its twin's luma, ` +
+		`worst ${worst} (${coloured} coloured pixels)`,
+	);
+	return 0;
+}
+
 process.exit(
 	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
 	premultipliedMatchesStraight(
 		PREMULTIPLIED_EFFECT_SCENE, "VOID_PREMULTIPLIED_EFFECT_CAPTURE", 2,
 	) +
 	premultipliedMatchesStraight(PREMULTIPLIED_STYLE_SCENE, "VOID_PREMULTIPLIED_STYLE_CAPTURE", 1) +
-	everyTargetFiltered(),
+	everyTargetFiltered() +
+	uiEffectIsLuma(),
 );

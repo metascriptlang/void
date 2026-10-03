@@ -98,6 +98,9 @@ export const MANY_TARGETS_STEP: float32 = 40.0;
 export const MANY_TARGETS_ORIGIN: float32 = 8.0;
 export const MANY_TARGETS_EXTENT: int32 = 34;
 
+export const EFFECT_UI_SCENE: string = "prim/effectOnUi";
+export const EFFECT_UI_SHIFT: float32 = 128.0;
+
 export function sceneRows(): SceneRow[] {
 	return [
 		{ name: "harness/solid", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
@@ -205,6 +208,8 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "filter/manyTargets", phase: "D1", width: 256, height: 128, dpi: 1.0,
 			steps: 0, demo: false },
+		{ name: "prim/effectOnUi", phase: "D1", width: 256, height: 128, dpi: 1.0,
+			steps: 0, demo: false },
 	];
 }
 
@@ -219,7 +224,7 @@ export function sceneDrawCounts(): int32[] {
 		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
 		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1, 6,
 		2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1, 1,
-		3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4, 2, 18,
+		3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4, 2, 18, 4,
 	];
 }
 
@@ -229,7 +234,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0,
-		5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18,
+		5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18, 0,
 	];
 }
 

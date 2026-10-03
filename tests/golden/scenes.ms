@@ -74,6 +74,7 @@ import {
 	PREMULTIPLIED_X, PREMULTIPLIED_Y, PREMULTIPLIED_SIZE, PREMULTIPLIED_SHIFT,
 	PREMULTIPLIED_ROW_STEP,
 	MANY_TARGETS_COUNT, MANY_TARGETS_COLUMNS, MANY_TARGETS_STEP, MANY_TARGETS_ORIGIN,
+	EFFECT_UI_SHIFT,
 } from "./table";
 import { makeImage as makeImageFromTexels } from "../../src/void3d/gpu3d";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
@@ -1218,6 +1219,48 @@ function filterGroupOpacity(): Scene2D {
 	return s;
 }
 
+function effectOnUiKinds(s: Scene2D, shift: float32, effect: boolean): void {
+	const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
+	const card = s.rect(48.0, 22.0, rgba(0.90, 0.50, 0.20, 1.0)).at(8.0 + shift, 6.0);
+	card.setBoxStyle(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.20, 0.60, 0.90, 1.0),
+	));
+	const line = s.underline(56.0, 3.0, rgba(0.90, 0.30, 0.20, 1.0), true).at(64.0 + shift, 12.0);
+	const band = s.selection(80.0, 18.0, rgba(0.20, 0.50, 0.90, 0.65), -6.0, 58.0, 12.0, 92.0)
+		.at(16.0 + shift, 34.0);
+	const runs: TextRun[] = [
+		decoratedRun(3, rgba(0.78, 0.55, 0.95, 1.0)),
+		{ ...decoratedRun(7, rgba(0.86, 0.90, 0.98, 1.0)), underline: rgba(0.45, 0.80, 0.95, 1.0) },
+	];
+	const label = s.label("let x = 4;", 14.0, white).setTextRuns(runs).at(8.0 + shift, 60.0);
+	label.setSelectionRange({ start: 4, length: 1 }, rgba(0.30, 0.50, 0.90, 0.50));
+	label.setCursorBlinkTime(0.0);
+	label.setCursorIndex(9, rgba(1.0, 0.85, 0.30, 1.0));
+	const image = s.sprite(alphaRampTile(false, false)).at(8.0 + shift, 88.0);
+	image.setSize(80.0, 32.0);
+	image.setImageStyle(imageStyle(uniformRadii(6.0), false, ObjectFit.Fill));
+	if (effect) {
+		const grey = colorMatrixGrayscale(1.0);
+		card.setColorMatrix(grey);
+		line.setColorMatrix(grey);
+		band.setColorMatrix(grey);
+		label.setColorMatrix(grey);
+		image.setColorMatrix(grey);
+	}
+	s.add(card);
+	s.add(line);
+	s.add(band);
+	s.add(label);
+	s.add(image);
+}
+
+function primEffectOnUi(): Scene2D {
+	const s = Scene2D.create(rgba(0.10, 0.10, 0.10, 1.0));
+	effectOnUiKinds(s, 0.0, false);
+	effectOnUiKinds(s, EFFECT_UI_SHIFT, true);
+	return s;
+}
+
 function filterManyTargets(): Scene2D {
 	const s = Scene2D.create(DARK);
 	for (let k: int32 = 0; k < MANY_TARGETS_COUNT; k++) {
@@ -1428,5 +1471,6 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "image/premultipliedEffect", build: imagePremultipliedEffect },
 		{ name: "image/premultipliedStyle", build: imagePremultipliedStyle },
 		{ name: "filter/manyTargets", build: filterManyTargets },
+		{ name: "prim/effectOnUi", build: primEffectOnUi },
 	];
 }

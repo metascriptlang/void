@@ -88,6 +88,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `harness/` | P0 | solid (hand-computed) · mustFail (deliberately wrong golden) |
 | `prim/` | P0 | roundedRect · strokeRect · ellipsePieRing · polygonBezier · gradientLinear · gradientRadial |
 | `prim/` | P2 | per-corner radii · per-side borders · dashed border · drop shadow · inset shadow · shadow+fill+border in one instance · gradient Oklab · multi-stop · dither band · slash and checkerboard |
+| `prim/` | D1 | effectOnUi (a box style, a wavy underline, a selection band, a label's runs, selection and caret, and an image style, each drawn plain and under a grayscale matrix on a grey ground; `tests/golden/invariants.ms` holds every pixel of the grey copy to its twin's luma within 2 levels, the rounding of two stacked blends) |
 | `xform/` | P0 | rotate (0 / 7° / 37° / 45°) · scale (0.5 / 1 / 2) · pivot · nonUniform |
 | `xform/` | P2 | pivot from `Tile.dx/dy` |
 | `snap/` | P0 | hairline at DPI 1.0 / 1.25 / 1.5 · fractionalSplit of 7 px · fractionalOrigin |
@@ -313,7 +314,7 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **81 / 81 scenes byte-identical** | every full gate, this box |
+| D3D11 | **82 / 82 scenes byte-identical** | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
