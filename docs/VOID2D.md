@@ -1064,6 +1064,19 @@ human has seen it as app code; the phase measurement comes last.
    - **`removeChildren` is one pass.** Removing one child scans its siblings, as h2d's
      `children.remove` and Bevy's `Children` do, so taking 50 000 siblings apart one at a time is
      quadratic; the experiment's teardown goes through `removeChildren`.
+   - **A row's Yoga node is freed where the row leaves the tree**, because the host owns that
+     free (`~/metascript/yoga/docs/ARCHITECTURE.md` "Integration modes": the pass cannot tell a
+     dropped node from one that moves, so it frees neither). `removeChild`, `removeChildren`
+     (so `remove()`), `addChild` under a different parent, and `dispose`'s walk call
+     `freeLayoutTree` on a row that holds one; the next pass builds a fresh node and re-applies
+     the style. Adding a child again under its own parent keeps its node, so a bring-to-front
+     does not rebuild a subtree. A move had to free because the old Yoga parent still owns the
+     node, and Yoga's single-owner assert aborts when the new parent is synced first; only the
+     moved top can be owned from outside, so only it is checked. Cost, `msc test` debug build on
+     a loaded machine, one run: `removeChildren` of 20 000 laid-out siblings 3.7 to 88 ms
+     (Yoga's child removal scans the owner's children), of 20 000 rows with no layout 3.7 to
+     4.5 ms. Pinned by `src/test/layoutCheck.ms` and, counting the process heap on macOS,
+     `tests/isolated/yogaLeak.ms`.
    - `==` on `NodeRef` fails to build on C and JS in a module that does not import `NodeId`
      (`~/metascript/.inbox/compiler/2026-09-28-struct-eq-nested-type-not-imported.md`);
      `src/test/nodeCheck.ms` names `NodeId` for it and is the parked site.
