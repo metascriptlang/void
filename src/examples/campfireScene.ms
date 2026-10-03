@@ -279,6 +279,7 @@ let fireLight: NodeId3D = NO_NODE_ID;
 let firstLogPiece: int32 = 0;
 let logSpinPerFrame: float32 = 0.0;
 let flameFrames: MeshFrameAnimation = {
+	context: context,
 	clock: {
 		frameCount: 0,
 		sampling: 0.0,
@@ -293,6 +294,7 @@ let flameFrames: MeshFrameAnimation = {
 	meshes: [],
 	bound: false,
 	shown: NO_MESH,
+	closed: false,
 };
 let logSpin: ObjectAnimation = ObjectAnimation.forClock(flameFrames.clock);
 let stoneFrames: MeshFrameAnimation = flameFrames;
