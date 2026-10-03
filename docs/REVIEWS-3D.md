@@ -1903,9 +1903,21 @@ scene, provable rather than lucky.
 
 ### Final acceptance
 
-`sh scripts/gate3d.sh` and `sh scripts/gate.sh --web`, installed msc `5791eadd`, D3D11, on the
-reviewed tree (`296dff4`, clean, over main `75b0d19`), serial, after both reviews. Receipt
-appended below once both have run on that one tree.
+`sh scripts/gate3d.sh`, installed msc `5791eadd`, D3D11, 2026-10-03, on the reviewed tree
+(`296dff4` for the code, `7f014ff` docs over it, over main `75b0d19`): **GATE GREEN with 1
+skipped stage** (`device`). 1148 suite tests, 84 abort programs and 98 abort cases, 72 hashes
+one per baseline (61 re-recorded by this milestone, 11 untouched), oracle 75/11, bench and
+churn flat, the allocation scan clean, arm64 `libVoidAndroid.so` 3,693,840 bytes.
+
+`sh scripts/gate.sh --web`, same tree and day: **RED on exactly the two mixed goldens** —
+`mixed/void3dTarget` and `mixed/void3dTranslucentTarget` differ from their goldens with no
+`tests/PENDING.md` entry, on D3D11 (80 pass, 2 fail of 82) and on WebGL2 (58 pass, 18 pending,
+6 fail: its four standing `conformance:webgl2-pixel-centre` reds beside the same two), and the
+two `docs/TESTING.md` row checks that repeat those numbers fail with them. Both scenes render
+void3d's lit content through the shared frame (`tests/golden/mixedScenes.ms` lights a sun and
+draws the forward preset), so they change with this milestone by design; their re-golden is
+void2d's, named to its arc, and every other void2d golden is byte-identical. Logs:
+`out/tmp/m26/gate/gate3d.log`, `gateWeb.log`, each stamped with the tree it ran on.
 
 ### Scope still separate
 
