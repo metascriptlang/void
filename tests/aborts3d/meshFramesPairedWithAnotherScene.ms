@@ -17,7 +17,7 @@ const clock: Result<AnimationClock, AnimationError> =
 if (!mesh.ok || !clock.ok) { unreachable; }
 const frames: Vec<MeshId> = [mesh.value];
 const animated: Result<MeshFrameAnimation, AnimationError> =
-	MeshFrameAnimation.forMeshes(made, clock.value, "pet", frames);
+	MeshFrameAnimation.forMeshes(made, clock.value, "frames", frames);
 if (!animated.ok) { unreachable; }
 let scene: Scene3D = Scene3D.create(other);
 const _bound: Result<int32, AnimationError> =
