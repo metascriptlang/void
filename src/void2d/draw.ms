@@ -995,6 +995,11 @@ function stopOnTarget(target: RenderTarget, scale: float32): void {
 	unreachable;
 }
 
+function stopOnEndWithoutTarget(): void {
+	console.log("void2d: endTarget with no target open; every endTarget closes one beginTarget");
+	unreachable;
+}
+
 function stopOnBlurOutsideTarget(): void {
 	console.log("void2d: blurPass outside beginTarget; the blur draws only into a target");
 	unreachable;
@@ -1049,7 +1054,7 @@ export function endTarget(): void {
 	const ctx: DrawContext2D = currentContext();
 	closeRun();
 	const depth: int32 = targetDepth();
-	if (!endTargetList()) { return; }
+	if (!endTargetList()) { stopOnEndWithoutTarget(); }
 	const slot: int32 = (depth - 1) * 3;
 	ctx.curView = ctx.savedView[depth - 1];
 	ctx.curBlend = (ctx.savedRun[slot] as int32) as BlendMode;
