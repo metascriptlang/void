@@ -2049,3 +2049,124 @@ passed on **31 paths**. Accepted under the same whitespace-only protocol as the 
 slice; no third heavy run and no invented GATE GREEN receipt. Logs:
 `out/tmp/m28/gate3dFinal.log`, `styleOnly.log`; the first registration red is `gate3d.log`.
 Future full gates run the existing light style stage first, including tab-expanded widths.
+
+## M30 — full-orientation world camera
+
+**Defect pass: finite subnormal normalization overflow, fixed at the source.**
+The initial axis helper multiplied by `1 / largest`; finite float32 `1e-40`
+overflowed that reciprocal and produced a refused view. The pin was RED:
+1162 passed / 1 failed, `AssertionError: view.ok`. Component-wise division by
+`largest` before normalization gives bounded inputs without the overflowing
+reciprocal; the same suite then passed 1163/1163, also exercising `1e30`.
+`out/tmp/m30/extremeBefore.log` and `mathAndSceneGreen.log` own those receipts.
+Nonzero yaw/pitch beside a full orientation was separately RED before the
+named `AmbiguousOrientation` guard.
+
+### Fresh design pass
+
+**SHIP WITH FOLLOW-UPS**, no confirmed remaining implementation defect.
+A fresh stateless reviewer received the exact source/test/gate diff, complete
+native consumer, approved reference shape and observed targeted receipts;
+no tools or previous session history. The main session verified each finding.
+
+| Finding | Resolution / evidence boundary |
+|---|---|
+| Final component-division revision still needs full renderer/gate execution | Final gate runs the existing actual light style stage first; earlier captures are not relabelled as final-revision proof |
+| CameraController was described as world-matrix synchronization | Corrected from Heaps `syncCamera:227–241`: spherical position/target/FOV; the normalized orientation reference is `Camera.makeCameraMatrix`, not that controller |
+| Foreign/stale/unbound setter cases missing | Six named cases added to the existing one-build scene abort fixture, besides the four closed-scene entries |
+| Unsafe matrices and explicit orientations not pinned | Camera tests reject nonfinite/non-affine/zero/parallel world axes, nonunit/left-handed/nonfinite explicit bases and nonfinite position |
+| Snapped rolled picking unproven | A real scene box is projected and picked through the rolled snapped view and shifted blit in both framebuffer row orders |
+| Every node release scanned camera bindings | Only Group release scans the Group-only binding table; mesh/light teardown no longer does needless camera work |
+| Rig/manual captures share the factory and cannot independently prove every basis detail | Stated limit; the projected-roll/ray arithmetic pin and dropped-roll failure control distinguish loss of roll; no absolute complete basis-oracle claim |
+
+The nullable value field reuses existing value/default initialization rather than
+introducing a heap camera. Removed active IDs remain loudly stale, including slot
+reuse; explicit null selection restores fallback. There is no NodeKind, shader,
+GPU resource, hidden controller or new cache. Scale exclusion is the reference's
+rule; up/back orthogonalization and reflected/sheared input policy are stated in
+VOID3D's M30 section. Rolled pixel-art snapping is measured working, not refused
+on an untested assumption. Native D3D11 evidence is not web/device acceptance.
+
+### First complete gate
+
+Tree `06086a972499143ac375868b2ba097afada88a13`, binary/support BUILD
+`4573591e`, native D3D11, shared Windows workstation, one native job:
+**1166/1166 tests**, **267 PASS**, **1 FAIL**, **3 known skips** in 602.64 s.
+The failure is this session's allocation-list error: `scene.requireOwn` was named
+on the camera path but has no emitted body in that consumer. `cameraRow` calls
+`liveRow` / `isLive`, not `requireOwn`; the list is corrected to those actual
+callees. The source is not changed to satisfy the list.
+
+Both renderer rig consumers and dropped-roll controls passed after the subnormal
+fix. **85 abort programs + 108 cases**, including every new camera stop, passed;
+**72 hashes**, none adopted; oracle **75 agreeing / 11 declared divergences**;
+style **34 paths**. Bench and churn held flat; Android arm64 built at
+**3,861,080 B**. Known skips remain the held Forward/Anchor configurations and
+the unrun GLES3 device lane. Receipt: `out/tmp/m30/gate3dFirst.log`.
+This raw gate is RED, not final acceptance.
+
+Before that gate, the new invalid-matrix fixture's untyped array inferred a union
+of partial spread shapes and failed frontend checking. Contextual `Vec<Mat4>`
+and `Vec<CameraBasis>` declarations fixed the fixture; the gate's warm-up then
+passed 1166/1166. `fixtureInferenceRed.log` and `followupUnit.log` retain both
+observations. No compiler workaround or compiler card belongs to that change.
+
+### Numerical re-reviews
+
+Main-session proof found another real error: explicit RIGHT=X / UP=Y /
+FORWARD=`(0.01,0,-0.99995)` passed the initial orientation gate. The actual
+probe printed the BUG and exited 2147483648; all three orthogonality pairs
+are now checked. Both horizontal and vertical skew variants are pinned.
+The corrected probe and 1166-test suite passed.
+
+**SEND BACK, twice, on float32 cross cancellation.** A fresh math-delta
+review correctly rejected the two-normalization optimization: crossing bounded
+up against already-normalized back can manufacture a residual from identical
+axes. Actual execution accepted identical/proportional and `1e-6`-separated
+rows (`parallelBefore.log`). Compute the cross before either normalization,
+and reuse the existing math EPSILON in a scale-free squared-sine gate instead
+of amplifying a tiny residual through max-component normalization.
+
+That correction passed 1167 tests but the next fresh re-review found an accepted
+noncollinear input that still broke the published-frame invariant:
+UP `(0.37002,0.63,1)` / BACK `(0.37,0.63,1)`. Actual execution confirmed
+factory success followed by `resolve` refusing `BadOrientation`
+(`nearParallelBefore.log`). Reordering float32 operations was not robust enough;
+the approach changed to the reference's precision, not another tolerance tweak.
+
+**Final fresh precision re-review: SHIP, no concrete blockers.** Local
+`camera.ms` `preciseCross` computes products/subtractions in float64, as
+Heaps' Haxe Float cross does (`Vector.hx:9–11,48–50`), then returns float32
+components. Global Vec3 arithmetic, output ABI and the epsilon are unchanged.
+Two normalization square roots remain. The counterexample now constructs and
+resolves the analytic right axis with every frame invariant; the nearby
+UP `(0.370005,0.63,1)` is still `BadWorldPose`. Three actual probes are GREEN,
+and the permanent suite passes 1168/1168 (`preciseAxesUnit.log`).
+
+The refusal is deliberate: Heaps' vector epsilon precedes its Camera fallback;
+Void carries its existing float32 `1e-10` degeneracy gate into scale exclusion
+and refuses instead of inventing an axis. The as-built section names this
+numerical boundary. Review receipts: `mathDeltaReview.txt`,
+`mathCorrectedReview.txt`, `precisionReview.txt`; the latest probe receipts are
+`nearParallelAfter.log`, `parallelFinal.log`, `skewFinal.log`.
+
+### Final acceptance
+
+Source `971ee3d`, tree `2695dea414b06791eb0e71fce3e6672901be566e`, stable
+target-owner parent `3d03020`, binary/support BUILD `4573591e` checked
+before/after; one native job on the shared Windows workstation, D3D11.
+The full gate is **GREEN**, **268 PASS / 0 FAIL / 3 unchanged known skips**,
+**1168/1168 tests**, **85 abort programs + 108 cases**, **72 manifest hashes**
+with none adopted, oracle **75/11**. Both rig consumers match eight full-RGBA
+pose pairs and fail their lost-roll controls; all allocation paths, including
+the actual camera lookup and local precise cross, pass. Style covers 34 paths.
+Accepted standing captures remain byte-identical; held Forward/Anchor frames
+stay explicitly unaccepted and GLES3 device execution stays unrun.
+
+Bench/churn hold flat, Android arm64 **3,861,440 B**. The final gate takes
+**591.83 s**. The existing bench's **0.086862 ms/frame** is one sample,
+not a measurement of cameraOf's new per-frame cost. No web or device success
+is inferred. Receipt `out/tmp/m30/gate3dFinal.log`; first allocation-list RED
+`gate3dFirst.log` remains preserved. Every blocking numerical review finding
+is fixed and re-reviewed before this final-source gate.
+

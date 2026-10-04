@@ -258,12 +258,15 @@ above be written without Neon working around Void.
    processing and premultiply the encoded output when its blend expects it. Do not decode
    already-premultiplied channels or multiply coverage twice. This slice establishes the
    producer's contract; it does not claim that a 3D material already honours it.
-6. **A camera placed by a node's world transform.** `Camera3D` is `position`, `yaw`, `pitch`
-   (`src/void3d/camera.ms`) and is not a node (`NodeKind` is `Group`, `Mesh`, `Light`). A
-   `<Camera3D>` nested under a moving object needs its position and orientation from the parent's
-   `worldOf`. Neon can derive position and yaw/pitch itself, losing roll. Wanted: a camera node,
-   or a `Camera3D` made from a world matrix. Bevy: a camera is an entity with a `Transform` and a
-   parent; Godot: `Camera3D` is a node.
+6. **A camera placed by a node's world transform.** Implemented by M30 in branch
+   source commit `971ee3d`, not yet landed. Use `src/void3d/camera.ms`
+   `Camera3D.fromWorld`, or `src/void3d/scene.ms` `SceneCamera` / `cameraOf`
+   for an active Group-bound mount; Neon does not extract yaw/pitch or discard roll.
+   The existing camera request still supports its yaw/pitch convenience path.
+   Parent scale is excluded, stale/closed mounts fail loudly, and the measured
+   rolled orthographic pixel-art snap remains supported rather than refused.
+   Reference rationale, numerical rejection boundary and final native proof:
+   [VOID3D.md, M30 as built](VOID3D.md#m30-as-built).
 7. **Create a node before its parent, and move it.** `addGroup`, `addMeshNode` and
    `addLightNode` take the parent at creation, and there is `remove` but no re-parent
    (`src/void3d/scene.ms`). Neon's `Host` creates an element first and attaches it later, and a
