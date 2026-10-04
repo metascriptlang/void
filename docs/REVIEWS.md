@@ -1758,3 +1758,30 @@ verdict as a whole-command GREEN. Receipts: `out/tmp/targetOwner/gate3dFinal.log
 `styleReceipt.txt`. The temporary checker/repro scripts were removed after proof; their
 permanent consumers and the gate's `run_style` function remain.
 
+### Optional View paint and the clamped-window guard — SHIP (2026-10-04)
+
+**Verdict: SHIP for `c91989c`, `db2b65f`, `98de158` and `47bd281`** — NEON item 8's optional
+paint and the shared framebuffer guard. Not a P5/P6 verdict or a land.
+
+**Passes.** The main session wrote the slice and ran every native proof; the coordinator
+session `void-7a` reviewed `c91989c` (colour defect found, R-style corrections taken) and
+`98de158` (cross-platform link defect found and fixed), and accepted the audit dispositions.
+
+**Findings taken:** promotion always starts from a transparent fill and clearing resets it
+(RED-before: two nodeCheck pins failed on white/old fills); a sized()-Rect `setBackground`
+keeps setting its colour and `clearBackground` demotes it (GPUI style.rs:713, Flutter
+container.dart:405); the phantom 2×-X placement was the OS minimum client width (measured 120:
+fbTrap asks 1×1 and stops naming "asked for 1x1 but the framebuffer is 120x1"), so the guard
+lives in `voidCaptureGrab` against `voidRequestedSize` — the bridges record the requested
+size (Win/Web/Embed), Android answers 0×0 and the guard no-ops; `voidCaptureGrabSwapChain`
+is deliberately unguarded (host views). storeIdentity moved to 128×96 (grab-only check),
+doorBlendModes 96 grabs nothing (exempt), the 120×60 consumers sit at the measured minimum
+and are untouched. Mac/Android were not built; the PENDING `macos:voidRunConfigured` row
+carries both facts.
+
+**Exercised gate, BUILD `4573591e`, D3D11:** `sh scripts/gate.sh` GREEN with eight loud
+skips — 1158 + 299 + 318 tests, 82/82 goldens unchanged, demo liveness, and the new rows:
+view paint (four sampled stages), a label background stopping by name, and the clamped-window
+trap. Receipt `out/tmp/viewPaint/gateFinal.log`. The frame path's allocation stage passes
+unchanged; the two added frame-path branches allocate nothing. gate3d was not rerun: this
+slice touches no void3d path and the coordinator waived it.
