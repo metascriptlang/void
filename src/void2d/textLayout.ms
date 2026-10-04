@@ -710,8 +710,9 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {
 				glyphs[k].x = glyphs[k].x + indent;
 			}
-			const lineGlyphs: Span<LaidGlyph> = glyphs[firstGlyph..(glyphs.length as int32)];
-			const box: FaceMetrics = tallestFaces(lineGlyphs, primary, style);
+			const box: FaceMetrics = tallestFaces(
+				glyphs[firstGlyph..(glyphs.length as int32)], primary, style,
+			);
 			const height: float32 = box.ascent + box.descent + box.lineGap;
 			const atEnd: boolean = lineStart >= count;
 			const indexStart: int32 = atEnd ? shaped.units : shaped.glyphs[lineStart].index;
