@@ -1158,12 +1158,52 @@ export function animFrames(this n: NodeRef): AnimFrames {
 
 export function setBoxStyle(this n: NodeRef, style: BoxStyle): NodeRef {
 	const i: int32 = n.liveRow("setBoxStyle");
-	requireKind(n, i, DrawKind.Rect, "setBoxStyle", "a box style");
+	takePaintable(n, i, "setBoxStyle");
 	const s: Scene2D = n.scene;
 	if (s.payloads[i] == NO_BOX_STYLE) {
 		s.payloads[i] = allocateBoxStyle(style);
 	} else {
 		updateBoxStyle(s.payloads[i], style);
+	}
+	s.markChanged(i, Changed.Content);
+	return n;
+}
+
+function stopOnUnpaintable(call: string, actual: DrawKind): void {
+	console.log(`void2d: ${call} asked of a ${actual.toString()} node; ` +
+		"only a Group or a Rect can take a background");
+	unreachable;
+}
+
+function takePaintable(n: NodeRef, i: int32, call: string): void {
+	const actual: DrawKind = n.scene.kinds[i];
+	if (actual === DrawKind.Rect) { return; }
+	if (actual !== DrawKind.Group) { stopOnUnpaintable(call, actual); }
+	n.scene.kinds[i] = DrawKind.Rect;
+	n.scene.markChanged(i, Changed.Content);
+}
+
+export function setBackground(this n: NodeRef, c: Color): NodeRef {
+	const i: int32 = n.liveRow("setBackground");
+	takePaintable(n, i, "setBackground");
+	n.scene.putPaint(i, { ...n.scene.paints[i], color: c });
+	return n;
+}
+
+export function clearBackground(this n: NodeRef): NodeRef {
+	const i: int32 = n.liveRow("clearBackground");
+	const s: Scene2D = n.scene;
+	const actual: DrawKind = s.kinds[i];
+	if (actual !== DrawKind.Rect && actual !== DrawKind.Group) {
+		stopOnUnpaintable("clearBackground", actual);
+	}
+	if (actual === DrawKind.Rect) {
+		const payload: int32 = s.payloads[i];
+		if (payload != NO_BOX_STYLE) {
+			releaseBoxStyle(payload);
+			s.payloads[i] = NO_PAYLOAD;
+		}
+		s.kinds[i] = DrawKind.Group;
 	}
 	s.markChanged(i, Changed.Content);
 	return n;

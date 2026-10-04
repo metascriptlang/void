@@ -2,12 +2,12 @@ import { DrawKind, Changed, NodeRef, NodeId2D, Scene2D, NO_COLOR_MATRIX_ROW } fr
 import "../void2d/scene";
 import { sync, getBounds, hitTest } from "../void2d/render";
 import {
-	Tile, Transform2D, rgba, identity2d, emptyBounds, vec2, tile, noFilter, blurFilter,
+	Tile, Transform2D, Bounds2D, rgba, identity2d, emptyBounds, vec2, tile, noFilter, blurFilter,
 	glowFilter, dropShadowFilter, FilterKind,
 } from "../void2d/types";
 import { BlendMode } from "../gpu/state";
 import { approx } from "./helpers";
-import { BoxStyle, uniformRadii, uniformBorders } from "../void2d/boxStyle";
+import { BoxStyle, uniformRadii, uniformBorders, boxStyles } from "../void2d/boxStyle";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
 const HALF_PI: float32 = 1.5707963;
@@ -813,4 +813,45 @@ test "a color matrix lives in a side row that only a node with one holds" {
 	plain.setColorMatrix(colorMatrixGrayscale(0.5));
 	assert (s.colorMatrices.length as int32) == 1;
 	assert plain.colorMatrix() == colorMatrixGrayscale(0.5);
+}
+
+test "a background promotes a group in place, keeping row, children and local" {
+	const s = fresh();
+	const n = s.group().at(3.0, 4.0);
+	const child = s.rect(1.0, 1.0, white);
+	n.addChild(child);
+	const id: NodeId2D = n.id;
+	s.clearChanges();
+	n.setBackground(rgba(0.2, 0.4, 0.8, 1.0));
+	assert n.kind() === DrawKind.Rect;
+	assert n.id == id && n.isLive();
+	assert n.numChildren() === 1 && n.getChildAt(0) == child;
+	assert approx(n.local().x, 3.0) && approx(n.local().y, 4.0);
+	assert approx(n.paint().color.g, 0.4);
+	assert marked(n, Changed.Paint);
+}
+
+test "clearing a background returns the row to a group and frees its box style" {
+	const s = fresh();
+	const n = s.group();
+	n.setBoxStyle(BoxStyle.create(uniformRadii(3.0), uniformBorders(0.0), white));
+	assert n.kind() === DrawKind.Rect;
+	const rows: int32 = boxStyles.length as int32;
+	n.clearBackground();
+	assert n.kind() === DrawKind.Group;
+	n.setBoxStyle(BoxStyle.create(uniformRadii(5.0), uniformBorders(0.0), white));
+	assert n.kind() === DrawKind.Rect;
+	assert (boxStyles.length as int32) == rows;
+	assert marked(n, Changed.Content);
+}
+
+test "a plain rect with a transparent fill is blank like a group" {
+	const s = fresh();
+	const n = s.rect(8.0, 6.0, rgba(0.0, 0.0, 0.0, 0.0));
+	s.clearChanges();
+	n.setBackground(rgba(0.0, 0.0, 0.0, 0.0));
+	assert n.kind() === DrawKind.Rect;
+	n.sync(identity2d(), true);
+	const cull: Bounds2D = n.scene.culls[n.id.index];
+	assert cull.xMax <= cull.xMin && cull.yMax <= cull.yMin;
 }

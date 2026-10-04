@@ -1051,10 +1051,14 @@ function drawOwn(s: Scene2D, i: int32, na: float32, vw: float32, vh: float32): v
 	};
 	const scoped: boolean = inScope();
 	const clipped: boolean = clipIntersectsQuad(vtl, vtr, vbr, vbl);
-	const blank: boolean = s.kinds[i] === DrawKind.Group || s.kinds[i] === DrawKind.Mask;
+	const unpainted: boolean = s.kinds[i] === DrawKind.Rect
+		&& s.payloads[i] == NO_BOX_STYLE
+		&& s.paints[i].color.a <= 0.0;
+	const blank: boolean = s.kinds[i] === DrawKind.Group || s.kinds[i] === DrawKind.Mask
+		|| unpainted;
 	s.culls[i] = scoped || !clipped || blank ? emptyBounds() : reach;
 	const onscreen: boolean = (scoped || seenAt(reach, s.viewShift, vw, vh)) && clipped;
-	if (onscreen) {
+	if (onscreen && !blank) {
 		emitNode(
 			s, i, world, na, col, tl, tr, br, bl,
 			lb.xMax - lb.xMin, lb.yMax - lb.yMin, vec2(lb.xMin, lb.yMin), vb,
