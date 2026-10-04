@@ -217,7 +217,7 @@ function described(
 	return descriptor;
 }
 
-function sameWords(a: Span<uint32>, b: Span<uint32>): boolean {
+function sameWords(a: Readonly<Span<uint32>>, b: Readonly<Span<uint32>>): boolean {
 	for (let i = 0; i < (a.length as int32); i++) {
 		if (a[i] != b[i]) { return false; }
 	}

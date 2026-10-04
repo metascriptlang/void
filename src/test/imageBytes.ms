@@ -39,7 +39,7 @@ function pushBe32(ref out: Vec<uint8>, value: uint32): void {
 	out.push((value & (0xFF as uint32)) as uint8);
 }
 
-function pushChunk(ref out: Vec<uint8>, kind: uint32, data: Span<uint8>): void {
+function pushChunk(ref out: Vec<uint8>, kind: uint32, data: Readonly<Span<uint8>>): void {
 	pushBe32(out, data.length as uint32);
 	let typed: Vec<uint8> = [];
 	pushBe32(typed, kind);
@@ -66,9 +66,9 @@ export function pngOf(
 	height: int32,
 	bitDepth: int32,
 	colorType: int32,
-	unfilteredRows: Span<uint8>,
+	unfilteredRows: Readonly<Span<uint8>>,
 	rowLength: int32,
-	palette: Span<uint8>,
+	palette: Readonly<Span<uint8>>,
 ): Vec<uint8> {
 	let out: Vec<uint8> = [
 		0x89 as uint8, 0x50 as uint8, 0x4E as uint8, 0x47 as uint8,
