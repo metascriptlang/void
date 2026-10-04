@@ -204,6 +204,23 @@ above be written without Neon working around Void.
    node until it is attached, but a move between parents then means remove and add again, which
    drops what the node holds (its pin, a bound animation). Heaps: `addChildAt` moves an object
    from its old parent and keeps it allocated (`h3d/scene/Object.hx`).
+8. **A View that starts as a pure group and only draws once it has paint.** A Neon View is a
+   group until it gets a background, a border or a shadow; void2d fixes `DrawKind` at
+   construction (`node.ms` `newRow`), and `setBoxStyle` requires a Rect, so Neon must either
+   make every View a Rect (render.ms's Rect branch then emits an instance even for a
+   transparent fill) or recreate the node and break the NodeRef its binders hold. Wanted: an
+   optional paint on the same row — a fill or a box style promotes a Group to a drawing node
+   in place (same row, NodeRef, children, layout, order, alpha); clearing returns it to Group
+   and frees the box style; only a Group or a Rect may change, any other kind stops by name;
+   a fully transparent fill with no border and no shadow emits nothing.
+
+   References: React Native `18f5ddb` `ViewShadowNode.cpp` `formsView` — a view forms a host
+   view when its background colour is meaningful, it has a border, a box shadow or the like;
+   the same shadow node either way. GPUI `b961b49` `style.rs:713-714` paints the background
+   only when it is set and not transparent. Flutter `6f0e0db` `container.dart:405` inserts a
+   `ColoredBox` only `if (color != null)`. Heaps `b9aa6dcb` `Flow.hx:1115` `set_backgroundTile`
+   builds and removes a ScaleGrid child lazily — Void's divergence is to keep one row instead
+   of adding a child, so the layout size needs no sync.
 
 Done when each item has a commit on Void's `main` or an answer that Neon does it on its side,
 written under its number here, and a note in `~/metascript/.inbox/neon/` names the commits.
