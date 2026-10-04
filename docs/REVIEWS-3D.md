@@ -2170,3 +2170,55 @@ is inferred. Receipt `out/tmp/m30/gate3dFinal.log`; first allocation-list RED
 `gate3dFirst.log` remains preserved. Every blocking numerical review finding
 is fixed and re-reviewed before this final-source gate.
 
+
+## M31 — detached creation and allocation-preserving moves
+
+**Defect pass: the consumer, not the library.** The first native run of the new
+reparent consumer stopped bare at init (exit 132, empty log,
+`out/tmp/m31/reparentFirst.log`). Reading the source found the cause: `addMaterial`
+adopts the caller's uniform range (`draw.ms` `ownRange`), and the consumer then
+released that adopted range, was answered `Owned`, and hit its own unnamed
+`unreachable`. The caller release is deleted — the refusal is correct — and every
+fallible consumer branch now names its operation and error through `fail` before
+stopping, so a silent trap cannot recur there. No library behaviour changed.
+
+### Fresh design pass
+
+**SEND BACK on missing execution proof only; the source passed review.** A fresh
+stateless reviewer received the full scene/animation/test/gate diff, the real
+consumer and the measured old-path RED. Its findings: validation precedes mutation
+in `placeNode`, same-parent index handling is correct (the `before` search runs
+after unlinking), identity/pose/holds survive moves, the local-preserving divergence
+from three's world-preserving `attach` is deliberate and named, detached semantics
+are explicit, close compaction is sound, and the API is additive. Blocking items
+were exactly the unexecuted proofs: the 21 named stops, both corrected GPU
+consumers with their negative controls, and the generated allocation/style/full
+gate runs.
+
+### Proof batch
+
+On the corrected consumer, in one announced native slot: both presets' reparent
+consumers passed — eight full-RGBA moved-versus-built-in-place pairs each, the
+skip-move control failing at the moved pose, the skip-order control failing at the
+equal-depth pixel — and all **21 named abort cases** stopped nonzero with their
+exact messages (closed scene on every new entry, detached creation on a closed
+scene, root, self, descendant-cycle, foreign node, foreign parent, stale node,
+stale `before`, foreign `before`, and a `before` under another parent).
+`out/tmp/m31/reparentStage.log` holds the receipt; the design review is
+`designReview.txt`.
+
+
+### Final acceptance
+
+Source `32f0f9c`, tree `016722a76b96a565ba7bbd467f367b8048a14db5`,
+binary/support BUILD `4573591e`, native D3D11, one announced native job on the
+shared Windows workstation. The full `gate3d.sh` is **GREEN**: **295 PASS /
+0 FAIL / 3 unchanged known skips** in 1695.44 s, **1176/1176 tests**,
+**85 abort programs + 129 cases**, **74 manifest hashes** with none adopted,
+oracle **75/11**, every new move/close body clean in the generated-C allocation
+check, bench and churn flat, Android arm64 at **3,861,536 B**. The three skips are
+the held Forward/Anchor fingerprints and the unrun GLES3 lane; web is recorded
+NOT RUN for the Yoga provider. Receipt `out/tmp/m31/gate3dFinal.log`;
+`reparentFirst.log` preserves the bare-trap first red. The rebased land gate
+(void2d `gate.sh` then `gate3d.sh`, never side by side) is the remaining step
+before this branch reports land-ready for M28–M31.

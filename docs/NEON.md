@@ -267,13 +267,18 @@ above be written without Neon working around Void.
    rolled orthographic pixel-art snap remains supported rather than refused.
    Reference rationale, numerical rejection boundary and final native proof:
    [VOID3D.md, M30 as built](VOID3D.md#m30-as-built).
-7. **Create a node before its parent, and move it.** `addGroup`, `addMeshNode` and
-   `addLightNode` take the parent at creation, and there is `remove` but no re-parent
-   (`src/void3d/scene.ms`). Neon's `Host` creates an element first and attaches it later, and a
-   keyed list moves rows (`neon/src/render/hostTypes.ms` `Host`). Neon can defer creating the Void
-   node until it is attached, but a move between parents then means remove and add again, which
-   drops what the node holds (its pin, a bound animation). Heaps: `addChildAt` moves an object
-   from its old parent and keeps it allocated (`h3d/scene/Object.hx`).
+7. **Create a node before its parent, and move it.** Implemented by M31 in branch
+   source commit `32f0f9c`, not yet landed. `src/void3d/scene.ms`: the four
+   `add*Node` factories take `parent: NodeId3D | null` (old calls compile
+   unchanged); `attach(scene, parent, node)` moves a node with its local pose,
+   ids, pins, bound animation, camera binding and pick ownership intact;
+   `insertBefore(scene, parent, node, before)` places it among its siblings, and
+   the order is observable in equal-depth draw order. Detached rows draw, light,
+   pick and sync nothing; `worldOf` answers `DetachedNode` and an active detached
+   camera `DetachedCameraNode`. Misuse — root, cycle, foreign or stale ids, a
+   `before` under another parent — stops by name; `closeScene` releases
+   never-attached forests. Measured red and native proof:
+   [VOID3D.md, M31 as built](VOID3D.md#m31-as-built).
 8. **A View that starts as a pure group and only draws once it has paint.** A Neon View is a
    group until it gets a background, a border or a shadow; void2d fixes `DrawKind` at
    construction (`node.ms` `newRow`), and `setBoxStyle` requires a Rect, so Neon must either
