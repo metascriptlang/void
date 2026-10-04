@@ -199,7 +199,7 @@ export function fillConvex(this g: NodeRef, pts: Vec2[], color: Color): NodeRef 
 	return g;
 }
 
-function polyArea2(pts: Span<Vec2>): float32 {
+function polyArea2(pts: Readonly<Span<Vec2>>): float32 {
 	const m: int32 = pts.length as int32;
 	let a: float32 = 0.0;
 	for (let i: int32 = 0; i < m; i++) {
@@ -223,8 +223,8 @@ function pointInTri(px: float32, py: float32, ax: float32, ay: float32, bx: floa
 }
 
 function isEar(
-	pts: Span<Vec2>,
-	next: Span<int32>,
+	pts: Readonly<Span<Vec2>>,
+	next: Readonly<Span<int32>>,
 	u: int32,
 	v: int32,
 	w: int32,
@@ -244,7 +244,7 @@ function isEar(
 
 // ear-clipping triangulation → flat index triples (handles CONCAVE simple polygons;
 // self-intersecting outlines are undefined).
-function triangulate(pts: Span<Vec2>): int32[] {
+function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 	const out: int32[] = [];
 	const n: int32 = pts.length as int32;
 	if (n < 3) { return out; }

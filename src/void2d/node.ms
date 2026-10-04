@@ -881,7 +881,7 @@ function tileGroupRow(n: NodeRef, call: string): int32 {
 	return i;
 }
 
-function putTiles(this s: Scene2D, i: int32, cells: Span<TileCell>): void {
+function putTiles(this s: Scene2D, i: int32, cells: Readonly<Span<TileCell>>): void {
 	const p: int32 = s.payloads[i];
 	const have: int32 = s.tileCells[p].length as int32;
 	const want: int32 = cells.length as int32;
@@ -899,19 +899,19 @@ function putTiles(this s: Scene2D, i: int32, cells: Span<TileCell>): void {
 	s.reshape(i);
 }
 
-export function setTiles(this n: NodeRef, cells: Span<TileCell>): NodeRef {
+export function setTiles(this n: NodeRef, cells: Readonly<Span<TileCell>>): NodeRef {
 	n.scene.putTiles(tileGroupRow(n, "setTiles"), cells);
 	return n;
 }
 
-function pushTiles(this s: Scene2D, i: int32, cells: Span<TileCell>): void {
+function pushTiles(this s: Scene2D, i: int32, cells: Readonly<Span<TileCell>>): void {
 	if ((cells.length as int32) == 0) { return; }
 	const p: int32 = s.payloads[i];
 	for (let k: int32 = 0; k < (cells.length as int32); k++) { s.tileCells[p].push(cells[k]); }
 	s.reshape(i);
 }
 
-export function appendTiles(this n: NodeRef, cells: Span<TileCell>): NodeRef {
+export function appendTiles(this n: NodeRef, cells: Readonly<Span<TileCell>>): NodeRef {
 	n.scene.pushTiles(tileGroupRow(n, "appendTiles"), cells);
 	return n;
 }
@@ -1319,12 +1319,12 @@ export function setMaxWidth(this n: NodeRef, width: float32): NodeRef {
 	return n;
 }
 
-export function setTextRuns(this n: NodeRef, runs: Span<TextRun>): NodeRef {
+export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): NodeRef {
 	setLabelRuns(textChanged(n, "setTextRuns"), runs);
 	return n;
 }
 
-export function setShapingBreaks(this n: NodeRef, breaks: Span<int32>): NodeRef {
+export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>): NodeRef {
 	setLabelShapingBreaks(textChanged(n, "setShapingBreaks"), breaks);
 	return n;
 }

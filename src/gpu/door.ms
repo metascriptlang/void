@@ -48,8 +48,10 @@ import {
 // lowers to the (pointer, int64 length) pair door.h declares. Importing them from the header
 // maps the pointer to Borrow<T>, and on msc 0.2.53 `span[0]` passed there is the address of a
 // one-element copy (docs/VOID3D.md, Compiler notes).
-extern function doorMakePipeline(descriptor: Span<uint32>): uint32;
-extern function doorBeginPass(descriptor: Span<uint32>, clear: Span<float32>): void;
+extern function doorMakePipeline(descriptor: Readonly<Span<uint32>>): uint32;
+extern function doorBeginPass(
+	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
+): void;
 
 // Default is the swapchain's own format (sokol's 0), for pipelines drawn to the screen.
 export enum PixelFormat {
@@ -120,7 +122,7 @@ export function layoutPerInstance(layout: int32): boolean {
 	return doorLayoutPerInstance(layout) != 0;
 }
 
-export function makePipeline(descriptor: Span<uint32>): uint32 {
+export function makePipeline(descriptor: Readonly<Span<uint32>>): uint32 {
 	return doorMakePipeline(descriptor);
 }
 
@@ -154,7 +156,9 @@ export function passState(): PassState {
 	return doorPassState() as PassState;
 }
 
-export function beginPassWith(descriptor: Span<uint32>, clear: Span<float32>): void {
+export function beginPassWith(
+	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
+): void {
 	doorBeginPass(descriptor, clear);
 }
 

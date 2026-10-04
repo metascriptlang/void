@@ -207,7 +207,9 @@ function isJoiner(codepoint: int32): boolean {
 		codepoint == EMOJI_PRESENTATION;
 }
 
-function coversGrapheme(face: int32, cps: Span<Codepoint>, first: int32, end: int32): boolean {
+function coversGrapheme(
+	face: int32, cps: Readonly<Span<Codepoint>>, first: int32, end: int32,
+): boolean {
 	for (let k = first; k < end; k++) {
 		if (!isJoiner(cps[k].value) && glyphIndex(face, cps[k].value) == 0) { return false; }
 	}
@@ -216,7 +218,7 @@ function coversGrapheme(face: int32, cps: Span<Codepoint>, first: int32, end: in
 
 function graphemeFace(
 	font: FontId,
-	cps: Span<Codepoint>,
+	cps: Readonly<Span<Codepoint>>,
 	first: int32,
 	end: int32,
 ): Result<CodepointFace, GraphemeCoverage> {
@@ -303,7 +305,7 @@ struct LineBreak {
 	next: int32;
 }
 
-function breakAt(glyphs: Span<LaidGlyph>, next: int32): LineBreak {
+function breakAt(glyphs: Readonly<Span<LaidGlyph>>, next: int32): LineBreak {
 	const end: int32 = glyphs[next - 1].codepoint == SPACE ? next - 1 : next;
 	return { end: end, next: next };
 }
@@ -330,7 +332,9 @@ function breakAfter(shaped: ShapedText, from: int32, to: int32, room: float32): 
 	return whole;
 }
 
-function tallestFaces(glyphs: Span<LaidGlyph>, primary: int32, style: TextStyle): FaceMetrics {
+function tallestFaces(
+	glyphs: Readonly<Span<LaidGlyph>>, primary: int32, style: TextStyle,
+): FaceMetrics {
 	const own: FaceMetrics = faceMetrics(primary, style.size);
 	let ascent: float32 = own.ascent;
 	let descent: float32 = own.descent;
@@ -385,7 +389,7 @@ function unitEnd(this cp: Codepoint): int32 {
 	return cp.index + (cp.value >= 0x10000 ? 2 : 1);
 }
 
-function assignRuns(cps: Span<Codepoint>, runs: Span<TextRun>, units: int32): void {
+function assignRuns(cps: Span<Codepoint>, runs: Readonly<Span<TextRun>>, units: int32): void {
 	let total: int32 = 0;
 	for (const run of runs) { total = total + run.len; }
 	if (total != units) {
@@ -410,7 +414,7 @@ function assignRuns(cps: Span<Codepoint>, runs: Span<TextRun>, units: int32): vo
 	}
 }
 
-function markShapingBreaks(cps: Span<Codepoint>, breaks: Span<int32>): void {
+function markShapingBreaks(cps: Span<Codepoint>, breaks: Readonly<Span<int32>>): void {
 	const count: int32 = cps.length as int32;
 	for (const at of breaks) {
 		let lo: int32 = 0;
@@ -430,7 +434,7 @@ function markShapingBreaks(cps: Span<Codepoint>, breaks: Span<int32>): void {
 	}
 }
 
-function hasTab(cps: Span<Codepoint>): boolean {
+function hasTab(cps: Readonly<Span<Codepoint>>): boolean {
 	for (let i = 0; i < (cps.length as int32); i++) {
 		if (cps[i].value == TAB) { return true; }
 	}
@@ -442,10 +446,10 @@ function hasTab(cps: Span<Codepoint>): boolean {
 export function shapeText(
 	text: string,
 	style: TextStyle,
-	runs: Span<TextRun>,
-	shapingBreaks: Span<int32>,
+	runs: Readonly<Span<TextRun>>,
+	shapingBreaks: Readonly<Span<int32>>,
 ): ShapedText {
-	const cps: Vec<Codepoint> = decodeUtf8(text, style.font);
+	let cps: Vec<Codepoint> = decodeUtf8(text, style.font);
 	const count: int32 = cps.length as int32;
 	const units: int32 = count > 0 ? cps[count - 1].unitEnd() : 0;
 	if (runs.length > 0) { assignRuns(cps, runs, units); }
@@ -509,7 +513,7 @@ export function shapeText(
 	};
 }
 
-function lineWidthOf(glyphs: Span<LaidGlyph>, first: int32): float32 {
+function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 	let width: float32 = 0.0;
 	for (let k = first; k < (glyphs.length as int32); k++) {
 		const g: LaidGlyph = glyphs[k];
@@ -674,7 +678,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 		shaped.breaks = lineBreaks(shaped.values);
 	}
 	let glyphs: Vec<LaidGlyph> = new Array(0);
-	const lines: Vec<LineBox> = new Array(0);
+	let lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
 	let top: float32 = 0.0;
 	let start: int32 = 0;
@@ -761,7 +765,9 @@ export function layout(this typeof TextLayout, text: string, style: TextStyle): 
 	return layoutRuns(text, style, plain);
 }
 
-export function layoutRuns(text: string, style: TextStyle, runs: Span<TextRun>): TextLayout {
+export function layoutRuns(
+	text: string, style: TextStyle, runs: Readonly<Span<TextRun>>,
+): TextLayout {
 	const noBreaks: Vec<int32> = new Array(0);
 	return wrapText(shapeText(text, style, runs, noBreaks), style, PLAIN_LINES);
 }

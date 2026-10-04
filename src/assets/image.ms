@@ -5,8 +5,8 @@ import {
 	void_load_image, void_image_width, void_image_height, void_free_image
 } from "./image.h";
 
-extern function void_image_size(bytes: Span<uint8>): int64;
-extern function void_decode_image(bytes: Span<uint8>, pixels: Span<uint32>): int32;
+extern function void_image_size(bytes: Readonly<Span<uint8>>): int64;
+extern function void_decode_image(bytes: Readonly<Span<uint8>>, pixels: Span<uint32>): int32;
 
 export async function loadImage(path: string, channels: int32): Promise<Ptr<void>> {
 	return void_load_image(path, channels);
@@ -50,25 +50,25 @@ export struct Pixels {
 const MAX_IMAGE_SIDE: int32 = 16384;
 const MAX_ENCODED_LENGTH: int64 = 2147483647;
 
-function isPng(bytes: Span<uint8>): boolean {
+function isPng(bytes: Readonly<Span<uint8>>): boolean {
 	return bytes.length >= 8
 		&& bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
 		&& bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A;
 }
 
-function isJpeg(bytes: Span<uint8>): boolean {
+function isJpeg(bytes: Readonly<Span<uint8>>): boolean {
 	return bytes.length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
 }
 
 // By the first bytes, as hxd.res.Image.getInfo does, with the signatures glTF 2.0 lists
 // for image/png and image/jpeg.
-export function imageFormatOf(bytes: Span<uint8>): Result<ImageFormat, ImageError> {
+export function imageFormatOf(bytes: Readonly<Span<uint8>>): Result<ImageFormat, ImageError> {
 	if (isPng(bytes)) { return Result.ok(ImageFormat.Png); }
 	if (isJpeg(bytes)) { return Result.ok(ImageFormat.Jpeg); }
 	return Result.err(ImageError.NotPngOrJpeg);
 }
 
-export function decodeImage(bytes: Span<uint8>): Result<Pixels, ImageError> {
+export function decodeImage(bytes: Readonly<Span<uint8>>): Result<Pixels, ImageError> {
 	const _format: ImageFormat = try imageFormatOf(bytes);
 	if ((bytes.length as int64) > MAX_ENCODED_LENGTH) { return Result.err(ImageError.TooLarge); }
 	const size: int64 = void_image_size(bytes);

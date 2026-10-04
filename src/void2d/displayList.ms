@@ -1174,31 +1174,33 @@ const PLACE_FIELDS: int32[] = [
 ];
 
 
-function isDraw(cmds: Span<float32>, base: int32): boolean {
+function isDraw(cmds: Readonly<Span<float32>>, base: int32): boolean {
 	return (cmds[base + CMD_KIND] as int32) == (CommandKind.Draw as int32);
 }
 
-export function pipelineAt(cmds: Span<float32>, base: int32): Pipeline {
+export function pipelineAt(cmds: Readonly<Span<float32>>, base: int32): Pipeline {
 	return (cmds[base + CMD_PIPELINE] as int32) as Pipeline;
 }
 
-function offsetField(cmds: Span<float32>, base: int32): int32 {
+function offsetField(cmds: Readonly<Span<float32>>, base: int32): int32 {
 	return pipelineAt(cmds, base) == Pipeline.Vertex ? CMD_VERTEX_OFFSET : CMD_INSTANCE_OFFSET;
 }
 
-function countField(cmds: Span<float32>, base: int32): int32 {
+function countField(cmds: Readonly<Span<float32>>, base: int32): int32 {
 	return pipelineAt(cmds, base) == Pipeline.Vertex ? CMD_VERTEX_COUNT : CMD_INSTANCE_COUNT;
 }
 
-export function runOffset(cmds: Span<float32>, base: int32): int32 {
+export function runOffset(cmds: Readonly<Span<float32>>, base: int32): int32 {
 	return cmds[base + offsetField(cmds, base)] as int32;
 }
 
-export function runCount(cmds: Span<float32>, base: int32): int32 {
+export function runCount(cmds: Readonly<Span<float32>>, base: int32): int32 {
 	return cmds[base + countField(cmds, base)] as int32;
 }
 
-function sameRun(a: Span<float32>, ab: int32, b: Span<float32>, bb: int32): boolean {
+function sameRun(
+	a: Readonly<Span<float32>>, ab: int32, b: Readonly<Span<float32>>, bb: int32,
+): boolean {
 	if (!isDraw(a, ab) || !isDraw(b, bb)) { return false; }
 	for (const f of RUN_FIELDS) {
 		if (a[ab + f] != b[bb + f]) { return false; }
@@ -1206,7 +1208,9 @@ function sameRun(a: Span<float32>, ab: int32, b: Span<float32>, bb: int32): bool
 	return true;
 }
 
-function breakBetween(prev: Span<float32>, pb: int32, next: Span<float32>, nb: int32): float32 {
+function breakBetween(
+	prev: Readonly<Span<float32>>, pb: int32, next: Readonly<Span<float32>>, nb: int32,
+): float32 {
 	if (prev[pb + CMD_PIPELINE] != next[nb + CMD_PIPELINE]) {
 		return (BreakReason.Pipeline as int32) as float32;
 	}
@@ -1255,7 +1259,7 @@ export function lanesReorderable(c0: int32, c1: int32): boolean {
 	return true;
 }
 
-function orderLanes(c0: int32, c1: int32, marks: Span<int32>, reorder: boolean): void {
+function orderLanes(c0: int32, c1: int32, marks: Readonly<Span<int32>>, reorder: boolean): void {
 	while ((activeContext.laneOrder.length as int32) > 0) { activeContext.laneOrder.pop(); }
 	if (!reorder) {
 		for (let c: int32 = c0; c < c1; c++) { activeContext.laneOrder.push(c); }
@@ -1316,7 +1320,12 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 }
 
 export function layLanes(
-	c0: int32, c1: int32, marks: Span<int32>, reorder: boolean, pred: int32, lo: PaintIndex,
+	c0: int32,
+	c1: int32,
+	marks: Readonly<Span<int32>>,
+	reorder: boolean,
+	pred: int32,
+	lo: PaintIndex,
 ): void {
 	const sources: int32 = c1 - c0;
 	sized(activeContext.laneSourceOffsets, sources);
@@ -1407,7 +1416,7 @@ export function layLanes(
 	activeContext.commandTotal = c0 + outputs - skip;
 }
 
-function holding(ids: Span<int32>, at: int32, count: int32, c0: int32): int32 {
+function holding(ids: Readonly<Span<int32>>, at: int32, count: int32, c0: int32): int32 {
 	let low: int32 = 0;
 	let high: int32 = (ids.length as int32) - 1;
 	let found: int32 = -1;

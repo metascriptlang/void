@@ -51,7 +51,7 @@ export function writeColorMatrix(m: Mat4, out: Span<float32>, at: int32): void {
 	out[at + 15] = m.m44;
 }
 
-export function readColorMatrix(from: Span<float32>, at: int32): Mat4 {
+export function readColorMatrix(from: Readonly<Span<float32>>, at: int32): Mat4 {
 	return {
 		m11: from[at], m12: from[at + 1], m13: from[at + 2], m14: from[at + 3],
 		m21: from[at + 4], m22: from[at + 5], m23: from[at + 6], m24: from[at + 7],

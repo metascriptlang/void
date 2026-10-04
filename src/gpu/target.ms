@@ -314,11 +314,11 @@ export function asHandle(this sampler: Sampler): uint32 {
 	return sampler.handle;
 }
 
-function formatAt(colors: Span<ColorAttachment>, index: int32): PixelFormat {
+function formatAt(colors: Readonly<Span<ColorAttachment>>, index: int32): PixelFormat {
 	return index < (colors.length as int32) ? colors[index].format : PixelFormat.None;
 }
 
-function stopOnTooManyColors(call: string, colors: Span<ColorAttachment>): void {
+function stopOnTooManyColors(call: string, colors: Readonly<Span<ColorAttachment>>): void {
 	if ((colors.length as int32) <= DOOR_MAX_COLOR_ATTACHMENTS) { return; }
 	console.log(`gpu door: ${call} takes at most ${DOOR_MAX_COLOR_ATTACHMENTS} color ` +
 		`attachments, given ${colors.length}`);
@@ -326,7 +326,9 @@ function stopOnTooManyColors(call: string, colors: Span<ColorAttachment>): void 
 }
 
 // Offscreen targets are single-sampled (door.c makes them with sample_count 1).
-export function layoutOf(colors: Span<ColorAttachment>, depth: DepthAttachment): TargetLayout {
+export function layoutOf(
+	colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment,
+): TargetLayout {
 	stopOnTooManyColors("layoutOf", colors);
 	return {
 		color0: formatAt(colors, 0),
@@ -430,7 +432,7 @@ function stopOnStaleAttachment(index: int32, generation: int32): void {
 	unreachable;
 }
 
-export function beginPass(colors: Span<ColorAttachment>, depth: DepthAttachment): void {
+export function beginPass(colors: Readonly<Span<ColorAttachment>>, depth: DepthAttachment): void {
 	stopOnTooManyColors("beginPass", colors);
 	const generation: int32 = contextGeneration();
 	for (let i = 0; i < (colors.length as int32); i++) {

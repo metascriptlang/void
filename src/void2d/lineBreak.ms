@@ -121,21 +121,21 @@ function startsHyphenatedWord(c: LineClass): boolean {
 	};
 }
 
-function classAt(units: Span<Unit>, k: int32): LineClass {
+function classAt(units: Readonly<Span<Unit>>, k: int32): LineClass {
 	return units[k].property.cls;
 }
 
-function eastAsianAt(units: Span<Unit>, k: int32): boolean {
+function eastAsianAt(units: Readonly<Span<Unit>>, k: int32): boolean {
 	return units[k].property.eastAsian;
 }
 
-function beforeSpaces(units: Span<Unit>, k: int32): int32 {
+function beforeSpaces(units: Readonly<Span<Unit>>, k: int32): int32 {
 	let at: int32 = k;
 	while (at >= 0 && classAt(units, at) == LineClass.SP) { at = at - 1; }
 	return at;
 }
 
-function numberEndsAt(units: Span<Unit>, k: int32): boolean {
+function numberEndsAt(units: Readonly<Span<Unit>>, k: int32): boolean {
 	let at: int32 = k;
 	while (at >= 0 && (classAt(units, at) == LineClass.SY || classAt(units, at) == LineClass.IS)) {
 		at = at - 1;
@@ -143,12 +143,12 @@ function numberEndsAt(units: Span<Unit>, k: int32): boolean {
 	return at >= 0 && classAt(units, at) == LineClass.NU;
 }
 
-function aksaraBase(units: Span<Unit>, k: int32): boolean {
+function aksaraBase(units: Readonly<Span<Unit>>, k: int32): boolean {
 	const c: LineClass = classAt(units, k);
 	return c == LineClass.AK || c == LineClass.AS || units[k].dottedCircle;
 }
 
-function quoteBreak(units: Span<Unit>, j: int32, count: int32): boolean {
+function quoteBreak(units: Readonly<Span<Unit>>, j: int32, count: int32): boolean {
 	const a: LineClass = classAt(units, j - 1);
 	const b: LineClass = classAt(units, j);
 	if (b == LineClass.QU && !units[j].property.initialQuote) { return false; }
@@ -160,7 +160,7 @@ function quoteBreak(units: Span<Unit>, j: int32, count: int32): boolean {
 	return true;
 }
 
-function numericBreak(units: Span<Unit>, j: int32, count: int32): boolean {
+function numericBreak(units: Readonly<Span<Unit>>, j: int32, count: int32): boolean {
 	const a: LineClass = classAt(units, j - 1);
 	const b: LineClass = classAt(units, j);
 	if (b == LineClass.PO || b == LineClass.PR) {
@@ -182,7 +182,7 @@ function numericBreak(units: Span<Unit>, j: int32, count: int32): boolean {
 	return true;
 }
 
-function aksaraBreak(units: Span<Unit>, j: int32, count: int32): boolean {
+function aksaraBreak(units: Readonly<Span<Unit>>, j: int32, count: int32): boolean {
 	const a: LineClass = classAt(units, j - 1);
 	const b: LineClass = classAt(units, j);
 	if (a == LineClass.AP && aksaraBase(units, j)) { return false; }
@@ -195,7 +195,7 @@ function aksaraBreak(units: Span<Unit>, j: int32, count: int32): boolean {
 }
 
 // UAX #14 LB11-LB31 between units j - 1 and j, in the order the standard applies them.
-function unitBreak(units: Span<Unit>, j: int32, count: int32): boolean {
+function unitBreak(units: Readonly<Span<Unit>>, j: int32, count: int32): boolean {
 	const a: LineClass = classAt(units, j - 1);
 	const b: LineClass = classAt(units, j);
 	if (b == LineClass.WJ || a == LineClass.WJ || a == LineClass.GL) { return false; }
@@ -274,7 +274,7 @@ function unitBreak(units: Span<Unit>, j: int32, count: int32): boolean {
 }
 
 // Whether a line may break before each codepoint (UAX #14, UCD 18.0.0); never before the first.
-export function lineBreaks(codepoints: Span<int32>): Vec<boolean> {
+export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
 	const count: int32 = codepoints.length as int32;
 	const original: Vec<LineClass> = new Array(0);
 	const absorbed: Vec<boolean> = new Array(0);
@@ -322,7 +322,7 @@ export function lineBreaks(codepoints: Span<int32>): Vec<boolean> {
 	return breaks;
 }
 
-function afterZeroWidthSpace(original: Span<LineClass>, i: int32): boolean {
+function afterZeroWidthSpace(original: Readonly<Span<LineClass>>, i: int32): boolean {
 	let at: int32 = i - 1;
 	while (at >= 0 && original[at] == LineClass.SP) { at = at - 1; }
 	return at >= 0 && original[at] == LineClass.ZW;

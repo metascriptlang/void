@@ -118,7 +118,7 @@ function resolvePipelines(): void {
 
 
 
-export function preparePipelines(modes: Span<BlendMode>): void {
+export function preparePipelines(modes: Readonly<Span<BlendMode>>): void {
 	for (const mode of modes) {
 		for (let program: int32 = 0; program < (Program2D.Blur as int32); program++) {
 			wantPipelineSlot(pipelineSlot(program, 0, mode as int32));

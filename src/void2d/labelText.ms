@@ -242,7 +242,7 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 // underline and strikethrough sit where the run's face puts them.
 function runDecorations(
 	this layout: TextLayout,
-	runs: Span<TextRun>,
+	runs: Readonly<Span<TextRun>>,
 	size: float32,
 ): Vec<Decoration> {
 	let out: Vec<Decoration> = new Array(0);
@@ -257,7 +257,7 @@ function runDecorations(
 
 function lineDecorations(
 	this layout: TextLayout,
-	runs: Span<TextRun>,
+	runs: Readonly<Span<TextRun>>,
 	size: float32,
 	li: int32,
 	slot: DecorationKind,
@@ -328,14 +328,14 @@ function lineDecorations(
 	}
 }
 
-export function setLabelRuns(index: int32, runs: Span<TextRun>): void {
+export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): void {
 	const kept: Vec<TextRun> = new Array(0);
 	for (const run of runs) { kept.push(run); }
 	labelTexts[index].runs = kept;
 	labelTexts[index].reshape = true;
 }
 
-export function setLabelShapingBreaks(index: int32, breaks: Span<int32>): void {
+export function setLabelShapingBreaks(index: int32, breaks: Readonly<Span<int32>>): void {
 	const kept: Vec<int32> = new Array(0);
 	for (const at of breaks) { kept.push(at); }
 	labelTexts[index].shapingBreaks = kept;
