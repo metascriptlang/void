@@ -133,8 +133,22 @@ static int grabD3D11(int slot, IDXGISwapChain *swapChain, int buffer) {
 }
 #endif
 
+extern int sapp_width(void);
+extern void voidRequestedSize(int *w, int *h);
+extern int sapp_height(void);
+static void stopOnClampedWindow(void) {
+	int reqW = 0, reqH = 0;
+	voidRequestedSize(&reqW, &reqH);
+	if (reqW <= 0 || reqH <= 0) return;
+	if (reqW == sapp_width() && reqH == sapp_height()) return;
+	fprintf(stderr, "capture: the window was asked for %dx%d but the framebuffer is %dx%d; "
+		"a pixel test must read the size it asked for or use fbWidth/fbHeight\n",
+		reqW, reqH, sapp_width(), sapp_height());
+	exit(1);
+}
+
 int voidCaptureGrab(int slot) {
-	if (slot < 0 || slot >= VOID_CAPTURE_SLOTS) return 0;
+	stopOnClampedWindow();
 #if defined(VOID_CAPTURE_D3D11)
 	return grabD3D11(slot, (IDXGISwapChain *)sapp_d3d11_get_swap_chain(), 0);
 #elif defined(VOID_CAPTURE_GL)

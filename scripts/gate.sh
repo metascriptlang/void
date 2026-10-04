@@ -275,6 +275,20 @@ else
 	fail "view paint — see out/gate-view-paint.log and out/gate-view-paint-run.log"
 fi
 
+rm -f out/fbTrap.exe
+if "$MSC" build tests/integration/fbTrap.ms --release --output=out/fbTrap.exe \
+		> out/gate-fb-trap.log 2>&1; then
+	fb_status=0
+	out/fbTrap.exe > out/gate-fb-trap-run.log 2>&1 || fb_status=$?
+	if [ "$fb_status" -ne 0 ] && grep -qF "the framebuffer is" out/gate-fb-trap-run.log; then
+		pass "fb trap: a window clamped away from its requested size stops before readback"
+	else
+		fail "fb trap — a clamped window did not name both sizes"
+	fi
+else
+	fail "fb trap — see out/gate-fb-trap.log"
+fi
+
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
 		&& out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"

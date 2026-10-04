@@ -24,6 +24,8 @@ static void call0(msClosure c) {
 static msClosure s_init;
 static msClosure s_frame;
 static bool s_keys[SAPP_MAX_KEYCODES];
+static int s_reqW = 0;
+static int s_reqH = 0;
 
 static void _init(void) { call0(s_init); }
 static void _frame(void) { call0(s_frame); }
@@ -42,6 +44,8 @@ static void _cleanup(void) { sg_shutdown(); }
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	if (s_driver != DRIVER_NONE) voidFail("voidRun: this process already drives Void through host views");
 	s_driver = DRIVER_WINDOW;
+	s_reqW = w;
+	s_reqH = h;
 	s_init = init;
 	s_frame = frame;
 	sapp_desc d = {0};
@@ -57,6 +61,8 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	d.logger.func = slog_func;
 	sapp_run(&d);
 }
+
+void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 
 void voidRun(int w, int h, msClosure init, msClosure frame) {
 	voidRunConfigured(w, h, 4, 1, init, frame);

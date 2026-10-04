@@ -24,6 +24,11 @@ void voidRun(int w, int h, msClosure init, msClosure frame);
 // voidDpiScale() 1.0 whatever the host display reports.
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame);
 
+// The window size voidRunConfigured asked the host for; 0 when no windowed run started.
+// Read-only: the OS may lawfully clamp a window (a minimum client width); the framebuffer
+// is the truth a frame must follow, and this getter only lets a test compare the two.
+void voidRequestedSize(int *w, int *h);
+
 typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);
 VoidViewId voidViewCreate(long long native, int w, int h, float scale);

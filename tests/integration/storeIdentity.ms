@@ -428,4 +428,4 @@ function frame(): void {
 }
 
 if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
-voidRunConfigured(32, 32, 1, 0, init, frame);
+voidRunConfigured(128, 96, 1, 0, init, frame);

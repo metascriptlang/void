@@ -1,5 +1,5 @@
 import { env } from "std/process";
-import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
+import { gfxSetup } from "../../src/sokol/gpu";
 import { endPass, commit } from "../../src/gpu/door";
 import { beginScreenPass } from "../../src/gpu/target";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
@@ -49,11 +49,6 @@ function init(): void {
 	setup2d();
 	const misuse: string = env.get("VOID_VIEW_PAINT_MISUSE");
 	if (!misuse.equals("")) { exerciseMisuse(misuse); }
-	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) {
-		console.log(`view paint needs a ${WIDTH}x${HEIGHT} framebuffer, the window gave ` +
-			`${fbWidth()}x${fbHeight()}; the OS enforces a minimum client width`);
-		voidCaptureExit(1);
-	}
 	subject.add(view);
 	view.addChild(subject.rect(8.0, 8.0, BLUE).at(2.0, 2.0));
 	counts.add(plain);
@@ -61,7 +56,7 @@ function init(): void {
 }
 
 function drawToScreen(s: Scene2D): void {
-	s.prepare(fbWidth() as float32, fbHeight() as float32, 1.0);
+	s.prepare(WIDTH as float32, HEIGHT as float32, 1.0);
 	beginScreenPass({ x: CLEAR.r * CLEAR.a, y: CLEAR.g * CLEAR.a, z: CLEAR.b * CLEAR.a, w: CLEAR.a });
 	s.drawScreen();
 	endPass();
