@@ -192,14 +192,14 @@ function cellMatrix(c: TileCell): Transform2D {
 function tileBounds(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	if (!s.tileGroups[p].boundsStale) { return; }
-	const cells: Span<TileCell> = s.tileCells[p];
 	let xMin: float32 = 1e30;
 	let yMin: float32 = 1e30;
 	let xMax: float32 = -1e30;
 	let yMax: float32 = -1e30;
-	for (let k: int32 = 0; k < (cells.length as int32); k++) {
-		const m: Transform2D = cellMatrix(cells[k]);
-		const t: Tile = cells[k].tile;
+	for (let k: int32 = 0; k < (s.tileCells[p].length as int32); k++) {
+		const cell: TileCell = s.tileCells[p][k];
+		const m: Transform2D = cellMatrix(cell);
+		const t: Tile = cell.tile;
 		const a = vec2(t.dx, t.dy) * m;
 		const b = vec2(t.dx + t.w, t.dy) * m;
 		const c = vec2(t.dx + t.w, t.dy + t.h) * m;
@@ -696,15 +696,15 @@ function emitTiles(
 	s: Scene2D, i: int32, world: Transform2D, col: Color, blend: BlendMode, instanced: boolean,
 ): void {
 	const p: int32 = s.payloads[i];
-	const cells: Span<TileCell> = s.tileCells[p];
 	const end: int32 = drawnEnd(s, p);
 	let open: boolean = false;
 	let view: uint32 = 0;
 	let premultiplied: boolean = false;
 	for (let k: int32 = s.tileGroups[p].first; k < end; k++) {
-		const t: Tile = cells[k].tile;
-		const m: Transform2D = world * cellMatrix(cells[k]);
-		const tint: Color = tileTint(cells[k].color, col);
+		const cell: TileCell = s.tileCells[p][k];
+		const t: Tile = cell.tile;
+		const m: Transform2D = world * cellMatrix(cell);
+		const tint: Color = tileTint(cell.color, col);
 		const origin = vec2(t.dx, t.dy) * m;
 		if (instanced) {
 			if (!open || t.view != view || t.alphaPremultiplied != premultiplied) {
@@ -1299,11 +1299,11 @@ function closeLanes(s: Scene2D): void {
 	const recorded: boolean = closeLaneRun();
 	const c0: int32 = frame.opened.commands;
 	const c1: int32 = commandCount();
-	const marks: Span<int32> = s.laneMarks;
-	const children: Span<int32> = marks[frame.marks..(s.laneMarks.length as int32)];
+	const end: int32 = s.laneMarks.length as int32;
 	const reorder: boolean = targetCommandCount() == frame.targets &&
-		(children.length as int32) > 0 && children[0] == c0 && lanesReorderable(c0, c1);
-	layLanes(c0, c1, children, reorder, frame.openSplit ? c0 - 1 : -1, frame.opened);
+		end > frame.marks && s.laneMarks[frame.marks] == c0 && lanesReorderable(c0, c1);
+	const pred: int32 = frame.openSplit ? c0 - 1 : -1;
+	layLanes(c0, c1, s.laneMarks[frame.marks..end], reorder, pred, frame.opened);
 	remapLaneRows(s, frame.row, c0, c1);
 	if (recorded) {
 		reopenLast();
@@ -1491,19 +1491,19 @@ function retileRow(s: Scene2D, i: int32): void {
 	const col: Color = rgba(color.r, color.g, color.b, color.a * s.alphas[i]);
 	const first: int32 = s.tileGroups[p].first;
 	const end: int32 = drawnEnd(s, p);
-	const cells: Span<TileCell> = s.tileCells[p];
 	for (let e: int32 = 0; e < (s.tileEdits[p].length as int32); e++) {
 		const k: int32 = s.tileEdits[p][e];
 		if (k < first || k >= end) { continue; }
 		const at: PaintIndex = { ...start, spriteInstances: start.spriteInstances + (k - first) };
 		const past: PaintIndex = { ...at, spriteInstances: at.spriteInstances + 1 };
-		const t: Tile = cells[k].tile;
-		const m: Transform2D = world * cellMatrix(cells[k]);
+		const cell: TileCell = s.tileCells[p][k];
+		const t: Tile = cell.tile;
+		const m: Transform2D = world * cellMatrix(cell);
 		const origin = vec2(t.dx, t.dy) * m;
 		saveRange(at, past);
 		rewriteSprite(
 			at.spriteInstances, m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1,
-			tileTint(cells[k].color, col),
+			tileTint(cell.color, col),
 		);
 		noteRange(at, past);
 	}
