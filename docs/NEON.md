@@ -233,9 +233,13 @@ above be written without Neon working around Void.
    and no textured program that skips lighting (`src/void3d/gpu3d.ms`). A screen or a sign in the
    world must not be darkened by the scene's lights. Heaps: a pass turns lighting off with
    `enableLights` (`h3d/mat/Pass.hx`).
-4. **The UV of a pick hit.** `PickHit` carries `owner`, `mesh`, `distance`, `point`
-   (`src/void3d/pick.ms`). Needed: the UV interpolated over the hit triangle's UVs, so Neon can
-   turn a press on the mesh into a pixel of the texture.
+4. **The UV of a pick hit.** Implemented by M29 in branch commit `1623c03`, not yet
+   landed. The query is `src/void3d/pick.ms` `PickHit.uv`;
+   the query keeps authored `TEXCOORD_0`, without wrap or clamp, and a mesh without that
+   attribute still hits with `uv == null`. Neon maps that coordinate into the texture's
+   UI hit test. Reference: three.js `Mesh.js` `checkGeometryIntersection` and `Triangle.js`
+   `getInterpolatedAttribute` at `d4ea9b9`; the arithmetic and real pressed-pixel evidence
+   are in [VOID3D.md, M29 as built](VOID3D.md#m29-as-built).
 5. **Premultiplied alpha and colour space across the boundary.** Read for item 1 on 2026-10-03:
    `src/void2d/shader2d.glsl` emits gamma-encoded RGB multiplied by alpha, and
    `src/void2d/draw.ms` `premultipliedBlend` blends those values into an Rgba8 UNORM target

@@ -1936,3 +1936,54 @@ run), `gateWeb2.log` (the green re-run), each stamped with the tree it ran on.
 - GLES3 and a device have not run the converted programs (the standing device gap).
 - The post-M23 list after this row: alpha as a material's, the device's largest texture,
   device runs.
+
+## M29 — interpolated pick UV
+
+**Defect pass: one avoidable-computation finding, taken.** The main-session diff review
+found that each improving triangle interpolated UVs before the nearest triangle was known.
+`src/void3d/meshData.ms` `rayIntersection` now retains the winning triangle and its existing
+Möller–Trumbore weights, then interpolates once after the loop. Its intersection, culling,
+tie order and distance calculation are unchanged. No second ray test, clamp or texture
+lookup enters the CPU query.
+
+### Fresh design pass
+
+**SHIP WITH FOLLOW-UPS.** A fresh stateless reviewer received the diff, the M29 contract,
+the porting/storage invariants, the pinned three.js excerpts and the observed receipts.
+It had no tools or prior session history. No confirmed implementation defect; the
+follow-ups were proof requirements, not a claim that the earlier smoke covered the final
+winner-only revision.
+
+| Finding | Resolution |
+|---|---|
+| Final-revision execution and compiler-emitted allocation proof still needed | The final `gate3d.sh` includes `interpolateUv` on the picking allocation path; its receipt belongs in "M29 as built" |
+| The supplied diff omitted `pixelAt`, so same-pixel readback and picking were not established from the review input alone | Main-session source check: both use `view.project(point, SCREEN_MAPPING, true)` and the same `as int32` pixel coordinates; the ray uses that pixel's centre |
+| The exact shared-edge ray selected only one of the quad's two triangles | The headless case also reverses triangle order and checks the edge UV at `1e-6`, so either contributor becomes the first equal-distance winner |
+
+The review confirmed three.js' weighted attribute sum (`Triangle.js` `getInterpolatedAttribute`,
+at `d4ea9b9`), nullable UV for a mesh without that attribute, unchanged named picking
+divergences, scalar value results, no new GPU resource or context-loss obligation, and
+the real pixel-to-ray-to-texel consumer rather than a mock. Native D3D11 receipts do not
+establish device or web coverage.
+
+The first full gate on BUILD `4573591e` (`out/tmp/m29/gate3d.log`) caught two session
+oversights, not compiler defects: the reverse-order fixture assigned through a `const`
+mesh table, and seven scalar mesh queries in `tests/oracle/ray3d.cases` had not moved to
+the new result's `.distance`. The fixture is now `let`, all seven queries are migrated,
+and the real-Heaps snapshot is unchanged. That run's allocation, readbacks, aborts,
+style and Android stages passed; it is not a green final acceptance.
+
+### Final acceptance
+
+The final full `gate3d.sh` is GREEN with three loud skips on source tree
+`f9733309ea5c1cfdb238bbc71c227526a86f2f8f`, committed as `1623c03`, binary/support
+BUILD `4573591e`, D3D11 on the shared Windows workstation. **1157/1157 tests**,
+**240 PASS lines**, **85 abort programs + 98 cases**, **72 hashes** with none adopted,
+oracle **75/11**, the picking allocation path including `interpolateUv` clean, bench
+and churn flat, Android arm64 **3,774,392 B**. The held Forward/Anchor configurations
+are still not accepted as correct; GLES3 device coverage remains unrun.
+
+`out/tmp/m29/gate3dFinal.log` is the final receipt; `gate3d.log` beside it is the first
+red. The corrected targeted receipts are `unitCorrected.log` and
+`rayOracleCorrected.log`. Every design-proof follow-up is taken. No web gate or device
+success is claimed, and no new stopping entry or GPU resource belongs to this row.
