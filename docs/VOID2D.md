@@ -2458,6 +2458,18 @@ number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
   filter-result branches are gone. `sceneTarget.ms` still passes nine native frames.
   Logs: `out/tmp/targetOwner/`; final full-chain results are in the review.
 
+- **Optional View paint, NEON item 8 (`c91989c`, `db2b65f`).** A Group becomes a drawing node
+   in place: `setBackground` / `setBoxStyle` promote, `clearBackground` demotes and frees the
+   box style, any other kind stops by name, and the frame blanks a transparent fill with no
+   border and no shadow. **Dispositions:** W — same-size promotion is Void's one-row model, not
+   Heaps' lazy ScaleGrid child (`Flow.hx:1115`), so layout needs no sync; W — promotion starts
+   and clearing resets a transparent fill, where Heaps' `Texture.resize`-era dispose allows
+   realloc; N — scheduling stays the caller's, as RN's `formsView` is a derived trait, not a
+   redraw policy. Pins: T0 promotion identity/colour/reuse and blank cull; native
+   `tests/integration/viewPaint.ms` pixels, zero-draw and kind-stop. The 2×-X phantom that
+   started this was the OS minimum client width, not placement: the consumer now refuses a
+   short framebuffer by name.
+
   Source and native consumer proof do not certify WebGL2/GLES3 or genuine context loss.
   Raw texture-view ids still change with storage; checked material rebinding is M27, not
   completed by changing the target owner. Full-chain gate and design verdict are recorded

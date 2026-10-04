@@ -317,6 +317,13 @@ drawing through a closed owner and zero-size/pool refusals use the existing env-
 each gate row requires nonzero exit and its named error. M27's checked material-to-target binding
 is a separate consumer.
 
+`tests/integration/viewPaint.ms` holds the optional View paint boundary in a native process:
+pixels after in-place promotion and demotion with a child kept over both, a transparent
+background emitting zero draws, a border-only interior showing the background through it, and
+a label background stopping by name. The harness refuses a framebuffer smaller than requested,
+naming both sizes — Windows enforces a minimum client width that otherwise reads as a phantom
+2× horizontal placement.
+
 `scripts/checkBridgePass.sh` compiles real C consumers of the public pass surface
 (`tests/compile/bridgePass.c`): the door consumer must compile, while bridge begin/commit
 consumers must be rejected by the missing identifiers. An unavailable compiler or broken

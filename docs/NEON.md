@@ -222,5 +222,20 @@ above be written without Neon working around Void.
    builds and removes a ScaleGrid child lazily — Void's divergence is to keep one row instead
    of adding a child, so the layout size needs no sync.
 
+   **Answer, branch commits `c91989c` + `db2b65f`:** `setBackground`, `clearBackground` and
+   `setBoxStyle` promote and demote a Group↔Rect on the same row (`node.ms` `takePaintable`);
+   the NodeRef, children, layout, order and alpha are untouched, any other kind stops by name,
+   and a transparent fill with no border and no shadow emits nothing. Promotion always starts
+   from a transparent fill and clearing resets it, so a border-only View never shows a white
+   interior (the React Native reading). `setBackground` on a Rect made by `rect()` keeps
+   today's behaviour — it just sets the colour (GPUI `style.rs:713` paints whatever background
+   is set); `clearBackground` on such a Rect demotes it to a Group, as Flutter's `ColoredBox`
+   exists only while a colour is set. Native consumer `tests/integration/viewPaint.ms`
+   (gate.sh): pixels after promote and demote, a child kept over both, a transparent
+   background emitting zero draws, a border-only interior showing the background through it,
+   and a label background stopping by name. The harness refuses a framebuffer smaller than
+   requested, naming both sizes: Windows enforces a minimum client width, which once read as
+   a phantom 2× placement.
+
 Done when each item has a commit on Void's `main` or an answer that Neon does it on its side,
 written under its number here, and a note in `~/metascript/.inbox/neon/` names the commits.
