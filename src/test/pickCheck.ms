@@ -1,6 +1,9 @@
 import { Vec3, vec3, eulerQuat, translation, scaling, identity } from "../math/math3d";
 import { Bounds3D } from "../void3d/bounds";
-import { MeshData, Rgba, addBox, addPlane, addVertex, addTriangle } from "../void3d/meshData";
+import {
+	MeshData, Rgba, Uv, addBox, addPlane, addVertex, addTexturedVertex,
+	addTexturedQuad, addTriangle,
+} from "../void3d/meshData";
 import { Material, Phase } from "../void3d/material";
 import { RenderState, Face } from "../gpu/state";
 import { Program } from "../void3d/gpu3d";
@@ -43,6 +46,7 @@ const NO_HIT: PickHit = {
 	mesh: NO_ID,
 	distance: -1.0,
 	point: { x: 0.0, y: 0.0, z: 0.0 },
+	uv: null,
 };
 
 // Typed defaults for `try … catch`: a struct literal there fails in clang
@@ -183,20 +187,20 @@ test "a triangle is hit from the side the material draws" {
 	const data: MeshData = facingPlusZ(0.0);
 	const front: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 	const back: Ray = { origin: vec3(0.0, 0.0, -5.0), direction: vec3(0.0, 0.0, 1.0) };
-	assert approx(data.rayIntersection(front, Face.Back), 5.0);
-	assert data.rayIntersection(back, Face.Back) == -1.0;
-	assert data.rayIntersection(front, Face.Front) == -1.0;
-	assert approx(data.rayIntersection(back, Face.Front), 5.0);
-	assert approx(data.rayIntersection(front, Face.None), 5.0);
-	assert approx(data.rayIntersection(back, Face.None), 5.0);
+	assert approx(data.rayIntersection(front, Face.Back).distance, 5.0);
+	assert data.rayIntersection(back, Face.Back).distance == -1.0;
+	assert data.rayIntersection(front, Face.Front).distance == -1.0;
+	assert approx(data.rayIntersection(back, Face.Front).distance, 5.0);
+	assert approx(data.rayIntersection(front, Face.None).distance, 5.0);
+	assert approx(data.rayIntersection(back, Face.None).distance, 5.0);
 }
 
 test "a triangle beside the ray or behind its origin is missed" {
 	const data: MeshData = facingPlusZ(0.0);
 	const beside: Ray = { origin: vec3(0.9, 0.9, 5.0), direction: vec3(0.0, 0.0, -1.0) };
-	assert data.rayIntersection(beside, Face.None) == -1.0;
+	assert data.rayIntersection(beside, Face.None).distance == -1.0;
 	const past: Ray = { origin: vec3(0.0, 0.0, -1.0), direction: vec3(0.0, 0.0, -1.0) };
-	assert data.rayIntersection(past, Face.None) == -1.0;
+	assert data.rayIntersection(past, Face.None).distance == -1.0;
 }
 
 test "the nearest triangle is the one answered, whatever the index order" {
@@ -207,7 +211,7 @@ test "the nearest triangle is the one answered, whatever the index order" {
 	const c: int32 = try addVertex(data, vec3(0.0, 1.0, 2.0), up, WHITE) catch 0;
 	const _t: int32 = try addTriangle(data, a, b, c) catch 0;
 	const ray: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
-	assert approx(data.rayIntersection(ray, Face.Back), 3.0);
+	assert approx(data.rayIntersection(ray, Face.Back).distance, 3.0);
 }
 
 test "every face addBox and addPlane build faces outward" {
@@ -222,13 +226,13 @@ test "every face addBox and addPlane build faces outward" {
 	const entered: Vec<float32> = [4.0, 4.5, 4.5, 4.5, 4.5];
 	const leftBy: Vec<float32> = [-1.0, 5.5, 5.5, 5.5, 5.5];
 	for (let i = 0; i < 5; i++) {
-		assert approx(box.rayIntersection(toward[i], Face.Back), entered[i]);
-		assert approx(box.rayIntersection(toward[i], Face.Front), leftBy[i]);
+		assert approx(box.rayIntersection(toward[i], Face.Back).distance, entered[i]);
+		assert approx(box.rayIntersection(toward[i], Face.Front).distance, leftBy[i]);
 	}
 	let ground: MeshData = MeshData.empty();
 	const _plane: int32 = try addPlane(ground, 2.0, WHITE) catch -1;
-	assert approx(ground.rayIntersection(down(0.5, 0.5), Face.Back), 10.0);
-	assert ground.rayIntersection(down(0.5, 0.5), Face.Front) == -1.0;
+	assert approx(ground.rayIntersection(down(0.5, 0.5), Face.Back).distance, 10.0);
+	assert ground.rayIntersection(down(0.5, 0.5), Face.Front).distance == -1.0;
 }
 
 // ---- h3d.scene.Interactive and Scene.rayCastEventTargets -------------------------------------
@@ -536,4 +540,141 @@ test "a framebuffer pixel a box is drawn at picks that box and not its neighbour
 	const missed: Result<PickHit, PickError> =
 		pickIn(scene, meshes, tapBetween);
 	assert !missed.ok;
+}
+
+function texturedTriangle(depth: float32, indexed: boolean): MeshData {
+	let data: MeshData = MeshData.withUvs();
+	const normal: Vec3 = vec3(0.0, 0.0, 1.0);
+	const a: int32 = try addTexturedVertex(
+		data, vec3(-1.0, -1.0, depth), normal, { u: -1.0, v: 2.0 }, WHITE,
+	) catch -1;
+	const b: int32 = try addTexturedVertex(
+		data, vec3(1.0, -1.0, depth), normal, { u: 3.0, v: -2.0 }, WHITE,
+	) catch -1;
+	const c: int32 = try addTexturedVertex(
+		data, vec3(0.0, 1.0, depth), normal, { u: 0.5, v: 0.25 }, WHITE,
+	) catch -1;
+	if (indexed) {
+		const _triangle: int32 = try addTriangle(data, a, b, c) catch -1;
+	}
+	return data;
+}
+
+test "a picked triangle interpolates unclamped UVs at vertices edges and its interior" {
+	for (const indexed of [true, false]) {
+		const meshes: Vec<MeshData> = [texturedTriangle(0.0, indexed)];
+		const points: Vec<Vec3> = [
+			vec3(-1.0, -1.0, 0.0), vec3(1.0, -1.0, 0.0), vec3(0.0, 1.0, 0.0),
+			vec3(0.0, -1.0, 0.0), vec3(0.0, 0.0, 0.0),
+		];
+		const expected: Vec<Uv> = [
+			{ u: -1.0, v: 2.0 }, { u: 3.0, v: -2.0 }, { u: 0.5, v: 0.25 },
+			{ u: 1.0, v: 0.0 }, { u: 0.75, v: 0.125 },
+		];
+		const context: DrawContext = contextOf(1, 3);
+		const scene: Scene3D = Scene3D.create(context);
+		const node: NodeId3D = pickable(
+			scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0),
+		);
+		for (let i = 0; i < (points.length as int32); i++) {
+			const hit: PickHit = pickOf(scene, meshes, {
+				origin: points[i] + vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0),
+			});
+			assert hit.owner == node;
+			assert approx(hit.distance, 5.0);
+			const uv: Uv | null = hit.uv;
+			assert uv !== null;
+			if (uv !== null) {
+				assert Math.abs(uv.u - expected[i].u) <= 1e-6;
+				assert Math.abs(uv.v - expected[i].v) <= 1e-6;
+			}
+		}
+	}
+}
+
+test "an untextured pick has no UV without losing its owner point or distance" {
+	const context: DrawContext = contextOf(1, 3);
+	const scene: Scene3D = Scene3D.create(context);
+	const node: NodeId3D = pickable(
+		scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0),
+	);
+	const meshes: Vec<MeshData> = [facingPlusZ(0.0)];
+	const hit: PickHit = pickOf(scene, meshes, {
+		origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0),
+	});
+	assert hit.owner == node;
+	assert hit.uv === null;
+	assert approx(hit.distance, 5.0);
+	assert nearVec(hit.point, vec3(0.0, 0.0, 0.0));
+}
+
+test "the nearest triangle supplies UVs under a mirrored nonuniform world transform" {
+	let data: MeshData = texturedTriangle(-2.0, true);
+	const normal: Vec3 = vec3(0.0, 0.0, 1.0);
+	const a: int32 = try addTexturedVertex(
+		data, vec3(-1.0, -1.0, 0.0), normal, { u: 0.0, v: 0.0 }, WHITE,
+	) catch -1;
+	const b: int32 = try addTexturedVertex(
+		data, vec3(1.0, -1.0, 0.0), normal, { u: 1.0, v: 0.0 }, WHITE,
+	) catch -1;
+	const c: int32 = try addTexturedVertex(
+		data, vec3(0.0, 1.0, 0.0), normal, { u: 0.0, v: 1.0 }, WHITE,
+	) catch -1;
+	const _triangle: int32 = try addTriangle(data, a, b, c) catch -1;
+	const context: DrawContext = contextOf(1, 3);
+	const scene: Scene3D = Scene3D.create(context);
+	const at: Transform3D = {
+		...Transform3D.fromTranslation(vec3(3.0, 2.0, -4.0)), scale: vec3(-2.0, 3.0, 0.5),
+	};
+	const node: NodeId3D = pickable(
+		scene, meshNode(scene, context, scene.rootId(), at, 0),
+	);
+	const meshes: Vec<MeshData> = [data];
+	const hit: PickHit = pickOf(scene, meshes, {
+		origin: vec3(3.0, 2.0, 5.0), direction: vec3(0.0, 0.0, -1.0),
+	});
+	assert hit.owner == node;
+	assert nearVec(hit.point, vec3(3.0, 2.0, -4.0));
+	assert approx(hit.distance, 9.0);
+	const uv: Uv | null = hit.uv;
+	assert uv !== null;
+	if (uv !== null) {
+		assert Math.abs(uv.u - 0.25) <= 1e-6;
+		assert Math.abs(uv.v - 0.5) <= 1e-6;
+	}
+}
+
+test "both triangles of a textured quad interpolate the same UV on their shared edge" {
+	let data: MeshData = MeshData.withUvs();
+	const _quad: int32 = try addTexturedQuad(
+		data, vec3(-1.0, -1.0, 0.0), vec3(1.0, -1.0, 0.0),
+		vec3(1.0, 1.0, 0.0), vec3(-1.0, 1.0, 0.0), vec3(0.0, 0.0, 1.0), WHITE,
+	) catch -1;
+	const context: DrawContext = contextOf(1, 3);
+	const scene: Scene3D = Scene3D.create(context);
+	const _node: NodeId3D = pickable(
+		scene, meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0),
+	);
+	let meshes: Vec<MeshData> = [data];
+	for (const point of [vec3(-0.5, 0.5, 0.0), vec3(0.5, -0.5, 0.0), vec3(0.0, 0.0, 0.0)]) {
+		const hit: PickHit = pickOf(scene, meshes, {
+			origin: point + vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0),
+		});
+		const uv: Uv | null = hit.uv;
+		assert uv !== null;
+		if (uv !== null) {
+			assert Math.abs(uv.u - (point.x + 1.0) * 0.5) <= 1e-6;
+			assert Math.abs(uv.v - (1.0 - point.y) * 0.5) <= 1e-6;
+		}
+	}
+	meshes[0].indices = [0, 2, 3, 0, 1, 2];
+	const reversed: PickHit = pickOf(scene, meshes, {
+		origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0),
+	});
+	const edgeUv: Uv | null = reversed.uv;
+	assert edgeUv !== null;
+	if (edgeUv !== null) {
+		assert Math.abs(edgeUv.u - 0.5) <= 1e-6;
+		assert Math.abs(edgeUv.v - 0.5) <= 1e-6;
+	}
 }

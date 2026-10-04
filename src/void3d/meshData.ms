@@ -52,6 +52,11 @@ export struct MeshData {
 	hasUvs: boolean;
 }
 
+export struct MeshRayHit {
+	distance: float32;
+	uv: Uv | null;
+}
+
 export enum MeshError {
 	TooManyVertices,
 	IndexOutOfRange,
@@ -220,12 +225,12 @@ export function recomputeBounds(ref data: MeshData): void {
 	data.bounds = box;
 }
 
-// h3d.col.PolygonBuffer.rayIntersection (Moller-Trumbore), with bestMatch: the nearest
-// triangle the ray hits among the faces `culling` keeps, or -1. Front is counter-clockwise
-// (door.c).
 // PENDING3D: pick-culling-follows-material
-export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): float32 {
+export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): MeshRayHit {
 	let best: float32 = -1.0;
+	let hitTriangle: int32 = -1;
+	let hitU: float32 = 0.0;
+	let hitV: float32 = 0.0;
 	const count: int32 = data.triangleCount();
 	for (let triangle = 0; triangle < count; triangle++) {
 		const p0: Vec3 = data.cornerOf(triangle, 0);
@@ -243,9 +248,31 @@ export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): f
 		if (v < 0.0 || u + v > 1.0) { continue; }
 		const distance: float32 = edge2.dot(q) * inverseDet;
 		if (distance < RAY_EPSILON) { continue; }
-		if (best < 0.0 || distance < best) { best = distance; }
+		if (best < 0.0 || distance < best) {
+			best = distance;
+			hitTriangle = triangle;
+			hitU = u;
+			hitV = v;
+		}
 	}
-	return best;
+	return {
+		distance: best,
+		uv: hitTriangle >= 0 && data.hasUvs ? data.interpolateUv(hitTriangle, hitU, hitV) : null,
+	};
+}
+
+function interpolateUv(this data: MeshData, triangle: int32, u: float32, v: float32): Uv {
+	const at: int32 = triangle * 3;
+	const stride: int32 = data.stride();
+	const indexed: boolean = data.isIndexed();
+	const a: int32 = (indexed ? (data.indices[at] as int32) : at) * stride + 6;
+	const b: int32 = (indexed ? (data.indices[at + 1] as int32) : at + 1) * stride + 6;
+	const c: int32 = (indexed ? (data.indices[at + 2] as int32) : at + 2) * stride + 6;
+	const w: float32 = 1.0 - u - v;
+	return {
+		u: data.vertices[a] * w + data.vertices[b] * u + data.vertices[c] * v,
+		v: data.vertices[a + 1] * w + data.vertices[b + 1] * u + data.vertices[c + 1] * v,
+	};
 }
 
 // hxd.Math.EPSILON.

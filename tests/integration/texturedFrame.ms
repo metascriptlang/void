@@ -11,7 +11,7 @@ import {
 	liveSamplers,
 } from "../../src/gpu/door";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
-import { MeshData, MeshError, Rgba, addTexturedCube } from "../../src/void3d/meshData";
+import { MeshData, MeshError, Rgba, Uv, addTexturedCube } from "../../src/void3d/meshData";
 import { TextureData, TextureId, GpuTexture, TextureUploadError } from "../../src/void3d/texture";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
@@ -52,6 +52,7 @@ import {
 	addMeshNode,
 	addLightNode,
 	setLocal,
+	setPickable,
 	setAmbient,
 	setLightPower,
 	refresh,
@@ -60,6 +61,7 @@ import {
 } from "../../src/void3d/scene";
 import { Camera3D, ProjectionKind, CameraView, CameraError } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
+import { PickHit, PickError, pickNearest } from "../../src/void3d/pick";
 import {
 	ForwardRenderer,
 	ForwardError,
@@ -289,6 +291,7 @@ export function initTextured(): void {
 	);
 	if (!placed.ok) { unreachable; }
 	cube = placed.value;
+	setPickable(scene, cube, true);
 	if (holders(releaseTexture(context, texture)) != 1) { fail("the loader's hold was not one"); }
 	let light: LightInstance = {
 		kind: LightKind.Directional,
@@ -392,6 +395,32 @@ function checkQuadrants(view: CameraView, lit: boolean): void {
 		let right: boolean = lit ? isSunlitTexel(got, expected[i]) : got == rgbOfTexel(expected[i]);
 		if (!right) {
 			fail(`front quadrant ${i} is ${got}, not its texel ${rgbOfTexel(expected[i])}`);
+		}
+		const at: Vec3 = view.project(points[i], SCREEN_MAPPING, true);
+		const pixelX: int32 = at.x as int32;
+		const pixelY: int32 = at.y as int32;
+		const hit: Result<PickHit, PickError> = pickNearest(
+			scene,
+			view.rayFromScreen(
+				(pixelX as float32) + 0.5, (pixelY as float32) + 0.5, SCREEN_MAPPING, true,
+			),
+		);
+		if (!hit.ok) { fail("a visible textured quadrant was not picked"); return; }
+		const uv: Uv | null = hit.value.uv;
+		if (hit.value.mesh != cube || uv === null) {
+			fail("a textured quadrant pick lost its mesh or UV");
+			return;
+		}
+		const column: int32 = Math.floor(uv.u * 2.0) as int32;
+		const row: int32 = Math.floor(uv.v * 2.0) as int32;
+		if (column < 0 || column >= 2 || row < 0 || row >= 2) {
+			fail("the quadrant pick UV falls outside its texture");
+			return;
+		}
+		const texel: uint32 = context.textureData[texture.index].pixels[row * 2 + column];
+		if (texel != expected[i] ||
+			!(lit ? isSunlitTexel(got, texel) : got == rgbOfTexel(texel))) {
+			fail("the pick UV did not name the texel drawn under the pressed pixel");
 		}
 	}
 }

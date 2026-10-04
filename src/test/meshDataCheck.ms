@@ -373,9 +373,9 @@ test "bounds and picking read a mesh with uvs at its own stride" {
 	assert near(data.bounds.min, kept.min.x, kept.min.y, kept.min.z);
 	assert near(data.bounds.max, kept.max.x, kept.max.y, kept.max.z);
 	let toward: Ray = { origin: vec3(0.1, 0.2, 5.0), direction: vec3(0.0, 0.0, -1.0) };
-	assert approx(data.rayIntersection(toward, Face.Back), 4.5);
+	assert approx(data.rayIntersection(toward, Face.Back).distance, 4.5);
 	let beside: Ray = { origin: vec3(2.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
-	assert data.rayIntersection(beside, Face.Back) == -1.0;
+	assert data.rayIntersection(beside, Face.Back).distance == -1.0;
 }
 
 test "a builder with uvs that does not fit leaves the mesh exactly as it was" {

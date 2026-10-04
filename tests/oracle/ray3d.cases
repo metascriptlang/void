@@ -97,7 +97,7 @@
 # ms-prelude: }
 # ms-prelude: const NO_ID: NodeId3D = NO_NODE_ID;
 # ms-prelude: const NO_HIT: PickHit = {
-# ms-prelude: 	owner: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 },
+# ms-prelude: 	owner: NO_ID, mesh: NO_ID, distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 }, uv: null,
 # ms-prelude: };
 # ms-prelude: struct Picked { scene: Scene3D; node: NodeId3D; }
 # ms-prelude: function onePickable(t: Transform3D): Picked {
@@ -189,32 +189,32 @@ ms> emitB("bounds-ray-on-min-face-crossing", hit(box().rayIntersection(ray(-1.0,
 
 case triangle-front tol=1e-6
 haxe> emit("triangle-front", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, 5, 0, 0, -1), true)]);
-ms> emit1("triangle-front", tri(0.0).rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, -1.0), Face.Back));
+ms> emit1("triangle-front", tri(0.0).rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, -1.0), Face.Back).distance);
 
 case triangle-back tol=0
 haxe> emit("triangle-back", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -5, 0, 0, 1), true)]);
-ms> emit1("triangle-back", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.Back));
+ms> emit1("triangle-back", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.Back).distance);
 
 # Heaps drops a back face whatever the pass draws; a two-sided material here keeps it.
 case triangle-back-two-sided tol=0 diverges=pick-culling-follows-material
 haxe> emit("triangle-back-two-sided", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -5, 0, 0, 1), true)]);
-ms> emit1("triangle-back-two-sided", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.None));
+ms> emit1("triangle-back-two-sided", tri(0.0).rayIntersection(ray(0.0, 0.0, -5.0, 0.0, 0.0, 1.0), Face.None).distance);
 
 case triangle-beside tol=0
 haxe> emit("triangle-beside", [H.tri(0).rayIntersection(Ray.fromValues(0.9, 0.9, 5, 0, 0, -1), true)]);
-ms> emit1("triangle-beside", tri(0.0).rayIntersection(ray(0.9, 0.9, 5.0, 0.0, 0.0, -1.0), Face.Back));
+ms> emit1("triangle-beside", tri(0.0).rayIntersection(ray(0.9, 0.9, 5.0, 0.0, 0.0, -1.0), Face.Back).distance);
 
 case triangle-behind-origin tol=0
 haxe> emit("triangle-behind-origin", [H.tri(0).rayIntersection(Ray.fromValues(0, 0, -1, 0, 0, -1), true)]);
-ms> emit1("triangle-behind-origin", tri(0.0).rayIntersection(ray(0.0, 0.0, -1.0, 0.0, 0.0, -1.0), Face.Back));
+ms> emit1("triangle-behind-origin", tri(0.0).rayIntersection(ray(0.0, 0.0, -1.0, 0.0, 0.0, -1.0), Face.Back).distance);
 
 case triangle-nearest-of-two tol=1e-6
 haxe> emit("triangle-nearest-of-two", [H.poly([-1, -1, 0, 1, -1, 0, 0, 1, 0, -1, -1, 2, 1, -1, 2, 0, 1, 2]).rayIntersection(Ray.fromValues(0, 0, 5, 0, 0, -1), true)]);
-ms> const q6: Vec<float32> = [-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 2.0, 1.0, -1.0, 2.0, 0.0, 1.0, 2.0]; emit1("triangle-nearest-of-two", poly(q6).rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, -1.0), Face.Back));
+ms> const q6: Vec<float32> = [-1.0, -1.0, 0.0, 1.0, -1.0, 0.0, 0.0, 1.0, 0.0, -1.0, -1.0, 2.0, 1.0, -1.0, 2.0, 0.0, 1.0, 2.0]; emit1("triangle-nearest-of-two", poly(q6).rayIntersection(ray(0.0, 0.0, 5.0, 0.0, 0.0, -1.0), Face.Back).distance);
 
 case triangle-oblique tol=1e-5
 haxe> emit("triangle-oblique", [H.poly([0, 0, 0, 2, 0.5, 0.3, 0.4, 1.8, -0.2]).rayIntersection(Ray.fromValues(0.7, 0.6, 5, -0.05, -0.02, -1), true)]);
-ms> const q7: Vec<float32> = [0.0, 0.0, 0.0, 2.0, 0.5, 0.3, 0.4, 1.8, -0.2]; emit1("triangle-oblique", poly(q7).rayIntersection(ray(0.7, 0.6, 5.0, -0.05, -0.02, -1.0), Face.Back));
+ms> const q7: Vec<float32> = [0.0, 0.0, 0.0, 2.0, 0.5, 0.3, 0.4, 1.8, -0.2]; emit1("triangle-oblique", poly(q7).rayIntersection(ray(0.7, 0.6, 5.0, -0.05, -0.02, -1.0), Face.Back).distance);
 
 # ---- ObjectCollider: one object's inverse transform, local hit, world distance ---------------
 

@@ -4,7 +4,7 @@
 
 import { Vec3, Mat4 } from "../math/math3d";
 import { Bounds3D } from "./bounds";
-import { MeshData } from "./meshData";
+import { MeshData, MeshRayHit, Uv } from "./meshData";
 import { DrawContext } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
@@ -23,6 +23,7 @@ export struct PickHit {
 	mesh: NodeId3D;
 	distance: float32;
 	point: Vec3;
+	uv: Uv | null;
 }
 
 export enum PickError {
@@ -32,9 +33,10 @@ export enum PickError {
 struct MeshHit {
 	distance: float32;
 	point: Vec3;
+	uv: Uv | null;
 }
 
-const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 } };
+const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 }, uv: null };
 
 // PENDING3D: pick-owner-is-a-flag
 // PENDING3D: pick-distance-from-ray-origin
@@ -47,6 +49,7 @@ export function pickNearest(scene: Scene3D, ray: Ray): Result<PickHit, PickError
 		mesh: NO_NODE_ID,
 		distance: -1.0,
 		point: ray.origin,
+		uv: null,
 	};
 	let top: int32 = 0;
 	scene.stack[top] = scene.root;
@@ -73,6 +76,7 @@ export function pickNearest(scene: Scene3D, ray: Ray): Result<PickHit, PickError
 					mesh: scene.nodeIdAt(index),
 					distance: hit.distance,
 					point: hit.point,
+					uv: hit.uv,
 				};
 			}
 		}
@@ -104,10 +108,10 @@ function meshHit(this data: MeshData, culling: Face, world: Mat4, ray: Ray): Mes
 	if (box.isEmpty()) { return MISS; }
 	const local: Ray = ray.transformed(world.inverseAffine());
 	if (box.rayIntersection(local) < 0.0 && !box.contains(local.origin)) { return MISS; }
-	const along: float32 = data.rayIntersection(local, seenThrough(culling, world));
-	if (along < 0.0) { return MISS; }
-	const point: Vec3 = local.pointAt(along) * world;
-	return { distance: (point - ray.origin).length(), point: point };
+	const hit: MeshRayHit = data.rayIntersection(local, seenThrough(culling, world));
+	if (hit.distance < 0.0) { return MISS; }
+	const point: Vec3 = local.pointAt(hit.distance) * world;
+	return { distance: (point - ray.origin).length(), point: point, uv: hit.uv };
 }
 
 // A mirroring world matrix turns the local winding over on screen, so the face the pass culls
