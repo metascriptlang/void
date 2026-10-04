@@ -1597,7 +1597,7 @@ stops, all 82 D3D11 goldens byte-identically, nine oracles, allocation 107/29/5 
 It was RED only on the two Yoga-dependent web stages, with six loud skips; WebGL2 conformance
 did not run. No passing WebGL2 row or target-backend result is inferred from that failure.
 
-The final full `gate3d.sh` on `9d5244b`, tree `594df9c41ca285a3433987b0e6b70590a26df692`,
+The final full `gate3d.sh` on `8f21f31`, tree `594df9c41ca285a3433987b0e6b70590a26df692`,
 is **GREEN with three loud skips** (2026-10-04): 239 PASS lines, 182 abort cases, 1153 suite
 tests, 29 PENDING3D rows, 75 oracle agreements and 11 declared divergences, Android arm64
 3,778,864 bytes. The skips are unrun GLES3 device and the two exact-held Forward/Anchor
@@ -1608,8 +1608,8 @@ Yoga's missing emcc provider remains the only external blocker to the web/land g
 
 ## Door closure J — published C pass surface and short bindings (2026-10-04)
 
-**Verdict: SHIP WITH FOLLOW-UPS for the bounded source/native fixes**, `92a6168` and `dd9df4a`,
-on `6da8d3e`. No permission to land, fresh combined web/native gate claim, or P5/P6 verdict.
+**Verdict: SHIP WITH FOLLOW-UPS for the bounded source/native fixes**, `14a7d07` and `71350da`,
+on `2bd0601`. No permission to land, fresh combined web/native gate claim, or P5/P6 verdict.
 
 **Passes:** sequential fresh read-only reviewers via omp `functions.task` (reviewer role).
 `JDefects` found no confirmed correctness defects; `JDesign` returned SHIP WITH FOLLOW-UPS.
@@ -1659,7 +1659,7 @@ before land; the re-review accepted those corrections and F4/F5. F6 remains the 
 public-owner-field limitation. Final full-chain receipts are separate from the design verdict.
 
 **Passes.** The main-session defect pass read the complete source/caller/test/gate diff over
-`41c1c29`, checked the revised lifecycle and epoch paths, and ran the real native consumers.
+`f1b55d3`, checked the revised lifecycle and epoch paths, and ran the real native consumers.
 The independent design pass and re-review were performed by the separate Claude Code coordinator
 session `void-7a`, which did not write this slice. It read the cached 18-path initial diff,
 then the corrections, the reference-owner model and actual logs, and built or edited nothing.
@@ -1760,12 +1760,12 @@ permanent consumers and the gate's `run_style` function remain.
 
 ### Optional View paint and the clamped-window guard — SHIP (2026-10-04)
 
-**Verdict: SHIP for `c91989c`, `db2b65f`, `98de158` and `47bd281`** — NEON item 8's optional
+**Verdict: SHIP for `dabfdbc`, `e5602f5`, `d29167e` and `2905c3d`** — NEON item 8's optional
 paint and the shared framebuffer guard. Not a P5/P6 verdict or a land.
 
 **Passes.** The main session wrote the slice and ran every native proof; the coordinator
-session `void-7a` reviewed `c91989c` (colour defect found, R-style corrections taken) and
-`98de158` (cross-platform link defect found and fixed), and accepted the audit dispositions.
+session `void-7a` reviewed `dabfdbc` (colour defect found, R-style corrections taken) and
+`d29167e` (cross-platform link defect found and fixed), and accepted the audit dispositions.
 
 **Findings taken:** promotion always starts from a transparent fill and clearing resets it
 (RED-before: two nodeCheck pins failed on white/old fills); a sized()-Rect `setBackground`

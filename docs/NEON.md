@@ -135,7 +135,7 @@ In order. 1, 2 and 4 block UI on a mesh; 3 and 5 make it right to look at; 6 and
 above be written without Neon working around Void.
 
 1. **Draw a `Scene2D` into a render target the caller owns.** Implemented in branch commit
-   `3626fd7`, not on main yet: `src/void2d/scene.ms` `drawTarget`, using existing prepared replay.
+   `2bd7a9b`, not on main yet: `src/void2d/scene.ms` `drawTarget`, using existing prepared replay.
    During `openPrepare` … `closePrepare`, prepare at the target's pixel size divided by DPI,
    then draw it. The call opens and closes its own pass, never commits, and consumes that
    same-frame preparation just as `drawScreen` does. Existing filter targets finish in prepare.
@@ -222,7 +222,7 @@ above be written without Neon working around Void.
    builds and removes a ScaleGrid child lazily — Void's divergence is to keep one row instead
    of adding a child, so the layout size needs no sync.
 
-   **Answer, branch commits `c91989c` + `db2b65f`:** `setBackground`, `clearBackground` and
+   **Answer, branch commits `dabfdbc` + `e5602f5`:** `setBackground`, `clearBackground` and
    `setBoxStyle` promote and demote a Group↔Rect on the same row (`node.ms` `takePaintable`);
    the NodeRef, children, layout, order and alpha are untouched, any other kind stops by name,
    and a transparent fill with no border and no shadow emits nothing. Promotion always starts

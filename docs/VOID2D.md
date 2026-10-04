@@ -2422,7 +2422,7 @@ number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
   state or runtime wrapper is introduced.
 
   **Red before:** both real C consumers naming the bridge entries compiled against the
-  `6da8d3e` header. After removal they are rejected as undeclared identifiers, while a consumer
+  `2bd0601` header. After removal they are rejected as undeclared identifiers, while a consumer
   using `doorBeginScreenPass`/`doorEndPass`/`doorCommit` compiles. `tests/compile/bridgePass.c`
   and `scripts/checkBridgePass.sh` enforce that boundary in `gate.sh`, not by reading source text.
 
@@ -2458,7 +2458,7 @@ number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
   filter-result branches are gone. `sceneTarget.ms` still passes nine native frames.
   Logs: `out/tmp/targetOwner/`; final full-chain results are in the review.
 
-- **Optional View paint, NEON item 8 (`c91989c`, `db2b65f`).** A Group becomes a drawing node
+- **Optional View paint, NEON item 8 (`dabfdbc`, `e5602f5`).** A Group becomes a drawing node
    in place: `setBackground` / `setBoxStyle` promote, `clearBackground` demotes and frees the
    box style, any other kind stops by name, and the frame blanks a transparent fill with no
    border and no shadow. **Dispositions:** W — same-size promotion is Void's one-row model, not
