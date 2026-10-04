@@ -815,6 +815,22 @@ test "a color matrix lives in a side row that only a node with one holds" {
 	assert plain.colorMatrix() == colorMatrixGrayscale(0.5);
 }
 
+test "a border-only promotion starts with a transparent fill" {
+	const s = fresh();
+	const n = s.group();
+	n.setBoxStyle(BoxStyle.create(uniformRadii(2.0), uniformBorders(1.0), white));
+	assert n.kind() === DrawKind.Rect;
+	assert n.paint().color.a == 0.0;
+}
+
+test "clearing a background resets the fill a later promotion starts from" {
+	const s = fresh();
+	const n = s.group().setBackground(rgba(0.9, 0.1, 0.1, 1.0));
+	n.clearBackground();
+	n.setBoxStyle(BoxStyle.create(uniformRadii(1.0), uniformBorders(1.0), white));
+	assert n.paint().color.a == 0.0;
+}
+
 test "a background promotes a group in place, keeping row, children and local" {
 	const s = fresh();
 	const n = s.group().at(3.0, 4.0);

@@ -1180,6 +1180,7 @@ function takePaintable(n: NodeRef, i: int32, call: string): void {
 	if (actual === DrawKind.Rect) { return; }
 	if (actual !== DrawKind.Group) { stopOnUnpaintable(call, actual); }
 	n.scene.kinds[i] = DrawKind.Rect;
+	n.scene.putPaint(i, { ...n.scene.paints[i], color: rgba(0.0, 0.0, 0.0, 0.0) });
 	n.scene.markChanged(i, Changed.Content);
 }
 
@@ -1204,6 +1205,7 @@ export function clearBackground(this n: NodeRef): NodeRef {
 			s.payloads[i] = NO_PAYLOAD;
 		}
 		s.kinds[i] = DrawKind.Group;
+		s.putPaint(i, { ...s.paints[i], color: rgba(0.0, 0.0, 0.0, 0.0) });
 	}
 	s.markChanged(i, Changed.Content);
 	return n;

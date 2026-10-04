@@ -258,6 +258,23 @@ else
 	fail "target preset epoch — see out/gate-target-preset-epoch.log and out/gate-target-preset-epoch-run.log"
 fi
 
+rm -f out/viewPaint.exe
+if "$MSC" build tests/integration/viewPaint.ms --release --output=out/viewPaint.exe \
+		> out/gate-view-paint.log 2>&1 \
+		&& out/viewPaint.exe > out/gate-view-paint-run.log 2>&1; then
+	pass "view paint: in-place promote and demote, transparent and border-only emit no fill"
+	paint_status=0
+	VOID_VIEW_PAINT_MISUSE=label out/viewPaint.exe > out/gate-view-paint-label.log 2>&1 \
+		|| paint_status=$?
+	if [ "$paint_status" -ne 0 ] && grep -qF "only a Group or a Rect can take a background" "out/gate-view-paint-label.log"; then
+		pass "view paint: a label background stops by name"
+	else
+		fail "view paint: label background did not name its kind error"
+	fi
+else
+	fail "view paint — see out/gate-view-paint.log and out/gate-view-paint-run.log"
+fi
+
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \
 		&& out/twoViews.exe > out/gate-two-views-run.log 2> out/gate-two-views-run.err; then
 	pass "$(grep -E '^PASS two views' out/gate-two-views-run.log | sed 's/^PASS //')"
