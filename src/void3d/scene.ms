@@ -37,6 +37,7 @@ import {
 	clearMaterialTally,
 } from "./draw";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
+import { Camera3D, CameraError } from "./camera";
 
 export enum NodeFlag {
 	Visible,
@@ -130,6 +131,11 @@ export struct MeshInstance {
 	material: MaterialId;
 }
 
+export struct SceneCamera {
+	node: NodeId3D;
+	camera: Camera3D;
+}
+
 // PENDING3D: store-serial-writable
 export interface Scene3D {
 	serial: int32;
@@ -138,6 +144,8 @@ export interface Scene3D {
 	slots: Slots;
 	meshes: Vec<MeshInstance>;
 	lights: Vec<LightInstance>;
+	cameras: Vec<SceneCamera>;
+	activeCamera: NodeId3D | null;
 	meshOwners: Vec<int32>;
 	lightOwners: Vec<int32>;
 	// Scratch for collectLights' priority sort; grows only when lights are added.
@@ -258,6 +266,8 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		slots: Slots.empty(),
 		meshes: [],
 		lights: [],
+		cameras: [],
+		activeCamera: null,
 		meshOwners: [],
 		lightOwners: [],
 		lightOrder: [],
@@ -374,6 +384,68 @@ export function addLightNode(
 	return id;
 }
 
+export function addCameraNode(
+	scene: Scene3D,
+	parent: NodeId3D,
+	local: Transform3D,
+	camera: Camera3D,
+): NodeId3D {
+	const under: int32 = scene.liveRow(parent, "addCameraNode");
+	const id: NodeId3D = newSlot(scene, {
+		kind: NodeKind.Group, flags: freshFlags(), parent: under, payload: NO_NODE_3D,
+		name: "", local: local, world: identity(), children: [],
+	});
+	scene.cameras.push({ node: id, camera: camera });
+	scene.nodes[under].children.push(id.index);
+	scene.structureChanged = true;
+	return id;
+}
+
+function cameraRow(scene: Scene3D, id: NodeId3D, call: string): int32 {
+	const _live: int32 = scene.liveRow(id, call);
+	for (let i = 0; i < (scene.cameras.length as int32); i++) {
+		if (scene.cameras[i].node == id) { return i; }
+	}
+	return stopOnUnboundCamera(id, call);
+}
+
+function stopOnUnboundCamera(id: NodeId3D, call: string): int32 {
+	console.log(`void3d: ${call} on node ${id.index} without a camera binding`);
+	unreachable;
+}
+
+export function setCameraOf(scene: Scene3D, id: NodeId3D, camera: Camera3D): void {
+	const row: int32 = cameraRow(scene, id, "setCameraOf");
+	scene.cameras[row].camera = camera;
+}
+
+export function setActiveCamera(scene: Scene3D, id: NodeId3D | null): void {
+	scene.requireOpen("setActiveCamera");
+	if (id !== null) {
+		const _camera: int32 = cameraRow(scene, id, "setActiveCamera");
+	}
+	scene.activeCamera = id;
+}
+
+export function cameraOf(scene: Scene3D, fallback: Camera3D): Result<Camera3D, CameraError> {
+	scene.requireOpen("cameraOf");
+	const active: NodeId3D | null = scene.activeCamera;
+	if (active === null) { return Result.ok(fallback); }
+	if (!scene.isLive(active)) { return Result.err(CameraError.StaleCameraNode); }
+	const _synced: int32 = syncWorld(scene);
+	const row: int32 = cameraRow(scene, active, "cameraOf");
+	return Camera3D.fromWorld(scene.nodes[active.index].world, scene.cameras[row].camera);
+}
+
+function forgetCamera(scene: Scene3D, index: int32): void {
+	for (let i = 0; i < (scene.cameras.length as int32); i++) {
+		if (scene.cameras[i].node.index != index) { continue; }
+		scene.cameras[i] = scene.cameras[(scene.cameras.length as int32) - 1];
+		scene.cameras.pop();
+		return;
+	}
+}
+
 function detach(scene: Scene3D, index: int32): void {
 	const parent: int32 = scene.nodes[index].parent;
 	if (parent == NO_NODE_3D) { return; }
@@ -423,7 +495,7 @@ function releasePayload(scene: Scene3D, index: int32): void {
 			scene.lights.pop();
 			scene.lightOwners.pop();
 		},
-		NodeKind.Group => {},
+		NodeKind.Group => { forgetCamera(scene, index); },
 	};
 	scene.nodes[index].payload = NO_NODE_3D;
 }

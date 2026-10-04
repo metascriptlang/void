@@ -16,6 +16,10 @@ import {
 	addGroup,
 	addMeshNode,
 	addLightNode,
+	addCameraNode,
+	setCameraOf,
+	setActiveCamera,
+	cameraOf,
 	setLocal,
 	setLightPower,
 	setAmbient,
@@ -32,6 +36,7 @@ import {
 } from "../void3d/scene";
 import { approx } from "./helpers";
 import { contextOf } from "./drawHelpers";
+import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 
 function translationOf(m: Mat4): Vec3 {
 	return vec3(m.m41, m.m42, m.m43);
@@ -747,4 +752,71 @@ test "removing a subtree gives back every row under it and keeps the rest addres
 	if (collected.ok) { assert collected.value == 1; }
 	assert approx(block[POINT_AT + 3], 0.9);
 	assert nearAt(block, POINT_AT, 1.0, 2.0, 3.0);
+}
+
+function cameraRequest(): Camera3D {
+	return {
+		position: vec3(0.0, 0.0, 4.0), yaw: 0.0, pitch: 0.0,
+		nearPlane: 0.1, farPlane: 40.0,
+		projection: { kind: ProjectionKind.Perspective, fovY: 1.0 },
+	};
+}
+
+test "a camera binding follows a moving rolled parent through the scene world pass" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const parent: NodeId3D = addGroup(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(1.0, 2.0, 4.0)),
+	);
+	const camera: NodeId3D = addCameraNode(
+		scene, parent, Transform3D.identity(), cameraRequest(),
+	);
+	const before: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert before.ok;
+	if (before.ok) { assert before.value.position == cameraRequest().position; }
+	setActiveCamera(scene, camera);
+	const plain: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert plain.ok;
+	if (plain.ok) { assert plain.value.position == vec3(1.0, 2.0, 4.0); }
+	setLocal(scene, parent, {
+		...Transform3D.fromTranslation(vec3(3.0, 1.0, 5.0)),
+		rotation: eulerQuat(0.0, 0.0, 0.5), scale: vec3(2.0, 4.0, 8.0),
+	});
+	const moved: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert moved.ok;
+	if (moved.ok) {
+		assert moved.value.position == vec3(3.0, 1.0, 5.0);
+		const basis = moved.value.basisOf();
+		assert basis.right.y > 0.4;
+		assert Math.abs(basis.right.lengthSquared() - 1.0) < 1e-5;
+	}
+	setCameraOf(scene, camera, {
+		...cameraRequest(), projection: {
+			kind: ProjectionKind.Orthographic, worldPerTexel: 0.02, snap: true,
+		},
+	});
+	const changed: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert changed.ok;
+	if (changed.ok) {
+		const view: Result<CameraView, CameraError> = changed.value.resolve(320, 240);
+		assert view.ok;
+	}
+}
+
+test "a removed active camera reports staleness and never reuses a fresh node's matrix" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const camera: NodeId3D = addCameraNode(
+		scene, scene.rootId(), Transform3D.identity(), cameraRequest(),
+	);
+	setActiveCamera(scene, camera);
+	assert remove(scene, camera) == 1;
+	assert scene.cameras.length == 0;
+	const replacement: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	assert replacement.index == camera.index && replacement.generation != camera.generation;
+	const stale: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert !stale.ok;
+	if (!stale.ok) { assert stale.error == CameraError.StaleCameraNode; }
+	setActiveCamera(scene, null);
+	const fallback: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert fallback.ok;
+	if (fallback.ok) { assert fallback.value.position == cameraRequest().position; }
 }

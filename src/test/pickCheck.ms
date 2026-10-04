@@ -1,4 +1,6 @@
-import { Vec3, vec3, eulerQuat, translation, scaling, identity } from "../math/math3d";
+import {
+	Vec3, vec3, eulerQuat, translation, scaling, identity, rotationZ,
+} from "../math/math3d";
 import { Bounds3D } from "../void3d/bounds";
 import {
 	MeshData, Rgba, Uv, addBox, addPlane, addVertex, addTexturedVertex,
@@ -676,5 +678,38 @@ test "both triangles of a textured quad interpolate the same UV on their shared 
 	if (edgeUv !== null) {
 		assert Math.abs(edgeUv.u - 0.5) <= 1e-6;
 		assert Math.abs(edgeUv.v - 0.5) <= 1e-6;
+	}
+}
+
+test "rolled snapped camera pixels pick the projected box through both row orders" {
+	const context: DrawContext = contextOf(16, 16);
+	const scene: Scene3D = Scene3D.create(context);
+	const meshes: Vec<MeshData> = [unitBox()];
+	const box: NodeId3D = pickable(scene, meshNode(
+		scene, context, scene.rootId(), Transform3D.fromTranslation(vec3(1.0, 0.0, 0.0)), 0,
+	));
+	const request: Camera3D = {
+		position: vec3(0.0, 0.0, 5.0), yaw: 0.0, pitch: 0.0,
+		nearPlane: -20.0, farPlane: 20.0,
+		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: 0.02, snap: true },
+	};
+	const world = rotationZ(0.45).multiplyAffine(translation(0.313, 0.277, 5.0));
+	const made = Camera3D.fromWorld(world, request);
+	assert made.ok;
+	if (!made.ok) { return; }
+	const resolved = made.value.resolve(320, 240);
+	assert resolved.ok;
+	if (!resolved.ok) { return; }
+	const view: CameraView = resolved.value;
+	const blit: LowResView = { width: 320, height: 240, scale: 2, offsetX: 7.0, offsetY: 9.0 };
+	for (const topLeft of [true, false]) {
+		const shifted: LowResView =
+			blit.withRemainder(view.remainderX, view.remainderY, topLeft);
+		const point: Vec3 = vec3(1.0, 0.5, 0.5);
+		const pixel: Vec3 = view.project(point, shifted, topLeft);
+		const ray: Ray = view.rayFromScreen(pixel.x, pixel.y, shifted, topLeft);
+		const hit: PickHit = pickOf(scene, meshes, ray);
+		assert sameId(hit.owner, box);
+		assert nearVec(hit.point, point);
 	}
 }

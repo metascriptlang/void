@@ -1,4 +1,4 @@
-import { Vec3, Vec4, Mat4, vec3 } from "../math/math3d";
+import { Vec3, Vec4, Mat4, vec3, normalized, EPSILON } from "../math/math3d";
 import { LowResView, ViewPoint } from "./blit";
 import { Ray } from "./ray";
 
@@ -18,6 +18,7 @@ export struct Camera3D {
 	position: Vec3;
 	yaw: float32;
 	pitch: float32;
+	orientation: CameraBasis | null;
 	nearPlane: float32;
 	farPlane: float32;
 	projection: CameraProjection;
@@ -67,6 +68,10 @@ export enum CameraError {
 	NonFiniteProjection,
 	UnrepresentableDepthRange,
 	UnprojectableView,
+	BadWorldPose,
+	BadOrientation,
+	StaleCameraNode,
+	AmbiguousOrientation,
 }
 
 // Where the eye landed and by how much it missed, in texels.
@@ -80,9 +85,85 @@ function sine(a: float32): float32 { return Math.sin(a) as float32; }
 function cosine(a: float32): float32 { return Math.cos(a) as float32; }
 function floored(a: float32): float32 { return Math.floor(a) as float32; }
 
+function finiteWorld(world: Mat4): boolean {
+	return Number.isFinite(world.m11) && Number.isFinite(world.m12) &&
+		Number.isFinite(world.m13) && Number.isFinite(world.m14) &&
+		Number.isFinite(world.m21) && Number.isFinite(world.m22) &&
+		Number.isFinite(world.m23) && Number.isFinite(world.m24) &&
+		Number.isFinite(world.m31) && Number.isFinite(world.m32) &&
+		Number.isFinite(world.m33) && Number.isFinite(world.m34) &&
+		Number.isFinite(world.m41) && Number.isFinite(world.m42) &&
+		Number.isFinite(world.m43) && Number.isFinite(world.m44);
+}
+
+function boundedAxis(axis: Vec3): Vec3 {
+	const largest: float32 =
+		Math.max(Math.abs(axis.x), Math.max(Math.abs(axis.y), Math.abs(axis.z))) as float32;
+	if (largest == 0.0) { return vec3(0.0, 0.0, 0.0); }
+	return vec3(axis.x / largest, axis.y / largest, axis.z / largest);
+}
+
+function preciseCross(up: Vec3, back: Vec3): Vec3 {
+	const ux: float64 = up.x as float64;
+	const uy: float64 = up.y as float64;
+	const uz: float64 = up.z as float64;
+	const bx: float64 = back.x as float64;
+	const by: float64 = back.y as float64;
+	const bz: float64 = back.z as float64;
+	return vec3(
+		(uy * bz - uz * by) as float32,
+		(uz * bx - ux * bz) as float32,
+		(ux * by - uy * bx) as float32,
+	);
+}
+
+export function fromWorld(
+	this typeof Camera3D,
+	world: Mat4,
+	request: Camera3D,
+): Result<Camera3D, CameraError> {
+	if (!finiteWorld(world)) { return Result.err(CameraError.NonFinitePose); }
+	if (world.m14 != 0.0 || world.m24 != 0.0 || world.m34 != 0.0 || world.m44 != 1.0) {
+		return Result.err(CameraError.BadWorldPose);
+	}
+	const boundedBack: Vec3 = boundedAxis(vec3(world.m31, world.m32, world.m33));
+	const wantedUp: Vec3 = boundedAxis(vec3(world.m21, world.m22, world.m23));
+	const across: Vec3 = preciseCross(wantedUp, boundedBack);
+	const axesSquared: float32 = wantedUp.lengthSquared() * boundedBack.lengthSquared();
+	if (across.lengthSquared() <= EPSILON * axesSquared) {
+		return Result.err(CameraError.BadWorldPose);
+	}
+	const back: Vec3 = boundedBack.normalized();
+	const right: Vec3 = across.normalized();
+	const basis: CameraBasis = {
+		right: right, up: back.cross(right), forward: back.scaled(-1.0),
+	};
+	return Result.ok({
+		...request, position: vec3(world.m41, world.m42, world.m43),
+		yaw: 0.0, pitch: 0.0, orientation: basis,
+	});
+}
+
+function validOrientation(basis: CameraBasis): boolean {
+	return Number.isFinite(basis.right.x) && Number.isFinite(basis.right.y) &&
+		Number.isFinite(basis.right.z) && Number.isFinite(basis.up.x) &&
+		Number.isFinite(basis.up.y) && Number.isFinite(basis.up.z) &&
+		Number.isFinite(basis.forward.x) && Number.isFinite(basis.forward.y) &&
+		Number.isFinite(basis.forward.z) &&
+		Math.abs(basis.right.lengthSquared() - 1.0) <= 1e-4 &&
+		Math.abs(basis.up.lengthSquared() - 1.0) <= 1e-4 &&
+		Math.abs(basis.forward.lengthSquared() - 1.0) <= 1e-4 &&
+		Math.abs(basis.right.dot(basis.up)) <= 1e-4 &&
+		Math.abs(basis.right.dot(basis.forward)) <= 1e-4 &&
+		Math.abs(basis.up.dot(basis.forward)) <= 1e-4 &&
+		basis.right.cross(basis.up).dot(basis.forward) < -0.9999;
+}
+
 // ---- Basis, camera matrix, projection ----
 
 export function basisOf(this camera: Camera3D): CameraBasis {
+	const orientation: CameraBasis | null = camera.orientation;
+	if (orientation !== null) { return orientation; }
 	const yawSin: float32 = sine(camera.yaw);
 	const yawCos: float32 = cosine(camera.yaw);
 	const pitchSin: float32 = sine(camera.pitch);
@@ -179,9 +260,18 @@ export function resolve(
 		return Result.err(CameraError.EmptyTarget);
 	}
 	if (!Number.isFinite(camera.position.x) || !Number.isFinite(camera.position.y) ||
-		!Number.isFinite(camera.position.z) || !Number.isFinite(camera.yaw) ||
-		!Number.isFinite(camera.pitch)) {
+		!Number.isFinite(camera.position.z)) {
 		return Result.err(CameraError.NonFinitePose);
+	}
+	const orientation: CameraBasis | null = camera.orientation;
+	if (orientation === null) {
+		if (!Number.isFinite(camera.yaw) || !Number.isFinite(camera.pitch)) {
+			return Result.err(CameraError.NonFinitePose);
+		}
+	} else if (camera.yaw != 0.0 || camera.pitch != 0.0) {
+		return Result.err(CameraError.AmbiguousOrientation);
+	} else if (!validOrientation(orientation)) {
+		return Result.err(CameraError.BadOrientation);
 	}
 	if (!Number.isFinite(camera.nearPlane) || !Number.isFinite(camera.farPlane) ||
 		camera.farPlane <= camera.nearPlane) {

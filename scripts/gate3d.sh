@@ -295,6 +295,10 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 		unlitFrame initUnlit frameUnlit configureUnlit
 	write_frame_entry unlitPixelArtCapture "configureUnlit(true);" \
 		unlitFrame initUnlit frameUnlit configureUnlit
+	write_frame_entry cameraRigCapture "configureCameraRig(false);" \
+		cameraRigFrame initCameraRig frameCameraRig configureCameraRig
+	write_frame_entry cameraRigPixelArtCapture "configureCameraRig(true);" \
+		cameraRigFrame initCameraRig frameCameraRig configureCameraRig
 	note "prepare: capture entries written to $CAPTURE"
 }
 
@@ -976,7 +980,9 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	tests/integration/perspectiveFrame.ms tests/integration/gltfFrame.ms
 	tests/integration/gpuRegistrationFixture.ms tests/integration/storeIdentity.ms
 	tests/integration/viewTeardown.ms tests/aborts3d
-	tests/integration/targetOwner.ms tests/integration/targetPresetEpoch.ms"
+	tests/integration/targetOwner.ms tests/integration/targetPresetEpoch.ms
+	src/test/cameraCheck.ms src/test/pickCheck.ms
+	tests/integration/cameraRigFrame.ms"
 
 run_style() {
 	long=$(
@@ -1046,6 +1052,9 @@ PERSPECTIVE_PATH_FUNCTIONS="camera:resolve camera:basisOf camera:sine camera:cos
 	camera:ndcOf camera:texelOf camera:finitePoint camera:supportsScreenRays
 	renderer:beginFrame pass76ist:filterFrustum
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds"
+CAMERA_RIG_PATH_FUNCTIONS="scene:cameraOf scene:cameraRow scene:syncWorld scene:liveRow
+	scene:requireOpen scene:isLive slots:isCurrent camera:fromWorld camera:finiteWorld
+	camera:boundedAxis camera:preciseCross camera:validOrientation camera:resolve camera:basisOf"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
@@ -1095,10 +1104,13 @@ run_allocation() {
 	check_array_copies "$CAPTURE/campfirePick.ms" "pick path" "$PICK_PATH_FUNCTIONS" || return
 	check_array_copies "$CAPTURE/perspectiveCapture.ms" "perspective path" \
 		"$PERSPECTIVE_PATH_FUNCTIONS" || return
+	check_array_copies "$CAPTURE/cameraRigCapture.ms" "camera rig path" \
+		"$CAMERA_RIG_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
 	note "allocation: nor in the perspective path ($(echo $PERSPECTIVE_PATH_FUNCTIONS))"
+	note "allocation: nor in the camera rig path ($(echo $CAMERA_RIG_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1801,6 +1813,45 @@ run_unlit_textured() {
 	done
 }
 
+run_camera_rig() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "camera-rig: GATE_SKIP_CAPTURE=1 — world cameras were not drawn"
+		return
+	fi
+	for entry in cameraRigCapture cameraRigPixelArtCapture; do
+		if ! msc build "$CAPTURE/$entry.ms" --output="$WORK/$entry.exe" \
+			> "$WORK/$entry.build.log" 2>&1; then
+			fail "camera-rig: $entry does not build"
+			return
+		fi
+		status=0
+		CAPTURE_PREFIX="$CAPTURE/gate/$entry" "$WORK/$entry.exe" \
+			> "$WORK/$entry.run.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "camera-rig: $entry requires the unrun D3D11 readback backend"
+			continue
+		fi
+		if [ "$status" -ne 0 ] ||
+			! grep -q '^PASS camera rig:' "$WORK/$entry.run.log" ||
+			[ "$(grep -c '^camera rig: pair [0-9]* matched RGBA$' "$WORK/$entry.run.log")" != "8" ]; then
+			fail "camera-rig: $entry did not finish eight rig/manual RGBA pairs (exit $status)"
+			return
+		fi
+		pass "camera-rig: $entry, eight RGBA pairs, roll, scale excluded, snapped and stale/inactive"
+		status=0
+		VOID_CAMERA_RIG_ROLL_CONTROL=1 "$WORK/$entry.exe" \
+			> "$WORK/$entry.control.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] &&
+			grep -q '^FAIL camera rig: rig/manual pixels differ at frame 3' \
+				"$WORK/$entry.control.log"; then
+			pass "camera-rig: $entry's lost-roll control differs at the rolled pair"
+		else
+			fail "camera-rig: $entry's lost-roll control was not caught"
+			return
+		fi
+	done
+}
+
 gltf_checked() {
 	log=$WORK/$1.run.log
 	grep -q '^PASS gltf frame: texels, factor, both sides, culling, rollback, release$' "$log" &&
@@ -2093,6 +2144,7 @@ run_compose
 run_perspective
 run_textured
 run_unlit_textured
+run_camera_rig
 run_gltf
 run_both_layers
 run_stores

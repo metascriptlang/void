@@ -21,6 +21,16 @@
 // expect pin.removeChildren: void3d: removeChildren found a node's pin taken through the context
 // expect pin.closeScene: void3d: closeScene found a node's pin taken through the context
 // expect pin.setMeshOf: void3d: setMeshOf found a node's pin taken through the context
+// expect closed.addCameraNode: void3d: addCameraNode on a scene that was closed
+// expect closed.setCameraOf: void3d: setCameraOf on a scene that was closed
+// expect closed.setActiveCamera: void3d: setActiveCamera on a scene that was closed
+// expect closed.cameraOf: void3d: cameraOf on a scene that was closed
+// expect camera.foreign.setCameraOf: void3d: setCameraOf on node 0 of another scene
+// expect camera.foreign.setActiveCamera: void3d: setActiveCamera on node 0 of another scene
+// expect camera.unbound.setCameraOf: void3d: setCameraOf on node 0 without a camera binding
+// expect camera.unbound.setActiveCamera: void3d: setActiveCamera on node 0 without a camera binding
+// expect camera.stale.setCameraOf: void3d: setCameraOf on stale node 1
+// expect camera.stale.setActiveCamera: void3d: setActiveCamera on stale node 1
 import { argv } from "std/process";
 import { vec3 } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
@@ -56,6 +66,10 @@ import {
 	addGroup,
 	addMeshNode,
 	addLightNode,
+	addCameraNode,
+	setCameraOf,
+	setActiveCamera,
+	cameraOf,
 	remove,
 	removeChildren,
 	setLocal,
@@ -73,6 +87,15 @@ import {
 } from "../../../src/void3d/scene";
 import { Ray } from "../../../src/void3d/ray";
 import { PickHit, PickError, pickNearest } from "../../../src/void3d/pick";
+import { Camera3D, CameraError, ProjectionKind } from "../../../src/void3d/camera";
+
+function cameraRequest(): Camera3D {
+	return {
+		position: vec3(0.0, 0.0, 4.0), yaw: 0.0, pitch: 0.0,
+		nearPlane: 0.1, farPlane: 40.0,
+		projection: { kind: ProjectionKind.Perspective, fovY: 1.0 },
+	};
+}
 
 function meshOf(context: DrawContext): MeshId {
 	const added: Result<MeshId, MeshUploadError> = addMesh(context, GpuMesh.fullscreen(0, 3));
@@ -144,6 +167,14 @@ function closedCase(name: string): boolean {
 	} else if (name == "closed.pickNearest") {
 		const ray: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
 		const _r: Result<PickHit, PickError> = pickNearest(scene, ray);
+	} else if (name == "closed.addCameraNode") {
+		const _r: NodeId3D = addCameraNode(scene, root, Transform3D.identity(), cameraRequest());
+	} else if (name == "closed.setCameraOf") {
+		setCameraOf(scene, root, cameraRequest());
+	} else if (name == "closed.setActiveCamera") {
+		setActiveCamera(scene, null);
+	} else if (name == "closed.cameraOf") {
+		const _r: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
 	} else {
 		return false;
 	}
@@ -195,8 +226,30 @@ function pinTakenCase(name: string): boolean {
 	return true;
 }
 
+function cameraMisuse(name: string): boolean {
+	const setPose: boolean = name == "camera.foreign.setCameraOf" ||
+		name == "camera.unbound.setCameraOf" || name == "camera.stale.setCameraOf";
+	const setActive: boolean = name == "camera.foreign.setActiveCamera" ||
+		name == "camera.unbound.setActiveCamera" || name == "camera.stale.setActiveCamera";
+	if (!setPose && !setActive) { return false; }
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const scene: Scene3D = Scene3D.create(context);
+	let node: NodeId3D = scene.rootId();
+	if (name == "camera.foreign.setCameraOf" || name == "camera.foreign.setActiveCamera") {
+		const other: Scene3D = Scene3D.create(context);
+		node = other.rootId();
+	} else if (name == "camera.stale.setCameraOf" || name == "camera.stale.setActiveCamera") {
+		node = addCameraNode(scene, scene.rootId(), Transform3D.identity(), cameraRequest());
+		const _removed: int32 = remove(scene, node);
+	}
+	if (setPose) { setCameraOf(scene, node, cameraRequest()); }
+	else { setActiveCamera(scene, node); }
+	return true;
+}
+
 function run(name: string): void {
-	const known: boolean = closedCase(name) || contextClosedCase(name) || pinTakenCase(name);
+	const known: boolean =
+		cameraMisuse(name) || closedCase(name) || contextClosedCase(name) || pinTakenCase(name);
 	console.log(known ? `${name} returned` : `no case named '${name}'`);
 }
 

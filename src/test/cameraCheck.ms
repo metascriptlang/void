@@ -11,7 +11,7 @@ import {
 } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
 import { Ray } from "../void3d/ray";
-import { Vec3, vec3, identity } from "../math/math3d";
+import { Vec3, Mat4, vec3, identity, rotationZ, scaling, translation } from "../math/math3d";
 import { approx } from "./helpers";
 
 // The campfire's camera, and its rule for the texel size: 20 world units across the low-res
@@ -50,7 +50,9 @@ function snapping(snap: boolean): Camera3D {
 		position: vec3(0.0, 0.0, 0.0),
 		yaw: YAW,
 		pitch: PITCH,
-		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: WORLD_PER_TEXEL, snap: snap },
+		projection: {
+			kind: ProjectionKind.Orthographic, worldPerTexel: WORLD_PER_TEXEL, snap: snap,
+		},
 		nearPlane: -50.0,
 		farPlane: 50.0,
 	};
@@ -128,7 +130,9 @@ test "ortho bounds follow the low-res view, its divisor and its margin" {
 	const preview: LowResView = try lowResView(1280, 720, 360, 2, 0) catch NO_LOW_RES;
 	let halved: Camera3D = {
 		...camera,
-		projection: { kind: ProjectionKind.Orthographic, worldPerTexel: PREVIEW_PER_TEXEL, snap: false },
+		projection: {
+			kind: ProjectionKind.Orthographic, worldPerTexel: PREVIEW_PER_TEXEL, snap: false,
+		},
 	};
 	const smaller: OrthoBounds = halved.orthoBounds(preview.width, preview.height);
 	assert preview.width == 320 && preview.height == 180;
@@ -349,7 +353,9 @@ test "perspective project and unproject rays agree through both framebuffer row 
 
 test "perspective refuses unsafe FOV and non-positive near depth" {
 	let camera: Camera3D = perspective();
-	let badFovs: Vec<float32> = [0.0, -0.1, 3.141592653589793, 4.0, (0.0 / 0.0) as float32, (1.0 / 0.0) as float32];
+	let badFovs: Vec<float32> = [
+		0.0, -0.1, 3.141592653589793, 4.0, (0.0 / 0.0) as float32, (1.0 / 0.0) as float32,
+	];
 	for (let fov of badFovs) {
 		let bad: Camera3D = {
 			...camera, projection: { kind: ProjectionKind.Perspective, fovY: fov },
@@ -437,4 +443,189 @@ test "perspective rejects overflowing corner rays without banning a supported la
 	);
 	assert approx(ray.direction.lengthSquared(), 1.0);
 	assert ray.direction.x < 0.0 && ray.direction.y > 0.0 && ray.direction.z < 0.0;
+}
+
+test "a camera from a rolled world matrix keeps its roll in projected pixels" {
+	const base: Camera3D = { ...perspective(), position: vec3(0.0, 0.0, 4.0) };
+	const world: Mat4 = rotationZ(0.5).multiplyAffine(translation(0.0, 0.0, 4.0));
+	const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(world, base);
+	assert made.ok;
+	if (!made.ok) { return; }
+	const view: CameraView = resolvedView(made.value, 320, 240);
+	const plain: CameraView = resolvedView(base, 320, 240);
+	const mapping: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	const point: Vec3 = vec3(1.0, 0.0, 0.0);
+	const rolled: Vec3 = view.project(point, mapping, true);
+	const unrolled: Vec3 = plain.project(point, mapping, true);
+	assert Math.abs(rolled.y - unrolled.y) > 8.0;
+	assert nearVec(view.eye, vec3(0.0, 0.0, 4.0));
+	const ray: Ray = view.rayFromScreen(rolled.x, rolled.y, mapping, true);
+	assert (point - ray.origin).normalized().dot(ray.direction) > 0.99999;
+}
+
+test "camera world scale is excluded without changing its full orientation" {
+	const base: Camera3D = { ...perspective(), position: vec3(0.0, 0.0, 4.0) };
+	const rotate: Mat4 = rotationZ(0.5);
+	const shift: Mat4 = translation(0.0, 0.0, 4.0);
+	const plain: Result<Camera3D, CameraError> =
+		Camera3D.fromWorld(rotate.multiplyAffine(shift), base);
+	const scaled: Result<Camera3D, CameraError> = Camera3D.fromWorld(
+		scaling(2.0, 4.0, 8.0).multiplyAffine(rotate).multiplyAffine(shift), base,
+	);
+	assert plain.ok && scaled.ok;
+	if (!plain.ok || !scaled.ok) { return; }
+	const first: CameraView = resolvedView(plain.value, 320, 240);
+	const second: CameraView = resolvedView(scaled.value, 320, 240);
+	const mapping: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+	for (const point of [vec3(1.0, 0.0, 0.0), vec3(-0.7, 0.5, -2.0)]) {
+		const a: Vec3 = first.project(point, mapping, true);
+		const b: Vec3 = second.project(point, mapping, true);
+		assert Math.abs(a.x - b.x) < 1e-4 && Math.abs(a.y - b.y) < 1e-4;
+		assert Math.abs(a.z - b.z) < 1e-5;
+	}
+}
+
+test "a world camera refuses a later yaw or pitch write instead of silently ignoring it" {
+	const made: Result<Camera3D, CameraError> =
+		Camera3D.fromWorld(rotationZ(0.2), perspective());
+	assert made.ok;
+	if (made.ok) {
+		for (const angles of [vec3(0.3, 0.0, 0.0), vec3(0.0, -0.4, 0.0)]) {
+			const changed: Camera3D = { ...made.value, yaw: angles.x, pitch: angles.y };
+			const result: Result<CameraView, CameraError> = changed.resolve(320, 240);
+			assert !result.ok;
+			if (!result.ok) { assert result.error == CameraError.AmbiguousOrientation; }
+		}
+	}
+}
+
+test "finite extreme world scales do not overflow or underflow camera orientation" {
+	for (const scale of [1e-40 as float32, 1e30 as float32]) {
+		const world: Mat4 = scaling(scale, scale, scale);
+		const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(world, perspective());
+		assert made.ok;
+		if (made.ok) {
+			const view: Result<CameraView, CameraError> = made.value.resolve(320, 240);
+			assert view.ok;
+			if (view.ok) {
+				assert nearVec(view.value.basis.right, vec3(1.0, 0.0, 0.0));
+				assert nearVec(view.value.basis.up, vec3(0.0, 1.0, 0.0));
+			}
+		}
+	}
+}
+
+test "world cameras reject non-finite, non-affine and degenerate axes" {
+	const nonfinite: Vec<Mat4> = [
+		{ ...identity(), m41: (0.0 / 0.0) as float32 },
+		{ ...identity(), m22: (1.0 / 0.0) as float32 },
+	];
+	for (const world of nonfinite) {
+		const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(world, perspective());
+		assert !made.ok;
+		if (!made.ok) { assert made.error == CameraError.NonFinitePose; }
+	}
+	const unsafe: Vec<Mat4> = [
+		{ ...identity(), m14: 0.1 }, { ...identity(), m44: 0.0 },
+		scaling(1.0, 1.0, 0.0), scaling(1.0, 0.0, 1.0),
+		{ ...identity(), m22: 0.0, m23: 1.0 },
+	];
+	for (const world of unsafe) {
+		const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(world, perspective());
+		assert !made.ok;
+		if (!made.ok) { assert made.error == CameraError.BadWorldPose; }
+	}
+}
+
+test "explicit camera orientation refuses malformed frames and non-finite positions" {
+	const malformed: Vec<CameraBasis> = [
+		NO_BASIS,
+		{ right: vec3(2.0, 0.0, 0.0), up: vec3(0.0, 1.0, 0.0),
+			forward: vec3(0.0, 0.0, -1.0) },
+		{ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 1.0, 0.0),
+			forward: vec3(0.0, 0.0, 1.0) },
+		{ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 1.0, 0.0),
+			forward: vec3(0.0, (0.0 / 0.0) as float32, -1.0) },
+		{ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 1.0, 0.0),
+			forward: vec3(0.01, 0.0, -0.99995) },
+		{ right: vec3(1.0, 0.0, 0.0), up: vec3(0.0, 1.0, 0.0),
+			forward: vec3(0.0, 0.01, -0.99995) },
+	];
+	for (const basis of malformed) {
+		const camera: Camera3D = { ...perspective(), orientation: basis };
+		const view: Result<CameraView, CameraError> = camera.resolve(320, 240);
+		assert !view.ok;
+		if (!view.ok) { assert view.error == CameraError.BadOrientation; }
+	}
+	const made: Result<Camera3D, CameraError> =
+		Camera3D.fromWorld(identity(), perspective());
+	assert made.ok;
+	if (made.ok) {
+		const camera: Camera3D = {
+			...made.value, position: vec3((1.0 / 0.0) as float32, 0.0, 0.0),
+		};
+		const view: Result<CameraView, CameraError> = camera.resolve(320, 240);
+		assert !view.ok;
+		if (!view.ok) { assert view.error == CameraError.NonFinitePose; }
+	}
+}
+
+test "camera world axes refuse numerical collinearity without banning steep valid views" {
+	const axes: Vec<Vec3> = [
+		vec3(0.37, 0.63, 1.0), vec3(0.13, 0.77, 1.0), vec3(0.71, 0.41, 1.0),
+	];
+	for (const back of axes) {
+		for (const multiplier of [1.0 as float32, 3.0 as float32]) {
+			const up: Vec3 = back.scaled(multiplier);
+			const world: Mat4 = {
+				...identity(), m21: up.x, m22: up.y, m23: up.z,
+				m31: back.x, m32: back.y, m33: back.z,
+			};
+			const made: Result<Camera3D, CameraError> =
+				Camera3D.fromWorld(world, perspective());
+			assert !made.ok;
+			if (!made.ok) { assert made.error == CameraError.BadWorldPose; }
+		}
+	}
+	const near: Mat4 = { ...identity(), m22: 1e-6, m23: 1.0 };
+	const refused: Result<Camera3D, CameraError> = Camera3D.fromWorld(near, perspective());
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == CameraError.BadWorldPose; }
+	const steep: Mat4 = { ...identity(), m22: 1e-2, m23: 1.0 };
+	const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(steep, perspective());
+	assert made.ok;
+	if (made.ok) {
+		const view: Result<CameraView, CameraError> = made.value.resolve(320, 240);
+		assert view.ok;
+		if (view.ok) {
+			assert nearVec(view.value.basis.right, vec3(1.0, 0.0, 0.0));
+			assert nearVec(view.value.basis.up, vec3(0.0, 1.0, 0.0));
+		}
+	}
+}
+
+test "a generic near-parallel world pose publishes a resolvable orthogonal frame" {
+	const accepted: Mat4 = {
+		...identity(), m21: 0.37002, m22: 0.63, m23: 1.0,
+		m31: 0.37, m32: 0.63, m33: 1.0,
+	};
+	const made: Result<Camera3D, CameraError> = Camera3D.fromWorld(accepted, perspective());
+	assert made.ok;
+	if (!made.ok) { return; }
+	const resolved: Result<CameraView, CameraError> = made.value.resolve(320, 240);
+	assert resolved.ok;
+	if (!resolved.ok) { return; }
+	const basis: CameraBasis = resolved.value.basis;
+	assert nearVec(basis.right, vec3(0.0, -1.0, 0.63).normalized());
+	assert Math.abs(basis.right.lengthSquared() - 1.0) < 1e-4;
+	assert Math.abs(basis.up.lengthSquared() - 1.0) < 1e-4;
+	assert Math.abs(basis.forward.lengthSquared() - 1.0) < 1e-4;
+	assert Math.abs(basis.right.dot(basis.up)) < 1e-4;
+	assert Math.abs(basis.right.dot(basis.forward)) < 1e-4;
+	assert Math.abs(basis.up.dot(basis.forward)) < 1e-4;
+	assert basis.right.cross(basis.up).dot(basis.forward) < -0.9999;
+	const refused: Mat4 = { ...accepted, m21: 0.370005 };
+	const other: Result<Camera3D, CameraError> = Camera3D.fromWorld(refused, perspective());
+	assert !other.ok;
+	if (!other.ok) { assert other.error == CameraError.BadWorldPose; }
 }

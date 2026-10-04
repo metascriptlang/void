@@ -7,7 +7,7 @@
 // - the 16 fields in declaration order are the upload order: GLSL reads them column-major,
 //   which is the transpose, so `uniformMatrix * vec4(p, 1.0)` equals `p * m` here.
 
-const EPSILON: float32 = 1e-10;
+export const EPSILON: float32 = 1e-10;
 
 export struct Vec3 {
 	x: float32;
