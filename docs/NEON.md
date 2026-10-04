@@ -4,7 +4,8 @@ What Neon builds on Void, in the syntax an app author writes, and what Void stil
 it to ship. Decided with the person on 2026-10-03 in a Neon session. Neon's own record of the same
 model is `neon/docs/VISION.md` "Inside a Void area"; Neon reads this file for Void's side.
 
-Every Void pointer below was read on Void's `main` at `fc6efe0`.
+Every Void pointer below was read on Void's `main` at `fc6efe0`; "What Neon builds now" and items 1,
+2 and 8 were read again at `89981dd`.
 
 ## The intent
 
@@ -106,12 +107,70 @@ under a 3D node; a `Material` lives in a `Mesh` and a `Texture` in a `Material`.
 ## What Neon builds now, on what Void already has
 
 Neon's void host (`neon/src/platform/void/host.ms`) is still written against `Node2D`, which P5
-step 6 deleted, so it does not build on Void's `main`; it also maps every element tag to an empty
-group. Its rewrite onto `Scene2D` / `NodeRef` and binders is Neon's card
-`~/metascript/.wt/void-noderef-host.md`. That card needs the host API the person approved on
-2026-09-30, `~/metascript/.inbox/neon/2026-09-28-void2d-noderef.md`, which was written on the
-Windows machine and is not on the Mac: **send it** (commit it under `docs/` here, or copy it into
-the Neon inbox).
+step 6 deleted, so it does not build on Void's `main`. It also keeps its own parent links, sums
+x/y into world positions, measures text through its own `MeasureText` callback, tracks dirtiness
+with `onDirty`, and maps every element tag to an empty group. Its rewrite is Neon's card
+`~/metascript/.wt/void-noderef-host.md`, written against the contract below. This contract replaces
+the host API note approved on 2026-09-30 (`~/metascript/.inbox/neon/2026-09-28-void2d-noderef.md`),
+which never left the Windows machine.
+
+### The 2D host contract
+
+- **A host owns one `Scene2D`, and its elements hold `NodeRef` handles.** The types are
+  `src/void2d/node.ms` `Scene2D`, `NodeRef` and `NodeId2D`. Construction and the frame calls are
+  extensions in `src/void2d/scene.ms`, so the host imports that module too. A Neon `HostNode`
+  keeps the handle, not a node object. Handles compare with `==`, and a disposed handle stops by
+  name on its next use. Events, focus, text-input clients and dispatch order stay in Neon: a
+  rendering handle owns no registry.
+- **Every write goes through a binder** (the `set*` extensions in `node.ms`). The readers
+  (`local()`, `paint()`, `textStyle()`, …) return value groups, so changing a returned group is
+  not a node write and the scene never sees it. Paint, transform, order, content and text-style
+  writes return early on an equal value (`putPaint`, `putLocal`, `putOrder`, `putContent`,
+  `putTextStyle`), so writing an unchanged prop costs nothing.
+- **A View is created with `group()` and gets its paint later.** `setBackground` and
+  `setBoxStyle` promote it to a Rect on the same row, and `clearBackground` demotes it (item 8
+  below). The handle, children and layout survive both. Making every View a Rect up front would
+  emit an instance for every transparent box.
+- **The tree is Void's.** `addChild`, `addChildAt`, `remove`, `parent`, `getChildAt`,
+  `getChildIndex` and `numChildren` replace the host's parent-link map. `remove` detaches and
+  keeps the handle valid, so a keyed move is `addChildAt` on the new parent, and a cycle stops by
+  name. `dispose` frees the whole subtree and is for unmount only. A node's world position is
+  `localToGlobal(vec2(0.0, 0.0))`, live right after the writes. It is not the sum of
+  translations once rotation, scale, pivot or scroll apply.
+- **Geometry and text measurement are Void's** (`src/void2d/render.ms`). Pointer hit-testing
+  uses `hitTest(vec2(x, y))` in scene coordinates. It applies live transforms, ancestor masks and
+  scroll, and rejects hidden nodes. It tests content bounds, not texture alpha. A `TextInput`
+  places its caret and maps a press with the painted label's own layout: `xForIndex`, `lineBoxAt`
+  and `indexAt` (UTF-16 indices), plus `textWidth` and `textHeight`. `calcTextWidth` measures
+  other, unwrapped text in that label's font. Neon removes `MeasureText` and its `noMeasure` path
+  rather than keep a second measurer that can disagree with what is drawn. Caret and selection
+  padding are paint, not content bounds, so IME placement reads the text geometry, never render
+  bounds.
+- **Frames are on demand, and the scene says when.** After input and layout, request a frame only
+  if `isDirty()` is true: a node or tree write, the camera, the default sampler, or a scene never
+  painted. It replaces the host's `onDirty` bookkeeping. `isDirty()` cannot know about the surface,
+  so first paint, size, DPI, the clear colour, a recreated surface and lost GPU contents stay the
+  host's to invalidate. `present()` and `presentAt(dpi)` open and commit the screen pass. Over a 3D
+  frame, call `prepare(w, h, dpi)` before any screen pass and `drawScreen()` inside the caller's
+  pass, never `present()` nested in it. `w` and `h` are logical units: framebuffer pixels divided
+  by DPI.
+- **Warm only the blend modes the host draws with.** After `setup2d()`, call
+  `preparePipelines([BlendMode.Alpha])` (`src/void2d/draw.ms`; `BlendMode` is in
+  `src/gpu/state.ms`), adding another mode only when the host uses it. It warms the screen and
+  offscreen variants and the blur pipeline. Warming every mode is wrong: the slots exceed the
+  native pipeline pool (`docs/VOID2D.md` "D1 as built"). Without warmup, pipeline creation lands in
+  the first presented frame. The D3D11 numbers are in the same section and do not promise anything
+  for another driver.
+- **A scene cannot be torn down for good yet.** Disposing nodes frees their rows, but a dropped
+  `Scene2D` keeps its retained GPU lists (`docs/VOID2D.md` "Known defects", P5 review B1). A host
+  that would create a scene per window or per texture keeps it alive until B1 lands.
+
+The rewrite is proven by its consumers, not by compiling. A keyed move keeps its handles. Pointer
+tests on transformed, scrolled and masked nodes hit what is drawn. The real `TextInput` caret
+matches the painted text. The host keeps no dirty flags and no measurer of its own. Startup warms
+its pipelines. The tiers are in `docs/TESTING.md`.
+
+### The 3D components
 
 The 3D components follow Void's own model: owners made with `T.create` and ended with their
 `close` in the component's cleanup, handles as values, and each reactive prop written through one
@@ -134,8 +193,8 @@ and `neon/src/platform/ion/window.ms`; say so in `~/metascript/.inbox/neon/`.
 In order. 1, 2 and 4 block UI on a mesh; 3 and 5 make it right to look at; 6 and 7 let the JSX
 above be written without Neon working around Void.
 
-1. **Draw a `Scene2D` into a render target the caller owns.** Implemented in branch commit
-   `2bd7a9b`, not on main yet: `src/void2d/scene.ms` `drawTarget`, using existing prepared replay.
+1. **Draw a `Scene2D` into a render target the caller owns.** On `main` at `2bd7a9b`:
+   `src/void2d/scene.ms` `drawTarget`, using existing prepared replay.
    During `openPrepare` … `closePrepare`, prepare at the target's pixel size divided by DPI,
    then draw it. The call opens and closes its own pass, never commits, and consumes that
    same-frame preparation just as `drawScreen` does. Existing filter targets finish in prepare.
@@ -164,7 +223,7 @@ above be written without Neon working around Void.
    through the same checked `TextureId` and survives a resize. Heaps: a `Texture` with the
    `Target` flag is both (`h3d/mat/Texture.hx`).
 
-   The target-owner prerequisite is implemented on this branch: `src/gpu/target.ms`
+   The target-owner prerequisite is on `main` at `6d68e8a`: `src/gpu/target.ms`
    `RenderTarget` shares one owner across aliases, resizes in place and closes terminally.
    Heaps `Texture.resize` and three `RenderTarget.setSize` keep that object identity;
    Void reuses its PipelineCache/M25 reference-owner model. The native lifecycle consumer is
@@ -222,7 +281,7 @@ above be written without Neon working around Void.
    builds and removes a ScaleGrid child lazily — Void's divergence is to keep one row instead
    of adding a child, so the layout size needs no sync.
 
-   **Answer, branch commits `dabfdbc` + `e5602f5`:** `setBackground`, `clearBackground` and
+   **Answer, on `main` at `dabfdbc` + `e5602f5`:** `setBackground`, `clearBackground` and
    `setBoxStyle` promote and demote a Group↔Rect on the same row (`node.ms` `takePaintable`);
    the NodeRef, children, layout, order and alpha are untouched, any other kind stops by name,
    and a transparent fill with no border and no shadow emits nothing. Promotion always starts
