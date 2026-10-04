@@ -12,7 +12,7 @@ function init(): void { gfxSetup(); }
 function frame(): void {
 	let target: RenderTarget = RenderTarget.allocate(8, 8, PixelFormat.Rgba8, false);
 	const kept: Vec<ColorAttachment> = [target.asColor(LoadAction.Clear, RED)];
-	target = target.released();
+	target.close();
 	beginPass(kept, NO_DEPTH);
 	console.log("a pass opened on the attachment of a released target");
 	process.exit(0);

@@ -1649,3 +1649,112 @@ and the observed nonzero abort status. Native suite, golden and mixed logs are b
 **Carried:** renew demo liveness and all combined-tip backend/gate proofs after Yoga answers;
 arbitrary C code declaring private symbols or calling sokol directly is outside this public-header
 contract. The exact-held Forward/Anchor rows are not certified correct by this review.
+
+## RenderTarget reference owner — NEON item 2 prerequisite (2026-10-04)
+
+**Verdict: SHIP for corrected source tree `3b8c7e0c2d840ae656b6180d8b15ec1f5d244a16`.**
+This is not a P5/P6 verdict, complete material-to-target support, a device-loss receipt or land.
+The initial other-author pass returned SHIP WITH FOLLOW-UPS on `fa00cced`, with R1–R3 required
+before land; the re-review accepted those corrections and F4/F5. F6 remains the inherited
+public-owner-field limitation. Final full-chain receipts are separate from the design verdict.
+
+**Passes.** The main-session defect pass read the complete source/caller/test/gate diff over
+`41c1c29`, checked the revised lifecycle and epoch paths, and ran the real native consumers.
+The independent design pass and re-review were performed by the separate Claude Code coordinator
+session `void-7a`, which did not write this slice. It read the cached 18-path initial diff,
+then the corrections, the reference-owner model and actual logs, and built or edited nothing.
+The main session verified every finding against source and its own native receipts.
+
+**Corrections taken:**
+- **R1:** positive older-epoch same-size controls in `targetOwner.ms` and `targetPresetEpoch.ms`.
+  The latter stamps all six target generations, not just colour: a real epoch change makes
+  every target stale. A still-current target correctly keeps its same-size storage.
+- **R2:** `target.ms` `resize` stops on refused image/attachment/texture storage after retiring
+  partial allocations. Zero-size and real pool exhaustion have named-error pins. `render.ms`
+  NO_TARGET and every empty filter-result fallback were deleted.
+- **R3:** one owner vocabulary, `close` and `isClosed`; all callers and terminal diagnostics
+  moved, three abort files renamed to AfterClose, no release shim. Sampler remains a value.
+- **F4:** `beginTarget` checks owner state before layout validation; the closed-target pin
+  names that lifecycle error rather than an empty attachment.
+- **F5:** same-size no-op and terminal close dispositions are in VOID2D.md's owner entry:
+  three's no-op preserves contents; M25's terminal close does not take Heaps' reusable dispose.
+- **F6 carried:** public owner fields remain writable, as with PipelineCache/M25; the API
+  assumes owner-module mutations, not forged fields. No new opaque owner mechanism.
+
+**The ten design questions:**
+1. **Exits:** aliases observe one owner, resize keeps identity, close is terminal, old target
+   value APIs are gone, and both presets/void2d pool use owner adoption. The producer/holder/
+   screen consumer and all misuse processes exercise those transitions, not mock forwarding.
+2. **Measurements:** msc 0.3.0 binary/support BUILD `4573591e`, Windows D3D11. Old native value
+   repro exits 1 with held 16x16/dead image after owner 32x24; reference repro exits 0 with both
+   32x24/live. Corrected owner consumer passes five sampled frames; preset control passes two;
+   six env cases terminate nonzero with their exact error. The scene consumer passes nine frames.
+3. **Guardrails:** no new renderer, command ordering, blending, AA, node widening or caller
+   redraw policy. Closure retires exactly one image/two views for a sampled target; independent
+   owner pixels survive. Empty filters no longer conceal storage refusal.
+4. **Reference:** Heaps Texture.resize keeps object identity; three setSize supplies same-size
+   no-op; F/M25 supply terminal owners. W dispositions name the two differences from Heaps.
+   Epoch controls preserve old ids and restore test counts explicitly, not fake device loss.
+5. **Capability shape:** an interface owner with explicit allocation/resize/close, in Void's
+   handles/owners idiom. Raw view ids still require rebinding after storage changes; M27 owns
+   the checked material texture row. This slice does not silently implement or claim that row.
+6. **Defects:** value-copy alias staleness is corrected, not moved to the caller. Allocation
+   failure is named at resize. B1 Scene lifetime and the exact-held captures remain separate.
+7. **Tests:** real image/view liveness, exact counts, GPU pixels, no-op/adoption and terminal
+   boundaries; both gate scripts require nonzero exit plus named diagnostics. New comment
+   metadata headers were refused, removed, and replaced by the existing SceneTarget env idiom;
+   the hook was not changed. Three existing alias abort pins remain permanent.
+8. **Compiler:** no workaround or recompiler edit. The readonly owner-field card is carried,
+   not revalidated or disguised as enforcement. Hibernal/device execution is not inferred.
+9. **Style/perf:** sharing justifies the interface; ownership allocation is at construction,
+   resize replaces GPU storage in place. Preset early-outs add one generation read. No new
+   timing or automated target no-allocation claim; the existing frame guards retain their scope.
+10. **Refuse to land:** without the final full native chain/gate3d and later required web gate,
+    or with a claim that generation-write controls prove device loss, raw views survive resize,
+    or M27/material alpha sampling is already complete.
+
+**Receipts:** `out/tmp/targetOwner/ownerCorrected*`, `presetEpoch*`, `sceneCorrected*` and
+`valueAlias*.log`. The earlier native UI gate on `fa00cced` was GREEN with eight loud skips,
+1153 + 299 + 318 tests, D3D11 82/82, nine oracles, demo liveness and record 19/0 off.
+It predates R1–R3 and is not the corrected source's final gate.
+
+### Exercised corrected native UI chain
+
+On msc 0.3.0 binary/support BUILD `4573591e`, Windows D3D11, 2026-10-04,
+`sh scripts/gate.sh` on code tree `3b8c7e0c2d840ae656b6180d8b15ec1f5d244a16` is **GREEN,
+0 FAIL with eight loud skips**: 1153 suite plus 299/318 isolated tests, D3D11 82/82 unchanged,
+all six owner misuse rows, the five-frame owner and two-frame preset controls, nine-frame scene
+consumer and eleven misuse rows, real demo liveness for five seconds, mixed composition,
+nine oracles, and record 19 rows/0 off. Allocation scope is 107 frame/29 rebuild/5 measure
+functions and 248 callees; target-owner no-allocation coverage is not claimed.
+
+The skips name unrequested web build/liveness and WebGL2 conformance, unrun GLES3 desktop/
+Android and Metal macOS/iOS, unavailable WebGPU readback, and P6's absent wasm size budget.
+Web was not rerun through the still-known Yoga provider failure; no backend result is inferred.
+Receipt: `out/tmp/targetOwner/gate2dFinal.log`. After this run, the re-review's sole formatting
+nit removed one duplicate blank line in `render.ms`, producing code tree
+`f8d2ed0adec452cff9e3cc716ee48618d3f887bb`; no runtime code changed.
+
+### Full 3D chain and formatting-only correction
+
+`sh scripts/gate3d.sh` on code tree `f8d2ed0adec452cff9e3cc716ee48618d3f887bb`,
+BUILD `4573591e`, D3D11, completed every stage: **247 PASS rows, 183 abort cases,
+1153 suite tests, oracle 75 agreements/11 declared divergences, 72 unchanged baseline hashes,
+Android arm64 3,791,824 bytes**. Owner/epoch consumers and all six new misuse rows pass.
+The three existing skips are exact-held Forward/Anchor and the unrun GLES3 device.
+
+The command's actual verdict is **RED: one style stage**, not a native failure: two imports
+in forwardRenderer/pixelArtRenderer were 112 columns. Both the main defect pass and the
+independent reviews missed them; this was a shared review miss. The imports were wrapped,
+the two new consumer files were added to the same style scope, and their formatting/failure
+text was brought under the limit without changing predicates, calls or values.
+The existing `run_style` stage then passed all 31 paths, exit 0, on code tree
+`ec55e58bdea5e9e30945e2847024ff8630a0cc9f`.
+
+No new compiler/native/full-gate retry followed the machine overload warning. The coordinator
+accepted the isolated lightweight style check; both full gates must run again on the final
+land tree when Yoga's web provider and capacity permit. Do not rewrite the original raw RED
+verdict as a whole-command GREEN. Receipts: `out/tmp/targetOwner/gate3dFinal.log` and
+`styleReceipt.txt`. The temporary checker/repro scripts were removed after proof; their
+permanent consumers and the gate's `run_style` function remain.
+

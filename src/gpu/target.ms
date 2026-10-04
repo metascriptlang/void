@@ -37,7 +37,7 @@ import {
 	DOOR_PASS_CLEAR_LENGTH,
 } from "./door.h";
 
-export struct RenderTarget {
+export interface RenderTarget {
 	width: int32;
 	height: int32;
 	format: PixelFormat;
@@ -46,6 +46,7 @@ export struct RenderTarget {
 	attachment: uint32;
 	texture: uint32;
 	generation: int32;
+	closed: boolean;
 }
 
 export struct ColorAttachment {
@@ -122,17 +123,9 @@ export function allocate(
 	format: PixelFormat,
 	sampled: boolean,
 ): RenderTarget {
-	const image: uint32 = makeTargetImage(width, height, format);
-	return {
-		width: width,
-		height: height,
-		format: format,
-		sampled: sampled,
-		image: image,
-		attachment: makeAttachmentView(image, format),
-		texture: sampled ? makeTextureView(image) : 0,
-		generation: contextGeneration(),
-	};
+	const target: RenderTarget = RenderTarget.unallocated(format, sampled);
+	target.resize(width, height);
+	return target;
 }
 
 function stopOnOtherContext(call: string, what: string, generation: int32, remedy: string): void {
@@ -143,6 +136,11 @@ function stopOnOtherContext(call: string, what: string, generation: int32, remed
 
 function stopOnReleased(call: string, what: string): void {
 	console.log(`gpu door: ${call} on a ${what} that was released`);
+	unreachable;
+}
+
+function stopOnClosedTarget(call: string): void {
+	console.log(`gpu door: ${call} on a render target that was closed`);
 	unreachable;
 }
 
@@ -158,13 +156,14 @@ function holdsLive(this target: RenderTarget, call: string): boolean {
 }
 
 export function requireCurrent(this target: RenderTarget, call: string): void {
+	if (target.closed) { stopOnClosedTarget(call); }
 	if (target.image == 0 || target.generation == contextGeneration()) { return; }
-	stopOnOtherContext(call, "render target", target.generation, "forgotten() drops its handles");
+	stopOnOtherContext(call, "render target", target.generation, "resize allocates it again");
 }
 
 function requireLive(this target: RenderTarget, call: string, view: uint32): void {
-	if (target.image == 0) { return; }
 	target.requireCurrent(call);
+	if (target.image == 0) { return; }
 	if (!imageAlive(target.image)) { stopOnReleased(call, "render target"); }
 	if (view != 0 && !viewAlive(view)) { stopOnDestroyedView(call, view); }
 }
@@ -175,12 +174,15 @@ function destroyHandles(target: RenderTarget): void {
 	destroyImage(target.image);
 }
 
-export function released(this target: RenderTarget): RenderTarget {
-	if (target.holdsLive("released")) { destroyHandles(target); }
-	return target.forgotten();
+export function close(this target: RenderTarget): void {
+	if (target.closed) { stopOnClosedTarget("close"); }
+	if (target.holdsLive("close")) { destroyHandles(target); }
+	forgetHandles(target);
+	target.closed = true;
 }
 
-// A target that knows its format but has no size or GPU objects yet; `resized` allocates it.
+export function isClosed(this target: RenderTarget): boolean { return target.closed; }
+
 export function unallocated(
 	this typeof RenderTarget,
 	format: PixelFormat,
@@ -195,22 +197,43 @@ export function unallocated(
 		attachment: 0,
 		texture: 0,
 		generation: 0,
+		closed: false,
 	};
 }
 
-// After a context loss: the same target with its handles dropped, not destroyed (they are
-// stale and may name objects of the new context). `resized` allocates it again.
-export function forgotten(this target: RenderTarget): RenderTarget {
-	return { ...target, image: 0, attachment: 0, texture: 0, generation: 0 };
+function forgetHandles(target: RenderTarget): void {
+	target.image = 0;
+	target.attachment = 0;
+	target.texture = 0;
+	target.generation = 0;
 }
 
-// The same target at a new size; the old GPU objects are released when the size changed.
-export function resized(this target: RenderTarget, width: int32, height: int32): RenderTarget {
-	if (target.holdsLive("resized")) {
-		if (target.width == width && target.height == height) { return target; }
+function stopOnRefusedTarget(target: RenderTarget, what: string): void {
+	if (target.texture != 0) { destroyView(target.texture); }
+	if (target.attachment != 0) { destroyView(target.attachment); }
+	if (target.image != 0) { destroyImage(target.image); }
+	forgetHandles(target);
+	console.log(`gpu door: resize refused a ${target.width}x${target.height} ` +
+		`${target.format.toString()} target ${what}`);
+	unreachable;
+}
+
+export function resize(this target: RenderTarget, width: int32, height: int32): void {
+	if (target.closed) { stopOnClosedTarget("resize"); }
+	if (target.holdsLive("resize")) {
+		if (target.width == width && target.height == height) { return; }
 		destroyHandles(target);
 	}
-	return RenderTarget.allocate(width, height, target.format, target.sampled);
+	forgetHandles(target);
+	target.width = width;
+	target.height = height;
+	target.image = makeTargetImage(width, height, target.format);
+	if (target.image == 0) { stopOnRefusedTarget(target, "image"); }
+	target.attachment = makeAttachmentView(target.image, target.format);
+	if (target.attachment == 0) { stopOnRefusedTarget(target, "attachment view"); }
+	target.texture = target.sampled ? makeTextureView(target.image) : 0;
+	if (target.sampled && target.texture == 0) { stopOnRefusedTarget(target, "texture view"); }
+	target.generation = contextGeneration();
 }
 
 export function asColor(
@@ -244,9 +267,10 @@ export function asDepth(
 }
 
 export function asTexture(this target: RenderTarget): uint32 {
+	if (target.closed) { stopOnClosedTarget("asTexture"); }
 	if (target.image == 0) {
 		console.log("gpu door: asTexture on a render target with no GPU objects; " +
-			"resized allocates it");
+			"resize allocates it");
 		unreachable;
 	}
 	target.requireLive("asTexture", target.texture);
@@ -395,7 +419,7 @@ export function toString(this layout: TargetLayout): string {
 
 function stopOnEmptyAttachment(index: int32): void {
 	const what: string = index < 0 ? "the depth attachment" : `color attachment ${index}`;
-	console.log(`gpu door: beginPass on ${what}, which has no view; resized allocates its target`);
+	console.log(`gpu door: beginPass on ${what}, which has no view; resize allocates its target`);
 	unreachable;
 }
 

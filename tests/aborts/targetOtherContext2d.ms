@@ -14,6 +14,7 @@ const stale: RenderTarget = {
 	attachment: 2,
 	texture: 3,
 	generation: 7,
+	closed: false,
 };
 begin2d(16.0, 16.0, 1.0);
 beginTarget(stale, 16.0, 16.0, 1.0, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));

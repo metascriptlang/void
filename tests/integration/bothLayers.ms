@@ -41,7 +41,7 @@ function resolvesOnGpu(
 	draw(0, 3, 1);
 	atlas.beginFrame(1);
 	atlas.release(0);
-	const _released: RenderTarget = target.released();
+	target.close();
 	let core: Renderer = renderer;
 	let drawing: DrawContext = context;
 	const items: Vec<DrawItem> = [];

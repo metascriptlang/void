@@ -197,12 +197,13 @@ if "$MSC" build tests/integration/sceneTarget.ms --release --output=out/sceneTar
 		> out/gate-scene-target.log 2>&1 \
 		&& out/sceneTarget.exe > out/gate-scene-target-run.log 2>&1; then
 	pass "scene target: DPI, premultiplied RGBA, idle, recreation and prepared snapshots"
-	for misuse in unprepared consumed size released empty generation format open expired \
+	for misuse in unprepared consumed size closed empty generation format open expired \
 		dpi destroyed-view; do
 		case "$misuse" in
 			unprepared|consumed) expected='with no prepared frame' ;;
 			size|dpi) expected='does not match prepared' ;;
-			released|destroyed-view) expected='was released' ;;
+			closed) expected='was closed' ;;
+			destroyed-view) expected='was released' ;;
 			empty|format) expected='allocated Rgba8' ;;
 			generation) expected='of GPU context' ;;
 			open) expected='with a pass already open' ;;
@@ -219,6 +220,42 @@ if "$MSC" build tests/integration/sceneTarget.ms --release --output=out/sceneTar
 	done
 else
 	fail "Scene2D caller target — see out/gate-scene-target.log and out/gate-scene-target-run.log"
+fi
+
+rm -f out/tmp/targetOwner.exe
+if "$MSC" build tests/integration/targetOwner.ms --release --output=out/tmp/targetOwner.exe \
+		> out/gate-target-owner.log 2>&1 \
+		&& out/tmp/targetOwner.exe > out/gate-target-owner-run.log 2>&1; then
+	pass "target owner: alias resize, same-size reuse, terminal close and independent sampled pixels"
+	for misuse in closed-empty color depth begin-closed refused-zero refused-pool; do
+		case "$misuse" in
+			closed-empty) expected='gpu door: resize on a render target that was closed' ;;
+			color) expected='gpu door: asColor on a render target that was closed' ;;
+			depth) expected='gpu door: asDepth on a render target that was closed' ;;
+			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
+			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
+			refused-pool) expected='gpu door: resize refused a 8x8 Rgba8 target' ;;
+		esac
+		target_status=0
+		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \
+			> "out/gate-target-owner-$misuse.log" 2>&1 || target_status=$?
+		if [ "$target_status" -ne 0 ] && grep -qF "$expected" "out/gate-target-owner-$misuse.log"; then
+			pass "RenderTarget $misuse stops by name"
+		else
+			fail "RenderTarget $misuse did not name its owner error"
+		fi
+	done
+else
+	fail "target owner — see out/gate-target-owner.log and out/gate-target-owner-run.log"
+fi
+
+rm -f out/tmp/targetPresetEpoch.exe
+if "$MSC" build tests/integration/targetPresetEpoch.ms --release --output=out/tmp/targetPresetEpoch.exe \
+		> out/gate-target-preset-epoch.log 2>&1 \
+		&& out/tmp/targetPresetEpoch.exe > out/gate-target-preset-epoch-run.log 2>&1; then
+	pass "target preset epoch: generation-write control rebuilds every same-size target in both presets"
+else
+	fail "target preset epoch — see out/gate-target-preset-epoch.log and out/gate-target-preset-epoch-run.log"
 fi
 
 if "$MSC" build tests/integration/twoViews.ms --output=out/twoViews.exe > out/gate-two-views.log 2>&1 \

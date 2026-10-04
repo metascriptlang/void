@@ -304,9 +304,18 @@ number typed into the script.
 prepared replay inside the 3D prepare phase, full-RGBA comparisons against direct screen replay,
 premultiplied transparent RGBA, mask/scissor and analytic-edge parity, @2×/@1.5× DPI,
 idle/recreated/resized targets, and writes between prepare and draw. Its named misuse modes cover
-unprepared, consumed, expired, open-pass, wrong-size/DPI, empty, released/destroyed-attachment,
+unprepared, consumed, expired, open-pass, wrong-size/DPI, empty, closed/destroyed-attachment,
 foreign-context and non-Rgba8 targets; the same gate stage runs each mode in a separate process
 and requires both a nonzero exit and its diagnostic.
+
+`tests/integration/targetOwner.ms` holds the shared reference-owner lifecycle in both gates:
+real sampled pixels through a value holder after in-place resize, same-size storage reuse,
+exact image/view retirement on terminal close, and an independent owner's surviving pixels.
+Its older-epoch adoption and `targetPresetEpoch.ms`'s all-target preset rebuild are generation-write
+controls, not device-loss proof. Closed-empty resize, terminal color/depth borrows, immediate
+drawing through a closed owner and zero-size/pool refusals use the existing env-misuse protocol;
+each gate row requires nonzero exit and its named error. M27's checked material-to-target binding
+is a separate consumer.
 
 `scripts/checkBridgePass.sh` compiles real C consumers of the public pass surface
 (`tests/compile/bridgePass.c`): the door consumer must compile, while bridge begin/commit

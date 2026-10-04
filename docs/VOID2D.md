@@ -2058,24 +2058,26 @@ abort stage) unless named otherwise.
   `doorFiveColorLayout`.
 - **C, handles tied to their GPU context.** `RenderTarget`, `Sampler`, `ColorAttachment` and
   `DepthAttachment` carry the `contextGeneration()` they were made in, the `GpuTexture.generation`
-  idiom, since sokol ids repeat after `sg_setup`. `released()` replaces `release()`: it destroys
-  only a current-context target or sampler, stops on one already destroyed, and returns the empty
-  value for the caller to assign. `resized` keeps a target only when it is current, alive and the
-  same size, and reallocates a stale one without destroying it. The borrows `asColor`, `asDepth`,
-  `asTexture` and `asHandle` stop on another context, a destroyed image or a destroyed view, and
-  `asTexture` and `asHandle` also on an empty target or sampler. An unallocated target still
-  borrows as a color or depth attachment of view 0, because void3d's `setLook` borrows before
-  the first resize; `beginPass` then stops on that empty attachment, color or depth, on one of
-  another context and, in `door.c`, on a dead view. The pipeline cache adopts the current context
+  idiom, since sokol ids repeat after `sg_setup`. Current target ownership is `target.ms`
+  `RenderTarget`, `resize`, terminal `close` and `isClosed` (the reference-owner entry below);
+  Sampler remains a value whose `released()` returns empty handles for the caller to assign.
+  Both retire only their current context's objects. The borrows `asColor`, `asDepth`,
+  `asTexture` and `asHandle` reject another context, a destroyed image or a destroyed view.
+  A closed target rejects mutations and borrows; `isClosed` remains its status query. An open
+  unallocated target can still lend
+  an attachment of view 0, because void3d's `setLook` borrows before the first resize;
+  `beginPass` rejects that empty attachment, one from another context and, in `door.c`,
+  a dead view. The pipeline cache adopts the current context
   itself (`pipeline.ms`
   `adoptContext`), and `releasePipelines` destroys only its own context's objects; releasing and
-  closing stay two calls, and forgetting is the cache's own (F). void2d's `beginTarget` checks the generation alone (`requireCurrent`):
-  T1 records with no device, and the replay's `doorBeginColorPass` stops on a view that is not
-  live. The filter-target pool drops the targets of a lost context and makes them again
-  (`render.ms` `adoptPoolContext`), as void3d's presets do; no device here loses its context, so
+  closing stay two calls, and forgetting is the cache's own (F). void2d's `beginTarget` checks
+  the owner's closed state and GPU generation (`requireCurrent`): T1 records without a device,
+  and the replay's `doorBeginColorPass` rejects a dead view. The filter pool and presets
+  resize stale targets in place; the target owns epoch adoption and retains its reference
+  identity. No device here loses its context, so
   that path is read, not run. Red before: the audit's same-size resize after a release returned
   the destroyed view. Pins:
-  `targetResizedAfterRelease`, `targetTextureAfterRelease`, `targetReleasedTwice`,
+  `targetResizedAfterClose`, `targetTextureAfterClose`, `targetClosedTwice`,
   `targetOtherContext`, `targetViewDestroyed`, `samplerHandleAfterRelease`,
   `attachmentAfterRelease`, `attachmentOtherContext`, `attachmentWithoutView`, `depthWithoutView`,
   `targetTextureUnallocated`, `samplerHandleEmpty`, and T0
@@ -2431,19 +2433,50 @@ number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
   9 words`. The minimum-length contract and valid binding path stay unchanged.
   `gpu3d.c` is void3d's file; the coordinator explicitly granted it to this mechanical slice.
 
+- **RenderTarget reference owner, NEON item 2 prerequisite.** A material-side holder needs
+  one target identity through resize, not a value copy of handles that have been destroyed.
+  This reuses F and void3d M25's owner model; `target.ms` owns the API and state transitions.
+  Heaps' [Texture.resize](https://github.com/HeapsIO/heaps/blob/b9aa6dcbb2307b03c1f435e87bdb036060100984/h3d/mat/Texture.hx#L237-L253)
+  and three's [RenderTarget.setSize](https://github.com/mrdoob/three.js/blob/master/src/core/RenderTarget.js)
+  keep the object and replace its GPU storage. **W:** same-size resize follows three's no-op
+  and the existing Void behaviour, not Heaps' unconditional disposal: it avoids unnecessary
+  allocation and preserves valid contents. **W:** close is terminal, as M25's is, instead of
+  Heaps' reallocation-capable dispose; no alias resurrects an owner its parent already closed.
+
+  **Measured on source tree `3b8c7e0c2d840ae656b6180d8b15ec1f5d244a16`, BUILD `4573591e`,
+  msc 0.3.0, D3D11:** the old native value consumer resized its owner to 32x24 while its holder
+  still read 16x16 and a dead image (exit 1). The reference consumer reads 32x24 and the same
+  live image through both aliases (exit 0). `tests/integration/targetOwner.ms` proves five
+  real sampled frames, old image/view retirement, same-size reuse, exact closure of one image
+  and two views, independent-owner survival and older-epoch same-size adoption.
+  `targetPresetEpoch.ms` proves both presets keep all six target owners, reallocate their
+  storage and refresh their pass attachments. These generation-write controls leave the old
+  ids alive, then clean them up explicitly: they are not actual device loss.
+  Closed-empty resize, terminal color/depth borrows, immediate drawing through a closed owner,
+  zero-size refusal and real GPU pool refusal each terminate nonzero with their named error;
+  both gates run every case. The shared mutable NO_TARGET sentinel and unreachable empty
+  filter-result branches are gone. `sceneTarget.ms` still passes nine native frames.
+  Logs: `out/tmp/targetOwner/`; final full-chain results are in the review.
+
+  Source and native consumer proof do not certify WebGL2/GLES3 or genuine context loss.
+  Raw texture-view ids still change with storage; checked material rebinding is M27, not
+  completed by changing the target owner. Full-chain gate and design verdict are recorded
+  in `REVIEWS.md`; this is not a P5/P6 completion or a land receipt.
+
 A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
 `m[0]` survived the move to `Mat4` in `effectCheck.ms`.
 
 ## Open
 
-- **Every field of a pipeline cache is writable** through every alias of the public interface:
-  `cache.closed = false` reopens a closed cache, and `cache.entries = []` drops live pipelines
-  that no alias can release after. MetaScript has no module-private field, and an interface
-  field cannot be `readonly` on the installed `msc` (compiler card
-  `2026-09-27-readonly-interface-field-unresolved-type.md`, the same limit as PENDING3D
-  `store-serial-writable`); `readonly` would also stop `pipeline.ms` writing them. Only
-  `pipeline.ms` writes the tables and `closed`; tests write `generation` to fake a stale epoch.
+- **Public reference-owner fields remain writable**: both a pipeline cache and a RenderTarget
+  expose their state. `closed = false` can reopen an owner; dropping a cache's live tables or
+  replacing a target's handles bypasses its lifecycle. This inherits F/M25's public-field
+  limitation; the standing readonly-field compiler card is
+  `2026-09-27-readonly-interface-field-unresolved-type.md`, alongside PENDING3D
+  `store-serial-writable`. That compiler card was not revalidated by this slice.
+  The API contract assumes state changes through the owning module, not forged owner fields;
+  this is not an opaque or unforgeable owner boundary.
 - **WebGPU uniform budget**: two uniform blocks per draw cost 512 B of the per-frame uniform buffer on WebGPU and Metal. Measure at P1 and fold what does not change per draw into fewer blocks if it bites.
 - Reference facts were read from source, not benchmarked. Instance sizes and the one-draw-call claim are from planned layouts, not measured — P2's exit is where they become numbers.
 - Non-uniform scale on SDF boxes and `erf` shadows is approximated; the error has not been characterised. It has a golden scene from P0 (`xform/`) and no bound yet.

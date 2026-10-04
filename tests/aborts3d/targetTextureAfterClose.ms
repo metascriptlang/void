@@ -1,4 +1,4 @@
-// expect: gpu door: released on a render target that was released
+// expect: gpu door: asTexture on a render target that was closed
 import { gfxSetup } from "../../src/sokol/gpu";
 import { PixelFormat, LoadAction } from "../../src/gpu/door";
 import { RenderTarget, Sampler } from "../../src/gpu/target";
@@ -10,9 +10,8 @@ function init(): void { gfxSetup(); }
 function frame(): void {
 	let target: RenderTarget = RenderTarget.allocate(8, 8, PixelFormat.Rgba8, true);
 	const copy: RenderTarget = target;
-	target = target.released();
-	const twice: RenderTarget = copy.released();
-	console.log(`a released copy was released again: image ${twice.image}`);
+	target.close();
+	console.log(`a closed alias lent texture view ${copy.asTexture()}`);
 	process.exit(0);
 }
 voidRun(64, 64, init, frame);

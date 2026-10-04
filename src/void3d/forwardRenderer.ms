@@ -3,7 +3,15 @@
 
 import { Vec4 } from "../math/math3d";
 import { Program } from "./gpu3d";
-import { PixelFormat, LoadAction, PassState, endPass, commit, passState } from "../gpu/door";
+import {
+	PixelFormat,
+	LoadAction,
+	PassState,
+	endPass,
+	commit,
+	passState,
+	contextGeneration,
+} from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { Material, Phase } from "./material";
 import {
@@ -132,20 +140,18 @@ function fromCore(error: RendererError): ForwardError {
 	};
 }
 
-// A new GPU context: the handles are dropped, not destroyed; the next resize makes the targets.
 function adoptContext(renderer: ForwardRenderer): void {
-	renderer.colorTarget = renderer.colorTarget.forgotten();
-	renderer.depthTarget = renderer.depthTarget.forgotten();
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
 }
 
 function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): void {
 	const color: RenderTarget = renderer.colorTarget;
-	if (color.image != 0 && color.width == width && color.height == height) {
+	if (color.image != 0 && color.generation == contextGeneration() &&
+		color.width == width && color.height == height) {
 		return;
 	}
-	renderer.colorTarget = renderer.colorTarget.resized(width, height);
-	renderer.depthTarget = renderer.depthTarget.resized(width, height);
+	renderer.colorTarget.resize(width, height);
+	renderer.depthTarget.resize(width, height);
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, renderer.background);
 	renderer.sceneDepth = renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH);
 }
@@ -241,8 +247,8 @@ export function closeForward(renderer: ForwardRenderer): void {
 		console.log("void3d: closeForward with a pass open; endPass ends it");
 		unreachable;
 	}
-	renderer.colorTarget = renderer.colorTarget.released();
-	renderer.depthTarget = renderer.depthTarget.released();
+	renderer.colorTarget.close();
+	renderer.depthTarget.close();
 	renderer.sampler = renderer.sampler.released();
 	const copy: Result<int32, HandleError> =
 		releaseMaterial(renderer.core.context, renderer.copyMaterial);

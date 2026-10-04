@@ -94,9 +94,16 @@ function frame(): void {
 	if (stage == 2 || stage == 7 || stage == 8) {
 		if (subject.isDirty()) { fail("a clean scene became dirty before target recreation"); }
 		const old: uint32 = target.image;
-		target = target.released();
-		target = RenderTarget.allocate(stage == 8 ? 96 : (stage == 7 ? 192 : WIDTH),
-			stage == 8 ? 72 : (stage == 7 ? 144 : HEIGHT), PixelFormat.Rgba8, true);
+		if (stage == 2) {
+			target.close();
+			target = RenderTarget.allocate(WIDTH, HEIGHT, PixelFormat.Rgba8, true);
+		} else {
+			const held: RenderTarget = target;
+			target.resize(stage == 8 ? 96 : 192, stage == 8 ? 72 : 144);
+			if (held != target || held.image != target.image) {
+				fail("resize replaced the target owner instead of updating its alias");
+			}
+		}
 		if (target.image == old || target.image == paintedImage) {
 			fail("target identity did not change");
 		}
@@ -110,11 +117,11 @@ function frame(): void {
 		subject.prepare(64.0, 48.0, DPI);
 	} else if (subject.isDirty() || target.image != paintedImage || stage == 5) {
 		subject.prepare((target.width as float32) / dpi, (target.height as float32) / dpi, dpi);
-		if (misuse.equals("size")) { target = target.resized(144, 108); }
-		if (misuse.equals("released")) { const gone: RenderTarget = target.released(); }
+		if (misuse.equals("size")) { target.resize(144, 108); }
+		if (misuse.equals("closed")) { target.close(); }
 		if (misuse.equals("empty")) { target = RenderTarget.unallocated(PixelFormat.Rgba8, true); }
 		if (misuse.equals("generation")) {
-			target = { ...target, generation: target.generation + 7 };
+			target.generation = target.generation + 7;
 		}
 		if (misuse.equals("format")) {
 			target = RenderTarget.allocate(WIDTH, HEIGHT, PixelFormat.Depth, false);

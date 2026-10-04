@@ -549,6 +549,7 @@ test "T1 production emitters reach every batch-break reason" {
 		attachment: 2,
 		texture: 3,
 		generation: contextGeneration(),
+		closed: false,
 	};
 	beginTarget(target, 16.0, 16.0, 1.25, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));
 	assert currentRenderScale() == 1.25;
@@ -575,6 +576,7 @@ function effectTestTarget(): RenderTarget {
 		attachment: 2,
 		texture: 3,
 		generation: contextGeneration(),
+		closed: false,
 	};
 }
 

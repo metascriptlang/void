@@ -145,6 +145,7 @@ above be written without Neon working around Void.
    The redraw policy stays the caller's: `isDirty()` does not know that an image was recreated.
    Remember the last drawn `target.image` or attachment as well; resize can replace both while
    `RenderTarget.generation` stays unchanged (that field names the GPU context, not a resize).
+   Owner identity stays stable through resize; it is not a cache-validity key for the image.
    A recreated target must be drawn even when the scene is clean. The native consumer proves
    idle, same-size recreation, resize, @2× and @1.5× DPI, and post-prepare writes.
    The caller must also invalidate when its DPI or clear input changes; those host inputs are
@@ -162,6 +163,13 @@ above be written without Neon working around Void.
    lost. Needed: a context texture whose image is a render target, so a material names it
    through the same checked `TextureId` and survives a resize. Heaps: a `Texture` with the
    `Target` flag is both (`h3d/mat/Texture.hx`).
+
+   The target-owner prerequisite is implemented on this branch: `src/gpu/target.ms`
+   `RenderTarget` shares one owner across aliases, resizes in place and closes terminally.
+   Heaps `Texture.resize` and three `RenderTarget.setSize` keep that object identity;
+   Void reuses its PipelineCache/M25 reference-owner model. The native lifecycle consumer is
+   `tests/integration/targetOwner.ms`. This does not complete item 2: a material still needs
+   M27's checked texture row that resolves the owner's current view rather than a saved raw id.
 3. **A textured program without lights.** `Program` has `LitTextured` and `PixelArtLitTextured`
    and no textured program that skips lighting (`src/void3d/gpu3d.ms`). A screen or a sign in the
    world must not be darkened by the scene's lights. Heaps: a pass turns lighting off with

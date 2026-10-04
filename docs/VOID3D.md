@@ -760,8 +760,8 @@ The control fails where the fire lights the ground and holds elsewhere, which is
   `doorRegisterPrograms` and `gpu3d.c` `registerOnce`. Register once per layer on the
   renderer thread. Returned ids live for the process and depend on import order;
   they are not serialized asset ids. CPU registrations survive GPU context loss;
-  `pipeline.ms` `forgetPipelines` and `target.ms` `forgotten` retain the existing
-  rebuild convention.
+  `pipeline.ms` `forgetPipelines` and `target.ms` `resize` retain the rebuild convention,
+  with stale target epoch adoption inside the owner.
   The door is open to other C units; void3d's `Material` / `ProgramMap` still name
   its local `Program` enum. No arbitrary external-program support is claimed for
   those two types.
@@ -1324,8 +1324,9 @@ milestone's consumer run on `0048b18`.
 - `PipelineCache` is a reference owner since void2d's door closure F (VOID2D.md "Door closure"),
   so `let c = context.pipelines` names the one cache; M25's `DrawContext.close` closes it with
   `closePipelines`.
-- `RenderTarget` and `Sampler` are values that own handles (`src/gpu/target.ms`); their
-  generation and checked borrows are void2d's door contract, acked by void3d.
+- `RenderTarget` is now a reference owner with in-place resize, terminal close and `isClosed`
+  (`src/gpu/target.ms`, VOID2D.md "RenderTarget reference owner"); Sampler remains a value.
+  Their generation and checked borrows are the shared door contract.
 - A store's `serial` is writable where it should be `readonly` (PENDING3D `store-serial-writable`).
 
 ### M25 as built

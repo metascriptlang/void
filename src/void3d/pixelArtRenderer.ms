@@ -19,7 +19,15 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "./gpu3d";
-import { PixelFormat, LoadAction, PassState, endPass, commit, passState } from "../gpu/door";
+import {
+	PixelFormat,
+	LoadAction,
+	PassState,
+	endPass,
+	commit,
+	passState,
+	contextGeneration,
+} from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { originTopLeft, depthZeroToOne } from "../gpu/door";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
@@ -421,25 +429,20 @@ export function viewFor(
 	return Result.ok(view.withRemainder(remainderX, remainderY, originTopLeft()));
 }
 
-// A new GPU context: the preset's handles are dropped, not destroyed, and made again from
-// what the CPU side kept (targets by the next resize, the LUT by the next upload).
 function adoptContext(renderer: PixelArtRenderer): void {
-	renderer.colorTarget = renderer.colorTarget.forgotten();
-	renderer.normalTarget = renderer.normalTarget.forgotten();
-	renderer.depthTarget = renderer.depthTarget.forgotten();
-	renderer.postTarget = renderer.postTarget.forgotten();
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
 }
 
 function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32): void {
 	const color: RenderTarget = renderer.colorTarget;
-	if (color.image != 0 && color.width == width && color.height == height) {
+	if (color.image != 0 && color.generation == contextGeneration() &&
+		color.width == width && color.height == height) {
 		return;
 	}
-	renderer.colorTarget = renderer.colorTarget.resized(width, height);
-	renderer.normalTarget = renderer.normalTarget.resized(width, height);
-	renderer.depthTarget = renderer.depthTarget.resized(width, height);
-	renderer.postTarget = renderer.postTarget.resized(width, height);
+	renderer.colorTarget.resize(width, height);
+	renderer.normalTarget.resize(width, height);
+	renderer.depthTarget.resize(width, height);
+	renderer.postTarget.resize(width, height);
 	const background: Vec4 = renderer.look.background;
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, background);
 	renderer.sceneColors[1] = renderer.normalTarget.asColor(LoadAction.Clear, NORMAL_CLEAR);
@@ -659,10 +662,10 @@ export function closePixelArt(renderer: PixelArtRenderer): void {
 		console.log("void3d: closePixelArt with a pass open; endPass ends it");
 		unreachable;
 	}
-	renderer.colorTarget = renderer.colorTarget.released();
-	renderer.normalTarget = renderer.normalTarget.released();
-	renderer.depthTarget = renderer.depthTarget.released();
-	renderer.postTarget = renderer.postTarget.released();
+	renderer.colorTarget.close();
+	renderer.normalTarget.close();
+	renderer.depthTarget.close();
+	renderer.postTarget.close();
 	renderer.sampler = renderer.sampler.released();
 	const context: DrawContext = renderer.core.context;
 	const post: Result<int32, HandleError> = releaseMaterial(context, renderer.postMaterial);

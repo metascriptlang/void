@@ -34,7 +34,6 @@ export function blurToTarget(
 ): void {
 	const px: int32 = size as int32;
 	const blurred: RenderTarget = blurTargetPooled(src, px, px, radius);
-	if (blurred.attachment == 0) { return; }
 	// The pooled result is smaller than `dst` by 2^k; the upscale is the linear filter doing
 	// the last, widest step of the blur, which is the point of downsampling in the first place.
 	beginTarget(dst, size, size, 1.0, 0.0, 0.0, zeroColor);

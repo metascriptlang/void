@@ -3,7 +3,7 @@ import "../../src/sokol/gpu";
 import { begin2d, beginTarget } from "../../src/void2d/draw";
 import { rgba } from "../../src/void2d/types";
 import { RenderTarget } from "../../src/gpu/target";
-import { PixelFormat } from "../../src/gpu/door";
+import { PixelFormat, contextGeneration } from "../../src/gpu/door";
 
 const color: RenderTarget = {
 	width: 16,
@@ -13,6 +13,8 @@ const color: RenderTarget = {
 	image: 1,
 	attachment: 2,
 	texture: 3,
+	generation: contextGeneration(),
+	closed: false,
 };
 begin2d(16.0, 16.0, 1.0);
 beginTarget(color, 16.0, 16.0, 0.0, 0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0));

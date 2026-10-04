@@ -933,24 +933,17 @@ function emitNode(
 const transparent: Color = rgba(0.0, 0.0, 0.0, 0.0);
 
 let poolTargets: Vec<RenderTarget> = [];
-const NO_TARGET: RenderTarget = RenderTarget.unallocated(PixelFormat.Rgba8, true);
 let poolOwner: Vec<int32> = [];
 let poolSerial: Vec<int32> = [];
 
 export function acquireFrameTarget(w: int32, h: int32): RenderTarget { return acquireTarget(w, h); }
 export function renderTargetsAlive(): int32 { return poolTargets.length as int32; }
 
-function stopOnRefusedTarget(w: int32, h: int32): RenderTarget {
-	console.log(`void2d: sokol refused a ${w}x${h} filter target; its image or view pool is full`);
-	unreachable;
-}
-
 function adoptPoolContext(): void {
 	const generation: int32 = contextGeneration();
 	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {
 		if (poolTargets[i].generation == generation) { continue; }
-		const stale: RenderTarget = poolTargets[i].forgotten();
-		poolTargets[i] = stale.resized(stale.width, stale.height);
+		poolTargets[i].resize(poolTargets[i].width, poolTargets[i].height);
 	}
 }
 
@@ -966,9 +959,6 @@ function acquireTarget(w: int32, h: int32): RenderTarget {
 		}
 	}
 	const target: RenderTarget = RenderTarget.allocate(w, h, PixelFormat.Rgba8, true);
-	if (target.image == 0 || target.attachment == 0 || target.texture == 0) {
-		return stopOnRefusedTarget(w, h);
-	}
 	poolTargets.push(target);
 	poolOwner.push(owner.id);
 	poolSerial.push(contextSerial(owner.id));
@@ -996,7 +986,6 @@ export function blurTargetPooled(
 		const dw: int32 = sw / 2;
 		const dh: int32 = sh / 2;
 		const dst: RenderTarget = acquireTarget(dw, dh);
-		if (dst.attachment == 0) { return NO_TARGET; }
 		beginTarget(dst, dw as float32, dh as float32, 1.0, 0.0, 0.0, transparent);
 		blitTarget(src, dw as float32, dh as float32);
 		endTarget();
@@ -1006,12 +995,10 @@ export function blurTargetPooled(
 		r = r * 0.5;
 	}
 	const tmp: RenderTarget = acquireTarget(sw, sh);
-	if (tmp.attachment == 0) { return NO_TARGET; }
 	beginTarget(tmp, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
 	blurPass(src.asTexture(), 1.0 / (sw as float32), 0.0);
 	endTarget();
 	const out: RenderTarget = acquireTarget(sw, sh);
-	if (out.attachment == 0) { return NO_TARGET; }
 	beginTarget(out, sw as float32, sh as float32, 1.0, 0.0, 0.0, transparent);
 	blurPass(tmp.asTexture(), 0.0, 1.0 / (sh as float32));
 	endTarget();
@@ -1645,7 +1632,6 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	const logicalW: float32 = (rtW as float32) / dpi;
 	const logicalH: float32 = (rtH as float32) / dpi;
 	const rt: RenderTarget = acquireTarget(rtW, rtH);
-	if (rt.attachment == 0) { return; }
 
 	// The subtree at alpha 1, in target space. One walk, one sync, no GPU call.
 	beginTarget(rt, logicalW, logicalH, dpi, xMin, yMin, transparent);
@@ -1656,7 +1642,6 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	let src: RenderTarget = rt;
 	if (f.radius > 0.0) {
 		src = blurTargetPooled(rt, rtW, rtH, f.radius * dpi);
-		if (src.attachment == 0) { return; }
 	}
 
 	const na: float32 = a * s.paints[i].alpha;

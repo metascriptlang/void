@@ -1,4 +1,4 @@
-// expect: gpu door: resized on a render target that was released
+// expect: gpu door: close on a render target that was closed
 import { gfxSetup } from "../../src/sokol/gpu";
 import { PixelFormat, LoadAction } from "../../src/gpu/door";
 import { RenderTarget, Sampler } from "../../src/gpu/target";
@@ -10,9 +10,9 @@ function init(): void { gfxSetup(); }
 function frame(): void {
 	let target: RenderTarget = RenderTarget.allocate(8, 8, PixelFormat.Rgba8, true);
 	const copy: RenderTarget = target;
-	target = target.released();
-	const again: RenderTarget = copy.resized(8, 8);
-	console.log(`a released copy resized to its own size returned view ${again.texture}`);
+	target.close();
+	copy.close();
+	console.log(`a closed alias was closed again: image ${copy.image}`);
 	process.exit(0);
 }
 voidRun(64, 64, init, frame);

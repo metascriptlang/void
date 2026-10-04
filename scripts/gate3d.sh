@@ -971,7 +971,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	tests/integration/mixedFrame.ms tests/integration/bothLayers.ms tests/integration/texturedFrame.ms
 	tests/integration/perspectiveFrame.ms tests/integration/gltfFrame.ms
 	tests/integration/gpuRegistrationFixture.ms tests/integration/storeIdentity.ms
-	tests/integration/viewTeardown.ms tests/aborts3d"
+	tests/integration/viewTeardown.ms tests/aborts3d
+	tests/integration/targetOwner.ms tests/integration/targetPresetEpoch.ms"
 
 run_style() {
 	long=$(
@@ -1825,6 +1826,61 @@ run_views() {
 	pass "views: six views drawn by both presets and closed beside a surviving context; buffers, images, views, samplers, shaders and pipelines back at the first's counts after each of the other five"
 }
 
+run_target_owner() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "target owner: GATE_SKIP_CAPTURE=1 — the shared owner consumer was not run"
+		return
+	fi
+	rm -f out/tmp/targetOwner.exe
+	if ! msc build tests/integration/targetOwner.ms --release --output=out/tmp/targetOwner.exe \
+		> "$WORK/targetOwner.build.log" 2>&1; then
+		fail "target owner: tests/integration/targetOwner.ms does not build"
+		return
+	fi
+	status=0
+	out/tmp/targetOwner.exe > "$WORK/targetOwner.run.log" 2> "$WORK/targetOwner.run.err" || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "target owner: no readback backend — the shared owner consumer was not run"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS target owner:' "$WORK/targetOwner.run.log"; then
+		fail "target owner: shared alias/resize/close consumer failed (exit $status)"
+		return
+	fi
+	pass "target owner: aliases keep one owner through resize and terminal close; independent sampled pixels survive"
+	for misuse in closed-empty color depth begin-closed refused-zero refused-pool; do
+		case "$misuse" in
+			closed-empty) expected='gpu door: resize on a render target that was closed' ;;
+			color) expected='gpu door: asColor on a render target that was closed' ;;
+			depth) expected='gpu door: asDepth on a render target that was closed' ;;
+			begin-closed) expected='gpu door: beginTarget on a render target that was closed' ;;
+			refused-zero) expected='gpu door: resize refused a 0x8 Rgba8 target image' ;;
+			refused-pool) expected='gpu door: resize refused a 8x8 Rgba8 target' ;;
+		esac
+		status=0
+		VOID_TARGET_OWNER_MISUSE="$misuse" out/tmp/targetOwner.exe \
+			> "$WORK/targetOwner-$misuse.run.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] && grep -qF "$expected" "$WORK/targetOwner-$misuse.run.log"; then
+			pass "target owner: $misuse stops by name"
+		else
+			fail "target owner: $misuse did not name its owner error"
+		fi
+	done
+	rm -f out/tmp/targetPresetEpoch.exe
+	if ! msc build tests/integration/targetPresetEpoch.ms --release --output=out/tmp/targetPresetEpoch.exe \
+		> "$WORK/targetPresetEpoch.build.log" 2>&1; then
+		fail "target preset epoch: the generation-write control does not build"
+		return
+	fi
+	status=0
+	out/tmp/targetPresetEpoch.exe > "$WORK/targetPresetEpoch.run.log" 2>&1 || status=$?
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS target preset epoch:' "$WORK/targetPresetEpoch.run.log"; then
+		fail "target preset epoch: generation-write control failed (exit $status)"
+	else
+		pass "target preset epoch: every same-size target in both presets adopts the epoch through one owner"
+	fi
+}
+
 # A file that imports both layers: every function name void2d and void3d both export resolves to
 # its own layer's (tests/integration/bothLayers.ms). Headless; the GPU calls are compiled only.
 run_both_layers() {
@@ -1986,6 +2042,7 @@ run_gltf
 run_both_layers
 run_stores
 run_views
+run_target_owner
 run_aborts
 run_manifest
 run_allocation
