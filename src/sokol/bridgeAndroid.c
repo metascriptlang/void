@@ -204,6 +204,7 @@ void voidGfxSetup(void) {
 
 int voidFbWidth(void) { return voidViewsFbWidth(); }
 int voidFbHeight(void) { return voidViewsFbHeight(); }
+void voidRequestedSize(int *w, int *h) { *w = 0; *h = 0; }
 float voidDpiScale(void) { return voidViewsDpiScale(); }
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 sg_swapchain voidDriverSwapchain(void) { return voidViewsSwapchain(); }

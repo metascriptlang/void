@@ -82,8 +82,13 @@ static void tick(void) {
 @end
 static id g_delegate;
 
+static int s_reqW = 0;
+static int s_reqH = 0;
+void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 void voidRun(int w, int h, msClosure init, msClosure frame) {
 	s_init = init;
+	s_reqW = w;
+	s_reqH = h;
 	s_frame = frame;
 
 	@autoreleasepool {
