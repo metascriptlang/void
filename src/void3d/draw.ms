@@ -24,6 +24,7 @@ import {
 	destroyImage,
 	textureSlotMask,
 	samplerSlotMask,
+	uniformBlockLength,
 } from "./gpu3d";
 import {
 	PassState,
@@ -1193,9 +1194,12 @@ export function drawItem(
 	bindItem(context, mesh, material);
 	let globalProgram: int32 = doorProgram(program);
 	if (context.pipelines.declaresBlock(globalProgram, MODEL_SLOT)) {
+		const modelLength: int32 = uniformBlockLength(program, MODEL_SLOT);
 		item.world.writeTo(context.model[0..MODEL_LENGTH], 0);
-		item.world.normalMatrix().writeTo(context.model[0..MODEL_LENGTH], 16);
-		applyUniforms(MODEL_SLOT, context.model[0..MODEL_LENGTH]);
+		if (modelLength == MODEL_LENGTH) {
+			item.world.normalMatrix().writeTo(context.model[0..MODEL_LENGTH], 16);
+		}
+		applyUniforms(MODEL_SLOT, context.model[0..modelLength]);
 	}
 	for (const block of globals) {
 		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {

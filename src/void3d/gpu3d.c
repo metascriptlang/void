@@ -22,6 +22,8 @@ static const ShaderDescription PROGRAMS[] = {
 	pixelArt_blit_shader_desc,
 	litTextured_shader_desc,
 	pixelArt_litTextured_shader_desc,
+	unlitTextured_shader_desc,
+	pixelArt_unlitTextured_shader_desc,
 };
 
 // ---- vertex layouts, one per VertexLayout member ----
@@ -49,6 +51,8 @@ static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {
 	LAYOUT_BILLBOARD,
 	LAYOUT_FULLSCREEN,
 	LAYOUT_FULLSCREEN,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
 };
@@ -108,6 +112,15 @@ _Static_assert(ATTR_pixelArt_litTextured_position == ATTR_litTextured_position
 	&& ATTR_pixelArt_litTextured_uv == ATTR_litTextured_uv
 	&& ATTR_pixelArt_litTextured_color == ATTR_litTextured_color,
 	"every LitTextured-layout program must declare the core textured lit attributes");
+_Static_assert(ATTR_unlitTextured_position == ATTR_litTextured_position
+	&& ATTR_unlitTextured_normal == ATTR_litTextured_normal
+	&& ATTR_unlitTextured_uv == ATTR_litTextured_uv
+	&& ATTR_unlitTextured_color == ATTR_litTextured_color
+	&& ATTR_pixelArt_unlitTextured_position == ATTR_litTextured_position
+	&& ATTR_pixelArt_unlitTextured_normal == ATTR_litTextured_normal
+	&& ATTR_pixelArt_unlitTextured_uv == ATTR_litTextured_uv
+	&& ATTR_pixelArt_unlitTextured_color == ATTR_litTextured_color,
+	"unlit programs must take the packed LitTextured layout");
 _Static_assert(ATTR_lit_position == 0 && ATTR_lit_normal == 1 && ATTR_lit_color == 2
 	&& ATTR_particle_root == 0 && ATTR_particle_color == 1
 	&& ATTR_billboard_position == 0 && ATTR_billboard_size == 1 && ATTR_billboard_anchor == 2
@@ -120,6 +133,13 @@ _Static_assert(ATTR_pixelArt_post_position == ATTR_copy_position && ATTR_pixelAr
 	"every Fullscreen-layout program must declare the copy position");
 _Static_assert(sizeof(lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");
 _Static_assert(sizeof(modelParams_t) == 32 * 4, "modelParams must match MODEL_LENGTH in draw.ms");
+_Static_assert(sizeof(modelTransformParams_t) == 16 * 4,
+	"modelTransformParams must contain one matrix");
+_Static_assert(sizeof(unlitMaterialParams_t) == 8 * 4
+	&& sizeof(pixelArt_unlitMaterialParams_t) == sizeof(unlitMaterialParams_t)
+	&& UB_unlitMaterialParams == UB_materialParams
+	&& UB_pixelArt_unlitMaterialParams == UB_materialParams,
+	"unlit material colour and parameters must share the material slot");
 _Static_assert(sizeof(pixelArt_vertexParams_t) == sizeof(vertexParams_t)
 	&& sizeof(pixelArt_lightParams_t) == sizeof(lightParams_t)
 	&& sizeof(pixelArt_modelParams_t) == sizeof(modelParams_t)

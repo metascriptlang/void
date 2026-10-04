@@ -48,8 +48,6 @@ export function doorLayout(layout: VertexLayout): int32 {
 	return layoutBase + (layout as int32);
 }
 
-// One per @program in shader3d.glsl (the core's) and pixelArt3d.glsl (the preset's), in the
-// order gpu3d.c registers them. Materials name Lit, Particle, Billboard and LitTextured.
 export enum Program {
 	Lit,
 	Particle,
@@ -62,6 +60,8 @@ export enum Program {
 	PixelArtBlit,
 	LitTextured,
 	PixelArtLitTextured,
+	UnlitTextured,
+	PixelArtUnlitTextured,
 }
 
 // Vertex buffer layouts gpu3d.c describes (describeLayout).
@@ -104,6 +104,8 @@ export const MATERIAL_UNIFORM_SLOT: int32 = 3;
 export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
 export const MATERIAL_SATURATION: int32 = 1;
 export const MATERIAL_DOUBLE_SIDED: int32 = 2;
+export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
+export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A billboard material's block (binding=2): its colour, then at BILLBOARD_LIGHT 0 to leave the
 // lights out (Heaps' `particles3D` material has `light: true`). A preset may give the other
 // floats a meaning of its own (pixelArtRenderer.ms BILLBOARD_RAMP_LEVELS).

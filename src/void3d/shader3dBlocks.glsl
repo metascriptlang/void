@@ -13,6 +13,12 @@ layout(binding=4) uniform modelParams {
 };
 @end
 
+@block modelTransformUniforms
+layout(binding=4) uniform modelTransformParams {
+    mat4 model;
+};
+@end
+
 @block quadCorner
 // h3d.parts.Particles' quad, ±0.5 around the instance, two triangles, read by the vertex index
 // with no buffer behind it; Bevy's sprite.wgsl makes its four corners from the index's bits.
@@ -38,6 +44,13 @@ layout(binding=2) uniform billboardParams {
 @block materialUniforms
 layout(binding=3) uniform materialParams {
     vec4 material;
+};
+@end
+
+@block unlitMaterialUniforms
+layout(binding=3) uniform unlitMaterialParams {
+    vec4 material;
+    vec4 materialColor;
 };
 @end
 

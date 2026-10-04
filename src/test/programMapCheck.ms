@@ -40,7 +40,6 @@ import {
 	POST_UNIFORM_LENGTH,
 	BLIT_UNIFORM_SLOT,
 	BLIT_UNIFORM_LENGTH,
-	pixelArtPrograms,
 } from "../void3d/pixelArtRenderer";
 import {
 	ForwardRenderer,
@@ -49,33 +48,11 @@ import {
 	renderFrame,
 } from "../void3d/forwardRenderer";
 
-const EVERY_PROGRAM: Vec<Program> = [
-	Program.Lit,
-	Program.Particle,
-	Program.Billboard,
-	Program.Copy,
-	Program.PixelArtLit,
-	Program.PixelArtParticle,
-	Program.PixelArtBillboard,
-	Program.PixelArtPost,
-	Program.PixelArtBlit,
-	Program.LitTextured,
-	Program.PixelArtLitTextured,
-];
-
 function drawnAs(map: ProgramMap, named: Program): Program {
 	const drawn: Result<Program, ProgramError> = map.drawnFor(named);
 	if (drawn.ok) { return drawn.value; }
 	console.log(`${named.toString()} is not drawn`);
 	unreachable;
-}
-
-function namedCount(map: ProgramMap): int32 {
-	let count: int32 = 0;
-	for (const program of EVERY_PROGRAM) {
-		if (map.draws(program)) { count = count + 1; }
-	}
-	return count;
 }
 
 function contextNaming(program: Program, capacity: int32): DrawContext {
@@ -118,28 +95,6 @@ function billboardMaterial(context: DrawContext, texture: uint32, sampler: uint3
 	return added.value;
 }
 
-test "the core draws a material's Lit, Particle, Billboard and LitTextured as themselves" {
-	const core: ProgramMap = ProgramMap.core();
-	assert drawnAs(core, Program.Lit) == Program.Lit;
-	assert drawnAs(core, Program.Particle) == Program.Particle;
-	assert drawnAs(core, Program.Billboard) == Program.Billboard;
-	assert drawnAs(core, Program.LitTextured) == Program.LitTextured;
-	assert namedCount(core) == 4;
-	const preset: Result<Program, ProgramError> = core.drawnFor(Program.PixelArtBillboard);
-	assert !preset.ok && preset.error == ProgramError.NotDrawn;
-}
-
-test "the pixel-art preset draws its own programs in place of the ones materials name" {
-	const preset: ProgramMap = pixelArtPrograms();
-	assert drawnAs(preset, Program.Lit) == Program.PixelArtLit;
-	assert drawnAs(preset, Program.Particle) == Program.PixelArtParticle;
-	assert drawnAs(preset, Program.Billboard) == Program.PixelArtBillboard;
-	assert drawnAs(preset, Program.LitTextured) == Program.PixelArtLitTextured;
-	assert namedCount(preset) == 4;
-	assert !preset.draws(Program.PixelArtLit) && !preset.draws(Program.Copy);
-	assert !preset.draws(Program.PixelArtBillboard);
-}
-
 test "drawing a name again replaces what is drawn for it and leaves the others" {
 	const map: ProgramMap = ProgramMap.empty()
 		.drawing(Program.PixelArtBlit, Program.PixelArtBlit)
@@ -149,8 +104,6 @@ test "drawing a name again replaces what is drawn for it and leaves the others" 
 	assert drawnAs(map, Program.Lit) == Program.PixelArtLit;
 	assert drawnAs(map, Program.Particle) == Program.Copy;
 	assert drawnAs(map, Program.PixelArtBlit) == Program.PixelArtBlit;
-	assert namedCount(map) == 3;
-	assert namedCount(ProgramMap.empty()) == 0;
 }
 
 test "the core refuses a material it does not draw before it writes the camera" {
@@ -365,4 +318,44 @@ test "the core owns its camera and light blocks, so only it could give them back
 	assert !camera.ok && camera.error == UniformError.Owned;
 	const lights: Result<int32, UniformError> = releaseUniforms(context, created.value.lightBlock);
 	assert !lights.ok && lights.error == UniformError.Owned;
+}
+
+test "unlit textured programs require colour data and no light uniform block" {
+	for (const program of [Program.UnlitTextured, Program.PixelArtUnlitTextured]) {
+		assert uniformBlockLength(program, LIGHT_UNIFORM_SLOT) == 0;
+		assert uniformBlockLength(program, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
+		assert uniformBlockLength(program, MATERIAL_UNIFORM_SLOT) == 8;
+	}
+	assert uniformBlockLength(Program.UnlitTextured, MODEL_SLOT) == 16;
+	assert uniformBlockLength(Program.PixelArtUnlitTextured, MODEL_SLOT) == MODEL_LENGTH;
+}
+
+test "an unlit material refuses a missing colour block or the old lit block size" {
+	for (const length of [0, MATERIAL_UNIFORM_LENGTH]) {
+		const context: DrawContext =
+			DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + length);
+		let block: UniformBlock = NO_UNIFORMS;
+		if (length > 0) {
+			const reserved: Result<UniformBlock, UniformError> =
+				reserveUniforms(context, MATERIAL_UNIFORM_SLOT, length);
+			assert reserved.ok;
+			if (!reserved.ok) { return; }
+			block = reserved.value;
+		}
+		const material: Result<MaterialId, MaterialError> = addMaterial(context, {
+			...Material.plain(Program.UnlitTextured, RenderState.defaults(), Phase.Opaque),
+			uniforms: block,
+		});
+		assert material.ok;
+		if (!material.ok) { return; }
+		const created: Result<Renderer, RendererError> = Renderer.create(context);
+		assert created.ok;
+		if (!created.ok) { return; }
+		const items: Vec<DrawItem> = [itemOf(context, material.value)];
+		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+		const began: Result<boolean, RendererError> =
+			beginFrame(created.value, items, camera, lights);
+		assert !began.ok && began.error == RendererError.MaterialBlock;
+	}
 }

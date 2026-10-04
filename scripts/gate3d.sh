@@ -291,6 +291,10 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 	write_gltf_entry gltfCapture "configureGltf(false, -1);"
 	write_gltf_entry gltfPixelArtCapture "configureGltf(true, -1);"
 	write_gltf_entry gltfRebuildCapture "configureGltf(false, 3);"
+	write_frame_entry unlitCapture "configureUnlit(false);" \
+		unlitFrame initUnlit frameUnlit configureUnlit
+	write_frame_entry unlitPixelArtCapture "configureUnlit(true);" \
+		unlitFrame initUnlit frameUnlit configureUnlit
 	note "prepare: capture entries written to $CAPTURE"
 }
 
@@ -1682,6 +1686,16 @@ run_compose() {
 		else
 			fail "registration: order $order failed (exit $status) — see $WORK/registration-$order.log and .err"
 		fi
+		status=0
+		VOID_GPU_REGISTRATION=$order VOID_GPU_REGISTRATION_ORDER_CONTROL=1 \
+			out/tmp/mixedFrame.exe > "$WORK/registration-$order.control.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] &&
+			grep -q '^FAIL mixed frame: the foreign consumer overlaps or misses' \
+				"$WORK/registration-$order.control.log"; then
+			pass "registration: order $order, reversed range expectation fails at the registry bound"
+		else
+			fail "registration: order $order, reversed range expectation was not caught"
+		fi
 	done
 }
 
@@ -1746,6 +1760,45 @@ run_textured() {
 		fi
 	done
 	pass "textured: uv orientation, exact texels, texel times light, outline, texture lifetime and a context rebuild, both presets"
+}
+
+run_unlit_textured() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "unlit-textured: GATE_SKIP_CAPTURE=1 — light-independent textures were not drawn"
+		return
+	fi
+	purge_stale_shader_objects
+	for entry in unlitCapture unlitPixelArtCapture; do
+		if ! msc build "$CAPTURE/$entry.ms" --output="$WORK/$entry.exe" \
+			> "$WORK/$entry.build.log" 2>&1; then
+			fail "unlit-textured: $entry does not build"
+			return
+		fi
+		status=0
+		CAPTURE_PREFIX="$CAPTURE/gate/$entry" "$WORK/$entry.exe" \
+			> "$WORK/$entry.run.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "unlit-textured: $entry requires the unrun D3D11 readback backend"
+			continue
+		fi
+		if [ "$status" -ne 0 ] ||
+			! grep -q '^PASS unlit frame: ' "$WORK/$entry.run.log" ||
+			[ "$(grep -c '^unlit frame: frame [0-9]* checked$' "$WORK/$entry.run.log")" != "4" ]; then
+			fail "unlit-textured: $entry did not finish its pixel proof (exit $status)"
+			return
+		fi
+		pass "unlit-textured: $entry, unchanged RGBA under dark/full light, tint/alpha and lit control"
+		status=0
+		VOID_UNLIT_LIT_CONTROL=1 "$WORK/$entry.exe" \
+			> "$WORK/$entry.control.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] &&
+			grep -q '^FAIL unlit frame: quad 0 texel 0 channel' "$WORK/$entry.control.log"; then
+			pass "unlit-textured: $entry's old-lit control darkens the authored texel and fails"
+		else
+			fail "unlit-textured: $entry's old-lit control did not fail at the texel"
+			return
+		fi
+	done
 }
 
 gltf_checked() {
@@ -2039,6 +2092,7 @@ run_captures
 run_compose
 run_perspective
 run_textured
+run_unlit_textured
 run_gltf
 run_both_layers
 run_stores

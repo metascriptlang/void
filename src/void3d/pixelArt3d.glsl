@@ -113,6 +113,48 @@ void main() {
 }
 @end
 
+@vs unlitTexturedVs
+@include_block vertexUniforms
+@include_block modelUniforms
+in vec3 position;
+in vec3 normal;
+in vec2 uv;
+in vec4 color;
+out vec3 worldNormal;
+out vec2 surfaceUv;
+out vec4 baseColor;
+out float depth01;
+void main() {
+    gl_Position = viewProj * model * vec4(position, 1.0);
+    worldNormal = mat3(normalModel) * normal;
+    surfaceUv = uv;
+    baseColor = color;
+    depth01 = gl_Position.z;
+}
+@end
+
+@fs unlitTexturedFs
+@include_block unlitMaterialUniforms
+@include_block colorSpace
+@include_block facingNormal
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+in vec3 worldNormal;
+in vec2 surfaceUv;
+in vec4 baseColor;
+in float depth01;
+layout(location=0) out vec4 fragColor;
+layout(location=1) out vec4 fragNormal;
+void main() {
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    vec3 surface = srgbToLinear(baseColor.rgb) * srgbToLinear(materialColor.rgb);
+    surface *= srgbToLinear(texel.rgb);
+    fragColor = vec4(linearToSrgb(surface), baseColor.a * materialColor.a * texel.a);
+    vec3 n = facingNormal(normalize(worldNormal), material.z);
+    fragNormal = vec4(n * 0.5 + 0.5, depth01);
+}
+@end
+
 @vs billboardVs
 @include_block vertexUniforms
 @include_block quadCorner
@@ -313,3 +355,4 @@ void main() {
 @program blit fullscreenVs blitFs
 @program particle particleVs particleFs
 @program litTextured litTexturedVs litTexturedFs
+@program unlitTextured unlitTexturedVs unlitTexturedFs

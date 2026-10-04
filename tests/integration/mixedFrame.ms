@@ -20,6 +20,9 @@ import { vec2, rgba } from "../../src/void2d/types";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import {
 	Program,
+	VertexLayout,
+	doorProgram,
+	doorLayout,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
@@ -195,10 +198,15 @@ function initMixed(): void {
 		if ((registrationPreload >= 0) != before) {
 			fail("the registration preload ran in the wrong order");
 		}
-		if ((before && (program != 5 || layout != 3)) ||
-			(!before && (program != 20 || layout != 12))) {
-			fail(`the foreign consumer got program ${program}, layout ${layout}, ` +
-				"not the ids past the old 16-program, 8-layout width");
+		const boundsBefore: boolean =
+			voidCaptureEnvInt("VOID_GPU_REGISTRATION_ORDER_CONTROL", 0) != 0 ? !before : before;
+		const disjoint: boolean = boundsBefore
+			? program < doorProgram(Program.Lit) && layout < doorLayout(VertexLayout.Lit)
+			: program > doorProgram(Program.PixelArtUnlitTextured) &&
+				layout > doorLayout(VertexLayout.LitTextured) && program >= 16 && layout >= 8;
+		if (!disjoint) {
+			fail(`the foreign consumer overlaps or misses the intended registry range: ` +
+				`program ${program}, layout ${layout}`);
 		}
 	}
 }

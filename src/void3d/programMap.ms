@@ -19,13 +19,13 @@ export function empty(this typeof ProgramMap): ProgramMap {
 	return { named: 0 as BitSet<Program>, drawn: 0 };
 }
 
-// The core's own: Lit, Particle, Billboard and LitTextured drawn as themselves.
 export function core(this typeof ProgramMap): ProgramMap {
 	return ProgramMap.empty()
 		.drawing(Program.Lit, Program.Lit)
 		.drawing(Program.Particle, Program.Particle)
 		.drawing(Program.Billboard, Program.Billboard)
-		.drawing(Program.LitTextured, Program.LitTextured);
+		.drawing(Program.LitTextured, Program.LitTextured)
+		.drawing(Program.UnlitTextured, Program.UnlitTextured);
 }
 
 export function drawing(this map: ProgramMap, named: Program, drawn: Program): ProgramMap {

@@ -101,6 +101,38 @@ void main() {
 }
 @end
 
+@vs unlitTexturedVs
+@include_block vertexUniforms
+@include_block modelTransformUniforms
+in vec3 position;
+in vec3 normal;
+in vec2 uv;
+in vec4 color;
+out vec2 surfaceUv;
+out vec4 baseColor;
+void main() {
+    gl_Position = viewProj * model * vec4(position, 1.0);
+    surfaceUv = uv;
+    baseColor = color;
+}
+@end
+
+@fs unlitTexturedFs
+@include_block unlitMaterialUniforms
+@include_block colorSpace
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+in vec2 surfaceUv;
+in vec4 baseColor;
+out vec4 fragColor;
+void main() {
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    vec3 surface = srgbToLinear(baseColor.rgb) * srgbToLinear(materialColor.rgb);
+    surface *= srgbToLinear(texel.rgb);
+    fragColor = vec4(linearToSrgb(surface), baseColor.a * materialColor.a * texel.a);
+}
+@end
+
 @vs particleVs
 @include_block vertexUniforms
 @include_block quadCorner
@@ -209,3 +241,4 @@ void main() {
 @program billboard billboardVs billboardFs
 @program copy fullscreenVs copyFs
 @program litTextured litTexturedVs litTexturedFs
+@program unlitTextured unlitTexturedVs unlitTexturedFs
