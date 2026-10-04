@@ -1987,3 +1987,65 @@ are still not accepted as correct; GLES3 device coverage remains unrun.
 red. The corrected targeted receipts are `unitCorrected.log` and
 `rayOracleCorrected.log`. Every design-proof follow-up is taken. No web gate or device
 success is claimed, and no new stopping entry or GPU resource belongs to this row.
+
+## M28 — unlit textured programs
+
+**Defect pass: no confirmed library defect after the native proof.** The frontend caught
+the consumer's missing `declaresBlock` extension import; it now imports the actual
+PipelineCache extension explicitly. SHDC rejected the lit preset vertex stage against
+the smaller unlit fragment interface; a dedicated MRT vertex stage supplies the exact
+normal/UV/colour/depth outputs. The consumer uses the named colour offset, and an
+overlong console call was wrapped before the final gate. Old map-copy/count assertions
+were deleted rather than re-pinned to a new incidental cardinality.
+
+### Fresh design pass
+
+**SHIP WITH FOLLOW-UPS**, no confirmed implementation defect. A fresh stateless reviewer
+received the exact source diff, the complete real consumer, the row contract, pinned
+Heaps/three excerpts and observed native results; no tools or prior session history.
+The main session checked the findings. Registration and maps append the two programs
+without changing old ordinals; 13 fits the existing four-bit ProgramMap. Colour and
+model ranges use the existing reflected ABI and ownership.
+
+| Finding | Resolution / evidence boundary |
+|---|---|
+| Latest revision still needs the full gate | Final reviewed source is gated after rebase onto void2d's committed target-owner slice; targeted smoke is not substituted for that verdict |
+| MRT normal/depth values are not directly checked by the consumer | Stated in M28 as-built, not represented as sampled proof; the normal output is the preset's existing convention |
+| RGBA identity is not an expected framebuffer-alpha assertion | Stated precisely: region RGBA is invariant, and RGB verifies alpha's compositing effect |
+| Premultiplied render-target input and device/web execution are outside current proof | M27 remains the declared boundary; SHDC's six outputs are compilation evidence only |
+
+**MRT32 still needs the normal** is a stated model-cost limit: the core model-only block
+avoids the normal inverse and second matrix; the preset's normal/depth attachment needs
+both. No additional GPU resource kind or rebuild policy is introduced. The actual
+forward and pixel-art consumers distinguish the old lit path by forcing it to fail at
+an authored texel under zero light, not by copying a map or checking that drawing exists.
+
+The first joint full gate (`out/tmp/m28/gate3d.log`) was red only on a pre-existing
+registration fixture that required foreign program id 20. Appending two programs
+correctly produced id 22; neither id is a consumer contract. The copied literal ids were
+removed, not re-pinned. The revised proof checks disjoint ranges below the actual
+void3d first ids for preload, beyond its actual last ids for postload, and beyond the old
+16/8 capacity limits for the growth case.
+
+The coordinator caught a gap in the first replacement: preload initially had no range
+bound. It is now restored relationally. Flipping only the expected range order escaped
+the older binary (exit 0); both flipped-order controls fail at the intended bound in
+the rebuilt binary, while both real orders preserve the mixed frame and reuse its
+pipeline. The light compose stage finishes with zero failures/skips. No library,
+shader, resource or baseline change belongs to this fixture correction.
+
+### Final joint acceptance
+
+Source `e80a077`, tree `3827c399d0b47cc161c4e10b07b2f85f675a0d20`, is built on the
+committed target-owner `3d03020`. Full gate tree `80d0c640` has every functional stage
+passing: **253 PASS lines**, **1157 tests**, **85 abort programs + 98 cases**, **72
+hashes** with none adopted, oracle **75/11**, allocation clean, bench/churn flat,
+Android **3,849,512 B**, both native unlit consumers and all registry controls passing.
+Three known loud skips remain Forward/Anchor held and device unrun.
+
+The raw final gate log is **RED ONLY on style**, `mixedFrame.ms:201`, a 102-column
+assignment. It was wrapped without an AST change and the actual light style stage
+passed on **31 paths**. Accepted under the same whitespace-only protocol as the owner
+slice; no third heavy run and no invented GATE GREEN receipt. Logs:
+`out/tmp/m28/gate3dFinal.log`, `styleOnly.log`; the first registration red is `gate3d.log`.
+Future full gates run the existing light style stage first, including tab-expanded widths.

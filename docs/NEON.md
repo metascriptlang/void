@@ -229,11 +229,15 @@ above be written without Neon working around Void.
    Void reuses its PipelineCache/M25 reference-owner model. The native lifecycle consumer is
    `tests/integration/targetOwner.ms`. This does not complete item 2: a material still needs
    M27's checked texture row that resolves the owner's current view rather than a saved raw id.
-3. **A textured program without lights.** `Program` has `LitTextured` and `PixelArtLitTextured`
-   and no textured program that skips lighting (`src/void3d/gpu3d.ms`). A screen or a sign in the
-   world must not be darkened by the scene's lights. Heaps: a pass turns lighting off with
-   `enableLights` (`h3d/mat/Pass.hx`).
-4. **The UV of a pick hit.** Implemented by M29 in branch commit `1623c03`, not yet
+3. **A textured program without lights.** Implemented by M28 in branch commit `e80a077`,
+   not yet landed; see `src/void3d/gpu3d.ms`
+   `Program.UnlitTextured`; the pixel-art map chooses its MRT twin. Material colour
+   uses the existing material-owned block ABI, with the offsets/length named in gpu3d.ms.
+   The unlit texture keeps its authored colour when the scene goes dark; the real
+   forward/pixel-art consumer and its old-lit failure control are recorded in
+   [VOID3D.md, M28 as built](VOID3D.md#m28-as-built). Premultiplied target input is still
+   items 2/5 (M27), not silently inferred by this program.
+4. **The UV of a pick hit.** Implemented by M29 in rebased branch commit `4ce6f8f`, not yet
    landed. The query is `src/void3d/pick.ms` `PickHit.uv`;
    the query keeps authored `TEXCOORD_0`, without wrap or clamp, and a mesh without that
    attribute still hits with `uv == null`. Neon maps that coordinate into the texture's
