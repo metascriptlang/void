@@ -29,6 +29,7 @@ import {
 	addMeshNode,
 	addGroup,
 	closeScene,
+	remove,
 } from "../void3d/scene";
 import { contextOf } from "./drawHelpers";
 import { PaletteLut, PaletteError, closePalette, releaseGpu } from "../void3d/palette";
@@ -235,4 +236,44 @@ function closeContextOnceEmpty(context: DrawContext, material: MaterialId): void
 	const left: Result<int32, HandleError> = releaseMaterial(context, material);
 	if (!left.ok) { unreachable; }
 	closeContext(context);
+}
+
+test "closing a scene releases every never-attached subtree and its sole resource pins" {
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(scene, null, Transform3D.identity());
+	for (let i = 0; i < 2; i++) {
+		const parent: NodeId3D | null = i == 0 ? group : null;
+		assert addMeshNode(
+			scene, parent, Transform3D.identity(), context.meshAt(i), context.materialAt(0),
+		).ok;
+		assert releaseMesh(context, context.meshAt(i)).ok;
+	}
+	assert releaseMaterial(context, context.materialAt(0)).ok;
+	closeScene(scene);
+	assert context.liveMeshes() == 0 && context.liveMaterials() == 0;
+	assert scene.meshes.length == 0;
+	closeContext(context);
+	assert context.isClosed();
+}
+
+test "removing a detached subtree releases it without touching another detached owner" {
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const gone: NodeId3D = addGroup(scene, null, Transform3D.identity());
+	const kept: NodeId3D = addGroup(scene, null, Transform3D.identity());
+	assert addMeshNode(
+		scene, gone, Transform3D.identity(), context.meshAt(0), context.materialAt(0),
+	).ok;
+	assert addMeshNode(
+		scene, kept, Transform3D.identity(), context.meshAt(1), context.materialAt(0),
+	).ok;
+	assert remove(scene, gone) == 2;
+	assert context.meshPinned(context.meshAt(0)) == 0;
+	assert context.meshPinned(context.meshAt(1)) == 1;
+	const replacement: NodeId3D = addGroup(scene, null, Transform3D.identity());
+	assert replacement != gone;
+	closeScene(scene);
+	assert context.meshPinned(context.meshAt(1)) == 0;
+	assert context.materialPins[0] == 0;
 }

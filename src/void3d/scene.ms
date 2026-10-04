@@ -82,6 +82,7 @@ export enum SceneError {
 	StaleMaterial,
 	ForeignMesh,
 	ForeignMaterial,
+	DetachedNode,
 }
 
 export enum LightError {
@@ -295,9 +296,31 @@ export function rootId(this scene: Scene3D): NodeId3D {
 	return scene.nodeIdAt(scene.root);
 }
 
-// Adds an empty group under `parent`. Structure changed, so the draw list is rebuilt next collect.
-export function addGroup(scene: Scene3D, parent: NodeId3D, local: Transform3D): NodeId3D {
-	const under: int32 = scene.liveRow(parent, "addGroup");
+function parentRow(scene: Scene3D, parent: NodeId3D | null, call: string): int32 {
+	scene.requireOpen(call);
+	if (parent === null) { return NO_NODE_3D; }
+	scene.requireOwn(parent, call);
+	return scene.liveRow(parent, call);
+}
+
+function linkChild(scene: Scene3D, parent: int32, child: int32): void {
+	if (parent != NO_NODE_3D) { scene.nodes[parent].children.push(child); }
+	scene.structureChanged = true;
+}
+
+function connectedRow(scene: Scene3D, index: int32): boolean {
+	let at: int32 = index;
+	while (at != NO_NODE_3D) {
+		if (at == scene.root) { return true; }
+		at = scene.nodes[at].parent;
+	}
+	return false;
+}
+
+export function addGroup(
+	scene: Scene3D, parent: NodeId3D | null, local: Transform3D,
+): NodeId3D {
+	const under: int32 = parentRow(scene, parent, "addGroup");
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: freshFlags(),
@@ -308,8 +331,7 @@ export function addGroup(scene: Scene3D, parent: NodeId3D, local: Transform3D): 
 		world: identity(),
 		children: [],
 	});
-	scene.nodes[under].children.push(id.index);
-	scene.structureChanged = true;
+	linkChild(scene, under, id.index);
 	return id;
 }
 
@@ -323,12 +345,12 @@ export function addGroup(scene: Scene3D, parent: NodeId3D, local: Transform3D): 
 // PENDING3D: mesh-node-name-collision
 export function addMeshNode(
 	scene: Scene3D,
-	parent: NodeId3D,
+	parent: NodeId3D | null,
 	local: Transform3D,
 	mesh: MeshId,
 	material: MaterialId,
 ): Result<NodeId3D, SceneError> {
-	const under: int32 = scene.liveRow(parent, "addMeshNode");
+	const under: int32 = parentRow(scene, parent, "addMeshNode");
 	const context: DrawContext = scene.context;
 	context.requireOpen("addMeshNode");
 	if (!context.hasMesh(mesh)) { return Result.err(meshError(context, mesh)); }
@@ -352,8 +374,7 @@ export function addMeshNode(
 		children: [],
 	});
 	scene.meshOwners.push(id.index);
-	scene.nodes[under].children.push(id.index);
-	scene.structureChanged = true;
+	linkChild(scene, under, id.index);
 	return Result.ok(id);
 }
 
@@ -361,11 +382,11 @@ export function addMeshNode(
 // Node suffix for the same reason as `addMeshNode` (the compiler card above).
 export function addLightNode(
 	scene: Scene3D,
-	parent: NodeId3D,
+	parent: NodeId3D | null,
 	local: Transform3D,
 	light: LightInstance,
 ): NodeId3D {
-	const under: int32 = scene.liveRow(parent, "addLightNode");
+	const under: int32 = parentRow(scene, parent, "addLightNode");
 	const payload: int32 = scene.lights.length as int32;
 	scene.lights.push(light);
 	const id: NodeId3D = newSlot(scene, {
@@ -379,25 +400,23 @@ export function addLightNode(
 		children: [],
 	});
 	scene.lightOwners.push(id.index);
-	scene.nodes[under].children.push(id.index);
-	scene.structureChanged = true;
+	linkChild(scene, under, id.index);
 	return id;
 }
 
 export function addCameraNode(
 	scene: Scene3D,
-	parent: NodeId3D,
+	parent: NodeId3D | null,
 	local: Transform3D,
 	camera: Camera3D,
 ): NodeId3D {
-	const under: int32 = scene.liveRow(parent, "addCameraNode");
+	const under: int32 = parentRow(scene, parent, "addCameraNode");
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Group, flags: freshFlags(), parent: under, payload: NO_NODE_3D,
 		name: "", local: local, world: identity(), children: [],
 	});
 	scene.cameras.push({ node: id, camera: camera });
-	scene.nodes[under].children.push(id.index);
-	scene.structureChanged = true;
+	linkChild(scene, under, id.index);
 	return id;
 }
 
@@ -432,6 +451,7 @@ export function cameraOf(scene: Scene3D, fallback: Camera3D): Result<Camera3D, C
 	const active: NodeId3D | null = scene.activeCamera;
 	if (active === null) { return Result.ok(fallback); }
 	if (!scene.isLive(active)) { return Result.err(CameraError.StaleCameraNode); }
+	if (!connectedRow(scene, active.index)) { return Result.err(CameraError.DetachedCameraNode); }
 	const _synced: int32 = syncWorld(scene);
 	const row: int32 = cameraRow(scene, active, "cameraOf");
 	return Camera3D.fromWorld(scene.nodes[active.index].world, scene.cameras[row].camera);
@@ -449,18 +469,77 @@ function forgetCamera(scene: Scene3D, index: int32): void {
 function detach(scene: Scene3D, index: int32): void {
 	const parent: int32 = scene.nodes[index].parent;
 	if (parent == NO_NODE_3D) { return; }
-	let siblings: Vec<int32> = scene.nodes[parent].children;
-	const count: int32 = siblings.length as int32;
+	const count: int32 = scene.nodes[parent].children.length as int32;
 	for (let i = 0; i < count; i++) {
-		if (siblings[i] == index) {
-			// Order among siblings is draw order, so close the gap rather than
-			// swapping the tail in.
-			for (let j = i; j < count - 1; j++) { siblings[j] = siblings[j + 1]; }
-			siblings.pop();
-			break;
+		if (scene.nodes[parent].children[i] != index) { continue; }
+		for (let j = i; j < count - 1; j++) {
+			scene.nodes[parent].children[j] = scene.nodes[parent].children[j + 1];
+		}
+		scene.nodes[parent].children.pop();
+		break;
+	}
+	scene.nodes[index].parent = NO_NODE_3D;
+}
+
+function stopOnMove(call: string, reason: string): void {
+	console.log(`void3d: ${call} ${reason}`);
+	unreachable;
+}
+
+function placeNode(
+	scene: Scene3D, parent: NodeId3D, node: NodeId3D, before: NodeId3D | null, call: string,
+): void {
+	scene.requireOpen(call);
+	scene.requireOwn(parent, call);
+	scene.requireOwn(node, call);
+	const under: int32 = scene.liveRow(parent, call);
+	const row: int32 = scene.liveRow(node, call);
+	if (row == scene.root) { stopOnMove(call, "asked to attach the scene root"); }
+	for (let at = under; at != NO_NODE_3D; at = scene.nodes[at].parent) {
+		if (at == row) { stopOnMove(call, "would form a cycle"); }
+	}
+	if (before !== null) {
+		scene.requireOwn(before, call);
+		const target: int32 = scene.liveRow(before, call);
+		if (scene.nodes[target].parent != under) {
+			stopOnMove(call, "before node has another parent");
+		}
+		if (target == row) { return; }
+	}
+	detach(scene, row);
+	let position: int32 = scene.nodes[under].children.length as int32;
+	if (before !== null) {
+		for (let i = 0; i < position; i++) {
+			if (scene.nodes[under].children[i] == before.index) { position = i; break; }
 		}
 	}
-	scene.nodes[parent].children = siblings;
+	const tail: int32 = scene.nodes[under].children.length as int32;
+	scene.nodes[under].children.push(row);
+	for (let i = tail; i > position; i--) {
+		scene.nodes[under].children[i] = scene.nodes[under].children[i - 1];
+	}
+	scene.nodes[under].children[position] = row;
+	scene.nodes[row].parent = under;
+	scene.nodes[row].flags = scene.nodes[row].flags.incl(NodeFlag.PosChanged);
+	if (!connectedRow(scene, under)) {
+		const count: int32 = collectSubtree(scene, row);
+		for (let i = 0; i < count; i++) {
+			const child: int32 = scene.stack[i];
+			scene.nodes[child].world = identity();
+			scene.nodes[child].flags = scene.nodes[child].flags.incl(NodeFlag.PosChanged);
+		}
+	}
+	scene.structureChanged = true;
+}
+
+export function attach(scene: Scene3D, parent: NodeId3D, node: NodeId3D): void {
+	placeNode(scene, parent, node, null, "attach");
+}
+
+export function insertBefore(
+	scene: Scene3D, parent: NodeId3D, node: NodeId3D, before: NodeId3D,
+): void {
+	placeNode(scene, parent, node, before, "insertBefore");
 }
 
 // A mesh node unpins its mesh and material; remove checked the pins first (checkPins). A freed id
@@ -674,6 +753,7 @@ export function findByName(
 
 export function worldOf(this scene: Scene3D, id: NodeId3D): Result<Mat4, SceneError> {
 	if (!scene.isLive(id)) { return Result.err(SceneError.StaleNode); }
+	if (!connectedRow(scene, id.index)) { return Result.err(SceneError.DetachedNode); }
 	return Result.ok(scene.nodes[id.index].world);
 }
 
@@ -905,13 +985,38 @@ export function collectLights(scene: Scene3D, out: Span<float32>): Result<int32,
 	return Result.ok(found);
 }
 
+function ownedRows(scene: Scene3D): int32 {
+	const slots: int32 = scene.slots.generations.length as int32;
+	for (let i = 0; i < slots; i++) {
+		scene.stack[i] = scene.slots.retired[i] ? NO_NODE_3D : i;
+	}
+	for (const index of scene.slots.free) { scene.stack[index] = NO_NODE_3D; }
+	let count: int32 = 0;
+	for (let i = 0; i < slots; i++) {
+		if (scene.stack[i] == NO_NODE_3D || i == scene.root) { continue; }
+		scene.stack[count] = i;
+		count = count + 1;
+	}
+	return count;
+}
+
 export function closeScene(scene: Scene3D): void {
 	if (scene.closed) { stopOnClosed("closeScene"); }
 	if (passState() != PassState.None) {
 		console.log("void3d: closeScene with a pass open; endPass ends it");
 		unreachable;
 	}
-	const _removed: int32 = emptyRow(scene, scene.root, "closeScene");
+	const count: int32 = ownedRows(scene);
+	checkPins(scene, count, "closeScene");
+	for (let i = 0; i < count; i++) {
+		const index: int32 = scene.stack[i];
+		scene.nodes[index].children = [];
+		scene.nodes[index].parent = NO_NODE_3D;
+		scene.nodes[index].world = identity();
+		releasePayload(scene, index);
+		vacate(scene.slots, index);
+	}
+	scene.nodes[scene.root].children = [];
 	scene.closed = true;
 	scene.structureChanged = true;
 }

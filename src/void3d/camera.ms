@@ -72,6 +72,7 @@ export enum CameraError {
 	BadOrientation,
 	StaleCameraNode,
 	AmbiguousOrientation,
+	DetachedCameraNode,
 }
 
 // Where the eye landed and by how much it missed, in texels.

@@ -31,6 +31,27 @@
 // expect camera.unbound.setActiveCamera: void3d: setActiveCamera on node 0 without a camera binding
 // expect camera.stale.setCameraOf: void3d: setCameraOf on stale node 1
 // expect camera.stale.setActiveCamera: void3d: setActiveCamera on stale node 1
+// expect closed.attach: void3d: attach on a scene that was closed
+// expect closed.insertBefore: void3d: insertBefore on a scene that was closed
+// expect closed.addGroupDetached: void3d: addGroup on a scene that was closed
+// expect closed.addMeshDetached: void3d: addMeshNode on a scene that was closed
+// expect closed.addLightDetached: void3d: addLightNode on a scene that was closed
+// expect closed.addCameraDetached: void3d: addCameraNode on a scene that was closed
+// expect move.self.attach: void3d: attach would form a cycle
+// expect move.descendant.attach: void3d: attach would form a cycle
+// expect move.root.attach: void3d: attach asked to attach the scene root
+// expect move.foreign.attach: void3d: attach on node 1 of another scene
+// expect move.foreignParent.attach: void3d: attach on node 0 of another scene
+// expect move.stale.attach: void3d: attach on stale node 3
+// expect move.self.insertBefore: void3d: insertBefore would form a cycle
+// expect move.descendant.insertBefore: void3d: insertBefore would form a cycle
+// expect move.root.insertBefore: void3d: insertBefore asked to attach the scene root
+// expect move.foreign.insertBefore: void3d: insertBefore on node 1 of another scene
+// expect move.foreignParent.insertBefore: void3d: insertBefore on node 0 of another scene
+// expect move.stale.insertBefore: void3d: insertBefore on stale node 3
+// expect move.foreignBefore.insertBefore: void3d: insertBefore on node 0 of another scene
+// expect move.staleBefore.insertBefore: void3d: insertBefore on stale node 4
+// expect move.wrongBefore.insertBefore: void3d: insertBefore before node has another parent
 import { argv } from "std/process";
 import { vec3 } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
@@ -70,6 +91,8 @@ import {
 	setCameraOf,
 	setActiveCamera,
 	cameraOf,
+	attach,
+	insertBefore,
 	remove,
 	removeChildren,
 	setLocal,
@@ -175,6 +198,22 @@ function closedCase(name: string): boolean {
 		setActiveCamera(scene, null);
 	} else if (name == "closed.cameraOf") {
 		const _r: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	} else if (name == "closed.attach") {
+		attach(scene, root, root);
+	} else if (name == "closed.insertBefore") {
+		insertBefore(scene, root, root, root);
+	} else if (name == "closed.addGroupDetached") {
+		const _r: NodeId3D = addGroup(scene, null, Transform3D.identity());
+	} else if (name == "closed.addMeshDetached") {
+		const _r: Result<NodeId3D, SceneError> =
+			addMeshNode(scene, null, Transform3D.identity(), NO_MESH, NO_MATERIAL);
+	} else if (name == "closed.addLightDetached") {
+		const _r: NodeId3D = addLightNode(scene, null, Transform3D.identity(), {
+			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0),
+			radius: 1.0, power: 1.0, priority: 0,
+		});
+	} else if (name == "closed.addCameraDetached") {
+		const _r: NodeId3D = addCameraNode(scene, null, Transform3D.identity(), cameraRequest());
 	} else {
 		return false;
 	}
@@ -247,9 +286,56 @@ function cameraMisuse(name: string): boolean {
 	return true;
 }
 
+function moveMisuse(name: string): boolean {
+	if (!name.startsWith("move.")) { return false; }
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const scene: Scene3D = Scene3D.create(context);
+	const a: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const b: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const node: NodeId3D = addGroup(scene, a, Transform3D.identity());
+	const before: NodeId3D = addGroup(scene, b, Transform3D.identity());
+	if (name == "move.self.attach") {
+		attach(scene, node, node);
+	} else if (name == "move.descendant.attach") {
+		attach(scene, node, a);
+	} else if (name == "move.root.attach") {
+		attach(scene, a, scene.rootId());
+	} else if (name == "move.stale.attach") {
+		const _removed: int32 = remove(scene, node);
+		attach(scene, b, node);
+	} else if (name == "move.self.insertBefore") {
+		insertBefore(scene, node, node, before);
+	} else if (name == "move.descendant.insertBefore") {
+		insertBefore(scene, node, a, before);
+	} else if (name == "move.root.insertBefore") {
+		insertBefore(scene, b, scene.rootId(), before);
+	} else if (name == "move.stale.insertBefore") {
+		const _removed: int32 = remove(scene, node);
+		insertBefore(scene, b, node, before);
+	} else if (name == "move.staleBefore.insertBefore") {
+		const _removed: int32 = remove(scene, before);
+		insertBefore(scene, b, node, before);
+	} else if (name == "move.wrongBefore.insertBefore") {
+		insertBefore(scene, b, node, a);
+	} else {
+		const other: Scene3D = Scene3D.create(context);
+		const foreign: NodeId3D = addGroup(other, other.rootId(), Transform3D.identity());
+		if (name == "move.foreign.attach") { attach(scene, b, foreign); }
+		else if (name == "move.foreignParent.attach") { attach(scene, other.rootId(), node); }
+		else if (name == "move.foreign.insertBefore") { insertBefore(scene, b, foreign, before); }
+		else if (name == "move.foreignParent.insertBefore") {
+			insertBefore(scene, other.rootId(), node, before);
+		} else if (name == "move.foreignBefore.insertBefore") {
+			insertBefore(scene, b, node, other.rootId());
+		} else { return false; }
+	}
+	return true;
+}
+
 function run(name: string): void {
 	const known: boolean =
-		cameraMisuse(name) || closedCase(name) || contextClosedCase(name) || pinTakenCase(name);
+		moveMisuse(name) || cameraMisuse(name) || closedCase(name) ||
+		contextClosedCase(name) || pinTakenCase(name);
 	console.log(known ? `${name} returned` : `no case named '${name}'`);
 }
 

@@ -1,6 +1,6 @@
 import { Vec3, vec3, Quat, eulerQuat } from "../math/math3d";
 import { MeshData, Rgba, MeshError, addVertex, addTriangle } from "../void3d/meshData";
-import { DrawContext, DrawItem, MeshId } from "../void3d/draw";
+import { DrawContext, DrawItem, MeshId, releaseMesh, releaseMaterial } from "../void3d/draw";
 import {
 	Scene3D,
 	NodeId3D,
@@ -9,6 +9,7 @@ import {
 	NO_NODE_3D,
 	addGroup,
 	addMeshNode,
+	attach,
 	setName,
 	setLocal,
 	remove,
@@ -534,4 +535,32 @@ test "forgetSync makes the next sync write over a node someone else moved" {
 	assert rewritten.ok;
 	if (rewritten.ok) { assert rewritten.value == 1; }
 	assert approx(localX(scene, arm), 1.0);
+}
+
+test "an attached move keeps sole node holds and the bound animation keeps driving it" {
+	const context: DrawContext = contextOf(1, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const first: NodeId3D = addGroup(scene, scene.rootId(), slide(10.0));
+	const second: NodeId3D = addGroup(scene, scene.rootId(), slide(20.0));
+	const node: NodeId3D = namedMesh(scene, context, "moving", 0);
+	attach(scene, first, node);
+	let animation: ObjectAnimation =
+		ObjectAnimation.forClock(clockOf(2, 1.0, Interpolation.Step));
+	const keys: Vec<Transform3D> = [slide(1.0), slide(3.0)];
+	assert addTrack(animation, "moving", keys).ok;
+	assert bindTracks(animation, scene, first).ok;
+	assert syncPose(animation, scene).ok;
+	assert releaseMesh(context, context.meshAt(0)).ok;
+	assert releaseMaterial(context, context.materialAt(0)).ok;
+	attach(scene, second, node);
+	animation.clock.frame = 1.0;
+	const driven: Result<int32, AnimationError> = syncPose(animation, scene);
+	assert driven.ok;
+	if (driven.ok) { assert driven.value == 1; }
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 1;
+	assert approx(items[0].world.m41, 23.0);
+	assert context.hasMesh(items[0].mesh) && context.hasMaterial(items[0].material);
+	assert context.meshPinned(items[0].mesh) == 1;
+	assert context.materialPins[items[0].material.index] == 1;
 }

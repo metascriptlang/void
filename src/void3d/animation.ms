@@ -411,7 +411,7 @@ function frameError(error: SceneError): AnimationError {
 		SceneError.StaleMesh => AnimationError.StaleMesh,
 		SceneError.ForeignMesh => AnimationError.ForeignMesh,
 		SceneError.StaleNode | SceneError.NodeNotFound | SceneError.StaleMaterial |
-			SceneError.ForeignMaterial => stopOnFrameError(error),
+			SceneError.ForeignMaterial | SceneError.DetachedNode => stopOnFrameError(error),
 	};
 }
 

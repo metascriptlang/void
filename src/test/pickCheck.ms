@@ -14,6 +14,7 @@ import {
 	Scene3D,
 	NodeId3D,
 	Transform3D,
+	attach,
 	addGroup,
 	addMeshNode,
 	setName,
@@ -711,5 +712,37 @@ test "rolled snapped camera pixels pick the projected box through both row order
 		const hit: PickHit = pickOf(scene, meshes, ray);
 		assert sameId(hit.owner, box);
 		assert nearVec(hit.point, point);
+	}
+}
+
+test "a detached pick owner misses until attached and keeps its hit UV after a move" {
+	const context: DrawContext = contextOf(1, 3);
+	const scene: Scene3D = Scene3D.create(context);
+	const first: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const second: NodeId3D = addGroup(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(4.0, 0.0, 0.0)),
+	);
+	const owner: NodeId3D = pickable(scene, addGroup(scene, null, Transform3D.identity()));
+	const node: NodeId3D = meshNode(scene, context, owner, Transform3D.identity(), 0);
+	const meshes: Vec<MeshData> = [texturedTriangle(0.0, true)];
+	const ray: Ray = { origin: vec3(0.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0) };
+	const detached: Result<PickHit, PickError> = pickIn(scene, meshes, ray);
+	assert !detached.ok;
+	if (!detached.ok) { assert detached.error == PickError.NothingHit; }
+	attach(scene, first, owner);
+	const before: PickHit = pickOf(scene, meshes, ray);
+	assert before.owner == owner && before.mesh == node;
+	attach(scene, second, owner);
+	const missed: Result<PickHit, PickError> = pickIn(scene, meshes, ray);
+	assert !missed.ok;
+	const after: PickHit = pickOf(scene, meshes, {
+		origin: vec3(4.0, 0.0, 5.0), direction: vec3(0.0, 0.0, -1.0),
+	});
+	assert after.owner == owner && after.mesh == node;
+	assert nearVec(after.point, vec3(4.0, 0.0, 0.0));
+	const uv: Uv | null = after.uv;
+	assert uv !== null;
+	if (uv !== null) {
+		assert Math.abs(uv.u - 0.75) < 1e-6 && Math.abs(uv.v - 0.125) < 1e-6;
 	}
 }

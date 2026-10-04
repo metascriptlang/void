@@ -20,6 +20,8 @@ import {
 	setCameraOf,
 	setActiveCamera,
 	cameraOf,
+	attach,
+	insertBefore,
 	setLocal,
 	setLightPower,
 	setAmbient,
@@ -819,4 +821,127 @@ test "a removed active camera reports staleness and never reuses a fresh node's 
 	const fallback: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
 	assert fallback.ok;
 	if (fallback.ok) { assert fallback.value.position == cameraRequest().position; }
+}
+
+test "detached nodes keep their holds but do not draw light or expose a world" {
+	const context: DrawContext = contextOf(1, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(
+		scene, null, Transform3D.fromTranslation(vec3(10.0, 0.0, 0.0)),
+	);
+	const mesh: Result<NodeId3D, SceneError> = addMeshNode(
+		scene, group, Transform3D.fromTranslation(vec3(2.0, 0.0, 0.0)),
+		context.meshAt(0), context.materialAt(0),
+	);
+	assert mesh.ok;
+	if (!mesh.ok) { return; }
+	const light: NodeId3D = addLightNode(
+		scene, null, Transform3D.fromTranslation(vec3(3.0, 0.0, 0.0)), {
+			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0),
+			radius: 1.0, power: 1.0, priority: 0,
+		},
+	);
+	let items: Vec<DrawItem> = [];
+	const _synced: int32 = syncWorld(scene);
+	assert collectDrawList(scene, items) == 0;
+	assert context.meshPinned(context.meshAt(0)) == 1;
+	const detached: Result<Mat4, SceneError> = scene.worldOf(mesh.value);
+	assert !detached.ok;
+	if (!detached.ok) { assert detached.error == SceneError.DetachedNode; }
+	const block: Vec<float32> = blockOf();
+	const dark: Result<int32, LightError> = collectLights(scene, block);
+	assert dark.ok;
+	if (dark.ok) { assert dark.value == 0; }
+	attach(scene, scene.rootId(), group);
+	attach(scene, scene.rootId(), light);
+	assert refresh(scene, items) == 1;
+	assert near(translationOf(items[0].world), 12.0, 0.0, 0.0);
+	const lit: Result<int32, LightError> = collectLights(scene, block);
+	assert lit.ok;
+	if (lit.ok) { assert lit.value == 1; }
+	assert nearAt(block, POINT_AT, 3.0, 0.0, 0.0);
+}
+
+test "moving into a detached parent hides the old world until same-frame attachment" {
+	const context: DrawContext = contextOf(1, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const first: NodeId3D = addGroup(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(10.0, 0.0, 0.0)),
+	);
+	const second: NodeId3D = addGroup(
+		scene, null, Transform3D.fromTranslation(vec3(20.0, 0.0, 0.0)),
+	);
+	const mesh: NodeId3D = oneMesh(scene, context, vec3(2.0, 0.0, 0.0), 0);
+	attach(scene, first, mesh);
+	let items: Vec<DrawItem> = [];
+	const _first: int32 = refresh(scene, items);
+	assert near(translationOf(items[0].world), 12.0, 0.0, 0.0);
+	attach(scene, second, mesh);
+	assert refresh(scene, items) == 0;
+	const detached: Result<Mat4, SceneError> = scene.worldOf(mesh);
+	assert !detached.ok;
+	if (!detached.ok) { assert detached.error == SceneError.DetachedNode; }
+	assert context.meshPinned(context.meshAt(0)) == 1;
+	attach(scene, scene.rootId(), second);
+	assert refresh(scene, items) == 1;
+	assert near(translationOf(items[0].world), 22.0, 0.0, 0.0);
+}
+
+test "same-parent insertBefore changes subtree order without recreating its drawables" {
+	const context: DrawContext = contextOf(3, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const first: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const second: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const third: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	for (const parent of [first, second, third]) {
+		const mesh: int32 = parent == first ? 0 : parent == second ? 1 : 2;
+		assert addMeshNode(
+			scene, parent, Transform3D.identity(), context.meshAt(mesh), context.materialAt(0),
+		).ok;
+	}
+	let items: Vec<DrawItem> = [];
+	const _first: int32 = refresh(scene, items);
+	insertBefore(scene, scene.rootId(), third, first);
+	assert refresh(scene, items) == 3;
+	assert items[0].mesh == context.meshAt(2);
+	assert items[1].mesh == context.meshAt(0);
+	assert items[2].mesh == context.meshAt(1);
+	insertBefore(scene, scene.rootId(), first, first);
+	const _same: int32 = refresh(scene, items);
+	assert items[0].mesh == context.meshAt(2) && items[1].mesh == context.meshAt(0);
+	for (let i = 0; i < 3; i++) { assert context.meshPinned(context.meshAt(i)) == 1; }
+}
+
+test "a detached camera refuses and its live mount survives moving between parents" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const first: NodeId3D = addGroup(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(1.0, 0.0, 0.0)),
+	);
+	const second: NodeId3D = addGroup(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(-1.0, 1.0, 0.0)),
+	);
+	const camera: NodeId3D = addCameraNode(
+		scene, null, Transform3D.fromTranslation(vec3(0.0, 0.0, 5.0)), cameraRequest(),
+	);
+	setActiveCamera(scene, camera);
+	const detached: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert !detached.ok;
+	if (!detached.ok) { assert detached.error == CameraError.DetachedCameraNode; }
+	attach(scene, first, camera);
+	const before: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert before.ok;
+	if (!before.ok) { return; }
+	const firstView: Result<CameraView, CameraError> = before.value.resolve(320, 240);
+	assert firstView.ok;
+	if (!firstView.ok) { return; }
+	attach(scene, second, camera);
+	const after: Result<Camera3D, CameraError> = cameraOf(scene, cameraRequest());
+	assert after.ok;
+	if (!after.ok) { return; }
+	const secondView: Result<CameraView, CameraError> = after.value.resolve(320, 240);
+	assert secondView.ok;
+	if (!secondView.ok) { return; }
+	assert firstView.value.eye == vec3(1.0, 0.0, 5.0);
+	assert secondView.value.eye == vec3(-1.0, 1.0, 5.0);
+	assert scene.activeCamera == camera;
 }

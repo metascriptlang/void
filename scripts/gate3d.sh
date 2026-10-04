@@ -299,6 +299,10 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 		cameraRigFrame initCameraRig frameCameraRig configureCameraRig
 	write_frame_entry cameraRigPixelArtCapture "configureCameraRig(true);" \
 		cameraRigFrame initCameraRig frameCameraRig configureCameraRig
+	write_frame_entry reparentCapture "configureReparent(false);" \
+		reparentFrame initReparent frameReparent configureReparent
+	write_frame_entry reparentPixelArtCapture "configureReparent(true);" \
+		reparentFrame initReparent frameReparent configureReparent
 	note "prepare: capture entries written to $CAPTURE"
 }
 
@@ -982,7 +986,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	tests/integration/viewTeardown.ms tests/aborts3d
 	tests/integration/targetOwner.ms tests/integration/targetPresetEpoch.ms
 	src/test/cameraCheck.ms src/test/pickCheck.ms
-	tests/integration/cameraRigFrame.ms"
+	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
+	tests/integration/reparentFrame.ms"
 
 run_style() {
 	long=$(
@@ -1054,7 +1059,12 @@ PERSPECTIVE_PATH_FUNCTIONS="camera:resolve camera:basisOf camera:sine camera:cos
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds"
 CAMERA_RIG_PATH_FUNCTIONS="scene:cameraOf scene:cameraRow scene:syncWorld scene:liveRow
 	scene:requireOpen scene:isLive slots:isCurrent camera:fromWorld camera:finiteWorld
+	scene:connectedRow
 	camera:boundedAxis camera:preciseCross camera:validOrientation camera:resolve camera:basisOf"
+REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:detach
+	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
+	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn
+	scene:liveRow scene:isLive"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
@@ -1106,11 +1116,14 @@ run_allocation() {
 		"$PERSPECTIVE_PATH_FUNCTIONS" || return
 	check_array_copies "$CAPTURE/cameraRigCapture.ms" "camera rig path" \
 		"$CAMERA_RIG_PATH_FUNCTIONS" || return
+	check_array_copies "$CAPTURE/reparentCapture.ms" "reparent and detached close path" \
+		"$REPARENT_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
 	note "allocation: nor in the perspective path ($(echo $PERSPECTIVE_PATH_FUNCTIONS))"
 	note "allocation: nor in the camera rig path ($(echo $CAMERA_RIG_PATH_FUNCTIONS))"
+	note "allocation: nor in the reparent/close path ($(echo $REPARENT_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1813,6 +1826,48 @@ run_unlit_textured() {
 	done
 }
 
+run_reparent() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "reparent: GATE_SKIP_CAPTURE=1 — tree moves were not drawn"
+		return
+	fi
+	for entry in reparentCapture reparentPixelArtCapture; do
+		if ! msc build "$CAPTURE/$entry.ms" --release --output="$CAPTURE/$entry" \
+			> "$WORK/$entry.build.log" 2>&1; then
+			fail "reparent: $entry does not build — see $WORK/$entry.build.log"
+			return
+		fi
+		status=0
+		"$CAPTURE/$entry" > "$WORK/$entry.run.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "reparent: $entry has no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS reparent: 8 RGBA pairs' "$WORK/$entry.run.log"; then
+			fail "reparent: $entry failed (exit $status) — see $WORK/$entry.run.log"
+			return
+		fi
+		pass "reparent: $entry, 8 moved/in-place RGBA pairs, equal-depth sibling order and detached cleanup"
+		status=0
+		VOID_REPARENT_SKIP_MOVE_CONTROL=1 "$CAPTURE/$entry" \
+			> "$WORK/$entry.moveControl.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -Eq 'order pixel at pair 2|RGBA differs at frame 5' \
+			"$WORK/$entry.moveControl.log"; then
+			fail "reparent: $entry skip-move control escaped the parent-pose proof"
+			return
+		fi
+		pass "reparent: $entry skip-move control fails at the moved pose"
+		status=0
+		VOID_REPARENT_SKIP_ORDER_CONTROL=1 "$CAPTURE/$entry" \
+			> "$WORK/$entry.orderControl.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'order pixel at pair 3' "$WORK/$entry.orderControl.log"; then
+			fail "reparent: $entry skip-order control escaped the equal-depth pixel"
+			return
+		fi
+		pass "reparent: $entry skip-order control fails at the equal-depth pixel"
+	done
+}
+
 run_camera_rig() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "camera-rig: GATE_SKIP_CAPTURE=1 — world cameras were not drawn"
@@ -2145,6 +2200,7 @@ run_perspective
 run_textured
 run_unlit_textured
 run_camera_rig
+run_reparent
 run_gltf
 run_both_layers
 run_stores
