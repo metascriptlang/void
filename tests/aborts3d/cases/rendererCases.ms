@@ -1,6 +1,8 @@
 // expect closed.markChanged: void3d: markChanged on a renderer that was closed
 // expect closed.beginFrame: void3d: beginFrame on a renderer that was closed
 // expect closed.drawPassLists: void3d: drawPassLists on a renderer that was closed
+// expect closed.drawPhase: void3d: drawPhase on a renderer that was closed
+// expect closed.phaseCount: void3d: phaseCount on a renderer that was closed
 // expect closed.drawScreen: void3d: drawScreen on a renderer that was closed
 // expect closed.closeRenderer: void3d: closeRenderer on a renderer that was closed
 // expect coreClosed.prepareFrame: void3d: prepareFrame on a renderer that was closed
@@ -10,6 +12,7 @@ import { Vec4 } from "../../../src/math/math3d";
 import { SWAPCHAIN_LAYOUT } from "../../../src/gpu/target";
 import { VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH } from "../../../src/void3d/gpu3d";
 import { DrawContext, DrawItem, NO_MATERIAL } from "../../../src/void3d/draw";
+import { Phase } from "../../../src/void3d/material";
 import {
 	Renderer,
 	RendererError,
@@ -17,6 +20,7 @@ import {
 	markChanged,
 	beginFrame,
 	drawPassLists,
+	drawPhase,
 	drawScreen,
 	closeRenderer,
 } from "../../../src/void3d/renderer";
@@ -59,6 +63,10 @@ function run(name: string): void {
 		const _r: Result<boolean, RendererError> = beginFrame(closedCore(), items, camera, lights);
 	} else if (name == "closed.drawPassLists") {
 		drawPassLists(closedCore(), items, SWAPCHAIN_LAYOUT);
+	} else if (name == "closed.drawPhase") {
+		drawPhase(closedCore(), Phase.Alpha, items, SWAPCHAIN_LAYOUT);
+	} else if (name == "closed.phaseCount") {
+		const _count: int32 = closedCore().phaseCount(Phase.Alpha);
 	} else if (name == "closed.drawScreen") {
 		const _r: Result<int32, RendererError> =
 			drawScreen(closedCore(), NO_MATERIAL, SWAPCHAIN_LAYOUT);

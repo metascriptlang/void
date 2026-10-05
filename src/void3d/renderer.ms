@@ -5,7 +5,8 @@
 // pass lists (Opaque, Alpha back to front, Additive), the scene's camera and light uniform
 // blocks, the screen triangle every ScreenFx draws, and the GPU context bookkeeping. A preset
 // (pixelArtRenderer.ms, as fwd.Renderer / pbr.Renderer are in Heaps) owns targets and passes
-// and calls beginFrame, drawPassLists and drawScreen in its own order, between openPrepare,
+// and calls beginFrame, drawPassLists (or drawPhase, one list at a time, as Heaps'
+// renderPass) and drawScreen in its own order, between openPrepare,
 // closePrepare and openScreen, which hold its two halves to one sokol frame.
 //
 // It takes a Span<DrawItem> and the camera block, never a scene (docs/VOID3D.md, Porting
@@ -291,10 +292,48 @@ export function drawPassLists(
 	targets: TargetLayout,
 ): void {
 	if (renderer.closed) { stopOnClosed("drawPassLists"); }
+	drawPhase(renderer, Phase.Opaque, items, targets);
+	drawPhase(renderer, Phase.Alpha, items, targets);
+	drawPhase(renderer, Phase.Additive, items, targets);
+}
+
+// fwd.Renderer's renderPass(output, get(name)): one of the lists into the current pass, for a
+// preset that sends its lists to different targets.
+export function drawPhase(
+	renderer: Renderer,
+	phase: Phase,
+	items: Readonly<Span<DrawItem>>,
+	targets: TargetLayout,
+): void {
+	if (renderer.closed) { stopOnClosed("drawPhase"); }
 	const context: DrawContext = renderer.context;
-	drawPassList(context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals);
-	drawPassList(context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals);
-	drawPassList(context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals);
+	match (phase) {
+		Phase.Opaque => {
+			drawPassList(
+				context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals,
+			);
+		},
+		Phase.Alpha => {
+			drawPassList(
+				context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals,
+			);
+		},
+		Phase.Additive => {
+			drawPassList(
+				context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals,
+			);
+		},
+	};
+}
+
+// How many items of `phase` the frame beginFrame accepted draws, after culling.
+export function phaseCount(this renderer: Renderer, phase: Phase): int32 {
+	if (renderer.closed) { stopOnClosed("phaseCount"); }
+	return match (phase) {
+		Phase.Opaque => renderer.opaque.count,
+		Phase.Alpha => renderer.alpha.count,
+		Phase.Additive => renderer.additive.count,
+	};
 }
 
 // ScreenFx.render: `material` (a Fullscreen-layout material of the renderer's context, drawn
