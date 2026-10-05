@@ -9,6 +9,13 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# --check regenerates into a scratch directory and compares instead of writing; the gate runs it.
+CHECK=0
+[ "$1" = "--check" ] && CHECK=1
+STALE=0
+SCRATCH=$(mktemp -d)
+trap 'rm -rf "$SCRATCH"' EXIT
+
 case "$(uname -s)-$(uname -m)" in
 	Darwin-arm64)            SHDC="deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
 	Darwin-*)                SHDC="deps/sokol-tools-bin/bin/osx/sokol-shdc" ;;
@@ -23,17 +30,28 @@ LANGS="metal_macos:glsl300es:wgsl:hlsl5"
 LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
 
 regen() {
-	"$SHDC" -i "$1" -o "$2" -l "$3" -f sokol --ifdef
+	dest="$2"
+	[ "$CHECK" = 1 ] && dest="$SCRATCH/$(basename "$2")"
+	"$SHDC" -i "$1" -o "$dest" -l "$3" -f sokol --ifdef >/dev/null
 	guard="#if !defined(VOID_SOKOL_BACKEND_H)\n#error \"include src/sokol/backend.h before $(basename "$2")\"\n#endif"
 	awk -v guard="$guard" '{ print } /^#if !defined\(SOKOL_GFX_INCLUDED\)/ { open = 1 } open && /^#endif/ { print guard; open = 0 }' \
-		"$2" > "$2.tmp" && mv "$2.tmp" "$2"
-	grep -q "include src/sokol/backend.h before" "$2" || { echo "no backend guard in $2"; exit 1; }
+		"$dest" > "$dest.tmp" && mv "$dest.tmp" "$dest"
+	grep -q "include src/sokol/backend.h before" "$dest" || { echo "no backend guard in $2"; exit 1; }
+	[ "$CHECK" = 1 ] || return 0
+	if cmp -s <(grep -v "^        sokol-shdc " "$dest" | tr -d "\r") \
+		<(grep -v "^        sokol-shdc " "$2" | tr -d "\r"); then
+		echo "fresh $2"
+	else
+		echo "stale $2"
+		STALE=1
+	fi
 }
 
-echo "Regenerating shader headers..."
+[ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
 regen src/void3d/shader3d.glsl src/void3d/shader3d.glsl.h "$LANGS_IOS"
 regen src/void3d/pixelArt3d.glsl src/void3d/pixelArt3d.glsl.h "$LANGS_IOS"
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
 
+[ "$CHECK" = 1 ] && exit "$STALE"
 echo "OK: shader headers regenerated"

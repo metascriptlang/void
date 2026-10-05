@@ -374,9 +374,8 @@ run_entries() {
 # ---- shaders ------------------------------------------------------------------------------
 #
 # REVIEWS-3D M6 defect 12: nothing checked that a .glsl.h was regenerated from its .glsl, and
-# the M7 light block made the generated header load-bearing. shdc echoes the output path into
-# the header twice (the Cmdline comment, the include-guard #error), so both lines are dropped
-# and the comparison is then byte-exact.
+# the M7 light block made the generated header load-bearing. The regeneration and the
+# comparison are scripts/regen-shaders.sh --check, so the gate cannot drift from the script.
 run_shaders() {
 	case "$(uname -s)-$(uname -m)" in
 		Darwin-arm64)  SHDC="deps/sokol-tools-bin/bin/osx_arm64/sokol-shdc" ;;
@@ -389,28 +388,17 @@ run_shaders() {
 		skip "shaders: sokol-shdc not found — .glsl.h freshness not checked"
 		return
 	fi
-	SHDC_LANGS="metal_macos:glsl300es:wgsl:hlsl5"
-	SHDC_LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
-	for SHDC_SRC in src/void2d/shader2d.glsl src/void3d/shader3d.glsl \
-		src/void3d/pixelArt3d.glsl tests/integration/gpuCopy.glsl; do
-		SHDC_LANGS_PICK="$SHDC_LANGS"
-		case "$SHDC_SRC" in
-			src/void3d/*|tests/integration/*) SHDC_LANGS_PICK="$SHDC_LANGS_IOS" ;;
+	if ! bash scripts/regen-shaders.sh --check > "$WORK/shaders.log" 2>&1 && ! grep -q "^stale " "$WORK/shaders.log"; then
+		fail "shaders: scripts/regen-shaders.sh --check failed"
+		cat "$WORK/shaders.log"
+		return
+	fi
+	while read -r state header; do
+		case "$state" in
+			fresh) pass "shaders: $header is a fresh regeneration of its .glsl" ;;
+			stale) fail "shaders: $header is stale — run scripts/regen-shaders.sh and commit it" ;;
 		esac
-		SHDC_OUT="$WORK/fresh_$(basename "$SHDC_SRC" .glsl).h"
-		if ! "$SHDC" -i "$SHDC_SRC" -o "$SHDC_OUT" -l "$SHDC_LANGS_PICK" -f sokol >/dev/null 2>&1; then
-			fail "shaders: sokol-shdc failed on $SHDC_SRC"
-			return
-		fi
-		sed -e '/^        sokol-shdc /d' -e '/Please include sokol_gfx.h before/d' "$SHDC_OUT" > "$SHDC_OUT.n"
-		sed -e '/^        sokol-shdc /d' -e '/Please include sokol_gfx.h before/d' "$SHDC_SRC.h" > "$SHDC_SRC.h.n"
-		if cmp -s "$SHDC_OUT.n" "$SHDC_SRC.h.n"; then
-			pass "shaders: $SHDC_SRC.h is a fresh regeneration of its .glsl"
-		else
-			fail "shaders: $SHDC_SRC.h is stale — run scripts/regen-shaders.sh and commit it"
-		fi
-		rm -f "$SHDC_OUT" "$SHDC_OUT.n" "$SHDC_SRC.h.n"
-	done
+	done < "$WORK/shaders.log"
 }
 
 # The bench entry: warm up, measure, print machine-readable rows, quit. It reuses the capture
