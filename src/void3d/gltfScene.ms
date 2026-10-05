@@ -1,7 +1,7 @@
 import { RenderState, Face } from "../gpu/state";
 import { PassState, passState } from "../gpu/door";
 import {
-	GltfData, GltfMaterial, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX,
+	GltfData, GltfMaterial, GltfAlphaMode, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX,
 } from "./gltf";
 import {
 	DrawContext,
@@ -107,8 +107,16 @@ function isConsistent(data: GltfData): boolean {
 }
 
 const DEFAULT_SOURCE: GltfMaterial = {
-	texture: NO_TEXTURE_INDEX, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0,
+	texture: NO_TEXTURE_INDEX, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 };
+
+function kindOf(mode: GltfAlphaMode): MaterialKind {
+	return match (mode) {
+		GltfAlphaMode.Opaque => MaterialKind.Opaque,
+		GltfAlphaMode.Mask => MaterialKind.AlphaKill,
+		GltfAlphaMode.Blend => MaterialKind.Alpha,
+	};
+}
 
 function madeMaterial(
 	context: DrawContext,
@@ -127,10 +135,11 @@ function madeMaterial(
 	const written: Result<int32, UniformError> = writeUniforms(context, reserved.value, values);
 	if (!written.ok) { unreachable; }
 	const sided: RenderState = doubleSided ? { ...setup.pass, culling: Face.None } : setup.pass;
-	const pass: RenderState = passFor(source.kind, sided);
+	const kind: MaterialKind = kindOf(source.alphaMode);
+	const pass: RenderState = passFor(kind, sided);
 	const lit: Program = texture.isTexture() ? Program.LitTextured : Program.Lit;
 	const material: Material = {
-		...Material.ofKind(lit, source.kind),
+		...Material.ofKind(lit, kind),
 		pass: pass,
 		texture: texture,
 		uniforms: reserved.value,

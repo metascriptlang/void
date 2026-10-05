@@ -6,6 +6,7 @@ import {
 	GltfData,
 	GltfError,
 	GltfMaterial,
+	GltfAlphaMode,
 	DEFAULT_MATERIAL,
 } from "../void3d/gltf";
 import {
@@ -23,7 +24,7 @@ import {
 	MATERIAL_DOUBLE_SIDED,
 	MATERIAL_ALPHA_KILL,
 } from "../void3d/gpu3d";
-import { Material, MaterialKind, Phase, UniformBlock } from "../void3d/material";
+import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, stride, vertexCount } from "../void3d/meshData";
 import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
@@ -289,13 +290,14 @@ function kindOf(material: string): Result<GltfMaterial, GltfError> {
 
 test "alphaMode is the material's kind, MASK with its cutoff" {
 	const opaque = kindOf("{\"alphaMode\":\"OPAQUE\",\"alphaCutoff\":0.25}");
-	assert opaque.ok && opaque.value.kind == MaterialKind.Opaque && opaque.value.alphaKill == 0.0;
+	assert opaque.ok && opaque.value.alphaMode == GltfAlphaMode.Opaque;
+	assert opaque.ok && opaque.value.alphaKill == 0.0;
 	const mask = kindOf("{\"alphaMode\":\"MASK\"}");
-	assert mask.ok && mask.value.kind == MaterialKind.AlphaKill && mask.value.alphaKill == 0.5;
+	assert mask.ok && mask.value.alphaMode == GltfAlphaMode.Mask && mask.value.alphaKill == 0.5;
 	const cut = kindOf("{\"alphaMode\":\"MASK\",\"alphaCutoff\":0.25}");
-	assert cut.ok && cut.value.kind == MaterialKind.AlphaKill && cut.value.alphaKill == 0.25;
+	assert cut.ok && cut.value.alphaMode == GltfAlphaMode.Mask && cut.value.alphaKill == 0.25;
 	const blend = kindOf("{\"alphaMode\":\"BLEND\",\"alphaCutoff\":0.25}");
-	assert blend.ok && blend.value.kind == MaterialKind.Alpha && blend.value.alphaKill == 0.0;
+	assert blend.ok && blend.value.alphaMode == GltfAlphaMode.Blend && blend.value.alphaKill == 0.0;
 	for (const material of ["{\"alphaMode\":\"CUTOUT\"}", "{\"alphaMode\":1}",
 		"{\"alphaMode\":\"MASK\",\"alphaCutoff\":\"half\"}"]) {
 		assert refusedAs({ ...texturedParts(), materials: material }, GltfError.Unsupported);
@@ -331,7 +333,7 @@ test "MASK and BLEND keep the texture's and the factor's alpha, OPAQUE ignores b
 	});
 	assert zero.ok;
 	if (zero.ok) {
-		assert zero.value.materials[0].kind == MaterialKind.Opaque;
+		assert zero.value.materials[0].alphaMode == GltfAlphaMode.Opaque;
 		assert zero.value.materials[0].alphaKill == 0.0;
 		assert zero.value.textures[0].pixels[3] == YELLOW;
 	}
@@ -447,15 +449,15 @@ function materialsOnly(materials: Readonly<Span<GltfMaterial>>): GltfData {
 
 function twoMaterials(): GltfData {
 	return materialsOnly([
-		{ texture: -1, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0 },
-		{ texture: -1, doubleSided: true, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+		{ texture: -1, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
+		{ texture: -1, doubleSided: true, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
 	]);
 }
 
 function kinds(): GltfData {
 	return materialsOnly([
-		{ texture: -1, doubleSided: false, kind: MaterialKind.AlphaKill, alphaKill: 0.25 },
-		{ texture: -1, doubleSided: true, kind: MaterialKind.Alpha, alphaKill: 0.0 },
+		{ texture: -1, doubleSided: false, alphaMode: GltfAlphaMode.Mask, alphaKill: 0.25 },
+		{ texture: -1, doubleSided: true, alphaMode: GltfAlphaMode.Blend, alphaKill: 0.0 },
 	]);
 }
 
@@ -474,12 +476,12 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 	assert !killing.ok;
 	if (!killing.ok) { assert killing.error == GltfSceneError.BadSetup; }
 	let texturedWithoutUvs: GltfData = materialsOnly([
-		{ texture: 0, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+		{ texture: 0, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
 	]);
 	texturedWithoutUvs.meshes.push(MeshData.empty());
 	texturedWithoutUvs.meshMaterials.push(0);
 	let farTexture: GltfData = materialsOnly([
-		{ texture: 3, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+		{ texture: 3, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
 	]);
 	let unmatched: GltfData = twoMaterials();
 	unmatched.meshes.push(MeshData.empty());
