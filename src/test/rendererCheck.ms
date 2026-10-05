@@ -10,9 +10,11 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { RenderState, BlendMode } from "../gpu/state";
+import { RenderState, BlendMode, Compare, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
-import { Material, Phase, UniformBlock } from "../void3d/material";
+import {
+	Material, MaterialKind, Phase, UniformBlock, alphaKillFor, passFor, DEFAULT_ALPHA_KILL,
+} from "../void3d/material";
 import {
 	DrawContext,
 	DrawItem,
@@ -429,6 +431,40 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
 	if (!added.ok) { unreachable; }
 	return created.value;
+}
+
+test "a material kind derives Heaps' blend, depth write, list and alpha kill" {
+	const opaque: Material = Material.ofKind(Program.Lit, MaterialKind.Opaque);
+	assert opaque.phase == Phase.Opaque && !opaque.pass.blends() && opaque.pass.depthWrite;
+	const cut: Material = Material.ofKind(Program.Lit, MaterialKind.AlphaKill);
+	assert cut.phase == Phase.Opaque && !cut.pass.blends() && cut.pass.depthWrite;
+	assert opaque.program == Program.Lit && cut.program == Program.LitCutout;
+	assert Material.ofKind(Program.UnlitTextured, MaterialKind.AlphaKill).program ==
+		Program.UnlitTexturedCutout;
+	const blended: RenderState = RenderState.defaults()
+		.withBlendMode(BlendMode.Add)
+		.withDepth(false, Compare.LessEqual)
+		.withCulling(Face.None);
+	const over: RenderState = passFor(MaterialKind.Opaque, blended);
+	assert !over.blends() && over.depthWrite;
+	assert over.depthTest == Compare.LessEqual && over.culling == Face.None;
+	const alpha: Material = Material.ofKind(Program.Lit, MaterialKind.Alpha);
+	const alphaOver: RenderState = RenderState.defaults().withBlendMode(BlendMode.Alpha);
+	assert alpha.phase == Phase.Alpha && alpha.pass.bits() == alphaOver.bits();
+	assert alpha.pass.depthWrite;
+	const add: Material = Material.ofKind(Program.Lit, MaterialKind.Add);
+	const added: RenderState = RenderState.defaults().withBlendMode(BlendMode.Add);
+	assert add.phase == Phase.Additive && !add.pass.depthWrite;
+	assert add.pass.blendSource == added.blendSource;
+	assert add.pass.blendDestination == added.blendDestination;
+	const soft: Material = Material.ofKind(Program.Lit, MaterialKind.SoftAdd);
+	const softened: RenderState = RenderState.defaults().withBlendMode(BlendMode.SoftAdd);
+	assert soft.phase == Phase.Additive && !soft.pass.depthWrite;
+	assert soft.pass.blendSource == softened.blendSource;
+	assert alphaKillFor(MaterialKind.AlphaKill) == DEFAULT_ALPHA_KILL && DEFAULT_ALPHA_KILL == 0.5;
+	for (const kind of [MaterialKind.Opaque, MaterialKind.Alpha, MaterialKind.Add]) {
+		assert alphaKillFor(kind) == 0.0;
+	}
 }
 
 test "a render state blends unless it is One, Zero and Add on both channels" {

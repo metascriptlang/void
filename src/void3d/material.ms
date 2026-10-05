@@ -4,7 +4,7 @@
 // Uniform values live in the DrawContext's pool (draw.ms), a Vec<float32> allocated once;
 // a material holds the block's position in it, so materials stay plain values in a table.
 
-import { RenderState } from "../gpu/state";
+import { RenderState, BlendMode } from "../gpu/state";
 import { Program } from "./gpu3d";
 import { TextureId, NO_TEXTURE } from "./texture";
 
@@ -14,6 +14,46 @@ export enum Phase {
 	Opaque,
 	Alpha,
 	Additive,
+}
+
+// h3d.mat.Material's DefaultKind without Hidden.
+export enum MaterialKind {
+	Opaque,
+	Alpha,
+	AlphaKill,
+	Add,
+	SoftAdd,
+}
+
+// Heaps' Defaults.defaultKillAlphaThreshold, and glTF's alphaCutoff default.
+export const DEFAULT_ALPHA_KILL: float32 = 0.5;
+
+// set_blendMode sets blend and depth write for every mode; the rest stays the base's.
+export function passFor(kind: MaterialKind, base: RenderState): RenderState {
+	const written: RenderState = base.withDepth(true, base.depthTest);
+	const unwritten: RenderState = base.withDepth(false, base.depthTest);
+	return match (kind) {
+		MaterialKind.Opaque => written.withBlendMode(BlendMode.None),
+		MaterialKind.AlphaKill => written.withBlendMode(BlendMode.None),
+		MaterialKind.Alpha => written.withBlendMode(BlendMode.Alpha),
+		MaterialKind.Add => unwritten.withBlendMode(BlendMode.Add),
+		MaterialKind.SoftAdd => unwritten.withBlendMode(BlendMode.SoftAdd),
+	};
+}
+
+export function phaseFor(kind: MaterialKind): Phase {
+	return match (kind) {
+		MaterialKind.Opaque => Phase.Opaque,
+		MaterialKind.AlphaKill => Phase.Opaque,
+		MaterialKind.Alpha => Phase.Alpha,
+		MaterialKind.Add => Phase.Additive,
+		MaterialKind.SoftAdd => Phase.Additive,
+	};
+}
+
+// The value the material's block holds at MATERIAL_ALPHA_KILL; 0 cuts nothing.
+export function alphaKillFor(kind: MaterialKind): float32 {
+	return kind == MaterialKind.AlphaKill ? DEFAULT_ALPHA_KILL : 0.0;
 }
 
 // A uniform block: `length` floats at `offset` in pool `store`, uploaded to shader slot `slot`,
@@ -44,6 +84,52 @@ export struct Material {
 }
 
 export const NO_UNIFORMS: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
+
+export function cutoutOf(program: Program): Program {
+	return match (program) {
+		Program.Lit => Program.LitCutout,
+		Program.LitTextured => Program.LitTexturedCutout,
+		Program.UnlitTextured => Program.UnlitTexturedCutout,
+		Program.Billboard => stopOnFixedCut(program),
+		Program.Particle => stopOnFixedCut(program),
+		Program.LitCutout => Program.LitCutout,
+		Program.LitTexturedCutout => Program.LitTexturedCutout,
+		Program.UnlitTexturedCutout => Program.UnlitTexturedCutout,
+		Program.Copy => stopOnNoCutout(program),
+		Program.PixelArtLit => stopOnNoCutout(program),
+		Program.PixelArtParticle => stopOnNoCutout(program),
+		Program.PixelArtBillboard => stopOnNoCutout(program),
+		Program.PixelArtPost => stopOnNoCutout(program),
+		Program.PixelArtBlit => stopOnNoCutout(program),
+		Program.PixelArtLitTextured => stopOnNoCutout(program),
+		Program.PixelArtUnlitTextured => stopOnNoCutout(program),
+		Program.LitTexturedPremultiplied => stopOnNoCutout(program),
+		Program.PixelArtLitTexturedPremultiplied => stopOnNoCutout(program),
+		Program.UnlitTexturedPremultiplied => stopOnNoCutout(program),
+		Program.PixelArtUnlitTexturedPremultiplied => stopOnNoCutout(program),
+		Program.PixelArtLitCutout => stopOnNoCutout(program),
+		Program.PixelArtLitTexturedCutout => stopOnNoCutout(program),
+		Program.PixelArtUnlitTexturedCutout => stopOnNoCutout(program),
+	};
+}
+
+// Their blocks hold colour where a material block holds the threshold.
+function stopOnFixedCut(program: Program): Program {
+	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which already cuts at ` +
+		"a fixed alpha; make it Opaque");
+	unreachable;
+}
+
+function stopOnNoCutout(program: Program): Program {
+	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which has no cutout`);
+	unreachable;
+}
+
+// The caller writes alphaKillFor(kind) into the material block, as every other uniform value.
+export function ofKind(this typeof Material, program: Program, kind: MaterialKind): Material {
+	const drawn: Program = kind == MaterialKind.AlphaKill ? cutoutOf(program) : program;
+	return Material.plain(drawn, passFor(kind, RenderState.defaults()), phaseFor(kind));
+}
 
 // A material that samples nothing and has no uniforms of its own; add those with spread.
 export function plain(
