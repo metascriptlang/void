@@ -229,6 +229,18 @@ above be written without Neon working around Void.
    Void reuses its PipelineCache/M25 reference-owner model. The native lifecycle consumer is
    `tests/integration/targetOwner.ms`. This does not complete item 2: a material still needs
    M27's checked texture row that resolves the owner's current view rather than a saved raw id.
+
+   **Answer, M27 (branch commits `b2570ef` + `92fcf79`, not yet landed):** `src/void3d/draw.ms`
+   `addTargetTexture(context, target, filter, wrap, TextureAlpha.Premultiplied)` gives a
+   `TextureId` in the same checked space as an uploaded image, and a material names it as
+   `Material.texture`. The slot holds the `RenderTarget` owner, not a view: the view is read at
+   every bind, so `resize` (new image, same owner) keeps the material drawing with no rebind.
+   After a lost context the material draws nothing until the owner resizes the target, and Neon
+   then redraws the UI into it, which item 1's rule already requires. A redraw of a sampled
+   target is not a 3D scene change: call `markChanged` on the 3D renderer when the frame is on
+   demand. Closing the target while a material samples it stops by name (release the material
+   first), and so does sampling it inside a pass that draws into it, before sokol.
+   Evidence: [VOID3D.md, M27 as built](VOID3D.md#m27-as-built).
 3. **A textured program without lights.** Implemented by M28 in branch commit `e80a077`,
    not yet landed; see `src/void3d/gpu3d.ms`
    `Program.UnlitTextured`; the pixel-art map chooses its MRT twin. Material colour
@@ -258,6 +270,14 @@ above be written without Neon working around Void.
    processing and premultiply the encoded output when its blend expects it. Do not decode
    already-premultiplied channels or multiply coverage twice. This slice establishes the
    producer's contract; it does not claim that a 3D material already honours it.
+
+   **Material side answered by M27:** a void2d target is declared `TextureAlpha.Premultiplied`
+   and sampled by `Program.UnlitTexturedPremultiplied` (a screen keeping its authored colour,
+   item 3) or `Program.LitTexturedPremultiplied` (lit with the scene), blended
+   `BlendMode.AlphaAdd`; any other pairing is refused by `addMaterial` with a named
+   `MaterialError`. The program unpremultiplies before decoding and premultiplies its output:
+   the half-red texel (128, 0, 0, 128) draws red exactly 128 over black, and a zero-alpha texel
+   leaves what is behind it byte-exact, on both presets.
 6. **A camera placed by a node's world transform.** Implemented by M30 in branch
    source commit `971ee3d`, not yet landed. Use `src/void3d/camera.ms`
    `Camera3D.fromWorld`, or `src/void3d/scene.ms` `SceneCamera` / `cameraOf`

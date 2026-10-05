@@ -2221,4 +2221,93 @@ the held Forward/Anchor fingerprints and the unrun GLES3 lane; web is recorded
 NOT RUN for the Yoga provider. Receipt `out/tmp/m31/gate3dFinal.log`;
 `reparentFirst.log` preserves the bare-trap first red. The rebased land gate
 (void2d `gate.sh` then `gate3d.sh`, never side by side) is the remaining step
-before this branch reports land-ready for M28–M31.
+before this branch reports land-ready for M28–M31. That gate ran GREEN on BUILD `4573591e` (`out/tmp/land31/`)
+and was voided by the msc v0.3.2 sync the same morning; the combined tip `cab05eb`, rebased onto
+void2d's `ec4da0d` with the span-rule migration on top, carries the `5c4246fb` proof
+(VOID3D.md, Compiler notes).
+
+## M27 — render-target textures and the premultiplied boundary
+
+**Verdict: SHIP** after one SEND BACK, the follow-ups executed in the milestone, and one carried
+item (MRT blend) recorded as an open question.
+
+**Defect pass, `/code-review high`.** Ten findings, each verified against the code:
+- **Fixed:** a file-scope array in `door.c` sized by a `static const` (a VLA to GCC and MSVC; now
+  an enum size, with a loud stop if `DOOR_MAX_COLOR_ATTACHMENTS` drifts); `samplesPremultiplied`
+  ended in a silent `_ => false` (now exhaustive, so a new program is a compile error); the
+  premultiplied pixel-art twins wrote the normal unweighted, which ONE/ONE_MINUS_SRC_ALPHA adds
+  at full weight (now weighted by `depth01`, the straight twin's result exactly); the blend check
+  restated `AlphaAdd`'s factors by hand (now compared with
+  `RenderState.defaults().withBlendMode(BlendMode.AlphaAdd)`); the four new fragment programs
+  copied their straight twins (now `litTexturedShade` / `unlitTexturedShade` blocks shared by
+  both, with every standing capture byte-identical); a WHAT comment in `door.h` removed.
+- **Kept, with the reason in the as-built:** the raw `texture0` path bypasses the new checks (it
+  takes a view id; it is the presets' escape hatch); `needsFrame()` does not see a redrawn target
+  (scheduling is the caller's, item 1's rule); two liveness queries per target bind (cheap, and
+  they are the fail-loud path); the headless arithmetic test pins the boundary's numbers, not the
+  shader, which the consumer pins.
+- The consumer's first draft tested a reversed program map across the alpha classes; it went red
+  the moment the map learned to refuse that, and now reverses within each class.
+
+### Fresh design pass — SEND BACK
+
+A stateless reviewer read the diff, the row and Heaps `b9aa6dcb` / three `d4ea9b9` (the Bevy
+clone is not on disk; its citation stands unverified). It confirmed the port (a `Target`
+texture sampled like any other; Heaps `Pass.hx:117-118` `AlphaAdd` is the factor pair;
+three's unpremultiply → convert → premultiply-at-output order), the program-variant choice
+over a uniform flag, the 5-bit two-word `ProgramMap` bit math, the shader alpha products, the
+DRC hold of the owner and an allocation-free frame path. Two blocking defects:
+
+- **B1, staleness before feedback.** `textureReady` compared the target's attachment with the
+  open pass before checking the target was current. After a real context loss sokol ids
+  restart (`buryDoomed`'s invariant), so a dead attachment id can equal a live one and the app
+  stops on the path the row says draws nothing. **Fixed:** the stale test returns first, and
+  `RenderTarget.isAttachedToOpenPass` itself requires the current generation. **Pinned:** the
+  consumer's lost-context stage aliases the stale target's attachment to the preset's live
+  scene attachment; with the old order both presets stopped with the feedback message
+  (`out/tmp/m27/redB1.*.log`), now they draw nothing and pass.
+- **B2, a refused sampler counted as rebuilt.** The target branch of `rebuildTextures` stored
+  `samplerFor`'s 0, advanced the generation and bound sampler 0. **Fixed:** it skips and
+  retries, the upload path's rule.
+
+Follow-ups, each executed in this milestone:
+
+- A custom map drawing a premultiplied program as a straight one is now refused when it is
+  declared (`ProgramMap.drawing`, abort `programMapAlphaMismatch`); `drawItem` keeps its check
+  for material fields written after add.
+- `_Static_assert(GPU3D_PROGRAM_TABLE_LENGTH <= 24)` beside the program table.
+- `blendsPremultiplied` also requires the Add operations (headless refusal of `Max`).
+- `textureAlpha()` answered Straight for a dead id; removed, nothing needed it.
+- The test-only `beginColorPassWith` export left the door; the consumer imports
+  `doorBeginColorPass` from `door.h` as void2d does.
+- `asTexture`'s messages moved into stop functions, and the allocation stage now names
+  `target:asTexture`, `requireLive`, `requireCurrent`, `isAttachedToOpenPass` and
+  `door:passAttachesView`.
+- `samplesPremultiplied` is a `match`; long lines wrapped; design-prose comments removed.
+- A closed owner at `addTargetTexture` gets an abort pin (`targetTextureClosedOwner`).
+
+**Carried, not done here: MRT blend.** `door.c` applies one blend state to every colour
+attachment, so in the pixel-art scene pass a blended material also blends its normal/depth
+output (alpha = depth). That is true of every blended pixel-art material since the MRT pass
+existed, not introduced by M27; the fix is per-attachment blend in the shared pipeline key,
+a door mechanism of its own. Recorded as an open question in VOID3D.md.
+
+### Re-review — SHIP WITH FOLLOW-UPS
+
+A second fresh reviewer verified each fix in the code: B1 closed twice (`textureReady` returns
+false before any compare, `isAttachedToOpenPass` requires the current generation) and the pin
+really aliases a stale target onto the live scene attachment; B2 skips without touching the
+slot; no regression in `ProgramMap.core` / `pixelArtPrograms`, the allocation list or the abort
+expectations. Its follow-ups were records, written into the as-built: the MRT blend wording, a
+refused sampler staying dark until the next context change, and that `drawItem`'s first alpha
+check now fires only for a caller passing its own program.
+
+### Final acceptance
+
+Replayed onto the combined tip `cab05eb` (void2d `ec4da0d` + M28–M31 + the span-rule migration)
+after msc moved to v0.3.2, BUILD `5c4246fb`, mid-way through the first M27 gate; that gate was
+aborted, not counted. On `5c4246fb`, unchanged before and after: `gate.sh` GREEN 1181/1181,
+8 known skips; `gate3d.sh` GREEN **303 PASS / 0 FAIL / 3 known skips**, 1186/1186, 72 hashes
+none adopted, Android 3,859,800 B. The RED-before probes were re-run on the same build: no
+feedback check (debug sokol panics, release draws 255 where 128 belongs), stale-first order
+(stops on the reused id), no output premultiplication (255), straight read (27 vs 32).
