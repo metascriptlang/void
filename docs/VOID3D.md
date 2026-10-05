@@ -2149,7 +2149,8 @@ part. The cut compares the final alpha (vertex × texel × material colour), as 
 do; Heaps compares the texel's alpha alone, so a Heaps-style sprite fading through vertex alpha
 is cut here once it falls below the threshold.
 
-**glTF alpha modes.** `gltf.ms` reads `alphaMode` (OPAQUE, MASK as AlphaKill, BLEND as Alpha;
+**glTF alpha modes.** `gltf.ms` reads `alphaMode` into its own `GltfAlphaMode` (the decoder
+links no renderer; `gltfScene.ms` maps OPAQUE, MASK and BLEND to Opaque, AlphaKill and Alpha;
 anything else is `Unsupported`) and `alphaCutoff` under MASK (default 0.5, negative or
 non-finite `OutOfRange`, 0 an Opaque material since it cuts nothing). Alpha now reaches the
 program, as the M23 notes asked: under MASK and BLEND the vertex alpha is `baseColorFactor`'s
