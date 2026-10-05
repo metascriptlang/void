@@ -161,9 +161,11 @@ which never left the Windows machine.
   native pipeline pool (`docs/VOID2D.md` "D1 as built"). Without warmup, pipeline creation lands in
   the first presented frame. The D3D11 numbers are in the same section and do not promise anything
   for another driver.
-- **A scene cannot be torn down for good yet.** Disposing nodes frees their rows, but a dropped
-  `Scene2D` keeps its retained GPU lists (`docs/VOID2D.md` "Known defects", P5 review B1). A host
-  that would create a scene per window or per texture keeps it alive until B1 lands.
+- **A scene ends with `close()`** (`src/void2d/scene.ms`), the same terminal shape as
+  `RenderTarget.close`. It frees every row and releases the scene's GPU lists and filter targets;
+  afterwards the scene and every handle into it stop by name. Dropping a `Scene2D` without
+  `close()` keeps those GPU resources, so a host that creates a scene per window or per texture
+  closes it in that owner's cleanup.
 
 The rewrite is proven by its consumers, not by compiling. A keyed move keeps its handles. Pointer
 tests on transformed, scrolled and masked nodes hit what is drawn. The real `TextInput` caret
