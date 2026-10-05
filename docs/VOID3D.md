@@ -2161,6 +2161,15 @@ setup's pass and blend and depth write from the kind, draws MASK with the cutout
 the cutoff, and refuses a setup whose block sets the alpha-kill float (`BadSetup`), as it does
 for the double-sided flag: both come from the document.
 
+**Final acceptance.** On `276afa0`, BUILD `5c4246fb` (v0.3.2) unchanged before and after, one
+announced native job on the shared Windows D3D11 workstation: `gate.sh` GREEN, golden 82/82, 8
+known skips; `gate3d.sh` GREEN **310 PASS / 0 FAIL / 3 known skips**, 1195/1195 tests, 221
+abort PASS lines, 72 manifest hashes none adopted (every standing capture byte-identical),
+`gltf-cpu` and `alpha-kill` green, oracle 75/11, Android arm64 3,439,872 B (six more programs on
+six backends). The first `gate3d.sh` on `1910cf0` was red on `gltf-cpu` (the decoder imported
+`material.ms` and linked sokol; it now has `GltfAlphaMode`) and on one 108-column expect line.
+Receipts `out/tmp/m33/`. Web NOT RUN for the Yoga provider.
+
 **Kept from the defect pass.** The program table holds 23 of the map's 24 entries; every
 feature so far has been a full twin (premultiplied, cutout), so a premultiplied cutout cannot be
 named and stops in `cutoutOf`. The next variant needs a feature axis on the program table, a

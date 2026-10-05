@@ -2389,3 +2389,10 @@ Ten findings, each checked against the code:
   fix above; the struct doc and test name now say so. The program table's 23 of 24 entries is
   recorded in the as-built: the next variant needs a feature axis, a new mechanism raised
   with the row that needs it.
+
+### Final acceptance
+
+`276afa0`, BUILD `5c4246fb` unchanged throughout: `gate.sh` GREEN (golden 82/82, 8 known
+skips), `gate3d.sh` GREEN 310 PASS / 0 FAIL / 3 known skips, 72 hashes none adopted, Android
+3,439,872 B. The first `gate3d.sh` failed `gltf-cpu` (the glTF decoder linked sokol through
+`material.ms`) and one long expect line; both fixed and re-run.
