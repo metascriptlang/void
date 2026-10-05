@@ -1024,7 +1024,9 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
 	pixel65rt82enderer:drawBlit pixel65rt82enderer:rampsHaveLevels pixel65rt82enderer:levelsAt
-	pixel65rt82enderer:billboardLevels
+	pixel65rt82enderer:billboardLevels pixel65rt82enderer:phasesFitTargets
+	pixel65rt82enderer:postReadsDepth pixel65rt82enderer:storeWhen renderer:drawPhase
+	renderer:phaseCount state:blends
 	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:prepareFrame
 	forward82enderer:drawToScreen forward82enderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
@@ -1870,6 +1872,29 @@ run_target_texture() {
 	done
 }
 
+run_mrt_blend() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "mrt-blend: GATE_SKIP_CAPTURE=1 — no MRT attachment was read back"
+		return
+	fi
+	exe="$WORK/mrtBlend.exe"
+	if ! msc build tests/integration/mrtBlend.ms --output="$exe" > "$WORK/mrtBlend.build.log" 2>&1; then
+		fail "mrt-blend: tests/integration/mrtBlend.ms does not build — see $WORK/mrtBlend.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/mrtBlend.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "mrt-blend: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS mrt blend: ' "$WORK/mrtBlend.log"; then
+		fail "mrt-blend: a blended material reached the normal/depth attachment or lost the opaque depth (exit $status) — see $WORK/mrtBlend.log"
+		return
+	fi
+	pass "mrt-blend: Alpha, AlphaAdd and Add materials draw into the pixel-art color target alone, over the opaque depth"
+}
+
 run_reparent() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "reparent: GATE_SKIP_CAPTURE=1 — tree moves were not drawn"
@@ -2244,6 +2269,7 @@ run_perspective
 run_textured
 run_unlit_textured
 run_target_texture
+run_mrt_blend
 run_camera_rig
 run_reparent
 run_gltf
