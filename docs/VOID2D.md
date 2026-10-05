@@ -1662,6 +1662,37 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
 - Device loss: drop every GPU object, re-arm every dirty flag, redraw, with a **fault-injection switch** (MAKEPAD.md:104) — which is also how the path is tested. void3d already has the Android form of this (`voidEmbedLoseContext`); this generalises it and covers the atlas and the instance buffer.
+  **Built 2026-10-05.** The switch is `loseContext()` (`src/gpu/door.ms`): the Windows window and
+  views hosts and the Android bridge drop every sokol object at the start of the next frame
+  (`sg_shutdown`, `sg_setup` on the same device) and count a new `contextGeneration()`, so sokol
+  hands old ids to new objects. It proves the owners and the re-arm, not platform recovery: a real
+  D3D11 device removal, WebGL `webglcontextlost` and WebGPU device loss are not detected, and the
+  Apple and web bridges stop by name. Android's real EGL loss was already wired.
+  Textures follow Heaps (`h3d/mat/Texture.hx:56,166-168,232-235`), the person's choice A:
+  `src/gpu/texture.ms` `Texture` holds image, view and generation; `asView` calls its `realloc`
+  hook when the generation is stale, `Texture.fromPixels(..., keep)` installs one that re-uploads
+  the kept RGBA8 copy, `isLost` lets a holder upload before binding, and a lost texture without a
+  hook, or an adopted one (`Texture.adopt`, the caller's handles, never destroyed or remade),
+  stops by name. A texture's image is immutable: `upload` on one that holds a live image stops,
+  since a retained list may still name its view. `Tile` holds a
+  `TextureSource` (a `Texture`, a `RenderTarget`, or white) instead of a raw view id, so a tile
+  resolves its view when drawn: `tile(texture, w, h)`, `targetTile(target, w, h)`, `whiteTile(w, h)`.
+  `setTiles`/`appendTiles` take `TileCell[]` as `anim` takes `Tile[]`: a cell now carries a
+  reference, and a read-only view's element cannot be stored (PARALOCK E24).
+  void2d re-arms on a generation change: `batcher.c` forgets its buffers, samplers, white view,
+  glyph page images, retained list buffers and pipelines without destroying them and makes the
+  static ones again; every glyph page re-uploads from its CPU copy; a scene painted in an older
+  generation repaints fully (`paintedGeneration`). Pipelines and filter targets already adopted.
+  Measured on BUILD `5c4246fb`, D3D11: `tests/integration/deviceLoss.ms` (rect, kept-pixel sprite,
+  hook sprite, label, blurred rect; four decoy textures claim the recycled ids after the loss)
+  was red without the re-arm, 3675 pixels differing on the frame after the loss, and is green
+  with it: two losses, the frame after each byte-identical to the one before, the hook called
+  once per loss. `tests/integration/deviceLoss3d.ms` drives void3d's `texturedFrame` through a
+  real switch instead of its simulated one: forward, pixel-art and outlined presets keep their
+  texel checks. void3d adopts the owner in its own row: each slot's `GpuTexture.image/view` and
+  `TextureData.pixels` become one `Texture`, `uploadTexture` becomes `Texture.fromPixels`,
+  `rebuildTextures` keeps only the sampler re-arm, and `gpu3dMakeImage` gives way to the door's
+  `makeImage`.
 - Warm-up of pipelines, device and the font database off the first-frame path; release of GPU resources when occluded; a synchronous draw during live resize; discard of a late frame at the wrong size.
 - **The guardrail-9 backends this box can run**, which P3 did not reach: a desktop GLES3 build of the golden runner (a GL variant of `src/sokol/sokolWin.c` and `glsl430` shaders; `tests/capture/capture.c` already has the `glReadPixels` path, which WebGL2 exercises), and WebGPU's `copyTextureToBuffer` + `mapAsync` readback in a headed browser, since headless Chrome hands WebGPU no adapter here. Metal macOS, Metal iOS and GLES3 Android run on the human's hardware.
 - The mesh path's pixel-centre ties: bias mesh geometry by −1/64 px in device space, the fix `tests/PENDING.md conformance:webgl2-pixel-centre` proposes, which keeps D3D11's tie results and gives GL the same.
