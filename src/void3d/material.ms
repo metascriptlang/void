@@ -116,7 +116,7 @@ export function cutoutOf(program: Program): Program {
 // Their blocks hold colour where a material block holds the threshold.
 function stopOnFixedCut(program: Program): Program {
 	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which already cuts at ` +
-		"a fixed alpha; make it Opaque");
+		"a fixed alpha");
 	unreachable;
 }
 
