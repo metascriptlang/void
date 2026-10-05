@@ -246,7 +246,7 @@ export function addGltfNodes(
 	scene: Scene3D,
 	parent: NodeId3D,
 	data: GltfData,
-	bindings: Span<GltfMeshBinding>,
+	bindings: Readonly<Span<GltfMeshBinding>>,
 ): Result<int32, GltfSceneError> {
 	const _under: int32 = scene.liveRow(parent, "addGltfNodes");
 	const context: DrawContext = scene.context;

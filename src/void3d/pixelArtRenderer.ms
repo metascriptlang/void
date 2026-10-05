@@ -395,7 +395,7 @@ export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
 // palette on or off is a setting.
 export function setPalette(
 	renderer: PixelArtRenderer,
-	palette: Span<uint32>,
+	palette: Readonly<Span<uint32>>,
 ): Result<int32, PaletteError> {
 	if (renderer.closed) { stopOnClosed("setPalette"); }
 	const written: int32 = try fill(renderer.palette, palette);
@@ -473,7 +473,7 @@ function bindScreenTextures(renderer: PixelArtRenderer): void {
 	context.materials[blit].sampler0 = sampler;
 }
 
-function drawScene(renderer: PixelArtRenderer, items: Span<DrawItem>): void {
+function drawScene(renderer: PixelArtRenderer, items: Readonly<Span<DrawItem>>): void {
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
 	drawPassLists(renderer.core, items, SCENE_LAYOUT);
 	endPass();
@@ -531,7 +531,7 @@ function billboardLevels(context: DrawContext, block: UniformBlock): boolean {
 function rampsHaveLevels(
 	programs: ProgramMap,
 	context: DrawContext,
-	items: Span<DrawItem>,
+	items: Readonly<Span<DrawItem>>,
 ): boolean {
 	for (const item of items) {
 		if (!context.hasMaterial(item.material)) { continue; }
@@ -566,9 +566,9 @@ function rampsHaveLevels(
 // has no levels, refuses the frame before anything changes.
 export function prepareFrame(
 	renderer: PixelArtRenderer,
-	items: Span<DrawItem>,
-	camera: Span<float32>,
-	lights: Span<float32>,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
 	if (renderer.closed) { stopOnClosed("prepareFrame"); }
@@ -646,9 +646,9 @@ export function drawToScreen(renderer: PixelArtRenderer): void {
 
 export function renderFrame(
 	renderer: PixelArtRenderer,
-	items: Span<DrawItem>,
-	camera: Span<float32>,
-	lights: Span<float32>,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
 	view: LowResView,
 ): Result<int32, PixelArtError> {
 	const drawn: int32 = try prepareFrame(renderer, items, camera, lights, view);

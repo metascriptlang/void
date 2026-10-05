@@ -128,12 +128,16 @@ function pickable(scene: Scene3D, id: NodeId3D): NodeId3D {
 	return id;
 }
 
-function pickIn(scene: Scene3D, meshes: Span<MeshData>, ray: Ray): Result<PickHit, PickError> {
+function pickIn(
+	scene: Scene3D,
+	meshes: Readonly<Span<MeshData>>,
+	ray: Ray,
+): Result<PickHit, PickError> {
 	writeTables(scene.context, meshes, materials());
 	return pickNearest(scene, ray);
 }
 
-function pickOf(scene: Scene3D, meshes: Span<MeshData>, ray: Ray): PickHit {
+function pickOf(scene: Scene3D, meshes: Readonly<Span<MeshData>>, ray: Ray): PickHit {
 	return try pickIn(scene, meshes, ray) catch NO_HIT;
 }
 

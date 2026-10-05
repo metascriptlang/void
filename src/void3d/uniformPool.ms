@@ -65,7 +65,10 @@ export function freeRanges(this pool: UniformPool): int32 {
 	return pool.free.length as int32;
 }
 
-export function fits(this pool: UniformPool, lengths: Span<int32>): Result<int32, UniformError> {
+export function fits(
+	this pool: UniformPool,
+	lengths: Readonly<Span<int32>>,
+): Result<int32, UniformError> {
 	let taken: Vec<boolean> = new Array(pool.free.length);
 	for (let i = 0; i < (pool.free.length as int32); i++) { taken[i] = false; }
 	let fresh: int32 = 0;
@@ -171,7 +174,7 @@ export function releaseRange(
 export function writeRange(
 	pool: UniformPool,
 	block: UniformBlock,
-	values: Span<float32>,
+	values: Readonly<Span<float32>>,
 ): Result<int32, UniformError> {
 	if (pool.closed) { stopOnClosedPool("writeRange"); }
 	if ((values.length as int32) != block.length) { return Result.err(UniformError.WrongLength); }

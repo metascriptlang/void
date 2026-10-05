@@ -42,7 +42,7 @@ function pushLe32(ref out: Vec<uint8>, bits: uint32): void {
 	out.push(((bits >> (24 as uint32)) & (0xFF as uint32)) as uint8);
 }
 
-function pushFloats(ref out: Vec<uint8>, bits: Span<uint32>): void {
+function pushFloats(ref out: Vec<uint8>, bits: Readonly<Span<uint32>>): void {
 	for (const b of bits) { pushLe32(out, b); }
 }
 
@@ -151,7 +151,11 @@ function samplingOf(sampler: string): Result<GltfData, GltfError> {
 
 // glTF 2.0.1 section 4.4: a 12-byte header, then chunks of (length, type, data), each padded
 // to four bytes, the JSON with spaces and the BIN with zeros.
-function glbOf(json: string, bin: Span<uint8>, chunks: Span<uint32>): Vec<uint8> {
+function glbOf(
+	json: string,
+	bin: Readonly<Span<uint8>>,
+	chunks: Readonly<Span<uint32>>,
+): Vec<uint8> {
 	let text: Vec<uint8> = [];
 	for (let i = 0; i < json.byteLength(); i++) { text.push(json.byteAt(i) as uint8); }
 	while ((text.length as int32) % 4 != 0) { text.push(0x20 as uint8); }
@@ -363,13 +367,13 @@ test "a binary container that is not one is refused as NotGlb" {
 	if (!noBin.ok) { assert noBin.error == GltfError.OutOfRange; }
 }
 
-function setupOf(values: Span<float32>): GltfMaterialSetup {
+function setupOf(values: Readonly<Span<float32>>): GltfMaterialSetup {
 	let block: Vec<float32> = [];
 	for (const value of values) { block.push(value); }
 	return { pass: RenderState.defaults(), block: block };
 }
 
-function materialsOnly(materials: Span<GltfMaterial>): GltfData {
+function materialsOnly(materials: Readonly<Span<GltfMaterial>>): GltfData {
 	let list: Vec<GltfMaterial> = [];
 	for (const material of materials) { list.push(material); }
 	return {

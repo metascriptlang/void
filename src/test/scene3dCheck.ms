@@ -539,7 +539,7 @@ test "collectLights writes a point light's world place, color and radius" {
 		power: 1.35,
 		priority: 0,
 	});
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 1; }
@@ -566,7 +566,7 @@ test "a point light under a moved parent carries the parent's place" {
 			priority: 0,
 		},
 	);
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	assert collectLights(scene, block).ok;
 	assert nearAt(block, POINT_AT, 10.0, 2.0, 0.0);
 }
@@ -583,7 +583,7 @@ test "a directional light's direction is its front vector negated and normalized
 		power: 0.22,
 		priority: 100,
 	});
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	assert collectLights(scene, block).ok;
 	assert nearAt(block, DIR_AT, -1.0, 0.0, 0.0);
 	assert approx(block[DIR_AT + 3], 0.22);
@@ -601,7 +601,7 @@ test "point lights sort by priority and keep declaration order on ties" {
 	const _tie: NodeId3D = oneLight(scene, vec3(3.0, 0.0, 0.0), {
 		kind: LightKind.Point, color: vec3(0.0, 0.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 3; }
@@ -617,7 +617,7 @@ test "a light beyond the block's slots is an error, not a silent drop" {
 			kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 		});
 	}
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert !collected.ok;
 	if (!collected.ok) { assert collected.error == LightError.TooManyPointLights; }
@@ -639,7 +639,7 @@ test "a second directional light is an error" {
 		power: 0.2,
 		priority: 50,
 	});
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert !collected.ok;
 	if (!collected.ok) { assert collected.error == LightError.TooManyDirectionalLights; }
@@ -651,7 +651,7 @@ test "an invisible light is not collected" {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
 	setVisible(scene, light, false);
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 0; }
@@ -661,7 +661,7 @@ test "an invisible light is not collected" {
 test "ambient comes from the scene and zeroed slots mean unlit" {
 	let scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
 	setAmbient(scene, vec3(0.33, 0.36, 0.6));
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	assert collectLights(scene, block).ok;
 	assert nearAt(block, AMBIENT_AT, 0.33, 0.36, 0.6);
 	assert approx(block[DIR_AT + 3], 0.0);
@@ -673,7 +673,7 @@ test "setLightPower moves what the flicker drives" {
 		kind: LightKind.Point, color: vec3(1.0, 1.0, 1.0), radius: 1.0, power: 1.0, priority: 0,
 	});
 	setLightPower(scene, light, 1.4);
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	assert collectLights(scene, block).ok;
 	assert approx(block[POINT_AT + 3], 1.4);
 }
@@ -748,7 +748,7 @@ test "removing a subtree gives back every row under it and keeps the rest addres
 	assert (scene.lights.length as int32) == 1;
 	assert scene.meshes[scene.nodes[kept.index].payload].mesh.index == 3;
 	setLightPower(scene, keptLight, 0.9);
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const collected: Result<int32, LightError> = collectLights(scene, block);
 	assert collected.ok;
 	if (collected.ok) { assert collected.value == 1; }
@@ -848,7 +848,7 @@ test "detached nodes keep their holds but do not draw light or expose a world" {
 	const detached: Result<Mat4, SceneError> = scene.worldOf(mesh.value);
 	assert !detached.ok;
 	if (!detached.ok) { assert detached.error == SceneError.DetachedNode; }
-	const block: Vec<float32> = blockOf();
+	let block: Vec<float32> = blockOf();
 	const dark: Result<int32, LightError> = collectLights(scene, block);
 	assert dark.ok;
 	if (dark.ok) { assert dark.value == 0; }

@@ -173,7 +173,7 @@ test "composeTransform is scale then rotate then translate" {
 }
 
 test "writeTo lays the fields out in upload order" {
-	const out: Vec<float32> = new Array(20);
+	let out: Vec<float32> = new Array(20);
 	translation(7.0, 8.0, 9.0).writeTo(out, 2);
 	assert approx(out[2], 1.0);
 	assert approx(out[7], 1.0);

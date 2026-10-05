@@ -34,8 +34,8 @@ export function forPhase(this typeof PassList, phase: Phase): PassList {
 // PassList.init + filter: the items whose material draws in this list's phase.
 export function collect(
 	ref list: PassList,
-	items: Span<DrawItem>,
-	materials: Span<Material>,
+	items: Readonly<Span<DrawItem>>,
+	materials: Readonly<Span<Material>>,
 ): void {
 	while ((list.indices.length as int32) < (items.length as int32)) {
 		list.indices.push(0);
@@ -53,8 +53,8 @@ export function collect(
 
 export function filterFrustum(
 	ref list: PassList,
-	items: Span<DrawItem>,
-	meshes: Span<MeshData>,
+	items: Readonly<Span<DrawItem>>,
+	meshes: Readonly<Span<MeshData>>,
 	frustum: Frustum3D,
 ): int32 {
 	let count: int32 = 0;
@@ -72,7 +72,7 @@ export function filterFrustum(
 	return excluded;
 }
 
-function depthOf(item: DrawItem, camera: Span<float32>): float32 {
+function depthOf(item: DrawItem, camera: Readonly<Span<float32>>): float32 {
 	let z: float32 = item.world.m41 * camera[CLIP_Z_X] +
 		item.world.m42 * camera[CLIP_Z_Y] +
 		item.world.m43 * camera[CLIP_Z_Z] +
@@ -87,8 +87,8 @@ function depthOf(item: DrawItem, camera: Span<float32>): float32 {
 // insertion sort, stable and in place; a pass list holds a handful of items.
 export function sortBackToFront(
 	ref list: PassList,
-	items: Span<DrawItem>,
-	camera: Span<float32>,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
 ): void {
 	for (let i = 0; i < list.count; i++) {
 		list.depths[i] = depthOf(items[list.indices[i]], camera);
@@ -112,10 +112,10 @@ export function sortBackToFront(
 export function drawPassList(
 	context: DrawContext,
 	list: PassList,
-	items: Span<DrawItem>,
-	drawn: Span<Program>,
+	items: Readonly<Span<DrawItem>>,
+	drawn: Readonly<Span<Program>>,
 	targets: TargetLayout,
-	globals: Span<UniformBlock>,
+	globals: Readonly<Span<UniformBlock>>,
 ): void {
 	for (let i = 0; i < list.count; i++) {
 		const index: int32 = list.indices[i];

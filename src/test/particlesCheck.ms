@@ -29,7 +29,7 @@ function step(ref emitter: ParticleEmitter, dt: float64): int32 {
 }
 
 function instancesOf(ref emitter: ParticleEmitter, world: Mat4): Vec<float32> {
-	const out: Vec<float32> = new Array(emitter.state.maxParts * PARTICLE_INSTANCE_STRIDE);
+	let out: Vec<float32> = new Array(emitter.state.maxParts * PARTICLE_INSTANCE_STRIDE);
 	const written: Result<int32, ParticleError> = writeInstances(emitter, world, out);
 	if (!written.ok) { return []; }
 	return out;
@@ -274,7 +274,7 @@ test "an instance is position, side times globalSize, and rgba" {
 	assert approx(out[3], 0.2);
 	assert approx(out[4], 1.0) && approx(out[7], 0.75);
 	assert approx(out[PARTICLE_INSTANCE_STRIDE + 3], 0.2);
-	const short: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE);
+	let short: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE);
 	assert !writeInstances(emitter, identity(), short).ok;
 }
 
@@ -316,7 +316,7 @@ test "globalSize is evaluated on every write, as Emitter.draw does, even with no
 		globalSize: { kind: ValueKind.Random, start: 1.0, length: 1.0, converge: Converge.No },
 	}, 5);
 	const before: uint32 = emitter.sequence.state;
-	const out: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE);
+	let out: Vec<float32> = new Array(PARTICLE_INSTANCE_STRIDE);
 	const written: Result<int32, ParticleError> = writeInstances(emitter, identity(), out);
 	assert written.ok;
 	assert emitter.sequence.state != before;

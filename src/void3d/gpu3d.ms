@@ -28,13 +28,13 @@ import {
 // lowers to the (pointer, int64 length) pair gpu3d.h declares. Importing them from the header
 // maps the pointer to Borrow<T>, and on msc 0.2.53 `span[0]` passed there is the address of a
 // one-element copy (docs/VOID3D.md, Compiler notes).
-extern function gpu3dMakeVertexBuffer(data: Span<float32>): uint32;
-extern function gpu3dMakeIndexBuffer(data: Span<uint16>): uint32;
-extern function gpu3dMakeImage(rgba: Span<uint32>, width: int32, height: int32): uint32;
-extern function gpu3dUpdateImage(image: uint32, rgba: Span<uint32>): void;
-extern function gpu3dUpdateBuffer(buffer: uint32, data: Span<float32>): int32;
-extern function gpu3dApplyBindings(bindings: Span<uint32>): void;
-extern function gpu3dApplyUniforms(slot: int32, data: Span<float32>): void;
+extern function gpu3dMakeVertexBuffer(data: Readonly<Span<float32>>): uint32;
+extern function gpu3dMakeIndexBuffer(data: Readonly<Span<uint16>>): uint32;
+extern function gpu3dMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
+extern function gpu3dUpdateImage(image: uint32, rgba: Readonly<Span<uint32>>): void;
+extern function gpu3dUpdateBuffer(buffer: uint32, data: Readonly<Span<float32>>): int32;
+extern function gpu3dApplyBindings(bindings: Readonly<Span<uint32>>): void;
+extern function gpu3dApplyUniforms(slot: int32, data: Readonly<Span<float32>>): void;
 
 let programBase: int32 = gpu3dProgramBase();
 let layoutBase: int32 = gpu3dLayoutBase();
@@ -158,16 +158,16 @@ export function pipelineFor(
 }
 
 
-export function makeVertexBuffer(data: Span<float32>): uint32 {
+export function makeVertexBuffer(data: Readonly<Span<float32>>): uint32 {
 	return gpu3dMakeVertexBuffer(data);
 }
 
 // Three uint16 per triangle. sokol copies the data, so the Vec it came from may move after.
-export function makeIndexBuffer(data: Span<uint16>): uint32 {
+export function makeIndexBuffer(data: Readonly<Span<uint16>>): uint32 {
 	return gpu3dMakeIndexBuffer(data);
 }
 
-export function makeImage(rgba: Span<uint32>, width: int32, height: int32): uint32 {
+export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32 {
 	return gpu3dMakeImage(rgba, width, height);
 }
 
@@ -177,7 +177,7 @@ export function makeDynamicImage(width: int32, height: int32): uint32 {
 }
 
 // sokol allows one update per image per frame, before any pass samples it.
-export function updateImage(image: uint32, rgba: Span<uint32>): void {
+export function updateImage(image: uint32, rgba: Readonly<Span<uint32>>): void {
 	gpu3dUpdateImage(image, rgba);
 }
 
@@ -186,7 +186,7 @@ export function makeStreamBuffer(length: int32): uint32 {
 }
 
 // sokol takes one update per buffer per frame, before the pass that draws it.
-export function updateBuffer(buffer: uint32, data: Span<float32>): boolean {
+export function updateBuffer(buffer: uint32, data: Readonly<Span<float32>>): boolean {
 	return gpu3dUpdateBuffer(buffer, data) != 0;
 }
 
@@ -196,11 +196,11 @@ export function destroyImage(image: uint32): void { gpu3dDestroyImage(image); }
 
 export function applyPipeline(pipeline: uint32): void { gpu3dApplyPipeline(pipeline); }
 
-export function applyBindings(bindings: Span<uint32>): void {
+export function applyBindings(bindings: Readonly<Span<uint32>>): void {
 	gpu3dApplyBindings(bindings);
 }
 
-export function applyUniforms(slot: int32, data: Span<float32>): void {
+export function applyUniforms(slot: int32, data: Readonly<Span<float32>>): void {
 	gpu3dApplyUniforms(slot, data);
 }
 

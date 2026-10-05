@@ -62,11 +62,13 @@ export function lastMaterial(this context: DrawContext): MaterialId {
 
 export function writeTables(
 	context: DrawContext,
-	meshData: Span<MeshData>,
-	materials: Span<Material>,
+	meshData: Readonly<Span<MeshData>>,
+	materials: Readonly<Span<Material>>,
 ): void {
-	for (let i = 0; i < (meshData.length as int32); i++) { context.meshData[i] = meshData[i]; }
+	for (let i = 0; i < (meshData.length as int32); i++) {
+		context.meshData[i] = { ...meshData[i] };
+	}
 	for (let i = 0; i < (materials.length as int32); i++) {
-		context.materials[i].pass = materials[i].pass;
+		context.materials[i].pass = { ...materials[i].pass };
 	}
 }

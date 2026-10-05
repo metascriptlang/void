@@ -112,7 +112,7 @@ function distanceTo(color: uint32, red: float32, green: float32, blue: float32):
 
 // Index of the palette color nearest to (red, green, blue); the first one wins a tie.
 export function nearestColor(
-	palette: Span<uint32>,
+	palette: Readonly<Span<uint32>>,
 	red: float32,
 	green: float32,
 	blue: float32,
@@ -139,7 +139,10 @@ export function textureColor(color: uint32): uint32 {
 
 // Maps every cell to its nearest palette color (0xRRGGBB each). Allocates nothing; the next
 // upload sends the new pixels. Returns the number of cells written.
-export function fill(lut: PaletteLut, palette: Span<uint32>): Result<int32, PaletteError> {
+export function fill(
+	lut: PaletteLut,
+	palette: Readonly<Span<uint32>>,
+): Result<int32, PaletteError> {
 	if (lut.closed) { stopOnClosed("fill"); }
 	if (palette.length == 0) { return Result.err(PaletteError.EmptyPalette); }
 	const levels: int32 = lut.levels;

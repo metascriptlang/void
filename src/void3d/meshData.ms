@@ -71,15 +71,15 @@ export function withUvs(this typeof MeshData): MeshData {
 	return { ...MeshData.empty(), hasUvs: true };
 }
 
-export function stride(this data: MeshData): int32 {
+export function stride(this data: Readonly<MeshData>): int32 {
 	return data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE;
 }
 
-export function vertexCount(this data: MeshData): int32 {
+export function vertexCount(this data: Readonly<MeshData>): int32 {
 	return (data.vertices.length as int32) / data.stride();
 }
 
-export function indexCount(this data: MeshData): int32 {
+export function indexCount(this data: Readonly<MeshData>): int32 {
 	return data.indices.length as int32;
 }
 

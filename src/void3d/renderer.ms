@@ -195,9 +195,9 @@ export function needsFrame(this renderer: Renderer): boolean {
 // caller uploaded from buffers only it keeps.
 export function beginFrame(
 	renderer: Renderer,
-	items: Span<DrawItem>,
-	camera: Span<float32>,
-	lights: Span<float32>,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
 ): Result<boolean, RendererError> {
 	if (renderer.closed) { stopOnClosed("beginFrame"); }
 	const context: DrawContext = renderer.context;
@@ -287,7 +287,7 @@ export function beginFrame(
 // the program beginFrame resolved for it: `items` must be the span that beginFrame accepted.
 export function drawPassLists(
 	renderer: Renderer,
-	items: Span<DrawItem>,
+	items: Readonly<Span<DrawItem>>,
 	targets: TargetLayout,
 ): void {
 	if (renderer.closed) { stopOnClosed("drawPassLists"); }

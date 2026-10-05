@@ -558,7 +558,7 @@ export function addStreamMesh(
 export function writeStream(
 	context: DrawContext,
 	id: MeshId,
-	instances: Span<float32>,
+	instances: Readonly<Span<float32>>,
 	count: int32,
 ): Result<int32, StreamError> {
 	if (context.closed) { stopOnClosedContext("writeStream"); }
@@ -1111,7 +1111,7 @@ export function releaseUniforms(
 export function writeUniforms(
 	context: DrawContext,
 	block: UniformBlock,
-	values: Span<float32>,
+	values: Readonly<Span<float32>>,
 ): Result<int32, UniformError> {
 	if (context.closed) { stopOnClosedContext("writeUniforms"); }
 	return writeRange(context.uniforms, block, values);
@@ -1167,7 +1167,7 @@ export function drawItem(
 	item: DrawItem,
 	program: Program,
 	targets: TargetLayout,
-	globals: Span<UniformBlock>,
+	globals: Readonly<Span<UniformBlock>>,
 ): void {
 	if (context.closed) { stopOnClosedContext("drawItem"); }
 	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { stopOnUnheldItem(); }

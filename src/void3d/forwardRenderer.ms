@@ -163,9 +163,9 @@ function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): 
 // anything changes.
 export function prepareFrame(
 	renderer: ForwardRenderer,
-	items: Span<DrawItem>,
-	camera: Span<float32>,
-	lights: Span<float32>,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
 	width: int32,
 	height: int32,
 ): Result<int32, ForwardError> {
@@ -226,9 +226,9 @@ export function drawToScreen(renderer: ForwardRenderer): void {
 
 export function renderFrame(
 	renderer: ForwardRenderer,
-	items: Span<DrawItem>,
-	camera: Span<float32>,
-	lights: Span<float32>,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
 	width: int32,
 	height: int32,
 ): Result<int32, ForwardError> {

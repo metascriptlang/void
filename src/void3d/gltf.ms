@@ -230,7 +230,7 @@ function accessorView(
 	return Result.ok(out);
 }
 
-function vec3At(buffer: Span<uint8>, offset: int32, i: int32): Vec3 {
+function vec3At(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): Vec3 {
 	const at: int32 = offset + i * 12;
 	return vec3(float32At(buffer, at), float32At(buffer, at + 4), float32At(buffer, at + 8));
 }
@@ -242,7 +242,7 @@ function isFiniteVec3(value: Vec3): boolean {
 }
 
 
-function uvAt(buffer: Span<uint8>, offset: int32, i: int32): Uv {
+function uvAt(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): Uv {
 	const at: int32 = offset + i * 8;
 	return { u: float32At(buffer, at), v: float32At(buffer, at + 4) };
 }
@@ -270,7 +270,7 @@ function loadMesh(
 	read: MaterialRead,
 	accessors: JsonValue,
 	views: JsonValue,
-	buffer: Span<uint8>,
+	buffer: Readonly<Span<uint8>>,
 	bufferLength: int32,
 ): Result<MeshData, GltfError> {
 	if (!isNull(fieldOf(primitive, "targets"))) {
@@ -381,7 +381,7 @@ function loadMesh(
 }
 
 
-function uint16At(buffer: Span<uint8>, offset: int32, i: int32): int32 {
+function uint16At(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): int32 {
 	const at: int32 = offset + i * 2;
 	return (buffer[at] as int32) | ((buffer[at + 1] as int32) << 8);
 }
@@ -573,9 +573,9 @@ function loadImageView(
 
 function loadTexture(
 	texture: JsonValue,
-	images: Span<ImageView>,
-	samplers: Span<Sampling>,
-	buffer: Span<uint8>,
+	images: Readonly<Span<ImageView>>,
+	samplers: Readonly<Span<Sampling>>,
+	buffer: Readonly<Span<uint8>>,
 ): Result<TextureData, GltfError> {
 	if (texture === null || texture.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
@@ -594,7 +594,7 @@ function loadTexture(
 		sampling = samplers[index];
 	}
 	const view: ImageView = images[source];
-	const bytes: Span<uint8> = buffer[view.offset..view.offset + view.length];
+	const bytes: Readonly<Span<uint8>> = buffer[view.offset..view.offset + view.length];
 	const format: Result<ImageFormat, ImageError> = imageFormatOf(bytes);
 	if (!format.ok || format.value != view.format) { return Result.err(GltfError.BadImage); }
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
@@ -704,7 +704,7 @@ export function validateGltfGraph(data: GltfData): Result<int32, GltfError> {
 
 function decodeGltf(
 	json: string,
-	buffer: Span<uint8>,
+	buffer: Readonly<Span<uint8>>,
 	fromGlb: boolean,
 ): Result<GltfData, GltfError> {
 	const parsed: Result<JsonValue, string> = parseJson(json);
@@ -823,11 +823,11 @@ function decodeGltf(
 	return Result.ok(data);
 }
 
-export function loadGltf(json: string, buffer: Span<uint8>): Result<GltfData, GltfError> {
+export function loadGltf(json: string, buffer: Readonly<Span<uint8>>): Result<GltfData, GltfError> {
 	return decodeGltf(json, buffer, false);
 }
 
-function uint32At(bytes: Span<uint8>, at: int32): uint32 {
+function uint32At(bytes: Readonly<Span<uint8>>, at: int32): uint32 {
 	return (bytes[at] as uint32)
 		| ((bytes[at + 1] as uint32) << (8 as uint32))
 		| ((bytes[at + 2] as uint32) << (16 as uint32))
@@ -836,7 +836,7 @@ function uint32At(bytes: Span<uint8>, at: int32): uint32 {
 
 // Chunk layout and checks from glTF 2.0.1 §4.4: a JSON chunk first, an optional BIN chunk
 // second, every chunk 4-byte aligned, unknown chunks after those two ignored.
-export function loadGlb(bytes: Span<uint8>): Result<GltfData, GltfError> {
+export function loadGlb(bytes: Readonly<Span<uint8>>): Result<GltfData, GltfError> {
 	const total: int32 = bytes.length as int32;
 	if (total < GLB_HEADER_LENGTH + GLB_CHUNK_HEADER_LENGTH) {
 		return Result.err(GltfError.NotGlb);
@@ -847,7 +847,8 @@ export function loadGlb(bytes: Span<uint8>): Result<GltfData, GltfError> {
 	}
 	let at: int32 = GLB_HEADER_LENGTH;
 	let json: string = "";
-	let binary: Span<uint8> = bytes[0..0];
+	let binaryStart: int32 = 0;
+	let binaryEnd: int32 = 0;
 	let chunk: int32 = 0;
 	while (at < total) {
 		if (total - at < GLB_CHUNK_HEADER_LENGTH) { return Result.err(GltfError.NotGlb); }
@@ -864,12 +865,13 @@ export function loadGlb(bytes: Span<uint8>): Result<GltfData, GltfError> {
 			for (let i = start; i < end; i++) { text.push(bytes[i]); }
 			json = text.asString();
 		} else if (chunk == 1 && kind == GLB_CHUNK_BIN) {
-			binary = bytes[start..end];
+			binaryStart = start;
+			binaryEnd = end;
 		} else if (kind == GLB_CHUNK_JSON || kind == GLB_CHUNK_BIN) {
 			return Result.err(GltfError.NotGlb);
 		}
 		at = end;
 		chunk = chunk + 1;
 	}
-	return decodeGltf(json, binary, true);
+	return decodeGltf(json, bytes[binaryStart..binaryEnd], true);
 }

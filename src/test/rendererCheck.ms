@@ -88,7 +88,7 @@ function table(levels: int32): PaletteLut {
 	unreachable;
 }
 
-function sameStages(stages: Span<Stage>, expected: Span<Stage>): boolean {
+function sameStages(stages: Readonly<Span<Stage>>, expected: Readonly<Span<Stage>>): boolean {
 	if (stages.length != expected.length) { return false; }
 	for (let i = 0; i < (stages.length as int32); i++) {
 		if (stages[i] != expected[i]) { return false; }
@@ -102,7 +102,7 @@ function texelOf(pixel: int32, scale: int32, offset: float32): int32 {
 	return (position / (scale as float32)) as int32;
 }
 
-function contextWith(phases: Span<Phase>): DrawContext {
+function contextWith(phases: Readonly<Span<Phase>>): DrawContext {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (const phase of phases) {
 		const plain: Material = Material.plain(Program.Lit, RenderState.defaults(), phase);
@@ -194,7 +194,7 @@ test "the sub-pixel remainder moves the sampling right and up" {
 	const most: LowResView = base.withRemainder(0.99, 0.0, true);
 	assert texelOf(1079, most.scale, most.offsetX) == 361;
 	assert !topLeft.sameAs(base) && base.withRemainder(0.0, 0.0, true).sameAs(base);
-	const params: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
+	let params: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
 	topLeft.writeBlitParams(params);
 	assert params[0] == 3.0 && params[1] == 3.0 && params[2] == 4.5 && params[3] == 2.25;
 }
@@ -302,7 +302,7 @@ test "pass lists keep item order per phase and sort alpha back to front" {
 
 
 test "post parameters carry the look, the switches and the depth unpack" {
-	const values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);
+	let values: Vec<float32> = new Array(POST_UNIFORM_LENGTH);
 	look().writePostParams(PixelArtSettings.full(), 16, true, values);
 	const style: PixelArtLook = look();
 	assert values[0] == style.outline.depthThreshold && values[3] == style.outline.normalShade;

@@ -220,7 +220,7 @@ export function forClock(this typeof ObjectAnimation, clock: AnimationClock): Ob
 export function addTrack(
 	ref animation: ObjectAnimation,
 	name: string,
-	keys: Span<Transform3D>,
+	keys: Readonly<Span<Transform3D>>,
 ): Result<int32, AnimationError> {
 	if (animation.clock.frameCount < 1) { return Result.err(AnimationError.NoFrames); }
 	if ((keys.length as int32) != animation.clock.frameCount) {
@@ -303,7 +303,7 @@ export function forMeshes(
 	context: DrawContext,
 	clock: AnimationClock,
 	name: string,
-	meshes: Span<MeshId>,
+	meshes: Readonly<Span<MeshId>>,
 ): Result<MeshFrameAnimation, AnimationError> {
 	context.requireOpen("forMeshes");
 	if (clock.interpolation != Interpolation.Step) {
@@ -437,7 +437,7 @@ export function syncMeshFrame(
 
 // Baked frames of one mesh share its topology: every frame has frame 0's vertex count and
 // exactly its indices, so a frame swap moves vertices and never changes which triangles exist.
-export function checkBakedFrames(frames: Span<MeshData>): Result<int32, AnimationError> {
+export function checkBakedFrames(frames: Readonly<Span<MeshData>>): Result<int32, AnimationError> {
 	const count: int32 = frames.length as int32;
 	if (count < 1) { return Result.err(AnimationError.NoFrames); }
 	const vertices: int32 = frames[0].vertexCount();
@@ -460,12 +460,12 @@ export function checkBakedFrames(frames: Span<MeshData>): Result<int32, Animatio
 // released and none is kept.
 export function addBakedFrames(
 	context: DrawContext,
-	frames: Span<MeshData>,
+	frames: Readonly<Span<MeshData>>,
 ): Result<Vec<MeshId>, AnimationError> {
 	const count: int32 = try checkBakedFrames(frames);
 	let added: Vec<MeshId> = [];
 	for (let f = 0; f < count; f++) {
-		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, frames[f]);
+		const frame: Result<MeshId, MeshUploadError> = addMeshData(context, { ...frames[f] });
 		if (!frame.ok) {
 			for (const mesh of added) {
 				const _left: Result<int32, HandleError> = releaseMesh(context, mesh);

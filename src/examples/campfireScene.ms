@@ -203,8 +203,8 @@ const stones: Vec<Box> = [];
 let flameBuffers: Vec<uint32> = [];
 let flameInstances: Vec<float32> = [];
 let texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
-const lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-const cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
+let lightParams: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+let cameraParams: Vec<float32> = new Array(CAMERA_BLOCK_LENGTH);
 
 // A night palette for the palette-LUT check (0xRRGGBB): ground and grass blues, cool stone
 // greys, the warm tones of firelit stone and grass, wood browns and the flame ramp.
@@ -317,8 +317,8 @@ let snowNode: NodeId3D = NO_NODE_ID;
 let emberNode: NodeId3D = NO_NODE_ID;
 let snowMesh: MeshId = NO_MESH;
 let emberMesh: MeshId = NO_MESH;
-const snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
-const emberInstances: Vec<float32> = new Array(emberState().maxParts * PARTICLE_INSTANCE_STRIDE);
+let snowInstances: Vec<float32> = new Array(snowState().maxParts * PARTICLE_INSTANCE_STRIDE);
+let emberInstances: Vec<float32> = new Array(emberState().maxParts * PARTICLE_INSTANCE_STRIDE);
 
 let grassBuffer: uint32 = 0;
 let grassCount: int32 = 0;
