@@ -120,7 +120,7 @@ import {
 	Smooth,
 	vec2,
 	rgba,
-	tile,
+	targetTile,
 	trs2d,
 	inverse2d,
 	emptyBounds,
@@ -328,7 +328,7 @@ function renderScaleGrid(s: Scene2D, i: int32, world: Transform2D, col: Color): 
 			const b = vec2(dx[ci + 1], dy[cj]) * world;
 			const c = vec2(dx[ci + 1], dy[cj + 1]) * world;
 			const d = vec2(dx[ci], dy[cj + 1]) * world;
-			imageQuadUV(t.view, t.alphaPremultiplied, u0, v0, u1, v1, a, b, c, d, col, blend);
+			imageQuadUV(t.source.view(), t.alphaPremultiplied, u0, v0, u1, v1, a, b, c, d, col, blend);
 		}
 	}
 }
@@ -669,7 +669,7 @@ function emitStyledImage(
 	const fitted = fitImage(t, sizeX, sizeY, style.fit);
 	if (fitted.w <= 0.0 || fitted.h <= 0.0) { return true; }
 	const origin = vec2(lbMin.x + fitted.x, lbMin.y + fitted.y) * world;
-	drawUiInstance(t.view, s.paints[i].blend, {
+	drawUiInstance(t.source.view(), s.paints[i].blend, {
 		...uiInstance(InstanceMode.Image, world, origin.x, origin.y, fitted.w, fitted.h, col),
 		uvRadii: [fitted.u0, fitted.v0, fitted.u1, fitted.v1],
 		borders: [
@@ -707,10 +707,11 @@ function emitTiles(
 		const tint: Color = tileTint(cell.color, col);
 		const origin = vec2(t.dx, t.dy) * m;
 		if (instanced) {
-			if (!open || t.view != view || t.alphaPremultiplied != premultiplied) {
-				beginSprites(t.view, t.alphaPremultiplied, blend);
+			const tileView: uint32 = t.source.view();
+			if (!open || tileView != view || t.alphaPremultiplied != premultiplied) {
+				beginSprites(tileView, t.alphaPremultiplied, blend);
 				open = true;
-				view = t.view;
+				view = tileView;
 				premultiplied = t.alphaPremultiplied;
 			}
 			appendSprite(m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
@@ -834,7 +835,7 @@ function emitNode(
 			if (!emitStyledImage(s, i, sheet, world, col, sizeX, sizeY, lbMin)) {
 				if (instanced) {
 					drawSpriteAffine(
-						sheet.view, sheet.alphaPremultiplied, blend, world,
+						sheet.source.view(), sheet.alphaPremultiplied, blend, world,
 						tl.x, tl.y, sizeX, sizeY,
 						sheet.u0, sheet.v0, sheet.u1, sheet.v1, col);
 				} else {
@@ -850,7 +851,7 @@ function emitNode(
 				if (!emitStyledImage(s, i, fr, world, col, sizeX, sizeY, lbMin)) {
 					if (instanced) {
 						drawSpriteAffine(
-							fr.view, fr.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
+							fr.source.view(), fr.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
 							fr.u0, fr.v0, fr.u1, fr.v1, col);
 					} else {
 						imageQuad(fr, tl, tr, br, bl, col, blend);
@@ -880,7 +881,7 @@ function emitNode(
 			const ops: float32[] = geometry.records;
 			const opTotal: int32 = ops.length as int32;
 			if (opTotal == 0) {
-				drawMesh(geometry.mesh, geometry.view, geometry.alphaPremultiplied, blend, world,
+				drawMesh(geometry.mesh, geometry.source.view(), geometry.alphaPremultiplied, blend, world,
 					rgba(1.0, 1.0, 1.0, 1.0), na);
 			} else {
 				const stride: int32 = GRAPHICS_OP_FLOATS;
@@ -893,7 +894,7 @@ function emitNode(
 							s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
 						);
 						drawMeshRange(
-							geometry.mesh, offset, count, geometry.view,
+							geometry.mesh, offset, count, geometry.source.view(),
 							geometry.alphaPremultiplied, blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					} else {
@@ -1031,7 +1032,7 @@ function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
 	imageQuad(
-		tile(src.asTexture(), w, h).premultiplied(),
+		targetTile(src, w, h).premultiplied(),
 		vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
@@ -1670,7 +1671,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// Composite at the exact logical extent represented by the physical target.
 	const qx1: float32 = xMin + logicalW;
 	const qy1: float32 = yMin + logicalH;
-	const rtTile = tile(src.asTexture(), rtW as float32, rtH as float32).premultiplied();
+	const rtTile = targetTile(src, rtW as float32, rtH as float32).premultiplied();
 	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
 	// target is always composited linear-clamp with no colour pipeline; the silhouette below
@@ -1705,7 +1706,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	const sharpTile = tile(rt.asTexture(), rtW as float32, rtH as float32).premultiplied();
+	const sharpTile = targetTile(rt, rtW as float32, rtH as float32).premultiplied();
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
 }

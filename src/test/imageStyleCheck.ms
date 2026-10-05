@@ -1,4 +1,4 @@
-import { Color, tile, rgba } from "../void2d/types";
+import { Color, tile, rgba, whiteTile } from "../void2d/types";
 import { Scene2D } from "../void2d/node";
 import "../void2d/scene";
 import { ObjectFit, imageStyle, fitImage, NO_IMAGE_STYLE } from "../void2d/imageStyle";
@@ -11,7 +11,7 @@ function near(a: float32, b: float32): boolean {
 }
 
 test "ObjectFit maps a wide image into square bounds" {
-	const t = tile(0, 200.0, 100.0);
+	const t = whiteTile(200.0, 100.0);
 	const fill = fitImage(t, 100.0, 100.0, ObjectFit.Fill);
 	assert fill.x == 0.0 && fill.y == 0.0 && fill.w == 100.0 && fill.h == 100.0;
 	assert fill.u0 == 0.0 && fill.v0 == 0.0 && fill.u1 == 1.0 && fill.v1 == 1.0;
@@ -27,14 +27,14 @@ test "ObjectFit maps a wide image into square bounds" {
 }
 
 test "ObjectFit ScaleDown preserves small images and contains large ones" {
-	const small = fitImage(tile(0, 40.0, 20.0), 100.0, 100.0, ObjectFit.ScaleDown);
+	const small = fitImage(whiteTile(40.0, 20.0), 100.0, 100.0, ObjectFit.ScaleDown);
 	assert small.x == 30.0 && small.y == 40.0 && small.w == 40.0 && small.h == 20.0;
-	const large = fitImage(tile(0, 200.0, 100.0), 100.0, 100.0, ObjectFit.ScaleDown);
+	const large = fitImage(whiteTile(200.0, 100.0), 100.0, 100.0, ObjectFit.ScaleDown);
 	assert large.x == 0.0 && large.y == 25.0 && large.w == 100.0 && large.h == 50.0;
 }
 
 test "ObjectFit None clips from the image origin and advances its UV" {
-	const t = tile(0, 200.0, 100.0);
+	const t = whiteTile(200.0, 100.0);
 	const fitted = fitImage(t, 100.0, 60.0, ObjectFit.None);
 	assert fitted.x == 0.0 && fitted.y == 0.0 && fitted.w == 100.0 && fitted.h == 60.0;
 	assert near(fitted.u1, 0.5) && near(fitted.v1, 0.6);
@@ -42,7 +42,7 @@ test "ObjectFit None clips from the image origin and advances its UV" {
 
 test "image styles update in place and dispose returns their side-table slot" {
 	const s: Scene2D = Scene2D.create(tileClear());
-	const first = s.sprite(tile(0, 32.0, 16.0));
+	const first = s.sprite(whiteTile(32.0, 16.0));
 	first.setImageStyle(imageStyle(
 		{ topLeft: 1.0, topRight: 2.0, bottomRight: 3.0, bottomLeft: 4.0 },
 		false,
@@ -58,7 +58,7 @@ test "image styles update in place and dispose returns their side-table slot" {
 	first.dispose();
 	assert s.payloads[first.id.index] == NO_IMAGE_STYLE;
 
-	const second = s.sprite(tile(0, 16.0, 16.0));
+	const second = s.sprite(whiteTile(16.0, 16.0));
 	second.setImageStyle(imageStyle(
 		{ topLeft: 0.0, topRight: 0.0, bottomRight: 0.0, bottomLeft: 0.0 },
 		false,

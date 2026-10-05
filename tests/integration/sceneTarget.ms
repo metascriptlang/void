@@ -7,7 +7,7 @@ import {
 import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d, drawCallCount } from "../../src/void2d/draw";
-import { rgba, tile, blurFilter } from "../../src/void2d/types";
+import { rgba, tile, blurFilter, targetTile } from "../../src/void2d/types";
 import { fillRect } from "../../src/void2d/graphics";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import { BlendMode } from "../../src/gpu/state";
@@ -69,7 +69,7 @@ function init(): void {
 	const graphic = subject.graphics().at(4.0, 26.0);
 	fillRect(graphic, 0.0, 0.0, 12.0, 8.0, rgba(0.0, 0.0, 1.0, 0.5));
 	subject.add(graphic);
-	subject.add(subject.sprite(tile(sourceTarget.asTexture(), 8.0, 8.0).premultiplied())
+	subject.add(subject.sprite(targetTile(sourceTarget, 8.0, 8.0).premultiplied())
 		.at(24.0, 26.0));
 	const filtered = subject.rect(10.0, 8.0, rgba(1.0, 0.0, 1.0, 0.5)).at(46.0, 26.0);
 	filtered.setFilter(blurFilter(1.0));
@@ -77,7 +77,7 @@ function init(): void {
 	const clipped = subject.mask(8.0, 12.0).at(46.0, 4.0);
 	clipped.addChild(subject.rect(16.0, 12.0, rgba(0.0, 1.0, 1.0, 1.0)));
 	subject.add(clipped);
-	shown = display.sprite(tile(target.asTexture(), WIDTH as float32, HEIGHT as float32)
+	shown = display.sprite(targetTile(target, WIDTH as float32, HEIGHT as float32)
 		.premultiplied()).setBlend(BlendMode.None);
 	display.add(shown);
 }
@@ -107,7 +107,7 @@ function frame(): void {
 		if (target.image == old || target.image == paintedImage) {
 			fail("target identity did not change");
 		}
-		shown.setTile(tile(target.asTexture(), target.width as float32, target.height as float32)
+		shown.setTile(targetTile(target, target.width as float32, target.height as float32)
 			.premultiplied());
 		shown.setSize(target.width as float32, target.height as float32);
 	}

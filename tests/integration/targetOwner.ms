@@ -10,7 +10,7 @@ import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d, begin2d, beginTarget } from "../../src/void2d/draw";
 import { BlendMode } from "../../src/gpu/state";
-import { rgba, tile } from "../../src/void2d/types";
+import { rgba, tile, targetTile } from "../../src/void2d/types";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
@@ -78,7 +78,7 @@ function init(): void {
 	target.resize(16, 12);
 	independent.resize(8, 6);
 	producer.add(producer.rect(4.0, 4.0, rgba(1.0, 0.0, 0.0, 1.0)).at(2.0, 2.0));
-	shown = display.sprite(tile(held.target.asTexture(), 16.0, 12.0).premultiplied())
+	shown = display.sprite(targetTile(held.target, 16.0, 12.0).premultiplied())
 		.setBlend(BlendMode.None);
 	display.add(shown);
 }
@@ -143,11 +143,11 @@ function frame(): void {
 		}
 		other.prepare(8.0, 6.0, 1.0);
 		other.drawTarget(independent);
-		shown.setTile(tile(independent.asTexture(), 8.0, 6.0).premultiplied()).setSize(8.0, 6.0);
+		shown.setTile(targetTile(independent, 8.0, 6.0).premultiplied()).setSize(8.0, 6.0);
 	} else {
 		producer.prepare(held.target.width as float32, held.target.height as float32, 1.0);
 		producer.drawTarget(held.target);
-		shown.setTile(tile(held.target.asTexture(), held.target.width as float32,
+		shown.setTile(targetTile(held.target, held.target.width as float32,
 			held.target.height as float32).premultiplied())
 			.setSize(held.target.width as float32, held.target.height as float32);
 	}

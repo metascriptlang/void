@@ -2,7 +2,7 @@ import { Vec3, vec3 } from "../../src/math/math3d";
 import { NodeRef, Scene2D } from "../../src/void2d/node";
 import { tick } from "../../src/void2d/scene";
 import { renderTargetsAlive } from "../../src/void2d/render";
-import { Tile, tile, rgba } from "../../src/void2d/types";
+import { Tile, tile, rgba, whiteTile } from "../../src/void2d/types";
 import { vertexCount } from "../../src/void2d/displayList";
 import { GlyphAtlas } from "../../src/void2d/glyphAtlas";
 import { DrawContext, DrawItem } from "../../src/void3d/draw";
@@ -58,7 +58,7 @@ function main(): int32 {
 	box.setVisible(false);
 	check("void2d visibility binder", !box.order().visible);
 	layer.tick(0.5);
-	const centred: Tile = tile(0, 8.0, 8.0).center();
+	const centred: Tile = whiteTile(8.0, 8.0).center();
 	check("void2d center on a tile", centred.dx == -4.0 && centred.dy == -4.0);
 	check("void2d vertexCount of the display list", vertexCount() == 0);
 	check("void2d render module", renderTargetsAlive() == 0);

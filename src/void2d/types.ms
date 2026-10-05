@@ -2,6 +2,8 @@
 // At the C/FFI boundary the draw wrappers unpack these into flat floats.
 
 import { sinf, cosf } from "../math/mat4";
+import { Texture } from "../gpu/texture";
+import { RenderTarget } from "../gpu/target";
 
 export struct Vec2 {
 	x: float32;
@@ -57,10 +59,29 @@ export function dropShadowFilter(color: Color, radius: float32, offsetX: float32
 	return { kind: FilterKind.DropShadow, radius: radius, color: color, gain: 1.0, offsetX: offsetX, offsetY: offsetY };
 }
 
-// h2d.Tile — a texture region (view + UV rect + draw size). texW/texH = backing texture
+export struct TextureSource {
+	texture: Texture | null;
+	target: RenderTarget | null;
+}
+
+export const WHITE_SOURCE: TextureSource = { texture: null, target: null };
+
+export function view(this source: TextureSource): uint32 {
+	const target: RenderTarget | null = source.target;
+	if (target !== null) { return target.asTexture(); }
+	const texture: Texture | null = source.texture;
+	if (texture !== null) { return texture.asView(); }
+	return 0;
+}
+
+export function sameAs(this source: TextureSource, other: TextureSource): boolean {
+	return source.texture === other.texture && source.target === other.target;
+}
+
+// h2d.Tile — a texture region (source + UV rect + draw size). texW/texH = backing texture
 // pixel size, so `.sub` can turn a pixel sub-rect into UVs.
 export struct Tile {
-	view: uint32;
+	source: TextureSource;
 	u0: float32;
 	v0: float32;
 	u1: float32;
@@ -74,11 +95,23 @@ export struct Tile {
 	alphaPremultiplied: boolean;
 }
 
-export function tile(view: uint32, w: float32, h: float32): Tile {
+function sourceTile(source: TextureSource, w: float32, h: float32): Tile {
 	return {
-		view: view, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0,
+		source: source, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0,
 		w: w, h: h, dx: 0.0, dy: 0.0, texW: w, texH: h, alphaPremultiplied: false,
 	};
+}
+
+export function tile(texture: Texture, w: float32, h: float32): Tile {
+	return sourceTile({ texture: texture, target: null }, w, h);
+}
+
+export function targetTile(target: RenderTarget, w: float32, h: float32): Tile {
+	return sourceTile({ texture: null, target: target }, w, h);
+}
+
+export function whiteTile(w: float32, h: float32): Tile {
+	return sourceTile(WHITE_SOURCE, w, h);
 }
 
 export function premultiplied(this t: Tile): Tile {
@@ -88,7 +121,7 @@ export function premultiplied(this t: Tile): Tile {
 // h2d.Tile.sub — a sub-region (pixel coords on the same texture) → new Tile with UVs.
 export function sub(this t: Tile, x: float32, y: float32, w: float32, h: float32): Tile {
 	return {
-		view: t.view,
+		source: t.source,
 		u0: x / t.texW, v0: y / t.texH,
 		u1: (x + w) / t.texW, v1: (y + h) / t.texH,
 		w: w, h: h, dx: 0.0, dy: 0.0, texW: t.texW, texH: t.texH,
@@ -110,14 +143,14 @@ export function setCenterRatio(ref t: Tile, px: float32, py: float32): void {
 // h2d.Tile.flipX / flipY — mirror UVs and the visual offset.
 export function flipX(this t: Tile): Tile {
 	return {
-		view: t.view, u0: t.u1, v0: t.v0, u1: t.u0, v1: t.v1,
+		source: t.source, u0: t.u1, v0: t.v0, u1: t.u0, v1: t.v1,
 		w: t.w, h: t.h, dx: -t.dx - t.w, dy: t.dy, texW: t.texW, texH: t.texH,
 		alphaPremultiplied: t.alphaPremultiplied,
 	};
 }
 export function flipY(this t: Tile): Tile {
 	return {
-		view: t.view, u0: t.u0, v0: t.v1, u1: t.u1, v1: t.v0,
+		source: t.source, u0: t.u0, v0: t.v1, u1: t.u1, v1: t.v0,
 		w: t.w, h: t.h, dx: t.dx, dy: -t.dy - t.h, texW: t.texW, texH: t.texH,
 		alphaPremultiplied: t.alphaPremultiplied,
 	};

@@ -6,7 +6,7 @@ import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { add, paint } from "../../src/void2d/scene";
 import { refreshScopes } from "../../src/void2d/render";
 import { fillRect } from "../../src/void2d/graphics";
-import { rgba, tile } from "../../src/void2d/types";
+import { rgba, tile, whiteTile } from "../../src/void2d/types";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
@@ -21,7 +21,7 @@ const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 const red = rgba(1.0, 0.0, 0.0, 1.0);
 const blue = rgba(0.0, 0.0, 1.0, 1.0);
 const box: NodeRef = s.add(s.rect(20.0, 20.0, red).at(10.0, 10.0));
-const sprite: NodeRef = s.add(s.sprite(tile(0, 20.0, 20.0)).at(40.0, 10.0).setColor(red));
+const sprite: NodeRef = s.add(s.sprite(whiteTile(20.0, 20.0)).at(40.0, 10.0).setColor(red));
 const mesh: NodeRef = s.add(s.graphics().fillRect(70.0, 10.0, 20.0, 20.0, red));
 let stage: int32 = 0;
 

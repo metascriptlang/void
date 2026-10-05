@@ -1,3 +1,4 @@
+import { Texture } from "../gpu/texture";
 import { DEFAULT_FONT } from "../void2d/font";
 // void2d frame budget (docs/TESTING.md "T4"): a UI scene of 10 000 cards, each a Rect with
 // a Label child — box/text alternation in tree order — and a sprite-only scene of the same
@@ -155,7 +156,8 @@ export function benchInit(kind: BenchKind): void {
 	} else {
 		benchName = "sprites";
 		const pixels = loadImageSync("assets/test.png", 4);
-		const view = makeView(makeImage(pixels, imageWidth(), imageHeight()));
+		const image: uint32 = makeImage(pixels, imageWidth(), imageHeight());
+		const view: Texture = Texture.adopt(image, makeView(image), imageWidth(), imageHeight());
 		freeImage(pixels);
 		for (let row: int32 = 0; row < ROWS; row++) {
 			for (let column: int32 = 0; column < COLUMNS; column++) {

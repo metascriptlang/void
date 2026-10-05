@@ -4,9 +4,10 @@ import { sync, getBounds, hitTest } from "../void2d/render";
 import {
 	Tile, Transform2D, Bounds2D, rgba, identity2d, emptyBounds, vec2, tile, noFilter, blurFilter,
 	glowFilter, dropShadowFilter, FilterKind,
+	whiteTile,
 } from "../void2d/types";
 import { BlendMode } from "../gpu/state";
-import { approx } from "./helpers";
+import { approx, fakeTexture } from "./helpers";
 import { BoxStyle, uniformRadii, uniformBorders, boxStyles } from "../void2d/boxStyle";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
@@ -46,14 +47,14 @@ test "rect factory sets fields and defaults" {
 }
 
 test "sprite takes size from tile" {
-	const n = fresh().sprite(tile(0, 32.0, 16.0));
+	const n = fresh().sprite(whiteTile(32.0, 16.0));
 	assert n.kind() === DrawKind.Sprite;
 	assert approx(n.content().w, 32.0);
 	assert approx(n.content().h, 16.0);
 }
 
 test "anim takes size from first frame" {
-	const frames: Tile[] = [tile(0, 8.0, 8.0), tile(0, 8.0, 8.0)];
+	const frames: Tile[] = [whiteTile(8.0, 8.0), whiteTile(8.0, 8.0)];
 	const n = fresh().anim(frames, 12.0);
 	assert n.kind() === DrawKind.Anim;
 	assert approx(n.content().w, 8.0);
@@ -104,7 +105,7 @@ test "at positions and chains" {
 
 test "tick advances anim clocks" {
 	const s = fresh();
-	const a = s.anim([tile(0, 8.0, 8.0)], 10.0);
+	const a = s.anim([whiteTile(8.0, 8.0)], 10.0);
 	s.add(a);
 	s.tick(0.5);
 	assert approx(a.animFrames().clock, 0.5);
@@ -158,7 +159,7 @@ test "pivot shifts the node transform and its children around one local point" {
 }
 
 test "a centered Tile scales its visual offset with Sprite size" {
-	const n = fresh().sprite(tile(1, 32.0, 16.0).center()).at(100.0, 50.0).setSize(64.0, 32.0);
+	const n = fresh().sprite(tile(fakeTexture(1), 32.0, 16.0).center()).at(100.0, 50.0).setSize(64.0, 32.0);
 	n.sync(identity2d(), false);
 	let b = emptyBounds();
 	n.getBounds(b);
@@ -546,7 +547,7 @@ test "mask factory sets dimensions" {
 }
 
 test "scaleGrid factory sets sheet and borders" {
-	const t = tile(0, 100.0, 50.0);
+	const t = whiteTile(100.0, 50.0);
 	const n = fresh().scaleGrid(t, 10.0, 5.0, 10.0, 5.0);
 	assert n.kind() === DrawKind.ScaleGrid;
 	assert approx(n.content().w, 100.0);

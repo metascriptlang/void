@@ -2,7 +2,7 @@ import { DrawKind, Changed, NodeRef, Scene2D, TileCell, ALL_TILES } from "../voi
 import "../void2d/scene";
 import { sync, getBounds } from "../void2d/render";
 import { Bounds2D, Color, Tile, rgba, tile, identity2d, emptyBounds } from "../void2d/types";
-import { approx } from "./helpers";
+import { approx, fakeTexture } from "./helpers";
 
 const HALF_PI: float32 = 1.5707963;
 const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
@@ -27,8 +27,8 @@ function cellAt(n: NodeRef, k: int32): TileCell {
 }
 
 function three(): TileCell[] {
-	return [cell(0.0, 0.0, tile(11, 8.0, 8.0)), cell(8.0, 0.0, tile(11, 8.0, 8.0)),
-		cell(16.0, 0.0, tile(12, 8.0, 8.0))];
+	return [cell(0.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)), cell(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)),
+		cell(16.0, 0.0, tile(fakeTexture(12), 8.0, 8.0))];
 }
 
 test "a tile group starts empty, with every tile in its range" {
@@ -46,15 +46,15 @@ test "setTiles replaces the tiles and marks the group; the same tiles again mark
 	settled(g);
 	g.setTiles(three());
 	assert g.count() == 3;
-	assert cellAt(g, 2).tile.view == 12;
+	assert cellAt(g, 2).tile.source.view() == 12;
 	assert marked(g, Changed.Content);
 	settled(g);
 	g.setTiles(three());
 	assert !marked(g, Changed.Content);
-	const two: TileCell[] = [cell(1.0, 2.0, tile(13, 4.0, 4.0)), cell(3.0, 4.0, tile(13, 4.0, 4.0))];
+	const two: TileCell[] = [cell(1.0, 2.0, tile(fakeTexture(13), 4.0, 4.0)), cell(3.0, 4.0, tile(fakeTexture(13), 4.0, 4.0))];
 	g.setTiles(two);
 	assert g.count() == 2;
-	assert cellAt(g, 0).tile.view == 13 && approx(cellAt(g, 1).y, 4.0);
+	assert cellAt(g, 0).tile.source.view() == 13 && approx(cellAt(g, 1).y, 4.0);
 	assert marked(g, Changed.Content);
 }
 
@@ -63,7 +63,7 @@ test "appendTiles grows the group and leaves the tiles already there as they wer
 	const g = s.add(s.tileGroup());
 	g.setTiles(three());
 	settled(g);
-	const more: TileCell[] = [cell(24.0, 0.0, tile(12, 8.0, 8.0))];
+	const more: TileCell[] = [cell(24.0, 0.0, tile(fakeTexture(12), 8.0, 8.0))];
 	g.appendTiles(more);
 	assert g.count() == 4;
 	assert approx(cellAt(g, 0).x, 0.0) && approx(cellAt(g, 3).x, 24.0);
@@ -79,7 +79,7 @@ test "setTile rewrites one tile; the same tile again marks nothing" {
 	const g = s.add(s.tileGroup());
 	g.setTiles(three());
 	settled(g);
-	const red: TileCell = { ...cell(8.0, 0.0, tile(11, 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	const red: TileCell = { ...cell(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) };
 	g.setTile(1, red);
 	assert approx(cellAt(g, 1).color.g, 0.0);
 	assert approx(cellAt(g, 0).color.g, 1.0) && approx(cellAt(g, 2).color.g, 1.0);
@@ -119,9 +119,9 @@ test "clear empties a group and marks it; clearing an empty group marks nothing"
 test "a group's bounds hold every tile's corners, turned and scaled, whatever its range" {
 	const s = fresh();
 	const g = s.add(s.tileGroup()).at(100.0, 50.0);
-	const centred: Tile = { ...tile(11, 8.0, 4.0), dx: -4.0, dy: -2.0 };
+	const centred: Tile = { ...tile(fakeTexture(11), 8.0, 4.0), dx: -4.0, dy: -2.0 };
 	const cells: TileCell[] = [
-		cell(0.0, 0.0, tile(11, 10.0, 10.0)),
+		cell(0.0, 0.0, tile(fakeTexture(11), 10.0, 10.0)),
 		{ ...cell(10.0, 20.0, centred), scaleX: 2.0, scaleY: 2.0, rotation: HALF_PI },
 	];
 	g.setTiles(cells);

@@ -1026,7 +1026,7 @@ export function drawRect(pos: Vec2, size: Vec2, color: Color, blend: BlendMode):
 }
 
 export function drawImage(t: Tile, pos: Vec2, size: Vec2, tint: Color, blend: BlendMode): void {
-	quad(t.view, t.alphaPremultiplied, blend, pos.x, pos.y, size.x, size.y, tint,
+	quad(t.source.view(), t.alphaPremultiplied, blend, pos.x, pos.y, size.x, size.y, tint,
 		t.u0, t.v0, t.u1, t.v1);
 }
 
@@ -1298,7 +1298,7 @@ export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend
 }
 
 export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
-	quad4(t.view, t.alphaPremultiplied, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
+	quad4(t.source.view(), t.alphaPremultiplied, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
 }
 
 // explicit-UV textured quad — ScaleGrid 9-slice cells carry their own UV sub-rect.

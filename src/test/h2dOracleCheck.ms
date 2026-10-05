@@ -5,7 +5,7 @@ import { Scene2D, NodeRef, TileCell } from "../void2d/node";
 import { getBounds } from "../void2d/render";
 import { frameEnd } from "../void2d/draw";
 import {
-	Bounds2D, Vec2, Transform2D, ScaleMode, vec2, tile, rgba, emptyBounds,
+	Bounds2D, Vec2, Transform2D, ScaleMode, vec2, whiteTile, rgba, emptyBounds,
 } from "../void2d/types";
 
 const ORACLE_PATH: string = "tests/oracle/h2d.json";
@@ -18,8 +18,8 @@ function field(spec: JsonValue, name: string, fallback: float32): float32 {
 	return spec.getDynamicField(name).asNumber(fallback as float64) as float32;
 }
 
-function tilesOf(rows: JsonValue): Vec<TileCell> {
-	const out: Vec<TileCell> = [];
+function tilesOf(rows: JsonValue): TileCell[] {
+	const out: TileCell[] = [];
 	for (let k: int32 = 0; k < (rows.length() as int32); k++) {
 		const c = rows.at(k);
 		const transformed: boolean = (c.length() as int32) > 6;
@@ -27,7 +27,7 @@ function tilesOf(rows: JsonValue): Vec<TileCell> {
 			x: c.at(0).asNumber() as float32,
 			y: c.at(1).asNumber() as float32,
 			tile: {
-				...tile(0, c.at(2).asNumber() as float32, c.at(3).asNumber() as float32),
+				...whiteTile(c.at(2).asNumber() as float32, c.at(3).asNumber() as float32),
 				dx: c.at(4).asNumber() as float32,
 				dy: c.at(5).asNumber() as float32,
 			},
@@ -47,7 +47,7 @@ function build(s: Scene2D, spec: JsonValue, parent: NodeRef | null, ref nodes: V
 	let n: NodeRef = s.group();
 	if (kind.equals("bitmap")) {
 		n.remove();
-		n = s.sprite({ ...tile(0, w, h), dx: field(spec, "dx", 0.0), dy: field(spec, "dy", 0.0) });
+		n = s.sprite({ ...whiteTile(w, h), dx: field(spec, "dx", 0.0), dy: field(spec, "dy", 0.0) });
 	} else if (kind.equals("mask")) {
 		n.remove();
 		n = s.mask(w, h);

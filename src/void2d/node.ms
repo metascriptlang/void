@@ -9,7 +9,9 @@ import {
 	Camera,
 	ScaleMode,
 	rgba,
-	tile,
+	whiteTile,
+	TextureSource,
+	WHITE_SOURCE,
 	identity2d,
 	inverse2d,
 	trs2d,
@@ -173,7 +175,7 @@ export interface GraphicsMesh {
 	mesh: float32[];
 	vertexCount: int32;
 	records: float32[];
-	view: uint32;
+	source: TextureSource;
 	alphaPremultiplied: boolean;
 	stale: boolean;
 }
@@ -300,7 +302,7 @@ function defaultPaint(): Paint2D {
 
 function defaultContent(): Content2D {
 	return {
-		w: 0.0, h: 0.0, tile: tile(0, 0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0,
+		w: 0.0, h: 0.0, tile: whiteTile(0.0, 0.0), borderL: 0.0, borderT: 0.0, borderR: 0.0,
 		borderB: 0.0,
 	};
 }
@@ -837,7 +839,8 @@ export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
 
 export function graphics(this s: Scene2D): NodeRef {
 	const row: GraphicsMesh = {
-		mesh: [], vertexCount: 0, records: [], view: 0, alphaPremultiplied: false, stale: true,
+		mesh: [], vertexCount: 0, records: [], source: WHITE_SOURCE, alphaPremultiplied: false,
+		stale: true,
 	};
 	let payload: int32 = s.meshes.length as int32;
 	if ((s.freeMeshes.length as int32) > 0) {
@@ -878,7 +881,7 @@ function reshape(this s: Scene2D, i: int32): void {
 
 function sameShape(a: TileCell, b: TileCell): boolean {
 	return a.x == b.x && a.y == b.y && a.scaleX == b.scaleX && a.scaleY == b.scaleY &&
-		a.rotation == b.rotation && a.tile.view == b.tile.view && a.tile.w == b.tile.w &&
+		a.rotation == b.rotation && a.tile.source.sameAs(b.tile.source) && a.tile.w == b.tile.w &&
 		a.tile.h == b.tile.h && a.tile.dx == b.tile.dx && a.tile.dy == b.tile.dy;
 }
 
@@ -894,7 +897,7 @@ function tileGroupRow(n: NodeRef, call: string): int32 {
 	return i;
 }
 
-function putTiles(this s: Scene2D, i: int32, cells: Readonly<Span<TileCell>>): void {
+function putTiles(this s: Scene2D, i: int32, cells: TileCell[]): void {
 	const p: int32 = s.payloads[i];
 	const have: int32 = s.tileCells[p].length as int32;
 	const want: int32 = cells.length as int32;
@@ -912,19 +915,19 @@ function putTiles(this s: Scene2D, i: int32, cells: Readonly<Span<TileCell>>): v
 	s.reshape(i);
 }
 
-export function setTiles(this n: NodeRef, cells: Readonly<Span<TileCell>>): NodeRef {
+export function setTiles(this n: NodeRef, cells: TileCell[]): NodeRef {
 	n.scene.putTiles(tileGroupRow(n, "setTiles"), cells);
 	return n;
 }
 
-function pushTiles(this s: Scene2D, i: int32, cells: Readonly<Span<TileCell>>): void {
+function pushTiles(this s: Scene2D, i: int32, cells: TileCell[]): void {
 	if ((cells.length as int32) == 0) { return; }
 	const p: int32 = s.payloads[i];
 	for (let k: int32 = 0; k < (cells.length as int32); k++) { s.tileCells[p].push(cells[k]); }
 	s.reshape(i);
 }
 
-export function appendTiles(this n: NodeRef, cells: Readonly<Span<TileCell>>): NodeRef {
+export function appendTiles(this n: NodeRef, cells: TileCell[]): NodeRef {
 	n.scene.pushTiles(tileGroupRow(n, "appendTiles"), cells);
 	return n;
 }
@@ -996,7 +999,7 @@ export function clear(this n: NodeRef): NodeRef {
 	}
 	s.meshes[p].mesh = [];
 	s.meshes[p].records = [];
-	s.meshes[p].view = 0;
+	s.meshes[p].source = WHITE_SOURCE;
 	s.meshes[p].alphaPremultiplied = false;
 	s.meshes[p].stale = true;
 	s.markChanged(i, Changed.Content);

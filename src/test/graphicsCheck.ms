@@ -2,7 +2,7 @@ import { NodeRef, GraphicsMesh, Scene2D, clear } from "../void2d/node";
 import "../void2d/scene";
 import { fillTriangle, fillRect, fillConvex, fillPolygon, fillCircle, fillEllipse, fillPie, fillRing, fillRoundedRect, fillTexRect, fillTexPolygon, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier } from "../void2d/graphics";
 import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
-import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV } from "./helpers";
+import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV, fakeTexture } from "./helpers";
 
 const QUARTER: float32 = 1.5707963;
 const PI_AREA_R10: float32 = 314.159;
@@ -96,19 +96,19 @@ test "fillRoundedRect clamps radius to half min side" {
 }
 
 test "fillTexRect writes tile UVs and view" {
-	const t = tile(7, 64.0, 64.0).sub(16.0, 16.0, 32.0, 32.0);
+	const t = tile(fakeTexture(7), 64.0, 64.0).sub(16.0, 16.0, 32.0, 32.0);
 	const g = s.graphics().fillTexRect(t, 0.0, 0.0, 32.0, 32.0, rgba(1.0, 1.0, 1.0, 1.0));
-	assert geometry(g).view === 7;
+	assert geometry(g).source.view() === 7;
 	assert (geometry(g).mesh.length as int32) === 48;
 	assert meshHasVertUV(geometry(g).mesh, 0.0, 0.0, 0.25, 0.25);
 	assert meshHasVertUV(geometry(g).mesh, 32.0, 32.0, 0.75, 0.75);
 }
 
 test "fillTexPolygon maps UVs from origin over tile size" {
-	const t = tile(9, 64.0, 64.0);
+	const t = tile(fakeTexture(9), 64.0, 64.0);
 	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(0.0, 10.0)];
 	const g = s.graphics().fillTexPolygon(t, pts, 0.0, 0.0, 10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
-	assert geometry(g).view === 9;
+	assert geometry(g).source.view() === 9;
 	assert meshHasVertUV(geometry(g).mesh, 0.0, 0.0, 0.0, 0.0);
 	assert meshHasVertUV(geometry(g).mesh, 10.0, 10.0, 1.0, 1.0);
 }
@@ -117,7 +117,7 @@ test "clear resets mesh and view" {
 	const g = s.graphics().fillRect(0.0, 0.0, 5.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
 	g.clear();
 	assert (geometry(g).mesh.length as int32) === 0;
-	assert geometry(g).view === 0;
+	assert geometry(g).source.view() === 0;
 	assert geometry(g).stale;
 }
 

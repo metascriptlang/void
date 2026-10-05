@@ -2,6 +2,7 @@
 // methods (rect/sprite/label, .at, .addChild), then s.present() each frame (owns the pass).
 // Reads like Heaps h2d, runs functional. Native + WebGPU + WebGL2.
 
+import { Texture } from "../gpu/texture";
 import {
 	gfxSetup, makeImage, makeView, keyDown, fbWidth, fbHeight, KEY_W, KEY_A, KEY_S, KEY_D,
 } from "../sokol/gpu";
@@ -16,7 +17,7 @@ import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygo
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Align } from "../void2d/textLayout";
 import { add, present, tick } from "../void2d/scene";
-import { Tile, Vec2, rgba, tile, sub, flipX, vec2, Smooth } from "../void2d/types";
+import { Tile, Vec2, rgba, tile, sub, flipX, vec2, Smooth, targetTile } from "../void2d/types";
 import { BlendMode } from "../gpu/state";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 
@@ -46,7 +47,8 @@ export function init2d(): void {
 	const img = loadImageSync("assets/test.png", 4);
 	const iw: int32 = imageWidth();
 	const ih: int32 = imageHeight();
-	const logoView = makeView(makeImage(img, iw, ih));
+	const logoImage: uint32 = makeImage(img, iw, ih);
+	const logoView: Texture = Texture.adopt(logoImage, makeView(logoImage), iw, ih);
 	freeImage(img);
 	const logoH: float32 = 180.0;
 	const logoW: float32 = logoH * (iw as float32) / (ih as float32);
@@ -148,9 +150,9 @@ export function init2d(): void {
 	rtB = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
 	rtGlow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
 	rtShadow = RenderTarget.allocate(256, 256, PixelFormat.Rgba8, true);
-	const glowTile: Tile = tile(rtGlow.asTexture(), 120.0, 120.0).premultiplied();
+	const glowTile: Tile = targetTile(rtGlow, 120.0, 120.0).premultiplied();
 	sceneObj.add(sceneObj.sprite(glowTile).at(700.0, 262.0));
-	const shadowTile: Tile = tile(rtShadow.asTexture(), 120.0, 120.0).premultiplied();
+	const shadowTile: Tile = targetTile(rtShadow, 120.0, 120.0).premultiplied();
 	sceneObj.add(sceneObj.sprite(shadowTile).at(828.0, 262.0));
 
 	logo = logoNode;
@@ -215,7 +217,7 @@ export function present2d(): void {
 	// pass with nothing else open. The swapchain list stays empty here - the visible frame is
 	// `sc.present()` just below, which starts its own list.
 	const plus = rgba(1.0, 0.82, 0.35, 1.0);
-	const orig = tile(rtSrc.asTexture(), 256.0, 256.0).premultiplied();
+	const orig = targetTile(rtSrc, 256.0, 256.0).premultiplied();
 	const clearNone = rgba(0.0, 0.0, 0.0, 0.0);
 	begin2d(256.0, 256.0, 1.0);
 	beginTarget(rtSrc, 256.0, 256.0, 1.0, 0.0, 0.0, clearNone);

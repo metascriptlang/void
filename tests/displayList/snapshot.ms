@@ -71,7 +71,7 @@ import {
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../src/void2d/effect";
 import { GradientSpace } from "../../src/void2d/gradient";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
-import { approx } from "../../src/test/helpers";
+import { approx, fakeTexture } from "../../src/test/helpers";
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -334,9 +334,9 @@ function breaksScene(): NodeRef {
 	nearest.setSmooth(Smooth.Off);
 	const wrapped = s.add(s.rect(8.0, 8.0, rgba(1.0, 1.0, 0.0, 1.0)).at(30.0, 0.0));
 	wrapped.setTileWrap(true);
-	const firstView = s.add(s.sprite(tile(11, 8.0, 8.0)).at(40.0, 0.0));
+	const firstView = s.add(s.sprite(tile(fakeTexture(11), 8.0, 8.0)).at(40.0, 0.0));
 	firstView.setSmooth(Smooth.On);
-	const secondView = s.add(s.sprite(tile(12, 8.0, 8.0)).at(50.0, 0.0));
+	const secondView = s.add(s.sprite(tile(fakeTexture(12), 8.0, 8.0)).at(50.0, 0.0));
 	secondView.setSmooth(Smooth.On);
 	return s.refOf(s.root);
 }
@@ -453,7 +453,7 @@ function gradientScene(): NodeRef {
 }
 function imageStyleScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const image = s.sprite(tile(17, 200.0, 100.0)).at(10.0, 12.0);
+	const image = s.sprite(tile(fakeTexture(17), 200.0, 100.0)).at(10.0, 12.0);
 	image.setSize(100.0, 80.0);
 	image.setImageStyle(imageStyle(
 		{ topLeft: 3.0, topRight: 6.0, bottomRight: 9.0, bottomLeft: 12.0 },
@@ -466,10 +466,10 @@ function imageStyleScene(): NodeRef {
 function premultipliedStyleScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const radii = uniformRadii(4.0);
-	const straight = s.sprite(tile(17, 32.0, 32.0)).at(0.0, 0.0);
+	const straight = s.sprite(tile(fakeTexture(17), 32.0, 32.0)).at(0.0, 0.0);
 	straight.setImageStyle(imageStyle(radii, true, ObjectFit.Cover));
 	s.add(straight);
-	const premultiplied = s.sprite(tile(18, 32.0, 32.0).premultiplied()).at(40.0, 0.0);
+	const premultiplied = s.sprite(tile(fakeTexture(18), 32.0, 32.0).premultiplied()).at(40.0, 0.0);
 	premultiplied.setImageStyle(imageStyle(radii, true, ObjectFit.Cover));
 	s.add(premultiplied);
 	return s.refOf(s.root);
@@ -493,19 +493,19 @@ function tileGroupScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const map = s.add(s.tileGroup()).at(10.0, 5.0);
 	map.setColor(rgba(1.0, 0.5, 1.0, 1.0)).setAlpha(0.5);
-	const turned: Tile = { ...tile(11, 8.0, 8.0), dx: -4.0, dy: -4.0 };
+	const turned: Tile = { ...tile(fakeTexture(11), 8.0, 8.0), dx: -4.0, dy: -4.0 };
 	const cells: TileCell[] = [
-		tileAt(0.0, 0.0, tile(11, 8.0, 8.0)),
-		{ ...tileAt(8.0, 0.0, tile(11, 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) },
-		tileAt(16.0, 0.0, { ...tile(12, 8.0, 8.0), u0: 0.5 }),
+		tileAt(0.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)),
+		{ ...tileAt(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) },
+		tileAt(16.0, 0.0, { ...tile(fakeTexture(12), 8.0, 8.0), u0: 0.5 }),
 		{ ...tileAt(28.0, 4.0, turned), scaleX: 2.0, scaleY: 0.5, rotation: 1.5707963 },
-		tileAt(40.0, 0.0, tile(12, 8.0, 8.0)),
+		tileAt(40.0, 0.0, tile(fakeTexture(12), 8.0, 8.0)),
 	];
 	map.setTiles(cells);
 	map.setRange(0, 4);
 	const keyed = s.add(s.tileGroup()).at(10.0, 30.0);
 	keyed.setColorAdd(rgba(0.1, 0.0, 0.0, 0.0));
-	const plain: TileCell[] = [tileAt(0.0, 0.0, tile(13, 4.0, 4.0))];
+	const plain: TileCell[] = [tileAt(0.0, 0.0, tile(fakeTexture(13), 4.0, 4.0))];
 	keyed.setTiles(plain);
 	return s.refOf(s.root);
 }
@@ -592,7 +592,7 @@ test "a colour effect drawn before a target does not reach the draw after it" {
 	endTarget();
 	setEffect(NO_COLOR_MATRIX, none, none);
 	drawImage(
-		tile(11, 8.0, 8.0).premultiplied(), vec2(4.0, 4.0), vec2(8.0, 8.0), white, BlendMode.Alpha,
+		tile(fakeTexture(11), 8.0, 8.0).premultiplied(), vec2(4.0, 4.0), vec2(8.0, 8.0), white, BlendMode.Alpha,
 	);
 	finishRecording();
 	assert commandField(0, CMD_EFFECT) != (NO_EFFECT as float32);
@@ -770,7 +770,7 @@ test "an underline and a selection beside a colour effect draw with it" {
 
 test "an image style beside a colour effect draws through the UI program with the effect" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const image = s.add(s.sprite(tile(17, 64.0, 64.0)).at(4.0, 4.0));
+	const image = s.add(s.sprite(tile(fakeTexture(17), 64.0, 64.0)).at(4.0, 4.0));
 	image.setImageStyle(imageStyle(uniformRadii(4.0), false, ObjectFit.Cover));
 	image.setColorMatrix(colorMatrixGrayscale(1.0));
 	record(s.refOf(s.root), 80.0, 80.0, 1.0);
@@ -1055,8 +1055,8 @@ test "text query bounds exclude editing gloop while its visible selection still 
 
 test "a premultiplied tile carries its bit into the command and splits the run" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	const straight = s.sprite(tile(11, 8.0, 8.0));
-	straight.addChild(s.sprite(tile(11, 8.0, 8.0).premultiplied()).at(8.0, 0.0));
+	const straight = s.sprite(tile(fakeTexture(11), 8.0, 8.0));
+	straight.addChild(s.sprite(tile(fakeTexture(11), 8.0, 8.0).premultiplied()).at(8.0, 0.0));
 	begin2d(16.0, 16.0, 1.0);
 	straight.sync(identity2d(), true);
 	straight.draw(1.0, 16.0, 16.0);

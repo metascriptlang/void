@@ -49,6 +49,7 @@ import {
 	blurFilter,
 	glowFilter,
 	dropShadowFilter,
+	whiteTile,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { makeImage, makeView } from "../../src/sokol/gpu";
@@ -76,7 +77,7 @@ import {
 	MANY_TARGETS_COUNT, MANY_TARGETS_COLUMNS, MANY_TARGETS_STEP, MANY_TARGETS_ORIGIN,
 	EFFECT_UI_SHIFT,
 } from "./table";
-import { makeImage as makeImageFromTexels } from "../../src/void3d/gpu3d";
+import { Texture, TextureError } from "../../src/gpu/texture";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
@@ -84,7 +85,7 @@ const DARK: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
 const LIGHT: Color = { r: 0.90, g: 0.91, b: 0.94, a: 1.0 };
 
 // assets/test.png as a sheet, loaded at most once per process.
-let sheetTile: Tile = { view: 0, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0, w: 0.0, h: 0.0, dx: 0.0, dy: 0.0, texW: 0.0, texH: 0.0 };
+let sheetTile: Tile = whiteTile(0.0, 0.0);
 let sheetLoaded: boolean = false;
 
 function sheet(): Tile {
@@ -92,7 +93,8 @@ function sheet(): Tile {
 		const pixels = loadImageSync("assets/test.png", 4);
 		const w: int32 = imageWidth();
 		const h: int32 = imageHeight();
-		sheetTile = tile(makeView(makeImage(pixels, w, h)), w as float32, h as float32);
+		const image: uint32 = makeImage(pixels, w, h);
+		sheetTile = tile(Texture.adopt(image, makeView(image), w, h), w as float32, h as float32);
 		freeImage(pixels);
 		sheetLoaded = true;
 	}
@@ -993,7 +995,12 @@ function alphaRampTile(banded: boolean, premultiply: boolean): Tile {
 				: packTexel(r, g, b, a);
 		}
 	}
-	const t = tile(makeView(makeImageFromTexels(texels, n, n)), n as float32, n as float32);
+	const made: Result<Texture, TextureError> = Texture.fromPixels(texels, n, n, true);
+	if (!made.ok) {
+		console.log(`FAIL golden: a ${n}x${n} texture was refused, ${made.error.toString()}`);
+		unreachable;
+	}
+	const t = tile(made.value, n as float32, n as float32);
 	return premultiply ? t.premultiplied() : t;
 }
 
@@ -1071,7 +1078,7 @@ function imageTileGroup(): Scene2D {
 		...t.sub(0.0, t.texH * 0.5, t.texW * 0.5, t.texH * 0.5), w: 40.0, h: 40.0,
 	};
 	const whole: Tile = { ...t, w: 40.0, h: 40.0 };
-	const plain: Tile = tile(0, 40.0, 40.0);
+	const plain: Tile = whiteTile(40.0, 40.0);
 	const cells: TileCell[] = [
 		tileCellAt(0.0, 0.0, topLeft, white),
 		tileCellAt(44.0, 0.0, topRight, rgba(1.0, 0.6, 0.6, 1.0)),

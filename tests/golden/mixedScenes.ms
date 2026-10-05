@@ -1,6 +1,6 @@
 import { Scene2D } from "../../src/void2d/node";
 import { add } from "../../src/void2d/scene";
-import { Color, tile } from "../../src/void2d/types";
+import { Color, tile, targetTile } from "../../src/void2d/types";
 import { Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
@@ -158,8 +158,8 @@ export function mixedVoid3dTarget(): Scene2D {
 		unreachable;
 	}
 	const s = Scene2D.create(CLEAR_2D);
-	const view = tile(
-		forward.colorTarget.asTexture(),
+	const view = targetTile(
+		forward.colorTarget,
 		TARGET_WIDTH as float32,
 		TARGET_HEIGHT as float32,
 	).premultiplied();
@@ -178,8 +178,8 @@ export function mixedVoid3dTranslucentTarget(): Scene2D {
 	}
 	const s = Scene2D.create(CLEAR_2D);
 	s.add(s.rect(256.0, 40.0, STRIPE).at(0.0, 60.0));
-	const view = tile(
-		translucent.colorTarget.asTexture(),
+	const view = targetTile(
+		translucent.colorTarget,
 		TARGET_WIDTH as float32,
 		TARGET_HEIGHT as float32,
 	).premultiplied();

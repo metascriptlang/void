@@ -1,3 +1,16 @@
+import { Texture } from "../gpu/texture";
+
+let fakeTextures: Vec<Texture> = [];
+
+export function fakeTexture(view: uint32): Texture {
+	for (const texture of fakeTextures) {
+		if (texture.view == view) { return texture; }
+	}
+	const texture: Texture = Texture.adopt(0, view, 1, 1);
+	fakeTextures.push(texture);
+	return texture;
+}
+
 export function approx(a: float32, b: float32): boolean {
 	let d: float32 = a - b;
 	if (d < 0.0) { d = -d; }

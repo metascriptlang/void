@@ -1,3 +1,4 @@
+import { fakeTexture } from "../../src/test/helpers";
 import { add } from "../../src/void2d/scene";
 import { Scene2D, NodeRef, TileCell, NO_SLOT } from "../../src/void2d/node";
 import { paint, isDirty, tick } from "../../src/void2d/scene";
@@ -40,7 +41,7 @@ import {
 import {
 	REC_UI_FLOATS, REC_SPRITE_FLOATS, REC_UI_ORIGIN_SIZE, REC_SPRITE_ORIGIN_SIZE,
 } from "../../src/void2d/instanceLayout";
-import { rgba, tile, identity2d, vec2, Tile } from "../../src/void2d/types";
+import { rgba, tile, identity2d, vec2, Tile, whiteTile } from "../../src/void2d/types";
 
 const W: float32 = 200.0;
 const H: float32 = 120.0;
@@ -121,7 +122,7 @@ function maskedScene(): Scene2D {
 	panel.addChild(s.rect(200.0, 20.0, rgba(1.0, 0.0, 0.0, 1.0)).at(-10.0, 5.0));
 	const inner = s.mask(60.0, 30.0).at(20.0, 30.0);
 	inner.addChild(s.rect(90.0, 12.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-5.0, 8.0));
-	inner.addChild(s.sprite(tile(0, 16.0, 16.0)).at(40.0, 20.0));
+	inner.addChild(s.sprite(whiteTile(16.0, 16.0)).at(40.0, 20.0));
 	panel.addChild(inner);
 	const hidden = s.rect(20.0, 20.0, rgba(0.0, 0.0, 1.0, 1.0)).setVisible(false);
 	hidden.addChild(s.rect(10.0, 10.0, rgba(1.0, 1.0, 0.0, 1.0)));
@@ -274,9 +275,9 @@ function corpus(): Corpus {
 	group.addChild(s.label("g", 8.0, white).at(2.0, 2.0));
 	s.add(group);
 	const frames: Tile[] = [
-		tile(0, 8.0, 8.0),
-		{ ...tile(0, 8.0, 8.0), u0: 0.5 },
-		{ ...tile(0, 8.0, 8.0), v0: 0.5 },
+		whiteTile(8.0, 8.0),
+		{ ...whiteTile(8.0, 8.0), u0: 0.5 },
+		{ ...whiteTile(8.0, 8.0), v0: 0.5 },
 	];
 	s.add(s.anim(frames, 4.0).at(150.0, 24.0));
 	const editor = s.label("caret", 8.0, white).at(4.0, 50.0);
@@ -371,7 +372,7 @@ test "a card's colour rewrites its one UI record and nothing else" {
 
 function spriteLast(): Scene2D {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
-	s.add(s.sprite(tile(11, 8.0, 8.0)).at(4.0, 4.0));
+	s.add(s.sprite(tile(fakeTexture(11), 8.0, 8.0)).at(4.0, 4.0));
 	return s;
 }
 
@@ -554,7 +555,7 @@ test "a camera pan emits the rows it brings on screen and drops the rows it take
 
 function tileCell(x: float32, y: float32, view: uint32): TileCell {
 	return {
-		x: x, y: y, tile: tile(view, 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0,
+		x: x, y: y, tile: tile(fakeTexture(view), 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0,
 		scaleY: 1.0, rotation: 0.0,
 	};
 }
@@ -574,7 +575,7 @@ function tiles(): Tiles {
 	s.add(s.rect(20.0, 20.0, rgba(0.2, 0.3, 0.5, 1.0)).at(4.0, 4.0));
 	const map = s.add(s.tileGroup().at(30.0, 4.0));
 	map.setTiles(fourTiles());
-	s.add(s.sprite(tile(11, 8.0, 8.0)).at(80.0, 4.0));
+	s.add(s.sprite(tile(fakeTexture(11), 8.0, 8.0)).at(80.0, 4.0));
 	s.add(s.label("after", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(4.0, 40.0));
 	return { s: s, map: map };
 }
@@ -675,7 +676,7 @@ test "a tile edit writes in place only while the group keeps its shape, place an
 test "tile edits past an eighth of the group's tiles re-record the group" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const map = s.add(s.tileGroup());
-	const cells: Vec<TileCell> = [];
+	const cells: TileCell[] = [];
 	for (let k: int32 = 0; k < 200; k++) {
 		cells.push(tileCell((k % 20) as float32 * 8.0, (k / 20) as float32 * 8.0, 11));
 	}
@@ -757,7 +758,7 @@ function iconList(promise: boolean, icons: boolean): Scene2D {
 	const list = s.add(s.group().at(4.0, 4.0));
 	for (let k: int32 = 0; k < 6; k++) {
 		const row = s.rect(120.0, 16.0, rgba(0.2, 0.3, 0.5, 1.0)).at(0.0, (k as float32) * 18.0);
-		if (icons) { row.addChild(s.sprite(tile(21, 12.0, 12.0)).at(2.0, 2.0)); }
+		if (icons) { row.addChild(s.sprite(tile(fakeTexture(21), 12.0, 12.0)).at(2.0, 2.0)); }
 		row.addChild(s.label(String(10 + k), 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(18.0, 3.0));
 		list.addChild(row);
 	}
@@ -810,14 +811,14 @@ test "writes inside a list that promises no overlap record what a full frame rec
 	assert check(s, "a row's colour", "patch");
 	list.getChildAt(3).getChildAt(1).setText("99");
 	assert check(s, "a label's text, the same length", "patch");
-	list.getChildAt(3).getChildAt(0).setTile(tile(22, 12.0, 12.0));
+	list.getChildAt(3).getChildAt(0).setTile(tile(fakeTexture(22), 12.0, 12.0));
 	assert check(s, "an icon's texture", "splice");
 	list.getChildAt(4).setX(2.0);
 	assert check(s, "a row moved", "patch");
 	list.getChildAt(1).getChildAt(1).setText("123");
 	assert check(s, "a label's text, longer", "splice");
 	const extra = s.rect(120.0, 16.0, rgba(0.3, 0.3, 0.3, 1.0)).at(0.0, 110.0);
-	extra.addChild(s.sprite(tile(21, 12.0, 12.0)).at(2.0, 2.0));
+	extra.addChild(s.sprite(tile(fakeTexture(21), 12.0, 12.0)).at(2.0, 2.0));
 	list.addChild(extra);
 	assert check(s, "a row added", "splice");
 	list.getChildAt(0).setVisible(false);
@@ -834,12 +835,12 @@ test "a row of a promised list that is itself a promised list lays out both" {
 	const s = iconList(true, true);
 	const list = s.refOf(s.children[s.root][1]);
 	const inner = list.getChildAt(5);
-	inner.addChild(s.sprite(tile(21, 12.0, 12.0)).at(60.0, 2.0));
+	inner.addChild(s.sprite(tile(fakeTexture(21), 12.0, 12.0)).at(60.0, 2.0));
 	inner.addChild(s.label("x", 8.0, rgba(1.0, 1.0, 1.0, 1.0)).at(80.0, 3.0));
 	inner.setNoOverlap(true);
 	frame(s);
 	assert check(s, "nested promises", "patch");
-	inner.getChildAt(2).setTile(tile(21, 10.0, 12.0));
+	inner.getChildAt(2).setTile(tile(fakeTexture(21), 10.0, 12.0));
 	assert check(s, "an icon resized inside the inner list", "patch");
 }
 
