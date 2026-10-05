@@ -117,6 +117,7 @@ int32_t doorEnvironmentSampleCount(void);
 // Changes when the host rebuilt a lost GPU context (only the Android bridge does); every
 // handle made before is stale then.
 int32_t doorContextGeneration(void);
+void doorLoseContext(void);
 // sokol's index of the frame being recorded, the one its update-once-per-frame rule counts in.
 uint32_t doorFrameIndex(void);
 int32_t doorLiveBuffers(void);

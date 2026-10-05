@@ -40,9 +40,8 @@ VoidViewId voidCurrentView(void);
 void voidEmbedSetMessagePump(msClosure pump);
 void voidEmbedPumpMessages(void);
 
-// Android only: the GPU context generation (bumped when a lost EGL context is rebuilt) and a
-// switch that forces that rebuild on the next frame.
 int voidGpuGeneration(void);
+void voidLoseContext(void);
 void voidEmbedLoseContext(void);
 void voidEmbedDetach(void);
 void voidEmbedSetAssetRoot(const char *path);

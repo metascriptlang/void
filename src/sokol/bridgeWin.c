@@ -27,8 +27,28 @@ static bool s_keys[SAPP_MAX_KEYCODES];
 static int s_reqW = 0;
 static int s_reqH = 0;
 
+static int s_generation = 1;
+static int s_contextLost = 0;
+
+static void setupWindowGfx(void);
+static void setupViewsGfx(void);
+
+int voidGpuGeneration(void) { return s_generation; }
+void voidLoseContext(void) { s_contextLost = 1; }
+
+static void restoreContext(void) {
+	sg_shutdown();
+	if (s_driver == DRIVER_WINDOW) setupWindowGfx();
+	else setupViewsGfx();
+	s_generation++;
+	s_contextLost = 0;
+}
+
 static void _init(void) { call0(s_init); }
-static void _frame(void) { call0(s_frame); }
+static void _frame(void) {
+	if (s_contextLost) restoreContext();
+	call0(s_frame);
+}
 
 static void _event(const sapp_event *e) {
 	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
@@ -93,7 +113,11 @@ void voidPlatformDeviceEnsure(void) {
 	if (adapter) IDXGIAdapter_Release(adapter);
 	if (dxgiDevice) IDXGIDevice_Release(dxgiDevice);
 	if (FAILED(hr)) voidFail("the D3D11 device has no IDXGIFactory2: 0x%08lx", (unsigned long)hr);
+	setupViewsGfx();
+	s_driver = DRIVER_VIEWS;
+}
 
+static void setupViewsGfx(void) {
 	sg_desc d = {0};
 	d.environment.d3d11.device = s_device;
 	d.environment.d3d11.device_context = s_context;
@@ -103,7 +127,6 @@ void voidPlatformDeviceEnsure(void) {
 	d.logger.func = slog_func;
 	sg_setup(&d);
 	if (!sg_isvalid()) voidFail("sg_setup on the D3D11 device failed");
-	s_driver = DRIVER_VIEWS;
 }
 
 void voidPlatformRunInit(msClosure init) { call0(init); }
@@ -147,7 +170,11 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 	makeTarget(s);
 }
 
-int voidPlatformSurfaceAcquire(void *surface) { (void)surface; return 1; }
+int voidPlatformSurfaceAcquire(void *surface) {
+	(void)surface;
+	if (s_contextLost) restoreContext();
+	return 1;
+}
 
 void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
 	swapchain->color_format = SG_PIXELFORMAT_BGRA8;
@@ -171,19 +198,20 @@ long long voidPlatformSurfaceNative(void *surface) {
 	return (long long)(intptr_t)((WinSurface *)surface)->swapChain;
 }
 
+static void setupWindowGfx(void) {
+	sg_desc d = {0};
+	d.environment = sglue_environment();
+	d.logger.func = slog_func;
+	sg_setup(&d);
+}
+
 __attribute__((noreturn)) static void noDriver(const char *op) {
 	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
 }
 
 void voidGfxSetup(void) {
 	switch (s_driver) {
-		case DRIVER_WINDOW: {
-			sg_desc d = {0};
-			d.environment = sglue_environment();
-			d.logger.func = slog_func;
-			sg_setup(&d);
-			break;
-		}
+		case DRIVER_WINDOW: setupWindowGfx(); break;
 		case DRIVER_VIEWS: break;
 		case DRIVER_NONE: noDriver("gfxSetup");
 	}

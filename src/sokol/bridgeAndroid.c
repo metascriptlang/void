@@ -132,7 +132,8 @@ void voidPlatformSurfaceResize(void *surface, int w, int h) {
 int voidGpuGeneration(void) { return g_generation; }
 
 // Forces the rebuild on the next frame, to exercise it on a device without a real loss.
-void voidEmbedLoseContext(void) { g_contextLost = 1; }
+void voidLoseContext(void) { g_contextLost = 1; }
+void voidEmbedLoseContext(void) { voidLoseContext(); }
 
 static void dropSurface(void *surface) {
 	AndroidSurface *s = (AndroidSurface *)surface;

@@ -34,6 +34,7 @@ import {
 	doorEnvironmentDepthFormat,
 	doorEnvironmentSampleCount,
 	doorContextGeneration,
+	doorLoseContext,
 	doorFrameIndex,
 	doorLiveBuffers,
 	doorLiveImages,
@@ -213,11 +214,12 @@ export function environmentSampleCount(): int32 {
 	return doorEnvironmentSampleCount();
 }
 
-// Counts GPU contexts: it changes when the host lost the context and made a new one, and every
-// handle from before is then stale (docs/VOID3D.md, Android lifecycle). Only the Android
-// bridge ever loses its context.
 export function contextGeneration(): int32 {
 	return doorContextGeneration();
+}
+
+export function loseContext(): void {
+	doorLoseContext();
 }
 
 export function frameIndex(): uint32 {

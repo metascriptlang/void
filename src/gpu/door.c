@@ -569,10 +569,20 @@ int32_t doorEnvironmentSampleCount(void) {
 }
 
 int32_t doorContextGeneration(void) {
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(_WIN32)
 	return voidGpuGeneration();
 #else
 	return 1;
+#endif
+}
+
+void doorLoseContext(void) {
+#if defined(__ANDROID__) || defined(_WIN32)
+	voidLoseContext();
+#else
+	fprintf(stderr, "gpu door: loseContext has no simulated context loss on this platform; "
+		"the Windows and Android bridges have one\n");
+	abort();
 #endif
 }
 
