@@ -19,6 +19,7 @@ import { decodeImage, imageFormatOf, ImageError, ImageFormat, Pixels } from "../
 import { FilterMode, Wrap } from "../gpu/state";
 import { float32At } from "./gltfDecode";
 import { TextureData } from "./texture";
+import { MaterialKind, DEFAULT_ALPHA_KILL } from "./material";
 import {
 	MeshData,
 	MeshError,
@@ -131,9 +132,13 @@ export struct GltfNode {
 
 // The base colour factor is already in the vertex colours of every mesh that names this
 // material: a glTF primitive has one material, and the lit block carries no colour.
+// `alphaMode` as a kind (OPAQUE, MASK as AlphaKill, BLEND as Alpha) and the block's alpha-kill
+// value: `alphaCutoff` under MASK, 0 otherwise.
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
+	kind: MaterialKind;
+	alphaKill: float32;
 }
 
 export struct GltfData {
@@ -162,7 +167,9 @@ struct Sampling {
 }
 
 const DEFAULT_READ: MaterialRead = {
-	material: { texture: NO_TEXTURE_INDEX, doubleSided: false },
+	material: {
+		texture: NO_TEXTURE_INDEX, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0,
+	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
 };
 
@@ -355,7 +362,7 @@ function loadMesh(
 			red: linearToSrgb(rgb.x * read.factor.red),
 			green: linearToSrgb(rgb.y * read.factor.green),
 			blue: linearToSrgb(rgb.z * read.factor.blue),
-			alpha: 1.0,
+			alpha: read.material.kind == MaterialKind.Opaque ? 1.0 : read.factor.alpha,
 		};
 		const added: Result<int32, MeshError> = textured
 			? addTexturedVertex(data, position, normal, uv, color)
@@ -387,7 +394,10 @@ function uint16At(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): int32
 }
 
 function numberAt(values: JsonValue, index: int32): Result<float32, GltfError> {
-	const value: JsonValue = at(values, index);
+	return numberOf(at(values, index));
+}
+
+function numberOf(value: JsonValue): Result<float32, GltfError> {
 	if (value === null || (value.kind != JsonKind.Number && value.kind != JsonKind.Int)) {
 		return Result.err(GltfError.Unsupported);
 	}
@@ -599,9 +609,6 @@ function loadTexture(
 	if (!format.ok || format.value != view.format) { return Result.err(GltfError.BadImage); }
 	const decoded: Result<Pixels, ImageError> = decodeImage(bytes);
 	if (!decoded.ok) { return Result.err(GltfError.BadImage); }
-	// glTF 2.0 §3.9.4: an OPAQUE material ignores alpha, and loadMaterial refuses MASK and BLEND.
-	const texels: Span<uint32> = decoded.value.pixels;
-	for (let i = 0; i < (texels.length as int32); i++) { texels[i] = texels[i] | OPAQUE_TEXEL; }
 	return Result.ok({
 		pixels: decoded.value.pixels,
 		width: decoded.value.width,
@@ -614,6 +621,34 @@ function loadTexture(
 function unitNumberAt(values: JsonValue, index: int32): Result<float32, GltfError> {
 	const value: float32 = try numberAt(values, index);
 	if (value < 0.0 || value > 1.0) { return Result.err(GltfError.OutOfRange); }
+	return Result.ok(value);
+}
+
+// glTF 2.0 §3.9.4: an OPAQUE material ignores alpha. A texture keeps its alpha when a MASK or
+// BLEND material samples it; one sampled both ways cannot be both, and is refused.
+function keepsAlpha(
+	materials: Readonly<Span<GltfMaterial>>,
+	texture: int32,
+): Result<boolean, GltfError> {
+	let opaque: boolean = false;
+	let translucent: boolean = false;
+	for (const material of materials) {
+		if (material.texture != texture) { continue; }
+		if (material.kind == MaterialKind.Opaque) { opaque = true; } else { translucent = true; }
+	}
+	if (opaque && translucent) { return Result.err(GltfError.UnsupportedMaterial); }
+	return Result.ok(translucent);
+}
+
+function forceOpaque(texels: Span<uint32>): void {
+	for (let i = 0; i < (texels.length as int32); i++) { texels[i] = texels[i] | OPAQUE_TEXEL; }
+}
+
+function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
+	const cutoff: JsonValue = fieldOf(material, "alphaCutoff");
+	if (isNull(cutoff)) { return Result.ok(DEFAULT_ALPHA_KILL); }
+	const value: float32 = try numberOf(cutoff);
+	if (value < 0.0) { return Result.err(GltfError.OutOfRange); }
 	return Result.ok(value);
 }
 
@@ -636,11 +671,23 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 			if (channel != 0.0) { return Result.err(GltfError.UnsupportedMaterial); }
 		}
 	}
-	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
-	if (!isNull(alphaMode) && alphaMode.asString() != "OPAQUE") {
-		return Result.err(GltfError.UnsupportedMaterial);
-	}
 	let read: MaterialRead = DEFAULT_READ;
+	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
+	if (!isNull(alphaMode)) {
+		if (alphaMode.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
+		const mode: string = alphaMode.strVal;
+		if (mode == "MASK") {
+			read.material.kind = MaterialKind.AlphaKill;
+		} else if (mode == "BLEND") {
+			read.material.kind = MaterialKind.Alpha;
+		} else if (mode != "OPAQUE") {
+			return Result.err(GltfError.Unsupported);
+		}
+	}
+	if (read.material.kind == MaterialKind.AlphaKill) {
+		read.material.alphaKill = try alphaCutoffOf(material);
+		if (read.material.alphaKill == 0.0) { read.material.kind = MaterialKind.Opaque; }
+	}
 	const doubleSided: JsonValue = fieldOf(material, "doubleSided");
 	if (!isNull(doubleSided)) {
 		if (doubleSided.kind != JsonKind.Bool) { return Result.err(GltfError.Unsupported); }
@@ -783,6 +830,9 @@ function decodeGltf(
 		const read: MaterialRead = try loadMaterial(materialArray.at(i), textureCount);
 		reads.push(read);
 		data.materials.push(read.material);
+	}
+	for (let i = 0; i < textureCount; i++) {
+		if (!(try keepsAlpha(data.materials, i))) { forceOpaque(data.textures[i].pixels); }
 	}
 	for (let i = 0; i < meshCount; i++) {
 		const primitive: JsonValue = try primitiveOf(meshArray.at(i));

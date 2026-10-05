@@ -21,8 +21,9 @@ import {
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_DOUBLE_SIDED,
+	MATERIAL_ALPHA_KILL,
 } from "../void3d/gpu3d";
-import { Material, UniformBlock } from "../void3d/material";
+import { Material, MaterialKind, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, stride, vertexCount } from "../void3d/meshData";
 import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
@@ -280,10 +281,68 @@ test "an untextured factor, the default material and double sides" {
 	assert blackEmissive.ok;
 }
 
+function kindOf(material: string): Result<GltfMaterial, GltfError> {
+	const read = loaded({ ...texturedParts(), materials: material });
+	if (!read.ok) { return Result.err(read.error); }
+	return Result.ok(read.value.materials[0]);
+}
+
+test "alphaMode is the material's kind, MASK with its cutoff" {
+	const opaque = kindOf("{\"alphaMode\":\"OPAQUE\",\"alphaCutoff\":0.25}");
+	assert opaque.ok && opaque.value.kind == MaterialKind.Opaque && opaque.value.alphaKill == 0.0;
+	const mask = kindOf("{\"alphaMode\":\"MASK\"}");
+	assert mask.ok && mask.value.kind == MaterialKind.AlphaKill && mask.value.alphaKill == 0.5;
+	const cut = kindOf("{\"alphaMode\":\"MASK\",\"alphaCutoff\":0.25}");
+	assert cut.ok && cut.value.kind == MaterialKind.AlphaKill && cut.value.alphaKill == 0.25;
+	const blend = kindOf("{\"alphaMode\":\"BLEND\",\"alphaCutoff\":0.25}");
+	assert blend.ok && blend.value.kind == MaterialKind.Alpha && blend.value.alphaKill == 0.0;
+	for (const material of ["{\"alphaMode\":\"CUTOUT\"}", "{\"alphaMode\":1}",
+		"{\"alphaMode\":\"MASK\",\"alphaCutoff\":\"half\"}"]) {
+		assert refusedAs({ ...texturedParts(), materials: material }, GltfError.Unsupported);
+	}
+	const negative = "{\"alphaMode\":\"MASK\",\"alphaCutoff\":-0.5}";
+	assert refusedAs({ ...texturedParts(), materials: negative }, GltfError.OutOfRange);
+}
+
+function translucentMaterial(mode: string): string {
+	return "{\"alphaMode\":\"" + mode + "\",\"pbrMetallicRoughness\":"
+		+ "{\"baseColorFactor\":[0.5,0.25,1.0,0.5],\"baseColorTexture\":{\"index\":0}}}";
+}
+
+test "MASK and BLEND keep the texture's and the factor's alpha, OPAQUE ignores both" {
+	for (const mode of ["MASK", "BLEND"]) {
+		const kept = loaded({ ...texturedParts(), materials: translucentMaterial(mode) });
+		assert kept.ok;
+		if (!kept.ok) { continue; }
+		assert kept.value.textures[0].pixels[3] == (0x8000FFFF as uint32);
+		assert kept.value.textures[0].pixels[0] == RED;
+		assert kept.value.meshes[0].vertices[11] == 0.5;
+	}
+	const ignored = loaded(texturedParts());
+	assert ignored.ok;
+	if (ignored.ok) {
+		assert ignored.value.textures[0].pixels[3] == YELLOW;
+		assert ignored.value.meshes[0].vertices[11] == 1.0;
+	}
+	const zero = loaded({
+		...texturedParts(),
+		materials: "{\"alphaMode\":\"MASK\",\"alphaCutoff\":0,"
+			+ "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}",
+	});
+	assert zero.ok;
+	if (zero.ok) {
+		assert zero.value.materials[0].kind == MaterialKind.Opaque;
+		assert zero.value.materials[0].alphaKill == 0.0;
+		assert zero.value.textures[0].pixels[3] == YELLOW;
+	}
+	const shared: Parts = {
+		...texturedParts(), materials: TEXTURED_MATERIAL + "," + translucentMaterial("BLEND"),
+	};
+	assert refusedAs(shared, GltfError.UnsupportedMaterial);
+}
+
 test "a material this renderer cannot draw is refused by name" {
 	for (const material of [
-		"{\"alphaMode\":\"MASK\"}",
-		"{\"alphaMode\":\"BLEND\"}",
 		"{\"normalTexture\":{\"index\":0}}",
 		"{\"occlusionTexture\":{\"index\":0}}",
 		"{\"emissiveTexture\":{\"index\":0}}",
@@ -388,8 +447,15 @@ function materialsOnly(materials: Readonly<Span<GltfMaterial>>): GltfData {
 
 function twoMaterials(): GltfData {
 	return materialsOnly([
-		{ texture: -1, doubleSided: false },
-		{ texture: -1, doubleSided: true },
+		{ texture: -1, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+		{ texture: -1, doubleSided: true, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+	]);
+}
+
+function kinds(): GltfData {
+	return materialsOnly([
+		{ texture: -1, doubleSided: false, kind: MaterialKind.AlphaKill, alphaKill: 0.25 },
+		{ texture: -1, doubleSided: true, kind: MaterialKind.Alpha, alphaKill: 0.0 },
 	]);
 }
 
@@ -403,10 +469,18 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 1.0, 0.0]));
 	assert !flagged.ok;
 	if (!flagged.ok) { assert flagged.error == GltfSceneError.BadSetup; }
-	let texturedWithoutUvs: GltfData = materialsOnly([{ texture: 0, doubleSided: false }]);
+	const killing: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, twoMaterials(), setupOf([0.0, 0.0, 0.0, 0.5]));
+	assert !killing.ok;
+	if (!killing.ok) { assert killing.error == GltfSceneError.BadSetup; }
+	let texturedWithoutUvs: GltfData = materialsOnly([
+		{ texture: 0, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+	]);
 	texturedWithoutUvs.meshes.push(MeshData.empty());
 	texturedWithoutUvs.meshMaterials.push(0);
-	let farTexture: GltfData = materialsOnly([{ texture: 3, doubleSided: false }]);
+	let farTexture: GltfData = materialsOnly([
+		{ texture: 3, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+	]);
 	let unmatched: GltfData = twoMaterials();
 	unmatched.meshes.push(MeshData.empty());
 	let uvsUntextured: GltfData = twoMaterials();
@@ -420,10 +494,10 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
 }
 
-test "a glTF material is the setup's block and pass, double sides unculled and flagged" {
+test "a glTF material is the setup's block and culling, double sides unculled and flagged" {
 	let context: DrawContext = DrawContext.withUniformCapacity(64);
 	const made: Result<GltfAssets, GltfSceneError> =
-		addGltfAssets(context, twoMaterials(), setupOf([3.0, -1.0, 0.0, 0.5]));
+		addGltfAssets(context, twoMaterials(), setupOf([3.0, -1.0, 0.0, 0.0]));
 	assert made.ok;
 	if (!made.ok) { return; }
 	assert (made.value.materials.length as int32) == 2 && context.liveMaterials() == 2;
@@ -436,10 +510,29 @@ test "a glTF material is the setup's block and pass, double sides unculled and f
 	assert values[single.uniforms.offset] == 3.0 && values[single.uniforms.offset + 1] == -1.0;
 	assert values[single.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 0.0;
 	assert values[double.uniforms.offset + MATERIAL_DOUBLE_SIDED] == 1.0;
-	assert values[double.uniforms.offset + 3] == 0.5;
+	assert values[double.uniforms.offset + MATERIAL_ALPHA_KILL] == 0.0;
 	let alias: GltfAssets = made.value;
 	closeGltfAssets(alias);
 	assert made.value.isClosed() && context.liveMaterials() == 0;
+}
+
+test "a glTF material's kind sets its phase, blend and alpha kill over the setup's pass" {
+	let context: DrawContext = DrawContext.withUniformCapacity(64);
+	const made: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, kinds(), setupOf([3.0, -1.0, 0.0, 0.0]));
+	assert made.ok;
+	if (!made.ok) { return; }
+	const cut: Material = context.materials[made.value.materials[0].index];
+	const blended: Material = context.materials[made.value.materials[1].index];
+	assert cut.phase == Phase.Opaque && !cut.pass.blends() && cut.pass.depthWrite;
+	assert cut.program == Program.LitCutout && blended.program == Program.Lit;
+	assert blended.phase == Phase.Alpha && blended.pass.blends() && blended.pass.depthWrite;
+	assert blended.pass.culling == Face.None;
+	const values: Vec<float32> = context.uniforms.values;
+	assert values[cut.uniforms.offset + MATERIAL_ALPHA_KILL] == 0.25;
+	assert values[blended.uniforms.offset + MATERIAL_ALPHA_KILL] == 0.0;
+	let alias: GltfAssets = made.value;
+	closeGltfAssets(alias);
 }
 
 test "a full uniform pool is named and gives back the materials already made" {

@@ -1,6 +1,8 @@
 import { RenderState, Face } from "../gpu/state";
 import { PassState, passState } from "../gpu/door";
-import { GltfData, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX } from "./gltf";
+import {
+	GltfData, GltfMaterial, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX,
+} from "./gltf";
 import {
 	DrawContext,
 	MeshId,
@@ -23,8 +25,9 @@ import {
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_DOUBLE_SIDED,
+	MATERIAL_ALPHA_KILL,
 } from "./gpu3d";
-import { Material, Phase, UniformBlock } from "./material";
+import { Material, MaterialKind, UniformBlock, passFor } from "./material";
 import { TextureId, TextureUploadError, NO_TEXTURE } from "./texture";
 import { UniformError } from "./uniformPool";
 import {
@@ -55,7 +58,8 @@ export struct GltfMeshBinding {
 	material: MaterialId;
 }
 
-// `block` is the lit block every material starts from, a preset's floats included (RAMP_LEVELS).
+// `block` is the lit block every material starts from, a preset's floats included (RAMP_LEVELS);
+// `pass` gives culling, depth test and colour mask, the material's kind its blend and depth write.
 export struct GltfMaterialSetup {
 	pass: RenderState;
 	block: Vec<float32>;
@@ -102,24 +106,32 @@ function isConsistent(data: GltfData): boolean {
 	return true;
 }
 
+const DEFAULT_SOURCE: GltfMaterial = {
+	texture: NO_TEXTURE_INDEX, doubleSided: false, kind: MaterialKind.Opaque, alphaKill: 0.0,
+};
+
 function madeMaterial(
 	context: DrawContext,
 	setup: GltfMaterialSetup,
-	doubleSided: boolean,
+	source: GltfMaterial,
 	texture: TextureId,
 ): Result<MaterialId, GltfSceneError> {
+	const doubleSided: boolean = source.doubleSided;
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { return Result.err(GltfSceneError.UniformsFull); }
 	let values: Vec<float32> = [];
 	for (const value of setup.block) { values.push(value); }
 	values[MATERIAL_DOUBLE_SIDED] = doubleSided ? 1.0 : 0.0;
+	values[MATERIAL_ALPHA_KILL] = source.alphaKill;
 	const written: Result<int32, UniformError> = writeUniforms(context, reserved.value, values);
 	if (!written.ok) { unreachable; }
-	const pass: RenderState = doubleSided ? { ...setup.pass, culling: Face.None } : setup.pass;
-	const program: Program = texture.isTexture() ? Program.LitTextured : Program.Lit;
+	const sided: RenderState = doubleSided ? { ...setup.pass, culling: Face.None } : setup.pass;
+	const pass: RenderState = passFor(source.kind, sided);
+	const lit: Program = texture.isTexture() ? Program.LitTextured : Program.Lit;
 	const material: Material = {
-		...Material.plain(program, pass, Phase.Opaque),
+		...Material.ofKind(lit, source.kind),
+		pass: pass,
 		texture: texture,
 		uniforms: reserved.value,
 	};
@@ -149,7 +161,8 @@ export function addGltfAssets(
 ): Result<GltfAssets, GltfSceneError> {
 	context.requireOpen("addGltfAssets");
 	if ((setup.block.length as int32) != MATERIAL_UNIFORM_LENGTH
-		|| setup.block[MATERIAL_DOUBLE_SIDED] != 0.0) {
+		|| setup.block[MATERIAL_DOUBLE_SIDED] != 0.0
+		|| setup.block[MATERIAL_ALPHA_KILL] != 0.0) {
 		return Result.err(GltfSceneError.BadSetup);
 	}
 	if (!isConsistent(data)) { return Result.err(GltfSceneError.InvalidData); }
@@ -171,14 +184,14 @@ export function addGltfAssets(
 			? NO_TEXTURE
 			: assets.textures[material.texture];
 		const made: Result<MaterialId, GltfSceneError> =
-			madeMaterial(context, setup, material.doubleSided, texture);
+			madeMaterial(context, setup, material, texture);
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}
 	const defaultIndex: int32 = assets.materials.length as int32;
 	if (usesDefaultMaterial(data)) {
 		const made: Result<MaterialId, GltfSceneError> =
-			madeMaterial(context, setup, false, NO_TEXTURE);
+			madeMaterial(context, setup, DEFAULT_SOURCE, NO_TEXTURE);
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}

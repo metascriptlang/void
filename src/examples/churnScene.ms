@@ -11,7 +11,7 @@ import {
 } from "../void3d/gpu3d";
 import { liveBuffers, liveImages, liveViews, liveSamplers } from "../gpu/door";
 import { RenderState, FilterMode, Wrap } from "../gpu/state";
-import { Material, Phase, UniformBlock } from "../void3d/material";
+import { Material, MaterialKind, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, MeshError, Rgba, addBox, addTexturedCube } from "../void3d/meshData";
 import { TextureData, TextureId, TextureUploadError, NO_TEXTURE } from "../void3d/texture";
 import { UniformError } from "../void3d/uniformPool";
@@ -174,7 +174,9 @@ function modelData(): GltfData {
 	return {
 		meshes: [texturedBoxData(), boxData()],
 		meshMaterials: [0, DEFAULT_MATERIAL],
-		materials: [{ texture: 0, doubleSided: true }],
+		materials: [
+			{ texture: 0, doubleSided: true, kind: MaterialKind.Opaque, alphaKill: 0.0 },
+		],
 		textures: [checker()],
 		nodes: [
 			{ name: "cube", mesh: 0, local: modelTransform(), children: [1] },
