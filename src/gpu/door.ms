@@ -51,6 +51,7 @@ import {
 // maps the pointer to Borrow<T>, and on msc 0.2.53 `span[0]` passed there is the address of a
 // one-element copy (docs/VOID3D.md, Compiler notes).
 extern function doorMakePipeline(descriptor: Readonly<Span<uint32>>): uint32;
+extern function doorMakeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32;
 extern function doorBeginPass(
 	descriptor: Readonly<Span<uint32>>, clear: Readonly<Span<float32>>,
 ): void;
@@ -133,6 +134,10 @@ export function layoutPerInstance(layout: int32): boolean {
 
 export function makePipeline(descriptor: Readonly<Span<uint32>>): uint32 {
 	return doorMakePipeline(descriptor);
+}
+
+export function makeImage(rgba: Readonly<Span<uint32>>, width: int32, height: int32): uint32 {
+	return doorMakeImage(rgba, width, height);
 }
 
 export function makeTargetImage(width: int32, height: int32, format: PixelFormat): uint32 {

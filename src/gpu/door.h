@@ -83,6 +83,7 @@ int32_t doorLayoutFloats(int32_t layout, int32_t buffer);
 // 1 when the registered layout's vertex buffer 0 steps per instance (particle, billboard).
 int32_t doorLayoutPerInstance(int32_t layout);
 uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length);
+uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height);
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format);
 uint32_t doorMakeAttachmentView(uint32_t image, int32_t format);
 uint32_t doorMakeTextureView(uint32_t image);

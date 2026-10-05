@@ -366,6 +366,17 @@ static uint32_t validView(sg_view view) {
 	return SG_INVALID_ID;
 }
 
+uint32_t doorMakeImage(const uint32_t *rgba, int64_t length, int32_t width, int32_t height) {
+	if (width <= 0 || height <= 0 || length != (int64_t)width * height) return SG_INVALID_ID;
+	sg_image_desc desc = {0};
+	desc.width = width;
+	desc.height = height;
+	desc.pixel_format = SG_PIXELFORMAT_RGBA8;
+	desc.data.mip_levels[0].ptr = rgba;
+	desc.data.mip_levels[0].size = (size_t)width * (size_t)height * 4;
+	return validImage(sg_make_image(&desc));
+}
+
 uint32_t doorMakeTargetImage(int32_t width, int32_t height, int32_t format) {
 	if (width <= 0 || height <= 0) return SG_INVALID_ID;
 	sg_image_desc desc = {0};
