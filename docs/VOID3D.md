@@ -2057,6 +2057,15 @@ probe's read of the normal target. Headless: `blends()` for every `BlendMode`, b
 `closed.drawPhase` and `closed.phaseCount` among the abort cases; the allocation stage lists
 the new frame-path functions.
 
+**Final acceptance.** On `1a3f0dd`, BUILD `5c4246fb` (v0.3.2) unchanged before and after, one
+announced native job on the shared Windows D3D11 workstation: `gate.sh` GREEN 1189/1189 + 299 +
+318, golden 82/82, 8 known skips (run on `3909dd5`; the one later commit touches only an abort
+test `gate.sh` does not read); `gate3d.sh` GREEN **306 PASS / 0 FAIL / 3 known skips**,
+1189/1189 tests, 218 abort PASS lines, 72 manifest hashes none adopted (every standing capture
+byte-identical), oracle 75/11, Android arm64 3,401,520 B. The first `gate3d.sh` on `3909dd5`
+was red only on `doorShortPassDescriptor`, whose expected message still counted ten pass
+words. Receipts `out/tmp/m32/`. Web NOT RUN for the Yoga provider.
+
 **Open.** The scene programs still write `fragNormal` at location 1 in the translucent pass,
 where the pipeline has one attachment. D3D11 and GL drop it; Metal and WebGPU are not measured
 and web cannot run here, and neither has run the store action. `colorMask` is one value for

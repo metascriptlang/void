@@ -2345,3 +2345,11 @@ and the probe recorded as unable to see the store; a depth-writing translucent m
 in `BlendedOpaque`'s shape; the translucent attachment's clear value went stale after `setLook`
 (now `UNUSED_CLEAR`); no standing capture runs translucent items with the post pass on, recorded
 in the as-built. The M3 section's API list is a milestone record and was left as written.
+
+### Final acceptance
+
+`1a3f0dd`, BUILD `5c4246fb` unchanged throughout: `gate.sh` GREEN (1189/1189, golden 82/82,
+8 known skips), `gate3d.sh` GREEN 306 PASS / 0 FAIL / 3 known skips, 72 hashes none adopted,
+Android 3,401,520 B. The first `gate3d.sh` failed one abort case whose expected text predated
+the eleven-word pass descriptor; fixed in `1a3f0dd` and re-run. RED-before and the depth-Clear
+control are in VOID3D "M32 as built".
