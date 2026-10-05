@@ -184,7 +184,7 @@ void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     vec4 color = litTexturedShade(texel, n);
     fragColor = vec4(color.rgb * color.a, color.a);
-    fragNormal = vec4((n * 0.5 + 0.5) * depth01, depth01);
+    fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
 
@@ -207,7 +207,7 @@ void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     vec4 color = unlitTexturedShade(texel);
     fragColor = vec4(color.rgb * color.a, color.a);
-    fragNormal = vec4((n * 0.5 + 0.5) * depth01, depth01);
+    fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
 

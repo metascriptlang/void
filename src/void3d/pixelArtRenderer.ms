@@ -4,8 +4,10 @@
 // palettes, look and settings come from the caller.
 //
 //   Scene  low-res MRT: color + normal (depth packed in its alpha) + depth attachment,
-//          drawing the core's pass lists with the preset's own programs (pixelArt3d.glsl) in
-//          place of the ones materials name: the toon ramp and the normal target are its look
+//          drawing the core's opaque list with the preset's own programs (pixelArt3d.glsl) in
+//          place of the ones materials name: the toon ramp and the normal target are its look;
+//          then the alpha and additive lists into color + depth alone, as fwd.Renderer draws
+//          them into its default pass while depth and normal maps come from their own passes
 //   Post   ScreenFx: outline from depth + normal edges, fog, palette LUT; one pass, since the
 //          palette only reads the pixel it quantizes (docs/VOID3D.md, Open questions)
 //   Blit   ScreenFx to the swapchain: integer scale, nearest, centering + sub-pixel offset
@@ -71,7 +73,7 @@ import {
 	RendererError,
 	RENDERER_UNIFORM_LENGTH,
 	beginFrame,
-	drawPassLists,
+	drawPhase,
 	drawScreen,
 	closePrepare,
 	openScreen,
@@ -177,6 +179,8 @@ export enum PixelArtError {
 	ForeignMesh,
 	ForeignMaterial,
 	RampLevels,
+	BlendedOpaque,
+	TranslucentDepthWrite,
 }
 
 export interface PixelArtRenderer {
@@ -192,6 +196,8 @@ export interface PixelArtRenderer {
 	palette: PaletteLut;
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
+	translucentColors: Vec<ColorAttachment>;
+	translucentDepth: DepthAttachment;
 	postColors: Vec<ColorAttachment>;
 	postBlock: UniformBlock;
 	blitBlock: UniformBlock;
@@ -212,6 +218,15 @@ export const PIXEL_ART_UNIFORM_LENGTH: int32 =
 export const SCENE_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8,
 	color1: PixelFormat.Rgba8,
+	color2: PixelFormat.None,
+	color3: PixelFormat.None,
+	depth: PixelFormat.Depth,
+	sampleCount: 1,
+};
+
+export const TRANSLUCENT_LAYOUT: TargetLayout = {
+	color0: PixelFormat.Rgba8,
+	color1: PixelFormat.None,
 	color2: PixelFormat.None,
 	color3: PixelFormat.None,
 	depth: PixelFormat.Depth,
@@ -368,6 +383,8 @@ export function create(
 		palette: palette.value,
 		sceneColors: new Array(2),
 		sceneDepth: NO_DEPTH,
+		translucentColors: new Array(1),
+		translucentDepth: NO_DEPTH,
 		postColors: new Array(1),
 		postBlock: postBlock,
 		blitBlock: blitBlock,
@@ -452,6 +469,9 @@ function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32):
 	renderer.sceneColors[1] = renderer.normalTarget.asColor(LoadAction.Clear, NORMAL_CLEAR);
 	renderer.sceneDepth =
 		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
+	renderer.translucentColors[0] = renderer.colorTarget.asColor(LoadAction.Load, UNUSED_CLEAR);
+	renderer.translucentDepth =
+		renderer.depthTarget.asDepth(LoadAction.Load, FAR_DEPTH, StoreAction.DontCare);
 	renderer.postColors[0] = renderer.postTarget.asColor(LoadAction.DontCare, UNUSED_CLEAR);
 }
 
@@ -477,9 +497,24 @@ function bindScreenTextures(renderer: PixelArtRenderer): void {
 	context.materials[blit].sampler0 = sampler;
 }
 
+function storeWhen(read: boolean): StoreAction {
+	return read ? StoreAction.Store : StoreAction.DontCare;
+}
+
 function drawScene(renderer: PixelArtRenderer, items: Readonly<Span<DrawItem>>): void {
+	const core: Renderer = renderer.core;
+	const translucent: boolean =
+		core.phaseCount(Phase.Alpha) + core.phaseCount(Phase.Additive) > 0;
+	const sampled: boolean = postReadsDepth(renderer.settings);
+	renderer.sceneDepth.store = storeWhen(translucent || sampled);
+	renderer.translucentDepth.store = storeWhen(sampled);
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	drawPassLists(renderer.core, items, SCENE_LAYOUT);
+	drawPhase(core, Phase.Opaque, items, SCENE_LAYOUT);
+	endPass();
+	if (!translucent) { return; }
+	beginPass(renderer.translucentColors, renderer.translucentDepth);
+	drawPhase(core, Phase.Alpha, items, TRANSLUCENT_LAYOUT);
+	drawPhase(core, Phase.Additive, items, TRANSLUCENT_LAYOUT);
 	endPass();
 }
 
@@ -530,6 +565,31 @@ function billboardLevels(context: DrawContext, block: UniformBlock): boolean {
 	if (block.length <= BILLBOARD_LIGHT) { return true; }
 	if (context.uniforms.values[block.offset + BILLBOARD_LIGHT] == 0.0) { return true; }
 	return levelsAt(context, block, BILLBOARD_RAMP_LEVELS);
+}
+
+// The opaque list is the only one that writes the normal target, so when the post pass samples
+// the depth attachment, only it may write depth (Heaps builds its depth map from its own pass).
+function phasesFitTargets(
+	context: DrawContext,
+	items: Readonly<Span<DrawItem>>,
+	depthTexture: boolean,
+): Result<boolean, PixelArtError> {
+	for (const item of items) {
+		if (!context.hasMaterial(item.material)) { continue; }
+		const index: int32 = item.material.index;
+		if (context.materials[index].phase == Phase.Opaque) {
+			if (context.materials[index].pass.blends()) {
+				return Result.err(PixelArtError.BlendedOpaque);
+			}
+		} else if (depthTexture && context.materials[index].pass.depthWrite) {
+			return Result.err(PixelArtError.TranslucentDepthWrite);
+		}
+	}
+	return Result.ok(true);
+}
+
+function postReadsDepth(settings: PixelArtSettings): boolean {
+	return settings.postPass && settings.depthSource == DepthSource.DepthTexture;
 }
 
 function rampsHaveLevels(
@@ -599,6 +659,9 @@ export function prepareFrame(
 	if (!rampsHaveLevels(renderer.core.programs, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}
+	const phases: Result<boolean, PixelArtError> =
+		phasesFitTargets(context, items, postReadsDepth(renderer.settings));
+	if (!phases.ok) { return Result.err(phases.error); }
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }

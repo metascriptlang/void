@@ -10,7 +10,7 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { RenderState } from "../gpu/state";
+import { RenderState, BlendMode } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
@@ -429,6 +429,62 @@ function presetOver(context: DrawContext, program: Program, levels: float32): Pi
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
 	if (!added.ok) { unreachable; }
 	return created.value;
+}
+
+test "a render state blends unless it is One, Zero and Add on both channels" {
+	assert !RenderState.defaults().blends();
+	const reset: RenderState =
+		RenderState.defaults().withBlendMode(BlendMode.Add).withBlendMode(BlendMode.None);
+	assert !reset.blends();
+	const modes: Vec<BlendMode> = [
+		BlendMode.Alpha, BlendMode.Add, BlendMode.AlphaAdd, BlendMode.SoftAdd, BlendMode.Multiply,
+		BlendMode.AlphaMultiply, BlendMode.Erase, BlendMode.Screen, BlendMode.Subtract,
+		BlendMode.Max, BlendMode.Min,
+	];
+	for (const mode of modes) {
+		assert RenderState.defaults().withBlendMode(mode).blends();
+	}
+}
+
+test "the pixel-art preset refuses a blended material in the opaque phase" {
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const blended: RenderState = RenderState.defaults().withBlendMode(BlendMode.Alpha);
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+	if (!created.ok) { unreachable; }
+	let renderer: PixelArtRenderer = created.value;
+	const made: Result<MaterialId, MaterialError> =
+		addMaterial(context, Material.plain(Program.Particle, blended, Phase.Opaque));
+	if (!made.ok) { unreachable; }
+	const items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	const refused: Result<int32, PixelArtError> =
+		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
+	assert !refused.ok && refused.error == PixelArtError.BlendedOpaque;
+	assert renderer.core.generation == 0 && renderer.view.width == 0;
+}
+
+test "with the depth texture sampled, the pixel-art preset refuses a translucent depth write" {
+	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const blended: RenderState = RenderState.defaults().withBlendMode(BlendMode.Alpha);
+	const settings: PixelArtSettings = {
+		...PixelArtSettings.full(), depthSource: DepthSource.DepthTexture,
+	};
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.create(context, settings, look());
+	if (!created.ok) { unreachable; }
+	let renderer: PixelArtRenderer = created.value;
+	const made: Result<MaterialId, MaterialError> =
+		addMaterial(context, Material.plain(Program.Particle, blended, Phase.Alpha));
+	if (!made.ok) { unreachable; }
+	const items: Vec<DrawItem> = [itemOnItsLayout(context, made.value)];
+	const refused: Result<int32, PixelArtError> =
+		renderFrame(renderer, items, camera, lights, view(1080, 2400, 360, 1, 0));
+	assert !refused.ok && refused.error == PixelArtError.TranslucentDepthWrite;
+	assert renderer.core.generation == 0 && renderer.view.width == 0;
 }
 
 test "the pixel-art preset refuses a material naming a program it does not draw" {

@@ -202,6 +202,13 @@ export function withBlendMode(this state: RenderState, mode: BlendMode): RenderS
 	};
 }
 
+// door.c's `blend.enabled`: keep the two rules the same.
+export function blends(this state: RenderState): boolean {
+	return !(state.blendSource == Blend.One && state.blendDestination == Blend.Zero
+		&& state.blendAlphaSource == Blend.One && state.blendAlphaDestination == Blend.Zero
+		&& state.blendOperation == Operation.Add && state.blendAlphaOperation == Operation.Add);
+}
+
 function field(value: int32, shift: int32): uint32 {
 	return (value as uint32) << (shift as uint32);
 }
