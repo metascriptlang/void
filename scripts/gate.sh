@@ -294,6 +294,43 @@ else
 	fail "scene lifetime — see out/gate-scene-lifetime.log and out/gate-scene-lifetime-run.log"
 fi
 
+device_loss_misuse() {
+	loss_status=0
+	VOID_DEVICE_LOSS_MISUSE=$1 out/tmp/deviceLoss.exe > "out/gate-device-loss-$1.log" 2>&1 \
+		|| loss_status=$?
+	if [ "$loss_status" -ne 0 ] && grep -qF "$2" "out/gate-device-loss-$1.log"; then
+		pass "device loss: $1 stops by name"
+	else
+		fail "device loss: $1 did not stop by name"
+	fi
+}
+
+rm -f out/tmp/deviceLoss.exe
+if "$MSC" build tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLoss.exe \
+		> out/gate-device-loss.log 2>&1 \
+		&& out/tmp/deviceLoss.exe > out/gate-device-loss-run.log 2>&1; then
+	pass "device loss: two forced losses, the next frame byte-identical; kept pixels and a realloc hook re-upload"
+	device_loss_misuse adopted "adopted image died with it"
+	device_loss_misuse reupload "its image is immutable"
+else
+	fail "device loss — see out/gate-device-loss.log and out/gate-device-loss-run.log"
+fi
+
+rm -f out/tmp/deviceLoss3d.exe
+if "$MSC" build tests/integration/deviceLoss3d.ms --release --output=out/tmp/deviceLoss3d.exe \
+		> out/gate-device-loss-3d.log 2>&1; then
+	for preset in forward pixelArt outlined; do
+		if VOID_DEVICE_LOSS_PRESET=$preset out/tmp/deviceLoss3d.exe \
+				> "out/gate-device-loss-3d-$preset.log" 2>&1; then
+			pass "device loss 3d: the $preset textured frame holds its checks across a forced loss"
+		else
+			fail "device loss 3d: $preset — see out/gate-device-loss-3d-$preset.log"
+		fi
+	done
+else
+	fail "device loss 3d — see out/gate-device-loss-3d.log"
+fi
+
 rm -f out/fbTrap.exe
 if "$MSC" build tests/integration/fbTrap.ms --release --output=out/fbTrap.exe \
 		> out/gate-fb-trap.log 2>&1; then
