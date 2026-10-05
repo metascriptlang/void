@@ -275,6 +275,25 @@ else
 	fail "view paint — see out/gate-view-paint.log and out/gate-view-paint-run.log"
 fi
 
+rm -f out/tmp/sceneLifetime.exe
+if "$MSC" build tests/integration/sceneLifetime.ms --release --output=out/tmp/sceneLifetime.exe \
+		> out/gate-scene-lifetime.log 2>&1 \
+		&& out/tmp/sceneLifetime.exe > out/gate-scene-lifetime-run.log 2>&1; then
+	pass "scene lifetime: closing a scene releases its list buffers and filter targets; a kept scene is unchanged"
+	for misuse in present node construct close; do
+		lifetime_status=0
+		VOID_SCENE_LIFETIME_MISUSE=$misuse out/tmp/sceneLifetime.exe \
+			> "out/gate-scene-lifetime-$misuse.log" 2>&1 || lifetime_status=$?
+		if [ "$lifetime_status" -ne 0 ] && grep -qF "closed scene" "out/gate-scene-lifetime-$misuse.log"; then
+			pass "scene lifetime: $misuse after close stops by name"
+		else
+			fail "scene lifetime: $misuse after close did not stop by name"
+		fi
+	done
+else
+	fail "scene lifetime — see out/gate-scene-lifetime.log and out/gate-scene-lifetime-run.log"
+fi
+
 rm -f out/fbTrap.exe
 if "$MSC" build tests/integration/fbTrap.ms --release --output=out/fbTrap.exe \
 		> out/gate-fb-trap.log 2>&1; then
