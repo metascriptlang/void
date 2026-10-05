@@ -1669,6 +1669,21 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - The frame profiler: histograms of dirty-to-present, draw time and input latency, plus the draw-call, instance and upload-byte counters GPUI lacks, drawn outside invalidation.
 - **Per-backend shader headers.** Every `.glsl.h` carries the text of every backend (WGSL, Metal, HLSL, GLSL ES) into every binary: void3d measured 243,778 B of shader data for the four premultiplied programs alone in `libVoidAndroid.so` at `764060b` (llvm-nm), most of it other backends' text, and wasm pays the same. `scripts/regen-shaders.sh` cannot pass `--ifdef` because `batcher.c`, `bridge.c`, `bridgeEmbed.m` and void3d's `gpu3d.c` include the headers without the platform's `SOKOL_<backend>`. The fix gives every includer that define, regenerates with `--ifdef`, and stops a build that forgets it with `#error`, because `--ifdef` otherwise compiles the program away silently. Proof: per-platform nm before and after (Android, wgpu wasm, D3D11) and goldens unchanged. Moved here by the human on 2026-10-05.
 
+  **Built 2026-10-05** (`5777cec`, `9ad34b8`): `src/sokol/backend.h` picks the backend once
+  (an explicit `-D` wins; else Windows D3D11, Apple Metal, Android and emscripten GLES3) and
+  refuses two backends, no backend, and `SOKOL_GLCORE` (no glsl430 text exists). `sokolWin.c`,
+  `sokolWeb.c`, `bridgeAndroid.c`, `batcher.c`, `gpu3d.c` and the gpu-registration fixture include
+  it; `sokol.m` and `bridgeIos.m` keep their `#define SOKOL_METAL`, which is what the header
+  derives on Apple, and were not built here. `scripts/regen-shaders.sh` passes `--ifdef` and
+  writes a guard into every header that refuses an includer which skipped `backend.h`. Measured
+  on BUILD `5c4246fb`: Android `libVoidAndroid.so` 3,866,136 → 3,392,752 B (`.rodata` 580,816 →
+  183,664; only glsl300es text left, llvm-nm); release D3D11 `mainSokol2d` 1,790,464 →
+  1,649,664 B and void3d `cameraRigCapture` 1,441,280 → 1,036,800 B. Clang `-fsyntax-only`
+  compiles the headers under D3D11, Metal, GLES3 and WGPU, and stops by name on a forgotten
+  `backend.h`, two backends and GLCORE. Gates on `c9b1e8f`: gate.sh GREEN, golden 82/82 unchanged; gate3d.sh GREEN, 303 PASS, its shader-freshness stage now `scripts/regen-shaders.sh --check`, so the gate and the script cannot regenerate differently. Not measured: wasm (the web build
+  cannot link Yoga) and Metal (no Mac here). Metal still carries its three variants in every
+  Apple binary, because sokol-shdc puts macOS, iOS and simulator under one `SOKOL_METAL`.
+
 **Defects closed.** None remaining; "Known defects" is empty by the end of P5.
 
 **Exit.**
