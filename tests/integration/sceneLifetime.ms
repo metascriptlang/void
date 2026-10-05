@@ -1,5 +1,7 @@
 import { env } from "std/process";
 import { gfxSetup } from "../../src/sokol/gpu";
+import { endPass, commit } from "../../src/gpu/door";
+import { beginScreenPass } from "../../src/gpu/target";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d, buffersAlive } from "../../src/void2d/draw";
@@ -18,6 +20,7 @@ extern function voidRunConfigured(
 const WIDTH: int32 = 128;
 const HEIGHT: int32 = 96;
 const CLOSURES: int32 = 16;
+const CLOSED_IN_ONE_FRAME: int32 = 9;
 const CLEAR = rgba(0.0, 0.0, 0.0, 1.0);
 const kept: Scene2D = Scene2D.create(CLEAR);
 const keptNode: NodeRef = kept.add(kept.rect(40.0, 40.0, rgba(0.0, 0.0, 1.0, 1.0)).at(20.0, 20.0))
@@ -72,6 +75,21 @@ function closeOneScene(): void {
 	}
 }
 
+function closeInsideOpenFrame(): void {
+	const scenes: Vec<Scene2D> = new Array(0);
+	for (let k: int32 = 0; k < CLOSED_IN_ONE_FRAME; k++) {
+		const s: Scene2D = Scene2D.create(CLEAR);
+		s.add(s.rect(8.0, 8.0, rgba(1.0, 0.0, 0.0, 1.0)).at((k * 10) as float32, 4.0));
+		s.prepare(WIDTH as float32, HEIGHT as float32, 1.0);
+		scenes.push(s);
+	}
+	beginScreenPass({ x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
+	for (const s of scenes) { s.drawScreen(); }
+	endPass();
+	for (const s of scenes) { s.close(); }
+	commit();
+}
+
 function frame(): void {
 	if (stage == 0) {
 		kept.present();
@@ -88,6 +106,20 @@ function frame(): void {
 	}
 	stage = stage + 1;
 	if (stage <= CLOSURES * 2) { return; }
+	if (stage == CLOSURES * 2 + 1) {
+		closeInsideOpenFrame();
+		return;
+	}
+	if (stage == CLOSURES * 2 + 2) {
+		kept.present();
+		if (buffersAlive() != keptBuffers) {
+			fail(
+				`${CLOSED_IN_ONE_FRAME} scenes closed inside one frame left buffers: ` +
+				`${buffersAlive()} of ${keptBuffers} after the next frame`,
+			);
+		}
+		return;
+	}
 	kept.close();
 	if (keptNode.isLive()) { fail("the kept scene's node outlived its close"); }
 	if (buffersAlive() != initialBuffers || renderTargetsAlive() != 0) {
@@ -98,6 +130,7 @@ function frame(): void {
 	}
 	console.log(
 		`PASS scene lifetime: ${CLOSURES} closed scenes released buffers and filter targets; ` +
+		`${CLOSED_IN_ONE_FRAME} closed inside one open frame released at the next; ` +
 		"the kept scene's pixels held; the last close returned to the start",
 	);
 	voidCaptureExit(0);
