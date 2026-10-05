@@ -2471,9 +2471,20 @@ number the same (`out/tmp/finalGate/gate.land.log`). Logs: `out/tmp/finalGate/`.
    short framebuffer by name.
 
   Source and native consumer proof do not certify WebGL2/GLES3 or genuine context loss.
-  Raw texture-view ids still change with storage; checked material rebinding is M27, not
-  completed by changing the target owner. Full-chain gate and design verdict are recorded
+  Raw texture-view ids still change with storage; checked material rebinding is void3d's M27
+  (`addTargetTexture`, VOID3D.md "M27 as built"), which reads the owner's view at each bind. Full-chain gate and design verdict are recorded
   in `REVIEWS.md`; this is not a P5/P6 completion or a land receipt.
+
+- **The open pass's attachment views (`b2570ef`, written by void3d's M27 under the
+  coordinator's handover with the human's word, 2026-10-05).** `door.c` records the colour and
+  depth views of the offscreen pass it begins, on both paths (`doorBeginPass` and
+  `doorBeginColorPass`), and clears them at `endPass`; `passAttachesView` and
+  `RenderTarget.isAttachedToOpenPass` answer whether a target's attachment view is being written,
+  only for a target of the current context (a stale id may name a new object). void3d stops a
+  material sampling that target by name; void2d's own sprites take raw views and are not checked.
+  Pins: `tests/integration/targetTexture.ms` opens a pass on each path and checks the answer
+  before and after `endPass`; with the stop removed, debug sokol panics
+  (`VALIDATE_ABND_TEXTURE_BINDING_VS_COLOR_ATTACHMENT`) and a release build draws on, wrong.
 
 A second compiler card came out of E: `.inbox/compiler/2026-10-01-index-on-a-struct-passes-the-
 checker.md`, a struct indexed like an array passes `msc check` and reads garbage; it surfaced when
