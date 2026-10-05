@@ -1785,3 +1785,75 @@ view paint (four sampled stages), a label background stopping by name, and the c
 trap. Receipt `out/tmp/viewPaint/gateFinal.log`. The frame path's allocation stage passes
 unchanged; the two added frame-path branches allocate nothing. gate3d was not rerun: this
 slice touches no void3d path and the coordinator waived it.
+
+## P5 re-review — SHIP WITH FOLLOW-UPS (2026-10-05)
+
+**Verdict: SHIP WITH FOLLOW-UPS for P5**, closing the 2026-09-30 SEND BACK. B1 is fixed on the
+installed compiler and holds under real churn. The re-review found one more defect in the B1
+code (R1 below), fixed with a red-before pin. The follow-up is the post-rebase web gate, which
+Yoga's emcc provider still blocks. This verdict is not a land or a push; both stay the human's.
+
+**Passes and scope.** The human asked for the re-review in the main session ("tự review đi",
+2026-10-05), not a fresh reviewer agent. The main session read `764060b..dcfa744` (B1 `8c48dd7`,
+`97673dc`, `c65c2f5`; R1 `d543f17`, `dcfa744`) against the SEND BACK's unpark conditions, the
+ten questions and h2d's `Scene.dispose` (`h2d/Scene.hx:727-730`). It read each release path
+(rows, payloads, glyphs, yoga, list buffers, staging, prepared-context metadata, pooled filter
+targets, context ids) and wrote probes where a path could not be settled by reading.
+
+### Findings and resolutions
+
+**B1 — Permanent Scene lifetime: fixed.** The compiler fix (recompiler `eacd555b`) is in the
+installed BUILD `5c4246fb`. `scene.ms` `close` follows h2d's shape: it releases the list
+(`batcher.c` `void2dReleaseList`, buffers retired while a frame is open, staging freed, the
+prepared-context entry cleared), closes the filter targets the context owns
+(`render.ms` `closeContextTargets`), retires the context id for reuse (`displayList.ms`
+`retireContext`), and frees every row through the walk `dispose` already uses
+(`node.ms` `freeSubtree`, called from `closeRows` for each live top). The scene and its handles
+then stop by name, the same terminal shape as `RenderTarget.close`. Columns are not cleared one
+by one, unlike the reverted prototype: their memory is owned by the scene object and goes when
+the last handle does, so a new column cannot be forgotten.
+
+The unpark conditions hold on BUILD `5c4246fb`, D3D11: `tests/integration/sceneLifetime.ms`
+closes 16 blurred scenes beside a kept blurred scene, with buffers and filter targets back to the
+kept baseline after each close and the kept scene's captured pixels unchanged; closing the kept
+scene returns buffers to the start and targets to zero. The same churn without `close`
+(`out/tmp/b1ctl/noClose.ms`) grows buffers 5 → 35 and targets 4 → 64 over 16 frames. Present,
+a node write, a constructor and a second close after `close` each stop by name (gate.sh rows).
+
+**R1 — closing more than eight drawn scenes in one open frame aborted: fixed.** `void2dReleaseList`
+retired a closed list's buffers into the vertex-growth queue, whose eight slots are sized for
+one producer (1 → 192 MiB by doubling). Scene closure has no such bound. Probe
+`out/tmp/b1ctl/closeMany.ms` drew nine scenes in one pass and closed them before commit:
+`void2d: releasing list 10 needs 1 retired buffers, 8 of 8 are taken`, exit 127. A host that
+unmounts nine textures or windows after drawing would crash. `d543f17` retires closed lists into
+their own growing queue (`retireClosedBuffer`), released at the same point as the growth queue,
+the next frame begin; the growth queue keeps its reasoned cap. Pin `dcfa744`: the consumer closes
+nine drawn scenes inside one open frame and checks the buffers are back after the next frame.
+RED on the old batcher (the same abort), GREEN after.
+
+### The ten design questions, where the answer changed
+
+1. **Exits met?** Yes. B1 was the only blocker; the other exits stand as recorded on 2026-09-30.
+3. **Guardrails?** The lifetime side of "pay only for current use" now holds for whole scenes.
+5. **Capability and API spirit?** `close`/`isClosed` reuse the RenderTarget owner shape; nodes
+   keep `dispose`. No convenience layer was added.
+6. **Named defects fixed or moved?** B1 is closed; `tests/PENDING.md` scene-retained-lifetime is
+   removed. "Known defects" keeps only the `main()` note, which is not a defect.
+7. **Test tiers?** T4 now pins permanent scene death (16 closures, survivor pixels, in-frame
+   closure, misuse stops).
+8. **Compiler workaround hidden?** No. The fix waited for the compiler card; no mask or leaked
+   column was used.
+10. **Refuse to merge?** No, with the follow-up below.
+
+The other answers (2, 4, 9) are unchanged.
+
+### Follow-ups
+
+- **Post-rebase web gate: NOT RUN.** Void's web build cannot link Yoga
+  (`~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`,
+  Yoga at `ce52e2e`, unchanged). The web lane runs when Yoga answers. Nothing in B1 is
+  web-specific, but green on D3D11 is not evidence for emcc.
+- **Per-backend shader headers** go to P6 (the human, 2026-10-05): every `.glsl.h` carries all
+  backends' text; measured by void3d with llvm-nm on Android at `764060b`.
+
+**Exercised gate:** `sh scripts/gate.sh` and `sh scripts/gate3d.sh` on `dcfa744` (code tree `970c38938f81f7bf5c95d7ecaaf6ab81d9d1edd9`), BUILD `5c4246fb` unchanged before and after, D3D11. gate.sh GREEN with eight loud skips: 1186 + 299 + 318 tests, golden 82/82 unchanged, the scene-lifetime consumer and its four misuse stops. gate3d.sh GREEN: 303 PASS, 0 FAIL, three known skips, Android `libVoidAndroid.so` 3,866,136 B. Landed as a fast-forward of main `764060b` → `dcfa744` on the human's word ("gate xong thì land luôn"); the land skipped the repeat gate because the rebase was empty and this tree is the one gated.
