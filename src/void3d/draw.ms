@@ -25,6 +25,7 @@ import {
 	textureSlotMask,
 	samplerSlotMask,
 	uniformBlockLength,
+	samplesPremultiplied,
 } from "./gpu3d";
 import {
 	PassState,
@@ -36,12 +37,13 @@ import {
 	destroySampler,
 	passState,
 } from "../gpu/door";
-import { FilterMode, Wrap } from "../gpu/state";
+import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
 import {
 	TextureData,
 	TextureId,
 	GpuTexture,
 	TextureUploadError,
+	TextureAlpha,
 	NO_TEXTURE,
 } from "./texture";
 import {
@@ -55,7 +57,7 @@ import { Material, UniformBlock, NO_UNIFORMS } from "./material";
 import { MeshData } from "./meshData";
 import { PipelineCache, closePipelines } from "../gpu/pipeline";
 import { pipelineFor } from "./gpu3d";
-import { TargetLayout } from "../gpu/target";
+import { TargetLayout, RenderTarget } from "../gpu/target";
 import {
 	UniformPool,
 	UniformError,
@@ -166,6 +168,8 @@ export interface DrawContext {
 	textureSlots: Slots;
 	textureHolders: Vec<int32>;
 	texturePins: Vec<int32>;
+	textureTargets: Vec<RenderTarget | null>;
+	textureAlphas: Vec<TextureAlpha>;
 	doomedTextures: Vec<GpuTexture>;
 	samplers: Vec<uint32>;
 	samplerGeneration: int32;
@@ -203,6 +207,9 @@ export enum MaterialError {
 	TextureNotSampled,
 	ForeignTexture,
 	ForeignUniforms,
+	PremultipliedTexture,
+	StraightTexture,
+	StraightBlend,
 }
 
 let contextSerials: int32 = 0;
@@ -246,6 +253,8 @@ export function withUniformCapacity(this typeof DrawContext, capacity: int32): D
 		textureSlots: Slots.empty(),
 		textureHolders: [],
 		texturePins: [],
+		textureTargets: [],
+		textureAlphas: [],
 		doomedTextures: [],
 		samplers: samplers,
 		samplerGeneration: 0,
@@ -753,6 +762,17 @@ function uniformsError(error: UniformError): MaterialError {
 	};
 }
 
+const PREMULTIPLIED_OVER: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
+
+function blendsPremultiplied(pass: RenderState): boolean {
+	return pass.blendSource == PREMULTIPLIED_OVER.blendSource
+		&& pass.blendDestination == PREMULTIPLIED_OVER.blendDestination
+		&& pass.blendAlphaSource == PREMULTIPLIED_OVER.blendAlphaSource
+		&& pass.blendAlphaDestination == PREMULTIPLIED_OVER.blendAlphaDestination
+		&& pass.blendOperation == PREMULTIPLIED_OVER.blendOperation
+		&& pass.blendAlphaOperation == PREMULTIPLIED_OVER.blendAlphaOperation;
+}
+
 // The material takes its uniform range with it: the range returns to the pool when the material
 // is freed, so one range under two materials is refused. It pins its texture until it is freed,
 // as a Bevy material holds its image's strong handle.
@@ -774,6 +794,16 @@ export function addMaterial(
 			const issued: boolean = context.issuedTexture(material.texture);
 			return Result.err(issued ? MaterialError.StaleTexture : MaterialError.ForeignTexture);
 		}
+		const premultiplied: boolean =
+			context.textureAlphas[material.texture.index] == TextureAlpha.Premultiplied;
+		if (premultiplied != samplesPremultiplied(material.program)) {
+			return Result.err(
+				premultiplied ? MaterialError.PremultipliedTexture : MaterialError.StraightTexture,
+			);
+		}
+	}
+	if (samplesPremultiplied(material.program) && !blendsPremultiplied(material.pass)) {
+		return Result.err(MaterialError.StraightBlend);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {
@@ -970,6 +1000,8 @@ function freeTexture(context: DrawContext, index: int32): void {
 	context.textureData[index] = TextureData.empty();
 	context.textureHolders[index] = 0;
 	context.texturePins[index] = 0;
+	context.textureTargets[index] = null;
+	context.textureAlphas[index] = TextureAlpha.Straight;
 	vacate(context.textureSlots, index);
 }
 
@@ -981,28 +1013,76 @@ export function addTexture(
 ): Result<TextureId, TextureUploadError> {
 	if (context.closed) { stopOnClosedContext("addTexture"); }
 	if (!data.isWellFormed()) { return Result.err(TextureUploadError.BadSize); }
+	let index: int32 = claimTexture(context, data, null, TextureAlpha.Straight);
+	let uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
+	if (!uploaded.ok) {
+		freeTexture(context, index);
+		return Result.err(uploaded.error);
+	}
+	return Result.ok(context.issuedTextureAt(index));
+}
+
+function claimTexture(
+	context: DrawContext,
+	data: TextureData,
+	target: RenderTarget | null,
+	alpha: TextureAlpha,
+): int32 {
 	let index: int32 = claim(context.textureSlots);
 	if (index == (context.textures.length as int32)) {
 		context.textures.push(VACANT_TEXTURE);
 		context.textureData.push(data);
 		context.textureHolders.push(1);
 		context.texturePins.push(0);
+		context.textureTargets.push(target);
+		context.textureAlphas.push(alpha);
 	} else {
 		context.textures[index] = VACANT_TEXTURE;
 		context.textureData[index] = data;
 		context.textureHolders[index] = 1;
 		context.texturePins[index] = 0;
+		context.textureTargets[index] = target;
+		context.textureAlphas[index] = alpha;
 	}
-	let uploaded: Result<int32, TextureUploadError> = uploadTexture(context, index);
-	if (!uploaded.ok) {
-		freeTexture(context, index);
-		return Result.err(uploaded.error);
-	}
-	return Result.ok({
+	return index;
+}
+
+function issuedTextureAt(this context: DrawContext, index: int32): TextureId {
+	return {
 		store: context.serial,
 		index: index,
 		generation: context.textureSlots.generations[index],
-	});
+	};
+}
+
+// Heaps' Target-flagged texture (h3d/mat/Texture.hx:257), sampled like any other.
+export function addTargetTexture(
+	context: DrawContext,
+	target: RenderTarget,
+	filter: FilterMode,
+	wrap: Wrap,
+	alpha: TextureAlpha,
+): Result<TextureId, TextureUploadError> {
+	if (context.closed) { stopOnClosedContext("addTargetTexture"); }
+	if (target.isClosed()) {
+		console.log("void3d: addTargetTexture on a render target that was closed");
+		unreachable;
+	}
+	if (!target.sampled) { return Result.err(TextureUploadError.TargetNotSampled); }
+	if (target.image == 0 || target.generation != contextGeneration()) {
+		return Result.err(TextureUploadError.TargetNotAllocated);
+	}
+	const sampler: uint32 = samplerFor(context, filter, wrap);
+	if (sampler == 0) { return Result.err(TextureUploadError.SamplerRefused); }
+	const settings: TextureData = { ...TextureData.empty(), filter: filter, wrap: wrap };
+	const index: int32 = claimTexture(context, settings, target, alpha);
+	context.textures[index] = {
+		image: 0,
+		view: 0,
+		sampler: sampler,
+		generation: contextGeneration(),
+	};
+	return Result.ok(context.issuedTextureAt(index));
 }
 
 export function hasTexture(this context: DrawContext, id: TextureId): boolean {
@@ -1059,6 +1139,15 @@ export function rebuildTextures(context: DrawContext): int32 {
 	let count: int32 = 0;
 	for (let i = 0; i < (context.textures.length as int32); i++) {
 		if (context.textureHolders[i] == 0 || context.textures[i].generation == generation) {
+			continue;
+		}
+		if (context.textureTargets[i] !== null) {
+			const sampler: uint32 =
+				samplerFor(context, context.textureData[i].filter, context.textureData[i].wrap);
+			if (sampler == 0) { continue; }
+			context.textures[i].sampler = sampler;
+			context.textures[i].generation = generation;
+			count = count + 1;
 			continue;
 		}
 		if (uploadTexture(context, i).ok) { count = count + 1; }
@@ -1133,10 +1222,48 @@ function bindItem(context: DrawContext, mesh: GpuMesh, material: Material): void
 	context.bindings[GPU3D_BINDING_SAMPLER] = material.sampler0;
 	context.bindings[GPU3D_BINDING_SAMPLER + 1] = material.sampler1;
 	if (material.namesTexture()) {
-		context.bindings[GPU3D_BINDING_VIEW] = context.textures[material.texture.index].view;
+		context.bindings[GPU3D_BINDING_VIEW] = context.viewAt(material.texture.index);
 		context.bindings[GPU3D_BINDING_SAMPLER] = context.textures[material.texture.index].sampler;
 	}
 	applyBindings(context.bindings);
+}
+
+function viewAt(this context: DrawContext, index: int32): uint32 {
+	const target: RenderTarget | null = context.textureTargets[index];
+	if (target !== null) { return target.asTexture(); }
+	return context.textures[index].view;
+}
+
+function stopOnFeedbackTarget(index: int32): void {
+	console.log(`void3d: drawItem samples texture ${index} from the render target this pass ` +
+		"draws into; end the pass that writes it first");
+	unreachable;
+}
+
+function stopOnClosedTargetTexture(index: int32): void {
+	console.log(`void3d: drawItem samples texture ${index}, a render target that was ` +
+		"closed; release the materials that sample it first");
+	unreachable;
+}
+
+function textureReady(this context: DrawContext, index: int32): boolean {
+	const target: RenderTarget | null = context.textureTargets[index];
+	if (target === null) { return context.textures[index].view != 0; }
+	if (target.isClosed()) { stopOnClosedTargetTexture(index); }
+	const generation: int32 = contextGeneration();
+	if (target.image == 0 || target.generation != generation ||
+		context.textures[index].generation != generation) {
+		return false;
+	}
+	if (target.isAttachedToOpenPass()) { stopOnFeedbackTarget(index); }
+	return true;
+}
+
+function stopOnAlphaMismatch(program: Program, alpha: TextureAlpha): void {
+	console.log(`void3d: drawItem draws ${program.toString()} for a ${alpha.toString()} ` +
+		"material or texture; premultiplied input needs a premultiplied program, straight a " +
+		"straight one");
+	unreachable;
 }
 
 function stopOnUnheldItem(): void {
@@ -1179,8 +1306,15 @@ export function drawItem(
 	const material: Material = context.materials[item.material.index];
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
-	if (material.namesTexture() && context.textures[material.texture.index].view == 0) {
-		return;
+	const declared: TextureAlpha = samplesPremultiplied(material.program) ?
+		TextureAlpha.Premultiplied : TextureAlpha.Straight;
+	if (samplesPremultiplied(program) != (declared == TextureAlpha.Premultiplied)) {
+		stopOnAlphaMismatch(program, declared);
+	}
+	if (material.namesTexture()) {
+		const alpha: TextureAlpha = context.textureAlphas[material.texture.index];
+		if (alpha != declared) { stopOnAlphaMismatch(program, alpha); }
+		if (!context.textureReady(material.texture.index)) { return; }
 	}
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,

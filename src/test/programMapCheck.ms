@@ -10,9 +10,10 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	uniformBlockLength,
+	samplesPremultiplied,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
-import { RenderState } from "../gpu/state";
+import { RenderState, BlendMode } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
 import {
@@ -36,6 +37,7 @@ import { added, litShape } from "./drawHelpers";
 import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import {
+	pixelArtPrograms,
 	POST_UNIFORM_SLOT,
 	POST_UNIFORM_LENGTH,
 	BLIT_UNIFORM_SLOT,
@@ -318,6 +320,78 @@ test "the core owns its camera and light blocks, so only it could give them back
 	assert !camera.ok && camera.error == UniformError.Owned;
 	const lights: Result<int32, UniformError> = releaseUniforms(context, created.value.lightBlock);
 	assert !lights.ok && lights.error == UniformError.Owned;
+}
+
+function reversedWithin(programs: Vec<Program>): boolean {
+	let identical: ProgramMap = ProgramMap.empty();
+	let reversed: ProgramMap = ProgramMap.empty();
+	const last: int32 = (programs.length as int32) - 1;
+	for (let i = 0; i <= last; i++) {
+		identical = identical.drawing(programs[i], programs[i]);
+		reversed = reversed.drawing(programs[i], programs[last - i]);
+	}
+	for (let i = 0; i <= last; i++) {
+		if (drawnAs(identical, programs[i]) != programs[i]) { return false; }
+		if (drawnAs(reversed, programs[i]) != programs[last - i]) { return false; }
+	}
+	return true;
+}
+
+test "the map holds every program, drawn as itself or as another of its alpha" {
+	assert reversedWithin([
+		Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.PixelArtLit,
+		Program.PixelArtParticle, Program.PixelArtBillboard, Program.PixelArtPost,
+		Program.PixelArtBlit, Program.LitTextured, Program.PixelArtLitTextured,
+		Program.UnlitTextured, Program.PixelArtUnlitTextured,
+	]);
+	assert reversedWithin([
+		Program.LitTexturedPremultiplied, Program.PixelArtLitTexturedPremultiplied,
+		Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied,
+	]);
+}
+
+test "each premultiplied program is drawn as a premultiplied twin with the straight blocks" {
+	const pairs: Vec<Program> = [
+		Program.LitTextured, Program.LitTexturedPremultiplied,
+		Program.UnlitTextured, Program.UnlitTexturedPremultiplied,
+	];
+	const core: ProgramMap = ProgramMap.core();
+	const preset: ProgramMap = pixelArtPrograms();
+	for (let i = 0; i < (pairs.length as int32); i += 2) {
+		const straight: Program = pairs[i];
+		const premultiplied: Program = pairs[i + 1];
+		assert !samplesPremultiplied(straight) && samplesPremultiplied(premultiplied);
+		assert drawnAs(core, premultiplied) == premultiplied;
+		const presetStraight: Program = drawnAs(preset, straight);
+		const presetPremultiplied: Program = drawnAs(preset, premultiplied);
+		assert samplesPremultiplied(presetPremultiplied) && !samplesPremultiplied(presetStraight);
+		const slots: Vec<int32> =
+			[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
+		for (const slot of slots) {
+			assert uniformBlockLength(premultiplied, slot) == uniformBlockLength(straight, slot);
+			assert uniformBlockLength(presetPremultiplied, slot) ==
+				uniformBlockLength(presetStraight, slot);
+		}
+	}
+}
+
+test "a premultiplied program refuses any blend but ONE, ONE_MINUS_SRC_ALPHA" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	for (const mode of [BlendMode.None, BlendMode.Alpha, BlendMode.Add, BlendMode.Max]) {
+		const refused: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
+			Program.UnlitTexturedPremultiplied,
+			RenderState.defaults().withBlendMode(mode),
+			Phase.Alpha,
+		));
+		assert !refused.ok && refused.error == MaterialError.StraightBlend;
+	}
+	assert context.liveMaterials() == 0;
+	const kept: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
+		Program.LitTexturedPremultiplied,
+		RenderState.defaults().withBlendMode(BlendMode.AlphaAdd),
+		Phase.Alpha,
+	));
+	assert kept.ok;
 }
 
 test "unlit textured programs require colour data and no light uniform block" {

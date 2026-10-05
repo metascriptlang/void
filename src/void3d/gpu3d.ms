@@ -62,6 +62,32 @@ export enum Program {
 	PixelArtLitTextured,
 	UnlitTextured,
 	PixelArtUnlitTextured,
+	LitTexturedPremultiplied,
+	PixelArtLitTexturedPremultiplied,
+	UnlitTexturedPremultiplied,
+	PixelArtUnlitTexturedPremultiplied,
+}
+
+export function samplesPremultiplied(program: Program): boolean {
+	return match (program) {
+		Program.LitTexturedPremultiplied => true,
+		Program.PixelArtLitTexturedPremultiplied => true,
+		Program.UnlitTexturedPremultiplied => true,
+		Program.PixelArtUnlitTexturedPremultiplied => true,
+		Program.Lit => false,
+		Program.Particle => false,
+		Program.Billboard => false,
+		Program.Copy => false,
+		Program.PixelArtLit => false,
+		Program.PixelArtParticle => false,
+		Program.PixelArtBillboard => false,
+		Program.PixelArtPost => false,
+		Program.PixelArtBlit => false,
+		Program.LitTextured => false,
+		Program.PixelArtLitTextured => false,
+		Program.UnlitTextured => false,
+		Program.PixelArtUnlitTextured => false,
+	};
 }
 
 // Vertex buffer layouts gpu3d.c describes (describeLayout).

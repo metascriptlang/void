@@ -90,6 +90,21 @@ vec3 linearToSrgb(vec3 rgb) {
 }
 @end
 
+@block unlitTexturedShade
+vec4 unlitTexturedShade(vec4 texel) {
+    vec3 surface = srgbToLinear(baseColor.rgb) * srgbToLinear(materialColor.rgb);
+    surface *= srgbToLinear(texel.rgb);
+    return vec4(linearToSrgb(surface), baseColor.a * materialColor.a * texel.a);
+}
+@end
+
+@block straightTexel
+// Unpremultiply before srgbToLinear, never after: three d4ea9b9 RenderOutputNode.js:115-137.
+vec4 straightTexel(vec4 texel) {
+    return texel.a > 0.0 ? vec4(texel.rgb / texel.a, texel.a) : vec4(0.0);
+}
+@end
+
 @block facingNormal
 // h3d.shader.FlipBackFaceNormal, on when the material says so (glTF doubleSided).
 vec3 facingNormal(vec3 normal, float doubleSided) {

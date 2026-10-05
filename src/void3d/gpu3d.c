@@ -24,6 +24,10 @@ static const ShaderDescription PROGRAMS[] = {
 	pixelArt_litTextured_shader_desc,
 	unlitTextured_shader_desc,
 	pixelArt_unlitTextured_shader_desc,
+	litTexturedPremultiplied_shader_desc,
+	pixelArt_litTexturedPremultiplied_shader_desc,
+	unlitTexturedPremultiplied_shader_desc,
+	pixelArt_unlitTexturedPremultiplied_shader_desc,
 };
 
 // ---- vertex layouts, one per VertexLayout member ----
@@ -51,6 +55,10 @@ static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {
 	LAYOUT_BILLBOARD,
 	LAYOUT_FULLSCREEN,
 	LAYOUT_FULLSCREEN,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
@@ -99,6 +107,8 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 // order still has to be kept by hand (and is covered by the scene image check).
 _Static_assert(sizeof(PROGRAMS) / sizeof(PROGRAMS[0]) == GPU3D_PROGRAM_TABLE_LENGTH,
 	"PROGRAMS must match Program in gpu3d.ms");
+_Static_assert(GPU3D_PROGRAM_TABLE_LENGTH <= 24,
+	"programMap.ms packs 24 programs in two words of 5-bit entries");
 _Static_assert(ATTR_pixelArt_lit_position == ATTR_lit_position && ATTR_pixelArt_lit_normal == ATTR_lit_normal
 	&& ATTR_pixelArt_lit_color == ATTR_lit_color, "every Lit-layout program must declare the core lit attributes");
 _Static_assert(ATTR_pixelArt_particle_root == ATTR_particle_root && ATTR_pixelArt_particle_color == ATTR_particle_color,
@@ -121,6 +131,23 @@ _Static_assert(ATTR_unlitTextured_position == ATTR_litTextured_position
 	&& ATTR_pixelArt_unlitTextured_uv == ATTR_litTextured_uv
 	&& ATTR_pixelArt_unlitTextured_color == ATTR_litTextured_color,
 	"unlit programs must take the packed LitTextured layout");
+_Static_assert(ATTR_litTexturedPremultiplied_position == ATTR_litTextured_position
+	&& ATTR_litTexturedPremultiplied_normal == ATTR_litTextured_normal
+	&& ATTR_litTexturedPremultiplied_uv == ATTR_litTextured_uv
+	&& ATTR_litTexturedPremultiplied_color == ATTR_litTextured_color
+	&& ATTR_pixelArt_litTexturedPremultiplied_position == ATTR_litTextured_position
+	&& ATTR_pixelArt_litTexturedPremultiplied_normal == ATTR_litTextured_normal
+	&& ATTR_pixelArt_litTexturedPremultiplied_uv == ATTR_litTextured_uv
+	&& ATTR_pixelArt_litTexturedPremultiplied_color == ATTR_litTextured_color
+	&& ATTR_unlitTexturedPremultiplied_position == ATTR_litTextured_position
+	&& ATTR_unlitTexturedPremultiplied_normal == ATTR_litTextured_normal
+	&& ATTR_unlitTexturedPremultiplied_uv == ATTR_litTextured_uv
+	&& ATTR_unlitTexturedPremultiplied_color == ATTR_litTextured_color
+	&& ATTR_pixelArt_unlitTexturedPremultiplied_position == ATTR_litTextured_position
+	&& ATTR_pixelArt_unlitTexturedPremultiplied_normal == ATTR_litTextured_normal
+	&& ATTR_pixelArt_unlitTexturedPremultiplied_uv == ATTR_litTextured_uv
+	&& ATTR_pixelArt_unlitTexturedPremultiplied_color == ATTR_litTextured_color,
+	"premultiplied programs must take the packed LitTextured layout");
 _Static_assert(ATTR_lit_position == 0 && ATTR_lit_normal == 1 && ATTR_lit_color == 2
 	&& ATTR_particle_root == 0 && ATTR_particle_color == 1
 	&& ATTR_billboard_position == 0 && ATTR_billboard_size == 1 && ATTR_billboard_anchor == 2

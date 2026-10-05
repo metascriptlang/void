@@ -1,6 +1,7 @@
-import { Mat4, Vec4, identity } from "../math/math3d";
+import { Mat4, Vec4, identity, srgbToLinear, linearToSrgb } from "../math/math3d";
 import { RenderState, FilterMode, Wrap } from "../gpu/state";
-import { SWAPCHAIN_LAYOUT } from "../gpu/target";
+import { SWAPCHAIN_LAYOUT, RenderTarget } from "../gpu/target";
+import { PixelFormat } from "../gpu/door";
 import {
 	Program,
 	VertexLayout,
@@ -10,7 +11,9 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
-import { TextureData, TextureId, TextureUploadError, NO_TEXTURE } from "../void3d/texture";
+import {
+	TextureData, TextureId, TextureUploadError, TextureAlpha, NO_TEXTURE,
+} from "../void3d/texture";
 import { UniformError } from "../void3d/uniformPool";
 import {
 	DrawContext,
@@ -21,6 +24,7 @@ import {
 	HandleError,
 	addMaterial,
 	addTexture,
+	addTargetTexture,
 	retainTexture,
 	releaseTexture,
 	rebuildTextures,
@@ -103,6 +107,33 @@ test "a texture of the wrong size is refused before anything is made, and takes 
 	assert !refused.ok && refused.error == TextureUploadError.BadSize;
 	assert context.liveTextures() == 0 && context.textures.length == 0;
 	assert context.textureSlots.generations.length == 0 && rebuildTextures(context) == 0;
+}
+
+test "a target texture refuses a target with no texture view or no GPU objects, taking no slot" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const unsampled: Result<TextureId, TextureUploadError> = addTargetTexture(
+		context, RenderTarget.unallocated(PixelFormat.Rgba8, false),
+		FilterMode.Linear, Wrap.Clamp, TextureAlpha.Premultiplied,
+	);
+	assert !unsampled.ok && unsampled.error == TextureUploadError.TargetNotSampled;
+	const empty: Result<TextureId, TextureUploadError> = addTargetTexture(
+		context, RenderTarget.unallocated(PixelFormat.Rgba8, true),
+		FilterMode.Linear, Wrap.Clamp, TextureAlpha.Premultiplied,
+	);
+	assert !empty.ok && empty.error == TextureUploadError.TargetNotAllocated;
+	assert context.liveTextures() == 0 && context.textures.length == 0;
+}
+
+test "a premultiplied half-red texel decodes to linear 1 and draws red 128 over black" {
+	const stored: float32 = (128.0 / 255.0) as float32;
+	const straight: float32 = stored / stored;
+	assert straight == 1.0 && srgbToLinear(straight) == 1.0;
+	const misread: float32 = srgbToLinear(stored);
+	console.log(`a premultiplied 128 read as straight decodes to ${misread}`);
+	assert misread > 0.215 && misread < 0.217;
+	const output: float32 = linearToSrgb(srgbToLinear(straight)) * stored;
+	assert (Math.round(output * 255.0) as int32) == 128;
+	assert (Math.round(linearToSrgb(srgbToLinear(straight)) * 255.0) as int32) == 255;
 }
 
 test "no texture has generation 0, so the empty id names none" {

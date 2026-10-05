@@ -97,7 +97,9 @@ export function pixelArtPrograms(): ProgramMap {
 		.drawing(Program.Particle, Program.PixelArtParticle)
 		.drawing(Program.Billboard, Program.PixelArtBillboard)
 		.drawing(Program.LitTextured, Program.PixelArtLitTextured)
-		.drawing(Program.UnlitTextured, Program.PixelArtUnlitTextured);
+		.drawing(Program.UnlitTextured, Program.PixelArtUnlitTextured)
+		.drawing(Program.LitTexturedPremultiplied, Program.PixelArtLitTexturedPremultiplied)
+		.drawing(Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied);
 }
 
 // The preset's passes, in the order a frame runs them.
@@ -542,6 +544,8 @@ function rampsHaveLevels(
 		const held: boolean = match (drawn.value) {
 			Program.PixelArtLit => levelsAt(context, material.uniforms, RAMP_LEVELS),
 			Program.PixelArtLitTextured => levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.PixelArtLitTexturedPremultiplied =>
+				levelsAt(context, material.uniforms, RAMP_LEVELS),
 			Program.PixelArtBillboard => billboardLevels(context, material.uniforms),
 			Program.Lit => true,
 			Program.Particle => true,
@@ -553,6 +557,9 @@ function rampsHaveLevels(
 			Program.LitTextured => true,
 			Program.UnlitTextured => true,
 			Program.PixelArtUnlitTextured => true,
+			Program.LitTexturedPremultiplied => true,
+			Program.UnlitTexturedPremultiplied => true,
+			Program.PixelArtUnlitTexturedPremultiplied => true,
 		};
 		if (!held) { return false; }
 	}

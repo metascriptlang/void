@@ -1045,7 +1045,10 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	uniform80ool:holds uniform80ool:writeRange uniform80ool:admitted draw:issuedMaterial"
 RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds
-	draw:keepsItsTexture material:namesTexture texture:isTexture"
+	draw:keepsItsTexture material:namesTexture texture:isTexture draw:viewAt draw:textureReady
+	gpu3d:samplesPremultiplied program77ap:shiftOf program77ap:inHighWord program77ap:requireHeld
+	target:asTexture target:requireLive target:requireCurrent target:isAttachedToOpenPass
+	door:passAttachesView"
 
 # Module names as msc spells them in emitted file names: an upper-case letter becomes its code.
 PICK_PATH_FUNCTIONS="pick:pickNearest scene:requireOpen pick:pickableOwner pick:meshHit bounds:rayIntersection
@@ -1826,6 +1829,59 @@ run_unlit_textured() {
 	done
 }
 
+run_target_texture() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "target-texture: GATE_SKIP_CAPTURE=1 — no render target was sampled"
+		return
+	fi
+	purge_stale_shader_objects
+	exe="$WORK/targetTexture.exe"
+	if ! msc build tests/integration/targetTexture.ms --output="$exe" \
+		> "$WORK/targetTexture.build.log" 2>&1; then
+		fail "target-texture: tests/integration/targetTexture.ms does not build — see $WORK/targetTexture.build.log"
+		return
+	fi
+	for preset in forward pixelArt; do
+		log="$WORK/targetTexture.$preset.log"
+		status=0
+		VOID_TARGET_TEXTURE_PRESET=$preset "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "target-texture: $preset has no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS target texture: ' "$log" ||
+			[ "$(grep -c '^target texture: stage [0-9]* checked' "$log")" != "5" ]; then
+			fail "target-texture: $preset failed (exit $status) — see $log"
+			return
+		fi
+		pass "target-texture: $preset, half-red 128 over black, zero alpha, resize, lost context, holds"
+		status=0
+		VOID_TARGET_TEXTURE_PRESET=$preset VOID_TARGET_TEXTURE_STRAIGHT_CONTROL=1 "$exe" \
+			> "$WORK/targetTexture.$preset.control.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] ||
+			! grep -q '^FAIL target texture: stage 1: lit: ' "$WORK/targetTexture.$preset.control.log"; then
+			fail "target-texture: $preset's straight-read control did not fail at the lit texel"
+			return
+		fi
+		pass "target-texture: $preset's straight-read control decodes the premultiplied texel and fails"
+		for misuse in closed program feedback; do
+			status=0
+			VOID_TARGET_TEXTURE_PRESET=$preset VOID_TARGET_TEXTURE_MISUSE=$misuse "$exe" \
+				> "$WORK/targetTexture.$preset.$misuse.log" 2>&1 || status=$?
+			case "$misuse" in
+				closed) message='a render target that was closed; release the materials' ;;
+				program) message='premultiplied input needs a premultiplied program' ;;
+				feedback) message='from the render target this pass draws into' ;;
+			esac
+			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/targetTexture.$preset.$misuse.log"; then
+				fail "target-texture: $preset misuse '$misuse' did not stop by name"
+				return
+			fi
+		done
+		pass "target-texture: $preset stops by name on a closed target, a straight program swap and its own scene target"
+	done
+}
+
 run_reparent() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "reparent: GATE_SKIP_CAPTURE=1 — tree moves were not drawn"
@@ -2199,6 +2255,7 @@ run_compose
 run_perspective
 run_textured
 run_unlit_textured
+run_target_texture
 run_camera_rig
 run_reparent
 run_gltf

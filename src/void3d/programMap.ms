@@ -1,22 +1,49 @@
 // What a renderer draws for the program a material names. Heaps adds a pass's output shaders to
 // the material's; fixed sokol-shdc programs cannot compose, so a preset swaps the whole program.
 
-import { Program } from "./gpu3d";
+import { Program, samplesPremultiplied } from "./gpu3d";
 
 export struct ProgramMap {
 	named: BitSet<Program>;
-	drawn: uint64;
+	drawnLow: uint64;
+	drawnHigh: uint64;
 }
 
 export enum ProgramError {
 	NotDrawn,
 }
 
-const PROGRAM_BITS: uint64 = 4;
-const PROGRAM_MASK: uint64 = 15;
+const PROGRAM_BITS: int32 = 5;
+const PROGRAM_MASK: uint64 = 31;
+const PROGRAMS_PER_WORD: int32 = 12;
 
 export function empty(this typeof ProgramMap): ProgramMap {
-	return { named: 0 as BitSet<Program>, drawn: 0 };
+	return { named: 0 as BitSet<Program>, drawnLow: 0, drawnHigh: 0 };
+}
+
+function stopOnUnheldProgram(program: Program): void {
+	console.log(`void3d: ProgramMap holds ${2 * PROGRAMS_PER_WORD} programs, not ` +
+		`${program.toString()} at ${program as int32}`);
+	unreachable;
+}
+
+function stopOnAlphaMismatch(named: Program, drawn: Program): void {
+	console.log(`void3d: ProgramMap draws ${named.toString()} as ${drawn.toString()}; ` +
+		"a premultiplied program is drawn only as a premultiplied one");
+	unreachable;
+}
+
+function requireHeld(program: Program): void {
+	if ((program as int32) >= 2 * PROGRAMS_PER_WORD) { stopOnUnheldProgram(program); }
+}
+
+function shiftOf(program: Program): uint64 {
+	requireHeld(program);
+	return (((program as int32) % PROGRAMS_PER_WORD) * PROGRAM_BITS) as uint64;
+}
+
+function inHighWord(program: Program): boolean {
+	return (program as int32) >= PROGRAMS_PER_WORD;
 }
 
 export function core(this typeof ProgramMap): ProgramMap {
@@ -25,15 +52,29 @@ export function core(this typeof ProgramMap): ProgramMap {
 		.drawing(Program.Particle, Program.Particle)
 		.drawing(Program.Billboard, Program.Billboard)
 		.drawing(Program.LitTextured, Program.LitTextured)
-		.drawing(Program.UnlitTextured, Program.UnlitTextured);
+		.drawing(Program.UnlitTextured, Program.UnlitTextured)
+		.drawing(Program.LitTexturedPremultiplied, Program.LitTexturedPremultiplied)
+		.drawing(Program.UnlitTexturedPremultiplied, Program.UnlitTexturedPremultiplied);
 }
 
 export function drawing(this map: ProgramMap, named: Program, drawn: Program): ProgramMap {
-	const shift: uint64 = ((named as int32) as uint64) * PROGRAM_BITS;
-	const cleared: uint64 = map.drawn & ~(PROGRAM_MASK << shift);
+	const shift: uint64 = shiftOf(named);
+	const value: uint64 = (((drawn as int32) as uint64) & PROGRAM_MASK) << shift;
+	requireHeld(drawn);
+	if (samplesPremultiplied(named) != samplesPremultiplied(drawn)) {
+		stopOnAlphaMismatch(named, drawn);
+	}
+	if (inHighWord(named)) {
+		return {
+			named: map.named.incl(named),
+			drawnLow: map.drawnLow,
+			drawnHigh: (map.drawnHigh & ~(PROGRAM_MASK << shift)) | value,
+		};
+	}
 	return {
 		named: map.named.incl(named),
-		drawn: cleared | (((drawn as int32) as uint64) << shift),
+		drawnLow: (map.drawnLow & ~(PROGRAM_MASK << shift)) | value,
+		drawnHigh: map.drawnHigh,
 	};
 }
 
@@ -45,6 +86,6 @@ export function drawnFor(this map: ProgramMap, named: Program): Result<Program, 
 	if (!map.named.has(named)) {
 		return Result.err(ProgramError.NotDrawn);
 	}
-	const shift: uint64 = ((named as int32) as uint64) * PROGRAM_BITS;
-	return Result.ok((((map.drawn >> shift) & PROGRAM_MASK) as int32) as Program);
+	const word: uint64 = inHighWord(named) ? map.drawnHigh : map.drawnLow;
+	return Result.ok((((word >> shiftOf(named)) & PROGRAM_MASK) as int32) as Program);
 }

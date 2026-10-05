@@ -36,6 +36,13 @@ export enum TextureUploadError {
 	ImageRefused,
 	ViewRefused,
 	SamplerRefused,
+	TargetNotSampled,
+	TargetNotAllocated,
+}
+
+export enum TextureAlpha {
+	Straight,
+	Premultiplied,
 }
 
 export function empty(this typeof TextureData): TextureData {
