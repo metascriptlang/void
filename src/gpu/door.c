@@ -420,6 +420,17 @@ void doorDestroySampler(uint32_t sampler) { sg_destroy_sampler((sg_sampler){.id 
 // ---- passes ----
 
 static int32_t g_openPass = DOOR_PASS_NONE;
+enum { PASS_DEPTH_VIEW = 4, PASS_VIEW_SLOTS = 5 };
+static uint32_t g_passViews[PASS_VIEW_SLOTS];
+
+static void forgetPassViews(void) {
+	if (DOOR_MAX_COLOR_ATTACHMENTS != PASS_DEPTH_VIEW) {
+		fprintf(stderr, "gpu door: the open pass records %d color views, door.h allows %d\n",
+			PASS_DEPTH_VIEW, DOOR_MAX_COLOR_ATTACHMENTS);
+		abort();
+	}
+	for (int i = 0; i < PASS_VIEW_SLOTS; i++) g_passViews[i] = 0;
+}
 
 static void stopOnOpenPass(const char *call) {
 	if (g_openPass == DOOR_PASS_NONE) return;
@@ -457,6 +468,9 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 	pass.action.depth.clear_value = clear[DOOR_PASS_CLEAR_DEPTH];
 	sg_begin_pass(&pass);
 	g_openPass = DOOR_PASS_TARGET;
+	forgetPassViews();
+	for (int i = 0; i < PASS_DEPTH_VIEW; i++) g_passViews[i] = descriptor[DOOR_PASS_COLOR_VIEW + i];
+	g_passViews[PASS_DEPTH_VIEW] = descriptor[DOOR_PASS_DEPTH_VIEW];
 }
 
 void doorBeginColorPass(uint32_t view, float red, float green, float blue, float alpha) {
@@ -471,6 +485,8 @@ void doorBeginColorPass(uint32_t view, float red, float green, float blue, float
 	pass.action.colors[0].clear_value = (sg_color){red, green, blue, alpha};
 	sg_begin_pass(&pass);
 	g_openPass = DOOR_PASS_TARGET;
+	forgetPassViews();
+	g_passViews[0] = view;
 }
 
 void doorBeginScreenPass(float red, float green, float blue, float alpha) {
@@ -486,6 +502,7 @@ void doorEndPass(void) {
 	}
 	sg_end_pass();
 	g_openPass = DOOR_PASS_NONE;
+	forgetPassViews();
 }
 
 void doorCommit(void) {
@@ -495,6 +512,14 @@ void doorCommit(void) {
 
 int32_t doorPassState(void) {
 	return g_openPass;
+}
+
+int32_t doorPassAttachesView(uint32_t view) {
+	if (view == 0 || g_openPass != DOOR_PASS_TARGET) return 0;
+	for (int i = 0; i < PASS_VIEW_SLOTS; i++) {
+		if (g_passViews[i] == view) return 1;
+	}
+	return 0;
 }
 
 // ---- backend conventions ----

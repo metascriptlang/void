@@ -21,6 +21,7 @@ import {
 	contextGeneration,
 	beginPassWith,
 	beginScreenPassWith,
+	passAttachesView,
 	environmentColorFormat,
 	environmentDepthFormat,
 	environmentSampleCount,
@@ -183,6 +184,11 @@ export function close(this target: RenderTarget): void {
 
 export function isClosed(this target: RenderTarget): boolean { return target.closed; }
 
+export function isAttachedToOpenPass(this target: RenderTarget): boolean {
+	if (target.attachment == 0 || target.generation != contextGeneration()) { return false; }
+	return passAttachesView(target.attachment);
+}
+
 export function unallocated(
 	this typeof RenderTarget,
 	format: PixelFormat,
@@ -266,18 +272,22 @@ export function asDepth(
 	};
 }
 
+function stopOnEmptyTarget(): void {
+	console.log("gpu door: asTexture on a render target with no GPU objects; " +
+		"resize allocates it");
+	unreachable;
+}
+
+function stopOnUnsampledTarget(): void {
+	console.log("gpu door: asTexture on a render target allocated without a texture view");
+	unreachable;
+}
+
 export function asTexture(this target: RenderTarget): uint32 {
 	if (target.closed) { stopOnClosedTarget("asTexture"); }
-	if (target.image == 0) {
-		console.log("gpu door: asTexture on a render target with no GPU objects; " +
-			"resize allocates it");
-		unreachable;
-	}
+	if (target.image == 0) { stopOnEmptyTarget(); }
 	target.requireLive("asTexture", target.texture);
-	if (target.image != 0 && target.texture == 0) {
-		console.log("gpu door: asTexture on a render target allocated without a texture view");
-		unreachable;
-	}
+	if (target.image != 0 && target.texture == 0) { stopOnUnsampledTarget(); }
 	return target.texture;
 }
 

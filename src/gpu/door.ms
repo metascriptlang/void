@@ -27,6 +27,7 @@ import {
 	doorEndPass,
 	doorCommit,
 	doorPassState,
+	doorPassAttachesView,
 	doorOriginTopLeft,
 	doorDepthZeroToOne,
 	doorEnvironmentColorFormat,
@@ -154,6 +155,10 @@ export function destroySampler(sampler: uint32): void { doorDestroySampler(sampl
 
 export function passState(): PassState {
 	return doorPassState() as PassState;
+}
+
+export function passAttachesView(view: uint32): boolean {
+	return doorPassAttachesView(view) != 0;
 }
 
 export function beginPassWith(

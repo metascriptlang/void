@@ -103,6 +103,7 @@ void doorBeginColorPass(uint32_t view, float red, float green, float blue, float
 void doorEndPass(void);
 void doorCommit(void);
 int32_t doorPassState(void);
+int32_t doorPassAttachesView(uint32_t view);
 
 // Backend conventions the renderer adapts to: 1 when framebuffer and texture rows start at
 // the top (D3D11, Metal), 0 when at the bottom (GL); 1 when the depth buffer stores clip z
