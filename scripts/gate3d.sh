@@ -1895,6 +1895,40 @@ run_mrt_blend() {
 	pass "mrt-blend: Alpha, AlphaAdd and Add materials draw into the pixel-art color target alone, over the opaque depth"
 }
 
+run_alpha_kill() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "alpha-kill: GATE_SKIP_CAPTURE=1 — no cut was read back"
+		return
+	fi
+	exe="$WORK/alphaKill.exe"
+	if ! msc build tests/integration/alphaKill.ms --output="$exe" > "$WORK/alphaKill.build.log" 2>&1; then
+		fail "alpha-kill: tests/integration/alphaKill.ms does not build — see $WORK/alphaKill.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_ALPHA_KILL_PIXEL_ART=$preset "$exe" > "$WORK/alphaKill.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "alpha-kill: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS alpha kill: ' "$WORK/alphaKill.$preset.log"; then
+			fail "alpha-kill: preset $preset did not cut below the threshold (exit $status) — see $WORK/alphaKill.$preset.log"
+			return
+		fi
+	done
+	for preset in 0 1; do
+		status=0
+		VOID_ALPHA_KILL_PIXEL_ART=$preset VOID_ALPHA_KILL_CONTROL=1 "$exe" \
+			> "$WORK/alphaKill.control.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'quarter-alpha texel drew' "$WORK/alphaKill.control.$preset.log"; then
+			fail "alpha-kill: the Opaque control in preset $preset did not draw the quarter-alpha texel (exit $status)"
+			return
+		fi
+	done
+	pass "alpha-kill: cutout programs cut below the threshold in both presets, no depth written; the Opaque control draws"
+}
+
 run_reparent() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "reparent: GATE_SKIP_CAPTURE=1 — tree moves were not drawn"
@@ -2270,6 +2304,7 @@ run_textured
 run_unlit_textured
 run_target_texture
 run_mrt_blend
+run_alpha_kill
 run_camera_rig
 run_reparent
 run_gltf
