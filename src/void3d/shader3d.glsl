@@ -28,6 +28,18 @@ void main() {
 }
 @end
 
+@block litShade
+vec4 litShade(vec3 n) {
+    float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
+    for (int i = 0; i < int(ambient.a + 0.5); i++) {
+        light += pointLightAt(i, worldPosition, n);
+    }
+    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
+    return vec4(linearToSrgb(surface * light), baseColor.a);
+}
+@end
+
 @fs litFs
 // PENDING3D: material-saturation-only
 @include_block materialUniforms
@@ -40,15 +52,10 @@ in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
 out vec4 fragColor;
+@include_block litShade
 void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
-    float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
-    vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
-    for (int i = 0; i < int(ambient.a + 0.5); i++) {
-        light += pointLightAt(i, worldPosition, n);
-    }
-    vec3 surface = srgbToLinear(saturated(baseColor.rgb, material.y));
-    fragColor = vec4(linearToSrgb(surface * light), baseColor.a);
+    fragColor = litShade(n);
 }
 @end
 
@@ -283,6 +290,72 @@ void main() {
 }
 @end
 
+@fs litCutoutFs
+// PENDING3D: material-saturation-only
+@include_block materialUniforms
+@include_block lightUniforms
+@include_block colorSpace
+@include_block pointLight
+@include_block saturation
+@include_block facingNormal
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec4 baseColor;
+out vec4 fragColor;
+@include_block litShade
+void main() {
+    vec3 n = facingNormal(normalize(worldNormal), material.z);
+    fragColor = litShade(n);
+    if (fragColor.a < material.w) {
+        discard;
+    }
+}
+@end
+
+@fs litTexturedCutoutFs
+// PENDING3D: material-saturation-only
+@include_block materialUniforms
+@include_block lightUniforms
+@include_block colorSpace
+@include_block pointLight
+@include_block saturation
+@include_block facingNormal
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec2 surfaceUv;
+in vec4 baseColor;
+out vec4 fragColor;
+@include_block litTexturedShade
+void main() {
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    vec3 n = facingNormal(normalize(worldNormal), material.z);
+    fragColor = litTexturedShade(texel, n);
+    if (fragColor.a < material.w) {
+        discard;
+    }
+}
+@end
+
+@fs unlitTexturedCutoutFs
+@include_block unlitMaterialUniforms
+@include_block colorSpace
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+in vec2 surfaceUv;
+in vec4 baseColor;
+out vec4 fragColor;
+@include_block unlitTexturedShade
+void main() {
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    fragColor = unlitTexturedShade(texel);
+    if (fragColor.a < material.w) {
+        discard;
+    }
+}
+@end
+
 @program lit litVs litFs
 @program particle particleVs particleFs
 @program billboard billboardVs billboardFs
@@ -291,3 +364,6 @@ void main() {
 @program unlitTextured unlitTexturedVs unlitTexturedFs
 @program litTexturedPremultiplied litTexturedVs litTexturedPremultipliedFs
 @program unlitTexturedPremultiplied unlitTexturedVs unlitTexturedPremultipliedFs
+@program litCutout litVs litCutoutFs
+@program litTexturedCutout litTexturedVs litTexturedCutoutFs
+@program unlitTexturedCutout unlitTexturedVs unlitTexturedCutoutFs

@@ -11,6 +11,9 @@ import {
 	BILLBOARD_UNIFORM_LENGTH,
 	uniformBlockLength,
 	samplesPremultiplied,
+	cutsAlpha,
+	vertexLayoutOf,
+	MATERIAL_ALPHA_KILL,
 } from "../void3d/gpu3d";
 import { UNIFORM_SLOTS } from "../gpu/door";
 import { RenderState, BlendMode } from "../gpu/state";
@@ -31,6 +34,7 @@ import {
 	releaseMesh,
 	releaseUniforms,
 	reserveUniforms,
+	writeUniforms,
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
 import { added, litShape } from "./drawHelpers";
@@ -348,6 +352,60 @@ test "the map holds every program, drawn as itself or as another of its alpha" {
 		Program.LitTexturedPremultiplied, Program.PixelArtLitTexturedPremultiplied,
 		Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied,
 	]);
+	assert reversedWithin([
+		Program.LitCutout, Program.PixelArtLitCutout, Program.LitTexturedCutout,
+		Program.PixelArtLitTexturedCutout, Program.UnlitTexturedCutout,
+		Program.PixelArtUnlitTexturedCutout,
+	]);
+}
+
+test "each cutout program is drawn as a cutout twin with the uncut layout and blocks" {
+	const pairs: Vec<Program> = [
+		Program.Lit, Program.LitCutout,
+		Program.LitTextured, Program.LitTexturedCutout,
+		Program.UnlitTextured, Program.UnlitTexturedCutout,
+	];
+	const core: ProgramMap = ProgramMap.core();
+	const preset: ProgramMap = pixelArtPrograms();
+	for (let i = 0; i < (pairs.length as int32); i += 2) {
+		const whole: Program = pairs[i];
+		const cut: Program = pairs[i + 1];
+		assert !cutsAlpha(whole) && cutsAlpha(cut) && !samplesPremultiplied(cut);
+		assert drawnAs(core, cut) == cut && vertexLayoutOf(cut) == vertexLayoutOf(whole);
+		const presetWhole: Program = drawnAs(preset, whole);
+		const presetCut: Program = drawnAs(preset, cut);
+		assert cutsAlpha(presetCut) && !cutsAlpha(presetWhole);
+		assert vertexLayoutOf(presetCut) == vertexLayoutOf(presetWhole);
+		const slots: Vec<int32> =
+			[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
+		for (const slot of slots) {
+			assert uniformBlockLength(cut, slot) == uniformBlockLength(whole, slot);
+			assert uniformBlockLength(presetCut, slot) == uniformBlockLength(presetWhole, slot);
+		}
+	}
+}
+
+test "a cutout program refuses a block without a positive alpha-kill threshold" {
+	let context: DrawContext = DrawContext.withUniformCapacity(3 * MATERIAL_UNIFORM_LENGTH);
+	const bare: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
+		Program.LitCutout, RenderState.defaults(), Phase.Opaque,
+	));
+	assert !bare.ok && bare.error == MaterialError.NoAlphaKill;
+	const thresholds: Vec<float32> = [0.0, -0.5, 0.5];
+	for (const threshold of thresholds) {
+		const reserved: Result<UniformBlock, UniformError> =
+			reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
+		if (!reserved.ok) { unreachable; }
+		let values: Vec<float32> = [0.0, 0.0, 0.0, 0.0];
+		values[MATERIAL_ALPHA_KILL] = threshold;
+		if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
+		const made: Result<MaterialId, MaterialError> = addMaterial(context, {
+			...Material.plain(Program.LitCutout, RenderState.defaults(), Phase.Opaque),
+			uniforms: reserved.value,
+		});
+		assert made.ok == (threshold > 0.0);
+		if (!made.ok) { assert made.error == MaterialError.NoAlphaKill; }
+	}
 }
 
 test "each premultiplied program is drawn as a premultiplied twin with the straight blocks" {

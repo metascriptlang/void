@@ -1,7 +1,7 @@
 // What a renderer draws for the program a material names. Heaps adds a pass's output shaders to
 // the material's; fixed sokol-shdc programs cannot compose, so a preset swaps the whole program.
 
-import { Program, samplesPremultiplied } from "./gpu3d";
+import { Program, samplesPremultiplied, cutsAlpha } from "./gpu3d";
 
 export struct ProgramMap {
 	named: BitSet<Program>;
@@ -33,6 +33,12 @@ function stopOnAlphaMismatch(named: Program, drawn: Program): void {
 	unreachable;
 }
 
+function stopOnCutMismatch(named: Program, drawn: Program): void {
+	console.log(`void3d: ProgramMap draws ${named.toString()} as ${drawn.toString()}; ` +
+		"a cutout program is drawn only as a cutout one");
+	unreachable;
+}
+
 function requireHeld(program: Program): void {
 	if ((program as int32) >= 2 * PROGRAMS_PER_WORD) { stopOnUnheldProgram(program); }
 }
@@ -54,7 +60,10 @@ export function core(this typeof ProgramMap): ProgramMap {
 		.drawing(Program.LitTextured, Program.LitTextured)
 		.drawing(Program.UnlitTextured, Program.UnlitTextured)
 		.drawing(Program.LitTexturedPremultiplied, Program.LitTexturedPremultiplied)
-		.drawing(Program.UnlitTexturedPremultiplied, Program.UnlitTexturedPremultiplied);
+		.drawing(Program.UnlitTexturedPremultiplied, Program.UnlitTexturedPremultiplied)
+		.drawing(Program.LitCutout, Program.LitCutout)
+		.drawing(Program.LitTexturedCutout, Program.LitTexturedCutout)
+		.drawing(Program.UnlitTexturedCutout, Program.UnlitTexturedCutout);
 }
 
 export function drawing(this map: ProgramMap, named: Program, drawn: Program): ProgramMap {
@@ -64,6 +73,7 @@ export function drawing(this map: ProgramMap, named: Program, drawn: Program): P
 	if (samplesPremultiplied(named) != samplesPremultiplied(drawn)) {
 		stopOnAlphaMismatch(named, drawn);
 	}
+	if (cutsAlpha(named) != cutsAlpha(drawn)) { stopOnCutMismatch(named, drawn); }
 	if (inHighWord(named)) {
 		return {
 			named: map.named.incl(named),

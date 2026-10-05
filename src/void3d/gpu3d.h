@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 // void3d's programs, in Program's order (gpu3d.ms): what gpu3d.c registers with the door.
-#define GPU3D_PROGRAM_TABLE_LENGTH 17
+#define GPU3D_PROGRAM_TABLE_LENGTH 23
 
 // Bindings: 0 leaves a slot empty. View and sampler slots are the `binding=` numbers in
 // shader3d.glsl and pixelArt3d.glsl.

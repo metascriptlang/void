@@ -66,6 +66,12 @@ export enum Program {
 	PixelArtLitTexturedPremultiplied,
 	UnlitTexturedPremultiplied,
 	PixelArtUnlitTexturedPremultiplied,
+	LitCutout,
+	PixelArtLitCutout,
+	LitTexturedCutout,
+	PixelArtLitTexturedCutout,
+	UnlitTexturedCutout,
+	PixelArtUnlitTexturedCutout,
 }
 
 export function samplesPremultiplied(program: Program): boolean {
@@ -87,6 +93,41 @@ export function samplesPremultiplied(program: Program): boolean {
 		Program.PixelArtLitTextured => false,
 		Program.UnlitTextured => false,
 		Program.PixelArtUnlitTextured => false,
+		Program.LitCutout => false,
+		Program.PixelArtLitCutout => false,
+		Program.LitTexturedCutout => false,
+		Program.PixelArtLitTexturedCutout => false,
+		Program.UnlitTexturedCutout => false,
+		Program.PixelArtUnlitTexturedCutout => false,
+	};
+}
+
+// Heaps compiles killAlpha as a shader constant: only these programs carry a discard.
+export function cutsAlpha(program: Program): boolean {
+	return match (program) {
+		Program.LitCutout => true,
+		Program.PixelArtLitCutout => true,
+		Program.LitTexturedCutout => true,
+		Program.PixelArtLitTexturedCutout => true,
+		Program.UnlitTexturedCutout => true,
+		Program.PixelArtUnlitTexturedCutout => true,
+		Program.Lit => false,
+		Program.Particle => false,
+		Program.Billboard => false,
+		Program.Copy => false,
+		Program.PixelArtLit => false,
+		Program.PixelArtParticle => false,
+		Program.PixelArtBillboard => false,
+		Program.PixelArtPost => false,
+		Program.PixelArtBlit => false,
+		Program.LitTextured => false,
+		Program.PixelArtLitTextured => false,
+		Program.UnlitTextured => false,
+		Program.PixelArtUnlitTextured => false,
+		Program.LitTexturedPremultiplied => false,
+		Program.PixelArtLitTexturedPremultiplied => false,
+		Program.UnlitTexturedPremultiplied => false,
+		Program.PixelArtUnlitTexturedPremultiplied => false,
 	};
 }
 
@@ -124,12 +165,14 @@ export const MAX_POINT_LIGHTS: int32 = 4;
 export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
-// MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal; a preset may give the
-// other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS).
+// MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel
+// whose alpha is below MATERIAL_ALPHA_KILL (material.ms MaterialKind.AlphaKill); a preset may
+// give the other floats a meaning of its own (pixelArtRenderer.ms RAMP_LEVELS).
 export const MATERIAL_UNIFORM_SLOT: int32 = 3;
 export const MATERIAL_UNIFORM_LENGTH: int32 = 4;
 export const MATERIAL_SATURATION: int32 = 1;
 export const MATERIAL_DOUBLE_SIDED: int32 = 2;
+export const MATERIAL_ALPHA_KILL: int32 = 3;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
 // A billboard material's block (binding=2): its colour, then at BILLBOARD_LIGHT 0 to leave the

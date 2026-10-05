@@ -26,6 +26,8 @@ import {
 	samplerSlotMask,
 	uniformBlockLength,
 	samplesPremultiplied,
+	cutsAlpha,
+	MATERIAL_ALPHA_KILL,
 } from "./gpu3d";
 import {
 	PassState,
@@ -210,6 +212,7 @@ export enum MaterialError {
 	PremultipliedTexture,
 	StraightTexture,
 	StraightBlend,
+	NoAlphaKill,
 }
 
 let contextSerials: int32 = 0;
@@ -762,6 +765,13 @@ function uniformsError(error: UniformError): MaterialError {
 	};
 }
 
+// A block ownRange refuses is ownRange's to name.
+function cutsAbove(this context: DrawContext, block: UniformBlock): boolean {
+	if (block.length <= MATERIAL_ALPHA_KILL) { return false; }
+	if (!context.uniforms.holds(block)) { return true; }
+	return context.uniforms.values[block.offset + MATERIAL_ALPHA_KILL] > 0.0;
+}
+
 const PREMULTIPLIED_OVER: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
 
 function blendsPremultiplied(pass: RenderState): boolean {
@@ -804,6 +814,9 @@ export function addMaterial(
 	}
 	if (samplesPremultiplied(material.program) && !blendsPremultiplied(material.pass)) {
 		return Result.err(MaterialError.StraightBlend);
+	}
+	if (cutsAlpha(material.program) && !context.cutsAbove(material.uniforms)) {
+		return Result.err(MaterialError.NoAlphaKill);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
 	if (!owned.ok) {

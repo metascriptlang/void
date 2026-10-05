@@ -102,7 +102,10 @@ export function pixelArtPrograms(): ProgramMap {
 		.drawing(Program.LitTextured, Program.PixelArtLitTextured)
 		.drawing(Program.UnlitTextured, Program.PixelArtUnlitTextured)
 		.drawing(Program.LitTexturedPremultiplied, Program.PixelArtLitTexturedPremultiplied)
-		.drawing(Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied);
+		.drawing(Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied)
+		.drawing(Program.LitCutout, Program.PixelArtLitCutout)
+		.drawing(Program.LitTexturedCutout, Program.PixelArtLitTexturedCutout)
+		.drawing(Program.UnlitTexturedCutout, Program.PixelArtUnlitTexturedCutout);
 }
 
 // The preset's passes, in the order a frame runs them.
@@ -622,6 +625,13 @@ function rampsHaveLevels(
 			Program.LitTexturedPremultiplied => true,
 			Program.UnlitTexturedPremultiplied => true,
 			Program.PixelArtUnlitTexturedPremultiplied => true,
+			Program.PixelArtLitCutout => levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.PixelArtLitTexturedCutout =>
+				levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.LitCutout => true,
+			Program.LitTexturedCutout => true,
+			Program.UnlitTexturedCutout => true,
+			Program.PixelArtUnlitTexturedCutout => true,
 		};
 		if (!held) { return false; }
 	}

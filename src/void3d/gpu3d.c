@@ -29,6 +29,12 @@ static const ShaderDescription PROGRAMS[] = {
 	pixelArt_litTexturedPremultiplied_shader_desc,
 	unlitTexturedPremultiplied_shader_desc,
 	pixelArt_unlitTexturedPremultiplied_shader_desc,
+	litCutout_shader_desc,
+	pixelArt_litCutout_shader_desc,
+	litTexturedCutout_shader_desc,
+	pixelArt_litTexturedCutout_shader_desc,
+	unlitTexturedCutout_shader_desc,
+	pixelArt_unlitTexturedCutout_shader_desc,
 };
 
 // ---- vertex layouts, one per VertexLayout member ----
@@ -60,6 +66,12 @@ static const int32_t PROGRAM_LAYOUTS[GPU3D_PROGRAM_TABLE_LENGTH] = {
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT,
+	LAYOUT_LIT,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED,
@@ -149,6 +161,29 @@ _Static_assert(ATTR_litTexturedPremultiplied_position == ATTR_litTextured_positi
 	&& ATTR_pixelArt_unlitTexturedPremultiplied_uv == ATTR_litTextured_uv
 	&& ATTR_pixelArt_unlitTexturedPremultiplied_color == ATTR_litTextured_color,
 	"premultiplied programs must take the packed LitTextured layout");
+_Static_assert(ATTR_litCutout_position == ATTR_lit_position && ATTR_litCutout_normal == ATTR_lit_normal
+	&& ATTR_litCutout_color == ATTR_lit_color
+	&& ATTR_pixelArt_litCutout_position == ATTR_lit_position
+	&& ATTR_pixelArt_litCutout_normal == ATTR_lit_normal
+	&& ATTR_pixelArt_litCutout_color == ATTR_lit_color,
+	"cutout lit programs must declare the core lit attributes");
+_Static_assert(ATTR_litTexturedCutout_position == ATTR_litTextured_position
+	&& ATTR_litTexturedCutout_normal == ATTR_litTextured_normal
+	&& ATTR_litTexturedCutout_uv == ATTR_litTextured_uv
+	&& ATTR_litTexturedCutout_color == ATTR_litTextured_color
+	&& ATTR_pixelArt_litTexturedCutout_position == ATTR_litTextured_position
+	&& ATTR_pixelArt_litTexturedCutout_normal == ATTR_litTextured_normal
+	&& ATTR_pixelArt_litTexturedCutout_uv == ATTR_litTextured_uv
+	&& ATTR_pixelArt_litTexturedCutout_color == ATTR_litTextured_color
+	&& ATTR_unlitTexturedCutout_position == ATTR_litTextured_position
+	&& ATTR_unlitTexturedCutout_normal == ATTR_litTextured_normal
+	&& ATTR_unlitTexturedCutout_uv == ATTR_litTextured_uv
+	&& ATTR_unlitTexturedCutout_color == ATTR_litTextured_color
+	&& ATTR_pixelArt_unlitTexturedCutout_position == ATTR_litTextured_position
+	&& ATTR_pixelArt_unlitTexturedCutout_normal == ATTR_litTextured_normal
+	&& ATTR_pixelArt_unlitTexturedCutout_uv == ATTR_litTextured_uv
+	&& ATTR_pixelArt_unlitTexturedCutout_color == ATTR_litTextured_color,
+	"cutout textured programs must take the packed LitTextured layout");
 _Static_assert(ATTR_lit_position == 0 && ATTR_lit_normal == 1 && ATTR_lit_color == 2
 	&& ATTR_particle_root == 0 && ATTR_particle_color == 1
 	&& ATTR_billboard_position == 0 && ATTR_billboard_size == 1 && ATTR_billboard_anchor == 2
