@@ -3,9 +3,9 @@
 # Run this after editing any .glsl file — the .glsl.h headers are #included by C bridges,
 # and a stale header produces silent visual bugs (old shader code compiled into the binary).
 #
-# Every header carries every backend and sokol picks one at runtime (sg_query_backend).
-# Do not add --ifdef: batcher.c, gpu3d.c, bridge.c and bridgeEmbed.m include these
-# headers without defining a SOKOL_<backend> macro, so wrapped code would compile away.
+# --ifdef keeps only the build's backend in each binary. A wrapped program compiles away
+# silently when no SOKOL_<backend> is defined, so every header is made to refuse an
+# includer that did not go through src/sokol/backend.h first.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -22,10 +22,18 @@ esac
 LANGS="metal_macos:glsl300es:wgsl:hlsl5"
 LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
 
+regen() {
+	"$SHDC" -i "$1" -o "$2" -l "$3" -f sokol --ifdef
+	guard="#if !defined(VOID_SOKOL_BACKEND_H)\n#error \"include src/sokol/backend.h before $(basename "$2")\"\n#endif"
+	awk -v guard="$guard" '{ print } /^#if !defined\(SOKOL_GFX_INCLUDED\)/ { open = 1 } open && /^#endif/ { print guard; open = 0 }' \
+		"$2" > "$2.tmp" && mv "$2.tmp" "$2"
+	grep -q "include src/sokol/backend.h before" "$2" || { echo "no backend guard in $2"; exit 1; }
+}
+
 echo "Regenerating shader headers..."
-"$SHDC" -i src/void2d/shader2d.glsl  -o src/void2d/shader2d.glsl.h  -l "$LANGS" -f sokol
-"$SHDC" -i src/void3d/shader3d.glsl  -o src/void3d/shader3d.glsl.h  -l "$LANGS_IOS" -f sokol
-"$SHDC" -i src/void3d/pixelArt3d.glsl -o src/void3d/pixelArt3d.glsl.h -l "$LANGS_IOS" -f sokol
-"$SHDC" -i tests/integration/gpuCopy.glsl -o tests/integration/gpuCopy.glsl.h -l "$LANGS_IOS" -f sokol
+regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
+regen src/void3d/shader3d.glsl src/void3d/shader3d.glsl.h "$LANGS_IOS"
+regen src/void3d/pixelArt3d.glsl src/void3d/pixelArt3d.glsl.h "$LANGS_IOS"
+regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"
 
 echo "OK: shader headers regenerated"
