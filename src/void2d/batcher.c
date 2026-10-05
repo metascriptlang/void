@@ -98,6 +98,9 @@ static int s_frameVertexBytes;   // bytes appended so far this FRAME, across eve
 #define VOID2D_MAX_RETIRED_BUFFERS 8
 static sg_buffer s_retiredBuf[VOID2D_MAX_RETIRED_BUFFERS];
 static int s_retiredBufCount;
+static sg_buffer *s_closedBuf;
+static int s_closedBufCount;
+static int s_closedBufCap;
 
 // Mirrors src/void2d/displayList.ms. void2dLayoutCheck is what keeps the two honest; it is
 // called from MetaScript with that file's own constants, so a field added on one side and
@@ -266,6 +269,25 @@ static void releaseRetiredBuffers(void) {
 		s_buffersFreed++;
 	}
 	s_retiredBufCount = 0;
+	for (int i = 0; i < s_closedBufCount; i++) {
+		sg_destroy_buffer(s_closedBuf[i]);
+		s_buffersFreed++;
+	}
+	s_closedBufCount = 0;
+}
+
+static void retireClosedBuffer(sg_buffer buf, int list) {
+	if (s_closedBufCount == s_closedBufCap) {
+		int want = s_closedBufCap > 0 ? s_closedBufCap * 2 : 8;
+		sg_buffer *grown = (sg_buffer *)realloc(s_closedBuf, (size_t)want * sizeof(sg_buffer));
+		if (!grown) {
+			fprintf(stderr, "void2d: no room to retire the buffers of closed list %d\n", list);
+			abort();
+		}
+		s_closedBuf = grown;
+		s_closedBufCap = want;
+	}
+	s_closedBuf[s_closedBufCount++] = buf;
 }
 
 
@@ -861,17 +883,10 @@ void void2dReleaseList(int id) {
 	if ((size_t)id < s_contextCap) { memset(&s_contexts[id], 0, sizeof(s_contexts[id])); }
 	if (id >= s_listCap) { return; }
 	void2dList *l = &s_lists[id];
-	int count = 0;
-	for (int i = 0; i < 3; i++) { if (l->buf[i].id) { count++; } }
-	if (s_frameOpen && s_retiredBufCount + count > VOID2D_MAX_RETIRED_BUFFERS) {
-		fprintf(stderr, "void2d: releasing list %d needs %d retired buffers, %d of %d are taken\n",
-			id, count, s_retiredBufCount, VOID2D_MAX_RETIRED_BUFFERS);
-		abort();
-	}
 	for (int i = 0; i < 3; i++) {
 		if (!l->buf[i].id) { continue; }
 		if (s_frameOpen) {
-			s_retiredBuf[s_retiredBufCount++] = l->buf[i];
+			retireClosedBuffer(l->buf[i], id);
 		} else {
 			sg_destroy_buffer(l->buf[i]);
 			s_buffersFreed++;
