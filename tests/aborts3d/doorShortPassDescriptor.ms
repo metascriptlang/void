@@ -1,4 +1,4 @@
-// expect: gpu door: beginPass descriptor holds 9 of 10 words and 17 of 17 clear values
+// expect: gpu door: beginPass descriptor holds 10 of 11 words and 17 of 17 clear values
 import { gfxSetup } from "../../src/sokol/gpu";
 import { DOOR_PASS_LENGTH, DOOR_PASS_CLEAR_LENGTH } from "../../src/gpu/door.h";
 @include("../../src/sokol/bridge.h");
