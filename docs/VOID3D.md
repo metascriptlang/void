@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-05):** M1–M31 are built and reviewed (`REVIEWS-3D.md`); M27–M31 and the span-rule migration sit on the unlanded combined branch over void2d's `ec4da0d`. Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-05):** M1–M32 are built and reviewed (`REVIEWS-3D.md`); M27–M31 and the span-rule migration are on `main`, M32 is on `wt/void3d-m5`. Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built" and "M21 as built"; old `pass.ms`, `target.ms` and
@@ -75,7 +75,7 @@ The human is unifying the two layers at repo level. Each decision below comes fr
 
 ## Milestones
 
-M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3 → V3/V4/T1 → A4 → … → A10 → A11). The render passes on device come first because A3 gates the rest, and the renderer does not need a scene to be tested. M12–M15 are follow-ups the human picked one at a time. From M16 the order is what a renderer for any game needs; agreed on 2026-09-27: M16 the core's quad and a billboard's anchor, then resource lifetime (releasing meshes, materials and uniforms behind generational handles, as Bevy's `AssetIndex` and M6's node ids), then a perspective camera with frustum culling, then textured meshes. On 2026-09-29 the unification with void2d ("Shared with void2d") went ahead of the camera: M18 the frame shared by several layers, M19 the names and conventions, M20 one GPU door. After M22 the human picked M23, textured content from files (2026-09-30). On 2026-10-01 the human put the unify ownership work ahead of the list M23 left: M24 store identity, M25 owners and their teardown, then colour spaces, alpha as a material's, the device's largest texture and device runs. After M26 (2026-10-04) the coordinator routed Neon's needs (`docs/NEON.md` "What Void has to add") to this layer, in that list's order: M27 a material that samples a render target with the boundary's alpha and colour space settled, M28 a textured program without lights, M29 the UV of a pick hit, M30 a camera placed by a node's world transform, M31 a node created before its parent and moved between parents.
+M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 → V5 → A3 → V3/V4/T1 → A4 → … → A10 → A11). The render passes on device come first because A3 gates the rest, and the renderer does not need a scene to be tested. M12–M15 are follow-ups the human picked one at a time. From M16 the order is what a renderer for any game needs; agreed on 2026-09-27: M16 the core's quad and a billboard's anchor, then resource lifetime (releasing meshes, materials and uniforms behind generational handles, as Bevy's `AssetIndex` and M6's node ids), then a perspective camera with frustum culling, then textured meshes. On 2026-09-29 the unification with void2d ("Shared with void2d") went ahead of the camera: M18 the frame shared by several layers, M19 the names and conventions, M20 one GPU door. After M22 the human picked M23, textured content from files (2026-09-30). On 2026-10-01 the human put the unify ownership work ahead of the list M23 left: M24 store identity, M25 owners and their teardown, then colour spaces, alpha as a material's, the device's largest texture and device runs. After M26 (2026-10-04) the coordinator routed Neon's needs (`docs/NEON.md` "What Void has to add") to this layer, in that list's order: M27 a material that samples a render target with the boundary's alpha and colour space settled, M28 a textured program without lights, M29 the UV of a pick hit, M30 a camera placed by a node's world transform, M31 a node created before its parent and moved between parents. M32 closes the MRT blend defect M27 found.
 
 | # | Heaps source | Void deliverable | Unblocks | State |
 |---|---|---|---|---|
@@ -110,6 +110,7 @@ M1–M11 are ordered by Hibernal's device lane (`ROADMAP.md` §4: … → V1/V2 
 | M29 | three.js at `d4ea9b9`: `src/objects/Mesh.js:460-495` — `checkGeometryIntersection` takes the hit's barycentric coordinate from `Triangle.getInterpolation`-style intersection and `src/math/Triangle.js:195-212` — `getInterpolatedAttribute` weights the three vertices' attribute values by the barycoord and sums, which is how three's Raycaster answers `intersection.uv` for every attribute a mesh carries. Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `h3d/scene/Interactive.hx:62` — a hit carries `hitPoint: h3d.Vector4` and nothing else; Heaps' picking never exposes a UV, which is the lack this row fills on three's shape | The UV of a pick hit (NEON item 4). `PickHit` carries the hit triangle's interpolated UV: the same barycentric weights that `MeshData.rayIntersection` already computes for the intersection weight the hit triangle's `TEXCOORD_0` values, three's `getInterpolatedAttribute` in scalar form; a mesh recorded without UVs (M22's layout is per-mesh) answers `uv == null` rather than a refusal, the hit itself standing. Picking reads the CPU tables it already reads (`pickNearest` since M25), so the interpolation is CPU arithmetic, pinned headless against three's formula on hand-set triangles. Acceptance: taps across a textured quad read back the pressed texel (the tap point's UV names the texel, checked against the drawn frame — Neon's use exactly); the interpolation pinned to 1e-6 on degenerate-free triangles including shared vertices; a no-UV mesh answers the distinguished value while its hit, distance and point are unchanged. Not in this row: a second UV set (none exists), the hit's interpolated normal or colour, hover semantics. Existing mechanisms: M10's `pickNearest` and triangle test, M22's UV layout recorded per mesh | Neon: a press on a mesh becomes a pixel of its texture; generality: retargeted hits on atlas-packed geometry | **done**, 1157 suite tests, four new behavior cases, no new baseline |
 | M30 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `h3d/Camera.hx` `makeCameraMatrix:346-354` normalizes target-minus-position and the up-derived right axis; `h3d/scene/Scene.hx:75` owns a camera value separate from graph objects. `CameraController.hx` `syncCamera:227-241` writes spherical position, target and FOV, **not an Object world matrix**. three.js at `d4ea9b9`: `src/cameras/Camera.js:18` makes Camera an Object3D; `:116-126` excludes world scale from its inverse | Full world orientation including roll (NEON item 6), via `camera.ms` `Camera3D.fromWorld` and `scene.ms` `SceneCamera` / `cameraOf`. The existing Group node carries a side binding, not a new NodeKind; active registration selects it after the existing `syncWorld`. Keep the old yaw/pitch request path, reject ambiguous simultaneous pose representations, and report a removed active node rather than use a stale matrix. Acceptance: rig/manual captures identical under translated/rolled parents and excluded scale; inactive registration preserves the default view; removed/closed/misbound nodes fail loudly. The pixel-art refusal is conditional on a demonstrated unsupported case: rolled camera-axis texel snapping works in the actual consumer, so no artificial refusal is added. Both projections share the same camera form. Not multiple ordered cameras, smooth follow, or controller input. Existing mechanisms: M21's view resolution, M6's world synchronization, M25's scene ownership | Neon camera mounts; generic cutscene and vehicle rigs | **done**, 1168 tests; final full gate GREEN, three unchanged known skips, no new baseline |
 | M31 | react-three-fiber at `d604b18`: `packages/fiber/src/core/reconciler.tsx:161` — `createInstance` allocates the instance with no parent; `:203` — the object is constructed and linked in `handleContainerEffects`, deferred until the tree is complete; `:270` — `insertBefore` splices a keyed move in place, and a keyed list never removes and re-adds what it can move; `:310` — `removeChild`. Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `h3d/scene/Object.hx:539-566` — `addChildAt` takes the index, and on an object that already has a parent silently removes it from the old one and inserts it at the new index, the allocation and everything the object holds preserved; `:605-611` — `removeChild`. three.js at `d4ea9b9`: `src/core/Object3D.js:874-896` — `attach` re-parents while preserving the world transform; Heaps keeps the LOCAL transform on a move, and this row follows Heaps, the divergence named | Create a node before its parent, and move it — with its place among its siblings (NEON item 7). Nodes exist detached: every `add*Node` accepts no parent (a detached node lives in its scene's tables, syncs nothing, draws nothing — Heaps' allocated-but-unparented object), so a host creates first and attaches later, r3f's order. `attach(parent, node)` is the move: the node leaves its old parent's row and enters the new one's, and everything it holds survives — its pin, a bound animation, a material's holds — with no release and no re-add (r3f's splice, Heaps' silent move); `insertBefore(parent, node, before)` is `addChildAt`'s index: it places the node among its siblings, and the position is observable in void3d — the draw list's own words are "sibling order is draw order, and the draw list is what decides overdraw" (`scene.ms`, `collectDrawList`'s reverse push), and `sortBackToFront` is a stable insertion sort where "items at the same depth keep their order" (`passList.ms:85-87`), so equal-depth transparent items and opaque overdraw both follow the sibling index. A node of another scene is refused by name (`requireOwn`), the scene root refuses to be attached, and a cycle refuses as `addChild`'s check does today; `before` naming a node that is not a child of `parent` stops by name. Acceptance: the red is today's remove-and-add measured — a moved node's pin is released and a bound animation is dropped by the move, and the row's test shows both surviving `attach`; a subtree moved between parents draws byte-identically to one built in place; two equal-depth blended quads whose sibling index is swapped by `insertBefore` flip their draw order (read back), which is the keyed-list move Neon makes; the detached node's tables, holds and bounds are live the moment it attaches; abort cases for the foreign scene, the root, the cycle and the misplaced `before`. Not in this row: world-preserving attach (three's `attach` — Heaps keeps local, and so does void); moving a node's subtree into another scene (cross-scene stays refused); z-reordering by depth key (the sibling index is the only order void3d has). Existing mechanisms: M25's owners and `requireOwn`, M17's pins and holds, M6's tree, `collectDrawList`'s sibling order and `sortBackToFront`'s stability | Neon: the Host's create-then-attach, keyed moves and `insertBefore`, all native; generality: reparenting under a moving vehicle, scene graph editors, list reordering | **done**, 1176 tests; both presets 8 RGBA pairs + two negative controls, 21 named stops, final full gate GREEN |
+| M32 | Heaps at `b9aa6dcbb2307b03c1f435e87bdb036060100984`: `h3d/scene/fwd/Renderer.hx:64-82` — `render()` draws `default`, then `alpha` back to front, then `additive`, each through `renderPass(defaultPass, get(name))` into the colour output, while the `depth` and `normal` maps come from passes of their own that translucent objects do not join; `h3d/mat/Material.hx:132-148` — `set_blendMode` is what puts a blended material in the `alpha` or `additive` list. sokol (vendored): `_sg_pass_action_defaults` (`deps/sokol/sokol_gfx.h:9295-9326`) stores colour and discards depth unless told otherwise; Metal (`:17068`) and WebGPU (`:19710`) honour the discard, GLES3 only for the swapchain's depth (`:12279`); the GL backend has no per-attachment blend and no independent write mask on WebGL2 (`:10626-10630`, `:11774`, `:12405-12466`) | Blended materials stay out of the pixel-art preset's normal/depth attachment (found at M27, pre-existing). The preset draws `Phase.Opaque` into its MRT pass and `Phase.Alpha` / `Phase.Additive` in a second pass over colour 0 and the depth attachment alone, both loaded; the core gains `drawPhase` (one list, Heaps' `renderPass`) and `phaseCount`. A depth attachment names its store action (`StoreAction`, sokol's own field) so the second pass loads what the first wrote; a blended material in `Phase.Opaque` refuses the pixel-art frame by name (`BlendedOpaque`), since that list still writes the normal attachment, and so does a depth-writing translucent material while the post pass samples the depth attachment (`TranslucentDepthWrite`). Not a door policy: the SENT BACK draft masked attachments 1+ in `door.c`, which WebGL2 silently drops | Neon: UI, glass and particles over a pixel-art scene without outline and fog artefacts; generality: any MRT preset with translucent content | **done**, see "M32 as built" |
 
 ### M2 as built
 
@@ -1981,8 +1982,8 @@ so in the pixel-art scene pass a blended material also blends its normal/depth o
 attachment's own alpha (`depth01`) as the coverage. That predates M27 and holds for every
 blended pixel-art material; the premultiplied twins write `(n·0.5+0.5)·depth01` so that, under
 ONE, ONE_MINUS_SRC_ALPHA, they produce exactly the straight twins' result rather than a new,
-saturating one. No capture checks attachment 1 under a blended material. The fix is
-per-attachment blend in the shared pipeline key; it is an open question below, not done here.
+saturating one. No capture checks attachment 1 under a blended material. M32 closes it with
+Heaps' pass order and drops the weighting (M32 as built).
 
 **Final acceptance.** Replayed onto the combined tip `cab05eb` (void2d `ec4da0d`, M28–M31,
 the span-rule migration), BUILD `5c4246fb` (v0.3.2), unchanged before and after the run, one
@@ -2002,6 +2003,64 @@ MASK/BLEND as a material's alpha; a premultiplied *uploaded* texture (`TextureDa
 straight); sRGB-format attachments. The consumer simulates context loss by generation writes,
 not a device loss, and reads no MRT normal/depth value. Web/device runs are not claimed.
 
+
+### M32 as built
+
+**Defect.** `door.c` gives every colour attachment the material's blend, so in the pixel-art
+scene pass a blended material also blended the normal/depth attachment the outline and fog
+read. `tests/integration/mrtBlend.ms` copies the normal target to the screen and reads it back:
+on the single-pass tree the backdrop is `0x7F7FFFFF` and the normal under an Alpha quad
+`0xB17FCDFF` (`out/tmp/m32/red.log`).
+
+**Fix: Heaps' pass order, not a door policy.** `pixelArtRenderer.ms` `drawScene` draws
+`Phase.Opaque` into the MRT pass (`SCENE_LAYOUT`), then, when culling left any alpha or additive
+item, a second pass over colour 0 and depth alone (`TRANSLUCENT_LAYOUT`, both `LoadAction.Load`)
+for `Phase.Alpha` back to front and `Phase.Additive`: fwd.Renderer's default, alpha and additive
+outputs, with the normal target playing Heaps' separate normal pass that translucent objects do
+not join. The core exposes the lists one at a time (`renderer.ms` `drawPhase`, Heaps'
+`renderPass(output, get(name))`, and `phaseCount`); `drawPassLists` is the three in order and the
+forward preset is unchanged. Pipelines are keyed on the layout, so the translucent pass builds
+its own one-attachment pipelines from the same programs.
+
+**Depth is stored on request.** sokol discards a depth attachment at the end of its pass unless
+the pass stores it; Metal and WebGPU honour the discard, while D3D11, desktop GL and GLES3
+offscreen keep the contents, which is why no capture here could see it. `DepthAttachment` now
+carries a `StoreAction` (`asDepth(load, clear, store)`, `DOOR_PASS_DEPTH_STORE`), sokol's own
+per-attachment field in the door's `LoadAction` idiom. The pixel-art preset sets it each frame:
+the opaque pass stores when a translucent pass follows or the post pass samples the depth
+attachment (`DepthSource.DepthTexture`, which before this sampled a discarded depth on Metal and
+WebGPU), the translucent pass only for the latter, and both discard otherwise. The forward
+preset and the tests pass `DontCare`, today's behaviour. Colour attachments keep sokol's
+default (store) and have no field until a pass needs to discard one.
+
+**Refused combinations.** The opaque list still writes the normal attachment, so a material in
+`Phase.Opaque` whose `RenderState.blends()` (door.c's `blend.enabled` rule) refuses the
+pixel-art frame with `PixelArtError.BlendedOpaque` before anything changes, as `RampLevels`
+does. With `DepthSource.DepthTexture` and the post pass on, a translucent material that writes
+depth refuses it with `TranslucentDepthWrite`: it would move the depth the outline and fog read
+without moving the normal, where Heaps' depth map comes from a pass translucent objects do not
+join. The phase stays the material's choice, as Heaps' pass name is (a constructor deriving it
+from `BlendMode`, `set_blendMode`'s shape, is not in this row); nothing in the repo used either
+combination, and the forward preset accepts both. The premultiplied twins' normal is no longer
+weighted by `depth01`: that only matched a blended normal attachment, which nothing reaches
+now, so all scene programs write `n * 0.5 + 0.5`.
+
+**Acceptance.** `mrtBlend.ms` (gate stage `mrt-blend`): an Alpha, a premultiplied AlphaAdd and
+an Add column over an opaque backdrop. Two frames read the normal target: the backdrop is
+`0x7F7FFFFF` and so is the normal under each quad. Two frames read the colour target: each quad
+changes the colour under it, and an Alpha quad behind the backdrop stays hidden. RED on the
+single-pass scene (above); the control with the translucent pass's depth `Clear` fails at
+"depth was not kept" (`out/tmp/m32/clear.log`). The probe cannot see the store action: every
+backend here keeps an offscreen depth. No standing capture runs the preset with translucent
+items and the post pass on, so the visible effect (outline and fog under glass) rests on the
+probe's read of the normal target. Headless: `blends()` for every `BlendMode`, both refusals,
+`closed.drawPhase` and `closed.phaseCount` among the abort cases; the allocation stage lists
+the new frame-path functions.
+
+**Open.** The scene programs still write `fragNormal` at location 1 in the translucent pass,
+where the pipeline has one attachment. D3D11 and GL drop it; Metal and WebGPU are not measured
+and web cannot run here, and neither has run the store action. `colorMask` is one value for
+every attachment of a pipeline.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
@@ -2094,12 +2153,11 @@ of multiplying campfire configurations.
 
 ## Open questions
 
-- **Per-attachment blend for MRT passes, open (found at M27).** `door.c` gives every colour
-  attachment the material's blend, so a blended material in the pixel-art scene pass also blends
-  its normal/depth attachment, weighted by that attachment's own alpha (`depth01`). It predates
-  M27 and no capture covers it; the outline and fog read the mixed values under any blended
-  material. The fix is blend off (or a write mask) for attachments 1+ in the shared pipeline key,
-  a door change of its own with a pixel test on attachment 1.
+- **Per-attachment blend for MRT passes, answered at M32.** The pixel-art preset draws
+  translucent lists in a pass of their own over colour and depth (Heaps' fwd.Renderer), so no
+  blend reaches its normal/depth attachment; a door mask was rejected because WebGL2 has none.
+  Still open from it: `fragNormal` written with no attachment, and the depth store, neither
+  run on Metal or WebGPU (M32 as built, "Open").
 - **Depth for edge detection, answered for the code, open for the device.** In the vendored sokol (read at 6c3fa5ac, unchanged at 2e75443d) `SG_PIXELFORMAT_DEPTH` is `GL_DEPTH_COMPONENT32F` on GLES3, created as a real texture when single-sampled and marked sampleable but not filterable (`_sg_pixelformat_srmd`); a shader reads it with `texelFetch` through `@image_sample_type … unfilterable_float` and a `nonfiltering` sampler, which GLES 3.0 allows for sized depth formats with compare mode off. D3D11 uses `R32_TYPELESS` with an `R32_FLOAT` view. So the renderer takes it as a setting, `DepthSource.NormalAlpha` (default, the spike's 8-bit copy) or `DepthTexture`; GL stores (z + 1) / 2, which the post pass unpacks (`depthUnpack`). On D3D11 `DepthTexture` changes about 15% of the campfire's pixels: fog loses its 8-bit banding, and the normal-edge test (`|Δdepth| < depthThreshold`) flips on sloped stone faces, peak difference 85/255. The outline thresholds were tuned against 8-bit depth, so switching means retuning them. Which source ships is decided on the Seeker with RENDERER-BRIEF §10 Q4 (`RGB10_A2` vs `RGBA8` normals); M3 depends on neither.
 - **One post pass or two, answered: one.** The palette quantizes the pixel the outline and fog just produced and reads no neighbor, so it runs at the end of the same fragment (`postFs`).
 - **The pipeline key is complete value identity, answered by D1 (2026-09-30).** `src/gpu/pipeline.ms` `PipelineKey` holds the program and layout ids whole, the index type, `RenderState.bits` and `TargetLayout.formatBits` (a sample count now has twelve bits), compared by equality; the door registries grow and refuse only int32 id exhaustion. The limits left are sokol's pools, and a refused shader or pipeline stops by name. VOID2D.md "D1 as built" has the record; it claims no uint32 index or new MSAA support.

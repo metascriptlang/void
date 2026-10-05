@@ -2311,3 +2311,37 @@ aborted, not counted. On `5c4246fb`, unchanged before and after: `gate.sh` GREEN
 none adopted, Android 3,859,800 B. The RED-before probes were re-run on the same build: no
 feedback check (debug sokol panics, release draws 255 where 128 belongs), stale-first order
 (stops on the reused id), no output premultiplication (255), straight read (27 vs 32).
+
+## M32 — translucent lists out of the pixel-art MRT pass
+
+**Verdict: SHIP WITH FOLLOW-UPS**, the follow-ups that touch the mechanism done in the row. The
+first draft (a mask on attachments 1+ in `door.c`) was SENT BACK before this row: WebGL2 has no
+per-attachment blend or mask, so sokol drops it there, and it was a hidden policy in the shared
+door. It is parked on `wip/void3d-mrt-doormask` and not landed.
+
+**Defect pass, `/code-review high`.** Ten findings, each checked against the code or sokol:
+- **Fixed:** `listFor` returned a `PassList` by value, so each `drawPhase` / `phaseCount` deep-
+  copied two Vecs per frame (the reviewer read the struct's `Copy` in the emitted C); both now match on the
+  phase and borrow the field. The allocation stage did not list the new frame-path functions;
+  it does now. `phaseCount` had no closed guard (added, with `closed.phaseCount`). Both scene
+  depths always stored; the store is now chosen per frame. The premultiplied twins' `depth01`
+  weighting was dead once no blend reaches attachment 1 (removed, headers regenerated). The
+  blend walk copied each `Material` (it indexes the fields now). Four lines over 100 columns.
+- **Kept:** the `BlendedOpaque` refusal stays in the preset rather than deriving the phase from
+  the blend at the material: Heaps' pass name is the material's choice too, and only this preset
+  has a normal attachment. A constructor deriving the phase from `BlendMode` is a separate row.
+  The allocation grep matches `ArrayCopy(` only, not a struct's `Copy`; widening it is a gate
+  change of its own. Location 1 on Metal/WebGPU and web stay recorded NOT RUN.
+
+### Fresh design pass — SHIP WITH FOLLOW-UPS
+
+A fresh stateless reviewer confirmed the split is fwd.Renderer's order at the preset's layer,
+`drawPhase` / `phaseCount` as `renderPass` / `has`, the depth-only `StoreAction` as sokol's own
+field, the lifecycle of the new attachments, and that no existing caller or golden moves. Its
+findings: the door comment and the doc claimed GLES3 discards an offscreen depth, which vendored
+sokol does not (`:12279` invalidates only without a depth view) — corrected to Metal and WebGPU,
+and the probe recorded as unable to see the store; a depth-writing translucent material under
+`DepthSource.DepthTexture` moves depth without its normal — now refused (`TranslucentDepthWrite`)
+in `BlendedOpaque`'s shape; the translucent attachment's clear value went stale after `setLook`
+(now `UNUSED_CLEAR`); no standing capture runs translucent items with the post pass on, recorded
+in the as-built. The M3 section's API list is a milestone record and was left as written.
