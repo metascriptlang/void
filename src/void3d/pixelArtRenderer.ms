@@ -22,6 +22,7 @@ import {
 import {
 	PixelFormat,
 	LoadAction,
+	StoreAction,
 	PassState,
 	endPass,
 	commit,
@@ -449,7 +450,8 @@ function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32):
 	const background: Vec4 = renderer.look.background;
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, background);
 	renderer.sceneColors[1] = renderer.normalTarget.asColor(LoadAction.Clear, NORMAL_CLEAR);
-	renderer.sceneDepth = renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH);
+	renderer.sceneDepth =
+		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
 	renderer.postColors[0] = renderer.postTarget.asColor(LoadAction.DontCare, UNUSED_CLEAR);
 }
 

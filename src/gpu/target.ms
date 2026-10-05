@@ -8,6 +8,7 @@ import { Vec4 } from "../math/math3d";
 import {
 	PixelFormat,
 	LoadAction,
+	StoreAction,
 	makeTargetImage,
 	makeAttachmentView,
 	makeTextureView,
@@ -33,6 +34,7 @@ import {
 	DOOR_PASS_COLOR_LOAD,
 	DOOR_PASS_DEPTH_VIEW,
 	DOOR_PASS_DEPTH_LOAD,
+	DOOR_PASS_DEPTH_STORE,
 	DOOR_PASS_LENGTH,
 	DOOR_PASS_CLEAR_DEPTH,
 	DOOR_PASS_CLEAR_LENGTH,
@@ -62,6 +64,7 @@ export struct DepthAttachment {
 	view: uint32;
 	format: PixelFormat;
 	load: LoadAction;
+	store: StoreAction;
 	clear: float32;
 	generation: int32;
 }
@@ -89,6 +92,7 @@ export const NO_DEPTH: DepthAttachment = {
 	view: 0,
 	format: PixelFormat.None,
 	load: LoadAction.DontCare,
+	store: StoreAction.DontCare,
 	clear: 1.0,
 	generation: 0,
 };
@@ -261,12 +265,14 @@ export function asDepth(
 	this target: RenderTarget,
 	load: LoadAction,
 	clear: float32,
+	store: StoreAction,
 ): DepthAttachment {
 	target.requireLive("asDepth", target.attachment);
 	return {
 		view: target.attachment,
 		format: target.format,
 		load: load,
+		store: store,
 		clear: clear,
 		generation: target.generation,
 	};
@@ -464,6 +470,7 @@ export function beginPass(colors: Readonly<Span<ColorAttachment>>, depth: DepthA
 	}
 	passDescriptor[DOOR_PASS_DEPTH_VIEW] = depth.view;
 	passDescriptor[DOOR_PASS_DEPTH_LOAD] = (depth.load as int32) as uint32;
+	passDescriptor[DOOR_PASS_DEPTH_STORE] = (depth.store as int32) as uint32;
 	passClear[DOOR_PASS_CLEAR_DEPTH] = depth.clear;
 	beginPassWith(passDescriptor, passClear);
 }

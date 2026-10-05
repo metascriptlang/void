@@ -92,6 +92,12 @@ static const sg_load_action LOAD_ACTIONS[] = {
 	SG_LOADACTION_DONTCARE,
 };
 
+// StoreAction
+static const sg_store_action STORE_ACTIONS[] = {
+	SG_STOREACTION_STORE,
+	SG_STOREACTION_DONTCARE,
+};
+
 // IndexType: uint16 only, which caps a mesh at 65536 vertices (meshData.ms).
 static const sg_index_type INDEX_TYPES[] = {
 	SG_INDEXTYPE_NONE,
@@ -115,6 +121,7 @@ _Static_assert(COUNT(ALPHA_CHANNEL_BLEND_FACTORS) == 10,
 _Static_assert(COUNT(BLEND_OPERATIONS) == 5, "BLEND_OPERATIONS must match Operation in state.ms");
 _Static_assert(COUNT(PIXEL_FORMATS) == 6,"PIXEL_FORMATS must match PixelFormat in door.ms");
 _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in door.ms");
+_Static_assert(COUNT(STORE_ACTIONS) == 2, "STORE_ACTIONS must match StoreAction in door.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match FilterMode in door.ms");
 _Static_assert(COUNT(WRAPS) == 3, "WRAPS must match Wrap in door.ms");
 _Static_assert(COUNT(INDEX_TYPES) == 2, "INDEX_TYPES must match IndexType in pipeline.ms");
@@ -466,6 +473,7 @@ void doorBeginPass(const uint32_t *descriptor, int64_t length, const float *clea
 	pass.attachments.depth_stencil = (sg_view){.id = descriptor[DOOR_PASS_DEPTH_VIEW]};
 	pass.action.depth.load_action = LOOKUP(LOAD_ACTIONS, descriptor[DOOR_PASS_DEPTH_LOAD]);
 	pass.action.depth.clear_value = clear[DOOR_PASS_CLEAR_DEPTH];
+	pass.action.depth.store_action = LOOKUP(STORE_ACTIONS, descriptor[DOOR_PASS_DEPTH_STORE]);
 	sg_begin_pass(&pass);
 	g_openPass = DOOR_PASS_TARGET;
 	forgetPassViews();

@@ -13,7 +13,7 @@ import {
 	doorProgram,
 	doorLayout,
 } from "../void3d/gpu3d";
-import { PixelFormat, LoadAction, contextGeneration } from "../gpu/door";
+import { PixelFormat, LoadAction, StoreAction, contextGeneration } from "../gpu/door";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -51,7 +51,8 @@ function sceneLayout(): TargetLayout {
 		target(PixelFormat.Rgba8).asColor(LoadAction.Clear, black),
 		target(PixelFormat.Rgba8).asColor(LoadAction.Clear, black),
 	];
-	return layoutOf(colors, target(PixelFormat.Depth).asDepth(LoadAction.Clear, 1.0));
+	const depth: RenderTarget = target(PixelFormat.Depth);
+	return layoutOf(colors, depth.asDepth(LoadAction.Clear, 1.0, StoreAction.DontCare));
 }
 
 function blendModes(): Vec<BlendMode> {

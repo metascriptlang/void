@@ -6,6 +6,7 @@ import { Program } from "./gpu3d";
 import {
 	PixelFormat,
 	LoadAction,
+	StoreAction,
 	PassState,
 	endPass,
 	commit,
@@ -153,7 +154,8 @@ function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): 
 	renderer.colorTarget.resize(width, height);
 	renderer.depthTarget.resize(width, height);
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, renderer.background);
-	renderer.sceneDepth = renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH);
+	renderer.sceneDepth =
+		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
 }
 
 // One frame at the framebuffer's `width` × `height`: `items` index the meshes and materials of

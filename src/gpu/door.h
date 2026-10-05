@@ -33,14 +33,15 @@ static const int32_t DOOR_PIPELINE_SAMPLE_COUNT = 17;
 static const int32_t DOOR_PIPELINE_INDEX_TYPE = 18;
 static const int32_t DOOR_PIPELINE_LENGTH = 19;
 
-// Pass: four color attachments (view, load action), then depth; the float side holds four
-// rgba clear colors, then the depth clear value.
+// Pass: four color attachments (view, load action), then depth (view, load and store
+// action); the float side holds four rgba clear colors, then the depth clear value.
 static const int32_t DOOR_MAX_COLOR_ATTACHMENTS = 4;
 static const int32_t DOOR_PASS_COLOR_VIEW = 0;
 static const int32_t DOOR_PASS_COLOR_LOAD = 4;
 static const int32_t DOOR_PASS_DEPTH_VIEW = 8;
 static const int32_t DOOR_PASS_DEPTH_LOAD = 9;
-static const int32_t DOOR_PASS_LENGTH = 10;
+static const int32_t DOOR_PASS_DEPTH_STORE = 10;
+static const int32_t DOOR_PASS_LENGTH = 11;
 static const int32_t DOOR_PASS_CLEAR_DEPTH = 16;
 static const int32_t DOOR_PASS_CLEAR_LENGTH = 17;
 

@@ -2,7 +2,8 @@ import { env } from "std/process";
 import { gfxSetup } from "../../src/sokol/gpu";
 import { RenderTarget, beginScreenPass } from "../../src/gpu/target";
 import {
-	PixelFormat, LoadAction, imageAlive, viewAlive, liveImages, liveViews, endPass, commit,
+	PixelFormat, LoadAction, StoreAction, imageAlive, viewAlive, liveImages, liveViews,
+	endPass, commit,
 	contextGeneration, destroyImage, destroyView,
 } from "../../src/gpu/door";
 import { Scene2D, NodeRef } from "../../src/void2d/node";
@@ -60,7 +61,7 @@ function exerciseMisuse(misuse: string): void {
 		const color = alias.asColor(LoadAction.Clear, { x: 1.0, y: 0.0, z: 0.0, w: 1.0 });
 		console.log(`a closed owner lent color attachment ${color.view}`);
 	} else if (misuse.equals("depth")) {
-		const depth = alias.asDepth(LoadAction.Clear, 1.0);
+		const depth = alias.asDepth(LoadAction.Clear, 1.0, StoreAction.DontCare);
 		console.log(`a closed owner lent depth attachment ${depth.view}`);
 	} else {
 		fail(`unknown terminal owner case ${misuse}`);

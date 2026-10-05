@@ -70,6 +70,13 @@ export enum LoadAction {
 	DontCare,
 }
 
+// sokol's default for a depth attachment is DontCare, which Metal and WebGPU discard at the end
+// of the pass (sokol_gfx.h _sg_pass_action_defaults): a depth read later needs Store.
+export enum StoreAction {
+	Store,
+	DontCare,
+}
+
 // Which pass the door has open; read by the render layers to stop misuse naming the call.
 export enum PassState {
 	None,
