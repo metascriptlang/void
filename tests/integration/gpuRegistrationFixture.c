@@ -1,4 +1,5 @@
 #include "gpuRegistrationFixture.h"
+#include "../../src/sokol/backend.h"
 #include "../../src/gpu/door.h"
 #include "gpuCopy.glsl.h"
 #include <stdlib.h>

@@ -3,9 +3,7 @@
 //   -DSOKOL_GLES3  → WebGL2
 //   -DSOKOL_WGPU   → WebGPU (needs --use-port=emdawnwebgpu + -sASYNCIFY)
 #define SOKOL_IMPL
-#if !defined(SOKOL_WGPU) && !defined(SOKOL_GLES3)
-#define SOKOL_GLES3
-#endif
+#include "backend.h"
 #define SOKOL_NO_ENTRY
 #include "sokol_gfx.h"
 #include "sokol_app.h"

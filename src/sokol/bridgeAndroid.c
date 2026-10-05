@@ -4,7 +4,7 @@
 // EGL window surface. Single sokol_gfx implementation unit on Android.
 
 #define SOKOL_IMPL
-#define SOKOL_GLES3
+#include "backend.h"
 
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>

@@ -3,6 +3,7 @@
 #include "batcher.h"
 #include "../sokol/bridge.h"
 #include "../gpu/door.h"
+#include "../sokol/backend.h"
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader2d.glsl.h"
 #include "instanceLayout.h"

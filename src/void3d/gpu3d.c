@@ -1,5 +1,6 @@
 #include "gpu3d.h"
 #include "../gpu/door.h"
+#include "../sokol/backend.h"
 #include "../../deps/sokol/sokol_gfx.h"
 #include "shader3d.glsl.h"
 #include "pixelArt3d.glsl.h"
