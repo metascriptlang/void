@@ -232,7 +232,7 @@ above be written without Neon working around Void.
    `tests/integration/targetOwner.ms`. This does not complete item 2: a material still needs
    M27's checked texture row that resolves the owner's current view rather than a saved raw id.
 
-   **Answer, M27 (branch commits `b2570ef` + `92fcf79`, not yet landed):** `src/void3d/draw.ms`
+   **Answer, M27 (`b2570ef` + `92fcf79`, on `main` since `764060b`):** `src/void3d/draw.ms`
    `addTargetTexture(context, target, filter, wrap, TextureAlpha.Premultiplied)` gives a
    `TextureId` in the same checked space as an uploaded image, and a material names it as
    `Material.texture`. The slot holds the `RenderTarget` owner, not a view: the view is read at
@@ -243,16 +243,16 @@ above be written without Neon working around Void.
    demand. Closing the target while a material samples it stops by name (release the material
    first), and so does sampling it inside a pass that draws into it, before sokol.
    Evidence: [VOID3D.md, M27 as built](VOID3D.md#m27-as-built).
-3. **A textured program without lights.** Implemented by M28 in branch commit `e80a077`,
-   not yet landed; see `src/void3d/gpu3d.ms`
+3. **A textured program without lights.** Implemented by M28 in `c599e27`,
+   on `main` since `764060b`; see `src/void3d/gpu3d.ms`
    `Program.UnlitTextured`; the pixel-art map chooses its MRT twin. Material colour
    uses the existing material-owned block ABI, with the offsets/length named in gpu3d.ms.
    The unlit texture keeps its authored colour when the scene goes dark; the real
    forward/pixel-art consumer and its old-lit failure control are recorded in
    [VOID3D.md, M28 as built](VOID3D.md#m28-as-built). Premultiplied target input is still
    items 2/5 (M27), not silently inferred by this program.
-4. **The UV of a pick hit.** Implemented by M29 in rebased branch commit `4ce6f8f`, not yet
-   landed. The query is `src/void3d/pick.ms` `PickHit.uv`;
+4. **The UV of a pick hit.** Implemented by M29 in `da9a808`, on
+   `main` since `764060b`. The query is `src/void3d/pick.ms` `PickHit.uv`;
    the query keeps authored `TEXCOORD_0`, without wrap or clamp, and a mesh without that
    attribute still hits with `uv == null`. Neon maps that coordinate into the texture's
    UI hit test. Reference: three.js `Mesh.js` `checkGeometryIntersection` and `Triangle.js`
@@ -265,7 +265,7 @@ above be written without Neon working around Void.
    premultiplies the clear. Native readback holds a transparent coloured clear at `(0,0,0,0)`
    and a half-red interior at `(128,0,0,128)`; target replay and direct screen replay agree.
 
-   **Material side still open for items 2/3/5:** `src/void3d/shader3d.glsl` and
+   **Material side, as it stood before M27 (answered below):** `src/void3d/shader3d.glsl` and
    `src/void3d/pixelArt3d.glsl` `litTexturedFs` treat sampled RGB as straight before sRGB decode.
    They cannot yet sample these UI targets correctly. Unpremultiply encoded RGB before any
    nonlinear decode (zero alpha yields zero RGB), then apply the material's declared colour
@@ -280,8 +280,8 @@ above be written without Neon working around Void.
    `MaterialError`. The program unpremultiplies before decoding and premultiplies its output:
    the half-red texel (128, 0, 0, 128) draws red exactly 128 over black, and a zero-alpha texel
    leaves what is behind it byte-exact, on both presets.
-6. **A camera placed by a node's world transform.** Implemented by M30 in branch
-   source commit `971ee3d`, not yet landed. Use `src/void3d/camera.ms`
+6. **A camera placed by a node's world transform.** Implemented by M30 in
+   `bbf6646`, on `main` since `764060b`. Use `src/void3d/camera.ms`
    `Camera3D.fromWorld`, or `src/void3d/scene.ms` `SceneCamera` / `cameraOf`
    for an active Group-bound mount; Neon does not extract yaw/pitch or discard roll.
    The existing camera request still supports its yaw/pitch convenience path.
@@ -289,8 +289,8 @@ above be written without Neon working around Void.
    rolled orthographic pixel-art snap remains supported rather than refused.
    Reference rationale, numerical rejection boundary and final native proof:
    [VOID3D.md, M30 as built](VOID3D.md#m30-as-built).
-7. **Create a node before its parent, and move it.** Implemented by M31 in branch
-   source commit `32f0f9c`, not yet landed. `src/void3d/scene.ms`: the four
+7. **Create a node before its parent, and move it.** Implemented by M31 in
+   `0a98df9`, on `main` since `764060b`. `src/void3d/scene.ms`: the four
    `add*Node` factories take `parent: NodeId3D | null` (old calls compile
    unchanged); `attach(scene, parent, node)` moves a node with its local pose,
    ids, pins, bound animation, camera binding and pick ownership intact;
