@@ -344,12 +344,14 @@ export interface DrawContext2D {
 }
 
 let serials: Vec<int32> = [];
+let freeContextIds: Vec<int32> = [];
 
 // Each starts with one record's worth of zeros so that `arr[0]` is always in bounds: a
 // frame that records no effect at all would otherwise index an empty array to take its
 // address. Counts come from the `*Total` variables, never from `.length`, so the seed is
 // invisible to every reader.
 export function create(this typeof DrawContext2D): DrawContext2D {
+	if ((freeContextIds.length as int32) > 0) { return DrawContext2D.twin(freeContextIds.pop()); }
 	serials.push(0);
 	return DrawContext2D.twin((serials.length as int32) - 1);
 }
@@ -454,6 +456,12 @@ export function useContext(next: DrawContext2D): void { activeContext = next; }
 export function isDefaultContext(context: DrawContext2D): boolean { return context === defaultContext; }
 export function useDefaultContext(): void { activeContext = defaultContext; }
 export function currentContext(): DrawContext2D { return activeContext; }
+
+export function retireContext(id: int32): void {
+	serials[id] = serials[id] + 1;
+	freeContextIds.push(id);
+	if (activeContext.id == id) { useDefaultContext(); }
+}
 
 export function resetContext(): void {
 	activeContext.commandTotal = 0;

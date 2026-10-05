@@ -939,6 +939,24 @@ let poolSerial: Vec<int32> = [];
 export function acquireFrameTarget(w: int32, h: int32): RenderTarget { return acquireTarget(w, h); }
 export function renderTargetsAlive(): int32 { return poolTargets.length as int32; }
 
+export function closeContextTargets(id: int32): void {
+	let i: int32 = 0;
+	while (i < (poolTargets.length as int32)) {
+		if (poolOwner[i] != id) {
+			i = i + 1;
+			continue;
+		}
+		poolTargets[i].close();
+		const last: int32 = (poolTargets.length as int32) - 1;
+		poolTargets[i] = poolTargets[last];
+		poolOwner[i] = poolOwner[last];
+		poolSerial[i] = poolSerial[last];
+		poolTargets.pop();
+		poolOwner.pop();
+		poolSerial.pop();
+	}
+}
+
 function adoptPoolContext(): void {
 	const generation: int32 = contextGeneration();
 	for (let i: int32 = 0; i < (poolTargets.length as int32); i++) {

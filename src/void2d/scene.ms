@@ -1,5 +1,7 @@
 import { Scene2D, NodeRef, DrawKind, Changed, NO_NODE_2D } from "./node";
-import { syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift } from "./render";
+import {
+	syncOrder, drawOrder, spliceOrder, patchOrder, refreshScopes, snappedShift, closeContextTargets,
+} from "./render";
 import {
 	openBracket,
 	startContext,
@@ -9,7 +11,8 @@ import {
 	endPatch,
 	enterCamera,
 } from "./draw";
-import { DrawContext2D, NO_REPAINT, useContext } from "./displayList";
+import { DrawContext2D, NO_REPAINT, useContext, retireContext } from "./displayList";
+import { void2dReleaseList } from "./batcher.h";
 import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
 import {
 	Color,
@@ -29,6 +32,7 @@ import { RenderTarget } from "../gpu/target";
 export function create(this typeof Scene2D, clear: Color): Scene2D {
 	const context: DrawContext2D = DrawContext2D.create();
 	const s: Scene2D = {
+		closed: false,
 		generations: [], free: [], retired: 0, kinds: [], payloads: [], changed: [], dirty: [],
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
@@ -49,16 +53,30 @@ export function create(this typeof Scene2D, clear: Color): Scene2D {
 }
 
 export function add(this s: Scene2D, c: NodeRef): NodeRef {
+	s.requireOpen("add");
 	return s.refOf(s.root).addChild(c);
 }
 
+export function close(this s: Scene2D): void {
+	s.requireOpen("close");
+	const id: int32 = s.context.id;
+	closeContextTargets(id);
+	void2dReleaseList(id);
+	retireContext(id);
+	s.closeRows();
+}
+
+export function isClosed(this s: Scene2D): boolean { return s.closed; }
+
 export function setScaleMode(this s: Scene2D, mode: ScaleMode, designW: float32, designH: float32): void {
+	s.requireOpen("setScaleMode");
 	s.scaleMode = mode;
 	s.designW = designW;
 	s.designH = designH;
 }
 
 export function tick(this s: Scene2D, dt: float32): void {
+	s.requireOpen("tick");
 	for (let i: int32 = 0; i < (s.kinds.length as int32); i++) {
 		const payload: int32 = s.payloads[i];
 		match (s.kinds[i]) {
@@ -136,6 +154,7 @@ export function sceneViewMatrix(s: Scene2D, wf: float32, hf: float32): Transform
 }
 
 export function present(this s: Scene2D): void {
+	s.requireOpen("present");
 	s.presentAt(dpiScale());
 }
 
@@ -145,6 +164,7 @@ export function present(this s: Scene2D): void {
 // golden scene pins DPI 1.25 or 1.5 on a box whose display reports 1.0 (docs/TESTING.md,
 // "Determinism preconditions").
 export function isDirty(this s: Scene2D): boolean {
+	s.requireOpen("isDirty");
 	const l: DrawContext2D = s.context;
 	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
 	if (s.defaultSmooth != l.paintedSmooth) { return true; }
@@ -161,6 +181,7 @@ function shiftOf(m: Transform2D, dpi: float32): Vec2 {
 }
 
 export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
+	s.requireOpen("paint");
 	s.retiled = 0;
 	useContext(s.context);
 	setSceneSmooth(s.defaultSmooth);
@@ -222,6 +243,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 }
 
 export function prepare(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
+	s.requireOpen("prepare");
 	if (s.context.prepared) {
 		console.log(`void2d: prepare Scene2D context ${s.context.id} again before drawScreen`);
 		unreachable;
@@ -238,14 +260,17 @@ export function prepare(this s: Scene2D, wf: float32, hf: float32, dpi: float32)
 }
 
 export function drawScreen(this s: Scene2D): void {
+	s.requireOpen("drawScreen");
 	s.context.drawScreen();
 }
 
 export function drawTarget(this s: Scene2D, target: RenderTarget): void {
+	s.requireOpen("drawTarget");
 	s.context.drawTarget(target, s.clear);
 }
 
 export function presentAt(this s: Scene2D, dpi: float32): void {
+	s.requireOpen("presentAt");
 	s.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
 	beginScreenPassWith(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
 	s.drawScreen();

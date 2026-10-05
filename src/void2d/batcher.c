@@ -853,6 +853,35 @@ static void2dList *listAt(int id) {
 	return &s_lists[id];
 }
 
+void void2dReleaseList(int id) {
+	if (id < 0) {
+		fprintf(stderr, "void2d: cannot release list %d — invalid id\n", id);
+		abort();
+	}
+	if ((size_t)id < s_contextCap) { memset(&s_contexts[id], 0, sizeof(s_contexts[id])); }
+	if (id >= s_listCap) { return; }
+	void2dList *l = &s_lists[id];
+	int count = 0;
+	for (int i = 0; i < 3; i++) { if (l->buf[i].id) { count++; } }
+	if (s_frameOpen && s_retiredBufCount + count > VOID2D_MAX_RETIRED_BUFFERS) {
+		fprintf(stderr, "void2d: releasing list %d needs %d retired buffers, %d of %d are taken\n",
+			id, count, s_retiredBufCount, VOID2D_MAX_RETIRED_BUFFERS);
+		abort();
+	}
+	for (int i = 0; i < 3; i++) {
+		if (!l->buf[i].id) { continue; }
+		if (s_frameOpen) {
+			s_retiredBuf[s_retiredBufCount++] = l->buf[i];
+		} else {
+			sg_destroy_buffer(l->buf[i]);
+			s_buffersFreed++;
+		}
+	}
+	free(l->stage);
+	memset(l, 0, sizeof(*l));
+	l->updatedFrame = -1;
+}
+
 static int ensureListBuffer(void2dList *l, int which, int bytes) {
 	if (l->buf[which].id && bytes <= l->cap[which]) { return 1; }
 	int want = void2dGrowthTarget(l->cap[which], bytes);

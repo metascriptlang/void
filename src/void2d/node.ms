@@ -197,6 +197,7 @@ export struct TileGroupRow {
 }
 
 export interface Scene2D {
+	closed: boolean;
 	generations: Vec<int32>;
 	free: Vec<int32>;
 	retired: int32;
@@ -314,6 +315,7 @@ function localMatrix(l: Local2D): Transform2D {
 }
 
 export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
+	s.requireOpen("creating a node");
 	const noBounds: Bounds2D = { xMin: 0.0, yMin: 0.0, xMax: 0.0, yMax: 0.0 };
 	const order: Order2D = { zIndex: 0, visible: true, name: "", noOverlap: false };
 	const reusable: int32 = s.free.length as int32;
@@ -370,11 +372,18 @@ export function refOf(this s: Scene2D, i: int32): NodeRef {
 	return { scene: s, id: { index: i, generation: s.generations[i] } };
 }
 
+export function requireOpen(this s: Scene2D, call: string): void {
+	if (!s.closed) { return; }
+	console.log(`void2d: ${call} on a closed scene`);
+	unreachable;
+}
+
 export function nodeCount(this s: Scene2D): int32 {
 	return (s.kinds.length as int32) - (s.free.length as int32) - s.retired;
 }
 
 export function isLive(this n: NodeRef): boolean {
+	if (n.scene.closed) { return false; }
 	const i: int32 = n.id.index;
 	if (i < 0 || i >= (n.scene.generations.length as int32)) { return false; }
 	return n.scene.generations[i] == n.id.generation;
@@ -382,6 +391,10 @@ export function isLive(this n: NodeRef): boolean {
 
 export function liveRow(this n: NodeRef, call: string): int32 {
 	if (n.isLive()) { return n.id.index; }
+	if (n.scene.closed) {
+		console.log(`void2d: ${call} on node ${n.id.index} of a closed scene`);
+		unreachable;
+	}
 	const i: int32 = n.id.index;
 	const rows: int32 = n.scene.generations.length as int32;
 	const now: int32 = i >= 0 && i < rows ? n.scene.generations[i] : 0;
@@ -1638,6 +1651,10 @@ export function dispose(this n: NodeRef): void {
 		console.log("void2d: dispose asked of the scene root");
 		unreachable;
 	}
+	s.freeSubtree(top);
+}
+
+function freeSubtree(this s: Scene2D, top: int32): void {
 	s.detach(top);
 	s.stack.push(top);
 	while ((s.stack.length as int32) > 0) {
@@ -1648,4 +1665,17 @@ export function dispose(this n: NodeRef): void {
 		s.releaseLayout(i);
 		s.freeRow(i);
 	}
+}
+
+export function closeRows(this s: Scene2D): void {
+	const rows: int32 = s.generations.length as int32;
+	let freed: Vec<boolean> = new Array(0);
+	for (let i: int32 = 0; i < rows; i++) { freed.push(s.generations[i] == 0); }
+	for (const i of s.free) { freed[i] = true; }
+	const tops: Vec<int32> = new Array(0);
+	for (let i: int32 = 0; i < rows; i++) {
+		if (!freed[i] && s.parents[i] == NO_NODE_2D) { tops.push(i); }
+	}
+	for (const top of tops) { s.freeSubtree(top); }
+	s.closed = true;
 }

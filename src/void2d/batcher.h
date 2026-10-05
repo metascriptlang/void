@@ -36,6 +36,7 @@ int void2dReplayList(int list, const float *targetCommands, int targetCommandCou
                      const float *uiInstances, int uiInstanceCount,
                      const int *uiRanges, int uiRangeCount);
 
+void void2dReleaseList(int id);
 void void2dRememberContext(int id, int live);
 int void2dActivateContext(int id);
 
