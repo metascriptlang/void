@@ -26,7 +26,9 @@ import {
 	vec2,
 } from "./types";
 import { fbWidth, fbHeight, dpiScale } from "../sokol/gpu";
-import { PassState, passState, beginScreenPassWith, endPass, commit } from "../gpu/door";
+import {
+	PassState, passState, beginScreenPassWith, endPass, commit, contextGeneration,
+} from "../gpu/door";
 import { RenderTarget } from "../gpu/target";
 
 export function create(this typeof Scene2D, clear: Color): Scene2D {
@@ -167,7 +169,9 @@ export function isDirty(this s: Scene2D): boolean {
 	s.requireOpen("isDirty");
 	const l: DrawContext2D = s.context;
 	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
-	if (s.defaultSmooth != l.paintedSmooth) { return true; }
+	if (s.defaultSmooth != l.paintedSmooth || l.paintedGeneration != contextGeneration()) {
+		return true;
+	}
 	const nv: Transform2D = sceneViewMatrix(s, l.paintedW, l.paintedH);
 	return linearPart(nv) != s.viewMat || shiftOf(nv, l.paintedDpi) != s.viewShift;
 }
@@ -198,7 +202,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 	const l: DrawContext2D = s.context;
 	const kept: boolean = l.painted && !viewChanged &&
 		l.paintedW == wf && l.paintedH == hf && l.paintedDpi == dpi &&
-		l.paintedSmooth == s.defaultSmooth;
+		l.paintedSmooth == s.defaultSmooth && l.paintedGeneration == contextGeneration();
 	if (kept && s.patchOrder(wf, hf)) {
 		endPatch(l.paintEnd);
 		s.patches = s.patches + 1;
@@ -240,6 +244,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 	done.paintedH = hf;
 	done.paintedDpi = dpi;
 	done.paintedSmooth = s.defaultSmooth;
+	done.paintedGeneration = contextGeneration();
 }
 
 export function prepare(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {

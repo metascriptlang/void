@@ -447,8 +447,9 @@ static sg_pipeline pipelineAt(int program, int target, int blend) {
 	return (sg_pipeline){ .id = id };
 }
 
-void void2dSetup(void) {
-	voidSetCommitHook(void2dFrameEnd);
+static int s_generation;
+
+static void makeContextResources(void) {
 	(void)ensureVertexBuffer(VOID2D_INITIAL_BUFFER_BYTES);
 
 	s_originTopLeft = sg_query_features().origin_top_left;
@@ -490,8 +491,15 @@ void void2dSetup(void) {
 		d.wrap_v = wrap ? SG_WRAP_REPEAT : SG_WRAP_CLAMP_TO_EDGE;
 		s_smp[i] = sg_make_sampler(&d);
 	}
-
+	s_generation = doorContextGeneration();
 }
+
+void void2dSetup(void) {
+	voidSetCommitHook(void2dFrameEnd);
+	makeContextResources();
+}
+
+static void adoptContext(void);
 
 
 uint32_t void2dWhiteView(void) { return s_whiteView.id; }
@@ -607,6 +615,7 @@ void void2dFrameBegin(void) {
 	}
 	if (s_frameOpen) { return; }
 	s_frameOpen = 1;
+	adoptContext();
 	void2dGlyphPagesFrameBegin();
 	releaseRetiredBuffers();
 	s_drawCallCount = 0;
@@ -896,6 +905,39 @@ void void2dReleaseList(int id) {
 	free(l->stage);
 	memset(l, 0, sizeof(*l));
 	l->updatedFrame = -1;
+}
+
+static void forgetContextResources(void) {
+	s_vbuf = (sg_buffer){0};
+	s_vbufBytes = 0;
+	memset(s_pipelines, 0, sizeof(s_pipelines));
+	memset(s_pageImg, 0, sizeof(s_pageImg));
+	memset(s_pageView, 0, sizeof(s_pageView));
+	s_retiredBufCount = 0;
+	s_closedBufCount = 0;
+	for (int i = 0; i < s_listCap; i++) {
+		for (int which = 0; which < 3; which++) {
+			s_lists[i].buf[which] = (sg_buffer){0};
+			s_lists[i].cap[which] = 0;
+		}
+		s_lists[i].stale = 1;
+	}
+	for (size_t i = 0; i < s_contextCap; i++) {
+		s_contexts[i].srcVertex = (sg_buffer){0};
+		s_contexts[i].srcSprite = (sg_buffer){0};
+		s_contexts[i].srcUi = (sg_buffer){0};
+		s_contexts[i].prepared = 0;
+	}
+	s_buffersMade = 0;
+	s_buffersFreed = 0;
+	s_atlasMade = 0;
+	void2dGlyphPagesMarkDirty();
+}
+
+static void adoptContext(void) {
+	if (doorContextGeneration() == s_generation) { return; }
+	forgetContextResources();
+	makeContextResources();
 }
 
 static int ensureListBuffer(void2dList *l, int which, int bytes) {

@@ -285,6 +285,7 @@ export interface DrawContext2D {
 	paintedH: float32;
 	paintedDpi: float32;
 	paintedSmooth: boolean;
+	paintedGeneration: int32;
 	targetsPending: boolean;
 	uploadAll: boolean;
 	dirtyVertices: boolean;
@@ -390,6 +391,7 @@ export function twin(this typeof DrawContext2D, id: int32): DrawContext2D {
 		paintedH: 0.0,
 		paintedDpi: 0.0,
 		paintedSmooth: false,
+		paintedGeneration: 0,
 		targetsPending: false,
 		uploadAll: false,
 		dirtyVertices: false,

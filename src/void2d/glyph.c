@@ -690,6 +690,10 @@ int void2dGlyphPageTakeUpload(int page) {
 	return 1;
 }
 
+void void2dGlyphPagesMarkDirty(void) {
+	for (int page = 0; page < s_pageCount; page++) { s_pages[page].dirty = 1; }
+}
+
 void void2dGlyphPagesFrameBegin(void) {
 	for (int page = 0; page < s_pageCount; page++) { s_pages[page].uploaded = 0; }
 }

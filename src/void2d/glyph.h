@@ -31,6 +31,7 @@ int void2dGlyphPageTexel(int page, int x, int y);
 const unsigned char *void2dGlyphPageData(int page);
 int void2dGlyphPageUploaded(int page);
 int void2dGlyphPageTakeUpload(int page);
+void void2dGlyphPagesMarkDirty(void);
 void void2dGlyphPagesFrameBegin(void);
 
 typedef void (*GlyphRasterBox)(const unsigned char *font, int length, int glyph, float sizePx,
