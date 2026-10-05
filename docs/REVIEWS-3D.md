@@ -2353,3 +2353,39 @@ in the as-built. The M3 section's API list is a milestone record and was left as
 Android 3,401,520 B. The first `gate3d.sh` failed one abort case whose expected text predated
 the eleven-word pass descriptor; fixed in `1a3f0dd` and re-run. RED-before and the depth-Clear
 control are in VOID3D "M32 as built".
+
+## M33 — a material's kind and cutout programs
+
+**Verdict: SHIP WITH FOLLOW-UPS** after one redesign inside the row; the follow-ups that touch
+the mechanism are done here, two are carried by name.
+
+### Fresh design pass — SHIP WITH FOLLOW-UPS, redesigned
+
+The first build put `discard` below `material.w` in every material program. The fresh reviewer
+read Heaps' `Texture.hx:11,26`: `killAlpha` is a shader constant, so only cutting materials
+carry a discard, and a discard anywhere can switch off early depth and hidden-surface removal
+on tile-based GPUs. Rebuilt as six cutout twins (M27's twin pattern) with the uncut programs
+left as they were. Also fixed from that pass: `passFor` set blend only for some kinds and kept
+the base's depth write (it now sets both for every kind, as `set_blendMode`); the kind and its
+threshold could part (a cutout program now needs a positive threshold, `NoAlphaKill`); the cut
+compares the final alpha, not Heaps' texel alpha — kept, as glTF and Bevy compare, and written
+down; the probe gained a vertex-alpha column, a backdrop drawn after the quads (a cut pixel
+must not write depth) and the control in both presets. Carried to M34: Alpha writes depth as
+in Heaps, which URG-style overlapping cards and `DepthSource.DepthTexture` need overridden.
+
+### Defect pass, `/code-review high`
+
+Ten findings, each checked against the code:
+- **Fixed:** glTF dropped alpha twice — `baseColorFactor`'s alpha never reached the vertex and
+  every texture was forced to 255 at load, so MASK and BLEND could neither cut nor blend; the
+  factor's alpha now reaches the vertex under MASK and BLEND, a texture keeps its alpha unless
+  only OPAQUE materials use it, and one used both ways is refused. A MASK cutoff of 0 passed the
+  loader and failed `addMaterial` (it is now an Opaque material). AlphaKill on a billboard or
+  particle kept the program while the doc told the caller to write a threshold into a block
+  whose float 3 is colour (now a stop by name). `madeMaterial` re-derived the kind's program
+  and phase (now `Material.ofKind`), `alphaCutoffOf` repeated `numberAt` (now `numberOf`),
+  design-prose comments, a lost line continuation in the gate stage.
+- **Kept:** the kind overrides a glTF setup pass's blend and depth write — that is the design
+  fix above; the struct doc and test name now say so. The program table's 23 of 24 entries is
+  recorded in the as-built: the next variant needs a feature axis, a new mechanism raised
+  with the row that needs it.

@@ -143,7 +143,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 
 | Row | Reference | What | Needed by |
 |---|---|---|---|
-| M33 | Heaps `b9aa6dcb` `h3d/mat/Material.hx:3-10` (`DefaultKind`: Opaque, Alpha, AlphaKill, Add, SoftAdd, Hidden), `:265-283` `refreshProps` (the kind decides blend, alpha kill at 0.5, culling, lights, shadows), `:132-148` `set_blendMode` (blend decides pass name and depth write) | **A material's kind.** One declaration derives phase, blend, depth write and an alpha-kill threshold, so phase and blend can no longer disagree (closes M32's follow-up); AlphaKill is the discard cutout. The explicit `Material.plain` stays for presets | every translucent or cut material; M35 needs it to pick casters and cut them in the shadow pass |
+| M33 | Heaps `b9aa6dcb` `h3d/mat/Material.hx:3-10` (`DefaultKind`: Opaque, Alpha, AlphaKill, Add, SoftAdd, Hidden), `:265-283` `refreshProps` (the kind decides blend, alpha kill at 0.5, culling, lights, shadows), `:132-148` `set_blendMode` (blend decides pass name and depth write) | **A material's kind.** One declaration derives phase, blend, depth write and, for AlphaKill, a cutout program whose threshold the material's block must hold, so phase and blend can no longer disagree through it (closes M32's follow-up). The explicit `Material.plain` stays for presets | every translucent or cut material; M35 needs it to pick casters and cut them in the shadow pass |
 | M34 | Heaps `h3d/mat/Pass.hx:51` (`layer`), `h3d/scene/Renderer.hx:114-125` (lists sort by layer before depth) | **A sort layer inside a phase.** An integer on the material orders items before back-to-front depth, stable within a layer | URG forces order on nearly every card and effect |
 | M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes) | the one sun in URG; any outdoor or tabletop scene |
 | M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language | card surfaces, fire lines, beams, glows |
@@ -2116,6 +2116,74 @@ words. Receipts `out/tmp/m32/`. Web NOT RUN for the Yoga provider.
 where the pipeline has one attachment. D3D11 and GL drop it; Metal and WebGPU are not measured
 and web cannot run here, and neither has run the store action. `colorMask` is one value for
 every attachment of a pipeline.
+
+### M33 as built
+
+**A material's kind.** `material.ms` `MaterialKind` is Heaps' `DefaultKind` without Hidden (a
+node that draws nothing is removed instead): Opaque, Alpha, AlphaKill, Add, SoftAdd.
+`Material.ofKind(program, kind)` derives the pass, the list and, for AlphaKill, the program:
+`passFor(kind, base)` sets blend and depth write on every kind as `set_blendMode` does (None and
+Alpha write depth, the additive modes do not) and keeps the base's culling, depth test and
+colour mask; `phaseFor(kind)` picks the list as `refreshProps` does. `Material.plain` stays for
+presets and for anything a kind does not name.
+
+**Cutout programs, not a discard everywhere.** Heaps compiles `killAlpha` as a constant of its
+Texture shader (`h3d/shader/Texture.hx`), so only cutting materials carry a discard; a discard
+in a shader can switch off early depth and hidden-surface removal on tile-based GPUs. void3d
+does the same with twins, as M27 did for premultiplied input: `LitCutout`,
+`LitTexturedCutout`, `UnlitTexturedCutout` and their pixel-art twins (23 programs, under the
+map's 24) are the uncut programs plus `if (fragColor.a < material.w) discard;`. The lit
+shading moved into a `litShade` block both share. `cutsAlpha(program)` names the class, the
+program map refuses to draw a cutout as a whole program or back (`stopOnCutMismatch`), and
+`cutoutOf(program)` is what AlphaKill draws: the twin, or a stop by name, including for the
+billboard and particle programs, which already cut at a fixed alpha and whose blocks hold
+colour where a material block holds the threshold.
+
+**The threshold is a material value.** Float 3 of the lit and unlit material blocks
+(`MATERIAL_ALPHA_KILL`, `material.w`), where Heaps keeps `killAlphaThreshold`, Bevy
+`alpha_cutoff` and glTF `alphaCutoff`: per material. `alphaKillFor(kind)` is the value a kind
+starts from (0.5, Heaps' `defaultKillAlphaThreshold` and glTF's default); the caller writes it
+into the block like any other uniform. A cutout program whose block has no positive threshold
+is refused by `addMaterial` (`MaterialError.NoAlphaKill`), so the kind and its threshold cannot
+part. The cut compares the final alpha (vertex × texel × material colour), as glTF and Bevy
+do; Heaps compares the texel's alpha alone, so a Heaps-style sprite fading through vertex alpha
+is cut here once it falls below the threshold.
+
+**glTF alpha modes.** `gltf.ms` reads `alphaMode` (OPAQUE, MASK as AlphaKill, BLEND as Alpha;
+anything else is `Unsupported`) and `alphaCutoff` under MASK (default 0.5, negative or
+non-finite `OutOfRange`, 0 an Opaque material since it cuts nothing). Alpha now reaches the
+program, as the M23 notes asked: under MASK and BLEND the vertex alpha is `baseColorFactor`'s
+and a texture keeps its own; only a texture every user of which is OPAQUE is still forced to
+255 at load (glTF 2.0 §3.9.4), and one sampled by both kinds is `UnsupportedMaterial`.
+`COLOR_0` stays VEC3. `addGltfAssets` takes culling, depth test and colour mask from the
+setup's pass and blend and depth write from the kind, draws MASK with the cutout twin, writes
+the cutoff, and refuses a setup whose block sets the alpha-kill float (`BadSetup`), as it does
+for the double-sided flag: both come from the document.
+
+**Kept from the defect pass.** The program table holds 23 of the map's 24 entries; every
+feature so far has been a full twin (premultiplied, cutout), so a premultiplied cutout cannot be
+named and stops in `cutoutOf`. The next variant needs a feature axis on the program table, a
+new mechanism of its own, raised when a row needs it.
+
+**Carried to M34.** Alpha writes depth, as Heaps' does; Godot's transparent materials do not,
+and URG orders its overlapping cards by priority instead. One glTF setup pass serves every
+material of a document, so a document mixing OPAQUE and BLEND cannot turn depth write off for
+BLEND alone, and under `DepthSource.DepthTexture` the pixel-art preset refuses its BLEND
+materials (`TranslucentDepthWrite`). The sort-layer row decides the per-kind override.
+
+**Acceptance.** `tests/integration/alphaKill.ms` (gate stage `alpha-kill`), in both presets:
+an unlit textured, a lit textured and a lit vertex-alpha column, each with a quarter-alpha
+half and a three-quarter half, kind AlphaKill, in front of an opaque backdrop drawn after
+them. The quarter-alpha halves show the backdrop (so a cut pixel wrote no depth, or the
+backdrop would have lost the depth test to it), the three-quarter halves draw, the unlit one
+unblended white. The control, the same scene with kind Opaque, draws the quarter-alpha halves
+and fails in both presets. Headless: the kind table against Heaps', `passFor` over a blended
+base, the cutout twins' class, layout and blocks in both maps, the `NoAlphaKill` refusal,
+the glTF modes and cutoff with their refusals and the cutout program they choose, texture and
+factor alpha kept under MASK and BLEND and forced under OPAQUE, a texture shared by both
+refused; aborts `programMapCutMismatch`, `kindWithoutCutout` and `kindOnBillboard`. Not drawn: a glTF MASK file end to end (its
+material is pinned headless), the pixel-art normal target under a cut pixel (a discard drops
+every output).
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
