@@ -141,8 +141,8 @@ export function upload(
 		return Result.err(TextureError.BadSize);
 	}
 	if (texture.holdsCurrent()) {
-		console.log("gpu door: upload on a texture that holds a live image; its image is immutable, " +
-			"so make a new Texture for new pixels");
+		console.log("gpu door: upload on a texture that holds a live image; its image is " +
+			"immutable, so make a new Texture for new pixels");
 		unreachable;
 	}
 	forgetHandles(texture);
