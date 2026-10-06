@@ -1018,7 +1018,8 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit renderer:slotBound gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
 	renderer:drawPassLists renderer:drawScreen renderer:openPrepare renderer:closePrepare
-	renderer:openScreen pass76ist:collect pass76ist:sortBackToFront pass76ist:drawPassList
+	renderer:openScreen pass76ist:collect pass76ist:sortBackToFront pass76ist:sortByLayer
+	pass76ist:drawPassList
 	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock pipeline:pipelineFor
 	pipeline:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:prepareFrame
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
@@ -1929,6 +1930,38 @@ run_alpha_kill() {
 	pass "alpha-kill: cutout programs cut below the threshold in both presets, no depth written; the Opaque control draws"
 }
 
+run_sort_layer() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "sort-layer: GATE_SKIP_CAPTURE=1 — no layer order was read back"
+		return
+	fi
+	exe="$WORK/sortLayer.exe"
+	if ! msc build tests/integration/sortLayer.ms --output="$exe" > "$WORK/sortLayer.build.log" 2>&1; then
+		fail "sort-layer: tests/integration/sortLayer.ms does not build — see $WORK/sortLayer.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_SORT_LAYER_PIXEL_ART=$preset "$exe" > "$WORK/sortLayer.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "sort-layer: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS sort layer: ' "$WORK/sortLayer.$preset.log"; then
+			fail "sort-layer: preset $preset did not draw lower layers first (exit $status) — see $WORK/sortLayer.$preset.log"
+			return
+		fi
+		status=0
+		VOID_SORT_LAYER_PIXEL_ART=$preset VOID_SORT_LAYER_CONTROL=1 "$exe" 			> "$WORK/sortLayer.control.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'did not draw first' "$WORK/sortLayer.control.$preset.log" ||
+			! grep -q 'did not draw last' "$WORK/sortLayer.control.$preset.log"; then
+			fail "sort-layer: the layer-0 control in preset $preset kept the layered order (exit $status)"
+			return
+		fi
+	done
+	pass "sort-layer: lower layers draw first in the opaque and alpha lists of both presets; the control does not"
+}
+
 run_reparent() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "reparent: GATE_SKIP_CAPTURE=1 — tree moves were not drawn"
@@ -2305,6 +2338,7 @@ run_unlit_textured
 run_target_texture
 run_mrt_blend
 run_alpha_kill
+run_sort_layer
 run_camera_rig
 run_reparent
 run_gltf
