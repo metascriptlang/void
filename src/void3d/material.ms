@@ -81,6 +81,8 @@ export struct Material {
 	// Heaps' `Material.texture`: a context texture, bound at view and sampler 0 in their place.
 	texture: TextureId;
 	uniforms: UniformBlock;
+	// h3d.mat.Pass.layer: a list draws lower layers first, before any other order it has.
+	layer: int32;
 }
 
 export const NO_UNIFORMS: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
@@ -150,6 +152,7 @@ export function plain(
 		sampler1: 0,
 		texture: NO_TEXTURE,
 		uniforms: NO_UNIFORMS,
+		layer: 0,
 	};
 }
 

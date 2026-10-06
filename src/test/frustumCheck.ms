@@ -6,7 +6,9 @@ import { DrawItem } from "../void3d/draw";
 import { Material, Phase } from "../void3d/material";
 import { Program } from "../void3d/gpu3d";
 import { RenderState } from "../gpu/state";
-import { PassList, collect, filterFrustum, sortBackToFront } from "../void3d/passList";
+import {
+	PassList, collect, filterFrustum, sortBackToFront, sortByLayer,
+} from "../void3d/passList";
 
 function cube(): Bounds3D {
 	return Bounds3D.fromValues(-0.25, -0.25, -0.25, 0.5, 0.5, 0.5);
@@ -175,4 +177,42 @@ test "perspective alpha sorting uses projected depth including behind-eye unboun
 	sortBackToFront(alpha, items, camera);
 	assert alpha.indices[0] == 2 && alpha.indices[1] == 0;
 	assert alpha.indices[2] == 3 && alpha.indices[3] == 1;
+}
+
+function layered(phase: Phase, layer: int32): Material {
+	return { ...Material.plain(Program.Lit, RenderState.defaults(), phase), layer: layer };
+}
+
+test "every list draws lower layers first; alpha goes back to front inside a layer" {
+	let phases: Vec<Material> = [
+		layered(Phase.Opaque, 0), layered(Phase.Alpha, 0), layered(Phase.Additive, 0),
+		layered(Phase.Opaque, -1), layered(Phase.Alpha, 1), layered(Phase.Additive, -2),
+	];
+	let items: Vec<DrawItem> = [
+		item(0, 0, 0.0, 0.5), item(0, 3, 0.0, 0.5), item(0, 3, 4.0, 0.5), item(0, 0, 0.0, 0.5),
+		item(0, 3, 0.0, 0.5), item(0, 1, 0.0, 0.9), item(0, 4, 0.0, 0.95), item(0, 1, 0.0, 0.5),
+		item(0, 2, 0.0, 0.5), item(0, 5, 0.0, 0.5),
+	];
+	let meshes: Vec<MeshData> = [bounded(), MeshData.empty()];
+	let opaque: PassList = PassList.forPhase(Phase.Opaque);
+	let alpha: PassList = PassList.forPhase(Phase.Alpha);
+	let additive: PassList = PassList.forPhase(Phase.Additive);
+	collect(opaque, items, phases);
+	collect(alpha, items, phases);
+	collect(additive, items, phases);
+	let frustum: Frustum3D = Frustum3D.fromMatrix(identity());
+	assert filterFrustum(opaque, items, meshes, frustum) == 1;
+	sortByLayer(opaque);
+	assert opaque.count == 4;
+	assert opaque.indices[0] == 1 && opaque.indices[1] == 4;
+	assert opaque.indices[2] == 0 && opaque.indices[3] == 3;
+	let camera: Vec<float32> = [
+		1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+	];
+	sortBackToFront(alpha, items, camera);
+	assert alpha.count == 3;
+	assert alpha.indices[0] == 5 && alpha.indices[1] == 7 && alpha.indices[2] == 6;
+	sortByLayer(additive);
+	assert additive.count == 2 && additive.indices[0] == 9 && additive.indices[1] == 8;
 }

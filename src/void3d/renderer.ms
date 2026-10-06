@@ -54,7 +54,9 @@ import {
 	MODEL_SLOT,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
-import { PassList, collect, filterFrustum, sortBackToFront, drawPassList } from "./passList";
+import {
+	PassList, collect, filterFrustum, sortBackToFront, sortByLayer, drawPassList,
+} from "./passList";
 import { ProgramMap, ProgramError } from "./programMap";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
@@ -279,7 +281,9 @@ export function beginFrame(
 		filterFrustum(renderer.opaque, items, context.meshData, frustum) +
 		filterFrustum(renderer.alpha, items, context.meshData, frustum) +
 		filterFrustum(renderer.additive, items, context.meshData, frustum);
+	sortByLayer(renderer.opaque);
 	sortBackToFront(renderer.alpha, items, camera);
+	sortByLayer(renderer.additive);
 	return Result.ok(fresh);
 }
 
