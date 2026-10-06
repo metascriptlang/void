@@ -935,7 +935,7 @@ static void forgetContextResources(void) {
 }
 
 static void adoptContext(void) {
-	if (doorContextGeneration() == s_generation) { return; }
+	if (s_generation == 0 || doorContextGeneration() == s_generation) { return; }
 	forgetContextResources();
 	makeContextResources();
 }
