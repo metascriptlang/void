@@ -2427,3 +2427,12 @@ Read in the main session over `0937926..f738aa3`, each point checked against the
   layer with its index; the probe's equal-depth opaque half relies on the default `Less` depth
   test and no preset has a depth prepass; the alpha half's control draws red last and fails on
   the green-over-red check, so both halves fail the control as the gate requires.
+
+### Final acceptance
+
+`4ce71b2`, BUILD `244ef48c` unchanged throughout: probe `sortLayer` PASS in both presets, its
+control RED in both (the layer -1 opaque quad not first, the far layer 1 alpha quad not last);
+`gate.sh` GREEN (golden 82/82, 8 known skips), `gate3d.sh` GREEN 311 PASS / 0 FAIL / 3 known
+skips, 72 hashes none adopted, Android 3,445,312 B. This is also M33's one-compiler proof: its
+land gate ran on a mixed compiler. The first native run went RED on the control; the fix is
+in the defect pass above.
