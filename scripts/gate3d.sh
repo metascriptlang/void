@@ -308,14 +308,17 @@ configureCampfireFlameAnchor({ x: -0.5, y: -0.5 });"
 
 # msc build answers "Up to date" when only a header a compiled .c includes has changed, and the
 # stale code is then linked into the binary with no diagnostic (docs/VOID3D.md, Compiler
-# notes). gpu3d.c includes the two shader headers and gpu3d.h; the gate hashes them and evicts what
-# was built from them in this checkout's build cache. The machine-wide cache is off for the run.
+# notes). gpu3d.c includes the two shader headers, programTable.h and gpu3d.h; the gate hashes
+# them and evicts what was built from them in this checkout's build cache. The machine-wide
+# cache is off for the run.
 purge_stale_shader_objects() {
 	stamp=$WORK/shaderStamp
 	headers="src/gpu/door.h src/void3d/shader3d.glsl.h src/void3d/pixelArt3d.glsl.h src/void3d/gpu3d.h
+		src/void3d/programTable.h
 		tests/integration/gpuCopy.glsl.h tests/integration/gpuRegistrationFixture.h"
 	current=$(cat $headers 2>/dev/null | md5sum | cut -d' ' -f1)
 	if [ ! -f src/void3d/shader3d.glsl.h ] || [ ! -f src/void3d/pixelArt3d.glsl.h ] ||
+		[ ! -f src/void3d/programTable.h ] ||
 		[ ! -f src/void3d/gpu3d.h ] || [ ! -f src/gpu/door.h ] ||
 		[ ! -f tests/integration/gpuCopy.glsl.h ] || [ ! -f tests/integration/gpuRegistrationFixture.h ]; then
 		note "capture: a shader or GPU bridge header is missing"

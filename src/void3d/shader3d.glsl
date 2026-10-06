@@ -1,5 +1,3 @@
-@include shader3dBlocks.glsl
-
 @block pointLight
 vec3 pointLightAt(int i, vec3 position, vec3 normal) {
     vec3 toLight = pointLight[i].xyz - position;
@@ -56,6 +54,11 @@ out vec4 fragColor;
 void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = litShade(n);
+#ifdef CUTOUT
+    if (fragColor.a < material.w) {
+        discard;
+    }
+#endif
 }
 @end
 
@@ -100,6 +103,9 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
+#ifdef PREMULTIPLIED
+@include_block straightTexel
+#endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 in vec3 worldPosition;
@@ -110,8 +116,19 @@ out vec4 fragColor;
 @include_block litTexturedShade
 void main() {
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = litTexturedShade(texel, n);
+#ifdef CUTOUT
+    if (fragColor.a < material.w) {
+        discard;
+    }
+#endif
+#ifdef PREMULTIPLIED
+    fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
+#endif
 }
 @end
 
@@ -134,6 +151,9 @@ void main() {
 @fs unlitTexturedFs
 @include_block unlitMaterialUniforms
 @include_block colorSpace
+#ifdef PREMULTIPLIED
+@include_block straightTexel
+#endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 in vec2 surfaceUv;
@@ -142,48 +162,18 @@ out vec4 fragColor;
 @include_block unlitTexturedShade
 void main() {
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
     fragColor = unlitTexturedShade(texel);
-}
-@end
-
-@fs litTexturedPremultipliedFs
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block pointLight
-@include_block saturation
-@include_block facingNormal
-@include_block straightTexel
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec2 surfaceUv;
-in vec4 baseColor;
-out vec4 fragColor;
-@include_block litTexturedShade
-void main() {
-    vec4 texel = straightTexel(texture(sampler2D(baseTexture, baseSampler), surfaceUv));
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    vec4 color = litTexturedShade(texel, n);
-    fragColor = vec4(color.rgb * color.a, color.a);
-}
-@end
-
-@fs unlitTexturedPremultipliedFs
-@include_block unlitMaterialUniforms
-@include_block colorSpace
-@include_block straightTexel
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec2 surfaceUv;
-in vec4 baseColor;
-out vec4 fragColor;
-@include_block unlitTexturedShade
-void main() {
-    vec4 texel = straightTexel(texture(sampler2D(baseTexture, baseSampler), surfaceUv));
-    vec4 color = unlitTexturedShade(texel);
-    fragColor = vec4(color.rgb * color.a, color.a);
+#ifdef CUTOUT
+    if (fragColor.a < material.w) {
+        discard;
+    }
+#endif
+#ifdef PREMULTIPLIED
+    fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
+#endif
 }
 @end
 
@@ -289,81 +279,3 @@ void main() {
     fragColor = vec4(texel.rgb, 1.0);
 }
 @end
-
-@fs litCutoutFs
-// PENDING3D: material-saturation-only
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block pointLight
-@include_block saturation
-@include_block facingNormal
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec4 baseColor;
-out vec4 fragColor;
-@include_block litShade
-void main() {
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    fragColor = litShade(n);
-    if (fragColor.a < material.w) {
-        discard;
-    }
-}
-@end
-
-@fs litTexturedCutoutFs
-// PENDING3D: material-saturation-only
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block pointLight
-@include_block saturation
-@include_block facingNormal
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec2 surfaceUv;
-in vec4 baseColor;
-out vec4 fragColor;
-@include_block litTexturedShade
-void main() {
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    fragColor = litTexturedShade(texel, n);
-    if (fragColor.a < material.w) {
-        discard;
-    }
-}
-@end
-
-@fs unlitTexturedCutoutFs
-@include_block unlitMaterialUniforms
-@include_block colorSpace
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec2 surfaceUv;
-in vec4 baseColor;
-out vec4 fragColor;
-@include_block unlitTexturedShade
-void main() {
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
-    fragColor = unlitTexturedShade(texel);
-    if (fragColor.a < material.w) {
-        discard;
-    }
-}
-@end
-
-@program lit litVs litFs
-@program particle particleVs particleFs
-@program billboard billboardVs billboardFs
-@program copy fullscreenVs copyFs
-@program litTextured litTexturedVs litTexturedFs
-@program unlitTextured unlitTexturedVs unlitTexturedFs
-@program litTexturedPremultiplied litTexturedVs litTexturedPremultipliedFs
-@program unlitTexturedPremultiplied unlitTexturedVs unlitTexturedPremultipliedFs
-@program litCutout litVs litCutoutFs
-@program litTexturedCutout litTexturedVs litTexturedCutoutFs
-@program unlitTexturedCutout unlitTexturedVs unlitTexturedCutoutFs

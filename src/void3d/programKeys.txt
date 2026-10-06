@@ -1,0 +1,28 @@
+# The program keys void3d ships (docs/VOID3D.md, M35a). scripts/regen-shaders.sh compiles one
+# sokol-shdc program per row, from the preset's source with the row's features as defines, and
+# writes programTable.h, the table gpu3d.c registers with the GPU door in this order.
+#
+# module                              program         preset    features                 vs              fs               layout
+lit                                   LIT             CORE      -                        litVs           litFs            LIT
+particle                              PARTICLE        CORE      -                        particleVs      particleFs       PARTICLE
+billboard                             BILLBOARD       CORE      -                        billboardVs     billboardFs      BILLBOARD
+copy                                  COPY            CORE      -                        fullscreenVs    copyFs           FULLSCREEN
+pixelArtLit                           LIT             PIXEL_ART -                        litVs           litFs            LIT
+pixelArtParticle                      PARTICLE        PIXEL_ART -                        particleVs      particleFs       PARTICLE
+pixelArtBillboard                     BILLBOARD       PIXEL_ART -                        billboardVs     billboardFs      BILLBOARD
+pixelArtPost                          POST            PIXEL_ART -                        fullscreenVs    postFs           FULLSCREEN
+pixelArtBlit                          BLIT            PIXEL_ART -                        fullscreenVs    blitFs           FULLSCREEN
+litTextured                           LIT_TEXTURED    CORE      -                        litTexturedVs   litTexturedFs    LIT_TEXTURED
+pixelArtLitTextured                   LIT_TEXTURED    PIXEL_ART -                        litTexturedVs   litTexturedFs    LIT_TEXTURED
+unlitTextured                         UNLIT_TEXTURED  CORE      -                        unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
+pixelArtUnlitTextured                 UNLIT_TEXTURED  PIXEL_ART -                        unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
+litTexturedPremultiplied              LIT_TEXTURED    CORE      PREMULTIPLIED            litTexturedVs   litTexturedFs    LIT_TEXTURED
+pixelArtLitTexturedPremultiplied      LIT_TEXTURED    PIXEL_ART PREMULTIPLIED            litTexturedVs   litTexturedFs    LIT_TEXTURED
+unlitTexturedPremultiplied            UNLIT_TEXTURED  CORE      PREMULTIPLIED            unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
+pixelArtUnlitTexturedPremultiplied    UNLIT_TEXTURED  PIXEL_ART PREMULTIPLIED            unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
+litCutout                             LIT             CORE      CUTOUT                   litVs           litFs            LIT
+pixelArtLitCutout                     LIT             PIXEL_ART CUTOUT                   litVs           litFs            LIT
+litTexturedCutout                     LIT_TEXTURED    CORE      CUTOUT                   litTexturedVs   litTexturedFs    LIT_TEXTURED
+pixelArtLitTexturedCutout             LIT_TEXTURED    PIXEL_ART CUTOUT                   litTexturedVs   litTexturedFs    LIT_TEXTURED
+unlitTexturedCutout                   UNLIT_TEXTURED  CORE      CUTOUT                   unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
+pixelArtUnlitTexturedCutout           UNLIT_TEXTURED  PIXEL_ART CUTOUT                   unlitTexturedVs unlitTexturedFs  LIT_TEXTURED

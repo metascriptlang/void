@@ -1,6 +1,3 @@
-@module pixelArt
-@include shader3dBlocks.glsl
-
 @block toonPointLight
 vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight, float levels) {
     vec3 toLight = pointLight[i].xyz - position;
@@ -63,6 +60,11 @@ layout(location=1) out vec4 fragNormal;
 void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = litShade(n);
+#ifdef CUTOUT
+    if (fragColor.a < material.w) {
+        discard;
+    }
+#endif
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -109,6 +111,9 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
+#ifdef PREMULTIPLIED
+@include_block straightTexel
+#endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 in vec3 worldPosition;
@@ -121,8 +126,19 @@ layout(location=1) out vec4 fragNormal;
 @include_block litTexturedShade
 void main() {
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = litTexturedShade(texel, n);
+#ifdef CUTOUT
+    if (fragColor.a < material.w) {
+        discard;
+    }
+#endif
+#ifdef PREMULTIPLIED
+    fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
+#endif
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -151,6 +167,9 @@ void main() {
 @include_block unlitMaterialUniforms
 @include_block colorSpace
 @include_block facingNormal
+#ifdef PREMULTIPLIED
+@include_block straightTexel
+#endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 in vec3 worldNormal;
@@ -162,58 +181,19 @@ layout(location=1) out vec4 fragNormal;
 @include_block unlitTexturedShade
 void main() {
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = unlitTexturedShade(texel);
-    fragNormal = vec4(n * 0.5 + 0.5, depth01);
-}
-@end
-
-@fs litTexturedPremultipliedFs
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block toonPointLight
-@include_block saturation
-@include_block facingNormal
-@include_block straightTexel
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec2 surfaceUv;
-in vec4 baseColor;
-in float depth01;
-layout(location=0) out vec4 fragColor;
-layout(location=1) out vec4 fragNormal;
-@include_block litTexturedShade
-void main() {
-    vec4 texel = straightTexel(texture(sampler2D(baseTexture, baseSampler), surfaceUv));
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    vec4 color = litTexturedShade(texel, n);
-    fragColor = vec4(color.rgb * color.a, color.a);
-    fragNormal = vec4(n * 0.5 + 0.5, depth01);
-}
-@end
-
-@fs unlitTexturedPremultipliedFs
-@include_block unlitMaterialUniforms
-@include_block colorSpace
-@include_block facingNormal
-@include_block straightTexel
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec3 worldNormal;
-in vec2 surfaceUv;
-in vec4 baseColor;
-in float depth01;
-layout(location=0) out vec4 fragColor;
-layout(location=1) out vec4 fragNormal;
-@include_block unlitTexturedShade
-void main() {
-    vec4 texel = straightTexel(texture(sampler2D(baseTexture, baseSampler), surfaceUv));
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    vec4 color = unlitTexturedShade(texel);
-    fragColor = vec4(color.rgb * color.a, color.a);
+#ifdef CUTOUT
+    if (fragColor.a < material.w) {
+        discard;
+    }
+#endif
+#ifdef PREMULTIPLIED
+    fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
+#endif
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
 }
 @end
@@ -411,92 +391,3 @@ void main() {
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
 }
 @end
-
-@fs litCutoutFs
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block toonPointLight
-@include_block saturation
-@include_block facingNormal
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec4 baseColor;
-in float depth01;
-layout(location=0) out vec4 fragColor;
-layout(location=1) out vec4 fragNormal;
-@include_block litShade
-void main() {
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    fragColor = litShade(n);
-    if (fragColor.a < material.w) {
-        discard;
-    }
-    fragNormal = vec4(n * 0.5 + 0.5, depth01);
-}
-@end
-
-@fs litTexturedCutoutFs
-@include_block materialUniforms
-@include_block lightUniforms
-@include_block colorSpace
-@include_block toonPointLight
-@include_block saturation
-@include_block facingNormal
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec3 worldPosition;
-in vec3 worldNormal;
-in vec2 surfaceUv;
-in vec4 baseColor;
-in float depth01;
-layout(location=0) out vec4 fragColor;
-layout(location=1) out vec4 fragNormal;
-@include_block litTexturedShade
-void main() {
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    fragColor = litTexturedShade(texel, n);
-    if (fragColor.a < material.w) {
-        discard;
-    }
-    fragNormal = vec4(n * 0.5 + 0.5, depth01);
-}
-@end
-
-@fs unlitTexturedCutoutFs
-@include_block unlitMaterialUniforms
-@include_block colorSpace
-@include_block facingNormal
-layout(binding=0) uniform texture2D baseTexture;
-layout(binding=0) uniform sampler baseSampler;
-in vec3 worldNormal;
-in vec2 surfaceUv;
-in vec4 baseColor;
-in float depth01;
-layout(location=0) out vec4 fragColor;
-layout(location=1) out vec4 fragNormal;
-@include_block unlitTexturedShade
-void main() {
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
-    vec3 n = facingNormal(normalize(worldNormal), material.z);
-    fragColor = unlitTexturedShade(texel);
-    if (fragColor.a < material.w) {
-        discard;
-    }
-    fragNormal = vec4(n * 0.5 + 0.5, depth01);
-}
-@end
-
-@program lit litVs litFs
-@program billboard billboardVs billboardFs
-@program post fullscreenVs postFs
-@program blit fullscreenVs blitFs
-@program particle particleVs particleFs
-@program litTextured litTexturedVs litTexturedFs
-@program unlitTextured unlitTexturedVs unlitTexturedFs
-@program litTexturedPremultiplied litTexturedVs litTexturedPremultipliedFs
-@program unlitTexturedPremultiplied unlitTexturedVs unlitTexturedPremultipliedFs
-@program litCutout litVs litCutoutFs
-@program litTexturedCutout litTexturedVs litTexturedCutoutFs
-@program unlitTexturedCutout unlitTexturedVs unlitTexturedCutoutFs
