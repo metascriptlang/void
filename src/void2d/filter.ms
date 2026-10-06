@@ -8,7 +8,7 @@ import { RenderTarget } from "../gpu/target";
 import { drawImage, setEffect, beginTarget, endTarget } from "./draw";
 import { blurTargetPooled } from "./render";
 import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
-import { Color, targetTile, vec2, rgba } from "./types";
+import { Color, premultipliedTargetTile, vec2, rgba } from "./types";
 import { BlendMode } from "../gpu/state";
 
 const zeroColor: Color = rgba(0.0, 0.0, 0.0, 0.0);
@@ -38,7 +38,7 @@ export function blurToTarget(
 	// the last, widest step of the blur, which is the point of downsampling in the first place.
 	beginTarget(dst, size, size, 1.0, 0.0, 0.0, zeroColor);
 	drawImage(
-		targetTile(blurred, size, size).premultiplied(), vec2(0.0, 0.0), vec2(size, size),
+		premultipliedTargetTile(blurred, size, size), vec2(0.0, 0.0), vec2(size, size),
 		white, BlendMode.None);
 	endTarget();
 }
@@ -58,7 +58,7 @@ export function drawSilhouette(
 ): void {
 	setEffect(colorMatrixAlphaOnly(gain), rgba(color.r, color.g, color.b, 0.0), zeroColor);
 	drawImage(
-		targetTile(blurredRT, w, h).premultiplied(), vec2(x, y), vec2(w, h), white, blend,
+		premultipliedTargetTile(blurredRT, w, h), vec2(x, y), vec2(w, h), white, blend,
 	);
 	setEffect(NO_COLOR_MATRIX, zeroColor, zeroColor);
 }

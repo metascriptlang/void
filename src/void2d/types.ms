@@ -97,23 +97,31 @@ export struct Tile {
 	alphaPremultiplied: boolean;
 }
 
-function sourceTile(source: TextureSource, w: float32, h: float32): Tile {
+function sourceTile(
+	texture: Texture | null, target: RenderTarget | null, madeView: uint32, w: float32, h: float32,
+	premultiplied: boolean,
+): Tile {
 	return {
-		source: source, u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0,
-		w: w, h: h, dx: 0.0, dy: 0.0, texW: w, texH: h, alphaPremultiplied: false,
+		source: { texture: texture, target: target, madeView: madeView },
+		u0: 0.0, v0: 0.0, u1: 1.0, v1: 1.0,
+		w: w, h: h, dx: 0.0, dy: 0.0, texW: w, texH: h, alphaPremultiplied: premultiplied,
 	};
 }
 
 export function tile(texture: Texture, w: float32, h: float32): Tile {
-	return sourceTile({ texture: texture, target: null, madeView: texture.view }, w, h);
+	return sourceTile(texture, null, texture.view, w, h, false);
 }
 
 export function targetTile(target: RenderTarget, w: float32, h: float32): Tile {
-	return sourceTile({ texture: null, target: target, madeView: target.texture }, w, h);
+	return sourceTile(null, target, target.texture, w, h, false);
+}
+
+export function premultipliedTargetTile(target: RenderTarget, w: float32, h: float32): Tile {
+	return sourceTile(null, target, target.texture, w, h, true);
 }
 
 export function whiteTile(w: float32, h: float32): Tile {
-	return sourceTile(WHITE_SOURCE, w, h);
+	return sourceTile(null, null, 0, w, h, false);
 }
 
 export function premultiplied(this t: Tile): Tile {
