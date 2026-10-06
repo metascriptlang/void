@@ -62,9 +62,10 @@ export function dropShadowFilter(color: Color, radius: float32, offsetX: float32
 export struct TextureSource {
 	texture: Texture | null;
 	target: RenderTarget | null;
+	madeView: uint32;
 }
 
-export const WHITE_SOURCE: TextureSource = { texture: null, target: null };
+export const WHITE_SOURCE: TextureSource = { texture: null, target: null, madeView: 0 };
 
 export function view(this source: TextureSource): uint32 {
 	const target: RenderTarget | null = source.target;
@@ -75,7 +76,8 @@ export function view(this source: TextureSource): uint32 {
 }
 
 export function sameAs(this source: TextureSource, other: TextureSource): boolean {
-	return source.texture === other.texture && source.target === other.target;
+	return source.texture === other.texture && source.target === other.target &&
+		source.madeView == other.madeView;
 }
 
 // h2d.Tile — a texture region (source + UV rect + draw size). texW/texH = backing texture
@@ -103,11 +105,11 @@ function sourceTile(source: TextureSource, w: float32, h: float32): Tile {
 }
 
 export function tile(texture: Texture, w: float32, h: float32): Tile {
-	return sourceTile({ texture: texture, target: null }, w, h);
+	return sourceTile({ texture: texture, target: null, madeView: texture.view }, w, h);
 }
 
 export function targetTile(target: RenderTarget, w: float32, h: float32): Tile {
-	return sourceTile({ texture: null, target: target }, w, h);
+	return sourceTile({ texture: null, target: target, madeView: target.texture }, w, h);
 }
 
 export function whiteTile(w: float32, h: float32): Tile {
