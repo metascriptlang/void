@@ -1031,7 +1031,7 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	pixel65rt82enderer:billboardLevels pixel65rt82enderer:phasesFitTargets
 	pixel65rt82enderer:postReadsDepth pixel65rt82enderer:storeWhen renderer:drawPhase
 	renderer:phaseCount state:blends
-	program77ap:drawnFor forward82enderer:renderFrame forward82enderer:prepareFrame
+	gpu3d:drawnIn forward82enderer:renderFrame forward82enderer:prepareFrame
 	forward82enderer:drawToScreen forward82enderer:resizeTargets
 	camera:resolve camera:writeCameraBlock blit:writeBlitParams blit:lowResView palette:upload
 	target:beginPass target:beginScreenPass door:passState door:beginPassWith
@@ -1040,7 +1040,7 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds
 	draw:keepsItsTexture material:namesTexture texture:isTexture draw:viewAt draw:textureReady
-	gpu3d:samplesPremultiplied program77ap:shiftOf program77ap:inHighWord program77ap:requireHeld
+	gpu3d:samplesPremultiplied gpu3d:withPreset gpu3d:bits gpu3d:declares gpu3d:doorProgram
 	target:asTexture target:requireLive target:requireCurrent target:isAttachedToOpenPass
 	door:passAttachesView"
 

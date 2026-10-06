@@ -1,5 +1,10 @@
 // expect: void3d: drawItem with a material whose block is not the one it was added with
-import { Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, ProgramKey } from "../../src/void3d/gpu3d";
+import {
+	Program,
+	MATERIAL_UNIFORM_SLOT,
+	MATERIAL_UNIFORM_LENGTH,
+	ProgramKey,
+} from "../../src/void3d/gpu3d";
 import { RenderState } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
 import { identity } from "../../src/math/math3d";
