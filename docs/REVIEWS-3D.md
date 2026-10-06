@@ -2415,6 +2415,12 @@ URG's per-node `sorting_offset` is a per-item render order, which Heaps lacks; i
 Read in the main session over `0937926..f738aa3`, each point checked against the code:
 - **Fixed:** the control run in gate stage `sort-layer` had lost its line continuation (the
   redirect sat after tabs on the same line; it ran, but not as written).
+- **Fixed, found by the native control:** the probe's alpha quads carried their depth in their
+  vertices under identity transforms, but a list sorts by the item's world origin (`depthOf`, as
+  Heaps' `depthSort` reads `absPos`), so both sorted at one depth and kept item order: green
+  drew last with or without its layer and the control could not fail. The quads now sit at the
+  origin and are placed by their node, so depth alone draws the near red last and only layer 1
+  draws the far green after it.
 - **Checked, no change:** `beginFrame` is the only producer of pass lists and both presets draw
   from it, so no list escapes the layer sort; every `Material` outside `material.ms` is built by
   spreading `Material.plain` or `ofKind`, so none misses `layer`; `filterFrustum` compacts the
