@@ -60,6 +60,7 @@ import { doorBeginColorPass } from "../gpu/door.h";
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
+import { fbWidth, fbHeight } from "../sokol/gpu";
 
 const programBase: int32 = void2dProgramBase();
 const layoutBase: int32 = void2dLayoutBase();
@@ -601,6 +602,15 @@ export function drawScreen(this ctx: DrawContext2D): void {
 	}
 	if (ctx.preparedFrame != frameIndex()) {
 		console.log(`void2d: drawScreen context ${ctx.id} after its prepared frame expired`);
+		unreachable;
+	}
+	const screenW: int32 = fbWidth();
+	const screenH: int32 = fbHeight();
+	if (!(ctx.frameDpi > 0.0) || !Number.isFinite(ctx.frameDpi) ||
+		ctx.fbW != (screenW as float32) / ctx.frameDpi ||
+		ctx.fbH != (screenH as float32) / ctx.frameDpi) {
+		console.log(`void2d: drawScreen ${screenW}x${screenH} does not match prepared ` +
+			`${ctx.fbW}x${ctx.fbH} at DPI ${ctx.frameDpi}`);
 		unreachable;
 	}
 	ctx.prepared = false;

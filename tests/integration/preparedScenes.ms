@@ -35,6 +35,11 @@ function init(): void {
 function frame(): void {
 	const misuse = env.get("VOID_PREPARED_MISUSE");
 	if (misuse.equals("unprepared")) { a.drawScreen(); }
+	if (misuse.equals("size")) {
+		a.prepare(100.0, 60.0, 1.0);
+		beginScreenPass({ x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
+		a.drawScreen();
+	}
 	a.prepare(120.0, 60.0, 1.0);
 	b.prepare(60.0, 30.0, 2.0);
 	if (misuse.equals("twice")) { a.prepare(120.0, 60.0, 1.0); }

@@ -175,9 +175,10 @@ if "$MSC" build tests/integration/preparedScenes.ms --release --output=out/prepa
 else
 	fail "prepared Scene2D lifecycle — see out/gate-prepared-scenes-run.log"
 fi
-for misuse in unprepared twice no-pass nested consumed expired; do
+for misuse in unprepared twice no-pass nested consumed expired size; do
 	case "$misuse" in
 		unprepared|consumed) expected='with no prepared frame' ;;
+		size) expected='drawScreen 120x60 does not match prepared' ;;
 		twice) expected='again before drawScreen' ;;
 		no-pass) expected='outside a screen pass' ;;
 		nested) expected='with a pass already open' ;;
