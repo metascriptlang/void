@@ -2,11 +2,12 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-05):** M1–M32 are built, reviewed and on `main`; from M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-07):** M1–M35a are built and reviewed; M35a passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
-are mapped in "M19 as built", "M20 as built" and "M21 as built"; old `pass.ms`, `target.ms` and
-`pipelineCache.ms` references below are historical, not current import paths.
+are mapped in "M19 as built", "M20 as built", "M21 as built" and "M35a as built"; old `pass.ms`,
+`target.ms`, `pipelineCache.ms` and `programMap.ms` references below record historical APIs,
+not current import paths.
 
 ## What Hibernal needs
 
@@ -145,7 +146,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 |---|---|---|---|
 | M33 | Heaps `b9aa6dcb` `h3d/mat/Material.hx:3-10` (`DefaultKind`: Opaque, Alpha, AlphaKill, Add, SoftAdd, Hidden), `:265-283` `refreshProps` (the kind decides blend, alpha kill at 0.5, culling, lights, shadows), `:132-148` `set_blendMode` (blend decides pass name and depth write) | **A material's kind.** One declaration derives phase, blend, depth write and, for AlphaKill, a cutout program whose threshold the material's block must hold, so phase and blend can no longer disagree through it (closes M32's follow-up). The explicit `Material.plain` stays for presets | every translucent or cut material; M35 needs it to pick casters and cut them in the shadow pass |
 | M34 | Heaps `h3d/mat/Pass.hx:51` (`layer`), `h3d/scene/Renderer.hx:114-125` (lists sort by layer before depth) | **A sort layer inside a phase.** An integer on the material orders items before back-to-front depth, stable within a layer | URG forces order on nearly every card and effect; **done**, see "M34 as built" |
-| M35a | Heaps `b9aa6dcb` `hxsl/Shader.hx:72-111` (`updateConstantsFinal`: every `@const` of a shader packs into `constBits`, and `getInstance(constBits)` compiles one variant per value), `h3d/shader/Texture.hx:11,26` (`killAlpha` is such a constant); Bevy `157e1ce6` `bevy_pbr/src/render/mesh.rs:3093-3142` (`MeshPipelineKey`, bit flags such as `MAY_DISCARD` `:3107`), `:3388` `specialize` (a shader def per set bit, `:3536`, `:3664`); the shady study (2026-10-06) | **A program key.** `ProgramKey` is a base program, the preset and feature bits (premultiplied, cutout), replacing the `Program` enum of hand-written twins and M14's 5-bit `ProgramMap`. Both references compile a variant per key at run time; sokol-shdc compiles offline, so the keys the build ships are declared in one list, `regen-shaders.sh` runs sokol-shdc once per declared key with its bits as `--defines` and its own `--module`, and writes the C program table from the same list. One fragment program per base reads `#ifdef CUTOUT` and `#ifdef PREMULTIPLIED`. A preset is the key's preset, set by the renderer; a material whose key is not declared is `ProgramNotDrawn`. No `src/gpu` change: `PipelineKey.program` stays a door registry id | M35 shadow receive, M36 dissolve, M37 normal and emission maps: each adds a bit and declares its keys, not a twin per program |
+| M35a | Heaps `b9aa6dcb` `hxsl/Shader.hx:72-111` (`updateConstantsFinal`: constants select one variant), `h3d/shader/Texture.hx:11,26` (`killAlpha`); Bevy `157e1ce6` `bevy_pbr/src/render/mesh.rs:3093-3142` (`MeshPipelineKey`), `:3388` (`specialize`); the shady study (2026-10-06) | **A program key.** `gpu3d.ms` / `ProgramKey`, keyed materials and `programKeys.txt` replace hand-written twins and M14's `ProgramMap`. sokol-shdc compiles the declared set offline; `PipelineKey.program` stays a door id. **Done**, native gate 312 PASS / 0 FAIL; see "M35a as built" | M35 shadow receive, M36 dissolve, M37 normal and emission maps add a bit and declare keys, not a twin per program |
 | M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes); a new shader keeps the highp qualifiers sokol-shdc writes on every variable (its `precision mediump float` line is only SPIRV-Cross's default). Shadow receive is a key bit, after M35a | the one sun in URG; any outdoor or tabletop scene |
 | M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language | card surfaces, fire lines, beams, glows |
 | M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs | 12 emissive and 3 normal-mapped materials |
@@ -2234,6 +2235,52 @@ writing depth, show green over red. The control, every layer 0, shows the first 
 red over green, and fails on both halves (the gate requires both messages). Headless
 (`frustumCheck.ms`): the three lists ordered by layer, the alpha list with its layer-1 item the
 farthest (depth alone would draw it first), a culled item's layer compacted away.
+
+### M35a as built
+
+**A key, not twins.** `src/void3d/gpu3d.ms` / `ProgramKey` follows Heaps' constant bits
+(`b9aa6dcb`, `hxsl/Shader.hx` / `updateConstantsFinal`, lines 72–111) and Bevy's
+`MeshPipelineKey` specialization (`157e1ce6`, `bevy_pbr/src/render/mesh.rs:3093,3388`).
+The shady study selected this before shadow receive: another shader axis adds a key bit,
+not another enum twin and map entry. `drawnIn` carries a material's features into either
+preset; screen materials keep their complete key. M14's `programMap.ms` is removed.
+The public construction and admission rules live in `gpu3d.ms` and `material.ms`.
+
+**Declared offline.** Heaps and Bevy compile when a key first appears; sokol-shdc compiles
+before the app runs. `src/void3d/programKeys.txt` therefore declares only the shipped set:
+the same 23 keys, in the same door order. Premultiplied + cutout is nameable but not declared
+until a consumer needs it; `addMaterial` refuses it with `UndeclaredProgram`, and a direct
+door lookup stops naming the key. No `src/gpu` change: the door id remains the pipeline key.
+`scripts/regen-shaders.sh` writes the shader headers and `programTable.h` from the same rows,
+including layout/block assertions; its `--check` covers all three. A row whose stages never
+read its declared feature is refused rather than compiling a plain shader under that key.
+
+**One source per base and preset.** The shader sources use sokol-shdc's `--defines` and
+`--module`, not a separate shader language. A per-key input includes only its two stages:
+sokol-shdc otherwise embeds every stage it receives. The earlier stage-source comparison
+recorded 252 of 276 sources byte-identical to the old twins; the other 24 are premultiplied
+fragment sources where SPIRV-Cross reads the written output instead of a temporary.
+The native captures below, not that textual comparison, hold the unchanged pixels.
+
+**Acceptance, 2026-10-07.** On commit `021f525`, code tree
+`2146496d998ee74d168435c2cb1f8574e1a549a7`, Windows D3D11, BUILD `244ef48c` unchanged
+before/after, `MSC_NO_GLOBAL_CACHE=1`, both gates ran serially:
+- `sh scripts/gate.sh`: GREEN, 82/82 golden, 0 failures, 8 known skips.
+- `sh scripts/gate3d.sh`: GREEN, 312 PASS / 0 FAIL / 3 known skips; 1197 tests,
+  72 baseline hashes, none adopted; accepted capture frames stayed byte-identical.
+- `programKeyCheck.ms`: all 64 combinations of the eight bases, two presets and two feature
+  flags pack distinctly into the 128-slot key space; 23 are declared with their base's layout.
+  Both presets preserve features, reject screen keys, and check the blocks.
+  An undeclared material is refused. Aborts `keyWithoutPremultiplied` and `keyUndeclared`
+  stop with the key named.
+- Allocation guard covers the key's frame-path helpers; no array copy or string builder
+  in the guarded paths. No frame-state growth over 300 frames; 310-frame churn stays flat.
+  Android arm64 `libVoidAndroid.so`: 3,454,016 bytes (build only).
+
+The three 3D skips remain two held captures (`capture-m14forward`, `capture-m16anchor`)
+and no GLES3 device. Web is NOT RUN pending Yoga's emcc provider. Recompiler work overlapped,
+so timings are not quiet-box evidence. The first two runs were red only on obsolete
+allocation-guard targets and two overlong imports; `docs/REVIEWS-3D.md` records the fixes.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 

@@ -2436,3 +2436,46 @@ control RED in both (the layer -1 opaque quad not first, the far layer 1 alpha q
 skips, 72 hashes none adopted, Android 3,445,312 B. This is also M33's one-compiler proof: its
 land gate ran on a mixed compiler. The first native run went RED on the control; the fix is
 in the defect pass above.
+
+## M35a — a program key
+
+**Verdict: SHIP.** The previous session's design and defect passes are retained here;
+native acceptance below includes this session's gate repairs.
+
+### Design pass
+
+Read against Heaps' constant bits (`hxsl/Shader.hx:72-111`) and Bevy's
+`MeshPipelineKey` specialization (`bevy_pbr/src/render/mesh.rs:3093,3388`):
+- **Fixed:** a row could declare a feature its stages never read, compiling a plain shader
+  under an unusable key. The generator now refuses such a row (`4cb9725`, formerly `636d73a`).
+- **Kept:** C mirrors the base/preset orders by hand. `programKeyCheck.ms` distinguishes
+  the members by layout and block declarations, including lit/unlit and post/blit.
+- **Kept:** premultiplied + cutout is nameable but undeclared until a consumer needs it;
+  material admission returns `UndeclaredProgram`, not a silent plain-program fallback.
+
+### Defect pass
+
+The previous session reviewed the implementation before rebase: the generator strips CRLF
+from the manifest, and two comments that restated the code were removed.
+Native gates then found the remaining migration sites:
+- **Fixed (`489a192`):** the allocation list still named `program77ap:drawnFor` and the
+  deleted map's packing helpers. It now guards `gpu3d:drawnIn`, `withPreset`, `bits`,
+  `declares` and `doorProgram`. Two abort-test imports were wrapped to 100 columns.
+- **Fixed (`021f525`):** rerun1 exposed the remaining `samplesPremultiplied` entry.
+  Its check is now a direct key-field read in `drawItem`, which the guard already covers.
+  No helper was reintroduced just to satisfy a stale guard.
+- **Proved before rerun2:** emit-only on each exact guard entry found every C body:
+  frame/render 117/117, pick 11/11, perspective 24/24, camera-rig 15/15, reparent/close 16/16.
+  The full allocation stage then passed, including its array-copy/string-builder checks.
+
+### Final acceptance
+
+`021f525`, tree `2146496d998ee74d168435c2cb1f8574e1a549a7`, Windows D3D11,
+BUILD `244ef48c` unchanged before/after, `MSC_NO_GLOBAL_CACHE=1`:
+`sh scripts/gate.sh` GREEN (golden 82/82, 0 failures, 8 known skips);
+`sh scripts/gate3d.sh` GREEN (312 PASS / 0 FAIL / 3 known skips), 1197 tests,
+72 hashes none adopted, accepted captures byte-identical, both key aborts PASS,
+allocation and style PASS, Android arm64 3,454,016 B. The first run was 310 PASS / 2 FAIL,
+rerun1 311 PASS / 1 FAIL; the new reds were the guard/style migration defects above.
+The three 3D skips are the two held captures and no GLES3 device; web NOT RUN pending Yoga's
+emcc provider. Other recompiler jobs overlapped; no isolated timing claim.
