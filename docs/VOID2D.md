@@ -1694,6 +1694,45 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `rebuildTextures` keeps only the sampler re-arm, and `gpu3dMakeImage` gives way to the door's
   `makeImage`.
 - Warm-up of pipelines, device and the font database off the first-frame path; release of GPU resources when occluded; a synchronous draw during live resize; discard of a late frame at the wrong size.
+  **Built and measured 2026-10-07.** Occlusion follows Ghostty's
+  `renderer/generic.zig` `setVisible` / `releaseGpuResources` (`:1153-1192`): release
+  surface-owned buffers and targets, retain caller images, rebuild on the next paint.
+  `src/void2d/scene.ms` `Scene2D.releaseGpu` reuses the existing list/target disposal;
+  shared glyph pages and pipelines stay resident rather than being released per scene.
+  On D3D11, `tests/integration/sceneOcclusion.ms` passed eight release/repaint cycles:
+  list buffers dropped, no filter targets remained, the texture and glyph pages survived,
+  and every repaint was byte-identical. Repeated release was safe; release between
+  prepare/drawScreen and release after close each stopped by name.
+  `tests/integration/twoViews.ms` passed synchronous `viewResize` → `viewFrame` with
+  captured pixels at 360×240, DPI 1.25. The standalone Win32 sokol_app host intentionally
+  keeps stretched frames during modal resize: its `WM_TIMER` resize code is disabled
+  (`deps/sokol/sokol_app.h:10112-10132`, upstream's memory-growth warning); no vendored
+  patch was made, and an interactive modal-resize run was not performed here.
+  Ghostty's `renderer/metal/IOSurfaceLayer.zig` `setSurfaceCallback` (`:105-119`)
+  discards an asynchronously completed frame whose size is obsolete. Void has no async
+  completion queue: `DrawContext2D.drawScreen` stops on a mismatched prepared size
+  instead of silently losing the frame. `preparedScenes.ms`, `VOID_PREPARED_MISUSE=size`,
+  stopped with `drawScreen 120x60 does not match prepared 100x60 at DPI 1`.
+
+  **Warm-up measurements are contended, not a baseline.** Source tree
+  `8c4df212c54e61300ddbdcd098221e5f752a24d5`, msc v0.3.2 binary/support BUILD
+  `244ef48c`, release D3D11, Ryzen 9 9950X, 1280×720, sample count 1, high DPI off.
+  The native run overlapped nim-audit and void3d jobs; these are CPU wall-clock call
+  durations, not GPU completion times or an isolated performance comparison.
+  `MSC_NO_GLOBAL_CACHE=1 sh scripts/gate.sh` reported first paint UI 52.98 / text 2.63 /
+  scroll 7.20 ms after pipeline preparation. A throwaway copy of `bench2d.ms`, using
+  the same three scenes, also called `resolveFont` for Inter, weight 400, normal style,
+  no features/fallbacks/size adjustment, after `preparePipelines([BlendMode.Alpha])`.
+  Three fresh processes per scene measured first preparation UI 32.75–43.60 /
+  text 2.33–2.93 / scroll 6.19–6.75 ms; the following screen pass/draw/end cost
+  0.038–0.058 ms and commit 0.0001–0.0005 ms. Pipeline warm-up itself took
+  226.04–250.57 ms, font resolution 0.198–0.387 ms, before the first frame.
+  Preparation still rasterized 40 / 63 / 51 glyphs and uploaded 5,280,120 / 298,080 /
+  1,427,112 stream bytes respectively; font resolution does not pre-rasterize labels.
+  The first-frame work remaining is in preparation, not shader compilation during draw.
+  Quiet-box first-frame measurements remain unproved, as do Metal/web warm-up costs.
+  Both native gates passed on that source tree: gate.sh 1196 + 299 + 318 tests,
+  golden 82/82, eight existing skips; gate3d.sh 311 PASS, three existing skips.
 - **The guardrail-9 backends this box can run**, which P3 did not reach: a desktop GLES3 build of the golden runner (a GL variant of `src/sokol/sokolWin.c` and `glsl430` shaders; `tests/capture/capture.c` already has the `glReadPixels` path, which WebGL2 exercises), and WebGPU's `copyTextureToBuffer` + `mapAsync` readback in a headed browser, since headless Chrome hands WebGPU no adapter here. Metal macOS, Metal iOS and GLES3 Android run on the human's hardware.
 - The mesh path's pixel-centre ties: bias mesh geometry by −1/64 px in device space, the fix `tests/PENDING.md conformance:webgl2-pixel-centre` proposes, which keeps D3D11's tie results and gives GL the same.
 - The P2 rows this phase owns: styled-box colour effects (`ui-box-color-effect`), the independent non-uniform-SDF bound (`sdf-non-uniform-bound`) and the repository-wide line-length pass (`style:line-length`).
