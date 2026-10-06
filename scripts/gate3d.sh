@@ -1952,7 +1952,8 @@ run_sort_layer() {
 			return
 		fi
 		status=0
-		VOID_SORT_LAYER_PIXEL_ART=$preset VOID_SORT_LAYER_CONTROL=1 "$exe" 			> "$WORK/sortLayer.control.$preset.log" 2>&1 || status=$?
+		VOID_SORT_LAYER_PIXEL_ART=$preset VOID_SORT_LAYER_CONTROL=1 "$exe" \
+			> "$WORK/sortLayer.control.$preset.log" 2>&1 || status=$?
 		if [ "$status" -eq 0 ] || ! grep -q 'did not draw first' "$WORK/sortLayer.control.$preset.log" ||
 			! grep -q 'did not draw last' "$WORK/sortLayer.control.$preset.log"; then
 			fail "sort-layer: the layer-0 control in preset $preset kept the layered order (exit $status)"
