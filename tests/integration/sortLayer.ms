@@ -125,14 +125,15 @@ function material(kind: MaterialKind, color: Vec4, layer: int32, image: TextureI
 function quad(x: float32, z: float32, made: MaterialId): void {
 	let mesh: MeshData = MeshData.withUvs();
 	const built: Result<int32, MeshError> = addTexturedQuad(
-		mesh, vec3(x - HALF, -HALF, z), vec3(x + HALF, -HALF, z),
-		vec3(x + HALF, HALF, z), vec3(x - HALF, HALF, z), vec3(0.0, 0.0, 1.0), WHITE,
+		mesh, vec3(-HALF, -HALF, 0.0), vec3(HALF, -HALF, 0.0),
+		vec3(HALF, HALF, 0.0), vec3(-HALF, HALF, 0.0), vec3(0.0, 0.0, 1.0), WHITE,
 	);
 	if (!built.ok) { unreachable; }
 	const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, mesh);
 	if (!uploaded.ok) { unreachable; }
+	const at: Transform3D = Transform3D.fromTranslation(vec3(x, 0.0, z));
 	const placed: Result<NodeId3D, SceneError> =
-		addMeshNode(scene, scene.rootId(), Transform3D.identity(), uploaded.value, made);
+		addMeshNode(scene, scene.rootId(), at, uploaded.value, made);
 	if (!placed.ok) { unreachable; }
 }
 
