@@ -2396,3 +2396,28 @@ Ten findings, each checked against the code:
 skips), `gate3d.sh` GREEN 310 PASS / 0 FAIL / 3 known skips, 72 hashes none adopted, Android
 3,439,872 B. The first `gate3d.sh` failed `gltf-cpu` (the glTF decoder linked sokol through
 `material.ms`) and one long expect line; both fixed and re-run.
+
+## M34 — a sort layer inside a phase
+
+**Verdict: SHIP WITH FOLLOW-UPS**; the follow-ups were resolved inside the row, one is a row of
+its own (M43).
+
+### Fresh design pass — SHIP WITH FOLLOW-UPS
+
+Read against Heaps' `Pass.layer`, `SortByMaterial` and `depthSort`; its follow-ups are
+resolved in "M34 as built". Decided there: M33's carried question on Alpha's depth write keeps
+Heaps' default, and a material that must not write depth overrides its own pass. Not built:
+URG's per-node `sorting_offset` is a per-item render order, which Heaps lacks; it is row M43, a
+**NEW MECHANISM** that waits for the human's word.
+
+### Defect pass
+
+Read in the main session over `0937926..f738aa3`, each point checked against the code:
+- **Fixed:** the control run in gate stage `sort-layer` had lost its line continuation (the
+  redirect sat after tabs on the same line; it ran, but not as written).
+- **Checked, no change:** `beginFrame` is the only producer of pass lists and both presets draw
+  from it, so no list escapes the layer sort; every `Material` outside `material.ms` is built by
+  spreading `Material.plain` or `ofKind`, so none misses `layer`; `filterFrustum` compacts the
+  layer with its index; the probe's equal-depth opaque half relies on the default `Less` depth
+  test and no preset has a depth prepass; the alpha half's control draws red last and fails on
+  the green-over-red check, so both halves fail the control as the gate requires.
