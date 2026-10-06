@@ -68,6 +68,18 @@ export function close(this s: Scene2D): void {
 	s.closeRows();
 }
 
+export function releaseGpu(this s: Scene2D): void {
+	s.requireOpen("releaseGpu");
+	const l: DrawContext2D = s.context;
+	if (l.prepared) {
+		console.log(`void2d: releaseGpu Scene2D context ${l.id} between prepare and drawScreen`);
+		unreachable;
+	}
+	closeContextTargets(l.id);
+	void2dReleaseList(l.id);
+	l.painted = false;
+}
+
 export function isClosed(this s: Scene2D): boolean { return s.closed; }
 
 export function setScaleMode(this s: Scene2D, mode: ScaleMode, designW: float32, designH: float32): void {

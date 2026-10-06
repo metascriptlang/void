@@ -295,6 +295,26 @@ else
 	fail "scene lifetime — see out/gate-scene-lifetime.log and out/gate-scene-lifetime-run.log"
 fi
 
+rm -f out/tmp/sceneOcclusion.exe
+if "$MSC" build tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusion.exe 		> out/gate-scene-occlusion.log 2>&1 		&& out/tmp/sceneOcclusion.exe > out/gate-scene-occlusion-run.log 2>&1; then
+	pass "scene occlusion: releaseGpu frees list buffers and filter targets, keeps textures and glyph pages, repaints byte-identical"
+	for misuse in prepared closed; do
+		case "$misuse" in
+			prepared) expected='between prepare and drawScreen' ;;
+			closed) expected='releaseGpu on a closed scene' ;;
+		esac
+		occlusion_status=0
+		VOID_SCENE_OCCLUSION_MISUSE=$misuse out/tmp/sceneOcclusion.exe 			> "out/gate-scene-occlusion-$misuse.log" 2>&1 || occlusion_status=$?
+		if [ "$occlusion_status" -ne 0 ] && grep -qF "$expected" "out/gate-scene-occlusion-$misuse.log"; then
+			pass "scene occlusion: releaseGpu $misuse stops by name"
+		else
+			fail "scene occlusion: releaseGpu $misuse did not stop by name"
+		fi
+	done
+else
+	fail "scene occlusion — see out/gate-scene-occlusion.log and out/gate-scene-occlusion-run.log"
+fi
+
 device_loss_misuse() {
 	loss_status=0
 	VOID_DEVICE_LOSS_MISUSE=$1 out/tmp/deviceLoss.exe > "out/gate-device-loss-$1.log" 2>&1 \
