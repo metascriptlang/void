@@ -5,7 +5,7 @@
 // a material holds the block's position in it, so materials stay plain values in a table.
 
 import { RenderState, BlendMode } from "../gpu/state";
-import { Program } from "./gpu3d";
+import { Program, ProgramKey } from "./gpu3d";
 import { TextureId, NO_TEXTURE } from "./texture";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer
@@ -67,7 +67,7 @@ export struct UniformBlock {
 }
 
 export struct Material {
-	program: Program;
+	program: ProgramKey;
 	pass: RenderState;
 	phase: Phase;
 	// Texture views for view slots 0 to 3 and samplers for sampler slots 0 and 1 (the
@@ -87,61 +87,58 @@ export struct Material {
 
 export const NO_UNIFORMS: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
 
-export function cutoutOf(program: Program): Program {
+function cutoutOf(program: Program): ProgramKey {
 	return match (program) {
-		Program.Lit => Program.LitCutout,
-		Program.LitTextured => Program.LitTexturedCutout,
-		Program.UnlitTextured => Program.UnlitTexturedCutout,
+		Program.Lit => ProgramKey.of(program).withCutout(),
+		Program.LitTextured => ProgramKey.of(program).withCutout(),
+		Program.UnlitTextured => ProgramKey.of(program).withCutout(),
 		Program.Billboard => stopOnFixedCut(program),
 		Program.Particle => stopOnFixedCut(program),
-		Program.LitCutout => Program.LitCutout,
-		Program.LitTexturedCutout => Program.LitTexturedCutout,
-		Program.UnlitTexturedCutout => Program.UnlitTexturedCutout,
 		Program.Copy => stopOnNoCutout(program),
-		Program.PixelArtLit => stopOnNoCutout(program),
-		Program.PixelArtParticle => stopOnNoCutout(program),
-		Program.PixelArtBillboard => stopOnNoCutout(program),
-		Program.PixelArtPost => stopOnNoCutout(program),
-		Program.PixelArtBlit => stopOnNoCutout(program),
-		Program.PixelArtLitTextured => stopOnNoCutout(program),
-		Program.PixelArtUnlitTextured => stopOnNoCutout(program),
-		Program.LitTexturedPremultiplied => stopOnNoCutout(program),
-		Program.PixelArtLitTexturedPremultiplied => stopOnNoCutout(program),
-		Program.UnlitTexturedPremultiplied => stopOnNoCutout(program),
-		Program.PixelArtUnlitTexturedPremultiplied => stopOnNoCutout(program),
-		Program.PixelArtLitCutout => stopOnNoCutout(program),
-		Program.PixelArtLitTexturedCutout => stopOnNoCutout(program),
-		Program.PixelArtUnlitTexturedCutout => stopOnNoCutout(program),
+		Program.Post => stopOnNoCutout(program),
+		Program.Blit => stopOnNoCutout(program),
 	};
 }
 
 // Their blocks hold colour where a material block holds the threshold.
-function stopOnFixedCut(program: Program): Program {
+function stopOnFixedCut(program: Program): ProgramKey {
 	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which already cuts at ` +
 		"a fixed alpha");
 	unreachable;
 }
 
-function stopOnNoCutout(program: Program): Program {
+function stopOnNoCutout(program: Program): ProgramKey {
 	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which has no cutout`);
 	unreachable;
 }
 
 // The caller writes alphaKillFor(kind) into the material block, as every other uniform value.
 export function ofKind(this typeof Material, program: Program, kind: MaterialKind): Material {
-	const drawn: Program = kind == MaterialKind.AlphaKill ? cutoutOf(program) : program;
-	return Material.plain(drawn, passFor(kind, RenderState.defaults()), phaseFor(kind));
+	const key: ProgramKey =
+		kind == MaterialKind.AlphaKill ? cutoutOf(program) : ProgramKey.of(program);
+	return Material.keyed(key, passFor(kind, RenderState.defaults()), phaseFor(kind));
 }
 
-// A material that samples nothing and has no uniforms of its own; add those with spread.
+// A material of the core's `program` with no feature; it samples nothing and has no uniforms of
+// its own: add those with spread.
 export function plain(
 	this typeof Material,
 	program: Program,
 	pass: RenderState,
 	phase: Phase,
 ): Material {
+	return Material.keyed(ProgramKey.of(program), pass, phase);
+}
+
+// The same, for any key: a preset's program or one with features.
+export function keyed(
+	this typeof Material,
+	key: ProgramKey,
+	pass: RenderState,
+	phase: Phase,
+): Material {
 	return {
-		program: program,
+		program: key,
 		pass: pass,
 		phase: phase,
 		texture0: 0,

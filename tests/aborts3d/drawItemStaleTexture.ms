@@ -3,7 +3,7 @@ import { gfxSetup } from "../../src/sokol/gpu";
 import { FilterMode, Wrap, RenderState } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
 import { identity } from "../../src/math/math3d";
-import { Program } from "../../src/void3d/gpu3d";
+import { Program, ProgramKey } from "../../src/void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { TextureData, TextureId } from "../../src/void3d/texture";
 import {
@@ -53,7 +53,7 @@ function init(): void {
 	if (!releaseTexture(context, gone).ok) { unreachable; }
 	context.materials[material.value.index].texture = gone;
 	const item: DrawItem = { mesh: mesh.value, material: material.value, world: identity() };
-	drawItem(context, item, Program.LitTextured, SWAPCHAIN_LAYOUT, NO_GLOBALS);
+	drawItem(context, item, ProgramKey.of(Program.LitTextured), SWAPCHAIN_LAYOUT, NO_GLOBALS);
 	console.log("the call returned");
 	voidCaptureExit(0);
 }

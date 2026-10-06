@@ -19,6 +19,7 @@ import {
 import {
 	Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, UNLIT_MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH,
+	ProgramKey,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -54,6 +55,7 @@ const HEIGHT: int32 = 240;
 const HALF: float32 = 0.6;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const UI_WIDTH: int32 = 64;
+const PREMULTIPLIED_UNLIT: ProgramKey = ProgramKey.of(Program.UnlitTextured).withPremultiplied();
 const UI_HEIGHT: int32 = 32;
 const RESIZED_WIDTH: int32 = 96;
 const RESIZED_HEIGHT: int32 = 48;
@@ -171,9 +173,9 @@ function added(material: Material): MaterialId {
 	unreachable;
 }
 
-function targetMaterial(program: Program, lit: boolean): Material {
+function targetMaterial(program: ProgramKey, lit: boolean): Material {
 	return {
-		...Material.plain(program, premultipliedPass(), Phase.Alpha),
+		...Material.keyed(program, premultipliedPass(), Phase.Alpha),
 		texture: targetTexture, uniforms: block(lit),
 	};
 }
@@ -216,12 +218,12 @@ function init(): void {
 	if (!uploaded.ok) { unreachable; }
 	backdrop = uploaded.value;
 
-	refused({ ...targetMaterial(Program.UnlitTextured, false) },
+	refused({ ...targetMaterial(ProgramKey.of(Program.UnlitTextured), false) },
 		MaterialError.PremultipliedTexture, "a straight program over a premultiplied target");
-	refused({ ...targetMaterial(Program.UnlitTexturedPremultiplied, false), texture: backdrop },
+	refused({ ...targetMaterial(PREMULTIPLIED_UNLIT, false), texture: backdrop },
 		MaterialError.StraightTexture, "a premultiplied program over a straight texture");
 	refused({
-		...targetMaterial(Program.UnlitTexturedPremultiplied, false),
+		...targetMaterial(PREMULTIPLIED_UNLIT, false),
 		pass: RenderState.defaults().withBlendMode(BlendMode.Alpha),
 	}, MaterialError.StraightBlend, "a premultiplied program blending straight alpha");
 
@@ -232,11 +234,11 @@ function init(): void {
 	place(quad(UNLIT_X, -0.5, HALF, 0.0), backdropMaterial);
 	place(quad(LIT_X, -0.5, HALF, 0.0), backdropMaterial);
 	const unlitMaterial: MaterialId =
-		added(targetMaterial(Program.UnlitTexturedPremultiplied, false));
+		added(targetMaterial(PREMULTIPLIED_UNLIT, false));
 	place(quad(UNLIT_X, 0.0, HALF, -HALF), unlitMaterial);
 	sampling.push(unlitMaterial);
 	litMaterial = added(control ? straightControl() :
-		targetMaterial(Program.LitTexturedPremultiplied, true));
+		targetMaterial(ProgramKey.of(Program.LitTextured).withPremultiplied(), true));
 	place(quad(LIT_X, 0.0, HALF, -HALF), litMaterial);
 	if (!control) { sampling.push(litMaterial); }
 	const light: LightInstance = {
@@ -400,7 +402,7 @@ function frame(): void {
 	if (stage == 4) { remakeTarget(); }
 	if (misuse.equals("closed") && stage == 2) { target.close(); }
 	if (misuse.equals("program") && stage == 2) {
-		context.materials[litMaterial.index].program = Program.LitTextured;
+		context.materials[litMaterial.index].program = ProgramKey.of(Program.LitTextured);
 	}
 	produce();
 	render();

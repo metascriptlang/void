@@ -25,8 +25,8 @@ import {
 	textureSlotMask,
 	samplerSlotMask,
 	uniformBlockLength,
-	samplesPremultiplied,
-	cutsAlpha,
+	ProgramKey,
+	declares,
 	MATERIAL_ALPHA_KILL,
 } from "./gpu3d";
 import {
@@ -213,6 +213,7 @@ export enum MaterialError {
 	StraightTexture,
 	StraightBlend,
 	NoAlphaKill,
+	UndeclaredProgram,
 }
 
 let contextSerials: int32 = 0;
@@ -791,6 +792,7 @@ export function addMaterial(
 	material: Material,
 ): Result<MaterialId, MaterialError> {
 	if (context.closed) { stopOnClosedContext("addMaterial"); }
+	if (!declares(material.program)) { return Result.err(MaterialError.UndeclaredProgram); }
 	if (material.namesTexture()) {
 		if (material.texture0 != 0 || material.sampler0 != 0) {
 			return Result.err(MaterialError.TextureNamedTwice);
@@ -806,16 +808,16 @@ export function addMaterial(
 		}
 		const premultiplied: boolean =
 			context.textureAlphas[material.texture.index] == TextureAlpha.Premultiplied;
-		if (premultiplied != samplesPremultiplied(material.program)) {
+		if (premultiplied != material.program.premultiplied) {
 			return Result.err(
 				premultiplied ? MaterialError.PremultipliedTexture : MaterialError.StraightTexture,
 			);
 		}
 	}
-	if (samplesPremultiplied(material.program) && !blendsPremultiplied(material.pass)) {
+	if (material.program.premultiplied && !blendsPremultiplied(material.pass)) {
 		return Result.err(MaterialError.StraightBlend);
 	}
-	if (cutsAlpha(material.program) && !context.cutsAbove(material.uniforms)) {
+	if (material.program.cutout && !context.cutsAbove(material.uniforms)) {
 		return Result.err(MaterialError.NoAlphaKill);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);
@@ -1272,8 +1274,8 @@ function textureReady(this context: DrawContext, index: int32): boolean {
 	return true;
 }
 
-function stopOnAlphaMismatch(program: Program, alpha: TextureAlpha): void {
-	console.log(`void3d: drawItem draws ${program.toString()} for a ${alpha.toString()} ` +
+function stopOnAlphaMismatch(program: ProgramKey, alpha: TextureAlpha): void {
+	console.log(`void3d: drawItem draws ${program.describe()} for a ${alpha.toString()} ` +
 		"material or texture; premultiplied input needs a premultiplied program, straight a " +
 		"straight one");
 	unreachable;
@@ -1300,12 +1302,12 @@ function stopOnReplacedTexture(): void {
 }
 
 // One item into the current pass, whose attachments match `targets`, drawn with `program`:
-// the material's own, or the one a renderer draws in its place (programMap.ms). `globals` are
+// the material's own, or its key in the renderer's preset (gpu3d.ms drawnIn). `globals` are
 // the pass-wide blocks (camera, lights) applied before the material's own.
 export function drawItem(
 	context: DrawContext,
 	item: DrawItem,
-	program: Program,
+	program: ProgramKey,
 	targets: TargetLayout,
 	globals: Readonly<Span<UniformBlock>>,
 ): void {
@@ -1319,9 +1321,9 @@ export function drawItem(
 	const material: Material = context.materials[item.material.index];
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
 	if (mesh.hasNothingToDraw()) { return; }
-	const declared: TextureAlpha = samplesPremultiplied(material.program) ?
+	const declared: TextureAlpha = material.program.premultiplied ?
 		TextureAlpha.Premultiplied : TextureAlpha.Straight;
-	if (samplesPremultiplied(program) != (declared == TextureAlpha.Premultiplied)) {
+	if (program.premultiplied != material.program.premultiplied) {
 		stopOnAlphaMismatch(program, declared);
 	}
 	if (material.namesTexture()) {

@@ -17,6 +17,10 @@
 import { Vec4 } from "../math/math3d";
 import {
 	Program,
+	ProgramKey,
+	Preset,
+	ProgramError,
+	drawnIn,
 	BILLBOARD_LIGHT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
@@ -34,7 +38,6 @@ import {
 import { FilterMode, Wrap } from "../gpu/state";
 import { originTopLeft, depthZeroToOne } from "../gpu/door";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
-import { ProgramMap, ProgramError } from "./programMap";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -92,21 +95,6 @@ export const POST_UNIFORM_SLOT: int32 = 0;
 export const POST_UNIFORM_LENGTH: int32 = 24;
 export const BLIT_UNIFORM_SLOT: int32 = 0;
 export const BLIT_UNIFORM_LENGTH: int32 = 4;
-
-// What the scene pass draws for the programs materials name.
-export function pixelArtPrograms(): ProgramMap {
-	return ProgramMap.empty()
-		.drawing(Program.Lit, Program.PixelArtLit)
-		.drawing(Program.Particle, Program.PixelArtParticle)
-		.drawing(Program.Billboard, Program.PixelArtBillboard)
-		.drawing(Program.LitTextured, Program.PixelArtLitTextured)
-		.drawing(Program.UnlitTextured, Program.PixelArtUnlitTextured)
-		.drawing(Program.LitTexturedPremultiplied, Program.PixelArtLitTexturedPremultiplied)
-		.drawing(Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied)
-		.drawing(Program.LitCutout, Program.PixelArtLitCutout)
-		.drawing(Program.LitTexturedCutout, Program.PixelArtLitTexturedCutout)
-		.drawing(Program.UnlitTexturedCutout, Program.PixelArtUnlitTexturedCutout);
-}
 
 // The preset's passes, in the order a frame runs them.
 export enum Stage {
@@ -356,18 +344,20 @@ export function create(
 		return Result.err(PixelArtError.PaletteLevels);
 	}
 	const core: Result<Renderer, RendererError> =
-		Renderer.createDrawing(context, pixelArtPrograms());
+		Renderer.createDrawing(context, Preset.PixelArt);
 	if (!core.ok) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
 	const postBlock: UniformBlock = reserve(context, POST_UNIFORM_SLOT, POST_UNIFORM_LENGTH);
 	const blitBlock: UniformBlock = reserve(context, BLIT_UNIFORM_SLOT, BLIT_UNIFORM_LENGTH);
 	const postMaterial: Material = {
-		...Material.plain(Program.PixelArtPost, screenState(), Phase.Opaque),
+		...Material.keyed(ProgramKey.of(Program.Post).withPreset(Preset.PixelArt), screenState(),
+			Phase.Opaque),
 		uniforms: postBlock,
 	};
 	const blitMaterial: Material = {
-		...Material.plain(Program.PixelArtBlit, screenState(), Phase.Opaque),
+		...Material.keyed(ProgramKey.of(Program.Blit).withPreset(Preset.PixelArt), screenState(),
+			Phase.Opaque),
 		uniforms: blitBlock,
 	};
 	const post: Result<MaterialId, MaterialError> = addMaterial(context, postMaterial);
@@ -596,7 +586,7 @@ function postReadsDepth(settings: PixelArtSettings): boolean {
 }
 
 function rampsHaveLevels(
-	programs: ProgramMap,
+	preset: Preset,
 	context: DrawContext,
 	items: Readonly<Span<DrawItem>>,
 ): boolean {
@@ -604,34 +594,17 @@ function rampsHaveLevels(
 		if (!context.hasMaterial(item.material)) { continue; }
 		const material: Material = context.materials[item.material.index];
 		if (!context.keepsItsUniforms(item.material)) { continue; }
-		const drawn: Result<Program, ProgramError> = programs.drawnFor(material.program);
+		const drawn: Result<ProgramKey, ProgramError> = drawnIn(material.program, preset);
 		if (!drawn.ok) { continue; }
-		const held: boolean = match (drawn.value) {
-			Program.PixelArtLit => levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.PixelArtLitTextured => levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.PixelArtLitTexturedPremultiplied =>
-				levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.PixelArtBillboard => billboardLevels(context, material.uniforms),
-			Program.Lit => true,
+		const held: boolean = match (drawn.value.program) {
+			Program.Lit => levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.LitTextured => levelsAt(context, material.uniforms, RAMP_LEVELS),
+			Program.Billboard => billboardLevels(context, material.uniforms),
 			Program.Particle => true,
-			Program.Billboard => true,
-			Program.Copy => true,
-			Program.PixelArtParticle => true,
-			Program.PixelArtPost => true,
-			Program.PixelArtBlit => true,
-			Program.LitTextured => true,
 			Program.UnlitTextured => true,
-			Program.PixelArtUnlitTextured => true,
-			Program.LitTexturedPremultiplied => true,
-			Program.UnlitTexturedPremultiplied => true,
-			Program.PixelArtUnlitTexturedPremultiplied => true,
-			Program.PixelArtLitCutout => levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.PixelArtLitTexturedCutout =>
-				levelsAt(context, material.uniforms, RAMP_LEVELS),
-			Program.LitCutout => true,
-			Program.LitTexturedCutout => true,
-			Program.UnlitTexturedCutout => true,
-			Program.PixelArtUnlitTexturedCutout => true,
+			Program.Copy => true,
+			Program.Post => true,
+			Program.Blit => true,
 		};
 		if (!held) { return false; }
 	}
@@ -666,7 +639,7 @@ export function prepareFrame(
 	const blocksKept: boolean = context.keepsItsUniforms(renderer.postMaterial) &&
 		context.keepsItsUniforms(renderer.blitMaterial);
 	if (!blocksKept) { return Result.err(PixelArtError.UniformsReplaced); }
-	if (!rampsHaveLevels(renderer.core.programs, context, items)) {
+	if (!rampsHaveLevels(renderer.core.preset, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}
 	const phases: Result<boolean, PixelArtError> =

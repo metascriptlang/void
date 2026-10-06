@@ -1,6 +1,12 @@
 import { Mat4, Vec4, identity } from "../math/math3d";
 import {
 	Program,
+	ProgramKey,
+	Preset,
+	ProgramError,
+	VertexLayout,
+	drawnIn,
+	declares,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -10,8 +16,6 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	uniformBlockLength,
-	samplesPremultiplied,
-	cutsAlpha,
 	vertexLayoutOf,
 	MATERIAL_ALPHA_KILL,
 } from "../void3d/gpu3d";
@@ -38,10 +42,8 @@ import {
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
 import { added, litShape } from "./drawHelpers";
-import { ProgramMap, ProgramError } from "../void3d/programMap";
 import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
 import {
-	pixelArtPrograms,
 	POST_UNIFORM_SLOT,
 	POST_UNIFORM_LENGTH,
 	BLIT_UNIFORM_SLOT,
@@ -54,16 +56,20 @@ import {
 	renderFrame,
 } from "../void3d/forwardRenderer";
 
-function drawnAs(map: ProgramMap, named: Program): Program {
-	const drawn: Result<Program, ProgramError> = map.drawnFor(named);
+function pixelArt(program: Program): ProgramKey {
+	return ProgramKey.of(program).withPreset(Preset.PixelArt);
+}
+
+function drawnAs(key: ProgramKey, preset: Preset): ProgramKey {
+	const drawn: Result<ProgramKey, ProgramError> = drawnIn(key, preset);
 	if (drawn.ok) { return drawn.value; }
-	console.log(`${named.toString()} is not drawn`);
+	console.log(`${key.describe()} is not drawn in ${preset.toString()}`);
 	unreachable;
 }
 
-function contextNaming(program: Program, capacity: int32): DrawContext {
+function contextNaming(program: ProgramKey, capacity: int32): DrawContext {
 	let context: DrawContext = DrawContext.withUniformCapacity(capacity);
-	const plain: Material = Material.plain(program, RenderState.defaults(), Phase.Opaque);
+	const plain: Material = Material.keyed(program, RenderState.defaults(), Phase.Opaque);
 	const _named: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 	return context;
 }
@@ -101,19 +107,92 @@ function billboardMaterial(context: DrawContext, texture: uint32, sampler: uint3
 	return added.value;
 }
 
-test "drawing a name again replaces what is drawn for it and leaves the others" {
-	const map: ProgramMap = ProgramMap.empty()
-		.drawing(Program.PixelArtBlit, Program.PixelArtBlit)
-		.drawing(Program.Lit, Program.PixelArtBlit)
-		.drawing(Program.Particle, Program.Copy)
-		.drawing(Program.Lit, Program.PixelArtLit);
-	assert drawnAs(map, Program.Lit) == Program.PixelArtLit;
-	assert drawnAs(map, Program.Particle) == Program.Copy;
-	assert drawnAs(map, Program.PixelArtBlit) == Program.PixelArtBlit;
+const EVERY_PROGRAM: Vec<Program> = [
+	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
+	Program.LitTextured, Program.UnlitTextured,
+];
+
+const SCENE_PROGRAMS: Vec<Program> = [
+	Program.Lit, Program.Particle, Program.Billboard, Program.LitTextured, Program.UnlitTextured,
+];
+
+function layoutFor(program: Program): VertexLayout {
+	return match (program) {
+		Program.Lit => VertexLayout.Lit,
+		Program.Particle => VertexLayout.Particle,
+		Program.Billboard => VertexLayout.Billboard,
+		Program.Copy => VertexLayout.Fullscreen,
+		Program.Post => VertexLayout.Fullscreen,
+		Program.Blit => VertexLayout.Fullscreen,
+		Program.LitTextured => VertexLayout.LitTextured,
+		Program.UnlitTextured => VertexLayout.LitTextured,
+	};
+}
+
+function everyKey(): Vec<ProgramKey> {
+	let keys: Vec<ProgramKey> = [];
+	for (const program of EVERY_PROGRAM) {
+		for (const preset of [Preset.Core, Preset.PixelArt]) {
+			for (const premultiplied of [false, true]) {
+				for (const cutout of [false, true]) {
+					keys.push({
+						program: program, preset: preset,
+						premultiplied: premultiplied, cutout: cutout,
+					});
+				}
+			}
+		}
+	}
+	return keys;
+}
+
+test "every key packs to bits of its own, and each declared one reads its program's layout" {
+	let seen: Vec<boolean> = [];
+	for (let bits = 0; bits < 128; bits++) { seen.push(false); }
+	let declared: int32 = 0;
+	for (const key of everyKey()) {
+		const bits: int32 = key.bits();
+		assert bits >= 0 && bits < 128 && !seen[bits];
+		seen[bits] = true;
+		if (declares(key)) {
+			declared = declared + 1;
+			assert vertexLayoutOf(key) == layoutFor(key.program);
+		}
+	}
+	assert declared == 23;
+}
+
+test "both presets draw every scene program's key in their own, and no screen program" {
+	for (const program of SCENE_PROGRAMS) {
+		const key: ProgramKey = ProgramKey.of(program);
+		assert drawnAs(key, Preset.Core) == key;
+		assert drawnAs(key, Preset.PixelArt) == pixelArt(program);
+	}
+	const screens: Vec<ProgramKey> =
+		[ProgramKey.of(Program.Copy), pixelArt(Program.Post), pixelArt(Program.Blit)];
+	for (const screen of screens) {
+		assert declares(screen);
+		for (const preset of [Preset.Core, Preset.PixelArt]) {
+			const drawn: Result<ProgramKey, ProgramError> = drawnIn(screen, preset);
+			assert !drawn.ok && drawn.error == ProgramError.NotDrawn;
+		}
+	}
+	const named: Result<ProgramKey, ProgramError> =
+		drawnIn(pixelArt(Program.Lit), Preset.PixelArt);
+	assert !named.ok && named.error == ProgramError.NotDrawn;
+}
+
+test "a material whose key the build does not declare is refused when it is added" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const copy: Material = Material.keyed(pixelArt(Program.Copy), RenderState.defaults(),
+		Phase.Opaque);
+	const refused: Result<MaterialId, MaterialError> = addMaterial(context, copy);
+	assert !refused.ok && refused.error == MaterialError.UndeclaredProgram;
+	assert context.liveMaterials() == 0;
 }
 
 test "the core refuses a material it does not draw before it writes the camera" {
-	let context: DrawContext = contextNaming(Program.PixelArtBillboard, RENDERER_UNIFORM_LENGTH);
+	let context: DrawContext = contextNaming(pixelArt(Program.Billboard), RENDERER_UNIFORM_LENGTH);
 	const created: Result<Renderer, RendererError> = Renderer.create(context);
 	assert created.ok;
 	if (created.ok) {
@@ -135,17 +214,16 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 	const refused: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(small, background);
 	assert !refused.ok && refused.error == ForwardError.UniformPoolFull;
-	let context: DrawContext = contextNaming(Program.PixelArtBillboard, FORWARD_UNIFORM_LENGTH);
+	let context: DrawContext = contextNaming(pixelArt(Program.Billboard), FORWARD_UNIFORM_LENGTH);
 	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(context, background);
 	assert created.ok;
 	if (created.ok) {
 		let forward: ForwardRenderer = created.value;
 		assert context.uniforms.used == FORWARD_UNIFORM_LENGTH;
-		assert context.materials[forward.copyMaterial.index].program == Program.Copy;
-		assert forward.core.programs.draws(Program.Lit);
-		assert forward.core.programs.draws(Program.Billboard);
-		assert !forward.core.programs.draws(Program.Copy);
+		assert context.materials[forward.copyMaterial.index].program ==
+			ProgramKey.of(Program.Copy);
+		assert forward.core.preset == Preset.Core;
 		const items: Vec<DrawItem> = [itemOf(context, firstMaterial(context))];
 		const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 		const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -159,7 +237,7 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 	}
 }
 
-function declaredSlots(program: Program): int32 {
+function declaredSlots(program: ProgramKey): int32 {
 	let count: int32 = 0;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
 		if (uniformBlockLength(program, slot) > 0) { count = count + 1; }
@@ -169,10 +247,10 @@ function declaredSlots(program: Program): int32 {
 
 test "every block the CPU writes is the length its shader declares, read off the shader desc" {
 	for (const lit of [
-		Program.Lit,
-		Program.PixelArtLit,
-		Program.LitTextured,
-		Program.PixelArtLitTextured,
+		ProgramKey.of(Program.Lit),
+		pixelArt(Program.Lit),
+		ProgramKey.of(Program.LitTextured),
+		pixelArt(Program.LitTextured),
 	]) {
 		assert uniformBlockLength(lit, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
@@ -180,21 +258,22 @@ test "every block the CPU writes is the length its shader declares, read off the
 		assert uniformBlockLength(lit, MODEL_SLOT) == MODEL_LENGTH;
 		assert declaredSlots(lit) == 4;
 	}
-	for (const billboard of [Program.Billboard, Program.PixelArtBillboard]) {
+	for (const billboard of [ProgramKey.of(Program.Billboard), pixelArt(Program.Billboard)]) {
 		assert uniformBlockLength(billboard, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(billboard, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
 		assert uniformBlockLength(billboard, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
 		assert declaredSlots(billboard) == 3;
 	}
-	assert declaredSlots(Program.Particle) == 1 && declaredSlots(Program.PixelArtParticle) == 1;
-	assert uniformBlockLength(Program.PixelArtPost, POST_UNIFORM_SLOT) == POST_UNIFORM_LENGTH;
-	assert uniformBlockLength(Program.PixelArtBlit, BLIT_UNIFORM_SLOT) == BLIT_UNIFORM_LENGTH;
-	assert declaredSlots(Program.Copy) == 0;
-	assert uniformBlockLength(Program.Lit, UNIFORM_SLOTS) == 0;
+	assert declaredSlots(ProgramKey.of(Program.Particle)) == 1;
+	assert declaredSlots(pixelArt(Program.Particle)) == 1;
+	assert uniformBlockLength(pixelArt(Program.Post), POST_UNIFORM_SLOT) == POST_UNIFORM_LENGTH;
+	assert uniformBlockLength(pixelArt(Program.Blit), BLIT_UNIFORM_SLOT) == BLIT_UNIFORM_LENGTH;
+	assert declaredSlots(ProgramKey.of(Program.Copy)) == 0;
+	assert uniformBlockLength(ProgramKey.of(Program.Lit), UNIFORM_SLOTS) == 0;
 }
 
 test "the core refuses a lit material without its block, or on a mesh of another layout" {
-	let bare: DrawContext = contextNaming(Program.Lit, RENDERER_UNIFORM_LENGTH);
+	let bare: DrawContext = contextNaming(ProgramKey.of(Program.Lit), RENDERER_UNIFORM_LENGTH);
 	const bareCore: Result<Renderer, RendererError> = Renderer.create(bare);
 	assert bareCore.ok;
 	const camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
@@ -278,7 +357,7 @@ test "the core refuses a billboard without its texture and sampler, or off the q
 }
 
 test "the forward preset refuses a lit material without its block" {
-	let context: DrawContext = contextNaming(Program.Lit, FORWARD_UNIFORM_LENGTH);
+	let context: DrawContext = contextNaming(ProgramKey.of(Program.Lit), FORWARD_UNIFORM_LENGTH);
 	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(context, background);
@@ -295,7 +374,7 @@ test "the forward preset refuses a lit material without its block" {
 }
 
 test "the forward preset refuses a frame once its own copy material or screen mesh is gone" {
-	let context: DrawContext = contextNaming(Program.Lit, FORWARD_UNIFORM_LENGTH);
+	let context: DrawContext = contextNaming(ProgramKey.of(Program.Lit), FORWARD_UNIFORM_LENGTH);
 	const created: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(context, { x: 0.0, y: 0.0, z: 0.0, w: 1.0 });
 	assert created.ok;
@@ -326,69 +405,28 @@ test "the core owns its camera and light blocks, so only it could give them back
 	assert !lights.ok && lights.error == UniformError.Owned;
 }
 
-function reversedWithin(programs: Vec<Program>): boolean {
-	let identical: ProgramMap = ProgramMap.empty();
-	let reversed: ProgramMap = ProgramMap.empty();
-	const last: int32 = (programs.length as int32) - 1;
-	for (let i = 0; i <= last; i++) {
-		identical = identical.drawing(programs[i], programs[i]);
-		reversed = reversed.drawing(programs[i], programs[last - i]);
-	}
-	for (let i = 0; i <= last; i++) {
-		if (drawnAs(identical, programs[i]) != programs[i]) { return false; }
-		if (drawnAs(reversed, programs[i]) != programs[last - i]) { return false; }
-	}
-	return true;
-}
+const UNIFORM_SLOTS_OF_LIT: Vec<int32> =
+	[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
 
-test "the map holds every program, drawn as itself or as another of its alpha" {
-	assert reversedWithin([
-		Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.PixelArtLit,
-		Program.PixelArtParticle, Program.PixelArtBillboard, Program.PixelArtPost,
-		Program.PixelArtBlit, Program.LitTextured, Program.PixelArtLitTextured,
-		Program.UnlitTextured, Program.PixelArtUnlitTextured,
-	]);
-	assert reversedWithin([
-		Program.LitTexturedPremultiplied, Program.PixelArtLitTexturedPremultiplied,
-		Program.UnlitTexturedPremultiplied, Program.PixelArtUnlitTexturedPremultiplied,
-	]);
-	assert reversedWithin([
-		Program.LitCutout, Program.PixelArtLitCutout, Program.LitTexturedCutout,
-		Program.PixelArtLitTexturedCutout, Program.UnlitTexturedCutout,
-		Program.PixelArtUnlitTexturedCutout,
-	]);
-}
-
-test "each cutout program is drawn as a cutout twin with the uncut layout and blocks" {
-	const pairs: Vec<Program> = [
-		Program.Lit, Program.LitCutout,
-		Program.LitTextured, Program.LitTexturedCutout,
-		Program.UnlitTextured, Program.UnlitTexturedCutout,
-	];
-	const core: ProgramMap = ProgramMap.core();
-	const preset: ProgramMap = pixelArtPrograms();
-	for (let i = 0; i < (pairs.length as int32); i += 2) {
-		const whole: Program = pairs[i];
-		const cut: Program = pairs[i + 1];
-		assert !cutsAlpha(whole) && cutsAlpha(cut) && !samplesPremultiplied(cut);
-		assert drawnAs(core, cut) == cut && vertexLayoutOf(cut) == vertexLayoutOf(whole);
-		const presetWhole: Program = drawnAs(preset, whole);
-		const presetCut: Program = drawnAs(preset, cut);
-		assert cutsAlpha(presetCut) && !cutsAlpha(presetWhole);
-		assert vertexLayoutOf(presetCut) == vertexLayoutOf(presetWhole);
-		const slots: Vec<int32> =
-			[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
-		for (const slot of slots) {
-			assert uniformBlockLength(cut, slot) == uniformBlockLength(whole, slot);
-			assert uniformBlockLength(presetCut, slot) == uniformBlockLength(presetWhole, slot);
+test "each cutout key keeps the uncut key's layout and blocks, in both presets" {
+	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
+		for (const preset of [Preset.Core, Preset.PixelArt]) {
+			const whole: ProgramKey = drawnAs(ProgramKey.of(program), preset);
+			const cut: ProgramKey = drawnAs(ProgramKey.of(program).withCutout(), preset);
+			assert cut.cutout && !cut.premultiplied && !whole.cutout;
+			assert vertexLayoutOf(cut) == vertexLayoutOf(whole);
+			for (const slot of UNIFORM_SLOTS_OF_LIT) {
+				assert uniformBlockLength(cut, slot) == uniformBlockLength(whole, slot);
+			}
 		}
 	}
 }
 
 test "a cutout program refuses a block without a positive alpha-kill threshold" {
 	let context: DrawContext = DrawContext.withUniformCapacity(3 * MATERIAL_UNIFORM_LENGTH);
-	const bare: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
-		Program.LitCutout, RenderState.defaults(), Phase.Opaque,
+	const cut: ProgramKey = ProgramKey.of(Program.Lit).withCutout();
+	const bare: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(
+		cut, RenderState.defaults(), Phase.Opaque,
 	));
 	assert !bare.ok && bare.error == MaterialError.NoAlphaKill;
 	const thresholds: Vec<float32> = [0.0, -0.5, 0.5];
@@ -400,7 +438,7 @@ test "a cutout program refuses a block without a positive alpha-kill threshold" 
 		values[MATERIAL_ALPHA_KILL] = threshold;
 		if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 		const made: Result<MaterialId, MaterialError> = addMaterial(context, {
-			...Material.plain(Program.LitCutout, RenderState.defaults(), Phase.Opaque),
+			...Material.keyed(cut, RenderState.defaults(), Phase.Opaque),
 			uniforms: reserved.value,
 		});
 		assert made.ok == (threshold > 0.0);
@@ -408,27 +446,17 @@ test "a cutout program refuses a block without a positive alpha-kill threshold" 
 	}
 }
 
-test "each premultiplied program is drawn as a premultiplied twin with the straight blocks" {
-	const pairs: Vec<Program> = [
-		Program.LitTextured, Program.LitTexturedPremultiplied,
-		Program.UnlitTextured, Program.UnlitTexturedPremultiplied,
-	];
-	const core: ProgramMap = ProgramMap.core();
-	const preset: ProgramMap = pixelArtPrograms();
-	for (let i = 0; i < (pairs.length as int32); i += 2) {
-		const straight: Program = pairs[i];
-		const premultiplied: Program = pairs[i + 1];
-		assert !samplesPremultiplied(straight) && samplesPremultiplied(premultiplied);
-		assert drawnAs(core, premultiplied) == premultiplied;
-		const presetStraight: Program = drawnAs(preset, straight);
-		const presetPremultiplied: Program = drawnAs(preset, premultiplied);
-		assert samplesPremultiplied(presetPremultiplied) && !samplesPremultiplied(presetStraight);
-		const slots: Vec<int32> =
-			[VERTEX_UNIFORM_SLOT, LIGHT_UNIFORM_SLOT, MATERIAL_UNIFORM_SLOT, MODEL_SLOT];
-		for (const slot of slots) {
-			assert uniformBlockLength(premultiplied, slot) == uniformBlockLength(straight, slot);
-			assert uniformBlockLength(presetPremultiplied, slot) ==
-				uniformBlockLength(presetStraight, slot);
+test "each premultiplied key keeps the straight key's blocks, in both presets" {
+	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
+		for (const preset of [Preset.Core, Preset.PixelArt]) {
+			const straight: ProgramKey = drawnAs(ProgramKey.of(program), preset);
+			const premultiplied: ProgramKey =
+				drawnAs(ProgramKey.of(program).withPremultiplied(), preset);
+			assert premultiplied.premultiplied && !premultiplied.cutout && !straight.premultiplied;
+			for (const slot of UNIFORM_SLOTS_OF_LIT) {
+				assert uniformBlockLength(premultiplied, slot) ==
+					uniformBlockLength(straight, slot);
+			}
 		}
 	}
 }
@@ -436,16 +464,16 @@ test "each premultiplied program is drawn as a premultiplied twin with the strai
 test "a premultiplied program refuses any blend but ONE, ONE_MINUS_SRC_ALPHA" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	for (const mode of [BlendMode.None, BlendMode.Alpha, BlendMode.Add, BlendMode.Max]) {
-		const refused: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
-			Program.UnlitTexturedPremultiplied,
+		const refused: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(
+			ProgramKey.of(Program.UnlitTextured).withPremultiplied(),
 			RenderState.defaults().withBlendMode(mode),
 			Phase.Alpha,
 		));
 		assert !refused.ok && refused.error == MaterialError.StraightBlend;
 	}
 	assert context.liveMaterials() == 0;
-	const kept: Result<MaterialId, MaterialError> = addMaterial(context, Material.plain(
-		Program.LitTexturedPremultiplied,
+	const kept: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(
+		ProgramKey.of(Program.LitTextured).withPremultiplied(),
 		RenderState.defaults().withBlendMode(BlendMode.AlphaAdd),
 		Phase.Alpha,
 	));
@@ -453,13 +481,13 @@ test "a premultiplied program refuses any blend but ONE, ONE_MINUS_SRC_ALPHA" {
 }
 
 test "unlit textured programs require colour data and no light uniform block" {
-	for (const program of [Program.UnlitTextured, Program.PixelArtUnlitTextured]) {
+	for (const program of [ProgramKey.of(Program.UnlitTextured), pixelArt(Program.UnlitTextured)]) {
 		assert uniformBlockLength(program, LIGHT_UNIFORM_SLOT) == 0;
 		assert uniformBlockLength(program, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(program, MATERIAL_UNIFORM_SLOT) == 8;
 	}
-	assert uniformBlockLength(Program.UnlitTextured, MODEL_SLOT) == 16;
-	assert uniformBlockLength(Program.PixelArtUnlitTextured, MODEL_SLOT) == MODEL_LENGTH;
+	assert uniformBlockLength(ProgramKey.of(Program.UnlitTextured), MODEL_SLOT) == 16;
+	assert uniformBlockLength(pixelArt(Program.UnlitTextured), MODEL_SLOT) == MODEL_LENGTH;
 }
 
 test "an unlit material refuses a missing colour block or the old lit block size" {

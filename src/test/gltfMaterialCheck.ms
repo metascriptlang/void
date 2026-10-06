@@ -23,6 +23,7 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	MATERIAL_DOUBLE_SIDED,
 	MATERIAL_ALPHA_KILL,
+	ProgramKey,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, stride, vertexCount } from "../void3d/meshData";
@@ -505,7 +506,8 @@ test "a glTF material is the setup's block and culling, double sides unculled an
 	assert (made.value.materials.length as int32) == 2 && context.liveMaterials() == 2;
 	const single: Material = context.materials[made.value.materials[0].index];
 	const double: Material = context.materials[made.value.materials[1].index];
-	assert single.program == Program.Lit && double.program == Program.Lit;
+	const lit: ProgramKey = ProgramKey.of(Program.Lit);
+	assert single.program == lit && double.program == lit;
 	assert single.pass.culling == Face.Back && double.pass.culling == Face.None;
 	assert !single.namesTexture();
 	const values: Vec<float32> = context.uniforms.values;
@@ -527,7 +529,8 @@ test "a glTF material's kind sets its phase, blend and alpha kill over the setup
 	const cut: Material = context.materials[made.value.materials[0].index];
 	const blended: Material = context.materials[made.value.materials[1].index];
 	assert cut.phase == Phase.Opaque && !cut.pass.blends() && cut.pass.depthWrite;
-	assert cut.program == Program.LitCutout && blended.program == Program.Lit;
+	const lit: ProgramKey = ProgramKey.of(Program.Lit);
+	assert cut.program == lit.withCutout() && blended.program == lit;
 	assert blended.phase == Phase.Alpha && blended.pass.blends() && blended.pass.depthWrite;
 	assert blended.pass.culling == Face.None;
 	const values: Vec<float32> = context.uniforms.values;

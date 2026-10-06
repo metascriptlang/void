@@ -10,7 +10,7 @@
 import { DrawContext, DrawItem, drawItem } from "./draw";
 import { TargetLayout } from "../gpu/target";
 import { Material, Phase, UniformBlock } from "./material";
-import { Program } from "./gpu3d";
+import { ProgramKey } from "./gpu3d";
 import { MeshData } from "./meshData";
 import { Frustum3D } from "./frustum";
 
@@ -140,7 +140,7 @@ export function drawPassList(
 	context: DrawContext,
 	list: PassList,
 	items: Readonly<Span<DrawItem>>,
-	drawn: Readonly<Span<Program>>,
+	drawn: Readonly<Span<ProgramKey>>,
 	targets: TargetLayout,
 	globals: Readonly<Span<UniformBlock>>,
 ): void {

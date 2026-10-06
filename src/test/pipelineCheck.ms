@@ -12,6 +12,7 @@ import {
 	VertexLayout,
 	doorProgram,
 	doorLayout,
+	ProgramKey,
 } from "../void3d/gpu3d";
 import { PixelFormat, LoadAction, StoreAction, contextGeneration } from "../gpu/door";
 import {
@@ -76,13 +77,14 @@ const NOT_INDEXED: boolean = false;
 
 function litKey(indexed: boolean, state: RenderState): PipelineKey {
 	return pipelineKey(
-		doorProgram(Program.Lit), doorLayout(VertexLayout.Lit), indexed, state, sceneLayout(),
+		doorProgram(ProgramKey.of(Program.Lit)), doorLayout(VertexLayout.Lit), indexed, state,
+		sceneLayout(),
 	);
 }
 
 function billboardKey(state: RenderState, targets: TargetLayout): PipelineKey {
 	return pipelineKey(
-		doorProgram(Program.Billboard),
+		doorProgram(ProgramKey.of(Program.Billboard)),
 		doorLayout(VertexLayout.Billboard),
 		NOT_INDEXED,
 		state,
@@ -163,15 +165,15 @@ test "a different state, program, layout or target gives a different key" {
 		billboardKey(state.withBlendMode(BlendMode.Alpha), targets),
 		billboardKey(state.withColorMask(true, true, true, false), targets),
 		pipelineKey(
-			doorProgram(Program.Lit), doorLayout(VertexLayout.Billboard),
+			doorProgram(ProgramKey.of(Program.Lit)), doorLayout(VertexLayout.Billboard),
 			NOT_INDEXED, state, targets,
 		),
 		pipelineKey(
-			doorProgram(Program.Billboard), doorLayout(VertexLayout.Lit),
+			doorProgram(ProgramKey.of(Program.Billboard)), doorLayout(VertexLayout.Lit),
 			NOT_INDEXED, state, targets,
 		),
 		pipelineKey(
-			doorProgram(Program.Billboard), doorLayout(VertexLayout.Billboard),
+			doorProgram(ProgramKey.of(Program.Billboard)), doorLayout(VertexLayout.Billboard),
 			true, state, targets,
 		),
 		billboardKey(state, { ...targets, depth: PixelFormat.None }),
@@ -312,13 +314,13 @@ test "a pipeline key decodes back into what built it" {
 		.withBlendMode(BlendMode.Alpha)
 		.withColorMask(true, true, true, false);
 	const key: PipelineKey = pipelineKey(
-		doorProgram(Program.Billboard),
+		doorProgram(ProgramKey.of(Program.Billboard)),
 		doorLayout(VertexLayout.Billboard),
 		true,
 		state,
 		sceneLayout(),
 	);
-	assert key.program == doorProgram(Program.Billboard);
+	assert key.program == doorProgram(ProgramKey.of(Program.Billboard));
 	assert key.layout == doorLayout(VertexLayout.Billboard);
 	assert key.indexType == IndexType.Uint16;
 	assert key.renderState() == state;
@@ -340,7 +342,7 @@ function environmentWith(samples: int32): TargetLayout {
 
 function screenKey(targets: TargetLayout): PipelineKey {
 	return pipelineKey(
-		doorProgram(Program.Lit),
+		doorProgram(ProgramKey.of(Program.Lit)),
 		doorLayout(VertexLayout.Lit),
 		true,
 		sceneState(),

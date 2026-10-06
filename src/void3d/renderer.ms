@@ -10,11 +10,15 @@
 // closePrepare and openScreen, which hold its two halves to one sokol frame.
 //
 // It takes a Span<DrawItem> and the camera block, never a scene (docs/VOID3D.md, Porting
-// rules); the items' meshes and materials live in the DrawContext it was made on. What it draws
-// for each material's program is its ProgramMap: the core's own, or the one a preset gives it.
+// rules); the items' meshes and materials live in the DrawContext it was made on. It draws each
+// material's program key in its preset: the core's, or the one a preset makes it with.
 
 import {
 	Program,
+	ProgramKey,
+	Preset,
+	ProgramError,
+	drawnIn,
 	VertexLayout,
 	vertexLayoutOf,
 	drawsQuads,
@@ -57,7 +61,6 @@ import { UniformError, ownRange, disownRange } from "./uniformPool";
 import {
 	PassList, collect, filterFrustum, sortBackToFront, sortByLayer, drawPassList,
 } from "./passList";
-import { ProgramMap, ProgramError } from "./programMap";
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
@@ -71,9 +74,9 @@ export interface Renderer {
 	cameraBlock: UniformBlock;
 	lightBlock: UniformBlock;
 	sceneGlobals: Vec<UniformBlock>;
-	programs: ProgramMap;
-	// Per item of the frame, the program `programs` draws for its material's.
-	drawn: Vec<Program>;
+	preset: Preset;
+	// Per item of the frame, the key drawn for its material's.
+	drawn: Vec<ProgramKey>;
 	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
@@ -131,14 +134,14 @@ export function create(
 	this typeof Renderer,
 	context: DrawContext,
 ): Result<Renderer, RendererError> {
-	return Renderer.createDrawing(context, ProgramMap.core());
+	return Renderer.createDrawing(context, Preset.Core);
 }
 
-// The same, drawing `programs` for the programs its materials name: a preset's.
+// The same, drawing its materials' programs in `preset`: a preset's.
 export function createDrawing(
 	this typeof Renderer,
 	context: DrawContext,
-	programs: ProgramMap,
+	preset: Preset,
 ): Result<Renderer, RendererError> {
 	context.requireOpen("Renderer.createDrawing");
 	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH];
@@ -159,7 +162,7 @@ export function createDrawing(
 		cameraBlock: cameraBlock,
 		lightBlock: lightBlock,
 		sceneGlobals: [cameraBlock, lightBlock],
-		programs: programs,
+		preset: preset,
 		drawn: [],
 		screenMesh: screen.value,
 		generation: 0,
@@ -213,8 +216,8 @@ export function beginFrame(
 			return Result.err(materialError(context, item.material));
 		}
 		const material: int32 = item.material.index;
-		const drawn: Result<Program, ProgramError> =
-			renderer.programs.drawnFor(context.materials[material].program);
+		const drawn: Result<ProgramKey, ProgramError> =
+			drawnIn(context.materials[material].program, renderer.preset);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
@@ -249,11 +252,11 @@ export function beginFrame(
 		writeUniforms(context, renderer.lightBlock, lights);
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
-		renderer.drawn.push(Program.Lit);
+		renderer.drawn.push(ProgramKey.of(Program.Lit));
 	}
 	for (let i = 0; i < (items.length as int32); i++) {
-		const resolved: Result<Program, ProgramError> =
-			renderer.programs.drawnFor(context.materials[items[i].material.index].program);
+		const resolved: Result<ProgramKey, ProgramError> =
+			drawnIn(context.materials[items[i].material.index].program, renderer.preset);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
 	}
@@ -357,14 +360,14 @@ export function drawScreen(
 		return Result.err(RendererError.UniformsReplaced);
 	}
 	if (!context.keepsItsTexture(material)) { return Result.err(RendererError.TextureReplaced); }
-	const program: Program = context.materials[material.index].program;
+	const program: ProgramKey = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);
 	return Result.ok(1);
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide
 // nor the model matrix, at the length its shader declares; none when it declares no such slot.
-function blockFits(program: Program, block: UniformBlock): boolean {
+function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	let own: int32 = -1;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
 		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT;
@@ -384,7 +387,7 @@ function slotBound(mask: uint32, slot: uint32, bound: boolean): boolean {
 
 // Every texture view and sampler `program` declares is bound on `material`; a slot the
 // material has no field for (views past 3, samplers past 1) never is.
-function texturesFit(program: Program, material: Material): boolean {
+function texturesFit(program: ProgramKey, material: Material): boolean {
 	const views: uint32 = textureSlotMask(program);
 	const samplers: uint32 = samplerSlotMask(program);
 	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }

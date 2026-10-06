@@ -11,6 +11,7 @@ import { TextureData, TextureId, TextureUploadError, TextureAlpha } from "../../
 import {
 	Program, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	ProgramKey,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -54,6 +55,8 @@ const PREMULTIPLIED_X: float32 = 0.0;
 const ADDITIVE_X: float32 = 1.6;
 const NORMAL_FRAMES: int32 = 2;
 const FRAMES: int32 = 4;
+const UNLIT: ProgramKey = ProgramKey.of(Program.UnlitTextured);
+const PREMULTIPLIED_UNLIT: ProgramKey = UNLIT.withPremultiplied();
 let context: DrawContext = DrawContext.withUniformCapacity(
 	PIXEL_ART_UNIFORM_LENGTH + 5 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
@@ -100,14 +103,19 @@ function texel(rgba: uint32): TextureId {
 	unreachable;
 }
 
-function material(program: Program, image: TextureId, pass: RenderState, phase: Phase): MaterialId {
+function material(
+	program: ProgramKey,
+	image: TextureId,
+	pass: RenderState,
+	phase: Phase,
+): MaterialId {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
 	const values: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(program, pass, phase),
+		...Material.keyed(program, pass, phase),
 		texture: image, uniforms: reserved.value,
 	});
 	if (added.ok) { return added.value; }
@@ -151,18 +159,18 @@ function init(): void {
 	gfxSetup();
 	const grey: TextureId = texel(0xFF808080);
 	const opaque: MaterialId =
-		material(Program.UnlitTextured, grey, RenderState.defaults(), Phase.Opaque);
+		material(UNLIT, grey, RenderState.defaults(), Phase.Opaque);
 	const translucent: RenderState = RenderState.defaults();
 	const unwritten: RenderState = translucent.withDepth(false, translucent.depthTest);
-	column(ALPHA_X, material(Program.UnlitTextured, texel(0x80FFFFFF),
+	column(ALPHA_X, material(UNLIT, texel(0x80FFFFFF),
 		unwritten.withBlendMode(BlendMode.Alpha), Phase.Alpha), opaque);
-	column(PREMULTIPLIED_X, material(Program.UnlitTexturedPremultiplied, premultipliedTexture(),
+	column(PREMULTIPLIED_X, material(PREMULTIPLIED_UNLIT, premultipliedTexture(),
 		unwritten.withBlendMode(BlendMode.AlphaAdd), Phase.Alpha), opaque);
-	column(ADDITIVE_X, material(Program.UnlitTextured, texel(0xFF404040),
+	column(ADDITIVE_X, material(UNLIT, texel(0xFF404040),
 		unwritten.withBlendMode(BlendMode.Add), Phase.Additive), opaque);
 	// Behind the alpha column's backdrop: drawn only if the translucent pass lost the depth the
 	// opaque pass wrote.
-	quad(ALPHA_X, ALPHA_X + HALF, -1.0, vec3(1.0, 0.0, 0.0), material(Program.UnlitTextured,
+	quad(ALPHA_X, ALPHA_X + HALF, -1.0, vec3(1.0, 0.0, 0.0), material(UNLIT,
 		texel(0xFFFFFFFF), unwritten.withBlendMode(BlendMode.Alpha), Phase.Alpha));
 	const light: LightInstance = {
 		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0),

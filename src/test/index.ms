@@ -27,7 +27,7 @@ import "./imageStyleCheck";
 import "./uiPipelineCheck";
 import "./snapCheck";
 import "./rendererCheck";
-import "./programMapCheck";
+import "./programKeyCheck";
 import "./cameraCheck";
 import "./frustumCheck";
 import "./boundsCheck";

@@ -28,6 +28,7 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	ProgramKey,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext,
@@ -90,7 +91,7 @@ struct Counts {
 }
 
 struct PipelineSpec {
-	program: Program;
+	program: ProgramKey;
 	indexed: boolean;
 	mode: BlendMode;
 }
@@ -146,10 +147,10 @@ function describe(c: Counts): string {
 
 function specs(): Vec<PipelineSpec> {
 	return [
-		{ program: Program.Copy, indexed: false, mode: BlendMode.None },
-		{ program: Program.Copy, indexed: false, mode: BlendMode.Alpha },
-		{ program: Program.Copy, indexed: false, mode: BlendMode.Add },
-		{ program: Program.Lit, indexed: true, mode: BlendMode.None },
+		{ program: ProgramKey.of(Program.Copy), indexed: false, mode: BlendMode.None },
+		{ program: ProgramKey.of(Program.Copy), indexed: false, mode: BlendMode.Alpha },
+		{ program: ProgramKey.of(Program.Copy), indexed: false, mode: BlendMode.Add },
+		{ program: ProgramKey.of(Program.Lit), indexed: true, mode: BlendMode.None },
 	];
 }
 

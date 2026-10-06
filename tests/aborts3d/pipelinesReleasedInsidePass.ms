@@ -3,7 +3,7 @@ import { gfxSetup } from "../../src/sokol/gpu";
 import { RenderState } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT, beginScreenPass } from "../../src/gpu/target";
 import { PipelineCache, releasePipelines } from "../../src/gpu/pipeline";
-import { Program, VertexLayout, pipelineFor } from "../../src/void3d/gpu3d";
+import { Program, VertexLayout, pipelineFor, ProgramKey } from "../../src/void3d/gpu3d";
 @include("../../src/sokol/bridge.h");
 extern function voidRun(w: int32, h: int32, init: () => void, frame: () => void): void;
 
@@ -13,7 +13,7 @@ function init(): void { gfxSetup(); }
 function frame(): void {
 	const made: uint32 = pipelineFor(
 		cache,
-		Program.Copy,
+		ProgramKey.of(Program.Copy),
 		VertexLayout.Fullscreen,
 		false,
 		RenderState.defaults(),

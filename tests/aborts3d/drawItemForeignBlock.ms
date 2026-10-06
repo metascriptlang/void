@@ -1,5 +1,5 @@
 // expect: void3d: drawItem with a block at slot 0 its context does not hold
-import { Program } from "../../src/void3d/gpu3d";
+import { Program, ProgramKey } from "../../src/void3d/gpu3d";
 import { RenderState } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT } from "../../src/gpu/target";
 import { identity } from "../../src/math/math3d";
@@ -29,5 +29,5 @@ const block: Result<UniformBlock, UniformError> = reserveUniforms(other, 0, 24);
 if (!mesh.ok || !material.ok || !padding.ok || !block.ok) { unreachable; }
 const item: DrawItem = { mesh: mesh.value, material: material.value, world: identity() };
 const globals: Vec<UniformBlock> = [block.value];
-drawItem(drawing, item, Program.Lit, SWAPCHAIN_LAYOUT, globals);
+drawItem(drawing, item, ProgramKey.of(Program.Lit), SWAPCHAIN_LAYOUT, globals);
 console.log("the call returned");

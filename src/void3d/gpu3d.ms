@@ -16,6 +16,8 @@ import { TargetLayout } from "../gpu/target";
 import {
 	gpu3dProgramBase,
 	gpu3dLayoutBase,
+	gpu3dProgramCount,
+	gpu3dProgramKey,
 	gpu3dMakeDynamicImage,
 	gpu3dMakeStreamBuffer,
 	gpu3dDestroyBuffer,
@@ -39,96 +41,129 @@ extern function gpu3dApplyUniforms(slot: int32, data: Readonly<Span<float32>>): 
 let programBase: int32 = gpu3dProgramBase();
 let layoutBase: int32 = gpu3dLayoutBase();
 
-// The door id of one of void3d's programs / layouts, from this layer's own ordinal.
-export function doorProgram(program: Program): int32 {
-	return programBase + (program as int32);
+// A program's base: what a material names. Its preset and features complete its key.
+export enum Program {
+	Lit,
+	Particle,
+	Billboard,
+	Copy,
+	Post,
+	Blit,
+	LitTextured,
+	UnlitTextured,
+}
+
+// Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
+// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.glsl).
+export enum Preset {
+	Core,
+	PixelArt,
+}
+
+// hxsl's constant bits (Shader.hx updateConstantsFinal) and Bevy's MeshPipelineKey: one program
+// per value. programKeys.txt declares the values the build ships; regen-shaders.sh compiles them.
+export struct ProgramKey {
+	program: Program;
+	preset: Preset;
+	// Texels are premultiplied: unpremultiplied before the decode, the output premultiplied (M27).
+	premultiplied: boolean;
+	// Discards a pixel whose alpha is below MATERIAL_ALPHA_KILL (M33).
+	cutout: boolean;
+}
+
+const KEY_LIMIT: int32 = 128;
+
+export function of(this typeof ProgramKey, program: Program): ProgramKey {
+	return { program: program, preset: Preset.Core, premultiplied: false, cutout: false };
+}
+
+function stopOnFeature(key: ProgramKey, feature: string): ProgramKey {
+	console.log(`void3d: ${key.describe()} has no ${feature} variant`);
+	unreachable;
+}
+
+export function withPremultiplied(this key: ProgramKey): ProgramKey {
+	const textured: boolean =
+		key.program == Program.LitTextured || key.program == Program.UnlitTextured;
+	if (!textured) { return stopOnFeature(key, "premultiplied"); }
+	return { ...key, premultiplied: true };
+}
+
+export function withCutout(this key: ProgramKey): ProgramKey {
+	const cuts: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
+		key.program == Program.UnlitTextured;
+	if (!cuts) { return stopOnFeature(key, "cutout"); }
+	return { ...key, cutout: true };
+}
+
+export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
+	return { ...key, preset: preset };
+}
+
+// GPU3D_PROGRAM_KEY in gpu3d.c packs the same bits.
+export function bits(this key: ProgramKey): int32 {
+	return (key.program as int32) | ((key.preset as int32) << 4) |
+		((key.premultiplied ? 1 : 0) << 5) | ((key.cutout ? 1 : 0) << 6);
+}
+
+export function describe(this key: ProgramKey): string {
+	const premultiplied: string = key.premultiplied ? " premultiplied" : "";
+	const cutout: string = key.cutout ? " cutout" : "";
+	return `${key.preset.toString()} ${key.program.toString()}${premultiplied}${cutout}`;
+}
+
+function stopOnTable(message: string): Vec<int32> {
+	console.log(`void3d: programTable.h ${message}`);
+	unreachable;
+}
+
+function indexPrograms(): Vec<int32> {
+	let index: Vec<int32> = [];
+	for (let bits = 0; bits < KEY_LIMIT; bits++) { index.push(-1); }
+	for (let i = 0; i < gpu3dProgramCount(); i++) {
+		const bits: int32 = gpu3dProgramKey(i);
+		if (bits < 0 || bits >= KEY_LIMIT) { return stopOnTable(`declares key ${bits}`); }
+		if (index[bits] >= 0) { return stopOnTable(`declares key ${bits} twice`); }
+		index[bits] = i;
+	}
+	return index;
+}
+
+let programIndex: Vec<int32> = indexPrograms();
+
+export function declares(key: ProgramKey): boolean {
+	return programIndex[key.bits()] >= 0;
+}
+
+function stopOnUndeclared(key: ProgramKey): int32 {
+	console.log(`void3d: no program declared for ${key.describe()} (src/void3d/programKeys.txt)`);
+	unreachable;
+}
+
+// The door id of one of void3d's programs / layouts.
+export function doorProgram(key: ProgramKey): int32 {
+	if (!declares(key)) { return stopOnUndeclared(key); }
+	return programBase + programIndex[key.bits()];
 }
 
 export function doorLayout(layout: VertexLayout): int32 {
 	return layoutBase + (layout as int32);
 }
 
-export enum Program {
-	Lit,
-	Particle,
-	Billboard,
-	Copy,
-	PixelArtLit,
-	PixelArtParticle,
-	PixelArtBillboard,
-	PixelArtPost,
-	PixelArtBlit,
-	LitTextured,
-	PixelArtLitTextured,
-	UnlitTextured,
-	PixelArtUnlitTextured,
-	LitTexturedPremultiplied,
-	PixelArtLitTexturedPremultiplied,
-	UnlitTexturedPremultiplied,
-	PixelArtUnlitTexturedPremultiplied,
-	LitCutout,
-	PixelArtLitCutout,
-	LitTexturedCutout,
-	PixelArtLitTexturedCutout,
-	UnlitTexturedCutout,
-	PixelArtUnlitTexturedCutout,
+export enum ProgramError {
+	NotDrawn,
 }
 
-export function samplesPremultiplied(program: Program): boolean {
-	return match (program) {
-		Program.LitTexturedPremultiplied => true,
-		Program.PixelArtLitTexturedPremultiplied => true,
-		Program.UnlitTexturedPremultiplied => true,
-		Program.PixelArtUnlitTexturedPremultiplied => true,
-		Program.Lit => false,
-		Program.Particle => false,
-		Program.Billboard => false,
-		Program.Copy => false,
-		Program.PixelArtLit => false,
-		Program.PixelArtParticle => false,
-		Program.PixelArtBillboard => false,
-		Program.PixelArtPost => false,
-		Program.PixelArtBlit => false,
-		Program.LitTextured => false,
-		Program.PixelArtLitTextured => false,
-		Program.UnlitTextured => false,
-		Program.PixelArtUnlitTextured => false,
-		Program.LitCutout => false,
-		Program.PixelArtLitCutout => false,
-		Program.LitTexturedCutout => false,
-		Program.PixelArtLitTexturedCutout => false,
-		Program.UnlitTexturedCutout => false,
-		Program.PixelArtUnlitTexturedCutout => false,
-	};
-}
-
-// Heaps compiles killAlpha as a shader constant: only these programs carry a discard.
-export function cutsAlpha(program: Program): boolean {
-	return match (program) {
-		Program.LitCutout => true,
-		Program.PixelArtLitCutout => true,
-		Program.LitTexturedCutout => true,
-		Program.PixelArtLitTexturedCutout => true,
-		Program.UnlitTexturedCutout => true,
-		Program.PixelArtUnlitTexturedCutout => true,
-		Program.Lit => false,
-		Program.Particle => false,
-		Program.Billboard => false,
-		Program.Copy => false,
-		Program.PixelArtLit => false,
-		Program.PixelArtParticle => false,
-		Program.PixelArtBillboard => false,
-		Program.PixelArtPost => false,
-		Program.PixelArtBlit => false,
-		Program.LitTextured => false,
-		Program.PixelArtLitTextured => false,
-		Program.UnlitTextured => false,
-		Program.PixelArtUnlitTextured => false,
-		Program.LitTexturedPremultiplied => false,
-		Program.PixelArtLitTexturedPremultiplied => false,
-		Program.UnlitTexturedPremultiplied => false,
-		Program.PixelArtUnlitTexturedPremultiplied => false,
-	};
+// What a renderer of `preset` draws for a material's key: the same key in its preset, when the
+// build declares it. A material names the core's scene programs; a screen program is drawn only
+// by drawScreen, through its own material.
+export function drawnIn(key: ProgramKey, preset: Preset): Result<ProgramKey, ProgramError> {
+	const screen: boolean =
+		key.program == Program.Copy || key.program == Program.Post || key.program == Program.Blit;
+	if (screen || key.preset != Preset.Core) { return Result.err(ProgramError.NotDrawn); }
+	const drawn: ProgramKey = key.withPreset(preset);
+	if (!declares(drawn)) { return Result.err(ProgramError.NotDrawn); }
+	return Result.ok(drawn);
 }
 
 // Vertex buffer layouts gpu3d.c describes (describeLayout).
@@ -140,7 +175,7 @@ export enum VertexLayout {
 	LitTextured,
 }
 
-export function vertexLayoutOf(program: Program): VertexLayout {
+export function vertexLayoutOf(program: ProgramKey): VertexLayout {
 	return (doorProgramLayout(doorProgram(program)) - layoutBase) as VertexLayout;
 }
 
@@ -184,17 +219,17 @@ export const BILLBOARD_COLOR: int32 = 0;
 export const BILLBOARD_LIGHT: int32 = 5;
 
 // Floats of the block `program` declares at `slot`, 0 for none, read off its shader desc.
-export function uniformBlockLength(program: Program, slot: int32): int32 {
+export function uniformBlockLength(program: ProgramKey, slot: int32): int32 {
 	return doorUniformBlockBytes(doorProgram(program), slot) / 4;
 }
 
 // Bit n set when `program` samples a texture at view slot n (textureSlotMask) or declares
 // sampler slot n (samplerSlotMask), read off its shader desc.
-export function textureSlotMask(program: Program): uint32 {
+export function textureSlotMask(program: ProgramKey): uint32 {
 	return doorTextureSlotMask(doorProgram(program));
 }
 
-export function samplerSlotMask(program: Program): uint32 {
+export function samplerSlotMask(program: ProgramKey): uint32 {
 	return doorSamplerSlotMask(doorProgram(program));
 }
 
@@ -210,7 +245,7 @@ export function layoutPerInstance(layout: VertexLayout): boolean {
 // PipelineBuilder.lookup, on void3d's own enums: the key and the cache are the door's.
 export function pipelineFor(
 	cache: PipelineCache,
-	program: Program,
+	program: ProgramKey,
 	layout: VertexLayout,
 	indexed: boolean,
 	state: RenderState,

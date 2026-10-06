@@ -9,6 +9,8 @@ import {
 	Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_COLOR,
 	VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, LIGHT_UNIFORM_SLOT, doorProgram,
+	ProgramKey,
+	Preset,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -265,7 +267,8 @@ export function frameUnlit(frameIndex: int32): void {
 		if (voidCaptureSlotsDiffer() != 0) { fail("two readbacks of one frame differ"); }
 		checkPixels(view, lit);
 		holdRegions(view, frameIndex);
-		const program: Program = pixelArt ? Program.PixelArtUnlitTextured : Program.UnlitTextured;
+		const drawnIn: Preset = pixelArt ? Preset.PixelArt : Preset.Core;
+		const program: ProgramKey = ProgramKey.of(Program.UnlitTextured).withPreset(drawnIn);
 		const cache: PipelineCache =
 			pixelArt ? preset.core.context.pipelines : forward.core.context.pipelines;
 		if (cache.declaresBlock(doorProgram(program), LIGHT_UNIFORM_SLOT)) {

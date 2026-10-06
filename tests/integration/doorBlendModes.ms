@@ -3,12 +3,14 @@ import { exit } from "std/process";
 import { RenderState, BlendMode } from "../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT, TargetLayout } from "../../src/gpu/target";
 import { PipelineCache } from "../../src/gpu/pipeline";
-import { Program, VertexLayout, pipelineFor } from "../../src/void3d/gpu3d";
+import { Program, VertexLayout, pipelineFor, ProgramKey } from "../../src/void3d/gpu3d";
 @include("../../src/sokol/bridge.h");
 extern function voidRunConfigured(
 	w: int32, h: int32, sampleCount: int32, highDpi: int32,
 	init: () => void, frame: () => void,
 ): void;
+
+const COPY: ProgramKey = ProgramKey.of(Program.Copy);
 
 function modes(): Vec<BlendMode> {
 	return [
@@ -31,10 +33,10 @@ function init(): void {
 	for (const mode of modes()) {
 		const state: RenderState = RenderState.defaults().withBlendMode(mode);
 		const first: uint32 = pipelineFor(
-			cache, Program.Copy, VertexLayout.Fullscreen, false, state, SWAPCHAIN_LAYOUT,
+			cache, COPY, VertexLayout.Fullscreen, false, state, SWAPCHAIN_LAYOUT,
 		);
 		const again: uint32 = pipelineFor(
-			cache, Program.Copy, VertexLayout.Fullscreen, false, state, SWAPCHAIN_LAYOUT,
+			cache, COPY, VertexLayout.Fullscreen, false, state, SWAPCHAIN_LAYOUT,
 		);
 		if (first != again) { fail(`${mode.toString()} made a second pipeline for one key`); }
 		for (const earlier of made) {
@@ -47,7 +49,7 @@ function init(): void {
 	const environment: TargetLayout = TargetLayout.environment();
 	const spelled: uint32 = pipelineFor(
 		cache,
-		Program.Copy,
+		COPY,
 		VertexLayout.Fullscreen,
 		false,
 		RenderState.defaults().withBlendMode(BlendMode.Alpha),

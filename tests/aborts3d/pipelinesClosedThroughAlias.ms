@@ -8,6 +8,7 @@ import {
 	VertexLayout,
 	pipelineFor,
 	MATERIAL_UNIFORM_LENGTH,
+	ProgramKey,
 } from "../../src/void3d/gpu3d";
 import { DrawContext } from "../../src/void3d/draw";
 @include("../../src/sokol/bridge.h");
@@ -22,7 +23,7 @@ const context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LE
 function copyPipeline(cache: PipelineCache): uint32 {
 	return pipelineFor(
 		cache,
-		Program.Copy,
+		ProgramKey.of(Program.Copy),
 		VertexLayout.Fullscreen,
 		false,
 		RenderState.defaults(),

@@ -9,6 +9,7 @@ import {
 	BILLBOARD_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	ProgramKey,
 } from "../void3d/gpu3d";
 import { RenderState, BlendMode, Compare, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
@@ -125,7 +126,7 @@ function itemAt(context: DrawContext, material: int32, depth: float32): DrawItem
 }
 
 function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
-	const program: Program = context.materials[material.index].program;
+	const program: ProgramKey = context.materials[material.index].program;
 	const mesh: GpuMesh = match (vertexLayoutOf(program)) {
 		VertexLayout.Lit => litShape(),
 		VertexLayout.Particle => GpuMesh.streamMesh(1, 0, 0),
@@ -438,9 +439,10 @@ test "a material kind derives Heaps' blend, depth write, list and alpha kill" {
 	assert opaque.phase == Phase.Opaque && !opaque.pass.blends() && opaque.pass.depthWrite;
 	const cut: Material = Material.ofKind(Program.Lit, MaterialKind.AlphaKill);
 	assert cut.phase == Phase.Opaque && !cut.pass.blends() && cut.pass.depthWrite;
-	assert opaque.program == Program.Lit && cut.program == Program.LitCutout;
+	const lit: ProgramKey = ProgramKey.of(Program.Lit);
+	assert opaque.program == lit && cut.program == lit.withCutout();
 	assert Material.ofKind(Program.UnlitTextured, MaterialKind.AlphaKill).program ==
-		Program.UnlitTexturedCutout;
+		ProgramKey.of(Program.UnlitTextured).withCutout();
 	const blended: RenderState = RenderState.defaults()
 		.withBlendMode(BlendMode.Add)
 		.withDepth(false, Compare.LessEqual)

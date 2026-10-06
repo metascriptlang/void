@@ -34,7 +34,7 @@ import { argv } from "std/process";
 import { Vec4, identity } from "../../../src/math/math3d";
 import { RenderState } from "../../../src/gpu/state";
 import { SWAPCHAIN_LAYOUT } from "../../../src/gpu/target";
-import { Program } from "../../../src/void3d/gpu3d";
+import { Program, ProgramKey, Preset } from "../../../src/void3d/gpu3d";
 import { Material, Phase, NO_UNIFORMS, UniformBlock } from "../../../src/void3d/material";
 import { MeshData } from "../../../src/void3d/meshData";
 import {
@@ -92,7 +92,6 @@ import {
 import { GltfData, GltfError, loadGltf } from "../../../src/void3d/gltf";
 import { GltfAssets, GltfSceneError, addGltfAssets } from "../../../src/void3d/gltfScene";
 import { Renderer, RendererError } from "../../../src/void3d/renderer";
-import { ProgramMap } from "../../../src/void3d/programMap";
 import { ForwardRenderer, ForwardError } from "../../../src/void3d/forwardRenderer";
 import {
 	PixelArtRenderer,
@@ -207,7 +206,7 @@ function drawCase(name: string, context: DrawContext): boolean {
 		const _r: Result<int32, UniformError> = writeUniforms(context, NO_UNIFORMS, values);
 	} else if (name == "drawItem") {
 		const item: DrawItem = { mesh: NO_MESH, material: NO_MATERIAL, world: identity() };
-		drawItem(context, item, Program.Lit, SWAPCHAIN_LAYOUT, globals);
+		drawItem(context, item, ProgramKey.of(Program.Lit), SWAPCHAIN_LAYOUT, globals);
 	} else if (name == "closeContext") {
 		closeContext(context);
 	} else {
@@ -230,7 +229,7 @@ function ownerCase(name: string, context: DrawContext): boolean {
 			addGltfAssets(context, document(), { pass: RenderState.defaults(), block: block });
 	} else if (name == "rendererCreate") {
 		const _r: Result<Renderer, RendererError> =
-			Renderer.createDrawing(context, ProgramMap.core());
+			Renderer.createDrawing(context, Preset.Core);
 	} else if (name == "forwardCreate") {
 		const _r: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, BLACK);
 	} else if (name == "pixelArtCreate") {

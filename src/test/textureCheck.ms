@@ -9,6 +9,7 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	ProgramKey,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import {
@@ -229,7 +230,7 @@ test "a material names a texture only on a program that samples one at slot 0" {
 	let context: DrawContext = DrawContext.withUniformCapacity(MATERIAL_UNIFORM_LENGTH);
 	let lit: Material = {
 		...texturedLit(context),
-		program: Program.Lit,
+		program: ProgramKey.of(Program.Lit),
 		texture: firstSlotOf(context),
 	};
 	assert materialError(addMaterial(context, lit)) == MaterialError.TextureNotSampled;

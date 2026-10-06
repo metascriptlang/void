@@ -27,6 +27,8 @@ import {
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	ProgramKey,
+	Preset,
 } from "../../src/void3d/gpu3d";
 import { endPass, commit } from "../../src/gpu/door";
 import { RenderState, BlendMode } from "../../src/gpu/state";
@@ -187,6 +189,11 @@ function buildScene(): void {
 	resolved.value.writeCameraBlock(camera);
 }
 
+// The last row of programKeys.txt: void3d's highest door id.
+function lastProgram(): ProgramKey {
+	return ProgramKey.of(Program.UnlitTextured).withCutout().withPreset(Preset.PixelArt);
+}
+
 function initMixed(): void {
 	gfxSetup();
 	setup2d();
@@ -201,8 +208,9 @@ function initMixed(): void {
 		const boundsBefore: boolean =
 			voidCaptureEnvInt("VOID_GPU_REGISTRATION_ORDER_CONTROL", 0) != 0 ? !before : before;
 		const disjoint: boolean = boundsBefore
-			? program < doorProgram(Program.Lit) && layout < doorLayout(VertexLayout.Lit)
-			: program > doorProgram(Program.PixelArtUnlitTextured) &&
+			? program < doorProgram(ProgramKey.of(Program.Lit)) &&
+				layout < doorLayout(VertexLayout.Lit)
+			: program > doorProgram(lastProgram()) &&
 				layout > doorLayout(VertexLayout.LitTextured) && program >= 16 && layout >= 8;
 		if (!disjoint) {
 			fail(`the foreign consumer overlaps or misses the intended registry range: ` +
