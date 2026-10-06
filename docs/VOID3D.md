@@ -144,8 +144,8 @@ Rows, in order. A row's dependency is why it sits where it does.
 | Row | Reference | What | Needed by |
 |---|---|---|---|
 | M33 | Heaps `b9aa6dcb` `h3d/mat/Material.hx:3-10` (`DefaultKind`: Opaque, Alpha, AlphaKill, Add, SoftAdd, Hidden), `:265-283` `refreshProps` (the kind decides blend, alpha kill at 0.5, culling, lights, shadows), `:132-148` `set_blendMode` (blend decides pass name and depth write) | **A material's kind.** One declaration derives phase, blend, depth write and, for AlphaKill, a cutout program whose threshold the material's block must hold, so phase and blend can no longer disagree through it (closes M32's follow-up). The explicit `Material.plain` stays for presets | every translucent or cut material; M35 needs it to pick casters and cut them in the shadow pass |
-| M34 | Heaps `h3d/mat/Pass.hx:51` (`layer`), `h3d/scene/Renderer.hx:114-125` (lists sort by layer before depth) | **A sort layer inside a phase.** An integer on the material orders items before back-to-front depth, stable within a layer | URG forces order on nearly every card and effect |
-| M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes) | the one sun in URG; any outdoor or tabletop scene |
+| M34 | Heaps `h3d/mat/Pass.hx:51` (`layer`), `h3d/scene/Renderer.hx:114-125` (lists sort by layer before depth) | **A sort layer inside a phase.** An integer on the material orders items before back-to-front depth, stable within a layer | URG forces order on nearly every card and effect; **done**, see "M34 as built" |
+| M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes). Measured on msc `244ef48c`: every GLSL ES program sokol-shdc emits says `precision mediump float` (shader3d 11, pixelArt3d 12, shader2d 4, no highp), so fragment maths is fp16 on Android and WebGL2 — a depth compare needs `precision highp float` in the @fs blocks that compare, checked against what sokol-shdc keeps, with a RED-before on a GLES3 or web lane or recorded unverified. Waits for the program-variant decision (shady, 2026-10-06): a feature-bit program key would come first as its own row, and shadow-receive twins do not fit today's 24-entry map | the one sun in URG; any outdoor or tabletop scene |
 | M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language | card surfaces, fire lines, beams, glows |
 | M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs | 12 emissive and 3 normal-mapped materials |
 | M38 | Heaps `h3d/parts/Data.hx:3-26` (`Value` curves, `Shape`), `h3d/parts/Emitter.hx` | **Particle parity** on M11's emitter: sphere, box, ring and point shapes, scale/colour/alpha over life, gravity, damping, turbulence, view-depth order. No collision, no sub-emitters (URG uses neither) | torches, card effects |
@@ -153,7 +153,8 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M40 | three.js `d4ea9b9` `src/core/Layers.js:13-100`, `src/renderers/WebGLRenderer.js:1877` (`object.layers.test(camera.layers)`) | **Visibility layers and a second camera** drawn into a target with a transparent clear, composited by the caller | highlight and tutorial overlays, minimaps, portraits |
 | M41 | void2d label → `drawTarget` → M27 target texture → billboard | **Text in the world**: a billboard label from a void2d scene, outline when void2d has it | damage popups, labels |
 | M42 | void2d P6 item 2 (Heaps-style `src/gpu` texture owner) | **void3d texture slots hold the `src/gpu` texture owner** and re-upload on device loss, as void2d does; after that lands | every layer recovering textures the same way |
-| M43 | — | **A URG-class sample**: a board, cards as render targets on quads, a sun with shadows, torches, particles, a card dissolve, a highlight overlay; placeholder assets, built only from Void; the end-to-end consumer of M33–M42 | the proof |
+| M43 | three.js `d4ea9b9` `src/core/Object3D.js:327` (`renderOrder`), `src/renderers/webgl/WebGLRenderLists.js:7-9,37-39` (lists sort by `renderOrder` before z); Unity `Renderer.sortingOrder`; Unreal translucency sort priority. Heaps has only the material's `Pass.layer` (M34) | **A per-item render order**: an integer on the node/item, sorting after the material's layer and before depth, writable per frame without a new material. **NEW MECHANISM** against Heaps, backed by three references; Godot's world-unit `sorting_offset` bias is not built (URG maps it to an order) | cards in a hand reordered every frame (URG `helpers/card_sorting_helper.gd:30`), UI on meshes, overlays, decals |
+| M44 | — | **A URG-class sample**: a board, cards as render targets on quads, a sun with shadows, torches, particles, a card dissolve, a highlight overlay; placeholder assets, built only from Void; the end-to-end consumer of M33–M43 | the proof |
 
 Not planned until a consumer reads it: a depth texture for translucent materials (soft
 particles), particle collision, MSAA. Exposure is one scale on the output; the sample bakes it.
@@ -2194,6 +2195,44 @@ factor alpha kept under MASK and BLEND and forced under OPAQUE, a texture shared
 refused; aborts `programMapCutMismatch`, `kindWithoutCutout` and `kindOnBillboard`. Not drawn: a glTF MASK file end to end (its
 material is pinned headless), the pixel-art normal target under a cut pixel (a discard drops
 every output).
+
+### M34 as built
+
+**A sort layer.** `Material.layer` is Heaps' `Pass.layer` (`h3d/mat/Pass.hx:51`), 0 by
+default. Every pass list draws lower layers first: `passList.ms` keeps each collected item's
+layer beside its index (compacted with it by `filterFrustum`), `sortByLayer` orders the opaque
+and additive lists by layer and keeps item order inside a layer (the first key of Heaps'
+`SortByMaterial`, `h3d/pass/SortByMaterial.hx:24`; void3d does not sort by shader or texture),
+and `sortBackToFront` orders the alpha list by layer, then far to near, as `depthSort` does
+(`h3d/scene/Renderer.hx:114-125`). Both sorts are stable insertion sorts in place; the layer
+storage grows only with the item count. A URG-style `render_priority` maps to the layer.
+
+**Alpha's depth write stays Heaps'.** M33 carried the question: Heaps' Alpha writes depth
+(`set_blendMode`) and so does three.js (`depthWrite` stays true on a transparent material);
+Bevy's Blend and Godot's default `depth_draw_opaque` do not. The kind keeps Heaps' default. A
+material that must not write depth overrides its own pass, as the probe below does
+(`{ ...Material.ofKind(p, MaterialKind.Alpha), pass: base.pass.withDepth(false, ...) }`): that
+is every port of a Godot transparent material, every translucent drawn under the pixel-art
+preset's `DepthSource.DepthTexture` (refused otherwise, `TranslucentDepthWrite`), and any
+far translucent a layer must draw over a nearer one — a layer orders drawing, it cannot beat a
+depth test. No new API: the pass is already the material's. A glTF document still gets one
+setup pass for all its materials.
+
+**Not a layer: URG's `sorting_offset`.** Godot's per-node `sorting_offset` biases the depth an
+item sorts by, in world units, and URG's scripts rewrite it at runtime for every card in a hand
+(about 80 uses, against 4 non-zero `render_priority`). A per-material layer cannot carry it
+without one material per card per position. The general mechanism under it is a per-object
+render order (three.js `renderOrder`, Unity `sortingOrder`, Unreal's sort priority), which
+Heaps does not have: a **NEW MECHANISM**, row M43, not built here. Godot's world-unit bias
+itself is not ported; a hand of cards maps to an order.
+
+**Acceptance.** `tests/integration/sortLayer.ms` (gate stage `sort-layer`), in both presets: two
+coplanar opaque quads, the second in layer -1, show the second (it draws first and keeps the
+equal depth); a near red and a far green half-alpha quad, the far one in layer 1 and neither
+writing depth, show green over red. The control, every layer 0, shows the first opaque quad and
+red over green, and fails on both halves (the gate requires both messages). Headless
+(`frustumCheck.ms`): the three lists ordered by layer, the alpha list with its layer-1 item the
+farthest (depth alone would draw it first), a culled item's layer compacted away.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
