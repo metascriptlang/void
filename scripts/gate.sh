@@ -489,7 +489,9 @@ fi
 # 2026-09-23-vec-param-copy-corrupts-heap), not stream growth, not allocation inside C.
 FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScreen render:drawOrder render:drawRow
 	render:drawContent render:drawOwn render:pushMask render:syncOrder node:refreshOrder render:meshBounds render:emitNode render:emitLabel
-	render:emitStyledImage render:localBounds render:boxRenderBounds render:visualTile
+	render:emitStyledImage render:localBounds render:boxRenderBounds render:animFrame
+	render:placedBounds render:cellBounds render:emitImage render:appendTile render:quadTile
+	render:rewriteTile render:drawScaleGrid
 	render:sharedGlyphView node:clearChanges node:refOf node:liveRow node:imageStyleOf
 	render:renderScaleGrid label84ext:placementCurrent label84ext:placementKey label84ext:uvRect
 	label84ext:markGlyphPageDrawn label84ext:beginGlyphFrame label84ext:glyphPageHandle

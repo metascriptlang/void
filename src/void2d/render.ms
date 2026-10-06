@@ -120,7 +120,7 @@ import {
 	Smooth,
 	vec2,
 	rgba,
-	targetTile,
+	premultipliedTargetTile,
 	trs2d,
 	inverse2d,
 	emptyBounds,
@@ -157,16 +157,20 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 const SELECTION_RADIUS: float32 = 2.0;
 const SELECTION_GLOOP: float32 = 8.0;
 
-function visualTile(s: Scene2D, i: int32): Tile {
-	if (s.kinds[i] === DrawKind.Anim) {
-		const row: int32 = s.payloads[i];
-		const len: int32 = s.anims[row].frames.length as int32;
-		if (len > 0) {
-			const index: int32 = ((s.anims[row].clock * s.anims[row].fps) as int32) % len;
-			return s.anims[row].frames[index];
-		}
-	}
-	return s.contents[i].tile;
+const NO_FRAME: int32 = -1;
+
+function animFrame(s: Scene2D, i: int32): int32 {
+	if (s.kinds[i] !== DrawKind.Anim) { return NO_FRAME; }
+	const row: int32 = s.payloads[i];
+	const len: int32 = s.anims[row].frames.length as int32;
+	if (len == 0) { return NO_FRAME; }
+	return ((s.anims[row].clock * s.anims[row].fps) as int32) % len;
+}
+
+function placedBounds(t: Tile, w: float32, h: float32): Bounds2D {
+	const dx: float32 = tileOffsetX(t, w);
+	const dy: float32 = tileOffsetY(t, h);
+	return { xMin: dx, yMin: dy, xMax: dx + w, yMax: dy + h };
 }
 function showsEditing(s: Scene2D, i: int32): boolean {
 	if (s.payloads[i] == NO_LABEL_TEXT) { return false; }
@@ -189,6 +193,17 @@ function cellMatrix(c: TileCell): Transform2D {
 	return trs2d(c.x, c.y, c.rotation, c.scaleX, c.scaleY);
 }
 
+function cellBounds(t: Tile, m: Transform2D): Bounds2D {
+	const a = vec2(t.dx, t.dy) * m;
+	const b = vec2(t.dx + t.w, t.dy) * m;
+	const c = vec2(t.dx + t.w, t.dy + t.h) * m;
+	const d = vec2(t.dx, t.dy + t.h) * m;
+	return {
+		xMin: fmin4(a.x, b.x, c.x, d.x), yMin: fmin4(a.y, b.y, c.y, d.y),
+		xMax: fmax4(a.x, b.x, c.x, d.x), yMax: fmax4(a.y, b.y, c.y, d.y),
+	};
+}
+
 function tileBounds(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	if (!s.tileGroups[p].boundsStale) { return; }
@@ -197,21 +212,11 @@ function tileBounds(s: Scene2D, i: int32): void {
 	let xMax: float32 = -1e30;
 	let yMax: float32 = -1e30;
 	for (let k: int32 = 0; k < (s.tileCells[p].length as int32); k++) {
-		const cell: TileCell = s.tileCells[p][k];
-		const m: Transform2D = cellMatrix(cell);
-		const t: Tile = cell.tile;
-		const a = vec2(t.dx, t.dy) * m;
-		const b = vec2(t.dx + t.w, t.dy) * m;
-		const c = vec2(t.dx + t.w, t.dy + t.h) * m;
-		const d = vec2(t.dx, t.dy + t.h) * m;
-		const x0: float32 = fmin4(a.x, b.x, c.x, d.x);
-		const y0: float32 = fmin4(a.y, b.y, c.y, d.y);
-		const x1: float32 = fmax4(a.x, b.x, c.x, d.x);
-		const y1: float32 = fmax4(a.y, b.y, c.y, d.y);
-		if (x0 < xMin) { xMin = x0; }
-		if (y0 < yMin) { yMin = y0; }
-		if (x1 > xMax) { xMax = x1; }
-		if (y1 > yMax) { yMax = y1; }
+		const cell: Bounds2D = cellBounds(s.tileCells[p][k].tile, cellMatrix(s.tileCells[p][k]));
+		if (cell.xMin < xMin) { xMin = cell.xMin; }
+		if (cell.yMin < yMin) { yMin = cell.yMin; }
+		if (cell.xMax > xMax) { xMax = cell.xMax; }
+		if (cell.yMax > yMax) { yMax = cell.yMax; }
 	}
 	if (xMin > xMax) { xMin = 0.0; xMax = 0.0; yMin = 0.0; yMax = 0.0; }
 	s.bounds[i] = { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
@@ -250,10 +255,9 @@ function localBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 		return { xMin: -SELECTION_GLOOP, yMin: 0.0, xMax: w + SELECTION_GLOOP, yMax: h };
 	}
 	if (kind === DrawKind.Sprite || kind === DrawKind.Anim || kind === DrawKind.ScaleGrid) {
-		const t: Tile = visualTile(s, i);
-		const dx: float32 = tileOffsetX(t, w);
-		const dy: float32 = tileOffsetY(t, h);
-		return { xMin: dx, yMin: dy, xMax: dx + w, yMax: dy + h };
+		const frame: int32 = animFrame(s, i);
+		if (frame != NO_FRAME) { return placedBounds(s.anims[payload].frames[frame], w, h); }
+		return placedBounds(s.contents[i].tile, w, h);
 	}
 	return { xMin: 0.0, yMin: 0.0, xMax: w, yMax: h };
 }
@@ -304,9 +308,12 @@ function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D)
 }
 
 function renderScaleGrid(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
-	const grid: Content2D = s.contents[i];
-	const blend: BlendMode = s.paints[i].blend;
-	const t = grid.tile;
+	drawScaleGrid(s.contents[i], s.contents[i].tile, world, col, s.paints[i].blend);
+}
+
+function drawScaleGrid(
+	grid: Content2D, t: Tile, world: Transform2D, col: Color, blend: BlendMode,
+): void {
 	const srcW: float32 = t.w;
 	const srcH: float32 = t.h;
 	if (srcW <= 0.0 || srcH <= 0.0) { return; }
@@ -701,26 +708,48 @@ function emitTiles(
 	let view: uint32 = 0;
 	let premultiplied: boolean = false;
 	for (let k: int32 = s.tileGroups[p].first; k < end; k++) {
-		const cell: TileCell = s.tileCells[p][k];
-		const t: Tile = cell.tile;
-		const m: Transform2D = world * cellMatrix(cell);
-		const tint: Color = tileTint(cell.color, col);
-		const origin = vec2(t.dx, t.dy) * m;
+		const m: Transform2D = world * cellMatrix(s.tileCells[p][k]);
+		const tint: Color = tileTint(s.tileCells[p][k].color, col);
 		if (instanced) {
-			const tileView: uint32 = t.source.view();
-			if (!open || tileView != view || t.alphaPremultiplied != premultiplied) {
-				beginSprites(tileView, t.alphaPremultiplied, blend);
+			const tileView: uint32 = s.tileCells[p][k].tile.source.view();
+			const cellPremultiplied: boolean = s.tileCells[p][k].tile.alphaPremultiplied;
+			if (!open || tileView != view || cellPremultiplied != premultiplied) {
+				beginSprites(tileView, cellPremultiplied, blend);
 				open = true;
 				view = tileView;
-				premultiplied = t.alphaPremultiplied;
+				premultiplied = cellPremultiplied;
 			}
-			appendSprite(m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
+			appendTile(s.tileCells[p][k].tile, m, tint);
 		} else {
-			imageQuad(
-				t, origin, vec2(t.dx + t.w, t.dy) * m, vec2(t.dx + t.w, t.dy + t.h) * m,
-				vec2(t.dx, t.dy + t.h) * m, tint, blend,
-			);
+			quadTile(s.tileCells[p][k].tile, m, tint, blend);
 		}
+	}
+}
+
+function appendTile(t: Tile, m: Transform2D, tint: Color): void {
+	const origin = vec2(t.dx, t.dy) * m;
+	appendSprite(m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
+}
+
+function quadTile(t: Tile, m: Transform2D, tint: Color, blend: BlendMode): void {
+	imageQuad(
+		t, vec2(t.dx, t.dy) * m, vec2(t.dx + t.w, t.dy) * m, vec2(t.dx + t.w, t.dy + t.h) * m,
+		vec2(t.dx, t.dy + t.h) * m, tint, blend,
+	);
+}
+
+function emitImage(
+	s: Scene2D, i: int32, t: Tile, world: Transform2D, col: Color, blend: BlendMode,
+	instanced: boolean, tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2,
+	sizeX: float32, sizeY: float32, lbMin: Vec2,
+): void {
+	if (emitStyledImage(s, i, t, world, col, sizeX, sizeY, lbMin)) { return; }
+	if (instanced) {
+		drawSpriteAffine(
+			t.source.view(), t.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
+			t.u0, t.v0, t.u1, t.v1, col);
+	} else {
+		imageQuad(t, tl, tr, br, bl, col, blend);
 	}
 }
 
@@ -831,32 +860,14 @@ function emitNode(
 			}
 		},
 		DrawKind.Sprite => {
-			const sheet: Tile = s.contents[i].tile;
-			if (!emitStyledImage(s, i, sheet, world, col, sizeX, sizeY, lbMin)) {
-				if (instanced) {
-					drawSpriteAffine(
-						sheet.source.view(), sheet.alphaPremultiplied, blend, world,
-						tl.x, tl.y, sizeX, sizeY,
-						sheet.u0, sheet.v0, sheet.u1, sheet.v1, col);
-				} else {
-					imageQuad(sheet, tl, tr, br, bl, col, blend);
-				}
-			}
+			emitImage(s, i, s.contents[i].tile, world, col, blend, instanced,
+				tl, tr, br, bl, sizeX, sizeY, lbMin);
 		},
 		DrawKind.Anim => {
-			const len: int32 = s.anims[payload].frames.length as int32;
-			if (len > 0) {
-				const fi: int32 = ((s.anims[payload].clock * s.anims[payload].fps) as int32) % len;
-				const fr = s.anims[payload].frames[fi];
-				if (!emitStyledImage(s, i, fr, world, col, sizeX, sizeY, lbMin)) {
-					if (instanced) {
-						drawSpriteAffine(
-							fr.source.view(), fr.alphaPremultiplied, blend, world, tl.x, tl.y, sizeX, sizeY,
-							fr.u0, fr.v0, fr.u1, fr.v1, col);
-					} else {
-						imageQuad(fr, tl, tr, br, bl, col, blend);
-					}
-				}
+			const frame: int32 = animFrame(s, i);
+			if (frame != NO_FRAME) {
+				emitImage(s, i, s.anims[payload].frames[frame], world, col, blend, instanced,
+					tl, tr, br, bl, sizeX, sizeY, lbMin);
 			}
 		},
 		DrawKind.Underline => {
@@ -1032,7 +1043,7 @@ function blitTarget(src: RenderTarget, w: float32, h: float32): void {
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
 	setSampler(Smooth.On, false);
 	imageQuad(
-		targetTile(src, w, h).premultiplied(),
+		premultipliedTargetTile(src, w, h),
 		vec2(0.0, 0.0), vec2(w, 0.0), vec2(w, h), vec2(0.0, h),
 		rgba(1.0, 1.0, 1.0, 1.0), BlendMode.None);
 }
@@ -1502,6 +1513,11 @@ function queueRetile(s: Scene2D, i: int32): void {
 	s.retile.push(i);
 }
 
+function rewriteTile(instance: int32, t: Tile, m: Transform2D, tint: Color): void {
+	const origin = vec2(t.dx, t.dy) * m;
+	rewriteSprite(instance, m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1, tint);
+}
+
 function retileRow(s: Scene2D, i: int32): void {
 	const p: int32 = s.payloads[i];
 	const start: PaintIndex = paintStartOf(i);
@@ -1515,15 +1531,10 @@ function retileRow(s: Scene2D, i: int32): void {
 		if (k < first || k >= end) { continue; }
 		const at: PaintIndex = { ...start, spriteInstances: start.spriteInstances + (k - first) };
 		const past: PaintIndex = { ...at, spriteInstances: at.spriteInstances + 1 };
-		const cell: TileCell = s.tileCells[p][k];
-		const t: Tile = cell.tile;
-		const m: Transform2D = world * cellMatrix(cell);
-		const origin = vec2(t.dx, t.dy) * m;
+		const m: Transform2D = world * cellMatrix(s.tileCells[p][k]);
 		saveRange(at, past);
-		rewriteSprite(
-			at.spriteInstances, m, origin.x, origin.y, t.w, t.h, t.u0, t.v0, t.u1, t.v1,
-			tileTint(cell.color, col),
-		);
+		const tint: Color = tileTint(s.tileCells[p][k].color, col);
+		rewriteTile(at.spriteInstances, s.tileCells[p][k].tile, m, tint);
 		noteRange(at, past);
 	}
 }
@@ -1671,7 +1682,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	// Composite at the exact logical extent represented by the physical target.
 	const qx1: float32 = xMin + logicalW;
 	const qy1: float32 = yMin + logicalH;
-	const rtTile = targetTile(src, rtW as float32, rtH as float32).premultiplied();
+	const rtTile: Tile = premultipliedTargetTile(src, rtW as float32, rtH as float32);
 	// Same reason as `blitTarget`: a composite that inherits the previous sibling's colour
 	// matrix gets tinted, and one that inherits its sampler gets point-sampled. A render
 	// target is always composited linear-clamp with no colour pipeline; the silhouette below
@@ -1706,7 +1717,7 @@ function drawFiltered(s: Scene2D, i: int32, a: float32, vw: float32, vh: float32
 	imageQuad(rtTile, vec2(xMin + ox, yMin + oy), vec2(qx1 + ox, yMin + oy),
 		vec2(qx1 + ox, qy1 + oy), vec2(xMin + ox, qy1 + oy), rgba(1.0, 1.0, 1.0, na), fblend);
 	setEffect(NO_COLOR_MATRIX, rgba(0.0, 0.0, 0.0, 0.0), rgba(0.0, 0.0, 0.0, 0.0));
-	const sharpTile = targetTile(rt, rtW as float32, rtH as float32).premultiplied();
+	const sharpTile: Tile = premultipliedTargetTile(rt, rtW as float32, rtH as float32);
 	imageQuad(sharpTile, vec2(xMin, yMin), vec2(qx1, yMin), vec2(qx1, qy1), vec2(xMin, qy1),
 		rgba(1.0, 1.0, 1.0, na), blend);
 }
