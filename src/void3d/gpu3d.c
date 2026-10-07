@@ -41,8 +41,10 @@ enum {
 	GPU3D_PRESET_SHADOW,
 };
 
-#define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed) \
-	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8))
+#define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
+		backTexture, dissolve) \
+	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
+	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11))
 
 #include "programTable.h"
 

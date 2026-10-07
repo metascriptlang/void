@@ -106,7 +106,11 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 
 @fs litTexturedFs
 // PENDING3D: material-saturation-only
+#if defined(UV_TRANSFORM) || defined(BACK_TEXTURE) || defined(DISSOLVE)
+@include_block movingMaterialUniforms
+#else
 @include_block materialUniforms
+#endif
 @include_block lightUniforms
 @include_block colorSpace
 @include_block pointLight
@@ -118,6 +122,16 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 #ifdef PREMULTIPLIED
 @include_block straightTexel
 #endif
+#ifdef UV_TRANSFORM
+@include_block frameUniforms
+@include_block movedUv
+#endif
+#ifdef BACK_TEXTURE
+@include_block backTexture
+#endif
+#ifdef DISSOLVE
+@include_block dissolveTexture
+#endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 in vec3 worldPosition;
@@ -127,12 +141,31 @@ in vec4 baseColor;
 out vec4 fragColor;
 @include_block litTexturedShade
 void main() {
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+#ifdef UV_TRANSFORM
+    vec2 uv = movedUv(surfaceUv);
+#else
+    vec2 uv = surfaceUv;
+#endif
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);
+#ifdef BACK_TEXTURE
+    // Both read, then one kept: WGSL refuses a sample under non-uniform control flow.
+    vec4 backTexel = texture(sampler2D(backTexture, baseSampler), backUv(surfaceUv));
+    texel = gl_FrontFacing ? texel : backTexel;
+#endif
+#ifdef DISSOLVE
+    float noise = texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).r;
+#endif
 #ifdef PREMULTIPLIED
     texel = straightTexel(texel);
 #endif
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = litTexturedShade(texel, n);
+#ifdef DISSOLVE
+    if (noise < dissolve.x) {
+        discard;
+    }
+    fragColor = dissolveEdgeOver(fragColor, noise);
+#endif
 #ifdef CUTOUT
     if (fragColor.a < material.w) {
         discard;
@@ -161,10 +194,24 @@ void main() {
 @end
 
 @fs unlitTexturedFs
+#if defined(UV_TRANSFORM) || defined(BACK_TEXTURE) || defined(DISSOLVE)
+@include_block movingUnlitMaterialUniforms
+#else
 @include_block unlitMaterialUniforms
+#endif
 @include_block colorSpace
 #ifdef PREMULTIPLIED
 @include_block straightTexel
+#endif
+#ifdef UV_TRANSFORM
+@include_block frameUniforms
+@include_block movedUv
+#endif
+#ifdef BACK_TEXTURE
+@include_block backTexture
+#endif
+#ifdef DISSOLVE
+@include_block dissolveTexture
 #endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
@@ -173,11 +220,30 @@ in vec4 baseColor;
 out vec4 fragColor;
 @include_block unlitTexturedShade
 void main() {
-    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+#ifdef UV_TRANSFORM
+    vec2 uv = movedUv(surfaceUv);
+#else
+    vec2 uv = surfaceUv;
+#endif
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), uv);
+#ifdef BACK_TEXTURE
+    // Both read, then one kept: WGSL refuses a sample under non-uniform control flow.
+    vec4 backTexel = texture(sampler2D(backTexture, baseSampler), backUv(surfaceUv));
+    texel = gl_FrontFacing ? texel : backTexel;
+#endif
+#ifdef DISSOLVE
+    float noise = texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).r;
+#endif
 #ifdef PREMULTIPLIED
     texel = straightTexel(texel);
 #endif
     fragColor = unlitTexturedShade(texel);
+#ifdef DISSOLVE
+    if (noise < dissolve.x) {
+        discard;
+    }
+    fragColor = dissolveEdgeOver(fragColor, noise);
+#endif
 #ifdef CUTOUT
     if (fragColor.a < material.w) {
         discard;
@@ -207,8 +273,13 @@ void main() {
 @end
 
 @fs shadowLitTexturedFs
-#ifdef CUTOUT
+#ifdef DISSOLVE
+@include_block movingMaterialUniforms
+@include_block dissolveTexture
+#elif defined(CUTOUT)
 @include_block materialUniforms
+#endif
+#ifdef CUTOUT
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 #endif
@@ -217,6 +288,11 @@ in vec3 worldNormal;
 in vec2 surfaceUv;
 in vec4 baseColor;
 void main() {
+#ifdef DISSOLVE
+    if (texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).r < dissolve.x) {
+        discard;
+    }
+#endif
 #ifdef CUTOUT
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
     if (baseColor.a * texel.a < material.w) {
@@ -227,14 +303,24 @@ void main() {
 @end
 
 @fs shadowUnlitTexturedFs
-#ifdef CUTOUT
+#ifdef DISSOLVE
+@include_block movingUnlitMaterialUniforms
+@include_block dissolveTexture
+#elif defined(CUTOUT)
 @include_block unlitMaterialUniforms
+#endif
+#ifdef CUTOUT
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
 #endif
 in vec2 surfaceUv;
 in vec4 baseColor;
 void main() {
+#ifdef DISSOLVE
+    if (texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).r < dissolve.x) {
+        discard;
+    }
+#endif
 #ifdef CUTOUT
     vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
     if (baseColor.a * materialColor.a * texel.a < material.w) {

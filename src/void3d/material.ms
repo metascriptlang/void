@@ -5,7 +5,15 @@
 // a material holds the block's position in it, so materials stay plain values in a table.
 
 import { RenderState, BlendMode } from "../gpu/state";
-import { Program, ProgramKey } from "./gpu3d";
+import {
+	Program,
+	ProgramKey,
+	MOVING_UV_MATRIX,
+	MOVING_BACK_UV_MATRIX,
+	movingBase,
+	uniformBlockLength,
+	MATERIAL_UNIFORM_SLOT,
+} from "./gpu3d";
 import { TextureId, NO_TEXTURE } from "./texture";
 
 // Which of the renderer's pass lists draws the material: the passes h3d.scene.fwd.Renderer
@@ -187,4 +195,20 @@ export function keyed(
 
 export function namesTexture(this material: Material): boolean {
 	return material.texture.isTexture();
+}
+
+// The block of a moving key (gpu3d.ms MOVING_*) with both UV transforms the identity, no scroll,
+// no dissolve, and every other float 0; the caller sets its own values over it.
+export function movingDefaults(key: ProgramKey): Vec<float32> {
+	if (!key.moves()) {
+		console.log(`void3d: movingDefaults for ${key.describe()}, which does not move`);
+		unreachable;
+	}
+	let values: Vec<float32> = new Array(uniformBlockLength(key, MATERIAL_UNIFORM_SLOT));
+	const base: int32 = movingBase(key);
+	for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
+		values[matrix] = 1.0;
+		values[matrix + 3] = 1.0;
+	}
+	return values;
 }

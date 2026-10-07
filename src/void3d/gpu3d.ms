@@ -72,13 +72,21 @@ export struct ProgramKey {
 	// Discards a pixel whose alpha is below MATERIAL_ALPHA_KILL (M33).
 	cutout: boolean;
 	shadowed: boolean;
+	// Bevy's StandardMaterial.uv_transform, scrolled by Heaps' UVScroll on the frame's time (M36).
+	uvTransform: boolean;
+	// Back faces sample the texture at view slot BACK_VIEW_SLOT through their own UV transform.
+	backTexture: boolean;
+	// Discards a pixel whose noise texel (DISSOLVE_VIEW_SLOT) is below the material's threshold,
+	// and paints the band just above it in an edge colour.
+	dissolve: boolean;
 }
 
-const KEY_LIMIT: int32 = 512;
+const KEY_LIMIT: int32 = 4096;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
+		uvTransform: false, backTexture: false, dissolve: false,
 	};
 }
 
@@ -108,6 +116,30 @@ export function withShadowed(this key: ProgramKey): ProgramKey {
 	return { ...key, shadowed: true };
 }
 
+function stopOnUntextured(key: ProgramKey, feature: string): ProgramKey {
+	const textured: boolean =
+		key.program == Program.LitTextured || key.program == Program.UnlitTextured;
+	if (!textured) { return stopOnFeature(key, feature); }
+	return key;
+}
+
+export function withUvTransform(this key: ProgramKey): ProgramKey {
+	return { ...stopOnUntextured(key, "uv transform"), uvTransform: true };
+}
+
+export function withBackTexture(this key: ProgramKey): ProgramKey {
+	return { ...stopOnUntextured(key, "back texture"), backTexture: true };
+}
+
+export function withDissolve(this key: ProgramKey): ProgramKey {
+	return { ...stopOnUntextured(key, "dissolve"), dissolve: true };
+}
+
+// Any of the three reads the moving material block (MOVING_* below).
+export function moves(this key: ProgramKey): boolean {
+	return key.uvTransform || key.backTexture || key.dissolve;
+}
+
 export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 	return { ...key, preset: preset };
 }
@@ -116,14 +148,19 @@ export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 export function bits(this key: ProgramKey): int32 {
 	return (key.program as int32) | ((key.preset as int32) << 4) |
 		((key.premultiplied ? 1 : 0) << 6) | ((key.cutout ? 1 : 0) << 7) |
-		((key.shadowed ? 1 : 0) << 8);
+		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
+		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11);
 }
 
 export function describe(this key: ProgramKey): string {
 	const premultiplied: string = key.premultiplied ? " premultiplied" : "";
 	const cutout: string = key.cutout ? " cutout" : "";
 	const shadowed: string = key.shadowed ? " shadowed" : "";
-	return `${key.preset.toString()} ${key.program.toString()}${premultiplied}${cutout}${shadowed}`;
+	const uv: string = key.uvTransform ? " uv-transform" : "";
+	const back: string = key.backTexture ? " back-texture" : "";
+	const dissolve: string = key.dissolve ? " dissolve" : "";
+	const features: string = `${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}`;
+	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
 function stopOnTable(message: string): Vec<int32> {
@@ -187,11 +224,13 @@ export function drawnIn(
 	return Result.ok(drawn);
 }
 
-// Depth output has no colour, so premultiplied input and shadow receiving do not reach it.
+// Depth output has no colour, so premultiplied input and shadow receiving do not reach it; a
+// dissolve cuts depth as it cuts colour, and the UV a texel is read at matters only to a cut.
 export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	if (key.preset != Preset.Core) { return Result.err(ProgramError.NotDrawn); }
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
+		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
@@ -250,6 +289,40 @@ export const MATERIAL_DOUBLE_SIDED: int32 = 2;
 export const MATERIAL_ALPHA_KILL: int32 = 3;
 export const UNLIT_MATERIAL_UNIFORM_LENGTH: int32 = 8;
 export const UNLIT_MATERIAL_COLOR: int32 = 4;
+// A moving key's block (movingMaterialParams / movingUnlitMaterialParams in shader3dBlocks.glsl):
+// its program's block, then six vec4 at movingBase(key) plus these offsets, whichever of the
+// three features the key reads. UV transform: Bevy's Affine2, the 2x2 matrix by columns, then
+// the translation and Heaps' UVScroll speed in UV units per second of the frame's time.
+export const MOVING_UV_MATRIX: int32 = 0;
+export const MOVING_UV_OFFSET: int32 = 4;
+export const MOVING_UV_SCROLL: int32 = 6;
+// The back face's own UV transform, unscrolled: matrix by columns, then translation.
+export const MOVING_BACK_UV_MATRIX: int32 = 8;
+export const MOVING_BACK_UV_OFFSET: int32 = 12;
+// Dissolve: the threshold (0 dissolves nothing, past 1 everything) and the edge band's width in
+// noise units, then the edge colour (gamma-encoded rgb; its alpha mixes it over the shaded colour).
+export const MOVING_DISSOLVE_THRESHOLD: int32 = 16;
+export const MOVING_DISSOLVE_EDGE_WIDTH: int32 = 17;
+export const MOVING_DISSOLVE_EDGE_COLOR: int32 = 20;
+export const MOVING_LENGTH: int32 = 24;
+export const MOVING_MATERIAL_UNIFORM_LENGTH: int32 = MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
+export const MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH: int32 =
+	UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
+// The back texture shares the base texture's sampler; the noise has a sampler of its own.
+export const BACK_VIEW_SLOT: int32 = 1;
+export const DISSOLVE_VIEW_SLOT: int32 = 2;
+export const DISSOLVE_SAMPLER_SLOT: int32 = 1;
+// The scene's frame block (binding=6, shader3dBlocks.glsl frameUniforms): Heaps' `global.time`
+// in seconds at FRAME_TIME, read by a key with a UV transform.
+export const FRAME_UNIFORM_SLOT: int32 = 6;
+export const FRAME_UNIFORM_LENGTH: int32 = 4;
+export const FRAME_TIME: int32 = 0;
+
+// Where a moving key's own floats start in its material block.
+export function movingBase(key: ProgramKey): int32 {
+	return key.program == Program.UnlitTextured ?
+		UNLIT_MATERIAL_UNIFORM_LENGTH : MATERIAL_UNIFORM_LENGTH;
+}
 // A billboard material's block (binding=2): its colour, then at BILLBOARD_LIGHT 0 to leave the
 // lights out (Heaps' `particles3D` material has `light: true`). A preset may give the other
 // floats a meaning of its own (pixelArtRenderer.ms BILLBOARD_RAMP_LEVELS).

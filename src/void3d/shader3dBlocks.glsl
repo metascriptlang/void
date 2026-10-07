@@ -54,6 +54,70 @@ layout(binding=3) uniform unlitMaterialParams {
 };
 @end
 
+@block movingMaterialUniforms
+// gpu3d.ms MOVING_*: materialParams, then what a key with a UV transform, a back texture or a
+// dissolve reads.
+layout(binding=3) uniform movingMaterialParams {
+    vec4 material;
+    vec4 uvMatrix;
+    vec4 uvMotion;
+    vec4 backUvMatrix;
+    vec4 backUvOffset;
+    vec4 dissolve;
+    vec4 dissolveEdge;
+};
+@end
+
+@block movingUnlitMaterialUniforms
+layout(binding=3) uniform movingUnlitMaterialParams {
+    vec4 material;
+    vec4 materialColor;
+    vec4 uvMatrix;
+    vec4 uvMotion;
+    vec4 backUvMatrix;
+    vec4 backUvOffset;
+    vec4 dissolve;
+    vec4 dissolveEdge;
+};
+@end
+
+@block frameUniforms
+// h3d.scene.RenderContext's `global.time`: frame.x, seconds (renderer.ms setElapsedTime).
+layout(binding=6) uniform frameParams {
+    vec4 frame;
+};
+@end
+
+@block movedUv
+// h3d.shader.UVDelta's transform as Bevy's uv_transform (an Affine2), then UVScroll's
+// `uvSpeed * global.time`.
+vec2 movedUv(vec2 uv) {
+    return mat2(uvMatrix.xy, uvMatrix.zw) * uv + uvMotion.xy + uvMotion.zw * frame.x;
+}
+@end
+
+@block backTexture
+// Read on back faces through its own transform, with the base texture's sampler.
+layout(binding=1) uniform texture2D backTexture;
+
+vec2 backUv(vec2 uv) {
+    return mat2(backUvMatrix.xy, backUvMatrix.zw) * uv + backUvOffset.xy;
+}
+@end
+
+@block dissolveTexture
+// Heaps' AlphaMap read as KillAlpha reads its threshold: a pixel whose noise is below
+// dissolve.x is discarded; above it, a band dissolve.y wide takes dissolveEdge, mixed by its
+// alpha, while the threshold is above 0.
+layout(binding=2) uniform texture2D dissolveTexture;
+layout(binding=1) uniform sampler dissolveSampler;
+
+vec4 dissolveEdgeOver(vec4 color, float noise) {
+    bool edge = dissolve.x > 0.0 && noise < dissolve.x + dissolve.y;
+    return edge ? vec4(mix(color.rgb, dissolveEdge.rgb, dissolveEdge.a), color.a) : color;
+}
+@end
+
 @block saturation
 // h3d.Matrix.colorSaturate in scalar form; campfireGreyCpuCapture holds it to colorSaturated.
 vec3 saturated(vec3 rgb, float amount) {

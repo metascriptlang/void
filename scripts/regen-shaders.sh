@@ -116,6 +116,9 @@ regenKeys() {
 		premultiplied=0
 		cutout=0
 		shadowed=0
+		uvTransform=0
+		backTexture=0
+		dissolve=0
 		defines=""
 		if [ "$features" != "-" ]; then
 			for feature in $(echo "$features" | tr ':' ' '); do
@@ -123,6 +126,9 @@ regenKeys() {
 					PREMULTIPLIED) premultiplied=1 ;;
 					CUTOUT)        cutout=1 ;;
 					SHADOWED)      shadowed=1 ;;
+					UV_TRANSFORM)  uvTransform=1 ;;
+					BACK_TEXTURE)  backTexture=1 ;;
+					DISSOLVE)      dissolve=1 ;;
 					*) echo "programKeys.txt: row $module names unknown feature $feature"; exit 1 ;;
 				esac
 			done
@@ -147,8 +153,9 @@ regenKeys() {
 
 		printf '\t%s_program_shader_desc,\n' "$module" >> "$work/descs"
 		printf '\tLAYOUT_%s,\n' "$layout" >> "$work/layouts"
-		printf '\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s),\n' \
-			"$program" "$preset" "$premultiplied" "$cutout" "$shadowed" >> "$work/keys"
+		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s),\n'
+		printf "$key" "$program" "$preset" "$premultiplied" "$cutout" "$shadowed" \
+			"$uvTransform" "$backTexture" "$dissolve" >> "$work/keys"
 		first=$(tr -d "\r" < "$KEYS" | awk -v l="$layout" '$1 !~ /^#/ && $7 == l { print $1; exit }')
 		if [ "$first" != "$module" ]; then
 			same=""
