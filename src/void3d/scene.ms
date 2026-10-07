@@ -1007,6 +1007,7 @@ export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<Draw
 // this port refuses (fwd.LightSystem sorts by priority and keeps its top N without a word).
 // Syncs first, so a light moved this frame is read at its new place whatever called this.
 export function collectLights(scene: Scene3D, out: Span<float32>): Result<int32, LightError> {
+	if (scene.closed) { stopOnClosed("collectLights"); }
 	return collectLightsFor(scene, activeLayers(scene), out);
 }
 
