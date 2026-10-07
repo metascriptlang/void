@@ -392,9 +392,22 @@ export const HARNESS_RECT_Y: int32 = 20;
 export const HARNESS_RECT_W: int32 = 30;
 export const HARNESS_RECT_H: int32 = 24;
 
+const NO_VOID3D_ON_GL: string = "void3d carries no glsl430 text (src/void3d/shaderBackends.h)";
+
+// Why a row cannot be captured on a backend, or "" when it can. The runner prints it and the
+// comparator leaves the row out of the pass rate, so an excluded row is named and never missing.
+export function sceneExclusion(directory: string, name: string): string {
+	if (!directory.equals("gl430")) { return ""; }
+	if (name.equals("mixed/void3dTarget") || name.equals("mixed/void3dTranslucentTarget")) {
+		return NO_VOID3D_ON_GL;
+	}
+	return "";
+}
+
 export function backendDirectory(backend: int32): string {
 	if (backend == 1) { return "d3d11"; }
 	if (backend == 2) { return "gles3"; }
 	if (backend == 3) { return "webgl2"; }
+	if (backend == 4) { return "gl430"; }
 	return "none";
 }

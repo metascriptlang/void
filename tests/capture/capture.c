@@ -37,7 +37,14 @@
 #endif
 
 #if defined(VOID_CAPTURE_GL)
-	#include <GLES3/gl3.h>
+	#if defined(SOKOL_GLCORE)
+		#if defined(_WIN32)
+			#include <windows.h>
+		#endif
+		#include <GL/gl.h>
+	#else
+		#include <GLES3/gl3.h>
+	#endif
 	int sapp_width(void);
 	int sapp_height(void);
 #endif
@@ -77,6 +84,8 @@ int voidCaptureBackend(void) {
 	return 1;
 #elif defined(VOID_CAPTURE_GL) && defined(__EMSCRIPTEN__)
 	return 3;
+#elif defined(SOKOL_GLCORE)
+	return 4;
 #elif defined(VOID_CAPTURE_GL)
 	return 2;
 #else
@@ -152,8 +161,6 @@ int voidCaptureGrab(int slot) {
 #if defined(VOID_CAPTURE_D3D11)
 	return grabD3D11(slot, (IDXGISwapChain *)sapp_d3d11_get_swap_chain(), 0);
 #elif defined(VOID_CAPTURE_GL)
-	// Untested on this box: no GLES3 target has run the golden runner yet. It exists because
-	// it is ~30 lines and is the same path the Android device and WebGL2 will use.
 	int width = sapp_width();
 	int height = sapp_height();
 	if (width <= 0 || height <= 0) return 0;

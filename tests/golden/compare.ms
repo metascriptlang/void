@@ -22,6 +22,7 @@ import {
 	SceneRow,
 	sceneRows,
 	backendDirectory,
+	sceneExclusion,
 	MUST_FAIL_SCENE,
 	HAND_COMPUTED_SCENE,
 	HARNESS_CLEAR_R,
@@ -241,20 +242,28 @@ function runComparison(): int32 {
 	let passed: int32 = 0;
 	let pending: int32 = 0;
 	let failed: int32 = 0;
+	let excluded: int32 = 0;
 
 	for (const row of rows) {
+		const why: string = sceneExclusion(captured, row.name);
+		if (why.length > 0) {
+			console.log(`EXCLUDED ${row.name} ${why}`);
+			excluded = excluded + 1;
+			continue;
+		}
 		const verdict = judge(row, budgets, backend, captured);
 		if (verdict === Verdict.Pass) { passed = passed + 1; }
 		else if (verdict === Verdict.PassPending) { pending = pending + 1; }
 		else { failed = failed + 1; }
 	}
 
-	const total: int32 = rows.length as int32;
+	const total: int32 = (rows.length as int32) - excluded;
 	console.log("");
 	if (malformed > 0) {
 		console.log(`golden ${captured}: ${malformed} unreadable ${PENDING_PATH} budget row(s)`);
 	}
-	console.log(`golden ${captured}: ${passed} pass, ${pending} pending, ${failed} fail of ${total}`);
+	console.log(`golden ${captured}: ${passed} pass, ${pending} pending, ${failed} fail of ${total}`
+		+ (excluded > 0 ? ` (${excluded} excluded)` : ""));
 	console.log(`pass rate ${(passed + pending) * 100 / total}%`);
 	return failed == 0 && malformed == 0 ? 0 : 1;
 }

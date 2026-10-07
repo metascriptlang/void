@@ -94,7 +94,11 @@ import {
 	SDF_EFFECT_ROTATION, SDF_EFFECT_ADD_Y, SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B,
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
-import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
+when (voidGlCore) {
+	import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenesGl";
+} else {
+	import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
+}
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
 
 const DARK: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };

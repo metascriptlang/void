@@ -26,6 +26,7 @@ import {
 	sceneDrawCounts,
 	sceneRenderTargetCounts,
 	backendDirectory,
+	sceneExclusion,
 } from "./table";
 import { SceneBuilder, sceneBuilders } from "./scenes";
 import { Scene2D } from "../../src/void2d/node";
@@ -199,7 +200,7 @@ function startRunner(): void {
 		voidCaptureExit(EXIT_OK);
 	}
 	if (voidCaptureBackend() == 0) {
-		console.log("SKIP this build has no readback path — tests/capture/capture.c covers D3D11 and GLES3 only");
+		console.log("SKIP this build has no readback path — tests/capture/capture.c covers D3D11, GLES3 and GL core only");
 		voidCaptureExit(EXIT_NO_READBACK);
 	}
 	index = voidCaptureEnvInt("VOID_SCENE", -1);
@@ -208,6 +209,11 @@ function startRunner(): void {
 		voidCaptureExit(EXIT_BAD_USAGE);
 	}
 	const row = rows[index];
+	const excluded: string = sceneExclusion(backendDirectory(voidCaptureBackend()), row.name);
+	if (excluded.length > 0) {
+		console.log(`EXCLUDED ${row.name} ${excluded}`);
+		voidCaptureExit(EXIT_OK);
+	}
 	voidRunConfigured(row.width, row.height, 1, 0, initScene, frame);
 }
 
