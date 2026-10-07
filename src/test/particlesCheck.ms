@@ -571,8 +571,8 @@ test "damping leaves the speed curve alone" {
 }
 
 test "the noise direction matches Godot's GLSL transcribed in float32 on the Godot side" {
-	// Expected values: out/tmp/godotNoise.js, a separate float32 transcription of the shader
-	// text in particle_process_material.cpp:405-480.
+	// Expected values: tests/oracle/godotNoise.js, a second float32 transcription of the shader
+	// text in particle_process_material.cpp:405-481.
 	const a: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.0, 1.0, 4.0, vec3(0.0, 0.0, 0.0), 0.0);
 	assert near(a.x, 0.35435, 0.003) && near(a.y, -0.93215, 0.003) && near(a.z, 0.07436, 0.003);
 	const b: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.5, 1.0, 4.0, vec3(1.0, 0.5, 0.25), 0.2);
