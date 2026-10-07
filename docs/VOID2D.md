@@ -1745,6 +1745,14 @@ changes described above on today's compiler; the P4 web archive also takes its r
   mark offsets, 1,635 values (`shapedLayoutCheck.ms`); flagless layout is unchanged, 348 / 330 /
   323 / 346 tests in `textLayoutCheck`, `labelTextCheck`, `snapCheck`, `fontCheck`, and the
   allocation script finds no copy or fresh array on the frame, rebuild and measure paths.
+  Goldens with the module on (2026-10-08, BUILD `99a851d7`): the 78 rows that need no module
+  stayed byte-identical flagless; with the flag four rows moved, `text/code13Dpi100/125/150` and
+  `text/filteredDpi125`, each in the one `=` of `let x: i32 = 42`: Inter's default `calt` puts
+  its contextual `=` (glyph 1520 to 1533) between spaces, with the same advance; the shaped line
+  is 165.604 px wide as before, no glyph moved, so line breaks and Neon's measured widths for
+  this line do not change. A string with a ligature or a kerning pair stb's `kern` reader did
+  not carry does change width under the module. New row `text/ligature`: `-> != == => www`
+  ligated, then with `calt 0`, then split by colour runs so no ligature crosses a colour change.
 - **SDF text** for the transformed regime: one ~32 px/em distance field per glyph, derivative-scaled ramp, luma bias (MAKEPAD.md:112) — so zoom and animation cost nothing, and void3d gets world-space text through the same glyph layer.
   **Built 2026-10-07, behind `-d:voidSdfText`, first four slices** (field, generator, atlas,
   placement; the shader ramp and draw path followed, see "Shader and draw path" below; captures
