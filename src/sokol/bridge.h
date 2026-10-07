@@ -31,6 +31,7 @@ void voidRequestedSize(int *w, int *h);
 
 typedef int VoidViewId;
 void voidEmbedRegister(msClosure init, msClosure frame);
+void voidViewsSetSampleCount(int count);
 VoidViewId voidViewCreate(long long native, int w, int h, float scale);
 void voidViewResize(VoidViewId v, int w, int h, float scale);
 int voidViewFrame(VoidViewId v);

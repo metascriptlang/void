@@ -5,6 +5,7 @@
 #include "sokol_gfx.h"
 
 void voidPlatformDeviceEnsure(void);
+int voidViewsSampleCount(void);
 void voidPlatformRunInit(msClosure init);
 void *voidPlatformSurfaceCreate(const void *native, int w, int h);
 void voidPlatformSurfaceResize(void *surface, int w, int h);

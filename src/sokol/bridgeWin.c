@@ -95,6 +95,9 @@ static IDXGIFactory2 *s_factory;
 typedef struct {
 	IDXGISwapChain1 *swapChain;
 	ID3D11RenderTargetView *target;
+	ID3D11Texture2D *msaa;
+	ID3D11RenderTargetView *msaaTarget;
+	int w, h;
 } WinSurface;
 
 void voidPlatformDeviceEnsure(void) {
@@ -123,7 +126,7 @@ static void setupViewsGfx(void) {
 	d.environment.d3d11.device_context = s_context;
 	d.environment.defaults.color_format = SG_PIXELFORMAT_BGRA8;
 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
+	d.environment.defaults.sample_count = voidViewsSampleCount();
 	d.logger.func = slog_func;
 	sg_setup(&d);
 	if (!sg_isvalid()) voidFail("sg_setup on the D3D11 device failed");
@@ -138,6 +141,36 @@ static void makeTarget(WinSurface *s) {
 	hr = ID3D11Device_CreateRenderTargetView(s_device, (ID3D11Resource *)back, NULL, &s->target);
 	ID3D11Texture2D_Release(back);
 	if (FAILED(hr)) voidFail("CreateRenderTargetView on the back buffer failed: 0x%08lx", (unsigned long)hr);
+	const int samples = voidViewsSampleCount();
+	if (samples == 1) return;
+	UINT quality = 0;
+	hr = ID3D11Device_CheckMultisampleQualityLevels(s_device, DXGI_FORMAT_B8G8R8A8_UNORM, (UINT)samples, &quality);
+	if (FAILED(hr) || quality == 0) voidFail("the D3D11 device cannot render BGRA8 at %d samples", samples);
+	D3D11_TEXTURE2D_DESC desc;
+	ZeroMemory(&desc, sizeof desc);
+	desc.Width = (UINT)s->w;
+	desc.Height = (UINT)s->h;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+	desc.SampleDesc.Count = (UINT)samples;
+	desc.SampleDesc.Quality = (UINT)D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+	hr = ID3D11Device_CreateTexture2D(s_device, &desc, NULL, &s->msaa);
+	if (FAILED(hr)) voidFail("CreateTexture2D %dx%d at %d samples failed: 0x%08lx", s->w, s->h, samples, (unsigned long)hr);
+	hr = ID3D11Device_CreateRenderTargetView(s_device, (ID3D11Resource *)s->msaa, NULL, &s->msaaTarget);
+	if (FAILED(hr)) voidFail("CreateRenderTargetView on the %d-sample target failed: 0x%08lx", samples, (unsigned long)hr);
+}
+
+static void releaseTargets(WinSurface *s) {
+	ID3D11DeviceContext_OMSetRenderTargets(s_context, 0, NULL, NULL);
+	ID3D11RenderTargetView_Release(s->target);
+	s->target = NULL;
+	if (s->msaaTarget) ID3D11RenderTargetView_Release(s->msaaTarget);
+	if (s->msaa) ID3D11Texture2D_Release(s->msaa);
+	s->msaaTarget = NULL;
+	s->msaa = NULL;
 }
 
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
@@ -154,6 +187,8 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 	desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
 	WinSurface *s = (WinSurface *)calloc(1, sizeof(WinSurface));
+	s->w = w;
+	s->h = h;
 	HRESULT hr = IDXGIFactory2_CreateSwapChainForComposition(s_factory, (IUnknown *)s_device, &desc, NULL, &s->swapChain);
 	if (FAILED(hr)) voidFail("CreateSwapChainForComposition %dx%d failed: 0x%08lx", w, h, (unsigned long)hr);
 	makeTarget(s);
@@ -162,9 +197,9 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 
 void voidPlatformSurfaceResize(void *surface, int w, int h) {
 	WinSurface *s = (WinSurface *)surface;
-	ID3D11DeviceContext_OMSetRenderTargets(s_context, 0, NULL, NULL);
-	ID3D11RenderTargetView_Release(s->target);
-	s->target = NULL;
+	releaseTargets(s);
+	s->w = w;
+	s->h = h;
 	HRESULT hr = IDXGISwapChain1_ResizeBuffers(s->swapChain, 0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
 	if (FAILED(hr)) voidFail("ResizeBuffers to %dx%d failed: 0x%08lx", w, h, (unsigned long)hr);
 	makeTarget(s);
@@ -177,8 +212,14 @@ int voidPlatformSurfaceAcquire(void *surface) {
 }
 
 void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
+	WinSurface *s = (WinSurface *)surface;
 	swapchain->color_format = SG_PIXELFORMAT_BGRA8;
-	swapchain->d3d11.render_view = ((WinSurface *)surface)->target;
+	if (s->msaaTarget) {
+		swapchain->d3d11.render_view = s->msaaTarget;
+		swapchain->d3d11.resolve_view = s->target;
+	} else {
+		swapchain->d3d11.render_view = s->target;
+	}
 }
 
 void voidPlatformSurfacePresent(void *surface) {
@@ -188,8 +229,7 @@ void voidPlatformSurfacePresent(void *surface) {
 
 void voidPlatformSurfaceDestroy(void *surface) {
 	WinSurface *s = (WinSurface *)surface;
-	ID3D11DeviceContext_OMSetRenderTargets(s_context, 0, NULL, NULL);
-	ID3D11RenderTargetView_Release(s->target);
+	releaseTargets(s);
 	IDXGISwapChain1_Release(s->swapChain);
 	free(s);
 }

@@ -47,6 +47,7 @@ when (ios) {
 
 when (windows || ios || android) {
 	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
+	extern function voidViewsSetSampleCount(count: int32): void;
 	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;
 	extern function voidViewResize(view: int32, w: int32, h: int32, scale: float32): void;
 	extern function voidViewFrame(view: int32): int32;
@@ -58,6 +59,7 @@ when (windows || ios || android) {
 	export const ViewInvalid: ViewId = 0 as int32;
 
 	export function embedRegister(init: () => void, frame: () => void): void { voidEmbedRegister(init, frame); }
+	export function setViewSampleCount(count: int32): void { voidViewsSetSampleCount(count); }
 	export function viewCreate(native: int64, w: int32, h: int32, scale: float32): ViewId { return voidViewCreate(native, w, h, scale); }
 	export function viewResize(view: ViewId, w: int32, h: int32, scale: float32): void { voidViewResize(view, w, h, scale); }
 	export function viewFrame(view: ViewId): boolean { return voidViewFrame(view) !== 0; }

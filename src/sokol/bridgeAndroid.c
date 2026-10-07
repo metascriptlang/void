@@ -37,14 +37,19 @@ static int egl_boot(void) {
 	g_dpy = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 	if (g_dpy == EGL_NO_DISPLAY) return 0;
 	if (!eglInitialize(g_dpy, NULL, NULL)) return 0;
+	const int samples = voidViewsSampleCount();
 	EGLint cfgAttr[] = {
 		EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8,
-		EGL_DEPTH_SIZE, 0, EGL_NONE
+		EGL_DEPTH_SIZE, 0,
+		EGL_SAMPLE_BUFFERS, samples > 1 ? 1 : 0,
+		EGL_SAMPLES, samples > 1 ? samples : 0,
+		EGL_NONE
 	};
 	EGLint n = 0;
-	if (!eglChooseConfig(g_dpy, cfgAttr, &g_cfg, 1, &n) || n < 1) return 0;
+	if (!eglChooseConfig(g_dpy, cfgAttr, &g_cfg, 1, &n)) return 0;
+	if (n < 1) voidFail("EGL has no RGBA8 window and pbuffer config with %d samples", samples);
 	eglBindAPI(EGL_OPENGL_ES_API);
 	EGLint ctxAttr[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
 	g_ctx = eglCreateContext(g_dpy, g_cfg, EGL_NO_CONTEXT, ctxAttr);
@@ -55,7 +60,7 @@ static void sokolSetup(void) {
 	sg_desc d = {0};
 	d.environment.defaults.color_format = SG_PIXELFORMAT_RGBA8;
 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
+	d.environment.defaults.sample_count = voidViewsSampleCount();
 	d.logger.func = slog_func;
 	sg_setup(&d);
 	if (!sg_isvalid()) voidFail("sg_setup on the EGL context failed");

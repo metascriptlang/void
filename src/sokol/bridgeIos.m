@@ -9,6 +9,7 @@
 #import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
+#include <TargetConditionals.h>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -21,6 +22,8 @@ static id<MTLDevice> g_device;
 typedef struct {
 	void *layer;
 	void *drawable;
+	void *msaa;
+	int w, h;
 } IosSurface;
 
 static void call0(msClosure c) {
@@ -37,7 +40,7 @@ void voidPlatformDeviceEnsure(void) {
 	d.environment.metal.device = (__bridge const void *)g_device;
 	d.environment.defaults.color_format = SG_PIXELFORMAT_BGRA8;
 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
+	d.environment.defaults.sample_count = voidViewsSampleCount();
 	d.logger.func = slog_func;
 	sg_setup(&d);
 	if (!sg_isvalid()) voidFail("sg_setup on the Metal device failed");
@@ -55,6 +58,33 @@ void voidPlatformRunInit(msClosure init) {
 	if (got) chdir(prev);
 }
 
+static void releaseMsaa(IosSurface *s) {
+	if (s->msaa) CFRelease(s->msaa);
+	s->msaa = NULL;
+}
+
+static void makeMsaa(IosSurface *s) {
+	const int samples = voidViewsSampleCount();
+	if (samples == 1) return;
+	if (![g_device supportsTextureSampleCount:(NSUInteger)samples]) {
+		voidFail("the Metal device cannot render at %d samples", samples);
+	}
+	MTLTextureDescriptor *desc = [MTLTextureDescriptor
+		texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+		width:(NSUInteger)s->w height:(NSUInteger)s->h mipmapped:NO];
+	desc.textureType = MTLTextureType2DMultisample;
+	desc.sampleCount = (NSUInteger)samples;
+	desc.usage = MTLTextureUsageRenderTarget;
+#if TARGET_OS_SIMULATOR
+	desc.storageMode = MTLStorageModePrivate;
+#else
+	desc.storageMode = MTLStorageModeMemoryless;
+#endif
+	id<MTLTexture> texture = [g_device newTextureWithDescriptor:desc];
+	if (!texture) voidFail("the Metal device could not make a %dx%d target at %d samples", s->w, s->h, samples);
+	s->msaa = (void *)CFBridgingRetain(texture);
+}
+
 void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	if (native == NULL) voidFail("voidViewCreate on iOS needs a CAMetalLayer");
 	CAMetalLayer *layer = (__bridge CAMetalLayer *)native;
@@ -63,11 +93,19 @@ void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
 	layer.drawableSize = CGSizeMake(w, h);
 	IosSurface *s = (IosSurface *)calloc(1, sizeof(IosSurface));
 	s->layer = (void *)CFBridgingRetain(layer);
+	s->w = w;
+	s->h = h;
+	makeMsaa(s);
 	return s;
 }
 
 void voidPlatformSurfaceResize(void *surface, int w, int h) {
-	((__bridge CAMetalLayer *)((IosSurface *)surface)->layer).drawableSize = CGSizeMake(w, h);
+	IosSurface *s = (IosSurface *)surface;
+	((__bridge CAMetalLayer *)s->layer).drawableSize = CGSizeMake(w, h);
+	s->w = w;
+	s->h = h;
+	releaseMsaa(s);
+	makeMsaa(s);
 }
 
 int voidPlatformSurfaceAcquire(void *surface) {
@@ -81,6 +119,7 @@ int voidPlatformSurfaceAcquire(void *surface) {
 void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
 	swapchain->color_format = SG_PIXELFORMAT_BGRA8;
 	swapchain->metal.current_drawable = ((IosSurface *)surface)->drawable;
+	swapchain->metal.msaa_color_texture = ((IosSurface *)surface)->msaa;
 }
 
 void voidPlatformSurfacePresent(void *surface) {
@@ -92,6 +131,7 @@ void voidPlatformSurfacePresent(void *surface) {
 void voidPlatformSurfaceDestroy(void *surface) {
 	IosSurface *s = (IosSurface *)surface;
 	if (s->drawable) CFRelease(s->drawable);
+	releaseMsaa(s);
 	CFRelease(s->layer);
 	free(s);
 }

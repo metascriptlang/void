@@ -27,6 +27,8 @@ static int s_inited = 0;
 static msClosure s_init;
 static msClosure s_frame;
 static msClosure s_pump;
+static int s_sampleCount = 1;
+static int s_deviceMade = 0;
 
 void voidFail(const char *fmt, ...) {
 	va_list args;
@@ -67,6 +69,19 @@ void voidEmbedRegister(msClosure init, msClosure frame) {
 	s_frame = frame;
 }
 
+void voidViewsSetSampleCount(int count) {
+	if (count != 1 && count != 2 && count != 4 && count != 8) {
+		voidFail("voidViewsSetSampleCount(%d): a swapchain takes 1, 2, 4 or 8 samples", count);
+	}
+	if (s_deviceMade) {
+		voidFail("voidViewsSetSampleCount(%d) after the first voidViewCreate: the device's "
+			"pipelines are already made for %d samples", count, s_sampleCount);
+	}
+	s_sampleCount = count;
+}
+
+int voidViewsSampleCount(void) { return s_sampleCount; }
+
 void voidEmbedSetMessagePump(msClosure pump) { s_pump = pump; }
 void voidEmbedPumpMessages(void) { call0(s_pump); }
 
@@ -78,6 +93,7 @@ VoidViewId voidViewCreate(long long native, int w, int h, float scale) {
 	}
 	if (slot < 0) voidFail("voidViewCreate: all %d views are in use or retired", VOID_MAX_VIEWS);
 	voidPlatformDeviceEnsure();
+	s_deviceMade = 1;
 	void *surface = voidPlatformSurfaceCreate((const void *)(intptr_t)native, w, h);
 	if (surface == NULL) voidFail("voidViewCreate: the platform could not make a %dx%d surface", w, h);
 	const int generation = s_views[slot].generation == 0 ? 1 : s_views[slot].generation;
@@ -135,7 +151,7 @@ sg_swapchain voidViewsSwapchain(void) {
 	sg_swapchain swapchain = {0};
 	swapchain.width = s->w;
 	swapchain.height = s->h;
-	swapchain.sample_count = 1;
+	swapchain.sample_count = s_sampleCount;
 	swapchain.depth_format = SG_PIXELFORMAT_NONE;
 	voidPlatformSurfaceSwapchain(s->surface, &swapchain);
 	return swapchain;
