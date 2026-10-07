@@ -56,7 +56,9 @@ The generator pins `head.created` and `head.modified`, so a re-run is byte-ident
 `cmap/*.ttf` and `cmap/*.ttc` are byte-built sfnt files with a hand-assembled `cmap` and
 placeholder tables, for the sfnt peek (`src/void2d/sfnt.c`): a control per format, cmaps whose
 offsets, counts or length run outside their table, truncated cmaps, and a directory entry or
-collection offset that wraps 32 bits (`src/test/sfntBoundsCheck.ms`).
+collection offset that wraps 32 bits (`src/test/sfntBoundsCheck.ms`); one font per cmap format
+(0, 4, 6, 12, 13 and two it does not read), per record order that decides which subtable is
+chosen, and per variation-sequence record shape (`src/test/sfntCmapCheck.ms`).
 
 ```sh
 python tests/fonts/cmapEdges.py   # rewrites tests/fonts/cmap/; no fontTools needed, byte-identical

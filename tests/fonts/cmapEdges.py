@@ -176,5 +176,51 @@ def hostile():
          sfnt(cmap([(0, 3, control12), (0, 5, control14)])[:-9]))
 
 
+def formats():
+    saveCmap("format0Full.ttf", [(0, 3, format0({0x41: 5, 0x50: 6, 0xFF: 7}))])
+    saveCmap("format0Short.ttf", [(0, 3, format0({0x41: 5, 0x4F: 6, 0x50: 7}, length=86))])
+    saveCmap("format6.ttf", [(0, 3, format6(0x30, [1, 2, 0])),
+                             (1, 0, format6(0x30, [7, 7, 7, 7]))])
+    saveCmap("format4.ttf", [(*UNICODE_BMP, format4([
+        (0x41, 0x43, 1 - 0x41, None),
+        (0x61, 0x62, 0, [3, 0]),
+        (0x200, 0x201, 1 - 0x200, None),
+        (0xFFFF, 0xFFFF, 1, None),
+    ]))])
+    saveCmap("format4NoTerminal.ttf", [(*UNICODE_BMP, format4([
+        (0x41, 0x43, 1 - 0x41, None),
+        (0x61, 0x62, 0, [3, 0]),
+    ])), (1, 0, format6(0x30, [7, 7, 7, 7]))])
+    saveCmap("format12.ttf", [(*UNICODE_FULL, groups(12, [
+        (0x300, 0x3FF, 0), (0x1F600, 0x1F602, 10), (0x20000, 0x20002, 20)]))])
+    saveCmap("format13.ttf", [(*UNICODE_FULL, groups(13, [
+        (0x100, 0x1FF, 3), (0x300, 0x3FF, 0)]))])
+    saveCmap("format2.ttf", [(0, 3, u16(2, 6, 0))])
+    saveCmap("format10.ttf", [(0, 3, u16(10, 0) + u32(22, 0, 0x41, 1) + u16(5))])
+
+    a = format6(0x41, [1])
+    b = format6(0x42, [1])
+    c = format6(0x43, [1])
+    saveCmap("choiceMsThenUnicode.ttf", [(3, 1, a), (0, 3, b)])
+    saveCmap("choiceUnicodeThenMs.ttf", [(0, 3, b), (3, 1, a)])
+    saveCmap("choiceUnicodeTwice.ttf", [(0, 3, b), (0, 4, c)])
+    saveCmap("choiceMsFullThenBmp.ttf", [(3, 10, b), (3, 1, a)])
+    saveCmap("choiceMsBmpThenFull.ttf", [(3, 1, a), (3, 10, b)])
+    saveCmap("choiceMacThenMsFull.ttf", [(1, 0, b), (3, 10, a)])
+    saveCmap("choiceIgnored.ttf", [(3, 0, a), (3, 2, b), (1, 0, c), (1, 1, c), (1, 10, b)])
+
+    base = groups(12, [(0x41, 0x43, 1)])
+    sequences = format14([
+        (0xFE0E, [(0x2700, 2), (0x2764, 0)], [(0x1F600, 7), (0x1F601, 0)]),
+        (0xFE0F, [(0x2700, 2)], [(0x2701, 9)]),
+        (0xE0100, [(0x41, 0)], []),
+    ])
+    saveCmap("sequences.ttf", [(0, 5, sequences), (3, 10, base)])
+    saveCmap("sequenceNotFormat14.ttf", [(0, 5, u16(12) + sequences[2:]), (3, 10, base)])
+    saveCmap("sequenceWrongEncoding.ttf", [(0, 4, sequences), (3, 10, base)])
+    saveCmap("sequenceWrongPlatform.ttf", [(1, 5, sequences), (3, 10, base)])
+
+
 if __name__ == "__main__":
     hostile()
+    formats()
