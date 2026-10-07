@@ -117,6 +117,16 @@ export const LIGATURE_BAND_H: int32 = 32;
 export const LIGATURE_BG_X: int32 = 2;
 export const LIGATURE_BG_Y: int32 = 2;
 
+// text/colourEmoji: rows 24 logical units apart at DPI 1.25 (a whole 30 device pixels). Row 0 is
+// the Noto Color Emoji subset (CBDT) at 13, 16 and 24 px beside the Latin face; row 1 the COLR v0
+// and sbix fixtures; row 2 U+2764 with VS15 and with VS16 (the text face and the colour face);
+// row 3 a label at alpha 0.5; row 4 text and emoji alternating in one label.
+export const COLOUR_EMOJI_SCENE: string = "text/colourEmoji";
+export const COLOUR_EMOJI_X: float32 = 10.0;
+export const COLOUR_EMOJI_Y: float32 = 6.0;
+export const COLOUR_EMOJI_STEP: float32 = 24.0;
+export const COLOUR_EMOJI_DPI: float32 = 1.25;
+
 // The text/sdf* scenes as numbers: scenes.ms builds each label from a case and
 // tests/oracle/textSdfCheck.ms recomputes its coverage from the same case, so the scene and
 // its judge cannot drift apart. A label is placed at (x, y), turned by `rotation` radians
@@ -227,6 +237,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/decorations", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/caretSelection", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/ligature", phase: "P6", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/colourEmoji", phase: "P6", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },

@@ -10,8 +10,8 @@
 import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
 import { Align, TextRun } from "../../src/void2d/textLayout";
 import {
-	addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature, SizeAdjust,
-	DEFAULT_FONT,
+	addFont, addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature,
+	SizeAdjust, DEFAULT_FONT,
 } from "../../src/void2d/font";
 import { BoxStyle, CornerRadii, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
@@ -86,6 +86,7 @@ import {
 	MANY_TARGETS_COUNT, MANY_TARGETS_COLUMNS, MANY_TARGETS_STEP, MANY_TARGETS_ORIGIN,
 	EFFECT_UI_SHIFT,
 	LIGATURE_TEXT, LIGATURE_SIZE, LIGATURE_X, LIGATURE_Y, LIGATURE_STEP,
+	COLOUR_EMOJI_X, COLOUR_EMOJI_Y, COLOUR_EMOJI_STEP,
 	SdfLabelCase, sdfLabelCases,
 	SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,
 	SDF_EFFECT_SHIFT, SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, SDF_EFFECT_X, SDF_EFFECT_Y,
@@ -812,6 +813,52 @@ function textLigature(): Scene2D {
 		s.label(LIGATURE_TEXT, LIGATURE_SIZE, warm).setFont(font).setTextRuns(split)
 			.at(LIGATURE_X, LIGATURE_Y + LIGATURE_STEP * 2.0),
 	);
+	return s;
+}
+
+const EMOJI_PATH: string = "tests/fonts/NotoColorEmoji-subset.ttf";
+const EMOJI_COLR_PATH: string = "tests/fonts/colrSynthetic.ttf";
+const EMOJI_SBIX_PATH: string = "tests/fonts/sbixSynthetic.ttf";
+const EMOJI_TEXT_PATH: string = "tests/fonts/textSymbol.ttf";
+const EMOJI_LATIN_PATH: string = "assets/font.ttf";
+
+function emojiFont(first: string, second: string): FontId {
+	const font = addFont(EMOJI_LATIN_PATH);
+	if (!font.ok) {
+		console.log(`golden: font "${EMOJI_LATIN_PATH}" was refused (${font.error.toString()})`);
+		unreachable;
+	}
+	addFallbackFont(font.value, first);
+	if (!second.equals("")) { addFallbackFont(font.value, second); }
+	return font.value;
+}
+
+function emojiRow(index: int32): float32 {
+	return COLOUR_EMOJI_Y + COLOUR_EMOJI_STEP * (index as float32);
+}
+
+function textColourEmoji(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const ink: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	const noto: FontId = emojiFont(EMOJI_PATH, "");
+	const sizes: float32[] = [13.0, 16.0, 24.0];
+	const strip: string = "\u{1F600}\u{1F44D}\u{1F680}\u{1F389}";
+	let x: float32 = COLOUR_EMOJI_X;
+	for (const size of sizes) {
+		s.add(s.label(strip, size, ink).setFont(noto).at(x, emojiRow(0)));
+		x = x + size * 4.4;
+	}
+	const colr: FontId = emojiFont(EMOJI_COLR_PATH, "");
+	s.add(s.label("a\u{1F600}b", 16.0, ink).setFont(colr).at(10.0, emojiRow(1)));
+	const sbix: FontId = emojiFont(EMOJI_SBIX_PATH, "");
+	s.add(s.label("a\u{1F600}b", 16.0, ink).setFont(sbix).at(80.0, emojiRow(1)));
+	const pair: FontId = emojiFont(EMOJI_PATH, EMOJI_TEXT_PATH);
+	const hearts = s.label("\u{2764}\u{FE0E} \u{2764}\u{FE0F}", 16.0, ink).setFont(pair);
+	s.add(hearts.at(10.0, emojiRow(2)));
+	const faded = s.label("a\u{1F600}b\u{1F680}", 16.0, ink).setFont(noto).at(10.0, emojiRow(3));
+	s.add(faded.setAlpha(0.5));
+	const mixed = s.label("Hi \u{1F600} there \u{1F680} ok", 16.0, ink).setFont(noto);
+	s.add(mixed.at(10.0, emojiRow(4)));
 	return s;
 }
 
@@ -1623,6 +1670,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/decorations", build: textDecorations },
 		{ name: "text/caretSelection", build: textCaretSelection },
 		{ name: "text/ligature", build: textLigature },
+		{ name: "text/colourEmoji", build: textColourEmoji },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },
