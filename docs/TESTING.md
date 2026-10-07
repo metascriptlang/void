@@ -353,7 +353,6 @@ in the same change as the fix.
 |---|---|---|
 | D3D11 | **88 / 88 scenes byte-identical** | every full gate, this box |
 
-| D3D11 | **83 / 83 captured scenes byte-identical**; the two `icon/` scenes await their first capture | every full gate, this box |
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
