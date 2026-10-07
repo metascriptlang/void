@@ -8,6 +8,37 @@ import {
 	layersTest,
 	layersHas,
 } from "../void3d/layers";
+import { vec3 } from "../math/math3d";
+import { DrawContext, DrawItem } from "../void3d/draw";
+import {
+	Scene3D,
+	NodeId3D,
+	Transform3D,
+	SceneError,
+	NO_NODE_ID,
+	addGroup,
+	addMeshNode,
+	addCameraNode,
+	setActiveCamera,
+	setVisible,
+	setLocal,
+	cameraOf,
+	cameraViewOf,
+	collectDrawList,
+	collectDrawListFor,
+	refresh,
+	refreshFor,
+	layersOf,
+	setLayers,
+	setLayer,
+	enableLayer,
+	disableLayer,
+	toggleLayer,
+	cameraLayersOf,
+	setCameraLayers,
+} from "../void3d/scene";
+import { Camera3D, CameraError, ProjectionKind } from "../void3d/camera";
+import { contextOf } from "./drawHelpers";
 
 test "a new mask is layer 0 alone, as three's Layers constructor sets it" {
 	assert DEFAULT_LAYERS == 1;
@@ -46,4 +77,169 @@ test "two masks see each other when they share at least one layer" {
 	assert !layersTest(layerBit(2), layerBit(5));
 	assert !layersTest(0, ALL_LAYERS);
 	assert layersTest(ALL_LAYERS, layerBit(31));
+}
+
+function request(): Camera3D {
+	return {
+		position: vec3(0.0, 0.0, 4.0), yaw: 0.0, pitch: 0.0,
+		nearPlane: 0.1, farPlane: 40.0,
+		projection: { kind: ProjectionKind.Perspective, fovY: 1.0 },
+	};
+}
+
+// A mesh node under `parent`, drawing the mesh at index `mesh`, so a list tells its items apart.
+function meshUnder(scene: Scene3D, context: DrawContext, parent: NodeId3D, mesh: int32): NodeId3D {
+	const added: Result<NodeId3D, SceneError> = addMeshNode(
+		scene, parent, Transform3D.identity(), context.meshAt(mesh), context.materialAt(0),
+	);
+	return added.ok ? added.value : NO_NODE_ID;
+}
+
+function meshesOf(items: Vec<DrawItem>): int32 {
+	let bits: int32 = 0;
+	for (const item of items) { bits = bits | (1 << item.mesh.index); }
+	return bits;
+}
+
+test "a node starts on layer 0 and a layer call changes only that node" {
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const a: NodeId3D = meshUnder(scene, context, scene.rootId(), 0);
+	const b: NodeId3D = meshUnder(scene, context, scene.rootId(), 1);
+	assert layersOf(scene, a) == DEFAULT_LAYERS && layersOf(scene, scene.rootId()) == DEFAULT_LAYERS;
+	enableLayer(scene, a, 4);
+	assert layersOf(scene, a) == 17 && layersOf(scene, b) == 1;
+	disableLayer(scene, a, 0);
+	assert layersOf(scene, a) == 16;
+	toggleLayer(scene, a, 4);
+	assert layersOf(scene, a) == 0;
+	setLayer(scene, a, 2);
+	assert layersOf(scene, a) == 4;
+	setLayers(scene, a, ALL_LAYERS);
+	assert layersOf(scene, a) == ALL_LAYERS;
+}
+
+test "the draw list holds the nodes whose layers meet the camera's, and no camera means layer 0" {
+	const context: DrawContext = contextOf(3, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const a: NodeId3D = meshUnder(scene, context, scene.rootId(), 0);
+	const b: NodeId3D = meshUnder(scene, context, scene.rootId(), 1);
+	const c: NodeId3D = meshUnder(scene, context, scene.rootId(), 2);
+	setLayer(scene, b, 1);
+	setLayers(scene, c, layerBit(0) | layerBit(1));
+	let items: Vec<DrawItem> = [];
+	assert collectDrawList(scene, items) == 2;
+	assert meshesOf(items) == 5;
+	const camera: NodeId3D = addCameraNode(scene, null, Transform3D.identity(), request());
+	setActiveCamera(scene, camera);
+	assert cameraLayersOf(scene, camera) == DEFAULT_LAYERS;
+	assert collectDrawList(scene, items) == 2;
+	setCameraLayers(scene, camera, layerBit(1));
+	assert collectDrawList(scene, items) == 2;
+	assert meshesOf(items) == 6;
+	setCameraLayers(scene, camera, 0);
+	assert collectDrawList(scene, items) == 0;
+	setCameraLayers(scene, camera, ALL_LAYERS);
+	assert collectDrawList(scene, items) == 3;
+}
+
+test "layers are not inherited: a hidden-by-layer group still shows its children" {
+	const context: DrawContext = contextOf(3, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const inside: NodeId3D = meshUnder(scene, context, group, 0);
+	const apart: NodeId3D = meshUnder(scene, context, group, 1);
+	const other: NodeId3D = meshUnder(scene, context, scene.rootId(), 2);
+	setLayer(scene, group, 5);
+	setLayer(scene, apart, 5);
+	setLayer(scene, other, 5);
+	let items: Vec<DrawItem> = [];
+	assert collectDrawList(scene, items) == 1;
+	assert meshesOf(items) == 1;
+	setLayers(scene, group, DEFAULT_LAYERS);
+	setLayers(scene, inside, layerBit(5));
+	setLayers(scene, apart, DEFAULT_LAYERS);
+	assert collectDrawList(scene, items) == 1;
+	assert meshesOf(items) == 2;
+}
+
+test "visible still hides a whole subtree, which a layer never does" {
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const group: NodeId3D = addGroup(scene, scene.rootId(), Transform3D.identity());
+	const inside: NodeId3D = meshUnder(scene, context, group, 0);
+	const outside: NodeId3D = meshUnder(scene, context, scene.rootId(), 1);
+	setVisible(scene, group, false);
+	let items: Vec<DrawItem> = [];
+	assert collectDrawList(scene, items) == 1;
+	assert meshesOf(items) == 2;
+}
+
+test "refresh keeps the layer test on the steady path, and a layer change rebuilds the list" {
+	const context: DrawContext = contextOf(2, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const a: NodeId3D = meshUnder(scene, context, scene.rootId(), 0);
+	const b: NodeId3D = meshUnder(scene, context, scene.rootId(), 1);
+	setLayer(scene, b, 3);
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 1;
+	setLocal(scene, a, Transform3D.fromTranslation(vec3(2.0, 0.0, 0.0)));
+	assert refresh(scene, items) == 1;
+	assert items[0].world.m41 == 2.0;
+	assert !scene.structureChanged;
+	enableLayer(scene, b, 0);
+	assert scene.structureChanged;
+	assert refresh(scene, items) == 2;
+	setLayer(scene, a, 3);
+	assert refresh(scene, items) == 1;
+	assert meshesOf(items) == 2;
+	const camera: NodeId3D = addCameraNode(scene, null, Transform3D.identity(), request());
+	setActiveCamera(scene, camera);
+	setCameraLayers(scene, camera, layerBit(3));
+	assert refresh(scene, items) == 2;
+	setActiveCamera(scene, null);
+	assert refresh(scene, items) == 1;
+}
+
+test "a second camera collects its own list and leaves the first one's alone" {
+	const context: DrawContext = contextOf(3, 1);
+	const scene: Scene3D = Scene3D.create(context);
+	const a: NodeId3D = meshUnder(scene, context, scene.rootId(), 0);
+	const b: NodeId3D = meshUnder(scene, context, scene.rootId(), 1);
+	const c: NodeId3D = meshUnder(scene, context, scene.rootId(), 2);
+	setLayer(scene, b, 1);
+	setLayer(scene, c, 1);
+	const main: NodeId3D = addCameraNode(scene, null, Transform3D.identity(), request());
+	const second: NodeId3D = addCameraNode(scene, null, Transform3D.identity(), request());
+	setActiveCamera(scene, main);
+	setCameraLayers(scene, second, layerBit(1));
+	let first: Vec<DrawItem> = [];
+	let overlay: Vec<DrawItem> = [];
+	assert refresh(scene, first) == 1;
+	assert refreshFor(scene, second, overlay) == 2;
+	assert meshesOf(first) == 1 && meshesOf(overlay) == 6;
+	assert !scene.structureChanged;
+	setLocal(scene, b, Transform3D.fromTranslation(vec3(0.0, 3.0, 0.0)));
+	assert refresh(scene, first) == 1;
+	assert refreshFor(scene, second, overlay) == 2;
+	assert overlay[0].world.m42 == 3.0;
+	assert collectDrawListFor(scene, main, overlay) == 1;
+	assert !scene.structureChanged;
+}
+
+test "the second camera's view is resolved from its own node and not the active one's" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const main: NodeId3D = addCameraNode(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(1.0, 0.0, 0.0)), request(),
+	);
+	const second: NodeId3D = addCameraNode(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(0.0, 7.0, 0.0)), request(),
+	);
+	setActiveCamera(scene, main);
+	const seen: Result<Camera3D, CameraError> = cameraViewOf(scene, second);
+	assert seen.ok;
+	if (seen.ok) { assert seen.value.position == vec3(0.0, 7.0, 0.0); }
+	const active: Result<Camera3D, CameraError> = cameraOf(scene, request());
+	assert active.ok;
+	if (active.ok) { assert active.value.position == vec3(1.0, 0.0, 0.0); }
 }

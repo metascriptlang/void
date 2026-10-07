@@ -38,6 +38,14 @@ import {
 } from "./draw";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
 import { Camera3D, CameraError } from "./camera";
+import {
+	DEFAULT_LAYERS,
+	layerBit,
+	layersEnable,
+	layersDisable,
+	layersToggle,
+	layersTest,
+} from "./layers";
 
 export enum NodeFlag {
 	Visible,
@@ -114,6 +122,7 @@ export const NO_NODE_ID: NodeId3D = { scene: 0, index: NO_NODE_3D, generation: 0
 export struct Object3D {
 	kind: NodeKind;
 	flags: BitSet<NodeFlag>;
+	layers: uint32;
 	parent: int32;
 	payload: int32;
 	// h3d.scene.Object.name (default null there, "" here): glTF nodes are name-keyed, and
@@ -135,6 +144,7 @@ export struct MeshInstance {
 export struct SceneCamera {
 	node: NodeId3D;
 	camera: Camera3D;
+	layers: uint32;
 }
 
 // PENDING3D: store-serial-writable
@@ -281,6 +291,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 	const root: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: freshFlags(),
+		layers: DEFAULT_LAYERS,
 		parent: NO_NODE_3D,
 		payload: NO_NODE_3D,
 		name: "",
@@ -324,6 +335,7 @@ export function addGroup(
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Group,
 		flags: freshFlags(),
+		layers: DEFAULT_LAYERS,
 		parent: under,
 		payload: NO_NODE_3D,
 		name: "",
@@ -366,6 +378,7 @@ export function addMeshNode(
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
+		layers: DEFAULT_LAYERS,
 		parent: under,
 		payload: payload,
 		name: "",
@@ -392,6 +405,7 @@ export function addLightNode(
 	const id: NodeId3D = newSlot(scene, {
 		kind: NodeKind.Light,
 		flags: freshFlags(),
+		layers: DEFAULT_LAYERS,
 		parent: under,
 		payload: payload,
 		name: "",
@@ -412,10 +426,11 @@ export function addCameraNode(
 ): NodeId3D {
 	const under: int32 = parentRow(scene, parent, "addCameraNode");
 	const id: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Group, flags: freshFlags(), parent: under, payload: NO_NODE_3D,
+		kind: NodeKind.Group, flags: freshFlags(), layers: DEFAULT_LAYERS, parent: under,
+		payload: NO_NODE_3D,
 		name: "", local: local, world: identity(), children: [],
 	});
-	scene.cameras.push({ node: id, camera: camera });
+	scene.cameras.push({ node: id, camera: camera, layers: DEFAULT_LAYERS });
 	linkChild(scene, under, id.index);
 	return id;
 }
@@ -444,17 +459,39 @@ export function setActiveCamera(scene: Scene3D, id: NodeId3D | null): void {
 		const _camera: int32 = cameraRow(scene, id, "setActiveCamera");
 	}
 	scene.activeCamera = id;
+	scene.structureChanged = true;
 }
 
 export function cameraOf(scene: Scene3D, fallback: Camera3D): Result<Camera3D, CameraError> {
 	scene.requireOpen("cameraOf");
 	const active: NodeId3D | null = scene.activeCamera;
 	if (active === null) { return Result.ok(fallback); }
-	if (!scene.isLive(active)) { return Result.err(CameraError.StaleCameraNode); }
-	if (!connectedRow(scene, active.index)) { return Result.err(CameraError.DetachedCameraNode); }
+	return cameraViewOf(scene, active);
+}
+
+export function cameraViewOf(scene: Scene3D, id: NodeId3D): Result<Camera3D, CameraError> {
+	scene.requireOpen("cameraViewOf");
+	if (!scene.isLive(id)) { return Result.err(CameraError.StaleCameraNode); }
+	if (!connectedRow(scene, id.index)) { return Result.err(CameraError.DetachedCameraNode); }
 	const _synced: int32 = syncWorld(scene);
-	const row: int32 = cameraRow(scene, active, "cameraOf");
-	return Camera3D.fromWorld(scene.nodes[active.index].world, scene.cameras[row].camera);
+	const row: int32 = cameraRow(scene, id, "cameraViewOf");
+	return Camera3D.fromWorld(scene.nodes[id.index].world, scene.cameras[row].camera);
+}
+
+export function setCameraLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
+	const row: int32 = cameraRow(scene, id, "setCameraLayers");
+	scene.cameras[row].layers = layers;
+	scene.structureChanged = true;
+}
+
+export function cameraLayersOf(scene: Scene3D, id: NodeId3D): uint32 {
+	return scene.cameras[cameraRow(scene, id, "cameraLayersOf")].layers;
+}
+
+function activeLayers(scene: Scene3D): uint32 {
+	const active: NodeId3D | null = scene.activeCamera;
+	if (active === null || !scene.isLive(active)) { return DEFAULT_LAYERS; }
+	return scene.cameras[cameraRow(scene, active, "collectDrawList")].layers;
 }
 
 function forgetCamera(scene: Scene3D, index: int32): void {
@@ -680,6 +717,32 @@ export function setVisible(scene: Scene3D, id: NodeId3D, visible: boolean): void
 	scene.structureChanged = true;
 }
 
+export function setLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
+	const row: int32 = scene.liveRow(id, "setLayers");
+	scene.nodes[row].layers = layers;
+	scene.structureChanged = true;
+}
+
+export function setLayer(scene: Scene3D, id: NodeId3D, layer: int32): void {
+	setLayers(scene, id, layerBit(layer));
+}
+
+export function enableLayer(scene: Scene3D, id: NodeId3D, layer: int32): void {
+	setLayers(scene, id, layersEnable(scene.layersOf(id), layer));
+}
+
+export function disableLayer(scene: Scene3D, id: NodeId3D, layer: int32): void {
+	setLayers(scene, id, layersDisable(scene.layersOf(id), layer));
+}
+
+export function toggleLayer(scene: Scene3D, id: NodeId3D, layer: int32): void {
+	setLayers(scene, id, layersToggle(scene.layersOf(id), layer));
+}
+
+export function layersOf(this scene: Scene3D, id: NodeId3D): uint32 {
+	return scene.nodes[scene.liveRow(id, "layersOf")].layers;
+}
+
 // h3d.scene.Interactive cut to a flag: a pickable node owns every hit on the meshes under it.
 export function setPickable(scene: Scene3D, id: NodeId3D, pickable: boolean): void {
 	const row: int32 = scene.liveRow(id, "setPickable");
@@ -800,6 +863,19 @@ export function syncWorld(scene: Scene3D): int32 {
 // into `items`, which the caller owns and keeps, so a steady frame allocates nothing.
 export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	if (scene.closed) { stopOnClosed("collectDrawList"); }
+	const count: int32 = fillDrawList(scene, activeLayers(scene), items);
+	scene.structureChanged = false;
+	return count;
+}
+
+export function collectDrawListFor(
+	scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>,
+): int32 {
+	if (scene.closed) { stopOnClosed("collectDrawListFor"); }
+	return fillDrawList(scene, cameraLayersOf(scene, camera), items);
+}
+
+function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>): int32 {
 	// Emptied by popping rather than by `items = []`, which would hand back a fresh array and
 	// drop the capacity this list already has. Collect runs only on a structural change, but
 	// keeping it allocation-free means the claim does not depend on how often that is.
@@ -812,7 +888,8 @@ export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32
 		top = top - 1;
 		const index: int32 = scene.stack[top];
 		if (!scene.nodes[index].isVisible()) { continue; }
-		if (scene.nodes[index].kind == NodeKind.Mesh) {
+		const shown: boolean = layersTest(scene.nodes[index].layers, layers);
+		if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 			const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
 			items.push({
 				mesh: instance.mesh,
@@ -829,7 +906,6 @@ export function collectDrawList(scene: Scene3D, ref items: Vec<DrawItem>): int32
 			top = top + 1;
 		}
 	}
-	scene.structureChanged = false;
 	return items.length as int32;
 }
 
@@ -847,6 +923,7 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 	// "the draw list is rebuilt only on structural change; each frame only rewrites world
 	// matrices" describes (docs/VOID3D.md, Data types). It allocates nothing.
 	{
+		const layers: uint32 = activeLayers(scene);
 		let at: int32 = 0;
 		let top: int32 = 0;
 		scene.stack[top] = scene.root;
@@ -855,7 +932,8 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 			top = top - 1;
 			const index: int32 = scene.stack[top];
 			if (!scene.nodes[index].isVisible()) { continue; }
-			if (scene.nodes[index].kind == NodeKind.Mesh) {
+			const shown: boolean = layersTest(scene.nodes[index].layers, layers);
+			if (shown && scene.nodes[index].kind == NodeKind.Mesh) {
 				const instance: MeshInstance = scene.meshes[scene.nodes[index].payload];
 				// The walk can produce more items than the list holds as well as fewer: a node
 				// culled since the last collect drops out, and un-culling it puts it back.
@@ -895,6 +973,12 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 		while ((items.length as int32) > at) { items.pop(); }
 		return at;
 	}
+}
+
+export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<DrawItem>): int32 {
+	if (scene.closed) { stopOnClosed("refreshFor"); }
+	const _synced: int32 = syncWorld(scene);
+	return collectDrawListFor(scene, camera, items);
 }
 
 // Fills the renderer's light block from the visible light nodes: ambient first, then the one
