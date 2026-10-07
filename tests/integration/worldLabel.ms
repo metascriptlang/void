@@ -291,7 +291,7 @@ function checkInside(width: int32, height: int32, tinted: boolean): int32 {
 			const green: int32 = channel(pixel, 16);
 			const blue: int32 = channel(pixel, 8);
 			if (red < BACKDROP_RED - 1 || green < BACKDROP_GREEN - 1 || blue < BACKDROP_BLUE - 1) {
-				fail(`a dark fringe at ${x},${y}: ${pixel} is below the backdrop ${BACKDROP_PIXEL}`);
+				fail(`a dark fringe at ${x},${y}: ${pixel} under the backdrop ${BACKDROP_PIXEL}`);
 				return 0;
 			}
 			if (pixel == BACKDROP_PIXEL) { backdropOnly = backdropOnly + 1; }
