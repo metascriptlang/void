@@ -11,7 +11,6 @@
 #ifdef VOID2D_COLOUR_EMOJI
 #include <stdint.h>
 #include "colourEmoji/colourFace.h"
-#define COLOUR_LAYER_MAX_TEXELS (4096 * 4096)
 #endif
 
 #define GLYPH_MAX_KERN_LOOKUPS 32
@@ -889,9 +888,9 @@ static int colourLayerBox(GlyphFace *f, int glyph, float sizePx, int *box) {
 		inked = 1;
 	}
 	if (!inked) { return VOID2D_COLOUR_ABSENT; }
-	if ((int64_t)(box[2] - box[0]) * (box[3] - box[1]) > COLOUR_LAYER_MAX_TEXELS) {
+	if ((int64_t)(box[2] - box[0]) * (box[3] - box[1]) > VOID2D_COLOUR_MAX_TEXELS) {
 		fprintf(stderr, "void2d: colour glyph %d is %dx%d at %.1f px, over the %d texel limit\n",
-			glyph, box[2] - box[0], box[3] - box[1], sizePx, COLOUR_LAYER_MAX_TEXELS);
+			glyph, box[2] - box[0], box[3] - box[1], sizePx, VOID2D_COLOUR_MAX_TEXELS);
 		return VOID2D_COLOUR_REFUSED;
 	}
 	return VOID2D_COLOUR_PRESENT;

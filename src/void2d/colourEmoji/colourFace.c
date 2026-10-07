@@ -739,10 +739,25 @@ int void2dColourGlyphBox(ColourFace *face, int glyph, float sizePx, ColourBox *b
 	if (!face || glyph <= 0 || glyph >= 0x10000 || !(sizePx > 0.0f)) {
 		return VOID2D_COLOUR_ABSENT;
 	}
+	s_reason[0] = 0;
 	int status = VOID2D_COLOUR_ABSENT;
 	Bitmap bitmap;
-	chooseStrike(face, glyph, sizePx, &bitmap, &status);
-	if (status == VOID2D_COLOUR_PRESENT) { boxOf(&bitmap, sizePx, box); }
+	if (!(sizePx <= VOID2D_COLOUR_MAX_SIZE_PX)) {
+		fail("a size of %g px is over the %g px limit", (double)sizePx,
+			(double)VOID2D_COLOUR_MAX_SIZE_PX);
+		status = VOID2D_COLOUR_REFUSED;
+	} else {
+		chooseStrike(face, glyph, sizePx, &bitmap, &status);
+	}
+	if (status == VOID2D_COLOUR_PRESENT) {
+		boxOf(&bitmap, sizePx, box);
+		if ((int64_t)box->width * box->height > VOID2D_COLOUR_MAX_TEXELS) {
+			fail("colour glyph %d is %dx%d at %.1f px, over the %d texel limit", glyph,
+				box->width, box->height, sizePx, VOID2D_COLOUR_MAX_TEXELS);
+			memset(box, 0, sizeof(*box));
+			status = VOID2D_COLOUR_REFUSED;
+		}
+	}
 	if (status != VOID2D_COLOUR_PRESENT && status != VOID2D_COLOUR_ABSENT) {
 		if (s_reason[0] && !reportedBefore(face, glyph)) {
 			fprintf(stderr, "void2d: colour glyph %d refused: %s\n", glyph, s_reason);

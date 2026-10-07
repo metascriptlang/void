@@ -48,6 +48,8 @@ void void2dColourCompose(unsigned int *dst, int stride, int dw, int dh,
                          int cw, int ch, const ColourLayer *colour);
 
 #define VOID2D_COLOUR_MAX_LAYERS 256
+#define VOID2D_COLOUR_MAX_TEXELS (4096 * 4096)
+#define VOID2D_COLOUR_MAX_SIZE_PX 16384.0f
 
 int void2dColourFaceSweep(const unsigned char *bytes, size_t length, size_t fontStart,
                           int glyphCount, int step, int *refused);

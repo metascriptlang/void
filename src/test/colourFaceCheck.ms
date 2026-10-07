@@ -403,6 +403,26 @@ test "CBLC index formats 1 to 3 and CBDT image formats 17 to 19 are each read fr
 	assert index1.right - index1.left == 32 && index1.bottom - index1.top == 26;
 }
 
+test "a size over the limit or a box over the texel limit is refused by name, bitmap and layer alike" {
+	const noto = try loadFace("tests/fonts/NotoColorEmoji-subset.ttf") catch -1;
+	assert noto >= 0;
+	const smile: int32 = glyphIndex(noto, 0x1F600);
+	assert colourTileBox(noto, smile, 3000.0).glyph == ColourGlyph.Present;
+	assert colourTileBox(noto, smile, 4000.0).glyph == ColourGlyph.Refused;
+	assert colourEmojiReason().includes("texel limit");
+	assert colourTileBox(noto, smile, 20000.0).glyph == ColourGlyph.Refused;
+	assert colourEmojiReason().includes("px limit");
+	assert colourTileBox(noto, smile, 3.0e38).glyph == ColourGlyph.Refused;
+	const zero: float32 = 0.0;
+	assert colourTileBox(noto, smile, 1.0 / zero).glyph == ColourGlyph.Refused;
+	const colr = try loadFace("tests/fonts/colrSynthetic.ttf") catch -1;
+	assert colr >= 0;
+	const layered: int32 = glyphIndex(colr, 0x1F600);
+	assert colourTileBox(colr, layered, 4000.0).glyph == ColourGlyph.Present;
+	assert colourTileBox(colr, layered, 8000.0).glyph == ColourGlyph.Refused;
+	assert colourTileBox(colr, layered, 1.0 / zero).glyph == ColourGlyph.Refused;
+}
+
 test "a tile aimed at the wrong place or with the wrong size is refused" {
 	const face = try loadFace("tests/fonts/cbdtSynthetic.ttf") catch -1;
 	assert face >= 0;
