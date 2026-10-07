@@ -48,6 +48,9 @@ import {
 	releaseUniforms,
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
+import { materialUniformFloats, uniformFloatsFor } from "../void3d/uniformBudget";
+import { ForwardRenderer, ForwardError } from "../void3d/forwardRenderer";
+import { Vec4 } from "../math/math3d";
 import { added } from "./drawHelpers";
 import {
 	Renderer,
@@ -170,7 +173,8 @@ test "a material kind casts and receives as Heaps' default props do, and the set
 test "a particle or a billboard material is unculled by default, as particles3D is, and the rest cull" {
 	for (const program of [Program.Particle, Program.Billboard]) {
 		const quads: Material = Material.ofKind(program, MaterialKind.Alpha);
-		assert quads.pass.culling == Face.None && quads.castShadows == ShadowCasting.Off;
+		assert quads.pass.culling == Face.None;
+		assert quads.castShadows == ShadowCasting.Off;
 	}
 	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
 		assert Material.ofKind(program, MaterialKind.Opaque).pass.culling == Face.Back;
@@ -187,6 +191,8 @@ test "the shadow pass culls as the main pass does unless the material says its o
 	assert unculled.withShadowCulling(ShadowCulling.Back).shadowFace() == Face.Back;
 	assert base.withShadowCulling(ShadowCulling.None).pass.culling == Face.Back;
 }
+
+const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 
 function lengthOf(v: Vec3): float32 {
 	return v.length();
@@ -212,6 +218,34 @@ const DOWN: CameraBasis = {
 	up: vec3(0.0, 0.0, -1.0),
 	forward: vec3(0.0, -1.0, 0.0),
 };
+
+test "a pool sized by the budget holds two presets, a shadow map and their materials exactly" {
+	const keys: Vec<ProgramKey> = [
+		ProgramKey.of(Program.Lit), ProgramKey.of(Program.UnlitTextured).withDissolve(),
+		ProgramKey.of(Program.LitTextured).withDissolve().withEmissive(),
+		ProgramKey.of(Program.Billboard), ProgramKey.of(Program.Copy),
+	];
+	assert materialUniformFloats(keys[0]) == MATERIAL_UNIFORM_LENGTH;
+	assert materialUniformFloats(keys[3]) == BILLBOARD_UNIFORM_LENGTH;
+	assert materialUniformFloats(keys[4]) == 0;
+	const floats: int32 = uniformFloatsFor(2, 0, 1, keys);
+	let context: DrawContext = DrawContext.withUniformCapacity(floats);
+	const first: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, BLACK);
+	const second: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, BLACK);
+	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 256);
+	assert first.ok && second.ok && map.ok;
+	for (const key of keys) {
+		const slot: int32 =
+			key.program == Program.Billboard ? BILLBOARD_UNIFORM_SLOT : MATERIAL_UNIFORM_SLOT;
+		const block: Result<UniformBlock, UniformError> =
+			reserveUniforms(context, slot, materialUniformFloats(key));
+		assert block.ok;
+	}
+	assert context.uniforms.unreserved() == 0;
+	const over: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, 1);
+	assert !over.ok && over.error == UniformError.PoolFull;
+}
 
 test "the shadow box is the casters' cut to the view across the light, keeping their near side" {
 	const casters: Bounds3D = Bounds3D.fromPoints(vec3(-0.5, -0.5, -5.0), vec3(3.0, -0.2, 0.5));
