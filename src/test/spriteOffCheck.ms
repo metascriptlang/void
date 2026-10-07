@@ -9,6 +9,7 @@ test "with sprites off a sprite codepoint resolves to the font's own face and gl
 	if (!added.ok) { return; }
 	const font = added.value;
 	const primary: int32 = fontFace(font);
+	assert glyphIndex(primary, 0xE0B0) != 0;
 	const modes: Presentation[] = [Presentation.Default, Presentation.Text, Presentation.Emoji];
 	for (const mode of modes) {
 		for (const codepoint of SPRITE_SAMPLES) {
