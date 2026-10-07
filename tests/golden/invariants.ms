@@ -449,12 +449,26 @@ const LIGATURE_MIN_INKED: int32 = 300;
 const LIGATURE_MIN_DIFFERENT: int32 = 40;
 const LIGATURE_WIDTH: int32 = 320;
 
-function inkedPixel(x: int32, y: int32): boolean {
+const LIGATURE_WEAK: int32 = 16;
+const LIGATURE_STRONG: int32 = 96;
+
+function inkStrength(x: int32, y: int32): int32 {
+	let strongest: int32 = 0;
 	for (let channel: int32 = 0; channel < 3; channel++) {
 		const clear: int32 = voidPngPixel(SLOT, LIGATURE_BG_X, LIGATURE_BG_Y, channel);
-		if (voidPngPixel(SLOT, x, y, channel) != clear) { return true; }
+		const gap: int32 = Math.abs(voidPngPixel(SLOT, x, y, channel) - clear) as int32;
+		if (gap > strongest) { strongest = gap; }
 	}
-	return false;
+	return strongest;
+}
+
+function inkedPixel(x: int32, y: int32): boolean {
+	return inkStrength(x, y) >= LIGATURE_WEAK;
+}
+
+function inkOnlyOnOne(a: int32, b: int32): boolean {
+	return (a >= LIGATURE_STRONG && b < LIGATURE_WEAK) ||
+		(b >= LIGATURE_STRONG && a < LIGATURE_WEAK);
 }
 
 function bandTop(line: int32): int32 {
@@ -475,7 +489,9 @@ function inkDiffers(first: int32, second: int32): int32 {
 	let differ: int32 = 0;
 	for (let y: int32 = 0; y < LIGATURE_BAND_H; y++) {
 		for (let x: int32 = 0; x < LIGATURE_WIDTH; x++) {
-			if (inkedPixel(x, bandTop(first) + y) != inkedPixel(x, bandTop(second) + y)) {
+			const a: int32 = inkStrength(x, bandTop(first) + y);
+			const b: int32 = inkStrength(x, bandTop(second) + y);
+			if (inkOnlyOnOne(a, b)) {
 				differ = differ + 1;
 			}
 		}
