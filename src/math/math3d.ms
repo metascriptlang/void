@@ -445,6 +445,36 @@ export function eulerQuat(x: float32, y: float32, z: float32): Quat {
 	};
 }
 
+export function quatOfRotation(m: Mat4): Quat {
+	const trace: float32 = m.m11 + m.m22 + m.m33;
+	if (trace > 0.0) {
+		const s: float32 = squareRoot(trace + 1.0) * 2.0;
+		return {
+			x: (m.m23 - m.m32) / s, y: (m.m31 - m.m13) / s,
+			z: (m.m12 - m.m21) / s, w: 0.25 * s,
+		};
+	}
+	if (m.m11 > m.m22 && m.m11 > m.m33) {
+		const s: float32 = squareRoot(1.0 + m.m11 - m.m22 - m.m33) * 2.0;
+		return {
+			x: 0.25 * s, y: (m.m21 + m.m12) / s,
+			z: (m.m31 + m.m13) / s, w: (m.m23 - m.m32) / s,
+		};
+	}
+	if (m.m22 > m.m33) {
+		const s: float32 = squareRoot(1.0 + m.m22 - m.m11 - m.m33) * 2.0;
+		return {
+			x: (m.m21 + m.m12) / s, y: 0.25 * s,
+			z: (m.m32 + m.m23) / s, w: (m.m31 - m.m13) / s,
+		};
+	}
+	const s: float32 = squareRoot(1.0 + m.m33 - m.m11 - m.m22) * 2.0;
+	return {
+		x: (m.m31 + m.m13) / s, y: (m.m32 + m.m23) / s,
+		z: 0.25 * s, w: (m.m12 - m.m21) / s,
+	};
+}
+
 // The rotation carrying unit vector `from` onto unit vector `to`, by the shortest arc.
 // Half-angle form, so no arccosine: with d = from.dot(to), sin(θ/2)/sin(θ) = 1/(2cos(θ/2)).
 export function quatBetween(from: Vec3, to: Vec3): Quat {

@@ -1,7 +1,7 @@
 import {
 	Vec3, Vec4, Mat4, Quat, vec3, vec4, identity, translation, scaling,
 	rotationX, rotationY, rotationZ, rotationEuler, composeTransform,
-	identityQuat, axisAngle, eulerQuat, quatBetween, transformDirection, colorSaturated,
+	identityQuat, axisAngle, eulerQuat, quatBetween, quatOfRotation, transformDirection, colorSaturated,
 	srgbToLinear, linearToSrgb,
 } from "../math/math3d";
 import { approx } from "./helpers";
@@ -109,6 +109,19 @@ test "axis-angle quat about y matches rotationY" {
 	const q: Quat = axisAngle(vec3(0.0, 2.0, 0.0), 0.9);
 	assert approx(q.dot(q), 1.0);
 	assert sameMatrix(q.toMatrix(), rotationY(0.9));
+}
+
+test "quatOfRotation reads back each quaternion's own matrix, in all four branches" {
+	const turns: Quat[] = [
+		identityQuat(),
+		axisAngle(vec3(1.0, 0.0, 0.0), 3.0),
+		axisAngle(vec3(0.0, 1.0, 0.0), 3.0),
+		axisAngle(vec3(0.0, 0.0, 1.0), 3.0),
+		eulerQuat(0.3, -0.7, 1.1),
+	];
+	for (const q of turns) {
+		assert sameMatrix(quatOfRotation(q.toMatrix()).toMatrix(), q.toMatrix());
+	}
 }
 
 test "quatBetween carries one unit vector onto another, shortest arc" {
