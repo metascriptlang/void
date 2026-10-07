@@ -96,7 +96,7 @@ export function tick(this s: Scene2D, dt: float32): void {
 		match (s.kinds[i]) {
 			DrawKind.Anim => {
 				const shown: int32 = s.anims[payload].frameIndex();
-				s.anims[payload] = s.anims[payload].advanced(dt);
+				s.advanceAnim(payload, dt);
 				if (s.anims[payload].frameIndex() != shown) { s.markChanged(i, Changed.Content); }
 			},
 			DrawKind.Label => {

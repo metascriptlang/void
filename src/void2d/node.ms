@@ -301,34 +301,36 @@ function cycleMs(a: AnimFrames): float32 {
 	return total;
 }
 
-export function advanced(this a: AnimFrames, dt: float32): AnimFrames {
+export function advanceAnim(this s: Scene2D, payload: int32, dt: float32): void {
 	if (dt < 0.0) {
 		console.log(`void2d: an Anim was advanced by ${dt} s; time only moves forward`);
 		unreachable;
 	}
-	const len: int32 = a.frames.length as int32;
-	if (a.paused || len == 0) { return a; }
-	const step: float32 = dt * a.speed;
-	const clock: float32 = a.clock + step;
-	const total: float32 = cycleMs(a);
-	if (total <= 0.0) { return { ...a, clock: clock }; }
-	let carry: float32 = a.carryMs + step * 1000.0;
-	if (a.looping) { carry = carry - Math.floor((carry / total) as float64) as float32 * total; }
-	let current: int32 = a.current;
-	let delay: float32 = a.frameDelayMs(current);
+	const len: int32 = s.anims[payload].frames.length as int32;
+	if (s.anims[payload].paused || len == 0) { return; }
+	const step: float32 = dt * s.anims[payload].speed;
+	s.anims[payload].clock = s.anims[payload].clock + step;
+	const total: float32 = cycleMs(s.anims[payload]);
+	if (total <= 0.0) { return; }
+	const looping: boolean = s.anims[payload].looping;
+	let carry: float32 = s.anims[payload].carryMs + step * 1000.0;
+	if (looping) { carry = carry - Math.floor((carry / total) as float64) as float32 * total; }
+	let current: int32 = s.anims[payload].current;
+	let delay: float32 = s.anims[payload].frameDelayMs(current);
 	while (carry >= delay) {
 		carry = carry - delay;
 		if (current + 1 < len) {
 			current = current + 1;
-		} else if (a.looping) {
+		} else if (looping) {
 			current = 0;
 		} else {
 			carry = 0.0;
 			break;
 		}
-		delay = a.frameDelayMs(current);
+		delay = s.anims[payload].frameDelayMs(current);
 	}
-	return { ...a, clock: clock, current: current, carryMs: carry };
+	s.anims[payload].current = current;
+	s.anims[payload].carryMs = carry;
 }
 
 function freshBits(): BitSet<Changed> {
