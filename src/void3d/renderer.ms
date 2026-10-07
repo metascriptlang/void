@@ -32,6 +32,8 @@ import {
 	FRAME_UNIFORM_SLOT,
 	FRAME_UNIFORM_LENGTH,
 	FRAME_TIME,
+	MOVING_UV_SCROLL,
+	movingBase,
 	SHADOW_SAMPLER_SLOT,
 	uniformBlockLength,
 	textureSlotMask,
@@ -85,14 +87,14 @@ export interface Renderer {
 	lightBlock: UniformBlock;
 	frameBlock: UniformBlock;
 	sceneGlobals: Vec<UniformBlock>;
-	// h3d.scene.RenderContext's `time` and `elapsedTime`, in seconds: each beginFrame adds the
-	// elapsed time to the time, then writes the time into the frame block. Void keeps no clock,
-	// so the elapsed time stays 0 until the caller sets it (setElapsedTime); the time is the
-	// caller's to set too.
-	time: float32;
-	elapsedTime: float32;
+	// h3d.scene.RenderContext's `time` and `elapsedTime`, in seconds and 64-bit as Haxe's Float:
+	// each beginFrame adds the elapsed time to the time, then writes the time into the frame
+	// block as a float32. Void keeps no clock, so the elapsed time stays 0 until the caller sets
+	// it (setElapsedTime); the time is the caller's to set too.
+	time: float64;
+	elapsedTime: float64;
 	frameValues: Vec<float32>;
-	// The last frame drew a key that reads the time (a UV transform's scroll).
+	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
 	preset: Preset;
 	// Per item of the frame, the key drawn for its material's.
@@ -234,7 +236,7 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 }
 
 // h3d.scene.Scene.setElapsedTime: what the next beginFrame adds to the time.
-export function setElapsedTime(renderer: Renderer, seconds: float32): void {
+export function setElapsedTime(renderer: Renderer, seconds: float64): void {
 	if (renderer.closed) { stopOnClosed("setElapsedTime"); }
 	renderer.elapsedTime = seconds;
 }
@@ -319,7 +321,7 @@ export function beginFrame(
 		writeUniforms(context, renderer.lightBlock, lights);
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	renderer.time = renderer.time + renderer.elapsedTime;
-	renderer.frameValues[FRAME_TIME] = renderer.time;
+	renderer.frameValues[FRAME_TIME] = renderer.time as float32;
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));
@@ -330,7 +332,7 @@ export function beginFrame(
 			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
-		readsTime = readsTime || resolved.value.uvTransform;
+		readsTime = readsTime || scrolls(context, items[i].material.index, resolved.value);
 	}
 	renderer.readsTime = readsTime;
 	const generation: int32 = contextGeneration();
@@ -458,6 +460,14 @@ export function drawScreen(
 	const program: ProgramKey = context.materials[material.index].program;
 	drawItem(context, screenItem(renderer.screenMesh, material), program, targets, NO_GLOBALS);
 	return Result.ok(1);
+}
+
+// Whether material `index`, drawn as `key`, scrolls its UV with the frame's time.
+function scrolls(context: DrawContext, index: int32, key: ProgramKey): boolean {
+	if (!key.uvTransform) { return false; }
+	const block: UniformBlock = context.materials[index].uniforms;
+	const at: int32 = block.offset + movingBase(key) + MOVING_UV_SCROLL;
+	return context.uniforms.values[at] != 0.0 || context.uniforms.values[at + 1] != 0.0;
 }
 
 // The one block a material brings for `program`: the slot it declares that is neither pass-wide
