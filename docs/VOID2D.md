@@ -1681,8 +1681,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   Measured, D3D11, msc v0.3.2 BUILD `244ef48c`: `prim/aaGraphics` (the `prim/aaRotatedBox`
   geometry as a Graphics) judged by `tests/oracle/captureCheck.ms`: edges 0.0467 of 0.06, miter
   corners 0.2459 of 0.26; antialias off reads 0.5 on both. A sharp corner takes the nearer edge's
-  ramp, as in NanoVG and Makepad; a corner patch that would do better is a new mechanism and is
-  not built. 22 goldens regenerated; axis-aligned fills on whole pixels, `prim/gradientLinear`
+  ramp, as in NanoVG, Makepad and Skia's `GrAAConvexTessellator::createOuterRing`; only
+  exact-area rasterizers (Vello, Pathfinder, Rive) do better. Decided 2026-10-07: accepted as
+  Skia does; a convex-corner patch would be a new mechanism and is not built. 22 goldens regenerated; axis-aligned fills on whole pixels, `prim/gradientLinear`
   and `prim/ditherBand`, stayed byte-identical. A 1 px stroke centred on a pixel boundary is now
   two half-covered pixels (true area, as GPUI's paths and Canvas draw it), a 0.5 px stroke shows
   at its coverage instead of vanishing, and `fillSlashRect` stripes flip a few pixels where a
