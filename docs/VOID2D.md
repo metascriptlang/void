@@ -2156,6 +2156,15 @@ changes described above on today's compiler; the P4 web archive also takes its r
     key; `DrawKind.Icon` reuses the node-kind table and `emitGlyph`; the shader is untouched.
     Reference: GPUI `AtlasKey` (`platform.rs:1382-1386`) for the key kind.
 - Procedural sprite glyphs — box drawing, blocks, braille, powerline — for a terminal widget.
+  **Integer geometry built 2026-10-08.** `spriteGlyph.c` ports Ghostty's `block.zig`, `braille.zig`
+  and the straight, dashed and double lines of `box.zig` (`sprite/Face.zig` renders on a canvas
+  padded by `W/4` and `H/4`, `draw/common.zig` `Fraction.min/max` rounds the two edges of a
+  fraction complementarily). It draws integer rectangles straight into an 8-bit canvas, so it
+  needs no rasterizer and no anti-aliasing. `src/test/spriteOracleCheck.ms` compares the result
+  with Ghostty's 36 reference PNGs (`tests/oracle/ghostty/`, 78,166 bytes, MIT): 1636 of 1636
+  cells equal. The sprite table is a sorted range table with a dense id per codepoint
+  (`void2dSpriteTableFault` is the compile-time overlap check of `Face.zig` as a test); arcs,
+  diagonals, powerline and the rest are not in it yet, so no codepoint of theirs reaches a sprite.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
   **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding
