@@ -1007,8 +1007,10 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	const count: int32 = shaped.glyphs.length as int32;
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
 		shaped.breaks = lineBreaks(shaped.values);
-		for (let k = 0; k < count; k++) {
-			if (!shaped.glyphs[k].shapeStart) { shaped.breaks[k] = false; }
+		when (voidShaper) {
+			for (let k = 0; k < count; k++) {
+				if (!shaped.glyphs[k].shapeStart) { shaped.breaks[k] = false; }
+			}
 		}
 	}
 	let glyphs: Vec<LaidGlyph> = new Array(0);
