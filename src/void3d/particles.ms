@@ -407,6 +407,44 @@ function boxPosition(ref emitter: ParticleEmitter, half: Vec3, shell: boolean): 
 	return vec3(x, y, z);
 }
 
+// The shape's values are read where the match narrows the variant and not through a local, whose
+// copy of a value that may hold a Vec would be made on every spawn.
+function shapeRadius(ref emitter: ParticleEmitter, time: float32): float32 {
+	match (emitter.state.shape.kind) {
+		ShapeKind.Line => { unreachable; },
+		ShapeKind.Sphere => { return emitterValue(emitter, emitter.state.shape.radius, time); },
+		ShapeKind.Cone => { return emitterValue(emitter, emitter.state.shape.radius, time); },
+		ShapeKind.Disc => { return emitterValue(emitter, emitter.state.shape.radius, time); },
+		ShapeKind.Point => { unreachable; },
+		ShapeKind.Box => { unreachable; },
+		ShapeKind.Ring => { return emitterValue(emitter, emitter.state.shape.radius, time); },
+	};
+}
+
+function shapeAngle(ref emitter: ParticleEmitter, time: float32): float32 {
+	match (emitter.state.shape.kind) {
+		ShapeKind.Line => { unreachable; },
+		ShapeKind.Sphere => { unreachable; },
+		ShapeKind.Cone => { return emitterValue(emitter, emitter.state.shape.angle, time); },
+		ShapeKind.Disc => { unreachable; },
+		ShapeKind.Point => { unreachable; },
+		ShapeKind.Box => { unreachable; },
+		ShapeKind.Ring => { unreachable; },
+	};
+}
+
+function shapeInner(ref emitter: ParticleEmitter, time: float32): float32 {
+	match (emitter.state.shape.kind) {
+		ShapeKind.Line => { unreachable; },
+		ShapeKind.Sphere => { unreachable; },
+		ShapeKind.Cone => { unreachable; },
+		ShapeKind.Disc => { unreachable; },
+		ShapeKind.Point => { unreachable; },
+		ShapeKind.Box => { unreachable; },
+		ShapeKind.Ring => { return emitterValue(emitter, emitter.state.shape.inner, time); },
+	};
+}
+
 struct Ring {
 	position: Vec3;
 	outward: Vec3;
@@ -479,22 +517,19 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 			position = vec3(0.0, height, 0.0);
 		},
 		ShapeKind.Sphere => {
-			const radiusValue: ParticleValue = emitter.state.shape.radius;
 			const theta: float64 = unitRandom(emitter) * TWO_PI;
 			const phi: float64 = Math.acos(unitRandom(emitter) * 2.0 - 1.0);
-			let radius: float32 = emitterValue(emitter, radiusValue, time);
+			let radius: float32 = shapeRadius(emitter, time);
 			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
 			position = direction.scaled(radius);
 		},
 		ShapeKind.Cone => {
-			const angleValue: ParticleValue = emitter.state.shape.angle;
-			const radiusValue: ParticleValue = emitter.state.shape.radius;
 			const theta: float64 = unitRandom(emitter) * TWO_PI;
-			const angle: float32 = emitterValue(emitter, angleValue, time);
+			const angle: float32 = shapeAngle(emitter, time);
 			const spread: float64 = angle as float64;
 			const phi: float64 = spread * unitRandom(emitter);
-			let radius: float32 = emitterValue(emitter, radiusValue, time);
+			let radius: float32 = shapeRadius(emitter, time);
 			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
 			position = direction.scaled(radius);
@@ -505,19 +540,17 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 			position = boxPosition(emitter, half, shell);
 		},
 		ShapeKind.Ring => {
-			const outerValue: ParticleValue = emitter.state.shape.radius;
-			const innerValue: ParticleValue = emitter.state.shape.inner;
 			const height: float32 = emitter.state.shape.height;
 			const axis: Vec3 = emitter.state.shape.axis;
 			const coneAngle: float32 = emitter.state.shape.coneAngle;
-			const outer: float32 = emitterValue(emitter, outerValue, time);
-			const inner: float32 = emitterValue(emitter, innerValue, time);
+			const outer: float32 = shapeRadius(emitter, time);
+			const inner: float32 = shapeInner(emitter, time);
 			const ring: Ring = ringPoint(emitter, outer, inner, height, axis, coneAngle);
 			position = ring.position;
 			direction = ring.outward;
 		},
 		ShapeKind.Disc => {
-			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
+			let radius: float32 = shapeRadius(emitter, time);
 			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			const angle: float64 = unitRandom(emitter) * TWO_PI;
 			direction = vec3(Math.cos(angle) as float32, 0.0, Math.sin(angle) as float32);
@@ -595,10 +628,9 @@ function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64):
 	const forceY: float32 = particleValue(emitter, slot, emitter.state.force.y, cycle);
 	const gravity: float32 = particleValue(emitter, slot, emitter.state.gravity, cycle);
 	const damping: float32 = particleValue(emitter, slot, emitter.state.damping, life);
-	const turbulence: Turbulence = emitter.state.turbulence;
 	let influence: float32 = 0.0;
-	if (turbulence.enabled && turbulence.noiseStrength > 0.0) {
-		influence = particleValue(emitter, slot, turbulence.influence, life);
+	if (emitter.state.turbulence.enabled && emitter.state.turbulence.noiseStrength > 0.0) {
+		influence = particleValue(emitter, slot, emitter.state.turbulence.influence, life);
 		influence = influence < 0.0 ? 0.0 : (influence > 1.0 ? 1.0 : influence);
 	}
 	const force: Vec3 = emitter.particles[slot].force;
@@ -615,10 +647,10 @@ function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64):
 		const toward: Vec3 = noiseDirection(
 			position,
 			emitter.clock as float32,
-			turbulence.noiseStrength,
-			shaderNoiseScale(turbulence.noiseScale),
-			turbulence.noiseSpeed,
-			turbulence.noiseSpeedRandom,
+			emitter.state.turbulence.noiseStrength,
+			shaderNoiseScale(emitter.state.turbulence.noiseScale),
+			emitter.state.turbulence.noiseSpeed,
+			emitter.state.turbulence.noiseSpeedRandom,
 		);
 		const displacement: Vec3 = direction.scaled(speed);
 		velocity = bentToward(velocity, toward, influence);
