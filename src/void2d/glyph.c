@@ -610,11 +610,17 @@ static const char *pageKindName(int kind) {
 	}
 }
 
+static int pageKindBuilt(int kind) {
+#ifdef VOID2D_SDF_TEXT
+	if (kind == VOID2D_PAGE_SDF) { return 1; }
+#endif
+	return kind == VOID2D_PAGE_COVERAGE;
+}
+
 int void2dGlyphPageCreate(int size, int kind) {
 	if (size <= 0) { return -1; }
-	if (kind != VOID2D_PAGE_COVERAGE) {
-		fprintf(stderr, "void2d: glyph page kind %s (%d) is not built, only Coverage is\n",
-			pageKindName(kind), kind);
+	if (!pageKindBuilt(kind)) {
+		fprintf(stderr, "void2d: glyph page kind %s (%d) is not built\n", pageKindName(kind), kind);
 		return -1;
 	}
 	if (s_pageCount >= VOID2D_MAX_GLYPH_PAGES) {
@@ -716,3 +722,224 @@ void void2dGlyphPagesMarkDirty(void) {
 void void2dGlyphPagesFrameBegin(void) {
 	for (int page = 0; page < s_pageCount; page++) { s_pages[page].uploaded = 0; }
 }
+
+#ifdef VOID2D_SDF_TEXT
+#define SDF_EM 32.0f
+#define SDF_PAD 4
+#define SDF_EDGE 191
+#define SDF_DIST_SCALE (255.0f / 8.0f)
+
+static unsigned int s_sdfGenerations;
+static int s_sdfBox[5];
+
+unsigned int void2dGlyphSdfGenerations(void) { return s_sdfGenerations; }
+
+static int sdfHasCubic(const stbtt_vertex *v, int count) {
+	for (int i = 0; i < count; i++) {
+		if (v[i].type == STBTT_vcubic) { return 1; }
+	}
+	return 0;
+}
+
+static void sdfBitmapBox(GlyphFace *f, int glyph, stbtt_vertex *v, int count, float scale,
+                         int *box) {
+	if (isSynthetic(f)) {
+		shapeBox(v, count, scale, 0.0f, box);
+	} else {
+		stbtt_GetGlyphBitmapBoxSubpixel(&f->info, glyph, scale, scale, 0.0f, 0.0f,
+			&box[0], &box[1], &box[2], &box[3]);
+	}
+	if (box[0] == box[2] || box[1] == box[3]) {
+		box[0] = box[1] = box[2] = box[3] = 0;
+		return;
+	}
+	box[0] -= SDF_PAD;
+	box[1] -= SDF_PAD;
+	box[2] += SDF_PAD;
+	box[3] += SDF_PAD;
+}
+
+static void sdfFill(const stbtt_vertex *verts, int num_verts, float scale, const int *box,
+                    unsigned char *out, int stride) {
+	const float scale_x = scale, scale_y = -scale;
+	const float eps = 1.f / 1024, eps2 = eps * eps;
+	const int ix0 = box[0], iy0 = box[1], ix1 = box[2], iy1 = box[3];
+	float *precompute = (float *)malloc(sizeof(float) * (size_t)num_verts);
+	if (!precompute) {
+		fprintf(stderr, "void2d: no memory for the SDF of a %d-vertex glyph\n", num_verts);
+		return;
+	}
+	for (int i = 0, j = num_verts - 1; i < num_verts; j = i++) {
+		if (verts[i].type == STBTT_vline) {
+			float x0 = verts[i].x * scale_x, y0 = verts[i].y * scale_y;
+			float x1 = verts[j].x * scale_x, y1 = verts[j].y * scale_y;
+			float dist = (float)STBTT_sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+			precompute[i] = (dist < eps) ? 0.0f : 1.0f / dist;
+		} else if (verts[i].type == STBTT_vcurve) {
+			float x2 = verts[j].x * scale_x, y2 = verts[j].y * scale_y;
+			float x1 = verts[i].cx * scale_x, y1 = verts[i].cy * scale_y;
+			float x0 = verts[i].x * scale_x, y0 = verts[i].y * scale_y;
+			float bx = x0 - 2 * x1 + x2, by = y0 - 2 * y1 + y2;
+			float len2 = bx * bx + by * by;
+			precompute[i] = len2 >= eps2 ? 1.0f / len2 : 0.0f;
+		} else {
+			precompute[i] = 0.0f;
+		}
+	}
+	for (int y = iy0; y < iy1; ++y) {
+		for (int x = ix0; x < ix1; ++x) {
+			float min_dist = 999999.0f;
+			float sx = (float)x + 0.5f;
+			float sy = (float)y + 0.5f;
+			float x_gspace = (sx / scale_x);
+			float y_gspace = (sy / scale_y);
+			int winding = stbtt__compute_crossings_x(x_gspace, y_gspace, num_verts,
+				(stbtt_vertex *)verts);
+			for (int i = 0; i < num_verts; ++i) {
+				float x0 = verts[i].x * scale_x, y0 = verts[i].y * scale_y;
+				if (verts[i].type == STBTT_vline && precompute[i] != 0.0f) {
+					float x1 = verts[i - 1].x * scale_x, y1 = verts[i - 1].y * scale_y;
+					float dist, dist2 = (x0 - sx) * (x0 - sx) + (y0 - sy) * (y0 - sy);
+					if (dist2 < min_dist * min_dist) { min_dist = (float)STBTT_sqrt(dist2); }
+					dist = (float)STBTT_fabs((x1 - x0) * (y0 - sy) - (y1 - y0) * (x0 - sx)) *
+						precompute[i];
+					if (dist < min_dist) {
+						float dx = x1 - x0, dy = y1 - y0;
+						float px = x0 - sx, py = y0 - sy;
+						float t = -(px * dx + py * dy) / (dx * dx + dy * dy);
+						if (t >= 0.0f && t <= 1.0f) { min_dist = dist; }
+					}
+				} else if (verts[i].type == STBTT_vcurve) {
+					float x2 = verts[i - 1].x * scale_x, y2 = verts[i - 1].y * scale_y;
+					float x1 = verts[i].cx * scale_x, y1 = verts[i].cy * scale_y;
+					float box_x0 = STBTT_min(STBTT_min(x0, x1), x2);
+					float box_y0 = STBTT_min(STBTT_min(y0, y1), y2);
+					float box_x1 = STBTT_max(STBTT_max(x0, x1), x2);
+					float box_y1 = STBTT_max(STBTT_max(y0, y1), y2);
+					if (sx > box_x0 - min_dist && sx < box_x1 + min_dist &&
+						sy > box_y0 - min_dist && sy < box_y1 + min_dist) {
+						int num = 0;
+						float ax = x1 - x0, ay = y1 - y0;
+						float bx = x0 - 2 * x1 + x2, by = y0 - 2 * y1 + y2;
+						float mx = x0 - sx, my = y0 - sy;
+						float res[3] = { 0.f, 0.f, 0.f };
+						float a_inv = precompute[i];
+						if (a_inv == 0.0) {
+							float a = 3 * (ax * bx + ay * by);
+							float b = 2 * (ax * ax + ay * ay) + (mx * bx + my * by);
+							float c = mx * ax + my * ay;
+							if (STBTT_fabs(a) < eps2) {
+								if (STBTT_fabs(b) >= eps2) { res[num++] = -c / b; }
+							} else {
+								float discriminant = b * b - 4 * a * c;
+								if (discriminant < 0) {
+									num = 0;
+								} else {
+									float root = (float)STBTT_sqrt(discriminant);
+									res[0] = (-b - root) / (2 * a);
+									res[1] = (-b + root) / (2 * a);
+									num = 2;
+								}
+							}
+						} else {
+							float b = 3 * (ax * bx + ay * by) * a_inv;
+							float c = (2 * (ax * ax + ay * ay) + (mx * bx + my * by)) * a_inv;
+							float d = (mx * ax + my * ay) * a_inv;
+							num = stbtt__solve_cubic(b, c, d, res);
+						}
+						float dist2 = (x0 - sx) * (x0 - sx) + (y0 - sy) * (y0 - sy);
+						if (dist2 < min_dist * min_dist) { min_dist = (float)STBTT_sqrt(dist2); }
+						for (int r = 0; r < num; r++) {
+							if (res[r] >= 0.0f && res[r] <= 1.0f) {
+								float t = res[r], it = 1.0f - t;
+								float px = it * it * x0 + 2 * t * it * x1 + t * t * x2;
+								float py = it * it * y0 + 2 * t * it * y1 + t * t * y2;
+								dist2 = (px - sx) * (px - sx) + (py - sy) * (py - sy);
+								if (dist2 < min_dist * min_dist) {
+									min_dist = (float)STBTT_sqrt(dist2);
+								}
+							}
+						}
+					}
+				}
+			}
+			if (winding == 0) { min_dist = -min_dist; }
+			float val = (float)SDF_EDGE + SDF_DIST_SCALE * min_dist;
+			if (val < 0) { val = 0; } else if (val > 255) { val = 255; }
+			out[(y - iy0) * stride + (x - ix0)] = (unsigned char)val;
+		}
+	}
+	free(precompute);
+}
+
+int *void2dGlyphSdfBox(int face, int glyph) {
+	for (int i = 0; i < 5; i++) { s_sdfBox[i] = 0; }
+	if (!validFace(face)) { return s_sdfBox; }
+	GlyphFace *f = &s_faces[face];
+	stbtt_vertex *vertices = NULL;
+	int count = glyphShape(f, glyph, &vertices);
+	if (count > 0) {
+		if (sdfHasCubic(vertices, count)) {
+			s_sdfBox[4] = 1;
+		} else {
+			sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM), s_sdfBox);
+		}
+	}
+	STBTT_free(vertices, f->info.userdata);
+	return s_sdfBox;
+}
+
+void void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h) {
+	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) { return; }
+	GlyphPage *p = &s_pages[page];
+	if (p->kind != VOID2D_PAGE_SDF) {
+		fprintf(stderr, "void2d: an SDF tile was aimed at a %s page\n", pageKindName(p->kind));
+		return;
+	}
+	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
+		fprintf(stderr, "void2d: SDF tile %dx%d at (%d,%d) falls outside its %d page\n",
+			w, h, x, y, p->size);
+		return;
+	}
+	GlyphFace *f = &s_faces[face];
+	stbtt_vertex *vertices = NULL;
+	int count = glyphShape(f, glyph, &vertices);
+	int box[4] = { 0, 0, 0, 0 };
+	if (count > 0 && !sdfHasCubic(vertices, count)) {
+		sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM), box);
+	}
+	if (box[2] - box[0] != w || box[3] - box[1] != h) {
+		fprintf(stderr, "void2d: SDF tile %dx%d does not match the glyph's %dx%d box\n",
+			w, h, box[2] - box[0], box[3] - box[1]);
+	} else {
+		sdfFill(vertices, count, void2dGlyphScale(face, SDF_EM), box,
+			p->texels + (size_t)y * (size_t)p->size + (size_t)x, p->size);
+		s_sdfGenerations++;
+		p->dirty = 1;
+	}
+	STBTT_free(vertices, f->info.userdata);
+}
+
+int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y) {
+	if (!validFace(face) || !validPage(page) || isSynthetic(&s_faces[face])) { return -2; }
+	GlyphPage *p = &s_pages[page];
+	int w = 0, h = 0, xoff = 0, yoff = 0;
+	unsigned char *reference = stbtt_GetGlyphSDF(&s_faces[face].info,
+		void2dGlyphScale(face, SDF_EM), glyph, SDF_PAD, SDF_EDGE, SDF_DIST_SCALE,
+		&w, &h, &xoff, &yoff);
+	if (!reference) { return -1; }
+	int differing = 0;
+	for (int row = 0; row < h; row++) {
+		for (int col = 0; col < w; col++) {
+			size_t at = (size_t)(y + row) * (size_t)p->size + (size_t)(x + col);
+			if (p->texels[at] != reference[row * w + col]) { differing++; }
+		}
+	}
+	int *box = void2dGlyphSdfBox(face, glyph);
+	if (box[0] != xoff || box[1] != yoff || box[2] - box[0] != w || box[3] - box[1] != h) {
+		differing = -3;
+	}
+	STBTT_free(reference, s_faces[face].info.userdata);
+	return differing;
+}
+#endif

@@ -41,6 +41,11 @@ int void2dGlyphPageTakeUpload(int page);
 void void2dGlyphPagesMarkDirty(void);
 void void2dGlyphPagesFrameBegin(void);
 
+int *void2dGlyphSdfBox(int face, int glyph);
+void void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h);
+unsigned int void2dGlyphSdfGenerations(void);
+int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y);
+
 typedef void (*GlyphRasterBox)(const unsigned char *font, int length, int glyph, float sizePx,
                                float shiftX, int *box);
 typedef void (*GlyphRasterFill)(const unsigned char *font, int length, int glyph, float sizePx,
