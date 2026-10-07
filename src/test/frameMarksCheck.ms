@@ -8,7 +8,7 @@ import {
 	VOID_FRAME_IDLE, VOID_FRAME_COMMITTED, VOID_FRAME_PRESENTED,
 } from "../void2d/frameClock.h";
 import {
-	frameStats, profilerCollect, lastFrameRecord, frameCommitsWithoutFrame,
+	frameStats, profilerCollect, lastFrameRecord, lastFrameCounters, frameCommitsWithoutFrame,
 } from "../void2d/frameMarks";
 
 function drawFrame(s: Scene2D): void {
@@ -96,4 +96,13 @@ test "a commit between two frames is counted as a serial gap, not hidden" {
 	drawFrame(s);
 	assert profilerCollect();
 	assert frameCommitsWithoutFrame() == before + 1;
+}
+
+test "a headless frame has void2d counters of zero and no sokol measurement" {
+	const s = settled();
+	drawFrame(s);
+	assert profilerCollect();
+	const c = lastFrameCounters();
+	assert c.void2dDraws == 0 && c.uiInstances == 0 && c.spriteInstances == 0;
+	assert !c.sokolMeasured;
 }

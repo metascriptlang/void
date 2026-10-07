@@ -10,7 +10,7 @@ import { InstanceMode, uiInstance } from "../../src/void2d/instance";
 import { Color, identity2d, rgba } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import {
-	frameStats, profilerCollect, lastFrameRecord, frameCommitsWithoutFrame,
+	frameStats, profilerCollect, lastFrameRecord, frameCommitsWithoutFrame, lastFrameCounters,
 } from "../../src/void2d/frameMarks";
 import { voidCaptureBackend, voidCaptureExit } from "../capture/capture.h";
 
@@ -74,18 +74,33 @@ function checkMarks(framesBefore: int32): void {
 	if (frameCommitsWithoutFrame() != 0) { fail("a steady loop counted a commit with no frame"); }
 }
 
+function checkCounters(): void {
+	const c = lastFrameCounters();
+	if (c.void2dDraws != 3) { fail(`void2d draws ${c.void2dDraws}, expected 3`); }
+	if (c.uiInstances != 8) { fail(`ui instances ${c.uiInstances}, expected 8 over two brackets`); }
+	if (c.spriteInstances != 1) { fail(`sprite instances ${c.spriteInstances}, expected 1`); }
+	if (!c.sokolMeasured) { fail("sokol frame stats were not read"); }
+	if (c.sokolDraws < c.void2dDraws) { fail("sokol counted fewer draws than void2d"); }
+	if (c.sokolPasses < 1) { fail("sokol counted no pass"); }
+	if (c.uploadBytes <= 0) { fail("void2d counted no upload bytes"); }
+	if (c.uploadBytes > c.sokolBufferBytes + c.sokolImageBytes) {
+		fail("void2d counted more upload bytes than sokol saw");
+	}
+}
+
 function drawFrame(): void {
 	const before: int32 = frameStats.frames;
 	recordTwoContexts();
 	presentTwoContexts();
 	checkMarks(before);
+	checkCounters();
 }
 
 function frame(): void {
 	drawFrame();
 	stage = stage + 1;
 	if (stage < FRAMES) { return; }
-	console.log(`PASS frame profiler: ${FRAMES} frames, one record each, marks in order`);
+	console.log(`PASS frame profiler: ${FRAMES} frames, marks in order, counters summed`);
 	voidCaptureExit(0);
 }
 

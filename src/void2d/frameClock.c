@@ -1,5 +1,6 @@
 #define SOKOL_TIME_IMPL
 #include "../../deps/sokol/sokol_time.h"
+#include "../../deps/sokol/sokol_gfx.h"
 #include "../sokol/bridge.h"
 #include "frameClock.h"
 
@@ -12,6 +13,7 @@ static int s_presentStarted;
 static int32_t s_serial;
 static int32_t s_lost;
 static int64_t s_marks[4];
+static int32_t s_counters[VOID_COUNTER_SLOTS];
 
 int64_t voidClockNow(void) {
 	if (!s_clockReady) {
@@ -38,6 +40,11 @@ int64_t voidProfileMark(int32_t which) {
 	return s_marks[which];
 }
 
+int32_t voidProfileCounter(int32_t which) {
+	if (which < 0 || which >= VOID_COUNTER_COUNT) { stopOnIndex("frame counter", which); }
+	return s_counters[which];
+}
+
 void voidProfileBegin(void) {
 	if (s_state != VOID_FRAME_IDLE) { s_lost++; }
 	s_state = VOID_FRAME_OPEN;
@@ -45,10 +52,25 @@ void voidProfileBegin(void) {
 	s_marks[VOID_MARK_BEGIN] = voidClockNow();
 }
 
-void voidProfileCommit(int32_t serial) {
+void voidProfileCommit(int32_t serial, const int32_t *void2dCounters) {
 	if (s_state != VOID_FRAME_OPEN) { return; }
 	s_marks[VOID_MARK_COMMIT] = voidClockNow();
 	s_serial = serial;
+	for (int i = 0; i < VOID_COUNTER_SOKOL_DRAWS; i++) { s_counters[i] = void2dCounters[i]; }
+	s_counters[VOID_COUNTER_SOKOL_MEASURED] = sg_isvalid() ? 1 : 0;
+	if (sg_isvalid()) {
+		const sg_frame_stats f = sg_query_stats().prev_frame;
+		s_counters[VOID_COUNTER_SOKOL_DRAWS] = (int32_t)f.num_draw;
+		s_counters[VOID_COUNTER_SOKOL_PIPELINES] = (int32_t)f.num_apply_pipeline;
+		s_counters[VOID_COUNTER_SOKOL_PASSES] = (int32_t)f.num_passes;
+		s_counters[VOID_COUNTER_SOKOL_BUFFER_BYTES] =
+			(int32_t)(f.size_update_buffer + f.size_append_buffer);
+		s_counters[VOID_COUNTER_SOKOL_IMAGE_BYTES] = (int32_t)f.size_update_image;
+	} else {
+		for (int i = VOID_COUNTER_SOKOL_DRAWS; i < VOID_COUNTER_SOKOL_MEASURED; i++) {
+			s_counters[i] = 0;
+		}
+	}
 	s_state = VOID_FRAME_COMMITTED;
 }
 

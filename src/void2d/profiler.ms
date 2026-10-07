@@ -309,3 +309,46 @@ export function readoutLines(this p: FrameProfiler, mode: OverlayMode): Vec<stri
 	lines.push(`FRAMES ${padLeft(shown, 5)}`);
 	return lines;
 }
+
+export struct FrameCounters {
+	void2dDraws: int32;
+	uiInstances: int32;
+	spriteInstances: int32;
+	uploadBytes: int32;
+	uploads: int32;
+	sokolMeasured: boolean;
+	sokolDraws: int32;
+	sokolPipelines: int32;
+	sokolPasses: int32;
+	sokolBufferBytes: int32;
+	sokolImageBytes: int32;
+}
+
+export function noCounters(): FrameCounters {
+	return {
+		void2dDraws: 0,
+		uiInstances: 0,
+		spriteInstances: 0,
+		uploadBytes: 0,
+		uploads: 0,
+		sokolMeasured: false,
+		sokolDraws: 0,
+		sokolPipelines: 0,
+		sokolPasses: 0,
+		sokolBufferBytes: 0,
+		sokolImageBytes: 0,
+	};
+}
+
+export function counterLines(c: FrameCounters): Vec<string> {
+	let lines: Vec<string> = new Array(0);
+	lines.push(`VOID2D DRAW ${c.void2dDraws} UI ${c.uiInstances} SPR ${c.spriteInstances}`);
+	lines.push(`VOID2D UP ${c.uploadBytes} B IN ${c.uploads}`);
+	if (!c.sokolMeasured) {
+		lines.push("SOKOL N/A");
+		return lines;
+	}
+	lines.push(`SOKOL DRAW ${c.sokolDraws} PIPE ${c.sokolPipelines} PASS ${c.sokolPasses}`);
+	lines.push(`SOKOL BUF ${c.sokolBufferBytes} B IMG ${c.sokolImageBytes} B`);
+	return lines;
+}

@@ -168,6 +168,8 @@ int void2dVertexBufferBytes(void) { return s_vbufBytes; }
 int void2dDroppedFrames(void) { return s_droppedFrames; }
 
 #ifdef VOID_PROFILER
+static int s_frameUiInstances;
+static int s_frameSpriteInstances;
 int void2dProfilerCompiled(void) { return 1; }
 #else
 int void2dProfilerCompiled(void) { return 0; }
@@ -645,6 +647,8 @@ void void2dFrameBegin(void) {
 	s_frameOpen = 1;
 #ifdef VOID_PROFILER
 	voidProfileBegin();
+	s_frameUiInstances = 0;
+	s_frameSpriteInstances = 0;
 #endif
 	adoptContext();
 	void2dGlyphPagesFrameBegin();
@@ -664,7 +668,13 @@ void void2dFrameEnd(void) {
 	s_bracketsThisFrame = 0;
 	s_frameSerial++;
 #ifdef VOID_PROFILER
-	voidProfileCommit(s_frameSerial);
+	int32_t counters[VOID_COUNTER_SOKOL_DRAWS];
+	counters[VOID_COUNTER_DRAWS] = s_drawCallCount;
+	counters[VOID_COUNTER_UI_INSTANCES] = s_frameUiInstances;
+	counters[VOID_COUNTER_SPRITE_INSTANCES] = s_frameSpriteInstances;
+	counters[VOID_COUNTER_UPLOAD_BYTES] = s_uploadBytes;
+	counters[VOID_COUNTER_UPLOADS] = s_uploadCount;
+	voidProfileCommit(s_frameSerial, counters);
 #endif
 }
 
@@ -1137,6 +1147,9 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 
 	sg_draw(0, 6, count);
 	s_drawCallCount++;
+#ifdef VOID_PROFILER
+	s_frameSpriteInstances += count;
+#endif
 }
 
 // One unified-UI run: the unit quad at slot 0, this run's instances at slot 1, one sg_draw
@@ -1202,6 +1215,9 @@ static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
 
 	sg_draw(0, 6, count);
 	s_drawCallCount++;
+#ifdef VOID_PROFILER
+	s_frameUiInstances += count;
+#endif
 }
 
 // The one executor both lists go through. `fbW`/`fbH` are the viewport the commands were

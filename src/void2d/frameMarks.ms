@@ -2,14 +2,18 @@
 
 import {
 	voidClockNow, voidProfileCompiled, voidProfileSetup, voidProfileState, voidProfileSerial,
-	voidProfileLost, voidProfileMark, voidProfileConsume,
+	voidProfileLost, voidProfileMark, voidProfileCounter, voidProfileConsume,
 	VOID_MARK_BEGIN, VOID_MARK_COMMIT, VOID_MARK_PRESENT_START, VOID_MARK_PRESENT_END,
+	VOID_COUNTER_DRAWS, VOID_COUNTER_UI_INSTANCES, VOID_COUNTER_SPRITE_INSTANCES,
+	VOID_COUNTER_UPLOAD_BYTES, VOID_COUNTER_UPLOADS, VOID_COUNTER_SOKOL_DRAWS,
+	VOID_COUNTER_SOKOL_PIPELINES, VOID_COUNTER_SOKOL_PASSES, VOID_COUNTER_SOKOL_BUFFER_BYTES,
+	VOID_COUNTER_SOKOL_IMAGE_BYTES, VOID_COUNTER_SOKOL_MEASURED,
 	VOID_FRAME_OPEN, VOID_FRAME_COMMITTED, VOID_FRAME_PRESENTED,
 } from "./frameClock.h";
 import { void2dProfilerCompiled } from "./batcher.h";
 import {
-	NO_STAMP, FrameProfiler, FrameRecord, FramePhase, frameProfiler,
-	drawBegin, commit, present,
+	NO_STAMP, FrameProfiler, FrameRecord, FrameCounters, FramePhase, frameProfiler, noCounters,
+	invalidated, inputBegin, drawBegin, commit, present,
 } from "./profiler";
 
 const NO_RECORD: FrameRecord = {
@@ -25,6 +29,7 @@ const NO_RECORD: FrameRecord = {
 
 export const frameStats: FrameProfiler = frameProfiler();
 let lastRecord: FrameRecord = NO_RECORD;
+let lastCounters: FrameCounters = noCounters();
 let lastSerial: int32 = 0;
 let commitsWithoutFrame: int32 = 0;
 let agreed: boolean = false;
@@ -49,8 +54,25 @@ export function profilerSetup(): void {
 export function profilerNow(): int64 { return voidClockNow(); }
 
 export function lastFrameRecord(): FrameRecord { return lastRecord; }
+export function lastFrameCounters(): FrameCounters { return lastCounters; }
 export function frameCommitsWithoutFrame(): int32 { return commitsWithoutFrame; }
 export function frameMarksLost(): int32 { return voidProfileLost(); }
+
+function readCounters(): FrameCounters {
+	return {
+		void2dDraws: voidProfileCounter(VOID_COUNTER_DRAWS),
+		uiInstances: voidProfileCounter(VOID_COUNTER_UI_INSTANCES),
+		spriteInstances: voidProfileCounter(VOID_COUNTER_SPRITE_INSTANCES),
+		uploadBytes: voidProfileCounter(VOID_COUNTER_UPLOAD_BYTES),
+		uploads: voidProfileCounter(VOID_COUNTER_UPLOADS),
+		sokolMeasured: voidProfileCounter(VOID_COUNTER_SOKOL_MEASURED) != 0,
+		sokolDraws: voidProfileCounter(VOID_COUNTER_SOKOL_DRAWS),
+		sokolPipelines: voidProfileCounter(VOID_COUNTER_SOKOL_PIPELINES),
+		sokolPasses: voidProfileCounter(VOID_COUNTER_SOKOL_PASSES),
+		sokolBufferBytes: voidProfileCounter(VOID_COUNTER_SOKOL_BUFFER_BYTES),
+		sokolImageBytes: voidProfileCounter(VOID_COUNTER_SOKOL_IMAGE_BYTES),
+	};
+}
 
 export function profilerCollect(): boolean {
 	const state: int32 = voidProfileState();
@@ -81,6 +103,7 @@ export function profilerCollect(): boolean {
 		presentEnd = voidProfileMark(VOID_MARK_PRESENT_END);
 	}
 	lastRecord = frameStats.present(presentStart, presentEnd);
+	lastCounters = readCounters();
 	voidProfileConsume();
 	return true;
 }

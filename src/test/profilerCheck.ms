@@ -20,6 +20,9 @@ import {
 	present,
 	formatMs,
 	readoutLines,
+	FrameCounters,
+	noCounters,
+	counterLines,
 } from "../void2d/profiler";
 
 function ms(n: int64): int64 { return n * NS_PER_MS; }
@@ -249,4 +252,34 @@ test "a frame count past five digits saturates to LOTS" {
 	assert p.readoutLines(OverlayMode.Full)[4] == "FRAMES 99999";
 	p.frames = 100000;
 	assert p.readoutLines(OverlayMode.Full)[4] == "FRAMES  LOTS";
+}
+
+test "the counter lines say which numbers are void2d's and which are sokol's" {
+	const c: FrameCounters = {
+		...noCounters(),
+		void2dDraws: 1,
+		uiInstances: 48890,
+		spriteInstances: 12,
+		uploadBytes: 5280720,
+		uploads: 3,
+		sokolMeasured: true,
+		sokolDraws: 2,
+		sokolPipelines: 3,
+		sokolPasses: 2,
+		sokolBufferBytes: 5280720,
+		sokolImageBytes: 4096,
+	};
+	const lines = counterLines(c);
+	assert lines.length == 4;
+	assert lines[0] == "VOID2D DRAW 1 UI 48890 SPR 12";
+	assert lines[1] == "VOID2D UP 5280720 B IN 3";
+	assert lines[2] == "SOKOL DRAW 2 PIPE 3 PASS 2";
+	assert lines[3] == "SOKOL BUF 5280720 B IMG 4096 B";
+}
+
+test "a frame whose sokol stats were not read prints N/A, not zeros" {
+	const lines = counterLines(noCounters());
+	assert lines.length == 3;
+	assert lines[0] == "VOID2D DRAW 0 UI 0 SPR 0";
+	assert lines[2] == "SOKOL N/A";
 }
