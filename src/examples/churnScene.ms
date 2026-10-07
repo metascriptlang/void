@@ -175,7 +175,10 @@ function modelData(): GltfData {
 		meshes: [texturedBoxData(), boxData()],
 		meshMaterials: [0, DEFAULT_MATERIAL],
 		materials: [
-			{ texture: 0, doubleSided: true, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
+			{
+				texture: 0, doubleSided: true, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
+				emissiveTexture: -1, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
+			},
 		],
 		textures: [checker()],
 		nodes: [
@@ -205,6 +208,7 @@ function churnErrorOf(error: GltfSceneError): ChurnError {
 		GltfSceneError.BadMeshBinding => ChurnError.ModelRefused,
 		GltfSceneError.ForeignMeshBinding => ChurnError.ModelRefused,
 		GltfSceneError.BadSetup => ChurnError.ModelRefused,
+		GltfSceneError.UndeclaredProgram => ChurnError.ModelRefused,
 	};
 }
 

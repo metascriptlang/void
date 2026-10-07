@@ -72,6 +72,7 @@ const GLB_CHUNK_BIN: uint32 = 0x004E4942;
 const GLB_HEADER_LENGTH: int32 = 12;
 const GLB_CHUNK_HEADER_LENGTH: int32 = 8;
 const OPAQUE_TEXEL: uint32 = 0xFF000000;
+const WHITE_TEXEL: uint32 = 0xFFFFFFFF;
 
 export const DEFAULT_MATERIAL: int32 = -1;
 export const NO_TEXTURE_INDEX: int32 = -1;
@@ -145,12 +146,20 @@ export enum GltfAlphaMode {
 // glTF's alphaCutoff default.
 export const GLTF_DEFAULT_CUTOFF: float32 = 0.5;
 
-// `alphaKill` is `alphaCutoff` under MASK, 0 otherwise.
+// `alphaKill` is `alphaCutoff` under MASK, 0 otherwise. `emissiveTexture` names a texture exactly
+// when the material emits (a non-zero `emissive` and `emissiveStrength`); one with no emissive
+// map of its own names the loader's 1x1 white texture, as M37's emissive key requires a map. The
+// same white stands in for a base colour texture when an emitting or normal-mapped material has
+// none, so `texture` is a texture whenever either role is. `emissive` is glTF's linear
+// `emissiveFactor`; `emissiveStrength` is KHR_materials_emissive_strength's, default 1.
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
 	alphaMode: GltfAlphaMode;
 	alphaKill: float32;
+	emissiveTexture: int32;
+	emissive: Vec3;
+	emissiveStrength: float32;
 }
 
 export struct GltfData {
@@ -162,9 +171,13 @@ export struct GltfData {
 	sceneRoots: Vec<int32>;
 }
 
+// `realUvs`: some role names an image, so its primitives need their TEXCOORD_0; a material that
+// only emits through the white texture reads no UV.
 struct MaterialRead {
 	material: GltfMaterial;
 	factor: Rgba;
+	realUvs: boolean;
+	emits: boolean;
 }
 
 struct ImageView {
@@ -182,8 +195,12 @@ const DEFAULT_READ: MaterialRead = {
 	material: {
 		texture: NO_TEXTURE_INDEX, doubleSided: false,
 		alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
+		emissiveTexture: NO_TEXTURE_INDEX, emissive: { x: 0.0, y: 0.0, z: 0.0 },
+		emissiveStrength: 1.0,
 	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
+	realUvs: false,
+	emits: false,
 };
 
 
@@ -376,7 +393,7 @@ function loadMesh(
 	}
 	const textured: boolean = read.material.texture != NO_TEXTURE_INDEX;
 	let uvView: AccessorView = { offset: 0, count: 0 };
-	if (textured) {
+	if (read.realUvs) {
 		if (isNull(fieldOf(attributes, "TEXCOORD_0"))) {
 			return Result.err(GltfError.MissingTexCoord);
 		}
@@ -402,7 +419,7 @@ function loadMesh(
 		if (!isFiniteVec3(position) || !isFiniteVec3(normal) || !isFiniteVec3(rgb)) {
 			return Result.err(GltfError.OutOfRange);
 		}
-		const uv: Uv = textured ? uvAt(buffer, uvView.offset, i) : { u: 0.0, v: 0.0 };
+		const uv: Uv = read.realUvs ? uvAt(buffer, uvView.offset, i) : { u: 0.0, v: 0.0 };
 		if (uv.u - uv.u != 0.0 || uv.v - uv.v != 0.0) {
 			return Result.err(GltfError.OutOfRange);
 		}
@@ -693,7 +710,7 @@ function keepsAlpha(
 	let opaque: boolean = false;
 	let translucent: boolean = false;
 	for (const material of materials) {
-		if (material.texture != texture) { continue; }
+		if (material.texture != texture && material.emissiveTexture != texture) { continue; }
 		if (material.alphaMode == GltfAlphaMode.Opaque) {
 			opaque = true;
 		} else {
@@ -702,6 +719,12 @@ function keepsAlpha(
 	}
 	if (opaque && translucent) { return Result.err(GltfError.UnsupportedMaterial); }
 	return Result.ok(translucent);
+}
+
+function whiteTexture(): TextureData {
+	return {
+		pixels: [WHITE_TEXEL], width: 1, height: 1, filter: FilterMode.Linear, wrap: Wrap.Clamp,
+	};
 }
 
 function forceOpaque(texels: Span<uint32>): void {
@@ -716,26 +739,72 @@ function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
 	return Result.ok(value);
 }
 
+// A textureInfo: the index of a texture sampled at TEXCOORD_0. The renderer's textured layout
+// carries one UV set and no per-texture transform, so another set or KHR_texture_transform is
+// refused rather than sampled at the wrong place.
+function textureInfoIndex(info: JsonValue, textureCount: int32): Result<int32, GltfError> {
+	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (intField(info, "texCoord", 0) != 0 || !isNull(fieldOf(info, "extensions"))) {
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
+	const index: int32 = intField(info, "index", INVALID_INT);
+	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
+	return Result.ok(index);
+}
+
+// glTF 2.0 §3.9.2: emissiveFactor defaults to 0 and the emitted colour is factor times the map,
+// so a factor of 0 emits nothing whatever the map is (three.js GLTFLoader.js:3774-3784 sets the
+// same two terms). KHR_materials_emissive_strength scales it (GLTFLoader.js:878).
+function emissiveStrengthOf(material: JsonValue): Result<float32, GltfError> {
+	const extensions: JsonValue = fieldOf(material, "extensions");
+	const extension: JsonValue = fieldOf(extensions, "KHR_materials_emissive_strength");
+	const strength: JsonValue = fieldOf(extension, "emissiveStrength");
+	if (isNull(strength)) { return Result.ok(1.0); }
+	const value: float32 = try numberOf(strength);
+	if (value < 0.0) { return Result.err(GltfError.OutOfRange); }
+	return Result.ok(value);
+}
+
+function loadEmission(
+	material: JsonValue,
+	textureCount: int32,
+	ref read: MaterialRead,
+): Result<boolean, GltfError> {
+	let factor: Vec3 = vec3(0.0, 0.0, 0.0);
+	const field: JsonValue = fieldOf(material, "emissiveFactor");
+	if (!isNull(field)) {
+		if (field.kind != JsonKind.Array || countOf(field) != 3) {
+			return Result.err(GltfError.Unsupported);
+		}
+		const red: float32 = try unitNumberAt(field, 0);
+		const green: float32 = try unitNumberAt(field, 1);
+		const blue: float32 = try unitNumberAt(field, 2);
+		factor = vec3(red, green, blue);
+	}
+	const strength: float32 = try emissiveStrengthOf(material);
+	let index: int32 = NO_TEXTURE_INDEX;
+	const info: JsonValue = fieldOf(material, "emissiveTexture");
+	if (!isNull(info)) { index = try textureInfoIndex(info, textureCount); }
+	const lit: boolean = factor.x != 0.0 || factor.y != 0.0 || factor.z != 0.0;
+	if (!lit || strength == 0.0) { return Result.ok(false); }
+	read.material.emissive = factor;
+	read.material.emissiveStrength = strength;
+	read.material.emissiveTexture = index;
+	read.emits = true;
+	if (index != NO_TEXTURE_INDEX) { read.realUvs = true; }
+	return Result.ok(true);
+}
+
 function loadMaterial(material: JsonValue, textureCount: int32): Result<MaterialRead, GltfError> {
 	if (material === null || material.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
 	if (!isNull(fieldOf(material, "normalTexture"))
-		|| !isNull(fieldOf(material, "occlusionTexture"))
-		|| !isNull(fieldOf(material, "emissiveTexture"))) {
+		|| !isNull(fieldOf(material, "occlusionTexture"))) {
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
-	const emissive: JsonValue = fieldOf(material, "emissiveFactor");
-	if (!isNull(emissive)) {
-		if (emissive.kind != JsonKind.Array || countOf(emissive) != 3) {
-			return Result.err(GltfError.Unsupported);
-		}
-		for (let i = 0; i < 3; i++) {
-			const channel: float32 = try unitNumberAt(emissive, i);
-			if (channel != 0.0) { return Result.err(GltfError.UnsupportedMaterial); }
-		}
-	}
 	let read: MaterialRead = DEFAULT_READ;
+	const _emits: boolean = try loadEmission(material, textureCount, read);
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
 	if (!isNull(alphaMode)) {
 		if (alphaMode.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
@@ -774,13 +843,8 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 	}
 	const info: JsonValue = fieldOf(pbr, "baseColorTexture");
 	if (isNull(info)) { return Result.ok(read); }
-	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
-	if (intField(info, "texCoord", 0) != 0 || !isNull(fieldOf(info, "extensions"))) {
-		return Result.err(GltfError.UnsupportedMaterial);
-	}
-	const index: int32 = intField(info, "index", INVALID_INT);
-	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
-	read.material.texture = index;
+	read.material.texture = try textureInfoIndex(info, textureCount);
+	read.realUvs = true;
 	return Result.ok(read);
 }
 
@@ -897,6 +961,20 @@ function decodeGltf(
 	}
 	for (let i = 0; i < textureCount; i++) {
 		if (!(try keepsAlpha(data.materials, i))) { forceOpaque(data.textures[i].pixels); }
+	}
+	let white: int32 = NO_TEXTURE_INDEX;
+	for (let i = 0; i < materialCount; i++) {
+		const wantsEmissive: boolean =
+			reads[i].emits && reads[i].material.emissiveTexture == NO_TEXTURE_INDEX;
+		const wantsBase: boolean = reads[i].emits && reads[i].material.texture == NO_TEXTURE_INDEX;
+		if (!wantsEmissive && !wantsBase) { continue; }
+		if (white == NO_TEXTURE_INDEX) {
+			white = data.textures.length as int32;
+			data.textures.push(whiteTexture());
+		}
+		if (wantsEmissive) { data.materials[i].emissiveTexture = white; }
+		if (wantsBase) { data.materials[i].texture = white; }
+		reads[i].material = data.materials[i];
 	}
 	let runs: Vec<PrimitiveRun> = [];
 	for (let i = 0; i < meshCount; i++) {

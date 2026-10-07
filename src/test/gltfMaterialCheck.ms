@@ -1,5 +1,5 @@
 import { FilterMode, Wrap, RenderState, Face } from "../gpu/state";
-import { linearToSrgb } from "../math/math3d";
+import { linearToSrgb, vec3 } from "../math/math3d";
 import {
 	loadGltf,
 	loadGlb,
@@ -15,6 +15,8 @@ import {
 	GltfAssets,
 	GltfMaterialSetup,
 	GltfSceneError,
+	gltfProgramOf,
+	gltfBlockOf,
 } from "../void3d/gltfScene";
 import { DrawContext, reserveUniforms } from "../void3d/draw";
 import {
@@ -24,6 +26,10 @@ import {
 	MATERIAL_DOUBLE_SIDED,
 	MATERIAL_ALPHA_KILL,
 	ProgramKey,
+	Preset,
+	EMISSIVE_LENGTH,
+	drawnIn,
+	declares,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, stride, vertexCount } from "../void3d/meshData";
@@ -348,8 +354,6 @@ test "a material this renderer cannot draw is refused by name" {
 	for (const material of [
 		"{\"normalTexture\":{\"index\":0}}",
 		"{\"occlusionTexture\":{\"index\":0}}",
-		"{\"emissiveTexture\":{\"index\":0}}",
-		"{\"emissiveFactor\":[0.1,0.0,0.0]}",
 		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,\"texCoord\":1}}}",
 		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
 			+ "\"extensions\":{\"KHR_texture_transform\":{\"scale\":[2.0,2.0]}}}}}",
@@ -435,6 +439,18 @@ function setupOf(values: Readonly<Span<float32>>): GltfMaterialSetup {
 	return { pass: RenderState.defaults(), block: block };
 }
 
+function sourceOf(
+	texture: int32,
+	doubleSided: boolean,
+	alphaMode: GltfAlphaMode,
+	alphaKill: float32,
+): GltfMaterial {
+	return {
+		texture: texture, doubleSided: doubleSided, alphaMode: alphaMode, alphaKill: alphaKill,
+		emissiveTexture: -1, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
+	};
+}
+
 function materialsOnly(materials: Readonly<Span<GltfMaterial>>): GltfData {
 	let list: Vec<GltfMaterial> = [];
 	for (const material of materials) { list.push(material); }
@@ -450,15 +466,15 @@ function materialsOnly(materials: Readonly<Span<GltfMaterial>>): GltfData {
 
 function twoMaterials(): GltfData {
 	return materialsOnly([
-		{ texture: -1, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
-		{ texture: -1, doubleSided: true, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
+		sourceOf(-1, false, GltfAlphaMode.Opaque, 0.0),
+		sourceOf(-1, true, GltfAlphaMode.Opaque, 0.0),
 	]);
 }
 
 function kinds(): GltfData {
 	return materialsOnly([
-		{ texture: -1, doubleSided: false, alphaMode: GltfAlphaMode.Mask, alphaKill: 0.25 },
-		{ texture: -1, doubleSided: true, alphaMode: GltfAlphaMode.Blend, alphaKill: 0.0 },
+		sourceOf(-1, false, GltfAlphaMode.Mask, 0.25),
+		sourceOf(-1, true, GltfAlphaMode.Blend, 0.0),
 	]);
 }
 
@@ -477,12 +493,12 @@ test "addGltfAssets refuses a setup or data it cannot use before it makes anythi
 	assert !killing.ok;
 	if (!killing.ok) { assert killing.error == GltfSceneError.BadSetup; }
 	let texturedWithoutUvs: GltfData = materialsOnly([
-		{ texture: 0, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
+		sourceOf(0, false, GltfAlphaMode.Opaque, 0.0),
 	]);
 	texturedWithoutUvs.meshes.push(MeshData.empty());
 	texturedWithoutUvs.meshMaterials.push(0);
 	let farTexture: GltfData = materialsOnly([
-		{ texture: 3, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0 },
+		sourceOf(3, false, GltfAlphaMode.Opaque, 0.0),
 	]);
 	let unmatched: GltfData = twoMaterials();
 	unmatched.meshes.push(MeshData.empty());
@@ -550,4 +566,131 @@ test "a full uniform pool is named and gives back the materials already made" {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	assert reserved.ok;
+}
+
+const WITHOUT_UVS: string = "\"POSITION\":0,\"NORMAL\":1,\"COLOR_0\":3";
+const WHITE: uint32 = 0xFFFFFFFF;
+
+function emitting(factor: string, extra: string = "", base: string = ""): string {
+	return "{\"emissiveFactor\":" + factor + extra + base + "}";
+}
+
+const TEXTURED_BASE: string =
+	",\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}";
+const EMISSIVE_MAP: string = ",\"emissiveTexture\":{\"index\":0}";
+const STRENGTH_THREE: string =
+	",\"extensions\":{\"KHR_materials_emissive_strength\":{\"emissiveStrength\":3.0}}";
+
+test "an emissive factor with no map takes a 1x1 white map and the textured layout" {
+	const read = loaded({
+		...texturedParts(), materials: emitting("[1.0,0.25,0.0]", STRENGTH_THREE, TEXTURED_BASE),
+	});
+	assert read.ok;
+	if (!read.ok) { return; }
+	const data: GltfData = read.value;
+	assert (data.textures.length as int32) == 2;
+	assert data.textures[1].width == 1 && data.textures[1].height == 1;
+	assert data.textures[1].pixels[0] == WHITE;
+	const material: GltfMaterial = data.materials[0];
+	assert material.texture == 0 && material.emissiveTexture == 1;
+	assert material.emissive.x == 1.0 && material.emissive.y == 0.25 && material.emissive.z == 0.0;
+	assert material.emissiveStrength == 3.0;
+	const bare = loaded({
+		...texturedParts(), attributes: WITHOUT_UVS, materials: emitting("[0.0,1.0,0.0]"),
+	});
+	assert bare.ok;
+	if (!bare.ok) { return; }
+	assert bare.value.materials[0].texture == 1 && bare.value.materials[0].emissiveTexture == 1;
+	assert bare.value.materials[0].emissiveStrength == 1.0;
+	assert bare.value.meshes[0].hasUvs && bare.value.meshes[0].vertices[6] == 0.0;
+	assert bare.value.meshes[0].vertices[7] == 0.0;
+}
+
+test "an emissive map is the glTF texture it names, read at TEXCOORD_0" {
+	const read = loaded({
+		...texturedParts(), materials: emitting("[1.0,1.0,1.0]", EMISSIVE_MAP + STRENGTH_THREE),
+	});
+	assert read.ok;
+	if (!read.ok) { return; }
+	const material: GltfMaterial = read.value.materials[0];
+	assert material.emissiveTexture == 0 && material.texture == 1;
+	assert material.emissiveStrength == 3.0;
+	assert read.value.meshes[0].hasUvs && read.value.meshes[0].vertices[7] == 1.0;
+	assert read.value.textures[0].pixels[3] == YELLOW;
+	const uvless = loaded({
+		...texturedParts(), attributes: WITHOUT_UVS,
+		materials: emitting("[1.0,1.0,1.0]", EMISSIVE_MAP),
+	});
+	assert !uvless.ok;
+	if (!uvless.ok) { assert uvless.error == GltfError.MissingTexCoord; }
+}
+
+test "a material that emits nothing keeps no emissive map and stays untextured" {
+	for (const material of [
+		"{\"emissiveFactor\":[0.0,0.0,0.0]" + EMISSIVE_MAP + "}",
+		"{\"emissiveTexture\":{\"index\":0}}",
+		emitting("[1.0,1.0,1.0]", EMISSIVE_MAP + ",\"extensions\":"
+			+ "{\"KHR_materials_emissive_strength\":{\"emissiveStrength\":0.0}}"),
+	]) {
+		const read = loaded({ ...texturedParts(), materials: material });
+		assert read.ok;
+		if (!read.ok) { continue; }
+		assert read.value.materials[0].emissiveTexture == -1;
+		assert read.value.materials[0].texture == -1;
+		assert !read.value.meshes[0].hasUvs && (read.value.textures.length as int32) == 1;
+	}
+}
+
+test "an emissive material the file spells wrongly is refused by name" {
+	const parts: Parts = texturedParts();
+	assert refusedAs({ ...parts, materials: emitting("[2.0,0.0,0.0]") }, GltfError.OutOfRange);
+	assert refusedAs({ ...parts, materials: emitting("[1.0,0.0]") }, GltfError.Unsupported);
+	assert refusedAs({ ...parts, materials: emitting("[1.0,0.0,0.0]", ",\"emissiveTexture\":"
+		+ "{\"index\":0,\"texCoord\":1}") }, GltfError.UnsupportedMaterial);
+	assert refusedAs({ ...parts, materials: emitting("[1.0,0.0,0.0]", ",\"emissiveTexture\":"
+		+ "{\"index\":4}") }, GltfError.BadReference);
+	const negative = ",\"extensions\":"
+		+ "{\"KHR_materials_emissive_strength\":{\"emissiveStrength\":-1.0}}";
+	assert refusedAs({ ...parts, materials: emitting("[1.0,0.0,0.0]", negative) },
+		GltfError.OutOfRange);
+}
+
+function emittingData(material: string): GltfData {
+	const read = loaded({ ...texturedParts(), materials: material });
+	if (!read.ok) { unreachable; }
+	return read.value;
+}
+
+test "an emitting material is M37's emissive key, with its block floats after the setup's" {
+	const data: GltfData = emittingData(
+		emitting("[1.0,0.25,0.0]", STRENGTH_THREE, TEXTURED_BASE),
+	);
+	const key: ProgramKey = gltfProgramOf(data.materials[0]);
+	assert key == ProgramKey.of(Program.LitTextured).withShadowed().withEmissive();
+	const block: Vec<float32> = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), data.materials[0], key);
+	assert (block.length as int32) == MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
+	assert block[0] == 3.0 && block[1] == -1.0 && block[2] == 0.0 && block[3] == 0.0;
+	assert block[4] == linearToSrgb(1.0) && block[5] == linearToSrgb(0.25);
+	assert block[6] == 0.0 && block[7] == 3.0;
+	assert drawnIn(key, Preset.PixelArt, true).ok && drawnIn(key, Preset.Core, false).ok;
+	const plain: GltfData = emittingData("{}");
+	assert gltfProgramOf(plain.materials[0]) == ProgramKey.of(Program.Lit).withShadowed();
+	assert (gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), plain.materials[0],
+		gltfProgramOf(plain.materials[0])).length as int32) == MATERIAL_UNIFORM_LENGTH;
+}
+
+test "an emissive material under BLEND has a program, under MASK it is refused before any upload" {
+	const blended: GltfData = emittingData(
+		emitting("[1.0,1.0,1.0]", ",\"alphaMode\":\"BLEND\"", TEXTURED_BASE),
+	);
+	assert declares(gltfProgramOf(blended.materials[0]));
+	let context: DrawContext = DrawContext.withUniformCapacity(64);
+	const cut: GltfData = emittingData(
+		emitting("[1.0,1.0,1.0]", ",\"alphaMode\":\"MASK\"", TEXTURED_BASE),
+	);
+	const refused: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, cut, setupOf([3.0, -1.0, 0.0, 0.0]));
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == GltfSceneError.UndeclaredProgram; }
+	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
 }
