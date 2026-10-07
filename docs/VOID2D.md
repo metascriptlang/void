@@ -1674,7 +1674,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   for host-supplied fonts, the trust stb_truetype already gets, and a build that loads
   user-uploaded fonts is the case to watch.
 
-  **The full oracle, 2026-10-07** (`tests/oracle/shape.cases`, 75 rows, `docs/TESTING.md` "T3"):
+  **The full oracle, 2026-10-07** (`tests/oracle/shape.rows`, 75 rows, `docs/TESTING.md` "T3"):
   against HarfBuzz 14.5.0 the bridge agrees on every field in 55 rows and on glyph count, ids,
   advances, offsets and run direction in 72. The one real difference is `o` U+0302 U+0323 in
   Inter (HarfBuzz composes, kb keeps a base and a placed mark). Three rows added after review differ by design, not by defect: an explicit `ltr` on Arabic and
@@ -1856,7 +1856,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (2.82 against 3.25 pixels of coverage for a 2 wide dot). Known gaps: a lone `M x y z` is
   dropped by nanosvg before any path exists, so the module cannot see it; a disk of radius 0.5
   stroked 2 wide (a Tabler skateboard wheel) draws a hole resvg does not.
-  **Oracle, 2026-10-07 (V2):** `tests/oracle/svg.cases` (38 rows over 29 icons written for it),
+  **Oracle, 2026-10-07 (V2):** `tests/oracle/svg.rows` (38 rows over 29 icons written for it),
   `python tests/oracle/svg.py regen` (`resvg-py`) into `tests/oracle/svg.json`,
   `src/test/svgOracleCheck.ms`: 31 of 38 within a mean alpha error of 3.5 and a worst pixel of 70
   (of 255); the seven others are `svg:` rows in `tests/PENDING.md` by name (four refusals, group

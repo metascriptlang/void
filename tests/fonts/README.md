@@ -93,7 +93,7 @@ python tests/fonts/cascadiaSubset.py CascadiaCode.ttf    # rewrites cascadiaSubs
 
 `notoSansDevanagariSubset.ttf` (42,964 B), `notoSansThaiSubset.ttf` (18,092 B),
 `notoSansKhmerSubset.ttf` (10,728 B) and `notoSansArabicSubset.ttf` (10,452 B) are the complex-script
-faces of the full shaping oracle (`tests/oracle/shape.cases`): each is cut to the codepoints of its
+faces of the full shaping oracle (`tests/oracle/shape.rows`): each is cut to the codepoints of its
 sample words with every layout feature kept, from `ofl/notosans*/NotoSans*[wdth,wght].ttf` at
 google/fonts `5e8a3ba8` (SIL Open Font License 1.1, copyright The Noto Project Authors, no reserved
 font name; `NotoSans<Script>-OFL.txt`). Devanagari, Khmer and Arabic are pinned to `wght=400

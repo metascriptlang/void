@@ -150,7 +150,7 @@ Guardrail 9 is "same pixels on every platform", and today it is measured on two 
 count, glyph ids, advances, offsets or run direction, and a row `shape-cluster:<id>` as a listed
 difference in the cluster index, compared on its own whenever the glyph counts are equal and so
 also for a row listed under `shape:`, from `tests/oracle/shapeFull.json`
-([docs/TESTING.md](../docs/TESTING.md) "T3"). The rows are `tests/oracle/shape.cases`. A listed row
+([docs/TESTING.md](../docs/TESTING.md) "T3"). The rows are `tests/oracle/shape.rows`. A listed row
 that agrees fails the run; an unlisted row that differs fails it.
 
 | id | tier | reason | phase | date |
@@ -182,7 +182,7 @@ that agrees fails the run; an unlisted row that differs fails it.
 
 `src/test/svgOracleCheck.ms` reads a row `svg:<id>` here as a listed difference from resvg, a mean
 error past 3.5 or a worst pixel past 70 (of 255), or a refusal by name, from `tests/oracle/svg.json`
-([docs/TESTING.md](../docs/TESTING.md) "T3"). The rows are `tests/oracle/svg.cases`. A listed row
+([docs/TESTING.md](../docs/TESTING.md) "T3"). The rows are `tests/oracle/svg.rows`. A listed row
 that agrees fails the run; an unlisted row that differs fails it.
 
 | id | tier | reason | phase | date |

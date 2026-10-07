@@ -137,7 +137,7 @@ def shape(path, text):
     return {"path": path, "text": text, "unitsPerEm": face.upem, "glyphs": glyphs, "x": xs}
 
 
-SHAPE_CASES = "tests/oracle/shape.cases"
+SHAPE_CASES = "tests/oracle/shape.rows"
 DIRECTIONS = {"auto": 0, "ltr": 1, "rtl": 2}
 
 
@@ -298,7 +298,7 @@ if __name__ == "__main__":
     write("tests/oracle/shapeFull.json", {
         "generator": "python tests/oracle/fonts.py regen",
         "harfbuzz": hb.version_string(),
-        "features": "the font's defaults plus each row's overrides, from tests/oracle/shape.cases",
+        "features": "the font's defaults plus each row's overrides, from tests/oracle/shape.rows",
         "rows": [shapeFull(*row) for row in readCases(SHAPE_CASES)],
     })
     write("tests/oracle/coverage.json", {

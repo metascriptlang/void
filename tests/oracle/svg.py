@@ -5,7 +5,7 @@ import zlib
 
 import resvg_py
 
-CASES = "tests/oracle/svg.cases"
+CASES = "tests/oracle/svg.rows"
 SVG_DIR = "tests/oracle/svg/"
 OUTPUT = "tests/oracle/svg.json"
 

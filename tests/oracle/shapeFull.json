@@ -1,7 +1,7 @@
 {
  "generator": "python tests/oracle/fonts.py regen",
  "harfbuzz": "14.5.0",
- "features": "the font's defaults plus each row's overrides, from tests/oracle/shape.cases",
+ "features": "the font's defaults plus each row's overrides, from tests/oracle/shape.rows",
  "rows": [
   {
    "id": "fixture-liga",
