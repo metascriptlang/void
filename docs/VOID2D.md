@@ -1972,6 +1972,59 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `src/test/svgOracleCheck.ms`: 31 of 38 within a mean alpha error of 3.5 and a worst pixel of 70
   (of 255); the seven others are `svg:` rows in `tests/PENDING.md` by name (four refusals, group
   opacity, a gear, a dash edge). docs/TESTING.md "T3".
+  **Built 2026-10-08 (V3 to V6): the icon path.** `scene.icon(id, w, h, color)` is a
+  `DrawKind.Icon` node (the Underline and Selection kinds are its precedent) that draws a
+  registered SVG as a tinted R8 mask, GPUI's `paint_svg` (`window.rs:4809-4866`): the icon is
+  rasterized at twice the device pixels it covers, `2 * ceil(device)` per side
+  (`svg_renderer.rs:81`, `SMOOTH_SVG_SCALE_FACTOR`), and the quad covers `ceil(device)` so the
+  linear sampler averages 2x2 texels per pixel. `icon.ms` owns the registry
+  (`registerIcon(source)` answers an `IconId` or the module's `SvgMaskRefusal`; ids are not
+  reused; a build without `-d:voidSvg` stops by name at the first call,
+  `tests/aborts/iconOff.ms`) and each node's retained placement, which re-acquires its tile when
+  the raster size changes and gives it back when the node leaves the tree.
+  - **The Mask page kind is real.** `PageKind.Mask` is built under `VOID2D_SVG` (the
+    `svgMaskSwitch.ms` import, as `textSdfSwitch.ms` does for Sdf), an R8 page with its own
+    blit `void2dGlyphPageBlitMask` that stops by name on a page of another kind or a tile past
+    the page edge, and `glyphPageViewMode` answers 1.0 for it: the same shader path as a
+    coverage page, so the contrast and gamma of `textGamma.ms` apply, as GPUI's mono sprite
+    applies text's (`gpui_wgpu/src/shaders.wgsl:1247-1258`). A mask tile's key is the icon id in
+    the face field, the mask height in the glyph field and the width in the size field, so two
+    sizes are two tiles (`maskKey`); the kind lane keeps a mask and a glyph with the same
+    numbers apart. `GlyphAtlas.acquireMask(key, w, h, alpha)` blits after the caller rasterized;
+    `retainMask(key)` is the hit path, so a hit costs no rasterization.
+  - **Regime.** A uniform scale or a translation draws pixel-exact: the quad sits on whole
+    device pixels, centred in the box when the rounded-up size differs from the true one. Any
+    other transform rasterizes at the geometric mean of its axes, as labels do, and draws the quad
+    through the node's affine. Icons always sample with `Smooth.On` (a nearest sampler would
+    drop the 2x supersample); `Smooth.Off` on an icon node is not honoured. A mask larger than a
+    page, or an atlas with no room, draws nothing, is counted in `iconRefusals()`, reported once
+    per cause and retried the next frame as a refused label is.
+  - **Evidence.** T0 `src/test/iconCheck.ms` (11 tests: the registry, `maskSide`, a shared tile
+    costing no second rasterization, two sizes as two tiles, the zero gutter, reclaim, the
+    page-size refusal, key packing, the three atlas refusals), `src/test/iconOffCheck.ms` (the
+    module off), `src/test/nodeCheck.ms` (3), T1 snapshot `icon` and four tile-bookkeeping tests in
+    `tests/displayList/snapshot.ms`, aborts `iconUnregistered`, `iconNegativeSize` and `iconOff`;
+    each new test was shown red by a local mutation (floor for ceil, no retain, a blit one texel
+    wide, a nearest sampler, a skipped release, swapped width and height). T2 `icon/tinted` and
+    `icon/tintedDpi150` are in the table with counters from the recorded stream (3 draws, no
+    target) and **no PNG yet: the capture is owed**, as is the device-loss run with an icon in it
+    (`tests/integration/deviceLoss.ms`, now built with `-d:voidSvg` by the gate).
+  - **Weight, native, measured 2026-10-08** (`msc build src/examples/mainSokol2d.ms --release`,
+    D3D11 exe, bytes): 1,515,520 before the icon path; 1,525,248 after it without the flag
+    (+9,728, the node kind and the Mask page kind); 1,612,800 with `-d:voidSvg` (+87,552 more,
+    nanosvg and the allowlist). Wasm is not measurable here (the full web build cannot link
+    Yoga, `~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`);
+    the module-alone figure stays the V0 `emcc -Os -c` one above (64,507 B object). No shared
+    wasm budget gate exists in this tree, so none was added.
+  - **Spec corrections.** The spec asked a colour effect on an Icon to stop by name "like the
+    Label case"; a Label stops on no effect, the effect row applies to its Glyph instances, and
+    an Icon takes it the same way (`withEffect` runs after the Glyph coverage). The spec's
+    `registerIcon(bytes)` is a source string, and its `IconError` is `SvgMaskError`. The spec's
+    `displayList.ms` edit is not needed: the sampler is already a run key.
+  - **Mechanisms.** No NEW MECHANISM beyond those flagged in the spec and decided in the
+    review: the mask kind reuses the page-kind lane and the `Sdf` precedent of a kind-specific
+    key; `DrawKind.Icon` reuses the node-kind table and `emitGlyph`; the shader is untouched.
+    Reference: GPUI `AtlasKey` (`platform.rs:1382-1386`) for the key kind.
 - Procedural sprite glyphs — box drawing, blocks, braille, powerline — for a terminal widget.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
