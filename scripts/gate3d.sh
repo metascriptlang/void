@@ -983,7 +983,7 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
 	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms
-	tests/integration/mapMaterial.ms"
+	tests/integration/mapMaterial.ms tests/integration/billboardBlend.ms"
 
 run_style() {
 	long=$(
@@ -2066,6 +2066,40 @@ run_alpha_kill() {
 	pass "alpha-kill: cutout programs cut below the threshold in both presets, no depth written; the Opaque control draws"
 }
 
+run_billboard_blend() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "billboard-blend: GATE_SKIP_CAPTURE=1 — no blend was read back"
+		return
+	fi
+	exe="$WORK/billboardBlend.exe"
+	log="$WORK/billboardBlend"
+	if ! msc build tests/integration/billboardBlend.ms --output="$exe" > "$log.build.log" 2>&1; then
+		fail "billboard-blend: tests/integration/billboardBlend.ms does not build — see $log.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_BILLBOARD_BLEND_PIXEL_ART=$preset "$exe" > "$log.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "billboard-blend: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS billboard blend: ' "$log.$preset.log"; then
+			fail "billboard-blend: preset $preset (exit $status) — see $log.$preset.log"
+			return
+		fi
+	done
+	for preset in 0 1; do
+		status=0
+		VOID_BILLBOARD_BLEND_PIXEL_ART=$preset VOID_BILLBOARD_BLEND_CONTROL=1 "$exe" > "$log.control.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'did not blend over the backdrop' "$log.control.$preset.log"; then
+			fail "billboard-blend: the straight control in preset $preset blended (exit $status)"
+			return
+		fi
+	done
+	pass "billboard-blend: a premultiplied billboard blends over the backdrop in both presets; the straight control cuts"
+}
+
 run_sort_layer() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "sort-layer: GATE_SKIP_CAPTURE=1 — no layer order was read back"
@@ -2653,6 +2687,7 @@ run_unlit_textured
 run_target_texture
 run_mrt_blend
 run_alpha_kill
+run_billboard_blend
 run_sort_layer
 run_render_order
 run_dir_shadow

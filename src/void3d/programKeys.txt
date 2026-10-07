@@ -85,3 +85,6 @@ unlitTexturedDissolvePremultiplied            UNLIT_TEXTURED  CORE       DISSOLV
 litTexturedDissolvePremultiplied              LIT_TEXTURED    CORE       DISSOLVE:PREMULTIPLIED                        litTexturedVs    litTexturedFs          LIT_TEXTURED
 litTexturedDissolveEmissive                   LIT_TEXTURED    CORE       DISSOLVE:EMISSIVE                             litTexturedVs    litTexturedFs          LIT_TEXTURED
 litTexturedDissolveEmissiveShadowed           LIT_TEXTURED    CORE       DISSOLVE:EMISSIVE:SHADOWED                    litTexturedVs    litTexturedFs          LIT_TEXTURED
+
+billboardPremultiplied                  BILLBOARD       CORE      PREMULTIPLIED                                billboardVs     billboardFs           BILLBOARD
+pixelArtBillboardPremultiplied          BILLBOARD       PIXEL_ART PREMULTIPLIED                                billboardVs     billboardFs           BILLBOARD

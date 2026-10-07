@@ -189,7 +189,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 82;
+	assert declared == 84;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -506,6 +506,40 @@ test "a premultiplied program refuses any blend but ONE, ONE_MINUS_SRC_ALPHA" {
 		ProgramKey.of(Program.LitTextured).withPremultiplied(),
 		RenderState.defaults().withBlendMode(BlendMode.AlphaAdd),
 		Phase.Alpha,
+	));
+	assert kept.ok;
+}
+
+test "a premultiplied billboard keeps the billboard's blocks and samplers, in both presets" {
+	for (const preset of [Preset.Core, Preset.PixelArt]) {
+		const straight: ProgramKey = drawnAs(ProgramKey.of(Program.Billboard), preset);
+		const premultiplied: ProgramKey =
+			drawnAs(ProgramKey.of(Program.Billboard).withPremultiplied(), preset);
+		assert premultiplied.premultiplied && !premultiplied.cutout && !straight.premultiplied;
+		assert premultiplied.bits() != straight.bits();
+		assert vertexLayoutOf(premultiplied) == VertexLayout.Billboard;
+		assert textureSlotMask(premultiplied) == textureSlotMask(straight);
+		assert samplerSlotMask(premultiplied) == samplerSlotMask(straight);
+		for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
+			assert uniformBlockLength(premultiplied, slot) == uniformBlockLength(straight, slot);
+		}
+		assert uniformBlockLength(premultiplied, BILLBOARD_UNIFORM_SLOT) ==
+			BILLBOARD_UNIFORM_LENGTH;
+	}
+}
+
+test "a premultiplied billboard blends ONE, ONE_MINUS_SRC_ALPHA and only that" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const key: ProgramKey = ProgramKey.of(Program.Billboard).withPremultiplied();
+	for (const mode of [BlendMode.None, BlendMode.Alpha, BlendMode.Add]) {
+		const refused: Result<MaterialId, MaterialError> = addMaterial(
+			context,
+			Material.keyed(key, RenderState.defaults().withBlendMode(mode), Phase.Alpha),
+		);
+		assert !refused.ok && refused.error == MaterialError.StraightBlend;
+	}
+	const kept: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(
+		key, RenderState.defaults().withBlendMode(BlendMode.AlphaAdd), Phase.Alpha,
 	));
 	assert kept.ok;
 }

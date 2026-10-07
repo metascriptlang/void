@@ -98,7 +98,8 @@ function stopOnFeature(key: ProgramKey, feature: string): ProgramKey {
 }
 
 export function withPremultiplied(this key: ProgramKey): ProgramKey {
-	return { ...stopOnUntextured(key, "premultiplied"), premultiplied: true };
+	if (key.program != Program.Billboard) { stopOnUntextured(key, "premultiplied"); }
+	return { ...key, premultiplied: true };
 }
 
 export function withCutout(this key: ProgramKey): ProgramKey {

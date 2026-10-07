@@ -329,6 +329,9 @@ void main() {
 @include_block lightUniforms
 @include_block colorSpace
 @include_block toonPointLight
+#ifdef PREMULTIPLIED
+@include_block straightTexel
+#endif
 layout(binding=0) uniform texture2D billboardTexture;
 layout(binding=0) uniform sampler billboardSampler;
 in vec2 uv;
@@ -339,9 +342,15 @@ layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
     vec4 texel = texture(sampler2D(billboardTexture, billboardSampler), uv);
-    if (billboardColor.a * texel.a * instanceColor.a < 0.5) {
+#ifdef PREMULTIPLIED
+    texel = straightTexel(texel);
+#endif
+    float alpha = billboardColor.a * texel.a * instanceColor.a;
+#ifndef PREMULTIPLIED
+    if (alpha < 0.5) {
         discard;
     }
+#endif
     vec3 rgb = billboardColor.rgb * texel.rgb * instanceColor.rgb;
     if (billboard.y != 0.0) {
         vec3 lightPoint = rootPosition + vec3(0.0, billboard.z, 0.0);
@@ -351,7 +360,11 @@ void main() {
         }
         rgb = linearToSrgb(srgbToLinear(rgb) + points);
     }
+#ifdef PREMULTIPLIED
+    fragColor = vec4(rgb * alpha, alpha);
+#else
     fragColor = vec4(rgb, 0.0);
+#endif
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
 }
 @end
