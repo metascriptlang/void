@@ -2515,3 +2515,38 @@ Heaps `b9aa6dcb` (`h3d/pass/DirShadowMap.hx`, `Shadows.hx`, `DefaultShadowMap.hx
 
 See "M35 as built": `gate3d.sh` 318 PASS / 0 FAIL / 3 known skips, `gate.sh` 82/82 golden,
 BUILD `244ef48c`, D3D11 only.
+
+## M36 — material programs that move
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one SEND BACK.** A fresh design reviewer and a high
+defect pass read `cb398dd..61910b0`; the same reviewer re-read the fixes `61910b0..4ab06db`.
+
+### First pass: SEND BACK
+
+- **Fixed — gate:** the dissolve control's line in `gate3d.sh` ended in a literal `\r` from a
+  scripted edit, so the control never ran and the stage was red by construction.
+- **Fixed — time:** `time` was float32; at 1/60 s it drifts about 0.7% after an hour and stops
+  after about three days. It is float64 as Haxe's `Float`, narrowed only into the block.
+- **Fixed — textures:** the back and noise textures were raw views in `texture1`/`texture2`: not
+  rebuilt after a context loss, not pinned, not checked against the store or for alpha. They are
+  `TextureId` roles on the material now.
+- **Fixed — headless reds:** `rendererCheck.ms` still counted two scene globals; the pixel-art
+  preset's precheck missed the frame block, and its `reserve` turned the failure into
+  `NO_UNIFORMS` silently, so the test saw a renderer that should not exist. `reserve` stops by
+  name now.
+- **Fixed:** the dissolve discards before shading; `movingDefaults` gives an unlit colour of
+  white; `needsFrame` asks only while a drawn material scrolls; a non-identity affine is tested.
+- **Recorded, not changed:** UV in the fragment stage, the dissolve against `AlphaMap` and
+  `KillAlpha` (red channel, raw mesh UV, hard edge), the back texture on the base sampler, the
+  scroll contract with `markChanged` (all in "M36 as built").
+
+### Second pass: SHIP WITH FOLLOW-UPS
+
+- Wrapped shader time (Bevy's hour), not built until a consumer runs that long.
+- Two-feature, cutout and premultiplied moving keys are undeclared until a consumer needs them.
+- Time accumulation is asserted by readback, and the pin counts of a released moving material
+  are not asserted; both need live textures or a successful headless `beginFrame`.
+
+### Final acceptance
+
+Pending: both gates on the rebased tree. See "M36 as built".

@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-07):** M1–M35 are built and reviewed; M35 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-07):** M1–M36 are built and reviewed; M35 passed native acceptance below, M36 has partial native evidence and awaits its full gate run. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built", "M21 as built" and "M35a as built"; old `pass.ms`,
@@ -148,7 +148,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M34 | Heaps `h3d/mat/Pass.hx:51` (`layer`), `h3d/scene/Renderer.hx:114-125` (lists sort by layer before depth) | **A sort layer inside a phase.** An integer on the material orders items before back-to-front depth, stable within a layer | URG forces order on nearly every card and effect; **done**, see "M34 as built" |
 | M35a | Heaps `b9aa6dcb` `hxsl/Shader.hx:72-111` (`updateConstantsFinal`: constants select one variant), `h3d/shader/Texture.hx:11,26` (`killAlpha`); Bevy `157e1ce6` `bevy_pbr/src/render/mesh.rs:3093-3142` (`MeshPipelineKey`), `:3388` (`specialize`); the shady study (2026-10-06) | **A program key.** `gpu3d.ms` / `ProgramKey`, keyed materials and `programKeys.txt` replace hand-written twins and M14's `ProgramMap`. sokol-shdc compiles the declared set offline; `PipelineKey.program` stays a door id. **Done**, native gate 312 PASS / 0 FAIL; see "M35a as built" | M35 shadow receive, M36 dissolve, M37 normal and emission maps add a bit and declare keys, not a twin per program |
 | M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes); a new shader keeps the highp qualifiers sokol-shdc writes on every variable (its `precision mediump float` line is only SPIRV-Cross's default). Shadow receive is a key bit, after M35a. **Done**; see "M35 as built" | the one sun in URG; any outdoor or tabletop scene |
-| M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language | card surfaces, fire lines, beams, glows |
+| M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language. **Built and reviewed**, full gate pending; see "M36 as built" | card surfaces, fire lines, beams, glows |
 | M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs | 12 emissive and 3 normal-mapped materials |
 | M38 | Heaps `h3d/parts/Data.hx:3-26` (`Value` curves, `Shape`), `h3d/parts/Emitter.hx` | **Particle parity** on M11's emitter: sphere, box, ring and point shapes, scale/colour/alpha over life, gravity, damping, turbulence, view-depth order. No collision, no sub-emitters (URG uses neither) | torches, card effects |
 | M39 | glTF 2.0 spec (meshes with several primitives, `material.pbrMetallicRoughness.baseColorTexture`, `emissiveTexture`); M8/M23 as built | **Fuller glTF**: several primitives and materials per mesh, base colour and emissive textures. FBX stays an offline conversion | a two-surface prop; any exported model |
@@ -2364,6 +2364,88 @@ golden 82/82, 8 known skips (`src/gpu/door.c` is shared with void2d). Android ar
 GLES3 and web are NOT RUN: the GL row order and stored-depth mapping are reasoned from sokol's
 backends, not measured. The first gate run was red on two items the change made: the bindings
 abort still expected 9 words, and five lines over 100 columns.
+
+### M36 as built
+
+**Three key bits, not three programs.** M35a's key takes `uvTransform`, `backTexture` and
+`dissolve` (`gpu3d.ms`, bits 9–11, 4096 slots) on `LitTextured` and `UnlitTextured`; another
+program stops by name. Heaps adds a shader to the pass (`Pass.addShader`, `h3d/mat/Pass.hx:174`)
+and hxsl links it; sokol-shdc programs cannot link, so each bit is a `#ifdef` in the textured
+fragment stages of both presets and 26 declared keys: each feature alone and all three together,
+for both programs in both presets, the lit ones also shadowed, and the two dissolving casters
+(63 keys in all). Two features without the third, and any moving key that is also cut or
+premultiplied, are nameable and undeclared until a consumer needs them (M35a): `addMaterial`
+refuses them with `UndeclaredProgram`.
+
+**One block for whichever features a key has.** A moving key reads its program's block followed
+by 24 floats (`MOVING_*` in `gpu3d.ms`, `movingMaterialParams` and `movingUnlitMaterialParams`
+in `shader3dBlocks.glsl`), so a material still brings one block and `blockFits` is unchanged.
+`movingDefaults(key)` gives the block with both UV transforms the identity and an unlit key's
+colour white; the caller writes its values over it, as it writes the alpha-kill threshold.
+
+**UV transform: Bevy's shape, Heaps' scroll.** Heaps' `UVDelta` scales and offsets
+(`calculatedUV * uvScale + uvDelta`) and `UVScroll` adds `uvSpeed * global.time`. The matrix is
+Bevy's `StandardMaterial.uv_transform`, an `Affine2` (a 2×2 matrix by columns and a translation),
+which also rotates; the scroll is added after it. Heaps applies both in the vertex stage; here
+they run in the fragment stage, where the material block already is (a sokol uniform block
+belongs to one stage). The result is the same, since perspective-correct interpolation commutes
+with an affine map. A rotation over time is not built: a caller rewrites the matrix.
+
+**Frame time: Heaps' `RenderContext.time`.** The core owns a frame block (slot 6, a scene global
+beside the camera, light and shadow blocks). Each `beginFrame` adds `elapsedTime` to `time`, as
+`RenderContext.start` does, and writes it into the block; `setElapsedTime` is
+`Scene.setElapsedTime`. Both are float64 like Haxe's `Float` and narrowed to float32 only in the
+block: in float32 at 1/60 s a step rounds by about 0.7% after an hour and stops advancing after
+about three days. Void keeps no clock, so the elapsed time is 0 until the caller sets it.
+`needsFrame` asks for a frame while time passes and the last frame drew a material whose scroll is
+not zero; a scroll written later, as any block write, needs `markChanged`. Not built: Bevy wraps `globals.time` at an hour to keep the shader's `speed * time`
+precise; Heaps does not, and void3d follows Heaps until a consumer runs that long.
+
+**Back texture: Godot's `FRONT_FACING`.** Heaps has no texture chosen by facing, only
+`FlipBackFaceNormal`. A back face reads `backTexture` at view slot 1 through its own affine
+transform (no scroll), with the base texture's sampler, so the back texture's own filter and wrap are not used; Godot's card mirrors u for its back
+(`1.0 - uv.x`), which here is a matrix of -1 and an offset of 1. Both texels are read and one is
+kept: WGSL refuses a sample under non-uniform control flow, and `gl_FrontFacing` is not uniform.
+
+**Dissolve: Heaps' alpha map, Godot's edge.** Heaps' `AlphaMap` multiplies the alpha by a map's
+channel, and `KillAlpha` discards below a threshold. Here the noise's red channel, read on the
+mesh's own UV (`AlphaMap`'s `useSourceUVs`), is compared with the threshold directly, before
+shading, so a dissolved pixel costs no lighting, and the material's own alpha is left to its
+kind. Above the threshold, a band of the edge width takes the edge colour mixed by its alpha
+while the threshold is above 0, the guard Godot's card shader has; the colour is gamma-encoded
+and unlit, written after shading and before a cutout and the premultiply. The band is a hard
+step where Godot's card uses `smoothstep`. A caster keeps the dissolve (`castIn`), so the shadow
+loses what the colour loses; a cut that moves its UV is refused as not cast rather than cut at
+the wrong texel.
+
+**Back and noise textures are context textures.** `Material.backTexture` and
+`Material.dissolveTexture` are `TextureId`s beside `texture`, as Bevy's `StandardMaterial` names
+each map by handle. `addMaterial` checks each by role as it checked the base texture (sampled by
+the key, not also a raw view, live in the context, and for the back texture the key's alpha),
+pins it, and `releaseMaterial` lets it go (headless tests cover the refusals; the pin counts
+of a released moving material need live textures and are not asserted); `bindItem` binds each at its slot, so `rebuildTextures`
+brings them back after a context loss. `materialTextures` keeps three per material.
+
+**Acceptance, 2026-10-07 — partial; the full gates have not run on this tree.** Tree
+`4edbcccaee1993f113eec68ea5a63c68a4f43113` over void2d's `cb398dd`, Windows D3D11, BUILD
+`4757fd37`, `MSC_NO_GLOBAL_CACHE=1`:
+- `msc test src/test/index.ms`: 1211 / 1211.
+- `tests/integration/movingMaterial.ms` (stage `moving-material`), in both presets, six quads:
+  an affine map onto one texel, a scroll that swaps two texels at 1 s and back at 2 s with the
+  time 0.25 s a frame, a mirrored back texture on a quad facing away beside the front texture on
+  one facing the camera, an unlit dissolve with its edge band and a lit one without. The
+  featureless control fails on all six.
+- `tests/integration/dirShadow.ms` case `Dissolve` (stage `dir-shadow`), both presets: the ground
+  under the caster's dissolved half reads 0xFBFBFB, under its kept half 0x4C4C4C; the control
+  with the dissolve off shades both.
+- An earlier full run, on the first cut and with msc re-synced from `4730c198` to `4757fd37`
+  during it, held every capture byte-identical and golden 82/82; it does not count as this
+  tree's evidence.
+
+GLES3 and web are NOT RUN.
+
+The review sent the first cut back (`docs/REVIEWS-3D.md`): a gate line ending in a literal `\r`,
+time in float32, and the back and noise textures as raw views a context loss would not rebuild.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
