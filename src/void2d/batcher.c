@@ -520,7 +520,7 @@ uint32_t void2dGlyphPageView(int page) {
 		int size = void2dGlyphPageSize(page);
 		if (size <= 0) { return 0; }
 		int kind = void2dGlyphPageKind(page);
-		if (kind != VOID2D_PAGE_COVERAGE) {
+		if (kind != VOID2D_PAGE_COVERAGE && kind != VOID2D_PAGE_SDF) {
 			fprintf(stderr, "void2d: no image format for glyph page %d of kind %d\n", page, kind);
 			return 0;
 		}

@@ -1,3 +1,4 @@
+import "./textSdfSwitch";
 import {
 	void2dGlyphBox,
 	void2dGlyphRasterize,
@@ -22,6 +23,7 @@ export enum AtlasError {
 	Full,
 	KindNotBuilt,
 	VariantOutOfRange,
+	SdfCubicOutline,
 }
 
 export enum PageKind {
@@ -79,6 +81,7 @@ export interface GlyphAtlas {
 	freeTiles: Vec<int32>;
 	index: Map<uint64, int32>;
 	rasterizations: int32;
+	generations: int32;
 	reclaims: int32;
 	frame: int32;
 }
@@ -93,6 +96,7 @@ export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32)
 		freeTiles: new Array(0),
 		index: new Map<uint64, int32>(),
 		rasterizations: 0,
+		generations: 0,
 		reclaims: 0,
 		frame: 0,
 	};
@@ -297,7 +301,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 			atlas.pages[page as int32].handle as int32, x, y, width, height);
 	}
 	atlas.rasterizations = atlas.rasterizations + 1;
-	const record: GlyphTile = {
+	return Result.ok(atlas.record(packedKey, {
 		page: page,
 		x: x,
 		y: y,
@@ -307,14 +311,70 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 		top: top,
 		refs: 1,
 		key: packedKey,
-	};
+	}));
+}
+
+function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int32 {
 	let index: int32 = atlas.tiles.length as int32;
 	if ((atlas.freeTiles.length as int32) > 0) {
 		index = atlas.freeTiles.pop();
-		atlas.tiles[index] = record;
+		atlas.tiles[index] = tile;
 	} else {
-		atlas.tiles.push(record);
+		atlas.tiles.push(tile);
 	}
 	atlas.index.set(packedKey, index);
-	return Result.ok(index);
+	return index;
+}
+
+when (voidSdfText) {
+	import {
+		void2dGlyphSdfBox,
+		void2dGlyphSdfRasterize,
+	} from "./glyph.h";
+
+	export function sdfKey(face: int32, glyph: int32): GlyphKey {
+		return { kind: PageKind.Sdf, face: face, glyph: glyph, sizePx: 0.0, variant: 0 };
+	}
+
+	export function acquireSdf(
+		this atlas: GlyphAtlas,
+		face: int32,
+		glyph: int32,
+	): Result<int32, AtlasError> {
+		const packedKey: uint64 = sdfKey(face, glyph).packed();
+		const hit = atlas.index.get(packedKey);
+		if (hit.present) {
+			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
+			return Result.ok(hit.value);
+		}
+		const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
+		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
+		const left: int32 = box[0];
+		const top: int32 = box[1];
+		const width: int32 = box[2] - left;
+		const height: int32 = box[3] - top;
+		let page: GlyphPage = NO_GLYPH_PAGE;
+		let x: int32 = 0;
+		let y: int32 = 0;
+		if (width > 0 && height > 0) {
+			const placed = try allocate(atlas, PageKind.Sdf, width, height);
+			page = placed[0];
+			x = placed[1];
+			y = placed[2];
+			void2dGlyphSdfRasterize(face, glyph,
+				atlas.pages[page as int32].handle as int32, x, y, width, height);
+			atlas.generations = atlas.generations + 1;
+		}
+		return Result.ok(atlas.record(packedKey, {
+			page: page,
+			x: x,
+			y: y,
+			width: width > 0 ? width : 0,
+			height: height > 0 ? height : 0,
+			left: left,
+			top: top,
+			refs: 1,
+			key: packedKey,
+		}));
+	}
 }
