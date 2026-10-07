@@ -29,7 +29,9 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX);
 #define VOID2D_PAGE_MASK 3
 #define VOID2D_PAGE_KIND_COUNT 4
 
+int void2dGlyphPageKindBuilt(int kind);
 int void2dGlyphPageCreate(int size, int kind);
+int void2dGlyphPageBytes(int page);
 int void2dGlyphPageKind(int page);
 int void2dGlyphPageCount(void);
 int void2dGlyphPageSize(int page);
@@ -37,6 +39,13 @@ void void2dGlyphPageClear(int page);
 void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
                           int page, int x, int y, int w, int h);
 int void2dGlyphPageTexel(int page, int x, int y);
+unsigned int void2dGlyphPageTexelRgba(int page, int x, int y);
+#define VOID2D_BLIT_OK 0
+#define VOID2D_BLIT_BAD_HANDLE 1
+#define VOID2D_BLIT_WRONG_PAGE_KIND 2
+#define VOID2D_BLIT_OUTSIDE_PAGE 3
+int void2dGlyphPageBlitRgba(int page, int x, int y, int w, int h,
+                            const unsigned int *texels, int stride);
 const unsigned char *void2dGlyphPageData(int page);
 int void2dGlyphPageUploaded(int page);
 int void2dGlyphPageTakeUpload(int page);

@@ -625,7 +625,18 @@ static int pageKindBuilt(int kind) {
 #ifdef VOID2D_SDF_TEXT
 	if (kind == VOID2D_PAGE_SDF) { return 1; }
 #endif
+#ifdef VOID2D_COLOUR_EMOJI
+	if (kind == VOID2D_PAGE_RGBA) { return 1; }
+#endif
 	return kind == VOID2D_PAGE_COVERAGE;
+}
+
+int void2dGlyphPageKindBuilt(int kind) { return pageKindBuilt(kind); }
+
+static size_t texelBytes(int kind) { return kind == VOID2D_PAGE_RGBA ? 4 : 1; }
+
+static size_t pageByteCount(const GlyphPage *p) {
+	return (size_t)p->size * (size_t)p->size * texelBytes(p->kind);
 }
 
 int void2dGlyphPageCreate(int size, int kind) {
@@ -649,7 +660,7 @@ int void2dGlyphPageCreate(int size, int kind) {
 		s_pages = pages;
 		s_pageCapacity = grown;
 	}
-	unsigned char *texels = (unsigned char *)calloc((size_t)size * (size_t)size, 1);
+	unsigned char *texels = (unsigned char *)calloc((size_t)size * (size_t)size, texelBytes(kind));
 	if (!texels) {
 		fprintf(stderr, "void2d: no memory for a %dx%d glyph page\n", size, size);
 		return -1;
@@ -668,10 +679,13 @@ int void2dGlyphPageKind(int page) { return validPage(page) ? s_pages[page].kind 
 
 int void2dGlyphPageSize(int page) { return validPage(page) ? s_pages[page].size : 0; }
 
+int void2dGlyphPageBytes(int page) {
+	return validPage(page) ? (int)pageByteCount(&s_pages[page]) : 0;
+}
+
 void void2dGlyphPageClear(int page) {
 	if (!validPage(page)) { return; }
-	size_t size = (size_t)s_pages[page].size;
-	memset(s_pages[page].texels, 0, size * size);
+	memset(s_pages[page].texels, 0, pageByteCount(&s_pages[page]));
 	s_pages[page].dirty = 1;
 }
 
@@ -679,6 +693,10 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
                           int page, int x, int y, int w, int h) {
 	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) { return; }
 	GlyphPage *p = &s_pages[page];
+	if (p->kind == VOID2D_PAGE_RGBA || p->kind == VOID2D_PAGE_MASK) {
+		fprintf(stderr, "void2d: a coverage tile was aimed at a %s page\n", pageKindName(p->kind));
+		return;
+	}
 	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
 		fprintf(stderr, "void2d: glyph tile %dx%d at (%d,%d) falls outside its %d page\n",
 			w, h, x, y, p->size);
@@ -710,7 +728,47 @@ int void2dGlyphPageTexel(int page, int x, int y) {
 	if (!validPage(page)) { return -1; }
 	GlyphPage *p = &s_pages[page];
 	if (x < 0 || y < 0 || x >= p->size || y >= p->size) { return -1; }
+	if (p->kind == VOID2D_PAGE_RGBA) {
+		fprintf(stderr, "void2d: page %d is Rgba, its texels are read with PageTexelRgba\n", page);
+		return -1;
+	}
 	return p->texels[(size_t)y * (size_t)p->size + (size_t)x];
+}
+
+unsigned int void2dGlyphPageTexelRgba(int page, int x, int y) {
+	if (!validPage(page)) { return 0; }
+	GlyphPage *p = &s_pages[page];
+	if (p->kind != VOID2D_PAGE_RGBA) {
+		fprintf(stderr, "void2d: page %d is %s, not Rgba\n", page, pageKindName(p->kind));
+		return 0;
+	}
+	if (x < 0 || y < 0 || x >= p->size || y >= p->size) { return 0; }
+	const unsigned char *t = p->texels + ((size_t)y * (size_t)p->size + (size_t)x) * 4;
+	return (unsigned int)t[0] | ((unsigned int)t[1] << 8) | ((unsigned int)t[2] << 16)
+		| ((unsigned int)t[3] << 24);
+}
+
+int void2dGlyphPageBlitRgba(int page, int x, int y, int w, int h,
+                            const unsigned int *texels, int stride) {
+	if (!validPage(page) || !texels || w <= 0 || h <= 0 || stride < w) {
+		return VOID2D_BLIT_BAD_HANDLE;
+	}
+	GlyphPage *p = &s_pages[page];
+	if (p->kind != VOID2D_PAGE_RGBA) {
+		fprintf(stderr, "void2d: an Rgba tile was aimed at a %s page\n", pageKindName(p->kind));
+		return VOID2D_BLIT_WRONG_PAGE_KIND;
+	}
+	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
+		fprintf(stderr, "void2d: Rgba tile %dx%d at (%d,%d) falls outside its %d page\n",
+			w, h, x, y, p->size);
+		return VOID2D_BLIT_OUTSIDE_PAGE;
+	}
+	for (int row = 0; row < h; row++) {
+		memcpy(p->texels + ((size_t)(y + row) * (size_t)p->size + (size_t)x) * 4,
+			texels + (size_t)row * (size_t)stride, (size_t)w * 4);
+	}
+	p->dirty = 1;
+	return VOID2D_BLIT_OK;
 }
 
 const unsigned char *void2dGlyphPageData(int page) {

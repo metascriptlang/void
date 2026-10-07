@@ -70,6 +70,12 @@ when (voidProfiler) {
 
 import "./worldLabelCheck";
 
+
+when (voidColourEmoji) {
+	import "./glyphColourAtlasCheck";
+} else {
+	import "./glyphColourOffCheck";
+}
 when (voidSdfText) {
 	import "./textSdfCheck";
 	import "./glyphSdfCheck";

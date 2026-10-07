@@ -520,14 +520,14 @@ uint32_t void2dGlyphPageView(int page) {
 		int size = void2dGlyphPageSize(page);
 		if (size <= 0) { return 0; }
 		int kind = void2dGlyphPageKind(page);
-		if (kind != VOID2D_PAGE_COVERAGE && kind != VOID2D_PAGE_SDF) {
+		if (kind != VOID2D_PAGE_COVERAGE && kind != VOID2D_PAGE_SDF && kind != VOID2D_PAGE_RGBA) {
 			fprintf(stderr, "void2d: no image format for glyph page %d of kind %d\n", page, kind);
 			return 0;
 		}
 		sg_image_desc d = {0};
 		d.width = size;
 		d.height = size;
-		d.pixel_format = SG_PIXELFORMAT_R8;
+		d.pixel_format = kind == VOID2D_PAGE_RGBA ? SG_PIXELFORMAT_RGBA8 : SG_PIXELFORMAT_R8;
 		d.usage.dynamic_update = true;
 		s_pageImg[page] = sg_make_image(&d);
 		s_pageView[page] = (sg_view){ .id = voidMakeView(s_pageImg[page].id) };
@@ -791,13 +791,13 @@ static void uploadGlyphPages(void) {
 	int count = void2dGlyphPageCount();
 	for (int page = 0; page < count && page < VOID2D_MAX_GLYPH_PAGES; page++) {
 		if (s_pageImg[page].id == 0 || !void2dGlyphPageTakeUpload(page)) { continue; }
-		int size = void2dGlyphPageSize(page);
+		int bytes = void2dGlyphPageBytes(page);
 		sg_image_data id = {0};
 		id.mip_levels[0].ptr = void2dGlyphPageData(page);
-		id.mip_levels[0].size = (size_t)size * (size_t)size;
+		id.mip_levels[0].size = (size_t)bytes;
 		sg_update_image(s_pageImg[page], &id);
 		s_glyphUploads++;
-		s_glyphUploadBytes += size * size;
+		s_glyphUploadBytes += bytes;
 	}
 }
 

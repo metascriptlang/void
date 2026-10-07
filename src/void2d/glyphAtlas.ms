@@ -1,8 +1,11 @@
 import "./textSdfSwitch";
+import "./textColourSwitch";
 import {
 	void2dGlyphBox,
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
+	void2dGlyphPageKindBuilt,
+	void2dGlyphPageBytes,
 	void2dGlyphPageClear,
 	void2dGlyphPageUploaded,
 	void2dGlyphPageTakeUpload,
@@ -188,7 +191,11 @@ export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 }
 
 export function residentBytes(this atlas: GlyphAtlas): int32 {
-	return (atlas.pages.length as int32) * atlas.pageSize * atlas.pageSize;
+	let bytes: int32 = 0;
+	for (const page of atlas.pages) {
+		bytes = bytes + void2dGlyphPageBytes(page.handle as int32);
+	}
+	return bytes;
 }
 
 export function tile(this atlas: GlyphAtlas, index: int32): GlyphTile {
@@ -313,6 +320,52 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 		y = placed[2];
 		void2dGlyphRasterize(key.face, key.glyph, key.sizePx, shift,
 			atlas.pages[page as int32].handle as int32, x, y, width, height);
+	}
+	atlas.rasterizations = atlas.rasterizations + 1;
+	return Result.ok(atlas.record(packedKey, {
+		page: page,
+		x: x,
+		y: y,
+		width: width > 0 ? width : 0,
+		height: height > 0 ? height : 0,
+		left: left,
+		top: top,
+		refs: 1,
+		key: packedKey,
+	}));
+}
+
+export function cached(this atlas: GlyphAtlas, key: GlyphKey): boolean {
+	return atlas.index.get(key.packed()).present;
+}
+
+export function acquireBlank(
+	this atlas: GlyphAtlas,
+	key: GlyphKey,
+	width: int32,
+	height: int32,
+	left: int32,
+	top: int32,
+): Result<int32, AtlasError> {
+	if (key.kind != PageKind.Rgba) { return Result.err(AtlasError.KindNotBuilt); }
+	if (void2dGlyphPageKindBuilt(key.kind as int32) == 0) {
+		return Result.err(AtlasError.KindNotBuilt);
+	}
+	if (key.variant != 0) { return Result.err(AtlasError.VariantOutOfRange); }
+	const packedKey: uint64 = key.packed();
+	const hit = atlas.index.get(packedKey);
+	if (hit.present) {
+		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
+		return Result.ok(hit.value);
+	}
+	let page: GlyphPage = NO_GLYPH_PAGE;
+	let x: int32 = 0;
+	let y: int32 = 0;
+	if (width > 0 && height > 0) {
+		const placed = try allocate(atlas, key.kind, width, height);
+		page = placed[0];
+		x = placed[1];
+		y = placed[2];
 	}
 	atlas.rasterizations = atlas.rasterizations + 1;
 	return Result.ok(atlas.record(packedKey, {
