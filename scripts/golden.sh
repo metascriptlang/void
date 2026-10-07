@@ -6,6 +6,8 @@
 #   sh scripts/golden.sh --compare       compare what is already in out/golden/
 #   sh scripts/golden.sh --self-check    prove the verdict decision against known inputs
 #   sh scripts/golden.sh --update        capture, then copy out/golden -> tests/golden
+#   sh scripts/golden.sh --backend gl    the GL core 4.3 desktop build (glsl430), judged against
+#                                        the D3D11 goldens under the cross-backend bound
 #   sh scripts/golden.sh prim/ snap/x    only the rows whose name starts with one of these
 #
 # --update is never automatic. A golden changes only inside a commit that says why, and the
@@ -22,11 +24,17 @@ BACKEND_DIR=d3d11
 RUNNER=out/goldenRunner.exe
 COMPARE=out/goldenCompare.exe
 GOLDEN_DEFINES="${GOLDEN_DEFINES--d:voidSdfText -d:voidShaper -d:voidSvg -d:voidProfiler -d:voidColourEmoji}"
+BACKEND_FLAGS=""
 
 mode=all
 filters=""
-for arg in "$@"; do
+backend=d3d11
+while [ $# -gt 0 ]; do
+	arg="$1"
+	shift
 	case "$arg" in
+		--backend) backend="${1:-}"; [ $# -gt 0 ] && shift ;;
+		--backend=*) backend="${arg#--backend=}" ;;
 		--capture) mode=capture ;;
 		--self-check) mode=selfcheck ;;
 		--compare) mode=compare ;;
@@ -35,6 +43,21 @@ for arg in "$@"; do
 		*) filters="$filters $arg" ;;
 	esac
 done
+
+case "$backend" in
+	d3d11) ;;
+	gl)
+		BACKEND_DIR=gl430
+		RUNNER=out/goldenRunnerGl.exe
+		BACKEND_FLAGS="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+		;;
+	*) echo "golden.sh: --backend is d3d11 or gl, not '$backend'" >&2; exit 2 ;;
+esac
+# The D3D11 set is the one authored golden set; another backend is only judged against it.
+if [ "$mode" = update ] && [ "$backend" != d3d11 ]; then
+	echo "golden.sh: --update writes the D3D11 goldens only; --backend $backend is judged against them" >&2
+	exit 2
+fi
 
 # The object cache is keyed on the .c and not on the headers it includes, and --force does
 # not bypass it, so a changed capture.c or shader header would otherwise link stale objects
@@ -54,7 +77,7 @@ build() {
 	# regress/vertexCap panics on the sg_append_buffer overflow, and every filter row trips
 	# `!_sg.cur_pass.valid`. A golden records what the renderer draws; the validation layer
 	# is a separate check, and tests/PENDING.md carries what it says.
-	"$MSC" build $GOLDEN_DEFINES tests/golden/runner.ms --release --output="$RUNNER" >/dev/null
+	"$MSC" build $GOLDEN_DEFINES $BACKEND_FLAGS tests/golden/runner.ms --release --output="$RUNNER" >/dev/null
 	"$MSC" build tests/golden/compare.ms --output="$COMPARE" >/dev/null
 }
 
@@ -62,13 +85,14 @@ build() {
 # decision that is only ever exercised by real runs is a decision whose failure mode is a
 # wrong golden. `sh scripts/golden.sh --self-check` proves it against known inputs.
 verdictOk() {
+	# EXCLUDED is a row the table names as impossible on this backend (table.ms sceneExclusion).
 	# Every line has to be a CAPTURED, not just the first. `case "$1" in CAPTURED*)` read as
 	# if it tested that, but a verdict block is grep output over the whole scene log and a
 	# shell glob's `*` spans newlines - so `CAPTURED a` followed by `FAIL b` was counted as a
 	# capture, and `--update` would then take that scene's output as its golden.
 	[ -n "$1" ] || return 1
 	printf '%s
-' "$1" | grep -qvE '^CAPTURED' && return 1
+' "$1" | grep -qvE '^(CAPTURED|EXCLUDED)' && return 1
 	return 0
 }
 
@@ -93,6 +117,22 @@ selfCheck() {
 FAIL prim/rect the png writer refused"
 	check 1 "CAPTURED followed by SKIP is not a capture" "CAPTURED prim/rect 256x256
 SKIP the second grab was not taken"
+	check 0 "an EXCLUDED row is a named absence, not a failure" "EXCLUDED mixed/void3dTarget void3d has no glsl430"
+	check 1 "EXCLUDED followed by FAIL is not a capture" "EXCLUDED mixed/void3dTarget why
+FAIL mixed/void3dTarget it ran anyway"
+
+	refused() {  # refused <label> <golden.sh args>
+		label="$1"
+		shift
+		if sh "$0" "$@" > /dev/null 2>&1; then
+			echo "FAIL  switch: $label — golden.sh accepted it"
+			bad=$((bad + 1))
+		else
+			echo "PASS  switch: $label is refused"
+		fi
+	}
+	refused "--update on the GL backend" --backend gl --update
+	refused "an unknown backend" --backend zzz
 
 	# The scene table the capture loop reads. An empty one means the runner never listed a
 	# scene - it failed to start, or the build is broken - and a run that captures nothing
@@ -149,6 +189,8 @@ capture() {
 	index=0
 	failures=0
 	captured=0
+	excluded=0
+	renderer=""
 	while IFS="$(printf '\t')" read -r name phase width height dpi steps; do
 		if matches "$name"; then
 			mkdir -p "out/golden/$BACKEND_DIR/$(dirname "$name")"
@@ -157,7 +199,8 @@ capture() {
 			# make a run where every scene printed `SKIP this build has no readback path`
 			# report success and then let --update overwrite the goldens with nothing.
 			VOID_SCENE="$index" "$RUNNER" > out/golden/scene.log 2> out/golden/scene.err || true
-			verdict="$(grep -E '^(CAPTURED|FAIL|SKIP)' out/golden/scene.log || true)"
+			verdict="$(grep -E '^(CAPTURED|FAIL|SKIP|EXCLUDED)' out/golden/scene.log || true)"
+			[ -n "$renderer" ] || renderer="$(grep -m1 '^RENDERER' out/golden/scene.log | tr -d '\r' || true)"
 			if [ -n "$verdict" ]; then
 				echo "$verdict"
 			else
@@ -169,7 +212,9 @@ capture() {
 				# write nothing at all, and `--update` would keep the stale golden while the run
 				# reported success. The comment above is about the pipeline's exit status; this
 				# is about the artefact.
-				if [ ! -s "out/golden/$BACKEND_DIR/$name.png" ]; then
+				if [ "${verdict%% *}" = EXCLUDED ]; then
+					excluded=$((excluded + 1))
+				elif [ ! -s "out/golden/$BACKEND_DIR/$name.png" ]; then
 					echo "FAIL $name said CAPTURED and wrote no png"
 					failures=$((failures + 1))
 				fi
@@ -181,6 +226,7 @@ capture() {
 		index=$((index + 1))
 	done < out/golden/table.tsv
 	rm -f out/golden/scene.log out/golden/scene.err
+	[ -z "$renderer" ] || echo "$renderer"
 	# A filter naming no scene is a typo, not an empty job. Reporting success for it is the
 	# same defect as reporting success for an empty table, one layer up: measured before this
 	# check existed, `--capture zzz/nothing` exited 0 having printed nothing at all.
@@ -189,6 +235,15 @@ capture() {
 		return 1
 	fi
 	[ "$failures" -eq 0 ]
+}
+
+# D3D11 is judged for byte identity; any other backend's captures under the cross-backend bound.
+compare() {
+	if [ "$BACKEND_DIR" = d3d11 ]; then
+		"$COMPARE"
+	else
+		VOID_CONFORM="$BACKEND_DIR" "$COMPARE"
+	fi
 }
 
 case "$mode" in
@@ -205,11 +260,11 @@ case "$mode" in
 		capture || status=1
 		;;
 	compare)
-		"$COMPARE" || status=1
+		compare || status=1
 		;;
 	all)
 		capture || status=1
-		"$COMPARE" || status=1
+		compare || status=1
 		;;
 	update)
 		capture || status=1
