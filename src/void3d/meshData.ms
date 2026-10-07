@@ -66,6 +66,7 @@ export enum MeshError {
 	IndexOutOfRange,
 	UvMismatch,
 	TangentsAdded,
+	TangentCount,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -233,21 +234,39 @@ export function addTangents(ref data: MeshData): Result<int32, MeshError> {
 	for (let triangle = 0; triangle < triangles; triangle++) {
 		data.addTriangleTangent(sums, triangle);
 	}
+	let tangents: Vec<float32> = [];
+	for (let i = 0; i < count; i++) {
+		const base: int32 = i * LIT_TEXTURED_VERTEX_STRIDE;
+		const normal: Vec3 =
+			vec3(data.vertices[base + 3], data.vertices[base + 4], data.vertices[base + 5]);
+		const tangent: Vec3 = vec3(sums[i * 6], sums[i * 6 + 1], sums[i * 6 + 2]);
+		const bitangent: Vec3 = vec3(sums[i * 6 + 3], sums[i * 6 + 4], sums[i * 6 + 5]);
+		const along: Vec3 = orthogonalTangent(normal, tangent);
+		tangents.push(along.x);
+		tangents.push(along.y);
+		tangents.push(along.z);
+		tangents.push(normal.cross(along).dot(bitangent) > 0.0 ? -1.0 : 1.0);
+	}
+	return addGivenTangents(data, tangents);
+}
+
+// The same closing step with the tangents a file carries (glTF's TANGENT: xyz and w, four floats
+// per vertex, in vertex order) instead of the ones addTangents derives.
+export function addGivenTangents(
+	ref data: MeshData,
+	tangents: Readonly<Span<float32>>,
+): Result<int32, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	const count: int32 = data.vertexCount();
+	if ((tangents.length as int32) != count * 4) { return Result.err(MeshError.TangentCount); }
 	let vertices: Vec<float32> = [];
 	for (let i = 0; i < count; i++) {
 		const base: int32 = i * LIT_TEXTURED_VERTEX_STRIDE;
 		for (let k = 0; k < LIT_TEXTURED_VERTEX_STRIDE; k++) {
 			vertices.push(data.vertices[base + k]);
 		}
-		const normal: Vec3 =
-			vec3(data.vertices[base + 3], data.vertices[base + 4], data.vertices[base + 5]);
-		const tangent: Vec3 = vec3(sums[i * 6], sums[i * 6 + 1], sums[i * 6 + 2]);
-		const bitangent: Vec3 = vec3(sums[i * 6 + 3], sums[i * 6 + 4], sums[i * 6 + 5]);
-		const along: Vec3 = orthogonalTangent(normal, tangent);
-		vertices.push(along.x);
-		vertices.push(along.y);
-		vertices.push(along.z);
-		vertices.push(normal.cross(along).dot(bitangent) > 0.0 ? -1.0 : 1.0);
+		for (let k = 0; k < 4; k++) { vertices.push(tangents[i * 4 + k]); }
 	}
 	data.vertices = vertices;
 	data.hasTangents = true;

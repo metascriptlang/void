@@ -24,6 +24,7 @@ import {
 	addPlane,
 	recomputeBounds,
 	addTangents,
+	addGivenTangents,
 } from "../void3d/meshData";
 import { approx } from "./helpers";
 
@@ -484,3 +485,29 @@ test "bounds and picking read a mesh with tangents at its own stride" {
 	const hit = data.rayIntersection(toward, Face.Back);
 	assert approx(hit.distance, 4.5) && hit.uv !== null;
 }
+
+test "given tangents are interleaved after each vertex as they come, and counted" {
+	let data: MeshData = facingQuad(false);
+	const short: Result<int32, MeshError> = addGivenTangents(data, [1.0, 0.0, 0.0, 1.0]);
+	assert !short.ok && short.error == MeshError.TangentCount;
+	assert !data.hasTangents && data.stride() == LIT_TEXTURED_VERTEX_STRIDE;
+	let tangents: Vec<float32> = [];
+	for (let i = 0; i < 4; i++) {
+		tangents.push(1.0);
+		tangents.push(0.0);
+		tangents.push(0.0);
+		tangents.push(i == 2 ? -1.0 : 1.0);
+	}
+	const closed: Result<int32, MeshError> = addGivenTangents(data, tangents);
+	assert closed.ok && closed.value == 4;
+	assert data.hasTangents && data.stride() == LIT_TEXTURED_TANGENT_VERTEX_STRIDE;
+	assert data.vertexCount() == 4 && (data.vertices.length as int32) == 64;
+	assert data.vertices[12] == 1.0 && data.vertices[15] == 1.0 && data.vertices[28] == 1.0 && data.vertices[31] == 1.0;
+	assert data.vertices[32 + 15] == -1.0 && data.vertices[48 + 15] == 1.0;
+	const again: Result<int32, MeshError> = addGivenTangents(data, tangents);
+	assert !again.ok && again.error == MeshError.TangentsAdded;
+	let plain: MeshData = MeshData.empty();
+	const untextured: Result<int32, MeshError> = addGivenTangents(plain, []);
+	assert !untextured.ok && untextured.error == MeshError.UvMismatch;
+}
+
