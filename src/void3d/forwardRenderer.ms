@@ -45,6 +45,7 @@ import {
 	drawScreen,
 	closePrepare,
 	openScreen,
+	releasePrepared,
 	closeRenderer,
 	drawShadowPass,
 } from "./renderer";
@@ -228,6 +229,13 @@ export function drawToScreen(renderer: ForwardRenderer): void {
 	const copied: Result<int32, RendererError> =
 		drawScreen(renderer.core, renderer.copyMaterial, SWAPCHAIN_LAYOUT);
 	if (!copied.ok) { stopOnScreenDraw(copied.error); }
+}
+
+// Ends a prepared frame whose `colorTarget` the caller composites itself, in place of
+// drawToScreen; the next prepareFrame is then allowed.
+export function endPrepared(renderer: ForwardRenderer): void {
+	if (renderer.closed) { stopOnClosed("endPrepared"); }
+	releasePrepared(renderer.core);
 }
 
 export function renderFrame(

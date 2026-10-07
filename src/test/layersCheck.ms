@@ -55,7 +55,9 @@ import {
 	ForwardError,
 	FORWARD_UNIFORM_LENGTH,
 	closeForward,
+	endPrepared,
 } from "../void3d/forwardRenderer";
+import { openPrepare } from "../void3d/renderer";
 import { contextOf } from "./drawHelpers";
 
 test "a new mask is layer 0 alone, as three's Layers constructor sets it" {
@@ -279,6 +281,19 @@ test "a second forward preset on one context has its own blocks and a transparen
 		closeForward(second.value);
 		closeForward(first.value);
 	}
+}
+
+test "a prepared frame the caller composites itself is ended, and the next prepare is allowed" {
+	const context: DrawContext = DrawContext.withUniformCapacity(2 * FORWARD_UNIFORM_LENGTH);
+	const second: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, CLEAR);
+	assert second.ok;
+	if (!second.ok) { return; }
+	let overlay: ForwardRenderer = second.value;
+	overlay.core.prepared = true;
+	endPrepared(overlay);
+	assert !overlay.core.prepared;
+	overlay.core.openPrepare();
+	closeForward(overlay);
 }
 
 test "a pool sized for one forward preset refuses the second by name" {

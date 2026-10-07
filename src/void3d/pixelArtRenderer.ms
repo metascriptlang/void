@@ -81,6 +81,7 @@ import {
 	drawScreen,
 	closePrepare,
 	openScreen,
+	releasePrepared,
 	closeRenderer,
 	drawShadowPass,
 } from "./renderer";
@@ -713,6 +714,13 @@ export function drawToScreen(renderer: PixelArtRenderer): void {
 	if (renderer.closed) { stopOnClosed("drawToScreen"); }
 	openScreen(renderer.core);
 	drawBlit(renderer);
+}
+
+// Ends a prepared frame whose output target the caller composites itself, in place of
+// drawToScreen; the next prepareFrame is then allowed.
+export function endPrepared(renderer: PixelArtRenderer): void {
+	if (renderer.closed) { stopOnClosed("endPrepared"); }
+	releasePrepared(renderer.core);
 }
 
 export function renderFrame(

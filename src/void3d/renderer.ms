@@ -570,6 +570,17 @@ export function openScreen(renderer: Renderer): void {
 	renderer.prepared = false;
 }
 
+// The end of a prepared frame the caller composites itself: Scene.setOutputTarget has no screen
+// half (heaps h3d/scene/Scene.hx:586), so the target the prepare drew is the frame's whole product.
+export function releasePrepared(renderer: Renderer): void {
+	if (renderer.closed) { stopOnClosed("endPrepared"); }
+	if (!renderer.prepared) {
+		console.log("void3d: endPrepared with no prepared frame; call prepareFrame first");
+		unreachable;
+	}
+	renderer.prepared = false;
+}
+
 export function closeRenderer(renderer: Renderer): void {
 	if (renderer.closed) { stopOnClosed("closeRenderer"); }
 	if (passState() != PassState.None) {
