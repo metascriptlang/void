@@ -10,6 +10,10 @@ import {
 	ProgramKey,
 	MOVING_UV_MATRIX,
 	MOVING_BACK_UV_MATRIX,
+	UNLIT_MATERIAL_COLOR,
+	BACK_VIEW_SLOT,
+	DISSOLVE_VIEW_SLOT,
+	DISSOLVE_SAMPLER_SLOT,
 	movingBase,
 	uniformBlockLength,
 	MATERIAL_UNIFORM_SLOT,
@@ -96,6 +100,11 @@ export struct Material {
 	sampler1: uint32;
 	// Heaps' `Material.texture`: a context texture, bound at view and sampler 0 in their place.
 	texture: TextureId;
+	// Context textures of the moving features (M36), as Bevy's StandardMaterial names each map
+	// by handle: the back faces' texture at BACK_VIEW_SLOT, read with the base texture's sampler,
+	// and the dissolve's noise at DISSOLVE_VIEW_SLOT with its own sampler.
+	backTexture: TextureId;
+	dissolveTexture: TextureId;
 	uniforms: UniformBlock;
 	// h3d.mat.Pass.layer: a list draws lower layers first, before any other order it has.
 	layer: int32;
@@ -187,6 +196,8 @@ export function keyed(
 		sampler0: 0,
 		sampler1: 0,
 		texture: NO_TEXTURE,
+		backTexture: NO_TEXTURE,
+		dissolveTexture: NO_TEXTURE,
 		uniforms: NO_UNIFORMS,
 		layer: 0,
 		castShadows: ShadowCasting.Off,
@@ -197,8 +208,45 @@ export function namesTexture(this material: Material): boolean {
 	return material.texture.isTexture();
 }
 
+// A material's context textures by role: 0 `texture`, 1 `backTexture`, 2 `dissolveTexture`.
+export const MATERIAL_TEXTURE_ROLES: int32 = 3;
+
+export function textureOf(this material: Material, role: int32): TextureId {
+	if (role == 0) { return material.texture; }
+	return role == 1 ? material.backTexture : material.dissolveTexture;
+}
+
+export function viewSlotOf(role: int32): int32 {
+	if (role == 0) { return 0; }
+	return role == 1 ? BACK_VIEW_SLOT : DISSOLVE_VIEW_SLOT;
+}
+
+// The sampler slot a role binds its texture's sampler at; -1 for the back texture, which reads
+// with the base texture's.
+export function samplerSlotOf(role: int32): int32 {
+	if (role == 0) { return 0; }
+	return role == 1 ? -1 : DISSOLVE_SAMPLER_SLOT;
+}
+
+// The roles whose texels are colour, so their alpha must match the program's (M27).
+export function colorRole(role: int32): boolean {
+	return role != 2;
+}
+
+// The raw view a material binds at `slot` (texture0 to texture3), and its raw sampler.
+export function rawView(this material: Material, slot: int32): uint32 {
+	if (slot == 0) { return material.texture0; }
+	if (slot == 1) { return material.texture1; }
+	return slot == 2 ? material.texture2 : material.texture3;
+}
+
+export function rawSampler(this material: Material, slot: int32): uint32 {
+	return slot == 0 ? material.sampler0 : material.sampler1;
+}
+
 // The block of a moving key (gpu3d.ms MOVING_*) with both UV transforms the identity, no scroll,
-// no dissolve, and every other float 0; the caller sets its own values over it.
+// no dissolve, an unlit key's colour white, and every other float 0; the caller sets its own
+// values over it.
 export function movingDefaults(key: ProgramKey): Vec<float32> {
 	if (!key.moves()) {
 		console.log(`void3d: movingDefaults for ${key.describe()}, which does not move`);
@@ -206,6 +254,9 @@ export function movingDefaults(key: ProgramKey): Vec<float32> {
 	}
 	let values: Vec<float32> = new Array(uniformBlockLength(key, MATERIAL_UNIFORM_SLOT));
 	const base: int32 = movingBase(key);
+	if (key.program == Program.UnlitTextured) {
+		for (let i = 0; i < 4; i++) { values[UNLIT_MATERIAL_COLOR + i] = 1.0; }
+	}
 	for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
 		values[matrix] = 1.0;
 		values[matrix + 3] = 1.0;

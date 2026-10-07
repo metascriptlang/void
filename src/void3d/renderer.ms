@@ -33,6 +33,9 @@ import {
 	FRAME_UNIFORM_LENGTH,
 	FRAME_TIME,
 	MOVING_UV_SCROLL,
+	BACK_VIEW_SLOT,
+	DISSOLVE_VIEW_SLOT,
+	DISSOLVE_SAMPLER_SLOT,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
 	uniformBlockLength,
@@ -41,6 +44,7 @@ import {
 	destroyBuffer,
 } from "./gpu3d";
 import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
+import { TextureId } from "./texture";
 import { TargetLayout } from "../gpu/target";
 import {
 	PassState,
@@ -503,14 +507,21 @@ function texturesFit(program: ProgramKey, material: Material): boolean {
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
 	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }
 	let texture: boolean = material.namesTexture();
+	const back: boolean = material.backTexture.isTexture();
+	const noise: boolean = material.dissolveTexture.isTexture();
 	if (texture && (material.texture0 != 0 || material.sampler0 != 0)) { return false; }
 	if (texture && ((views & 1) == 0 || (samplers & 1) == 0)) { return false; }
+	const backBit: uint32 = (1 as uint32) << (BACK_VIEW_SLOT as uint32);
+	const noiseBit: uint32 = (1 as uint32) << (DISSOLVE_VIEW_SLOT as uint32);
+	const noiseSamplerBit: uint32 = (1 as uint32) << (DISSOLVE_SAMPLER_SLOT as uint32);
+	if (back && (views & backBit) == 0) { return false; }
+	if (noise && ((views & noiseBit) == 0 || (samplers & noiseSamplerBit) == 0)) { return false; }
 	return slotBound(views, 0, texture || material.texture0 != 0)
-		&& slotBound(views, 1, material.texture1 != 0)
-		&& slotBound(views, 2, material.texture2 != 0)
+		&& slotBound(views, 1, back || material.texture1 != 0)
+		&& slotBound(views, 2, noise || material.texture2 != 0)
 		&& slotBound(views, 3, material.texture3 != 0)
 		&& slotBound(samplers, 0, texture || material.sampler0 != 0)
-		&& slotBound(samplers, 1, material.sampler1 != 0);
+		&& slotBound(samplers, 1, noise || material.sampler1 != 0);
 }
 
 export function openPrepare(this renderer: Renderer): void {

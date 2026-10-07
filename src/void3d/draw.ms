@@ -58,7 +58,15 @@ import {
 	GPU3D_BINDING_SAMPLER,
 	GPU3D_BINDING_LENGTH,
 } from "./gpu3d.h";
-import { Material, UniformBlock, NO_UNIFORMS } from "./material";
+import {
+	Material,
+	UniformBlock,
+	NO_UNIFORMS,
+	MATERIAL_TEXTURE_ROLES,
+	viewSlotOf,
+	samplerSlotOf,
+	colorRole,
+} from "./material";
 import { MeshData } from "./meshData";
 import { PipelineCache, closePipelines } from "../gpu/pipeline";
 import { pipelineFor } from "./gpu3d";
@@ -149,8 +157,9 @@ export struct DoomedBuffer {
 // own after a context loss (rebuildMeshes); everything without is its owner's to rebuild.
 // A slot's holders are Heaps' `Primitive.refCount`: the mesh or material goes when they reach 0.
 // `…Pins` counts the holds among them that only their holder lets go: a mesh node's, a baked
-// animation's, a material's hold on its texture. `materialBlocks` and `materialTextures` are the
-// range and the texture each material was added with, whatever its fields say later. `textures`
+// animation's, a material's hold on its textures. `materialBlocks` and `materialTextures` are the
+// range and the textures each material was added with, whatever its fields say later; the
+// textures MATERIAL_TEXTURE_ROLES to a material, by role. `textures`
 // and `textureData` are one index space, as `meshes` and `meshData` are.
 // PENDING3D: store-serial-writable
 export interface DrawContext {
@@ -787,35 +796,56 @@ function blendsPremultiplied(pass: RenderState): boolean {
 		&& pass.blendAlphaOperation == PREMULTIPLIED_OVER.blendAlphaOperation;
 }
 
+function slotBit(slot: int32): uint32 {
+	return (1 as uint32) << (slot as uint32);
+}
+
+// A context texture the material names in `role`: not also a raw view or sampler at its slots,
+// sampled there by the program, live in this context, and, for a colour role, of the program's
+// alpha.
+function textureFits(
+	context: DrawContext,
+	material: Material,
+	role: int32,
+): Result<int32, MaterialError> {
+	const texture: TextureId = material.textureOf(role);
+	const view: int32 = viewSlotOf(role);
+	const sampler: int32 = samplerSlotOf(role);
+	if (material.rawView(view) != 0 || (sampler >= 0 && material.rawSampler(sampler) != 0)) {
+		return Result.err(MaterialError.TextureNamedTwice);
+	}
+	const read: int32 = sampler >= 0 ? sampler : 0;
+	if ((textureSlotMask(material.program) & slotBit(view)) == 0 ||
+		(samplerSlotMask(material.program) & slotBit(read)) == 0) {
+		return Result.err(MaterialError.TextureNotSampled);
+	}
+	if (!context.hasTexture(texture)) {
+		const issued: boolean = context.issuedTexture(texture);
+		return Result.err(issued ? MaterialError.StaleTexture : MaterialError.ForeignTexture);
+	}
+	const premultiplied: boolean =
+		context.textureAlphas[texture.index] == TextureAlpha.Premultiplied;
+	if (colorRole(role) && premultiplied != material.program.premultiplied) {
+		return Result.err(
+			premultiplied ? MaterialError.PremultipliedTexture : MaterialError.StraightTexture,
+		);
+	}
+	return Result.ok(role);
+}
+
 // The material takes its uniform range with it: the range returns to the pool when the material
-// is freed, so one range under two materials is refused. It pins its texture until it is freed,
-// as a Bevy material holds its image's strong handle.
+// is freed, so one range under two materials is refused. It pins its textures until it is
+// freed, as a Bevy material holds its images' strong handles.
 export function addMaterial(
 	context: DrawContext,
 	material: Material,
 ): Result<MaterialId, MaterialError> {
 	if (context.closed) { stopOnClosedContext("addMaterial"); }
 	if (!declares(material.program)) { return Result.err(MaterialError.UndeclaredProgram); }
-	if (material.namesTexture()) {
-		if (material.texture0 != 0 || material.sampler0 != 0) {
-			return Result.err(MaterialError.TextureNamedTwice);
-		}
-		let views: uint32 = textureSlotMask(material.program);
-		let samplers: uint32 = samplerSlotMask(material.program);
-		if ((views & 1) == 0 || (samplers & 1) == 0) {
-			return Result.err(MaterialError.TextureNotSampled);
-		}
-		if (!context.hasTexture(material.texture)) {
-			const issued: boolean = context.issuedTexture(material.texture);
-			return Result.err(issued ? MaterialError.StaleTexture : MaterialError.ForeignTexture);
-		}
-		const premultiplied: boolean =
-			context.textureAlphas[material.texture.index] == TextureAlpha.Premultiplied;
-		if (premultiplied != material.program.premultiplied) {
-			return Result.err(
-				premultiplied ? MaterialError.PremultipliedTexture : MaterialError.StraightTexture,
-			);
-		}
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		if (!material.textureOf(role).isTexture()) { continue; }
+		const fits: Result<int32, MaterialError> = textureFits(context, material, role);
+		if (!fits.ok) { return Result.err(fits.error); }
 	}
 	if (material.program.premultiplied && !blendsPremultiplied(material.pass)) {
 		return Result.err(MaterialError.StraightBlend);
@@ -834,17 +864,23 @@ export function addMaterial(
 		context.materialPins.push(0);
 		context.materialTally.push(0);
 		context.materialBlocks.push(material.uniforms);
-		context.materialTextures.push(material.texture);
+		for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+			context.materialTextures.push(material.textureOf(role));
+		}
 	} else {
 		context.materials[index] = material;
 		context.materialHolders[index] = 1;
 		context.materialPins[index] = 0;
 		context.materialTally[index] = 0;
 		context.materialBlocks[index] = material.uniforms;
-		context.materialTextures[index] = material.texture;
+		for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+			context.materialTextures[index * MATERIAL_TEXTURE_ROLES + role] =
+				material.textureOf(role);
+		}
 	}
-	if (material.namesTexture()) {
-		let texture: int32 = material.texture.index;
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		if (!material.textureOf(role).isTexture()) { continue; }
+		let texture: int32 = material.textureOf(role).index;
 		context.texturePins[texture] = context.texturePins[texture] + 1;
 		context.textureHolders[texture] = context.textureHolders[texture] + 1;
 	}
@@ -862,7 +898,12 @@ export function keepsItsUniforms(this context: DrawContext, id: MaterialId): boo
 }
 
 export function keepsItsTexture(this context: DrawContext, id: MaterialId): boolean {
-	return context.materials[id.index].texture == context.materialTextures[id.index];
+	const material: Material = context.materials[id.index];
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		const held: TextureId = context.materialTextures[id.index * MATERIAL_TEXTURE_ROLES + role];
+		if (material.textureOf(role) != held) { return false; }
+	}
+	return true;
 }
 
 export function retainMaterial(
@@ -884,16 +925,21 @@ function letGoOfMaterial(context: DrawContext, index: int32): int32 {
 	const disowned: Result<int32, UniformError> =
 		disownRange(context.uniforms, context.materialBlocks[index]);
 	if (!disowned.ok) { unreachable; }
-	let held: TextureId = context.materialTextures[index];
-	if (held.isTexture()) {
-		if (!context.hasTexture(held)) { unreachable; }
-		context.texturePins[held.index] = context.texturePins[held.index] - 1;
-		let _left: int32 = letGoOfTexture(context, held.index);
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		const at: int32 = index * MATERIAL_TEXTURE_ROLES + role;
+		let held: TextureId = context.materialTextures[at];
+		if (held.isTexture()) {
+			if (!context.hasTexture(held)) { unreachable; }
+			context.texturePins[held.index] = context.texturePins[held.index] - 1;
+			let _left: int32 = letGoOfTexture(context, held.index);
+		}
+		context.materialTextures[at] = NO_TEXTURE;
 	}
 	context.materials[index].uniforms = NO_UNIFORMS;
 	context.materials[index].texture = NO_TEXTURE;
+	context.materials[index].backTexture = NO_TEXTURE;
+	context.materials[index].dissolveTexture = NO_TEXTURE;
 	context.materialBlocks[index] = NO_UNIFORMS;
-	context.materialTextures[index] = NO_TEXTURE;
 	context.materialHolders[index] = 0;
 	vacate(context.materialSlots, index);
 	return 0;
@@ -1252,9 +1298,15 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_VIEW + 3] = material.texture3;
 	context.bindings[GPU3D_BINDING_SAMPLER] = material.sampler0;
 	context.bindings[GPU3D_BINDING_SAMPLER + 1] = material.sampler1;
-	if (material.namesTexture()) {
-		context.bindings[GPU3D_BINDING_VIEW] = context.viewAt(material.texture.index);
-		context.bindings[GPU3D_BINDING_SAMPLER] = context.textures[material.texture.index].sampler;
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		const texture: TextureId = material.textureOf(role);
+		if (!texture.isTexture()) { continue; }
+		context.bindings[GPU3D_BINDING_VIEW + viewSlotOf(role)] = context.viewAt(texture.index);
+		const sampler: int32 = samplerSlotOf(role);
+		if (sampler >= 0) {
+			context.bindings[GPU3D_BINDING_SAMPLER + sampler] =
+				context.textures[texture.index].sampler;
+		}
 	}
 	context.bindings[GPU3D_BINDING_VIEW + SHADOW_VIEW_SLOT] = scene.view;
 	context.bindings[GPU3D_BINDING_SAMPLER + SHADOW_SAMPLER_SLOT] = scene.sampler;
@@ -1362,10 +1414,14 @@ export function drawItemWith(
 	if (colored && program.premultiplied != material.program.premultiplied) {
 		stopOnAlphaMismatch(program, declared);
 	}
-	if (material.namesTexture()) {
-		const alpha: TextureAlpha = context.textureAlphas[material.texture.index];
-		if (colored && alpha != declared) { stopOnAlphaMismatch(program, alpha); }
-		if (!context.textureReady(material.texture.index)) { return; }
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		const texture: TextureId = material.textureOf(role);
+		if (!texture.isTexture()) { continue; }
+		const alpha: TextureAlpha = context.textureAlphas[texture.index];
+		if (colored && colorRole(role) && alpha != declared) {
+			stopOnAlphaMismatch(program, alpha);
+		}
+		if (!context.textureReady(texture.index)) { return; }
 	}
 	const pipeline: uint32 = pipelineFor(
 		context.pipelines,
