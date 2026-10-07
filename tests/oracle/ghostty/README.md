@@ -10,5 +10,7 @@ The four cell sizes are 18x36+4, 12x24+3, 11x21+2 and 9x17+1. A cell is 8-bit gr
 Ghostty draws ink.
 
 `src/test/spriteOracleCheck.ms` draws the same cells through `src/void2d/spriteGlyph.c` and compares
-them. Nothing here is linked or read by the renderer. To refresh, copy the directory again from a
+them. Only the buckets U+2500, U+2800, U+E000, U+1CD00 and U+1FB00 are read: the 16 files of U+1CC00,
+U+1CE00, U+F500 and U+F600 (16,894 bytes) back sprites that are not ported and are kept so the
+copy of the directory stays whole. Nothing here is linked or read by the renderer. To refresh, copy the directory again from a
 Ghostty checkout and record its commit above.

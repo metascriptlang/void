@@ -96,7 +96,10 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:image/animatedFrames | T2 | the scene is built (explicit frames, per-frame delays, a decoded GIF) but its PNG is not captured: `sh scripts/golden.sh --update image/animatedFrames`, then delete this row in the same commit | P6 | 2026-10-08 |
+| golden-missing:image/animatedFrames | T2 | the scene is built (explicit frames, per-frame delays, a decoded GIF) but its PNG is not captured: `sh scripts/golden.sh --update image/animatedFrames`, then delete this row in the same commit | human | 2026-10-08 |
+| golden-missing:text/spriteGlyphsDpi100 | T2 | the scene is in `tests/golden/table.ms` and `scenes.ms` at DPI 1.0 with no PNG, and `compare.ms` makes a scene with no golden an error, so the golden stage is red until the capture exists. Closes when the human runs `sh scripts/golden.sh --update text/spriteGlyphsDpi100` on D3D11, looks at the PNG (box lines, blocks and braille joining with no seam, the shade tones, the powerline prompt) and commits it; its WebGL2 column waits on `wasm:budget` | human | 2026-10-08 |
+| golden-missing:text/spriteGlyphs | T2 | the scene is in `tests/golden/table.ms` and `scenes.ms` at DPI 1.25 with no PNG, and `compare.ms` makes a scene with no golden an error, so the golden stage is red until the capture exists. Closes when the human runs `sh scripts/golden.sh --update text/spriteGlyphs` on D3D11, looks at the PNG (box lines, blocks and braille joining with no seam, the shade tones, the powerline prompt) and commits it; its WebGL2 column waits on `wasm:budget` | human | 2026-10-08 |
+| golden-missing:text/spriteGlyphsDpi150 | T2 | the scene is in `tests/golden/table.ms` and `scenes.ms` at DPI 1.5 with no PNG, and `compare.ms` makes a scene with no golden an error, so the golden stage is red until the capture exists. Closes when the human runs `sh scripts/golden.sh --update text/spriteGlyphsDpi150` on D3D11, looks at the PNG (box lines, blocks and braille joining with no seam, the shade tones, the powerline prompt) and commits it; its WebGL2 column waits on `wasm:budget` | human | 2026-10-08 |
 
 ## Known defects with no pixels to capture
 
