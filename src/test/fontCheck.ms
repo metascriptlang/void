@@ -362,8 +362,17 @@ test "a feature the shaper owns, or a family nobody registered, refuses the font
 	const ligatures = font("Test Sans", 400, FontStyle.Normal);
 	ligatures.features.push({ tag: "liga", value: 1 });
 	const shaped = resolveFont(ligatures);
-	assert !shaped.ok;
-	if (!shaped.ok) { assert shaped.error == FontError.NeedsShaper; }
+	when (voidShaper) {
+		assert shaped.ok;
+		const tagged = font("Test Sans", 400, FontStyle.Normal);
+		tagged.features.push({ tag: "lig", value: 1 });
+		const short = resolveFont(tagged);
+		assert !short.ok;
+		if (!short.ok) { assert short.error == FontError.BadFeatureTag; }
+	} else {
+		assert !shaped.ok;
+		if (!shaped.ok) { assert shaped.error == FontError.NeedsShaper; }
+	}
 	const unknown = resolveFont(font("No Such Family", 400, FontStyle.Normal));
 	assert !unknown.ok;
 	if (!unknown.ok) { assert unknown.error == FontError.NoFamily; }

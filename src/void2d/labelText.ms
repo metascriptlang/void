@@ -493,8 +493,8 @@ function placedGlyph(
 	}
 	return {
 		tile: tileIndex, page: t.page,
-		x: g.x + (t.left as float32) / devicePerLocal,
-		y: baseline + (t.top as float32) / devicePerLocal,
+		x: g.x + g.offsetX + (t.left as float32) / devicePerLocal,
+		y: baseline + g.offsetY + (t.top as float32) / devicePerLocal,
 		w: w / devicePerLocal, h: h / devicePerLocal,
 		u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
 	};
@@ -509,7 +509,8 @@ when (voidSdfText) {
 		const k: float32 = g.size / SDF_EM;
 		return Result.ok({
 			tile: acquired.value, page: t.page,
-			x: g.x + (t.left as float32) * k, y: baseline + (t.top as float32) * k,
+			x: g.x + g.offsetX + (t.left as float32) * k,
+			y: baseline + g.offsetY + (t.top as float32) * k,
 			w: (t.width as float32) * k, h: (t.height as float32) * k,
 			u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
 		});
@@ -558,10 +559,10 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			let whole: int32 = 0;
 			let baselineDevice: int32 = 0;
 			if (pixelExact) {
-				const q = quantizeX(fracX + g.x * devicePerLocal);
+				const q = quantizeX(fracX + (g.x + g.offsetX) * devicePerLocal);
 				variant = q.variant;
 				whole = q.whole;
-				baselineDevice = snapBaseline(fracY + baseline * devicePerLocal);
+				baselineDevice = snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal);
 			}
 			const acquired = glyphAtlas.acquire({
 				kind: PageKind.Coverage,

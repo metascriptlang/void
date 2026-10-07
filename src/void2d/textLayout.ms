@@ -20,6 +20,20 @@ import { Color } from "./types";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 import { lineBreaks } from "./lineBreak";
 
+when (voidShaper) {
+	import { glyphScale, glyphEmbolden } from "./face";
+	import { fontFeatures } from "./font";
+	import {
+		ShapeDirection,
+		ShapedGlyph,
+		shaperCodepoint,
+		shaperEnd,
+		shaperFeature,
+		shaperGlyph,
+		shaperTryBegin,
+	} from "./shaper";
+}
+
 const SPACE: int32 = 32;
 const NEWLINE: int32 = 10;
 const TAB: int32 = 9;
@@ -84,6 +98,9 @@ export struct LaidGlyph {
 	byteEnd: int32;
 	run: int32;
 	clusterStart: boolean;
+	shapeStart: boolean;
+	offsetX: float32;
+	offsetY: float32;
 }
 
 export const NO_RUN: int32 = -1;
@@ -303,6 +320,20 @@ function assignFaces(cps: Span<Codepoint>): void {
 }
 
 function step(
+	this cell: Cell,
+	codepoint: Codepoint,
+	pen: float32,
+	style: TextStyle,
+	spaced: boolean,
+): Step {
+	const spacing: float32 = spaced ? style.letterSpacing : 0.0;
+	return {
+		face: codepoint.face, glyph: cell.glyph, size: style.size * codepoint.scale, x: pen,
+		advance: cell.advance, next: pen + cell.advance + spacing,
+	};
+}
+
+function step(
 	this codepoint: Codepoint,
 	pen: float32,
 	previous: int32,
@@ -486,7 +517,207 @@ function hasTab(cps: Readonly<Span<Codepoint>>): boolean {
 	return false;
 }
 
-// Shapes once: one glyph per codepoint, x measured from the start of its paragraph. A width,
+struct Cell {
+	shaped: boolean;
+	glyph: int32;
+	advance: float32;
+	offsetX: float32;
+	offsetY: float32;
+	shapeStart: boolean;
+	extraFrom: int32;
+	extraTo: int32;
+}
+
+struct Extra {
+	glyph: int32;
+	advance: float32;
+	offsetX: float32;
+	offsetY: float32;
+}
+
+const UNSHAPED: Cell = {
+	shaped: false, glyph: NO_GLYPH, advance: 0.0, offsetX: 0.0, offsetY: 0.0, shapeStart: true,
+	extraFrom: 0, extraTo: 0,
+};
+
+let textShaping: boolean = true;
+
+export function setTextShaping(on: boolean): void {
+	when (voidShaper) {
+		textShaping = on;
+	} else {
+		if (on) {
+			console.log("void2d: text shaping was asked for without -d:voidShaper");
+			unreachable;
+		}
+	}
+}
+
+export function textShapingOn(): boolean {
+	when (voidShaper) {
+		return textShaping;
+	} else {
+		return false;
+	}
+}
+
+when (voidShaper) {
+	const OPTIONAL_LIGATURES: string[] = ["liga", "clig", "dlig", "hlig", "calt"];
+
+	function sameGroup(this a: Codepoint, b: Codepoint): boolean {
+		return !isControl(b.value) && a.face == b.face && a.scale == b.scale &&
+			(a.font as int32) == (b.font as int32) && a.run == b.run && !b.shapingBreak;
+	}
+
+	function shapeGroup(
+		cps: Readonly<Span<Codepoint>>,
+		from: int32,
+		to: int32,
+		style: TextStyle,
+		ref cells: Vec<Cell>,
+		ref extras: Vec<Extra>,
+	): void {
+		const first: Codepoint = cps[from];
+		if (!shaperTryBegin(first.face, ShapeDirection.Unknown)) { return; }
+		for (const feature of fontFeatures(first.font)) {
+			shaperFeature(feature.tag, feature.value);
+		}
+		if (style.letterSpacing != 0.0) {
+			for (const tag of OPTIONAL_LIGATURES) { shaperFeature(tag, 0); }
+		}
+		for (let k = from; k < to; k++) { shaperCodepoint(cps[k].value); }
+		const total: int32 = shaperEnd();
+		let glyphs: Vec<ShapedGlyph> = new Array(0);
+		for (let j = 0; j < total; j++) {
+			const g: ShapedGlyph = shaperGlyph(j);
+			if (g.direction == ShapeDirection.Rtl) {
+				console.log(
+					`void2d: right-to-left text at UTF-16 index ${cps[from + g.index].index} ` +
+					`needs BiDi, which the shaper module does not do`,
+				);
+				unreachable;
+			}
+			glyphs.push(g);
+		}
+		for (let k = from; k < to; k++) {
+			cells[k] = { ...UNSHAPED, shaped: true, shapeStart: false };
+		}
+		let tail: Vec<int32> = new Array(0);
+		for (let j = 0; j <= total; j++) { tail.push(0x7fffffff); }
+		for (let j = total - 1; j >= 0; j--) {
+			tail[j] = Math.min(glyphs[j].index, tail[j + 1]);
+		}
+		const size: float32 = style.size * first.scale;
+		const perUnit: float32 = glyphScale(first.face, size);
+		const bold: float32 = glyphEmbolden(first.face, size);
+		let clusterFirst: int32 = 0;
+		let highest: int32 = -1;
+		for (let j = 0; j < total; j++) {
+			highest = Math.max(highest, glyphs[j].index);
+			if (j + 1 < total && highest >= tail[j + 1]) { continue; }
+			const lo: int32 = clusterFirst == 0 ? 0 : tail[clusterFirst];
+			const hi: int32 = j + 1 == total ? to - from : tail[j + 1];
+			fillCluster(
+				cps, from, from + lo, from + hi, glyphs[clusterFirst..(j + 1)], perUnit, bold,
+				cells, extras,
+			);
+			clusterFirst = j + 1;
+		}
+	}
+
+	function inkless(
+		cps: Readonly<Span<Codepoint>>, origin: int32, g: ShapedGlyph,
+	): boolean {
+		return g.advanceX == 0 && isJoiner(cps[origin + g.index].value);
+	}
+
+	function fillCluster(
+		cps: Readonly<Span<Codepoint>>,
+		origin: int32,
+		first: int32,
+		end: int32,
+		glyphs: Readonly<Span<ShapedGlyph>>,
+		perUnit: float32,
+		bold: float32,
+		ref cells: Vec<Cell>,
+		ref extras: Vec<Extra>,
+	): void {
+		const slots: int32 = end - first;
+		const count: int32 = glyphs.length as int32;
+		cells[first].shapeStart = true;
+		let graphemes: int32 = 0;
+		for (let k = first; k < end; k++) {
+			if (cps[k].clusterStart) { graphemes = graphemes + 1; }
+		}
+		if (count == 1 && graphemes > 1) {
+			const whole: float32 = advanceOf(glyphs[0], perUnit, bold);
+			const share: float32 = whole / (graphemes as float32);
+			cells[first] = { ...cells[first], glyph: glyphs[0].glyph };
+			cells[first].offsetX = (glyphs[0].offsetX as float32) * perUnit;
+			cells[first].offsetY = -(glyphs[0].offsetY as float32) * perUnit;
+			for (let k = first; k < end; k++) {
+				if (cps[k].clusterStart) { cells[k].advance = share; }
+			}
+			return;
+		}
+		for (let j = 0; j < count; j++) {
+			const g: ShapedGlyph = glyphs[j];
+			const advance: float32 = advanceOf(g, perUnit, bold);
+			const offsetX: float32 = (g.offsetX as float32) * perUnit;
+			const offsetY: float32 = -(g.offsetY as float32) * perUnit;
+			const glyph: int32 = inkless(cps, origin, g) ? NO_GLYPH : g.glyph;
+			if (j < slots) {
+				cells[first + j] = {
+					...cells[first + j], glyph: glyph, advance: advance, offsetX: offsetX,
+					offsetY: offsetY,
+				};
+				continue;
+			}
+			if (cells[end - 1].extraTo == cells[end - 1].extraFrom) {
+				cells[end - 1].extraFrom = extras.length as int32;
+				cells[end - 1].extraTo = extras.length as int32;
+			}
+			extras.push({ glyph: glyph, advance: advance, offsetX: offsetX, offsetY: offsetY });
+			cells[end - 1].extraTo = cells[end - 1].extraTo + 1;
+		}
+	}
+
+	function advanceOf(g: ShapedGlyph, perUnit: float32, bold: float32): float32 {
+		const plain: float32 = (g.advanceX as float32) * perUnit;
+		return g.advanceX != 0 ? plain + bold : plain;
+	}
+
+	function shapeGroups(
+		cps: Readonly<Span<Codepoint>>,
+		style: TextStyle,
+		ref cells: Vec<Cell>,
+		ref extras: Vec<Extra>,
+	): void {
+		if (!textShaping) { return; }
+		const count: int32 = cps.length as int32;
+		for (let i = 0; i < count; i++) { cells.push(UNSHAPED); }
+		let from: int32 = 0;
+		while (from < count) {
+			if (isControl(cps[from].value)) {
+				from = from + 1;
+				continue;
+			}
+			let to: int32 = from + 1;
+			while (to < count && cps[from].sameGroup(cps[to])) { to = to + 1; }
+			shapeGroup(cps, from, to, style, cells, extras);
+			from = to;
+		}
+	}
+} else {
+	function shapeGroups(
+		cps: Readonly<Span<Codepoint>>,
+		style: TextStyle,
+		ref cells: Vec<Cell>,
+		ref extras: Vec<Extra>,
+	): void {}
+}
+
+// Shapes once: one slot per codepoint, x measured from the start of its paragraph. A width,
 // alignment or truncation change wraps these again without a glyph lookup (GPUI.md:49).
 export function shapeText(
 	text: string,
@@ -501,6 +732,9 @@ export function shapeText(
 	markShapingBreaks(cps, shapingBreaks);
 	assignFaces(cps);
 	const stop: float32 = hasTab(cps) ? style.tabStop() : 0.0;
+	let cells: Vec<Cell> = new Array(0);
+	let extras: Vec<Extra> = new Array(0);
+	shapeGroups(cps, style, cells, extras);
 	let glyphs: Vec<LaidGlyph> = new Array(0);
 	let values: Vec<int32> = new Array(0);
 	let pen: float32 = 0.0;
@@ -514,9 +748,16 @@ export function shapeText(
 		let s: Step = {
 			face: cp.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: 0.0, next: pen,
 		};
+		let cell: Cell = UNSHAPED;
+		const spaced: boolean = i + 1 >= count || cps[i + 1].clusterStart;
 		if (cp.value != NEWLINE) {
-			const spaced: boolean = i + 1 >= count || cps[i + 1].clusterStart;
-			s = cp.step(pen, previous, previousFace, previousRun, style, stop, spaced);
+			if (cells.length > 0 && cells[i].shaped) {
+				cell = cells[i];
+				const own: boolean = spaced && cell.extraTo == cell.extraFrom;
+				s = cell.step(cp, pen, style, own);
+			} else {
+				s = cp.step(pen, previous, previousFace, previousRun, style, stop, spaced);
+			}
 		}
 		glyphs.push({
 			face: s.face,
@@ -532,6 +773,9 @@ export function shapeText(
 			byteEnd: cp.byteEnd,
 			run: cp.run,
 			clusterStart: cp.clusterStart,
+			shapeStart: cell.shapeStart,
+			offsetX: cell.offsetX,
+			offsetY: cell.offsetY,
 		});
 		if (cp.value == NEWLINE) {
 			pen = 0.0;
@@ -545,6 +789,30 @@ export function shapeText(
 		previous = s.glyph;
 		previousFace = s.face;
 		previousRun = cp.run;
+		for (let e = cell.extraFrom; e < cell.extraTo; e++) {
+			const extra: Extra = extras[e];
+			const spacing: float32 = spaced && e + 1 == cell.extraTo ? style.letterSpacing : 0.0;
+			values.push(cp.value);
+			glyphs.push({
+				face: cp.face,
+				glyph: extra.glyph,
+				size: s.size,
+				codepoint: cp.value,
+				x: pen,
+				advance: extra.advance,
+				line: paragraph,
+				charIndex: i,
+				index: cp.index,
+				byteStart: cp.byteStart,
+				byteEnd: cp.byteEnd,
+				run: cp.run,
+				clusterStart: false,
+				shapeStart: false,
+				offsetX: extra.offsetX,
+				offsetY: extra.offsetY,
+			});
+			pen = pen + extra.advance + spacing;
+		}
 	}
 	return {
 		glyphs: glyphs,
@@ -562,7 +830,9 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 	let width: float32 = 0.0;
 	for (let k = first; k < (glyphs.length as int32); k++) {
 		const g: LaidGlyph = glyphs[k];
-		if (g.codepoint != SPACE && g.glyph != NO_GLYPH) { width = g.x + g.advance; }
+		if (g.codepoint != SPACE && (g.glyph != NO_GLYPH || !g.shapeStart)) {
+			width = g.x + g.advance;
+		}
 	}
 	return width;
 }
@@ -622,7 +892,8 @@ function ellipsisGlyph(shaped: ShapedText): LaidGlyph {
 		shaped.ellipsis.push({
 			face: source.face, glyph: glyph, size: size, codepoint: ELLIPSIS, x: 0.0,
 			advance: glyphAdvance(source.face, glyph, size), line: 0, charIndex: 0, index: 0,
-			byteStart: 0, byteEnd: 0, run: NO_RUN, clusterStart: true,
+			byteStart: 0, byteEnd: 0, run: NO_RUN, clusterStart: true, shapeStart: true,
+			offsetX: 0.0, offsetY: 0.0,
 		});
 	}
 	return shaped.ellipsis[0];

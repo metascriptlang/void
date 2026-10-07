@@ -18,6 +18,8 @@ import {
 	wrapText,
 	TAB_STOP_SPACES,
 	calcTextWidth,
+	setTextShaping,
+	textShapingOn,
 } from "../void2d/textLayout";
 import {
 	FontId,
@@ -250,10 +252,18 @@ test "a variation selector after a letter takes no glyph and no advance" {
 	}
 }
 
+function unshapedLayout(text: string): TextLayout {
+	const was: boolean = textShapingOn();
+	setTextShaping(false);
+	const l = TextLayout.layout(text, style());
+	setTextShaping(was);
+	return l;
+}
+
 test "a joiner takes no glyph, no advance and no kerning pair across it" {
 	assert kernOf("A".code, "V".code) != 0.0;
 	for (const joiner of ["\u{200D}", "\u{200C}"]) {
-		const l = TextLayout.layout(`A${joiner}V`, style());
+		const l = unshapedLayout(`A${joiner}V`);
 		assert (l.glyphs.length as int32) == 3;
 		assert l.glyphs[1].glyph == NO_GLYPH && l.glyphs[1].advance == 0.0;
 		assert approx(l.glyphs[2].x, advanceOf("A".code));

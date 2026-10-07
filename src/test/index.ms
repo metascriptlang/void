@@ -57,6 +57,7 @@ import "./billboardCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
+	import "./shapedLayoutCheck";
 }
 when (voidSvg) {
 	import "./svgMaskCheck";

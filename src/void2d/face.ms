@@ -5,6 +5,8 @@ import {
 	void2dGlyphLookups,
 	void2dGlyphAdvance,
 	void2dGlyphKern,
+	void2dGlyphEmbolden,
+	void2dGlyphScale,
 	void2dGlyphFaceMetrics,
 	void2dGlyphDecoration,
 	void2dGlyphFaceHeights,
@@ -135,6 +137,14 @@ export function glyphIndex(face: int32, codepoint: int32): int32 {
 
 export function glyphAdvance(face: int32, glyph: int32, sizePx: float32): float32 {
 	return void2dGlyphAdvance(face, glyph, sizePx);
+}
+
+export function glyphScale(face: int32, sizePx: float32): float32 {
+	return void2dGlyphScale(face, sizePx);
+}
+
+export function glyphEmbolden(face: int32, sizePx: float32): float32 {
+	return void2dGlyphEmbolden(face, sizePx);
 }
 
 export function glyphKern(face: int32, left: int32, right: int32, sizePx: float32): float32 {

@@ -36,6 +36,7 @@ export enum FontError {
 	NoFamily,
 	NoFallbackFamily,
 	NeedsShaper,
+	BadFeatureTag,
 	NotLoaded,
 }
 
@@ -269,6 +270,15 @@ function sameAs(this a: Font, b: Font): boolean {
 	return true;
 }
 
+function isFeatureTag(tag: string): boolean {
+	if (tag.length != 4) { return false; }
+	for (let i: int32 = 0; i < 4; i++) {
+		const c: int32 = tag.charCodeAt(i) as int32;
+		if (c < 0x20 || c > 0x7e) { return false; }
+	}
+	return true;
+}
+
 export function resolveFont(font: Font): Result<FontId, FontError> {
 	ensureDefaultFont();
 	for (let i = 0; i < (fonts.length as int32); i++) {
@@ -278,14 +288,25 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 	}
 	let kern: boolean = true;
 	for (const feature of font.features) {
-		if (!feature.tag.equals("kern")) {
+		if (feature.tag.equals("kern")) {
+			kern = feature.value != 0;
+			continue;
+		}
+		when (voidShaper) {
+			if (!isFeatureTag(feature.tag)) {
+				console.log(
+					`void2d: font feature "${feature.tag}" is not four printable ASCII ` +
+					`characters; font "${font.family}" is refused`,
+				);
+				return Result.err(FontError.BadFeatureTag);
+			}
+		} else {
 			console.log(
-				`void2d: font feature "${feature.tag}" needs the shaper, which lands at P6; ` +
-				`font "${font.family}" is refused`,
+				`void2d: font feature "${feature.tag}" needs the shaper module, built with ` +
+				`-d:voidShaper; font "${font.family}" is refused`,
 			);
 			return Result.err(FontError.NeedsShaper);
 		}
-		kern = feature.value != 0;
 	}
 	const best = bestFace(font.family, font.weight, font.style);
 	if (!best.ok) {
@@ -370,6 +391,10 @@ function fontIndex(font: FontId): int32 {
 
 export function fontFace(font: FontId): int32 {
 	return fonts[fontIndex(font)].face;
+}
+
+export function fontFeatures(font: FontId): FontFeature[] {
+	return fonts[fontIndex(font)].description.features;
 }
 
 export function fontKerns(font: FontId): boolean {

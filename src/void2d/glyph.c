@@ -576,6 +576,11 @@ float void2dGlyphAdvance(int face, int glyph, float sizePx) {
 	return ((float)advance + s_faces[face].emboldenUnits) * void2dGlyphScale(face, sizePx);
 }
 
+float void2dGlyphEmbolden(int face, float sizePx) {
+	if (!validFace(face)) { return 0.0f; }
+	return s_faces[face].emboldenUnits * void2dGlyphScale(face, sizePx);
+}
+
 float void2dGlyphKern(int face, int left, int right, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
 	GlyphFace *f = &s_faces[face];

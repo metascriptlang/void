@@ -50,6 +50,13 @@ when (voidShaper) {
 		shapeStatus(void2dShapeBegin(face, direction as int32), "begin");
 	}
 
+	export function shaperTryBegin(face: int32, direction: ShapeDirection): boolean {
+		const status: int32 = void2dShapeBegin(face, direction as int32);
+		if (status == -1 || status == -2) { return false; }
+		shapeStatus(status, "begin");
+		return true;
+	}
+
 	export function shaperFeature(tag: string, value: int32): void {
 		shapeStatus(void2dShapeFeature(tag, value), `feature ${tag}`);
 	}
@@ -95,6 +102,11 @@ when (voidShaper) {
 
 	export function shaperBegin(face: int32, direction: ShapeDirection): void {
 		shaperOff("shaperBegin");
+	}
+
+	export function shaperTryBegin(face: int32, direction: ShapeDirection): boolean {
+		shaperOff("shaperTryBegin");
+		return false;
 	}
 
 	export function shaperFeature(tag: string, value: int32): void {

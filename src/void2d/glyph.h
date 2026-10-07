@@ -18,6 +18,7 @@ int void2dGlyphIndex(int face, int codepoint);
 unsigned int void2dGlyphLookups(void);
 float void2dGlyphAdvance(int face, int glyph, float sizePx);
 float void2dGlyphKern(int face, int left, int right, float sizePx);
+float void2dGlyphEmbolden(int face, float sizePx);
 int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX);
 
 #define VOID2D_MAX_GLYPH_PAGES 64
