@@ -3193,7 +3193,7 @@ Text shares **one** glyph layer with void2d — see [VOID2D.md → Text design](
 
 - **Same glyph quads, different transform.** The font layer (fontstash) emits backend-neutral `quad + UV + atlas`. void2d feeds them through the screen-space ortho path; void3d feeds the **same** quads through the camera MVP (world space, depth-tested). No second text system.
 - **3D-text consumer = billboard or text-mesh.** Start with billboard; mesh only if a use case demands it.
-- **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected.
+- **Atlas upgrade bitmap → SDF** when void3d needs crisp world-space text. The glyph-quad interface stays the same, so void2d is unaffected. void2d's SDF page kind and shader ramp exist behind `-d:voidSdfText`; the void3d program, the glyph-layer import and flat world text are deferred by name, each with its reopening condition, in [VOID2D.md](VOID2D.md) P6 "Deferred out of P6".
 
 ## Reference
 
