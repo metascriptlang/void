@@ -20,8 +20,6 @@ import {
 	void2dGlyphColourLayerCount,
 	void2dGlyphColourLayerGlyph,
 	void2dGlyphColourLayerRgba,
-	void2dGlyphColourSweep,
-	void2dGlyphColourSweepRefused,
 } from "./glyph.h";
 import "./colourEmoji/colourEmoji";
 import {
@@ -266,14 +264,6 @@ export function colourLayerGlyph(face: int32, glyph: int32, index: int32): int32
 
 export function colourLayerRgba(face: int32, glyph: int32, index: int32): uint32 {
 	return void2dGlyphColourLayerRgba(face, glyph, index);
-}
-
-export function colourSweep(face: int32, step: int32): int32 {
-	return void2dGlyphColourSweep(face, step);
-}
-
-export function colourSweepRefused(): int32 {
-	return void2dGlyphColourSweepRefused();
 }
 
 export function pageTexel(page: GlyphPageHandle, x: int32, y: int32): int32 {

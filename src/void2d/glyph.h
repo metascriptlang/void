@@ -67,8 +67,6 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 int void2dGlyphColourLayerCount(int face, int glyph);
 int void2dGlyphColourLayerGlyph(int face, int glyph, int index);
 unsigned int void2dGlyphColourLayerRgba(int face, int glyph, int index);
-int void2dGlyphColourSweep(int face, int step);
-int void2dGlyphColourSweepRefused(void);
 
 int *void2dGlyphSdfBox(int face, int glyph);
 #define VOID2D_SDF_OK 0

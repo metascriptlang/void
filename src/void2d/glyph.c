@@ -1008,17 +1008,6 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 	p->dirty = 1;
 	return VOID2D_COLOUR_RASTER_OK;
 }
-
-static int s_sweepRefused;
-
-int void2dGlyphColourSweep(int face, int step) {
-	if (!validFace(face)) { return -1; }
-	s_sweepRefused = 0;
-	return void2dColourFaceSweep(s_faces[face].bytes, (size_t)s_faces[face].length, 0,
-		s_faces[face].glyphCount, step, &s_sweepRefused);
-}
-
-int void2dGlyphColourSweepRefused(void) { return s_sweepRefused; }
 #else
 int void2dGlyphColourBuilt(void) { return 0; }
 int void2dGlyphColourFace(int face) { (void)face; return 0; }
@@ -1042,8 +1031,6 @@ unsigned int void2dGlyphColourLayerRgba(int face, int glyph, int index) {
 	(void)face; (void)glyph; (void)index;
 	return 0;
 }
-int void2dGlyphColourSweep(int face, int step) { (void)face; (void)step; return -1; }
-int void2dGlyphColourSweepRefused(void) { return 0; }
 #endif
 
 #ifdef VOID2D_SDF_TEXT

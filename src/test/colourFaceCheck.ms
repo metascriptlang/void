@@ -15,11 +15,9 @@ import {
 	isColourOnly,
 	colourTileBox,
 	colourRasterize,
-	colourSweep,
 	colourLayerCount,
 	colourLayerGlyph,
 	colourLayerRgba,
-	colourSweepRefused,
 } from "../void2d/face";
 import {
 	GlyphAtlas,
@@ -29,6 +27,7 @@ import {
 } from "../void2d/glyphAtlas";
 import { void2dGlyphPageTexelRgba } from "../void2d/glyph.h";
 import { colourEmojiReason } from "../void2d/colourEmoji/colourEmoji";
+import { colourSweepRun, colourSweepRefused } from "./colourSweep.h";
 
 const ORACLE_PATH: string = "tests/oracle/colour.json";
 const PAGE_SIZE: int32 = 1024;
@@ -442,19 +441,12 @@ test "a tile aimed at the wrong place or with the wrong size is refused" {
 }
 
 test "truncating a colour font and stamping 0xFFFFFFFF into it never crashes" {
-	const synthetic = try loadFace("tests/fonts/cbdtSynthetic.ttf") catch -1;
-	assert synthetic >= 0;
-	assert colourSweep(synthetic, 4) > 600;
+	assert colourSweepRun("tests/fonts/cbdtSynthetic.ttf", 4) > 600;
 	assert colourSweepRefused() > 0;
-	const noto = try loadFace("tests/fonts/NotoColorEmoji-subset.ttf") catch -1;
-	assert noto >= 0;
-	assert colourSweep(noto, 16) > 2000;
+	assert colourSweepRun("tests/fonts/NotoColorEmoji-subset.ttf", 16) > 2000;
 	assert colourSweepRefused() > 0;
-	const colr = try loadFace("tests/fonts/colrSynthetic.ttf") catch -1;
-	assert colr >= 0;
-	assert colourSweep(colr, 4) > 300;
-	const sbix = try loadFace("tests/fonts/sbixSynthetic.ttf") catch -1;
-	assert sbix >= 0;
-	assert colourSweep(sbix, 4) > 600;
+	assert colourSweepRun("tests/fonts/colrSynthetic.ttf", 4) > 300;
+	assert colourSweepRun("tests/fonts/sbixSynthetic.ttf", 4) > 600;
 	assert colourSweepRefused() > 0;
+	assert colourSweepRun("tests/fonts/cbdtFormats.ttf", 4) > 600;
 }
