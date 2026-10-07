@@ -17,6 +17,7 @@ import {
 import { TextureId, TextureUploadError, NO_TEXTURE } from "../../src/void3d/texture";
 import { FilterMode, Wrap, RenderState, BlendMode } from "../../src/gpu/state";
 import { UniformError } from "../../src/void3d/uniformPool";
+import { textureViewAt } from "../../src/test/drawHelpers";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, LightKind, LightInstance, LightError,
 	addMeshNode, addLightNode, setAmbient, refresh, collectLights,
@@ -267,7 +268,7 @@ function premultipliedCard(): void {
 		...Material.keyed(
 			key, RenderState.defaults().withBlendMode(BlendMode.AlphaAdd), Phase.Alpha,
 		).withShadows(ShadowCasting.On, false),
-		texture0: context.textures[base.value.index].view,
+		texture0: textureViewAt(context, base.value.index),
 		sampler0: context.textures[base.value.index].sampler,
 		dissolveTexture: melting ? noise.value : NO_TEXTURE,
 		uniforms: reserved.value,
