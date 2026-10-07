@@ -16,10 +16,12 @@ import { Scene2D } from "../../src/void2d/node";
 import { add, presentAt } from "../../src/void2d/scene";
 import { NO_STAMP } from "../../src/void2d/profiler";
 import { profilerNow } from "../../src/void2d/frameMarks";
-import { OverlayMode } from "../../src/void2d/profiler";
+import { OverlayMode, frameProfiler } from "../../src/void2d/profiler";
 import {
-	profilerOverlayFeedLive, profilerOverlaySetMode,
+	PANEL_MARGIN, overlayModel, layoutOverlay, cellPixels, profilerOverlayFeedLive,
+	profilerOverlayFeed, profilerOverlaySetMode,
 } from "../../src/void2d/profilerOverlay";
+import { fixtureProfiler, fixtureCounters } from "../harness/profilerFixture";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
 } from "../capture/capture.h";
@@ -145,38 +147,61 @@ function mutationStep(step: int32): void {
 	}
 }
 
-const OVERLAY_STEPS: int32 = 2;
-const WIDTH: int32 = 120;
-const HEIGHT: int32 = 60;
+const OVERLAY_STEPS: int32 = 3;
+const WIDTH: int32 = 320;
+const HEIGHT: int32 = 96;
 
-function greenPixels(): int32 {
+function greenSignature(fromX: int32, toX: int32): int64 {
 	if (voidCaptureGrab(0) == 0) { fail("the overlay frame could not be read back"); }
-	let green: int32 = 0;
+	let signature: int64 = 0;
 	for (let y: int32 = 0; y < HEIGHT; y++) {
-		for (let x: int32 = 0; x < WIDTH; x++) {
+		for (let x: int32 = fromX; x < toX; x++) {
 			const pixel: int64 = voidCapturePixel(0, x, y);
 			const r: int64 = (pixel >> 24) & 255;
 			const g: int64 = (pixel >> 16) & 255;
-			if (g > 200 && r < 100) { green = green + 1; }
+			if (g > 200 && r < 100) {
+				signature = signature + ((x + 1) as int64) * 997 + ((y + 1) as int64);
+			}
 		}
 	}
-	return green;
+	return signature;
+}
+
+function panelLeft(): int32 {
+	const model = overlayModel(frameStats, lastFrameCounters(), OverlayMode.Minimal);
+	const cell: int32 = cellPixels(1.0);
+	return WIDTH - (layoutOverlay(model).widthCells + PANEL_MARGIN) * cell;
 }
 
 function overlayStep(step: int32): void {
 	if (step == 0) {
 		profilerOverlayFeedLive();
 		profilerOverlaySetMode(OverlayMode.Minimal);
+		if (scene.isDirty()) { fail("switching the overlay on dirtied the host scene"); }
 		scene.presentAt(1.0);
 		if (drawCallCount() != 2) { fail(`overlay on drew ${drawCallCount()} calls, expected 2`); }
-		if (greenPixels() == 0) { fail("the overlay left no text pixel on the frame"); }
-		if (scene.isDirty()) { fail("switching the overlay on dirtied the host scene"); }
+		const left: int32 = panelLeft();
+		if (left < 0) { fail(`the ${WIDTH} px window is narrower than the minimal panel`); }
+		if (greenSignature(left, WIDTH) == 0) { fail("the panel left no text pixel at the right"); }
+		if (greenSignature(0, left) != 0) { fail("overlay text reached left of the panel"); }
+		return;
+	}
+	if (step == 1) {
+		scene.presentAt(1.0);
+		const before: int64 = greenSignature(0, WIDTH);
+		profilerOverlayFeed(fixtureProfiler(), fixtureCounters());
+		scene.presentAt(1.0);
+		const fixture: int64 = greenSignature(0, WIDTH);
+		if (fixture == 0 || fixture == before) { fail("a new readout did not reach the screen"); }
+		profilerOverlayFeed(frameProfiler(), fixtureCounters());
+		scene.presentAt(1.0);
+		if (greenSignature(0, WIDTH) == fixture) { fail("an empty readout did not reach it"); }
 		return;
 	}
 	profilerOverlaySetMode(OverlayMode.Hidden);
 	scene.presentAt(1.0);
 	if (drawCallCount() != 1) { fail(`overlay hidden drew ${drawCallCount()} calls, expected 1`); }
-	if (greenPixels() != 0) { fail("a hidden overlay still painted text pixels"); }
+	if (greenSignature(0, WIDTH) != 0) { fail("a hidden overlay still painted text pixels"); }
 }
 
 function frame(): void {
@@ -199,4 +224,4 @@ function frame(): void {
 }
 
 if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
-voidRunConfigured(120, 60, 1, 0, init, frame);
+voidRunConfigured(WIDTH, HEIGHT, 1, 0, init, frame);

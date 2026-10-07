@@ -4,7 +4,9 @@
 import { gfxSetup, fbWidth, fbHeight, dpiScale } from "../../src/sokol/gpu";
 import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";
-import { setup2d, begin2d, fillQuad, finishRecording, flushTargets, end2d } from "../../src/void2d/draw";
+import {
+	setup2d, begin2d, fillQuad, finishRecording, flushTargets, end2d,
+} from "../../src/void2d/draw";
 import { rgba, vec2 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 when (voidProfiler) {
