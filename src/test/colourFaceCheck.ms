@@ -164,7 +164,7 @@ test "tile boxes and premultiplied area-average pixels agree with the oracle at 
 			}
 		}
 	}
-	assert compared == 6 * 8 + 2 * 6;
+	assert compared == 6 * 8 + 2 * 6 + 3 * 8;
 }
 
 test "sbix tiles, dupe chains and refused graphic types agree with the oracle at every size" {
@@ -299,7 +299,7 @@ test "COLR v0 layers, palette 0 and the composited tile agree with the oracle" {
 			}
 		}
 	}
-	assert compared == 3;
+	assert compared == 3 + 2;
 }
 
 test "a COLR v1 paint graph is refused when the face loads and the outline face still draws text" {
@@ -372,6 +372,35 @@ test "a CBLC strike with a non-colour bit depth is skipped and the other strikes
 	assert small.glyph == ColourGlyph.Present;
 	assert small.ppem == 16;
 	assert small.right - small.left == 8;
+}
+
+test "a colour font whose last Unicode cmap record is the variation-selector one still loads" {
+	const face = try loadFace("tests/fonts/cbdtUvsLast.ttf") catch -1;
+	assert face >= 0;
+	assert hasColourTables(face);
+	const id: int32 = glyphIndex(face, 0x1F600);
+	assert id > 0;
+	assert glyphIndex(face, 0x2764) > 0;
+	assert colourTileBox(face, id, 16.0).glyph == ColourGlyph.Present;
+}
+
+test "CBLC index formats 1 to 3 and CBDT image formats 17 to 19 are each read from a face that uses them" {
+	const face = try loadFace("tests/fonts/cbdtFormats.ttf") catch -1;
+	assert face >= 0;
+	const heart: int32 = glyphIndex(face, 0x2764);
+	const thumb: int32 = glyphIndex(face, 0x1F44D);
+	const index2 = colourTileBox(face, thumb, 8.0);
+	assert index2.ppem == 8;
+	assert index2.left == 1 && index2.top == -7;
+	const index3 = colourTileBox(face, heart, 16.0);
+	assert index3.ppem == 16;
+	assert index3.right - index3.left == 12 && index3.bottom - index3.top == 16;
+	assert index3.left == -1;
+	const plain3 = colourTileBox(face, thumb, 24.0);
+	assert plain3.ppem == 24 && plain3.right - plain3.left == 24;
+	const index1 = colourTileBox(face, heart, 32.0);
+	assert index1.ppem == 32;
+	assert index1.right - index1.left == 32 && index1.bottom - index1.top == 26;
 }
 
 test "a tile aimed at the wrong place or with the wrong size is refused" {

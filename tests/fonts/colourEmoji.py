@@ -157,6 +157,85 @@ def cbdtSynthetic():
     save(font, "cbdtSynthetic.ttf")
 
 
+def rectPng(width, height, colour):
+    return png(width, height, [[rgba(colour)] * width for _ in range(height)])
+
+
+def bigMetrics(height, width, bearingX, bearingY):
+    return ('<BigGlyphMetrics>'
+            f'<height value="{height}"/><width value="{width}"/>'
+            f'<horiBearingX value="{bearingX}"/><horiBearingY value="{bearingY}"/>'
+            f'<horiAdvance value="{width}"/><vertBearingX value="0"/>'
+            f'<vertBearingY value="0"/><vertAdvance value="{height}"/></BigGlyphMetrics>')
+
+
+def smallMetrics(height, width, bearingX, bearingY):
+    return ('<SmallGlyphMetrics>'
+            f'<height value="{height}"/><width value="{width}"/>'
+            f'<BearingX value="{bearingX}"/><BearingY value="{bearingY}"/>'
+            f'<Advance value="{width}"/></SmallGlyphMetrics>')
+
+
+def cbdtFormats():
+    order = [".notdef", "u1F600", "uni2764", "u1F44D"]
+    builder = base("Void CBDT Formats", order,
+                   {0x1F600: "u1F600", 0x2764: "uni2764", 0x1F44D: "u1F44D"}, None, 1000)
+    font = builder.font
+    names = order[1:]
+    colours = [RED, BLUE, WHITE]
+    strikes, data = [], []
+    shapes = {
+        8: (2, 19, [(8, 8, 1, 7)] * 3),
+        16: (3, 18, [(14, 16, 2, 13), (16, 12, -1, 15), (16, 16, 0, 16)]),
+        24: (3, 17, [(24, 20, 3, 22), (18, 24, -2, 20), (24, 24, 0, 24)]),
+        32: (1, 18, [(32, 28, 1, 30), (26, 32, 0, 27), (32, 32, -3, 31)]),
+    }
+    for index, (ppem, (indexFormat, imageFormat, boxes)) in enumerate(shapes.items()):
+        images = [rectPng(w, h, c) for (h, w, _, _), c in zip(boxes, colours)]
+        if indexFormat == 2:
+            height, width, bx, by = boxes[0]
+            fixed = f'<imageSize value="{max(len(i) for i in images) + 4}"/>' + bigMetrics(height, width, bx, by)
+        else:
+            fixed = ""
+        glyphLocs = "".join(f'<glyphLoc id="{i + 1}" name="{n}"/>' for i, n in enumerate(names))
+        strikes.append(
+            f'<strike index="{index}"><bitmapSizeTable>{lineMetrics("hori", ppem, 0, ppem)}'
+            f'{lineMetrics("vert", ppem, 0, ppem)}<colorRef value="0"/>'
+            '<startGlyphIndex value="1"/><endGlyphIndex value="3"/>'
+            f'<ppemX value="{ppem}"/><ppemY value="{ppem}"/><bitDepth value="32"/>'
+            '<flags value="1"/></bitmapSizeTable>'
+            f'<eblc_index_sub_table_{indexFormat} imageFormat="{imageFormat}" '
+            f'firstGlyphIndex="1" lastGlyphIndex="3">{fixed}{glyphLocs}'
+            f'</eblc_index_sub_table_{indexFormat}></strike>')
+        items = []
+        for name, image, (height, width, bx, by) in zip(names, images, boxes):
+            if imageFormat == 17:
+                metrics = smallMetrics(height, width, bx, by)
+            elif imageFormat == 18:
+                metrics = bigMetrics(height, width, bx, by)
+            else:
+                metrics = ""
+            items.append(f'<cbdt_bitmap_format_{imageFormat} name="{name}">{metrics}'
+                         f'<rawimagedata>\n{hexBlock(image)}\n</rawimagedata>'
+                         f'</cbdt_bitmap_format_{imageFormat}>')
+        data.append(f'<strikedata index="{index}">{"".join(items)}</strikedata>')
+    importXml(font, f'<CBLC><header version="3.0"/>{"".join(strikes)}</CBLC>')
+    importXml(font, f'<CBDT><header version="3.0"/>{"".join(data)}</CBDT>')
+    save(font, "cbdtFormats.ttf")
+
+
+def cbdtUnicodeLast():
+    font = TTFont(OUT + "cbdtSynthetic.ttf")
+    font.recalcTimestamp = False
+    cmap = font["cmap"]
+    keep = [t for t in cmap.tables if (t.platformID, t.platEncID) == (0, 5)]
+    wide = CmapSubtable.newSubtable(12)
+    wide.platformID, wide.platEncID, wide.language = 0, 4, 0
+    wide.cmap = {0x1F600: "u1F600", 0x2764: "uni2764"}
+    cmap.tables = [wide] + keep
+    save(font, "cbdtUvsLast.ttf")
+
+
 def sbixGlyph(name, kind, ox, oy, payload):
     return (f'<glyph name="{name}" graphicType="{kind}" originOffsetX="{ox}" '
             f'originOffsetY="{oy}"><hexdata>\n{hexBlock(payload)}\n</hexdata></glyph>')
@@ -208,6 +287,31 @@ def colrSynthetic():
     font["COLR"] = buildCOLR({"u1F600": [("layerA", 0), ("layerB", 1), ("layerC", 2)]},
                              version=0)
     save(font, "colrSynthetic.ttf")
+
+
+def colrUnion():
+    layers = [
+        ("layerCentre", (400, 300, 600, 500), 0),
+        ("layerLeft", (100, 300, 300, 500), 1),
+        ("layerRight", (700, 300, 900, 500), 2),
+        ("layerTop", (400, 600, 600, 800), 1),
+        ("layerBottom", (400, -200, 600, 0), 0),
+    ]
+    order = [".notdef", "u1F600"] + [name for name, _, _ in layers]
+    glyphs = squares(order[:2])
+    for name, (left, bottom, right, top), _ in layers:
+        pen = TTGlyphPen(None)
+        pen.moveTo((left, bottom))
+        pen.lineTo((left, top))
+        pen.lineTo((right, top))
+        pen.lineTo((right, bottom))
+        pen.closePath()
+        glyphs[name] = pen.glyph()
+    font = base("Void COLR Union", order, {0x1F600: "u1F600"}, glyphs, 1000).font
+    palette = [(0.8, 0.2, 0.2, 1.0), (0.2, 0.4, 0.8, 1.0), (0.2, 0.7, 0.3, 0.5)]
+    font["CPAL"] = buildCPAL([palette])
+    font["COLR"] = buildCOLR({"u1F600": [(name, index) for name, _, index in layers]}, version=0)
+    save(font, "colrUnion.ttf")
 
 
 def colrForeground():
@@ -278,10 +382,13 @@ def main():
     noto(sys.argv[1])
     textSymbol()
     cbdtSynthetic()
+    cbdtFormats()
+    cbdtUnicodeLast()
     cbdtBroken()
     sbixSynthetic()
     sbixLoop()
     colrSynthetic()
+    colrUnion()
     colrForeground()
     colrV1Only()
     collection()

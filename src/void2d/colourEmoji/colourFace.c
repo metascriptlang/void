@@ -237,7 +237,7 @@ static int chooseIndex(ColourFace *face) {
 		uint64_t offset = rd32(&c, record + 4);
 		if (c.bad) { return fail("cmap is cut off inside its encoding records"); }
 		if (platform == 3 && (encoding == 1 || encoding == 10)) { chosen = offset; }
-		if (platform == 0) { chosen = offset; }
+		if (platform == 0 && encoding != 5) { chosen = offset; }
 	}
 	if (chosen == 0) { return fail("cmap has no Unicode subtable"); }
 	unsigned format = rd16(&c, chosen);

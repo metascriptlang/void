@@ -13,6 +13,7 @@ OUT = "tests/oracle/colour.json"
 CBDT_FONTS = [
     ("tests/fonts/NotoColorEmoji-subset.ttf", [6, 13, 13.5, 16, 24, 54.5, 109, 140]),
     ("tests/fonts/cbdtSynthetic.ttf", [4, 8, 12, 16, 24, 40]),
+    ("tests/fonts/cbdtFormats.ttf", [4, 8, 12, 16, 20, 24, 32, 40]),
 ]
 
 FNV_OFFSET = 0xCBF29CE484222325
@@ -75,13 +76,20 @@ def chooseStrike(candidates, size):
     return max(candidates, key=lambda c: c["ppem"])
 
 
+def indexMetrics(strike, name):
+    for sub in strike.indexSubTables:
+        if name in sub.names and hasattr(sub, "metrics"):
+            return sub.metrics
+    raise KeyError(name)
+
+
 def cbdtGlyphs(font):
     cblc, cbdt = font["CBLC"], font["CBDT"]
     byName = {}
     for index, strike in enumerate(cblc.strikes):
         ppem = strike.bitmapSizeTable.ppemY
         for name, bitmap in cbdt.strikeData[index].items():
-            m = bitmap.metrics
+            m = getattr(bitmap, "metrics", None) or indexMetrics(strike, name)
             byName.setdefault(name, []).append({
                 "ppem": ppem,
                 "png": bitmap.imageData,
@@ -204,6 +212,7 @@ def sbixFont(path, sizes):
 
 COLR_FONTS = [
     ("tests/fonts/colrSynthetic.ttf", [10, 20, 40]),
+    ("tests/fonts/colrUnion.ttf", [10, 20]),
 ]
 
 
