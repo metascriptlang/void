@@ -42,7 +42,13 @@ void void2dGlyphPagesMarkDirty(void);
 void void2dGlyphPagesFrameBegin(void);
 
 int *void2dGlyphSdfBox(int face, int glyph);
-void void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h);
+#define VOID2D_SDF_OK 0
+#define VOID2D_SDF_BAD_HANDLE 1
+#define VOID2D_SDF_WRONG_PAGE_KIND 2
+#define VOID2D_SDF_OUTSIDE_PAGE 3
+#define VOID2D_SDF_BOX_MISMATCH 4
+#define VOID2D_SDF_NO_MEMORY 5
+int void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h);
 unsigned int void2dGlyphSdfGenerations(void);
 int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y);
 

@@ -759,15 +759,15 @@ static void sdfBitmapBox(GlyphFace *f, int glyph, stbtt_vertex *v, int count, fl
 	box[3] += SDF_PAD;
 }
 
-static void sdfFill(const stbtt_vertex *verts, int num_verts, float scale, const int *box,
-                    unsigned char *out, int stride) {
+static int sdfFill(const stbtt_vertex *verts, int num_verts, float scale, const int *box,
+                   unsigned char *out, int stride) {
 	const float scale_x = scale, scale_y = -scale;
 	const float eps = 1.f / 1024, eps2 = eps * eps;
 	const int ix0 = box[0], iy0 = box[1], ix1 = box[2], iy1 = box[3];
 	float *precompute = (float *)malloc(sizeof(float) * (size_t)num_verts);
 	if (!precompute) {
 		fprintf(stderr, "void2d: no memory for the SDF of a %d-vertex glyph\n", num_verts);
-		return;
+		return VOID2D_SDF_NO_MEMORY;
 	}
 	for (int i = 0, j = num_verts - 1; i < num_verts; j = i++) {
 		if (verts[i].type == STBTT_vline) {
@@ -870,6 +870,7 @@ static void sdfFill(const stbtt_vertex *verts, int num_verts, float scale, const
 		}
 	}
 	free(precompute);
+	return VOID2D_SDF_OK;
 }
 
 int *void2dGlyphSdfBox(int face, int glyph) {
@@ -889,17 +890,19 @@ int *void2dGlyphSdfBox(int face, int glyph) {
 	return s_sdfBox;
 }
 
-void void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h) {
-	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) { return; }
+int void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, int h) {
+	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) {
+		return VOID2D_SDF_BAD_HANDLE;
+	}
 	GlyphPage *p = &s_pages[page];
 	if (p->kind != VOID2D_PAGE_SDF) {
 		fprintf(stderr, "void2d: an SDF tile was aimed at a %s page\n", pageKindName(p->kind));
-		return;
+		return VOID2D_SDF_WRONG_PAGE_KIND;
 	}
 	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
 		fprintf(stderr, "void2d: SDF tile %dx%d at (%d,%d) falls outside its %d page\n",
 			w, h, x, y, p->size);
-		return;
+		return VOID2D_SDF_OUTSIDE_PAGE;
 	}
 	GlyphFace *f = &s_faces[face];
 	stbtt_vertex *vertices = NULL;
@@ -908,16 +911,21 @@ void void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w,
 	if (count > 0 && !sdfHasCubic(vertices, count)) {
 		sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM), box);
 	}
+	int result = VOID2D_SDF_OK;
 	if (box[2] - box[0] != w || box[3] - box[1] != h) {
 		fprintf(stderr, "void2d: SDF tile %dx%d does not match the glyph's %dx%d box\n",
 			w, h, box[2] - box[0], box[3] - box[1]);
+		result = VOID2D_SDF_BOX_MISMATCH;
 	} else {
-		sdfFill(vertices, count, void2dGlyphScale(face, SDF_EM), box,
+		result = sdfFill(vertices, count, void2dGlyphScale(face, SDF_EM), box,
 			p->texels + (size_t)y * (size_t)p->size + (size_t)x, p->size);
-		s_sdfGenerations++;
-		p->dirty = 1;
+		if (result == VOID2D_SDF_OK) {
+			s_sdfGenerations++;
+			p->dirty = 1;
+		}
 	}
 	STBTT_free(vertices, f->info.userdata);
+	return result;
 }
 
 int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y) {

@@ -10,6 +10,7 @@ import {
 	NO_GLYPH_PAGE_HANDLE,
 	acquireSdf,
 	sdfKey,
+	sdfRasterRefusal,
 } from "../void2d/glyphAtlas";
 import { void2dGlyphSdfGenerations } from "../void2d/glyph.h";
 
@@ -180,4 +181,12 @@ test "no coverage page is made past the page budget an SDF page already holds" {
 	assert atlas.acquireSdf(face, glyphIndex(face, "g".code)).ok;
 	assert atlas.ensurePage() == NO_GLYPH_PAGE_HANDLE;
 	assert atlas.pageCount() == 1;
+}
+
+test "every refusal code of the SDF rasterizer has its own named error" {
+	assert sdfRasterRefusal(1) == AtlasError.SdfBadHandle;
+	assert sdfRasterRefusal(2) == AtlasError.SdfWrongPageKind;
+	assert sdfRasterRefusal(3) == AtlasError.SdfOutsidePage;
+	assert sdfRasterRefusal(4) == AtlasError.SdfBoxMismatch;
+	assert sdfRasterRefusal(5) == AtlasError.SdfNoMemory;
 }

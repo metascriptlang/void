@@ -193,3 +193,20 @@ test "a synthetic face has no stb reference to compare against" {
 	const t = generate(bold, glyph);
 	assert void2dGlyphSdfStbDiff(bold, glyph, sdfPage(), t.x, t.y) == -2;
 }
+
+test "the rasterizer answers a refused tile with its code and counts no generation" {
+	const face = plain();
+	const glyph: int32 = glyphIndex(face, "I".code);
+	const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
+	const w: int32 = box[2] - box[0];
+	const h: int32 = box[3] - box[1];
+	const before: uint32 = void2dGlyphSdfGenerations();
+	const coveragePage: int32 = void2dGlyphPageCreate(PAGE_SIZE, 0);
+	assert void2dGlyphSdfRasterize(face, glyph, coveragePage, 0, 0, w, h) == 2;
+	assert void2dGlyphSdfRasterize(-1, glyph, sdfPage(), 0, 0, w, h) == 1;
+	assert void2dGlyphSdfRasterize(face, glyph, sdfPage(), PAGE_SIZE - 1, 0, w, h) == 3;
+	assert void2dGlyphSdfRasterize(face, glyph, sdfPage(), 0, 0, w + 1, h) == 4;
+	assert void2dGlyphSdfGenerations() == before;
+	assert void2dGlyphSdfRasterize(face, glyph, sdfPage(), 0, 0, w, h) == 0;
+	assert void2dGlyphSdfGenerations() == before + 1;
+}

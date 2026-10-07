@@ -24,6 +24,11 @@ export enum AtlasError {
 	KindNotBuilt,
 	VariantOutOfRange,
 	SdfCubicOutline,
+	SdfBadHandle,
+	SdfWrongPageKind,
+	SdfOutsidePage,
+	SdfBoxMismatch,
+	SdfNoMemory,
 }
 
 export enum PageKind {
@@ -341,6 +346,22 @@ when (voidSdfText) {
 		void2dGlyphSdfRasterize,
 	} from "./glyph.h";
 
+	const SDF_RASTER_BAD_HANDLE: int32 = 1;
+	const SDF_RASTER_WRONG_PAGE_KIND: int32 = 2;
+	const SDF_RASTER_OUTSIDE_PAGE: int32 = 3;
+	const SDF_RASTER_BOX_MISMATCH: int32 = 4;
+	const SDF_RASTER_NO_MEMORY: int32 = 5;
+
+	export function sdfRasterRefusal(code: int32): AtlasError {
+		if (code == SDF_RASTER_BAD_HANDLE) { return AtlasError.SdfBadHandle; }
+		if (code == SDF_RASTER_WRONG_PAGE_KIND) { return AtlasError.SdfWrongPageKind; }
+		if (code == SDF_RASTER_OUTSIDE_PAGE) { return AtlasError.SdfOutsidePage; }
+		if (code == SDF_RASTER_BOX_MISMATCH) { return AtlasError.SdfBoxMismatch; }
+		if (code == SDF_RASTER_NO_MEMORY) { return AtlasError.SdfNoMemory; }
+		console.log(`void2d: the SDF rasterizer returned the unknown code ${code}`);
+		unreachable;
+	}
+
 	export function sdfKey(face: int32, glyph: int32): GlyphKey {
 		return { kind: PageKind.Sdf, face: face, glyph: glyph, sizePx: 0.0, variant: 0 };
 	}
@@ -370,8 +391,9 @@ when (voidSdfText) {
 			page = placed[0];
 			x = placed[1];
 			y = placed[2];
-			void2dGlyphSdfRasterize(face, glyph,
+			const code: int32 = void2dGlyphSdfRasterize(face, glyph,
 				atlas.pages[page as int32].handle as int32, x, y, width, height);
+			if (code != 0) { return Result.err(sdfRasterRefusal(code)); }
 			atlas.generations = atlas.generations + 1;
 		}
 		return Result.ok(atlas.record(packedKey, {
