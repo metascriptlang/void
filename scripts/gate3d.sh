@@ -1076,6 +1076,11 @@ WORLD_LABEL_PATH_FUNCTIONS="world76abel:faceCamera world76abel:facingRotation ca
 	world76abel:refreshLabel world76abel:setLabelTint world76abel:setLabelText
 	world76abel:redraw world76abel:place world76abel:transformOf world76abel:localFor
 	scene:setLocal scene:liveRow scene:syncWorld"
+CARD_TABLE_PATH_FUNCTIONS="card84able83cene:frameCardTable card84able83cene:writeOrders
+	card84able83cene:writeDissolve card84able83cene:flicker card84able83cene:stepTorches
+	card84able83cene:advance card84able83cene:draw card84able83cene:tableView
+	card84able83cene:overlayView card84able83cene:showOverlay card84able83cene:cardPoint
+	card84able83cene:shadowOf"
 REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:detach
 	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
 	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn
@@ -1086,7 +1091,8 @@ RENDER_ORDER_PATH_FUNCTIONS="scene:setRenderOrder scene:refresh scene:liveRow
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
 check_array_copies() {
-	rm -f out/debug/*ZsrcZgpuZ*Oms.c out/debug/*ZsrcZvoid3dZ*Oms.c "out/debug/$(basename "$1" .ms).exe"
+	rm -f out/debug/*ZsrcZgpuZ*Oms.c out/debug/*ZsrcZvoid3dZ*Oms.c out/debug/*ZsrcZexamplesZ*Oms.c \
+		"out/debug/$(basename "$1" .ms).exe"
 	if ! msc build "$1" --emit=c > "$WORK/allocation.log" 2>&1; then
 		fail "allocation: emitting C for $1 failed; see $WORK/allocation.log"
 		return 1
@@ -1096,8 +1102,8 @@ check_array_copies() {
 	for entry in $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
-		emitted=$({ ls out/debug/*ZsrcZvoid3dZ${module}Oms.c; ls out/debug/*ZsrcZgpuZ${module}Oms.c; } \
-			2>/dev/null | head -1)
+		emitted=$({ ls out/debug/*ZsrcZvoid3dZ${module}Oms.c; ls out/debug/*ZsrcZgpuZ${module}Oms.c;
+			ls out/debug/*ZsrcZexamplesZ${module}Oms.c; } 2>/dev/null | head -1)
 		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1
@@ -1142,6 +1148,8 @@ run_allocation() {
 
 	check_array_copies tests/integration/worldLabel.ms "world label path" \
 		"$WORLD_LABEL_PATH_FUNCTIONS" || return
+	check_array_copies tests/integration/cardTable.ms "card table path" \
+		"$CARD_TABLE_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
@@ -1152,6 +1160,7 @@ run_allocation() {
 	note "allocation: nor in the render order path ($(echo $RENDER_ORDER_PATH_FUNCTIONS))"
 
 	note "allocation: nor in the world label path ($(echo $WORLD_LABEL_PATH_FUNCTIONS))"
+	note "allocation: nor in the card table path ($(echo $CARD_TABLE_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1951,6 +1960,43 @@ run_world_label() {
 	done
 }
 
+run_card_table() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "card-table: GATE_SKIP_CAPTURE=1 — the sample was not read back"
+		return
+	fi
+	purge_stale_shader_objects
+	exe="$WORK/cardTable.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/cardTable.ms --output="$exe" \
+		> "$WORK/cardTable.build.log" 2>&1; then
+		fail "card-table: tests/integration/cardTable.ms does not build — see $WORK/cardTable.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/cardTable.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "card-table: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS card table: ' "$WORK/cardTable.log"; then
+		fail "card-table: the sample failed (exit $status) — see $WORK/cardTable.log"
+		return
+	fi
+	pass "card-table: the card table draws its board, hand order swap, dissolve, shadow, overlay, label and flames"
+	status=0
+	VOID_CARD_TABLE_CONTROL=1 "$exe" > "$WORK/cardTable.control.log" 2>&1 || status=$?
+	for message in 'the swapped render orders did not put' 'the shadow is not darker' \
+		'the dissolved region does not show the board' 'edge is not its edge colour' \
+		'the overlay is not composited' 'only [0-9]* label pixels' 'no flames above torch'; do
+		if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/cardTable.control.log"; then
+			fail "card-table: the featureless control did not fail on '$message' (exit $status)"
+			return
+		fi
+	done
+	pass "card-table: the featureless control fails on the order swap, shadow, dissolve, overlay, label and flames"
+}
+
 run_mrt_blend() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "mrt-blend: GATE_SKIP_CAPTURE=1 — no MRT attachment was read back"
@@ -2605,6 +2651,7 @@ run_reparent
 run_gltf
 run_both_layers
 run_world_label
+run_card_table
 run_stores
 run_views
 run_target_owner
