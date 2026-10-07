@@ -717,6 +717,66 @@ test "Sort under the real perspective camera puts the far particles first and th
 	assert near(along(out, 0, ahead), 1.0, 0.001) && near(along(out, 3, ahead), -2.0, 0.001);
 }
 
+test "an emitter with no initial speed writes exactly the instances it wrote before initial speed existed" {
+	const state: EmitterState = {
+		...EmitterState.defaults(),
+		maxParts: 64,
+		emitRate: constant(40.0),
+		gravity: constant(0.5),
+		force: { x: constant(0.3), y: constant(0.0), z: constant(-0.2) },
+		size: { kind: ValueKind.Random, start: 0.1, length: 0.2, converge: Converge.End },
+		speed: { kind: ValueKind.Random, start: 1.0, length: 2.0, converge: Converge.No },
+		life: constant(1.5),
+	};
+	let emitter: ParticleEmitter = emitterFor(state, 4);
+	for (let i = 0; i < 40; i++) { const _s: int32 = step(emitter, 1.0 / 30.0); }
+	assert emitter.count == 54;
+	const out: Vec<float32> = instancesOf(emitter, identity());
+	let sum: float64 = 0.0;
+	for (let i = 0; i < 54 * PARTICLE_INSTANCE_STRIDE; i++) { sum = sum + (out[i] as float64); }
+	// Measured on the tree before `initialSpeed` was added.
+	assert sum == 314.7812904747407;
+	assert (out[0] as float64) == 0.4543769955635071 && (out[1] as float64) == 3.2286911010742188;
+	assert (out[2] as float64) == -0.1819358468055725 && (out[3] as float64) == 0.10878288000822067;
+}
+
+test "an initial speed along the direction is damped linearly to rest at speed over damping, and stays" {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		initialSpeed: constant(3.0),
+		damping: constant(2.0),
+		life: constant(100.0),
+	}, 1);
+	emitter.emitCount = 1.0;
+	assert step(emitter, 0.0) == 1;
+	assert approx(emitter.particles[0].force.y, 3.0);
+	for (let i = 0; i < 7; i++) { assert step(emitter, 0.1) == 1; }
+	assert approx(emitter.particles[0].force.y, 3.0 - 2.0 * 0.7);
+	for (let i = 0; i < 10; i++) { assert step(emitter, 0.1) == 1; }
+	assert emitter.particles[0].force.y == 0.0 && emitter.particles[0].force.x == 0.0;
+	const rested: float32 = emitter.particles[0].position.y;
+	assert rested > 2.05 && rested < 2.3;
+	assert step(emitter, 0.1) == 1;
+	assert emitter.particles[0].position.y == rested;
+}
+
+test "an initial speed is drawn once per life and moves along the emission direction" {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		initialSpeed: { kind: ValueKind.Random, start: 1.0, length: 4.0, converge: Converge.No },
+		life: constant(100.0),
+	}, 9);
+	emitter.emitCount = 1.0;
+	assert step(emitter, 0.0) == 1;
+	const drawn: uint32 = emitter.sequence.state;
+	const v: float32 = emitter.particles[0].force.y;
+	assert v >= 1.0 && v < 5.0;
+	assert step(emitter, 0.1) == 1;
+	assert step(emitter, 0.1) == 1;
+	assert emitter.sequence.state == drawn;
+	assert approx(emitter.particles[0].position.y, v * 0.2);
+}
+
 test "spawn happens in world space; emitLocal defers the transform to the write" {
 	const moved: Mat4 = translation(5.0, 1.0, -2.0);
 	let world: ParticleEmitter = emitterFor({ ...still(0.0), life: constant(10.0) }, 1);
