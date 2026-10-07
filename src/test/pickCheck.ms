@@ -21,6 +21,8 @@ import {
 	setLocal,
 	setVisible,
 	setPickable,
+	setLayer,
+	setLayers,
 	NO_NODE_ID,
 } from "../void3d/scene";
 import {
@@ -32,7 +34,8 @@ import {
 	bindMeshFrames,
 	syncMeshFrame,
 } from "../void3d/animation";
-import { PickHit, PickError, pickNearest } from "../void3d/pick";
+import { PickHit, PickError, pickNearest, pickNearestOn } from "../void3d/pick";
+import { ALL_LAYERS, layerBit } from "../void3d/layers";
 import { Camera3D, ProjectionKind, CameraView, CameraBasis } from "../void3d/camera";
 import { LowResView, lowResView } from "../void3d/blit";
 import { approx } from "./helpers";
@@ -749,4 +752,54 @@ test "a detached pick owner misses until attached and keeps its hit UV after a m
 	if (uv !== null) {
 		assert Math.abs(uv.u - 0.75) < 1e-6 && Math.abs(uv.v - 0.125) < 1e-6;
 	}
+}
+
+// ---- three.js Raycaster.layers ---------------------------------------------------------------
+
+test "a ray tests the layers it was given, layer 0 by default, and not the camera's" {
+	let context: DrawContext = contextOf(16, 16);
+	let scene: Scene3D = Scene3D.create(context);
+	const meshes: Vec<MeshData> = [unitBox()];
+	const lower: NodeId3D = pickable(
+		scene,
+		meshNode(scene, context, scene.rootId(), Transform3D.identity(), 0),
+	);
+	const upper: NodeId3D = pickable(
+		scene,
+		meshNode(
+			scene, context, scene.rootId(), Transform3D.fromTranslation(vec3(0.0, 3.0, 0.0)), 0,
+		),
+	);
+	setLayer(scene, upper, 1);
+	writeTables(scene.context, meshes, materials());
+	const plain: Result<PickHit, PickError> = pickNearest(scene, down(0.0, 0.0));
+	assert plain.ok;
+	if (plain.ok) { assert sameId(plain.value.owner, lower); }
+	const overlay: Result<PickHit, PickError> = pickNearestOn(scene, down(0.0, 0.0), layerBit(1));
+	assert overlay.ok;
+	if (overlay.ok) { assert sameId(overlay.value.owner, upper); }
+	const both: Result<PickHit, PickError> = pickNearestOn(scene, down(0.0, 0.0), ALL_LAYERS);
+	assert both.ok;
+	if (both.ok) { assert sameId(both.value.owner, upper) && approx(both.value.distance, 6.0); }
+	const none: Result<PickHit, PickError> = pickNearestOn(scene, down(0.0, 0.0), layerBit(7));
+	assert !none.ok;
+	if (!none.ok) { assert none.error == PickError.NothingHit; }
+}
+
+test "a pick does not inherit layers: a group's layer neither hides nor shows its meshes" {
+	let context: DrawContext = contextOf(16, 16);
+	let scene: Scene3D = Scene3D.create(context);
+	const meshes: Vec<MeshData> = [unitBox()];
+	const group: NodeId3D = pickable(
+		scene,
+		addGroup(scene, scene.rootId(), Transform3D.identity()),
+	);
+	const box: NodeId3D = meshNode(scene, context, group, Transform3D.identity(), 0);
+	setLayer(scene, group, 4);
+	const hit: PickHit = pickOf(scene, meshes, down(0.0, 0.0));
+	assert sameId(hit.owner, group) && sameId(hit.mesh, box);
+	setLayers(scene, box, layerBit(4));
+	writeTables(scene.context, meshes, materials());
+	assert !pickNearest(scene, down(0.0, 0.0)).ok;
+	assert pickNearestOn(scene, down(0.0, 0.0), layerBit(4)).ok;
 }

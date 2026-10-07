@@ -8,6 +8,7 @@ import { MeshData, MeshRayHit, Uv } from "./meshData";
 import { DrawContext } from "./draw";
 import { Face } from "../gpu/state";
 import { Ray } from "./ray";
+import { DEFAULT_LAYERS, layersTest } from "./layers";
 import {
 	Scene3D,
 	NodeId3D,
@@ -41,7 +42,13 @@ const MISS: MeshHit = { distance: -1.0, point: { x: 0.0, y: 0.0, z: 0.0 }, uv: n
 // PENDING3D: pick-owner-is-a-flag
 // PENDING3D: pick-distance-from-ray-origin
 export function pickNearest(scene: Scene3D, ray: Ray): Result<PickHit, PickError> {
-	scene.requireOpen("pickNearest");
+	return pickNearestOn(scene, ray, DEFAULT_LAYERS);
+}
+
+export function pickNearestOn(
+	scene: Scene3D, ray: Ray, layers: uint32,
+): Result<PickHit, PickError> {
+	scene.requireOpen("pickNearestOn");
 	const _synced: int32 = syncWorld(scene);
 	const context: DrawContext = scene.context;
 	let best: PickHit = {
@@ -58,7 +65,8 @@ export function pickNearest(scene: Scene3D, ray: Ray): Result<PickHit, PickError
 		top = top - 1;
 		const index: int32 = scene.stack[top];
 		if (!scene.nodes[index].flags.has(NodeFlag.Visible)) { continue; }
-		const owner: int32 = scene.nodes[index].kind == NodeKind.Mesh
+		const seen: boolean = layersTest(scene.nodes[index].layers, layers);
+		const owner: int32 = seen && scene.nodes[index].kind == NodeKind.Mesh
 			? scene.pickableOwner(index)
 			: NO_NODE_3D;
 		if (owner != NO_NODE_3D) {
