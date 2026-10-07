@@ -102,11 +102,13 @@ export function profilerCollect(): boolean {
 	const serial: int32 = voidProfileSerial();
 	if (lastSerial != 0 && serial - lastSerial > 1) {
 		const gap: int32 = serial - lastSerial - 1;
+		if (commitsWithoutFrame == 0) {
+			console.log(
+				`void2d profiler: ${gap} commit(s) between frame serial ${lastSerial} and ` +
+				`${serial} had no void2d frame; later ones are counted without a line`,
+			);
+		}
 		commitsWithoutFrame = commitsWithoutFrame + gap;
-		console.log(
-			`void2d profiler: ${gap} commit(s) between frame serial ${lastSerial} and ${serial} ` +
-			"had no void2d frame",
-		);
 	}
 	lastSerial = serial;
 	const commitAt: int64 = voidProfileMark(VOID_MARK_COMMIT);

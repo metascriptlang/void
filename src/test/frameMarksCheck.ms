@@ -98,6 +98,11 @@ test "a commit between two frames is counted as a serial gap, not hidden" {
 	drawFrame(s);
 	assert profilerCollect();
 	assert frameCommitsWithoutFrame() == before + 1;
+	frameEnd();
+	frameEnd();
+	drawFrame(s);
+	assert profilerCollect();
+	assert frameCommitsWithoutFrame() == before + 3;
 }
 
 test "a frame the host never invalidated has no dirty-to-present sample" {
