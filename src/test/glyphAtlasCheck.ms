@@ -132,7 +132,7 @@ test "a glyph larger than a page is refused, not clipped" {
 }
 
 function fillUntilFull(atlas: GlyphAtlas, face: int32): Vec<int32> {
-	const out: Vec<int32> = new Array(0);
+	let out: Vec<int32> = new Array(0);
 	for (let c = "A".code; c <= "Z".code; c++) {
 		const r = atlas.acquire(keyFor(face, c, 40.0, 0));
 		if (!r.ok) { return out; }

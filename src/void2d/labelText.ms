@@ -105,7 +105,7 @@ export const CURSOR_BLINK_TIME: float32 = 0.5;
 
 export const glyphAtlas: GlyphAtlas = GlyphAtlas.create(GLYPH_PAGE_SIZE, MAX_GLYPH_PAGES);
 export let labelTexts: Vec<LabelText> = [];
-const freeLabelTexts: Vec<int32> = [];
+let freeLabelTexts: Vec<int32> = [];
 let refusedGlyphs: int32 = 0;
 let refusalReports: int32 = 0;
 
@@ -329,14 +329,14 @@ function lineDecorations(
 }
 
 export function setLabelRuns(index: int32, runs: Readonly<Span<TextRun>>): void {
-	const kept: Vec<TextRun> = new Array(0);
+	let kept: Vec<TextRun> = new Array(0);
 	for (const run of runs) { kept.push(run); }
 	labelTexts[index].runs = kept;
 	labelTexts[index].reshape = true;
 }
 
 export function setLabelShapingBreaks(index: int32, breaks: Readonly<Span<int32>>): void {
-	const kept: Vec<int32> = new Array(0);
+	let kept: Vec<int32> = new Array(0);
 	for (const at of breaks) { kept.push(at); }
 	labelTexts[index].shapingBreaks = kept;
 	labelTexts[index].reshape = true;
@@ -431,7 +431,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	const devicePerLocal: float32 = linear * scale;
 	const fracX: float32 = fraction(world.tx * scale);
 	const fracY: float32 = fraction(world.ty * scale);
-	const placed: Vec<PlacedGlyph> = new Array(0);
+	let placed: Vec<PlacedGlyph> = new Array(0);
 	let refused: int32 = 0;
 	let refusal: string = "";
 	if (devicePerLocal > 0.0) {

@@ -287,8 +287,8 @@ export function addGltfNodes(
 	}
 	const valid = validateGltfGraph(data);
 	if (!valid.ok) { return Result.err(GltfSceneError.InvalidData); }
-	const nodes: Vec<int32> = [];
-	const parents: Vec<NodeId3D> = [];
+	let nodes: Vec<int32> = [];
+	let parents: Vec<NodeId3D> = [];
 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
 		nodes.push(data.sceneRoots[i]);
 		parents.push(parent);

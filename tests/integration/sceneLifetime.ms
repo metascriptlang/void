@@ -76,7 +76,7 @@ function closeOneScene(): void {
 }
 
 function closeInsideOpenFrame(): void {
-	const scenes: Vec<Scene2D> = new Array(0);
+	let scenes: Vec<Scene2D> = new Array(0);
 	for (let k: int32 = 0; k < CLOSED_IN_ONE_FRAME; k++) {
 		const s: Scene2D = Scene2D.create(CLEAR);
 		s.add(s.rect(8.0, 8.0, rgba(1.0, 0.0, 0.0, 1.0)).at((k * 10) as float32, 4.0));

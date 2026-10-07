@@ -735,7 +735,7 @@ export function findByName(
 	name: string,
 ): Result<NodeId3D, SceneError> {
 	if (!scene.isLive(from)) { return Result.err(SceneError.StaleNode); }
-	const stack: Vec<int32> = [from.index];
+	let stack: Vec<int32> = [from.index];
 	while ((stack.length as int32) > 0) {
 		const last: int32 = (stack.length as int32) - 1;
 		const index: int32 = stack[last];

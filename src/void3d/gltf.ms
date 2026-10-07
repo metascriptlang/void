@@ -482,7 +482,7 @@ function loadNode(node: JsonValue): Result<GltfNode, GltfError> {
 		}
 		local.scale = vec3(x.value, y.value, z.value);
 	}
-	const children: Vec<int32> = [];
+	let children: Vec<int32> = [];
 	const childField: JsonValue = fieldOf(node, "children");
 	if (!isNull(childField)) {
 		if (childField.kind != JsonKind.Array) {
@@ -736,7 +736,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 export function validateGltfGraph(data: GltfData): Result<int32, GltfError> {
 	let states: Vec<int32> = new Array(data.nodes.length as int32);
 	for (let i = 0; i < (states.length as int32); i++) { states[i] = 0; }
-	const stack: Vec<int32> = [];
+	let stack: Vec<int32> = [];
 	for (let i = (data.sceneRoots.length as int32) - 1; i >= 0; i--) {
 		stack.push(data.sceneRoots[i]);
 	}

@@ -145,9 +145,9 @@ enum GraphemeCoverage {
 }
 
 function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
-	const out: Vec<Codepoint> = new Array(0);
+	let out: Vec<Codepoint> = new Array(0);
 	let index: int32 = 0;
-	const bytes: Span<char> = text;
+	const bytes: Readonly<Span<char>> = text;
 	const total: int32 = bytes.length as int32;
 	let i: int32 = 0;
 	while (i < total) {
@@ -457,7 +457,7 @@ export function shapeText(
 	assignFaces(cps);
 	const stop: float32 = hasTab(cps) ? style.tabStop() : 0.0;
 	let glyphs: Vec<LaidGlyph> = new Array(0);
-	const values: Vec<int32> = new Array(0);
+	let values: Vec<int32> = new Array(0);
 	let pen: float32 = 0.0;
 	let previous: int32 = NO_GLYPH;
 	let previousFace: int32 = -1;
@@ -623,7 +623,7 @@ function pushTruncated(
 	pushLine(shaped, from, to, lineIndex, out);
 	const full: float32 = lineWidthOf(out, first);
 	if (full <= room || to <= from) { return; }
-	const line: Vec<LaidGlyph> = new Array(0);
+	let line: Vec<LaidGlyph> = new Array(0);
 	for (let k = first; k < (out.length as int32); k++) { line.push(out[k]); }
 	while ((out.length as int32) > first) { out.pop(); }
 	const dots: float32 = ellipsisGlyph(shaped).advance;
@@ -857,8 +857,8 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 			break;
 		}
 	}
-	const left: Vec<LaidGlyph> = new Array(0);
-	const right: Vec<LaidGlyph> = new Array(0);
+	let left: Vec<LaidGlyph> = new Array(0);
+	let right: Vec<LaidGlyph> = new Array(0);
 	const origin: float32 = cut < line.firstGlyph + line.glyphCount ? l.glyphs[cut].x : 0.0;
 	for (let k = line.firstGlyph; k < line.firstGlyph + line.glyphCount; k++) {
 		if (k < cut) {
@@ -882,9 +882,9 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 		charStart: line.charStart + (left.length as int32), indexStart: leftEnd,
 		byteStart: leftByteEnd,
 	};
-	const leftLines: Vec<LineBox> = new Array(0);
+	let leftLines: Vec<LineBox> = new Array(0);
 	leftLines.push(leftLine);
-	const rightLines: Vec<LineBox> = new Array(0);
+	let rightLines: Vec<LineBox> = new Array(0);
 	rightLines.push(rightLine);
 	return [
 		{ ...l, glyphs: left, lines: leftLines, width: leftWidth },

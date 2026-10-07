@@ -271,7 +271,7 @@ export function preview(this typeof PixelArtSettings): PixelArtSettings {
 
 // The stages a frame runs, in order. Allocates: called when the settings change.
 export function planStages(settings: PixelArtSettings): Vec<Stage> {
-	const stages: Vec<Stage> = [Stage.Scene];
+	let stages: Vec<Stage> = [Stage.Scene];
 	if (settings.postPass) { stages.push(Stage.Post); }
 	stages.push(Stage.Blit);
 	return stages;

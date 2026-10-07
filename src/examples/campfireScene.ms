@@ -196,10 +196,10 @@ const GROUND: Rgba = { red: 0.15, green: 0.17, blue: 0.3, alpha: 1.0 };
 
 // Each piece is its own geometry in its own local space, with `placements[i]` saying where
 // that piece goes. The tree is what turns the two into draws.
-const pieces: Vec<MeshData> = [];
-const placements: Vec<Transform3D> = [];
+let pieces: Vec<MeshData> = [];
+let placements: Vec<Transform3D> = [];
 let grassInstances: Vec<float32> = [];
-const stones: Vec<Box> = [];
+let stones: Vec<Box> = [];
 let flameBuffers: Vec<uint32> = [];
 let flameInstances: Vec<float32> = [];
 let texturePixels: Vec<uint32> = new Array(MAX_TEXTURE_PIXELS);
@@ -1074,7 +1074,7 @@ function setupAnimations(): Result<int32, AnimationError> {
 		try AnimationClock.forFrames(SPIN_KEYS, 1.0, Interpolation.Step);
 	spinClock.loop = false;
 	logSpin = ObjectAnimation.forClock(spinClock);
-	const turns: Vec<Transform3D> = [];
+	let turns: Vec<Transform3D> = [];
 	for (let i = 0; i < SPIN_KEYS; i++) {
 		const angle: float32 = logSpinPerFrame * (i as float32);
 		turns.push({ ...Transform3D.identity(), rotation: eulerQuat(0.0, angle, 0.0) });

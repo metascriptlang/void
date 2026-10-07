@@ -56,7 +56,7 @@ function capture(): Recording {
 		commandCount(), effectCount(), vertexCount(), uiInstanceCount(), spriteInstanceCount(),
 		targetCommandCount(),
 	];
-	const floats: Vec<float32> = [];
+	let floats: Vec<float32> = [];
 	for (let i: int32 = 0; i < commandCount(); i++) {
 		for (let f: int32 = 0; f < COMMAND_FLOATS; f++) { floats.push(commandField(i, f)); }
 	}
@@ -99,7 +99,7 @@ function walked(s: Scene2D): Recording {
 	s.refOf(s.root).sync(identity2d(), true);
 	s.refOf(s.root).draw(1.0, W, H);
 	finishRecording();
-	const out: Recording = capture();
+	let out: Recording = capture();
 	frameEnd();
 	return out;
 }
@@ -111,7 +111,7 @@ function scanned(s: Scene2D): Recording {
 	s.syncOrder(identity2d(), true);
 	s.drawOrder(W, H);
 	finishRecording();
-	const out: Recording = capture();
+	let out: Recording = capture();
 	frameEnd();
 	return out;
 }
@@ -178,7 +178,7 @@ test "the draw order is rebuilt on a structural change and on nothing else" {
 
 function frame(s: Scene2D): Recording {
 	s.paint(W, H, 1.0);
-	const out: Recording = capture();
+	let out: Recording = capture();
 	frameEnd();
 	s.clearChanges();
 	s.retryRefused();
@@ -194,7 +194,7 @@ function fullFrame(s: Scene2D): Recording {
 let reusedByRetained: int32 = 0;
 
 function ranges(s: Scene2D): Vec<int32> {
-	const out: Vec<int32> = [];
+	let out: Vec<int32> = [];
 	for (let r: int32 = 0; r < (s.kinds.length as int32); r++) {
 		if (s.slots[r] == NO_SLOT || paintStateOf(r) != PaintState.Painted) { continue; }
 		const a: PaintIndex = paintStartOf(r);

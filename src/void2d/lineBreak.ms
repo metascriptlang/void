@@ -276,10 +276,10 @@ function unitBreak(units: Readonly<Span<Unit>>, j: int32, count: int32): boolean
 // Whether a line may break before each codepoint (UAX #14, UCD 18.0.0); never before the first.
 export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
 	const count: int32 = codepoints.length as int32;
-	const original: Vec<LineClass> = new Array(0);
-	const absorbed: Vec<boolean> = new Array(0);
-	const unitOf: Vec<int32> = new Array(0);
-	const units: Vec<Unit> = new Array(0);
+	let original: Vec<LineClass> = new Array(0);
+	let absorbed: Vec<boolean> = new Array(0);
+	let unitOf: Vec<int32> = new Array(0);
+	let units: Vec<Unit> = new Array(0);
 	for (let i = 0; i < count; i++) {
 		const p: LineProperty = lineProperty(codepoints[i]);
 		const combining: boolean = p.cls == LineClass.CM || p.cls == LineClass.ZWJ;
@@ -294,7 +294,7 @@ export function lineBreaks(codepoints: Readonly<Span<int32>>): Vec<boolean> {
 		}
 		unitOf.push((units.length as int32) - 1);
 	}
-	const breaks: Vec<boolean> = new Array(0);
+	let breaks: Vec<boolean> = new Array(0);
 	const unitCount: int32 = units.length as int32;
 	for (let i = 0; i < count; i++) {
 		if (i == 0) {

@@ -125,7 +125,7 @@ test "wavy underline distance follows the sine centreline" {
 test "analytic coverage equals true area across a straight edge" {
 	const cxs: Vec<float32> = [9.0, 9.25, 9.5, 9.75, 10.0, 10.25, 10.5, 10.75, 11.0];
 	const cys: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-	const analytic: Vec<float32> = new Array(0);
+	let analytic: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i < (cxs.length as int32); i++) {
 		const d: float32 = roundedRectDistance(cxs[i], cys[i], 10.0, 6.0, 0.0);
 		analytic.push(coverageFromDistance(d, 1.0));
@@ -141,7 +141,7 @@ test "analytic coverage equals true area across a straight edge" {
 test "analytic coverage tracks true area around a rounded corner within 0.06" {
 	const cxs: Vec<float32> = [7.0, 7.5, 8.0, 8.5, 9.0, 9.5];
 	const cys: Vec<float32> = [3.0, 3.5, 4.0, 4.5, 5.0, 5.5];
-	const analytic: Vec<float32> = new Array(0);
+	let analytic: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i < (cxs.length as int32); i++) {
 		const d: float32 = roundedRectDistance(cxs[i], cys[i], 10.0, 6.0, 4.0);
 		analytic.push(coverageFromDistance(d, 1.0));
@@ -157,7 +157,7 @@ test "analytic coverage tracks true area around a rounded corner within 0.06" {
 test "the oracle rejects a coverage curve that is wrong" {
 	const cxs: Vec<float32> = [9.5, 10.0, 10.5];
 	const cys: Vec<float32> = [0.0, 0.0, 0.0];
-	const analytic: Vec<float32> = new Array(0);
+	let analytic: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i < (cxs.length as int32); i++) {
 		const d: float32 = roundedRectDistance(cxs[i], cys[i], 10.0, 6.0, 0.0);
 		analytic.push(coverageFromDistance(d, 0.0));
@@ -186,7 +186,7 @@ function smoothstepCoverage(d: float32, aa: float32): float32 {
 test "smoothstep would fail the straight-edge bound that linear coverage meets exactly" {
 	const cxs: Vec<float32> = [9.0, 9.25, 9.5, 9.75, 10.0, 10.25, 10.5, 10.75, 11.0];
 	const cys: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-	const curve: Vec<float32> = new Array(0);
+	let curve: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i < (cxs.length as int32); i++) {
 		const d: float32 = roundedRectDistance(cxs[i], cys[i], 10.0, 6.0, 0.0);
 		curve.push(smoothstepCoverage(d, 1.0));
@@ -225,9 +225,9 @@ function shadowPoints(): Vec<float32> {
 
 test "the shadow integral matches the kernel-integral truth within 0.02" {
 	const pts: Vec<float32> = shadowPoints();
-	const analytic: Vec<float32> = new Array(0);
-	const pxs: Vec<float32> = new Array(0);
-	const pys: Vec<float32> = new Array(0);
+	let analytic: Vec<float32> = new Array(0);
+	let pxs: Vec<float32> = new Array(0);
+	let pys: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
 		analytic.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 2.0, 1.0));
 		pxs.push(pts[i]);
@@ -240,9 +240,9 @@ test "the shadow integral matches the kernel-integral truth within 0.02" {
 
 test "the oracle convicts a shadow computed with the wrong blur" {
 	const pts: Vec<float32> = shadowPoints();
-	const wrong: Vec<float32> = new Array(0);
-	const pxs: Vec<float32> = new Array(0);
-	const pys: Vec<float32> = new Array(0);
+	let wrong: Vec<float32> = new Array(0);
+	let pxs: Vec<float32> = new Array(0);
+	let pys: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
 		wrong.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 3.0, 1.0));
 		pxs.push(pts[i]);

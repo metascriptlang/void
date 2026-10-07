@@ -865,7 +865,7 @@ function recordedInstances(root: NodeRef, w: float32, h: float32): Vec<float32> 
 	root.sync(identity2d(), true);
 	root.draw(1.0, w, h);
 	finishRecording();
-	const out: Vec<float32> = new Array(0);
+	let out: Vec<float32> = new Array(0);
 	for (let i = 0; i < uiInstanceCount(); i++) {
 		for (let f = 0; f < REC_UI_FLOATS; f++) { out.push(uiInstanceField(i, f)); }
 	}
@@ -929,7 +929,7 @@ function selectedSpans(root: NodeRef, w: float32, h: float32): Vec<float32> {
 	root.sync(identity2d(), true);
 	root.draw(1.0, w, h);
 	finishRecording();
-	const spans: Vec<float32> = new Array(0);
+	let spans: Vec<float32> = new Array(0);
 	for (let i = 0; i < uiInstanceCount(); i++) {
 		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
 			continue;
@@ -999,8 +999,8 @@ test "selected rows meet across line spacing, half of it above each row and half
 	s.refOf(s.root).sync(identity2d(), true);
 	s.refOf(s.root).draw(1.0, 200.0, 100.0);
 	finishRecording();
-	const tops: Vec<float32> = new Array(0);
-	const bottoms: Vec<float32> = new Array(0);
+	let tops: Vec<float32> = new Array(0);
+	let bottoms: Vec<float32> = new Array(0);
 	for (let i = 0; i < uiInstanceCount(); i++) {
 		if (uiInstanceField(i, REC_UI_PARAMS0) != (InstanceMode.Selection as int32) as float32) {
 			continue;

@@ -101,7 +101,7 @@ export function castInsetShadow(this s: BoxStyle, color: Color, blur: float32): 
 }
 
 export let boxStyles: Vec<BoxStyle> = [];
-const freeBoxStyles: Vec<int32> = [];
+let freeBoxStyles: Vec<int32> = [];
 
 export function allocateBoxStyle(style: BoxStyle): int32 {
 	const freeCount: int32 = freeBoxStyles.length as int32;

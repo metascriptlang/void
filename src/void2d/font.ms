@@ -77,10 +77,10 @@ struct Fallback {
 	scale: float32;
 }
 
-const registered: Vec<RegisteredFace> = [];
-const loadedPaths: Vec<LoadedPath> = [];
-const synthetics: Vec<Synthetic> = [];
-const fonts: Vec<FontEntry> = [];
+let registered: Vec<RegisteredFace> = [];
+let loadedPaths: Vec<LoadedPath> = [];
+let synthetics: Vec<Synthetic> = [];
+let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
 let fallbackLoads: int32 = 0;
@@ -248,7 +248,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 		return Result.err(best.error);
 	}
 	const primary: int32 = best.value;
-	const fallbackMatches: Vec<int32> = new Array(0);
+	let fallbackMatches: Vec<int32> = new Array(0);
 	for (const family of font.fallbacks) {
 		const matched = bestFace(family, font.weight, font.style);
 		if (!matched.ok) {

@@ -29,8 +29,8 @@ function hexValue(text: string): int32 {
 
 function parseRow(line: string): Row {
 	const tokens = line.split(" ");
-	const codepoints: Vec<int32> = new Array(0);
-	const breaks: Vec<boolean> = new Array(0);
+	let codepoints: Vec<int32> = new Array(0);
+	let breaks: Vec<boolean> = new Array(0);
 	for (let i = 1; i < (tokens.length as int32); i += 2) {
 		breaks.push(tokens[i - 1].equals(BREAK));
 		codepoints.push(hexValue(tokens[i]));
@@ -39,7 +39,7 @@ function parseRow(line: string): Row {
 }
 
 function rows(path: string): Vec<Row> {
-	const out: Vec<Row> = new Array(0);
+	let out: Vec<Row> = new Array(0);
 	const text = readFile(path);
 	if (!text.ok) {
 		console.log(`ucd oracle: cannot read ${path}`);

@@ -1675,7 +1675,7 @@ export function closeRows(this s: Scene2D): void {
 	let freed: Vec<boolean> = new Array(0);
 	for (let i: int32 = 0; i < rows; i++) { freed.push(s.generations[i] == 0); }
 	for (const i of s.free) { freed[i] = true; }
-	const tops: Vec<int32> = new Array(0);
+	let tops: Vec<int32> = new Array(0);
 	for (let i: int32 = 0; i < rows; i++) {
 		if (!freed[i] && s.parents[i] == NO_NODE_2D) { tops.push(i); }
 	}

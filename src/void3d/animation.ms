@@ -244,7 +244,7 @@ export function bindTracks(
 	scene.requireOwn(base, "bindTracks");
 	if (!scene.isLive(base)) { return Result.err(AnimationError.StaleTarget); }
 	const count: int32 = animation.tracks.length as int32;
-	const found: Vec<NodeId3D> = [];
+	let found: Vec<NodeId3D> = [];
 	for (let i = 0; i < count; i++) {
 		const named: Result<NodeId3D, SceneError> =
 			scene.findByName(base, animation.tracks[i].name);
@@ -319,7 +319,7 @@ export function forMeshes(
 			return Result.err(issued ? AnimationError.BadMesh : AnimationError.ForeignMesh);
 		}
 	}
-	const kept: Vec<MeshId> = [];
+	let kept: Vec<MeshId> = [];
 	for (const mesh of meshes) {
 		const pinned: Result<int32, HandleError> = pinMesh(context, mesh);
 		if (!pinned.ok) { unreachable; }

@@ -206,7 +206,7 @@ function reclaimPage(atlas: GlyphAtlas): Result<GlyphPage, AtlasError> {
 				atlas.freeTiles.push(i);
 			}
 		}
-		const kept: Vec<Shelf> = new Array(0);
+		let kept: Vec<Shelf> = new Array(0);
 		for (const shelf of atlas.shelves) {
 			if (shelf.page != page) { kept.push(shelf); }
 		}
