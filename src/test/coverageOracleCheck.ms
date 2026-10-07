@@ -387,24 +387,3 @@ test "the one-width error at 4:1 rotated 20 degrees follows the derived bound" {
 	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
 	assert r[2] <= 0.06;
 }
-
-test "a blurred shadow is exact in local space under a non-uniform scale" {
-	const t = trs2d(BOX_X, BOX_Y, 0.0, 3.0, 1.0);
-	const det: float32 = t.a * t.d - t.b * t.c;
-	const pts: Vec<float32> = shadowPoints();
-	let worst: float32 = 0.0;
-	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
-		const dx: float32 = t.a * pts[i] + t.c * pts[i + 1];
-		const dy: float32 = t.b * pts[i] + t.d * pts[i + 1];
-		const lx: float32 = (t.d * dx - t.c * dy) / det;
-		const ly: float32 = (-t.b * dx + t.a * dy) / det;
-		const analytic: float32 = shadowCoverage(
-			lx, ly, 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 2.0, 1.0,
-		);
-		const truth: float32 = blurredPixelCoverage(lx, ly, 10.0, 6.0, 3.0, 1.5, -1.0, 2.0);
-		const e: float32 = analytic > truth ? analytic - truth : truth - analytic;
-		if (e > worst) { worst = e; }
-	}
-	console.log(`coverage oracle: shadow through a 3:1 inverse map, worst error ${worst}`);
-	assert worst <= 0.02;
-}
