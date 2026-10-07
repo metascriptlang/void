@@ -85,6 +85,16 @@ when (voidSvg) {
 	import { glyphAtlas } from "../../src/void2d/labelText";
 }
 
+when (voidProfiler) {
+	import { OverlayMode } from "../../src/void2d/profiler";
+	import {
+		profilerOverlayFeed,
+		profilerOverlaySetMode,
+		profilerOverlayRecord,
+	} from "../../src/void2d/profilerOverlay";
+	import { fixtureProfiler, fixtureCounters } from "../harness/profilerFixture";
+}
+
 const SNAPSHOT_DIR: string = "tests/displayList";
 
 // Fixed precision, because a snapshot that moves when a float prints differently cries wolf.
@@ -1392,5 +1402,44 @@ when (voidSvg) {
 		s.add(s.icon(id, 8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0)));
 		s.add(s.icon(id, 9.0, 9.0, rgba(1.0, 1.0, 1.0, 1.0)));
 		assert iconHolds(id) == 2;
+	}
+}
+
+when (voidProfiler) {
+	function overlayStream(mode: OverlayMode, w: float32, h: float32, dpi: float32): string {
+		profilerOverlayFeed(fixtureProfiler(), fixtureCounters());
+		profilerOverlaySetMode(mode);
+		begin2d(w, h, dpi);
+		profilerOverlayRecord(w, h, dpi);
+		finishRecording();
+		let out: string = "";
+		for (const line of formatStream().split("\n")) {
+			if (line.length == 0 || line.startsWith("u ")) { continue; }
+			out = out + line + "\n";
+		}
+		for (let i: int32 = 0; i < uiInstanceCount(); i++) {
+			out = out + `u ${i} mode ${uiInstanceField(i, REC_UI_PARAMS0) as int32}`;
+			out = out + ` at ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 1))}`;
+			out = out + ` size ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 2))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_ORIGIN_SIZE + 3))}`;
+			out = out + ` fill ${f2(uiInstanceField(i, REC_UI_COLOR_FILL))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 1))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 2))}`;
+			out = out + ` ${f2(uiInstanceField(i, REC_UI_COLOR_FILL + 3))}\n`;
+		}
+		frameEnd();
+		return out;
+	}
+
+	test "T1 snapshot: the profiler overlay is one UI run of Box rects, panel first" {
+		const full: string = overlayStream(OverlayMode.Full, 384.0, 280.0, 1.0);
+		const minimal: string = overlayStream(OverlayMode.Minimal, 256.0, 144.0, 1.5);
+		assert snapshot("profilerOverlay", `full\n${full}minimal\n${minimal}`);
+	}
+
+	test "a hidden overlay records no command and no instance" {
+		const hidden: string = overlayStream(OverlayMode.Hidden, 384.0, 280.0, 1.0);
+		assert hidden.startsWith("commands 0 draws 0 vertices 0 uiInstances 0");
 	}
 }

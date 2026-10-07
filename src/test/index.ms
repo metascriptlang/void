@@ -69,6 +69,7 @@ when (voidSvg) {
 when (voidProfiler) {
 	import "./profilerCheck";
 	import "./frameMarksCheck";
+	import "./profilerOverlayCheck";
 }
 
 import "./worldLabelCheck";
