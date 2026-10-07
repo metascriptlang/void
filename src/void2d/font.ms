@@ -36,8 +36,8 @@ export enum FontError {
 	NoFamily,
 	NoFallbackFamily,
 	NeedsShaper,
-	BadFeatureTag,
 	NotLoaded,
+	BadFeatureTag,
 }
 
 export enum Presentation {
