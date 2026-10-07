@@ -52,6 +52,7 @@ import {
 } from "./displayList";
 import { Vec2, Color, Tile, Transform2D, Smooth, rgba } from "./types";
 import { Mat4 } from "../math/math3d";
+import { sqrtf } from "../math/mat4";
 import { NO_COLOR_MATRIX } from "./effect";
 import {
 	PassState, PixelFormat, passState, frameIndex, contextGeneration, endPass, imageAlive, viewAlive,
@@ -1144,8 +1145,72 @@ export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void 
 // here and appended to the frame's stream, so any number of them share one buffer and one
 // draw per state run. P2 gives the transform back to the GPU as a per-instance affine; until
 // then the CPU does it, which is what the old dynamic path already did for every Rect.
+export const FRINGE_HALF_WIDTH: float32 = 0.5;
+export const EDGE_FLOATS: int32 = 10;
+export const EDGE_NORMAL_BEFORE: int32 = 0;
+export const EDGE_NORMAL_AFTER: int32 = 2;
+export const EDGE_SHIFT: int32 = 4;
+export const EDGE_LIMIT: int32 = 5;
+export const EDGE_UV: int32 = 6;
+const EDGE_MITER_LIMIT: float32 = 4.0;
+const EDGE_PARALLEL: float32 = 0.0001;
+
+struct EdgeMove {
+	x: float32;
+	y: float32;
+	coverage: float32;
+}
+
+function normalScale(m: Transform2D, inverseDet: float32, nx: float32, ny: float32): float32 {
+	const x: float32 = (m.d * nx - m.b * ny) * inverseDet;
+	const y: float32 = (m.a * ny - m.c * nx) * inverseDet;
+	return sqrtf(x * x + y * y);
+}
+
+function edgeMove(
+	edges: float32[],
+	e: int32,
+	m: Transform2D,
+	inverseDet: float32,
+	worldPerDevice: float32,
+): EdgeMove {
+	const n1x: float32 = edges[e + EDGE_NORMAL_BEFORE];
+	const n1y: float32 = edges[e + EDGE_NORMAL_BEFORE + 1];
+	const n2x: float32 = edges[e + EDGE_NORMAL_AFTER];
+	const n2y: float32 = edges[e + EDGE_NORMAL_AFTER + 1];
+	const shift: float32 = edges[e + EDGE_SHIFT] * worldPerDevice;
+	let t1: float32 = shift * normalScale(m, inverseDet, n1x, n1y);
+	let t2: float32 = shift * normalScale(m, inverseDet, n2x, n2y);
+	const a1: float32 = t1 < 0.0 ? -t1 : t1;
+	const a2: float32 = t2 < 0.0 ? -t2 : t2;
+	const reach: float32 = a1 > a2 ? a1 : a2;
+	const limit: float32 = edges[e + EDGE_LIMIT];
+	let coverage: float32 = 1.0;
+	if (limit > 0.0 && shift < 0.0 && reach > limit) {
+		const keep: float32 = limit / reach;
+		t1 = t1 * keep;
+		t2 = t2 * keep;
+		coverage = 2.0 * limit / (limit + reach);
+	}
+	const det: float32 = n1x * n2y - n1y * n2x;
+	let x: float32 = n1x * t1;
+	let y: float32 = n1y * t1;
+	if (det > EDGE_PARALLEL || det < -EDGE_PARALLEL) {
+		x = (t1 * n2y - t2 * n1y) / det;
+		y = (n1x * t2 - n2x * t1) / det;
+	}
+	const length: float32 = sqrtf(x * x + y * y);
+	const longest: float32 = EDGE_MITER_LIMIT * (reach < limit || limit <= 0.0 ? reach : limit);
+	if (length > longest && length > 0.0) {
+		x = x * longest / length;
+		y = y * longest / length;
+	}
+	return { x: x, y: y, coverage: coverage };
+}
+
 export function drawMeshRange(
 	mesh: float32[],
+	edges: float32[],
 	vertexOffset: int32,
 	vertexTotal: int32,
 	view: uint32,
@@ -1160,24 +1225,43 @@ export function drawMeshRange(
 	if (first < 0 || first >= (mesh.length as int32)) { return; }
 	if (upto > (mesh.length as int32)) { upto = mesh.length as int32; }
 	useRun(Pipeline.Vertex, view == 0 ? void2dWhiteView() : view, premultiplied, blend);
+	const det: float32 = m.a * m.d - m.b * m.c;
+	const scale: float32 = currentRenderScale();
+	const extrudes: boolean = (edges.length as int32) > 0 && scale > 0.0 &&
+		(det > EDGE_PARALLEL || det < -EDGE_PARALLEL);
+	const inverseDet: float32 = extrudes ? 1.0 / det : 0.0;
+	const worldPerDevice: float32 = extrudes ? 1.0 / scale : 0.0;
 	for (let i: int32 = first; i + VERTEX_FLOATS <= upto; i = i + VERTEX_FLOATS) {
-		const lx: float32 = mesh[i];
-		const ly: float32 = mesh[i + 1];
+		let lx: float32 = mesh[i];
+		let ly: float32 = mesh[i + 1];
+		let u: float32 = mesh[i + 2];
+		let v: float32 = mesh[i + 3];
+		let coverage: float32 = 1.0;
+		const e: int32 = (i / VERTEX_FLOATS) * EDGE_FLOATS;
+		if (extrudes && edges[e + EDGE_SHIFT] != 0.0) {
+			const moved: EdgeMove = edgeMove(edges, e, m, inverseDet, worldPerDevice);
+			lx = lx + moved.x;
+			ly = ly + moved.y;
+			u = u + edges[e + EDGE_UV] * moved.x + edges[e + EDGE_UV + 1] * moved.y;
+			v = v + edges[e + EDGE_UV + 2] * moved.x + edges[e + EDGE_UV + 3] * moved.y;
+			coverage = moved.coverage;
+		}
 		pushVertex(
 			m.a * lx + m.c * ly + m.tx,
 			m.b * lx + m.d * ly + m.ty,
-			mesh[i + 2],
-			mesh[i + 3],
+			u,
+			v,
 			mesh[i + 4] * tint.r,
 			mesh[i + 5] * tint.g,
 			mesh[i + 6] * tint.b,
-			mesh[i + 7] * tint.a * alpha,
+			mesh[i + 7] * tint.a * alpha * coverage,
 		);
 	}
 }
 
 export function drawMesh(
 	mesh: float32[],
+	edges: float32[],
 	view: uint32,
 	premultiplied: boolean,
 	blend: BlendMode,
@@ -1185,7 +1269,7 @@ export function drawMesh(
 	tint: Color,
 	alpha: float32,
 ): void {
-	drawMeshRange(mesh, 0, (mesh.length as int32) / VERTEX_FLOATS,
+	drawMeshRange(mesh, edges, 0, (mesh.length as int32) / VERTEX_FLOATS,
 		view, premultiplied, blend, m, tint, alpha);
 }
 

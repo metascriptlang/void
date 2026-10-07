@@ -7,6 +7,7 @@
 import { NodeRef, GraphicsMesh, DrawKind, Changed } from "./node";
 import { Vec2, Color, Tile, vec2, rgba } from "./types";
 import { GradientSpace } from "./gradient";
+import { EDGE_FLOATS, FRINGE_HALF_WIDTH } from "./draw";
 import { sinf, cosf, sqrtf } from "../math/mat4";
 
 const TAU: float32 = 6.2831853;
@@ -14,6 +15,7 @@ const CIRCLE_MAX_SEG: int32 = 64;
 const DEGENERATE_LEN: float32 = 0.0001;
 const MITER_LIMIT: float32 = 4.0;
 const white: Color = rgba(1.0, 1.0, 1.0, 1.0);
+const NO_NORMAL: Vec2 = vec2(0.0, 0.0);
 
 export enum GraphicsOpKind {
 	Mesh,
@@ -35,7 +37,31 @@ export const GFX_OP_COLOR1: int32 = 12;
 export const GFX_OP_COLOR2: int32 = 16;
 export const GFX_OP_PARAMS: int32 = 20;
 
-function rawVtx(n: GraphicsMesh, x: float32, y: float32, u: float32, v: float32, c: Color): void {
+struct UvMap {
+	ux: float32;
+	uy: float32;
+	uc: float32;
+	vx: float32;
+	vy: float32;
+	vc: float32;
+}
+
+const NO_UV: UvMap = { ux: 0.0, uy: 0.0, uc: 0.0, vx: 0.0, vy: 0.0, vc: 0.0 };
+
+struct Corner {
+	p: Vec2;
+	before: Vec2;
+	after: Vec2;
+}
+
+function pushMeshVertex(
+	n: GraphicsMesh,
+	x: float32,
+	y: float32,
+	u: float32,
+	v: float32,
+	c: Color,
+): void {
 	n.mesh.push(x);
 	n.mesh.push(y);
 	n.mesh.push(u);
@@ -45,6 +71,11 @@ function rawVtx(n: GraphicsMesh, x: float32, y: float32, u: float32, v: float32,
 	n.mesh.push(c.b);
 	n.mesh.push(c.a);
 	n.stale = true;
+}
+
+function rawVtx(n: GraphicsMesh, x: float32, y: float32, u: float32, v: float32, c: Color): void {
+	pushMeshVertex(n, x, y, u, v, c);
+	for (let k: int32 = 0; k < EDGE_FLOATS; k++) { n.edges.push(0.0 as float32); }
 }
 
 function beginMeshVertex(n: GraphicsMesh): int32 {
@@ -70,22 +101,227 @@ function tri(n: GraphicsMesh, a: Vec2, b: Vec2, c: Vec2, color: Color): void {
 	vtx(n, c.x, c.y, 0.0, 0.0, color);
 }
 
-function triUV(
+function mapU(map: UvMap, p: Vec2): float32 { return map.ux * p.x + map.uy * p.y + map.uc; }
+function mapV(map: UvMap, p: Vec2): float32 { return map.vx * p.x + map.vy * p.y + map.vc; }
+
+function plainVtx(n: GraphicsMesh, counted: boolean, p: Vec2, map: UvMap, c: Color): void {
+	if (counted) { beginMeshVertex(n); }
+	rawVtx(n, p.x, p.y, mapU(map, p), mapV(map, p), c);
+}
+
+function edgeVtx(
 	n: GraphicsMesh,
-	a: Vec2,
-	au: float32,
-	av: float32,
-	b: Vec2,
-	bu: float32,
-	bv: float32,
-	c: Vec2,
-	cu: float32,
-	cv: float32,
+	counted: boolean,
+	corner: Corner,
+	map: UvMap,
+	c: Color,
+	shift: float32,
+	limit: float32,
+): void {
+	if (counted) { beginMeshVertex(n); }
+	pushMeshVertex(n, corner.p.x, corner.p.y, mapU(map, corner.p), mapV(map, corner.p), c);
+	n.edges.push(corner.before.x);
+	n.edges.push(corner.before.y);
+	n.edges.push(corner.after.x);
+	n.edges.push(corner.after.y);
+	n.edges.push(shift);
+	n.edges.push(limit);
+	n.edges.push(map.ux);
+	n.edges.push(map.uy);
+	n.edges.push(map.vx);
+	n.edges.push(map.vy);
+	n.fringed = true;
+}
+
+function transparent(c: Color): Color { return rgba(c.r, c.g, c.b, 0.0); }
+
+function fringeQuad(
+	n: GraphicsMesh,
+	counted: boolean,
+	a: Corner,
+	b: Corner,
+	map: UvMap,
+	color: Color,
+	limit: float32,
+): void {
+	const clear: Color = transparent(color);
+	edgeVtx(n, counted, a, map, color, -FRINGE_HALF_WIDTH, limit);
+	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH, limit);
+	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH, limit);
+	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH, limit);
+	edgeVtx(n, counted, b, map, clear, FRINGE_HALF_WIDTH, limit);
+	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH, limit);
+}
+
+function isNormal(v: Vec2): boolean { return v.x != 0.0 || v.y != 0.0; }
+
+function loopStart(loopEnds: Readonly<Span<int32>>, k: int32): int32 {
+	return k == 0 ? 0 : loopEnds[k - 1];
+}
+
+// A filled region bounded by `pts`: loop k ends before `loopEnds[k]`, a hole is wound against
+// loop 0, and `tris` index `pts`. With antialias the body is drawn half a device pixel inside
+// every edge and a fringe ramps coverage to zero half a pixel outside it.
+function contourFill(
+	n: GraphicsMesh,
+	counted: boolean,
+	pts: Readonly<Span<Vec2>>,
+	loopEnds: Readonly<Span<int32>>,
+	tris: Readonly<Span<int32>>,
+	map: UvMap,
 	color: Color,
 ): void {
-	vtx(n, a.x, a.y, au, av, color);
-	vtx(n, b.x, b.y, bu, bv, color);
-	vtx(n, c.x, c.y, cu, cv, color);
+	const total: int32 = pts.length as int32;
+	if (total < 3 || (loopEnds.length as int32) == 0) { return; }
+	if (!n.antialias) {
+		for (const k of tris) { plainVtx(n, counted, pts[k], map, color); }
+		return;
+	}
+	let area: float32 = 0.0;
+	const firstEnd: int32 = loopEnds[0];
+	for (let i: int32 = 0; i < firstEnd; i++) {
+		const j: int32 = i + 1 < firstEnd ? i + 1 : 0;
+		area = area + pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+	}
+	const outward: float32 = area > 0.0 ? -1.0 : 1.0;
+	const edgeNormals: Vec2[] = [];
+	const nextOf: int32[] = [];
+	for (let k: int32 = 0; k < (loopEnds.length as int32); k++) {
+		const start: int32 = loopStart(loopEnds, k);
+		const end: int32 = loopEnds[k];
+		for (let i: int32 = start; i < end; i++) {
+			const j: int32 = i + 1 < end ? i + 1 : start;
+			const left: Vec2 = segNormal(pts[i].x, pts[i].y, pts[j].x, pts[j].y);
+			edgeNormals.push(vec2(left.x * outward, left.y * outward));
+			nextOf.push(j);
+		}
+	}
+	const corners: Corner[] = [];
+	for (let k: int32 = 0; k < (loopEnds.length as int32); k++) {
+		const start: int32 = loopStart(loopEnds, k);
+		const end: int32 = loopEnds[k];
+		const size: int32 = end - start;
+		for (let i: int32 = start; i < end; i++) {
+			let before: Vec2 = NO_NORMAL;
+			let after: Vec2 = NO_NORMAL;
+			for (let step: int32 = 1; step <= size; step++) {
+				const candidate: Vec2 = edgeNormals[start + (i - start - step + size * 2) % size];
+				if (isNormal(candidate)) { before = candidate; break; }
+			}
+			for (let step: int32 = 0; step < size; step++) {
+				const candidate: Vec2 = edgeNormals[start + (i - start + step) % size];
+				if (isNormal(candidate)) { after = candidate; break; }
+			}
+			corners.push({ p: pts[i], before: before, after: after });
+		}
+	}
+	for (const k of tris) {
+		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH, 0.0);
+	}
+	for (let i: int32 = 0; i < total; i++) {
+		if (isNormal(edgeNormals[i])) {
+			fringeQuad(n, counted, corners[i], corners[nextOf[i]], map, color, 0.0);
+		}
+	}
+}
+
+function fanTris(count: int32): int32[] {
+	const out: int32[] = [];
+	for (let i: int32 = 1; i + 1 < count; i++) {
+		out.push(0);
+		out.push(i);
+		out.push(i + 1);
+	}
+	return out;
+}
+
+function arcSegs(r: float32, sweep: float32): int32 {
+	const s: float32 = sweep < 0.0 ? -sweep : sweep;
+	let n: int32 = ((r * s * 0.3) as int32) + 3;
+	if (n > CIRCLE_MAX_SEG) { n = CIRCLE_MAX_SEG; }
+	return n;
+}
+
+function circleSegs(r: float32): int32 {
+	const seg: int32 = (r as int32) / 2 + 8;
+	return seg > CIRCLE_MAX_SEG ? CIRCLE_MAX_SEG : seg;
+}
+
+function cornerArc(
+	pts: Vec2[],
+	ccx: float32,
+	ccy: float32,
+	r: float32,
+	a0: float32,
+	seg: int32,
+): void {
+	for (let i: int32 = 0; i <= seg; i++) {
+		const a: float32 = a0 + TAU * 0.25 * ((i as float32) / (seg as float32));
+		pts.push(vec2(ccx + cosf(a) * r, ccy + sinf(a) * r));
+	}
+}
+
+function ellipsePoints(cx: float32, cy: float32, rx: float32, ry: float32, seg: int32): Vec2[] {
+	const pts: Vec2[] = [];
+	const step: float32 = TAU / (seg as float32);
+	for (let i: int32 = 0; i < seg; i++) {
+		const a: float32 = step * (i as float32);
+		pts.push(vec2(cx + cosf(a) * rx, cy + sinf(a) * ry));
+	}
+	return pts;
+}
+
+// left-hand unit normal of segment a→b (zero vector if degenerate).
+function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
+	const dx: float32 = bx - ax;
+	const dy: float32 = by - ay;
+	const len: float32 = sqrtf(dx * dx + dy * dy);
+	if (len < DEGENERATE_LEN) { return vec2(0.0, 0.0); }
+	return vec2(-dy / len, dx / len);
+}
+
+function meshOf(g: NodeRef, call: string): GraphicsMesh {
+	const i: int32 = g.liveRow(call);
+	const kind: DrawKind = g.scene.kinds[i];
+	if (kind !== DrawKind.Graphics) {
+		console.log(
+			`void2d: ${call} asked of a ${kind.toString()} node; only a Graphics has a mesh`,
+		);
+		unreachable;
+	}
+	g.scene.markChanged(i, Changed.Content);
+	return g.scene.meshes[g.scene.payloads[i]];
+}
+
+export function setAntialias(this g: NodeRef, on: boolean): NodeRef {
+	const target: GraphicsMesh = meshOf(g, "setAntialias");
+	target.antialias = on;
+	return g;
+}
+
+export function fillTriangle(this g: NodeRef, a: Vec2, b: Vec2, c: Vec2, color: Color): NodeRef {
+	const target: GraphicsMesh = meshOf(g, "fillTriangle");
+	contourFill(target, true, [a, b, c], [3], [0, 1, 2], NO_UV, color);
+	return g;
+}
+
+function rectPoints(x: float32, y: float32, w: float32, h: float32): Vec2[] {
+	return [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
+}
+
+const RECT_TRIS: int32[] = [0, 1, 2, 0, 2, 3];
+
+export function fillRect(this g: NodeRef, x: float32, y: float32, w: float32, h: float32, color: Color): NodeRef {
+	const target: GraphicsMesh = meshOf(g, "fillRect");
+	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, NO_UV, color);
+	return g;
+}
+
+export function fillConvex(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
+	const target: GraphicsMesh = meshOf(g, "fillConvex");
+	const m: int32 = pts.length as int32;
+	contourFill(target, true, pts, [m], fanTris(m), NO_UV, color);
+	return g;
 }
 
 function appendOp(
@@ -128,75 +364,6 @@ function appendOp(
 	n.records[base + GFX_OP_PARAMS + 1] = p1;
 	n.records[base + GFX_OP_PARAMS + 2] = p2;
 	n.records[base + GFX_OP_PARAMS + 3] = p3;
-}
-
-function arcSegs(r: float32, sweep: float32): int32 {
-	const s: float32 = sweep < 0.0 ? -sweep : sweep;
-	let n: int32 = ((r * s * 0.3) as int32) + 3;
-	if (n > CIRCLE_MAX_SEG) { n = CIRCLE_MAX_SEG; }
-	return n;
-}
-
-function cornerArc(
-	pts: Vec2[],
-	ccx: float32,
-	ccy: float32,
-	r: float32,
-	a0: float32,
-	seg: int32,
-): void {
-	for (let i: int32 = 0; i <= seg; i++) {
-		const a: float32 = a0 + TAU * 0.25 * ((i as float32) / (seg as float32));
-		pts.push(vec2(ccx + cosf(a) * r, ccy + sinf(a) * r));
-	}
-}
-
-// left-hand unit normal of segment a→b (zero vector if degenerate).
-function segNormal(ax: float32, ay: float32, bx: float32, by: float32): Vec2 {
-	const dx: float32 = bx - ax;
-	const dy: float32 = by - ay;
-	const len: float32 = sqrtf(dx * dx + dy * dy);
-	if (len < DEGENERATE_LEN) { return vec2(0.0, 0.0); }
-	return vec2(-dy / len, dx / len);
-}
-
-function meshOf(g: NodeRef, call: string): GraphicsMesh {
-	const i: int32 = g.liveRow(call);
-	const kind: DrawKind = g.scene.kinds[i];
-	if (kind !== DrawKind.Graphics) {
-		console.log(
-			`void2d: ${call} asked of a ${kind.toString()} node; only a Graphics has a mesh`,
-		);
-		unreachable;
-	}
-	g.scene.markChanged(i, Changed.Content);
-	return g.scene.meshes[g.scene.payloads[i]];
-}
-
-export function fillTriangle(this g: NodeRef, a: Vec2, b: Vec2, c: Vec2, color: Color): NodeRef {
-	const target: GraphicsMesh = meshOf(g, "fillTriangle");
-	tri(target, a, b, c, color);
-	return g;
-}
-
-export function fillRect(this g: NodeRef, x: float32, y: float32, w: float32, h: float32, color: Color): NodeRef {
-	const target: GraphicsMesh = meshOf(g, "fillRect");
-	const tl = vec2(x, y);
-	const tr = vec2(x + w, y);
-	const br = vec2(x + w, y + h);
-	const bl = vec2(x, y + h);
-	tri(target, tl, tr, br, color);
-	tri(target, tl, br, bl, color);
-	return g;
-}
-
-export function fillConvex(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
-	const target: GraphicsMesh = meshOf(g, "fillConvex");
-	const m: int32 = pts.length as int32;
-	for (let i: int32 = 1; i + 1 < m; i++) {
-		tri(target, pts[0], pts[i], pts[i + 1], color);
-	}
-	return g;
 }
 
 function polyArea2(pts: Readonly<Span<Vec2>>): float32 {
@@ -285,20 +452,8 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 // h2d.Graphics arbitrary solid fill (convex shapes can use the cheaper fillConvex fan).
 export function fillPolygon(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPolygon");
-	const idx: int32[] = triangulate(pts);
-	const tc: int32 = idx.length as int32;
-	for (let k: int32 = 0; k + 3 <= tc; k += 3) {
-		tri(target, pts[idx[k]], pts[idx[k + 1]], pts[idx[k + 2]], color);
-	}
+	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), NO_UV, color);
 	return g;
-}
-
-function projectedT(p: Vec2, ax: float32, ay: float32, minP: float32, span: float32): float32 {
-	if (span <= DEGENERATE_LEN) { return 0.0; }
-	let t: float32 = (p.x * ax + p.y * ay - minP) / span;
-	if (t < 0.0) { t = 0.0; }
-	if (t > 1.0) { t = 1.0; }
-	return t;
 }
 
 export function fillGradientPolygonStops(
@@ -324,17 +479,12 @@ export function fillGradientPolygonStops(
 		if (pp > maxP) { maxP = pp; }
 	}
 	const span: float32 = maxP - minP;
-	const idx: int32[] = triangulate(pts);
-	const total: int32 = idx.length as int32;
-	const start: int32 = (target.mesh.length as int32) / 8;
-	for (let k: int32 = 0; k + 3 <= total; k = k + 3) {
-		const pa = pts[idx[k]];
-		const pb = pts[idx[k + 1]];
-		const pc = pts[idx[k + 2]];
-		rawVtx(target, pa.x, pa.y, projectedT(pa, ax, ay, minP, span), 0.0, white);
-		rawVtx(target, pb.x, pb.y, projectedT(pb, ax, ay, minP, span), 0.0, white);
-		rawVtx(target, pc.x, pc.y, projectedT(pc, ax, ay, minP, span), 0.0, white);
+	let map: UvMap = NO_UV;
+	if (span > DEGENERATE_LEN) {
+		map = { ux: ax / span, uy: ay / span, uc: -minP / span, vx: 0.0, vy: 0.0, vc: 0.0 };
 	}
+	const start: int32 = (target.mesh.length as int32) / 8;
+	contourFill(target, false, pts, [m], triangulate(pts), map, white);
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	if (count > 0) {
 		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
@@ -420,17 +570,10 @@ export function fillRadialGradientStops(
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillRadialGradientStops");
 	if (r <= 0.0) { return g; }
-	let seg: int32 = (r as int32) / 2 + 8;
-	if (seg > CIRCLE_MAX_SEG) { seg = CIRCLE_MAX_SEG; }
-	const step: float32 = TAU / (seg as float32);
+	const seg: int32 = circleSegs(r);
+	const map: UvMap = { ux: 1.0 / r, uy: 0.0, uc: -cx / r, vx: 0.0, vy: 1.0 / r, vc: -cy / r };
 	const start: int32 = (target.mesh.length as int32) / 8;
-	for (let i: int32 = 0; i < seg; i++) {
-		const a0: float32 = step * (i as float32);
-		const a1: float32 = step * ((i + 1) as float32);
-		rawVtx(target, cx, cy, 0.0, 0.0, white);
-		rawVtx(target, cx + cosf(a0) * r, cy + sinf(a0) * r, cosf(a0), sinf(a0), white);
-		rawVtx(target, cx + cosf(a1) * r, cy + sinf(a1) * r, cosf(a1), sinf(a1), white);
-	}
+	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, white);
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	appendOp(target, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
 		c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
@@ -472,14 +615,11 @@ function fillPatternRect(
 	p1: float32,
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPatternRect");
+	const map: UvMap = { ux: 1.0, uy: 0.0, uc: -x, vx: 0.0, vy: 1.0, vc: -y };
 	const start: int32 = (target.mesh.length as int32) / 8;
-	rawVtx(target, x, y, 0.0, 0.0, white);
-	rawVtx(target, x + w, y, w, 0.0, white);
-	rawVtx(target, x + w, y + h, w, h, white);
-	rawVtx(target, x, y, 0.0, 0.0, white);
-	rawVtx(target, x + w, y + h, w, h, white);
-	rawVtx(target, x, y + h, 0.0, h, white);
-	appendOp(target, kind, start, 6, GradientSpace.Srgb, false, -1.0,
+	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, white);
+	const count: int32 = (target.mesh.length as int32) / 8 - start;
+	appendOp(target, kind, start, count, GradientSpace.Srgb, false, -1.0,
 		c0, c1, c1, p0, p1, 0.0, 0.0);
 	return g;
 }
@@ -518,12 +658,11 @@ export function fillTexRect(this g: NodeRef, t: Tile, x: float32, y: float32, w:
 	const target: GraphicsMesh = meshOf(g, "fillTexRect");
 	target.source = t.source;
 	target.alphaPremultiplied = t.alphaPremultiplied;
-	const a = vec2(x, y);
-	const b = vec2(x + w, y);
-	const c = vec2(x + w, y + h);
-	const d = vec2(x, y + h);
-	triUV(target, a, t.u0, t.v0, b, t.u1, t.v0, c, t.u1, t.v1, color);
-	triUV(target, a, t.u0, t.v0, c, t.u1, t.v1, d, t.u0, t.v1, color);
+	if (w == 0.0 || h == 0.0) { return g; }
+	const du: float32 = (t.u1 - t.u0) / w;
+	const dv: float32 = (t.v1 - t.v0) / h;
+	const map: UvMap = { ux: du, uy: 0.0, uc: t.u0 - x * du, vx: 0.0, vy: dv, vc: t.v0 - y * dv };
+	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, map, color);
 	return g;
 }
 
@@ -534,35 +673,20 @@ export function fillTexPolygon(this g: NodeRef, t: Tile, pts: Vec2[], originX: f
 	const target: GraphicsMesh = meshOf(g, "fillTexPolygon");
 	target.source = t.source;
 	target.alphaPremultiplied = t.alphaPremultiplied;
-	const idx: int32[] = triangulate(pts);
-	const tc: int32 = idx.length as int32;
-	const du: float32 = t.u1 - t.u0;
-	const dv: float32 = t.v1 - t.v0;
-	for (let k: int32 = 0; k + 3 <= tc; k = k + 3) {
-		const pa = pts[idx[k]];
-		const pb = pts[idx[k + 1]];
-		const pc = pts[idx[k + 2]];
-		triUV(
-			target, pa, t.u0 + (pa.x - originX) / tileW * du, t.v0 + (pa.y - originY) / tileH * dv,
-			pb, t.u0 + (pb.x - originX) / tileW * du, t.v0 + (pb.y - originY) / tileH * dv,
-			pc, t.u0 + (pc.x - originX) / tileW * du, t.v0 + (pc.y - originY) / tileH * dv, color);
-	}
+	const du: float32 = (t.u1 - t.u0) / tileW;
+	const dv: float32 = (t.v1 - t.v0) / tileH;
+	const map: UvMap = {
+		ux: du, uy: 0.0, uc: t.u0 - originX * du,
+		vx: 0.0, vy: dv, vc: t.v0 - originY * dv,
+	};
+	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), map, color);
 	return g;
 }
 
 export function fillCircle(this g: NodeRef, cx: float32, cy: float32, r: float32, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillCircle");
-	let seg: int32 = (r as int32) / 2 + 8;
-	if (seg > CIRCLE_MAX_SEG) { seg = CIRCLE_MAX_SEG; }
-	const step: float32 = TAU / (seg as float32);
-	const center = vec2(cx, cy);
-	for (let i: int32 = 0; i < seg; i++) {
-		const a0: float32 = step * (i as float32);
-		const a1: float32 = step * ((i + 1) as float32);
-		const p0 = vec2(cx + cosf(a0) * r, cy + sinf(a0) * r);
-		const p1 = vec2(cx + cosf(a1) * r, cy + sinf(a1) * r);
-		tri(target, center, p0, p1, color);
-	}
+	const seg: int32 = circleSegs(r);
+	contourFill(target, true, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), NO_UV, color);
 	return g;
 }
 
@@ -573,22 +697,14 @@ export function strokeLine(
 	width: float32,
 	color: Color,
 ): NodeRef {
-	const target: GraphicsMesh = meshOf(g, "strokeLine");
+	meshOf(g, "strokeLine");
 	const dx: float32 = b.x - a.x;
 	const dy: float32 = b.y - a.y;
-	const len: float32 = sqrtf(dx * dx + dy * dy);
-	if (len < DEGENERATE_LEN) { return g; }
-	const hw: float32 = width * 0.5;
-	const nx: float32 = -dy / len * hw;
-	const ny: float32 = dx / len * hw;
-	const p0 = vec2(a.x + nx, a.y + ny);
-	const p1 = vec2(b.x + nx, b.y + ny);
-	const p2 = vec2(b.x - nx, b.y - ny);
-	const p3 = vec2(a.x - nx, a.y - ny);
-	tri(target, p0, p1, p2, color);
-	tri(target, p0, p2, p3, color);
-	return g;
+	if (sqrtf(dx * dx + dy * dy) < DEGENERATE_LEN) { return g; }
+	return g.strokePoly([a, b], width, color, false);
 }
+
+function negated(v: Vec2): Vec2 { return vec2(-v.x, -v.y); }
 
 export function strokePoly(this g: NodeRef, pts: Vec2[], width: float32, color: Color, closed: boolean): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "strokePoly");
@@ -596,20 +712,22 @@ export function strokePoly(this g: NodeRef, pts: Vec2[], width: float32, color: 
 	if (m < 2) { return g; }
 	const hw: float32 = width * 0.5;
 	// per-vertex outer offsets: butt at open ends, miter (clamped) at joints.
-	const lx: float32[] = [];
-	const ly: float32[] = [];
-	const rx: float32[] = [];
-	const ry: float32[] = [];
+	const left: Corner[] = [];
+	const right: Corner[] = [];
 	for (let i: int32 = 0; i < m; i++) {
 		const hasPrev: boolean = closed || i > 0;
 		const hasNext: boolean = closed || i < m - 1;
+		const pi: int32 = (i - 1 + m) % m;
+		const ni: int32 = (i + 1) % m;
+		const n1 = hasPrev ? segNormal(pts[pi].x, pts[pi].y, pts[i].x, pts[i].y) : NO_NORMAL;
+		const n2 = hasNext ? segNormal(pts[i].x, pts[i].y, pts[ni].x, pts[ni].y) : NO_NORMAL;
 		let nx: float32 = 0.0;
 		let ny: float32 = 0.0;
+		let leftBefore: Vec2 = n1;
+		let leftAfter: Vec2 = n2;
+		let rightBefore: Vec2 = negated(n1);
+		let rightAfter: Vec2 = negated(n2);
 		if (hasPrev && hasNext) {
-			const pi: int32 = (i - 1 + m) % m;
-			const ni: int32 = (i + 1) % m;
-			const n1 = segNormal(pts[pi].x, pts[pi].y, pts[i].x, pts[i].y);
-			const n2 = segNormal(pts[i].x, pts[i].y, pts[ni].x, pts[ni].y);
 			let mxn: float32 = n1.x + n2.x;
 			let myn: float32 = n1.y + n2.y;
 			const ml: float32 = sqrtf(mxn * mxn + myn * myn);
@@ -621,27 +739,52 @@ export function strokePoly(this g: NodeRef, pts: Vec2[], width: float32, color: 
 			nx = mxn * hw * scale;
 			ny = myn * hw * scale;
 		} else if (hasNext) {
-			const ni: int32 = (i + 1) % m;
-			const n2 = segNormal(pts[i].x, pts[i].y, pts[ni].x, pts[ni].y);
 			nx = n2.x * hw;
 			ny = n2.y * hw;
+			const cap: Vec2 = vec2(-n2.y, n2.x);
+			leftBefore = cap;
+			rightBefore = cap;
 		} else {
-			const pi: int32 = (i - 1 + m) % m;
-			const n1 = segNormal(pts[pi].x, pts[pi].y, pts[i].x, pts[i].y);
 			nx = n1.x * hw;
 			ny = n1.y * hw;
+			const cap: Vec2 = vec2(n1.y, -n1.x);
+			leftAfter = cap;
+			rightAfter = cap;
 		}
-		lx.push(pts[i].x + nx);
-		ly.push(pts[i].y + ny);
-		rx.push(pts[i].x - nx);
-		ry.push(pts[i].y - ny);
+		left.push({ p: vec2(pts[i].x + nx, pts[i].y + ny), before: leftBefore, after: leftAfter });
+		right.push({
+			p: vec2(pts[i].x - nx, pts[i].y - ny), before: rightBefore, after: rightAfter,
+		});
 	}
 	const segs: int32 = closed ? m : (m - 1);
+	if (!target.antialias) {
+		for (let s: int32 = 0; s < segs; s++) {
+			const a: int32 = s;
+			const b: int32 = (s + 1) % m;
+			tri(target, left[a].p, right[a].p, right[b].p, color);
+			tri(target, left[a].p, right[b].p, left[b].p, color);
+		}
+		return g;
+	}
 	for (let s: int32 = 0; s < segs; s++) {
 		const a: int32 = s;
 		const b: int32 = (s + 1) % m;
-		tri(target, vec2(lx[a], ly[a]), vec2(rx[a], ry[a]), vec2(rx[b], ry[b]), color);
-		tri(target, vec2(lx[a], ly[a]), vec2(rx[b], ry[b]), vec2(lx[b], ly[b]), color);
+		edgeVtx(target, true, left[a], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+		edgeVtx(target, true, right[a], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+		edgeVtx(target, true, right[b], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+		edgeVtx(target, true, left[a], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+		edgeVtx(target, true, right[b], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+		edgeVtx(target, true, left[b], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+	}
+	for (let s: int32 = 0; s < segs; s++) {
+		const a: int32 = s;
+		const b: int32 = (s + 1) % m;
+		fringeQuad(target, true, left[a], left[b], NO_UV, color, hw);
+		fringeQuad(target, true, right[b], right[a], NO_UV, color, hw);
+	}
+	if (!closed) {
+		fringeQuad(target, true, right[0], left[0], NO_UV, color, hw);
+		fringeQuad(target, true, left[m - 1], right[m - 1], NO_UV, color, hw);
 	}
 	return g;
 }
@@ -669,51 +812,63 @@ export function fillRoundedRect(this g: NodeRef, x: float32, y: float32, w: floa
 // h2d.Graphics.drawEllipse — fan from centre with independent x/y radii.
 export function fillEllipse(this g: NodeRef, cx: float32, cy: float32, rx: float32, ry: float32, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillEllipse");
-	const rr: float32 = rx > ry ? rx : ry;
-	const seg: int32 = arcSegs(rr, TAU);
-	const step: float32 = TAU / (seg as float32);
-	const center = vec2(cx, cy);
-	for (let i: int32 = 0; i < seg; i++) {
-		const a0: float32 = step * (i as float32);
-		const a1: float32 = step * ((i + 1) as float32);
-		const p0 = vec2(cx + cosf(a0) * rx, cy + sinf(a0) * ry);
-		const p1 = vec2(cx + cosf(a1) * rx, cy + sinf(a1) * ry);
-		tri(target, center, p0, p1, color);
-	}
+	const seg: int32 = arcSegs(rx > ry ? rx : ry, TAU);
+	const pts: Vec2[] = ellipsePoints(cx, cy, rx, ry, seg);
+	contourFill(target, true, pts, [seg], fanTris(seg), NO_UV, color);
 	return g;
+}
+
+function isFullTurn(angleLength: float32): boolean {
+	return angleLength >= TAU || angleLength <= -TAU;
 }
 
 // h2d.Graphics.drawPie — fan slice over [angleStart, angleStart+angleLength] (radians).
 export function fillPie(this g: NodeRef, cx: float32, cy: float32, r: float32, angleStart: float32, angleLength: float32, color: Color): NodeRef {
+	if (isFullTurn(angleLength)) { return g.fillCircle(cx, cy, r, color); }
 	const target: GraphicsMesh = meshOf(g, "fillPie");
+	if (angleLength == 0.0) { return g; }
 	const seg: int32 = arcSegs(r, angleLength);
 	const step: float32 = angleLength / (seg as float32);
-	const center = vec2(cx, cy);
-	for (let i: int32 = 0; i < seg; i++) {
-		const a0: float32 = angleStart + step * (i as float32);
-		const a1: float32 = angleStart + step * ((i + 1) as float32);
-		const p0 = vec2(cx + cosf(a0) * r, cy + sinf(a0) * r);
-		const p1 = vec2(cx + cosf(a1) * r, cy + sinf(a1) * r);
-		tri(target, center, p0, p1, color);
+	const pts: Vec2[] = [vec2(cx, cy)];
+	for (let i: int32 = 0; i <= seg; i++) {
+		const a: float32 = angleStart + step * (i as float32);
+		pts.push(vec2(cx + cosf(a) * r, cy + sinf(a) * r));
 	}
+	contourFill(target, true, pts, [seg + 2], fanTris(seg + 2), NO_UV, color);
 	return g;
 }
 
 // h2d.Graphics.drawPieInner — annular sector (ring slice) between innerR and outerR.
 export function fillRing(this g: NodeRef, cx: float32, cy: float32, outerR: float32, innerR: float32, angleStart: float32, angleLength: float32, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillRing");
-	const seg: int32 = arcSegs(outerR, angleLength);
-	const step: float32 = angleLength / (seg as float32);
-	for (let i: int32 = 0; i < seg; i++) {
-		const a0: float32 = angleStart + step * (i as float32);
-		const a1: float32 = angleStart + step * ((i + 1) as float32);
-		const o0 = vec2(cx + cosf(a0) * outerR, cy + sinf(a0) * outerR);
-		const o1 = vec2(cx + cosf(a1) * outerR, cy + sinf(a1) * outerR);
-		const i0 = vec2(cx + cosf(a0) * innerR, cy + sinf(a0) * innerR);
-		const i1 = vec2(cx + cosf(a1) * innerR, cy + sinf(a1) * innerR);
-		tri(target, i0, o0, o1, color);
-		tri(target, i0, o1, i1, color);
+	const full: boolean = isFullTurn(angleLength);
+	const sweep: float32 = full ? TAU : angleLength;
+	const seg: int32 = arcSegs(outerR, sweep);
+	const step: float32 = sweep / (seg as float32);
+	const rim: int32 = full ? seg : seg + 1;
+	const pts: Vec2[] = [];
+	for (let i: int32 = 0; i < rim; i++) {
+		const a: float32 = angleStart + step * (i as float32);
+		pts.push(vec2(cx + cosf(a) * outerR, cy + sinf(a) * outerR));
 	}
+	for (let i: int32 = rim - 1; i >= 0; i--) {
+		const a: float32 = angleStart + step * (i as float32);
+		pts.push(vec2(cx + cosf(a) * innerR, cy + sinf(a) * innerR));
+	}
+	const tris: int32[] = [];
+	for (let i: int32 = 0; i < seg; i++) {
+		const next: int32 = (i + 1) % rim;
+		const inner: int32 = rim + (rim - 1 - i);
+		const innerNext: int32 = rim + (rim - 1 - next);
+		tris.push(inner);
+		tris.push(i);
+		tris.push(next);
+		tris.push(inner);
+		tris.push(next);
+		tris.push(innerNext);
+	}
+	const loops: int32[] = full ? [rim, rim * 2] : [rim * 2];
+	contourFill(target, true, pts, loops, tris, NO_UV, color);
 	return g;
 }
 

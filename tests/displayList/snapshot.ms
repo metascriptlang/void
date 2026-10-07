@@ -57,7 +57,7 @@ import {
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
-	Tile, rgba, tile, identity2d, emptyBounds, Smooth, vec2,
+	Tile, Vec2, rgba, tile, identity2d, emptyBounds, Smooth, vec2,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
@@ -67,6 +67,7 @@ import { DEFAULT_FONT } from "../../src/void2d/font";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
+	fillTexRect, strokeLine, setAntialias,
 } from "../../src/void2d/graphics";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../src/void2d/effect";
 import { GradientSpace } from "../../src/void2d/gradient";
@@ -729,6 +730,113 @@ test "T1 shadow inflation preserves the snapped visible box" {
 test "T1 an offscreen box still emits when its shadow reaches the viewport" {
 	record(shadowOnlyVisibleScene(), 100.0, 50.0, 1.0);
 	assert uiInstanceCount() == 1;
+}
+
+const FRINGE_COLOR: float32 = 0.8;
+
+function antialiasedRect(): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(s.graphics());
+	g.fillRect(0.0, 0.0, 10.0, 6.0, rgba(1.0, 1.0, 1.0, FRINGE_COLOR));
+	g.setRotation(0.5).setScaleX(2.0).setScaleY(0.75).setPosition(40.0, 30.0);
+	return g;
+}
+
+function outwardReach(p: Vec2, corners: Vec2[]): float32 {
+	let area: float32 = 0.0;
+	const m: int32 = corners.length as int32;
+	for (let i: int32 = 0; i < m; i++) {
+		const j: int32 = (i + 1) % m;
+		area = area + corners[i].x * corners[j].y - corners[j].x * corners[i].y;
+	}
+	const outward: float32 = area > 0.0 ? -1.0 : 1.0;
+	let reach: float32 = -1e30;
+	for (let i: int32 = 0; i < m; i++) {
+		const j: int32 = (i + 1) % m;
+		const dx: float32 = corners[j].x - corners[i].x;
+		const dy: float32 = corners[j].y - corners[i].y;
+		const len: float32 = Math.sqrt((dx * dx + dy * dy) as float64) as float32;
+		const nx: float32 = -dy / len * outward;
+		const ny: float32 = dx / len * outward;
+		const d: float32 = (p.x - corners[i].x) * nx + (p.y - corners[i].y) * ny;
+		if (d > reach) { reach = d; }
+	}
+	return reach;
+}
+
+test "T1 an antialiased fill's fringe is one device pixel under rotation, shear and DPI" {
+	const dpi: float32 = 1.5;
+	const g = antialiasedRect();
+	const root = g.scene.refOf(g.scene.root);
+	record(root, 128.0, 96.0, dpi);
+	const world = g.scene.worlds[g.id.index];
+	const corners: Vec2[] = [
+		vec2(0.0, 0.0) * world, vec2(10.0, 0.0) * world,
+		vec2(10.0, 6.0) * world, vec2(0.0, 6.0) * world,
+	];
+	assert vertexCount() == 30;
+	for (let i: int32 = 0; i < vertexCount(); i++) {
+		const p = vec2(vertexField(i, 0), vertexField(i, 1));
+		const device: float32 = outwardReach(p, corners) * dpi;
+		if (vertexField(i, 7) == 0.0) {
+			assert approx(device, 0.5);
+		} else {
+			assert approx(vertexField(i, 7), FRINGE_COLOR);
+			assert approx(device, -0.5);
+		}
+	}
+}
+
+test "T1 a hairline stroke keeps its coverage instead of its inset" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(s.graphics());
+	g.strokeLine(vec2(0.0, 10.0), vec2(20.0, 10.0), 0.5, rgba(1.0, 1.0, 1.0, 1.0));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	let inner: int32 = 0;
+	for (let i: int32 = 0; i < vertexCount(); i++) {
+		const y: float32 = vertexField(i, 1);
+		if (vertexField(i, 7) == 0.0) {
+			assert approx(y, 10.0) || approx(y, 9.25) || approx(y, 10.75);
+		} else {
+			assert approx(y, 10.0);
+			assert approx(vertexField(i, 7), 2.0 * 0.25 / 0.75);
+			inner = inner + 1;
+		}
+	}
+	assert inner > 0;
+}
+
+test "T1 a textured fill's uv follows its moved edge vertices" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(s.graphics());
+	const t = tile(fakeTexture(7), 64.0, 64.0).sub(16.0, 16.0, 32.0, 32.0);
+	g.fillTexRect(t, 0.0, 0.0, 32.0, 32.0, rgba(1.0, 1.0, 1.0, 1.0));
+	record(s.refOf(s.root), 64.0, 64.0, 2.0);
+	assert vertexCount() == 30;
+	for (let i: int32 = 0; i < vertexCount(); i++) {
+		assert approx(vertexField(i, 2), 0.25 + vertexField(i, 0) / 64.0);
+		assert approx(vertexField(i, 3), 0.25 + vertexField(i, 1) / 64.0);
+	}
+}
+
+test "T1 a fill whose fringe alone reaches the viewport still emits" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(s.graphics());
+	g.fillRect(0.0, 0.0, 10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0)).setPosition(-10.25, 0.0);
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert vertexCount() == 30;
+}
+
+test "T1 a Graphics with antialias off draws its body and nothing else" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(s.graphics());
+	g.setAntialias(false).fillRect(0.0, 0.0, 10.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
+	g.setPosition(-10.25, 0.0);
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert vertexCount() == 0;
+	g.setPosition(2.0, 0.0);
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert vertexCount() == 6;
 }
 
 test "T1 snapshot: gradients and patterns keep draw order and effect records" {

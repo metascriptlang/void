@@ -1,17 +1,38 @@
 import { NodeRef, GraphicsMesh, Scene2D, clear } from "../void2d/node";
 import "../void2d/scene";
-import { fillTriangle, fillRect, fillConvex, fillPolygon, fillCircle, fillEllipse, fillPie, fillRing, fillRoundedRect, fillTexRect, fillTexPolygon, strokeLine, strokePoly, strokeRect, quadBezier, cubicBezier } from "../void2d/graphics";
+import {
+	fillTriangle,
+	fillRect,
+	fillConvex,
+	fillPolygon,
+	fillCircle,
+	fillEllipse,
+	fillPie,
+	fillRing,
+	fillRoundedRect,
+	fillTexRect,
+	fillTexPolygon,
+	strokeLine,
+	strokePoly,
+	strokeRect,
+	quadBezier,
+	cubicBezier,
+	setAntialias,
+} from "../void2d/graphics";
 import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
 import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV, fakeTexture } from "./helpers";
 
 const QUARTER: float32 = 1.5707963;
+const FULL_TURN: float32 = 6.2831853;
 const PI_AREA_R10: float32 = 314.159;
 const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
 function geometry(g: NodeRef): GraphicsMesh { return g.scene.meshes[g.scene.payloads[g.id.index]]; }
+function body(): NodeRef { return s.graphics().setAntialias(false); }
 
 test "fillTriangle emits one triangle of 8-float verts" {
-	const g = s.graphics().fillTriangle(vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(0.0, 10.0), rgba(1.0, 0.0, 0.0, 1.0));
+	const g = body()
+		.fillTriangle(vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(0.0, 10.0), rgba(1.0, 0.0, 0.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 24;
 	assert geometry(g).stale;
 	assert approx(geometry(g).mesh[0], 0.0);
@@ -23,7 +44,7 @@ test "fillTriangle emits one triangle of 8-float verts" {
 }
 
 test "fillRect emits two triangles covering the rect" {
-	const g = s.graphics().fillRect(2.0, 3.0, 10.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().fillRect(2.0, 3.0, 10.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 48;
 	assert meshHasVert(geometry(g).mesh, 2.0, 3.0);
 	assert meshHasVert(geometry(g).mesh, 12.0, 8.0);
@@ -32,20 +53,20 @@ test "fillRect emits two triangles covering the rect" {
 
 test "fillConvex fans n-2 triangles" {
 	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(12.0, 8.0), vec2(5.0, 12.0), vec2(-2.0, 8.0)];
-	const g = s.graphics().fillConvex(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().fillConvex(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 72;
 }
 
 test "fillPolygon square matches shoelace area" {
 	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(0.0, 10.0)];
-	const g = s.graphics().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 48;
 	assert approxRel(meshTriArea(geometry(g).mesh), 100.0, 0.1);
 }
 
 test "fillPolygon concave arrow ear-clips without overlap" {
 	const pts: Vec2[] = [vec2(0.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(95.0, 52.0), vec2(48.0, 98.0), vec2(48.0, 72.0), vec2(0.0, 72.0)];
-	const g = s.graphics().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 120;
 	assert approxRel(meshTriArea(geometry(g).mesh), 4082.0, 0.5);
 }
@@ -60,8 +81,8 @@ test "fillPolygon degenerate input emits nothing" {
 }
 
 test "fillCircle area approximates pi r squared" {
-	const g = s.graphics().fillCircle(0.0, 0.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
-	assert (geometry(g).mesh.length as int32) === 312;
+	const g = body().fillCircle(0.0, 0.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 264;
 	assert approxRel(meshTriArea(geometry(g).mesh), PI_AREA_R10, 5.0);
 }
 
@@ -85,7 +106,7 @@ test "fillRing annulus area" {
 }
 
 test "fillRoundedRect zero radius falls back to rect" {
-	const g = s.graphics().fillRoundedRect(0.0, 0.0, 20.0, 10.0, 0.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().fillRoundedRect(0.0, 0.0, 20.0, 10.0, 0.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 48;
 	assert approxRel(meshTriArea(geometry(g).mesh), 200.0, 0.1);
 }
@@ -97,7 +118,7 @@ test "fillRoundedRect clamps radius to half min side" {
 
 test "fillTexRect writes tile UVs and view" {
 	const t = tile(fakeTexture(7), 64.0, 64.0).sub(16.0, 16.0, 32.0, 32.0);
-	const g = s.graphics().fillTexRect(t, 0.0, 0.0, 32.0, 32.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().fillTexRect(t, 0.0, 0.0, 32.0, 32.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert geometry(g).source.view() === 7;
 	assert (geometry(g).mesh.length as int32) === 48;
 	assert meshHasVertUV(geometry(g).mesh, 0.0, 0.0, 0.25, 0.25);
@@ -122,7 +143,7 @@ test "clear resets mesh and view" {
 }
 
 test "strokeLine extrudes width perpendicular" {
-	const g = s.graphics()
+	const g = body()
 		.strokeLine(vec2(0.0, 0.0), vec2(10.0, 0.0), 4.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 48;
 	assert meshHasVert(geometry(g).mesh, 0.0, 2.0);
@@ -139,21 +160,53 @@ test "strokeLine degenerate emits nothing" {
 
 test "strokePoly open emits segment quads" {
 	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0)];
-	const g = s.graphics().strokePoly(pts, 2.0, rgba(1.0, 1.0, 1.0, 1.0), false);
+	const g = body().strokePoly(pts, 2.0, rgba(1.0, 1.0, 1.0, 1.0), false);
 	assert (geometry(g).mesh.length as int32) === 96;
 }
 
 test "strokePoly closed square miters right-angle corner" {
 	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(10.0, 10.0), vec2(0.0, 10.0)];
-	const g = s.graphics().strokePoly(pts, 2.0, rgba(1.0, 1.0, 1.0, 1.0), true);
+	const g = body().strokePoly(pts, 2.0, rgba(1.0, 1.0, 1.0, 1.0), true);
 	assert (geometry(g).mesh.length as int32) === 192;
 	assert meshHasVert(geometry(g).mesh, 1.0, 1.0);
 	assert meshHasVert(geometry(g).mesh, -1.0, -1.0);
 }
 
 test "strokeRect equals closed strokePoly" {
-	const g = s.graphics().strokeRect(0.0, 0.0, 10.0, 10.0, 2.0, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = body().strokeRect(0.0, 0.0, 10.0, 10.0, 2.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 192;
+}
+
+test "an antialiased fill adds one zero-area fringe quad per edge" {
+	const g = s.graphics().fillRect(2.0, 3.0, 10.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === (6 + 4 * 6) * 8;
+	assert (geometry(g).edges.length as int32) === (6 + 4 * 6) * 10;
+	assert geometry(g).fringed;
+	assert approxRel(meshTriArea(geometry(g).mesh), 50.0, 0.1);
+}
+
+test "clear drops the edge column with the mesh" {
+	const g = s.graphics().fillRect(0.0, 0.0, 5.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
+	g.clear();
+	assert (geometry(g).edges.length as int32) === 0;
+	assert !geometry(g).fringed;
+}
+
+test "a full-turn ring fringes its hole, not a seam between its ends" {
+	const plain = body().fillRing(0.0, 0.0, 10.0, 5.0, 0.0, FULL_TURN, rgba(1.0, 1.0, 1.0, 1.0));
+	const g = s.graphics().fillRing(0.0, 0.0, 10.0, 5.0, 0.0, FULL_TURN, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 3 * (geometry(plain).mesh.length as int32);
+}
+
+test "a full-turn pie is a circle" {
+	const pie = s.graphics().fillPie(0.0, 0.0, 10.0, 0.0, FULL_TURN, rgba(1.0, 1.0, 1.0, 1.0));
+	const circle = s.graphics().fillCircle(0.0, 0.0, 10.0, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(pie).mesh.length as int32) === (geometry(circle).mesh.length as int32);
+}
+
+test "a pie of no angle draws nothing" {
+	const g = s.graphics().fillPie(0.0, 0.0, 10.0, 1.0, 0.0, rgba(1.0, 1.0, 1.0, 1.0));
+	assert (geometry(g).mesh.length as int32) === 0;
 }
 
 test "quadBezier hits endpoints and midpoint" {

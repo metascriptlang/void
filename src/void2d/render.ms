@@ -77,6 +77,7 @@ import {
 	closeLaneRun,
 	restoreLaneRun,
 	reopenLast,
+	FRINGE_HALF_WIDTH,
 } from "./draw";
 import { InstanceMode, uiInstance } from "./instance";
 import {
@@ -126,6 +127,7 @@ import {
 	emptyBounds,
 } from "./types";
 import { BlendMode } from "../gpu/state";
+import { sqrtf } from "../math/mat4";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
 import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
@@ -262,7 +264,20 @@ function localBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 	return { xMin: 0.0, yMin: 0.0, xMax: w, yMax: h };
 }
 
+function fringeBounds(lb: Bounds2D, world: Transform2D): Bounds2D {
+	const det: float32 = world.a * world.d - world.b * world.c;
+	const scale: float32 = currentRenderScale();
+	if (det == 0.0 || !(scale > 0.0)) { return lb; }
+	const reach: float32 = FRINGE_HALF_WIDTH / (scale * (det < 0.0 ? -det : det));
+	const x: float32 = reach * sqrtf(world.c * world.c + world.d * world.d);
+	const y: float32 = reach * sqrtf(world.a * world.a + world.b * world.b);
+	return { xMin: lb.xMin - x, yMin: lb.yMin - y, xMax: lb.xMax + x, yMax: lb.yMax + y };
+}
+
 function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D): Bounds2D {
+	if (s.kinds[i] === DrawKind.Graphics && s.meshes[s.payloads[i]].fringed) {
+		return fringeBounds(lb, world);
+	}
 	if (s.kinds[i] !== DrawKind.Rect) { return lb; }
 	let xMin: float32 = lb.xMin;
 	let yMin: float32 = lb.yMin;
@@ -892,8 +907,8 @@ function emitNode(
 			const ops: float32[] = geometry.records;
 			const opTotal: int32 = ops.length as int32;
 			if (opTotal == 0) {
-				drawMesh(geometry.mesh, geometry.source.view(), geometry.alphaPremultiplied, blend, world,
-					rgba(1.0, 1.0, 1.0, 1.0), na);
+				drawMesh(geometry.mesh, geometry.edges, geometry.source.view(),
+					geometry.alphaPremultiplied, blend, world, rgba(1.0, 1.0, 1.0, 1.0), na);
 			} else {
 				const stride: int32 = GRAPHICS_OP_FLOATS;
 				for (let oi: int32 = 0; oi + stride <= opTotal; oi += stride) {
@@ -905,7 +920,7 @@ function emitNode(
 							s.colorMatrixOf(i), s.paints[i].colorAdd, s.paints[i].colorKey,
 						);
 						drawMeshRange(
-							geometry.mesh, offset, count, geometry.source.view(),
+							geometry.mesh, geometry.edges, offset, count, geometry.source.view(),
 							geometry.alphaPremultiplied, blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					} else {
@@ -925,7 +940,8 @@ function emitNode(
 							ops[oi + GFX_OP_PARAMS], ops[oi + GFX_OP_PARAMS + 1],
 							ops[oi + GFX_OP_PARAMS + 2], ops[oi + GFX_OP_PARAMS + 3],
 							c0, c1, c2);
-						drawMeshRange(geometry.mesh, offset, count, 0, false, blend, world,
+						drawMeshRange(
+							geometry.mesh, geometry.edges, offset, count, 0, false, blend, world,
 							rgba(1.0, 1.0, 1.0, 1.0), na);
 					}
 				}

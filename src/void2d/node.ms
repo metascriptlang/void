@@ -173,6 +173,9 @@ export struct AnimFrames {
 
 export interface GraphicsMesh {
 	mesh: float32[];
+	edges: float32[];
+	antialias: boolean;
+	fringed: boolean;
 	vertexCount: int32;
 	records: float32[];
 	source: TextureSource;
@@ -839,8 +842,8 @@ export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
 
 export function graphics(this s: Scene2D): NodeRef {
 	const row: GraphicsMesh = {
-		mesh: [], vertexCount: 0, records: [], source: WHITE_SOURCE, alphaPremultiplied: false,
-		stale: true,
+		mesh: [], edges: [], antialias: true, fringed: false, vertexCount: 0, records: [],
+		source: WHITE_SOURCE, alphaPremultiplied: false, stale: true,
 	};
 	let payload: int32 = s.meshes.length as int32;
 	if ((s.freeMeshes.length as int32) > 0) {
@@ -998,6 +1001,8 @@ export function clear(this n: NodeRef): NodeRef {
 		return n;
 	}
 	s.meshes[p].mesh = [];
+	s.meshes[p].edges = [];
+	s.meshes[p].fringed = false;
 	s.meshes[p].records = [];
 	s.meshes[p].source = WHITE_SOURCE;
 	s.meshes[p].alphaPremultiplied = false;
