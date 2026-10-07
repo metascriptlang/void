@@ -238,6 +238,35 @@ test "a carriage return draws nothing, advances nothing and breaks the kerning p
 	assert approx(l.glyphs[2].x, l.glyphs[1].x + advanceOf("V".code));
 }
 
+test "a variation selector after a letter takes no glyph and no advance" {
+	for (const selector of ["\u{FE0E}", "\u{FE0F}"]) {
+		const l = TextLayout.layout(`A${selector}`, style());
+		assert (l.glyphs.length as int32) == 2;
+		assert l.glyphs[0].glyph != NO_GLYPH && l.glyphs[0].clusterStart;
+		assert l.glyphs[1].glyph == NO_GLYPH && l.glyphs[1].advance == 0.0;
+		assert !l.glyphs[1].clusterStart;
+		assert approx(l.width, advanceOf("A".code));
+	}
+}
+
+test "a joiner takes no glyph, no advance and no kerning pair across it" {
+	assert kernOf("A".code, "V".code) != 0.0;
+	for (const joiner of ["\u{200D}", "\u{200C}"]) {
+		const l = TextLayout.layout(`A${joiner}V`, style());
+		assert (l.glyphs.length as int32) == 3;
+		assert l.glyphs[1].glyph == NO_GLYPH && l.glyphs[1].advance == 0.0;
+		assert approx(l.glyphs[2].x, advanceOf("A".code));
+		assert approx(l.width, advanceOf("A".code) + advanceOf("V".code));
+	}
+}
+
+test "an ignorable cluster member leaves letter spacing where the bare letters put it" {
+	const marked = TextLayout.layout("A\u{FE0F}B", { ...style(), letterSpacing: 4.0 });
+	const bare = TextLayout.layout("AB", { ...style(), letterSpacing: 4.0 });
+	assert approx(marked.glyphs[2].x, bare.glyphs[1].x);
+	assert approx(marked.width, bare.width);
+}
+
 test "a tab advances to the next stop, counted in spaces from the line start" {
 	const stop: float32 = (TAB_STOP_SPACES as float32) * advanceOf(32);
 	const l = TextLayout.layout("ab\tc\t\td", style());

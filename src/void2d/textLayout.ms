@@ -19,6 +19,7 @@ const DELETE: int32 = 127;
 const TEXT_PRESENTATION: int32 = 0xFE0E;
 const EMOJI_PRESENTATION: int32 = 0xFE0F;
 const ZERO_WIDTH_JOINER: int32 = 0x200D;
+const ZERO_WIDTH_NON_JOINER: int32 = 0x200C;
 
 const ELLIPSIS: int32 = 0x2026;
 
@@ -203,8 +204,8 @@ function faceOf(font: FontId, codepoint: int32): CodepointFace {
 }
 
 function isJoiner(codepoint: int32): boolean {
-	return codepoint == ZERO_WIDTH_JOINER || codepoint == TEXT_PRESENTATION ||
-		codepoint == EMOJI_PRESENTATION;
+	return codepoint == ZERO_WIDTH_JOINER || codepoint == ZERO_WIDTH_NON_JOINER ||
+		codepoint == TEXT_PRESENTATION || codepoint == EMOJI_PRESENTATION;
 }
 
 function coversGrapheme(
@@ -282,6 +283,13 @@ function step(
 		return {
 			face: codepoint.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: next - pen,
 			next: next,
+		};
+	}
+	if (isJoiner(codepoint.value)) {
+		const gap: float32 = spaced ? style.letterSpacing : 0.0;
+		return {
+			face: codepoint.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: 0.0,
+			next: pen + gap,
 		};
 	}
 	const face: int32 = codepoint.face;
