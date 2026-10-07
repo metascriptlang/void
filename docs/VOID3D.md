@@ -2449,6 +2449,64 @@ GLES3 and web are NOT RUN.
 The review sent the first cut back (`docs/REVIEWS-3D.md`): a gate line ending in a literal `\r`,
 time in float32, and the back and noise textures as raw views a context loss would not rebuild.
 
+### M37 as built
+
+**Two key bits on `LitTextured`, after M36's.** `emissive` (bit 12) and `normalMap` (bit 13)
+raise the key to 14 bits, 16384 slots; an unlit program stops by name, its colour being all
+emitted already, and every other program stops as before. 13 keys are declared (76 in all):
+each feature alone and both together, plain and shadowed, in both presets, and the normal-mapped
+caster. A map key that also moves, cuts or premultiplies is nameable and undeclared until a
+consumer needs it (M35a).
+
+**Emission: three.js's and Bevy's shape.** Heaps' base `Material` has no emission; its
+`PbrMaterial` has a scalar. three.js `d4ea9b9` starts the outgoing light at the emissive colour
+(`meshphong.glsl.js:94`), multiplies it by the decoded `emissiveMap` (`emissivemap_fragment`),
+and adds it after lighting; Bevy's `StandardMaterial.emissive` and `emissive_texture` do the
+same. An emissive key's block ends in one vec4 (`EMISSIVE_COLOR`, gamma-encoded like every
+colour input, and `EMISSIVE_STRENGTH`, the factor in linear light that three.js calls
+`emissiveIntensity` and glTF `KHR_materials_emissive_strength`); `emissiveBase(key)` places it
+after the moving floats a key has. The map is required where three.js and Bevy make it optional, so one
+program covers both: a colour alone takes a 1x1 white map (Heaps' `Texture.fromColor`,
+`h3d/mat/Texture.hx:416`). The emitted light is added to the shaded
+colour after it has been gamma-encoded, by decoding it again (`emittedOver`); the round trip
+costs float error, not a byte.
+
+**Normal map: Heaps' shader, glTF's tangent.** `h3d.shader.NormalMap` reads the map at the
+surface's UV, unpacks `texel * 2 - 1`, and builds the frame from the vertex tangent; its sign
+comes from the tangent's length, which Heaps' own `Polygon.addTangents` always normalises to
+1. The tangent here is glTF's `TANGENT`, a vec4 whose w is the sign of the bitangent
+`cross(normal, tangent)`, as three.js reads it (`normal_vertex.glsl.js:9`). A flipped back face
+turns the whole frame with the normal (three.js `normal_fragment_begin`, `tbn *= faceDirection`).
+The tangent is model-transformed (`transformedTangent` in three.js), not by the normal matrix.
+The map's green runs toward the image's top: v grows downward, so the bitangent is the
+position's derivative along -v, glTF's convention.
+
+**Tangents: a layout and a builder.** A normal-mapped key reads `LitTexturedTangent`, the
+textured layout followed by the tangent (16 floats, `LIT_TEXTURED_TANGENT_VERTEX_STRIDE`); its
+caster keeps the layout, so `castIn` keeps `normalMap` and drops `emissive`. `addTangents(mesh)`
+is `Polygon.addTangents`' place in the build: after the textured vertices, once, closing the
+mesh to more vertices (`TangentsAdded`). Its sum is Lengyel's per-vertex tangent and bitangent
+over the triangles, Gram-Schmidt against the normal, w from the bitangent's side; a mirrored UV
+island gets w -1. Not MikkTSpace, which glTF and Bevy ask for when a file has no tangents: the
+two agree on a flat or uniformly mapped surface and may differ across a seam a vertex shares.
+
+**Both maps are context textures by role.** `Material.emissiveTexture` and `normalTexture` are
+roles 3 and 4 beside M36's, at view slots 3 and 5 (past the shadow map's 4), read with the
+base texture's sampler as the back texture is; the normal map is data, so its alpha is not
+held to the program's. `texturesFit` now walks the roles rather than naming each slot, and a
+view past the material's raw ones can only be bound by a role. The bindings grew to six views.
+
+**Acceptance, 2026-10-07 — headless only; the gates have not run on this tree.** BUILD
+`4757fd37`, Windows: `programKeyCheck.ms`, `meshDataCheck.ms` and `textureCheck.ms` pass, each
+run alone (the tangent sign and handedness on a facing and a mirrored quad, a cube's tangents
+in its faces, the refusals, the key's block lengths, slots and caster). `tests/integration/
+mapMaterial.ms` (stage `map-material`) is written and type-checks: a black quad emitting its
+two-texel map, a white emission at half strength (linear 0.5), and four quads under one sun
+whose map tilts the normal toward +u and toward the image's top, two of them on a mirrored
+island; its featureless control must fail on all six. Not yet run.
+
+GLES3 and web are NOT RUN.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
