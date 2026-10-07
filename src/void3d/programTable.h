@@ -1011,3 +1011,14 @@ _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_shadowParams_t) == siz
 	"litTexturedDissolveEmissiveShadowed must take shadowParams as litShadowed does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_movingEmissiveMaterialParams_t) == sizeof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t) && UB_litTexturedDissolveEmissiveShadowed_movingEmissiveMaterialParams == UB_litTexturedDissolveEmissive_movingEmissiveMaterialParams,
 	"litTexturedDissolveEmissiveShadowed must take movingEmissiveMaterialParams as litTexturedDissolveEmissive does");
+#include <stddef.h>
+_Static_assert(sizeof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t) == sizeof(shadowLitTexturedDissolve_movingMaterialParams_t) + 4 * sizeof(float) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, material) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, material) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, uvMatrix) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, uvMatrix) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, uvMotion) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, uvMotion) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, backUvMatrix) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, backUvMatrix) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, backUvOffset) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, backUvOffset) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, dissolve) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, dissolve) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, dissolveEdge) == offsetof(shadowLitTexturedDissolve_movingMaterialParams_t, dissolveEdge) &&
+	offsetof(litTexturedDissolveEmissive_movingEmissiveMaterialParams_t, emissive) == sizeof(shadowLitTexturedDissolve_movingMaterialParams_t),
+	"an emissive dissolve block must start with the dissolve caster block");

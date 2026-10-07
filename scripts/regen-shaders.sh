@@ -202,6 +202,16 @@ regenKeys() {
 		echo "};"
 		echo
 		cat "$work/asserts"
+		# A dissolve caster takes the head of an emissive dissolve's block (draw.ms applyBlockHead).
+		moving=shadowLitTexturedDissolve_movingMaterialParams_t
+		emissive=litTexturedDissolveEmissive_movingEmissiveMaterialParams_t
+		echo "#include <stddef.h>"
+		echo "_Static_assert(sizeof($emissive) == sizeof($moving) + 4 * sizeof(float) &&"
+		for member in material uvMatrix uvMotion backUvMatrix backUvOffset dissolve dissolveEdge; do
+			echo "	offsetof($emissive, $member) == offsetof($moving, $member) &&"
+		done
+		echo '	offsetof('$emissive', emissive) == sizeof('$moving'),'
+		echo '	"an emissive dissolve block must start with the dissolve caster block");'
 	} > "$work/programTable.h"
 
 	settle "$work/shader3d.glsl.h" src/void3d/shader3d.glsl.h
