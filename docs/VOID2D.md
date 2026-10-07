@@ -1845,7 +1845,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   parser (index formats 1 to 3, image formats 17, 18 and 19, PNG only), no reference has one
   because GPUI, Makepad and Ghostty all call FreeType or the OS (Ghostty
   `face/freetype.zig:333-352`, `:616-665`); the OpenType CBDT/CBLC text is not read, so the
-  oracle is fontTools (`tests/oracle/colour.py`, 60 tiles). Every read is bounds-checked and a
+  oracle is fontTools (`tests/oracle/colour.py`, 84 CBDT tiles). `cbdtFormats.ttf` holds one
+  strike each of index 2 with image 19, index 3 with image 18, index 3 with image 17 and index 1
+  with image 18, so every claimed format runs and a mutation of any of them fails a test. Every read is bounds-checked and a
   refusal names the field. Two divergences from the spec: the hook is a direct
   `#ifdef VOID2D_COLOUR_EMOJI` call from `glyph.c`, the idiom `VOID2D_SDF_TEXT` already uses,
   not a `void2dGlyphSetColourReader` pointer seam; and the colour-only `stbtt_fontinfo` is
@@ -1866,7 +1868,21 @@ changes described above on today's compiler; the P4 web archive also takes its r
   no v0 records is refused when it loads (it stays a text face), and a glyph with a layer on
   palette index 0xFFFF, which needs the text colour, is refused by name. The oracle sizes put
   every layer edge on a pixel, because the Python reference cannot reproduce stb's partial
-  coverage. Smoke, local only: `C:/Windows/Fonts/seguiemj.ttf` U+1F300 to U+1FAFF at 32 px
+  coverage. `colrUnion.ttf` has one layer reaching past the first on each of the four sides, so
+  each edge of the union box is pinned. Decisions at the review of slices 5 to 6c: a face with
+  outlines and a damaged or unsupported colour table loads as a text face and names the table on
+  stderr (the outlines are a complete face, and refusing the whole font would cost its text),
+  while a colour-only face has nothing else and fails to load; a CBLC strike whose bit depth is
+  not 32 is skipped by name and the face fails only when no strike is left; a size over 16,384 px
+  or not finite, and a box over 4096 x 4096 texels, is refused by name for a bitmap strike as for
+  a layer glyph; a bitmap strike is enlarged by pixel replication when the size is over its
+  ppem, which the area average does at a scale over 1, and the largest strike is the one chosen
+  there; a COLR v1 face that also holds v0 base records draws those v0 layers, as a v0-only
+  renderer would; the cmap choice skips the variation-selector record (platform 0, encoding 5).
+  The reason string and the box of `void2dGlyphColourBox` are static, one thread like
+  `void2dGlyphBox`. A tile that `acquireBlank` recorded and whose fill was refused is given back
+  with `GlyphAtlas.discard`, so the key is not cached with no pixels behind it. The truncation
+  sweep is test code, `src/test/colourSweep.c`, and is not compiled into the module. Smoke, local only: `C:/Windows/Fonts/seguiemj.ttf` U+1F300 to U+1FAFF at 32 px
   gives 1,191 colour glyphs, 0 refused, 9,439 layers, 1,114 inked at the tile centre.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.

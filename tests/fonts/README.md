@@ -44,8 +44,14 @@ with VS16 for both codepoints, and no outlines; `sbixSynthetic` holds 12 and 24 
 with origin offsets, a `dupe` glyph, a `jpg ` glyph and an empty glyph; `colrSynthetic` holds a
 COLR v0 glyph of three layers over a three-colour CPAL palette.
 
-`cbdtBroken.ttf` (1,236 B) is `cbdtSynthetic` with the first CBLC strike's bit depth set to 8, the
-face the loader must refuse by name (`python tests/fonts/colourEmoji.py broken` rewrites it).
+`cbdtBroken.ttf` (1,236 B) is `cbdtSynthetic` with both CBLC strikes' bit depth set to 8, the
+face the loader must refuse by name, and `cbdtMixedDepth.ttf` has only the first one set, so that
+strike is skipped and the 16 ppem one draws (`python tests/fonts/colourEmoji.py broken` rewrites
+both). `cbdtFormats.ttf` holds four strikes that use CBLC index formats 2, 3, 3 and 1 with CBDT
+image formats 19, 18, 17 and 18 and shared or per-glyph bearings; `cbdtUvsLast.ttf` is
+`cbdtSynthetic` with a (0, 4) format 12 record followed by the (0, 5) format 14 one and no
+Windows record; `colrUnion.ttf` is a five-layer COLR v0 glyph whose layers extend the union box
+left, right, up and down in turn. All three are our own art.
 
 `sbixLoop.ttf` is `sbixSynthetic` with the `dupe` glyph pointing at itself in both strikes, the
 chain the sbix reader must refuse instead of following.
