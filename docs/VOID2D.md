@@ -1865,8 +1865,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   that two-pass order, which none of GPUI, Makepad and Ghostty has (they batch per primitive
   kind). A tile whose fill `colourRasterize` refuses goes back through `GlyphAtlas.discard` and
   the label reports `ColourRefused` by name. Measured headless (`src/test/labelTextColourCheck.ms`,
-  326 tests): placement at DPI 1.0, 1.25 and 1.5, the instance fields, the vertex-program quad and
-  the discard. Not measured: the golden `text/colourEmoji` capture (owed, D3D11), and the run
+  334 tests): placement at DPI 1.0, 1.25 and 1.5, the instance fields, the vertex-program quad and
+  the discard. Not measured: the golden `text/colourEmoji` capture (owed, D3D11, `tests/PENDING.md colour:capture-d3d11`), and the run
   count of an alternating label, which needs real views (a headless view is 0, so both pages
   record under one view).
   Transformed regime (`labelText.ms` `translationOnly`, `glyphAtlas.ms` `colourBucket`): a label
@@ -1876,8 +1876,14 @@ changes described above on today's compiler; the P4 web archive also takes its r
   ceiling of 1.25 times the one before, the first at or above the requested size, so a tile is
   never enlarged and is shrunk by at most 20 percent; the ladder is monotone and idempotent
   (T0 over sizes 0.37 to 1480). The tile is drawn through the affine with the smooth sampler,
-  scaled by requested over bucket size (in device pixels when the regime is pixel exact, in local
-  units otherwise). A label with a colour glyph in the SDF regime re-places on a zoom, as a label
+  whenever the matrix is more than a translation, pixel exact or not, scaled by requested over
+  bucket size (in device pixels when the regime is pixel exact, in local units otherwise); a
+  headless test records the sampler of a zoomed label (scene smoothing off) and of an unscaled
+  one. The sampler is per node: `emitNode` sets it again at the next node, so the label's
+  switch does not leak. A bucket whose tile the page refuses (the tile is about 1.25 times its
+  size wide and a page is 1023 texels) falls back to the exact size, which draws where it fits
+  (T0 at zoom 46, font 16: bucket 888 refused, exact 736 drawn); a glyph whose exact tile is
+  also refused is reported as before. A label with a colour glyph in the SDF regime re-places on a zoom, as a label
   with a cubic-outline glyph does, because the tile depends on the matrix where the SDF tile does
   not. NEW MECHANISM (flagged, needs approval): the 1.25x integer ladder. MAKEPAD.md:114 gives the
   ratio second hand ("emoji strikes pre-shrunk into 1.25x size buckets"); Makepad's own source
@@ -1888,7 +1894,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   emoji line every eighth line built with `-d:voidColourEmoji`, reports `colourPages`,
   `colourBytes`, `sweepColourRasterizations` and `colourRasterizationsSteady`; `check.ms` holds
   them to the `colourBounds` in `baseline.json` (2 pages, 8 MiB, 40 rasterizations, 0 steady) as
-  bounds, not as measured values, because the bench has not been run (owed). `glyphPages` and
+  bounds, not as measured values, because the bench has not been run (owed, `tests/PENDING.md colour:bench-bounds`). `glyphPages` and
   `glyphBytes` now count the coverage pages only, so they keep their meaning beside an RGBA page.
   Device loss and occlusion: `forgetContextResources` already marks every page dirty whatever its
   kind and the page mirror is four bytes a texel, so an RGBA page re-uploads whole with no new code;
@@ -1896,16 +1902,17 @@ changes described above on today's compiler; the P4 web archive also takes its r
   upload again, with the same mirror and size, and a `MarkDirty` that skipped RGBA pages fails
   it). The GPU half is two gate stages that build `tests/integration/deviceLoss.ms` and
   `sceneOcclusion.ms` with `-d:voidColourEmoji`, each with an emoji label beside the text one,
-  and require the colour page to exist (owed, native: neither stage has run).
+  and require the colour page to exist (owed, native: neither stage has run, `tests/PENDING.md colour:native-gate`).
   Module off (guardrail 6), measured 2026-10-08 with `sh scripts/wasmModuleDelta.sh` (clang 23.1.0,
   -O2, objects, code plus data bytes, before any link or garbage collection): with the module off
   no default-layer object (`glyph.c`, `grapheme.c`, `batcher.c`, `sfnt.c`) names a `void2dColour`
   symbol, while `glyph.c` built with the module does (the control), and the only `stb_image`
   implementations are the module's own PNG-only copy and `assets/image.c`. The default layer now
-  against the commit before the colour item's first default-layer slice (`bf43569`) is +11,046 B
-  as wasm32 objects and +11,336 B as x86-64 objects, which counts every default-layer change since,
-  the other P6 items' included (sfnt peek 5,620 B, the Emoji_Presentation bit 288 B, the rest in
-  `glyph.c` and `batcher.c`). The module is `colourFace.c` 42,189 B as a wasm32 object (36,046 B
+  against the commit before the colour item's first default-layer slice (`54bdd52`, the parent of
+  `691586c`; every default-layer commit since is the colour item's) is +1,567 B as wasm32 objects
+  and +1,909 B as x86-64 objects, +1,540 B and +27 B of the wasm32 figure in `glyph.c` and
+  `batcher.c`. The gate also checks the module-off executable for a `void2dColour` symbol
+  (owed, native). The module is `colourFace.c` 42,189 B as a wasm32 object (36,046 B
   code, 6,143 B data, the PNG decoder among them) and 43,625 B as an x86-64 object, plus 3,273 B
   (wasm32) of hooks in `glyph.c`; the spec's estimate for the module's C was 25 to 39 KB with the
   decoder shared. These are object sizes: the linked, garbage-collected wasm of the demo with each
