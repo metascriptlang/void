@@ -112,7 +112,7 @@ function text(pixel: Pixel): string {
 }
 
 function checkBoard(view: CameraView): void {
-	const points: Vec<Vec3> = [vec3(1.3, 0.0, 0.0), vec3(-1.5, 0.0, -1.0), vec3(0.0, 0.0, -2.0)];
+	const points: Vec<Vec3> = [vec3(1.3, 0.0, -1.0), vec3(-1.5, 0.0, -1.0), vec3(0.0, 0.0, -2.0)];
 	for (let i = 0; i < 3; i++) {
 		const seen: Pixel = meanAt(view, points[i], 3);
 		if (seen.green < 60 || seen.green < seen.red + 30 || seen.green < seen.blue + 20) {
