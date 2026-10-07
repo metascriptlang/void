@@ -1661,6 +1661,46 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - Procedural sprite glyphs — box drawing, blocks, braille, powerline — for a terminal widget.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
+  **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding
+  (`libs/svg/src/tessellate.rs` `emit_fill_fringe`, `:1003-1060`): every contour vertex is stored
+  on the edge with the outward normals of the two edges that meet there, and the fringe is a
+  zero-area quad per edge until it is drawn. Makepad never wires the expansion (`fill_gpu` has no
+  caller and its vertex shader moves nothing; `svg/render.rs:610` bakes the fringe instead because
+  coincident fringe vertices broke Metal rasterization). void2d expands where it already
+  transforms a mesh, `draw.ms` `drawMeshRange`: each edge line moves by half a device pixel through
+  the world affine (`t / |A^-T n|`) and the render scale, so the body ends half a pixel inside the
+  edge and coverage ramps to zero half a pixel outside it under any scale, shear, rotation or DPI,
+  and nothing coincident reaches the GPU. The mesh keeps an edge column beside its vertices
+  (`EDGE_FLOATS`): two normals, the shift, a stroke's half-width and the uv gradient, so a
+  textured, gradient or pattern fill keeps its uv on the moved vertex. A stroke narrower than a
+  device pixel collapses its body to the centre line and scales coverage by `2w / (w + 0.5)`
+  instead of inverting. A full-turn ring is two loops, the hole wound against the rim; a
+  full-turn pie is a circle; a pie of no angle draws nothing. `setAntialias(false)` builds the
+  following fills without a fringe. A fringed Graphics' render and filter bounds grow by the
+  half pixel in local units, which is why the filter goldens moved as a whole.
+  Measured, D3D11, msc v0.3.2 BUILD `244ef48c`: `prim/aaGraphics` (the `prim/aaRotatedBox`
+  geometry as a Graphics) judged by `tests/oracle/captureCheck.ms`: edges 0.0467 of 0.06, miter
+  corners 0.2459 of 0.26; antialias off reads 0.5 on both. A sharp corner takes the nearer edge's
+  ramp, as in NanoVG and Makepad; a corner patch that would do better is a new mechanism and is
+  not built. 22 goldens regenerated; axis-aligned fills on whole pixels, `prim/gradientLinear`
+  and `prim/ditherBand`, stayed byte-identical. A 1 px stroke centred on a pixel boundary is now
+  two half-covered pixels (true area, as GPUI's paths and Canvas draw it), a 0.5 px stroke shows
+  at its coverage instead of vanishing, and `fillSlashRect` stripes flip a few pixels where a
+  stripe edge falls exactly on a pixel centre (the pattern itself has no antialiasing).
+  CPU cost, release, 128 circles of radius 30 rotated every frame at DPI 1.5, recording only:
+  0.12 ms and 8 064 vertices with antialias off, 0.64 ms and 25 728 vertices with it on. A
+  static or scrolled Graphics replays and pays nothing. That does not justify moving the mesh
+  transform to the vertex shader yet.
+  `sample_count`: `setViewSampleCount(n)` (`src/sokol/gpu.ms`, `voidViewsSetSampleCount`) sets
+  the views driver's count once, before the first view, for every view and for the environment
+  the pipelines are made against; 1, 2, 4 and 8 are taken, anything else or a late call stops by
+  name. D3D11 renders into a multisampled texture and resolves into the swapchain buffer; Android
+  asks EGL for a config with that many samples; iOS gives sokol a memoryless (simulator: private)
+  multisampled texture per view, remade on resize. `tests/integration/viewSamples.ms` draws the
+  forward preset and void2d in one screen pass into a host view, debug build with sokol's
+  validation: 0 / 80 / 160 / 160 partly covered pixels on a 45-degree edge at 1 / 2 / 4 / 8
+  samples. The Android bridge compiles under NDK 28 and links into gate3d's arm64 `libVoidAndroid.so`;
+  the iOS bridge was not built here, and neither ran on a device. The macOS embed bridge (`bridgeEmbed.m`) still uses 1.
 - Device loss: drop every GPU object, re-arm every dirty flag, redraw, with a **fault-injection switch** (MAKEPAD.md:104) — which is also how the path is tested. void3d already has the Android form of this (`voidEmbedLoseContext`); this generalises it and covers the atlas and the instance buffer.
   **Built 2026-10-05.** The switch is `loseContext()` (`src/gpu/door.ms`): the Windows window and
   views hosts and the Android bridge drop every sokol object at the start of the next frame
