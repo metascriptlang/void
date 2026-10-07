@@ -9,6 +9,7 @@ import {
 	glyphIndex,
 	faceHeights,
 } from "./face";
+import { graphemeProperty } from "./grapheme";
 
 export enum FontStyle { Normal, Italic }
 
@@ -38,6 +39,13 @@ export enum FontError {
 	NotLoaded,
 }
 
+export enum Presentation {
+	Default,
+	Text,
+	Emoji,
+	Any,
+}
+
 export struct CodepointFace {
 	face: int32;
 	scale: float32;
@@ -50,6 +58,8 @@ const NOT_LOADED: int32 = -1;
 const LOAD_FAILED: int32 = -2;
 const BOLD_WEIGHT: int32 = 600;
 const PRIMARY_SLOT: int32 = -1;
+const FONT_SHIFT: uint64 = 40;
+const MODE_SHIFT: uint64 = 32;
 
 struct RegisteredFace {
 	path: string;
@@ -77,6 +87,7 @@ struct Synthetic {
 
 struct FontEntry {
 	face: int32;
+	path: string;
 	kern: boolean;
 	sizeAdjust: SizeAdjust;
 	described: boolean;
@@ -145,9 +156,10 @@ function styledAt(path: string, bold: boolean, italic: boolean): Result<int32, F
 	return styled(face, bold, italic);
 }
 
-function plainFont(face: int32): FontEntry {
+function plainFont(face: int32, path: string): FontEntry {
 	return {
 		face: face,
+		path: path,
 		kern: true,
 		sizeAdjust: SizeAdjust.None,
 		described: false,
@@ -176,10 +188,10 @@ function ensureDefaultFont(): void {
 			`void2d: the default font ${DEFAULT_PATH} did not load ` +
 			`(${loaded.error.toString()}); text in it draws nothing`,
 		);
-		fonts.push(plainFont(NO_FACE));
+		fonts.push(plainFont(NO_FACE, DEFAULT_PATH));
 		return;
 	}
-	fonts.push(plainFont(loaded.value));
+	fonts.push(plainFont(loaded.value, DEFAULT_PATH));
 }
 
 export function registerFace(path: string, family: string, weight: int32, style: FontStyle): void {
@@ -191,7 +203,7 @@ export function addFont(path: string): Result<FontId, FontError> {
 	ensureDefaultFont();
 	const face = faceAtPath(path);
 	if (!face.ok) { return Result.err(FontError.NotLoaded); }
-	fonts.push(plainFont(face.value));
+	fonts.push(plainFont(face.value, path));
 	return Result.ok(((fonts.length as int32) - 1) as FontId);
 }
 
@@ -314,6 +326,7 @@ export function resolveFont(font: Font): Result<FontId, FontError> {
 	for (const family of font.fallbacks) { fallbackFamilies.push(family); }
 	fonts.push({
 		face: face.value,
+		path: registered[primary].path,
 		kern: kern,
 		sizeAdjust: font.sizeAdjust,
 		described: true,
@@ -417,29 +430,70 @@ function fallbackFace(index: int32): int32 {
 	return fallbacks[index].face;
 }
 
-function codepointSlot(font: FontId, codepoint: int32): int32 {
-	const key: uint64 = (((font as int32) as uint64) << 32) | (codepoint as uint64);
+function presentationOfPath(path: string): Presentation {
+	const summary = summaryAtPath(path);
+	if (summary.ok && (summary.value.colourBitmap || summary.value.colourLayers)) {
+		return Presentation.Emoji;
+	}
+	return Presentation.Text;
+}
+
+function wantedPresentation(mode: Presentation, codepoint: int32): Presentation {
+	if (mode != Presentation.Default) { return mode; }
+	return graphemeProperty(codepoint).emojiPresentation ? Presentation.Emoji : Presentation.Text;
+}
+
+function fallbackUsable(index: int32): boolean {
+	if (fallbacks[index].face == LOAD_FAILED) { return false; }
+	const summary = summaryAtPath(fallbacks[index].path);
+	if (!summary.ok || summary.value.drawable) { return true; }
+	console.log(
+		`void2d: fallback font ${fallbacks[index].path} holds colour glyphs but no outlines, ` +
+		`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`,
+	);
+	fallbacks[index].face = LOAD_FAILED;
+	return false;
+}
+
+function fallbackAnswers(
+	font: FontId, index: int32, codepoint: int32, exact: boolean, want: Presentation,
+): boolean {
+	if (fallbacks[index].font != font || !fallbackUsable(index)) { return false; }
+	if (!coversAtPath(fallbacks[index].path, codepoint)) { return false; }
+	return !exact || presentationOfPath(fallbacks[index].path) == want;
+}
+
+function primaryAnswers(
+	font: FontId, codepoint: int32, mode: Presentation, want: Presentation,
+): boolean {
+	if (glyphIndex(fontFace(font), codepoint) == 0) { return false; }
+	if (mode == Presentation.Default) { return true; }
+	return presentationOfPath(fonts[fontIndex(font)].path) == want;
+}
+
+export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation): int32 {
+	const key: uint64 = (((font as int32) as uint64) << FONT_SHIFT) |
+		(((mode as int32) as uint64) << MODE_SHIFT) | (codepoint as uint64);
 	const hit = resolved.get(key);
 	if (hit.present) { return hit.value; }
 	coverageProbes = coverageProbes + 1;
+	const want: Presentation = wantedPresentation(mode, codepoint);
 	let slot: int32 = PRIMARY_SLOT;
-	if (glyphIndex(fontFace(font), codepoint) == 0) {
-		for (let i = 0; i < (fallbacks.length as int32); i++) {
-			if (fallbacks[i].font != font || fallbacks[i].face == LOAD_FAILED) { continue; }
-			if (!coversAtPath(fallbacks[i].path, codepoint)) { continue; }
-			const candidate: int32 = fallbackFace(i);
-			if (candidate < 0) { continue; }
-			if (glyphIndex(candidate, codepoint) == 0) {
-				console.log(
-					`void2d: the summary of ${fallbacks[i].path} covers ` +
-					`U+${codepoint.toString(16)} but the loaded face has no glyph; ` +
-					`the face is skipped`,
-				);
-				fallbacks[i].face = LOAD_FAILED;
-				continue;
+	let found: boolean = false;
+	if (mode != Presentation.Any) {
+		found = primaryAnswers(font, codepoint, mode, want);
+		for (let i = 0; !found && i < (fallbacks.length as int32); i++) {
+			if (fallbackAnswers(font, i, codepoint, true, want)) {
+				slot = i;
+				found = true;
 			}
+		}
+	}
+	if (!found && glyphIndex(fontFace(font), codepoint) != 0) { found = true; }
+	for (let i = 0; !found && i < (fallbacks.length as int32); i++) {
+		if (fallbackAnswers(font, i, codepoint, false, want)) {
 			slot = i;
-			break;
+			found = true;
 		}
 	}
 	resolved.set(key, slot);
@@ -455,10 +509,30 @@ export function fontCovers(font: FontId, codepoint: int32): boolean {
 	return false;
 }
 
+export function codepointFaceFor(
+	font: FontId, codepoint: int32, mode: Presentation,
+): CodepointFace {
+	while (true) {
+		const slot: int32 = faceSlotFor(font, codepoint, mode);
+		if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
+		const face: int32 = fallbackFace(slot);
+		if (face >= 0 && glyphIndex(face, codepoint) != 0) {
+			return { face: face, scale: fallbacks[slot].scale };
+		}
+		if (face >= 0) {
+			console.log(
+				`void2d: the summary of ${fallbacks[slot].path} covers ` +
+				`U+${codepoint.toString(16)} but the loaded face has no glyph; ` +
+				`the face is skipped`,
+			);
+			fallbacks[slot].face = LOAD_FAILED;
+		}
+		resolved = new Map<uint64, int32>();
+	}
+}
+
 export function codepointFace(font: FontId, codepoint: int32): CodepointFace {
-	const slot: int32 = codepointSlot(font, codepoint);
-	if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
-	return { face: fallbacks[slot].face, scale: fallbacks[slot].scale };
+	return codepointFaceFor(font, codepoint, Presentation.Default);
 }
 
 export function faceForCodepoint(font: FontId, codepoint: int32): int32 {

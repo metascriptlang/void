@@ -7,7 +7,15 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "./face";
-import { CodepointFace, FontId, codepointFace, fontFace, fontKerns } from "./font";
+import {
+	CodepointFace,
+	FontId,
+	Presentation,
+	codepointFace,
+	codepointFaceFor,
+	fontFace,
+	fontKerns,
+} from "./font";
 import { Color } from "./types";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 import { lineBreaks } from "./lineBreak";
@@ -198,9 +206,20 @@ function tabStop(this style: TextStyle): float32 {
 	return (TAB_STOP_SPACES as float32) * space;
 }
 
-function faceOf(font: FontId, codepoint: int32): CodepointFace {
+function faceOf(font: FontId, codepoint: int32, mode: Presentation): CodepointFace {
 	if (isControl(codepoint)) { return { face: fontFace(font), scale: 1.0 }; }
-	return codepointFace(font, codepoint);
+	return codepointFaceFor(font, codepoint, mode);
+}
+
+function clusterPresentation(
+	cps: Readonly<Span<Codepoint>>, first: int32, end: int32,
+): Presentation {
+	let mode: Presentation = Presentation.Default;
+	for (let k = first + 1; k < end; k++) {
+		if (cps[k].value == TEXT_PRESENTATION) { mode = Presentation.Text; }
+		if (cps[k].value == EMOJI_PRESENTATION) { mode = Presentation.Emoji; }
+	}
+	return mode;
 }
 
 function isJoiner(codepoint: int32): boolean {
@@ -223,9 +242,12 @@ function graphemeFace(
 	first: int32,
 	end: int32,
 ): Result<CodepointFace, GraphemeCoverage> {
+	const base: Presentation = clusterPresentation(cps, first, end);
 	for (let k = first; k < end; k++) {
 		if (k > first && isJoiner(cps[k].value)) { continue; }
-		const candidate: CodepointFace = faceOf(font, cps[k].value);
+		const candidate: CodepointFace = faceOf(
+			font, cps[k].value, k == first ? base : Presentation.Any,
+		);
 		if (coversGrapheme(candidate.face, cps, first, end)) { return Result.ok(candidate); }
 	}
 	return Result.err(GraphemeCoverage.NoFaceCoversAll);
@@ -243,8 +265,10 @@ function assignGrapheme(cps: Span<Codepoint>, first: int32, end: int32): void {
 			return;
 		}
 	}
+	const base: Presentation = clusterPresentation(cps, first, end);
 	for (let k = first; k < end; k++) {
-		const source: CodepointFace = faceOf(cps[k].font, cps[k].value);
+		const mode: Presentation = k == first ? base : Presentation.Default;
+		const source: CodepointFace = faceOf(cps[k].font, cps[k].value, mode);
 		cps[k].face = source.face;
 		cps[k].scale = source.scale;
 	}

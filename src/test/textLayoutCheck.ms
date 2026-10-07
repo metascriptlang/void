@@ -25,6 +25,7 @@ import {
 	FontStyle,
 	SizeAdjust,
 	addFont,
+	addFallbackFont,
 	resolveFont,
 	fontFace,
 	fallbackProbes,
@@ -265,6 +266,48 @@ test "an ignorable cluster member leaves letter spacing where the bare letters p
 	const bare = TextLayout.layout("AB", { ...style(), letterSpacing: 4.0 });
 	assert approx(marked.glyphs[2].x, bare.glyphs[1].x);
 	assert approx(marked.width, bare.width);
+}
+
+const SYMBOL_TEXT: string = "tests/fonts/textSymbol.ttf";
+const SYMBOL_COLOUR: string = "tests/fonts/sbixSynthetic.ttf";
+const BARE_PRIMARY: string = "tests/fonts/zeroLineHeight.ttf";
+
+function symbolStyle(): TextStyle {
+	const primary: FontId = try addFont(BARE_PRIMARY) catch DEFAULT_FONT;
+	addFallbackFont(primary, SYMBOL_COLOUR);
+	addFallbackFont(primary, SYMBOL_TEXT);
+	return { ...style(), font: primary };
+}
+
+function faceAt(path: string): int32 {
+	return fontFace(try addFont(path) catch DEFAULT_FONT);
+}
+
+test "a selector steers its base to the face of that presentation, whatever the fallback order" {
+	const s = symbolStyle();
+	const text = faceAt(SYMBOL_TEXT);
+	const colour = faceAt(SYMBOL_COLOUR);
+	assert TextLayout.layout("\u{2764}", s).glyphs[0].face == text;
+	assert TextLayout.layout("\u{2764}\u{FE0E}", s).glyphs[0].face == text;
+	assert TextLayout.layout("\u{2764}\u{FE0F}", s).glyphs[0].face == colour;
+	assert TextLayout.layout("\u{1F600}", s).glyphs[0].face == colour;
+	assert TextLayout.layout("\u{1F600}\u{FE0E}", s).glyphs[0].face == text;
+	assert TextLayout.layout("\u{1F600}\u{FE0F}", s).glyphs[0].face == colour;
+}
+
+test "a selector draws nothing of its own and shares its base's face" {
+	const l = TextLayout.layout("\u{2764}\u{FE0F}", symbolStyle());
+	assert (l.glyphs.length as int32) == 2;
+	assert l.glyphs[0].glyph != NO_GLYPH && l.glyphs[1].glyph == NO_GLYPH;
+	assert l.glyphs[1].face == l.glyphs[0].face;
+}
+
+test "the parts of a joined sequence need not match the base's presentation" {
+	const l = TextLayout.layout("\u{2764}\u{200D}\u{1F44D}", symbolStyle());
+	const colour = faceAt(SYMBOL_COLOUR);
+	assert (l.glyphs.length as int32) == 3;
+	assert l.glyphs[0].face == colour && l.glyphs[2].face == colour;
+	assert l.glyphs[1].glyph == NO_GLYPH;
 }
 
 test "a tab advances to the next stop, counted in spaces from the line start" {

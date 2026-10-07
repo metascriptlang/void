@@ -21,6 +21,9 @@ import {
 	fallbackFacesLoaded,
 	fallbackProbes,
 	fontCovers,
+	Presentation,
+	codepointFaceFor,
+	faceSlotFor,
 } from "../void2d/font";
 import { Scene2D } from "../void2d/node";
 import "../void2d/scene";
@@ -35,6 +38,7 @@ const HEAVY: string = "tests/fonts/zeroedDecorations.ttf";
 const NO_LINE_HEIGHT: string = "tests/fonts/zeroLineHeight.ttf";
 const TEXT_SYMBOL: string = "tests/fonts/textSymbol.ttf";
 const COLOUR_ONLY: string = "tests/fonts/cbdtSynthetic.ttf";
+const COLOUR_DRAWABLE: string = "tests/fonts/sbixSynthetic.ttf";
 const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
 
 let registeredFamilies: boolean = false;
@@ -147,15 +151,92 @@ test "coverage of a fallback is answered from its summary, with no face loaded" 
 	assert faceSummariesRead() == summaries + 1;
 }
 
-test "a fallback whose summary covers a codepoint but whose face will not load is skipped once" {
+test "a colour-only fallback is covered but not drawable, so it is skipped without a load" {
 	const f = added(LATIN);
 	addFallbackFont(f, COLOUR_ONLY);
 	const loads = fallbackFacesLoaded();
 	assert fontCovers(f, 0x1F600);
 	assert faceForCodepoint(f, 0x1F600) == fontFace(f);
 	assert faceForCodepoint(f, 0x2764) == fontFace(f);
-	assert fallbackFacesLoaded() == loads + 1;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == fontFace(f);
+	assert fallbackFacesLoaded() == loads;
 	assert fontCovers(f, 0x1F600);
+}
+
+function symbolFont(colourFirst: boolean): FontId {
+	const f = added(NO_LINE_HEIGHT);
+	if (colourFirst) {
+		addFallbackFont(f, COLOUR_DRAWABLE);
+		addFallbackFont(f, TEXT_SYMBOL);
+	} else {
+		addFallbackFont(f, TEXT_SYMBOL);
+		addFallbackFont(f, COLOUR_DRAWABLE);
+	}
+	return f;
+}
+
+test "with no selector the default presentation picks the matching fallback in either order" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	for (const colourFirst of [false, true]) {
+		const f = symbolFont(colourFirst);
+		assert codepointFaceFor(f, 0x1F600, Presentation.Default).face == colour;
+		assert codepointFaceFor(f, 0x2764, Presentation.Default).face == text;
+	}
+}
+
+test "VS15 asks for the text face and VS16 for the colour face, in either order" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	for (const colourFirst of [false, true]) {
+		const f = symbolFont(colourFirst);
+		assert codepointFaceFor(f, 0x1F600, Presentation.Text).face == text;
+		assert codepointFaceFor(f, 0x2764, Presentation.Text).face == text;
+		assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == colour;
+		assert codepointFaceFor(f, 0x2764, Presentation.Emoji).face == colour;
+	}
+}
+
+test "the any mode takes the first covering face whatever its presentation" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	assert codepointFaceFor(symbolFont(false), 0x1F600, Presentation.Any).face == text;
+	assert codepointFaceFor(symbolFont(true), 0x2764, Presentation.Any).face == colour;
+}
+
+test "the primary face is explicit: it takes any presentation until a selector asks" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	const f = added(TEXT_SYMBOL);
+	addFallbackFont(f, COLOUR_DRAWABLE);
+	assert codepointFaceFor(f, 0x1F600, Presentation.Default).face == text;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Text).face == text;
+	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == colour;
+}
+
+test "a fallback of the other presentation is the last resort when nothing matches" {
+	const text = faceOfPath(TEXT_SYMBOL);
+	const colour = faceOfPath(COLOUR_DRAWABLE);
+	const onlyText = added(NO_LINE_HEIGHT);
+	addFallbackFont(onlyText, TEXT_SYMBOL);
+	assert codepointFaceFor(onlyText, 0x1F600, Presentation.Emoji).face == text;
+	const onlyColour = added(NO_LINE_HEIGHT);
+	addFallbackFont(onlyColour, COLOUR_DRAWABLE);
+	assert codepointFaceFor(onlyColour, 0x2764, Presentation.Text).face == colour;
+	assert codepointFaceFor(onlyColour, 0x2764, Presentation.Default).face == colour;
+}
+
+test "the resolver answers a presentation without loading a face it does not pick" {
+	const f = symbolFont(false);
+	const loads = fallbackFacesLoaded();
+	assert faceSlotFor(f, 0x1F600, Presentation.Emoji) >= 0;
+	assert faceSlotFor(f, 0x2764, Presentation.Text) >= 0;
+	assert fallbackFacesLoaded() == loads;
+	const probes = fallbackProbes();
+	assert faceSlotFor(f, 0x1F600, Presentation.Emoji) >= 0;
+	assert fallbackProbes() == probes;
+	const asText: int32 = faceSlotFor(f, 0x1F600, Presentation.Text);
+	assert asText != faceSlotFor(f, 0x1F600, Presentation.Emoji);
 }
 
 test "an unreadable fallback path is refused by the peek and never loaded" {
