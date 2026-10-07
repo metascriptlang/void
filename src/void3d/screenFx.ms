@@ -30,5 +30,5 @@ export function makeScreenTriangle(): uint32 {
 }
 
 export function screenItem(mesh: MeshId, material: MaterialId): DrawItem {
-	return { mesh: mesh, material: material, world: identity() };
+	return { mesh: mesh, material: material, world: identity(), order: 0 };
 }

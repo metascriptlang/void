@@ -2661,7 +2661,8 @@ order, then (alpha only) far to near: `sortByLayer` for opaque and additive, `so
 for alpha, both still stable insertion sorts in place. `PassList` keeps `orders` beside `layers`
 (filled by `collect` and `collectCasters`, compacted by `filterFrustum`) and grows with the item
 count like the rest of its storage. A `DrawItem` literal that leaves `order` out is 0, so no
-existing literal changed (Compiler notes: an omitted field is zero).
+existing test literal changed. Non-test literals name `order: 0`: an omitted field being zero is
+observed compiler behaviour (Compiler notes, the struct-literal entry), not a guarantee.
 
 **NEW MECHANISM against Heaps, decided by the references.** Heaps has only `Pass.layer`
 (`h3d/mat/Pass.hx:51`), which M34 ported. three.js `Object3D.renderOrder` (`src/core/Object3D.js:327`,
