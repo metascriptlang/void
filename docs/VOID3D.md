@@ -2965,6 +2965,15 @@ name on a missing snapshot (`756a1ce`), needed.
 
 **Acceptance, limited to what ran.** `msc` v0.3.2 from the worktree, `MSC_NO_GLOBAL_CACHE=1`, one test file at a time. The vitest totals, which also load shared modules: `layersCheck.ms` 317, `programKeyCheck.ms` 323, `dirShadowCheck.ms` 309, `drawCheck.ms` 312, `rendererCheck.ms` 324, `gltfMaterialCheck.ms` 325, `scene3dCheck.ms` 343, `worldLabelCheck.ms` 320, all passing. `msc check src/test/index.ms` is clean over 188 modules; the abort program ran and printed its line; `tests/integration/dirShadow.ms` and `targetPresetEpoch.ms` built; `sh scripts/regen-shaders.sh --check` reports all four headers fresh. The gate, `gate.sh`, captures, goldens, GPU windows, Android and the web build did not run, so no pixel of items 2 to 4 is evidenced, and cases 8 to 13 of `dir-shadow` have never executed (cases 10, 12 and 13 and the control 11 are core-only and run after the two-preset loop). `gate3d.sh` passes `bash -n` and every line-continuation backslash is followed by CR LF; its allocation lists gained `material:shadowFace`, `draw:applyBlockHead` and `camera:rotationOfBasis`, each read in the emitted C for no `ArrayCopy` or string builder.
 
+**Native acceptance, 2026-10-08.** On `08e453f` over void2d's `cb4541e`, Windows D3D11, BUILD
+`99a851d7` unchanged before, between and after, serially: `gate.sh` GREEN, golden 88/88;
+`gate3d.sh` 335 PASS / 3 known skips, 1410 tests, and one FAIL in `compose`, which grepped the
+prepare-twice stop by the text this lane reworded; `7f263d4` greps the new text and the compose
+stage rerun alone is GREEN, every other stage carrying over. `dir-shadow` cases 8 to 13 ran for
+the first time and pass: a flat caster with its own shadow culling, a cut premultiplied card and
+the dissolve casters, each beside its control; the `endPrepared` and block-head aborts stop by
+name.
+
 ### M44 as built
 
 **A card table over M33 to M43, built only from Void's public API.** `src/examples/cardTableScene.ms` (setup and one frame), `src/examples/mainCardTable.ms` (the window entry, 960x720), `tests/integration/cardTable.ms` (readback) and the gate stage `card-table`. Every asset is procedural: a 32x32 felt tile and its normal map, a 16x16 noise ramp, a few 1x1 colours, a void2d card face per card. Nothing under `src/void3d`, `src/void2d` or `src/gpu` changed, no ProgramKey bit, no shader. `setupCardTable(false)` makes the scene; `frameCardTable(frame, width, height)` draws one frame; `setupCardTable(true)` makes the same objects with every feature off, which is the test's control.
