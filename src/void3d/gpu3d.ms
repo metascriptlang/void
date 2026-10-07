@@ -96,10 +96,7 @@ function stopOnFeature(key: ProgramKey, feature: string): ProgramKey {
 }
 
 export function withPremultiplied(this key: ProgramKey): ProgramKey {
-	const textured: boolean =
-		key.program == Program.LitTextured || key.program == Program.UnlitTextured;
-	if (!textured) { return stopOnFeature(key, "premultiplied"); }
-	return { ...key, premultiplied: true };
+	return { ...stopOnUntextured(key, "premultiplied"), premultiplied: true };
 }
 
 export function withCutout(this key: ProgramKey): ProgramKey {
@@ -225,7 +222,9 @@ export function drawnIn(
 }
 
 // Depth output has no colour, so premultiplied input and shadow receiving do not reach it; a
-// dissolve cuts depth as it cuts colour, and the UV a texel is read at matters only to a cut.
+// dissolve cuts depth as it cuts colour. A cut reads its texel at the UV the colour program
+// reads it at, so a cutout keeps its UV features; no such caster is declared, so a cutout that
+// moves its UV is refused as not cast rather than cut at the wrong texel.
 export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	if (key.preset != Preset.Core) { return Result.err(ProgramError.NotDrawn); }
 	const cast: ProgramKey = {
