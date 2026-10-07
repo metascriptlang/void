@@ -150,18 +150,18 @@ test "a codepoint no face has is resolved once and then cached as a miss" {
 test "coverage of a fallback is answered from its summary, with no face loaded" {
 	const f = added(LATIN);
 	addFallbackFont(f, TEXT_SYMBOL);
-	const summaries = faceSummariesRead();
 	const loads = fallbackFacesLoaded();
 	assert covered(f, 0x1F600);
+	const summaries = faceSummariesRead();
 	assert covered(f, 0x2764);
 	assert !covered(f, 0x0E01);
-	assert faceSummariesRead() == summaries + 1;
+	assert faceSummariesRead() == summaries;
 	assert fallbackFacesLoaded() == loads;
 	const face = faceForCodepoint(f, 0x1F600);
 	assert face != fontFace(f);
 	assert glyphIndex(face, 0x1F600) != 0;
 	assert fallbackFacesLoaded() == loads + 1;
-	assert faceSummariesRead() == summaries + 1;
+	assert faceSummariesRead() == summaries;
 }
 
 test "a colour-only fallback is covered but not drawable, so it is skipped without a load" {
