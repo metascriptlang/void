@@ -38,6 +38,13 @@ import {
 	setCameraLayers,
 } from "../void3d/scene";
 import { Camera3D, CameraError, ProjectionKind } from "../void3d/camera";
+import { Vec4 } from "../math/math3d";
+import {
+	ForwardRenderer,
+	ForwardError,
+	FORWARD_UNIFORM_LENGTH,
+	closeForward,
+} from "../void3d/forwardRenderer";
 import { contextOf } from "./drawHelpers";
 
 test "a new mask is layer 0 alone, as three's Layers constructor sets it" {
@@ -242,4 +249,34 @@ test "the second camera's view is resolved from its own node and not the active 
 	const active: Result<Camera3D, CameraError> = cameraOf(scene, request());
 	assert active.ok;
 	if (active.ok) { assert active.value.position == vec3(1.0, 0.0, 0.0); }
+}
+
+const OPAQUE_BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+const CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
+
+test "a second forward preset on one context has its own blocks and a transparent clear" {
+	const context: DrawContext = DrawContext.withUniformCapacity(2 * FORWARD_UNIFORM_LENGTH);
+	const first: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(context, OPAQUE_BLACK);
+	const second: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, CLEAR);
+	assert first.ok && second.ok;
+	if (first.ok && second.ok) {
+		assert second.value.background.w == 0.0 && first.value.background.w == 1.0;
+		assert second.value.core.cameraBlock.offset != first.value.core.cameraBlock.offset;
+		assert second.value.colorTarget.sampled;
+		assert second.value.copyMaterial.index != first.value.copyMaterial.index;
+		closeForward(second.value);
+		closeForward(first.value);
+	}
+}
+
+test "a pool sized for one forward preset refuses the second by name" {
+	const context: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+	const first: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(context, OPAQUE_BLACK);
+	assert first.ok;
+	const second: Result<ForwardRenderer, ForwardError> = ForwardRenderer.create(context, CLEAR);
+	assert !second.ok;
+	if (!second.ok) { assert second.error == ForwardError.UniformPoolFull; }
+	if (first.ok) { closeForward(first.value); }
 }
