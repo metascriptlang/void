@@ -1,4 +1,4 @@
-// expect: void3d: prepareFrame again before drawToScreen drew the frame it prepared
+// expect: void3d: prepareFrame on a frame no drawToScreen or endPrepared ended
 import { DrawContext, DrawItem } from "../../src/void3d/draw";
 import { LowResView } from "../../src/void3d/blit";
 import {

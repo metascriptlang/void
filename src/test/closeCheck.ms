@@ -38,6 +38,7 @@ import {
 	RendererError,
 	RENDERER_UNIFORM_LENGTH,
 	closeRenderer,
+	openPrepare,
 } from "../void3d/renderer";
 import {
 	ForwardRenderer,
@@ -52,6 +53,7 @@ import {
 	PixelArtError,
 	PIXEL_ART_UNIFORM_LENGTH,
 	closePixelArt,
+	endPrepared as endPixelArt,
 } from "../void3d/pixelArtRenderer";
 import { LowResView } from "../void3d/blit";
 
@@ -130,6 +132,16 @@ test "closing a pixel-art preset gives back both screen materials and closes its
 	assert !context.uniforms.holds(pixelArt.blitBlock);
 	let view: LowResView = { width: 32, height: 24, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 	assert !pixelArt.needsFrame(view);
+}
+
+test "a pixel-art preset's prepared frame ends with endPrepared and may be prepared again" {
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+	let pixelArt: PixelArtRenderer = pixelArtOn(context);
+	pixelArt.core.prepared = true;
+	endPixelArt(pixelArt);
+	assert !pixelArt.core.prepared;
+	pixelArt.core.openPrepare();
+	closePixelArt(pixelArt);
 }
 
 test "a pixel-art preset skips a table an alias already closed" {
