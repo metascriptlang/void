@@ -59,6 +59,8 @@ offsets, counts or length run outside their table, truncated cmaps, and a direct
 collection offset that wraps 32 bits (`src/test/sfntBoundsCheck.ms`); one font per cmap format
 (0, 4, 6, 12, 13 and two it does not read), per record order that decides which subtable is
 chosen, and per variation-sequence record shape (`src/test/sfntCmapCheck.ms`).
+`cmap/coversButUnloadable.otf` is an OpenType font whose cmap covers U+1F600 and whose `CFF `
+holds Type 1 charstrings: the peek calls it drawable and stb_truetype refuses it (`src/test/fontCheck.ms`).
 
 ```sh
 python tests/fonts/cmapEdges.py   # rewrites tests/fonts/cmap/; no fontTools needed, byte-identical

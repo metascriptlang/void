@@ -509,6 +509,13 @@ export function fontCovers(font: FontId, codepoint: int32): boolean {
 	return false;
 }
 
+function forgetResolved(font: FontId): void {
+	const owner: uint64 = (font as int32) as uint64;
+	for (const key of resolved.keys()) {
+		if ((key >> FONT_SHIFT) == owner) { resolved.delete(key); }
+	}
+}
+
 export function codepointFaceFor(
 	font: FontId, codepoint: int32, mode: Presentation,
 ): CodepointFace {
@@ -516,18 +523,19 @@ export function codepointFaceFor(
 		const slot: int32 = faceSlotFor(font, codepoint, mode);
 		if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }
 		const face: int32 = fallbackFace(slot);
-		if (face >= 0 && glyphIndex(face, codepoint) != 0) {
-			return { face: face, scale: fallbacks[slot].scale };
+		if (face < 0) {
+			forgetResolved(font);
+			continue;
 		}
-		if (face >= 0) {
+		if (glyphIndex(face, codepoint) == 0) {
 			console.log(
 				`void2d: the summary of ${fallbacks[slot].path} covers ` +
-				`U+${codepoint.toString(16)} but the loaded face has no glyph; ` +
-				`the face is skipped`,
+				`U+${codepoint.toString(16)} but its loaded face ${face} has no glyph, ` +
+				`though both choose the cmap subtable as stb_truetype does`,
 			);
-			fallbacks[slot].face = LOAD_FAILED;
+			unreachable;
 		}
-		resolved = new Map<uint64, int32>();
+		return { face: face, scale: fallbacks[slot].scale };
 	}
 }
 

@@ -94,11 +94,13 @@ def cmap(records):
 
 
 def sfnt(cmapBytes, magic=TRUETYPE, outlines=("glyf", "loca"), directoryLength=None,
-         directoryOffset=None):
+         directoryOffset=None, cff=None):
     tables = {"cmap": cmapBytes, "head": bytes(54), "hhea": bytes(36), "hmtx": bytes(4),
               "maxp": u32(0x10000) + u16(64) + bytes(26)}
     for tag in outlines:
         tables[tag] = bytes(8)
+    if cff is not None:
+        tables["CFF "] = cff
     tags = sorted(tables)
     count = len(tags)
     searchRange = 16 * (1 << log2(count))
@@ -176,6 +178,18 @@ def hostile():
          sfnt(cmap([(0, 3, control12), (0, 5, control14)])[:-9]))
 
 
+def cffWithType1Charstrings():
+    name = u16(1) + u8(1) + u8(1, 2) + b"x"
+    top = u8(0x8C, 0x0C, 0x06)
+    topIndex = u16(1) + u8(1) + u8(1, 1 + len(top)) + top
+    return u8(1, 0, 4, 1) + name + topIndex + u16(0) + u16(0)
+
+
+def unloadable():
+    saveCmap("coversButUnloadable.otf", [(*UNICODE_FULL, groups(12, [(0x1F600, 0x1F602, 1)]))],
+             magic=b"OTTO", outlines=(), cff=cffWithType1Charstrings())
+
+
 def formats():
     saveCmap("format0Full.ttf", [(0, 3, format0({0x41: 5, 0x50: 6, 0xFF: 7}))])
     saveCmap("format0Short.ttf", [(0, 3, format0({0x41: 5, 0x4F: 6, 0x50: 7}, length=86))])
@@ -224,3 +238,4 @@ def formats():
 if __name__ == "__main__":
     hostile()
     formats()
+    unloadable()

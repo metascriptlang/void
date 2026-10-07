@@ -40,6 +40,7 @@ const TEXT_SYMBOL: string = "tests/fonts/textSymbol.ttf";
 const COLOUR_ONLY: string = "tests/fonts/cbdtSynthetic.ttf";
 const COLOUR_DRAWABLE: string = "tests/fonts/sbixSynthetic.ttf";
 const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
+const UNLOADABLE: string = "tests/fonts/cmap/coversButUnloadable.otf";
 
 let registeredFamilies: boolean = false;
 
@@ -246,6 +247,20 @@ test "an unreadable fallback path is refused by the peek and never loaded" {
 	assert !fontCovers(f, 0x4F60);
 	assert faceForCodepoint(f, 0x4F60) == fontFace(f);
 	assert fallbackFacesLoaded() == loads;
+}
+
+test "a fallback that covers a codepoint but will not load is skipped, and only its font forgets" {
+	const keeper = added(LATIN);
+	addFallbackFont(keeper, TEXT_SYMBOL);
+	const broken = added(LATIN);
+	addFallbackFont(broken, UNLOADABLE);
+	assert faceSlotFor(keeper, 0x1F600, Presentation.Default) >= 0;
+	assert faceSlotFor(broken, 0x1F600, Presentation.Default) >= 0;
+	assert codepointFaceFor(broken, 0x1F600, Presentation.Default).face == fontFace(broken);
+	const probes = fallbackProbes();
+	assert faceSlotFor(keeper, 0x1F600, Presentation.Default) >= 0;
+	assert codepointFaceFor(broken, 0x1F600, Presentation.Default).face == fontFace(broken);
+	assert fallbackProbes() == probes;
 }
 
 test "the summary of a collection is the summary of its first font" {
