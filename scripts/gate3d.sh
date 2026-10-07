@@ -1018,7 +1018,9 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	draw:requireOpen animation:requirePaired animation:update animation:keys animation:blendTo
 	animation:syncPose animation:syncMeshFrame particles:updateEmitter particles:spawn
 	particles:stepParticle particles:colorAt particles:moveParticle particles:particleValue
-	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh
+	particles:emitterValue particles:writeInstances particles:writeOrdered particles:sortByDepth
+	particles:depthKey particles:placeOf particles:turbulenceAt particles:boxPosition
+	particles:boxHalfExtent draw:writeStream draw:pinMesh draw:unpinMesh
 	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
 	renderer:texturesFit draw:slotBit gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
