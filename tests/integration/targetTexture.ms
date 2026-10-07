@@ -26,6 +26,7 @@ import {
 	HandleError, addMeshData, addMaterial, addTexture, addTargetTexture, releaseMaterial,
 	releaseTexture, releaseUniforms, reserveUniforms, writeUniforms,
 } from "../../src/void3d/draw";
+import { loseTextureAt } from "../../src/test/drawHelpers";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, LightKind, LightInstance, LightError,
@@ -341,7 +342,7 @@ function loseContext(): void {
 		if (context.meshData[i].vertexCount() > 0) { context.meshes[i].generation = 0; }
 	}
 	for (let i = 0; i < (context.textures.length as int32); i++) {
-		context.textures[i].generation = 0;
+		loseTextureAt(context, i);
 	}
 	context.samplerGeneration = 0;
 	forward.core.generation = 0;

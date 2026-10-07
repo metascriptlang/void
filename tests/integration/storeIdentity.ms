@@ -44,6 +44,7 @@ import {
 	writeUniforms,
 	buryDoomed,
 } from "../../src/void3d/draw";
+import { textureViewAt } from "../../src/test/drawHelpers";
 import {
 	Renderer,
 	RendererError,
@@ -180,8 +181,8 @@ function twoStores(): void {
 		meshA.index == meshB.index && materialA.index == materialB.index &&
 		textureA.index == textureB.index && blockA.offset == blockB.offset);
 	const bufferB: uint32 = b.meshes[meshB.index].vertexBuffer;
-	const viewB: uint32 = b.textures[textureB.index].view;
-	const viewA: uint32 = a.textures[textureA.index].view;
+	const viewB: uint32 = textureViewAt(b, textureB.index);
+	const viewA: uint32 = textureViewAt(a, textureA.index);
 
 	check("a mesh of A is not one of B's", !b.hasMesh(meshA));
 	check("a material of A is not one of B's", !b.hasMaterial(materialA));
@@ -255,7 +256,7 @@ function aliases(): void {
 	let a: DrawContext = DrawContext.withUniformCapacity(POOL);
 	const texture: TextureId = textureOf(a);
 	const material: MaterialId = materialOf(a);
-	const view: uint32 = a.textures[texture.index].view;
+	const view: uint32 = textureViewAt(a, texture.index);
 	let alias: DrawContext = a;
 	check("the alias releases the texture", releaseTexture(alias, texture).ok);
 	check("the context sees the alias's release", !a.hasTexture(texture));

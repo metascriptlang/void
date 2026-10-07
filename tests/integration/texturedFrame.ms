@@ -41,6 +41,7 @@ import {
 	rebuildTextures,
 	buryDoomed,
 } from "../../src/void3d/draw";
+import { textureViewAt, loseTextureAt, textureGenerationAt } from "../../src/test/drawHelpers";
 import {
 	Transform3D,
 	Scene3D,
@@ -518,12 +519,12 @@ function checkOutline(silhouette: boolean): void {
 
 // A lost context simulated on a live one, through beginFrame's own new-context branch.
 function loseContext(): void {
-	viewBefore = context.textures[texture.index].view;
+	viewBefore = textureViewAt(context, texture.index);
 	samplerBefore = context.textures[texture.index].sampler;
 	for (let i = 0; i < (context.meshes.length as int32); i++) {
 		if (context.meshData[i].vertexCount() > 0) { context.meshes[i].generation = 0; }
 	}
-	context.textures[texture.index].generation = 0;
+	loseTextureAt(context, texture.index);
 	context.samplerGeneration = 0;
 	forward.core.generation = 0;
 	preset.core.generation = 0;
@@ -532,9 +533,11 @@ function loseContext(): void {
 
 function checkRemade(): void {
 	let remade: GpuTexture = context.textures[texture.index];
-	if (remade.view == viewBefore || remade.view == 0 || remade.sampler == samplerBefore ||
-		remade.sampler == 0 || remade.generation != contextGeneration()) {
-		fail(`the new context kept view ${remade.view} or sampler ${remade.sampler}`);
+	const remadeView: uint32 = textureViewAt(context, texture.index);
+	if (remadeView == viewBefore || remadeView == 0 || remade.sampler == samplerBefore ||
+		remade.sampler == 0 || remade.samplerGeneration != contextGeneration() ||
+		textureGenerationAt(context, texture.index) != contextGeneration()) {
+		fail(`the new context kept view ${remadeView} or sampler ${remade.sampler}`);
 	}
 }
 

@@ -18,7 +18,6 @@ import {
 	makeVertexBuffer,
 	makeIndexBuffer,
 	makeStreamBuffer,
-	makeImage,
 	updateBuffer,
 	destroyBuffer,
 	destroyImage,
@@ -37,17 +36,18 @@ import {
 	PassState,
 	contextGeneration,
 	frameIndex,
-	makeTextureView,
 	makeSampler,
 	destroyView,
 	destroySampler,
 	passState,
 } from "../gpu/door";
 import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
+import { Texture, TextureError } from "../gpu/texture";
 import {
 	TextureData,
 	TextureId,
 	GpuTexture,
+	DoomedTexture,
 	TextureUploadError,
 	TextureAlpha,
 	NO_TEXTURE,
@@ -186,7 +186,7 @@ export interface DrawContext {
 	texturePins: Vec<int32>;
 	textureTargets: Vec<RenderTarget | null>;
 	textureAlphas: Vec<TextureAlpha>;
-	doomedTextures: Vec<GpuTexture>;
+	doomedTextures: Vec<DoomedTexture>;
 	samplers: Vec<uint32>;
 	samplerGeneration: int32;
 	uniforms: UniformPool;
@@ -1032,43 +1032,73 @@ function samplerFor(context: DrawContext, filter: FilterMode, wrap: Wrap): uint3
 	return context.samplers[at];
 }
 
-const VACANT_TEXTURE: GpuTexture = { image: 0, view: 0, sampler: 0, generation: 0 };
+const VACANT_TEXTURE: GpuTexture = { texture: null, sampler: 0, samplerGeneration: 0 };
 
-function doomTexture(context: DrawContext, texture: GpuTexture): void {
-	if (texture.image != 0 || texture.view != 0) { context.doomedTextures.push(texture); }
+// The owner's close destroys a live image at once, and a texture freed inside a frame may still
+// be named by it, so the handles are taken out first and destroyed by buryDoomed.
+function surrender(context: DrawContext, owner: Texture): void {
+	if (owner.image != 0 || owner.view != 0) {
+		context.doomedTextures.push({
+			image: owner.image,
+			view: owner.view,
+			generation: owner.generation,
+		});
+	}
+	owner.image = 0;
+	owner.view = 0;
+	owner.generation = 0;
+	owner.close();
+}
+
+function uploadError(error: TextureError): TextureUploadError {
+	return match (error) {
+		TextureError.BadSize => TextureUploadError.BadSize,
+		TextureError.ImageRefused => TextureUploadError.ImageRefused,
+		TextureError.ViewRefused => TextureUploadError.ViewRefused,
+	};
+}
+
+function stopOnRefusedReupload(index: int32, error: TextureError): void {
+	console.log(`void3d: texture ${index} could not upload its pixels again: ${error.toString()}`);
+	unreachable;
+}
+
+function reuploadFrom(context: DrawContext, index: int32): (texture: Texture) => void {
+	return (texture: Texture): void => {
+		const uploaded: Result<int32, TextureError> =
+			texture.upload(context.textureData[index].pixels);
+		if (!uploaded.ok) { stopOnRefusedReupload(index, uploaded.error); }
+	};
 }
 
 function uploadTexture(context: DrawContext, index: int32): Result<int32, TextureUploadError> {
-	doomTexture(context, context.textures[index]);
-	context.textures[index] = VACANT_TEXTURE;
-	let sampler: uint32 = samplerFor(
+	const sampler: uint32 = samplerFor(
 		context,
 		context.textureData[index].filter,
 		context.textureData[index].wrap,
 	);
 	if (sampler == 0) { return Result.err(TextureUploadError.SamplerRefused); }
-	let image: uint32 = makeImage(
-		context.textureData[index].pixels,
+	const owner: Texture = Texture.create(
 		context.textureData[index].width,
 		context.textureData[index].height,
+		reuploadFrom(context, index),
 	);
-	if (image == 0) { return Result.err(TextureUploadError.ImageRefused); }
-	let view: uint32 = makeTextureView(image);
-	if (view == 0) {
-		destroyImage(image);
-		return Result.err(TextureUploadError.ViewRefused);
+	const uploaded: Result<int32, TextureError> = owner.upload(context.textureData[index].pixels);
+	if (!uploaded.ok) {
+		owner.close();
+		return Result.err(uploadError(uploaded.error));
 	}
 	context.textures[index] = {
-		image: image,
-		view: view,
+		texture: owner,
 		sampler: sampler,
-		generation: contextGeneration(),
+		samplerGeneration: contextGeneration(),
 	};
 	return Result.ok(index);
 }
 
 function freeTexture(context: DrawContext, index: int32): void {
-	doomTexture(context, context.textures[index]);
+	const owner: Texture | null = context.textures[index].texture;
+	if (owner !== null) { surrender(context, owner); }
 	context.textures[index] = VACANT_TEXTURE;
 	context.textureData[index] = TextureData.empty();
 	context.textureHolders[index] = 0;
@@ -1150,10 +1180,9 @@ export function addTargetTexture(
 	const settings: TextureData = { ...TextureData.empty(), filter: filter, wrap: wrap };
 	const index: int32 = claimTexture(context, settings, target, alpha);
 	context.textures[index] = {
-		image: 0,
-		view: 0,
+		texture: null,
 		sampler: sampler,
-		generation: contextGeneration(),
+		samplerGeneration: contextGeneration(),
 	};
 	return Result.ok(context.issuedTextureAt(index));
 }
@@ -1203,27 +1232,34 @@ export function releaseTexture(
 	return Result.ok(letGoOfTexture(context, id.index));
 }
 
-// Remakes every texture whose image is from an older GPU context, and answers how many came
-// back. A refused one is left without a view and stale, so it is retried on the next rebuild and
-// its materials draw nothing meanwhile (drawItem).
+// Remakes every texture whose image or sampler is from an older GPU context, and answers how
+// many came back. The image goes back through the owner's own upload, which Heaps' `realloc`
+// does (h3d/mat/Texture.hx:166-168), but here where a refusal is tolerated: asView would stop on
+// it. A refused one is left without a view, so it is retried on the next rebuild and its
+// materials draw nothing meanwhile (drawItem).
 export function rebuildTextures(context: DrawContext): int32 {
 	if (context.closed) { stopOnClosedContext("rebuildTextures"); }
 	let generation: int32 = contextGeneration();
 	let count: int32 = 0;
 	for (let i = 0; i < (context.textures.length as int32); i++) {
-		if (context.textureHolders[i] == 0 || context.textures[i].generation == generation) {
-			continue;
-		}
-		if (context.textureTargets[i] !== null) {
+		if (context.textureHolders[i] == 0) { continue; }
+		const owner: Texture | null = context.textures[i].texture;
+		const imageStale: boolean = owner !== null && owner.generation != generation;
+		if (context.textures[i].samplerGeneration == generation && !imageStale) { continue; }
+		if (context.textures[i].samplerGeneration != generation) {
 			const sampler: uint32 =
 				samplerFor(context, context.textureData[i].filter, context.textureData[i].wrap);
-			if (sampler == 0) { continue; }
+			if (sampler == 0) {
+				if (owner !== null) { context.textures[i].sampler = 0; }
+				continue;
+			}
 			context.textures[i].sampler = sampler;
-			context.textures[i].generation = generation;
-			count = count + 1;
-			continue;
+			context.textures[i].samplerGeneration = generation;
 		}
-		if (uploadTexture(context, i).ok) { count = count + 1; }
+		if (owner !== null && imageStale) {
+			if (!owner.upload(context.textureData[i].pixels).ok) { continue; }
+		}
+		count = count + 1;
 	}
 	return count;
 }
@@ -1326,7 +1362,9 @@ function bindItem(
 function viewAt(this context: DrawContext, index: int32): uint32 {
 	const target: RenderTarget | null = context.textureTargets[index];
 	if (target !== null) { return target.asTexture(); }
-	return context.textures[index].view;
+	const owner: Texture | null = context.textures[index].texture;
+	if (owner !== null) { return owner.view; }
+	return 0;
 }
 
 function stopOnFeedbackTarget(index: int32): void {
@@ -1343,11 +1381,14 @@ function stopOnClosedTargetTexture(index: int32): void {
 
 function textureReady(this context: DrawContext, index: int32): boolean {
 	const target: RenderTarget | null = context.textureTargets[index];
-	if (target === null) { return context.textures[index].view != 0; }
+	if (target === null) {
+		const owner: Texture | null = context.textures[index].texture;
+		return owner !== null && owner.view != 0 && context.textures[index].sampler != 0;
+	}
 	if (target.isClosed()) { stopOnClosedTargetTexture(index); }
 	const generation: int32 = contextGeneration();
 	if (target.image == 0 || target.generation != generation ||
-		context.textures[index].generation != generation) {
+		context.textures[index].samplerGeneration != generation) {
 		return false;
 	}
 	if (target.isAttachedToOpenPass()) { stopOnFeedbackTarget(index); }

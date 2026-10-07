@@ -1,6 +1,10 @@
 import { Program } from "../void3d/gpu3d";
 import { RenderState } from "../gpu/state";
+import { Texture } from "../gpu/texture";
 import { Material, Phase } from "../void3d/material";
+import { TextureData, TextureId, TextureAlpha } from "../void3d/texture";
+import { claim } from "../void3d/slots";
+import { contextGeneration } from "../gpu/door";
 import { MeshData } from "../void3d/meshData";
 import {
 	DrawContext,
@@ -71,4 +75,43 @@ export function writeTables(
 	for (let i = 0; i < (materials.length as int32); i++) {
 		context.materials[i].pass = { ...materials[i].pass };
 	}
+}
+
+export function textureViewAt(context: DrawContext, index: int32): uint32 {
+	const owner: Texture | null = context.textures[index].texture;
+	return owner !== null ? owner.view : 0;
+}
+
+// What a lost context leaves of the texture at `index`: its image and its sampler of an older
+// generation, the way beginFrame's new-context branch finds them.
+export function loseTextureAt(context: DrawContext, index: int32): void {
+	const owner: Texture | null = context.textures[index].texture;
+	if (owner !== null) { owner.generation = 0; }
+	context.textures[index].samplerGeneration = 0;
+}
+
+export function textureGenerationAt(context: DrawContext, index: int32): int32 {
+	const owner: Texture | null = context.textures[index].texture;
+	return owner !== null ? owner.generation : 0;
+}
+
+// A texture slot, held once, whose owner is `owner`, for a context with no texture slot yet.
+export function addedOwner(context: DrawContext, owner: Texture): TextureId {
+	const index: int32 = claim(context.textureSlots);
+	if (index != (context.textures.length as int32)) { unreachable; }
+	context.textures.push({
+		texture: owner,
+		sampler: 1,
+		samplerGeneration: contextGeneration(),
+	});
+	context.textureData.push(TextureData.empty());
+	context.textureHolders.push(1);
+	context.texturePins.push(0);
+	context.textureTargets.push(null);
+	context.textureAlphas.push(TextureAlpha.Straight);
+	return {
+		store: context.serial,
+		index: index,
+		generation: context.textureSlots.generations[index],
+	};
 }
