@@ -404,6 +404,7 @@ export function isPixelExact(world: Transform2D): boolean {
 }
 
 let sdfRegime: boolean = false;
+const IDENTITY_NOISE: float32 = 0.00001;
 
 export function setSdfRegime(on: boolean): void {
 	when (voidSdfText) {
@@ -420,7 +421,9 @@ export function regimeOf(world: Transform2D): TextRegime {
 	when (voidSdfText) {
 		if (sdfRegime) {
 			const translationOnly: boolean =
-				world.a == 1.0 && world.d == 1.0 && world.b == 0.0 && world.c == 0.0;
+				Math.abs(world.a - 1.0) < IDENTITY_NOISE &&
+				Math.abs(world.d - 1.0) < IDENTITY_NOISE &&
+				Math.abs(world.b) < IDENTITY_NOISE && Math.abs(world.c) < IDENTITY_NOISE;
 			return translationOnly ? TextRegime.PixelExact : TextRegime.Sdf;
 		}
 	}

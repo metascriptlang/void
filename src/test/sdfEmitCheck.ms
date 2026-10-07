@@ -13,14 +13,18 @@ import { identity2d, rgba } from "../void2d/types";
 
 const GLYPH_MODE: float32 = (InstanceMode.Glyph as int32) as float32;
 
-function record(label: (s: Scene2D) => NodeRef, smooth: boolean): void {
+function recordAt(label: (s: Scene2D) => NodeRef, smooth: boolean, dpi: float32): void {
 	setSceneSmooth(smooth);
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const root = label(s);
-	begin2d(128.0, 64.0, 1.0);
+	begin2d(128.0, 64.0, dpi);
 	root.sync(identity2d(), true);
 	root.draw(1.0, 128.0, 64.0);
 	finishRecording();
+}
+
+function record(label: (s: Scene2D) => NodeRef, smooth: boolean): void {
+	recordAt(label, smooth, 1.0);
 }
 
 function turned(s: Scene2D): NodeRef {
@@ -34,6 +38,11 @@ function zoomed(s: Scene2D): NodeRef {
 
 function flat(s: Scene2D): NodeRef {
 	return s.add(s.label("Flat", 16.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0));
+}
+
+function noisy(s: Scene2D): NodeRef {
+	const label = s.label("Noisy", 16.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0);
+	return s.add(label.setScaleX(0.99999994).setScaleY(1.00000012));
 }
 
 function tinted(s: Scene2D): NodeRef {
@@ -107,6 +116,25 @@ test "an SDF label samples linearly whatever the scene's smoothing" {
 	assert flaggedGlyphs() == 6;
 	frameEnd();
 	setSceneSmooth(true);
+}
+
+test "a label at identity plus float noise stays pixel exact and unflagged" {
+	setSdfRegime(true);
+	defer setSdfRegime(false);
+	record(noisy, true);
+	assert glyphInstances() == 5;
+	assert flaggedGlyphs() == 0;
+	frameEnd();
+}
+
+test "a rotated label at DPI 2 is flagged and places by the world affine alone" {
+	setSdfRegime(true);
+	defer setSdfRegime(false);
+	recordAt(turned, true, 2.0);
+	assert glyphInstances() == 6;
+	assert flaggedGlyphs() == 6;
+	assert uiInstanceField(0, REC_UI_AFFINE + 1) != 0.0;
+	frameEnd();
 }
 
 test "a rotated label under a colour add records on the vertex program, one run" {
