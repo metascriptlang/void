@@ -2465,7 +2465,7 @@ and adds it after lighting; Bevy's `StandardMaterial.emissive` and `emissive_tex
 same. An emissive key's block ends in one vec4 (`EMISSIVE_COLOR`, gamma-encoded like every
 colour input, and `EMISSIVE_STRENGTH`, the factor in linear light that three.js calls
 `emissiveIntensity` and glTF `KHR_materials_emissive_strength`); `emissiveBase(key)` places it
-after the moving floats a key has. The map is required where three.js and Bevy make it optional, so one
+after the moving floats a key has, though no moving emissive key, nor its block, exists yet. The map is required where three.js and Bevy make it optional, so one
 program covers both: a colour alone takes a 1x1 white map (Heaps' `Texture.fromColor`,
 `h3d/mat/Texture.hx:416`). The emitted light is added to the shaded
 colour after it has been gamma-encoded, by decoding it again (`emittedOver`); the round trip
@@ -2479,7 +2479,10 @@ comes from the tangent's length, which Heaps' own `Polygon.addTangents` always n
 turns the whole frame with the normal (three.js `normal_fragment_begin`, `tbn *= faceDirection`).
 The tangent is model-transformed (`transformedTangent` in three.js), not by the normal matrix.
 The map's green runs toward the image's top: v grows downward, so the bitangent is the
-position's derivative along -v, glTF's convention.
+position's derivative along -v, glTF's convention, and the same geometric frame as Heaps'
+`n.cross(tanX) * -w` in its own handedness. The shader takes only w's sign, so a triangle whose
+corners disagree on it cannot interpolate w through 0. A node with a mirroring scale turns the
+bitangent with it, as in three.js: nothing here corrects the frame for a negative determinant.
 
 **Tangents: a layout and a builder.** A normal-mapped key reads `LitTexturedTangent`, the
 textured layout followed by the tangent (16 floats, `LIT_TEXTURED_TANGENT_VERTEX_STRIDE`); its
