@@ -72,3 +72,48 @@ console.log("emitter dir", n.join(", "));
 const v = [0.2, 0, 0], mag = 0.2, infl = 0.5;
 const t = n.map((x) => f(x * mag * f(1 + f(1 - infl) * 0.2)));
 console.log("mixed", v.map((a, i) => f(f(a * (1 - infl)) + f(t[i] * infl))).join(", "));
+
+// The ring emission shape (cpp:668-695) for one particle of a stream: the port's xorshift32 read
+// as 24 bits, three draws (height fraction, angle, radius) in Godot's order, float32 throughout.
+function nextUnit(state) {
+  let x = state.s >>> 0;
+  x = (x ^ (x << 13)) >>> 0;
+  x = (x ^ (x >>> 17)) >>> 0;
+  x = (x ^ (x << 5)) >>> 0;
+  state.s = x;
+  return f((x >>> 8) / 16777216);
+}
+function ring(seed, outer, inner, height, axisIn, coneDeg) {
+  const st = { s: seed };
+  const rc = f(Math.max(0.001, outer));
+  const top = f(Math.max(f(rc - f(f(Math.tan(f((90 - coneDeg) * 0.017453292519943295))) * height)), 0));
+  let y = nextUnit(st);
+  const skew = f(Math.max(f(Math.min(rc, top) / Math.max(rc, top)), 0.5));
+  const lifted = f(Math.pow(y, skew));
+  y = rc < top ? lifted : f(1 - lifted);
+  const angle = nextUnit(st) * 6.283185307179586;
+  const u = nextUnit(st);
+  let r = f(Math.sqrt(f(f(u * f(f(rc * rc) - f(inner * inner))) + f(inner * inner))));
+  r = f(r + f(f(r * f(top / rc)) - r) * y);
+  const len = Math.hypot(...axisIn);
+  const a = len === 0 ? [0, 0, 1] : axisIn.map((v) => f(v / len));
+  const cross = (p, q) => [p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]];
+  const norm = (v) => { const l = Math.hypot(...v); return v.map((c) => f(c / l)); };
+  const alongX = Math.abs(a[0]) === 1 && a[1] === 0 && a[2] === 0;
+  const o = norm(alongX ? cross(a, [0, 1, 0]) : cross(a, [1, 0, 0]));
+  const s = f(Math.sin(angle)), c = f(Math.cos(angle)), oc = f(1 - c);
+  const c0 = [c + a[0] * a[0] * oc, a[0] * a[1] * oc - a[2] * s, a[0] * a[2] * oc + a[1] * s];
+  const c1 = [a[0] * a[1] * oc + s * a[2], c + a[1] * a[1] * oc, a[1] * a[2] * oc - a[0] * s];
+  const c2 = [a[2] * a[0] * oc - a[1] * s, a[2] * a[1] * oc + a[0] * s, c + a[2] * a[2] * oc];
+  const rot = norm([0, 1, 2].map((i) => c0[i] * o[0] + c1[i] * o[1] + c2[i] * o[2]));
+  const lift = f(f(y * height) - f(height / 2));
+  return { position: [0, 1, 2].map((i) => f(f(rot[i] * r) + f(a[i] * lift))), outward: rot };
+}
+for (const [seed, outer, inner, height, axis, cone] of [
+  [7, 2, 1, 1, [1, 2, 3], 45],
+  [9, 2, 0.5, 1.5, [0, 0, 1], 135],
+  [5, 3, 1, 2, [1, 0, 0], 90],
+]) {
+  const r = ring(seed, outer, inner, height, axis, cone);
+  console.log("ring", JSON.stringify([seed, outer, inner, height, axis, cone]), r.position.join(", "), "|", r.outward.join(", "));
+}

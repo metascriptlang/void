@@ -515,6 +515,35 @@ test "a ring's cone angle narrows it toward the top, by Godot's top radius" {
 	assert seenHigh;
 }
 
+function ringCase(seed: uint32, outer: float32, inner: float32, height: float32, axis: Vec3, cone: float32): Particle {
+	const shape: EmitterShape = {
+		kind: ShapeKind.Ring,
+		radius: constant(outer),
+		inner: constant(inner),
+		height: height,
+		axis: axis,
+		coneAngle: cone,
+	};
+	return emittedFrom(shape, false, 1, seed).particles[0];
+}
+
+function nearVec(a: Vec3, x: float32, y: float32, z: float32): boolean {
+	return near(a.x, x, 0.002) && near(a.y, y, 0.002) && near(a.z, z, 0.002);
+}
+
+test "a ring point is Godot's, draw for draw: a narrowing cone both ways, and a tilted and an x axis" {
+	// Expected values: the `ring` lines of tests/oracle/godotNoise.js.
+	const narrowing: Particle = ringCase(7, 2.0, 1.0, 1.0, vec3(1.0, 2.0, 3.0), 45.0);
+	assert nearVec(narrowing.position, 0.72993, 0.79554, -0.17624);
+	assert nearVec(narrowing.direction, 0.61200, 0.54855, -0.56970);
+	const widening: Particle = ringCase(9, 2.0, 0.5, 1.5, vec3(0.0, 0.0, 1.0), 135.0);
+	assert nearVec(widening.position, 0.82890, 0.67890, -0.72907);
+	assert nearVec(widening.direction, 0.77363, 0.63364, 0.0);
+	const sideways: Particle = ringCase(5, 3.0, 1.0, 2.0, vec3(1.0, 0.0, 0.0), 90.0);
+	assert nearVec(sideways.position, 0.99937, 1.29036, 2.40902);
+	assert nearVec(sideways.direction, 0.0, 0.47217, 0.88151);
+}
+
 test "a ring on a tilted axis lies in the plane that axis is normal to" {
 	const tilted: EmitterShape = {
 		kind: ShapeKind.Ring,
