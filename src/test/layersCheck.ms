@@ -9,6 +9,10 @@ import {
 	layersHas,
 } from "../void3d/layers";
 import { vec3 } from "../math/math3d";
+import { LIGHT_UNIFORM_LENGTH, MAX_POINT_LIGHTS, Program, ProgramKey } from "../void3d/gpu3d";
+import { Material, Phase } from "../void3d/material";
+import { RenderState, BlendMode } from "../gpu/state";
+import { addMaterial, MaterialId, MaterialError } from "../void3d/draw";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import {
 	Scene3D,
@@ -26,6 +30,13 @@ import {
 	cameraViewOf,
 	collectDrawList,
 	collectDrawListFor,
+	collectLights,
+	setLightPower,
+	collectLightsFor,
+	addLightNode,
+	LightError,
+	LightKind,
+	LightInstance,
 	refresh,
 	refreshFor,
 	layersOf,
@@ -279,4 +290,83 @@ test "a pool sized for one forward preset refuses the second by name" {
 	assert !second.ok;
 	if (!second.ok) { assert second.error == ForwardError.UniformPoolFull; }
 	if (first.ok) { closeForward(first.value); }
+}
+
+function lightOf(kind: LightKind): LightInstance {
+	return { kind: kind, color: vec3(1.0, 1.0, 1.0), radius: 5.0, power: 1.0, priority: 0 };
+}
+
+function lightOn(scene: Scene3D, parent: NodeId3D, kind: LightKind, layer: int32): NodeId3D {
+	const id: NodeId3D = addLightNode(scene, parent, Transform3D.identity(), lightOf(kind));
+	setLayer(scene, id, layer);
+	return id;
+}
+
+test "a directional light on another layer is not the camera's second directional" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const _sun: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Directional, 0);
+	const _lamp: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Directional, 1);
+	let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const main: Result<int32, LightError> = collectLightsFor(scene, layerBit(0), block);
+	assert main.ok;
+	const overlay: Result<int32, LightError> = collectLightsFor(scene, layerBit(1), block);
+	assert overlay.ok;
+	const both: Result<int32, LightError> = collectLightsFor(scene, ALL_LAYERS, block);
+	assert !both.ok;
+	if (!both.ok) { assert both.error == LightError.TooManyDirectionalLights; }
+	const none: Result<int32, LightError> = collectLightsFor(scene, layerBit(9), block);
+	assert none.ok && block[7] == 0.0;
+}
+
+test "a layer-1 camera is lit by its own directional alone" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const sun: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Directional, 0);
+	const lamp: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Directional, 1);
+	const camera: NodeId3D = addCameraNode(scene, scene.rootId(), Transform3D.identity(), request());
+	let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	setLightPower(scene, sun, 0.25);
+	setLightPower(scene, lamp, 0.75);
+	setActiveCamera(scene, camera);
+	assert collectLights(scene, block).ok && block[7] == 0.25;
+	setCameraLayers(scene, camera, layerBit(1));
+	assert collectLights(scene, block).ok && block[7] == 0.75;
+}
+
+test "a light on another layer does not stop its children being walked, or count as a fifth point" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const off: NodeId3D = lightOn(scene, scene.rootId(), LightKind.Point, 1);
+	for (let i = 0; i < MAX_POINT_LIGHTS; i++) {
+		const _point: NodeId3D = lightOn(scene, off, LightKind.Point, 0);
+	}
+	let block: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const lit: Result<int32, LightError> = collectLightsFor(scene, layerBit(0), block);
+	assert lit.ok;
+	if (lit.ok) { assert lit.value == MAX_POINT_LIGHTS; }
+	const over: Result<int32, LightError> = collectLightsFor(scene, ALL_LAYERS, block);
+	assert !over.ok;
+	if (!over.ok) { assert over.error == LightError.TooManyPointLights; }
+}
+
+test "setLayers on a camera node is the node's own mask and not what the camera draws" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const camera: NodeId3D = addCameraNode(scene, scene.rootId(), Transform3D.identity(), request());
+	setLayers(scene, camera, layerBit(5));
+	assert layersOf(scene, camera) == layerBit(5);
+	assert cameraLayersOf(scene, camera) == DEFAULT_LAYERS;
+}
+
+test "the composite of a second view is a premultiplied textured material over, and straight is refused" {
+	let context: DrawContext = DrawContext.withUniformCapacity(0);
+	const over: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
+	for (const program of [Program.UnlitTextured, Program.LitTextured]) {
+		const kept: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(
+			ProgramKey.of(program).withPremultiplied(), over, Phase.Alpha,
+		));
+		assert kept.ok;
+	}
+	const straight: Result<MaterialId, MaterialError> = addMaterial(context, Material.keyed(
+		ProgramKey.of(Program.UnlitTextured).withPremultiplied(),
+		RenderState.defaults().withBlendMode(BlendMode.Alpha), Phase.Alpha,
+	));
+	assert !straight.ok && straight.error == MaterialError.StraightBlend;
 }

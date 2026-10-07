@@ -988,7 +988,13 @@ export function refreshFor(scene: Scene3D, camera: NodeId3D, ref items: Vec<Draw
 // this port refuses (fwd.LightSystem sorts by priority and keeps its top N without a word).
 // Syncs first, so a light moved this frame is read at its new place whatever called this.
 export function collectLights(scene: Scene3D, out: Span<float32>): Result<int32, LightError> {
-	if (scene.closed) { stopOnClosed("collectLights"); }
+	return collectLightsFor(scene, activeLayers(scene), out);
+}
+
+export function collectLightsFor(
+	scene: Scene3D, layers: uint32, out: Span<float32>,
+): Result<int32, LightError> {
+	if (scene.closed) { stopOnClosed("collectLightsFor"); }
 	const _synced: int32 = syncWorld(scene);
 	for (let i = 0; i < (out.length as int32); i++) { out[i] = 0.0; }
 	out[0] = scene.ambientLight.x;
@@ -1004,7 +1010,8 @@ export function collectLights(scene: Scene3D, out: Span<float32>): Result<int32,
 			top = top - 1;
 			const index: int32 = scene.stack[top];
 			if (!scene.nodes[index].isVisible()) { continue; }
-			if (scene.nodes[index].kind == NodeKind.Light) {
+			const seen: boolean = layersTest(scene.nodes[index].layers, layers);
+			if (seen && scene.nodes[index].kind == NodeKind.Light) {
 				const light: LightInstance = scene.lights[scene.nodes[index].payload];
 				if (light.kind == LightKind.Directional) {
 					if (seenDirectional) { return Result.err(LightError.TooManyDirectionalLights); }
