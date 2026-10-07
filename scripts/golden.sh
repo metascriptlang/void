@@ -21,7 +21,7 @@ MSC="${MSC:-msc}"
 BACKEND_DIR=d3d11
 RUNNER=out/goldenRunner.exe
 COMPARE=out/goldenCompare.exe
-GOLDEN_DEFINES="${GOLDEN_DEFINES--d:voidSdfText}"
+GOLDEN_DEFINES="${GOLDEN_DEFINES--d:voidSdfText -d:voidShaper}"
 
 mode=all
 filters=""

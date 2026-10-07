@@ -43,6 +43,7 @@ when (voidSdfText) {
 }
 
 import { Transform2D, rgba, trs2d } from "../void2d/types";
+import { LIGATURE_TEXT, LIGATURE_SIZE } from "../../tests/golden/table";
 import { approx } from "./helpers";
 
 const FIXTURE: string = "tests/fonts/shapeFixture.ttf";
@@ -489,6 +490,28 @@ test "truncation never cuts through a ligature" {
 		}
 	}
 	assert truncated > 20;
+}
+
+test "the golden ligature line lays out as its capture invariants assume" {
+	const on = fontWith(CASCADIA, false, plain());
+	const gone = fontWith(CASCADIA, false, off("calt"));
+	const style = styleOf(on, LIGATURE_SIZE, 0.0);
+	const runs: TextRun[] = [];
+	for (let i: int32 = 0; i < LIGATURE_TEXT.length; i++) { runs.push(runOf(1, on)); }
+	const ligated = TextLayout.layout(LIGATURE_TEXT, style);
+	const plainLine = TextLayout.layout(LIGATURE_TEXT, { ...style, font: gone });
+	const split = layoutRuns(LIGATURE_TEXT, style, runs);
+	const count: int32 = ligated.glyphs.length as int32;
+	assert count == LIGATURE_TEXT.length;
+	assert (plainLine.glyphs.length as int32) == count && (split.glyphs.length as int32) == count;
+	let substituted: int32 = 0;
+	for (let k: int32 = 0; k < count; k++) {
+		assert split.glyphs[k].glyph == plainLine.glyphs[k].glyph;
+		assert approx(split.glyphs[k].x, plainLine.glyphs[k].x);
+		assert approx(ligated.glyphs[k].x, plainLine.glyphs[k].x);
+		if (ligated.glyphs[k].glyph != plainLine.glyphs[k].glyph) { substituted = substituted + 1; }
+	}
+	assert substituted >= 8;
 }
 
 function oracleRows(): JsonValue {

@@ -47,6 +47,13 @@ import {
 	SDF_EFFECT_ADD_Y,
 	SDF_BG_X,
 	SDF_BG_Y,
+	LIGATURE_SCENE,
+	LIGATURE_Y,
+	LIGATURE_STEP,
+	LIGATURE_DPI,
+	LIGATURE_BAND_H,
+	LIGATURE_BG_X,
+	LIGATURE_BG_Y,
 } from "./table";
 import { TextLayout, Align } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -438,6 +445,74 @@ function sdfEffectMatchesPlain(): int32 {
 	return 0;
 }
 
+const LIGATURE_MIN_INKED: int32 = 300;
+const LIGATURE_MIN_DIFFERENT: int32 = 40;
+const LIGATURE_WIDTH: int32 = 320;
+
+function inkedPixel(x: int32, y: int32): boolean {
+	for (let channel: int32 = 0; channel < 3; channel++) {
+		const clear: int32 = voidPngPixel(SLOT, LIGATURE_BG_X, LIGATURE_BG_Y, channel);
+		if (voidPngPixel(SLOT, x, y, channel) != clear) { return true; }
+	}
+	return false;
+}
+
+function bandTop(line: int32): int32 {
+	return (((LIGATURE_Y + (line as float32) * LIGATURE_STEP) * LIGATURE_DPI) as int32) - 4;
+}
+
+function inkedIn(line: int32): int32 {
+	let inked: int32 = 0;
+	for (let y: int32 = 0; y < LIGATURE_BAND_H; y++) {
+		for (let x: int32 = 0; x < LIGATURE_WIDTH; x++) {
+			if (inkedPixel(x, bandTop(line) + y)) { inked = inked + 1; }
+		}
+	}
+	return inked;
+}
+
+function inkDiffers(first: int32, second: int32): int32 {
+	let differ: int32 = 0;
+	for (let y: int32 = 0; y < LIGATURE_BAND_H; y++) {
+		for (let x: int32 = 0; x < LIGATURE_WIDTH; x++) {
+			if (inkedPixel(x, bandTop(first) + y) != inkedPixel(x, bandTop(second) + y)) {
+				differ = differ + 1;
+			}
+		}
+	}
+	return differ;
+}
+
+function ligatureLinesAgree(): int32 {
+	const override: string = env.get("VOID_LIGATURE_CAPTURE");
+	const path: string = override.equals("")
+		? `tests/golden/d3d11/${LIGATURE_SCENE}.png`
+		: override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${LIGATURE_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const inked: int32 = inkedIn(1);
+	const split: int32 = inkDiffers(1, 2);
+	const ligated: int32 = inkDiffers(0, 1);
+	const ligatedSplit: int32 = inkDiffers(0, 2);
+	if (inked < LIGATURE_MIN_INKED || split > 0 || ligated < LIGATURE_MIN_DIFFERENT ||
+		ligatedSplit < LIGATURE_MIN_DIFFERENT) {
+		console.log(
+			`FAIL ${LIGATURE_SCENE}: the calt 0 line inks ${inked} pixels (at least ` +
+			`${LIGATURE_MIN_INKED}), the colour-split line is off it in ${split} pixels (none ` +
+			`allowed), the ligated line is off the calt 0 line in ${ligated} and off the split ` +
+			`line in ${ligatedSplit} (at least ${LIGATURE_MIN_DIFFERENT} each)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${LIGATURE_SCENE}: a colour change through every ligature draws the calt 0 glyphs ` +
+		`(${inked} inked pixels, 0 apart), and the ligated line is ${ligated} pixels off them`,
+	);
+	return 0;
+}
+
 process.exit(
 	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
 	premultipliedMatchesStraight(
@@ -446,5 +521,6 @@ process.exit(
 	premultipliedMatchesStraight(PREMULTIPLIED_STYLE_SCENE, "VOID_PREMULTIPLIED_STYLE_CAPTURE", 1) +
 	everyTargetFiltered() +
 	uiEffectIsLuma() +
-	sdfEffectMatchesPlain(),
+	sdfEffectMatchesPlain() +
+	ligatureLinesAgree(),
 );

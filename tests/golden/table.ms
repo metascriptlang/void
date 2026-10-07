@@ -102,6 +102,21 @@ export const MANY_TARGETS_EXTENT: int32 = 34;
 export const EFFECT_UI_SCENE: string = "prim/effectOnUi";
 export const EFFECT_UI_SHIFT: float32 = 128.0;
 
+// text/ligature: one Cascadia Code line three times, 32 logical units apart (a whole 40 device
+// pixels at DPI 1.25, so every line has the same pixel phase). The first has calt on, the second
+// calt 0, the third calt on with a one-codepoint colour run on every character, which splits
+// every ligature. tests/golden/invariants.ms holds the third to the second and the first off both.
+export const LIGATURE_SCENE: string = "text/ligature";
+export const LIGATURE_TEXT: string = "-> != == => www";
+export const LIGATURE_SIZE: float32 = 16.0;
+export const LIGATURE_X: float32 = 10.0;
+export const LIGATURE_Y: float32 = 6.0;
+export const LIGATURE_STEP: float32 = 32.0;
+export const LIGATURE_DPI: float32 = 1.25;
+export const LIGATURE_BAND_H: int32 = 32;
+export const LIGATURE_BG_X: int32 = 2;
+export const LIGATURE_BG_Y: int32 = 2;
+
 // The text/sdf* scenes as numbers: scenes.ms builds each label from a case and
 // tests/oracle/textSdfCheck.ms recomputes its coverage from the same case, so the scene and
 // its judge cannot drift apart. A label is placed at (x, y), turned by `rotation` radians
@@ -211,6 +226,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/filteredDpi125", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/decorations", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/caretSelection", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/ligature", phase: "P6", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },

@@ -76,6 +76,7 @@ import {
 	PREMULTIPLIED_ROW_STEP,
 	MANY_TARGETS_COUNT, MANY_TARGETS_COLUMNS, MANY_TARGETS_STEP, MANY_TARGETS_ORIGIN,
 	EFFECT_UI_SHIFT,
+	LIGATURE_TEXT, LIGATURE_SIZE, LIGATURE_X, LIGATURE_Y, LIGATURE_STEP,
 	SdfLabelCase, sdfLabelCases,
 	SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,
 	SDF_EFFECT_SHIFT, SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, SDF_EFFECT_X, SDF_EFFECT_Y,
@@ -757,6 +758,51 @@ function textCaretSelection(): Scene2D {
 	code.setCursorBlinkTime(0.0);
 	code.setCursorIndex(CARET_SELECTION_START + CARET_SELECTION_LENGTH, rgba(1.0, 0.85, 0.3, 1.0));
 	s.add(code);
+	return s;
+}
+
+const CASCADIA_PATH: string = "tests/fonts/cascadiaSubset.ttf";
+const CASCADIA_FAMILY: string = "Cascadia Subset";
+
+function cascadiaFont(features: FontFeature[]): FontId {
+	const fallbacks: string[] = [];
+	const resolved = resolveFont({
+		family: CASCADIA_FAMILY, weight: 400, style: FontStyle.Normal, features: features,
+		fallbacks: fallbacks, sizeAdjust: SizeAdjust.None,
+	});
+	if (resolved.ok) { return resolved.value; }
+	console.log(`golden: font "${CASCADIA_FAMILY}" was refused (${resolved.error.toString()})`);
+	unreachable;
+}
+
+function textLigature(): Scene2D {
+	registerFace(CASCADIA_PATH, CASCADIA_FAMILY, 400, FontStyle.Normal);
+	const s = Scene2D.create(DARK);
+	const on: FontFeature[] = [];
+	const off: FontFeature[] = [{ tag: "calt", value: 0 }];
+	const warm: Color = rgba(0.95, 0.80, 0.45, 1.0);
+	const cool: Color = rgba(0.45, 0.80, 0.95, 1.0);
+	s.add(
+		s.label(LIGATURE_TEXT, LIGATURE_SIZE, warm).setFont(cascadiaFont(on))
+			.at(LIGATURE_X, LIGATURE_Y),
+	);
+	s.add(
+		s.label(LIGATURE_TEXT, LIGATURE_SIZE, warm).setFont(cascadiaFont(off))
+			.at(LIGATURE_X, LIGATURE_Y + LIGATURE_STEP),
+	);
+	const font: FontId = cascadiaFont(on);
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const split: TextRun[] = [];
+	for (let i: int32 = 0; i < LIGATURE_TEXT.length; i++) {
+		split.push({
+			len: 1, font: font, color: i % 2 == 0 ? warm : cool, background: clear,
+			underline: clear, wavy: false, strikethrough: clear,
+		});
+	}
+	s.add(
+		s.label(LIGATURE_TEXT, LIGATURE_SIZE, warm).setFont(font).setTextRuns(split)
+			.at(LIGATURE_X, LIGATURE_Y + LIGATURE_STEP * 2.0),
+	);
 	return s;
 }
 
@@ -1486,6 +1532,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/filteredDpi125", build: textFilteredDpi125 },
 		{ name: "text/decorations", build: textDecorations },
 		{ name: "text/caretSelection", build: textCaretSelection },
+		{ name: "text/ligature", build: textLigature },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },
