@@ -270,9 +270,15 @@ let recordedDpi: float32 = 0.0;
 let recordedGeneration: int32 = 0;
 let recordedVersion: int32 = -1;
 
-function recordingHolds(w: float32, h: float32, dpi: float32): boolean {
-	return recorded && recordedW == w && recordedH == h && recordedDpi == dpi &&
-		recordedGeneration == contextGeneration() && recordedVersion == modelVersion;
+export function recordingHolds(
+	held: boolean,
+	heldW: float32, heldH: float32, heldDpi: float32,
+	heldGeneration: int32, heldVersion: int32,
+	w: float32, h: float32, dpi: float32,
+	generation: int32, version: int32,
+): boolean {
+	return held && heldW == w && heldH == h && heldDpi == dpi &&
+		heldGeneration == generation && heldVersion == version;
 }
 
 export function profilerPrepare(w: float32, h: float32, dpi: float32): void {
@@ -285,7 +291,10 @@ export function profilerPrepare(w: float32, h: float32, dpi: float32): void {
 	profilerOverlayRefresh();
 	useContext(overlayContext);
 	openBracket(w, h, dpi);
-	if (!recordingHolds(w, h, dpi)) {
+	if (!recordingHolds(
+		recorded, recordedW, recordedH, recordedDpi, recordedGeneration, recordedVersion,
+		w, h, dpi, contextGeneration(), modelVersion,
+	)) {
 		startContext();
 		recordLayout(layoutOverlay(model), w, h, dpi);
 		finishRecording();

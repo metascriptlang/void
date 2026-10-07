@@ -16,7 +16,7 @@ import {
 	PANEL_PADDING, PANEL_MARGIN, BAR_MAX_HEIGHT, REFRESH_FRAMES,
 	nextMode, overlayModel, layoutOverlay, cellPixels, profilerOverlayMode,
 	profilerOverlaySetMode, profilerOverlayCycle, profilerOverlayFeed, profilerOverlayDue,
-	profilerOverlayRefresh, profilerOverlayVersion, profilerOverlayRecord,
+	profilerOverlayRefresh, profilerOverlayVersion, profilerOverlayRecord, recordingHolds,
 } from "../void2d/profilerOverlay";
 import { fixtureProfiler, fixtureCounters } from "../../tests/harness/profilerFixture";
 
@@ -290,4 +290,14 @@ test "at a fractional DPI every recorded edge is a whole device pixel" {
 		}
 	}
 	frameEnd();
+}
+
+test "a recording is reused only while size, dpi, context generation and readout all match" {
+	assert recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.0, 3, 7);
+	assert !recordingHolds(false, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.0, 3, 7);
+	assert !recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 121.0, 60.0, 1.0, 3, 7);
+	assert !recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 120.0, 61.0, 1.0, 3, 7);
+	assert !recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.5, 3, 7);
+	assert !recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.0, 4, 7);
+	assert !recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.0, 3, 8);
 }
