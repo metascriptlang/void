@@ -2589,8 +2589,14 @@ it drew.
   half) into its own sampled `colorTarget`, cleared to that colour. Its pool must hold two
   presets' blocks (`2 * FORWARD_UNIFORM_LENGTH`; a pool sized for one refuses the second with
   `UniformPoolFull`). The caller then composites as for any sampled target (M27):
-  `addTargetTexture(context, second.colorTarget, ..., TextureAlpha.Straight)` once the first
-  `prepareFrame` has allocated it, and draws it with a textured material, or through void2d.
+  `addTargetTexture(context, second.colorTarget, ..., TextureAlpha.Premultiplied)` once the first
+  `prepareFrame` has allocated it, and draws it with a premultiplied textured program
+  (`withPremultiplied()` on `LitTextured` or `UnlitTextured`) in a `BlendMode.AlphaAdd` pass,
+  `ONE, ONE_MINUS_SRC_ALPHA`, which `addMaterial` requires of those programs, or through void2d.
+  The target is premultiplied because `BlendMode.Alpha` writes colour with `SourceAlpha,
+  OneMinusSourceAlpha` and alpha with source `One` (`gpu/state.ms:178-182`): over a transparent
+  clear a blended pixel stores rgb*a with alpha a. A background of alpha 0 must therefore have
+  rgb 0, or the clear itself is not a valid premultiplied pixel.
   `drawToScreen` is not that composite: `Copy` is opaque (M18, `copy-opaque`), so it would cover
   the first view. Order: both `prepareFrame`s, then the caller's screen pass.
 - three.js renders a second camera by calling `render` again over the same canvas with
@@ -2607,26 +2613,35 @@ skips only that node. `Visible` still ends the subtree, as it did.
 
 **Particles.** A particle emitter is a drawn mesh whose instances the caller writes, so it
 reaches the list as a mesh node and its node's layers decide whether a camera draws all of it;
-there is no per-particle layer. Lights are not filtered by layers: `collectLights` still reads
-every visible light node (three.js applies the layer test to lights too, per `projectObject`).
+there is no per-particle layer.
+
+**Lights are layer-filtered per node, as three.js does.** `projectObject` tests `object.layers
+against camera.layers` before it pushes a light (`WebGLRenderer.js:1877-1898`; the lights are
+then read at `:1414`, `:1432`). `collectLightsFor(scene, mask, out)` tests each light node's own
+mask and still walks its children, so a mismatched light neither counts toward the one
+directional or the four point slots nor hides lights under it; `collectLights` passes the active
+camera's mask. A layer-1 directional beside a layer-0 one is no `TooManyDirectionalLights` for
+either camera alone, and a fifth point light on another layer is no `TooManyPointLights`.
+
+**`setLayers` on a camera node is the node's own mask.** What the camera draws is
+`setCameraLayers`; a camera node is also a node, and `setLayers` on it decides whether other
+cameras draw it, which draws nothing.
 
 **Deliberately not done.**
-- Per-view lights: a second camera lights its list with the scene's light block.
-- A layer test on `collectLights`, on the shadow casters (a caster is any item of the list the
-  shadow pass is given) and on the pass lists of a pixel-art preset beyond the item list.
+- Layer tests on the shadow casters, which are any item of the list the shadow pass is given, and on  anything of a pixel-art preset beyond its item list and light block.
 - A composite helper, blending in `Copy`, and clear-colour changes after the first prepare (the
   clear is baked into the attachments when the target is made or resized).
-- A premultiplied second target: blended materials in the second view write straight alpha over
-  their destination alpha, which is `Straight` only for opaque and cutout pixels.
+- Headless proof that `addMaterial` accepts the composite texture itself: a target slot needs a
+  GPU-allocated target, so only the premultiplied program and pass are tested headlessly.
 - Layers in the abort corpus (`tests/aborts3d`): the out-of-range layer stop is not under the
   gate's abort protocol.
 - The in-place fast path for a second list.
 
 **Acceptance, limited to what ran.** Headless only, on `msc` v0.3.2, BUILD `4757fd37`, from the
-worktree, one test file at a time: `layersCheck.ms` 13 tests (masks, node layers and defaults,
+worktree, one test file at a time: `layersCheck.ms` 18 tests (masks, node layers and defaults,
 camera mask and the draw list, non-inheritance, `Visible` against a layer, refresh's steady path
 and layer change, a second list beside the first, `cameraViewOf`, two forward presets on one
-context, the pool refusal), `pickCheck.ms` 30 (two new), `scene3dCheck.ms` unchanged; `msc check`
+context, the pool refusal, per-node light filtering in three cases, the camera node's own mask, the premultiplied composite material and its straight-blend refusal), `pickCheck.ms` 30 (two new), `scene3dCheck.ms` unchanged; `msc check`
 of `src/test/index.ms` and `campfireScene.ms` clean. `gate3d.sh`, `gate.sh`, captures, goldens,
 GPU windows, Android and the web build have NOT run, so no pixel of a second view or of a
 composite is evidenced, and neither is `prepareFrame` of a second preset in one frame on a
