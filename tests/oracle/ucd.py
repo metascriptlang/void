@@ -3,8 +3,10 @@
 Downloads one pinned Unicode version, then writes
   tests/oracle/ucd/GraphemeBreakTest-<v>.txt   the conformance rows, comments stripped
   tests/oracle/ucd/LineBreakTest-<v>.txt       the conformance rows, comments stripped
-  src/void2d/graphemeTable.h                   Grapheme_Cluster_Break, Extended_Pictographic
-                                               and Indic_Conjunct_Break, one packed range each
+  tests/oracle/ucd/EmojiPresentation-<v>.txt   the Emoji_Presentation ranges, first and last
+  src/void2d/graphemeTable.h                   Grapheme_Cluster_Break, Extended_Pictographic,
+                                               Indic_Conjunct_Break and Emoji_Presentation,
+                                               one packed range each
   src/void2d/lineBreakTable.h                  Line_Break resolved by UAX #14 LB1, with the
                                                East Asian, Pi, Pf and unassigned-pictograph flags
 The gate needs none of it: the outputs are committed and src/test/ucdOracleCheck.ms reads them.
@@ -32,6 +34,7 @@ GCB = ["Other", "CR", "LF", "Control", "Extend", "ZWJ", "Regional_Indicator", "P
 INCB = ["None", "Linker", "Consonant", "Extend"]
 PICTOGRAPHIC = 16
 INCB_SHIFT = 5
+EMOJI_PRESENTATION = 128
 
 LB = ["AL", "BK", "CR", "LF", "NL", "SP", "ZW", "ZWJ", "CM", "WJ", "GL", "EX", "CL", "CP",
       "SY", "OP", "QU", "IS", "NS", "B2", "BA", "BB", "HY", "HH", "CB", "IN", "NU", "HL", "PR",
@@ -77,6 +80,13 @@ def pictographs(paths):
     return found
 
 
+def emojiPresentations(paths):
+    found = set()
+    for a, b, f in ranges(paths["emoji-data.txt"], lambda f: f[1] == "Emoji_Presentation"):
+        found.update(range(a, b + 1))
+    return found
+
+
 def graphemeClasses(paths):
     table = {}
     for a, b, f in ranges(paths["GraphemeBreakProperty.txt"], everything):
@@ -84,6 +94,8 @@ def graphemeClasses(paths):
             table[c] = table.get(c, 0) | GCB.index(f[1])
     for c in pictographs(paths):
         table[c] = table.get(c, 0) | PICTOGRAPHIC
+    for c in emojiPresentations(paths):
+        table[c] = table.get(c, 0) | EMOJI_PRESENTATION
     conjunct = lambda f: len(f) >= 3 and f[1] == "InCB"
     for a, b, f in ranges(paths["DerivedCoreProperties.txt"], conjunct):
         for c in range(a, b + 1):
@@ -173,6 +185,20 @@ def writeRows(source, name):
     open(path, "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
 
 
+def writeEmojiPresentation(paths):
+    spans = []
+    for c in sorted(emojiPresentations(paths)):
+        if spans and spans[-1][1] == c - 1:
+            spans[-1][1] = c
+        else:
+            spans.append([c, c])
+    out = [f"# Emoji_Presentation-{VERSION}.txt, the ranges of {BASE}emoji/emoji-data.txt"
+           " written by tests/oracle/ucd.py: first and last codepoint, hex"]
+    out += [f"{a:X} {b:X}" for a, b in spans]
+    path = f"tests/oracle/ucd/EmojiPresentation-{VERSION}.txt"
+    open(path, "w", encoding="utf-8", newline="\n").write("\n".join(out) + "\n")
+
+
 def graphemeHangul(c):
     return GCB.index("LV") if (c - HANGUL_FIRST) % 28 == 0 else GCB.index("LVT")
 
@@ -188,7 +214,8 @@ def regen():
         writeTable(
             "src/void2d/graphemeTable.h", "kVoid2dGraphemeRanges", "VOID2D_GRAPHEME_RANGES", 8, [
             "(start << 8) | class, sorted; a range runs to the next start. Class: bits 0-3",
-            "Grapheme_Cluster_Break, bit 4 Extended_Pictographic, bits 5-6 Indic_Conjunct_Break.",
+            "Grapheme_Cluster_Break, bit 4 Extended_Pictographic, bits 5-6 Indic_Conjunct_Break,",
+            "bit 7 Emoji_Presentation.",
             "The Hangul syllables are computed, so their entry holds 0xFF.",
         ], packedRanges(graphemeClasses(paths), graphemeHangul, 0xFF))
         writeTable(
@@ -199,6 +226,7 @@ def regen():
         ], packedRanges(lineBreakClasses(paths), lineBreakHangul, 0x7FF))
         writeRows(paths["GraphemeBreakTest.txt"], "GraphemeBreakTest")
         writeRows(paths["LineBreakTest.txt"], "LineBreakTest")
+        writeEmojiPresentation(paths)
 
 
 if __name__ == "__main__":

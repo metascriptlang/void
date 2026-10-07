@@ -27,6 +27,7 @@ export enum ConjunctBreak {
 export struct GraphemeProperty {
 	cluster: ClusterBreak;
 	pictographic: boolean;
+	emojiPresentation: boolean;
 	conjunct: ConjunctBreak;
 }
 
@@ -44,6 +45,7 @@ export function graphemeProperty(codepoint: int32): GraphemeProperty {
 	return {
 		cluster: (packed & 15) as ClusterBreak,
 		pictographic: (packed & 16) != 0,
+		emojiPresentation: (packed & 128) != 0,
 		conjunct: ((packed >> 5) & 3) as ConjunctBreak,
 	};
 }

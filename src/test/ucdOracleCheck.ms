@@ -11,6 +11,7 @@ import { lineBreaks } from "../void2d/lineBreak";
 
 const GRAPHEME_ROWS: string = "tests/oracle/ucd/GraphemeBreakTest-18.0.0.txt";
 const LINE_ROWS: string = "tests/oracle/ucd/LineBreakTest-18.0.0.txt";
+const EMOJI_PRESENTATION_RANGES: string = "tests/oracle/ucd/EmojiPresentation-18.0.0.txt";
 const BREAK: string = "÷";
 const SHOWN_FAILURES: int32 = 8;
 
@@ -136,4 +137,34 @@ test "line breaks agree with every row of the UCD's LineBreakTest" {
 		`${positions - wrong}/${positions} positions agree`,
 	);
 	assert (all.length as int32) > 0 && agreed == (all.length as int32);
+}
+
+test "Emoji_Presentation is set on the sampled codepoints and clear on their neighbours" {
+	assert graphemeProperty(0x1F600).emojiPresentation;
+	assert graphemeProperty(0x231A).emojiPresentation;
+	assert !graphemeProperty(0x2764).emojiPresentation;
+	assert !graphemeProperty(0x23).emojiPresentation;
+	assert !graphemeProperty(0x41).emojiPresentation;
+	assert !graphemeProperty(0xAC00).emojiPresentation;
+	assert graphemeProperty(0x2764).pictographic;
+}
+
+test "Emoji_Presentation agrees with every range of emoji-data.txt at both ends" {
+	const text = readFile(EMOJI_PRESENTATION_RANGES);
+	assert text.ok;
+	let spans: int32 = 0;
+	let wrong: int32 = 0;
+	for (const line of text.value.split("\n")) {
+		if (line.byteLength == 0 || line.startsWith("#")) { continue; }
+		const ends = line.split(" ");
+		const first: int32 = hexValue(ends[0]);
+		const last: int32 = hexValue(ends[1].trim());
+		spans = spans + 1;
+		if (!graphemeProperty(first).emojiPresentation) { wrong = wrong + 1; }
+		if (!graphemeProperty(last).emojiPresentation) { wrong = wrong + 1; }
+		if (graphemeProperty(first - 1).emojiPresentation) { wrong = wrong + 1; }
+		if (graphemeProperty(last + 1).emojiPresentation) { wrong = wrong + 1; }
+	}
+	console.log(`ucd oracle: Emoji_Presentation ${spans} ranges, ${wrong} wrong ends`);
+	assert spans > 0 && wrong == 0;
 }
