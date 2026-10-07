@@ -16,6 +16,9 @@ import {
 	colourTileBox,
 	colourRasterize,
 	colourSweep,
+	colourLayerCount,
+	colourLayerGlyph,
+	colourLayerRgba,
 	colourSweepRefused,
 } from "../void2d/face";
 import {
@@ -25,6 +28,7 @@ import {
 	NO_GLYPH_PAGE_HANDLE,
 } from "../void2d/glyphAtlas";
 import { void2dGlyphPageTexelRgba } from "../void2d/glyph.h";
+import { colourEmojiReason } from "../void2d/colourEmoji/colourEmoji";
 
 const ORACLE_PATH: string = "tests/oracle/colour.json";
 const PAGE_SIZE: int32 = 1024;
@@ -235,6 +239,90 @@ test "an sbix face keeps its outlines and a dupe glyph resolves to its target" {
 	assert colourTileBox(face, 0, 12.0).glyph == ColourGlyph.Absent;
 }
 
+test "COLR v0 layers, palette 0 and the composited tile agree with the oracle" {
+	const text = readFile(ORACLE_PATH);
+	assert text.ok;
+	const parsed = JSON.parseValue(text.value);
+	assert parsed.ok;
+	const fonts = parsed.value.getDynamicField("colr");
+	let compared: int32 = 0;
+	for (let f: int32 = 0; f < (fonts.length() as int32); f++) {
+		const row = fonts.at(f);
+		const face = try loadFace(row.getDynamicField("path").asString()) catch -1;
+		assert face >= 0;
+		assert hasColourTables(face);
+		assert !isColourOnly(face);
+		const atlas = GlyphAtlas.create(PAGE_SIZE, 4);
+		const glyphs = row.getDynamicField("glyphs");
+		for (let g: int32 = 0; g < (glyphs.length() as int32); g++) {
+			const glyph = glyphs.at(g);
+			const codepoint: int32 = glyph.getDynamicField("codepoint").asNumber() as int32;
+			const id: int32 = glyphIndex(face, codepoint);
+			assert id == glyph.getDynamicField("glyph").asNumber() as int32;
+			const layers = glyph.getDynamicField("layers");
+			assert colourLayerCount(face, id) == (layers.length() as int32);
+			for (let l: int32 = 0; l < (layers.length() as int32); l++) {
+				const layer = layers.at(l);
+				const layerGlyph: int32 = layer.getDynamicField("glyph").asNumber() as int32;
+				assert colourLayerGlyph(face, id, l) == layerGlyph;
+				const rgba = layer.getDynamicField("rgba");
+				const packed: uint32 = (rgba.at(0).asNumber() as uint32) |
+					((rgba.at(1).asNumber() as uint32) << 8) |
+					((rgba.at(2).asNumber() as uint32) << 16) |
+					((rgba.at(3).asNumber() as uint32) << 24);
+				assert colourLayerRgba(face, id, l) == packed;
+			}
+			const tiles = glyph.getDynamicField("tiles");
+			for (let t: int32 = 0; t < (tiles.length() as int32); t++) {
+				const want = tiles.at(t);
+				const size: float32 = want.getDynamicField("size").asNumber() as float32;
+				const box = colourTileBox(face, id, size);
+				assert box.glyph == ColourGlyph.Present;
+				assert box.left == want.getDynamicField("left").asNumber() as int32;
+				assert box.top == want.getDynamicField("top").asNumber() as int32;
+				assert box.right == want.getDynamicField("right").asNumber() as int32;
+				assert box.bottom == want.getDynamicField("bottom").asNumber() as int32;
+				const key: GlyphKey = {
+					kind: PageKind.Rgba, face: face, glyph: id, sizePx: size, variant: 0,
+				};
+				const width: int32 = box.right - box.left;
+				const height: int32 = box.bottom - box.top;
+				const index = atlas.acquireBlank(key, width, height, box.left, box.top);
+				assert index.ok;
+				if (!index.ok) { return; }
+				const tile = atlas.tile(index.value);
+				const handle = atlas.pageHandle(tile.page);
+				assert colourRasterize(face, id, size, handle, tile.x, tile.y, width, height) == 0;
+				assert tileHash(handle as int32, tile.x, tile.y, width, height) ==
+					want.getDynamicField("hash").asString();
+				compared = compared + 1;
+			}
+		}
+	}
+	assert compared == 3;
+}
+
+test "a COLR v1 paint graph is refused when the face loads and the outline face still draws text" {
+	const face = try loadFace("tests/fonts/colrV1Only.ttf") catch -1;
+	assert face >= 0;
+	assert colourEmojiReason().includes("paint graph");
+	assert !hasColourTables(face);
+	assert !isColourOnly(face);
+	assert glyphIndex(face, 0x1F600) != 0;
+	assert colourTileBox(face, glyphIndex(face, 0x1F600), 16.0).glyph == ColourGlyph.Absent;
+}
+
+test "a COLR glyph with a foreground-colour layer is refused by name, not drawn" {
+	const face = try loadFace("tests/fonts/colrForeground.ttf") catch -1;
+	assert face >= 0;
+	assert hasColourTables(face);
+	const id: int32 = glyphIndex(face, 0x1F600);
+	assert colourLayerCount(face, id) == -1;
+	assert colourEmojiReason().includes("foreground colour");
+	assert colourTileBox(face, id, 20.0).glyph == ColourGlyph.Refused;
+	assert colourRasterize(face, id, 20.0, NO_GLYPH_PAGE_HANDLE, 0, 0, 12, 14) == 1;
+}
+
 test "an sbix dupe that points at itself is refused and its neighbours still draw" {
 	const face = try loadFace("tests/fonts/sbixLoop.ttf") catch -1;
 	assert face >= 0;
@@ -302,6 +390,9 @@ test "truncating a colour font and stamping 0xFFFFFFFF into it never crashes" {
 	assert noto >= 0;
 	assert colourSweep(noto, 16) > 2000;
 	assert colourSweepRefused() > 0;
+	const colr = try loadFace("tests/fonts/colrSynthetic.ttf") catch -1;
+	assert colr >= 0;
+	assert colourSweep(colr, 4) > 300;
 	const sbix = try loadFace("tests/fonts/sbixSynthetic.ttf") catch -1;
 	assert sbix >= 0;
 	assert colourSweep(sbix, 4) > 600;

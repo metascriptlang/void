@@ -101,12 +101,17 @@ def tileRow(strike, size):
     sw, sh, texels = decode(strike["png"])
     assert (sw, sh) == (strike["width"], strike["height"])
     tile = areaAverage(texels, sw, sh, width, height)
+    row = describe(size, left, top, width, height, tile)
+    row["ppem"] = strike["ppem"]
+    return row
+
+
+def describe(size, left, top, width, height, tile):
     raw = bytes(v for texel in tile for v in texel)
     points = [(0, 0), (width - 1, 0), (width // 2, height // 2), (width - 1, height - 1),
               (width // 3, height // 3), (width // 4, 3 * height // 4)]
     return {
         "size": size,
-        "ppem": strike["ppem"],
         "left": left,
         "top": top,
         "right": left + width,
@@ -197,6 +202,72 @@ def sbixFont(path, sizes):
     return {"path": path, "unitsPerEm": font["head"].unitsPerEm, "glyphs": rows}
 
 
+COLR_FONTS = [
+    ("tests/fonts/colrSynthetic.ttf", [10, 20, 40]),
+]
+
+
+def compose(tile, width, height, rect, rgba):
+    x0, y0, x1, y1 = rect
+    r, g, b, a = rgba
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            sa = (255 * a + 127) // 255
+            source = ((r * sa + 127) // 255, (g * sa + 127) // 255, (b * sa + 127) // 255, sa)
+            below = tile[y * width + x]
+            tile[y * width + x] = tuple(
+                source[c] + (below[c] * (255 - sa) + 127) // 255 for c in range(4))
+
+
+def layerRect(font, name, size):
+    glyph = font["glyf"][name]
+    units = font["head"].unitsPerEm
+    edges = []
+    for value in (glyph.xMin, -glyph.yMax, glyph.xMax, -glyph.yMin):
+        pixels = value * size
+        assert pixels % units == 0, "a COLR oracle size must put every edge on a pixel"
+        edges.append(pixels // units)
+    return tuple(edges)
+
+
+def colrFont(path, sizes):
+    font = TTFont(path)
+    palette = font["CPAL"].palettes[0]
+    colr = font["COLR"].ColorLayers
+    rows = []
+    for codepoint, name in sorted(font.getBestCmap().items()):
+        if name not in colr:
+            continue
+        layers = [(layer.name, layer.colorID) for layer in colr[name]]
+        tiles = []
+        for size in sizes:
+            rects = [layerRect(font, layer, size) for layer, _ in layers]
+            left = min(r[0] for r in rects)
+            top = min(r[1] for r in rects)
+            right = max(r[2] for r in rects)
+            bottom = max(r[3] for r in rects)
+            width, height = right - left, bottom - top
+            tile = [(0, 0, 0, 0)] * (width * height)
+            for (layer, index), rect in zip(layers, rects):
+                color = palette[index]
+                shifted = (rect[0] - left, rect[1] - top, rect[2] - left, rect[3] - top)
+                compose(tile, width, height, shifted,
+                        (color.red, color.green, color.blue, color.alpha))
+            tiles.append(describe(size, left, top, width, height, tile))
+        rows.append({
+            "codepoint": codepoint,
+            "glyph": font.getGlyphID(name),
+            "layers": [{
+                "glyph": font.getGlyphID(layer),
+                "paletteIndex": index,
+                "rgba": [palette[index].red, palette[index].green, palette[index].blue,
+                         palette[index].alpha],
+            } for layer, index in layers],
+            "tiles": tiles,
+        })
+    return {"path": path, "unitsPerEm": font["head"].unitsPerEm, "glyphs": rows}
+
+
 def regen():
     document = {
         "generator": "python tests/oracle/colour.py regen",
@@ -204,6 +275,7 @@ def regen():
         "pillow": PIL.__version__,
         "cbdt": [cbdtFont(path, sizes) for path, sizes in CBDT_FONTS],
         "sbix": [sbixFont(path, sizes) for path, sizes in SBIX_FONTS],
+        "colr": [colrFont(path, sizes) for path, sizes in COLR_FONTS],
     }
     with open(OUT, "w", newline="\n") as handle:
         json.dump(document, handle, indent=1)

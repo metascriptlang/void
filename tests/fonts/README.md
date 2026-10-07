@@ -50,6 +50,10 @@ face the loader must refuse by name (`python tests/fonts/colourEmoji.py broken` 
 `sbixLoop.ttf` is `sbixSynthetic` with the `dupe` glyph pointing at itself in both strikes, the
 chain the sbix reader must refuse instead of following.
 
+`colrForeground.ttf` is `colrSynthetic` with its second layer on palette index 0xFFFF (the foreground
+colour) and `colrV1Only.ttf` holds a COLR v1 paint graph with no v0 record; the module refuses the
+first glyph and the second face by name (`python tests/fonts/colourEmoji.py broken` rewrites both).
+
 `symbolCollection.ttc` (1,968 B) holds `textSymbol` then `cbdtSynthetic`: the sfnt peek must read
 the first font of a collection, which is the drawable one.
 

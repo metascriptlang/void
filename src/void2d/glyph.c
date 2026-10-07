@@ -9,7 +9,9 @@
 #include "../../deps/stb/stb_truetype.h"
 
 #ifdef VOID2D_COLOUR_EMOJI
+#include <stdint.h>
 #include "colourEmoji/colourFace.h"
+#define COLOUR_LAYER_MAX_TEXELS (4096 * 4096)
 #endif
 
 #define GLYPH_MAX_KERN_LOOKUPS 32
@@ -868,21 +870,115 @@ int void2dGlyphColourFace(int face) {
 	return validFace(face) && s_faces[face].colour != NULL;
 }
 
+static int colourLayerBox(GlyphFace *f, int glyph, float sizePx, int *box) {
+	ColourLayer layers[VOID2D_COLOUR_MAX_LAYERS];
+	int count = void2dColourGlyphLayers((ColourFace *)f->colour, glyph, layers,
+		VOID2D_COLOUR_MAX_LAYERS);
+	if (count < 0) { return VOID2D_COLOUR_REFUSED; }
+	float scale = stbtt_ScaleForMappingEmToPixels(&f->info, sizePx);
+	int inked = 0;
+	for (int i = 0; i < count; i++) {
+		int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+		stbtt_GetGlyphBitmapBoxSubpixel(&f->info, layers[i].glyph, scale, scale, 0.0f, 0.0f,
+			&x0, &y0, &x1, &y1);
+		if (x1 <= x0 || y1 <= y0) { continue; }
+		if (!inked || x0 < box[0]) { box[0] = x0; }
+		if (!inked || y0 < box[1]) { box[1] = y0; }
+		if (!inked || x1 > box[2]) { box[2] = x1; }
+		if (!inked || y1 > box[3]) { box[3] = y1; }
+		inked = 1;
+	}
+	if (!inked) { return VOID2D_COLOUR_ABSENT; }
+	if ((int64_t)(box[2] - box[0]) * (box[3] - box[1]) > COLOUR_LAYER_MAX_TEXELS) {
+		fprintf(stderr, "void2d: colour glyph %d is %dx%d at %.1f px, over the %d texel limit\n",
+			glyph, box[2] - box[0], box[3] - box[1], sizePx, COLOUR_LAYER_MAX_TEXELS);
+		return VOID2D_COLOUR_REFUSED;
+	}
+	return VOID2D_COLOUR_PRESENT;
+}
+
 int *void2dGlyphColourBox(int face, int glyph, float sizePx) {
 	static int box[6];
 	for (int i = 0; i < 6; i++) { box[i] = 0; }
 	if (!void2dGlyphColourFace(face)) { return box; }
+	GlyphFace *f = &s_faces[face];
 	ColourBox found;
-	int status = void2dColourGlyphBox((ColourFace *)s_faces[face].colour, glyph, sizePx, &found);
-	box[4] = status;
-	box[5] = found.ppem;
+	int status = void2dColourGlyphBox((ColourFace *)f->colour, glyph, sizePx, &found);
 	if (status == VOID2D_COLOUR_PRESENT) {
 		box[0] = found.bearingX;
 		box[1] = -found.bearingY;
 		box[2] = found.bearingX + found.width;
 		box[3] = -found.bearingY + found.height;
+		box[5] = found.ppem;
+	} else if (status == VOID2D_COLOUR_ABSENT && glyph > 0 && sizePx > 0.0f &&
+		void2dColourFaceHasLayers((ColourFace *)f->colour)) {
+		status = colourLayerBox(f, glyph, sizePx, box);
+		if (status != VOID2D_COLOUR_PRESENT) { box[0] = box[1] = box[2] = box[3] = 0; }
 	}
+	box[4] = status;
 	return box;
+}
+
+int void2dGlyphColourLayerCount(int face, int glyph) {
+	if (!void2dGlyphColourFace(face)) { return 0; }
+	ColourLayer layers[VOID2D_COLOUR_MAX_LAYERS];
+	return void2dColourGlyphLayers((ColourFace *)s_faces[face].colour, glyph, layers,
+		VOID2D_COLOUR_MAX_LAYERS);
+}
+
+int void2dGlyphColourLayerGlyph(int face, int glyph, int index) {
+	if (!void2dGlyphColourFace(face)) { return -1; }
+	ColourLayer layers[VOID2D_COLOUR_MAX_LAYERS];
+	int count = void2dColourGlyphLayers((ColourFace *)s_faces[face].colour, glyph, layers,
+		VOID2D_COLOUR_MAX_LAYERS);
+	return index >= 0 && index < count ? layers[index].glyph : -1;
+}
+
+unsigned int void2dGlyphColourLayerRgba(int face, int glyph, int index) {
+	if (!void2dGlyphColourFace(face)) { return 0; }
+	ColourLayer layers[VOID2D_COLOUR_MAX_LAYERS];
+	int count = void2dColourGlyphLayers((ColourFace *)s_faces[face].colour, glyph, layers,
+		VOID2D_COLOUR_MAX_LAYERS);
+	if (index < 0 || index >= count) { return 0; }
+	return (unsigned int)layers[index].r | ((unsigned int)layers[index].g << 8) |
+		((unsigned int)layers[index].b << 16) | ((unsigned int)layers[index].a << 24);
+}
+
+static int colourLayerRasterize(GlyphFace *f, int glyph, float sizePx, unsigned int *at,
+                                int stride, int w, int h) {
+	int box[4] = { 0, 0, 0, 0 };
+	if (colourLayerBox(f, glyph, sizePx, box) != VOID2D_COLOUR_PRESENT ||
+		box[2] - box[0] != w || box[3] - box[1] != h) {
+		fprintf(stderr, "void2d: colour tile %dx%d does not match glyph %d's layer box\n", w, h,
+			glyph);
+		return VOID2D_COLOUR_RASTER_REFUSED;
+	}
+	ColourLayer layers[VOID2D_COLOUR_MAX_LAYERS];
+	int count = void2dColourGlyphLayers((ColourFace *)f->colour, glyph, layers,
+		VOID2D_COLOUR_MAX_LAYERS);
+	if (count < 0) { return VOID2D_COLOUR_RASTER_REFUSED; }
+	for (int row = 0; row < h; row++) {
+		memset(at + (size_t)row * (size_t)stride, 0, sizeof(unsigned int) * (size_t)w);
+	}
+	float scale = stbtt_ScaleForMappingEmToPixels(&f->info, sizePx);
+	for (int i = 0; i < count; i++) {
+		int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+		stbtt_GetGlyphBitmapBoxSubpixel(&f->info, layers[i].glyph, scale, scale, 0.0f, 0.0f,
+			&x0, &y0, &x1, &y1);
+		int lw = x1 - x0, lh = y1 - y0;
+		if (lw <= 0 || lh <= 0) { continue; }
+		unsigned char *coverage = (unsigned char *)calloc((size_t)lw * (size_t)lh, 1);
+		if (!coverage) {
+			fprintf(stderr, "void2d: no memory for a %dx%d colour layer\n", lw, lh);
+			return VOID2D_COLOUR_RASTER_REFUSED;
+		}
+		stbtt_MakeGlyphBitmapSubpixel(&f->info, coverage, lw, lh, lw, scale, scale, 0.0f, 0.0f,
+			layers[i].glyph);
+		void2dColourCompose(at, stride, w, h, coverage, lw, x0 - box[0], y0 - box[1], lw, lh,
+			&layers[i]);
+		free(coverage);
+	}
+	return VOID2D_COLOUR_RASTER_OK;
 }
 
 int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
@@ -901,8 +997,13 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 		return VOID2D_COLOUR_RASTER_OUTSIDE_PAGE;
 	}
 	unsigned int *at = (unsigned int *)p->texels + (size_t)y * (size_t)p->size + (size_t)x;
-	int status = void2dColourGlyphRender((ColourFace *)s_faces[face].colour, glyph, sizePx, at,
-		p->size, w, h);
+	GlyphFace *f = &s_faces[face];
+	int status = void2dColourGlyphRender((ColourFace *)f->colour, glyph, sizePx, at, p->size, w, h);
+	if (status == VOID2D_COLOUR_ABSENT && void2dColourFaceHasLayers((ColourFace *)f->colour)) {
+		int result = colourLayerRasterize(f, glyph, sizePx, at, p->size, w, h);
+		if (result == VOID2D_COLOUR_RASTER_OK) { p->dirty = 1; }
+		return result;
+	}
 	if (status != VOID2D_COLOUR_PRESENT) { return VOID2D_COLOUR_RASTER_REFUSED; }
 	p->dirty = 1;
 	return VOID2D_COLOUR_RASTER_OK;
@@ -931,6 +1032,15 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 	(void)face; (void)glyph; (void)sizePx; (void)page; (void)x; (void)y; (void)w; (void)h;
 	fprintf(stderr, "void2d: a colour tile was asked for but -d:voidColourEmoji is not built\n");
 	return VOID2D_COLOUR_RASTER_REFUSED;
+}
+int void2dGlyphColourLayerCount(int face, int glyph) { (void)face; (void)glyph; return 0; }
+int void2dGlyphColourLayerGlyph(int face, int glyph, int index) {
+	(void)face; (void)glyph; (void)index;
+	return -1;
+}
+unsigned int void2dGlyphColourLayerRgba(int face, int glyph, int index) {
+	(void)face; (void)glyph; (void)index;
+	return 0;
 }
 int void2dGlyphColourSweep(int face, int step) { (void)face; (void)step; return -1; }
 int void2dGlyphColourSweepRefused(void) { return 0; }

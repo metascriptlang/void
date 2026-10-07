@@ -1836,7 +1836,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   derivative scale (`texels + 0.5`) fails it at rotated 13 px (mae 0.135) and zoom 0.5 (0.152).
   Owed: WebGL2 for the same rows (Yoga web link).
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
-  **Built so far (`-d:voidColourEmoji`, CBDT/CBLC and sbix):** the RGBA page kind is real
+  **Built so far (`-d:voidColourEmoji`, CBDT/CBLC, sbix and COLR v0):** the RGBA page kind is real
   (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
   `void2dGlyphPageTexelRgba`; `batcher.c` `SG_PIXELFORMAT_RGBA8` and the byte-exact upload;
   `glyphAtlas.ms` `acquireBlank` and per-kind `residentBytes`), and a colour-only face loads.
@@ -1860,6 +1860,14 @@ changes described above on today's compiler; the P4 web archive also takes its r
   left at `(originOffsetX, originOffsetY)`, and a `dupe` takes the target glyph's record
   including its origin, chained at most 8 deep. The origin and `dupe` rules are the Apple
   sbix text as fontTools writes it and are not checked against FreeType, which was not read.
+  COLR v0 with CPAL palette 0 draws as layers: `glyph.c` rasterizes each layer glyph with stb
+  at the exact size (no subpixel shift), `colourFace.c` composites them premultiplied
+  source-over in integer, with the tile box the union of the layer boxes. A COLR v1 face with
+  no v0 records is refused when it loads (it stays a text face), and a glyph with a layer on
+  palette index 0xFFFF, which needs the text colour, is refused by name. The oracle sizes put
+  every layer edge on a pixel, because the Python reference cannot reproduce stb's partial
+  coverage. Smoke, local only: `C:/Windows/Fonts/seguiemj.ttf` U+1F300 to U+1FAFF at 32 px
+  gives 1,191 colour glyphs, 0 refused, 9,439 layers, 1,114 inked at the tile centre.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
   **Rasterizer taken and measured 2026-10-07 (V0): nanosvg** (`memononen/nanosvg` at

@@ -37,6 +37,8 @@ typedef struct {
 #define KIND_SBIX 1
 #define MAX_SBIX_DUPE 8
 #define MAX_REFUSED_TAGS 8
+#define MAX_REPORTED 64
+#define MAX_LAYERS 256
 
 typedef struct {
 	int kind;
@@ -55,7 +57,7 @@ typedef struct {
 struct ColourFace {
 	const unsigned char *bytes;
 	size_t length;
-	Table cmap, head, hhea, hmtx, maxp, glyf, loca, cff, cblc, cbdt, sbix;
+	Table cmap, head, hhea, hmtx, maxp, glyf, loca, cff, cblc, cbdt, sbix, colr, cpal;
 	int numGlyphs;
 	uint64_t index;
 	unsigned indexFormat;
@@ -64,6 +66,10 @@ struct ColourFace {
 	unsigned long long refused[REFUSED_SLOTS / 64];
 	uint32_t refusedTags[MAX_REFUSED_TAGS];
 	int refusedTagCount;
+	uint64_t colrBases, colrLayers, paletteAt;
+	unsigned colrBaseCount, colrLayerCount, paletteEntries;
+	int reported[MAX_REPORTED];
+	int reportedCount;
 };
 
 static char s_reason[REASON_BYTES];
@@ -115,6 +121,19 @@ static int tagRefusedBefore(ColourFace *face, uint32_t tag) {
 	}
 	if (face->refusedTagCount < MAX_REFUSED_TAGS) {
 		face->refusedTags[face->refusedTagCount++] = tag;
+	}
+	return 0;
+}
+
+static int reportedBefore(ColourFace *face, int glyph) {
+	for (int i = 0; i < face->reportedCount; i++) {
+		if (face->reported[i] == glyph) { return 1; }
+	}
+	if (face->reportedCount == MAX_REPORTED) { return 1; }
+	face->reported[face->reportedCount++] = glyph;
+	if (face->reportedCount == MAX_REPORTED) {
+		fprintf(stderr, "void2d: %d colour glyphs refused, the rest are refused silently\n",
+			MAX_REPORTED);
 	}
 	return 0;
 }
@@ -284,6 +303,133 @@ int void2dColourFaceGlyphIndex(const ColourFace *face, int codepoint) {
 	return glyph;
 }
 
+static int openColr(ColourFace *face) {
+	if (!face->cpal.found) { return fail("COLR is present without CPAL"); }
+	Span c = tableSpan(face, face->colr);
+	unsigned version = rd16(&c, 0);
+	unsigned bases = rd16(&c, 2);
+	uint64_t basesAt = rd32(&c, 4);
+	uint64_t layersAt = rd32(&c, 8);
+	unsigned layers = rd16(&c, 12);
+	if (c.bad) { return fail("COLR is shorter than its header"); }
+	if (version > 1) { return fail("COLR version %u is not 0 or 1", version); }
+	if (bases == 0) {
+		return version == 1
+			? fail("COLR v1 holds a paint graph and no v0 layers, which is all that is read")
+			: fail("COLR holds no base glyph records");
+	}
+	if (basesAt + 6 * (uint64_t)bases > c.n || layersAt + 4 * (uint64_t)layers > c.n) {
+		return fail("COLR records run past the table");
+	}
+	Span p = tableSpan(face, face->cpal);
+	unsigned cpalVersion = rd16(&p, 0);
+	unsigned entries = rd16(&p, 2);
+	unsigned palettes = rd16(&p, 4);
+	unsigned records = rd16(&p, 6);
+	uint64_t recordsAt = rd32(&p, 8);
+	unsigned first = rd16(&p, 12);
+	if (p.bad) { return fail("CPAL is shorter than its header"); }
+	if (cpalVersion > 1) { return fail("CPAL version %u is not 0 or 1", cpalVersion); }
+	if (palettes == 0 || entries == 0) { return fail("CPAL holds no palette"); }
+	if ((uint64_t)first + entries > records || recordsAt + 4 * (uint64_t)records > p.n) {
+		return fail("CPAL palette 0 runs past its colour records");
+	}
+	face->colrBases = basesAt;
+	face->colrBaseCount = bases;
+	face->colrLayers = layersAt;
+	face->colrLayerCount = layers;
+	face->paletteAt = recordsAt + 4 * (uint64_t)first;
+	face->paletteEntries = entries;
+	return VOID2D_COLOUR_OK;
+}
+
+int void2dColourFaceHasLayers(const ColourFace *face) { return face && face->colr.found; }
+
+static int layersOf(ColourFace *face, int glyph, ColourLayer *out, int capacity) {
+	s_reason[0] = 0;
+	if (!face || !face->colr.found || glyph < 0 || glyph >= 0x10000) { return 0; }
+	Span c = tableSpan(face, face->colr);
+	unsigned lo = 0, hi = face->colrBaseCount;
+	while (lo < hi) {
+		unsigned mid = (lo + hi) / 2;
+		if (rd16(&c, face->colrBases + 6 * (uint64_t)mid) < (unsigned)glyph) { lo = mid + 1; }
+		else { hi = mid; }
+	}
+	if (lo == face->colrBaseCount) { return 0; }
+	uint64_t record = face->colrBases + 6 * (uint64_t)lo;
+	if (rd16(&c, record) != (unsigned)glyph) { return 0; }
+	unsigned first = rd16(&c, record + 2);
+	unsigned count = rd16(&c, record + 4);
+	if (c.bad) { return fail("COLR is cut off inside its base glyph records"); }
+	if (count == 0) { return 0; }
+	if (count > MAX_LAYERS || count > (unsigned)capacity) {
+		return fail("COLR glyph %d has %u layers, at most %d are read", glyph, count, MAX_LAYERS);
+	}
+	if ((uint64_t)first + count > face->colrLayerCount) {
+		return fail("COLR glyph %d layers run past the layer records", glyph);
+	}
+	Span p = tableSpan(face, face->cpal);
+	for (unsigned i = 0; i < count; i++) {
+		uint64_t layer = face->colrLayers + 4 * ((uint64_t)first + i);
+		unsigned layerGlyph = rd16(&c, layer);
+		unsigned index = rd16(&c, layer + 2);
+		if (c.bad) { return fail("COLR is cut off inside its layer records"); }
+		if (layerGlyph >= (unsigned)face->numGlyphs) {
+			return fail("COLR glyph %d layer %u names glyph %u of %d", glyph, i, layerGlyph,
+				face->numGlyphs);
+		}
+		if (index == 0xFFFF) {
+			return fail("COLR glyph %d layer %u uses the foreground colour (palette index "
+				"0xFFFF), which a colour tile cannot hold", glyph, i);
+		}
+		if (index >= face->paletteEntries) {
+			return fail("COLR glyph %d layer %u uses palette index %u of %u", glyph, i, index,
+				face->paletteEntries);
+		}
+		uint64_t at = face->paletteAt + 4 * (uint64_t)index;
+		out[i].glyph = (int)layerGlyph;
+		out[i].b = (unsigned char)rd8(&p, at);
+		out[i].g = (unsigned char)rd8(&p, at + 1);
+		out[i].r = (unsigned char)rd8(&p, at + 2);
+		out[i].a = (unsigned char)rd8(&p, at + 3);
+		if (p.bad) { return fail("CPAL is cut off inside palette 0"); }
+	}
+	return (int)count;
+}
+
+int void2dColourGlyphLayers(ColourFace *face, int glyph, ColourLayer *out, int capacity) {
+	int count = layersOf(face, glyph, out, capacity);
+	if (count < 0 && !reportedBefore(face, glyph)) {
+		fprintf(stderr, "void2d: colour glyph %d refused: %s\n", glyph, s_reason);
+	}
+	return count;
+}
+
+void void2dColourCompose(unsigned int *dst, int stride, int dw, int dh,
+                         const unsigned char *coverage, int coverageStride, int ox, int oy,
+                         int cw, int ch, const ColourLayer *colour) {
+	for (int y = 0; y < ch; y++) {
+		for (int x = 0; x < cw; x++) {
+			int tx = ox + x, ty = oy + y;
+			if (tx < 0 || ty < 0 || tx >= dw || ty >= dh) { continue; }
+			unsigned cov = coverage[(size_t)y * (size_t)coverageStride + (size_t)x];
+			if (!cov) { continue; }
+			unsigned sa = (cov * colour->a + 127u) / 255u;
+			unsigned source[4] = {
+				(colour->r * sa + 127u) / 255u, (colour->g * sa + 127u) / 255u,
+				(colour->b * sa + 127u) / 255u, sa,
+			};
+			unsigned int *at = dst + (size_t)ty * (size_t)stride + (size_t)tx;
+			unsigned int out = 0;
+			for (int c = 0; c < 4; c++) {
+				unsigned d = (*at >> (8 * c)) & 255u;
+				out |= (source[c] + (d * (255u - sa) + 127u) / 255u) << (8 * c);
+			}
+			*at = out;
+		}
+	}
+}
+
 int void2dColourFaceOpen(const unsigned char *bytes, size_t length, size_t fontStart,
                          ColourFace **out) {
 	*out = NULL;
@@ -314,11 +460,13 @@ int void2dColourFaceOpen(const unsigned char *bytes, size_t length, size_t fontS
 	face->cblc = findTable(face, dir, tables, "CBLC");
 	face->cbdt = findTable(face, dir, tables, "CBDT");
 	face->sbix = findTable(face, dir, tables, "sbix");
+	face->colr = findTable(face, dir, tables, "COLR");
+	face->cpal = findTable(face, dir, tables, "CPAL");
 	int status = VOID2D_COLOUR_NONE;
 	if (face->cblc.found != face->cbdt.found) {
 		status = fail("%s is present without %s", face->cblc.found ? "CBLC" : "CBDT",
 			face->cblc.found ? "CBDT" : "CBLC");
-	} else if (face->cblc.found || face->sbix.found) {
+	} else if (face->cblc.found || face->sbix.found || face->colr.found) {
 		status = VOID2D_COLOUR_OK;
 	}
 	if (status == VOID2D_COLOUR_OK) {
@@ -332,6 +480,7 @@ int void2dColourFaceOpen(const unsigned char *bytes, size_t length, size_t fontS
 	}
 	if (status == VOID2D_COLOUR_OK && face->cblc.found) { status = openCblc(face); }
 	if (status == VOID2D_COLOUR_OK && face->sbix.found) { status = openSbix(face); }
+	if (status == VOID2D_COLOUR_OK && face->colr.found) { status = openColr(face); }
 	if (status != VOID2D_COLOUR_OK) {
 		free(face);
 		return status;
@@ -591,7 +740,7 @@ int void2dColourGlyphBox(ColourFace *face, int glyph, float sizePx, ColourBox *b
 	chooseStrike(face, glyph, sizePx, &bitmap, &status);
 	if (status == VOID2D_COLOUR_PRESENT) { boxOf(&bitmap, sizePx, box); }
 	if (status != VOID2D_COLOUR_PRESENT && status != VOID2D_COLOUR_ABSENT) {
-		if (s_reason[0]) {
+		if (s_reason[0] && !reportedBefore(face, glyph)) {
 			fprintf(stderr, "void2d: colour glyph %d refused: %s\n", glyph, s_reason);
 		}
 		return VOID2D_COLOUR_REFUSED;
@@ -708,6 +857,8 @@ int void2dColourFaceSweep(const unsigned char *bytes, size_t length, size_t font
 			int status = void2dColourFaceOpen(copy, usable, fontStart, &face);
 			if (status == VOID2D_COLOUR_OK) {
 				for (int g = 0; g < glyphCount; g++) {
+					ColourLayer layers[MAX_LAYERS];
+					if (void2dColourGlyphLayers(face, g, layers, MAX_LAYERS) < 0) { (*refused)++; }
 					ColourBox box;
 					if (void2dColourGlyphBox(face, g, 16.0f, &box) == VOID2D_COLOUR_PRESENT &&
 						box.width <= 64 && box.height <= 64) {

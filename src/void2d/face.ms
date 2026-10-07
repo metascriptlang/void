@@ -17,6 +17,9 @@ import {
 	void2dGlyphColourOnly,
 	void2dGlyphColourBox,
 	void2dGlyphColourRasterize,
+	void2dGlyphColourLayerCount,
+	void2dGlyphColourLayerGlyph,
+	void2dGlyphColourLayerRgba,
 	void2dGlyphColourSweep,
 	void2dGlyphColourSweepRefused,
 } from "./glyph.h";
@@ -251,6 +254,18 @@ export function colourRasterize(
 	height: int32,
 ): int32 {
 	return void2dGlyphColourRasterize(face, glyph, sizePx, page as int32, x, y, width, height);
+}
+
+export function colourLayerCount(face: int32, glyph: int32): int32 {
+	return void2dGlyphColourLayerCount(face, glyph);
+}
+
+export function colourLayerGlyph(face: int32, glyph: int32, index: int32): int32 {
+	return void2dGlyphColourLayerGlyph(face, glyph, index);
+}
+
+export function colourLayerRgba(face: int32, glyph: int32, index: int32): uint32 {
+	return void2dGlyphColourLayerRgba(face, glyph, index);
 }
 
 export function colourSweep(face: int32, step: int32): int32 {

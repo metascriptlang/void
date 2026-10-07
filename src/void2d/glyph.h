@@ -64,6 +64,9 @@ int *void2dGlyphColourBox(int face, int glyph, float sizePx);
 #define VOID2D_COLOUR_RASTER_REFUSED 4
 int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
                                int w, int h);
+int void2dGlyphColourLayerCount(int face, int glyph);
+int void2dGlyphColourLayerGlyph(int face, int glyph, int index);
+unsigned int void2dGlyphColourLayerRgba(int face, int glyph, int index);
 int void2dGlyphColourSweep(int face, int step);
 int void2dGlyphColourSweepRefused(void);
 

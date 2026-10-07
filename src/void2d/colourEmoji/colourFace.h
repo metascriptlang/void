@@ -36,6 +36,19 @@ int void2dColourGlyphBox(ColourFace *face, int glyph, float sizePx, ColourBox *b
 int void2dColourGlyphRender(ColourFace *face, int glyph, float sizePx, unsigned int *dst,
                             int strideTexels, int width, int height);
 
+typedef struct {
+	int glyph;
+	unsigned char r, g, b, a;
+} ColourLayer;
+
+int void2dColourFaceHasLayers(const ColourFace *face);
+int void2dColourGlyphLayers(ColourFace *face, int glyph, ColourLayer *out, int capacity);
+void void2dColourCompose(unsigned int *dst, int stride, int dw, int dh,
+                         const unsigned char *coverage, int coverageStride, int ox, int oy,
+                         int cw, int ch, const ColourLayer *colour);
+
+#define VOID2D_COLOUR_MAX_LAYERS 256
+
 int void2dColourFaceSweep(const unsigned char *bytes, size_t length, size_t fontStart,
                           int glyphCount, int step, int *refused);
 

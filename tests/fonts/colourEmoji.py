@@ -8,6 +8,7 @@ from fontTools.colorLib.builder import buildCOLR, buildCPAL
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTCollection, TTFont
+from fontTools.ttLib.tables import otTables as ot
 from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 
 OUT = "tests/fonts/"
@@ -183,7 +184,7 @@ def sbixSynthetic():
     save(font, "sbixSynthetic.ttf")
 
 
-def colrSynthetic():
+def colrBase(family):
     order = [".notdef", "u1F600", "layerA", "layerB", "layerC"]
     glyphs = squares(order[:2])
     for index, name in enumerate(order[2:]):
@@ -196,12 +197,34 @@ def colrSynthetic():
         pen.lineTo((left + 400, 0))
         pen.closePath()
         glyphs[name] = pen.glyph()
-    font = base("Void COLR Synthetic", order, {0x1F600: "u1F600"}, glyphs, 1000).font
+    font = base(family, order, {0x1F600: "u1F600"}, glyphs, 1000).font
     palette = [(0.8, 0.2, 0.2, 1.0), (0.2, 0.4, 0.8, 1.0), (0.2, 0.7, 0.3, 0.5)]
     font["CPAL"] = buildCPAL([palette])
+    return font
+
+
+def colrSynthetic():
+    font = colrBase("Void COLR Synthetic")
     font["COLR"] = buildCOLR({"u1F600": [("layerA", 0), ("layerB", 1), ("layerC", 2)]},
                              version=0)
     save(font, "colrSynthetic.ttf")
+
+
+def colrForeground():
+    font = colrBase("Void COLR Foreground")
+    font["COLR"] = buildCOLR({"u1F600": [("layerA", 0), ("layerB", 0xFFFF)]}, version=0)
+    save(font, "colrForeground.ttf")
+
+
+def colrV1Only():
+    font = colrBase("Void COLR V1")
+    paint = {
+        "Format": ot.PaintFormat.PaintGlyph,
+        "Glyph": "layerA",
+        "Paint": {"Format": ot.PaintFormat.PaintSolid, "PaletteIndex": 0, "Alpha": 1.0},
+    }
+    font["COLR"] = buildCOLR({"u1F600": paint}, version=1)
+    save(font, "colrV1Only.ttf")
 
 
 def collection():
@@ -243,6 +266,8 @@ def main():
     if sys.argv[1:] == ["broken"]:
         cbdtBroken()
         sbixLoop()
+        colrForeground()
+        colrV1Only()
         return
     noto(sys.argv[1])
     textSymbol()
@@ -251,6 +276,8 @@ def main():
     sbixSynthetic()
     sbixLoop()
     colrSynthetic()
+    colrForeground()
+    colrV1Only()
     collection()
 
 
