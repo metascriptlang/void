@@ -181,7 +181,7 @@ test "a GIF87a and a one-frame GIF decode, and a still PNG is not an animation" 
 	if (!nothing.ok) { assert nothing.error == ImageError.NotGif; }
 }
 
-test "a truncated GIF, a GIF with no frame and a disposal 3 GIF each say which" {
+test "a truncated GIF and a GIF with no frame each say which" {
 	const whole: Vec<uint8> = animatedGif(0x39, 4, 3, fourFrames());
 	for (const cutBy of [1, 7, 30]) {
 		let shorter: Vec<uint8> = [];
@@ -193,11 +193,34 @@ test "a truncated GIF, a GIF with no frame and a disposal 3 GIF each say which" 
 	const empty = decodeAnimation(animatedGif(0x39, 4, 3, []));
 	assert !empty.ok;
 	if (!empty.ok) { assert empty.error == ImageError.Undecodable; }
-	let restoring: GifFrame = solidFrame(4, 3, 1, 10);
-	restoring.disposal = 3;
-	const three = decodeAnimation(animatedGif(0x39, 4, 3, [solidFrame(4, 3, 0, 10), restoring]));
+}
+
+function withDisposal(frame: GifFrame, disposal: int32): GifFrame {
+	let changed: GifFrame = frame;
+	changed.disposal = disposal;
+	return changed;
+}
+
+test "disposal 3 on a frame that stb restores from the wrong image is refused by name" {
+	const frames: GifFrame[] = [
+		solidFrame(4, 3, 0, 10), withDisposal(solidFrame(4, 3, 1, 10), 3), solidFrame(4, 3, 2, 10),
+	];
+	const three = decodeAnimation(animatedGif(0x39, 4, 3, frames));
 	assert !three.ok;
 	if (!three.ok) { assert three.error == ImageError.UnsupportedDisposal; }
+}
+
+test "disposal 3 that stb never runs on the last frame, or defaults on the first, decodes" {
+	const last = decodeAnimation(animatedGif(0x39, 4, 3, [
+		solidFrame(4, 3, 0, 10), withDisposal(solidFrame(4, 3, 1, 10), 3),
+	]));
+	assert last.ok;
+	if (last.ok) { assert last.value.frameCount == 2; }
+	const first = decodeAnimation(animatedGif(0x39, 4, 3, [
+		withDisposal(solidFrame(4, 3, 0, 10), 3), solidFrame(4, 3, 1, 10),
+	]));
+	assert first.ok;
+	if (first.ok) { assert first.value.frameCount == 2; }
 }
 
 test "a graphics control block of five bytes refuses the GIF, though its sub-blocks parse" {
