@@ -24,8 +24,9 @@ load() {
 
 one() {
 	tree="$1"; scene="$2"; side="$3"; pair="$4"
+	if [ "$side" = A ]; then suffix="${AB_SUFFIX_A:-}"; else suffix="${AB_SUFFIX_B:-}"; fi
 	before=$(load)
-	ms=$(cd "$tree" && "./out/bench$scene.exe" 2>/dev/null | sed -n 's/^[a-z]*\.present\.ms //p' | tr -d '\r')
+	ms=$(cd "$tree" && "./out/bench$scene$suffix.exe" 2>/dev/null | sed -n 's/^[a-z]*\.present\.ms //p' | tr -d '\r')
 	after=$(load)
 	echo "AB $scene $side pair $pair present.ms ${ms:-missing} load ${before:-missing} ${after:-missing}" \
 		| tee -a "$ROWS"

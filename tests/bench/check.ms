@@ -8,7 +8,7 @@
 // runs them, so the whole perf story is one committed command.
 
 import { readFile } from "std/fs";
-import { execFileCapture } from "std/process";
+import { execFileCapture, env } from "std/process";
 import { BenchRow, parseRows } from "../harness/benchRows";
 
 // Counted across both bench binaries, reported once at the end.
@@ -16,11 +16,10 @@ let unreadableRows: int32 = 0;
 let ignoredLines: int32 = 0;
 
 const BASELINE_PATH: string = "tests/bench/baseline.json";
-const UI_BINARY: string = "out/benchUi.exe";
-const SPRITES_BINARY: string = "out/benchSprites.exe";
-const TEXT_BINARY: string = "out/benchText.exe";
-const EDITOR_BINARY: string = "out/benchEditor.exe";
-const SCROLL_BINARY: string = "out/benchScroll.exe";
+
+const SUFFIX: string = env.get("BENCH_SUFFIX");
+
+function binary(scene: string): string { return `out/bench${scene}${SUFFIX}.exe`; }
 
 function runBench(binary: string): BenchRow[] {
 	const result = execFileCapture(binary, []);
@@ -73,6 +72,13 @@ function reportMilliseconds(rows: BenchRow[], scene: string, baseline: float64, 
 	console.log(`${marker} ${scene}.present.ms ${actual} (baseline ${baseline}, warn above ${baseline * warnFactor})`);
 }
 
+function reportProfile(rows: BenchRow[], scene: string): void {
+	for (const row of rows) {
+		if (!row.scene.equals(scene) || !row.metric.startsWith("profile")) { continue; }
+		console.log(`REPORT ${scene}.${row.metric} ${row.value}`);
+	}
+}
+
 function reportFirstPaint(rows: BenchRow[], scene: string): void {
 	const [reported, firstPaint] = rowValue(rows, scene, "firstPaint");
 	if (reported) { console.log(`REPORT ${scene}.firstPaint.ms ${firstPaint}`); }
@@ -93,11 +99,11 @@ function runCheck(): int32 {
 	const counters = baseline.counters;
 	const milliseconds = baseline.milliseconds;
 
-	const uiRows = runBench(UI_BINARY);
-	const spriteRows = runBench(SPRITES_BINARY);
-	const textRows = runBench(TEXT_BINARY);
-	const editorRows = runBench(EDITOR_BINARY);
-	const scrollRows = runBench(SCROLL_BINARY);
+	const uiRows = runBench(binary("Ui"));
+	const spriteRows = runBench(binary("Sprites"));
+	const textRows = runBench(binary("Text"));
+	const editorRows = runBench(binary("Editor"));
+	const scrollRows = runBench(binary("Scroll"));
 	const empty: boolean = (uiRows.length as int32) == 0 || (spriteRows.length as int32) == 0
 		|| (textRows.length as int32) == 0 || (editorRows.length as int32) == 0
 		|| (scrollRows.length as int32) == 0;
@@ -144,6 +150,11 @@ function runCheck(): int32 {
 	reportFirstPaint(textRows, "text");
 	reportFirstPaint(editorRows, "editor");
 	reportFirstPaint(scrollRows, "scroll");
+	reportProfile(uiRows, "ui");
+	reportProfile(spriteRows, "sprites");
+	reportProfile(textRows, "text");
+	reportProfile(editorRows, "editor");
+	reportProfile(scrollRows, "scroll");
 
 	console.log("");
 	if (unreadableRows > 0) {

@@ -33,6 +33,10 @@ import { Color, rgba, tile } from "../void2d/types";
 import { Align, TextRun, calcTextWidth } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
+when (voidProfiler) {
+	import { frameStats, profilerCollect } from "../void2d/frameMarks";
+	import { ringCount, ringPercentile } from "../void2d/profiler";
+}
 
 export enum BenchKind {
 	Ui,
@@ -230,11 +234,31 @@ function report(): void {
 	console.log(`${benchName}.sweepRasterizations ${swept}`);
 	console.log(`${benchName}.firstPaint.ms ${firstPaintMs}`);
 	console.log(`${benchName}.present.ms ${presentMs / (MEASURED_FRAMES as float64)}`);
+	reportProfile();
 	if (codeBlock !== null) {
 		console.log(`${benchName}.measureGlyphLookups ${measureGlyphLookups()}`);
 		const first: NodeRef = codeBlock.getChildAt(0);
 		console.log(`${benchName}.lineWidth ${first.textWidth()}`);
 		console.log(`${benchName}.lineHeight ${first.textHeight()}`);
+	}
+}
+
+function milliseconds(ns: int64): float64 { return (ns as float64) / 1000000.0; }
+
+function reportProfile(): void {
+	when (voidProfiler) {
+		profilerCollect();
+		const stats = frameStats;
+		console.log(`${benchName}.profileFrames ${stats.frames}`);
+		if (stats.draws.ringCount() == 0) { return; }
+		const draw = stats.draws;
+		console.log(`${benchName}.profileDrawP50.ms ${milliseconds(draw.ringPercentile(50))}`);
+		console.log(`${benchName}.profileDrawP99.ms ${milliseconds(draw.ringPercentile(99))}`);
+		console.log(`${benchName}.profileDrawMax.ms ${milliseconds(draw.ringPercentile(100))}`);
+		if (stats.dirtyToPresent.ringCount() == 0) { return; }
+		const dirty = stats.dirtyToPresent;
+		console.log(`${benchName}.profileDirtyP50.ms ${milliseconds(dirty.ringPercentile(50))}`);
+		console.log(`${benchName}.profileDirtyMax.ms ${milliseconds(dirty.ringPercentile(100))}`);
 	}
 }
 

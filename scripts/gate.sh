@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -189,6 +189,15 @@ if [ "$context_status" -ne 0 ] \
 	pass "prepared draw context expires at commit and stops with its id"
 else
 	fail "expired draw context did not stop with its named error"
+fi
+
+if "$MSC" build -d:voidProfiler tests/integration/frameProfiler.ms --release \
+		--output=out/frameProfiler.exe > out/gate-frame-profiler.log 2>&1 \
+		&& out/frameProfiler.exe > out/gate-frame-profiler-run.log 2>&1; then
+	pass "frame profiler: one record per frame on the views and window drivers, counters across brackets, dirty to present, and an overlay that paints and hides without dirtying the scene"
+else
+	fail "frame profiler — see out/gate-frame-profiler.log and out/gate-frame-profiler-run.log"
+	grep -E '^FAIL' out/gate-frame-profiler-run.log | sed 's/^/      /' || true
 fi
 
 if "$MSC" build tests/integration/preparedScenes.ms --release --output=out/preparedScenes.exe \
@@ -571,6 +580,10 @@ if [ "$QUICK" -eq 1 ] || [ ! -f out/benchUi.exe ]; then
 	"$MSC" build tests/bench/benchText.ms --release --output=out/benchText.exe >> out/gate-bench.log 2>&1 || true
 	"$MSC" build tests/bench/benchEditor.ms --release --output=out/benchEditor.exe >> out/gate-bench.log 2>&1 || true
 	"$MSC" build tests/bench/benchScroll.ms --release --output=out/benchScroll.exe >> out/gate-bench.log 2>&1 || true
+	for scene in Ui Sprites Text Editor Scroll; do
+		"$MSC" build -d:voidProfiler "tests/bench/bench$scene.ms" --release \
+			--output="out/bench${scene}Profiler.exe" >> out/gate-bench-profiler.log 2>&1 || true
+	done
 fi
 "$MSC" build tests/bench/check.ms --output=out/benchCheck.exe >> out/gate-bench.log 2>&1 || true
 if [ -x out/benchCheck.exe ] && out/benchCheck.exe > out/gate-bench-rows.log 2>&1; then
@@ -579,6 +592,13 @@ if [ -x out/benchCheck.exe ] && out/benchCheck.exe > out/gate-bench-rows.log 2>&
 else
 	fail "bench — see out/gate-bench-rows.log"
 	grep -E '^FAIL' out/gate-bench-rows.log | sed 's/^/      /' || true
+fi
+if [ -x out/benchCheck.exe ] && BENCH_SUFFIX=Profiler out/benchCheck.exe > out/gate-bench-profiler-rows.log 2>&1; then
+	pass "bench counters with -d:voidProfiler and the overlay hidden equal tests/bench/baseline.json"
+	grep -E '^REPORT [a-z]+\.profile' out/gate-bench-profiler-rows.log | sed 's/^/      /'
+else
+	fail "bench with the profiler compiled in — see out/gate-bench-profiler-rows.log"
+	grep -E '^FAIL' out/gate-bench-profiler-rows.log | sed 's/^/      /' || true
 fi
 # The counters cannot see an allocation that moves no length, so read the emitted C. It sees
 # array copies and fresh arrays; not aliases (`let b = vec` emits no copy on msc 0.2.55, card
