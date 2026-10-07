@@ -350,7 +350,7 @@ device_loss_misuse() {
 }
 
 rm -f out/tmp/deviceLoss.exe
-if "$MSC" build tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLoss.exe \
+if "$MSC" build -d:voidSvg tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLoss.exe \
 		> out/gate-device-loss.log 2>&1 \
 		&& out/tmp/deviceLoss.exe > out/gate-device-loss-run.log 2>&1; then
 	pass "device loss: two forced losses, the next frame byte-identical; kept pixels and a realloc hook re-upload"

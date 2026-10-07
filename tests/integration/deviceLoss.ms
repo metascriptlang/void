@@ -6,6 +6,9 @@ import { Scene2D } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d } from "../../src/void2d/draw";
 import { rgba, blurFilter, tile } from "../../src/void2d/types";
+when (voidSvg) {
+	import { registerIcon } from "../../src/void2d/icon";
+}
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCaptureSlotsDiffer, voidCaptureWritePng,
 	voidCaptureExit,
@@ -23,6 +26,8 @@ const CHECKER: int32 = 4;
 const RED: uint32 = 0xff2020e0 as uint32;
 const YELLOW: uint32 = 0xff20e0e0 as uint32;
 const GREEN: uint32 = 0xff20e020 as uint32;
+const ICON_SOURCE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
+	`viewBox="0 0 24 24"><path d="M12 2 L22 12 L12 22 L2 12 Z" fill="#000"/></svg>`;
 const CLEAR = rgba(0.05, 0.05, 0.1, 1.0);
 const s: Scene2D = Scene2D.create(CLEAR);
 let stage: int32 = 0;
@@ -74,6 +79,13 @@ function init(): void {
 	s.add(s.sprite(tile(kept, 32.0, 32.0)).at(40.0, 8.0));
 	s.add(s.sprite(tile(hooked, 32.0, 32.0)).at(80.0, 8.0));
 	s.add(s.label("Ag", 16.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 56.0));
+	when (voidSvg) {
+		const icon = registerIcon(ICON_SOURCE);
+		if (!icon.ok) { fail(`the icon was refused, ${icon.error.what}`); }
+		if (icon.ok) {
+			s.add(s.icon(icon.value, 24.0, 24.0, rgba(0.95, 0.75, 0.2, 1.0)).at(48.0, 52.0));
+		}
+	}
 	s.add(s.rect(24.0, 24.0, rgba(0.2, 0.3, 1.0, 1.0)).at(100.0, 60.0)).setFilter(blurFilter(3.0));
 	const misuse: string = env.get("VOID_DEVICE_LOSS_MISUSE");
 	if (misuse.equals("adopted")) {

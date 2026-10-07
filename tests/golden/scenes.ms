@@ -34,6 +34,7 @@ import { GradientSpace } from "../../src/void2d/gradient";
 import { colorMatrixGrayscale } from "../../src/void2d/effect";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 import { add } from "../../src/void2d/scene";
+import { IconId, registerIcon } from "../../src/void2d/icon";
 import {
 	Tile,
 	Vec2,
@@ -1360,6 +1361,58 @@ function textSdfColorEffect(): Scene2D {
 	return s;
 }
 
+const ICON_SOURCE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
+	`viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" ` +
+	`stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5 L11 15.5 L16 9"/>` +
+	`</svg>`;
+const ICON_SIZES: float32[] = [16.0, 24.0, 32.0];
+const ICON_TINT_COUNT: int32 = 5;
+const ICON_TURN: float32 = 0.5236;
+
+function goldenIcon(): IconId {
+	const r = registerIcon(ICON_SOURCE);
+	if (!r.ok) {
+		console.log(`icon/tinted: the icon was refused, ${r.error.what}`);
+		unreachable;
+	}
+	return r.value;
+}
+
+function iconTinted(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const id: IconId = goldenIcon();
+	const white: Color = rgba(0.92, 0.94, 0.98, 1.0);
+	let x: float32 = 12.0;
+	for (const size of ICON_SIZES) {
+		s.add(s.icon(id, size, size, white).at(x, 12.0));
+		x = x + size + 14.0;
+	}
+	const tints: Color[] = [
+		rgba(0.95, 0.35, 0.30, 1.0),
+		rgba(0.30, 0.75, 0.45, 1.0),
+		rgba(0.35, 0.55, 0.95, 1.0),
+		rgba(0.95, 0.80, 0.25, 1.0),
+		rgba(1.0, 1.0, 1.0, 0.4),
+	];
+	for (let k: int32 = 0; k < ICON_TINT_COUNT; k++) {
+		const left: float32 = 12.0 + (k as float32) * 40.0;
+		if (k == ICON_TINT_COUNT - 1) {
+			s.add(s.rect(32.0, 32.0, rgba(0.85, 0.30, 0.55, 1.0)).at(left - 4.0, 52.0));
+		}
+		s.add(s.icon(id, 24.0, 24.0, tints[k]).at(left, 56.0));
+	}
+	const turned = s.add(s.icon(id, 24.0, 24.0, white).at(12.0, 104.0));
+	turned.setPivot(12.0, 12.0);
+	turned.setRotation(ICON_TURN);
+	const window = s.add(s.mask(20.0, 20.0).at(52.0, 100.0));
+	window.addChild(s.icon(id, 32.0, 32.0, white).at(-6.0, -6.0));
+	const faded = s.add(s.group().at(100.0, 100.0));
+	faded.setAlpha(0.5);
+	faded.addChild(s.icon(id, 24.0, 24.0, rgba(0.95, 0.35, 0.30, 1.0)));
+	faded.addChild(s.icon(id, 24.0, 24.0, rgba(0.35, 0.55, 0.95, 1.0)).at(12.0, 6.0));
+	return s;
+}
+
 function filterManyTargets(): Scene2D {
 	const s = Scene2D.create(DARK);
 	for (let k: int32 = 0; k < MANY_TARGETS_COUNT; k++) {
@@ -1577,5 +1630,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/sdfZoom4", build: textSdfZoom4 },
 		{ name: "text/sdfScaleDown", build: textSdfScaleDown },
 		{ name: "text/sdfColorEffect", build: textSdfColorEffect },
+		{ name: "icon/tinted", build: iconTinted },
+		{ name: "icon/tintedDpi150", build: iconTinted },
 	];
 }
