@@ -1921,6 +1921,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   since a retained list may still name its view. `Tile` holds a
   `TextureSource` (a `Texture`, a `RenderTarget`, or white) instead of a raw view id, so a tile
   resolves its view when drawn: `tile(texture, w, h)`, `targetTile(target, w, h)`, `whiteTile(w, h)`.
+  `Texture.detach()` is the inverse of `adopt`: the caller takes the handles, nothing is
+  destroyed, and the texture is closed; void3d uses it to defer a freed texture's destruction.
   `setTiles`/`appendTiles` take `TileCell[]` as `anim` takes `Tile[]`: a cell now carries a
   reference, and a read-only view's element cannot be stored (PARALOCK E24).
   void2d re-arms on a generation change: `batcher.c` forgets its buffers, samplers, white view,
