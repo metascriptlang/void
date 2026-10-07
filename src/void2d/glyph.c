@@ -931,6 +931,35 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 	p->dirty = 1;
 }
 
+int void2dGlyphPolygonCoverage(unsigned char *coverage, int width, int height, const double *xy,
+                               const int *counts, int contours) {
+	int total = 0;
+	for (int i = 0; i < contours; i++) { total += counts[i]; }
+	double reach = 1.0;
+	for (int i = 0; i < total * 2; i++) {
+		if (fabs(xy[i]) > reach) { reach = fabs(xy[i]); }
+	}
+	double quantum = floor(32000.0 / reach);
+	if (quantum > 4096.0) { quantum = 4096.0; }
+	if (quantum < 1.0) { return VOID2D_POLYGON_TOO_LARGE; }
+	stbtt_vertex *vertices = (stbtt_vertex *)malloc(sizeof(stbtt_vertex) * (size_t)total);
+	if (!vertices) { return VOID2D_POLYGON_NO_MEMORY; }
+	int at = 0;
+	for (int i = 0; i < contours; i++) {
+		for (int k = 0; k < counts[i]; k++, at++) {
+			memset(&vertices[at], 0, sizeof(stbtt_vertex));
+			vertices[at].type = k == 0 ? STBTT_vmove : STBTT_vline;
+			vertices[at].x = (stbtt_int16)floor(xy[2 * at] * quantum + 0.5);
+			vertices[at].y = (stbtt_int16)floor(xy[2 * at + 1] * quantum + 0.5);
+		}
+	}
+	stbtt__bitmap bitmap = { width, height, width, coverage };
+	float scale = (float)(1.0 / quantum);
+	stbtt_Rasterize(&bitmap, 0.35f, vertices, total, scale, scale, 0.0f, 0.0f, 0, 0, 0, NULL);
+	free(vertices);
+	return 0;
+}
+
 int void2dGlyphPageTexel(int page, int x, int y) {
 	if (!validPage(page)) { return -1; }
 	GlyphPage *p = &s_pages[page];

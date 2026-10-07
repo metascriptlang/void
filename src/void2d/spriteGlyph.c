@@ -1,4 +1,5 @@
 #include "spriteGlyph.h"
+#include "glyph.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -368,13 +369,12 @@ typedef struct {
 } Path;
 
 typedef struct {
-	float *acc;
+	uint8_t *px;
 	size_t capacity;
-	int width, height, stride;
-} Cover;
+} Scratch;
 
-static Path s_flat, s_left, s_right, s_inset, s_poly;
-static Cover s_cover;
+static Path s_flat, s_left, s_right, s_inset, s_poly, s_shifted;
+static Scratch s_scratch;
 static int s_failed;
 
 static int pathPush(Path *path, double x, double y) {
@@ -415,115 +415,51 @@ static void pathCubic(Path *path, Pt p0, Pt p1, Pt p2, Pt p3) {
 	}
 }
 
-static void coverBegin(Canvas *canvas) {
-	s_cover.width = canvas->width;
-	s_cover.height = canvas->height;
-	s_cover.stride = canvas->width + 2;
-	size_t need = (size_t)s_cover.stride * (size_t)canvas->height;
-	if (need > s_cover.capacity) {
-		float *grown = (float *)realloc(s_cover.acc, need * sizeof(float));
+static void fillContours(Canvas *canvas, const Pt *pts, const int *counts, int contours,
+                         uint8_t color) {
+	int total = 0;
+	for (int i = 0; i < contours; i++) { total += counts[i]; }
+	if (total > s_shifted.cap) {
+		Pt *grown = (Pt *)realloc(s_shifted.p, sizeof(Pt) * (size_t)total);
 		if (!grown) {
 			s_failed = VOID2D_SPRITE_NO_MEMORY;
 			return;
 		}
-		s_cover.acc = grown;
-		s_cover.capacity = need;
+		s_shifted.p = grown;
+		s_shifted.cap = total;
 	}
-	memset(s_cover.acc, 0, need * sizeof(float));
-}
-
-static double clampTo(double v, double low, double high) {
-	return v < low ? low : (v > high ? high : v);
-}
-
-static void coverEdge(double x0, double y0, double x1, double y1) {
-	if (y0 == y1 || !s_cover.acc) { return; }
-	double dir = 1.0;
-	if (y0 > y1) {
-		double t = x0;
-		x0 = x1;
-		x1 = t;
-		t = y0;
-		y0 = y1;
-		y1 = t;
-		dir = -1.0;
+	for (int i = 0; i < total; i++) {
+		s_shifted.p[i].x = pts[i].x + canvas->padX;
+		s_shifted.p[i].y = pts[i].y + canvas->padY;
 	}
-	double dxdy = (x1 - x0) / (y1 - y0);
-	double x = x0;
-	int yStart = 0;
-	if (y0 < 0.0) {
-		x -= y0 * dxdy;
-	} else {
-		yStart = (int)floor(y0);
-	}
-	int yEnd = y1 > (double)s_cover.height ? s_cover.height : (int)ceil(y1);
-	double limit = (double)s_cover.width;
-	for (int y = yStart; y < yEnd; y++) {
-		float *row = s_cover.acc + (size_t)y * (size_t)s_cover.stride;
-		double top = (double)y > y0 ? (double)y : y0;
-		double bottom = (double)(y + 1) < y1 ? (double)(y + 1) : y1;
-		double dy = bottom - top;
-		double xNext = x + dxdy * dy;
-		double d = dy * dir;
-		double cx = clampTo(x, 0.0, limit), cn = clampTo(xNext, 0.0, limit);
-		double lo = cx < cn ? cx : cn, hi = cx < cn ? cn : cx;
-		double loFloor = floor(lo);
-		int loIndex = (int)loFloor;
-		double hiCeil = ceil(hi);
-		int hiIndex = (int)hiCeil;
-		if (hiIndex <= loIndex + 1) {
-			double mid = 0.5 * (cx + cn) - loFloor;
-			row[loIndex] += (float)(d - d * mid);
-			row[loIndex + 1] += (float)(d * mid);
-		} else {
-			double s = 1.0 / (hi - lo);
-			double loFraction = lo - loFloor;
-			double a0 = 0.5 * s * (1.0 - loFraction) * (1.0 - loFraction);
-			double hiFraction = hi - hiCeil + 1.0;
-			double am = 0.5 * s * hiFraction * hiFraction;
-			row[loIndex] += (float)(d * a0);
-			if (hiIndex == loIndex + 2) {
-				row[loIndex + 1] += (float)(d * (1.0 - a0 - am));
-			} else {
-				double a1 = s * (1.5 - loFraction);
-				row[loIndex + 1] += (float)(d * (a1 - a0));
-				for (int xi = loIndex + 2; xi < hiIndex - 1; xi++) { row[xi] += (float)(d * s); }
-				double a2 = a1 + (double)(hiIndex - loIndex - 3) * s;
-				row[hiIndex - 1] += (float)(d * (1.0 - a2 - am));
-			}
-			row[hiIndex] += (float)(d * am);
+	size_t need = (size_t)canvas->width * (size_t)canvas->height;
+	if (need > s_scratch.capacity) {
+		uint8_t *grown = (uint8_t *)realloc(s_scratch.px, need);
+		if (!grown) {
+			s_failed = VOID2D_SPRITE_NO_MEMORY;
+			return;
 		}
-		x = xNext;
+		s_scratch.px = grown;
+		s_scratch.capacity = need;
 	}
-}
-
-static void coverPolygon(const Canvas *canvas, const Pt *pts, int n) {
-	for (int i = 0; i < n; i++) {
-		Pt a = pts[i], b = pts[(i + 1) % n];
-		coverEdge(a.x + canvas->padX, a.y + canvas->padY, b.x + canvas->padX, b.y + canvas->padY);
+	memset(s_scratch.px, 0, need);
+	int status = void2dGlyphPolygonCoverage(s_scratch.px, canvas->width, canvas->height,
+		(const double *)s_shifted.p, counts, contours);
+	if (status != 0) {
+		s_failed = status == VOID2D_POLYGON_NO_MEMORY ? VOID2D_SPRITE_NO_MEMORY
+		                                              : VOID2D_SPRITE_GEOMETRY;
+		return;
 	}
-}
-
-static void coverResolve(Canvas *canvas, uint8_t color) {
-	if (!s_cover.acc) { return; }
-	for (int y = 0; y < canvas->height; y++) {
-		const float *row = s_cover.acc + (size_t)y * (size_t)s_cover.stride;
-		float sum = 0.0f;
-		for (int x = 0; x < canvas->width; x++) {
-			sum += row[x];
-			double coverage = fabs((double)sum);
-			if (coverage > 1.0) { coverage = 1.0; }
-			uint8_t *px = canvas->px + (size_t)y * (size_t)canvas->width + (size_t)x;
-			double next = floor((double)*px + ((double)color - (double)*px) * coverage + 0.5);
-			*px = (uint8_t)next;
-		}
+	for (size_t i = 0; i < need; i++) {
+		if (s_scratch.px[i] == 0) { continue; }
+		double coverage = (double)s_scratch.px[i] / 255.0;
+		double base = (double)canvas->px[i];
+		canvas->px[i] = (uint8_t)floor(base + ((double)color - base) * coverage + 0.5);
 	}
 }
 
 static void fillPolygon(Canvas *canvas, const Pt *pts, int n, uint8_t color) {
-	coverBegin(canvas);
-	coverPolygon(canvas, pts, n);
-	coverResolve(canvas, color);
+	fillContours(canvas, pts, &n, 1, color);
 }
 
 static void fillTriangle(Canvas *canvas, Pt a, Pt b, Pt c) {
@@ -605,11 +541,9 @@ static void insetTriangleRing(Canvas *canvas, Pt a, Pt b, Pt c, double thickness
 		inner[i].x = incenter.x + k * (corners[i].x - incenter.x);
 		inner[i].y = incenter.y + k * (corners[i].y - incenter.y);
 	}
-	coverBegin(canvas);
-	coverPolygon(canvas, outer, 3);
-	Pt reversed[3] = { inner[2], inner[1], inner[0] };
-	coverPolygon(canvas, reversed, 3);
-	coverResolve(canvas, 255);
+	Pt ring[6] = { outer[0], outer[1], outer[2], inner[2], inner[1], inner[0] };
+	int counts[2] = { 3, 3 };
+	fillContours(canvas, ring, counts, 2, 255);
 }
 
 static void flipHorizontal(Canvas *canvas) {

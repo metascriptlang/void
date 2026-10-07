@@ -7,11 +7,16 @@
 #define VOID2D_FACE_NO_BASE -4
 #define VOID2D_FACE_BAD_COLOUR -5
 
+#define VOID2D_POLYGON_TOO_LARGE 1
+#define VOID2D_POLYGON_NO_MEMORY 2
+
 int void2dGlyphFaceLoad(const char *path);
 int void2dGlyphFaceSynthetic(int face, int bold, int italic);
 int void2dGlyphFaceSprite(int base);
 int void2dGlyphFaceIsSprite(int face);
 int *void2dGlyphSpriteCell(int face, float sizePx);
+int void2dGlyphPolygonCoverage(unsigned char *coverage, int width, int height, const double *xy,
+                               const int *counts, int contours);
 int void2dGlyphFaceCount(void);
 float void2dGlyphScale(int face, float sizePx);
 float *void2dGlyphFaceMetrics(int face, float sizePx);

@@ -1,5 +1,6 @@
 import { readFile } from "std/fs";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
+import "../void2d/face";
 import { SpriteCanvas, drawSprite, spriteCodepoint, spriteCount } from "../void2d/spriteGlyph";
 import { trimSpaces, parseInt32, NOT_A_NUMBER } from "../../tests/harness/parse";
 
