@@ -3,7 +3,7 @@
 // Heaps links PassObjects into a list that `filter` splits and `sort` reorders in place. Here
 // a list holds indices into the frame's Span<DrawItem>: `collect` keeps the items whose
 // material is in the list's phase, in item order, `sortByLayer` orders them by Pass.layer as
-// SortByMaterial does first, and `sortBackToFront` reorders them the way Renderer.depthSort does
+// SortByMaterial does first and then by the item's render order, and `sortBackToFront` reorders them the way Renderer.depthSort does
 // for the "alpha" pass. The index storage grows only when the item
 // count does (a structural change), so a frame allocates nothing.
 
@@ -26,11 +26,12 @@ export struct PassList {
 	indices: Vec<int32>;
 	depths: Vec<float32>;
 	layers: Vec<int32>;
+	orders: Vec<int32>;
 	count: int32;
 }
 
 export function forPhase(this typeof PassList, phase: Phase): PassList {
-	return { phase: phase, indices: [], depths: [], layers: [], count: 0 };
+	return { phase: phase, indices: [], depths: [], layers: [], orders: [], count: 0 };
 }
 
 function reserve(ref list: PassList, length: int32): void {
@@ -38,6 +39,7 @@ function reserve(ref list: PassList, length: int32): void {
 		list.indices.push(0);
 		list.depths.push(0.0);
 		list.layers.push(0);
+		list.orders.push(0);
 	}
 }
 
@@ -56,6 +58,7 @@ export function collect(
 			materials[material].castShadows != ShadowCasting.Only) {
 			list.indices[count] = i;
 			list.layers[count] = materials[material].layer;
+			list.orders[count] = items[i].order;
 			count = count + 1;
 		}
 	}
@@ -75,6 +78,7 @@ export function collectCasters(
 		if (materials[material].castShadows != ShadowCasting.Off) {
 			list.indices[count] = i;
 			list.layers[count] = materials[material].layer;
+			list.orders[count] = items[i].order;
 			count = count + 1;
 		}
 	}
@@ -94,6 +98,7 @@ export function filterFrustum(
 		if (frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world)) {
 			list.indices[count] = index;
 			list.layers[count] = list.layers[i];
+			list.orders[count] = list.orders[i];
 			count = count + 1;
 		} else {
 			excluded = excluded + 1;
@@ -114,8 +119,8 @@ function depthOf(item: DrawItem, camera: Readonly<Span<float32>>): float32 {
 	return w > 0.0 ? z / w : -z / w;
 }
 
-// Renderer.depthSort, back to front: lower layers first, then farthest first; items at the
-// same layer and depth keep their order. An insertion sort, stable and in place.
+// Renderer.depthSort, back to front: lower layers first, then lower render orders, then
+// farthest first; items at the same layer, order and depth keep their order. An insertion sort, stable and in place.
 export function sortBackToFront(
 	ref list: PassList,
 	items: Readonly<Span<DrawItem>>,
@@ -128,34 +133,42 @@ export function sortBackToFront(
 		const index: int32 = list.indices[i];
 		const depth: float32 = list.depths[i];
 		const layer: int32 = list.layers[i];
+		const order: int32 = list.orders[i];
 		let j: int32 = i - 1;
 		while (j >= 0 && (list.layers[j] > layer ||
-			(list.layers[j] == layer && list.depths[j] < depth))) {
+			(list.layers[j] == layer && (list.orders[j] > order ||
+				(list.orders[j] == order && list.depths[j] < depth))))) {
 			list.indices[j + 1] = list.indices[j];
 			list.depths[j + 1] = list.depths[j];
 			list.layers[j + 1] = list.layers[j];
+			list.orders[j + 1] = list.orders[j];
 			j = j - 1;
 		}
 		list.indices[j + 1] = index;
 		list.depths[j + 1] = depth;
 		list.layers[j + 1] = layer;
+		list.orders[j + 1] = order;
 	}
 }
 
-// SortByMaterial's first key: lower layers first, item order kept inside a layer (void3d does
-// not sort by shader or texture).
+// SortByMaterial's first key: lower layers first, then lower render orders, item order kept
+// inside both (void3d does not sort by shader or texture).
 export function sortByLayer(ref list: PassList): void {
 	for (let i = 1; i < list.count; i++) {
 		const index: int32 = list.indices[i];
 		const layer: int32 = list.layers[i];
+		const order: int32 = list.orders[i];
 		let j: int32 = i - 1;
-		while (j >= 0 && list.layers[j] > layer) {
+		while (j >= 0 && (list.layers[j] > layer ||
+			(list.layers[j] == layer && list.orders[j] > order))) {
 			list.indices[j + 1] = list.indices[j];
 			list.layers[j + 1] = list.layers[j];
+			list.orders[j + 1] = list.orders[j];
 			j = j - 1;
 		}
 		list.indices[j + 1] = index;
 		list.layers[j + 1] = layer;
+		list.orders[j + 1] = order;
 	}
 }
 

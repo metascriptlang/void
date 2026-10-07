@@ -140,6 +140,7 @@ export struct DrawItem {
 	mesh: MeshId;
 	material: MaterialId;
 	world: Mat4;
+	order: int32;
 }
 
 // Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no

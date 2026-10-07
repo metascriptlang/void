@@ -216,3 +216,80 @@ test "every list draws lower layers first; alpha goes back to front inside a lay
 	sortByLayer(additive);
 	assert additive.count == 2 && additive.indices[0] == 9 && additive.indices[1] == 8;
 }
+
+function ordered(base: DrawItem, order: int32): DrawItem {
+	return { ...base, order: order };
+}
+
+function backToFront(): Vec<float32> {
+	return [
+		1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+		0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+	];
+}
+
+test "a lower render order draws first in every list, after the layer and before the depth" {
+	let phases: Vec<Material> = [
+		layered(Phase.Opaque, 0), layered(Phase.Alpha, 0), layered(Phase.Additive, 0),
+		layered(Phase.Opaque, 1), layered(Phase.Alpha, 1),
+	];
+	let items: Vec<DrawItem> = [
+		ordered(item(0, 0, 0.0, 0.5), 2), ordered(item(0, 0, 0.0, 0.5), -3),
+		ordered(item(0, 3, 0.0, 0.5), -9), item(0, 0, 0.0, 0.5),
+		ordered(item(0, 1, 0.0, 0.2), 5), ordered(item(0, 1, 0.0, 0.9), 5),
+		ordered(item(0, 1, 0.0, 0.9), -1), ordered(item(0, 4, 0.0, 0.9), -8),
+		ordered(item(0, 1, 0.0, 0.1), 0), ordered(item(0, 2, 0.0, 0.5), 4),
+		ordered(item(0, 2, 0.0, 0.5), 1), item(0, 2, 0.0, 0.5),
+	];
+	let opaque: PassList = PassList.forPhase(Phase.Opaque);
+	let alpha: PassList = PassList.forPhase(Phase.Alpha);
+	let additive: PassList = PassList.forPhase(Phase.Additive);
+	collect(opaque, items, phases);
+	collect(alpha, items, phases);
+	collect(additive, items, phases);
+	sortByLayer(opaque);
+	assert opaque.count == 4;
+	assert opaque.indices[0] == 1 && opaque.indices[1] == 3 && opaque.indices[2] == 0;
+	assert opaque.indices[3] == 2;
+	sortBackToFront(alpha, items, backToFront());
+	assert alpha.count == 5;
+	assert alpha.indices[0] == 6 && alpha.indices[1] == 8 && alpha.indices[2] == 5;
+	assert alpha.indices[3] == 4 && alpha.indices[4] == 7;
+	sortByLayer(additive);
+	assert additive.count == 3;
+	assert additive.indices[0] == 11 && additive.indices[1] == 10 && additive.indices[2] == 9;
+}
+
+test "equal render orders keep item order and the depth sort of the alpha list" {
+	let phases: Vec<Material> = materials();
+	let items: Vec<DrawItem> = [
+		ordered(item(0, 1, 0.0, 0.2), 7), ordered(item(0, 1, 0.0, 0.9), 7),
+		ordered(item(0, 1, 0.0, 0.9), 7), ordered(item(0, 1, 0.0, 0.5), 7),
+	];
+	let alpha: PassList = PassList.forPhase(Phase.Alpha);
+	collect(alpha, items, phases);
+	sortBackToFront(alpha, items, backToFront());
+	assert alpha.indices[0] == 1 && alpha.indices[1] == 2;
+	assert alpha.indices[2] == 3 && alpha.indices[3] == 0;
+	let opaque: PassList = PassList.forPhase(Phase.Opaque);
+	let same: Vec<DrawItem> = [
+		ordered(item(0, 0, 0.0, 0.5), 7), ordered(item(0, 0, 0.0, 0.1), 7),
+		ordered(item(0, 0, 0.0, 0.9), 7),
+	];
+	collect(opaque, same, phases);
+	sortByLayer(opaque);
+	assert opaque.indices[0] == 0 && opaque.indices[1] == 1 && opaque.indices[2] == 2;
+}
+
+test "a culled item's render order is compacted away with it" {
+	let items: Vec<DrawItem> = [
+		ordered(item(0, 1, 0.0, 0.5), 3), ordered(item(1, 1, 99.0, 0.5), -5),
+		ordered(item(0, 1, 0.0, 0.5), 1),
+	];
+	let meshes: Vec<MeshData> = [bounded(), MeshData.empty()];
+	let alpha: PassList = PassList.forPhase(Phase.Alpha);
+	collect(alpha, items, materials());
+	assert filterFrustum(alpha, items, meshes, Frustum3D.fromMatrix(identity())) == 0;
+	sortBackToFront(alpha, items, backToFront());
+	assert alpha.indices[0] == 1 && alpha.indices[1] == 2 && alpha.indices[2] == 0;
+}
