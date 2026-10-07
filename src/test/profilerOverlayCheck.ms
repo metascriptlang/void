@@ -292,6 +292,17 @@ test "at a fractional DPI every recorded edge is a whole device pixel" {
 	frameEnd();
 }
 
+test "a narrower framebuffer than the panel pins the panel to the left edge" {
+	profilerOverlayFeed(fixtureProfiler(), fixtureCounters());
+	profilerOverlaySetMode(OverlayMode.Full);
+	begin2d(20.0, 280.0, 1.0);
+	profilerOverlayRecord(20.0, 280.0, 1.0);
+	finishRecording();
+	assert uiInstanceCount() > 100;
+	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE) == 0.0;
+	frameEnd();
+}
+
 test "a recording is reused only while size, dpi, context generation and readout all match" {
 	assert recordingHolds(true, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.0, 3, 7);
 	assert !recordingHolds(false, 120.0, 60.0, 1.0, 3, 7, 120.0, 60.0, 1.0, 3, 7);

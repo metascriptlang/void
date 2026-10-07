@@ -240,7 +240,8 @@ export function profilerOverlayRefresh(): void {
 function recordLayout(layout: OverlayLayout, w: float32, h: float32, dpi: float32): void {
 	const cell: int32 = cellPixels(dpi);
 	const framebufferWidth: int32 = (w * dpi + 0.5) as int32;
-	const left: int32 = framebufferWidth - (layout.widthCells + PANEL_MARGIN) * cell;
+	const right: int32 = framebufferWidth - (layout.widthCells + PANEL_MARGIN) * cell;
+	const left: int32 = right < 0 ? 0 : right;
 	const top: int32 = PANEL_MARGIN * cell;
 	for (const r of layout.rects) {
 		drawUiInstance(0 as uint32, BlendMode.Alpha, uiInstance(
