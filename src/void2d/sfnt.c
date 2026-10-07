@@ -60,7 +60,7 @@ static int glyphInFormat4(const Summary *s, Off map, int codepoint) {
 	unsigned rangeShift = readU16(s, map + 12) >> 1;
 	Off endCount = map + 14;
 	Off search = endCount;
-	if (codepoint > 0xffff || !fits(s, map, 16 + (Off)segcount * 8)) { return 0; }
+	if (!fits(s, map, 16 + (Off)segcount * 8)) { return 0; }
 	if ((unsigned)codepoint >= readU16(s, search + (Off)rangeShift * 2)) {
 		search += (Off)rangeShift * 2;
 	}
