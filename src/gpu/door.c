@@ -246,16 +246,27 @@ uint32_t doorUniformSlotMask(int32_t program) {
 	return mask;
 }
 
-// Every backend's desc carries the same block sizes; D3D11's is always compiled in (hlsl5).
+// Every backend's desc carries the same block sizes; the D3D11 one is read, and a build whose
+// shader carries no hlsl5 (shader2d under GLCORE) stops by name.
+static const sg_shader_desc *reflectionDesc(int32_t program) {
+	const sg_shader_desc *desc = shaderOf(program)(SG_BACKEND_D3D11);
+	if (desc == 0) {
+		fprintf(stderr, "gpu door: program %d carries no D3D11 shader desc to reflect slots from; "
+			"a GL core build has none\n", (int)program);
+		abort();
+	}
+	return desc;
+}
+
 int32_t doorUniformBlockBytes(int32_t program, int32_t slot) {
 	if (slot < 0 || slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS) return 0;
-	const sg_shader_desc *desc = shaderOf(program)(SG_BACKEND_D3D11);
-	if (desc == 0 || desc->uniform_blocks[slot].stage == SG_SHADERSTAGE_NONE) return 0;
+	const sg_shader_desc *desc = reflectionDesc(program);
+	if (desc->uniform_blocks[slot].stage == SG_SHADERSTAGE_NONE) return 0;
 	return (int32_t)desc->uniform_blocks[slot].size;
 }
 
 uint32_t doorTextureSlotMask(int32_t program) {
-	const sg_shader_desc *desc = shaderOf(program)(SG_BACKEND_D3D11);
+	const sg_shader_desc *desc = reflectionDesc(program);
 	uint32_t mask = 0;
 	for (int slot = 0; slot < SG_MAX_VIEW_BINDSLOTS; slot++) {
 		if (desc->views[slot].texture.stage != SG_SHADERSTAGE_NONE) mask |= 1u << slot;
@@ -264,7 +275,7 @@ uint32_t doorTextureSlotMask(int32_t program) {
 }
 
 uint32_t doorSamplerSlotMask(int32_t program) {
-	const sg_shader_desc *desc = shaderOf(program)(SG_BACKEND_D3D11);
+	const sg_shader_desc *desc = reflectionDesc(program);
 	uint32_t mask = 0;
 	for (int slot = 0; slot < SG_MAX_SAMPLER_BINDSLOTS; slot++) {
 		if (desc->samplers[slot].stage != SG_SHADERSTAGE_NONE) mask |= 1u << slot;
