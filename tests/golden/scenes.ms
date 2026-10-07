@@ -11,9 +11,12 @@ import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
 import { Align, TextRun } from "../../src/void2d/textLayout";
 import {
 	addFont, addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature,
-	SizeAdjust, DEFAULT_FONT, fontFace, spriteCellFor,
+	SizeAdjust, DEFAULT_FONT, fontFace,
 } from "../../src/void2d/font";
 import { faceMetrics } from "../../src/void2d/face";
+when (voidSprites) {
+	import { spriteCellFor } from "../../src/void2d/font";
+}
 import { BoxStyle, CornerRadii, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
@@ -901,14 +904,19 @@ struct SpriteGrid {
 // column is forceWidth local units wide, and a row pitch is the cell height, so the line spacing
 // makes up the difference between the font's line height and it.
 function spriteGrid(dpi: float32): SpriteGrid {
-	const cell = spriteCellFor(DEFAULT_FONT, SPRITE_SIZE * dpi);
-	const m = faceMetrics(fontFace(DEFAULT_FONT), SPRITE_SIZE);
-	const pitch: float32 = (cell.height as float32) / dpi;
-	return {
-		forceWidth: (cell.width as float32) / dpi,
-		pitch: pitch,
-		spacing: pitch - (m.ascent + m.descent + m.lineGap),
-	};
+	when (voidSprites) {
+		const cell = spriteCellFor(DEFAULT_FONT, SPRITE_SIZE * dpi);
+		const m = faceMetrics(fontFace(DEFAULT_FONT), SPRITE_SIZE);
+		const pitch: float32 = (cell.height as float32) / dpi;
+		return {
+			forceWidth: (cell.width as float32) / dpi,
+			pitch: pitch,
+			spacing: pitch - (m.ascent + m.descent + m.lineGap),
+		};
+	} else {
+		console.log("text/spriteGlyphs: the scene needs a build with -d:voidSprites");
+		unreachable;
+	}
 }
 
 function spriteBlock(

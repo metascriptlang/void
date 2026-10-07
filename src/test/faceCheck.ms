@@ -2,9 +2,6 @@ import {
 	FaceError,
 	loadFace,
 	syntheticFace,
-	spriteFace,
-	isSpriteFace,
-	spriteCell,
 	glyphIndex,
 	glyphAdvance,
 	glyphKern,
@@ -12,9 +9,13 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "../void2d/face";
-import {
-	SPRITE_FIRST_CODEPOINT, spriteCount, spriteCodepoint, spriteIndex, spriteTableFault,
-} from "../void2d/spriteGlyph";
+
+when (voidSprites) {
+	import { spriteFace, isSpriteFace, spriteCell } from "../void2d/face";
+	import {
+		SPRITE_FIRST_CODEPOINT, spriteCount, spriteCodepoint, spriteIndex, spriteTableFault,
+	} from "../void2d/spriteGlyph";
+}
 
 let loadedFace: int32 = -1;
 
@@ -107,104 +108,106 @@ test "a zero thickness keeps the table's position and estimates from the ascent"
 	assert near(d.strikethroughThickness, thickness);
 }
 
-function spriteFaceOfTest(): int32 {
-	return try spriteFace(testFace()) catch -1;
-}
-
-test "the sprite range table is sorted, disjoint and dense, and its ids fit a glyph key" {
-	assert spriteTableFault() == 0;
-	assert spriteCount() > 0;
-	assert spriteCount() < 65536;
-	for (let id = 1; id <= spriteCount(); id++) {
-		const codepoint = spriteCodepoint(id);
-		assert codepoint != 0;
-		assert spriteIndex(codepoint) == id;
+when (voidSprites) {
+	function spriteFaceOfTest(): int32 {
+		return try spriteFace(testFace()) catch -1;
 	}
-	assert spriteCodepoint(0) == 0;
-	assert spriteCodepoint(spriteCount() + 1) == 0;
-}
 
-test "no sprite codepoint is below the one font.ms stops looking under" {
-	assert spriteCodepoint(1) == SPRITE_FIRST_CODEPOINT;
-	assert spriteIndex(SPRITE_FIRST_CODEPOINT - 1) == 0;
-	for (let id = 1; id <= spriteCount(); id++) {
-		assert spriteCodepoint(id) >= SPRITE_FIRST_CODEPOINT;
+	test "the sprite range table is sorted, disjoint and dense, and its ids fit a glyph key" {
+		assert spriteTableFault() == 0;
+		assert spriteCount() > 0;
+		assert spriteCount() < 65536;
+		for (let id = 1; id <= spriteCount(); id++) {
+			const codepoint = spriteCodepoint(id);
+			assert codepoint != 0;
+			assert spriteIndex(codepoint) == id;
+		}
+		assert spriteCodepoint(0) == 0;
+		assert spriteCodepoint(spriteCount() + 1) == 0;
 	}
-}
 
-test "a sprite face has glyph 0 outside the range table and one unique id inside it" {
-	const sprite = spriteFaceOfTest();
-	assert sprite >= 0;
-	assert isSpriteFace(sprite);
-	assert !isSpriteFace(testFace());
-	assert glyphIndex(sprite, "A".code) == 0;
-	assert glyphIndex(sprite, 0x24FF) == 0;
-	assert glyphIndex(sprite, 0x2800 + 0x100) == 0;
-	assert glyphIndex(sprite, 0x2588) == spriteIndex(0x2588);
-	assert glyphIndex(sprite, 0x2588) != glyphIndex(sprite, 0x2589);
-	assert glyphIndex(sprite, 0x2800) != glyphIndex(sprite, 0x28FF);
-}
-
-test "a sprite face is made from a loaded plain face only" {
-	const noBase = spriteFace(1000000);
-	assert !noBase.ok;
-	if (!noBase.ok) { assert noBase.error == FaceError.NoBaseFace; }
-	const again = spriteFace(spriteFaceOfTest());
-	assert !again.ok;
-	if (!again.ok) { assert again.error == FaceError.NoBaseFace; }
-}
-
-test "a sprite advance is the widest ASCII advance of its base, unkerned and unemboldened" {
-	const face = testFace();
-	const sprite = spriteFaceOfTest();
-	let widest: float32 = 0.0;
-	for (let c = 32; c < 127; c++) {
-		const a = glyphAdvance(face, glyphIndex(face, c), 14.0);
-		if (a > widest) { widest = a; }
+	test "no sprite codepoint is below the one font.ms stops looking under" {
+		assert spriteCodepoint(1) == SPRITE_FIRST_CODEPOINT;
+		assert spriteIndex(SPRITE_FIRST_CODEPOINT - 1) == 0;
+		for (let id = 1; id <= spriteCount(); id++) {
+			assert spriteCodepoint(id) >= SPRITE_FIRST_CODEPOINT;
+		}
 	}
-	const block = glyphIndex(sprite, 0x2588);
-	assert Math.abs(glyphAdvance(sprite, block, 14.0) - widest) < 0.001;
-	assert glyphAdvance(sprite, 0, 14.0) == 0.0;
-	assert glyphKern(sprite, block, block, 14.0) == 0.0;
-	const bold = try syntheticFace(face, true, false) catch -1;
-	const boldSprite = try spriteFace(bold) catch -1;
-	assert boldSprite >= 0;
-	const boldBlock = glyphIndex(boldSprite, 0x2588);
-	assert Math.abs(glyphAdvance(boldSprite, boldBlock, 14.0) - widest) < 0.001;
-}
 
-test "a sprite cell is Ghostty's Metrics.calc over the base face at the device size" {
-	const face = testFace();
-	const sprite = spriteFaceOfTest();
-	const sizes: float32[] = [13.0, 14.0, 16.0, 17.5, 21.0, 33.3];
-	for (const size of sizes) {
-		const cell = spriteCell(sprite, size);
+	test "a sprite face has glyph 0 outside the range table and one unique id inside it" {
+		const sprite = spriteFaceOfTest();
+		assert sprite >= 0;
+		assert isSpriteFace(sprite);
+		assert !isSpriteFace(testFace());
+		assert glyphIndex(sprite, "A".code) == 0;
+		assert glyphIndex(sprite, 0x24FF) == 0;
+		assert glyphIndex(sprite, 0x2800 + 0x100) == 0;
+		assert glyphIndex(sprite, 0x2588) == spriteIndex(0x2588);
+		assert glyphIndex(sprite, 0x2588) != glyphIndex(sprite, 0x2589);
+		assert glyphIndex(sprite, 0x2800) != glyphIndex(sprite, 0x28FF);
+	}
+
+	test "a sprite face is made from a loaded plain face only" {
+		const noBase = spriteFace(1000000);
+		assert !noBase.ok;
+		if (!noBase.ok) { assert noBase.error == FaceError.NoBaseFace; }
+		const again = spriteFace(spriteFaceOfTest());
+		assert !again.ok;
+		if (!again.ok) { assert again.error == FaceError.NoBaseFace; }
+	}
+
+	test "a sprite advance is the widest ASCII advance of its base, unkerned and unemboldened" {
+		const face = testFace();
+		const sprite = spriteFaceOfTest();
 		let widest: float32 = 0.0;
 		for (let c = 32; c < 127; c++) {
-			const a = glyphAdvance(face, glyphIndex(face, c), size);
+			const a = glyphAdvance(face, glyphIndex(face, c), 14.0);
 			if (a > widest) { widest = a; }
 		}
-		const m = faceMetrics(face, size);
-		const height: float64 = (m.ascent + m.descent + m.lineGap) as float64;
-		const cellHeight: float64 = Math.floor(height + 0.5);
-		const baseline: float64 = Math.floor(
-			(m.lineGap as float64) / 2.0 + (m.descent as float64) -
-				(cellHeight - height) / 2.0 + 0.5,
-		);
-		const ink = decorationMetrics(face, size).underlineThickness as float64;
-		assert cell.width == (Math.floor(widest as float64 + 0.5) as int32);
-		assert cell.height == (cellHeight as int32);
-		assert cell.topToBaseline == ((cellHeight - baseline) as int32);
-		assert cell.lineThickness == Math.max(1, Math.ceil(ink) as int32);
+		const block = glyphIndex(sprite, 0x2588);
+		assert Math.abs(glyphAdvance(sprite, block, 14.0) - widest) < 0.001;
+		assert glyphAdvance(sprite, 0, 14.0) == 0.0;
+		assert glyphKern(sprite, block, block, 14.0) == 0.0;
+		const bold = try syntheticFace(face, true, false) catch -1;
+		const boldSprite = try spriteFace(bold) catch -1;
+		assert boldSprite >= 0;
+		const boldBlock = glyphIndex(boldSprite, 0x2588);
+		assert Math.abs(glyphAdvance(boldSprite, boldBlock, 14.0) - widest) < 0.001;
 	}
-	const at14 = spriteCell(sprite, 14.0);
-	assert at14.width == 14 && at14.height == 17;
-	assert at14.topToBaseline == 14 && at14.lineThickness == 1;
-}
 
-test "a sprite cell asked of a plain face or a size nobody can draw is empty" {
-	const plain = spriteCell(testFace(), 14.0);
-	assert plain.width == 0 && plain.height == 0;
-	const none = spriteCell(spriteFaceOfTest(), 0.0);
-	assert none.width == 0 && none.height == 0;
+	test "a sprite cell is Ghostty's Metrics.calc over the base face at the device size" {
+		const face = testFace();
+		const sprite = spriteFaceOfTest();
+		const sizes: float32[] = [13.0, 14.0, 16.0, 17.5, 21.0, 33.3];
+		for (const size of sizes) {
+			const cell = spriteCell(sprite, size);
+			let widest: float32 = 0.0;
+			for (let c = 32; c < 127; c++) {
+				const a = glyphAdvance(face, glyphIndex(face, c), size);
+				if (a > widest) { widest = a; }
+			}
+			const m = faceMetrics(face, size);
+			const height: float64 = (m.ascent + m.descent + m.lineGap) as float64;
+			const cellHeight: float64 = Math.floor(height + 0.5);
+			const baseline: float64 = Math.floor(
+				(m.lineGap as float64) / 2.0 + (m.descent as float64) -
+					(cellHeight - height) / 2.0 + 0.5,
+			);
+			const ink = decorationMetrics(face, size).underlineThickness as float64;
+			assert cell.width == (Math.floor(widest as float64 + 0.5) as int32);
+			assert cell.height == (cellHeight as int32);
+			assert cell.topToBaseline == ((cellHeight - baseline) as int32);
+			assert cell.lineThickness == Math.max(1, Math.ceil(ink) as int32);
+		}
+		const at14 = spriteCell(sprite, 14.0);
+		assert at14.width == 14 && at14.height == 17;
+		assert at14.topToBaseline == 14 && at14.lineThickness == 1;
+	}
+
+	test "a sprite cell asked of a plain face or a size nobody can draw is empty" {
+		const plain = spriteCell(testFace(), 14.0);
+		assert plain.width == 0 && plain.height == 0;
+		const none = spriteCell(spriteFaceOfTest(), 0.0);
+		assert none.width == 0 && none.height == 0;
+	}
 }

@@ -8,7 +8,6 @@ import {
 	summaryCovers,
 	colourBuilt,
 	isColourOnly,
-	isSpriteFace,
 } from "../void2d/face";
 import {
 	Font,
@@ -28,8 +27,13 @@ import {
 	Presentation,
 	codepointFaceFor,
 	faceSlotFor,
-	spriteCellFor,
 } from "../void2d/font";
+
+when (voidSprites) {
+	import { isSpriteFace } from "../void2d/face";
+	import { spriteCellFor } from "../void2d/font";
+}
+
 import { Scene2D } from "../void2d/node";
 import "../void2d/scene";
 import { Align, TextLayout } from "../void2d/textLayout";
@@ -511,68 +515,70 @@ test "a line box is as tall as the tallest face on it, and a Latin line keeps th
 	assert approx(l.height, latin + mixed + latin);
 }
 
-test "a sprite codepoint resolves to a sprite face before any font and probes no coverage" {
-	const f = added(LATIN);
-	addFallbackFont(f, CJK);
-	const modes: Presentation[] = [
-		Presentation.Default, Presentation.Text, Presentation.Emoji, Presentation.Any,
-	];
-	const probes = fallbackProbes();
-	const loads = fallbackFacesLoaded();
-	const samples: int32[] = [0x2500, 0x2588, 0x2593, 0x257F, 0x2800, 0x28FF];
-	for (const mode of modes) {
-		for (const codepoint of samples) {
-			const resolvedFace = codepointFaceFor(f, codepoint, mode);
-			assert isSpriteFace(resolvedFace.face);
-			assert resolvedFace.scale == 1.0;
-			assert glyphIndex(resolvedFace.face, codepoint) != 0;
+when (voidSprites) {
+	test "a sprite codepoint resolves to a sprite face before any font and probes no coverage" {
+		const f = added(LATIN);
+		addFallbackFont(f, CJK);
+		const modes: Presentation[] = [
+			Presentation.Default, Presentation.Text, Presentation.Emoji, Presentation.Any,
+		];
+		const probes = fallbackProbes();
+		const loads = fallbackFacesLoaded();
+		const samples: int32[] = [0x2500, 0x2588, 0x2593, 0x257F, 0x2800, 0x28FF];
+		for (const mode of modes) {
+			for (const codepoint of samples) {
+				const resolvedFace = codepointFaceFor(f, codepoint, mode);
+				assert isSpriteFace(resolvedFace.face);
+				assert resolvedFace.scale == 1.0;
+				assert glyphIndex(resolvedFace.face, codepoint) != 0;
+			}
 		}
+		assert fallbackProbes() == probes;
+		assert fallbackFacesLoaded() == loads;
+		assert !isSpriteFace(codepointFaceFor(f, "A".code, Presentation.Default).face);
+		assert !isSpriteFace(codepointFaceFor(f, 0x24FF, Presentation.Default).face);
+		assert !isSpriteFace(codepointFaceFor(f, 0x4F60, Presentation.Default).face);
 	}
-	assert fallbackProbes() == probes;
-	assert fallbackFacesLoaded() == loads;
-	assert !isSpriteFace(codepointFaceFor(f, "A".code, Presentation.Default).face);
-	assert !isSpriteFace(codepointFaceFor(f, 0x24FF, Presentation.Default).face);
-	assert !isSpriteFace(codepointFaceFor(f, 0x4F60, Presentation.Default).face);
-}
 
-test "one sprite face serves every codepoint of a font and each font's base has its own" {
-	const a = added(LATIN);
-	const b = added(CJK);
-	const first = codepointFaceFor(a, 0x2588, Presentation.Default).face;
-	assert codepointFaceFor(a, 0x2800, Presentation.Default).face == first;
-	assert codepointFaceFor(a, 0x2588, Presentation.Text).face == first;
-	const other = codepointFaceFor(b, 0x2588, Presentation.Default).face;
-	assert isSpriteFace(other);
-	assert other != first;
-}
+	test "one sprite face serves every codepoint of a font and each font's base has its own" {
+		const a = added(LATIN);
+		const b = added(CJK);
+		const first = codepointFaceFor(a, 0x2588, Presentation.Default).face;
+		assert codepointFaceFor(a, 0x2800, Presentation.Default).face == first;
+		assert codepointFaceFor(a, 0x2588, Presentation.Text).face == first;
+		const other = codepointFaceFor(b, 0x2588, Presentation.Default).face;
+		assert isSpriteFace(other);
+		assert other != first;
+	}
 
-test "a laid out line puts the sprite face on the box and braille glyphs and the font on the rest" {
-	const f = added(LATIN);
-	const l = layoutWith(f, "a\u{2588}b\u{2800}");
-	assert l.glyphs[0].face == fontFace(f) && l.glyphs[2].face == fontFace(f);
-	assert isSpriteFace(l.glyphs[1].face) && isSpriteFace(l.glyphs[3].face);
-	assert l.glyphs[1].size == 13.0;
-	assert l.glyphs[1].glyph == glyphIndex(l.glyphs[1].face, 0x2588);
-	assert approx(l.glyphs[1].advance, glyphAdvance(l.glyphs[1].face, l.glyphs[1].glyph, 13.0));
-	assert l.glyphs[1].advance > 0.0;
-}
+	test "a laid out line puts sprites on box and braille glyphs and the font on the rest" {
+		const f = added(LATIN);
+		const l = layoutWith(f, "a\u{2588}b\u{2800}");
+		assert l.glyphs[0].face == fontFace(f) && l.glyphs[2].face == fontFace(f);
+		assert isSpriteFace(l.glyphs[1].face) && isSpriteFace(l.glyphs[3].face);
+		assert l.glyphs[1].size == 13.0;
+		assert l.glyphs[1].glyph == glyphIndex(l.glyphs[1].face, 0x2588);
+		assert approx(l.glyphs[1].advance, glyphAdvance(l.glyphs[1].face, l.glyphs[1].glyph, 13.0));
+		assert l.glyphs[1].advance > 0.0;
+	}
 
-test "a cell is whole device pixels at every size and DPI, and forceWidth reproduces its width" {
-	const f = added(LATIN);
-	const face = fontFace(f);
-	const sizes: float32[] = [13.0, 14.0, 16.0];
-	const scales: float32[] = [1.0, 1.25, 1.5];
-	for (const size of sizes) {
-		for (const dpl of scales) {
-			const cell = spriteCellFor(f, size * dpl);
-			assert cell.width >= 1 && cell.height >= 1 && cell.lineThickness >= 1;
-			assert cell.topToBaseline >= 1 && cell.topToBaseline <= cell.height;
-			const forceWidth: float32 = (cell.width as float32) / dpl;
-			assert Math.abs(forceWidth * dpl - (cell.width as float32)) < 0.001;
-			const advance = glyphAdvance(face, glyphIndex(face, "W".code), size * dpl);
-			assert Math.abs((cell.width as float32) - advance) <= 1.5;
+	test "a cell is whole device pixels at every size and DPI and forceWidth reproduces it" {
+		const f = added(LATIN);
+		const face = fontFace(f);
+		const sizes: float32[] = [13.0, 14.0, 16.0];
+		const scales: float32[] = [1.0, 1.25, 1.5];
+		for (const size of sizes) {
+			for (const dpl of scales) {
+				const cell = spriteCellFor(f, size * dpl);
+				assert cell.width >= 1 && cell.height >= 1 && cell.lineThickness >= 1;
+				assert cell.topToBaseline >= 1 && cell.topToBaseline <= cell.height;
+				const forceWidth: float32 = (cell.width as float32) / dpl;
+				assert Math.abs(forceWidth * dpl - (cell.width as float32)) < 0.001;
+				const advance = glyphAdvance(face, glyphIndex(face, "W".code), size * dpl);
+				assert Math.abs((cell.width as float32) - advance) <= 1.5;
+			}
 		}
+		assert spriteCellFor(f, 14.0 * 1.25).width == 17;
+		assert spriteCellFor(f, 14.0 * 1.25).height == 21;
 	}
-	assert spriteCellFor(f, 14.0 * 1.25).width == 17;
-	assert spriteCellFor(f, 14.0 * 1.25).height == 21;
 }

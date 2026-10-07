@@ -7,7 +7,10 @@
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../deps/stb/stb_truetype.h"
+
+#ifdef VOID2D_SPRITES
 #include "spriteGlyph.h"
+#endif
 
 #ifdef VOID2D_COLOUR_EMOJI
 #include <stdint.h>
@@ -605,6 +608,7 @@ int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
 	return s_faceCount++;
 }
 
+#ifdef VOID2D_SPRITES
 int void2dGlyphFaceSprite(int base) {
 	if (!validFace(base)) { return VOID2D_FACE_NO_BASE; }
 	if (s_faces[base].sprite || s_faces[base].colourOnly) { return VOID2D_FACE_NO_BASE; }
@@ -620,6 +624,7 @@ int void2dGlyphFaceSprite(int base) {
 }
 
 int void2dGlyphFaceIsSprite(int face) { return validFace(face) && s_faces[face].sprite; }
+#endif
 
 int void2dGlyphFaceCount(void) { return s_faceCount; }
 
@@ -655,10 +660,13 @@ const unsigned char *void2dGlyphFaceData(int face, int *length) {
 
 int void2dGlyphIndex(int face, int codepoint) {
 	if (!validFace(face)) { return 0; }
+#ifdef VOID2D_SPRITES
 	if (s_faces[face].sprite) { return void2dSpriteIndex(codepoint); }
+#endif
 	return findGlyph(&s_faces[face], codepoint);
 }
 
+#ifdef VOID2D_SPRITES
 static float spriteAsciiUnits(GlyphFace *f) {
 	if (f->asciiUnits > 0.0f) { return f->asciiUnits; }
 	int widest = 0;
@@ -745,13 +753,16 @@ static int spriteInk(int face, int glyph, float sizePx, int *box, const unsigned
 	box[3] = ink[3] - cell[2];
 	return 1;
 }
+#endif
 
 float void2dGlyphAdvance(int face, int glyph, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
+#ifdef VOID2D_SPRITES
 	if (s_faces[face].sprite) {
 		if (glyph <= 0) { return 0.0f; }
 		return spriteAsciiUnits(&s_faces[face]) * void2dGlyphScale(face, sizePx);
 	}
+#endif
 	if (s_faces[face].colourOnly && (glyph < 0 || glyph >= s_faces[face].glyphCount)) {
 		return 0.0f;
 	}
@@ -780,12 +791,14 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX) {
 	if (!validFace(face)) { return s_box; }
 	float scale = void2dGlyphScale(face, sizePx);
 	GlyphFace *f = &s_faces[face];
+#ifdef VOID2D_SPRITES
 	if (f->sprite) {
 		const unsigned char *rows;
 		int stride;
 		spriteInk(face, glyph, sizePx, s_box, &rows, &stride);
 		return s_box;
 	}
+#endif
 	if (s_rasterBox && !isSynthetic(f)) {
 		s_rasterBox(f->bytes, f->length, glyph, sizePx, shiftX, s_box);
 		return s_box;
@@ -899,6 +912,7 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 	float scale = void2dGlyphScale(face, sizePx);
 	GlyphFace *f = &s_faces[face];
 	unsigned char *at = p->texels + (size_t)y * (size_t)p->size + (size_t)x;
+#ifdef VOID2D_SPRITES
 	if (f->sprite) {
 		const unsigned char *rows;
 		int stride, box[4];
@@ -912,7 +926,9 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 			memcpy(at + (size_t)row * (size_t)p->size, rows + (size_t)row * (size_t)stride,
 				(size_t)w);
 		}
-	} else if (s_rasterFill && !isSynthetic(f)) {
+	} else
+#endif
+	if (s_rasterFill && !isSynthetic(f)) {
 		s_rasterFill(f->bytes, f->length, glyph, sizePx, shiftX, at, w, h, p->size);
 	} else if (isSynthetic(f)) {
 		stbtt_vertex *vertices = NULL;
@@ -931,6 +947,7 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 	p->dirty = 1;
 }
 
+#ifdef VOID2D_SPRITES
 int void2dGlyphPolygonCoverage(unsigned char *coverage, int width, int height, const double *xy,
                                const int *counts, int contours) {
 	int total = 0;
@@ -959,6 +976,7 @@ int void2dGlyphPolygonCoverage(unsigned char *coverage, int width, int height, c
 	free(vertices);
 	return 0;
 }
+#endif
 
 int void2dGlyphPageTexel(int page, int x, int y) {
 	if (!validPage(page)) { return -1; }

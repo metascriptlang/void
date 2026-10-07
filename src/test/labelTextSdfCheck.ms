@@ -195,16 +195,18 @@ test "a cubic outline falls back to the coverage atlas for that glyph and keeps 
 	releaseLabelText(index);
 }
 
-test "a sprite has no outline, so the SDF regime draws it from its coverage tile" {
-	setSdfRegime(true);
-	defer setSdfRegime(false);
-	const index = shapedAt("\u{2588}\u{2500}A", 13.0);
-	const text = placeLabel(index, trs2d(0.0, 0.0, 0.3, 2.0, 2.0), 1.0);
-	assert text.regime == TextRegime.Sdf;
-	assert text.placedValid && text.refused == 0;
-	assert (text.placed.length as int32) == 3;
-	assert glyphAtlas.pageKind(text.placed[0].page) == PageKind.Coverage;
-	assert glyphAtlas.pageKind(text.placed[1].page) == PageKind.Coverage;
-	assert glyphAtlas.pageKind(text.placed[2].page) == PageKind.Sdf;
-	releaseLabelText(index);
+when (voidSprites) {
+	test "a sprite has no outline, so the SDF regime draws it from its coverage tile" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const index = shapedAt("\u{2588}\u{2500}A", 13.0);
+		const text = placeLabel(index, trs2d(0.0, 0.0, 0.3, 2.0, 2.0), 1.0);
+		assert text.regime == TextRegime.Sdf;
+		assert text.placedValid && text.refused == 0;
+		assert (text.placed.length as int32) == 3;
+		assert glyphAtlas.pageKind(text.placed[0].page) == PageKind.Coverage;
+		assert glyphAtlas.pageKind(text.placed[1].page) == PageKind.Coverage;
+		assert glyphAtlas.pageKind(text.placed[2].page) == PageKind.Sdf;
+		releaseLabelText(index);
+	}
 }

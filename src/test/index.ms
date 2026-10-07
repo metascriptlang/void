@@ -15,7 +15,11 @@ import "./textMetricsCheck";
 import "./textGammaCheck";
 import "./fontCheck";
 import "./syntheticFaceCheck";
-import "./spriteOracleCheck";
+when (voidSprites) {
+	import "./spriteOracleCheck";
+} else {
+	import "./spriteOffCheck";
+}
 import "./fontOracleCheck";
 import "./sfntBoundsCheck";
 import "./sfntCmapCheck";

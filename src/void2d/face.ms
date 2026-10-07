@@ -1,9 +1,6 @@
 import {
 	void2dGlyphFaceLoad,
 	void2dGlyphFaceSynthetic,
-	void2dGlyphFaceSprite,
-	void2dGlyphFaceIsSprite,
-	void2dGlyphSpriteCell,
 	void2dGlyphIndex,
 	void2dGlyphLookups,
 	void2dGlyphAdvance,
@@ -25,7 +22,17 @@ import {
 	void2dGlyphColourLayerRgba,
 } from "./glyph.h";
 import "./colourEmoji/colourEmoji";
-import "./spriteGlyph";
+
+when (voidSprites) {
+	import "./spriteSwitch";
+	import "./spriteGlyph";
+	import {
+		void2dGlyphFaceSprite,
+		void2dGlyphFaceIsSprite,
+		void2dGlyphSpriteCell,
+	} from "./glyph.h";
+}
+
 import {
 	void2dSfntPeek,
 	void2dSfntCovers,
@@ -142,24 +149,30 @@ export function syntheticFace(
 	return faceResult(void2dGlyphFaceSynthetic(face, bold ? 1 : 0, italic ? 1 : 0));
 }
 
-export function spriteFace(base: int32): Result<int32, FaceError> {
-	return faceResult(void2dGlyphFaceSprite(base));
-}
-
 export function isSpriteFace(face: int32): boolean {
-	return void2dGlyphFaceIsSprite(face) != 0;
+	when (voidSprites) {
+		return void2dGlyphFaceIsSprite(face) != 0;
+	} else {
+		return false;
+	}
 }
 
-export struct SpriteCell {
-	width: int32;
-	height: int32;
-	topToBaseline: int32;
-	lineThickness: int32;
-}
+when (voidSprites) {
+	export function spriteFace(base: int32): Result<int32, FaceError> {
+		return faceResult(void2dGlyphFaceSprite(base));
+	}
 
-export function spriteCell(face: int32, sizePx: float32): SpriteCell {
-	const c: Ptr<int32> = void2dGlyphSpriteCell(face, sizePx);
-	return { width: c[0], height: c[1], topToBaseline: c[2], lineThickness: c[3] };
+	export struct SpriteCell {
+		width: int32;
+		height: int32;
+		topToBaseline: int32;
+		lineThickness: int32;
+	}
+
+	export function spriteCell(face: int32, sizePx: float32): SpriteCell {
+		const c: Ptr<int32> = void2dGlyphSpriteCell(face, sizePx);
+		return { width: c[0], height: c[1], topToBaseline: c[2], lineThickness: c[3] };
+	}
 }
 
 export function glyphLookups(): uint32 {
