@@ -47,6 +47,8 @@ unsigned int void2dGlyphPageTexelRgba(int page, int x, int y);
 #define VOID2D_BLIT_OUTSIDE_PAGE 3
 int void2dGlyphPageBlitRgba(int page, int x, int y, int w, int h,
                             const unsigned int *texels, int stride);
+int void2dGlyphPageBlitMask(int page, int x, int y, int w, int h,
+                            const unsigned char *alpha, long long count, int stride);
 const unsigned char *void2dGlyphPageData(int page);
 int void2dGlyphPageUploaded(int page);
 int void2dGlyphPageTakeUpload(int page);

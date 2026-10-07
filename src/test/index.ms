@@ -62,6 +62,9 @@ when (voidShaper) {
 when (voidSvg) {
 	import "./svgMaskCheck";
 	import "./svgOracleCheck";
+	import "./iconCheck";
+} else {
+	import "./iconOffCheck";
 }
 when (voidProfiler) {
 	import "./profilerCheck";

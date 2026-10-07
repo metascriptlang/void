@@ -699,6 +699,9 @@ static int pageKindBuilt(int kind) {
 #ifdef VOID2D_COLOUR_EMOJI
 	if (kind == VOID2D_PAGE_RGBA) { return 1; }
 #endif
+#ifdef VOID2D_SVG
+	if (kind == VOID2D_PAGE_MASK) { return 1; }
+#endif
 	return kind == VOID2D_PAGE_COVERAGE;
 }
 
@@ -837,6 +840,30 @@ int void2dGlyphPageBlitRgba(int page, int x, int y, int w, int h,
 	for (int row = 0; row < h; row++) {
 		memcpy(p->texels + ((size_t)(y + row) * (size_t)p->size + (size_t)x) * 4,
 			texels + (size_t)row * (size_t)stride, (size_t)w * 4);
+	}
+	p->dirty = 1;
+	return VOID2D_BLIT_OK;
+}
+
+int void2dGlyphPageBlitMask(int page, int x, int y, int w, int h,
+                            const unsigned char *alpha, long long count, int stride) {
+	if (!validPage(page) || !alpha || w <= 0 || h <= 0 || stride < w ||
+		count < (long long)(h - 1) * stride + w) {
+		return VOID2D_BLIT_BAD_HANDLE;
+	}
+	GlyphPage *p = &s_pages[page];
+	if (p->kind != VOID2D_PAGE_MASK) {
+		fprintf(stderr, "void2d: a mask tile was aimed at a %s page\n", pageKindName(p->kind));
+		return VOID2D_BLIT_WRONG_PAGE_KIND;
+	}
+	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
+		fprintf(stderr, "void2d: mask tile %dx%d at (%d,%d) falls outside its %d page\n",
+			w, h, x, y, p->size);
+		return VOID2D_BLIT_OUTSIDE_PAGE;
+	}
+	for (int row = 0; row < h; row++) {
+		memcpy(p->texels + (size_t)(y + row) * (size_t)p->size + (size_t)x,
+			alpha + (size_t)row * (size_t)stride, (size_t)w);
 	}
 	p->dirty = 1;
 	return VOID2D_BLIT_OK;

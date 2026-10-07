@@ -1,5 +1,6 @@
 import "./textSdfSwitch";
 import "./textColourSwitch";
+import "./svgMaskSwitch";
 import {
 	void2dGlyphBox,
 	void2dGlyphRasterize,
@@ -11,6 +12,11 @@ import {
 	void2dGlyphPageTakeUpload,
 	void2dGlyphPagesFrameBegin,
 } from "./glyph.h";
+
+extern function void2dGlyphPageBlitMask(
+	page: int32, x: int32, y: int32, width: int32, height: int32, alpha: Readonly<Span<uint8>>,
+	stride: int32,
+): int32;
 
 export const SUBPIXEL_VARIANTS: int32 = 4;
 export const GLYPH_GUTTER: int32 = 1;
@@ -32,6 +38,10 @@ export enum AtlasError {
 	SdfOutsidePage,
 	SdfBoxMismatch,
 	SdfNoMemory,
+	MaskBadHandle,
+	MaskWrongPageKind,
+	MaskOutsidePage,
+	MaskBadShape,
 }
 
 export enum PageKind {
@@ -128,6 +138,14 @@ export function packed(this key: GlyphKey): uint64 {
 		(sizeQ << 8) |
 		(((key.kind as int32) as uint64) << 4) |
 		(key.variant as uint64);
+}
+
+// A mask tile is one rasterization of one icon: the icon id in the face field, the mask height
+// in the glyph field and its width in the size field, so two sizes of an icon are two keys.
+export function maskKey(icon: int32, width: int32, height: int32): GlyphKey {
+	return {
+		kind: PageKind.Mask, face: icon, glyph: height, sizePx: width as float32, variant: 0,
+	};
 }
 
 export function pageKind(this atlas: GlyphAtlas, page: GlyphPage): PageKind {
@@ -388,6 +406,59 @@ export function acquireBlank(
 		height: height > 0 ? height : 0,
 		left: left,
 		top: top,
+		refs: 1,
+		key: packedKey,
+	}));
+}
+
+export function retainMask(this atlas: GlyphAtlas, key: GlyphKey): int32 {
+	if (key.kind != PageKind.Mask) { return -1; }
+	const hit = atlas.index.get(key.packed());
+	if (!hit.present) { return -1; }
+	atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
+	return hit.value;
+}
+
+function maskBlitRefusal(code: int32): AtlasError {
+	if (code == 1) { return AtlasError.MaskBadHandle; }
+	if (code == 2) { return AtlasError.MaskWrongPageKind; }
+	if (code == 3) { return AtlasError.MaskOutsidePage; }
+	console.log(`void2d: the mask blit returned the unknown code ${code}`);
+	unreachable;
+}
+
+export function acquireMask(
+	this atlas: GlyphAtlas,
+	key: GlyphKey,
+	width: int32,
+	height: int32,
+	alpha: Vec<uint8>,
+): Result<int32, AtlasError> {
+	if (key.kind != PageKind.Mask) { return Result.err(AtlasError.KindNotBuilt); }
+	if (void2dGlyphPageKindBuilt(key.kind as int32) == 0) {
+		return Result.err(AtlasError.KindNotBuilt);
+	}
+	if (key.variant != 0) { return Result.err(AtlasError.VariantOutOfRange); }
+	const held: int32 = atlas.retainMask(key);
+	if (held >= 0) { return Result.ok(held); }
+	if (width < 1 || height < 1 || (alpha.length as int32) != width * height) {
+		return Result.err(AtlasError.MaskBadShape);
+	}
+	const placed = try allocate(atlas, PageKind.Mask, width, height);
+	const code: int32 = void2dGlyphPageBlitMask(
+		atlas.pages[placed[0] as int32].handle as int32, placed[1], placed[2], width, height,
+		alpha, width);
+	if (code != 0) { return Result.err(maskBlitRefusal(code)); }
+	atlas.rasterizations = atlas.rasterizations + 1;
+	const packedKey: uint64 = key.packed();
+	return Result.ok(atlas.record(packedKey, {
+		page: placed[0],
+		x: placed[1],
+		y: placed[2],
+		width: width,
+		height: height,
+		left: 0,
+		top: 0,
 		refs: 1,
 		key: packedKey,
 	}));

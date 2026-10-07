@@ -520,7 +520,8 @@ uint32_t void2dGlyphPageView(int page) {
 		int size = void2dGlyphPageSize(page);
 		if (size <= 0) { return 0; }
 		int kind = void2dGlyphPageKind(page);
-		if (kind != VOID2D_PAGE_COVERAGE && kind != VOID2D_PAGE_SDF && kind != VOID2D_PAGE_RGBA) {
+		if (kind != VOID2D_PAGE_COVERAGE && kind != VOID2D_PAGE_SDF && kind != VOID2D_PAGE_RGBA &&
+			kind != VOID2D_PAGE_MASK) {
 			fprintf(stderr, "void2d: no image format for glyph page %d of kind %d\n", page, kind);
 			return 0;
 		}
@@ -553,6 +554,7 @@ static float glyphPageViewMode(uint32_t view) {
 	case -1: return 0.0f;
 	case VOID2D_PAGE_COVERAGE: return 1.0f;
 	case VOID2D_PAGE_SDF: return 2.0f;
+	case VOID2D_PAGE_MASK: return 1.0f;
 	default:
 		fprintf(stderr, "void2d: glyph page view %u of kind %d has no shader mode\n", view, kind);
 		abort();

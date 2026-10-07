@@ -461,7 +461,7 @@ function placementCurrent(entry: LabelText, world: Transform2D, scale: float32):
 		entry.key.fracY == fraction(world.ty * scale);
 }
 
-function uvRect(this t: GlyphTile): [float32, float32, float32, float32] {
+export function uvRect(this t: GlyphTile): [float32, float32, float32, float32] {
 	const size: float32 = GLYPH_PAGE_SIZE as float32;
 	return [
 		(t.x as float32) / size,
