@@ -198,6 +198,28 @@ export function asView(this texture: Texture): uint32 {
 	return texture.view;
 }
 
+export struct DetachedHandles {
+	image: uint32;
+	view: uint32;
+	generation: int32;
+}
+
+// The inverse of `adopt`: the caller takes the texture's handles and destroys nothing, and the
+// texture is closed as `close` leaves it. A texture lost to a newer context returns its stale
+// handles, so `generation` != `contextGeneration()` tells the caller they name nothing now.
+export function detach(this texture: Texture): DetachedHandles {
+	if (texture.closed) { stopOnClosed("detach"); }
+	const handles: DetachedHandles = {
+		image: texture.image,
+		view: texture.view,
+		generation: texture.generation,
+	};
+	forgetHandles(texture);
+	texture.realloc = null;
+	texture.closed = true;
+	return handles;
+}
+
 export function close(this texture: Texture): void {
 	if (texture.closed) { stopOnClosed("close"); }
 	releaseCurrent(texture);
