@@ -18,6 +18,10 @@ import {
 	MOVING_MATERIAL_UNIFORM_LENGTH,
 	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_UNIFORM_LENGTH,
+	UNLIT_MATERIAL_COLOR,
+	BACK_VIEW_SLOT,
+	DISSOLVE_VIEW_SLOT,
+	DISSOLVE_SAMPLER_SLOT,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -573,8 +577,9 @@ test "a moving key reads its program's block and the moving floats, and what its
 				const views: uint32 = textureSlotMask(key);
 				const samplers: uint32 = samplerSlotMask(key);
 				assert bit(views, 0) && bit(samplers, 0);
-				assert bit(views, 1) == key.backTexture;
-				assert bit(views, 2) == key.dissolve && bit(samplers, 1) == key.dissolve;
+				assert bit(views, BACK_VIEW_SLOT) == key.backTexture;
+				assert bit(views, DISSOLVE_VIEW_SLOT) == key.dissolve;
+				assert bit(samplers, DISSOLVE_SAMPLER_SLOT) == key.dissolve;
 				if (!unlit) {
 					const shadowed: Result<ProgramKey, ProgramError> = drawnIn(
 						{ ...feature, shadowed: true }, preset, true,
@@ -595,7 +600,7 @@ test "a caster keeps a dissolve and leaves the UV features to a cut" {
 			assert dissolve.value.dissolve && !dissolve.value.uvTransform;
 			assert uniformBlockLength(dissolve.value, MATERIAL_UNIFORM_SLOT) ==
 				uniformBlockLength(ProgramKey.of(program).withDissolve(), MATERIAL_UNIFORM_SLOT);
-			assert bit(textureSlotMask(dissolve.value), 2);
+			assert bit(textureSlotMask(dissolve.value), DISSOLVE_VIEW_SLOT);
 		}
 		const moved: Result<ProgramKey, ProgramError> =
 			castIn(ProgramKey.of(program).withUvTransform().withBackTexture());
@@ -607,7 +612,7 @@ test "a caster keeps a dissolve and leaves the UV features to a cut" {
 	}
 }
 
-test "movingDefaults makes both UV transforms the identity and leaves every other float 0" {
+test "movingDefaults makes both UV transforms and an unlit colour the identity, the rest 0" {
 	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
 		const key: ProgramKey = ProgramKey.of(program).withDissolve();
 		const values: Vec<float32> = movingDefaults(key);
@@ -617,7 +622,11 @@ test "movingDefaults makes both UV transforms the identity and leaves every othe
 		for (let i = 0; i < (values.length as int32); i++) {
 			if (values[i] == 1.0) { ones = ones + 1; } else { assert values[i] == 0.0; }
 		}
-		assert ones == 4;
+		if (program == Program.UnlitTextured) {
+			for (let i = 0; i < 4; i++) { assert values[UNLIT_MATERIAL_COLOR + i] == 1.0; }
+		}
+		const colour: int32 = program == Program.UnlitTextured ? 4 : 0;
+		assert ones == 4 + colour;
 		for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
 			assert values[matrix] == 1.0 && values[matrix + 1] == 0.0;
 			assert values[matrix + 2] == 0.0 && values[matrix + 3] == 1.0;
@@ -638,6 +647,8 @@ test "the core owns a frame block and asks for frames while time passes under a 
 	assert !released.ok && released.error == UniformError.Owned;
 	assert core.time == 0.0 && core.elapsedTime == 0.0;
 	core.changed = false;
+	core.generation = 1;
+	assert !core.needsFrame();
 	setElapsedTime(core, 0.25);
 	assert core.elapsedTime == 0.25 && !core.needsFrame();
 	core.readsTime = true;

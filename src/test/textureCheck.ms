@@ -11,7 +11,7 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	ProgramKey,
 } from "../void3d/gpu3d";
-import { Material, Phase, UniformBlock } from "../void3d/material";
+import { Material, Phase, UniformBlock, movingDefaults } from "../void3d/material";
 import {
 	TextureData, TextureId, TextureUploadError, TextureAlpha, NO_TEXTURE,
 } from "../void3d/texture";
@@ -31,6 +31,7 @@ import {
 	rebuildTextures,
 	samplerSlot,
 	reserveUniforms,
+	writeUniforms,
 } from "../void3d/draw";
 import {
 	Renderer,
@@ -313,4 +314,84 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 		assert !drawn.ok && drawn.error == PixelArtError.TextureReplaced;
 		assert preset.core.generation == 0;
 	}
+}
+
+// A LitTextured material of `key` over a block of its length, its base texture a raw view.
+function movingLit(context: DrawContext, key: ProgramKey): Material {
+	const values: Vec<float32> = key.moves() ? movingDefaults(key) : [4.0, 0.0, 0.0, 0.0];
+	let block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, values.length as int32);
+	if (!block.ok) { unreachable; }
+	if (!writeUniforms(context, block.value, values).ok) { unreachable; }
+	return {
+		...Material.keyed(key, RenderState.defaults(), Phase.Opaque),
+		texture0: 1, sampler0: 1, uniforms: block.value,
+	};
+}
+
+test "a back or noise texture is refused off its program, beside a raw view, or unissued" {
+	let context: DrawContext = DrawContext.withUniformCapacity(1024);
+	const plain: ProgramKey = ProgramKey.of(Program.LitTextured);
+	const back: ProgramKey = plain.withBackTexture();
+	const dissolve: ProgramKey = plain.withDissolve();
+	const slot: TextureId = firstSlotOf(context);
+	const unsampled: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, dissolve), backTexture: slot });
+	assert materialError(unsampled) == MaterialError.TextureNotSampled;
+	const noNoise: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, back), dissolveTexture: slot });
+	assert materialError(noNoise) == MaterialError.TextureNotSampled;
+	const twiceBack: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...movingLit(context, back), backTexture: slot, texture1: 3,
+	});
+	assert materialError(twiceBack) == MaterialError.TextureNamedTwice;
+	const twiceNoise: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...movingLit(context, dissolve), dissolveTexture: slot, sampler1: 3,
+	});
+	assert materialError(twiceNoise) == MaterialError.TextureNamedTwice;
+	const foreign: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, back), backTexture: FIRST_SLOT });
+	assert materialError(foreign) == MaterialError.ForeignTexture;
+	const stale: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, dissolve), dissolveTexture: slot });
+	assert materialError(stale) == MaterialError.StaleTexture;
+	assert context.liveMaterials() == 0;
+}
+
+test "the core refuses a moving material missing its back or noise texture, or with one replaced" {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + 256);
+	let created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	let core: Renderer = created.value;
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	let shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const back: ProgramKey = ProgramKey.of(Program.LitTextured).withBackTexture();
+	const dissolve: ProgramKey = ProgramKey.of(Program.LitTextured).withDissolve();
+	for (const key of [back, dissolve]) {
+		let bare: Result<MaterialId, MaterialError> = addMaterial(context, movingLit(context, key));
+		assert bare.ok;
+		if (!bare.ok) { return; }
+		let items: Vec<DrawItem> = [texturedItem(context, bare.value)];
+		let unbound: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
+		assert !unbound.ok && unbound.error == RendererError.MaterialTexture;
+		let raw: Material = { ...movingLit(context, key), texture1: 2, texture2: 2, sampler1: 2 };
+		let bound: Result<MaterialId, MaterialError> = addMaterial(context, raw);
+		assert bound.ok;
+		if (!bound.ok) { return; }
+		let boundItems: Vec<DrawItem> = [texturedItem(context, bound.value)];
+		let reached: Result<boolean, RendererError> =
+			beginFrame(core, boundItems, shortCamera, lights);
+		assert !reached.ok && reached.error == RendererError.CameraBlockLength;
+		if (key.backTexture) {
+			context.materials[bound.value.index].backTexture = firstSlotOf(context);
+		} else {
+			context.materials[bound.value.index].dissolveTexture = firstSlotOf(context);
+		}
+		let swapped: Result<boolean, RendererError> =
+			beginFrame(core, boundItems, camera, lights);
+		assert !swapped.ok && swapped.error == RendererError.TextureReplaced;
+	}
+	assert core.generation == 0;
 }

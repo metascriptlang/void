@@ -1,15 +1,17 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3 } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap, Face } from "../../src/gpu/state";
-import { makeTextureView, makeSampler } from "../../src/gpu/door";
 import { Material, Phase, UniformBlock, movingDefaults } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addTexturedQuad } from "../../src/void3d/meshData";
-import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
+import {
+	TextureData, TextureId, TextureUploadError, NO_TEXTURE,
+} from "../../src/void3d/texture";
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_COLOR, VERTEX_UNIFORM_LENGTH,
-	LIGHT_UNIFORM_LENGTH, MOVING_UV_SCROLL, MOVING_BACK_UV_MATRIX, MOVING_BACK_UV_OFFSET,
-	MOVING_DISSOLVE_THRESHOLD, MOVING_DISSOLVE_EDGE_WIDTH, MOVING_DISSOLVE_EDGE_COLOR,
-	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH, MOVING_MATERIAL_UNIFORM_LENGTH, movingBase, makeImage,
+	LIGHT_UNIFORM_LENGTH, MOVING_UV_MATRIX, MOVING_UV_OFFSET, MOVING_UV_SCROLL,
+	MOVING_BACK_UV_MATRIX, MOVING_BACK_UV_OFFSET, MOVING_DISSOLVE_THRESHOLD,
+	MOVING_DISSOLVE_EDGE_WIDTH, MOVING_DISSOLVE_EDGE_COLOR, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
+	MOVING_MATERIAL_UNIFORM_LENGTH, movingBase,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
@@ -42,6 +44,7 @@ extern function voidRunConfigured(
 
 // The quads, left to right.
 enum Quad {
+	Affine,
 	Scroll,
 	Back,
 	Front,
@@ -51,7 +54,7 @@ enum Quad {
 
 const WIDTH: int32 = 320;
 const HEIGHT: int32 = 240;
-const HALF: float32 = 0.5;
+const HALF: float32 = 0.4;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const BACKGROUND: Vec4 = { x: 0.1, y: 0.15, z: 0.2, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
@@ -63,15 +66,16 @@ const BLUE: uint32 = 0xFFFF0000;
 const YELLOW: uint32 = 0xFF00FFFF;
 const NOISE_LOW: uint32 = 0xFF000033;
 const NOISE_HIGH: uint32 = 0xFF0000CC;
-// Seconds per frame, and the scroll in u per second: one texel of the two every second frame.
-const ELAPSED: float32 = 0.25;
+// Seconds per frame, and the scroll in u per second: 0.125 u a frame, so the two texels trade
+// places every fourth frame.
+const ELAPSED: float64 = 0.25;
 const SCROLL: float32 = 0.5;
 const LAST_FRAME: int32 = 8;
 let pixelArt: boolean = voidCaptureEnvInt("VOID_MOVING_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_MOVING_CONTROL", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH +
-	4 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
+	5 * MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -79,7 +83,7 @@ let preset: PixelArtRenderer = makePreset();
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
-let positions: Vec<float32> = [-2.4, -1.2, 0.0, 1.2, 2.4];
+let positions: Vec<float32> = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5];
 let frameIndex: int32 = 0;
 let failures: int32 = 0;
 
@@ -127,11 +131,6 @@ function texture(pixels: Vec<uint32>, wrap: Wrap): TextureId {
 	unreachable;
 }
 
-// A raw view, as a material's texture1 to texture3 take (docs/VOID3D.md, M36 as built).
-function view(pixels: Vec<uint32>): uint32 {
-	return makeTextureView(makeImage(pixels, pixels.length as int32, 1));
-}
-
 // The control draws every quad with its key's features off, over the plain block.
 function materialFor(key: ProgramKey, values: Vec<float32>, front: boolean): Material {
 	const drawn: ProgramKey = control ? ProgramKey.of(key.program) : key;
@@ -160,8 +159,11 @@ function valuesOf(key: ProgramKey): Vec<float32> {
 }
 
 // Facing the camera with u growing to the right, or facing away with u growing to the left.
+// The control's keys sample no back or noise texture, so it names none.
 function place(quad: Quad, material: Material, facingAway: boolean): void {
-	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
+	const named: Material = control ?
+		{ ...material, backTexture: NO_TEXTURE, dissolveTexture: NO_TEXTURE } : material;
+	const added: Result<MaterialId, MaterialError> = addMaterial(context, named);
 	if (!added.ok) {
 		console.log(`FAIL moving material: ${quad.toString()} refused: ${added.error.toString()}`);
 		voidCaptureExit(1);
@@ -189,9 +191,15 @@ function init(): void {
 	const halves: TextureId = texture([RED, GREEN], Wrap.Repeat);
 	const red: TextureId = texture([RED], Wrap.Clamp);
 	const white: TextureId = texture([0xFFFFFFFF], Wrap.Clamp);
-	const backView: uint32 = view([BLUE, YELLOW]);
-	const noiseView: uint32 = view([NOISE_LOW, NOISE_HIGH]);
-	const noiseSampler: uint32 = makeSampler(FilterMode.Nearest, Wrap.Clamp);
+	const backTexture: TextureId = texture([BLUE, YELLOW], Wrap.Clamp);
+	const noise: TextureId = texture([NOISE_LOW, NOISE_HIGH], Wrap.Clamp);
+
+	// u' = 0.5 u + 0.5 reads only the right texel.
+	const affine: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
+	let affineValues: Vec<float32> = valuesOf(affine);
+	affineValues[movingBase(affine) + MOVING_UV_MATRIX] = 0.5;
+	affineValues[movingBase(affine) + MOVING_UV_OFFSET] = 0.5;
+	place(Quad.Affine, { ...materialFor(affine, affineValues, true), texture: halves }, false);
 
 	const scroll: ProgramKey = ProgramKey.of(Program.UnlitTextured).withUvTransform();
 	let scrollValues: Vec<float32> = valuesOf(scroll);
@@ -204,10 +212,10 @@ function init(): void {
 	backValues[movingBase(back) + MOVING_BACK_UV_MATRIX] = -1.0;
 	backValues[movingBase(back) + MOVING_BACK_UV_OFFSET] = 1.0;
 	place(Quad.Back, {
-		...materialFor(back, backValues, false), texture: red, texture1: backView,
+		...materialFor(back, backValues, false), texture: red, backTexture: backTexture,
 	}, true);
 	place(Quad.Front, {
-		...materialFor(back, backValues, false), texture: red, texture1: backView,
+		...materialFor(back, backValues, false), texture: red, backTexture: backTexture,
 	}, false);
 
 	const dissolve: ProgramKey = ProgramKey.of(Program.UnlitTextured).withDissolve();
@@ -219,8 +227,7 @@ function init(): void {
 	dissolveValues[base + MOVING_DISSOLVE_EDGE_COLOR + 2] = 1.0;
 	dissolveValues[base + MOVING_DISSOLVE_EDGE_COLOR + 3] = 1.0;
 	place(Quad.Dissolve, {
-		...materialFor(dissolve, dissolveValues, true),
-		texture: white, texture2: noiseView, sampler1: noiseSampler,
+		...materialFor(dissolve, dissolveValues, true), texture: white, dissolveTexture: noise,
 	}, false);
 
 	const litDissolve: ProgramKey = ProgramKey.of(Program.LitTextured).withDissolve();
@@ -228,8 +235,7 @@ function init(): void {
 	litValues[movingBase(litDissolve) + MOVING_DISSOLVE_THRESHOLD] = 0.5;
 	litValues[movingBase(litDissolve) + MOVING_DISSOLVE_EDGE_WIDTH] = 0.1;
 	place(Quad.LitDissolve, {
-		...materialFor(litDissolve, litValues, true),
-		texture: white, texture2: noiseView, sampler1: noiseSampler,
+		...materialFor(litDissolve, litValues, true), texture: white, dissolveTexture: noise,
 	}, false);
 
 	setAmbient(scene, vec3(1.0, 1.0, 1.0));
@@ -272,6 +278,10 @@ function isBackground(rgb: int64): boolean {
 }
 
 function check(camera: CameraView, swapped: boolean): void {
+	const mappedLeft: int64 = rgbAt(camera, Quad.Affine, -1.0);
+	if (!isColor(mappedLeft, GREEN) || !isColor(rgbAt(camera, Quad.Affine, 1.0), GREEN)) {
+		fail(`the UV transform did not map the quad onto the right texel: ${mappedLeft}`);
+	}
 	const left: int64 = rgbAt(camera, Quad.Scroll, -1.0);
 	const right: int64 = rgbAt(camera, Quad.Scroll, 1.0);
 	console.log(`moving material: time ${core().time}, scroll ${left} ${right}`);
@@ -304,7 +314,7 @@ function check(camera: CameraView, swapped: boolean): void {
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	frameIndex = frameIndex + 1;
-	if (refresh(scene, items) != 5) { fail("the scene does not draw its five quads"); }
+	if (refresh(scene, items) != 6) { fail("the scene does not draw its six quads"); }
 	const collected: Result<int32, LightError> = collectLights(scene, lights);
 	if (!collected.ok) { unreachable; }
 	const camera: CameraView = viewOf();
@@ -319,7 +329,7 @@ function frame(): void {
 		if (!drawn.ok) { fail(`forward refused: ${drawn.error.toString()}`); }
 	}
 	if (frameIndex == 4 || frameIndex == LAST_FRAME) {
-		if (core().time != ELAPSED * (frameIndex as float32)) {
+		if (core().time != ELAPSED * (frameIndex as float64)) {
 			fail(`the time is ${core().time} after ${frameIndex} frames`);
 		}
 		if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
@@ -327,7 +337,7 @@ function frame(): void {
 	}
 	if (frameIndex < LAST_FRAME) { return; }
 	if (failures > 0) { voidCaptureExit(1); }
-	console.log("PASS moving material: scroll, back texture, dissolve");
+	console.log("PASS moving material: affine, scroll, back texture, dissolve");
 	voidCaptureExit(0);
 }
 

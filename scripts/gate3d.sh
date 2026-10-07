@@ -2000,7 +2000,8 @@ run_moving_material() {
 		status=0
 		VOID_MOVING_PIXEL_ART=$preset VOID_MOVING_CONTROL=1 "$exe" \
 			> "$WORK/movingMaterial.control.$preset.log" 2>&1 || status=$?
-		for message in 'did not move with the time' 'not its mirrored back texture' \
+		for message in 'did not map the quad' 'did not move with the time' \
+			'not its mirrored back texture' \
 			'the dissolved half drew' 'not its edge colour' 'the lit dissolved half drew'; do
 			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/movingMaterial.control.$preset.log"; then
 				fail "moving-material: the featureless control in preset $preset did not fail on '$message' (exit $status)"
@@ -2008,7 +2009,7 @@ run_moving_material() {
 			fi
 		done
 	done
-	pass "moving-material: UV scroll on the frame time, a mirrored back texture and a dissolve with its edge band in both presets; the featureless control fails on each"
+	pass "moving-material: an affine UV transform, UV scroll on the frame time, a mirrored back texture and a dissolve with its edge band in both presets; the featureless control fails on each"
 }
 
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
@@ -2048,7 +2049,7 @@ run_dir_shadow() {
 			return
 		fi
 		status=0
-		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=7 "$exe" \r
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=7 "$exe" \
 			> "$WORK/dirShadow.dissolveControl.$preset.log" 2>&1 || status=$?
 		if [ "$status" -eq 0 ] ||
 			! grep -q 'dissolved half still cast' "$WORK/dirShadow.dissolveControl.$preset.log"; then

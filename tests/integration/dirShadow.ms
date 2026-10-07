@@ -7,15 +7,13 @@ import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/v
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH, MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_DISSOLVE_THRESHOLD, movingBase,
-	makeImage,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
 	addMeshData, addMaterial, addTexture, reserveUniforms, writeUniforms,
 } from "../../src/void3d/draw";
-import { TextureId, TextureUploadError } from "../../src/void3d/texture";
+import { TextureId, TextureUploadError, NO_TEXTURE } from "../../src/void3d/texture";
 import { FilterMode, Wrap } from "../../src/gpu/state";
-import { makeTextureView, makeSampler } from "../../src/gpu/door";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, LightKind, LightInstance, LightError,
@@ -167,15 +165,17 @@ function dissolvingCaster(): void {
 	const white: Result<TextureId, TextureUploadError> = addTexture(context, {
 		pixels: [0xFFFFFFFF], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	});
-	if (!white.ok) { unreachable; }
-	const noise: Vec<uint32> = [0xFF000033, 0xFF0000CC];
+	const noise: Result<TextureId, TextureUploadError> = addTexture(context, {
+		pixels: [0xFF000033, 0xFF0000CC], width: 2, height: 1,
+		filter: FilterMode.Nearest, wrap: Wrap.Clamp,
+	});
+	if (!white.ok || !noise.ok) { unreachable; }
 	const lit: Material = Material.ofKind(Program.LitTextured, MaterialKind.Opaque);
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...lit,
 		program: { ...key, shadowed: true },
 		texture: white.value,
-		texture2: makeTextureView(makeImage(noise, 2, 1)),
-		sampler1: makeSampler(FilterMode.Nearest, Wrap.Clamp),
+		dissolveTexture: key.dissolve ? noise.value : NO_TEXTURE,
 		uniforms: reserved.value,
 	});
 	if (!added.ok) { fail(`the caster was refused: ${added.error.toString()}`); }

@@ -393,7 +393,7 @@ test "a camera or light block of the wrong length refuses the frame before it ad
 	}
 }
 
-test "the core reserves the camera and light blocks and one screen mesh, nothing else" {
+test "the core reserves the camera, light and frame blocks and one screen mesh, nothing else" {
 	let small: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH - 1);
 	const refused: Result<Renderer, RendererError> = Renderer.create(small);
 	assert !refused.ok;
@@ -405,7 +405,8 @@ test "the core reserves the camera and light blocks and one screen mesh, nothing
 		assert context.uniforms.used == RENDERER_UNIFORM_LENGTH;
 		assert (context.meshes.length as int32) == 1 && (context.materials.length as int32) == 0;
 		assert core.cameraBlock.offset == 0 && core.lightBlock.offset == core.cameraBlock.length;
-		assert core.sceneGlobals.length == 2;
+		assert core.frameBlock.offset == core.lightBlock.offset + core.lightBlock.length;
+		assert core.sceneGlobals.length == 3;
 		assert core.needsFrame();
 		core.changed = false;
 		core.generation = 1;
