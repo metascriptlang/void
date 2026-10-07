@@ -313,8 +313,9 @@ export function advanceAnim(this s: Scene2D, payload: int32, dt: float32): void 
 	const total: float32 = cycleMs(s.anims[payload]);
 	if (total <= 0.0) { return; }
 	const looping: boolean = s.anims[payload].looping;
-	let carry: float32 = s.anims[payload].carryMs + step * 1000.0;
-	if (looping) { carry = carry - Math.floor((carry / total) as float64) as float32 * total; }
+	let wide: float64 = (s.anims[payload].carryMs as float64) + (step as float64) * 1000.0;
+	if (looping) { wide = wide - Math.floor(wide / (total as float64)) * (total as float64); }
+	let carry: float32 = wide as float32;
 	let current: int32 = s.anims[payload].current;
 	let delay: float32 = s.anims[payload].frameDelayMs(current);
 	while (carry >= delay) {
