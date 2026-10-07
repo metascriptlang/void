@@ -50,6 +50,7 @@ import "./scene3dCheck";
 import "./animationCheck";
 import "./pickCheck";
 import "./layersCheck";
+import "./renderOrderCheck";
 import "./particlesCheck";
 import "./layoutCheck";
 import "./billboardCheck";

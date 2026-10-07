@@ -123,6 +123,7 @@ export struct Object3D {
 	kind: NodeKind;
 	flags: BitSet<NodeFlag>;
 	layers: uint32;
+	renderOrder: int32;
 	parent: int32;
 	payload: int32;
 	// h3d.scene.Object.name (default null there, "" here): glTF nodes are name-keyed, and
@@ -292,6 +293,7 @@ export function create(this typeof Scene3D, context: DrawContext): Scene3D {
 		kind: NodeKind.Group,
 		flags: freshFlags(),
 		layers: DEFAULT_LAYERS,
+		renderOrder: 0,
 		parent: NO_NODE_3D,
 		payload: NO_NODE_3D,
 		name: "",
@@ -336,6 +338,7 @@ export function addGroup(
 		kind: NodeKind.Group,
 		flags: freshFlags(),
 		layers: DEFAULT_LAYERS,
+		renderOrder: 0,
 		parent: under,
 		payload: NO_NODE_3D,
 		name: "",
@@ -379,6 +382,7 @@ export function addMeshNode(
 		kind: NodeKind.Mesh,
 		flags: freshFlags(),
 		layers: DEFAULT_LAYERS,
+		renderOrder: 0,
 		parent: under,
 		payload: payload,
 		name: "",
@@ -406,6 +410,7 @@ export function addLightNode(
 		kind: NodeKind.Light,
 		flags: freshFlags(),
 		layers: DEFAULT_LAYERS,
+		renderOrder: 0,
 		parent: under,
 		payload: payload,
 		name: "",
@@ -426,8 +431,8 @@ export function addCameraNode(
 ): NodeId3D {
 	const under: int32 = parentRow(scene, parent, "addCameraNode");
 	const id: NodeId3D = newSlot(scene, {
-		kind: NodeKind.Group, flags: freshFlags(), layers: DEFAULT_LAYERS, parent: under,
-		payload: NO_NODE_3D,
+		kind: NodeKind.Group, flags: freshFlags(), layers: DEFAULT_LAYERS, renderOrder: 0,
+		parent: under, payload: NO_NODE_3D,
 		name: "", local: local, world: identity(), children: [],
 	});
 	scene.cameras.push({ node: id, camera: camera, layers: DEFAULT_LAYERS });
@@ -723,6 +728,17 @@ export function setLayers(scene: Scene3D, id: NodeId3D, layers: uint32): void {
 	scene.structureChanged = true;
 }
 
+// three.js `Object3D.renderOrder`: written like a transform, not like a layer. The draw list
+// keeps its shape, so `refresh`'s in-place pass copies the value into the item next frame.
+export function setRenderOrder(scene: Scene3D, id: NodeId3D, order: int32): void {
+	const row: int32 = scene.liveRow(id, "setRenderOrder");
+	scene.nodes[row].renderOrder = order;
+}
+
+export function renderOrderOf(this scene: Scene3D, id: NodeId3D): int32 {
+	return scene.nodes[scene.liveRow(id, "renderOrderOf")].renderOrder;
+}
+
 export function setLayer(scene: Scene3D, id: NodeId3D, layer: int32): void {
 	setLayers(scene, id, layerBit(layer));
 }
@@ -895,6 +911,7 @@ function fillDrawList(scene: Scene3D, layers: uint32, ref items: Vec<DrawItem>):
 				mesh: instance.mesh,
 				material: instance.material,
 				world: scene.nodes[index].world,
+				order: scene.nodes[index].renderOrder,
 			});
 		}
 		// Children are pushed in reverse so the stack pops them in declaration order: sibling
@@ -943,11 +960,13 @@ export function refresh(scene: Scene3D, ref items: Vec<DrawItem>): int32 {
 					items[at].world = scene.nodes[index].world;
 					items[at].mesh = instance.mesh;
 					items[at].material = instance.material;
+					items[at].order = scene.nodes[index].renderOrder;
 				} else {
 					items.push({
 						mesh: instance.mesh,
 						material: instance.material,
 						world: scene.nodes[index].world,
+						order: scene.nodes[index].renderOrder,
 					});
 				}
 				at = at + 1;
