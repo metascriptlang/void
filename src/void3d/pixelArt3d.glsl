@@ -164,6 +164,9 @@ void main() {
 #endif
 #ifdef DISSOLVE
     float noise = texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).r;
+    if (noise < dissolve.x) {
+        discard;
+    }
 #endif
 #ifdef PREMULTIPLIED
     texel = straightTexel(texel);
@@ -171,9 +174,6 @@ void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = litTexturedShade(texel, n);
 #ifdef DISSOLVE
-    if (noise < dissolve.x) {
-        discard;
-    }
     fragColor = dissolveEdgeOver(fragColor, noise);
 #endif
 #ifdef CUTOUT
@@ -252,6 +252,9 @@ void main() {
 #endif
 #ifdef DISSOLVE
     float noise = texture(sampler2D(dissolveTexture, dissolveSampler), surfaceUv).r;
+    if (noise < dissolve.x) {
+        discard;
+    }
 #endif
 #ifdef PREMULTIPLIED
     texel = straightTexel(texel);
@@ -259,9 +262,6 @@ void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
     fragColor = unlitTexturedShade(texel);
 #ifdef DISSOLVE
-    if (noise < dissolve.x) {
-        discard;
-    }
     fragColor = dissolveEdgeOver(fragColor, noise);
 #endif
 #ifdef CUTOUT
