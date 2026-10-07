@@ -820,6 +820,13 @@ else
 	fail "the record disagrees with the code — see out/gate-record.log"
 	grep -E '^FAIL' out/gate-record.log | sed 's/^/      /' || true
 fi
+if git ls-files -z 'src/*.ms' 'tests/*.ms' | xargs -0 awk -f scripts/stringLiterals.awk \
+		> out/gate-string-literals.log 2>&1; then
+	pass "style: every string literal in src and tests closes on its line, with no raw tab or CR"
+else
+	fail "style: a string literal holds a raw tab, CR or line end — see out/gate-string-literals.log"
+	head -8 out/gate-string-literals.log | sed 's/^/      /'
+fi
 # The conformance rows of docs/TESTING.md against the logs this run wrote; a skipped suite has
 # no log from this run, so its row is not judged.
 if [ "$QUICK" -eq 0 ]; then
