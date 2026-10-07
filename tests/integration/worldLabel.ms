@@ -10,7 +10,8 @@ import { MeshData, MeshError, Rgba, addTexturedQuad } from "../../src/void3d/mes
 import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH,
-	UNLIT_MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH,
+	UNLIT_MATERIAL_UNIFORM_LENGTH, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_LENGTH,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError, HandleError,
@@ -65,15 +66,15 @@ const BACKDROP_BLUE: int32 = 0x20;
 const SOLID: int32 = 253;
 const MIN_SOLID: int32 = 30;
 const SAME_SOLID: int32 = 3;
-const STAGES: int32 = 4;
+const STAGES: int32 = 5;
 const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 const NO_NODE: NodeId3D = { scene: 0, index: 0, generation: 0 };
 
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 5 * UNLIT_MATERIAL_UNIFORM_LENGTH +
-	4 * MATERIAL_UNIFORM_LENGTH,
+	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 4 * UNLIT_MATERIAL_UNIFORM_LENGTH +
+	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH + 4 * MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -91,6 +92,7 @@ let control: string = "";
 let heldBasis: CameraBasis = cameraOf(0).basisOf();
 let firstSolid: int32 = 0;
 let firstTarget: int32 = 0;
+let grownTarget: int32 = 0;
 let rangesBefore: int32 = 0;
 let stage: int32 = 0;
 
@@ -335,18 +337,21 @@ function frame(): void {
 	const view: CameraView = viewOf();
 	if (stage == 0) { heldBasis = view.basis; }
 	if (stage == 2) { setLabelText(own, "TT"); }
-	if (stage == 3) { setLabelTint(own, { red: 1.0, green: 1.0, blue: 1.0, alpha: 0.5 }); }
+	if (stage == 3) { setLabelText(own, "T"); }
+	if (stage == 4) { setLabelTint(own, { red: 1.0, green: 1.0, blue: 1.0, alpha: 0.5 }); }
 	const redrew: boolean = refreshLabel(own);
-	if (redrew != (stage == 0 || stage == 2)) { fail(`refreshLabel answered ${redrew}`); }
+	if (redrew != (stage == 0 || stage == 2 || stage == 3)) {
+		fail(`refreshLabel answered ${redrew}`);
+	}
 	if (refreshLabel(own)) { fail("a label redrew with nothing changed"); }
 	if (!context.hasTexture(own.texture)) { fail("a resize invalidated the texture"); }
 	place(view);
 	render(view);
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
-	const width: int32 = own.target.width;
-	const height: int32 = own.target.height;
+	const width: int32 = own.width;
+	const height: int32 = own.height;
 	checkOutside(width, height);
-	const solid: int32 = checkInside(width, height, stage == 3);
+	const solid: int32 = checkInside(width, height, stage == 4);
 	if (stage == 0) {
 		firstSolid = solid;
 		firstTarget = width;
@@ -356,6 +361,15 @@ function frame(): void {
 	}
 	if (stage == 2 && (width <= firstTarget || solid * 10 < firstSolid * 16)) {
 		fail(`a longer text drew ${solid} pixels over ${width} texels, after ${firstSolid}`);
+	}
+	if (stage == 2) { grownTarget = own.target.width; }
+	if (stage == 2 && grownTarget < width) { fail("the target is narrower than its text"); }
+	if (stage >= 3 && own.target.width != grownTarget) {
+		fail(`the target went from ${grownTarget} to ${own.target.width} texels at a shorter text`);
+	}
+	const drift: int32 = Math.abs(solid - firstSolid) as int32;
+	if (stage == 3 && (width != firstTarget || drift > SAME_SOLID)) {
+		fail(`the first text again drew ${solid} pixels over ${width} texels, not ${firstSolid}`);
 	}
 	console.log(`world label: stage ${stage} checked, ${solid} text pixels`);
 	stage = stage + 1;
@@ -372,7 +386,7 @@ function frame(): void {
 	if (!meshHeld.ok || !wallHeld.ok) { fail("the backdrop's holds were not the caller's"); }
 	const _texture: Result<int32, HandleError> = releaseTexture(context, backdrop);
 	console.log("PASS world label: checked text pixels, margin, orientation, premultiplied " +
-		"edges, facing, redraw on text only, tint, holds");
+		"edges, facing, redraw on text only, grow-only target, tint, holds");
 	voidCaptureExit(0);
 }
 

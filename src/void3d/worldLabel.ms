@@ -11,10 +11,10 @@ import { Color } from "../void2d/types";
 import { Anchor, ANCHOR_CENTER } from "./billboard";
 import { CameraBasis, rotationOfBasis } from "./camera";
 import {
-	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH,
-	UNLIT_MATERIAL_COLOR,
+	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
+	UNLIT_MATERIAL_COLOR, UNLIT_MATERIAL_UNIFORM_LENGTH, MOVING_UV_MATRIX, MOVING_UV_OFFSET,
 } from "./gpu3d";
-import { Material, Phase, UniformBlock } from "./material";
+import { Material, Phase, UniformBlock, movingDefaults } from "./material";
 import { MeshData, MeshError, Rgba, addTexturedVertex, addTriangle } from "./meshData";
 import { TextureId, TextureUploadError, TextureAlpha } from "./texture";
 import {
@@ -61,10 +61,12 @@ export interface WorldLabel {
 	uniforms: UniformBlock;
 	node: NodeId3D;
 	pixelsPerUnit: float32;
+	width: int32;
+	height: int32;
 	position: Vec3;
 	rotation: Quat;
 	posed: boolean;
-	tint: Vec<float32>;
+	block: Vec<float32>;
 	stale: boolean;
 	closed: boolean;
 }
@@ -78,6 +80,35 @@ export function plainStyle(this typeof WorldLabelStyle, pixelsPerUnit: float32):
 
 function texelsAcross(extent: float32): int32 {
 	return (Math.ceil(extent) as int32) + 2 * LABEL_PAD;
+}
+
+export function grown(have: int32, need: int32): int32 {
+	return need > have ? need : have;
+}
+
+export struct LabelUv {
+	scaleU: float32;
+	scaleV: float32;
+	offsetV: float32;
+}
+
+export function uvOfSubRect(
+	this typeof LabelUv,
+	width: int32,
+	height: int32,
+	capacityWidth: int32,
+	capacityHeight: int32,
+	topLeft: boolean,
+): LabelUv {
+	const scaleV: float32 = (height as float32) / (capacityHeight as float32);
+	return {
+		scaleU: (width as float32) / (capacityWidth as float32), scaleV: scaleV,
+		offsetV: topLeft ? 0.0 : 1.0 - scaleV,
+	};
+}
+
+function labelKey(): ProgramKey {
+	return ProgramKey.of(Program.UnlitTextured).withPremultiplied().withUvTransform();
 }
 
 export function labelQuad(anchor: Anchor, flipV: boolean): Result<MeshData, MeshError> {
@@ -167,18 +198,15 @@ export function create(
 		return Result.err(WorldLabelError.Mesh);
 	}
 	const reserved: Result<UniformBlock, UniformError> =
-		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH);
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) {
 		dropMesh(context, ui, target, shown.value, uploaded.value);
 		return Result.err(WorldLabelError.Uniforms);
 	}
-	let tint: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
-	if (!writeUniforms(context, reserved.value, tint).ok) { unreachable; }
+	const block: Vec<float32> = movingDefaults(labelKey());
+	if (!writeUniforms(context, reserved.value, block).ok) { unreachable; }
 	const material: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.keyed(
-			ProgramKey.of(Program.UnlitTextured).withPremultiplied(), premultipliedPass(),
-			Phase.Alpha,
-		),
+		...Material.keyed(labelKey(), premultipliedPass(), Phase.Alpha),
 		texture: shown.value, uniforms: reserved.value,
 	});
 	if (!material.ok) {
@@ -201,19 +229,34 @@ export function create(
 	const label: WorldLabel = {
 		scene: scene, ui: ui, text: words, target: target, texture: shown.value,
 		mesh: uploaded.value, material: material.value, uniforms: reserved.value,
-		node: placed.value, pixelsPerUnit: style.pixelsPerUnit, position: vec3(0.0, 0.0, 0.0),
-		rotation: identityQuat(), posed: false, tint: tint, stale: true, closed: false,
+		node: placed.value, pixelsPerUnit: style.pixelsPerUnit, width: width, height: height,
+		position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), posed: false, block: block,
+		stale: true, closed: false,
 	};
 	return Result.ok(label);
 }
 
+function writeBlock(this label: WorldLabel): void {
+	const uv: LabelUv = LabelUv.uvOfSubRect(
+		label.width, label.height, label.target.width, label.target.height, originTopLeft(),
+	);
+	const base: int32 = UNLIT_MATERIAL_UNIFORM_LENGTH;
+	label.block[base + MOVING_UV_MATRIX] = uv.scaleU;
+	label.block[base + MOVING_UV_MATRIX + 3] = uv.scaleV;
+	label.block[base + MOVING_UV_OFFSET + 1] = uv.offsetV;
+	if (!writeUniforms(label.scene.context, label.uniforms, label.block).ok) { unreachable; }
+}
+
 export function redraw(this label: WorldLabel): void {
-	const width: int32 = texelsAcross(label.text.textWidth());
-	const height: int32 = texelsAcross(label.text.textHeight());
-	label.target.resize(width, height);
-	label.ui.prepare(width as float32, height as float32, 1.0);
+	label.width = texelsAcross(label.text.textWidth());
+	label.height = texelsAcross(label.text.textHeight());
+	const capacityWidth: int32 = grown(label.target.width, label.width);
+	const capacityHeight: int32 = grown(label.target.height, label.height);
+	label.target.resize(capacityWidth, capacityHeight);
+	label.ui.prepare(capacityWidth as float32, capacityHeight as float32, 1.0);
 	label.ui.drawTarget(label.target);
 	label.stale = false;
+	label.writeBlock();
 	if (label.posed) { label.place(); }
 }
 
@@ -229,11 +272,11 @@ export function refreshLabel(label: WorldLabel): boolean {
 }
 
 export function setLabelTint(label: WorldLabel, tint: Rgba): void {
-	label.tint[UNLIT_MATERIAL_COLOR] = tint.red;
-	label.tint[UNLIT_MATERIAL_COLOR + 1] = tint.green;
-	label.tint[UNLIT_MATERIAL_COLOR + 2] = tint.blue;
-	label.tint[UNLIT_MATERIAL_COLOR + 3] = tint.alpha;
-	if (!writeUniforms(label.scene.context, label.uniforms, label.tint).ok) { unreachable; }
+	label.block[UNLIT_MATERIAL_COLOR] = tint.red;
+	label.block[UNLIT_MATERIAL_COLOR + 1] = tint.green;
+	label.block[UNLIT_MATERIAL_COLOR + 2] = tint.blue;
+	label.block[UNLIT_MATERIAL_COLOR + 3] = tint.alpha;
+	if (!writeUniforms(label.scene.context, label.uniforms, label.block).ok) { unreachable; }
 }
 
 function transformOf(m: Mat4): Transform3D {
@@ -264,8 +307,8 @@ function stopOnMirroredParent(): void {
 function place(this label: WorldLabel): void {
 	const scene: Scene3D = label.scene;
 	const row: int32 = scene.liveRow(label.node, "faceCamera");
-	const width: float32 = (label.target.width as float32) / label.pixelsPerUnit;
-	const height: float32 = (label.target.height as float32) / label.pixelsPerUnit;
+	const width: float32 = (label.width as float32) / label.pixelsPerUnit;
+	const height: float32 = (label.height as float32) / label.pixelsPerUnit;
 	const world: Mat4 = composeTransform(label.position, label.rotation, vec3(width, height, 1.0));
 	const parent: int32 = scene.nodes[row].parent;
 	if (parent == NO_NODE_3D) { stopOnMirroredParent(); }

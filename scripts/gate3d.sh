@@ -1075,6 +1075,7 @@ SHADOW_PATH_FUNCTIONS="dir83hadow77ap:drawShadows dir83hadow77ap:castsAll dir83h
 WORLD_LABEL_PATH_FUNCTIONS="world76abel:faceCamera world76abel:facingRotation camera:rotationOfBasis
 	world76abel:refreshLabel world76abel:setLabelTint world76abel:setLabelText
 	world76abel:redraw world76abel:place world76abel:transformOf world76abel:localFor
+	world76abel:writeBlock world76abel:uvOfSubRect world76abel:grown
 	scene:setLocal scene:liveRow scene:syncWorld"
 CARD_TABLE_PATH_FUNCTIONS="card84able83cene:frameCardTable card84able83cene:writeOrders
 	card84able83cene:writeDissolve card84able83cene:flicker card84able83cene:stepTorches

@@ -6,7 +6,9 @@ import {
 	Anchor, ANCHOR_CENTER, ANCHOR_BOTTOM_CENTER, ANCHOR_TOP_RIGHT,
 } from "../void3d/billboard";
 import { MeshData, MeshError, LIT_TEXTURED_VERTEX_STRIDE } from "../void3d/meshData";
-import { facingRotation, labelQuad, localFor } from "../void3d/worldLabel";
+import {
+	LabelUv, facingRotation, labelQuad, localFor, grown, uvOfSubRect,
+} from "../void3d/worldLabel";
 import { approx } from "./helpers";
 
 function near(a: Vec3, b: Vec3): boolean {
@@ -40,6 +42,10 @@ function quadOf(anchor: Anchor, flipV: boolean): MeshData {
 function cornerOf(data: MeshData, corner: int32): Vec3 {
 	const at: int32 = corner * LIT_TEXTURED_VERTEX_STRIDE;
 	return vec3(data.vertices[at], data.vertices[at + 1], data.vertices[at + 2]);
+}
+
+function uOf(data: MeshData, corner: int32): float32 {
+	return data.vertices[corner * LIT_TEXTURED_VERTEX_STRIDE + 6];
 }
 
 function vOf(data: MeshData, corner: int32): float32 {
@@ -107,4 +113,38 @@ test "a world pose under a moved, turned, scaled parent comes back as its local 
 		localFor(world, parent).scale,
 	);
 	assert sameMatrix(local.multiplyAffine(parent), world);
+}
+
+test "a label's target only grows: a smaller text keeps the capacity, a larger one takes its own" {
+	assert grown(40, 30) == 40;
+	assert grown(40, 40) == 40;
+	assert grown(40, 57) == 57;
+}
+
+test "the sub-rect's uv is the used share of the capacity, from the target's top left" {
+	const whole: LabelUv = LabelUv.uvOfSubRect(40, 20, 40, 20, true);
+	assert whole.scaleU == 1.0 && whole.scaleV == 1.0 && whole.offsetV == 0.0;
+	const topLeft: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, true);
+	assert topLeft.scaleU == 0.5 && topLeft.scaleV == 0.25 && topLeft.offsetV == 0.0;
+	const bottomLeft: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, false);
+	assert bottomLeft.scaleU == 0.5 && bottomLeft.scaleV == 0.25 && bottomLeft.offsetV == 0.75;
+	const whole2: LabelUv = LabelUv.uvOfSubRect(40, 20, 40, 20, false);
+	assert whole2.scaleV == 1.0 && whole2.offsetV == 0.0;
+}
+
+test "the moved quad shows the target's top rows and left columns and no others" {
+	for (const topLeft of [true, false]) {
+		const data: MeshData = quadOf(ANCHOR_CENTER, !topLeft);
+		const uv: LabelUv = LabelUv.uvOfSubRect(20, 10, 40, 40, topLeft);
+		const bottom: float32 = vOf(data, 0) * uv.scaleV + uv.offsetV;
+		const top: float32 = vOf(data, 2) * uv.scaleV + uv.offsetV;
+		const left: float32 = uOf(data, 0) * uv.scaleU;
+		const right: float32 = uOf(data, 2) * uv.scaleU;
+		assert left == 0.0 && right == 0.5;
+		if (topLeft) {
+			assert top == 0.0 && bottom == 0.25;
+		} else {
+			assert top == 1.0 && bottom == 0.75;
+		}
+	}
 }
