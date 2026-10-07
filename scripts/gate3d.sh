@@ -1072,7 +1072,7 @@ REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:d
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
 check_array_copies() {
-	rm -f out/debug/*ZsrcZgpuZ*Oms.c out/debug/*ZsrcZvoid3dZ*Oms.c
+	rm -f out/debug/*ZsrcZgpuZ*Oms.c out/debug/*ZsrcZvoid3dZ*Oms.c "out/debug/$(basename "$1" .ms).exe"
 	if ! msc build "$1" --emit=c > "$WORK/allocation.log" 2>&1; then
 		fail "allocation: emitting C for $1 failed; see $WORK/allocation.log"
 		return 1
