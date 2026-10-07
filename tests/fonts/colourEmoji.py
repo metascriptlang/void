@@ -1,0 +1,216 @@
+import io
+import struct
+import sys
+import zlib
+
+from fontTools import subset
+from fontTools.colorLib.builder import buildCOLR, buildCPAL
+from fontTools.fontBuilder import FontBuilder
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
+
+OUT = "tests/fonts/"
+PINNED = 3786825600
+NOTO_CHARS = [0x1F600, 0x1F44D, 0x2764, 0x1F680, 0x1F389, 0x23, 0xFE0F, 0x200D]
+UPEM = 1000
+RED = 0xCC3333
+BLUE = 0x3366CC
+WHITE = 0xFFFFFF
+
+
+def rgba(value):
+    return ((value >> 16) & 255, (value >> 8) & 255, value & 255, 255)
+
+
+def png(width, height, rows):
+    raw = b"".join(b"\x00" + bytes(v for px in row for v in px) for row in rows)
+
+    def chunk(tag, data):
+        body = tag + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
+
+
+def solid(size, colour, corner=None):
+    rows = []
+    for y in range(size):
+        row = []
+        for x in range(size):
+            inCorner = corner is not None and x < size // 2 and y < size // 2
+            row.append(rgba(corner) if inCorner else rgba(colour))
+        rows.append(row)
+    return png(size, size, rows)
+
+
+def hexBlock(data):
+    return "\n".join(data[i:i + 16].hex() for i in range(0, len(data), 16))
+
+
+def save(font, name):
+    font.recalcTimestamp = False
+    font["head"].created = PINNED
+    font["head"].modified = PINNED
+    font.save(OUT + name)
+
+
+def squareGlyph(inset, height=700):
+    pen = TTGlyphPen(None)
+    pen.moveTo((inset, 0))
+    pen.lineTo((inset, height))
+    pen.lineTo((UPEM - inset, height))
+    pen.lineTo((UPEM - inset, 0))
+    pen.closePath()
+    return pen.glyph()
+
+
+def base(family, glyphOrder, cmap, glyphs, advance):
+    builder = FontBuilder(UPEM, isTTF=True)
+    builder.setupGlyphOrder(glyphOrder)
+    builder.setupCharacterMap(cmap)
+    if glyphs is not None:
+        builder.setupGlyf(glyphs)
+    builder.setupHorizontalMetrics({g: (advance, 0) for g in glyphOrder})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({"familyName": family, "styleName": "Regular"})
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200)
+    builder.setupPost(keepGlyphNames=False)
+    builder.setupHead(unitsPerEm=UPEM, created=PINNED, modified=PINNED)
+    return builder
+
+
+def squares(order):
+    glyphs = {g: squareGlyph(100) for g in order}
+    glyphs[".notdef"] = squareGlyph(50)
+    return glyphs
+
+
+def importXml(font, xml):
+    text = f'<?xml version="1.0"?><ttFont sfntVersion="\\x00\\x01\\x00\\x00">{xml}</ttFont>'
+    font.importXML(io.StringIO(text))
+
+
+def noto(source):
+    options = subset.Options()
+    options.layout_features = []
+    options.name_IDs = ["*"]
+    options.hinting = False
+    font = TTFont(source)
+    subsetter = subset.Subsetter(options)
+    subsetter.populate(unicodes=NOTO_CHARS)
+    subsetter.subset(font)
+    save(font, "NotoColorEmoji-subset.ttf")
+
+
+def textSymbol():
+    order = [".notdef", "u1F600", "uni2764"]
+    builder = base("Void Text Symbol", order, {0x1F600: "u1F600", 0x2764: "uni2764"},
+                   squares(order), 900)
+    save(builder.font, "textSymbol.ttf")
+
+
+def lineMetrics(direction, ascender, descender, widthMax):
+    return (f'<sbitLineMetrics direction="{direction}"><ascender value="{ascender}"/>'
+            f'<descender value="{descender}"/><widthMax value="{widthMax}"/>'
+            '<caretSlopeNumerator value="0"/><caretSlopeDenominator value="0"/>'
+            '<caretOffset value="0"/><minOriginSB value="0"/><minAdvanceSB value="0"/>'
+            '<maxBeforeBL value="0"/><minAfterBL value="0"/><pad1 value="0"/><pad2 value="0"/>'
+            '</sbitLineMetrics>')
+
+
+def cbdtSynthetic():
+    order = [".notdef", "u1F600", "uni2764"]
+    builder = base("Void CBDT Synthetic", order, {0x1F600: "u1F600", 0x2764: "uni2764"},
+                   None, 1000)
+    font = builder.font
+    uvs = CmapSubtable.newSubtable(14)
+    uvs.platformID, uvs.platEncID, uvs.language = 0, 5, 0
+    uvs.cmap = {}
+    uvs.uvsDict = {0xFE0F: [(0x2764, None), (0x1F600, None)]}
+    font["cmap"].tables.append(uvs)
+    strikes, data = [], []
+    for index, ppem in enumerate([8, 16]):
+        strikes.append(
+            f'<strike index="{index}"><bitmapSizeTable>{lineMetrics("hori", ppem, 0, ppem)}'
+            f'{lineMetrics("vert", ppem, 0, ppem)}<colorRef value="0"/>'
+            '<startGlyphIndex value="1"/><endGlyphIndex value="2"/>'
+            f'<ppemX value="{ppem}"/><ppemY value="{ppem}"/><bitDepth value="32"/>'
+            '<flags value="1"/></bitmapSizeTable>'
+            '<eblc_index_sub_table_1 imageFormat="17" firstGlyphIndex="1" lastGlyphIndex="2">'
+            '<glyphLoc id="1" name="u1F600"/><glyphLoc id="2" name="uni2764"/>'
+            '</eblc_index_sub_table_1></strike>')
+        items = []
+        for name, colour, corner in [("u1F600", RED, None), ("uni2764", BLUE, WHITE)]:
+            image = solid(ppem, colour, corner)
+            items.append(
+                f'<cbdt_bitmap_format_17 name="{name}"><SmallGlyphMetrics>'
+                f'<height value="{ppem}"/><width value="{ppem}"/><BearingX value="0"/>'
+                f'<BearingY value="{ppem}"/><Advance value="{ppem}"/></SmallGlyphMetrics>'
+                f'<rawimagedata>\n{hexBlock(image)}\n</rawimagedata></cbdt_bitmap_format_17>')
+        data.append(f'<strikedata index="{index}">{"".join(items)}</strikedata>')
+    importXml(font, f'<CBLC><header version="3.0"/>{"".join(strikes)}</CBLC>')
+    importXml(font, f'<CBDT><header version="3.0"/>{"".join(data)}</CBDT>')
+    save(font, "cbdtSynthetic.ttf")
+
+
+def sbixGlyph(name, kind, ox, oy, payload):
+    return (f'<glyph name="{name}" graphicType="{kind}" originOffsetX="{ox}" '
+            f'originOffsetY="{oy}"><hexdata>\n{hexBlock(payload)}\n</hexdata></glyph>')
+
+
+def sbixDupe(name, target):
+    return (f'<glyph name="{name}" graphicType="dupe" originOffsetX="0" originOffsetY="0">'
+            f'<ref glyphname="{target}"/></glyph>')
+
+
+def sbixSynthetic():
+    order = [".notdef", "u1F600", "uni2764", "u1F44D", "uni2665"]
+    cmap = {0x1F600: "u1F600", 0x2764: "uni2764", 0x1F44D: "u1F44D", 0x2665: "uni2665"}
+    font = base("Void SBIX Synthetic", order, cmap, squares(order), 1000).font
+    small = (sbixGlyph("u1F600", "png ", 0, 0, solid(12, RED))
+             + sbixGlyph("uni2764", "png ", 1, -2, solid(12, BLUE))
+             + sbixDupe("uni2665", "uni2764"))
+    large = (sbixGlyph("u1F600", "png ", 0, 0, solid(24, RED))
+             + sbixGlyph("uni2764", "png ", 2, -4, solid(24, BLUE))
+             + sbixGlyph("u1F44D", "jpg ", 0, 0, b"\xff\xd8\xff\xd9")
+             + sbixDupe("uni2665", "uni2764"))
+    strikes = (f'<strike><ppem value="12"/><resolution value="72"/>{small}</strike>'
+               f'<strike><ppem value="24"/><resolution value="72"/>{large}</strike>')
+    importXml(font, f'<sbix><version value="1"/><flags value="1"/>{strikes}</sbix>')
+    save(font, "sbixSynthetic.ttf")
+
+
+def colrSynthetic():
+    order = [".notdef", "u1F600", "layerA", "layerB", "layerC"]
+    glyphs = squares(order[:2])
+    for index, name in enumerate(order[2:]):
+        pen = TTGlyphPen(None)
+        left = 100 + index * 100
+        top = 700 - index * 100
+        pen.moveTo((left, 0))
+        pen.lineTo((left, top))
+        pen.lineTo((left + 400, top))
+        pen.lineTo((left + 400, 0))
+        pen.closePath()
+        glyphs[name] = pen.glyph()
+    font = base("Void COLR Synthetic", order, {0x1F600: "u1F600"}, glyphs, 1000).font
+    palette = [(0.8, 0.2, 0.2, 1.0), (0.2, 0.4, 0.8, 1.0), (0.2, 0.7, 0.3, 0.5)]
+    font["CPAL"] = buildCPAL([palette])
+    font["COLR"] = buildCOLR({"u1F600": [("layerA", 0), ("layerB", 1), ("layerC", 2)]},
+                             version=0)
+    save(font, "colrSynthetic.ttf")
+
+
+def main():
+    noto(sys.argv[1])
+    textSymbol()
+    cbdtSynthetic()
+    sbixSynthetic()
+    colrSynthetic()
+
+
+if __name__ == "__main__":
+    main()

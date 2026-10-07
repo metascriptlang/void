@@ -28,3 +28,24 @@ positions, zeroes the thicknesses and the `OS/2` heights, so the estimate starts
 the `sizeAdjust` guard in `src/test/fontCheck.ms`. `python tests/fonts/brokenTables.py` rebuilds
 all three from `assets/font.ttf`; fontTools stamps `head.modified`, so a rebuild is not
 byte-identical.
+
+`NotoColorEmoji-subset.ttf` (17,172 B) is the colour-emoji face the P6 emoji module is tested
+against: a CBDT/CBLC font with no `glyf` or `CFF`, so stb_truetype cannot load it and only the
+cmap, metrics and strike tables are read. It is Noto Color Emoji cut to U+1F600, 1F44D, 2764,
+1F680, 1F389, 23, FE0F and 200D with the layout features dropped (one 109 ppem strike), from the
+10,730,124 B `2D/fonts/NotoColorEmoji.ttf` at googlefonts/noto-emoji `main`, SIL Open Font
+License 1.1 (`NotoColorEmoji-OFL.txt`, copyright Google LLC, no reserved font name).
+
+`textSymbol.ttf` (744 B), `cbdtSynthetic.ttf` (1,236 B), `sbixSynthetic.ttf` (1,344 B) and
+`colrSynthetic.ttf` (884 B) are synthetic faces with our own art, no third-party licence:
+`textSymbol` holds outline boxes for U+1F600 and U+2764 (the text-presentation face);
+`cbdtSynthetic` holds two CBDT strikes (8 and 16 ppem, format 17 PNG), a cmap 12 and a cmap 14
+with VS16 for both codepoints, and no outlines; `sbixSynthetic` holds 12 and 24 ppem strikes
+with origin offsets, a `dupe` glyph, a `jpg ` glyph and an empty glyph; `colrSynthetic` holds a
+COLR v0 glyph of three layers over a three-colour CPAL palette.
+
+```sh
+python tests/fonts/colourEmoji.py NotoColorEmoji.ttf   # rewrites the five faces above
+```
+
+The generator pins `head.created` and `head.modified`, so a re-run is byte-identical.
