@@ -1,7 +1,8 @@
 import { Mat4, Vec4, identity, srgbToLinear, linearToSrgb } from "../math/math3d";
 import { RenderState, FilterMode, Wrap } from "../gpu/state";
 import { SWAPCHAIN_LAYOUT, RenderTarget } from "../gpu/target";
-import { PixelFormat } from "../gpu/door";
+import { PixelFormat, contextGeneration } from "../gpu/door";
+import { Texture } from "../gpu/texture";
 import {
 	Program,
 	VertexLayout,
@@ -30,6 +31,7 @@ import {
 	retainTexture,
 	releaseTexture,
 	rebuildTextures,
+	buryDoomed,
 	samplerSlot,
 	reserveUniforms,
 	writeUniforms,
@@ -56,7 +58,7 @@ import {
 	renderFrame as renderPixelArt,
 } from "../void3d/pixelArtRenderer";
 import { LowResView } from "../void3d/blit";
-import { added, litShape } from "./drawHelpers";
+import { added, addedOwner, litShape } from "./drawHelpers";
 
 let FIRST_SLOT: TextureId = { store: 0, index: 0, generation: 1 };
 
@@ -465,4 +467,28 @@ test "the core refuses an emissive or normal-mapped material missing its map" {
 	let wrongLayout: Result<boolean, RendererError> = beginFrame(core, plainItems, camera, lights);
 	assert !wrongLayout.ok && wrongLayout.error == RendererError.VertexLayout;
 	assert core.generation == 0;
+}
+
+test "a freed texture gives its handles to buryDoomed and closes its owner without destroying" {
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const owner: Texture = Texture.adopt(0, 77, 1, 1);
+	const id: TextureId = addedOwner(context, owner);
+	assert context.liveTextures() == 1 && rebuildTextures(context) == 0;
+	assert releaseTexture(context, id).ok;
+	assert owner.isClosed() && owner.view == 0 && owner.generation == 0;
+	assert context.liveTextures() == 0 && context.doomedTextures.length == 1;
+	assert context.doomedTextures[0].view == 77 &&
+		context.doomedTextures[0].generation == contextGeneration();
+	assert buryDoomed(context, contextGeneration() + 1) == 0;
+	assert context.doomedTextures.length == 0;
+}
+
+test "a freed texture's slot holds no owner, and its id is refused as stale" {
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const id: TextureId = addedOwner(context, Texture.adopt(0, 5, 1, 1));
+	assert releaseTexture(context, id).ok;
+	assert buryDoomed(context, contextGeneration() + 1) == 0;
+	assert !context.hasTexture(id) && context.textures[id.index].texture === null;
+	const again: Result<int32, HandleError> = releaseTexture(context, id);
+	assert !again.ok && again.error == HandleError.StaleTexture;
 }
