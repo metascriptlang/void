@@ -1,6 +1,6 @@
 import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
-import { glyphIndex, glyphAdvance } from "../void2d/face";
+import { glyphIndex, glyphAdvance, glyphInkBox } from "../void2d/face";
 import {
 	DEFAULT_FONT,
 	Font,
@@ -42,12 +42,16 @@ when (voidSdfText) {
 	import { SDF_EM } from "../void2d/textSdf";
 }
 
-import { Transform2D, rgba, trs2d } from "../void2d/types";
+import { Bounds2D, Transform2D, rgba, trs2d, identity2d, emptyBounds } from "../void2d/types";
+import { NodeRef, Scene2D } from "../void2d/node";
+import "../void2d/scene";
+import { sync, getBounds } from "../void2d/render";
 import { LIGATURE_TEXT, LIGATURE_SIZE } from "../../tests/golden/table";
 import { approx } from "./helpers";
 
 const FIXTURE: string = "tests/fonts/shapeFixture.ttf";
 const CASCADIA: string = "tests/fonts/cascadiaSubset.ttf";
+const LIGATURES: string = "tests/fonts/ligatureFeatures.ttf";
 const ORACLE_PATH: string = "tests/oracle/shapeFull.json";
 const PENDING_PATH: string = "tests/PENDING.md";
 const SIZE: float32 = 10.0;
@@ -58,6 +62,8 @@ const A: int32 = 0x61;
 const B: int32 = 0x62;
 const E_ACUTE: int32 = 0xE9;
 const COMBINING_ACUTE: int32 = 0x301;
+
+const scene: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
 let familyCount: int32 = 0;
 
@@ -647,4 +653,71 @@ when (voidSdfText) {
 		);
 		releaseLabelText(index);
 	}
+}
+
+function boundsOfLabel(font: FontId, text: string): Bounds2D {
+	const n = scene.label(text, SIZE, rgba(1.0, 1.0, 1.0, 1.0));
+	n.setFont(font);
+	n.sync(identity2d(), false);
+	let bounds = emptyBounds();
+	n.getBounds(bounds);
+	n.dispose();
+	return bounds;
+}
+
+test "a label's bounds hold a mark where its GPOS offset puts it" {
+	const font = fixture(plain());
+	const marked = boundsOfLabel(font, "e\u{301}");
+	const bare = boundsOfLabel(fixture(off("mark")), "e\u{301}");
+	const l = layoutOf(font, "e\u{301}", 0.0);
+	const g = l.glyphs[1];
+	const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
+	const baseline: float32 = l.lines[0].baseline;
+	assert marked.yMin <= baseline + g.offsetY + top + 0.001;
+	assert marked.xMin <= g.x + g.offsetX + left + 0.001;
+	assert marked.xMax >= g.x + g.offsetX + right - 0.001;
+	assert marked.yMin < bare.yMin;
+}
+
+test "two runs of one face keep their own features though the text is one shaping group" {
+	const ligated = fixture(plain());
+	const apart = fixture(off("liga"));
+	const runs: TextRun[] = [runOf(2, ligated), runOf(2, apart)];
+	const l = layoutRuns("fifi", styleOf(ligated, SIZE, 0.0), runs);
+	assert fontFace(ligated) == fontFace(apart);
+	assert l.glyphs[0].glyph != gid(ligated, F) && l.glyphs[1].glyph == NO_GLYPH;
+	assert l.glyphs[2].glyph == gid(apart, F) && l.glyphs[3].glyph == gid(apart, I);
+}
+
+function ligatureFont(): FontId {
+	return fontWith(LIGATURES, false, plain());
+}
+
+test "liga and clig form their ligatures, and letter spacing turns each off" {
+	const font = ligatureFont();
+	const pairs: string[] = ["fi", "ab"];
+	for (const pair of pairs) {
+		const joined = layoutOf(font, pair, 0.0);
+		assert joined.glyphs[1].glyph == NO_GLYPH;
+		const spaced = layoutOf(font, pair, 1.0);
+		assert spaced.glyphs[0].glyph != NO_GLYPH && spaced.glyphs[1].glyph != NO_GLYPH;
+	}
+}
+
+test "a ligature over two graphemes keeps the GPOS offset of its one glyph" {
+	const l = layoutOf(ligatureFont(), "fi", 0.0);
+	assert l.glyphs[1].glyph == NO_GLYPH;
+	assert approx(l.glyphs[0].offsetX, 3.0);
+	assert approx(l.glyphs[0].offsetY, -4.0);
+	assert l.glyphs[1].offsetX == 0.0 && l.glyphs[1].offsetY == 0.0;
+}
+
+test "a label's bounds follow a ligature pushed sideways and up by its GPOS offset" {
+	const font = ligatureFont();
+	const bounds = boundsOfLabel(font, "fi");
+	const l = layoutOf(font, "fi", 0.0);
+	const g = l.glyphs[0];
+	const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
+	assert approx(bounds.xMax, g.x + g.offsetX + right);
+	assert approx(bounds.yMin, l.lines[0].baseline + g.offsetY + top);
 }

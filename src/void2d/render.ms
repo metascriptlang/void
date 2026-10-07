@@ -370,9 +370,10 @@ function shapeIfChanged(s: Scene2D, i: int32): void {
 		if (g.glyph == NO_GLYPH) { continue; }
 		const [left, top, right, bottom] = glyphInkBox(g.face, g.glyph, g.size);
 		if (right <= left || bottom <= top) { continue; }
-		const baseline: float32 = shaped.layout.lines[g.line].baseline;
-		if (g.x + left < xMin) { xMin = g.x + left; }
-		if (g.x + right > xMax) { xMax = g.x + right; }
+		const baseline: float32 = shaped.layout.lines[g.line].baseline + g.offsetY;
+		const penX: float32 = g.x + g.offsetX;
+		if (penX + left < xMin) { xMin = penX + left; }
+		if (penX + right > xMax) { xMax = penX + right; }
 		if (baseline + top < yMin) { yMin = baseline + top; }
 		if (baseline + bottom > yMax) { yMax = baseline + bottom; }
 	}
