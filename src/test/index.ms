@@ -2,6 +2,7 @@ import "../sokol/gpu";
 import "./transformCheck";
 import "./tileCheck";
 import "./graphicsCheck";
+import "./sceneExclusionCheck";
 import "./nodeCheck";
 import "./tileGroupCheck";
 import "./sceneCheck";
