@@ -47,6 +47,9 @@ COLR v0 glyph of three layers over a three-colour CPAL palette.
 `cbdtBroken.ttf` (1,236 B) is `cbdtSynthetic` with the first CBLC strike's bit depth set to 8, the
 face the loader must refuse by name (`python tests/fonts/colourEmoji.py broken` rewrites it).
 
+`sbixLoop.ttf` is `sbixSynthetic` with the `dupe` glyph pointing at itself in both strikes, the
+chain the sbix reader must refuse instead of following.
+
 `symbolCollection.ttc` (1,968 B) holds `textSymbol` then `cbdtSynthetic`: the sfnt peek must read
 the first font of a collection, which is the drawable one.
 

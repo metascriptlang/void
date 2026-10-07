@@ -142,12 +142,68 @@ def cbdtFont(path, sizes):
     }
 
 
+SBIX_FONTS = [
+    ("tests/fonts/sbixSynthetic.ttf", [6, 12, 18, 24, 40]),
+]
+
+
+def sbixCandidates(font, name):
+    strikes = font["sbix"].strikes
+    found, refused = [], False
+    for ppem, strike in strikes.items():
+        glyph = strike.glyphs.get(name)
+        hops = 0
+        while glyph is not None and glyph.graphicType == "dupe":
+            hops += 1
+            assert hops < 8
+            glyph = strike.glyphs.get(glyph.referenceGlyphName)
+        if glyph is None or not glyph.graphicType:
+            continue
+        if glyph.graphicType != "png ":
+            refused = True
+            continue
+        width, height = Image.open(io.BytesIO(glyph.imageData)).size
+        found.append({
+            "ppem": ppem,
+            "png": glyph.imageData,
+            "width": width,
+            "height": height,
+            "bearingX": glyph.originOffsetX,
+            "bearingY": glyph.originOffsetY + height,
+        })
+    return found, refused
+
+
+def sbixFont(path, sizes):
+    font = TTFont(path)
+    order = font.getGlyphOrder()
+    rows = []
+    for codepoint, name in sorted(font.getBestCmap().items()):
+        found, refused = sbixCandidates(font, name)
+        tiles = []
+        for size in sizes:
+            if found:
+                tile = tileRow(chooseStrike(found, size), size)
+                tile["status"] = "present"
+            else:
+                tile = {"size": size, "status": "refused" if refused else "absent"}
+            tiles.append(tile)
+        rows.append({
+            "codepoint": codepoint,
+            "glyph": order.index(name),
+            "advance": font["hmtx"].metrics[name][0],
+            "tiles": tiles,
+        })
+    return {"path": path, "unitsPerEm": font["head"].unitsPerEm, "glyphs": rows}
+
+
 def regen():
     document = {
         "generator": "python tests/oracle/colour.py regen",
         "fontTools": fontTools.version,
         "pillow": PIL.__version__,
         "cbdt": [cbdtFont(path, sizes) for path, sizes in CBDT_FONTS],
+        "sbix": [sbixFont(path, sizes) for path, sizes in SBIX_FONTS],
     }
     with open(OUT, "w", newline="\n") as handle:
         json.dump(document, handle, indent=1)

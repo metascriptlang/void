@@ -1836,7 +1836,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   derivative scale (`texels + 0.5`) fails it at rotated 13 px (mae 0.135) and zoom 0.5 (0.152).
   Owed: WebGL2 for the same rows (Yoga web link).
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
-  **Built so far (`-d:voidColourEmoji`, CBDT/CBLC only):** the RGBA page kind is real
+  **Built so far (`-d:voidColourEmoji`, CBDT/CBLC and sbix):** the RGBA page kind is real
   (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
   `void2dGlyphPageTexelRgba`; `batcher.c` `SG_PIXELFORMAT_RGBA8` and the byte-exact upload;
   `glyphAtlas.ms` `acquireBlank` and per-kind `residentBytes`), and a colour-only face loads.
@@ -1854,7 +1854,12 @@ changes described above on today's compiler; the P4 web archive also takes its r
   The strike is the smallest `ppemY` at or above the size, else the largest; the PNG is
   decoded by a PNG-only static `stb_image` (24,695 B of wasm measured), premultiplied
   `(c * a + 127) / 255`, and resized by an own integer area average, because
-  `stb_image_resize2` costs 112,928 B of wasm for one entry point (measured).
+  `stb_image_resize2` costs 112,928 B of wasm for one entry point (measured). sbix is read
+  the same way (`png ` and `dupe`; any other graphic type refuses that strike by name and the
+  glyph draws from another strike when one has it): the origin offset puts the bitmap's lower
+  left at `(originOffsetX, originOffsetY)`, and a `dupe` takes the target glyph's record
+  including its origin, chained at most 8 deep. The origin and `dupe` rules are the Apple
+  sbix text as fontTools writes it and are not checked against FreeType, which was not read.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
   **Rasterizer taken and measured 2026-10-07 (V0): nanosvg** (`memononen/nanosvg` at

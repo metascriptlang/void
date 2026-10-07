@@ -33,7 +33,13 @@ typedef struct {
 	int bad;
 } Span;
 
+#define KIND_CBDT 0
+#define KIND_SBIX 1
+#define MAX_SBIX_DUPE 8
+#define MAX_REFUSED_TAGS 8
+
 typedef struct {
+	int kind;
 	uint64_t arrayAt;
 	unsigned subtables;
 	int ppemX, ppemY;
@@ -49,13 +55,15 @@ typedef struct {
 struct ColourFace {
 	const unsigned char *bytes;
 	size_t length;
-	Table cmap, head, hhea, hmtx, maxp, glyf, loca, cff, cblc, cbdt;
+	Table cmap, head, hhea, hmtx, maxp, glyf, loca, cff, cblc, cbdt, sbix;
 	int numGlyphs;
 	uint64_t index;
 	unsigned indexFormat;
 	Strike strikes[MAX_STRIKES];
 	int strikeCount;
 	unsigned long long refused[REFUSED_SLOTS / 64];
+	uint32_t refusedTags[MAX_REFUSED_TAGS];
+	int refusedTagCount;
 };
 
 static char s_reason[REASON_BYTES];
@@ -101,6 +109,16 @@ static int refusedBefore(ColourFace *face, int slot) {
 	return 0;
 }
 
+static int tagRefusedBefore(ColourFace *face, uint32_t tag) {
+	for (int i = 0; i < face->refusedTagCount; i++) {
+		if (face->refusedTags[i] == tag) { return 1; }
+	}
+	if (face->refusedTagCount < MAX_REFUSED_TAGS) {
+		face->refusedTags[face->refusedTagCount++] = tag;
+	}
+	return 0;
+}
+
 static Table findTable(const ColourFace *face, size_t directory, int tables, const char *tag) {
 	Table none = { 0, 0, 0 };
 	for (int i = 0; i < tables; i++) {
@@ -136,6 +154,7 @@ static int openCblc(ColourFace *face) {
 	for (uint32_t i = 0; i < sizes; i++) {
 		uint64_t at = 8 + 48 * (uint64_t)i;
 		Strike st;
+		st.kind = KIND_CBDT;
 		st.arrayAt = rd32(&s, at);
 		st.subtables = rd32(&s, at + 8);
 		st.ppemX = (int)rd8(&s, at + 44);
@@ -152,6 +171,33 @@ static int openCblc(ColourFace *face) {
 		if (st.arrayAt > s.n || st.subtables > (s.n - st.arrayAt) / 8) {
 			return fail("CBLC strike %u index subtable array lies outside the table", (unsigned)i);
 		}
+		if (face->strikeCount == MAX_STRIKES) { return fail("more than %d strikes", MAX_STRIKES); }
+		face->strikes[face->strikeCount++] = st;
+	}
+	return VOID2D_COLOUR_OK;
+}
+
+static int openSbix(ColourFace *face) {
+	Span s = tableSpan(face, face->sbix);
+	unsigned version = rd16(&s, 0);
+	uint32_t count = rd32(&s, 4);
+	if (s.bad || version != 1) { return fail("sbix version %u is not 1", version); }
+	if (count == 0 || count > MAX_STRIKES) {
+		return fail("sbix holds %u strikes, expected 1 to %d", (unsigned)count, MAX_STRIKES);
+	}
+	uint64_t offsets = 4 * ((uint64_t)face->numGlyphs + 1);
+	for (uint32_t i = 0; i < count; i++) {
+		Strike st;
+		st.kind = KIND_SBIX;
+		st.arrayAt = rd32(&s, 8 + 4 * (uint64_t)i);
+		st.subtables = 0;
+		st.ppemX = st.ppemY = (int)rd16(&s, st.arrayAt);
+		if (s.bad) { return fail("sbix is cut off inside strike %u", (unsigned)i); }
+		if (st.ppemY == 0) { return fail("sbix strike %u has ppem 0", (unsigned)i); }
+		if (st.arrayAt + 4 + offsets > s.n) {
+			return fail("sbix strike %u glyph offsets run past the table", (unsigned)i);
+		}
+		if (face->strikeCount == MAX_STRIKES) { return fail("more than %d strikes", MAX_STRIKES); }
 		face->strikes[face->strikeCount++] = st;
 	}
 	return VOID2D_COLOUR_OK;
@@ -267,29 +313,28 @@ int void2dColourFaceOpen(const unsigned char *bytes, size_t length, size_t fontS
 	face->cff = findTable(face, dir, tables, "CFF ");
 	face->cblc = findTable(face, dir, tables, "CBLC");
 	face->cbdt = findTable(face, dir, tables, "CBDT");
+	face->sbix = findTable(face, dir, tables, "sbix");
 	int status = VOID2D_COLOUR_NONE;
 	if (face->cblc.found != face->cbdt.found) {
 		status = fail("%s is present without %s", face->cblc.found ? "CBLC" : "CBDT",
 			face->cblc.found ? "CBDT" : "CBLC");
-	} else if (face->cblc.found) {
-		status = openCblc(face);
-		if (status == VOID2D_COLOUR_OK && !face->maxp.found) {
-			status = fail("a colour font without maxp");
+	} else if (face->cblc.found || face->sbix.found) {
+		status = VOID2D_COLOUR_OK;
+	}
+	if (status == VOID2D_COLOUR_OK) {
+		Span m = tableSpan(face, face->maxp);
+		face->numGlyphs = (int)rd16(&m, 4);
+		if (!face->maxp.found || m.bad) {
+			status = fail("a colour font needs a maxp with a glyph count");
+		} else if (!face->cmap.found) {
+			status = fail("a colour font without cmap");
 		}
 	}
+	if (status == VOID2D_COLOUR_OK && face->cblc.found) { status = openCblc(face); }
+	if (status == VOID2D_COLOUR_OK && face->sbix.found) { status = openSbix(face); }
 	if (status != VOID2D_COLOUR_OK) {
 		free(face);
 		return status;
-	}
-	Span m = tableSpan(face, face->maxp);
-	face->numGlyphs = (int)rd16(&m, 4);
-	if (m.bad) {
-		free(face);
-		return fail("maxp is shorter than its glyph count");
-	}
-	if (!face->cmap.found) {
-		free(face);
-		return fail("a colour font without cmap");
 	}
 	status = chooseIndex(face);
 	if (status != VOID2D_COLOUR_OK) {
@@ -339,7 +384,7 @@ static int pngInfo(Span *s, uint64_t at, uint64_t length, int *width, int *heigh
 	return 1;
 }
 
-static int findBitmap(ColourFace *face, const Strike *strike, int glyph, Bitmap *out) {
+static int findCbdt(ColourFace *face, const Strike *strike, int glyph, Bitmap *out) {
 	Span index = tableSpan(face, face->cblc);
 	Span data = tableSpan(face, face->cbdt);
 	for (unsigned i = 0; i < strike->subtables; i++) {
@@ -434,10 +479,71 @@ static int findBitmap(ColourFace *face, const Strike *strike, int glyph, Bitmap 
 	return VOID2D_COLOUR_ABSENT;
 }
 
+static int findSbix(ColourFace *face, const Strike *strike, int glyph, int depth, Bitmap *out) {
+	Span s = tableSpan(face, face->sbix);
+	if (glyph < 0 || glyph >= face->numGlyphs) { return VOID2D_COLOUR_ABSENT; }
+	uint64_t base = strike->arrayAt;
+	uint64_t from = rd32(&s, base + 4 + 4 * (uint64_t)glyph);
+	uint64_t to = rd32(&s, base + 4 + 4 * ((uint64_t)glyph + 1));
+	if (s.bad) { return fail("sbix is cut off inside the glyph offsets"); }
+	if (to < from) { return fail("sbix glyph %d has a negative data length", glyph); }
+	if (to == from || to - from == 8) { return VOID2D_COLOUR_ABSENT; }
+	if (to - from < 8 || base + to > s.n) {
+		return fail("sbix glyph %d data lies outside the table", glyph);
+	}
+	uint64_t at = base + from;
+	int originX = (int16_t)rd16(&s, at);
+	int originY = (int16_t)rd16(&s, at + 2);
+	uint32_t tag = rd32(&s, at + 4);
+	if (tag == 0x64757065u) {
+		if (to - from < 10) { return fail("sbix glyph %d is a dupe without a target", glyph); }
+		if (depth >= MAX_SBIX_DUPE) {
+			return fail("sbix glyph %d starts a dupe chain deeper than %d", glyph, MAX_SBIX_DUPE);
+		}
+		return findSbix(face, strike, (int)rd16(&s, at + 8), depth + 1, out);
+	}
+	if (tag != 0x706E6720u) {
+		if (!tagRefusedBefore(face, tag)) {
+			char name[5];
+			for (int i = 0; i < 4; i++) {
+				unsigned c = (tag >> (24 - 8 * i)) & 255u;
+				name[i] = (c >= 32 && c < 127) ? (char)c : '?';
+			}
+			name[4] = 0;
+			fprintf(stderr, "void2d: sbix graphic type '%s' is not read ('png ' and 'dupe' are)\n",
+				name);
+		}
+		return VOID2D_COLOUR_REFUSED;
+	}
+	int width = 0, height = 0;
+	if (!pngInfo(&s, at + 8, to - from - 8, &width, &height)) {
+		return fail("sbix glyph %d is not a PNG", glyph);
+	}
+	if (width <= 0 || height <= 0 || width > MAX_SIDE || height > MAX_SIDE) {
+		return fail("sbix glyph %d is %dx%d, expected 1 to %d a side", glyph, width, height,
+			MAX_SIDE);
+	}
+	out->png = s.p + at + 8;
+	out->pngLength = to - from - 8;
+	out->width = width;
+	out->height = height;
+	out->bearingX = originX;
+	out->bearingY = originY + height;
+	out->ppem = strike->ppemY;
+	return VOID2D_COLOUR_PRESENT;
+}
+
+static int findBitmap(ColourFace *face, const Strike *strike, int glyph, Bitmap *out) {
+	s_reason[0] = 0;
+	if (strike->kind == KIND_SBIX) { return findSbix(face, strike, glyph, 0, out); }
+	return findCbdt(face, strike, glyph, out);
+}
+
 static const Strike *chooseStrike(ColourFace *face, int glyph, float sizePx, Bitmap *bitmap,
                                   int *status) {
 	const Strike *best = NULL;
 	Bitmap bestBitmap;
+	int refusal = VOID2D_COLOUR_ABSENT;
 	for (int i = 0; i < face->strikeCount; i++) {
 		const Strike *st = &face->strikes[i];
 		Bitmap found;
@@ -453,11 +559,10 @@ static const Strike *chooseStrike(ColourFace *face, int glyph, float sizePx, Bit
 				bestBitmap = found;
 			}
 		} else if (code != VOID2D_COLOUR_ABSENT) {
-			*status = code;
-			return NULL;
+			refusal = code;
 		}
 	}
-	*status = best ? VOID2D_COLOUR_PRESENT : VOID2D_COLOUR_ABSENT;
+	*status = best ? VOID2D_COLOUR_PRESENT : refusal;
 	if (best) { *bitmap = bestBitmap; }
 	return best;
 }
@@ -483,12 +588,12 @@ int void2dColourGlyphBox(ColourFace *face, int glyph, float sizePx, ColourBox *b
 	}
 	int status = VOID2D_COLOUR_ABSENT;
 	Bitmap bitmap;
-	if (face->cblc.found) {
-		chooseStrike(face, glyph, sizePx, &bitmap, &status);
-		if (status == VOID2D_COLOUR_PRESENT) { boxOf(&bitmap, sizePx, box); }
-	}
+	chooseStrike(face, glyph, sizePx, &bitmap, &status);
+	if (status == VOID2D_COLOUR_PRESENT) { boxOf(&bitmap, sizePx, box); }
 	if (status != VOID2D_COLOUR_PRESENT && status != VOID2D_COLOUR_ABSENT) {
-		fprintf(stderr, "void2d: colour glyph %d refused: %s\n", glyph, s_reason);
+		if (s_reason[0]) {
+			fprintf(stderr, "void2d: colour glyph %d refused: %s\n", glyph, s_reason);
+		}
 		return VOID2D_COLOUR_REFUSED;
 	}
 	return status;

@@ -227,15 +227,29 @@ def cbdtBroken():
     open(OUT + "cbdtBroken.ttf", "wb").write(bytes(data))
 
 
+def sbixLoop():
+    data = bytearray(open(OUT + "sbixSynthetic.ttf", "rb").read())
+    table = tableOffset(data, b"sbix")
+    for strike in range(struct.unpack(">I", data[table + 4:table + 8])[0]):
+        start = table + struct.unpack(">I", data[table + 8 + 4 * strike:table + 12 + 4 * strike])[0]
+        glyph = 4
+        record = start + struct.unpack(">I", data[start + 4 + 4 * glyph:start + 8 + 4 * glyph])[0]
+        assert data[record + 4:record + 8] == b"dupe"
+        data[record + 8:record + 10] = struct.pack(">H", glyph)
+    open(OUT + "sbixLoop.ttf", "wb").write(bytes(data))
+
+
 def main():
     if sys.argv[1:] == ["broken"]:
         cbdtBroken()
+        sbixLoop()
         return
     noto(sys.argv[1])
     textSymbol()
     cbdtSynthetic()
     cbdtBroken()
     sbixSynthetic()
+    sbixLoop()
     colrSynthetic()
     collection()
 

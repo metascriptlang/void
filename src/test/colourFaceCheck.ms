@@ -163,6 +163,85 @@ test "tile boxes and premultiplied area-average pixels agree with the oracle at 
 	assert compared == 6 * 8 + 2 * 6;
 }
 
+test "sbix tiles, dupe chains and refused graphic types agree with the oracle at every size" {
+	const text = readFile(ORACLE_PATH);
+	assert text.ok;
+	const parsed = JSON.parseValue(text.value);
+	assert parsed.ok;
+	const fonts = parsed.value.getDynamicField("sbix");
+	let compared: int32 = 0;
+	let refused: int32 = 0;
+	for (let f: int32 = 0; f < (fonts.length() as int32); f++) {
+		const row = fonts.at(f);
+		const face = try loadFace(row.getDynamicField("path").asString()) catch -1;
+		assert face >= 0;
+		assert hasColourTables(face);
+		assert !isColourOnly(face);
+		const atlas = GlyphAtlas.create(PAGE_SIZE, 4);
+		const glyphs = row.getDynamicField("glyphs");
+		for (let g: int32 = 0; g < (glyphs.length() as int32); g++) {
+			const glyph = glyphs.at(g);
+			const codepoint: int32 = glyph.getDynamicField("codepoint").asNumber() as int32;
+			const id: int32 = glyphIndex(face, codepoint);
+			assert id == glyph.getDynamicField("glyph").asNumber() as int32;
+			const tiles = glyph.getDynamicField("tiles");
+			for (let t: int32 = 0; t < (tiles.length() as int32); t++) {
+				const want = tiles.at(t);
+				const size: float32 = want.getDynamicField("size").asNumber() as float32;
+				const status: string = want.getDynamicField("status").asString();
+				const box = colourTileBox(face, id, size);
+				if (status == "refused") {
+					assert box.glyph == ColourGlyph.Refused;
+					refused = refused + 1;
+					continue;
+				}
+				assert status == "present";
+				assert box.glyph == ColourGlyph.Present;
+				assert box.ppem == want.getDynamicField("ppem").asNumber() as int32;
+				assert box.left == want.getDynamicField("left").asNumber() as int32;
+				assert box.top == want.getDynamicField("top").asNumber() as int32;
+				assert box.right == want.getDynamicField("right").asNumber() as int32;
+				assert box.bottom == want.getDynamicField("bottom").asNumber() as int32;
+				const key: GlyphKey = {
+					kind: PageKind.Rgba, face: face, glyph: id, sizePx: size, variant: 0,
+				};
+				const width: int32 = box.right - box.left;
+				const height: int32 = box.bottom - box.top;
+				const index = atlas.acquireBlank(key, width, height, box.left, box.top);
+				assert index.ok;
+				if (!index.ok) { return; }
+				const tile = atlas.tile(index.value);
+				const handle = atlas.pageHandle(tile.page);
+				assert colourRasterize(face, id, size, handle, tile.x, tile.y, width, height) == 0;
+				assert tileHash(handle as int32, tile.x, tile.y, width, height) ==
+					want.getDynamicField("hash").asString();
+				compared = compared + 1;
+			}
+		}
+	}
+	assert compared == 15;
+	assert refused == 5;
+}
+
+test "an sbix face keeps its outlines and a dupe glyph resolves to its target" {
+	const face = try loadFace("tests/fonts/sbixSynthetic.ttf") catch -1;
+	assert face >= 0;
+	const heart = colourTileBox(face, glyphIndex(face, 0x2665), 12.0);
+	const target = colourTileBox(face, glyphIndex(face, 0x2764), 12.0);
+	assert heart.glyph == ColourGlyph.Present;
+	assert heart.left == target.left && heart.top == target.top;
+	assert heart.right == target.right && heart.bottom == target.bottom;
+	assert glyphInkBox(face, glyphIndex(face, 0x2764), 32.0)[2] > 0.0;
+	assert colourTileBox(face, 0, 12.0).glyph == ColourGlyph.Absent;
+}
+
+test "an sbix dupe that points at itself is refused and its neighbours still draw" {
+	const face = try loadFace("tests/fonts/sbixLoop.ttf") catch -1;
+	assert face >= 0;
+	assert colourTileBox(face, glyphIndex(face, 0x2665), 12.0).glyph == ColourGlyph.Refused;
+	assert colourTileBox(face, glyphIndex(face, 0x2764), 12.0).glyph == ColourGlyph.Present;
+}
+
 test "a glyph with no bitmap is absent, not refused, and its tile is never drawn" {
 	const face = try loadFace("tests/fonts/NotoColorEmoji-subset.ttf") catch -1;
 	assert face >= 0;
@@ -222,5 +301,9 @@ test "truncating a colour font and stamping 0xFFFFFFFF into it never crashes" {
 	const noto = try loadFace("tests/fonts/NotoColorEmoji-subset.ttf") catch -1;
 	assert noto >= 0;
 	assert colourSweep(noto, 16) > 2000;
+	assert colourSweepRefused() > 0;
+	const sbix = try loadFace("tests/fonts/sbixSynthetic.ttf") catch -1;
+	assert sbix >= 0;
+	assert colourSweep(sbix, 4) > 600;
 	assert colourSweepRefused() > 0;
 }
