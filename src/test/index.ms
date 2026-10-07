@@ -45,6 +45,7 @@ import "./storeCheck";
 import "./closeCheck";
 import "./textureCheck";
 import "./imageDecodeCheck";
+import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./animationCheck";
 import "./pickCheck";
