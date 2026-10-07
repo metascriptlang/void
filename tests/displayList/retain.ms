@@ -919,3 +919,38 @@ test "lanes keep each row's own draws in painter's order" {
 		assert rowSequence(lanes, row).equals(want);
 	}
 }
+
+test "an Anim that changes frame rewrites one sprite record and a paused one records nothing" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const frames: Tile[] = [
+		whiteTile(8.0, 8.0),
+		{ ...whiteTile(8.0, 8.0), u0: 0.5 },
+		{ ...whiteTile(8.0, 8.0), v0: 0.5 },
+	];
+	const a = s.anim(frames, 4.0).at(10.0, 10.0);
+	s.add(a);
+	frame(s);
+	const before: Recording = frame(s);
+	assert s.repainted == 0;
+	a.setPaused(true);
+	s.tick(1.0);
+	assert !s.isDirty();
+	frame(s);
+	assert s.repainted == 0;
+	a.setPaused(false);
+	s.tick(0.3);
+	assert s.isDirty();
+	const after: Recording = frame(s);
+	assert s.repainted == 1;
+	assert before.counts[4] == 1 && after.counts[4] == 1;
+	const base: int32 = before.counts[0] * COMMAND_FLOATS + before.counts[1] * EFFECT_FLOATS +
+		before.counts[2] * VERTEX_FLOATS + before.counts[3] * REC_UI_FLOATS;
+	let changed: int32 = 0;
+	for (let k: int32 = 0; k < (before.floats.length as int32); k++) {
+		if (before.floats[k] != after.floats[k]) {
+			assert k >= base && k < base + REC_SPRITE_FLOATS;
+			changed = changed + 1;
+		}
+	}
+	assert changed > 0;
+}

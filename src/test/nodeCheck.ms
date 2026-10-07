@@ -872,3 +872,136 @@ test "a plain rect with a transparent fill is blank like a group" {
 	const cull: Bounds2D = n.scene.culls[n.id.index];
 	assert cull.xMax <= cull.xMin && cull.yMax <= cull.yMin;
 }
+
+function threeFrames(): Tile[] {
+	return [whiteTile(8.0, 8.0), whiteTile(8.0, 8.0), whiteTile(8.0, 8.0)];
+}
+
+function delayed(s: Scene2D): NodeRef {
+	return s.anim(threeFrames(), 10.0).setFrameDelays([100, 200, 50]);
+}
+
+test "per-frame delays advance by the carry rule, keeping the remainder" {
+	const s = fresh();
+	const a = s.anim(threeFrames(), 10.0).setFrameDelays([100, 200, 50]);
+	s.add(a);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	assert approx(a.animFrames().carryMs, 25.0);
+	s.tick(0.25);
+	assert a.animFrames().frameIndex() == 0;
+	assert approx(a.animFrames().carryMs, 25.0);
+	s.tick(0.0625);
+	assert a.animFrames().frameIndex() == 0;
+	assert approx(a.animFrames().carryMs, 87.5);
+	s.tick(0.015625);
+	assert a.animFrames().frameIndex() == 1;
+	assert approx(a.animFrames().carryMs, 3.125);
+}
+
+test "constant fps is the same model with equal delays" {
+	const s = fresh();
+	const a = s.anim([whiteTile(8.0, 8.0), whiteTile(8.0, 8.0), whiteTile(8.0, 8.0)], 10.0);
+	s.add(a);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 2;
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 0;
+}
+
+test "a looping Anim stays inside its frames after a very long tick" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	s.tick(1000000.0);
+	const shown: int32 = a.animFrames().frameIndex();
+	assert shown >= 0 && shown < 3;
+}
+
+test "an Anim that does not loop holds its last frame" {
+	const s = fresh();
+	const a = delayed(s).setLooping(false);
+	s.add(a);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+	s.tick(1.0);
+	assert a.animFrames().frameIndex() == 2;
+	s.tick(1.0);
+	assert a.animFrames().frameIndex() == 2;
+	assert approx(a.animFrames().carryMs, 0.0);
+	a.setFrame(0);
+	s.tick(0.125);
+	assert a.animFrames().frameIndex() == 1;
+}
+
+test "a paused Anim keeps its frame and its clock until it resumes" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	s.tick(0.125);
+	a.setPaused(true);
+	s.tick(5.0);
+	assert a.animFrames().frameIndex() == 1;
+	assert approx(a.animFrames().clock, 0.125);
+	a.setPaused(false);
+	s.tick(0.1875);
+	assert a.animFrames().frameIndex() == 2;
+}
+
+test "speed scales the time an Anim sees and zero stops it" {
+	const s = fresh();
+	const fast = delayed(s).setSpeed(2.0);
+	const still = delayed(s).setSpeed(0.0);
+	s.add(fast);
+	s.add(still);
+	s.tick(0.0625);
+	assert fast.animFrames().frameIndex() == 1;
+	assert still.animFrames().frameIndex() == 0;
+	s.tick(10.0);
+	assert still.animFrames().frameIndex() == 0;
+	assert approx(still.animFrames().clock, 0.0);
+}
+
+test "setFrame shows the frame, restarts its delay and marks content only when it moves" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	s.tick(0.0625);
+	assert approx(a.animFrames().carryMs, 62.5);
+	s.clearChanges();
+	a.setFrame(0);
+	assert approx(a.animFrames().carryMs, 0.0);
+	assert !marked(a, Changed.Content);
+	a.setFrame(2);
+	assert a.animFrames().frameIndex() == 2;
+	assert marked(a, Changed.Content);
+	a.setPaused(true);
+	a.setFrame(1);
+	assert a.animFrames().frameIndex() == 1;
+}
+
+test "a frame change from tick marks content and a paused tick marks nothing" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	s.clearChanges();
+	s.tick(0.0625);
+	assert !marked(a, Changed.Content);
+	s.tick(0.0625);
+	assert marked(a, Changed.Content);
+	s.clearChanges();
+	a.setPaused(true);
+	s.tick(1.0);
+	assert !marked(a, Changed.Content);
+	assert listed(a) == 0;
+}
+
+test "removing the delays returns to the constant fps" {
+	const s = fresh();
+	const a = delayed(s).setFrameDelays([]);
+	s.add(a);
+	assert a.animFrames().delaysMs.length == 0;
+	assert approx(a.animFrames().frameDelayMs(2), 100.0);
+}

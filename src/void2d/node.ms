@@ -169,6 +169,12 @@ export struct AnimFrames {
 	fps: float32;
 	clock: float32;
 	imageStyle: int32;
+	delaysMs: Vec<int32>;
+	speed: float32;
+	looping: boolean;
+	paused: boolean;
+	current: int32;
+	carryMs: float32;
 }
 
 export interface GraphicsMesh {
@@ -277,9 +283,52 @@ export interface Scene2D {
 }
 
 export function frameIndex(this a: AnimFrames): int32 {
+	if ((a.frames.length as int32) == 0) { return NO_FRAME; }
+	return a.current;
+}
+
+export function frameDelayMs(this a: AnimFrames, index: int32): float32 {
+	if ((a.delaysMs.length as int32) > 0) { return a.delaysMs[index] as float32; }
+	if (a.fps <= 0.0) { return 0.0; }
+	return 1000.0 / a.fps;
+}
+
+function cycleMs(a: AnimFrames): float32 {
+	let total: float32 = 0.0;
+	for (let i: int32 = 0; i < (a.frames.length as int32); i++) {
+		total = total + a.frameDelayMs(i);
+	}
+	return total;
+}
+
+export function advanced(this a: AnimFrames, dt: float32): AnimFrames {
+	if (dt < 0.0) {
+		console.log(`void2d: an Anim was advanced by ${dt} s; time only moves forward`);
+		unreachable;
+	}
 	const len: int32 = a.frames.length as int32;
-	if (len == 0) { return NO_FRAME; }
-	return ((a.clock * a.fps) as int32) % len;
+	if (a.paused || len == 0) { return a; }
+	const step: float32 = dt * a.speed;
+	const clock: float32 = a.clock + step;
+	const total: float32 = cycleMs(a);
+	if (total <= 0.0) { return { ...a, clock: clock }; }
+	let carry: float32 = a.carryMs + step * 1000.0;
+	if (a.looping) { carry = carry - Math.floor((carry / total) as float64) as float32 * total; }
+	let current: int32 = a.current;
+	let delay: float32 = a.frameDelayMs(current);
+	while (carry >= delay) {
+		carry = carry - delay;
+		if (current + 1 < len) {
+			current = current + 1;
+		} else if (a.looping) {
+			current = 0;
+		} else {
+			carry = 0.0;
+			break;
+		}
+		delay = a.frameDelayMs(current);
+	}
+	return { ...a, clock: clock, current: current, carryMs: carry };
 }
 
 function freshBits(): BitSet<Changed> {
@@ -826,7 +875,10 @@ export function label(this s: Scene2D, text: string, size: float32, color: Color
 }
 
 export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
-	const row: AnimFrames = { frames: frames, fps: fps, clock: 0.0, imageStyle: NO_IMAGE_STYLE };
+	const row: AnimFrames = {
+		frames: frames, fps: fps, clock: 0.0, imageStyle: NO_IMAGE_STYLE,
+		delaysMs: [], speed: 1.0, looping: true, paused: false, current: 0, carryMs: 0.0,
+	};
 	let payload: int32 = s.anims.length as int32;
 	if ((s.freeAnims.length as int32) > 0) {
 		payload = s.freeAnims.pop();
@@ -1175,6 +1227,71 @@ export function animFrames(this n: NodeRef): AnimFrames {
 	const i: int32 = n.liveRow("animFrames");
 	requireKind(n, i, DrawKind.Anim, "animFrames", "frames");
 	return n.scene.anims[n.scene.payloads[i]];
+}
+
+export function setFrame(this n: NodeRef, index: int32): NodeRef {
+	const i: int32 = n.liveRow("setFrame");
+	requireKind(n, i, DrawKind.Anim, "setFrame", "frames");
+	const s: Scene2D = n.scene;
+	const row: AnimFrames = s.anims[s.payloads[i]];
+	const len: int32 = row.frames.length as int32;
+	if (index < 0 || index >= len) {
+		console.log(`void2d: setFrame(${index}) on an Anim of ${len} frames`);
+		unreachable;
+	}
+	const shown: int32 = row.frameIndex();
+	s.anims[s.payloads[i]] = { ...row, current: index, carryMs: 0.0 };
+	if (index != shown) { s.markChanged(i, Changed.Content); }
+	return n;
+}
+
+export function setFrameDelays(this n: NodeRef, delaysMs: Vec<int32>): NodeRef {
+	const i: int32 = n.liveRow("setFrameDelays");
+	requireKind(n, i, DrawKind.Anim, "setFrameDelays", "frames");
+	const s: Scene2D = n.scene;
+	const row: AnimFrames = s.anims[s.payloads[i]];
+	const count: int32 = delaysMs.length as int32;
+	const len: int32 = row.frames.length as int32;
+	if (count != 0 && count != len) {
+		console.log(`void2d: setFrameDelays got ${count} delays for an Anim of ${len} frames`);
+		unreachable;
+	}
+	for (let k: int32 = 0; k < count; k++) {
+		if (delaysMs[k] <= 0) {
+			console.log(`void2d: setFrameDelays frame ${k} has a delay of ${delaysMs[k]} ms`);
+			unreachable;
+		}
+	}
+	s.anims[s.payloads[i]] = { ...row, delaysMs: delaysMs, carryMs: 0.0 };
+	return n;
+}
+
+export function setSpeed(this n: NodeRef, speed: float32): NodeRef {
+	const i: int32 = n.liveRow("setSpeed");
+	requireKind(n, i, DrawKind.Anim, "setSpeed", "frames");
+	if (speed < 0.0) {
+		console.log(`void2d: setSpeed(${speed}) on an Anim; a speed is 0 or more`);
+		unreachable;
+	}
+	const s: Scene2D = n.scene;
+	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], speed: speed };
+	return n;
+}
+
+export function setLooping(this n: NodeRef, looping: boolean): NodeRef {
+	const i: int32 = n.liveRow("setLooping");
+	requireKind(n, i, DrawKind.Anim, "setLooping", "frames");
+	const s: Scene2D = n.scene;
+	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], looping: looping };
+	return n;
+}
+
+export function setPaused(this n: NodeRef, paused: boolean): NodeRef {
+	const i: int32 = n.liveRow("setPaused");
+	requireKind(n, i, DrawKind.Anim, "setPaused", "frames");
+	const s: Scene2D = n.scene;
+	s.anims[s.payloads[i]] = { ...s.anims[s.payloads[i]], paused: paused };
+	return n;
 }
 
 export function setBoxStyle(this n: NodeRef, style: BoxStyle): NodeRef {

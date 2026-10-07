@@ -3,7 +3,7 @@
 
 import {
 	Scene2D, NodeRef, DrawKind, Changed, Content2D, GraphicsMesh, Scroll2D, TileCell, NO_SLOT,
-	NO_NODE_2D, Enclosure, LaneFrame,
+	NO_NODE_2D, Enclosure, LaneFrame, NO_FRAME,
 } from "./node";
 import {
 	DrawContext2D,
@@ -159,14 +159,9 @@ function fmax4(a: float32, b: float32, c: float32, d: float32): float32 {
 const SELECTION_RADIUS: float32 = 2.0;
 const SELECTION_GLOOP: float32 = 8.0;
 
-const NO_FRAME: int32 = -1;
-
 function animFrame(s: Scene2D, i: int32): int32 {
 	if (s.kinds[i] !== DrawKind.Anim) { return NO_FRAME; }
-	const row: int32 = s.payloads[i];
-	const len: int32 = s.anims[row].frames.length as int32;
-	if (len == 0) { return NO_FRAME; }
-	return ((s.anims[row].clock * s.anims[row].fps) as int32) % len;
+	return s.anims[s.payloads[i]].frameIndex();
 }
 
 function placedBounds(t: Tile, w: float32, h: float32): Bounds2D {
