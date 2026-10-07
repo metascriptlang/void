@@ -1,8 +1,8 @@
-// glTF 2.0 subset loader: position, normal, COLOR_0 and TEXCOORD_0; base colour materials
-// with at most one texture, its image a PNG or JPEG in the buffer. One buffer, one buffer view
-// per accessor, FLOAT32 attributes, UNSIGNED_SHORT indices, node TRS, triangle primitives.
-// Not loaded: skins, animations, cameras, morph targets, sparse accessors, interleaved buffer
-// views, more than one buffer, images by URI.
+// glTF 2.0 subset loader: position, normal, COLOR_0, TEXCOORD_0 and TANGENT; materials with a
+// base colour, emissive and normal texture, each image a PNG or JPEG in the buffer. One buffer,
+// one buffer view per accessor, FLOAT32 attributes, UNSIGNED_SHORT indices, node TRS, triangle
+// primitives. Not loaded: skins, animations, cameras, morph targets, sparse accessors,
+// interleaved buffer views, more than one buffer, images by URI, occlusion textures.
 //
 // A mesh with several primitives decodes into one drawable `MeshData` per primitive, and its
 // node into a group whose children are one mesh node per primitive: three.js d4ea9b9
