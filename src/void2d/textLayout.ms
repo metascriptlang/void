@@ -26,6 +26,7 @@ when (voidShaper) {
 	import {
 		ShapeDirection,
 		ShapedGlyph,
+		shaperBreak,
 		shaperCodepoint,
 		shaperEnd,
 		shaperFeature,
@@ -566,7 +567,7 @@ when (voidShaper) {
 
 	function sameGroup(this a: Codepoint, b: Codepoint): boolean {
 		return !isControl(b.value) && a.face == b.face && a.scale == b.scale &&
-			(a.font as int32) == (b.font as int32) && a.run == b.run && !b.shapingBreak;
+			(a.font as int32) == (b.font as int32);
 	}
 
 	function shapeGroup(
@@ -585,7 +586,12 @@ when (voidShaper) {
 		if (style.letterSpacing != 0.0) {
 			for (const tag of OPTIONAL_LIGATURES) { shaperFeature(tag, 0); }
 		}
-		for (let k = from; k < to; k++) { shaperCodepoint(cps[k].value); }
+		for (let k = from; k < to; k++) {
+			if (k > from && (cps[k].run != cps[k - 1].run || cps[k].shapingBreak)) {
+				shaperBreak();
+			}
+			shaperCodepoint(cps[k].value);
+		}
 		const total: int32 = shaperEnd();
 		let glyphs: Vec<ShapedGlyph> = new Array(0);
 		for (let j = 0; j < total; j++) {

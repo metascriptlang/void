@@ -14,15 +14,21 @@ import {
 import {
 	Align,
 	NO_GLYPH,
+	PLAIN_LINES,
 	TextLayout,
+	TextRun,
 	TextStyle,
+	layoutRuns,
 	setTextShaping,
+	shapeText,
+	wrapText,
 } from "../void2d/textLayout";
 import {
 	allocateLabelText,
 	releaseLabelText,
 	shapeLabel,
 	placeLabel,
+	setLabelShapingBreaks,
 	glyphAtlas,
 	setSdfRegime,
 	TextRegime,
@@ -33,10 +39,11 @@ when (voidSdfText) {
 	import { SDF_EM } from "../void2d/textSdf";
 }
 
-import { Transform2D, trs2d } from "../void2d/types";
+import { Transform2D, rgba, trs2d } from "../void2d/types";
 import { approx } from "./helpers";
 
 const FIXTURE: string = "tests/fonts/shapeFixture.ttf";
+const CASCADIA: string = "tests/fonts/cascadiaSubset.ttf";
 const ORACLE_PATH: string = "tests/oracle/shapeFull.json";
 const PENDING_PATH: string = "tests/PENDING.md";
 const SIZE: float32 = 10.0;
@@ -273,6 +280,105 @@ test "a label places a mark at its GPOS offset" {
 	assert withOffset.placed[0].x == without.placed[0].x;
 	releaseLabelText(marked);
 	releaseLabelText(bare);
+}
+
+function runOf(len: int32, font: FontId): TextRun {
+	const clear = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: len, font: font, color: rgba(1.0, 1.0, 1.0, 1.0), background: clear,
+		underline: clear, wavy: false, strikethrough: clear,
+	};
+}
+
+function brokenAt(font: FontId, text: string, at: int32[]): TextLayout {
+	const style = styleOf(font, SIZE, 0.0);
+	const noRuns: TextRun[] = [];
+	return wrapText(shapeText(text, style, noRuns, at), style, PLAIN_LINES);
+}
+
+test "a run boundary keeps a ligature from forming across it" {
+	const font = fixture(plain());
+	const runs: TextRun[] = [runOf(1, font), runOf(1, font)];
+	const split = layoutRuns("fi", styleOf(font, SIZE, 0.0), runs);
+	assert split.glyphs[0].glyph == gid(font, F) && split.glyphs[1].glyph == gid(font, I);
+	assert split.glyphs[0].run == 0 && split.glyphs[1].run == 1;
+	assert approx(split.glyphs[1].x, 5.0) && approx(split.width, 8.0);
+	const whole = layoutOf(font, "fi", 0.0);
+	assert whole.glyphs[1].glyph == NO_GLYPH;
+}
+
+test "a shaping break at an index splits the ligature and no break restores it" {
+	const font = fixture(plain());
+	const none: int32[] = [];
+	const at: int32[] = [1];
+	const joined = brokenAt(font, "fi", none);
+	const apart = brokenAt(font, "fi", at);
+	assert joined.glyphs[1].glyph == NO_GLYPH && approx(joined.width, 7.5);
+	assert apart.glyphs[0].glyph == gid(font, F) && apart.glyphs[1].glyph == gid(font, I);
+	assert approx(apart.width, 8.0);
+	assert brokenAt(font, "fi", none).glyphs[0].glyph == joined.glyphs[0].glyph;
+}
+
+test "a break after the ligature leaves it whole" {
+	const font = fixture(plain());
+	const at: int32[] = [2];
+	const l = brokenAt(font, "fia", at);
+	assert l.glyphs[0].glyph != gid(font, F) && l.glyphs[1].glyph == NO_GLYPH;
+	assert approx(l.glyphs[2].x, 7.5);
+}
+
+test "a contextual substitution does not reach over a break" {
+	const font = fixture(plain());
+	const none: int32[] = [];
+	const at: int32[] = [1];
+	assert brokenAt(font, "ab", none).glyphs[1].glyph != gid(font, B);
+	assert brokenAt(font, "ab", at).glyphs[1].glyph == gid(font, B);
+	const runs: TextRun[] = [runOf(1, font), runOf(1, font)];
+	const split = layoutRuns("ab", styleOf(font, SIZE, 0.0), runs);
+	assert split.glyphs[1].glyph == gid(font, B);
+}
+
+test "a programming ligature split by a colour change draws the plain glyphs" {
+	const on = fontWith(CASCADIA, false, plain());
+	const gone = fontWith(CASCADIA, false, off("calt"));
+	const style = styleOf(on, SIZE, 0.0);
+	const runs: TextRun[] = [runOf(1, on), runOf(1, on)];
+	const split = layoutRuns("->", style, runs);
+	const whole = layoutOf(on, "->", 0.0);
+	const bare = layoutOf(gone, "->", 0.0);
+	assert whole.glyphs[1].glyph != bare.glyphs[1].glyph;
+	assert split.glyphs[0].glyph == bare.glyphs[0].glyph;
+	assert split.glyphs[1].glyph == bare.glyphs[1].glyph;
+	assert (split.glyphs.length as int32) == 2 && split.glyphs[1].run == 1;
+}
+
+test "a break and a face change at the same index are one split" {
+	const font = fixture(plain());
+	const at: int32[] = [1, 2];
+	const l = brokenAt(font, "fib", at);
+	assert l.glyphs[0].glyph == gid(font, F) && l.glyphs[1].glyph == gid(font, I);
+	assert l.glyphs[2].glyph == gid(font, B);
+}
+
+test "moving a shaping break changes only the glyph rows of its own label" {
+	const font = fixture(plain());
+	const first = allocateLabelText();
+	const second = allocateLabelText();
+	shapeLabel(first, "fi", styleOf(font, SIZE, 0.0));
+	shapeLabel(second, "fi", styleOf(font, SIZE, 0.0));
+	const world: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+	assert (placeLabel(first, world, 1.0).placed.length as int32) == 1;
+	const apart: int32[] = [1];
+	setLabelShapingBreaks(first, apart);
+	shapeLabel(first, "fi", styleOf(font, SIZE, 0.0));
+	assert (placeLabel(first, world, 1.0).placed.length as int32) == 2;
+	assert (placeLabel(second, world, 1.0).placed.length as int32) == 1;
+	const joined: int32[] = [];
+	setLabelShapingBreaks(first, joined);
+	shapeLabel(first, "fi", styleOf(font, SIZE, 0.0));
+	assert (placeLabel(first, world, 1.0).placed.length as int32) == 1;
+	releaseLabelText(first);
+	releaseLabelText(second);
 }
 
 function oracleRows(): JsonValue {
