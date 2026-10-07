@@ -72,7 +72,7 @@ const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, of
 const NO_NODE: NodeId3D = { scene: 0, index: 0, generation: 0 };
 
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 4 * UNLIT_MATERIAL_UNIFORM_LENGTH +
+	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 5 * UNLIT_MATERIAL_UNIFORM_LENGTH +
 	4 * MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
@@ -214,17 +214,25 @@ function init(): void {
 function readAsStraight(): void {
 	const own: WorldLabel = theLabel();
 	const row: int32 = scene.liveRow(own.node, "control");
-	const material: MaterialId = scene.meshes[scene.nodes[row].payload].material;
+	const payload: int32 = scene.nodes[row].payload;
 	const pass: RenderState = RenderState.defaults();
-	const read: Material = context.materials[material.index];
-	context.materials[material.index] = {
-		...read,
-		program: ProgramKey.of(Program.UnlitTextured),
-		pass: pass.withDepth(false, pass.depthTest).withBlendMode(BlendMode.Alpha),
-		texture: { store: 0, index: 0, generation: 0 },
+	const reserved: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH);
+	if (!reserved.ok) { unreachable; }
+	const white: Vec<float32> = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+	if (!writeUniforms(context, reserved.value, white).ok) { unreachable; }
+	const straight: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...Material.plain(
+			Program.UnlitTextured,
+			pass.withDepth(false, pass.depthTest).withBlendMode(BlendMode.Alpha),
+			Phase.Alpha,
+		),
 		texture0: own.target.asTexture(),
 		sampler0: context.textures[own.texture.index].sampler,
-	};
+		uniforms: reserved.value,
+	});
+	if (!straight.ok) { unreachable; }
+	scene.meshes[payload].material = straight.value;
 }
 
 function place(view: CameraView): void {
