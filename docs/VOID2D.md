@@ -1663,11 +1663,20 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`stb_truetype.h:4575`) run over `glyphShape`'s vertices so synthetic bold and italic faces
   are seen; it is byte-identical to `stbtt_GetGlyphSDF` on 94 ASCII glyphs of Inter and 40 CJK
   glyphs of the Noto subset (`src/test/glyphSdfCheck.ms`), and a cubic (CFF) outline is refused
-  by name (`AtlasError.SdfCubicOutline`) because stb's loop has no cubic case. The atlas keeps
+  by name (`AtlasError.SdfCubicOutline`) because stb's loop has no cubic case; `placeLabel` then
+  draws that glyph from the coverage atlas at the matrix's device size and re-places the label as
+  the matrix changes (`coverageInSdf`), the rest of the label staying on the field. A failed
+  rasterization returns a code that `acquireSdf` maps to its own `AtlasError`
+  (`SdfBadHandle`, `SdfWrongPageKind`, `SdfOutsidePage`, `SdfBoxMismatch`, `SdfNoMemory`), so no
+  tile is recorded for it. SDF pages share `maxPages` with coverage pages and have no reserve:
+  coverage pages filling the budget make `acquireSdf` answer `Full`. The atlas keeps
   SDF tiles on their own R8 page kind under key `(face, glyph, kind)`, no size and no variant:
   `acquireSdf`, 64 acquisitions are one tile and one generation, and SDF and coverage pages
   reclaim apart. `placeLabel` takes a third regime, `TextRegime.Sdf`, whose placement is the
-  tile box in local units at `size / 32`, so `placementCurrent` ignores the matrix and the scale:
+  tile box in local units at `size / 32`, so `placementCurrent` ignores the matrix and the scale
+  (a zero matrix is placed too, so a label that pops in from scale 0 is there when it grows; the
+  DPI `scale` is not used, so the draw slice must draw SDF glyphs through the world matrix alone,
+  as the Bitmap regime does):
   a 64-step zoom and a 64-step turn acquire nothing after the first frame.
   Measured, `msc test` (C, debug), 20 glyphs (16 Inter, 4 CJK), the field sampled bilinearly and
   ramped at device pixel centres against true coverage (exact-size `stbtt_MakeGlyphBitmapSubpixel`

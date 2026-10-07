@@ -93,6 +93,7 @@ export interface LabelText {
 	style: TextStyle;
 	placed: Vec<PlacedGlyph>;
 	placedValid: boolean;
+	coverageInSdf: boolean;
 	regime: TextRegime;
 	key: PlacementKey;
 	refused: int32;
@@ -187,6 +188,7 @@ export function allocateLabelText(): int32 {
 		style: style,
 		placed: new Array(0),
 		placedValid: false,
+		coverageInSdf: false,
 		regime: TextRegime.Bitmap,
 		key: NO_PLACEMENT_KEY,
 		refused: 0,
@@ -443,7 +445,7 @@ function placementCurrent(entry: LabelText, world: Transform2D, scale: float32):
 	if (!entry.placedValid) { return false; }
 	const regime: TextRegime = regimeOf(world);
 	if (entry.regime != regime) { return false; }
-	if (regime == TextRegime.Sdf) { return true; }
+	if (regime == TextRegime.Sdf && !entry.coverageInSdf) { return true; }
 	if (entry.key.scale != scale) { return false; }
 	if (entry.key.a != world.a || entry.key.b != world.b) { return false; }
 	if (entry.key.c != world.c || entry.key.d != world.d) { return false; }
@@ -527,19 +529,23 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let placed: Vec<PlacedGlyph> = new Array(0);
 	let refused: int32 = 0;
 	let refusal: string = "";
+	let coverageInSdf: boolean = false;
 	if (devicePerLocal > 0.0 || regime == TextRegime.Sdf) {
 		for (const g of entry.layout.glyphs) {
 			if (g.glyph == NO_GLYPH) { continue; }
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
 			if (regime == TextRegime.Sdf) {
 				const sdf = sdfPlacedGlyph(g, baseline);
-				if (!sdf.ok) {
+				if (sdf.ok) {
+					placed.push(sdf.value);
+					continue;
+				}
+				if (sdf.error != AtlasError.SdfCubicOutline || devicePerLocal <= 0.0) {
 					refused = refused + 1;
 					refusal = sdf.error.toString();
 					continue;
 				}
-				placed.push(sdf.value);
-				continue;
+				coverageInSdf = true;
 			}
 			let variant: int32 = 0;
 			let whole: int32 = 0;
@@ -577,6 +583,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	entry.refused = refused;
 	entry.placed = placed;
 	entry.placedValid = refused == 0;
+	entry.coverageInSdf = coverageInSdf;
 	entry.regime = regime;
 	entry.key = placementKey(world, scale, regime);
 	return entry;

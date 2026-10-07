@@ -1,5 +1,5 @@
 import { Align } from "../void2d/textLayout";
-import { DEFAULT_FONT } from "../void2d/font";
+import { DEFAULT_FONT, FontId, addFont } from "../void2d/font";
 import {
 	allocateLabelText,
 	releaseLabelText,
@@ -17,9 +17,13 @@ import { SDF_EM } from "../void2d/textSdf";
 import { approx } from "./helpers";
 
 function shapedAt(text: string, size: float32): int32 {
+	return shapedIn(text, size, DEFAULT_FONT);
+}
+
+function shapedIn(text: string, size: float32, font: FontId): int32 {
 	const index = allocateLabelText();
 	shapeLabel(index, text, {
-		font: DEFAULT_FONT,
+		font: font,
 		size: size,
 		letterSpacing: 0.0,
 		lineSpacing: 0.0,
@@ -164,4 +168,29 @@ test "the DPI scale does not move an SDF placement" {
 	}
 	releaseLabelText(one);
 	releaseLabelText(two);
+}
+
+test "a cubic outline falls back to the coverage atlas for that glyph and keeps the rest on the field" {
+	setSdfRegime(true);
+	defer setSdfRegime(false);
+	const font = try addFont("tests/fonts/cffSynthetic.otf") catch DEFAULT_FONT;
+	assert font != DEFAULT_FONT;
+	const index = shapedIn("AB", 20.0, font);
+	const first = placeLabel(index, trs2d(0.0, 0.0, 0.3, 2.0, 2.0), 1.0);
+	assert first.regime == TextRegime.Sdf;
+	assert first.placedValid;
+	assert first.refused == 0;
+	assert (first.placed.length as int32) == 2;
+	assert glyphAtlas.pageKind(first.placed[0].page) == PageKind.Coverage;
+	assert glyphAtlas.pageKind(first.placed[1].page) == PageKind.Sdf;
+	const sharp: float32 = glyphAtlas.tile(first.placed[0].tile).height as float32;
+	const zoomed = placeLabel(index, trs2d(0.0, 0.0, 0.3, 4.0, 4.0), 1.0);
+	assert zoomed.placedValid && zoomed.refused == 0;
+	assert glyphAtlas.pageKind(zoomed.placed[0].page) == PageKind.Coverage;
+	assert (glyphAtlas.tile(zoomed.placed[0].tile).height as float32) > sharp * 1.5;
+	const rasterized = glyphRasterizations();
+	const steady = placeLabel(index, trs2d(0.0, 0.0, 0.3, 4.0, 4.0), 1.0);
+	assert steady.placedValid;
+	assert glyphRasterizations() == rasterized;
+	releaseLabelText(index);
 }
