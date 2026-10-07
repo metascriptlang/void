@@ -345,6 +345,10 @@ uint32_t doorMakePipeline(const uint32_t *descriptor, int64_t length) {
 		desc.colors[i].blend = blend;
 		colorCount = i + 1;
 	}
+	if (colorCount == 0) {
+		// sokol_gfx _sg_pipeline_desc_defaults: color_count 0 becomes 1 unless colors[0] is NONE.
+		desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
+	}
 	desc.color_count = colorCount;
 	sg_pipeline pipeline = sg_make_pipeline(&desc);
 	if (sg_query_pipeline_state(pipeline) != SG_RESOURCESTATE_VALID) {
