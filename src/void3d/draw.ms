@@ -26,8 +26,11 @@ import {
 	samplerSlotMask,
 	uniformBlockLength,
 	ProgramKey,
+	Preset,
 	declares,
 	MATERIAL_ALPHA_KILL,
+	SHADOW_VIEW_SLOT,
+	SHADOW_SAMPLER_SLOT,
 } from "./gpu3d";
 import {
 	PassState,
@@ -1225,7 +1228,20 @@ function applyBlock(this context: DrawContext, block: UniformBlock): void {
 	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + block.length]);
 }
 
-function bindItem(context: DrawContext, mesh: GpuMesh, material: Material): void {
+// An hxsl global texture (Heaps' `shadow.map`), bound past a material's slots.
+export struct SceneTexture {
+	view: uint32;
+	sampler: uint32;
+}
+
+export const NO_SCENE_TEXTURE: SceneTexture = { view: 0, sampler: 0 };
+
+function bindItem(
+	context: DrawContext,
+	mesh: GpuMesh,
+	material: Material,
+	scene: SceneTexture,
+): void {
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER] =
 		drawsQuads(mesh.layout) ? mesh.instanceBuffer : mesh.vertexBuffer;
 	context.bindings[GPU3D_BINDING_VERTEX_BUFFER + 1] = 0;
@@ -1240,6 +1256,8 @@ function bindItem(context: DrawContext, mesh: GpuMesh, material: Material): void
 		context.bindings[GPU3D_BINDING_VIEW] = context.viewAt(material.texture.index);
 		context.bindings[GPU3D_BINDING_SAMPLER] = context.textures[material.texture.index].sampler;
 	}
+	context.bindings[GPU3D_BINDING_VIEW + SHADOW_VIEW_SLOT] = scene.view;
+	context.bindings[GPU3D_BINDING_SAMPLER + SHADOW_SAMPLER_SLOT] = scene.sampler;
 	applyBindings(context.bindings);
 }
 
@@ -1312,6 +1330,22 @@ export function drawItem(
 	globals: Readonly<Span<UniformBlock>>,
 ): void {
 	if (context.closed) { stopOnClosedContext("drawItem"); }
+	if (!context.hasMaterial(item.material)) { stopOnUnheldItem(); }
+	const state: RenderState = context.materials[item.material.index].pass;
+	drawItemWith(context, item, program, state, targets, globals, NO_SCENE_TEXTURE);
+}
+
+// A caster draws with h3d.mat.Material's "shadow" Pass state, not the material's main pass.
+export function drawItemWith(
+	context: DrawContext,
+	item: DrawItem,
+	program: ProgramKey,
+	state: RenderState,
+	targets: TargetLayout,
+	globals: Readonly<Span<UniformBlock>>,
+	scene: SceneTexture,
+): void {
+	if (context.closed) { stopOnClosedContext("drawItem"); }
 	if (!context.hasMesh(item.mesh) || !context.hasMaterial(item.material)) { stopOnUnheldItem(); }
 	for (const block of globals) {
 		if (!context.uniforms.holds(block)) { stopOnUnheldBlock(block.slot); }
@@ -1323,12 +1357,14 @@ export function drawItem(
 	if (mesh.hasNothingToDraw()) { return; }
 	const declared: TextureAlpha = material.program.premultiplied ?
 		TextureAlpha.Premultiplied : TextureAlpha.Straight;
-	if (program.premultiplied != material.program.premultiplied) {
+	// Depth has no colour to premultiply, and the alpha a caster cuts by is the same either way.
+	const colored: boolean = program.preset != Preset.Shadow;
+	if (colored && program.premultiplied != material.program.premultiplied) {
 		stopOnAlphaMismatch(program, declared);
 	}
 	if (material.namesTexture()) {
 		const alpha: TextureAlpha = context.textureAlphas[material.texture.index];
-		if (alpha != declared) { stopOnAlphaMismatch(program, alpha); }
+		if (colored && alpha != declared) { stopOnAlphaMismatch(program, alpha); }
 		if (!context.textureReady(material.texture.index)) { return; }
 	}
 	const pipeline: uint32 = pipelineFor(
@@ -1336,11 +1372,11 @@ export function drawItem(
 		program,
 		mesh.layout,
 		mesh.isIndexed(),
-		material.pass,
+		state,
 		targets,
 	);
 	applyPipeline(pipeline);
-	bindItem(context, mesh, material);
+	bindItem(context, mesh, material, scene);
 	let globalProgram: int32 = doorProgram(program);
 	if (context.pipelines.declaresBlock(globalProgram, MODEL_SLOT)) {
 		const modelLength: int32 = uniformBlockLength(program, MODEL_SLOT);
@@ -1355,7 +1391,9 @@ export function drawItem(
 			context.applyBlock(block);
 		}
 	}
-	if (material.uniforms.length > 0) {
+	// A caster that does not cut reads none of its material's block.
+	if (material.uniforms.length > 0 &&
+		context.pipelines.declaresBlock(globalProgram, material.uniforms.slot)) {
 		context.applyBlock(material.uniforms);
 	}
 	draw(0, mesh.elementCount(), mesh.instanceCount);

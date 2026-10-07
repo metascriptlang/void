@@ -38,10 +38,11 @@ enum {
 enum {
 	GPU3D_PRESET_CORE,
 	GPU3D_PRESET_PIXEL_ART,
+	GPU3D_PRESET_SHADOW,
 };
 
-#define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout) \
-	((program) | ((preset) << 4) | ((premultiplied) << 5) | ((cutout) << 6))
+#define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed) \
+	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8))
 
 #include "programTable.h"
 
@@ -227,10 +228,12 @@ void gpu3dApplyBindings(const uint32_t *bindings, int64_t length) {
 	sg_bindings desc = {0};
 	for (int i = 0; i < 2; i++) {
 		desc.vertex_buffers[i] = (sg_buffer){.id = bindings[GPU3D_BINDING_VERTEX_BUFFER + i]};
+	}
+	for (int i = 0; i < GPU3D_BINDING_SAMPLERS; i++) {
 		desc.samplers[i] = (sg_sampler){.id = bindings[GPU3D_BINDING_SAMPLER + i]};
 	}
 	desc.index_buffer = (sg_buffer){.id = bindings[GPU3D_BINDING_INDEX_BUFFER]};
-	for (int i = 0; i < DOOR_MAX_COLOR_ATTACHMENTS; i++) {
+	for (int i = 0; i < GPU3D_BINDING_VIEWS; i++) {
 		desc.views[i] = (sg_view){.id = bindings[GPU3D_BINDING_VIEW + i]};
 	}
 	sg_apply_bindings(&desc);

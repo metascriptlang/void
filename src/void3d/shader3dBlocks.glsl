@@ -122,3 +122,31 @@ layout(binding=1) uniform lightParams {
 };
 
 @end
+
+@block dirShadow
+// h3d.shader.ShadowSampling.sampleShadow with SAMPLING_NONE, on the map dirShadowMap.ms draws.
+// shadowMatrix takes a world position to the map's texel space and to the depth the backend
+// stores, so the compare reads the attachment as written; shadow.x is the bias in that depth,
+// shadow.y the opacity (1 a full shadow).
+layout(binding=5) uniform shadowParams {
+    mat4 shadowMatrix;
+    vec4 shadow;
+};
+@image_sample_type shadowMap unfilterable_float
+@sampler_type shadowSampler nonfiltering
+layout(binding=4) uniform texture2D shadowMap;
+layout(binding=2) uniform sampler shadowSampler;
+
+float dirShadowAt(vec3 position) {
+    vec3 p = (shadowMatrix * vec4(position, 1.0)).xyz;
+    if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0) {
+        return 1.0;
+    }
+    ivec2 size = textureSize(sampler2D(shadowMap, shadowSampler), 0);
+    ivec2 texel = clamp(ivec2(p.xy * vec2(size)), ivec2(0, 0), size - ivec2(1, 1));
+    float depth = texelFetch(sampler2D(shadowMap, shadowSampler), texel, 0).r;
+    float lit = (clamp(p.z, 0.0, 1.0) - shadow.x > depth) ? 0.0 : 1.0;
+    return mix(1.0, lit, shadow.y);
+}
+
+@end

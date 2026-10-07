@@ -15,6 +15,7 @@ import { RenderState, BlendMode, Compare, Face } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
 import {
 	Material, MaterialKind, Phase, UniformBlock, alphaKillFor, passFor, DEFAULT_ALPHA_KILL,
+	ShadowCasting,
 } from "../void3d/material";
 import {
 	DrawContext,
@@ -439,10 +440,15 @@ test "a material kind derives Heaps' blend, depth write, list and alpha kill" {
 	assert opaque.phase == Phase.Opaque && !opaque.pass.blends() && opaque.pass.depthWrite;
 	const cut: Material = Material.ofKind(Program.Lit, MaterialKind.AlphaKill);
 	assert cut.phase == Phase.Opaque && !cut.pass.blends() && cut.pass.depthWrite;
-	const lit: ProgramKey = ProgramKey.of(Program.Lit);
+	const lit: ProgramKey = ProgramKey.of(Program.Lit).withShadowed();
 	assert opaque.program == lit && cut.program == lit.withCutout();
-	assert Material.ofKind(Program.UnlitTextured, MaterialKind.AlphaKill).program ==
-		ProgramKey.of(Program.UnlitTextured).withCutout();
+	assert opaque.castShadows == ShadowCasting.On && cut.castShadows == ShadowCasting.On;
+	const unlit: Material = Material.ofKind(Program.UnlitTextured, MaterialKind.AlphaKill);
+	assert unlit.program == ProgramKey.of(Program.UnlitTextured).withCutout();
+	assert unlit.castShadows == ShadowCasting.On;
+	const billboard: Material = Material.ofKind(Program.Billboard, MaterialKind.Alpha);
+	assert billboard.program == ProgramKey.of(Program.Billboard);
+	assert billboard.castShadows == ShadowCasting.Off;
 	const blended: RenderState = RenderState.defaults()
 		.withBlendMode(BlendMode.Add)
 		.withDepth(false, Compare.LessEqual)

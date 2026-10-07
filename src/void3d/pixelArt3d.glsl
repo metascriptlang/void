@@ -34,6 +34,9 @@ void main() {
 @block litShade
 vec4 litShade(vec3 n) {
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+#ifdef SHADOWED
+    lambert *= dirShadowAt(worldPosition);
+#endif
     vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
@@ -50,6 +53,9 @@ vec4 litShade(vec3 n) {
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
+#ifdef SHADOWED
+@include_block dirShadow
+#endif
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -95,6 +101,9 @@ void main() {
 @block litTexturedShade
 vec4 litTexturedShade(vec4 texel, vec3 n) {
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+#ifdef SHADOWED
+    lambert *= dirShadowAt(worldPosition);
+#endif
     vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n, 1.0, material.x);
@@ -111,6 +120,9 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
+#ifdef SHADOWED
+@include_block dirShadow
+#endif
 #ifdef PREMULTIPLIED
 @include_block straightTexel
 #endif

@@ -25,6 +25,14 @@ export enum MaterialKind {
 	SoftAdd,
 }
 
+// Whether the shadow pass draws the material (h3d.mat.Material.castShadows), and Only for a
+// caster the colour passes leave out (Godot's and Unity's shadows-only casting mode).
+export enum ShadowCasting {
+	Off,
+	On,
+	Only,
+}
+
 // Heaps' Defaults.defaultKillAlphaThreshold, and glTF's alphaCutoff default.
 export const DEFAULT_ALPHA_KILL: float32 = 0.5;
 
@@ -83,6 +91,7 @@ export struct Material {
 	uniforms: UniformBlock;
 	// h3d.mat.Pass.layer: a list draws lower layers first, before any other order it has.
 	layer: int32;
+	castShadows: ShadowCasting;
 }
 
 export const NO_UNIFORMS: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
@@ -112,11 +121,33 @@ function stopOnNoCutout(program: Program): ProgramKey {
 	unreachable;
 }
 
+// Material.create's default props cast and receive shadows (`shadows: true`), except
+// particles3D's; here every program with a shadow-pass output casts and every lit one receives.
+function castsByDefault(program: Program): boolean {
+	return program == Program.Lit || program == Program.LitTextured ||
+		program == Program.UnlitTextured;
+}
+
 // The caller writes alphaKillFor(kind) into the material block, as every other uniform value.
 export function ofKind(this typeof Material, program: Program, kind: MaterialKind): Material {
 	const key: ProgramKey =
 		kind == MaterialKind.AlphaKill ? cutoutOf(program) : ProgramKey.of(program);
-	return Material.keyed(key, passFor(kind, RenderState.defaults()), phaseFor(kind));
+	const lit: boolean = program == Program.Lit || program == Program.LitTextured;
+	const material: Material =
+		Material.keyed(key, passFor(kind, RenderState.defaults()), phaseFor(kind));
+	const cast: ShadowCasting = castsByDefault(program) ? ShadowCasting.On : ShadowCasting.Off;
+	return material.withShadows(cast, lit);
+}
+
+// h3d.mat.Material's castShadows and receiveShadows setters.
+export function withShadows(
+	this material: Material,
+	cast: ShadowCasting,
+	receive: boolean,
+): Material {
+	const key: ProgramKey =
+		receive ? material.program.withShadowed() : { ...material.program, shadowed: false };
+	return { ...material, program: key, castShadows: cast };
 }
 
 // A material of the core's `program` with no feature; it samples nothing and has no uniforms of
@@ -150,6 +181,7 @@ export function keyed(
 		texture: NO_TEXTURE,
 		uniforms: NO_UNIFORMS,
 		layer: 0,
+		castShadows: ShadowCasting.Off,
 	};
 }
 

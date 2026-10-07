@@ -46,6 +46,7 @@ import {
 	closePrepare,
 	openScreen,
 	closeRenderer,
+	drawShadowPass,
 } from "./renderer";
 
 export interface ForwardRenderer {
@@ -75,6 +76,7 @@ export enum ForwardError {
 	StaleMaterial,
 	ForeignMesh,
 	ForeignMaterial,
+	ProgramNotCast,
 	TargetSize,
 }
 
@@ -138,6 +140,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.StaleMaterial => ForwardError.StaleMaterial,
 		RendererError.ForeignMesh => ForwardError.ForeignMesh,
 		RendererError.ForeignMaterial => ForwardError.ForeignMaterial,
+		RendererError.ProgramNotCast => ForwardError.ProgramNotCast,
 	};
 }
 
@@ -197,6 +200,7 @@ export function prepareFrame(
 	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.asTexture();
 	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.asHandle();
 
+	const _casters: int32 = drawShadowPass(renderer.core, items, camera, lights);
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
 	drawPassLists(renderer.core, items, FORWARD_LAYOUT);
 	endPass();

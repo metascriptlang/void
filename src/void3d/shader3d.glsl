@@ -29,6 +29,9 @@ void main() {
 @block litShade
 vec4 litShade(vec3 n) {
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+#ifdef SHADOWED
+    lambert *= dirShadowAt(worldPosition);
+#endif
     vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n);
@@ -46,6 +49,9 @@ vec4 litShade(vec3 n) {
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
+#ifdef SHADOWED
+@include_block dirShadow
+#endif
 in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
@@ -86,6 +92,9 @@ void main() {
 @block litTexturedShade
 vec4 litTexturedShade(vec4 texel, vec3 n) {
     float lambert = max(dot(n, dirLight.xyz), 0.0) * dirLight.w;
+#ifdef SHADOWED
+    lambert *= dirShadowAt(worldPosition);
+#endif
     vec3 light = srgbToLinear(ambient.rgb) + srgbToLinear(dirColor.rgb) * lambert;
     for (int i = 0; i < int(ambient.a + 0.5); i++) {
         light += pointLightAt(i, worldPosition, n);
@@ -103,6 +112,9 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
+#ifdef SHADOWED
+@include_block dirShadow
+#endif
 #ifdef PREMULTIPLIED
 @include_block straightTexel
 #endif
@@ -173,6 +185,61 @@ void main() {
 #endif
 #ifdef PREMULTIPLIED
     fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
+#endif
+}
+@end
+
+// h3d.pass.Shadows writes depth only; a cutout caster discards at its colour program's alpha.
+@fs shadowLitFs
+#ifdef CUTOUT
+@include_block materialUniforms
+#endif
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec4 baseColor;
+void main() {
+#ifdef CUTOUT
+    if (baseColor.a < material.w) {
+        discard;
+    }
+#endif
+}
+@end
+
+@fs shadowLitTexturedFs
+#ifdef CUTOUT
+@include_block materialUniforms
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+#endif
+in vec3 worldPosition;
+in vec3 worldNormal;
+in vec2 surfaceUv;
+in vec4 baseColor;
+void main() {
+#ifdef CUTOUT
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    if (baseColor.a * texel.a < material.w) {
+        discard;
+    }
+#endif
+}
+@end
+
+@fs shadowUnlitTexturedFs
+#ifdef CUTOUT
+@include_block unlitMaterialUniforms
+layout(binding=0) uniform texture2D baseTexture;
+layout(binding=0) uniform sampler baseSampler;
+#endif
+in vec2 surfaceUv;
+in vec4 baseColor;
+void main() {
+#ifdef CUTOUT
+    vec4 texel = texture(sampler2D(baseTexture, baseSampler), surfaceUv);
+    if (baseColor.a * materialColor.a * texel.a < material.w) {
+        discard;
+    }
 #endif
 }
 @end

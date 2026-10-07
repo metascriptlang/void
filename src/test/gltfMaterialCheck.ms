@@ -506,7 +506,7 @@ test "a glTF material is the setup's block and culling, double sides unculled an
 	assert (made.value.materials.length as int32) == 2 && context.liveMaterials() == 2;
 	const single: Material = context.materials[made.value.materials[0].index];
 	const double: Material = context.materials[made.value.materials[1].index];
-	const lit: ProgramKey = ProgramKey.of(Program.Lit);
+	const lit: ProgramKey = ProgramKey.of(Program.Lit).withShadowed();
 	assert single.program == lit && double.program == lit;
 	assert single.pass.culling == Face.Back && double.pass.culling == Face.None;
 	assert !single.namesTexture();
@@ -529,7 +529,7 @@ test "a glTF material's kind sets its phase, blend and alpha kill over the setup
 	const cut: Material = context.materials[made.value.materials[0].index];
 	const blended: Material = context.materials[made.value.materials[1].index];
 	assert cut.phase == Phase.Opaque && !cut.pass.blends() && cut.pass.depthWrite;
-	const lit: ProgramKey = ProgramKey.of(Program.Lit);
+	const lit: ProgramKey = ProgramKey.of(Program.Lit).withShadowed();
 	assert cut.program == lit.withCutout() && blended.program == lit;
 	assert blended.phase == Phase.Alpha && blended.pass.blends() && blended.pass.depthWrite;
 	assert blended.pass.culling == Face.None;

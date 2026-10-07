@@ -68,6 +68,7 @@ ROOT=$(pwd -W 2>/dev/null || pwd)
 sourceOf() {
 	case "$1" in
 		CORE)      echo src/void3d/shader3d.glsl ;;
+		SHADOW)    echo src/void3d/shader3d.glsl ;;
 		PIXEL_ART) echo src/void3d/pixelArt3d.glsl ;;
 		*) echo "programKeys.txt: unknown preset $1" >&2; return 1 ;;
 	esac
@@ -114,12 +115,14 @@ regenKeys() {
 		attributes=$(attributesOf "$layout")
 		premultiplied=0
 		cutout=0
+		shadowed=0
 		defines=""
 		if [ "$features" != "-" ]; then
 			for feature in $(echo "$features" | tr ':' ' '); do
 				case "$feature" in
 					PREMULTIPLIED) premultiplied=1 ;;
 					CUTOUT)        cutout=1 ;;
+					SHADOWED)      shadowed=1 ;;
 					*) echo "programKeys.txt: row $module names unknown feature $feature"; exit 1 ;;
 				esac
 			done
@@ -144,8 +147,8 @@ regenKeys() {
 
 		printf '\t%s_program_shader_desc,\n' "$module" >> "$work/descs"
 		printf '\tLAYOUT_%s,\n' "$layout" >> "$work/layouts"
-		printf '\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s),\n' \
-			"$program" "$preset" "$premultiplied" "$cutout" >> "$work/keys"
+		printf '\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s),\n' \
+			"$program" "$preset" "$premultiplied" "$cutout" "$shadowed" >> "$work/keys"
 		first=$(tr -d "\r" < "$KEYS" | awk -v l="$layout" '$1 !~ /^#/ && $7 == l { print $1; exit }')
 		if [ "$first" != "$module" ]; then
 			same=""

@@ -1,4 +1,4 @@
-# The program keys void3d ships (docs/VOID3D.md, M35a). scripts/regen-shaders.sh compiles one
+# The program keys void3d ships (docs/VOID3D.md, M35a and M35). scripts/regen-shaders.sh compiles one
 # sokol-shdc program per row, from the preset's source with the row's features as defines, and
 # writes programTable.h, the table gpu3d.c registers with the GPU door in this order.
 #
@@ -26,3 +26,17 @@ litTexturedCutout                     LIT_TEXTURED    CORE      CUTOUT          
 pixelArtLitTexturedCutout             LIT_TEXTURED    PIXEL_ART CUTOUT                   litTexturedVs   litTexturedFs    LIT_TEXTURED
 unlitTexturedCutout                   UNLIT_TEXTURED  CORE      CUTOUT                   unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
 pixelArtUnlitTexturedCutout           UNLIT_TEXTURED  PIXEL_ART CUTOUT                   unlitTexturedVs unlitTexturedFs  LIT_TEXTURED
+shadowLit                             LIT             SHADOW    -                        litVs           shadowLitFs           LIT
+shadowLitCutout                       LIT             SHADOW    CUTOUT                   litVs           shadowLitFs           LIT
+shadowLitTextured                     LIT_TEXTURED    SHADOW    -                        litTexturedVs   shadowLitTexturedFs   LIT_TEXTURED
+shadowLitTexturedCutout               LIT_TEXTURED    SHADOW    CUTOUT                   litTexturedVs   shadowLitTexturedFs   LIT_TEXTURED
+shadowUnlitTextured                   UNLIT_TEXTURED  SHADOW    -                        unlitTexturedVs shadowUnlitTexturedFs LIT_TEXTURED
+shadowUnlitTexturedCutout             UNLIT_TEXTURED  SHADOW    CUTOUT                   unlitTexturedVs shadowUnlitTexturedFs LIT_TEXTURED
+litShadowed                           LIT             CORE      SHADOWED                 litVs           litFs            LIT
+pixelArtLitShadowed                   LIT             PIXEL_ART SHADOWED                 litVs           litFs            LIT
+litCutoutShadowed                     LIT             CORE      CUTOUT:SHADOWED          litVs           litFs            LIT
+pixelArtLitCutoutShadowed             LIT             PIXEL_ART CUTOUT:SHADOWED          litVs           litFs            LIT
+litTexturedShadowed                   LIT_TEXTURED    CORE      SHADOWED                 litTexturedVs   litTexturedFs    LIT_TEXTURED
+pixelArtLitTexturedShadowed           LIT_TEXTURED    PIXEL_ART SHADOWED                 litTexturedVs   litTexturedFs    LIT_TEXTURED
+litTexturedCutoutShadowed             LIT_TEXTURED    CORE      CUTOUT:SHADOWED          litTexturedVs   litTexturedFs    LIT_TEXTURED
+pixelArtLitTexturedCutoutShadowed     LIT_TEXTURED    PIXEL_ART CUTOUT:SHADOWED          litTexturedVs   litTexturedFs    LIT_TEXTURED

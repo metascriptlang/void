@@ -7,9 +7,9 @@
 // for the "alpha" pass. The index storage grows only when the item
 // count does (a structural change), so a frame allocates nothing.
 
-import { DrawContext, DrawItem, drawItem } from "./draw";
+import { DrawContext, DrawItem, SceneTexture, drawItemWith } from "./draw";
 import { TargetLayout } from "../gpu/target";
-import { Material, Phase, UniformBlock } from "./material";
+import { Material, Phase, UniformBlock, ShadowCasting } from "./material";
 import { ProgramKey } from "./gpu3d";
 import { MeshData } from "./meshData";
 import { Frustum3D } from "./frustum";
@@ -33,21 +33,46 @@ export function forPhase(this typeof PassList, phase: Phase): PassList {
 	return { phase: phase, indices: [], depths: [], layers: [], count: 0 };
 }
 
-// PassList.init + filter: the items whose material draws in this list's phase.
+function reserve(ref list: PassList, length: int32): void {
+	while ((list.indices.length as int32) < length) {
+		list.indices.push(0);
+		list.depths.push(0.0);
+		list.layers.push(0);
+	}
+}
+
+// PassList.init + filter: the items whose material draws in this list's phase; a shadow-only
+// caster draws in none.
 export function collect(
 	ref list: PassList,
 	items: Readonly<Span<DrawItem>>,
 	materials: Readonly<Span<Material>>,
 ): void {
-	while ((list.indices.length as int32) < (items.length as int32)) {
-		list.indices.push(0);
-		list.depths.push(0.0);
-		list.layers.push(0);
-	}
+	reserve(list, items.length as int32);
 	let count: int32 = 0;
 	for (let i = 0; i < (items.length as int32); i++) {
 		const material: int32 = items[i].material.index;
-		if (materials[material].phase == list.phase) {
+		if (materials[material].phase == list.phase &&
+			materials[material].castShadows != ShadowCasting.Only) {
+			list.indices[count] = i;
+			list.layers[count] = materials[material].layer;
+			count = count + 1;
+		}
+	}
+	list.count = count;
+}
+
+// The "shadow" pass list: the items whose material casts, in item order.
+export function collectCasters(
+	ref list: PassList,
+	items: Readonly<Span<DrawItem>>,
+	materials: Readonly<Span<Material>>,
+): void {
+	reserve(list, items.length as int32);
+	let count: int32 = 0;
+	for (let i = 0; i < (items.length as int32); i++) {
+		const material: int32 = items[i].material.index;
+		if (materials[material].castShadows != ShadowCasting.Off) {
 			list.indices[count] = i;
 			list.layers[count] = materials[material].layer;
 			count = count + 1;
@@ -135,7 +160,7 @@ export function sortByLayer(ref list: PassList): void {
 }
 
 // Output.draw: the collected items, in the list's order, into the current pass, each with its
-// program in `drawn`, which is indexed like `items`.
+// program in `drawn`, which is indexed like `items`, and its material's pass.
 export function drawPassList(
 	context: DrawContext,
 	list: PassList,
@@ -143,9 +168,11 @@ export function drawPassList(
 	drawn: Readonly<Span<ProgramKey>>,
 	targets: TargetLayout,
 	globals: Readonly<Span<UniformBlock>>,
+	scene: SceneTexture,
 ): void {
 	for (let i = 0; i < list.count; i++) {
 		const index: int32 = list.indices[i];
-		drawItem(context, items[index], drawn[index], targets, globals);
+		const material: Material = context.materials[items[index].material.index];
+		drawItemWith(context, items[index], drawn[index], material.pass, targets, globals, scene);
 	}
 }

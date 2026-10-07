@@ -61,7 +61,7 @@ function pixelArt(program: Program): ProgramKey {
 }
 
 function drawnAs(key: ProgramKey, preset: Preset): ProgramKey {
-	const drawn: Result<ProgramKey, ProgramError> = drawnIn(key, preset);
+	const drawn: Result<ProgramKey, ProgramError> = drawnIn(key, preset, false);
 	if (drawn.ok) { return drawn.value; }
 	console.log(`${key.describe()} is not drawn in ${preset.toString()}`);
 	unreachable;
@@ -132,13 +132,15 @@ function layoutFor(program: Program): VertexLayout {
 function everyKey(): Vec<ProgramKey> {
 	let keys: Vec<ProgramKey> = [];
 	for (const program of EVERY_PROGRAM) {
-		for (const preset of [Preset.Core, Preset.PixelArt]) {
+		for (const preset of [Preset.Core, Preset.PixelArt, Preset.Shadow]) {
 			for (const premultiplied of [false, true]) {
 				for (const cutout of [false, true]) {
-					keys.push({
-						program: program, preset: preset,
-						premultiplied: premultiplied, cutout: cutout,
-					});
+					for (const shadowed of [false, true]) {
+						keys.push({
+							program: program, preset: preset,
+							premultiplied: premultiplied, cutout: cutout, shadowed: shadowed,
+						});
+					}
 				}
 			}
 		}
@@ -148,18 +150,18 @@ function everyKey(): Vec<ProgramKey> {
 
 test "every key packs to bits of its own, and each declared one reads its program's layout" {
 	let seen: Vec<boolean> = [];
-	for (let bits = 0; bits < 128; bits++) { seen.push(false); }
+	for (let bits = 0; bits < 512; bits++) { seen.push(false); }
 	let declared: int32 = 0;
 	for (const key of everyKey()) {
 		const bits: int32 = key.bits();
-		assert bits >= 0 && bits < 128 && !seen[bits];
+		assert bits >= 0 && bits < 512 && !seen[bits];
 		seen[bits] = true;
 		if (declares(key)) {
 			declared = declared + 1;
 			assert vertexLayoutOf(key) == layoutFor(key.program);
 		}
 	}
-	assert declared == 23;
+	assert declared == 37;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -173,12 +175,12 @@ test "both presets draw every scene program's key in their own, and no screen pr
 	for (const screen of screens) {
 		assert declares(screen);
 		for (const preset of [Preset.Core, Preset.PixelArt]) {
-			const drawn: Result<ProgramKey, ProgramError> = drawnIn(screen, preset);
+			const drawn: Result<ProgramKey, ProgramError> = drawnIn(screen, preset, false);
 			assert !drawn.ok && drawn.error == ProgramError.NotDrawn;
 		}
 	}
 	const named: Result<ProgramKey, ProgramError> =
-		drawnIn(pixelArt(Program.Lit), Preset.PixelArt);
+		drawnIn(pixelArt(Program.Lit), Preset.PixelArt, false);
 	assert !named.ok && named.error == ProgramError.NotDrawn;
 }
 

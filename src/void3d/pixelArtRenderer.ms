@@ -81,6 +81,7 @@ import {
 	closePrepare,
 	openScreen,
 	closeRenderer,
+	drawShadowPass,
 } from "./renderer";
 
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
@@ -169,6 +170,7 @@ export enum PixelArtError {
 	StaleMaterial,
 	ForeignMesh,
 	ForeignMaterial,
+	ProgramNotCast,
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
@@ -543,6 +545,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.StaleMaterial => PixelArtError.StaleMaterial,
 		RendererError.ForeignMesh => PixelArtError.ForeignMesh,
 		RendererError.ForeignMaterial => PixelArtError.ForeignMaterial,
+		RendererError.ProgramNotCast => PixelArtError.ProgramNotCast,
 	};
 }
 
@@ -587,6 +590,7 @@ function postReadsDepth(settings: PixelArtSettings): boolean {
 
 function rampsHaveLevels(
 	preset: Preset,
+	shadowed: boolean,
 	context: DrawContext,
 	items: Readonly<Span<DrawItem>>,
 ): boolean {
@@ -594,7 +598,8 @@ function rampsHaveLevels(
 		if (!context.hasMaterial(item.material)) { continue; }
 		const material: Material = context.materials[item.material.index];
 		if (!context.keepsItsUniforms(item.material)) { continue; }
-		const drawn: Result<ProgramKey, ProgramError> = drawnIn(material.program, preset);
+		const drawn: Result<ProgramKey, ProgramError> =
+			drawnIn(material.program, preset, shadowed);
 		if (!drawn.ok) { continue; }
 		const held: boolean = match (drawn.value.program) {
 			Program.Lit => levelsAt(context, material.uniforms, RAMP_LEVELS),
@@ -639,7 +644,8 @@ export function prepareFrame(
 	const blocksKept: boolean = context.keepsItsUniforms(renderer.postMaterial) &&
 		context.keepsItsUniforms(renderer.blitMaterial);
 	if (!blocksKept) { return Result.err(PixelArtError.UniformsReplaced); }
-	if (!rampsHaveLevels(renderer.core.preset, context, items)) {
+	const shadowed: boolean = renderer.core.shadow !== null;
+	if (!rampsHaveLevels(renderer.core.preset, shadowed, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
 	}
 	const phases: Result<boolean, PixelArtError> =
@@ -667,6 +673,7 @@ export function prepareFrame(
 		writeUniforms(context, renderer.blitBlock, renderer.blitValues);
 	if (!post.ok || !blit.ok) { return Result.err(PixelArtError.ScreenBlockLength); }
 
+	const _casters: int32 = drawShadowPass(renderer.core, items, camera, lights);
 	for (const stage of renderer.stages) {
 		match (stage) {
 			Stage.Scene => { drawScene(renderer, items); },

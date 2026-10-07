@@ -54,10 +54,12 @@ export enum Program {
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
-// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.glsl).
+// cannot compose, so a preset is the key's: the pixel-art preset's own source (pixelArt3d.glsl),
+// and Shadow, the depth h3d.pass.Shadows writes (dirShadowMap.ms).
 export enum Preset {
 	Core,
 	PixelArt,
+	Shadow,
 }
 
 // hxsl's constant bits (Shader.hx updateConstantsFinal) and Bevy's MeshPipelineKey: one program
@@ -69,12 +71,15 @@ export struct ProgramKey {
 	premultiplied: boolean;
 	// Discards a pixel whose alpha is below MATERIAL_ALPHA_KILL (M33).
 	cutout: boolean;
+	shadowed: boolean;
 }
 
-const KEY_LIMIT: int32 = 128;
+const KEY_LIMIT: int32 = 512;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
-	return { program: program, preset: Preset.Core, premultiplied: false, cutout: false };
+	return {
+		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
+	};
 }
 
 function stopOnFeature(key: ProgramKey, feature: string): ProgramKey {
@@ -96,6 +101,13 @@ export function withCutout(this key: ProgramKey): ProgramKey {
 	return { ...key, cutout: true };
 }
 
+// Heaps' receiveShadows adds its shadow shader to the lit pass.
+export function withShadowed(this key: ProgramKey): ProgramKey {
+	const lit: boolean = key.program == Program.Lit || key.program == Program.LitTextured;
+	if (!lit) { return stopOnFeature(key, "shadowed"); }
+	return { ...key, shadowed: true };
+}
+
 export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 	return { ...key, preset: preset };
 }
@@ -103,13 +115,15 @@ export function withPreset(this key: ProgramKey, preset: Preset): ProgramKey {
 // GPU3D_PROGRAM_KEY in gpu3d.c packs the same bits.
 export function bits(this key: ProgramKey): int32 {
 	return (key.program as int32) | ((key.preset as int32) << 4) |
-		((key.premultiplied ? 1 : 0) << 5) | ((key.cutout ? 1 : 0) << 6);
+		((key.premultiplied ? 1 : 0) << 6) | ((key.cutout ? 1 : 0) << 7) |
+		((key.shadowed ? 1 : 0) << 8);
 }
 
 export function describe(this key: ProgramKey): string {
 	const premultiplied: string = key.premultiplied ? " premultiplied" : "";
 	const cutout: string = key.cutout ? " cutout" : "";
-	return `${key.preset.toString()} ${key.program.toString()}${premultiplied}${cutout}`;
+	const shadowed: string = key.shadowed ? " shadowed" : "";
+	return `${key.preset.toString()} ${key.program.toString()}${premultiplied}${cutout}${shadowed}`;
 }
 
 function stopOnTable(message: string): Vec<int32> {
@@ -156,14 +170,31 @@ export enum ProgramError {
 
 // What a renderer of `preset` draws for a material's key: the same key in its preset, when the
 // build declares it. A material names the core's scene programs; a screen program is drawn only
-// by drawScreen, through its own material.
-export function drawnIn(key: ProgramKey, preset: Preset): Result<ProgramKey, ProgramError> {
+// by drawScreen, through its own material. With no shadow map in the frame a receiver draws
+// unshadowed, as DirShadow's `enable` constant compiles the sampling away.
+export function drawnIn(
+	key: ProgramKey,
+	preset: Preset,
+	shadowMap: boolean,
+): Result<ProgramKey, ProgramError> {
 	const screen: boolean =
 		key.program == Program.Copy || key.program == Program.Post || key.program == Program.Blit;
-	if (screen || key.preset != Preset.Core) { return Result.err(ProgramError.NotDrawn); }
-	const drawn: ProgramKey = key.withPreset(preset);
+	if (screen || key.preset != Preset.Core || preset == Preset.Shadow) {
+		return Result.err(ProgramError.NotDrawn);
+	}
+	const drawn: ProgramKey = { ...key.withPreset(preset), shadowed: key.shadowed && shadowMap };
 	if (!declares(drawn)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(drawn);
+}
+
+// Depth output has no colour, so premultiplied input and shadow receiving do not reach it.
+export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
+	if (key.preset != Preset.Core) { return Result.err(ProgramError.NotDrawn); }
+	const cast: ProgramKey = {
+		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
+	};
+	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
+	return Result.ok(cast);
 }
 
 // Vertex buffer layouts gpu3d.c describes (describeLayout).
@@ -198,6 +229,15 @@ export const LIGHT_UNIFORM_SLOT: int32 = 1;
 // packoffset(c3) and packoffset(c7) in the HLSL, so four floats per light in each.
 export const MAX_POINT_LIGHTS: int32 = 4;
 export const LIGHT_UNIFORM_LENGTH: int32 = 12 + 2 * MAX_POINT_LIGHTS * 4;
+// The scene's shadow block (binding=5, shader3dBlocks.glsl dirShadow): the world-to-map
+// matrix, then the bias and the opacity.
+export const SHADOW_UNIFORM_SLOT: int32 = 5;
+export const SHADOW_UNIFORM_LENGTH: int32 = 20;
+export const SHADOW_BIAS: int32 = 16;
+export const SHADOW_OPACITY: int32 = 17;
+// The shadow map's view and sampler slots (dirShadow's `binding=`), past a material's.
+export const SHADOW_VIEW_SLOT: int32 = 4;
+export const SHADOW_SAMPLER_SLOT: int32 = 2;
 // A lit material's own block (binding=3). The core reads the saturation it applies to the
 // material's colour before lighting (0 leaves it alone, -1 is grey) and, at 1 in
 // MATERIAL_DOUBLE_SIDED, lights a back face through its reversed normal, and discards a pixel

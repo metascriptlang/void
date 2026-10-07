@@ -26,6 +26,9 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
 	LIGHT_UNIFORM_LENGTH,
+	SHADOW_UNIFORM_SLOT,
+	SHADOW_VIEW_SLOT,
+	SHADOW_SAMPLER_SLOT,
 	uniformBlockLength,
 	textureSlotMask,
 	samplerSlotMask,
@@ -56,6 +59,8 @@ import {
 	writeUniforms,
 	drawItem,
 	MODEL_SLOT,
+	SceneTexture,
+	NO_SCENE_TEXTURE,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import {
@@ -64,6 +69,7 @@ import {
 import { screenMesh, screenItem, makeScreenTriangle } from "./screenFx";
 import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
+import { DirShadowMap, castsAll, drawShadows, sceneTexture } from "./dirShadowMap";
 
 // PENDING3D: store-serial-writable
 export interface Renderer {
@@ -77,6 +83,7 @@ export interface Renderer {
 	preset: Preset;
 	// Per item of the frame, the key drawn for its material's.
 	drawn: Vec<ProgramKey>;
+	shadow: DirShadowMap | null;
 	screenMesh: MeshId;
 	// The GPU context the handles in play belong to; 0 before the first frame.
 	generation: int32;
@@ -104,6 +111,7 @@ export enum RendererError {
 	StaleMaterial,
 	ForeignMesh,
 	ForeignMaterial,
+	ProgramNotCast,
 }
 
 // Floats of the uniform pool the core reserves: camera and lights.
@@ -164,6 +172,7 @@ export function createDrawing(
 		sceneGlobals: [cameraBlock, lightBlock],
 		preset: preset,
 		drawn: [],
+		shadow: null,
 		screenMesh: screen.value,
 		generation: 0,
 		changed: true,
@@ -177,6 +186,27 @@ export function createDrawing(
 // For whatever the renderer cannot see: the items moved, a material or a light changed.
 export function markChanged(renderer: Renderer): void {
 	if (renderer.closed) { stopOnClosed("markChanged"); }
+	renderer.changed = true;
+}
+
+function stopOnForeignShadow(): void {
+	console.log("void3d: attachShadow with a shadow map of another draw context");
+	unreachable;
+}
+
+function stopOnClosedShadow(call: string): void {
+	console.log(`void3d: ${call} with a shadow map that was closed`);
+	unreachable;
+}
+
+export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): void {
+	if (renderer.closed) { stopOnClosed("attachShadow"); }
+	if (shadow !== null && shadow.context !== renderer.context) { stopOnForeignShadow(); }
+	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachShadow"); }
+	renderer.shadow = shadow;
+	renderer.sceneGlobals = shadow !== null ?
+		[renderer.cameraBlock, renderer.lightBlock, shadow.shadowBlock] :
+		[renderer.cameraBlock, renderer.lightBlock];
 	renderer.changed = true;
 }
 
@@ -210,6 +240,9 @@ export function beginFrame(
 	if (!context.hasMesh(renderer.screenMesh)) {
 		return Result.err(meshError(context, renderer.screenMesh));
 	}
+	const shadow: DirShadowMap | null = renderer.shadow;
+	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("beginFrame"); }
+	const shadowed: boolean = shadow !== null;
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
 		if (!context.hasMaterial(item.material)) {
@@ -217,7 +250,7 @@ export function beginFrame(
 		}
 		const material: int32 = item.material.index;
 		const drawn: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[material].program, renderer.preset);
+			drawnIn(context.materials[material].program, renderer.preset, shadowed);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
@@ -239,6 +272,9 @@ export function beginFrame(
 			return Result.err(RendererError.MaterialTexture);
 		}
 	}
+	if (shadow !== null && !shadow.castsAll(items).ok) {
+		return Result.err(RendererError.ProgramNotCast);
+	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
 	}
@@ -256,7 +292,7 @@ export function beginFrame(
 	}
 	for (let i = 0; i < (items.length as int32); i++) {
 		const resolved: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[items[i].material.index].program, renderer.preset);
+			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
 	}
@@ -290,6 +326,24 @@ export function beginFrame(
 	return Result.ok(fresh);
 }
 
+export function drawShadowPass(
+	renderer: Renderer,
+	items: Readonly<Span<DrawItem>>,
+	camera: Readonly<Span<float32>>,
+	lights: Readonly<Span<float32>>,
+): int32 {
+	if (renderer.closed) { stopOnClosed("drawShadowPass"); }
+	const shadow: DirShadowMap | null = renderer.shadow;
+	if (shadow === null) { return 0; }
+	return drawShadows(shadow, items, camera, lights);
+}
+
+function sceneTextureOf(renderer: Renderer): SceneTexture {
+	const shadow: DirShadowMap | null = renderer.shadow;
+	if (shadow === null) { return NO_SCENE_TEXTURE; }
+	return shadow.sceneTexture();
+}
+
 // fwd.Renderer's default, alpha and additive passes, into the current pass (`targets` is
 // its attachment layout), with the camera and lights applied to every item and each drawn with
 // the program beginFrame resolved for it: `items` must be the span that beginFrame accepted.
@@ -314,20 +368,24 @@ export function drawPhase(
 ): void {
 	if (renderer.closed) { stopOnClosed("drawPhase"); }
 	const context: DrawContext = renderer.context;
+	const scene: SceneTexture = sceneTextureOf(renderer);
 	match (phase) {
 		Phase.Opaque => {
 			drawPassList(
 				context, renderer.opaque, items, renderer.drawn, targets, renderer.sceneGlobals,
+				scene,
 			);
 		},
 		Phase.Alpha => {
 			drawPassList(
 				context, renderer.alpha, items, renderer.drawn, targets, renderer.sceneGlobals,
+				scene,
 			);
 		},
 		Phase.Additive => {
 			drawPassList(
 				context, renderer.additive, items, renderer.drawn, targets, renderer.sceneGlobals,
+				scene,
 			);
 		},
 	};
@@ -370,7 +428,8 @@ export function drawScreen(
 function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	let own: int32 = -1;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
-		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT;
+		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT ||
+			slot == SHADOW_UNIFORM_SLOT;
 		if (passWide || slot == MODEL_SLOT || uniformBlockLength(program, slot) == 0) {
 			continue;
 		}
@@ -386,10 +445,15 @@ function slotBound(mask: uint32, slot: uint32, bound: boolean): boolean {
 }
 
 // Every texture view and sampler `program` declares is bound on `material`; a slot the
-// material has no field for (views past 3, samplers past 1) never is.
+// material has no field for (views past 3, samplers past 1) never is, except the shadow map's,
+// which the scene binds for a shadowed program.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const views: uint32 = textureSlotMask(program);
-	const samplers: uint32 = samplerSlotMask(program);
+	const viewBit: uint32 = (1 as uint32) << (SHADOW_VIEW_SLOT as uint32);
+	const samplerBit: uint32 = (1 as uint32) << (SHADOW_SAMPLER_SLOT as uint32);
+	const sceneViews: uint32 = program.shadowed ? viewBit : 0;
+	const sceneSamplers: uint32 = program.shadowed ? samplerBit : 0;
+	const views: uint32 = textureSlotMask(program) & ~sceneViews;
+	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
 	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }
 	let texture: boolean = material.namesTexture();
 	if (texture && (material.texture0 != 0 || material.sampler0 != 0)) { return false; }
