@@ -172,11 +172,11 @@ that agrees fails the run; an unlisted row that differs fails it.
 | shape-cluster:khmer-1 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
 | shape-cluster:khmer-2 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
 | shape-cluster:khmer-3 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
-| shape:arabic-ltr-explicit | T3 | an explicit `ltr` on Arabic text: HarfBuzz forces the run direction, so the glyphs come in text order and unjoined; kb_text_shape takes the direction as the paragraph's and still shapes the Arabic run right to left, as BiDi does | declared | 2026-10-07 |
-| shape-cluster:arabic-ltr-explicit | T3 | same cause as `shape:arabic-ltr-explicit`: the clusters follow the run order each engine chose | declared | 2026-10-07 |
+| shape:arabic-ltr-explicit | T3 | an explicit `ltr` on Arabic text: HarfBuzz forces the run direction, so the glyphs come in text order and unjoined; kb_text_shape takes the direction as the paragraph's and still shapes the Arabic run right to left, as BiDi does | P7 | 2026-10-07 |
+| shape-cluster:arabic-ltr-explicit | T3 | same cause as `shape:arabic-ltr-explicit`: the clusters follow the run order each engine chose | P7 | 2026-10-07 |
 | shape-cluster:missing-inter-zwj | T3 | U+200D with no glyph in the font: HarfBuzz folds the joiner into the preceding cluster, kb_text_shape gives its glyph its own codepoint's index; glyph ids, advances and offsets agree | declared | 2026-10-07 |
-| shape:missing-mixed-direction | T3 | Latin and Arabic in one buffer: HarfBuzz shapes the whole buffer as one left-to-right run in logical order (it does no BiDi), kb_text_shape splits an Arabic run and reverses it; the layer's own BiDi decision, not this engine's, governs mixed text | declared | 2026-10-07 |
-| shape-cluster:missing-mixed-direction | T3 | same cause as `shape:missing-mixed-direction`: the clusters follow the run order each engine chose | declared | 2026-10-07 |
+| shape:missing-mixed-direction | T3 | Latin and Arabic in one buffer: HarfBuzz shapes the whole buffer as one left-to-right run in logical order (it does no BiDi), kb_text_shape splits an Arabic run and reverses it; the layer's own BiDi decision, not this engine's, governs mixed text | P7 | 2026-10-07 |
+| shape-cluster:missing-mixed-direction | T3 | same cause as `shape:missing-mixed-direction`: the clusters follow the run order each engine chose | P7 | 2026-10-07 |
 
 ## SVG oracle divergences
 

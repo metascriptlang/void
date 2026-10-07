@@ -2023,6 +2023,20 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 **Risk → fallback.** The shaper is a third-party C library that has to build for five targets including wasm, and none of the three references shares it — GPUI uses the OS or cosmic-text, Makepad uses rustybuzz, Ghostty uses HarfBuzz or CoreText. If `kb_text_shape` does not build or does not cover enough, the fallback is HarfBuzz itself, which builds everywhere and costs more wasm, with the cost measured and stated rather than avoided. Without either, P4's surface still works: cmap, GPOS kerning, NFC input and fallback by coverage, with no ligatures — which is the state P4 ships in, so nothing regresses.
 
+### P7 — BiDi and RTL runs
+
+**Goal.** Right-to-left and mixed-direction text laid out and drawn, after the shaper's layout
+integration (P6 "Layout integration built 2026-10-08"), which refuses a right-to-left run by
+name (void-manager decision 5, 2026-10-07: "BiDi is its own later item, never silently LTR").
+
+**Par.** GPUI takes paragraph direction and run order from its platform text systems; Void
+does it itself as a portable module: UAX #9 run levels over P4's segmentation, each level run
+shaped in its direction by `kb_text_shape`, reordered per line for drawing, and caret and
+selection over visual order. Not started; the mechanism is chosen against its references when
+the phase opens.
+
+**Closes** (`tests/PENDING.md`, checked by the gate): `shape:arabic-ltr-explicit`, `shape-cluster:arabic-ltr-explicit`, `shape:missing-mixed-direction`, `shape-cluster:missing-mixed-direction`.
+
 ### The budget, at every phase
 
 Checked and recorded per phase, from `tests/bench/`: draw calls, instances and uploaded bytes at 10 000 Box + 10 000 Label; frame time of the sprite-only scene, which must not regress (guardrail 8); CPU time of a fully static 100 000-node frame and of the scrolling 200-line text view from P5 on; atlas pages and bytes after a zoom sweep; wasm size per backend and per module. Counters gate; milliseconds are reported with a warn threshold and never fail a commit — the reasoning is in [TESTING.md](TESTING.md) "T4".
