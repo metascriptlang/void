@@ -383,3 +383,81 @@ test "not glTF, bad JSON, short buffer and missing POSITION each say which one" 
 	assert !noPosition.ok;
 	if (!noPosition.ok) { assert noPosition.error == GltfError.Unsupported; }
 }
+
+function pairGltf(meshName: string): string {
+	return "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,"
+		+ "\"scenes\":[{\"nodes\":[0,2]}],"
+		+ "\"nodes\":["
+		+ "{\"name\":\"pair\",\"mesh\":0,\"translation\":[1.0,0.0,0.0],\"children\":[1]},"
+		+ "{\"name\":\"child\"},"
+		+ "{\"name\":\"again\",\"mesh\":0}],"
+		+ "\"meshes\":[{" + meshName + "\"primitives\":["
+		+ "{\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"COLOR_0\":2},\"indices\":3},"
+		+ "{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":3}]}],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":72,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114}]}";
+}
+
+test "a mesh with several primitives is one drawable each, under a group at its node" {
+	const loaded = loadGltf(pairGltf("\"name\":\"duo\","), triangleBuffer());
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	const data = loaded.value;
+	assert (data.meshes.length as int32) == 2 && (data.meshMaterials.length as int32) == 2;
+	assert approx(data.meshes[0].vertices[6], 1.0) && approx(data.meshes[1].vertices[6], 1.0);
+	assert approx(data.meshes[0].vertices[7], 0.0) && approx(data.meshes[0].vertices[8], 0.0);
+	assert (data.nodes.length as int32) == 7;
+	assert data.nodes[0].mesh == -1 && data.nodes[0].name == "pair";
+	assert approx(data.nodes[0].local.position.x, 1.0);
+	assert (data.nodes[0].children.length as int32) == 3;
+	assert data.nodes[0].children[0] == 3 && data.nodes[0].children[1] == 4;
+	assert data.nodes[0].children[2] == 1;
+	assert data.nodes[3].name == "duo" && data.nodes[3].mesh == 0;
+	assert data.nodes[4].name == "duo_1" && data.nodes[4].mesh == 1;
+	assert data.nodes[3].local.scale.x == 1.0 && data.nodes[3].local.position.x == 0.0;
+	assert data.nodes[2].mesh == -1 && (data.nodes[2].children.length as int32) == 2;
+	assert data.nodes[5].mesh == 0 && data.nodes[6].mesh == 1;
+	const unnamed = loadGltf(pairGltf(""), triangleBuffer());
+	assert unnamed.ok;
+	if (unnamed.ok) { assert unnamed.value.nodes[3].name == "mesh_0"; }
+}
+
+test "addGltfNodes puts each primitive of a mesh under its node with its own binding" {
+	let context: DrawContext = contextOf(8, 10);
+	const loaded = loadGltf(pairGltf(""), triangleBuffer());
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	let scene: Scene3D = Scene3D.create(context);
+	const bindings: Vec<GltfMeshBinding> = [
+		{ mesh: context.meshAt(1), material: context.materialAt(2) },
+		{ mesh: context.meshAt(3), material: context.materialAt(4) },
+	];
+	const added: Result<int32, GltfSceneError> =
+		addGltfNodes(scene, scene.rootId(), loaded.value, bindings);
+	assert added.ok;
+	if (!added.ok) { return; }
+	assert added.value == 7;
+	const first = scene.findByName(scene.rootId(), "mesh_0");
+	const second = scene.findByName(scene.rootId(), "mesh_0_1");
+	const pair = scene.findByName(scene.rootId(), "pair");
+	assert first.ok && second.ok && pair.ok;
+	if (!first.ok || !second.ok || !pair.ok) { return; }
+	assert scene.meshes[scene.nodes[first.value.index].payload].mesh.index == 1;
+	assert scene.meshes[scene.nodes[first.value.index].payload].material.index == 2;
+	assert scene.meshes[scene.nodes[second.value.index].payload].mesh.index == 3;
+	assert scene.meshes[scene.nodes[second.value.index].payload].material.index == 4;
+	assert syncWorld(scene) == 8;
+	const world: Result<Mat4, SceneError> = scene.worldOf(second.value);
+	assert world.ok;
+	if (world.ok) { assert approx(world.value.m41, 1.0); }
+}
+

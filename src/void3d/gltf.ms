@@ -1,8 +1,12 @@
 // glTF 2.0 subset loader: position, normal, COLOR_0 and TEXCOORD_0; base colour materials
 // with at most one texture, its image a PNG or JPEG in the buffer. One buffer, one buffer view
-// per accessor, FLOAT32 attributes, UNSIGNED_SHORT indices, node TRS, one primitive per mesh.
+// per accessor, FLOAT32 attributes, UNSIGNED_SHORT indices, node TRS, triangle primitives.
 // Not loaded: skins, animations, cameras, morph targets, sparse accessors, interleaved buffer
 // views, more than one buffer, images by URI.
+//
+// A mesh with several primitives decodes into one drawable `MeshData` per primitive, and its
+// node into a group whose children are one mesh node per primitive: three.js d4ea9b9
+// GLTFLoader.js:4035-4053 returns the mesh itself for one primitive and a Group of them otherwise.
 //
 // The caller owns the bytes: `json` is the .gltf document and `buffer` is buffer #0's
 // content, already read from wherever it lives, or `loadGlb` splits a .glb into the two.
@@ -263,15 +267,62 @@ function uvAt(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): Uv {
 	return { u: float32At(buffer, at), v: float32At(buffer, at + 4) };
 }
 
-function primitiveOf(mesh: JsonValue): Result<JsonValue, GltfError> {
+function primitivesOf(mesh: JsonValue): Result<JsonValue, GltfError> {
 	if (!isNull(fieldOf(mesh, "weights"))) {
 		return Result.err(GltfError.Unsupported);
 	}
 	const primitives: JsonValue = arrayOf(mesh, "primitives");
-	if (isNull(primitives) || countOf(primitives) != 1) {
+	if (isNull(primitives) || countOf(primitives) < 1) {
 		return Result.err(GltfError.Unsupported);
 	}
-	return Result.ok(at(primitives, 0));
+	return Result.ok(primitives);
+}
+
+// Where one glTF mesh's primitives sit in `GltfData.meshes`.
+struct PrimitiveRun {
+	name: string;
+	first: int32;
+	count: int32;
+}
+
+function identityTransform(): GltfTransform {
+	return { position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), scale: vec3(1.0, 1.0, 1.0) };
+}
+
+// A node of a mesh with several primitives keeps its transform and children and gains one child
+// per primitive ahead of them, named as three.js names a mesh's primitives (createUniqueName,
+// GLTFLoader.js:3817): the mesh's name, then `_1`, `_2`. A mesh index with no run is left past
+// the end of `meshes`, where validateGltfGraph refuses it as BadNode.
+function placePrimitives(
+	ref data: GltfData,
+	runs: Readonly<Span<PrimitiveRun>>,
+	first: int32,
+): void {
+	const meshCount: int32 = data.meshes.length as int32;
+	for (let i = 0; i < first; i++) {
+		const mesh: int32 = data.nodes[i].mesh;
+		if (mesh < 0) { continue; }
+		if (mesh >= (runs.length as int32)) {
+			data.nodes[i].mesh = meshCount;
+			continue;
+		}
+		const run: PrimitiveRun = runs[mesh];
+		data.nodes[i].mesh = run.first;
+		if (run.count == 1) { continue; }
+		let children: Vec<int32> = [];
+		for (let k = 0; k < run.count; k++) {
+			children.push(data.nodes.length as int32);
+			data.nodes.push({
+				name: k == 0 ? run.name : `${run.name}_${k}`,
+				mesh: run.first + k,
+				local: identityTransform(),
+				children: [],
+			});
+		}
+		for (const child of data.nodes[i].children) { children.push(child); }
+		data.nodes[i].mesh = NO_MESH;
+		data.nodes[i].children = children;
+	}
 }
 
 function materialIndexOf(primitive: JsonValue, materialCount: int32): Result<int32, GltfError> {
@@ -847,15 +898,29 @@ function decodeGltf(
 	for (let i = 0; i < textureCount; i++) {
 		if (!(try keepsAlpha(data.materials, i))) { forceOpaque(data.textures[i].pixels); }
 	}
+	let runs: Vec<PrimitiveRun> = [];
 	for (let i = 0; i < meshCount; i++) {
-		const primitive: JsonValue = try primitiveOf(meshArray.at(i));
-		const material: int32 = try materialIndexOf(primitive, materialCount);
-		const read: MaterialRead = material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
-		const mesh: Result<MeshData, GltfError> =
-			loadMesh(primitive, read, accessors, views, buffer, declaredLength);
-		if (!mesh.ok) { return Result.err(mesh.error); }
-		data.meshes.push(mesh.value);
-		data.meshMaterials.push(material);
+		const primitives: JsonValue = try primitivesOf(meshArray.at(i));
+		const nameField: JsonValue = fieldOf(meshArray.at(i), "name");
+		if (!isNull(nameField) && nameField.kind != JsonKind.String) {
+			return Result.err(GltfError.Unsupported);
+		}
+		runs.push({
+			name: isNull(nameField) ? `mesh_${i}` : nameField.asString(),
+			first: data.meshes.length as int32,
+			count: countOf(primitives),
+		});
+		for (let p = 0; p < countOf(primitives); p++) {
+			const primitive: JsonValue = primitives.at(p);
+			const material: int32 = try materialIndexOf(primitive, materialCount);
+			const read: MaterialRead =
+				material == DEFAULT_MATERIAL ? DEFAULT_READ : reads[material];
+			const mesh: Result<MeshData, GltfError> =
+				loadMesh(primitive, read, accessors, views, buffer, declaredLength);
+			if (!mesh.ok) { return Result.err(mesh.error); }
+			data.meshes.push(mesh.value);
+			data.meshMaterials.push(material);
+		}
 	}
 	const nodeArray: JsonValue = arrayOf(root, "nodes");
 	const nodeCount: int32 = countOf(nodeArray);
@@ -864,6 +929,7 @@ function decodeGltf(
 		if (!node.ok) { return Result.err(node.error); }
 		data.nodes.push(node.value);
 	}
+	placePrimitives(data, runs, nodeCount);
 	const scenes: JsonValue = arrayOf(root, "scenes");
 	if (isNull(scenes)) { return Result.err(GltfError.NotGltf); }
 	const sceneIndex: int32 = intField(root, "scene", 0);
