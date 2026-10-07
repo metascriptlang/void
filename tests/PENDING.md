@@ -96,7 +96,7 @@ renderer cannot produce. The phase that lands the feature adds the row to
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| golden-missing:image/animatedFrames | T2 | frame-indexed animation exists on `Anim` but has no deterministic frame input yet; folded into P6's animated image frames | P6 | 2026-09-20 |
+| golden-missing:image/animatedFrames | T2 | the scene is built (explicit frames, per-frame delays, a decoded GIF) but its PNG is not captured: `sh scripts/golden.sh --update image/animatedFrames`, then delete this row in the same commit | P6 | 2026-10-08 |
 
 ## Known defects with no pixels to capture
 

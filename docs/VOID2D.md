@@ -2231,6 +2231,16 @@ changes described above on today's compiler; the P4 web archive also takes its r
   then `sh scripts/golden.sh` for the counters; a look at the half-tone shades and edges, which
   the contrast and gamma of Glyph mode move; the web column of the three rows.
 - Animated image frames keyed by frame index.
+  **Golden built 2026-10-08.** `image/animatedFrames` (256x136 at DPI 1.0) decodes one four-frame
+  GIF made in memory by `src/test/imageBytes.ms` (red and green rows, blue and yellow columns, a
+  blue and red checker, a four-colour diagonal; delays 100, 300, 200 and 200 ms), uploads it as
+  one sheet and shows it six times at 2x: four nodes pinned to frames 0 to 3 by `setFrame` and
+  `setPaused`, one ticked by `tick(0.1)` then `tick(0.3)` to frame 2, one paused on frame 1
+  after the first tick, one under a rounded `ImageStyle` and one under `Smooth.Off`. Nothing
+  reads the clock. The predicted counters are 3 draws (the sprite run, the styled instance, the
+  nearest-sampled sprite) and 0 targets. **Owed, not run:** `sh scripts/golden.sh --update
+  image/animatedFrames`, then delete `golden-missing:image/animatedFrames` from
+  `tests/PENDING.md` in the same commit; two captures byte-identical.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
   **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding
   (`libs/svg/src/tessellate.rs` `emit_fill_fringe`, `:1003-1060`): every contour vertex is stored

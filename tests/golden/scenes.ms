@@ -100,7 +100,11 @@ when (voidGlCore) {
 } else {
 	import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
 }
-import { loadImageSync, imageWidth, imageHeight, freeImage } from "../../src/assets/image";
+import {
+	loadImageSync, imageWidth, imageHeight, freeImage, decodeAnimation,
+} from "../../src/assets/image";
+import { GifFrame, animatedGif } from "../../src/test/imageBytes";
+import { AnimationSheet, uploadAnimation, animation } from "../../src/void2d/animation";
 
 const DARK: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
 const LIGHT: Color = { r: 0.90, g: 0.91, b: 0.94, a: 1.0 };
@@ -1072,6 +1076,82 @@ function textMultilineAlign(): Scene2D {
 
 // ===== image/ =====
 
+// ===== image/animatedFrames =====
+
+const ANIM_FRAME_W: int32 = 16;
+const ANIM_FRAME_H: int32 = 12;
+const ANIM_DELAYS: int32[] = [10, 30, 20, 20];
+
+function animFramePattern(frame: int32): Vec<uint8> {
+	let indices: Vec<uint8> = [];
+	for (let y: int32 = 0; y < ANIM_FRAME_H; y++) {
+		for (let x: int32 = 0; x < ANIM_FRAME_W; x++) {
+			let index: int32 = 0;
+			if (frame == 0) { index = y % 2; }
+			if (frame == 1) { index = 2 + (x % 2); }
+			if (frame == 2) { index = ((x / 2) + (y / 2)) % 2 == 0 ? 0 : 2; }
+			if (frame == 3) { index = ((x + y) / 4) % 4; }
+			indices.push(index as uint8);
+		}
+	}
+	return indices;
+}
+
+function animGif(): Vec<uint8> {
+	let frames: Vec<GifFrame> = [];
+	for (let f: int32 = 0; f < 4; f++) {
+		frames.push({
+			x: 0, y: 0, w: ANIM_FRAME_W, h: ANIM_FRAME_H, indices: animFramePattern(f),
+			delayCentiseconds: ANIM_DELAYS[f], disposal: 1,
+		});
+	}
+	return animatedGif(0x39, ANIM_FRAME_W, ANIM_FRAME_H, frames);
+}
+
+function animSheet(): AnimationSheet {
+	const decoded = decodeAnimation(animGif());
+	if (!decoded.ok) {
+		console.log(`golden: the animated frames GIF did not decode (${decoded.error.toString()})`);
+		unreachable;
+	}
+	const sheet = uploadAnimation(decoded.value);
+	if (!sheet.ok) {
+		console.log(`golden: the animated frames sheet was refused (${sheet.error.toString()})`);
+		unreachable;
+	}
+	return sheet.value;
+}
+
+function imageAnimatedFrames(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const sheet: AnimationSheet = animSheet();
+	const scale: float32 = 2.0;
+	const stepX: float32 = 44.0;
+	for (let f: int32 = 0; f < 4; f++) {
+		const pinned = s.animation(sheet).at(8.0 + stepX * (f as float32), 10.0);
+		pinned.setScale(scale).setFrame(f).setPaused(true);
+		s.add(pinned);
+	}
+	const ticked = s.animation(sheet).at(8.0 + stepX * 4.0, 10.0).setScale(scale);
+	const paused = s.animation(sheet).at(8.0, 56.0).setScale(scale);
+	const styled = s.animation(sheet).at(8.0 + stepX, 56.0).setScale(scale).setFrame(3);
+	styled.setPaused(true);
+	styled.setImageStyle(imageStyle(
+		{ topLeft: 2.0, topRight: 8.0, bottomRight: 2.0, bottomLeft: 8.0 }, false, ObjectFit.Fill,
+	));
+	const crisp = s.animation(sheet).at(8.0 + stepX * 2.0, 56.0).setScale(scale);
+	crisp.setFrame(2).setPaused(true);
+	crisp.setSmooth(Smooth.Off);
+	s.add(ticked);
+	s.add(paused);
+	s.add(styled);
+	s.add(crisp);
+	s.tick(0.1);
+	paused.setPaused(true);
+	s.tick(0.3);
+	return s;
+}
+
 function imageNearestLinear(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const t = sheet();
@@ -1825,6 +1905,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "image/grayscale", build: imageGrayscale },
 		{ name: "image/scaleGrid", build: imageScaleGrid },
 		{ name: "image/tileGroup", build: imageTileGroup },
+		{ name: "image/animatedFrames", build: imageAnimatedFrames },
 
 		{ name: "filter/blur", build: filterBlur },
 		{ name: "filter/glow", build: filterGlow },
