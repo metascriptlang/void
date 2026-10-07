@@ -63,7 +63,8 @@ import {
 import { UniformError } from "../void3d/uniformPool";
 import { added, litShape } from "./drawHelpers";
 import {
-	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setElapsedTime,
+	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setElapsedTime, setTimeWrap,
+	frameTime,
 } from "../void3d/renderer";
 import {
 	POST_UNIFORM_SLOT,
@@ -696,6 +697,26 @@ test "the core owns a frame block and asks for frames while time passes under a 
 	assert core.needsFrame();
 	setElapsedTime(core, 0.0);
 	assert !core.needsFrame();
+}
+
+test "the frame's time is Heaps' unless the renderer wraps it, as Bevy's hour, in 64-bit first" {
+	assert frameTime(5400.25, 0.0) == 5400.25;
+	assert frameTime(5400.25, 3600.0) == 1800.25;
+	assert frameTime(3599.5, 3600.0) == 3599.5;
+	assert frameTime(7200.0, 3600.0) == 0.0;
+	const day: float64 = 86400.0 + 0.125;
+	assert frameTime(day, 3600.0) == 0.125;
+	assert frameTime(day, 0.0) == day as float32;
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	let core: Renderer = created.value;
+	assert core.timeWrap == 0.0;
+	setTimeWrap(core, 3600.0);
+	assert core.timeWrap == 3600.0;
+	setTimeWrap(core, 0.0);
+	assert core.timeWrap == 0.0;
 }
 
 function mapKeys(): Vec<ProgramKey> {

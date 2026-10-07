@@ -103,6 +103,9 @@ export interface Renderer {
 	// it (setElapsedTime); the time is the caller's to set too.
 	time: float64;
 	elapsedTime: float64;
+	// Bevy's `GlobalsUniform.time` wraps at an hour; Heaps' `global.time` never does, so this is 0,
+	// no wrap, until setTimeWrap.
+	timeWrap: float64;
 	frameValues: Vec<float32>;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
@@ -204,6 +207,7 @@ export function createDrawing(
 		sceneGlobals: [cameraBlock, lightBlock, frameBlock],
 		time: 0.0,
 		elapsedTime: 0.0,
+		timeWrap: 0.0,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		readsTime: false,
 		preset: preset,
@@ -250,6 +254,20 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 export function setElapsedTime(renderer: Renderer, seconds: float64): void {
 	if (renderer.closed) { stopOnClosed("setElapsedTime"); }
 	renderer.elapsedTime = seconds;
+}
+
+export function setTimeWrap(renderer: Renderer, seconds: float64): void {
+	if (renderer.closed) { stopOnClosed("setTimeWrap"); }
+	if (!(seconds >= 0.0)) {
+		console.log(`void3d: setTimeWrap with ${seconds} seconds; 0 turns the wrap off`);
+		unreachable;
+	}
+	renderer.timeWrap = seconds;
+}
+
+export function frameTime(time: float64, wrap: float64): float32 {
+	if (wrap <= 0.0) { return time as float32; }
+	return (time - Math.floor(time / wrap) * wrap) as float32;
 }
 
 // Whether the next frame could differ from the last one drawn: something was marked changed,
@@ -336,7 +354,7 @@ export function beginFrame(
 		writeUniforms(context, renderer.lightBlock, lights);
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	renderer.time = renderer.time + renderer.elapsedTime;
-	renderer.frameValues[FRAME_TIME] = renderer.time as float32;
+	renderer.frameValues[FRAME_TIME] = frameTime(renderer.time, renderer.timeWrap);
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));
