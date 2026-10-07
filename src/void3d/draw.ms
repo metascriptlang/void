@@ -42,7 +42,7 @@ import {
 	passState,
 } from "../gpu/door";
 import { FilterMode, Wrap, BlendMode, RenderState } from "../gpu/state";
-import { Texture, TextureError } from "../gpu/texture";
+import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
 import {
 	TextureData,
 	TextureId,
@@ -1034,20 +1034,15 @@ function samplerFor(context: DrawContext, filter: FilterMode, wrap: Wrap): uint3
 
 const VACANT_TEXTURE: GpuTexture = { texture: null, sampler: 0, samplerGeneration: 0 };
 
-// The owner's close destroys a live image at once, and a texture freed inside a frame may still
-// be named by it, so the handles are taken out first and destroyed by buryDoomed.
-function surrender(context: DrawContext, owner: Texture): void {
-	if (owner.image != 0 || owner.view != 0) {
+function doomOwner(context: DrawContext, owner: Texture): void {
+	const handles: DetachedHandles = owner.detach();
+	if (handles.image != 0 || handles.view != 0) {
 		context.doomedTextures.push({
-			image: owner.image,
-			view: owner.view,
-			generation: owner.generation,
+			image: handles.image,
+			view: handles.view,
+			generation: handles.generation,
 		});
 	}
-	owner.image = 0;
-	owner.view = 0;
-	owner.generation = 0;
-	owner.close();
 }
 
 function uploadError(error: TextureError): TextureUploadError {
@@ -1098,7 +1093,7 @@ function uploadTexture(context: DrawContext, index: int32): Result<int32, Textur
 
 function freeTexture(context: DrawContext, index: int32): void {
 	const owner: Texture | null = context.textures[index].texture;
-	if (owner !== null) { surrender(context, owner); }
+	if (owner !== null) { doomOwner(context, owner); }
 	context.textures[index] = VACANT_TEXTURE;
 	context.textureData[index] = TextureData.empty();
 	context.textureHolders[index] = 0;
