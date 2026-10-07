@@ -8,6 +8,7 @@
 #define VOID2D_SHAPE_NOT_OPEN -5
 #define VOID2D_SHAPE_ALREADY_OPEN -6
 #define VOID2D_SHAPE_BAD_TAG -7
+#define VOID2D_SHAPE_TOO_MANY_FEATURES -8
 
 #define VOID2D_SHAPE_DIRECTION_UNKNOWN 0
 #define VOID2D_SHAPE_DIRECTION_LTR 1
@@ -29,6 +30,7 @@ int void2dShapeFeature(const char *tag, int value);
 int void2dShapeCodepoint(int codepoint);
 int void2dShapeBreak(void);
 int void2dShapeEnd(void);
+int void2dShapeCount(void);
 int *void2dShapeGlyph(int index);
 
 #endif

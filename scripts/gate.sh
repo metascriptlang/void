@@ -431,10 +431,12 @@ fi
 for program in tests/aborts/*.ms; do
 	name=$(basename "$program" .ms)
 	expected=$(sed -n '1s#^// expect: ##p' "$program")
+	flags=$(sed -n '2s#^// flags: ##p' "$program")
 	log="out/gate-abort-$name.log"
 	status=0
 	rm -f "out/abort-$name.exe"
-	"$MSC" build "$program" --output="out/abort-$name.exe" > "$log" 2>&1 || true
+	# shellcheck disable=SC2086
+	"$MSC" build $flags "$program" --output="out/abort-$name.exe" > "$log" 2>&1 || true
 	"out/abort-$name.exe" >> "$log" 2>&1 || status=$?
 	if [ -n "$expected" ] && [ "$status" -ne 0 ] && grep -qF "$expected" "$log"; then
 		pass "$name stops and says: $expected"

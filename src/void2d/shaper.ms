@@ -23,6 +23,7 @@ when (voidShaper) {
 		void2dShapeCodepoint,
 		void2dShapeBreak,
 		void2dShapeEnd,
+		void2dShapeCount,
 		void2dShapeGlyph,
 	} from "./shaper.h";
 
@@ -35,7 +36,8 @@ when (voidShaper) {
 			-4 => "the shaper reported an error",
 			-5 => "no shaping pass is open",
 			-6 => "a shaping pass is already open",
-			-7 => "a feature tag is four characters",
+			-7 => "a feature tag is four printable ASCII characters",
+			-8 => "more than 32 feature overrides in one pass",
 			_ => "unknown status",
 		};
 		console.log(`void2d shaper: ${what}: ${reason} (${code})`);
@@ -65,6 +67,11 @@ when (voidShaper) {
 	}
 
 	export function shaperGlyph(index: int32): ShapedGlyph {
+		const count: int32 = void2dShapeCount();
+		if (index < 0 || index >= count) {
+			console.log(`void2d shaper: glyph ${index} is outside the ${count} of the last pass`);
+			unreachable;
+		}
 		const g: Ptr<int32> = void2dShapeGlyph(index);
 		return {
 			glyph: g[0],

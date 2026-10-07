@@ -56,6 +56,7 @@ static int growFonts(void) {
 static int fontFor(const unsigned char *bytes, int length, ShapeFont **out) {
 	for (int i = 0; i < s_fontCount; i++) {
 		if (s_fonts[i].bytes == bytes) {
+			if (!s_fonts[i].font) { return VOID2D_SHAPE_BAD_FONT; }
 			*out = &s_fonts[i];
 			return 0;
 		}
@@ -65,7 +66,12 @@ static int fontFor(const unsigned char *bytes, int length, ShapeFont **out) {
 	if (!font) { return VOID2D_SHAPE_NO_MEMORY; }
 	*font = kbts_FontFromMemory((void *)bytes, length, 0, 0, 0);
 	if (!kbts_FontIsValid(font)) {
+		kbts_FreeFont(font);
 		free(font);
+		s_fonts[s_fontCount].bytes = bytes;
+		s_fonts[s_fontCount].font = 0;
+		s_fonts[s_fontCount].context = 0;
+		s_fontCount++;
 		return VOID2D_SHAPE_BAD_FONT;
 	}
 	kbts_shape_context *context = kbts_CreateShapeContext(0, 0);
@@ -118,8 +124,12 @@ int void2dShapeBegin(int face, int direction) {
 int void2dShapeFeature(const char *tag, int value) {
 	if (!s_open) { return VOID2D_SHAPE_NOT_OPEN; }
 	if (!tag || !tag[0] || !tag[1] || !tag[2] || !tag[3] || tag[4]) { return VOID2D_SHAPE_BAD_TAG; }
-	if (s_featureCount == SHAPE_MAX_FEATURES) { return VOID2D_SHAPE_NO_MEMORY; }
-	kbts_u32 id = KBTS_FOURCC(tag[0], tag[1], tag[2], tag[3]);
+	if (s_featureCount == SHAPE_MAX_FEATURES) { return VOID2D_SHAPE_TOO_MANY_FEATURES; }
+	const unsigned char *bytes = (const unsigned char *)tag;
+	if (bytes[0] > 0x7e || bytes[1] > 0x7e || bytes[2] > 0x7e || bytes[3] > 0x7e) {
+		return VOID2D_SHAPE_BAD_TAG;
+	}
+	kbts_u32 id = KBTS_FOURCC(bytes[0], bytes[1], bytes[2], bytes[3]);
 	kbts_ShapePushFeature(s_current->context, id, value);
 	s_features[s_featureCount++] = id;
 	return 0;
@@ -180,6 +190,10 @@ int void2dShapeEnd(void) {
 		return status;
 	}
 	closeShape();
+	return s_glyphCount;
+}
+
+int void2dShapeCount(void) {
 	return s_glyphCount;
 }
 
