@@ -213,10 +213,10 @@ written in its row.
 
 | id | tier | reason | phase | date | maxPixels | maxDelta |
 |---|---|---|---|---|---|---|
-| sprite-aa:arcs | T3 | U+256D-2570: the cubic is flattened to line segments and stroked with butt caps, z2d strokes the curve itself | P6 | 2026-10-08 | 4 | 26 |
-| sprite-aa:diagonals | T3 | U+2571-2573: one stroked segment, the edges land on different sixteenths; maxDelta 17 became 18 when the sprites moved from an own exact-area accumulator to stbtt_Rasterize, whose float32 coverage differs from the old double accumulator by one level on some pixels (6 of the 11x21 cell, 14 of U+2573 there; every difference measured is 1) | P6 | 2026-10-08 | 2 | 18 |
-| sprite-aa:triangles | T3 | U+25E2-25E5, 25F8-25FA, 25FF: filled corner triangles and their inset outlines, every pixel within one step | P6 | 2026-10-08 | 0 | 16 |
-| sprite-aa:powerline | T3 | U+E0B0-E0BF, E0D2, E0D4: the long slanted edge of a 18x36 triangle puts 36 pixels about two steps from z2d's sample pattern; no pixel is more than 33 away | P6 | 2026-10-08 | 36 | 33 |
+| sprite-aa:arcs | T3 | U+256D-2570: the cubic is flattened to line segments and stroked with butt caps, z2d strokes the curve itself | declared | 2026-10-08 | 4 | 26 |
+| sprite-aa:diagonals | T3 | U+2571-2573: one stroked segment, the edges land on different sixteenths; maxDelta 17 became 18 when the sprites moved from an own exact-area accumulator to stbtt_Rasterize, whose float32 coverage differs from the old double accumulator by one level on some pixels (6 of the 11x21 cell, 14 of U+2573 there; every difference measured is 1) | declared | 2026-10-08 | 2 | 18 |
+| sprite-aa:triangles | T3 | U+25E2-25E5, 25F8-25FA, 25FF: filled corner triangles and their inset outlines, every pixel within one step | declared | 2026-10-08 | 0 | 16 |
+| sprite-aa:powerline | T3 | U+E0B0-E0BF, E0D2, E0D4: the long slanted edge of a 18x36 triangle puts 36 pixels about two steps from z2d's sample pattern; no pixel is more than 33 away | declared | 2026-10-08 | 36 | 33 |
 
 ## macOS and compiler gaps (msc e5e932d0)
 
