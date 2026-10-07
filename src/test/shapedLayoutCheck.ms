@@ -2,6 +2,7 @@ import { readFile } from "std/fs";
 import { JsonValue } from "std/serialize/json/types";
 import { glyphIndex, glyphAdvance } from "../void2d/face";
 import {
+	DEFAULT_FONT,
 	Font,
 	FontFeature,
 	FontId,
@@ -14,8 +15,10 @@ import {
 import {
 	Align,
 	NO_GLYPH,
+	LineOptions,
 	PLAIN_LINES,
 	TextLayout,
+	Truncate,
 	TextRun,
 	TextStyle,
 	layoutRuns,
@@ -379,6 +382,113 @@ test "moving a shaping break changes only the glyph rows of its own label" {
 	assert (placeLabel(first, world, 1.0).placed.length as int32) == 1;
 	releaseLabelText(first);
 	releaseLabelText(second);
+}
+
+function wrappedAt(font: FontId, text: string, width: float32): TextLayout {
+	return TextLayout.layout(text, { ...styleOf(font, SIZE, 0.0), maxWidth: width });
+}
+
+test "a line never breaks inside a shaping cluster, though the break rules offer one there" {
+	const inter = DEFAULT_FONT;
+	const width: float32 = TextLayout.layout("aaaa-", styleOf(inter, SIZE, 0.0)).width + 0.25;
+	setTextShaping(false);
+	const apart = wrappedAt(inter, "aaaa->bbbb", width);
+	setTextShaping(true);
+	assert (apart.lines.length as int32) == 2;
+	assert apart.splitText("aaaa->bbbb") == "aaaa-\n>bbbb";
+	const joined = wrappedAt(inter, "aaaa->bbbb", width);
+	assert joined.glyphs[5].glyph == NO_GLYPH && !joined.glyphs[5].shapeStart;
+	assert (joined.lines.length as int32) == 1;
+	assert joined.splitText("aaaa->bbbb") == "aaaa->bbbb";
+}
+
+test "a break still falls between two clusters" {
+	const inter = DEFAULT_FONT;
+	const width: float32 = TextLayout.layout("a->b", styleOf(inter, SIZE, 0.0)).width + 0.25;
+	const l = wrappedAt(inter, "a->b c->d", width);
+	assert l.splitText("a->b c->d") == "a->b\nc->d";
+}
+
+test "the caret inside a ligature sits where its graphemes divide it evenly" {
+	const l = layoutOf(fixture(plain()), "fi", 0.0);
+	assert approx(l.xForIndex(0), 0.0);
+	assert approx(l.xForIndex(1), 3.75);
+	assert approx(l.xForIndex(2), 7.5);
+}
+
+test "a click inside a ligature lands on the nearer grapheme edge" {
+	const l = layoutOf(fixture(plain()), "fi", 0.0);
+	assert l.indexAt(1.0, 0.0) == 0;
+	assert l.indexAt(2.5, 0.0) == 1;
+	assert l.indexAt(5.0, 0.0) == 1;
+	assert l.indexAt(6.0, 0.0) == 2;
+}
+
+test "a cut inside a ligature moves to the start of its cluster" {
+	const l = layoutOf(fixture(plain()), "afib", 0.0);
+	const [left, right] = l.splitAt(2);
+	assert left.splitText("afib") == "a";
+	assert right.splitText("afib") == "fib";
+	assert (left.glyphs.length as int32) == 1 && (right.glyphs.length as int32) == 3;
+	assert approx(right.glyphs[0].x, 0.0);
+	const [whole, rest] = l.splitAt(3);
+	assert whole.splitText("afib") == "afi";
+	assert rest.splitText("afib") == "b";
+}
+
+test "a cut before a codepoint that shaped to two glyphs keeps both glyphs together" {
+	const l = layoutOf(fixture(plain()), "a\u{E9}b", 0.0);
+	const [left, right] = l.splitAt(1);
+	assert (left.glyphs.length as int32) == 1 && (right.glyphs.length as int32) == 3;
+	const [accented, tail] = l.splitAt(2);
+	assert (accented.glyphs.length as int32) == 3 && (tail.glyphs.length as int32) == 1;
+}
+
+test "forced width keeps a ligature's glyph in its first cell" {
+	const font = fixture(plain());
+	const style = styleOf(font, SIZE, 0.0);
+	const options: LineOptions = { truncate: Truncate.None, hangingIndent: 0.0, forceWidth: 6.0 };
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const l = wrapText(shapeText("fi\u{E9}", style, noRuns, noBreaks), style, options);
+	assert (l.glyphs.length as int32) == 4;
+	assert l.glyphs[0].glyph != gid(font, F) && l.glyphs[1].glyph == NO_GLYPH;
+	assert approx(l.glyphs[0].x, 0.0) && approx(l.glyphs[1].x, 6.0) && approx(l.glyphs[2].x, 12.0);
+	assert approx(l.glyphs[3].x, 18.0);
+	assert approx(l.lines[0].width, 18.0);
+}
+
+test "truncation never cuts through a ligature" {
+	const font = fixture(plain());
+	const style = styleOf(font, SIZE, 0.0);
+	const ligature: int32 = layoutOf(font, "fi", 0.0).glyphs[0].glyph;
+	const noRuns: TextRun[] = [];
+	const noBreaks: int32[] = [];
+	const shaped = shapeText("aafiaafiaa", style, noRuns, noBreaks);
+	let truncated: int32 = 0;
+	for (const truncate of [Truncate.End, Truncate.Start, Truncate.Middle]) {
+		for (let w: int32 = 8; w < 70; w++) {
+			const options: LineOptions = {
+				truncate: truncate, hangingIndent: 0.0, forceWidth: 0.0,
+			};
+			const narrow: TextStyle = { ...style, maxWidth: (w as float32) * 0.75 };
+			const l = wrapText(shaped, narrow, options);
+			let kept: int32 = 0;
+			for (let k: int32 = 0; k < (l.glyphs.length as int32); k++) {
+				if (!l.glyphs[k].shapeStart) {
+					assert k > 0;
+					const before = l.glyphs[k - 1];
+					assert before.glyph == ligature || !before.shapeStart;
+				}
+				if (l.glyphs[k].glyph != ligature) { continue; }
+				kept = kept + 1;
+				assert k + 1 < (l.glyphs.length as int32);
+				assert l.glyphs[k + 1].glyph == NO_GLYPH && !l.glyphs[k + 1].shapeStart;
+			}
+			if (kept < 2) { truncated = truncated + 1; }
+		}
+	}
+	assert truncated > 20;
 }
 
 function oracleRows(): JsonValue {

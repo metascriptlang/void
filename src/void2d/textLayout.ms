@@ -883,6 +883,10 @@ function pushLine(
 	}
 }
 
+function boundary(this g: LaidGlyph): boolean {
+	return g.clusterStart && g.shapeStart;
+}
+
 function rowAdvance(this g: LaidGlyph, x: float32, stop: float32): float32 {
 	if (g.codepoint != TAB || stop <= 0.0) { return g.advance; }
 	const next: float32 = ((Math.floor(x / stop) as float32) + 1.0) * stop;
@@ -958,7 +962,7 @@ function pushTruncated(
 		while (head < count) {
 			let next: int32 = head + 1;
 			let right: float32 = line[head].x + line[head].advance;
-			while (next < count && !line[next].clusterStart) {
+			while (next < count && !line[next].boundary()) {
 				const markRight: float32 = line[next].x + line[next].advance;
 				if (markRight > right) { right = markRight; }
 				next = next + 1;
@@ -975,7 +979,7 @@ function pushTruncated(
 		const end: float32 = line[count - 1].x + line[count - 1].advance;
 		for (let at: int32 = count - 1; at >= head; at--) {
 			if (end - line[at].x > tailBudget) { break; }
-			if (line[at].clusterStart) { tail = at; }
+			if (line[at].boundary()) { tail = at; }
 		}
 	}
 	for (let k = 0; k < head; k++) { out.push(line[k]); }
@@ -998,6 +1002,9 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	const count: int32 = shaped.glyphs.length as int32;
 	if (wrapping && count > 0 && (shaped.breaks.length as int32) == 0) {
 		shaped.breaks = lineBreaks(shaped.values);
+		for (let k = 0; k < count; k++) {
+			if (!shaped.glyphs[k].shapeStart) { shaped.breaks[k] = false; }
+		}
 	}
 	let glyphs: Vec<LaidGlyph> = new Array(0);
 	let lines: Vec<LineBox> = new Array(0);
@@ -1178,6 +1185,10 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 			cut = k;
 			break;
 		}
+	}
+	while (cut > line.firstGlyph && cut < line.firstGlyph + line.glyphCount &&
+		!l.glyphs[cut].shapeStart) {
+		cut = cut - 1;
 	}
 	let left: Vec<LaidGlyph> = new Array(0);
 	let right: Vec<LaidGlyph> = new Array(0);
