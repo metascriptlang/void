@@ -364,6 +364,11 @@ export function addMesh(context: DrawContext, mesh: GpuMesh): Result<MeshId, Mes
 	return Result.ok(newMesh(context, mesh, MeshData.empty()));
 }
 
+function layoutOf(this data: MeshData): VertexLayout {
+	if (data.hasTangents) { return VertexLayout.LitTexturedTangent; }
+	return data.hasUvs ? VertexLayout.LitTextured : VertexLayout.Lit;
+}
+
 // The GpuMesh that `data` describes once its buffers exist. Pure: what the counts and the
 // indexed flag are is decided here, so the rebuild path can be checked without a GPU.
 export function meshFor(
@@ -373,7 +378,7 @@ export function meshFor(
 	generation: int32,
 ): GpuMesh {
 	return {
-		layout: data.hasUvs ? VertexLayout.LitTextured : VertexLayout.Lit,
+		layout: data.layoutOf(),
 		vertexBuffer: vertexBuffer,
 		instanceBuffer: 0,
 		indexBuffer: data.isIndexed() ? indexBuffer : (0 as uint32),

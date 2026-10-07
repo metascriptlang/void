@@ -26,6 +26,9 @@ import { Face } from "../gpu/state";
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
 export const LIT_VERTEX_STRIDE: int32 = 10;
 export const LIT_TEXTURED_VERTEX_STRIDE: int32 = 12;
+// LitTextured, then glTF's TANGENT: xyz, and in w the sign the bitangent cross(normal, tangent)
+// takes; the `LitTexturedTangent` layout a normal-mapped key reads.
+export const LIT_TEXTURED_TANGENT_VERTEX_STRIDE: int32 = 16;
 
 // uint16 indices, so one MeshData holds at most 65536 vertices. The content budget this port
 // was sized against is three orders of magnitude under that (RENDERER-BRIEF §4.4); a mesh that
@@ -50,6 +53,7 @@ export struct MeshData {
 	indices: Vec<uint16>;
 	bounds: Bounds3D;
 	hasUvs: boolean;
+	hasTangents: boolean;
 }
 
 export struct MeshRayHit {
@@ -61,10 +65,13 @@ export enum MeshError {
 	TooManyVertices,
 	IndexOutOfRange,
 	UvMismatch,
+	TangentsAdded,
 }
 
 export function empty(this typeof MeshData): MeshData {
-	return { vertices: [], indices: [], bounds: Bounds3D.empty(), hasUvs: false };
+	return {
+		vertices: [], indices: [], bounds: Bounds3D.empty(), hasUvs: false, hasTangents: false,
+	};
 }
 
 export function withUvs(this typeof MeshData): MeshData {
@@ -72,6 +79,7 @@ export function withUvs(this typeof MeshData): MeshData {
 }
 
 export function stride(this data: Readonly<MeshData>): int32 {
+	if (data.hasTangents) { return LIT_TEXTURED_TANGENT_VERTEX_STRIDE; }
 	return data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE;
 }
 
@@ -126,6 +134,7 @@ export function addTexturedVertex(
 	color: Rgba,
 ): Result<int32, MeshError> {
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
 	let index: int32 = data.vertexCount();
 	if (index >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
 	data.vertices.push(position.x);
@@ -210,6 +219,80 @@ export function addTexturedQuad(
 	let _lower: int32 = try addTriangle(data, first, second, third);
 	let _upper: int32 = try addTriangle(data, first, third, fourth);
 	return Result.ok(first);
+}
+
+// h3d.prim.Polygon.addTangents: called once the textured vertices are in, it interleaves a tangent
+// after each. Heaps' tangent carries no handedness; this one is Lengyel's per-vertex sum with
+// glTF's sign in w, so a mirrored UV island turns its bitangent.
+export function addTangents(ref data: MeshData): Result<int32, MeshError> {
+	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
+	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	const count: int32 = data.vertexCount();
+	let sums: Vec<float32> = new Array(count * 6);
+	const triangles: int32 = data.triangleCount();
+	for (let triangle = 0; triangle < triangles; triangle++) {
+		data.addTriangleTangent(sums, triangle);
+	}
+	let vertices: Vec<float32> = [];
+	for (let i = 0; i < count; i++) {
+		const base: int32 = i * LIT_TEXTURED_VERTEX_STRIDE;
+		for (let k = 0; k < LIT_TEXTURED_VERTEX_STRIDE; k++) {
+			vertices.push(data.vertices[base + k]);
+		}
+		const normal: Vec3 =
+			vec3(data.vertices[base + 3], data.vertices[base + 4], data.vertices[base + 5]);
+		const tangent: Vec3 = vec3(sums[i * 6], sums[i * 6 + 1], sums[i * 6 + 2]);
+		const bitangent: Vec3 = vec3(sums[i * 6 + 3], sums[i * 6 + 4], sums[i * 6 + 5]);
+		const along: Vec3 = orthogonalTangent(normal, tangent);
+		vertices.push(along.x);
+		vertices.push(along.y);
+		vertices.push(along.z);
+		vertices.push(normal.cross(along).dot(bitangent) > 0.0 ? -1.0 : 1.0);
+	}
+	data.vertices = vertices;
+	data.hasTangents = true;
+	return Result.ok(count);
+}
+
+// Adds the triangle's tangent (position per u) and bitangent (position per v) to its corners;
+// a triangle whose UVs span no area adds nothing.
+function addTriangleTangent(this data: MeshData, sums: Span<float32>, triangle: int32): void {
+	const at: int32 = triangle * 3;
+	const indexed: boolean = data.isIndexed();
+	const a: int32 = indexed ? (data.indices[at] as int32) : at;
+	const b: int32 = indexed ? (data.indices[at + 1] as int32) : at + 1;
+	const c: int32 = indexed ? (data.indices[at + 2] as int32) : at + 2;
+	const p0: Vec3 = data.cornerOf(triangle, 0);
+	const e1: Vec3 = data.cornerOf(triangle, 1) - p0;
+	const e2: Vec3 = data.cornerOf(triangle, 2) - p0;
+	const stride: int32 = LIT_TEXTURED_VERTEX_STRIDE;
+	const u0: float32 = data.vertices[a * stride + 6];
+	const v0: float32 = data.vertices[a * stride + 7];
+	const du1: float32 = data.vertices[b * stride + 6] - u0;
+	const dv1: float32 = data.vertices[b * stride + 7] - v0;
+	const du2: float32 = data.vertices[c * stride + 6] - u0;
+	const dv2: float32 = data.vertices[c * stride + 7] - v0;
+	const area: float32 = du1 * dv2 - du2 * dv1;
+	if (area == 0.0) { return; }
+	const tangent: Vec3 = (e1.scaled(dv2) - e2.scaled(dv1)).scaled(1.0 / area);
+	const bitangent: Vec3 = (e2.scaled(du1) - e1.scaled(du2)).scaled(1.0 / area);
+	for (const corner of [a, b, c]) {
+		sums[corner * 6] = sums[corner * 6] + tangent.x;
+		sums[corner * 6 + 1] = sums[corner * 6 + 1] + tangent.y;
+		sums[corner * 6 + 2] = sums[corner * 6 + 2] + tangent.z;
+		sums[corner * 6 + 3] = sums[corner * 6 + 3] + bitangent.x;
+		sums[corner * 6 + 4] = sums[corner * 6 + 4] + bitangent.y;
+		sums[corner * 6 + 5] = sums[corner * 6 + 5] + bitangent.z;
+	}
+}
+
+// Gram-Schmidt against the normal; a vertex no triangle gave a direction takes any unit vector
+// perpendicular to its normal.
+function orthogonalTangent(normal: Vec3, tangent: Vec3): Vec3 {
+	const along: Vec3 = tangent - normal.scaled(normal.dot(tangent));
+	if (along.lengthSquared() > 1e-12) { return along.normalized(); }
+	const axis: Vec3 = normal.x * normal.x < 0.5 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+	return (axis - normal.scaled(normal.dot(axis))).normalized();
 }
 
 // Recomputes the bounds from the vertices, h3d.prim.Polygon.getBounds. The builders keep the

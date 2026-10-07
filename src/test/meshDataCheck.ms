@@ -9,6 +9,7 @@ import {
 	Box,
 	LIT_VERTEX_STRIDE,
 	LIT_TEXTURED_VERTEX_STRIDE,
+	LIT_TEXTURED_TANGENT_VERTEX_STRIDE,
 	CUBE_VERTICES,
 	Uv,
 	MAX_MESH_VERTICES,
@@ -22,6 +23,7 @@ import {
 	addBox,
 	addPlane,
 	recomputeBounds,
+	addTangents,
 } from "../void3d/meshData";
 import { approx } from "./helpers";
 
@@ -390,4 +392,95 @@ test "a builder with uvs that does not fit leaves the mesh exactly as it was" {
 		addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE);
 	assert !rejected.ok && rejected.error == MeshError.TooManyVertices;
 	assert data.vertexCount() == room && data.indexCount() == 0;
+}
+
+function tangentAt(data: MeshData, vertex: int32): Vec3 {
+	const base: int32 = vertex * LIT_TEXTURED_TANGENT_VERTEX_STRIDE + LIT_TEXTURED_VERTEX_STRIDE;
+	return vec3(data.vertices[base], data.vertices[base + 1], data.vertices[base + 2]);
+}
+
+function handednessAt(data: MeshData, vertex: int32): float32 {
+	return data.vertices[vertex * LIT_TEXTURED_TANGENT_VERTEX_STRIDE + 15];
+}
+
+// A quad facing +z from (0,0) to (2,1), `mirrored` running u from right to left.
+function facingQuad(mirrored: boolean): MeshData {
+	let data: MeshData = MeshData.withUvs();
+	const a: Vec3 = mirrored ? vec3(2.0, 0.0, 0.0) : vec3(0.0, 0.0, 0.0);
+	const b: Vec3 = mirrored ? vec3(0.0, 0.0, 0.0) : vec3(2.0, 0.0, 0.0);
+	const c: Vec3 = mirrored ? vec3(0.0, 1.0, 0.0) : vec3(2.0, 1.0, 0.0);
+	const d: Vec3 = mirrored ? vec3(2.0, 1.0, 0.0) : vec3(0.0, 1.0, 0.0);
+	const normal: Vec3 = vec3(0.0, 0.0, 1.0);
+	if (!addTexturedQuad(data, a, b, c, d, normal, WHITE).ok) { unreachable; }
+	return data;
+}
+
+test "tangents run along +u, with the bitangent cross(normal, tangent) toward the image's top" {
+	let data: MeshData = facingQuad(false);
+	const added: Result<int32, MeshError> = addTangents(data);
+	assert added.ok;
+	if (added.ok) { assert added.value == 4; }
+	assert data.hasTangents && data.stride() == LIT_TEXTURED_TANGENT_VERTEX_STRIDE;
+	assert (data.vertices.length as int32) == 4 * LIT_TEXTURED_TANGENT_VERTEX_STRIDE;
+	for (let i = 0; i < 4; i++) {
+		assert near(tangentAt(data, i), 1.0, 0.0, 0.0) && handednessAt(data, i) == 1.0;
+	}
+	assert isUv(uvAt(data, 2), 1.0, 0.0) && near(texturedNormalAt(data, 2), 0.0, 0.0, 1.0);
+}
+
+test "a mirrored UV island turns its tangent and flips the handedness" {
+	let data: MeshData = facingQuad(true);
+	assert addTangents(data).ok;
+	for (let i = 0; i < 4; i++) {
+		assert near(tangentAt(data, i), -1.0, 0.0, 0.0) && handednessAt(data, i) == -1.0;
+	}
+}
+
+test "tangents lie in each face of a cube, perpendicular to its normal" {
+	let data: MeshData = MeshData.withUvs();
+	assert addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE).ok;
+	assert addTangents(data).ok;
+	for (let i = 0; i < CUBE_VERTICES; i++) {
+		const tangent: Vec3 = tangentAt(data, i);
+		assert approx(tangent.length(), 1.0) && approx(tangent.dot(texturedNormalAt(data, i)), 0.0);
+		assert handednessAt(data, i) == 1.0;
+	}
+}
+
+test "a vertex no triangle gives a direction still takes a unit tangent across its normal" {
+	let data: MeshData = MeshData.withUvs();
+	const up: Vec3 = vec3(0.0, 1.0, 0.0);
+	const flat: Uv = { u: 0.5, v: 0.5 };
+	const corners: Vec<float32> = [0.0, 1.0, 0.0];
+	for (const x of corners) {
+		assert addTexturedVertex(data, vec3(x, 0.0, x), up, flat, WHITE).ok;
+	}
+	assert addTriangle(data, 0, 1, 2).ok;
+	assert addTangents(data).ok;
+	assert approx(tangentAt(data, 0).length(), 1.0) && approx(tangentAt(data, 0).dot(up), 0.0);
+}
+
+test "tangents need uvs, come once, and close the mesh to more vertices" {
+	let plain: MeshData = MeshData.empty();
+	const untextured: Result<int32, MeshError> = addTangents(plain);
+	assert !untextured.ok && untextured.error == MeshError.UvMismatch;
+	let data: MeshData = facingQuad(false);
+	assert addTangents(data).ok;
+	const again: Result<int32, MeshError> = addTangents(data);
+	assert !again.ok && again.error == MeshError.TangentsAdded;
+	const more: Result<int32, MeshError> =
+		addTexturedVertex(data, vec3(0.0, 0.0, 0.0), UP, { u: 0.0, v: 0.0 }, WHITE);
+	assert !more.ok && more.error == MeshError.TangentsAdded;
+	assert data.vertexCount() == 4;
+}
+
+test "bounds and picking read a mesh with tangents at its own stride" {
+	let data: MeshData = MeshData.withUvs();
+	assert addTexturedCube(data, vec3(1.0, 1.0, 1.0), true, WHITE).ok;
+	assert addTangents(data).ok;
+	recomputeBounds(data);
+	assert near(data.bounds.min, -0.5, -0.5, -0.5) && near(data.bounds.max, 0.5, 0.5, 0.5);
+	let toward: Ray = { origin: vec3(0.1, 0.2, 5.0), direction: vec3(0.0, 0.0, -1.0) };
+	const hit = data.rayIntersection(toward, Face.Back);
+	assert approx(hit.distance, 4.5) && hit.uv !== null;
 }
