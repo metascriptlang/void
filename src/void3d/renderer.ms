@@ -3,7 +3,8 @@
 // Heaps' base Renderer walks nothing and draws nothing (render() is abstract); it owns the
 // named PassLists, sorts them and gives subclasses setTarget/copy. Here the same core owns the
 // pass lists (Opaque, Alpha back to front, Additive), the scene's camera and light uniform
-// blocks, the screen triangle every ScreenFx draws, and the GPU context bookkeeping. A preset
+// blocks, the frame's time (RenderContext.time, the `global.time` shaders read), the screen
+// triangle every ScreenFx draws, and the GPU context bookkeeping. A preset
 // (pixelArtRenderer.ms, as fwd.Renderer / pbr.Renderer are in Heaps) owns targets and passes
 // and calls beginFrame, drawPassLists (or drawPhase, one list at a time, as Heaps'
 // renderPass) and drawScreen in its own order, between openPrepare,
@@ -28,6 +29,9 @@ import {
 	LIGHT_UNIFORM_LENGTH,
 	SHADOW_UNIFORM_SLOT,
 	SHADOW_VIEW_SLOT,
+	FRAME_UNIFORM_SLOT,
+	FRAME_UNIFORM_LENGTH,
+	FRAME_TIME,
 	SHADOW_SAMPLER_SLOT,
 	uniformBlockLength,
 	textureSlotMask,
@@ -79,7 +83,17 @@ export interface Renderer {
 	additive: PassList;
 	cameraBlock: UniformBlock;
 	lightBlock: UniformBlock;
+	frameBlock: UniformBlock;
 	sceneGlobals: Vec<UniformBlock>;
+	// h3d.scene.RenderContext's `time` and `elapsedTime`, in seconds: each beginFrame adds the
+	// elapsed time to the time, then writes the time into the frame block. Void keeps no clock,
+	// so the elapsed time stays 0 until the caller sets it (setElapsedTime); the time is the
+	// caller's to set too.
+	time: float32;
+	elapsedTime: float32;
+	frameValues: Vec<float32>;
+	// The last frame drew a key that reads the time (a UV transform's scroll).
+	readsTime: boolean;
 	preset: Preset;
 	// Per item of the frame, the key drawn for its material's.
 	drawn: Vec<ProgramKey>;
@@ -114,8 +128,9 @@ export enum RendererError {
 	ProgramNotCast,
 }
 
-// Floats of the uniform pool the core reserves: camera and lights.
-export const RENDERER_UNIFORM_LENGTH: int32 = VERTEX_UNIFORM_LENGTH + LIGHT_UNIFORM_LENGTH;
+// Floats of the uniform pool the core reserves: camera, lights and the frame block.
+export const RENDERER_UNIFORM_LENGTH: int32 =
+	VERTEX_UNIFORM_LENGTH + LIGHT_UNIFORM_LENGTH + FRAME_UNIFORM_LENGTH;
 
 const NO_GLOBALS: Vec<UniformBlock> = [];
 
@@ -136,7 +151,7 @@ function reserveOwned(context: DrawContext, slot: int32, length: int32): Uniform
 	return reserved.value;
 }
 
-// Reserves the camera and light blocks and adds the screen triangle's mesh to `context`. No
+// Reserves the camera, light and frame blocks and adds the screen triangle's mesh to `context`. No
 // GPU object is made here: the first beginFrame makes them. It draws the core's programs.
 export function create(
 	this typeof Renderer,
@@ -152,7 +167,8 @@ export function createDrawing(
 	preset: Preset,
 ): Result<Renderer, RendererError> {
 	context.requireOpen("Renderer.createDrawing");
-	const blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH];
+	const blocks: Vec<int32> =
+		[VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, FRAME_UNIFORM_LENGTH];
 	if (!context.uniforms.fits(blocks).ok) {
 		return Result.err(RendererError.UniformPoolFull);
 	}
@@ -160,6 +176,8 @@ export function createDrawing(
 		reserveOwned(context, VERTEX_UNIFORM_SLOT, VERTEX_UNIFORM_LENGTH);
 	const lightBlock: UniformBlock =
 		reserveOwned(context, LIGHT_UNIFORM_SLOT, LIGHT_UNIFORM_LENGTH);
+	const frameBlock: UniformBlock =
+		reserveOwned(context, FRAME_UNIFORM_SLOT, FRAME_UNIFORM_LENGTH);
 	const screen: Result<MeshId, MeshUploadError> = addMesh(context, screenMesh(0));
 	if (!screen.ok) { unreachable; }
 	return Result.ok({
@@ -169,7 +187,12 @@ export function createDrawing(
 		additive: PassList.forPhase(Phase.Additive),
 		cameraBlock: cameraBlock,
 		lightBlock: lightBlock,
-		sceneGlobals: [cameraBlock, lightBlock],
+		frameBlock: frameBlock,
+		sceneGlobals: [cameraBlock, lightBlock, frameBlock],
+		time: 0.0,
+		elapsedTime: 0.0,
+		frameValues: new Array(FRAME_UNIFORM_LENGTH),
+		readsTime: false,
 		preset: preset,
 		drawn: [],
 		shadow: null,
@@ -205,16 +228,24 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 	if (shadow !== null && shadow.isClosed()) { stopOnClosedShadow("attachShadow"); }
 	renderer.shadow = shadow;
 	renderer.sceneGlobals = shadow !== null ?
-		[renderer.cameraBlock, renderer.lightBlock, shadow.shadowBlock] :
-		[renderer.cameraBlock, renderer.lightBlock];
+		[renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock, shadow.shadowBlock] :
+		[renderer.cameraBlock, renderer.lightBlock, renderer.frameBlock];
 	renderer.changed = true;
 }
 
-// Whether the next frame could differ from the last one drawn: something was marked changed
-// or the GPU context is new. A preset adds its own inputs (the view, its settings).
+// h3d.scene.Scene.setElapsedTime: what the next beginFrame adds to the time.
+export function setElapsedTime(renderer: Renderer, seconds: float32): void {
+	if (renderer.closed) { stopOnClosed("setElapsedTime"); }
+	renderer.elapsedTime = seconds;
+}
+
+// Whether the next frame could differ from the last one drawn: something was marked changed,
+// the GPU context is new, or time passes under a key that reads it. A preset adds its own
+// inputs (the view, its settings).
 export function needsFrame(this renderer: Renderer): boolean {
 	if (renderer.closed) { return false; }
-	return renderer.changed || renderer.generation != contextGeneration();
+	const moving: boolean = renderer.readsTime && renderer.elapsedTime != 0.0;
+	return renderer.changed || moving || renderer.generation != contextGeneration();
 }
 
 // Starts a frame: uploads the camera and lights, adopts a new GPU context if there is one and fills
@@ -287,15 +318,21 @@ export function beginFrame(
 	const lightsWritten: Result<int32, UniformError> =
 		writeUniforms(context, renderer.lightBlock, lights);
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
+	renderer.time = renderer.time + renderer.elapsedTime;
+	renderer.frameValues[FRAME_TIME] = renderer.time;
+	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));
 	}
+	let readsTime: boolean = false;
 	for (let i = 0; i < (items.length as int32); i++) {
 		const resolved: Result<ProgramKey, ProgramError> =
 			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
+		readsTime = readsTime || resolved.value.uvTransform;
 	}
+	renderer.readsTime = readsTime;
 	const generation: int32 = contextGeneration();
 	const _buried: int32 = buryDoomed(context, generation);
 	const fresh: boolean = generation != renderer.generation;
@@ -429,7 +466,7 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	let own: int32 = -1;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
 		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT ||
-			slot == SHADOW_UNIFORM_SLOT;
+			slot == SHADOW_UNIFORM_SLOT || slot == FRAME_UNIFORM_SLOT;
 		if (passWide || slot == MODEL_SLOT || uniformBlockLength(program, slot) == 0) {
 			continue;
 		}
@@ -522,8 +559,9 @@ export function closeRenderer(renderer: Renderer): void {
 	if (!released.ok) { stopOnLostScreenMesh(context, renderer); }
 	const camera: Result<int32, UniformError> = disownRange(context.uniforms, renderer.cameraBlock);
 	const light: Result<int32, UniformError> = disownRange(context.uniforms, renderer.lightBlock);
-	if (!camera.ok || !light.ok) {
-		console.log("void3d: closeRenderer found its camera or light block already given back");
+	const frame: Result<int32, UniformError> = disownRange(context.uniforms, renderer.frameBlock);
+	if (!camera.ok || !light.ok || !frame.ok) {
+		console.log("void3d: closeRenderer found a block of its own already given back");
 		unreachable;
 	}
 	renderer.closed = true;
