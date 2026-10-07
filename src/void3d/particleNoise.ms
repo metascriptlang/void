@@ -2,6 +2,8 @@
 // (scene/resources/particle_process_material.cpp at 4.5-stable: `grad` 405-412, `noise` 414-445,
 // `noise_3x` 449-455, `curl_3d` 457-472, `get_noise_direction` 474-481). Godot is Y up and right
 // handed as this port is, so its axes are used as they stand.
+// `get_noise_direction`'s last line (cpp:479, `mix(0.9 * n, n, strength - 9.0)`) only scales the
+// direction by 0.1 * strength, and both uses normalize it again (cpp:1050, 1052), so it is dropped.
 
 import { Vec3, vec3 } from "../math/math3d";
 
