@@ -14,6 +14,20 @@ float applyContrastAndGamma(float coverage, vec3 color, float contrastFactor, ve
 }
 @end
 
+@block textSdf
+const float SDF_EDGE = 191.0 / 255.0;
+const float SDF_RADIUS = 8.0;
+
+float sdfCoverage(float sampled, float texelsPerPixel) {
+    float texels = (sampled - SDF_EDGE) * SDF_RADIUS;
+    return clamp(texels / texelsPerPixel + 0.5, 0.0, 1.0);
+}
+
+float sdfTexelsPerPixel(vec2 uvDx, vec2 uvDy, vec2 pageSize) {
+    return max(0.5 * (length(uvDx * pageSize) + length(uvDy * pageSize)), 0.0001);
+}
+@end
+
 @vs vs
 layout(binding=0) uniform void2d_params {
     vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = premultiplied source with no effect
@@ -81,6 +95,7 @@ in vec4 clipDistance;
 in vec2 pixel;
 out vec4 frag_color;
 @include_block textGamma
+@include_block textSdf
 vec3 srgbToLinear(vec3 c) {
     vec3 lo = c / 12.92;
     vec3 hi = pow((c + vec3(0.055)) / 1.055, vec3(2.4));
@@ -159,6 +174,8 @@ float bayer4(vec2 pixel) {
     return 5.0;
 }
 void main() {
+    vec2 uvDx = dFdx(uv);
+    vec2 uvDy = dFdy(uv);
     if (min(min(clipDistance.x, clipDistance.y), min(clipDistance.z, clipDistance.w)) < 0.0) { discard; }
     int gradientKind = int(gradientMeta.x + 0.5);
     vec4 texel;
@@ -183,7 +200,12 @@ void main() {
             texel.rgb = texel.a > 0.0 ? texel.rgb / texel.a : vec3(0.0);
         }
         if (coverageTexture > 0.5) {
-            texel = vec4(1.0, 1.0, 1.0, applyContrastAndGamma(texel.r, color.rgb, textParams.x, gammaRatios));
+            float coverage = texel.r;
+            if (coverageTexture > 1.5) {
+                vec2 pageSize = vec2(textureSize(sampler2D(tex, smp), 0));
+                coverage = sdfCoverage(coverage, sdfTexelsPerPixel(uvDx, uvDy, pageSize));
+            }
+            texel = vec4(1.0, 1.0, 1.0, applyContrastAndGamma(coverage, color.rgb, textParams.x, gammaRatios));
         }
     }
     if (colorKey.a > 0.5) {
@@ -370,6 +392,7 @@ layout(binding=1) uniform ui_fx {
     vec4 effectParams;
 };
 @include_block textGamma
+@include_block textSdf
 in vec4 vLocalHalf;
 in vec4 vUvAa;
 in vec4 vRadii;
@@ -591,6 +614,8 @@ float shadowCoverage(vec2 p, vec2 half_, vec4 radii, vec2 offset, float sigma, f
 }
 
 void main() {
+    vec2 uvDx = dFdx(vUvAa.xy);
+    vec2 uvDy = dFdy(vUvAa.xy);
     if (min(min(clipDistance.x, clipDistance.y), min(clipDistance.z, clipDistance.w)) < 0.0) { discard; }
     vec2 p = vLocalHalf.xy;
     vec2 half_ = vLocalHalf.zw;
@@ -730,6 +755,10 @@ void main() {
     vec4 fill = vFill;
     if (mode == 2) {                        // Glyph: an R8 coverage page
         float coverage = texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
+        if (vParams0.x > 0.5) {
+            vec2 pageSize = vec2(textureSize(sampler2D(uiTex, uiSmp), 0));
+            coverage = sdfCoverage(coverage, sdfTexelsPerPixel(uvDx, uvDy, pageSize));
+        }
         fill.a = fill.a * applyContrastAndGamma(coverage, fill.rgb, textParams.x, gammaRatios);
     }
     float alpha = fill.a * inner + vBorder.a * ring;

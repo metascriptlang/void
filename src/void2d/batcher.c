@@ -552,6 +552,7 @@ static float glyphPageViewMode(uint32_t view) {
 	switch (kind) {
 	case -1: return 0.0f;
 	case VOID2D_PAGE_COVERAGE: return 1.0f;
+	case VOID2D_PAGE_SDF: return 2.0f;
 	default:
 		fprintf(stderr, "void2d: glyph page view %u of kind %d has no shader mode\n", view, kind);
 		abort();
