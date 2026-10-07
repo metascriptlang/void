@@ -4,6 +4,7 @@ import sys
 import zlib
 
 from fontTools import subset
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.colorLib.builder import buildCOLR, buildCPAL
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
@@ -314,6 +315,32 @@ def colrUnion():
     save(font, "colrUnion.ttf")
 
 
+def colrLigature():
+    order = [".notdef", "u1F600", "uni2764", "uni200D", "heartGrin", "layerA", "layerB", "layerC"]
+    glyphs = squares(order[:4] + ["heartGrin"])
+    for index, name in enumerate(order[5:]):
+        pen = TTGlyphPen(None)
+        left = 100 + index * 100
+        top = 700 - index * 100
+        pen.moveTo((left, 0))
+        pen.lineTo((left, top))
+        pen.lineTo((left + 400, top))
+        pen.lineTo((left + 400, 0))
+        pen.closePath()
+        glyphs[name] = pen.glyph()
+    cmap = {0x1F600: "u1F600", 0x2764: "uni2764", 0x200D: "uni200D"}
+    font = base("Void COLR Ligature", order, cmap, glyphs, 1000).font
+    palette = [(0.8, 0.2, 0.2, 1.0), (0.2, 0.4, 0.8, 1.0), (0.2, 0.7, 0.3, 0.5)]
+    font["CPAL"] = buildCPAL([palette])
+    font["COLR"] = buildCOLR({
+        "u1F600": [("layerA", 0), ("layerB", 1)],
+        "heartGrin": [("layerC", 2), ("layerA", 0), ("layerB", 1)],
+    }, version=0)
+    addOpenTypeFeaturesFromString(
+        font, "feature ccmp { sub uni2764 uni200D u1F600 by heartGrin; } ccmp;")
+    save(font, "colrLigature.ttf")
+
+
 def colrForeground():
     font = colrBase("Void COLR Foreground")
     font["COLR"] = buildCOLR({"u1F600": [("layerA", 0), ("layerB", 0xFFFF)]}, version=0)
@@ -389,6 +416,7 @@ def main():
     sbixLoop()
     colrSynthetic()
     colrUnion()
+    colrLigature()
     colrForeground()
     colrV1Only()
     collection()

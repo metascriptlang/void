@@ -53,6 +53,8 @@ image formats 19, 18, 17 and 18 and shared or per-glyph bearings; `cbdtUvsLast.t
 Windows record; `colrUnion.ttf` is a five-layer COLR v0 glyph whose layers extend the union box
 left, right, up and down in turn. All three are our own art.
 
+`colrLigature.ttf` (1,132 B) is a COLR v0 face with our own art whose `ccmp` turns U+2764, U+200D and U+1F600 into one layered glyph, for the sequence a shaped label draws as one colour glyph (`src/test/labelTextColourCheck.ms`, with the shaper on).
+
 `sbixLoop.ttf` is `sbixSynthetic` with the `dupe` glyph pointing at itself in both strikes, the
 chain the sbix reader must refuse instead of following.
 

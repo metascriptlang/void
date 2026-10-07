@@ -1,8 +1,9 @@
-import { Align } from "../void2d/textLayout";
+import { Align, setTextShaping } from "../void2d/textLayout";
 import { FontId, addFont, addFallbackFont } from "../void2d/font";
 import { ColourGlyph, colourTileBox, glyphIndex, loadFace } from "../void2d/face";
 import {
 	allocateLabelText,
+	LabelText,
 	setSdfRegime,
 	TextRegime,
 	shapeLabel,
@@ -376,5 +377,35 @@ when (voidSdfText) {
 		assert big.tile != small.tile;
 		assert approx(big.w, (glyphAtlas.tile(big.tile).width as float32) * 16.0 / 48.0);
 		releaseLabelText(index);
+	}
+}
+
+when (voidShaper) {
+	const SEQUENCE: string = "\u{2764}\u{200D}\u{1F600}";
+
+	function sequenceLabel(): LabelText {
+		const font = try addFont("tests/fonts/colrLigature.ttf") catch emojiFont;
+		const index = allocateLabelText();
+		shapeLabel(index, SEQUENCE, {
+			font: font, size: 32.0, letterSpacing: 0.0, lineSpacing: 0.0, maxWidth: 0.0,
+			align: Align.Left,
+		});
+		return placeLabel(index, identity2d(), 1.0);
+	}
+
+	test "a ZWJ sequence the face ligates draws as one colour glyph through the shaper" {
+		const label = sequenceLabel();
+		assert label.placedValid;
+		assert label.colourGlyphs == 1;
+		assert (label.placed.length as int32) == 1;
+	}
+
+	test "without the shaper the same sequence is its parts" {
+		setTextShaping(false);
+		defer setTextShaping(true);
+		const label = sequenceLabel();
+		assert label.placedValid;
+		assert label.colourGlyphs == 1;
+		assert (label.placed.length as int32) == 2;
 	}
 }

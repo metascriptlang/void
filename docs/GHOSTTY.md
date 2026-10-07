@@ -104,6 +104,8 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Build instances on the CPU, upload, draw ranges; nothing dirty → no work | **Confirms** | |
 | Hand-ported shaders drift | **Confirms** "one GLSL source" | |
 | Font collection: ordered faces per style, deferred faces, explicit-vs-fallback presentation, negative-caching codepoint map, whole-grapheme selection, embedded last-resort fonts | **Take** | the fallback design for the glyph layer; GPUI's is "per grapheme by coverage" and no more |
+| Emoji presentation: VS15 and VS16 per grapheme, a fallback face matched on its presentation with any as the last resort | **Take, adapted** (P6) | Ghostty reads a loaded face glyph by glyph (`isColorGlyph`); void2d decides the resolver from the face's tables, so the cached answer cannot change when a face loads, and draws what each glyph holds |
+| Colour emoji in a BGRA atlas, bitmap strikes resized on the CPU (`freetype.zig:616-665`) | **Take, adapted** (P6) | an RGBA page kind and an own integer area-average resize: `stb_image_resize2` costs 112,928 B of wasm for one entry point (measured), against the module's 42,189 B of wasm32 object |
 | Fallback size harmonisation (`ic_width → ex_height → cap_height → line_height`) | **Take** | metrics only; an editor mixing CJK or symbols with a Latin mono font needs it |
 | Variable-font axes; style derived from axes | **Take**, at P6 only if the T5 capture beside Zed asks for them (the rasterizer was decided at P3 step 8) | stb_truetype has no `fvar`/`gvar` |
 | Synthetic bold / italic policy | **Take**, module | |
