@@ -7,7 +7,7 @@ from fontTools import subset
 from fontTools.colorLib.builder import buildCOLR, buildCPAL
 from fontTools.fontBuilder import FontBuilder
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTCollection, TTFont
 from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
 
 OUT = "tests/fonts/"
@@ -204,12 +204,22 @@ def colrSynthetic():
     save(font, "colrSynthetic.ttf")
 
 
+def collection():
+    fonts = [TTFont(OUT + "textSymbol.ttf"), TTFont(OUT + "cbdtSynthetic.ttf")]
+    for font in fonts:
+        font.recalcTimestamp = False
+    ttc = TTCollection()
+    ttc.fonts = fonts
+    ttc.save(OUT + "symbolCollection.ttc")
+
+
 def main():
     noto(sys.argv[1])
     textSymbol()
     cbdtSynthetic()
     sbixSynthetic()
     colrSynthetic()
+    collection()
 
 
 if __name__ == "__main__":

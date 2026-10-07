@@ -11,6 +11,13 @@ import {
 	void2dGlyphPageTexel,
 	void2dGlyphBox,
 } from "./glyph.h";
+import {
+	void2dSfntPeek,
+	void2dSfntCovers,
+	void2dSfntSequence,
+	void2dSfntFlags,
+	void2dSfntSummariesRead,
+} from "./sfnt.h";
 import { GlyphPageHandle } from "./glyphAtlas";
 
 export struct FaceMetrics {
@@ -52,6 +59,58 @@ function faceResult(code: int32): Result<int32, FaceError> {
 		-3 => Result.err(FaceError.OutOfMemory),
 		_ => Result.err(FaceError.NoBaseFace),
 	};
+}
+
+export enum SfntError {
+	Unreadable,
+	NotAnSfnt,
+	OutOfMemory,
+}
+
+export enum SfntSequence {
+	None,
+	Default,
+	Specific,
+}
+
+export struct FaceSummary {
+	id: int32;
+	drawable: boolean;
+	colourBitmap: boolean;
+	colourLayers: boolean;
+}
+
+export function peekFace(path: string): Result<FaceSummary, SfntError> {
+	const code: int32 = void2dSfntPeek(path);
+	if (code < 0) {
+		if (code < -3) { unreachable; }
+		return match (code) {
+			-1 => Result.err(SfntError.Unreadable),
+			-2 => Result.err(SfntError.NotAnSfnt),
+			_ => Result.err(SfntError.OutOfMemory),
+		};
+	}
+	const flags: int32 = void2dSfntFlags(code);
+	return Result.ok({
+		id: code,
+		drawable: (flags & 1) != 0,
+		colourBitmap: (flags & 2) != 0,
+		colourLayers: (flags & 4) != 0,
+	});
+}
+
+export function summaryCovers(summary: FaceSummary, codepoint: int32): boolean {
+	return void2dSfntCovers(summary.id, codepoint) != 0;
+}
+
+export function summarySequence(
+	summary: FaceSummary, codepoint: int32, selector: int32,
+): SfntSequence {
+	return void2dSfntSequence(summary.id, codepoint, selector) as SfntSequence;
+}
+
+export function faceSummariesRead(): int32 {
+	return void2dSfntSummariesRead();
 }
 
 export function loadFace(path: string): Result<int32, FaceError> {

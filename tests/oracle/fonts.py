@@ -3,7 +3,7 @@ import sys
 
 import fontTools
 import uharfbuzz as hb
-from fontTools.ttLib import TTFont
+from fontTools.ttLib import TTCollection, TTFont
 
 FONTS = [
     "assets/font.ttf",
@@ -136,6 +136,68 @@ def shape(path, text):
     return {"path": path, "text": text, "unitsPerEm": face.upem, "glyphs": glyphs, "x": xs}
 
 
+COVERAGE_FONTS = [
+    "assets/font.ttf",
+    "tests/fonts/NotoSansSC-subset.ttf",
+    "tests/fonts/NotoColorEmoji-subset.ttf",
+    "tests/fonts/textSymbol.ttf",
+    "tests/fonts/cbdtSynthetic.ttf",
+    "tests/fonts/sbixSynthetic.ttf",
+    "tests/fonts/colrSynthetic.ttf",
+    "tests/fonts/symbolCollection.ttc",
+]
+
+ABSENT = [0x0, 0x1, 0x378, 0xE01, 0xFFFF, 0x2764, 0x1F600, 0x1F9FF, 0x10FFFF]
+
+
+def firstFont(path):
+    if path.endswith(".ttc"):
+        return TTCollection(path).fonts[0]
+    return TTFont(path)
+
+
+def covered(font):
+    cmap = font.getBestCmap() or {}
+    return sorted(c for c, name in cmap.items() if font.getGlyphID(name) != 0)
+
+
+def spans(codepoints):
+    out = []
+    for c in codepoints:
+        if out and out[-1][1] == c - 1:
+            out[-1][1] = c
+        else:
+            out.append([c, c])
+    return out
+
+
+def sequences(font):
+    rows = []
+    for table in font["cmap"].tables:
+        if table.format != 14:
+            continue
+        for selector, pairs in sorted(table.uvsDict.items()):
+            for codepoint, glyph in sorted(pairs):
+                rows.append([selector, codepoint, 1 if glyph is None else 2])
+    return rows
+
+
+def coverage(path):
+    font = firstFont(path)
+    have = set(covered(font))
+    tables = set(font.keys())
+    outlines = ("loca" in tables) if "glyf" in tables else ("CFF " in tables)
+    return {
+        "path": path,
+        "drawable": bool({"cmap", "head", "hhea", "hmtx"} <= tables and outlines),
+        "colourBitmap": bool({"CBDT", "CBLC"} <= tables or "sbix" in tables),
+        "colourLayers": bool({"COLR", "CPAL"} <= tables),
+        "ranges": spans(sorted(have)),
+        "absent": [c for c in ABSENT if c not in have],
+        "sequences": sequences(font),
+    }
+
+
 def write(path, value):
     with open(path, "w", encoding="utf-8", newline="\n") as out:
         json.dump(value, out, ensure_ascii=False, indent=1)
@@ -156,4 +218,9 @@ if __name__ == "__main__":
         "harfbuzz": hb.version_string(),
         "features": "every GSUB feature off, kern on",
         "rows": [shape(path, text) for path, text in SHAPE_ROWS],
+    })
+    write("tests/oracle/coverage.json", {
+        "generator": "python tests/oracle/fonts.py regen",
+        "fontTools": fontTools.version,
+        "fonts": [coverage(path) for path in COVERAGE_FONTS],
     })

@@ -44,8 +44,11 @@ with VS16 for both codepoints, and no outlines; `sbixSynthetic` holds 12 and 24 
 with origin offsets, a `dupe` glyph, a `jpg ` glyph and an empty glyph; `colrSynthetic` holds a
 COLR v0 glyph of three layers over a three-colour CPAL palette.
 
+`symbolCollection.ttc` (1,968 B) holds `textSymbol` then `cbdtSynthetic`: the sfnt peek must read
+the first font of a collection, which is the drawable one.
+
 ```sh
-python tests/fonts/colourEmoji.py NotoColorEmoji.ttf   # rewrites the five faces above
+python tests/fonts/colourEmoji.py NotoColorEmoji.ttf   # rewrites the faces above
 ```
 
 The generator pins `head.created` and `head.modified`, so a re-run is byte-identical.

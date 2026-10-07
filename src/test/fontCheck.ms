@@ -1,4 +1,10 @@
-import { loadFace, glyphIndex, glyphAdvance, faceMetrics } from "../void2d/face";
+import {
+	loadFace,
+	glyphIndex,
+	glyphAdvance,
+	faceMetrics,
+	faceSummariesRead,
+} from "../void2d/face";
 import {
 	Font,
 	FontStyle,
@@ -14,6 +20,7 @@ import {
 	faceForCodepoint,
 	fallbackFacesLoaded,
 	fallbackProbes,
+	fontCovers,
 } from "../void2d/font";
 import { Scene2D } from "../void2d/node";
 import "../void2d/scene";
@@ -26,6 +33,9 @@ const CJK: string = "tests/fonts/NotoSansSC-subset.ttf";
 const LIGHT: string = "tests/fonts/zeroThickness.ttf";
 const HEAVY: string = "tests/fonts/zeroedDecorations.ttf";
 const NO_LINE_HEIGHT: string = "tests/fonts/zeroLineHeight.ttf";
+const TEXT_SYMBOL: string = "tests/fonts/textSymbol.ttf";
+const COLOUR_ONLY: string = "tests/fonts/cbdtSynthetic.ttf";
+const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
 
 let registeredFamilies: boolean = false;
 
@@ -112,10 +122,59 @@ test "a codepoint no face has is resolved once and then cached as a miss" {
 	const f = added(LATIN);
 	addFallbackFont(f, CJK);
 	const thai: int32 = 0x0E01;
+	const loads = fallbackFacesLoaded();
 	assert faceForCodepoint(f, thai) == fontFace(f);
+	assert fallbackFacesLoaded() == loads;
 	const probes = fallbackProbes();
 	assert faceForCodepoint(f, thai) == fontFace(f);
 	assert fallbackProbes() == probes;
+}
+
+test "coverage of a fallback is answered from its summary, with no face loaded" {
+	const f = added(LATIN);
+	addFallbackFont(f, TEXT_SYMBOL);
+	const summaries = faceSummariesRead();
+	const loads = fallbackFacesLoaded();
+	assert fontCovers(f, 0x1F600);
+	assert fontCovers(f, 0x2764);
+	assert !fontCovers(f, 0x0E01);
+	assert faceSummariesRead() == summaries + 1;
+	assert fallbackFacesLoaded() == loads;
+	const face = faceForCodepoint(f, 0x1F600);
+	assert face != fontFace(f);
+	assert glyphIndex(face, 0x1F600) != 0;
+	assert fallbackFacesLoaded() == loads + 1;
+	assert faceSummariesRead() == summaries + 1;
+}
+
+test "a fallback whose summary covers a codepoint but whose face will not load is skipped once" {
+	const f = added(LATIN);
+	addFallbackFont(f, COLOUR_ONLY);
+	const loads = fallbackFacesLoaded();
+	assert fontCovers(f, 0x1F600);
+	assert faceForCodepoint(f, 0x1F600) == fontFace(f);
+	assert faceForCodepoint(f, 0x2764) == fontFace(f);
+	assert fallbackFacesLoaded() == loads + 1;
+	assert fontCovers(f, 0x1F600);
+}
+
+test "an unreadable fallback path is refused by the peek and never loaded" {
+	const f = added(LATIN);
+	addFallbackFont(f, "tests/fonts/doesNotExist.ttf");
+	const loads = fallbackFacesLoaded();
+	assert !fontCovers(f, 0x4F60);
+	assert faceForCodepoint(f, 0x4F60) == fontFace(f);
+	assert fallbackFacesLoaded() == loads;
+}
+
+test "the summary of a collection is the summary of its first font" {
+	const f = added(LATIN);
+	addFallbackFont(f, COLLECTION);
+	assert fontCovers(f, 0x1F600);
+	assert fontCovers(f, 0x2764);
+	const face = faceForCodepoint(f, 0x1F600);
+	assert face != fontFace(f);
+	assert glyphIndex(face, 0x1F600) != 0;
 }
 
 test "a mixed run takes each glyph from its own face and kerns only within one" {

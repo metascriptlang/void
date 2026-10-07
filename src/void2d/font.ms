@@ -1,4 +1,14 @@
-import { FaceError, loadFace, syntheticFace, glyphIndex, faceHeights } from "./face";
+import {
+	FaceError,
+	FaceSummary,
+	SfntError,
+	loadFace,
+	peekFace,
+	summaryCovers,
+	syntheticFace,
+	glyphIndex,
+	faceHeights,
+} from "./face";
 
 export enum FontStyle { Normal, Italic }
 
@@ -53,6 +63,11 @@ struct LoadedPath {
 	face: Result<int32, FaceError>;
 }
 
+struct PeekedPath {
+	path: string;
+	summary: Result<FaceSummary, SfntError>;
+}
+
 struct Synthetic {
 	base: int32;
 	bold: boolean;
@@ -79,6 +94,7 @@ struct Fallback {
 
 let registered: Vec<RegisteredFace> = [];
 let loadedPaths: Vec<LoadedPath> = [];
+let peekedPaths: Vec<PeekedPath> = [];
 let synthetics: Vec<Synthetic> = [];
 let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
@@ -93,6 +109,25 @@ function faceAtPath(path: string): Result<int32, FaceError> {
 	const face = loadFace(path);
 	loadedPaths.push({ path: path, face: face });
 	return face;
+}
+
+function summaryAtPath(path: string): Result<FaceSummary, SfntError> {
+	for (let i: int32 = 0; i < (peekedPaths.length as int32); i++) {
+		if (peekedPaths[i].path.equals(path)) { return peekedPaths[i].summary; }
+	}
+	const summary = peekFace(path);
+	peekedPaths.push({ path: path, summary: summary });
+	return summary;
+}
+
+function coversAtPath(path: string, codepoint: int32): boolean {
+	for (let i: int32 = 0; i < (loadedPaths.length as int32); i++) {
+		if (loadedPaths[i].path.equals(path) && loadedPaths[i].face.ok) {
+			return glyphIndex(loadedPaths[i].face.value, codepoint) != 0;
+		}
+	}
+	const summary = summaryAtPath(path);
+	return summary.ok && summaryCovers(summary.value, codepoint);
 }
 
 function styled(face: int32, bold: boolean, italic: boolean): Result<int32, FaceError> {
@@ -390,16 +425,34 @@ function codepointSlot(font: FontId, codepoint: int32): int32 {
 	let slot: int32 = PRIMARY_SLOT;
 	if (glyphIndex(fontFace(font), codepoint) == 0) {
 		for (let i = 0; i < (fallbacks.length as int32); i++) {
-			if (fallbacks[i].font != font) { continue; }
+			if (fallbacks[i].font != font || fallbacks[i].face == LOAD_FAILED) { continue; }
+			if (!coversAtPath(fallbacks[i].path, codepoint)) { continue; }
 			const candidate: int32 = fallbackFace(i);
-			if (candidate >= 0 && glyphIndex(candidate, codepoint) != 0) {
-				slot = i;
-				break;
+			if (candidate < 0) { continue; }
+			if (glyphIndex(candidate, codepoint) == 0) {
+				console.log(
+					`void2d: the summary of ${fallbacks[i].path} covers ` +
+					`U+${codepoint.toString(16)} but the loaded face has no glyph; ` +
+					`the face is skipped`,
+				);
+				fallbacks[i].face = LOAD_FAILED;
+				continue;
 			}
+			slot = i;
+			break;
 		}
 	}
 	resolved.set(key, slot);
 	return slot;
+}
+
+export function fontCovers(font: FontId, codepoint: int32): boolean {
+	if (glyphIndex(fontFace(font), codepoint) != 0) { return true; }
+	for (let i = 0; i < (fallbacks.length as int32); i++) {
+		if (fallbacks[i].font != font) { continue; }
+		if (coversAtPath(fallbacks[i].path, codepoint)) { return true; }
+	}
+	return false;
 }
 
 export function codepointFace(font: FontId, codepoint: int32): CodepointFace {
