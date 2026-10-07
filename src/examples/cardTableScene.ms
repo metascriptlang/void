@@ -18,7 +18,7 @@
 
 import { gfxSetup } from "../sokol/gpu";
 import { Vec3, Vec4, Quat, Mat4, vec3, quatBetween } from "../math/math3d";
-import { RenderState, BlendMode, FilterMode, Wrap } from "../gpu/state";
+import { RenderState, BlendMode, Face, FilterMode, Wrap } from "../gpu/state";
 import { PixelFormat, endPass, commit, originTopLeft } from "../gpu/door";
 import { RenderTarget, beginScreenPass } from "../gpu/target";
 import { Scene2D, NodeRef } from "../void2d/node";
@@ -89,6 +89,7 @@ import {
 	setAmbient,
 	refresh,
 	refreshFor,
+	syncWorld,
 	collectLights,
 	collectLightsFor,
 } from "../void3d/scene";
@@ -439,8 +440,14 @@ function cube(width: float32, height: float32, depth: float32): MeshId {
 	return mesh(data);
 }
 
+// A card is seen from the camera and lit from behind, so its shadow comes from its back face:
+// the shadow pass takes the main pass's culling, and a back face culled there casts nothing.
+function twoSided(): RenderState {
+	return RenderState.defaults().withCulling(Face.None);
+}
+
 function premultipliedPass(): RenderState {
-	const pass: RenderState = RenderState.defaults();
+	const pass: RenderState = twoSided();
 	return pass.withDepth(false, pass.depthTest).withBlendMode(BlendMode.AlphaAdd);
 }
 
@@ -516,7 +523,7 @@ function handCard(index: int32, shown: MeshId): NodeId3D {
 function discardCard(shown: MeshId): NodeId3D {
 	const target: RenderTarget = cardTarget(0.80, 0.25, 0.70, "X", false);
 	const faceTexture: TextureId = targetTexture(target, TextureAlpha.Straight);
-	const base: Material = Material.keyed(dissolveKey, RenderState.defaults(), Phase.Opaque)
+	const base: Material = Material.keyed(dissolveKey, twoSided(), Phase.Opaque)
 		.withShadows(ShadowCasting.On, false);
 	const edge: int32 = movingBase(dissolveKey) + MOVING_DISSOLVE_EDGE_COLOR;
 	for (let i = 0; i < 4; i++) { dissolveValues[UNLIT_MATERIAL_COLOR + i] = 1.0; }
@@ -579,7 +586,7 @@ function torch(x: float32, which: int32): NodeId3D {
 	bowlValues[emitted + EMISSIVE_COLOR + 2] = 0.1;
 	bowlValues[emitted + EMISSIVE_STRENGTH] = 1.5;
 	const bowl: Material = Material.keyed(key, RenderState.defaults(), Phase.Opaque)
-		.withShadows(ShadowCasting.On, true);
+		.withShadows(ShadowCasting.Off, true);
 	const bowlMaterial: MaterialId = material({
 		...bowl, texture: wood, emissiveTexture: solid(0xFFFFFFFF), uniforms: block(bowlValues),
 	});
@@ -596,7 +603,7 @@ function torch(x: float32, which: int32): NodeId3D {
 		addStreamMesh(context, flameState().maxParts);
 	if (!stream.ok) { stop("a flame stream was refused"); unreachable; }
 	const particles: MaterialId =
-		material(Material.plain(Program.Particle, RenderState.defaults(), Phase.Opaque));
+		material(Material.plain(Program.Particle, twoSided(), Phase.Opaque));
 	const emitterAt: Transform3D = Transform3D.fromTranslation(vec3(x, FLAME_BASE, TORCH_Z));
 	const emitter: NodeId3D = place(scene.rootId(), emitterAt, stream.value, particles);
 	if (which == 0) { torchAMesh = stream.value; } else { torchBMesh = stream.value; }
@@ -682,6 +689,7 @@ export function setupCardTable(withoutFeatures: boolean): void {
 	if (!made.ok) { stop(`the label was refused: ${made.error.toString()}`); unreachable; }
 	label = made.value;
 	display.add(displaySprite);
+	const _synced: int32 = syncWorld(scene);
 	if (featureless) {
 		setVisible(scene, made.value.node, false);
 		return;
