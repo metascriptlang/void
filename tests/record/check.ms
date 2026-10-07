@@ -12,7 +12,7 @@ import {
 	goldenRowCount,
 } from "../harness/record";
 
-const OWNERS_OUTSIDE_THE_ROADMAP: string[] = ["compiler", "human"];
+const OWNERS_OUTSIDE_THE_ROADMAP: string[] = ["compiler", "human", "declared"];
 
 function read(path: string): string {
 	const text = readFile(path);

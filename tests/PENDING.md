@@ -172,11 +172,11 @@ that agrees fails the run; an unlisted row that differs fails it.
 | shape-cluster:khmer-1 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
 | shape-cluster:khmer-2 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
 | shape-cluster:khmer-3 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
-| shape:arabic-ltr-explicit | T3 | an explicit `ltr` on Arabic text: HarfBuzz forces the run direction, so the glyphs come in text order and unjoined; kb_text_shape takes the direction as the paragraph's and still shapes the Arabic run right to left, as BiDi does | P6 | 2026-10-07 |
-| shape-cluster:arabic-ltr-explicit | T3 | same cause as `shape:arabic-ltr-explicit`: the clusters follow the run order each engine chose | P6 | 2026-10-07 |
-| shape-cluster:missing-inter-zwj | T3 | U+200D with no glyph in the font: HarfBuzz folds the joiner into the preceding cluster, kb_text_shape gives its glyph its own codepoint's index; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
-| shape:missing-mixed-direction | T3 | Latin and Arabic in one buffer: HarfBuzz shapes the whole buffer as one left-to-right run in logical order (it does no BiDi), kb_text_shape splits an Arabic run and reverses it; the layer's own BiDi decision, not this engine's, governs mixed text | P6 | 2026-10-07 |
-| shape-cluster:missing-mixed-direction | T3 | same cause as `shape:missing-mixed-direction`: the clusters follow the run order each engine chose | P6 | 2026-10-07 |
+| shape:arabic-ltr-explicit | T3 | an explicit `ltr` on Arabic text: HarfBuzz forces the run direction, so the glyphs come in text order and unjoined; kb_text_shape takes the direction as the paragraph's and still shapes the Arabic run right to left, as BiDi does | declared | 2026-10-07 |
+| shape-cluster:arabic-ltr-explicit | T3 | same cause as `shape:arabic-ltr-explicit`: the clusters follow the run order each engine chose | declared | 2026-10-07 |
+| shape-cluster:missing-inter-zwj | T3 | U+200D with no glyph in the font: HarfBuzz folds the joiner into the preceding cluster, kb_text_shape gives its glyph its own codepoint's index; glyph ids, advances and offsets agree | declared | 2026-10-07 |
+| shape:missing-mixed-direction | T3 | Latin and Arabic in one buffer: HarfBuzz shapes the whole buffer as one left-to-right run in logical order (it does no BiDi), kb_text_shape splits an Arabic run and reverses it; the layer's own BiDi decision, not this engine's, governs mixed text | declared | 2026-10-07 |
+| shape-cluster:missing-mixed-direction | T3 | same cause as `shape:missing-mixed-direction`: the clusters follow the run order each engine chose | declared | 2026-10-07 |
 
 ## SVG oracle divergences
 
@@ -187,13 +187,13 @@ that agrees fails the run; an unlisted row that differs fails it.
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| svg:use-symbol-24 | T3 | `<use>` is outside the module's allowlist (nanosvg draws no `<use>`); refused by name, resvg draws both squares | P6 | 2026-10-07 |
-| svg:clip-path-24 | T3 | `clip-path` and `<clipPath>` are outside the allowlist (nanosvg has no clipping); refused by name, resvg clips | P6 | 2026-10-07 |
-| svg:mask-24 | T3 | `<mask>` and `mask` are outside the allowlist (nanosvg has no masks); refused by name, resvg masks | P6 | 2026-10-07 |
-| svg:pattern-fill-24 | T3 | `<pattern>` is outside the allowlist (nanosvg has no patterns); refused by name, resvg tiles it | P6 | 2026-10-07 |
-| svg:group-opacity-24 | T3 | `opacity` on a `<g>` is refused by name (`attribute opacity on <g>`): nanosvg multiplies it into each shape, so overlapping shapes composite twice (0.75 where the group should read 0.5); resvg composes the group as one layer | P6 | 2026-10-07 |
-| svg:gear-24 | T3 | a stroked path of many 1.65 radius arcs draws 2.9% less ink in nanosvg (200.7 against 206.6 pixels of coverage), scattered along the curved edges, mean error 5.03 against a 3.5 bound; lowering `tessTol` further (0.02, 0.01) gains nothing, cause not isolated | P6 | 2026-10-07 |
-| svg:dashed-24 | T3 | a dash edge of the 3 2 pattern on a triangle's closing corner lands on a different pixel: 2 pixels past 32, one by 124 | P6 | 2026-10-07 |
+| svg:use-symbol-24 | T3 | `<use>` is outside the module's allowlist (nanosvg draws no `<use>`); refused by name, resvg draws both squares | declared | 2026-10-07 |
+| svg:clip-path-24 | T3 | `clip-path` and `<clipPath>` are outside the allowlist (nanosvg has no clipping); refused by name, resvg clips | declared | 2026-10-07 |
+| svg:mask-24 | T3 | `<mask>` and `mask` are outside the allowlist (nanosvg has no masks); refused by name, resvg masks | declared | 2026-10-07 |
+| svg:pattern-fill-24 | T3 | `<pattern>` is outside the allowlist (nanosvg has no patterns); refused by name, resvg tiles it | declared | 2026-10-07 |
+| svg:group-opacity-24 | T3 | `opacity` on a `<g>` is refused by name (`attribute opacity on <g>`): nanosvg multiplies it into each shape, so overlapping shapes composite twice (0.75 where the group should read 0.5); resvg composes the group as one layer | declared | 2026-10-07 |
+| svg:gear-24 | T3 | a stroked path of many 1.65 radius arcs draws 2.9% less ink in nanosvg (200.7 against 206.6 pixels of coverage), scattered along the curved edges, mean error 5.03 against a 3.5 bound; lowering `tessTol` further (0.02, 0.01) gains nothing, cause not isolated | declared | 2026-10-07 |
+| svg:dashed-24 | T3 | a dash edge of the 3 2 pattern on a triangle's closing corner lands on a different pixel: 2 pixels past 32, one by 124 | declared | 2026-10-07 |
 
 ## macOS and compiler gaps (msc e5e932d0)
 
