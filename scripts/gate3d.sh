@@ -1088,6 +1088,10 @@ REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:d
 RENDER_ORDER_PATH_FUNCTIONS="scene:setRenderOrder scene:refresh scene:liveRow
 	pass76ist:collect pass76ist:filterFrustum pass76ist:sortBackToFront pass76ist:sortByLayer"
 
+# Every `*Copy(` counts, because a struct copy duplicates its Vec (M38 TurbulenceCopy); list a
+# copy here only for a struct that holds no Vec, with its reason.
+VEC_FREE_COPIES=""
+
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
 check_array_copies() {
@@ -1109,14 +1113,21 @@ check_array_copies() {
 			return 1
 		fi
 		body=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted")
-		copies=$(echo "$body" | grep -c 'ArrayCopy(' || true)
-		[ "$copies" -gt 0 ] && offenders="$offenders ${fn}=${copies}"
+		found=""
+		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy\(' | sed 's/__M.*//;s/($//'); do
+			case " $VEC_FREE_COPIES " in
+			*" $copyName "*) ;;
+			*) found="$found $copyName" ;;
+			esac
+		done
+		[ -n "$found" ] && offenders="$offenders ${fn}=$(echo $found | tr ' ' ',')"
 		strings=$(echo "$body" | grep -cE 'msStringConcat|msNumberToString|toString__M' || true)
 		[ "$strings" -gt 0 ] && builders="$builders ${fn}=${strings}"
 	done
 	if [ -n "$offenders" ]; then
-		fail "allocation: the $2 copies an array — ArrayCopy in:$offenders"
-		echo "         CODE-STYLE section 5, the copy trap: index the field or take a Span view"
+		fail "allocation: the $2 copies — function=copy call in:$offenders"
+		echo "         CODE-STYLE section 5, the copy trap: index the field or take a Span view;"
+		echo "         a struct with no Vec goes in VEC_FREE_COPIES with its reason"
 		return 1
 	fi
 	if [ -n "$builders" ]; then
