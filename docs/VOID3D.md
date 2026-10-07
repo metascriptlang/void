@@ -2842,20 +2842,23 @@ instead of raw image and view ids: `GpuTexture` is `{ texture, sampler, samplerG
 `TextureId`, `addTexture`, `retainTexture`/`releaseTexture`, the roles, `addTargetTexture` and
 every refusal keep their meaning; `ImageRefused` and `ViewRefused` come from the owner's
 `TextureError`.
-- The owner is made with a `realloc` that uploads `context.textureData[index].pixels`, so the
-  CPU copy void3d already keeps is the only one (`Texture.fromPixels(..., keep)` would hold a
-  second). A closure over the context makes a cycle, broken by the owner's `close`, which clears
-  `realloc`; a context dropped with a live texture leaks it as it leaks its GPU objects.
+- The owner is made with `realloc = null`: void3d never calls `asView`, and `rebuildTextures`
+  re-uploads from the CPU `TextureData` it already keeps, so a hook would be a second refusal
+  policy and a context-to-closure cycle for nothing. A stale owner that reached `asView` would
+  stop by name; `viewAt` and `textureReady` read `owner.view` for that reason.
 - `rebuildTextures` re-uploads a stale owner through the owner's `upload`, not `asView`, and
   remakes a stale shared sampler. This is a decision: `asView` stops by name when `realloc`
   cannot upload, and M25 retries a refused re-upload on the next rebuild with the material
-  drawing nothing meanwhile, which stays. `textureReady` now also needs a sampler, so a texture
-  whose sampler was refused draws nothing as one whose image was.
+  drawing nothing meanwhile, which stays. `textureReady` (now exported, for its test) also needs
+  a sampler and an owner of the current generation, so a texture whose sampler was refused, or
+  that a loss left stale before the rebuild, draws nothing. The sampler-refused branch of
+  `rebuildTextures` is not pinned headless: a stale sampler goes through `makeSampler`, which
+  asserts without a device.
 - A freed texture still hands its image and view to `doomedTextures` for `buryDoomed`: the
   owner's `close` destroys a live image at once, and a frame in flight may still name it.
   `doomOwner` (`draw.ms`) takes them with `Texture.detach()`, which `src/gpu` gained for this
   (the inverse of `adopt`: nothing destroyed, the owner closed, stale handles returned with
-  their generation). `DoomedTexture` replaces `GpuTexture` in that list.
+  their generation, an adopted texture's given handles returned as `close` never destroys them). `DoomedTexture` replaces `GpuTexture` in that list.
 - Frame path: `viewAt` and `textureReady` read the owner's `view`; an emit probe of
   `texturedFrame.ms` shows no `ArrayCopy` or string building in either, nor in `drawItem` or
   `bindItem`. No `gate3d.sh` list changed.
@@ -5060,13 +5063,16 @@ every refusal keep their meaning; `ImageRefused` and `ViewRefused` come from the
 - `rebuildTextures` re-uploads a stale owner through the owner's `upload`, not `asView`, and
   remakes a stale shared sampler. This is a decision: `asView` stops by name when `realloc`
   cannot upload, and M25 retries a refused re-upload on the next rebuild with the material
-  drawing nothing meanwhile, which stays. `textureReady` now also needs a sampler, so a texture
-  whose sampler was refused draws nothing as one whose image was.
+  drawing nothing meanwhile, which stays. `textureReady` (now exported, for its test) also needs
+  a sampler and an owner of the current generation, so a texture whose sampler was refused, or
+  that a loss left stale before the rebuild, draws nothing. The sampler-refused branch of
+  `rebuildTextures` is not pinned headless: a stale sampler goes through `makeSampler`, which
+  asserts without a device.
 - A freed texture still hands its image and view to `doomedTextures` for `buryDoomed`: the
   owner's `close` destroys a live image at once, and a frame in flight may still name it.
   `doomOwner` (`draw.ms`) takes them with `Texture.detach()`, which `src/gpu` gained for this
   (the inverse of `adopt`: nothing destroyed, the owner closed, stale handles returned with
-  their generation). `DoomedTexture` replaces `GpuTexture` in that list.
+  their generation, an adopted texture's given handles returned as `close` never destroys them). `DoomedTexture` replaces `GpuTexture` in that list.
 - Frame path: `viewAt` and `textureReady` read the owner's `view`; an emit probe of
   `texturedFrame.ms` shows no `ArrayCopy` or string building in either, nor in `drawItem` or
   `bindItem`. No `gate3d.sh` list changed.
@@ -5077,7 +5083,7 @@ public fields. A `Texture.detach()` returning image and view and leaving the own
 replace it. Nothing else was missing: dynamic images and target views were not needed, and the
 premultiplied tag stays in `textureAlphas`, which is void3d's.
 
-**Tests.** `textureCheck.ms` 20 tests (3 new, one for `detach`: a freed texture gives its handles to
+**Tests.** `textureCheck.ms` 21 tests (4 new, one for `detach`, one for `textureReady` after a loss: a freed texture gives its handles to
 `buryDoomed` and closes its owner, with `Texture.adopt` standing in for a GPU image; a freed
 slot holds no owner and its id is stale). `storeCheck`, `lifetimeCheck`, `closeCheck` green
 (307, 316, 311 reported by the runner, which runs every suite file). Two abort programs,
