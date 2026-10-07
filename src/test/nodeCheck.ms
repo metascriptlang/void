@@ -918,6 +918,17 @@ test "a looping Anim stays inside its frames after a very long tick" {
 	s.tick(1000000.0);
 	const shown: int32 = a.animFrames().frameIndex();
 	assert shown >= 0 && shown < 3;
+	assert a.animFrames().carryMs >= 0.0;
+	assert a.animFrames().carryMs < 350.0;
+}
+
+test "a huge tick lands on the cycle modulo, not where float rounding drifts the subtraction" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	s.tick(1000008.0);
+	assert a.animFrames().frameIndex() == 1;
+	assert Math.abs((a.animFrames().carryMs - 150.0) as float64) <= 10.0;
 }
 
 test "an Anim that does not loop holds its last frame" {
