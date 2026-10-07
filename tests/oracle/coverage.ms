@@ -1,20 +1,3 @@
-// T3 — the coverage oracle (docs/TESTING.md "T3", tests/PENDING.md `oracle:coverage`).
-//
-// Ground truth for antialiasing, computed from GEOMETRY and nothing else: a pixel's coverage
-// is the fraction of it that lies inside the shape, found by 16x16 supersampling. It shares
-// no code with `src/void2d/sdf.ms`, which is the whole point - an oracle that called the
-// thing it judges would agree with it by construction.
-//
-// This is the only tier that says the antialiasing is *correct*. A golden says it has not
-// changed since last week, which is exactly the check that let a squared alpha live through
-// all of P1 (docs/REVIEWS.md).
-//
-// No GPU, no capture, no external tool: the reference is arithmetic, so it runs in every gate
-// on every machine.
-
-// Is a point inside a rounded rectangle centred on the origin? Exact geometry, by cases, with
-// no distance field anywhere: inside the cross of the two inner rectangles, or within the
-// radius of the nearest corner centre.
 export function insideRoundedRect(
 	px: float32,
 	py: float32,
@@ -39,9 +22,6 @@ export function insideRoundedRect(
 
 export const SUPERSAMPLES: int32 = 16;
 
-// The fraction of the pixel centred at (cx, cy) that lies inside the shape. 16x16 samples on
-// a half-offset grid, so the samples are symmetric about the pixel centre and a straight edge
-// through that centre reads exactly 0.5 rather than 0.5 plus a half-sample bias.
 export function pixelCoverage(
 	cx: float32,
 	cy: float32,
@@ -61,9 +41,6 @@ export function pixelCoverage(
 	return (hits as float32) / ((SUPERSAMPLES * SUPERSAMPLES) as float32);
 }
 
-// The largest disagreement between the oracle and an analytic coverage, over a band of pixel
-// centres crossing an edge. Returned rather than asserted, so a test can state the bound it
-// accepts and print the number it got - a bound nobody prints is a bound nobody checks.
 export function maxCoverageError(
 	analytic: Vec<float32>,
 	cxs: Vec<float32>,
@@ -83,21 +60,6 @@ export function maxCoverageError(
 	return worst;
 }
 
-
-// ===== judging a CAPTURE, not just an analytic curve =====
-//
-// Everything above works in the shape's own space. A capture is in device pixels under an
-// affine, so this maps each supersample back through the INVERSE linear part before asking
-// the same geometry question. Supersampling stays in device space, because coverage is a
-// fraction of a DEVICE pixel and a rotation does not make those two the same thing.
-//
-// Still no distance field and still no code shared with src/void2d/sdf.ms: this decides
-// inside from outside by cases, the way the rest of this file does.
-
-// The fraction of the device pixel centred at (cx, cy) inside a rounded rect whose local
-// (0,0) maps to (ox, oy) and whose local axes are the affine (a, b, c, d). The inverse is
-// taken here rather than passed, so a caller cannot hand in an inverse that does not match
-// the forward transform the scene was drawn with.
 export function devicePixelCoverage(
 	cx: float32,
 	cy: float32,
@@ -130,10 +92,6 @@ export function devicePixelCoverage(
 	return (hits as float32) / ((SUPERSAMPLES * SUPERSAMPLES) as float32);
 }
 
-// The coverage a captured pixel implies, read off the channel with the widest range between
-// background and fill - that channel carries the most levels, so it quantises the answer the
-// least. Returns -1 when no channel separates the two colours at all, which is a scene that
-// cannot be judged rather than a scene that passed.
 export function coverageFromPixel(
 	pr: int32, pg: int32, pb: int32,
 	bgR: int32, bgG: int32, bgB: int32,
@@ -158,20 +116,8 @@ export function coverageFromPixel(
 	return ((observed - base) as float32) / (span as float32);
 }
 
-// ===== the shadow half (tests/PENDING.md `oracle:coverage-shadow`) =====
-//
-// Truth for a blurred shape is the DEFINITION, not the scanline trick: the coverage of a
-// Gaussian-blurred rounded rect is the integral of the kernel over the shape. This
-// Riemann-sums that integral on a fine grid, asking only the by-cases inside test above - no
-// erf, no chord, no four samples, nothing `src/void2d/sdf.ms` computes with. Uniform radii,
-// because the inside test is; the asymmetric-radii claim is judged by its mirror symmetry
-// instead, which is exact algebra rather than a sampling bound.
-
 export const SHADOW_GRID: int32 = 160;
 
-// The kernel-integral truth at (px, py) for a uniform-radius rounded rect whose shadow is
-// offset by (offsetX, offsetY). The box is sampled on a SHADOW_GRID^2 grid of midpoints over
-// its bounding rect; each inside sample contributes its cell's kernel weight.
 export function blurredPixelCoverage(
 	px: float32, py: float32,
 	hx: float32, hy: float32, r: float32,
@@ -198,9 +144,6 @@ export function blurredPixelCoverage(
 	return acc;
 }
 
-// The largest disagreement between an analytic shadow curve and the kernel-integral truth,
-// over the points given. Returned rather than asserted, like `maxCoverageError`, so a test
-// states the bound it accepts and prints the number it got.
 export function maxShadowError(
 	analytic: Vec<float32>,
 	pxs: Vec<float32>,
@@ -220,14 +163,6 @@ export function maxShadowError(
 	return worst;
 }
 
-// ===== the bound on a non-uniform scale =====
-//
-// A box edge's coverage ramp is one device pixel wide when measured across the edge. Under the
-// affine (a, b, c, d) a local unit across an edge with local normal n is
-// `1 / |A^-T n|` device pixels, so the two box edge directions have their own slopes. The
-// shader uses one width for both. Edge 0 is the one whose normal is local x, edge 1 local y.
-// Derived from the inverse transpose and nothing in `src/void2d/sdf.ms`.
-
 export function trueEdgeSlope(
 	a: float32, b: float32, c: float32, d: float32,
 	edge: int32,
@@ -240,18 +175,12 @@ export function trueEdgeSlope(
 	return adet / colX;
 }
 
-// The width-mean slope the shader's one antialiasing width implies, in device pixels per
-// local unit: the geometric mean of the two column lengths.
 export function usedEdgeSlope(a: float32, b: float32, c: float32, d: float32): float32 {
 	const colX: float32 = Math.sqrt((a * a + b * b) as float64) as float32;
 	const colY: float32 = Math.sqrt((c * c + d * d) as float64) as float32;
 	return Math.sqrt((colX * colY) as float64) as float32;
 }
 
-// The worst coverage error that one-width approximation makes on a straight box edge. A ramp
-// whose slope is `used` against a true slope `s` is off by at most `0.5 * (1 - lo / hi)` where
-// lo and hi order the two slopes; zero when the scale is uniform. The larger of the two edge
-// directions is returned.
 export function affineEdgeBound(a: float32, b: float32, c: float32, d: float32): float32 {
 	const used: float32 = usedEdgeSlope(a, b, c, d);
 	let worst: float32 = 0.0;
