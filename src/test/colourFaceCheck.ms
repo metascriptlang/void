@@ -357,10 +357,21 @@ test "strike selection takes the smallest ppem at or above the size, else the la
 	assert huge.right - huge.left == 40;
 }
 
-test "a CBLC strike with a non-colour bit depth is refused by name when the face loads" {
+test "a CBLC face whose every strike has a non-colour bit depth is refused by name when it loads" {
 	const r = loadFace("tests/fonts/cbdtBroken.ttf");
 	assert !r.ok;
 	if (!r.ok) { assert r.error == FaceError.BadColourTable; }
+}
+
+test "a CBLC strike with a non-colour bit depth is skipped and the other strikes still draw" {
+	const face = try loadFace("tests/fonts/cbdtMixedDepth.ttf") catch -1;
+	assert face >= 0;
+	assert hasColourTables(face);
+	const id: int32 = glyphIndex(face, 0x1F600);
+	const small = colourTileBox(face, id, 8.0);
+	assert small.glyph == ColourGlyph.Present;
+	assert small.ppem == 16;
+	assert small.right - small.left == 8;
 }
 
 test "a tile aimed at the wrong place or with the wrong size is refused" {

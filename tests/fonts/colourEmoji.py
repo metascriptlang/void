@@ -244,10 +244,16 @@ def tableOffset(data, tag):
     raise KeyError(tag)
 
 
-def cbdtBroken():
+def cbdtDepths(name, strikes):
     data = bytearray(open(OUT + "cbdtSynthetic.ttf", "rb").read())
-    data[tableOffset(data, b"CBLC") + 8 + 46] = 8
-    open(OUT + "cbdtBroken.ttf", "wb").write(bytes(data))
+    for strike in strikes:
+        data[tableOffset(data, b"CBLC") + 8 + 48 * strike + 46] = 8
+    open(OUT + name, "wb").write(bytes(data))
+
+
+def cbdtBroken():
+    cbdtDepths("cbdtBroken.ttf", [0, 1])
+    cbdtDepths("cbdtMixedDepth.ttf", [0])
 
 
 def sbixLoop():

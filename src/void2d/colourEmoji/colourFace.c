@@ -184,14 +184,18 @@ static int openCblc(ColourFace *face) {
 			return fail("CBLC strike %u has ppem 0", (unsigned)i);
 		}
 		if (depth != 32) {
-			return fail("CBLC strike %u has bit depth %d, only 32 (colour) is read",
-				(unsigned)i, depth);
+			fprintf(stderr, "void2d: CBLC strike %u (ppem %d) has bit depth %d, only 32 "
+				"(colour) is read; the strike is skipped\n", (unsigned)i, st.ppemY, depth);
+			continue;
 		}
 		if (st.arrayAt > s.n || st.subtables > (s.n - st.arrayAt) / 8) {
 			return fail("CBLC strike %u index subtable array lies outside the table", (unsigned)i);
 		}
 		if (face->strikeCount == MAX_STRIKES) { return fail("more than %d strikes", MAX_STRIKES); }
 		face->strikes[face->strikeCount++] = st;
+	}
+	if (face->strikeCount == 0) {
+		return fail("CBLC holds no strike with a 32-bit colour depth");
 	}
 	return VOID2D_COLOUR_OK;
 }
