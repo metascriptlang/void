@@ -289,37 +289,41 @@ function caseBounds(sx: float32, sy: float32, rotation: float32): Vec<float32> {
 	return [predicted, worst, control];
 }
 
-test "a uniform scale has a zero bound and the one width is exact" {
+test "a uniform scale has a zero predicted bound and a worst error under 0.001" {
 	const r: Vec<float32> = caseBounds(2.0, 2.0, 0.0);
 	assert r[0] == 0.0;
-	assert r[1] <= 0.06;
-	assert r[2] <= 0.06;
+	assert r[1] <= 0.001;
+	assert r[2] <= 0.001;
 }
 
-test "the one-width error at 2:1 follows the derived bound" {
+test "the one-width error at 2:1 is within 0.005 of the predicted bound and not above it" {
 	const r: Vec<float32> = caseBounds(2.0, 1.0, 0.0);
 	assert approx(r[0], 0.1464466);
-	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert Math.abs((r[1] - r[0]) as float64) < 0.005;
+	assert r[1] <= r[0] + 0.0001;
 	assert r[2] <= 0.06;
 }
 
-test "the one-width error at 3:1 follows the derived bound" {
+test "the one-width error at 3:1 is within 0.005 of the predicted bound and not above it" {
 	const r: Vec<float32> = caseBounds(3.0, 1.0, 0.0);
 	assert approx(r[0], 0.2113249);
-	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert Math.abs((r[1] - r[0]) as float64) < 0.005;
+	assert r[1] <= r[0] + 0.0001;
 	assert r[2] <= 0.06;
 }
 
-test "the one-width error at 1:3 follows the derived bound" {
+test "the one-width error at 1:3 is within 0.005 of the predicted bound and not above it" {
 	const r: Vec<float32> = caseBounds(1.0, 3.0, 0.0);
 	assert approx(r[0], 0.2113249);
-	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert Math.abs((r[1] - r[0]) as float64) < 0.005;
+	assert r[1] <= r[0] + 0.0001;
 	assert r[2] <= 0.06;
 }
 
-test "the one-width error at 4:1 rotated 20 degrees follows the derived bound" {
+test "the one-width error at 4:1 rotated 20 degrees stays under the predicted bound within 0.03" {
 	const r: Vec<float32> = caseBounds(4.0, 1.0, 0.34906584);
 	assert approx(r[0], 0.25);
-	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert r[1] <= r[0];
+	assert r[0] - r[1] < 0.03;
 	assert r[2] <= 0.06;
 }
