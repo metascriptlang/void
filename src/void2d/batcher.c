@@ -1110,8 +1110,8 @@ static void drawSpriteRun(const float *cmd, int blend, int rt, uint32_t view,
 // and its image are one draw instead of three, and the mode lives in a per-instance lane
 // rather than in a pipeline.
 //
-// Like the sprite program it carries no colour pipeline, so a node with a colorMatrix,
-// colorAdd or colorKey stays on the vertex path and records the break.
+// The effect row rides with each instance, so a node with a colorMatrix, colorAdd or colorKey
+// stays in this run.
 static void drawUiRun(const float *cmd, int blend, int rt, uint32_t view,
                       float fbW, float fbH, uint32_t *lastPipeline, int *scissorApplied,
                       int *paramsValid, int *fxValid,

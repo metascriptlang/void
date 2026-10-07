@@ -589,12 +589,10 @@ per-corner radii, Rec.709 grayscale and the five GPUI `ObjectFit` choices. Fit i
 `Cover` crops UVs to the visible centre while the other modes change or clip the destination
 bounds. T0 pins all fit branches and side-table reuse, T1 pins the image instance lanes, and T2
 pins all five fits, an affine translucent four-radius image, and original/grayscale output.
-The UI program has no arbitrary colour matrix, so combining an image style with `colorMatrix`,
-`colorAdd` or `colorKey` is rejected loudly instead of dropping either effect silently.
-BoxStyle with `colorMatrix`, `colorAdd` or `colorKey` emits a named runtime diagnostic and rejects
-instead of silently falling back to a square vertex quad and discarding radii, borders and
-shadow. Plain Rect keeps the existing vertex colour pipeline. P6 owns carrying that pipeline
-through the unified UI shader; `tests/PENDING.md` names the unsupported combination.
+The UI program carries the effect row, so an image style and a BoxStyle compose with
+`colorMatrix`, `colorAdd` and `colorKey` (`b76fee5`, `04484fd`, `4f5c8b7`): the fragment stage
+applies the effect after the mode's colour, and the `prim/effectOnUi` golden draws every UI kind
+plain and under grayscale. Plain Rect keeps the existing vertex colour pipeline.
 Underline and selection activate modes 4 and 5 through retained nodes without adding a second
 instance layout. A wavy underline uses GPUI's three-thickness bounds and sine-distance shader;
 the straight form is the same mode with a strip distance. Each selection row carries the
