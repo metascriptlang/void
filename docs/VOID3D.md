@@ -2399,7 +2399,7 @@ block: in float32 at 1/60 s a step rounds by about 0.7% after an hour and stops 
 about three days. Void keeps no clock, so the elapsed time is 0 until the caller sets it.
 `needsFrame` asks for a frame while time passes and the last frame drew a material whose scroll is
 not zero; a scroll written later, as any block write, needs `markChanged`. Not built: Bevy wraps `globals.time` at an hour to keep the shader's `speed * time`
-precise; Heaps does not, and void3d follows Heaps until a consumer runs that long.
+precise; Heaps does not, and void3d follows Heaps until a consumer runs that long (an opt-in wrap is in "Carried follow-ups, as built").
 
 **Back texture: Godot's `FRONT_FACING`.** Heaps has no texture chosen by facing, only
 `FlipBackFaceNormal`. A back face reads `backTexture` at view slot 1 through its own affine
@@ -2858,7 +2858,7 @@ file yet.
 **Acceptance (what ran; GPU not run).**
 - `msc test src/test/worldLabelCheck.ms`: 5 tests pass: the facing rotation turns the quad's x, y, z to right, up and back for four yaw/pitch cameras; a camera node's own rotation is the facing rotation (`fromWorld` round trip); the quad's corners for the centre, bottom-centre and top-right anchors; the v flip. `msc test src/test/math3dCheck.ms`: 326 pass with the new `quatOfRotation` test. `msc check` clean. `tests/integration/worldLabel.ms` builds (`msc build`, 60 modules) and was not run.
 - Written, not run: `tests/integration/worldLabel.ms` and the gate stage `world-label`. Per preset it reads back "T" at 40 texels, white, over an opaque backdrop: the margin and four outside points are exactly the backdrop; no pixel in the quad has a channel below the backdrop's (a dark fringe); at least 30 text pixels and 30 per cent backdrop between the glyphs; the T's top half has more text than its bottom (orientation); a yawed, pitched camera draws the same text pixel count within 3 (facing); "TT" redraws and grows with the texture id intact, and nothing redraws when nothing changed; a half-alpha tint puts the brightest green at `(255 + 160) / 2` within 2; teardown leaves no texture. Controls the stage requires to fail: the label read as a straight texture with straight blending (`straight`: dark fringe at stage 0) and the label kept at the first camera's orientation (`facing`: fails at stage 1). The expected counts and the 1.3 orientation ratio are derived, not measured.
-- Not done: **grow-only target capacity.** A label whose text changes every frame reallocates its image on each size change. Drawing into a sub-rect of a larger target needs the quad's uv rewritten per change (a mesh upload, or the UV-transform key bit) and a scissored void2d draw; neither is small, so it is a follow-up.
+- Not done: **grow-only target capacity.** A label whose text changes every frame reallocates its image on each size change. Drawing into a sub-rect of a larger target needs the quad's uv rewritten per change (a mesh upload, or the UV-transform key bit) and a scissored void2d draw; neither is small, so it is a follow-up (built without a scissor in "Carried follow-ups, as built").
 - Not done and not verified: a GPU run of either preset; the pixel-art and GL paths; lost-context recovery of a label (the redraw rule is written, the M27 loss simulation was not repeated); text at a scale other than 1:1; a label shared between two cameras (M40's second camera needs its own basis per call); picking a label; MSDF or SDF text; a pool of labels sharing one `Scene2D`; outline.
 
 **Native acceptance, 2026-10-08, landed with the stack.** M40, M43, M39 and M41 were stacked in
@@ -3021,6 +3021,101 @@ Where each probe lies comes from `cardPoint` (a card's own unit coordinates thro
 **Not exercised, on purpose or for want of a consumer.** M34's material layer, `AlphaKill`, `Add` and `SoftAdd`; M36's UV transform, scroll and back texture; M38's other shapes and the sorted write; M39's glTF; the pixel-art preset; M42, which is not in this tree.
 
 **Acceptance, limited to what ran. The GPU did not run.** On `wt/void3d-gaps` `8ea587e`, `msc` v0.3.2 from the worktree, `MSC_NO_GLOBAL_CACHE=1`: `msc check` of the scene, the entry and the test is clean; `msc build` of `src/examples/mainCardTable.ms` and of `tests/integration/cardTable.ms` built and neither was run, since running opens a GPU window. The emitted C of the test was read for the functions in `CARD_TABLE_PATH_FUNCTIONS` (the same awk the stage runs): no `ArrayCopy` and no string builder in any. `gate3d.sh` was not touched by the move to the new APIs and passes `bash -n`; the gate, `gate.sh`, captures, goldens, Android and the web build did not run. So no pixel of the sample is evidenced: the order swap, the shadow (now through `CullFront` and a cut caster), the dissolve (now premultiplied), the overlay (now `endPrepared`), the label and the flames, and the sun, bias and colour numbers behind the thresholds, all wait for the native slot. The roadmap row is not flipped.
+
+### Carried follow-ups, as built
+
+Four items the M33-M44 reviews carried, settled by their references. Heaps is the checkout at
+`2b84cc23`, three.js `d4ea9b9`; Bevy's source is not on this machine, so what is said of it is its
+documented behaviour and is marked unread.
+
+**1. The allocation stage counts every generated copy.**
+- Reference: none needed; the stage reads the emitted C (`scripts/gate3d.sh` `check_array_copies`).
+- Decision: M38's `TurbulenceCopy` held a Vec and passed a stage that grepped `ArrayCopy(` only. The
+  stage now takes every `*Copy(` call in a frame-path function body, with the mangled suffix cut
+  (`Vec3__M...Copy` is `Vec3`), and fails with the function and the call. `VEC_FREE_COPIES` is the
+  allow-list: a struct that holds no Vec goes there with its reason. It is empty, because nothing
+  needed it.
+- Built: the widened check, the list, and a failure message that names both. Run alone on all nine
+  entries (the driver is the gate with the stage list between `run_entries` and `run_android`
+  replaced by `run_allocation`, run from `out/tmp`): **no offender in the current tree.** The check
+  can fail: the world-label entry with `draw:claimTexture` and `mesh68ata:withUvs` added to its list
+  fails on the `GpuTexture` and `TextureData` copies, which copy structs holding a Vec.
+- Acceptance limited to what ran: the allocation stage alone, GREEN, before and after item 3;
+  nothing else of the gate.
+
+**2. A billboard that blends.**
+- References: three.js `SpriteMaterial.js:107` (`transparent = true`), `sprite.glsl.js:68` (the only
+  discard is `alphatest_fragment`, off at the default alphaTest 0), `WebGLState.js:674-675` (straight
+  `NormalBlending` is `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`); Heaps `h3d/mat/Material.hx:240-246`
+  (`particles3D` props: `kind: Alpha`, no discard) via `h3d/parts/Particles.hx:38`. Both references
+  blend a particle or sprite and cut nothing.
+- Decision: the declared-key route, no new key bit. `withPremultiplied` is now allowed on
+  `Billboard`; the billboard fragment stages of both presets drop the half-alpha `discard` under
+  `PREMULTIPLIED`, unpremultiply the texel (`straightTexel`, M27), shade, and write `rgb * a, a`.
+  The pass must be `BlendMode.AlphaAdd` (`StraightBlend` otherwise, M27), so the order is three's
+  (convert, then re-premultiply at the output). The base `billboard` rows still cut at 0.5
+  (`particle-alpha-tested` stays; its row names the exception).
+- **Not built, and why:** a *straight-alpha* blended billboard, which is what Heaps' `Alpha` and
+  three's `Sprite` literally draw. The base key cuts and there is no second bit to say "do not cut";
+  turning the base into the blending one would change every existing billboard. A caller that wants
+  fades premultiplies its texture and uses the new key; a render target (M27) is premultiplied
+  already. A new bit, or flipping the base to blend with `CUTOUT` for the cut, is the m5 session's call.
+- Built: rows `billboardPremultiplied` and `pixelArtBillboardPremultiplied` (declared keys 76 to 78),
+  `programTable.h` and both shader headers regenerated, `programKeyCheck.ms` (the count, the new key
+  keeps the billboard's blocks, texture and sampler masks and layout, and refuses any blend but
+  premultiplied over), the `particle-alpha-tested` row. GPU readback
+  `tests/integration/billboardBlend.ms` and the gate stage `billboard-blend`: a straight billboard
+  cuts the quarter-alpha texel and draws the three-quarter one white; a premultiplied billboard of the
+  same texels blends both over the backdrop within 2 per channel, in both presets; the control draws
+  the second billboard straight and must fail. **Built (`msc build`) and not run.**
+- Acceptance limited to what ran: `msc test src/test/programKeyCheck.ms`, and the billboard,
+  renderer, draw, pipeline, dirShadow, lifetime and worldLabel check files, each green. No pixel was
+  read; no capture or golden ran. The pixel-art billboard writes `fragNormal` under the colour's
+  blend state as the textured premultiplied programs do (M32); unmeasured here.
+
+**3. A world label's target grows only (M41 F4).**
+- References: Heaps has no such target (`h2d.Object.drawTo` takes the texture the caller gives); the
+  mechanism that exists for a quad that shows a rectangle of its texture is Bevy's `uv_transform`
+  (M36).
+- Decision: the label's material is `UnlitTextured` premultiplied with a UV transform, which M36 had
+  left nameable and undeclared. Two rows are new (`unlitTexturedUvTransformPremultiplied` and its
+  pixel-art twin, 78 to 80 declared keys, no bit). The mesh rewrite was not taken: there is no
+  in-place mesh write, so it would be a release and a new upload per change. The block's scroll is
+  zero, so `scrolls` is false and the label never asks for frames.
+- Built: `redraw` takes the capacity as `grown(target size, needed)`, resizes only to that (a
+  same-size `resize` of a live target is a no-op, so the context-loss rebuild is unchanged), prepares
+  the 2D scene at the capacity size and draws the text at the target's top left with everything else
+  cleared; **no scissor and no void2d change.** `uvOfSubRect` gives the scale (used over capacity)
+  and, where the origin is not top left, the `1 - scaleV` offset that keeps the text's rows at the
+  top of a flipped target; `writeBlock` writes them into the moving block, which also holds the tint.
+  The node's scale is the used size over `pixelsPerUnit`, so the world size and the anchor are the
+  text's, not the capacity's. `LABEL_PAD` still keeps the filter's bleed at the sub-rect's edge in
+  transparent texels. The block is `MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH` (32 floats) per label.
+- What it costs: the image never shrinks, so one long text keeps its capacity until the label closes.
+- Tests: `worldLabelCheck.ms` (grow-only, the sub-rect's uv for both origins, the moved quad's
+  corners land on the target's top rows and left columns). `tests/integration/worldLabel.ms` gained a
+  stage: "T", turned camera, "TT" (grows), "T" again (target width unchanged, used width and text
+  pixels as in stage 0, nothing of "TT" outside the quad), tint. **Built and not run.** `writeBlock`,
+  `uvOfSubRect` and `grown` joined the allocation stage's world label list; the stage ran GREEN.
+
+**4. Wrapped frame time.**
+- References: Bevy's `GlobalsUniform.time` wraps to 0 after an hour (`bevy_render/src/globals.rs`:
+  **unread**, the documented behaviour only); Heaps' `RenderContext.time` accumulates and never wraps
+  (M36). Derived, not measured: float32 spacing at 3600 s is 2^-12 s and at one day 2^-7 s, so a
+  scroll of 1 UV per second over a 256-texel texture steps by 2 texels after a day; the CPU time is
+  float64 and is narrowed only in the block.
+- Decision: Heaps stays the default and Bevy's wrap is opt-in per renderer, because a scroll that is
+  not a whole number of repeats per wrap jumps once when the shader time returns to 0, and a caller
+  who runs for hours chooses that against the precision.
+- Built: `Renderer.timeWrap`, `setTimeWrap(renderer, seconds)` (0 turns it off; a negative or NaN
+  value stops by name), `frameTime(time, wrap)`, which wraps in float64 before the narrowing and is
+  what `beginFrame` writes. `time` itself is not wrapped. A preset's core is where the setter is
+  called. Tested headless for `frameTime` and the setter; a frame through `beginFrame` needs the GPU
+  and did not run.
+- Acceptance limited to what ran: `msc test src/test/programKeyCheck.ms`, with the one test above.
+
+**Not done:** the straight-alpha blended billboard (item 2); a GPU run of `billboardBlend` and
+`worldLabel`; the gate as a whole; Bevy's `globals.rs` read.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
