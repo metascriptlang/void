@@ -70,3 +70,23 @@ python tests/fonts/cmapEdges.py   # rewrites tests/fonts/cmap/; no fontTools nee
 ```
 
 `cffSynthetic.otf` (692 B) is a synthetic CFF face with our own art, no third-party licence: `A` is one cubic curve, `B` a box of lines, for the SDF regime's cubic fallback (`src/test/labelTextSdfCheck.ms`); `python tests/fonts/cffSynthetic.py` rebuilds it.
+
+`shapeFixture.ttf` (1,548 B) is the face the shaper is pinned against (P6, `docs/VOID2D.md`
+"Shaper module"), our own boxes and no third-party licence. Programming-font ligatures are all
+`calt`, one glyph in and one out, so only a font built for it exercises the other mechanisms
+deterministically: `liga` `f i` to one glyph (many to one), `calt` `a b` to `b.alt` (one to one),
+`ccmp` U+00E9 to `e` plus a combining mark (one to many), a `kern` pair `A V` of -100, and `mark`
+attaching U+0301 to `e` with a non-zero y offset. `python tests/fonts/shapeFixture.py` rebuilds it
+byte for byte (the generator pins `head.created` and `head.modified`).
+
+`cascadiaSubset.ttf` (48,064 B) is Cascadia Code `v2407.24` (microsoft/cascadia-code, the
+`ttf/CascadiaCode.ttf` of its release zip) pinned to `wght=400` and cut to U+0020-007E with every
+layout feature kept, for the `calt` ligature strings `-> != == => www /*` (`CascadiaCode-OFL.txt`,
+SIL Open Font License 1.1, copyright Microsoft, reserved font name "Cascadia Code"). The licence
+forbids a modified version under the reserved name, so the generator renames the family to
+"Void Code Ligatures"; the filename is a description of where the glyphs come from, not the font
+name. Not the copy in `C:/Windows/Fonts`: that one carries Microsoft's own wording on top.
+
+```sh
+python tests/fonts/cascadiaSubset.py CascadiaCode.ttf    # rewrites cascadiaSubset.ttf
+```
