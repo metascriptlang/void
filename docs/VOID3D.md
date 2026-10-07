@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-07):** M1–M36 are built and reviewed; M35 and M36 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-07):** M1–M36 are built and reviewed; M35, M36 and M37 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built", "M21 as built" and "M35a as built"; old `pass.ms`,
@@ -149,7 +149,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M35a | Heaps `b9aa6dcb` `hxsl/Shader.hx:72-111` (`updateConstantsFinal`: constants select one variant), `h3d/shader/Texture.hx:11,26` (`killAlpha`); Bevy `157e1ce6` `bevy_pbr/src/render/mesh.rs:3093-3142` (`MeshPipelineKey`), `:3388` (`specialize`); the shady study (2026-10-06) | **A program key.** `gpu3d.ms` / `ProgramKey`, keyed materials and `programKeys.txt` replace hand-written twins and M14's `ProgramMap`. sokol-shdc compiles the declared set offline; `PipelineKey.program` stays a door id. **Done**, native gate 312 PASS / 0 FAIL; see "M35a as built" | M35 shadow receive, M36 dissolve, M37 normal and emission maps add a bit and declare keys, not a twin per program |
 | M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes); a new shader keeps the highp qualifiers sokol-shdc writes on every variable (its `precision mediump float` line is only SPIRV-Cross's default). Shadow receive is a key bit, after M35a. **Done**; see "M35 as built" | the one sun in URG; any outdoor or tabletop scene |
 | M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language. **Done**; see "M36 as built" | card surfaces, fire lines, beams, glows |
-| M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs | 12 emissive and 3 normal-mapped materials |
+| M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs. **Done**; see "M37 as built" | 12 emissive and 3 normal-mapped materials |
 | M38 | Heaps `h3d/parts/Data.hx:3-26` (`Value` curves, `Shape`), `h3d/parts/Emitter.hx` | **Particle parity** on M11's emitter: sphere, box, ring and point shapes, scale/colour/alpha over life, gravity, damping, turbulence, view-depth order. No collision, no sub-emitters (URG uses neither) | torches, card effects |
 | M39 | glTF 2.0 spec (meshes with several primitives, `material.pbrMetallicRoughness.baseColorTexture`, `emissiveTexture`); M8/M23 as built | **Fuller glTF**: several primitives and materials per mesh, base colour and emissive textures. FBX stays an offline conversion | a two-surface prop; any exported model |
 | M40 | three.js `d4ea9b9` `src/core/Layers.js:13-100`, `src/renderers/WebGLRenderer.js:1877` (`object.layers.test(camera.layers)`) | **Visibility layers and a second camera** drawn into a target with a transparent clear, composited by the caller | highlight and tutorial overlays, minimaps, portraits |
@@ -2499,14 +2499,21 @@ base texture's sampler as the back texture is; the normal map is data, so its al
 held to the program's. `texturesFit` now walks the roles rather than naming each slot, and a
 view past the material's raw ones can only be bound by a role. The bindings grew to six views.
 
-**Acceptance, 2026-10-07 — headless only; the gates have not run on this tree.** BUILD
-`4757fd37`, Windows: `programKeyCheck.ms`, `meshDataCheck.ms` and `textureCheck.ms` pass, each
-run alone (the tangent sign and handedness on a facing and a mirrored quad, a cube's tangents
-in its faces, the refusals, the key's block lengths, slots and caster). `tests/integration/
-mapMaterial.ms` (stage `map-material`) is written and type-checks: a black quad emitting its
-two-texel map, a white emission at half strength (linear 0.5), and four quads under one sun
-whose map tilts the normal toward +u and toward the image's top, two of them on a mirrored
-island; its featureless control must fail on all six. Not yet run.
+**Acceptance, 2026-10-07.** Code tree of `f3e930d` over void2d's `5739f58`, Windows D3D11, BUILD
+`4757fd37` unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, the two gates serially:
+`gate.sh` GREEN, golden 83/83, 8 known skips; `gate3d.sh` 323 PASS / 3 known skips (the two held
+captures, no GLES3 device) and one FAIL, the allocation stage naming `renderer:slotBound`, which
+the review's `texturesFit` rewrite removed. `0f40e84` and `28d8922` change only the allocation
+stage's name lists (the second stale name, `material:namesTexture`, became the role lookups);
+gate3d's prepare and allocation stages were then rerun alone, GREEN, and every other stage's
+result carries over. 1232 tests, 75 oracle cases agreeing with real Heaps and 11 declared
+divergences, 72 baseline hashes none adopted; Android arm64 `libVoidAndroid.so` 3,434,776 bytes
+(build only).
+- `tests/integration/mapMaterial.ms` (stage `map-material`), both presets: a black quad emits
+  its red and green halves, an orange emission at half strength reads its linear-half bytes, and
+  four quads under one sun from (1, -0.5, 1.2) take the greys their mapped normals predict, the
+  mirrored island turning its tangent and keeping its bitangent. The featureless control fails
+  on all six; its flat grey is 0xDEDEDE where the light was (1, 1, 1.5), as predicted.
 
 GLES3 and web are NOT RUN.
 

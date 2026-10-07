@@ -2551,3 +2551,34 @@ defect pass read `cb398dd..61910b0`; the same reviewer re-read the fixes `61910b
 
 See "M36 as built": `gate3d.sh` 321 PASS / 0 FAIL / 3 known skips, `gate.sh` 82/82 golden,
 BUILD `4757fd37`, D3D11 only.
+
+## M37 — emission and normal maps
+
+**Verdict: SHIP WITH FOLLOW-UPS.** One reviewer read `d255ffb..e6f2a94` against Heaps
+`NormalMap.hx` and `Polygon.addTangents`, three.js `d4ea9b9` (`normal_vertex`,
+`normal_fragment_begin`/`maps`, `emissivemap_fragment`, `meshphong`) and glTF's TANGENT; it
+worked the tangent frame by hand on a facing and a mirrored quad, and found it right.
+
+### Findings
+
+- **Fixed — gate:** `tests/aborts3d/gpu3dShortBindingsDescriptor.ms` still expected "10 of 11
+  words"; the bindings grew to 12.
+- **Fixed — gate:** the `map-material` stage's `\`-newline continuations had become tab runs in a
+  scripted edit (the M36 trap again, other bytes).
+- **Fixed:** the moving emissive block and its `#ifdef` were dead (no row declares them); gone
+  until a consumer needs them (M35a). The shader takes only w's sign, so a triangle whose
+  corners disagree cannot interpolate it through 0.
+- **Fixed — probe blind spots:** the sun's x and y were equal, so a swapped tangent and bitangent
+  passed on the unmirrored quads; the emissive colour was always white. The sun is
+  (1, -0.5, 1.2) and one quad emits orange.
+- **Fixed:** `stopOnNotLitTextured` named for what it does; `slotBit` shared; the doc says Heaps'
+  frame is the same, and that a mirroring scale turns the bitangent (as in three.js).
+- **Carried:** no readback of the back-face flip, a non-uniform scale, a shadowed normal-mapped key
+  or the emissive and normal key together; emission saturates at the 8-bit target.
+
+### Final acceptance
+
+The first gate pair found two more of this milestone's own stale names in the allocation
+stage's lists (`renderer:slotBound`, then `material:namesTexture`), both left unreachable by the
+review's `texturesFit` rewrite. See "M37 as built": `gate.sh` 83/83 golden, `gate3d.sh` GREEN
+with the allocation stage rerun alone after the name fix, BUILD `4757fd37`, D3D11 only.
