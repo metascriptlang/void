@@ -500,15 +500,6 @@ export function faceSlotFor(font: FontId, codepoint: int32, mode: Presentation):
 	return slot;
 }
 
-export function fontCovers(font: FontId, codepoint: int32): boolean {
-	if (glyphIndex(fontFace(font), codepoint) != 0) { return true; }
-	for (let i = 0; i < (fallbacks.length as int32); i++) {
-		if (fallbacks[i].font != font) { continue; }
-		if (coversAtPath(fallbacks[i].path, codepoint)) { return true; }
-	}
-	return false;
-}
-
 function forgetResolved(font: FontId): void {
 	const owner: uint64 = (font as int32) as uint64;
 	for (const key of resolved.keys()) {

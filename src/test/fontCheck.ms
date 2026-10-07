@@ -4,6 +4,8 @@ import {
 	glyphAdvance,
 	faceMetrics,
 	faceSummariesRead,
+	peekFace,
+	summaryCovers,
 } from "../void2d/face";
 import {
 	Font,
@@ -20,7 +22,6 @@ import {
 	faceForCodepoint,
 	fallbackFacesLoaded,
 	fallbackProbes,
-	fontCovers,
 	Presentation,
 	codepointFaceFor,
 	faceSlotFor,
@@ -84,6 +85,16 @@ function faceOfPath(path: string): int32 {
 	return fontFace(added(path));
 }
 
+function covered(f: FontId, codepoint: int32): boolean {
+	return glyphIndex(fontFace(f), codepoint) != 0 ||
+		faceSlotFor(f, codepoint, Presentation.Any) >= 0;
+}
+
+function peekedCovers(path: string, codepoint: int32): boolean {
+	const peeked = peekFace(path);
+	return peeked.ok && summaryCovers(peeked.value, codepoint);
+}
+
 function layoutWith(fontId: FontId, text: string): TextLayout {
 	return TextLayout.layout(text, {
 		font: fontId,
@@ -140,9 +151,9 @@ test "coverage of a fallback is answered from its summary, with no face loaded" 
 	addFallbackFont(f, TEXT_SYMBOL);
 	const summaries = faceSummariesRead();
 	const loads = fallbackFacesLoaded();
-	assert fontCovers(f, 0x1F600);
-	assert fontCovers(f, 0x2764);
-	assert !fontCovers(f, 0x0E01);
+	assert covered(f, 0x1F600);
+	assert covered(f, 0x2764);
+	assert !covered(f, 0x0E01);
 	assert faceSummariesRead() == summaries + 1;
 	assert fallbackFacesLoaded() == loads;
 	const face = faceForCodepoint(f, 0x1F600);
@@ -156,12 +167,12 @@ test "a colour-only fallback is covered but not drawable, so it is skipped witho
 	const f = added(LATIN);
 	addFallbackFont(f, COLOUR_ONLY);
 	const loads = fallbackFacesLoaded();
-	assert fontCovers(f, 0x1F600);
+	assert peekedCovers(COLOUR_ONLY, 0x1F600);
 	assert faceForCodepoint(f, 0x1F600) == fontFace(f);
 	assert faceForCodepoint(f, 0x2764) == fontFace(f);
 	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == fontFace(f);
 	assert fallbackFacesLoaded() == loads;
-	assert fontCovers(f, 0x1F600);
+	assert peekedCovers(COLOUR_ONLY, 0x1F600);
 }
 
 function symbolFont(colourFirst: boolean): FontId {
@@ -244,7 +255,7 @@ test "an unreadable fallback path is refused by the peek and never loaded" {
 	const f = added(LATIN);
 	addFallbackFont(f, "tests/fonts/doesNotExist.ttf");
 	const loads = fallbackFacesLoaded();
-	assert !fontCovers(f, 0x4F60);
+	assert !covered(f, 0x4F60);
 	assert faceForCodepoint(f, 0x4F60) == fontFace(f);
 	assert fallbackFacesLoaded() == loads;
 }
@@ -266,8 +277,8 @@ test "a fallback that covers a codepoint but will not load is skipped, and only 
 test "the summary of a collection is the summary of its first font" {
 	const f = added(LATIN);
 	addFallbackFont(f, COLLECTION);
-	assert fontCovers(f, 0x1F600);
-	assert fontCovers(f, 0x2764);
+	assert covered(f, 0x1F600);
+	assert covered(f, 0x2764);
 	const face = faceForCodepoint(f, 0x1F600);
 	assert face != fontFace(f);
 	assert glyphIndex(face, 0x1F600) != 0;
