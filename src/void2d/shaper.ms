@@ -50,9 +50,22 @@ when (voidShaper) {
 		shapeStatus(void2dShapeBegin(face, direction as int32), "begin");
 	}
 
+	let refusedFaces: Vec<int32> = new Array(0);
+
 	export function shaperTryBegin(face: int32, direction: ShapeDirection): boolean {
 		const status: int32 = void2dShapeBegin(face, direction as int32);
-		if (status == -1 || status == -2) { return false; }
+		if (status == -1) { return false; }
+		if (status == -2) {
+			for (const seen of refusedFaces) {
+				if (seen == face) { return false; }
+			}
+			refusedFaces.push(face);
+			console.log(
+				`void2d shaper: face ${face} is refused by the shaper, its text is laid out ` +
+				`without ligatures, GPOS or cluster handling`,
+			);
+			return false;
+		}
 		shapeStatus(status, "begin");
 		return true;
 	}
