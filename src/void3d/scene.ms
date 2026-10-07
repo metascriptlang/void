@@ -442,9 +442,10 @@ export function addCameraNode(
 
 // A camera node posed by the camera's own position, yaw and pitch (or its orientation), under
 // `parent`: the pose is written once, into the node, and `cameraViewOf` reads it from there.
+// The position is the node's local one, so under a moved parent it is parent-local, not world.
 // Bevy's `Camera3d` beside a `Transform` is two components the caller keeps in step; here the
-// constructor does it. A later `setLocal` on the node moves the camera, and the binding's
-// yaw, pitch and position stay what they were at the call.
+// constructor does it. A later `setLocal` on the node moves the camera and leaves the binding's
+// yaw, pitch and position stale: read the pose through `cameraViewOf`, never from the binding.
 export function addCameraAt(
 	scene: Scene3D,
 	parent: NodeId3D | null,
