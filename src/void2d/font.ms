@@ -6,11 +6,15 @@ import {
 	peekFace,
 	summaryCovers,
 	syntheticFace,
+	spriteFace,
+	spriteCell,
+	SpriteCell,
 	glyphIndex,
 	faceHeights,
 	colourBuilt,
 } from "./face";
 import { graphemeProperty } from "./grapheme";
+import { spriteIndex } from "./spriteGlyph";
 
 export enum FontStyle { Normal, Italic }
 
@@ -87,6 +91,11 @@ struct Synthetic {
 	face: int32;
 }
 
+struct SpriteOf {
+	base: int32;
+	face: int32;
+}
+
 struct FontEntry {
 	face: int32;
 	path: string;
@@ -109,6 +118,7 @@ let registered: Vec<RegisteredFace> = [];
 let loadedPaths: Vec<LoadedPath> = [];
 let peekedPaths: Vec<PeekedPath> = [];
 let synthetics: Vec<Synthetic> = [];
+let spriteFaces: Vec<SpriteOf> = [];
 let fonts: Vec<FontEntry> = [];
 let fallbacks: Vec<Fallback> = [];
 let resolved: Map<uint64, int32> = new Map<uint64, int32>();
@@ -151,6 +161,33 @@ function styled(face: int32, bold: boolean, italic: boolean): Result<int32, Face
 	const synthetic: int32 = try syntheticFace(face, bold, italic);
 	synthetics.push({ base: face, bold: bold, italic: italic, face: synthetic });
 	return Result.ok(synthetic);
+}
+
+function spriteFaceOf(base: int32): int32 {
+	for (const s of spriteFaces) {
+		if (s.base == base) { return s.face; }
+	}
+	const made = spriteFace(base);
+	if (!made.ok) {
+		console.log(
+			`void2d: face ${base} cannot back the sprite glyphs (${made.error.toString()}); ` +
+			`its box drawing and block characters come from the font`,
+		);
+		spriteFaces.push({ base: base, face: NO_FACE });
+		return NO_FACE;
+	}
+	spriteFaces.push({ base: base, face: made.value });
+	return made.value;
+}
+
+export function spriteCellFor(font: FontId, sizePx: float32): SpriteCell {
+	const base: int32 = fontFace(font);
+	const sprite: int32 = base < 0 ? NO_FACE : spriteFaceOf(base);
+	if (sprite < 0) {
+		console.log(`void2d: font ${font as int32} has no face to measure a sprite cell from`);
+		unreachable;
+	}
+	return spriteCell(sprite, sizePx);
 }
 
 function styledAt(path: string, bold: boolean, italic: boolean): Result<int32, FaceError> {
@@ -536,6 +573,11 @@ function forgetResolved(font: FontId): void {
 export function codepointFaceFor(
 	font: FontId, codepoint: int32, mode: Presentation,
 ): CodepointFace {
+	if (spriteIndex(codepoint) != 0) {
+		const base: int32 = fontFace(font);
+		const sprite: int32 = base < 0 ? NO_FACE : spriteFaceOf(base);
+		if (sprite >= 0) { return { face: sprite, scale: 1.0 }; }
+	}
 	while (true) {
 		const slot: int32 = faceSlotFor(font, codepoint, mode);
 		if (slot == PRIMARY_SLOT) { return { face: fontFace(font), scale: 1.0 }; }

@@ -1,6 +1,6 @@
 import { Align, TextRun, Truncate } from "../void2d/textLayout";
 import { DEFAULT_FONT, fontFace } from "../void2d/font";
-import { decorationMetrics, glyphLookups } from "../void2d/face";
+import { decorationMetrics, glyphLookups, isSpriteFace } from "../void2d/face";
 import {
 	allocateLabelText,
 	releaseLabelText,
@@ -307,4 +307,63 @@ test "a label's line options reach its layout, and its hit tests read it" {
 	assert (truncated.lines.length as int32) == 1;
 	assert truncated.glyphs[(truncated.glyphs.length as int32) - 1].codepoint == 0x2026;
 	n.dispose();
+}
+
+function spacedLabel(text: string, letterSpacing: float32): int32 {
+	const index = allocateLabelText();
+	shapeLabel(index, text, {
+		font: DEFAULT_FONT,
+		size: 13.0,
+		letterSpacing: letterSpacing,
+		lineSpacing: 0.0,
+		maxWidth: 0.0,
+		align: Align.Left,
+	});
+	return index;
+}
+
+function fracOf(value: float32): float32 {
+	return value - (Math.floor(value) as float32);
+}
+
+function variantOf(key: uint64): uint64 {
+	return key & (15 as uint64);
+}
+
+test "a sprite glyph is placed on a whole pixel with variant 0 whatever the pen fraction" {
+	const index = spacedLabel("a\u{2588}b\u{2588}c\u{2800}d\u{2593}", 0.37);
+	const world: Transform2D = trs2d(0.3, 0.4, 0.0, 1.0, 1.0);
+	const text = placeLabel(index, world, 1.25);
+	assert text.regime == TextRegime.PixelExact;
+	assert text.placed.length == text.layout.glyphs.length;
+	let spriteGlyphs: int32 = 0;
+	let fractional: int32 = 0;
+	for (let i = 0; i < (text.placed.length as int32); i++) {
+		const g = text.layout.glyphs[i];
+		const tile = glyphAtlas.tile(text.placed[i].tile);
+		if (isSpriteFace(g.face)) {
+			spriteGlyphs = spriteGlyphs + 1;
+			assert variantOf(tile.key) == (0 as uint64);
+			const pen: float32 = fracOf(world.tx * 1.25) + g.x * 1.25;
+			assert text.placed[i].x == ((snapBaseline(pen) + tile.left) as float32);
+		} else if (variantOf(tile.key) != (0 as uint64)) {
+			fractional = fractional + 1;
+		}
+	}
+	assert spriteGlyphs == 4;
+	assert fractional > 0;
+	releaseLabelText(index);
+}
+
+test "a label of sprites rasterizes each sprite once and nothing on a whole-pixel move" {
+	const index = spacedLabel("\u{2588}\u{2588}\u{2588}\u{2800}\u{2500}\u{2500}", 0.0);
+	const world: Transform2D = trs2d(0.0, 0.0, 0.0, 1.0, 1.0);
+	const before = glyphRasterizations();
+	const text = placeLabel(index, world, 1.0);
+	assert glyphRasterizations() - before <= 3;
+	const after = glyphRasterizations();
+	placeLabel(index, trs2d(5.0, 3.0, 0.0, 1.0, 1.0), 1.0);
+	assert glyphRasterizations() == after;
+	assert text.refused == 0;
+	releaseLabelText(index);
 }

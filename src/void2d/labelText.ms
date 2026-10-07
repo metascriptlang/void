@@ -30,6 +30,7 @@ import {
 	decorationMetrics,
 	hasColourTables,
 	colourTileBox,
+	isSpriteFace,
 } from "./face";
 import { DEFAULT_FONT, fontFace } from "./font";
 import { Transform2D, Color } from "./types";
@@ -683,9 +684,14 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			let whole: int32 = 0;
 			let baselineDevice: int32 = 0;
 			if (pixelExact) {
-				const q = quantizeX(fracX + (g.x + g.offsetX) * devicePerLocal);
-				variant = q.variant;
-				whole = q.whole;
+				const penDevice: float32 = fracX + (g.x + g.offsetX) * devicePerLocal;
+				if (isSpriteFace(g.face)) {
+					whole = snapBaseline(penDevice);
+				} else {
+					const q = quantizeX(penDevice);
+					variant = q.variant;
+					whole = q.whole;
+				}
 				baselineDevice = snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal);
 			}
 			const acquired = glyphAtlas.acquire({

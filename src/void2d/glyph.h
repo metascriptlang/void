@@ -9,6 +9,9 @@
 
 int void2dGlyphFaceLoad(const char *path);
 int void2dGlyphFaceSynthetic(int face, int bold, int italic);
+int void2dGlyphFaceSprite(int base);
+int void2dGlyphFaceIsSprite(int face);
+int *void2dGlyphSpriteCell(int face, float sizePx);
 int void2dGlyphFaceCount(void);
 float void2dGlyphScale(int face, float sizePx);
 float *void2dGlyphFaceMetrics(int face, float sizePx);

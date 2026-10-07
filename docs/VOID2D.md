@@ -2165,6 +2165,27 @@ changes described above on today's compiler; the P4 web archive also takes its r
   cells equal. The sprite table is a sorted range table with a dense id per codepoint
   (`void2dSpriteTableFault` is the compile-time overlap check of `Face.zig` as a test); arcs,
   diagonals, powerline and the rest are not in it yet, so no codepoint of theirs reaches a sprite.
+  **Sprite face built 2026-10-08.** Sprites are in the default layer, not a module: Ghostty's
+  `CodepointResolver` asks the sprite face before every font, a terminal needs them in every
+  build, and the cost is one C file (no vendored code). `void2dGlyphFaceSprite(base)` makes a
+  face that copies its base's tables for metrics only (never its embolden, skew or colour tables)
+  and answers `void2dGlyphIndex` from the range table, `void2dGlyphAdvance` with the widest ASCII
+  advance of the base, `void2dGlyphKern` with 0, `void2dGlyphFaceData` with NULL (so the shaper
+  skips it) and `void2dGlyphBox`/`void2dGlyphRasterize` from the drawn cell, trimmed to its ink.
+  The tile is an ordinary Coverage tile keyed `(sprite face, dense id, size, variant 0)`; the
+  Mask page kind stays the SVG icon's. The cell is Ghostty's `Metrics.calc` over the base face at
+  the device size (`glyph.c` `spriteCell`): width the rounded widest ASCII advance, height the
+  rounded line height, the baseline centred in it, line thickness the underline thickness
+  rounded up, at least 1. `font.ms` `codepointFaceFor` returns the sprite face before the
+  coverage probe, so a sprite codepoint costs no probe and no fallback load, in any presentation
+  mode. `placeLabel` places a sprite on `snapBaseline` of its pen x with variant 0 instead of
+  `quantizeX`, because a quarter-pixel shift would put a seam in a join. In the SDF regime a
+  sprite reports "no outline" like a cubic glyph and takes the coverage fallback.
+  Not done: `getBounds` measures a sprite's ink at the local font size, where the tile is
+  drawn at the device size, so bounds can differ from the drawn ink by a pixel; and a host
+  that wants seamless rows sets `forceWidth` to the cell width over the device scale and
+  `lineSpacing` so the row pitch is the cell height (`spriteCellFor`, internal until Terminator
+  asks for a public cell-metrics API, void-manager decision 7).
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
   **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding
