@@ -189,7 +189,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 84;
+	assert declared == 88;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
