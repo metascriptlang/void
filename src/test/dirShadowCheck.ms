@@ -170,7 +170,7 @@ test "a material kind casts and receives as Heaps' default props do, and the set
 	assert plain.withShadows(ShadowCasting.Off, true).program == plain.program.withShadowed();
 }
 
-test "a particle or a billboard material is unculled by default, as particles3D is, and the rest cull" {
+test "a particle or a billboard material is unculled by default, as particles3D is" {
 	for (const program of [Program.Particle, Program.Billboard]) {
 		const quads: Material = Material.ofKind(program, MaterialKind.Alpha);
 		assert quads.pass.culling == Face.None;
