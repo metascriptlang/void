@@ -2829,6 +2829,57 @@ M23 left them (`gltf-real-export-not-exercised`).
 - Not done: **grow-only target capacity.** A label whose text changes every frame reallocates its image on each size change. Drawing into a sub-rect of a larger target needs the quad's uv rewritten per change (a mesh upload, or the UV-transform key bit) and a scissored void2d draw; neither is small, so it is a follow-up.
 - Not done and not verified: a GPU run of either preset; the pixel-art and GL paths; lost-context recovery of a label (the redraw rule is written, the M27 loss simulation was not repeated); text at a scale other than 1:1; a label shared between two cameras (M40's second camera needs its own basis per call); picking a label; MSDF or SDF text; a pool of labels sharing one `Scene2D`; outline.
 
+### M42 as built
+
+**References.** Heaps `h3d/mat/Texture.hx:166-168` (`realloc` runs when a lost texture is next
+used) and `:232-235` (one without it is disposed for good), as `src/gpu/texture.ms` takes them
+for void2d (VOID2D.md, P6 device loss). void3d's own rebuild is unchanged in shape: M25's
+`rebuildTextures` from the CPU `TextureData`.
+
+**What changed.** A sampled texture's slot in `DrawContext.textures` holds a `src/gpu` `Texture`
+instead of raw image and view ids: `GpuTexture` is `{ texture, sampler, samplerGeneration }`,
+`texture` null for a render target's slot (M27), which still samples the target's own view.
+`TextureId`, `addTexture`, `retainTexture`/`releaseTexture`, the roles, `addTargetTexture` and
+every refusal keep their meaning; `ImageRefused` and `ViewRefused` come from the owner's
+`TextureError`.
+- The owner is made with a `realloc` that uploads `context.textureData[index].pixels`, so the
+  CPU copy void3d already keeps is the only one (`Texture.fromPixels(..., keep)` would hold a
+  second). A closure over the context makes a cycle, broken by the owner's `close`, which clears
+  `realloc`; a context dropped with a live texture leaks it as it leaks its GPU objects.
+- `rebuildTextures` re-uploads a stale owner through the owner's `upload`, not `asView`, and
+  remakes a stale shared sampler. This is a decision: `asView` stops by name when `realloc`
+  cannot upload, and M25 retries a refused re-upload on the next rebuild with the material
+  drawing nothing meanwhile, which stays. `textureReady` now also needs a sampler, so a texture
+  whose sampler was refused draws nothing as one whose image was.
+- A freed texture still hands its image and view to `doomedTextures` for `buryDoomed`: the
+  owner's `close` destroys a live image at once, and a frame in flight may still name it.
+  `surrender` (`draw.ms`) reads the owner's public `image`, `view` and `generation`, zeroes
+  them and then closes it, so `close` has nothing to destroy. `DoomedTexture` replaces
+  `GpuTexture` in that list.
+- Frame path: `viewAt` and `textureReady` read the owner's `view`; an emit probe of
+  `texturedFrame.ms` shows no `ArrayCopy` or string building in either, nor in `drawItem` or
+  `bindItem`. No `gate3d.sh` list changed.
+
+**What `src/gpu` lacks.** A way to give up a texture's handles without destroying them
+(`close` always destroys a current owned image), which `surrender` stands in for by writing the
+public fields. A `Texture.detach()` returning image and view and leaving the owner closed would
+replace it. Nothing else was missing: dynamic images and target views were not needed, and the
+premultiplied tag stays in `textureAlphas`, which is void3d's.
+
+**Tests.** `textureCheck.ms` 19 tests (2 new: a freed texture gives its handles to
+`buryDoomed` and closes its owner, with `Texture.adopt` standing in for a GPU image; a freed
+slot holds no owner and its id is stale). `storeCheck`, `lifetimeCheck`, `closeCheck` green
+(307, 316, 311 reported by the runner, which runs every suite file). The integration files
+that read `GpuTexture.view` (`texturedFrame`, `gltfFrame`, `storeIdentity`, `targetTexture`) go
+through `drawHelpers` `textureViewAt` and `loseTextureAt`, and `checkRemade` also asks the
+owner for the current generation; they compile (`msc check`) and have NOT been run.
+
+**Not done / not verified.** No GPU run: the real `loseContext` path through the owner
+(`deviceLoss3d`), the `buryDoomed` destroy branch with a surrendered owner and the churn stage's
+flat counts are unverified. No gate, capture or golden was run. A headless test cannot make an
+image (sokol asserts without a device), so the re-upload itself has only the integration
+coverage above.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
