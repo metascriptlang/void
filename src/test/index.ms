@@ -15,6 +15,7 @@ import "./textGammaCheck";
 import "./fontCheck";
 import "./syntheticFaceCheck";
 import "./fontOracleCheck";
+import "./sfntBoundsCheck";
 import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";

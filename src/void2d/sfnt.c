@@ -1,16 +1,19 @@
 #include "sfnt.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #define SFNT_MAX_TABLES 512
-#define SFNT_MAX_CMAP 0x4000000L
+#define SFNT_MAX_CMAP 0x4000000u
+
+typedef uint64_t Off;
 
 typedef struct {
 	unsigned char *cmap;
-	long length;
-	long index;
-	long sequences;
+	Off length;
+	Off index;
+	Off sequences;
 	int flags;
 } Summary;
 
@@ -19,108 +22,107 @@ static int s_summaryCount;
 static int s_summaryCapacity;
 static int s_summariesRead;
 
-static unsigned readU8(const Summary *s, long at) {
-	return at < 0 || at >= s->length ? 0 : s->cmap[at];
-}
+static int fits(const Summary *s, Off at, Off n) { return at <= s->length && n <= s->length - at; }
 
-static unsigned readU16(const Summary *s, long at) {
-	if (at < 0 || at + 2 > s->length) { return 0; }
+static unsigned readU8(const Summary *s, Off at) { return fits(s, at, 1) ? s->cmap[at] : 0; }
+
+static unsigned readU16(const Summary *s, Off at) {
+	if (!fits(s, at, 2)) { return 0; }
 	return ((unsigned)s->cmap[at] << 8) | s->cmap[at + 1];
 }
 
-static int readI16(const Summary *s, long at) {
+static int readI16(const Summary *s, Off at) {
 	unsigned v = readU16(s, at);
 	return v >= 0x8000u ? (int)v - 0x10000 : (int)v;
 }
 
-static unsigned long readU24(const Summary *s, long at) {
-	if (at < 0 || at + 3 > s->length) { return 0; }
-	return ((unsigned long)s->cmap[at] << 16) | ((unsigned long)s->cmap[at + 1] << 8) |
-		s->cmap[at + 2];
+static uint32_t readU24(const Summary *s, Off at) {
+	if (!fits(s, at, 3)) { return 0; }
+	return ((uint32_t)s->cmap[at] << 16) | ((uint32_t)s->cmap[at + 1] << 8) | s->cmap[at + 2];
 }
 
-static unsigned long readU32(const Summary *s, long at) {
-	if (at < 0 || at + 4 > s->length) { return 0; }
-	return ((unsigned long)s->cmap[at] << 24) | ((unsigned long)s->cmap[at + 1] << 16) |
-		((unsigned long)s->cmap[at + 2] << 8) | s->cmap[at + 3];
+static uint32_t readU32(const Summary *s, Off at) {
+	if (!fits(s, at, 4)) { return 0; }
+	return ((uint32_t)s->cmap[at] << 24) | ((uint32_t)s->cmap[at + 1] << 16) |
+		((uint32_t)s->cmap[at + 2] << 8) | s->cmap[at + 3];
 }
 
-static unsigned long fileU32(const unsigned char *p) {
-	return ((unsigned long)p[0] << 24) | ((unsigned long)p[1] << 16) |
-		((unsigned long)p[2] << 8) | p[3];
+static uint32_t fileU32(const unsigned char *p) {
+	return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
 }
 
 static int validSummary(int summary) { return summary >= 0 && summary < s_summaryCount; }
 
-static int glyphInFormat4(const Summary *s, long map, int codepoint) {
+static int glyphInFormat4(const Summary *s, Off map, int codepoint) {
 	unsigned segcount = readU16(s, map + 6) >> 1;
 	unsigned searchRange = readU16(s, map + 8) >> 1;
 	unsigned entrySelector = readU16(s, map + 10);
 	unsigned rangeShift = readU16(s, map + 12) >> 1;
-	long endCount = map + 14;
-	long search = endCount;
-	if (codepoint > 0xffff) { return 0; }
-	if ((unsigned)codepoint >= readU16(s, search + (long)rangeShift * 2)) {
-		search += (long)rangeShift * 2;
+	Off endCount = map + 14;
+	Off search = endCount;
+	if (codepoint > 0xffff || !fits(s, map, 16 + (Off)segcount * 8)) { return 0; }
+	if ((unsigned)codepoint >= readU16(s, search + (Off)rangeShift * 2)) {
+		search += (Off)rangeShift * 2;
 	}
 	search -= 2;
 	while (entrySelector) {
 		searchRange >>= 1;
-		if ((unsigned)codepoint > readU16(s, search + (long)searchRange * 2)) {
-			search += (long)searchRange * 2;
+		if ((unsigned)codepoint > readU16(s, search + (Off)searchRange * 2)) {
+			search += (Off)searchRange * 2;
 		}
 		--entrySelector;
 	}
 	search += 2;
 	unsigned item = (unsigned)((search - endCount) >> 1) & 0xffffu;
-	unsigned start = readU16(s, map + 14 + (long)segcount * 2 + 2 + 2 * (long)item);
-	unsigned last = readU16(s, endCount + 2 * (long)item);
+	if (item >= segcount) { return 0; }
+	unsigned start = readU16(s, map + 14 + (Off)segcount * 2 + 2 + 2 * (Off)item);
+	unsigned last = readU16(s, endCount + 2 * (Off)item);
 	if ((unsigned)codepoint < start || (unsigned)codepoint > last) { return 0; }
-	unsigned offset = readU16(s, map + 14 + (long)segcount * 6 + 2 + 2 * (long)item);
+	unsigned offset = readU16(s, map + 14 + (Off)segcount * 6 + 2 + 2 * (Off)item);
 	if (offset == 0) {
-		int delta = readI16(s, map + 14 + (long)segcount * 4 + 2 + 2 * (long)item);
+		int delta = readI16(s, map + 14 + (Off)segcount * 4 + 2 + 2 * (Off)item);
 		return (int)((unsigned)(codepoint + delta) & 0xffffu);
 	}
-	return (int)readU16(s, offset + (long)(codepoint - (int)start) * 2 + map + 14 +
-		(long)segcount * 6 + 2 + 2 * (long)item);
+	return (int)readU16(s, (Off)offset + (Off)(codepoint - (int)start) * 2 + map + 14 +
+		(Off)segcount * 6 + 2 + 2 * (Off)item);
 }
 
-static int glyphInGroups(const Summary *s, long map, int codepoint, int sharedGlyph) {
-	long low = 0;
-	long high = (long)readU32(s, map + 12);
+static int glyphInGroups(const Summary *s, Off map, int codepoint, int sharedGlyph) {
+	Off low = 0;
+	Off high = readU32(s, map + 12);
+	if (!fits(s, map, 16 + high * 12)) { return 0; }
 	while (low < high) {
-		long mid = low + ((high - low) >> 1);
-		unsigned long startChar = readU32(s, map + 16 + mid * 12);
-		unsigned long endChar = readU32(s, map + 16 + mid * 12 + 4);
-		if ((unsigned long)codepoint < startChar) {
+		Off mid = low + ((high - low) >> 1);
+		uint32_t startChar = readU32(s, map + 16 + mid * 12);
+		uint32_t endChar = readU32(s, map + 16 + mid * 12 + 4);
+		if ((uint32_t)codepoint < startChar) {
 			high = mid;
-		} else if ((unsigned long)codepoint > endChar) {
+		} else if ((uint32_t)codepoint > endChar) {
 			low = mid + 1;
 		} else {
-			unsigned long startGlyph = readU32(s, map + 16 + mid * 12 + 8);
+			uint32_t startGlyph = readU32(s, map + 16 + mid * 12 + 8);
 			if (sharedGlyph) { return (int)startGlyph; }
-			return (int)(startGlyph + ((unsigned long)codepoint - startChar));
+			return (int)(startGlyph + ((uint32_t)codepoint - startChar));
 		}
 	}
 	return 0;
 }
 
 static int stbCompatibleGlyph(const Summary *s, int codepoint) {
-	long map = s->index;
+	Off map = s->index;
 	if (map == 0 || codepoint < 0) { return 0; }
 	unsigned format = readU16(s, map);
 	if (format == 0) {
 		int bytes = (int)readU16(s, map + 2);
-		if (codepoint < bytes - 6 && s->index + 6 + codepoint < s->length) {
-			return s->cmap[map + 6 + codepoint];
-		}
+		if (codepoint < bytes - 6) { return (int)readU8(s, map + 6 + (Off)codepoint); }
 		return 0;
 	}
 	if (format == 6) {
-		unsigned long first = readU16(s, map + 6);
-		unsigned long count = readU16(s, map + 8);
-		if ((unsigned long)codepoint >= first && (unsigned long)codepoint < first + count) {
-			return (int)readU16(s, map + 10 + (long)((unsigned long)codepoint - first) * 2);
+		unsigned first = readU16(s, map + 6);
+		unsigned count = readU16(s, map + 8);
+		if (!fits(s, map, 10 + (Off)count * 2)) { return 0; }
+		if ((unsigned)codepoint >= first && (unsigned)codepoint < first + count) {
+			return (int)readU16(s, map + 10 + (Off)((unsigned)codepoint - first) * 2);
 		}
 		return 0;
 	}
@@ -130,42 +132,45 @@ static int stbCompatibleGlyph(const Summary *s, int codepoint) {
 	return 0;
 }
 
-static long chooseIndex(const Summary *s) {
-	long chosen = 0;
+static Off chooseIndex(const Summary *s) {
+	Off chosen = 0;
 	unsigned records = readU16(s, 2);
 	for (unsigned i = 0; i < records; i++) {
-		long record = 4 + 8 * (long)i;
+		Off record = 4 + 8 * (Off)i;
+		if (!fits(s, record, 8)) { break; }
 		unsigned platform = readU16(s, record);
 		unsigned encoding = readU16(s, record + 2);
-		long offset = (long)readU32(s, record + 4);
+		Off offset = readU32(s, record + 4);
 		if (platform == 3 && (encoding == 1 || encoding == 10)) { chosen = offset; }
 		if (platform == 0) { chosen = offset; }
 	}
-	return chosen;
+	return fits(s, chosen, 2) ? chosen : 0;
 }
 
-static long chooseSequences(const Summary *s) {
+static Off chooseSequences(const Summary *s) {
 	unsigned records = readU16(s, 2);
 	for (unsigned i = 0; i < records; i++) {
-		long record = 4 + 8 * (long)i;
+		Off record = 4 + 8 * (Off)i;
+		if (!fits(s, record, 8)) { break; }
 		if (readU16(s, record) == 0 && readU16(s, record + 2) == 5) {
-			long offset = (long)readU32(s, record + 4);
-			if (readU16(s, offset) == 14) { return offset; }
+			Off offset = readU32(s, record + 4);
+			if (fits(s, offset, 10) && readU16(s, offset) == 14) { return offset; }
 		}
 	}
 	return 0;
 }
 
-static int sequenceInDefault(const Summary *s, long table, int codepoint) {
-	long low = 0;
-	long high = (long)readU32(s, table);
+static int sequenceInDefault(const Summary *s, Off table, int codepoint) {
+	Off low = 0;
+	Off high = readU32(s, table);
+	if (!fits(s, table, 4 + high * 4)) { return 0; }
 	while (low < high) {
-		long mid = low + ((high - low) >> 1);
-		unsigned long start = readU24(s, table + 4 + mid * 4);
-		unsigned long last = start + readU8(s, table + 4 + mid * 4 + 3);
-		if ((unsigned long)codepoint < start) {
+		Off mid = low + ((high - low) >> 1);
+		uint32_t start = readU24(s, table + 4 + mid * 4);
+		uint32_t last = start + readU8(s, table + 4 + mid * 4 + 3);
+		if ((uint32_t)codepoint < start) {
 			high = mid;
-		} else if ((unsigned long)codepoint > last) {
+		} else if ((uint32_t)codepoint > last) {
 			low = mid + 1;
 		} else {
 			return 1;
@@ -174,15 +179,16 @@ static int sequenceInDefault(const Summary *s, long table, int codepoint) {
 	return 0;
 }
 
-static int sequenceInSpecific(const Summary *s, long table, int codepoint) {
-	long low = 0;
-	long high = (long)readU32(s, table);
+static int sequenceInSpecific(const Summary *s, Off table, int codepoint) {
+	Off low = 0;
+	Off high = readU32(s, table);
+	if (!fits(s, table, 4 + high * 5)) { return 0; }
 	while (low < high) {
-		long mid = low + ((high - low) >> 1);
-		unsigned long value = readU24(s, table + 4 + mid * 5);
-		if ((unsigned long)codepoint < value) {
+		Off mid = low + ((high - low) >> 1);
+		uint32_t value = readU24(s, table + 4 + mid * 5);
+		if ((uint32_t)codepoint < value) {
 			high = mid;
-		} else if ((unsigned long)codepoint > value) {
+		} else if ((uint32_t)codepoint > value) {
 			low = mid + 1;
 		} else {
 			return readU16(s, table + 4 + mid * 5 + 3) != 0;
@@ -191,10 +197,10 @@ static int sequenceInSpecific(const Summary *s, long table, int codepoint) {
 	return 0;
 }
 
-static unsigned char *readRange(FILE *f, long at, long length) {
+static unsigned char *readRange(FILE *f, Off at, Off length) {
 	unsigned char *buf = (unsigned char *)malloc((size_t)(length > 0 ? length : 1));
 	if (!buf) { return NULL; }
-	if (fseek(f, at, SEEK_SET) != 0 || fread(buf, 1, (size_t)length, f) != (size_t)length) {
+	if (fseek(f, (long)at, SEEK_SET) != 0 || fread(buf, 1, (size_t)length, f) != (size_t)length) {
 		free(buf);
 		return NULL;
 	}
@@ -215,24 +221,22 @@ static int growSummaries(void) {
 }
 
 typedef struct {
-	long offset;
-	long length;
+	Off offset;
+	Off length;
 	int found;
 } TableSpan;
 
-static TableSpan findTable(const unsigned char *directory, int tables, long fileSize,
+static TableSpan findTable(const unsigned char *directory, int tables, Off fileSize,
 		const char *tag) {
 	TableSpan span = { 0, 0, 0 };
 	for (int i = 0; i < tables; i++) {
 		const unsigned char *record = directory + 16 * i;
 		if (memcmp(record, tag, 4) != 0) { continue; }
-		unsigned long offset = fileU32(record + 8);
-		unsigned long length = fileU32(record + 12);
-		if (offset > (unsigned long)fileSize || length > (unsigned long)fileSize - offset) {
-			continue;
-		}
-		span.offset = (long)offset;
-		span.length = (long)length;
+		Off offset = fileU32(record + 8);
+		Off length = fileU32(record + 12);
+		if (offset > fileSize || length > fileSize - offset) { continue; }
+		span.offset = offset;
+		span.length = length;
 		span.found = 1;
 		return span;
 	}
@@ -246,9 +250,10 @@ int void2dSfntPeek(const char *path) {
 		return VOID2D_SFNT_UNREADABLE;
 	}
 	fseek(f, 0, SEEK_END);
-	long fileSize = ftell(f);
+	long measured = ftell(f);
+	Off fileSize = measured < 0 ? 0 : (Off)measured;
 	unsigned char head[16];
-	long fontStart = 0;
+	Off fontStart = 0;
 	int status = VOID2D_SFNT_NOT_AN_SFNT;
 	int tables = 0;
 	unsigned char *directory = NULL;
@@ -260,9 +265,9 @@ int void2dSfntPeek(const char *path) {
 	}
 	if (memcmp(head, "ttcf", 4) == 0) {
 		if (fseek(f, 12, SEEK_SET) != 0 || fread(head, 1, 4, f) != 4) { goto done; }
-		fontStart = (long)fileU32(head);
-		if (fontStart < 0 || fontStart + 12 > fileSize || fseek(f, fontStart, SEEK_SET) != 0 ||
-			fread(head, 1, 12, f) != 12) {
+		fontStart = fileU32(head);
+		if (fontStart > fileSize || 12 > fileSize - fontStart ||
+			fseek(f, (long)fontStart, SEEK_SET) != 0 || fread(head, 1, 12, f) != 12) {
 			goto done;
 		}
 	}
@@ -272,7 +277,8 @@ int void2dSfntPeek(const char *path) {
 	}
 	tables = (int)(((unsigned)head[4] << 8) | head[5]);
 	if (tables == 0 || tables > SFNT_MAX_TABLES) { goto done; }
-	directory = readRange(f, fontStart + 12, 16L * tables);
+	if (fontStart + 12 > fileSize || 16 * (Off)tables > fileSize - fontStart - 12) { goto done; }
+	directory = readRange(f, fontStart + 12, 16 * (Off)tables);
 	if (!directory) { goto done; }
 	cmapSpan = findTable(directory, tables, fileSize, "cmap");
 	headSpan = findTable(directory, tables, fileSize, "head");
@@ -326,25 +332,26 @@ int void2dSfntCovers(int summary, int codepoint) {
 int void2dSfntSequence(int summary, int codepoint, int selector) {
 	if (!validSummary(summary) || codepoint < 0 || selector < 0) { return VOID2D_SFNT_NO_SEQUENCE; }
 	const Summary *s = &s_summaries[summary];
-	long table = s->sequences;
+	Off table = s->sequences;
 	if (table == 0) { return VOID2D_SFNT_NO_SEQUENCE; }
-	long low = 0;
-	long high = (long)readU32(s, table + 6);
+	Off low = 0;
+	Off high = readU32(s, table + 6);
+	if (!fits(s, table, 10 + high * 11)) { return VOID2D_SFNT_NO_SEQUENCE; }
 	while (low < high) {
-		long mid = low + ((high - low) >> 1);
-		long record = table + 10 + mid * 11;
-		unsigned long found = readU24(s, record);
-		if ((unsigned long)selector < found) {
+		Off mid = low + ((high - low) >> 1);
+		Off record = table + 10 + mid * 11;
+		uint32_t found = readU24(s, record);
+		if ((uint32_t)selector < found) {
 			high = mid;
-		} else if ((unsigned long)selector > found) {
+		} else if ((uint32_t)selector > found) {
 			low = mid + 1;
 		} else {
-			unsigned long defaults = readU32(s, record + 3);
-			unsigned long specifics = readU32(s, record + 7);
-			if (specifics && sequenceInSpecific(s, table + (long)specifics, codepoint)) {
+			Off defaults = readU32(s, record + 3);
+			Off specifics = readU32(s, record + 7);
+			if (specifics && sequenceInSpecific(s, table + specifics, codepoint)) {
 				return VOID2D_SFNT_SPECIFIC_SEQUENCE;
 			}
-			if (defaults && sequenceInDefault(s, table + (long)defaults, codepoint)) {
+			if (defaults && sequenceInDefault(s, table + defaults, codepoint)) {
 				return VOID2D_SFNT_DEFAULT_SEQUENCE;
 			}
 			return VOID2D_SFNT_NO_SEQUENCE;
