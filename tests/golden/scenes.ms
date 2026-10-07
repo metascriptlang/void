@@ -35,6 +35,14 @@ import { colorMatrixGrayscale } from "../../src/void2d/effect";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 import { add } from "../../src/void2d/scene";
 import { IconId, registerIcon } from "../../src/void2d/icon";
+when (voidProfiler) {
+	import { OverlayMode } from "../../src/void2d/profiler";
+	import {
+		profilerOverlayFeed,
+		profilerOverlaySetMode,
+	} from "../../src/void2d/profilerOverlay";
+	import { fixtureProfiler, fixtureCounters } from "../harness/profilerFixture";
+}
 import {
 	Tile,
 	Vec2,
@@ -1413,6 +1421,35 @@ function iconTinted(): Scene2D {
 	return s;
 }
 
+const OVERLAY_BACKDROP: Color[] = [
+	rgba(0.85, 0.30, 0.30, 1.0),
+	rgba(0.95, 0.80, 0.25, 1.0),
+	rgba(0.30, 0.75, 0.45, 1.0),
+	rgba(0.35, 0.55, 0.95, 1.0),
+	rgba(0.90, 0.90, 0.95, 1.0),
+	rgba(0.10, 0.10, 0.12, 1.0),
+];
+
+function overlayScene(width: float32, rowHeight: float32, full: boolean): Scene2D {
+	const s = Scene2D.create(DARK);
+	for (let k: int32 = 0; k < (OVERLAY_BACKDROP.length as int32); k++) {
+		const top: float32 = rowHeight * 0.5 + (k as float32) * rowHeight * 1.5;
+		s.add(s.rect(width, rowHeight, OVERLAY_BACKDROP[k]).at(0.0, top));
+	}
+	when (voidProfiler) {
+		profilerOverlayFeed(fixtureProfiler(), fixtureCounters());
+		profilerOverlaySetMode(full ? OverlayMode.Full : OverlayMode.Minimal);
+	} else {
+		console.log("ui/profilerOverlay: the scene needs a build with -d:voidProfiler");
+		unreachable;
+	}
+	return s;
+}
+
+function uiProfilerOverlayFull(): Scene2D { return overlayScene(384.0, 28.0, true); }
+
+function uiProfilerOverlayMinimal(): Scene2D { return overlayScene(256.0, 16.0, false); }
+
 function filterManyTargets(): Scene2D {
 	const s = Scene2D.create(DARK);
 	for (let k: int32 = 0; k < MANY_TARGETS_COUNT; k++) {
@@ -1632,5 +1669,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/sdfColorEffect", build: textSdfColorEffect },
 		{ name: "icon/tinted", build: iconTinted },
 		{ name: "icon/tintedDpi150", build: iconTinted },
+		{ name: "ui/profilerOverlayFull", build: uiProfilerOverlayFull },
+		{ name: "ui/profilerOverlayMinimal", build: uiProfilerOverlayMinimal },
 	];
 }

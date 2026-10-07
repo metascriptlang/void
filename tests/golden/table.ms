@@ -294,6 +294,10 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "icon/tintedDpi150", phase: "P6", width: 384, height: 216, dpi: 1.5,
 			steps: 0, demo: false },
+		{ name: "ui/profilerOverlayFull", phase: "P6", width: 384, height: 280, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "ui/profilerOverlayMinimal", phase: "P6", width: 384, height: 216, dpi: 1.5,
+			steps: 0, demo: false },
 	];
 }
 
@@ -310,7 +314,7 @@ export function sceneDrawCounts(): int32[] {
 		6, 2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1,
 		1, 3, 31, 31, 31, 31, 2, 5, 17, 1, 2, 4, 2, 18, 4,
 		1, 2, 1, 3,
-		3, 3,
+		3, 3, 2, 2,
 	];
 }
 
@@ -322,7 +326,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0,
 		0, 5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18, 0,
 		0, 0, 0, 0,
-		0, 0,
+		0, 0, 0, 0,
 	];
 }
 
