@@ -594,16 +594,21 @@ when (voidShaper) {
 		}
 		const total: int32 = shaperEnd();
 		let glyphs: Vec<ShapedGlyph> = new Array(0);
+		let rightToLeft: int32 = -1;
 		for (let j = 0; j < total; j++) {
 			const g: ShapedGlyph = shaperGlyph(j);
-			if (g.direction == ShapeDirection.Rtl) {
-				console.log(
-					`void2d: right-to-left text at UTF-16 index ${cps[from + g.index].index} ` +
-					`needs BiDi, which the shaper module does not do`,
-				);
-				unreachable;
+			const at: int32 = cps[from + g.index].index;
+			if (g.direction == ShapeDirection.Rtl && (rightToLeft < 0 || at < rightToLeft)) {
+				rightToLeft = at;
 			}
 			glyphs.push(g);
+		}
+		if (rightToLeft >= 0) {
+			console.log(
+				`void2d: right-to-left text at UTF-16 index ${rightToLeft} needs BiDi, ` +
+				`which the shaper module does not do`,
+			);
+			unreachable;
 		}
 		for (let k = from; k < to; k++) {
 			cells[k] = { ...UNSHAPED, shaped: true, shapeStart: false };
