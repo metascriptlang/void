@@ -1725,6 +1725,7 @@ function releasePayload(this s: Scene2D, i: int32): void {
 			const style: int32 = s.anims[payload].imageStyle;
 			if (style != NO_IMAGE_STYLE) { releaseImageStyle(style); }
 			s.anims[payload].frames = NO_FRAMES;
+			s.anims[payload].delaysMs = [];
 			s.freeAnims.push(payload);
 		},
 		DrawKind.Label => {

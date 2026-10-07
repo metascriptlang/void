@@ -1009,6 +1009,17 @@ test "a frame change from tick marks content and a paused tick marks nothing" {
 	assert listed(a) == 0;
 }
 
+test "disposing an Anim empties its frames and its delays" {
+	const s = fresh();
+	const a = delayed(s);
+	s.add(a);
+	const slot: int32 = (s.anims.length as int32) - 1;
+	assert s.anims[slot].delaysMs.length == 3;
+	a.dispose();
+	assert s.anims[slot].frames.length == 0;
+	assert s.anims[slot].delaysMs.length == 0;
+}
+
 test "removing the delays returns to the constant fps" {
 	const s = fresh();
 	const a = delayed(s).setFrameDelays([]);
