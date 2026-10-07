@@ -40,6 +40,8 @@ let forward: ForwardRenderer = null as unknown as ForwardRenderer;
 let pixel: PixelArtRenderer = null as unknown as PixelArtRenderer;
 let held: Vec<Storage> = [];
 let stage: int32 = 0;
+let forwardEpoch: int32 = 0;
+let pixelEpoch: int32 = 0;
 
 function fail(message: string): void {
 	console.log(`FAIL target preset epoch: stage ${stage}: ${message}`);
@@ -98,6 +100,11 @@ function frame(): void {
 	}
 	prepare();
 	if (stage == 0) {
+		forwardEpoch = forward.targetEpoch;
+		pixelEpoch = pixel.targetEpoch;
+		if (forwardEpoch != 1 || pixelEpoch != 1) {
+			fail("the first prepare did not make the targets once");
+		}
 		keep(forward.colorTarget);
 		keep(forward.depthTarget);
 		keep(pixel.colorTarget);
@@ -105,6 +112,9 @@ function frame(): void {
 		keep(pixel.depthTarget);
 		keep(pixel.postTarget);
 	} else {
+		if (forward.targetEpoch != forwardEpoch + 1 || pixel.targetEpoch != pixelEpoch + 1) {
+			fail("re-adopting the targets did not move their epoch by one");
+		}
 		let borrowed: int32 = 0;
 		for (const storage of held) {
 			const owner: RenderTarget = storage.owner;

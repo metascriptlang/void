@@ -59,6 +59,11 @@ export interface ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
+	// How many times the colour and depth targets were made: the first prepare, a new size or a
+	// new GPU context each add one. A caller holding the target's view (a void2d tile of
+	// `colorTarget`) renews it when this differs from the value it saw, in place of a poll of
+	// the image id (Heaps' `Texture.onContextLost`, which a resize does not fire).
+	targetEpoch: int32;
 	closed: boolean;
 }
 
@@ -121,6 +126,7 @@ export function create(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
+		targetEpoch: 0,
 		closed: false,
 	});
 }
@@ -157,6 +163,7 @@ function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): 
 	}
 	renderer.colorTarget.resize(width, height);
 	renderer.depthTarget.resize(width, height);
+	renderer.targetEpoch = renderer.targetEpoch + 1;
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, renderer.background);
 	renderer.sceneDepth =
 		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);

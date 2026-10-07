@@ -194,6 +194,8 @@ export interface PixelArtRenderer {
 	translucentColors: Vec<ColorAttachment>;
 	translucentDepth: DepthAttachment;
 	postColors: Vec<ColorAttachment>;
+	// As ForwardRenderer.targetEpoch, for the four targets.
+	targetEpoch: int32;
 	postBlock: UniformBlock;
 	blitBlock: UniformBlock;
 	postValues: Vec<float32>;
@@ -391,6 +393,7 @@ export function create(
 		translucentColors: new Array(1),
 		translucentDepth: NO_DEPTH,
 		postColors: new Array(1),
+		targetEpoch: 0,
 		postBlock: postBlock,
 		blitBlock: blitBlock,
 		postValues: new Array(POST_UNIFORM_LENGTH),
@@ -469,6 +472,7 @@ function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32):
 	renderer.normalTarget.resize(width, height);
 	renderer.depthTarget.resize(width, height);
 	renderer.postTarget.resize(width, height);
+	renderer.targetEpoch = renderer.targetEpoch + 1;
 	const background: Vec4 = renderer.look.background;
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, background);
 	renderer.sceneColors[1] = renderer.normalTarget.asColor(LoadAction.Clear, NORMAL_CLEAR);
