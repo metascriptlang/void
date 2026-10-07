@@ -23,8 +23,17 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
-import { RenderState } from "../gpu/state";
-import { Material, MaterialKind, Phase, ShadowCasting, UniformBlock } from "../void3d/material";
+import { RenderState, Face } from "../gpu/state";
+import {
+	Material,
+	MaterialKind,
+	Phase,
+	ShadowCasting,
+	ShadowCulling,
+	UniformBlock,
+	withShadowCulling,
+	shadowFace,
+} from "../void3d/material";
 import {
 	DrawContext,
 	DrawItem,
@@ -156,6 +165,17 @@ test "a material kind casts and receives as Heaps' default props do, and the set
 	const only: Material = lit.withShadows(ShadowCasting.Only, false);
 	assert only.castShadows == ShadowCasting.Only && !only.program.shadowed;
 	assert plain.withShadows(ShadowCasting.Off, true).program == plain.program.withShadowed();
+}
+
+test "the shadow pass culls as the main pass does unless the material says its own side" {
+	const base: Material = Material.ofKind(Program.Lit, MaterialKind.Opaque);
+	assert base.shadowCulling == ShadowCulling.Main && base.shadowFace() == Face.Back;
+	const unculled: Material = { ...base, pass: base.pass.withCulling(Face.None) };
+	assert unculled.shadowFace() == Face.None;
+	assert base.withShadowCulling(ShadowCulling.None).shadowFace() == Face.None;
+	assert unculled.withShadowCulling(ShadowCulling.Front).shadowFace() == Face.Front;
+	assert unculled.withShadowCulling(ShadowCulling.Back).shadowFace() == Face.Back;
+	assert base.withShadowCulling(ShadowCulling.None).pass.culling == Face.Back;
 }
 
 function lengthOf(v: Vec3): float32 {

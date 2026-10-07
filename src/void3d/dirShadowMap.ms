@@ -33,7 +33,7 @@ import {
 	Sampler,
 	beginPass,
 } from "../gpu/target";
-import { Material, UniformBlock, Phase, ShadowCasting } from "./material";
+import { Material, UniformBlock, Phase, ShadowCasting, shadowFace } from "./material";
 import {
 	DrawContext,
 	DrawItem,
@@ -311,7 +311,7 @@ export function drawShadows(
 	for (let i = 0; i < shadow.casters.count; i++) {
 		const index: int32 = shadow.casters.indices[i];
 		const material: Material = context.materials[items[index].material.index];
-		const state: RenderState = RenderState.defaults().withCulling(material.pass.culling);
+		const state: RenderState = RenderState.defaults().withCulling(material.shadowFace());
 		drawItemWith(
 			context, items[index], shadow.cast[index], state, SHADOW_LAYOUT, shadow.globals,
 			NO_SCENE_TEXTURE,

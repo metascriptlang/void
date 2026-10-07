@@ -1,7 +1,8 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3, quatBetween } from "../../src/math/math3d";
 import {
-	Material, MaterialKind, ShadowCasting, UniformBlock, movingDefaults,
+	Material, MaterialKind, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
+	withShadowCulling,
 } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/void3d/meshData";
 import {
@@ -52,6 +53,10 @@ enum Case {
 	// The caster dissolves its left half (M36); the control keeps the dissolve off.
 	Dissolve,
 	DissolveControl,
+	// A caster that faces away from the sun, so the main culling (Back) removes it from the
+	// shadow pass too (Heaps' rule); 9 draws it with the shadow pass's own culling off.
+	BackFace,
+	BackFaceBothSides,
 }
 
 const WIDTH: int32 = 320;
@@ -119,14 +124,19 @@ function makeShadow(): DirShadowMap {
 	unreachable;
 }
 
-function material(cast: ShadowCasting, receive: boolean): MaterialId {
+function material(
+	cast: ShadowCasting,
+	receive: boolean,
+	culling: ShadowCulling,
+): MaterialId {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH);
 	if (!reserved.ok) { unreachable; }
 	const values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.ofKind(Program.Lit, MaterialKind.Opaque).withShadows(cast, receive),
+		...Material.ofKind(Program.Lit, MaterialKind.Opaque).withShadows(cast, receive)
+			.withShadowCulling(culling),
 		uniforms: reserved.value,
 	});
 	if (added.ok) { return added.value; }
@@ -134,12 +144,23 @@ function material(cast: ShadowCasting, receive: boolean): MaterialId {
 	unreachable;
 }
 
-function horizontal(half: float32, y: float32, color: Rgba, made: MaterialId): void {
+function horizontal(
+	half: float32,
+	y: float32,
+	color: Rgba,
+	made: MaterialId,
+	facingUp: boolean,
+): void {
 	let mesh: MeshData = MeshData.empty();
-	const built: Result<int32, MeshError> = addQuad(
-		mesh, vec3(-half, y, half), vec3(half, y, half), vec3(half, y, -half),
-		vec3(-half, y, -half), vec3(0.0, 1.0, 0.0), color,
-	);
+	const built: Result<int32, MeshError> = facingUp ?
+		addQuad(
+			mesh, vec3(-half, y, half), vec3(half, y, half), vec3(half, y, -half),
+			vec3(-half, y, -half), vec3(0.0, 1.0, 0.0), color,
+		) :
+		addQuad(
+			mesh, vec3(-half, y, -half), vec3(half, y, -half), vec3(half, y, half),
+			vec3(-half, y, half), vec3(0.0, -1.0, 0.0), color,
+		);
 	if (!built.ok) { unreachable; }
 	const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, mesh);
 	if (!uploaded.ok) { unreachable; }
@@ -207,12 +228,20 @@ function init(): void {
 		Case.HalfOpacity => ShadowCasting.On,
 		Case.Dissolve => ShadowCasting.On,
 		Case.DissolveControl => ShadowCasting.On,
+		Case.BackFace => ShadowCasting.On,
+		Case.BackFaceBothSides => ShadowCasting.On,
 	};
-	horizontal(GROUND_HALF, 0.0, WHITE, material(ShadowCasting.On, shadowCase != Case.ReceiveOff));
+	const ground: MaterialId =
+		material(ShadowCasting.On, shadowCase != Case.ReceiveOff, ShadowCulling.Main);
+	horizontal(GROUND_HALF, 0.0, WHITE, ground, true);
 	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl) {
 		dissolvingCaster();
 	} else {
-		horizontal(CASTER_HALF, CASTER_HEIGHT, RED, material(casting, true));
+		const culling: ShadowCulling =
+			shadowCase == Case.BackFaceBothSides ? ShadowCulling.None : ShadowCulling.Main;
+		const facingUp: boolean =
+			shadowCase != Case.BackFace && shadowCase != Case.BackFaceBothSides;
+		horizontal(CASTER_HALF, CASTER_HEIGHT, RED, material(casting, true, culling), facingUp);
 	}
 	const sun: LightInstance = {
 		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0),
@@ -277,7 +306,8 @@ function check(view: CameraView): void {
 	console.log(`dir shadow: under ${under}, open ${open}, caster top ${top}`);
 	if (green(open) < 240) { fail(`the open ground drew ${open}, darker than full light`); }
 	const shadowed: boolean = shadowCase == Case.Full || shadowCase == Case.ShadowOnly ||
-		shadowCase == Case.HalfOpacity || shadowCase == Case.Detached;
+		shadowCase == Case.HalfOpacity || shadowCase == Case.Detached ||
+		shadowCase == Case.BackFaceBothSides;
 	if (shadowed && shadowCase != Case.HalfOpacity && green(under) > 100) {
 		fail(`no shadow under the caster: ${under} against the open ground's ${open}`);
 	}
@@ -288,6 +318,7 @@ function check(view: CameraView): void {
 		fail(`the ground under a caster that should not shade it drew ${under}, not ${open}`);
 	}
 	const drawn: boolean = (top >> 16) > 200 && green(top) < 60;
+	if (shadowCase == Case.BackFace || shadowCase == Case.BackFaceBothSides) { return; }
 	if (shadowCase == Case.ShadowOnly && drawn) { fail("the shadow-only caster drew its colour"); }
 	if (shadowCase != Case.ShadowOnly && !drawn) { fail(`the caster drew ${top}, not red`); }
 }

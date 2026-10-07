@@ -1071,7 +1071,7 @@ SHADOW_PATH_FUNCTIONS="dir83hadow77ap:drawShadows dir83hadow77ap:castsAll dir83h
 	dir83hadow77ap:shadowBounds dir83hadow77ap:casterBounds dir83hadow77ap:widened
 	dir83hadow77ap:mapMatrix dir83hadow77ap:sceneTexture renderer:drawShadowPass
 	renderer:sceneTextureOf pass76ist:collectCasters pass76ist:reserve gpu3d:castIn
-	gpu3d:drawnIn draw:drawItemWith"
+	gpu3d:drawnIn draw:drawItemWith material:shadowFace"
 WORLD_LABEL_PATH_FUNCTIONS="world76abel:faceCamera world76abel:facingRotation
 	world76abel:refreshLabel world76abel:setLabelTint world76abel:setLabelText
 	world76abel:redraw world76abel:place world76abel:transformOf world76abel:localFor
@@ -2152,8 +2152,8 @@ run_map_material() {
 }
 
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
-# 7 (DissolveControl) the control of 6 (Dissolve).
-DIR_SHADOW_CASES="0 2 3 4 5 6"
+# 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides).
+DIR_SHADOW_CASES="0 2 3 4 5 6 8 9"
 
 run_dir_shadow() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then

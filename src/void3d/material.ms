@@ -4,7 +4,7 @@
 // Uniform values live in the DrawContext's pool (draw.ms), a Vec<float32> allocated once;
 // a material holds the block's position in it, so materials stay plain values in a table.
 
-import { RenderState, BlendMode } from "../gpu/state";
+import { RenderState, BlendMode, Face } from "../gpu/state";
 import {
 	Program,
 	ProgramKey,
@@ -45,6 +45,17 @@ export enum ShadowCasting {
 	Off,
 	On,
 	Only,
+}
+
+// The faces the shadow pass culls for a material. Main is Heaps' rule, `refreshProps` copying the
+// main pass's culling into the "shadow" pass (h3d/mat/Material.hx:283); the others are the
+// shadow pass's own culling that Heaps leaves to the caller (`getPass("shadow").culling`) and
+// three.js names `Material.shadowSide` (WebGLShadowMap.js:486-490).
+export enum ShadowCulling {
+	Main,
+	None,
+	Back,
+	Front,
 }
 
 // Heaps' Defaults.defaultKillAlphaThreshold, and glTF's alphaCutoff default.
@@ -114,6 +125,7 @@ export struct Material {
 	// h3d.mat.Pass.layer: a list draws lower layers first, before any other order it has.
 	layer: int32;
 	castShadows: ShadowCasting;
+	shadowCulling: ShadowCulling;
 }
 
 export const NO_UNIFORMS: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
@@ -172,6 +184,20 @@ export function withShadows(
 	return { ...material, program: key, castShadows: cast };
 }
 
+export function withShadowCulling(this material: Material, culling: ShadowCulling): Material {
+	return { ...material, shadowCulling: culling };
+}
+
+// The culling the shadow pass draws the material with.
+export function shadowFace(this material: Material): Face {
+	return match (material.shadowCulling) {
+		ShadowCulling.Main => material.pass.culling,
+		ShadowCulling.None => Face.None,
+		ShadowCulling.Back => Face.Back,
+		ShadowCulling.Front => Face.Front,
+	};
+}
+
 // A material of the core's `program` with no feature; it samples nothing and has no uniforms of
 // its own: add those with spread.
 export function plain(
@@ -208,6 +234,7 @@ export function keyed(
 		uniforms: NO_UNIFORMS,
 		layer: 0,
 		castShadows: ShadowCasting.Off,
+		shadowCulling: ShadowCulling.Main,
 	};
 }
 
