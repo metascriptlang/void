@@ -33,9 +33,6 @@ import {
 	FRAME_UNIFORM_LENGTH,
 	FRAME_TIME,
 	MOVING_UV_SCROLL,
-	BACK_VIEW_SLOT,
-	DISSOLVE_VIEW_SLOT,
-	DISSOLVE_SAMPLER_SLOT,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
 	uniformBlockLength,
@@ -43,7 +40,15 @@ import {
 	samplerSlotMask,
 	destroyBuffer,
 } from "./gpu3d";
-import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
+import {
+	Material,
+	Phase,
+	UniformBlock,
+	NO_UNIFORMS,
+	MATERIAL_TEXTURE_ROLES,
+	viewSlotOf,
+	samplerSlotOf,
+} from "./material";
 import { TextureId } from "./texture";
 import { TargetLayout } from "../gpu/target";
 import {
@@ -491,37 +496,41 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	return block.slot == own && block.length == uniformBlockLength(program, own);
 }
 
-function slotBound(mask: uint32, slot: uint32, bound: boolean): boolean {
-	return (mask & ((1 as uint32) << slot)) == 0 || bound;
+function slotBit(slot: int32): uint32 {
+	return (1 as uint32) << (slot as uint32);
 }
 
-// Every texture view and sampler `program` declares is bound on `material`; a slot the
-// material has no field for (views past 3, samplers past 1) never is, except the shadow map's,
-// which the scene binds for a shadowed program.
+// Every texture view and sampler `program` declares is bound on `material`, each by one field: a
+// raw view or sampler, or a context texture's role. The shadow map's are the scene's to bind for
+// a shadowed program.
 function texturesFit(program: ProgramKey, material: Material): boolean {
-	const viewBit: uint32 = (1 as uint32) << (SHADOW_VIEW_SLOT as uint32);
-	const samplerBit: uint32 = (1 as uint32) << (SHADOW_SAMPLER_SLOT as uint32);
-	const sceneViews: uint32 = program.shadowed ? viewBit : 0;
-	const sceneSamplers: uint32 = program.shadowed ? samplerBit : 0;
+	const sceneViews: uint32 = program.shadowed ? slotBit(SHADOW_VIEW_SLOT) : 0;
+	const sceneSamplers: uint32 = program.shadowed ? slotBit(SHADOW_SAMPLER_SLOT) : 0;
 	const views: uint32 = textureSlotMask(program) & ~sceneViews;
 	const samplers: uint32 = samplerSlotMask(program) & ~sceneSamplers;
-	if ((views >> 4) != 0 || (samplers >> 2) != 0) { return false; }
-	let texture: boolean = material.namesTexture();
-	const back: boolean = material.backTexture.isTexture();
-	const noise: boolean = material.dissolveTexture.isTexture();
-	if (texture && (material.texture0 != 0 || material.sampler0 != 0)) { return false; }
-	if (texture && ((views & 1) == 0 || (samplers & 1) == 0)) { return false; }
-	const backBit: uint32 = (1 as uint32) << (BACK_VIEW_SLOT as uint32);
-	const noiseBit: uint32 = (1 as uint32) << (DISSOLVE_VIEW_SLOT as uint32);
-	const noiseSamplerBit: uint32 = (1 as uint32) << (DISSOLVE_SAMPLER_SLOT as uint32);
-	if (back && (views & backBit) == 0) { return false; }
-	if (noise && ((views & noiseBit) == 0 || (samplers & noiseSamplerBit) == 0)) { return false; }
-	return slotBound(views, 0, texture || material.texture0 != 0)
-		&& slotBound(views, 1, back || material.texture1 != 0)
-		&& slotBound(views, 2, noise || material.texture2 != 0)
-		&& slotBound(views, 3, material.texture3 != 0)
-		&& slotBound(samplers, 0, texture || material.sampler0 != 0)
-		&& slotBound(samplers, 1, noise || material.sampler1 != 0);
+	let boundViews: uint32 = 0;
+	let boundSamplers: uint32 = 0;
+	for (let slot = 0; slot < 4; slot++) {
+		if (material.rawView(slot) != 0) { boundViews = boundViews | slotBit(slot); }
+	}
+	for (let slot = 0; slot < 2; slot++) {
+		if (material.rawSampler(slot) != 0) { boundSamplers = boundSamplers | slotBit(slot); }
+	}
+	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
+		if (!material.textureOf(role).isTexture()) { continue; }
+		const view: uint32 = slotBit(viewSlotOf(role));
+		const sampler: int32 = samplerSlotOf(role);
+		const read: uint32 = slotBit(sampler >= 0 ? sampler : 0);
+		if ((boundViews & view) != 0 || (views & view) == 0 || (samplers & read) == 0) {
+			return false;
+		}
+		boundViews = boundViews | view;
+		if (sampler >= 0) {
+			if ((boundSamplers & read) != 0) { return false; }
+			boundSamplers = boundSamplers | read;
+		}
+	}
+	return (views & ~boundViews) == 0 && (samplers & ~boundSamplers) == 0;
 }
 
 export function openPrepare(this renderer: Renderer): void {

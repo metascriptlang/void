@@ -10,6 +10,7 @@ import {
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
 	ProgramKey,
+	EMISSIVE_LENGTH,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock, movingDefaults } from "../void3d/material";
 import {
@@ -318,7 +319,10 @@ test "both presets refuse a frame whose own screen material's texture changed" {
 
 // A LitTextured material of `key` over a block of its length, its base texture a raw view.
 function movingLit(context: DrawContext, key: ProgramKey): Material {
-	const values: Vec<float32> = key.moves() ? movingDefaults(key) : [4.0, 0.0, 0.0, 0.0];
+	let values: Vec<float32> = key.moves() ? movingDefaults(key) : [4.0, 0.0, 0.0, 0.0];
+	if (key.emissive) {
+		for (let i = 0; i < EMISSIVE_LENGTH; i++) { values.push(1.0); }
+	}
 	let block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, values.length as int32);
 	if (!block.ok) { unreachable; }
@@ -393,5 +397,72 @@ test "the core refuses a moving material missing its back or noise texture, or w
 			beginFrame(core, boundItems, camera, lights);
 		assert !swapped.ok && swapped.error == RendererError.TextureReplaced;
 	}
+	assert core.generation == 0;
+}
+
+test "an emissive or normal map is refused off its program, beside a raw view, or unissued" {
+	let context: DrawContext = DrawContext.withUniformCapacity(1024);
+	const plain: ProgramKey = ProgramKey.of(Program.LitTextured);
+	const emissive: ProgramKey = plain.withEmissive();
+	const normal: ProgramKey = plain.withNormalMap();
+	const slot: TextureId = firstSlotOf(context);
+	const noEmission: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, normal), emissiveTexture: slot });
+	assert materialError(noEmission) == MaterialError.TextureNotSampled;
+	const noNormals: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, emissive), normalTexture: slot });
+	assert materialError(noNormals) == MaterialError.TextureNotSampled;
+	const twice: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...movingLit(context, emissive), emissiveTexture: slot, texture3: 3,
+	});
+	assert materialError(twice) == MaterialError.TextureNamedTwice;
+	const foreign: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, normal), normalTexture: FIRST_SLOT });
+	assert materialError(foreign) == MaterialError.ForeignTexture;
+	const stale: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, emissive), emissiveTexture: slot });
+	assert materialError(stale) == MaterialError.StaleTexture;
+	assert context.liveMaterials() == 0;
+}
+
+test "the core refuses an emissive or normal-mapped material missing its map" {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH + 256);
+	let created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	let core: Renderer = created.value;
+	let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
+	let shortCamera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH - 1);
+	let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
+	const emissive: ProgramKey = ProgramKey.of(Program.LitTextured).withEmissive();
+	let bare: Result<MaterialId, MaterialError> =
+		addMaterial(context, movingLit(context, emissive));
+	assert bare.ok;
+	if (!bare.ok) { return; }
+	let items: Vec<DrawItem> = [texturedItem(context, bare.value)];
+	let unbound: Result<boolean, RendererError> = beginFrame(core, items, camera, lights);
+	assert !unbound.ok && unbound.error == RendererError.MaterialTexture;
+	let raw: Result<MaterialId, MaterialError> =
+		addMaterial(context, { ...movingLit(context, emissive), texture3: 2 });
+	assert raw.ok;
+	if (!raw.ok) { return; }
+	let rawItems: Vec<DrawItem> = [texturedItem(context, raw.value)];
+	let reached: Result<boolean, RendererError> = beginFrame(core, rawItems, shortCamera, lights);
+	assert !reached.ok && reached.error == RendererError.CameraBlockLength;
+	const normal: ProgramKey = ProgramKey.of(Program.LitTextured).withNormalMap();
+	let unmapped: Result<MaterialId, MaterialError> =
+		addMaterial(context, movingLit(context, normal));
+	assert unmapped.ok;
+	if (!unmapped.ok) { return; }
+	let tangentMesh: MeshId =
+		added(context, { ...litShape(), layout: VertexLayout.LitTexturedTangent });
+	let world: Mat4 = identity();
+	let tangentItems: Vec<DrawItem> =
+		[{ mesh: tangentMesh, material: unmapped.value, world: world }];
+	let noMap: Result<boolean, RendererError> = beginFrame(core, tangentItems, camera, lights);
+	assert !noMap.ok && noMap.error == RendererError.MaterialTexture;
+	let plainItems: Vec<DrawItem> = [texturedItem(context, unmapped.value)];
+	let wrongLayout: Result<boolean, RendererError> = beginFrame(core, plainItems, camera, lights);
+	assert !wrongLayout.ok && wrongLayout.error == RendererError.VertexLayout;
 	assert core.generation == 0;
 }

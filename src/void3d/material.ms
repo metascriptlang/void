@@ -14,6 +14,8 @@ import {
 	BACK_VIEW_SLOT,
 	DISSOLVE_VIEW_SLOT,
 	DISSOLVE_SAMPLER_SLOT,
+	EMISSIVE_VIEW_SLOT,
+	NORMAL_VIEW_SLOT,
 	movingBase,
 	uniformBlockLength,
 	MATERIAL_UNIFORM_SLOT,
@@ -105,6 +107,9 @@ export struct Material {
 	// and the dissolve's noise at DISSOLVE_VIEW_SLOT with its own sampler.
 	backTexture: TextureId;
 	dissolveTexture: TextureId;
+	// M37's maps, read with the base texture's sampler at EMISSIVE_VIEW_SLOT and NORMAL_VIEW_SLOT.
+	emissiveTexture: TextureId;
+	normalTexture: TextureId;
 	uniforms: UniformBlock;
 	// h3d.mat.Pass.layer: a list draws lower layers first, before any other order it has.
 	layer: int32;
@@ -198,6 +203,8 @@ export function keyed(
 		texture: NO_TEXTURE,
 		backTexture: NO_TEXTURE,
 		dissolveTexture: NO_TEXTURE,
+		emissiveTexture: NO_TEXTURE,
+		normalTexture: NO_TEXTURE,
 		uniforms: NO_UNIFORMS,
 		layer: 0,
 		castShadows: ShadowCasting.Off,
@@ -208,33 +215,41 @@ export function namesTexture(this material: Material): boolean {
 	return material.texture.isTexture();
 }
 
-// A material's context textures by role: 0 `texture`, 1 `backTexture`, 2 `dissolveTexture`.
-export const MATERIAL_TEXTURE_ROLES: int32 = 3;
+// A material's context textures by role: 0 `texture`, 1 `backTexture`, 2 `dissolveTexture`,
+// 3 `emissiveTexture`, 4 `normalTexture`.
+export const MATERIAL_TEXTURE_ROLES: int32 = 5;
 
 export function textureOf(this material: Material, role: int32): TextureId {
 	if (role == 0) { return material.texture; }
-	return role == 1 ? material.backTexture : material.dissolveTexture;
+	if (role == 1) { return material.backTexture; }
+	if (role == 2) { return material.dissolveTexture; }
+	return role == 3 ? material.emissiveTexture : material.normalTexture;
 }
 
 export function viewSlotOf(role: int32): int32 {
 	if (role == 0) { return 0; }
-	return role == 1 ? BACK_VIEW_SLOT : DISSOLVE_VIEW_SLOT;
+	if (role == 1) { return BACK_VIEW_SLOT; }
+	if (role == 2) { return DISSOLVE_VIEW_SLOT; }
+	return role == 3 ? EMISSIVE_VIEW_SLOT : NORMAL_VIEW_SLOT;
 }
 
-// The sampler slot a role binds its texture's sampler at; -1 for the back texture, which reads
-// with the base texture's.
+// The sampler slot a role binds its texture's sampler at; -1 for a role that reads with the base
+// texture's.
 export function samplerSlotOf(role: int32): int32 {
 	if (role == 0) { return 0; }
-	return role == 1 ? -1 : DISSOLVE_SAMPLER_SLOT;
+	return role == 2 ? DISSOLVE_SAMPLER_SLOT : -1;
 }
 
-// The roles whose texels are colour, so their alpha must match the program's (M27).
+// The roles whose texels are colour, so their alpha must match the program's (M27); the noise
+// and the normal map are data.
 export function colorRole(role: int32): boolean {
-	return role != 2;
+	return role != 2 && role != 4;
 }
 
-// The raw view a material binds at `slot` (texture0 to texture3), and its raw sampler.
+// The raw view a material binds at `slot` (texture0 to texture3, 0 past them), and its raw
+// sampler.
 export function rawView(this material: Material, slot: int32): uint32 {
+	if (slot > 3) { return 0; }
 	if (slot == 0) { return material.texture0; }
 	if (slot == 1) { return material.texture1; }
 	return slot == 2 ? material.texture2 : material.texture3;

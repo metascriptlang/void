@@ -31,6 +31,7 @@ import {
 	MATERIAL_ALPHA_KILL,
 	SHADOW_VIEW_SLOT,
 	SHADOW_SAMPLER_SLOT,
+	NORMAL_VIEW_SLOT,
 } from "./gpu3d";
 import {
 	PassState,
@@ -944,6 +945,8 @@ function letGoOfMaterial(context: DrawContext, index: int32): int32 {
 	context.materials[index].texture = NO_TEXTURE;
 	context.materials[index].backTexture = NO_TEXTURE;
 	context.materials[index].dissolveTexture = NO_TEXTURE;
+	context.materials[index].emissiveTexture = NO_TEXTURE;
+	context.materials[index].normalTexture = NO_TEXTURE;
 	context.materialBlocks[index] = NO_UNIFORMS;
 	context.materialHolders[index] = 0;
 	vacate(context.materialSlots, index);
@@ -1303,6 +1306,7 @@ function bindItem(
 	context.bindings[GPU3D_BINDING_VIEW + 3] = material.texture3;
 	context.bindings[GPU3D_BINDING_SAMPLER] = material.sampler0;
 	context.bindings[GPU3D_BINDING_SAMPLER + 1] = material.sampler1;
+	context.bindings[GPU3D_BINDING_VIEW + NORMAL_VIEW_SLOT] = 0;
 	for (let role = 0; role < MATERIAL_TEXTURE_ROLES; role++) {
 		const texture: TextureId = material.textureOf(role);
 		if (!texture.isTexture()) { continue; }
