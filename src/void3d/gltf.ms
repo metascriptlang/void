@@ -31,6 +31,8 @@ import {
 	addVertex,
 	addTexturedVertex,
 	addTriangle,
+	addTangents,
+	addGivenTangents,
 	hasRoomFor,
 } from "./meshData";
 
@@ -150,8 +152,11 @@ export const GLTF_DEFAULT_CUTOFF: float32 = 0.5;
 // when the material emits (a non-zero `emissive` and `emissiveStrength`); one with no emissive
 // map of its own names the loader's 1x1 white texture, as M37's emissive key requires a map. The
 // same white stands in for a base colour texture when an emitting or normal-mapped material has
-// none, so `texture` is a texture whenever either role is. `emissive` is glTF's linear
-// `emissiveFactor`; `emissiveStrength` is KHR_materials_emissive_strength's, default 1.
+// none, so `texture` is a texture whenever either role is. A material's textures share one filter
+// and wrap, because the renderer reads its emissive and normal maps with the base texture's
+// sampler (draw.ms textureFits); a white is made with the sampler its material's textures use.
+// `emissive` is glTF's linear `emissiveFactor`; `emissiveStrength` is
+// KHR_materials_emissive_strength's, default 1.
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
@@ -160,6 +165,7 @@ export struct GltfMaterial {
 	emissiveTexture: int32;
 	emissive: Vec3;
 	emissiveStrength: float32;
+	normalTexture: int32;
 }
 
 export struct GltfData {
@@ -196,7 +202,7 @@ const DEFAULT_READ: MaterialRead = {
 		texture: NO_TEXTURE_INDEX, doubleSided: false,
 		alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 		emissiveTexture: NO_TEXTURE_INDEX, emissive: { x: 0.0, y: 0.0, z: 0.0 },
-		emissiveStrength: 1.0,
+		emissiveStrength: 1.0, normalTexture: NO_TEXTURE_INDEX,
 	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
 	realUvs: false,
@@ -349,6 +355,29 @@ function materialIndexOf(primitive: JsonValue, materialCount: int32): Result<int
 	return Result.ok(index);
 }
 
+// glTF 2.0 §3.7.2.1 TANGENT: xyz a unit vector, w the bitangent's sign, +1 or -1.
+function pushTangent(
+	ref tangents: Vec<float32>,
+	buffer: Readonly<Span<uint8>>,
+	offset: int32,
+	i: int32,
+): Result<int32, GltfError> {
+	const at: int32 = offset + i * 16;
+	const direction: Vec3 = vec3At(buffer, at, 0);
+	const sign: float32 = float32At(buffer, at + 12);
+	if (!isFiniteVec3(direction)) { return Result.err(GltfError.OutOfRange); }
+	const length: float32 =
+		direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
+	if (length < 0.999 || length > 1.001 || (sign != 1.0 && sign != -1.0)) {
+		return Result.err(GltfError.Unsupported);
+	}
+	tangents.push(direction.x);
+	tangents.push(direction.y);
+	tangents.push(direction.z);
+	tangents.push(sign);
+	return Result.ok(i);
+}
+
 function loadMesh(
 	primitive: JsonValue,
 	read: MaterialRead,
@@ -407,7 +436,21 @@ function loadMesh(
 		}
 		uvView = decoded.value;
 	}
+	const tangented: boolean = read.material.normalTexture != NO_TEXTURE_INDEX;
+	let tangentView: AccessorView = { offset: 0, count: 0 };
+	if (tangented && !isNull(fieldOf(attributes, "TANGENT"))) {
+		const decoded: Result<AccessorView, GltfError> = accessorView(
+			accessors, views, bufferLength,
+			intField(attributes, "TANGENT", -1), COMPONENT_FLOAT, "VEC4", 4,
+		);
+		if (!decoded.ok) { return Result.err(decoded.error); }
+		if (decoded.value.count != positions.value.count) {
+			return Result.err(GltfError.CountMismatch);
+		}
+		tangentView = decoded.value;
+	}
 	const count: int32 = positions.value.count;
+	let tangents: Vec<float32> = [];
 	let data: MeshData = textured ? MeshData.withUvs() : MeshData.empty();
 	if (!data.hasRoomFor(count)) { return Result.err(GltfError.MeshTooLarge); }
 	for (let i = 0; i < count; i++) {
@@ -445,6 +488,11 @@ function loadMesh(
 			? addTexturedVertex(data, position, normal, uv, color)
 			: addVertex(data, position, normal, color);
 		if (!added.ok) { return Result.err(GltfError.MeshTooLarge); }
+		if (tangentView.count > 0) {
+			const tangent: Result<int32, GltfError> =
+				pushTangent(tangents, buffer, tangentView.offset, i);
+			if (!tangent.ok) { return Result.err(tangent.error); }
+		}
 	}
 	const indexAccessor: int32 = intField(primitive, "indices", -1);
 	if (indexAccessor < 0) { return Result.err(GltfError.Unsupported); }
@@ -460,6 +508,11 @@ function loadMesh(
 		const c: int32 = uint16At(buffer, indices.value.offset, t + 2);
 		const tri: Result<int32, MeshError> = addTriangle(data, a, b, c);
 		if (!tri.ok) { return Result.err(GltfError.BadIndex); }
+	}
+	if (tangented) {
+		const closed: Result<int32, MeshError> =
+			tangentView.count > 0 ? addGivenTangents(data, tangents) : addTangents(data);
+		if (!closed.ok) { return Result.err(GltfError.Unsupported); }
 	}
 	return Result.ok(data);
 }
@@ -721,10 +774,59 @@ function keepsAlpha(
 	return Result.ok(translucent);
 }
 
-function whiteTexture(): TextureData {
-	return {
-		pixels: [WHITE_TEXEL], width: 1, height: 1, filter: FilterMode.Linear, wrap: Wrap.Clamp,
-	};
+function sharedSampling(ref data: GltfData, material: GltfMaterial): Result<Sampling, GltfError> {
+	let shared: Sampling = { filter: FilterMode.Linear, wrap: Wrap.Clamp };
+	let found: boolean = false;
+	for (const index of [material.texture, material.emissiveTexture, material.normalTexture]) {
+		if (index == NO_TEXTURE_INDEX) { continue; }
+		const texture: TextureData = data.textures[index];
+		const sampling: Sampling = { filter: texture.filter, wrap: texture.wrap };
+		if (found && (sampling.filter != shared.filter || sampling.wrap != shared.wrap)) {
+			return Result.err(GltfError.UnsupportedSampler);
+		}
+		shared = sampling;
+		found = true;
+	}
+	return Result.ok(shared);
+}
+
+function whiteFor(ref data: GltfData, ref whites: Vec<int32>, sampling: Sampling): int32 {
+	for (const index of whites) {
+		if (data.textures[index].filter == sampling.filter
+			&& data.textures[index].wrap == sampling.wrap) {
+			return index;
+		}
+	}
+	const index: int32 = data.textures.length as int32;
+	data.textures.push({
+		pixels: [WHITE_TEXEL], width: 1, height: 1, filter: sampling.filter, wrap: sampling.wrap,
+	});
+	whites.push(index);
+	return index;
+}
+
+// Gives a material the white texture for each role it needs and has no image for: the emissive
+// map of an emitting one, and the base texture of an emitting or normal-mapped one.
+function substituteWhites(
+	ref data: GltfData,
+	ref reads: Vec<MaterialRead>,
+): Result<int32, GltfError> {
+	let whites: Vec<int32> = [];
+	for (let i = 0; i < (reads.length as int32); i++) {
+		const material: GltfMaterial = data.materials[i];
+		const sampling: Sampling = try sharedSampling(data, material);
+		const wantsEmissive: boolean =
+			reads[i].emits && material.emissiveTexture == NO_TEXTURE_INDEX;
+		const wantsBase: boolean = (reads[i].emits || material.normalTexture != NO_TEXTURE_INDEX)
+			&& material.texture == NO_TEXTURE_INDEX;
+		if (wantsEmissive || wantsBase) {
+			const white: int32 = whiteFor(data, whites, sampling);
+			if (wantsEmissive) { data.materials[i].emissiveTexture = white; }
+			if (wantsBase) { data.materials[i].texture = white; }
+		}
+		reads[i].material = data.materials[i];
+	}
+	return Result.ok(0);
 }
 
 function forceOpaque(texels: Span<uint32>): void {
@@ -795,16 +897,36 @@ function loadEmission(
 	return Result.ok(true);
 }
 
+// glTF 2.0 §3.9.3 normalTexture: `scale` multiplies the map's xy (three.js GLTFLoader.js:3747-3756
+// sets normalScale from it). The normal-map key has no scale, so one other than 1 is refused.
+function loadNormalTexture(
+	material: JsonValue,
+	textureCount: int32,
+	ref read: MaterialRead,
+): Result<boolean, GltfError> {
+	const info: JsonValue = fieldOf(material, "normalTexture");
+	if (isNull(info)) { return Result.ok(false); }
+	const index: int32 = try textureInfoIndex(info, textureCount);
+	const scale: JsonValue = fieldOf(info, "scale");
+	if (!isNull(scale)) {
+		const value: float32 = try numberOf(scale);
+		if (value != 1.0) { return Result.err(GltfError.UnsupportedMaterial); }
+	}
+	read.material.normalTexture = index;
+	read.realUvs = true;
+	return Result.ok(true);
+}
+
 function loadMaterial(material: JsonValue, textureCount: int32): Result<MaterialRead, GltfError> {
 	if (material === null || material.kind != JsonKind.Object) {
 		return Result.err(GltfError.Unsupported);
 	}
-	if (!isNull(fieldOf(material, "normalTexture"))
-		|| !isNull(fieldOf(material, "occlusionTexture"))) {
+	if (!isNull(fieldOf(material, "occlusionTexture"))) {
 		return Result.err(GltfError.UnsupportedMaterial);
 	}
 	let read: MaterialRead = DEFAULT_READ;
 	const _emits: boolean = try loadEmission(material, textureCount, read);
+	const _normals: boolean = try loadNormalTexture(material, textureCount, read);
 	const alphaMode: JsonValue = fieldOf(material, "alphaMode");
 	if (!isNull(alphaMode)) {
 		if (alphaMode.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
@@ -962,20 +1084,7 @@ function decodeGltf(
 	for (let i = 0; i < textureCount; i++) {
 		if (!(try keepsAlpha(data.materials, i))) { forceOpaque(data.textures[i].pixels); }
 	}
-	let white: int32 = NO_TEXTURE_INDEX;
-	for (let i = 0; i < materialCount; i++) {
-		const wantsEmissive: boolean =
-			reads[i].emits && reads[i].material.emissiveTexture == NO_TEXTURE_INDEX;
-		const wantsBase: boolean = reads[i].emits && reads[i].material.texture == NO_TEXTURE_INDEX;
-		if (!wantsEmissive && !wantsBase) { continue; }
-		if (white == NO_TEXTURE_INDEX) {
-			white = data.textures.length as int32;
-			data.textures.push(whiteTexture());
-		}
-		if (wantsEmissive) { data.materials[i].emissiveTexture = white; }
-		if (wantsBase) { data.materials[i].texture = white; }
-		reads[i].material = data.materials[i];
-	}
+	const _whites: int32 = try substituteWhites(data, reads);
 	let runs: Vec<PrimitiveRun> = [];
 	for (let i = 0; i < meshCount; i++) {
 		const primitives: JsonValue = try primitivesOf(meshArray.at(i));

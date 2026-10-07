@@ -35,6 +35,7 @@ import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, stride, vertexCount } from "../void3d/meshData";
 import { UniformError } from "../void3d/uniformPool";
 import { rgbaPng, twoBlockJpeg } from "./imageBytes";
+import { approx } from "./helpers";
 
 const F32_ZERO: uint32 = 0x00000000;
 const F32_QUARTER: uint32 = 0x3E800000;
@@ -57,7 +58,7 @@ function pushFloats(ref out: Vec<uint8>, bits: Readonly<Span<uint32>>): void {
 
 // A unit quad facing +z: positions at 0, normals at 48, uvs at 96 (the texture's top row on
 // the quad's top edge), colours at 128 (half grey), indices at 176, the PNG at 188 and the
-// JPEG right after it.
+// JPEG right after it, then four TANGENTs (1, 0, 0, 1).
 function quadBuffer(): Vec<uint8> {
 	let out: Vec<uint8> = [];
 	pushFloats(out, [
@@ -73,7 +74,12 @@ function quadBuffer(): Vec<uint8> {
 	}
 	for (const b of rgbaPng()) { out.push(b); }
 	for (const b of twoBlockJpeg()) { out.push(b); }
+	for (let i = 0; i < 4; i++) { pushFloats(out, [F32_ONE, F32_ZERO, F32_ZERO, F32_ONE]); }
 	return out;
+}
+
+function tangentOffset(): int32 {
+	return IMAGE_OFFSET + pngLength() + jpegLength();
 }
 
 function pngLength(): int32 {
@@ -130,7 +136,8 @@ function documentOf(parts: Parts, bufferExtra: string = ""): string {
 		+ "{\"bufferView\":3,\"componentType\":5126,\"count\":4,\"type\":\"VEC3\"},"
 		+ "{\"bufferView\":4,\"componentType\":5123,\"count\":6,\"type\":\"SCALAR\"},"
 		+ "{\"bufferView\":2,\"componentType\":5123,\"normalized\":true,\"count\":4,"
-		+ "\"type\":\"VEC2\"}],"
+		+ "\"type\":\"VEC2\"},"
+		+ "{\"bufferView\":7,\"componentType\":5126,\"count\":4,\"type\":\"VEC4\"}],"
 		+ "\"bufferViews\":["
 		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":48},"
 		+ "{\"buffer\":0,\"byteOffset\":48,\"byteLength\":48},"
@@ -140,8 +147,9 @@ function documentOf(parts: Parts, bufferExtra: string = ""): string {
 		+ "{\"buffer\":0,\"byteOffset\":" + `${IMAGE_OFFSET}` + ",\"byteLength\":"
 		+ `${pngLength()}` + "},"
 		+ "{\"buffer\":0,\"byteOffset\":" + `${imageEnd}` + ",\"byteLength\":"
-		+ `${jpegLength()}` + "}],"
-		+ "\"buffers\":[{\"byteLength\":" + `${imageEnd + jpegLength()}` + bufferExtra + "}]}";
+		+ `${jpegLength()}` + "},"
+		+ "{\"buffer\":0,\"byteOffset\":" + `${tangentOffset()}` + ",\"byteLength\":64}],"
+		+ "\"buffers\":[{\"byteLength\":" + `${tangentOffset() + 64}` + bufferExtra + "}]}";
 }
 
 function loaded(parts: Parts): Result<GltfData, GltfError> {
@@ -352,7 +360,6 @@ test "MASK and BLEND keep the texture's and the factor's alpha, OPAQUE ignores b
 
 test "a material this renderer cannot draw is refused by name" {
 	for (const material of [
-		"{\"normalTexture\":{\"index\":0}}",
 		"{\"occlusionTexture\":{\"index\":0}}",
 		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,\"texCoord\":1}}}",
 		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
@@ -448,6 +455,7 @@ function sourceOf(
 	return {
 		texture: texture, doubleSided: doubleSided, alphaMode: alphaMode, alphaKill: alphaKill,
 		emissiveTexture: -1, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
+		normalTexture: -1,
 	};
 }
 
@@ -591,6 +599,7 @@ test "an emissive factor with no map takes a 1x1 white map and the textured layo
 	assert (data.textures.length as int32) == 2;
 	assert data.textures[1].width == 1 && data.textures[1].height == 1;
 	assert data.textures[1].pixels[0] == WHITE;
+	assert data.textures[1].filter == FilterMode.Nearest && data.textures[1].wrap == Wrap.Clamp;
 	const material: GltfMaterial = data.materials[0];
 	assert material.texture == 0 && material.emissiveTexture == 1;
 	assert material.emissive.x == 1.0 && material.emissive.y == 0.25 && material.emissive.z == 0.0;
@@ -694,3 +703,141 @@ test "an emissive material under BLEND has a program, under MASK it is refused b
 	if (!refused.ok) { assert refused.error == GltfSceneError.UndeclaredProgram; }
 	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
 }
+
+const NORMAL_MAP: string = "\"normalTexture\":{\"index\":0}";
+const NORMAL_BASE: string = "{" + NORMAL_MAP + TEXTURED_BASE + "}";
+const WITH_TANGENTS: string = ALL_ATTRIBUTES + ",\"TANGENT\":6";
+
+test "a normal map takes the file's TANGENT as it comes, with its sign" {
+	const read = loaded({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE });
+	assert read.ok;
+	if (!read.ok) { return; }
+	const mesh: MeshData = read.value.meshes[0];
+	assert mesh.hasUvs && mesh.hasTangents && mesh.stride() == 16 && mesh.vertexCount() == 4;
+	assert mesh.vertices[12] == 1.0 && mesh.vertices[13] == 0.0 && mesh.vertices[15] == 1.0;
+	assert mesh.vertices[16 + 12] == 1.0 && mesh.vertices[16 + 6] == 1.0;
+	assert read.value.materials[0].normalTexture == 0 && read.value.materials[0].texture == 0;
+	let flipped: Vec<uint8> = quadBuffer();
+	const sign: int32 = tangentOffset() + 16 * 2 + 12;
+	flipped[sign + 3] = 0xBF as uint8;
+	const mirrored = loadGltf(
+		documentOf({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE }),
+		flipped,
+	);
+	assert mirrored.ok;
+	if (mirrored.ok) {
+		assert mirrored.value.meshes[0].vertices[32 + 15] == -1.0;
+		assert mirrored.value.meshes[0].vertices[15] == 1.0;
+	}
+}
+
+test "a normal map without TANGENT gets the tangents addTangents derives from the uvs" {
+	const read = loaded({ ...texturedParts(), materials: NORMAL_BASE });
+	assert read.ok;
+	if (!read.ok) { return; }
+	const mesh: MeshData = read.value.meshes[0];
+	assert mesh.hasTangents && mesh.stride() == 16;
+	for (let i = 0; i < 4; i++) {
+		assert approx(mesh.vertices[i * 16 + 12], 1.0) && approx(mesh.vertices[i * 16 + 13], 0.0);
+		assert approx(mesh.vertices[i * 16 + 14], 0.0) && approx(mesh.vertices[i * 16 + 15], 1.0);
+	}
+}
+
+test "a TANGENT with no normal map is left out, and a normal map alone takes the white base" {
+	const ignored = loaded({ ...texturedParts(), attributes: WITH_TANGENTS });
+	assert ignored.ok;
+	if (ignored.ok) { assert !ignored.value.meshes[0].hasTangents; }
+	const bare = loaded({
+		...texturedParts(), materials: "{" + NORMAL_MAP + "}",
+	});
+	assert bare.ok;
+	if (!bare.ok) { return; }
+	const material: GltfMaterial = bare.value.materials[0];
+	assert material.normalTexture == 0 && material.texture == 1 && material.emissiveTexture == -1;
+	assert bare.value.textures[1].pixels[0] == WHITE;
+	assert bare.value.textures[1].filter == FilterMode.Nearest;
+	assert bare.value.textures[1].wrap == Wrap.Clamp;
+	assert bare.value.meshes[0].hasUvs && bare.value.meshes[0].hasTangents;
+}
+
+test "a normal map the renderer cannot read as the file means it is refused by name" {
+	const parts: Parts = texturedParts();
+	const scaled = "{\"normalTexture\":{\"index\":0,\"scale\":2.0}}";
+	assert refusedAs({ ...parts, materials: scaled }, GltfError.UnsupportedMaterial);
+	const unit = "{\"normalTexture\":{\"index\":0,\"scale\":1.0}}";
+	assert loaded({ ...parts, materials: unit }).ok;
+	const second = "{\"normalTexture\":{\"index\":0,\"texCoord\":1}}";
+	assert refusedAs({ ...parts, materials: second }, GltfError.UnsupportedMaterial);
+	const far = "{\"normalTexture\":{\"index\":3}}";
+	assert refusedAs({ ...parts, materials: far }, GltfError.BadReference);
+	const uvless = { ...parts, attributes: WITHOUT_UVS, materials: "{" + NORMAL_MAP + "}" };
+	assert refusedAs(uvless, GltfError.MissingTexCoord);
+	const withoutW = ALL_ATTRIBUTES + ",\"TANGENT\":2";
+	const wrongType = { ...parts, attributes: withoutW, materials: NORMAL_BASE };
+	assert refusedAs(wrongType, GltfError.Unsupported);
+	let badSign: Vec<uint8> = quadBuffer();
+	badSign[tangentOffset() + 15] = 0x3F as uint8;
+	badSign[tangentOffset() + 14] = 0x00 as uint8;
+	badSign[tangentOffset() + 13] = 0x00 as uint8;
+	badSign[tangentOffset() + 12] = 0x00 as uint8;
+	const odd = loadGltf(
+		documentOf({ ...parts, attributes: WITH_TANGENTS, materials: NORMAL_BASE }), badSign,
+	);
+	assert !odd.ok;
+	if (!odd.ok) { assert odd.error == GltfError.Unsupported; }
+}
+
+test "the maps of one material share one sampler, because the renderer reads them with one" {
+	const two: Parts = {
+		...texturedParts(), textures: "{\"source\":0,\"sampler\":0},{\"source\":0}",
+	};
+	const emissive = emitting("[1.0,1.0,1.0]", ",\"emissiveTexture\":{\"index\":1}", TEXTURED_BASE);
+	assert refusedAs({ ...two, materials: emissive }, GltfError.UnsupportedSampler);
+	const normal = "{\"normalTexture\":{\"index\":1}" + TEXTURED_BASE + "}";
+	assert refusedAs({ ...two, materials: normal }, GltfError.UnsupportedSampler);
+	const agreeing = emitting("[1.0,1.0,1.0]", ",\"emissiveTexture\":{\"index\":0}", TEXTURED_BASE);
+	assert loaded({ ...two, materials: agreeing }).ok;
+	const linear = emitting("[1.0,1.0,1.0]", ",\"emissiveTexture\":{\"index\":1}");
+	const white = loaded({ ...two, materials: linear });
+	assert white.ok;
+	if (white.ok) {
+		const base: GltfMaterial = white.value.materials[0];
+		assert white.value.textures[base.texture].filter == FilterMode.Linear;
+		assert white.value.textures[base.texture].wrap == Wrap.Repeat;
+	}
+}
+
+test "a normal-mapped material is M37's normal-map key, with or without emission" {
+	const mapped =
+		loaded({ ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE });
+	assert mapped.ok;
+	if (!mapped.ok) { return; }
+	const plain: ProgramKey = ProgramKey.of(Program.LitTextured).withShadowed();
+	const key: ProgramKey = gltfProgramOf(mapped.value.materials[0]);
+	assert key == plain.withNormalMap() && declares(key);
+	assert drawnIn(key, Preset.PixelArt, true).ok;
+	const block: Vec<float32> =
+		gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), mapped.value.materials[0], key);
+	assert (block.length as int32) == MATERIAL_UNIFORM_LENGTH;
+	const both = loaded({
+		...texturedParts(), attributes: WITH_TANGENTS,
+		materials: "{" + NORMAL_MAP + ",\"emissiveFactor\":[1.0,0.0,0.0]" + TEXTURED_BASE + "}",
+	});
+	assert both.ok;
+	if (!both.ok) { return; }
+	const lit: ProgramKey = gltfProgramOf(both.value.materials[0]);
+	assert lit == plain.withEmissive().withNormalMap() && declares(lit);
+	let context: DrawContext = DrawContext.withUniformCapacity(64);
+	const cut = loaded({
+		...texturedParts(), attributes: WITH_TANGENTS,
+		materials: "{" + NORMAL_MAP + ",\"alphaMode\":\"MASK\"" + TEXTURED_BASE + "}",
+	});
+	assert cut.ok;
+	if (!cut.ok) { return; }
+	const refused: Result<GltfAssets, GltfSceneError> =
+		addGltfAssets(context, cut.value, setupOf([3.0, -1.0, 0.0, 0.0]));
+	assert !refused.ok;
+	if (!refused.ok) { assert refused.error == GltfSceneError.UndeclaredProgram; }
+	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
+}
+

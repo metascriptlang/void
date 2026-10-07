@@ -33,6 +33,7 @@ import {
 	declares,
 	emissiveBase,
 	withEmissive,
+	withNormalMap,
 } from "./gpu3d";
 import { Material, MaterialKind, UniformBlock, passFor } from "./material";
 import { vec3, linearToSrgb } from "../math/math3d";
@@ -97,6 +98,12 @@ function isTexturedAt(data: GltfData, mesh: int32): boolean {
 	return material != DEFAULT_MATERIAL && data.materials[material].texture != NO_TEXTURE_INDEX;
 }
 
+function isNormalMappedAt(data: GltfData, mesh: int32): boolean {
+	const material: int32 = data.meshMaterials[mesh];
+	return material != DEFAULT_MATERIAL
+		&& data.materials[material].normalTexture != NO_TEXTURE_INDEX;
+}
+
 function hasTextureOrNone(texture: int32, textureCount: int32): boolean {
 	return texture >= NO_TEXTURE_INDEX && texture < textureCount;
 }
@@ -111,13 +118,16 @@ function isConsistent(data: GltfData): boolean {
 			|| !hasTextureOrNone(material.emissiveTexture, textureCount)) {
 			return false;
 		}
-		const emits: boolean = material.emissiveTexture != NO_TEXTURE_INDEX;
-		if (emits && material.texture == NO_TEXTURE_INDEX) { return false; }
+		if (!hasTextureOrNone(material.normalTexture, textureCount)) { return false; }
+		const maps: boolean = material.emissiveTexture != NO_TEXTURE_INDEX
+			|| material.normalTexture != NO_TEXTURE_INDEX;
+		if (maps && material.texture == NO_TEXTURE_INDEX) { return false; }
 	}
 	for (let i = 0; i < meshCount; i++) {
 		const material: int32 = data.meshMaterials[i];
 		if (material < DEFAULT_MATERIAL || material >= materialCount) { return false; }
 		if (isTexturedAt(data, i) != data.meshes[i].hasUvs) { return false; }
+		if (isNormalMappedAt(data, i) != data.meshes[i].hasTangents) { return false; }
 	}
 	return true;
 }
@@ -125,6 +135,7 @@ function isConsistent(data: GltfData): boolean {
 const DEFAULT_SOURCE: GltfMaterial = {
 	texture: NO_TEXTURE_INDEX, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 	emissiveTexture: NO_TEXTURE_INDEX, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
+	normalTexture: NO_TEXTURE_INDEX,
 };
 
 function kindOf(mode: GltfAlphaMode): MaterialKind {
@@ -136,13 +147,16 @@ function kindOf(mode: GltfAlphaMode): MaterialKind {
 }
 
 // The key a material draws with: a textured one when it names a base texture, and M37's emissive
-// key when it emits. A kind or feature pair the build declares no program for is refused by
-// addGltfAssets before anything is made (UndeclaredProgram).
+// and normal-map keys when it emits or has a normal map. A kind or feature pair the build
+// declares no program for is refused by addGltfAssets before anything is made
+// (UndeclaredProgram).
 export function gltfProgramOf(source: GltfMaterial): ProgramKey {
 	const lit: Program =
 		source.texture != NO_TEXTURE_INDEX ? Program.LitTextured : Program.Lit;
 	const key: ProgramKey = Material.ofKind(lit, kindOf(source.alphaMode)).program;
-	return source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
+	const emitting: ProgramKey =
+		source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
+	return source.normalTexture != NO_TEXTURE_INDEX ? emitting.withNormalMap() : emitting;
 }
 
 // The material's block: the setup's floats with the double-sided flag and alpha kill written
@@ -174,6 +188,7 @@ function madeMaterial(
 	source: GltfMaterial,
 	texture: TextureId,
 	emissive: TextureId,
+	normal: TextureId,
 ): Result<MaterialId, GltfSceneError> {
 	const program: ProgramKey = gltfProgramOf(source);
 	const doubleSided: boolean = source.doubleSided;
@@ -192,6 +207,7 @@ function madeMaterial(
 		pass: pass,
 		texture: texture,
 		emissiveTexture: emissive,
+		normalTexture: normal,
 		uniforms: reserved.value,
 	};
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, material);
@@ -253,15 +269,18 @@ export function addGltfAssets(
 		const emissive: TextureId = material.emissiveTexture == NO_TEXTURE_INDEX
 			? NO_TEXTURE
 			: assets.textures[material.emissiveTexture];
+		const normal: TextureId = material.normalTexture == NO_TEXTURE_INDEX
+			? NO_TEXTURE
+			: assets.textures[material.normalTexture];
 		const made: Result<MaterialId, GltfSceneError> =
-			madeMaterial(context, setup, material, texture, emissive);
+			madeMaterial(context, setup, material, texture, emissive, normal);
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}
 	const defaultIndex: int32 = assets.materials.length as int32;
 	if (usesDefaultMaterial(data)) {
 		const made: Result<MaterialId, GltfSceneError> =
-			madeMaterial(context, setup, DEFAULT_SOURCE, NO_TEXTURE, NO_TEXTURE);
+			madeMaterial(context, setup, DEFAULT_SOURCE, NO_TEXTURE, NO_TEXTURE, NO_TEXTURE);
 		if (!made.ok) { return undone(context, assets, made.error); }
 		assets.materials.push(made.value);
 	}

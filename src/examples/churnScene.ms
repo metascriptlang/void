@@ -178,6 +178,7 @@ function modelData(): GltfData {
 			{
 				texture: 0, doubleSided: true, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 				emissiveTexture: -1, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
+				normalTexture: -1,
 			},
 		],
 		textures: [checker()],
