@@ -68,3 +68,5 @@ that a joiner or selector loads no fallback face of its own (`src/test/fontCheck
 ```sh
 python tests/fonts/cmapEdges.py   # rewrites tests/fonts/cmap/; no fontTools needed, byte-identical
 ```
+
+`cffSynthetic.otf` (692 B) is a synthetic CFF face with our own art, no third-party licence: `A` is one cubic curve, `B` a box of lines, for the SDF regime's cubic fallback (`src/test/labelTextSdfCheck.ms`); `python tests/fonts/cffSynthetic.py` rebuilds it.
