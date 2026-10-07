@@ -1979,7 +1979,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`svg_renderer.rs:81`, `SMOOTH_SVG_SCALE_FACTOR`), and the quad covers `ceil(device)` so the
   linear sampler averages 2x2 texels per pixel. `icon.ms` owns the registry
   (`registerIcon(source)` answers an `IconId` or the module's `SvgMaskRefusal`; ids are not
-  reused; a build without `-d:voidSvg` stops by name at the first call,
+  reused and a registration is permanent, since nothing in a scene frees the parsed icon;
+  a build without `-d:voidSvg` stops by name at the first call,
   `tests/aborts/iconOff.ms`) and each node's retained placement, which re-acquires its tile when
   the raster size changes and gives it back when the node leaves the tree.
   - **The Mask page kind is real.** `PageKind.Mask` is built under `VOID2D_SVG` (the
@@ -1990,19 +1991,24 @@ changes described above on today's compiler; the P4 web archive also takes its r
     applies text's (`gpui_wgpu/src/shaders.wgsl:1247-1258`). A mask tile's key is the icon id in
     the face field, the mask height in the glyph field and the width in the size field, so two
     sizes are two tiles (`maskKey`); the kind lane keeps a mask and a glyph with the same
-    numbers apart. `GlyphAtlas.acquireMask(key, w, h, alpha)` blits after the caller rasterized;
-    `retainMask(key)` is the hit path, so a hit costs no rasterization.
+    numbers apart. `GlyphAtlas.reserveMask(key, w, h)` takes the tile before anything is drawn,
+    `fillMask(tile, alpha)` blits it and `discard` gives it back when the raster fails, so an
+    atlas with no room costs no rasterization (`iconRasterizations()` counts them);
+    `acquireMask(key, w, h, alpha)` is the three in one; `retainMask(key)` is the hit path.
   - **Regime.** A uniform scale or a translation draws pixel-exact: the quad sits on whole
     device pixels, centred in the box when the rounded-up size differs from the true one. Any
     other transform rasterizes at the geometric mean of its axes, as labels do, and draws the quad
     through the node's affine. Icons always sample with `Smooth.On` (a nearest sampler would
-    drop the 2x supersample); `Smooth.Off` on an icon node is not honoured. A mask larger than a
+    drop the 2x supersample); `Smooth.Off` on an icon node is not honoured, and the sampler goes
+    back to the scene's after each icon (the SDF Label leaves its linear sampler set, which
+    only a scene with smoothing off can see). The quad covers `ceil(device)` pixels, so an icon
+    of 24.2 px draws up to one device pixel larger than its box, centred in it. A mask larger than a
     page, or an atlas with no room, draws nothing, is counted in `iconRefusals()`, reported once
-    per cause and retried the next frame as a refused label is.
+    per cause (`iconRefusalReports()`) and retried the next frame as a refused label is.
   - **Evidence.** T0 `src/test/iconCheck.ms` (11 tests: the registry, `maskSide`, a shared tile
     costing no second rasterization, two sizes as two tiles, the zero gutter, reclaim, the
     page-size refusal, key packing, the three atlas refusals), `src/test/iconOffCheck.ms` (the
-    module off), `src/test/nodeCheck.ms` (3), T1 snapshot `icon` and four tile-bookkeeping tests in
+    module off), `src/test/nodeCheck.ms` (4), T1 snapshot `icon` and five tile-bookkeeping tests in
     `tests/displayList/snapshot.ms`, aborts `iconUnregistered`, `iconNegativeSize` and `iconOff`;
     each new test was shown red by a local mutation (floor for ceil, no retain, a blit one texel
     wide, a nearest sampler, a skipped release, swapped width and height). T2 `icon/tinted` and
