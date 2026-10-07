@@ -50,12 +50,13 @@ export enum ShadowCasting {
 // The faces the shadow pass culls for a material. Main is Heaps' rule, `refreshProps` copying the
 // main pass's culling into the "shadow" pass (h3d/mat/Material.hx:283); the others are the
 // shadow pass's own culling that Heaps leaves to the caller (`getPass("shadow").culling`) and
-// three.js names `Material.shadowSide` (WebGLShadowMap.js:486-490).
+// three.js names `Material.shadowSide` (WebGLShadowMap.js:486-490) by the side it draws, so
+// CullBack is shadowSide FrontSide, CullFront is BackSide, None is DoubleSide.
 export enum ShadowCulling {
 	Main,
 	None,
-	Back,
-	Front,
+	CullBack,
+	CullFront,
 }
 
 // Heaps' Defaults.defaultKillAlphaThreshold, and glTF's alphaCutoff default.
@@ -200,8 +201,8 @@ export function shadowFace(this material: Material): Face {
 	return match (material.shadowCulling) {
 		ShadowCulling.Main => material.pass.culling,
 		ShadowCulling.None => Face.None,
-		ShadowCulling.Back => Face.Back,
-		ShadowCulling.Front => Face.Front,
+		ShadowCulling.CullBack => Face.Back,
+		ShadowCulling.CullFront => Face.Front,
 	};
 }
 
