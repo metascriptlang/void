@@ -47,24 +47,16 @@ export function ringPush(this r: DurationRing, ns: int64): void {
 	r.last = ns;
 }
 
-export function ringSorted(this r: DurationRing): Vec<int64> {
-	let sorted: Vec<int64> = new Array(0);
+export function ringSorted(this r: DurationRing): number[] {
+	const sorted: number[] = new Array(0);
 	const n: int32 = r.ringCount();
-	for (let i: int32 = 0; i < n; i++) {
-		const v: int64 = r.samples[i];
-		sorted.push(v);
-		let j: int32 = i;
-		while (j > 0 && sorted[j - 1] > v) {
-			sorted[j] = sorted[j - 1];
-			j = j - 1;
-		}
-		sorted[j] = v;
-	}
+	for (let i: int32 = 0; i < n; i++) { sorted.push(r.samples[i] as number); }
+	sorted.sort();
 	return sorted;
 }
 
-export function ringPercentile(this r: DurationRing, numerator: int32): int64 {
-	const n: int32 = r.ringCount();
+export function percentileOf(sorted: number[], numerator: int32): int64 {
+	const n: int32 = sorted.length as int32;
 	if (n == 0) {
 		console.log("void2d profiler: a percentile of an empty ring has no value");
 		unreachable;
@@ -73,8 +65,11 @@ export function ringPercentile(this r: DurationRing, numerator: int32): int64 {
 		console.log(`void2d profiler: a percentile is 0 to 100, got ${numerator}`);
 		unreachable;
 	}
-	const sorted: Vec<int64> = r.ringSorted();
-	return sorted[((n - 1) * numerator) / 100];
+	return sorted[((n - 1) * numerator) / 100] as int64;
+}
+
+export function ringPercentile(this r: DurationRing, numerator: int32): int64 {
+	return percentileOf(r.ringSorted(), numerator);
 }
 
 export function ringMax(this r: DurationRing): int64 {
@@ -278,9 +273,9 @@ export function present(
 	};
 }
 
-function padLeft(text: string, width: number): string {
+function padLeft(text: string, width: int32): string {
 	let out: string = text;
-	while ((out.length as int32) < (width as int32)) { out = " " + out; }
+	while ((out.length as int32) < width) { out = " " + out; }
 	return out;
 }
 
@@ -294,20 +289,22 @@ export function formatMs(ns: int64): string {
 
 const NO_READING: string = "   -- MS";
 
-function readingOf(r: DurationRing, numerator: int32): string {
-	if (r.ringCount() == 0) { return NO_READING; }
-	return formatMs(r.ringPercentile(numerator));
-}
-
 export function readoutLines(this p: FrameProfiler, mode: OverlayMode): Vec<string> {
 	let lines: Vec<string> = new Array(0);
 	if (mode == OverlayMode.Hidden) { return lines; }
 	const current: string = p.draws.ringCount() == 0 ? NO_READING : formatMs(p.draws.last);
 	lines.push(`CUR ${current}`);
 	if (mode == OverlayMode.Minimal) { return lines; }
-	lines.push(`1%  ${readingOf(p.draws, 99)}`);
-	lines.push(`10% ${readingOf(p.draws, 90)}`);
-	lines.push(`MAX ${readingOf(p.draws, 100)}`);
+	if (p.draws.ringCount() == 0) {
+		lines.push(`1%  ${NO_READING}`);
+		lines.push(`10% ${NO_READING}`);
+		lines.push(`MAX ${NO_READING}`);
+	} else {
+		const sorted: number[] = p.draws.ringSorted();
+		lines.push(`1%  ${formatMs(percentileOf(sorted, 99))}`);
+		lines.push(`10% ${formatMs(percentileOf(sorted, 90))}`);
+		lines.push(`MAX ${formatMs(percentileOf(sorted, 100))}`);
+	}
 	const shown: string = p.frames > FRAME_COUNT_SATURATION ? "LOTS" : `${p.frames}`;
 	lines.push(`FRAMES ${padLeft(shown, 5)}`);
 	return lines;
