@@ -17,7 +17,7 @@ build() {
 	label="$1"; flags="$2"
 	rm -rf "$OUT/$label" out/release/.cache
 	VOID_WEB_ENTRY=tests/experiments/modulesWeb.ms VOID_WEB_DEST="$OUT/$label" \
-		VOID_WEB_MSCFLAGS="$flags" sh scripts/build-web.sh > "$OUT/$label.log" 2>&1 \
+		VOID_WEB_MSCFLAGS="$flags" VOID_WEB_LOGDIR="$OUT/$label.logs" sh scripts/build-web.sh > "$OUT/$label.log" 2>&1 \
 		|| { echo "$label build failed, see $OUT/$label.log"; exit 1; }
 }
 
@@ -34,6 +34,10 @@ for module in $modules; do
 		off=$(wc -c < "$OUT/off/$backend/modulesWeb.wasm")
 		on=$(wc -c < "$OUT/$module/$backend/modulesWeb.wasm")
 		echo "WASM $module $backend off $off on $on delta $((on - off))"
+		if [ "$on" -le "$off" ]; then
+			echo "FAIL $module $backend: the module on is not larger than off, so the flag or the call path links nothing"
+			status=1
+		fi
 		if [ -f tests/bench/wasmBudget.txt ]; then
 			recorded=$(grep -E "^modulesWeb-$module $backend off " tests/bench/wasmBudget.txt | head -1 || true)
 			if [ -z "$recorded" ]; then

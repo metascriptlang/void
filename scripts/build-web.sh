@@ -12,6 +12,8 @@ DEST="${VOID_WEB_DEST:-web}"
 EXTRA_PASSC="${VOID_WEB_PASSC:-}"
 MSC_FLAGS="${VOID_WEB_MSCFLAGS:-}"
 NAME="$(basename "$ENTRY" .ms)"
+LOG_DIR="${VOID_WEB_LOGDIR:-/tmp}"
+mkdir -p "$LOG_DIR"
 
 cd "$(dirname "$0")/.."
 
@@ -45,15 +47,15 @@ build() {
 	rm -f "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data"
 	for i in 1 2 3 4; do
 		"$MSC" build $MSC_FLAGS "$ENTRY" --os=emcc --passC="$passc $EXTRA_PASSC" --passL="$passl" \
-			--output="out/release/$NAME.js" >/tmp/void_web_$target.log 2>&1 || true
-		if grep -q "Built" /tmp/void_web_$target.log && [ -f "out/release/$NAME.wasm" ]; then
+			--output="out/release/$NAME.js" >"$LOG_DIR/void_web_$target.log" 2>&1 || true
+		if grep -q "Built" "$LOG_DIR/void_web_$target.log" && [ -f "out/release/$NAME.wasm" ]; then
 			mkdir -p "$dest"
 			cp "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data" "$dest/"
 			echo "$target → $dest (attempt $i)"
 			return 0
 		fi
 	done
-	echo "$target FAILED after retries — see /tmp/void_web_$target.log"; return 1
+	echo "$target FAILED after retries — see $LOG_DIR/void_web_$target.log"; return 1
 }
 
 PRELOAD="${VOID_WEB_PRELOAD:---preload-file assets/test.png --preload-file assets/font.ttf}"
