@@ -179,7 +179,6 @@ int voidCaptureGrab(int slot) {
 	if (!flip) return 0;
 	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, flip);
-	// glReadPixels hands back the bottom row first; every other backend here is top row first.
 	for (int y = 0; y < height; y++) {
 		memcpy(out + (size_t)y * (size_t)width * 4u,
 		       flip + (size_t)(height - 1 - y) * (size_t)width * 4u,

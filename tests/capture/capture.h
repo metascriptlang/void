@@ -15,7 +15,8 @@
 
 #define VOID_CAPTURE_SLOTS 2
 
-// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop. Names the path that voidCaptureGrab would take.
+// 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop. Names the path
+// that voidCaptureGrab would take.
 int voidCaptureBackend(void);
 
 // The GL driver's GL_RENDERER string, or "" when this build reads back nothing through GL.

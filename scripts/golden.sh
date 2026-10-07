@@ -121,6 +121,7 @@ SKIP the second grab was not taken"
 	check 1 "EXCLUDED followed by FAIL is not a capture" "EXCLUDED mixed/void3dTarget why
 FAIL mixed/void3dTarget it ran anyway"
 
+	# These two call golden.sh itself, so a regressed refusal would start a real build and capture.
 	refused() {  # refused <label> <golden.sh args>
 		label="$1"
 		shift
