@@ -1843,6 +1843,39 @@ changes described above on today's compiler; the P4 web archive also takes its r
   the bounds 0.075 / 0.40 / 0.94-1.07; the worst row is zoom 0.5. Control: dropping the
   derivative scale (`texels + 0.5`) fails it at rotated 13 px (mae 0.135) and zoom 0.5 (0.152).
   Owed: WebGL2 for the same rows (Yoga web link).
+
+  program's plain label within one level). Owed: the D3D11 capture of the four rows and of the
+  five that move, the oracle's first run (its bounds are the T0 table's, provisional until the
+  capture is measured) and its control, WebGL2 for the same rows.
+  **Budget rows and module weight, built 2026-10-08 (S8).** `tests/bench/benchTextSdf.ms` is
+  the text bench with `-d:voidSdfText`: the 40-line code block is zoomed 0.5x to 4x, then turned
+  through a full circle, then settles at 1x; `baseline.json` `sdfBounds` holds `textSdf` to at
+  most 1 SDF page of 1 MiB, at most 40 SDF generations over the sweeps (the code line has 40
+  distinct glyphs, one generation each), 0 generations and 0 coverage rasterizations in the
+  measured frames, and at most 40 coverage rasterizations over the sweeps (the zoom sweep of the
+  coverage regime is 3 907). A run that draws no SDF glyph fails. The bounds are the claims, not
+  measurements: the bench has not run (`tests/PENDING.md sdf:bench-bounds`). Weight, as objects
+  from `sh scripts/wasmModuleDelta.sh` (clang 23.1.0 -O2, code plus data, before any link):
+  `glyph.c` built with `-DVOID2D_SDF_TEXT` against without it is +8,016 B as wasm32 and +11,684 B
+  as x86-64, recorded in `tests/bench/wasm.json`; the spec's scratch figure for stb's SDF code
+  alone, linked with `emcc -Oz`, was +11.3 KB. The shader's one extra branch per backend text is
+  not measured. With the module off no default-layer object names a `void2dGlyphSdf` symbol
+  (the same script, with the module-on object as the control). The linked wasm per backend is
+  owed: `sh scripts/experiment-modulesWeb.sh sdf` builds `tests/experiments/modulesWeb.ms`, which
+  links no `node.ms` and so no Yoga, off and on (`tests/PENDING.md wasm:budget`); the Yoga web
+  blocker (`~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`)
+  still stops the whole-demo number. Not run here: `benchTextSdf.exe` (the native gate),
+  `scripts/experiment-modulesWeb.sh` (emsdk), the Profiler variant of the bench.
+- **Shaper wasm weight, built 2026-10-08 (slice 8).** `shaper.c` with the vendored
+  `kb_text_shape.h` is one object of 518,961 B as wasm32 and 534,608 B as x86-64 (code plus data
+  at -O2, `scripts/wasmModuleDelta.sh`, recorded as `shaper` in `tests/bench/wasm.json`); the
+  spec's standalone proxy, linked with `wasm-ld --gc-sections` at -Os, was 481,916 B raw and
+  75,820 B gzipped, against the demo's 1.5 MB, so the shaper is the largest module by far. Module
+  off: no default-layer object names a `void2dShape` or `kbts_` symbol, with `shaper.c` as the
+  control. Whether `kb_text_shape.h` lets its segmentation and line-break tables be compiled out
+  (void has UAX #14 and #29) is not verified. The per-backend linked number is owed to
+  `sh scripts/experiment-modulesWeb.sh shaper` on a box with emsdk 5.0.5; HarfBuzz, the fallback,
+  was not measured.
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
   **Built (`-d:voidColourEmoji`, CBDT/CBLC, sbix and COLR v0), 2026-10-08:** the RGBA page kind is real
   (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,

@@ -4,5 +4,7 @@
   "meaning": "code plus data bytes of objects, before any link or garbage collection. delta: glyph.c, grapheme.c, batcher.c and sfnt.c with the module off, now against the same files at baseRef, the commit before the colour item's first default-layer slice (691586c), so every change in between is the colour item's. module: colourFace.c with its PNG-only stb_image. seam: glyph.c built with the module against glyph.c without it. The linked, garbage-collected wasm per module is not here: it needs the web build (tests/PENDING.md wasm:budget).",
   "delta": { "native": 856, "wasm32": 751 },
   "module": { "native": 43625, "wasm32": 42189 },
-  "seam": { "native": 4149, "wasm32": 3273 }
+  "seam": { "native": 4149, "wasm32": 3273 },
+  "sdf": { "native": 11684, "wasm32": 8016 },
+  "shaper": { "native": 534608, "wasm32": 518961 }
 }

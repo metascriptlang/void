@@ -1,6 +1,6 @@
 #!/bin/sh
-# What the colour emoji module costs and what a build without it pays (docs/VOID2D.md P6 "Colour
-# emoji", guardrail 6). Object-level, with clang and llvm-nm; no emcc, no Yoga, no GPU.
+# What the colour emoji, SDF text and shaper modules cost and what a build without them pays
+# (docs/VOID2D.md P6, guardrail 6). Object-level, with clang and llvm-nm; no emcc, no Yoga, no GPU.
 #
 #   sh scripts/wasmModuleDelta.sh           measure, prove, and compare with tests/bench/wasm.json
 #   sh scripts/wasmModuleDelta.sh --print   measure and print the json fields, change nothing
@@ -9,7 +9,7 @@
 # fails when a number grows more than ten percent past its record, which is slack for a compiler
 # upgrade and not for code.
 #
-# Two claims, both read from objects:
+# Two claims, both read from objects, for each module:
 #   1. Module off: no object of the default layer refers to a void2dColour symbol, and no
 #      translation unit outside the module holds a stb_image implementation. The control is the
 #      same glyph.c built with -DVOID2D_COLOUR_EMOJI, which must refer to them.
@@ -65,6 +65,8 @@ for unit in glyph grapheme batcher sfnt; do
 done
 compile "." "glyph.c" "on.glyph" "-DVOID2D_COLOUR_EMOJI"
 compile "." "colourEmoji/colourFace.c" "on.colourFace" ""
+compile "." "glyph.c" "on.sdf.glyph" "-DVOID2D_SDF_TEXT"
+compile "." "shaper.c" "on.shaper" ""
 [ "$failed" -eq 0 ] || exit 1
 
 echo "module off: symbols"
@@ -76,6 +78,20 @@ for unit in glyph grapheme batcher sfnt; do
 done
 if ! llvm-nm "$OUT/on.glyph.o" | grep -q 'void2dColour'; then
 	echo "FAIL wasm delta: glyph.c built with the module names no void2dColour symbol, so the check above sees nothing"
+	failed=1
+fi
+for unit in glyph grapheme batcher sfnt; do
+	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dGlyphSdf\|void2dShape\|kbts_'; then
+		echo "FAIL wasm delta: the module-off $unit.c object names an SDF or shaper symbol"
+		failed=1
+	fi
+done
+if ! llvm-nm "$OUT/on.sdf.glyph.o" | grep -q 'void2dGlyphSdf'; then
+	echo "FAIL wasm delta: glyph.c built with the SDF module names no void2dGlyphSdf symbol, so the check above sees nothing"
+	failed=1
+fi
+if ! llvm-nm "$OUT/on.shaper.o" | grep -q 'kbts_'; then
+	echo "FAIL wasm delta: shaper.c names no kbts_ symbol, so the check above sees nothing"
 	failed=1
 fi
 holders=$(grep -l 'STB_IMAGE_IMPLEMENTATION' src/void2d/*.c src/void2d/*/*.c src/assets/*.c 2> /dev/null | tr '\n' ' ')
@@ -107,11 +123,18 @@ seam_native=$(( $(bytes "$OUT/on.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
 seam_wasm=$(( $(bytes "$OUT/on.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm.o") ))
 echo "      default-layer delta since the base: +$delta_native B native, +$delta_wasm B wasm32"
 echo "module on: colourFace.c $module_native B native, $module_wasm B wasm32; glyph.c seam +$seam_native B native, +$seam_wasm B wasm32"
+sdf_native=$(( $(bytes "$OUT/on.sdf.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
+sdf_wasm=$(( $(bytes "$OUT/on.sdf.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm.o") ))
+shaper_native=$(bytes "$OUT/on.shaper.o")
+shaper_wasm=$(bytes "$OUT/on.shaper.wasm.o")
+echo "module on: SDF text, glyph.c with VOID2D_SDF_TEXT +$sdf_native B native, +$sdf_wasm B wasm32; shaper.c $shaper_native B native, $shaper_wasm B wasm32"
 
 if [ "$mode" = print ]; then
 	printf '  "delta": { "native": %s, "wasm32": %s },\n' "$delta_native" "$delta_wasm"
 	printf '  "module": { "native": %s, "wasm32": %s },\n' "$module_native" "$module_wasm"
-	printf '  "seam": { "native": %s, "wasm32": %s }\n' "$seam_native" "$seam_wasm"
+	printf '  "seam": { "native": %s, "wasm32": %s },\n' "$seam_native" "$seam_wasm"
+	printf '  "sdf": { "native": %s, "wasm32": %s },\n' "$sdf_native" "$sdf_wasm"
+	printf '  "shaper": { "native": %s, "wasm32": %s }\n' "$shaper_native" "$shaper_wasm"
 	exit "$failed"
 fi
 
@@ -132,4 +155,8 @@ within "default-layer delta, wasm32 objects" "$delta_wasm" "$(recorded delta was
 within "default-layer delta, native objects" "$delta_native" "$(recorded delta native)"
 within "module, wasm32 objects" "$module_wasm" "$(recorded module wasm32)"
 within "module, native objects" "$module_native" "$(recorded module native)"
+within "SDF text, wasm32 objects" "$sdf_wasm" "$(recorded sdf wasm32)"
+within "SDF text, native objects" "$sdf_native" "$(recorded sdf native)"
+within "shaper, wasm32 objects" "$shaper_wasm" "$(recorded shaper wasm32)"
+within "shaper, native objects" "$shaper_native" "$(recorded shaper native)"
 exit "$failed"
