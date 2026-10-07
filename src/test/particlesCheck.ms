@@ -5,6 +5,8 @@ import {
 	Converge,
 	ShapeKind,
 	EmitterState,
+	EmitterShape,
+	Particle,
 	ParticleEmitter,
 	ParticleError,
 	ParticleRandom,
@@ -224,6 +226,118 @@ test "a disc lies in XZ, and emitting from its shell puts every particle on the 
 		const p: Vec3 = emitter.particles[i].position;
 		assert approx(p.y, 0.0);
 		assert approx(p.x * p.x + p.z * p.z, 4.0);
+	}
+}
+
+function absf(x: float32): float32 {
+	return x < 0.0 ? -x : x;
+}
+
+function minf(a: float32, b: float32): float32 {
+	return a < b ? a : b;
+}
+
+function maxf(a: float32, b: float32): float32 {
+	return a > b ? a : b;
+}
+
+function emittedFrom(shape: EmitterShape, shell: boolean, count: int32, seed: uint32): ParticleEmitter {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		shape: shape,
+		emitFromShell: shell,
+		life: constant(10.0),
+		maxParts: count,
+	}, seed);
+	emitter.emitCount = count as float64;
+	if (step(emitter, 0.0) != count) { unreachable; }
+	return emitter;
+}
+
+test "a point emits every particle at the origin, pointing up, and draws no random" {
+	const before: uint32 = ParticleRandom.seeded(3).state;
+	const emitter: ParticleEmitter = emittedFrom({ kind: ShapeKind.Point }, false, 10, 3);
+	assert emitter.sequence.state == before;
+	for (let i = 0; i < 10; i++) {
+		const p: Particle = emitter.particles[i];
+		assert approx(p.position.x, 0.0) && approx(p.position.y, 0.0) && approx(p.position.z, 0.0);
+		assert approx(p.direction.y, 1.0);
+	}
+}
+
+function boxOf(x: float32, y: float32, z: float32): EmitterShape {
+	return { kind: ShapeKind.Box, size: { x: constant(x), y: constant(y), z: constant(z) } };
+}
+
+test "a box fills its volume, centred on the emitter, and its size is the full extent" {
+	const emitter: ParticleEmitter = emittedFrom(boxOf(2.0, 4.0, 6.0), false, 300, 11);
+	let low: Vec3 = vec3(9.0, 9.0, 9.0);
+	let high: Vec3 = vec3(-9.0, -9.0, -9.0);
+	for (let i = 0; i < 300; i++) {
+		const p: Vec3 = emitter.particles[i].position;
+		assert p.x >= -1.0 && p.x <= 1.0 && p.y >= -2.0 && p.y <= 2.0 && p.z >= -3.0 && p.z <= 3.0;
+		assert approx(emitter.particles[i].direction.y, 1.0);
+		low = vec3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z));
+		high = vec3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z));
+	}
+	assert low.x < -0.9 && high.x > 0.9 && low.y < -1.8 && high.y > 1.8 && low.z < -2.7 && high.z > 2.7;
+}
+
+test "a box emitted from its shell lies on a face, and every face is reached" {
+	const emitter: ParticleEmitter = emittedFrom(boxOf(2.0, 2.0, 2.0), true, 600, 5);
+	let faces: int32 = 0;
+	let reached: Vec<boolean> = [false, false, false, false, false, false];
+	for (let i = 0; i < 600; i++) {
+		const p: Vec3 = emitter.particles[i].position;
+		assert absf(p.x) <= 1.0001 && absf(p.y) <= 1.0001 && absf(p.z) <= 1.0001;
+		const onFace: boolean = approx(absf(p.x), 1.0) || approx(absf(p.y), 1.0) || approx(absf(p.z), 1.0);
+		assert onFace;
+		if (approx(p.x, 1.0)) { reached[0] = true; }
+		if (approx(p.x, -1.0)) { reached[1] = true; }
+		if (approx(p.y, 1.0)) { reached[2] = true; }
+		if (approx(p.y, -1.0)) { reached[3] = true; }
+		if (approx(p.z, 1.0)) { reached[4] = true; }
+		if (approx(p.z, -1.0)) { reached[5] = true; }
+	}
+	for (let f = 0; f < 6; f++) { if (reached[f]) { faces = faces + 1; } }
+	assert faces == 6;
+}
+
+test "a shell box weighs its faces by area" {
+	const emitter: ParticleEmitter = emittedFrom(boxOf(8.0, 2.0, 2.0), true, 800, 21);
+	let ends: int32 = 0;
+	for (let i = 0; i < 800; i++) {
+		if (approx(absf(emitter.particles[i].position.x), 4.0)) { ends = ends + 1; }
+	}
+	assert ends > 800 / 9 - 40 && ends < 800 / 9 + 40;
+}
+
+function ringOf(radius: float32, inner: float32): EmitterShape {
+	return { kind: ShapeKind.Ring, radius: constant(radius), inner: constant(inner) };
+}
+
+test "a ring lies in XZ between its radii and points away from its centre" {
+	const emitter: ParticleEmitter = emittedFrom(ringOf(2.0, 1.0), false, 200, 7);
+	for (let i = 0; i < 200; i++) {
+		const p: Particle = emitter.particles[i];
+		const r2: float32 = p.position.x * p.position.x + p.position.z * p.position.z;
+		assert approx(p.position.y, 0.0) && r2 >= 0.99 && r2 <= 4.01;
+		const r: float32 = Math.sqrt(r2) as float32;
+		assert approx(p.direction.x * r, p.position.x) && approx(p.direction.z * r, p.position.z);
+	}
+}
+
+test "a ring emitted from its shell sits on the outer rim, and with no hole it is Heaps' disc" {
+	const rim: ParticleEmitter = emittedFrom(ringOf(2.0, 1.0), true, 50, 7);
+	for (let i = 0; i < 50; i++) {
+		const p: Vec3 = rim.particles[i].position;
+		assert approx(p.x * p.x + p.z * p.z, 4.0);
+	}
+	const ring: ParticleEmitter = emittedFrom(ringOf(2.0, 0.0), false, 50, 9);
+	const disc: ParticleEmitter = emittedFrom({ kind: ShapeKind.Disc, radius: constant(2.0) }, false, 50, 9);
+	for (let i = 0; i < 50; i++) {
+		assert ring.particles[i].position.x == disc.particles[i].position.x;
+		assert ring.particles[i].position.z == disc.particles[i].position.z;
 	}
 }
 

@@ -33,14 +33,21 @@ export enum ShapeKind {
 	Sphere,
 	Cone,
 	Disc,
+	Point,
+	Box,
+	Ring,
 }
 
-// h3d.parts.Data.Shape without SCustom.
+// h3d.parts.Data.Shape without SCustom, plus the three shapes a Heaps user writes as an
+// SCustom: Point, Box and Ring.
 export type EmitterShape = match (kind: ShapeKind) {
 	ShapeKind.Line => { size: ParticleValue },
 	ShapeKind.Sphere => { radius: ParticleValue },
 	ShapeKind.Cone => { radius: ParticleValue, angle: ParticleValue },
 	ShapeKind.Disc => { radius: ParticleValue },
+	ShapeKind.Point => {},
+	ShapeKind.Box => { size: ValueXYZ },
+	ShapeKind.Ring => { radius: ParticleValue, inner: ParticleValue },
 };
 
 export struct Burst {
@@ -286,6 +293,39 @@ function polar(theta: float64, phi: float64): Vec3 {
 	);
 }
 
+function boxHalfExtent(ref emitter: ParticleEmitter, size: ValueXYZ, time: float32): Vec3 {
+	const x: float32 = emitterValue(emitter, size.x, time);
+	const y: float32 = emitterValue(emitter, size.y, time);
+	const z: float32 = emitterValue(emitter, size.z, time);
+	return vec3(absolute(x) * 0.5, absolute(y) * 0.5, absolute(z) * 0.5);
+}
+
+function absolute(x: float32): float32 {
+	return x < 0.0 ? -x : x;
+}
+
+// A point of the box: three uniform draws, or, from the shell, a face chosen by its area and
+// then two uniform draws on it.
+function boxPosition(ref emitter: ParticleEmitter, half: Vec3, shell: boolean): Vec3 {
+	let x: float32 = (nextUnit(emitter.sequence) * 2.0 - 1.0) * half.x;
+	let y: float32 = (nextUnit(emitter.sequence) * 2.0 - 1.0) * half.y;
+	let z: float32 = (nextUnit(emitter.sequence) * 2.0 - 1.0) * half.z;
+	if (!shell) { return vec3(x, y, z); }
+	const areaX: float32 = half.y * half.z;
+	const areaY: float32 = half.x * half.z;
+	const areaZ: float32 = half.x * half.y;
+	const pick: float32 = nextUnit(emitter.sequence) * (areaX + areaY + areaZ);
+	const side: float32 = nextUnit(emitter.sequence) < 0.5 ? -1.0 : 1.0;
+	if (pick < areaX) {
+		x = side * half.x;
+	} else if (pick < areaX + areaY) {
+		y = side * half.y;
+	} else {
+		z = side * half.z;
+	}
+	return vec3(x, y, z);
+}
+
 // Emitter.initPosDir, then initPart.
 function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 	const slot: int32 = emitter.count;
@@ -321,6 +361,22 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 			let radius: float32 = emitterValue(emitter, radiusValue, time);
 			if (!shell) { radius = radius * nextUnit(emitter.sequence); }
 			direction = polar(theta, phi);
+			position = direction.scaled(radius);
+		},
+		ShapeKind.Point => {},
+		ShapeKind.Box => {
+			const half: Vec3 = boxHalfExtent(emitter, emitter.state.shape.size, time);
+			position = boxPosition(emitter, half, shell);
+		},
+		ShapeKind.Ring => {
+			const outerValue: ParticleValue = emitter.state.shape.radius;
+			const innerValue: ParticleValue = emitter.state.shape.inner;
+			const outer: float32 = emitterValue(emitter, outerValue, time);
+			const inner: float32 = emitterValue(emitter, innerValue, time);
+			let radius: float32 = outer;
+			if (!shell) { radius = inner + (outer - inner) * nextUnit(emitter.sequence); }
+			const angle: float64 = unitRandom(emitter) * TWO_PI;
+			direction = vec3(Math.cos(angle) as float32, 0.0, Math.sin(angle) as float32);
 			position = direction.scaled(radius);
 		},
 		ShapeKind.Disc => {
