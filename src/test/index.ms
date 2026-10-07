@@ -49,6 +49,7 @@ import "./animationSheetCheck";
 import "./scene3dCheck";
 import "./animationCheck";
 import "./pickCheck";
+import "./layersCheck";
 import "./particlesCheck";
 import "./layoutCheck";
 import "./billboardCheck";
