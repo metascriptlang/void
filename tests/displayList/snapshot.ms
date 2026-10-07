@@ -57,7 +57,7 @@ import {
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
-	Tile, Vec2, rgba, tile, identity2d, emptyBounds, Smooth, vec2,
+	Color, Tile, Vec2, rgba, tile, identity2d, emptyBounds, Smooth, vec2,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
@@ -862,6 +862,101 @@ test "a box style beside a colour effect draws through the UI program with the e
 	record(s.refOf(s.root), 64.0, 32.0, 1.0);
 	assert uiInstanceCount() == 1;
 	assert uiEffects() == 1;
+}
+
+const ADD_LANE: int32 = 16;
+const KEY_LANE: int32 = 20;
+
+function firstUiEffect(): int32 {
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		if ((commandField(i, CMD_PIPELINE) as int32) == (Pipeline.Ui as int32)) {
+			return commandField(i, CMD_EFFECT) as int32;
+		}
+	}
+	return NO_EFFECT;
+}
+
+function lanesEqual(row: int32, add: Color, key: Color): boolean {
+	if (row == NO_EFFECT) { return false; }
+	return effectField(row, ADD_LANE) == add.r
+		&& effectField(row, ADD_LANE + 1) == add.g
+		&& effectField(row, ADD_LANE + 2) == add.b
+		&& effectField(row, ADD_LANE + 3) == add.a
+		&& effectField(row, KEY_LANE) == key.r
+		&& effectField(row, KEY_LANE + 1) == key.g
+		&& effectField(row, KEY_LANE + 2) == key.b
+		&& effectField(row, KEY_LANE + 3) == key.a;
+}
+
+function styledBoxScene(style: BoxStyle, add: Color): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
+	box.setBoxStyle(style);
+	box.setColorAdd(add);
+	return s.refOf(s.root);
+}
+
+const NONE: Color = rgba(0.0, 0.0, 0.0, 0.0);
+
+test "a box style carries colorAdd into the effect row of its UI instance" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
+	box.setBoxStyle(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+	));
+	box.setColorAdd(rgba(0.25, 0.5, 0.125, 0.0625));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+	assert lanesEqual(firstUiEffect(), rgba(0.25, 0.5, 0.125, 0.0625), NONE);
+}
+
+test "a box style carries colorKey into the effect row of its UI instance" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
+	box.setBoxStyle(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+	));
+	box.setColorKey(rgba(0.75, 0.5, 0.25, 1.0));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+	assert lanesEqual(firstUiEffect(), NONE, rgba(0.75, 0.5, 0.25, 1.0));
+}
+
+test "a box style carries colorMatrix, colorAdd and colorKey together" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const box = s.add(s.rect(40.0, 20.0, rgba(0.9, 0.7, 0.5, 1.0)).at(4.0, 4.0));
+	box.setBoxStyle(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+	));
+	box.setColorMatrix(colorMatrixGrayscale(1.0));
+	box.setColorAdd(rgba(0.125, 0.0, 0.0, 0.0));
+	box.setColorKey(rgba(1.0, 1.0, 1.0, 0.5));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+	const row: int32 = firstUiEffect();
+	assert lanesEqual(row, rgba(0.125, 0.0, 0.0, 0.0), rgba(1.0, 1.0, 1.0, 0.5));
+	assert effectField(row, 0) == colorMatrixGrayscale(1.0).m11;
+}
+
+test "a shadowed box and a dashed box record one effected UI instance each" {
+	const add = rgba(0.0625, 0.125, 0.0, 0.0);
+	const shadowed = styledBoxScene(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+	).castShadow(rgba(0.0, 0.0, 0.1, 0.5), 3.0, 2.0, 1.0), add);
+	record(shadowed, 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+	assert lanesEqual(firstUiEffect(), add, NONE);
+	const dashed = styledBoxScene(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(2.0), rgba(0.2, 0.3, 0.4, 1.0),
+	).dashed(), add);
+	record(dashed, 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiEffects() == 1;
+	assert lanesEqual(firstUiEffect(), add, NONE);
 }
 
 test "an underline and a selection beside a colour effect draw with it" {
