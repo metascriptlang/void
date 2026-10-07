@@ -294,6 +294,17 @@ function primAaRotatedBox(): Scene2D {
 	return s;
 }
 
+function primAaGraphics(): Scene2D {
+	const s = Scene2D.create(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
+	const g = s.graphics().at(AA_BOX_X, AA_BOX_Y);
+	g.fillRect(-AA_BOX_PIVOT_X, -AA_BOX_PIVOT_Y, AA_BOX_W, AA_BOX_H,
+		rgba(AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B, 1.0));
+	g.setRotation(AA_BOX_ROTATION);
+	g.setAlpha(AA_BOX_ALPHA);
+	s.add(g);
+	return s;
+}
+
 function primPerCornerRadii(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const box = s.rect(150.0, 88.0, rgba(0.28, 0.58, 0.90, 1.0)).at(128.0, 100.0);
@@ -1403,6 +1414,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/textModes", build: primTextModes },
 
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
+		{ name: "prim/aaGraphics", build: primAaGraphics },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
 		{ name: "prim/perSideBorders", build: primPerSideBorders },
 		{ name: "prim/dashedBorder", build: primDashedBorder },

@@ -36,6 +36,7 @@ export interface SceneRow {
 // alpha 1 is how that squared alpha lived, so the box mode's own scene is rotated AND
 // translucent, and either being wrong changes these pixels.
 export const AA_BOX_SCENE: string = "prim/aaRotatedBox";
+export const AA_GRAPHICS_SCENE: string = "prim/aaGraphics";
 export const AA_BOX_W: float32 = 90.0;
 export const AA_BOX_H: float32 = 58.0;
 export const AA_BOX_X: float32 = 128.0;   // where the node's local (0,0) sits before rotation
@@ -119,6 +120,7 @@ export function sceneRows(): SceneRow[] {
 		{ name: "prim/textModes", phase: "P2", width: 320, height: 220, dpi: 1.0, steps: 0, demo: false },
 
 		{ name: "prim/aaRotatedBox", phase: "P2", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/aaGraphics", phase: "P6", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/perCornerRadii", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/perSideBorders", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/dashedBorder", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
@@ -221,10 +223,10 @@ export function sceneCount(): int32 { return sceneRows().length as int32; }
 export function sceneDrawCounts(): int32[] {
 	return [
 		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
-		1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 2,
-		1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1, 6,
-		2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1, 1,
-		3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4, 2, 18, 4,
+		1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1,
+		2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1,
+		6, 2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1,
+		1, 3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4, 2, 18, 4,
 	];
 }
 
@@ -232,9 +234,9 @@ export function sceneRenderTargetCounts(): int32[] {
 	return [
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0, 0,
-		5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0,
+		0, 5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18, 0,
 	];
 }
 

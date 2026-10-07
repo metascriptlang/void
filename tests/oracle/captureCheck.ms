@@ -19,7 +19,7 @@
 import { env } from "std/process";
 import {
 	AA_BOX_W, AA_BOX_H, AA_BOX_X, AA_BOX_Y, AA_BOX_PIVOT_X, AA_BOX_PIVOT_Y,
-	AA_BOX_ROTATION,
+	AA_BOX_ROTATION, AA_BOX_SCENE, AA_GRAPHICS_SCENE,
 } from "../golden/table";
 import { devicePixelCoverage, coverageFromPixel, blurredPixelCoverage } from "./coverage";
 import { voidPngLoad, voidPngWidth, voidPngHeight, voidPngPixel } from "../golden/pngio.h";
@@ -56,6 +56,11 @@ const EDGE_BOUND: float32 = 0.06;
 // so the number is printed and pinned rather than averaged into the edge's.
 const CORNER_BOUND: float32 = 0.20;
 
+// A Graphics fringe joins two edges at their miter, as NanoVG's and Makepad's do, so a sharp
+// corner's coverage is the nearer edge's ramp: measured 0.2459 on prim/aaGraphics, against
+// 0.5 with antialias off.
+const GRAPHICS_CORNER_BOUND: float32 = 0.26;
+
 // How far from a corner, in local units, a pixel counts as a corner pixel. Two device pixels:
 // the region where the two edges' coverage overlaps within one pixel footprint.
 const CORNER_BAND: float32 = 2.0;
@@ -71,6 +76,7 @@ function pixel(x: int32, y: int32, channel: int32): int32 {
 // capture, let the oracle say the antialiasing is true area, and only then promote. Judging
 // a golden that was promoted first would be judging a decision already taken.
 const GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaRotatedBox.png";
+const GRAPHICS_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaGraphics.png";
 
 // ===== the shadow half: the erf integral's GLSL copy, judged against the definition =====
 //
@@ -163,11 +169,17 @@ function runShadow(): int32 {
 	return 0;
 }
 
-function run(): int32 {
-	const override: string = env.get("VOID_AA_CAPTURE");
-	const path: string = override.equals("") ? GOLDEN_PATH : override;
+function runRotatedFill(
+	scene: string,
+	goldenPath: string,
+	overrideVar: string,
+	cornerBound: float32,
+): int32 {
+	const override: string = env.get(overrideVar);
+	const path: string = override.equals("") ? goldenPath : override;
 	if (voidPngLoad(SLOT, path) == 0) {
-		console.log(`FAIL coverage oracle: cannot read ${path}`);
+		console.log(`FAIL coverage oracle ${scene}:`
+			+ ` cannot read ${path}`);
 		return 1;
 	}
 	const w: int32 = voidPngWidth(SLOT);
@@ -246,39 +258,53 @@ function run(): int32 {
 		}
 	}
 
-	console.log(`coverage oracle: capture prim/aaRotatedBox,`
+	console.log(`coverage oracle: capture ${scene},`
 		+ ` ${edgePixels} straight-edge pixels worst ${worstEdge} at (${worstEdgeX},${worstEdgeY}),`
 		+ ` ${cornerPixels} corner pixels worst ${worstCorner} at (${worstCornerX},${worstCornerY})`);
 
 	// An oracle that cannot convict is not an oracle. A scene whose edge never falls inside a
 	// pixel has nothing to judge, and would pass while measuring nothing.
 	if (edgePixels < 200) {
-		console.log(`FAIL coverage oracle: only ${edgePixels} edge pixels - the scene cannot convict`);
+		console.log(`FAIL coverage oracle ${scene}:`
+			+ ` only ${edgePixels} edge pixels - the scene cannot convict`);
 		return 1;
 	}
 	if (unjudgeable > 0) {
-		console.log(`FAIL coverage oracle: ${unjudgeable} edge pixels where no channel separates fill from background`);
+		console.log(`FAIL coverage oracle ${scene}:`
+			+ ` ${unjudgeable} edge pixels where no channel separates fill from background`);
 		return 1;
 	}
 	if (worstEdge > EDGE_BOUND) {
-		console.log(`FAIL coverage oracle: straight-edge error ${worstEdge} exceeds ${EDGE_BOUND}`
+		console.log(`FAIL coverage oracle ${scene}:`
+			+ ` straight-edge error ${worstEdge} exceeds ${EDGE_BOUND}`
 			+ ` - the shader's coverage ramp disagrees with true area`);
 		return 1;
 	}
-	if (worstCorner > CORNER_BOUND) {
-		console.log(`FAIL coverage oracle: corner error ${worstCorner} exceeds ${CORNER_BOUND}`);
+	if (worstCorner > cornerBound) {
+		console.log(`FAIL coverage oracle ${scene}:`
+			+ ` corner error ${worstCorner} exceeds ${cornerBound}`);
 		return 1;
 	}
 	// The corner bound is loose enough that it must not be allowed to pass by accident: a
 	// capture whose corners are perfect is a capture of a scene with no sharp corner in it,
 	// and this scene has four.
 	if (cornerPixels < 8) {
-		console.log(`FAIL coverage oracle: only ${cornerPixels} corner pixels - the scene has four corners`);
+		console.log(`FAIL coverage oracle ${scene}:`
+			+ ` only ${cornerPixels} corner pixels - the scene has four corners`);
 		return 1;
 	}
-	console.log(`PASS coverage oracle: the capture's antialiasing is true area`
-		+ ` within ${EDGE_BOUND} along edges and ${CORNER_BOUND} at sharp corners`);
+	console.log(`PASS coverage oracle ${scene}: the capture's antialiasing is true area`
+		+ ` within ${EDGE_BOUND} along edges and ${cornerBound} at sharp corners`);
 	return 0;
 }
 
-process.exit(run() != 0 ? 1 : runShadow());
+function run(): int32 {
+	if (runRotatedFill(AA_BOX_SCENE, GOLDEN_PATH, "VOID_AA_CAPTURE", CORNER_BOUND) != 0) { return 1; }
+	const graphics: int32 = runRotatedFill(
+		AA_GRAPHICS_SCENE, GRAPHICS_GOLDEN_PATH, "VOID_AA_GRAPHICS_CAPTURE", GRAPHICS_CORNER_BOUND,
+	);
+	if (graphics != 0) { return 1; }
+	return runShadow();
+}
+
+process.exit(run());
