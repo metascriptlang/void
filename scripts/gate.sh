@@ -698,7 +698,28 @@ elif [ -n "$copied" ] || [ -n "$allocated" ]; then
 else
 	pass "allocation: the frame path ($(echo $FRAME_PATH | wc -w) functions) copies no array and builds no fresh one; the rebuild ($(echo $REBUILD_PATH | wc -w)) and measure ($(echo $MEASURE_PATH | wc -w)) paths copy none; $followed functions they call are held to the same rules"
 fi
-skip "wasm size budget: no budget committed yet (P6 makes guardrail 6 real)"
+# Guardrail 6: a build without the colour module pays none of it. The objects prove it by symbol
+# and record the cost in bytes (tests/bench/wasm.json); the executables show it as a size.
+if sh scripts/wasmModuleDelta.sh > out/gate-wasm-delta.log 2>&1; then
+	pass "module off: no default-layer object names a void2dColour symbol, the cost stays inside tests/bench/wasm.json"
+	grep -E '^(      default-layer delta|module on)' out/gate-wasm-delta.log | sed 's/^/      /'
+else
+	fail "module off or wasm delta — see out/gate-wasm-delta.log"
+	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
+fi
+rm -f out/tmp/mainSokol2dOff.exe out/tmp/mainSokol2dColour.exe
+if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 		&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
+	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
+	module_on_bytes=$(wc -c < out/tmp/mainSokol2dColour.exe)
+	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
+		pass "module off: mainSokol2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
+	else
+		fail "module off: mainSokol2d.exe is $module_off_bytes B without the colour module and $module_on_bytes B with it, so the flag changed nothing"
+	fi
+else
+	fail "module off: mainSokol2d.exe did not build both ways — see out/gate-module-off.log"
+fi
+skip "wasm size budget: the web build cannot link Yoga, so no linked wasm number exists to gate — tests/PENDING.md wasm:budget"
 
 echo
 echo "=== 7. guardrail 9 — same pixels on every platform ===================="
