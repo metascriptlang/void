@@ -219,3 +219,48 @@ export function maxShadowError(
 	}
 	return worst;
 }
+
+// ===== the bound on a non-uniform scale =====
+//
+// A box edge's coverage ramp is one device pixel wide when measured across the edge. Under the
+// affine (a, b, c, d) a local unit across an edge with local normal n is
+// `1 / |A^-T n|` device pixels, so the two box edge directions have their own slopes. The
+// shader uses one width for both. Edge 0 is the one whose normal is local x, edge 1 local y.
+// Derived from the inverse transpose and nothing in `src/void2d/sdf.ms`.
+
+export function trueEdgeSlope(
+	a: float32, b: float32, c: float32, d: float32,
+	edge: int32,
+): float32 {
+	const det: float32 = a * d - b * c;
+	const adet: float32 = det < 0.0 ? -det : det;
+	const colX: float32 = Math.sqrt((a * a + b * b) as float64) as float32;
+	const colY: float32 = Math.sqrt((c * c + d * d) as float64) as float32;
+	if (edge == 0) { return adet / colY; }
+	return adet / colX;
+}
+
+// The width-mean slope the shader's one antialiasing width implies, in device pixels per
+// local unit: the geometric mean of the two column lengths.
+export function usedEdgeSlope(a: float32, b: float32, c: float32, d: float32): float32 {
+	const colX: float32 = Math.sqrt((a * a + b * b) as float64) as float32;
+	const colY: float32 = Math.sqrt((c * c + d * d) as float64) as float32;
+	return Math.sqrt((colX * colY) as float64) as float32;
+}
+
+// The worst coverage error that one-width approximation makes on a straight box edge. A ramp
+// whose slope is `used` against a true slope `s` is off by at most `0.5 * (1 - lo / hi)` where
+// lo and hi order the two slopes; zero when the scale is uniform. The larger of the two edge
+// directions is returned.
+export function affineEdgeBound(a: float32, b: float32, c: float32, d: float32): float32 {
+	const used: float32 = usedEdgeSlope(a, b, c, d);
+	let worst: float32 = 0.0;
+	for (let edge: int32 = 0; edge < 2; edge++) {
+		const s: float32 = trueEdgeSlope(a, b, c, d, edge);
+		const lo: float32 = s < used ? s : used;
+		const hi: float32 = s < used ? used : s;
+		const e: float32 = 0.5 * (1.0 - lo / hi);
+		if (e > worst) { worst = e; }
+	}
+	return worst;
+}

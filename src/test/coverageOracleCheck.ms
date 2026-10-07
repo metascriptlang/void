@@ -280,3 +280,131 @@ test "the inset shadow is the clipped complement of the blur" {
 		assert e <= 0.02;
 	}
 }
+
+// ===== a non-uniform scale: the one-width approximation, bounded =====
+//
+// `aaWidthForAffine` gives both box edge directions one width, so under a non-uniform scale
+// the ramp is too wide on one edge and too narrow on the other. The bound is derived in
+// tests/oracle/coverage.ms from the inverse transpose; each case sweeps device pixel centres
+// and subpixel phases across both edges of a plain box and judges the analytic curve against
+// the device-space supersampling oracle.
+
+import { trs2d } from "../void2d/types";
+import {
+	devicePixelCoverage, affineEdgeBound, trueEdgeSlope, blurredPixelCoverage,
+} from "../../tests/oracle/coverage";
+
+const BOX_W: float32 = 60.0;
+const BOX_H: float32 = 40.0;
+const BOX_X: float32 = 10.3;
+const BOX_Y: float32 = 7.7;
+const SWEEP_HALF: float32 = 2.5;
+const SWEEP_STEP: float32 = 0.125;
+
+function edgeSweepWorst(
+	a: float32, b: float32, c: float32, d: float32,
+	exact: boolean,
+): float32 {
+	const det: float32 = a * d - b * c;
+	const ia: float32 = d / det;
+	const ib: float32 = -b / det;
+	const ic: float32 = -c / det;
+	const id: float32 = a / det;
+	const hx: float32 = BOX_W * 0.5;
+	const hy: float32 = BOX_H * 0.5;
+	let worst: float32 = 0.0;
+	for (let edge: int32 = 0; edge < 2; edge++) {
+		const mx: float32 = edge == 0 ? BOX_W : BOX_W * 0.5;
+		const my: float32 = edge == 0 ? BOX_H * 0.5 : BOX_H;
+		const midX: float32 = BOX_X + a * mx + c * my;
+		const midY: float32 = BOX_Y + b * mx + d * my;
+		const aa: float32 = exact
+			? 1.0 / trueEdgeSlope(a, b, c, d, edge)
+			: aaWidthForAffine(a, b, c, d);
+		const steps: int32 = (SWEEP_HALF / SWEEP_STEP) as int32;
+		for (let iy: int32 = -steps; iy <= steps; iy++) {
+			for (let ix: int32 = -steps; ix <= steps; ix++) {
+				const cx: float32 = midX + (ix as float32) * SWEEP_STEP;
+				const cy: float32 = midY + (iy as float32) * SWEEP_STEP;
+				const lx: float32 = ia * (cx - BOX_X) + ic * (cy - BOX_Y);
+				const ly: float32 = ib * (cx - BOX_X) + id * (cy - BOX_Y);
+				const distance: float32 = roundedRectDistance(lx - hx, ly - hy, hx, hy, 0.0);
+				const analytic: float32 = coverageFromDistance(distance, aa);
+				const truth: float32 = devicePixelCoverage(
+					cx, cy, a, b, c, d, BOX_X, BOX_Y, BOX_W, BOX_H, 0.0,
+				);
+				const e: float32 = analytic > truth ? analytic - truth : truth - analytic;
+				if (e > worst) { worst = e; }
+			}
+		}
+	}
+	return worst;
+}
+
+function caseBounds(sx: float32, sy: float32, rotation: float32): Vec<float32> {
+	const t = trs2d(0.0, 0.0, rotation, sx, sy);
+	const predicted: float32 = affineEdgeBound(t.a, t.b, t.c, t.d);
+	const worst: float32 = edgeSweepWorst(t.a, t.b, t.c, t.d, false);
+	const control: float32 = edgeSweepWorst(t.a, t.b, t.c, t.d, true);
+	console.log(
+		`coverage oracle: scale ${sx}x${sy} rot ${rotation}, predicted ${predicted}`
+		+ ` worst ${worst} exact-slope control ${control}`,
+	);
+	return [predicted, worst, control];
+}
+
+test "a uniform scale has a zero bound and the one width is exact" {
+	const r: Vec<float32> = caseBounds(2.0, 2.0, 0.0);
+	assert r[0] == 0.0;
+	assert r[1] <= 0.06;
+	assert r[2] <= 0.06;
+}
+
+test "the one-width error at 2:1 follows the derived bound" {
+	const r: Vec<float32> = caseBounds(2.0, 1.0, 0.0);
+	assert approx(r[0], 0.1464466);
+	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert r[2] <= 0.06;
+}
+
+test "the one-width error at 3:1 follows the derived bound" {
+	const r: Vec<float32> = caseBounds(3.0, 1.0, 0.0);
+	assert approx(r[0], 0.2113249);
+	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert r[2] <= 0.06;
+}
+
+test "the one-width error at 1:3 follows the derived bound" {
+	const r: Vec<float32> = caseBounds(1.0, 3.0, 0.0);
+	assert approx(r[0], 0.2113249);
+	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert r[2] <= 0.06;
+}
+
+test "the one-width error at 4:1 rotated 20 degrees follows the derived bound" {
+	const r: Vec<float32> = caseBounds(4.0, 1.0, 0.34906584);
+	assert approx(r[0], 0.25);
+	assert Math.abs((r[1] - r[0]) as float64) <= 0.06;
+	assert r[2] <= 0.06;
+}
+
+test "a blurred shadow is exact in local space under a non-uniform scale" {
+	const t = trs2d(BOX_X, BOX_Y, 0.0, 3.0, 1.0);
+	const det: float32 = t.a * t.d - t.b * t.c;
+	const pts: Vec<float32> = shadowPoints();
+	let worst: float32 = 0.0;
+	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
+		const dx: float32 = t.a * pts[i] + t.c * pts[i + 1];
+		const dy: float32 = t.b * pts[i] + t.d * pts[i + 1];
+		const lx: float32 = (t.d * dx - t.c * dy) / det;
+		const ly: float32 = (-t.b * dx + t.a * dy) / det;
+		const analytic: float32 = shadowCoverage(
+			lx, ly, 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 2.0, 1.0,
+		);
+		const truth: float32 = blurredPixelCoverage(lx, ly, 10.0, 6.0, 3.0, 1.5, -1.0, 2.0);
+		const e: float32 = analytic > truth ? analytic - truth : truth - analytic;
+		if (e > worst) { worst = e; }
+	}
+	console.log(`coverage oracle: shadow through a 3:1 inverse map, worst error ${worst}`);
+	assert worst <= 0.02;
+}
