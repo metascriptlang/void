@@ -1654,7 +1654,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - **Shaper module** (candidate `kb_text_shape`): GSUB features, ligatures, complex scripts, shaping breaks as an input. The largest wasm item; measured alone.
 - **SDF text** for the transformed regime: one ~32 px/em distance field per glyph, derivative-scaled ramp, luma bias (MAKEPAD.md:112) — so zoom and animation cost nothing, and void3d gets world-space text through the same glyph layer.
   **Built 2026-10-07, behind `-d:voidSdfText`, first four slices** (field, generator, atlas,
-  placement; the shader ramp, goldens and void3d are not built, so nothing draws SDF text yet).
+  placement; the shader ramp and draw path followed, see "Shader and draw path" below; captures
+  and void3d are not built).
   `textSdf.ms` is the T0 reference: field byte `191 - 31.875 * outward texels` (edge at 191/255,
   radius 8, pad 4, 32 px/em, as `stbtt_GetGlyphSDF` takes them and Makepad's
   `layouter.rs:249-255` encodes them) and Makepad's linear ramp
@@ -1707,6 +1708,33 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (a rollout guard, removed when the shader lands) and `void2dGlyphSdfStbDiff`, a verification
   entry that stays in `glyph.c` under `VOID2D_SDF_TEXT` and is called from tests only; the
   generator itself is the P6 spec's own "SDF generation from void2d's own outline".
+  **Shader and draw path, built 2026-10-07 (S5, S7); no pixel of it has been captured.**
+  `shader2d.glsl` block `textSdf` is `textSdf.ms` `sdfCoverage` (edge 191/255, radius 8 texels,
+  linear ramp, no luma bias) and `sdfTexelsPerPixel`, the mean of the lengths of `dFdx(uv)` and
+  `dFdy(uv)` times the page's `textureSize`; gamma and contrast run after it through
+  `applyContrastAndGamma`, one weight rule for both regimes. Both programs take the branch: the
+  UI program's glyph mode when the instance's `params[0]` is `SDF_GLYPH_FLAG` (a lane no glyph
+  used, so the 108 B stride is unchanged), the Vertex program's `fs` when `model1.z` is 2
+  (`glyphPageViewMode` answers 2 for an SDF page view). The derivatives are taken at the top of
+  `main`, before the clip `discard`. `emitLabel` sets a linear sampler for a whole Sdf label,
+  whatever the node's `smooth`, because the field is meaningless sampled nearest, and
+  `emitGlyph` flags a glyph by its page's kind, so a cubic-outline glyph drawn from the coverage
+  atlas inside an SDF label keeps its coverage ramp. `setup2d` calls `setSdfRegime(true)` under
+  `-d:voidSdfText`; the switch stays as the headless tests' way to compare the two regimes.
+  NEW MECHANISM, each with its reference: derivative-scaled coverage in `shader2d.glsl`, which
+  had no `dFdx` before (Makepad `draw_text.rs:620-641`; GPUI has none, its text is device-space);
+  `GOLDEN_DEFINES` in `scripts/golden.sh`, which builds the golden runner with
+  `-d:voidSdfText` so the SDF scenes capture the SDF regime. Goldens that move under that
+  build: `prim/cardWithLabel` (its rotated label) and `demo/frame001`, `frame030`, `frame090`
+  and `frame200` (the panel's `setScale(0.85 .. 1.15)` puts "hello void2d" in the Sdf regime);
+  no other scene has a label under a matrix beyond translation and DPI. New rows
+  `text/sdfRotated`, `sdfZoom4`, `sdfScaleDown` and `sdfColorEffect`
+  (`tests/golden/table.ms` `sdfLabelCases`, shared by the builders and by
+  `tests/oracle/textSdfCheck.ms`); `text/sdfColorEffect` is judged by an invariant in
+  `tests/golden/invariants.ms` (a never-matching colour key on the Vertex program equals the UI
+  program's plain label within one level). Owed: the D3D11 capture of the four rows and of the
+  five that move, the oracle's first run (its bounds are the T0 table's, provisional until the
+  capture is measured) and its control, WebGL2 for the same rows.
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
