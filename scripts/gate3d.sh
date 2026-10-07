@@ -978,7 +978,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	tests/integration/targetOwner.ms tests/integration/targetPresetEpoch.ms
 	src/test/cameraCheck.ms src/test/pickCheck.ms
 	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
-	tests/integration/reparentFrame.ms"
+	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
+	src/test/programKeyCheck.ms"
 
 run_style() {
 	long=$(
@@ -1058,6 +1059,11 @@ CAMERA_RIG_PATH_FUNCTIONS="scene:cameraOf scene:cameraRow scene:syncWorld scene:
 	scene:requireOpen scene:isLive slots:isCurrent camera:fromWorld camera:finiteWorld
 	scene:connectedRow
 	camera:boundedAxis camera:preciseCross camera:validOrientation camera:resolve camera:basisOf"
+SHADOW_PATH_FUNCTIONS="dir83hadow77ap:drawShadows dir83hadow77ap:castsAll dir83hadow77ap:lightBasis
+	dir83hadow77ap:shadowBounds dir83hadow77ap:casterBounds dir83hadow77ap:widened
+	dir83hadow77ap:mapMatrix dir83hadow77ap:sceneTexture renderer:drawShadowPass
+	renderer:sceneTextureOf pass76ist:collectCasters pass76ist:reserve gpu3d:castIn
+	gpu3d:drawnIn draw:drawItemWith"
 REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:detach
 	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
 	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn
@@ -1115,12 +1121,14 @@ run_allocation() {
 		"$CAMERA_RIG_PATH_FUNCTIONS" || return
 	check_array_copies "$CAPTURE/reparentCapture.ms" "reparent and detached close path" \
 		"$REPARENT_PATH_FUNCTIONS" || return
+	check_array_copies tests/integration/dirShadow.ms "shadow path" "$SHADOW_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
 	note "allocation: nor in the perspective path ($(echo $PERSPECTIVE_PATH_FUNCTIONS))"
 	note "allocation: nor in the camera rig path ($(echo $CAMERA_RIG_PATH_FUNCTIONS))"
 	note "allocation: nor in the reparent/close path ($(echo $REPARENT_PATH_FUNCTIONS))"
+	note "allocation: nor in the shadow path ($(echo $SHADOW_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1966,6 +1974,45 @@ run_sort_layer() {
 	pass "sort-layer: lower layers draw first in the opaque and alpha lists of both presets; the control does not"
 }
 
+# Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control.
+DIR_SHADOW_CASES="0 2 3 4 5"
+
+run_dir_shadow() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "dir-shadow: GATE_SKIP_CAPTURE=1 — no shadow was read back"
+		return
+	fi
+	exe="$WORK/dirShadow.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/dirShadow.ms --output="$exe" > "$WORK/dirShadow.build.log" 2>&1; then
+		fail "dir-shadow: tests/integration/dirShadow.ms does not build — see $WORK/dirShadow.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		for case in $DIR_SHADOW_CASES; do
+			status=0
+			VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=$case "$exe" \
+				> "$WORK/dirShadow.$case.$preset.log" 2>&1 || status=$?
+			if [ "$status" -eq 3 ]; then
+				skip "dir-shadow: no native readback backend"
+				return
+			fi
+			if [ "$status" -ne 0 ] || ! grep -q '^PASS dir shadow: ' "$WORK/dirShadow.$case.$preset.log"; then
+				fail "dir-shadow: case $case in preset $preset (exit $status) — see $WORK/dirShadow.$case.$preset.log"
+				return
+			fi
+		done
+		status=0
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=1 "$exe" \
+			> "$WORK/dirShadow.control.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'no shadow under the caster' "$WORK/dirShadow.control.$preset.log"; then
+			fail "dir-shadow: the detached control in preset $preset still darkened the ground (exit $status)"
+			return
+		fi
+	done
+	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only and half opacity hold; the detached control does not shade"
+}
+
 run_reparent() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "reparent: GATE_SKIP_CAPTURE=1 — tree moves were not drawn"
@@ -2343,6 +2390,7 @@ run_target_texture
 run_mrt_blend
 run_alpha_kill
 run_sort_layer
+run_dir_shadow
 run_camera_rig
 run_reparent
 run_gltf
