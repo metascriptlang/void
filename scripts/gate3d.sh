@@ -1041,7 +1041,8 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	uniform80ool:holds uniform80ool:writeRange uniform80ool:admitted draw:issuedMaterial"
 RENDER_PATH_FUNCTIONS="$RENDER_PATH_FUNCTIONS pass76ist:filterFrustum pass76ist:depthOf
 	frustum:fromMatrix frustum:absolute frustum:intersectsPlane frustum:intersectsBounds
-	draw:keepsItsTexture material:namesTexture texture:isTexture draw:viewAt draw:textureReady
+	draw:keepsItsTexture material:textureOf material:viewSlotOf
+	material:samplerSlotOf texture:isTexture draw:viewAt draw:textureReady
 	gpu3d:withPreset gpu3d:bits gpu3d:declares gpu3d:doorProgram
 	target:asTexture target:requireLive target:requireCurrent target:isAttachedToOpenPass
 	door:passAttachesView"
