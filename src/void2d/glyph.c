@@ -569,6 +569,7 @@ int void2dGlyphFaceLoad(const char *path) {
 		return VOID2D_FACE_NOT_A_FONT;
 	}
 	if (!growFaces()) {
+		free(colour);
 		free(bytes);
 		return VOID2D_FACE_NO_MEMORY;
 	}
