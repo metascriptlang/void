@@ -1738,7 +1738,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   differs and every x agrees; kerning crosses a default-ignorable codepoint as HarfBuzz's does
   (`A` ZWJ `V` kerns), where the cmap path breaks the pair; the joiner keeps a slot with
   `NO_GLYPH` and no advance, kb's zero-width space glyph is dropped; synthetic bold adds
-  `emboldenUnits` to every shaped advance that is not zero (`void2dGlyphEmbolden`). Measured, 65
+  `emboldenUnits` to every shaped advance that is not zero (`void2dGlyphEmbolden`), so a ligature
+  of two codepoints is emboldened once where the cmap path emboldens two glyphs. Measured, 65
   of the 75 oracle rows (the left-to-right rows kb and HarfBuzz agree on, Devanagari, Thai and
   Khmer included) are laid out at the layout level with the same glyph ids, pen positions and
   mark offsets, 1,635 values (`shapedLayoutCheck.ms`); flagless layout is unchanged, 348 / 330 /
