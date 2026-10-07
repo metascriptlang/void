@@ -171,3 +171,73 @@ test "the pages of one kind are reclaimed without touching the other kind" {
 	assert atlas.pageCount() == 1;
 	assert atlas.residentBytes() == 64 * 64 * 4;
 }
+
+test "a blit reads each source row at its stride, not at the tile width" {
+	const atlas = GlyphAtlas.create(64, 4);
+	const r = atlas.acquireBlank(colourKey(1, 0), 2, 2, 0, 0);
+	assert r.ok;
+	if (!r.ok) { return; }
+	const t = atlas.tile(r.value);
+	const handle: int32 = atlas.pageHandle(t.page) as int32;
+	const source: uint32[] = [0x11111111, 0x22222222, 0xEEEEEEEE, 0x33333333, 0x44444444, 0xEEEEEEEE];
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 3) == 0;
+	assert void2dGlyphPageTexelRgba(handle, t.x, t.y) == 0x11111111;
+	assert void2dGlyphPageTexelRgba(handle, t.x + 1, t.y) == 0x22222222;
+	assert void2dGlyphPageTexelRgba(handle, t.x, t.y + 1) == 0x33333333;
+	assert void2dGlyphPageTexelRgba(handle, t.x + 1, t.y + 1) == 0x44444444;
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 1) == 1;
+}
+
+test "a reclaimed Rgba page is cleared in all four bytes of every texel" {
+	const atlas = GlyphAtlas.create(64, 1);
+	const first = atlas.acquireBlank(colourKey(1, 0), 60, 60, 0, 0);
+	assert first.ok;
+	if (!first.ok) { return; }
+	const t = atlas.tile(first.value);
+	const handle: int32 = atlas.pageHandle(t.page) as int32;
+	const source: uint32[] = [0xFFFFFFFF, 0xFFFFFFFF];
+	assert void2dGlyphPageBlitRgba(handle, 0, 5, 2, 1, source[0], 2) == 0;
+	assert void2dGlyphPageBlitRgba(handle, 62, 63, 1, 1, source[0], 1) == 0;
+	assert void2dGlyphPageBlitRgba(handle, 0, 40, 2, 1, source[0], 2) == 0;
+	atlas.release(first.value);
+	const second = atlas.acquireBlank(colourKey(2, 0), 60, 60, 0, 0);
+	assert second.ok;
+	assert atlas.reclaims == 1;
+	assert void2dGlyphPageTexelRgba(handle, 0, 5) == 0;
+	assert void2dGlyphPageTexelRgba(handle, 0, 40) == 0;
+	assert void2dGlyphPageTexelRgba(handle, 1, 40) == 0;
+	assert void2dGlyphPageTexelRgba(handle, 62, 63) == 0;
+}
+
+test "a tile whose fill was refused is discarded and its key is not cached" {
+	const atlas = GlyphAtlas.create(64, 4);
+	const key = colourKey(1, 0);
+	const first = atlas.acquireBlank(key, 8, 8, 0, -8);
+	assert first.ok;
+	assert atlas.cached(key);
+	assert atlas.rasterizations == 1;
+	if (!first.ok) { return; }
+	atlas.discard(first.value);
+	assert !atlas.cached(key);
+	assert atlas.rasterizations == 0;
+	const again = atlas.acquireBlank(key, 8, 8, 0, -8);
+	assert again.ok;
+	if (again.ok) {
+		assert again.value == first.value;
+		assert atlas.tile(again.value).refs == 1;
+	}
+	assert atlas.rasterizations == 1;
+}
+
+test "discarding a tile another holder shares only drops one reference" {
+	const atlas = GlyphAtlas.create(64, 4);
+	const key = colourKey(1, 0);
+	const first = atlas.acquireBlank(key, 8, 8, 0, -8);
+	const second = atlas.acquireBlank(key, 8, 8, 0, -8);
+	assert first.ok && second.ok;
+	if (!first.ok) { return; }
+	atlas.discard(first.value);
+	assert atlas.cached(key);
+	assert atlas.tile(first.value).refs == 1;
+	assert atlas.rasterizations == 1;
+}

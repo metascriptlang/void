@@ -208,6 +208,18 @@ export function release(this atlas: GlyphAtlas, index: int32): void {
 	}
 }
 
+export function discard(this atlas: GlyphAtlas, index: int32): void {
+	if (atlas.tiles[index].refs != 1) {
+		atlas.release(index);
+		return;
+	}
+	atlas.index.delete(atlas.tiles[index].key);
+	atlas.tiles[index].page = NO_GLYPH_PAGE;
+	atlas.tiles[index].refs = -1;
+	atlas.freeTiles.push(index);
+	atlas.rasterizations = atlas.rasterizations - 1;
+}
+
 function liveTilesOn(atlas: GlyphAtlas, page: GlyphPage): int32 {
 	let live: int32 = 0;
 	for (let i = 0; i < (atlas.tiles.length as int32); i++) {
