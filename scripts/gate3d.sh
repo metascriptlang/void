@@ -1718,7 +1718,8 @@ run_compose() {
 	fi
 	status=0
 	VOID_MIXED_PREPARE_TWICE=1 out/tmp/mixedFrame.exe > "$WORK/compose.twice.log" 2>&1 || status=$?
-	if [ "$status" -ne 0 ] && grep -q 'prepareFrame again before drawToScreen' "$WORK/compose.twice.log"; then
+	if [ "$status" -ne 0 ] && grep -q 'prepareFrame on a frame no drawToScreen or endPrepared ended' \
+		"$WORK/compose.twice.log"; then
 		pass "compose: a second prepareFrame before drawToScreen stops and names the call"
 	else
 		fail "compose: a second prepareFrame did not stop (exit $status)"
