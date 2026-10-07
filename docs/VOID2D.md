@@ -2237,6 +2237,29 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (searched by character and by escape), so no golden is listed as moved. The vendored data is
   Ghostty's 36 reference PNGs only (78,166 B, MIT, `tests/oracle/ghostty/`); no third-party code
   was added.
+  **Review fixes, 2026-10-08.** `scripts/wasmModuleDelta.sh` now measures `spriteGlyph.c` (the
+  wasm shim gained `round`): the default layer's objects grew by 40,045 B native and 41,488 B
+  wasm32 since the colour item's base, of which `spriteGlyph.c` is 34,553 B native and 36,709 B
+  wasm32 (`tests/bench/wasm.json`, re-recorded). That replaces the 21 KB `gcc -Os` figure above
+  as the budget number; the linked module is still owed to `wasm:budget`.
+  **Visible change in every build:** text that holds a sprite codepoint (a Nerd Font powerline
+  glyph, a box line) now comes from the sprite face and no longer from the font.
+  **Limit, stated plainly:** a Label without `forceWidth` does not join its sprites. Layout is
+  DPI-independent and cached, so the sprite advance is the base face's unrounded widest ASCII
+  advance in local units, while the tile is the integer cell at the device size; at DPI 1.0 a row
+  of U+2588 at 14 px showed one overlap, at 1.25 two gaps, at 1.5 two overlaps and a 1 px gap
+  between rows, at 2.0 three overlaps. A host that draws a grid sets `forceWidth` and
+  `lineSpacing` as above. Making the advance the cell would need layout to know the device
+  scale, which is a re-layout per DPI change and a new mechanism; it is not added.
+  **NEW MECHANISM awaiting approval:** the second rasterizer and stroker in `spriteGlyph.c` was
+  raised in the report after it was built, not before. `glyph.c` already includes stb, so a thin
+  wrapper feeding `stbtt_Rasterize` there was an option; the human decides whether to keep the
+  exact-area accumulator or replace it. Cell height rounding and line thickness have no Ghostty
+  oracle beyond `faceCheck`'s own formula (the width and baseline follow `docs/GHOSTTY.md:44`);
+  `Metrics.zig` has not been read. A base face that cannot back sprites logs once and the font's
+  own glyphs are used. `tests/golden/table.ms` vectors are positional, so a merge with another
+  lane that added rows needs the rows re-aligned by hand. `glyph.c` caches a sprite face's widest
+  ASCII advance and its last cell; the bench for `void2dGlyphAdvance` is owed.
   **Owed, not run:** `sh scripts/golden.sh --update text/spriteGlyphs` (the PNGs, three rows),
   then `sh scripts/golden.sh` for the counters; a look at the half-tone shades and edges, which
   the contrast and gamma of Glyph mode move; the web column of the three rows.
