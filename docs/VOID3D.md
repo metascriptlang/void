@@ -2622,8 +2622,8 @@ mask and still walks its children, so a mismatched light neither counts toward t
 directional or the four point slots nor hides lights under it; `collectLights` passes the active
 camera's mask. A layer-1 directional beside a layer-0 one is no `TooManyDirectionalLights` for
 either camera alone, and a fifth point light on another layer is no `TooManyPointLights`. A
-second view's light block is the caller's: `collectLightsFor(scene, cameraLayersOf(second),
-block)`, not the active camera's block reused.
+second view's light block is the caller's: `collectLightsFor(scene,
+cameraLayersOf(scene, second), block)`, not the active camera's block reused.
 
 **`setLayers` on a camera node is the node's own mask.** What the camera draws is
 `setCameraLayers`; a camera node is also a node, and `setLayers` on it decides whether other
