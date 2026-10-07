@@ -2,7 +2,7 @@
 
 The opt-in 3D consumer above Void's GPU bridge, sibling to [void2d](VOID2D.md). It is a renderer for any game, ported from Heaps `h3d` (`~/projects/heaps`): Heaps owns the shape, and where Heaps has no answer, a reference engine does (Bevy first, read from its source). Hibernal is one customer. M1–M11 were taken in the order it needed them; from M16 the order is what any game needs.
 
-**Status (2026-10-07):** M1–M35a are built and reviewed; M35a passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
+**Status (2026-10-07):** M1–M35 are built and reviewed; M35 passed native acceptance below. From M33 the rows build toward a URG-class game ("Roadmap from M33"). Their as-built sections own the evidence. The gate is `sh scripts/gate3d.sh`; web/device coverage and deployment remain separate.
 
 Earlier as-built sections record the APIs at their milestone. Current names and ownership
 are mapped in "M19 as built", "M20 as built", "M21 as built" and "M35a as built"; old `pass.ms`,
@@ -35,7 +35,7 @@ Changed on purpose:
 - **Fixed sokol-shdc programs instead of hxsl shader lists.** A Material names one program and carries its uniform values. Composable fragments stay deferred (`docs/SHADER.md` Tier 3).
 - **The renderer consumes a draw list, not the scene tree.** Heaps' `emitRec` fills per-pass object lists during the walk; here the scene flattens to `Vec<DrawItem>` only when its structure changes, and each frame only rewrites world matrices. The renderer works (and is tested) with no scene at all.
 
-Not ported: `hxsl`, `h3d/impl`, PBR (`scene/pbr`, `shader/pbr`), shadow maps, skinning (`anim/Skin`, `scene/Skin`), `World`/`HierarchicalWorld`, `GpuParticles`, `MeshBatch`/`Batcher` beyond instanced billboards, `RenderGraph`, `CameraController`.
+Not ported: `hxsl`, `h3d/impl`, PBR (`scene/pbr`, `shader/pbr`), shadow maps beyond M35's one directional map, skinning (`anim/Skin`, `scene/Skin`), `World`/`HierarchicalWorld`, `GpuParticles`, `MeshBatch`/`Batcher` beyond instanced billboards, `RenderGraph`, `CameraController`.
 
 ## Data types
 
@@ -147,7 +147,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M33 | Heaps `b9aa6dcb` `h3d/mat/Material.hx:3-10` (`DefaultKind`: Opaque, Alpha, AlphaKill, Add, SoftAdd, Hidden), `:265-283` `refreshProps` (the kind decides blend, alpha kill at 0.5, culling, lights, shadows), `:132-148` `set_blendMode` (blend decides pass name and depth write) | **A material's kind.** One declaration derives phase, blend, depth write and, for AlphaKill, a cutout program whose threshold the material's block must hold, so phase and blend can no longer disagree through it (closes M32's follow-up). The explicit `Material.plain` stays for presets | every translucent or cut material; M35 needs it to pick casters and cut them in the shadow pass |
 | M34 | Heaps `h3d/mat/Pass.hx:51` (`layer`), `h3d/scene/Renderer.hx:114-125` (lists sort by layer before depth) | **A sort layer inside a phase.** An integer on the material orders items before back-to-front depth, stable within a layer | URG forces order on nearly every card and effect; **done**, see "M34 as built" |
 | M35a | Heaps `b9aa6dcb` `hxsl/Shader.hx:72-111` (`updateConstantsFinal`: constants select one variant), `h3d/shader/Texture.hx:11,26` (`killAlpha`); Bevy `157e1ce6` `bevy_pbr/src/render/mesh.rs:3093-3142` (`MeshPipelineKey`), `:3388` (`specialize`); the shady study (2026-10-06) | **A program key.** `gpu3d.ms` / `ProgramKey`, keyed materials and `programKeys.txt` replace hand-written twins and M14's `ProgramMap`. sokol-shdc compiles the declared set offline; `PipelineKey.program` stays a door id. **Done**, native gate 312 PASS / 0 FAIL; see "M35a as built" | M35 shadow receive, M36 dissolve, M37 normal and emission maps add a bit and declare keys, not a twin per program |
-| M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes); a new shader keeps the highp qualifiers sokol-shdc writes on every variable (its `precision mediump float` line is only SPIRV-Cross's default). Shadow receive is a key bit, after M35a | the one sun in URG; any outdoor or tabletop scene |
+| M35 | Heaps `h3d/pass/DirShadowMap.hx` (`calcShadowBounds:53`, `draw:300`), `h3d/pass/Shadows.hx:24-33` (size, mode, bias), `h3d/shader/DirShadow.hx`, `h3d/mat/Material.hx:27-28,83-105` (`castShadows`, `receiveShadows`) | **A directional shadow map.** A depth-only pass from the light into a target sized by the caller, sampled by lit programs with a bias and an opacity; per-material cast and receive, a shadow-only caster. Must sample on GLES3/WebGL2 (depth texture path, M3 notes); a new shader keeps the highp qualifiers sokol-shdc writes on every variable (its `precision mediump float` line is only SPIRV-Cross's default). Shadow receive is a key bit, after M35a. **Done**; see "M35 as built" | the one sun in URG; any outdoor or tabletop scene |
 | M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language | card surfaces, fire lines, beams, glows |
 | M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs | 12 emissive and 3 normal-mapped materials |
 | M38 | Heaps `h3d/parts/Data.hx:3-26` (`Value` curves, `Shape`), `h3d/parts/Emitter.hx` | **Particle parity** on M11's emitter: sphere, box, ring and point shapes, scale/colour/alpha over life, gravity, damping, turbulence, view-depth order. No collision, no sub-emitters (URG uses neither) | torches, card effects |
@@ -2281,6 +2281,89 @@ The three 3D skips remain two held captures (`capture-m14forward`, `capture-m16a
 and no GLES3 device. Web is NOT RUN pending Yoga's emcc provider. Recompiler work overlapped,
 so timings are not quiet-box evidence. The first two runs were red only on obsolete
 allocation-guard targets and two overlong imports; `docs/REVIEWS-3D.md` records the fixes.
+
+### M35 as built
+
+**A directional shadow map.** `dirShadowMap.ms` / `DirShadowMap` ports Heaps `b9aa6dcb`
+`h3d/pass/DirShadowMap.hx` as `DefaultShadowMap` runs it: Dynamic mode, `autoShrink`,
+`SAMPLING_NONE`, a `Depth32` target of the caller's size. `calcShadowBounds` (`:53`) is
+`shadowBounds`: the visible casters' box in light space, cut to the camera's frustum across the
+light and on its far side, keeping the casters' near side, then widened by 1%. A flat caster
+facing the light gets a minimum depth extent so the projection stays finite; no caster in view
+leaves the map cleared to the far plane, which shades nothing. `draw` (`:300`) culls the casters
+to the light's frustum and draws their depth in a depth-only pass; the light camera and the
+direction come from the frame's own camera and light blocks, so a frame takes no new input.
+
+**Where it plugs in.** `attachShadow(renderer, map)` on the core (null detaches it), then each
+preset draws `drawShadowPass` after `beginFrame` and before its scene pass, as fwd.Renderer
+draws its `shadow` pass first. `beginFrame` refuses a caster whose material has no shadow
+output (`ProgramNotCast`, also in `ForwardError` and `PixelArtError`). The map binds to the
+receivers as an hxsl global does (Heaps' `shadow.map`): `SceneTexture` at view slot 4 and sampler
+slot 2, past a material's, and the shadow block at uniform slot 5 among the scene globals.
+`gpu3d.h` grew to five views and three samplers.
+
+**Casting is a preset, receiving a key bit.** M35a's key carries both: `Preset.Shadow` is the
+depth h3d.pass.Shadows writes (`castIn`: cut where the material cuts, premultiplied input and
+receiving dropped, since depth has no colour), drawn with the "shadow" Pass's state (Heaps'
+defaults with the main pass's culling, `refreshProps`). `shadowed` darkens the directional light
+of a lit program; `drawnIn` drops it in a frame with no map, as DirShadow's `enable` constant
+compiles the sampling away. Fourteen keys are declared: six casters (Lit, LitTextured,
+UnlitTextured, each whole and cut) and eight receivers (Lit and LitTextured, whole and cut, in
+both presets); 37 in all. Premultiplied receivers are nameable and undeclared.
+
+**What darkens.** Heaps' forward `Shadow` shader tints the whole pixel by an ESM factor; its pbr
+`DefaultForward` multiplies each shadowed light's contribution (`c *= evaluateDirShadow(l)`).
+void3d's lit programs keep ambient and the directional term apart, so the pbr placement is
+taken: only the directional term is multiplied, by `mix(1, lit, opacity)`. The opacity is
+Godot's `shadow_opacity` (URG uses 0.8); 1 removes the light. Point lights and billboards do
+not receive. The bias is Heaps' 0.01 in map depth, scaled into the depth the backend stores.
+
+**Per backend.** The world-to-map matrix folds in the NDC-to-texel mapping and the stored depth:
+rows top-down on D3D11, Metal and WebGPU (`originTopLeft`), bottom-up on GL, and `(z + 1) / 2`
+where depth is not zero-to-one. The map is read with `texelFetch` through an `unfilterable_float`
+image and a `nonfiltering` sampler, the depth-texture path M3 measured for GLES3; the GLSL ES
+output keeps `highp` on the shadow sampler and block. Only the D3D11 path ran.
+
+**Material defaults.** `Material.ofKind` follows `Material.create`'s default props
+(`shadows: true`, `h3d/mat/Material.hx:255`): a program with a shadow output casts, a lit one
+receives; Billboard and Particle neither (`particles3D`). `Material.plain` and `keyed` stay off,
+as `new Material` is. `withShadows(cast, receive)` is the setters' pair; `ShadowCasting.Only`
+is Godot's and Unity's shadows-only mode, left out of the colour lists by `collect`.
+
+**A GPU door fix.** sokol defaults a pipeline's `color_count` to 1 unless `colors[0]` is
+`SG_PIXELFORMAT_NONE` (`_sg_pipeline_desc_defaults`), so the first depth-only pass failed
+`VALIDATE_APIP_COLORATTACHMENTS_COUNT`. `door.c` now says NONE when a layout has no colour.
+
+**Not built.** PCF and ESM sampling, cascades, static and mixed modes, a shadow colour, a
+per-node off switch (a material-level one covers URG), and a receive bias by slope. A large
+caster box spends Heaps' constant bias over its whole depth range, so a tall scene peter-pans.
+
+**Acceptance, 2026-10-07.** Over `b278254`, Windows D3D11, BUILD `244ef48c` unchanged
+before and after, `MSC_NO_GLOBAL_CACHE=1`, the two gates serially: `gate3d.sh` GREEN, 318 PASS /
+0 FAIL / 3 known skips (the two held captures, no GLES3 device), 1205 tests, 72 baseline hashes
+none adopted, so every accepted capture is byte-identical with no map attached; `gate.sh` GREEN,
+golden 82/82, 8 known skips (`src/gpu/door.c` is shared with void2d). Android arm64
+`libVoidAndroid.so` 3,626,208 bytes (build only, fourteen more programs on six backends).
+- `tests/integration/dirShadow.ms` (stage `dir-shadow`), in both presets: a white ground and a
+  red caster 1 above it, the sun toward (1, 2, 0). Under the caster the ground reads 0x4C4C4C,
+  the ambient alone; the open ground 0xFBFBFB, so the ground casting onto itself shows no acne.
+  Cast off and receive off leave the ground under the caster equal to the open ground;
+  shadow-only keeps the shadow and leaves the caster undrawn; opacity 0.5 reads 0xBFBFBF. The
+  control, the same scene with no map attached, fails on the missing shadow.
+- Headless (`dirShadowCheck.ms`, `programKeyCheck.ms`): every key of the three presets and three
+  flags packs into 512 slots, 37 declared; receivers drawn shadowed only with a map and declare
+  the shadow block, view and sampler past a material's; casters keep their layout, read the
+  material block only when cut, and refuse Billboard and Particle; the material defaults; the
+  light basis; `shadowBounds` cut, kept near side, empty cases and the flat-caster extent; the
+  owned blocks and the `ProgramNotCast` refusal before anything is written. Aborts
+  (`shadowCases.ms`): a foreign or closed map, closing twice, an unlit receiver.
+- The allocation guard covers the shadow path (`drawShadows`, `castsAll`, `shadowBounds`,
+  `casterBounds`, `drawShadowPass`, `collectCasters`, `castIn`, `drawItemWith` and their helpers);
+  the bench and the 310-frame churn stay flat.
+
+GLES3 and web are NOT RUN: the GL row order and stored-depth mapping are reasoned from sokol's
+backends, not measured. The first gate run was red on two items the change made: the bindings
+abort still expected 9 words, and five lines over 100 columns.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 

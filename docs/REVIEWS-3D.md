@@ -2479,3 +2479,39 @@ allocation and style PASS, Android arm64 3,454,016 B. The first run was 310 PASS
 rerun1 311 PASS / 1 FAIL; the new reds were the guard/style migration defects above.
 The three 3D skips are the two held captures and no GLES3 device; web NOT RUN pending Yoga's
 emcc provider. Other recompiler jobs overlapped; no isolated timing claim.
+
+## M35 — a directional shadow map
+
+**Verdict: SHIP.** Design and defect passes were read in the implementing session against
+Heaps `b9aa6dcb` (`h3d/pass/DirShadowMap.hx`, `Shadows.hx`, `DefaultShadowMap.hx`,
+`h3d/shader/ShadowSampling.hx`, `Shadow.hx`, `pbr/DefaultForward.hx`, `h3d/mat/Material.hx`).
+
+### Design pass
+
+- **Kept on Heaps:** Dynamic mode with autoShrink, the near side from the casters, 1% widening,
+  `SAMPLING_NONE` compare with `saturate` on the receiver's depth, bias 0.01, a `Depth32` map,
+  the shadow Pass's default state with the main pass's culling, cast and receive defaults from
+  `Material.create`'s props and none for `particles3D`.
+- **Chosen between two Heaps paths:** pbr's per-light multiply over forward's whole-pixel ESM
+  tint, because void3d keeps ambient apart and URG's consumer (Godot) attenuates the light.
+  Opacity is Godot's `shadow_opacity`; shadows-only casting is Godot's and Unity's mode.
+- **Extended, not new:** `Preset.Shadow` is the pass output M35a's preset already models; the
+  map binds as an hxsl global through a `SceneTexture` beside the existing scene uniform globals.
+- **Not built, recorded in the as-built:** PCF/ESM, cascades, static modes, slope bias, a
+  per-node switch.
+
+### Defect pass
+
+- **Fixed:** sokol made the first depth-only pipeline `color_count` 1
+  (`VALIDATE_APIP_COLORATTACHMENTS_COUNT`); `door.c` names NONE for a layout with no colour.
+- **Fixed:** a caster that does not cut would have had its material block applied to a slot its
+  program does not declare; `drawItemWith` applies a material block only where declared.
+- **Fixed:** the bindings abort expected the old 9-word descriptor; five lines over 100 columns.
+- **Kept:** a caster with a premultiplied texture draws through the straight caster, since its
+  cut compares alpha alone; `drawItemWith` skips the colour-alpha checks for the Shadow preset.
+- **Open:** GL row order and stored depth are reasoned, not run (no GLES3 device, web NOT RUN).
+
+### Final acceptance
+
+See "M35 as built": `gate3d.sh` 318 PASS / 0 FAIL / 3 known skips, `gate.sh` 82/82 golden,
+BUILD `244ef48c`, D3D11 only.
