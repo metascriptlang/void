@@ -809,6 +809,7 @@ int void2dGlyphPageTexel(int page, int x, int y) {
 	return p->texels[(size_t)y * (size_t)p->size + (size_t)x];
 }
 
+#ifdef VOID2D_COLOUR_EMOJI
 unsigned int void2dGlyphPageTexelRgba(int page, int x, int y) {
 	if (!validPage(page)) { return 0; }
 	GlyphPage *p = &s_pages[page];
@@ -844,7 +845,9 @@ int void2dGlyphPageBlitRgba(int page, int x, int y, int w, int h,
 	p->dirty = 1;
 	return VOID2D_BLIT_OK;
 }
+#endif
 
+#ifdef VOID2D_SVG
 int void2dGlyphPageBlitMask(int page, int x, int y, int w, int h,
                             const unsigned char *alpha, long long count, int stride) {
 	if (!validPage(page) || !alpha || w <= 0 || h <= 0 || stride < w ||
@@ -868,6 +871,7 @@ int void2dGlyphPageBlitMask(int page, int x, int y, int w, int h,
 	p->dirty = 1;
 	return VOID2D_BLIT_OK;
 }
+#endif
 
 const unsigned char *void2dGlyphPageData(int page) {
 	return validPage(page) ? s_pages[page].texels : NULL;

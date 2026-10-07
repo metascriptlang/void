@@ -13,10 +13,12 @@ import {
 	void2dGlyphPagesFrameBegin,
 } from "./glyph.h";
 
-extern function void2dGlyphPageBlitMask(
-	page: int32, x: int32, y: int32, width: int32, height: int32, alpha: Readonly<Span<uint8>>,
-	stride: int32,
-): int32;
+when (voidSvg) {
+	extern function void2dGlyphPageBlitMask(
+		page: int32, x: int32, y: int32, width: int32, height: int32,
+		alpha: Readonly<Span<uint8>>, stride: int32,
+	): int32;
+}
 
 export const SUBPIXEL_VARIANTS: int32 = 4;
 export const GLYPH_GUTTER: int32 = 1;
@@ -482,11 +484,15 @@ export function fillMask(
 	if ((alpha.length as int32) != tile.width * tile.height) {
 		return Result.err(AtlasError.MaskBadShape);
 	}
-	const code: int32 = void2dGlyphPageBlitMask(
-		atlas.pages[tile.page as int32].handle as int32, tile.x, tile.y, tile.width, tile.height,
-		alpha, tile.width);
-	if (code != 0) { return Result.err(maskBlitRefusal(code)); }
-	return Result.ok(true);
+	when (voidSvg) {
+		const code: int32 = void2dGlyphPageBlitMask(
+			atlas.pages[tile.page as int32].handle as int32, tile.x, tile.y,
+			tile.width, tile.height, alpha, tile.width);
+		if (code != 0) { return Result.err(maskBlitRefusal(code)); }
+		return Result.ok(true);
+	} else {
+		return Result.err(AtlasError.KindNotBuilt);
+	}
 }
 
 export function acquireMask(
