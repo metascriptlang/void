@@ -7,8 +7,12 @@ import { trs2d } from "../void2d/types";
 import {
 	insideRoundedRect, pixelCoverage, maxCoverageError, SUPERSAMPLES,
 	blurredPixelCoverage, maxShadowError,
-	devicePixelCoverage, affineEdgeBound, trueEdgeSlope,
+	devicePixelCoverage, affineEdgeBound, trueEdgeSlope, isCornerPixel, deviceBoxExtent,
 } from "../../tests/oracle/coverage";
+import {
+	aaNonUniformCases, AA_NON_UNIFORM_CORNER_BAND, AA_NON_UNIFORM_EDGE_ABOVE,
+	AA_NON_UNIFORM_EDGE_BELOW, AA_NON_UNIFORM_CORNER_ABOVE,
+} from "../../tests/golden/table";
 import { approx } from "./helpers";
 
 test "the oracle is a square when the radius is zero" {
@@ -326,4 +330,58 @@ test "the one-width error at 4:1 rotated 20 degrees stays under the predicted bo
 	assert r[1] <= r[0];
 	assert r[0] - r[1] < 0.03;
 	assert r[2] <= 0.06;
+}
+
+function sceneCaseWorst(index: int32): Vec<float32> {
+	const k = aaNonUniformCases()[index];
+	const t = trs2d(0.0, 0.0, k.rotation, k.scaleX, k.scaleY);
+	const predicted: float32 = affineEdgeBound(t.a, t.b, t.c, t.d);
+	const aa: float32 = aaWidthForAffine(t.a, t.b, t.c, t.d);
+	const det: float32 = t.a * t.d - t.b * t.c;
+	const hx: float32 = k.w * 0.5;
+	const hy: float32 = k.h * 0.5;
+	const extent: Vec<int32> = deviceBoxExtent(t.a, t.b, t.c, t.d, k.x, k.y, k.w, k.h, 3);
+	let worstEdge: float32 = 0.0;
+	let worstCorner: float32 = 0.0;
+	let edgePixels: int32 = 0;
+	let cornerPixels: int32 = 0;
+	for (let y: int32 = extent[1]; y < extent[3]; y++) {
+		for (let x: int32 = extent[0]; x < extent[2]; x++) {
+			const cx: float32 = (x as float32) + 0.5;
+			const cy: float32 = (y as float32) + 0.5;
+			const truth: float32 = devicePixelCoverage(
+				cx, cy, t.a, t.b, t.c, t.d, k.x, k.y, k.w, k.h, 0.0);
+			const lx: float32 = (t.d * (cx - k.x) - t.c * (cy - k.y)) / det;
+			const ly: float32 = (t.a * (cy - k.y) - t.b * (cx - k.x)) / det;
+			const analytic: float32 = coverageFromDistance(
+				roundedRectDistance(lx - hx, ly - hy, hx, hy, 0.0), aa);
+			const fractional: boolean = (truth > 0.0 && truth < 1.0)
+				|| (analytic >= 0.01 && analytic <= 0.99);
+			if (!fractional) { continue; }
+			const e: float32 = analytic > truth ? analytic - truth : truth - analytic;
+			if (isCornerPixel(cx, cy, t.a, t.b, t.c, t.d, k.x, k.y, k.w, k.h,
+				AA_NON_UNIFORM_CORNER_BAND)) {
+				cornerPixels = cornerPixels + 1;
+				if (e > worstCorner) { worstCorner = e; }
+			} else {
+				edgePixels = edgePixels + 1;
+				if (e > worstEdge) { worstEdge = e; }
+			}
+		}
+	}
+	console.log(`coverage oracle: scene box ${k.label}, predicted ${predicted}`
+		+ ` edge worst ${worstEdge} over ${edgePixels} pixels,`
+		+ ` corner worst ${worstCorner} over ${cornerPixels} pixels`);
+	return [predicted, worstEdge, worstCorner, edgePixels as float32, cornerPixels as float32];
+}
+
+test "the prim/aaNonUniformBox boxes read their predicted bound on the pixels the scene draws" {
+	for (let i: int32 = 0; i < 4; i++) {
+		const r: Vec<float32> = sceneCaseWorst(i);
+		assert r[1] <= r[0] + AA_NON_UNIFORM_EDGE_ABOVE;
+		assert r[1] >= r[0] - AA_NON_UNIFORM_EDGE_BELOW;
+		assert r[2] <= r[0] + AA_NON_UNIFORM_CORNER_ABOVE;
+		assert r[3] >= 160.0;
+		assert r[4] >= 8.0;
+	}
 }

@@ -20,8 +20,14 @@ import { env } from "std/process";
 import {
 	AA_BOX_W, AA_BOX_H, AA_BOX_X, AA_BOX_Y, AA_BOX_PIVOT_X, AA_BOX_PIVOT_Y,
 	AA_BOX_ROTATION, AA_BOX_SCENE, AA_GRAPHICS_SCENE,
+	AA_NON_UNIFORM_SCENE, AA_NON_UNIFORM_CORNER_BAND, AA_NON_UNIFORM_EDGE_ABOVE,
+	AA_NON_UNIFORM_EDGE_BELOW, AA_NON_UNIFORM_CORNER_ABOVE, aaNonUniformCases,
 } from "../golden/table";
-import { devicePixelCoverage, coverageFromPixel, blurredPixelCoverage } from "./coverage";
+import { trs2d } from "../../src/void2d/types";
+import {
+	devicePixelCoverage, coverageFromPixel, blurredPixelCoverage,
+	affineEdgeBound, isCornerPixel, deviceBoxExtent,
+} from "./coverage";
 import { voidPngLoad, voidPngWidth, voidPngHeight, voidPngPixel } from "../golden/pngio.h";
 
 // Two bounds, because a straight edge and a sharp corner are two different claims and one
@@ -77,6 +83,7 @@ function pixel(x: int32, y: int32, channel: int32): int32 {
 // a golden that was promoted first would be judging a decision already taken.
 const GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaRotatedBox.png";
 const GRAPHICS_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaGraphics.png";
+const NON_UNIFORM_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaNonUniformBox.png";
 
 // ===== the shadow half: the erf integral's GLSL copy, judged against the definition =====
 //
@@ -298,13 +305,105 @@ function runRotatedFill(
 	return 0;
 }
 
+function runAffineFill(scene: string, goldenPath: string, overrideVar: string): int32 {
+	const override: string = env.get(overrideVar);
+	const path: string = override.equals("") ? goldenPath : override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL coverage oracle ${scene}: cannot read ${path}`);
+		return 1;
+	}
+	const bgR: int32 = pixel(2, 2, 0);
+	const bgG: int32 = pixel(2, 2, 1);
+	const bgB: int32 = pixel(2, 2, 2);
+	const cases = aaNonUniformCases();
+	for (let i: int32 = 0; i < (cases.length as int32); i++) {
+		const k = cases[i];
+		const t = trs2d(k.x, k.y, k.rotation, k.scaleX, k.scaleY);
+		const predicted: float32 = affineEdgeBound(t.a, t.b, t.c, t.d);
+		const centreX: int32 = (k.x + t.a * k.w * 0.5 + t.c * k.h * 0.5) as int32;
+		const centreY: int32 = (k.y + t.b * k.w * 0.5 + t.d * k.h * 0.5) as int32;
+		const fillR: int32 = pixel(centreX, centreY, 0);
+		const fillG: int32 = pixel(centreX, centreY, 1);
+		const fillB: int32 = pixel(centreX, centreY, 2);
+		const extent: Vec<int32> = deviceBoxExtent(t.a, t.b, t.c, t.d, k.x, k.y, k.w, k.h, 3);
+		let worstEdge: float32 = 0.0;
+		let worstCorner: float32 = 0.0;
+		let edgePixels: int32 = 0;
+		let cornerPixels: int32 = 0;
+		let unjudgeable: int32 = 0;
+		for (let y: int32 = extent[1]; y < extent[3]; y++) {
+			for (let x: int32 = extent[0]; x < extent[2]; x++) {
+				const cx: float32 = (x as float32) + 0.5;
+				const cy: float32 = (y as float32) + 0.5;
+				const truth: float32 = devicePixelCoverage(
+					cx, cy, t.a, t.b, t.c, t.d, k.x, k.y, k.w, k.h, 0.0);
+				const observed: float32 = coverageFromPixel(
+					pixel(x, y, 0), pixel(x, y, 1), pixel(x, y, 2),
+					bgR, bgG, bgB, fillR, fillG, fillB);
+				if (observed < 0.0) { unjudgeable = unjudgeable + 1; continue; }
+				const fractional: boolean = (truth > 0.0 && truth < 1.0)
+					|| (observed >= 0.01 && observed <= 0.99);
+				if (!fractional) { continue; }
+				const delta: float32 = observed - truth;
+				const error: float32 = delta < 0.0 ? -delta : delta;
+				if (isCornerPixel(cx, cy, t.a, t.b, t.c, t.d, k.x, k.y, k.w, k.h,
+					AA_NON_UNIFORM_CORNER_BAND)) {
+					cornerPixels = cornerPixels + 1;
+					if (error > worstCorner) { worstCorner = error; }
+				} else {
+					edgePixels = edgePixels + 1;
+					if (error > worstEdge) { worstEdge = error; }
+				}
+			}
+		}
+		console.log(`coverage oracle: capture ${scene} box ${k.label}, predicted ${predicted},`
+			+ ` ${edgePixels} edge pixels worst ${worstEdge},`
+			+ ` ${cornerPixels} corner pixels worst ${worstCorner}`);
+		if (edgePixels < 160 || cornerPixels < 8) {
+			console.log(`FAIL coverage oracle ${scene} box ${k.label}:`
+				+ ` ${edgePixels} edge and ${cornerPixels} corner pixels - the scene cannot convict`);
+			return 1;
+		}
+		if (unjudgeable > 0) {
+			console.log(`FAIL coverage oracle ${scene} box ${k.label}:`
+				+ ` ${unjudgeable} pixels where no channel separates fill from background`);
+			return 1;
+		}
+		if (worstEdge > predicted + AA_NON_UNIFORM_EDGE_ABOVE) {
+			console.log(`FAIL coverage oracle ${scene} box ${k.label}:`
+				+ ` edge error ${worstEdge} exceeds the predicted ${predicted}`
+				+ ` + ${AA_NON_UNIFORM_EDGE_ABOVE}`);
+			return 1;
+		}
+		if (worstEdge < predicted - AA_NON_UNIFORM_EDGE_BELOW) {
+			console.log(`FAIL coverage oracle ${scene} box ${k.label}:`
+				+ ` edge error ${worstEdge} is under the predicted ${predicted}`
+				+ ` - ${AA_NON_UNIFORM_EDGE_BELOW}, so the capture is not the one-width approximation`);
+			return 1;
+		}
+		if (worstCorner > predicted + AA_NON_UNIFORM_CORNER_ABOVE) {
+			console.log(`FAIL coverage oracle ${scene} box ${k.label}:`
+				+ ` corner error ${worstCorner} exceeds the predicted ${predicted}`
+				+ ` + ${AA_NON_UNIFORM_CORNER_ABOVE}`);
+			return 1;
+		}
+	}
+	console.log(`PASS coverage oracle ${scene}: every box reads the one-width bound`
+		+ ` 0.5 * (1 - min/max slope) within [-${AA_NON_UNIFORM_EDGE_BELOW},`
+		+ ` +${AA_NON_UNIFORM_EDGE_ABOVE}]`);
+	return 0;
+}
+
 function run(): int32 {
 	if (runRotatedFill(AA_BOX_SCENE, GOLDEN_PATH, "VOID_AA_CAPTURE", CORNER_BOUND) != 0) { return 1; }
 	const graphics: int32 = runRotatedFill(
 		AA_GRAPHICS_SCENE, GRAPHICS_GOLDEN_PATH, "VOID_AA_GRAPHICS_CAPTURE", GRAPHICS_CORNER_BOUND,
 	);
 	if (graphics != 0) { return 1; }
-	return runShadow();
+	if (runShadow() != 0) { return 1; }
+	return runAffineFill(
+		AA_NON_UNIFORM_SCENE, NON_UNIFORM_GOLDEN_PATH, "VOID_AA_NON_UNIFORM_CAPTURE",
+	);
 }
 
 process.exit(run());

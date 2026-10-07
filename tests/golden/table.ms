@@ -52,6 +52,36 @@ export const AA_BOX_BG_R: float32 = 0.08;
 export const AA_BOX_BG_G: float32 = 0.09;
 export const AA_BOX_BG_B: float32 = 0.12;
 
+export const AA_NON_UNIFORM_SCENE: string = "prim/aaNonUniformBox";
+export const AA_NON_UNIFORM_CORNER_BAND: float32 = 2.0;
+export const AA_NON_UNIFORM_EDGE_ABOVE: float32 = 0.02;
+export const AA_NON_UNIFORM_EDGE_BELOW: float32 = 0.05;
+export const AA_NON_UNIFORM_CORNER_ABOVE: float32 = 0.04;
+
+export interface AaBoxCase {
+	label: string;
+	x: float32;
+	y: float32;
+	w: float32;
+	h: float32;
+	scaleX: float32;
+	scaleY: float32;
+	rotation: float32;
+}
+
+export function aaNonUniformCases(): AaBoxCase[] {
+	return [
+		{ label: "2:1", x: 10.08, y: 12.15, w: 32.0, h: 24.0,
+			scaleX: 2.0, scaleY: 1.0, rotation: 0.0 },
+		{ label: "3:1", x: 100.08, y: 14.21, w: 28.0, h: 18.0,
+			scaleX: 3.0, scaleY: 1.0, rotation: 0.0 },
+		{ label: "1:3", x: 200.21, y: 8.08, w: 30.0, h: 12.0,
+			scaleX: 1.0, scaleY: 3.0, rotation: 0.0 },
+		{ label: "4:1 rotated 20", x: 40.0, y: 90.0, w: 40.0, h: 40.0,
+			scaleX: 2.0, scaleY: 0.5, rotation: 0.34906584 },
+	];
+}
+
 // text/filteredDpi125 draws one line twice at the same device phase, plain and inside a
 // radius-0 blur, a whole number of device pixels apart, so the capture check can compare them.
 export const FILTERED_TEXT_SCENE: string = "text/filteredDpi125";
@@ -200,6 +230,7 @@ export function sceneRows(): SceneRow[] {
 
 		{ name: "prim/aaRotatedBox", phase: "P2", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/aaGraphics", phase: "P6", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
+		{ name: "prim/aaNonUniformBox", phase: "P6", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/perCornerRadii", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/perSideBorders", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },
 		{ name: "prim/dashedBorder", phase: "P2", width: 320, height: 250, dpi: 1.25, steps: 0, demo: false },

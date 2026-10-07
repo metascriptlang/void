@@ -519,11 +519,11 @@ pass "coverage oracle: rounded rect, 16x16 supersampled, in T0 (straight edge ex
 # The T0 oracle judges src/void2d/sdf.ms. The shader is a SECOND copy of that arithmetic in
 # GLSL, and until this step existed "the antialiasing is correct" was proven for MetaScript
 # and merely unchanged for the thing that draws — the shape of the defect that let a squared
-# alpha live through all of P1. This recomputes prim/aaRotatedBox and prim/aaGraphics from
-# geometry and judges the committed goldens.
+# alpha live through all of P1. This recomputes prim/aaRotatedBox, prim/aaGraphics and
+# prim/aaNonUniformBox from geometry and judges the committed goldens.
 "$MSC" build tests/oracle/captureCheck.ms --output=out/coverageCapture.exe > out/gate-oracle.log 2>&1 || true
 if [ -x out/coverageCapture.exe ] && out/coverageCapture.exe > out/gate-oracle-run.log 2>&1; then
-	pass "coverage oracle: the captures' AA is true area (prim/aaRotatedBox, prim/aaGraphics)"
+	pass "coverage oracle: the captures' AA is true area (prim/aaRotatedBox, prim/aaGraphics, prim/aaNonUniformBox)"
 	sed -n 's/^coverage oracle: /      /p' out/gate-oracle-run.log
 else
 	fail "coverage oracle: the capture's AA disagrees with true area"

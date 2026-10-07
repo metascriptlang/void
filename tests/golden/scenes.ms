@@ -77,6 +77,7 @@ import {
 	AA_BOX_ROTATION, AA_BOX_ALPHA,
 	AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B,
 	AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B,
+	aaNonUniformCases,
 	FILTERED_TEXT_X, FILTERED_TEXT_Y, FILTERED_TEXT_SHIFT,
 	CARET_TEXT, CARET_SIZE, CARET_X, CARET_Y, CARET_SELECTION_START, CARET_SELECTION_LENGTH,
 	CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
@@ -317,6 +318,20 @@ function primAaGraphics(): Scene2D {
 	g.setRotation(AA_BOX_ROTATION);
 	g.setAlpha(AA_BOX_ALPHA);
 	s.add(g);
+	return s;
+}
+
+function primAaNonUniformBox(): Scene2D {
+	const s = Scene2D.create(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
+	const cases = aaNonUniformCases();
+	for (let i: int32 = 0; i < (cases.length as int32); i++) {
+		const box = s.rect(cases[i].w, cases[i].h,
+			rgba(AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B, 1.0)).at(cases[i].x, cases[i].y);
+		box.setScaleX(cases[i].scaleX);
+		box.setScaleY(cases[i].scaleY);
+		box.setRotation(cases[i].rotation);
+		s.add(box);
+	}
 	return s;
 }
 
@@ -1633,6 +1648,7 @@ export function sceneBuilders(): SceneBuilder[] {
 
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 		{ name: "prim/aaGraphics", build: primAaGraphics },
+		{ name: "prim/aaNonUniformBox", build: primAaNonUniformBox },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
 		{ name: "prim/perSideBorders", build: primPerSideBorders },
 		{ name: "prim/dashedBorder", build: primDashedBorder },

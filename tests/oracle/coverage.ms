@@ -193,3 +193,46 @@ export function affineEdgeBound(a: float32, b: float32, c: float32, d: float32):
 	}
 	return worst;
 }
+
+export function isCornerPixel(
+	cx: float32,
+	cy: float32,
+	a: float32, b: float32, c: float32, d: float32,
+	ox: float32, oy: float32,
+	w: float32, h: float32,
+	band: float32,
+): boolean {
+	const det: float32 = a * d - b * c;
+	const dx: float32 = cx - ox;
+	const dy: float32 = cy - oy;
+	const lx: float32 = (d * dx - c * dy) / det - w * 0.5;
+	const ly: float32 = (a * dy - b * dx) / det - h * 0.5;
+	const ax: float32 = lx < 0.0 ? -lx : lx;
+	const ay: float32 = ly < 0.0 ? -ly : ly;
+	return (w * 0.5 - ax) * trueEdgeSlope(a, b, c, d, 0) < band
+		&& (h * 0.5 - ay) * trueEdgeSlope(a, b, c, d, 1) < band;
+}
+
+export function deviceBoxExtent(
+	a: float32, b: float32, c: float32, d: float32,
+	ox: float32, oy: float32,
+	w: float32, h: float32,
+	pad: int32,
+): Vec<int32> {
+	const xs: Vec<float32> = [ox, ox + a * w, ox + c * h, ox + a * w + c * h];
+	const ys: Vec<float32> = [oy, oy + b * w, oy + d * h, oy + b * w + d * h];
+	let x0: float32 = xs[0];
+	let x1: float32 = xs[0];
+	let y0: float32 = ys[0];
+	let y1: float32 = ys[0];
+	for (let i: int32 = 1; i < 4; i++) {
+		if (xs[i] < x0) { x0 = xs[i]; }
+		if (xs[i] > x1) { x1 = xs[i]; }
+		if (ys[i] < y0) { y0 = ys[i]; }
+		if (ys[i] > y1) { y1 = ys[i]; }
+	}
+	return [
+		(Math.floor(x0 as float64) as int32) - pad, (Math.floor(y0 as float64) as int32) - pad,
+		(Math.ceil(x1 as float64) as int32) + pad, (Math.ceil(y1 as float64) as int32) + pad,
+	];
+}
