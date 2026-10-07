@@ -37,6 +37,9 @@ when (voidProfiler) {
 	import { frameStats, profilerCollect } from "../void2d/frameMarks";
 	import { ringCount, ringPercentile } from "../void2d/profiler";
 }
+when (voidSdfText) {
+	import { void2dGlyphSdfGenerations } from "../void2d/glyph.h";
+}
 
 export enum BenchKind {
 	Ui,
@@ -45,6 +48,7 @@ export enum BenchKind {
 	Editor,
 	Scroll,
 	TextEmoji,
+	TextSdf,
 }
 
 const COLUMNS: int32 = 100;
@@ -123,6 +127,8 @@ let rasterizationsBeforeMeasure: int32 = 0;
 let sweepPeakPages: int32 = 0;
 let colourBeforeFirstPaint: int32 = 0;
 let colourBeforeMeasure: int32 = 0;
+let sdfBeforeFirstPaint: int32 = 0;
+let sdfBeforeMeasure: int32 = 0;
 let codeBlock: NodeRef | null = null;
 let scrollArea: NodeRef | null = null;
 let warmupFrames: int32 = WARMUP_FRAMES;
@@ -175,6 +181,16 @@ export function benchInit(kind: BenchKind): void {
 		s.add(block);
 		codeBlock = block;
 		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
+	} else if (kind === BenchKind.TextSdf) {
+		benchName = "textSdf";
+		const block = s.group();
+		for (let line: int32 = 0; line < CODE_LINES; line++) {
+			const y: float32 = 8.0 + (line as float32) * 17.0;
+			block.addChild(s.label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, y));
+		}
+		s.add(block);
+		codeBlock = block;
+		warmupFrames = 2 * SWEEP_FRAMES + WARMUP_FRAMES;
 	} else {
 		benchName = "sprites";
 		const pixels = loadImageSync("assets/test.png", 4);
@@ -200,7 +216,7 @@ export function benchInit(kind: BenchKind): void {
 	} else if (kind === BenchKind.Scroll) {
 		nodeCount = 2;
 		retainedNodeCount = 1;
-	} else if (kind === BenchKind.Text || kind === BenchKind.TextEmoji) {
+	} else if (kind === BenchKind.Text || kind === BenchKind.TextEmoji || kind === BenchKind.TextSdf) {
 		nodeCount = CODE_LINES + 1;
 		retainedNodeCount = CODE_LINES;
 	} else {
@@ -249,6 +265,10 @@ function report(): void {
 	console.log(`${benchName}.colourRasterizationsSteady ${colourSteady}`);
 	const colourSwept: int32 = colourBeforeMeasure - colourBeforeFirstPaint;
 	console.log(`${benchName}.sweepColourRasterizations ${colourSwept}`);
+	console.log(`${benchName}.sdfPages ${glyphAtlas.pagesOfKind(PageKind.Sdf)}`);
+	console.log(`${benchName}.sdfBytes ${glyphAtlas.bytesOfKind(PageKind.Sdf)}`);
+	console.log(`${benchName}.sdfGenerationsSteady ${sdfGenerations() - sdfBeforeMeasure}`);
+	console.log(`${benchName}.sweepSdfGenerations ${sdfBeforeMeasure - sdfBeforeFirstPaint}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
 	console.log(`${benchName}.firstPaintUploadBytes ${firstPaintUploadBytes}`);
 	const idle: boolean = benchScene !== null && (benchScene as Scene2D).isDirty();
@@ -264,6 +284,14 @@ function report(): void {
 		const first: NodeRef = codeBlock.getChildAt(0);
 		console.log(`${benchName}.lineWidth ${first.textWidth()}`);
 		console.log(`${benchName}.lineHeight ${first.textHeight()}`);
+	}
+}
+
+function sdfGenerations(): int32 {
+	when (voidSdfText) {
+		return void2dGlyphSdfGenerations() as int32;
+	} else {
+		return 0;
 	}
 }
 
@@ -303,16 +331,23 @@ function measureGlyphLookups(): int32 {
 
 // The zoom sweep runs inside the warm-up: the code block scales from 0.5 to 4 over the
 // sweep frames and settles back at 1 before the measured frames begin, so the measured
-// frames prove a steady state after the atlas has churned, not before.
+// frames prove a steady state after the atlas has churned, not before. The SDF scene turns
+// the block through a full circle in the sweep frames after the zoom.
 function sweep(frame: int32): void {
 	if (codeBlock === null) { return; }
 	const step: int32 = frame - 2;
 	let scale: float32 = 1.0;
+	let angle: float32 = 0.0;
+	const turns: boolean = benchName.equals("textSdf");
 	if (step < SWEEP_FRAMES) {
 		const span: float32 = (SWEEP_FRAMES - 1) as float32;
 		scale = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * (step as float32) / span;
+	} else if (turns && step < 2 * SWEEP_FRAMES) {
+		const span: float32 = (SWEEP_FRAMES - 1) as float32;
+		angle = 2.0 * (Math.PI as float32) * ((step - SWEEP_FRAMES) as float32) / span;
 	}
 	codeBlock.setScale(scale);
+	if (turns) { codeBlock.setRotation(angle); }
 }
 
 export function benchFrame(): void {
@@ -324,6 +359,7 @@ export function benchFrame(): void {
 		firstPaintMs = performance.now() - firstStarted;
 		firstPaintRasterizations = glyphRasterizations();
 		colourBeforeFirstPaint = glyphAtlas.colourRasterizations;
+		sdfBeforeFirstPaint = sdfGenerations();
 		firstPaintUploadBytes = uploadBytes();
 		return;
 	}
@@ -333,6 +369,7 @@ export function benchFrame(): void {
 		if (glyphAtlas.pageCount() > sweepPeakPages) { sweepPeakPages = glyphAtlas.pageCount(); }
 		rasterizationsBeforeMeasure = glyphRasterizations();
 		colourBeforeMeasure = glyphAtlas.colourRasterizations;
+		sdfBeforeMeasure = sdfGenerations();
 		return;
 	}
 	benchScene.tick(FRAME_DT);

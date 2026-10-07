@@ -168,6 +168,25 @@ function runCheck(): int32 {
 			failed = failed + 1;
 		}
 	}
+	const sdfRows = runBench(binary("TextSdf"));
+	if ((sdfRows.length as int32) == 0) {
+		failed = failed + 1;
+	} else {
+		const bounds = baseline.sdfBounds;
+		const limited: string[] = [
+			"sdfPages", "sdfBytes", "sweepSdfGenerations", "sdfGenerationsSteady",
+			"sweepRasterizations", "glyphRasterizationsSteady",
+		];
+		for (const metric of limited) {
+			const limit: int32 = bounds.getDynamicField(metric).asInt32();
+			if (!checkAtMost(sdfRows, "textSdf", metric, limit)) { failed = failed + 1; }
+		}
+		const [drawn, generations] = rowValue(sdfRows, "textSdf", "sweepSdfGenerations");
+		if (!drawn || (generations as int32) < 1) {
+			console.log("FAIL textSdf.sweepSdfGenerations is 0: no glyph was drawn from the field");
+			failed = failed + 1;
+		}
+	}
 	const lookups: int32 = counters.text.getDynamicField("measureGlyphLookups").asInt32();
 	if (!checkCounter(textRows, "text", "measureGlyphLookups", lookups)) { failed = failed + 1; }
 

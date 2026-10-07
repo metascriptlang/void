@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchUiProfiler.exe out/benchSpritesProfiler.exe out/benchTextProfiler.exe out/benchEditorProfiler.exe out/benchScrollProfiler.exe out/frameProfiler.exe out/benchTextEmoji.exe out/benchTextEmojiProfiler.exe out/benchTextSdf.exe out/benchTextSdfProfiler.exe out/benchCheck.exe out/textSdfCapture.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -606,6 +606,9 @@ if [ "$QUICK" -eq 1 ] || [ ! -f out/benchUi.exe ]; then
 	"$MSC" build -d:voidColourEmoji tests/bench/benchTextEmoji.ms --release --output=out/benchTextEmoji.exe >> out/gate-bench.log 2>&1 || true
 	"$MSC" build -d:voidProfiler -d:voidColourEmoji tests/bench/benchTextEmoji.ms --release \
 		--output=out/benchTextEmojiProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
+	"$MSC" build -d:voidSdfText tests/bench/benchTextSdf.ms --release --output=out/benchTextSdf.exe >> out/gate-bench.log 2>&1 || true
+	"$MSC" build -d:voidProfiler -d:voidSdfText tests/bench/benchTextSdf.ms --release \
+		--output=out/benchTextSdfProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
 fi
 "$MSC" build tests/bench/check.ms --output=out/benchCheck.exe >> out/gate-bench.log 2>&1 || true
 if [ -x out/benchCheck.exe ] && out/benchCheck.exe > out/gate-bench-rows.log 2>&1; then
