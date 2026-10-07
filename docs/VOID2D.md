@@ -1652,6 +1652,27 @@ changes described above on today's compiler; the P4 web archive also takes its r
 **Lands.** Each item is independently shippable and carries its own wasm measurement.
 
 - **Shaper module** (candidate `kb_text_shape`): GSUB features, ligatures, complex scripts, shaping breaks as an input. The largest wasm item; measured alone.
+  **Bridge built 2026-10-07** (`src/void2d/shaper.{h,c,ms}`, test `src/test/shaperBridgeCheck.ms`;
+  layout does not call it yet). `kb_text_shape` v2.28e is fetched by `setup.sh` into `deps/kb` at
+  the pinned commit (zlib, one 1,840,545 B header; `deps/` is not tracked, like sokol and stb).
+  **NEW MECHANISM A, the first compile-time module: proven.** `shaper.ms` has `when (voidShaper)`
+  with the real bridge and an `else` stub that stops by name (`tests/aborts/shaperOff.ms`). The
+  `import ... from "./shaper.h"` and its companion `shaper.c` sit inside the `when`: a probe built
+  with and without `-d:voidShaper` on msc 0.3.2 gave an executable with no `kbts_` string and no
+  `shaper.c` object in the build cache when off (0 and 0), and both when on. The C side is one
+  file that holds the implementation (`KB_TEXT_SHAPE_STATIC`), takes the face bytes from
+  `glyph.c` (`void2dGlyphFaceData`), keeps one parsed font and one shape context per face
+  (a synthetic face shares its base's bytes, so it shares both), and hands glyphs back through
+  `void2dShapeGlyph` as nine ints (id, advance and offset in font units, the pushed codepoint's
+  index, codepoint, run direction, run number), copied during `void2dShapeEnd` because kb reuses
+  its run memory. The index returned is the caller's own: the context API always returns a
+  codepoint index in `UserIdOrCodepointIndex`, so the bridge pushes a user id per codepoint and
+  maps it back through `kbts_ShapeGetShapeCodepoint`. A pass needs no `kbts_ShapePopFont`: it is
+  broken upstream (`kb_text_shape.h:25529` takes `&Context->FontBlockSentinel.Prev` where every
+  other use takes the pointer, and ubsan stops on the first pop), so a context never changes its
+  font. kb states "NO SECURITY GUARANTEE, DO NOT use it on untrusted font files": the module is
+  for host-supplied fonts, the trust stb_truetype already gets, and a build that loads
+  user-uploaded fonts is the case to watch.
 - **SDF text** for the transformed regime: one ~32 px/em distance field per glyph, derivative-scaled ramp, luma bias (MAKEPAD.md:112) — so zoom and animation cost nothing, and void3d gets world-space text through the same glyph layer.
   **Built 2026-10-07, behind `-d:voidSdfText`, first four slices** (field, generator, atlas,
   placement; the shader ramp and draw path followed, see "Shader and draw path" below; captures

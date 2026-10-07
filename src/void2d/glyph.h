@@ -13,6 +13,7 @@ float void2dGlyphScale(int face, float sizePx);
 float *void2dGlyphFaceMetrics(int face, float sizePx);
 float *void2dGlyphDecoration(int face, float sizePx);
 float *void2dGlyphFaceHeights(int face);
+const unsigned char *void2dGlyphFaceData(int face, int *length);
 int void2dGlyphIndex(int face, int codepoint);
 unsigned int void2dGlyphLookups(void);
 float void2dGlyphAdvance(int face, int glyph, float sizePx);

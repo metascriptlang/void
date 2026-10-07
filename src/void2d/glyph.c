@@ -558,6 +558,12 @@ float *void2dGlyphFaceMetrics(int face, float sizePx) {
 	return s_metrics;
 }
 
+const unsigned char *void2dGlyphFaceData(int face, int *length) {
+	if (!validFace(face)) { return NULL; }
+	*length = s_faces[face].length;
+	return s_faces[face].bytes;
+}
+
 int void2dGlyphIndex(int face, int codepoint) {
 	if (!validFace(face)) { return 0; }
 	return findGlyph(&s_faces[face], codepoint);

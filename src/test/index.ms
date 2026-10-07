@@ -54,6 +54,9 @@ import "./renderOrderCheck";
 import "./particlesCheck";
 import "./layoutCheck";
 import "./billboardCheck";
+when (voidShaper) {
+	import "./shaperBridgeCheck";
+}
 when (voidProfiler) {
 	import "./profilerCheck";
 	import "./frameMarksCheck";

@@ -20,6 +20,7 @@ SOKOL_REV="2e75443dbd4940b5aa8d76a8e479f8e4b270b9a3"            # 2026-09-14
 SOKOL_TOOLS_REV="11d0cf678105d614d675e6d9bd2aaf3eeff12f8c"
 STB_REV="2c980bb59875b0d32144a71867fbdebb2f77cd20"
 FREETYPE_REV="42608f77f20749dd6ddc9e0536788eaad70ea4b5"      # VER-2-13-3
+KB_REV="cc63806775f615908ec9562653af4726d8b895d5"                  # v2.28e, 2026-10-02, zlib
 
 # Our sokol fork (docs/SOKOL.md): Void-local patches sit on its `void` branch
 # until upstream merges them, so a pin may name a commit floooh/sokol lacks.
@@ -47,6 +48,7 @@ mkdir -p deps
 fetch sokol           floooh/sokol           "$SOKOL_REV" "$SOKOL_FORK"
 fetch sokol-tools-bin floooh/sokol-tools-bin "$SOKOL_TOOLS_REV"
 fetch stb             nothings/stb           "$STB_REV"
+fetch kb              JimmyLefevre/kb        "$KB_REV"
 # Only P3's rasterizer experiment compiles FreeType (tests/experiments/, docs/VOID2D.md P3).
 if [ "${VOID_FREETYPE:-0}" = 1 ]; then
 	fetch freetype    freetype/freetype      "$FREETYPE_REV"
