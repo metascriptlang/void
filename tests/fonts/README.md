@@ -79,6 +79,12 @@ deterministically: `liga` `f i` to one glyph (many to one), `calt` `a b` to `b.a
 attaching U+0301 to `e` with a non-zero y offset. `python tests/fonts/shapeFixture.py` rebuilds it
 byte for byte (the generator pins `head.created` and `head.modified`).
 
+`ligatureFeatures.ttf` (1,176 B) is a second boxes-only face, our own art and no third-party licence, for
+the optional ligatures letter spacing turns off: `liga` `f i` and `clig` `a b`, each to its own glyph,
+and a `kern` single adjustment of (300, 400) on `f_i` for the many-to-one offset. `dlig` and `hlig`
+are off by default in kb, so an author who turns them on wins over letter spacing and nothing
+observes their entries in the optional list. `python tests/fonts/ligatureFeatures.py` rebuilds it.
+
 `cascadiaSubset.ttf` (48,064 B) is Cascadia Code `v2407.24` (microsoft/cascadia-code, the
 `ttf/CascadiaCode.ttf` of its release zip) pinned to `wght=400` and cut to U+0020-007E with every
 layout feature kept, for the `calt` ligature strings `-> != == => www /*` (`CascadiaCode-OFL.txt`,
