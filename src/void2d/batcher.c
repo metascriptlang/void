@@ -528,7 +528,10 @@ uint32_t void2dGlyphPageView(int page) {
 static int glyphPageViewKind(uint32_t view) {
 	if (view == 0) { return -1; }
 	for (int i = 0; i < VOID2D_MAX_GLYPH_PAGES; i++) {
-		if (s_pageView[i].id == view) { return void2dGlyphPageKind(i); }
+		if (s_pageView[i].id == view) {
+			int kind = void2dGlyphPageKind(i);
+			return kind < 0 ? -2 : kind;
+		}
 	}
 	return -1;
 }
@@ -539,8 +542,8 @@ static float glyphPageViewMode(uint32_t view) {
 	case -1: return 0.0f;
 	case VOID2D_PAGE_COVERAGE: return 1.0f;
 	default:
-		fprintf(stderr, "void2d: glyph page kind %d has no shader mode\n", kind);
-		return 0.0f;
+		fprintf(stderr, "void2d: glyph page view %u of kind %d has no shader mode\n", view, kind);
+		abort();
 	}
 }
 
