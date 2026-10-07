@@ -5,6 +5,7 @@
 #define VOID2D_FACE_NOT_A_FONT -2
 #define VOID2D_FACE_NO_MEMORY -3
 #define VOID2D_FACE_NO_BASE -4
+#define VOID2D_FACE_BAD_COLOUR -5
 
 int void2dGlyphFaceLoad(const char *path);
 int void2dGlyphFaceSynthetic(int face, int bold, int italic);
@@ -51,6 +52,20 @@ int void2dGlyphPageUploaded(int page);
 int void2dGlyphPageTakeUpload(int page);
 void void2dGlyphPagesMarkDirty(void);
 void void2dGlyphPagesFrameBegin(void);
+
+int void2dGlyphColourBuilt(void);
+int void2dGlyphColourFace(int face);
+int void2dGlyphColourOnly(int face);
+int *void2dGlyphColourBox(int face, int glyph, float sizePx);
+#define VOID2D_COLOUR_RASTER_OK 0
+#define VOID2D_COLOUR_RASTER_BAD_HANDLE 1
+#define VOID2D_COLOUR_RASTER_WRONG_PAGE_KIND 2
+#define VOID2D_COLOUR_RASTER_OUTSIDE_PAGE 3
+#define VOID2D_COLOUR_RASTER_REFUSED 4
+int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
+                               int w, int h);
+int void2dGlyphColourSweep(int face, int step);
+int void2dGlyphColourSweepRefused(void);
 
 int *void2dGlyphSdfBox(int face, int glyph);
 #define VOID2D_SDF_OK 0

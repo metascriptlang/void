@@ -73,6 +73,7 @@ import "./worldLabelCheck";
 
 when (voidColourEmoji) {
 	import "./glyphColourAtlasCheck";
+	import "./colourFaceCheck";
 } else {
 	import "./glyphColourOffCheck";
 }

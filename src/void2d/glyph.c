@@ -8,6 +8,10 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "../../deps/stb/stb_truetype.h"
 
+#ifdef VOID2D_COLOUR_EMOJI
+#include "colourEmoji/colourFace.h"
+#endif
+
 #define GLYPH_MAX_KERN_LOOKUPS 32
 #define GLYPH_ITALIC_SKEW 0.21255656f
 
@@ -26,6 +30,9 @@ typedef struct {
 	float emboldenUnits;
 	float skew;
 	int measured;
+	void *colour;
+	int colourOnly;
+	int glyphCount;
 	FaceHeights heights;
 	float underlineTop, underlineThickness, strikeTop, strikeThickness;
 } GlyphFace;
@@ -367,6 +374,11 @@ static stbtt_uint8 *findTable(GlyphFace *face, const char *tag, int *length) {
 
 static int findGlyph(GlyphFace *face, int codepoint) {
 	s_glyphLookups++;
+#ifdef VOID2D_COLOUR_EMOJI
+	if (face->colourOnly) {
+		return void2dColourFaceGlyphIndex((ColourFace *)face->colour, codepoint);
+	}
+#endif
 	return stbtt_FindGlyphIndex(&face->info, codepoint);
 }
 
@@ -492,6 +504,23 @@ static int growFaces(void) {
 	return 1;
 }
 
+#ifdef VOID2D_COLOUR_EMOJI
+static int colourOnlyInfo(unsigned char *bytes, int offset, const ColourSfnt *t,
+                          stbtt_fontinfo *info) {
+	memset(info, 0, sizeof(*info));
+	info->data = bytes;
+	info->fontstart = offset;
+	info->cff = stbtt__new_buf(NULL, 0);
+	info->head = (stbtt_uint32)t->head;
+	info->hhea = (stbtt_uint32)t->hhea;
+	info->hmtx = (stbtt_uint32)t->hmtx;
+	info->numGlyphs = 0;
+	info->svg = 0;
+	info->indexToLocFormat = ttUSHORT(bytes + t->head + 50);
+	return 1;
+}
+#endif
+
 int void2dGlyphFaceLoad(const char *path) {
 	long size = 0;
 	unsigned char *bytes = readWholeFile(path, &size);
@@ -501,7 +530,39 @@ int void2dGlyphFaceLoad(const char *path) {
 	}
 	int offset = stbtt_GetFontOffsetForIndex(bytes, 0);
 	stbtt_fontinfo info;
-	if (offset < 0 || !stbtt_InitFont(&info, bytes, offset)) {
+	void *colour = NULL;
+	int colourOnly = 0;
+	int glyphCount = 0;
+	int outlines = offset >= 0 && stbtt_InitFont(&info, bytes, offset);
+#ifdef VOID2D_COLOUR_EMOJI
+	if (offset >= 0) {
+		ColourFace *opened = NULL;
+		int status = void2dColourFaceOpen(bytes, (size_t)size, (size_t)offset, &opened);
+		ColourSfnt sfnt;
+		if (status == VOID2D_COLOUR_OK && void2dColourFaceSfnt(opened, &sfnt) != VOID2D_COLOUR_OK) {
+			status = VOID2D_COLOUR_BAD_TABLE;
+			free(opened);
+		}
+		if (status == VOID2D_COLOUR_OK) {
+			colour = opened;
+			glyphCount = sfnt.numGlyphs;
+			if (!outlines) {
+				colourOnlyInfo(bytes, offset, &sfnt, &info);
+				colourOnly = 1;
+				outlines = 1;
+			}
+		} else if (status != VOID2D_COLOUR_NONE) {
+			fprintf(stderr, "void2d: %s: colour tables refused: %s\n", path,
+				void2dColourFaceReason());
+			if (!outlines) {
+				free(bytes);
+				return status == VOID2D_COLOUR_NO_MEMORY ? VOID2D_FACE_NO_MEMORY
+					: VOID2D_FACE_BAD_COLOUR;
+			}
+		}
+	}
+#endif
+	if (!outlines) {
 		fprintf(stderr, "void2d: %s is not a font stb_truetype can read\n", path);
 		free(bytes);
 		return VOID2D_FACE_NOT_A_FONT;
@@ -516,6 +577,9 @@ int void2dGlyphFaceLoad(const char *path) {
 	s_faces[s_faceCount].emboldenUnits = 0.0f;
 	s_faces[s_faceCount].skew = 0.0f;
 	s_faces[s_faceCount].measured = 0;
+	s_faces[s_faceCount].colour = colour;
+	s_faces[s_faceCount].colourOnly = colourOnly;
+	s_faces[s_faceCount].glyphCount = glyphCount;
 	findKernLookups(&s_faces[s_faceCount]);
 	return s_faceCount++;
 }
@@ -535,6 +599,8 @@ int void2dGlyphFaceSynthetic(int face, int bold, int italic) {
 }
 
 int void2dGlyphFaceCount(void) { return s_faceCount; }
+
+int void2dGlyphColourOnly(int face) { return validFace(face) ? s_faces[face].colourOnly : 0; }
 
 void void2dGlyphSetRasterizer(GlyphRasterBox box, GlyphRasterFill fill) {
 	s_rasterBox = box;
@@ -571,6 +637,9 @@ int void2dGlyphIndex(int face, int codepoint) {
 
 float void2dGlyphAdvance(int face, int glyph, float sizePx) {
 	if (!validFace(face)) { return 0.0f; }
+	if (s_faces[face].colourOnly && (glyph < 0 || glyph >= s_faces[face].glyphCount)) {
+		return 0.0f;
+	}
 	int advance = 0, bearing = 0;
 	stbtt_GetGlyphHMetrics(&s_faces[face].info, glyph, &advance, &bearing);
 	return ((float)advance + s_faces[face].emboldenUnits) * void2dGlyphScale(face, sizePx);
@@ -791,6 +860,81 @@ void void2dGlyphPagesMarkDirty(void) {
 void void2dGlyphPagesFrameBegin(void) {
 	for (int page = 0; page < s_pageCount; page++) { s_pages[page].uploaded = 0; }
 }
+
+#ifdef VOID2D_COLOUR_EMOJI
+int void2dGlyphColourBuilt(void) { return 1; }
+
+int void2dGlyphColourFace(int face) {
+	return validFace(face) && s_faces[face].colour != NULL;
+}
+
+int *void2dGlyphColourBox(int face, int glyph, float sizePx) {
+	static int box[6];
+	for (int i = 0; i < 6; i++) { box[i] = 0; }
+	if (!void2dGlyphColourFace(face)) { return box; }
+	ColourBox found;
+	int status = void2dColourGlyphBox((ColourFace *)s_faces[face].colour, glyph, sizePx, &found);
+	box[4] = status;
+	box[5] = found.ppem;
+	if (status == VOID2D_COLOUR_PRESENT) {
+		box[0] = found.bearingX;
+		box[1] = -found.bearingY;
+		box[2] = found.bearingX + found.width;
+		box[3] = -found.bearingY + found.height;
+	}
+	return box;
+}
+
+int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
+                               int w, int h) {
+	if (!void2dGlyphColourFace(face) || !validPage(page) || w <= 0 || h <= 0) {
+		return VOID2D_COLOUR_RASTER_BAD_HANDLE;
+	}
+	GlyphPage *p = &s_pages[page];
+	if (p->kind != VOID2D_PAGE_RGBA) {
+		fprintf(stderr, "void2d: a colour tile was aimed at a %s page\n", pageKindName(p->kind));
+		return VOID2D_COLOUR_RASTER_WRONG_PAGE_KIND;
+	}
+	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
+		fprintf(stderr, "void2d: colour tile %dx%d at (%d,%d) falls outside its %d page\n",
+			w, h, x, y, p->size);
+		return VOID2D_COLOUR_RASTER_OUTSIDE_PAGE;
+	}
+	unsigned int *at = (unsigned int *)p->texels + (size_t)y * (size_t)p->size + (size_t)x;
+	int status = void2dColourGlyphRender((ColourFace *)s_faces[face].colour, glyph, sizePx, at,
+		p->size, w, h);
+	if (status != VOID2D_COLOUR_PRESENT) { return VOID2D_COLOUR_RASTER_REFUSED; }
+	p->dirty = 1;
+	return VOID2D_COLOUR_RASTER_OK;
+}
+
+static int s_sweepRefused;
+
+int void2dGlyphColourSweep(int face, int step) {
+	if (!validFace(face)) { return -1; }
+	s_sweepRefused = 0;
+	return void2dColourFaceSweep(s_faces[face].bytes, (size_t)s_faces[face].length, 0,
+		s_faces[face].glyphCount, step, &s_sweepRefused);
+}
+
+int void2dGlyphColourSweepRefused(void) { return s_sweepRefused; }
+#else
+int void2dGlyphColourBuilt(void) { return 0; }
+int void2dGlyphColourFace(int face) { (void)face; return 0; }
+int *void2dGlyphColourBox(int face, int glyph, float sizePx) {
+	static int box[6];
+	(void)face; (void)glyph; (void)sizePx;
+	return box;
+}
+int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
+                               int w, int h) {
+	(void)face; (void)glyph; (void)sizePx; (void)page; (void)x; (void)y; (void)w; (void)h;
+	fprintf(stderr, "void2d: a colour tile was asked for but -d:voidColourEmoji is not built\n");
+	return VOID2D_COLOUR_RASTER_REFUSED;
+}
+int void2dGlyphColourSweep(int face, int step) { (void)face; (void)step; return -1; }
+int void2dGlyphColourSweepRefused(void) { return 0; }
+#endif
 
 #ifdef VOID2D_SDF_TEXT
 #define SDF_EM 32.0f

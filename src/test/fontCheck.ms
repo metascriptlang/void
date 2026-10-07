@@ -6,6 +6,8 @@ import {
 	faceSummariesRead,
 	peekFace,
 	summaryCovers,
+	colourBuilt,
+	isColourOnly,
 } from "../void2d/face";
 import {
 	Font,
@@ -164,7 +166,8 @@ test "coverage of a fallback is answered from its summary, with no face loaded" 
 	assert faceSummariesRead() == summaries;
 }
 
-test "a colour-only fallback is covered but not drawable, so it is skipped without a load" {
+test "with the colour module off a colour-only fallback is skipped without a load" {
+	if (colourBuilt()) { return; }
 	const f = added(LATIN);
 	addFallbackFont(f, COLOUR_ONLY);
 	const loads = fallbackFacesLoaded();
@@ -174,6 +177,19 @@ test "a colour-only fallback is covered but not drawable, so it is skipped witho
 	assert codepointFaceFor(f, 0x1F600, Presentation.Emoji).face == fontFace(f);
 	assert fallbackFacesLoaded() == loads;
 	assert peekedCovers(COLOUR_ONLY, 0x1F600);
+}
+
+test "with the colour module on a colour-only fallback is drawable and loads once" {
+	if (!colourBuilt()) { return; }
+	const f = added(LATIN);
+	addFallbackFont(f, COLOUR_ONLY);
+	const loads = fallbackFacesLoaded();
+	assert peekedCovers(COLOUR_ONLY, 0x1F600);
+	const face = faceForCodepoint(f, 0x1F600);
+	assert face != fontFace(f);
+	assert isColourOnly(face);
+	assert glyphIndex(face, 0x1F600) != 0;
+	assert fallbackFacesLoaded() == loads + 1;
 }
 
 function symbolFont(colourFirst: boolean): FontId {

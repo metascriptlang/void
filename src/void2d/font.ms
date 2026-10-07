@@ -8,6 +8,7 @@ import {
 	syntheticFace,
 	glyphIndex,
 	faceHeights,
+	colourBuilt,
 } from "./face";
 import { graphemeProperty } from "./grapheme";
 
@@ -471,7 +472,7 @@ function wantedPresentation(mode: Presentation, codepoint: int32): Presentation 
 function fallbackUsable(index: int32): boolean {
 	if (fallbacks[index].face == LOAD_FAILED) { return false; }
 	const summary = summaryAtPath(fallbacks[index].path);
-	if (!summary.ok || summary.value.drawable) { return true; }
+	if (!summary.ok || summary.value.drawable || colourBuilt()) { return true; }
 	console.log(
 		`void2d: fallback font ${fallbacks[index].path} holds colour glyphs but no outlines, ` +
 		`and the colour emoji module (-d:voidColourEmoji) is not built; it is skipped`,

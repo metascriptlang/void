@@ -44,6 +44,9 @@ with VS16 for both codepoints, and no outlines; `sbixSynthetic` holds 12 and 24 
 with origin offsets, a `dupe` glyph, a `jpg ` glyph and an empty glyph; `colrSynthetic` holds a
 COLR v0 glyph of three layers over a three-colour CPAL palette.
 
+`cbdtBroken.ttf` (1,236 B) is `cbdtSynthetic` with the first CBLC strike's bit depth set to 8, the
+face the loader must refuse by name (`python tests/fonts/colourEmoji.py broken` rewrites it).
+
 `symbolCollection.ttc` (1,968 B) holds `textSymbol` then `cbdtSynthetic`: the sfnt peek must read
 the first font of a collection, which is the drawable one.
 

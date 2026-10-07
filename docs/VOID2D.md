@@ -1836,6 +1836,25 @@ changes described above on today's compiler; the P4 web archive also takes its r
   derivative scale (`texels + 0.5`) fails it at rotated 13 px (mae 0.135) and zoom 0.5 (0.152).
   Owed: WebGL2 for the same rows (Yoga web link).
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
+  **Built so far (`-d:voidColourEmoji`, CBDT/CBLC only):** the RGBA page kind is real
+  (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
+  `void2dGlyphPageTexelRgba`; `batcher.c` `SG_PIXELFORMAT_RGBA8` and the byte-exact upload;
+  `glyphAtlas.ms` `acquireBlank` and per-kind `residentBytes`), and a colour-only face loads.
+  The shader mode for an RGBA page view is still refused by name until the draw slice.
+  NEW MECHANISM (flagged, needs approval): `colourEmoji/colourFace.c`, an in-tree CBLC/CBDT
+  parser (index formats 1 to 3, image formats 17, 18 and 19, PNG only), no reference has one
+  because GPUI, Makepad and Ghostty all call FreeType or the OS (Ghostty
+  `face/freetype.zig:333-352`, `:616-665`); the OpenType CBDT/CBLC text is not read, so the
+  oracle is fontTools (`tests/oracle/colour.py`, 60 tiles). Every read is bounds-checked and a
+  refusal names the field. Two divergences from the spec: the hook is a direct
+  `#ifdef VOID2D_COLOUR_EMOJI` call from `glyph.c`, the idiom `VOID2D_SDF_TEXT` already uses,
+  not a `void2dGlyphSetColourReader` pointer seam; and the colour-only `stbtt_fontinfo` is
+  filled by hand with `numGlyphs = 0`, so every stb outline call answers empty, while the
+  cmap is read by a checked format 4 and 12 lookup instead of stb's, which trusts offsets.
+  The strike is the smallest `ppemY` at or above the size, else the largest; the PNG is
+  decoded by a PNG-only static `stb_image` (24,695 B of wasm measured), premultiplied
+  `(c * a + 127) / 255`, and resized by an own integer area average, because
+  `stb_image_resize2` costs 112,928 B of wasm for one entry point (measured).
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
   **Rasterizer taken and measured 2026-10-07 (V0): nanosvg** (`memononen/nanosvg` at

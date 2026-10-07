@@ -12,7 +12,15 @@ import {
 	void2dGlyphFaceHeights,
 	void2dGlyphPageTexel,
 	void2dGlyphBox,
+	void2dGlyphColourBuilt,
+	void2dGlyphColourFace,
+	void2dGlyphColourOnly,
+	void2dGlyphColourBox,
+	void2dGlyphColourRasterize,
+	void2dGlyphColourSweep,
+	void2dGlyphColourSweepRefused,
 } from "./glyph.h";
+import "./colourEmoji/colourEmoji";
 import {
 	void2dSfntPeek,
 	void2dSfntCovers,
@@ -50,16 +58,18 @@ export enum FaceError {
 	NotAFont,
 	OutOfMemory,
 	NoBaseFace,
+	BadColourTable,
 }
 
 function faceResult(code: int32): Result<int32, FaceError> {
 	if (code >= 0) { return Result.ok(code); }
-	if (code < -4) { unreachable; }
+	if (code < -5) { unreachable; }
 	return match (code) {
 		-1 => Result.err(FaceError.Unreadable),
 		-2 => Result.err(FaceError.NotAFont),
 		-3 => Result.err(FaceError.OutOfMemory),
-		_ => Result.err(FaceError.NoBaseFace),
+		-4 => Result.err(FaceError.NoBaseFace),
+		_ => Result.err(FaceError.BadColourTable),
 	};
 }
 
@@ -186,6 +196,69 @@ export function faceHeights(face: int32): FaceHeights {
 		capHeightEstimate: m[5],
 		lineHeight: m[6],
 	};
+}
+
+export enum ColourGlyph {
+	Absent,
+	Present,
+	Refused,
+}
+
+export struct ColourTileBox {
+	left: int32;
+	top: int32;
+	right: int32;
+	bottom: int32;
+	glyph: ColourGlyph;
+	ppem: int32;
+}
+
+export function colourBuilt(): boolean {
+	return void2dGlyphColourBuilt() != 0;
+}
+
+export function hasColourTables(face: int32): boolean {
+	return void2dGlyphColourFace(face) != 0;
+}
+
+export function isColourOnly(face: int32): boolean {
+	return void2dGlyphColourOnly(face) != 0;
+}
+
+export function colourTileBox(face: int32, glyph: int32, sizePx: float32): ColourTileBox {
+	const b: Ptr<int32> = void2dGlyphColourBox(face, glyph, sizePx);
+	const status: ColourGlyph = b[4] == 1
+		? ColourGlyph.Present
+		: b[4] == 0 ? ColourGlyph.Absent : ColourGlyph.Refused;
+	return {
+		left: b[0],
+		top: b[1],
+		right: b[2],
+		bottom: b[3],
+		glyph: status,
+		ppem: b[5],
+	};
+}
+
+export function colourRasterize(
+	face: int32,
+	glyph: int32,
+	sizePx: float32,
+	page: GlyphPageHandle,
+	x: int32,
+	y: int32,
+	width: int32,
+	height: int32,
+): int32 {
+	return void2dGlyphColourRasterize(face, glyph, sizePx, page as int32, x, y, width, height);
+}
+
+export function colourSweep(face: int32, step: int32): int32 {
+	return void2dGlyphColourSweep(face, step);
+}
+
+export function colourSweepRefused(): int32 {
+	return void2dGlyphColourSweepRefused();
 }
 
 export function pageTexel(page: GlyphPageHandle, x: int32, y: int32): int32 {

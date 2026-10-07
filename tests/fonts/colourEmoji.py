@@ -213,10 +213,28 @@ def collection():
     ttc.save(OUT + "symbolCollection.ttc")
 
 
+def tableOffset(data, tag):
+    for i in range(struct.unpack(">H", data[4:6])[0]):
+        record = data[12 + 16 * i:28 + 16 * i]
+        if record[:4] == tag:
+            return struct.unpack(">I", record[8:12])[0]
+    raise KeyError(tag)
+
+
+def cbdtBroken():
+    data = bytearray(open(OUT + "cbdtSynthetic.ttf", "rb").read())
+    data[tableOffset(data, b"CBLC") + 8 + 46] = 8
+    open(OUT + "cbdtBroken.ttf", "wb").write(bytes(data))
+
+
 def main():
+    if sys.argv[1:] == ["broken"]:
+        cbdtBroken()
+        return
     noto(sys.argv[1])
     textSymbol()
     cbdtSynthetic()
+    cbdtBroken()
     sbixSynthetic()
     colrSynthetic()
     collection()
