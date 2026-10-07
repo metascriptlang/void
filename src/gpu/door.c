@@ -1,5 +1,6 @@
 #include "door.h"
 #include "../sokol/bridge.h"
+#include "../sokol/backend.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -584,7 +585,7 @@ int32_t doorEnvironmentSampleCount(void) {
 }
 
 int32_t doorContextGeneration(void) {
-#if defined(__ANDROID__) || defined(_WIN32)
+#if defined(__ANDROID__) || (defined(_WIN32) && defined(SOKOL_D3D11))
 	return voidGpuGeneration();
 #else
 	return 1;
@@ -592,11 +593,11 @@ int32_t doorContextGeneration(void) {
 }
 
 void doorLoseContext(void) {
-#if defined(__ANDROID__) || defined(_WIN32)
+#if defined(__ANDROID__) || (defined(_WIN32) && defined(SOKOL_D3D11))
 	voidLoseContext();
 #else
 	fprintf(stderr, "gpu door: loseContext has no simulated context loss on this platform; "
-		"the Windows and Android bridges have one\n");
+		"the Windows D3D11 and Android bridges have one\n");
 	abort();
 #endif
 }

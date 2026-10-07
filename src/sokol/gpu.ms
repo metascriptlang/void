@@ -13,13 +13,23 @@ when (macos) {
 	@compile("./bridgeEmbed.m");
 }
 
-when (windows) {
+when (windows && !voidGlCore) {
 	@compile("./sokolWin.c");
 	@compile("./bridgeWin.c");
 	@compile("./views.c");
 	@compile("./bridge.c");
 	@passL("-ld3d11");
 	@passL("-ldxgi");
+	@passL("-luser32");
+	@passL("-lgdi32");
+	@passL("-lshell32");
+}
+
+when (windows && voidGlCore) {
+	@compile("./sokolWin.c");
+	@compile("./bridgeWeb.c");
+	@compile("./bridge.c");
+	@passL("-lopengl32");
 	@passL("-luser32");
 	@passL("-lgdi32");
 	@passL("-lshell32");
@@ -45,7 +55,7 @@ when (ios) {
 	@passL("-framework Foundation");
 }
 
-when (windows || ios || android) {
+when ((windows && !voidGlCore) || ios || android) {
 	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
 	extern function voidViewsSetSampleCount(count: int32): void;
 	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;

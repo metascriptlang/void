@@ -1,5 +1,5 @@
-// The web driver: the browser canvas through sokol_app, which is the only driver emscripten has.
-// bridgeWin.c carries the same window path beside its host views.
+// The window-only driver: the browser canvas under emscripten and the desktop GL window
+// (-d:voidGlCore) through sokol_app. bridgeWin.c carries the same window path beside its host views.
 
 #include <stdbool.h>
 
