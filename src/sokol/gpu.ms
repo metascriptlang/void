@@ -11,6 +11,8 @@ when (macos) {
 	@passL("-framework MetalKit");
 	@link("./sokol.o");
 	@compile("./bridgeEmbed.m");
+	@compile("./views.c");
+	@compile("./bridge.c");
 }
 
 when (windows && !voidGlCore) {
@@ -55,7 +57,7 @@ when (ios) {
 	@passL("-framework Foundation");
 }
 
-when ((windows && !voidGlCore) || ios || android) {
+when (macos || (windows && !voidGlCore) || ios || android) {
 	extern function voidEmbedRegister(init: () => void, frame: () => void): void;
 	extern function voidViewsSetSampleCount(count: int32): void;
 	extern function voidViewCreate(native: int64, w: int32, h: int32, scale: float32): int32;

@@ -1,16 +1,20 @@
-// Void sokol bridge — EMBED variant (Stage-2 POC). Same surface as bridge.c, but
-// renders into a host-provided CAMetalLayer with NO sokol_app: we own the MTLDevice
-// and hand sokol a fresh CAMetalDrawable each frame. voidRun() here is a minimal
-// Cocoa driver (the macOS stand-in for the React-Native RCTView that will drive
-// frames in Stage 3). Everything else is identical to bridge.c.
+// Void sokol driver — macOS (Metal). Two drivers in one binary, like bridgeWin.c: voidRun is a
+// minimal Cocoa window with no sokol_app, and voidViewCreate is the host-view driver behind
+// views.c, one CAMetalLayer per view over one shared MTLDevice. The first of the two chooses the
+// driver for the process. sokol_gfx is the one implementation in sokol.o; the resource and pass
+// wrappers are bridge.c's.
 
 #import <Cocoa/Cocoa.h>
-#import <QuartzCore/CAMetalLayer.h>
+#import <QuartzCore/QuartzCore.h>
 #import <Metal/Metal.h>
 
 #include "bridge.h"
+#include "views.h"
 #include "sokol_gfx.h"
 #include "sokol_log.h"
+
+typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
+static VoidDriver s_driver = DRIVER_NONE;
 
 // --- Host-provided GPU context (no sokol_app / sglue) ---
 static id<MTLDevice>       g_device;
@@ -86,6 +90,8 @@ static int s_reqW = 0;
 static int s_reqH = 0;
 void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
 void voidRun(int w, int h, msClosure init, msClosure frame) {
+	if (s_driver == DRIVER_VIEWS) voidFail("voidRun: this process already drives Void through host views");
+	s_driver = DRIVER_WINDOW;
 	s_init = init;
 	s_reqW = w;
 	s_reqH = h;
@@ -133,65 +139,172 @@ void voidRun(int w, int h, msClosure init, msClosure frame) {
 	}
 }
 
-void voidGfxSetup(void) {
+static void setupMetal(int samples) {
 	sg_desc d = {0};
 	d.environment.metal.device = (__bridge const void*)g_device;
 	d.environment.defaults.color_format = SG_PIXELFORMAT_BGRA8;
 	d.environment.defaults.depth_format = SG_PIXELFORMAT_NONE;
-	d.environment.defaults.sample_count = 1;
+	d.environment.defaults.sample_count = samples;
 	d.logger.func = slog_func;
 	sg_setup(&d);
+	if (!sg_isvalid()) voidFail("sg_setup on the Metal device failed");
 }
 
-int voidFbWidth(void) { return g_w; }
-int voidFbHeight(void) { return g_h; }
-float voidDpiScale(void) { return g_dpiScale; }
+__attribute__((noreturn)) static void noDriver(const char *op) {
+	voidFail("%s before voidRun or voidViewCreate chose a driver", op);
+}
+
+void voidGfxSetup(void) {
+	switch (s_driver) {
+		case DRIVER_WINDOW: setupMetal(1); break;
+		case DRIVER_VIEWS: break;
+		case DRIVER_NONE: noDriver("gfxSetup");
+	}
+}
+
+int voidFbWidth(void) {
+	if (s_driver == DRIVER_WINDOW) return g_w;
+	if (s_driver == DRIVER_NONE) noDriver("fbWidth");
+	return voidViewsFbWidth();
+}
+
+int voidFbHeight(void) {
+	if (s_driver == DRIVER_WINDOW) return g_h;
+	if (s_driver == DRIVER_NONE) noDriver("fbHeight");
+	return voidViewsFbHeight();
+}
+
+float voidDpiScale(void) {
+	if (s_driver == DRIVER_WINDOW) return g_dpiScale;
+	if (s_driver == DRIVER_NONE) noDriver("dpiScale");
+	return voidViewsDpiScale();
+}
 
 // Keyboard polling — Stage-2 stub (the 2D render proof needs no input). In Stage 3
 // this maps to the host (RCTView) key state; here no keys are ever down.
 int voidKeyDown(int keycode) { (void)keycode; return 0; }
 
-// --- Resource creation (identical to bridge.c) ---
-
-uint32_t voidMakeImage(const void *rgba, int w, int h) {
-	static const uint8_t white[4] = {255, 255, 255, 255};
-	if (rgba == NULL || w <= 0 || h <= 0) { rgba = white; w = 1; h = 1; }
-	sg_image_desc d = {0};
-	d.width = w;
-	d.height = h;
-	d.pixel_format = SG_PIXELFORMAT_RGBA8;
-	d.data.mip_levels[0].ptr = rgba;
-	d.data.mip_levels[0].size = (size_t)(w * h * 4);
-	return sg_make_image(&d).id;
+sg_swapchain voidDriverSwapchain(void) {
+	if (s_driver == DRIVER_NONE) noDriver("beginPass");
+	if (s_driver == DRIVER_VIEWS) return voidViewsSwapchain();
+	sg_swapchain swapchain = {0};
+	swapchain.width = g_w;
+	swapchain.height = g_h;
+	swapchain.sample_count = 1;
+	swapchain.color_format = SG_PIXELFORMAT_BGRA8;
+	swapchain.depth_format = SG_PIXELFORMAT_NONE;
+	swapchain.metal.current_drawable = (__bridge const void*)g_drawable;
+	return swapchain;
 }
 
-uint32_t voidMakeView(uint32_t image) {
-	sg_view_desc d = {0};
-	d.texture.image = (sg_image){.id = image};
-	return sg_make_view(&d).id;
+void voidDriverPresent(void) {
+	if (s_driver == DRIVER_VIEWS) voidViewsPresent();
 }
 
-// --- Frame sequence ---
+typedef struct {
+	void *layer;
+	void *view;
+	void *drawable;
+	void *msaa;
+	int w, h;
+} MacSurface;
 
-void voidBeginPass(float r, float g, float b, float a) {
-	sg_pass pass = {0};
-	pass.action.colors[0].load_action = SG_LOADACTION_CLEAR;
-	pass.action.colors[0].clear_value = (sg_color){r, g, b, a};
-	pass.swapchain.width = g_w;
-	pass.swapchain.height = g_h;
-	pass.swapchain.sample_count = 1;
-	pass.swapchain.color_format = SG_PIXELFORMAT_BGRA8;
-	pass.swapchain.depth_format = SG_PIXELFORMAT_NONE;
-	pass.swapchain.metal.current_drawable = (__bridge const void*)g_drawable;
-	sg_begin_pass(&pass);
+static void releaseMsaa(MacSurface *s) {
+	if (s->msaa) CFRelease(s->msaa);
+	s->msaa = NULL;
 }
 
-static void (*s_commitHook)(void);
-static void (*s_presentHook)(int begin);
-void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
-void voidSetPresentHook(void (*fn)(int begin)) { s_presentHook = fn; }
-void voidCommit(void) {
-	sg_commit();
-	if (s_commitHook) { s_commitHook(); }
-	if (s_presentHook) { s_presentHook(1); s_presentHook(0); }
+static void makeMsaa(MacSurface *s) {
+	const int samples = voidViewsSampleCount();
+	if (samples == 1) return;
+	if (![g_device supportsTextureSampleCount:(NSUInteger)samples]) {
+		voidFail("the Metal device cannot render at %d samples", samples);
+	}
+	MTLTextureDescriptor *desc = [MTLTextureDescriptor
+		texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+		width:(NSUInteger)s->w height:(NSUInteger)s->h mipmapped:NO];
+	desc.textureType = MTLTextureType2DMultisample;
+	desc.sampleCount = (NSUInteger)samples;
+	desc.usage = MTLTextureUsageRenderTarget;
+	desc.storageMode = MTLStorageModePrivate;
+	id<MTLTexture> texture = [g_device newTextureWithDescriptor:desc];
+	if (!texture) voidFail("the Metal device could not make a %dx%d target at %d samples", s->w, s->h, samples);
+	s->msaa = (void *)CFBridgingRetain(texture);
 }
+
+void voidPlatformDeviceEnsure(void) {
+	if (s_driver == DRIVER_WINDOW) voidFail("voidViewCreate: this process already runs a Cocoa window through voidRun");
+	if (s_driver == DRIVER_VIEWS) return;
+	g_device = MTLCreateSystemDefaultDevice();
+	if (!g_device) voidFail("MTLCreateSystemDefaultDevice returned nil");
+	setupMetal(voidViewsSampleCount());
+	s_driver = DRIVER_VIEWS;
+}
+
+void voidPlatformRunInit(msClosure init) { call0(init); }
+
+static void fitLayer(MacSurface *s, int w, int h) {
+	CAMetalLayer *layer = (__bridge CAMetalLayer *)s->layer;
+	layer.drawableSize = CGSizeMake(w, h);
+	s->w = w;
+	s->h = h;
+	releaseMsaa(s);
+	makeMsaa(s);
+	if (!s->view) return;
+	NSView *view = (__bridge NSView *)s->view;
+	[CATransaction begin];
+	[CATransaction setDisableActions:YES];
+	layer.frame = view.bounds;
+	if (view.bounds.size.width > 0) layer.contentsScale = w / view.bounds.size.width;
+	[CATransaction commit];
+}
+
+void *voidPlatformSurfaceCreate(const void *native, int w, int h) {
+	CAMetalLayer *layer = [CAMetalLayer layer];
+	layer.device = g_device;
+	layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
+	MacSurface *s = (MacSurface *)calloc(1, sizeof(MacSurface));
+	s->layer = (void *)CFBridgingRetain(layer);
+	if (native != NULL) {
+		NSView *view = (__bridge NSView *)native;
+		view.wantsLayer = YES;
+		[view.layer addSublayer:layer];
+		s->view = (void *)CFBridgingRetain(view);
+	}
+	fitLayer(s, w, h);
+	return s;
+}
+
+void voidPlatformSurfaceResize(void *surface, int w, int h) { fitLayer((MacSurface *)surface, w, h); }
+
+int voidPlatformSurfaceAcquire(void *surface) {
+	MacSurface *s = (MacSurface *)surface;
+	id<CAMetalDrawable> drawable = [(__bridge CAMetalLayer *)s->layer nextDrawable];
+	if (!drawable) return 0;
+	s->drawable = (void *)CFBridgingRetain(drawable);
+	return 1;
+}
+
+void voidPlatformSurfaceSwapchain(void *surface, sg_swapchain *swapchain) {
+	swapchain->color_format = SG_PIXELFORMAT_BGRA8;
+	swapchain->metal.current_drawable = ((MacSurface *)surface)->drawable;
+	swapchain->metal.msaa_color_texture = ((MacSurface *)surface)->msaa;
+}
+
+void voidPlatformSurfacePresent(void *surface) {
+	MacSurface *s = (MacSurface *)surface;
+	if (s->drawable) CFRelease(s->drawable);
+	s->drawable = NULL;
+}
+
+void voidPlatformSurfaceDestroy(void *surface) {
+	MacSurface *s = (MacSurface *)surface;
+	if (s->drawable) CFRelease(s->drawable);
+	releaseMsaa(s);
+	[(__bridge CAMetalLayer *)s->layer removeFromSuperlayer];
+	CFRelease(s->layer);
+	if (s->view) CFRelease(s->view);
+	free(s);
+}
+
+long long voidPlatformSurfaceNative(void *surface) { return (long long)(intptr_t)((MacSurface *)surface)->layer; }
