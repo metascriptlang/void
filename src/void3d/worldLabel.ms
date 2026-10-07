@@ -1,4 +1,6 @@
-import { Vec3, Mat4, Quat, vec3, quatOfRotation, composeTransform, identityQuat } from "../math/math3d";
+import {
+	Vec3, Mat4, Quat, vec3, quatOfRotation, composeTransform, identityQuat,
+} from "../math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../gpu/state";
 import { PixelFormat, contextGeneration, originTopLeft } from "../gpu/door";
 import { RenderTarget } from "../gpu/target";
