@@ -7,7 +7,7 @@
 #
 # The records in tests/bench/wasm.json are the numbers this script printed on a given clang; a run
 # fails when a number grows more than ten percent past its record, which is slack for a compiler
-# upgrade and not for code.
+# upgrade and not for code. A unit the base does not have (spriteGlyph.c) counts whole.
 #
 # Two claims, both read from objects, for each module:
 #   1. Module off: no object of the default layer refers to a void2dColour symbol, and no
@@ -60,7 +60,7 @@ compile() {
 for unit in glyph grapheme batcher sfnt; do
 	compile "$OUT/base" "$unit.c" "base.$unit" ""
 done
-for unit in glyph grapheme batcher sfnt; do
+for unit in glyph grapheme batcher sfnt spriteGlyph; do
 	compile "." "$unit.c" "head.$unit" ""
 done
 compile "." "glyph.c" "on.glyph" "-DVOID2D_COLOUR_EMOJI"
@@ -70,7 +70,7 @@ compile "." "shaper.c" "on.shaper" ""
 [ "$failed" -eq 0 ] || exit 1
 
 echo "module off: symbols"
-for unit in glyph grapheme batcher sfnt; do
+for unit in glyph grapheme batcher sfnt spriteGlyph; do
 	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dColour'; then
 		echo "FAIL wasm delta: the module-off $unit.c object names a void2dColour symbol"
 		failed=1
@@ -110,8 +110,11 @@ delta_native=0
 delta_wasm=0
 echo "default layer, module off: code plus data bytes (base $BASE_REF)"
 echo "      unit        native base   native head   wasm32 base   wasm32 head"
-for unit in glyph grapheme batcher sfnt; do
-	nb=$(bytes "$OUT/base.$unit.o"); wb=$(bytes "$OUT/base.$unit.wasm.o")
+for unit in glyph grapheme batcher sfnt spriteGlyph; do
+	nb=0; wb=0
+	if [ -f "$OUT/base.$unit.o" ]; then
+		nb=$(bytes "$OUT/base.$unit.o"); wb=$(bytes "$OUT/base.$unit.wasm.o")
+	fi
 	nh=$(bytes "$OUT/head.$unit.o"); wh=$(bytes "$OUT/head.$unit.wasm.o")
 	printf '      %-10s %12s %13s %13s %13s\n' "$unit.c" "$nb" "$nh" "$wb" "$wh"
 	delta_native=$((delta_native + nh - nb))
