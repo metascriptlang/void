@@ -132,3 +132,36 @@ test "two labels of one glyph share one field tile whatever their matrices" {
 	releaseLabelText(left);
 	releaseLabelText(right);
 }
+
+test "a label whose scale starts at zero is placed once the scale grows" {
+	setSdfRegime(true);
+	defer setSdfRegime(false);
+	const index = shapedAt("A", 13.0);
+	const hidden = placeLabel(index, trs2d(0.0, 0.0, 0.0, 0.0, 0.0), 1.0);
+	assert hidden.regime == TextRegime.Sdf;
+	assert (hidden.placed.length as int32) == 1;
+	const x: float32 = hidden.placed[0].x;
+	const w: float32 = hidden.placed[0].w;
+	const grown = placeLabel(index, trs2d(0.0, 0.0, 0.0, 2.0, 2.0), 1.0);
+	assert (grown.placed.length as int32) == 1;
+	assert grown.placed[0].x == x && grown.placed[0].w == w;
+	releaseLabelText(index);
+}
+
+test "the DPI scale does not move an SDF placement" {
+	setSdfRegime(true);
+	defer setSdfRegime(false);
+	const one = shapedAt("Ag", 13.0);
+	const two = shapedAt("Ag", 13.0);
+	const a = placeLabel(one, trs2d(0.0, 0.0, 0.4, 1.5, 1.5), 1.0);
+	const b = placeLabel(two, trs2d(0.0, 0.0, 0.4, 1.5, 1.5), 2.0);
+	assert a.regime == TextRegime.Sdf && b.regime == TextRegime.Sdf;
+	assert (a.placed.length as int32) == 2 && (b.placed.length as int32) == 2;
+	for (let i = 0; i < 2; i++) {
+		assert a.placed[i].x == b.placed[i].x && a.placed[i].y == b.placed[i].y;
+		assert a.placed[i].w == b.placed[i].w && a.placed[i].h == b.placed[i].h;
+		assert a.placed[i].tile == b.placed[i].tile;
+	}
+	releaseLabelText(one);
+	releaseLabelText(two);
+}

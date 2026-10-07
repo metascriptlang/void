@@ -399,8 +399,6 @@ export function isPixelExact(world: Transform2D): boolean {
 
 let sdfRegime: boolean = false;
 
-// The SDF regime draws through a shader mode the renderer has to carry; until it does, the
-// choice stays off and a build with the module behaves as one without it.
 export function setSdfRegime(on: boolean): void {
 	when (voidSdfText) {
 		sdfRegime = on;
@@ -529,7 +527,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let placed: Vec<PlacedGlyph> = new Array(0);
 	let refused: int32 = 0;
 	let refusal: string = "";
-	if (devicePerLocal > 0.0) {
+	if (devicePerLocal > 0.0 || regime == TextRegime.Sdf) {
 		for (const g of entry.layout.glyphs) {
 			if (g.glyph == NO_GLYPH) { continue; }
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
