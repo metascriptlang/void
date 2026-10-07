@@ -1,7 +1,7 @@
 // Port of h3d.parts at Heaps 2b84cc2, CPU only (docs/VOID3D.md, M11 as built). Heaps is Z up
 // and left-handed: every local axis Heaps names z is y here, and y is z.
 
-import { Vec3, vec3, Mat4, transformDirection } from "../math/math3d";
+import { Vec3, vec3, Vec4, vec4, Mat4, identity, transformDirection } from "../math/math3d";
 
 export enum ValueKind {
 	Const,
@@ -27,6 +27,16 @@ export type ParticleValue = match (kind: ValueKind) {
 	ValueKind.Cos => { frequency: float32, amplitude: float32, offset: float32 },
 	ValueKind.Random => { start: float32, length: float32, converge: Converge },
 };
+
+// h3d.parts.Data.SortMode: the order a draw lists the particles in. Front and Back are the order
+// they were emitted in, newest first or oldest first; Sort and InvSort order them by view depth,
+// farthest first or nearest first.
+export enum SortMode {
+	Front,
+	Back,
+	Sort,
+	InvSort,
+}
 
 export enum ShapeKind {
 	Line,
@@ -93,6 +103,7 @@ export struct EmitterState {
 	size: ParticleValue;
 	speed: ParticleValue;
 	gravity: ParticleValue;
+	sortMode: SortMode;
 	damping: ParticleValue;
 	turbulence: Turbulence;
 	force: ValueXYZ;
@@ -130,6 +141,10 @@ export struct ParticleEmitter {
 	// The first `count` are live, in the order Heaps' list keeps them.
 	particles: Vec<Particle>;
 	randoms: Vec<float32>;
+	// The write order, and what a view-depth sort needs to make it: all sized at create.
+	order: Vec<int32>;
+	scratch: Vec<int32>;
+	depth: Vec<float32>;
 	count: int32;
 	capacity: int32;
 }
@@ -139,6 +154,7 @@ export enum ParticleError {
 	NonPositiveLife,
 	NonFiniteStep,
 	ShortInstances,
+	NeedsView,
 }
 
 // Per-particle draws per update: force x, y, z, gravity, damping, turbulence, speed, size,
@@ -174,6 +190,7 @@ export function defaults(this typeof EmitterState): EmitterState {
 		size: constant(1.0),
 		speed: constant(0.1),
 		gravity: constant(0.0),
+		sortMode: SortMode.Back,
 		damping: constant(0.0),
 		turbulence: { strength: constant(0.0), scale: 1.0, speed: 1.0 },
 		force: { x: constant(0.0), y: constant(0.0), z: constant(0.0) },
@@ -245,6 +262,14 @@ export function create(
 	for (let i = 0; i < state.maxParts; i++) { particles[i] = idle; }
 	let randoms: Vec<float32> = new Array(state.maxParts * PARTICLE_RANDOM_SLOTS);
 	for (let i = 0; i < state.maxParts * PARTICLE_RANDOM_SLOTS; i++) { randoms[i] = 0.0; }
+	let order: Vec<int32> = new Array(state.maxParts);
+	let scratch: Vec<int32> = new Array(state.maxParts);
+	let depth: Vec<float32> = new Array(state.maxParts);
+	for (let i = 0; i < state.maxParts; i++) {
+		order[i] = i;
+		scratch[i] = i;
+		depth[i] = 0.0;
+	}
 	return Result.ok({
 		state: state,
 		time: 0.0,
@@ -253,6 +278,9 @@ export function create(
 		sequence: ParticleRandom.seeded(seed),
 		particles: particles,
 		randoms: randoms,
+		order: order,
+		scratch: scratch,
+		depth: depth,
 		count: 0,
 		capacity: state.maxParts,
 	});
@@ -570,10 +598,67 @@ export function updateEmitter(
 }
 
 // Emitter.draw then Particles.draw: one instance per live particle, world position and side,
-// then rgba.
+// then rgba, in the emitter's sort mode. Sort and InvSort need a view (writeSortedInstances).
 export function writeInstances(
 	ref emitter: ParticleEmitter,
 	world: Mat4,
+	out: Span<float32>,
+): Result<int32, ParticleError> {
+	if (emitter.state.sortMode == SortMode.Sort || emitter.state.sortMode == SortMode.InvSort) {
+		return Result.err(ParticleError.NeedsView);
+	}
+	return writeOrdered(emitter, world, identity(), out);
+}
+
+// writeInstances for any sort mode; `viewProjection` gives Sort and InvSort their depth, the
+// z over w a point has after it, as Particles.draw keys on (`Particles.hx:166`).
+export function writeSortedInstances(
+	ref emitter: ParticleEmitter,
+	world: Mat4,
+	viewProjection: Mat4,
+	out: Span<float32>,
+): Result<int32, ParticleError> {
+	return writeOrdered(emitter, world, viewProjection, out);
+}
+
+function placeOf(ref emitter: ParticleEmitter, world: Mat4, slot: int32): Vec3 {
+	const position: Vec3 = emitter.particles[slot].position;
+	return emitter.state.emitLocal ? position * world : position;
+}
+
+// A stable merge sort of `order` by ascending `depth`, through `scratch`: no allocation.
+function sortByDepth(ref emitter: ParticleEmitter): void {
+	const count: int32 = emitter.count;
+	let width: int32 = 1;
+	while (width < count) {
+		let start: int32 = 0;
+		while (start < count) {
+			const middle: int32 = start + width < count ? start + width : count;
+			const end: int32 = start + 2 * width < count ? start + 2 * width : count;
+			let left: int32 = start;
+			let right: int32 = middle;
+			for (let at = start; at < end; at++) {
+				const takeLeft: boolean = right >= end || (left < middle
+					&& !(emitter.depth[emitter.order[right]] < emitter.depth[emitter.order[left]]));
+				if (takeLeft) {
+					emitter.scratch[at] = emitter.order[left];
+					left = left + 1;
+				} else {
+					emitter.scratch[at] = emitter.order[right];
+					right = right + 1;
+				}
+			}
+			start = end;
+		}
+		for (let i = 0; i < count; i++) { emitter.order[i] = emitter.scratch[i]; }
+		width = width * 2;
+	}
+}
+
+function writeOrdered(
+	ref emitter: ParticleEmitter,
+	world: Mat4,
+	viewProjection: Mat4,
 	out: Span<float32>,
 ): Result<int32, ParticleError> {
 	const count: int32 = emitter.count;
@@ -584,18 +669,37 @@ export function writeInstances(
 	const cycle: float32 = emitter.time as float32;
 	const scale: float32 = emitterValue(emitter, emitter.state.globalSize, cycle);
 	if (count == 0) { return Result.ok(0); }
+	const mode: SortMode = emitter.state.sortMode;
 	for (let i = 0; i < count; i++) {
-		let position: Vec3 = emitter.particles[i].position;
-		if (emitter.state.emitLocal) { position = position * world; }
+		emitter.order[i] = mode == SortMode.Front ? count - 1 - i : i;
+	}
+	if (mode == SortMode.Sort || mode == SortMode.InvSort) {
+		const sign: float32 = mode == SortMode.Sort ? -1.0 : 1.0;
+		for (let i = 0; i < count; i++) {
+			emitter.depth[i] = depthKey(placeOf(emitter, world, i), viewProjection) * sign;
+		}
+		sortByDepth(emitter);
+	}
+	for (let i = 0; i < count; i++) {
+		const slot: int32 = emitter.order[i];
+		const position: Vec3 = placeOf(emitter, world, slot);
 		const at: int32 = i * PARTICLE_INSTANCE_STRIDE;
 		out[at] = position.x;
 		out[at + 1] = position.y;
 		out[at + 2] = position.z;
-		out[at + 3] = emitter.particles[i].size * scale;
-		out[at + 4] = emitter.particles[i].red;
-		out[at + 5] = emitter.particles[i].green;
-		out[at + 6] = emitter.particles[i].blue;
-		out[at + 7] = emitter.particles[i].alpha;
+		out[at + 3] = emitter.particles[slot].size * scale;
+		out[at + 4] = emitter.particles[slot].red;
+		out[at + 5] = emitter.particles[slot].green;
+		out[at + 6] = emitter.particles[slot].blue;
+		out[at + 7] = emitter.particles[slot].alpha;
 	}
 	return Result.ok(count);
+}
+
+// Particles.draw's w: the z over w of the point through the view. A point at or behind the eye
+// has none and counts as the farthest, so the order stays total.
+function depthKey(position: Vec3, viewProjection: Mat4): float32 {
+	const clip: Vec4 = vec4(position.x, position.y, position.z, 1.0) * viewProjection;
+	if (!(clip.w > 0.0)) { return 3.0e38; }
+	return clip.z / clip.w;
 }

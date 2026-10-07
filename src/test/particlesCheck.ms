@@ -1,4 +1,4 @@
-import { Vec3, vec3, Mat4, identity, translation, rotationZ } from "../math/math3d";
+import { Vec3, vec3, Mat4, identity, translation, rotationZ, scaling } from "../math/math3d";
 import {
 	ParticleValue,
 	ValueKind,
@@ -10,6 +10,7 @@ import {
 	ParticleEmitter,
 	ParticleError,
 	ParticleRandom,
+	SortMode,
 	Turbulence,
 	turbulenceAt,
 	PARTICLE_INSTANCE_STRIDE,
@@ -17,6 +18,7 @@ import {
 	nextUnit,
 	updateEmitter,
 	writeInstances,
+	writeSortedInstances,
 	clearParticles,
 } from "../void3d/particles";
 import { approx } from "./helpers";
@@ -437,6 +439,107 @@ test "a calm emitter and one with zero turbulence write the same instances" {
 	const left: Vec<float32> = instancesOf(a, identity());
 	const right: Vec<float32> = instancesOf(b, identity());
 	for (let i = 0; i < a.count * PARTICLE_INSTANCE_STRIDE; i++) { assert left[i] == right[i]; }
+}
+
+function placedAt(depths: Vec<float32>, sortMode: SortMode): ParticleEmitter {
+	let emitter: ParticleEmitter =
+		emitterFor({ ...still(0.0), sortMode: sortMode, life: constant(10.0) }, 1);
+	emitter.emitCount = depths.length as float64;
+	if (step(emitter, 0.0) != (depths.length as int32)) { unreachable; }
+	for (let i = 0; i < (depths.length as int32); i++) {
+		emitter.particles[i].position = vec3(i as float32, 0.0, depths[i]);
+	}
+	return emitter;
+}
+
+function writtenOrder(ref emitter: ParticleEmitter, view: Mat4): Vec<float32> {
+	let out: Vec<float32> = new Array(emitter.state.maxParts * PARTICLE_INSTANCE_STRIDE);
+	const written: Result<int32, ParticleError> = writeSortedInstances(emitter, identity(), view, out);
+	let xs: Vec<float32> = [];
+	if (written.ok) {
+		for (let i = 0; i < written.value; i++) { xs.push(out[i * PARTICLE_INSTANCE_STRIDE]); }
+	}
+	return xs;
+}
+
+test "Sort draws the farthest particle first and InvSort the nearest, as Particles.draw does" {
+	let far: ParticleEmitter = placedAt([3.0, 1.0, 4.0, 0.0, 2.0], SortMode.Sort);
+	const back: Vec<float32> = writtenOrder(far, identity());
+	assert back.length == 5;
+	assert back[0] == 2.0 && back[1] == 0.0 && back[2] == 4.0 && back[3] == 1.0 && back[4] == 3.0;
+	let near: ParticleEmitter = placedAt([3.0, 1.0, 4.0, 0.0, 2.0], SortMode.InvSort);
+	const front: Vec<float32> = writtenOrder(near, identity());
+	assert front[0] == 3.0 && front[1] == 1.0 && front[2] == 4.0 && front[3] == 0.0 && front[4] == 2.0;
+}
+
+test "the order follows the view: a flipped view reverses what is farthest" {
+	let emitter: ParticleEmitter = placedAt([3.0, 1.0, 4.0, 0.0, 2.0], SortMode.Sort);
+	const flipped: Vec<float32> = writtenOrder(emitter, scaling(1.0, 1.0, -1.0));
+	assert flipped[0] == 3.0 && flipped[4] == 2.0;
+}
+
+test "particles at equal depth keep the order they were emitted in" {
+	let emitter: ParticleEmitter = placedAt([1.0, 1.0, 0.0, 1.0, 0.0], SortMode.Sort);
+	const order: Vec<float32> = writtenOrder(emitter, identity());
+	assert order[0] == 0.0 && order[1] == 1.0 && order[2] == 3.0 && order[3] == 2.0 && order[4] == 4.0;
+}
+
+test "Back keeps emission order, Front reverses it, and neither needs a view" {
+	let back: ParticleEmitter = placedAt([3.0, 1.0, 4.0], SortMode.Back);
+	let front: ParticleEmitter = placedAt([3.0, 1.0, 4.0], SortMode.Front);
+	const kept: Vec<float32> = instancesOf(back, identity());
+	const turned: Vec<float32> = instancesOf(front, identity());
+	assert kept[0] == 0.0 && kept[PARTICLE_INSTANCE_STRIDE] == 1.0 && kept[2 * PARTICLE_INSTANCE_STRIDE] == 2.0;
+	assert turned[0] == 2.0 && turned[PARTICLE_INSTANCE_STRIDE] == 1.0 && turned[2 * PARTICLE_INSTANCE_STRIDE] == 0.0;
+}
+
+test "a mode that sorts by view refuses a write that has no view" {
+	let emitter: ParticleEmitter = placedAt([3.0, 1.0], SortMode.Sort);
+	let out: Vec<float32> = new Array(2 * PARTICLE_INSTANCE_STRIDE);
+	assert !writeInstances(emitter, identity(), out).ok;
+}
+
+test "a sorted write moves a particle's whole instance, and sorts many particles into depth order" {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		shape: { kind: ShapeKind.Box, size: { x: constant(4.0), y: constant(4.0), z: constant(20.0) } },
+		sortMode: SortMode.Sort,
+		size: { kind: ValueKind.Random, start: 0.5, length: 1.0, converge: Converge.No },
+		maxParts: 200,
+		life: constant(10.0),
+	}, 31);
+	emitter.emitCount = 200.0;
+	assert step(emitter, 0.0) == 200;
+	let out: Vec<float32> = new Array(200 * PARTICLE_INSTANCE_STRIDE);
+	assert writeSortedInstances(emitter, identity(), identity(), out).ok;
+	for (let i = 1; i < 200; i++) {
+		assert out[(i - 1) * PARTICLE_INSTANCE_STRIDE + 2] >= out[i * PARTICLE_INSTANCE_STRIDE + 2];
+	}
+	let matched: int32 = 0;
+	for (let i = 0; i < 200; i++) {
+		for (let j = 0; j < 200; j++) {
+			if (out[i * PARTICLE_INSTANCE_STRIDE] == emitter.particles[j].position.x
+				&& out[i * PARTICLE_INSTANCE_STRIDE + 3] == emitter.particles[j].size) {
+				matched = matched + 1;
+				break;
+			}
+		}
+	}
+	assert matched == 200;
+}
+
+test "an emitLocal emitter sorts by the place it is drawn at" {
+	let emitter: ParticleEmitter = emitterFor(
+		{ ...still(0.0), emitLocal: true, sortMode: SortMode.Sort, life: constant(10.0) },
+		1,
+	);
+	emitter.emitCount = 2.0;
+	assert step(emitter, 0.0) == 2;
+	emitter.particles[0].position = vec3(0.0, 0.0, 1.0);
+	emitter.particles[1].position = vec3(1.0, 0.0, 2.0);
+	let out: Vec<float32> = new Array(2 * PARTICLE_INSTANCE_STRIDE);
+	assert writeSortedInstances(emitter, translation(0.0, 0.0, 5.0), identity(), out).ok;
+	assert out[0] == 1.0 && out[2] == 7.0 && out[PARTICLE_INSTANCE_STRIDE + 2] == 6.0;
 }
 
 test "spawn happens in world space; emitLocal defers the transform to the write" {
