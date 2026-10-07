@@ -471,14 +471,17 @@ float dashedBorderAlpha(vec2 p, vec2 half_, vec4 rawRadii, vec4 borders, float a
     float velocity = 0.0;
     float t = 0.0;
     float maxT = 0.0;
+    bool noBorder = false;
     if (unrounded) {
         float width_ = horizontal
             ? max(borders.y, borders.w)
             : max(borders.x, borders.z);
-        if (width_ <= 0.0) { return 0.0; }
-        velocity = 1.0 / (3.0 * width_);
-        t = (horizontal ? point.x : point.y) * velocity;
-        maxT = (horizontal ? size.x : size.y) * velocity - dashLength;
+        noBorder = width_ <= 0.0;
+        if (!noBorder) {
+            velocity = 1.0 / (3.0 * width_);
+            t = (horizontal ? point.x : point.y) * velocity;
+            maxT = (horizontal ? size.x : size.y) * velocity - dashLength;
+        }
     } else {
         float dvT = borders.y > 0.0 ? 1.0 / (3.0 * borders.y) : 0.0;
         float dvR = borders.z > 0.0 ? 1.0 / (3.0 * borders.z) : 0.0;
@@ -542,17 +545,15 @@ float dashedBorderAlpha(vec2 p, vec2 half_, vec4 rawRadii, vec4 borders, float a
             }
         }
     }
-    if (maxT >= 1.0) {
-        float count = floor(maxT);
-        return dashAlpha(t, maxT / count, dashLength, velocity, aa);
+    float alpha = 1.0;
+    if (noBorder) {
+        alpha = 0.0;
+    } else if (maxT >= 1.0) {
+        alpha = dashAlpha(t, maxT / floor(maxT), dashLength, velocity, aa);
+    } else if (unrounded && maxT - dashLength > 0.0) {
+        alpha = dashAlpha(t, maxT, dashLength, velocity, aa);
     }
-    if (unrounded) {
-        float gap = maxT - dashLength;
-        if (gap > 0.0) {
-            return dashAlpha(t, dashLength + gap, dashLength, velocity, aa);
-        }
-    }
-    return 1.0;
+    return alpha;
 }
 
 // GPUI's error function (`shaders.wgsl:325`), rational form. Its polynomial error is orders
@@ -586,12 +587,7 @@ float scanlineHalf(float hx, float hy, float ay, float r) {
 // GPUI's `fs_shadow` integral. The blur is applied by evaluating at (p - offset), which is
 // GPUI's CPU-side bounds offset stated as one subtraction. sigma <= 0 is the hard shadow.
 // Judged against the kernel-integral oracle within 0.02 (worst measured 0.0078).
-float shadowCoverage(vec2 p, vec2 half_, vec4 radii, vec2 offset, float sigma, float aa) {
-    vec4 rr = clamp(radii, vec4(0.0), vec4(min(half_.x, half_.y)));
-    vec2 c = p - offset;
-    if (sigma <= 0.0) {
-        return coverageFromDistance(roundedRectDistance(c, half_, cornerRadius(c, rr)), aa);
-    }
+float blurredCoverage(vec2 c, vec2 half_, vec4 rr, float sigma) {
     float low = c.y - half_.y;
     float high = c.y + half_.y;
     float start = clamp(-3.0 * sigma, low, high);
@@ -611,6 +607,18 @@ float shadowCoverage(vec2 p, vec2 half_, vec4 radii, vec2 offset, float sigma, f
         y += stepY;
     }
     return acc;
+}
+
+float shadowCoverage(vec2 p, vec2 half_, vec4 radii, vec2 offset, float sigma, float aa) {
+    vec4 rr = clamp(radii, vec4(0.0), vec4(min(half_.x, half_.y)));
+    vec2 c = p - offset;
+    float coverage = 0.0;
+    if (sigma <= 0.0) {
+        coverage = coverageFromDistance(roundedRectDistance(c, half_, cornerRadius(c, rr)), aa);
+    } else {
+        coverage = blurredCoverage(c, half_, rr, sigma);
+    }
+    return coverage;
 }
 
 void main() {
