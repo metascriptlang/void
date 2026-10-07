@@ -33,7 +33,16 @@ function checkOwners(rows: PendingRow[], roadmap: string): int32 {
 		}
 	}
 	for (const phase of phases) {
-		const closes = closesIds(phaseSection(roadmap, phase));
+		const section: string = phaseSection(roadmap, phase);
+		const closes = closesIds(section);
+		let closesLines: int32 = 0;
+		for (const line of section.split("\n")) {
+			if (line.startsWith("**Closes**")) { closesLines = closesLines + 1; }
+		}
+		if (closesLines > 1) {
+			console.log(`FAIL docs/VOID2D.md ${phase} has ${closesLines} **Closes** lines; keep one`);
+			failed = failed + 1;
+		}
 		let owns: boolean = false;
 		for (const row of rows) {
 			if (row.owner.equals(phase)) { owns = true; }
