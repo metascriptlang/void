@@ -1053,19 +1053,6 @@ function uploadError(error: TextureError): TextureUploadError {
 	};
 }
 
-function stopOnRefusedReupload(index: int32, error: TextureError): void {
-	console.log(`void3d: texture ${index} could not upload its pixels again: ${error.toString()}`);
-	unreachable;
-}
-
-function reuploadFrom(context: DrawContext, index: int32): (texture: Texture) => void {
-	return (texture: Texture): void => {
-		const uploaded: Result<int32, TextureError> =
-			texture.upload(context.textureData[index].pixels);
-		if (!uploaded.ok) { stopOnRefusedReupload(index, uploaded.error); }
-	};
-}
-
 function uploadTexture(context: DrawContext, index: int32): Result<int32, TextureUploadError> {
 	const sampler: uint32 = samplerFor(
 		context,
@@ -1076,7 +1063,7 @@ function uploadTexture(context: DrawContext, index: int32): Result<int32, Textur
 	const owner: Texture = Texture.create(
 		context.textureData[index].width,
 		context.textureData[index].height,
-		reuploadFrom(context, index),
+		null,
 	);
 	const uploaded: Result<int32, TextureError> = owner.upload(context.textureData[index].pixels);
 	if (!uploaded.ok) {
@@ -1354,6 +1341,7 @@ function bindItem(
 	applyBindings(context.bindings);
 }
 
+// viewAt and textureReady read `owner.view` because `asView` stops on a stale texture.
 function viewAt(this context: DrawContext, index: int32): uint32 {
 	const target: RenderTarget | null = context.textureTargets[index];
 	if (target !== null) { return target.asTexture(); }
@@ -1374,11 +1362,12 @@ function stopOnClosedTargetTexture(index: int32): void {
 	unreachable;
 }
 
-function textureReady(this context: DrawContext, index: int32): boolean {
+export function textureReady(this context: DrawContext, index: int32): boolean {
 	const target: RenderTarget | null = context.textureTargets[index];
 	if (target === null) {
 		const owner: Texture | null = context.textures[index].texture;
-		return owner !== null && owner.view != 0 && context.textures[index].sampler != 0;
+		return owner !== null && owner.view != 0 && owner.generation == contextGeneration() &&
+			context.textures[index].sampler != 0;
 	}
 	if (target.isClosed()) { stopOnClosedTargetTexture(index); }
 	const generation: int32 = contextGeneration();

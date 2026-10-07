@@ -58,7 +58,7 @@ import {
 	renderFrame as renderPixelArt,
 } from "../void3d/pixelArtRenderer";
 import { LowResView } from "../void3d/blit";
-import { added, addedOwner, litShape } from "./drawHelpers";
+import { added, addedOwner, loseTextureAt, litShape } from "./drawHelpers";
 
 let FIRST_SLOT: TextureId = { store: 0, index: 0, generation: 1 };
 
@@ -483,7 +483,7 @@ test "a freed texture gives its handles to buryDoomed and closes its owner witho
 	assert context.doomedTextures.length == 0;
 }
 
-test "detach leaves the texture closed and returns its handles and generation" {
+test "detach leaves the texture closed and returns the handles of an adopted one" {
 	const owner: Texture = Texture.adopt(3, 9, 2, 2);
 	const handles: DetachedHandles = owner.detach();
 	assert handles.image == 3 && handles.view == 9 && handles.generation == contextGeneration();
@@ -498,4 +498,12 @@ test "a freed texture's slot holds no owner, and its id is refused as stale" {
 	assert !context.hasTexture(id) && context.textures[id.index].texture === null;
 	const again: Result<int32, HandleError> = releaseTexture(context, id);
 	assert !again.ok && again.error == HandleError.StaleTexture;
+}
+
+test "a texture whose image is of an older context is not ready until it is remade" {
+	const context: DrawContext = DrawContext.withUniformCapacity(0);
+	const id: TextureId = addedOwner(context, Texture.adopt(0, 77, 1, 1));
+	assert context.textureReady(id.index);
+	loseTextureAt(context, id.index);
+	assert !context.textureReady(id.index);
 }
