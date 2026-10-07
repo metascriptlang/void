@@ -938,13 +938,15 @@ run_oracle() {
 	found=0
 	agreed=0
 	diverged=0
+	broken=0
 	for cases in tests/oracle/*.cases; do
 		[ -f "$cases" ] || continue
 		found=$((found + 1))
 		snapshot=${cases%.cases}.snapshot
 		if [ ! -f "$snapshot" ]; then
-			skip "oracle: no snapshot for $cases — run 'sh scripts/oracle.sh regen $cases' with Haxe"
-			return
+			fail "oracle: no snapshot for $cases — run 'sh scripts/oracle.sh regen $cases' with Haxe"
+			broken=$((broken + 1))
+			continue
 		fi
 		if sh scripts/oracle.sh check "$cases" > "$WORK/oracle.log" 2>&1; then
 			agreed=$((agreed + $(grep -c '^AGREES' "$WORK/oracle.log")))
@@ -952,13 +954,14 @@ run_oracle() {
 		else
 			fail "oracle: $cases and real Heaps disagree in a way nothing declared"
 			grep -E '^(MISMATCH|GRADUATED|MISSING)' "$WORK/oracle.log" | head -8 | sed 's/^/         /'
-			return
+			broken=$((broken + 1))
 		fi
 	done
 	if [ "$found" = 0 ]; then
 		skip "oracle: no tests/oracle/*.cases to check"
 		return
 	fi
+	[ "$broken" -gt 0 ] && return
 	pass "oracle: $agreed case(s) agree with real Heaps and $diverged diverge as declared, over $found file(s)"
 }
 
