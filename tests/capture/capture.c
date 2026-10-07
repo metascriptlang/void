@@ -156,6 +156,15 @@ static void stopOnClampedWindow(void) {
 	exit(1);
 }
 
+const char *voidCaptureRenderer(void) {
+#if defined(VOID_CAPTURE_GL)
+	const char *renderer = (const char *)glGetString(GL_RENDERER);
+	return renderer != NULL ? renderer : "GL_RENDERER unavailable";
+#else
+	return "";
+#endif
+}
+
 int voidCaptureGrab(int slot) {
 	stopOnClampedWindow();
 #if defined(VOID_CAPTURE_D3D11)

@@ -18,6 +18,9 @@
 // 0 = none (stub), 1 = D3D11, 2 = GLES3, 3 = WebGL2, 4 = GL core 4.3 desktop. Names the path that voidCaptureGrab would take.
 int voidCaptureBackend(void);
 
+// The GL driver's GL_RENDERER string, or "" when this build reads back nothing through GL.
+const char *voidCaptureRenderer(void);
+
 // Read the current swapchain contents into `slot` as 8-bit RGBA, top row first.
 // Returns 1 on success, 0 when this build has no readback path or the read failed.
 int voidCaptureGrab(int slot);

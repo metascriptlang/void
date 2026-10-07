@@ -37,6 +37,7 @@ import { renderTargetsAlive } from "../../src/void2d/render";
 import { init2d, step2d, present2d } from "../../src/examples/renderer2d";
 import {
 	voidCaptureBackend,
+	voidCaptureRenderer,
 	voidCaptureGrab,
 	voidCaptureWidth,
 	voidCaptureHeight,
@@ -138,6 +139,8 @@ function finish(): void {
 		console.log(`FAIL ${row.name} could not write ${path}`);
 		voidCaptureExit(EXIT_FAILED);
 	}
+	const renderer: string = voidCaptureRenderer();
+	if (renderer.length > 0) { console.log(`RENDERER ${renderer}`); }
 	console.log(
 		`CAPTURED ${row.name} ${width}x${height} dpi ${row.dpi} draws ${draws}`
 		+ ` renderTargets ${targets} -> ${path}`,
