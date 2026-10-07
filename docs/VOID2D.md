@@ -1890,6 +1890,13 @@ changes described above on today's compiler; the P4 web archive also takes its r
   them to the `colourBounds` in `baseline.json` (2 pages, 8 MiB, 40 rasterizations, 0 steady) as
   bounds, not as measured values, because the bench has not been run (owed). `glyphPages` and
   `glyphBytes` now count the coverage pages only, so they keep their meaning beside an RGBA page.
+  Device loss and occlusion: `forgetContextResources` already marks every page dirty whatever its
+  kind and the page mirror is four bytes a texel, so an RGBA page re-uploads whole with no new code;
+  `src/test/glyphColourAtlasCheck.ms` pins the CPU half (after a loss an uploaded page takes an
+  upload again, with the same mirror and size, and a `MarkDirty` that skipped RGBA pages fails
+  it). The GPU half is two gate stages that build `tests/integration/deviceLoss.ms` and
+  `sceneOcclusion.ms` with `-d:voidColourEmoji`, each with an emoji label beside the text one,
+  and require the colour page to exist (owed, native: neither stage has run).
   NEW MECHANISM (flagged, needs approval): `colourEmoji/colourFace.c`, an in-tree CBLC/CBDT
   parser (index formats 1 to 3, image formats 17, 18 and 19, PNG only), no reference has one
   because GPUI, Makepad and Ghostty all call FreeType or the OS (Ghostty

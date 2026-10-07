@@ -5,6 +5,7 @@ import {
 	GlyphPage,
 	AtlasError,
 	PageKind,
+	beginUploadFrame,
 } from "../void2d/glyphAtlas";
 import {
 	void2dGlyphPageBlitRgba,
@@ -12,6 +13,7 @@ import {
 	void2dGlyphPageTexelRgba,
 	void2dGlyphPageBytes,
 	void2dGlyphRasterize,
+	void2dGlyphPagesMarkDirty,
 } from "../void2d/glyph.h";
 
 let loadedFace: int32 = -1;
@@ -240,4 +242,24 @@ test "discarding a tile another holder shares only drops one reference" {
 	assert atlas.cached(key);
 	assert atlas.tile(first.value).refs == 1;
 	assert atlas.rasterizations == 1;
+}
+
+test "a lost device re-arms an Rgba page for a whole upload from its CPU mirror" {
+	const atlas = GlyphAtlas.create(64, 4);
+	const r = atlas.acquireBlank(colourKey(1, 0), 2, 2, 0, 0);
+	assert r.ok;
+	if (!r.ok) { return; }
+	const t = atlas.tile(r.value);
+	const handle: int32 = atlas.pageHandle(t.page) as int32;
+	const source: uint32[] = [0x281E140A, 0x50463C32, 0xFFFFFFFF, 0x01000000];
+	assert void2dGlyphPageBlitRgba(handle, t.x, t.y, 2, 2, source[0], 2) == 0;
+	assert atlas.takePageUpload(t.page);
+	beginUploadFrame();
+	assert !atlas.takePageUpload(t.page);
+	void2dGlyphPagesMarkDirty();
+	assert atlas.takePageUpload(t.page);
+	assert void2dGlyphPageBytes(handle) == 64 * 64 * 4;
+	assert void2dGlyphPageTexelRgba(handle, t.x, t.y) == 0x281E140A;
+	assert void2dGlyphPageTexelRgba(handle, t.x + 1, t.y + 1) == 0x01000000;
+	beginUploadFrame();
 }

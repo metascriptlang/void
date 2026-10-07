@@ -347,6 +347,13 @@ else
 	fail "scene occlusion — see out/gate-scene-occlusion.log and out/gate-scene-occlusion-run.log"
 fi
 
+rm -f out/tmp/sceneOcclusionColour.exe
+if "$MSC" build -d:voidColourEmoji tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusionColour.exe 		> out/gate-scene-occlusion-colour.log 2>&1 		&& out/tmp/sceneOcclusionColour.exe > out/gate-scene-occlusion-colour-run.log 2>&1; then
+	pass "scene occlusion with colour: releaseGpu keeps the RGBA page beside the coverage page, repaints byte-identical"
+else
+	fail "scene occlusion with colour — see out/gate-scene-occlusion-colour.log and out/gate-scene-occlusion-colour-run.log"
+fi
+
 device_loss_misuse() {
 	loss_status=0
 	VOID_DEVICE_LOSS_MISUSE=$1 out/tmp/deviceLoss.exe > "out/gate-device-loss-$1.log" 2>&1 \
@@ -367,6 +374,13 @@ if "$MSC" build -d:voidSvg tests/integration/deviceLoss.ms --release --output=ou
 	device_loss_misuse reupload "its image is immutable"
 else
 	fail "device loss — see out/gate-device-loss.log and out/gate-device-loss-run.log"
+fi
+
+rm -f out/tmp/deviceLossColour.exe
+if "$MSC" build -d:voidColourEmoji tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLossColour.exe 		> out/gate-device-loss-colour.log 2>&1 		&& out/tmp/deviceLossColour.exe > out/gate-device-loss-colour-run.log 2>&1; then
+	pass "device loss with colour: two forced losses, the RGBA page re-uploads from its CPU mirror, the next frame byte-identical"
+else
+	fail "device loss with colour — see out/gate-device-loss-colour.log and out/gate-device-loss-colour-run.log"
 fi
 
 rm -f out/tmp/deviceLoss3d.exe

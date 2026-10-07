@@ -5,6 +5,7 @@ import { Texture, TextureError } from "../../src/gpu/texture";
 import { Scene2D } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
 import { setup2d, buffersAlive, glyphPageCount } from "../../src/void2d/draw";
+import { DEFAULT_FONT, addFont, addFallbackFont } from "../../src/void2d/font";
 import { renderTargetsAlive } from "../../src/void2d/render";
 import { rgba, blurFilter, tile } from "../../src/void2d/types";
 import {
@@ -23,6 +24,7 @@ const CHECKER: int32 = 4;
 const RELEASES: int32 = 8;
 const RED: uint32 = 0xff2020e0 as uint32;
 const YELLOW: uint32 = 0xff20e0e0 as uint32;
+const EMOJI: string = "\u{1F600}\u{1F680}";
 const CLEAR = rgba(0.05, 0.05, 0.1, 1.0);
 const s: Scene2D = Scene2D.create(CLEAR);
 let stage: int32 = 0;
@@ -77,6 +79,11 @@ function init(): void {
 	s.add(s.sprite(tile(texture, 32.0, 32.0)).at(40.0, 8.0));
 	s.add(s.label("Ag", 16.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 56.0));
 	s.add(s.rect(24.0, 24.0, rgba(0.2, 0.3, 1.0, 1.0)).at(100.0, 60.0)).setFilter(blurFilter(3.0));
+	when (voidColourEmoji) {
+		const emoji = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+		addFallbackFont(emoji, "tests/fonts/NotoColorEmoji-subset.ttf");
+		s.add(s.label(EMOJI, 16.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(emoji).at(40.0, 56.0));
+	}
 	const misuse: string = env.get("VOID_SCENE_OCCLUSION_MISUSE");
 	if (!misuse.equals("")) { exerciseMisuse(misuse); }
 }
@@ -125,6 +132,9 @@ function frame(): void {
 		paintedPages = glyphPageCount();
 		if (paintedTargets == 0) { fail("the blurred rect took no filter target"); }
 		if (paintedPages == 0) { fail("the label took no glyph page"); }
+		when (voidColourEmoji) {
+			if (paintedPages < 2) { fail("the emoji label took no colour page"); }
+		}
 		if (voidCaptureGrab(0) == 0) { fail("first readback failed"); }
 	} else if (stage % 2 == 1) {
 		release();

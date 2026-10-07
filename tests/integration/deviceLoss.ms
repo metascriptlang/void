@@ -4,7 +4,8 @@ import { contextGeneration, loseContext } from "../../src/gpu/door";
 import { Texture, TextureError } from "../../src/gpu/texture";
 import { Scene2D } from "../../src/void2d/node";
 import { create } from "../../src/void2d/scene";
-import { setup2d } from "../../src/void2d/draw";
+import { setup2d, glyphPageCount } from "../../src/void2d/draw";
+import { DEFAULT_FONT, addFont, addFallbackFont } from "../../src/void2d/font";
 import { rgba, blurFilter, tile } from "../../src/void2d/types";
 when (voidSvg) {
 	import { registerIcon } from "../../src/void2d/icon";
@@ -28,12 +29,18 @@ const YELLOW: uint32 = 0xff20e0e0 as uint32;
 const GREEN: uint32 = 0xff20e020 as uint32;
 const ICON_SOURCE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
 	`viewBox="0 0 24 24"><path d="M12 2 L22 12 L12 22 L2 12 Z" fill="#000"/></svg>`;
+
+const EMOJI: string = "\u{1F600}\u{1F680}";
 const CLEAR = rgba(0.05, 0.05, 0.1, 1.0);
 const s: Scene2D = Scene2D.create(CLEAR);
 let stage: int32 = 0;
 let firstGeneration: int32 = 0;
 let hookCalls: int32 = 0;
 let decoys: Vec<Texture> = new Array(0);
+
+function colourPagesBuilt(): boolean {
+	when (voidColourEmoji) { return true; } else { return false; }
+}
 
 function fail(message: string): void {
 	console.log(`FAIL device loss: stage ${stage}: ${message}`);
@@ -87,6 +94,11 @@ function init(): void {
 		}
 	}
 	s.add(s.rect(24.0, 24.0, rgba(0.2, 0.3, 1.0, 1.0)).at(100.0, 60.0)).setFilter(blurFilter(3.0));
+	when (voidColourEmoji) {
+		const emoji = try addFont("assets/font.ttf") catch DEFAULT_FONT;
+		addFallbackFont(emoji, "tests/fonts/NotoColorEmoji-subset.ttf");
+		s.add(s.label(EMOJI, 16.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(emoji).at(40.0, 56.0));
+	}
 	const misuse: string = env.get("VOID_DEVICE_LOSS_MISUSE");
 	if (misuse.equals("adopted")) {
 		const adopted: Texture = Texture.adopt(kept.image, kept.view, CHECKER, CHECKER);
@@ -117,6 +129,9 @@ function frame(): void {
 		s.present();
 		if (voidCaptureGrab(0) == 0) { fail("readback before the loss failed"); }
 		const _written: int32 = voidCaptureWritePng(0, "out/tmp/deviceLossBefore.png");
+		when (voidColourEmoji) {
+			if (glyphPageCount() < 2) { fail("the emoji label took no colour page"); }
+		}
 		loseContext();
 	} else if (stage == 1) {
 		if (contextGeneration() != firstGeneration + 1) {
@@ -142,7 +157,8 @@ function frame(): void {
 		if (hookCalls != 2) { fail(`the realloc hook ran ${hookCalls} times, not twice`); }
 		console.log(
 			"PASS device loss: two forced losses, each next frame byte-identical; kept pixels and a " +
-			"realloc hook re-uploaded, recycled ids drew nothing of theirs",
+			"realloc hook re-uploaded, recycled ids drew nothing of theirs" +
+			(colourPagesBuilt() ? ", the colour page re-uploaded from its mirror" : ""),
 		);
 		voidCaptureExit(0);
 	}
