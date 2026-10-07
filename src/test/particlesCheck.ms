@@ -161,6 +161,25 @@ test "dead particles leave the live range and the survivors keep their order" {
 	assert emitter.particles[1].size == third;
 }
 
+test "a poly value is Heaps' VPoly: Horner over the coefficients, and a size curve over a life" {
+	const parabola: ParticleValue = { kind: ValueKind.Poly, values: [0.0, 4.0, -4.0] };
+	assert approx(parabola.evaluate(0.5, 0.9), 1.0);
+	assert approx(parabola.evaluate(0.25, 0.9), 0.75);
+	const cubic: ParticleValue = { kind: ValueKind.Poly, values: [1.0, 2.0, 3.0] };
+	assert approx(cubic.evaluate(0.5, 0.9), 2.75);
+	const empty: ParticleValue = { kind: ValueKind.Poly, values: [] };
+	assert approx(empty.evaluate(0.5, 0.9), 0.0);
+	assert !parabola.drawsRandom();
+	let emitter: ParticleEmitter = emitterFor({ ...still(0.0), size: parabola, life: constant(1.0) }, 1);
+	emitter.emitCount = 1.0;
+	assert step(emitter, 0.25) == 1;
+	assert approx(emitter.particles[0].size, 0.75);
+	assert step(emitter, 0.25) == 1;
+	assert approx(emitter.particles[0].size, 1.0);
+	assert step(emitter, 0.25) == 1;
+	assert approx(emitter.particles[0].size, 0.75);
+}
+
 test "the same seed and the same steps write the same instances; another seed does not" {
 	const state: EmitterState = {
 		...EmitterState.defaults(),

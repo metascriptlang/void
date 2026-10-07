@@ -9,6 +9,7 @@ export enum ValueKind {
 	Pow,
 	Sin,
 	Cos,
+	Poly,
 	Random,
 }
 
@@ -18,13 +19,15 @@ export enum Converge {
 	End,
 }
 
-// h3d.parts.Data.Value without VPoly and VCustom.
+// h3d.parts.Data.Value without VCustom. Poly is VPoly without its `points`, which only the editor
+// reads (Data.hx:193 evaluates `values` alone).
 export type ParticleValue = match (kind: ValueKind) {
 	ValueKind.Const => { value: float32 },
 	ValueKind.Linear => { start: float32, length: float32 },
 	ValueKind.Pow => { start: float32, length: float32, power: float32 },
 	ValueKind.Sin => { frequency: float32, amplitude: float32, offset: float32 },
 	ValueKind.Cos => { frequency: float32, amplitude: float32, offset: float32 },
+	ValueKind.Poly => { values: Vec<float32> },
 	ValueKind.Random => { start: float32, length: float32, converge: Converge },
 };
 
@@ -225,8 +228,19 @@ export function evaluate(this v: ParticleValue, time: float32, random: float32):
 		ValueKind.Pow => v.start + (Math.pow(time, v.power) as float32) * v.length,
 		ValueKind.Sin => (Math.sin(time * v.frequency) as float32) * v.amplitude + v.offset,
 		ValueKind.Cos => (Math.cos(time * v.frequency) as float32) * v.amplitude + v.offset,
+		ValueKind.Poly => polynomial(v.values, time),
 		ValueKind.Random => v.start + randomSpan(v.length, v.converge, time) * random,
 	};
+}
+
+function polynomial(values: Vec<float32>, time: float32): float32 {
+	let y: float32 = 0.0;
+	let j: int32 = (values.length as int32) - 1;
+	while (j >= 0) {
+		y = values[j] + time * y;
+		j = j - 1;
+	}
+	return y;
 }
 
 function randomSpan(length: float32, converge: Converge, time: float32): float32 {
