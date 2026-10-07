@@ -261,8 +261,7 @@ test "a control character and a newline keep the module-off slots" {
 	const font = fixture(plain());
 	const l = layoutOf(font, "a\tb\nA", 0.0);
 	setTextShaping(false);
-	const unshaped = layoutOf(font, "a	b
-A", 0.0);
+	const unshaped = layoutOf(font, "a\tb\nA", 0.0);
 	setTextShaping(true);
 	assert (l.glyphs.length as int32) == 4 && (unshaped.glyphs.length as int32) == 4;
 	assert l.glyphs[1].glyph == NO_GLYPH && l.glyphs[1].advance == unshaped.glyphs[1].advance;
