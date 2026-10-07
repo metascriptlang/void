@@ -1,10 +1,16 @@
 // The window-only driver: the browser canvas under emscripten and the desktop GL window
-// (-d:voidGlCore) through sokol_app. bridgeWin.c carries the same window path beside its host views.
+// (-d:voidGlCore) through sokol_app. bridgeWin.c carries the same window path beside its
+// host views.
 
 #include <stdbool.h>
 
+#include "backend.h"
 #include "bridge.h"
 #include "views.h"
+
+#if defined(_WIN32) && !defined(SOKOL_GLCORE)
+#error "void: bridgeWeb.c on Windows is the GL core driver; define SOKOL_GLCORE (golden.sh)"
+#endif
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"

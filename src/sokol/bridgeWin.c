@@ -6,8 +6,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "backend.h"
 #include "bridge.h"
 #include "views.h"
+
+#if defined(SOKOL_GLCORE)
+#error "void: bridgeWin.c is the D3D11 driver; -DSOKOL_GLCORE needs -d:voidGlCore"
+#endif
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
