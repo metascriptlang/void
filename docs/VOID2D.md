@@ -1869,6 +1869,27 @@ changes described above on today's compiler; the P4 web archive also takes its r
   the discard. Not measured: the golden `text/colourEmoji` capture (owed, D3D11), and the run
   count of an alternating label, which needs real views (a headless view is 0, so both pages
   record under one view).
+  Transformed regime (`labelText.ms` `translationOnly`, `glyphAtlas.ms` `colourBucket`): a label
+  whose matrix is more than a translation (a zoom, a rotation, a skew; DPI is not part of it) takes
+  its colour tile from a size bucket instead of the exact size. A bucket is a rung of the integer
+  ladder 1, 2, 3, 4, 5, 7, 9, 12, 15, 19, 24, 30, 38, 48, 60, 75, 94 and so on, each rung the
+  ceiling of 1.25 times the one before, the first at or above the requested size, so a tile is
+  never enlarged and is shrunk by at most 20 percent; the ladder is monotone and idempotent
+  (T0 over sizes 0.37 to 1480). The tile is drawn through the affine with the smooth sampler,
+  scaled by requested over bucket size (in device pixels when the regime is pixel exact, in local
+  units otherwise). A label with a colour glyph in the SDF regime re-places on a zoom, as a label
+  with a cubic-outline glyph does, because the tile depends on the matrix where the SDF tile does
+  not. NEW MECHANISM (flagged, needs approval): the 1.25x integer ladder. MAKEPAD.md:114 gives the
+  ratio second hand ("emoji strikes pre-shrunk into 1.25x size buckets"); Makepad's own source
+  was not read, so the rung rounding (integer, ceiling) is this tree's. Measured headless: a
+  64-step sweep from 0.5x to 4x of a 16 px label of four emoji rasterizes at most 44 tiles (ten
+  rungs and the identity size, four glyphs), stays in two colour pages, and a second sweep and a
+  return to identity rasterize nothing. T4: `tests/bench/benchTextEmoji.ms`, the text scene with an
+  emoji line every eighth line built with `-d:voidColourEmoji`, reports `colourPages`,
+  `colourBytes`, `sweepColourRasterizations` and `colourRasterizationsSteady`; `check.ms` holds
+  them to the `colourBounds` in `baseline.json` (2 pages, 8 MiB, 40 rasterizations, 0 steady) as
+  bounds, not as measured values, because the bench has not been run (owed). `glyphPages` and
+  `glyphBytes` now count the coverage pages only, so they keep their meaning beside an RGBA page.
   NEW MECHANISM (flagged, needs approval): `colourEmoji/colourFace.c`, an in-tree CBLC/CBDT
   parser (index formats 1 to 3, image formats 17, 18 and 19, PNG only), no reference has one
   because GPUI, Makepad and Ghostty all call FreeType or the OS (Ghostty

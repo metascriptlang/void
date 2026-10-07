@@ -101,6 +101,7 @@ export interface GlyphAtlas {
 	freeTiles: Vec<int32>;
 	index: Map<uint64, int32>;
 	rasterizations: int32;
+	colourRasterizations: int32;
 	generations: int32;
 	reclaims: int32;
 	frame: int32;
@@ -116,6 +117,7 @@ export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32)
 		freeTiles: new Array(0),
 		index: new Map<uint64, int32>(),
 		rasterizations: 0,
+		colourRasterizations: 0,
 		generations: 0,
 		reclaims: 0,
 		frame: 0,
@@ -206,6 +208,22 @@ export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 		}
 	}
 	return first >= 0 ? atlas.pages[first].handle : NO_GLYPH_PAGE_HANDLE;
+}
+
+export function pagesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
+	let pages: int32 = 0;
+	for (const page of atlas.pages) {
+		if (page.kind == kind) { pages = pages + 1; }
+	}
+	return pages;
+}
+
+export function bytesOfKind(this atlas: GlyphAtlas, kind: PageKind): int32 {
+	let bytes: int32 = 0;
+	for (const page of atlas.pages) {
+		if (page.kind == kind) { bytes = bytes + void2dGlyphPageBytes(page.handle as int32); }
+	}
+	return bytes;
 }
 
 export function residentBytes(this atlas: GlyphAtlas): int32 {
@@ -586,6 +604,15 @@ when (voidColourEmoji) {
 		return { kind: PageKind.Rgba, face: face, glyph: glyph, sizePx: sizePx, variant: 0 };
 	}
 
+	export const COLOUR_BUCKET_LIMIT: float32 = 16384.0;
+
+	export function colourBucket(sizePx: float32): float32 {
+		if (!(sizePx > 1.0) || sizePx >= COLOUR_BUCKET_LIMIT) { return sizePx; }
+		let rung: int32 = 1;
+		while ((rung as float32) < sizePx) { rung = (rung * 5 + 3) / 4; }
+		return rung as float32;
+	}
+
 	export function acquireColour(
 		this atlas: GlyphAtlas,
 		key: GlyphKey,
@@ -604,6 +631,7 @@ when (voidColourEmoji) {
 			atlas.discard(index);
 			return Result.err(AtlasError.ColourRefused);
 		}
+		atlas.colourRasterizations = atlas.colourRasterizations + 1;
 		return Result.ok(index);
 	}
 }

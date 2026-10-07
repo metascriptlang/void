@@ -124,6 +124,12 @@
       "sweepRasterizations": 0
     }
   },
+  "colourBounds": {
+    "colourPages": 2,
+    "colourBytes": 8388608,
+    "sweepColourRasterizations": 40,
+    "colourRasterizationsSteady": 0
+  },
   "milliseconds": {
     "warnFactor": 1.5,
     "ui": {

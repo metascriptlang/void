@@ -1,5 +1,5 @@
 import { Texture } from "../gpu/texture";
-import { DEFAULT_FONT } from "../void2d/font";
+import { DEFAULT_FONT, addFallbackFont } from "../void2d/font";
 // void2d frame budget (docs/TESTING.md "T4"): a UI scene of 10 000 cards, each a Rect with
 // a Label child — box/text alternation in tree order — and a sprite-only scene of the same
 // size. tests/bench/bench{Ui,Sprites}.ms are the entries; each prints one machine-readable
@@ -26,7 +26,7 @@ import {
 } from "../void2d/draw";
 import { renderTargetsAlive } from "../void2d/render";
 import { glyphAtlas, glyphRasterizations } from "../void2d/labelText";
-import { GlyphAtlas } from "../void2d/glyphAtlas";
+import { GlyphAtlas, PageKind } from "../void2d/glyphAtlas";
 import { NodeRef, Scene2D } from "../void2d/node";
 import { add, present, isDirty } from "../void2d/scene";
 import { Color, rgba, tile } from "../void2d/types";
@@ -44,6 +44,7 @@ export enum BenchKind {
 	Text,
 	Editor,
 	Scroll,
+	TextEmoji,
 }
 
 const COLUMNS: int32 = 100;
@@ -59,6 +60,9 @@ const SWEEP_MAX: float32 = 4.0;
 const CODE_LINES: int32 = 40;
 const CODE_LINE: string =
 	"fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
+
+const EMOJI_FACE: string = "tests/fonts/NotoColorEmoji-subset.ttf";
+const EMOJI_LINE: string = "emoji \u{1F600}\u{1F44D}\u{1F680}\u{1F389} 0123456789";
 
 const EDITOR_LINES: int32 = 200;
 const EDITOR_COLUMNS: int32 = 80;
@@ -117,6 +121,8 @@ let firstPaintRasterizations: int32 = 0;
 let firstPaintUploadBytes: int32 = 0;
 let rasterizationsBeforeMeasure: int32 = 0;
 let sweepPeakPages: int32 = 0;
+let colourBeforeFirstPaint: int32 = 0;
+let colourBeforeMeasure: int32 = 0;
 let codeBlock: NodeRef | null = null;
 let scrollArea: NodeRef | null = null;
 let warmupFrames: int32 = WARMUP_FRAMES;
@@ -157,6 +163,18 @@ export function benchInit(kind: BenchKind): void {
 		s.add(block);
 		codeBlock = block;
 		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
+	} else if (kind === BenchKind.TextEmoji) {
+		benchName = "textEmoji";
+		addFallbackFont(DEFAULT_FONT, EMOJI_FACE);
+		const block = s.group();
+		for (let line: int32 = 0; line < CODE_LINES; line++) {
+			const y: float32 = 8.0 + (line as float32) * 17.0;
+			const text: string = line % 8 == 7 ? EMOJI_LINE : CODE_LINE;
+			block.addChild(s.label(text, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, y));
+		}
+		s.add(block);
+		codeBlock = block;
+		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
 	} else {
 		benchName = "sprites";
 		const pixels = loadImageSync("assets/test.png", 4);
@@ -182,7 +200,7 @@ export function benchInit(kind: BenchKind): void {
 	} else if (kind === BenchKind.Scroll) {
 		nodeCount = 2;
 		retainedNodeCount = 1;
-	} else if (kind === BenchKind.Text) {
+	} else if (kind === BenchKind.Text || kind === BenchKind.TextEmoji) {
 		nodeCount = CODE_LINES + 1;
 		retainedNodeCount = CODE_LINES;
 	} else {
@@ -223,8 +241,14 @@ function report(): void {
 	console.log(`${benchName}.droppedFrames ${droppedFrames()}`);
 	const steady: int32 = glyphRasterizations() - rasterizationsBeforeMeasure;
 	console.log(`${benchName}.glyphRasterizationsSteady ${steady}`);
-	console.log(`${benchName}.glyphPages ${glyphAtlas.pageCount()}`);
-	console.log(`${benchName}.glyphBytes ${glyphAtlas.residentBytes()}`);
+	console.log(`${benchName}.glyphPages ${glyphAtlas.pagesOfKind(PageKind.Coverage)}`);
+	console.log(`${benchName}.glyphBytes ${glyphAtlas.bytesOfKind(PageKind.Coverage)}`);
+	console.log(`${benchName}.colourPages ${glyphAtlas.pagesOfKind(PageKind.Rgba)}`);
+	console.log(`${benchName}.colourBytes ${glyphAtlas.bytesOfKind(PageKind.Rgba)}`);
+	const colourSteady: int32 = glyphAtlas.colourRasterizations - colourBeforeMeasure;
+	console.log(`${benchName}.colourRasterizationsSteady ${colourSteady}`);
+	const colourSwept: int32 = colourBeforeMeasure - colourBeforeFirstPaint;
+	console.log(`${benchName}.sweepColourRasterizations ${colourSwept}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
 	console.log(`${benchName}.firstPaintUploadBytes ${firstPaintUploadBytes}`);
 	const idle: boolean = benchScene !== null && (benchScene as Scene2D).isDirty();
@@ -299,6 +323,7 @@ export function benchFrame(): void {
 		benchScene.present();
 		firstPaintMs = performance.now() - firstStarted;
 		firstPaintRasterizations = glyphRasterizations();
+		colourBeforeFirstPaint = glyphAtlas.colourRasterizations;
 		firstPaintUploadBytes = uploadBytes();
 		return;
 	}
@@ -307,6 +332,7 @@ export function benchFrame(): void {
 		benchScene.present();
 		if (glyphAtlas.pageCount() > sweepPeakPages) { sweepPeakPages = glyphAtlas.pageCount(); }
 		rasterizationsBeforeMeasure = glyphRasterizations();
+		colourBeforeMeasure = glyphAtlas.colourRasterizations;
 		return;
 	}
 	benchScene.tick(FRAME_DT);

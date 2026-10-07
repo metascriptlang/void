@@ -62,6 +62,20 @@ function checkCounter(rows: BenchRow[], scene: string, metric: string, expected:
 	return false;
 }
 
+function checkAtMost(rows: BenchRow[], scene: string, metric: string, limit: int32): boolean {
+	const [reported, actual] = rowValue(rows, scene, metric);
+	if (!reported) {
+		console.log(`FAIL ${scene}.${metric} was not reported`);
+		return false;
+	}
+	if ((actual as int32) <= limit) {
+		console.log(`PASS ${scene}.${metric} ${actual as int32} (at most ${limit})`);
+		return true;
+	}
+	console.log(`FAIL ${scene}.${metric} is ${actual as int32}, the bound is ${limit}`);
+	return false;
+}
+
 function reportMilliseconds(rows: BenchRow[], scene: string, baseline: float64, warnFactor: float64): void {
 	const [reported, actual] = rowValue(rows, scene, "present");
 	if (!reported) {
@@ -135,6 +149,24 @@ function runCheck(): int32 {
 	for (const metric of metrics) {
 		const expected: int32 = counters.scroll.getDynamicField(metric).asInt32();
 		if (!checkCounter(scrollRows, "scroll", metric, expected)) { failed = failed + 1; }
+	}
+	const emojiRows = runBench(binary("TextEmoji"));
+	if ((emojiRows.length as int32) == 0) {
+		failed = failed + 1;
+	} else {
+		const bounds = baseline.colourBounds;
+		const limited: string[] = [
+			"colourPages", "colourBytes", "sweepColourRasterizations", "colourRasterizationsSteady",
+		];
+		for (const metric of limited) {
+			const limit: int32 = bounds.getDynamicField(metric).asInt32();
+			if (!checkAtMost(emojiRows, "textEmoji", metric, limit)) { failed = failed + 1; }
+		}
+		const [drawn, pages] = rowValue(emojiRows, "textEmoji", "colourPages");
+		if (!drawn || (pages as int32) < 1) {
+			console.log("FAIL textEmoji.colourPages is 0: no colour glyph was drawn");
+			failed = failed + 1;
+		}
 	}
 	const lookups: int32 = counters.text.getDynamicField("measureGlyphLookups").asInt32();
 	if (!checkCounter(textRows, "text", "measureGlyphLookups", lookups)) { failed = failed + 1; }

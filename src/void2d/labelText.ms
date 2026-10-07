@@ -40,7 +40,7 @@ when (voidSdfText) {
 }
 
 when (voidColourEmoji) {
-	import { acquireColour, colourKey } from "./glyphAtlas";
+	import { acquireColour, colourBucket, colourKey } from "./glyphAtlas";
 }
 
 export const NO_LABEL_TEXT: int32 = -1;
@@ -429,14 +429,15 @@ export function setSdfRegime(on: boolean): void {
 	}
 }
 
+export function translationOnly(world: Transform2D): boolean {
+	return Math.abs(world.a - 1.0) < IDENTITY_NOISE && Math.abs(world.d - 1.0) < IDENTITY_NOISE &&
+		Math.abs(world.b) < IDENTITY_NOISE && Math.abs(world.c) < IDENTITY_NOISE;
+}
+
 export function regimeOf(world: Transform2D): TextRegime {
 	when (voidSdfText) {
 		if (sdfRegime) {
-			const translationOnly: boolean =
-				Math.abs(world.a - 1.0) < IDENTITY_NOISE &&
-				Math.abs(world.d - 1.0) < IDENTITY_NOISE &&
-				Math.abs(world.b) < IDENTITY_NOISE && Math.abs(world.c) < IDENTITY_NOISE;
-			return translationOnly ? TextRegime.PixelExact : TextRegime.Sdf;
+			return translationOnly(world) ? TextRegime.PixelExact : TextRegime.Sdf;
 		}
 	}
 	return isPixelExact(world) ? TextRegime.PixelExact : TextRegime.Bitmap;
@@ -539,14 +540,19 @@ const NO_COLOUR_BOX: ColourTileBox = {
 };
 
 when (voidColourEmoji) {
-	function colourBoxOf(g: LaidGlyph, sizePx: float32): ColourTileBox {
+	function colourTileSize(sizePx: float32, bucketed: boolean): float32 {
+		return bucketed ? colourBucket(sizePx) : sizePx;
+	}
+
+	function colourBoxOf(g: LaidGlyph, tileSize: float32): ColourTileBox {
 		if (!hasColourTables(g.face)) { return NO_COLOUR_BOX; }
-		return colourTileBox(g.face, g.glyph, sizePx);
+		return colourTileBox(g.face, g.glyph, tileSize);
 	}
 
 	function colourPlacedGlyph(
 		g: LaidGlyph,
 		box: ColourTileBox,
+		tileSize: float32,
 		sizePx: float32,
 		baseline: float32,
 		devicePerLocal: float32,
@@ -555,29 +561,41 @@ when (voidColourEmoji) {
 		fracY: float32,
 	): Result<PlacedGlyph, AtlasError> {
 		const acquired = glyphAtlas.acquireColour(
-			colourKey(g.face, g.glyph, sizePx),
+			colourKey(g.face, g.glyph, tileSize),
 			box.right - box.left, box.bottom - box.top, box.left, box.top,
 		);
 		if (!acquired.ok) { return Result.err(acquired.error); }
-		let whole: int32 = 0;
-		let baselineDevice: int32 = 0;
-		if (pixelExact) {
-			whole = snapBaseline(fracX + (g.x + g.offsetX) * devicePerLocal);
-			baselineDevice = snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal);
+		const t: GlyphTile = glyphAtlas.tile(acquired.value);
+		if (!pixelExact) {
+			return Result.ok(placedGlyph(
+				g, acquired.value, t, baseline, tileSize / g.size, false, 0, 0,
+			));
 		}
-		return Result.ok(placedGlyph(
-			g, acquired.value, glyphAtlas.tile(acquired.value), baseline, devicePerLocal,
-			pixelExact, whole, baselineDevice,
-		));
+		const k: float32 = sizePx / tileSize;
+		const [u0, v0, u1, v1] = t.uvRect();
+		return Result.ok({
+			tile: acquired.value, page: t.page,
+			x: (snapBaseline(fracX + (g.x + g.offsetX) * devicePerLocal) as float32) +
+				(t.left as float32) * k,
+			y: (snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal) as float32) +
+				(t.top as float32) * k,
+			w: (t.width as float32) * k, h: (t.height as float32) * k,
+			u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
+		});
 	}
 } else {
-	function colourBoxOf(g: LaidGlyph, sizePx: float32): ColourTileBox {
+	function colourTileSize(sizePx: float32, bucketed: boolean): float32 {
+		return sizePx;
+	}
+
+	function colourBoxOf(g: LaidGlyph, tileSize: float32): ColourTileBox {
 		return NO_COLOUR_BOX;
 	}
 
 	function colourPlacedGlyph(
 		g: LaidGlyph,
 		box: ColourTileBox,
+		tileSize: float32,
 		sizePx: float32,
 		baseline: float32,
 		devicePerLocal: float32,
@@ -607,13 +625,15 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let refusal: string = "";
 	let coverageInSdf: boolean = false;
 	let colourGlyphs: int32 = 0;
+	const bucketed: boolean = !translationOnly(world);
 	if (devicePerLocal > 0.0 || regime == TextRegime.Sdf) {
 		for (const g of entry.layout.glyphs) {
 			if (g.glyph == NO_GLYPH) { continue; }
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
 			if (devicePerLocal > 0.0) {
 				const sizePx: float32 = g.size * devicePerLocal;
-				const colourBox: ColourTileBox = colourBoxOf(g, sizePx);
+				const tileSize: float32 = colourTileSize(sizePx, bucketed);
+				const colourBox: ColourTileBox = colourBoxOf(g, tileSize);
 				if (colourBox.glyph == ColourGlyph.Refused) {
 					refused = refused + 1;
 					refusal = AtlasError.ColourRefused.toString();
@@ -621,7 +641,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				}
 				if (colourBox.glyph == ColourGlyph.Present) {
 					const coloured = colourPlacedGlyph(
-						g, colourBox, sizePx, baseline, devicePerLocal, pixelExact, fracX, fracY,
+						g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX, fracY,
 					);
 					if (!coloured.ok) {
 						refused = refused + 1;

@@ -3,6 +3,8 @@ import { FontId, addFont, addFallbackFont } from "../void2d/font";
 import { ColourGlyph, colourTileBox, glyphIndex, loadFace } from "../void2d/face";
 import {
 	allocateLabelText,
+	setSdfRegime,
+	TextRegime,
 	shapeLabel,
 	placeLabel,
 	glyphAtlas,
@@ -10,8 +12,11 @@ import {
 	glyphRefusals,
 	releaseLabelText,
 } from "../void2d/labelText";
-import { AtlasError, GlyphAtlas, PageKind, colourKey } from "../void2d/glyphAtlas";
+import {
+	AtlasError, GlyphAtlas, GlyphPage, PageKind, colourBucket, colourKey,
+} from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba, identity2d } from "../void2d/types";
+import { approx } from "./helpers";
 import { Scene2D } from "../void2d/node";
 import { add } from "../void2d/scene";
 import { sync, draw } from "../void2d/render";
@@ -265,4 +270,111 @@ test "VS15 draws the text face and VS16 the colour face of the same heart" {
 	assert colourCount(pair, "\u{2764}\u{FE0E}") == 0;
 	assert colourCount(pair, "\u{2764}\u{FE0F}") == 1;
 	assert colourCount(pair, "\u{2764}\u{FE0E} \u{2764}\u{FE0F}") == 1;
+}
+
+test "the colour bucket is the first rung of a 1.25x integer ladder at or above the size" {
+	assert colourBucket(0.5) == 0.5;
+	assert colourBucket(1.0) == 1.0;
+	assert colourBucket(8.0) == 9.0;
+	assert colourBucket(9.0) == 9.0;
+	assert colourBucket(9.5) == 12.0;
+	assert colourBucket(20.0) == 24.0;
+	assert colourBucket(64.0) == 75.0;
+	assert colourBucket(75.0) == 75.0;
+	assert colourBucket(75.5) == 94.0;
+}
+
+test "the colour bucket is monotone, idempotent, never smaller and under 1.25x plus a pixel" {
+	let previous: float32 = 0.0;
+	for (let i: int32 = 1; i < 4000; i++) {
+		const size: float32 = (i as float32) * 0.37;
+		const bucket: float32 = colourBucket(size);
+		assert bucket >= size;
+		assert bucket >= previous;
+		assert colourBucket(bucket) == bucket;
+		if (size > 1.0) { assert bucket <= size * 1.25 + 1.0; }
+		previous = bucket;
+	}
+}
+
+test "a zoomed label draws the bucket tile scaled down to the requested size" {
+	const index = shapedAt(GRIN, 16.0);
+	const text = placeLabel(index, trs2d(0.0, 0.0, 0.0, 1.37, 1.37), 1.0);
+	const g = text.layout.glyphs[0];
+	const p = text.placed[0];
+	const tile = glyphAtlas.tile(p.tile);
+	const box = colourTileBox(g.face, g.glyph, 24.0);
+	assert tile.width == box.right - box.left && tile.height == box.bottom - box.top;
+	const k: float32 = (16.0 * 1.37) / 24.0;
+	assert approx(p.w, (tile.width as float32) * k);
+	assert approx(p.h, (tile.height as float32) * k);
+	releaseLabelText(index);
+}
+
+test "a rotated label places the bucket tile in local units at its own scale" {
+	const index = shapedAt(GRIN, 16.0);
+	const text = placeLabel(index, trs2d(0.0, 0.0, 0.3, 1.0, 1.0), 1.0);
+	const p = text.placed[0];
+	const tile = glyphAtlas.tile(p.tile);
+	const g = text.layout.glyphs[0];
+	const box = colourTileBox(g.face, g.glyph, 19.0);
+	assert tile.height == box.bottom - box.top;
+	assert approx(p.w, (tile.width as float32) * 16.0 / 19.0);
+	assert approx(p.h, (tile.height as float32) * 16.0 / 19.0);
+	releaseLabelText(index);
+}
+
+function colourPages(): int32 {
+	let pages: int32 = 0;
+	for (let i: int32 = 0; i < glyphAtlas.pageCount(); i++) {
+		if (glyphAtlas.pageKind(i as GlyphPage) == PageKind.Rgba) { pages = pages + 1; }
+	}
+	return pages;
+}
+
+function sweepOnce(index: int32): int32 {
+	let drawn: int32 = 0;
+	for (let step: int32 = 0; step < 64; step++) {
+		const z: float32 = 0.5 + 3.5 * (step as float32) / 63.0;
+		const text = placeLabel(index, trs2d(0.0, 0.0, 0.0, z, z), 1.0);
+		drawn = drawn + (text.placedValid ? text.colourGlyphs : 0);
+	}
+	return drawn;
+}
+
+test "a 0.5x to 4x zoom sweep rasterizes once per rung and identity, in two pages" {
+	const index = shapedAt(`${GRIN}\u{1F44D}\u{1F680}\u{1F389}`, 16.0);
+	const before: int32 = glyphRasterizations();
+	assert sweepOnce(index) == 64 * 4;
+	assert glyphRasterizations() - before <= 44;
+	assert colourPages() <= 2;
+	const settled: int32 = glyphRasterizations();
+	assert sweepOnce(index) == 64 * 4;
+	assert glyphRasterizations() == settled;
+	placeLabel(index, trs2d(0.0, 0.0, 0.0, 1.0, 1.0), 1.0);
+	placeLabel(index, trs2d(5.5, 3.0, 0.0, 1.0, 1.0), 1.0);
+	assert glyphRasterizations() == settled;
+	releaseLabelText(index);
+}
+
+when (voidSdfText) {
+	test "in the SDF regime a colour glyph follows the zoom while text does not" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const index = shapedAt(`a${GRIN}`, 16.0);
+		const first = placeLabel(index, trs2d(0.0, 0.0, 0.0, 1.37, 1.37), 1.0);
+		assert first.regime == TextRegime.Sdf;
+		assert first.colourGlyphs == 1;
+		const small = first.placed[1];
+		const tile = glyphAtlas.tile(small.tile);
+		assert approx(small.w, (tile.width as float32) * 16.0 / 24.0);
+		const textW: float32 = first.placed[0].w;
+		const second = placeLabel(index, trs2d(0.0, 0.0, 0.0, 2.6, 2.6), 1.0);
+		assert second.regime == TextRegime.Sdf;
+		assert second.placed[0].w == textW;
+		const big = second.placed[1];
+		assert big.tile != small.tile;
+		assert approx(big.w, (glyphAtlas.tile(big.tile).width as float32) * 16.0 / 48.0);
+		releaseLabelText(index);
+	}
 }
