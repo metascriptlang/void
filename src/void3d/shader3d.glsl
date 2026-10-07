@@ -75,6 +75,10 @@ in vec3 position;
 in vec3 normal;
 in vec2 uv;
 in vec4 color;
+#ifdef NORMAL_MAP
+in vec4 tangent;
+out vec4 worldTangent;
+#endif
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec2 surfaceUv;
@@ -83,6 +87,9 @@ void main() {
     vec4 world = model * vec4(position, 1.0);
     worldPosition = world.xyz;
     worldNormal = mat3(normalModel) * normal;
+#ifdef NORMAL_MAP
+    worldTangent = vec4(mat3(model) * tangent.xyz, tangent.w);
+#endif
     surfaceUv = uv;
     baseColor = color;
     gl_Position = viewProj * world;
@@ -107,7 +114,13 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @fs litTexturedFs
 // PENDING3D: material-saturation-only
 #if defined(UV_TRANSFORM) || defined(BACK_TEXTURE) || defined(DISSOLVE)
+#ifdef EMISSIVE
+@include_block movingEmissiveMaterialUniforms
+#else
 @include_block movingMaterialUniforms
+#endif
+#elif defined(EMISSIVE)
+@include_block emissiveMaterialUniforms
 #else
 @include_block materialUniforms
 #endif
@@ -131,6 +144,13 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 #endif
 #ifdef DISSOLVE
 @include_block dissolveTexture
+#endif
+#ifdef EMISSIVE
+@include_block emissiveTexture
+#endif
+#ifdef NORMAL_MAP
+@include_block normalMap
+in vec4 worldTangent;
 #endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
@@ -161,8 +181,16 @@ void main() {
 #ifdef PREMULTIPLIED
     texel = straightTexel(texel);
 #endif
+#ifdef NORMAL_MAP
+    vec3 normalTexel = texture(sampler2D(normalTexture, baseSampler), uv).rgb;
+    vec3 n = mappedNormal(normalize(worldNormal), worldTangent, faceOf(material.z), normalTexel);
+#else
     vec3 n = facingNormal(normalize(worldNormal), material.z);
+#endif
     fragColor = litTexturedShade(texel, n);
+#ifdef EMISSIVE
+    fragColor = emittedOver(fragColor, texture(sampler2D(emissiveTexture, baseSampler), uv).rgb);
+#endif
 #ifdef DISSOLVE
     fragColor = dissolveEdgeOver(fragColor, noise);
 #endif
@@ -282,6 +310,9 @@ void main() {
 #ifdef CUTOUT
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
+#endif
+#ifdef NORMAL_MAP
+in vec4 worldTangent;
 #endif
 in vec3 worldPosition;
 in vec3 worldNormal;

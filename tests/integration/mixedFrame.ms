@@ -211,7 +211,8 @@ function initMixed(): void {
 			? program < doorProgram(ProgramKey.of(Program.Lit)) &&
 				layout < doorLayout(VertexLayout.Lit)
 			: program > doorProgram(lastProgram()) &&
-				layout > doorLayout(VertexLayout.LitTextured) && program >= 16 && layout >= 8;
+				layout > doorLayout(VertexLayout.LitTexturedTangent) && program >= 16 &&
+				layout >= 8;
 		if (!disjoint) {
 			fail(`the foreign consumer overlaps or misses the intended registry range: ` +
 				`program ${program}, layout ${layout}`);

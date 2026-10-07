@@ -134,6 +134,8 @@ function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 		VertexLayout.Billboard => GpuMesh.billboards(0, 0),
 		VertexLayout.Fullscreen => GpuMesh.fullscreen(0, 3),
 		VertexLayout.LitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),
+		VertexLayout.LitTexturedTangent =>
+			({ ...litShape(), layout: VertexLayout.LitTexturedTangent }),
 	};
 	return { ...itemAt(context, material.index, 0.0), mesh: added(context, mesh) };
 }

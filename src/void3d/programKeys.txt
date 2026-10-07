@@ -1,4 +1,4 @@
-# The program keys void3d ships (docs/VOID3D.md, M35a, M35, M36). scripts/regen-shaders.sh
+# The program keys void3d ships (docs/VOID3D.md, M35a, M35, M36, M37). scripts/regen-shaders.sh
 # compiles one sokol-shdc program per row, from the preset's source with the row's features as
 # defines, and writes programTable.h, the table gpu3d.c registers with the GPU door in this order.
 #
@@ -66,3 +66,16 @@ pixelArtLitTexturedMovingShadowed       LIT_TEXTURED    PIXEL_ART UV_TRANSFORM:B
 pixelArtUnlitTexturedMoving             UNLIT_TEXTURED  PIXEL_ART UV_TRANSFORM:BACK_TEXTURE:DISSOLVE           unlitTexturedVs unlitTexturedFs       LIT_TEXTURED
 shadowLitTexturedDissolve               LIT_TEXTURED    SHADOW    DISSOLVE                                     litTexturedVs   shadowLitTexturedFs   LIT_TEXTURED
 shadowUnlitTexturedDissolve             UNLIT_TEXTURED  SHADOW    DISSOLVE                                     unlitTexturedVs shadowUnlitTexturedFs LIT_TEXTURED
+litTexturedEmissive                           LIT_TEXTURED    CORE      EMISSIVE                                     litTexturedVs   litTexturedFs         LIT_TEXTURED
+litTexturedEmissiveShadowed                   LIT_TEXTURED    CORE      EMISSIVE:SHADOWED                            litTexturedVs   litTexturedFs         LIT_TEXTURED
+pixelArtLitTexturedEmissive                   LIT_TEXTURED    PIXEL_ART EMISSIVE                                     litTexturedVs   litTexturedFs         LIT_TEXTURED
+pixelArtLitTexturedEmissiveShadowed           LIT_TEXTURED    PIXEL_ART EMISSIVE:SHADOWED                            litTexturedVs   litTexturedFs         LIT_TEXTURED
+litTexturedNormalMap                          LIT_TEXTURED    CORE      NORMAL_MAP                                   litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+litTexturedNormalMapShadowed                  LIT_TEXTURED    CORE      NORMAL_MAP:SHADOWED                          litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+pixelArtLitTexturedNormalMap                  LIT_TEXTURED    PIXEL_ART NORMAL_MAP                                   litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+pixelArtLitTexturedNormalMapShadowed          LIT_TEXTURED    PIXEL_ART NORMAL_MAP:SHADOWED                          litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+litTexturedEmissiveNormalMap                  LIT_TEXTURED    CORE      EMISSIVE:NORMAL_MAP                          litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+litTexturedEmissiveNormalMapShadowed          LIT_TEXTURED    CORE      EMISSIVE:NORMAL_MAP:SHADOWED                 litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+pixelArtLitTexturedEmissiveNormalMap          LIT_TEXTURED    PIXEL_ART EMISSIVE:NORMAL_MAP                          litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+pixelArtLitTexturedEmissiveNormalMapShadowed  LIT_TEXTURED    PIXEL_ART EMISSIVE:NORMAL_MAP:SHADOWED                 litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
+shadowLitTexturedNormalMap                    LIT_TEXTURED    SHADOW    NORMAL_MAP                                   litTexturedVs   shadowLitTexturedFs   LIT_TEXTURED_TANGENT

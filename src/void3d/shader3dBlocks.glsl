@@ -81,6 +81,50 @@ layout(binding=3) uniform movingUnlitMaterialParams {
 };
 @end
 
+@block emissiveMaterialUniforms
+layout(binding=3) uniform emissiveMaterialParams {
+    vec4 material;
+    vec4 emissive;
+};
+@end
+
+@block movingEmissiveMaterialUniforms
+layout(binding=3) uniform movingEmissiveMaterialParams {
+    vec4 material;
+    vec4 uvMatrix;
+    vec4 uvMotion;
+    vec4 backUvMatrix;
+    vec4 backUvOffset;
+    vec4 dissolve;
+    vec4 dissolveEdge;
+    vec4 emissive;
+};
+@end
+
+@block emissiveTexture
+// three d4ea9b9 meshphong.glsl.js:94 and emissivemap_fragment: the emissive colour times the
+// decoded map, added to the lit colour in linear light.
+layout(binding=3) uniform texture2D emissiveTexture;
+
+vec4 emittedOver(vec4 color, vec3 texel) {
+    vec3 emitted = srgbToLinear(emissive.rgb) * srgbToLinear(texel) * emissive.a;
+    return vec4(linearToSrgb(srgbToLinear(color.rgb) + emitted), color.a);
+}
+@end
+
+@block normalMap
+// three d4ea9b9 normal_vertex.glsl.js:9 and normal_fragment_begin/maps: glTF's tangent, w the
+// bitangent's sign, and on a flipped back face the whole frame turns with the normal.
+layout(binding=5) uniform texture2D normalTexture;
+
+vec3 mappedNormal(vec3 normal, vec4 tangent, float face, vec3 texel) {
+    vec3 t = normalize(tangent.xyz);
+    vec3 b = normalize(cross(normal, t) * tangent.w);
+    vec3 mapped = texel * 2.0 - 1.0;
+    return normalize(mapped.x * t + mapped.y * b + mapped.z * normal) * face;
+}
+@end
+
 @block frameUniforms
 // h3d.scene.RenderContext's `global.time`: frame.x, seconds (renderer.ms setElapsedTime).
 layout(binding=6) uniform frameParams {
@@ -173,6 +217,10 @@ vec4 straightTexel(vec4 texel) {
 // h3d.shader.FlipBackFaceNormal, on when the material says so (glTF doubleSided).
 vec3 facingNormal(vec3 normal, float doubleSided) {
     return (doubleSided > 0.5 && !gl_FrontFacing) ? -normal : normal;
+}
+
+float faceOf(float doubleSided) {
+    return (doubleSided > 0.5 && !gl_FrontFacing) ? -1.0 : 1.0;
 }
 @end
 

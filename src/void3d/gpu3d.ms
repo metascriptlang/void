@@ -79,14 +79,16 @@ export struct ProgramKey {
 	// Discards a pixel whose noise texel (DISSOLVE_VIEW_SLOT) is below the material's threshold,
 	// and paints the band just above it in an edge colour.
 	dissolve: boolean;
+	emissive: boolean;
+	normalMap: boolean;
 }
 
-const KEY_LIMIT: int32 = 4096;
+const KEY_LIMIT: int32 = 16384;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
-		uvTransform: false, backTexture: false, dissolve: false,
+		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
 	};
 }
 
@@ -132,6 +134,19 @@ export function withDissolve(this key: ProgramKey): ProgramKey {
 	return { ...stopOnUntextured(key, "dissolve"), dissolve: true };
 }
 
+function stopOnUnlitTextured(key: ProgramKey, feature: string): ProgramKey {
+	if (key.program != Program.LitTextured) { return stopOnFeature(key, feature); }
+	return key;
+}
+
+export function withEmissive(this key: ProgramKey): ProgramKey {
+	return { ...stopOnUnlitTextured(key, "emissive"), emissive: true };
+}
+
+export function withNormalMap(this key: ProgramKey): ProgramKey {
+	return { ...stopOnUnlitTextured(key, "normal map"), normalMap: true };
+}
+
 // Any of the three reads the moving material block (MOVING_* below).
 export function moves(this key: ProgramKey): boolean {
 	return key.uvTransform || key.backTexture || key.dissolve;
@@ -146,7 +161,8 @@ export function bits(this key: ProgramKey): int32 {
 	return (key.program as int32) | ((key.preset as int32) << 4) |
 		((key.premultiplied ? 1 : 0) << 6) | ((key.cutout ? 1 : 0) << 7) |
 		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
-		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11);
+		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
+		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -156,7 +172,10 @@ export function describe(this key: ProgramKey): string {
 	const uv: string = key.uvTransform ? " uv-transform" : "";
 	const back: string = key.backTexture ? " back-texture" : "";
 	const dissolve: string = key.dissolve ? " dissolve" : "";
-	const features: string = `${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}`;
+	const emissive: string = key.emissive ? " emissive" : "";
+	const normalMap: string = key.normalMap ? " normal-map" : "";
+	const features: string =
+		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}`;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -230,6 +249,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
+		emissive: false,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);
@@ -242,6 +262,7 @@ export enum VertexLayout {
 	Billboard,
 	Fullscreen,
 	LitTextured,
+	LitTexturedTangent,
 }
 
 export function vertexLayoutOf(program: ProgramKey): VertexLayout {
@@ -255,6 +276,7 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Billboard => true,
 		VertexLayout.Fullscreen => false,
 		VertexLayout.LitTextured => false,
+		VertexLayout.LitTexturedTangent => false,
 	};
 }
 
@@ -311,6 +333,13 @@ export const MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH: int32 =
 export const BACK_VIEW_SLOT: int32 = 1;
 export const DISSOLVE_VIEW_SLOT: int32 = 2;
 export const DISSOLVE_SAMPLER_SLOT: int32 = 1;
+export const EMISSIVE_VIEW_SLOT: int32 = 3;
+export const NORMAL_VIEW_SLOT: int32 = 5;
+// An emissive key's block ends in one vec4: the emitted colour, gamma-encoded, and at
+// EMISSIVE_STRENGTH the factor it is scaled by in linear light (KHR_materials_emissive_strength).
+export const EMISSIVE_COLOR: int32 = 0;
+export const EMISSIVE_STRENGTH: int32 = 3;
+export const EMISSIVE_LENGTH: int32 = 4;
 // The scene's frame block (binding=6, shader3dBlocks.glsl frameUniforms): Heaps' `global.time`
 // in seconds at FRAME_TIME, read by a key with a UV transform.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
@@ -322,6 +351,10 @@ export function movingBase(key: ProgramKey): int32 {
 	return key.program == Program.UnlitTextured ?
 		UNLIT_MATERIAL_UNIFORM_LENGTH : MATERIAL_UNIFORM_LENGTH;
 }
+export function emissiveBase(key: ProgramKey): int32 {
+	return movingBase(key) + (key.moves() ? MOVING_LENGTH : 0);
+}
+
 // A billboard material's block (binding=2): its colour, then at BILLBOARD_LIGHT 0 to leave the
 // lights out (Heaps' `particles3D` material has `light: true`). A preset may give the other
 // floats a meaning of its own (pixelArtRenderer.ms BILLBOARD_RAMP_LEVELS).

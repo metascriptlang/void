@@ -19,6 +19,7 @@ enum {
 	LAYOUT_BILLBOARD,
 	LAYOUT_FULLSCREEN,
 	LAYOUT_LIT_TEXTURED,
+	LAYOUT_LIT_TEXTURED_TANGENT,
 	LAYOUT_COUNT,
 };
 
@@ -42,9 +43,10 @@ enum {
 };
 
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
-		backTexture, dissolve) \
+		backTexture, dissolve, emissive, normalMap) \
 	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
-	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11))
+	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
+	((normalMap) << 13))
 
 #include "programTable.h"
 
@@ -79,6 +81,13 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_litTextured_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_litTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
+	case LAYOUT_LIT_TEXTURED_TANGENT:
+		out->attrs[ATTR_litTexturedNormalMap_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTexturedNormalMap_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_litTexturedNormalMap_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_litTexturedNormalMap_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_litTexturedNormalMap_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)
 		out->attrs[ATTR_copy_program_position].format = SG_VERTEXFORMAT_FLOAT2;
@@ -91,7 +100,10 @@ _Static_assert(ATTR_lit_program_position == 0 && ATTR_lit_program_normal == 1 &&
 	&& ATTR_billboard_program_position == 0 && ATTR_billboard_program_size == 1 && ATTR_billboard_program_anchor == 2
 	&& ATTR_billboard_program_tile == 3 && ATTR_billboard_program_color == 4
 	&& ATTR_litTextured_program_position == 0 && ATTR_litTextured_program_normal == 1
-	&& ATTR_litTextured_program_uv == 2 && ATTR_litTextured_program_color == 3,
+	&& ATTR_litTextured_program_uv == 2 && ATTR_litTextured_program_color == 3
+	&& ATTR_litTexturedNormalMap_program_position == 0
+	&& ATTR_litTexturedNormalMap_program_normal == 1 && ATTR_litTexturedNormalMap_program_uv == 2
+	&& ATTR_litTexturedNormalMap_program_color == 3 && ATTR_litTexturedNormalMap_program_tangent == 4,
 	"sokol lays a buffer out in attribute slot order, which must be the order its writer writes:"
 	" meshData.ms, particles.ms writeInstances, billboard.ms pushTo");
 _Static_assert(sizeof(lit_lightParams_t) == 44 * 4, "lightParams must match LIGHT_UNIFORM_LENGTH in gpu3d.ms");

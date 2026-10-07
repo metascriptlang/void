@@ -22,6 +22,11 @@ import {
 	BACK_VIEW_SLOT,
 	DISSOLVE_VIEW_SLOT,
 	DISSOLVE_SAMPLER_SLOT,
+	EMISSIVE_VIEW_SLOT,
+	NORMAL_VIEW_SLOT,
+	EMISSIVE_LENGTH,
+	emissiveBase,
+	MOVING_LENGTH,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -133,8 +138,9 @@ const SCENE_PROGRAMS: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.LitTextured, Program.UnlitTextured,
 ];
 
-function layoutFor(program: Program): VertexLayout {
-	return match (program) {
+function layoutFor(key: ProgramKey): VertexLayout {
+	if (key.normalMap) { return VertexLayout.LitTexturedTangent; }
+	return match (key.program) {
 		Program.Lit => VertexLayout.Lit,
 		Program.Particle => VertexLayout.Particle,
 		Program.Billboard => VertexLayout.Billboard,
@@ -153,12 +159,13 @@ function everyKey(): Vec<ProgramKey> {
 			for (const premultiplied of [false, true]) {
 				for (const cutout of [false, true]) {
 					for (const shadowed of [false, true]) {
-						for (const moving of [0, 1, 2, 3, 4, 5, 6, 7]) {
+						for (let features = 0; features < 32; features++) {
 							keys.push({
 								program: program, preset: preset,
 								premultiplied: premultiplied, cutout: cutout, shadowed: shadowed,
-								uvTransform: (moving & 1) != 0, backTexture: (moving & 2) != 0,
-								dissolve: (moving & 4) != 0,
+								uvTransform: (features & 1) != 0, backTexture: (features & 2) != 0,
+								dissolve: (features & 4) != 0, emissive: (features & 8) != 0,
+								normalMap: (features & 16) != 0,
 							});
 						}
 					}
@@ -171,18 +178,18 @@ function everyKey(): Vec<ProgramKey> {
 
 test "every key packs to bits of its own, and each declared one reads its program's layout" {
 	let seen: Vec<boolean> = [];
-	for (let bits = 0; bits < 4096; bits++) { seen.push(false); }
+	for (let bits = 0; bits < 16384; bits++) { seen.push(false); }
 	let declared: int32 = 0;
 	for (const key of everyKey()) {
 		const bits: int32 = key.bits();
-		assert bits >= 0 && bits < 4096 && !seen[bits];
+		assert bits >= 0 && bits < 16384 && !seen[bits];
 		seen[bits] = true;
 		if (declares(key)) {
 			declared = declared + 1;
-			assert vertexLayoutOf(key) == layoutFor(key.program);
+			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 63;
+	assert declared == 76;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -655,4 +662,53 @@ test "the core owns a frame block and asks for frames while time passes under a 
 	assert core.needsFrame();
 	setElapsedTime(core, 0.0);
 	assert !core.needsFrame();
+}
+
+function mapKeys(): Vec<ProgramKey> {
+	const plain: ProgramKey = ProgramKey.of(Program.LitTextured);
+	return [plain.withEmissive(), plain.withNormalMap(), plain.withEmissive().withNormalMap()];
+}
+
+test "an emissive or normal-mapped key ends its block in the emissive floats and samples its maps" {
+	for (const preset of [Preset.Core, Preset.PixelArt]) {
+		const plain: ProgramKey = drawnAs(ProgramKey.of(Program.LitTextured), preset);
+		for (const mapped of mapKeys()) {
+			for (const shadowed of [false, true]) {
+				const drawn: Result<ProgramKey, ProgramError> =
+					drawnIn({ ...mapped, shadowed: shadowed }, preset, shadowed);
+				assert drawn.ok;
+				if (!drawn.ok) { return; }
+				const key: ProgramKey = drawn.value;
+				assert !key.moves() && emissiveBase(key) == MATERIAL_UNIFORM_LENGTH;
+				const length: int32 =
+					MATERIAL_UNIFORM_LENGTH + (key.emissive ? EMISSIVE_LENGTH : 0);
+				assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == length;
+				assert vertexLayoutOf(key) == (key.normalMap ?
+					VertexLayout.LitTexturedTangent : VertexLayout.LitTextured);
+				const views: uint32 = textureSlotMask(key);
+				assert bit(views, 0) && bit(samplerSlotMask(key), 0);
+				assert bit(views, EMISSIVE_VIEW_SLOT) == key.emissive;
+				assert bit(views, NORMAL_VIEW_SLOT) == key.normalMap;
+				assert samplerSlotMask(key) == samplerSlotMask({ ...plain, shadowed: shadowed });
+			}
+		}
+	}
+}
+
+test "an emissive key after a moving one reads its floats after the moving ones" {
+	const moving: ProgramKey = ProgramKey.of(Program.LitTextured).withDissolve().withEmissive();
+	assert emissiveBase(moving) == MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
+	assert !declares(moving);
+}
+
+test "a caster leaves the emissive map and keeps the normal map's layout" {
+	for (const mapped of mapKeys()) {
+		const cast: Result<ProgramKey, ProgramError> = castIn(mapped);
+		assert cast.ok;
+		if (!cast.ok) { return; }
+		assert !cast.value.emissive && cast.value.normalMap == mapped.normalMap;
+		assert vertexLayoutOf(cast.value) == vertexLayoutOf(mapped.withPreset(Preset.Core));
+		assert !bit(textureSlotMask(cast.value), NORMAL_VIEW_SLOT);
+		assert !bit(textureSlotMask(cast.value), EMISSIVE_VIEW_SLOT);
+	}
 }
