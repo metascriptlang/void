@@ -187,5 +187,11 @@ void voidBeginPass(float r, float g, float b, float a) {
 }
 
 static void (*s_commitHook)(void);
+static void (*s_presentHook)(int begin);
 void voidSetCommitHook(void (*fn)(void)) { s_commitHook = fn; }
-void voidCommit(void) { sg_commit(); if (s_commitHook) { s_commitHook(); } }
+void voidSetPresentHook(void (*fn)(int begin)) { s_presentHook = fn; }
+void voidCommit(void) {
+	sg_commit();
+	if (s_commitHook) { s_commitHook(); }
+	if (s_presentHook) { s_presentHook(1); s_presentHook(0); }
+}

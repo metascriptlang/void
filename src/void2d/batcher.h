@@ -94,6 +94,7 @@ int void2dVertexBufferBytes(void);
 // Frames dropped because one frame's geometry exceeded VOID2D_MAX_BUFFER_BYTES. Never
 // silent: the drop is logged once per frame and counted here.
 int void2dDroppedFrames(void);
+int void2dProfilerCompiled(void);
 // A pending target list at end2d is a pass-order violation, not a recoverable dropped draw.
 void void2dFailPendingTargets(void);
 

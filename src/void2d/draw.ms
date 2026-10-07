@@ -58,6 +58,9 @@ import {
 	PassState, PixelFormat, passState, frameIndex, contextGeneration, endPass, imageAlive, viewAlive,
 } from "../gpu/door";
 import { doorBeginColorPass } from "../gpu/door.h";
+when (voidProfiler) {
+	import { profilerSetup, profilerCollect, profilerFrameOpened } from "./frameMarks";
+}
 import { PipelineCache, pipelineFor } from "../gpu/pipeline";
 import { RenderState, Face, Compare, Blend, BlendMode } from "../gpu/state";
 import { RenderTarget, TargetLayout, SWAPCHAIN_LAYOUT } from "../gpu/target";
@@ -464,6 +467,7 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 
 export function setup2d(): void {
 	void2dSetup();
+	when (voidProfiler) { profilerSetup(); }
 	setTextGamma(DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST);
 	// The emitter and the replay are two hand-written readers of one byte layout, so they
 	// are made to agree out loud rather than by inspection.
@@ -506,7 +510,9 @@ export function openBracket(w: float32, h: float32, dpi: float32): void {
 		unreachable;
 	}
 	void2dSetDpiScale(dpi);
+	when (voidProfiler) { profilerCollect(); }
 	void2dFrameBegin();
+	when (voidProfiler) { profilerFrameOpened(); }
 	beginGlyphFrame(void2dFrameSerial());
 	ctx.frameDpi = dpi;
 	ctx.fbW = w;

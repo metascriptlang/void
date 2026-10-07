@@ -14,6 +14,9 @@
 #include <stddef.h>
 #include <math.h>
 #include "glyph.h"
+#ifdef VOID_PROFILER
+#include "frameClock.h"
+#endif
 
 #define VOID2D_BLEND_COUNT 12
 #define VOID2D_PROGRAM_COUNT 4
@@ -163,6 +166,12 @@ int void2dUploadCount(void) { return s_uploadCount; }
 int void2dUploadBytes(void) { return s_uploadBytes; }
 int void2dVertexBufferBytes(void) { return s_vbufBytes; }
 int void2dDroppedFrames(void) { return s_droppedFrames; }
+
+#ifdef VOID_PROFILER
+int void2dProfilerCompiled(void) { return 1; }
+#else
+int void2dProfilerCompiled(void) { return 0; }
+#endif
 void void2dFailPendingTargets(void) {
 	fprintf(stderr, "void2d: end2d with render-target commands pending; call flushTargets first\n");
 	abort();
@@ -634,6 +643,9 @@ void void2dFrameBegin(void) {
 	}
 	if (s_frameOpen) { return; }
 	s_frameOpen = 1;
+#ifdef VOID_PROFILER
+	voidProfileBegin();
+#endif
 	adoptContext();
 	void2dGlyphPagesFrameBegin();
 	releaseRetiredBuffers();
@@ -651,6 +663,9 @@ void void2dFrameEnd(void) {
 	s_frameOpen = 0;
 	s_bracketsThisFrame = 0;
 	s_frameSerial++;
+#ifdef VOID_PROFILER
+	voidProfileCommit(s_frameSerial);
+#endif
 }
 
 int void2dFrameSerial(void) { return s_frameSerial; }
