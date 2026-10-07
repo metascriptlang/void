@@ -11,6 +11,9 @@
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_log.h"
+#ifdef VOID_PROFILER
+#include "../void2d/frameClock.h"
+#endif
 
 typedef enum { DRIVER_NONE, DRIVER_WINDOW, DRIVER_VIEWS } VoidDriver;
 static VoidDriver s_driver = DRIVER_NONE;
@@ -51,6 +54,13 @@ static void _frame(void) {
 }
 
 static void _event(const sapp_event *e) {
+#ifdef VOID_PROFILER
+	if (e->type == SAPP_EVENTTYPE_KEY_DOWN || e->type == SAPP_EVENTTYPE_KEY_UP
+		|| e->type == SAPP_EVENTTYPE_CHAR || e->type == SAPP_EVENTTYPE_MOUSE_DOWN
+		|| e->type == SAPP_EVENTTYPE_MOUSE_UP || e->type == SAPP_EVENTTYPE_MOUSE_SCROLL) {
+		voidProfileInput();
+	}
+#endif
 	if (e->type == SAPP_EVENTTYPE_KEY_DOWN) {
 		if (e->key_code == SAPP_KEYCODE_ESCAPE) sapp_request_quit();
 		s_keys[e->key_code] = true;

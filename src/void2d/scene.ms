@@ -13,6 +13,9 @@ import {
 } from "./draw";
 import { DrawContext2D, NO_REPAINT, useContext, retireContext } from "./displayList";
 import { void2dReleaseList } from "./batcher.h";
+when (voidProfiler) {
+	import { profilerPolledDirty } from "./frameMarks";
+}
 import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
 import {
 	Color,
@@ -182,10 +185,15 @@ export function isDirty(this s: Scene2D): boolean {
 	const l: DrawContext2D = s.context;
 	if (!l.painted || s.structureChanged || (s.dirty.length as int32) > 0) { return true; }
 	if (s.defaultSmooth != l.paintedSmooth || l.paintedGeneration != contextGeneration()) {
+		when (voidProfiler) { profilerPolledDirty(); }
 		return true;
 	}
 	const nv: Transform2D = sceneViewMatrix(s, l.paintedW, l.paintedH);
-	return linearPart(nv) != s.viewMat || shiftOf(nv, l.paintedDpi) != s.viewShift;
+	const moved: boolean = linearPart(nv) != s.viewMat || shiftOf(nv, l.paintedDpi) != s.viewShift;
+	when (voidProfiler) {
+		if (moved) { profilerPolledDirty(); }
+	}
+	return moved;
 }
 
 function linearPart(m: Transform2D): Transform2D {

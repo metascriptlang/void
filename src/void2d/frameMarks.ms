@@ -3,6 +3,7 @@
 import {
 	voidClockNow, voidProfileCompiled, voidProfileSetup, voidProfileState, voidProfileSerial,
 	voidProfileLost, voidProfileMark, voidProfileCounter, voidProfileConsume,
+	voidProfileTakePendingInputs, voidProfileTakeDroppedInputs, voidProfileFirstInput,
 	VOID_MARK_BEGIN, VOID_MARK_COMMIT, VOID_MARK_PRESENT_START, VOID_MARK_PRESENT_END,
 	VOID_COUNTER_DRAWS, VOID_COUNTER_UI_INSTANCES, VOID_COUNTER_SPRITE_INSTANCES,
 	VOID_COUNTER_UPLOAD_BYTES, VOID_COUNTER_UPLOADS, VOID_COUNTER_SOKOL_DRAWS,
@@ -74,6 +75,19 @@ function readCounters(): FrameCounters {
 	};
 }
 
+function takeDroppedInputs(): void {
+	const dropped: int32 = voidProfileTakeDroppedInputs();
+	const now: int64 = voidClockNow();
+	for (let i: int32 = 0; i < dropped; i++) { frameStats.inputBegin(now); }
+}
+
+function takePendingInputs(): void {
+	const pending: int32 = voidProfileTakePendingInputs();
+	if (pending == 0) { return; }
+	const first: int64 = voidProfileFirstInput();
+	for (let i: int32 = 0; i < pending; i++) { frameStats.inputBegin(first); }
+}
+
 export function profilerCollect(): boolean {
 	const state: int32 = voidProfileState();
 	if (state != VOID_FRAME_COMMITTED && state != VOID_FRAME_PRESENTED) { return false; }
@@ -84,6 +98,7 @@ export function profilerCollect(): boolean {
 		);
 		unreachable;
 	}
+	takeDroppedInputs();
 	const serial: int32 = voidProfileSerial();
 	if (lastSerial != 0 && serial - lastSerial > 1) {
 		const gap: int32 = serial - lastSerial - 1;
@@ -118,5 +133,22 @@ export function profilerFrameOpened(): void {
 		);
 		unreachable;
 	}
+	takePendingInputs();
 	frameStats.drawBegin(voidProfileMark(VOID_MARK_BEGIN));
+}
+
+export function profilerInvalidated(): void {
+	profilerCollect();
+	frameStats.invalidated(voidClockNow());
+}
+
+export function profilerPolledDirty(): void {
+	profilerCollect();
+	if (frameStats.dirtyAt != NO_STAMP) { return; }
+	frameStats.invalidated(voidClockNow());
+}
+
+export function profilerInputBegin(): void {
+	profilerCollect();
+	frameStats.inputBegin(voidClockNow());
 }

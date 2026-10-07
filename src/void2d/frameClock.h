@@ -36,6 +36,11 @@ int32_t voidProfileLost(void);
 int64_t voidProfileMark(int32_t which);
 int32_t voidProfileCounter(int32_t which);
 void voidProfileConsume(void);
+void voidProfileInput(void);
+int32_t voidProfileTakePendingInputs(void);
+int32_t voidProfileTakeDroppedInputs(void);
+int64_t voidProfileFirstInput(void);
+
 void voidProfileBegin(void);
 void voidProfileCommit(int32_t serial, const int32_t *void2dCounters);
 void voidProfilePresent(int begin);

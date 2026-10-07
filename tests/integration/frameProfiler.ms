@@ -12,6 +12,10 @@ import { BlendMode } from "../../src/gpu/state";
 import {
 	frameStats, profilerCollect, lastFrameRecord, frameCommitsWithoutFrame, lastFrameCounters,
 } from "../../src/void2d/frameMarks";
+import { Scene2D } from "../../src/void2d/node";
+import { add, presentAt } from "../../src/void2d/scene";
+import { NO_STAMP } from "../../src/void2d/profiler";
+import { profilerNow } from "../../src/void2d/frameMarks";
 import { voidCaptureBackend, voidCaptureExit } from "../capture/capture.h";
 
 @include("../../src/sokol/bridge.h");
@@ -96,11 +100,55 @@ function drawFrame(): void {
 	checkCounters();
 }
 
+let scene: Scene2D = null as unknown as Scene2D;
+const MIN_DIRTY_WAIT_NS: int64 = 20000000;
+
+function waitNs(ns: int64): void {
+	const start: int64 = profilerNow();
+	while (profilerNow() - start < ns) {}
+}
+
+function mutationStep(step: int32): void {
+	if (step == 0) {
+		scene = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		scene.add(scene.rect(8.0, 8.0, WHITE).at(2.0, 2.0));
+		scene.presentAt(1.0);
+		profilerCollect();
+		return;
+	}
+	if (step == 1) {
+		const before: int32 = frameStats.frames;
+		scene.add(scene.rect(4.0, 4.0, WHITE).at(30.0, 2.0));
+		waitNs(MIN_DIRTY_WAIT_NS);
+		scene.presentAt(1.0);
+		if (!profilerCollect() || frameStats.frames != before + 1) {
+			fail("the mutated frame left no record");
+		}
+		if (lastFrameRecord().dirtyToPresentNs < MIN_DIRTY_WAIT_NS) {
+			fail(`dirty to present ${lastFrameRecord().dirtyToPresentNs} ns is under 20 ms`);
+		}
+		return;
+	}
+	const before: int32 = frameStats.frames;
+	scene.presentAt(1.0);
+	if (!profilerCollect() || frameStats.frames != before + 1) {
+		fail("the still frame left no record");
+	}
+	if (lastFrameRecord().dirtyToPresentNs != NO_STAMP) {
+		fail("a still frame recorded a dirty to present sample");
+	}
+}
+
 function frame(): void {
-	drawFrame();
+	if (stage < FRAMES) {
+		drawFrame();
+		stage = stage + 1;
+		return;
+	}
+	mutationStep(stage - FRAMES);
 	stage = stage + 1;
-	if (stage < FRAMES) { return; }
-	console.log(`PASS frame profiler: ${FRAMES} frames, marks in order, counters summed`);
+	if (stage < FRAMES + 3) { return; }
+	console.log(`PASS frame profiler: ${FRAMES} frames, counters, dirty to present, still frame`);
 	voidCaptureExit(0);
 }
 

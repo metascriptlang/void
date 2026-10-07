@@ -12,6 +12,9 @@ static int s_state = VOID_FRAME_IDLE;
 static int s_presentStarted;
 static int32_t s_serial;
 static int32_t s_lost;
+static int32_t s_inputsPending;
+static int32_t s_inputsDropped;
+static int64_t s_inputFirst;
 static int64_t s_marks[4];
 static int32_t s_counters[VOID_COUNTER_SLOTS];
 
@@ -43,6 +46,29 @@ int64_t voidProfileMark(int32_t which) {
 int32_t voidProfileCounter(int32_t which) {
 	if (which < 0 || which >= VOID_COUNTER_COUNT) { stopOnIndex("frame counter", which); }
 	return s_counters[which];
+}
+
+void voidProfileInput(void) {
+	if (s_state == VOID_FRAME_OPEN) {
+		s_inputsDropped++;
+		return;
+	}
+	if (s_inputsPending == 0) { s_inputFirst = voidClockNow(); }
+	s_inputsPending++;
+}
+
+int64_t voidProfileFirstInput(void) { return s_inputFirst; }
+
+int32_t voidProfileTakePendingInputs(void) {
+	const int32_t count = s_inputsPending;
+	s_inputsPending = 0;
+	return count;
+}
+
+int32_t voidProfileTakeDroppedInputs(void) {
+	const int32_t count = s_inputsDropped;
+	s_inputsDropped = 0;
+	return count;
 }
 
 void voidProfileBegin(void) {

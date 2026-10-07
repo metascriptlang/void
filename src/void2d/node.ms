@@ -20,6 +20,9 @@ import {
 	emptyBounds,
 } from "./types";
 import { BlendMode } from "../gpu/state";
+when (voidProfiler) {
+	import { profilerInvalidated } from "./frameMarks";
+}
 import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
@@ -397,7 +400,10 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 		s.queued[i] = 0;
 		const listed: boolean = !s.changed[i].isEmpty();
 		s.changed[i] = freshBits();
-		if (!listed) { s.dirty.push(i); }
+		if (!listed) {
+			s.dirty.push(i);
+			when (voidProfiler) { profilerInvalidated(); }
+		}
 		return i;
 	}
 	const i: int32 = s.kinds.length as int32;
@@ -406,6 +412,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.payloads.push(payload);
 	s.changed.push(freshBits());
 	s.dirty.push(i);
+	when (voidProfiler) { profilerInvalidated(); }
 	s.locals.push(defaultLocal());
 	s.paints.push(defaultPaint());
 	s.contents.push(defaultContent());
@@ -466,7 +473,10 @@ export function liveRow(this n: NodeRef, call: string): int32 {
 export function markChanged(this s: Scene2D, i: int32, what: Changed): void {
 	const bits: BitSet<Changed> = s.changed[i];
 	if (bits.has(what)) { return; }
-	if (bits.isEmpty()) { s.dirty.push(i); }
+	if (bits.isEmpty()) {
+		s.dirty.push(i);
+		when (voidProfiler) { profilerInvalidated(); }
+	}
 	s.changed[i] = bits.incl(what);
 }
 
