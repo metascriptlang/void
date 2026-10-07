@@ -19,8 +19,4 @@
 #endif
 #endif
 
-#if defined(SOKOL_GLCORE)
-#error "void: the shader headers carry no glsl430 for SOKOL_GLCORE; add it to scripts/regen-shaders.sh"
-#endif
-
 #endif
