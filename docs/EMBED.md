@@ -1,12 +1,12 @@
 # Embedding Void in a host
 
-A host that owns the window and the frame clock (Ion on Windows, a React-Native `VoidView` on
-iOS, a `SurfaceView` on Android) drives Void through **views**. The entry points are in
+A host that owns the window and the frame clock (Ion on Windows and macOS, a React-Native
+`VoidView` on iOS, a `SurfaceView` on Android) drives Void through **views**. The entry points are in
 `src/sokol/bridge.h` (`voidEmbedRegister`, `voidViewCreate`, `voidViewResize`,
 `voidViewFrame`, `voidViewDestroy`, `voidViewSwapChain`, `voidCurrentView`), and MetaScript
 reaches them through `src/sokol/gpu.ms` (`embedRegister`, `viewCreate`, …). The shared part is
 `src/sokol/views.c`; each platform's half is the `voidPlatform*` set in `bridgeWin.c`,
-`bridgeIos.m` and `bridgeAndroid.c`.
+`bridgeIos.m`, `bridgeEmbed.m` (macOS) and `bridgeAndroid.c`.
 
 The split follows `neon/docs/VISION.md` "Many Void areas in one app": the device, pipelines,
 shaders, glyph atlas and textures exist once per process, and each view owns its surface, its
@@ -65,6 +65,20 @@ been measured. Ion's frame clock brief (`.wt/ion-frame-clock-prompt.md`) owns pa
 
 A view's clear alpha reaches the compositor. Clear to `rgba(0, 0, 0, 0)` to let the surfaces
 below show through, as the overlay in `examples/ionViews.ms` does.
+
+## macOS: two drivers in one binary
+
+`bridgeEmbed.m` follows `bridgeWin.c`: `voidRun` (a Cocoa window, no sokol_app) and the host-view
+driver share one process, the first of the two chooses, and the other aborts. sokol_gfx is the
+single implementation in `sokol.o`; `bridge.c` and `views.c` are compiled beside it.
+
+`native` in `viewCreate` is an `NSView*` or 0. With a view, Void adds a `CAMetalLayer` as a
+sublayer of the view's layer (it sets `wantsLayer`), sized to the view's bounds at every
+`viewResize`, and removes it on `viewDestroy`; the host's own layer is not replaced. With 0, Void
+makes the layer and attaches it nowhere: `viewSwapChain` returns the `CAMetalLayer*`, as it returns
+the `IDXGISwapChain1*` on Windows, and the host adds it to its own layer tree. `w` and `h` are
+pixels. `tests/integration/macViews.ms` creates both and checks sizes, resize and destroy, with no
+pixel readback because the Metal capture path is a stub.
 
 ## What proves it
 

@@ -66,7 +66,7 @@ Void needs Metal, D3D11, GLES3, WebGPU and WebGL2 from one API. That backend set
 **Coupling is narrow.**
 - Every sokol call lives in six C/ObjC bridge files, about 1,630 lines. No `.ms` file calls `sg_*`.
 - Swapping the layer would mean rewriting that C and about 290 lines of GLSL, not the MetaScript.
-- `bridge.c` holds the resource and pass wrappers once, for Windows, iOS and Android; each driver (`bridgeWin.c`, `bridgeIos.m`, `bridgeAndroid.c`) keeps only the device and the swapchain. `bridgeEmbed.m`, the macOS proof of concept, is the one copy left.
+- `bridge.c` holds the resource and pass wrappers once, for Windows, macOS, iOS and Android; each driver (`bridgeWin.c`, `bridgeIos.m`, `bridgeAndroid.c`) keeps only the device and the swapchain. `bridgeEmbed.m` (macOS) now uses them too.
 
 **Control is kept.**
 - The WebGPU device can be injected (`sg_environment.wgpu.device`).
