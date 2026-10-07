@@ -38,6 +38,7 @@ typedef struct {
 typedef struct {
 	unsigned char *texels;
 	int size;
+	int kind;
 	int dirty;
 	int uploaded;
 } GlyphPage;
@@ -599,8 +600,23 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX) {
 	return s_box;
 }
 
-int void2dGlyphPageCreate(int size) {
+static const char *pageKindName(int kind) {
+	switch (kind) {
+	case VOID2D_PAGE_COVERAGE: return "Coverage";
+	case VOID2D_PAGE_SDF: return "Sdf";
+	case VOID2D_PAGE_RGBA: return "Rgba";
+	case VOID2D_PAGE_MASK: return "Mask";
+	default: return "unknown";
+	}
+}
+
+int void2dGlyphPageCreate(int size, int kind) {
 	if (size <= 0) { return -1; }
+	if (kind != VOID2D_PAGE_COVERAGE) {
+		fprintf(stderr, "void2d: glyph page kind %s (%d) is not built, only Coverage is\n",
+			pageKindName(kind), kind);
+		return -1;
+	}
 	if (s_pageCount >= VOID2D_MAX_GLYPH_PAGES) {
 		fprintf(stderr, "void2d: glyph page %d refused, the renderer binds at most %d\n",
 			s_pageCount, VOID2D_MAX_GLYPH_PAGES);
@@ -623,12 +639,15 @@ int void2dGlyphPageCreate(int size) {
 	}
 	s_pages[s_pageCount].texels = texels;
 	s_pages[s_pageCount].size = size;
+	s_pages[s_pageCount].kind = kind;
 	s_pages[s_pageCount].dirty = 1;
 	s_pages[s_pageCount].uploaded = 0;
 	return s_pageCount++;
 }
 
 int void2dGlyphPageCount(void) { return s_pageCount; }
+
+int void2dGlyphPageKind(int page) { return validPage(page) ? s_pages[page].kind : -1; }
 
 int void2dGlyphPageSize(int page) { return validPage(page) ? s_pages[page].size : 0; }
 

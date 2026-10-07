@@ -2,7 +2,12 @@
 // which would starve every test that ran after it in src/test/index.ms.
 
 import { loadFace, glyphIndex } from "../../src/void2d/face";
-import { GlyphAtlas, AtlasError, NO_GLYPH_PAGE_HANDLE } from "../../src/void2d/glyphAtlas";
+import {
+	GlyphAtlas,
+	AtlasError,
+	PageKind,
+	NO_GLYPH_PAGE_HANDLE,
+} from "../../src/void2d/glyphAtlas";
 
 const RENDERER_PAGE_VIEWS: int32 = 64;
 
@@ -16,6 +21,7 @@ test "the renderer binds at most 64 glyph pages, and an atlas refused one fails 
 	const face: int32 = try loadFace("assets/font.ttf") catch -1;
 	const late = GlyphAtlas.create(64, 4);
 	const r = late.acquire({
+		kind: PageKind.Coverage,
 		face: face,
 		glyph: glyphIndex(face, "H".code),
 		sizePx: 13.0,

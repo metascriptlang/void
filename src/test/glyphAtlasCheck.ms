@@ -7,6 +7,7 @@ import {
 	GlyphAtlas,
 	GlyphKey,
 	AtlasError,
+	PageKind,
 	quantizeX,
 	snapBaseline,
 	NO_GLYPH_PAGE,
@@ -22,6 +23,7 @@ function testFace(): int32 {
 
 function keyFor(face: int32, codepoint: int32, sizePx: float32, variant: int32): GlyphKey {
 	return {
+		kind: PageKind.Coverage,
 		face: face,
 		glyph: glyphIndex(face, codepoint),
 		sizePx: sizePx,
@@ -55,7 +57,13 @@ test "the baseline lands on the nearest whole device pixel" {
 }
 
 test "the key separates face, glyph, size and variant" {
-	const base: GlyphKey = { face: 0, glyph: 36, sizePx: 16.25, variant: 0 };
+	const base: GlyphKey = {
+		kind: PageKind.Coverage,
+		face: 0,
+		glyph: 36,
+		sizePx: 16.25,
+		variant: 0,
+	};
 	const variant: GlyphKey = { ...base, variant: 1 };
 	const larger: GlyphKey = { ...base, sizePx: 16.5 };
 	const glyph: GlyphKey = { ...base, glyph: 37 };
@@ -67,6 +75,58 @@ test "the key separates face, glyph, size and variant" {
 	assert base.packed() != glyph.packed();
 	assert base.packed() != face.packed();
 	assert base.packed() == nearby.packed();
+}
+
+test "a coverage key packs to the bits it had before the kind lane" {
+	const key: GlyphKey = {
+		kind: PageKind.Coverage,
+		face: 1,
+		glyph: 36,
+		sizePx: 16.25,
+		variant: 3,
+	};
+	assert key.packed() == 0x0001002400041003;
+}
+
+test "the key separates the page kind and every kind other than coverage is refused by name" {
+	const coverage: GlyphKey = {
+		kind: PageKind.Coverage,
+		face: 0,
+		glyph: 36,
+		sizePx: 16.0,
+		variant: 0,
+	};
+	const sdf: GlyphKey = { ...coverage, kind: PageKind.Sdf };
+	const rgba: GlyphKey = { ...coverage, kind: PageKind.Rgba };
+	const mask: GlyphKey = { ...coverage, kind: PageKind.Mask };
+	assert coverage.packed() != sdf.packed();
+	assert sdf.packed() != rgba.packed();
+	assert rgba.packed() != mask.packed();
+	assert coverage.packed() != mask.packed();
+	const atlas = GlyphAtlas.create(256, 2);
+	for (const refused of [sdf, rgba, mask]) {
+		const r = atlas.acquire(refused);
+		assert !r.ok;
+		if (!r.ok) { assert r.error == AtlasError.KindNotBuilt; }
+	}
+	assert atlas.pageCount() == 0;
+	assert atlas.rasterizations == 0;
+}
+
+test "a variant that would reach the kind lane is refused by name" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(256, 2);
+	const r = atlas.acquire(keyFor(face, "g".code, 16.25, 16));
+	assert !r.ok;
+	if (!r.ok) { assert r.error == AtlasError.VariantOutOfRange; }
+}
+
+test "a coverage tile lands on a coverage page" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(256, 2);
+	const r = atlas.acquire(keyFor(face, "g".code, 16.25, 0));
+	assert r.ok;
+	if (r.ok) { assert atlas.pageKind(atlas.tile(r.value).page) == PageKind.Coverage; }
 }
 
 test "one key rasterizes once and is shared by reference" {

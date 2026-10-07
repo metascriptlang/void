@@ -21,7 +21,14 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX);
 
 #define VOID2D_MAX_GLYPH_PAGES 64
 
-int void2dGlyphPageCreate(int size);
+#define VOID2D_PAGE_COVERAGE 0
+#define VOID2D_PAGE_SDF 1
+#define VOID2D_PAGE_RGBA 2
+#define VOID2D_PAGE_MASK 3
+#define VOID2D_PAGE_KIND_COUNT 4
+
+int void2dGlyphPageCreate(int size, int kind);
+int void2dGlyphPageKind(int page);
 int void2dGlyphPageCount(void);
 int void2dGlyphPageSize(int page);
 void void2dGlyphPageClear(int page);

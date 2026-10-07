@@ -508,6 +508,11 @@ uint32_t void2dGlyphPageView(int page) {
 	if (s_pageImg[page].id == 0) {
 		int size = void2dGlyphPageSize(page);
 		if (size <= 0) { return 0; }
+		int kind = void2dGlyphPageKind(page);
+		if (kind != VOID2D_PAGE_COVERAGE) {
+			fprintf(stderr, "void2d: no image format for glyph page %d of kind %d\n", page, kind);
+			return 0;
+		}
 		sg_image_desc d = {0};
 		d.width = size;
 		d.height = size;
@@ -520,12 +525,23 @@ uint32_t void2dGlyphPageView(int page) {
 	return s_pageView[page].id;
 }
 
-static bool isGlyphPageView(uint32_t view) {
-	if (view == 0) { return false; }
+static int glyphPageViewKind(uint32_t view) {
+	if (view == 0) { return -1; }
 	for (int i = 0; i < VOID2D_MAX_GLYPH_PAGES; i++) {
-		if (s_pageView[i].id == view) { return true; }
+		if (s_pageView[i].id == view) { return void2dGlyphPageKind(i); }
 	}
-	return false;
+	return -1;
+}
+
+static float glyphPageViewMode(uint32_t view) {
+	int kind = glyphPageViewKind(view);
+	switch (kind) {
+	case -1: return 0.0f;
+	case VOID2D_PAGE_COVERAGE: return 1.0f;
+	default:
+		fprintf(stderr, "void2d: glyph page kind %d has no shader mode\n", kind);
+		return 0.0f;
+	}
 }
 
 int void2dScissorMin(float edge, float scale) {
@@ -1307,7 +1323,7 @@ static void runCommands(const float *commands, int commandCount,
 		vp.viewport[2] = (isRT && !s_originTopLeft) ? 1.0f : 0.0f;
 		vp.viewport[3] = (premultiplied && noEffect) ? 1.0f : 0.0f;
 		vp.model0[0] = 1.0f; vp.model0[3] = 1.0f;   // the stream is already in world space
-		vp.model1[2] = isGlyphPageView(view) ? 1.0f : 0.0f;
+		vp.model1[2] = glyphPageViewMode(view);
 		vp.model1[3] = cmd[CMD_RT_MODE] != 0.0f ? cmd[CMD_RT_MODE] : s_dpiScale;
 		vp.globalColor[0] = 1.0f; vp.globalColor[1] = 1.0f; vp.globalColor[2] = 1.0f; vp.globalColor[3] = 1.0f;
 		const float *vertexScope = scopeOf(cmd);

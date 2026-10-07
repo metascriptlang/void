@@ -20,9 +20,19 @@ export const NO_GLYPH_PAGE_HANDLE: GlyphPageHandle = (-1) as GlyphPageHandle;
 export enum AtlasError {
 	TooLarge,
 	Full,
+	KindNotBuilt,
+	VariantOutOfRange,
+}
+
+export enum PageKind {
+	Coverage,
+	Sdf,
+	Rgba,
+	Mask,
 }
 
 export struct GlyphKey {
+	kind: PageKind;
 	face: int32;
 	glyph: int32;
 	sizePx: float32;
@@ -54,6 +64,7 @@ struct Shelf {
 }
 
 struct AtlasPage {
+	kind: PageKind;
 	handle: GlyphPageHandle;
 	top: int32;
 	drawnFrame: int32;
@@ -103,7 +114,12 @@ export function packed(this key: GlyphKey): uint64 {
 	return ((key.face as uint64) << 48) |
 		((key.glyph as uint64) << 32) |
 		(sizeQ << 8) |
+		(((key.kind as int32) as uint64) << 4) |
 		(key.variant as uint64);
+}
+
+export function pageKind(this atlas: GlyphAtlas, page: GlyphPage): PageKind {
+	return atlas.pages[page as int32].kind;
 }
 
 export function tileSlots(this atlas: GlyphAtlas): int32 {
@@ -140,9 +156,14 @@ export function beginUploadFrame(): void {
 
 export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 	if ((atlas.pages.length as int32) == 0 && atlas.maxPages > 0) {
-		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize);
+		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize, PageKind.Coverage as int32);
 		if (handle >= 0) {
-			atlas.pages.push({ handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1 });
+			atlas.pages.push({
+				kind: PageKind.Coverage,
+				handle: handle as GlyphPageHandle,
+				top: 0,
+				drawnFrame: -1,
+			});
 		}
 	}
 	return (atlas.pages.length as int32) > 0 ? atlas.pages[0].handle : NO_GLYPH_PAGE_HANDLE;
@@ -193,9 +214,10 @@ function placeOnPage(
 	return Result.ok([0, top]);
 }
 
-function reclaimPage(atlas: GlyphAtlas): Result<GlyphPage, AtlasError> {
+function reclaimPage(atlas: GlyphAtlas, kind: PageKind): Result<GlyphPage, AtlasError> {
 	for (let p = 0; p < (atlas.pages.length as int32); p++) {
 		const page: GlyphPage = p as GlyphPage;
+		if (atlas.pages[p].kind != kind) { continue; }
 		if (atlas.pages[p].drawnFrame == atlas.frame || atlas.uploadedThisFrame(page)) { continue; }
 		if (liveTilesOn(atlas, page) != 0) { continue; }
 		for (let i = 0; i < (atlas.tiles.length as int32); i++) {
@@ -221,6 +243,7 @@ function reclaimPage(atlas: GlyphAtlas): Result<GlyphPage, AtlasError> {
 
 function allocate(
 	atlas: GlyphAtlas,
+	kind: PageKind,
 	width: int32,
 	height: int32,
 ): Result<[GlyphPage, int32, int32], AtlasError> {
@@ -228,18 +251,19 @@ function allocate(
 	const h: int32 = height + GLYPH_GUTTER;
 	if (w > atlas.pageSize || h > atlas.pageSize) { return Result.err(AtlasError.TooLarge); }
 	for (let p = 0; p < (atlas.pages.length as int32); p++) {
+		if (atlas.pages[p].kind != kind) { continue; }
 		if (atlas.uploadedThisFrame(p as GlyphPage)) { continue; }
 		const placed = placeOnPage(atlas, p as GlyphPage, w, h);
 		if (placed.ok) { return Result.ok([p as GlyphPage, placed.value[0], placed.value[1]]); }
 	}
 	let page: GlyphPage = NO_GLYPH_PAGE;
 	if ((atlas.pages.length as int32) < atlas.maxPages) {
-		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize);
+		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize, kind as int32);
 		if (handle < 0) { return Result.err(AtlasError.Full); }
-		atlas.pages.push({ handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1 });
+		atlas.pages.push({ kind: kind, handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1 });
 		page = ((atlas.pages.length as int32) - 1) as GlyphPage;
 	} else {
-		const reclaimed = try reclaimPage(atlas);
+		const reclaimed = try reclaimPage(atlas, kind);
 		page = reclaimed;
 	}
 	const spot = try placeOnPage(atlas, page, w, h);
@@ -247,6 +271,8 @@ function allocate(
 }
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
+	if (key.kind != PageKind.Coverage) { return Result.err(AtlasError.KindNotBuilt); }
+	if (key.variant < 0 || key.variant >= 16) { return Result.err(AtlasError.VariantOutOfRange); }
 	const packedKey: uint64 = key.packed();
 	const hit = atlas.index.get(packedKey);
 	if (hit.present) {
@@ -263,7 +289,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 	let x: int32 = 0;
 	let y: int32 = 0;
 	if (width > 0 && height > 0) {
-		const placed = try allocate(atlas, width, height);
+		const placed = try allocate(atlas, key.kind, width, height);
 		page = placed[0];
 		x = placed[1];
 		y = placed[2];

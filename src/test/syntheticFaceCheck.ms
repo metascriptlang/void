@@ -5,7 +5,7 @@ import {
 	glyphAdvance,
 	pageTexel,
 } from "../void2d/face";
-import { GlyphAtlas, GlyphTile } from "../void2d/glyphAtlas";
+import { GlyphAtlas, GlyphTile, PageKind } from "../void2d/glyphAtlas";
 
 const SIZE: float32 = 32.0;
 const UNITS_PER_EM: float32 = 2048.0;
@@ -21,7 +21,13 @@ function regular(): int32 {
 }
 
 function tileOf(face: int32, codepoint: int32): GlyphTile {
-	const index = atlas.acquire({ face: face, glyph: glyphIndex(face, codepoint), sizePx: SIZE, variant: 0 });
+	const index = atlas.acquire({
+		kind: PageKind.Coverage,
+		face: face,
+		glyph: glyphIndex(face, codepoint),
+		sizePx: SIZE,
+		variant: 0,
+	});
 	return atlas.tile(index.ok ? index.value : 0);
 }
 

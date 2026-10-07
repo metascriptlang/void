@@ -3,6 +3,7 @@ import {
 	GlyphTile,
 	GlyphPage,
 	GlyphPageHandle,
+	PageKind,
 	GLYPH_PAGE_SIZE,
 	quantizeX,
 	snapBaseline,
@@ -448,6 +449,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				baselineDevice = snapBaseline(fracY + baseline * devicePerLocal);
 			}
 			const acquired = glyphAtlas.acquire({
+				kind: PageKind.Coverage,
 				face: g.face, glyph: g.glyph, sizePx: g.size * devicePerLocal, variant: variant,
 			});
 			if (!acquired.ok) {
