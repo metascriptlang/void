@@ -54,7 +54,7 @@ echo "=== 1. evict the caches ==============================================="
 # silently tests the previous binary is worse than no gate. The machine-wide cache stays
 # untouched: deleting it raced every other session's msc and wiped their objects.
 export MSC_NO_GLOBAL_CACHE=1
-rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/recordCheck.exe out/goldenInvariants.exe
+rm -f out/goldenRunner.exe out/goldenCompare.exe out/benchUi.exe out/benchSprites.exe out/benchText.exe out/benchEditor.exe out/benchScroll.exe out/benchCheck.exe out/mixedFrame.exe out/doorBlendModes.exe out/pipelineCacheOwner.exe out/twoViews.exe out/viewSamples.exe out/recordCheck.exe out/goldenInvariants.exe
 rm -rf out/debug/.cache out/release/.cache
 pass "caches evicted"
 
@@ -379,6 +379,31 @@ if [ "$outside_status" -ne 0 ] && grep -q 'fbWidth outside a view frame' out/gat
 	pass "fbWidth outside a view frame aborts and names the call"
 else
 	fail "fbWidth outside a view frame did not abort (exit $outside_status) — see out/gate-two-views-outside.log"
+fi
+if "$MSC" build tests/integration/viewSamples.ms --output=out/viewSamples.exe > out/gate-view-samples.log 2>&1; then
+	for samples in 1 2 4 8; do
+		if VOID_VIEW_SAMPLES=$samples out/viewSamples.exe > out/gate-view-samples-$samples.log 2>&1; then
+			pass "$(grep -o 'view samples: .*' out/gate-view-samples-$samples.log)"
+		else
+			fail "a host view at $samples samples — see out/gate-view-samples-$samples.log"
+		fi
+	done
+	late_status=0
+	VOID_VIEW_SAMPLES_LATE=1 out/viewSamples.exe > out/gate-view-samples-late.log 2>&1 || late_status=$?
+	if [ "$late_status" -ne 0 ] && grep -q 'after the first voidViewCreate' out/gate-view-samples-late.log; then
+		pass "a sample count set after the first view aborts and names the call"
+	else
+		fail "a late sample count did not abort (exit $late_status) — see out/gate-view-samples-late.log"
+	fi
+	odd_status=0
+	VOID_VIEW_SAMPLES=3 out/viewSamples.exe > out/gate-view-samples-odd.log 2>&1 || odd_status=$?
+	if [ "$odd_status" -ne 0 ] && grep -q 'takes 1, 2, 4 or 8 samples' out/gate-view-samples-odd.log; then
+		pass "a sample count of 3 aborts and names the counts a swapchain takes"
+	else
+		fail "a sample count of 3 did not abort (exit $odd_status) — see out/gate-view-samples-odd.log"
+	fi
+else
+	fail "tests/integration/viewSamples.ms does not build — see out/gate-view-samples.log"
 fi
 for program in tests/aborts/*.ms; do
 	name=$(basename "$program" .ms)
