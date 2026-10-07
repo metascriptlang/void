@@ -64,12 +64,12 @@ echo "=== 2. T0 and T1 — msc test ==========================================="
 if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
 	t0Summary="$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
 	if echo "$t0Summary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
-		pass "$t0Summary"
+		pass "module stage all-off:$t0Summary"
 	else
-		fail "msc test exited 0 without a clean 'Tests N passed (N)' summary (a crash?) — see out/gate-t0.log"
+		fail "module stage all-off exited 0 without a clean 'Tests N passed (N)' summary (a crash?) — see out/gate-t0.log"
 	fi
 else
-	fail "msc test src/test/index.ms — see out/gate-t0.log"
+	fail "module stage all-off: msc test src/test/index.ms — see out/gate-t0.log"
 fi
 
 moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg"
@@ -81,7 +81,13 @@ echo "      module stage all-on:  msc test$moduleDefines src/test/index.ms"
 if "$MSC" test $moduleDefines src/test/index.ms > out/gate-t0-modules.log 2>&1; then
 	modSummary="$(sed 's/\[[0-9;]*m//g' out/gate-t0-modules.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
 	if echo "$modSummary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
-		pass "module stage all-on ($moduleFlags):$modSummary"
+		offTotal="$(echo "$t0Summary" | sed -E 's/.*Tests ([0-9]+) passed.*/\1/')"
+		onTotal="$(echo "$modSummary" | sed -E 's/.*Tests ([0-9]+) passed.*/\1/')"
+		if [ -f src/test/profilerCheck.ms ] && ! [ "${onTotal:-0}" -gt "${offTotal:-0}" ] 2>/dev/null; then
+			fail "module stage all-on ran $onTotal tests, not above all-off's $offTotal although src/test/profilerCheck.ms exists: the -d: flags did not reach the code"
+		else
+			pass "module stage all-on ($moduleFlags):$modSummary (all-off $offTotal)"
+		fi
 	else
 		fail "module stage all-on exited 0 without a clean 'Tests N passed (N)' summary (a crash?) — see out/gate-t0-modules.log"
 	fi
