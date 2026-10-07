@@ -3,7 +3,7 @@ import { Texture, TextureError } from "../gpu/texture";
 import { Tile, tile } from "./types";
 import { Scene2D, NodeRef } from "./node";
 
-export const MAX_SHEET_SIDE: int32 = 16384;
+export const MAX_SHEET_SIDE: int32 = 4096;
 
 export enum AnimationError {
 	NoFrames,
@@ -100,8 +100,5 @@ export function frameTiles(sheet: AnimationSheet): Tile[] {
 }
 
 export function animation(this s: Scene2D, sheet: AnimationSheet): NodeRef {
-	let total: int32 = 0;
-	for (const delay of sheet.delays) { total = total + delay; }
-	const fps: float32 = (sheet.frameCount as float32) * 1000.0 / (total as float32);
-	return s.anim(frameTiles(sheet), fps).setFrameDelays(sheet.delays);
+	return s.anim(frameTiles(sheet), 1.0).setFrameDelays(sheet.delays);
 }

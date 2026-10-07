@@ -53,11 +53,11 @@ test "frames are laid out in a near-square grid" {
 }
 
 test "a sheet stays within the side no backend can exceed, and says which limit it hit" {
-	const edge: SheetLayout = layoutOf(8192, 1, 2);
+	const edge: SheetLayout = layoutOf(2048, 1, 2);
 	assert edge.width == MAX_SHEET_SIDE && edge.columns == 2;
-	const stacked: SheetLayout = layoutOf(9000, 10, 3);
-	assert stacked.columns == 1 && stacked.rows == 3 && stacked.width == 9000;
-	const tall = sheetLayout(16384, 16384, 2);
+	const stacked: SheetLayout = layoutOf(3000, 10, 3);
+	assert stacked.columns == 1 && stacked.rows == 3 && stacked.width == 3000;
+	const tall = sheetLayout(MAX_SHEET_SIDE, MAX_SHEET_SIDE, 2);
 	assert !tall.ok;
 	if (!tall.ok) { assert tall.error == AnimationError.SheetTooLarge; }
 	const none = sheetLayout(4, 3, 0);
@@ -105,6 +105,7 @@ test "each frame's tile is its cell of the one sheet, to the texel" {
 test "scene.animation makes an Anim over the sheet that plays the GIF's own delays" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const node = s.animation(sheetFour());
+	assert node.animFrames().fps == 1.0;
 	s.add(node);
 	assert node.kind() === DrawKind.Anim;
 	assert approx(node.content().w, 4.0) && approx(node.content().h, 3.0);
