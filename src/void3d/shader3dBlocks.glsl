@@ -88,19 +88,6 @@ layout(binding=3) uniform emissiveMaterialParams {
 };
 @end
 
-@block movingEmissiveMaterialUniforms
-layout(binding=3) uniform movingEmissiveMaterialParams {
-    vec4 material;
-    vec4 uvMatrix;
-    vec4 uvMotion;
-    vec4 backUvMatrix;
-    vec4 backUvOffset;
-    vec4 dissolve;
-    vec4 dissolveEdge;
-    vec4 emissive;
-};
-@end
-
 @block emissiveTexture
 // three d4ea9b9 meshphong.glsl.js:94 and emissivemap_fragment: the emissive colour times the
 // decoded map, added to the lit colour in linear light.
@@ -119,7 +106,7 @@ layout(binding=5) uniform texture2D normalTexture;
 
 vec3 mappedNormal(vec3 normal, vec4 tangent, float face, vec3 texel) {
     vec3 t = normalize(tangent.xyz);
-    vec3 b = normalize(cross(normal, t) * tangent.w);
+    vec3 b = normalize(cross(normal, t)) * (tangent.w < 0.0 ? -1.0 : 1.0);
     vec3 mapped = texel * 2.0 - 1.0;
     return normalize(mapped.x * t + mapped.y * b + mapped.z * normal) * face;
 }

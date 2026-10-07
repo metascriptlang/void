@@ -114,11 +114,7 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @fs litTexturedFs
 // PENDING3D: material-saturation-only
 #if defined(UV_TRANSFORM) || defined(BACK_TEXTURE) || defined(DISSOLVE)
-#ifdef EMISSIVE
-@include_block movingEmissiveMaterialUniforms
-#else
 @include_block movingMaterialUniforms
-#endif
 #elif defined(EMISSIVE)
 @include_block emissiveMaterialUniforms
 #else
