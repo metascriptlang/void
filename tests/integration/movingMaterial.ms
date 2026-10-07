@@ -203,11 +203,12 @@ function init(): void {
 	let backValues: Vec<float32> = valuesOf(back);
 	backValues[movingBase(back) + MOVING_BACK_UV_MATRIX] = -1.0;
 	backValues[movingBase(back) + MOVING_BACK_UV_OFFSET] = 1.0;
-	const backMaterial: Material = {
+	place(Quad.Back, {
 		...materialFor(back, backValues, false), texture: red, texture1: backView,
-	};
-	place(Quad.Back, backMaterial, true);
-	place(Quad.Front, backMaterial, false);
+	}, true);
+	place(Quad.Front, {
+		...materialFor(back, backValues, false), texture: red, texture1: backView,
+	}, false);
 
 	const dissolve: ProgramKey = ProgramKey.of(Program.UnlitTextured).withDissolve();
 	let dissolveValues: Vec<float32> = valuesOf(dissolve);
