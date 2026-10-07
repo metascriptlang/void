@@ -11,8 +11,6 @@ import {
 	ParticleError,
 	ParticleRandom,
 	SortMode,
-	Turbulence,
-	turbulenceAt,
 	PARTICLE_INSTANCE_STRIDE,
 	constant,
 	nextUnit,
@@ -22,6 +20,8 @@ import {
 	clearParticles,
 } from "../void3d/particles";
 import { approx } from "./helpers";
+import { noiseDirection, shaderNoiseScale } from "../void3d/particleNoise";
+import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 
 function emitterFor(state: EmitterState, seed: uint32): ParticleEmitter {
 	const made: Result<ParticleEmitter, ParticleError> = ParticleEmitter.create(state, seed);
@@ -288,112 +288,6 @@ test "a point emits every particle at the origin, pointing up, and draws no rand
 	}
 }
 
-function boxOf(x: float32, y: float32, z: float32): EmitterShape {
-	return { kind: ShapeKind.Box, size: { x: constant(x), y: constant(y), z: constant(z) } };
-}
-
-test "a box fills its volume, centred on the emitter, and its size is the full extent" {
-	const emitter: ParticleEmitter = emittedFrom(boxOf(2.0, 4.0, 6.0), false, 300, 11);
-	let low: Vec3 = vec3(9.0, 9.0, 9.0);
-	let high: Vec3 = vec3(-9.0, -9.0, -9.0);
-	for (let i = 0; i < 300; i++) {
-		const p: Vec3 = emitter.particles[i].position;
-		assert p.x >= -1.0 && p.x <= 1.0 && p.y >= -2.0 && p.y <= 2.0 && p.z >= -3.0 && p.z <= 3.0;
-		assert approx(emitter.particles[i].direction.y, 1.0);
-		low = vec3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z));
-		high = vec3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z));
-	}
-	assert low.x < -0.9 && high.x > 0.9 && low.y < -1.8 && high.y > 1.8 && low.z < -2.7 && high.z > 2.7;
-}
-
-test "a box emitted from its shell lies on a face, and every face is reached" {
-	const emitter: ParticleEmitter = emittedFrom(boxOf(2.0, 2.0, 2.0), true, 600, 5);
-	let faces: int32 = 0;
-	let reached: Vec<boolean> = [false, false, false, false, false, false];
-	for (let i = 0; i < 600; i++) {
-		const p: Vec3 = emitter.particles[i].position;
-		assert absf(p.x) <= 1.0001 && absf(p.y) <= 1.0001 && absf(p.z) <= 1.0001;
-		const onFace: boolean = approx(absf(p.x), 1.0) || approx(absf(p.y), 1.0) || approx(absf(p.z), 1.0);
-		assert onFace;
-		if (approx(p.x, 1.0)) { reached[0] = true; }
-		if (approx(p.x, -1.0)) { reached[1] = true; }
-		if (approx(p.y, 1.0)) { reached[2] = true; }
-		if (approx(p.y, -1.0)) { reached[3] = true; }
-		if (approx(p.z, 1.0)) { reached[4] = true; }
-		if (approx(p.z, -1.0)) { reached[5] = true; }
-	}
-	for (let f = 0; f < 6; f++) { if (reached[f]) { faces = faces + 1; } }
-	assert faces == 6;
-}
-
-test "a shell box weighs its faces by area" {
-	const emitter: ParticleEmitter = emittedFrom(boxOf(8.0, 2.0, 2.0), true, 800, 21);
-	let ends: int32 = 0;
-	for (let i = 0; i < 800; i++) {
-		if (approx(absf(emitter.particles[i].position.x), 4.0)) { ends = ends + 1; }
-	}
-	assert ends > 800 / 9 - 40 && ends < 800 / 9 + 40;
-}
-
-function ringOf(radius: float32, inner: float32): EmitterShape {
-	return { kind: ShapeKind.Ring, radius: constant(radius), inner: constant(inner) };
-}
-
-test "a ring lies in XZ between its radii and points away from its centre" {
-	const emitter: ParticleEmitter = emittedFrom(ringOf(2.0, 1.0), false, 200, 7);
-	for (let i = 0; i < 200; i++) {
-		const p: Particle = emitter.particles[i];
-		const r2: float32 = p.position.x * p.position.x + p.position.z * p.position.z;
-		assert approx(p.position.y, 0.0) && r2 >= 0.99 && r2 <= 4.01;
-		const r: float32 = Math.sqrt(r2) as float32;
-		assert approx(p.direction.x * r, p.position.x) && approx(p.direction.z * r, p.position.z);
-	}
-}
-
-test "a ring emitted from its shell sits on the outer rim, and with no hole it is Heaps' disc" {
-	const rim: ParticleEmitter = emittedFrom(ringOf(2.0, 1.0), true, 50, 7);
-	for (let i = 0; i < 50; i++) {
-		const p: Vec3 = rim.particles[i].position;
-		assert approx(p.x * p.x + p.z * p.z, 4.0);
-	}
-	const ring: ParticleEmitter = emittedFrom(ringOf(2.0, 0.0), false, 50, 9);
-	const disc: ParticleEmitter = emittedFrom({ kind: ShapeKind.Disc, radius: constant(2.0) }, false, 50, 9);
-	for (let i = 0; i < 50; i++) {
-		assert ring.particles[i].position.x == disc.particles[i].position.x;
-		assert ring.particles[i].position.z == disc.particles[i].position.z;
-	}
-}
-
-test "damping bleeds the velocity that gravity and forces built, and leaves the speed curve alone" {
-	let emitter: ParticleEmitter = emitterFor(
-		{ ...still(0.0), gravity: constant(2.0), damping: constant(2.0), life: constant(100.0) },
-		1,
-	);
-	emitter.emitCount = 1.0;
-	assert step(emitter, 0.5) == 1;
-	assert approx(emitter.particles[0].force.y, -0.36788);
-	assert approx(emitter.particles[0].position.y, -0.18394);
-	for (let i = 0; i < 100; i++) { const _s: int32 = step(emitter, 0.1); }
-	assert emitter.particles[0].force.y < -0.85 && emitter.particles[0].force.y > -1.0;
-	let free: ParticleEmitter = emitterFor(
-		{ ...still(0.0), gravity: constant(2.0), life: constant(100.0) },
-		1,
-	);
-	free.emitCount = 1.0;
-	for (let i = 0; i < 101; i++) { const _s: int32 = step(free, 0.1); }
-	assert free.particles[0].force.y < -15.0;
-	let driven: ParticleEmitter = emitterFor({
-		...still(0.0),
-		shape: { kind: ShapeKind.Cone, radius: constant(0.0), angle: constant(0.0) },
-		speed: constant(3.0),
-		damping: constant(5.0),
-		life: constant(10.0),
-	}, 1);
-	driven.emitCount = 1.0;
-	assert step(driven, 0.5) == 1;
-	assert approx(driven.particles[0].position.y, 1.5);
-}
-
 test "a random damping is drawn once per life like any other particle value" {
 	let emitter: ParticleEmitter = emitterFor({
 		...still(0.0),
@@ -406,58 +300,6 @@ test "a random damping is drawn once per life like any other particle value" {
 	const drawn: uint32 = emitter.sequence.state;
 	assert step(emitter, 0.1) == 1;
 	assert emitter.sequence.state == drawn;
-}
-
-test "the turbulence field is bounded, smooth, and changes with place and time" {
-	const here: Vec3 = vec3(0.3, -0.7, 1.1);
-	const a: Vec3 = turbulenceAt(here, 0.5, 2.0, 1.0);
-	assert absf(a.x) <= 1.0 && absf(a.y) <= 1.0 && absf(a.z) <= 1.0;
-	const near: Vec3 = turbulenceAt(vec3(0.301, -0.7, 1.1), 0.5, 2.0, 1.0);
-	assert absf(near.x - a.x) < 0.01 && absf(near.y - a.y) < 0.01 && absf(near.z - a.z) < 0.01;
-	const far: Vec3 = turbulenceAt(vec3(2.3, 0.7, -1.1), 0.5, 2.0, 1.0);
-	assert absf(far.x - a.x) + absf(far.y - a.y) + absf(far.z - a.z) > 0.1;
-	const later: Vec3 = turbulenceAt(here, 1.5, 2.0, 1.0);
-	assert absf(later.x - a.x) + absf(later.y - a.y) + absf(later.z - a.z) > 0.1;
-	const frozen: Vec3 = turbulenceAt(here, 1.5, 2.0, 0.0);
-	const frozenAgain: Vec3 = turbulenceAt(here, 9.5, 2.0, 0.0);
-	assert frozen.x == frozenAgain.x && frozen.y == frozenAgain.y && frozen.z == frozenAgain.z;
-}
-
-test "turbulence pushes a particle by its strength times the field at the particle" {
-	const field: Turbulence = { strength: constant(4.0), scale: 2.0, speed: 1.0 };
-	let calm: ParticleEmitter = emitterFor({ ...still(0.0), life: constant(10.0) }, 1);
-	let shaken: ParticleEmitter = emitterFor({
-		...still(0.0),
-		shape: { kind: ShapeKind.Box, size: { x: constant(2.0), y: constant(2.0), z: constant(2.0) } },
-		turbulence: field,
-		life: constant(10.0),
-	}, 1);
-	calm.emitCount = 1.0;
-	shaken.emitCount = 1.0;
-	assert step(calm, 0.1) == 1;
-	assert step(shaken, 0.0) == 1;
-	const at: Vec3 = shaken.particles[0].position;
-	assert step(shaken, 0.1) == 1;
-	const expected: Vec3 = turbulenceAt(at, 0.1, 2.0, 1.0);
-	assert approx(shaken.particles[0].force.x, expected.x * 0.4);
-	assert approx(shaken.particles[0].force.y, expected.y * 0.4);
-	assert approx(shaken.particles[0].force.z, expected.z * 0.4);
-	assert calm.particles[0].force.x == 0.0 && calm.particles[0].force.y == 0.0;
-}
-
-test "a calm emitter and one with zero turbulence write the same instances" {
-	const state: EmitterState = {
-		...EmitterState.defaults(),
-		maxParts: 64,
-		emitRate: constant(40.0),
-		gravity: constant(0.5),
-	};
-	let a: ParticleEmitter = emitterFor(state, 4);
-	let b: ParticleEmitter = emitterFor({ ...state, turbulence: { strength: constant(0.0), scale: 3.0, speed: 2.0 } }, 4);
-	for (let i = 0; i < 40; i++) { assert step(a, 1.0 / 30.0) == step(b, 1.0 / 30.0); }
-	const left: Vec<float32> = instancesOf(a, identity());
-	const right: Vec<float32> = instancesOf(b, identity());
-	for (let i = 0; i < a.count * PARTICLE_INSTANCE_STRIDE; i++) { assert left[i] == right[i]; }
 }
 
 function placedAt(depths: Vec<float32>, sortMode: SortMode): ParticleEmitter {
@@ -521,7 +363,7 @@ test "a mode that sorts by view refuses a write that has no view" {
 test "a sorted write moves a particle's whole instance, and sorts many particles into depth order" {
 	let emitter: ParticleEmitter = emitterFor({
 		...still(0.0),
-		shape: { kind: ShapeKind.Box, size: { x: constant(4.0), y: constant(4.0), z: constant(20.0) } },
+		shape: { kind: ShapeKind.Box, extents: { x: constant(2.0), y: constant(2.0), z: constant(10.0) } },
 		sortMode: SortMode.Sort,
 		size: { kind: ValueKind.Random, start: 0.5, length: 1.0, converge: Converge.No },
 		maxParts: 200,
@@ -559,6 +401,291 @@ test "an emitLocal emitter sorts by the place it is drawn at" {
 	let out: Vec<float32> = new Array(2 * PARTICLE_INSTANCE_STRIDE);
 	assert writeSortedInstances(emitter, translation(0.0, 0.0, 5.0), identity(), out).ok;
 	assert out[0] == 1.0 && out[2] == 7.0 && out[PARTICLE_INSTANCE_STRIDE + 2] == 6.0;
+}
+
+function boxOf(x: float32, y: float32, z: float32): EmitterShape {
+	return { kind: ShapeKind.Box, extents: { x: constant(x), y: constant(y), z: constant(z) } };
+}
+
+function near(a: float32, b: float32, tolerance: float32): boolean {
+	return absf(a - b) <= tolerance;
+}
+
+test "a box fills its volume, centred, and its extents are half-widths as in Godot" {
+	const emitter: ParticleEmitter = emittedFrom(boxOf(1.0, 2.0, 3.0), false, 300, 11);
+	let low: Vec3 = vec3(9.0, 9.0, 9.0);
+	let high: Vec3 = vec3(-9.0, -9.0, -9.0);
+	for (let i = 0; i < 300; i++) {
+		const p: Vec3 = emitter.particles[i].position;
+		assert p.x >= -1.0 && p.x <= 1.0 && p.y >= -2.0 && p.y <= 2.0 && p.z >= -3.0 && p.z <= 3.0;
+		assert approx(emitter.particles[i].direction.y, 1.0);
+		low = vec3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z));
+		high = vec3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z));
+	}
+	assert low.x < -0.9 && high.x > 0.9 && low.y < -1.8 && high.y > 1.8 && low.z < -2.7 && high.z > 2.7;
+}
+
+test "a box draws x, y, z as three uniform values in [-1, 1] times its extents, as Godot's does" {
+	let reference: ParticleRandom = ParticleRandom.seeded(11);
+	const emitter: ParticleEmitter = emittedFrom(boxOf(1.0, 2.0, 3.0), false, 1, 11);
+	const x: float32 = (nextUnit(reference) * 2.0 - 1.0) * 1.0;
+	const y: float32 = (nextUnit(reference) * 2.0 - 1.0) * 2.0;
+	const z: float32 = (nextUnit(reference) * 2.0 - 1.0) * 3.0;
+	assert emitter.particles[0].position.x == x;
+	assert emitter.particles[0].position.y == y;
+	assert emitter.particles[0].position.z == z;
+	assert emitter.sequence.state == reference.state;
+}
+
+function faceCounts(seed: uint32, wide: float32): Vec<int32> {
+	const emitter: ParticleEmitter = emittedFrom(boxOf(wide, 1.0, 1.0), true, 900, seed);
+	let counts: Vec<int32> = [0, 0, 0, 0, 0, 0];
+	for (let i = 0; i < 900; i++) {
+		const p: Vec3 = emitter.particles[i].position;
+		if (approx(p.x, wide)) { counts[0] = counts[0] + 1; }
+		if (approx(p.x, -wide)) { counts[1] = counts[1] + 1; }
+		if (approx(p.y, 1.0)) { counts[2] = counts[2] + 1; }
+		if (approx(p.y, -1.0)) { counts[3] = counts[3] + 1; }
+		if (approx(p.z, 1.0)) { counts[4] = counts[4] + 1; }
+		if (approx(p.z, -1.0)) { counts[5] = counts[5] + 1; }
+	}
+	return counts;
+}
+
+test "a box emitted from its shell lies on a face, and the faces are weighted by area, on two seeds" {
+	const seeds: Vec<uint32> = [5, 77];
+	for (let k = 0; k < 2; k++) {
+		const counts: Vec<int32> = faceCounts(seeds[k], 4.0);
+		let total: int32 = 0;
+		for (let f = 0; f < 6; f++) { total = total + counts[f]; }
+		assert total >= 900 && total <= 910;
+		assert counts[0] > 900 / 18 - 30 && counts[0] < 900 / 18 + 30;
+		assert counts[1] > 900 / 18 - 30 && counts[1] < 900 / 18 + 30;
+		assert counts[2] > 900 * 4 / 18 - 60 && counts[2] < 900 * 4 / 18 + 60;
+		assert counts[5] > 900 * 4 / 18 - 60 && counts[5] < 900 * 4 / 18 + 60;
+	}
+}
+
+function ringOf(radius: float32, inner: float32, height: float32, cone: float32): EmitterShape {
+	return {
+		kind: ShapeKind.Ring,
+		radius: constant(radius),
+		inner: constant(inner),
+		height: height,
+		axis: vec3(0.0, 1.0, 0.0),
+		coneAngle: cone,
+	};
+}
+
+test "a ring is Godot's: area-uniform radius between inner and outer, a height along its axis" {
+	const emitter: ParticleEmitter = emittedFrom(ringOf(2.0, 1.0, 0.5, 90.0), false, 2000, 7);
+	let meanSquare: float32 = 0.0;
+	let low: float32 = 9.0;
+	let high: float32 = -9.0;
+	for (let i = 0; i < 2000; i++) {
+		const p: Particle = emitter.particles[i];
+		const r2: float32 = p.position.x * p.position.x + p.position.z * p.position.z;
+		assert r2 >= 0.99 && r2 <= 4.01;
+		assert p.position.y >= -0.2501 && p.position.y <= 0.2501;
+		const r: float32 = Math.sqrt(r2 as float64) as float32;
+		assert approx(p.direction.x * r, p.position.x) && approx(p.direction.z * r, p.position.z);
+		assert approx(p.direction.y, 0.0);
+		meanSquare = meanSquare + r2;
+		low = minf(low, p.position.y);
+		high = maxf(high, p.position.y);
+	}
+	// sqrt(u (R^2 - r^2) + r^2) makes r^2 uniform on [1, 4]: mean 2.5. A radius linear in u gives 2.33.
+	assert near(meanSquare / 2000.0, 2.5, 0.07);
+	assert low < -0.2 && high > 0.2;
+}
+
+test "a ring's cone angle narrows it toward the top, by Godot's top radius" {
+	const emitter: ParticleEmitter = emittedFrom(ringOf(2.0, 0.0, 1.0, 45.0), false, 600, 3);
+	let seenHigh: boolean = false;
+	for (let i = 0; i < 600; i++) {
+		const p: Vec3 = emitter.particles[i].position;
+		const y: float32 = p.y + 0.5;
+		const r: float32 = Math.sqrt((p.x * p.x + p.z * p.z) as float64) as float32;
+		assert r <= 2.0 * (1.0 - y * 0.5) + 0.01;
+		if (y > 0.8) {
+			seenHigh = true;
+			assert r <= 1.21;
+		}
+	}
+	assert seenHigh;
+}
+
+test "a ring on a tilted axis lies in the plane that axis is normal to" {
+	const tilted: EmitterShape = {
+		kind: ShapeKind.Ring,
+		radius: constant(2.0),
+		inner: constant(1.0),
+		height: 0.0,
+		axis: vec3(1.0, 0.0, 0.0),
+		coneAngle: 90.0,
+	};
+	const emitter: ParticleEmitter = emittedFrom(tilted, false, 100, 4);
+	for (let i = 0; i < 100; i++) {
+		const p: Vec3 = emitter.particles[i].position;
+		assert approx(p.x, 0.0);
+		const r2: float32 = p.y * p.y + p.z * p.z;
+		assert r2 >= 0.99 && r2 <= 4.01;
+	}
+}
+
+function forcedAlong(x: float32, y: float32, z: float32, damping: float32): ParticleEmitter {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		force: { x: constant(x), y: constant(y), z: constant(z) },
+		damping: constant(damping),
+		life: constant(100.0),
+	}, 1);
+	emitter.emitCount = 1.0;
+	return emitter;
+}
+
+test "damping is Godot's: the speed falls by damping per second along its own direction, to a stop" {
+	let slowed: ParticleEmitter = forcedAlong(3.0, 4.0, 0.0, 1.0);
+	assert step(slowed, 0.5) == 1;
+	assert approx(slowed.particles[0].force.x, 1.2) && approx(slowed.particles[0].force.y, 1.6);
+	assert approx(slowed.particles[0].force.z, 0.0);
+	let stopped: ParticleEmitter = forcedAlong(3.0, 4.0, 0.0, 6.0);
+	assert step(stopped, 0.5) == 1;
+	assert stopped.particles[0].force.x == 0.0 && stopped.particles[0].force.y == 0.0;
+	let free: ParticleEmitter = forcedAlong(3.0, 4.0, 0.0, 0.0);
+	assert step(free, 0.5) == 1;
+	assert approx(free.particles[0].force.x, 1.5) && approx(free.particles[0].force.y, 2.0);
+}
+
+test "damping leaves the speed curve alone" {
+	let driven: ParticleEmitter = emitterFor({
+		...still(0.0),
+		shape: { kind: ShapeKind.Cone, radius: constant(0.0), angle: constant(0.0) },
+		speed: constant(3.0),
+		damping: constant(5.0),
+		life: constant(10.0),
+	}, 1);
+	driven.emitCount = 1.0;
+	assert step(driven, 0.5) == 1;
+	assert approx(driven.particles[0].position.y, 1.5);
+}
+
+test "the noise direction matches Godot's GLSL transcribed in float32 on the Godot side" {
+	// Expected values: out/tmp/godotNoise.js, a separate float32 transcription of the shader
+	// text in particle_process_material.cpp:405-480.
+	const a: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.0, 1.0, 4.0, vec3(0.0, 0.0, 0.0), 0.0);
+	assert near(a.x, 0.35435, 0.003) && near(a.y, -0.93215, 0.003) && near(a.z, 0.07436, 0.003);
+	const b: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.5, 1.0, 4.0, vec3(1.0, 0.5, 0.25), 0.2);
+	assert near(b.x, -0.67330, 0.003) && near(b.y, -0.31516, 0.003) && near(b.z, -0.66883, 0.003);
+	const c: Vec3 = noiseDirection(vec3(-2.5, 3.1, 0.4), 1.25, 1.0, -0.104, vec3(0.0, 0.0, 0.0), 0.2);
+	assert near(c.x, 0.17383, 0.003) && near(c.y, -0.57915, 0.003) && near(c.z, 0.79647, 0.003);
+	const d: Vec3 = noiseDirection(vec3(1.9, 0.2, -3.3), 2.0, 3.0, 6.0, vec3(0.5, 0.5, 0.5), 0.2);
+	assert near(d.x, 0.44212, 0.003) && near(d.y, 0.89155, 0.003) && near(d.z, 0.09837, 0.003);
+}
+
+test "the noise scale property becomes the shader's frequency as set_turbulence_noise_scale does" {
+	assert near(shaderNoiseScale(9.0), -0.10399, 0.0005);
+	assert near(shaderNoiseScale(10.0), 0.0, 0.0005);
+	assert near(shaderNoiseScale(0.0), -4.0, 0.0005);
+}
+
+function shaken(influence: float32): ParticleEmitter {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		force: { x: constant(2.0), y: constant(0.0), z: constant(0.0) },
+		turbulence: {
+			enabled: true,
+			noiseStrength: 1.0,
+			noiseScale: 9.0,
+			noiseSpeed: vec3(1.0, 0.5, 0.25),
+			noiseSpeedRandom: 0.2,
+			influence: constant(influence),
+		},
+		life: constant(100.0),
+	}, 1);
+	emitter.emitCount = 1.0;
+	return emitter;
+}
+
+test "turbulence turns the velocity toward the noise direction by its influence, as Godot mixes it" {
+	let emitter: ParticleEmitter = shaken(0.5);
+	assert step(emitter, 0.0) == 1;
+	assert step(emitter, 0.1) == 1;
+	const f: Vec3 = emitter.particles[0].force;
+	assert near(f.x, 0.15167, 0.002) && near(f.y, -0.07771, 0.002) && near(f.z, 0.05823, 0.002);
+}
+
+test "turbulence at influence 0, or switched off, leaves the velocity to its forces" {
+	let silent: ParticleEmitter = shaken(0.0);
+	assert step(silent, 0.0) == 1;
+	assert step(silent, 0.1) == 1;
+	assert approx(silent.particles[0].force.x, 0.2) && silent.particles[0].force.y == 0.0;
+	let off: ParticleEmitter = shaken(0.5);
+	off.state.turbulence.enabled = false;
+	assert step(off, 0.0) == 1;
+	assert step(off, 0.1) == 1;
+	assert approx(off.particles[0].force.x, 0.2) && off.particles[0].force.y == 0.0;
+}
+
+test "turbulence also bends the speed-curve displacement, keeping its length" {
+	let emitter: ParticleEmitter = emitterFor({
+		...still(0.0),
+		shape: { kind: ShapeKind.Cone, radius: constant(0.0), angle: constant(0.0) },
+		speed: constant(3.0),
+		turbulence: {
+			enabled: true,
+			noiseStrength: 1.0,
+			noiseScale: 9.0,
+			noiseSpeed: vec3(1.0, 0.5, 0.25),
+			noiseSpeedRandom: 0.2,
+			influence: constant(1.0),
+		},
+		life: constant(100.0),
+	}, 1);
+	emitter.emitCount = 1.0;
+	assert step(emitter, 0.0) == 1;
+	assert step(emitter, 0.1) == 1;
+	const p: Vec3 = emitter.particles[0].position;
+	assert approx(p.x, 0.46976 * 0.3) && approx(p.y, -0.70645 * 0.3) && approx(p.z, 0.52938 * 0.3);
+}
+
+function along(out: Vec<float32>, index: int32, direction: Vec3): float32 {
+	const at: int32 = index * PARTICLE_INSTANCE_STRIDE;
+	return out[at] * direction.x + out[at + 1] * direction.y + out[at + 2] * direction.z;
+}
+
+function lookingForward(): CameraView {
+	const camera: Camera3D = {
+		position: vec3(0.0, 0.0, 0.0),
+		yaw: 0.0,
+		pitch: 0.0,
+		orientation: null,
+		nearPlane: 0.1,
+		farPlane: 100.0,
+		projection: { kind: ProjectionKind.Perspective, fovY: 1.0 },
+	};
+	const resolved: Result<CameraView, CameraError> = camera.resolve(640, 360);
+	if (resolved.ok) { return resolved.value; }
+	unreachable;
+}
+
+test "Sort under the real perspective camera puts the far particles first and the one behind the eye first of all" {
+	const view: CameraView = lookingForward();
+	const ahead: Vec3 = view.basis.forward;
+	let emitter: ParticleEmitter = emitterFor({ ...still(0.0), sortMode: SortMode.Sort, life: constant(10.0) }, 1);
+	emitter.emitCount = 4.0;
+	assert step(emitter, 0.0) == 4;
+	emitter.particles[0].position = ahead.scaled(3.0);
+	emitter.particles[1].position = ahead.scaled(-2.0);
+	emitter.particles[2].position = ahead.scaled(10.0);
+	emitter.particles[3].position = ahead.scaled(1.0);
+	let out: Vec<float32> = new Array(4 * PARTICLE_INSTANCE_STRIDE);
+	assert writeSortedInstances(emitter, identity(), view.viewProj, out).ok;
+	assert near(along(out, 0, ahead), -2.0, 0.001) && near(along(out, 1, ahead), 10.0, 0.001);
+	assert near(along(out, 2, ahead), 3.0, 0.001) && near(along(out, 3, ahead), 1.0, 0.001);
+	emitter.state.sortMode = SortMode.InvSort;
+	assert writeSortedInstances(emitter, identity(), view.viewProj, out).ok;
+	assert near(along(out, 0, ahead), 1.0, 0.001) && near(along(out, 3, ahead), -2.0, 0.001);
 }
 
 test "spawn happens in world space; emitLocal defers the transform to the write" {

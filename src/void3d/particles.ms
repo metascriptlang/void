@@ -1,7 +1,8 @@
 // Port of h3d.parts at Heaps 2b84cc2, CPU only (docs/VOID3D.md, M11 as built). Heaps is Z up
 // and left-handed: every local axis Heaps names z is y here, and y is z.
 
-import { Vec3, vec3, Vec4, vec4, Mat4, identity, transformDirection } from "../math/math3d";
+import { Vec3, vec3, Vec4, vec4, Mat4, identity, transformDirection, cross } from "../math/math3d";
+import { noiseDirection, shaderNoiseScale } from "./particleNoise";
 
 export enum ValueKind {
 	Const,
@@ -52,15 +53,24 @@ export enum ShapeKind {
 }
 
 // h3d.parts.Data.Shape without SCustom, plus the three shapes a Heaps user writes as an
-// SCustom: Point, Box and Ring.
+// SCustom: Point, Box and Ring, with Godot 4.5's emission shapes as their reference
+// (particle_process_material.cpp: point 642-644, box 659-661, ring 668-695). Box `extents` are
+// half-widths, as Godot's `emission_box_extents`. Ring is Godot's `emission_ring_*`: `height`
+// along `axis`, `coneAngle` in degrees (90 is a cylinder).
 export type EmitterShape = match (kind: ShapeKind) {
 	ShapeKind.Line => { size: ParticleValue },
 	ShapeKind.Sphere => { radius: ParticleValue },
 	ShapeKind.Cone => { radius: ParticleValue, angle: ParticleValue },
 	ShapeKind.Disc => { radius: ParticleValue },
 	ShapeKind.Point => {},
-	ShapeKind.Box => { size: ValueXYZ },
-	ShapeKind.Ring => { radius: ParticleValue, inner: ParticleValue },
+	ShapeKind.Box => { extents: ValueXYZ },
+	ShapeKind.Ring => {
+		radius: ParticleValue,
+		inner: ParticleValue,
+		height: float32,
+		axis: Vec3,
+		coneAngle: float32,
+	},
 };
 
 export struct Burst {
@@ -80,12 +90,18 @@ export struct ValueXYZ {
 	z: ParticleValue;
 }
 
-// A smooth force field the particles ride, strength per particle at its time of life. Heaps has
-// no turbulence; this is a sum of sines (`turbulenceAt`), not noise.
+// Godot 4.5's turbulence (particle_process_material.cpp:381-396 uniforms, 1032-1052 use) with its
+// defaults (2364-2420): a curl-noise field that turns a particle's velocity toward it. `noiseScale`
+// is the property an author sets (0 to 10, default 9), `noiseSpeed` and `noiseSpeedRandom` how fast
+// the field drifts, `influence` how far a particle turns, 0 to 1, per particle and over its life as
+// a `ParticleValue` on the particle's time of life (Godot's min/max pair times a curve).
 export struct Turbulence {
-	strength: ParticleValue;
-	scale: float32;
-	speed: float32;
+	enabled: boolean;
+	noiseStrength: float32;
+	noiseScale: float32;
+	noiseSpeed: Vec3;
+	noiseSpeedRandom: float32;
+	influence: ParticleValue;
 }
 
 // h3d.parts.Data.State, the fields the simulation reads. `force` is never null here: Heaps'
@@ -195,7 +211,14 @@ export function defaults(this typeof EmitterState): EmitterState {
 		gravity: constant(0.0),
 		sortMode: SortMode.Back,
 		damping: constant(0.0),
-		turbulence: { strength: constant(0.0), scale: 1.0, speed: 1.0 },
+		turbulence: {
+			enabled: false,
+			noiseStrength: 1.0,
+			noiseScale: 9.0,
+			noiseSpeed: vec3(0.0, 0.0, 0.0),
+			noiseSpeedRandom: 0.2,
+			influence: constant(0.1),
+		},
 		force: { x: constant(0.0), y: constant(0.0), z: constant(0.0) },
 		colors: [],
 		light: constant(1.0),
@@ -313,16 +336,6 @@ export function clearParticles(ref emitter: ParticleEmitter): void {
 	emitter.emitCount = 0.0;
 }
 
-// The turbulence field at a place and a moment: each component a mean of two sines, so in
-// [-1, 1], smooth, and fixed by its arguments alone. `speed` scales how fast it drifts; 0 freezes it.
-export function turbulenceAt(position: Vec3, clock: float32, scale: float32, speed: float32): Vec3 {
-	const drift: float32 = clock * speed;
-	const x: float64 = Math.sin(scale * position.y + drift) + Math.sin(scale * 1.7 * position.z - 0.8 * drift);
-	const y: float64 = Math.sin(scale * position.z + 1.1 * drift) + Math.sin(scale * 1.3 * position.x + 0.6 * drift);
-	const z: float64 = Math.sin(scale * position.x + 0.9 * drift) + Math.sin(scale * 1.9 * position.y - 1.2 * drift);
-	return vec3((x * 0.5) as float32, (y * 0.5) as float32, (z * 0.5) as float32);
-}
-
 // Emitter.eval.
 function emitterValue(ref emitter: ParticleEmitter, v: ParticleValue, time: float32): float32 {
 	const random: float32 = v.drawsRandom() ? nextUnit(emitter.sequence) : 0.0;
@@ -365,7 +378,7 @@ function boxHalfExtent(ref emitter: ParticleEmitter, size: ValueXYZ, time: float
 	const x: float32 = emitterValue(emitter, size.x, time);
 	const y: float32 = emitterValue(emitter, size.y, time);
 	const z: float32 = emitterValue(emitter, size.z, time);
-	return vec3(absolute(x) * 0.5, absolute(y) * 0.5, absolute(z) * 0.5);
+	return vec3(absolute(x), absolute(y), absolute(z));
 }
 
 function absolute(x: float32): float32 {
@@ -392,6 +405,61 @@ function boxPosition(ref emitter: ParticleEmitter, half: Vec3, shell: boolean): 
 		z = side * half.z;
 	}
 	return vec3(x, y, z);
+}
+
+struct Ring {
+	position: Vec3;
+	outward: Vec3;
+}
+
+// Godot's ring (cpp:668-695), draw for draw: the height fraction, the angle, then the radius,
+// which is area-uniform between the inner and outer radius and narrowed along the height by the
+// cone angle. `outward` is the unit vector from the axis to the point. Godot's `pi` is the literal
+// 3.14159; the exact value is used here.
+function ringPoint(
+	ref emitter: ParticleEmitter,
+	outer: float32,
+	inner: float32,
+	height: float32,
+	axisIn: Vec3,
+	coneAngle: float32,
+): Ring {
+	const clamped: float32 = outer > 0.001 ? outer : 0.001;
+	const slant: float64 = Math.tan((90.0 - (coneAngle as float64)) * 0.017453292519943295);
+	const slope: float32 = (slant * (height as float64)) as float32;
+	const topRaw: float32 = clamped - slope;
+	const top: float32 = topRaw > 0.0 ? topRaw : 0.0;
+	let along: float32 = nextUnit(emitter.sequence);
+	const smaller: float32 = clamped < top ? clamped : top;
+	const larger: float32 = clamped < top ? top : clamped;
+	const ratio: float32 = smaller / larger;
+	const skew: float32 = ratio > 0.5 ? ratio : 0.5;
+	const lifted: float32 = Math.pow(along as float64, skew as float64) as float32;
+	along = clamped < top ? lifted : 1.0 - lifted;
+	const turn: float64 = unitRandom(emitter) * TWO_PI;
+	const fill: float32 = nextUnit(emitter.sequence);
+	let radius: float32 =
+		Math.sqrt((fill * (clamped * clamped - inner * inner) + inner * inner) as float64) as float32;
+	radius = radius + (radius * (top / clamped) - radius) * along;
+	const isZero: boolean = axisIn.x == 0.0 && axisIn.y == 0.0 && axisIn.z == 0.0;
+	const axis: Vec3 = isZero ? vec3(0.0, 0.0, 1.0) : axisIn.normalized();
+	const alongX: boolean = absolute(axis.x) == 1.0 && axis.y == 0.0 && axis.z == 0.0;
+	const start: Vec3 = alongX ? axis.cross(vec3(0.0, 1.0, 0.0)) : axis.cross(vec3(1.0, 0.0, 0.0));
+	const side: Vec3 = start.normalized();
+	const s: float32 = Math.sin(turn) as float32;
+	const c: float32 = Math.cos(turn) as float32;
+	const oc: float32 = 1.0 - c;
+	const turned: Vec3 = vec3(
+		(c + axis.x * axis.x * oc) * side.x + (axis.x * axis.y * oc + s * axis.z) * side.y
+			+ (axis.z * axis.x * oc - axis.y * s) * side.z,
+		(axis.x * axis.y * oc - axis.z * s) * side.x + (c + axis.y * axis.y * oc) * side.y
+			+ (axis.z * axis.y * oc + axis.x * s) * side.z,
+		(axis.x * axis.z * oc + axis.y * s) * side.x + (axis.y * axis.z * oc - axis.x * s) * side.y
+			+ (c + axis.z * axis.z * oc) * side.z,
+	);
+	const outward: Vec3 = turned.normalized();
+	const lift: float32 = along * height - height / 2.0;
+	return { position: outward.scaled(radius) + axis.scaled(lift), outward: outward };
 }
 
 // Emitter.initPosDir, then initPart.
@@ -433,19 +501,20 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 		},
 		ShapeKind.Point => {},
 		ShapeKind.Box => {
-			const half: Vec3 = boxHalfExtent(emitter, emitter.state.shape.size, time);
+			const half: Vec3 = boxHalfExtent(emitter, emitter.state.shape.extents, time);
 			position = boxPosition(emitter, half, shell);
 		},
 		ShapeKind.Ring => {
 			const outerValue: ParticleValue = emitter.state.shape.radius;
 			const innerValue: ParticleValue = emitter.state.shape.inner;
+			const height: float32 = emitter.state.shape.height;
+			const axis: Vec3 = emitter.state.shape.axis;
+			const coneAngle: float32 = emitter.state.shape.coneAngle;
 			const outer: float32 = emitterValue(emitter, outerValue, time);
 			const inner: float32 = emitterValue(emitter, innerValue, time);
-			let radius: float32 = outer;
-			if (!shell) { radius = inner + (outer - inner) * nextUnit(emitter.sequence); }
-			const angle: float64 = unitRandom(emitter) * TWO_PI;
-			direction = vec3(Math.cos(angle) as float32, 0.0, Math.sin(angle) as float32);
-			position = direction.scaled(radius);
+			const ring: Ring = ringPoint(emitter, outer, inner, height, axis, coneAngle);
+			position = ring.position;
+			direction = ring.outward;
 		},
 		ShapeKind.Disc => {
 			let radius: float32 = emitterValue(emitter, emitter.state.shape.radius, time);
@@ -525,41 +594,71 @@ function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64):
 	const forceZ: float32 = particleValue(emitter, slot, emitter.state.force.z, cycle);
 	const forceY: float32 = particleValue(emitter, slot, emitter.state.force.y, cycle);
 	const gravity: float32 = particleValue(emitter, slot, emitter.state.gravity, cycle);
-	const damping: float32 = particleValue(emitter, slot, emitter.state.damping, cycle);
-	const strength: float32 = particleValue(emitter, slot, emitter.state.turbulence.strength, life);
-	const force: Vec3 = emitter.particles[slot].force;
-	let shake: Vec3 = vec3(0.0, 0.0, 0.0);
-	if (strength != 0.0) {
-		const turbulence: Turbulence = emitter.state.turbulence;
-		const field: Vec3 = turbulenceAt(
-			emitter.particles[slot].position,
-			emitter.clock as float32,
-			turbulence.scale,
-			turbulence.speed,
-		);
-		shake = field.scaled(strength);
+	const damping: float32 = particleValue(emitter, slot, emitter.state.damping, life);
+	const turbulence: Turbulence = emitter.state.turbulence;
+	let influence: float32 = 0.0;
+	if (turbulence.enabled && turbulence.noiseStrength > 0.0) {
+		influence = particleValue(emitter, slot, turbulence.influence, life);
+		influence = influence < 0.0 ? 0.0 : (influence > 1.0 ? 1.0 : influence);
 	}
-	const bleed: float32 = damping == 0.0 ? 1.0 : (Math.exp(-(damping * dt) as float64) as float32);
-	const pushed: Vec3 = vec3(
-		(force.x + forceX * dt + shake.x * dt) * bleed,
-		(force.y + forceY * dt - gravity * dt + shake.y * dt) * bleed,
-		(force.z + forceZ * dt + shake.z * dt) * bleed,
+	const force: Vec3 = emitter.particles[slot].force;
+	let velocity: Vec3 = vec3(
+		force.x + forceX * dt,
+		force.y + forceY * dt - gravity * dt,
+		force.z + forceZ * dt,
 	);
-	emitter.particles[slot].force = pushed;
+	if (damping > 0.0) { velocity = damped(velocity, damping * dt); }
 	const speed: float32 = particleValue(emitter, slot, emitter.state.speed, life);
-	const ds: float32 = speed * dt;
 	const direction: Vec3 = emitter.particles[slot].direction;
 	const position: Vec3 = emitter.particles[slot].position;
-	emitter.particles[slot].position = vec3(
-		position.x + direction.x * ds + pushed.x * dt,
-		position.y + direction.y * ds + pushed.y * dt,
-		position.z + direction.z * ds + pushed.z * dt,
-	);
+	if (influence > 0.0 && dt > 0.0) {
+		const toward: Vec3 = noiseDirection(
+			position,
+			emitter.clock as float32,
+			turbulence.noiseStrength,
+			shaderNoiseScale(turbulence.noiseScale),
+			turbulence.noiseSpeed,
+			turbulence.noiseSpeedRandom,
+		);
+		const displacement: Vec3 = direction.scaled(speed);
+		velocity = bentToward(velocity, toward, influence);
+		const bent: Vec3 = bentToward(displacement, toward, influence);
+		emitter.particles[slot].force = velocity;
+		emitter.particles[slot].position = vec3(
+			position.x + (bent.x + velocity.x) * dt,
+			position.y + (bent.y + velocity.y) * dt,
+			position.z + (bent.z + velocity.z) * dt,
+		);
+	} else {
+		const ds: float32 = speed * dt;
+		emitter.particles[slot].force = velocity;
+		emitter.particles[slot].position = vec3(
+			position.x + direction.x * ds + velocity.x * dt,
+			position.y + direction.y * ds + velocity.y * dt,
+			position.z + direction.z * ds + velocity.z * dt,
+		);
+	}
 	emitter.particles[slot].size = particleValue(emitter, slot, emitter.state.size, life);
 	const light: float32 = particleValue(emitter, slot, emitter.state.light, life);
 	colorAt(emitter, slot, light);
 	emitter.particles[slot].alpha = particleValue(emitter, slot, emitter.state.alpha, life);
 	return true;
+}
+
+// Godot's damping (cpp:993-1011): the speed falls by `loss`, along its own direction, to a stop.
+function damped(velocity: Vec3, loss: float32): Vec3 {
+	const speed: float32 = velocity.length();
+	if (!(speed > 0.0)) { return velocity; }
+	const left: float32 = speed - loss;
+	if (left < 0.0) { return vec3(0.0, 0.0, 0.0); }
+	return velocity.scaled(left / speed);
+}
+
+// Godot's turbulence mix (cpp:1048-1052): `v` turned toward `toward` at its own length, a little
+// longer the less it is turned, by `influence`.
+function bentToward(v: Vec3, toward: Vec3, influence: float32): Vec3 {
+	const reach: float32 = v.length() * (1.0 + (1.0 - influence) * 0.2);
+	return v.scaled(1.0 - influence) + toward.scaled(reach * influence);
 }
 
 function moveParticle(ref emitter: ParticleEmitter, from: int32, to: int32): void {
