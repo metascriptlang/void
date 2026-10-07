@@ -197,6 +197,23 @@ that agrees fails the run; an unlisted row that differs fails it.
 | svg:gear-24 | T3 | a stroked path of many 1.65 radius arcs draws 2.9% less ink in nanosvg (200.7 against 206.6 pixels of coverage), scattered along the curved edges, mean error 5.03 against a 3.5 bound; lowering `tessTol` further (0.02, 0.01) gains nothing, cause not isolated | declared | 2026-10-07 |
 | svg:dashed-24 | T3 | a dash edge of the 3 2 pattern on a triangle's closing corner lands on a different pixel: 2 pixels past 32, one by 124 | declared | 2026-10-07 |
 
+## Sprite oracle budgets
+
+`src/test/spriteOracleCheck.ms` compares the anti-aliased sprites with Ghostty's reference PNGs
+(`tests/oracle/ghostty/`, [docs/TESTING.md](../docs/TESTING.md) "T3") under the budget a row
+here gives its family: `maxPixels` is the most pixels in any one cell whose coverage differs by
+more than 16 (one step of the reference's 4 by 4 supersampling), `maxDelta` the largest
+difference in any cell. The numbers are the first measurement, on 2026-10-08, over four cell
+sizes; the reference antialiases with z2d and the sprites with an exact-area accumulator, so no
+pixel is expected to agree to the byte. Raising a number needs a reason written in its row.
+
+| id | tier | reason | phase | date | maxPixels | maxDelta |
+|---|---|---|---|---|---|---|
+| sprite-aa:arcs | T3 | U+256D-2570: the cubic is flattened to line segments and stroked with butt caps, z2d strokes the curve itself | P6 | 2026-10-08 | 4 | 26 |
+| sprite-aa:diagonals | T3 | U+2571-2573: one stroked segment, the edges land on different sixteenths | P6 | 2026-10-08 | 2 | 17 |
+| sprite-aa:triangles | T3 | U+25E2-25E5, 25F8-25FA, 25FF: filled corner triangles and their inset outlines, every pixel within one step | P6 | 2026-10-08 | 0 | 16 |
+| sprite-aa:powerline | T3 | U+E0B0-E0BF, E0D2, E0D4: the long slanted edge of a 18x36 triangle puts 36 pixels about two steps from z2d's sample pattern; no pixel is more than 33 away | P6 | 2026-10-08 | 36 | 33 |
+
 ## macOS and compiler gaps (msc e5e932d0)
 
 Measured 2026-10-03 on macOS with `bash scripts/gate.sh --quick`, branch `wt/void-latest-msc`. Each one is red at origin `2be9cf5` and none was caused by that branch.

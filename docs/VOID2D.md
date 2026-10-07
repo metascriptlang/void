@@ -2163,8 +2163,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   needs no rasterizer and no anti-aliasing. `src/test/spriteOracleCheck.ms` compares the result
   with Ghostty's 36 reference PNGs (`tests/oracle/ghostty/`, 78,166 bytes, MIT): 1636 of 1636
   cells equal. The sprite table is a sorted range table with a dense id per codepoint
-  (`void2dSpriteTableFault` is the compile-time overlap check of `Face.zig` as a test); arcs,
-  diagonals, powerline and the rest are not in it yet, so no codepoint of theirs reaches a sprite.
+  (`void2dSpriteTableFault` is the compile-time overlap check of `Face.zig` as a test).
   **Sprite face built 2026-10-08.** Sprites are in the default layer, not a module: Ghostty's
   `CodepointResolver` asks the sprite face before every font, a terminal needs them in every
   build, and the cost is one C file (no vendored code). `void2dGlyphFaceSprite(base)` makes a
@@ -2186,6 +2185,36 @@ changes described above on today's compiler; the P4 web archive also takes its r
   that wants seamless rows sets `forceWidth` to the cell width over the device scale and
   `lineSpacing` so the row pitch is the cell height (`spriteCellFor`, internal until Terminator
   asks for a public cell-metrics API, void-manager decision 7).
+  **Anti-aliased sprites built 2026-10-08.** Diagonals U+2571-2573, arcs U+256D-2570, powerline
+  U+E0B0-E0BF, E0D2 and E0D4 and the corner triangles U+25E2-25E5, 25F8-25FA and 25FF are drawn
+  by `spriteGlyph.c` from `box.zig`, `powerline.zig` and `geometric_shapes.zig`; sextants
+  U+1FB00-1FB3B, octants U+1CD00-1CDE5 (the table generated from Ghostty's `octants.txt`) and
+  the block, shade and checkerboard sprites U+1FB70-1FB97 are integer rectangles like the rest
+  of S3. The smooth mosaics, edge triangles and the box branch glyphs of Ghostty
+  (`1FB3C-1FB6F`, `1FB98` on, `F5D0-F60D`) are not ported; a codepoint of theirs keeps
+  coming from the font. 771 sprites in all, 738 byte-equal to Ghostty's reference at four cell
+  sizes, 33 within the budget `tests/PENDING.md` lists per family.
+  **NEW MECHANISM, local to `spriteGlyph.c`.** The spec asked for a flatten-offset stroker
+  feeding `stbtt_Rasterize`. `stbtt_Rasterize` is `STBTT_STATIC` in `glyph.c`'s translation unit
+  and takes int16 vertices, so a second copy would put the font rasterizer into the sprite
+  object; the sprites carry their own exact-area accumulator instead (the signed-area scheme of
+  font-rs, about 60 lines, the same coverage maths as stb's), and a stroker that offsets a
+  flattened polyline by half the width on each side with miter joins up to ratio 10 (z2d's
+  default) and butt caps. A closed outline is the polygon minus its inset, which is how
+  `innerStrokePath` reads. Neither reaches the font path or the page code. What it can regress:
+  a polyline that doubles back on itself would cancel its own area, so `drawArc` stops the path
+  where Ghostty's overshooting `lineTo` would reverse it (measured: the reference ink ends at
+  the same half pixel). The reference antialiases with z2d at 4 by 4 samples (its values are
+  multiples of 16 less one), so the graded sprites differ by up to 33 of 255 and are judged
+  against a budget, not byte-equal.
+  **Gamma on masks.** Glyph mode applies `applyContrastAndGamma` to every coverage, and it maps
+  0 to 0 and 1 to 1 exactly (the shader's `a = c (k+1) / (c k + 1)` and the `a (1-a)` correction
+  vanish at both ends; `src/test/textGammaCheck.ms` "empty and full coverage stay empty and full" pins the T0 copy), so full blocks, box lines
+  and braille dots draw the fill colour exactly and join without a seam. Half tones are not
+  exact: the three shade blocks (0x40, 0x80, 0xC0) and every anti-aliased edge are shifted like
+  text edges, by the contrast of the fill colour. A per-instance "no correction" flag would
+  touch the 108-byte UI layout and is not added; the golden `text/spriteGlyphs` shows the
+  shades.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
   **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding

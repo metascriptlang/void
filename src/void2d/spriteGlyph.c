@@ -4,7 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { FAMILY_BOX, FAMILY_BLOCK, FAMILY_BRAILLE };
+enum {
+	FAMILY_BOX,
+	FAMILY_BLOCK,
+	FAMILY_BRAILLE,
+	FAMILY_GEOMETRIC,
+	FAMILY_POWERLINE,
+	FAMILY_OCTANT,
+	FAMILY_SEXTANT,
+	FAMILY_LEGACY_BLOCK,
+};
 
 enum { LINE_NONE, LINE_LIGHT, LINE_HEAVY, LINE_DOUBLE };
 
@@ -34,10 +43,19 @@ typedef struct {
 } Lines;
 
 static const SpriteRange s_ranges[] = {
-	{ 0x2500, 0x256C, FAMILY_BOX, 0 },
-	{ 0x2574, 0x257F, FAMILY_BOX, 0x6D },
-	{ 0x2580, 0x259F, FAMILY_BLOCK, 0x79 },
-	{ 0x2800, 0x28FF, FAMILY_BRAILLE, 0x99 },
+	{ 0x2500, 0x257F, FAMILY_BOX, 0 },
+	{ 0x2580, 0x259F, FAMILY_BLOCK, 128 },
+	{ 0x25E2, 0x25E5, FAMILY_GEOMETRIC, 160 },
+	{ 0x25F8, 0x25FA, FAMILY_GEOMETRIC, 164 },
+	{ 0x25FF, 0x25FF, FAMILY_GEOMETRIC, 167 },
+	{ 0x2800, 0x28FF, FAMILY_BRAILLE, 168 },
+	{ 0xE0B0, 0xE0BF, FAMILY_POWERLINE, 424 },
+	{ 0xE0D2, 0xE0D2, FAMILY_POWERLINE, 440 },
+	{ 0xE0D4, 0xE0D4, FAMILY_POWERLINE, 441 },
+	{ 0x1CD00, 0x1CDE5, FAMILY_OCTANT, 442 },
+	{ 0x1FB00, 0x1FB3B, FAMILY_SEXTANT, 672 },
+	{ 0x1FB70, 0x1FB92, FAMILY_LEGACY_BLOCK, 732 },
+	{ 0x1FB94, 0x1FB97, FAMILY_LEGACY_BLOCK, 767 },
 };
 
 #define RANGE_COUNT ((int)(sizeof(s_ranges) / sizeof(s_ranges[0])))
@@ -171,6 +189,29 @@ static const Lines s_boxLines[0x80] = {
 	{ 1, 0, 2, 0 },
 	{ 0, 1, 0, 2 },
 	{ 2, 0, 1, 0 },
+};
+
+static const unsigned char s_octants[230] = {
+	0x04, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0C, 0x0D, 0x0E, 0x10, 0x11, 0x12,
+	0x13, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F,
+	0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x29, 0x2A, 0x2B, 0x2C,
+	0x2D, 0x2E, 0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38,
+	0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46,
+	0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x51, 0x52, 0x53,
+	0x54, 0x56, 0x57, 0x58, 0x59, 0x5B, 0x5C, 0x5D, 0x5E, 0x60, 0x61, 0x62,
+	0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E,
+	0x6F, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A,
+	0x7B, 0x7C, 0x7D, 0x7E, 0x7F, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87,
+	0x88, 0x89, 0x8A, 0x8B, 0x8C, 0x8D, 0x8E, 0x8F, 0x90, 0x91, 0x92, 0x93,
+	0x94, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F,
+	0xA1, 0xA2, 0xA3, 0xA4, 0xA6, 0xA7, 0xA8, 0xA9, 0xAB, 0xAC, 0xAD, 0xAE,
+	0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB,
+	0xBC, 0xBD, 0xBE, 0xBF, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8,
+	0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF, 0xD0, 0xD1, 0xD2, 0xD3, 0xD4,
+	0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF, 0xE0,
+	0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC,
+	0xED, 0xEE, 0xEF, 0xF1, 0xF2, 0xF3, 0xF4, 0xF6, 0xF7, 0xF8, 0xF9, 0xFB,
+	0xFD, 0xFE,
 };
 
 static int rangeOf(int codepoint) {
@@ -312,6 +353,420 @@ static void drawBlock(int codepoint, const Metrics *m, Canvas *c) {
 	case 0x259F: quadrants(m, c, 0, 1, 1, 1); break;
 	default:
 		fprintf(stderr, "void2d sprite: U+%04X is in the block range but has no drawing\n",
+			codepoint);
+		abort();
+	}
+}
+
+typedef struct {
+	double x, y;
+} Pt;
+
+typedef struct {
+	Pt *p;
+	int n, cap;
+} Path;
+
+typedef struct {
+	float *acc;
+	size_t capacity;
+	int width, height, stride;
+} Cover;
+
+static Path s_flat, s_left, s_right, s_inset, s_poly;
+static Cover s_cover;
+static int s_failed;
+
+static int pathPush(Path *path, double x, double y) {
+	if (path->n > 0 && fabs(path->p[path->n - 1].x - x) < 1e-9 &&
+		fabs(path->p[path->n - 1].y - y) < 1e-9) {
+		return 1;
+	}
+	if (path->n == path->cap) {
+		int grown = path->cap ? path->cap * 2 : 64;
+		Pt *p = (Pt *)realloc(path->p, sizeof(Pt) * (size_t)grown);
+		if (!p) {
+			s_failed = VOID2D_SPRITE_NO_MEMORY;
+			return 0;
+		}
+		path->p = p;
+		path->cap = grown;
+	}
+	path->p[path->n].x = x;
+	path->p[path->n].y = y;
+	path->n++;
+	return 1;
+}
+
+static double distance(Pt a, Pt b) {
+	return sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y));
+}
+
+static void pathCubic(Path *path, Pt p0, Pt p1, Pt p2, Pt p3) {
+	double length = distance(p0, p1) + distance(p1, p2) + distance(p2, p3);
+	int steps = (int)ceil(length * 1.5);
+	if (steps < 8) { steps = 8; }
+	if (steps > 256) { steps = 256; }
+	for (int i = 1; i <= steps; i++) {
+		double t = (double)i / (double)steps, u = 1.0 - t;
+		double a = u * u * u, b = 3.0 * u * u * t, c = 3.0 * u * t * t, d = t * t * t;
+		pathPush(path, a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+			a * p0.y + b * p1.y + c * p2.y + d * p3.y);
+	}
+}
+
+static void coverBegin(Canvas *canvas) {
+	s_cover.width = canvas->width;
+	s_cover.height = canvas->height;
+	s_cover.stride = canvas->width + 2;
+	size_t need = (size_t)s_cover.stride * (size_t)canvas->height;
+	if (need > s_cover.capacity) {
+		float *grown = (float *)realloc(s_cover.acc, need * sizeof(float));
+		if (!grown) {
+			s_failed = VOID2D_SPRITE_NO_MEMORY;
+			return;
+		}
+		s_cover.acc = grown;
+		s_cover.capacity = need;
+	}
+	memset(s_cover.acc, 0, need * sizeof(float));
+}
+
+static double clampTo(double v, double low, double high) {
+	return v < low ? low : (v > high ? high : v);
+}
+
+static void coverEdge(double x0, double y0, double x1, double y1) {
+	if (y0 == y1 || !s_cover.acc) { return; }
+	double dir = 1.0;
+	if (y0 > y1) {
+		double t = x0;
+		x0 = x1;
+		x1 = t;
+		t = y0;
+		y0 = y1;
+		y1 = t;
+		dir = -1.0;
+	}
+	double dxdy = (x1 - x0) / (y1 - y0);
+	double x = x0;
+	int yStart = 0;
+	if (y0 < 0.0) {
+		x -= y0 * dxdy;
+	} else {
+		yStart = (int)floor(y0);
+	}
+	int yEnd = y1 > (double)s_cover.height ? s_cover.height : (int)ceil(y1);
+	double limit = (double)s_cover.width;
+	for (int y = yStart; y < yEnd; y++) {
+		float *row = s_cover.acc + (size_t)y * (size_t)s_cover.stride;
+		double top = (double)y > y0 ? (double)y : y0;
+		double bottom = (double)(y + 1) < y1 ? (double)(y + 1) : y1;
+		double dy = bottom - top;
+		double xNext = x + dxdy * dy;
+		double d = dy * dir;
+		double cx = clampTo(x, 0.0, limit), cn = clampTo(xNext, 0.0, limit);
+		double lo = cx < cn ? cx : cn, hi = cx < cn ? cn : cx;
+		double loFloor = floor(lo);
+		int loIndex = (int)loFloor;
+		double hiCeil = ceil(hi);
+		int hiIndex = (int)hiCeil;
+		if (hiIndex <= loIndex + 1) {
+			double mid = 0.5 * (cx + cn) - loFloor;
+			row[loIndex] += (float)(d - d * mid);
+			row[loIndex + 1] += (float)(d * mid);
+		} else {
+			double s = 1.0 / (hi - lo);
+			double loFraction = lo - loFloor;
+			double a0 = 0.5 * s * (1.0 - loFraction) * (1.0 - loFraction);
+			double hiFraction = hi - hiCeil + 1.0;
+			double am = 0.5 * s * hiFraction * hiFraction;
+			row[loIndex] += (float)(d * a0);
+			if (hiIndex == loIndex + 2) {
+				row[loIndex + 1] += (float)(d * (1.0 - a0 - am));
+			} else {
+				double a1 = s * (1.5 - loFraction);
+				row[loIndex + 1] += (float)(d * (a1 - a0));
+				for (int xi = loIndex + 2; xi < hiIndex - 1; xi++) { row[xi] += (float)(d * s); }
+				double a2 = a1 + (double)(hiIndex - loIndex - 3) * s;
+				row[hiIndex - 1] += (float)(d * (1.0 - a2 - am));
+			}
+			row[hiIndex] += (float)(d * am);
+		}
+		x = xNext;
+	}
+}
+
+static void coverPolygon(const Canvas *canvas, const Pt *pts, int n) {
+	for (int i = 0; i < n; i++) {
+		Pt a = pts[i], b = pts[(i + 1) % n];
+		coverEdge(a.x + canvas->padX, a.y + canvas->padY, b.x + canvas->padX, b.y + canvas->padY);
+	}
+}
+
+static void coverResolve(Canvas *canvas, uint8_t color) {
+	if (!s_cover.acc) { return; }
+	for (int y = 0; y < canvas->height; y++) {
+		const float *row = s_cover.acc + (size_t)y * (size_t)s_cover.stride;
+		float sum = 0.0f;
+		for (int x = 0; x < canvas->width; x++) {
+			sum += row[x];
+			double coverage = fabs((double)sum);
+			if (coverage > 1.0) { coverage = 1.0; }
+			uint8_t *px = canvas->px + (size_t)y * (size_t)canvas->width + (size_t)x;
+			double next = floor((double)*px + ((double)color - (double)*px) * coverage + 0.5);
+			*px = (uint8_t)next;
+		}
+	}
+}
+
+static void fillPolygon(Canvas *canvas, const Pt *pts, int n, uint8_t color) {
+	coverBegin(canvas);
+	coverPolygon(canvas, pts, n);
+	coverResolve(canvas, color);
+}
+
+static void fillTriangle(Canvas *canvas, Pt a, Pt b, Pt c) {
+	Pt pts[3] = { a, b, c };
+	fillPolygon(canvas, pts, 3, 255);
+}
+
+static void offsetSide(const Path *path, double offset, Path *out) {
+	out->n = 0;
+	Pt *p = path->p;
+	int n = path->n;
+	if (n < 2) { return; }
+	Pt unit[2];
+	for (int i = 0; i < n; i++) {
+		int hasBefore = i > 0, hasAfter = i + 1 < n;
+		Pt before = { 0.0, 0.0 }, after = { 0.0, 0.0 };
+		if (hasBefore) {
+			double len = distance(p[i - 1], p[i]);
+			before.x = (p[i].x - p[i - 1].x) / len;
+			before.y = (p[i].y - p[i - 1].y) / len;
+		}
+		if (hasAfter) {
+			double len = distance(p[i], p[i + 1]);
+			after.x = (p[i + 1].x - p[i].x) / len;
+			after.y = (p[i + 1].y - p[i].y) / len;
+		}
+		unit[0] = hasBefore ? before : after;
+		unit[1] = hasAfter ? after : before;
+		Pt n0 = { -unit[0].y, unit[0].x }, n1 = { -unit[1].y, unit[1].x };
+		if (!hasBefore || !hasAfter) {
+			Pt edge = hasBefore ? n0 : n1;
+			pathPush(out, p[i].x + edge.x * offset, p[i].y + edge.y * offset);
+			continue;
+		}
+		double dot = before.x * after.x + before.y * after.y;
+		double cross = before.x * after.y - before.y * after.x;
+		double along = 1.0 + dot;
+		int outer = cross * offset < 0.0;
+		if (outer && (along < 0.02 || sqrt(2.0 / along) > 10.0)) {
+			pathPush(out, p[i].x + n0.x * offset, p[i].y + n0.y * offset);
+			pathPush(out, p[i].x + n1.x * offset, p[i].y + n1.y * offset);
+		} else if (along < 1e-9) {
+			pathPush(out, p[i].x + n0.x * offset, p[i].y + n0.y * offset);
+		} else {
+			pathPush(out, p[i].x + (n0.x + n1.x) * offset / along,
+				p[i].y + (n0.y + n1.y) * offset / along);
+		}
+	}
+}
+
+static void strokePath(Canvas *canvas, const Path *path, double width, uint8_t color) {
+	offsetSide(path, width / 2.0, &s_left);
+	offsetSide(path, -width / 2.0, &s_right);
+	s_poly.n = 0;
+	for (int i = 0; i < s_left.n; i++) { pathPush(&s_poly, s_left.p[i].x, s_left.p[i].y); }
+	for (int i = s_right.n - 1; i >= 0; i--) { pathPush(&s_poly, s_right.p[i].x, s_right.p[i].y); }
+	if (s_poly.n >= 3) { fillPolygon(canvas, s_poly.p, s_poly.n, color); }
+}
+
+static void strokeLine(Canvas *canvas, Pt a, Pt b, double width) {
+	s_flat.n = 0;
+	pathPush(&s_flat, a.x, a.y);
+	pathPush(&s_flat, b.x, b.y);
+	strokePath(canvas, &s_flat, width, 255);
+}
+
+static void insetTriangleRing(Canvas *canvas, Pt a, Pt b, Pt c, double thickness) {
+	double la = distance(b, c), lb = distance(a, c), lc = distance(a, b);
+	double perimeter = la + lb + lc;
+	double area = fabs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2.0;
+	double inradius = 2.0 * area / perimeter;
+	Pt incenter = { (la * a.x + lb * b.x + lc * c.x) / perimeter,
+		(la * a.y + lb * b.y + lc * c.y) / perimeter };
+	double k = inradius > thickness ? (inradius - thickness) / inradius : 0.0;
+	Pt outer[3] = { a, b, c };
+	Pt inner[3];
+	Pt corners[3] = { a, b, c };
+	for (int i = 0; i < 3; i++) {
+		inner[i].x = incenter.x + k * (corners[i].x - incenter.x);
+		inner[i].y = incenter.y + k * (corners[i].y - incenter.y);
+	}
+	coverBegin(canvas);
+	coverPolygon(canvas, outer, 3);
+	Pt reversed[3] = { inner[2], inner[1], inner[0] };
+	coverPolygon(canvas, reversed, 3);
+	coverResolve(canvas, 255);
+}
+
+static void flipHorizontal(Canvas *canvas) {
+	for (int y = 0; y < canvas->height; y++) {
+		uint8_t *row = canvas->px + (size_t)y * (size_t)canvas->width;
+		for (int x = 0; x < canvas->width / 2; x++) {
+			uint8_t t = row[x];
+			row[x] = row[canvas->width - 1 - x];
+			row[canvas->width - 1 - x] = t;
+		}
+	}
+}
+
+static double minDouble(double a, double b) { return a < b ? a : b; }
+
+static void diagonalUpperRightToLowerLeft(const Metrics *m, Canvas *c) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight;
+	double slopeX = minDouble(1.0, w / h), slopeY = minDouble(1.0, h / w);
+	Pt a = { w + 0.5 * slopeX, -0.5 * slopeY }, b = { -0.5 * slopeX, h + 0.5 * slopeY };
+	strokeLine(c, a, b, (double)m->boxThickness);
+}
+
+static void diagonalUpperLeftToLowerRight(const Metrics *m, Canvas *c) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight;
+	double slopeX = minDouble(1.0, w / h), slopeY = minDouble(1.0, h / w);
+	Pt a = { -0.5 * slopeX, -0.5 * slopeY }, b = { w + 0.5 * slopeX, h + 0.5 * slopeY };
+	strokeLine(c, a, b, (double)m->boxThickness);
+}
+
+enum { CORNER_TL, CORNER_TR, CORNER_BL, CORNER_BR };
+
+static void cornerPoints(const Metrics *m, int corner, Pt *out) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight;
+	Pt tl[3] = { { 0, 0 }, { 0, h }, { w, 0 } };
+	Pt tr[3] = { { 0, 0 }, { w, h }, { w, 0 } };
+	Pt bl[3] = { { 0, 0 }, { 0, h }, { w, h } };
+	Pt br[3] = { { 0, h }, { w, h }, { w, 0 } };
+	const Pt *from = corner == CORNER_TL ? tl : corner == CORNER_TR ? tr
+		: corner == CORNER_BL ? bl : br;
+	for (int i = 0; i < 3; i++) { out[i] = from[i]; }
+}
+
+static void cornerTriangle(const Metrics *m, Canvas *c, int corner) {
+	Pt t[3];
+	cornerPoints(m, corner, t);
+	fillTriangle(c, t[0], t[1], t[2]);
+}
+
+static void cornerTriangleOutline(const Metrics *m, Canvas *c, int corner) {
+	Pt t[3];
+	cornerPoints(m, corner, t);
+	insetTriangleRing(c, t[0], t[1], t[2], (double)m->boxThickness);
+}
+
+enum { ARC_TL, ARC_TR, ARC_BL, ARC_BR };
+
+static void drawArc(const Metrics *m, Canvas *c, int corner) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight, t = (double)m->boxThickness;
+	double centerX = (double)(subSat(m->cellWidth, m->boxThickness) / 2) + t / 2.0;
+	double centerY = (double)(subSat(m->cellHeight, m->boxThickness) / 2) + t / 2.0;
+	double r = minDouble(w, h) / 2.0, s = 0.25;
+	double signX = (corner == ARC_TL || corner == ARC_BL) ? -1.0 : 1.0;
+	double signY = (corner == ARC_TL || corner == ARC_TR) ? -1.0 : 1.0;
+	double startY = signY < 0.0 ? 0.0 : h;
+	double endX = signX < 0.0 ? 0.0 : w;
+	s_flat.n = 0;
+	pathPush(&s_flat, centerX, startY);
+	Pt p0 = { centerX, centerY + signY * r };
+	pathPush(&s_flat, p0.x, p0.y);
+	Pt p1 = { centerX, centerY + signY * s * r };
+	Pt p2 = { centerX + signX * s * r, centerY };
+	Pt p3 = { centerX + signX * r, centerY };
+	pathCubic(&s_flat, p0, p1, p2, p3);
+	if ((endX - p3.x) * signX > 0.0) { pathPush(&s_flat, endX, centerY); }
+	strokePath(c, &s_flat, t, 255);
+}
+
+static void powerlineRound(const Metrics *m, Canvas *c, int stroked) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight;
+	double k = (1.4142135623730951 - 1.0) * 4.0 / 3.0;
+	double r = minDouble(w, h / 2.0);
+	s_flat.n = 0;
+	pathPush(&s_flat, 0.0, 0.0);
+	if (stroked) { pathPush(&s_flat, 1.0, 0.0); }
+	Pt a0 = { stroked ? 1.0 : 0.0, 0.0 };
+	pathCubic(&s_flat, a0, (Pt){ r * k, 0.0 }, (Pt){ r, r - r * k }, (Pt){ r, r });
+	pathPush(&s_flat, r, h - r);
+	Pt b0 = { r, h - r };
+	Pt b3 = { stroked ? 1.0 : 0.0, h };
+	pathCubic(&s_flat, b0, (Pt){ r, h - r + r * k }, (Pt){ r * k, h }, b3);
+	if (stroked) { pathPush(&s_flat, 0.0, h); }
+	if (!stroked) {
+		fillPolygon(c, s_flat.p, s_flat.n, 255);
+		return;
+	}
+	double t = (double)m->boxThickness;
+	offsetSide(&s_flat, t / 2.0, &s_inset);
+	strokePath(c, &s_inset, t, 255);
+}
+
+static void powerlineChevron(const Metrics *m, Canvas *c) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight;
+	s_flat.n = 0;
+	pathPush(&s_flat, 0.0, 0.0);
+	pathPush(&s_flat, w, h / 2.0);
+	pathPush(&s_flat, 0.0, h);
+	strokePath(c, &s_flat, (double)m->boxThickness, 255);
+}
+
+static void powerlineDouble(const Metrics *m, Canvas *c) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight, t = (double)m->boxThickness;
+	Pt top[4] = { { 0, 0 }, { w, 0 }, { w / 2.0, h / 2.0 - t / 2.0 }, { 0, h / 2.0 - t / 2.0 } };
+	Pt bottom[4] = { { 0, h }, { w, h }, { w / 2.0, h / 2.0 + t / 2.0 }, { 0, h / 2.0 + t / 2.0 } };
+	fillPolygon(c, top, 4, 255);
+	fillPolygon(c, bottom, 4, 255);
+}
+
+static void drawPowerline(int codepoint, const Metrics *m, Canvas *c) {
+	double w = (double)m->cellWidth, h = (double)m->cellHeight;
+	switch (codepoint) {
+	case 0xE0B0: fillTriangle(c, (Pt){ 0, 0 }, (Pt){ w, h / 2.0 }, (Pt){ 0, h }); break;
+	case 0xE0B1: powerlineChevron(m, c); break;
+	case 0xE0B2: fillTriangle(c, (Pt){ w, 0 }, (Pt){ 0, h / 2.0 }, (Pt){ w, h }); break;
+	case 0xE0B3: powerlineChevron(m, c); flipHorizontal(c); break;
+	case 0xE0B4: powerlineRound(m, c, 0); break;
+	case 0xE0B5: powerlineRound(m, c, 1); break;
+	case 0xE0B6: powerlineRound(m, c, 0); flipHorizontal(c); break;
+	case 0xE0B7: powerlineRound(m, c, 1); flipHorizontal(c); break;
+	case 0xE0B8: fillTriangle(c, (Pt){ 0, 0 }, (Pt){ w, h }, (Pt){ 0, h }); break;
+	case 0xE0B9: diagonalUpperLeftToLowerRight(m, c); break;
+	case 0xE0BA: fillTriangle(c, (Pt){ w, 0 }, (Pt){ w, h }, (Pt){ 0, h }); break;
+	case 0xE0BB: diagonalUpperRightToLowerLeft(m, c); break;
+	case 0xE0BC: fillTriangle(c, (Pt){ 0, 0 }, (Pt){ w, 0 }, (Pt){ 0, h }); break;
+	case 0xE0BD: diagonalUpperRightToLowerLeft(m, c); break;
+	case 0xE0BE: fillTriangle(c, (Pt){ 0, 0 }, (Pt){ w, 0 }, (Pt){ w, h }); break;
+	case 0xE0BF: diagonalUpperLeftToLowerRight(m, c); break;
+	case 0xE0D2: powerlineDouble(m, c); break;
+	case 0xE0D4: powerlineDouble(m, c); flipHorizontal(c); break;
+	default:
+		fprintf(stderr, "void2d sprite: U+%04X is in the powerline range but has no drawing\n",
+			codepoint);
+		abort();
+	}
+}
+
+static void drawGeometric(int codepoint, const Metrics *m, Canvas *c) {
+	switch (codepoint) {
+	case 0x25E2: cornerTriangle(m, c, CORNER_BR); break;
+	case 0x25E3: cornerTriangle(m, c, CORNER_BL); break;
+	case 0x25E4: cornerTriangle(m, c, CORNER_TL); break;
+	case 0x25E5: cornerTriangle(m, c, CORNER_TR); break;
+	case 0x25F8: cornerTriangleOutline(m, c, CORNER_TL); break;
+	case 0x25F9: cornerTriangleOutline(m, c, CORNER_TR); break;
+	case 0x25FA: cornerTriangleOutline(m, c, CORNER_BL); break;
+	case 0x25FF: cornerTriangleOutline(m, c, CORNER_BR); break;
+	default:
+		fprintf(stderr, "void2d sprite: U+%04X is in the geometric range but has no drawing\n",
 			codepoint);
 		abort();
 	}
@@ -500,8 +955,24 @@ static int drawDash(int codepoint, const Metrics *m, Canvas *c) {
 	}
 }
 
+static int drawCurved(int codepoint, const Metrics *m, Canvas *c) {
+	switch (codepoint) {
+	case 0x256D: drawArc(m, c, ARC_BR); return 1;
+	case 0x256E: drawArc(m, c, ARC_BL); return 1;
+	case 0x256F: drawArc(m, c, ARC_TL); return 1;
+	case 0x2570: drawArc(m, c, ARC_TR); return 1;
+	case 0x2571: diagonalUpperRightToLowerLeft(m, c); return 1;
+	case 0x2572: diagonalUpperLeftToLowerRight(m, c); return 1;
+	case 0x2573:
+		diagonalUpperRightToLowerLeft(m, c);
+		diagonalUpperLeftToLowerRight(m, c);
+		return 1;
+	default: return 0;
+	}
+}
+
 static void drawBox(int codepoint, const Metrics *m, Canvas *c) {
-	if (drawDash(codepoint, m, c)) { return; }
+	if (drawDash(codepoint, m, c) || drawCurved(codepoint, m, c)) { return; }
 	Lines lines = s_boxLines[codepoint - 0x2500];
 	if (lines.up == 0 && lines.right == 0 && lines.down == 0 && lines.left == 0) {
 		fprintf(stderr, "void2d sprite: U+%04X is in the box range but has no drawing\n",
@@ -577,6 +1048,123 @@ static int drawBraille(int codepoint, const Metrics *m, Canvas *c) {
 	return VOID2D_SPRITE_OK;
 }
 
+
+static void drawSextant(int codepoint, const Metrics *m, Canvas *c) {
+	int index = codepoint - 0x1FB00;
+	int bits = index + index / 0x14 + 1;
+	const double third = 1.0 / 3.0, twoThirds = 2.0 / 3.0;
+	if (bits & 1) { fillFractions(m, c, 0.0, 0.5, 0.0, third); }
+	if (bits & 2) { fillFractions(m, c, 0.5, 1.0, 0.0, third); }
+	if (bits & 4) { fillFractions(m, c, 0.0, 0.5, third, twoThirds); }
+	if (bits & 8) { fillFractions(m, c, 0.5, 1.0, third, twoThirds); }
+	if (bits & 16) { fillFractions(m, c, 0.0, 0.5, twoThirds, 1.0); }
+	if (bits & 32) { fillFractions(m, c, 0.5, 1.0, twoThirds, 1.0); }
+}
+
+static void drawOctant(int codepoint, const Metrics *m, Canvas *c) {
+	int bits = s_octants[codepoint - 0x1CD00];
+	for (int bit = 0; bit < 8; bit++) {
+		if (!((bits >> bit) & 1)) { continue; }
+		double left = (bit & 1) ? 0.5 : 0.0, right = (bit & 1) ? 1.0 : 0.5;
+		double top = (double)(bit >> 1) * 0.25;
+		fillFractions(m, c, left, right, top, top + 0.25);
+	}
+}
+
+static void checkerboard(const Metrics *m, Canvas *c, unsigned int parity) {
+	unsigned int xSize = 4;
+	unsigned int ySize = (unsigned int)round(4.0 * ((double)m->cellHeight / (double)m->cellWidth));
+	for (unsigned int x = 0; x < xSize; x++) {
+		unsigned int x0 = (m->cellWidth * x) / xSize, x1 = (m->cellWidth * (x + 1)) / xSize;
+		for (unsigned int y = 0; y < ySize; y++) {
+			unsigned int y0 = (m->cellHeight * y) / ySize;
+			unsigned int y1 = (m->cellHeight * (y + 1)) / ySize;
+			if ((x + y) % 2 == parity) { fillBox(c, (int)x0, (int)y0, (int)x1, (int)y1, 255); }
+		}
+	}
+}
+
+static void drawLegacyBlock(int codepoint, const Metrics *m, Canvas *c) {
+	const double eighth = 0.125, quarter = 0.25, threeEighths = 0.375, half = 0.5;
+	const double fiveEighths = 0.625, threeQuarters = 0.75, sevenEighths = 0.875;
+	int cw = (int)m->cellWidth, ch = (int)m->cellHeight;
+	if (codepoint >= 0x1FB70 && codepoint <= 0x1FB75) {
+		double n = (double)(codepoint + 1 - 0x1FB70);
+		fillFractions(m, c, n / 8.0, (n + 1.0) / 8.0, 0.0, 1.0);
+		return;
+	}
+	if (codepoint >= 0x1FB76 && codepoint <= 0x1FB7B) {
+		double n = (double)(codepoint + 1 - 0x1FB76);
+		fillFractions(m, c, 0.0, 1.0, n / 8.0, (n + 1.0) / 8.0);
+		return;
+	}
+	switch (codepoint) {
+	case 0x1FB7C:
+		blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, eighth, 1.0, 255);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_LOWER, 1.0, eighth, 255);
+		break;
+	case 0x1FB7D:
+		blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, eighth, 1.0, 255);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, eighth, 255);
+		break;
+	case 0x1FB7E:
+		blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, eighth, 1.0, 255);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, eighth, 255);
+		break;
+	case 0x1FB7F:
+		blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, eighth, 1.0, 255);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_LOWER, 1.0, eighth, 255);
+		break;
+	case 0x1FB80:
+		blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, eighth, 255);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_LOWER, 1.0, eighth, 255);
+		break;
+	case 0x1FB81:
+		fillFractions(m, c, 0.0, 1.0, 0.0, eighth);
+		fillFractions(m, c, 0.0, 1.0, 2.0 / 8.0, 3.0 / 8.0);
+		fillFractions(m, c, 0.0, 1.0, 4.0 / 8.0, 5.0 / 8.0);
+		fillFractions(m, c, 0.0, 1.0, 7.0 / 8.0, 1.0);
+		break;
+	case 0x1FB82: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, quarter, 255); break;
+	case 0x1FB83: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, threeEighths, 255); break;
+	case 0x1FB84: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, fiveEighths, 255); break;
+	case 0x1FB85: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, threeQuarters, 255); break;
+	case 0x1FB86: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, sevenEighths, 255); break;
+	case 0x1FB87: blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, quarter, 1.0, 255); break;
+	case 0x1FB88: blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, threeEighths, 1.0, 255); break;
+	case 0x1FB89: blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, fiveEighths, 1.0, 255); break;
+	case 0x1FB8A: blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, threeQuarters, 1.0, 255); break;
+	case 0x1FB8B: blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, sevenEighths, 1.0, 255); break;
+	case 0x1FB8C: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, half, 1.0, 0x80); break;
+	case 0x1FB8D: blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, half, 1.0, 0x80); break;
+	case 0x1FB8E: blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, half, 0x80); break;
+	case 0x1FB8F: blockShade(m, c, ALIGN_LEFT, ALIGN_LOWER, 1.0, half, 0x80); break;
+	case 0x1FB90: fillBox(c, 0, 0, cw, ch, 0x80); break;
+	case 0x1FB91:
+		fillBox(c, 0, 0, cw, ch, 0x80);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_UPPER, 1.0, half, 255);
+		break;
+	case 0x1FB92:
+		fillBox(c, 0, 0, cw, ch, 0x80);
+		blockShade(m, c, ALIGN_LEFT, ALIGN_LOWER, 1.0, half, 255);
+		break;
+	case 0x1FB94:
+		fillBox(c, 0, 0, cw, ch, 0x80);
+		blockShade(m, c, ALIGN_RIGHT, ALIGN_UPPER, half, 1.0, 255);
+		break;
+	case 0x1FB95: checkerboard(m, c, 0); break;
+	case 0x1FB96: checkerboard(m, c, 1); break;
+	case 0x1FB97:
+		fillBox(c, 0, ch / 4, cw, 2 * ch / 4, 255);
+		fillBox(c, 0, 3 * ch / 4, cw, ch, 255);
+		break;
+	default:
+		fprintf(stderr, "void2d sprite: U+%04X is in the legacy block range but has no drawing\n",
+			codepoint);
+		abort();
+	}
+}
+
 int void2dSpriteDraw(int id, int cellWidth, int cellHeight, int thickness, uint8_t *canvas,
                      int64_t count) {
 	int codepoint = void2dSpriteCodepoint(id);
@@ -597,15 +1185,23 @@ int void2dSpriteDraw(int id, int cellWidth, int cellHeight, int thickness, uint8
 	m.cellHeight = (unsigned int)cellHeight;
 	m.boxThickness = (unsigned int)thickness;
 	int family = s_ranges[rangeOf(codepoint)].family;
+	s_failed = VOID2D_SPRITE_OK;
+	int status = VOID2D_SPRITE_OK;
 	switch (family) {
-	case FAMILY_BOX: drawBox(codepoint, &m, &c); return VOID2D_SPRITE_OK;
-	case FAMILY_BLOCK: drawBlock(codepoint, &m, &c); return VOID2D_SPRITE_OK;
-	case FAMILY_BRAILLE: return drawBraille(codepoint, &m, &c);
+	case FAMILY_BOX: drawBox(codepoint, &m, &c); break;
+	case FAMILY_BLOCK: drawBlock(codepoint, &m, &c); break;
+	case FAMILY_BRAILLE: status = drawBraille(codepoint, &m, &c); break;
+	case FAMILY_GEOMETRIC: drawGeometric(codepoint, &m, &c); break;
+	case FAMILY_POWERLINE: drawPowerline(codepoint, &m, &c); break;
+	case FAMILY_OCTANT: drawOctant(codepoint, &m, &c); break;
+	case FAMILY_SEXTANT: drawSextant(codepoint, &m, &c); break;
+	case FAMILY_LEGACY_BLOCK: drawLegacyBlock(codepoint, &m, &c); break;
 	default:
 		fprintf(stderr, "void2d sprite: U+%04X belongs to the unknown family %d\n", codepoint,
 			family);
 		abort();
 	}
+	return status != VOID2D_SPRITE_OK ? status : s_failed;
 }
 
 typedef struct {
