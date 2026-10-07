@@ -6,7 +6,18 @@ import {
 	ProgramError,
 	VertexLayout,
 	drawnIn,
+	castIn,
 	declares,
+	textureSlotMask,
+	samplerSlotMask,
+	movingBase,
+	FRAME_UNIFORM_SLOT,
+	FRAME_UNIFORM_LENGTH,
+	MOVING_UV_MATRIX,
+	MOVING_BACK_UV_MATRIX,
+	MOVING_MATERIAL_UNIFORM_LENGTH,
+	MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH,
+	UNLIT_MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_SLOT,
@@ -22,7 +33,7 @@ import {
 import { UNIFORM_SLOTS } from "../gpu/door";
 import { RenderState, BlendMode } from "../gpu/state";
 import { MeshData } from "../void3d/meshData";
-import { Material, Phase, UniformBlock, NO_UNIFORMS } from "../void3d/material";
+import { Material, Phase, UniformBlock, NO_UNIFORMS, movingDefaults } from "../void3d/material";
 import {
 	DrawContext,
 	DrawItem,
@@ -42,7 +53,9 @@ import {
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
 import { added, litShape } from "./drawHelpers";
-import { Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame } from "../void3d/renderer";
+import {
+	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setElapsedTime,
+} from "../void3d/renderer";
 import {
 	POST_UNIFORM_SLOT,
 	POST_UNIFORM_LENGTH,
@@ -136,10 +149,14 @@ function everyKey(): Vec<ProgramKey> {
 			for (const premultiplied of [false, true]) {
 				for (const cutout of [false, true]) {
 					for (const shadowed of [false, true]) {
-						keys.push({
-							program: program, preset: preset,
-							premultiplied: premultiplied, cutout: cutout, shadowed: shadowed,
-						});
+						for (const moving of [0, 1, 2, 3, 4, 5, 6, 7]) {
+							keys.push({
+								program: program, preset: preset,
+								premultiplied: premultiplied, cutout: cutout, shadowed: shadowed,
+								uvTransform: (moving & 1) != 0, backTexture: (moving & 2) != 0,
+								dissolve: (moving & 4) != 0,
+							});
+						}
 					}
 				}
 			}
@@ -150,18 +167,18 @@ function everyKey(): Vec<ProgramKey> {
 
 test "every key packs to bits of its own, and each declared one reads its program's layout" {
 	let seen: Vec<boolean> = [];
-	for (let bits = 0; bits < 512; bits++) { seen.push(false); }
+	for (let bits = 0; bits < 4096; bits++) { seen.push(false); }
 	let declared: int32 = 0;
 	for (const key of everyKey()) {
 		const bits: int32 = key.bits();
-		assert bits >= 0 && bits < 512 && !seen[bits];
+		assert bits >= 0 && bits < 4096 && !seen[bits];
 		seen[bits] = true;
 		if (declares(key)) {
 			declared = declared + 1;
 			assert vertexLayoutOf(key) == layoutFor(key.program);
 		}
 	}
-	assert declared == 37;
+	assert declared == 63;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -520,4 +537,111 @@ test "an unlit material refuses a missing colour block or the old lit block size
 			beginFrame(created.value, items, camera, lights);
 		assert !began.ok && began.error == RendererError.MaterialBlock;
 	}
+}
+
+function featureKeys(program: Program): Vec<ProgramKey> {
+	const plain: ProgramKey = ProgramKey.of(program);
+	return [
+		plain.withUvTransform(), plain.withBackTexture(), plain.withDissolve(),
+		plain.withUvTransform().withBackTexture().withDissolve(),
+	];
+}
+
+function bit(mask: uint32, slot: int32): boolean {
+	return (mask & ((1 as uint32) << (slot as uint32))) != 0;
+}
+
+test "a moving key reads its program's block and the moving floats, and what its features sample" {
+	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
+		const unlit: boolean = program == Program.UnlitTextured;
+		const length: int32 =
+			unlit ? MOVING_UNLIT_MATERIAL_UNIFORM_LENGTH : MOVING_MATERIAL_UNIFORM_LENGTH;
+		assert movingBase(ProgramKey.of(program)) ==
+			(unlit ? UNLIT_MATERIAL_UNIFORM_LENGTH : MATERIAL_UNIFORM_LENGTH);
+		for (const preset of [Preset.Core, Preset.PixelArt]) {
+			const plain: ProgramKey = drawnAs(ProgramKey.of(program), preset);
+			for (const feature of featureKeys(program)) {
+				const key: ProgramKey = drawnAs(feature, preset);
+				assert key.moves() && vertexLayoutOf(key) == vertexLayoutOf(plain);
+				assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == length;
+				const frame: int32 = uniformBlockLength(key, FRAME_UNIFORM_SLOT);
+				assert frame == (key.uvTransform ? FRAME_UNIFORM_LENGTH : 0);
+				assert uniformBlockLength(key, VERTEX_UNIFORM_SLOT) ==
+					uniformBlockLength(plain, VERTEX_UNIFORM_SLOT);
+				assert uniformBlockLength(key, LIGHT_UNIFORM_SLOT) ==
+					uniformBlockLength(plain, LIGHT_UNIFORM_SLOT);
+				const views: uint32 = textureSlotMask(key);
+				const samplers: uint32 = samplerSlotMask(key);
+				assert bit(views, 0) && bit(samplers, 0);
+				assert bit(views, 1) == key.backTexture;
+				assert bit(views, 2) == key.dissolve && bit(samplers, 1) == key.dissolve;
+				if (!unlit) {
+					const shadowed: Result<ProgramKey, ProgramError> = drawnIn(
+						{ ...feature, shadowed: true }, preset, true,
+					);
+					assert shadowed.ok;
+				}
+			}
+		}
+	}
+}
+
+test "a caster keeps a dissolve and leaves the UV features to a cut" {
+	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
+		const dissolve: Result<ProgramKey, ProgramError> =
+			castIn(ProgramKey.of(program).withDissolve().withUvTransform());
+		assert dissolve.ok;
+		if (dissolve.ok) {
+			assert dissolve.value.dissolve && !dissolve.value.uvTransform;
+			assert uniformBlockLength(dissolve.value, MATERIAL_UNIFORM_SLOT) ==
+				uniformBlockLength(ProgramKey.of(program).withDissolve(), MATERIAL_UNIFORM_SLOT);
+			assert bit(textureSlotMask(dissolve.value), 2);
+		}
+		const moved: Result<ProgramKey, ProgramError> =
+			castIn(ProgramKey.of(program).withUvTransform().withBackTexture());
+		assert moved.ok;
+		if (moved.ok) { assert !moved.value.moves(); }
+		const cut: Result<ProgramKey, ProgramError> =
+			castIn(ProgramKey.of(program).withCutout().withUvTransform());
+		assert !cut.ok && cut.error == ProgramError.NotDrawn;
+	}
+}
+
+test "movingDefaults makes both UV transforms the identity and leaves every other float 0" {
+	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
+		const key: ProgramKey = ProgramKey.of(program).withDissolve();
+		const values: Vec<float32> = movingDefaults(key);
+		assert (values.length as int32) == uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
+		const base: int32 = movingBase(key);
+		let ones: int32 = 0;
+		for (let i = 0; i < (values.length as int32); i++) {
+			if (values[i] == 1.0) { ones = ones + 1; } else { assert values[i] == 0.0; }
+		}
+		assert ones == 4;
+		for (const matrix of [base + MOVING_UV_MATRIX, base + MOVING_BACK_UV_MATRIX]) {
+			assert values[matrix] == 1.0 && values[matrix + 1] == 0.0;
+			assert values[matrix + 2] == 0.0 && values[matrix + 3] == 1.0;
+		}
+	}
+}
+
+test "the core owns a frame block and asks for frames while time passes under a key reading it" {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	let core: Renderer = created.value;
+	assert core.frameBlock.slot == FRAME_UNIFORM_SLOT;
+	assert core.frameBlock.length == FRAME_UNIFORM_LENGTH;
+	assert context.uniforms.used == RENDERER_UNIFORM_LENGTH;
+	const released: Result<int32, UniformError> = releaseUniforms(context, core.frameBlock);
+	assert !released.ok && released.error == UniformError.Owned;
+	assert core.time == 0.0 && core.elapsedTime == 0.0;
+	core.changed = false;
+	setElapsedTime(core, 0.25);
+	assert core.elapsedTime == 0.25 && !core.needsFrame();
+	core.readsTime = true;
+	assert core.needsFrame();
+	setElapsedTime(core, 0.0);
+	assert !core.needsFrame();
 }

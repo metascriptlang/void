@@ -1,15 +1,21 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3, quatBetween } from "../../src/math/math3d";
-import { Material, MaterialKind, ShadowCasting, UniformBlock } from "../../src/void3d/material";
-import { MeshData, MeshError, Rgba, addQuad } from "../../src/void3d/meshData";
 import {
-	Program, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
-	LIGHT_UNIFORM_LENGTH,
+	Material, MaterialKind, ShadowCasting, UniformBlock, movingDefaults,
+} from "../../src/void3d/material";
+import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/void3d/meshData";
+import {
+	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_LENGTH, MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_DISSOLVE_THRESHOLD, movingBase,
+	makeImage,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
-	addMeshData, addMaterial, reserveUniforms, writeUniforms,
+	addMeshData, addMaterial, addTexture, reserveUniforms, writeUniforms,
 } from "../../src/void3d/draw";
+import { TextureId, TextureUploadError } from "../../src/void3d/texture";
+import { FilterMode, Wrap } from "../../src/gpu/state";
+import { makeTextureView, makeSampler } from "../../src/gpu/door";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, LightKind, LightInstance, LightError,
@@ -45,6 +51,9 @@ enum Case {
 	ReceiveOff,
 	ShadowOnly,
 	HalfOpacity,
+	// The caster dissolves its left half (M36); the control keeps the dissolve off.
+	Dissolve,
+	DissolveControl,
 }
 
 const WIDTH: int32 = 320;
@@ -64,7 +73,7 @@ let pixelArt: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PIXEL_ART", 0) != 0;
 let shadowCase: Case = voidCaptureEnvInt("VOID_DIR_SHADOW_CASE", 0) as Case;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH +
-	2 * MATERIAL_UNIFORM_LENGTH,
+	2 * MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward();
@@ -141,6 +150,51 @@ function horizontal(half: float32, y: float32, color: Rgba, made: MaterialId): v
 	if (!placed.ok) { unreachable; }
 }
 
+// A LitTextured caster whose noise is low on its left half: a dissolve at 0.5 removes that half.
+function dissolvingCaster(): void {
+	const key: ProgramKey = shadowCase == Case.Dissolve ?
+		ProgramKey.of(Program.LitTextured).withDissolve() : ProgramKey.of(Program.LitTextured);
+	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
+	if (key.dissolve) {
+		values = movingDefaults(key);
+		values[0] = 4.0;
+		values[movingBase(key) + MOVING_DISSOLVE_THRESHOLD] = 0.5;
+	}
+	const reserved: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, values.length as int32);
+	if (!reserved.ok) { unreachable; }
+	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
+	const white: Result<TextureId, TextureUploadError> = addTexture(context, {
+		pixels: [0xFFFFFFFF], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
+	});
+	if (!white.ok) { unreachable; }
+	const noise: Vec<uint32> = [0xFF000033, 0xFF0000CC];
+	const lit: Material = Material.ofKind(Program.LitTextured, MaterialKind.Opaque);
+	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...lit,
+		program: { ...key, shadowed: true },
+		texture: white.value,
+		texture2: makeTextureView(makeImage(noise, 2, 1)),
+		sampler1: makeSampler(FilterMode.Nearest, Wrap.Clamp),
+		uniforms: reserved.value,
+	});
+	if (!added.ok) { fail(`the caster was refused: ${added.error.toString()}`); }
+	if (!added.ok) { return; }
+	let mesh: MeshData = MeshData.withUvs();
+	const half: float32 = CASTER_HALF;
+	const y: float32 = CASTER_HEIGHT;
+	const built: Result<int32, MeshError> = addTexturedQuad(
+		mesh, vec3(-half, y, half), vec3(half, y, half), vec3(half, y, -half),
+		vec3(-half, y, -half), vec3(0.0, 1.0, 0.0), RED,
+	);
+	if (!built.ok) { unreachable; }
+	const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, mesh);
+	if (!uploaded.ok) { unreachable; }
+	const placed: Result<NodeId3D, SceneError> =
+		addMeshNode(scene, scene.rootId(), Transform3D.identity(), uploaded.value, added.value);
+	if (!placed.ok) { unreachable; }
+}
+
 function init(): void {
 	if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
 	gfxSetup();
@@ -151,9 +205,15 @@ function init(): void {
 		Case.ReceiveOff => ShadowCasting.On,
 		Case.ShadowOnly => ShadowCasting.Only,
 		Case.HalfOpacity => ShadowCasting.On,
+		Case.Dissolve => ShadowCasting.On,
+		Case.DissolveControl => ShadowCasting.On,
 	};
 	horizontal(GROUND_HALF, 0.0, WHITE, material(ShadowCasting.On, shadowCase != Case.ReceiveOff));
-	horizontal(CASTER_HALF, CASTER_HEIGHT, RED, material(casting, true));
+	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl) {
+		dissolvingCaster();
+	} else {
+		horizontal(CASTER_HALF, CASTER_HEIGHT, RED, material(casting, true));
+	}
 	const sun: LightInstance = {
 		kind: LightKind.Directional, color: vec3(1.0, 1.0, 1.0),
 		radius: 0.0, power: 1.0, priority: 0,
@@ -192,7 +252,25 @@ function green(rgb: int64): int64 {
 	return (rgb >> 8) & 0xFF;
 }
 
+// The sun moves a shadow 0.5 toward -x per unit of height: the caster's left half shades the
+// ground over x in [-1, -0.5], its right half over [-0.5, 0].
+function checkDissolve(view: CameraView): void {
+	const gone: int64 = rgbAt(view, vec3(-0.75, 0.0, 0.0));
+	const kept: int64 = rgbAt(view, vec3(-0.25, 0.0, 0.0));
+	const keptTop: int64 = rgbAt(view, vec3(0.25, CASTER_HEIGHT, 0.0));
+	const goneTop: int64 = rgbAt(view, vec3(-0.25, CASTER_HEIGHT, 0.0));
+	console.log(`dir shadow: dissolved ${gone}, kept ${kept}, tops ${goneTop} ${keptTop}`);
+	if (green(gone) < 240) { fail(`the dissolved half still cast a shadow: ${gone}`); }
+	if (green(kept) > 100) { fail(`the kept half cast no shadow: ${kept}`); }
+	if ((keptTop >> 16) < 200 || green(keptTop) > 60) { fail(`the kept half drew ${keptTop}`); }
+	if ((goneTop >> 16) > 200 && green(goneTop) < 60) { fail("the dissolved half drew red"); }
+}
+
 function check(view: CameraView): void {
+	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl) {
+		checkDissolve(view);
+		return;
+	}
 	const under: int64 = rgbAt(view, vec3(-0.5, 0.0, 0.0));
 	const open: int64 = rgbAt(view, vec3(1.8, 0.0, 0.0));
 	const top: int64 = rgbAt(view, vec3(0.0, CASTER_HEIGHT, 0.0));

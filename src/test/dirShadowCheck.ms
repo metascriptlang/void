@@ -236,9 +236,9 @@ test "a frame with a shadow map refuses a caster with no shadow output before it
 	assert created.ok && map.ok;
 	if (!created.ok || !map.ok) { return; }
 	let core: Renderer = created.value;
-	assert core.sceneGlobals.length == 2;
+	assert core.sceneGlobals.length == 3 && core.sceneGlobals[2] == core.frameBlock;
 	attachShadow(core, map.value);
-	assert core.sceneGlobals.length == 3 && core.sceneGlobals[2] == map.value.shadowBlock;
+	assert core.sceneGlobals.length == 4 && core.sceneGlobals[3] == map.value.shadowBlock;
 	const block: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
@@ -261,5 +261,5 @@ test "a frame with a shadow map refuses a caster with no shadow output before it
 	assert !began.ok && began.error == RendererError.ProgramNotCast;
 	assert context.uniforms.values[core.cameraBlock.offset] == 0.0 && core.generation == 0;
 	attachShadow(core, null);
-	assert core.sceneGlobals.length == 2;
+	assert core.sceneGlobals.length == 3;
 }

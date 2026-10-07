@@ -979,7 +979,7 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/cameraCheck.ms src/test/pickCheck.ms
 	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
-	src/test/programKeyCheck.ms"
+	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms"
 
 run_style() {
 	long=$(
@@ -1974,8 +1974,46 @@ run_sort_layer() {
 	pass "sort-layer: lower layers draw first in the opaque and alpha lists of both presets; the control does not"
 }
 
-# Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control.
-DIR_SHADOW_CASES="0 2 3 4 5"
+run_moving_material() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "moving-material: GATE_SKIP_CAPTURE=1 — no moving material was read back"
+		return
+	fi
+	exe="$WORK/movingMaterial.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/movingMaterial.ms --output="$exe" \
+		> "$WORK/movingMaterial.build.log" 2>&1; then
+		fail "moving-material: tests/integration/movingMaterial.ms does not build — see $WORK/movingMaterial.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_MOVING_PIXEL_ART=$preset "$exe" > "$WORK/movingMaterial.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "moving-material: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS moving material: ' "$WORK/movingMaterial.$preset.log"; then
+			fail "moving-material: preset $preset (exit $status) — see $WORK/movingMaterial.$preset.log"
+			return
+		fi
+		status=0
+		VOID_MOVING_PIXEL_ART=$preset VOID_MOVING_CONTROL=1 "$exe" \
+			> "$WORK/movingMaterial.control.$preset.log" 2>&1 || status=$?
+		for message in 'did not move with the time' 'not its mirrored back texture' \
+			'the dissolved half drew' 'not its edge colour' 'the lit dissolved half drew'; do
+			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/movingMaterial.control.$preset.log"; then
+				fail "moving-material: the featureless control in preset $preset did not fail on '$message' (exit $status)"
+				return
+			fi
+		done
+	done
+	pass "moving-material: UV scroll on the frame time, a mirrored back texture and a dissolve with its edge band in both presets; the featureless control fails on each"
+}
+
+# Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
+# 7 (DissolveControl) the control of 6 (Dissolve).
+DIR_SHADOW_CASES="0 2 3 4 5 6"
 
 run_dir_shadow() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -2009,8 +2047,16 @@ run_dir_shadow() {
 			fail "dir-shadow: the detached control in preset $preset still darkened the ground (exit $status)"
 			return
 		fi
+		status=0
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=7 "$exe" \r
+			> "$WORK/dirShadow.dissolveControl.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] ||
+			! grep -q 'dissolved half still cast' "$WORK/dirShadow.dissolveControl.$preset.log"; then
+			fail "dir-shadow: the undissolved control in preset $preset did not shade under its left half (exit $status)"
+			return
+		fi
 	done
-	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only and half opacity hold; the detached control does not shade"
+	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only, half opacity and a dissolving caster hold; the detached and undissolved controls fail"
 }
 
 run_reparent() {
@@ -2391,6 +2437,7 @@ run_mrt_blend
 run_alpha_kill
 run_sort_layer
 run_dir_shadow
+run_moving_material
 run_camera_rig
 run_reparent
 run_gltf
