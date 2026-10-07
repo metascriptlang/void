@@ -144,13 +144,33 @@ Guardrail 9 is "same pixels on every platform", and today it is measured on two 
 | backend:webgpu | T2 | needs `copyTextureToBuffer` + `mapAsync` (~60 lines plus a JS hand-off) and a headed browser, since headless Chrome hands WebGPU no adapter on this box; the WebGL2 driver in `scripts/webGolden.mjs` is the template. Moved at P3's review | P6 | 2026-09-24 |
 | conformance:webgl2-pixel-centre | T2 | first WebGL2 conformance run, P3 step 8 (`sh scripts/golden-web.sh`): 65 / 69 against the D3D11 goldens. `prim/strokeRect`, `prim/polygonBezier`, `prim/patterns` and `xform/scale` differ structurally (max delta 179-224, one-pixel moves of horizontal edges and hatch lines): the mesh path puts edges and pattern thresholds exactly on pixel centres, and GL's bottom-left window origin breaks those ties on the other side of the top-left rule. No budget, by the guardrail 9 rule. Proposed root fix: bias mesh geometry by -1/64 px in x and y in device space, which keeps D3D11's tie results and gives GL the same | P6 | 2026-09-24 |
 
-## Oracles not wired
+## Shaping oracle divergences
 
-[docs/TESTING.md](../docs/TESTING.md) "T3" lists these as "wire it"; P2's rounded-rect and shadow coverage oracles and P3's fontTools metrics and HarfBuzz kerning subset already run in every gate.
+`src/test/shapeOracleCheck.ms` reads a row `shape:<id>` here as a listed difference in glyph
+count, glyph ids, advances, offsets or run direction, and a row `shape-cluster:<id>` as a listed
+difference in the cluster index alone, from `tests/oracle/shapeFull.json`
+([docs/TESTING.md](../docs/TESTING.md) "T3"). The rows are `tests/oracle/shape.cases`. A listed row
+that agrees fails the run; an unlisted row that differs fails it.
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| oracle:harfbuzz-full | T3 | the full shaping oracle | P6 | 2026-09-20 |
+| shape:inter-mark-pair | T3 | `o` U+0302 U+0323 in Inter: HarfBuzz composes the three codepoints to one glyph, kb_text_shape keeps the base and a mark with a GPOS offset (two glyphs) | P6 | 2026-10-07 |
+| shape-cluster:devanagari-0 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:devanagari-1 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:devanagari-2 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:devanagari-3 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:devanagari-4 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:devanagari-5 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:devanagari-6 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:thai-variable-0 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:thai-variable-2 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:thai-variable-3 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:thai-variable-4 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:thai-variable-kern-off | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:khmer-0 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:khmer-1 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:khmer-2 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
+| shape-cluster:khmer-3 | T3 | kb_text_shape gives every glyph its own codepoint's index, HarfBuzz (cluster level 0) gives a mark or a reordered vowel its base's; glyph ids, advances and offsets agree | P6 | 2026-10-07 |
 
 ## macOS and compiler gaps (msc e5e932d0)
 

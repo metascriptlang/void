@@ -56,6 +56,7 @@ import "./layoutCheck";
 import "./billboardCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
+	import "./shapeOracleCheck";
 }
 when (voidProfiler) {
 	import "./profilerCheck";

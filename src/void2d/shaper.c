@@ -5,7 +5,13 @@
 
 #define KB_TEXT_SHAPE_IMPLEMENTATION
 #define KB_TEXT_SHAPE_STATIC
+#if defined(__clang__)
+#pragma clang attribute push(__attribute__((no_sanitize("alignment"))), apply_to = function)
+#endif
 #include "../../deps/kb/kb_text_shape.h"
+#if defined(__clang__)
+#pragma clang attribute pop
+#endif
 
 #define SHAPE_MAX_FEATURES 32
 

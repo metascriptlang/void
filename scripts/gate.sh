@@ -528,6 +528,20 @@ for oracle in "fontTools metrics" "HarfBuzz kerning"; do
 		*) fail "font oracle: $oracle printed no verdict — see out/gate-t0.log" ;;
 	esac
 done
+# The full shaping oracle runs in the all-modules T0 stage, because it needs -d:voidShaper. Every
+# row that is not an exact agreement must be a PENDING row, so listed == total - agreeing.
+shapeLine=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0-modules.log | grep -E '^shape oracle: HarfBuzz full ' | tail -1)
+shapeNumbers=$(echo "$shapeLine" | sed -nE 's|^shape oracle: HarfBuzz full ([0-9]+)/([0-9]+) rows agree, [0-9]+/[0-9]+ on glyphs, advances and offsets, ([0-9]+) listed.*|\1 \2 \3|p')
+if [ -n "$shapeNumbers" ]; then
+	set -- $shapeNumbers
+	if [ "$(( $2 - $1 ))" -eq "$3" ]; then
+		pass "${shapeLine#shape oracle: }"
+	else
+		fail "shape oracle: $2 rows, $1 agree, $3 listed in tests/PENDING.md — every other row must be listed — see out/gate-t0-modules.log"
+	fi
+else
+	fail "shape oracle: printed no verdict in the all-modules stage — see out/gate-t0-modules.log"
+fi
 for oracle in GraphemeBreakTest LineBreakTest; do
 	ucd=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E "^ucd oracle: $oracle " | tail -1)
 	rows=$(echo "$ucd" | sed -nE 's|^ucd oracle: [A-Za-z]+ ([0-9]+)/([0-9]+) rows.*|\1 \2|p')

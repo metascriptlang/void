@@ -1,0 +1,80 @@
+# Rows of the full shaping oracle (docs/TESTING.md T3, "Shaping"). Data only: the expected
+# answer is not here. `python tests/oracle/fonts.py regen` shapes each row with HarfBuzz
+# (uharfbuzz) into tests/oracle/shapeFull.json, and src/test/shapeOracleCheck.ms shapes the same
+# row through the kb_text_shape bridge and compares.
+#
+# One row per line, fields separated by a tab: id, font, direction (auto, ltr or rtl),
+# features, text. Features are `-` for the font's defaults, else space-separated tokens:
+# `-tag` turns a feature off, `+tag` on, `tag=N` sets a value. In the text, `\uXXXX` is a
+# codepoint, so a combining mark stays visible in review.
+#
+# A row whose answer kb_text_shape does not give as HarfBuzz does is listed in tests/PENDING.md
+# as `shape:<id>`; nothing is dropped from here to make the count prettier.
+fixture-liga	tests/fonts/shapeFixture.ttf	auto	-	fi
+fixture-liga-in-word	tests/fonts/shapeFixture.ttf	auto	-	fib
+fixture-liga-second-f	tests/fonts/shapeFixture.ttf	auto	-	ffi
+fixture-liga-off	tests/fonts/shapeFixture.ttf	auto	-liga	fib
+fixture-calt	tests/fonts/shapeFixture.ttf	auto	-	ab
+fixture-calt-off	tests/fonts/shapeFixture.ttf	auto	-calt	ab
+fixture-calt-run	tests/fonts/shapeFixture.ttf	auto	-	aab
+fixture-kern	tests/fonts/shapeFixture.ttf	auto	-	AV
+fixture-kern-off	tests/fonts/shapeFixture.ttf	auto	-kern	AV
+fixture-ccmp-decompose	tests/fonts/shapeFixture.ttf	auto	-	\u00e9
+fixture-ccmp-off	tests/fonts/shapeFixture.ttf	auto	-ccmp	\u00e9
+fixture-mark-offset	tests/fonts/shapeFixture.ttf	auto	-	e\u0301
+fixture-mark-off	tests/fonts/shapeFixture.ttf	auto	-mark	e\u0301
+fixture-sentence	tests/fonts/shapeFixture.ttf	auto	-	fib ab AV \u00e9 e\u0301 fi
+inter-latin-0	assets/font.ttf	auto	-	AV
+inter-latin-1	assets/font.ttf	auto	-	AVA
+inter-latin-2	assets/font.ttf	auto	-	To Ty Wa Yo
+inter-latin-3	assets/font.ttf	auto	-	Hello, World
+inter-latin-4	assets/font.ttf	auto	-	The quick brown fox jumps over the lazy dog
+inter-latin-5	assets/font.ttf	auto	-	fn main() { return 42; }
+inter-arrow	assets/font.ttf	auto	-	->
+inter-code-symbols	assets/font.ttf	auto	-	a != b && c >= d -> e => f == g;
+inter-code-symbols-calt-off	assets/font.ttf	auto	-calt	a != b && c >= d -> e => f == g;
+inter-case-and-digits	assets/font.ttf	auto	-	The quick brown fox 12:30 (A) [B] x*y 1x2 www
+inter-arrows-words	assets/font.ttf	auto	-	Hello, World -> <- => +/-
+inter-fi-fl	assets/font.ttf	auto	-	fi fl ffi office
+inter-no-features	assets/font.ttf	auto	-liga -calt -ccmp -locl -rlig -rclt -clig -dlig	a != b -> c
+inter-kern-off	assets/font.ttf	auto	-kern	AVA To
+inter-mark-pair	assets/font.ttf	auto	-	o\u0302\u0323
+inter-accent-compose	assets/font.ttf	auto	-	e\u0301 a\u0300 n\u0303
+noto-sc-hanzi	tests/fonts/NotoSansSC-subset.ttf	auto	-	你好世界
+noto-sc-mixed	tests/fonts/NotoSansSC-subset.ttf	auto	-	AV To，。（）
+cascadia-lig-0	tests/fonts/cascadiaSubset.ttf	auto	-	->
+cascadia-lig-1	tests/fonts/cascadiaSubset.ttf	auto	-	!=
+cascadia-lig-2	tests/fonts/cascadiaSubset.ttf	auto	-	==
+cascadia-lig-3	tests/fonts/cascadiaSubset.ttf	auto	-	=>
+cascadia-lig-4	tests/fonts/cascadiaSubset.ttf	auto	-	www
+cascadia-lig-5	tests/fonts/cascadiaSubset.ttf	auto	-	::
+cascadia-lig-6	tests/fonts/cascadiaSubset.ttf	auto	-	<=
+cascadia-lig-7	tests/fonts/cascadiaSubset.ttf	auto	-	/*
+cascadia-lig-8	tests/fonts/cascadiaSubset.ttf	auto	-	//
+cascadia-lig-9	tests/fonts/cascadiaSubset.ttf	auto	-	|>
+cascadia-sentence	tests/fonts/cascadiaSubset.ttf	auto	-	a != b && c >= d -> e => f == g; /* x */ // y
+cascadia-sentence-calt-off	tests/fonts/cascadiaSubset.ttf	auto	-calt	a != b && c >= d -> e => f == g; /* x */ // y
+cascadia-zero	tests/fonts/cascadiaSubset.ttf	auto	+zero	0 10 -> 0
+devanagari-0	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	कि हिन्दी क्षत्रिय
+devanagari-1	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	नमस्ते
+devanagari-2	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	विद्यार्थी
+devanagari-3	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	कर्म
+devanagari-4	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	पुस्तकालय
+devanagari-5	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	ज्ञान
+devanagari-6	tests/fonts/notoSansDevanagariSubset.ttf	auto	-	श्रीमान्
+thai-variable-0	tests/fonts/notoSansThaiSubset.ttf	auto	-	สวัสดี
+thai-variable-1	tests/fonts/notoSansThaiSubset.ttf	auto	-	ประเทศไทย
+thai-variable-2	tests/fonts/notoSansThaiSubset.ttf	auto	-	ที่นี่
+thai-variable-3	tests/fonts/notoSansThaiSubset.ttf	auto	-	ก้า
+thai-variable-4	tests/fonts/notoSansThaiSubset.ttf	auto	-	น้ำ
+thai-variable-kern-off	tests/fonts/notoSansThaiSubset.ttf	auto	-kern	สวัสดี
+khmer-0	tests/fonts/notoSansKhmerSubset.ttf	auto	-	ខ្ញុំ
+khmer-1	tests/fonts/notoSansKhmerSubset.ttf	auto	-	កម្ពុជា
+khmer-2	tests/fonts/notoSansKhmerSubset.ttf	auto	-	ស្រុក
+khmer-3	tests/fonts/notoSansKhmerSubset.ttf	auto	-	ភាសាខ្មែរ
+arabic-rtl-0	tests/fonts/notoSansArabicSubset.ttf	auto	-	مرحبا
+arabic-rtl-1	tests/fonts/notoSansArabicSubset.ttf	auto	-	السلام عليكم
+arabic-rtl-2	tests/fonts/notoSansArabicSubset.ttf	auto	-	لا
+arabic-rtl-3	tests/fonts/notoSansArabicSubset.ttf	auto	-	كتاب
+arabic-rtl-4	tests/fonts/notoSansArabicSubset.ttf	auto	-	محمد
+arabic-rtl-explicit	tests/fonts/notoSansArabicSubset.ttf	rtl	-	مرحبا

@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 
 import fontTools
@@ -136,6 +137,80 @@ def shape(path, text):
     return {"path": path, "text": text, "unitsPerEm": face.upem, "glyphs": glyphs, "x": xs}
 
 
+SHAPE_CASES = "tests/oracle/shape.cases"
+DIRECTIONS = {"auto": 0, "ltr": 1, "rtl": 2}
+
+
+def unescape(text):
+    return re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
+
+
+def readCases(path):
+    rows = []
+    with open(path, encoding="utf-8") as source:
+        for line in source:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            ident, font, direction, features, text = line.split("\t")
+            if direction not in DIRECTIONS:
+                sys.exit(f"{path}: {ident}: direction {direction} is not auto, ltr or rtl")
+            rows.append((ident, font, direction, features, unescape(text)))
+    ids = [row[0] for row in rows]
+    if len(set(ids)) != len(ids):
+        sys.exit(f"{path}: an id appears twice")
+    return rows
+
+
+def parseFeatures(spec):
+    out = []
+    if spec == "-":
+        return out
+    for token in spec.split():
+        if token.startswith("-"):
+            out.append([token[1:], 0])
+        elif token.startswith("+"):
+            out.append([token[1:], 1])
+        elif "=" in token:
+            tag, value = token.split("=")
+            out.append([tag, int(value)])
+        else:
+            sys.exit(f"feature token {token!r} is not -tag, +tag or tag=N")
+    return out
+
+
+def shapeFull(ident, path, direction, spec, text):
+    blob = hb.Blob.from_file_path(path)
+    face = hb.Face(blob)
+    font = hb.Font(face)
+    codepoints = [ord(c) for c in text]
+    cmap = TTFont(path).getBestCmap()
+    missing = [hex(c) for c in codepoints if c not in cmap]
+    if missing:
+        sys.exit(f"{SHAPE_CASES}: {ident}: {path} has no glyph for {missing}")
+    features = parseFeatures(spec)
+    buffer = hb.Buffer()
+    buffer.add_codepoints(codepoints)
+    buffer.guess_segment_properties()
+    if direction != "auto":
+        buffer.direction = direction
+    hb.shape(font, buffer, {tag: value for tag, value in features})
+    glyphs = []
+    for info, pos in zip(buffer.glyph_infos, buffer.glyph_positions):
+        glyphs.append([info.codepoint, info.cluster, pos.x_advance, pos.y_advance,
+                       pos.x_offset, pos.y_offset])
+    return {
+        "id": ident,
+        "path": path,
+        "codepoints": codepoints,
+        "features": features,
+        "direction": DIRECTIONS[direction],
+        "runDirection": buffer.direction,
+        "unitsPerEm": face.upem,
+        "glyphs": glyphs,
+    }
+
+
 COVERAGE_FONTS = [
     "assets/font.ttf",
     "tests/fonts/NotoSansSC-subset.ttf",
@@ -218,6 +293,12 @@ if __name__ == "__main__":
         "harfbuzz": hb.version_string(),
         "features": "every GSUB feature off, kern on",
         "rows": [shape(path, text) for path, text in SHAPE_ROWS],
+    })
+    write("tests/oracle/shapeFull.json", {
+        "generator": "python tests/oracle/fonts.py regen",
+        "harfbuzz": hb.version_string(),
+        "features": "the font's defaults plus each row's overrides, from tests/oracle/shape.cases",
+        "rows": [shapeFull(*row) for row in readCases(SHAPE_CASES)],
     })
     write("tests/oracle/coverage.json", {
         "generator": "python tests/oracle/fonts.py regen",
