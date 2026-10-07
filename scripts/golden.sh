@@ -21,6 +21,7 @@ MSC="${MSC:-msc}"
 BACKEND_DIR=d3d11
 RUNNER=out/goldenRunner.exe
 COMPARE=out/goldenCompare.exe
+GOLDEN_DEFINES="${GOLDEN_DEFINES--d:voidSdfText}"
 
 mode=all
 filters=""
@@ -53,7 +54,7 @@ build() {
 	# regress/vertexCap panics on the sg_append_buffer overflow, and every filter row trips
 	# `!_sg.cur_pass.valid`. A golden records what the renderer draws; the validation layer
 	# is a separate check, and tests/PENDING.md carries what it says.
-	"$MSC" build tests/golden/runner.ms --release --output="$RUNNER" >/dev/null
+	"$MSC" build $GOLDEN_DEFINES tests/golden/runner.ms --release --output="$RUNNER" >/dev/null
 	"$MSC" build tests/golden/compare.ms --output="$COMPARE" >/dev/null
 }
 

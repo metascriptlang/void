@@ -41,6 +41,12 @@ import {
 	MANY_TARGETS_EXTENT,
 	EFFECT_UI_SCENE,
 	EFFECT_UI_SHIFT,
+	SDF_EFFECT_SCENE,
+	SDF_EFFECT_SHIFT,
+	SDF_EFFECT_Y,
+	SDF_EFFECT_ADD_Y,
+	SDF_BG_X,
+	SDF_BG_Y,
 } from "./table";
 import { TextLayout, Align } from "../../src/void2d/textLayout";
 import { DEFAULT_FONT } from "../../src/void2d/font";
@@ -376,6 +382,62 @@ function uiEffectIsLuma(): int32 {
 	return 0;
 }
 
+const SDF_EFFECT_TOLERANCE: int32 = 1;
+const SDF_EFFECT_BAND_H: int32 = 90;
+
+function sdfEffectMatchesPlain(): int32 {
+	const override: string = env.get("VOID_SDF_EFFECT_CAPTURE");
+	const path: string = override.equals("")
+		? `tests/golden/d3d11/${SDF_EFFECT_SCENE}.png`
+		: override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${SDF_EFFECT_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const shift: int32 = SDF_EFFECT_SHIFT as int32;
+	const bandTop: int32 = (SDF_EFFECT_Y as int32) - 20;
+	const bandBottom: int32 = bandTop + SDF_EFFECT_BAND_H;
+	let inked: int32 = 0;
+	let differ: int32 = 0;
+	let worst: int32 = 0;
+	for (let y: int32 = bandTop; y < bandBottom; y++) {
+		for (let x: int32 = 0; x < shift; x++) {
+			for (let channel: int32 = 0; channel < 3; channel++) {
+				const plain: int32 = voidPngPixel(SLOT, x, y, channel);
+				const keyed: int32 = voidPngPixel(SLOT, x + shift, y, channel);
+				const clear: int32 = voidPngPixel(SLOT, SDF_BG_X, SDF_BG_Y, channel);
+				if (plain != clear) { inked = inked + 1; }
+				const delta: int32 = Math.abs(plain - keyed) as int32;
+				if (delta > SDF_EFFECT_TOLERANCE) { differ = differ + 1; }
+				if (delta > worst) { worst = delta; }
+			}
+		}
+	}
+	let plainRed: int32 = 0;
+	let tintedRed: int32 = 0;
+	const addOffset: int32 = (SDF_EFFECT_ADD_Y - SDF_EFFECT_Y) as int32;
+	for (let y: int32 = bandTop; y < bandBottom; y++) {
+		for (let x: int32 = 0; x < shift; x++) {
+			plainRed = plainRed + voidPngPixel(SLOT, x, y, 0);
+			tintedRed = tintedRed + voidPngPixel(SLOT, x, y + addOffset, 0);
+		}
+	}
+	if (inked < 600 || differ > 0 || tintedRed <= plainRed) {
+		console.log(
+			`FAIL ${SDF_EFFECT_SCENE}: a rotated label under a never-matching colour key is off ` +
+			`its plain twin by more than ${SDF_EFFECT_TOLERANCE} in ${differ} channel values ` +
+			`(worst ${worst}, ${inked} inked), or its colorAdd copy is not redder ` +
+			`(${tintedRed} against ${plainRed})`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${SDF_EFFECT_SCENE}: the Vertex program draws the SDF label as the UI ` +
+		`program does, worst ${worst} (${inked} inked channel values), the colorAdd copy redder`,
+	);
+	return 0;
+}
+
 process.exit(
 	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
 	premultipliedMatchesStraight(
@@ -383,5 +445,6 @@ process.exit(
 	) +
 	premultipliedMatchesStraight(PREMULTIPLIED_STYLE_SCENE, "VOID_PREMULTIPLIED_STYLE_CAPTURE", 1) +
 	everyTargetFiltered() +
-	uiEffectIsLuma(),
+	uiEffectIsLuma() +
+	sdfEffectMatchesPlain(),
 );

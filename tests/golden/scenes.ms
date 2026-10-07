@@ -76,6 +76,10 @@ import {
 	PREMULTIPLIED_ROW_STEP,
 	MANY_TARGETS_COUNT, MANY_TARGETS_COLUMNS, MANY_TARGETS_STEP, MANY_TARGETS_ORIGIN,
 	EFFECT_UI_SHIFT,
+	SdfLabelCase, sdfLabelCases,
+	SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,
+	SDF_EFFECT_SHIFT, SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, SDF_EFFECT_X, SDF_EFFECT_Y,
+	SDF_EFFECT_ROTATION, SDF_EFFECT_ADD_Y, SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B,
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
 import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
@@ -1279,6 +1283,37 @@ function primEffectOnUi(): Scene2D {
 	return s;
 }
 
+function sdfText(scene: string): Scene2D {
+	const s = Scene2D.create(DARK);
+	const color: Color = rgba(SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B, 1.0);
+	for (const c of sdfLabelCases()) {
+		if (c.scene != scene) { continue; }
+		const label = s.label(c.text, c.size, color).at(c.x, c.y);
+		s.add(label.setRotation(c.rotation).setScale(c.zoom));
+	}
+	return s;
+}
+
+function textSdfRotated(): Scene2D { return sdfText(SDF_ROTATED_SCENE); }
+function textSdfZoom4(): Scene2D { return sdfText(SDF_ZOOM_SCENE); }
+function textSdfScaleDown(): Scene2D { return sdfText(SDF_SCALE_DOWN_SCENE); }
+
+function textSdfColorEffect(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const color: Color = rgba(SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B, 1.0);
+	const plain = s.label(SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, color).at(SDF_EFFECT_X, SDF_EFFECT_Y);
+	s.add(plain.setRotation(SDF_EFFECT_ROTATION));
+	const keyed = s.label(SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, color)
+		.at(SDF_EFFECT_X + SDF_EFFECT_SHIFT, SDF_EFFECT_Y);
+	keyed.setColorKey(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(keyed.setRotation(SDF_EFFECT_ROTATION));
+	const tinted = s.label(SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, color)
+		.at(SDF_EFFECT_X, SDF_EFFECT_ADD_Y);
+	tinted.setColorAdd(rgba(0.35, 0.0, 0.0, 0.0));
+	s.add(tinted.setRotation(SDF_EFFECT_ROTATION));
+	return s;
+}
+
 function filterManyTargets(): Scene2D {
 	const s = Scene2D.create(DARK);
 	for (let k: int32 = 0; k < MANY_TARGETS_COUNT; k++) {
@@ -1491,5 +1526,9 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "image/premultipliedStyle", build: imagePremultipliedStyle },
 		{ name: "filter/manyTargets", build: filterManyTargets },
 		{ name: "prim/effectOnUi", build: primEffectOnUi },
+		{ name: "text/sdfRotated", build: textSdfRotated },
+		{ name: "text/sdfZoom4", build: textSdfZoom4 },
+		{ name: "text/sdfScaleDown", build: textSdfScaleDown },
+		{ name: "text/sdfColorEffect", build: textSdfColorEffect },
 	];
 }

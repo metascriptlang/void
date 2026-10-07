@@ -102,6 +102,60 @@ export const MANY_TARGETS_EXTENT: int32 = 34;
 export const EFFECT_UI_SCENE: string = "prim/effectOnUi";
 export const EFFECT_UI_SHIFT: float32 = 128.0;
 
+// The text/sdf* scenes as numbers: scenes.ms builds each label from a case and
+// tests/oracle/textSdfCheck.ms recomputes its coverage from the same case, so the scene and
+// its judge cannot drift apart. A label is placed at (x, y), turned by `rotation` radians
+// and scaled by `zoom`, in that order, with its origin at the node's own origin.
+export const SDF_ROTATED_SCENE: string = "text/sdfRotated";
+export const SDF_ZOOM_SCENE: string = "text/sdfZoom4";
+export const SDF_SCALE_DOWN_SCENE: string = "text/sdfScaleDown";
+export const SDF_EFFECT_SCENE: string = "text/sdfColorEffect";
+export const SDF_EFFECT_SHIFT: float32 = 160.0;
+export const SDF_EFFECT_TEXT: string = "Colour effect";
+export const SDF_EFFECT_SIZE: float32 = 18.0;
+export const SDF_EFFECT_X: float32 = 16.0;
+export const SDF_EFFECT_Y: float32 = 24.0;
+export const SDF_EFFECT_ROTATION: float32 = 0.3;
+export const SDF_EFFECT_ADD_Y: float32 = 116.0;
+export const SDF_TEXT_R: float32 = 0.86;
+export const SDF_TEXT_G: float32 = 0.90;
+export const SDF_TEXT_B: float32 = 0.98;
+export const SDF_BG_X: int32 = 2;
+export const SDF_BG_Y: int32 = 2;
+
+export interface SdfLabelCase {
+	scene: string;
+	text: string;
+	size: float32;
+	x: float32;
+	y: float32;
+	rotation: float32;
+	zoom: float32;
+}
+
+export function sdfLabelCases(): SdfLabelCase[] {
+	return [
+		{ scene: SDF_ROTATED_SCENE, text: "Rotated 13 px", size: 13.0, x: 16.0, y: 28.0,
+			rotation: 0.29671, zoom: 1.0 },
+		{ scene: SDF_ROTATED_SCENE, text: "Rotated 26 px", size: 26.0, x: 16.0, y: 84.0,
+			rotation: 0.29671, zoom: 1.0 },
+		{ scene: SDF_ROTATED_SCENE, text: "Rotated 13 px", size: 13.0, x: 190.0, y: 20.0,
+			rotation: 0.7854, zoom: 1.0 },
+		{ scene: SDF_ROTATED_SCENE, text: "Rotated 26", size: 26.0, x: 176.0, y: 84.0,
+			rotation: 0.7854, zoom: 1.0 },
+		{ scene: SDF_ZOOM_SCENE, text: "fn main()", size: 13.0, x: 10.0, y: 8.0,
+			rotation: 0.0, zoom: 1.0 },
+		{ scene: SDF_ZOOM_SCENE, text: "fn main()", size: 13.0, x: 10.0, y: 32.0,
+			rotation: 0.0, zoom: 2.0 },
+		{ scene: SDF_ZOOM_SCENE, text: "fn main()", size: 13.0, x: 10.0, y: 80.0,
+			rotation: 0.0, zoom: 4.0 },
+		{ scene: SDF_SCALE_DOWN_SCENE, text: "Scale down 26", size: 26.0, x: 10.0, y: 8.0,
+			rotation: 0.0, zoom: 0.5 },
+		{ scene: SDF_SCALE_DOWN_SCENE, text: "Scale down 26", size: 26.0, x: 10.0, y: 40.0,
+			rotation: 0.0, zoom: 0.75 },
+	];
+}
+
 export function sceneRows(): SceneRow[] {
 	return [
 		{ name: "harness/solid", phase: "P0", width: 256, height: 128, dpi: 1.0, steps: 0, demo: false },
@@ -212,6 +266,14 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "prim/effectOnUi", phase: "D1", width: 256, height: 128, dpi: 1.0,
 			steps: 0, demo: false },
+		{ name: "text/sdfRotated", phase: "P6", width: 320, height: 200, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/sdfZoom4", phase: "P6", width: 384, height: 144, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/sdfScaleDown", phase: "P6", width: 256, height: 80, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/sdfColorEffect", phase: "P6", width: 320, height: 200, dpi: 1.0,
+			steps: 0, demo: false },
 	];
 }
 
@@ -227,6 +289,7 @@ export function sceneDrawCounts(): int32[] {
 		2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 2, 2, 2, 1,
 		6, 2, 1, 1, 1, 5, 1, 2, 2, 2, 1, 2, 2, 1, 1, 1, 1,
 		1, 3, 30, 30, 30, 30, 2, 5, 17, 1, 2, 4, 2, 18, 4,
+		1, 2, 1, 3,
 	];
 }
 
@@ -237,6 +300,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0,
 		0, 5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18, 0,
+		0, 0, 0, 0,
 	];
 }
 
