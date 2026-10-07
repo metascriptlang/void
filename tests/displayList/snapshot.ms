@@ -74,7 +74,14 @@ import { GradientSpace } from "../../src/void2d/gradient";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 import { approx, fakeTexture } from "../../src/test/helpers";
 when (voidSvg) {
-	import { IconId, iconHolds, iconTile, registerIcon } from "../../src/void2d/icon";
+	import {
+		IconId,
+		iconHolds,
+		iconRefusalReports,
+		iconRefusals,
+		iconTile,
+		registerIcon,
+	} from "../../src/void2d/icon";
 	import { glyphAtlas } from "../../src/void2d/labelText";
 }
 
@@ -1350,6 +1357,32 @@ when (voidSvg) {
 		assert iconTileOf(root, 2) == iconTileOf(root, 0);
 		assert glyphAtlas.tile(before).refs == 0;
 		assert glyphAtlas.tile(iconTileOf(root, 0)).refs == 4;
+	}
+
+	test "a refused icon mask is counted, reported once, retried and drawn once it fits" {
+		const id: IconId = iconSheet();
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		const big = s.add(s.icon(id, 600.0, 600.0, rgba(1.0, 1.0, 1.0, 1.0)));
+		const refusals: int32 = iconRefusals();
+		const reports: int32 = iconRefusalReports();
+		const root: NodeRef = s.refOf(s.root);
+		record(root, 700.0, 700.0, 1.0);
+		assert iconRefusals() == refusals + 1;
+		assert iconRefusalReports() == reports + 1;
+		assert (s.retry.length as int32) == 1;
+		assert iconTile(s.payloads[big.id.index]) == -1;
+		s.retryRefused();
+		assert (s.retry.length as int32) == 0;
+		record(root, 700.0, 700.0, 1.0);
+		assert iconRefusals() == refusals + 2;
+		assert iconRefusalReports() == reports + 1;
+		assert (s.retry.length as int32) == 1;
+		s.retryRefused();
+		big.setSize(24.0, 24.0);
+		record(root, 700.0, 700.0, 1.0);
+		assert (s.retry.length as int32) == 0;
+		assert iconTile(s.payloads[big.id.index]) >= 0;
+		assert iconRefusals() == refusals + 2;
 	}
 
 	test "a node that is not drawn holds its icon registration" {

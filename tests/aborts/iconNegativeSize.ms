@@ -6,7 +6,8 @@ import "../../src/void2d/scene";
 import { rgba } from "../../src/void2d/types";
 
 const registered = registerIcon(
-	`<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4"/></svg>`,
+	`<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4">` +
+		`<rect width="4" height="4"/></svg>`,
 );
 const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 if (registered.ok) {

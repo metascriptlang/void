@@ -1057,6 +1057,19 @@ when (voidSvg) {
 		assert marked(n, Changed.Local);
 	}
 
+	test "disposing an icon gives its registration back and the next icon reuses the slot" {
+		const id: IconId = registeredIcon();
+		const s = fresh();
+		const first = s.icon(id, 8.0, 8.0, white);
+		const slot: int32 = s.payloads[first.id.index];
+		assert iconHolds(id) == 1;
+		first.dispose();
+		assert iconHolds(id) == 0;
+		const second = s.icon(id, 9.0, 9.0, white);
+		assert iconHolds(id) == 1;
+		assert s.payloads[second.id.index] == slot;
+	}
+
 	test "an icon takes the colour set after it and keeps the box it was given" {
 		const n = fresh().icon(registeredIcon(), 16.0, 16.0, white);
 		n.setColor(rgba(0.0, 1.0, 0.0, 1.0));
