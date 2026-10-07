@@ -1981,6 +1981,7 @@ run_card_table() {
 	fi
 	if [ "$status" -ne 0 ] || ! grep -q '^PASS card table: ' "$WORK/cardTable.log"; then
 		fail "card-table: the sample failed (exit $status) — see $WORK/cardTable.log"
+		grep '^FAIL card table' "$WORK/cardTable.log" | head -10
 		return
 	fi
 	pass "card-table: the card table draws its board, hand order swap, dissolve, shadow, overlay, label and flames"
