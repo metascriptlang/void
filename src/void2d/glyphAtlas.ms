@@ -140,8 +140,6 @@ export function packed(this key: GlyphKey): uint64 {
 		(key.variant as uint64);
 }
 
-// A mask tile is one rasterization of one icon: the icon id in the face field, the mask height
-// in the glyph field and its width in the size field, so two sizes of an icon are two keys.
 export function maskKey(icon: int32, width: int32, height: int32): GlyphKey {
 	return {
 		kind: PageKind.Mask, face: icon, glyph: height, sizePx: width as float32, variant: 0,
@@ -427,6 +425,50 @@ function maskBlitRefusal(code: int32): AtlasError {
 	unreachable;
 }
 
+export function reserveMask(
+	this atlas: GlyphAtlas,
+	key: GlyphKey,
+	width: int32,
+	height: int32,
+): Result<int32, AtlasError> {
+	if (key.kind != PageKind.Mask) { return Result.err(AtlasError.KindNotBuilt); }
+	if (void2dGlyphPageKindBuilt(key.kind as int32) == 0) {
+		return Result.err(AtlasError.KindNotBuilt);
+	}
+	if (key.variant != 0) { return Result.err(AtlasError.VariantOutOfRange); }
+	if (width < 1 || height < 1) { return Result.err(AtlasError.MaskBadShape); }
+	const placed = try allocate(atlas, PageKind.Mask, width, height);
+	atlas.rasterizations = atlas.rasterizations + 1;
+	const packedKey: uint64 = key.packed();
+	return Result.ok(atlas.record(packedKey, {
+		page: placed[0],
+		x: placed[1],
+		y: placed[2],
+		width: width,
+		height: height,
+		left: 0,
+		top: 0,
+		refs: 1,
+		key: packedKey,
+	}));
+}
+
+export function fillMask(
+	this atlas: GlyphAtlas,
+	index: int32,
+	alpha: Vec<uint8>,
+): Result<boolean, AtlasError> {
+	const tile: GlyphTile = atlas.tiles[index];
+	if ((alpha.length as int32) != tile.width * tile.height) {
+		return Result.err(AtlasError.MaskBadShape);
+	}
+	const code: int32 = void2dGlyphPageBlitMask(
+		atlas.pages[tile.page as int32].handle as int32, tile.x, tile.y, tile.width, tile.height,
+		alpha, tile.width);
+	if (code != 0) { return Result.err(maskBlitRefusal(code)); }
+	return Result.ok(true);
+}
+
 export function acquireMask(
 	this atlas: GlyphAtlas,
 	key: GlyphKey,
@@ -444,24 +486,13 @@ export function acquireMask(
 	if (width < 1 || height < 1 || (alpha.length as int32) != width * height) {
 		return Result.err(AtlasError.MaskBadShape);
 	}
-	const placed = try allocate(atlas, PageKind.Mask, width, height);
-	const code: int32 = void2dGlyphPageBlitMask(
-		atlas.pages[placed[0] as int32].handle as int32, placed[1], placed[2], width, height,
-		alpha, width);
-	if (code != 0) { return Result.err(maskBlitRefusal(code)); }
-	atlas.rasterizations = atlas.rasterizations + 1;
-	const packedKey: uint64 = key.packed();
-	return Result.ok(atlas.record(packedKey, {
-		page: placed[0],
-		x: placed[1],
-		y: placed[2],
-		width: width,
-		height: height,
-		left: 0,
-		top: 0,
-		refs: 1,
-		key: packedKey,
-	}));
+	const index: int32 = try atlas.reserveMask(key, width, height);
+	const filled = atlas.fillMask(index, alpha);
+	if (!filled.ok) {
+		atlas.discard(index);
+		return Result.err(filled.error);
+	}
+	return Result.ok(index);
 }
 
 function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int32 {

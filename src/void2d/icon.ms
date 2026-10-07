@@ -48,6 +48,8 @@ let icons: Vec<IconEntry> = [];
 let placements: Vec<IconPlacement> = [];
 let freePlacements: Vec<int32> = [];
 let refusedIcons: int32 = 0;
+let reportedIcons: int32 = 0;
+let rasterizedIcons: int32 = 0;
 
 const hidden: PlacedGlyph = {
 	tile: -1, page: NO_GLYPH_PAGE, x: 0.0, y: 0.0, w: 0.0, h: 0.0,
@@ -93,6 +95,10 @@ export function iconHolds(icon: IconId): int32 {
 
 export function iconRefusals(): int32 { return refusedIcons; }
 
+export function iconRefusalReports(): int32 { return reportedIcons; }
+
+export function iconRasterizations(): int32 { return rasterizedIcons; }
+
 export function maskSide(deviceLength: float32): int32 {
 	if (!(deviceLength > ICON_SIZE_NOISE)) { return 0; }
 	return (Math.ceil((deviceLength - ICON_SIZE_NOISE) as float64) as int32) * ICON_SUPERSAMPLE;
@@ -115,10 +121,19 @@ export function acquireIconMask(
 			`a ${atlas.pageSize} page`,
 		);
 	}
-	const drawn = svgMaskRasterize(icons[icon as int32].source, maskWidth, maskHeight);
-	if (!drawn.ok) { return Result.err(`${drawn.error.error.toString()}: ${drawn.error.what}`); }
-	const tile = atlas.acquireMask(key, maskWidth, maskHeight, drawn.value);
+	const tile = atlas.reserveMask(key, maskWidth, maskHeight);
 	if (!tile.ok) { return Result.err(tile.error.toString()); }
+	rasterizedIcons = rasterizedIcons + 1;
+	const drawn = svgMaskRasterize(icons[icon as int32].source, maskWidth, maskHeight);
+	if (!drawn.ok) {
+		atlas.discard(tile.value);
+		return Result.err(`${drawn.error.error.toString()}: ${drawn.error.what}`);
+	}
+	const filled = atlas.fillMask(tile.value, drawn.value);
+	if (!filled.ok) {
+		atlas.discard(tile.value);
+		return Result.err(filled.error.toString());
+	}
 	return Result.ok(tile.value);
 }
 
@@ -184,7 +199,8 @@ export function placeIcon(
 		if (!acquired.ok) {
 			refusedIcons = refusedIcons + 1;
 			if (placements[index].refusal != acquired.error) {
-				console.log(`void2d: an icon is not drawn, its mask was refused (${acquired.error})`);
+				reportedIcons = reportedIcons + 1;
+				console.log(`void2d: an icon mask was refused (${acquired.error})`);
 			}
 			placements[index].refusal = acquired.error;
 			return { drawn: false, refused: true, exact: exact, glyph: hidden };

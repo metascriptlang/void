@@ -11,6 +11,7 @@ import {
 	IconId,
 	ICON_SUPERSAMPLE,
 	acquireIconMask,
+	iconRasterizations,
 	iconHeight,
 	iconWidth,
 	maskSide,
@@ -64,6 +65,8 @@ test "the mask side is twice the device pixels rounded up and nothing for no siz
 	assert maskSide(24.0) == 48;
 	assert maskSide(16.0 * 1.5) == 48;
 	assert maskSide(24.2) == 50;
+	assert maskSide(24.0005) == 48;
+	assert maskSide(24.002) == 50;
 	assert maskSide(0.5) == 2;
 	assert maskSide(0.0) == 0;
 	assert maskSide(-3.0) == 0;
@@ -135,9 +138,12 @@ test "released masks are reclaimed whole when the page is full and nothing holds
 	const dot: IconId = registered(DOT);
 	const first = acquireIconMask(atlas, square, 48, 48);
 	assert first.ok;
+	const drawnBefore: int32 = iconRasterizations();
 	const blocked = acquireIconMask(atlas, dot, 40, 40);
 	assert !blocked.ok;
+	assert iconRasterizations() == drawnBefore;
 	assert atlas.reclaims == 0;
+	assert atlas.rasterizations == 1;
 	if (first.ok) { atlas.release(first.value); }
 	const after = acquireIconMask(atlas, dot, 40, 40);
 	assert after.ok;
