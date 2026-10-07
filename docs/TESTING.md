@@ -348,13 +348,16 @@ in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Current status, 2026-09-24 (P3 review): two backends of seven measured, and both numbers are printed. P3's exit asked for five; GLES3 desktop and WebGPU are P6's, Metal and Android wait on the human's hardware.**
+**Current status, 2026-09-24 (P3 review): two backends of seven measured, and both numbers are printed. P3's exit asked for five; GL core 4.3 desktop (glsl430) is built and its run is owed, WebGPU is P6's, Metal and Android wait on the human's hardware.**
 
 | Backend | Conformance | Runs |
 |---|---|---|
 | D3D11 | **93 / 93 scenes byte-identical** | every full gate, this box |
 
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
+
+| D3D11 | **83 / 83 captured scenes byte-identical**; the two `icon/` scenes await their first capture | every full gate, this box |
+| GL core 4.3 desktop (glsl430) | **owed, not run**: built under `-d:voidGlCore` (`shader2d` carries `glsl430`, `src/sokol/bridgeWeb.c` is the window driver, `tests/capture/capture.c` reads the frame as `gl430`); `mixed/void3dTarget` and `mixed/void3dTranslucentTarget` are left out by name because void3d has no `glsl430`. sokol_app's Win32 list has no GLES3, so this is desktop GL and the glsl430 text on the same GPU, not glsl300es on a GLES3 driver. `tests/PENDING.md backend:gl-core-desktop` | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |
@@ -415,7 +418,7 @@ about where they came from.
 | **P3** | T3 fontTools metrics and the HarfBuzz kerning subset; `text/` at three DPIs; T4 atlas and rasterization budgets; **69** T2 scenes; the first cross-backend run, WebGL2 at 65 / 69 — the five-backend run was not reached and moved to P6 |
 | **P4** | T3 UCD segmentation; T1 glyph and run placement; editor scenes |
 | **P5** | T1 dirty-range and idempotence assertions; T4 scroll and idle budgets; the h2d oracle |
-| **P6** | T3 full HarfBuzz shaping; T4 wasm budget per module; device-loss fault injection as a test switch (MAKEPAD.md:104); GLES3 desktop and WebGPU conformance |
+| **P6** | T3 full HarfBuzz shaping; T4 wasm budget per module; device-loss fault injection as a test switch (MAKEPAD.md:104); GL core 4.3 desktop (glsl430) and WebGPU conformance |
 
 **What each tier covers today**, so the table above is read against something real:
 

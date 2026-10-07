@@ -738,13 +738,54 @@ else
 fi
 skip "wasm size budget: the web build cannot link Yoga, so no linked wasm number exists to gate — tests/PENDING.md wasm:budget"
 
+# The graduation rule for a conformance row: every scene it lists must still fail, and a clean
+# run with the row still present fails too. $1 backend, $2 its golden log, $3 the PENDING id.
+conformance_rule() {
+	row=$(grep -E "^\| $3 " tests/PENDING.md || true)
+	listed=$(echo "$row" | grep -oE '`[a-z]+/[A-Za-z0-9]+`' | tr -d '`' | sort -u)
+	failing=$(grep -E '^FAIL' "$2" | awk '{ print $2 }' | sort -u)
+	unlisted=""
+	for scene in $failing; do
+		case " $(echo $listed) " in *" $scene "*) ;; *) unlisted="$unlisted $scene" ;; esac
+	done
+	graduated=""
+	for scene in $listed; do
+		case " $(echo $failing) " in *" $scene "*) ;; *) graduated="$graduated $scene" ;; esac
+	done
+	if [ -n "$unlisted" ]; then
+		fail "$1 conformance: failures no PENDING row lists:$unlisted (tests/PENDING.md $3)"
+	elif [ -n "$row" ] && [ -z "$failing" ]; then
+		fail "$1 conformance: 0 fail, and tests/PENDING.md $3 survives the run — delete it"
+	elif [ -n "$graduated" ]; then
+		fail "$1 conformance: listed scenes now pass:$graduated — delete them from tests/PENDING.md $3"
+	elif [ -z "$failing" ]; then
+		pass "$1 conformance: every scene identical or within the cross-backend bound"
+	else
+		skip "$1 conformance: the structural failures are the listed ones — tests/PENDING.md $3"
+	fi
+	grep -E '^FAIL' "$2" | sed 's/^/      /' || true
+}
+
 echo
 echo "=== 7. guardrail 9 — same pixels on every platform ===================="
 echo "      One golden set, authored on D3D11, every backend compared against it."
 echo "      Conformance, per backend:"
 # Never a fixed number here: the gate may not report a result it did not produce.
 echo "      d3d11    $d3d11_conformance      (this box, every gate)"
-skip "gles3 desktop: capture.c has the glReadPixels path, no GLES3 build has run it"
+gl_conformance="not run"
+if [ "$QUICK" -eq 1 ]; then
+	skip "GL core 4.3 desktop (glsl430): --quick skips the golden suites (sh scripts/golden.sh --backend gl)"
+else
+	sh scripts/golden.sh --backend gl > out/gate-golden-gl.log 2>&1 || true
+	gl_conformance="$(tr -d '\r' < out/gate-golden-gl.log | grep -E '^golden gl430' || echo 'no conformance line — see out/gate-golden-gl.log')"
+	echo "      gl430    $gl_conformance      (this box, every full gate)"
+	grep -E '^RENDERER' out/gate-golden-gl.log | sed 's/^/      /' || true
+	if ! echo "$gl_conformance" | grep -q '^golden gl430'; then
+		fail "GL core 4.3 desktop conformance did not run — see out/gate-golden-gl.log"
+	else
+		conformance_rule gl430 out/gate-golden-gl.log conformance:gl430-pixel-centre
+	fi
+fi
 skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
 skip "metal iOS: no readback, and the first device run is T5"
 skip "gles3 Android: shares the glReadPixels path, needs the device"
@@ -756,31 +797,7 @@ if [ "$WEB" -eq 1 ]; then
 	if ! grep -q '^golden webgl2' out/gate-golden-web.log; then
 		fail "webgl2 conformance did not run — see out/gate-golden-web.log"
 	else
-		# The graduation rule for a conformance row: every scene it lists must still fail, and
-		# a clean run with the row still present fails too.
-		row=$(grep -E '^\| conformance:webgl2-pixel-centre ' tests/PENDING.md || true)
-		listed=$(echo "$row" | grep -oE '`[a-z]+/[A-Za-z0-9]+`' | tr -d '`' | sort -u)
-		failing=$(grep -E '^FAIL' out/gate-golden-web.log | awk '{ print $2 }' | sort -u)
-		unlisted=""
-		for scene in $failing; do
-			case " $(echo $listed) " in *" $scene "*) ;; *) unlisted="$unlisted $scene" ;; esac
-		done
-		graduated=""
-		for scene in $listed; do
-			case " $(echo $failing) " in *" $scene "*) ;; *) graduated="$graduated $scene" ;; esac
-		done
-		if [ -n "$unlisted" ]; then
-			fail "webgl2 conformance: failures no PENDING row lists:$unlisted"
-		elif [ -n "$row" ] && [ -z "$failing" ]; then
-			fail "webgl2 conformance: 0 fail, and tests/PENDING.md conformance:webgl2-pixel-centre survives the run — delete it"
-		elif [ -n "$graduated" ]; then
-			fail "webgl2 conformance: listed scenes now pass:$graduated — delete them from tests/PENDING.md conformance:webgl2-pixel-centre"
-		elif [ -z "$failing" ]; then
-			pass "webgl2 conformance: every scene identical or within the cross-backend bound"
-		else
-			skip "webgl2 conformance: the structural failures are the listed ones — tests/PENDING.md conformance:webgl2-pixel-centre"
-		fi
-		grep -E '^FAIL' out/gate-golden-web.log | sed 's/^/      /' || true
+		conformance_rule webgl2 out/gate-golden-web.log conformance:webgl2-pixel-centre
 	fi
 else
 	skip "webgl2 conformance: runs with --web (sh scripts/golden-web.sh)"
@@ -852,6 +869,21 @@ if [ "$QUICK" -eq 0 ]; then
 		pass "docs/TESTING.md's D3D11 row matches this run: ${d3d11% *} / ${d3d11#* }"
 	else
 		fail "docs/TESTING.md's D3D11 row does not match this run's '$(grep -E '^golden d3d11' out/gate-golden.log)'"
+	fi
+fi
+if [ "$QUICK" -eq 0 ] && grep -q '^golden gl430' out/gate-golden-gl.log; then
+	claim=$(tr -d '\r' < out/gate-golden-gl.log | awk '
+		/^golden gl430: [0-9]+ pass, [0-9]+ pending, [0-9]+ fail of [0-9]+( \([0-9]+ excluded\))?$/ {
+			p = $3; q = $5; f = $7; n = $10; e = 0
+			if ($11 != "") { e = substr($11, 2) + 0 }
+			printf "| GL core 4.3 desktop (glsl430) | **%d / %d**: %d byte-identical, %d within the cross-backend bound, %d structural failures, %d void3d scenes excluded by name", p + q, n, p, q, f, e
+		}')
+	if [ -z "$claim" ]; then
+		fail "the golden gl430 line is not in the form the record check reads — see out/gate-golden-gl.log"
+	elif grep -qF "$claim" docs/TESTING.md; then
+		pass "docs/TESTING.md's GL core 4.3 row matches this run: $(echo "$claim" | sed -E 's/.*\*\*(.*)\*\*.*/\1/')"
+	else
+		fail "docs/TESTING.md's GL core 4.3 row does not match this run; the row has to start with: $claim"
 	fi
 fi
 if [ "$WEB" -eq 1 ] && grep -q '^golden webgl2' out/gate-golden-web.log; then
