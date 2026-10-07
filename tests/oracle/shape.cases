@@ -5,8 +5,9 @@
 #
 # One row per line, fields separated by a tab: id, font, direction (auto, ltr or rtl),
 # features, text. Features are `-` for the font's defaults, else space-separated tokens:
-# `-tag` turns a feature off, `+tag` on, `tag=N` sets a value. In the text, `\uXXXX` is a
-# codepoint, so a combining mark stays visible in review.
+# `-tag` turns a feature off, `+tag` on, `tag=N` sets a value. In the text, `\uXXXX` (or `\UXXXXXXXX`
+# above U+FFFF) is a codepoint, so a combining mark stays visible in review. A row whose id
+# starts with `missing-` may use a codepoint the font has no glyph for; any other row may not.
 #
 # A row whose answer kb_text_shape does not give as HarfBuzz does is listed in tests/PENDING.md
 # as `shape:<id>`; nothing is dropped from here to make the count prettier.
@@ -78,3 +79,10 @@ arabic-rtl-2	tests/fonts/notoSansArabicSubset.ttf	auto	-	لا
 arabic-rtl-3	tests/fonts/notoSansArabicSubset.ttf	auto	-	كتاب
 arabic-rtl-4	tests/fonts/notoSansArabicSubset.ttf	auto	-	محمد
 arabic-rtl-explicit	tests/fonts/notoSansArabicSubset.ttf	rtl	-	مرحبا
+empty	assets/font.ttf	auto	-	
+inter-astral	assets/font.ttf	auto	-	🄰🄱A
+arabic-ltr-explicit	tests/fonts/notoSansArabicSubset.ttf	ltr	-	مرحبا
+missing-inter-unassigned	assets/font.ttf	auto	-	a͸b
+missing-inter-zwnj	assets/font.ttf	auto	-	a‌b
+missing-inter-zwj	assets/font.ttf	auto	-	a‍b
+missing-mixed-direction	assets/font.ttf	auto	-	ab مرح cd

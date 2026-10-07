@@ -16,6 +16,9 @@ const NO_PLANT: int32 = 0;
 const PLANT_GLYPH: int32 = 1;
 const PLANT_CLUSTER: int32 = 2;
 const PLANT_OFFSET: int32 = 3;
+const COMPARE_VALUES: int32 = 0;
+const COMPARE_ALL: int32 = 1;
+const COMPARE_CLUSTERS: int32 = 2;
 
 let facePaths: Vec<string> = [];
 let faceIds: Vec<int32> = [];
@@ -48,7 +51,7 @@ function differs(what: string, expected: int32, actual: int32): string {
 	return expected == actual ? "" : `${what} ${actual}, oracle ${expected}`;
 }
 
-function rowDiff(row: JsonValue, plant: int32, clusters: boolean): string {
+function rowDiff(row: JsonValue, plant: int32, compare: int32): string {
 	const face: int32 = faceFor(row.getDynamicField("path").asString());
 	shaperBegin(face, directionOf(row.getDynamicField("direction").asNumber() as int32));
 	const features = row.getDynamicField("features");
@@ -63,6 +66,7 @@ function rowDiff(row: JsonValue, plant: int32, clusters: boolean): string {
 	const count: int32 = shaperEnd();
 	const expected = row.getDynamicField("glyphs");
 	const expectedCount: int32 = expected.length() as int32;
+	if (compare == COMPARE_CLUSTERS && expectedCount != count) { return ""; }
 	let first: string = differs("glyph count", expectedCount, count);
 	if (first.length > 0) { return first; }
 	const rtl: boolean = row.getDynamicField("runDirection").asString().equals("rtl");
@@ -73,14 +77,17 @@ function rowDiff(row: JsonValue, plant: int32, clusters: boolean): string {
 		const plantedGlyph: int32 = (plant == PLANT_GLYPH && g == 0) ? 1 : 0;
 		const plantedCluster: int32 = (plant == PLANT_CLUSTER && g == 0) ? 1 : 0;
 		const plantedOffset: int32 = (plant == PLANT_OFFSET && g == 0) ? 1 : 0;
-		first = differs(`${where} id`, (want.at(0).asNumber() as int32) + plantedGlyph, got.glyph);
-		if (first.length > 0) { return first; }
-		if (clusters) {
+		if (compare != COMPARE_CLUSTERS) {
+			first = differs(`${where} id`, (want.at(0).asNumber() as int32) + plantedGlyph, got.glyph);
+			if (first.length > 0) { return first; }
+		}
+		if (compare != COMPARE_VALUES) {
 			first = differs(
 				`${where} cluster`, (want.at(1).asNumber() as int32) + plantedCluster, got.index,
 			);
 			if (first.length > 0) { return first; }
 		}
+		if (compare == COMPARE_CLUSTERS) { continue; }
 		first = differs(`${where} advanceX`, want.at(2).asNumber() as int32, got.advanceX);
 		if (first.length > 0) { return first; }
 		first = differs(`${where} advanceY`, want.at(3).asNumber() as int32, got.advanceY);
@@ -143,8 +150,8 @@ test "every oracle row is shaped as HarfBuzz does, or its divergence is listed" 
 	for (let r: int32 = 0; r < total; r++) {
 		const row = rows.at(r);
 		const id: string = row.getDynamicField("id").asString();
-		const glyphDiff: string = rowDiff(row, NO_PLANT, false);
-		const clusterDiff: string = glyphDiff.length == 0 ? rowDiff(row, NO_PLANT, true) : "";
+		const glyphDiff: string = rowDiff(row, NO_PLANT, COMPARE_VALUES);
+		const clusterDiff: string = rowDiff(row, NO_PLANT, COMPARE_CLUSTERS);
 		const glyphListed: boolean = pending.includes(`| shape:${id} |`);
 		const clusterListed: boolean = pending.includes(`| shape-cluster:${id} |`);
 		if (glyphDiff.length == 0) { glyphsAgreeing = glyphsAgreeing + 1; }
@@ -167,9 +174,10 @@ test "a wrong glyph id, cluster or offset in the snapshot is caught row by row" 
 		let tried: int32 = 0;
 		for (let r: int32 = 0; r < (rows.length() as int32); r++) {
 			const row = rows.at(r);
-			if (rowDiff(row, NO_PLANT, true).length > 0) { continue; }
+			if (rowDiff(row, NO_PLANT, COMPARE_ALL).length > 0) { continue; }
+			if (row.getDynamicField("glyphs").length() == 0) { continue; }
 			tried = tried + 1;
-			if (rowDiff(row, plant, true).length > 0) { caught = caught + 1; }
+			if (rowDiff(row, plant, COMPARE_ALL).length > 0) { caught = caught + 1; }
 		}
 		assert tried > 0;
 		assert caught == tried;

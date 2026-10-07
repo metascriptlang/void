@@ -6089,6 +6089,330 @@
      0
     ]
    ]
+  },
+  {
+   "id": "empty",
+   "path": "assets/font.ttf",
+   "codepoints": [],
+   "features": [],
+   "direction": 0,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": []
+  },
+  {
+   "id": "inter-astral",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    127280,
+    127281,
+    65
+   ],
+   "features": [],
+   "direction": 0,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": [
+    [
+     1964,
+     0,
+     2828,
+     0,
+     0,
+     0
+    ],
+    [
+     1965,
+     1,
+     2828,
+     0,
+     0,
+     0
+    ],
+    [
+     2,
+     2,
+     1413,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "id": "arabic-ltr-explicit",
+   "path": "tests/fonts/notoSansArabicSubset.ttf",
+   "codepoints": [
+    1605,
+    1585,
+    1581,
+    1576,
+    1575
+   ],
+   "features": [],
+   "direction": 1,
+   "runDirection": "ltr",
+   "unitsPerEm": 1000,
+   "glyphs": [
+    [
+     38,
+     0,
+     484,
+     0,
+     0,
+     0
+    ],
+    [
+     19,
+     1,
+     356,
+     0,
+     -40,
+     0
+    ],
+    [
+     14,
+     2,
+     637,
+     0,
+     0,
+     0
+    ],
+    [
+     47,
+     3,
+     0,
+     0,
+     31,
+     -3
+    ],
+    [
+     10,
+     3,
+     269,
+     0,
+     0,
+     0
+    ],
+    [
+     2,
+     4,
+     238,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "id": "missing-inter-unassigned",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    97,
+    888,
+    98
+   ],
+   "features": [],
+   "direction": 0,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": [
+    [
+     507,
+     0,
+     1150,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     1,
+     1344,
+     0,
+     0,
+     0
+    ],
+    [
+     578,
+     2,
+     1254,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "id": "missing-inter-zwnj",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    97,
+    8204,
+    98
+   ],
+   "features": [],
+   "direction": 0,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": [
+    [
+     507,
+     0,
+     1150,
+     0,
+     0,
+     0
+    ],
+    [
+     1777,
+     1,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     578,
+     2,
+     1254,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "id": "missing-inter-zwj",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    97,
+    8205,
+    98
+   ],
+   "features": [],
+   "direction": 0,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": [
+    [
+     507,
+     0,
+     1150,
+     0,
+     0,
+     0
+    ],
+    [
+     1777,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    [
+     578,
+     2,
+     1254,
+     0,
+     0,
+     0
+    ]
+   ]
+  },
+  {
+   "id": "missing-mixed-direction",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    97,
+    98,
+    32,
+    1605,
+    1585,
+    1581,
+    32,
+    99,
+    100
+   ],
+   "features": [],
+   "direction": 0,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": [
+    [
+     507,
+     0,
+     1150,
+     0,
+     0,
+     0
+    ],
+    [
+     578,
+     1,
+     1254,
+     0,
+     0,
+     0
+    ],
+    [
+     1777,
+     2,
+     576,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     3,
+     1344,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     4,
+     1344,
+     0,
+     0,
+     0
+    ],
+    [
+     0,
+     5,
+     1344,
+     0,
+     0,
+     0
+    ],
+    [
+     1777,
+     6,
+     576,
+     0,
+     0,
+     0
+    ],
+    [
+     586,
+     7,
+     1170,
+     0,
+     0,
+     0
+    ],
+    [
+     597,
+     8,
+     1254,
+     0,
+     0,
+     0
+    ]
+   ]
   }
  ]
 }

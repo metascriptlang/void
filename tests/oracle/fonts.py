@@ -186,8 +186,9 @@ def shapeFull(ident, path, direction, spec, text):
     codepoints = [ord(c) for c in text]
     cmap = TTFont(path).getBestCmap()
     missing = [hex(c) for c in codepoints if c not in cmap]
-    if missing:
-        sys.exit(f"{SHAPE_CASES}: {ident}: {path} has no glyph for {missing}")
+    if missing and not ident.startswith("missing-"):
+        sys.exit(f"{SHAPE_CASES}: {ident}: {path} has no glyph for {missing}; "
+                 f"a row that wants the missing glyph is named missing-...")
     features = parseFeatures(spec)
     buffer = hb.Buffer()
     buffer.add_codepoints(codepoints)
@@ -196,7 +197,7 @@ def shapeFull(ident, path, direction, spec, text):
         buffer.direction = direction
     hb.shape(font, buffer, {tag: value for tag, value in features})
     glyphs = []
-    for info, pos in zip(buffer.glyph_infos, buffer.glyph_positions):
+    for info, pos in zip(buffer.glyph_infos or [], buffer.glyph_positions or []):
         glyphs.append([info.codepoint, info.cluster, pos.x_advance, pos.y_advance,
                        pos.x_offset, pos.y_offset])
     return {

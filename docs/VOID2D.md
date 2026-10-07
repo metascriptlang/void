@@ -1674,10 +1674,13 @@ changes described above on today's compiler; the P4 web archive also takes its r
   for host-supplied fonts, the trust stb_truetype already gets, and a build that loads
   user-uploaded fonts is the case to watch.
 
-  **The full oracle, 2026-10-07** (`tests/oracle/shape.cases`, 68 rows, `docs/TESTING.md` "T3"):
-  against HarfBuzz 14.5.0 the bridge agrees on every field in 51 rows and on glyph count, ids,
-  advances, offsets and run direction in 67. The one real difference is `o` U+0302 U+0323 in
-  Inter (HarfBuzz composes, kb keeps a base and a placed mark). The other 16 are the cluster
+  **The full oracle, 2026-10-07** (`tests/oracle/shape.cases`, 75 rows, `docs/TESTING.md` "T3"):
+  against HarfBuzz 14.5.0 the bridge agrees on every field in 55 rows and on glyph count, ids,
+  advances, offsets and run direction in 72. The one real difference is `o` U+0302 U+0323 in
+  Inter (HarfBuzz composes, kb keeps a base and a placed mark). Three rows added after review differ by design, not by defect: an explicit `ltr` on Arabic and
+  Latin mixed with Arabic differ because kb treats the direction as the paragraph's and runs BiDi
+  where HarfBuzz forces one run, and a ZWJ with no glyph takes its own cluster in kb and its
+  neighbour's in HarfBuzz. The other 16 are the cluster
   convention: kb returns each glyph's own codepoint index, HarfBuzz gives a mark or a reordered
   vowel its base's cluster, so layout that groups a glyph with its base derives the grouping from
   void2d's own graphemes (`assignFaces`) rather than from kb's index. Arabic comes back in visual
