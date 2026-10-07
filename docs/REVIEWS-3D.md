@@ -2582,3 +2582,35 @@ The first gate pair found two more of this milestone's own stale names in the al
 stage's lists (`renderer:slotBound`, then `material:namesTexture`), both left unreachable by the
 review's `texturesFit` rewrite. See "M37 as built": `gate.sh` 83/83 golden, `gate3d.sh` GREEN
 with the allocation stage rerun alone after the name fix, BUILD `4757fd37`, D3D11 only.
+
+## M38 — particle parity
+
+**Verdict: SHIP WITH FOLLOW-UPS, after one SEND BACK.** Built and reviewed by Sonnet agents in
+the lane `wt/void3d-m38`, audited by the coordinating session.
+
+### First pass: SEND BACK
+
+- **References.** Box, ring, point, damping and turbulence were called NEW MECHANISM against Heaps
+  without reading the engine that has them: Godot's `ParticleProcessMaterial` (URG's engine). The
+  rework read Godot 4.5-stable (`scene/resources/particle_process_material.cpp`) and ported its
+  shapes, its linear damping and its curl noise; only the box shell's face choice, Heaps' flag,
+  has no Godot counterpart.
+- **Tests.** "Calm equals zero turbulence" could not fail; the sort was never tested under a
+  perspective matrix or with a particle behind the eye; the box shell's weighting rested on one
+  seed. All three are fixed.
+
+### Second pass: SHIP WITH FOLLOW-UPS
+
+- **Fixed — per-frame copies:** `stepParticle` copied the `Turbulence` struct per particle per step
+  (a `Vec` copy under a `Poly` influence), `spawn` five `ParticleValue`s; read in place now.
+- **Fixed:** the dropped noise scalar (`cpp:479`) is stated; an exact ring point is held.
+- **Decided by Godot — damping on the whole velocity:** Heaps' speed is a curve, so damping had
+  nothing to slow. `initialSpeed` (Godot `initial_linear_velocity`) seeds the velocity damping and
+  turbulence act on; NEW MECHANISM against Heaps, defaulting to 0 so M11 and the oracle hold.
+- **Carried:** the allocation gate greps `ArrayCopy(` only, so a struct copy like the one above is
+  found by review, not by the gate.
+
+### Final acceptance
+
+See "M38 as built": `gate.sh` 83/83 golden, `gate3d.sh` GREEN with the style stage rerun alone
+after a line wrap, BUILD `4137b382`, D3D11 only.
