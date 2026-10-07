@@ -2,7 +2,7 @@ import { Mat4, Vec4, identity, srgbToLinear, linearToSrgb } from "../math/math3d
 import { RenderState, FilterMode, Wrap } from "../gpu/state";
 import { SWAPCHAIN_LAYOUT, RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
-import { Texture } from "../gpu/texture";
+import { Texture, DetachedHandles } from "../gpu/texture";
 import {
 	Program,
 	VertexLayout,
@@ -481,6 +481,13 @@ test "a freed texture gives its handles to buryDoomed and closes its owner witho
 		context.doomedTextures[0].generation == contextGeneration();
 	assert buryDoomed(context, contextGeneration() + 1) == 0;
 	assert context.doomedTextures.length == 0;
+}
+
+test "detach leaves the texture closed and returns its handles and generation" {
+	const owner: Texture = Texture.adopt(3, 9, 2, 2);
+	const handles: DetachedHandles = owner.detach();
+	assert handles.image == 3 && handles.view == 9 && handles.generation == contextGeneration();
+	assert owner.isClosed() && owner.view == 0 && owner.image == 0 && owner.generation == 0;
 }
 
 test "a freed texture's slot holds no owner, and its id is refused as stale" {
