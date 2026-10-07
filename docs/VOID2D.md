@@ -1776,6 +1776,26 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
+  **Rasterizer taken and measured 2026-10-07 (V0): nanosvg** (`memononen/nanosvg` at
+  `239e102`, zlib, `nanosvg.h` 92,258 B + `nanosvgrast.h` 40,870 B, two headers). `setup.sh`
+  fetches it into `deps/nanosvg` at that pin, as it does `kb`; `deps/` is not tracked. Measured
+  against resvg 0.48.1 (`resvg-py` 0.5.0) on 15 hand-written icons (Lucide-style round-cap
+  strokes, evenodd rings, a nested rotate and scale, dashes, a miter join, fill opacity), alpha
+  channel only: at 24 px the mean absolute error is 1.79 of 255 per icon on average, 6.19 at
+  worst (a gear outline), and 111 pixels in all differ by more than 32; at 48 px the mean is
+  0.96; GPUI's path (rasterize at 48, average 2 by 2 to 24) has a mean of 1.53 and 72 pixels
+  past 32. nanosvg draws about 3% less ink on thick strokes with inner joins (gear 199.5
+  against 206.6 pixels of coverage). `NSVG__SUBSAMPLES` 15 and 17, the divisors of 255 above 5,
+  do not help (mean 1.88 and 1.92 at 24 px, 111 to 117 pixels past 32), so the
+  subsample count is not the error and the header stays unpatched. The worst single pixel is a
+  dashed outline (124 at 24 px): a dash edge placed a fraction of a pixel differently. Module
+  alone for the web (`emcc` 5.0.5, `-Os`, both headers' implementations plus one
+  parse-and-rasterize function): 48,503 B object, 84,039 B linked against 20,746 B for a
+  function using only `malloc`, `memset`, `strtod`, `sqrtf` and `strcmp`, so the module adds
+  63,293 B of wasm (31,984 B gzipped). The full web build still cannot link (Yoga has no web
+  branch), so this is the module-alone figure the spec allows. Whether `msc` drops a `.c`
+  nothing imports is answered by the shaper probe above (it does, inside a `when`), which is
+  the seam the SVG module uses.
 - Procedural sprite glyphs — box drawing, blocks, braille, powerline — for a terminal widget.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
