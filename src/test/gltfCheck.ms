@@ -461,3 +461,33 @@ test "addGltfNodes puts each primitive of a mesh under its node with its own bin
 	if (world.ok) { assert approx(world.value.m41, 1.0); }
 }
 
+function twinMeshGltf(): string {
+	const primitive: string =
+		"{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":3}";
+	const mesh: string = "{\"name\":\"m\",\"primitives\":[" + primitive + "," + primitive + "]}";
+	return "{\"asset\":{\"version\":\"2.0\"},\"scene\":0,"
+		+ "\"scenes\":[{\"nodes\":[0,1]}],"
+		+ "\"nodes\":[{\"mesh\":0},{\"mesh\":1}],"
+		+ "\"meshes\":[" + mesh + "," + mesh + "],"
+		+ "\"accessors\":["
+		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":2,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":3,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
+		+ "\"bufferViews\":["
+		+ "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":36,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":72,\"byteLength\":36},"
+		+ "{\"buffer\":0,\"byteOffset\":108,\"byteLength\":6}],"
+		+ "\"buffers\":[{\"byteLength\":114}]}";
+}
+
+test "primitive names are unique across the file as three.js createUniqueName counts them" {
+	const loaded = loadGltf(twinMeshGltf(), triangleBuffer());
+	assert loaded.ok;
+	if (!loaded.ok) { return; }
+	const nodes = loaded.value.nodes;
+	assert nodes[2].name == "m" && nodes[3].name == "m_1";
+	assert nodes[4].name == "m_2" && nodes[5].name == "m_3";
+	assert nodes[4].mesh == 2 && nodes[5].mesh == 3;
+}

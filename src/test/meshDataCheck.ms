@@ -502,7 +502,8 @@ test "given tangents are interleaved after each vertex as they come, and counted
 	assert closed.ok && closed.value == 4;
 	assert data.hasTangents && data.stride() == LIT_TEXTURED_TANGENT_VERTEX_STRIDE;
 	assert data.vertexCount() == 4 && (data.vertices.length as int32) == 64;
-	assert data.vertices[12] == 1.0 && data.vertices[15] == 1.0 && data.vertices[28] == 1.0 && data.vertices[31] == 1.0;
+	assert data.vertices[12] == 1.0 && data.vertices[15] == 1.0;
+	assert data.vertices[28] == 1.0 && data.vertices[31] == 1.0;
 	assert data.vertices[32 + 15] == -1.0 && data.vertices[48 + 15] == 1.0;
 	const again: Result<int32, MeshError> = addGivenTangents(data, tangents);
 	assert !again.ok && again.error == MeshError.TangentsAdded;

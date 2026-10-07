@@ -841,3 +841,38 @@ test "a normal-mapped material is M37's normal-map key, with or without emission
 	assert context.liveMaterials() == 0 && context.liveTextures() == 0;
 }
 
+function withTangentX(bits: uint32): Result<GltfData, GltfError> {
+	let bytes: Vec<uint8> = quadBuffer();
+	for (let k = 0; k < 4; k++) {
+		bytes[tangentOffset() + k] = ((bits >> ((8 * k) as uint32)) & (0xFF as uint32)) as uint8;
+	}
+	const parts: Parts = { ...texturedParts(), attributes: WITH_TANGENTS, materials: NORMAL_BASE };
+	return loadGltf(documentOf(parts), bytes);
+}
+
+test "a TANGENT is held to unit length within the normals' tolerance" {
+	const short = withTangentX(0x3F666666 as uint32);
+	assert !short.ok;
+	if (!short.ok) { assert short.error == GltfError.Unsupported; }
+	const inside = withTangentX(0x3F800D1B as uint32);
+	assert inside.ok;
+	if (inside.ok) { assert inside.value.meshes[0].vertices[12] > 1.0; }
+	const outside = withTangentX(0x3F802000 as uint32);
+	assert !outside.ok;
+}
+
+test "an emissive material with a zero factor loads under MASK, its map dropped" {
+	for (const extra of ["", EMISSIVE_MAP]) {
+		const read = loaded({
+			...texturedParts(),
+			materials: "{\"alphaMode\":\"MASK\",\"emissiveFactor\":[0.0,0.0,0.0]" + extra
+				+ TEXTURED_BASE + "}",
+		});
+		assert read.ok;
+		if (!read.ok) { continue; }
+		const key: ProgramKey = gltfProgramOf(read.value.materials[0]);
+		assert key == ProgramKey.of(Program.LitTextured).withCutout().withShadowed();
+		assert declares(key) && read.value.materials[0].emissiveTexture == -1;
+	}
+}
+

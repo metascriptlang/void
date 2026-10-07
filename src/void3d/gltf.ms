@@ -303,9 +303,23 @@ function primitivesOf(mesh: JsonValue): Result<JsonValue, GltfError> {
 
 // Where one glTF mesh's primitives sit in `GltfData.meshes`.
 struct PrimitiveRun {
-	name: string;
+	names: Vec<string>;
 	first: int32;
 	count: int32;
+}
+
+// three.js createUniqueName (GLTFLoader.js:3810-3819): a name's first use is itself, later uses
+// add `_1`, `_2`, counted over the whole file. Only mesh names take part here; three.js counts
+// node names in the same table.
+function uniqueName(ref used: Vec<string>, ref counts: Vec<int32>, base: string): string {
+	for (let i = 0; i < (used.length as int32); i++) {
+		if (used[i] != base) { continue; }
+		counts[i] = counts[i] + 1;
+		return `${base}_${counts[i]}`;
+	}
+	used.push(base);
+	counts.push(0);
+	return base;
 }
 
 function identityTransform(): GltfTransform {
@@ -329,14 +343,14 @@ function placePrimitives(
 			data.nodes[i].mesh = meshCount;
 			continue;
 		}
-		const run: PrimitiveRun = runs[mesh];
+		const run: Readonly<PrimitiveRun> = runs[mesh];
 		data.nodes[i].mesh = run.first;
 		if (run.count == 1) { continue; }
 		let children: Vec<int32> = [];
 		for (let k = 0; k < run.count; k++) {
 			children.push(data.nodes.length as int32);
 			data.nodes.push({
-				name: k == 0 ? run.name : `${run.name}_${k}`,
+				name: run.names[k],
 				mesh: run.first + k,
 				local: identityTransform(),
 				children: [],
@@ -366,9 +380,9 @@ function pushTangent(
 	const direction: Vec3 = vec3At(buffer, at, 0);
 	const sign: float32 = float32At(buffer, at + 12);
 	if (!isFiniteVec3(direction)) { return Result.err(GltfError.OutOfRange); }
-	const length: float32 =
+	const lengthSquared: float32 =
 		direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
-	if (length < 0.999 || length > 1.001 || (sign != 1.0 && sign != -1.0)) {
+	if (lengthSquared < 0.999 || lengthSquared > 1.001 || (sign != 1.0 && sign != -1.0)) {
 		return Result.err(GltfError.Unsupported);
 	}
 	tangents.push(direction.x);
@@ -774,13 +788,15 @@ function keepsAlpha(
 	return Result.ok(translucent);
 }
 
+// Takes `data` by reference, not its textures as a span: a field of a ref parameter passed as a
+// span derefs twice (.inbox/compiler/2026-10-07-ref-struct-field-to-span-derefs-twice.md).
 function sharedSampling(ref data: GltfData, material: GltfMaterial): Result<Sampling, GltfError> {
 	let shared: Sampling = { filter: FilterMode.Linear, wrap: Wrap.Clamp };
 	let found: boolean = false;
 	for (const index of [material.texture, material.emissiveTexture, material.normalTexture]) {
 		if (index == NO_TEXTURE_INDEX) { continue; }
-		const texture: TextureData = data.textures[index];
-		const sampling: Sampling = { filter: texture.filter, wrap: texture.wrap };
+		const sampling: Sampling =
+			{ filter: data.textures[index].filter, wrap: data.textures[index].wrap };
 		if (found && (sampling.filter != shared.filter || sampling.wrap != shared.wrap)) {
 			return Result.err(GltfError.UnsupportedSampler);
 		}
@@ -1086,17 +1102,20 @@ function decodeGltf(
 	}
 	const _whites: int32 = try substituteWhites(data, reads);
 	let runs: Vec<PrimitiveRun> = [];
+	let usedNames: Vec<string> = [];
+	let usedCounts: Vec<int32> = [];
 	for (let i = 0; i < meshCount; i++) {
 		const primitives: JsonValue = try primitivesOf(meshArray.at(i));
 		const nameField: JsonValue = fieldOf(meshArray.at(i), "name");
 		if (!isNull(nameField) && nameField.kind != JsonKind.String) {
 			return Result.err(GltfError.Unsupported);
 		}
-		runs.push({
-			name: isNull(nameField) ? `mesh_${i}` : nameField.asString(),
-			first: data.meshes.length as int32,
-			count: countOf(primitives),
-		});
+		const base: string = isNull(nameField) ? `mesh_${i}` : nameField.asString();
+		let names: Vec<string> = [];
+		for (let p = 0; p < countOf(primitives); p++) {
+			names.push(uniqueName(usedNames, usedCounts, base));
+		}
+		runs.push({ names: names, first: data.meshes.length as int32, count: countOf(primitives) });
 		for (let p = 0; p < countOf(primitives); p++) {
 			const primitive: JsonValue = primitives.at(p);
 			const material: int32 = try materialIndexOf(primitive, materialCount);
