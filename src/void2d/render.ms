@@ -92,6 +92,7 @@ import {
 	LabelText,
 	PlacedGlyph,
 	TextRegime,
+	translationOnly,
 	Decoration,
 	DecorationKind,
 	CURSOR_WIDTH,
@@ -699,8 +700,9 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	};
 	if (text.regime == TextRegime.Sdf) { setSampler(Smooth.On, false); }
 	const passes: int32 = text.colourGlyphs > 0 ? 2 : 1;
+	const scaled: boolean = !translationOnly(world);
 	for (let pass: int32 = 0; pass < passes; pass++) {
-		if (pass == 1 && !exact) { setSampler(Smooth.On, false); }
+		if (pass == 1 && scaled) { setSampler(Smooth.On, false); }
 		let seenPage: GlyphPage = NO_GLYPH_PAGE;
 		let kind: PageKind = PageKind.Coverage;
 		let viewPage: GlyphPage = NO_GLYPH_PAGE;

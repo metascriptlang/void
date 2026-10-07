@@ -21,7 +21,7 @@ import { approx } from "./helpers";
 import { Scene2D } from "../void2d/node";
 import { add } from "../void2d/scene";
 import { sync, draw } from "../void2d/render";
-import { begin2d, finishRecording, frameEnd } from "../void2d/draw";
+import { begin2d, finishRecording, frameEnd, setSceneSmooth } from "../void2d/draw";
 import {
 	commandCount, commandField, uiInstanceCount, uiInstanceField, vertexCount,
 	CMD_SAMPLER, CMD_PIPELINE, Pipeline, SOURCE_PREMULTIPLIED,
@@ -310,6 +310,42 @@ test "a zoomed label draws the bucket tile scaled down to the requested size" {
 	assert approx(p.w, (tile.width as float32) * k);
 	assert approx(p.h, (tile.height as float32) * k);
 	releaseLabelText(index);
+}
+
+function samplerOf(command: int32): int32 {
+	return (commandField(command, CMD_SAMPLER) as int32) % SOURCE_PREMULTIPLIED;
+}
+
+test "a zoomed emoji samples linearly and the next node resets it" {
+	setSceneSmooth(false);
+	defer setSceneSmooth(true);
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const zoomed = s.label(GRIN, 16.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(withEmoji());
+	const after = s.label("a", 16.0, rgba(1.0, 1.0, 1.0, 1.0)).setFont(withEmoji());
+	const root = s.add(zoomed.at(8.0, 8.0).setScaleX(1.37).setScaleY(1.37));
+	const next = s.add(after.at(60.0, 8.0));
+	begin2d(128.0, 64.0, 1.0);
+	root.sync(identity2d(), true);
+	next.sync(identity2d(), true);
+	root.draw(1.0, 128.0, 64.0);
+	next.draw(1.0, 128.0, 64.0);
+	finishRecording();
+	assert commandCount() >= 2;
+	let smoothImage: boolean = false;
+	for (let i: int32 = 0; i < commandCount() - 1; i++) {
+		if (samplerOf(i) >= 2) { smoothImage = true; }
+	}
+	assert smoothImage;
+	assert samplerOf(commandCount() - 1) < 2;
+	frameEnd();
+}
+
+test "an unscaled emoji leaves the sampler alone" {
+	setSceneSmooth(false);
+	defer setSceneSmooth(true);
+	recordLabel(GRIN, 1.0);
+	for (let i: int32 = 0; i < commandCount(); i++) { assert samplerOf(i) < 2; }
+	frameEnd();
 }
 
 test "a rotated label places the bucket tile in local units at its own scale" {
