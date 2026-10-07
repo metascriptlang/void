@@ -121,6 +121,10 @@ export struct EmitterState {
 	life: ParticleValue;
 	size: ParticleValue;
 	speed: ParticleValue;
+	// Godot's `initial_linear_velocity` (particle_process_material.cpp:204-205, 576, 893): a speed
+	// along the emission direction drawn once at spawn, which seeds the velocity that damping and
+	// turbulence act on. Heaps has none; `speed` stays Heaps' displacement curve.
+	initialSpeed: ParticleValue;
 	gravity: ParticleValue;
 	sortMode: SortMode;
 	damping: ParticleValue;
@@ -208,6 +212,7 @@ export function defaults(this typeof EmitterState): EmitterState {
 		life: constant(1.0),
 		size: constant(1.0),
 		speed: constant(0.1),
+		initialSpeed: constant(0.0),
 		gravity: constant(0.0),
 		sortMode: SortMode.Back,
 		damping: constant(0.0),
@@ -572,6 +577,8 @@ function spawn(ref emitter: ParticleEmitter, world: Mat4): void {
 	emitter.particles[slot].time = 0.0;
 	const life: float32 = emitterValue(emitter, emitter.state.life, time);
 	emitter.particles[slot].lifeTimeFactor = 1.0 / (life as float64);
+	const initial: float32 = emitterValue(emitter, emitter.state.initialSpeed, time);
+	if (initial != 0.0) { emitter.particles[slot].force = direction.scaled(initial); }
 }
 
 function channel(color: uint32, shift: uint32): float32 {
