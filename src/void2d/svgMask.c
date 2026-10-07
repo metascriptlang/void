@@ -17,10 +17,37 @@
 #define TINY_PATH_OF_STROKE 0.05f
 #define RASTER_TESSELLATION_TOLERANCE 0.05f
 
+#define MAX_SLOTS 0xffff
+#define MAX_GENERATION 0x7fff
+#define ID_BYTES 63
+#define OPACITY_ON_GROUP 1
+#define OPACITY_IN_STYLE_RULE 2
+
+typedef struct {
+	NSVGimage *image;
+	int generation;
+} Slot;
+
+typedef struct {
+	const char *text;
+	size_t length;
+} Span;
+
+typedef struct {
+	Span *items;
+	int count;
+	int capacity;
+} Spans;
+
 static char s_reason[REASON_BYTES];
-static NSVGimage **s_images;
+static Slot *s_slots;
 static int s_capacity;
+static int s_parsed;
+static int s_released;
 static NSVGrasterizer *s_rasterizer;
+static int s_opacityRefusedAs;
+static Spans s_gradientIds;
+static Spans s_paintRefs;
 
 static const char *const k_elements[] = {
 	"svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "defs",
@@ -74,6 +101,62 @@ static int startsWith(const char *text, size_t length, const char *prefix) {
 	return length >= n && memcmp(text, prefix, n) == 0;
 }
 
+static int knownColourName(const char *name, size_t length) {
+	size_t count = sizeof(nsvg__colors) / sizeof(nsvg__colors[0]);
+	for (size_t i = 0; i < count; i++) {
+		if (sameName(name, length, nsvg__colors[i].name)) { return 1; }
+	}
+	return 0;
+}
+
+static int addSpan(Spans *spans, const char *text, size_t length) {
+	if (spans->count == spans->capacity) {
+		int grown = spans->capacity ? spans->capacity * 2 : 16;
+		Span *items = (Span *)realloc(spans->items, (size_t)grown * sizeof(Span));
+		if (!items) { return VOID2D_SVG_NO_MEMORY; }
+		spans->items = items;
+		spans->capacity = grown;
+	}
+	spans->items[spans->count].text = text;
+	spans->items[spans->count].length = length > ID_BYTES ? ID_BYTES : length;
+	spans->count++;
+	return 0;
+}
+
+static void clearSpans(Spans *spans) {
+	free(spans->items);
+	spans->items = NULL;
+	spans->count = 0;
+	spans->capacity = 0;
+}
+
+static int notePaintReference(const char *value, size_t length) {
+	trim(&value, &length);
+	if (!startsWith(value, length, "url(")) { return 0; }
+	value += 4;
+	length -= 4;
+	if (length > 0 && value[0] == '#') { value++; length--; }
+	size_t end = 0;
+	while (end < length && value[end] != ')') { end++; }
+	return addSpan(&s_paintRefs, value, end);
+}
+
+static int unresolvedPaintReference(void) {
+	for (int r = 0; r < s_paintRefs.count; r++) {
+		Span ref = s_paintRefs.items[r];
+		int found = 0;
+		for (int g = 0; g < s_gradientIds.count && !found; g++) {
+			Span id = s_gradientIds.items[g];
+			found = id.length == ref.length && memcmp(id.text, ref.text, ref.length) == 0;
+		}
+		if (!found) {
+			return refuse(VOID2D_SVG_REFUSED, "paint url(#", ref.text, ref.length,
+				") names no gradient");
+		}
+	}
+	return 0;
+}
+
 static int colourRefused(const char *value, size_t length) {
 	trim(&value, &length);
 	if (sameName(value, length, "none") || sameName(value, length, "currentColor")) { return 0; }
@@ -92,7 +175,7 @@ static int colourRefused(const char *value, size_t length) {
 		char c = value[i];
 		if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))) { return 1; }
 	}
-	return sameName(value, length, "transparent") || startsWith(value, length, "context");
+	return !knownColourName(value, length);
 }
 
 static int valueRefused(const char *value, size_t length, const char *const *allowed,
@@ -119,10 +202,18 @@ static int checkProperty(const char *name, size_t nameLength, const char *value,
 	if (sameName(name, nameLength, "style") && !isStyleText) {
 		return checkDeclarations(value, valueLength);
 	}
+	if (s_opacityRefusedAs && sameName(name, nameLength, "opacity")) {
+		return refuse(VOID2D_SVG_REFUSED, "attribute opacity ", "", 0,
+			s_opacityRefusedAs == OPACITY_ON_GROUP ? "on <g>" : "in a css rule");
+	}
 	if (sameName(name, nameLength, "fill") || sameName(name, nameLength, "stroke")
 		|| sameName(name, nameLength, "stop-color")) {
 		if (colourRefused(value, valueLength)) {
 			return refuse(VOID2D_SVG_REFUSED, "attribute ", name, nameLength, " colour value");
+		}
+		if (!sameName(name, nameLength, "stop-color")) {
+			int code = notePaintReference(value, valueLength);
+			if (code) { return code; }
 		}
 	} else if (inList(name, nameLength, k_opacities, LIST_COUNT(k_opacities))) {
 		if (memchr(value, '%', valueLength)) {
@@ -157,6 +248,14 @@ static int checkDeclarations(const char *text, size_t length) {
 			size_t valueLength = (size_t)(text + end - value);
 			trim(&name, &nameLength);
 			trim(&value, &valueLength);
+			char folded[NAME_SHOWN + 1];
+			if (nameLength <= NAME_SHOWN) {
+				for (size_t n = 0; n < nameLength; n++) {
+					char c = name[n];
+					folded[n] = (c >= 'A' && c <= 'Z') ? (char)(c + 32) : c;
+				}
+				name = folded;
+			}
 			int code = checkProperty(name, nameLength, value, valueLength, 1);
 			if (code) { return code; }
 		}
@@ -219,7 +318,9 @@ static int checkStyleElement(const char *text, size_t length) {
 		if (close == length) {
 			return notSvg("a css block without its closing brace");
 		}
+		s_opacityRefusedAs = OPACITY_IN_STYLE_RULE;
 		code = checkDeclarations(text + open + 1, close - open - 1);
+		s_opacityRefusedAs = 0;
 		if (code) { return code; }
 		i = close + 1;
 	}
@@ -257,6 +358,9 @@ static int scanTag(const char *s, size_t length, size_t *cursor, int *svgCount) 
 		return refuse(VOID2D_SVG_NOT_SVG, "root element <", name, nameLength, "> is not <svg>");
 	}
 	int selfClosing = 0;
+	int isGradient = sameName(name, nameLength, "linearGradient")
+		|| sameName(name, nameLength, "radialGradient");
+	s_opacityRefusedAs = sameName(name, nameLength, "g") ? OPACITY_ON_GROUP : 0;
 	for (;;) {
 		while (i < length && isSpace(s[i])) { i++; }
 		if (i >= length) { return notSvg("an unterminated tag"); }
@@ -286,8 +390,13 @@ static int scanTag(const char *s, size_t length, size_t *cursor, int *svgCount) 
 			i++;
 		}
 		int code = checkProperty(attr, attrLength, value, valueLength, 0);
-		if (code) { return code; }
+		if (code) { s_opacityRefusedAs = 0; return code; }
+		if (isGradient && sameName(attr, attrLength, "id")) {
+			code = addSpan(&s_gradientIds, value, valueLength);
+			if (code) { s_opacityRefusedAs = 0; return code; }
+		}
 	}
+	s_opacityRefusedAs = 0;
 	if (sameName(name, nameLength, "style") && !selfClosing) {
 		size_t close = findText(s, length, i, "</style");
 		if (close == length) { return notSvg("a <style> element without its end tag"); }
@@ -302,6 +411,9 @@ static int scanTag(const char *s, size_t length, size_t *cursor, int *svgCount) 
 static int scan(const char *s, size_t length) {
 	size_t i = 0;
 	int svgCount = 0;
+	s_opacityRefusedAs = 0;
+	clearSpans(&s_gradientIds);
+	clearSpans(&s_paintRefs);
 	while (i < length) {
 		if (s[i] != '<') { i++; continue; }
 		size_t rest = length - i;
@@ -337,7 +449,7 @@ static int scan(const char *s, size_t length) {
 		}
 	}
 	if (svgCount == 0) { return notSvg("no <svg> element"); }
-	return 0;
+	return unresolvedPaintReference();
 }
 
 static NSVGpath *dotPath(float x, float y, float radius, int round) {
@@ -430,24 +542,52 @@ static int drawTinyPaths(NSVGimage *image) {
 	return 0;
 }
 
+static int handleOf(int slot) {
+	return (s_slots[slot].generation << 16) | (slot + 1);
+}
+
 static int takeSlot(NSVGimage *image) {
 	for (int i = 0; i < s_capacity; i++) {
-		if (!s_images[i]) { s_images[i] = image; return i + 1; }
+		if (!s_slots[i].image && s_slots[i].generation != 0) {
+			s_slots[i].image = image;
+			return handleOf(i);
+		}
+	}
+	if (s_capacity >= MAX_SLOTS) {
+		snprintf(s_reason, REASON_BYTES, "more than %d SVGs alive or retired", MAX_SLOTS);
+		return 0;
 	}
 	int grown = s_capacity ? s_capacity * 2 : 16;
-	NSVGimage **images = (NSVGimage **)realloc(s_images, (size_t)grown * sizeof(NSVGimage *));
-	if (!images) { return 0; }
-	memset(images + s_capacity, 0, (size_t)(grown - s_capacity) * sizeof(NSVGimage *));
-	s_images = images;
+	if (grown > MAX_SLOTS) { grown = MAX_SLOTS; }
+	Slot *slots = (Slot *)realloc(s_slots, (size_t)grown * sizeof(Slot));
+	if (!slots) { return 0; }
+	for (int i = s_capacity; i < grown; i++) {
+		slots[i].image = NULL;
+		slots[i].generation = 1;
+	}
+	s_slots = slots;
 	int slot = s_capacity;
 	s_capacity = grown;
-	s_images[slot] = image;
-	return slot + 1;
+	s_slots[slot].image = image;
+	return handleOf(slot);
+}
+
+static int slotOf(int handle) {
+	if (handle < 1) { return -1; }
+	int slot = (handle & 0xffff) - 1;
+	if (slot < 0 || slot >= s_capacity) { return -1; }
+	if (!s_slots[slot].image || s_slots[slot].generation != (handle >> 16)) { return -1; }
+	return slot;
 }
 
 static NSVGimage *imageOf(int handle) {
-	if (handle < 1 || handle > s_capacity) { return NULL; }
-	return s_images[handle - 1];
+	int slot = slotOf(handle);
+	return slot < 0 ? NULL : s_slots[slot].image;
+}
+
+static void release(NSVGimage *image) {
+	nsvgDelete(image);
+	s_released++;
 }
 
 const char *void2dSvgMaskReason(void) {
@@ -463,6 +603,8 @@ int void2dSvgMaskParse(const char *source) {
 		return VOID2D_SVG_TOO_LARGE;
 	}
 	int code = scan(source, length);
+	clearSpans(&s_gradientIds);
+	clearSpans(&s_paintRefs);
 	if (code) { return code; }
 	char *copy = (char *)malloc(length + 1);
 	if (!copy) { return VOID2D_SVG_NO_MEMORY; }
@@ -470,16 +612,17 @@ int void2dSvgMaskParse(const char *source) {
 	NSVGimage *image = nsvgParse(copy, "px", 96.0f);
 	free(copy);
 	if (!image) { return notSvg("a document nanosvg could not parse"); }
+	s_parsed++;
 	if (!(image->width > 0.0f && image->height > 0.0f && image->width < MAX_PARSED_SIDE
 		&& image->height < MAX_PARSED_SIDE)) {
 		snprintf(s_reason, REASON_BYTES, "size %gx%g", (double)image->width, (double)image->height);
-		nsvgDelete(image);
+		release(image);
 		return VOID2D_SVG_NO_SIZE;
 	}
 	code = drawTinyPaths(image);
-	if (code) { nsvgDelete(image); return code; }
+	if (code) { release(image); return code; }
 	int handle = takeSlot(image);
-	if (!handle) { nsvgDelete(image); return VOID2D_SVG_NO_MEMORY; }
+	if (!handle) { release(image); return VOID2D_SVG_NO_MEMORY; }
 	return handle;
 }
 
@@ -494,19 +637,29 @@ float void2dSvgMaskHeight(int handle) {
 }
 
 int void2dSvgMaskFree(int handle) {
-	NSVGimage *image = imageOf(handle);
-	if (!image) { return VOID2D_SVG_BAD_HANDLE; }
-	nsvgDelete(image);
-	s_images[handle - 1] = NULL;
+	int slot = slotOf(handle);
+	if (slot < 0) { return VOID2D_SVG_BAD_HANDLE; }
+	release(s_slots[slot].image);
+	s_slots[slot].image = NULL;
+	s_slots[slot].generation = s_slots[slot].generation >= MAX_GENERATION
+		? 0 : s_slots[slot].generation + 1;
 	return 0;
 }
 
 int void2dSvgMaskLive(void) {
 	int live = 0;
 	for (int i = 0; i < s_capacity; i++) {
-		if (s_images[i]) { live++; }
+		if (s_slots[i].image) { live++; }
 	}
 	return live;
+}
+
+int void2dSvgMaskParsed(void) {
+	return s_parsed;
+}
+
+int void2dSvgMaskReleased(void) {
+	return s_released;
 }
 
 int void2dSvgMaskRasterize(int handle, int width, int height, uint8_t *alpha, int64_t count) {

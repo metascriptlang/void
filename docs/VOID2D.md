@@ -1803,12 +1803,18 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `svgMask.h` and its companion `.c`, and an `else` that stops by name
   (`tests/aborts/svgMaskOff.ms`). A build without the flag has no `linearGradient` and no
   `css selector` string in its executable (0 and 0; 1 and 1 with the flag), and
-  `tests/aborts/svgMaskStaleHandle.ms` pins the stop on a freed handle. `svgMaskParse(string)`
-  copies the source (nanosvg parses in place) and returns a handle with the size the author
+  `tests/aborts/svgMaskStaleHandle.ms` pins the stop on a freed handle and
+  `tests/aborts/svgMaskReusedHandle.ms` on a freed handle whose slot a later parse took: a handle
+  carries the slot in its low 16 bits and a generation in the high 15, bumped at every free, so
+  it names one parse for ever (a slot whose generation runs out is retired; 65,535 slots).
+  `svgMaskParse(string)` copies the source (nanosvg parses in place) and returns a handle with the size the author
   gave, or an `SvgMaskRefusal {error, what}`; `svgMaskRasterize(source, w, h)` returns the alpha
   plane of exactly w by h (1 to 8192 a side, GPUI's cap) with the image fitted whole and centred
   (the smaller of the two scales, so a wide icon in a square keeps its aspect);
-  `svgMaskFree` releases the handle.
+  `svgMaskFree` releases the handle. `svgMaskParsed()` and `svgMaskReleased()` count the images
+  nanosvg made and deleted, so a leak or a wrong free shows as `parsed != released + live`. The
+  rasterizer and the slot table live for the process and are never freed; the statics (including
+  the refusal text) are not thread safe, so one thread may use the module.
   **The allowlist scan** (nanosvg drops without a word what it does not know) refuses by name,
   before nanosvg runs: an element outside `svg g path rect circle ellipse line polyline polygon
   defs linearGradient radialGradient stop style title desc metadata` (`element <use>`), a second
@@ -1816,11 +1822,16 @@ changes described above on today's compiler; the P4 web archive also takes its r
   visibility vector-effect mix-blend-mode isolation shape-rendering transform-origin
   transform-box`, any `inherit`, a `fill`, `stroke` or `stop-color` that carries alpha or that
   nanosvg would read as grey (`rgba(`, `hsl(`, `transparent`, an 8 or 4 digit hex), an opacity
-  in percent, a cap, join or fill rule outside nanosvg's vocabulary, and in a `<style>` element
-  any selector that is not a list of `.class` names, or an `@` rule. Run over 9,016 icons (Lucide
+  in percent, any `opacity` on a `<g>` or in a `<style>` rule (nanosvg multiplies it into each
+  shape, so overlapping shapes of one group composite twice where a browser composes the group
+  once; on a single shape with both fill and stroke it has the same flaw and is not refused),
+  a colour name nanosvg has no entry for (it would draw grey), a `fill` or `stroke` `url(#id)`
+  that names no gradient in the document, CSS property names matched without case, a cap, join or fill rule outside nanosvg's
+  vocabulary, and in a `<style>` element any selector that is not a list of `.class` names, or an `@` rule. Run over 9,016 icons (Lucide
   1.52.0: 2,130; Heroicons 2.2.0 24 px outline and solid: 648 and the 16 px solid: 316; Tabler
-  3.49.0 outline and filled: 6,238) the scan refuses none, so the allowlist costs those sets
-  nothing. It does not check that a `url(#id)` names a gradient that exists.
+  3.49.0 outline and filled: 6,238) the scan (before the opacity, colour-name and
+  `url(#id)` refusals, which were not rerun over those sets) refuses none, so the allowlist
+  cost those sets nothing. `paint-order` is not refused: nanosvg honours it (`nanosvgrast.h:1405`).
   **Two things nanosvg draws wrongly that the module corrects, found by running those sets
   against resvg:** a stroked subpath with no length is dropped, though a browser draws the cap
   as a dot, and Lucide and Heroicons both draw their dots that way (`<line>` with equal ends,

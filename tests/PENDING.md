@@ -191,7 +191,7 @@ that agrees fails the run; an unlisted row that differs fails it.
 | svg:clip-path-24 | T3 | `clip-path` and `<clipPath>` are outside the allowlist (nanosvg has no clipping); refused by name, resvg clips | P6 | 2026-10-07 |
 | svg:mask-24 | T3 | `<mask>` and `mask` are outside the allowlist (nanosvg has no masks); refused by name, resvg masks | P6 | 2026-10-07 |
 | svg:pattern-fill-24 | T3 | `<pattern>` is outside the allowlist (nanosvg has no patterns); refused by name, resvg tiles it | P6 | 2026-10-07 |
-| svg:group-opacity-24 | T3 | nanosvg multiplies `opacity` into each shape of a group, so overlapping shapes composite twice (0.75 where the group should read 0.5, a 6 by 6 patch off by 62); resvg composes the group as one layer | P6 | 2026-10-07 |
+| svg:group-opacity-24 | T3 | `opacity` on a `<g>` is refused by name (`attribute opacity on <g>`): nanosvg multiplies it into each shape, so overlapping shapes composite twice (0.75 where the group should read 0.5); resvg composes the group as one layer | P6 | 2026-10-07 |
 | svg:gear-24 | T3 | a stroked path of many 1.65 radius arcs draws 2.9% less ink in nanosvg (200.7 against 206.6 pixels of coverage), scattered along the curved edges, mean error 5.03 against a 3.5 bound; lowering `tessTol` further (0.02, 0.01) gains nothing, cause not isolated | P6 | 2026-10-07 |
 | svg:dashed-24 | T3 | a dash edge of the 3 2 pattern on a triangle's closing corner lands on a different pixel: 2 pixels past 32, one by 124 | P6 | 2026-10-07 |
 

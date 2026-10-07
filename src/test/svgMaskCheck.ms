@@ -7,6 +7,8 @@ import {
 	svgMaskFree,
 	svgMaskLive,
 	svgMaskParse,
+	svgMaskParsed,
+	svgMaskReleased,
 	svgMaskRasterize,
 } from "../void2d/svgMask";
 
@@ -262,6 +264,49 @@ test "a value the rasterizer would read wrongly is refused with the attribute it
 	}
 }
 
+test "opacity on a group is refused by name, since nanosvg would composite it per shape" {
+	const body: string = `<rect width="4" height="4"/>`;
+	const onGroup = refusalOf(icon("", `<g opacity="0.5">${body}</g>`));
+	assert onGroup.error == SvgMaskError.Unsupported && onGroup.what == "attribute opacity on <g>";
+	const inStyle = refusalOf(icon("", `<g style="fill:none; Opacity: .5">${body}</g>`));
+	assert inStyle.what == "attribute opacity on <g>";
+	const inRule = refusalOf(icon("", `<style>.a { opacity: .5 }</style><g class="a">${body}</g>`));
+	assert inRule.what == "attribute opacity in a css rule";
+	const onShape = mask(icon("", `<rect opacity="0.5" width="24" height="24"/>`), 24);
+	assert (onShape[0] as int32) == 128 || (onShape[0] as int32) == 127;
+	const nested = mask(icon("", `<g><rect fill-opacity="0.5" width="24" height="24"/></g>`), 24);
+	assert (nested[0] as int32) == 128 || (nested[0] as int32) == 127;
+}
+
+test "css property names are matched without case" {
+	const rows: string[] = ["CLIP-PATH", "Filter", "MASK", "Marker-Start"];
+	for (const name of rows) {
+		const r = refusalOf(icon("", `<path style="${name}: url(#c)" d="M0 0"/>`));
+		assert r.error == SvgMaskError.Unsupported;
+		assert r.what == `attribute ${name.toLowerCase()}`;
+	}
+	const inRule = refusalOf(icon("", `<style>.a { Filter: blur(1px) }</style>`));
+	assert inRule.what == "attribute filter";
+}
+
+test "a paint that names no gradient, or a colour name nanosvg does not know, is refused" {
+	const missing = refusalOf(icon("", `<rect fill="url(#nope)" width="4" height="4"/>`));
+	assert missing.error == SvgMaskError.Unsupported;
+	assert missing.what == "paint url(#nope) names no gradient";
+	const styled = refusalOf(icon("", `<rect style="stroke: url(#gone)" width="4" height="4"/>`));
+	assert styled.what == "paint url(#gone) names no gradient";
+	const banana = refusalOf(icon("", `<rect fill="banana" width="4" height="4"/>`));
+	assert banana.what == "attribute fill colour value";
+	const upper = refusalOf(icon("", `<rect fill="Red" width="4" height="4"/>`));
+	assert upper.what == "attribute fill colour value";
+	const gradient: string = `<defs><linearGradient id="g"><stop offset="0" stop-color="#000"/>`
+		+ `<stop offset="1" stop-color="#000"/></linearGradient></defs>`;
+	const later = mask(icon("", `<rect fill="url(#g)" width="24" height="24"/>${gradient}`), 24);
+	assert (later[0] as int32) == 255;
+	const named = mask(icon("", `<rect fill="red" width="24" height="24"/>`), 24);
+	assert (named[0] as int32) == 255;
+}
+
 test "a style element keeps simple class selectors and refuses every other selector by text" {
 	const ok = mask(
 		icon("", `<style>.a, .b-1 { fill: #000 } /* note */</style>`
@@ -341,9 +386,47 @@ test "a refused source and a freed source leave no live image behind" {
 	const c = svgMaskParse(icon("", `<rect width="2" height="2"/>`));
 	assert c.ok;
 	if (c.ok) {
-		assert c.value.handle == a.value.handle;
+		assert c.value.handle != a.value.handle;
+		assert svgMaskLive() == before + 2;
 		svgMaskFree(c.value);
 	}
 	svgMaskFree(b.value);
 	assert svgMaskLive() == before;
+}
+
+test "every parsed image is released exactly once, refused sources included" {
+	const parsedBefore: int32 = svgMaskParsed();
+	const releasedBefore: int32 = svgMaskReleased();
+	const liveBefore: int32 = svgMaskLive();
+	const a = svgMaskParse(icon("", `<rect width="4" height="4"/>`));
+	const sized = svgMaskParse(`<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0"/>`);
+	const tiny = svgMaskParse(
+		icon("", `<path d="M4 4h.001" stroke="#000" stroke-width="2" stroke-linecap="butt"/>`
+			+ `<path d="M8 8h.001" stroke="#000" stroke-width="2" stroke-linecap="butt" `
+			+ `stroke-dasharray="1 1" fill="none"/>`),
+	);
+	assert a.ok && !sized.ok;
+	assert svgMaskParsed() - parsedBefore == 3;
+	assert svgMaskReleased() - releasedBefore == 1;
+	if (tiny.ok) { svgMaskFree(tiny.value); }
+	if (a.ok) { svgMaskFree(a.value); }
+	assert svgMaskParsed() - parsedBefore == 3;
+	assert svgMaskReleased() - releasedBefore == 3;
+	assert svgMaskLive() == liveBefore;
+}
+
+test "a freed handle neither frees nor draws the SVG that took its slot" {
+	const a = svgMaskParse(icon("", `<rect width="4" height="4"/>`));
+	assert a.ok;
+	if (!a.ok) { return; }
+	svgMaskFree(a.value);
+	const b = svgMaskParse(icon("", `<rect width="24" height="24"/>`));
+	assert b.ok;
+	if (!b.ok) { return; }
+	assert b.value.handle != a.value.handle;
+	const live: int32 = svgMaskLive();
+	const drawn = svgMaskRasterize(b.value, 2, 2);
+	assert drawn.ok;
+	svgMaskFree(b.value);
+	assert svgMaskLive() == live - 1;
 }

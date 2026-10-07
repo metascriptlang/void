@@ -17,6 +17,8 @@ float void2dSvgMaskWidth(int handle);
 float void2dSvgMaskHeight(int handle);
 int void2dSvgMaskFree(int handle);
 int void2dSvgMaskLive(void);
+int void2dSvgMaskParsed(void);
+int void2dSvgMaskReleased(void);
 int void2dSvgMaskRasterize(int handle, int width, int height, uint8_t *alpha, int64_t count);
 
 #endif

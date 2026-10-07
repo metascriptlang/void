@@ -28,6 +28,8 @@ when (voidSvg) {
 		void2dSvgMaskHeight,
 		void2dSvgMaskFree,
 		void2dSvgMaskLive,
+		void2dSvgMaskParsed,
+		void2dSvgMaskReleased,
 	} from "./svgMask.h";
 
 	extern function void2dSvgMaskRasterize(
@@ -90,6 +92,10 @@ when (voidSvg) {
 	}
 
 	export function svgMaskLive(): int32 { return void2dSvgMaskLive(); }
+
+	export function svgMaskParsed(): int32 { return void2dSvgMaskParsed(); }
+
+	export function svgMaskReleased(): int32 { return void2dSvgMaskReleased(); }
 } else {
 	function svgMaskOff(what: string): void {
 		console.log(`void2d svg: ${what} needs the SVG module; build with -d:voidSvg`);
@@ -116,6 +122,16 @@ when (voidSvg) {
 
 	export function svgMaskLive(): int32 {
 		svgMaskOff("svgMaskLive");
+		return 0;
+	}
+
+	export function svgMaskParsed(): int32 {
+		svgMaskOff("svgMaskParsed");
+		return 0;
+	}
+
+	export function svgMaskReleased(): int32 {
+		svgMaskOff("svgMaskReleased");
 		return 0;
 	}
 }

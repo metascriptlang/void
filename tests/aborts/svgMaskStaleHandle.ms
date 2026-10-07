@@ -1,4 +1,4 @@
-// expect: void2d svg: svgMaskRasterize: handle 1 is not a live SVG
+// expect: void2d svg: svgMaskRasterize: handle 65537 is not a live SVG
 // flags: -d:voidSvg
 import { svgMaskFree, svgMaskParse, svgMaskRasterize } from "../../src/void2d/svgMask";
 
