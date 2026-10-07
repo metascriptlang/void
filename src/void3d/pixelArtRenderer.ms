@@ -173,6 +173,7 @@ export enum PixelArtError {
 	ForeignMesh,
 	ForeignMaterial,
 	ProgramNotCast,
+	CasterBlock,
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
@@ -560,6 +561,7 @@ function fromCore(error: RendererError): PixelArtError {
 		RendererError.ForeignMesh => PixelArtError.ForeignMesh,
 		RendererError.ForeignMaterial => PixelArtError.ForeignMaterial,
 		RendererError.ProgramNotCast => PixelArtError.ProgramNotCast,
+		RendererError.CasterBlock => PixelArtError.CasterBlock,
 	};
 }
 

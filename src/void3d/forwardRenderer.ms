@@ -83,6 +83,7 @@ export enum ForwardError {
 	ForeignMesh,
 	ForeignMaterial,
 	ProgramNotCast,
+	CasterBlock,
 	TargetSize,
 }
 
@@ -148,6 +149,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.ForeignMesh => ForwardError.ForeignMesh,
 		RendererError.ForeignMaterial => ForwardError.ForeignMaterial,
 		RendererError.ProgramNotCast => ForwardError.ProgramNotCast,
+		RendererError.CasterBlock => ForwardError.CasterBlock,
 	};
 }
 

@@ -22,6 +22,7 @@ import {
 	SHADOW_SAMPLER_SLOT,
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
+	MOVING_MATERIAL_UNIFORM_LENGTH,
 } from "../void3d/gpu3d";
 import { RenderState, Face } from "../gpu/state";
 import {
@@ -65,6 +66,7 @@ import {
 	DIR_SHADOW_UNIFORM_LENGTH,
 	lightBasis,
 	shadowBounds,
+	castsAll,
 } from "../void3d/dirShadowMap";
 import { Bounds3D } from "../void3d/bounds";
 import { CameraBasis } from "../void3d/camera";
@@ -187,8 +189,8 @@ test "the shadow pass culls as the main pass does unless the material says its o
 	const unculled: Material = { ...base, pass: base.pass.withCulling(Face.None) };
 	assert unculled.shadowFace() == Face.None;
 	assert base.withShadowCulling(ShadowCulling.None).shadowFace() == Face.None;
-	assert unculled.withShadowCulling(ShadowCulling.Front).shadowFace() == Face.Front;
-	assert unculled.withShadowCulling(ShadowCulling.Back).shadowFace() == Face.Back;
+	assert unculled.withShadowCulling(ShadowCulling.CullFront).shadowFace() == Face.Front;
+	assert unculled.withShadowCulling(ShadowCulling.CullBack).shadowFace() == Face.Back;
 	assert base.withShadowCulling(ShadowCulling.None).pass.culling == Face.Back;
 }
 
@@ -289,6 +291,30 @@ function itemOf(context: DrawContext, material: MaterialId): DrawItem {
 		material: material,
 		world: identity(),
 	};
+}
+
+test "a caster whose material block is shorter than its shadow program's is refused by name" {
+	let context: DrawContext = DrawContext.withUniformCapacity(
+		DIR_SHADOW_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
+	);
+	const map: Result<DirShadowMap, ShadowError> = DirShadowMap.create(context, 64);
+	const block: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, MOVING_MATERIAL_UNIFORM_LENGTH);
+	assert map.ok && block.ok;
+	if (!map.ok || !block.ok) { return; }
+	const key: ProgramKey = ProgramKey.of(Program.LitTextured).withDissolve();
+	const made: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...Material.keyed(key, RenderState.defaults(), Phase.Opaque)
+			.withShadows(ShadowCasting.On, false),
+		uniforms: block.value,
+	});
+	assert made.ok;
+	if (!made.ok) { return; }
+	const items: Vec<DrawItem> = [itemOf(context, made.value)];
+	assert map.value.castsAll(items).ok;
+	context.materials[made.value.index].uniforms = { ...block.value, length: 4 };
+	const refused: Result<int32, ProgramError> = map.value.castsAll(items);
+	assert !refused.ok && refused.error == ProgramError.BlockShort;
 }
 
 test "a frame with a shadow map refuses a caster with no shadow output before it writes" {

@@ -219,6 +219,7 @@ export function doorLayout(layout: VertexLayout): int32 {
 
 export enum ProgramError {
 	NotDrawn,
+	BlockShort,
 }
 
 // What a renderer of `preset` draws for a material's key: the same key in its preset, when the

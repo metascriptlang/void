@@ -8,6 +8,7 @@ import {
 	ProgramKey,
 	ProgramError,
 	castIn,
+	uniformBlockLength,
 	VERTEX_UNIFORM_SLOT,
 	VERTEX_UNIFORM_LENGTH,
 	SHADOW_UNIFORM_SLOT,
@@ -154,6 +155,10 @@ export function castsAll(
 		if (material.castShadows == ShadowCasting.Off) { continue; }
 		const key: Result<ProgramKey, ProgramError> = castIn(material.program);
 		if (!key.ok) { return Result.err(key.error); }
+		const block: UniformBlock = material.uniforms;
+		if (block.length > 0 && block.length < uniformBlockLength(key.value, block.slot)) {
+			return Result.err(ProgramError.BlockShort);
+		}
 		shadow.cast[i] = key.value;
 		count = count + 1;
 	}

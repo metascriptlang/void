@@ -1313,9 +1313,30 @@ function applyBlock(this context: DrawContext, block: UniformBlock): void {
 
 // The first `declared` floats of a block: a program that reads less than its material's block
 // takes the head, since gpu3d.ms puts the features a caster drops last (emissiveBase).
-function applyBlockHead(this context: DrawContext, block: UniformBlock, declared: int32): void {
-	const length: int32 = declared < block.length ? declared : block.length;
-	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + length]);
+// Only a shadow program may read less than its material's block; a colour pass reads all of it.
+export function applyBlockHead(
+	this context: DrawContext,
+	block: UniformBlock,
+	program: ProgramKey,
+	declared: int32,
+): void {
+	if (block.length < declared) { stopOnShortBlock(program, block, declared); }
+	if (program.preset != Preset.Shadow && block.length != declared) {
+		stopOnLongBlock(program, block, declared);
+	}
+	applyUniforms(block.slot, context.uniforms.values[block.offset..block.offset + declared]);
+}
+
+function stopOnShortBlock(program: ProgramKey, block: UniformBlock, declared: int32): void {
+	console.log(`void3d: ${program.describe()} reads ${declared} floats of slot ${block.slot} ` +
+		`and its material's block holds ${block.length}`);
+	unreachable;
+}
+
+function stopOnLongBlock(program: ProgramKey, block: UniformBlock, declared: int32): void {
+	console.log(`void3d: ${program.describe()} reads ${declared} floats of slot ${block.slot}, ` +
+		`so a block of ${block.length} is not its own; only a shadow caster takes a head`);
+	unreachable;
 }
 
 // An hxsl global texture (Heaps' `shadow.map`), bound past a material's slots.
@@ -1503,7 +1524,7 @@ export function drawItemWith(
 	if (material.uniforms.length > 0 &&
 		context.pipelines.declaresBlock(globalProgram, material.uniforms.slot)) {
 		const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
-		context.applyBlockHead(material.uniforms, declared);
+		context.applyBlockHead(material.uniforms, program, declared);
 	}
 	draw(0, mesh.elementCount(), mesh.instanceCount);
 }

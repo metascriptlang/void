@@ -138,6 +138,7 @@ export enum RendererError {
 	ForeignMesh,
 	ForeignMaterial,
 	ProgramNotCast,
+	CasterBlock,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -315,8 +316,12 @@ export function beginFrame(
 			return Result.err(RendererError.MaterialTexture);
 		}
 	}
-	if (shadow !== null && !shadow.castsAll(items).ok) {
-		return Result.err(RendererError.ProgramNotCast);
+	if (shadow !== null) {
+		const cast: Result<int32, ProgramError> = shadow.castsAll(items);
+		if (!cast.ok) {
+			return Result.err(cast.error == ProgramError.BlockShort ?
+				RendererError.CasterBlock : RendererError.ProgramNotCast);
+		}
 	}
 	if ((camera.length as int32) != renderer.cameraBlock.length) {
 		return Result.err(RendererError.CameraBlockLength);
@@ -533,7 +538,7 @@ function texturesFit(program: ProgramKey, material: Material): boolean {
 export function openPrepare(this renderer: Renderer): void {
 	if (renderer.closed) { stopOnClosed("prepareFrame"); }
 	if (renderer.prepared) {
-		console.log("void3d: prepareFrame again before drawToScreen drew the frame it prepared");
+		console.log("void3d: prepareFrame on a frame no drawToScreen or endPrepared ended");
 		unreachable;
 	}
 	// sokol cannot nest passes, and the prepare opens its own (the door tracks which pass is
