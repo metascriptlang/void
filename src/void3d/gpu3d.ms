@@ -134,17 +134,17 @@ export function withDissolve(this key: ProgramKey): ProgramKey {
 	return { ...stopOnUntextured(key, "dissolve"), dissolve: true };
 }
 
-function stopOnUnlitTextured(key: ProgramKey, feature: string): ProgramKey {
+function stopOnNotLitTextured(key: ProgramKey, feature: string): ProgramKey {
 	if (key.program != Program.LitTextured) { return stopOnFeature(key, feature); }
 	return key;
 }
 
 export function withEmissive(this key: ProgramKey): ProgramKey {
-	return { ...stopOnUnlitTextured(key, "emissive"), emissive: true };
+	return { ...stopOnNotLitTextured(key, "emissive"), emissive: true };
 }
 
 export function withNormalMap(this key: ProgramKey): ProgramKey {
-	return { ...stopOnUnlitTextured(key, "normal map"), normalMap: true };
+	return { ...stopOnNotLitTextured(key, "normal map"), normalMap: true };
 }
 
 // Any of the three reads the moving material block (MOVING_* below).

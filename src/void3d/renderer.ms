@@ -76,6 +76,7 @@ import {
 	MODEL_SLOT,
 	SceneTexture,
 	NO_SCENE_TEXTURE,
+	slotBit,
 } from "./draw";
 import { UniformError, ownRange, disownRange } from "./uniformPool";
 import {
@@ -494,10 +495,6 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	}
 	if (own < 0) { return block.length == 0; }
 	return block.slot == own && block.length == uniformBlockLength(program, own);
-}
-
-function slotBit(slot: int32): uint32 {
-	return (1 as uint32) << (slot as uint32);
 }
 
 // Every texture view and sampler `program` declares is bound on `material`, each by one field: a

@@ -802,7 +802,7 @@ function blendsPremultiplied(pass: RenderState): boolean {
 		&& pass.blendAlphaOperation == PREMULTIPLIED_OVER.blendAlphaOperation;
 }
 
-function slotBit(slot: int32): uint32 {
+export function slotBit(slot: int32): uint32 {
 	return (1 as uint32) << (slot as uint32);
 }
 
