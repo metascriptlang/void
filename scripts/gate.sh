@@ -714,13 +714,20 @@ else
 	fail "module off or wasm delta — see out/gate-wasm-delta.log"
 	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
 fi
-rm -f out/tmp/mainSokol2dOff.exe out/tmp/mainSokol2dColour.exe
+rm -f out/tmp/mainSokol2dOff.exe out/tmp/mainSokol2dColour.exe out/tmp/mainSokol2dOff.pdb out/tmp/mainSokol2dColour.pdb
 if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 \
 		&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
 	module_on_bytes=$(wc -c < out/tmp/mainSokol2dColour.exe)
-	named_on=$(llvm-nm out/tmp/mainSokol2dColour.exe 2> /dev/null | grep -c 'void2dColour' || true)
-	named_off=$(llvm-nm out/tmp/mainSokol2dOff.exe 2> /dev/null | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
+	module_symbols() {
+		if [ -f "${1%.exe}.pdb" ]; then
+			llvm-pdbutil dump -publics "${1%.exe}.pdb" 2> /dev/null
+		else
+			llvm-nm "$1" 2> /dev/null
+		fi
+	}
+	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'void2dColour' || true)
+	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
 	if [ "$named_on" -eq 0 ]; then
 		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
