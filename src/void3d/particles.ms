@@ -482,7 +482,9 @@ function ringPoint(
 	const turn: float64 = unitRandom(emitter) * TWO_PI;
 	const fill: float32 = nextUnit(emitter.sequence);
 	let radius: float32 =
-		Math.sqrt((fill * (clamped * clamped - inner * inner) + inner * inner) as float64) as float32;
+		Math.sqrt(
+			(fill * (clamped * clamped - inner * inner) + inner * inner) as float64,
+		) as float32;
 	radius = radius + (radius * (top / clamped) - radius) * along;
 	const isZero: boolean = axisIn.x == 0.0 && axisIn.y == 0.0 && axisIn.z == 0.0;
 	const axis: Vec3 = isZero ? vec3(0.0, 0.0, 1.0) : axisIn.normalized();

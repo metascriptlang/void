@@ -78,7 +78,9 @@ export function noise4(cx: float32, cy: float32, cz: float32, cw: float32): floa
 		const oy: float32 = ((i >> 1) & 1) as float32;
 		const oz: float32 = ((i >> 2) & 1) as float32;
 		const ow: float32 = ((i >> 3) & 1) as float32;
-		const corner: float32 = cornerValue(bx + ox, by + oy, bz + oz, bw + ow, dx - ox, dy - oy, dz - oz, dw - ow);
+		const corner: float32 = cornerValue(
+			bx + ox, by + oy, bz + oz, bw + ow, dx - ox, dy - oy, dz - oz, dw - ow,
+		);
 		let weight: float32 = (i & 1) != 0 ? fx : 1.0 - fx;
 		weight = weight * (((i >> 1) & 1) != 0 ? fy : 1.0 - fy);
 		weight = weight * (((i >> 2) & 1) != 0 ? fz : 1.0 - fz);
