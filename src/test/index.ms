@@ -78,6 +78,7 @@ import "./worldLabelCheck";
 when (voidColourEmoji) {
 	import "./glyphColourAtlasCheck";
 	import "./colourFaceCheck";
+	import "./labelTextColourCheck";
 } else {
 	import "./glyphColourOffCheck";
 }

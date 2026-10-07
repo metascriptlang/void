@@ -1848,7 +1848,27 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
   `void2dGlyphPageTexelRgba`; `batcher.c` `SG_PIXELFORMAT_RGBA8` and the byte-exact upload;
   `glyphAtlas.ms` `acquireBlank` and per-kind `residentBytes`), and a colour-only face loads.
-  The shader mode for an RGBA page view is still refused by name until the draw slice.
+  Draw path (`labelText.ms` `placeLabel`, `render.ms` `emitLabel`/`emitGlyph`): a glyph whose face
+  has a colour strike or layers at the device size (`colourTileBox` reports Present) is a colour
+  glyph, decided per glyph by the strike data, so a face with outlines and colour draws its
+  outline-only glyphs as text. Its tile is keyed `(face, glyph, device size)` with variant 0 and
+  placed at a whole device pixel: x is the nearest device pixel of the pen position plus the
+  tile's bearing, y the snapped baseline plus the bearing, so a label moved by a fraction of a
+  pixel reuses the tile. It records as an `InstanceMode.Image` instance with the premultiplied
+  flag in `params1.y` (the shader already has the path; `shader2d.glsl` and every generated header
+  are untouched) and a white fill that carries only the node's alpha, as GPUI's polychrome sprite
+  takes opacity and no tint. On the vertex program (a label under a colour effect) the quad takes
+  the premultiplied source flag, and `glyphPageViewMode` answers 0, an ordinary texture, for an
+  RGBA page. A label with colour glyphs emits its text glyphs first and its colour tiles second,
+  so text and emoji alternating in one label cost two runs instead of one per switch; z order
+  changes only where an emoji tile overlaps a text glyph. NEW MECHANISM (flagged, needs approval):
+  that two-pass order, which none of GPUI, Makepad and Ghostty has (they batch per primitive
+  kind). A tile whose fill `colourRasterize` refuses goes back through `GlyphAtlas.discard` and
+  the label reports `ColourRefused` by name. Measured headless (`src/test/labelTextColourCheck.ms`,
+  326 tests): placement at DPI 1.0, 1.25 and 1.5, the instance fields, the vertex-program quad and
+  the discard. Not measured: the golden `text/colourEmoji` capture (owed, D3D11), and the run
+  count of an alternating label, which needs real views (a headless view is 0, so both pages
+  record under one view).
   NEW MECHANISM (flagged, needs approval): `colourEmoji/colourFace.c`, an in-tree CBLC/CBDT
   parser (index formats 1 to 3, image formats 17, 18 and 19, PNG only), no reference has one
   because GPUI, Makepad and Ghostty all call FreeType or the OS (Ghostty

@@ -24,13 +24,23 @@ import {
 	shapeText,
 	wrapText,
 } from "./textLayout";
-import { decorationMetrics } from "./face";
+import {
+	ColourGlyph,
+	ColourTileBox,
+	decorationMetrics,
+	hasColourTables,
+	colourTileBox,
+} from "./face";
 import { DEFAULT_FONT, fontFace } from "./font";
 import { Transform2D, Color } from "./types";
 
 when (voidSdfText) {
 	import { acquireSdf } from "./glyphAtlas";
 	import { SDF_EM } from "./textSdf";
+}
+
+when (voidColourEmoji) {
+	import { acquireColour, colourKey } from "./glyphAtlas";
 }
 
 export const NO_LABEL_TEXT: int32 = -1;
@@ -94,6 +104,7 @@ export interface LabelText {
 	placed: Vec<PlacedGlyph>;
 	placedValid: boolean;
 	coverageInSdf: boolean;
+	colourGlyphs: int32;
 	regime: TextRegime;
 	key: PlacementKey;
 	refused: int32;
@@ -132,8 +143,8 @@ export function glyphPageHandle(page: GlyphPage): GlyphPageHandle {
 	return glyphAtlas.pageHandle(page);
 }
 
-export function glyphPageIsSdf(page: GlyphPage): boolean {
-	return glyphAtlas.pageKind(page) == PageKind.Sdf;
+export function glyphPageKind(page: GlyphPage): PageKind {
+	return glyphAtlas.pageKind(page);
 }
 
 export function beginGlyphFrame(frame: int32): void {
@@ -193,6 +204,7 @@ export function allocateLabelText(): int32 {
 		placed: new Array(0),
 		placedValid: false,
 		coverageInSdf: false,
+		colourGlyphs: 0,
 		regime: TextRegime.Bitmap,
 		key: NO_PLACEMENT_KEY,
 		refused: 0,
@@ -522,6 +534,62 @@ when (voidSdfText) {
 	}
 }
 
+const NO_COLOUR_BOX: ColourTileBox = {
+	left: 0, top: 0, right: 0, bottom: 0, glyph: ColourGlyph.Absent, ppem: 0,
+};
+
+when (voidColourEmoji) {
+	function colourBoxOf(g: LaidGlyph, sizePx: float32): ColourTileBox {
+		if (!hasColourTables(g.face)) { return NO_COLOUR_BOX; }
+		return colourTileBox(g.face, g.glyph, sizePx);
+	}
+
+	function colourPlacedGlyph(
+		g: LaidGlyph,
+		box: ColourTileBox,
+		sizePx: float32,
+		baseline: float32,
+		devicePerLocal: float32,
+		pixelExact: boolean,
+		fracX: float32,
+		fracY: float32,
+	): Result<PlacedGlyph, AtlasError> {
+		const acquired = glyphAtlas.acquireColour(
+			colourKey(g.face, g.glyph, sizePx),
+			box.right - box.left, box.bottom - box.top, box.left, box.top,
+		);
+		if (!acquired.ok) { return Result.err(acquired.error); }
+		let whole: int32 = 0;
+		let baselineDevice: int32 = 0;
+		if (pixelExact) {
+			whole = snapBaseline(fracX + (g.x + g.offsetX) * devicePerLocal);
+			baselineDevice = snapBaseline(fracY + (baseline + g.offsetY) * devicePerLocal);
+		}
+		return Result.ok(placedGlyph(
+			g, acquired.value, glyphAtlas.tile(acquired.value), baseline, devicePerLocal,
+			pixelExact, whole, baselineDevice,
+		));
+	}
+} else {
+	function colourBoxOf(g: LaidGlyph, sizePx: float32): ColourTileBox {
+		return NO_COLOUR_BOX;
+	}
+
+	function colourPlacedGlyph(
+		g: LaidGlyph,
+		box: ColourTileBox,
+		sizePx: float32,
+		baseline: float32,
+		devicePerLocal: float32,
+		pixelExact: boolean,
+		fracX: float32,
+		fracY: float32,
+	): Result<PlacedGlyph, AtlasError> {
+		console.log("void2d: a label placed a colour glyph in a build without -d:voidColourEmoji");
+		unreachable;
+	}
+}
+
 export function placeLabel(index: int32, world: Transform2D, scale: float32): LabelText {
 	const entry: LabelText = labelTexts[index];
 	if (placementCurrent(entry, world, scale)) { return entry; }
@@ -538,10 +606,34 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let refused: int32 = 0;
 	let refusal: string = "";
 	let coverageInSdf: boolean = false;
+	let colourGlyphs: int32 = 0;
 	if (devicePerLocal > 0.0 || regime == TextRegime.Sdf) {
 		for (const g of entry.layout.glyphs) {
 			if (g.glyph == NO_GLYPH) { continue; }
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
+			if (devicePerLocal > 0.0) {
+				const sizePx: float32 = g.size * devicePerLocal;
+				const colourBox: ColourTileBox = colourBoxOf(g, sizePx);
+				if (colourBox.glyph == ColourGlyph.Refused) {
+					refused = refused + 1;
+					refusal = AtlasError.ColourRefused.toString();
+					continue;
+				}
+				if (colourBox.glyph == ColourGlyph.Present) {
+					const coloured = colourPlacedGlyph(
+						g, colourBox, sizePx, baseline, devicePerLocal, pixelExact, fracX, fracY,
+					);
+					if (!coloured.ok) {
+						refused = refused + 1;
+						refusal = coloured.error.toString();
+						continue;
+					}
+					placed.push(coloured.value);
+					colourGlyphs = colourGlyphs + 1;
+					coverageInSdf = coverageInSdf || regime == TextRegime.Sdf;
+					continue;
+				}
+			}
 			if (regime == TextRegime.Sdf) {
 				const sdf = sdfPlacedGlyph(g, baseline);
 				if (sdf.ok) {
@@ -592,6 +684,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	entry.placed = placed;
 	entry.placedValid = refused == 0;
 	entry.coverageInSdf = coverageInSdf;
+	entry.colourGlyphs = colourGlyphs;
 	entry.regime = regime;
 	entry.key = placementKey(world, scale, regime);
 	return entry;

@@ -42,6 +42,8 @@ export enum AtlasError {
 	MaskWrongPageKind,
 	MaskOutsidePage,
 	MaskBadShape,
+
+	ColourRefused,
 }
 
 export enum PageKind {
@@ -574,5 +576,34 @@ when (voidSdfText) {
 			refs: 1,
 			key: packedKey,
 		}));
+	}
+}
+
+when (voidColourEmoji) {
+	import { void2dGlyphColourRasterize } from "./glyph.h";
+
+	export function colourKey(face: int32, glyph: int32, sizePx: float32): GlyphKey {
+		return { kind: PageKind.Rgba, face: face, glyph: glyph, sizePx: sizePx, variant: 0 };
+	}
+
+	export function acquireColour(
+		this atlas: GlyphAtlas,
+		key: GlyphKey,
+		width: int32,
+		height: int32,
+		left: int32,
+		top: int32,
+	): Result<int32, AtlasError> {
+		const hit: boolean = atlas.cached(key);
+		const index: int32 = try atlas.acquireBlank(key, width, height, left, top);
+		if (hit || width <= 0 || height <= 0) { return Result.ok(index); }
+		const t: GlyphTile = atlas.tiles[index];
+		const code: int32 = void2dGlyphColourRasterize(key.face, key.glyph, key.sizePx,
+			atlas.pages[t.page as int32].handle as int32, t.x, t.y, width, height);
+		if (code != 0) {
+			atlas.discard(index);
+			return Result.err(AtlasError.ColourRefused);
+		}
+		return Result.ok(index);
 	}
 }
