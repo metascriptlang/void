@@ -1778,24 +1778,66 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
   **Rasterizer taken and measured 2026-10-07 (V0): nanosvg** (`memononen/nanosvg` at
   `239e102`, zlib, `nanosvg.h` 92,258 B + `nanosvgrast.h` 40,870 B, two headers). `setup.sh`
-  fetches it into `deps/nanosvg` at that pin, as it does `kb`; `deps/` is not tracked. Measured
-  against resvg 0.48.1 (`resvg-py` 0.5.0) on 15 hand-written icons (Lucide-style round-cap
-  strokes, evenodd rings, a nested rotate and scale, dashes, a miter join, fill opacity), alpha
-  channel only: at 24 px the mean absolute error is 1.79 of 255 per icon on average, 6.19 at
-  worst (a gear outline), and 111 pixels in all differ by more than 32; at 48 px the mean is
-  0.96; GPUI's path (rasterize at 48, average 2 by 2 to 24) has a mean of 1.53 and 72 pixels
-  past 32. nanosvg draws about 3% less ink on thick strokes with inner joins (gear 199.5
-  against 206.6 pixels of coverage). `NSVG__SUBSAMPLES` 15 and 17, the divisors of 255 above 5,
-  do not help (mean 1.88 and 1.92 at 24 px, 111 to 117 pixels past 32), so the
-  subsample count is not the error and the header stays unpatched. The worst single pixel is a
-  dashed outline (124 at 24 px): a dash edge placed a fraction of a pixel differently. Module
-  alone for the web (`emcc` 5.0.5, `-Os`, both headers' implementations plus one
-  parse-and-rasterize function): 48,503 B object, 84,039 B linked against 20,746 B for a
-  function using only `malloc`, `memset`, `strtod`, `sqrtf` and `strcmp`, so the module adds
-  63,293 B of wasm (31,984 B gzipped). The full web build still cannot link (Yoga has no web
-  branch), so this is the module-alone figure the spec allows. Whether `msc` drops a `.c`
-  nothing imports is answered by the shaper probe above (it does, inside a `when`), which is
-  the seam the SVG module uses.
+  fetches it into `deps/nanosvg` at that pin, as it does `kb`; `deps/` is not tracked, so the
+  headers cannot carry a patch. Measured against resvg 0.48.1 (`resvg-py` 0.5.0), alpha channel
+  only, 15 hand-written icons first (round-cap strokes, evenodd rings, a nested rotate and scale,
+  dashes, a miter join, fill opacity), then the real sets. At nanosvg's defaults the mean absolute
+  error at 24 px is 1.79 of 255 per icon, 6.19 at worst (a gear outline), and 111 pixels in all
+  differ by more than 32. `NSVG__SUBSAMPLES` 15 and 17, the divisors of 255 above 5, do not help
+  (1.88 and 1.92), so the vertical subsample count is not the error. The error is the flattening
+  tolerance: `tessTol` 0.25 draws about 3% less ink on curved strokes (a circle of radius 8:
+  195.7 against 201.06 pixels of coverage; the two round caps of a 4 wide stroke: 10.3 against
+  12.6). Lowering it to 0.05 gives 1.39 and 46 pixels past 32 at 24 px, and 0.72 and 29 at 48 px
+  (25 at 0.02, 0.01: no gain), so the module sets `tessTol` to 0.05 on the rasterizer it
+  creates (the struct is visible because the implementation is in the same file). The worst
+  single pixel left is a dashed outline (124 at 24 px): a dash edge placed a fraction of a pixel
+  differently.
+  **Module alone for the web (V0, re-measured with the real module in V1):** `emcc` 5.0.5
+  `-Os`, `svgMask.c` with nanosvg in it: 64,507 B object, 100,023 B linked against 20,746 B for
+  a function using only `malloc`, `memset`, `strtod`, `sqrtf` and `strcmp`, so the module adds
+  79,277 B of wasm (39,842 B gzipped; `snprintf` for the refusal text is part of it). The full web
+  build still cannot link (Yoga has no web branch), so this is the module-alone figure the spec
+  allows.
+  **Built 2026-10-07 (V1): `svgMask.{h,c,ms}`, test `src/test/svgMaskCheck.ms`, behind
+  `-d:voidSvg`.** Same seam as the shaper: `svgMask.ms` has `when (voidSvg)` around the import of
+  `svgMask.h` and its companion `.c`, and an `else` that stops by name
+  (`tests/aborts/svgMaskOff.ms`). A build without the flag has no `linearGradient` and no
+  `css selector` string in its executable (0 and 0; 1 and 1 with the flag), and
+  `tests/aborts/svgMaskStaleHandle.ms` pins the stop on a freed handle. `svgMaskParse(string)`
+  copies the source (nanosvg parses in place) and returns a handle with the size the author
+  gave, or an `SvgMaskRefusal {error, what}`; `svgMaskRasterize(source, w, h)` returns the alpha
+  plane of exactly w by h (1 to 8192 a side, GPUI's cap) with the image fitted whole and centred
+  (the smaller of the two scales, so a wide icon in a square keeps its aspect);
+  `svgMaskFree` releases the handle.
+  **The allowlist scan** (nanosvg drops without a word what it does not know) refuses by name,
+  before nanosvg runs: an element outside `svg g path rect circle ellipse line polyline polygon
+  defs linearGradient radialGradient stop style title desc metadata` (`element <use>`), a second
+  `<svg>`, an attribute or `style` declaration that is `clip-path clip mask filter marker*
+  visibility vector-effect mix-blend-mode isolation shape-rendering transform-origin
+  transform-box`, any `inherit`, a `fill`, `stroke` or `stop-color` that carries alpha or that
+  nanosvg would read as grey (`rgba(`, `hsl(`, `transparent`, an 8 or 4 digit hex), an opacity
+  in percent, a cap, join or fill rule outside nanosvg's vocabulary, and in a `<style>` element
+  any selector that is not a list of `.class` names, or an `@` rule. Run over 9,016 icons (Lucide
+  1.52.0: 2,130; Heroicons 2.2.0 24 px outline and solid: 648 and the 16 px solid: 316; Tabler
+  3.49.0 outline and filled: 6,238) the scan refuses none, so the allowlist costs those sets
+  nothing. It does not check that a `url(#id)` names a gradient that exists.
+  **Two things nanosvg draws wrongly that the module corrects, found by running those sets
+  against resvg:** a stroked subpath with no length is dropped, though a browser draws the cap
+  as a dot, and Lucide and Heroicons both draw their dots that way (`<line>` with equal ends,
+  `h.01`, a closed loop `h.008v.008H8.25v-.008Z`): 13 of 2,130 Lucide icons and 22 of 324
+  Heroicons outline icons had a pixel off by more than 128 of 255. After parsing, the module
+  replaces every stroked subpath whose extent is at most 5% of its stroke width by a filled
+  disk (round cap, or round join on a closed loop) or square (square cap) of the stroke's colour
+  and opacity, in its own shape so the rest of the original shape is untouched. A butt cap there
+  is left alone. A tiny path it cannot make faithful is refused by name: a gradient stroke, a
+  dash array, a closed loop without round joins. After the correction, at 24 px against resvg, no
+  Lucide or Heroicons icon is off by more than 128 (41 of 2,130 Lucide and 8 of 324 Heroicons
+  outline have a pixel past 64), and 3 of 5,184 Tabler outline icons are (64 past 64; the
+  skateboard wheel below is one); the median of the per-icon mean error is 1.59 (Lucide), 2.92
+  (Heroicons outline), 1.64 (Heroicons solid), 1.69 (Tabler outline), 0.85 (Tabler filled). A dot comes out about 10% lighter than resvg's
+  (2.82 against 3.25 pixels of coverage for a 2 wide dot). Known gaps: a lone `M x y z` is
+  dropped by nanosvg before any path exists, so the module cannot see it; a disk of radius 0.5
+  stroked 2 wide (a Tabler skateboard wheel) draws a hole resvg does not.
 - Procedural sprite glyphs — box drawing, blocks, braille, powerline — for a terminal widget.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.

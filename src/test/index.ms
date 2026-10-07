@@ -58,6 +58,9 @@ when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
 }
+when (voidSvg) {
+	import "./svgMaskCheck";
+}
 when (voidProfiler) {
 	import "./profilerCheck";
 	import "./frameMarksCheck";
