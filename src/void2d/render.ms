@@ -112,6 +112,7 @@ import {
 	wrapText,
 } from "./textLayout";
 import { GlyphPage, NO_GLYPH_PAGE } from "./glyphAtlas";
+import { PlacedIcon, placeIcon } from "./icon";
 import { glyphInkBox } from "./face";
 import {
 	Vec2,
@@ -708,6 +709,28 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	if (instanced) { emitCaret(blend, text, world, na); }
 }
 
+function emitIcon(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
+	const scale: float32 = currentRenderScale();
+	const placed: PlacedIcon = placeIcon(
+		s.payloads[i], s.contents[i].w, s.contents[i].h, world, scale,
+	);
+	if (placed.refused) { s.retry.push(i); }
+	if (!placed.drawn) { return; }
+	const space: GlyphSpace = {
+		world: world,
+		affine: placed.exact ? deviceGrid : world,
+		exact: placed.exact,
+		instanced: uiInstancingAvailable(),
+		originX: Math.floor(world.tx * scale) as float32,
+		originY: Math.floor(world.ty * scale) as float32,
+		scale: scale,
+	};
+	setSampler(Smooth.On, false);
+	markGlyphPageDrawn(placed.glyph.page);
+	const view: uint32 = glyphPageView(glyphPageHandle(placed.glyph.page));
+	emitGlyph(space, s.paints[i].blend, view, placed.glyph, false, col);
+}
+
 function emitStyledImage(
 	s: Scene2D,
 	i: int32,
@@ -934,6 +957,9 @@ function emitNode(
 		},
 		DrawKind.Label => {
 			emitLabel(s, i, world, col, na);
+		},
+		DrawKind.Icon => {
+			emitIcon(s, i, world, col);
 		},
 		DrawKind.Graphics => {
 			const geometry: GraphicsMesh = s.meshes[payload];

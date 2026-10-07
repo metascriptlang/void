@@ -73,6 +73,10 @@ import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../../src/void2d/effect";
 import { GradientSpace } from "../../src/void2d/gradient";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
 import { approx, fakeTexture } from "../../src/test/helpers";
+when (voidSvg) {
+	import { IconId, iconHolds, iconTile, registerIcon } from "../../src/void2d/icon";
+	import { glyphAtlas } from "../../src/void2d/labelText";
+}
 
 const SNAPSHOT_DIR: string = "tests/displayList";
 
@@ -1269,4 +1273,91 @@ test "a premultiplied tile carries its bit into the command and splits the run" 
 	assert commandField(1, CMD_SAMPLER) >= (SOURCE_PREMULTIPLIED as float32);
 	assert commandField(1, CMD_BREAK) == (BreakReason.Sampler as int32) as float32;
 	frameEnd();
+}
+
+when (voidSvg) {
+	const ICON_SOURCE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
+		`viewBox="0 0 24 24"><path d="M12 3 L21 20 L3 20 Z" fill="#000"/></svg>`;
+
+	function iconSheet(): IconId {
+		const r = registerIcon(ICON_SOURCE);
+		if (!r.ok) {
+			console.log(`icon refused: ${r.error.what}`);
+			unreachable;
+		}
+		return r.value;
+	}
+
+	function iconScene(id: IconId): NodeRef {
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		s.add(s.icon(id, 24.0, 24.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0));
+		s.add(s.icon(id, 24.0, 24.0, rgba(0.9, 0.3, 0.2, 0.5)).at(40.0, 8.0));
+		s.add(s.icon(id, 16.0, 16.0, rgba(0.2, 0.7, 0.4, 1.0)).at(72.0, 8.0));
+		const turned = s.add(s.icon(id, 24.0, 24.0, rgba(0.3, 0.5, 0.9, 1.0)).at(100.0, 24.0));
+		turned.setRotation(0.5);
+		return s.refOf(s.root);
+	}
+
+	function iconTileOf(root: NodeRef, child: int32): int32 {
+		return iconTile(root.scene.payloads[root.scene.children[root.id.index][child]]);
+	}
+
+	test "T1 snapshot: icons are Glyph-mode UI instances, a tint and a turn included" {
+		assert snapshot("icon", record(iconScene(iconSheet()), 128.0, 64.0, 1.0));
+	}
+
+	test "icons of one id at one raster size hold one tile, a turned one at its mean scale too" {
+		const root = iconScene(iconSheet());
+		record(root, 128.0, 64.0, 1.0);
+		const shared: int32 = iconTileOf(root, 0);
+		assert shared >= 0;
+		assert iconTileOf(root, 1) == shared;
+		assert iconTileOf(root, 3) == shared;
+		assert iconTileOf(root, 2) != shared;
+		assert glyphAtlas.tile(shared).refs == 3;
+		assert glyphAtlas.tile(shared).width == 48;
+		assert glyphAtlas.tile(iconTileOf(root, 2)).width == 32;
+	}
+
+	test "an icon drawn at a DPI rasterizes at twice the device pixels it covers" {
+		const root = iconScene(iconSheet());
+		record(root, 192.0, 96.0, 1.5);
+		assert glyphAtlas.tile(iconTileOf(root, 0)).width == 72;
+		assert glyphAtlas.tile(iconTileOf(root, 2)).width == 48;
+	}
+
+	test "removing an icon gives its tile back and drawing it again takes one" {
+		const root = iconScene(iconSheet());
+		record(root, 128.0, 64.0, 1.0);
+		const first: NodeRef = root.scene.refOf(root.scene.children[root.id.index][0]);
+		const shared: int32 = iconTileOf(root, 0);
+		assert glyphAtlas.tile(shared).refs == 3;
+		root.removeChild(first);
+		assert glyphAtlas.tile(shared).refs == 2;
+		assert iconTile(first.scene.payloads[first.id.index]) == -1;
+		root.addChild(first);
+		record(root, 128.0, 64.0, 1.0);
+		assert glyphAtlas.tile(shared).refs == 3;
+	}
+
+	test "resizing an icon takes the tile of the new size and lets the old one go" {
+		const root = iconScene(iconSheet());
+		record(root, 128.0, 64.0, 1.0);
+		const small: NodeRef = root.scene.refOf(root.scene.children[root.id.index][2]);
+		const before: int32 = iconTileOf(root, 2);
+		small.setSize(24.0, 24.0);
+		record(root, 128.0, 64.0, 1.0);
+		assert iconTileOf(root, 2) == iconTileOf(root, 0);
+		assert glyphAtlas.tile(before).refs == 0;
+		assert glyphAtlas.tile(iconTileOf(root, 0)).refs == 4;
+	}
+
+	test "a node that is not drawn holds its icon registration" {
+		const id: IconId = iconSheet();
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		assert iconHolds(id) == 0;
+		s.add(s.icon(id, 8.0, 8.0, rgba(1.0, 1.0, 1.0, 1.0)));
+		s.add(s.icon(id, 9.0, 9.0, rgba(1.0, 1.0, 1.0, 1.0)));
+		assert iconHolds(id) == 2;
+	}
 }

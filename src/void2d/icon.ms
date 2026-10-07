@@ -123,7 +123,7 @@ export function acquireIconMask(
 }
 
 export function allocateIconPlacement(icon: IconId): int32 {
-	requireIcon(icon, "icon");
+	requireIcon(icon, "scene.icon");
 	const row: IconPlacement = {
 		icon: icon, tile: -1, maskWidth: 0, maskHeight: 0, refusal: "",
 	};

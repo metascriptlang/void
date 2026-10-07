@@ -11,6 +11,10 @@ import { approx, fakeTexture } from "./helpers";
 import { BoxStyle, uniformRadii, uniformBorders, boxStyles } from "../void2d/boxStyle";
 import { colorMatrixGrayscale, NO_COLOR_MATRIX } from "../void2d/effect";
 
+when (voidSvg) {
+	import { IconId, iconHolds, registerIcon } from "../void2d/icon";
+}
+
 const HALF_PI: float32 = 1.5707963;
 const white = rgba(1.0, 1.0, 1.0, 1.0);
 
@@ -1026,4 +1030,47 @@ test "removing the delays returns to the constant fps" {
 	s.add(a);
 	assert a.animFrames().delaysMs.length == 0;
 	assert approx(a.animFrames().frameDelayMs(2), 100.0);
+}
+
+when (voidSvg) {
+	function registeredIcon(): IconId {
+		const r = registerIcon(
+			`<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 8 8">` +
+			`<rect width="8" height="8"/></svg>`,
+		);
+		if (!r.ok) {
+			console.log(`icon refused: ${r.error.what}`);
+			unreachable;
+		}
+		return r.value;
+	}
+
+	test "icon factory sets kind, size and tint and holds its registration" {
+		const id: IconId = registeredIcon();
+		const n = fresh().icon(id, 20.0, 12.0, rgba(0.5, 0.25, 0.75, 1.0));
+		assert n.kind() === DrawKind.Icon;
+		assert approx(n.content().w, 20.0);
+		assert approx(n.content().h, 12.0);
+		assert approx(n.paint().color.r, 0.5);
+		assert approx(n.paint().color.b, 0.75);
+		assert iconHolds(id) == 1;
+		assert marked(n, Changed.Local);
+	}
+
+	test "an icon takes the colour set after it and keeps the box it was given" {
+		const n = fresh().icon(registeredIcon(), 16.0, 16.0, white);
+		n.setColor(rgba(0.0, 1.0, 0.0, 1.0));
+		assert approx(n.paint().color.g, 1.0);
+		assert approx(n.paint().color.r, 0.0);
+		assert approx(n.content().w, 16.0);
+	}
+
+	test "an icon reports its box as its bounds" {
+		const n = fresh().icon(registeredIcon(), 20.0, 12.0, white).at(2.0, 3.0);
+		n.sync(identity2d(), false);
+		let b = emptyBounds();
+		n.getBounds(b);
+		assert approx(b.xMin, 2.0) && approx(b.yMin, 3.0);
+		assert approx(b.xMax, 22.0) && approx(b.yMax, 15.0);
+	}
 }

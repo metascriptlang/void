@@ -43,6 +43,12 @@ import {
 	setLabelCursor,
 	setLabelBlinkTime,
 } from "./labelText";
+import {
+	IconId,
+	allocateIconPlacement,
+	releaseIconPlacement,
+	releaseIconTile,
+} from "./icon";
 import { FontId } from "./font";
 import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
 import {
@@ -62,6 +68,7 @@ export enum DrawKind {
 	Underline,
 	Selection,
 	TileGroup,
+	Icon,
 }
 
 export enum Changed {
@@ -887,6 +894,18 @@ export function label(this s: Scene2D, text: string, size: float32, color: Color
 	return s.refOf(i);
 }
 
+function stopOnBadIconSize(w: float32, h: float32): void {
+	console.log(`void2d: icon asked for a ${w}x${h} box; both sides must be zero or more`);
+	unreachable;
+}
+
+export function icon(this s: Scene2D, id: IconId, w: float32, h: float32, color: Color): NodeRef {
+	if (!(w >= 0.0) || !(h >= 0.0)) { stopOnBadIconSize(w, h); }
+	const i: int32 = s.sized(DrawKind.Icon, allocateIconPlacement(id), w, h);
+	s.paints[i] = { ...s.paints[i], color: color };
+	return s.refOf(i);
+}
+
 export function anim(this s: Scene2D, frames: Tile[], fps: float32): NodeRef {
 	const row: AnimFrames = {
 		frames: frames, fps: fps, clock: 0.0, imageStyle: NO_IMAGE_STYLE,
@@ -1569,6 +1588,9 @@ function releaseGlyphs(this s: Scene2D, top: int32): void {
 		if (s.kinds[i] === DrawKind.Label && s.payloads[i] != NO_LABEL_TEXT) {
 			releaseLabelGlyphs(s.payloads[i]);
 		}
+		if (s.kinds[i] === DrawKind.Icon && s.payloads[i] != NO_PAYLOAD) {
+			releaseIconTile(s.payloads[i]);
+		}
 		for (let k: int32 = 0; k < (s.children[i].length as int32); k++) {
 			s.stack.push(s.children[i][k]);
 		}
@@ -1759,6 +1781,9 @@ function releasePayload(this s: Scene2D, i: int32): void {
 		},
 		DrawKind.Group | DrawKind.ScaleGrid => {},
 		DrawKind.Underline | DrawKind.Selection => {},
+		DrawKind.Icon => {
+			if (payload != NO_PAYLOAD) { releaseIconPlacement(payload); }
+		},
 	}
 	s.payloads[i] = NO_PAYLOAD;
 }
