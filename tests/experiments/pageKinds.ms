@@ -21,7 +21,7 @@ const ICON_SIZES: float32[] = [16.0, 24.0];
 const R8_PAGE_BYTES: int32 = 1024 * 1024;
 const RGBA_PAGE_BYTES: int32 = 4 * R8_PAGE_BYTES;
 
-const pageOrder: Vec<int32> = new Array(0);
+let pageOrder: Vec<int32> = new Array(0);
 
 function place(text: string, size: float32, dpi: float32, x: float32): void {
 	const index = allocateLabelText();
