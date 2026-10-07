@@ -10,6 +10,7 @@ MSC="${MSC:-msc}"
 ENTRY="${VOID_WEB_ENTRY:-src/examples/mainSokol2d.ms}"
 DEST="${VOID_WEB_DEST:-web}"
 EXTRA_PASSC="${VOID_WEB_PASSC:-}"
+MSC_FLAGS="${VOID_WEB_MSCFLAGS:-}"
 NAME="$(basename "$ENTRY" .ms)"
 
 cd "$(dirname "$0")/.."
@@ -43,7 +44,7 @@ build() {
 	target="$1"; passc="$2"; passl="$3"; dest="$4"
 	rm -f "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data"
 	for i in 1 2 3 4; do
-		"$MSC" build "$ENTRY" --os=emcc --passC="$passc $EXTRA_PASSC" --passL="$passl" \
+		"$MSC" build $MSC_FLAGS "$ENTRY" --os=emcc --passC="$passc $EXTRA_PASSC" --passL="$passl" \
 			--output="out/release/$NAME.js" >/tmp/void_web_$target.log 2>&1 || true
 		if grep -q "Built" /tmp/void_web_$target.log && [ -f "out/release/$NAME.wasm" ]; then
 			mkdir -p "$dest"
