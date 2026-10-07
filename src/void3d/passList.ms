@@ -3,9 +3,9 @@
 // Heaps links PassObjects into a list that `filter` splits and `sort` reorders in place. Here
 // a list holds indices into the frame's Span<DrawItem>: `collect` keeps the items whose
 // material is in the list's phase, in item order, `sortByLayer` orders them by Pass.layer as
-// SortByMaterial does first and then by the item's render order, and `sortBackToFront` reorders them the way Renderer.depthSort does
-// for the "alpha" pass. The index storage grows only when the item
-// count does (a structural change), so a frame allocates nothing.
+// SortByMaterial does first and then by the item's render order, and `sortBackToFront`
+// reorders them the way Renderer.depthSort does for the "alpha" pass. The index storage grows
+// only when the item count does (a structural change), so a frame allocates nothing.
 
 import { DrawContext, DrawItem, SceneTexture, drawItemWith } from "./draw";
 import { TargetLayout } from "../gpu/target";
@@ -120,7 +120,8 @@ function depthOf(item: DrawItem, camera: Readonly<Span<float32>>): float32 {
 }
 
 // Renderer.depthSort, back to front: lower layers first, then lower render orders, then
-// farthest first; items at the same layer, order and depth keep their order. An insertion sort, stable and in place.
+// farthest first; items at the same layer, order and depth keep their order. An insertion
+// sort, stable and in place.
 export function sortBackToFront(
 	ref list: PassList,
 	items: Readonly<Span<DrawItem>>,
