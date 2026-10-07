@@ -1653,6 +1653,51 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 - **Shaper module** (candidate `kb_text_shape`): GSUB features, ligatures, complex scripts, shaping breaks as an input. The largest wasm item; measured alone.
 - **SDF text** for the transformed regime: one ~32 px/em distance field per glyph, derivative-scaled ramp, luma bias (MAKEPAD.md:112) — so zoom and animation cost nothing, and void3d gets world-space text through the same glyph layer.
+  **Built 2026-10-07, behind `-d:voidSdfText`, first four slices** (field, generator, atlas,
+  placement; the shader ramp, goldens and void3d are not built, so nothing draws SDF text yet).
+  `textSdf.ms` is the T0 reference: field byte `191 - 31.875 * outward texels` (edge at 191/255,
+  radius 8, pad 4, 32 px/em, as `stbtt_GetGlyphSDF` takes them and Makepad's
+  `layouter.rs:249-255` encodes them) and Makepad's linear ramp
+  (`draw_text.rs:620-641`) without its luma bias; weight stays the coverage layer's
+  `correctCoverage`. `glyph.c` `void2dGlyphSdfRasterize` is `stbtt_GetGlyphSDF`'s loop
+  (`stb_truetype.h:4575`) run over `glyphShape`'s vertices so synthetic bold and italic faces
+  are seen; it is byte-identical to `stbtt_GetGlyphSDF` on 94 ASCII glyphs of Inter and 40 CJK
+  glyphs of the Noto subset (`src/test/glyphSdfCheck.ms`), and a cubic (CFF) outline is refused
+  by name (`AtlasError.SdfCubicOutline`) because stb's loop has no cubic case. The atlas keeps
+  SDF tiles on their own R8 page kind under key `(face, glyph, kind)`, no size and no variant:
+  `acquireSdf`, 64 acquisitions are one tile and one generation, and SDF and coverage pages
+  reclaim apart. `placeLabel` takes a third regime, `TextRegime.Sdf`, whose placement is the
+  tile box in local units at `size / 32`, so `placementCurrent` ignores the matrix and the scale:
+  a 64-step zoom and a 64-step turn acquire nothing after the first frame.
+  Measured, `msc test` (C, debug), 20 glyphs (16 Inter, 4 CJK), the field sampled bilinearly and
+  ramped at device pixel centres against true coverage (exact-size `stbtt_MakeGlyphBitmapSubpixel`
+  at no rotation, a 4x4 supersample of coverage at 4x size under rotation), over pixels where
+  either is non-zero (`src/test/sdfOracleCheck.ms`):
+
+  | zoom (16 px at 1) | mean abs error, rotations 0 / 17 / 45 / 90 | 99th percentile | ink ratio |
+  |---|---|---|---|
+  | 0.5 | 0.056 / 0.051 / 0.059 / 0.047 | 0.21 - 0.26 | 1.02 - 1.04 |
+  | 1 | 0.053 / 0.036 / 0.043 / 0.035 | 0.17 - 0.27 | 0.96 - 0.98 |
+  | 2 | 0.037 / 0.023 / 0.026 / 0.018 | 0.15 - 0.28 | 0.985 - 0.993 |
+  | 4 | 0.027 / 0.022 / 0.023 / 0.020 | 0.31 - 0.33 | 0.986 - 0.988 |
+
+  The error falls with zoom, the 99th percentile rises from about 0.27 to 0.33 (sharp corners
+  rounded by about half a texel), and total ink stays within 4 percent of coverage. On that
+  evidence no size ladder and no luma bias are built; the 4x corner softening is the number
+  the T5 look beside Zed judges. Generation cost, `msc test` C debug build, not the optimised
+  scratch figure the spec quotes: 0.84 ms per Latin glyph and 3.7 ms per CJK glyph
+  (`void2dGlyphSdfGenerations` counts them for the budget; no budget is built).
+  **Decisions to read before S5.** `setSdfRegime(true)` is the switch that makes `regimeOf` choose
+  Sdf (translation and DPI only stay pixel-exact: `a == d == 1`, `b == c == 0`); it is off by
+  default because `batcher.c` `glyphPageViewMode` still aborts by name on an SDF page, and the
+  shader slice turns it on at setup. A zoom that passes exactly 1.0 is pixel-exact for that
+  frame and re-places on the coverage atlas, as the rule says. The design scale of a
+  `ScaleMode` is still in the world matrix, so under the Sdf regime a LetterBox, Zoom or Stretch
+  scene's text is SDF; folding it into the DPI-like `scale` needs the scene view matrix split
+  in `scene.ms` `paint` and is not done. NEW MECHANISM: the runtime regime switch
+  (a rollout guard, removed when the shader lands) and `void2dGlyphSdfStbDiff`, a verification
+  entry that stays in `glyph.c` under `VOID2D_SDF_TEXT` and is called from tests only; the
+  generator itself is the P6 spec's own "SDF generation from void2d's own outline".
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
