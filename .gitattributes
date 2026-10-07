@@ -4,3 +4,4 @@
 *.ttf binary
 tests/displayList/*.txt -text
 *.glb binary
+scripts/scriptEscapes.txt -text

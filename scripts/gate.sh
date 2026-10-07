@@ -348,7 +348,9 @@ else
 fi
 
 rm -f out/tmp/sceneOcclusionColour.exe
-if "$MSC" build -d:voidColourEmoji tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusionColour.exe \n	> out/gate-scene-occlusion-colour.log 2>&1 \n	&& out/tmp/sceneOcclusionColour.exe > out/gate-scene-occlusion-colour-run.log 2>&1; then
+if "$MSC" build -d:voidColourEmoji tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusionColour.exe \
+		> out/gate-scene-occlusion-colour.log 2>&1 \
+		&& out/tmp/sceneOcclusionColour.exe > out/gate-scene-occlusion-colour-run.log 2>&1; then
 	pass "scene occlusion with colour: releaseGpu keeps the RGBA page beside the coverage page, repaints byte-identical"
 else
 	fail "scene occlusion with colour — see out/gate-scene-occlusion-colour.log and out/gate-scene-occlusion-colour-run.log"
@@ -377,7 +379,9 @@ else
 fi
 
 rm -f out/tmp/deviceLossColour.exe
-if "$MSC" build -d:voidColourEmoji tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLossColour.exe \n	> out/gate-device-loss-colour.log 2>&1 \n	&& out/tmp/deviceLossColour.exe > out/gate-device-loss-colour-run.log 2>&1; then
+if "$MSC" build -d:voidColourEmoji tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLossColour.exe \
+		> out/gate-device-loss-colour.log 2>&1 \
+		&& out/tmp/deviceLossColour.exe > out/gate-device-loss-colour-run.log 2>&1; then
 	pass "device loss with colour: two forced losses, the RGBA page re-uploads from its CPU mirror, the next frame byte-identical"
 else
 	fail "device loss with colour — see out/gate-device-loss-colour.log and out/gate-device-loss-colour-run.log"
@@ -708,7 +712,8 @@ else
 	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
 fi
 rm -f out/tmp/mainSokol2dOff.exe out/tmp/mainSokol2dColour.exe
-if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 \n	&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
+if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 \
+		&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
 	module_on_bytes=$(wc -c < out/tmp/mainSokol2dColour.exe)
 	named_on=$(llvm-nm out/tmp/mainSokol2dColour.exe 2> /dev/null | grep -c 'void2dColour' || true)
@@ -826,6 +831,14 @@ if git ls-files -z 'src/*.ms' 'tests/*.ms' | xargs -0 awk -f scripts/stringLiter
 else
 	fail "style: a string literal holds a raw tab, CR or line end — see out/gate-string-literals.log"
 	head -8 out/gate-string-literals.log | sed 's/^/      /'
+fi
+git ls-files -z 'scripts/*.sh' | xargs -0 grep -n -F -f scripts/scriptEscapes.txt \
+	> out/gate-script-escapes.log || true
+if [ -s out/gate-script-escapes.log ]; then
+	fail "style: a script has a literal backslash-n where a line continuation belongs — see out/gate-script-escapes.log"
+	head -8 out/gate-script-escapes.log | sed 's/^/      /'
+else
+	pass "style: no script carries a literal backslash-n where a line continuation belongs"
 fi
 # The conformance rows of docs/TESTING.md against the logs this run wrote; a skipped suite has
 # no log from this run, so its row is not judged.
