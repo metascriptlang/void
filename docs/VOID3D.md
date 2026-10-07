@@ -2725,6 +2725,79 @@ Android and the web build have NOT run, so no pixel of the order is evidenced an
 expectations (a lower order draws first and keeps equal depth, the higher order's alpha lands on
 top) are unconfirmed. The roadmap row is not flipped.
 
+### M39 as built
+
+**Several primitives: one drawable each, under a group.** A glTF mesh's primitives decode into
+one `MeshData` apiece, in file order, each with its own material index (`GltfData.meshes` and
+`meshMaterials` are flat, one entry per primitive). A node whose mesh has one primitive is what
+M8 made, byte for byte (the textured fixture decodes to the same meshes, nodes, textures and
+vertex hash before and after). A node with several keeps its transform and becomes a group:
+its children are one mesh node per primitive, ahead of its glTF children, named as three.js
+`d4ea9b9` names a mesh's primitives (`createUniqueName`, `GLTFLoader.js:3817`: the mesh's name,
+then `_1`, `_2`; `mesh_<index>` when the mesh has none, `GLTFLoader.js:4014`). three.js returns
+the mesh itself for one primitive and a `Group` otherwise (`GLTFLoader.js:4035-4053`); here the
+expansion is in the decoder (`placePrimitives`), so `addGltfNodes` is unchanged and a node
+reaching one glTF mesh twice gets its own children each time. A node's mesh index past the mesh
+array is still `BadNode`, from the same graph check.
+
+**Emission: factor, map and strength through M37's key.** `emissiveFactor` (linear, default 0),
+`emissiveTexture` and `KHR_materials_emissive_strength` (default 1) are read as three.js reads
+them (`GLTFLoader.js:3774-3784` and `:878`): the colour is factor times map times strength, so a
+factor of 0 or a strength of 0 emits nothing whatever the map, and the material then keeps no
+emissive role and stays on its untextured program. An emitting material draws with the
+`LitTextured` key plus `emissive`; its block is the setup's floats, then at `emissiveBase` the
+factor gamma-encoded and the strength (`gltfBlockOf`). With a factor and no map the material
+takes a 1x1 white texture, as M37 requires; the same white is the base texture of an emitting or
+normal-mapped material that has none, and its primitives read no UV (zeros) when no real image
+is named. `TEXCOORD_0` is required as soon as any role names an image
+(`MissingTexCoord`).
+
+**Normal maps: TANGENT when the file has it, `addTangents` when it does not.** `normalTexture`
+selects `normalMap` in the key and the 16-float `LitTexturedTangent` layout. A primitive's
+`TANGENT` (float VEC4: unit xyz, w exactly 1 or -1, glTF 2.0 section 3.7.2.1) is interleaved as
+it comes (`addGivenTangents`); with no `TANGENT` the tangents are `addTangents`', which is
+Lengyel's per-vertex sum and **not MikkTSpace**, which glTF asks of a loader that generates them
+(section 3.7.2.1). A flat or uniformly mapped surface agrees; across a shared seam they can
+differ, so a baked map authored against MikkTSpace may light slightly off at hard edges. three.js
+makes the same trade the other way, deriving tangents in the shader when none is stored
+(`GLTFLoader.js:3552`). A `TANGENT` on a material with no normal map is ignored, because the
+layout follows the key.
+
+**Refused rather than dropped.** `normalTexture.scale` other than 1 (the key has no scale;
+three.js sets `normalScale` from it, `GLTFLoader.js:3747-3756`), a `texCoord` other than 0 or
+an `extensions` object on any texture reference (the layout carries one UV set and no
+transform), an `occlusionTexture`, and a material whose base, emissive and normal textures do
+not share one filter and wrap: M37 reads both maps with the base texture's sampler, so a file
+that asks otherwise would be drawn with the wrong one (`UnsupportedSampler`; a white stand-in
+takes its material's sampler). The kind of material must also have a declared key: a glTF
+material is `LitTextured` (shadowed) plus its features, and `programKeys.txt` declares no row for
+**emissive with `MASK`** (cutout) or **normal map with `MASK`**; `addGltfAssets` refuses either
+with `GltfSceneError.UndeclaredProgram` before it uploads anything, and `BLEND` with either is
+fine because blending is pass state, not a key bit. No key bit was added.
+
+**Acceptance, 2026-10-07, headless only; the GPU gates have NOT run on this tree.** `msc` build
+`4757fd37`, Windows, each file run alone: `src/test/gltfMaterialCheck.ms` 25 tests (12 new:
+emissive with a factor, map and strength; the factor with no map and with no base; an emitting
+material with no emission; refusals; the key and block for emissive, normal and both; `BLEND`
+accepted and `MASK` refused for both; the normal map with `TANGENT`, a flipped sign, generated
+tangents, a `TANGENT` with no normal map, the refusals; the shared sampler), `src/test/gltfCheck.ms`
+9 tests (2 new: the group of primitives and its scene nodes with their own bindings), and
+`src/test/meshDataCheck.ms` 31 tests (1 new: given tangents). `msc check` passes on
+`tests/integration/gltfFrame.ms`, `src/examples/churnScene.ms` and
+`tests/aborts3d/cases/gltfCases.ms`, which build `GltfMaterial` or match `GltfSceneError`. The
+fixture `tests/fixtures/gltf/texturedScene.glb` decodes identically to `e6f2a94` (a probe over
+meshes, nodes, textures, material indices and a vertex hash).
+
+**Not done.** A glTF with these materials has not been drawn: `addGltfAssets` cannot upload a
+texture headless (sokol asserts without a context), so the uploaded material, the white texture
+and the tangent mesh reach no test beyond the pure `gltfProgramOf`, `gltfBlockOf` and
+the refusal before upload; no `gltfFrame` stage, capture or golden was written or run, and
+GLES3 and web are NOT RUN. Occlusion and metallic-roughness textures stay unloaded
+(metallic and roughness factors are still ignored, as in M23), `emissive` with a cutout
+or a normal map with a cutout needs two declared rows, a second UV set needs a layout, and the
+primitive modes, `uint32` indices, sparse accessors and a real exporter's file stay as M8 and
+M23 left them (`gltf-real-export-not-exercised`).
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
