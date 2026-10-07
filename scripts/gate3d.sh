@@ -979,7 +979,8 @@ STYLE_PATHS="src/gpu src/void3d src/test/scene3dCheck.ms src/test/boundsCheck.ms
 	src/test/cameraCheck.ms src/test/pickCheck.ms
 	src/test/animationCheck.ms tests/integration/cameraRigFrame.ms
 	tests/integration/reparentFrame.ms tests/integration/dirShadow.ms src/test/dirShadowCheck.ms
-	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms"
+	src/test/programKeyCheck.ms tests/integration/movingMaterial.ms
+	tests/integration/mapMaterial.ms"
 
 run_style() {
 	long=$(
@@ -2012,6 +2013,40 @@ run_moving_material() {
 	pass "moving-material: an affine UV transform, UV scroll on the frame time, a mirrored back texture and a dissolve with its edge band in both presets; the featureless control fails on each"
 }
 
+run_map_material() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "map-material: GATE_SKIP_CAPTURE=1 — no emissive or normal map was read back"
+		return
+	fi
+	exe="$WORK/mapMaterial.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/mapMaterial.ms --output="$exe" 		> "$WORK/mapMaterial.build.log" 2>&1; then
+		fail "map-material: tests/integration/mapMaterial.ms does not build — see $WORK/mapMaterial.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_MAP_PIXEL_ART=$preset "$exe" > "$WORK/mapMaterial.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "map-material: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS map material: ' "$WORK/mapMaterial.$preset.log"; then
+			fail "map-material: preset $preset (exit $status) — see $WORK/mapMaterial.$preset.log"
+			return
+		fi
+		status=0
+		VOID_MAP_PIXEL_ART=$preset VOID_MAP_CONTROL=1 "$exe" 			> "$WORK/mapMaterial.control.$preset.log" 2>&1 || status=$?
+		for message in 'did not emit its emissive map' 'the half strength emitted' 			'did not tilt toward +x' 'did not tilt toward +y' 'did not turn its tangent' 			'turned its bitangent'; do
+			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/mapMaterial.control.$preset.log"; then
+				fail "map-material: the featureless control in preset $preset did not fail on '$message' (exit $status)"
+				return
+			fi
+		done
+	done
+	pass "map-material: an emissive map and its strength over a black surface, and a normal map tilting toward +u and the image's top, mirrored islands included, in both presets; the featureless control fails on each"
+}
+
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
 # 7 (DissolveControl) the control of 6 (Dissolve).
 DIR_SHADOW_CASES="0 2 3 4 5 6"
@@ -2439,6 +2474,7 @@ run_alpha_kill
 run_sort_layer
 run_dir_shadow
 run_moving_material
+run_map_material
 run_camera_rig
 run_reparent
 run_gltf
