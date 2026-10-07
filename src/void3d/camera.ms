@@ -1,4 +1,6 @@
-import { Vec3, Vec4, Mat4, vec3, normalized, EPSILON } from "../math/math3d";
+import {
+	Vec3, Vec4, Mat4, Quat, vec3, normalized, quatOfRotation, EPSILON,
+} from "../math/math3d";
 import { LowResView, ViewPoint } from "./blit";
 import { Ray } from "./ray";
 
@@ -174,6 +176,17 @@ export function basisOf(this camera: Camera3D): CameraBasis {
 		up: vec3(-yawSin * pitchSin, pitchCos, -yawCos * pitchSin),
 		forward: vec3(-yawSin * pitchCos, -pitchSin, -yawCos * pitchCos),
 	};
+}
+
+// The rotation that turns a node's x, y and z to the basis's right, up and back: a camera node's
+// own rotation (scene.ms addCameraAt), and a label that faces the camera (worldLabel.ms).
+export function rotationOfBasis(basis: CameraBasis): Quat {
+	return quatOfRotation({
+		m11: basis.right.x, m12: basis.right.y, m13: basis.right.z, m14: 0.0,
+		m21: basis.up.x, m22: basis.up.y, m23: basis.up.z, m24: 0.0,
+		m31: -basis.forward.x, m32: -basis.forward.y, m33: -basis.forward.z, m34: 0.0,
+		m41: 0.0, m42: 0.0, m43: 0.0, m44: 1.0,
+	});
 }
 
 // h3d.Camera.makeCameraMatrix: the transpose of a lookAt, so that `p * m` reads `p - eye` in the

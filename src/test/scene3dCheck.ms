@@ -17,6 +17,8 @@ import {
 	addMeshNode,
 	addLightNode,
 	addCameraNode,
+	addCameraAt,
+	cameraViewOf,
 	setCameraOf,
 	setActiveCamera,
 	cameraOf,
@@ -802,6 +804,32 @@ test "a camera binding follows a moving rolled parent through the scene world pa
 		const view: Result<CameraView, CameraError> = changed.value.resolve(320, 240);
 		assert view.ok;
 	}
+}
+
+test "a camera node made from a camera's own pose reads that pose back, once" {
+	const scene: Scene3D = Scene3D.create(DrawContext.withUniformCapacity(0));
+	const posed: Camera3D = {
+		position: vec3(2.0, 3.0, -1.0), yaw: 0.7, pitch: 0.4,
+		nearPlane: 0.1, farPlane: 40.0,
+		projection: { kind: ProjectionKind.Perspective, fovY: 1.0 },
+	};
+	const node: NodeId3D = addCameraAt(scene, scene.rootId(), posed);
+	const read: Result<Camera3D, CameraError> = cameraViewOf(scene, node);
+	assert read.ok;
+	if (!read.ok) { return; }
+	assert read.value.position == posed.position;
+	const wanted = posed.basisOf();
+	const got = read.value.basisOf();
+	assert approx(got.right.x, wanted.right.x) && approx(got.right.y, wanted.right.y);
+	assert approx(got.right.z, wanted.right.z) && approx(got.up.x, wanted.up.x);
+	assert approx(got.up.y, wanted.up.y) && approx(got.up.z, wanted.up.z);
+	assert approx(got.forward.x, wanted.forward.x) && approx(got.forward.y, wanted.forward.y);
+	assert approx(got.forward.z, wanted.forward.z);
+	assert read.value.nearPlane == 0.1 && read.value.farPlane == 40.0;
+	setLocal(scene, node, Transform3D.fromTranslation(vec3(0.0, 0.0, 9.0)));
+	const moved: Result<Camera3D, CameraError> = cameraViewOf(scene, node);
+	assert moved.ok;
+	if (moved.ok) { assert moved.value.position == vec3(0.0, 0.0, 9.0); }
 }
 
 test "a removed active camera reports staleness and never reuses a fresh node's matrix" {

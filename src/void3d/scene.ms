@@ -37,7 +37,7 @@ import {
 	clearMaterialTally,
 } from "./draw";
 import { Slots, LAST_GENERATION, claim, vacate } from "./slots";
-import { Camera3D, CameraError } from "./camera";
+import { Camera3D, CameraError, rotationOfBasis } from "./camera";
 import {
 	DEFAULT_LAYERS,
 	layerBit,
@@ -438,6 +438,24 @@ export function addCameraNode(
 	scene.cameras.push({ node: id, camera: camera, layers: DEFAULT_LAYERS });
 	linkChild(scene, under, id.index);
 	return id;
+}
+
+// A camera node posed by the camera's own position, yaw and pitch (or its orientation), under
+// `parent`: the pose is written once, into the node, and `cameraViewOf` reads it from there.
+// Bevy's `Camera3d` beside a `Transform` is two components the caller keeps in step; here the
+// constructor does it. A later `setLocal` on the node moves the camera, and the binding's
+// yaw, pitch and position stay what they were at the call.
+export function addCameraAt(
+	scene: Scene3D,
+	parent: NodeId3D | null,
+	camera: Camera3D,
+): NodeId3D {
+	const pose: Transform3D = {
+		...Transform3D.identity(),
+		position: camera.position,
+		rotation: rotationOfBasis(camera.basisOf()),
+	};
+	return addCameraNode(scene, parent, pose, camera);
 }
 
 function cameraRow(scene: Scene3D, id: NodeId3D, call: string): int32 {

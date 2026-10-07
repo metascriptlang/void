@@ -9,7 +9,7 @@ import "../void2d/scene";
 import { textWidth, textHeight } from "../void2d/render";
 import { Color } from "../void2d/types";
 import { Anchor, ANCHOR_CENTER } from "./billboard";
-import { CameraBasis } from "./camera";
+import { CameraBasis, rotationOfBasis } from "./camera";
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, UNLIT_MATERIAL_UNIFORM_LENGTH,
 	UNLIT_MATERIAL_COLOR,
@@ -276,12 +276,7 @@ function place(this label: WorldLabel): void {
 }
 
 export function facingRotation(basis: CameraBasis): Quat {
-	return quatOfRotation({
-		m11: basis.right.x, m12: basis.right.y, m13: basis.right.z, m14: 0.0,
-		m21: basis.up.x, m22: basis.up.y, m23: basis.up.z, m24: 0.0,
-		m31: -basis.forward.x, m32: -basis.forward.y, m33: -basis.forward.z, m34: 0.0,
-		m41: 0.0, m42: 0.0, m43: 0.0, m44: 1.0,
-	});
+	return rotationOfBasis(basis);
 }
 
 export function faceCamera(label: WorldLabel, position: Vec3, basis: CameraBasis): void {
