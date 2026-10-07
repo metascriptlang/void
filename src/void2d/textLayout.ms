@@ -236,6 +236,10 @@ function coversGrapheme(
 	return true;
 }
 
+function memberPresentation(first: int32, k: int32, base: Presentation): Presentation {
+	return k == first ? base : Presentation.Any;
+}
+
 function graphemeFace(
 	font: FontId,
 	cps: Readonly<Span<Codepoint>>,
@@ -244,13 +248,23 @@ function graphemeFace(
 ): Result<CodepointFace, GraphemeCoverage> {
 	const base: Presentation = clusterPresentation(cps, first, end);
 	for (let k = first; k < end; k++) {
-		if (k > first && isJoiner(cps[k].value)) { continue; }
+		if (isJoiner(cps[k].value)) { continue; }
 		const candidate: CodepointFace = faceOf(
-			font, cps[k].value, k == first ? base : Presentation.Any,
+			font, cps[k].value, memberPresentation(first, k, base),
 		);
 		if (coversGrapheme(candidate.face, cps, first, end)) { return Result.ok(candidate); }
 	}
 	return Result.err(GraphemeCoverage.NoFaceCoversAll);
+}
+
+function memberFace(
+	cps: Readonly<Span<Codepoint>>, first: int32, k: int32, base: Presentation,
+): CodepointFace {
+	if (isJoiner(cps[k].value)) {
+		if (k > first) { return { face: cps[k - 1].face, scale: cps[k - 1].scale }; }
+		return { face: fontFace(cps[k].font), scale: 1.0 };
+	}
+	return faceOf(cps[k].font, cps[k].value, memberPresentation(first, k, base));
 }
 
 function assignGrapheme(cps: Span<Codepoint>, first: int32, end: int32): void {
@@ -267,8 +281,7 @@ function assignGrapheme(cps: Span<Codepoint>, first: int32, end: int32): void {
 	}
 	const base: Presentation = clusterPresentation(cps, first, end);
 	for (let k = first; k < end; k++) {
-		const mode: Presentation = k == first ? base : Presentation.Default;
-		const source: CodepointFace = faceOf(cps[k].font, cps[k].value, mode);
+		const source: CodepointFace = memberFace(cps, first, k, base);
 		cps[k].face = source.face;
 		cps[k].scale = source.scale;
 	}

@@ -62,6 +62,9 @@ chosen, and per variation-sequence record shape (`src/test/sfntCmapCheck.ms`).
 `cmap/coversButUnloadable.otf` is an OpenType font whose cmap covers U+1F600 and whose `CFF `
 holds Type 1 charstrings: the peek calls it drawable and stb_truetype refuses it (`src/test/fontCheck.ms`).
 
+`cmap/joiners.ttf` is a drawable face whose only glyphs are U+200D and U+FE0F, for the rule
+that a joiner or selector loads no fallback face of its own (`src/test/fontCheck.ms`).
+
 ```sh
 python tests/fonts/cmapEdges.py   # rewrites tests/fonts/cmap/; no fontTools needed, byte-identical
 ```

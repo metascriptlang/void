@@ -94,13 +94,17 @@ def cmap(records):
 
 
 def sfnt(cmapBytes, magic=TRUETYPE, outlines=("glyf", "loca"), directoryLength=None,
-         directoryOffset=None, cff=None):
+         directoryOffset=None, cff=None, usable=False):
     tables = {"cmap": cmapBytes, "head": bytes(54), "hhea": bytes(36), "hmtx": bytes(4),
               "maxp": u32(0x10000) + u16(64) + bytes(26)}
     for tag in outlines:
         tables[tag] = bytes(8)
     if cff is not None:
         tables["CFF "] = cff
+    if usable:
+        tables["head"] = bytes(18) + u16(1000) + bytes(34)
+        tables["hhea"] = bytes(4) + struct.pack(">hh", 800, -200) + bytes(26) + u16(1)
+        tables["hmtx"] = u16(500, 0)
     tags = sorted(tables)
     count = len(tags)
     searchRange = 16 * (1 << log2(count))
@@ -190,6 +194,11 @@ def unloadable():
              magic=b"OTTO", outlines=(), cff=cffWithType1Charstrings())
 
 
+def joiners():
+    table = groups(12, [(0x200D, 0x200D, 1), (0xFE0F, 0xFE0F, 2)])
+    saveCmap("joiners.ttf", [(*UNICODE_FULL, table)], usable=True)
+
+
 def formats():
     saveCmap("format0Full.ttf", [(0, 3, format0({0x41: 5, 0x50: 6, 0xFF: 7}))])
     saveCmap("format0Short.ttf", [(0, 3, format0({0x41: 5, 0x4F: 6, 0x50: 7}, length=86))])
@@ -239,3 +248,4 @@ if __name__ == "__main__":
     hostile()
     formats()
     unloadable()
+    joiners()

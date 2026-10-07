@@ -41,6 +41,7 @@ const TEXT_SYMBOL: string = "tests/fonts/textSymbol.ttf";
 const COLOUR_ONLY: string = "tests/fonts/cbdtSynthetic.ttf";
 const COLOUR_DRAWABLE: string = "tests/fonts/sbixSynthetic.ttf";
 const COLLECTION: string = "tests/fonts/symbolCollection.ttc";
+const JOINERS: string = "tests/fonts/cmap/joiners.ttf";
 const UNLOADABLE: string = "tests/fonts/cmap/coversButUnloadable.otf";
 
 let registeredFamilies: boolean = false;
@@ -272,6 +273,23 @@ test "a fallback that covers a codepoint but will not load is skipped, and only 
 	assert faceSlotFor(keeper, 0x1F600, Presentation.Default) >= 0;
 	assert codepointFaceFor(broken, 0x1F600, Presentation.Default).face == fontFace(broken);
 	assert fallbackProbes() == probes;
+}
+
+test "a selector or joiner takes the face before it and loads no face of its own" {
+	const f = added(LATIN);
+	addFallbackFont(f, TEXT_SYMBOL);
+	addFallbackFont(f, JOINERS);
+	const loads = fallbackFacesLoaded();
+	const split = layoutWith(f, "\u{1F600}\u{301}\u{FE0F}");
+	assert split.glyphs[0].face == faceOfPath(TEXT_SYMBOL);
+	assert split.glyphs[1].face == fontFace(f);
+	assert fallbackFacesLoaded() == loads + 1;
+	const alone = added(LATIN);
+	addFallbackFont(alone, JOINERS);
+	const before = fallbackFacesLoaded();
+	layoutWith(alone, "\u{200D}");
+	layoutWith(alone, "\u{FE0F}");
+	assert fallbackFacesLoaded() == before;
 }
 
 test "the summary of a collection is the summary of its first font" {
