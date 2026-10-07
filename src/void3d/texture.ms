@@ -3,7 +3,6 @@
 // (draw.ms rebuildTextures), where Heaps calls the texture's `realloc`.
 
 import { FilterMode, Wrap } from "../gpu/state";
-import { Texture } from "../gpu/texture";
 
 // `pixels` are RGBA8, one 0xAABBGGRR word each (palette.ms packs them so), row by row from the
 // top: uv (0, 0) is the first pixel on every backend.
@@ -22,18 +21,6 @@ export struct TextureId {
 }
 
 export const NO_TEXTURE: TextureId = { store: 0, index: 0, generation: 0 };
-
-export struct GpuTexture {
-	texture: Texture | null;
-	sampler: uint32;
-	samplerGeneration: int32;
-}
-
-export struct DoomedTexture {
-	image: uint32;
-	view: uint32;
-	generation: int32;
-}
 
 export enum TextureUploadError {
 	BadSize,

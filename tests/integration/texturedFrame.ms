@@ -12,7 +12,8 @@ import {
 } from "../../src/gpu/door";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, Uv, addTexturedCube } from "../../src/void3d/meshData";
-import { TextureData, TextureId, GpuTexture, TextureUploadError } from "../../src/void3d/texture";
+import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
+import { GpuTexture } from "../../src/void3d/draw";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
 	Program,

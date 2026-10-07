@@ -46,12 +46,22 @@ import { Texture, TextureError, DetachedHandles } from "../gpu/texture";
 import {
 	TextureData,
 	TextureId,
-	GpuTexture,
-	DoomedTexture,
 	TextureUploadError,
 	TextureAlpha,
 	NO_TEXTURE,
 } from "./texture";
+
+export struct GpuTexture {
+	texture: Texture | null;
+	sampler: uint32;
+	samplerGeneration: int32;
+}
+
+export struct DoomedTexture {
+	image: uint32;
+	view: uint32;
+	generation: int32;
+}
 import {
 	GPU3D_BINDING_VERTEX_BUFFER,
 	GPU3D_BINDING_INDEX_BUFFER,

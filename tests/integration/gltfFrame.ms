@@ -12,7 +12,8 @@ import {
 	liveViews,
 } from "../../src/gpu/door";
 import { MeshData } from "../../src/void3d/meshData";
-import { GpuTexture, TextureId } from "../../src/void3d/texture";
+import { TextureId } from "../../src/void3d/texture";
+import { GpuTexture } from "../../src/void3d/draw";
 import {
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
