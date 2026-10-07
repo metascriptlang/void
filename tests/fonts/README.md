@@ -90,3 +90,16 @@ name. Not the copy in `C:/Windows/Fonts`: that one carries Microsoft's own wordi
 ```sh
 python tests/fonts/cascadiaSubset.py CascadiaCode.ttf    # rewrites cascadiaSubset.ttf
 ```
+
+`notoSansDevanagariSubset.ttf` (42,964 B), `notoSansThaiSubset.ttf` (18,092 B),
+`notoSansKhmerSubset.ttf` (10,728 B) and `notoSansArabicSubset.ttf` (10,452 B) are the complex-script
+faces of the full shaping oracle (`tests/oracle/shape.cases`): each is cut to the codepoints of its
+sample words with every layout feature kept, from `ofl/notosans*/NotoSans*[wdth,wght].ttf` at
+google/fonts `5e8a3ba8` (SIL Open Font License 1.1, copyright The Noto Project Authors, no reserved
+font name; `NotoSans<Script>-OFL.txt`). Devanagari, Khmer and Arabic are pinned to `wght=400
+wdth=100`; Thai keeps its `fvar`, `gvar` and `HVAR`, so one row shapes a variable face at its
+default instance.
+
+```sh
+python tests/fonts/complexScripts.py DIR   # DIR holds devanagari.ttf, thai.ttf, arabic.ttf, khmer.ttf
+```
