@@ -2652,6 +2652,78 @@ GPU windows, Android and the web build have NOT run, so no pixel of a second vie
 composite is evidenced, and neither is `prepareFrame` of a second preset in one frame on a
 device. The roadmap row is not flipped.
 
+### M43 as built
+
+**A render order on the node, sorted after the layer and before the depth.** `Object3D.renderOrder`
+is an `int32`, 0 by default; `setRenderOrder(scene, id, order)` writes it and `renderOrderOf`
+reads it. A mesh node copies it to `DrawItem.order`, and every pass list sorts by layer, then
+order, then (alpha only) far to near: `sortByLayer` for opaque and additive, `sortBackToFront`
+for alpha, both still stable insertion sorts in place. `PassList` keeps `orders` beside `layers`
+(filled by `collect` and `collectCasters`, compacted by `filterFrustum`) and grows with the item
+count like the rest of its storage. A `DrawItem` literal that leaves `order` out is 0, so no
+existing literal changed (Compiler notes: an omitted field is zero).
+
+**NEW MECHANISM against Heaps, decided by the references.** Heaps has only `Pass.layer`
+(`h3d/mat/Pass.hx:51`), which M34 ported. three.js `Object3D.renderOrder` (`src/core/Object3D.js:327`,
+default 0, "sorting is from lowest to highest render order") reaches the list through
+`WebGLRenderList.getNextRenderItem`, which copies `object.renderOrder` into the item
+(`src/renderers/webgl/WebGLRenderLists.js:95,110`, called from `push` at `:122`; `projectObject`
+`WebGLRenderer.js:1873` pushes at `:1917,1963,1971`). Both comparators test it before depth:
+`painterSortStable` (opaque) is groupOrder, renderOrder, material id, variant, z, id
+(`WebGLRenderLists.js:1-27`, renderOrder at `:7-9`) and `reversePainterSortStable` (transparent
+and transmissive) is groupOrder, renderOrder, z descending, id (`:31-49`, `:37-39`). Unity's
+`Renderer.sortingOrder` and Unreal's translucency sort priority are cited from their documentation
+and were not read as source. A lower order draws first, as in three.js and Unity. Godot's
+world-unit `sorting_offset` is not built; URG's per-card offsets map to an order (M34 note).
+
+**Where it differs from three.js, on purpose.**
+- three.js has no material layer, so it has no key between `groupOrder` and `renderOrder` for it
+  to occupy. Here the material's layer (Heaps) stays the first key, as the row says: a layer is a
+  coarse band of the frame (a background, a HUD), an order sorts inside it. An item of layer 1
+  draws after an item of layer 0 whatever their orders.
+- three.js sorts opaque by material id then by z, front to back. void3d does not sort opaque by
+  material or depth (M34), so inside equal layer and order opaque keeps item order. A caller who
+  wants an opaque quad to draw first gives it a lower order.
+- three.js `Group.renderOrder` becomes `groupOrder` for all its descendants
+  (`WebGLRenderer.js:1883`, passed down at `:1985`). Not built: the order is the mesh node's
+  own and is not inherited, as a node's layers are not (M40).
+
+**A write is not a structural change.** `setRenderOrder` does not set `structureChanged`. The
+draw list keeps its shape when an order changes (same nodes, same positions), so `refresh`'s
+in-place pass, which already rewrites `world`, `mesh` and `material` of every item each frame,
+also writes `order`; `collectDrawList`, `collectDrawListFor` and the un-cull branch of `refresh`
+set it when they build an item. A frame that rewrites every order therefore allocates nothing
+and does the same one walk and sorts as before. The sorts are insertion sorts, as they were:
+O(items) for a list already in order, O(items squared) when a frame reverses it, which is not
+O(items log items). That is M34's choice kept, not a new cost, and a hand of tens of cards
+is far below where it matters; replacing it is a change of the sort, not of this mechanism.
+A node that is not a mesh keeps the value and draws nothing with it.
+
+**Deliberately not done.**
+- Godot's `sorting_offset` in world units, and three.js `groupOrder` (above).
+- Order in the shadow pass: `collectCasters` fills `orders` but nothing sorts the casters, which
+  write depth only.
+- `renderOrderOf` is not on the allocation gate's lists, since no frame-path entry calls it.
+
+**Acceptance, limited to what ran.** Headless, on the `msc` on `PATH`, from the worktree, one
+test file at a time: `frustumCheck.ms` 3 new tests (a lower order draws first in the opaque,
+alpha and additive lists, after the layer and before the depth; equal orders keep item order and
+the depth sort; a culled item's order is compacted away), `renderOrderCheck.ms` 7 tests (default
+and per-node write, the item carries the order, a steady-frame write reaches the item in place
+with `structureChanged` still false and the list length unchanged, a two-node swap re-sorts an
+alpha list over four frames, an un-culled node comes back with its order, a second camera's list
+and a reused slot, stable ties); `scene3dCheck`, `layersCheck`, `pickCheck`, `rendererCheck`,
+`dirShadowCheck` and `storeCheck` pass unchanged; `msc check` of `src/test/index.ms` is clean.
+`tests/integration/renderOrder.ms` (gate stage `render-order`, with its allocation list in
+`run_allocation`) was written and BUILT, not run: two coplanar opaque quads and two overlapping
+translucent quads over four frames, orders written on live nodes at each frame and swapped with
+no new material, a control that never writes an order, in both presets. The emitted C of
+`msc build tests/integration/renderOrder.ms --emit=c` has a body with no `ArrayCopy` for each
+function the new allocation list names. `gate3d.sh`, `gate.sh`, captures, goldens, GPU windows,
+Android and the web build have NOT run, so no pixel of the order is evidenced and the stage's
+expectations (a lower order draws first and keeps equal depth, the higher order's alpha lands on
+top) are unconfirmed. The roadmap row is not flipped.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
