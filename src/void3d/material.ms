@@ -162,13 +162,20 @@ function castsByDefault(program: Program): boolean {
 		program == Program.UnlitTextured;
 }
 
+// Material.getDefaultProps("particles3D") has `culling: false` beside `shadows: false`
+// (h3d/mat/Material.hx:240-246): the quads of a particle or a billboard are seen from either side.
+function culledByDefault(program: Program): boolean {
+	return program != Program.Billboard && program != Program.Particle;
+}
+
 // The caller writes alphaKillFor(kind) into the material block, as every other uniform value.
 export function ofKind(this typeof Material, program: Program, kind: MaterialKind): Material {
 	const key: ProgramKey =
 		kind == MaterialKind.AlphaKill ? cutoutOf(program) : ProgramKey.of(program);
 	const lit: boolean = program == Program.Lit || program == Program.LitTextured;
-	const material: Material =
-		Material.keyed(key, passFor(kind, RenderState.defaults()), phaseFor(kind));
+	const faces: RenderState = culledByDefault(program) ?
+		RenderState.defaults() : RenderState.defaults().withCulling(Face.None);
+	const material: Material = Material.keyed(key, passFor(kind, faces), phaseFor(kind));
 	const cast: ShadowCasting = castsByDefault(program) ? ShadowCasting.On : ShadowCasting.Off;
 	return material.withShadows(cast, lit);
 }
