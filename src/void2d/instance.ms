@@ -66,6 +66,8 @@ export function uiInstance(
 // keeps the UI pipeline at nine vertex attributes, against the 16 the web intersection gives.
 export const UI_PARAM_MODE: int32 = 0;
 
+export const SDF_GLYPH_FLAG: float32 = 1.0;
+
 // Today's path, kept so the T0 test can state the change as a ratio rather than a claim:
 // six vertices of eight floats, re-transformed on the CPU every frame.
 export const LEGACY_QUAD_BYTES: int32 = 192;

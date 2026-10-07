@@ -79,13 +79,14 @@ import {
 	reopenLast,
 	FRINGE_HALF_WIDTH,
 } from "./draw";
-import { InstanceMode, uiInstance } from "./instance";
+import { InstanceMode, SDF_GLYPH_FLAG, uiInstance } from "./instance";
 import {
 	NO_LABEL_TEXT,
 	shapeLabel,
 	placeLabel,
 	firstGlyphPageHandle,
 	glyphPageHandle,
+	glyphPageIsSdf,
 	markGlyphPageDrawn,
 	labelTexts,
 	LabelText,
@@ -625,6 +626,7 @@ function emitGlyph(
 	blend: BlendMode,
 	view: uint32,
 	p: PlacedGlyph,
+	sdf: boolean,
 	fill: Color,
 ): void {
 	let x: float32 = 0.0;
@@ -645,6 +647,7 @@ function emitGlyph(
 		drawUiInstance(view, blend, {
 			...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
 			uvRadii: [p.u0, p.v0, p.u1, p.v1],
+			params: [sdf ? SDF_GLYPH_FLAG : 0.0, 0.0, 0.0],
 		});
 	} else {
 		const rx: float32 = affine.a * w;
@@ -685,17 +688,20 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		originY: originY,
 		scale: scale,
 	};
+	if (text.regime == TextRegime.Sdf) { setSampler(Smooth.On, false); }
 	let viewPage: GlyphPage = NO_GLYPH_PAGE;
 	let view: uint32 = 0;
+	let sdf: boolean = false;
 	for (const p of text.placed) {
 		if (p.w <= 0.0 || p.h <= 0.0) { continue; }
 		if (p.page != viewPage) {
 			view = glyphPageView(glyphPageHandle(p.page));
+			sdf = glyphPageIsSdf(p.page);
 			viewPage = p.page;
 			markGlyphPageDrawn(p.page);
 		}
 		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
-		emitGlyph(space, blend, view, p, fill);
+		emitGlyph(space, blend, view, p, sdf, fill);
 	}
 	if (styled) { emitDecorations(blend, text, world, na, false); }
 	if (instanced) { emitCaret(blend, text, world, na); }

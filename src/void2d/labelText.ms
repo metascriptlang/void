@@ -132,6 +132,10 @@ export function glyphPageHandle(page: GlyphPage): GlyphPageHandle {
 	return glyphAtlas.pageHandle(page);
 }
 
+export function glyphPageIsSdf(page: GlyphPage): boolean {
+	return glyphAtlas.pageKind(page) == PageKind.Sdf;
+}
+
 export function beginGlyphFrame(frame: int32): void {
 	glyphAtlas.beginFrame(frame);
 }

@@ -25,7 +25,7 @@ import {
 	void2dProgramBase, void2dLayoutBase, void2dSetPipeline,
 } from "./batcher.h";
 import { void2dGlyphPageCount } from "./glyph.h";
-import { beginGlyphFrame } from "./labelText";
+import { beginGlyphFrame, setSdfRegime } from "./labelText";
 import { GlyphPageHandle } from "./glyphAtlas";
 import { gammaRatios, DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST } from "./textGamma";
 import { UiInstance } from "./instance";
@@ -468,6 +468,7 @@ function useRun(pipeline: Pipeline, view: uint32, premultiplied: boolean, blend:
 export function setup2d(): void {
 	void2dSetup();
 	when (voidProfiler) { profilerSetup(); }
+	when (voidSdfText) { setSdfRegime(true); }
 	setTextGamma(DEFAULT_TEXT_GAMMA, DEFAULT_TEXT_CONTRAST);
 	// The emitter and the replay are two hand-written readers of one byte layout, so they
 	// are made to agree out loud rather than by inspection.
