@@ -1,4 +1,6 @@
-import { decodeImage, imageFormatOf, ImageError, ImageFormat, Pixels } from "../assets/image";
+import {
+	decodeImage, decodeAnimation, imageFormatOf, ImageError, ImageFormat, Pixels, DecodedAnimation,
+} from "../assets/image";
 import {
 	COLOR_GREY_ALPHA,
 	COLOR_RGB,
@@ -7,6 +9,13 @@ import {
 	pngOf,
 	rgbaPng,
 	twoBlockJpeg,
+	GifFrame,
+	animatedGif,
+	solidFrame,
+	GIF_RED,
+	GIF_GREEN,
+	GIF_BLUE,
+	GIF_YELLOW,
 } from "./imageBytes";
 
 function channel(word: uint32, shift: int32): int32 {
@@ -99,4 +108,132 @@ test "a refused image after a decoded one answers its own refusal and nothing st
 	const again = decodeImage(rgbaPng());
 	assert again.ok;
 	if (again.ok) { assert again.value.width == 2 && (again.value.pixels.length as int32) == 4; }
+}
+
+function fourFrames(): Vec<GifFrame> {
+	const patch: GifFrame = {
+		x: 1, y: 1, w: 2, h: 1, indices: bytesOf([2, 2]), delayCentiseconds: 5, disposal: 2,
+	};
+	const corner: GifFrame = {
+		x: 0, y: 0, w: 1, h: 1, indices: bytesOf([3]), delayCentiseconds: 1, disposal: 1,
+	};
+	return [solidFrame(4, 3, 0, 10), solidFrame(4, 3, 1, 20), patch, corner];
+}
+
+function frameWord(animation: DecodedAnimation, frame: int32, x: int32, y: int32): uint32 {
+	return animation.pixels[frame * animation.width * animation.height + y * animation.width + x];
+}
+
+test "decodeAnimation reads every frame of a GIF as the whole canvas, straight RGBA" {
+	const decoded = decodeAnimation(animatedGif(0x39, 4, 3, fourFrames()));
+	assert decoded.ok;
+	if (!decoded.ok) { return; }
+	const a: DecodedAnimation = decoded.value;
+	assert a.width == 4 && a.height == 3 && a.frameCount == 4;
+	assert (a.pixels.length as int32) == 4 * 3 * 4;
+	for (let i = 0; i < 12; i++) {
+		assert a.pixels[i] == GIF_RED;
+		assert a.pixels[12 + i] == GIF_GREEN;
+	}
+	assert frameWord(a, 2, 0, 0) == GIF_GREEN;
+	assert frameWord(a, 2, 1, 1) == GIF_BLUE;
+	assert frameWord(a, 2, 2, 1) == GIF_BLUE;
+	assert frameWord(a, 2, 3, 1) == GIF_GREEN;
+}
+
+test "a frame's disposal 2 restores the canvas as it was before that frame, as stb does" {
+	const decoded = decodeAnimation(animatedGif(0x39, 4, 3, fourFrames()));
+	assert decoded.ok;
+	if (!decoded.ok) { return; }
+	const a: DecodedAnimation = decoded.value;
+	assert frameWord(a, 3, 0, 0) == GIF_YELLOW;
+	assert frameWord(a, 3, 1, 1) == GIF_GREEN;
+	assert frameWord(a, 3, 2, 1) == GIF_GREEN;
+	assert frameWord(a, 3, 3, 2) == GIF_GREEN;
+}
+
+test "delays come out in milliseconds and a delay of 10 ms or less plays as 100 ms" {
+	const decoded = decodeAnimation(animatedGif(0x39, 4, 3, fourFrames()));
+	assert decoded.ok;
+	if (!decoded.ok) { return; }
+	assert (decoded.value.delays.length as int32) == 4;
+	assert decoded.value.delays[0] == 100;
+	assert decoded.value.delays[1] == 200;
+	assert decoded.value.delays[2] == 50;
+	assert decoded.value.delays[3] == 100;
+	const zero = decodeAnimation(animatedGif(0x39, 2, 2, [solidFrame(2, 2, 0, 0)]));
+	assert zero.ok;
+	if (zero.ok) { assert zero.value.delays[0] == 100; }
+}
+
+test "a GIF87a and a one-frame GIF decode, and a still PNG is not an animation" {
+	const old = decodeAnimation(animatedGif(0x37, 2, 2, [solidFrame(2, 2, 3, 10)]));
+	assert old.ok;
+	if (old.ok) {
+		assert old.value.frameCount == 1;
+		assert old.value.pixels[3] == GIF_YELLOW;
+	}
+	const png = decodeAnimation(rgbaPng());
+	assert !png.ok;
+	if (!png.ok) { assert png.error == ImageError.NotGif; }
+	const nothing = decodeAnimation([]);
+	assert !nothing.ok;
+	if (!nothing.ok) { assert nothing.error == ImageError.NotGif; }
+}
+
+test "a truncated GIF, a GIF with no frame and a disposal 3 GIF each say which" {
+	const whole: Vec<uint8> = animatedGif(0x39, 4, 3, fourFrames());
+	for (const cutBy of [1, 7, 30]) {
+		let shorter: Vec<uint8> = [];
+		for (let i = 0; i < (whole.length as int32) - cutBy; i++) { shorter.push(whole[i]); }
+		const broken = decodeAnimation(shorter);
+		assert !broken.ok;
+		if (!broken.ok) { assert broken.error == ImageError.Undecodable; }
+	}
+	const empty = decodeAnimation(animatedGif(0x39, 4, 3, []));
+	assert !empty.ok;
+	if (!empty.ok) { assert empty.error == ImageError.Undecodable; }
+	let restoring: GifFrame = solidFrame(4, 3, 1, 10);
+	restoring.disposal = 3;
+	const three = decodeAnimation(animatedGif(0x39, 4, 3, [solidFrame(4, 3, 0, 10), restoring]));
+	assert !three.ok;
+	if (!three.ok) { assert three.error == ImageError.UnsupportedDisposal; }
+}
+
+test "a graphics control block of five bytes refuses the GIF, though its sub-blocks parse" {
+	const whole: Vec<uint8> = animatedGif(0x39, 4, 3, fourFrames());
+	assert whole[25] == (0x21 as uint8) && whole[26] == (0xF9 as uint8);
+	assert whole[27] == (4 as uint8);
+	let tampered: Vec<uint8> = [];
+	for (let i = 0; i < (whole.length as int32); i++) {
+		tampered.push(i == 27 ? (5 as uint8) : whole[i]);
+		if (i == 31) { tampered.push(0 as uint8); }
+	}
+	const decoded = decodeAnimation(tampered);
+	assert !decoded.ok;
+	if (!decoded.ok) { assert decoded.error == ImageError.Undecodable; }
+}
+
+test "a corrupt later frame refuses the animation instead of playing the frames before it" {
+	const corrupt: GifFrame = {
+		x: 0, y: 0, w: 1, h: 1, indices: bytesOf([7]), delayCentiseconds: 10, disposal: 1,
+	};
+	const decoded = decodeAnimation(animatedGif(0x39, 4, 3, [solidFrame(4, 3, 0, 10), corrupt]));
+	assert !decoded.ok;
+	if (!decoded.ok) { assert decoded.error == ImageError.Undecodable; }
+}
+
+test "a GIF whose canvas is too large for all its frames is refused before it is decoded" {
+	const corner: GifFrame = {
+		x: 0, y: 0, w: 1, h: 1, indices: bytesOf([0]), delayCentiseconds: 10, disposal: 1,
+	};
+	const huge = decodeAnimation(animatedGif(0x39, 16384, 16384, [corner, corner]));
+	assert !huge.ok;
+	if (!huge.ok) { assert huge.error == ImageError.TooLarge; }
+}
+
+test "decodeImage still refuses a GIF, which is not a still-image format here" {
+	const gif = decodeImage(animatedGif(0x39, 2, 2, [solidFrame(2, 2, 0, 10)]));
+	assert !gif.ok;
+	if (!gif.ok) { assert gif.error == ImageError.NotPngOrJpeg; }
 }

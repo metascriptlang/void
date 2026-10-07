@@ -13,4 +13,8 @@ void void_free_image(void *data);
 int64_t void_image_size(const uint8_t *bytes, int64_t length);
 int32_t void_decode_image(const uint8_t *bytes, int64_t length, uint32_t *pixels, int64_t count);
 
+int64_t void_gif_scan(const uint8_t *bytes, int64_t length);
+int32_t void_decode_gif(const uint8_t *bytes, int64_t length, uint32_t *pixels, int64_t pixelCount,
+	int32_t *delays, int64_t delayCount);
+
 #endif

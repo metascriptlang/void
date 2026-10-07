@@ -133,3 +133,102 @@ export function twoBlockJpeg(): Vec<uint8> {
 		+ "0000FFDA000C03010002110311003F003E2BCD81C2B8108EFFD9",
 	);
 }
+
+export struct GifFrame {
+	x: int32;
+	y: int32;
+	w: int32;
+	h: int32;
+	indices: Vec<uint8>;
+	delayCentiseconds: int32;
+	disposal: int32;
+}
+
+export const GIF_RED: uint32 = 0xFF0000FF;
+export const GIF_GREEN: uint32 = 0xFF00FF00;
+export const GIF_BLUE: uint32 = 0xFFFF0000;
+export const GIF_YELLOW: uint32 = 0xFF00FFFF;
+
+function pushLe16(ref out: Vec<uint8>, value: int32): void {
+	out.push((value & 0xFF) as uint8);
+	out.push(((value >> 8) & 0xFF) as uint8);
+}
+
+const GIF_CLEAR: int32 = 4;
+const GIF_END: int32 = 5;
+const GIF_CODE_BITS: int32 = 3;
+
+function gifLzw(indices: Readonly<Span<uint8>>): Vec<uint8> {
+	let out: Vec<uint8> = [];
+	let accumulator: int32 = 0;
+	let held: int32 = 0;
+	let codes: Vec<int32> = [GIF_CLEAR];
+	for (let i = 0; i < indices.length; i++) {
+		if (i > 0 && i % 2 == 0) { codes.push(GIF_CLEAR); }
+		codes.push(indices[i] as int32);
+	}
+	codes.push(GIF_END);
+	for (const code of codes) {
+		accumulator = accumulator | (code << held);
+		held = held + GIF_CODE_BITS;
+		while (held >= 8) {
+			out.push((accumulator & 0xFF) as uint8);
+			accumulator = accumulator >> 8;
+			held = held - 8;
+		}
+	}
+	if (held > 0) { out.push((accumulator & 0xFF) as uint8); }
+	return out;
+}
+
+// A four-colour global palette: red, green, blue, yellow. Each frame is a sub-rectangle of
+// palette indices; the LZW stream clears every two literals so its codes stay three bits.
+export function animatedGif(
+	version: int32,
+	width: int32,
+	height: int32,
+	frames: Readonly<Span<GifFrame>>,
+): Vec<uint8> {
+	let out: Vec<uint8> = [0x47 as uint8, 0x49 as uint8, 0x46 as uint8, 0x38 as uint8,
+		version as uint8, 0x61 as uint8];
+	pushLe16(out, width);
+	pushLe16(out, height);
+	out.push(0x81 as uint8);
+	out.push(0 as uint8);
+	out.push(0 as uint8);
+	for (const b of bytesOf([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0])) { out.push(b); }
+	for (const frame of frames) {
+		out.push(0x21 as uint8);
+		out.push(0xF9 as uint8);
+		out.push(4 as uint8);
+		out.push((frame.disposal << 2) as uint8);
+		pushLe16(out, frame.delayCentiseconds);
+		out.push(0 as uint8);
+		out.push(0 as uint8);
+		out.push(0x2C as uint8);
+		pushLe16(out, frame.x);
+		pushLe16(out, frame.y);
+		pushLe16(out, frame.w);
+		pushLe16(out, frame.h);
+		out.push(0 as uint8);
+		out.push(2 as uint8);
+		const lzw: Vec<uint8> = gifLzw(frame.indices);
+		if (lzw.length > 255) {
+			console.log(`imageBytes: ${lzw.length} LZW bytes need more than one GIF sub-block`);
+			unreachable;
+		}
+		out.push((lzw.length as int32) as uint8);
+		for (const b of lzw) { out.push(b); }
+		out.push(0 as uint8);
+	}
+	out.push(0x3B as uint8);
+	return out;
+}
+
+export function solidFrame(width: int32, height: int32, index: int32, delay: int32): GifFrame {
+	let indices: Vec<uint8> = [];
+	for (let i = 0; i < width * height; i++) { indices.push(index as uint8); }
+	return {
+		x: 0, y: 0, w: width, h: height, indices: indices, delayCentiseconds: delay, disposal: 1,
+	};
+}
