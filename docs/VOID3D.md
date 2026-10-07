@@ -154,7 +154,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M39 | glTF 2.0 spec (meshes with several primitives, `material.pbrMetallicRoughness.baseColorTexture`, `emissiveTexture`, `normalTexture` and `TANGENT`); M8/M23 as built | **Fuller glTF**: several primitives and materials per mesh, base colour, emissive and normal textures. FBX stays an offline conversion **Done**; see "M39 as built" | a two-surface prop; any exported model |
 | M40 | three.js `d4ea9b9` `src/core/Layers.js:13-100`, `src/renderers/WebGLRenderer.js:1877` (`object.layers.test(camera.layers)`) | **Visibility layers and a second camera** drawn into a target with a transparent clear, composited by the caller **Done**; see "M40 as built" | highlight and tutorial overlays, minimaps, portraits |
 | M41 | void2d label → `drawTarget` → M27 target texture → billboard | **Text in the world**: a billboard label from a void2d scene, outline when void2d has it **Done**; see "M41 as built" | damage popups, labels |
-| M42 | void2d P6 item 2 (Heaps-style `src/gpu` texture owner) | **void3d texture slots hold the `src/gpu` texture owner** and re-upload on device loss, as void2d does; after that lands | every layer recovering textures the same way |
+| M42 | void2d P6 item 2 (Heaps-style `src/gpu` texture owner) | **void3d texture slots hold the `src/gpu` texture owner** and re-upload on device loss, as void2d does; after that lands **Done**; see "M42 as built" | every layer recovering textures the same way |
 | M43 | three.js `d4ea9b9` `src/core/Object3D.js:327` (`renderOrder`), `src/renderers/webgl/WebGLRenderLists.js:7-9,37-39` (lists sort by `renderOrder` before z); Unity `Renderer.sortingOrder`; Unreal translucency sort priority. Heaps has only the material's `Pass.layer` (M34) | **A per-item render order**: an integer on the node/item, sorting after the material's layer and before depth, writable per frame without a new material. **NEW MECHANISM** against Heaps, backed by three references; Godot's world-unit `sorting_offset` bias is not built (URG maps it to an order) **Done**; see "M43 as built" | cards in a hand reordered every frame (URG `helpers/card_sorting_helper.gd:30`), UI on meshes, overlays, decals |
 | M44 | — | **A URG-class sample**: a board, cards as render targets on quads, a sun with shadows, torches, particles, a card dissolve, a highlight overlay; placeholder assets, built only from Void; the end-to-end consumer of M33–M43 | the proof |
 
@@ -2941,6 +2941,14 @@ stays in `textureAlphas`, which is void3d's.
 - **No `DrawContext` overload.** Nothing yet stops a caller passing one context's `meshData` with another's `materials`.
 - **Two thresholds are stricter than Heaps'.** `inverseAffine` treats a determinant below 1e-10 as singular, so a uniform scale under about 4.6e-4 is unpickable. `normalized` zeroes a direction below 1e-10 where Heaps' `EPSILON2` is 1e-20.
 - **Device.** On the device, as for everything else, nothing has run.
+
+**Native acceptance, 2026-10-08.** On `504ba9e` over void2d's `e513563`, Windows D3D11, BUILD
+`99a851d7` unchanged before, between and after, serially: `gate3d.sh` GREEN, 331 PASS / 3 known
+skips, 1399 tests, oracle 75 / 11 over 6 files; `gate.sh` GREEN, golden 87/87. The first pair
+was red on `gltf-cpu`: M42 had put the GPU half of a texture slot in `texture.ms`, which the glTF
+decoder imports, so the decoder linked sokol; the structs moved to `draw.ms` (`504ba9e`). The
+same pair carried void2d's `.rows` rename (`f2ad6b2`), which the oracle stage, now failing by
+name on a missing snapshot (`756a1ce`), needed.
 
 ### Gaps from the M44 sample, as built
 
