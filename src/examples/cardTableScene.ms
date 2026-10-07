@@ -18,7 +18,7 @@
 
 import { gfxSetup } from "../sokol/gpu";
 import { Vec3, Vec4, Quat, Mat4, vec3, quatBetween } from "../math/math3d";
-import { RenderState, BlendMode, Face, FilterMode, Wrap } from "../gpu/state";
+import { RenderState, BlendMode, FilterMode, Wrap } from "../gpu/state";
 import { PixelFormat, endPass, commit, originTopLeft } from "../gpu/door";
 import { RenderTarget, beginScreenPass } from "../gpu/target";
 import { Scene2D, NodeRef } from "../void2d/node";
@@ -43,7 +43,7 @@ import {
 	emissiveBase,
 } from "../void3d/gpu3d";
 import {
-	Material, Phase, MaterialKind, ShadowCasting, UniformBlock, movingDefaults,
+	Material, Phase, MaterialKind, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
 } from "../void3d/material";
 import {
 	MeshData, MeshError, Rgba, Uv, addTexturedVertex, addTriangle, addTangents, addTexturedCube,
@@ -67,6 +67,7 @@ import {
 	writeUniforms,
 } from "../void3d/draw";
 import { UniformError } from "../void3d/uniformPool";
+import { uniformFloatsFor } from "../void3d/uniformBudget";
 import {
 	Scene3D,
 	Transform3D,
@@ -78,7 +79,7 @@ import {
 	NO_NODE_ID,
 	addMeshNode,
 	addLightNode,
-	addCameraNode,
+	addCameraAt,
 	setActiveCamera,
 	setCameraLayers,
 	cameraViewOf,
@@ -94,15 +95,16 @@ import {
 	collectLightsFor,
 } from "../void3d/scene";
 import { layerBit } from "../void3d/layers";
-import { Camera3D, CameraView, CameraError, ProjectionKind, basisOf } from "../void3d/camera";
+import { Camera3D, CameraView, CameraError, ProjectionKind } from "../void3d/camera";
 import { ANCHOR_CENTER } from "../void3d/billboard";
-import { attachShadow, openScreen } from "../void3d/renderer";
+import { attachShadow } from "../void3d/renderer";
 import { DirShadowMap, ShadowError, DIR_SHADOW_UNIFORM_LENGTH } from "../void3d/dirShadowMap";
 import {
 	ForwardRenderer,
 	ForwardError,
 	FORWARD_UNIFORM_LENGTH,
 	prepareFrame as prepareForward,
+	endPrepared,
 	drawToScreen as drawForwardToScreen,
 } from "../void3d/forwardRenderer";
 import {
@@ -122,7 +124,6 @@ import {
 	WorldLabelStyle,
 	WorldLabelError,
 	labelQuad,
-	facingRotation,
 	faceCamera,
 	refreshLabel,
 } from "../void3d/worldLabel";
@@ -178,7 +179,6 @@ const SHADOW_OPACITY: float32 = 0.8;
 const PARTICLE_STEP: float64 = 1.0 / 60.0;
 const PARTICLE_WARMUP: int32 = 90;
 const FLICKER_FRAMES: int32 = 6;
-const POOL_MARGIN: int32 = 1024;
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const CLEAR: Vec4 = { x: 0.04, y: 0.05, z: 0.10, w: 1.0 };
 const TRANSPARENT: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
@@ -193,7 +193,7 @@ const CARD_LETTERS: Vec<string> = ["A", "B", "C", "D", "E"];
 
 let featureless: boolean = false;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	2 * FORWARD_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH + POOL_MARGIN,
+	uniformFloatsFor(2, 0, 1, poolKeys()),
 );
 let scene: Scene3D = Scene3D.create(context);
 let forward: ForwardRenderer = makeForward(CLEAR);
@@ -215,8 +215,7 @@ let label: WorldLabel | null = null;
 let cardScenes: Vec<Scene2D> = [];
 let display: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 0.0));
 let displaySprite: NodeRef = display.sprite(whiteTile(1.0, 1.0));
-let displayImage: uint32 = 0;
-let displayWidth: int32 = 0;
+let displayEpoch: int32 = 0;
 let torchA: ParticleEmitter = emitterOf(11);
 let torchB: ParticleEmitter = emitterOf(23);
 let torchANode: NodeId3D = NO_NODE_ID;
@@ -225,9 +224,27 @@ let torchAMesh: MeshId = { store: 0, index: 0, generation: 0 };
 let torchBMesh: MeshId = { store: 0, index: 0, generation: 0 };
 let torchAInstances: Vec<float32> = new Array(flameState().maxParts * PARTICLE_INSTANCE_STRIDE);
 let torchBInstances: Vec<float32> = new Array(flameState().maxParts * PARTICLE_INSTANCE_STRIDE);
-let dissolveKey: ProgramKey = ProgramKey.of(Program.UnlitTextured).withDissolve();
+let dissolveKey: ProgramKey =
+	ProgramKey.of(Program.UnlitTextured).withDissolve().withPremultiplied();
 let dissolveBlock: UniformBlock = { store: 0, slot: 0, offset: 0, length: 0, generation: 0 };
 let dissolveValues: Vec<float32> = movingDefaults(dissolveKey);
+
+// One key per material that reserves a block of its own, so the pool is exactly the presets,
+// the shadow map and these: the board, the discard, the highlight, five cards, two poles, two
+// bowls and the label. The dissolve key is spelled out: this runs before `dissolveKey` exists.
+function poolKeys(): Vec<ProgramKey> {
+	const lit: ProgramKey = ProgramKey.of(Program.LitTextured).withShadowed();
+	const card: ProgramKey = ProgramKey.of(Program.UnlitTextured).withPremultiplied();
+	let keys: Vec<ProgramKey> = [
+		ProgramKey.of(Program.LitTextured).withNormalMap().withShadowed(),
+		ProgramKey.of(Program.UnlitTextured).withDissolve().withPremultiplied(),
+		ProgramKey.of(Program.UnlitTextured), card, lit, lit,
+		ProgramKey.of(Program.LitTextured).withEmissive().withShadowed(),
+		ProgramKey.of(Program.LitTextured).withEmissive().withShadowed(),
+	];
+	for (let i = 0; i < HAND_SIZE; i++) { keys.push(card.withCutout()); }
+	return keys;
+}
 
 function stop(message: string): void {
 	console.log(`card table: ${message}`);
@@ -382,6 +399,12 @@ function litBlock(): UniformBlock {
 	return block([4.0, 0.0, 0.0, 0.0]);
 }
 
+// A card cuts at half alpha in colour and in shadow, so a rounded corner casts a rounded
+// shadow; the threshold is the block's alpha-kill float.
+function cardBlock(): UniformBlock {
+	return block([0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0]);
+}
+
 function unlitBlock(): UniformBlock {
 	return block([0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
 }
@@ -440,14 +463,8 @@ function cube(width: float32, height: float32, depth: float32): MeshId {
 	return mesh(data);
 }
 
-// A card is seen from the camera and lit from behind, so its shadow comes from its back face:
-// the shadow pass takes the main pass's culling, and a back face culled there casts nothing.
-function twoSided(): RenderState {
-	return RenderState.defaults().withCulling(Face.None);
-}
-
 function premultipliedPass(): RenderState {
-	const pass: RenderState = twoSided();
+	const pass: RenderState = RenderState.defaults();
 	return pass.withDepth(false, pass.depthTest).withBlendMode(BlendMode.AlphaAdd);
 }
 
@@ -511,20 +528,20 @@ function handCard(index: int32, shown: MeshId): NodeId3D {
 	);
 	const faceTexture: TextureId = targetTexture(target, TextureAlpha.Premultiplied);
 	const base: Material = Material.keyed(
-		ProgramKey.of(Program.UnlitTextured).withPremultiplied(), premultipliedPass(), Phase.Alpha,
-	).withShadows(ShadowCasting.On, false);
-	const made: MaterialId = material({ ...base, texture: faceTexture, uniforms: unlitBlock() });
+		ProgramKey.of(Program.UnlitTextured).withPremultiplied().withCutout(), premultipliedPass(),
+		Phase.Alpha,
+	).withShadows(ShadowCasting.On, false).withShadowCulling(ShadowCulling.CullFront);
+	const made: MaterialId = material({ ...base, texture: faceTexture, uniforms: cardBlock() });
 	const x: float32 = HAND_CENTER_X + ((index - 2) as float32) * HAND_SPACING;
 	return place(scene.rootId(), cardAt(x, HAND_Z), shown, made);
 }
 
-// The discarded card is opaque, so its target reads as straight alpha: a dissolve key has no
-// premultiplied row (PENDING: dissolve-premultiplied, docs/VOID3D.md "M44 as built").
+// The discarded card is a premultiplied dissolve over the same kind of target as the hand.
 function discardCard(shown: MeshId): NodeId3D {
 	const target: RenderTarget = cardTarget(0.80, 0.25, 0.70, "X", false);
-	const faceTexture: TextureId = targetTexture(target, TextureAlpha.Straight);
-	const base: Material = Material.keyed(dissolveKey, twoSided(), Phase.Opaque)
-		.withShadows(ShadowCasting.On, false);
+	const faceTexture: TextureId = targetTexture(target, TextureAlpha.Premultiplied);
+	const base: Material = Material.keyed(dissolveKey, RenderState.defaults(), Phase.Opaque)
+		.withShadows(ShadowCasting.On, false).withShadowCulling(ShadowCulling.CullFront);
 	const edge: int32 = movingBase(dissolveKey) + MOVING_DISSOLVE_EDGE_COLOR;
 	for (let i = 0; i < 4; i++) { dissolveValues[UNLIT_MATERIAL_COLOR + i] = 1.0; }
 	dissolveValues[movingBase(dissolveKey) + MOVING_DISSOLVE_EDGE_WIDTH] = 0.125;
@@ -603,7 +620,7 @@ function torch(x: float32, which: int32): NodeId3D {
 		addStreamMesh(context, flameState().maxParts);
 	if (!stream.ok) { stop("a flame stream was refused"); unreachable; }
 	const particles: MaterialId =
-		material(Material.plain(Program.Particle, twoSided(), Phase.Opaque));
+		material(Material.ofKind(Program.Particle, MaterialKind.Opaque));
 	const emitterAt: Transform3D = Transform3D.fromTranslation(vec3(x, FLAME_BASE, TORCH_Z));
 	const emitter: NodeId3D = place(scene.rootId(), emitterAt, stream.value, particles);
 	if (which == 0) { torchAMesh = stream.value; } else { torchBMesh = stream.value; }
@@ -654,12 +671,7 @@ function cameraRequest(): Camera3D {
 // Both cameras stand at one pose, so the overlay lines up with the first view; they differ in
 // the layers they draw.
 function cameraNode(): NodeId3D {
-	const request: Camera3D = cameraRequest();
-	const at: Transform3D = {
-		position: request.position, rotation: facingRotation(basisOf(request)),
-		scale: vec3(1.0, 1.0, 1.0),
-	};
-	return addCameraNode(scene, scene.rootId(), at, request);
+	return addCameraAt(scene, scene.rootId(), cameraRequest());
 }
 
 // ---- Setup ---------------------------------------------------------------------------------
@@ -761,15 +773,14 @@ function overlayView(width: int32, height: int32): Result<CameraView, CameraErro
 
 // The overlay's target is made by the second preset's first prepare and made again when the
 // window resizes; the sprite that composites it holds the target's view, so it is renewed
-// whenever the target is not the one it shows.
+// whenever the preset has made its targets again since the sprite last saw them.
 function showOverlay(width: int32, height: int32): void {
-	if (overlay.colorTarget.image != displayImage || width != displayWidth) {
+	if (overlay.targetEpoch != displayEpoch) {
 		displaySprite.setTile(
 			targetTile(overlay.colorTarget, width as float32, height as float32).premultiplied(),
 		);
 		displaySprite.setSize(width as float32, height as float32);
-		displayImage = overlay.colorTarget.image;
-		displayWidth = width;
+		displayEpoch = overlay.targetEpoch;
 	}
 	display.prepare(width as float32, height as float32, 1.0);
 }
@@ -810,13 +821,11 @@ export function frameCardTable(
 			prepareForward(overlay, overlayItems, overlayValues, overlayLights, width, height);
 		if (!prepared2.ok) { return Result.err(CardTableError.Overlay); }
 		showOverlay(width, height);
+		endPrepared(overlay);
 	}
 	beginScreenPass(SCREEN_CLEAR);
 	drawForwardToScreen(forward);
 	if (!featureless) {
-		// The second preset's prepared frame is consumed here: only openScreen clears it, and
-		// the composite is void2d's sprite, not the preset's own opaque copy.
-		openScreen(overlay.core);
 		display.drawScreen();
 	}
 	endPass();
