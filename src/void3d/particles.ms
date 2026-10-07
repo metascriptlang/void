@@ -67,6 +67,14 @@ export struct ValueXYZ {
 	z: ParticleValue;
 }
 
+// A smooth force field the particles ride, strength per particle at its time of life. Heaps has
+// no turbulence; this is a sum of sines (`turbulenceAt`), not noise.
+export struct Turbulence {
+	strength: ParticleValue;
+	scale: float32;
+	speed: float32;
+}
+
 // h3d.parts.Data.State, the fields the simulation reads. `force` is never null here: Heaps'
 // null force and a force of three VConst(0) move no particle and draw no random value.
 export struct EmitterState {
@@ -85,6 +93,8 @@ export struct EmitterState {
 	size: ParticleValue;
 	speed: ParticleValue;
 	gravity: ParticleValue;
+	damping: ParticleValue;
+	turbulence: Turbulence;
 	force: ValueXYZ;
 	colors: Vec<ColorKey>;
 	light: ParticleValue;
@@ -114,6 +124,7 @@ export struct ParticleRandom {
 export struct ParticleEmitter {
 	state: EmitterState;
 	time: float64;
+	clock: float64;
 	emitCount: float64;
 	sequence: ParticleRandom;
 	// The first `count` are live, in the order Heaps' list keeps them.
@@ -130,8 +141,9 @@ export enum ParticleError {
 	ShortInstances,
 }
 
-// Per-particle draws per update: force x, y, z, gravity, speed, size, light, alpha.
-export const PARTICLE_RANDOM_SLOTS: int32 = 8;
+// Per-particle draws per update: force x, y, z, gravity, damping, turbulence, speed, size,
+// light, alpha.
+export const PARTICLE_RANDOM_SLOTS: int32 = 10;
 export const PARTICLE_INSTANCE_STRIDE: int32 = 8;
 
 const TWO_PI: float64 = 6.283185307179586;
@@ -162,6 +174,8 @@ export function defaults(this typeof EmitterState): EmitterState {
 		size: constant(1.0),
 		speed: constant(0.1),
 		gravity: constant(0.0),
+		damping: constant(0.0),
+		turbulence: { strength: constant(0.0), scale: 1.0, speed: 1.0 },
 		force: { x: constant(0.0), y: constant(0.0), z: constant(0.0) },
 		colors: [],
 		light: constant(1.0),
@@ -234,6 +248,7 @@ export function create(
 	return Result.ok({
 		state: state,
 		time: 0.0,
+		clock: 0.0,
 		emitCount: 0.0,
 		sequence: ParticleRandom.seeded(seed),
 		particles: particles,
@@ -252,7 +267,18 @@ export function isActive(this emitter: ParticleEmitter): boolean {
 export function clearParticles(ref emitter: ParticleEmitter): void {
 	emitter.count = 0;
 	emitter.time = 0.0;
+	emitter.clock = 0.0;
 	emitter.emitCount = 0.0;
+}
+
+// The turbulence field at a place and a moment: each component a mean of two sines, so in
+// [-1, 1], smooth, and fixed by its arguments alone. `speed` scales how fast it drifts; 0 freezes it.
+export function turbulenceAt(position: Vec3, clock: float32, scale: float32, speed: float32): Vec3 {
+	const drift: float32 = clock * speed;
+	const x: float64 = Math.sin(scale * position.y + drift) + Math.sin(scale * 1.7 * position.z - 0.8 * drift);
+	const y: float64 = Math.sin(scale * position.z + 1.1 * drift) + Math.sin(scale * 1.3 * position.x + 0.6 * drift);
+	const z: float64 = Math.sin(scale * position.x + 0.9 * drift) + Math.sin(scale * 1.9 * position.y - 1.2 * drift);
+	return vec3((x * 0.5) as float32, (y * 0.5) as float32, (z * 0.5) as float32);
 }
 
 // Emitter.eval.
@@ -457,11 +483,25 @@ function stepParticle(ref emitter: ParticleEmitter, slot: int32, step: float64):
 	const forceZ: float32 = particleValue(emitter, slot, emitter.state.force.z, cycle);
 	const forceY: float32 = particleValue(emitter, slot, emitter.state.force.y, cycle);
 	const gravity: float32 = particleValue(emitter, slot, emitter.state.gravity, cycle);
+	const damping: float32 = particleValue(emitter, slot, emitter.state.damping, cycle);
+	const strength: float32 = particleValue(emitter, slot, emitter.state.turbulence.strength, life);
 	const force: Vec3 = emitter.particles[slot].force;
+	let shake: Vec3 = vec3(0.0, 0.0, 0.0);
+	if (strength != 0.0) {
+		const turbulence: Turbulence = emitter.state.turbulence;
+		const field: Vec3 = turbulenceAt(
+			emitter.particles[slot].position,
+			emitter.clock as float32,
+			turbulence.scale,
+			turbulence.speed,
+		);
+		shake = field.scaled(strength);
+	}
+	const bleed: float32 = damping == 0.0 ? 1.0 : (Math.exp(-(damping * dt) as float64) as float32);
 	const pushed: Vec3 = vec3(
-		force.x + forceX * dt,
-		force.y + forceY * dt - gravity * dt,
-		force.z + forceZ * dt,
+		(force.x + forceX * dt + shake.x * dt) * bleed,
+		(force.y + forceY * dt - gravity * dt + shake.y * dt) * bleed,
+		(force.z + forceZ * dt + shake.z * dt) * bleed,
 	);
 	emitter.particles[slot].force = pushed;
 	const speed: float32 = particleValue(emitter, slot, emitter.state.speed, life);
@@ -502,6 +542,7 @@ export function updateEmitter(
 	const rate: float32 = emitterValue(emitter, emitter.state.globalSpeed, old as float32);
 	emitter.time = old + dt * (rate as float64) / life;
 	const elapsed: float64 = (emitter.time - old) * life;
+	emitter.clock = emitter.clock + elapsed;
 	if (emitter.time >= 1.0 && emitter.state.loop) { emitter.time = emitter.time - 1.0; }
 	if (emitter.time < 1.0) {
 		const cycle: float32 = emitter.time as float32;
