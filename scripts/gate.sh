@@ -720,13 +720,13 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
 	module_on_bytes=$(wc -c < out/tmp/mainSokol2dColour.exe)
 	named_on=$(llvm-nm out/tmp/mainSokol2dColour.exe 2> /dev/null | grep -c 'void2dColour' || true)
-	named_off=$(llvm-nm out/tmp/mainSokol2dOff.exe 2> /dev/null | grep -c 'void2dColour' || true)
+	named_off=$(llvm-nm out/tmp/mainSokol2dOff.exe 2> /dev/null | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape' || true)
 	if [ "$named_on" -eq 0 ]; then
 		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
-		fail "module off: mainSokol2d.exe without the colour module names $named_off void2dColour symbols"
+		fail "module off: mainSokol2d.exe with every module flag off names $named_off colour, SDF or shaper symbols"
 	else
-		pass "module off: mainSokol2d.exe names no void2dColour symbol, the colour build names $named_on"
+		pass "module off: mainSokol2d.exe names no colour, SDF or shaper symbol, the colour build names $named_on void2dColour"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
 		pass "module off: mainSokol2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
