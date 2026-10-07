@@ -35,6 +35,7 @@ typedef struct {
 	void *colour;
 	int colourOnly;
 	int sprite;
+	float asciiUnits;
 	int glyphCount;
 	FaceHeights heights;
 	float underlineTop, underlineThickness, strikeTop, strikeThickness;
@@ -584,6 +585,7 @@ int void2dGlyphFaceLoad(const char *path) {
 	s_faces[s_faceCount].colour = colour;
 	s_faces[s_faceCount].colourOnly = colourOnly;
 	s_faces[s_faceCount].sprite = 0;
+	s_faces[s_faceCount].asciiUnits = 0.0f;
 	s_faces[s_faceCount].glyphCount = glyphCount;
 	findKernLookups(&s_faces[s_faceCount]);
 	return s_faceCount++;
@@ -612,6 +614,7 @@ int void2dGlyphFaceSprite(int base) {
 	sprite.skew = 0.0f;
 	sprite.colour = NULL;
 	sprite.sprite = 1;
+	sprite.asciiUnits = 0.0f;
 	s_faces[s_faceCount] = sprite;
 	return s_faceCount++;
 }
@@ -657,6 +660,7 @@ int void2dGlyphIndex(int face, int codepoint) {
 }
 
 static float spriteAsciiUnits(GlyphFace *f) {
+	if (f->asciiUnits > 0.0f) { return f->asciiUnits; }
 	int widest = 0;
 	for (int c = ' '; c < 127; c++) {
 		int glyph = stbtt_FindGlyphIndex(&f->info, c);
@@ -665,10 +669,16 @@ static float spriteAsciiUnits(GlyphFace *f) {
 		stbtt_GetGlyphHMetrics(&f->info, glyph, &advance, &bearing);
 		if (advance > widest) { widest = advance; }
 	}
-	return (float)widest;
+	f->asciiUnits = (float)widest;
+	return f->asciiUnits;
 }
 
-static int spriteCell(int face, float sizePx, int *cell) {
+static int s_cellFace = -1;
+static float s_cellSize = 0.0f;
+static int s_cellValue[4];
+static int s_cellOk;
+
+static int spriteCellCompute(int face, float sizePx, int *cell) {
 	GlyphFace *f = &s_faces[face];
 	float scale = void2dGlyphScale(face, sizePx);
 	int ascent = 0, descent = 0, lineGap = 0;
@@ -688,6 +698,16 @@ static int spriteCell(int face, float sizePx, int *cell) {
 	if (cell[0] < 1) { cell[0] = 1; }
 	if (cell[1] < 1) { cell[1] = 1; }
 	return 1;
+}
+
+static int spriteCell(int face, float sizePx, int *cell) {
+	if (face != s_cellFace || sizePx != s_cellSize) {
+		s_cellOk = spriteCellCompute(face, sizePx, s_cellValue);
+		s_cellFace = face;
+		s_cellSize = sizePx;
+	}
+	for (int k = 0; k < 4; k++) { cell[k] = s_cellValue[k]; }
+	return s_cellOk;
 }
 
 static int s_spriteCell[4];
