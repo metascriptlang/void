@@ -13,8 +13,11 @@ import {
 
 const INTER: string = "assets/font.ttf";
 
+let cachedFace: int32 = -1;
+
 function interFace(): int32 {
-	return try loadFace(INTER) catch -1;
+	if (cachedFace < 0) { cachedFace = try loadFace(INTER) catch -1; }
+	return cachedFace;
 }
 
 function shape(face: int32, text: string, breakAt: int32, off: string): ShapedGlyph[] {
@@ -62,6 +65,11 @@ test "a manual break splits the substitution and starts a new run" {
 	assert g.length == 2;
 	assert g[0].glyph == 1459 && g[0].run == 0;
 	assert g[1].glyph == 1517 && g[1].run == 1 && g[1].index == 1;
+}
+
+test "the face the passes share is one face" {
+	assert interFace() >= 0;
+	assert interFace() == interFace();
 }
 
 test "a pass leaves nothing behind for the next one" {
