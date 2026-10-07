@@ -6,6 +6,7 @@ import {
 	FaceMetrics,
 	decorationMetrics,
 	DecorationMetrics,
+	isSpriteFace,
 } from "./face";
 import {
 	CodepointFace,
@@ -850,7 +851,9 @@ function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
 
 // GPUI's force_width (line_layout.rs:898-921): a base moves onto the grid unless it is within a
 // pixel of it, a combining mark keeps its offset. A base is a grapheme's first glyph: GPUI finds
-// it by x, which holds only once a shaper has put the marks over their base.
+// it by x, which holds only once a shaper has put the marks over their base. A sprite always
+// moves onto the grid: its tile fills the cell, so a base left within a pixel of it would open
+// a seam against its neighbour.
 function forceCells(glyphs: Span<LaidGlyph>, first: int32, cell: float32): float32 {
 	let cells: int32 = 0;
 	let lastShaped: float32 = 0.0;
@@ -859,7 +862,9 @@ function forceCells(glyphs: Span<LaidGlyph>, first: int32, cell: float32): float
 		const shaped: float32 = glyphs[k].x;
 		if (glyphs[k].clusterStart || k == first) {
 			const forced: float32 = (cells as float32) * cell;
-			if (Math.abs(shaped - forced) > 1.0) { glyphs[k].x = forced; }
+			if (Math.abs(shaped - forced) > 1.0 || isSpriteFace(glyphs[k].face)) {
+				glyphs[k].x = forced;
+			}
 			glyphs[k].advance = cell;
 			lastShaped = shaped;
 			lastActual = glyphs[k].x;
