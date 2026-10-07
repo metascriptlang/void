@@ -1764,8 +1764,13 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `GOLDEN_DEFINES` in `scripts/golden.sh`, which builds the golden runner with
   `-d:voidSdfText` so the SDF scenes capture the SDF regime. Goldens that move under that
   build: `prim/cardWithLabel` (its rotated label) and `demo/frame001`, `frame030`, `frame090`
-  and `frame200` (the panel's `setScale(0.85 .. 1.15)` puts "hello void2d" in the Sdf regime);
-  no other scene has a label under a matrix beyond translation and DPI. New rows
+  and `frame200`. Measured 2026-10-08 on BUILD `99a851d7`: the flagless golden run kept all 83
+  existing rows byte-identical; with the flag only those five moved. `cardWithLabel` moved in
+  its rotated label alone (452 px) and draws 2 (the SDF page is its own run). In the demo every
+  label moved (4 701 to 5 595 px), not only "hello void2d": `present2d` fits the 980x720 scene
+  into 800x600 with `cam.zoom` 0.816, a uniform zoom, which the regime rule sends to SDF; each
+  frame draws 31 (30 before). No other scene has a label under a matrix beyond translation and
+  DPI. New rows
   `text/sdfRotated`, `sdfZoom4`, `sdfScaleDown` and `sdfColorEffect`
   (`tests/golden/table.ms` `sdfLabelCases`, shared by the builders and by
   `tests/oracle/textSdfCheck.ms`); `text/sdfColorEffect` is judged by an invariant in
