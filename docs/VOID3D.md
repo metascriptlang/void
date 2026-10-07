@@ -2544,6 +2544,94 @@ GLES3 and web are NOT RUN.
 - **Not run.** `scripts/gate3d.sh`, `scripts/gate.sh`, the Heaps oracle (`tests/oracle/particles3d.cases` was not replayed: M11's behaviour is expected unchanged because every new field defaults to a no-op, argued from the code and the unchanged M11 tests, not measured against Heaps), captures, goldens, the web and Android builds, and any pixel. No example draws a box, a ring, damping, turbulence or a sorted emitter.
 - **Merge.** This section sits where M37's will: both go before the audit section, a trivial conflict. M37's files are untouched.
 
+### M40 as built
+
+**Layers are three.js `Layers`, and Heaps has nothing to port.** A node and a camera each own a
+32-bit mask (`layers.ms`, `uint32`); layer 0 is the default for both, as in
+`Layers.js` `constructor` (`this.mask = 1 | 0`); `set`, `enable`, `disable`, `toggle`, `test`
+and `isEnabled` are `layerBit`, `layersEnable`, `layersDisable`, `layersToggle`, `layersTest` and
+`layersHas` (`src/core/Layers.js:13-100` at `d4ea9b9`, read from the clone at
+`~/projects/three.js`). Heaps has `Object.visible` (`h3d/scene/Object.hx:92`, which hides the
+whole subtree: `emitRec` returns at `:871`) and can render a `Scene` into a target
+(`Scene.setOutputTarget`, `h3d/scene/Scene.hx:586`), but no per-object mask against a view, so a
+second view of one tree cannot show a different set of nodes. three.js fills that gap. A layer
+outside 0 to 31 stops by name: three leaves `1 << layer` to JavaScript's shift wrap, and the same
+shift in C is undefined.
+
+**Not inherited, as in three.js.** `WebGLRenderer.projectObject` (`:1873-1877`) returns for
+`object.visible === false`, which drops the subtree, but a layer mismatch only skips that object:
+the `children` loop at `:1981` runs either way. `collect` does the same: `Visible` and `Culled`
+still end a subtree, a node whose own layers miss the camera's emits no item and its children
+are still walked, each against its own mask. Each node tests only its own mask. A group's layer
+therefore neither hides nor shows what is under it.
+
+**The camera's mask is tested where the draw list is collected.** `scene.ms` `fillDrawList` and
+`refresh`'s in-place pass test `layersTest(node.layers, mask)` before a mesh node emits its
+item, so a node off the camera's layers never reaches the renderer: no pass list, no frustum
+test, no uniform write. The mask is the active camera node's (`SceneCamera.layers`, set by
+`setCameraLayers`), layer 0 when no camera is active or the active one was removed (`cameraOf`
+still reports that removal). `Camera3D` is unchanged: it is a value built by literal in
+thirty-odd places, and the binding is where the camera already meets the scene. A layer or
+camera-mask write, and `setActiveCamera`, set `structureChanged` as `setVisible` does, so the
+cached list is rebuilt and the steady path is unchanged and allocates nothing. Every node is on
+layer 0 and every camera on layer 0 by default, so a scene that never touches layers draws what
+it drew.
+
+**A second camera is a second list and a second preset, with nothing new in the pass system.**
+- `collectDrawListFor(scene, cameraNode, items)` and `refreshFor` collect into a list the caller
+  owns for any camera node's mask. They walk the tree every call and never clear
+  `structureChanged`, which belongs to the scene's own list. The in-place fast path is not
+  repeated for a second list.
+- `cameraViewOf(scene, cameraNode)` is the placement `cameraOf` gives the active camera, for any
+  camera node; `cameraOf` calls it.
+- The target and the transparent clear are `ForwardRenderer` as it is: a second preset on the
+  same `DrawContext`, made with a background of alpha 0, draws its `prepareFrame` (M18's first
+  half) into its own sampled `colorTarget`, cleared to that colour. Its pool must hold two
+  presets' blocks (`2 * FORWARD_UNIFORM_LENGTH`; a pool sized for one refuses the second with
+  `UniformPoolFull`). The caller then composites as for any sampled target (M27):
+  `addTargetTexture(context, second.colorTarget, ..., TextureAlpha.Straight)` once the first
+  `prepareFrame` has allocated it, and draws it with a textured material, or through void2d.
+  `drawToScreen` is not that composite: `Copy` is opaque (M18, `copy-opaque`), so it would cover
+  the first view. Order: both `prepareFrame`s, then the caller's screen pass.
+- three.js renders a second camera by calling `render` again over the same canvas with
+  `autoClear` off; here the second view is a target the caller composites, which the roadmap row
+  asks for and Bevy's second camera with its own target does too.
+
+**Pick follows the ray's mask, not the camera's.** `Raycaster` has its own `layers`
+(`src/core/Raycaster.js:69`) and `intersect` tests `object.layers.test(raycaster.layers)`
+(`:246`); `setFromCamera` (`:119`) copies the camera's pose and nothing of its layers. So
+`pickNearestOn(scene, ray, layers)` takes the mask, and a caller who wants the camera's passes
+`cameraLayersOf`. `pickNearest` is `pickNearestOn` with layer 0, the default `Raycaster.layers`,
+so a node on layer 1 only is not hit by a plain pick, as in three.js. As in `intersect`, a miss
+skips only that node. `Visible` still ends the subtree, as it did.
+
+**Particles.** A particle emitter is a drawn mesh whose instances the caller writes, so it
+reaches the list as a mesh node and its node's layers decide whether a camera draws all of it;
+there is no per-particle layer. Lights are not filtered by layers: `collectLights` still reads
+every visible light node (three.js applies the layer test to lights too, per `projectObject`).
+
+**Deliberately not done.**
+- Per-view lights: a second camera lights its list with the scene's light block.
+- A layer test on `collectLights`, on the shadow casters (a caster is any item of the list the
+  shadow pass is given) and on the pass lists of a pixel-art preset beyond the item list.
+- A composite helper, blending in `Copy`, and clear-colour changes after the first prepare (the
+  clear is baked into the attachments when the target is made or resized).
+- A premultiplied second target: blended materials in the second view write straight alpha over
+  their destination alpha, which is `Straight` only for opaque and cutout pixels.
+- Layers in the abort corpus (`tests/aborts3d`): the out-of-range layer stop is not under the
+  gate's abort protocol.
+- The in-place fast path for a second list.
+
+**Acceptance, limited to what ran.** Headless only, on `msc` v0.3.2, BUILD `4757fd37`, from the
+worktree, one test file at a time: `layersCheck.ms` 13 tests (masks, node layers and defaults,
+camera mask and the draw list, non-inheritance, `Visible` against a layer, refresh's steady path
+and layer change, a second list beside the first, `cameraViewOf`, two forward presets on one
+context, the pool refusal), `pickCheck.ms` 30 (two new), `scene3dCheck.ms` unchanged; `msc check`
+of `src/test/index.ms` and `campfireScene.ms` clean. `gate3d.sh`, `gate.sh`, captures, goldens,
+GPU windows, Android and the web build have NOT run, so no pixel of a second view or of a
+composite is evidenced, and neither is `prepareFrame` of a second preset in one frame on a
+device. The roadmap row is not flipped.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
