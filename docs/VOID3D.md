@@ -2621,14 +2621,17 @@ then read at `:1414`, `:1432`). `collectLightsFor(scene, mask, out)` tests each 
 mask and still walks its children, so a mismatched light neither counts toward the one
 directional or the four point slots nor hides lights under it; `collectLights` passes the active
 camera's mask. A layer-1 directional beside a layer-0 one is no `TooManyDirectionalLights` for
-either camera alone, and a fifth point light on another layer is no `TooManyPointLights`.
+either camera alone, and a fifth point light on another layer is no `TooManyPointLights`. A
+second view's light block is the caller's: `collectLightsFor(scene, cameraLayersOf(second),
+block)`, not the active camera's block reused.
 
 **`setLayers` on a camera node is the node's own mask.** What the camera draws is
 `setCameraLayers`; a camera node is also a node, and `setLayers` on it decides whether other
 cameras draw it, which draws nothing.
 
 **Deliberately not done.**
-- Layer tests on the shadow casters, which are any item of the list the shadow pass is given, and on  anything of a pixel-art preset beyond its item list and light block.
+- Layer tests on the shadow casters, which are any item of the list the shadow pass is given, and
+  on  anything of a pixel-art preset beyond its item list and light block.
 - A composite helper, blending in `Copy`, and clear-colour changes after the first prepare (the
   clear is baked into the attachments when the target is made or resized).
 - Headless proof that `addMaterial` accepts the composite texture itself: a target slot needs a
@@ -2641,7 +2644,9 @@ cameras draw it, which draws nothing.
 worktree, one test file at a time: `layersCheck.ms` 18 tests (masks, node layers and defaults,
 camera mask and the draw list, non-inheritance, `Visible` against a layer, refresh's steady path
 and layer change, a second list beside the first, `cameraViewOf`, two forward presets on one
-context, the pool refusal, per-node light filtering in three cases, the camera node's own mask, the premultiplied composite material and its straight-blend refusal), `pickCheck.ms` 30 (two new), `scene3dCheck.ms` unchanged; `msc check`
+context, the pool refusal, per-node light filtering in three cases, the camera node's own mask,
+the premultiplied composite material and its straight-blend refusal), `pickCheck.ms` 30 (two new),
+`scene3dCheck.ms` unchanged; `msc check`
 of `src/test/index.ms` and `campfireScene.ms` clean. `gate3d.sh`, `gate.sh`, captures, goldens,
 GPU windows, Android and the web build have NOT run, so no pixel of a second view or of a
 composite is evidenced, and neither is `prepareFrame` of a second preset in one frame on a
