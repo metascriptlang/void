@@ -15,6 +15,7 @@ import { DrawContext2D, NO_REPAINT, useContext, retireContext } from "./displayL
 import { void2dReleaseList } from "./batcher.h";
 when (voidProfiler) {
 	import { profilerPolledDirty } from "./frameMarks";
+	import { profilerPrepare, profilerDraw } from "./profilerOverlay";
 }
 import { advanceBlink, cursorShown, labelTexts, NO_LABEL_TEXT } from "./labelText";
 import {
@@ -296,9 +297,13 @@ export function drawTarget(this s: Scene2D, target: RenderTarget): void {
 
 export function presentAt(this s: Scene2D, dpi: float32): void {
 	s.requireOpen("presentAt");
-	s.prepare((fbWidth() as float32) / dpi, (fbHeight() as float32) / dpi, dpi);
+	const w: float32 = (fbWidth() as float32) / dpi;
+	const h: float32 = (fbHeight() as float32) / dpi;
+	s.prepare(w, h, dpi);
+	when (voidProfiler) { profilerPrepare(w, h, dpi); }
 	beginScreenPassWith(s.clear.r, s.clear.g, s.clear.b, s.clear.a);
 	s.drawScreen();
+	when (voidProfiler) { profilerDraw(); }
 	endPass();
 	commit();
 }

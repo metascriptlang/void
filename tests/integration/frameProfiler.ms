@@ -3,7 +3,7 @@ import { beginScreenPass } from "../../src/gpu/target";
 import { endPass, commit } from "../../src/gpu/door";
 import {
 	setup2d, openBracket, startContext, finishRecording, flushTargets, end2d,
-	drawUiInstance, drawSpriteAffine,
+	drawUiInstance, drawSpriteAffine, drawCallCount,
 } from "../../src/void2d/draw";
 import { DrawContext2D, useContext } from "../../src/void2d/displayList";
 import { InstanceMode, uiInstance } from "../../src/void2d/instance";
@@ -16,7 +16,13 @@ import { Scene2D } from "../../src/void2d/node";
 import { add, presentAt } from "../../src/void2d/scene";
 import { NO_STAMP } from "../../src/void2d/profiler";
 import { profilerNow } from "../../src/void2d/frameMarks";
-import { voidCaptureBackend, voidCaptureExit } from "../capture/capture.h";
+import { OverlayMode } from "../../src/void2d/profiler";
+import {
+	profilerOverlayFeedLive, profilerOverlaySetMode,
+} from "../../src/void2d/profilerOverlay";
+import {
+	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
+} from "../capture/capture.h";
 
 @include("../../src/sokol/bridge.h");
 extern function voidRunConfigured(
@@ -139,16 +145,56 @@ function mutationStep(step: int32): void {
 	}
 }
 
+const OVERLAY_STEPS: int32 = 2;
+const WIDTH: int32 = 120;
+const HEIGHT: int32 = 60;
+
+function greenPixels(): int32 {
+	if (voidCaptureGrab(0) == 0) { fail("the overlay frame could not be read back"); }
+	let green: int32 = 0;
+	for (let y: int32 = 0; y < HEIGHT; y++) {
+		for (let x: int32 = 0; x < WIDTH; x++) {
+			const pixel: int64 = voidCapturePixel(0, x, y);
+			const r: int64 = (pixel >> 24) & 255;
+			const g: int64 = (pixel >> 16) & 255;
+			if (g > 200 && r < 100) { green = green + 1; }
+		}
+	}
+	return green;
+}
+
+function overlayStep(step: int32): void {
+	if (step == 0) {
+		profilerOverlayFeedLive();
+		profilerOverlaySetMode(OverlayMode.Minimal);
+		scene.presentAt(1.0);
+		if (drawCallCount() != 2) { fail(`overlay on drew ${drawCallCount()} calls, expected 2`); }
+		if (greenPixels() == 0) { fail("the overlay left no text pixel on the frame"); }
+		if (scene.isDirty()) { fail("switching the overlay on dirtied the host scene"); }
+		return;
+	}
+	profilerOverlaySetMode(OverlayMode.Hidden);
+	scene.presentAt(1.0);
+	if (drawCallCount() != 1) { fail(`overlay hidden drew ${drawCallCount()} calls, expected 1`); }
+	if (greenPixels() != 0) { fail("a hidden overlay still painted text pixels"); }
+}
+
 function frame(): void {
 	if (stage < FRAMES) {
 		drawFrame();
 		stage = stage + 1;
 		return;
 	}
-	mutationStep(stage - FRAMES);
+	if (stage < FRAMES + 3) {
+		mutationStep(stage - FRAMES);
+	} else {
+		overlayStep(stage - FRAMES - 3);
+	}
 	stage = stage + 1;
-	if (stage < FRAMES + 3) { return; }
-	console.log(`PASS frame profiler: ${FRAMES} frames, counters, dirty to present, still frame`);
+	if (stage < FRAMES + 3 + OVERLAY_STEPS) { return; }
+	console.log(
+		`PASS frame profiler: ${FRAMES} frames, counters, dirty to present, still frame, overlay`,
+	);
 	voidCaptureExit(0);
 }
 
