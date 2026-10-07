@@ -1021,7 +1021,7 @@ FRAME_PATH_FUNCTIONS="scene:syncWorld scene:collectDrawList scene:refresh scene:
 	particles:emitterValue particles:writeInstances draw:writeStream draw:pinMesh draw:unpinMesh
 	draw:letGoOfMesh draw:meshPinned draw:hasMesh draw:issuedMesh slots:isCurrent door:frameIndex"
 RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayoutOf
-	renderer:texturesFit renderer:slotBound gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
+	renderer:texturesFit draw:slotBit gpu3d:drawsQuads draw:isQuadShaped draw:hasNothingToDraw
 	renderer:drawPassLists renderer:drawScreen renderer:openPrepare renderer:closePrepare
 	renderer:openScreen pass76ist:collect pass76ist:sortBackToFront pass76ist:sortByLayer
 	pass76ist:drawPassList
