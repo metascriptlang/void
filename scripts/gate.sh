@@ -348,7 +348,7 @@ else
 fi
 
 rm -f out/tmp/sceneOcclusionColour.exe
-if "$MSC" build -d:voidColourEmoji tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusionColour.exe 		> out/gate-scene-occlusion-colour.log 2>&1 		&& out/tmp/sceneOcclusionColour.exe > out/gate-scene-occlusion-colour-run.log 2>&1; then
+if "$MSC" build -d:voidColourEmoji tests/integration/sceneOcclusion.ms --release --output=out/tmp/sceneOcclusionColour.exe \n	> out/gate-scene-occlusion-colour.log 2>&1 \n	&& out/tmp/sceneOcclusionColour.exe > out/gate-scene-occlusion-colour-run.log 2>&1; then
 	pass "scene occlusion with colour: releaseGpu keeps the RGBA page beside the coverage page, repaints byte-identical"
 else
 	fail "scene occlusion with colour — see out/gate-scene-occlusion-colour.log and out/gate-scene-occlusion-colour-run.log"
@@ -377,7 +377,7 @@ else
 fi
 
 rm -f out/tmp/deviceLossColour.exe
-if "$MSC" build -d:voidColourEmoji tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLossColour.exe 		> out/gate-device-loss-colour.log 2>&1 		&& out/tmp/deviceLossColour.exe > out/gate-device-loss-colour-run.log 2>&1; then
+if "$MSC" build -d:voidColourEmoji tests/integration/deviceLoss.ms --release --output=out/tmp/deviceLossColour.exe \n	> out/gate-device-loss-colour.log 2>&1 \n	&& out/tmp/deviceLossColour.exe > out/gate-device-loss-colour-run.log 2>&1; then
 	pass "device loss with colour: two forced losses, the RGBA page re-uploads from its CPU mirror, the next frame byte-identical"
 else
 	fail "device loss with colour — see out/gate-device-loss-colour.log and out/gate-device-loss-colour-run.log"
@@ -708,9 +708,18 @@ else
 	grep -E '^FAIL' out/gate-wasm-delta.log | sed 's/^/      /' || true
 fi
 rm -f out/tmp/mainSokol2dOff.exe out/tmp/mainSokol2dColour.exe
-if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 		&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
+if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dOff.exe > out/gate-module-off.log 2>&1 \n	&& "$MSC" build -d:voidColourEmoji src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol2dColour.exe >> out/gate-module-off.log 2>&1; then
 	module_off_bytes=$(wc -c < out/tmp/mainSokol2dOff.exe)
 	module_on_bytes=$(wc -c < out/tmp/mainSokol2dColour.exe)
+	named_on=$(llvm-nm out/tmp/mainSokol2dColour.exe 2> /dev/null | grep -c 'void2dColour' || true)
+	named_off=$(llvm-nm out/tmp/mainSokol2dOff.exe 2> /dev/null | grep -c 'void2dColour' || true)
+	if [ "$named_on" -eq 0 ]; then
+		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
+	elif [ "$named_off" -gt 0 ]; then
+		fail "module off: mainSokol2d.exe without the colour module names $named_off void2dColour symbols"
+	else
+		pass "module off: mainSokol2d.exe names no void2dColour symbol, the colour build names $named_on"
+	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
 		pass "module off: mainSokol2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
 	else
