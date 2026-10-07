@@ -13,6 +13,7 @@ import {
 	TextLayout,
 	TextStyle,
 	TextRun,
+	LaidGlyph,
 	LineBox,
 	LineOptions,
 	ShapedText,
@@ -421,6 +422,35 @@ function uvRect(this t: GlyphTile): [float32, float32, float32, float32] {
 	];
 }
 
+function placedGlyph(
+	g: LaidGlyph,
+	tileIndex: int32,
+	t: GlyphTile,
+	baseline: float32,
+	devicePerLocal: float32,
+	pixelExact: boolean,
+	whole: int32,
+	baselineDevice: int32,
+): PlacedGlyph {
+	const [u0, v0, u1, v1] = t.uvRect();
+	const w: float32 = t.width as float32;
+	const h: float32 = t.height as float32;
+	if (pixelExact) {
+		return {
+			tile: tileIndex, page: t.page,
+			x: (whole + t.left) as float32, y: (baselineDevice + t.top) as float32,
+			w: w, h: h, u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
+		};
+	}
+	return {
+		tile: tileIndex, page: t.page,
+		x: g.x + (t.left as float32) / devicePerLocal,
+		y: baseline + (t.top as float32) / devicePerLocal,
+		w: w / devicePerLocal, h: h / devicePerLocal,
+		u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
+	};
+}
+
 export function placeLabel(index: int32, world: Transform2D, scale: float32): LabelText {
 	const entry: LabelText = labelTexts[index];
 	if (placementCurrent(entry, world, scale)) { return entry; }
@@ -459,24 +489,9 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			}
 			const tileIndex: int32 = acquired.value;
 			const t: GlyphTile = glyphAtlas.tile(tileIndex);
-			const [u0, v0, u1, v1] = t.uvRect();
-			const w: float32 = t.width as float32;
-			const h: float32 = t.height as float32;
-			if (pixelExact) {
-				placed.push({
-					tile: tileIndex, page: t.page,
-					x: (whole + t.left) as float32, y: (baselineDevice + t.top) as float32,
-					w: w, h: h, u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
-				});
-			} else {
-				placed.push({
-					tile: tileIndex, page: t.page,
-					x: g.x + (t.left as float32) / devicePerLocal,
-					y: baseline + (t.top as float32) / devicePerLocal,
-					w: w / devicePerLocal, h: h / devicePerLocal,
-					u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
-				});
-			}
+			placed.push(placedGlyph(
+				g, tileIndex, t, baseline, devicePerLocal, pixelExact, whole, baselineDevice,
+			));
 		}
 	}
 	refusedGlyphs = refusedGlyphs + refused;

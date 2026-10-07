@@ -89,6 +89,7 @@ import {
 	markGlyphPageDrawn,
 	labelTexts,
 	LabelText,
+	PlacedGlyph,
 	Decoration,
 	DecorationKind,
 	CURSOR_WIDTH,
@@ -608,6 +609,56 @@ function emitCaret(blend: BlendMode, text: LabelText, world: Transform2D, na: fl
 }
 
 
+struct GlyphSpace {
+	world: Transform2D;
+	affine: Transform2D;
+	exact: boolean;
+	instanced: boolean;
+	originX: float32;
+	originY: float32;
+	scale: float32;
+}
+
+function emitGlyph(
+	space: GlyphSpace,
+	blend: BlendMode,
+	view: uint32,
+	p: PlacedGlyph,
+	fill: Color,
+): void {
+	let x: float32 = 0.0;
+	let y: float32 = 0.0;
+	let w: float32 = p.w;
+	let h: float32 = p.h;
+	if (space.exact) {
+		x = (space.originX + p.x) / space.scale;
+		y = (space.originY + p.y) / space.scale;
+		w = p.w / space.scale;
+		h = p.h / space.scale;
+	} else {
+		x = space.world.a * p.x + space.world.c * p.y + space.world.tx;
+		y = space.world.b * p.x + space.world.d * p.y + space.world.ty;
+	}
+	const affine: Transform2D = space.affine;
+	if (space.instanced) {
+		drawUiInstance(view, blend, {
+			...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
+			uvRadii: [p.u0, p.v0, p.u1, p.v1],
+		});
+	} else {
+		const rx: float32 = affine.a * w;
+		const ry: float32 = affine.b * w;
+		const dx: float32 = affine.c * h;
+		const dy: float32 = affine.d * h;
+		imageQuadUV(view, false, p.u0, p.v0, p.u1, p.v1,
+			vec2(x, y),
+			vec2(x + rx, y + ry),
+			vec2(x + rx + dx, y + ry + dy),
+			vec2(x + dx, y + dy),
+			fill, blend);
+	}
+}
+
 function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: float32): void {
 	const payload: int32 = s.payloads[i];
 	if (payload == NO_LABEL_TEXT) { return; }
@@ -624,7 +675,15 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
 	const exact: boolean = text.pixelExact;
-	const affine: Transform2D = exact ? deviceGrid : world;
+	const space: GlyphSpace = {
+		world: world,
+		affine: exact ? deviceGrid : world,
+		exact: exact,
+		instanced: instanced,
+		originX: originX,
+		originY: originY,
+		scale: scale,
+	};
 	let viewPage: GlyphPage = NO_GLYPH_PAGE;
 	let view: uint32 = 0;
 	for (const p of text.placed) {
@@ -634,37 +693,8 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 			viewPage = p.page;
 			markGlyphPageDrawn(p.page);
 		}
-		let x: float32 = 0.0;
-		let y: float32 = 0.0;
-		let w: float32 = p.w;
-		let h: float32 = p.h;
-		if (exact) {
-			x = (originX + p.x) / scale;
-			y = (originY + p.y) / scale;
-			w = p.w / scale;
-			h = p.h / scale;
-		} else {
-			x = world.a * p.x + world.c * p.y + world.tx;
-			y = world.b * p.x + world.d * p.y + world.ty;
-		}
 		const fill: Color = styled && p.run != NO_RUN ? text.runs[p.run].color.tinted(col) : col;
-		if (instanced) {
-			drawUiInstance(view, blend, {
-				...uiInstance(InstanceMode.Glyph, affine, x, y, w, h, fill),
-				uvRadii: [p.u0, p.v0, p.u1, p.v1],
-			});
-		} else {
-			const rx: float32 = affine.a * w;
-			const ry: float32 = affine.b * w;
-			const dx: float32 = affine.c * h;
-			const dy: float32 = affine.d * h;
-			imageQuadUV(view, false, p.u0, p.v0, p.u1, p.v1,
-				vec2(x, y),
-				vec2(x + rx, y + ry),
-				vec2(x + rx + dx, y + ry + dy),
-				vec2(x + dx, y + dy),
-				fill, blend);
-		}
+		emitGlyph(space, blend, view, p, fill);
 	}
 	if (styled) { emitDecorations(blend, text, world, na, false); }
 	if (instanced) { emitCaret(blend, text, world, na); }
