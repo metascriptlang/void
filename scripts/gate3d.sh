@@ -1129,7 +1129,8 @@ run_allocation() {
 	check_array_copies "$CAPTURE/reparentCapture.ms" "reparent and detached close path" \
 		"$REPARENT_PATH_FUNCTIONS" || return
 	check_array_copies tests/integration/dirShadow.ms "shadow path" "$SHADOW_PATH_FUNCTIONS" || return
-	check_array_copies tests/integration/renderOrder.ms "render order path" 		"$RENDER_ORDER_PATH_FUNCTIONS" || return
+	check_array_copies tests/integration/renderOrder.ms "render order path" \r
+		"$RENDER_ORDER_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
@@ -1990,7 +1991,8 @@ run_render_order() {
 	fi
 	exe="$WORK/renderOrder.exe"
 	rm -f "$exe"
-	if ! msc build tests/integration/renderOrder.ms --output="$exe" 		> "$WORK/renderOrder.build.log" 2>&1; then
+	if ! msc build tests/integration/renderOrder.ms --output="$exe" \r
+		> "$WORK/renderOrder.build.log" 2>&1; then
 		fail "render-order: tests/integration/renderOrder.ms does not build — see $WORK/renderOrder.build.log"
 		return
 	fi
@@ -2006,7 +2008,8 @@ run_render_order() {
 			return
 		fi
 		status=0
-		VOID_RENDER_ORDER_PIXEL_ART=$preset VOID_RENDER_ORDER_CONTROL=1 "$exe" 			> "$WORK/renderOrder.control.$preset.log" 2>&1 || status=$?
+		VOID_RENDER_ORDER_PIXEL_ART=$preset VOID_RENDER_ORDER_CONTROL=1 "$exe" \r
+			> "$WORK/renderOrder.control.$preset.log" 2>&1 || status=$?
 		if [ "$status" -eq 0 ] || ! grep -q 'did not draw first' "$WORK/renderOrder.control.$preset.log" ||
 			! grep -q 'did not draw last' "$WORK/renderOrder.control.$preset.log"; then
 			fail "render-order: the order-0 control in preset $preset followed the swapped orders (exit $status)"
