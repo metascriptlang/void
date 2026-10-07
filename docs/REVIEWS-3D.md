@@ -2549,4 +2549,5 @@ defect pass read `cb398dd..61910b0`; the same reviewer re-read the fixes `61910b
 
 ### Final acceptance
 
-Pending: both gates on the rebased tree. See "M36 as built".
+See "M36 as built": `gate3d.sh` 321 PASS / 0 FAIL / 3 known skips, `gate.sh` 82/82 golden,
+BUILD `4757fd37`, D3D11 only.
