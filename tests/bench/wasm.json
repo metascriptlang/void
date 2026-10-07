@@ -1,8 +1,8 @@
 {
-  "baseRef": "bf43569f761ea0f6f29aadf8cc7ddc3568758dd9",
+  "baseRef": "54bdd5245c1ecd9fe992626cce6fe7c5092ffcdd",
   "tool": "clang 23.1.0 -O2, wasm32 against scripts/wasmShim, x86-64 -DSOKOL_D3D11; measured 2026-10-08 by sh scripts/wasmModuleDelta.sh --print",
-  "meaning": "code plus data bytes of objects, before any link or garbage collection. delta: glyph.c, grapheme.c, batcher.c and sfnt.c with the module off, now against the same files at baseRef. module: colourFace.c with its PNG-only stb_image. seam: glyph.c built with the module against glyph.c without it. The linked, garbage-collected wasm per module is not here: it needs the web build (tests/PENDING.md wasm:budget).",
-  "delta": { "native": 11336, "wasm32": 11046 },
+  "meaning": "code plus data bytes of objects, before any link or garbage collection. delta: glyph.c, grapheme.c, batcher.c and sfnt.c with the module off, now against the same files at baseRef, the commit before the colour item's first default-layer slice (691586c), so every change in between is the colour item's. module: colourFace.c with its PNG-only stb_image. seam: glyph.c built with the module against glyph.c without it. The linked, garbage-collected wasm per module is not here: it needs the web build (tests/PENDING.md wasm:budget).",
+  "delta": { "native": 1909, "wasm32": 1567 },
   "module": { "native": 43625, "wasm32": 42189 },
   "seam": { "native": 4149, "wasm32": 3273 }
 }

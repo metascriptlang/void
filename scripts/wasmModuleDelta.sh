@@ -16,10 +16,9 @@
 #   2. Cost: code plus data bytes of each translation unit, x86-64 and wasm32 (clang -O2 against
 #      the libc-free headers in scripts/wasmShim). The default-layer delta is the module-off
 #      objects now against the same files at the commit before the colour item's first
-#      default-layer slice, so it counts every default-layer change since, the other P6 items'
-#      included. A
-#      wasm32 object is not a linked, garbage-collected module: the number the web build gives
-#      is owed to scripts/build-web.sh (tests/PENDING.md wasm:budget).
+#      default-layer slice, so it counts the colour item's hooks and nothing else. A wasm32
+#      object is not a linked, garbage-collected module: the number the web build gives is owed
+#      to scripts/build-web.sh (tests/PENDING.md wasm:budget).
 set -e
 cd "$(dirname "$0")/.."
 
@@ -46,10 +45,8 @@ cp deps/sokol/sokol_gfx.h "$OUT/base/deps/sokol/"
 WASM="clang --target=wasm32 -O2 -ffreestanding -nostdinc -isystem scripts/wasmShim"
 NATIVE="clang -O2 -D_CRT_SECURE_NO_WARNINGS -Wno-deprecated-declarations"
 
-# bytes of one object: code plus data
 bytes() { llvm-size "$1" | awk 'NR == 2 { print $1 + $2 }'; }
 
-# $1 tree root, $2 file under src/void2d, $3 label, $4 extra flags
 compile() {
 	root="$1"; file="$2"; label="$3"; extra="$4"
 	$WASM $extra -I "$root/src/void2d" -DSOKOL_GLES3 -c "$root/src/void2d/$file" \
@@ -60,7 +57,7 @@ compile() {
 		|| { echo "FAIL wasm delta: $file did not compile natively — see $OUT/$label.log"; failed=1; }
 }
 
-for unit in glyph grapheme batcher; do
+for unit in glyph grapheme batcher sfnt; do
 	compile "$OUT/base" "$unit.c" "base.$unit" ""
 done
 for unit in glyph grapheme batcher sfnt; do
@@ -98,9 +95,7 @@ delta_wasm=0
 echo "default layer, module off: code plus data bytes (base $BASE_REF)"
 echo "      unit        native base   native head   wasm32 base   wasm32 head"
 for unit in glyph grapheme batcher sfnt; do
-	if [ "$unit" = sfnt ]; then nb=0; wb=0; else
-		nb=$(bytes "$OUT/base.$unit.o"); wb=$(bytes "$OUT/base.$unit.wasm.o")
-	fi
+	nb=$(bytes "$OUT/base.$unit.o"); wb=$(bytes "$OUT/base.$unit.wasm.o")
 	nh=$(bytes "$OUT/head.$unit.o"); wh=$(bytes "$OUT/head.$unit.wasm.o")
 	printf '      %-10s %12s %13s %13s %13s\n' "$unit.c" "$nb" "$nh" "$wb" "$wh"
 	delta_native=$((delta_native + nh - nb))
@@ -110,7 +105,7 @@ module_native=$(bytes "$OUT/on.colourFace.o")
 module_wasm=$(bytes "$OUT/on.colourFace.wasm.o")
 seam_native=$(( $(bytes "$OUT/on.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
 seam_wasm=$(( $(bytes "$OUT/on.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm.o") ))
-echo "      default-layer delta of slices 1 to 5: +$delta_native B native, +$delta_wasm B wasm32"
+echo "      default-layer delta since the base: +$delta_native B native, +$delta_wasm B wasm32"
 echo "module on: colourFace.c $module_native B native, $module_wasm B wasm32; glyph.c seam +$seam_native B native, +$seam_wasm B wasm32"
 
 if [ "$mode" = print ]; then
