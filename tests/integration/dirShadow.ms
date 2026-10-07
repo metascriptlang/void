@@ -1,20 +1,21 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
 import { Vec3, Vec4, vec3, quatBetween } from "../../src/math/math3d";
 import {
-	Material, MaterialKind, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
+	Material, MaterialKind, Phase, ShadowCasting, ShadowCulling, UniformBlock, movingDefaults,
 	withShadowCulling,
 } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addQuad, addTexturedQuad } from "../../src/void3d/meshData";
 import {
 	Program, ProgramKey, MATERIAL_UNIFORM_SLOT, MATERIAL_UNIFORM_LENGTH, VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH, MOVING_MATERIAL_UNIFORM_LENGTH, MOVING_DISSOLVE_THRESHOLD, movingBase,
+	EMISSIVE_COLOR, EMISSIVE_STRENGTH, MATERIAL_ALPHA_KILL, emissiveBase,
 } from "../../src/void3d/gpu3d";
 import {
 	DrawContext, DrawItem, MeshId, MaterialId, MeshUploadError, MaterialError,
 	addMeshData, addMaterial, addTexture, reserveUniforms, writeUniforms,
 } from "../../src/void3d/draw";
 import { TextureId, TextureUploadError, NO_TEXTURE } from "../../src/void3d/texture";
-import { FilterMode, Wrap } from "../../src/gpu/state";
+import { FilterMode, Wrap, RenderState, BlendMode } from "../../src/gpu/state";
 import { UniformError } from "../../src/void3d/uniformPool";
 import {
 	Scene3D, Transform3D, NodeId3D, SceneError, LightKind, LightInstance, LightError,
@@ -57,6 +58,14 @@ enum Case {
 	// shadow pass too (Heaps' rule); 9 draws it with the shadow pass's own culling off.
 	BackFace,
 	BackFaceBothSides,
+	// A premultiplied unlit card whose left texel is transparent, cut at alpha 0.5 (a caster that
+	// cuts as its colour does); 11 is the same card with no cutout, which casts its whole quad.
+	CutCard,
+	CutCardWhole,
+	// The dissolving caster of 6, emissive: its block is longer than the caster's, which takes
+	// the head (draw.ms applyBlockHead); 13 dissolves a premultiplied card.
+	DissolveEmissive,
+	DissolvePremultiplied,
 }
 
 const WIDTH: int32 = 320;
@@ -72,6 +81,7 @@ const CASTER_HEIGHT: float32 = 1.0;
 const TO_LIGHT: Vec3 = { x: 1.0, y: 2.0, z: 0.0 };
 const SHADOW_SIZE: int32 = 512;
 const FRAMES: int32 = 3;
+const CARD_RED: uint32 = 0xFF0000FF;
 let pixelArt: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PIXEL_ART", 0) != 0;
 let shadowCase: Case = voidCaptureEnvInt("VOID_DIR_SHADOW_CASE", 0) as Case;
 let context: DrawContext = DrawContext.withUniformCapacity(
@@ -171,13 +181,18 @@ function horizontal(
 
 // A LitTextured caster whose noise is low on its left half: a dissolve at 0.5 removes that half.
 function dissolvingCaster(): void {
-	const key: ProgramKey = shadowCase == Case.Dissolve ?
-		ProgramKey.of(Program.LitTextured).withDissolve() : ProgramKey.of(Program.LitTextured);
+	const lit: ProgramKey = ProgramKey.of(Program.LitTextured);
+	const key: ProgramKey = shadowCase == Case.DissolveEmissive ?
+		lit.withDissolve().withEmissive() : shadowCase == Case.Dissolve ? lit.withDissolve() : lit;
 	let values: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 	if (key.dissolve) {
 		values = movingDefaults(key);
 		values[0] = 4.0;
 		values[movingBase(key) + MOVING_DISSOLVE_THRESHOLD] = 0.5;
+	}
+	if (key.emissive) {
+		values[emissiveBase(key) + EMISSIVE_COLOR + 2] = 1.0;
+		values[emissiveBase(key) + EMISSIVE_STRENGTH] = 1.0;
 	}
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, values.length as int32);
@@ -191,12 +206,13 @@ function dissolvingCaster(): void {
 		filter: FilterMode.Nearest, wrap: Wrap.Clamp,
 	});
 	if (!white.ok || !noise.ok) { unreachable; }
-	const lit: Material = Material.ofKind(Program.LitTextured, MaterialKind.Opaque);
+	const base: Material = Material.ofKind(Program.LitTextured, MaterialKind.Opaque);
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...lit,
+		...base,
 		program: { ...key, shadowed: true },
 		texture: white.value,
 		dissolveTexture: key.dissolve ? noise.value : NO_TEXTURE,
+		emissiveTexture: key.emissive ? white.value : NO_TEXTURE,
 		uniforms: reserved.value,
 	});
 	if (!added.ok) { fail(`the caster was refused: ${added.error.toString()}`); }
@@ -216,6 +232,68 @@ function dissolvingCaster(): void {
 	if (!placed.ok) { unreachable; }
 }
 
+// An unlit premultiplied card, whose base texture is a raw view because a context texture is
+// straight and a premultiplied key refuses it (draw.ms drawItemWith); only a render target is
+// registered premultiplied (M27), which this test has no void2d scene to make.
+function premultipliedCard(): void {
+	const premultiplied: ProgramKey = ProgramKey.of(Program.UnlitTextured).withPremultiplied();
+	const key: ProgramKey = shadowCase == Case.CutCard ? premultiplied.withCutout() :
+		shadowCase == Case.DissolvePremultiplied ? premultiplied.withDissolve() : premultiplied;
+	const melting: boolean = key.dissolve;
+	let values: Vec<float32> = new Array(MATERIAL_UNIFORM_LENGTH);
+	if (melting) {
+		values = movingDefaults(key);
+		values[movingBase(key) + MOVING_DISSOLVE_THRESHOLD] = 0.5;
+	} else {
+		values = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+		values[MATERIAL_ALPHA_KILL] = key.cutout ? 0.5 : 0.0;
+	}
+	const reserved: Result<UniformBlock, UniformError> =
+		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, values.length as int32);
+	if (!reserved.ok) { unreachable; }
+	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
+	const base: Result<TextureId, TextureUploadError> = addTexture(context, melting ? {
+		pixels: [CARD_RED], width: 1, height: 1, filter: FilterMode.Nearest, wrap: Wrap.Clamp,
+	} : {
+		pixels: [0x00000000, CARD_RED], width: 2, height: 1,
+		filter: FilterMode.Nearest, wrap: Wrap.Clamp,
+	});
+	const noise: Result<TextureId, TextureUploadError> = addTexture(context, {
+		pixels: [0xFF000033, 0xFF0000CC], width: 2, height: 1,
+		filter: FilterMode.Nearest, wrap: Wrap.Clamp,
+	});
+	if (!base.ok || !noise.ok) { unreachable; }
+	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
+		...Material.keyed(
+			key, RenderState.defaults().withBlendMode(BlendMode.AlphaAdd), Phase.Alpha,
+		).withShadows(ShadowCasting.On, false),
+		texture0: context.textures[base.value.index].view,
+		sampler0: context.textures[base.value.index].sampler,
+		dissolveTexture: melting ? noise.value : NO_TEXTURE,
+		uniforms: reserved.value,
+	});
+	if (!added.ok) { fail(`the card was refused: ${added.error.toString()}`); }
+	if (!added.ok) { return; }
+	let mesh: MeshData = MeshData.withUvs();
+	const half: float32 = CASTER_HALF;
+	const y: float32 = CASTER_HEIGHT;
+	const built: Result<int32, MeshError> = addTexturedQuad(
+		mesh, vec3(-half, y, half), vec3(half, y, half), vec3(half, y, -half),
+		vec3(-half, y, -half), vec3(0.0, 1.0, 0.0), WHITE,
+	);
+	if (!built.ok) { unreachable; }
+	const uploaded: Result<MeshId, MeshUploadError> = addMeshData(context, mesh);
+	if (!uploaded.ok) { unreachable; }
+	const placed: Result<NodeId3D, SceneError> =
+		addMeshNode(scene, scene.rootId(), Transform3D.identity(), uploaded.value, added.value);
+	if (!placed.ok) { unreachable; }
+}
+
+function isCard(): boolean {
+	return shadowCase == Case.CutCard || shadowCase == Case.CutCardWhole ||
+		shadowCase == Case.DissolvePremultiplied;
+}
+
 function init(): void {
 	if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
 	gfxSetup();
@@ -230,12 +308,19 @@ function init(): void {
 		Case.DissolveControl => ShadowCasting.On,
 		Case.BackFace => ShadowCasting.On,
 		Case.BackFaceBothSides => ShadowCasting.On,
+		Case.CutCard => ShadowCasting.On,
+		Case.CutCardWhole => ShadowCasting.On,
+		Case.DissolveEmissive => ShadowCasting.On,
+		Case.DissolvePremultiplied => ShadowCasting.On,
 	};
 	const ground: MaterialId =
 		material(ShadowCasting.On, shadowCase != Case.ReceiveOff, ShadowCulling.Main);
 	horizontal(GROUND_HALF, 0.0, WHITE, ground, true);
-	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl) {
+	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl ||
+		shadowCase == Case.DissolveEmissive) {
 		dissolvingCaster();
+	} else if (isCard()) {
+		premultipliedCard();
 	} else {
 		const culling: ShadowCulling =
 			shadowCase == Case.BackFaceBothSides ? ShadowCulling.None : ShadowCulling.Main;
@@ -296,7 +381,8 @@ function checkDissolve(view: CameraView): void {
 }
 
 function check(view: CameraView): void {
-	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl) {
+	if (shadowCase == Case.Dissolve || shadowCase == Case.DissolveControl ||
+		shadowCase == Case.DissolveEmissive || isCard()) {
 		checkDissolve(view);
 		return;
 	}

@@ -1031,7 +1031,7 @@ RENDER_PATH_FUNCTIONS="renderer:beginFrame renderer:blockFits gpu3d:vertexLayout
 	renderer:drawPassLists renderer:drawScreen renderer:openPrepare renderer:closePrepare
 	renderer:openScreen pass76ist:collect pass76ist:sortBackToFront pass76ist:sortByLayer
 	pass76ist:drawPassList
-	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock pipeline:pipelineFor
+	draw:drawItem draw:bindItem draw:writeUniforms draw:applyBlock draw:applyBlockHead pipeline:pipelineFor
 	pipeline:pipelineKey pixel65rt82enderer:renderFrame pixel65rt82enderer:prepareFrame
 	pixel65rt82enderer:bindScreenTextures pixel65rt82enderer:writePostParams
 	pixel65rt82enderer:viewFor pixel65rt82enderer:drawScene pixel65rt82enderer:drawPost
@@ -2152,8 +2152,11 @@ run_map_material() {
 }
 
 # Cases are tests/integration/dirShadow.ms `Case` ordinals; 1 (Detached) is the control, and
-# 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides).
+# 7 (DissolveControl) the control of 6 (Dissolve), and 8 (BackFace) of 9 (BackFaceBothSides);
 DIR_SHADOW_CASES="0 2 3 4 5 6 8 9"
+# The core's keys only (programKeys.txt declares them for no pixel-art row): 11 (CutCardWhole)
+# is the control of 10 (CutCard), 12 an emissive dissolve and 13 a premultiplied one.
+DIR_SHADOW_CORE_CASES="10 12 13"
 
 run_dir_shadow() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -2196,7 +2199,23 @@ run_dir_shadow() {
 			return
 		fi
 	done
-	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only, half opacity and a dissolving caster hold; the detached and undissolved controls fail"
+	for case in $DIR_SHADOW_CORE_CASES; do
+		status=0
+		VOID_DIR_SHADOW_PIXEL_ART=0 VOID_DIR_SHADOW_CASE=$case "$exe" \
+			> "$WORK/dirShadow.$case.0.log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS dir shadow: ' "$WORK/dirShadow.$case.0.log"; then
+			fail "dir-shadow: case $case (exit $status) — see $WORK/dirShadow.$case.0.log"
+			return
+		fi
+	done
+	status=0
+	VOID_DIR_SHADOW_PIXEL_ART=0 VOID_DIR_SHADOW_CASE=11 "$exe" \
+		> "$WORK/dirShadow.cardControl.log" 2>&1 || status=$?
+	if [ "$status" -eq 0 ] || ! grep -q 'dissolved half still cast' "$WORK/dirShadow.cardControl.log"; then
+		fail "dir-shadow: the card with no cutout still let its transparent half cast no shadow (exit $status)"
+		return
+	fi
+	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only, half opacity, a dissolving caster, a flat caster with its own shadow culling, a cut premultiplied card and emissive and premultiplied dissolves hold; the detached, undissolved and uncut controls fail"
 }
 
 run_reparent() {
