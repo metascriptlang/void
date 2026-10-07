@@ -24,6 +24,7 @@ import {
 	BILLBOARD_LIGHT,
 	VERTEX_UNIFORM_LENGTH,
 	LIGHT_UNIFORM_LENGTH,
+	FRAME_UNIFORM_LENGTH,
 } from "./gpu3d";
 import {
 	PixelFormat,
@@ -37,7 +38,7 @@ import {
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
 import { originTopLeft, depthZeroToOne } from "../gpu/door";
-import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
+import { Material, Phase, UniformBlock } from "./material";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -319,8 +320,15 @@ export function writePostParams(
 }
 
 
+// create checked that the pool fits every block before the first was reserved.
 function reserve(context: DrawContext, slot: int32, length: int32): UniformBlock {
-	return try reserveUniforms(context, slot, length) catch NO_UNIFORMS;
+	const reserved: Result<UniformBlock, UniformError> = reserveUniforms(context, slot, length);
+	if (!reserved.ok) {
+		console.log(`void3d: PixelArtRenderer.create could not reserve block ${slot} that it ` +
+			"checked fits");
+		unreachable;
+	}
+	return reserved.value;
 }
 
 // Creates the core, reserves the post and blit blocks and adds their materials to `context`.
@@ -335,6 +343,7 @@ export function create(
 	const blocks: Vec<int32> = [
 		VERTEX_UNIFORM_LENGTH,
 		LIGHT_UNIFORM_LENGTH,
+		FRAME_UNIFORM_LENGTH,
 		POST_UNIFORM_LENGTH,
 		BLIT_UNIFORM_LENGTH,
 	];
