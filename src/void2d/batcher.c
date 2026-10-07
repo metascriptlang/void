@@ -668,7 +668,7 @@ void void2dFrameEnd(void) {
 	s_bracketsThisFrame = 0;
 	s_frameSerial++;
 #ifdef VOID_PROFILER
-	int32_t counters[VOID_COUNTER_SOKOL_DRAWS];
+	int32_t counters[VOID_COUNTER_VOID2D_SLOTS];
 	counters[VOID_COUNTER_DRAWS] = s_drawCallCount;
 	counters[VOID_COUNTER_UI_INSTANCES] = s_frameUiInstances;
 	counters[VOID_COUNTER_SPRITE_INSTANCES] = s_frameSpriteInstances;

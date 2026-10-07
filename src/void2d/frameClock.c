@@ -82,7 +82,7 @@ void voidProfileCommit(int32_t serial, const int32_t *void2dCounters) {
 	if (s_state != VOID_FRAME_OPEN) { return; }
 	s_marks[VOID_MARK_COMMIT] = voidClockNow();
 	s_serial = serial;
-	for (int i = 0; i < VOID_COUNTER_SOKOL_DRAWS; i++) { s_counters[i] = void2dCounters[i]; }
+	for (int i = 0; i < VOID_COUNTER_VOID2D_SLOTS; i++) { s_counters[i] = void2dCounters[i]; }
 	s_counters[VOID_COUNTER_SOKOL_MEASURED] = sg_isvalid() ? 1 : 0;
 	if (sg_isvalid()) {
 		const sg_frame_stats f = sg_query_stats().prev_frame;
