@@ -2020,7 +2020,8 @@ run_map_material() {
 	fi
 	exe="$WORK/mapMaterial.exe"
 	rm -f "$exe"
-	if ! msc build tests/integration/mapMaterial.ms --output="$exe" 		> "$WORK/mapMaterial.build.log" 2>&1; then
+	if ! msc build tests/integration/mapMaterial.ms --output="$exe" \
+		> "$WORK/mapMaterial.build.log" 2>&1; then
 		fail "map-material: tests/integration/mapMaterial.ms does not build — see $WORK/mapMaterial.build.log"
 		return
 	fi
@@ -2036,8 +2037,11 @@ run_map_material() {
 			return
 		fi
 		status=0
-		VOID_MAP_PIXEL_ART=$preset VOID_MAP_CONTROL=1 "$exe" 			> "$WORK/mapMaterial.control.$preset.log" 2>&1 || status=$?
-		for message in 'did not emit its emissive map' 'the half strength emitted' 			'did not tilt toward +x' 'did not tilt toward +y' 'did not turn its tangent' 			'turned its bitangent'; do
+		VOID_MAP_PIXEL_ART=$preset VOID_MAP_CONTROL=1 "$exe" \
+			> "$WORK/mapMaterial.control.$preset.log" 2>&1 || status=$?
+		for message in 'did not emit its emissive map' 'the half strength emitted' \
+			'did not tilt toward +x' 'did not tilt toward +y' 'did not turn its tangent' \
+			'turned its bitangent'; do
 			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/mapMaterial.control.$preset.log"; then
 				fail "map-material: the featureless control in preset $preset did not fail on '$message' (exit $status)"
 				return
