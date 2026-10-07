@@ -7,7 +7,7 @@
 #
 # The records in tests/bench/wasm.json are the numbers this script printed on a given clang; a run
 # fails when a number grows more than ten percent past its record, which is slack for a compiler
-# upgrade and not for code. A unit the base does not have (spriteGlyph.c) counts whole.
+# upgrade and not for code.
 #
 # Two claims, both read from objects, for each module:
 #   1. Module off: no object of the default layer refers to a void2dColour symbol, and no
@@ -60,9 +60,11 @@ compile() {
 for unit in glyph grapheme batcher sfnt; do
 	compile "$OUT/base" "$unit.c" "base.$unit" ""
 done
-for unit in glyph grapheme batcher sfnt spriteGlyph; do
+for unit in glyph grapheme batcher sfnt; do
 	compile "." "$unit.c" "head.$unit" ""
 done
+compile "." "glyph.c" "on.sprite.glyph" "-DVOID2D_SPRITES"
+compile "." "spriteGlyph.c" "on.sprite" ""
 compile "." "glyph.c" "on.glyph" "-DVOID2D_COLOUR_EMOJI"
 compile "." "colourEmoji/colourFace.c" "on.colourFace" ""
 compile "." "glyph.c" "on.sdf.glyph" "-DVOID2D_SDF_TEXT"
@@ -70,12 +72,31 @@ compile "." "shaper.c" "on.shaper" ""
 [ "$failed" -eq 0 ] || exit 1
 
 echo "module off: symbols"
-for unit in glyph grapheme batcher sfnt spriteGlyph; do
+for unit in glyph grapheme batcher sfnt; do
 	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dColour'; then
 		echo "FAIL wasm delta: the module-off $unit.c object names a void2dColour symbol"
 		failed=1
 	fi
 done
+SPRITE_SYMBOLS='void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphFaceIsSprite\|void2dGlyphSpriteCell\|void2dGlyphPolygonCoverage'
+for unit in glyph grapheme batcher sfnt; do
+	for object in "$OUT/head.$unit.o" "$OUT/head.$unit.wasm.o"; do
+		if llvm-nm "$object" | grep -q "$SPRITE_SYMBOLS"; then
+			echo "FAIL wasm delta: the module-off $object names a sprite symbol"
+			failed=1
+		fi
+	done
+done
+for object in "$OUT/on.sprite.glyph.o" "$OUT/on.sprite.glyph.wasm.o"; do
+	if ! llvm-nm "$object" | grep -q 'void2dGlyphFaceSprite'; then
+		echo "FAIL wasm delta: glyph.c built with the sprite module names no void2dGlyphFaceSprite in $object, so the check above sees nothing"
+		failed=1
+	fi
+done
+if ! llvm-nm "$OUT/on.sprite.o" | grep -q 'void2dSpriteDraw'; then
+	echo "FAIL wasm delta: spriteGlyph.c names no void2dSpriteDraw symbol, so the check above sees nothing"
+	failed=1
+fi
 if ! llvm-nm "$OUT/on.glyph.o" | grep -q 'void2dColour'; then
 	echo "FAIL wasm delta: glyph.c built with the module names no void2dColour symbol, so the check above sees nothing"
 	failed=1
@@ -110,11 +131,8 @@ delta_native=0
 delta_wasm=0
 echo "default layer, module off: code plus data bytes (base $BASE_REF)"
 echo "      unit        native base   native head   wasm32 base   wasm32 head"
-for unit in glyph grapheme batcher sfnt spriteGlyph; do
-	nb=0; wb=0
-	if [ -f "$OUT/base.$unit.o" ]; then
-		nb=$(bytes "$OUT/base.$unit.o"); wb=$(bytes "$OUT/base.$unit.wasm.o")
-	fi
+for unit in glyph grapheme batcher sfnt; do
+	nb=$(bytes "$OUT/base.$unit.o"); wb=$(bytes "$OUT/base.$unit.wasm.o")
 	nh=$(bytes "$OUT/head.$unit.o"); wh=$(bytes "$OUT/head.$unit.wasm.o")
 	printf '      %-10s %12s %13s %13s %13s\n' "$unit.c" "$nb" "$nh" "$wb" "$wh"
 	delta_native=$((delta_native + nh - nb))
@@ -131,13 +149,20 @@ sdf_wasm=$(( $(bytes "$OUT/on.sdf.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm
 shaper_native=$(bytes "$OUT/on.shaper.o")
 shaper_wasm=$(bytes "$OUT/on.shaper.wasm.o")
 echo "module on: SDF text, glyph.c with VOID2D_SDF_TEXT +$sdf_native B native, +$sdf_wasm B wasm32; shaper.c $shaper_native B native, $shaper_wasm B wasm32"
+sprite_native=$(bytes "$OUT/on.sprite.o")
+sprite_wasm=$(bytes "$OUT/on.sprite.wasm.o")
+spriteSeam_native=$(( $(bytes "$OUT/on.sprite.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
+spriteSeam_wasm=$(( $(bytes "$OUT/on.sprite.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm.o") ))
+echo "module on: sprites, spriteGlyph.c $sprite_native B native, $sprite_wasm B wasm32; glyph.c seam +$spriteSeam_native B native, +$spriteSeam_wasm B wasm32"
 
 if [ "$mode" = print ]; then
 	printf '  "delta": { "native": %s, "wasm32": %s },\n' "$delta_native" "$delta_wasm"
 	printf '  "module": { "native": %s, "wasm32": %s },\n' "$module_native" "$module_wasm"
 	printf '  "seam": { "native": %s, "wasm32": %s },\n' "$seam_native" "$seam_wasm"
 	printf '  "sdf": { "native": %s, "wasm32": %s },\n' "$sdf_native" "$sdf_wasm"
-	printf '  "shaper": { "native": %s, "wasm32": %s }\n' "$shaper_native" "$shaper_wasm"
+	printf '  "shaper": { "native": %s, "wasm32": %s },\n' "$shaper_native" "$shaper_wasm"
+	printf '  "sprite": { "native": %s, "wasm32": %s },\n' "$sprite_native" "$sprite_wasm"
+	printf '  "spriteSeam": { "native": %s, "wasm32": %s }\n' "$spriteSeam_native" "$spriteSeam_wasm"
 	exit "$failed"
 fi
 
@@ -162,4 +187,8 @@ within "SDF text, wasm32 objects" "$sdf_wasm" "$(recorded sdf wasm32)"
 within "SDF text, native objects" "$sdf_native" "$(recorded sdf native)"
 within "shaper, wasm32 objects" "$shaper_wasm" "$(recorded shaper wasm32)"
 within "shaper, native objects" "$shaper_native" "$(recorded shaper native)"
+within "sprites, wasm32 objects" "$sprite_wasm" "$(recorded sprite wasm32)"
+within "sprites, native objects" "$sprite_native" "$(recorded sprite native)"
+within "sprite seam, wasm32 objects" "$spriteSeam_wasm" "$(recorded spriteSeam wasm32)"
+within "sprite seam, native objects" "$spriteSeam_native" "$(recorded spriteSeam native)"
 exit "$failed"
