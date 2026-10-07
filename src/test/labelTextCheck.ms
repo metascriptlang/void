@@ -11,6 +11,7 @@ import {
 	glyphRefusals,
 	glyphRefusalReports,
 	isPixelExact,
+	TextRegime,
 	labelTexts,
 	setLabelRuns,
 	DecorationKind,
@@ -52,7 +53,7 @@ test "pixel-exact placement puts every glyph sprite on whole device pixels" {
 	const index = shaped("void2d, 13 px");
 	const world: Transform2D = trs2d(10.3, 7.7, 0.0, 1.0, 1.0);
 	const text = placeLabel(index, world, 1.25);
-	assert text.pixelExact;
+	assert text.regime == TextRegime.PixelExact;
 	assert (text.placed.length as int32) > 0;
 	for (const p of text.placed) {
 		assert isWhole(p.x);
@@ -91,7 +92,7 @@ test "a rotated label is the transformed regime, sized by the affine's area scal
 	const world: Transform2D = trs2d(0.0, 0.0, 0.5, 2.0, 2.0);
 	assert !isPixelExact(world);
 	const text = placeLabel(index, world, 1.0);
-	assert !text.pixelExact;
+	assert text.regime == TextRegime.Bitmap;
 	const tile = glyphAtlas.tile(text.placed[0].tile);
 	assert Math.abs(text.placed[0].w * 2.0 - (tile.width as float32)) < 0.001;
 	releaseLabelText(index);

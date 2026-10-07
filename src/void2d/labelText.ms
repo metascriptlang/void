@@ -1,4 +1,5 @@
 import {
+	AtlasError,
 	GlyphAtlas,
 	GlyphTile,
 	GlyphPage,
@@ -27,8 +28,19 @@ import { decorationMetrics } from "./face";
 import { DEFAULT_FONT, fontFace } from "./font";
 import { Transform2D, Color } from "./types";
 
+when (voidSdfText) {
+	import { acquireSdf } from "./glyphAtlas";
+	import { SDF_EM } from "./textSdf";
+}
+
 export const NO_LABEL_TEXT: int32 = -1;
 const MAX_GLYPH_PAGES: int32 = 16;
+
+export enum TextRegime {
+	PixelExact,
+	Sdf,
+	Bitmap,
+}
 
 export struct PlacedGlyph {
 	tile: int32;
@@ -81,7 +93,7 @@ export interface LabelText {
 	style: TextStyle;
 	placed: Vec<PlacedGlyph>;
 	placedValid: boolean;
-	pixelExact: boolean;
+	regime: TextRegime;
 	key: PlacementKey;
 	refused: int32;
 	runs: Vec<TextRun>;
@@ -175,7 +187,7 @@ export function allocateLabelText(): int32 {
 		style: style,
 		placed: new Array(0),
 		placedValid: false,
-		pixelExact: false,
+		regime: TextRegime.Bitmap,
 		key: NO_PLACEMENT_KEY,
 		refused: 0,
 		runs: new Array(0),
@@ -385,12 +397,38 @@ export function isPixelExact(world: Transform2D): boolean {
 	return world.b == 0.0 && world.c == 0.0 && world.a == world.d && world.a > 0.0;
 }
 
+let sdfRegime: boolean = false;
+
+// The SDF regime draws through a shader mode the renderer has to carry; until it does, the
+// choice stays off and a build with the module behaves as one without it.
+export function setSdfRegime(on: boolean): void {
+	when (voidSdfText) {
+		sdfRegime = on;
+	} else {
+		if (on) {
+			console.log("void2d: the SDF text regime was asked for without -d:voidSdfText");
+			unreachable;
+		}
+	}
+}
+
+export function regimeOf(world: Transform2D): TextRegime {
+	when (voidSdfText) {
+		if (sdfRegime) {
+			const translationOnly: boolean =
+				world.a == 1.0 && world.d == 1.0 && world.b == 0.0 && world.c == 0.0;
+			return translationOnly ? TextRegime.PixelExact : TextRegime.Sdf;
+		}
+	}
+	return isPixelExact(world) ? TextRegime.PixelExact : TextRegime.Bitmap;
+}
+
 function fraction(value: float32): float32 {
 	return value - (Math.floor(value) as float32);
 }
 
-function placementKey(world: Transform2D, scale: float32): PlacementKey {
-	const exact: boolean = isPixelExact(world);
+function placementKey(world: Transform2D, scale: float32, regime: TextRegime): PlacementKey {
+	const exact: boolean = regime == TextRegime.PixelExact;
 	return {
 		a: world.a,
 		b: world.b,
@@ -404,10 +442,14 @@ function placementKey(world: Transform2D, scale: float32): PlacementKey {
 
 // Early exits, not one struct compare: this runs for every label on every frame.
 function placementCurrent(entry: LabelText, world: Transform2D, scale: float32): boolean {
-	if (!entry.placedValid || entry.key.scale != scale) { return false; }
+	if (!entry.placedValid) { return false; }
+	const regime: TextRegime = regimeOf(world);
+	if (entry.regime != regime) { return false; }
+	if (regime == TextRegime.Sdf) { return true; }
+	if (entry.key.scale != scale) { return false; }
 	if (entry.key.a != world.a || entry.key.b != world.b) { return false; }
 	if (entry.key.c != world.c || entry.key.d != world.d) { return false; }
-	if (!entry.pixelExact) { return true; }
+	if (regime != TextRegime.PixelExact) { return true; }
 	return entry.key.fracX == fraction(world.tx * scale) &&
 		entry.key.fracY == fraction(world.ty * scale);
 }
@@ -451,11 +493,33 @@ function placedGlyph(
 	};
 }
 
+when (voidSdfText) {
+	function sdfPlacedGlyph(g: LaidGlyph, baseline: float32): Result<PlacedGlyph, AtlasError> {
+		const acquired = glyphAtlas.acquireSdf(g.face, g.glyph);
+		if (!acquired.ok) { return Result.err(acquired.error); }
+		const t: GlyphTile = glyphAtlas.tile(acquired.value);
+		const [u0, v0, u1, v1] = t.uvRect();
+		const k: float32 = g.size / SDF_EM;
+		return Result.ok({
+			tile: acquired.value, page: t.page,
+			x: g.x + (t.left as float32) * k, y: baseline + (t.top as float32) * k,
+			w: (t.width as float32) * k, h: (t.height as float32) * k,
+			u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
+		});
+	}
+} else {
+	function sdfPlacedGlyph(g: LaidGlyph, baseline: float32): Result<PlacedGlyph, AtlasError> {
+		console.log("void2d: a label chose the SDF text regime in a build without -d:voidSdfText");
+		unreachable;
+	}
+}
+
 export function placeLabel(index: int32, world: Transform2D, scale: float32): LabelText {
 	const entry: LabelText = labelTexts[index];
 	if (placementCurrent(entry, world, scale)) { return entry; }
 	releasePlacement(entry);
-	const pixelExact: boolean = isPixelExact(world);
+	const regime: TextRegime = regimeOf(world);
+	const pixelExact: boolean = regime == TextRegime.PixelExact;
 	const linear: float32 = pixelExact
 		? world.a
 		: Math.sqrt(Math.abs(world.a * world.d - world.b * world.c)) as float32;
@@ -469,6 +533,16 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 		for (const g of entry.layout.glyphs) {
 			if (g.glyph == NO_GLYPH) { continue; }
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
+			if (regime == TextRegime.Sdf) {
+				const sdf = sdfPlacedGlyph(g, baseline);
+				if (!sdf.ok) {
+					refused = refused + 1;
+					refusal = sdf.error.toString();
+					continue;
+				}
+				placed.push(sdf.value);
+				continue;
+			}
 			let variant: int32 = 0;
 			let whole: int32 = 0;
 			let baselineDevice: int32 = 0;
@@ -505,7 +579,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	entry.refused = refused;
 	entry.placed = placed;
 	entry.placedValid = refused == 0;
-	entry.pixelExact = pixelExact;
-	entry.key = placementKey(world, scale);
+	entry.regime = regime;
+	entry.key = placementKey(world, scale, regime);
 	return entry;
 }

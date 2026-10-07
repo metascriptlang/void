@@ -90,6 +90,7 @@ import {
 	labelTexts,
 	LabelText,
 	PlacedGlyph,
+	TextRegime,
 	Decoration,
 	DecorationKind,
 	CURSOR_WIDTH,
@@ -674,7 +675,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	if (text.selectionLength > 0) { emitSelection(blend, text, world, na); }
 	const originX: float32 = Math.floor(world.tx * scale) as float32;
 	const originY: float32 = Math.floor(world.ty * scale) as float32;
-	const exact: boolean = text.pixelExact;
+	const exact: boolean = text.regime == TextRegime.PixelExact;
 	const space: GlyphSpace = {
 		world: world,
 		affine: exact ? deviceGrid : world,
