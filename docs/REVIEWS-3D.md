@@ -2614,3 +2614,32 @@ the lane `wt/void3d-m38`, audited by the coordinating session.
 
 See "M38 as built": `gate.sh` 83/83 golden, `gate3d.sh` GREEN with the style stage rerun alone
 after a line wrap, BUILD `4137b382`, D3D11 only.
+
+## M39, M40, M41, M43 — glTF, layers, world labels, render order
+
+Each lane was built and reviewed by Sonnet agents in its own worktree, and the coordinating
+session audited the findings before acting on them.
+
+- **M40 — SEND BACK, then SHIP WITH FOLLOW-UPS.** Lights were not layer-filtered (three.js
+  `WebGLRenderer.js:1414,1432,1877-1898` filters them); the second view's composite was named
+  straight where `BlendMode.Alpha` over a transparent clear stores premultiplied colour
+  (`gpu/state.ms:178-182`). Both fixed; the second view's light block is the caller's
+  (`collectLightsFor`). The M44 sample later found that a composited second preset never ended
+  its frame (closed in the gaps lane, `endPrepared`).
+- **M43 — SHIP WITH FOLLOW-UPS.** The sort keys match three.js `painterSortStable` /
+  `reversePainterSortStable` with the material layer first; non-test `DrawItem` literals name
+  `order` because an omitted field being zero is observed, not guaranteed; a scripted edit had
+  written literal `` continuations into `gate3d.sh`, caught by the emit-only name check.
+- **M39 — SHIP WITH FOLLOW-UPS.** A `TextureData` copy per material per texture in
+  `sharedSampling` (CODE-STYLE section 5); file-wide unique primitive names as three.js
+  `createUniqueName`; TANGENT tolerance tests. A compiler defect, a `ref` struct's Vec field
+  passed as a Span, is carded (`.inbox/compiler/2026-10-07-ref-struct-field-to-span-derefs-twice.md`)
+  and parks `sharedSampling`.
+- **M41 — SEND BACK, then fixed.** `closeLabel` never released the label's uniform block; a text
+  change did not rescale the quad; `faceCamera` wrote a world pose into a local transform. Fixed;
+  a grow-only target is carried.
+
+### Final acceptance
+
+One gate pair on the stack tip `db6c3ac`: `gate3d.sh` 329 PASS / 3 known skips, `gate.sh` 83/83,
+BUILD `99a851d7`, D3D11 only. See each "as built" section.

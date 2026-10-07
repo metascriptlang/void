@@ -151,11 +151,11 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M36 | Heaps `h3d/mat/Pass.hx:174` `addShader`, `h3d/shader/UVScroll.hx`, `UVDelta.hx` | **Material programs that move.** A frame-time uniform in the scene block, a UV transform/scroll on the material, facing-selected front/back textures, and a noise-threshold dissolve with an edge colour; registered programs over M20's door, not a shader language. **Done**; see "M36 as built" | card surfaces, fire lines, beams, glows |
 | M37 | Heaps `h3d/shader/NormalMap.hx`, `h3d/mat/Material.hx:35,174-195` (`normalMap`) | **Emission and normal maps** on the lit textured programs. **Done**; see "M37 as built" | 12 emissive and 3 normal-mapped materials |
 | M38 | Heaps `h3d/parts/Data.hx:3-26` (`Value` curves, `Shape`), `h3d/parts/Emitter.hx` | **Particle parity** on M11's emitter: sphere, box, ring and point shapes, scale/colour/alpha over life, gravity, damping, turbulence, view-depth order. No collision, no sub-emitters (URG uses neither). **Done**; see "M38 as built" | torches, card effects |
-| M39 | glTF 2.0 spec (meshes with several primitives, `material.pbrMetallicRoughness.baseColorTexture`, `emissiveTexture`, `normalTexture` and `TANGENT`); M8/M23 as built | **Fuller glTF**: several primitives and materials per mesh, base colour, emissive and normal textures. FBX stays an offline conversion | a two-surface prop; any exported model |
-| M40 | three.js `d4ea9b9` `src/core/Layers.js:13-100`, `src/renderers/WebGLRenderer.js:1877` (`object.layers.test(camera.layers)`) | **Visibility layers and a second camera** drawn into a target with a transparent clear, composited by the caller | highlight and tutorial overlays, minimaps, portraits |
-| M41 | void2d label → `drawTarget` → M27 target texture → billboard | **Text in the world**: a billboard label from a void2d scene, outline when void2d has it | damage popups, labels |
+| M39 | glTF 2.0 spec (meshes with several primitives, `material.pbrMetallicRoughness.baseColorTexture`, `emissiveTexture`, `normalTexture` and `TANGENT`); M8/M23 as built | **Fuller glTF**: several primitives and materials per mesh, base colour, emissive and normal textures. FBX stays an offline conversion **Done**; see "M39 as built" | a two-surface prop; any exported model |
+| M40 | three.js `d4ea9b9` `src/core/Layers.js:13-100`, `src/renderers/WebGLRenderer.js:1877` (`object.layers.test(camera.layers)`) | **Visibility layers and a second camera** drawn into a target with a transparent clear, composited by the caller **Done**; see "M40 as built" | highlight and tutorial overlays, minimaps, portraits |
+| M41 | void2d label → `drawTarget` → M27 target texture → billboard | **Text in the world**: a billboard label from a void2d scene, outline when void2d has it **Done**; see "M41 as built" | damage popups, labels |
 | M42 | void2d P6 item 2 (Heaps-style `src/gpu` texture owner) | **void3d texture slots hold the `src/gpu` texture owner** and re-upload on device loss, as void2d does; after that lands | every layer recovering textures the same way |
-| M43 | three.js `d4ea9b9` `src/core/Object3D.js:327` (`renderOrder`), `src/renderers/webgl/WebGLRenderLists.js:7-9,37-39` (lists sort by `renderOrder` before z); Unity `Renderer.sortingOrder`; Unreal translucency sort priority. Heaps has only the material's `Pass.layer` (M34) | **A per-item render order**: an integer on the node/item, sorting after the material's layer and before depth, writable per frame without a new material. **NEW MECHANISM** against Heaps, backed by three references; Godot's world-unit `sorting_offset` bias is not built (URG maps it to an order) | cards in a hand reordered every frame (URG `helpers/card_sorting_helper.gd:30`), UI on meshes, overlays, decals |
+| M43 | three.js `d4ea9b9` `src/core/Object3D.js:327` (`renderOrder`), `src/renderers/webgl/WebGLRenderLists.js:7-9,37-39` (lists sort by `renderOrder` before z); Unity `Renderer.sortingOrder`; Unreal translucency sort priority. Heaps has only the material's `Pass.layer` (M34) | **A per-item render order**: an integer on the node/item, sorting after the material's layer and before depth, writable per frame without a new material. **NEW MECHANISM** against Heaps, backed by three references; Godot's world-unit `sorting_offset` bias is not built (URG maps it to an order) **Done**; see "M43 as built" | cards in a hand reordered every frame (URG `helpers/card_sorting_helper.gd:30`), UI on meshes, overlays, decals |
 | M44 | — | **A URG-class sample**: a board, cards as render targets on quads, a sun with shadows, torches, particles, a card dissolve, a highlight overlay; placeholder assets, built only from Void; the end-to-end consumer of M33–M43 | the proof |
 
 Not planned until a consumer reads it: a depth texture for translucent materials (soft
@@ -2660,6 +2660,17 @@ GPU windows, Android and the web build have NOT run, so no pixel of a second vie
 composite is evidenced, and neither is `prepareFrame` of a second preset in one frame on a
 device. The roadmap row is not flipped.
 
+**Native acceptance, 2026-10-08, landed with the stack.** M40, M43, M39 and M41 were stacked in
+that order on void2d's `96bb763` and gated as one tree, `db6c3ac`, Windows D3D11, BUILD `99a851d7`
+unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, serially: `gate3d.sh` GREEN, 329
+PASS / 3 known skips (the two held captures, no GLES3 device), 1395 tests, 75 oracle cases
+agreeing with real Heaps and 11 declared divergences; `gate.sh` GREEN, golden 83/83, 8 known
+skips. A first run of the same stack, voided by an msc resync mid-run, found three defects fixed
+before this one: `collectLights` and `pickNearest` stopping under their inner names (`5ac265e`),
+and the world-label straight control rewriting the label's material in place (`db6c3ac`). Its
+stages: `layersCheck.ms` in the tests; the layer filter and the second view are exercised by the
+M44 sample, not by a readback of their own.
+
 ### M43 as built
 
 **A render order on the node, sorted after the layer and before the depth.** `Object3D.renderOrder`
@@ -2732,6 +2743,16 @@ function the new allocation list names. `gate3d.sh`, `gate.sh`, captures, golden
 Android and the web build have NOT run, so no pixel of the order is evidenced and the stage's
 expectations (a lower order draws first and keeps equal depth, the higher order's alpha lands on
 top) are unconfirmed. The roadmap row is not flipped.
+
+**Native acceptance, 2026-10-08, landed with the stack.** M40, M43, M39 and M41 were stacked in
+that order on void2d's `96bb763` and gated as one tree, `db6c3ac`, Windows D3D11, BUILD `99a851d7`
+unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, serially: `gate3d.sh` GREEN, 329
+PASS / 3 known skips (the two held captures, no GLES3 device), 1395 tests, 75 oracle cases
+agreeing with real Heaps and 11 declared divergences; `gate.sh` GREEN, golden 83/83, 8 known
+skips. A first run of the same stack, voided by an msc resync mid-run, found three defects fixed
+before this one: `collectLights` and `pickNearest` stopping under their inner names (`5ac265e`),
+and the world-label straight control rewriting the label's material in place (`db6c3ac`). Its
+stage: `render-order` GREEN in both presets; the equal-order control fails as required.
 
 ### M39 as built
 
@@ -2808,6 +2829,17 @@ or a normal map with a cutout needs two declared rows, a second UV set needs a l
 primitive modes, `uint32` indices, sparse accessors and a real exporter's file stay as M8 and
 M23 left them (`gltf-real-export-not-exercised`).
 
+**Native acceptance, 2026-10-08, landed with the stack.** M40, M43, M39 and M41 were stacked in
+that order on void2d's `96bb763` and gated as one tree, `db6c3ac`, Windows D3D11, BUILD `99a851d7`
+unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, serially: `gate3d.sh` GREEN, 329
+PASS / 3 known skips (the two held captures, no GLES3 device), 1395 tests, 75 oracle cases
+agreeing with real Heaps and 11 declared divergences; `gate.sh` GREEN, golden 83/83, 8 known
+skips. A first run of the same stack, voided by an msc resync mid-run, found three defects fixed
+before this one: `collectLights` and `pickNearest` stopping under their inner names (`5ac265e`),
+and the world-label straight control rewriting the label's material in place (`db6c3ac`). Its
+tests: `gltfCheck.ms` and `gltfMaterialCheck.ms` in the 1395; no readback of a multi-primitive
+file yet.
+
 ### M41 as built
 
 **Text in the world is a void2d label drawn into a target, shown on a quad the camera turns.** `src/void3d/worldLabel.ms`; no shader, no ProgramKey bit, nothing under `src/void2d` or `src/gpu`.
@@ -2828,6 +2860,17 @@ M23 left them (`gltf-real-export-not-exercised`).
 - Written, not run: `tests/integration/worldLabel.ms` and the gate stage `world-label`. Per preset it reads back "T" at 40 texels, white, over an opaque backdrop: the margin and four outside points are exactly the backdrop; no pixel in the quad has a channel below the backdrop's (a dark fringe); at least 30 text pixels and 30 per cent backdrop between the glyphs; the T's top half has more text than its bottom (orientation); a yawed, pitched camera draws the same text pixel count within 3 (facing); "TT" redraws and grows with the texture id intact, and nothing redraws when nothing changed; a half-alpha tint puts the brightest green at `(255 + 160) / 2` within 2; teardown leaves no texture. Controls the stage requires to fail: the label read as a straight texture with straight blending (`straight`: dark fringe at stage 0) and the label kept at the first camera's orientation (`facing`: fails at stage 1). The expected counts and the 1.3 orientation ratio are derived, not measured.
 - Not done: **grow-only target capacity.** A label whose text changes every frame reallocates its image on each size change. Drawing into a sub-rect of a larger target needs the quad's uv rewritten per change (a mesh upload, or the UV-transform key bit) and a scissored void2d draw; neither is small, so it is a follow-up.
 - Not done and not verified: a GPU run of either preset; the pixel-art and GL paths; lost-context recovery of a label (the redraw rule is written, the M27 loss simulation was not repeated); text at a scale other than 1:1; a label shared between two cameras (M40's second camera needs its own basis per call); picking a label; MSDF or SDF text; a pool of labels sharing one `Scene2D`; outline.
+
+**Native acceptance, 2026-10-08, landed with the stack.** M40, M43, M39 and M41 were stacked in
+that order on void2d's `96bb763` and gated as one tree, `db6c3ac`, Windows D3D11, BUILD `99a851d7`
+unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, serially: `gate3d.sh` GREEN, 329
+PASS / 3 known skips (the two held captures, no GLES3 device), 1395 tests, 75 oracle cases
+agreeing with real Heaps and 11 declared divergences; `gate.sh` GREEN, golden 83/83, 8 known
+skips. A first run of the same stack, voided by an msc resync mid-run, found three defects fixed
+before this one: `collectLights` and `pickNearest` stopping under their inner names (`5ac265e`),
+and the world-label straight control rewriting the label's material in place (`db6c3ac`). Its
+stage: `world-label` GREEN in both presets; the straight-read control shows the dark fringe and
+the fixed-facing control moves the text.
 
 ### M42 as built
 
