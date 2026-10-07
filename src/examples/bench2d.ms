@@ -61,6 +61,7 @@ const FRAME_DT: float32 = (1.0 / 60.0) as float32;
 const SWEEP_FRAMES: int32 = 64;
 const SWEEP_MIN: float32 = 0.5;
 const SWEEP_MAX: float32 = 4.0;
+const SDF_SETTLE_ANGLE: float32 = 0.5;
 const CODE_LINES: int32 = 40;
 const CODE_LINE: string =
 	"fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
@@ -130,6 +131,7 @@ let colourBeforeMeasure: int32 = 0;
 let sdfBeforeFirstPaint: int32 = 0;
 let sdfBeforeMeasure: int32 = 0;
 let codeBlock: NodeRef | null = null;
+let turnsCodeBlock: boolean = false;
 let scrollArea: NodeRef | null = null;
 let warmupFrames: int32 = WARMUP_FRAMES;
 
@@ -183,6 +185,7 @@ export function benchInit(kind: BenchKind): void {
 		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
 	} else if (kind === BenchKind.TextSdf) {
 		benchName = "textSdf";
+		turnsCodeBlock = true;
 		const block = s.group();
 		for (let line: int32 = 0; line < CODE_LINES; line++) {
 			const y: float32 = 8.0 + (line as float32) * 17.0;
@@ -332,22 +335,25 @@ function measureGlyphLookups(): int32 {
 // The zoom sweep runs inside the warm-up: the code block scales from 0.5 to 4 over the
 // sweep frames and settles back at 1 before the measured frames begin, so the measured
 // frames prove a steady state after the atlas has churned, not before. The SDF scene turns
-// the block through a full circle in the sweep frames after the zoom.
+// the block through a full circle in the sweep frames after the zoom, then holds it at
+// SDF_SETTLE_ANGLE, because a block at identity draws in the coverage regime and would make the
+// measured frames say nothing about the SDF cache.
 function sweep(frame: int32): void {
 	if (codeBlock === null) { return; }
 	const step: int32 = frame - 2;
 	let scale: float32 = 1.0;
 	let angle: float32 = 0.0;
-	const turns: boolean = benchName.equals("textSdf");
 	if (step < SWEEP_FRAMES) {
 		const span: float32 = (SWEEP_FRAMES - 1) as float32;
 		scale = SWEEP_MIN + (SWEEP_MAX - SWEEP_MIN) * (step as float32) / span;
-	} else if (turns && step < 2 * SWEEP_FRAMES) {
+	} else if (turnsCodeBlock && step < 2 * SWEEP_FRAMES) {
 		const span: float32 = (SWEEP_FRAMES - 1) as float32;
 		angle = 2.0 * (Math.PI as float32) * ((step - SWEEP_FRAMES) as float32) / span;
+	} else if (turnsCodeBlock) {
+		angle = SDF_SETTLE_ANGLE;
 	}
 	codeBlock.setScale(scale);
-	if (turns) { codeBlock.setRotation(angle); }
+	if (turnsCodeBlock) { codeBlock.setRotation(angle); }
 }
 
 export function benchFrame(): void {
