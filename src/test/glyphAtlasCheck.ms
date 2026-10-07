@@ -8,6 +8,7 @@ import {
 	GlyphKey,
 	AtlasError,
 	PageKind,
+	SUBPIXEL_VARIANTS,
 	quantizeX,
 	snapBaseline,
 	NO_GLYPH_PAGE,
@@ -113,12 +114,14 @@ test "the key separates the page kind and every kind other than coverage is refu
 	assert atlas.rasterizations == 0;
 }
 
-test "a variant that would reach the kind lane is refused by name" {
+test "a variant past the subpixel steps is refused by name" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 2);
-	const r = atlas.acquire(keyFor(face, "g".code, 16.25, 16));
-	assert !r.ok;
-	if (!r.ok) { assert r.error == AtlasError.VariantOutOfRange; }
+	for (const variant of [SUBPIXEL_VARIANTS, 15, 16, -1]) {
+		const r = atlas.acquire(keyFor(face, "g".code, 16.25, variant));
+		assert !r.ok;
+		if (!r.ok) { assert r.error == AtlasError.VariantOutOfRange; }
+	}
 }
 
 test "a coverage tile lands on a coverage page" {

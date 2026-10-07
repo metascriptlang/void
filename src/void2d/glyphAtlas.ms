@@ -272,7 +272,7 @@ function allocate(
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
 	if (key.kind != PageKind.Coverage) { return Result.err(AtlasError.KindNotBuilt); }
-	if (key.variant < 0 || key.variant >= 16) { return Result.err(AtlasError.VariantOutOfRange); }
+	if (key.variant < 0 || key.variant >= SUBPIXEL_VARIANTS) { return Result.err(AtlasError.VariantOutOfRange); }
 	const packedKey: uint64 = key.packed();
 	const hit = atlas.index.get(packedKey);
 	if (hit.present) {
