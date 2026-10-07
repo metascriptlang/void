@@ -748,7 +748,7 @@ void main() {
     float outer = coverageFromDistance(dOuter, aa);
     float inner = coverageFromDistance(dInner, aa);
     float ring = max(outer - inner, 0.0);
-    if (vParams0.x > 0.5) {
+    if (mode != 2 && vParams0.x > 0.5) {
         ring *= dashedBorderAlpha(p, halfBox, vRadii, borders, aa);
     }
 
