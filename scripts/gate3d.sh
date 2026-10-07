@@ -1070,7 +1070,9 @@ SHADOW_PATH_FUNCTIONS="dir83hadow77ap:drawShadows dir83hadow77ap:castsAll dir83h
 	renderer:sceneTextureOf pass76ist:collectCasters pass76ist:reserve gpu3d:castIn
 	gpu3d:drawnIn draw:drawItemWith"
 WORLD_LABEL_PATH_FUNCTIONS="world76abel:faceCamera world76abel:facingRotation
-	world76abel:refreshLabel world76abel:setLabelTint scene:setLocal scene:liveRow"
+	world76abel:refreshLabel world76abel:setLabelTint world76abel:setLabelText
+	world76abel:redraw world76abel:place world76abel:transformOf world76abel:localFor
+	scene:setLocal scene:liveRow scene:syncWorld"
 REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:detach
 	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
 	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn

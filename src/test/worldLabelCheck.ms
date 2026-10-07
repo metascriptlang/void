@@ -1,10 +1,12 @@
-import { Vec3, Quat, Mat4, vec3, eulerQuat, transformDirection } from "../math/math3d";
+import {
+	Vec3, Quat, Mat4, vec3, eulerQuat, transformDirection, composeTransform,
+} from "../math/math3d";
 import { Camera3D, CameraBasis, CameraError, ProjectionKind } from "../void3d/camera";
 import {
 	Anchor, ANCHOR_CENTER, ANCHOR_BOTTOM_CENTER, ANCHOR_TOP_RIGHT,
 } from "../void3d/billboard";
 import { MeshData, MeshError, LIT_TEXTURED_VERTEX_STRIDE } from "../void3d/meshData";
-import { facingRotation, labelQuad } from "../void3d/worldLabel";
+import { facingRotation, labelQuad, localFor } from "../void3d/worldLabel";
 import { approx } from "./helpers";
 
 function near(a: Vec3, b: Vec3): boolean {
@@ -84,4 +86,25 @@ test "the target's top row is v 0 where the origin is top left and v 1 where it 
 	assert vOf(topLeft, 0) == 1.0 && vOf(topLeft, 2) == 0.0;
 	const bottomLeft: MeshData = quadOf(ANCHOR_CENTER, true);
 	assert vOf(bottomLeft, 0) == 0.0 && vOf(bottomLeft, 2) == 1.0;
+}
+
+function sameMatrix(a: Mat4, b: Mat4): boolean {
+	return approx(a.m11, b.m11) && approx(a.m12, b.m12) && approx(a.m13, b.m13) &&
+		approx(a.m21, b.m21) && approx(a.m22, b.m22) && approx(a.m23, b.m23) &&
+		approx(a.m31, b.m31) && approx(a.m32, b.m32) && approx(a.m33, b.m33) &&
+		approx(a.m41, b.m41) && approx(a.m42, b.m42) && approx(a.m43, b.m43);
+}
+
+test "a world pose under a moved, turned, scaled parent comes back as its local pose" {
+	const world: Mat4 = composeTransform(
+		vec3(1.0, 2.0, -3.0), eulerQuat(0.4, -0.2, 0.9), vec3(2.0, 1.5, 1.0),
+	);
+	const parent: Mat4 = composeTransform(
+		vec3(-4.0, 0.5, 2.0), eulerQuat(-0.3, 1.1, 0.2), vec3(2.0, 2.0, 2.0),
+	);
+	const local: Mat4 = composeTransform(
+		localFor(world, parent).position, localFor(world, parent).rotation,
+		localFor(world, parent).scale,
+	);
+	assert sameMatrix(local.multiplyAffine(parent), world);
 }

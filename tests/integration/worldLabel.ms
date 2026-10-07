@@ -91,6 +91,7 @@ let control: string = "";
 let heldBasis: CameraBasis = cameraOf(0).basisOf();
 let firstSolid: int32 = 0;
 let firstTarget: int32 = 0;
+let rangesBefore: int32 = 0;
 let stage: int32 = 0;
 
 function fail(message: string): void {
@@ -196,6 +197,7 @@ function init(): void {
 		fontSize: FONT_SIZE, color: rgba(1.0, 1.0, 1.0, 1.0),
 		anchor: ANCHOR_TOP_LEFT, filter: FilterMode.Nearest,
 	};
+	rangesBefore = context.uniforms.liveRanges();
 	const refused: Result<WorldLabel, WorldLabelError> = WorldLabel.create(
 		scene, scene.rootId(), "T", { ...style, pixelsPerUnit: 0.0 },
 	);
@@ -327,7 +329,7 @@ function frame(): void {
 	if (stage == 2) { setLabelText(own, "TT"); }
 	if (stage == 3) { setLabelTint(own, { red: 1.0, green: 1.0, blue: 1.0, alpha: 0.5 }); }
 	const redrew: boolean = refreshLabel(own);
-	if (redrew != (stage == 2)) { fail(`refreshLabel answered ${redrew}`); }
+	if (redrew != (stage == 0 || stage == 2)) { fail(`refreshLabel answered ${redrew}`); }
 	if (refreshLabel(own)) { fail("a label redrew with nothing changed"); }
 	if (!context.hasTexture(own.texture)) { fail("a resize invalidated the texture"); }
 	place(view);
@@ -353,6 +355,10 @@ function frame(): void {
 	closeScene(scene);
 	closeLabel(own);
 	if (context.hasTexture(own.texture)) { fail("closing the label kept its texture"); }
+	if (context.uniforms.liveRanges() != rangesBefore) {
+		fail(`closing the label left ${context.uniforms.liveRanges()} uniform ranges, ` +
+			`there were ${rangesBefore}`);
+	}
 	const meshHeld: Result<int32, HandleError> = releaseMesh(context, backdropMesh);
 	const wallHeld: Result<int32, HandleError> = releaseMaterial(context, backdropMaterial);
 	if (!meshHeld.ok || !wallHeld.ok) { fail("the backdrop's holds were not the caller's"); }

@@ -1,4 +1,4 @@
-import { Vec3, Quat, vec3, quatOfRotation } from "../math/math3d";
+import { Vec3, Mat4, Quat, vec3, quatOfRotation, composeTransform, identityQuat } from "../math/math3d";
 import { RenderState, BlendMode, FilterMode, Wrap } from "../gpu/state";
 import { PixelFormat, contextGeneration, originTopLeft } from "../gpu/door";
 import { RenderTarget } from "../gpu/target";
@@ -22,7 +22,8 @@ import {
 } from "./draw";
 import { UniformError } from "./uniformPool";
 import {
-	Scene3D, Transform3D, NodeId3D, SceneError, addMeshNode, setLocal, remove,
+	Scene3D, Transform3D, NodeId3D, SceneError, NO_NODE_3D, addMeshNode, setLocal, remove,
+	syncWorld,
 } from "./scene";
 
 export const LABEL_PAD: int32 = 2;
@@ -58,6 +59,9 @@ export interface WorldLabel {
 	uniforms: UniformBlock;
 	node: NodeId3D;
 	pixelsPerUnit: float32;
+	position: Vec3;
+	rotation: Quat;
+	posed: boolean;
 	tint: Vec<float32>;
 	stale: boolean;
 	closed: boolean;
@@ -188,16 +192,16 @@ export function create(
 	);
 	if (!placed.ok) {
 		const _material: Result<int32, HandleError> = releaseMaterial(context, material.value);
+		const _block: Result<int32, UniformError> = releaseUniforms(context, reserved.value);
 		dropMesh(context, ui, target, shown.value, uploaded.value);
 		return Result.err(WorldLabelError.Node);
 	}
 	const label: WorldLabel = {
 		scene: scene, ui: ui, text: words, target: target, texture: shown.value,
 		mesh: uploaded.value, material: material.value, uniforms: reserved.value,
-		node: placed.value, pixelsPerUnit: style.pixelsPerUnit, tint: tint, stale: true,
-		closed: false,
+		node: placed.value, pixelsPerUnit: style.pixelsPerUnit, position: vec3(0.0, 0.0, 0.0),
+		rotation: identityQuat(), posed: false, tint: tint, stale: true, closed: false,
 	};
-	label.redraw();
 	return Result.ok(label);
 }
 
@@ -208,6 +212,7 @@ export function redraw(this label: WorldLabel): void {
 	label.ui.prepare(width as float32, height as float32, 1.0);
 	label.ui.drawTarget(label.target);
 	label.stale = false;
+	if (label.posed) { label.place(); }
 }
 
 export function setLabelText(label: WorldLabel, text: string): void {
@@ -229,6 +234,45 @@ export function setLabelTint(label: WorldLabel, tint: Rgba): void {
 	if (!writeUniforms(label.scene.context, label.uniforms, label.tint).ok) { unreachable; }
 }
 
+function transformOf(m: Mat4): Transform3D {
+	const across: float32 = Math.sqrt(m.m11 * m.m11 + m.m12 * m.m12 + m.m13 * m.m13) as float32;
+	const up: float32 = Math.sqrt(m.m21 * m.m21 + m.m22 * m.m22 + m.m23 * m.m23) as float32;
+	const back: float32 = Math.sqrt(m.m31 * m.m31 + m.m32 * m.m32 + m.m33 * m.m33) as float32;
+	const turn: Mat4 = {
+		m11: m.m11 / across, m12: m.m12 / across, m13: m.m13 / across, m14: 0.0,
+		m21: m.m21 / up, m22: m.m22 / up, m23: m.m23 / up, m24: 0.0,
+		m31: m.m31 / back, m32: m.m32 / back, m33: m.m33 / back, m34: 0.0,
+		m41: 0.0, m42: 0.0, m43: 0.0, m44: 1.0,
+	};
+	return {
+		position: vec3(m.m41, m.m42, m.m43), rotation: quatOfRotation(turn),
+		scale: vec3(across, up, back),
+	};
+}
+
+export function localFor(world: Mat4, parentWorld: Mat4): Transform3D {
+	return transformOf(world.multiplyAffine(parentWorld.inverseAffine()));
+}
+
+function stopOnMirroredParent(): void {
+	console.log("void3d: faceCamera needs a parent that does not mirror");
+	unreachable;
+}
+
+function place(this label: WorldLabel): void {
+	const scene: Scene3D = label.scene;
+	const row: int32 = scene.liveRow(label.node, "faceCamera");
+	const width: float32 = (label.target.width as float32) / label.pixelsPerUnit;
+	const height: float32 = (label.target.height as float32) / label.pixelsPerUnit;
+	const world: Mat4 = composeTransform(label.position, label.rotation, vec3(width, height, 1.0));
+	const parent: int32 = scene.nodes[row].parent;
+	if (parent == NO_NODE_3D) { stopOnMirroredParent(); }
+	const _synced: int32 = syncWorld(scene);
+	const parentWorld: Mat4 = scene.nodes[parent].world;
+	if (parentWorld.determinant3x3() < 0.0) { stopOnMirroredParent(); }
+	setLocal(scene, label.node, localFor(world, parentWorld));
+}
+
 export function facingRotation(basis: CameraBasis): Quat {
 	return quatOfRotation({
 		m11: basis.right.x, m12: basis.right.y, m13: basis.right.z, m14: 0.0,
@@ -239,11 +283,10 @@ export function facingRotation(basis: CameraBasis): Quat {
 }
 
 export function faceCamera(label: WorldLabel, position: Vec3, basis: CameraBasis): void {
-	const width: float32 = (label.target.width as float32) / label.pixelsPerUnit;
-	const height: float32 = (label.target.height as float32) / label.pixelsPerUnit;
-	setLocal(label.scene, label.node, {
-		position: position, rotation: facingRotation(basis), scale: vec3(width, height, 1.0),
-	});
+	label.position = position;
+	label.rotation = facingRotation(basis);
+	label.posed = true;
+	label.place();
 }
 
 export function closeLabel(label: WorldLabel): void {
@@ -254,6 +297,7 @@ export function closeLabel(label: WorldLabel): void {
 	const context: DrawContext = label.scene.context;
 	if (!label.scene.isClosed()) { const _nodes: int32 = remove(label.scene, label.node); }
 	const _material: Result<int32, HandleError> = releaseMaterial(context, label.material);
+	const _block: Result<int32, UniformError> = releaseUniforms(context, label.uniforms);
 	dropMesh(context, label.ui, label.target, label.texture, label.mesh);
 	label.closed = true;
 }
