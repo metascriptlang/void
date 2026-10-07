@@ -1838,6 +1838,11 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (2.82 against 3.25 pixels of coverage for a 2 wide dot). Known gaps: a lone `M x y z` is
   dropped by nanosvg before any path exists, so the module cannot see it; a disk of radius 0.5
   stroked 2 wide (a Tabler skateboard wheel) draws a hole resvg does not.
+  **Oracle, 2026-10-07 (V2):** `tests/oracle/svg.cases` (38 rows over 29 icons written for it),
+  `python tests/oracle/svg.py regen` (`resvg-py`) into `tests/oracle/svg.json`,
+  `src/test/svgOracleCheck.ms`: 31 of 38 within a mean alpha error of 3.5 and a worst pixel of 70
+  (of 255); the seven others are `svg:` rows in `tests/PENDING.md` by name (four refusals, group
+  opacity, a gear, a dash edge). docs/TESTING.md "T3".
 - Procedural sprite glyphs — box drawing, blocks, braille, powerline — for a terminal widget.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.

@@ -178,6 +178,23 @@ that agrees fails the run; an unlisted row that differs fails it.
 | shape:missing-mixed-direction | T3 | Latin and Arabic in one buffer: HarfBuzz shapes the whole buffer as one left-to-right run in logical order (it does no BiDi), kb_text_shape splits an Arabic run and reverses it; the layer's own BiDi decision, not this engine's, governs mixed text | P6 | 2026-10-07 |
 | shape-cluster:missing-mixed-direction | T3 | same cause as `shape:missing-mixed-direction`: the clusters follow the run order each engine chose | P6 | 2026-10-07 |
 
+## SVG oracle divergences
+
+`src/test/svgOracleCheck.ms` reads a row `svg:<id>` here as a listed difference from resvg, a mean
+error past 3.5 or a worst pixel past 70 (of 255), or a refusal by name, from `tests/oracle/svg.json`
+([docs/TESTING.md](../docs/TESTING.md) "T3"). The rows are `tests/oracle/svg.cases`. A listed row
+that agrees fails the run; an unlisted row that differs fails it.
+
+| id | tier | reason | phase | date |
+|---|---|---|---|---|
+| svg:use-symbol-24 | T3 | `<use>` is outside the module's allowlist (nanosvg draws no `<use>`); refused by name, resvg draws both squares | P6 | 2026-10-07 |
+| svg:clip-path-24 | T3 | `clip-path` and `<clipPath>` are outside the allowlist (nanosvg has no clipping); refused by name, resvg clips | P6 | 2026-10-07 |
+| svg:mask-24 | T3 | `<mask>` and `mask` are outside the allowlist (nanosvg has no masks); refused by name, resvg masks | P6 | 2026-10-07 |
+| svg:pattern-fill-24 | T3 | `<pattern>` is outside the allowlist (nanosvg has no patterns); refused by name, resvg tiles it | P6 | 2026-10-07 |
+| svg:group-opacity-24 | T3 | nanosvg multiplies `opacity` into each shape of a group, so overlapping shapes composite twice (0.75 where the group should read 0.5, a 6 by 6 patch off by 62); resvg composes the group as one layer | P6 | 2026-10-07 |
+| svg:gear-24 | T3 | a stroked path of many 1.65 radius arcs draws 2.9% less ink in nanosvg (200.7 against 206.6 pixels of coverage), scattered along the curved edges, mean error 5.03 against a 3.5 bound; lowering `tessTol` further (0.02, 0.01) gains nothing, cause not isolated | P6 | 2026-10-07 |
+| svg:dashed-24 | T3 | a dash edge of the 3 2 pattern on a triangle's closing corner lands on a different pixel: 2 pixels past 32, one by 124 | P6 | 2026-10-07 |
+
 ## macOS and compiler gaps (msc e5e932d0)
 
 Measured 2026-10-03 on macOS with `bash scripts/gate.sh --quick`, branch `wt/void-latest-msc`. Each one is red at origin `2be9cf5` and none was caused by that branch.

@@ -1,0 +1,44 @@
+# Rows of the SVG mask oracle (docs/TESTING.md T3, "SVG"). Data only: the expected answer is not
+# here. `python tests/oracle/svg.py regen` rasterizes each row with resvg into
+# tests/oracle/svg.json as the 8-bit alpha plane, and src/test/svgOracleCheck.ms rasterizes the
+# same file through the svgMask module and compares.
+#
+# One row per line, fields separated by a tab: id, file under tests/oracle/svg/, side in pixels.
+arc-flags-24	arc-flags.svg	24
+arc-flags-48	arc-flags.svg	48
+bevel-24	bevel.svg	24
+check-24	check.svg	24
+chevron-24	chevron.svg	24
+clip-path-24	clip-path.svg	24
+cross-24	cross.svg	24
+dashed-24	dashed.svg	24
+dot-square-24	dot-square.svg	24
+dots-heroicons-24	dots-heroicons.svg	24
+dots-heroicons-48	dots-heroicons.svg	48
+dots-lucide-24	dots-lucide.svg	24
+dots-lucide-48	dots-lucide.svg	48
+ellipse-polygon-24	ellipse-polygon.svg	24
+folder-24	folder.svg	24
+folder-48	folder.svg	48
+gear-24	gear.svg	24
+gear-48	gear.svg	48
+group-opacity-24	group-opacity.svg	24
+heart-24	heart.svg	24
+heart-48	heart.svg	48
+mask-24	mask.svg	24
+menu-24	menu.svg	24
+miter-24	miter.svg	24
+nested-transform-24	nested-transform.svg	24
+nested-transform-48	nested-transform.svg	48
+opacity-24	opacity.svg	24
+pattern-fill-24	pattern-fill.svg	24
+plus-24	plus.svg	24
+ring-evenodd-24	ring-evenodd.svg	24
+rounded-rect-24	rounded-rect.svg	24
+rounded-rect-48	rounded-rect.svg	48
+search-24	search.svg	24
+search-48	search.svg	48
+skew-24	skew.svg	24
+star-evenodd-24	star-evenodd.svg	24
+use-symbol-24	use-symbol.svg	24
+viewbox-offset-24	viewbox-offset.svg	24
