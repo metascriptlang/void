@@ -205,7 +205,8 @@ export struct DetachedHandles {
 }
 
 // The inverse of `adopt`: the caller takes the texture's handles and destroys nothing, and the
-// texture is closed as `close` leaves it. A texture lost to a newer context returns its stale
+// texture is closed as `close` leaves it. An adopted texture, which `close` never destroys,
+// returns the handles it was given. A texture lost to a newer context returns its stale
 // handles, so `generation` != `contextGeneration()` tells the caller they name nothing now.
 export function detach(this texture: Texture): DetachedHandles {
 	if (texture.closed) { stopOnClosed("detach"); }
