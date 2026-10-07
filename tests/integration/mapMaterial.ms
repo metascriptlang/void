@@ -1,5 +1,5 @@
 import { gfxSetup, fbWidth, fbHeight } from "../../src/sokol/gpu";
-import { Vec3, Vec4, vec3, quatBetween, linearToSrgb } from "../../src/math/math3d";
+import { Vec3, Vec4, vec3, quatBetween, linearToSrgb, srgbToLinear } from "../../src/math/math3d";
 import { RenderState, FilterMode, Wrap } from "../../src/gpu/state";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import {
@@ -62,7 +62,10 @@ const BLACK: uint32 = 0xFF000000;
 // Tangent-space normals tilted 45 degrees toward +x and toward +y (the image's top).
 const TOWARD_X: uint32 = 0xFFDA80DA;
 const TOWARD_Y: uint32 = 0xFFDADA80;
-const TO_LIGHT: Vec3 = { x: 1.0, y: 1.0, z: 1.5 };
+// Its x and y differ, so swapping the tangent and the bitangent changes every tilted grey.
+const TO_LIGHT: Vec3 = { x: 1.0, y: -0.5, z: 1.2 };
+// The half-strength quad's emissive colour, gamma-encoded.
+const ORANGE: Vec3 = { x: 1.0, y: 0.5, z: 0.0 };
 const LAST_FRAME: int32 = 2;
 let pixelArt: boolean = voidCaptureEnvInt("VOID_MAP_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_MAP_CONTROL", 0) != 0;
@@ -120,12 +123,16 @@ function texture(pixels: Vec<uint32>): TextureId {
 }
 
 // The control draws every quad with its key's features off and names no map.
-function materialFor(key: ProgramKey, strength: float32): Material {
+function materialFor(key: ProgramKey, strength: float32, colour: Vec3): Material {
 	const drawn: ProgramKey = control ? ProgramKey.of(key.program) : key;
 	let block: Vec<float32> = [4.0, 0.0, 0.0, 0.0];
 	if (drawn.emissive) {
 		for (let i = 0; i < EMISSIVE_LENGTH; i++) { block.push(1.0); }
-		block[emissiveBase(drawn) + EMISSIVE_STRENGTH] = strength;
+		const base: int32 = emissiveBase(drawn);
+		block[base + EMISSIVE_COLOR] = colour.x;
+		block[base + EMISSIVE_COLOR + 1] = colour.y;
+		block[base + EMISSIVE_COLOR + 2] = colour.z;
+		block[base + EMISSIVE_STRENGTH] = strength;
 	}
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, MATERIAL_UNIFORM_SLOT, block.length as int32);
@@ -173,15 +180,21 @@ function place(quad: Quad, material: Material, mirrored: boolean): void {
 	if (!placed.ok) { unreachable; }
 }
 
-function emissive(quad: Quad, base: TextureId, emitted: TextureId, strength: float32): void {
+function emissive(
+	quad: Quad,
+	base: TextureId,
+	emitted: TextureId,
+	strength: float32,
+	colour: Vec3,
+): void {
 	const key: ProgramKey = ProgramKey.of(Program.LitTextured).withEmissive();
-	const material: Material = { ...materialFor(key, strength), texture: base };
+	const material: Material = { ...materialFor(key, strength, colour), texture: base };
 	place(quad, control ? material : { ...material, emissiveTexture: emitted }, false);
 }
 
 function normalMapped(quad: Quad, base: TextureId, normals: TextureId, mirrored: boolean): void {
 	const key: ProgramKey = ProgramKey.of(Program.LitTextured).withNormalMap();
-	const material: Material = { ...materialFor(key, 1.0), texture: base };
+	const material: Material = { ...materialFor(key, 1.0, vec3(1.0, 1.0, 1.0)), texture: base };
 	place(quad, control ? material : { ...material, normalTexture: normals }, mirrored);
 }
 
@@ -191,8 +204,8 @@ function init(): void {
 	const black: TextureId = texture([BLACK]);
 	const white: TextureId = texture([0xFFFFFFFF]);
 	const halves: TextureId = texture([RED, GREEN]);
-	emissive(Quad.Emissive, black, halves, 1.0);
-	emissive(Quad.HalfStrength, black, white, 0.5);
+	emissive(Quad.Emissive, black, halves, 1.0, vec3(1.0, 1.0, 1.0));
+	emissive(Quad.HalfStrength, black, white, 0.5, ORANGE);
 	const towardX: TextureId = texture([TOWARD_X]);
 	const towardY: TextureId = texture([TOWARD_Y]);
 	normalMapped(Quad.TiltX, white, towardX, false);
@@ -253,6 +266,11 @@ function litGrey(normal: Vec3): int64 {
 	return (linearToSrgb(shade) * 255.0 + 0.5) as int64;
 }
 
+// One channel of a gamma-encoded emissive colour at half strength over black.
+function emittedByte(channel: float32): int64 {
+	return (linearToSrgb(srgbToLinear(channel) * 0.5) * 255.0 + 0.5) as int64;
+}
+
 function decoded(texel: uint32): Vec3 {
 	const x: float32 = ((texel & 0xFF) as float32) / 255.0 * 2.0 - 1.0;
 	const y: float32 = (((texel >> 8) & 0xFF) as float32) / 255.0 * 2.0 - 1.0;
@@ -272,9 +290,13 @@ function check(camera: CameraView): void {
 	if (!isColor(left, RED) || !isColor(right, GREEN)) {
 		fail(`the black quad did not emit its emissive map: ${left} ${right}`);
 	}
-	const half: int64 = (linearToSrgb(0.5) * 255.0 + 0.5) as int64;
 	const scaled: int64 = rgbAt(camera, Quad.HalfStrength, 0.0);
-	if (!isGrey(scaled, half)) { fail(`the half strength emitted ${scaled}, not grey ${half}`); }
+	const red: int64 = emittedByte(ORANGE.x);
+	const green: int64 = emittedByte(ORANGE.y);
+	if (!near((scaled >> 16) & 0xFF, red, 3) || !near((scaled >> 8) & 0xFF, green, 3) ||
+		!near(scaled & 0xFF, emittedByte(ORANGE.z), 3)) {
+		fail(`the half strength emitted ${scaled}, not ${red} ${green} 0`);
+	}
 	const x: Vec3 = decoded(TOWARD_X);
 	const y: Vec3 = decoded(TOWARD_Y);
 	checkGrey(camera, Quad.TiltX, x, "the normal map did not tilt toward +x");
