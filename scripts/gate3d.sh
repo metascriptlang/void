@@ -1069,6 +1069,8 @@ SHADOW_PATH_FUNCTIONS="dir83hadow77ap:drawShadows dir83hadow77ap:castsAll dir83h
 	dir83hadow77ap:mapMatrix dir83hadow77ap:sceneTexture renderer:drawShadowPass
 	renderer:sceneTextureOf pass76ist:collectCasters pass76ist:reserve gpu3d:castIn
 	gpu3d:drawnIn draw:drawItemWith"
+WORLD_LABEL_PATH_FUNCTIONS="world76abel:faceCamera world76abel:facingRotation
+	world76abel:refreshLabel world76abel:setLabelTint scene:setLocal scene:liveRow"
 REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:detach
 	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
 	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn
@@ -1131,6 +1133,9 @@ run_allocation() {
 	check_array_copies tests/integration/dirShadow.ms "shadow path" "$SHADOW_PATH_FUNCTIONS" || return
 	check_array_copies tests/integration/renderOrder.ms "render order path" \
 		"$RENDER_ORDER_PATH_FUNCTIONS" || return
+
+	check_array_copies tests/integration/worldLabel.ms "world label path" \
+		"$WORLD_LABEL_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
@@ -1139,6 +1144,8 @@ run_allocation() {
 	note "allocation: nor in the reparent/close path ($(echo $REPARENT_PATH_FUNCTIONS))"
 	note "allocation: nor in the shadow path ($(echo $SHADOW_PATH_FUNCTIONS))"
 	note "allocation: nor in the render order path ($(echo $RENDER_ORDER_PATH_FUNCTIONS))"
+
+	note "allocation: nor in the world label path ($(echo $WORLD_LABEL_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1894,6 +1901,49 @@ run_target_texture() {
 	done
 }
 
+run_world_label() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "world-label: GATE_SKIP_CAPTURE=1 — no label was read back"
+		return
+	fi
+	purge_stale_shader_objects
+	exe="$WORK/worldLabel.exe"
+	if ! msc build tests/integration/worldLabel.ms --output="$exe" \
+		> "$WORK/worldLabel.build.log" 2>&1; then
+		fail "world-label: tests/integration/worldLabel.ms does not build — see $WORK/worldLabel.build.log"
+		return
+	fi
+	for preset in forward pixelArt; do
+		log="$WORK/worldLabel.$preset.log"
+		status=0
+		VOID_WORLD_LABEL_PRESET=$preset "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "world-label: $preset has no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS world label: ' "$log" ||
+			[ "$(grep -c '^world label: stage [0-9]* checked' "$log")" != "4" ]; then
+			fail "world-label: $preset failed (exit $status) — see $log"
+			return
+		fi
+		pass "world-label: $preset, text over a backdrop, clear margin, premultiplied edges, facing, redraw on text only, tint"
+		for control in straight facing; do
+			status=0
+			VOID_WORLD_LABEL_PRESET=$preset VOID_WORLD_LABEL_CONTROL=$control "$exe" \
+				> "$WORK/worldLabel.$preset.$control.log" 2>&1 || status=$?
+			case "$control" in
+				straight) message='^FAIL world label: stage 0: a dark fringe' ;;
+				facing) message='^FAIL world label: stage 1: ' ;;
+			esac
+			if [ "$status" -eq 0 ] || ! grep -q "$message" "$WORK/worldLabel.$preset.$control.log"; then
+				fail "world-label: $preset's $control control did not fail where it should"
+				return
+			fi
+		done
+		pass "world-label: $preset's straight-read control shows the dark fringe and its fixed-facing control moves the text"
+	done
+}
+
 run_mrt_blend() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "mrt-blend: GATE_SKIP_CAPTURE=1 — no MRT attachment was read back"
@@ -2528,6 +2578,7 @@ run_camera_rig
 run_reparent
 run_gltf
 run_both_layers
+run_world_label
 run_stores
 run_views
 run_target_owner
