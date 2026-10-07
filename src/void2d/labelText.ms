@@ -632,17 +632,29 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			const baseline: float32 = entry.layout.lines[g.line].baseline;
 			if (devicePerLocal > 0.0) {
 				const sizePx: float32 = g.size * devicePerLocal;
-				const tileSize: float32 = colourTileSize(sizePx, bucketed);
-				const colourBox: ColourTileBox = colourBoxOf(g, tileSize);
+				let tileSize: float32 = colourTileSize(sizePx, bucketed);
+				let colourBox: ColourTileBox = colourBoxOf(g, tileSize);
+				if (colourBox.glyph == ColourGlyph.Refused && tileSize != sizePx) {
+					tileSize = sizePx;
+					colourBox = colourBoxOf(g, tileSize);
+				}
 				if (colourBox.glyph == ColourGlyph.Refused) {
 					refused = refused + 1;
 					refusal = AtlasError.ColourRefused.toString();
 					continue;
 				}
 				if (colourBox.glyph == ColourGlyph.Present) {
-					const coloured = colourPlacedGlyph(
+					let coloured = colourPlacedGlyph(
 						g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX, fracY,
 					);
+					if (!coloured.ok && coloured.error == AtlasError.TooLarge && tileSize != sizePx) {
+						tileSize = sizePx;
+						colourBox = colourBoxOf(g, tileSize);
+						coloured = colourPlacedGlyph(
+							g, colourBox, tileSize, sizePx, baseline, devicePerLocal, pixelExact, fracX,
+							fracY,
+						);
+					}
 					if (!coloured.ok) {
 						refused = refused + 1;
 						refusal = coloured.error.toString();

@@ -348,6 +348,18 @@ test "an unscaled emoji leaves the sampler alone" {
 	frameEnd();
 }
 
+test "a zoom whose bucket tile does not fit a page still draws the glyph at its exact size" {
+	const index = shapedAt(GRIN, 16.0);
+	const text = placeLabel(index, trs2d(0.0, 0.0, 0.0, 46.0, 46.0), 1.0);
+	assert text.placedValid;
+	assert text.colourGlyphs == 1;
+	const g = text.layout.glyphs[0];
+	const box = colourTileBox(g.face, g.glyph, 16.0 * 46.0);
+	assert text.placed[0].w > 0.0;
+	assert approx(text.placed[0].w, (box.right - box.left) as float32);
+	releaseLabelText(index);
+}
+
 test "a rotated label places the bucket tile in local units at its own scale" {
 	const index = shapedAt(GRIN, 16.0);
 	const text = placeLabel(index, trs2d(0.0, 0.0, 0.3, 1.0, 1.0), 1.0);
