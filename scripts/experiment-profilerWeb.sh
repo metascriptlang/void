@@ -27,8 +27,8 @@ for backend in wgpu gl; do
 			echo "BUDGET $backend: no profilerWeb row in tests/bench/wasmBudget.txt"
 			continue
 		fi
-		budgetOff=$(echo "$recorded" | awk '{ print $4 }')
-		budgetOn=$(echo "$recorded" | awk '{ print $6 }')
+		budgetOff=$(echo "$recorded" | awk '{ print $4 }' | tr -d '\r')
+		budgetOn=$(echo "$recorded" | awk '{ print $6 }' | tr -d '\r')
 		if [ "$off" -ne "$budgetOff" ]; then
 			echo "BUDGET $backend: module off is $off B, recorded $budgetOff B"
 			status=1
