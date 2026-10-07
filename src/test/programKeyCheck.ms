@@ -189,7 +189,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 76;
+	assert declared == 82;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -698,7 +698,48 @@ test "an emissive or normal-mapped key ends its block in the emissive floats and
 test "an emissive key after a moving one reads its floats after the moving ones" {
 	const moving: ProgramKey = ProgramKey.of(Program.LitTextured).withDissolve().withEmissive();
 	assert emissiveBase(moving) == MATERIAL_UNIFORM_LENGTH + MOVING_LENGTH;
-	assert !declares(moving);
+	assert declares(moving) && declares(moving.withShadowed());
+	const length: int32 = MOVING_MATERIAL_UNIFORM_LENGTH + EMISSIVE_LENGTH;
+	assert uniformBlockLength(moving, MATERIAL_UNIFORM_SLOT) == length;
+	assert uniformBlockLength(moving.withShadowed(), MATERIAL_UNIFORM_SLOT) == length;
+	assert !declares(moving.withUvTransform()) && !declares(moving.withPreset(Preset.PixelArt));
+	const cast: Result<ProgramKey, ProgramError> = castIn(moving.withShadowed());
+	assert cast.ok;
+	if (!cast.ok) { return; }
+	assert cast.value.dissolve && !cast.value.emissive;
+	assert uniformBlockLength(cast.value, MATERIAL_UNIFORM_SLOT) == MOVING_MATERIAL_UNIFORM_LENGTH;
+	assert bit(textureSlotMask(moving), EMISSIVE_VIEW_SLOT);
+	assert !bit(textureSlotMask(cast.value), EMISSIVE_VIEW_SLOT);
+}
+
+test "a premultiplied card can cut and dissolve, and its caster cuts and dissolves as it does" {
+	for (const program of [Program.LitTextured, Program.UnlitTextured]) {
+		const premultiplied: ProgramKey = ProgramKey.of(program).withPremultiplied();
+		const cut: ProgramKey = premultiplied.withCutout();
+		const melting: ProgramKey = premultiplied.withDissolve();
+		assert declares(cut) && declares(melting);
+		assert !declares(cut.withPreset(Preset.PixelArt));
+		assert uniformBlockLength(cut, MATERIAL_UNIFORM_SLOT) ==
+			uniformBlockLength(ProgramKey.of(program), MATERIAL_UNIFORM_SLOT);
+		assert uniformBlockLength(melting, MATERIAL_UNIFORM_SLOT) ==
+			uniformBlockLength(ProgramKey.of(program).withDissolve(), MATERIAL_UNIFORM_SLOT);
+		assert vertexLayoutOf(cut) == vertexLayoutOf(ProgramKey.of(program));
+		const castCut: Result<ProgramKey, ProgramError> = castIn(cut);
+		assert castCut.ok;
+		if (castCut.ok) {
+			assert castCut.value.cutout && !castCut.value.premultiplied;
+			assert uniformBlockLength(castCut.value, MATERIAL_UNIFORM_SLOT) ==
+				uniformBlockLength(cut, MATERIAL_UNIFORM_SLOT);
+			assert textureSlotMask(castCut.value) == textureSlotMask(cut);
+		}
+		const castMelting: Result<ProgramKey, ProgramError> = castIn(melting);
+		assert castMelting.ok;
+		if (castMelting.ok) {
+			assert castMelting.value.dissolve && !castMelting.value.premultiplied;
+			assert uniformBlockLength(castMelting.value, MATERIAL_UNIFORM_SLOT) ==
+				uniformBlockLength(melting, MATERIAL_UNIFORM_SLOT);
+		}
+	}
 }
 
 test "a caster leaves the emissive map and keeps the normal map's layout" {

@@ -88,6 +88,20 @@ layout(binding=3) uniform emissiveMaterialParams {
 };
 @end
 
+@block movingEmissiveMaterialUniforms
+// movingMaterialParams, then the emissive vec4 (gpu3d.ms emissiveBase).
+layout(binding=3) uniform movingEmissiveMaterialParams {
+    vec4 material;
+    vec4 uvMatrix;
+    vec4 uvMotion;
+    vec4 backUvMatrix;
+    vec4 backUvOffset;
+    vec4 dissolve;
+    vec4 dissolveEdge;
+    vec4 emissive;
+};
+@end
+
 @block emissiveTexture
 // three d4ea9b9 meshphong.glsl.js:94 and emissivemap_fragment: the emissive colour times the
 // decoded map, added to the lit colour in linear light.

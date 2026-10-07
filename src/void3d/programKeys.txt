@@ -79,3 +79,9 @@ litTexturedEmissiveNormalMapShadowed          LIT_TEXTURED    CORE      EMISSIVE
 pixelArtLitTexturedEmissiveNormalMap          LIT_TEXTURED    PIXEL_ART EMISSIVE:NORMAL_MAP                          litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
 pixelArtLitTexturedEmissiveNormalMapShadowed  LIT_TEXTURED    PIXEL_ART EMISSIVE:NORMAL_MAP:SHADOWED                 litTexturedVs   litTexturedFs         LIT_TEXTURED_TANGENT
 shadowLitTexturedNormalMap                    LIT_TEXTURED    SHADOW    NORMAL_MAP                                   litTexturedVs   shadowLitTexturedFs   LIT_TEXTURED_TANGENT
+unlitTexturedPremultipliedCutout              UNLIT_TEXTURED  CORE       PREMULTIPLIED:CUTOUT                          unlitTexturedVs  unlitTexturedFs        LIT_TEXTURED
+litTexturedPremultipliedCutout                LIT_TEXTURED    CORE       PREMULTIPLIED:CUTOUT                          litTexturedVs    litTexturedFs          LIT_TEXTURED
+unlitTexturedDissolvePremultiplied            UNLIT_TEXTURED  CORE       DISSOLVE:PREMULTIPLIED                        unlitTexturedVs  unlitTexturedFs        LIT_TEXTURED
+litTexturedDissolvePremultiplied              LIT_TEXTURED    CORE       DISSOLVE:PREMULTIPLIED                        litTexturedVs    litTexturedFs          LIT_TEXTURED
+litTexturedDissolveEmissive                   LIT_TEXTURED    CORE       DISSOLVE:EMISSIVE                             litTexturedVs    litTexturedFs          LIT_TEXTURED
+litTexturedDissolveEmissiveShadowed           LIT_TEXTURED    CORE       DISSOLVE:EMISSIVE:SHADOWED                    litTexturedVs    litTexturedFs          LIT_TEXTURED
