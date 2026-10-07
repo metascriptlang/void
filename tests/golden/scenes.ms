@@ -846,7 +846,7 @@ function textColourEmoji(): Scene2D {
 	let x: float32 = COLOUR_EMOJI_X;
 	for (const size of sizes) {
 		s.add(s.label(strip, size, ink).setFont(noto).at(x, emojiRow(0)));
-		x = x + size * 4.4;
+		x = x + size * 5.2;
 	}
 	const colr: FontId = emojiFont(EMOJI_COLR_PATH, "");
 	s.add(s.label("a\u{1F600}b", 16.0, ink).setFont(colr).at(10.0, emojiRow(1)));

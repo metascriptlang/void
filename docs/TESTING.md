@@ -351,7 +351,7 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **88 / 88 scenes byte-identical** | every full gate, this box |
+| D3D11 | **93 / 93 scenes byte-identical** | every full gate, this box |
 
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
