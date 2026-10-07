@@ -12,6 +12,8 @@ extern function void2dSpriteDraw(
 	id: int32, cellWidth: int32, cellHeight: int32, thickness: int32, canvas: Span<uint8>,
 ): int32;
 
+export const SPRITE_FIRST_CODEPOINT: int32 = 0x2500;
+
 export enum SpriteError {
 	NoSuchSprite,
 	BadCell,

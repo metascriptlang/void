@@ -14,7 +14,7 @@ import {
 	colourBuilt,
 } from "./face";
 import { graphemeProperty } from "./grapheme";
-import { spriteIndex } from "./spriteGlyph";
+import { SPRITE_FIRST_CODEPOINT, spriteIndex } from "./spriteGlyph";
 
 export enum FontStyle { Normal, Italic }
 
@@ -573,7 +573,7 @@ function forgetResolved(font: FontId): void {
 export function codepointFaceFor(
 	font: FontId, codepoint: int32, mode: Presentation,
 ): CodepointFace {
-	if (spriteIndex(codepoint) != 0) {
+	if (codepoint >= SPRITE_FIRST_CODEPOINT && spriteIndex(codepoint) != 0) {
 		const base: int32 = fontFace(font);
 		const sprite: int32 = base < 0 ? NO_FACE : spriteFaceOf(base);
 		if (sprite >= 0) { return { face: sprite, scale: 1.0 }; }

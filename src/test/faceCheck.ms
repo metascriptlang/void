@@ -12,7 +12,9 @@ import {
 	decorationMetrics,
 	DecorationMetrics,
 } from "../void2d/face";
-import { spriteCount, spriteCodepoint, spriteIndex, spriteTableFault } from "../void2d/spriteGlyph";
+import {
+	SPRITE_FIRST_CODEPOINT, spriteCount, spriteCodepoint, spriteIndex, spriteTableFault,
+} from "../void2d/spriteGlyph";
 
 let loadedFace: int32 = -1;
 
@@ -120,6 +122,14 @@ test "the sprite range table is sorted, disjoint and dense, and its ids fit a gl
 	}
 	assert spriteCodepoint(0) == 0;
 	assert spriteCodepoint(spriteCount() + 1) == 0;
+}
+
+test "no sprite codepoint is below the one font.ms stops looking under" {
+	assert spriteCodepoint(1) == SPRITE_FIRST_CODEPOINT;
+	assert spriteIndex(SPRITE_FIRST_CODEPOINT - 1) == 0;
+	for (let id = 1; id <= spriteCount(); id++) {
+		assert spriteCodepoint(id) >= SPRITE_FIRST_CODEPOINT;
+	}
 }
 
 test "a sprite face has glyph 0 outside the range table and one unique id inside it" {

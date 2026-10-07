@@ -2227,6 +2227,16 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `text/spriteGlyphsDpi150`, each ten labels of a terminal grid; headless, the three place 204
   glyphs with none refused. Predicted counters, one draw and no target each, are in
   `tests/golden/table.ms` and are confirmed or corrected by the first capture.
+  **Weight.** `gcc -Os -c src/void2d/spriteGlyph.c` on this box: 20,928 B of code and tables,
+  64 B of data, 192 B of bss (21,184 B), the box table (128 x 4 B) and the octant table (230 B)
+  among them; no emcc is installed here, so no wasm figure is claimed. The sprites are in the
+  default layer, so a build that never lays out a codepoint from U+2500 up pays those bytes and
+  nothing per glyph: `font.ms` compares the codepoint with `SPRITE_FIRST_CODEPOINT` before it
+  calls into the table, and text below it, which is nearly all text, costs one comparison.
+  Nothing existing moves: no scene, test or example holds a codepoint in the sprite ranges
+  (searched by character and by escape), so no golden is listed as moved. The vendored data is
+  Ghostty's 36 reference PNGs only (78,166 B, MIT, `tests/oracle/ghostty/`); no third-party code
+  was added.
   **Owed, not run:** `sh scripts/golden.sh --update text/spriteGlyphs` (the PNGs, three rows),
   then `sh scripts/golden.sh` for the counters; a look at the half-tone shades and edges, which
   the contrast and gamma of Glyph mode move; the web column of the three rows.
