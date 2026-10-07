@@ -7,6 +7,7 @@ import {
 	AtlasError,
 	PageKind,
 	NO_GLYPH_PAGE,
+	NO_GLYPH_PAGE_HANDLE,
 	acquireSdf,
 	sdfKey,
 } from "../void2d/glyphAtlas";
@@ -156,4 +157,27 @@ test "a generic acquire still refuses an SDF key by name" {
 	const r = atlas.acquire(sdfKey(0, 36));
 	assert !r.ok;
 	if (!r.ok) { assert r.error == AtlasError.KindNotBuilt; }
+}
+
+test "the first coverage page is a coverage page when an SDF tile came first" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(256, 4);
+	assert atlas.acquireSdf(face, glyphIndex(face, "g".code)).ok;
+	assert atlas.pageKind(0 as GlyphPage) == PageKind.Sdf;
+	const handle = atlas.ensurePage();
+	assert handle != NO_GLYPH_PAGE_HANDLE;
+	assert handle != atlas.pageHandle(0 as GlyphPage);
+	assert pagesOfKind(atlas, PageKind.Coverage) == 1;
+	assert atlas.pageKind(1 as GlyphPage) == PageKind.Coverage;
+	assert atlas.pageHandle(1 as GlyphPage) == handle;
+	assert atlas.ensurePage() == handle;
+	assert atlas.pageCount() == 2;
+}
+
+test "no coverage page is made past the page budget an SDF page already holds" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(256, 1);
+	assert atlas.acquireSdf(face, glyphIndex(face, "g".code)).ok;
+	assert atlas.ensurePage() == NO_GLYPH_PAGE_HANDLE;
+	assert atlas.pageCount() == 1;
 }

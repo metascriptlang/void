@@ -158,8 +158,16 @@ export function beginUploadFrame(): void {
 	void2dGlyphPagesFrameBegin();
 }
 
+function firstCoveragePage(atlas: GlyphAtlas): int32 {
+	for (let p = 0; p < (atlas.pages.length as int32); p++) {
+		if (atlas.pages[p].kind == PageKind.Coverage) { return p; }
+	}
+	return -1;
+}
+
 export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
-	if ((atlas.pages.length as int32) == 0 && atlas.maxPages > 0) {
+	let first: int32 = firstCoveragePage(atlas);
+	if (first < 0 && (atlas.pages.length as int32) < atlas.maxPages) {
 		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize, PageKind.Coverage as int32);
 		if (handle >= 0) {
 			atlas.pages.push({
@@ -168,9 +176,10 @@ export function ensurePage(this atlas: GlyphAtlas): GlyphPageHandle {
 				top: 0,
 				drawnFrame: -1,
 			});
+			first = (atlas.pages.length as int32) - 1;
 		}
 	}
-	return (atlas.pages.length as int32) > 0 ? atlas.pages[0].handle : NO_GLYPH_PAGE_HANDLE;
+	return first >= 0 ? atlas.pages[first].handle : NO_GLYPH_PAGE_HANDLE;
 }
 
 export function residentBytes(this atlas: GlyphAtlas): int32 {
