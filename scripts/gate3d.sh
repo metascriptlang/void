@@ -1093,7 +1093,8 @@ check_array_copies() {
 	for entry in $3; do
 		module=${entry%%:*}
 		fn=${entry#*:}
-		emitted=$(ls out/debug/*ZsrcZvoid3dZ${module}Oms.c out/debug/*ZsrcZgpuZ${module}Oms.c 2>/dev/null | head -1)
+		emitted=$({ ls out/debug/*ZsrcZvoid3dZ${module}Oms.c; ls out/debug/*ZsrcZgpuZ${module}Oms.c; } \
+			2>/dev/null | head -1)
 		if [ -z "$emitted" ] || ! grep -q "^[a-zA-Z_].*[^a-zA-Z0-9_]${fn}__M.*{[[:space:]]*$" "$emitted"; then
 			fail "allocation: the emitted C of $module.ms has no body for $fn — renamed or unreachable?"
 			return 1
