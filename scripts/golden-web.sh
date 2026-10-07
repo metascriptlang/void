@@ -14,6 +14,7 @@ OUT=out/web-golden
 if [ "${1:-}" != "--compare" ]; then
 	rm -rf "$OUT" out/golden/webgl2
 	VOID_WEB_ENTRY=tests/golden/runner.ms VOID_WEB_DEST="$OUT" VOID_WEB_BACKENDS=gl \
+		VOID_WEB_MSCFLAGS="${VOID_WEB_MSCFLAGS--d:voidProfiler}" \
 		VOID_WEB_PRELOAD="--preload-file assets --preload-file tests/fonts" \
 		sh scripts/build-web.sh > out/golden-web-build.log 2>&1 \
 		|| { echo "FAIL the web runner does not build — see out/golden-web-build.log"; exit 1; }
