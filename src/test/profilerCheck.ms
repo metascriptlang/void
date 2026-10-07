@@ -197,7 +197,11 @@ test "an input during a draw is counted as dropped and not sampled" {
 	assert p.inputLatency.ringCount() == 0;
 	p.drawBegin(ms(30));
 	p.commit(ms(31));
-	assert p.present(ms(31), ms(32)).droppedInputs == 0;
+	const next = p.present(ms(31), ms(32));
+	assert next.droppedInputs == 0;
+	assert next.inputEvents == 0;
+	assert next.inputLatencyNs == NO_STAMP;
+	assert p.inputLatency.ringCount() == 0;
 }
 
 test "milliseconds format right-aligned with one decimal, rounding half up" {
