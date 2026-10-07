@@ -2177,12 +2177,18 @@ changes described above on today's compiler; the P4 web archive also takes its r
     dirty-to-present bucket histograms (Makepad's nine fixed edges, ten buckets, `frame_trace.rs:34-62`) as bars, three
     cells wide per bucket, empty buckets as a dim baseline. While shown, the overlay adds one
     draw and one bracket to the frame's counters; the bench gates run with it hidden.
+  - **Scope.** The mode, the readout and the counters are process-wide, as GPUI's overlay is:
+    every `presentAt` shows the same overlay, so with two views or windows each one draws it
+    and each adds its own draw and bracket to the shared counters. The host owns the key that
+    calls `profilerOverlayCycle` (or `profilerOverlaySetMode`); nothing in void2d binds one. A
+    framebuffer narrower than the panel pins the panel to the left edge and clips its right.
   - **Tested.** T0 `src/test/profilerOverlayCheck.ms` (font, run merging, layout, bar
     heights, cadence, mode cycle, cell rounding, device-integral edges, the host scene
     staying clean); T1 `tests/displayList/profilerOverlay.txt` (Full at DPI 1.0 and Minimal at
     1.5); T2 rows `ui/profilerOverlayFull` and `ui/profilerOverlayMinimal`; the integration
-    `tests/integration/frameProfiler.ms` turns the overlay on and off and reads green text
-    pixels. The golden runner is built with `voidProfiler`, so the existing scenes also prove
+    `tests/integration/frameProfiler.ms` turns the overlay on and off, reads the panel at the
+    right edge, and checks that a new readout reaches the screen; `recordingHolds` is a pure
+    function so T0 pins each axis of the recording reuse key. The golden runner is built with `voidProfiler`, so the existing scenes also prove
     "module on, overlay hidden is pixel-identical".
   - **Owed, not run.** The two golden captures and the PNG commit; `sh scripts/gate.sh`
     (frame profiler stage, module-on bench counters equal to the baseline);
