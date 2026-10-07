@@ -71,6 +71,23 @@ if "$MSC" test src/test/index.ms > out/gate-t0.log 2>&1; then
 else
 	fail "msc test src/test/index.ms — see out/gate-t0.log"
 fi
+
+moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg"
+moduleDefines=""
+for flag in $moduleFlags; do moduleDefines="$moduleDefines -d:$flag"; done
+echo "      module stage all-off: the T0 run above, no -d: flag"
+echo "      module stage all-on:  msc test$moduleDefines src/test/index.ms"
+# shellcheck disable=SC2086
+if "$MSC" test $moduleDefines src/test/index.ms > out/gate-t0-modules.log 2>&1; then
+	modSummary="$(sed 's/\[[0-9;]*m//g' out/gate-t0-modules.log | grep -E '^\s+Tests ' | tail -1 | tr -s ' ')"
+	if echo "$modSummary" | grep -qE 'Tests [0-9]+ passed \([0-9]+\)$'; then
+		pass "module stage all-on ($moduleFlags):$modSummary"
+	else
+		fail "module stage all-on exited 0 without a clean 'Tests N passed (N)' summary (a crash?) — see out/gate-t0-modules.log"
+	fi
+else
+	fail "module stage all-on: msc test$moduleDefines src/test/index.ms — see out/gate-t0-modules.log"
+fi
 for isolated in tests/isolated/*.ms; do
 	log="out/gate-isolated-$(basename "$isolated" .ms).log"
 	"$MSC" test "$isolated" > "$log" 2>&1 || true
@@ -733,7 +750,7 @@ echo "=== 9. summary ========================================================"
 # someone adds a row with a new prefix, and a count that is off by one is worse than none.
 pending=$(grep -cE '^\| [A-Za-z][A-Za-z0-9:/._-]* \| T[0-5] \|' tests/PENDING.md || true)
 echo "      tier   what ran"
-echo "      T0     msc test src/test/index.ms"
+echo "      T0     msc test src/test/index.ms, stages all-off and all-on ($moduleFlags)"
 echo "      T1     display-list snapshots + growth policy, no GPU"
 echo "      T2     $d3d11_conformance"
 echo "      T3     oracles: $t3_report"
