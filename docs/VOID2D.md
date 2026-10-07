@@ -2153,6 +2153,43 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - The mesh path's pixel-centre ties: bias mesh geometry by −1/64 px in device space, the fix `tests/PENDING.md conformance:webgl2-pixel-centre` proposes, which keeps D3D11's tie results and gives GL the same.
 - The P2 rows this phase owns: the independent non-uniform-SDF bound (`sdf-non-uniform-bound`) and the repository-wide line-length pass (`style:line-length`). Styled-box colour effects (`ui-box-color-effect`) closed at P6: built 2026-10-03 at `b76fee5`, `04484fd` and `4f5c8b7`, and its `tests/PENDING.md` row removed in `fa4426f`.
 - The frame profiler: histograms of dirty-to-present, draw time and input latency, plus the draw-call, instance and upload-byte counters GPUI lacks, drawn outside invalidation.
+
+  **Built 2026-10-08** (pure core `f601ed1`, clock and marks `2fb0c3d`, counters `10b387a`,
+  invalidation and input stamps `3adcb9f`; overlay `6db39ca` and `762be1e`; golden rows
+  `f036ec8`; gate and bench `268a5d8`). Compiled in only with `-d:voidProfiler`; collection
+  is always on once compiled in, the overlay is a runtime mode (Hidden, Minimal, Full) that
+  `profilerOverlaySetMode` and `profilerOverlayCycle` set and that touches no Scene2D state.
+  - **Overlay.** `src/void2d/profilerOverlay.ms` after GPUI `debug_overlay.rs:1-3, 36-47,
+    98-160`: a 5x7 bitmap font (`profilerFont.ms`, 41 glyphs) drawn as plain Box
+    `UiInstance`s with each row's lit cells merged into one run, on a `DrawContext2D` of its
+    own, so it needs no font, glyph page, Scene2D or Yoga. `presentAt` prepares it after the
+    scene and before the screen pass and draws it inside the pass (`profilerPrepare`,
+    `profilerDraw`; a host that does not use `presentAt` calls the two). Hidden runs nothing
+    at all, not even a bracket. The readout is rebuilt every 15 recorded frames, so a still
+    scene keeps a still overlay list and uploads it once. Full is 1 336 instances in one
+    draw at 384 px, Minimal 80 (the snapshot).
+  - **Where it diverges from GPUI.** GPUI's font has 13 letters and skips a character it does
+    not know; the counter lines need 14 more glyphs (B D G H I J K P Q V W Y Z and `/`),
+    drawn here in the same style, and a character with no glyph stops by name
+    (`tests/aborts/overlayNoGlyph.ms`). GPUI scales its 2 px cell by the float scale factor;
+    here the cell is rounded to whole device pixels, so every edge lands on a device pixel at
+    DPI 1.25 and 1.5. GPUI draws no histogram; Full draws the draw-time and the
+    dirty-to-present bucket histograms (Makepad's nine fixed edges, ten buckets, `frame_trace.rs:34-62`) as bars, three
+    cells wide per bucket, empty buckets as a dim baseline. While shown, the overlay adds one
+    draw and one bracket to the frame's counters; the bench gates run with it hidden.
+  - **Tested.** T0 `src/test/profilerOverlayCheck.ms` (font, run merging, layout, bar
+    heights, cadence, mode cycle, cell rounding, device-integral edges, the host scene
+    staying clean); T1 `tests/displayList/profilerOverlay.txt` (Full at DPI 1.0 and Minimal at
+    1.5); T2 rows `ui/profilerOverlayFull` and `ui/profilerOverlayMinimal`; the integration
+    `tests/integration/frameProfiler.ms` turns the overlay on and off and reads green text
+    pixels. The golden runner is built with `voidProfiler`, so the existing scenes also prove
+    "module on, overlay hidden is pixel-identical".
+  - **Owed, not run.** The two golden captures and the PNG commit; `sh scripts/gate.sh`
+    (frame profiler stage, module-on bench counters equal to the baseline);
+    `AB_SUFFIX_B=Profiler sh scripts/bench-ab.sh . . 6 Ui Sprites` for the overhead with the
+    overlay hidden; `sh scripts/experiment-profilerWeb.sh` for the wasm delta per backend
+    (`tests/experiments/profilerWeb.ms`, which links no `node.ms`); none of these is a
+    measurement yet, so no overhead or size figure is claimed.
 - **Per-backend shader headers.** Every `.glsl.h` carries the text of every backend (WGSL, Metal, HLSL, GLSL ES) into every binary: void3d measured 243,778 B of shader data for the four premultiplied programs alone in `libVoidAndroid.so` at `764060b` (llvm-nm), most of it other backends' text, and wasm pays the same. `scripts/regen-shaders.sh` cannot pass `--ifdef` because `batcher.c`, `bridge.c`, `bridgeEmbed.m` and void3d's `gpu3d.c` include the headers without the platform's `SOKOL_<backend>`. The fix gives every includer that define, regenerates with `--ifdef`, and stops a build that forgets it with `#error`, because `--ifdef` otherwise compiles the program away silently. Proof: per-platform nm before and after (Android, wgpu wasm, D3D11) and goldens unchanged. Moved here by the human on 2026-10-05.
 
   **Built 2026-10-05** (`5777cec`, `9ad34b8`): `src/sokol/backend.h` picks the backend once
