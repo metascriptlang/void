@@ -1775,9 +1775,11 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`tests/golden/table.ms` `sdfLabelCases`, shared by the builders and by
   `tests/oracle/textSdfCheck.ms`); `text/sdfColorEffect` is judged by an invariant in
   `tests/golden/invariants.ms` (a never-matching colour key on the Vertex program equals the UI
-  program's plain label within one level). Owed: the D3D11 capture of the four rows and of the
-  five that move, the oracle's first run (its bounds are the T0 table's, provisional until the
-  capture is measured) and its control, WebGL2 for the same rows.
+  program's plain label within one level; measured worst 1). Oracle on the D3D11 capture
+  (2026-10-08, BUILD `99a851d7`): mae 0.026-0.072, p99 at most 0.24, ink 0.980-0.995 against
+  the bounds 0.075 / 0.40 / 0.94-1.07; the worst row is zoom 0.5. Control: dropping the
+  derivative scale (`texels + 0.5`) fails it at rotated 13 px (mae 0.135) and zoom 0.5 (0.152).
+  Owed: WebGL2 for the same rows (Yoga web link).
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
 - Variable-font axes and stem darkening **only if** the T5 capture beside Zed asks for them. The hinting rasterizer is decided out (P3 "Resolved at P3 step 8").
 - **SVG → R8 mask → tinted sprite**, the icon path, with a single-header C rasterizer.
