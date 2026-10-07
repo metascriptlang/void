@@ -1073,6 +1073,8 @@ REPARENT_PATH_FUNCTIONS="scene:attach scene:insertBefore scene:placeNode scene:d
 	scene:parentRow scene:linkChild scene:connectedRow scene:collectSubtree scene:ownedRows
 	scene:closeScene scene:checkPins scene:releasePayload scene:requireOpen scene:requireOwn
 	scene:liveRow scene:isLive"
+RENDER_ORDER_PATH_FUNCTIONS="scene:setRenderOrder scene:refresh scene:liveRow
+	pass76ist:collect pass76ist:filterFrustum pass76ist:sortBackToFront pass76ist:sortByLayer"
 
 # $1 entry, $2 label, $3 the module:function list. Prints nothing and returns 0 when clean;
 # otherwise records the failure and returns 1.
@@ -1127,6 +1129,7 @@ run_allocation() {
 	check_array_copies "$CAPTURE/reparentCapture.ms" "reparent and detached close path" \
 		"$REPARENT_PATH_FUNCTIONS" || return
 	check_array_copies tests/integration/dirShadow.ms "shadow path" "$SHADOW_PATH_FUNCTIONS" || return
+	check_array_copies tests/integration/renderOrder.ms "render order path" 		"$RENDER_ORDER_PATH_FUNCTIONS" || return
 	pass "allocation: no array copy in the frame path ($(echo $FRAME_PATH_FUNCTIONS))"
 	note "allocation: nor in the render path ($(echo $RENDER_PATH_FUNCTIONS))"
 	note "allocation: nor in the pick path ($(echo $PICK_PATH_FUNCTIONS))"
@@ -1134,6 +1137,7 @@ run_allocation() {
 	note "allocation: nor in the camera rig path ($(echo $CAMERA_RIG_PATH_FUNCTIONS))"
 	note "allocation: nor in the reparent/close path ($(echo $REPARENT_PATH_FUNCTIONS))"
 	note "allocation: nor in the shadow path ($(echo $SHADOW_PATH_FUNCTIONS))"
+	note "allocation: nor in the render order path ($(echo $RENDER_ORDER_PATH_FUNCTIONS))"
 }
 
 # ---- pending ------------------------------------------------------------------------------
@@ -1979,6 +1983,39 @@ run_sort_layer() {
 	pass "sort-layer: lower layers draw first in the opaque and alpha lists of both presets; the control does not"
 }
 
+run_render_order() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "render-order: GATE_SKIP_CAPTURE=1 — no render order was read back"
+		return
+	fi
+	exe="$WORK/renderOrder.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/renderOrder.ms --output="$exe" 		> "$WORK/renderOrder.build.log" 2>&1; then
+		fail "render-order: tests/integration/renderOrder.ms does not build — see $WORK/renderOrder.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_RENDER_ORDER_PIXEL_ART=$preset "$exe" > "$WORK/renderOrder.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "render-order: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS render order: ' "$WORK/renderOrder.$preset.log"; then
+			fail "render-order: preset $preset did not follow the swapped orders (exit $status) — see $WORK/renderOrder.$preset.log"
+			return
+		fi
+		status=0
+		VOID_RENDER_ORDER_PIXEL_ART=$preset VOID_RENDER_ORDER_CONTROL=1 "$exe" 			> "$WORK/renderOrder.control.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'did not draw first' "$WORK/renderOrder.control.$preset.log" ||
+			! grep -q 'did not draw last' "$WORK/renderOrder.control.$preset.log"; then
+			fail "render-order: the order-0 control in preset $preset followed the swapped orders (exit $status)"
+			return
+		fi
+	done
+	pass "render-order: orders written between frames re-sort the opaque and alpha lists of both presets; the control does not"
+}
+
 run_moving_material() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "moving-material: GATE_SKIP_CAPTURE=1 — no moving material was read back"
@@ -2480,6 +2517,7 @@ run_target_texture
 run_mrt_blend
 run_alpha_kill
 run_sort_layer
+run_render_order
 run_dir_shadow
 run_moving_material
 run_map_material
