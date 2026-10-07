@@ -2215,6 +2215,21 @@ changes described above on today's compiler; the P4 web archive also takes its r
   text edges, by the contrast of the fill colour. A per-instance "no correction" flag would
   touch the 108-byte UI layout and is not added; the golden `text/spriteGlyphs` shows the
   shades.
+  **Seam proof and golden, 2026-10-08.** `labelTextCheck.ms` places three rows of seven U+2588
+  through a Label with `forceWidth` the cell width over the scale and a line spacing that makes
+  the pitch the cell height, at DPI 1.0, 1.25 and 1.5: every tile is the whole cell, its right
+  edge is its neighbour's left edge and its bottom edge the next row's top. It was red first:
+  GPUI's `force_width` leaves a base within a pixel of its cell where the shaper put it, and a
+  sprite advance (the base face's widest ASCII advance, unrounded) drifts from the integer cell,
+  so cells 1 to 4 of a row rounded to the wrong pixel and opened a seam. `forceCells` now puts a
+  sprite on the grid whatever the distance, which is the only change to the shared layout code.
+  Three golden rows are built, `text/spriteGlyphsDpi100`, `text/spriteGlyphs` (DPI 1.25) and
+  `text/spriteGlyphsDpi150`, each ten labels of a terminal grid; headless, the three place 204
+  glyphs with none refused. Predicted counters, one draw and no target each, are in
+  `tests/golden/table.ms` and are confirmed or corrected by the first capture.
+  **Owed, not run:** `sh scripts/golden.sh --update text/spriteGlyphs` (the PNGs, three rows),
+  then `sh scripts/golden.sh` for the counters; a look at the half-tone shades and edges, which
+  the contrast and gamma of Glyph mode move; the web column of the three rows.
 - Animated image frames keyed by frame index.
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
   **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding

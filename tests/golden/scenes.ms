@@ -11,8 +11,9 @@ import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
 import { Align, TextRun } from "../../src/void2d/textLayout";
 import {
 	addFont, addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature,
-	SizeAdjust, DEFAULT_FONT,
+	SizeAdjust, DEFAULT_FONT, fontFace, spriteCellFor,
 } from "../../src/void2d/font";
+import { faceMetrics } from "../../src/void2d/face";
 import { BoxStyle, CornerRadii, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
@@ -881,6 +882,125 @@ function textColourEmoji(): Scene2D {
 	return s;
 }
 
+// ===== text/spriteGlyphs =====
+
+const SPRITE_SIZE: float32 = 14.0;
+const SPRITE_MARGIN: float32 = 8.0;
+
+struct SpriteGrid {
+	forceWidth: float32;
+	pitch: float32;
+	spacing: float32;
+}
+
+// A terminal host's grid for DPI `dpi`: the cell is whole device pixels (spriteCellFor), a
+// column is forceWidth local units wide, and a row pitch is the cell height, so the line spacing
+// makes up the difference between the font's line height and it.
+function spriteGrid(dpi: float32): SpriteGrid {
+	const cell = spriteCellFor(DEFAULT_FONT, SPRITE_SIZE * dpi);
+	const m = faceMetrics(fontFace(DEFAULT_FONT), SPRITE_SIZE);
+	const pitch: float32 = (cell.height as float32) / dpi;
+	return {
+		forceWidth: (cell.width as float32) / dpi,
+		pitch: pitch,
+		spacing: pitch - (m.ascent + m.descent + m.lineGap),
+	};
+}
+
+function spriteBlock(
+	s: Scene2D, g: SpriteGrid, text: string, column: int32, row: int32, ink: Color,
+): NodeRef {
+	const block = s.label(text, SPRITE_SIZE, ink).at(
+		SPRITE_MARGIN + (column as float32) * g.forceWidth,
+		SPRITE_MARGIN + (row as float32) * g.pitch,
+	);
+	block.setForceWidth(g.forceWidth);
+	block.setLineSpacing(g.spacing);
+	s.add(block);
+	return block;
+}
+
+function spriteRun(length: int32, ink: Color, behind: Color): TextRun {
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: length, font: DEFAULT_FONT, color: ink, background: behind, underline: clear,
+		wavy: false, strikethrough: clear,
+	};
+}
+
+function spriteGlyphsAt(dpi: float32): Scene2D {
+	const s = Scene2D.create(DARK);
+	const g = spriteGrid(dpi);
+	const ink: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const heavy: string = "\u{250F}\u{2501}\u{2501}\u{2533}\u{2501}\u{2501}\u{2513}\n" +
+		"\u{2503}ab\u{2503}cd\u{2503}\n\u{2517}\u{2501}\u{2501}\u{253B}\u{2501}\u{2501}\u{251B}";
+	const round: string = "\u{256D}\u{2500}\u{2500}\u{252C}\u{2500}\u{2500}\u{256E}\n" +
+		"\u{2502}ab\u{2502}cd\u{2502}\n\u{2570}\u{2500}\u{2500}\u{2534}\u{2500}\u{2500}\u{256F}";
+	const double: string = "\u{2554}\u{2550}\u{2550}\u{2566}\u{2550}\u{2550}\u{2557}\n" +
+		"\u{2551}ab\u{2551}cd\u{2551}\n\u{255A}\u{2550}\u{2550}\u{2569}\u{2550}\u{2550}\u{255D}";
+	spriteBlock(s, g, heavy, 0, 0, ink);
+	spriteBlock(s, g, round, 9, 0, ink);
+	spriteBlock(s, g, double, 18, 0, ink);
+	const dashes: string = "\u{2504}\u{2505}\u{2506}\u{2507}\u{2508}\u{2509}\u{250A}\u{250B}" +
+		"\u{254C}\u{254D}\u{254E}\u{254F}";
+	spriteBlock(s, g, dashes, 0, 3, ink);
+	const shades: string = "\u{2591}\u{2592}\u{2593}\u{2588}\u{2593}\u{2592}\u{2591} " +
+		"\u{2581}\u{2582}\u{2583}\u{2584}\u{2585}\u{2586}\u{2587}\u{2588} " +
+		"\u{258F}\u{258E}\u{258D}\u{258C}\u{258B}\u{258A}\u{2589}\u{2588}";
+	spriteBlock(s, g, shades, 0, 4, ink);
+	const quadrants: string = "\u{2596}\u{2597}\u{2598}\u{2599}\u{259A}\u{259B}\u{259C}\u{259D}" +
+		"\u{259E}\u{259F} \u{1FB00}\u{1FB01}\u{1FB02}\u{1FB03}\u{1FB04}\u{1FB05}\u{1FB06}" +
+		"\u{1FB07} \u{1CD00}\u{1CD01}\u{1CD02}\u{1CD03}\u{1CD04}\u{1CD05}";
+	spriteBlock(s, g, quadrants, 0, 5, ink);
+	const braille: string = "\u{2800}\u{2801}\u{2803}\u{2807}\u{2847}\u{28C7}\u{28E7}\u{28F7}" +
+		"\u{28FF} \u{2840}\u{2880}\u{28C0}\u{2824}\u{2812}\u{2849}";
+	spriteBlock(s, g, braille, 0, 6, ink);
+	const diagonals: string = "\u{2571}\u{2572}\u{2573} \u{25E2}\u{25E3}\u{25E4}\u{25E5} " +
+		"\u{25F8}\u{25F9}\u{25FA}\u{25FF} \u{E0B8}\u{E0BA}\u{E0BC}\u{E0BE} " +
+		"\u{E0B9}\u{E0BB}";
+	spriteBlock(s, g, diagonals, 0, 7, ink);
+	const blue: Color = rgba(0.20, 0.38, 0.78, 1.0);
+	const green: Color = rgba(0.22, 0.62, 0.38, 1.0);
+	const amber: Color = rgba(0.88, 0.62, 0.18, 1.0);
+	const white: Color = rgba(0.96, 0.97, 1.0, 1.0);
+	const prompt: string = " ~ \u{E0B0} void \u{E0B0} main \u{E0B0}";
+	const promptRuns: TextRun[] = [
+		spriteRun(3, white, blue),
+		spriteRun(1, blue, green),
+		spriteRun(6, white, green),
+		spriteRun(1, green, amber),
+		spriteRun(6, DARK, amber),
+		spriteRun(1, amber, clear),
+	];
+	spriteBlock(s, g, prompt, 0, 8, ink).setTextRuns(promptRuns);
+	const shapes: string = "\u{E0B6}\u{E0B4} \u{E0B2}\u{E0B3}\u{E0B1}\u{E0B0} \u{E0D2}\u{E0D4}";
+	const shapeRuns: TextRun[] = [
+		spriteRun(2, green, clear),
+		spriteRun(1, ink, clear),
+		spriteRun(4, blue, clear),
+		spriteRun(1, ink, clear),
+		spriteRun(2, amber, clear),
+	];
+	spriteBlock(s, g, shapes, 0, 9, ink).setTextRuns(shapeRuns);
+	const tinted: string = "ab\u{2588}\u{2593}\u{2592}\u{2591}cd\u{2800}\u{28FF}" +
+		"\u{2571}\u{2572}\u{2573}";
+	const tintedRuns: TextRun[] = [
+		spriteRun(2, ink, clear),
+		spriteRun(2, amber, clear),
+		spriteRun(2, green, clear),
+		spriteRun(2, ink, clear),
+		spriteRun(2, blue, clear),
+		spriteRun(3, white, clear),
+	];
+	spriteBlock(s, g, tinted, 0, 10, ink).setTextRuns(tintedRuns);
+	return s;
+}
+
+function textSpriteGlyphsDpi100(): Scene2D { return spriteGlyphsAt(1.0); }
+function textSpriteGlyphs(): Scene2D { return spriteGlyphsAt(1.25); }
+function textSpriteGlyphsDpi150(): Scene2D { return spriteGlyphsAt(1.5); }
+
 function textWrapped(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const paragraph = s.label(
@@ -1691,6 +1811,9 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/caretSelection", build: textCaretSelection },
 		{ name: "text/ligature", build: textLigature },
 		{ name: "text/colourEmoji", build: textColourEmoji },
+		{ name: "text/spriteGlyphsDpi100", build: textSpriteGlyphsDpi100 },
+		{ name: "text/spriteGlyphs", build: textSpriteGlyphs },
+		{ name: "text/spriteGlyphsDpi150", build: textSpriteGlyphsDpi150 },
 
 		{ name: "image/nearestLinear", build: imageNearestLinear },
 		{ name: "image/tileWrap", build: imageTileWrap },

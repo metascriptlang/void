@@ -99,7 +99,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `text/` | P0 | a code line at 13 px, DPI 1.0 / 1.25 / 1.5 · wrapped · multilineAlign |
 | `text/` | P3 | mixed Latin + CJK fallback · fontStyles (synthetic bold and italic, size harmonisation) |
 | `text/` | P4 | filteredDpi125 (one line plain and inside a filter target, compared by `tests/golden/invariants.ms`) · decorations (underline, strikethrough, wavy) · caretSelection (a ragged selection whose row joins `tests/golden/invariants.ms` holds to one composite with no gap) |
-| `text/` | P6 | a ligature line · a colour-emoji line |
+| `text/` | P6 | a ligature line · a colour-emoji line · spriteGlyphs, at DPI 1.25 and again at 1.0 and 1.5 as spriteGlyphsDpi100 and spriteGlyphsDpi150 (the cell grid a terminal host sets: `forceWidth` the cell width over the scale, a line spacing that makes the row pitch the cell height; three box-drawing tables in heavy, rounded and double lines, dashes, the shade, eighth and quadrant blocks, sextants and octants, braille, diagonals and corner triangles, a powerline prompt on colour-run backgrounds and a row of runs that tint sprites) |
 | `image/` | P0 | nearestLinear · subFlip · colorPipeline (colorMatrix, colorAdd, colorKey, Add blend) · scaleGrid |
 | `image/` | P1 | tileWrap (clamp beside repeat, u1 = 3) · sceneSmooth (`Smooth.Inherit` against a scene default of nearest, beside an explicit `Smooth.On`) |
 | `image/` | P2 | `ObjectFit` variants · `corner_radii` on an image · the `grayscale` image mode |

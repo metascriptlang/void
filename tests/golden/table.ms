@@ -269,6 +269,12 @@ export function sceneRows(): SceneRow[] {
 		{ name: "text/caretSelection", phase: "P4", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/ligature", phase: "P6", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
 		{ name: "text/colourEmoji", phase: "P6", width: 320, height: 150, dpi: 1.25, steps: 0, demo: false },
+		{ name: "text/spriteGlyphsDpi100", phase: "P6", width: 400, height: 208, dpi: 1.0, steps: 0,
+			demo: false },
+		{ name: "text/spriteGlyphs", phase: "P6", width: 500, height: 260, dpi: 1.25, steps: 0,
+			demo: false },
+		{ name: "text/spriteGlyphsDpi150", phase: "P6", width: 600, height: 312, dpi: 1.5, steps: 0,
+			demo: false },
 
 		{ name: "image/nearestLinear", phase: "P0", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
 		{ name: "image/tileWrap", phase: "P1", width: 256, height: 136, dpi: 1.0, steps: 0, demo: false },
@@ -364,7 +370,7 @@ export function sceneRenderTargetCounts(): int32[] {
 	return [
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 5, 5, 5, 5, 4, 4, 1, 0, 0, 0, 0,
 		0, 5, 5, 5, 5, 5, 0, 5, 0, 0, 0, 0, 0, 18, 0,
 		0, 0, 0, 0,
