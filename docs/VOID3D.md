@@ -2853,9 +2853,2220 @@ every refusal keep their meaning; `ImageRefused` and `ViewRefused` come from the
   whose sampler was refused draws nothing as one whose image was.
 - A freed texture still hands its image and view to `doomedTextures` for `buryDoomed`: the
   owner's `close` destroys a live image at once, and a frame in flight may still name it.
-  `surrender` (`draw.ms`) reads the owner's public `image`, `view` and `generation`, zeroes
-  them and then closes it, so `close` has nothing to destroy. `DoomedTexture` replaces
-  `GpuTexture` in that list.
+  `doomOwner` (`draw.ms`) takes them with `Texture.detach()`, which `src/gpu` gained for this
+  (the inverse of `adopt`: nothing destroyed, the owner closed, stale handles returned with
+  their generation). `DoomedTexture` replaces `GpuTexture` in that list.
+- Frame path: `viewAt` and `textureReady` read the owner's `view`; an emit probe of
+  `texturedFrame.ms` shows no `ArrayCopy` or string building in either, nor in `drawItem` or
+  `bindItem`. No `gate3d.sh` list changed.
+
+**What `src/gpu` lacked.** A way to give up a texture's handles without destroying them. It was
+added with void-manager's approval (`feat(gpu): detach a texture's handles without destroying
+them`), first as `surrender()` writing the owner's public fields, which did not land. Nothing
+else was missing: dynamic images and target views were not needed, and the premultiplied tag
+stays in `textureAlphas`, which is void3d's.
+
+**Tests.** **767**, 22 of them new, all headless. They cover:
+  - the ray, and the slab test in five cases;
+  - the triangle test under all three cullings, and all five box faces plus the plane;
+  - ownership, a hidden subtree, and a hidden part of a visible model;
+  - a turned, scaled and moved node in world units, a mirrored node, a mirroring parent over
+    a `Face.Front` child, and scale 0;
+  - external meshes, out-of-table indices, and an origin inside the bounds;
+  - the order across the eye, and a baked frame swapped by its animation;
+  - a tap through a snapping `OrthoCamera` and a remainder-shifted blit.
+- **Mutation controls**, each turned red and then restored:
+  - inverting the `Face.Back` rule reddens 4 tests;
+  - reading mesh 0 instead of the node's current mesh reddens 3;
+  - returning every mesh as its own owner reddens 3;
+  - dropping `checkInside` reddens the inside-start test;
+  - dropping the mirror swap reddens the mirror test.
+- **Oracle.** `tests/oracle/ray3d.cases` has 24 cases against real Heaps at `2b84cc2`: 20 agree and 4 diverge as declared. Over four files the oracle is 61 agreeing and 10 declared divergences.
+- **The `pick` stage** runs the real renderer at 1280×720 with the snap on, a 0.3 texel pan, `margin: 1` and the logs turning, and taps at frame 12. The log group is hit through its first log (owner 1, a log mesh, distance 49.69). The baked stone is hit on its current frame (48.75). A stone that is not pickable hits nothing. Control: with the logs not pickable, the stage fails. What it does not prove: each tap is aimed with `project` through the same pair `rayFromScreen` inverts, so a mapping error the two share would pass, and nothing reads the tapped pixel back. It runs only the `originTopLeft` branch; GL's row flip is untested.
+- **Allocation.** The `allocation` stage now also emits the pick entry's C and holds `pickNearest`, `pickableOwner`, `meshHit`, both `rayIntersection`s, `cornerOf` and `Ray.transformed` to no `ArrayCopy`.
+- **Frame path.** The seven capture configurations, 28 frames, are byte-identical with no baseline moved, and there is zero frame-state growth over 300 frames.
+- **Size.** arm64 `libVoidAndroid.so` is 2,508,392 bytes, 12,096 more than M9.
+- **PENDING3D** has 19 rows.
+
+**Still missing after M10.**
+- **No hit proxy.** Nothing picks by anything but exact triangles. Heaps' `Interactive.shape` lets a model carry a fattened or bounds-only shape, and a thin log at 360 texels on a phone will want one; it belongs in a side table beside `meshes`.
+- **Nothing picks billboards:** the grass, the flame, and M11's particles have no CPU geometry.
+- **Cost.** A pick walks the whole tree and re-walks each mesh's parent chain for its owner, O(nodes × depth), with one matrix inverse per pickable mesh. Untimed; at tens of nodes it is nothing.
+- **No `DrawContext` overload.** Nothing yet stops a caller passing one context's `meshData` with another's `materials`.
+- **Two thresholds are stricter than Heaps'.** `inverseAffine` treats a determinant below 1e-10 as singular, so a uniform scale under about 4.6e-4 is unpickable. `normalized` zeroes a direction below 1e-10 where Heaps' `EPSILON2` is 1e-20.
+- **Device.** On the device, as for everything else, nothing has run.
+
+### M11 as built
+
+- **`particles.ms` is `h3d.parts` without the draw call.** `ParticleValue` is `Data.Value` and `EmitterShape` is `Data.Shape`, both as closed unions (`match (kind: …)`). `EmitterState` is `Data.State`, with `defaults()` as `setDefaults`. `updateEmitter` is `Emitter.update` with `initPosDir`, `initPart` and `updateParticle` in Heaps' order, so every random value is drawn at the point Heaps draws it. `writeInstances` is the half of `Particles.draw` that fills the buffer. It evaluates `globalSize` on every call, before it returns on an empty emitter, as `Emitter.draw` does (`Emitter.hx:272`), so a random `globalSize` consumes the sequence exactly as Heaps does. The emitter is a value the caller owns, as M9's animations are: it is not a node kind and has no side table. It takes the world matrix of the node that places it, and that node carries a stream mesh (below) the draw list already knows how to draw.
+- **Frame, randomness and time.** Heaps is Z up and left-handed. Exchanging y and z maps it onto this frame, so the cone and the line point up +Y, the disc lies in XZ and gravity pulls along −Y. Heaps reads `Math.random`; the emitter owns an xorshift32 read as 24 bits (`ParticleRandom`), seeded by the caller, so a run is deterministic and the oracle can hand Heaps the same sequence. Every time that decides an event is `float64`, as Heaps' `Float` is: emitter time, the emission count, particle time, the life factor, `globalLife`, burst times and colour-key times. They were `float32` first, and the oracle measured the cost: the emission count and the moment a particle dies each drifted by one (`random-lives-keep-order` kept 13 particles against Heaps' 12, `color-keys-light-alpha` 9 against 8). The design review then found burst and key times still `float32`, and measured it: a burst at 0.1 fires one update late, because 0.1 in `float32` is 0.10000000149 (`burst-at-a-tenth` now agrees). Positions, sizes and colours stay `float32`, the vertex format.
+- **Not ported:** `VPoly`, `VCustom`, `SCustom`, `ratio`, `rotation`, `frame` and textures, `emitTrail`, `collide` and `Collider`, `delay`, the `update` callback, `Emitter.speed`, `setState` on a live emitter, `offsetParticles`, `alloc`/`add`, `SortMode` and `BlendMode`. The pool of `Particle` objects is a dense array of capacity `maxParts`, fixed at `create` in `capacity` so that a caller raising `state.maxParts` later cannot outgrow it, compacted in order as particles die, which is the order Heaps' list keeps.
+- **Three divergences, one measured.** A particle draws its random values again every life, where Heaps' pool hands a reborn particle the values of its last one (`particle-random-per-life`: 0.18018 in Heaps for both lives, 0.16936 here for the second). A particle is a camera-facing square of side `size × globalSize` in world units, where Heaps' default sizes it in clip space with a factor of 0.4 (`particle-size-world-units`). The program discards below half alpha and writes depth instead of blending and sorting (`particle-alpha-tested`).
+- **Two names moved for the compiler.** Heaps' `update` is `updateEmitter`, because `animation.ms` exports `update(ref clock, …)` and two `ref` free functions with one name resolve to the wrong one silently (`particle-update-name-collision`, card `2026-09-20-ref-receiver-not-an-extension.md`). The random state is the field `sequence`: a field named `random` in the `Result.ok({…})` of `ParticleEmitter.create` made std's `Math.random` reachable, whose body calls an undeclared `time()` and fails clang (card `2026-09-23-literal-key-reaches-std-function.md`, Compiler notes).
+- **Instance data: a stream mesh, not an `InstanceData` sibling** (Open questions, answered). `draw.ms` `addStreamMesh(context, capacity)` puts a `GpuMesh` whose `instanceCapacity` is non-zero into the same table. Its instance buffer is made once at that capacity (`gpu3dMakeStreamBuffer`, sokol `dynamic_update`), and `writeStream` replaces its contents and sets the instance count, one `sg_update_buffer` per frame. A write the driver refuses (a buffer that is not valid, or more floats than it holds) is `StreamError.BufferRefused` and leaves the stream drawing nothing; a remake that gets only one of its two buffers destroys that one. It keeps no CPU copy: its owner holds the state it is written from and writes it every frame it draws, so a kept copy would be stale by construction. After a context loss, the loop that re-uploads meshes (`rebuildMeshes`) remakes a stream's buffers empty, with zero instances. A `writeStream` that finds its handles stale remakes them first, so the write after a loss is also the rebuild. The buffer is `dynamic_update` rather than `write_transient`: a transient buffer must be written every frame it is bound, and a host on the on-demand pacing redraws for a camera move while a paused emitter writes nothing new.
+- **The particle program** (`particleVs`/`particleFs`) runs on the `Billboard` layout. Its corners sit around the root at ±0.5, as `Particles.hx` writes them, and each instance is eight floats, root and side then rgba, unlit. `gpu3d.c` asserts that its attribute slots are the billboard program's. Adding it found two defects in the bridge, both fixed at the source:
+  - `PipelineCache.shaders` was sized by a hand-kept `PROGRAM_COUNT = 4`, so the fifth program indexed past it. The count is now `GPU3D_PROGRAM_COUNT` in `gpu3d.h`, the constant `gpu3d.c` asserts the `PROGRAMS` table against.
+  - The core applied the camera and light blocks to every scene item. The particle program declares no light block, and sokol panics on `sg_apply_uniforms` for an undeclared slot. The cache now reads each program's declared slots off its shader description when it makes the shader (`gpu3dUniformSlotMask`), and `drawItem` applies a pass-wide block only where it is declared. That is reflection from the generated header, not a second hand-kept table.
+- **Saturation is a look parameter; the palette swap already was one.** `PixelArtLook.saturation` is `h3d.Matrix.colorSaturate`: `rgb × (1 + s) − luma × s` with Heaps' `lumR/G/B`, where 0 leaves colour alone and −1 is grey. The post pass applies it after fog and before the palette LUT, so a greyed frame is still quantized to the palette. At 0 it is skipped, so the existing frames did not move. It sits in a new `colorAdjust` vec4 of the post block, which grew from 20 to 24 floats. The swap is M3's `setPalette`, which refills the LUT on the CPU and uploads it on the next frame. Measured: **2.33 to 2.46 ms** per refill at 16 levels and 21 colours (desktop, debug build, 200 refills per run, three runs). That is cheap for a day/night or seasonal change and too slow for a per-frame blend.
+- **Effects stay a closed set, as fields of the look** (M3's question, answered). Heaps' `RendererFX` is an open interface because a Heaps program can bring its own hxsl. Here a program is a member of the closed `Program` enum, compiled by sokol-shdc into `gpu3d.c`, so no caller can bring an effect void3d does not already know. An open `interface` with function-typed fields would cost an indirect call per effect and a refcounted object, and buy nothing. Everything M11 needs folds into the one post pass M3 chose (outline, fog, saturation, palette), so the set is data, not a list. When an effect needs its own pass (bloom), it becomes a member of a closed union the preset matches on, not an interface.
+- **The campfire has snow and embers, off unless configured.** `configureCampfireParticles(true)` adds two emitters, each on a stream mesh under its own node:
+  - a disc 6 units up: 45 per second, 7 s lives, capacity 400, wind drift, fading;
+  - a cone at the fire: 10 per second, capacity 48, rising, cooling from yellow to dark red.
+
+  Both run for eight seconds of 1/30 s steps at setup, so snow is already falling in frame 1. `configureCampfireLookSchedule(true)` swaps to a cold palette at frame 5, sets saturation −1 at frame 10 and puts both back at frame 15. Every preset number lives in the example: nothing in `src/void3d` is named snow, ember or fading.
+- **The scene's side tables shrink** (`scene-side-tables-never-shrunk`, which M7 assigned to this milestone). `remove` swap-removes a mesh or light node's row and repoints the node that owned the last row, through `meshOwners`/`lightOwners`. M11 adds no table, but it was done here rather than left: a wallpaper that adds and removes harvest objects for days is the churn the row describes, and the fix is local to `remove`. Draw order does not change, because every reader walks the tree and reads `payload`. The row is deleted.
+
+**Acceptance, at tree `16e9bcbb`** (*fix(void3d): name the campfire's particle failures and put its comments back where they belong*, the review's fixes included). The gate is GREEN with 1 skip (device).
+- **Tests.** **792**, 767 before M11. The 25 new ones are all headless:
+  - 19 particle tests: values, the random sequence, emission and carry-over, `maxParts`, lifetime, bursts, order after deaths, determinism by seed, gravity on −Y, the cone and the disc, world against local emission, colour keys, the instance layout, per-life randoms, refused input, a capacity fixed at creation and `globalSize` drawn on an empty write;
+  - 3 compaction tests, 2 stream-mesh tests and 1 on the program count.
+- **Mutation controls**, each turned red and then restored:
+  - gravity on +Y, the per-life reset dropped, the compaction's move dropped and the sphere's y term zeroed redden 1, 1, 3 and 1 particle tests;
+  - dropping `releasePayload` reddens 3 scene tests, and dropping the repoint crashes the suite on an out-of-range row;
+  - on the oracle, dropping the per-life reset makes `random-values-per-life` GRADUATE, and gravity on x mismatches `cone-forces-and-random-values`.
+- **Oracle.** `tests/oracle/particles3d.cases` runs 9 cases through real Heaps at `2b84cc2` on node, with `Math.random` replaced by the port's generator after the `Emitter` is built. 8 agree and 1 diverges as declared. One of the 8 is a 20-step cone with random speed, random size, gravity and a force on three axes. Over five files the oracle is 69 agreeing and 11 declared divergences. Control: `Burst.time` back in `float32` mismatches `burst-at-a-tenth`.
+- **Pixels.** The seven standing configurations, 28 frames, are byte-identical, and no baseline moved. Three configurations are new, and so are their baselines (32 in the manifest):
+  - `campfireParticlesCapture` (`m11particles_*`) differs from `before_*` in 1816, 1820, 1756 and 1812 pixels: the snow and the embers;
+  - `campfireParticlesRebuildCapture` rebuilds every mesh and both streams at frame 3 and is byte-identical to `m11particles_*`, so the stream rebuild draws the same particles;
+  - `campfireLookCapture` (`m11look_*`) has 21, 16, 10 and 21 colours in frames 1, 6, 11 and 16. Frames 1 and 16 are byte-identical to `m3palette_*`, so the swap and the saturation come back exactly. The gate checks that (`capture look`).
+- **Why `m11particles_*` was taken twice.** It was first adopted at `82e4e17` with `float32` particle time. The oracle then moved time to `float64`, which changes which particles exist in a frame (3340, 3288, 3168 and 3200 pixels against the first images), and the baseline was taken again in its own commit. Nothing else used the first images.
+- **Saturation, measured with the palette off.** Setting −1 on the palette-off look changes every pixel of frame 11. No pixel's channels differ by more than one level, and the frame has 208 grey levels.
+- **Allocation.** The `allocation` stage now holds `updateEmitter`, `spawn`, `stepParticle`, `colorAt`, `moveParticle`, `particleValue`, `emitterValue`, `writeInstances` and `writeStream` to no `ArrayCopy`. It reads them from the bench entry, which now runs with particles on. Control: a written `Vec<Particle>` copy injected in `stepParticle` fails it (`stepParticle=1`). A read-only `const` copy does not, because msc aliases it and emits no copy.
+- **Bench.** No frame-state growth over 300 frames: 34 draw items, 38 nodes, 39 meshes, 5 pipelines. CPU per frame with particles on was 0.070, 0.109, 0.072, 0.079 and 0.080 ms over five gate runs, against 0.066 before M11 without particles. Those are five single samples, and there is still no threshold.
+- **Size.** arm64 `libVoidAndroid.so` is 2,682,840 bytes, 174,448 more than M10. Not attributed.
+- **PENDING3D** has 22 rows: `scene-side-tables-never-shrunk` is gone, and four are new.
+
+**Still missing after M11.**
+- **Nothing is translucent.** Particles pop out at half alpha. A blended particle needs sorting, and a decision about what the post pass does with a colour between palette entries.
+- **Saturation is screen-wide.** Fading a single object would need a per-material parameter. M12 adds it for lit materials.
+- **A palette swap costs a refill**, about 2.4 ms here and more on a phone. A cross-fade between palettes would need two kept LUTs and a blend in the post pass.
+- **No particle is pickable**, and particles have no bounds for culling.
+- **Particles have run on GLES3 only on the emulator.** After M11 landed, the palette-on campfire with snow and embers ran on the Android emulator (`tests/device/gles3Particles.png`: 21 palette colours plus the system navigation bar). That covers the stream buffer and the `Particle` program on GLES3. It does not cover the stream rebuild after a real context loss, which has still only been simulated on D3D11.
+- **A stream mesh cannot be released.** Nothing removes a mesh from the `DrawContext`, so an effect made and dropped per event (a burst on each harvest) keeps its two buffers for the life of the context. The campfire makes two streams once.
+- **Nothing enforces sokol's one update per buffer per frame.** A host that steps and writes an emitter twice in one frame hits a sokol validation error, not a `StreamError`.
+- **Saturation has no CPU reference.** The formula lives only in `postFs` and is pinned by the `m11look_*` baseline, not by a headless test against `Matrix.colorSaturate`. M12 adds it: `colorSaturated` in `math3d.ms`, held to Heaps by `tests/oracle/color3d.cases`.
+
+### M12 as built
+
+- **Saturation is a lit-material parameter, applied to the material's colour before the lights.** The lit program reads it at `TOON_SATURATION` of the material's own block, the vec4 whose `TOON_LEVELS` already held the toon ramp levels, so the block keeps its size and layout and a caller that writes `[levels, 0, 0, 0]` sees no change. It greys `baseColor`, and the ambient and directional light are then applied to the grey. The point lights are not: `litFs` adds them without multiplying them by the material's colour, where Heaps multiplies every light in. That is M7's, recorded now in `light-params-divergence`, and it is why a greyed object still takes a warm tint from the fire. That is where Heaps' `h3d.shader.ColorMatrix` acts when it is added to a pass. It reads and writes `pixelColor`. `fwd/LightSystem.computeLight` puts `AmbientLight` at the head of the shader list, and `hxsl/Cache.compileRuntimeShader` reverses that list, so `AmbientLight`'s `pixelColor.rgb *= calcLight(…)` runs after the pass's shaders. That order was read from the Heaps source at the pin, not run: the node oracle calls Heaps' CPU code and never runs its shader linker. A Heaps object greys by adding that shader to its material's pass. Here it greys by having a material of its own, and the glTF path already takes a material per mesh from its caller (`gltfScene.ms` bindings).
+- **Greying before the lights changes little on an object whose own colour is already grey.** Measured on the campfire's stones under the palette, frame 11: at −1, greying after the lights changes 88 216 pixels and greying before them 1 648, because the colour the stones show comes from the lights. The example greys the ground, whose own colour is blue. The first cut greyed after the lights; `docs/REVIEWS-3D.md` (M12) has why it moved.
+- **One formula in the shaders.** `@block saturation` holds `saturated(rgb, amount)`, which skips at 0 and otherwise computes `rgb × (1 + s) − luma × s`. `litFs` and `postFs` both include it, and `postFs` lost its inline copy. The ten standing configurations stayed byte-identical through that move.
+- **The CPU reference, pinned to Heaps.** `math3d.ms` `colorSaturated(this m: Mat4, amount)` is `Matrix.colorSaturate`: it builds the saturation matrix with Heaps' `lumR/G/B` and composes it after `m` through `multiplyAffine`, which is `multiply3x4`. `tests/oracle/color3d.cases` runs six cases through real Heaps at `2b84cc2` and all six agree: the matrix at −1, −0.5 and +0.4, a colour through it, the order of composition after a scale, and the offset row after a translation. A headless test ties the scalar form the shaders use to that matrix for four amounts and two colours, to 1e-6. It checks the formula, not the GLSL.
+- **The GLSL, held to the reference byte for byte.** Because the saturation acts on the material's colour, the same grey can be made on the CPU. `configureCampfireGreyGround(s, true)` greys the ground's vertex colours through `colorSaturated` and keeps the scene's material. `configureCampfireGreyGround(s, false)` gives the ground its own material at `s`. At −0.75 with the post pass off, the two draw the same frames byte for byte. The gate holds both to one set of hashes (`m12greydirect_*`), as it holds the rebuilt campfire to `before_*`.
+- **Not ported, and a PENDING3D row** (`material-saturation-only`). Heaps attaches a whole colour matrix to any pass. Here a material has a saturation amount on the lit program only. Billboards and particles have none, and nothing else of the matrix (contrast, gain, hue) exists.
+- **The campfire greys its ground, off unless configured.** At 0 no material is added and the ground colour is untouched, so every older configuration builds the same scene. The pool grew by one toon block to hold the ground's.
+
+**What the palette does to saturation, measured before any code.** A colour the palette cannot express is quantized to what the palette has, so whether a greyed object *reads* as grey is up to the palette, not the renderer. The screen-wide saturation of M11 measured it on the campfire palette at frame 11:
+
+| saturation | pixels changed | colours |
+|---|---|---|
+| 0 | 0 | 20 |
+| −0.25 | 251 396 (27%) | 20 |
+| −0.5 | 198 796 (22%) | 18 |
+| −0.75 | 535 840 (58%) | 15 |
+| −1 | 897 152 (97%) | 9 |
+
+The palette does not swallow saturation, but it takes it in steps, and not monotonically: −0.5 moves fewer pixels than −0.25. At −1 the frame turns brown rather than grey. The campfire palette has no neutral grey, and at 16 LUT levels the nearest entry to a mid grey is one of its warm browns rather than its bluish stone greys. A palette meant to show grey needs a grey ramp. That is content, and it belongs to the caller.
+
+**Acceptance, at tree `76c4665b`** (*docs(device): record the ground greyed by its material on the GLES3 emulator*). The gate is GREEN with `GATE_DEVICE=1`.
+- **Tests.** **828**, four more than the 824 before M12: `colorSaturate` at 0 is the identity, at −1 it gives the luma, the scalar form equals the matrix, and the matrix applies after the one it composes with.
+- **Oracle.** 75 agree and 11 are declared divergences, over six files. `color3d.cases` adds six cases, all agreeing. Control: composing the saturation before `m` instead of after mismatches `saturate-after-scale` and `saturate-keeps-offset-row` on the oracle and reddens one headless test.
+- **Pixels.** The ten standing configurations, 40 frames, are byte-identical. Three configurations are new, with eight new baselines (40 in the manifest):
+  - `campfireGreyDirectCapture` (`m12greydirect_*`): the ground's material at −0.75 with the post pass off. It differs from `m3direct_*` in 162 824 to 162 836 pixels per frame.
+  - `campfireGreyCpuCapture`: the ground's vertex colours greyed by `colorSaturated`, held to `m12greydirect_*`. It is byte-identical in all four frames. Control: −0.7 on the CPU against −0.75 in the material differs in every ground pixel (162 836 in frame 1).
+  - `campfireGreyPaletteCapture` (`m12greypalette_*`): the ground's material at −0.75 with the palette on. It differs from `m3palette_*` in 13 192 to 13 424 pixels per frame, against 162 824 or more with the palette off: the campfire palette quantizes most of the greyed blue back to the blues it had.
+- **GLES3, on the emulator.** The palette-on campfire with the ground at −0.75 ran on the `pixellight` AVD (`tests/device/gles3GreyGround.png`, recipe in `tests/device/README.md`). It differs from the same build at 0 in 20 789 pixels, against 274 between two shots of that ungreyed build. It is an emulator claim and not a pixel comparison with D3D11.
+- **Allocation, bench.** Nothing new runs per frame, and both stages are unchanged.
+- **Size.** arm64 `libVoidAndroid.so` is 2 704 216 bytes, +16 368 against the 2 687 848 before M12 on this msc. Not attributed.
+- **PENDING3D** has 23 rows, one of them new.
+
+**Still missing after M12.**
+- **A greyed object reads as grey only under a palette with a grey ramp.** The campfire palette turns a grey brown.
+- **Only lit materials have a saturation.** A billboard or particle cannot grey on its own.
+- **No fade over time has run.** A caller fades an object by rewriting `TOON_SATURATION` of its block with `writeUniforms`, which the next draw applies with the rest of the block. No configuration here changes it after setup.
+- **The GPU is held to the CPU for one colour at one amount.** The ground is a single colour and the configuration runs at −0.75; the oracle and the headless tests cover the formula at other amounts and colours, the GPU path only there.
+- **The order against Heaps is read, not run.** No oracle case links `ColorMatrix` with `AmbientLight`; that needs Heaps' shader linker, which the node oracle does not run.
+
+### M13 as built
+
+- **Every light multiplies the material's colour.** `litFs` sums the ambient, the directional light and the point lights into one light and multiplies the (saturated) material colour by it. That is Heaps' default, `fwd/LightSystem.additiveLighting = true`: `AmbientLight.__init__fragment` starts `lightPixelColor` at the ambient, each light's `fragment()` adds to it, and `AmbientLight.fragment` ends with `pixelColor.rgb *= lightPixelColor`. Before M13 the point lights were added after the multiply, so a dark object took the fire's full colour and a greyed one kept the fire's colour on top of its grey; the M12 section above describes that state, and the sentence saying so left `light-params-divergence`. Now a light scales with the object: black stays black, and a grey object takes the light's hue at its own brightness, as in Heaps. Lighting is per pixel only, Heaps' default `perPixelLighting = true`; the billboard's `normalWeight` 0 is `PointLight.isAmbient`.
+- **The directional light is Heaps' Lambert.** `max(n·l, 0) × power`, as `DirLight.calcLighting` computes `color × max(n·(−direction), 0)` without specular; `dirLight.xyz` already points toward the light. The spike's `step(0.35, n·l)` is gone and so is its row, `dir-light-stepped`. The human chose Lambert over keeping the step as a declared look on 2026-09-26: void3d is a renderer for any game, and a stepped or toon ramp is a look, which belongs to a preset.
+- **Not touched, and why.** The point lights still quantize their energy to the material's toon levels with a 0.35 bias; that has its own row now, `point-light-toon-quantized`, and `Program.Billboard`, the grass-and-flame program, still adds the point lights to its colour (`billboard-points-added`). Both are the pixel-art look in the core, carried with `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3. The campfire's light numbers were not retuned: how bright a light should be is the caller's.
+- **What the palette does to Lambert.** A continuous light lands on palette entries the step never reached: on the campfire palette the stones' shaded sides fall to its blues and some tops rise to its red-browns. That is content. A palette that wants a smooth ramp needs one.
+
+**The multiply, held on the GPU.** Under `material × light`, a pixel of the greyed ground is the same pixel of the plain ground times `grey / ground` per channel, whatever the light at that pixel. The ground is one colour (`0.15, 0.17, 0.30`), greyed at −0.75 to a ratio of `1.1256, 1.0226, 0.6878`. A probe held `campfireGreyDirectCapture` to `campfireDirectCapture` (post pass off) over every pixel that differs and is below 250:
+
+| frames | ground pixels | within 1 of the ratio | off by more than 4 | worst |
+|---|---|---|---|---|
+| M13, frame 1 | 162 836 | 162 836 (100%) | 0 | 1 |
+| M13, frame 11 | 162 832 | 162 832 (100%) | 0 | 1 |
+| before M13, frame 1 (control) | 162 740 | 160 660 (98.7%) | 2 080 | 24 |
+
+The control fails where the fire lights the ground and holds elsewhere, which is what an added point light predicts. The gate's `multiply` stage runs this check on every gate, in ImageMagick, reading the ground colour from the example and the luma weights from `math3d.ms`. Where it differs from the probe: it first fails, naming the clip, on any ground pixel that reaches 255 in the plain frame or in plain × grey/ground, where no ratio can hold (0 in the M13 frames, 72 to 96 near the fire before M13). Its counts: 0 of 162 824 to 162 836 ground pixels off in the four M13 frames, and 2 016 to 2 304 off in the four pre-M13 frames.
+
+**How much of the change is which half.** Two trial shaders were rendered on the same tree: the multiply alone with the step kept, and the multiply with Lambert, which is byte-identical to the committed M13 frames. Frame 1:
+
+| configuration | multiply alone | Lambert on top of it | M13 against before |
+|---|---|---|---|
+| palette off | 15 328 | 256 608 | 256 608 (27.8%) |
+| palette on | 10 016 | 59 960 | 63 452 (6.9%) |
+| ground greyed, palette on | 10 016 | 149 376 | 152 868 (16.6%) |
+
+**Acceptance.** The baselines were retaken at `a170d81` with the gate GREEN and one SKIP (`device`). The last gate ran with `GATE_DEVICE=1` on the tree of `c7570af` (`03c134d`) and is GREEN with no SKIP; the commits after it are docs.
+- **Pixels, re-baselined by design.** All 40 hashes of the ten baselines were retaken in `a170d81`, their own commit, with the names kept: `before`, `m3palette`, `m3preview`, `m3direct`, `m3depth`, `m6spin`, `m11particles`, `m11look`, `m12greydirect`, `m12greypalette`. Against the pre-M13 images, frame 1: palette off, postPass off, DepthTexture and spin 256 608 to 256 616 pixels (PAE 50 629); palette on and preview 63 452 and 65 280 (PAE 46 517); particles 255 852; greyed ground 256 608 (postPass off) and 152 868 (palette on). The relations the gate holds between configurations still hold byte for byte in every frame: the rebuilt campfire against `before`, the rebuilt particles against `m11particles`, the ground greyed on the CPU against the ground greyed by its material, and the look's frames 1 and 16 against `m3palette`.
+- **Tests, oracle.** 864 tests and 75 / 11 oracle cases, unchanged: the lit formula lives only in the GLSL, and the node oracle does not run Heaps' shaders. The `multiply` stage is what checks the formula.
+- **GLES3, on the emulator.** `tests/device/gles3Lambert.png`: the palette-on campfire under M13 differs from the pre-M13 build, both run in one boot, in 13 306 and 13 540 pixels (6.5%), against at most 1 245 between two shots of one build or 446 between two boots; D3D11 moves 6.9% of the same frame. An emulator claim, not a pixel comparison.
+- **Size.** arm64 `libVoidAndroid.so` 2 791 992 bytes on msc `2925176a`, against 2 795 728 before M13 on msc `145f4a08`. The two were built by different compilers, so the −3 736 is not M13's, and nothing measured it on one.
+- **PENDING3D** has 24 rows: `dir-light-stepped` deleted, `point-light-toon-quantized` and `billboard-points-added` added.
+
+**Still missing after M13.**
+- **The point lights are stepped** (`point-light-toon-quantized`), and the billboard program adds them unmultiplied. Both are the pixel-art look inside the core, carried with `docs/REVIEWS-3D.md` "Audit before M13" findings 2–3.
+- **No specular.** Heaps' `DirLight` and `PointLight` have an `enableSpecular` branch; this port has none, and the lit material has no `specPower` or `specColor`.
+- **The non-additive model is not ported.** `additiveLighting = false` scales the lights by `1 − ambient`; only the default exists here.
+- **The formula has no CPU reference.** It is held by the `multiply` stage and the baselines, not by a headless test; a CPU copy of `litFs` would only check itself.
+
+### M14 as built
+
+- **The core and the pixel-art preset each have their own programs.** Three GLSL files replace one:
+  - `shader3dBlocks.glsl`, included by both, holds every uniform block the CPU writes, so each layout has one definition.
+  - `shader3d.glsl` is the core's.
+    - `Lit` shades the way Heaps' forward renderer does, into one colour output: the (saturated) material colour times the ambient, Lambert and the point lights, the point lights no longer stepped. Their curve is still the spike's window, `(1 − d/radius)²`, not Heaps' `params` attenuation (`light-params-divergence`).
+    - `Particle` writes one colour output.
+    - `Copy` is `h3d.pass.Copy` for a source of the target's own size: it fetches the texel under the fragment, clamped to the source, and writes alpha 1. Heaps' `Copy` samples at the fragment's UV and keeps the source's alpha.
+  - `pixelArt3d.glsl` (`@module pixelArt`) is the preset's. Its lit and particle programs are the ones the core had until now, with the toon ramp and the normal and depth target; then the billboard, post and blit programs.
+  - `gpu3d.c` includes both headers. `_Static_assert`s hold three things at compile time:
+    - every program of one vertex layout to the core's attribute slots;
+    - the four shared blocks to one size and one slot in both headers;
+    - the program count to the 16 that the pipeline key's and the map's four bits hold.
+- **A program map says what a renderer draws for the program a material names** (`programMap.ms`). **NEW MECHANISM**, approved with the M14 row. Heaps' `Output.setupShaders` composes a pass from the material's shaders, the output shaders and the light system's (`computeLight`); a toon ramp belongs to that last part. Fixed sokol-shdc programs cannot compose, so a preset swaps the whole program instead.
+  - The core draws `Lit` and `Particle` as themselves (`ProgramMap.core()`), and `Renderer.create` keeps its signature. A preset passes its own map to `Renderer.createDrawing`. The pixel-art map draws `PixelArtLit` for `Lit`, `PixelArtParticle` for `Particle`, and `Billboard` as itself.
+  - `beginFrame` checks every item, and the camera and light lengths, before it writes anything; only then does it write the blocks and record each item's program in `Renderer.drawn`. It refuses an item whose material names a program the map does not hold (`RendererError.ProgramNotDrawn`). It also refuses a material whose block is not the one the drawn program reads (`RendererError.MaterialBlock`): the one slot that program declares that is neither pass-wide nor the model matrix, at the length its shader declares, or no block when there is no such slot.
+    - That comes from the shaders themselves: `uniformBlockLength` reads the size off the program's shader desc, which is static data and needs no GPU.
+    - A test holds every length the CPU writes to it: camera, lights, material, model, sprite, post and blit.
+  - `drawPassList` then draws each item with its resolved program, and nothing can fail once a pass has begun. `drawPassLists` must be given the span `beginFrame` accepted.
+  - The map is a value: a `BitSet<Program>` and four bits per program in a `uint64`. It allocates nothing; `Renderer.drawn` grows only when the item count does, like the pass lists. The `allocation` stage covers `drawnFor` and `blockFits`.
+  - What it can regress: a preset whose map leaves out a program its scene uses, or gives a program a material whose block it does not read. Both are a refused frame before anything is drawn.
+- **The model matrix follows its slot, not a program's name.** `drawItem` applied it when `material.program == Program.Lit`, which under a map would have skipped `PixelArtLit` without a word. The model block moved to binding 4, which no other block uses. `drawItem` applies it where the drawn program declares that slot, the idiom the pass-wide blocks already used.
+- **The pixel-art preset refuses a stepped item without ramp levels.** This closes the M13 review's defect finding 8. For each item the preset draws with `PixelArtLit` or `Billboard`, `renderFrame` reads the levels in that program's block (`RAMP_LEVELS`, `SPRITE_RAMP_LEVELS`). Anything that is not at least 1, NaN included, answers `PixelArtError.RampLevels` before anything changes. A missing block is the core's `MaterialBlock`. The check reads the map the core holds, and its `match` names every program, so a program added later does not compile until someone says whether it steps its lights.
+- **Renderers sharing a `DrawContext` forget its pipelines once per GPU context.** `PipelineCache.generation` records the context its handles belong to, so a second core adopting the same new context does not drop the pipelines the first one just made. It is read, not run: only the Android bridge ever changes the generation.
+- **Names moved to what they belong to.**
+  - `gpu3d.ms` keeps what the core reads: `MATERIAL_UNIFORM_SLOT`, `MATERIAL_UNIFORM_LENGTH` and `MATERIAL_SATURATION`. The `TOON_*` constants are gone.
+  - The preset's `RAMP_LEVELS`, `SPRITE_*`, `POST_*` and `BLIT_*` live in `pixelArtRenderer.ms`.
+  - `Program.Post` and `Program.Blit` are `PixelArtPost` and `PixelArtBlit`.
+- **A forward preset** (`forwardRenderer.ms`), as `h3d.scene.fwd.Renderer` is on `h3d.scene.Renderer`: the default, alpha (back to front) and additive lists in one pass, with no depth or normal pre-pass.
+  - It draws the core's programs into a colour and a depth target of its own, at the framebuffer's size, then copies to the swapchain. Heaps draws into whatever target is current. Here the scene needs targets of its own because the Android swapchain has no depth buffer (`bridgeAndroid.c` sets `depth_format` to none), and the GLES3 frame below is that path running.
+  - It needs only the core's blocks (`FORWARD_UNIFORM_LENGTH`), and it refuses a `Billboard` material by the map.
+- **The campfire through it.**
+  - `configureCampfireForward(true)` draws the campfire through the forward preset at the framebuffer's resolution, with the configured pan and snap. The preset has no sub-pixel offset, so a snapped camera stays on the pixel grid. Pan and snap are read, not run: the forward capture has neither.
+  - The grass and the flame are hidden, because their program is the pixel-art preset's until M15.
+  - The frame records the view it drew, so `campfireTap` and `campfirePixelOf` map through it. That is read, not run either: the `pick` stage taps the pixel-art path only.
+  - `stepScene` and `advanceClocks` were cut out of `frameCampfire` verbatim, so both presets run the same scene steps. The pixel-art frames staying byte-identical is what shows the cut changed nothing.
+  - The example holds both renderers on one context whichever it draws with: one more mesh and one more material than before.
+- **A compiler bug, carded, no longer parked here.** `return Result.err(…)` inside a statement `match` arm does not take the function's return type (`~/metascript/.inbox/compiler/2026-09-26-return-in-match-arm-loses-function-type.md`). The first cut bound the refusal to a typed local in the preset's stage loop. Resolving items in `beginFrame` left no arm that returns, so the local and its row are gone.
+
+**Acceptance, at `ab43adc` (tree `1869a4c`).** The gate is GREEN with one SKIP (`device`). The log is not kept in the repository.
+- **Pixels.**
+  - The thirteen standing configurations, 52 frames, are byte-identical to the 40 hashes of M13. That is the claim M14 makes for the pixel-art preset: its programs are the core's old ones. The tree of the first code commit (`2e3830c`), without the forward preset, was gated on its own and held them too.
+  - One configuration is new, `campfireForwardCapture` (`m14forward_*`, four hashes, 44 in the manifest): the forward preset with snow and embers, so both core programs draw. It is a new baseline, not a re-baseline. Every later gate drew it byte-identical, the clamped copy included.
+- **Tests.** **882**, eleven more than the 871 of the M13 land. Of those 871, seven are void2d's, which landed between M13's first gate (864) and its land. The eleven:
+  - three on the map: the core's, the preset's, and replacing an entry;
+  - the reflected block lengths against every constant the CPU writes with;
+  - the core refusing an unmapped material before it writes the camera, and refusing a lit material without its block while it takes one with it;
+  - the forward preset's pool, copy material, size and map refusals, and its refusal of a lit material without its block;
+  - the pixel-art preset refusing an unmapped program; a missing block, a zero ramp and a NaN ramp on a lit material; a zero ramp on a billboard.
+- **Controls.** These were run in the session; their logs are not kept.
+  - Leaving out the nibble clear in `drawing` fails exactly "drawing a name again…".
+  - Leaving out `beginFrame`'s program check lets the refused frame reach sokol: the test binary dies in `_sg.valid`.
+  - Leaving out its block check does the same.
+- **GLES3, on the emulator.**
+  - `tests/device/gles3Forward.png` is the forward preset: 385 colours, depth-tested, with the snow. Two shots differ in 7 914 pixels, the particles moving.
+  - The pixel-art build of M14 against the M13 build differs in 522 to 1 577 pixels. Two shots of one build differ in 544 to 1 245. The evidence is where the differences are. Three pairs were located: M14 against M13, two M14 shots and two M13 shots. In all three the differences fall in the same box of about 195×120 pixels around the fire, which flickers, and nothing differs outside it. This is an emulator claim, not a pixel comparison, and it was taken before the review's fixes.
+- **Size.** arm64 `libVoidAndroid.so` is 2 903 984 bytes, +111 992 against M13 on the same msc (`2925176a`). The embedded shader sources grew from 87 723 to 120 551 bytes (+32 828): the core's three programs in six backends. The rest is not attributed.
+- **Bench.** `meshes=40`, one more: the forward core's screen triangle. There is no frame-state growth.
+- **PENDING3D** has 23 rows:
+  - `point-light-toon-quantized` deleted: the core no longer steps, and the preset's ramp is its look, with its levels checked;
+  - `billboard-points-added` moved with its program to `pixelArt3d.glsl`;
+  - `light-params-divergence` now says the point light's curve is the spike's, not Heaps'.
+
+**Still missing after M14.**
+- **`Program.Billboard` is still the pixel-art preset's.** Materials name it, so the forward preset refuses it. M15 is a core billboard in Heaps' textured-particle shape, and the preset's form of it. Its block will not be the core one's: the map swaps programs, and `beginFrame` refuses a block the drawn program does not read. So the M15 row decides how a material carries the preset's floats, for example reserved in the core block as `MATERIAL_UNIFORM_SLOT` does for `RAMP_LEVELS`.
+- **Nobody outside `src/void3d` can add a program.** The program table is closed: a game with a look of its own adds its programs and its map here. Programs a caller owns would be a mechanism of their own.
+- **The forward preset is minimal.** It has no sRGB conversion (neither has the pixel-art preset) and no MSAA, and it draws at the framebuffer's size only.
+- **The forward preset's context-loss rebuild is read, not run.** The generation only changes on Android, and the emulator run did not force a loss.
+
+### M15 as built
+
+- **A core billboard in Heaps' textured-particle shape.** `Program.Billboard` is now the core's (`shader3d.glsl` `billboardVs`, `billboardFs`): `h3d.parts.Particles` drawn with a texture.
+  - **The instance** is a position, a width and a height in world units, the uv rect of its atlas tile, and an rgba colour: 13 floats in the new `VertexLayout.Billboard` (`billboard.ms` `BillboardInstance`, `pushTo`). The quad faces the camera along `cameraRight` and `cameraUp`. Its root is in world space, as with Heaps' `isAbsolute`, so the program takes no model matrix. Where the quad sits around its position is the caller's corner buffer (`billboard-anchor-is-the-callers`).
+  - **The colour** is the material's colour times the texel times the instance's colour, in Heaps' order: `BaseMesh` starts `pixelColor` at `color`, `Texture` multiplies the texel in, `VertexColorAlpha` the vertex colour. A fragment whose alpha, that same product, is under half is discarded (`particle-alpha-tested`), so a fading billboard vanishes at half alpha as a particle does.
+  - **The light.** A lit material multiplies in the ambient, Lambert and the point lights, as `Lit` does, at the fragment's world position (Heaps' `pixelTransformedPosition`). The normal points toward the camera: Heaps' `GpuParticle` takes `camera.dir`, and `cross(cameraRight, cameraUp)` is its orthographic limit (`billboard-normal-toward-camera`, which also records that Heaps' CPU `ParticleShader` points the other way). `BILLBOARD_LIGHT` 0 leaves the lights out, as Heaps' `particles3D` material does with `light: false`; the flame is drawn that way. A zeroed block draws nothing: its colour's alpha is 0.
+  - **The atlas.** `AtlasTile.split` is `h2d.Tile.split(frames)` across a whole texture, and `AtlasTile.ofFrame` one frame of it. The stride is truncated to whole pixels, the uv computed in float64 and stored as float32, as `Particles.draw` writes it. Both refuse no frames, a width under one pixel a frame (negative included), and `ofFrame` a frame outside the atlas. Heaps is laxer in two places: `split(0)` takes the frame count from the texture's aspect, and `Particles.draw` falls back to frame 0 for a missing one.
+- **The frame is a uv rect per instance, not a count in the material.** sokol-shdc refuses a uniform block that the vertex and the fragment stage both read ("conflicting uniform block definitions"), and the uv is a vertex output. Heaps' CPU `Particles.draw` also writes each vertex's uv from the particle's `h2d.Tile`. `GpuParticle`'s frame divisions are shader parameters instead, which here would need a second material block for the vertex stage. gpui's sprites carry their `AtlasTile` per instance too.
+- **The preset's floats live in the core block** (decided with the human before the row), as `RAMP_LEVELS` sits in the lit block. `billboardParams` (binding 2, eight floats) holds the colour at `BILLBOARD_COLOR`, then:
+  - at 4 the pixel-art ramp levels (`BILLBOARD_RAMP_LEVELS`);
+  - at 5 the core's `BILLBOARD_LIGHT`;
+  - at 6 the pixel-art `BILLBOARD_LIGHT_HEIGHT`.
+
+  A block per preset, the other route, would have been a new mechanism to carry two floats.
+- **The pixel-art preset's form.** `Program.PixelArtBillboard` (`pixelArt3d.glsl`) reads the same block and layout, and the preset's map draws it for `Billboard`.
+  - Its look is the old grass-and-flame shader's: the point lights stepped to the ramp and added, taken `BILLBOARD_LIGHT_HEIGHT` above the root with no normal; the normal and depth target; alpha 0, so the post pass does not outline it.
+  - What was campfire vocabulary in the core is gone (`docs/REVIEWS-3D.md` "Audit before M13" finding 2). `grassColor` is the material's colour. The `texel.r` mask is the texel, because the tuft texture is grey. The `* 0.25` atlas is the instance's tile. The `0.25` above the root is a material float. `mix(…, emissive)` is `BILLBOARD_LIGHT`. The texture is `billboardTexture`, not `spriteTexture`.
+  - The ramp check refuses a lit billboard without levels and lets an unlit one through; a block too short to hold them is the core's `MaterialBlock`.
+- **`beginFrame` refuses two more things by name, before anything is written** (found by the review). It already refused a program the map does not draw and a block the drawn program does not read. Now:
+  - a mesh whose vertex layout is not the drawn program's (`RendererError.VertexLayout`). `vertexLayoutOf` is an exhaustive `match`, so a new program does not compile until it names its layout. M15 made this matter: `Particle` and `Billboard` are two instanced layouts on the same corner buffers;
+  - a material without a texture view or sampler that the drawn program declares (`RendererError.MaterialTexture`), read off the shader desc as the block lengths are (`textureSlotMask`, `samplerSlotMask`). `Billboard` is the first core scene program that samples a texture.
+  - Both presets pass them on (`PixelArtError`, `ForwardError`).
+- **Every vertex layout is held to its writer** (found by the review). sokol lays a buffer out in attribute slot order, so `gpu3d.c` asserts that order for `Lit`, `Particle` and `Billboard` at compile time. `layoutFloats` reads each buffer's floats back off `describeLayout`, and a test holds them to `LIT_VERTEX_STRIDE`, `STREAM_INSTANCE_STRIDE`, `PARTICLE_INSTANCE_STRIDE` and `BILLBOARD_INSTANCE_STRIDE`.
+- **Names.** M11's stream layout (root, side, rgba) is `VertexLayout.Particle`; `Billboard` is the new layout. The preset's `SPRITE_*` constants are gone: `gpu3d.ms` has `BILLBOARD_UNIFORM_SLOT`, `BILLBOARD_UNIFORM_LENGTH`, `BILLBOARD_COLOR` and `BILLBOARD_LIGHT`, and `pixelArtRenderer.ms` has `BILLBOARD_RAMP_LEVELS` and `BILLBOARD_LIGHT_HEIGHT`.
+- **The campfire.**
+  - Its grass and flame are `BillboardInstance`s with their tiles from `AtlasTile.split`, one material block each, written by name.
+  - It keeps the flame's instances, as it keeps its pixels, so a lost context replays them.
+  - `configureCampfireForward` no longer hides the billboards: the forward preset draws them with the core billboard.
+  - It is inside the gate's `style` stage now, as that stage's comment already said.
+- **A compiler bug, carded.** A `Result` narrowed by an early return or an `if (r.ok)` is not narrowed inside a loop nested in a loop, though it is one loop deep (`~/metascript/.inbox/compiler/2026-09-26-narrowing-lost-two-loops-deep.md`). The campfire's `buildGrass` binds the split tiles to a local after the check (`nested-loop-narrowing-bound`).
+
+**Acceptance.** The gate at `6e1f1be`, before the rebase onto `main`'s void2d P4, is GREEN with one SKIP (`device`). The rebased tip gated the same, with the device (`docs/REVIEWS-3D.md`, M15, "Numbers"). The logs are not kept in the repository, and neither is the probe or its logs.
+- **Pixels.**
+  - The thirteen pixel-art configurations, 52 frames, are byte-identical to their hashes. That was measured before the row, on a probe of the preset's form on the new layout with no core program yet, and held at every commit after it, the review's fixes included.
+  - The probe was controlled two ways. Reassociating the colour product, `color × (texel × instance)`, left all 52 frames identical, so the identity does not hang on one evaluation order. Scaling the grass colour by 1.002, about 0.15 of an 8-bit level, broke them: AE 213 208 to 228 616 in the palette-off configurations, 3 228 to 3 488 in the palette-on ones.
+  - The committed form takes the light height from the block instead of the literal 0.25 and discards on the whole alpha instead of the texel's; both stayed identical.
+  - `m14forward_*` is re-baselined by design in its own commit (`54a7716`), names kept: the forward frame now draws the grass and the flame. Against the old frames: AE 664 396 to 664 532 (72%), PAE 58 339. The control is the commit before it (`4f9c7ec`): the same code with the two billboard nodes hidden, which drew `m14forward_*` byte-identical.
+  - The new `unlit` stage holds the core billboard's unlit path exactly: the flame is colour 1 and unlit, so each of its three texel colours must be in every forward frame (10 to 87 pixels each). None of them is in the frame without billboards: 0 in the four pre-M15 `m14forward` frames. The lit path has no such check; its look is held by the baseline alone.
+- **Tests.** **892**, ten more than M14's 882:
+  - five on the atlas: quarters, the float32 thirds, a width the frames do not divide, the refusals (a negative width included), and `split`;
+  - the instance written in the layout's order, and every layout's floats against its writer's stride;
+  - `right × up = −forward` for the camera's basis at four yaws and three pitches, the direction `billboardVs` relies on;
+  - the core refusing a billboard without its texture and sampler;
+  - a billboard block too short for the ramp levels, refused by the core through the preset.
+
+  The map, block and ramp tests were rewritten for the new program, and the lit-block test now also refuses a lit material on the screen triangle's layout.
+- **Controls.**
+  - Removing the stride truncation fails "a width the frames do not divide…".
+  - Leaving out the layout check fails "the core refuses a lit material without its block, or on a mesh of another layout".
+  - Leaving out the texture check lets the refused frame reach sokol: the test binary dies in `_sg.valid`.
+  - Swapping two `in` declarations of `billboardVs` fails the compile on both attribute asserts.
+  - Lighting the flame fails `unlit` (and the captures).
+- **GLES3, on the emulator** (`tests/device/README.md`, `gles3Billboard.png`).
+  - The forward preset draws the grass and the flame at 30 fps, and the flame's three texel colours are there exactly; M14's `gles3Forward.png` has none of them.
+  - The pixel-art build of M15 against M14's, both on msc `598ca62e` in one boot, differs in 666 to 2 034 pixels, against 374 and 1 792 between two shots of one build. In all five pairs the differences fall inside one box of about 197×125 pixels around the flickering fire, and nothing differs outside it. That is an emulator claim, not a pixel comparison.
+- **Size.** The gate's arm64 `libVoidAndroid.so` is 2 990 464 bytes at `6e1f1be`, but msc was synced between M14's gate (`2925176a`) and this one (`598ca62e`), so the difference is not M15's. On one msc (`598ca62e`), the pixel-art device entry grows from 2 923 856 bytes at M14 to 2 992 216 at M15 (+68 360). The embedded shader sources grew from 120 551 to 145 494 bytes (+24 943): the core billboard in six backends, and the preset's rewritten one. The rest is not attributed.
+- **Bench.** `meshes=40`, as in M14, and `pipelines=5`. There is no frame-state growth.
+- **PENDING3D** has 25 rows:
+  - `billboard-points-added` deleted: the core billboard multiplies the lights in, and the preset's add is its look;
+  - `billboard-normal-toward-camera`, `billboard-anchor-is-the-callers` and `nested-loop-narrowing-bound` added;
+  - `particle-alpha-tested` and `particle-size-world-units` now cover the billboard.
+
+**Still missing after M15.**
+- **Who owns a billboard's corners** is open (`billboard-anchor-is-the-callers`). Heaps centres the quad on its position; the campfire anchors it at the bottom, and moving it moves the campfire's pixels. That is the human's call, and an emitter that writes billboards should not come before it.
+- **An emitter cannot draw textured particles.** `particles.ms` writes the `Particle` layout. Heaps' `Emitter` animates a particle's `frame` over `frames` (`Data.frame`), which would need `writeInstances` for the billboard layout.
+- **Two ports of `h2d.Tile`.** void2d has its own (`src/void2d/types.ms` `Tile`, with a texture view, `sub` and float32 uvs). void3d has never imported void2d, and merging them crosses into that lane, so `AtlasTile` is its own. `Tile.split`'s `vertical` and `subpixel`, and a grid of frames, are not ported.
+- **Billboards have no rotation or ratio** (`particle-size-world-units`), **are alpha-tested** (`particle-alpha-tested`), and **have no saturation** (`material-saturation-only`).
+- **The lit billboard has no exact check.** The `unlit` stage holds the unlit path; the lit one is held by the forward baseline only.
+
+### M16 as built
+
+- **The core owns the quad.** `Particle` and `Billboard`, the two quad layouts, have no vertex buffer. Every program of them includes `quadCorner` (`shader3dBlocks.glsl`) and reads its corner as `QUAD_CORNERS[gl_VertexIndex]`, one of six corners at ±0.5 over two triangles.
+  - The corners are Heaps' quad: `Particles.draw` writes each particle's four corners at ±0.5 around it (`Particles.hx:301`). Reading them by the vertex index with no buffer behind them is Bevy's way: `sprite.wgsl` builds its four corners from the bits of `vertex_index` and has no vertex buffer. Here the corners are a table of six, so the two triangles need no index buffer.
+  - This is a **NEW MECHANISM**, approved before the row: a vertex input made from the vertex index, not read from a buffer. It adds no GPU resource and removes three: the corner buffer each of the campfire's two streams made, and the one the campfire made and remade itself.
+  - sokol-shdc translates `gl_VertexIndex` for every backend it emits: `gl_VertexID` on GLES3, `SV_VertexID` on HLSL, `vertex_id` on Metal, `vertex_index` on WGSL (probed before the row).
+  - **The instances step in vertex buffer 0**, and no layout uses slot 1. sokol's WGPU and Vulkan backends end a pipeline's buffer list at the first slot with no stride (`sokol_gfx.h:19547`, `:22663`), so instances in slot 1 behind an empty slot 0, the first cut, would not have made a pipeline there. The design review found it; D3D11 and GL never noticed. `bindItem` binds a quad mesh's instance buffer into slot 0. A test holds that the quad layouts are exactly the layouts whose buffer 0 steps per instance (`layoutPerInstance`, read off `describeLayout`) and that no layout has floats in buffer 1.
+  - What it can regress: a GLES3 driver that mishandles `gl_VertexID` under instancing, or a constant array indexed by it. The emulator ran all three programs of the pixel-art and forward presets (below); no phone has, and nothing has run on WGPU.
+- **A billboard carries its anchor.** `BillboardInstance.anchor` is Bevy's `Anchor`: the point of the quad that sits at the instance's position, in quad units across and up, with the centre at 0 and a side at ±0.5. `billboard.ms` has Bevy's nine names (`ANCHOR_CENTER`, `ANCHOR_BOTTOM_CENTER`, …). Both billboard programs place a corner through one function, `billboardPoint`: `position + right × (corner − anchor).x × width + up × (corner − anchor).y × height`. The uv still takes each corner's tile edge by the corner's sign, so the anchor never moves the texture on the quad. An instance is 15 floats.
+  - Heaps has no anchor for a particle: `Particles.draw` always centres, and `ANCHOR_CENTER` is that default. A literal that leaves `anchor` out gets it, since an omitted field is zero (Compiler notes). The anchor is an addition whose default is Heaps' behaviour, as M9's stepped sampling was, so it has no PENDING3D row.
+  - Heaps' own pivot, `h2d.Tile`'s `dx` and `dy`, is not the anchor. It is a pixel offset of a 2D tile, and `Particles.draw` never reads it. The anchor is in quad units, so it holds at any size.
+  - Bevy applies its anchor on the CPU, into a 2D sprite's model matrix. A billboard turns with the camera and has no model matrix, so the anchor acts along the camera's right and up, in the vertex shader. It is a per-instance attribute because the one block a billboard reads belongs to the fragment stage, and sokol-shdc refuses a block that both stages read (M15 as built).
+  - The pixel-art preset takes its point lights `BILLBOARD_LIGHT_HEIGHT` above the instance's position, which is the anchor's point on the quad. The core billboard shades each fragment at its own world position and does not depend on the anchor. No test holds the preset's light point.
+- **A mesh's constructor fixes its layout.** `meshFor` builds a lit mesh from its `MeshData`. `GpuMesh.fullscreen` builds the screen triangle. `GpuMesh.billboards` builds a billboard mesh whose instances the caller keeps, and `GpuMesh.streamMesh` builds the particle stream; the last two share one `quadMesh` shape. `GpuMesh.external`, which took any layout, is gone. It could build a quad-layout mesh with a vertex buffer and no instances, and nothing refused one.
+  - `beginFrame` refuses a quad-layout mesh with a vertex buffer, with other than six vertices, or with instances and no buffer for them, by name (`RendererError.QuadMesh`, and `PixelArtError` and `ForwardError` pass it on) before anything is written.
+  - `drawItem` skips a mesh with nothing to draw: no elements, or no instances. A stream whose remake the driver refused is such a mesh, and so is a lit mesh whose re-upload was refused (`drawsNothing`). Before M16 both reached sokol with an empty buffer slot, a validation panic in a debug build; now they draw nothing and stay stale for the next rebuild.
+  - A struct literal can still build a per-vertex mesh with an instance buffer; nothing refuses that.
+- **The campfire** anchors its grass and flame at `ANCHOR_BOTTOM_CENTER`, where its own corner buffer had put them, and drops that buffer and its rebuild. `configureCampfireFlameAnchor` moves the flame's anchor for the capture below.
+- **The compiler changed under the milestone.** msc was synced to `c54a8671` on 2026-09-27, and it refuses a write through a `const` binding (Compiler notes). The sweep that makes every written binding `let` is its own commit, before the row, and it touches void2d's files as well as void3d's, because the gate runs both lanes' tests. The void2d lane made the same sweep on its branch (`6e90500`); the two change the same lines the same way except where the branches had already diverged.
+
+**Acceptance.** The gate is on msc `c54a8671`; no number here compares with M15's msc (`598ca62e`). The logs are not kept in the repository.
+- **Pixels.**
+  - The fourteen standing configurations, 56 frames, are byte-identical to their 44 hashes. The quad from the vertex index, minus the bottom-centre anchor, gives exactly the corners the campfire's buffer held, and the frames bear it out.
+  - One configuration is new, `campfireAnchorCapture` (`m16anchor_*`, four hashes, 48 in the manifest): the forward frame with the flame anchored at its bottom left. It is a new baseline, not a re-baseline. The new `anchor` stage holds it against `m14forward_*`. The box around the flame's three texel colours moves right by 18 pixels at both edges in all four frames, and its rows do not move. Every other capture anchors across the centre, so this is the only check of the anchor's x, and through `billboardPoint` it holds the pixel-art preset's placement too. The distance is pinned by the hashes.
+  - `unlit` counts the same flame pixels as M15: 19 68 57 14 87 55 13 63 66 10 70 54.
+- **Tests.** **956**, four more than M15's 952: a billboard or stream draws its instances on the quad and the screen triangle its vertices; a quad mesh off its shape; the quad layouts against `describeLayout`; Bevy's nine anchors. The map, block and texture tests were rewritten for the constructors, and one refuses three off-shape quad meshes by name and takes an unwritten one.
+- **Controls.** These were run in the session; their logs are not kept.
+  - The anchor left out of both billboard programs changes 694 920 to 694 924 pixels of the pixel-art palette-off frames and 692 408 to 692 502 of the forward frames: every tuft and the flame sink by half their height.
+  - The anchor's x mirrored in the core billboard alone leaves every standing capture byte-identical, the forward one included, and fails `anchor` (the flame moves 16 pixels left). This is the slip no other capture can see.
+  - Leaving out the quad-shape refusal lets the refused frame reach sokol: the test binary dies in `_sg.valid`.
+- **GLES3, on the emulator.** `pixellight`, the instances in slot 0, one boot, cold starts; the screenshots are not kept.
+  - The pixel-art build (`campfireGreyOffEntry.ms`) renders 23 colours. Against the M15 build that was still installed (msc `598ca62e`), two shots differ in 769 and 1 484 pixels, inside a box of about 190×125 around the flickering fire. Two shots of M15 differ in 1 970.
+  - The forward build has the flame's three texel colours exactly (5, 14, 9 and 2, 16, 9 pixels), as `unlit` holds on D3D11.
+  - The pixel-art build with snow and embers renders 24 colours.
+  - `gl_VertexID` is in each `libVoidAndroid.so` 8 times.
+- **Size.** arm64 `libVoidAndroid.so` is 3 023 208 bytes at `7f944d0`. The sweep commit (`967c6b7`), M15's code on the same msc, builds 2 996 992: +26 216. Not attributed.
+- **Bench.** `meshes=40` and `pipelines=5`, as in M15, with no frame-state growth. The meshes are the same; the buffers under them are three fewer.
+- **PENDING3D** has 24 rows: `billboard-anchor-is-the-callers` is deleted.
+
+**Still missing after M16.**
+- **No phone and no WGPU run.** Everything above is D3D11 and the emulator. `gl_VertexID` with every attribute stepping per instance, and a constant array indexed by it, are the new GLES3 risks.
+- **The pixel-art preset's light point from the anchor has no check.** The campfire only draws bottom-centre anchors in that preset.
+- **An emitter still cannot draw textured particles** (Heaps' `Data.frame` over `frames`). It can now write billboards whose anchor is the core's; `particles.ms` writes the `Particle` layout only.
+- **A struct literal can build a per-vertex mesh with instances** that nothing refuses.
+- The rest of M15's list stands: two ports of `h2d.Tile`, billboards with no rotation, ratio or saturation, and alpha-tested only.
+
+### M17 as built
+
+- **A mesh and a material are named by a generational id.** `MeshId` and `MaterialId` are an index and the generation the slot had when it was handed out. They come from `Slots` (`slots.ms`), the table M6 wrote for the scene's nodes; it moved out of `scene.ms` and now serves the scene, the meshes and the materials (`e0a4135` changed no behaviour: the gate stayed byte-identical). Bevy's `AssetIndex` is the same pair (`bevy_asset/src/assets.rs:23`, recycled with the generation bumped at `:73-77`, read at `main` `0f38358f`).
+  - `DrawItem`, `MeshInstance`, `GltfMeshBinding`, a baked animation's frames, the core's screen mesh and the presets' screen materials carry them. `PickHit` names nodes and did not change.
+  - A stale id is a named error at every entry point that takes one: `HandleError.StaleMesh`, `StaleMaterial` (retain, release, pin); `StreamError.StaleMesh`, which replaces `MeshOutOfRange`; `SceneError.StaleMesh`, `StaleMaterial` (`addMeshNode`, `setMeshOf`); `AnimationError.BadMesh` (`forMeshes`), `StaleMesh` and `NotPinned`; `GltfSceneError.BadMeshBinding`; `RendererError.StaleMesh`, `StaleMaterial` from `beginFrame` and `drawScreen`, before anything is written, which `PixelArtError` and `ForwardError` pass on. A preset refuses its own screen material or mesh gone the same way.
+  - The tables themselves are still written by index (a preset's textures, the example's rebuild), and such a write does not check the generation.
+  - `drawItem` treats a stale id as a broken invariant (`unreachable`). `beginFrame` refused every stale item, and the presets and `drawScreen` their own ids, so only a release in the middle of a frame reaches it.
+- **Each slot counts its holders, as Heaps' `Primitive.refCount`** (`Primitive.hx:23`, `incref` and `decref` at `:59-72`; pin `2b84cc23`). **NEW MECHANISM**, approved before the row.
+  - Whoever adds a mesh or material holds it once. `retainMesh` and `retainMaterial` add a holder; `releaseMesh` and `releaseMaterial` let one go and answer how many still hold it.
+  - **A pin is a hold that only its holder lets go.** A mesh node pins its mesh and its material from `addMeshNode` until `remove`, as `h3d.scene.Mesh` increfs its primitive in `onAdd` and decrefs it in `onRemove` (`Mesh.hx:127-137`). A baked animation pins every frame it steps through, the ones off screen too, from `forMeshes` until `releaseMeshFrames`. A caller release that would take a pin is `HandleError.OnlyPinned`, so a caller who releases once too often is refused where it happens instead of freeing a mesh under a node or an animation.
+  - `setMeshOf` pins the new mesh before it unpins the one shown, so swapping a mesh for itself keeps it. Heaps' `set_primitive` decrefs first and skips a swap to the same primitive (`Mesh.hx:139-145`); the outcome is the same.
+  - The scene calls that pin or unpin therefore take the context: `addMeshNode`, `remove`, `removeChildren` (Heaps' `Object.removeChildren`), `setMeshOf`, `syncMeshFrame`, `addGltfNodes`. `remove` gathers the subtree and counts the pins it will let go of before it changes anything, in one pass over a count per slot (`tallyMeshPin`), so unloading a level is linear in its nodes. A live mesh or material short of pins is `SceneError.NotPinned`, and nothing changes; `releaseMeshFrames` counts the same way and goes all or none (`AnimationError.NotPinned`). A freed id holds no pin: a node or frame whose mesh or material was freed under it lets go of nothing, so it can be removed once both are freed; while another holder keeps one of them live without the pin, it is `NotPinned`.
+  - **Where this departs from Heaps.** Heaps counts no materials: `onAdd` increfs only the primitive. The node's hold on its material is Bevy's: an entity holds a strong handle to its material in `MeshMaterial3d` (`bevy_pbr/src/mesh_material.rs:41`) beside the one to its mesh in `Mesh3d` (`bevy_mesh/src/components.rs:103`). And Heaps' zero is not final: `decref` to zero disposes the GPU buffers, and the primitive allocates them again on its next render (`Primitive.hx:114`, `MeshPrimitive.hx:64`), so an over-release there costs an upload, not a mesh. Here zero is final: the CPU data goes and the id goes stale, which is Bevy's semantics under Heaps' name. That is why an over-release is refused here.
+  - **This is one of Bevy's two layers.** Bevy's strong `Handle` is an `Arc` whose last drop frees the asset (`handle.rs:89-95`, `assets.rs:570-586`), and its draw path carries the plain `AssetId` (`bevy_pbr/src/render/mesh.rs:1019`, `mesh_asset_id`). Here the count lives in the context's table, not in an object per handle, so an id stays a value that copies for free.
+  - **What value copies cost.** A holder that is not a node or an animation (a loader, an effect) releases by hand; `defer` makes that the loader's last line (`lifetimeCheck.ms`, "a loader that lets go of its own with defer"). A `Scene` or a `MeshFrameAnimation` is a value too, and a copy of one is a second holder that nothing counted. Its second release is refused when a live mesh has no pin left for it; when another node or animation still pins the same mesh, the copy takes that pin, and nothing can tell. The robbed holder's mesh may then be freed under it: its next frame is refused as `StaleMesh`, and removing it, which lets go of nothing, is how a game recovers. When another holder keeps the robbed mesh or material live, the robbed node stays `NotPinned` until that holder lets go. An id also carries no context: `{ index: 0, generation: 1 }` exists in every `DrawContext`, so a scene removed through another context unpins whatever that context holds there, or is refused.
+- **What goes at zero, and when.** The id goes stale and the slot goes on the free list a generation later. A mesh's CPU data goes. Its buffers are doomed, not destroyed: `beginFrame` destroys a doomed buffer of the current GPU context and drops one of an older context, whose handle may name an object of the new one (M3's rule). That keeps destroy-or-drop in one place, decided by the context generation of the frame that buries them. Bevy likewise drops a freed asset's GPU copy in the next `prepare_assets` (`bevy_render/src/render_asset.rs:331-338`, `:443-444`). Destroying at release would be as safe for the frame in flight, because a stale item is refused before any draw; the deferral is the human's decision and is kept for the one place.
+  - Whose buffers they are is the mesh's generation, as since M5: `EXTERNAL_GENERATION` (`fullscreen`, `billboards`) keeps them the caller's, never rebuilt and never destroyed here; any other generation makes them the context's. `addMesh` takes only a mesh that is the caller's or a stream, and no mesh that names buffers made in no context (generation 0); any other carries no CPU data or buffers nothing would destroy, and is refused (`MeshUploadError.Unrebuildable`) instead of drawing nothing, or leaking, without a word.
+  - An upload (`ec145b9`) and a stream's remake doom what they replace; `upload-mesh-leaks-on-replace` is deleted from PENDING3D. No path uploads a live mesh or remakes a live stream today.
+  - A material's uniform range returns to the pool: the range it was added with, which the context keeps apart from the material's public `uniforms` field (`materialBlocks`).
+- **The uniform pool takes a range back** (`uniformPool.ms`). A released range goes to the next reserve of the same length, a generation later. The pool never compacts, because a material and a renderer hold their block's offset. `UniformBlock` carries the range's generation, so a released block is refused where it is written (`UniformError.Released`).
+  - A range has at most one owner (`ownRange`, a flag per range, O(1)). A material owns the range it is added with: `addMaterial` refuses a released range (`MaterialError.ReleasedUniforms`) and an owned one (`SharedUniforms`). The core owns its camera and light blocks. `releaseUniforms` refuses an owned range (`UniformError.Owned`).
+  - A material whose `uniforms` field no longer names the range it was added with is refused by `beginFrame` (`RendererError.UniformsReplaced`), before the block's slot and length are checked; the pixel-art preset's ramp check skips it so that the core names it.
+  - The renderers check the pool with `fits`, which counts released ranges of each length before fresh floats. A renderer has no release, though, so a second renderer reuses only material ranges of its blocks' lengths; the first one's blocks and screen mesh stay held (below).
+- **A refused add frees its slot.** `addMeshData` and `addStreamMesh` give the caller no id when the driver refuses, so the slot is freed at once. M5 kept a refused mesh's CPU data for the next rebuild; that retry only ran after a context loss, and it cost an entry nobody could release. `addBakedFrames` releases the frames it added when one is refused, and answers the frames' ids rather than the first index, since frames from a free list are not adjacent.
+- **A stream takes one write per sokol frame.** sokol allows one `sg_update_buffer` per buffer per frame and panics on a second in a debug build (`VALIDATE_UPDATEBUF_ONCE`, `sokol_gfx.h:25468`). `writeStream` records sokol's own frame index (`gpu3dFrameIndex`: `sg_query_stats().prev_frame.frame_index + 1`, because `sg_commit` files the frame it ends and then counts on) and refuses a second write in that frame as `StreamError.WrittenThisFrame`. sokol's counter stays right when void2d commits the frame. The read copies a 1 344-byte struct, a few times a frame.
+- **The churn stage** (`churnScene.ms`, gate stage `churn`). Every frame loads a box mesh, a stream, a lit material with a block of its own and a particle material under one group, writes the stream twice, draws the frame through the forward preset and removes the group; the loader lets go of its holds once the nodes pin them. The control never releases. The gate requires every growth row, flat in the releasing run and growing in the control except the two only a release moves (doomed buffers, free ranges).
+- **The allocation stage** now also checks the functions M17 put on the frame, render and pick paths: `pinMesh`, `unpinMesh`, `letGoOfMesh`, `meshPinned`, `hasMesh`, `hasMaterial`, `keepsItsUniforms`, `buryDoomed`, `isCurrent`, `frameIndex`, the pool's `holds` and `writeRange`, and `nodeIdAt`. Only a release allocates: `doom`'s push and `freeMesh`'s empty `MeshData`.
+
+**Acceptance.** msc `35601908`, D3D11. The device stage was skipped: the emulator had been shut down for memory.
+- **Pixels.** The 15 configurations, 60 frames, are byte-identical to their 48 hashes: M17 changes no draw.
+- **Churn.** 310 frames (10 of warm-up). Mesh and material slots, live meshes and materials, the pool's reserved floats and free ranges, doomed buffers, the scene's live nodes and its table, and sokol's live buffers end where they stood after the warm-up. That is 4 sokol buffers: the screen triangle and the three the last level doomed. All 310 second writes were refused. The control stops after 42 frames with `MeshRefused`, at sokol's pool limit: 127 live, `BUFFER_POOL_EXHAUSTED` in its log.
+- **Tests.** **995**, 34 more than M16's 961 on the same msc: slots (5), the uniform pool (7), lifetime (18), the renderers' refusals (4). The drop branch of `buryDoomed` runs in a test; its destroy branch runs only in the churn stage. The scene, pick, animation, glTF, program map and renderer tests make their ids through a context (`drawHelpers.ms`).
+- **Oracle.** 75 agree, 11 diverge as declared; `ray3d.cases` builds its pick scene through a context.
+- **Bench.** `meshes=40 pipelines=5`, no frame-state growth. `growth.uniforms` had read the pool's capacity, which never moves; it reads the reserved floats now (`campfireStats`).
+- **Size.** arm64 `libVoidAndroid.so` is 3 294 232 bytes, +128 800 on M16's 3 165 432 on the same msc: the slot table +8 800, the pool +21 112, ids and holders +63 136, the upload and stream fixes +2 688, the defect pass +16 400, the design pass +14 424, its re-reviews +2 240. Not attributed further.
+- **PENDING3D** has 23 rows.
+
+**Still missing after M17.**
+- **Copies and contexts.** A copied `Scene` or animation is an uncounted holder, and an id names no context (above). A counted handle over the ids (Bevy's strong `Handle`) or a context stamp in the id would close them, at an object per handle or a wider id.
+- **The tables are written by index.** A preset's textures and the example's rebuild write `context.materials[id.index]` and `context.meshes[id.index]` with no generation check; a checked setter would refuse a stale id there too.
+- **Textures, images, samplers and views have no lifetime.** A material names views a caller made, and nothing lets them go with it. Next to textured meshes.
+- **A renderer has no release.** Its blocks, screen mesh, screen materials, targets and pipelines live as long as the context, and a second renderer takes fresh ones.
+- **The pool reuses a range only at its exact length** and never compacts; a game whose materials take many lengths fragments it.
+- **Bevy's `MeshAllocator`** (`bevy_render/src/mesh/allocator.rs`) packs meshes into shared slab buffers, so sokol's pool of 128 bounds nothing there; here each mesh takes one to three.
+- **No device run.** The destroy branch of `buryDoomed` has run on D3D11 only, and its drop branch across a real context loss nowhere.
+- The rest of M16's list stands.
+
+### M18 as built
+
+- **Two halves, one owner.** Each preset exports `prepareFrame` and `drawToScreen` (`forwardRenderer.ms`, `pixelArtRenderer.ms`).
+  - `prepareFrame` takes what `renderFrame` took and refuses what it refused. It runs every pass that is not the screen: the forward scene into its own targets, or the pixel-art Scene and Post stages. It leaves no pass open.
+  - `drawToScreen` draws the last stage (`Copy`, or the pixel-art `Blit`) into the screen pass the caller has open.
+  - The caller owns that pass and the commit, which is where Heaps puts them. `Engine.render` clears at `begin` and presents at `end`, and `hxd.App.render` only draws `s3d`, then `s2d` (`h3d/Engine.hx:424-427`, `hxd/App.hx:127-130`).
+  - The split falls where Heaps' base renderer ends a frame: `process` up to `resetTarget`, then `copy(from, null)` into the current target (`h3d/scene/Renderer.hx:141-143`, `:203-217`). `fwd.Renderer` draws straight into the current target, and the copy is `pbr.Renderer`'s shape (`pbr/Renderer.hx:857`). The forward preset has had targets of its own since M14.
+  - `renderFrame` is the one-layer shorthand: prepare, a cleared screen pass, the screen half, `endPass`, `commit`. Every capture configuration still goes through it and stays byte-identical, so the shorthand draws what the single call drew.
+- **The core holds the halves to one frame** (`renderer.ms` `openPrepare`, `closePrepare`, `openScreen`; `endFrame` is gone). Each preset calls them, so a third preset gets the same rules.
+  - A second `prepareFrame` before the screen draw stops, and so does a screen draw with no prepared frame, or one in a later sokol frame than its prepare (by `frameIndex`, the counter sokol's update-once rule uses). Each stop prints a message that names the call. That is how a view frame reports misuse (`views.c`, `docs/EMBED.md`), and how void2d does.
+  - A refused prepare marks nothing, so there is nothing to draw and nothing to stop on.
+  - The changed flag is cleared when the prepare succeeds, since that is when the frame's inputs are taken. A caller's code runs between the halves (a HUD's `begin2d` through `flushTargets`), so a `markChanged`, `setLook`, `setSettings` or `setPalette` made there survives into the next `needsFrame`. Clearing it in the screen half, as the first build did, erased it silently.
+  - A screen material or mesh released between the halves stops with a message that names it.
+- **The order a composing caller uses.** The HUD entry and `mixedFrame.ms` prepare the 3D frame before void2d's `begin2d`. void2d's `flushTargets` must run with no pass open, and it comes before the screen pass. sokol would take the two prepares in either order, since neither leaves a pass open. A layer that refuses its frame skips only its screen half: the HUD entry still opens the screen pass, draws void2d and commits, which an embedded view needs, since a closure that returns without `commit()` aborts.
+- **The campfire exposes its halves.** `prepareCampfire` answers a `Result` with `CampfireError`, and `drawCampfireToScreen` draws the screen half. `frameCampfire` still calls `renderFrame`. The example does not import void2d, so the arm64 `.so` does not link it. The HUD lives in the gate's generated entry, as the pick entry does. The `.so` is 3 312 448 bytes, 18 216 more than at M17, most of it the refusal messages.
+- **Acceptance.** Measured by the gate on the code of `e2c1184` (header diff hash `d57d28799fb2`, that commit plus the status line above; msc `35601908`, D3D11). Every number below is D3D11 only.
+  - The fifteen existing capture configurations are all byte-identical, and the tests are unchanged at 995.
+  - The allocation stage reads both halves of both presets and the core's three guards: no array copy.
+  - `tests/integration/mixedFrame.ms`, in void2d's gate as before and in this one as the `compose` stage:
+    - It draws a lit box through `ForwardRenderer` (where it drew the spike cube) and a half-transparent void2d quad over it, in one screen pass and one commit.
+    - The quad sits off centre, so a flipped layer moves it.
+    - It checks the frame with the quad against the frame without it. Outside the quad all 69 600 pixels are identical. Inside, all 7 200 are the quad's premultiplied colour over the pixel the 3D pass left, within 1 per channel. void2d's draw count is 1, 1 and 0 across the three frames.
+    - Every frame marks the renderer changed between the halves and requires `needsFrame` after the commit. With the flag cleared in the screen half again, the run fails on it (checked by hand once, not a stage).
+    - Controls, each a stage line: `VOID_MIXED_3D_OVER_2D=1` draws the screen half after `end2d`, and all 7 200 quad pixels fail. `VOID_MIXED_PREPARE_TWICE=1` stops on the second prepare. `VOID_MIXED_SCREEN_NEXT_FRAME=1` prepares, commits, and draws the screen half in the next frame, which stops.
+  - The `hud` stage draws the palette-off campfire with an opaque bar and a half-black panel over it:
+    - Outside the two rectangles it is byte-identical to `campfireCapture` in all four frames.
+    - The bar is its exact colour.
+    - The panel is half of the campfire under it within 1 per channel (0 on D3D11).
+    - The control entry draws the campfire's screen half after void2d's. It fails the bar check in all four frames: all 10 240 bar pixels are wrong.
+    - The stage has no hash of its own. What the frame must be follows from the campfire's baseline, so a change of void2d's pixels fails void2d's gate and not this manifest.
+  - `tests/aborts3d/`, run by the `aborts` stage with void2d's `// expect:` protocol: for both presets, headless, a screen draw with no prepared frame stops, and so does a second prepare.
+- **Not done here.** The first three are rows of `tests/PENDING3D.md` (`screen-pass-unchecked`, `screen-output-swapchain-only`, `copy-opaque`).
+  - **Which pass is open is not checked.** A `drawToScreen` into an offscreen pass, or a `prepareFrame` inside the screen pass, is caught only by sokol's debug validation; a release build draws the wrong image. Tracking the open pass needs every pass to open in one place, which is M20's door; void2d opens its target passes itself today.
+  - **`drawToScreen` is the full swapchain only.** Heaps can render a scene into any target (`Scene.setOutputTarget`, picture-in-picture, `h3d/scene/Scene.hx:586`); a 3D view as a panel of a UI waits for M20's shared targets.
+  - **`Copy` is opaque.** A second 3D layer covers the first, so what M18 delivers is 2D over 3D. Bevy's `ClearColorConfig::None` for 3D over 3D is not delivered.
+  - void2d's `Scene` has no halves of its own. `present()` still opens its pass and commits, so today a composing caller uses the immediate face (`begin2d` … `end2d`). A `Scene` over 3D waits for void2d's arc (P5, the host contract).
+  - The embed entries draw one layer and keep `renderFrame`. A refused `renderFrame` returns without committing, and in an embedded view that aborts as "returned without commit()", which names the wrong cause. That was so before M18.
+  - The screen pass still opens through the bridge's `voidBeginPass`, which always clears. M20's door owns it.
+
+### M19 as built
+
+- **The names void2d also exports take the suffix.** `Scene` → `Scene3D`, `NodeId` → `NodeId3D`, `Bounds` → `Bounds3D`, `NO_NODE` → `NO_NODE_3D`. The sampler filter `Filter` → `FilterMode`, which is Bevy's and wgpu's word; void2d's `Filter` is a node filter, a different thing. `AtlasError` → `AtlasTileError`, beside `AtlasTile`. The as-built sections above keep the names they were written with.
+  - The rename is mechanical, and every capture is byte-identical across it.
+  - Heaps' names in comments and in the oracles' `haxe>` lines are untouched. `Stage.Scene`, the pixel-art stage, is not the type and keeps its name.
+  - `BlendMode` is not renamed: it becomes the one type both layers share, in M20's door.
+- **Identity values are statics** (CODE-STYLE §5): `Transform3D.identity()` and `Transform3D.fromTranslation(position)`, Bevy's `Transform::IDENTITY` and `Transform::from_translation`, in place of `identityTransform()` and `transformAt()`. A static named `identity` on `Transform3D` lives beside math3d's free `identity()` for `Mat4`. That was measured on C (`out/tmp/staticProbe`) before it was relied on, since CODE-STYLE warns of same-named statics in one module.
+- **A call on a node handle that cannot be right stops.** It stops with a message naming the call and the node, in void2d's format. `scene.ms` `liveRow` (exported, as void2d's is) and `kindRow` check; the messages are built in `stopOnDeadId` and `stopOnWrongKind`, which only the stopping path calls. An id that names no row at all (`NO_NODE_3D`, an index past the table) says so rather than calling itself stale. Heaps' own precedent for the kind check is `h3d.scene.Object.toMesh`, which throws on a node that is not a mesh (`h3d/scene/Object.hx:668-673`). The cases:
+  - a stale node given to a setter, to `remove` or `removeChildren`, or as the parent of `addGroup`, `addMeshNode`, `addLightNode` or `addGltfNodes`;
+  - `remove` of the root;
+  - `setMeshOf` on a node that is not a mesh, and `setLightPower` on one that is not a light.
+
+  So `addGroup` and `addLightNode` answer the id, and `setLocal`, `setVisible`, `setPickable`, `setLightPower` and `setName` answer nothing. `SceneError` loses `RootCannotBeRemoved`, `NotAMeshNode` and `NotALightNode`.
+- **What keeps `Result`, and why.**
+  - The questions (`nameOf`, `findByName`, `worldOf`): Bevy's `World::get_entity` answers a `Result`.
+  - The context's ids (`StaleMesh`, `StaleMaterial` from `addMeshNode` and `setMeshOf`): Bevy's `Assets::get` answers an `Option`, and an asset may go while a scene still names it.
+  - `NotPinned`: a pin taken through a copy of a scene is state the caller could not have seen.
+- **Code that keeps ids across removals asks first.** `syncPose` and `syncMeshFrame` check their targets with `isLive` before anything moves, as they did before M19, and still answer `AnimationError.StaleTarget`, since an animation outlives the nodes it drives; `syncMeshFrame` now names a pin taken through a copy `NotPinned`, where it answered `StaleTarget`. The test loader `loadRocks` asks `isLive(under)` before it attaches, and its `defer`s still hand back what it made. The campfire runs no frame after a refused setup (`setupDraws` answers `CampfireError.SetupRefused`), so its flicker never drives an id that was never set; that is read from the code, since no gate run makes the setup fail. `campfirePixelOf` answers its own `PixelOfError`.
+- **Acceptance.** Measured by the gate on tree `5238df235a32` (commit `1a4dbc0`, msc `35601908`, D3D11). Every number below is D3D11 only.
+  - The fifteen capture configurations are byte-identical, and so are the HUD and compose checks.
+  - The oracles: 75 cases agree with Heaps and 11 diverge as declared, their MetaScript preludes on the new names.
+  - Tests: 993. Three that asserted refused misuse became abort programs, and one was added: a frame swap on a node whose pin a copy of the scene took answers `NotPinned`. `tests/aborts3d` holds twenty, one per entry that stops: every setter and structure call on a stale node (`setLocal`, `setVisible`, `setPickable`, `setName`, `setLightPower`, `setMeshOf`, `remove`, `removeChildren`), a stale parent for `addGroup`, `addMeshNode`, `addLightNode` and `addGltfNodes`, an id that names no row, the root removed, a mesh call and a light call on a group, and M18's four.
+  - The allocation stage now also fails a frame- or render-path function that builds a string (`msStringConcat`, `msNumberToString`, an enum's `toString`), and reads `liveRow` and `kindRow`, which `setLocal` and `setMeshOf` call every frame.
+  - `tests/integration/bothLayers.ms`, the `both layers` stage: a file that imports void2d's node, render, types, display list and glyph atlas beside void3d's scene, animation, bounds, mesh data, renderer and target, and calls every function name the two layers both export (`removeChildren`, `update`, `center`, `vertexCount`; `draw`, `beginFrame` and `release` compiled only, since they need a GPU). Each resolves to its own layer. That is void2d as it is on `main`; its P5 names (`setVisible`, `remove`, `setName`, …) join the test when its arc rebases.
+- **Found on the way:** `try … catch` on a call that no longer answers a `Result` kept type-checking. C then failed in clang, and JS took the fallback silently. Card `2026-09-29-try-on-a-non-result-passes-the-checker.md`. The callers drop the `try`.
+- **Not done here.** void2d's side of the names (`Scene2D` and the rest, `scene()` → `Scene2D.create`) is void2d's arc. The context's ids keep their M17 contract.
+
+### M20 as built
+
+- **The door is layer-neutral; void3d is its first migrated layer.** Current owners are
+  `src/gpu/door.{c,h,ms}`, `state.ms`, `target.ms` and `pipeline.ms`.
+  The old void3d `pass.ms`, `target.ms` and `pipelineCache.ms` imports are gone.
+  `src/void3d/gpu3d.c` remains the layer's registration/upload/draw unit; platform
+  device, swapchain, host views and commit remain under `src/sokol`.
+  This is Heaps' shared engine/texture/pass boundary: `h2d.RenderContext` inherits
+  h3d's context and uses its `pass` and `engine.pushTarget` (`h2d/RenderContext.hx`).
+  Bevy's [RenderDevice](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_render/src/renderer/render_device.rs)
+  and [shader-handle descriptors](https://github.com/bevyengine/bevy/blob/0f38358f/crates/bevy_material/src/descriptor.rs)
+  supply the open registration precedent, not the literal implementation.
+- **NEW MECHANISM: registration.** See `door.h` `doorRegisterLayouts` /
+  `doorRegisterPrograms` and `gpu3d.c` `registerOnce`. Register once per layer on the
+  renderer thread. Returned ids live for the process and depend on import order;
+  they are not serialized asset ids. CPU registrations survive GPU context loss;
+  `pipeline.ms` `forgetPipelines` and `target.ms` `resize` retain the rebuild convention,
+  with stale target epoch adoption inside the owner.
+  The door is open to other C units; void3d's `Material` / `ProgramMap` still name
+  its local `Program` enum. No arbitrary external-program support is claimed for
+  those two types.
+- **A deliberately bounded key.** `gpu/pipeline.ms` `PipelineKey` keeps the full
+  64-bit signature: sixteen programs, eight layouts, the existing state/target
+  domain. Void3d occupies nine programs/four layouts, leaving seven/four.
+  A seventeenth program or ninth layout requires an identity/storage cutover, not truncation;
+  its later agreed direction is VOID2D.md "D1 direction agreed for the fresh session". D1 replaced this bound on 2026-09-30 (VOID2D.md "D1 as built").
+  Negative/overflowing counts and unregistered ids stop by name. Reflection still
+  reads D3D11 metadata without a GPU, so a registered sokol-shdc table must include
+  `hlsl5` as well as every backend the consumer targets; `scripts/regen-shaders.sh`
+  supplies that set.
+- **Pass ownership is checked at the door boundary.** Preset calls are held by
+  `renderer.ms` `openPrepare` / `openScreen`; the pass methods are in `gpu/door.ms`,
+  with the typed attachment scratch in `gpu/target.ms`. A prepare with any pass
+  open, a screen draw outside a screen pass, a nested pass and an unmatched end
+  stop before the offending sokol call. The screen-pass check precedes the frame
+  counter read: a headless misuse stops by name rather than asserting inside
+  `sg_query_stats`.
+- **Registration order was a real defect, not a theoretical edge.** The first
+  reviews returned SEND BACK: program layouts and cached uniform-mask queries
+  mixed local ordinals with global ids. `VOID_GPU_REGISTRATION=2` stopped the
+  actual lit draw with `VALIDATE_DRAW_REQUIRED_BINDINGS_OR_UNIFORMS_MISSING`.
+  The repairs are in `gpu3d.c` `registerOnce`, `gpu3d.ms` `vertexLayoutOf` and
+  `draw.ms` `drawItem`; the duplicate layout map is gone.
+  `tests/integration/gpuRegistrationFixture.c` now registers its own generated
+  `gpuCopy` shader outside void3d. `mixedFrame.ms` replaces the preset's copy
+  with it in one frame and compares the complete readbacks, independently
+  requiring a visible lit box and correct quad blending.
+- **Acceptance, 2026-09-30, D3D11 only.** `sh scripts/gate3d.sh`, code tree
+  `2d357a5ffe7de6c3eea20f4759427b213f41e7c9` (`3388622`, msc `35601908`):
+  **GATE GREEN with 1 skipped stage**. 990 tests (three incidental text/table tests
+  removed), 34 abort programs, 25 PENDING3D rows; 15 capture configurations /
+  60 frames byte-identical against 48 hashes, with HUD/compose/both-layers/picking
+  checks passing. Both fresh-process registration orders pass at sixteen
+  programs/eight layouts and reuse the foreign pipeline.
+  Listed frame/render/pick functions have no array copy or built string;
+  310 churn frames keep tables, uniform pool and four live buffers flat.
+  The oracle remains 75 agreeing / 11 declared divergences.
+  Android arm64 builds at **3,324,648 bytes**, +22,976 on M19 with the same compiler.
+  `docs/REVIEWS-3D.md` records the two initial SEND BACKs and repaired verdicts.
+- **Boundary still open.** void2d's `batcher.c` pipelines/targets and its
+  independently ordered five-member `BlendMode` have not migrated; the shared
+  twelve-member enum is ready in `gpu/state.ms`. Raw bridge/void2d passes are
+  invisible to door state until that arc's cutover, so the closed
+  `screen-pass-unchecked` row means door-mediated calls, not every raw sokol call.
+  Swapchain-only full-screen output, opaque copy, scene halves in void2d and
+  M17's lifetime follow-ups remain. The spike is untouched. No GLES3/device
+  or real context-loss run was added; the camera follows M20.
+
+### M21 as built
+
+- **One request, one resolved view.** `camera.ms` `Camera3D` replaces the orthographic-only
+  request; the project callers migrate without an alias. A tagged projection follows Bevy's
+  [Projection](https://github.com/bevyengine/bevy/blob/157e1ce6bc66fadca9f57260c18a16d743c11ed5/crates/bevy_camera/src/projection.rs),
+  while the finite, non-reversed `[0,1]` depth matrix follows Heaps'
+  `Camera.makeFrustumMatrix` at `b9aa6dcbb2307b03c1f435e87bdb036060100984`.
+  FOV is vertical radians instead of Heaps' degrees; aspect comes from the resolved target.
+  `position` names the eye before snapping, replacing M4's orthographic `target`.
+  Snap and texel scale belong only to the orthographic branch: perspective has no uniform
+  world-space texel size. Both projections reuse the basis, camera block and blit-based
+  project/unproject path. `CameraView`'s unread texel-scale field is removed.
+- **Culling is per view, not retained scene state.** `renderer.ms` `beginFrame` and
+  `passList.ms` `filterFrustum` filter each pass after validating the complete input.
+  This is Bevy's
+  [check_visibility_cpu_culling](https://github.com/bevyengine/bevy/blob/157e1ce6bc66fadca9f57260c18a16d743c11ed5/crates/bevy_camera/src/visibility/mod.rs),
+  placed at this renderer's draw-list boundary rather than Heaps' tree walk.
+  A camera or node can move back into view without rebuilding the structural list, and
+  one view does not write another's visibility. Each preset reports the filtered count.
+  The test is the current CPU mesh bounds transformed by the item's world matrix, not
+  an origin test or an expanded world AABB.
+- **Planes and bounds.** `frustum.ms` `Frustum3D.fromMatrix` takes Heaps'
+  `col/Plane.hx` `frustumLeft` through `frustumFar`; `intersectsBounds` takes the support
+  radius from Bevy's
+  [Aabb.relative_radius / Frustum.intersects_obb](https://github.com/bevyengine/bevy/blob/157e1ce6bc66fadca9f57260c18a16d743c11ed5/crates/bevy_camera/src/primitives.rs).
+  Normalizing is unnecessary for a sign test: signed value and support radius scale
+  together. Touching remains visible, Heaps' strict-negative rejection instead of
+  Bevy's non-positive rejection. Reflection, nonuniform scale, rotation and shear use
+  the transformed local axes; no inverse, eight-corner expansion or new frame scratch.
+  Alpha sorting now uses Heaps' `scene/Renderer.hx` `depthSort` (`z / abs(w)`), not the
+  orthographic-only clip z.
+- **D3D11 consumer measured before the full gate.**
+  `msc build out/tmp/capture/perspectiveCapture.ms` followed by
+  `CAPTURE_PREFIX=out/tmp/capture/perspectiveSmoke ./out/debug/perspectiveCapture.exe`
+  on msc `35601908`, 2026-09-30: eight retained boxes; visible/culled counts
+  **4/4, 4/4, 5/3, 4/4** at frames 1/6/11/16. The camera shifts from x=0 to x=20,
+  a previously excluded node moves into view without a structural change, then both
+  return. Center rays aimed at the far box pick the nearer box (nodes 2, then 6);
+  off-center rays pick nodes 3, then 7. Readbacks independently check lit front-face RGB
+  and background, so a blank new baseline fails. Frame 11 was visually inspected.
+  With `filterFrustum` temporarily bypassed, the real consumer exits 1 at frame 0:
+  `opaque=8 culled=0, expected opaque=4 culled=4`. The bypass is removed.
+  The distant-camera control also exits 1 at its intended count proof.
+- **Refuse unsupported finite views at resolution, not during a tap.** The design review
+  found near/far `1/100000000` and `0.1/10000000` rounding the float32 depth coefficient
+  to one: the far plane disappears, an object beyond far remains visible, and the far
+  endpoint unprojects to infinity. `resolve` refuses this as `UnrepresentableDepthRange`;
+  the two-variant regression was red before the guard and green after.
+  The owning defect pass also measured a zero inverse at near/far `1e-12/1e-10`, from
+  the existing `Mat4.inverse` precision threshold. The `1e-12` and `2e-12` scale variants
+  were red before `UnprojectableView`. The center and four corner screen rays must be
+  finite and nonzero before a perspective view is accepted. A separate test refuses
+  overflowing corner rays at FOV `3.1415925`, near/far `1e9/1e15`, while the same range at
+  FOV `1.0` retains a unit corner ray.
+  The resolved view retains the inverse used for this check and reuses it for picking:
+  Heaps' `Camera.getInverseViewProj` cache, eagerly filled here because acceptance needs
+  it, instead of recomputing the inverse at every tap. No matrix threshold is loosened,
+  no zero inverse is repaired, and the orthographic snap/projection arithmetic is unchanged.
+  A resolved `CameraView` is a snapshot: change the request and resolve again rather than
+  editing one of its derived matrices independently.
+- **Final gate, 2026-09-30.** `sh scripts/gate3d.sh`, installed msc `35601908`, D3D11
+  on the shared Windows workstation: **GATE GREEN with 1 skipped stage** (`device`).
+  The tested source and baseline snapshot is committed as `44f2f3c`, tree
+  `95d9475bfaf2a2d248287ec80f934452b57d0bb6`; the run preceded those commits and its
+  header records `d688548` plus tracked diff `da63d5f8ed3a`.
+  **1004/1004 tests**, +14 net on M20 (eight camera cases and seven frustum cases added,
+  one forwarding-only camera case removed); **35 abort programs**, +1.
+  **16 configurations / 64 frames match 52 hashes**: every original ortho frame is
+  byte-identical, and only the four `m21perspective` hashes were added in their own commit.
+  HUD/compose/both-layer/registration-order checks and three campfire picking probes pass.
+  The perspective consumer reports **4/4, 4/4, 5/3, 4/4** visible/culled, with nearest
+  and off-center picks, lit RGB and the distant-camera control passing.
+  Listed frame/render/pick/perspective paths contain no array copy or built string;
+  steady frame state stays flat over 300 frames, and 310 churn frames retain four live
+  buffers and flat tables/pool. The oracle remains **75 agree / 11 declared divergences**;
+  PENDING3D stays at 25 rows. Android arm64 builds at **3,372,240 bytes**, +47,592 on M20
+  with the same compiler. Timing is report-only, not a controlled performance lane.
+  The fresh design re-review is **SHIP** after the numeric repairs; landing is not implied.
+- **Deliberately not included.** Automatic mesh-bounds culling is Bevy's shape; Heaps'
+  optional collider and inherited group-collider interfaces are not ported.
+  Empty CPU bounds mean unavailable, so external GPU-only meshes, particle and billboard
+  streams remain drawn, as Bevy's no-Aabb branch does. Their shader still clips geometry.
+  No hierarchical/group culling, dynamic stream bounds, textured meshes, shader changes
+  or new GPU resources. The constant billboard normal remains a declared divergence in
+  PENDING3D with perspective too. No GLES3 or real context-loss claim is added.
+
+### M22 as built
+
+- **A mesh with uvs is its own vertex layout.** `meshData.ms` `MeshData.hasUvs` (set by
+  `MeshData.withUvs()`) picks the stride, 10 or 12 floats, and `draw.ms` `meshFor` the layout,
+  `Lit` or `LitTextured`. The textured layout is position, normal, uv, rgba: the order Heaps'
+  `Polygon.getBufferFormat` appends them in, colour last. Heaps' format is per primitive and the
+  shader asks for its inputs by name; here the two formats are the two layouts the fixed programs
+  read, and M15's `RendererError.VertexLayout` already refuses a textured material on a mesh
+  without uvs, where Heaps throws "Missing buffer input 'uv'" (`hxd/BufferFormat.hx:302`).
+  - `addTexturedVertex` takes a `Uv` (Heaps' `h3d.prim.UV`); `addVertex` on a mesh with uvs and
+    `addTexturedVertex` on one without are `MeshError.UvMismatch`, before anything is written.
+  - `addTexturedQuad` maps the whole texture onto `a b c d`, counter-clockwise from the bottom
+    left, face on: the texture's first row runs along `d c`. `addTexturedCube` is Heaps' `Cube`
+    with `addUVs` (`h3d/prim/Cube.hx`): every face the whole texture, from the origin to `size`
+    or centred, 24 vertices and 36 indices. The orientation per face is this port's: every face
+    reads upright and unmirrored face on, the top with its first row at the back, the bottom with
+    it at the front. Heaps' table is laid out for its own frame, Z up and left-handed by default
+    (`h3d/Camera.hx:69`, `rightHanded = false`), and its top and bottom both put the first row
+    toward its +y.
+  - Bounds and picking read the mesh's own stride. glTF still produces `Lit` meshes.
+- **Two programs, each preset's.** `shader3d.glsl` `litTextured` and `pixelArt3d.glsl`
+  `litTextured` sample view and sampler 0 and multiply the texel into the vertex colour before
+  saturation and the lights, where Heaps' `Texture` shader follows `BaseMesh`
+  (`pixelColor *= texture.get(uv)`, `h3d/shader/Texture.hx`). The core map draws
+  `LitTextured` as itself; the pixel-art map draws `PixelArtLitTextured`, whose point lights step
+  to the material's ramp levels and which writes the normal and depth target, so its ramp check
+  covers it. `gpu3d.c` holds both to the core's attribute slots and the slot order to the writer.
+  - The registry now holds void3d's 11 of 16 programs and 5 of 8 layouts. The registration
+    fixture registers 5 programs and 3 layouts, so both orders still meet the limits exactly.
+    void2d's pipelines join the same registry in its arc; five programs remain. D1 replaced this bound on 2026-09-30 (VOID2D.md "D1 as built").
+- **A texture is the context's third asset** (`texture.ms`, `draw.ms`).
+  - `TextureData` is the CPU copy: RGBA8 pixels as 0xAABBGGRR words, first row on top, and the
+    filter and wrap Heaps keeps on the texture (`Texture.filter`, `Texture.wrap`) and Bevy on the
+    `Image` (`image.rs:639`, `:654` at `157e1ce6`). It imports nothing of the GPU:
+    `FilterMode` and `Wrap` moved from `gpu/door.ms` to `gpu/state.ms`, beside the other
+    `h3d.mat.Data` enums.
+  - `addTexture` takes a copy, uploads the image and view at once and answers a `TextureId` from
+    a `Slots` table of its own, as meshes and materials have. A size that does not match its
+    pixels is `TextureUploadError.BadSize`, before anything is made; a refused upload frees the
+    slot. Upload is eager, as `addMeshData` is, so a refusal is reported where it happens. Heaps
+    allocates on first use and Bevy prepares the next frame; neither reports to the caller.
+  - Holders, pins and doom are M17's, extended to a new holder: a material. The caller holds a
+    new texture once; `retainTexture` and `releaseTexture` count; a caller release that would take
+    a material's pin is `OnlyPinned`; at zero the id goes stale and the image and view are doomed
+    and destroyed by the next `beginFrame` (`buryDoomed`), or dropped when they belong to a lost
+    context. Heaps counts no textures (`dispose`, the resource cache, auto-dispose by
+    `lastFrame`); the count is Bevy's strong `Handle`, as M17 took for materials.
+  - `beginFrame` remakes every texture of an older context from its `TextureData`
+    (`rebuildTextures`), beside `rebuildMeshes`. Heaps' `Texture.realloc` is a callback its
+    caller supplies; here the context keeps every texture's pixels for the texture's whole life,
+    which costs their size in RAM (Bevy's `RenderAssetUsages` is the way to drop the copy, not
+    ported).
+  - Samplers are shared, one per filter and wrap, made on first use; like `PipelineCache` the
+    cache carries the GPU context it belongs to and forgets its handles on a new one
+    (`samplerFor`). At most six live per context and none is destroyed while it lives, as with
+    pipelines. Heaps' `DirectXDriver` caches one sampler state per setting (`samplerStates`,
+    `h3d/impl/DirectXDriver.hx:104`, `:1352-1368`); Bevy's default-sampled images share one
+    (`gpu_image.rs:165-175`). A sampler per texture would exhaust sokol's 64-entry pool at 64
+    textures.
+- **A material holds its texture.** `Material.texture` is Heaps' `Material.texture`, drawn at
+  view and sampler 0; Bevy's `StandardMaterial.base_color_texture` is the same slot
+  (`pbr_material.rs:58`).
+  - `addMaterial` refuses, before it owns the uniform range: a material that also names a view or
+    sampler at slot 0 (`MaterialError.TextureNamedTwice`), one whose program samples nothing at
+    slot 0 (`TextureNotSampled`: sokol validates only the bindings a shader expects, so the texture
+    would be bound nowhere and still pinned), and a texture that is not live (`StaleTexture`). It
+    pins the texture; freeing the material lets it go. Any program that samples slot 0 takes one,
+    the billboards and screen programs included.
+  - A material's texture is fixed when it is added, as its uniform range is: `beginFrame` and
+    `drawScreen` refuse a material whose field no longer names the texture it holds
+    (`RendererError.TextureReplaced`, passed on by both presets, whose `prepareFrame` checks their
+    own screen materials the same way), and `texturesFit` holds the drawn program to view and
+    sampler 0. Heaps' setter is not ported; another texture is another material.
+  - `bindItem` resolves the id to the texture's view and the shared sampler. A texture whose
+    remake the driver refused has no view, and its items draw nothing until the next rebuild,
+    as a mesh with nothing to draw does (M16); the count `rebuildTextures` answers is not reported.
+  - Heaps binds a grey loading texture for a missing or disposed one
+    (`h3d/impl/DirectXDriver.hx:1308-1312`); here a program's texture slot with nothing bound is
+    M15's `RendererError.MaterialTexture`.
+- **Found on the way.**
+  - The gate's `style` stage counted bytes, so a line with four `…` passed under a UTF-8 locale
+    and failed without one (`src/gpu/pipeline.ms:157`, 94 columns, 102 bytes). It counts
+    characters now (`332d25b`).
+  - The pixel-art post pass does not outline a perspective scene. Measured: the outlined
+    capture run with the perspective camera fails its silhouette check, no texel shaded where
+    the cube meets the background. Read from the source, not measured: the pixel-art programs
+    write `gl_Position.z` as their depth, which is `[0, 1]` only when `w` is 1, and the post pass
+    compares it with the cleared 1.0. This predates M22 (M21 claimed perspective without the
+    pixel-art post pass); it is the PENDING3D row `pixel-art-depth-orthographic`, and the
+    outlined textured capture looks orthographically.
+  - msc `35601908` exits 127 with no diagnostic on a C-style `for` inside `if (false)`, in
+    `msc check` too. Hit by a hand-made control, rewritten as a live condition; card
+    `2026-09-30-c-style-for-under-if-false-exits-127.md`, repro in `out/tmp/ifFalse`.
+
+**Acceptance.** `sh scripts/gate3d.sh` on the committed code (`c67b5e5`), installed msc
+`35601908`, D3D11 on the shared Windows workstation: **GATE GREEN with 1 skipped stage**
+(`device`). **1022/1022 tests**, +18 on M21: 7 for meshes with uvs, 11 for texture refusals and
+the sampler key. **35 abort programs**, unchanged. **20 configurations / 80 frames match 64
+hashes**: all 52 earlier hashes unchanged; `m22textured_*` and `m22texturedpixelart_*` added in
+their own commit (`a142397`), `m22texturedoutline_*` in another (`b9be806`). Oracle 75 agree /
+11 declared divergences; PENDING3D 26 rows (`pixel-art-depth-orthographic` added). The
+allocation scan adds `keepsItsTexture`, `namesTexture`, `isTexture` and `stride`. Churn: 310
+frames, 6 live sokol buffers, 3 images and 2 samplers flat; the control, never releasing, runs
+out of sokol's pools after 25 frames. Android arm64 builds at **3,479,656 bytes**, +107,416 on
+M21 with the same compiler: two programs in six backends and the texture tables, not attributed
+further. Timing is report-only.
+
+- `tests/integration/texturedFrame.ms`, four gate configurations at 320×240: a 1.2-unit textured
+  cube from a 2×2 texture (red, green / blue, yellow), nearest, clamp. Forward and pixel-art
+  (post pass off) look in perspective; the outlined pixel-art one orthographically.
+  - Frame 1, face on at full ambient: each quadrant of the front face projects onto its texel's
+    exact bytes. Frames 1, 6 (turned 0.6 rad) and 11 (turned and tipped, three faces), forward and
+    pixel-art: every pixel is the background or one of the four texels, and all four show.
+  - Frame 16, forward: ambient 0.25 and a directional light of 0.25 toward the face give each
+    quadrant half its texel, within 1. Pixel-art, both: one point light, stepped by the preset:
+    every pixel of the red quadrant is red at a ramp level k/4, at least two levels showing.
+  - Outlined: frame 1 has texels at the depth shade (0.55) while its quadrant centres stay exact,
+    which needs the program's depth in the normal target; frame 11 has texels lifted by
+    `rgb * 1.35 + 0.02`, which needs its normals. The checks count such texels anywhere in the
+    frame; that they sit on the silhouette and on the creases is held by the hashes, not by a
+    readback check.
+  - Before the first frame, on the real driver: two textures on one setting make two images, two
+    views and one sampler, and two more settings one sampler each; retain and release; a
+    material's pin and `OnlyPinned`; two materials on one texture, the texture outliving the first
+    and freed with the second; a material freed while the caller still holds its texture;
+    the stale id refused; `buryDoomed` destroys four images and views and keeps the samplers.
+  - `texturedRebuildCapture` loses the context at frame 3 through `beginFrame`'s own
+    new-context branch: every mesh with data, the texture and the sampler cache marked as
+    another context's, the core as not having seen this one. The texture comes back on a new
+    view and a new sampler, and the frames match the forward hashes.
+  - The pixel-art frames 1, 6 and 11 equal the forward ones byte for byte: with no point light
+    and no post pass the two programs compute the same thing.
+- Controls, run in the session: the quad's v flipped fails quadrant 0 (blue where red is); the
+  texel dropped from the core program fails quadrant 0 (white); the pixel-art map drawing the
+  core `LitTextured` fails the stepped check (red 140, not a ramp level); a constant normal from
+  `PixelArtLitTextured` fails the crease check; a sampler cache that ignores a new context fails
+  the rebuild (`sampler 65537` kept). Before the point light was added, the program-map control
+  passed: the pixel-art configuration could not tell the two programs apart.
+- Churn: every frame also loads a textured cube, a texture and a textured material, and
+  releases them.
+
+**Still missing after M22.**
+- glTF `TEXCOORD_0` and images; decoding an image file into `TextureData` (the spike loads
+  `assets/test.png` through stb; no loader turns that into a texture here).
+- Mipmaps, anisotropy, sRGB (neither preset converts), Heaps' `killAlpha` and `additive`.
+- Billboard atlases are still the caller's views (M15), though a billboard material now takes a
+  context texture.
+- A material's texture cannot be swapped in place; the `Material.texture` setter is not ported.
+- Texture lifetime is proven in the GPU consumer on D3D11, not headless: `addTexture` uploads at
+  once and the suite has no device. The headless tests cover the refusals and the sampler key.
+- Every texture keeps its CPU pixels; nothing drops the copy.
+- The pixel-art preset's depth under a perspective camera (above).
+- No GLES3/device run and no real context loss; the rebuild is the simulated one.
+
+**The spike is gone.** After the M22 reviews the human asked for it to be deleted: the textured
+cube demo (`rendererSokol.ms`, `cubedata.ms`, `mainSokol.ms`, `androidCubeEntry.ms`), its shader
+(`src/sokol/shader.glsl`), the cube-only bridge calls in `bridge.c`, `bridgeEmbed.m`,
+`bridge.h`, `gpu.ms` and `gpu.wms` (vertex and index buffers, the cube shader and pipeline, the
+sampler, bindings, the MVP upload, the draw), the global MVP matrices in `src/math/mat4`, and
+`web/index.html`, which loaded it. `build-android.sh` now builds the campfire entry by default.
+The textured cube of `tests/integration/texturedFrame.ms` is the real renderer's replacement.
+
+### M23 as built
+
+- **Images decode from bytes, sized per call** (`src/assets/image.ms`, `image.c`).
+  `imageFormatOf` tells PNG from JPEG by their signatures, as `hxd.res.Image.getInfo` does.
+  `decodeImage` asks stb for the size first (`void_image_size`, `stbi_info_from_memory`), refuses
+  a side over 16384 (`D3D11_REQ_TEXTURE2D_U_OR_V_DIMENSION`) or an encoded length over `INT_MAX`
+  as `TooLarge`, and decodes into a `Vec<uint32>` it sized itself (`void_decode_image`,
+  `stbi_load_from_memory` to four channels, copied only when the decoded size is the one asked).
+  The words are `hxd.Pixels`' RGBA8, first row on top. Nothing is kept in C globals: a refusal
+  after a decode answers its own error, not the last size. The path loader void2d calls
+  (`void_load_image` and its width and height globals) is untouched, with its stale-size defect,
+  for its arc.
+- **glTF grows by textures and materials** (`src/void3d/gltf.ms`). `loadGlb` reads GLB 2 (magic,
+  version, total length, the JSON chunk first, an optional BIN chunk second, every chunk length a
+  multiple of 4) into M8's `loadGltf`. The subset adds `TEXCOORD_0` as float VEC2 into a mesh with
+  uvs, `primitive.material`, and `materials`, `textures`, `samplers` and `images` from a buffer
+  view. Each glTF texture is decoded into one `TextureData`, as Bevy's `load_image` makes one
+  `Image` per texture. Min and mag must name one filter, a mipmap min filter counting as its base
+  (Bevy `texture_sampler`), and `wrapS` must equal `wrapT`, because Heaps keeps one of each per
+  texture; a texture with no sampler is `Linear` and `Repeat`. A sampler with no `magFilter` takes
+  its min filter's base, where Bevy keeps its default mag filter
+  (`bevy_gltf/src/loader/gltf_ext/texture.rs:20-25`). A material's `baseColorFactor` is multiplied
+  into its primitive's vertex colours with alpha 1, and every texel loads with alpha 255: each
+  material the loader accepts is `OPAQUE`, whose alpha glTF ignores (§3.9.4), and the pixel-art
+  post pass reads the colour target's alpha as its outline mask (`pixelArt3d.glsl:242-243`).
+  Bevy writes alpha 1 for an opaque material in the shader instead
+  (`bevy_pbr/src/render/pbr_functions.wesl:101-104`); while only `OPAQUE` is accepted, loading
+  the texels opaque is exact. Refused by name before anything is
+  made: `ImageByUri`, `BadImage`, `UnsupportedSampler`, `UnsupportedMaterial` (`MASK`, `BLEND`,
+  normal, occlusion and emissive textures, a non-zero emissive, `texCoord` other than 0,
+  extensions on a texture reference), `MissingTexCoord`, `BadReference`, `NotGlb`. A node scale
+  whose product is not positive stays `Unsupported`, so the loader makes no mirrored node.
+- **Into the context** (`src/void3d/gltfScene.ms`). `addGltfAssets(context, data, setup)` refuses
+  a lit block of the wrong length (`BadSetup`) and inconsistent data (`InvalidData`) before it
+  makes anything. It makes one context texture per glTF texture, one material per glTF material
+  and glTF's default material when a primitive names none, all from `GltfMaterialSetup`, which
+  plays Heaps' `MaterialSetup` (the pass, and the lit block's values), and one mesh per decoded
+  mesh. A setup that sets the double-sided flag itself is `BadSetup`: the material decides it. It
+  answers M8's bindings for `addGltfNodes`. A refusal after the first upload releases everything
+  the call made and names what refused. `releaseGltfAssets` gives back the loader's hold on each
+  asset; the nodes keep theirs, so the model draws on, and removing its nodes frees it (M17's
+  holders).
+  - Every mesh that names a glTF material shares its one `MaterialId`. **That is Bevy's loader,
+    not Heaps'.** `makeMaterial` caches one material per file material and hands each object a
+    `deepCopyMaterial` (`hxd/fmt/hmd/Library.hx:355`), so a change to one object's material stays
+    on that object. Bevy loads a material once per label and every primitive shares the handle
+    (`bevy_gltf/src/loader/mod.rs:1639-1646`), and void3d's nodes already share materials by id
+    (M17's holders). A game that greys one node of a model gives that node its own material.
+- **Double-sided** (`shader3dBlocks.glsl` `facingNormal`, used by the four lit programs). A
+  `doubleSided` material draws with culling `None` and sets `MATERIAL_DOUBLE_SIDED` in the lit
+  block, and the programs reverse a back face's normal when it is set: Heaps'
+  `FlipBackFaceNormal`, Bevy's `double_sided`, and what glTF requires. Refusing `doubleSided` was
+  rejected because it refuses Blender's default material. Every existing material leaves the flag
+  0, and every capture from before M23 keeps its hash.
+- **The fixture** `tests/fixtures/gltf/texturedScene.glb`, 4,172 bytes, is written by
+  `makeTexturedGlb.py`, which shares no code with the loader: five nodes (a textured cube, a
+  tinted quad with a factor, a double-sided quad, a double-sided textured quad, a single-sided
+  quad), five materials, one 2×2 PNG (red, green / blue, yellow), nearest and clamp. Khronos
+  glTF-Validator 2.0.0-dev.3.10 reports 0 errors, warnings, infos and hints. `.gitattributes`
+  keeps `*.glb` byte for byte.
+
+**Acceptance.** `sh scripts/gate3d.sh` on the reviewed code (`b9860c0`), installed msc
+`5791eadd`, D3D11 on the shared Windows workstation: **GATE GREEN with 1 skipped stage**
+(`device`). Every gate named here ran before the rebase over void2d's D1; the commits are named
+as they are on main. The new hashes were adopted on `e6563c4` in their own commit (`b77bff2`).
+The first gate with the `gltf` stage running, on `bde391d` without adoption, failed only on the
+missing `m23gltf*` hashes, and its readback checks passed. **1037/1037 tests**, +15 on M22:
+5 image decoding, 7 glTF reading,
+3 glTF into the context. **35 abort programs**, unchanged. **24 configurations / 96 frames
+match 72 hashes**: all 64 earlier hashes unchanged. Oracle 75 agree / 11 declared divergences;
+PENDING3D 26 rows. Churn: 310 frames, now also loading and releasing the glTF model every frame,
+10 live sokol buffers, 4 images and 2 samplers flat; the control, never releasing, runs out of
+sokol's pools after 14 frames. Android arm64 builds at **3,469,312 bytes**, +14,184 on the M22
+land gate (`9f41458`), which msc `35601908` built; not attributed further. Timing is report-only.
+
+- `tests/integration/gltfFrame.ms` reads the fixture from disk (`readFile`, then
+  `loadGlb` over `const bytes: Vec<uint8> = [...file.value.asBytes()]`) and draws it through the real renderer in three configurations
+  at 320×240: forward, pixel-art with the post pass off, and forward with the context lost at
+  frame 3. Frames 0–4 are face on at full ambient, 5–9 lit, 10–14 turned 0.6 rad, and from 15 the
+  model's group is removed.
+  - Frames 1, and 6 forward (ambient 0.25 and a sun of 0.75 toward the faces): each quadrant of
+    the cube is its texel's exact bytes; the double-sided textured quad, seen from behind, shows
+    the same texels mirrored; the white double-sided quad's back is white; the factor quad is
+    (128, 64, 128) within 1, its tint (1, 0.5, 0.5) times the factor (0.5, 0.5, 1); the
+    single-sided quad's back is culled to the background.
+  - Frame 6, pixel-art: two lamps (x 0.4 and 2.0, power 3) light the double-sided backs only
+    through their reversed normals; every pixel there is a ramp level and at least two show.
+  - Frame 11: every pixel is the background or a colour of the model. Frame 16: nothing draws,
+    the context's meshes, materials and textures are back where they started, and the burial took
+    the model's 10 buffers, 1 image and 1 view.
+  - Before the first frame: five materials in a uniform pool sized for two are refused as
+    `UniformsFull`, leave no asset live and bury what was uploaded; the model makes five
+    materials and five meshes; two textured materials pin its texture twice; releasing the
+    loader's holds keeps what the nodes draw.
+  - The context-loss configuration marks every mesh with data, the texture and the sampler cache
+    as another context's at frame 3; the texture comes back on a new view and sampler, and the
+    frames match the forward hashes. The pixel-art frames 1, 11 and 16 equal the forward ones byte
+    for byte: no light reaches those stages and the post pass is off.
+- `gltf-cpu` builds a smoke of `loadGltf` and `loadGlb` (the image decoder with them), runs it,
+  and fails when `sg_setup` is in the binary.
+- Controls, run in the sessions, each failing at the named check and then restored: the image
+  decoded upside down (`imageDecodeCheck`); the factor not baked (`gltfMaterialCheck`, two tests;
+  the consumer's factor quad, 0xFF7F7F); `MASK` accepted; a mipmap filter mapped to the wrong
+  base; a BIN chunk accepted third; double-sided culling left on (headless, and the consumer's
+  mirrored quadrant shows the background); the normal not reversed (the consumer's quadrant 0 is
+  red at ambient only, and a lamp shows 0 levels on a back face); `addGltfAssets`' rollback
+  skipped; a texture release skipped (the consumer's refused load leaves an asset live); the
+  consumer never releasing its holds (removing the nodes frees nothing); churn without
+  `releaseGltfAssets` (tables grow, stops at frame 29, `MeshRefused`); the `gltf-cpu` smoke
+  importing `gltfScene`, which links sokol (the stage fails); a texel's alpha kept at load
+  (`gltfMaterialCheck`, two tests); a setup's own double-sided flag accepted (the setup test).
+- **Found on the way.**
+  - msc `35601908` put the byte view where the span belongs for `asBytes()` into a `Span`
+    parameter (Compiler notes). The consumer kept the direct form and was parked on the card,
+    with the gate's stage skipping by the card's name; msc `5791eadd` builds it.
+  - The gate's `GATE_ADOPT=1` reported "recorded 4 new hashes" for the M23 baselines and wrote
+    none: `record_hash` rebuilds the manifest from `baseline_names`, which did not list them. The
+    names are listed now, and a key the list lacks fails its capture (`e6563c4`).
+  - Three gate lines counted "twenty-two" capture entries, right at `9f41458` and wrong once M23
+    added three; they give no count now.
+
+**Still missing after M23.**
+- Images by URI and data URIs, `KHR_texture_transform`, a second uv set, alpha mask and blend
+  (Heaps' `killAlpha`), normal, occlusion and emissive maps, mipmaps, a material colour uniform
+  (Heaps' `BaseMesh.color`; the factor is baked instead), a Blender export
+  (`gltf-real-export-not-exercised` stays), decoding on the JS backend, and moving void2d's image
+  loading.
+- Colour spaces. Texels, factors and `COLOR_0` are all drawn as stored, as Heaps does by default,
+  and neither preset converts. glTF's base colour texture is sRGB, while its factor and `COLOR_0`
+  are linear, and Bevy reads the factor with `Color::linear_rgba`
+  (`bevy_gltf/src/loader/mod.rs:1435`). So a factor draws darker here than in a viewer that
+  follows the spec: the fixture's factor quad is (128, 64, 128) here and about (188, 137, 188)
+  there. Decide this before `gltf-real-export-not-exercised` closes.
+- Alpha as a material's, not a texture's: MASK and BLEND need it, and then the load-time alpha of
+  255 moves to the program, as Bevy's `alpha_discard` does. Textures a caller adds (M22) still
+  feed the outline mask with their alpha, as Heaps multiplies the texel's alpha in
+  (`h3d/shader/Texture.hx:30`).
+- `addTexture` does not check the device's largest texture. GLES3 guarantees 2048 per side, the
+  decoder takes up to 16384 (D3D11's), and sokol reads the limit (`sokol_gfx.h:10436`) but
+  validates only a size above 0 (`:24073-24074`). On such a device an oversized image is not
+  refused by name.
+- A decode has no memory budget beyond the 16384 side, as neither reference has one (Bevy's
+  loader calls `no_limits()`, `bevy_image/src/image.rs:1632`): the largest accepted image takes
+  1 GiB for its words and as much again in stb while it decodes.
+- Two glTF textures on one image decode it twice and upload two images, as Bevy does.
+- A mirrored node made through the scene API over a double-sided material reverses the normals
+  of the faces it shows, as Heaps' `FlipBackFaceNormal` does; the loader makes no mirrored node.
+- No GLES3/device run and no real context loss; the rebuild is the simulated one.
+
+### M24 as built
+
+The rows are `500cc09` and `0048b18`; the milestone is the commits after them on `wt/void3d-m5`,
+rebased over main `122e515`, void2d's GPU-door closure. The before control is the unify audit's
+(`void/out/tmp/unifyAcceptanceD0/evidence.zip`, run by the main Void session) and this
+milestone's consumer run on `0048b18`.
+
+- **The store is one reference** (`src/void3d/draw.ms`, `uniformPool.ms`). `DrawContext` and the
+  `UniformPool` it holds are interfaces, as `Scene2D` and `DrawContext2D` are, so `let b = a` and
+  `let p = context.uniforms` name the store they were read from. Every store parameter lost its
+  `ref`: a value parameter of an interface is the reference. A second holder is still only
+  `retain*` or `pin*` (M17). The store goes by value for a measured reason as well: void2d's
+  compiler card `2026-10-01-ref-struct-interface-field-c-member-access.md` (an interface field
+  read through a `ref` struct parameter does not compile in C) does not reach this shape, and
+  `out/tmp/m24/probe/ifaceProbe.ms` measured it on real sokol buffers before any source changed:
+  the inner pool read and written through value and `ref` parameters, the pool aliased, an alias
+  releasing two buffers once while a second store's buffer stayed live.
+- **Ids name their store.** A context takes a serial when it is made, from a module counter as
+  `DrawContext2D` takes its id; a pool takes its own. `MeshId`, `MaterialId`, `TextureId` and
+  `UniformBlock` carry it as `store`, and `issuedMesh`, `issuedMaterial` and `issuedTexture` say
+  whether a context made an id. The questions stay questions: `hasMesh`, `hasMaterial`,
+  `hasTexture` and the pool's `holds` and `isOwned` answer false for another store's id. A call
+  that admits, writes, holds, releases, pins, unpins or draws one refuses it by name, never as
+  stale: `HandleError.ForeignMesh`, `ForeignMaterial`, `ForeignTexture`;
+  `MaterialError.ForeignTexture`, `ForeignUniforms`; `UniformError.Foreign`;
+  `StreamError.ForeignMesh`; `RendererError.ForeignMesh`, `ForeignMaterial` and both presets';
+  `SceneError.ForeignMesh`, `ForeignMaterial`; `AnimationError.ForeignMesh`;
+  `GltfSceneError.ForeignMeshBinding`. `drawItem`, which is public, stops by name before any
+  table index or GPU call on an item or a pass-wide block its context does not hold, and on a
+  material whose block or texture is not the one it was added with (`keepsItsUniforms`,
+  `keepsItsTexture`, as `beginFrame` checks): a block of a larger pool would otherwise be read
+  past the end of this one's values, and a rewritten texture id would index the texture table
+  with another store's, a stale or an out-of-range index. `drawScreen` checks
+  that a material keeps its block, as `beginFrame` does, and both presets check their own screen
+  materials' blocks beside their textures in `prepareFrame`, so a replaced block is refused as
+  `UniformsReplaced` before any pass.
+- **Which misuse is a `Result` and which stops.** An id a caller passes and another context
+  issued is a `Result`, as Bevy's `Assets::get` answers an `Option` and M19 keeps queries and real
+  failures in `Result`. An owner whose own ids another context issued is M19's misuse and stops,
+  naming the call: a scene's `remove` and `setMeshOf`, `releaseMeshFrames`, and the pin tallies;
+  until M24 those skipped such an id as if it had been freed, and leaked its pins in the context
+  that did issue it. A freed id is still skipped. A renderer, a preset or `GltfAssets` used
+  through another context answers a `Result` until M25, since their own ids are checked as a
+  caller's are; a preset's `drawToScreen` stops and says so.
+- **Mappings name their cases.** A mapping from one layer's error to another's is an exhaustive
+  `match`, and a case it cannot meet stops through a helper that names it (`uniformsError` in
+  `draw.ms`, `frameError` in `animation.ms`); the exhaustive `match` in the churn example caught
+  the new `GltfSceneError` member in the first gate run. A zero-length block owns nothing and
+  names no store. `NO_MESH`, `NO_MATERIAL` and `NO_TEXTURE` are store 0, which no context has, and
+  the id literals in the tree write their store, since a struct literal leaves a field it omits at
+  0. A serial counter stops by name rather than wrap.
+- **NEW MECHANISM**, under the delegation of 2026-09-29: the store serial in every id. Heaps' and
+  Bevy's handles carry their store too, a `Texture` its `mem` (`h3d/mat/Texture.hx:129`) and a
+  strong handle its store's drop channel (`bevy_asset/src/handle.rs:80-97`), and route a release
+  to it; neither checks an id against a store, because a handle is the object or a world has one
+  store of a kind. void3d keeps ids as values ("Data types"), so the store is checked where an id
+  comes in. Where Heaps' `MemoryManager.deleteTexture` ignores a texture it does not hold
+  (`h3d/impl/MemoryManager.hx:230`), void3d refuses it by name. Cost: 4 bytes an id, so
+  `DrawItem` grows from 80 to 88 bytes and `Material`, `MeshInstance` and `GltfMeshBinding` by 8;
+  one compare a check; a context is two heap objects, itself and its pool. The bench and
+  allocation stages stay flat.
+
+**Acceptance.** D3D11 on the shared Windows workstation, msc 0.2.55 at `5791eadd`.
+- Before: the audit's owner controls printed `BUG owner namespace` for a material and a texture.
+  On `0048b18`, `tests/integration/storeIdentity.ms` in its first form, which checked only that a
+  call was refused and had no mesh-alias checks (its source was not kept), failed 23 checks
+  (`out/tmp/m24/red-431dc90.log`): B took each of A's four kinds; every retain, pin and release of
+  A's ids went through on B's slots, so B's own block was released; B accepted a material naming
+  A's texture and drew A's item; and through a copy of A, a release went unseen by A, A buried
+  nothing, the view stayed live, a second release through A went through, and the pool's copy did
+  not hold A's new block.
+- After: the consumer passes as the gate's `stores` stage. Two contexts that name the same slots
+  refuse each other's meshes, materials, textures and blocks by name on every path; B's buffer and
+  view stay live and B buries nothing; B draws its own item and refuses A's (`ForeignMesh`) and A's
+  material on its own mesh (`ForeignMaterial`). An alias releases a texture and a mesh, the
+  context sees both, `buryDoomed` counts 1 and then 2, once, and 0 through the alias, and the view
+  and buffers are dead. A reused slot refuses the old id as stale.
+- Controls on the new tree, one kind each: `issuedMesh` forced true fails exactly the consumer's
+  five mesh checks; `issuedTexture` forced true fails exactly its four texture checks; the pool's
+  store check removed fails its three block checks and the check that B's own resources are
+  untouched, since A's
+  block then releases B's range; `issuedMaterial` forced true fails four suite tests.
+- Suite 1123/1123 (1114 + 9 in `src/test/storeCheck.ms`). 46 abort programs (35 + 11): a
+  scene's `remove` and `setMeshOf`, `releaseMeshFrames` and the two pin tallies through another
+  context, and six on the public `drawItem`: another pool's pass-wide block; a material's
+  texture rewritten to another store's id, past the table, or to a released id; its block
+  rewritten to another live block of the same pool or to a released one. Each `drawItem` case
+  has a control with its check removed: it then runs past and stops later without the message,
+  reads index 99 of a table of one, or, for the released texture, returns having drawn nothing.
+  The presets' screen-block checks are measured on D3D11 in the `stores` consumer: after a good
+  frame from each preset, the forward copy's, the pixel-art post's and the blit's block replaced
+  in turn is `UniformsReplaced` with no pass open, no new sokol buffer, image, view, sampler or
+  pipeline, and the core's generation untouched, and a second context's frame drawn in the same
+  sokol frame reads back as its own background. Their controls, each check removed in turn, run
+  into the frame's passes and fail late: the copy's and the blit's at `drawToScreen`'s stop, the
+  post's on a bare stop with no message (exit 132), where `drawPost` meets `drawScreen`'s refusal.
+- Every run and control named here ran before the rebase over `122e515`; the commits are named
+  as rebased.
+- `sh scripts/gate3d.sh`: the receipt is in `docs/REVIEWS-3D.md` "M24", "Final acceptance". Two
+  runs failed on the way. On `a2d8cb6` the churn example's exhaustive `match` over
+  `GltfSceneError` missed `ForeignMeshBinding` and the example did not build (`6acafbd`). On
+  `b86bac7` the allocation stage found a string built inside `drawItem`, and the style stage four
+  long lines (`90b4cbd`).
+
+**Still missing after M24.**
+- Owners are still values: `Scene3D`, the renderers, `MeshFrameAnimation`, `GltfAssets` and
+  `PaletteLut` copy their holds and handles, and a node id names no scene (M25).
+- `pickNearest` reads two tables a caller passes, not a context, so it cannot check their store:
+  a scene picked against another context's tables answers that context's geometry. M25's row
+  takes it onto the scene's own context; how its headless tests then give a context mesh data
+  without an upload is M25's to settle. `collect` and `filterFrustum` take tables too, but only
+  `beginFrame` calls them, after it has checked every item.
+- `PipelineCache` is a reference owner since void2d's door closure F (VOID2D.md "Door closure"),
+  so `let c = context.pipelines` names the one cache; M25's `DrawContext.close` closes it with
+  `closePipelines`.
+- `RenderTarget` is now a reference owner with in-place resize, terminal close and `isClosed`
+  (`src/gpu/target.ms`, VOID2D.md "RenderTarget reference owner"); Sampler remains a value.
+  Their generation and checked borrows are the shared door contract.
+- A store's `serial` is writable where it should be `readonly` (PENDING3D `store-serial-writable`).
+
+### M25 as built
+
+The row is `b4f7fc5`; the milestone is the commits after it on `wt/void3d-m5`, over main `2be9cf5`
+(void2d's `PipelineCache` owner). Its reviews and the gate receipt are `docs/REVIEWS-3D.md` "M25".
+
+- **Owners are references holding their context.** `Scene3D`, the core `Renderer`,
+  `ForwardRenderer`, `PixelArtRenderer`, `PaletteLut`, `MeshFrameAnimation` and `GltfAssets` are
+  interfaces, as M24 made the store one ("Data types"). Each keeps the context it was made on, and
+  every call that took a context beside the owner lost it, with every caller moved and no shim.
+  `Scene3D.create(context)` takes one even for a scene of groups and lights: there is no hidden
+  store. `NodeId3D` carries its scene's serial beside index and generation (`NO_NODE_ID`); a setter
+  or structure call given another scene's node stops as "of another scene", and so do
+  `bindTracks`, `syncPose`, `bindMeshFrames` and `syncMeshFrame` (`requireOwn`), where they
+  answered `StaleTarget`.
+- **Picking reads the scene's own context.** `pickNearest(scene, ray)` reads the geometry and
+  materials of `scene.context`, as Bevy's mesh picking reads the world's one store
+  (`bevy_picking/src/mesh_picking/ray_cast/mod.rs:177`, `:283`) and a Heaps collider its
+  primitive's CPU points (`h3d/prim/Polygon.hx:277`). Its headless tests write a context's tables
+  through `writeTables` beside `meshAt` (`src/test/drawHelpers.ms`). A CPU-only upload path, Heaps'
+  allocation at first render (`h3d/prim/Primitive.hx:113-114`), was not taken: `rebuildMeshes` runs
+  only on a new GPU generation, so a deferred mesh would never upload. `PickError.MeshOutOfRange`
+  and `MaterialOutOfRange` went: a node's ids are its context's, pinned, so always in range.
+- **Teardown is explicit, and terminal.** Each owner has a `close` made of the release calls that
+  existed (`closeRenderer`, `closeForward`, `closePixelArt`, `closePalette`, `closeScene`,
+  `closeMeshFrames`, `closeGltfAssets`, `closeContext`, `closeUniformPool`), refused inside a pass.
+  `closeRenderer` destroys the screen triangle's buffer it made, once and only under
+  `renderer.generation`, and releases its `MeshId`. `closeContext` buries the doomed, destroys its
+  samplers under their generation, closes its pipeline cache once (`closePipelines`) and its pool,
+  and stops naming the kind and count of any hold, pin or range still live. A preset skips a core or
+  palette an alias closed first. A closed owner stops every later call by name (`requireOpen` on
+  scenes and contexts, a `closed` check at each entry elsewhere), its queries answer false, it
+  never rebuilds a GPU object, and a second close through an alias stops. `closeGltfAssets` and
+  `closeMeshFrames` empty their id lists. There is no finalizer and no forced close; the device's
+  shutdown stays the host's.
+- **The palette table's GPU generation.** `PaletteLut` records the generation its image was made
+  under, as a `RenderTarget` does: `releaseGpu` and `closePalette` destroy under the current one and
+  forget under a stale one, and `upload` forgets a stale image itself. A preset's first frame no
+  longer forgets the table, which leaked a table the host uploaded or shared before it.
+- **Holds are the program's own state, so losing one stops.** A missing pin under a scene's node
+  stops `remove`, `removeChildren`, `closeScene` and `setMeshOf` ("found a node's pin taken through
+  the context"), as `closeMeshFrames` stops for a frame. M19 kept it a `Result`, `NotPinned`, because
+  "a pin taken through a copy of a scene is state the caller could not have seen" ("M19 as built",
+  "What keeps `Result`"); a scene is one reference now, so no copy exists, and the row's rule for
+  holds applies. `SceneError.NotPinned` and `AnimationError.NotPinned` are gone, and `remove` and
+  `removeChildren` answer the count, as M19's setters answer nothing once they cannot fail. M17's
+  "a copy took the pins" tests became a pin taken through the context; the two that answered
+  `NotPinned` became abort cases. A scene whose context was closed under it (one of groups and
+  lights holds nothing, so `closeContext` lets it) stops `addMeshNode`, `addGltfNodes` and
+  `setMeshOf` naming the closed context, where they answered `StaleMesh` or `BadMeshBinding`.
+- **Divergences, argued.**
+  - A second close stops. Heaps' `Texture.dispose` is idempotent (`h3d/mat/Texture.hx:358-360`,
+    and `MemoryManager.deleteTexture` ignores a texture it no longer holds, `:229-230`), as GPUI's
+    `destroy` is (`resources.take()`, `gpui_wgpu/src/wgpu_renderer.rs:2041-2044`). void3d follows
+    void2d's `closePipelines`: an owner is shared by reference, so a second close is a second
+    holder believing it still owns what the first ended.
+  - `closeContext` refuses live holds. Heaps' `MemoryManager.dispose`, reached from
+    `Engine.dispose`, is a forced close that disposes every texture and buffer
+    (`h3d/impl/MemoryManager.hx:259-275`). A forced close here would leave every owner holding
+    stale ids, so the caller closes renderers, then scenes, animations and glTF models, then its
+    own ids and ranges, then the context.
+  - `closeScene` is Heaps' `Scene.dispose` (`h3d/scene/Scene.hx:412-419`) without the renderer:
+    a Heaps scene owns its renderer and disposes it, and a void3d scene does not own one.
+  - A palette shared between presets (`b.palette = a.palette`) is closed by whichever preset
+    closes first, and the other's next frame stops naming the closed table. That is the alias
+    disposal of Heaps' `Tile.dispose` (`h2d/Tile.hx:248-261`), which the row does not take silently:
+    here it is loud.
+  - The row stops a glTF model paired with another context's scene; as built it is a `Result`.
+    `addGltfNodes` pairs no owner with the scene: it takes the ids a caller passes
+    (`GltfAssets.bindings`), the shape of `addMeshNode`, so M24's rule answers
+    `GltfSceneError.ForeignMeshBinding`. The check runs before any node is added, so a refusal
+    leaves the scene untouched (`gltfCheck`'s foreign-bindings case). The row's stop holds for mesh
+    frames, an owner whose own ids another context issued (`requirePaired`). An `addGltfNodes` that
+    took the `GltfAssets` owner, as Heaps' `Library.makeObject` builds from its library
+    (`hxd/fmt/hmd/Library.hx:477`), is where a stop would be right; it was not taken.
+- **Every stopping entry has a runtime proof, one build per owner module.** M19 writes one abort
+  program per entry that stops. M25's closed checks reach about eighty entries, and a program costs
+  one `msc` build, about 11 s on the shared workstation under load (measured 2026-10-03), in every
+  gate. The `aborts` stage therefore also reads `tests/aborts3d/cases/*.ms`: each names its cases
+  as `// expect <case>: <line>` beside the one-case `// expect:` form, is built once, and is run
+  once per case with the case's name as its argument, which calls only that entry. Each run must
+  stop with its own line. That is how Rust's test harness carries `#[should_panic]`, which Bevy's
+  panicking calls are tested with: one binary built once, each case run on its own. A stop here is
+  `unreachable`, which ends the process, so each case is its own process. A case that does not
+  stop fails the stage (the protocol's control is in REVIEWS-3D "M25"). The one-case programs
+  stay as they were.
+- **NEW MECHANISM**, under the delegation of 2026-09-29: an owner's terminal `close` and `closed`
+  flag beside the GPU generation, as void2d's cache has. It regresses a caller that keeps using an
+  owner after closing it, which now stops. Cost: a `NodeId3D` grows from 8 to 12 bytes and a
+  `PickHit` by 8; each check is a field load and a branch, its message in a stop helper off the
+  frame path, and the allocation stage lists `requireOpen`, `requireOwn` and `requirePaired`.
+
+**Acceptance.** D3D11 on the shared Windows workstation, msc 0.2.55 at `5791eadd`.
+- Red before: the `views` consumer's first form on the row's code (`b4f7fc5`, docs only over
+  `2be9cf5`), making every release call that existed, leaks 2 buffers and 1 sampler a cycle:
+  +10 buffers and +5 samplers over five cycles (`out/tmp/m25/red/`).
+- Green after: `tests/integration/viewTeardown.ms`, the gate's `views` stage, makes a context with
+  a scene, a renderer of each preset and a glTF model six times beside a surviving context, draws
+  each through both presets, checks the model's pixels and the survivor's, and closes them in
+  order. Holders, pins, uniform ranges and sokol's live buffers, images, views, samplers, shaders
+  and pipelines return to the first cycle's counts after each of the other five.
+- Controls, one mechanism removed each: the screen buffer's destroy, +10 buffers; the context's
+  samplers, +5; the cache's close, shaders 7 to 31 and pipelines 11 to 51 before sokol refused a
+  shader; the palette's close, +5 images and +5 views. The preset's old first-frame forget, put
+  back, +5 images and +5 views. closeCheck's two stale-close tests, each with the destroy forced,
+  stop the test binary on sokol's `_sg.valid`: only those tests hold a handle headless.
+- The gate on the reviewed tree: REVIEWS-3D "M25", "Final acceptance".
+
+**Still missing after M25.**
+- The palette's stale paths are read, not run: on D3D11 `contextGeneration()` is always 1
+  (`src/gpu/door.c`), so `upload`'s forget-and-remake and `closeContext`'s stale-sampler branch
+  never execute. closeCheck reaches the stale `releaseGpu`, `closePalette` and `closeRenderer`
+  with fabricated handles. A device run (V6) is what runs them.
+- Owner `context` fields and a scene's `serial` are writable where they should be `readonly`
+  (PENDING3D `store-serial-writable`).
+- An interface literal that leaves out a reference field compiles, the field null
+  (`src/examples/campfireScene.ms` had one; compiler card
+  `2026-10-03-interface-literal-omitted-reference-field.md`).
+- Not in this milestone: the device's shutdown; void2d's scene teardown; the DRC cost of owners as
+  references, beyond the bench stage's frame time.
+### M26 as built
+
+The row is `1be67a6`, corrected by `f5e21d4` over main `75b0d19` (void2d's premultiplied-alpha
+land, which moved the D3D11 goldens from 78 to 82); the milestone is the commits between on
+`wt/void3d-m5`, rebased over that main before its gates. Its reviews and the gate receipt are
+`docs/REVIEWS-3D.md` "M26".
+
+- **The pair, twice.** `@block colorSpace` carries Heaps' exact `srgb2linear`/`linear2srgb`
+  constant for constant (`h3d/shader/ColorSpaces.hx:56-76`), and `math3d.ms` the CPU twins
+  beside `colorSaturated`, one channel at a time. Heaps' encode exponent is `0.41666`, not
+  1/2.4, so the pair inverts to about 2e-5 rather than float32 epsilon — a byte is 3.9e-3, and
+  the round-trip test says so at the tolerance. The GLSL pow operands clamp at 0: fxc's X3571
+  warning on `pow(f, e)` with a possibly-negative `f` was printed into consumer stdout at
+  startup, which glued itself to the perspective consumer's first report line and broke the
+  stage's exact grep. The clamp is output-neutral — the selects route every input at or below
+  the hinge, all a saturation matrix can make negative, to the linear branch — and Bevy's own
+  `gamma_function` guards at 0 the same way.
+- **One convention at the API.** Every colour a caller hands void3d — texels, vertex colours,
+  material colours, light colours — is sRGB-encoded, and every scalar — a light's power, a
+  falloff, a ramp level, a saturation amount — is linear and never converted. The glTF loader
+  encodes the spec's linear `COLOR_0 × baseColorFactor` once at load (`gltf.ms`, beside the
+  vertex colour it composes), so a file's linear values and a game's authored values meet the
+  shaders in one space. `tests/integration/gltfFrame.ms` proves it from the readback: the
+  fixture's factor quad reads exactly (188, 137, 188) through both presets, against (128, 64,
+  128) before — the numbers "Still missing after M23" predicted from the spec's curve.
+- **The excursion is inside the lit programs.** The core's `Lit`, `LitTextured` and the
+  billboard's lit form, and both of the pixel-art preset's lit programs and its toon point
+  light, decode their colour inputs to linear, light in linear — the toon ramp quantizes the
+  linear light term, the stepped levels are scalars — and encode the stored colour back.
+  Saturation stays M12's gamma-space matrix on the tinted surface, before the decode; the
+  defect pass caught the first cut narrowing its operand from the tinted surface to the tint
+  alone (`sat(b·t) ≠ sat(b)·t`), and `35047db` put the texel back. Every target, the post pass,
+  the outline, the fog, the palette LUT of authored bytes, `Copy`, `Blit`, the shared screen
+  pass and void2d's `end2d` keep gamma-encoded bytes. The unlit paths are passthrough: the
+  particles, the billboard's unlit branch — a sprite tint, as void2d's and Heaps' h2d multiply
+  theirs in gamma — `copy` and `blit`. That is why the forward flame's three texel colours
+  still reach the frame byte for byte (`unlit` stage), and why 11 of the 72 standing hashes did
+  not move at all.
+- **void2d's own drawing sees nothing; two of its mixed goldens do, and this milestone
+  re-goldened them itself.** No `src/gpu/` file moves, and of void2d's 82 D3D11 goldens the 80
+  that draw no 3D stayed byte-identical. The first web gate was red on exactly two:
+  `mixed/void3dTarget` and `mixed/void3dTranslucentTarget`, void2d scenes that render this
+  layer's lit content through the shared frame (`tests/golden/mixedScenes.ms` lights a sun
+  and draws the forward preset), on both backends — the row's first draft had claimed all 82
+  and the gate corrected it. The coordinator's routing: what M26 changed, M26 re-records, with
+  a proof that names no hash. The proof, measured before the update
+  (`out/tmp/m26/proof.py`): outside the sprite's 160×120 rect at (48, 20), zero of 256×160
+  pixels differ from the old goldens in either scene, so void2d's own drawing did not move;
+  the opaque scene's rect equals an out-of-band capture of the same lit content — the scene's
+  3D half rebuilt verbatim in a stand-alone consumer and read back through the capture harness
+  (`out/tmp/capture/m26proof3d.ms` → `proof3d_1.ppm`) — with a maximum channel delta of 0;
+  the translucent scene's rect equals that same capture composited over the known 2D base
+  (the clear and the stripe) with the documented premultiplied 0.5 blend, maximum delta 1, a
+  rounding level, and its 2,273 box pixels match the old golden's opaque scene one for one.
+  After the update both scenes pass byte-identically on D3D11 and WebGL2, and Guardrail 9's
+  rows match the run unedited. void2d's own private conversion pair in `gradient.ms` (encode
+  exponent 1/2.4, about 2e-5 from Heaps') stays: its files are its arc's, and it cannot
+  import void3d's math; a unification would move its goldens and belongs to it.
+- **The gate's `multiply` stage now predicts in linear.** The greyed ground is the plain
+  ground's linear light scaled by the saturation ratios and encoded back, so the stage decodes
+  the plain frame, scales per channel, encodes, and compares — the ratios themselves
+  (`1.235011683 1.041520487 0.479481280`) come from the same saturation formula as before,
+  wrapped in the decode. Two gate facts were learned the hard way and are written here for the
+  next stage author: ImageMagick's `-threshold N%` is relative to the image's own range, not
+  the quantum range, so a 0.6% threshold on a diff whose maximum is 0.3% flags nearly every
+  pixel (the stage's masks use absolute `-fx` tests now), and the intermediates must be written
+  at 16-bit depth, because an 8-bit stop in linear space rounds the prediction by whole
+  levels. Clipping is now expected — a linear light above 1 encodes to 255 — so the clip mask
+  excludes its pixels from the ratio check instead of failing the stage, and a guard fails the
+  stage if the greying's every changed pixel clips, which would verify nothing.
+- **Found on the way.** The sRGB curve's constants now live in four places — the GLSL block,
+  the CPU twins, the gate's awk `dec()` and its two `-fx` expressions — because the stage
+  cannot link the shader's code; if the curve ever changes, the gate parses them out of
+  `math3d.ms` the way it parses `LUMA_*` today. The defect pass also caught the row counting
+  void2d's goldens at 78 after main had moved them to 82; the row was corrected and the branch
+  rebased before the gates.
+
+**Acceptance.** D3D11 on the shared Windows workstation, msc `5791eadd`, on the reviewed tree.
+- **Tests.** **1148** suite tests (M25's 1138, plus 3 for the pair and 7 of void2d's main);
+  **84 abort programs and 98 abort cases**, unchanged — the milestone adds no stopping entry.
+- **The fixture.** The factor quad reads exactly (188, 137, 188) through both presets; the
+  hinge points (0, 0.04045, 0.0031308, 1) and the 256-value round trip are held headless, as
+  is `linearToSrgb(0.5) × 255 → 188` and `0.25 → 137`.
+- **Baselines.** **61 of 72 hashes re-recorded** in `a0d7dc2`, their own commit; **11 stayed
+  byte-identical** — `m22textured*` frames 1, 6 and 11 (the unlit stages of that consumer) and
+  `m23gltf*` frame 16 (the emptied scene) — the round trip under identity light, proven, not
+  lucky. The moved frames' magnitudes against their old baselines, measured before adoption:
+  the forward and anchor frames move ~919.6k of 921.6k pixels by under one level (the ground
+  under a sun and ambient that no longer sum to one); the palette frames move ~134k pixels
+  (14.6%), with peaks where the LUT snaps a lit colour to the next entry; `m3direct`/`m3depth`
+  ~302k (32.8%); the grey-palette frames ~35k (3.8%); the glTF fixtures 1.5k–3.2k pixels —
+  the factor quad and the lit stages; perspective ~5k per frame.
+- **The relations held through the change.** The rebuild configurations are byte-identical to
+  their fresh frames; `campfireGreyCpuCapture` stayed byte-identical to the re-baselined
+  `m12greydirect` (the CPU grey and the material grey still agree, both before the decode);
+  frames 1 and 16 of `m11look` are still the palette-on image after the swap and back; the
+  `unlit`, `anchor`, `hud` and `compose` stages pass unchanged.
+- **Everything else.** Oracle 75 agreements / 11 declared divergences (no case touches the
+  pair); bench flat (34 items, 38 nodes, 40 meshes, 31 rebuildable, 5 pipelines) with no
+  frame-state growth over 300 frames; churn flat; the allocation scan clean; arm64
+  `libVoidAndroid.so` 3,693,840 bytes (the gate's build), about 63 kB more than M25 — the
+  pair compiled into six more programs.
+- **The gates.** `sh scripts/gate3d.sh` **GREEN with 1 skip** (device), on the reviewed code
+  (`296dff4`, over main `75b0d19`): 1148 tests, 84 abort programs and 98 abort cases, 72
+  hashes one per baseline, oracle 75/11, bench and churn flat, the allocation scan clean,
+  arm64 3,693,840 bytes. The first `sh scripts/gate.sh --web` on that tree was red on exactly
+  the two mixed goldens (above), which the coordinator routed back to this milestone; after
+  the re-golden and its proof, on the tree that adds only those two PNGs and these docs,
+  `sh scripts/gate.sh --web` is **GREEN with 8 loud skips**: D3D11 **82 pass, 0 pending, 0
+  fail of 82**; WebGL2 **60 pass, 18 pending, 4 fail** — its four standing
+  `conformance:webgl2-pixel-centre` reds, Guardrail 9's rows matching the run unedited; both
+  web backends build and the GL demo draws. Logs: `out/tmp/m26/gate/gate3d.log`, `gateWeb.log`
+  (the red first run) and `gateWeb2.log` (the green re-run), each stamped with its tree.
+
+For BUILD `4573591e`, see [0.3.0 baseline: literal promotion control](#030-baseline-literal-promotion-control); the M26 receipts above remain historical.
+
+### M29 as built
+
+Picking does not depend on an unlit program or target ownership, so this row can precede
+M28 and M27 while the shared target owner is built. The numeric milestone ids remain
+stable. The reference addition is three.js `Mesh.js` `checkGeometryIntersection` and
+`Triangle.js` `getInterpolatedAttribute` at `d4ea9b9`: an attribute is the weighted sum
+of its three vertices, and the missing attribute does not discard the geometric hit.
+
+`src/void3d/meshData.ms` `rayIntersection` carries its nearest triangle's UV in
+`MeshRayHit`; `src/void3d/pick.ms` `pickNearest` carries it through the world-space hit.
+The existing Möller–Trumbore weights are retained with the winner, then interpolation
+runs once after selection. No second intersection, texture lookup, UV wrap/clamp or
+new GPU resource is introduced. The named Heaps picking divergences remain unchanged.
+Scalar mesh-query consumers now read `.distance`; the old scalar return has no shim.
+
+**Measured proof**, msc 0.3.0, binary/support BUILD `4573591e`, shared Windows workstation:
+
+- **Before source:** four new behavior cases stop with exactly four missing `PickHit.uv`
+  diagnostics. **After the final shared-edge fixture correction:** `msc test
+  src/test/index.ms` reports **1157/1157** (1153 plus four), receipt
+  `out/tmp/m29/unitCorrected.log`. The cases cover indexed/unindexed triangles, vertices,
+  an edge and interior at `1e-6`, unclamped authored UVs, no-UV hit preservation, nearest
+  triangle selection under a mirrored nonuniform world transform, and both contributors
+  to a shared edge by reversing triangle order.
+- **Reference arithmetic:** real three.js on Node answers the five authored triangle
+  samples exactly: UVs `(-1,2)`, `(3,-2)`, `(0.5,0.25)` at the vertices, `(1,0)` at the
+  bottom-edge midpoint and `(0.75,0.125)` at the origin. These are the headless case's
+  independently measured expectations, not values taken from the port.
+- **The real consumer:** `tests/integration/texturedFrame.ms` `checkQuadrants` projects
+  front-face samples, reads that integer framebuffer pixel and picks through its centre.
+  The returned UV must name the uploaded texel actually captured beneath the press.
+  `sh out/tmp/m25/stages.sh textured` ran the forward perspective, pixel-art, outlined
+  orthographic and rebuilt consumers: **four consumers × four frames byte-identical**,
+  all pixel checks passed. The first full gate repeated those checks on the winner-only
+  source; no hash or golden was adopted.
+- **The old picking oracle:** after migrating its seven scalar queries, `sh
+  scripts/oracle.sh check tests/oracle/ray3d.cases` exits 0: **24 cases**, 20 agreements
+  and four declared divergences. The real-Heaps snapshot is unchanged. Receipt:
+  `out/tmp/m29/rayOracleCorrected.log`.
+- **Final reviewed gate:** `sh scripts/gate3d.sh` is **GREEN with three loud skips** on
+  source tree `f9733309ea5c1cfdb238bbc71c227526a86f2f8f`, committed as `1623c03`:
+  **240 PASS lines**, **1157/1157 tests**, **85 abort programs + 98 cases**, **72
+  baseline hashes** (none adopted), oracle **75 agreements / 11 declared divergences**,
+  no array copy on the picking path including `interpolateUv`, and no frame-state growth
+  over 300 bench frames or the 310-frame churn. Android arm64 is **3,774,392 B**.
+  The skips remain the two exact-held Forward/Anchor configurations (not correctness
+  acceptance) and the unrun GLES3 device lane. BUILD `4573591e` was read before and after.
+  Receipt: `out/tmp/m29/gate3dFinal.log`.
+- **Web boundary:** this milestone did not rerun the known Yoga provider link failure or
+  claim a successful web gate. The dependency's web acceptance remains required before land.
+
+The first full gate was red on two session-owned fixture/consumer oversights, described
+in REVIEWS-3D "M29", not on renderer output. Native D3D11 readback does not establish
+device coverage; the Yoga web-provider blocker is separate from this CPU feature.
+
+The M29 receipts above precede the target-owner cutover. Its current rebased implementation
+is `4ce6f8f`; the later joint gate belongs to M28, not a rewrite of those historical receipts.
+
+### M28 as built
+
+Heaps `Pass.enableLights` / `Output.setupShaders` at `b9aa6dcbb` decides whether light
+shaders enter a pass at all. three.js `MeshBasicMaterial` at `d4ea9b9` is the unlit
+diffuse-colour/texture precedent. The fixed-program implementation uses the existing
+registration, `ProgramMap`, shader-description reflection and material-owned uniform
+range; no new GPU-door API or resource kind.
+
+`src/void3d/shader3d.glsl` `unlitTexturedVs` / `unlitTexturedFs` supply the core program;
+the pixel-art file has its own pair. Vertex, material and texel RGB are decoded separately,
+multiplied in linear space and encoded back, with alpha multiplied separately. No light
+block is declared, so the existing reflection binds none. The program preserves authored
+bytes under white vertex/material colour regardless of the scene's lighting.
+
+The material uses the same slot and ownership as existing material/billboard data, with
+the existing parameter vector followed by an RGBA colour vector. `gpu3d.ms`
+`UNLIT_MATERIAL_UNIFORM_LENGTH` and `UNLIT_MATERIAL_COLOR` name that ABI;
+`renderer.blockFits` refuses a missing or old-sized block before drawing. The unlit
+program does not interpret a colour channel as a toon-ramp level.
+
+**Model cost and preset limit.** The core declares only a model matrix: 16 floats.
+`draw.ms` `drawItem` uses the actual reflected length, so it does not compute a normal
+inverse or upload its second matrix for that program. **MRT32 still needs the normal**:
+the pixel-art twin writes the preset's normal/depth attachment and retains the 32-float
+model/normal block. That is a stated cost limit, not an unfinished optimization or a new
+mechanism. Its vertex output must match the unlit fragment interface; reusing the lit
+vertex stage failed SHDC on the unmatched world-position output, so a dedicated stage
+keeps only what the MRT fragment reads.
+
+**Observed native consumer**, BUILD `4573591e`, shared Windows D3D11 workstation:
+`tests/integration/unlitFrame.ms` draws an authored-texture unlit quad, a vertex/material
+tinted alpha-blended unlit quad and a lit comparison quad. Sun power changes between
+zero and one. Full RGBA regions of the two unlit quads stay byte-identical; sampled RGB
+checks the independent linear product and alpha-compositing effect within one byte;
+the lit quad darkens. The two actual renderers each complete frames 1, 6, 11 and 16.
+Substituting the old lit program for the first quad fails at the authored texel in each
+binary. The initial API check was red on five absent enum-member diagnostics before
+implementation; the targeted suite is 1157/1157 (two incidental map-copy/count tests
+removed, two reflected-ABI/material-refusal cases added), and the relational stage
+reports zero failures/skips. No baseline was adopted.
+
+**Final joint proof.** Source `e80a077`, tree `3827c399d0b47cc161c4e10b07b2f85f675a0d20`,
+is rebased over void2d's target-owner `3d03020`. The measured full-gate tree
+`80d0c640a9524c7873c1a776036fb1065ab2728b` differs only by wrapping one 102-column
+assignment: every functional stage passed, **253 PASS lines**, **1157/1157 tests**,
+**85 abort programs + 98 cases**, **72 hashes** with none adopted, oracle **75/11**,
+allocation clean, 300-frame bench and 310-frame churn flat, Android **3,849,512 B**.
+Both registration orders and both reversed-range failure controls pass. Three known
+skips remain exact-held Forward/Anchor and the unrun device lane.
+
+The raw `out/tmp/m28/gate3dFinal.log` says **GATE FAILED**, solely the column-width
+check, not GATE GREEN. After the whitespace-only wrap, the actual `run_style` reports
+**PASS on 31 paths** (`styleOnly.log`). This acceptance follows the target-owner slice's
+same bounded whitespace-only protocol; no new heavy native run is substituted or claimed.
+The earlier `gate3d.log` is the one with the incidental fixed-id registration failure,
+corrected to actual disjoint registry ranges and held by wrong-order controls.
+
+**Evidence limits.** The consumer compares RGBA across lighting changes, not a separately
+specified framebuffer alpha value; the RGB blend proves alpha's compositing effect.
+It does not directly read back the MRT normal/depth values or exercise a new unlit-only
+context loss. Existing cache/context-generation ownership is unchanged. Premultiplied
+target input remains M27's boundary; emissive maps, unlit fog and device/web runtime
+coverage are not claimed here. Six-target SHDC generation is compilation, not execution.
+
+
+### M31 as built
+
+**The old path, measured first.** `out/tmp/m31/removeAddLoss.ms` made a mesh node
+under a group, bound a two-frame `ObjectAnimation` to it, and then did what a host
+without a move must do: `remove` and `addMeshNode` under the new parent. The run
+printed `removed=1 pinsAfterRemove=0`, `sameNode=false`, and `syncPose` answered
+`StaleTarget` before its own stop (`removeAddLoss.log`, exit 2147483648). That is
+the red the row named: the move released the node's sole mesh pin and orphaned the
+animation's target.
+
+**Detached is a parent state, not a node kind.** The four factories (`addGroup`,
+`addMeshNode`, `addLightNode`, `addCameraNode`) widen `parent` to `NodeId3D | null`;
+old callers compile unchanged. A detached node lives in its scene's tables with its
+payload, pins and camera binding: it syncs, draws, lights and picks nothing because
+every walk starts at the root. `worldOf` answers `SceneError.DetachedNode`; an
+active camera mount that is detached answers `CameraError.DetachedCameraNode`. Both
+are refusals with a reason, not silent fallbacks. `addGltfNodes` keeps its container
+parameter — it returns a count, not a node id, so the container is where the caller
+chooses attachment.
+
+**`attach` and `insertBefore` are one validated move.** `placeNode` checks scene
+openness, parent/node ownership and liveness, refuses the root, walks the
+destination's ancestors for a cycle, and — for `insertBefore` — that `before` is live
+and a child of the same parent; only then does it unlink and re-link. There is no
+index clamp; every refusal names the operation. Same-parent `insertBefore(node,
+node)` is a no-op after validation. `attach` appends; the `before` search runs after
+unlinking, so a forward move needs no adjusted index (r3f `reconciler.tsx:270`
+splices the same way). Local pose, id, pins, animation targets, camera binding and
+pick ownership all survive: the move writes topology, a `PosChanged` flag and — when
+it lands under a detached parent — cleared world matrices for the subtree. The moved
+node's world is recomputed in the same `syncWorld` pass; no later local write is
+needed. Three's world-preserving `attach` is deliberately not taken; Heaps keeps
+local (`Object.hx:547-558`), and so does void, the divergence named in the row.
+
+**Closing owns every row the scene issued.** `closeScene` now collects all live,
+non-retired, non-free slot indices — root reachability is no longer the boundary —
+compacts them in the preallocated scene stack, checks their pins as `remove` does,
+and releases them. A never-attached forest, a subtree created detached and dropped,
+and the camera-mount binding all release; `remove` on a detached subtree frees it
+without touching another detached owner's pins. After `closeScene`, an emptied
+context closes.
+
+**Consumer defect, not library.** The first consumer run stopped bare (exit 132,
+empty log): it released a uniform range `addMaterial` had adopted, was answered
+`Owned`, and trapped unnamed. The caller release is deleted and every consumer
+refusal now names operation and error; see REVIEWS-3D "M31". No GPU resource,
+program or pipeline changed in this row.
+
+**Final acceptance.** Source `32f0f9c`, tree
+`016722a76b96a565ba7bbd467f367b8048a14db5`, binary/support BUILD `4573591e`,
+native D3D11, one native job on the shared Windows workstation. The full gate is
+**GREEN**: **1176/1176 tests**, **295 PASS / 0 FAIL / 3 unchanged known skips** in
+1695.44 s; **85 abort programs + 129 cases**, **74 manifest hashes** with none
+adopted; oracle **75/11**. Both reparent consumers passed eight full-RGBA
+moved-versus-built-in-place pairs, the skip-move control failed at the moved pose
+and the skip-order control at the equal-depth pixel; sixteen never-attached owner
+close cycles and terminal closes ran per consumer. The allocation stage holds every
+new move/close body to no array copy or string build. Bench/churn held flat;
+Android arm64 built at **3,861,536 B**. The three skips remain the held
+Forward/Anchor fingerprints and the unrun GLES3 device lane; web is recorded NOT
+RUN for the Yoga provider. Receipt: `out/tmp/m31/gate3dFinal.log`.
+### M30 as built
+
+**Reference correction.** Heaps' `CameraController.syncCamera` at `b9aa6dcbb`, lines
+227–241, derives spherical position/target/FOV; it does not synchronize its Object
+world matrix. Its role as a graph controller over the separate scene camera remains
+the shape reused here. Orientation comes from `Camera.makeCameraMatrix`, lines
+346–354: normalized forward and up-derived right. Three's `Camera.js:116–126` at
+`d4ea9b9` excludes world scale. Void keeps its already-decided Y-up right-handed,
+row-vector frame, not Heaps' default frame.
+
+`src/void3d/camera.ms` `Camera3D.fromWorld` and `src/void3d/scene.ms` `cameraOf`
+are the implementation pointers. The factory replaces request pose, preserving the
+projection/depth request. Back and up determine the view: bound each world axis
+before crossing, normalize back and right, reconstruct up, and discard scale.
+Thus sheared/reflected inputs are interpreted by those two directions, not by
+the first row's handedness.
+
+**Numerical refusal, not axis repair.** The scale-free squared-sine test reuses
+the existing `math3d.ms` `EPSILON = 1e-10`: cross² ≤ epsilon × up² × back²
+is `BadWorldPose`, including zero axes. This corresponds to a separation around
+`1e-5` radians near parallel, independent of parent scale. The cross is taken
+before either bounded axis is normalized, so normalization rounding cannot
+manufacture a direction from an identical/proportional pair. Two square roots
+suffice; no redundant normalization of wanted-up and no residual-amplifying
+`unitAxis` remains.
+
+The relative gate alone did not make float32 cross products accurate enough:
+UP `(0.37002,0.63,1)` / BACK `(0.37,0.63,1)` passed construction but failed
+view resolution as `BadOrientation`. `camera.ms` `preciseCross` uses local
+float64 products/subtractions, as Heaps' `Vector.hx:9–11,48–50` uses Haxe
+Float, then returns float32 components. Global Vec3 arithmetic and the epsilon
+are unchanged. The measured counterexample now resolves the analytic right
+axis; UP `(0.370005,0.63,1)` stays refused on the other side of the gate.
+
+Heaps `Vector.hx:65–75` normalizes with `hxd.Math.EPSILON2 = 1e-20`
+(`hxd/Math.hx:7`) before Camera's zero-length fallback (`Camera.hx:355–359`).
+Void's existing float32 math uses `1e-10` instead; the camera carries that
+degeneracy gate into scale exclusion and **refuses rather than inventing the
+fallback axis**. Actual identical/proportional and `1e-6`-separated rows were
+accepted before the correction; afterward they are refused, while `1e-2`
+separation yields the expected orthonormal view. That intermediate suite passed
+1167/1167; the final precision correction and full acceptance below pass 1168/1168.
+
+Keep a value camera rather than a second GPU owner. A Group side binding reuses
+scene identity and world synchronization without adding a NodeKind. Removal releases
+the binding; active selection remains stale until the caller explicitly clears it,
+so a removed mount cannot silently return yesterday's matrix or the fallback view.
+The old yaw/pitch path is unchanged when orientation is null. Nonzero yaw/pitch
+beside a full orientation is refused, rather than silently ignoring later writes.
+
+**Rejected changes.** A `CameraBasis?` struct field is deliberately refused by
+`recompiler/docs/LANG.md:603`; this is not a compiler defect. An explicit nullable
+field omitted from an old literal was measured as null by installed BUILD `4573591e`
+(observed output: `NULLABLE_STRUCT_PASS omitted=null present=1,2`).
+Fifteen unnecessary caller-literal changes were reverted. Reciprocal axis scaling
+failed on finite `1e-40`: the view was refused, 1162 tests passed and one failed.
+Component division before normalization fixes that overflow and also handles `1e30`;
+the corrected suite passed 1163/1163 before the review's extra safety pins.
+
+**No invented preset restriction.** Eight full-RGBA rig/manual pose pairs matched
+on native D3D11 in each of forward and pixel-art, including rolled snapped
+orthographic poses. A dropped-roll control differs at frame 3 in both consumers.
+Snapping is already in camera right/up axes; roll does not make that grid undefined.
+Those targeted captures preceded the final subnormal fix; final-revision evidence
+belongs to REVIEWS-3D's M30 acceptance, not to these earlier receipts.
+
+**Final acceptance.** Source `971ee3d`, tree
+`2695dea414b06791eb0e71fce3e6672901be566e`, over committed target-owner
+`3d03020`; binary/support BUILD `4573591e`, checked before/after, native D3D11
+on the shared Windows workstation. `sh scripts/gate3d.sh` is **GREEN**:
+**1168 tests**, **268 PASS / 0 FAIL / 3 unchanged known skips** in 591.83 s;
+**85 abort programs + 108 cases**, **72 manifest hashes**, none adopted;
+oracle **75/11**, all allocation paths clean including the camera binding,
+bounded-axis and precise-cross functions. Eight full-RGBA rig/manual pairs
+match in each preset, and both lost-roll controls fail at the intended pair.
+Accepted standing captures remain byte-identical; Forward/Anchor stay exact
+held fingerprints, not accepted as correct.
+
+Bench and churn hold flat; Android arm64 builds at **3,861,440 B**.
+Bench CPU was **0.086862 ms/frame**, one shared-machine sample on the existing
+old-camera bench path, not a cameraOf performance comparison. No GPU resource
+or new context-loss obligation is introduced. The rig's own context-loss path,
+web and GLES3 execution are not claimed. Full receipt:
+`out/tmp/m30/gate3dFinal.log`; the first red and successive numerical proofs
+are accounted for in REVIEWS-3D "M30".
+
+### 0.3.0 baseline: literal promotion control
+
+On BUILD `4573591e`, the unmodified example's float32 evaluation differs from M26's receipt
+on BUILD `5791eadd`. The cause is intended for eight capture configurations: recompiler
+`5c2dc30e` makes a literal beside a float32 operand float32 (LANG.md "Type Promotion Rules").
+The control keeps the compiler, shaders and library fixed and widens only fourteen inspected
+sites in a generated copy of `src/examples/campfireScene.ms`: the log yaw; stone x/z margins;
+grass x/z jitter, size and tint; blade root, height and lean; flame sway, half-width, centre and
+spread. Each expression narrows at its old final store or argument boundary.
+
+All four frames return to the old committed hashes for `campfireCapture`, `Direct`, `Rebuild`,
+`Spin`, `Particles`, `ParticlesRebuild`, `GreyDirect` and `GreyCpu`. Against those hash-validated
+reference frames, the current float32 example differs in exactly **4 pixels per frame**, with
+**PAE 257/65535 = 1/255** (one 8-bit level), in every one of those configurations.
+Only their **20 unique hashes** (`before`, `m3direct`, `m6spin`, `m11particles`,
+`m12greydirect`, four frames each) are adopted. The permanent example is not widened to emulate
+old output. Fresh controls remove the executable first, disable the global object cache, and
+require build and run exit 0 before trusting capture output.
+
+**Forward and Anchor remain open**, with their original hashes unchanged. The fourteen-site
+control, its four-site extension for fire offset/flicker, and an additional transient widening
+control for projection/normalisation/quaternion/animation/particle-colour expressions do not
+return their old hashes. `forwardRenderer`, the billboard anchor writer and shader-block
+writers have no literal arithmetic to widen; the relevant path diff from `7f014ff` to
+`582e539` is empty apart from the particle byte-scale cast at its final store. No permanent
+library widening was kept. A compiler cause for these two remains unproven.
+
+Receipts on the same D3D11 box and compiler: `out/tmp/sceneTarget/literalControl.json`,
+`flickerControl.json`, `libraryWidth.patch` and `libraryControl.json`; controlled capture PPMs
+are in `out/tmp/sceneTarget/controls/`. The unresolved configurations are now held by
+`tests/PENDING3D.md` rows `capture-m14forward` and `capture-m16anchor`, not adopted as correct.
+Their M26 hashes remain the accepted baselines. Four exact current 0.3.0 fingerprints per
+configuration are enforced separately: unknown bytes fail, and a return to any old hash fails
+`row stale: remove it`. Matching the held bytes is a loud SKIP. No tolerance against missing
+old images is invented; the measured two-pixel control delta was not an old-baseline bound.
+The protocol controls exercise acceptance, changed bytes, stale old hashes and malformed rows.
+Yoga's web linker gap remains the migration's external land blocker.
+
+
+**Still missing after M26.**
+- The converted programs have run on D3D11 only; GLES3 and a device have not run them (the
+  standing device gap, `tests/device/README.md`).
+- The curve's constants live in four places (above); the gate parses `LUMA_*` from source and
+  could parse these the same way.
+- void2d's private pair in `gradient.ms` (1/2.4) coexists with this one by layering, not by
+  agreement; unifying them is void2d's to do and will move its goldens.
+- Tonemapping, exposure, sRGB texture formats at the door, an sRGB swapchain, mipmaps and
+  anisotropy stay out, as the row records; alpha as a material's is the next row.
+
+### Android lifecycle (V6), alongside from M3
+
+- The shell already renders one engine at a time through one shared EGL context (`VoidRenderer.show/hide`), so preview and live never draw concurrently; the preview uses `PixelArtSettings.preview()`.
+- **Context loss, done in M3 without a device.** A view's present checks `eglSwapBuffers` (`bridgeAndroid.c` `voidPlatformSurfacePresent`); on `EGL_CONTEXT_LOST` the next frame calls `sg_shutdown`, destroys every view's surface and the context, makes new ones on the same windows (or pbuffers), runs `sg_setup` again and bumps a generation (`voidGpuGeneration`, read through `gpu3d contextGeneration`). `voidEmbedLoseContext()` forces the same path, to exercise it on a device. After `sg_setup` sokol hands out ids from fresh pools, so an old handle can name a new object: the renderer **drops** its handles without destroying them (`RenderTarget.forgotten`, `forgetGpu`, `forgetPipelines`) and rebuilds targets, sampler, screen triangle, pipelines and the palette LUT from CPU data on the frame that sees the new generation.
+- **Meshes, done in M5.** A mesh added through `addMeshData` keeps its vertex and index arrays in `DrawContext.meshData`, and the core's `beginFrame` re-uploads every mesh whose `GpuMesh.generation` is older than the current context. The campfire's lit geometry is one such mesh. Since M17 a freed or re-uploaded mesh's buffers are doomed with the generation they were made in, and `beginFrame` drops those of an older context instead of destroying them.
+- **Still missing:** void2d's own resources, and any of this on a device. The campfire's billboards and generated textures now rebuild from kept CPU copies (M7 as built) — that path is simulated on D3D11 by destroy-and-remake, since `contextGeneration()` never changes there; on GLES3 only the mesh half of the rebuild has ever run for real.
+- `EGL_DEPTH_SIZE` stays 0: the scene renders offscreen with its own depth attachment, and the swapchain only receives the blit.
+- Frame pacing (30 / ~10 / on demand) is the host's call; `needsFrame` says whether the next frame would differ from the last (M3 as built).
+
+### M27 as built
+
+**The old path, measured first.** Heaps samples a `Target`-flagged texture like any other
+(`h3d/mat/Texture.hx:257`, `:282`; `h3d/mat/Data.hx:82`), and a void2d target stores
+gamma-encoded premultiplied RGBA8. Read as straight, the half-red texel (128, 0, 0, 128)
+decodes to linear **0.2158605** where the boundary's answer is **1.0**
+(`src/test/textureCheck.ms`, printed by the test). Under identity light the error cancels
+(decode then encode is the identity), so the red needs a light below one: at an ambient
+of linear 0.05 the old `LitTextured` over the raw target view draws red **27** where the
+boundary draws **32** (`out/tmp/m27/red/real.*.log`, both presets).
+
+**The asset is the draw context's, the target stays its owner's.** `draw.ms`
+`addTargetTexture(context, target, filter, wrap, alpha)` claims a slot in the same
+`TextureId` space as M22's uploads. The slot keeps a reference to the `RenderTarget` owner
+(`textureTargets`), its sampler and its declared `TextureAlpha`; the view is read off
+`target.asTexture()` at every bind (`viewAt`). A resize that remakes the image keeps the id
+drawing with no rebind call: `RenderTarget.generation` names the GPU context, so the slot
+keys on the owner, never a saved raw id. Holds and pins are M22's: a material pins the slot,
+freeing the slot drops the owner reference. A target of an older context draws nothing until
+its owner resizes it, the refused-upload rule (`textureReady`); `rebuildTextures` refreshes
+only the slot's sampler. Close is the owner's terminal act (M25, door closure C), so a bind
+through a closed owner stops by name instead of refusing the close. No target state is
+copied into void3d.
+
+**The boundary rule, declared twice and checked twice.** The producer declares what it
+stores on the texture (`TextureAlpha`), the material declares what it samples through its
+program. Four programs — `LitTexturedPremultiplied`, `UnlitTexturedPremultiplied` and their
+pixel-art twins — reuse the straight vertex stages and change only the fragment ends:
+`straightTexel` unpremultiplies in the stored encoding (`a == 0` gives zero), the straight
+math runs unchanged, and the output RGB is multiplied by the final alpha (vertex × material ×
+texel). three's order (`RenderOutputNode.js:115-137`), with re-premultiplication at
+fragment output, never in the blend factors or the stored bytes. `addMaterial` refuses a
+premultiplied texture under a straight program (`PremultipliedTexture`), the reverse
+(`StraightTexture`), and a premultiplied program whose pass is not ONE, ONE_MINUS_SRC_ALPHA
+for colour and alpha (`StraightBlend`, i.e. `BlendMode.AlphaAdd`). `drawItem` checks again
+against the program the renderer actually draws, because a material's fields and a preset's
+map can change after add; a mismatch stops by name. three and Bevy key the same choice as a
+material shader variant (`premultipliedAlpha`, `AlphaMode::Premultiplied`); void3d's variant
+key is its fixed program, so this is M14/M28's mechanism, not a uniform flag a later write
+could flip.
+
+**Lifetime rules a caller must know.** The view is read at bind, the target's own liveness
+checks run there (`asTexture`), and a stale target is never compared with the open pass: an
+older context's attachment id may name an object of the new one (`buryDoomed`). A slot whose
+sampler is refused on a new context stays dark and retries at the next context change, as an
+uploaded slot does. `needsFrame()` does not see a target being redrawn: the caller that redraws
+a sampled target calls `markChanged` (item 1's rule, scheduling stays the caller's). The raw
+`texture0` path takes a view id and none of these checks; it stays the presets' escape hatch.
+
+**Capacity, not a new mechanism.** Seventeen programs no longer fit `ProgramMap`'s sixteen
+4-bit entries. The map now packs 5-bit entries in two words, twelve programs each, and stops
+by name on a program beyond 24.
+
+**Feedback, door side.** Sampling a target inside the pass that renders into it is undefined:
+measured with the check removed, debug sokol panics with
+`VALIDATE_ABND_TEXTURE_BINDING_VS_COLOR_ATTACHMENT` and a release build draws on, silently
+wrong (`out/tmp/m27/red/noFeedback*.log`). void2d's target passes begin through `door.c`
+`doorBeginColorPass`, not `target.ms`, so the check lives in the door: it records the open
+offscreen pass's attachment views on both begin paths and clears them at `endPass`
+(`doorPassAttachesView`, `RenderTarget.isAttachedToOpenPass`, comparing the attachment view,
+never the sampled one). `textureReady` stops by name before sokol. Written by void3d under
+the coordinator's handover with the human's word, recorded in `VOID2D.md` door closure.
+
+**Native consumer**, `tests/integration/targetTexture.ms`, D3D11, both presets: a void2d
+`Scene2D` draws a half-alpha red rect into the left half of a transparent 64×32 target; an
+unlit and a lit premultiplied quad sample it through one `TextureId`, each over an opaque
+backdrop behind its right half. Five stages: identity light (both quads red exactly **128**,
+G = B = 0, over black; the zero-alpha half leaves the backdrop byte-exact), low ambient (lit
+within one byte of the computed 32, unlit still 128), a resize to 96×48 (same id, new image,
+redrawn, still 128), a simulated lost context (the target quads draw nothing, backdrop
+intact), the owner's resize after it (128 again); the target's pins and holds are unchanged
+throughout, and teardown releases the slot with the caller's hold as the last. Both open-pass
+paths report the target's attachment and `endPass` clears it. Controls in each preset: the
+straight-read control fails at stage 1 (27 vs 32); dropping output re-premultiplication draws
+**255** and fails (`red/noOutputPremultiply.forward.log`); a closed owner, a program swapped to straight
+after add and the preset's own scene target sampled in its scene pass each stop by name.
+Headless: the arithmetic above, both refusals of `addTargetTexture`, the blend refusal, the
+24-program map in identity and reversed order, and the premultiplied twins' block lengths.
+
+**MRT under blending, carried.** `door.c` applies one blend state to every colour attachment,
+so in the pixel-art scene pass a blended material also blends its normal/depth output, with that
+attachment's own alpha (`depth01`) as the coverage. That predates M27 and holds for every
+blended pixel-art material; the premultiplied twins write `(n·0.5+0.5)·depth01` so that, under
+ONE, ONE_MINUS_SRC_ALPHA, they produce exactly the straight twins' result rather than a new,
+saturating one. No capture checks attachment 1 under a blended material. M32 closes it with
+Heaps' pass order and drops the weighting (M32 as built).
+
+**Final acceptance.** Replayed onto the combined tip `cab05eb` (void2d `ec4da0d`, M28–M31,
+the span-rule migration), BUILD `5c4246fb` (v0.3.2), unchanged before and after the run, one
+announced native job on the shared Windows D3D11 workstation. `gate.sh` GREEN: 1181/1181,
+golden green, 8 known skips. `gate3d.sh` GREEN: **303 PASS / 0 FAIL / 3 known skips**,
+**1186/1186 tests**, **216 abort PASS lines** (two new programs: `programMapAlphaMismatch`,
+`targetTextureClosedOwner`), **72 manifest hashes, none adopted** — every standing capture
+byte-identical, including the textured and unlit ones whose straight programs now share the
+`litTexturedShade` / `unlitTexturedShade` blocks with their premultiplied twins — oracle
+75/11, allocation clean with the new bind path listed, bench and churn flat, Android arm64
+**3,859,800 B** (the four programs' six-backend shaders). The RED-before probes were re-run on
+`5c4246fb` (`out/tmp/m27/red/`); receipts `out/tmp/m27/final/`. The three skips are the held
+Forward/Anchor fingerprints and the unrun GLES3 lane; web is NOT RUN for the Yoga provider.
+
+**Not in this row.** Drawing a `Scene2D` into the target is void2d's item 1; mipmaps;
+MASK/BLEND as a material's alpha; a premultiplied *uploaded* texture (`TextureData` stays
+straight); sRGB-format attachments. The consumer simulates context loss by generation writes,
+not a device loss, and reads no MRT normal/depth value. Web/device runs are not claimed.
+
+
+### M32 as built
+
+**Defect.** `door.c` gives every colour attachment the material's blend, so in the pixel-art
+scene pass a blended material also blended the normal/depth attachment the outline and fog
+read. `tests/integration/mrtBlend.ms` copies the normal target to the screen and reads it back:
+on the single-pass tree the backdrop is `0x7F7FFFFF` and the normal under an Alpha quad
+`0xB17FCDFF` (`out/tmp/m32/red.log`).
+
+**Fix: Heaps' pass order, not a door policy.** `pixelArtRenderer.ms` `drawScene` draws
+`Phase.Opaque` into the MRT pass (`SCENE_LAYOUT`), then, when culling left any alpha or additive
+item, a second pass over colour 0 and depth alone (`TRANSLUCENT_LAYOUT`, both `LoadAction.Load`)
+for `Phase.Alpha` back to front and `Phase.Additive`: fwd.Renderer's default, alpha and additive
+outputs, with the normal target playing Heaps' separate normal pass that translucent objects do
+not join. The core exposes the lists one at a time (`renderer.ms` `drawPhase`, Heaps'
+`renderPass(output, get(name))`, and `phaseCount`); `drawPassLists` is the three in order and the
+forward preset is unchanged. Pipelines are keyed on the layout, so the translucent pass builds
+its own one-attachment pipelines from the same programs.
+
+**Depth is stored on request.** sokol discards a depth attachment at the end of its pass unless
+the pass stores it; Metal and WebGPU honour the discard, while D3D11, desktop GL and GLES3
+offscreen keep the contents, which is why no capture here could see it. `DepthAttachment` now
+carries a `StoreAction` (`asDepth(load, clear, store)`, `DOOR_PASS_DEPTH_STORE`), sokol's own
+per-attachment field in the door's `LoadAction` idiom. The pixel-art preset sets it each frame:
+the opaque pass stores when a translucent pass follows or the post pass samples the depth
+attachment (`DepthSource.DepthTexture`, which before this sampled a discarded depth on Metal and
+WebGPU), the translucent pass only for the latter, and both discard otherwise. The forward
+preset and the tests pass `DontCare`, today's behaviour. Colour attachments keep sokol's
+default (store) and have no field until a pass needs to discard one.
+
+**Refused combinations.** The opaque list still writes the normal attachment, so a material in
+`Phase.Opaque` whose `RenderState.blends()` (door.c's `blend.enabled` rule) refuses the
+pixel-art frame with `PixelArtError.BlendedOpaque` before anything changes, as `RampLevels`
+does. With `DepthSource.DepthTexture` and the post pass on, a translucent material that writes
+depth refuses it with `TranslucentDepthWrite`: it would move the depth the outline and fog read
+without moving the normal, where Heaps' depth map comes from a pass translucent objects do not
+join. The phase stays the material's choice, as Heaps' pass name is (a constructor deriving it
+from `BlendMode`, `set_blendMode`'s shape, is not in this row); nothing in the repo used either
+combination, and the forward preset accepts both. The premultiplied twins' normal is no longer
+weighted by `depth01`: that only matched a blended normal attachment, which nothing reaches
+now, so all scene programs write `n * 0.5 + 0.5`.
+
+**Acceptance.** `mrtBlend.ms` (gate stage `mrt-blend`): an Alpha, a premultiplied AlphaAdd and
+an Add column over an opaque backdrop. Two frames read the normal target: the backdrop is
+`0x7F7FFFFF` and so is the normal under each quad. Two frames read the colour target: each quad
+changes the colour under it, and an Alpha quad behind the backdrop stays hidden. RED on the
+single-pass scene (above); the control with the translucent pass's depth `Clear` fails at
+"depth was not kept" (`out/tmp/m32/clear.log`). The probe cannot see the store action: every
+backend here keeps an offscreen depth. No standing capture runs the preset with translucent
+items and the post pass on, so the visible effect (outline and fog under glass) rests on the
+probe's read of the normal target. Headless: `blends()` for every `BlendMode`, both refusals,
+`closed.drawPhase` and `closed.phaseCount` among the abort cases; the allocation stage lists
+the new frame-path functions.
+
+**Final acceptance.** On `1a3f0dd`, BUILD `5c4246fb` (v0.3.2) unchanged before and after, one
+announced native job on the shared Windows D3D11 workstation: `gate.sh` GREEN 1189/1189 + 299 +
+318, golden 82/82, 8 known skips (run on `3909dd5`; the one later commit touches only an abort
+test `gate.sh` does not read); `gate3d.sh` GREEN **306 PASS / 0 FAIL / 3 known skips**,
+1189/1189 tests, 218 abort PASS lines, 72 manifest hashes none adopted (every standing capture
+byte-identical), oracle 75/11, Android arm64 3,401,520 B. The first `gate3d.sh` on `3909dd5`
+was red only on `doorShortPassDescriptor`, whose expected message still counted ten pass
+words. Receipts `out/tmp/m32/`. Web NOT RUN for the Yoga provider.
+
+**Open.** The scene programs still write `fragNormal` at location 1 in the translucent pass,
+where the pipeline has one attachment. D3D11 and GL drop it; Metal and WebGPU are not measured
+and web cannot run here, and neither has run the store action. `colorMask` is one value for
+every attachment of a pipeline.
+
+### M33 as built
+
+**A material's kind.** `material.ms` `MaterialKind` is Heaps' `DefaultKind` without Hidden (a
+node that draws nothing is removed instead): Opaque, Alpha, AlphaKill, Add, SoftAdd.
+`Material.ofKind(program, kind)` derives the pass, the list and, for AlphaKill, the program:
+`passFor(kind, base)` sets blend and depth write on every kind as `set_blendMode` does (None and
+Alpha write depth, the additive modes do not) and keeps the base's culling, depth test and
+colour mask; `phaseFor(kind)` picks the list as `refreshProps` does. `Material.plain` stays for
+presets and for anything a kind does not name.
+
+**Cutout programs, not a discard everywhere.** Heaps compiles `killAlpha` as a constant of its
+Texture shader (`h3d/shader/Texture.hx`), so only cutting materials carry a discard; a discard
+in a shader can switch off early depth and hidden-surface removal on tile-based GPUs. void3d
+does the same with twins, as M27 did for premultiplied input: `LitCutout`,
+`LitTexturedCutout`, `UnlitTexturedCutout` and their pixel-art twins (23 programs, under the
+map's 24) are the uncut programs plus `if (fragColor.a < material.w) discard;`. The lit
+shading moved into a `litShade` block both share. `cutsAlpha(program)` names the class, the
+program map refuses to draw a cutout as a whole program or back (`stopOnCutMismatch`), and
+`cutoutOf(program)` is what AlphaKill draws: the twin, or a stop by name, including for the
+billboard and particle programs, which already cut at a fixed alpha and whose blocks hold
+colour where a material block holds the threshold.
+
+**The threshold is a material value.** Float 3 of the lit and unlit material blocks
+(`MATERIAL_ALPHA_KILL`, `material.w`), where Heaps keeps `killAlphaThreshold`, Bevy
+`alpha_cutoff` and glTF `alphaCutoff`: per material. `alphaKillFor(kind)` is the value a kind
+starts from (0.5, Heaps' `defaultKillAlphaThreshold` and glTF's default); the caller writes it
+into the block like any other uniform. A cutout program whose block has no positive threshold
+is refused by `addMaterial` (`MaterialError.NoAlphaKill`), so the kind and its threshold cannot
+part. The cut compares the final alpha (vertex × texel × material colour), as glTF and Bevy
+do; Heaps compares the texel's alpha alone, so a Heaps-style sprite fading through vertex alpha
+is cut here once it falls below the threshold.
+
+**glTF alpha modes.** `gltf.ms` reads `alphaMode` into its own `GltfAlphaMode` (the decoder
+links no renderer; `gltfScene.ms` maps OPAQUE, MASK and BLEND to Opaque, AlphaKill and Alpha;
+anything else is `Unsupported`) and `alphaCutoff` under MASK (default 0.5, negative or
+non-finite `OutOfRange`, 0 an Opaque material since it cuts nothing). Alpha now reaches the
+program, as the M23 notes asked: under MASK and BLEND the vertex alpha is `baseColorFactor`'s
+and a texture keeps its own; only a texture every user of which is OPAQUE is still forced to
+255 at load (glTF 2.0 §3.9.4), and one sampled by both kinds is `UnsupportedMaterial`.
+`COLOR_0` stays VEC3. `addGltfAssets` takes culling, depth test and colour mask from the
+setup's pass and blend and depth write from the kind, draws MASK with the cutout twin, writes
+the cutoff, and refuses a setup whose block sets the alpha-kill float (`BadSetup`), as it does
+for the double-sided flag: both come from the document.
+
+**Final acceptance.** On `276afa0`, BUILD `5c4246fb` (v0.3.2) unchanged before and after, one
+announced native job on the shared Windows D3D11 workstation: `gate.sh` GREEN, golden 82/82, 8
+known skips; `gate3d.sh` GREEN **310 PASS / 0 FAIL / 3 known skips**, 1195/1195 tests, 221
+abort PASS lines, 72 manifest hashes none adopted (every standing capture byte-identical),
+`gltf-cpu` and `alpha-kill` green, oracle 75/11, Android arm64 3,439,872 B (six more programs on
+six backends). The first `gate3d.sh` on `1910cf0` was red on `gltf-cpu` (the decoder imported
+`material.ms` and linked sokol; it now has `GltfAlphaMode`) and on one 108-column expect line.
+Receipts `out/tmp/m33/`. Web NOT RUN for the Yoga provider.
+
+**Kept from the defect pass.** The program table holds 23 of the map's 24 entries; every
+feature so far has been a full twin (premultiplied, cutout), so a premultiplied cutout cannot be
+named and stops in `cutoutOf`. The next variant needs a feature axis on the program table, a
+new mechanism of its own, raised when a row needs it.
+
+**Carried to M34.** Alpha writes depth, as Heaps' does; Godot's transparent materials do not,
+and URG orders its overlapping cards by priority instead. One glTF setup pass serves every
+material of a document, so a document mixing OPAQUE and BLEND cannot turn depth write off for
+BLEND alone, and under `DepthSource.DepthTexture` the pixel-art preset refuses its BLEND
+materials (`TranslucentDepthWrite`). The sort-layer row decides the per-kind override.
+
+**Acceptance.** `tests/integration/alphaKill.ms` (gate stage `alpha-kill`), in both presets:
+an unlit textured, a lit textured and a lit vertex-alpha column, each with a quarter-alpha
+half and a three-quarter half, kind AlphaKill, in front of an opaque backdrop drawn after
+them. The quarter-alpha halves show the backdrop (so a cut pixel wrote no depth, or the
+backdrop would have lost the depth test to it), the three-quarter halves draw, the unlit one
+unblended white. The control, the same scene with kind Opaque, draws the quarter-alpha halves
+and fails in both presets. Headless: the kind table against Heaps', `passFor` over a blended
+base, the cutout twins' class, layout and blocks in both maps, the `NoAlphaKill` refusal,
+the glTF modes and cutoff with their refusals and the cutout program they choose, texture and
+factor alpha kept under MASK and BLEND and forced under OPAQUE, a texture shared by both
+refused; aborts `programMapCutMismatch`, `kindWithoutCutout` and `kindOnBillboard`. Not drawn: a glTF MASK file end to end (its
+material is pinned headless), the pixel-art normal target under a cut pixel (a discard drops
+every output).
+
+### M34 as built
+
+**A sort layer.** `Material.layer` is Heaps' `Pass.layer` (`h3d/mat/Pass.hx:51`), 0 by
+default. Every pass list draws lower layers first: `passList.ms` keeps each collected item's
+layer beside its index (compacted with it by `filterFrustum`), `sortByLayer` orders the opaque
+and additive lists by layer and keeps item order inside a layer (the first key of Heaps'
+`SortByMaterial`, `h3d/pass/SortByMaterial.hx:24`; void3d does not sort by shader or texture),
+and `sortBackToFront` orders the alpha list by layer, then far to near, as `depthSort` does
+(`h3d/scene/Renderer.hx:114-125`). Both sorts are stable insertion sorts in place; the layer
+storage grows only with the item count. A URG-style `render_priority` maps to the layer.
+
+**Alpha's depth write stays Heaps'.** M33 carried the question: Heaps' Alpha writes depth
+(`set_blendMode`) and so does three.js (`depthWrite` stays true on a transparent material);
+Bevy's Blend and Godot's default `depth_draw_opaque` do not. The kind keeps Heaps' default. A
+material that must not write depth overrides its own pass, as the probe below does
+(`{ ...Material.ofKind(p, MaterialKind.Alpha), pass: base.pass.withDepth(false, ...) }`): that
+is every port of a Godot transparent material, every translucent drawn under the pixel-art
+preset's `DepthSource.DepthTexture` (refused otherwise, `TranslucentDepthWrite`), and any
+far translucent a layer must draw over a nearer one — a layer orders drawing, it cannot beat a
+depth test. No new API: the pass is already the material's. A glTF document still gets one
+setup pass for all its materials.
+
+**Not a layer: URG's `sorting_offset`.** Godot's per-node `sorting_offset` biases the depth an
+item sorts by, in world units, and URG's scripts rewrite it at runtime for every card in a hand
+(about 80 uses, against 4 non-zero `render_priority`). A per-material layer cannot carry it
+without one material per card per position. The general mechanism under it is a per-object
+render order (three.js `renderOrder`, Unity `sortingOrder`, Unreal's sort priority), which
+Heaps does not have: a **NEW MECHANISM**, row M43, not built here. Godot's world-unit bias
+itself is not ported; a hand of cards maps to an order.
+
+**Acceptance.** `tests/integration/sortLayer.ms` (gate stage `sort-layer`), in both presets: two
+coplanar opaque quads, the second in layer -1, show the second (it draws first and keeps the
+equal depth); a near red and a far green half-alpha quad, the far one in layer 1 and neither
+writing depth, show green over red. The control, every layer 0, shows the first opaque quad and
+red over green, and fails on both halves (the gate requires both messages). Headless
+(`frustumCheck.ms`): the three lists ordered by layer, the alpha list with its layer-1 item the
+farthest (depth alone would draw it first), a culled item's layer compacted away.
+
+### M35a as built
+
+**A key, not twins.** `src/void3d/gpu3d.ms` / `ProgramKey` follows Heaps' constant bits
+(`b9aa6dcb`, `hxsl/Shader.hx` / `updateConstantsFinal`, lines 72–111) and Bevy's
+`MeshPipelineKey` specialization (`157e1ce6`, `bevy_pbr/src/render/mesh.rs:3093,3388`).
+The shady study selected this before shadow receive: another shader axis adds a key bit,
+not another enum twin and map entry. `drawnIn` carries a material's features into either
+preset; screen materials keep their complete key. M14's `programMap.ms` is removed.
+The public construction and admission rules live in `gpu3d.ms` and `material.ms`.
+
+**Declared offline.** Heaps and Bevy compile when a key first appears; sokol-shdc compiles
+before the app runs. `src/void3d/programKeys.txt` therefore declares only the shipped set:
+the same 23 keys, in the same door order. Premultiplied + cutout is nameable but not declared
+until a consumer needs it; `addMaterial` refuses it with `UndeclaredProgram`, and a direct
+door lookup stops naming the key. No `src/gpu` change: the door id remains the pipeline key.
+`scripts/regen-shaders.sh` writes the shader headers and `programTable.h` from the same rows,
+including layout/block assertions; its `--check` covers all three. A row whose stages never
+read its declared feature is refused rather than compiling a plain shader under that key.
+
+**One source per base and preset.** The shader sources use sokol-shdc's `--defines` and
+`--module`, not a separate shader language. A per-key input includes only its two stages:
+sokol-shdc otherwise embeds every stage it receives. The earlier stage-source comparison
+recorded 252 of 276 sources byte-identical to the old twins; the other 24 are premultiplied
+fragment sources where SPIRV-Cross reads the written output instead of a temporary.
+The native captures below, not that textual comparison, hold the unchanged pixels.
+
+**Acceptance, 2026-10-07.** On commit `021f525`, code tree
+`2146496d998ee74d168435c2cb1f8574e1a549a7`, Windows D3D11, BUILD `244ef48c` unchanged
+before/after, `MSC_NO_GLOBAL_CACHE=1`, both gates ran serially:
+- `sh scripts/gate.sh`: GREEN, 82/82 golden, 0 failures, 8 known skips.
+- `sh scripts/gate3d.sh`: GREEN, 312 PASS / 0 FAIL / 3 known skips; 1197 tests,
+  72 baseline hashes, none adopted; accepted capture frames stayed byte-identical.
+- `programKeyCheck.ms`: all 64 combinations of the eight bases, two presets and two feature
+  flags pack distinctly into the 128-slot key space; 23 are declared with their base's layout.
+  Both presets preserve features, reject screen keys, and check the blocks.
+  An undeclared material is refused. Aborts `keyWithoutPremultiplied` and `keyUndeclared`
+  stop with the key named.
+- Allocation guard covers the key's frame-path helpers; no array copy or string builder
+  in the guarded paths. No frame-state growth over 300 frames; 310-frame churn stays flat.
+  Android arm64 `libVoidAndroid.so`: 3,454,016 bytes (build only).
+
+The three 3D skips remain two held captures (`capture-m14forward`, `capture-m16anchor`)
+and no GLES3 device. Web is NOT RUN pending Yoga's emcc provider. Recompiler work overlapped,
+so timings are not quiet-box evidence. The first two runs were red only on obsolete
+allocation-guard targets and two overlong imports; `docs/REVIEWS-3D.md` records the fixes.
+
+### M35 as built
+
+**A directional shadow map.** `dirShadowMap.ms` / `DirShadowMap` ports Heaps `b9aa6dcb`
+`h3d/pass/DirShadowMap.hx` as `DefaultShadowMap` runs it: Dynamic mode, `autoShrink`,
+`SAMPLING_NONE`, a `Depth32` target of the caller's size. `calcShadowBounds` (`:53`) is
+`shadowBounds`: the visible casters' box in light space, cut to the camera's frustum across the
+light and on its far side, keeping the casters' near side, then widened by 1%. A flat caster
+facing the light gets a minimum depth extent so the projection stays finite; no caster in view
+leaves the map cleared to the far plane, which shades nothing. `draw` (`:300`) culls the casters
+to the light's frustum and draws their depth in a depth-only pass; the light camera and the
+direction come from the frame's own camera and light blocks, so a frame takes no new input.
+
+**Where it plugs in.** `attachShadow(renderer, map)` on the core (null detaches it), then each
+preset draws `drawShadowPass` after `beginFrame` and before its scene pass, as fwd.Renderer
+draws its `shadow` pass first. `beginFrame` refuses a caster whose material has no shadow
+output (`ProgramNotCast`, also in `ForwardError` and `PixelArtError`). The map binds to the
+receivers as an hxsl global does (Heaps' `shadow.map`): `SceneTexture` at view slot 4 and sampler
+slot 2, past a material's, and the shadow block at uniform slot 5 among the scene globals.
+`gpu3d.h` grew to five views and three samplers.
+
+**Casting is a preset, receiving a key bit.** M35a's key carries both: `Preset.Shadow` is the
+depth h3d.pass.Shadows writes (`castIn`: cut where the material cuts, premultiplied input and
+receiving dropped, since depth has no colour), drawn with the "shadow" Pass's state (Heaps'
+defaults with the main pass's culling, `refreshProps`). `shadowed` darkens the directional light
+of a lit program; `drawnIn` drops it in a frame with no map, as DirShadow's `enable` constant
+compiles the sampling away. Fourteen keys are declared: six casters (Lit, LitTextured,
+UnlitTextured, each whole and cut) and eight receivers (Lit and LitTextured, whole and cut, in
+both presets); 37 in all. Premultiplied receivers are nameable and undeclared.
+
+**What darkens.** Heaps' forward `Shadow` shader tints the whole pixel by an ESM factor; its pbr
+`DefaultForward` multiplies each shadowed light's contribution (`c *= evaluateDirShadow(l)`).
+void3d's lit programs keep ambient and the directional term apart, so the pbr placement is
+taken: only the directional term is multiplied, by `mix(1, lit, opacity)`. The opacity is
+Godot's `shadow_opacity` (URG uses 0.8); 1 removes the light. Point lights and billboards do
+not receive. The bias is Heaps' 0.01 in map depth, scaled into the depth the backend stores.
+
+**Per backend.** The world-to-map matrix folds in the NDC-to-texel mapping and the stored depth:
+rows top-down on D3D11, Metal and WebGPU (`originTopLeft`), bottom-up on GL, and `(z + 1) / 2`
+where depth is not zero-to-one. The map is read with `texelFetch` through an `unfilterable_float`
+image and a `nonfiltering` sampler, the depth-texture path M3 measured for GLES3; the GLSL ES
+output keeps `highp` on the shadow sampler and block. Only the D3D11 path ran.
+
+**Material defaults.** `Material.ofKind` follows `Material.create`'s default props
+(`shadows: true`, `h3d/mat/Material.hx:255`): a program with a shadow output casts, a lit one
+receives; Billboard and Particle neither (`particles3D`). `Material.plain` and `keyed` stay off,
+as `new Material` is. `withShadows(cast, receive)` is the setters' pair; `ShadowCasting.Only`
+is Godot's and Unity's shadows-only mode, left out of the colour lists by `collect`.
+
+**A GPU door fix.** sokol defaults a pipeline's `color_count` to 1 unless `colors[0]` is
+`SG_PIXELFORMAT_NONE` (`_sg_pipeline_desc_defaults`), so the first depth-only pass failed
+`VALIDATE_APIP_COLORATTACHMENTS_COUNT`. `door.c` now says NONE when a layout has no colour.
+
+**Not built.** PCF and ESM sampling, cascades, static and mixed modes, a shadow colour, a
+per-node off switch (a material-level one covers URG), and a receive bias by slope. A large
+caster box spends Heaps' constant bias over its whole depth range, so a tall scene peter-pans.
+
+**Acceptance, 2026-10-07.** Over `b278254`, Windows D3D11, BUILD `244ef48c` unchanged
+before and after, `MSC_NO_GLOBAL_CACHE=1`, the two gates serially: `gate3d.sh` GREEN, 318 PASS /
+0 FAIL / 3 known skips (the two held captures, no GLES3 device), 1205 tests, 72 baseline hashes
+none adopted, so every accepted capture is byte-identical with no map attached; `gate.sh` GREEN,
+golden 82/82, 8 known skips (`src/gpu/door.c` is shared with void2d). Android arm64
+`libVoidAndroid.so` 3,626,208 bytes (build only, fourteen more programs on six backends).
+- `tests/integration/dirShadow.ms` (stage `dir-shadow`), in both presets: a white ground and a
+  red caster 1 above it, the sun toward (1, 2, 0). Under the caster the ground reads 0x4C4C4C,
+  the ambient alone; the open ground 0xFBFBFB, so the ground casting onto itself shows no acne.
+  Cast off and receive off leave the ground under the caster equal to the open ground;
+  shadow-only keeps the shadow and leaves the caster undrawn; opacity 0.5 reads 0xBFBFBF. The
+  control, the same scene with no map attached, fails on the missing shadow.
+- Headless (`dirShadowCheck.ms`, `programKeyCheck.ms`): every key of the three presets and three
+  flags packs into 512 slots, 37 declared; receivers drawn shadowed only with a map and declare
+  the shadow block, view and sampler past a material's; casters keep their layout, read the
+  material block only when cut, and refuse Billboard and Particle; the material defaults; the
+  light basis; `shadowBounds` cut, kept near side, empty cases and the flat-caster extent; the
+  owned blocks and the `ProgramNotCast` refusal before anything is written. Aborts
+  (`shadowCases.ms`): a foreign or closed map, closing twice, an unlit receiver.
+- The allocation guard covers the shadow path (`drawShadows`, `castsAll`, `shadowBounds`,
+  `casterBounds`, `drawShadowPass`, `collectCasters`, `castIn`, `drawItemWith` and their helpers);
+  the bench and the 310-frame churn stay flat.
+
+GLES3 and web are NOT RUN: the GL row order and stored-depth mapping are reasoned from sokol's
+backends, not measured. The first gate run was red on two items the change made: the bindings
+abort still expected 9 words, and five lines over 100 columns.
+
+### M36 as built
+
+**Three key bits, not three programs.** M35a's key takes `uvTransform`, `backTexture` and
+`dissolve` (`gpu3d.ms`, bits 9–11, 4096 slots) on `LitTextured` and `UnlitTextured`; another
+program stops by name. Heaps adds a shader to the pass (`Pass.addShader`, `h3d/mat/Pass.hx:174`)
+and hxsl links it; sokol-shdc programs cannot link, so each bit is a `#ifdef` in the textured
+fragment stages of both presets and 26 declared keys: each feature alone and all three together,
+for both programs in both presets, the lit ones also shadowed, and the two dissolving casters
+(63 keys in all). Two features without the third, and any moving key that is also cut or
+premultiplied, are nameable and undeclared until a consumer needs them (M35a): `addMaterial`
+refuses them with `UndeclaredProgram`.
+
+**One block for whichever features a key has.** A moving key reads its program's block followed
+by 24 floats (`MOVING_*` in `gpu3d.ms`, `movingMaterialParams` and `movingUnlitMaterialParams`
+in `shader3dBlocks.glsl`), so a material still brings one block and `blockFits` is unchanged.
+`movingDefaults(key)` gives the block with both UV transforms the identity and an unlit key's
+colour white; the caller writes its values over it, as it writes the alpha-kill threshold.
+
+**UV transform: Bevy's shape, Heaps' scroll.** Heaps' `UVDelta` scales and offsets
+(`calculatedUV * uvScale + uvDelta`) and `UVScroll` adds `uvSpeed * global.time`. The matrix is
+Bevy's `StandardMaterial.uv_transform`, an `Affine2` (a 2×2 matrix by columns and a translation),
+which also rotates; the scroll is added after it. Heaps applies both in the vertex stage; here
+they run in the fragment stage, where the material block already is (a sokol uniform block
+belongs to one stage). The result is the same, since perspective-correct interpolation commutes
+with an affine map. A rotation over time is not built: a caller rewrites the matrix.
+
+**Frame time: Heaps' `RenderContext.time`.** The core owns a frame block (slot 6, a scene global
+beside the camera, light and shadow blocks). Each `beginFrame` adds `elapsedTime` to `time`, as
+`RenderContext.start` does, and writes it into the block; `setElapsedTime` is
+`Scene.setElapsedTime`. Both are float64 like Haxe's `Float` and narrowed to float32 only in the
+block: in float32 at 1/60 s a step rounds by about 0.7% after an hour and stops advancing after
+about three days. Void keeps no clock, so the elapsed time is 0 until the caller sets it.
+`needsFrame` asks for a frame while time passes and the last frame drew a material whose scroll is
+not zero; a scroll written later, as any block write, needs `markChanged`. Not built: Bevy wraps `globals.time` at an hour to keep the shader's `speed * time`
+precise; Heaps does not, and void3d follows Heaps until a consumer runs that long.
+
+**Back texture: Godot's `FRONT_FACING`.** Heaps has no texture chosen by facing, only
+`FlipBackFaceNormal`. A back face reads `backTexture` at view slot 1 through its own affine
+transform (no scroll), with the base texture's sampler, so the back texture's own filter and wrap are not used; Godot's card mirrors u for its back
+(`1.0 - uv.x`), which here is a matrix of -1 and an offset of 1. Both texels are read and one is
+kept: WGSL refuses a sample under non-uniform control flow, and `gl_FrontFacing` is not uniform.
+
+**Dissolve: Heaps' alpha map, Godot's edge.** Heaps' `AlphaMap` multiplies the alpha by a map's
+channel, and `KillAlpha` discards below a threshold. Here the noise's red channel, read on the
+mesh's own UV (`AlphaMap`'s `useSourceUVs`), is compared with the threshold directly, before
+shading, so a dissolved pixel costs no lighting, and the material's own alpha is left to its
+kind. Above the threshold, a band of the edge width takes the edge colour mixed by its alpha
+while the threshold is above 0, the guard Godot's card shader has; the colour is gamma-encoded
+and unlit, written after shading and before a cutout and the premultiply. The band is a hard
+step where Godot's card uses `smoothstep`. A caster keeps the dissolve (`castIn`), so the shadow
+loses what the colour loses; a cut that moves its UV is refused as not cast rather than cut at
+the wrong texel.
+
+**Back and noise textures are context textures.** `Material.backTexture` and
+`Material.dissolveTexture` are `TextureId`s beside `texture`, as Bevy's `StandardMaterial` names
+each map by handle. `addMaterial` checks each by role as it checked the base texture (sampled by
+the key, not also a raw view, live in the context, and for the back texture the key's alpha),
+pins it, and `releaseMaterial` lets it go (headless tests cover the refusals; the pin counts
+of a released moving material need live textures and are not asserted); `bindItem` binds each at its slot, so `rebuildTextures`
+brings them back after a context loss. `materialTextures` keeps three per material.
+
+**Acceptance, 2026-10-07.** On commit `40f4a5d`, code tree
+`18c72e752cda1d42cc5ab0caf76ccc0b607eb197` over void2d's `88c8c4d`, Windows D3D11, BUILD
+`4757fd37` unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, the two gates serially:
+`gate3d.sh` GREEN, 321 PASS / 0 FAIL / 3 known skips (the two held captures, no GLES3 device),
+1211 tests, 75 oracle cases agreeing with real Heaps and 11 declared divergences, 72 baseline
+hashes none adopted, so every accepted capture is byte-identical with no moving material
+attached; `gate.sh` GREEN, golden 82/82, 8 known skips. Android arm64 `libVoidAndroid.so`
+3,326,704 bytes, 299,504 fewer than M35's, not attributed (the tree also carries void2d's
+`88c8c4d`).
+- `tests/integration/movingMaterial.ms` (stage `moving-material`), in both presets, six quads:
+  an affine map onto one texel, a scroll that swaps two texels at 1 s and back at 2 s with the
+  time 0.25 s a frame, a mirrored back texture on a quad facing away beside the front texture on
+  one facing the camera, an unlit dissolve with its edge band and a lit one without. The
+  featureless control fails on all six.
+- `tests/integration/dirShadow.ms` case `Dissolve` (stage `dir-shadow`), both presets: the ground
+  under the caster's dissolved half reads 0xFBFBFB, under its kept half 0x4C4C4C; the control
+  with the dissolve off shades both.
+
+GLES3 and web are NOT RUN.
+
+The review sent the first cut back (`docs/REVIEWS-3D.md`): a gate line ending in a literal `\r`,
+time in float32, and the back and noise textures as raw views a context loss would not rebuild.
+
+### M37 as built
+
+**Two key bits on `LitTextured`, after M36's.** `emissive` (bit 12) and `normalMap` (bit 13)
+raise the key to 14 bits, 16384 slots; an unlit program stops by name, its colour being all
+emitted already, and every other program stops as before. 13 keys are declared (76 in all):
+each feature alone and both together, plain and shadowed, in both presets, and the normal-mapped
+caster. A map key that also moves, cuts or premultiplies is nameable and undeclared until a
+consumer needs it (M35a).
+
+**Emission: three.js's and Bevy's shape.** Heaps' base `Material` has no emission; its
+`PbrMaterial` has a scalar. three.js `d4ea9b9` starts the outgoing light at the emissive colour
+(`meshphong.glsl.js:94`), multiplies it by the decoded `emissiveMap` (`emissivemap_fragment`),
+and adds it after lighting; Bevy's `StandardMaterial.emissive` and `emissive_texture` do the
+same. An emissive key's block ends in one vec4 (`EMISSIVE_COLOR`, gamma-encoded like every
+colour input, and `EMISSIVE_STRENGTH`, the factor in linear light that three.js calls
+`emissiveIntensity` and glTF `KHR_materials_emissive_strength`); `emissiveBase(key)` places it
+after the moving floats a key has, though no moving emissive key, nor its block, exists yet. The map is required where three.js and Bevy make it optional, so one
+program covers both: a colour alone takes a 1x1 white map (Heaps' `Texture.fromColor`,
+`h3d/mat/Texture.hx:416`). The emitted light is added to the shaded
+colour after it has been gamma-encoded, by decoding it again (`emittedOver`); the round trip
+costs float error, not a byte.
+
+**Normal map: Heaps' shader, glTF's tangent.** `h3d.shader.NormalMap` reads the map at the
+surface's UV, unpacks `texel * 2 - 1`, and builds the frame from the vertex tangent; its sign
+comes from the tangent's length, which Heaps' own `Polygon.addTangents` always normalises to
+1. The tangent here is glTF's `TANGENT`, a vec4 whose w is the sign of the bitangent
+`cross(normal, tangent)`, as three.js reads it (`normal_vertex.glsl.js:9`). A flipped back face
+turns the whole frame with the normal (three.js `normal_fragment_begin`, `tbn *= faceDirection`).
+The tangent is model-transformed (`transformedTangent` in three.js), not by the normal matrix.
+The map's green runs toward the image's top: v grows downward, so the bitangent is the
+position's derivative along -v, glTF's convention, and the same geometric frame as Heaps'
+`n.cross(tanX) * -w` in its own handedness. The shader takes only w's sign, so a triangle whose
+corners disagree on it cannot interpolate w through 0. A node with a mirroring scale turns the
+bitangent with it, as in three.js: nothing here corrects the frame for a negative determinant.
+
+**Tangents: a layout and a builder.** A normal-mapped key reads `LitTexturedTangent`, the
+textured layout followed by the tangent (16 floats, `LIT_TEXTURED_TANGENT_VERTEX_STRIDE`); its
+caster keeps the layout, so `castIn` keeps `normalMap` and drops `emissive`. `addTangents(mesh)`
+is `Polygon.addTangents`' place in the build: after the textured vertices, once, closing the
+mesh to more vertices (`TangentsAdded`). Its sum is Lengyel's per-vertex tangent and bitangent
+over the triangles, Gram-Schmidt against the normal, w from the bitangent's side; a mirrored UV
+island gets w -1. Not MikkTSpace, which glTF and Bevy ask for when a file has no tangents: the
+two agree on a flat or uniformly mapped surface and may differ across a seam a vertex shares.
+
+**Both maps are context textures by role.** `Material.emissiveTexture` and `normalTexture` are
+roles 3 and 4 beside M36's, at view slots 3 and 5 (past the shadow map's 4), read with the
+base texture's sampler as the back texture is; the normal map is data, so its alpha is not
+held to the program's. `texturesFit` now walks the roles rather than naming each slot, and a
+view past the material's raw ones can only be bound by a role. The bindings grew to six views.
+
+**Acceptance, 2026-10-07.** Code tree of `f3e930d` over void2d's `5739f58`, Windows D3D11, BUILD
+`4757fd37` unchanged before, between and after, `MSC_NO_GLOBAL_CACHE=1`, the two gates serially:
+`gate.sh` GREEN, golden 83/83, 8 known skips; `gate3d.sh` 323 PASS / 3 known skips (the two held
+captures, no GLES3 device) and one FAIL, the allocation stage naming `renderer:slotBound`, which
+the review's `texturesFit` rewrite removed. `0f40e84` and `28d8922` change only the allocation
+stage's name lists (the second stale name, `material:namesTexture`, became the role lookups);
+gate3d's prepare and allocation stages were then rerun alone, GREEN, and every other stage's
+result carries over. 1232 tests, 75 oracle cases agreeing with real Heaps and 11 declared
+divergences, 72 baseline hashes none adopted; Android arm64 `libVoidAndroid.so` 3,434,776 bytes
+(build only).
+- `tests/integration/mapMaterial.ms` (stage `map-material`), both presets: a black quad emits
+  its red and green halves, an orange emission at half strength reads its linear-half bytes, and
+  four quads under one sun from (1, -0.5, 1.2) take the greys their mapped normals predict, the
+  mirrored island turning its tangent and keeping its bitangent. The featureless control fails
+  on all six; its flat grey is 0xDEDEDE where the light was (1, 1, 1.5), as predicted.
+
+GLES3 and web are NOT RUN.
+
+### M42 as built
+
+**References.** Heaps `h3d/mat/Texture.hx:166-168` (`realloc` runs when a lost texture is next
+used) and `:232-235` (one without it is disposed for good), as `src/gpu/texture.ms` takes them
+for void2d (VOID2D.md, P6 device loss). void3d's own rebuild is unchanged in shape: M25's
+`rebuildTextures` from the CPU `TextureData`.
+
+**What changed.** A sampled texture's slot in `DrawContext.textures` holds a `src/gpu` `Texture`
+instead of raw image and view ids: `GpuTexture` is `{ texture, sampler, samplerGeneration }`,
+`texture` null for a render target's slot (M27), which still samples the target's own view.
+`TextureId`, `addTexture`, `retainTexture`/`releaseTexture`, the roles, `addTargetTexture` and
+every refusal keep their meaning; `ImageRefused` and `ViewRefused` come from the owner's
+`TextureError`.
+- The owner is made with a `realloc` that uploads `context.textureData[index].pixels`, so the
+  CPU copy void3d already keeps is the only one (`Texture.fromPixels(..., keep)` would hold a
+  second). A closure over the context makes a cycle, broken by the owner's `close`, which clears
+  `realloc`; a context dropped with a live texture leaks it as it leaks its GPU objects.
+- `rebuildTextures` re-uploads a stale owner through the owner's `upload`, not `asView`, and
+  remakes a stale shared sampler. This is a decision: `asView` stops by name when `realloc`
+  cannot upload, and M25 retries a refused re-upload on the next rebuild with the material
+  drawing nothing meanwhile, which stays. `textureReady` now also needs a sampler, so a texture
+  whose sampler was refused draws nothing as one whose image was.
+- A freed texture still hands its image and view to `doomedTextures` for `buryDoomed`: the
+  owner's `close` destroys a live image at once, and a frame in flight may still name it.
+  `doomOwner` (`draw.ms`) takes them with `Texture.detach()`, which `src/gpu` gained for this
+  (the inverse of `adopt`: nothing destroyed, the owner closed, stale handles returned with
+  their generation). `DoomedTexture` replaces `GpuTexture` in that list.
 - Frame path: `viewAt` and `textureReady` read the owner's `view`; an emit probe of
   `texturedFrame.ms` shows no `ArrayCopy` or string building in either, nor in `drawItem` or
   `bindItem`. No `gate3d.sh` list changed.
@@ -2866,10 +5077,12 @@ public fields. A `Texture.detach()` returning image and view and leaving the own
 replace it. Nothing else was missing: dynamic images and target views were not needed, and the
 premultiplied tag stays in `textureAlphas`, which is void3d's.
 
-**Tests.** `textureCheck.ms` 19 tests (2 new: a freed texture gives its handles to
+**Tests.** `textureCheck.ms` 20 tests (3 new, one for `detach`: a freed texture gives its handles to
 `buryDoomed` and closes its owner, with `Texture.adopt` standing in for a GPU image; a freed
 slot holds no owner and its id is stale). `storeCheck`, `lifetimeCheck`, `closeCheck` green
-(307, 316, 311 reported by the runner, which runs every suite file). The integration files
+(307, 316, 311 reported by the runner, which runs every suite file). Two abort programs,
+`textureDetachedTwice` and `textureClosedAfterDetach`, were built and each stops with its
+message; the gate has not run them. The integration files
 that read `GpuTexture.view` (`texturedFrame`, `gltfFrame`, `storeIdentity`, `targetTexture`) go
 through `drawHelpers` `textureViewAt` and `loseTextureAt`, and `checkRemade` also asks the
 owner for the current generation; they compile (`msc check`) and have NOT been run.
