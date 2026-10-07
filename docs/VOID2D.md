@@ -2164,9 +2164,17 @@ changes described above on today's compiler; the P4 web archive also takes its r
   with Ghostty's 36 reference PNGs (`tests/oracle/ghostty/`, 78,166 bytes, MIT): 1636 of 1636
   cells equal. The sprite table is a sorted range table with a dense id per codepoint
   (`void2dSpriteTableFault` is the compile-time overlap check of `Face.zig` as a test).
-  **Sprite face built 2026-10-08.** Sprites are in the default layer, not a module: Ghostty's
-  `CodepointResolver` asks the sprite face before every font, a terminal needs them in every
-  build, and the cost is one C file (no vendored code). `void2dGlyphFaceSprite(base)` makes a
+  **Sprite face built 2026-10-08, a module since the same day (`-d:voidSprites`).** Ghostty's
+  `CodepointResolver` asks the sprite face before every font, and Terminator turns the flag on;
+  an app without it resolves the box, block, braille and powerline codepoints from its font,
+  exactly as before the sprites existed. `src/void2d/spriteSwitch.ms` passes
+  `-DVOID2D_SPRITES` to `glyph.c`, `face.ms` and `font.ms` take the sprite API inside
+  `when (voidSprites)`, and `isSpriteFace` is the one name that exists in both builds (false
+  without the flag) so `labelText.ms` and `textLayout.ms` carry no `when`. A flagless object
+  holds no sprite symbol (`scripts/wasmModuleDelta.sh` reads that from the objects, native and
+  wasm32; `scripts/gate.sh` reads it from the flagless `mainSokol2d.exe`), and
+  `src/test/spriteOffCheck.ms` runs only without the flag: a sprite codepoint resolves to the
+  font's own face and glyph. `void2dGlyphFaceSprite(base)` makes a
   face that copies its base's tables for metrics only (never its embolden, skew or colour tables)
   and answers `void2dGlyphIndex` from the range table, `void2dGlyphAdvance` with the widest ASCII
   advance of the base, `void2dGlyphKern` with 0, `void2dGlyphFaceData` with NULL (so the shaper
@@ -2194,19 +2202,32 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`1FB3C-1FB6F`, `1FB98` on, `F5D0-F60D`) are not ported; a codepoint of theirs keeps
   coming from the font. 771 sprites in all, 738 byte-equal to Ghostty's reference at four cell
   sizes, 33 within the budget `tests/PENDING.md` lists per family.
-  **NEW MECHANISM, local to `spriteGlyph.c`.** The spec asked for a flatten-offset stroker
-  feeding `stbtt_Rasterize`. `stbtt_Rasterize` is `STBTT_STATIC` in `glyph.c`'s translation unit
-  and takes int16 vertices, so a second copy would put the font rasterizer into the sprite
-  object; the sprites carry their own exact-area accumulator instead (the signed-area scheme of
-  font-rs, about 60 lines, the same coverage maths as stb's), and a stroker that offsets a
-  flattened polyline by half the width on each side with miter joins up to ratio 10 (z2d's
-  default) and butt caps. A closed outline is the polygon minus its inset, which is how
-  `innerStrokePath` reads. Neither reaches the font path or the page code. What it can regress:
-  a polyline that doubles back on itself would cancel its own area, so `drawArc` stops the path
-  where Ghostty's overshooting `lineTo` would reverse it (measured: the reference ink ends at
-  the same half pixel). The reference antialiases with z2d at 4 by 4 samples (its values are
-  multiples of 16 less one), so the graded sprites differ by up to 33 of 255 and are judged
-  against a budget, not byte-equal.
+  **One rasterizer for glyphs and sprites (void-manager decision, 2026-10-08).** Ghostty's
+  shape: the sprites keep their own geometry and share the rasterizer with the glyphs. The
+  geometry is a stroker in `spriteGlyph.c` that offsets a flattened polyline by half the width
+  on each side with miter joins up to ratio 10 (z2d's default) and butt caps; a closed outline
+  is the polygon minus its inset, which is how `innerStrokePath` reads. Every polygon with a
+  fractional or diagonal edge goes through `void2dGlyphPolygonCoverage` in `glyph.c`, which
+  builds int16 vertices at 1/q pixel (q the largest whole number, at most 4096, that keeps the
+  canvas inside int16) and calls `stbtt_Rasterize`, the call the synthetic-bold glyphs
+  already make, into a scratch canvas that `spriteGlyph.c` composites. Blocks, straight box
+  lines, braille, sextants and octants are whole-pixel rectangles and write their spans
+  directly; they never reach a rasterizer. The first build carried a second exact-area
+  accumulator (about 60 lines, the signed-area scheme of font-rs) because `stbtt_Rasterize` is
+  `STBTT_STATIC` in `glyph.c`; that was the NEW MECHANISM the human was asked about, and it is
+  gone. What it can regress: a polyline that doubles back on itself would cancel its own area,
+  so `drawArc` stops the path where Ghostty's overshooting `lineTo` would reverse it (measured:
+  the reference ink ends at the same half pixel). The reference antialiases with z2d at 4 by 4
+  samples (its values are multiples of 16 less one), so the graded sprites differ by up to 33
+  of 255 and are judged against a budget, not byte-equal.
+  **Oracle after the swap (`spriteOracleCheck.ms`, same 1636 cells).** The 1636 exact cells
+  stay byte-equal. The graded families, worst delta against the budget: arcs 26 (26), diagonals
+  18 (17, the budget raised to 18 with its reason in `tests/PENDING.md`), triangles 16 (16),
+  powerline 33 (33); pixels past one step: 4, 2, 0 and 36, each at its budget. The only
+  difference from the accumulator is one level of 255 on some pixels (the diagonals at the
+  11x21 cell move 6 and 14 pixels by 1; of 7 probed codepoints at 4 cell sizes, 6 differ from
+  the old canvas somewhere and none by more than 1). With q fixed at 256 the arcs reached 27,
+  so q grows as far as int16 allows.
   **Gamma on masks.** Glyph mode applies `applyContrastAndGamma` to every coverage, and it maps
   0 to 0 and 1 to 1 exactly (the shader's `a = c (k+1) / (c k + 1)` and the `a (1-a)` correction
   vanish at both ends; `src/test/textGammaCheck.ms` "empty and full coverage stay empty and full" pins the T0 copy), so full blocks, box lines
@@ -2229,21 +2250,29 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `tests/golden/table.ms` and are confirmed or corrected by the first capture.
   **Weight.** `gcc -Os -c src/void2d/spriteGlyph.c` on this box: 20,928 B of code and tables,
   64 B of data, 192 B of bss (21,184 B), the box table (128 x 4 B) and the octant table (230 B)
-  among them; no emcc is installed here, so no wasm figure is claimed. The sprites are in the
-  default layer, so a build that never lays out a codepoint from U+2500 up pays those bytes and
-  nothing per glyph: `font.ms` compares the codepoint with `SPRITE_FIRST_CODEPOINT` before it
-  calls into the table, and text below it, which is nearly all text, costs one comparison.
+  among them; no emcc is installed here, so no wasm figure is claimed. A build with the flag
+  pays those bytes and nothing per glyph: `font.ms` compares the codepoint with
+  `SPRITE_FIRST_CODEPOINT` before it calls into the table, and text below it, which is nearly
+  all text, costs one comparison. A build without the flag pays none of it.
   Nothing existing moves: no scene, test or example holds a codepoint in the sprite ranges
   (searched by character and by escape), so no golden is listed as moved. The vendored data is
   Ghostty's 36 reference PNGs only (78,166 B, MIT, `tests/oracle/ghostty/`); no third-party code
   was added.
-  **Review fixes, 2026-10-08.** `scripts/wasmModuleDelta.sh` now measures `spriteGlyph.c` (the
-  wasm shim gained `round`): the default layer's objects grew by 40,045 B native and 41,488 B
-  wasm32 since the colour item's base, of which `spriteGlyph.c` is 34,553 B native and 36,709 B
-  wasm32 (`tests/bench/wasm.json`, re-recorded). That replaces the 21 KB `gcc -Os` figure above
-  as the budget number; the linked module is still owed to `wasm:budget`.
-  **Visible change in every build:** text that holds a sprite codepoint (a Nerd Font powerline
-  glyph, a box line) now comes from the sprite face and no longer from the font.
+  **Module size, 2026-10-08 (`scripts/wasmModuleDelta.sh`, `tests/bench/wasm.json`, clang
+  23.1.0 -O2 objects; the linked module is still owed to `wasm:budget`).** Before the
+  rasterizer swap, with the sprites in the default layer: `spriteGlyph.c` 34,553 B native and
+  36,709 B wasm32, its `glyph.c` hooks 2,997 B and 2,902 B. After the swap, as a module:
+  `spriteGlyph.c` **33,757 B native, 35,647 B wasm32** (-796 B and -1,062 B, the accumulator
+  gone) plus the `glyph.c` seam under `VOID2D_SPRITES` **4,165 B and 3,926 B** (the hooks and the
+  polygon coverage wrapper), so the module costs 37,922 B native and 39,573 B wasm32 against
+  37,550 B and 39,611 B before: the shared rasterizer saves the accumulator and spends the
+  saving on the wrapper, and the gain is the one rule, not bytes. The default layer's delta
+  since the colour item's base fell from 40,045 B native and 41,488 B wasm32 to 2,647 B and
+  2,036 B, because the sprites left it. That replaces the 21 KB `gcc -Os` figure above as the
+  budget number.
+  **Visible change, in builds with `-d:voidSprites` only:** text that holds a sprite codepoint
+  (a Nerd Font powerline glyph, a box line) comes from the sprite face and no longer from the
+  font. Without the flag nothing moves.
   **Limit, stated plainly:** a Label without `forceWidth` does not join its sprites. Layout is
   DPI-independent and cached, so the sprite advance is the base face's unrounded widest ASCII
   advance in local units, while the tile is the integer cell at the device size; at DPI 1.0 a row
@@ -2251,10 +2280,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   between rows, at 2.0 three overlaps. A host that draws a grid sets `forceWidth` and
   `lineSpacing` as above. Making the advance the cell would need layout to know the device
   scale, which is a re-layout per DPI change and a new mechanism; it is not added.
-  **NEW MECHANISM awaiting approval:** the second rasterizer and stroker in `spriteGlyph.c` was
-  raised in the report after it was built, not before. `glyph.c` already includes stb, so a thin
-  wrapper feeding `stbtt_Rasterize` there was an option; the human decides whether to keep the
-  exact-area accumulator or replace it. Cell height rounding and line thickness have no Ghostty
+  Cell height rounding and line thickness have no Ghostty
   oracle beyond `faceCheck`'s own formula (the width and baseline follow `docs/GHOSTTY.md:44`);
   `Metrics.zig` has not been read. A base face that cannot back sprites logs once and the font's
   own glyphs are used. `tests/golden/table.ms` vectors are positional, so a merge with another
@@ -2262,7 +2288,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
   ASCII advance and its last cell; the bench for `void2dGlyphAdvance` is owed.
   **Owed, not run:** `sh scripts/golden.sh --update text/spriteGlyphs` (the PNGs, three rows),
   then `sh scripts/golden.sh` for the counters; a look at the half-tone shades and edges, which
-  the contrast and gamma of Glyph mode move; the web column of the three rows.
+  the contrast and gamma of Glyph mode move; the web column of the three rows. Also owed, since
+  the module split and the shared rasterizer ran no gate: `scripts/gate.sh` (its module stage
+  now adds `voidSprites`, its flagless `mainSokol2d.exe` symbol check now names the sprite
+  symbols) and `sh scripts/build-web.sh` with and without the flag.
 - Animated image frames keyed by frame index.
   **Golden built 2026-10-08.** `image/animatedFrames` (256x136 at DPI 1.0) decodes one four-frame
   GIF made in memory by `src/test/imageBytes.ms` (red and green rows, blue and yellow columns, a
