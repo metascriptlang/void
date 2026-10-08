@@ -767,7 +767,7 @@ test "T1 a box fill rides the box lanes, and a filled box draws its shadow as it
 	assert uiInstanceField(2, REC_UI_PARAMS0 + 2) == 2.0;
 	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE) == 60.0;
 	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 2) == 30.0;
-	assert uiInstanceField(2, REC_UI_COLOR_FILL + 3) == 0.5;
+	assert uiInstanceField(2, REC_UI_COLOR_FILL + 3) == 1.0;
 
 	assert uiInstanceField(3, REC_UI_PARAMS0) == 0.0;
 	assert uiInstanceField(3, REC_UI_PARAMS0 + 2) == 3.0;
@@ -779,6 +779,19 @@ test "T1 a box fill rides the box lanes, and a filled box draws its shadow as it
 	assert uiInstanceField(5, REC_UI_PARAMS0 + 2) == 0.0;
 	assert uiInstanceField(5, REC_UI_COLOR_FILL + 3) == 0.0;
 	assert uiInstanceField(5, REC_UI_COLOR_BORDER + 3) == 1.0;
+}
+
+test "T1 a view painted only by a box fill draws the fill, not its transparent background" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const view = s.add(s.group().at(4.0, 4.0));
+	view.setSize(40.0, 20.0);
+	view.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0))
+		.linearFill(90.0, rgba(1.0, 0.5, 0.0, 1.0), 0.0, rgba(0.0, 0.5, 1.0, 1.0), 1.0,
+			GradientSpace.Srgb));
+	record(s.refOf(s.root), 64.0, 32.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert uiInstanceField(0, REC_UI_COLOR_FILL + 3) == 1.0;
+	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 3) == 1.0;
 }
 
 function shadowListScene(): NodeRef {

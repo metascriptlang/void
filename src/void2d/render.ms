@@ -990,7 +990,9 @@ function emitBox(
 		if (boxStyles[payload].shadows[k].inset) { insets = insets + 1; }
 	}
 	const filled: boolean = fill.kind !== BoxFillKind.Solid;
-	if (!filled && (visible == 0 || (visible == 1 && boxStyles[payload].shadows[only].spread == 0.0))) {
+	const oneCard: boolean =
+		visible == 0 || (visible == 1 && boxStyles[payload].shadows[only].spread == 0.0);
+	if (!filled && oneCard) {
 		let params1: [float32, float32, float32, float32] = [0.0, 0.0, 0.0, 0.0];
 		let extra: Color = transparent;
 		if (visible == 1) {
@@ -1025,13 +1027,13 @@ function emitBox(
 	}
 	drawUiInstance(sharedGlyphView(), blend, {
 		...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh,
-			filled ? fill.from.tinted(col) : col),
+			filled ? fill.from.faded(na) : col),
 		uvRadii: radii,
 		borders: borders,
 		params: [dashed, (fill.kind as int32) as float32, fillFlags(fill)],
 		params1: fillParams(fill),
 		border: insets > 0 ? transparent : edge,
-		extra: filled ? fill.to.tinted(col) : transparent,
+		extra: filled ? fill.to.faded(na) : transparent,
 	});
 	if (insets == 0) { return; }
 	for (const shadow of boxStyles[payload].shadows) {

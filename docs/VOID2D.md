@@ -2868,8 +2868,9 @@ GLES3 or WebGL2; reopened only by the human's T5 comparison against Zed); `Paint
 
 **Row 1 as built (2026-10-09).** `BoxStyle.fill` is a `BoxFill`: `linearFill(angle, from,
 fromStop, to, toStop, space)`, `slashFill(stripe, between, width, gap)`, `checkerFill(cell,
-between, size)`, and `ditheredFill()` for the gradient. The node's colour multiplies both fill
-colours, as it does a styled label's runs. The stride stays 108 B: the fill rides lanes the box
+between, size)`, and `ditheredFill()` for the gradient. A fill replaces the node's colour, as the
+border colour does, and the node's alpha fades it, so a view promoted to a box by `setBoxStyle`
+alone, whose colour is transparent, still draws its fill. The stride stays 108 B: the fill rides lanes the box
 mode left free, `params0.zw` (kind, then space plus 2 for dither), `params1` (angle and stops, or
 the pattern sizes) and `colorExtra` (the second colour). `params1` and `colorExtra` are the lanes
 the one-instance card shadow uses, so a filled box with a shadow draws the shadow as a standalone
