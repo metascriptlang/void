@@ -1803,9 +1803,14 @@ changes described above on today's compiler; the P4 web archive also takes its r
   default because `batcher.c` `glyphPageViewMode` still aborts by name on an SDF page, and the
   shader slice turns it on at setup. A zoom that passes exactly 1.0 is pixel-exact for that
   frame and re-places on the coverage atlas, as the rule says. The design scale of a
-  `ScaleMode` is still in the world matrix, so under the Sdf regime a LetterBox, Zoom or Stretch
-  scene's text is SDF; folding it into the DPI-like `scale` needs the scene view matrix split
-  in `scene.ms` `paint` and is not done. NEW MECHANISM: the runtime regime switch
+  `ScaleMode`'s uniform design scale is folded into the label's DPI-like scale (built
+  2026-10-08, void manager decision 4): `scene.ms` `designFold` gives LetterBox, Zoom, AutoZoom
+  and an even Stretch their scale (1 for Resize, Fixed and an uneven Stretch), `paint` keeps it as
+  `Scene2D.viewFold`, and `emitLabel` places a label with that scale divided out of its world and
+  multiplied into the render scale, so a label in such a scene stays pixel-exact coverage; the
+  emitted geometry keeps the real world and DPI. Camera zoom is not folded and goes to SDF.
+  Held by `text/designFold` against `text/designFoldDpi` (the same labels at DPI 1.6), which the
+  invariant `designFoldMatchesDpi` requires byte-identical. NEW MECHANISM: the runtime regime switch
   (a rollout guard, removed when the shader lands) and `void2dGlyphSdfStbDiff`, a verification
   entry that stays in `glyph.c` under `VOID2D_SDF_TEXT` and is called from tests only; the
   generator itself is the P6 spec's own "SDF generation from void2d's own outline".

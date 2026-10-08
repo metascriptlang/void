@@ -42,6 +42,8 @@ import {
 	EFFECT_UI_SCENE,
 	EFFECT_UI_SHIFT,
 	SDF_EFFECT_SCENE,
+	DESIGN_FOLD_SCENE,
+	DESIGN_FOLD_DPI_SCENE,
 	SDF_EFFECT_SHIFT,
 	SDF_EFFECT_Y,
 	SDF_EFFECT_ADD_Y,
@@ -529,8 +531,45 @@ function ligatureLinesAgree(): int32 {
 	return 0;
 }
 
+function designFoldMatchesDpi(): int32 {
+	const fold: string = `tests/golden/d3d11/${DESIGN_FOLD_SCENE}.png`;
+	const dpi: string = `tests/golden/d3d11/${DESIGN_FOLD_DPI_SCENE}.png`;
+	if (voidPngLoad(0, fold) == 0 || voidPngLoad(1, dpi) == 0) {
+		console.log(`FAIL ${DESIGN_FOLD_SCENE}: cannot read ${fold} and ${dpi}`);
+		return 1;
+	}
+	if (voidPngWidth(0) != voidPngWidth(1) || voidPngHeight(0) != voidPngHeight(1)) {
+		console.log(`FAIL ${DESIGN_FOLD_SCENE}: the two captures differ in size`);
+		return 1;
+	}
+	let differ: int32 = 0;
+	let inked: int32 = 0;
+	for (let y = 0; y < voidPngHeight(0); y++) {
+		for (let x = 0; x < voidPngWidth(0); x++) {
+			for (let channel = 0; channel < 3; channel++) {
+				const folded: int32 = voidPngPixel(0, x, y, channel);
+				if (folded != voidPngPixel(0, 0, 0, channel)) { inked = inked + 1; }
+				if (folded != voidPngPixel(1, x, y, channel)) { differ = differ + 1; }
+			}
+		}
+	}
+	if (inked == 0 || differ > 0) {
+		console.log(
+			`FAIL ${DESIGN_FOLD_SCENE}: labels in a LetterBox scene at 1.6 differ from the same ` +
+			`labels at DPI 1.6 in ${differ} channel values (${inked} inked)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${DESIGN_FOLD_SCENE}: labels in a LetterBox scene at 1.6 are byte-identical to the ` +
+		`same labels at DPI 1.6 (${inked} inked channel values)`,
+	);
+	return 0;
+}
+
 process.exit(
 	filteredTextMatchesPlain() + raggedSelectionJoins() + lanesMatchPainter() +
+	designFoldMatchesDpi() +
 	premultipliedMatchesStraight(
 		PREMULTIPLIED_EFFECT_SCENE, "VOID_PREMULTIPLIED_EFFECT_CAPTURE", 2,
 	) +

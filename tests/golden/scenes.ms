@@ -37,7 +37,7 @@ import {
 import { GradientSpace } from "../../src/void2d/gradient";
 import { colorMatrixGrayscale } from "../../src/void2d/effect";
 import { ObjectFit, imageStyle } from "../../src/void2d/imageStyle";
-import { add } from "../../src/void2d/scene";
+import { add, setScaleMode } from "../../src/void2d/scene";
 import { IconId, registerIcon } from "../../src/void2d/icon";
 when (voidProfiler) {
 	import { OverlayMode } from "../../src/void2d/profiler";
@@ -63,6 +63,7 @@ import {
 	glowFilter,
 	dropShadowFilter,
 	whiteTile,
+	ScaleMode,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { makeImage, makeView } from "../../src/sokol/gpu";
@@ -1724,6 +1725,22 @@ function uiProfilerOverlayFull(): Scene2D { return overlayScene(384.0, 28.0, tru
 
 function uiProfilerOverlayMinimal(): Scene2D { return overlayScene(256.0, 16.0, false); }
 
+function designFoldLabels(s: Scene2D): Scene2D {
+	const ink: Color = rgba(0.86, 0.90, 0.98, 1.0);
+	s.add(s.label("fn main() { let x: i32 = 42; }", 9.0, ink).at(6.0, 8.0));
+	s.add(s.label("LetterBox at 1.6, DPI 1.6", 13.0, ink).at(6.0, 30.0));
+	s.add(s.label("0123456789 iiiimmmm WAVE", 11.0, ink).at(6.5, 60.0));
+	return s;
+}
+
+function textDesignFold(): Scene2D {
+	const s = Scene2D.create(DARK);
+	s.setScaleMode(ScaleMode.LetterBox, 200.0, 125.0);
+	return designFoldLabels(s);
+}
+
+function textDesignFoldDpi(): Scene2D { return designFoldLabels(Scene2D.create(DARK)); }
+
 function filterManyTargets(): Scene2D {
 	const s = Scene2D.create(DARK);
 	for (let k: int32 = 0; k < MANY_TARGETS_COUNT; k++) {
@@ -1951,5 +1968,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "icon/tintedDpi150", build: iconTinted },
 		{ name: "ui/profilerOverlayFull", build: uiProfilerOverlayFull },
 		{ name: "ui/profilerOverlayMinimal", build: uiProfilerOverlayMinimal },
+		{ name: "text/designFold", build: textDesignFold },
+		{ name: "text/designFoldDpi", build: textDesignFoldDpi },
 	];
 }
