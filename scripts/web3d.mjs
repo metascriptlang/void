@@ -41,7 +41,8 @@ function session(url) {
 		} else if (msg.method === 'Runtime.consoleAPICalled') {
 			logs.push(msg.params.args.map((a) => a.value ?? '').join(' '));
 		} else if (msg.method === 'Runtime.exceptionThrown') {
-			logs.push(`EXCEPTION ${msg.params.exceptionDetails.text}`);
+			const details = msg.params.exceptionDetails;
+			logs.push(`EXCEPTION ${details.text} ${details.exception?.description ?? ''}`);
 		}
 	};
 	const send = (method, params = {}) => new Promise((resolve) => {
