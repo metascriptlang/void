@@ -79,7 +79,7 @@ import {
 	reopenLast,
 	FRINGE_HALF_WIDTH,
 } from "./draw";
-import { InstanceMode, SDF_GLYPH_FLAG, uiInstance } from "./instance";
+import { InstanceMode, SDF_GLYPH_FLAG, UiInstance, uiInstance } from "./instance";
 import {
 	NO_LABEL_TEXT,
 	shapeLabel,
@@ -141,7 +141,8 @@ import { sqrtf } from "../math/mat4";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
 import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
-import { NO_BOX_STYLE, BorderStyle, boxStyles } from "./boxStyle";
+import { NO_BOX_STYLE, BorderStyle, BoxFill, BoxFillKind, boxStyles, solidFill } from "./boxStyle";
+import { GradientSpace } from "./gradient";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
 import {
 	GraphicsOpKind, GRAPHICS_OP_FLOATS, GFX_OP_KIND, GFX_OP_VERTEX_OFFSET,
@@ -894,6 +895,21 @@ function emitImage(
 	}
 }
 
+function fillFlags(f: BoxFill): float32 {
+	const oklab: float32 = f.space == GradientSpace.Oklab ? 1.0 : 0.0;
+	const dither: float32 = f.dither ? 2.0 : 0.0;
+	return oklab + dither;
+}
+
+function fillParams(f: BoxFill): [float32, float32, float32, float32] {
+	match (f.kind) {
+		BoxFillKind.Linear => { return [f.angle, f.fromStop, f.toStop, 0.0]; },
+		BoxFillKind.Slash => { return [f.stripe, f.gap, 0.0, 0.0]; },
+		BoxFillKind.Checker => { return [f.cell, 0.0, 0.0, 0.0]; },
+		BoxFillKind.Solid => { return [0.0, 0.0, 0.0, 0.0]; },
+	}
+}
+
 function emitNode(
 	s: Scene2D, i: int32, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
@@ -987,15 +1003,45 @@ function emitNode(
 					const sc: Color = st.shadowColor;
 					shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
 				}
-				drawUiInstance(sharedGlyphView(), blend, {
-					...uiInstance(InstanceMode.Box, world, qx, qy, qw, qh, col),
-					uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
-					borders: [borderL, borderT, borderR, borderB],
-					params: [borderStyle, 0.0, 0.0],
-					params1: [sp0, sp1, sp2, sp3],
-					border: edge,
-					extra: shadowColor,
-				});
+				const fill: BoxFill = payload != NO_BOX_STYLE
+					? boxStyles[payload].fill
+					: solidFill();
+				const filled: boolean = payload != NO_BOX_STYLE && fill.kind !== BoxFillKind.Solid;
+				if (!filled) {
+					drawUiInstance(sharedGlyphView(), blend, {
+						...uiInstance(InstanceMode.Box, world, qx, qy, qw, qh, col),
+						uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
+						borders: [borderL, borderT, borderR, borderB],
+						params: [borderStyle, 0.0, 0.0],
+						params1: [sp0, sp1, sp2, sp3],
+						border: edge,
+						extra: shadowColor,
+					});
+				} else {
+					const inset: boolean = shadowOn && sp3 > 0.5;
+					const mx: float32 = shadowOn && !inset ? 3.0 * sp2 + (sp0 < 0.0 ? -sp0 : sp0) : 0.0;
+					const my: float32 = shadowOn && !inset ? 3.0 * sp2 + (sp1 < 0.0 ? -sp1 : sp1) : 0.0;
+					const shadow: UiInstance = {
+						...uiInstance(InstanceMode.Shadow, world, qx, qy, qw, qh, col),
+						uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
+						borders: [qw * 0.5 - mx, qh * 0.5 - my, sp2, sp3],
+						params1: [sp0, sp1, 0.0, 0.0],
+						extra: shadowColor,
+					};
+					if (shadowOn && !inset) { drawUiInstance(sharedGlyphView(), blend, shadow); }
+					const boxOrigin = vec2(rendered.xMin + mx, rendered.yMin + my) * world;
+					drawUiInstance(sharedGlyphView(), blend, {
+						...uiInstance(InstanceMode.Box, world, boxOrigin.x, boxOrigin.y,
+							qw - 2.0 * mx, qh - 2.0 * my, fill.from.tinted(col)),
+						uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
+						borders: [borderL, borderT, borderR, borderB],
+						params: [borderStyle, (fill.kind as int32) as float32, fillFlags(fill)],
+						params1: fillParams(fill),
+						border: edge,
+						extra: fill.to.tinted(col),
+					});
+					if (inset) { drawUiInstance(sharedGlyphView(), blend, shadow); }
+				}
 			} else {
 				fillQuad(tl, tr, br, bl, col, blend);
 			}

@@ -53,7 +53,7 @@ import {
 import {
 	REC_SPRITE_AFFINE, REC_SPRITE_ORIGIN_SIZE, REC_SPRITE_UV, REC_SPRITE_COLOR,
 	REC_UI_AFFINE, REC_UI_ORIGIN_SIZE, REC_UI_UV_RADII, REC_UI_BORDERS, REC_UI_PARAMS0, REC_UI_PARAMS1,
-	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_FLOATS,
+	REC_UI_COLOR_FILL, REC_UI_COLOR_BORDER, REC_UI_COLOR_EXTRA, REC_UI_FLOATS,
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
@@ -65,7 +65,9 @@ import { PixelFormat, contextGeneration } from "../../src/gpu/door";
 import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { nodeWidth } from "../../src/test/nodeTextHelpers";
 import { DEFAULT_FONT } from "../../src/void2d/font";
-import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import {
+	BoxStyle, uniformRadii, uniformBorders, linearFill, slashFill, checkerFill, ditheredFill,
+} from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
 	fillTexRect, strokeLine, setAntialias,
@@ -725,6 +727,52 @@ test "T1 a Mask left of the viewport keeps its clip, so what it reaches on scree
 	const width: float32 = clipWidthOfDraws();
 	console.log(`the left Mask's draw carries a clip ${width} wide`);
 	assert width == 100.0;
+}
+
+function boxFillScene(): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const plain = BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(1.0, 1.0, 1.0, 1.0));
+	s.add(s.rect(40.0, 20.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 8.0)).setBoxStyle(plain
+		.linearFill(90.0, rgba(1.0, 0.0, 0.0, 1.0), 0.1, rgba(0.0, 0.0, 1.0, 1.0), 0.9,
+			GradientSpace.Oklab)
+		.ditheredFill());
+	s.add(s.rect(30.0, 20.0, rgba(1.0, 1.0, 1.0, 0.5)).at(60.0, 8.0)).setBoxStyle(plain
+		.slashFill(rgba(0.0, 1.0, 0.0, 1.0), rgba(0.0, 0.0, 0.0, 0.0), 2.0, 3.0)
+		.castShadow(rgba(0.0, 0.0, 0.0, 0.5), 2.0, 1.0, 2.0));
+	s.add(s.rect(30.0, 20.0, rgba(1.0, 1.0, 1.0, 1.0)).at(8.0, 36.0)).setBoxStyle(plain
+		.checkerFill(rgba(1.0, 1.0, 1.0, 1.0), rgba(0.5, 0.5, 0.5, 1.0), 4.0)
+		.castInsetShadow(rgba(0.0, 0.0, 0.0, 0.6), 2.0));
+	return s.refOf(s.root);
+}
+
+test "T1 a box fill rides the box lanes, and a filled box draws its shadow as its own instance" {
+	record(boxFillScene(), 128.0, 64.0, 1.0);
+	assert uiInstanceCount() == 5;
+	assert uiInstanceField(0, REC_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(0, REC_UI_PARAMS0 + 2) == 1.0;
+	assert uiInstanceField(0, REC_UI_PARAMS0 + 3) == 3.0;
+	assert uiInstanceField(0, REC_UI_PARAMS1) == 90.0;
+	assert approx(uiInstanceField(0, REC_UI_PARAMS1 + 1), 0.1);
+	assert approx(uiInstanceField(0, REC_UI_PARAMS1 + 2), 0.9);
+	assert uiInstanceField(0, REC_UI_COLOR_FILL) == 1.0;
+	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 2) == 1.0;
+
+	assert uiInstanceField(1, REC_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(1, REC_UI_ORIGIN_SIZE + 2) > 30.0;
+	assert uiInstanceField(1, REC_UI_BORDERS) == 15.0;
+	assert uiInstanceField(1, REC_UI_BORDERS + 1) == 10.0;
+	assert uiInstanceField(1, REC_UI_COLOR_EXTRA + 3) == 0.5;
+	assert uiInstanceField(2, REC_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(2, REC_UI_PARAMS0 + 2) == 2.0;
+	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE) == 60.0;
+	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 2) == 30.0;
+	assert uiInstanceField(2, REC_UI_COLOR_FILL + 3) == 0.5;
+
+	assert uiInstanceField(3, REC_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(3, REC_UI_PARAMS0 + 2) == 3.0;
+	assert uiInstanceField(3, REC_UI_PARAMS1) == 4.0;
+	assert uiInstanceField(4, REC_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(4, REC_UI_BORDERS + 3) == 1.0;
 }
 
 test "T1 snapshot: dashed box style reaches the per-corner and per-side instance lanes" {

@@ -28,6 +28,83 @@ float sdfTexelsPerPixel(vec2 uvDx, vec2 uvDy, vec2 pageSize) {
 }
 @end
 
+@block colorSpace
+const float PATTERN_TIE_BIAS = 1.0 / 64.0;
+vec3 srgbToLinear(vec3 c) {
+    vec3 lo = c / 12.92;
+    vec3 hi = pow((c + vec3(0.055)) / 1.055, vec3(2.4));
+    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
+}
+vec3 linearToSrgb(vec3 c) {
+    vec3 lo = c * 12.92;
+    vec3 hi = vec3(1.055) * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - vec3(0.055);
+    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
+}
+vec3 linearToOklab(vec3 c) {
+    vec3 lms = vec3(
+        0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
+        0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b,
+        0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
+    lms = sign(lms) * pow(abs(lms), vec3(1.0 / 3.0));
+    return vec3(
+        0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
+        1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
+        0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
+}
+vec3 oklabToLinear(vec3 c) {
+    vec3 lms = vec3(
+        c.x + 0.3963377774 * c.y + 0.2158037573 * c.z,
+        c.x - 0.1055613458 * c.y - 0.0638541728 * c.z,
+        c.x - 0.0894841775 * c.y - 1.2914855480 * c.z);
+    lms = lms * lms * lms;
+    return vec3(
+         4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
+        -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
+        -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
+}
+vec4 mixColorSpace(vec4 a, vec4 b, float t, bool oklab) {
+    vec3 rgb;
+    if (oklab) {
+        vec3 la = linearToOklab(srgbToLinear(a.rgb));
+        vec3 lb = linearToOklab(srgbToLinear(b.rgb));
+        rgb = linearToSrgb(oklabToLinear(mix(la, lb, t)));
+    } else {
+        rgb = mix(a.rgb, b.rgb, t);
+    }
+    return vec4(rgb, mix(a.a, b.a, t));
+}
+float bayer4(vec2 pixel) {
+    int x = int(mod(floor(pixel.x), 4.0));
+    int y = int(mod(floor(pixel.y), 4.0));
+    if (y == 0) {
+        if (x == 0) return 0.0;
+        if (x == 1) return 8.0;
+        if (x == 2) return 2.0;
+        return 10.0;
+    }
+    if (y == 1) {
+        if (x == 0) return 12.0;
+        if (x == 1) return 4.0;
+        if (x == 2) return 14.0;
+        return 6.0;
+    }
+    if (y == 2) {
+        if (x == 0) return 3.0;
+        if (x == 1) return 11.0;
+        if (x == 2) return 1.0;
+        return 9.0;
+    }
+    if (x == 0) return 15.0;
+    if (x == 1) return 7.0;
+    if (x == 2) return 13.0;
+    return 5.0;
+}
+vec3 ditherRgb(vec3 rgb, vec2 pixel) {
+    float noise = (bayer4(pixel) - 7.5) * (2.0 / (7.5 * 255.0));
+    return clamp(rgb + vec3(noise), vec3(0.0), vec3(1.0));
+}
+@end
+
 @vs vs
 layout(binding=0) uniform void2d_params {
     vec4 viewport;     // x,y = framebuffer size in pixels; z = flipV (1 when sampling a GL render-target); w = premultiplied source with no effect
@@ -96,50 +173,10 @@ in vec2 pixel;
 out vec4 frag_color;
 @include_block textGamma
 @include_block textSdf
-vec3 srgbToLinear(vec3 c) {
-    vec3 lo = c / 12.92;
-    vec3 hi = pow((c + vec3(0.055)) / 1.055, vec3(2.4));
-    return mix(hi, lo, lessThanEqual(c, vec3(0.04045)));
-}
-vec3 linearToSrgb(vec3 c) {
-    vec3 lo = c * 12.92;
-    vec3 hi = vec3(1.055) * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - vec3(0.055);
-    return mix(hi, lo, lessThanEqual(c, vec3(0.0031308)));
-}
-vec3 linearToOklab(vec3 c) {
-    vec3 lms = vec3(
-        0.4122214708 * c.r + 0.5363325363 * c.g + 0.0514459929 * c.b,
-        0.2119034982 * c.r + 0.6806995451 * c.g + 0.1073969566 * c.b,
-        0.0883024619 * c.r + 0.2817188376 * c.g + 0.6299787005 * c.b);
-    lms = sign(lms) * pow(abs(lms), vec3(1.0 / 3.0));
-    return vec3(
-        0.2104542553 * lms.x + 0.7936177850 * lms.y - 0.0040720468 * lms.z,
-        1.9779984951 * lms.x - 2.4285922050 * lms.y + 0.4505937099 * lms.z,
-        0.0259040371 * lms.x + 0.7827717662 * lms.y - 0.8086757660 * lms.z);
-}
-vec3 oklabToLinear(vec3 c) {
-    vec3 lms = vec3(
-        c.x + 0.3963377774 * c.y + 0.2158037573 * c.z,
-        c.x - 0.1055613458 * c.y - 0.0638541728 * c.z,
-        c.x - 0.0894841775 * c.y - 1.2914855480 * c.z);
-    lms = lms * lms * lms;
-    return vec3(
-         4.0767416621 * lms.x - 3.3077115913 * lms.y + 0.2309699292 * lms.z,
-        -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
-        -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
-}
-const float PATTERN_TIE_BIAS = 1.0 / 64.0;
+@include_block colorSpace
 
 vec4 mixGradient(vec4 a, vec4 b, float t) {
-    vec3 rgb;
-    if (gradientMeta.y > 0.5) {
-        vec3 la = linearToOklab(srgbToLinear(a.rgb));
-        vec3 lb = linearToOklab(srgbToLinear(b.rgb));
-        rgb = linearToSrgb(oklabToLinear(mix(la, lb, t)));
-    } else {
-        rgb = mix(a.rgb, b.rgb, t);
-    }
-    return vec4(rgb, mix(a.a, b.a, t));
+    return mixColorSpace(a, b, t, gradientMeta.y > 0.5);
 }
 vec4 gradientAt(float t) {
     float middle = gradientMeta.w;
@@ -148,32 +185,6 @@ vec4 gradientAt(float t) {
         return mixGradient(gradientColor1, gradientColor2, (t - middle) / (1.0 - middle));
     }
     return mixGradient(gradientColor0, gradientColor1, t);
-}
-float bayer4(vec2 pixel) {
-    int x = int(mod(floor(pixel.x), 4.0));
-    int y = int(mod(floor(pixel.y), 4.0));
-    if (y == 0) {
-        if (x == 0) return 0.0;
-        if (x == 1) return 8.0;
-        if (x == 2) return 2.0;
-        return 10.0;
-    }
-    if (y == 1) {
-        if (x == 0) return 12.0;
-        if (x == 1) return 4.0;
-        if (x == 2) return 14.0;
-        return 6.0;
-    }
-    if (y == 2) {
-        if (x == 0) return 3.0;
-        if (x == 1) return 11.0;
-        if (x == 2) return 1.0;
-        return 9.0;
-    }
-    if (x == 0) return 15.0;
-    if (x == 1) return 7.0;
-    if (x == 2) return 13.0;
-    return 5.0;
 }
 void main() {
     vec2 uvDx = dFdx(uv);
@@ -184,10 +195,7 @@ void main() {
     if (gradientKind == 1 || gradientKind == 2) {
         float t = gradientKind == 1 ? clamp(uv.x, 0.0, 1.0) : clamp(length(uv), 0.0, 1.0);
         texel = gradientAt(t);
-        if (gradientMeta.z > 0.5) {
-            float noise = (bayer4(pixel) - 7.5) * (2.0 / (7.5 * 255.0));
-            texel.rgb = clamp(texel.rgb + vec3(noise), vec3(0.0), vec3(1.0));
-        }
+        if (gradientMeta.z > 0.5) { texel.rgb = ditherRgb(texel.rgb, pixel); }
     } else if (gradientKind == 3) {
         float spacing = max(gradientParams.x, 1.0);
         float width = clamp(gradientParams.y, 0.0, spacing);
@@ -336,6 +344,7 @@ out vec4 vFill;
 out vec4 vBorder;
 out vec4 vExtra;
 out vec4 clipDistance;
+out vec2 vPixel;
 float dilateStroke(float width_, float pixelsPerLocal) {
     if (width_ <= 0.0 || pixelsPerLocal <= 0.0) { return 0.0; }
     return max(width_, 1.0 / pixelsPerLocal);
@@ -358,6 +367,7 @@ void main() {
                       iAffine.y * local.x + iAffine.w * local.y + iOriginSize.y);
     vec2 moved = world + shift.xy;
     gl_Position = vec4(moved.x / viewport.x * 2.0 - 1.0, 1.0 - moved.y / viewport.y * 2.0, 0.0, 1.0);
+    vPixel = moved * viewport.w;
 
     vec2 t = mix(iUvRadii.xy, iUvRadii.zw, size.x > 0.0 && size.y > 0.0 ? local / size : vec2(0.0));
     vLocalHalf = vec4(local - size * 0.5, size * 0.5);
@@ -398,6 +408,7 @@ layout(binding=1) uniform ui_fx {
 };
 @include_block textGamma
 @include_block textSdf
+@include_block colorSpace
 in vec4 vLocalHalf;
 in vec4 vUvAa;
 in vec4 vRadii;
@@ -408,6 +419,7 @@ in vec4 vFill;
 in vec4 vBorder;
 in vec4 vExtra;
 in vec4 clipDistance;
+in vec2 vPixel;
 out vec4 frag_color;
 
 vec4 withEffect(vec4 p, vec3 keyTexel) {
@@ -448,6 +460,42 @@ float cornerRadius(vec2 p, vec4 radii) {
 float coverageFromDistance(float d, float aa) {
     if (aa <= 0.0) { return d <= 0.0 ? 1.0 : 0.0; }
     return clamp(0.5 - d / aa, 0.0, 1.0);
+}
+
+// GPUI's `gradient_color` (shaders.wgsl:430-516) in local units: vParams0.y is the fill kind
+// (1 linear, 2 slash, 3 checker), vParams0.z the space plus 2 for dither, vFill and vExtra
+// the two colours. Pattern edges ramp over `aa`, where GPUI's ramp is one device pixel.
+vec4 overCoverage(vec4 a, vec4 b, float coverage) {
+    float alpha = a.a * coverage + b.a * (1.0 - coverage);
+    vec3 rgb = a.rgb * (a.a * coverage) + b.rgb * (b.a * (1.0 - coverage));
+    return vec4(alpha > 0.0 ? rgb / alpha : vec3(0.0), alpha);
+}
+
+vec4 boxFillAt(vec2 p, vec2 half_, float aa) {
+    int kind = int(vParams0.y + 0.5);
+    vec2 corner = p + half_;
+    if (kind == 1) {
+        float radians_ = (mod(vParams1.x, 360.0) - 90.0) * 0.017453292519943295;
+        vec2 direction = vec2(cos(radians_), sin(radians_));
+        vec2 size = max(half_ * 2.0, vec2(1e-6));
+        if (size.x > size.y) { direction.y *= size.y / size.x; } else { direction.x *= size.x / size.y; }
+        float t = dot(p, direction) / length(direction);
+        t = abs(direction.x) > abs(direction.y) ? (t + half_.x) / size.x : (t + half_.y) / size.y;
+        float span = vParams1.z - vParams1.y;
+        t = span > 0.0 ? clamp((t - vParams1.y) / span, 0.0, 1.0) : step(vParams1.y, t);
+        vec4 c = mixColorSpace(vFill, vExtra, t, mod(vParams0.z, 2.0) > 0.5);
+        if (vParams0.z > 1.5) { c.rgb = ditherRgb(c.rgb, vPixel); }
+        return c;
+    }
+    if (kind == 2) {
+        float height = vParams1.x + vParams1.y;
+        float period = height * 0.7071067811865476;
+        float pattern = mod((corner.x + corner.y) * 0.7071067811865476, period);
+        float distance = min(pattern, period - pattern) - period * (vParams1.x / height) * 0.5;
+        return overCoverage(vFill, vExtra, coverageFromDistance(distance, aa));
+    }
+    vec2 cell = floor((corner + vec2(aa * PATTERN_TIE_BIAS)) / vParams1.x);
+    return mod(cell.x + cell.y, 2.0) > 0.5 ? vFill : vExtra;
 }
 
 float cornerDashVelocity(float first, float second) {
@@ -726,7 +774,8 @@ void main() {
     // shadow, the same convention the style itself uses. The margin formula is one contract
     // with render.ms, mirrored the way aaWidthForAffine is.
     vec2 halfBox = half_;
-    bool shadowed = vExtra.a > 0.0;
+    bool filled = mode == 0 && vParams0.y > 0.5;
+    bool shadowed = !filled && vExtra.a > 0.0;
     if (shadowed && vParams1.w <= 0.5) {
         halfBox = half_ - (vec2(3.0 * vParams1.z) + abs(vParams1.xy));
     }
@@ -765,7 +814,7 @@ void main() {
         ring *= dashedBorderAlpha(p, halfBox, vRadii, borders, aa);
     }
 
-    vec4 fill = vFill;
+    vec4 fill = filled ? boxFillAt(p, halfBox, aa) : vFill;
     if (mode == 2) {                        // Glyph: an R8 coverage page
         float coverage = texture(sampler2D(uiTex, uiSmp), vUvAa.xy).r;
         if (vParams0.x > 0.5) {
