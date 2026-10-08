@@ -5,12 +5,12 @@ import {
 	AtlasError,
 	PageKind,
 	OUTLINE_LANE_MAX,
+	COVERAGE_OUTLINE_PER_PX,
+	SDF_OUTLINE_PER_TEXEL,
 	SIZE_QUANTA_MAX,
 	maskKey,
 } from "../void2d/glyphAtlas";
 import {
-	COVERAGE_OUTLINE_PER_PX,
-	SDF_OUTLINE_PER_TEXEL,
 	outlineLane,
 	laneWidth,
 	deviceOutlineWidth,

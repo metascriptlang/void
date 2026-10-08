@@ -101,6 +101,10 @@ when (voidColourEmoji) {
 } else {
 	import "./glyphColourOffCheck";
 }
+when (voidTextOutline) {
+	import "./glyphOutlineCheck";
+	import "./outlineOracleCheck";
+}
 when (voidSdfText) {
 	import "./textSdfCheck";
 	import "./glyphSdfCheck";

@@ -89,6 +89,11 @@ int void2dGlyphSdfRasterize(int face, int glyph, int page, int x, int y, int w, 
 unsigned int void2dGlyphSdfGenerations(void);
 int void2dGlyphSdfStbDiff(int face, int glyph, int page, int x, int y);
 
+int *void2dGlyphOutlineBox(int face, int glyph, float sizePx, float shiftX, float widthPx);
+int void2dGlyphOutlineRasterize(int face, int glyph, float sizePx, float shiftX, float widthPx,
+                                int page, int x, int y, int w, int h);
+unsigned int void2dGlyphOutlineGenerations(void);
+
 typedef void (*GlyphRasterBox)(const unsigned char *font, int length, int glyph, float sizePx,
                                float shiftX, int *box);
 typedef void (*GlyphRasterFill)(const unsigned char *font, int length, int glyph, float sizePx,

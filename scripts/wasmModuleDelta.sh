@@ -68,6 +68,8 @@ compile "." "spriteGlyph.c" "on.sprite" ""
 compile "." "glyph.c" "on.glyph" "-DVOID2D_COLOUR_EMOJI"
 compile "." "colourEmoji/colourFace.c" "on.colourFace" ""
 compile "." "glyph.c" "on.sdf.glyph" "-DVOID2D_SDF_TEXT"
+compile "." "glyph.c" "on.outline.glyph" "-DVOID2D_TEXT_OUTLINE"
+compile "." "glyph.c" "on.outlineSdf.glyph" "-DVOID2D_TEXT_OUTLINE -DVOID2D_SDF_TEXT"
 compile "." "shaper.c" "on.shaper" ""
 compile "." "bidiClass.c" "on.bidi" ""
 [ "$failed" -eq 0 ] || exit 1
@@ -103,8 +105,8 @@ if ! llvm-nm "$OUT/on.glyph.o" | grep -q 'void2dColour'; then
 	failed=1
 fi
 for unit in glyph grapheme batcher sfnt; do
-	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dGlyphSdf\|void2dShape\|void2dBidi\|kbts_'; then
-		echo "FAIL wasm delta: the module-off $unit.c object names an SDF, shaper or BiDi symbol"
+	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dGlyphSdf\|void2dGlyphOutline\|void2dShape\|void2dBidi\|kbts_'; then
+		echo "FAIL wasm delta: the module-off $unit.c object names an SDF, outline, shaper or BiDi symbol"
 		failed=1
 	fi
 done
@@ -114,6 +116,14 @@ if ! llvm-nm "$OUT/on.sdf.glyph.o" | grep -q 'void2dGlyphSdf'; then
 fi
 if ! llvm-nm "$OUT/on.bidi.o" | grep -q 'void2dBidiClass'; then
 	echo "FAIL wasm delta: bidiClass.c names no void2dBidiClass symbol, so the check above sees nothing"
+	failed=1
+fi
+if ! llvm-nm "$OUT/on.outline.glyph.o" | grep -q 'void2dGlyphOutline'; then
+	echo "FAIL wasm delta: glyph.c built with the outline module names no void2dGlyphOutline symbol, so the check above sees nothing"
+	failed=1
+fi
+if llvm-nm "$OUT/on.sdf.glyph.o" | grep -q 'void2dGlyphOutline'; then
+	echo "FAIL wasm delta: glyph.c built with the SDF module alone names a void2dGlyphOutline symbol"
 	failed=1
 fi
 if ! llvm-nm "$OUT/on.shaper.o" | grep -q 'kbts_'; then
@@ -151,12 +161,17 @@ echo "      default-layer delta since the base: +$delta_native B native, +$delta
 echo "module on: colourFace.c $module_native B native, $module_wasm B wasm32; glyph.c seam +$seam_native B native, +$seam_wasm B wasm32"
 sdf_native=$(( $(bytes "$OUT/on.sdf.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
 sdf_wasm=$(( $(bytes "$OUT/on.sdf.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm.o") ))
+outline_native=$(( $(bytes "$OUT/on.outline.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
+outline_wasm=$(( $(bytes "$OUT/on.outline.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm.o") ))
+outlineSdf_native=$(( $(bytes "$OUT/on.outlineSdf.glyph.o") - $(bytes "$OUT/on.sdf.glyph.o") ))
+outlineSdf_wasm=$(( $(bytes "$OUT/on.outlineSdf.glyph.wasm.o") - $(bytes "$OUT/on.sdf.glyph.wasm.o") ))
 shaper_native=$(bytes "$OUT/on.shaper.o")
 shaper_wasm=$(bytes "$OUT/on.shaper.wasm.o")
 echo "module on: SDF text, glyph.c with VOID2D_SDF_TEXT +$sdf_native B native, +$sdf_wasm B wasm32; shaper.c $shaper_native B native, $shaper_wasm B wasm32"
 bidi_native=$(bytes "$OUT/on.bidi.o")
 bidi_wasm=$(bytes "$OUT/on.bidi.wasm.o")
 echo "module on: BiDi, bidiClass.c $bidi_native B native, $bidi_wasm B wasm32"
+echo "module on: text outline, glyph.c with VOID2D_TEXT_OUTLINE +$outline_native B native, +$outline_wasm B wasm32; beside SDF text +$outlineSdf_native B native, +$outlineSdf_wasm B wasm32"
 sprite_native=$(bytes "$OUT/on.sprite.o")
 sprite_wasm=$(bytes "$OUT/on.sprite.wasm.o")
 spriteSeam_native=$(( $(bytes "$OUT/on.sprite.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
@@ -168,6 +183,8 @@ if [ "$mode" = print ]; then
 	printf '  "module": { "native": %s, "wasm32": %s },\n' "$module_native" "$module_wasm"
 	printf '  "seam": { "native": %s, "wasm32": %s },\n' "$seam_native" "$seam_wasm"
 	printf '  "sdf": { "native": %s, "wasm32": %s },\n' "$sdf_native" "$sdf_wasm"
+	printf '  "textOutline": { "native": %s, "wasm32": %s },\n' "$outline_native" "$outline_wasm"
+	printf '  "textOutlineWithSdf": { "native": %s, "wasm32": %s },\n' "$outlineSdf_native" "$outlineSdf_wasm"
 	printf '  "shaper": { "native": %s, "wasm32": %s },\n' "$shaper_native" "$shaper_wasm"
 	printf '  "bidi": { "native": %s, "wasm32": %s },\n' "$bidi_native" "$bidi_wasm"
 	printf '  "sprite": { "native": %s, "wasm32": %s },\n' "$sprite_native" "$sprite_wasm"
@@ -194,6 +211,10 @@ within "module, wasm32 objects" "$module_wasm" "$(recorded module wasm32)"
 within "module, native objects" "$module_native" "$(recorded module native)"
 within "SDF text, wasm32 objects" "$sdf_wasm" "$(recorded sdf wasm32)"
 within "SDF text, native objects" "$sdf_native" "$(recorded sdf native)"
+within "text outline, wasm32 objects" "$outline_wasm" "$(recorded textOutline wasm32)"
+within "text outline, native objects" "$outline_native" "$(recorded textOutline native)"
+within "text outline beside SDF text, wasm32 objects" "$outlineSdf_wasm" "$(recorded textOutlineWithSdf wasm32)"
+within "text outline beside SDF text, native objects" "$outlineSdf_native" "$(recorded textOutlineWithSdf native)"
 within "shaper, wasm32 objects" "$shaper_wasm" "$(recorded shaper wasm32)"
 within "shaper, native objects" "$shaper_native" "$(recorded shaper native)"
 within "BiDi tables, wasm32 objects" "$bidi_wasm" "$(recorded bidi wasm32)"

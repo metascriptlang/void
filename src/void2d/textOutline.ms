@@ -1,9 +1,6 @@
 import { AtlasError, OUTLINE_LANE_MAX } from "./glyphAtlas";
 import { snapStroke } from "./snap";
 
-export const COVERAGE_OUTLINE_PER_PX: float32 = 4.0;
-export const SDF_OUTLINE_PER_TEXEL: float32 = 8.0;
-
 export function outlineLane(width: float32, perUnit: float32): Result<int32, AtlasError> {
 	if (!(width > 0.0)) { return Result.ok(0); }
 	const exact: float32 = width * perUnit;

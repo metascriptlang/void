@@ -48,6 +48,12 @@ export enum AtlasError {
 
 	ColourRefused,
 	OutlineTooWide,
+	OutlineBadHandle,
+	OutlineWrongPageKind,
+	OutlineOutsidePage,
+	OutlineBoxMismatch,
+	OutlineNoMemory,
+	OutlineFaceRefused,
 }
 
 export enum PageKind {
@@ -107,6 +113,7 @@ export interface GlyphAtlas {
 	index: Map<uint64, int32>;
 	rasterizations: int32;
 	colourRasterizations: int32;
+	outlineRasterizations: int32;
 	generations: int32;
 	reclaims: int32;
 	frame: int32;
@@ -124,6 +131,7 @@ export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32)
 		index: new Map<uint64, int32>(),
 		rasterizations: 0,
 		colourRasterizations: 0,
+		outlineRasterizations: 0,
 		generations: 0,
 		reclaims: 0,
 		frame: 0,
@@ -144,6 +152,8 @@ export function snapBaseline(deviceY: float32): int32 {
 
 export const SIZE_QUANTA_MAX: int32 = 65535;
 export const OUTLINE_LANE_MAX: int32 = 255;
+export const COVERAGE_OUTLINE_PER_PX: float32 = 4.0;
+export const SDF_OUTLINE_PER_TEXEL: float32 = 8.0;
 
 export function sizeQuanta(this key: GlyphKey): int32 {
 	const scaled: float32 = key.kind == PageKind.Mask ? key.sizePx : key.sizePx * 64.0;
@@ -595,6 +605,80 @@ function record(this atlas: GlyphAtlas, packedKey: uint64, tile: GlyphTile): int
 	}
 	atlas.index.set(packedKey, index);
 	return index;
+}
+
+when (voidTextOutline) {
+	import { void2dGlyphOutlineBox, void2dGlyphOutlineRasterize } from "./glyph.h";
+
+	function outlineRasterRefusal(code: int32): AtlasError {
+		if (code == 1) { return AtlasError.OutlineBadHandle; }
+		if (code == 2) { return AtlasError.OutlineWrongPageKind; }
+		if (code == 3) { return AtlasError.OutlineOutsidePage; }
+		if (code == 4) { return AtlasError.OutlineBoxMismatch; }
+		if (code == 5) { return AtlasError.OutlineNoMemory; }
+		console.log(`void2d: the outline rasterizer returned the unknown code ${code}`);
+		unreachable;
+	}
+
+	export function acquireOutline(
+		this atlas: GlyphAtlas,
+		key: GlyphKey,
+	): Result<int32, AtlasError> {
+		if (key.kind != PageKind.Coverage || key.outline < 1) {
+			return Result.err(AtlasError.KindNotBuilt);
+		}
+		if (key.variant < 0 || key.variant >= SUBPIXEL_VARIANTS) {
+			return Result.err(AtlasError.VariantOutOfRange);
+		}
+		const widthPx: float32 = (key.outline as float32) / COVERAGE_OUTLINE_PER_PX;
+		const shift: float32 = (key.variant as float32) / (SUBPIXEL_VARIANTS as float32);
+		if (!key.fitsKey()) {
+			if (!onlyOversize(key)) { return Result.err(AtlasError.TooLarge); }
+			const huge: Ptr<int32> =
+				void2dGlyphOutlineBox(key.face, key.glyph, key.sizePx, 0.0, widthPx);
+			if (huge[4] != 0) { return Result.err(AtlasError.OutlineFaceRefused); }
+			if (huge[2] > huge[0] && huge[3] > huge[1]) { return Result.err(AtlasError.TooLarge); }
+			return Result.ok(atlas.retainEmpty());
+		}
+		const packedKey: uint64 = key.packed();
+		const hit = atlas.index.get(packedKey);
+		if (hit.present) {
+			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
+			return Result.ok(hit.value);
+		}
+		const box: Ptr<int32> =
+			void2dGlyphOutlineBox(key.face, key.glyph, key.sizePx, shift, widthPx);
+		if (box[4] != 0) { return Result.err(AtlasError.OutlineFaceRefused); }
+		const left: int32 = box[0];
+		const top: int32 = box[1];
+		const width: int32 = box[2] - left;
+		const height: int32 = box[3] - top;
+		let page: GlyphPage = NO_GLYPH_PAGE;
+		let x: int32 = 0;
+		let y: int32 = 0;
+		if (width > 0 && height > 0) {
+			const placed = try allocate(atlas, PageKind.Coverage, width, height);
+			page = placed[0];
+			x = placed[1];
+			y = placed[2];
+			const code: int32 = void2dGlyphOutlineRasterize(key.face, key.glyph, key.sizePx, shift,
+				widthPx, atlas.pages[page as int32].handle as int32, x, y, width, height);
+			if (code != 0) { return Result.err(outlineRasterRefusal(code)); }
+			atlas.outlineRasterizations = atlas.outlineRasterizations + 1;
+		}
+		atlas.rasterizations = atlas.rasterizations + 1;
+		return Result.ok(atlas.record(packedKey, {
+			page: page,
+			x: x,
+			y: y,
+			width: width > 0 ? width : 0,
+			height: height > 0 ? height : 0,
+			left: left,
+			top: top,
+			refs: 1,
+			key: packedKey,
+		}));
+	}
 }
 
 when (voidSdfText) {
