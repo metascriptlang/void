@@ -2490,7 +2490,7 @@ caster keeps the layout, so `castIn` keeps `normalMap` and drops `emissive`. `ad
 is `Polygon.addTangents`' place in the build: after the textured vertices, once, closing the
 mesh to more vertices (`TangentsAdded`). Its sum is Lengyel's per-vertex tangent and bitangent
 over the triangles, Gram-Schmidt against the normal, w from the bitangent's side; a mirrored UV
-island gets w -1. Not MikkTSpace, which glTF and Bevy ask for when a file has no tangents: the
+island gets w -1. (Superseded by "MikkTSpace tangents, as built".) Not MikkTSpace, which glTF and Bevy ask for when a file has no tangents: the
 two agree on a flat or uniformly mapped surface and may differ across a seam a vertex shares.
 
 **Both maps are context textures by role.** `Material.emissiveTexture` and `normalTexture` are
@@ -2787,7 +2787,7 @@ is named. `TEXCOORD_0` is required as soon as any role names an image
 selects `normalMap` in the key and the 16-float `LitTexturedTangent` layout. A primitive's
 `TANGENT` (float VEC4: unit xyz, w exactly 1 or -1, glTF 2.0 section 3.7.2.1) is interleaved as
 it comes (`addGivenTangents`); with no `TANGENT` the tangents are `addTangents`', which is
-Lengyel's per-vertex sum and **not MikkTSpace**, which glTF asks of a loader that generates them
+Lengyel's per-vertex sum (superseded by "MikkTSpace tangents, as built") and **not MikkTSpace**, which glTF asks of a loader that generates them
 (section 3.7.2.1). A flat or uniformly mapped surface agrees; across a shared seam they can
 differ, so a baked map authored against MikkTSpace may light slightly off at hard edges. three.js
 makes the same trade the other way, deriving tangents in the shader when none is stored
@@ -3152,6 +3152,37 @@ The three touch tests, the sample and gate3d.sh, nothing gate.sh reads. Rerun on
 BUILD, the stages they reach: shaders, pending, tests 1423/1423, billboard-blend (both presets
 and the straight control), world-label (both presets and both controls), card-table (and its
 featureless control), allocation and style, all GREEN. GLES3, web and Android NOT RUN.
+
+### MikkTSpace tangents, as built
+
+**What changes for the author.** `addTangents` now derives the tangents glTF asks a loader to
+generate when a file carries none (glTF 2.0 section 3.7.2.1): MikkTSpace, the algorithm Blender
+bakes normal maps against, so a baked map lights the same here across seams and mirrored islands.
+The call, its errors and a file's own `TANGENT` path (`addGivenTangents`) are unchanged. What can
+change is the count: a vertex whose triangles disagree on its tangent is split, so the result and
+`vertexCount()` may exceed the vertices built, and the index list is re-pointed.
+
+**References.** The algorithm is the reference implementation itself, vendored like stb and
+nanosvg: `mmikk/MikkTSpace` pinned in `setup.sh` (zlib), compiled through
+`src/void3d/mikkTangents.c`, which only reads the flat interleaved vertices and writes one tangent
+per triangle corner. Its header (`mikktspace.h`, `m_setTSpaceBasic`) says the results are per
+corner and that overwriting them through an existing index list gives incorrect results. Godot
+(`SurfaceTool::generate_tangents`, `scene/resources/surface_tool.cpp`) and Bevy
+(`bevy_mesh/src/mikktspace.rs` `set_tangent`) write per index anyway; three.js
+(`BufferGeometryUtils.computeMikkTSpaceTangents`) de-indexes the geometry and keeps it so. This
+follows the header and three.js, then welds back: `meshData.ms` keeps one vertex while its corners'
+tangents agree bit for bit and appends a copy for each distinct tangent, which is the de-indexed
+result with its duplicates shared, so a mesh with no seam keeps its vertex count. w is the negated
+MikkTSpace sign, as three.js' `negateSign` (default true, "including glTF") and Bevy's flip after
+generation; the flat-quad test pins it at 1 as before.
+
+**Built and run.** BUILD `99a851d7`, msc v0.3.2, Windows: `src/test/meshDataCheck.ms` 330/330 and
+the headless entry `src/test/index.ms` 1417/1417. New test: two quads sharing a mirror seam split
+6 vertices into 8, each side keeping its own tangent; the same test on the old Lengyel sum fails
+(the shared vertices average to zero). The old "mirrored" fixture reversed the winding instead of
+mirroring the UVs, which MikkTSpace reads as a back face; it is now counter-clockwise with u
+reversed. Not run: the captures that draw normal maps (`map-material`, `card-table`), the web
+builds (`mikkTangents.c` under emcc) and the gate pair.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 

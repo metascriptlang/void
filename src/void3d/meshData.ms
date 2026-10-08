@@ -17,6 +17,16 @@
 // arrays**. Reach one through its table by index (`context.meshData[i].bounds`) or take it by
 // `ref`; never `const data: MeshData = table[i]` (CODE-STYLE §5, the copy trap).
 
+@include("mikkTangents.h");
+@compile("./mikkTangents.c");
+
+extern function void3dMikkTangents(
+	vertices: Readonly<Span<float32>>,
+	stride: int32,
+	indices: Readonly<Span<uint16>>,
+	corners: Span<float32>,
+): int32;
+
 import { Vec3, vec3 } from "../math/math3d";
 import { sinf, cosf } from "../math/mat4";
 import { Bounds3D, addPoint } from "./bounds";
@@ -222,32 +232,83 @@ export function addTexturedQuad(
 	return Result.ok(first);
 }
 
-// h3d.prim.Polygon.addTangents: called once the textured vertices are in, it interleaves a tangent
-// after each. Heaps' tangent carries no handedness; this one is Lengyel's per-vertex sum with
-// glTF's sign in w, so a mirrored UV island turns its bitangent.
+// h3d.prim.Polygon.addTangents' place, deriving the tangents glTF asks a loader to generate when
+// a file has none (2.0 section 3.7.2.1): MikkTSpace per triangle corner, then welded back. Its
+// header forbids averaging corners through the existing index list, so a vertex whose corners
+// disagree is split, the copy appended and those corners re-pointed: three.js' de-indexed result
+// with its duplicates shared. w is glTF's, the negated MikkTSpace sign (three.js negateSign, Bevy).
 export function addTangents(ref data: MeshData): Result<int32, MeshError> {
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
 	const count: int32 = data.vertexCount();
-	let sums: Vec<float32> = new Array(count * 6);
-	const triangles: int32 = data.triangleCount();
-	for (let triangle = 0; triangle < triangles; triangle++) {
-		data.addTriangleTangent(sums, triangle);
+	const cornerCount: int32 = data.triangleCount() * 3;
+	let corners: Vec<float32> = new Array(cornerCount * 4);
+	if (data.mikkCorners(corners) == 0) {
+		console.log("void3d: addTangents: MikkTSpace could not allocate its working arrays");
+		unreachable;
 	}
-	let tangents: Vec<float32> = [];
+	const indexed: boolean = data.isIndexed();
+	let tangents: Vec<float32> = new Array(count * 4);
+	let filled: Vec<uint8> = new Array(count);
+	let nextSplit: Vec<int32> = new Array(count);
+	let sources: Vec<int32> = [];
+	let indices: Vec<uint16> = [];
+	for (let corner = 0; corner < cornerCount; corner++) {
+		const vertex: int32 = indexed ? (data.indices[corner] as int32) : corner;
+		let at: int32 = vertex;
+		if (filled[vertex] == 0) {
+			filled[vertex] = 1;
+			for (let k = 0; k < 4; k++) { tangents[vertex * 4 + k] = corners[corner * 4 + k]; }
+		} else {
+			while (!sameTangent(tangents, at, corners, corner) && nextSplit[at] != 0) {
+				at = nextSplit[at] - 1;
+			}
+			if (!sameTangent(tangents, at, corners, corner)) {
+				const split: int32 = count + (sources.length as int32);
+				if (split >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+				nextSplit[at] = split + 1;
+				nextSplit.push(0);
+				sources.push(vertex);
+				for (let k = 0; k < 4; k++) { tangents.push(corners[corner * 4 + k]); }
+				at = split;
+			}
+		}
+		if (indexed) { indices.push(at as uint16); }
+	}
 	for (let i = 0; i < count; i++) {
+		if (filled[i] != 0) { continue; }
 		const base: int32 = i * LIT_TEXTURED_VERTEX_STRIDE;
 		const normal: Vec3 =
 			vec3(data.vertices[base + 3], data.vertices[base + 4], data.vertices[base + 5]);
-		const tangent: Vec3 = vec3(sums[i * 6], sums[i * 6 + 1], sums[i * 6 + 2]);
-		const bitangent: Vec3 = vec3(sums[i * 6 + 3], sums[i * 6 + 4], sums[i * 6 + 5]);
-		const along: Vec3 = orthogonalTangent(normal, tangent);
-		tangents.push(along.x);
-		tangents.push(along.y);
-		tangents.push(along.z);
-		tangents.push(normal.cross(along).dot(bitangent) > 0.0 ? -1.0 : 1.0);
+		const along: Vec3 = orthogonalTangent(normal, vec3(0.0, 0.0, 0.0));
+		tangents[i * 4] = along.x;
+		tangents[i * 4 + 1] = along.y;
+		tangents[i * 4 + 2] = along.z;
+		tangents[i * 4 + 3] = 1.0;
 	}
-	return addGivenTangents(data, tangents);
+	if (indexed) {
+		for (let i = cornerCount; i < (data.indices.length as int32); i++) {
+			indices.push(data.indices[i]);
+		}
+		data.indices = indices;
+	}
+	return interleaveTangents(data, tangents, sources);
+}
+
+function mikkCorners(this data: Readonly<MeshData>, corners: Span<float32>): int32 {
+	return void3dMikkTangents(data.vertices, LIT_TEXTURED_VERTEX_STRIDE, data.indices, corners);
+}
+
+function sameTangent(
+	tangents: Readonly<Span<float32>>,
+	vertex: int32,
+	corners: Readonly<Span<float32>>,
+	corner: int32,
+): boolean {
+	for (let k = 0; k < 4; k++) {
+		if (tangents[vertex * 4 + k] != corners[corner * 4 + k]) { return false; }
+	}
+	return true;
 }
 
 // The same closing step with the tangents a file carries (glTF's TANGENT: xyz and w, four floats
@@ -258,11 +319,24 @@ export function addGivenTangents(
 ): Result<int32, MeshError> {
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
+	if ((tangents.length as int32) != data.vertexCount() * 4) {
+		return Result.err(MeshError.TangentCount);
+	}
+	return interleaveTangents(data, tangents, []);
+}
+
+// Each vertex followed by its tangent; a vertex past the original count is a copy of its source.
+function interleaveTangents(
+	ref data: MeshData,
+	tangents: Readonly<Span<float32>>,
+	sources: Readonly<Span<int32>>,
+): Result<int32, MeshError> {
 	const count: int32 = data.vertexCount();
-	if ((tangents.length as int32) != count * 4) { return Result.err(MeshError.TangentCount); }
+	const total: int32 = count + (sources.length as int32);
 	let vertices: Vec<float32> = [];
-	for (let i = 0; i < count; i++) {
-		const base: int32 = i * LIT_TEXTURED_VERTEX_STRIDE;
+	for (let i = 0; i < total; i++) {
+		const source: int32 = i < count ? i : sources[i - count];
+		const base: int32 = source * LIT_TEXTURED_VERTEX_STRIDE;
 		for (let k = 0; k < LIT_TEXTURED_VERTEX_STRIDE; k++) {
 			vertices.push(data.vertices[base + k]);
 		}
@@ -270,39 +344,7 @@ export function addGivenTangents(
 	}
 	data.vertices = vertices;
 	data.hasTangents = true;
-	return Result.ok(count);
-}
-
-// Adds the triangle's tangent (position per u) and bitangent (position per v) to its corners;
-// a triangle whose UVs span no area adds nothing.
-function addTriangleTangent(this data: MeshData, sums: Span<float32>, triangle: int32): void {
-	const at: int32 = triangle * 3;
-	const indexed: boolean = data.isIndexed();
-	const a: int32 = indexed ? (data.indices[at] as int32) : at;
-	const b: int32 = indexed ? (data.indices[at + 1] as int32) : at + 1;
-	const c: int32 = indexed ? (data.indices[at + 2] as int32) : at + 2;
-	const p0: Vec3 = data.cornerOf(triangle, 0);
-	const e1: Vec3 = data.cornerOf(triangle, 1) - p0;
-	const e2: Vec3 = data.cornerOf(triangle, 2) - p0;
-	const stride: int32 = LIT_TEXTURED_VERTEX_STRIDE;
-	const u0: float32 = data.vertices[a * stride + 6];
-	const v0: float32 = data.vertices[a * stride + 7];
-	const du1: float32 = data.vertices[b * stride + 6] - u0;
-	const dv1: float32 = data.vertices[b * stride + 7] - v0;
-	const du2: float32 = data.vertices[c * stride + 6] - u0;
-	const dv2: float32 = data.vertices[c * stride + 7] - v0;
-	const area: float32 = du1 * dv2 - du2 * dv1;
-	if (area == 0.0) { return; }
-	const tangent: Vec3 = (e1.scaled(dv2) - e2.scaled(dv1)).scaled(1.0 / area);
-	const bitangent: Vec3 = (e2.scaled(du1) - e1.scaled(du2)).scaled(1.0 / area);
-	for (const corner of [a, b, c]) {
-		sums[corner * 6] = sums[corner * 6] + tangent.x;
-		sums[corner * 6 + 1] = sums[corner * 6 + 1] + tangent.y;
-		sums[corner * 6 + 2] = sums[corner * 6 + 2] + tangent.z;
-		sums[corner * 6 + 3] = sums[corner * 6 + 3] + bitangent.x;
-		sums[corner * 6 + 4] = sums[corner * 6 + 4] + bitangent.y;
-		sums[corner * 6 + 5] = sums[corner * 6 + 5] + bitangent.z;
-	}
+	return Result.ok(total);
 }
 
 // Gram-Schmidt against the normal; a vertex no triangle gave a direction takes any unit vector

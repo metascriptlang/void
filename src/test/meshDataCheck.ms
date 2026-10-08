@@ -404,15 +404,21 @@ function handednessAt(data: MeshData, vertex: int32): float32 {
 	return data.vertices[vertex * LIT_TEXTURED_TANGENT_VERTEX_STRIDE + 15];
 }
 
-// A quad facing +z from (0,0) to (2,1), `mirrored` running u from right to left.
+// A quad facing +z from (0,0) to (2,1), counter-clockwise, `mirrored` running u from right to
+// left.
 function facingQuad(mirrored: boolean): MeshData {
 	let data: MeshData = MeshData.withUvs();
-	const a: Vec3 = mirrored ? vec3(2.0, 0.0, 0.0) : vec3(0.0, 0.0, 0.0);
-	const b: Vec3 = mirrored ? vec3(0.0, 0.0, 0.0) : vec3(2.0, 0.0, 0.0);
-	const c: Vec3 = mirrored ? vec3(0.0, 1.0, 0.0) : vec3(2.0, 1.0, 0.0);
-	const d: Vec3 = mirrored ? vec3(2.0, 1.0, 0.0) : vec3(0.0, 1.0, 0.0);
+	const left: float32 = mirrored ? 1.0 : 0.0;
+	const right: float32 = mirrored ? 0.0 : 1.0;
 	const normal: Vec3 = vec3(0.0, 0.0, 1.0);
-	if (!addTexturedQuad(data, a, b, c, d, normal, WHITE).ok) { unreachable; }
+	const xs: Vec<float32> = [0.0, 2.0, 2.0, 0.0];
+	const us: Vec<float32> = [left, right, right, left];
+	for (let i = 0; i < 4; i++) {
+		const uv: Uv = { u: us[i], v: i < 2 ? 1.0 : 0.0 };
+		const at: Vec3 = vec3(xs[i], i < 2 ? 0.0 : 1.0, 0.0);
+		if (!addTexturedVertex(data, at, normal, uv, WHITE).ok) { unreachable; }
+	}
+	if (!addTriangle(data, 0, 1, 2).ok || !addTriangle(data, 0, 2, 3).ok) { unreachable; }
 	return data;
 }
 
@@ -434,6 +440,32 @@ test "a mirrored UV island turns its tangent and flips the handedness" {
 	assert addTangents(data).ok;
 	for (let i = 0; i < 4; i++) {
 		assert near(tangentAt(data, i), -1.0, 0.0, 0.0) && handednessAt(data, i) == -1.0;
+	}
+}
+
+test "a vertex shared across a mirror seam is split, each side keeping its own tangent" {
+	let data: MeshData = MeshData.withUvs();
+	const normal: Vec3 = vec3(0.0, 0.0, 1.0);
+	for (let i = 0; i < 6; i++) {
+		const x: float32 = (i % 3) as float32;
+		const y: float32 = i < 3 ? 0.0 : 1.0;
+		const uv: Uv = { u: x == 1.0 ? 0.0 : 1.0, v: 1.0 - y };
+		assert addTexturedVertex(data, vec3(x, y, 0.0), normal, uv, WHITE).ok;
+	}
+	assert addTriangle(data, 0, 1, 4).ok && addTriangle(data, 0, 4, 3).ok;
+	assert addTriangle(data, 1, 2, 5).ok && addTriangle(data, 1, 5, 4).ok;
+	const added: Result<int32, MeshError> = addTangents(data);
+	assert added.ok;
+	if (added.ok) { assert added.value == 8 && data.vertexCount() == 8; }
+	for (let corner = 0; corner < 12; corner++) {
+		const vertex: int32 = data.indices[corner] as int32;
+		const mirrored: boolean = corner < 6;
+		assert near(tangentAt(data, vertex), mirrored ? -1.0 : 1.0, 0.0, 0.0);
+		assert handednessAt(data, vertex) == (mirrored ? -1.0 : 1.0);
+	}
+	for (let split = 6; split < 8; split++) {
+		const at: Vec3 = texturedPositionAt(data, split);
+		assert approx(at.x, 1.0) && isUv(uvAt(data, split), 0.0, at.y == 0.0 ? 1.0 : 0.0);
 	}
 }
 
