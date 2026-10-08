@@ -141,7 +141,9 @@ import { sqrtf } from "../math/mat4";
 import { RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
 import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
-import { NO_BOX_STYLE, BorderStyle, BoxFill, BoxFillKind, boxStyles, solidFill } from "./boxStyle";
+import {
+	NO_BOX_STYLE, BorderStyle, BoxFill, BoxFillKind, BoxShadow, BoxStyle, boxStyles,
+} from "./boxStyle";
 import { GradientSpace } from "./gradient";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
 import {
@@ -338,24 +340,11 @@ function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D)
 	if (s.payloads[i] == NO_BOX_STYLE) {
 		return { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
 	}
-	const st = boxStyles[s.payloads[i]];
-	if (st.shadowColor.a > 0.0 && !st.shadowInset) {
-		let offsetX: float32 = st.shadowOffsetX;
-		let offsetY: float32 = st.shadowOffsetY;
-		if (aligned) {
-			offsetX = snapOffset(offsetX * deviceAX) / deviceAX;
-			offsetY = snapOffset(offsetY * deviceDX) / deviceDX;
-		}
-		const absX: float32 = offsetX < 0.0 ? -offsetX : offsetX;
-		const absY: float32 = offsetY < 0.0 ? -offsetY : offsetY;
-		const mx: float32 = 3.0 * st.shadowBlur + absX;
-		const my: float32 = 3.0 * st.shadowBlur + absY;
-		xMin = xMin - mx;
-		yMin = yMin - my;
-		xMax = xMax + mx;
-		yMax = yMax + my;
-	}
-	return { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
+	const shadows = boxStyles[s.payloads[i]].shadows;
+	const margin: Vec2 = dropMargin(shadows, aligned, deviceAX, deviceDX);
+	return {
+		xMin: xMin - margin.x, yMin: yMin - margin.y, xMax: xMax + margin.x, yMax: yMax + margin.y,
+	};
 }
 
 function renderScaleGrid(s: Scene2D, i: int32, world: Transform2D, col: Color): void {
@@ -910,6 +899,157 @@ function fillParams(f: BoxFill): [float32, float32, float32, float32] {
 	}
 }
 
+function shadowOffset(offset: float32, aligned: boolean, device: float32): float32 {
+	return aligned ? snapOffset(offset * device) / device : offset;
+}
+
+function dropMargin(
+	shadows: Readonly<Span<BoxShadow>>, aligned: boolean, deviceAX: float32, deviceDX: float32,
+): Vec2 {
+	let mx: float32 = 0.0;
+	let my: float32 = 0.0;
+	for (const shadow of shadows) {
+		if (shadow.inset || !(shadow.color.a > 0.0)) { continue; }
+		const grow: float32 = shadow.spread > 0.0 ? shadow.spread : 0.0;
+		const reach: float32 = 3.0 * shadow.blur + grow;
+		const ox: float32 = shadowOffset(shadow.offsetX, aligned, deviceAX);
+		const oy: float32 = shadowOffset(shadow.offsetY, aligned, deviceDX);
+		const x: float32 = reach + (ox < 0.0 ? -ox : ox);
+		const y: float32 = reach + (oy < 0.0 ? -oy : oy);
+		if (x > mx) { mx = x; }
+		if (y > my) { my = y; }
+	}
+	return vec2(mx, my);
+}
+
+function drawBoxShadow(
+	world: Transform2D, at: Vec2, w: float32, h: float32, half: Vec2,
+	radii: [float32, float32, float32, float32], shadow: BoxShadow,
+	aligned: boolean, deviceAX: float32, deviceDX: float32, na: float32, blend: BlendMode,
+): void {
+	const c: Color = shadow.color;
+	drawUiInstance(sharedGlyphView(), blend, {
+		...uiInstance(InstanceMode.Shadow, world, at.x, at.y, w, h, transparent),
+		uvRadii: radii,
+		borders: [half.x, half.y, shadow.blur, shadow.inset ? 1.0 : 0.0],
+		params1: [
+			shadowOffset(shadow.offsetX, aligned, deviceAX),
+			shadowOffset(shadow.offsetY, aligned, deviceDX),
+			shadow.spread,
+			0.0,
+		],
+		extra: rgba(c.r, c.g, c.b, c.a * na),
+	});
+}
+
+// cardOneInstance: one visible shadow with no spread over a solid fill is ONE instance carrying
+// shadow, fill and border. Anything else is GPUI's paint order as instances: drop shadows, the
+// fill, inset shadows, then the border. The visible box is snapped before its quad is
+// inflated, otherwise a fractional shadow margin moves the reconstructed fill edge off the
+// device grid.
+function emitBox(
+	s: Scene2D, i: int32, world: Transform2D, na: float32, col: Color, blend: BlendMode,
+	quad: Bounds2D,
+): void {
+	const at = vec2(quad.xMin, quad.yMin) * world;
+	const w: float32 = quad.xMax - quad.xMin;
+	const h: float32 = quad.yMax - quad.yMin;
+	const payload: int32 = s.payloads[i];
+	if (payload == NO_BOX_STYLE) {
+		drawUiInstance(sharedGlyphView(), blend,
+			uiInstance(InstanceMode.Box, world, at.x, at.y, w, h, col));
+		return;
+	}
+	const st: BoxStyle = boxStyles[payload];
+	const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
+	const scale: float32 = currentRenderScale();
+	const deviceAX: float32 = aligned ? world.a * scale : 0.0;
+	const deviceDX: float32 = aligned ? world.d * scale : 0.0;
+	const radii: [float32, float32, float32, float32] =
+		[st.radii.topLeft, st.radii.topRight, st.radii.bottomRight, st.radii.bottomLeft];
+	let borders: [float32, float32, float32, float32] =
+		[st.borders.left, st.borders.top, st.borders.right, st.borders.bottom];
+	if (aligned) {
+		borders = [
+			snapStroke(borders[0] * deviceAX) / deviceAX,
+			snapStroke(borders[1] * deviceDX) / deviceDX,
+			snapStroke(borders[2] * deviceAX) / deviceAX,
+			snapStroke(borders[3] * deviceDX) / deviceDX,
+		];
+	}
+	const source: Color = st.borderColor;
+	const edge: Color = rgba(source.r, source.g, source.b, source.a * na);
+	const dashed: float32 = st.borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
+	let visible: int32 = 0;
+	let insets: int32 = 0;
+	let only: int32 = 0;
+	for (let k: int32 = 0; k < (st.shadows.length as int32); k++) {
+		if (!(st.shadows[k].color.a > 0.0)) { continue; }
+		visible = visible + 1;
+		only = k;
+		if (st.shadows[k].inset) { insets = insets + 1; }
+	}
+	const filled: boolean = st.fill.kind !== BoxFillKind.Solid;
+	if (!filled && (visible == 0 || (visible == 1 && st.shadows[only].spread == 0.0))) {
+		let params1: [float32, float32, float32, float32] = [0.0, 0.0, 0.0, 0.0];
+		let extra: Color = transparent;
+		if (visible == 1) {
+			const shadow: BoxShadow = st.shadows[only];
+			params1 = [
+				shadowOffset(shadow.offsetX, aligned, deviceAX),
+				shadowOffset(shadow.offsetY, aligned, deviceDX),
+				shadow.blur,
+				shadow.inset ? 1.0 : 0.0,
+			];
+			extra = rgba(shadow.color.r, shadow.color.g, shadow.color.b, shadow.color.a * na);
+		}
+		drawUiInstance(sharedGlyphView(), blend, {
+			...uiInstance(InstanceMode.Box, world, at.x, at.y, w, h, col),
+			uvRadii: radii,
+			borders: borders,
+			params: [dashed, 0.0, 0.0],
+			params1: params1,
+			border: edge,
+			extra: extra,
+		});
+		return;
+	}
+	const margin: Vec2 = dropMargin(st.shadows, aligned, deviceAX, deviceDX);
+	const boxAt = vec2(quad.xMin + margin.x, quad.yMin + margin.y) * world;
+	const bw: float32 = w - 2.0 * margin.x;
+	const bh: float32 = h - 2.0 * margin.y;
+	const half: Vec2 = vec2(bw * 0.5, bh * 0.5);
+	for (const shadow of st.shadows) {
+		if (shadow.inset || !(shadow.color.a > 0.0)) { continue; }
+		drawBoxShadow(world, at, w, h, half, radii, shadow, aligned, deviceAX, deviceDX, na, blend);
+	}
+	drawUiInstance(sharedGlyphView(), blend, {
+		...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh,
+			filled ? st.fill.from.tinted(col) : col),
+		uvRadii: radii,
+		borders: borders,
+		params: [dashed, (st.fill.kind as int32) as float32, fillFlags(st.fill)],
+		params1: fillParams(st.fill),
+		border: insets > 0 ? transparent : edge,
+		extra: filled ? st.fill.to.tinted(col) : transparent,
+	});
+	if (insets == 0) { return; }
+	for (const shadow of st.shadows) {
+		if (!shadow.inset || !(shadow.color.a > 0.0)) { continue; }
+		drawBoxShadow(world, boxAt, bw, bh, half, radii, shadow, aligned, deviceAX, deviceDX, na,
+			blend);
+	}
+	if (edge.a > 0.0) {
+		drawUiInstance(sharedGlyphView(), blend, {
+			...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh, transparent),
+			uvRadii: radii,
+			borders: borders,
+			params: [dashed, 0.0, 0.0],
+			border: edge,
+		});
+	}
+}
+
 function emitNode(
 	s: Scene2D, i: int32, world: Transform2D, na: float32, col: Color,
 	tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2, sizeX: float32, sizeY: float32, lbMin: Vec2,
@@ -933,115 +1073,7 @@ function emitNode(
 	match (s.kinds[i]) {
 		DrawKind.Rect => {
 			if (uiInstancingAvailable() || payload != NO_BOX_STYLE) {
-				let radiusTL: float32 = 0.0;
-				let radiusTR: float32 = 0.0;
-				let radiusBR: float32 = 0.0;
-				let radiusBL: float32 = 0.0;
-				let borderL: float32 = 0.0;
-				let borderT: float32 = 0.0;
-				let borderR: float32 = 0.0;
-				let borderB: float32 = 0.0;
-				let edge: Color = transparent;
-				let borderStyle: float32 = 0.0;
-				if (payload != NO_BOX_STYLE) {
-					const styleIndex: int32 = payload;
-					radiusTL = boxStyles[styleIndex].radii.topLeft;
-					radiusTR = boxStyles[styleIndex].radii.topRight;
-					radiusBR = boxStyles[styleIndex].radii.bottomRight;
-					radiusBL = boxStyles[styleIndex].radii.bottomLeft;
-					borderL = boxStyles[styleIndex].borders.left;
-					borderT = boxStyles[styleIndex].borders.top;
-					borderR = boxStyles[styleIndex].borders.right;
-					borderB = boxStyles[styleIndex].borders.bottom;
-					const source: Color = boxStyles[styleIndex].borderColor;
-					edge = rgba(source.r, source.g, source.b, source.a * na);
-					const dashed: boolean =
-						boxStyles[styleIndex].borderStyle === BorderStyle.Dashed;
-					borderStyle = dashed ? 1.0 : 0.0;
-				}
-				// cardOneInstance: a shadowed box is ONE instance carrying shadow, fill and
-				// border. The visible box is snapped before its quad is inflated, otherwise a
-				// fractional shadow margin moves the reconstructed fill edge off the device grid.
-				const shadowOn: boolean = payload != NO_BOX_STYLE
-					&& boxStyles[payload].shadowColor.a > 0.0;
-				const rendered = boxBounds;
-				const qOrigin = vec2(rendered.xMin, rendered.yMin) * world;
-				const qx: float32 = qOrigin.x;
-				const qy: float32 = qOrigin.y;
-				const qw: float32 = rendered.xMax - rendered.xMin;
-				const qh: float32 = rendered.yMax - rendered.yMin;
-				let shadowColor: Color = transparent;
-				let sp0: float32 = 0.0;
-				let sp1: float32 = 0.0;
-				let sp2: float32 = 0.0;
-				let sp3: float32 = 0.0;
-				const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
-				const scale: float32 = currentRenderScale();
-				let deviceAX: float32 = 0.0;
-				let deviceDX: float32 = 0.0;
-				if (aligned) {
-					deviceAX = world.a * scale;
-					deviceDX = world.d * scale;
-					borderL = snapStroke(borderL * deviceAX) / deviceAX;
-					borderR = snapStroke(borderR * deviceAX) / deviceAX;
-					borderT = snapStroke(borderT * deviceDX) / deviceDX;
-					borderB = snapStroke(borderB * deviceDX) / deviceDX;
-				}
-				if (shadowOn) {
-					const st = boxStyles[payload];
-					const sigma: float32 = st.shadowBlur;
-					let offsetX: float32 = st.shadowOffsetX;
-					let offsetY: float32 = st.shadowOffsetY;
-					if (aligned) {
-						offsetX = snapOffset(offsetX * deviceAX) / deviceAX;
-						offsetY = snapOffset(offsetY * deviceDX) / deviceDX;
-					}
-					sp0 = offsetX;
-					sp1 = offsetY;
-					sp2 = sigma;
-					sp3 = st.shadowInset ? 1.0 : 0.0;
-					const sc: Color = st.shadowColor;
-					shadowColor = rgba(sc.r, sc.g, sc.b, sc.a * na);
-				}
-				const fill: BoxFill = payload != NO_BOX_STYLE
-					? boxStyles[payload].fill
-					: solidFill();
-				const filled: boolean = payload != NO_BOX_STYLE && fill.kind !== BoxFillKind.Solid;
-				if (!filled) {
-					drawUiInstance(sharedGlyphView(), blend, {
-						...uiInstance(InstanceMode.Box, world, qx, qy, qw, qh, col),
-						uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
-						borders: [borderL, borderT, borderR, borderB],
-						params: [borderStyle, 0.0, 0.0],
-						params1: [sp0, sp1, sp2, sp3],
-						border: edge,
-						extra: shadowColor,
-					});
-				} else {
-					const inset: boolean = shadowOn && sp3 > 0.5;
-					const mx: float32 = shadowOn && !inset ? 3.0 * sp2 + (sp0 < 0.0 ? -sp0 : sp0) : 0.0;
-					const my: float32 = shadowOn && !inset ? 3.0 * sp2 + (sp1 < 0.0 ? -sp1 : sp1) : 0.0;
-					const shadow: UiInstance = {
-						...uiInstance(InstanceMode.Shadow, world, qx, qy, qw, qh, col),
-						uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
-						borders: [qw * 0.5 - mx, qh * 0.5 - my, sp2, sp3],
-						params1: [sp0, sp1, 0.0, 0.0],
-						extra: shadowColor,
-					};
-					if (shadowOn && !inset) { drawUiInstance(sharedGlyphView(), blend, shadow); }
-					const boxOrigin = vec2(rendered.xMin + mx, rendered.yMin + my) * world;
-					drawUiInstance(sharedGlyphView(), blend, {
-						...uiInstance(InstanceMode.Box, world, boxOrigin.x, boxOrigin.y,
-							qw - 2.0 * mx, qh - 2.0 * my, fill.from.tinted(col)),
-						uvRadii: [radiusTL, radiusTR, radiusBR, radiusBL],
-						borders: [borderL, borderT, borderR, borderB],
-						params: [borderStyle, (fill.kind as int32) as float32, fillFlags(fill)],
-						params1: fillParams(fill),
-						border: edge,
-						extra: fill.to.tinted(col),
-					});
-					if (inset) { drawUiInstance(sharedGlyphView(), blend, shadow); }
-				}
+				emitBox(s, i, world, na, col, blend, boxBounds);
 			} else {
 				fillQuad(tl, tr, br, bl, col, blend);
 			}

@@ -43,18 +43,25 @@ export struct BoxFill {
 	cell: float32;
 }
 
+// GPUI's `BoxShadow` (style.rs), drawn by the analytic erf integral with no render target. A
+// zero-alpha colour is no shadow; blur is the Gaussian sigma in local units. Spread grows a
+// drop shadow's rect and shrinks an inset one's hole, and only the hole's radii shrink with it
+// (window.rs:4401-4445).
+export struct BoxShadow {
+	color: Color;
+	blur: float32;
+	offsetX: float32;
+	offsetY: float32;
+	spread: float32;
+	inset: boolean;
+}
+
 export struct BoxStyle {
 	radii: CornerRadii;
 	borders: BorderWidths;
 	borderColor: Color;
 	borderStyle: BorderStyle;
-	// The analytic shadow (GPUI's erf integral, no render target). A zero-alpha shadowColor
-	// is no shadow; blur is the Gaussian sigma in local units; inset keeps it inside the box.
-	shadowColor: Color;
-	shadowBlur: float32;
-	shadowOffsetX: float32;
-	shadowOffsetY: float32;
-	shadowInset: boolean;
+	shadows: BoxShadow[];
 	fill: BoxFill;
 }
 
@@ -80,11 +87,7 @@ export function create(
 		borders: borders,
 		borderColor: borderColor,
 		borderStyle: BorderStyle.Solid,
-		shadowColor: rgba(0.0, 0.0, 0.0, 0.0),
-		shadowBlur: 0.0,
-		shadowOffsetX: 0.0,
-		shadowOffsetY: 0.0,
-		shadowInset: false,
+		shadows: [],
 		fill: solidFill(),
 	};
 }
@@ -93,8 +96,22 @@ export function dashed(this s: BoxStyle): BoxStyle {
 	return { ...s, borderStyle: BorderStyle.Dashed };
 }
 
-// A drop shadow cast by the box: offset in local units, positive down-right. The colour's
-// alpha is the strength.
+// The box's shadows, drawn in list order: the drop shadows under the fill, the inset ones over
+// it and under the border, GPUI's `Style::paint` order (style.rs:711-740).
+export function castShadows(this s: BoxStyle, shadows: Readonly<Span<BoxShadow>>): BoxStyle {
+	const list: BoxShadow[] = [];
+	for (const shadow of shadows) { list.push(shadow); }
+	return { ...s, shadows: list };
+}
+
+function withShadow(s: BoxStyle, shadow: BoxShadow): BoxStyle {
+	const list: BoxShadow[] = [];
+	for (const kept of s.shadows) { list.push(kept); }
+	list.push(shadow);
+	return { ...s, shadows: list };
+}
+
+// Appends a drop shadow: offset in local units, positive down-right.
 export function castShadow(
 	this s: BoxStyle,
 	color: Color,
@@ -102,26 +119,16 @@ export function castShadow(
 	offsetX: float32,
 	offsetY: float32,
 ): BoxStyle {
-	return {
-		...s,
-		shadowColor: color,
-		shadowBlur: blur,
-		shadowOffsetX: offsetX,
-		shadowOffsetY: offsetY,
-		shadowInset: false,
-	};
+	return withShadow(s, {
+		color: color, blur: blur, offsetX: offsetX, offsetY: offsetY, spread: 0.0, inset: false,
+	});
 }
 
-// An inset shadow: the blurred hole's complement, clipped to the element.
+// Appends an inset shadow: the blurred hole's complement, clipped to the element.
 export function castInsetShadow(this s: BoxStyle, color: Color, blur: float32): BoxStyle {
-	return {
-		...s,
-		shadowColor: color,
-		shadowBlur: blur,
-		shadowOffsetX: 0.0,
-		shadowOffsetY: 0.0,
-		shadowInset: true,
-	};
+	return withShadow(s, {
+		color: color, blur: blur, offsetX: 0.0, offsetY: 0.0, spread: 0.0, inset: true,
+	});
 }
 
 export function solidFill(): BoxFill {

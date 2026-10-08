@@ -66,7 +66,8 @@ import { TextLayout, TextRun } from "../../src/void2d/textLayout";
 import { nodeWidth } from "../../src/test/nodeTextHelpers";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import {
-	BoxStyle, uniformRadii, uniformBorders, linearFill, slashFill, checkerFill, ditheredFill,
+	BoxStyle, BoxShadow, uniformRadii, uniformBorders, linearFill, slashFill, checkerFill,
+	ditheredFill, castShadows,
 } from "../../src/void2d/boxStyle";
 import {
 	fillRect, fillGradientRectOklab, fillGradientRectStops, fillSlashRect, fillCheckerRect,
@@ -747,7 +748,7 @@ function boxFillScene(): NodeRef {
 
 test "T1 a box fill rides the box lanes, and a filled box draws its shadow as its own instance" {
 	record(boxFillScene(), 128.0, 64.0, 1.0);
-	assert uiInstanceCount() == 5;
+	assert uiInstanceCount() == 6;
 	assert uiInstanceField(0, REC_UI_PARAMS0) == 0.0;
 	assert uiInstanceField(0, REC_UI_PARAMS0 + 2) == 1.0;
 	assert uiInstanceField(0, REC_UI_PARAMS0 + 3) == 3.0;
@@ -771,8 +772,51 @@ test "T1 a box fill rides the box lanes, and a filled box draws its shadow as it
 	assert uiInstanceField(3, REC_UI_PARAMS0) == 0.0;
 	assert uiInstanceField(3, REC_UI_PARAMS0 + 2) == 3.0;
 	assert uiInstanceField(3, REC_UI_PARAMS1) == 4.0;
+	assert uiInstanceField(3, REC_UI_COLOR_BORDER + 3) == 0.0;
 	assert uiInstanceField(4, REC_UI_PARAMS0) == 1.0;
 	assert uiInstanceField(4, REC_UI_BORDERS + 3) == 1.0;
+	assert uiInstanceField(5, REC_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(5, REC_UI_PARAMS0 + 2) == 0.0;
+	assert uiInstanceField(5, REC_UI_COLOR_FILL + 3) == 0.0;
+	assert uiInstanceField(5, REC_UI_COLOR_BORDER + 3) == 1.0;
+}
+
+function shadowListScene(): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const shadows: BoxShadow[] = [
+		{ color: rgba(0.0, 0.0, 0.0, 0.3), blur: 1.0, offsetX: 0.0, offsetY: 2.0, spread: 1.0,
+			inset: false },
+		{ color: rgba(0.0, 0.0, 0.0, 0.2), blur: 4.0, offsetX: 0.0, offsetY: 6.0, spread: -2.0,
+			inset: false },
+		{ color: rgba(1.0, 1.0, 1.0, 0.0), blur: 2.0, offsetX: 0.0, offsetY: 0.0, spread: 0.0,
+			inset: false },
+		{ color: rgba(1.0, 1.0, 1.0, 0.4), blur: 1.0, offsetX: 0.0, offsetY: 1.0, spread: 0.5,
+			inset: true },
+	];
+	s.add(s.rect(40.0, 24.0, rgba(0.2, 0.3, 0.4, 1.0)).at(40.0, 20.0)).setBoxStyle(BoxStyle.create(
+		uniformRadii(6.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0),
+	).castShadows(shadows));
+	return s.refOf(s.root);
+}
+
+test "T1 a shadow list draws its drops in order, then the box, then its insets, with spread" {
+	record(shadowListScene(), 128.0, 64.0, 1.0);
+	assert uiInstanceCount() == 4;
+	assert uiInstanceField(0, REC_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(0, REC_UI_PARAMS1 + 2) == 1.0;
+	assert uiInstanceField(1, REC_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(1, REC_UI_PARAMS1 + 2) == -2.0;
+	assert uiInstanceField(0, REC_UI_BORDERS) == 20.0;
+	assert uiInstanceField(0, REC_UI_BORDERS + 1) == 12.0;
+	const margin: float32 = 3.0 * 4.0 + 6.0;
+	assert uiInstanceField(0, REC_UI_ORIGIN_SIZE + 3) == 24.0 + 2.0 * margin;
+	assert uiInstanceField(2, REC_UI_PARAMS0) == 0.0;
+	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 1) == 20.0;
+	assert uiInstanceField(2, REC_UI_ORIGIN_SIZE + 3) == 24.0;
+	assert uiInstanceField(3, REC_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(3, REC_UI_BORDERS + 3) == 1.0;
+	assert uiInstanceField(3, REC_UI_PARAMS1 + 1) == 1.0;
+	assert uiInstanceField(3, REC_UI_PARAMS1 + 2) == 0.5;
 }
 
 test "T1 snapshot: dashed box style reaches the per-corner and per-side instance lanes" {

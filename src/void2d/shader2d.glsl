@@ -749,18 +749,23 @@ void main() {
 
     if (mode == 1) {                       // Shadow: standalone drop or inset
         // The box's own half extents and blur ride in the borders lane; the quad is inflated
-        // by the emitter (3-sigma + offset for a drop, nothing for an inset - it cannot
-        // escape the element), so `half_` here is the QUAD's half, not the box's.
+        // by the emitter (3-sigma + offset + spread for a drop, nothing for an inset - it
+        // cannot escape the element), so `half_` here is the QUAD's half, not the box's.
+        // params1 = (offsetX, offsetY, spread): GPUI's drop rect dilated by the spread with
+        // the box's radii, its inset hole shrunk by it with the radii shrunk alike
+        // (window.rs:4401-4445).
         vec2 halfBox = vBorders.xy;
         float sigma = vBorders.z;
+        float spread = vParams1.z;
         float alpha;
         if (vBorders.w > 0.5) {
             // Inset: the complement of the blurred hole, clipped to the element itself.
-            float blur = shadowCoverage(p, halfBox, vRadii, vec2(0.0), sigma, aa);
+            float blur = shadowCoverage(p, max(halfBox - vec2(spread), vec2(0.0)),
+                max(vRadii - vec4(spread), vec4(0.0)), vParams1.xy, sigma, aa);
             alpha = (1.0 - blur) * coverageFromDistance(
                 roundedRectDistance(p, halfBox, cornerRadius(p, vRadii)), aa);
         } else {
-            alpha = shadowCoverage(p, halfBox, vRadii, vParams1.xy, sigma, aa);
+            alpha = shadowCoverage(p, halfBox + vec2(spread), vRadii, vParams1.xy, sigma, aa);
         }
         frag_color = withEffect(vec4(vExtra.rgb * (vExtra.a * alpha), vExtra.a * alpha), vec3(1.0));
         return;
@@ -825,24 +830,22 @@ void main() {
     }
     float alpha = fill.a * inner + vBorder.a * ring;
     vec3 rgb = fill.rgb * (fill.a * inner) + vBorder.rgb * (vBorder.a * ring);
-    if (shadowed) {
-        float sAlpha;
-        if (vParams1.w > 0.5) {
-            // Inset: the complement of the blurred hole, clipped to the element, OVER the
-            // fill - the same `over` the two-instance form drew by blending order.
-            float blurCov = shadowCoverage(p, halfBox, vRadii, vec2(0.0), vParams1.z, aa);
-            sAlpha = (1.0 - blurCov) * outer;
-        } else {
-            sAlpha = shadowCoverage(p, halfBox, vRadii, vParams1.xy, vParams1.z, aa);
-        }
-        sAlpha *= vExtra.a;
-        if (vParams1.w > 0.5) {
-            rgb = vExtra.rgb * sAlpha + rgb * (1.0 - sAlpha);
-            alpha = sAlpha + alpha * (1.0 - sAlpha);
-        } else {
-            rgb = rgb + vExtra.rgb * sAlpha * (1.0 - alpha);
-            alpha = alpha + sAlpha * (1.0 - alpha);
-        }
+    if (shadowed && vParams1.w > 0.5) {
+        // Inset: the complement of the blurred hole, clipped to the element, over the fill and
+        // under the border - GPUI's paint order (style.rs:711-740), the order the
+        // multi-instance form draws by blending.
+        float blurCov = shadowCoverage(p, halfBox, vRadii, vParams1.xy, vParams1.z, aa);
+        float sAlpha = (1.0 - blurCov) * outer * vExtra.a;
+        float fillAlpha = fill.a * inner;
+        vec3 under = vExtra.rgb * sAlpha + fill.rgb * fillAlpha * (1.0 - sAlpha);
+        float underAlpha = sAlpha + fillAlpha * (1.0 - sAlpha);
+        float b = vBorder.a * ring;
+        rgb = vBorder.rgb * b + under * (1.0 - b);
+        alpha = b + underAlpha * (1.0 - b);
+    } else if (shadowed) {
+        float sAlpha = shadowCoverage(p, halfBox, vRadii, vParams1.xy, vParams1.z, aa) * vExtra.a;
+        rgb = rgb + vExtra.rgb * sAlpha * (1.0 - alpha);
+        alpha = alpha + sAlpha * (1.0 - alpha);
     }
     frag_color = withEffect(vec4(rgb, alpha), vec3(1.0));
 }
