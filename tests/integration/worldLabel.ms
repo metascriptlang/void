@@ -5,6 +5,7 @@ import { RenderState, BlendMode, FilterMode, Wrap } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
 import { setup2d } from "../../src/void2d/draw";
 import { rgba } from "../../src/void2d/types";
+import "../../src/void2d/render";
 import { Material, Phase, UniformBlock } from "../../src/void3d/material";
 import { MeshData, MeshError, Rgba, addTexturedQuad } from "../../src/void3d/meshData";
 import { TextureData, TextureId, TextureUploadError } from "../../src/void3d/texture";
@@ -37,7 +38,8 @@ import {
 } from "../../src/void3d/pixelArtRenderer";
 import {
 	WorldLabel, WorldLabelStyle, WorldLabelError, LABEL_PAD, facingRotation, faceCamera,
-	setLabelText, setLabelTint, refreshLabel, closeLabel,
+	setLabelText, setLabelTint,
+	setLabelOutline, refreshLabel, closeLabel,
 } from "../../src/void3d/worldLabel";
 import {
 	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
@@ -67,6 +69,8 @@ const SOLID: int32 = 253;
 const MIN_SOLID: int32 = 30;
 const SAME_SOLID: int32 = 3;
 const STAGES: int32 = 5;
+const OUTLINE_WIDTH: float32 = 3.0;
+const MIN_OUTLINE: int32 = 30;
 const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
@@ -89,6 +93,7 @@ let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let pixelArt: boolean = false;
 let control: string = "";
+let outlined: boolean = false;
 let heldBasis: CameraBasis = cameraOf(0).basisOf();
 let firstSolid: int32 = 0;
 let firstTarget: int32 = 0;
@@ -211,6 +216,8 @@ function init(): void {
 	if (!made.ok) { fail(`the label was refused: ${made.error.toString()}`); }
 	if (made.ok) { label = made.value; }
 	if (control.equals("straight")) { readAsStraight(); }
+	outlined = env.get("VOID_WORLD_LABEL_OUTLINE").equals("1");
+	if (outlined) { setLabelOutline(theLabel(), OUTLINE_WIDTH, rgba(0.0, 0.0, 1.0, 1.0)); }
 }
 
 function readAsStraight(): void {
@@ -331,9 +338,44 @@ function checkInside(width: int32, height: int32, tinted: boolean): int32 {
 	return solid;
 }
 
+// Godot's Label3D outline: a blue outline around white text, inside a target padded by its width.
+function frameOutlined(own: WorldLabel): void {
+	const view: CameraView = viewOf();
+	if (!refreshLabel(own)) { fail("the outlined label did not draw"); }
+	place(view);
+	render(view);
+	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
+	const padded: int32 = own.width - (Math.ceil(own.text.textWidth()) as int32);
+	if (padded != 2 * (LABEL_PAD + (Math.ceil(OUTLINE_WIDTH) as int32))) {
+		fail(`the outlined target is padded by ${padded} texels across`);
+	}
+	checkOutside(own.width, own.height);
+	let solid: int32 = 0;
+	let outline: int32 = 0;
+	for (let y = TOP; y < TOP + own.height; y++) {
+		for (let x = LEFT; x < LEFT + own.width; x++) {
+			const pixel: int64 = voidCapturePixel(0, x, y);
+			const red: int32 = channel(pixel, 24);
+			const green: int32 = channel(pixel, 16);
+			const blue: int32 = channel(pixel, 8);
+			if (red >= SOLID && green >= SOLID && blue >= SOLID) { solid = solid + 1; }
+			if (blue >= 200 && red < 40 && green < 80) { outline = outline + 1; }
+		}
+	}
+	console.log(`world label outline: ${solid} text pixels, ${outline} outline pixels`);
+	if (solid < MIN_SOLID) { fail(`only ${solid} text pixels inside the outline`); }
+	if (outline < MIN_OUTLINE) { fail(`only ${outline} outline pixels`); }
+	console.log("PASS world label outline: text, outline and a target padded by the width");
+	voidCaptureExit(0);
+}
+
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	const own: WorldLabel = theLabel();
+	if (outlined) {
+		frameOutlined(own);
+		return;
+	}
 	const view: CameraView = viewOf();
 	if (stage == 0) { heldBasis = view.basis; }
 	if (stage == 2) { setLabelText(own, "TT"); }

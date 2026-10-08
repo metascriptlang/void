@@ -69,6 +69,7 @@ export interface WorldLabel {
 	block: Vec<float32>;
 	stale: boolean;
 	closed: boolean;
+	outline: float32;
 }
 
 export function plainStyle(this typeof WorldLabelStyle, pixelsPerUnit: float32): WorldLabelStyle {
@@ -78,8 +79,12 @@ export function plainStyle(this typeof WorldLabelStyle, pixelsPerUnit: float32):
 	};
 }
 
-function texelsAcross(extent: float32): int32 {
-	return (Math.ceil(extent) as int32) + 2 * LABEL_PAD;
+function texelsAcross(extent: float32, outline: float32): int32 {
+	return (Math.ceil(extent) as int32) + 2 * padFor(outline);
+}
+
+function padFor(outline: float32): int32 {
+	return LABEL_PAD + (Math.ceil(outline) as int32);
 }
 
 export function grown(have: int32, need: int32): int32 {
@@ -179,8 +184,8 @@ export function create(
 	const words: NodeRef =
 		ui.label(text, style.fontSize, style.color).at(LABEL_PAD as float32, LABEL_PAD as float32);
 	ui.add(words);
-	const width: int32 = texelsAcross(words.textWidth());
-	const height: int32 = texelsAcross(words.textHeight());
+	const width: int32 = texelsAcross(words.textWidth(), 0.0);
+	const height: int32 = texelsAcross(words.textHeight(), 0.0);
 	const target: RenderTarget = RenderTarget.allocate(width, height, PixelFormat.Rgba8, true);
 	const shown: Result<TextureId, TextureUploadError> = addTargetTexture(
 		context, target, style.filter, Wrap.Clamp, TextureAlpha.Premultiplied,
@@ -231,7 +236,7 @@ export function create(
 		mesh: uploaded.value, material: material.value, uniforms: reserved.value,
 		node: placed.value, pixelsPerUnit: style.pixelsPerUnit, width: width, height: height,
 		position: vec3(0.0, 0.0, 0.0), rotation: identityQuat(), posed: false, block: block,
-		stale: true, closed: false,
+		stale: true, closed: false, outline: 0.0,
 	};
 	return Result.ok(label);
 }
@@ -248,8 +253,8 @@ function writeBlock(this label: WorldLabel): void {
 }
 
 export function redraw(this label: WorldLabel): void {
-	label.width = texelsAcross(label.text.textWidth());
-	label.height = texelsAcross(label.text.textHeight());
+	label.width = texelsAcross(label.text.textWidth(), label.outline);
+	label.height = texelsAcross(label.text.textHeight(), label.outline);
 	const capacityWidth: int32 = grown(label.target.width, label.width);
 	const capacityHeight: int32 = grown(label.target.height, label.height);
 	label.target.resize(capacityWidth, capacityHeight);
@@ -269,6 +274,17 @@ export function refreshLabel(label: WorldLabel): boolean {
 	if (!label.stale && label.target.generation == contextGeneration()) { return false; }
 	label.redraw();
 	return true;
+}
+
+// Godot's Label3D outline_size and outline_modulate: void2d's label outline (`setOutline`, built
+// with -d:voidTextOutline; without it a width above 0 stops by name), the target padded by the
+// width so the outline is not cut at its edge. A width of 0 clears it.
+export function setLabelOutline(label: WorldLabel, width: float32, color: Color): void {
+	const _outlined: NodeRef = label.text.setOutline(width, color);
+	label.outline = width;
+	const pad: float32 = padFor(width) as float32;
+	const _moved: NodeRef = label.text.at(pad, pad);
+	label.stale = true;
 }
 
 export function setLabelTint(label: WorldLabel, tint: Rgba): void {

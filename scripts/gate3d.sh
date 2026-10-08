@@ -2057,6 +2057,27 @@ run_world_label() {
 		done
 		pass "world-label: $preset's straight-read control shows the dark fringe and its fixed-facing control moves the text"
 	done
+	outlined="$WORK/worldLabelOutline.exe"
+	if ! msc build -d:voidTextOutline tests/integration/worldLabel.ms --output="$outlined" 		> "$WORK/worldLabelOutline.build.log" 2>&1; then
+		fail "world-label: the outline build does not build — see $WORK/worldLabelOutline.build.log"
+		return
+	fi
+	for preset in forward pixelArt; do
+		log="$WORK/worldLabel.outline.$preset.log"
+		status=0
+		VOID_WORLD_LABEL_PRESET=$preset VOID_WORLD_LABEL_OUTLINE=1 "$outlined" > "$log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS world label outline: ' "$log"; then
+			fail "world-label: the outline in $preset (exit $status) — see $log"
+			return
+		fi
+	done
+	status=0
+	VOID_WORLD_LABEL_OUTLINE=1 "$exe" > "$WORK/worldLabel.outline.bare.log" 2>&1 || status=$?
+	if [ "$status" -eq 0 ] || ! grep -q 'build with -d:voidTextOutline' "$WORK/worldLabel.outline.bare.log"; then
+		fail "world-label: an outline in a build without -d:voidTextOutline did not stop by name"
+		return
+	fi
+	pass "world-label: an outline around the text in both presets inside a target padded by its width; a bare build stops by name"
 }
 
 run_card_table() {

@@ -2952,7 +2952,7 @@ name on a missing snapshot (`756a1ce`), needed.
 
 ### Gaps from the M44 sample, as built
 
-**Eight of the twelve gaps M44's sample listed are closed or decided here; each was checked in the code first.** The sample's own list is `### M44 as built` on `wt/void3d-m44`, and the numbers below are its. Not taken: 10 (render order across lists, M43's stated limit), 12 (a label outline is void2d's), and 5 and 6, which are not defects: a caster binding a view its shadow program does not declare is accepted because sokol validates only the slots a pipeline declares (`sokol_gfx.h` ~25199), and the perspective shadow case is a test the sample owns.
+**Eight of the twelve gaps M44's sample listed are closed or decided here; each was checked in the code first.** The sample's own list is `### M44 as built` on `wt/void3d-m44`, and the numbers below are its. Not taken: 10 (render order across lists, M43's stated limit), 12 (a label outline is void2d's; built on it in the follow-up stack, row 5), and 5 and 6, which are not defects: a caster binding a view its shadow program does not declare is accepted because sokol validates only the slots a pipeline declares (`sokol_gfx.h` ~25199), and the perspective shadow case is a test the sample owns.
 
 1. **Gap 1: a frame the caller composites is ended, not drawn.** (`prepareFrame`'s stop names both `drawToScreen` and `endPrepared`; `endPrepared` has a pixel-art test and abort cases for a closed forward and a closed pixel-art preset.) Real: only `drawToScreen` cleared `prepared`, so a second preset composited elsewhere stopped its own next `prepareFrame`. Heaps' `Scene.setOutputTarget` (`h3d/scene/Scene.hx:586`) pushes a target and pops it, and the scene has no screen half: its product is the target. Built: `endPrepared(preset)` on both presets, one `releasePrepared(core)` in `renderer.ms`. It stops by name when no frame is prepared (`tests/aborts3d/forwardEndUnprepared.ms`) and touches no GPU object, so it checks neither the frame index nor the open pass. Ran: `layersCheck.ms` (a prepared flag, `endPrepared`, then `openPrepare` passes), and the abort program built and run (it prints its line). Not run: a second preset composited in a window.
 2. **Gap 4: the shadow pass's culling can be its own.** Real: `dirShadowMap.ms` drew every caster with `material.pass.culling`. Heaps copies the main pass's culling into the "shadow" pass in `refreshProps` (`h3d/mat/Material.hx:283`) and leaves `getPass("shadow").culling` to the caller; three.js defaults `shadowSide` to the opposite of `side` and lets `material.shadowSide` override it (`WebGLShadowMap.js:51,486-490`). The port's default stays Heaps' (a scene that never says otherwise draws what it drew) and takes the override both references give: `Material.shadowCulling` is `Main` (default), `None`, `CullBack` or `CullFront`, set by `withShadowCulling`, and the pass reads `shadowFace()`. The variants name what they cull, so against three.js `shadowSide` `CullBack` is `FrontSide`, `CullFront` is `BackSide` and `None` is `DoubleSide`. Ran: `dirShadowCheck.ms` (the default follows the main pass, each override, the main pass untouched). Written and built, not run: `dir-shadow` cases 8 and 9 (a caster facing away from the sun casts nothing by default and casts with `ShadowCulling.None`; case 8 is the control of 9).
@@ -3273,6 +3273,20 @@ campfire and particle capture byte-identical to its baseline, as row 3's shader 
 `billboard-blend` with the straight billboard in both presets, `dir-shadow` with the perspective
 case and its control; `gate.sh` GREEN (golden 107/107, 7 known skips). Not run: GLES3, web and
 Android. Row 5 lands separately, after void2d's outline lane.
+
+**5. A label outline.** What changes for the author: `setLabelOutline(label, width, color)` puts
+void2d's label outline (`NodeRef.setOutline`, void2d's outline lane) around a world label's text;
+a width of 0 clears it. It needs the build flag void2d's outline needs, `-d:voidTextOutline`;
+without it a width above 0 stops by name in void2d, so void3d carries no `when` of its own. The
+label's target is padded by the width (`LABEL_PAD` plus its ceiling, each side), so the outline
+is not cut at the target's edge and the quad grows with it. Reference: Godot `e7b12e7492`
+`scene/3d/label_3d.cpp`, `outline_size` in pixels and `outline_modulate`, drawn only when the
+colour's alpha and the size are both above 0 (`:612`), which void2d's `outlineWidthOf` matches;
+Godot draws glyph quads in the world, so the padding is this layer's own consequence of drawing
+through a target. Test: `tests/integration/worldLabel.ms` with `VOID_WORLD_LABEL_OUTLINE=1`, built
+with the flag, draws a blue outline of width 3 around the white T and checks the padding, the
+untouched margin, the text and the outline pixels in both presets; the bare build stops by name.
+Ran: `msc check` of the test with and without the flag; not run: the GPU stage.
 
 ### void3d on GL core (glsl430), as built
 
