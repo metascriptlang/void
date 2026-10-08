@@ -3297,6 +3297,13 @@ preset and, where it has one, the pixel-art preset, every run printing its `PASS
 cache is evicted around the GL builds (the cache ignores the backend define's headers). Ran: the GL
 core builds of `billboardBlend`, `dirShadow` and `cardTable` link. Not run: any GL frame.
 
+**Acceptance, GL core.** The first run of the `gl-core` stage stopped in `src/gpu/door.c`: its slot
+reflection always read the D3D11 desc, which a GL core build does not carry ("program 21 carries no
+D3D11 shader desc"). `dba64872` reflects the compiled backend's desc instead (only stages and block
+sizes are read, the same on every backend; no `SOKOL_*` define is a compile error), a D3D11 build
+reading the same desc as before. Rerun on `dba64872`, BUILD `1090f789`: `gl-core` GREEN, 22 readback
+runs of 12 checks on `SOKOL_GLCORE`, headless 1452/1452.
+
 ### M45 as built: exposure and a linear tone map
 
 **What changes for the author.** `setExposure(renderer.core, stops)` exposes the scene: every scene
@@ -3336,6 +3343,11 @@ exactly 1 (`exp(0)`), so at stop 0 every capture is expected byte-identical; the
 multiplier exactly 1 at stop 0); `msc check` of the integration test. Not run: the GPU stage, the
 captures.
 
+**Acceptance, D3D11.** The stack pair on `533c3286` over main `d8305a21`, BUILD `1090f789`
+throughout: `gate3d.sh` 340 PASS with the 3 known skips (tests 1452/1452), every capture byte-identical
+at stop 0, the `exposure` stage GREEN in both presets (the frame block bound on slot 6 by every scene
+program drew no validation stop); `gate.sh` GREEN (golden 117/117, 8 known skips).
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
@@ -3357,6 +3369,15 @@ order, sort layer, exposure); `cardTable`, `worldLabel` and `targetTexture` wait
 WebGPU has no readback in the capture library (void2d's PENDING `backend:webgpu`), and headless
 Chrome hands it no adapter (`scripts/web-liveness.sh`), so WebGPU stays a liveness question for a
 headed browser. Not run: any browser page.
+
+**First browser run: RED, recorded as a symptom, not as evidence.** `sh scripts/web3d.sh` on
+`dba64872`: 0 of 17 WebGL2 runs pass; each page logs `Error: index 0 out of bounds (length 0)` and
+exits before its check (`EXCEPTION Uncaught ExitStatus`). Bisected in `alphaKill`: the crash is the
+first `reserveUniforms` inside the frame loop's `init`, on the `DrawContext` the test builds at module
+level, while the same calls at module level succeed. Not yet measured: whether the module-level
+state is torn down when `main` returns on emscripten, where `sapp_run` returns at once and the frame
+loop runs later (a native `sapp_run` blocks inside `main`). void2d's web runner builds its state inside
+its callbacks and does not meet this.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
