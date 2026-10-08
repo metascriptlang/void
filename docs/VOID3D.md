@@ -3402,8 +3402,7 @@ curves, as built").
 **Cost.** One Rgba16f target the scene's size, one more full-screen pass per frame, a 4-float
 block, one material.
 
-**Not built, recorded.** HDR in the pixel-art preset; bloom
-(the next row this target opens); the web stages (web3d is red on the compiler card, and WebGL2
+**Not built, recorded.** Bloom (the next row this target opens); the web stages (web3d is red on the compiler card, and WebGL2
 needs the extension query to pass).
 
 **Ran.** Headless `programKeyCheck.ms` 330/330 (the `(Post, Core)` key declared, 89 keys, its block
@@ -3448,6 +3447,33 @@ scene programs' and `toneMap`'s fragment sources (294 arrays). The GPU stages ar
 formula (`tests/integration/toneCurves.ms`, on greys), the overlap (0.25 linear) and the additive
 sum (1.22 linear, above 1) against the linear curve, at least 10 levels apart; `exposure` adds
 Reinhard per layer at 1.5 in both presets.
+
+### Pixel-art HDR, as built
+
+**What changes for the author.** `PixelArtRenderer.createHdr(context, settings, look)` is the
+forward preset's opt-in for the pixel-art preset: the scene and translucent passes draw into an
+Rgba16f target, and the tone map (exposure and curve) writes the Rgba8 `colorTarget` before the post
+pass, so outline, fog, palette and blit read encoded colour as they always did. The context needs
+`PIXEL_ART_HDR_UNIFORM_LENGTH` floats; `PixelArtError.HdrUnsupported` is the same refusal by name.
+`create` is untouched.
+
+**References, read.** Heaps' pbr Renderer as in "HDR scene target, as built": tone mapping writes
+`ldr`, and the AfterTonemapping and overlay passes draw on it; the pixel-art post pass is one of
+those, so it moves after the tone map.
+
+**As built.** The HDR target, the tone map block and material, and their prepare, draw and close
+moved out of the forward preset into `ToneMapPass` (`src/void3d/toneMap.ms`), which both presets
+hold (null for an LDR one), with `linearBackground` beside it. The pixel-art preset adds
+`Stage.ToneMap` after `Stage.Scene` in its stage plan (`planStages(settings, hdr)`), and its scene
+attachment becomes the HDR target, cleared to the background decoded; the normal target, depth,
+post and blit are unchanged. The scene programs write linear through the same `FRAME_LINEAR`.
+
+**Cost.** As the forward preset's, at the low-res size.
+
+**Ran.** Headless `src/test/index.ms` 1461/1461 (the refusal before any reservation, the pool
+length, the stage plan with and without post, close releasing all three materials); `msc build` of
+`tests/integration/hdr.ms`, which now runs in both presets (`VOID_HDR_PIXEL_ART`, gate3d and gl-core
+both). Not run: the GPU stages.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
