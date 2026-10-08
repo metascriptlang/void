@@ -2058,7 +2058,8 @@ run_world_label() {
 		pass "world-label: $preset's straight-read control shows the dark fringe and its fixed-facing control moves the text"
 	done
 	outlined="$WORK/worldLabelOutline.exe"
-	if ! msc build -d:voidTextOutline tests/integration/worldLabel.ms --output="$outlined" 		> "$WORK/worldLabelOutline.build.log" 2>&1; then
+	if ! msc build -d:voidTextOutline tests/integration/worldLabel.ms --output="$outlined" \
+		> "$WORK/worldLabelOutline.build.log" 2>&1; then
 		fail "world-label: the outline build does not build — see $WORK/worldLabelOutline.build.log"
 		return
 	fi
