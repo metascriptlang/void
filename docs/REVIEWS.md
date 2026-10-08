@@ -1857,3 +1857,64 @@ The other answers (2, 4, 9) are unchanged.
   backends' text; measured by void3d with llvm-nm on Android at `764060b`.
 
 **Exercised gate:** `sh scripts/gate.sh` and `sh scripts/gate3d.sh` on `dcfa744` (code tree `970c38938f81f7bf5c95d7ecaaf6ab81d9d1edd9`), BUILD `5c4246fb` unchanged before and after, D3D11. gate.sh GREEN with eight loud skips: 1186 + 299 + 318 tests, golden 82/82 unchanged, the scene-lifetime consumer and its four misuse stops. gate3d.sh GREEN: 303 PASS, 0 FAIL, three known skips, Android `libVoidAndroid.so` 3,866,136 B. Landed as a fast-forward of main `764060b` → `dcfa744` on the human's word ("gate xong thì land luôn"); the land skipped the repeat gate because the rebase was empty and this tree is the one gated.
+
+---
+
+# P6 — Modules and hardening
+
+## P6 review — SEND BACK (2026-10-08)
+
+Phase diff `f4a1ddf..` on `wt/void2d-gpui`: about 11 300 source lines in `src/void2d` (generated
+tables and shader headers excluded), with P7 BiDi and the text outline on top. Two passes, read
+only, by reviewers who did not write the code: a defect pass split four ways (text, BiDi and the
+shaper; glyph pages, SDF and outline; colour emoji, SVG, sfnt and GIF; render, profiler and the GL
+core path) and a design pass against the nine P6 exit lines. Every finding below was re-read in
+the code by the builder before it was written here; a finding the builder could not tie to a
+failure is marked *plausible*.
+
+### Defect pass
+
+| # | site | defect | status |
+|---|---|---|---|
+| D1 | `src/assets/image.c` `void_gif_scan` | stb keeps a frame's disposal for the next frame with no control block, and its `two_back` points before the output buffer (`stb_image.h:7023`); the scan missed the inherited disposal 3, so a GIF of disposal-3 frame 0, a frame with no control block and a third frame read before the heap buffer | **fixed** `407cbda`, two variants pinned in `imageDecodeCheck.ms` (red on the old scan) |
+| D2 | `glyph.c` `void2dGlyphRasterize`, `glyphAtlas.ms` `acquire` | returns void: a sprite ink-box mismatch, a wrong page kind or a dead page logs and returns, and `acquire` caches the blank tile as a success; it also accepts an SDF page | open, builder |
+| D3 | `glyphAtlas.ms` `acquireSdf`, `acquireOutline`, `acquireSdfOutline` | a rasterizer refusal after `allocate` leaves the shelf space spent and no tile, so a deterministic refusal burns page space every frame; `acquireColour` discards instead | open, builder |
+| D4 | `textLayout.ms` `markShapingBreaks` | a break index outside the text is dropped silently, beside the surrogate-pair case that stops by name | open, builder |
+| D5 | `labelText.ms` `shapeStale` | ignores `textShapingOn()`, so a label refused with shaping off stays blank after `setTextShaping(true)` with the same text | open, builder |
+| D6 | `src/sokol/bridgeWeb.c` | no `voidProfileInput()` on input events, so input latency never records on the GL core and web drivers (`bridgeWin.c:66` has it) | open, builder |
+| D7 | `bridge.c` `voidCommit` | the present bracket wraps `voidDriverPresent()`, empty on the sokol_app drivers (`bridgeWeb.c:87`), so present and dirty-to-present stop at commit there | open, builder |
+| D8 | `profiler.ms` `invalidated` | an invalidation during `Drawing` returns without stamping, so dirtiness raised while recording is lost for the next frame | *plausible*, builder |
+| D9 | `graphics.ms` `contourFill`, `draw.ms` `edgeMove` | fills pass no inset limit, so a fill thinner than one device pixel inverts its body under the antialiasing inset | *plausible*, needs a capture, builder |
+| D10 | `glyphAtlas.ms` `allocate` | a refused page at the process cap returns `Full` without trying `reclaimPage` | *plausible*, builder |
+| D11 | `icon.ms` `maskSide` | an unbounded device length cast to `int32` can wrap to 0 and hide the icon with no refusal | *plausible*, builder |
+| D12 | `sfnt.c` `chooseIndex` | a platform-0 encoding-5 (format 14) record can win the cmap choice, so coverage reads false for every codepoint; stb makes the same choice, so the glyph path agrees | *plausible*, builder |
+
+Checked and found sound by the reviewers: UAX #9 X1-X10 to L2 in `bidi.ms`, the shaper's realloc
+and discard paths, every CBLC/CBDT/sbix/COLR/CPAL/cmap offset read, the SVG mask handles, the
+animation sheet's int64 layout check, key packing lanes, tile and page bounds, today's page
+reclamation, the shader2d uniform lanes and SDF constants, and device-loss re-adoption.
+Not defects: paragraphs split at U+000A only (declared in P7), the overlay counted in its own
+frame (a measurement choice, to be stated where the overlay is described).
+
+### Design pass — SEND BACK
+
+The record is not reconciled with `tests/PENDING.md`:
+
+- **B1** The P6 Closes line still names `style:line-length`, `backend:webgpu`,
+  `conformance:webgl2-pixel-centre`, `shape:inter-mark-pair` and sixteen `shape-cluster:*` rows,
+  none closed or re-owned, against the exit "every row owned by P6 is closed or re-owned by name".
+- **B2** Exit 5 (`sample_count > 1` on iOS and Android) has no PENDING row and no gate SKIP that
+  names the missing device run.
+- **B3** Exits 3 and 6 read as met: the wasm budget is object-level only (no linked module, no
+  per-backend number), and WebGPU is still a SKIP.
+- **B4** Exit 8 (a deferred CJK or emoji family answers coverage without loading) has no test.
+- `docs/TESTING.md` and `VOID2D.md` cite `sdf-non-uniform-bound`, closed by `78795b3`.
+
+Not trusted until measured: the atlas bounds (`sdf:`, `colour:`, `outline:bench-bounds`), any WebGL2
+statement after P3, the mobile `sample_count` claim.
+
+### Owners and the way back
+
+The builder fixes D2-D7 and B1-B4 on `wt/void2d-gpui`, each with its pin, verifies D8-D12 or
+records them as declared with the reason, and asks for a re-review. The web runs stay owned by
+`compiler:bool-span-web` and `wasm:budget`.
