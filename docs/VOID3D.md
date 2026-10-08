@@ -3242,9 +3242,9 @@ planes because the perspective projection maps depth to [0, 1] (`cameraCheck.ms`
 and cut by the integration test's orthographic view, one at the near plane is kept, one past the
 far plane is cut (311/311, BUILD `1090f789`). GPU: `tests/integration/dirShadow.ms` takes
 `VOID_DIR_SHADOW_PERSPECTIVE=1` (a 0.6 rad perspective camera on the same pose), and the gate's
-`dir-shadow` stage runs it in both presets with its detached control; the pixel-art preset's
-outline under perspective stays PENDING3D `pixel-art-depth-orthographic`, and the check reads only
-the ground and caster colours. Not run yet: the GPU stage.
+`dir-shadow` stage runs it in the core preset with its detached control. The pixel-art preset is
+left out: its post pass under a perspective camera is PENDING3D `pixel-art-depth-orthographic`, a
+known gap a shadow test should not measure. Not run yet: the GPU stage.
 
 **3. A straight-alpha blended billboard: the cutout bit, re-meant on billboards.** What changes
 for the author: a billboard material cuts at alpha 0.5 only when its key has `cutout`
