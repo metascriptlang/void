@@ -230,7 +230,6 @@ function stopOnScreenDraw(error: RendererError): void {
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
-// PENDING3D: screen-output-swapchain-only
 // PENDING3D: copy-opaque
 export function drawToScreen(renderer: ForwardRenderer): void {
 	if (renderer.closed) { stopOnClosed("drawToScreen"); }
