@@ -15,6 +15,12 @@ import {
 } from "../void2d/textLayout";
 import { TextDirection } from "../void2d/textDirection";
 import { Color } from "../void2d/types";
+import {
+	allocateLabelText,
+	labelRefusal,
+	releaseLabelText,
+	shapeLabel,
+} from "../void2d/labelText";
 import { approx } from "./helpers";
 import { laid, laidRuns, shapedIn } from "./layoutHelpers";
 
@@ -169,5 +175,22 @@ test "style runs that cut right-to-left words inside them keep the words in visu
 	const phrase: string = HEBREW_WORD + " " + HEBREW_WORD + " " + HEBREW_WORD;
 	const runs: TextRun[] = [plainRun(2, font), plainRun(5, font), plainRun(7, font)];
 	assert placedAsWithoutRuns(phrase, styleOf(font, 0.0), runs);
+	setTextShaping(was);
+}
+
+test "a label refused with shaping off is shaped again once shaping is back on, and the reverse" {
+	const was = textShapingOn();
+	const style = styleOf(fontOf(ARABIC_FACE), 0.0);
+	const label: int32 = allocateLabelText();
+	setTextShaping(false);
+	shapeLabel(label, MARHABA, style);
+	assert !labelRefusal(label).ok;
+	setTextShaping(true);
+	shapeLabel(label, MARHABA, style);
+	assert labelRefusal(label).ok;
+	setTextShaping(false);
+	shapeLabel(label, MARHABA, style);
+	assert !labelRefusal(label).ok;
+	releaseLabelText(label);
 	setTextShaping(was);
 }

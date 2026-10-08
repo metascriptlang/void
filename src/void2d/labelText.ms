@@ -29,6 +29,7 @@ import {
 	NO_RUN,
 	PLAIN_LINES,
 	shapeText,
+	textShapingOn,
 	wrapText,
 } from "./textLayout";
 import {
@@ -131,6 +132,7 @@ export interface LabelText {
 	decorations: Vec<Decoration>;
 	shaped: ShapedText;
 	shapedText: string;
+	shapedWithShaping: boolean;
 	reshape: boolean;
 	direction: TextDirection;
 	textRefused: boolean;
@@ -252,6 +254,7 @@ export function allocateLabelText(): int32 {
 		decorations: new Array(0),
 		shaped: emptyShaped(style),
 		shapedText: "",
+		shapedWithShaping: false,
 		reshape: true,
 		direction: TextDirection.Auto,
 		textRefused: false,
@@ -303,7 +306,8 @@ export function releaseLabelText(index: int32): void {
 
 function shapeStale(entry: LabelText, text: string, style: TextStyle): boolean {
 	const shapedWith: TextStyle = entry.shaped.style;
-	return entry.reshape || !text.equals(entry.shapedText) || style.font != shapedWith.font ||
+	return entry.reshape || !text.equals(entry.shapedText) ||
+		entry.shapedWithShaping != textShapingOn() || style.font != shapedWith.font ||
 		style.size != shapedWith.size || style.letterSpacing != shapedWith.letterSpacing;
 }
 
@@ -315,6 +319,7 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	if (shapeStale(entry, text, style)) {
 		const shaped = shapeText(text, style, entry.runs, entry.shapingBreaks, entry.direction);
 		entry.shapedText = text;
+		entry.shapedWithShaping = textShapingOn();
 		entry.reshape = false;
 		entry.textRefused = !shaped.ok;
 		if (shaped.ok) {
