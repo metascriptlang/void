@@ -190,7 +190,12 @@ export function slashFill(
 }
 
 // GPUI's `checkerboard` (color.rs:841): `cell`-sized squares from the box's top-left corner.
-export function checkerFill(this s: BoxStyle, cell: Color, between: Color, size: float32): BoxStyle {
+export function checkerFill(
+	this s: BoxStyle,
+	cell: Color,
+	between: Color,
+	size: float32,
+): BoxStyle {
 	if (!(size > 0.0)) { stopOnBadFill("checkerFill", `got cell size ${size}; it must be > 0`); }
 	return {
 		...s,
