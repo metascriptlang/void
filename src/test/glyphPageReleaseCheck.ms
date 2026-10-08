@@ -5,6 +5,7 @@ import {
 	void2dGlyphPageGeneration,
 	void2dGlyphPageLiveCount,
 	void2dGlyphPageRelease,
+	void2dGlyphRasterize,
 	void2dGlyphPageSize,
 } from "../void2d/glyph.h";
 
@@ -29,6 +30,18 @@ test "an atlas disposed returns its pages, so more atlases than page slots never
 		atlas.dispose();
 		assert void2dGlyphPageLiveCount() == before;
 	}
+}
+
+test "the coverage rasterizer refuses a tile outside its page and a released page by code" {
+	const face: int32 = try loadFace("assets/font.ttf") catch -1;
+	assert face >= 0;
+	const glyph: int32 = glyphIndex(face, "g".code);
+	const page: int32 = void2dGlyphPageCreate(16, PageKind.Coverage as int32);
+	assert page >= 0;
+	assert void2dGlyphRasterize(face, glyph, 12.0, 0.0, page, 10, 0, 10, 10) == 3;
+	assert void2dGlyphRasterize(face, glyph, 12.0, 0.0, page, 0, 0, 10, 10) == 0;
+	assert void2dGlyphPageRelease(page) == 0;
+	assert void2dGlyphRasterize(face, glyph, 12.0, 0.0, page, 0, 0, 10, 10) == 1;
 }
 
 test "a released page handle is reused with a new generation and refused a second release" {
