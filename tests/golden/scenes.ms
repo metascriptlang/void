@@ -98,6 +98,8 @@ import {
 	SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,
 	SDF_EFFECT_SHIFT, SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, SDF_EFFECT_X, SDF_EFFECT_Y,
 	SDF_EFFECT_ROTATION, SDF_EFFECT_ADD_Y, SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B,
+	OUTLINE_SDF_ROTATED_SCENE, OUTLINE_SDF_ZOOM_SCENE, OUTLINE_SDF_SCALE_DOWN_SCENE,
+	OUTLINE_EFFECT_SHIFT,
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
 when (voidGlCore) {
@@ -1782,6 +1784,137 @@ function textSdfColorEffect(): Scene2D {
 	return s;
 }
 
+const OUTLINE_FILL: Color = { r: 0.86, g: 0.90, b: 0.98, a: 1.0 };
+const OUTLINE_INK: Color = { r: 0.95, g: 0.55, b: 0.10, a: 1.0 };
+const OUTLINE_PANEL: Color = { r: 0.80, g: 0.82, b: 0.86, a: 1.0 };
+const OUTLINE_DARK_TEXT: Color = { r: 0.08, g: 0.09, b: 0.12, a: 1.0 };
+const OUTLINE_WHITE: Color = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+const OUTLINE_GREY: Color = { r: 0.35, g: 0.35, b: 0.35, a: 1.0 };
+const OUTLINE_SDF_WIDTH: float32 = 1.5;
+
+function outlined(
+	s: Scene2D,
+	text: string,
+	size: float32,
+	x: float32,
+	y: float32,
+	fill: Color,
+	width: float32,
+	ink: Color,
+): NodeRef {
+	const n = s.label(text, size, fill).at(x, y);
+	when (voidTextOutline) { n.setOutline(width, ink); }
+	return s.add(n);
+}
+
+function textOutline(): Scene2D {
+	const s = Scene2D.create(DARK);
+	outlined(s, "Outline 13 px", 13.0, 12.0, 14.0, OUTLINE_FILL, 2.0, OUTLINE_INK);
+	outlined(s, "Outline 26", 26.0, 12.0, 40.0, OUTLINE_FILL, 3.0, OUTLINE_INK);
+	s.add(s.rect(320.0, 100.0, OUTLINE_PANEL).at(0.0, 100.0));
+	outlined(s, "Dark on light 13", 13.0, 12.0, 114.0, OUTLINE_DARK_TEXT, 1.5, OUTLINE_WHITE);
+	outlined(s, "Dark 26", 26.0, 12.0, 140.0, OUTLINE_DARK_TEXT, 2.0, OUTLINE_WHITE);
+	return s;
+}
+
+function textOutlineTight(): Scene2D {
+	const s = Scene2D.create(DARK);
+	outlined(s, "Tightly spaced", 26.0, 12.0, 10.0, OUTLINE_FILL, 4.0, OUTLINE_INK)
+		.setLetterSpacing(-4.0);
+	outlined(s, "tight 13 px", 13.0, 12.0, 64.0, OUTLINE_FILL, 2.0, OUTLINE_INK)
+		.setLetterSpacing(-1.5);
+	return s;
+}
+
+function textOutlineAlpha(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const veil: Color = rgba(OUTLINE_INK.r, OUTLINE_INK.g, OUTLINE_INK.b, 0.5);
+	outlined(s, "Translucent", 26.0, 12.0, 12.0, OUTLINE_FILL, 3.0, veil);
+	outlined(s, "Node alpha", 26.0, 12.0, 52.0, OUTLINE_FILL, 3.0, OUTLINE_INK).setAlpha(0.5);
+	const group = s.rect(0.0, 0.0, rgba(0.0, 0.0, 0.0, 0.0)).at(12.0, 100.0);
+	group.setAlpha(0.5);
+	group.setFilter(blurFilter(0.0));
+	const inner = s.label("Group 26", 26.0, OUTLINE_FILL);
+	when (voidTextOutline) { inner.setOutline(3.0, OUTLINE_INK); }
+	group.addChild(inner);
+	s.add(group);
+	return s;
+}
+
+function textOutlineRuns(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const keyword: Color = rgba(0.78, 0.55, 0.95, 1.0);
+	const runs: TextRun[] = [
+		decoratedRun(3, keyword),
+		decoratedRun(1, OUTLINE_FILL),
+		{
+			...decoratedRun(5, rgba(0.98, 0.85, 0.45, 1.0)),
+			background: rgba(0.30, 0.34, 0.46, 1.0),
+		},
+		decoratedRun(6, OUTLINE_FILL),
+	];
+	const code = outlined(s, "let total = 42;", 18.0, 12.0, 10.0, OUTLINE_WHITE, 2.0, OUTLINE_INK);
+	code.setTextRuns(runs);
+	const lines: TextRun[] = [
+		{ ...decoratedRun(6, OUTLINE_FILL), strikethrough: rgba(0.95, 0.60, 0.40, 1.0) },
+		decoratedRun(5, OUTLINE_FILL),
+		{ ...decoratedRun(10, OUTLINE_FILL), underline: rgba(0.45, 0.80, 0.95, 1.0) },
+	];
+	const marked = outlined(
+		s, "struck and underlined", 18.0, 12.0, 56.0, OUTLINE_WHITE, 2.0, OUTLINE_INK,
+	);
+	marked.setTextRuns(lines);
+	return s;
+}
+
+function outlineEffectPair(s: Scene2D, shift: float32, effect: boolean): void {
+	const x: float32 = 12.0 + shift;
+	const first = outlined(s, "Effect 18", 18.0, x, 12.0, OUTLINE_WHITE, 2.0, OUTLINE_GREY);
+	const second = outlined(s, "Fx 26", 26.0, x, 44.0, OUTLINE_WHITE, 3.0, OUTLINE_GREY);
+	if (effect) {
+		const grey = colorMatrixGrayscale(1.0);
+		first.setColorMatrix(grey);
+		second.setColorMatrix(grey);
+	}
+}
+
+function textOutlineColorEffect(): Scene2D {
+	const s = Scene2D.create(DARK);
+	outlineEffectPair(s, 0.0, false);
+	outlineEffectPair(s, OUTLINE_EFFECT_SHIFT, true);
+	return s;
+}
+
+function sdfOutlineText(scene: string): Scene2D {
+	const s = Scene2D.create(DARK);
+	const color: Color = rgba(SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B, 1.0);
+	for (const c of sdfLabelCases()) {
+		if (c.scene != scene) { continue; }
+		const label = s.label(c.text, c.size, color).at(c.x, c.y);
+		when (voidTextOutline) { label.setOutline(OUTLINE_SDF_WIDTH, OUTLINE_INK); }
+		s.add(label.setRotation(c.rotation).setScale(c.zoom));
+	}
+	return s;
+}
+
+function textOutlineSdfRotated(): Scene2D { return sdfOutlineText(OUTLINE_SDF_ROTATED_SCENE); }
+function textOutlineSdfZoom4(): Scene2D { return sdfOutlineText(OUTLINE_SDF_ZOOM_SCENE); }
+function textOutlineSdfScaleDown(): Scene2D { return sdfOutlineText(OUTLINE_SDF_SCALE_DOWN_SCENE); }
+
+function textOutlineSdfSeam(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const color: Color = rgba(SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B, 1.0);
+	const exact = s.label("Seam 20", 20.0, color).at(12.0, 8.0);
+	const nearly = s.label("Seam 20", 20.0, color).at(12.0, 52.0);
+	when (voidTextOutline) {
+		exact.setOutline(OUTLINE_SDF_WIDTH, OUTLINE_INK);
+		nearly.setOutline(OUTLINE_SDF_WIDTH, OUTLINE_INK);
+	}
+	s.add(exact);
+	s.add(nearly.setScale(1.001));
+	return s;
+}
+
 const ICON_SOURCE: string = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" ` +
 	`viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2" stroke-linecap="round" ` +
 	`stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5 L11 15.5 L16 9"/>` +
@@ -2115,5 +2248,15 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "text/bidiArabicMixed", build: textBidiArabicMixed },
 		{ name: "text/bidiSelection", build: textBidiSelection },
 		{ name: "text/bidiDecorations", build: textBidiDecorations },
+		{ name: "text/outline", build: textOutline },
+		{ name: "text/outlineDpi125", build: textOutline },
+		{ name: "text/outlineTight", build: textOutlineTight },
+		{ name: "text/outlineAlpha", build: textOutlineAlpha },
+		{ name: "text/outlineRuns", build: textOutlineRuns },
+		{ name: "text/outlineColorEffect", build: textOutlineColorEffect },
+		{ name: "text/outlineSdfRotated", build: textOutlineSdfRotated },
+		{ name: "text/outlineSdfZoom4", build: textOutlineSdfZoom4 },
+		{ name: "text/outlineSdfScaleDown", build: textOutlineSdfScaleDown },
+		{ name: "text/outlineSdfSeam", build: textOutlineSdfSeam },
 	];
 }

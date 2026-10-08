@@ -49,6 +49,12 @@ import {
 	SDF_EFFECT_ADD_Y,
 	SDF_BG_X,
 	SDF_BG_Y,
+	OUTLINE_EFFECT_SCENE,
+	OUTLINE_EFFECT_SHIFT,
+	OUTLINE_EFFECT_H,
+	OUTLINE_EFFECT_TOLERANCE,
+	OUTLINE_BG_X,
+	OUTLINE_BG_Y,
 	LIGATURE_SCENE,
 	LIGATURE_Y,
 	LIGATURE_STEP,
@@ -395,6 +401,47 @@ function uiEffectIsLuma(): int32 {
 const SDF_EFFECT_TOLERANCE: int32 = 1;
 const SDF_EFFECT_BAND_H: int32 = 90;
 
+function outlineEffectMatchesPlain(): int32 {
+	const override: string = env.get("VOID_OUTLINE_EFFECT_CAPTURE");
+	const path: string = override.equals("")
+		? `tests/golden/d3d11/${OUTLINE_EFFECT_SCENE}.png`
+		: override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL ${OUTLINE_EFFECT_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const shift: int32 = OUTLINE_EFFECT_SHIFT as int32;
+	let inked: int32 = 0;
+	let differ: int32 = 0;
+	let worst: int32 = 0;
+	for (let y: int32 = 0; y < OUTLINE_EFFECT_H; y++) {
+		for (let x: int32 = 0; x < shift; x++) {
+			for (let channel: int32 = 0; channel < 3; channel++) {
+				const plain: int32 = voidPngPixel(SLOT, x, y, channel);
+				const effect: int32 = voidPngPixel(SLOT, x + shift, y, channel);
+				const clear: int32 = voidPngPixel(SLOT, OUTLINE_BG_X, OUTLINE_BG_Y, channel);
+				if (plain != clear) { inked = inked + 1; }
+				const delta: int32 = Math.abs(plain - effect) as int32;
+				if (delta > OUTLINE_EFFECT_TOLERANCE) { differ = differ + 1; }
+				if (delta > worst) { worst = delta; }
+			}
+		}
+	}
+	if (inked < 400 || differ > 0) {
+		console.log(
+			`FAIL ${OUTLINE_EFFECT_SCENE}: the grayscale (vertex program) half is off the ` +
+			`instanced half by more than ${OUTLINE_EFFECT_TOLERANCE} in ${differ} channel ` +
+			`values, worst ${worst} (${inked} inked channel values, at least 400 expected)`,
+		);
+		return 1;
+	}
+	console.log(
+		`PASS ${OUTLINE_EFFECT_SCENE}: the outline on the vertex program matches the instanced ` +
+		`program, worst ${worst} (${inked} inked channel values)`,
+	);
+	return 0;
+}
+
 function sdfEffectMatchesPlain(): int32 {
 	const override: string = env.get("VOID_SDF_EFFECT_CAPTURE");
 	const path: string = override.equals("")
@@ -578,5 +625,6 @@ process.exit(
 	everyTargetFiltered() +
 	uiEffectIsLuma() +
 	sdfEffectMatchesPlain() +
+	outlineEffectMatchesPlain() +
 	ligatureLinesAgree(),
 );

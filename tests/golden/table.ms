@@ -180,6 +180,25 @@ export const SDF_TEXT_B: float32 = 0.98;
 export const SDF_BG_X: int32 = 2;
 export const SDF_BG_Y: int32 = 2;
 
+// The text/outline* scenes. Every colour is a number so a judge can name the fill and the
+// outline of a pixel; the colour effect row puts the same neutral labels twice, the second a
+// grayscale matrix over the first, so the vertex program has to answer the instanced one.
+export const OUTLINE_SCENE: string = "text/outline";
+export const OUTLINE_DPI125_SCENE: string = "text/outlineDpi125";
+export const OUTLINE_TIGHT_SCENE: string = "text/outlineTight";
+export const OUTLINE_ALPHA_SCENE: string = "text/outlineAlpha";
+export const OUTLINE_RUNS_SCENE: string = "text/outlineRuns";
+export const OUTLINE_EFFECT_SCENE: string = "text/outlineColorEffect";
+export const OUTLINE_SDF_ROTATED_SCENE: string = "text/outlineSdfRotated";
+export const OUTLINE_SDF_ZOOM_SCENE: string = "text/outlineSdfZoom4";
+export const OUTLINE_SDF_SCALE_DOWN_SCENE: string = "text/outlineSdfScaleDown";
+export const OUTLINE_SDF_SEAM_SCENE: string = "text/outlineSdfSeam";
+export const OUTLINE_EFFECT_SHIFT: float32 = 160.0;
+export const OUTLINE_EFFECT_H: int32 = 100;
+export const OUTLINE_EFFECT_TOLERANCE: int32 = 1;
+export const OUTLINE_BG_X: int32 = 2;
+export const OUTLINE_BG_Y: int32 = 2;
+
 export interface SdfLabelCase {
 	scene: string;
 	text: string;
@@ -368,6 +387,26 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "text/bidiDecorations", phase: "P7", width: 400, height: 125, dpi: 1.25,
 			steps: 0, demo: false },
+		{ name: "text/outline", phase: "P6", width: 320, height: 200, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineDpi125", phase: "P6", width: 400, height: 250, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/outlineTight", phase: "P6", width: 320, height: 120, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineAlpha", phase: "P6", width: 320, height: 200, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineRuns", phase: "P6", width: 320, height: 120, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineColorEffect", phase: "P6", width: 320, height: 100, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineSdfRotated", phase: "P6", width: 320, height: 200, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineSdfZoom4", phase: "P6", width: 384, height: 144, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineSdfScaleDown", phase: "P6", width: 256, height: 80, dpi: 1.0,
+			steps: 0, demo: false },
+		{ name: "text/outlineSdfSeam", phase: "P6", width: 320, height: 96, dpi: 1.0,
+			steps: 0, demo: false },
 	];
 }
 
@@ -385,6 +424,7 @@ export function sceneDrawCounts(): int32[] {
 		1, 2, 2, 1, 1, 1, 1, 1, 3, 31, 31, 31, 31, 2, 5, 17, 1,
 		2, 4, 2, 18, 4, 1, 2, 1, 3, 5, 5, 2, 2, 1, 1,
 		1, 1, 1, 1, 1, 1, 1,
+		1, 1, 1, 2, 1, 2, 1, 2, 1, 2,
 	];
 }
 
@@ -397,6 +437,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 0, 5, 0, 0,
 		0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
 	];
 }
 
