@@ -92,3 +92,4 @@ unlitTexturedUvTransformPremultiplied   UNLIT_TEXTURED  CORE      PREMULTIPLIED:
 pixelArtUnlitTexturedUvTransformPremultiplied UNLIT_TEXTURED  PIXEL_ART PREMULTIPLIED:UV_TRANSFORM                   unlitTexturedVs unlitTexturedFs       LIT_TEXTURED
 billboardCutout                         BILLBOARD       CORE      CUTOUT                                       billboardVs     billboardFs           BILLBOARD
 pixelArtBillboardCutout                 BILLBOARD       PIXEL_ART CUTOUT                                       billboardVs     billboardFs           BILLBOARD
+toneMap                                 POST            CORE      -                                            fullscreenVs    toneMapFs             FULLSCREEN

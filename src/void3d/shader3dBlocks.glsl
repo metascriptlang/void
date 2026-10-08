@@ -136,7 +136,12 @@ layout(binding=6) uniform frameParams {
 @block toneMap
 // h3d.shader.pbr.ToneMapping mode 0 (linear), per fragment: the decoded colour times frame.y,
 // saturated, encoded again. frame.y is exactly 1 at exposure 0, and the colour is left alone.
+// frame.z is 1 when the pass draws into an HDR target: the colour is decoded and left unclamped,
+// and the preset's toneMapFs exposes and encodes it after blending, as Heaps' pbr Renderer does.
 vec3 toneMapped(vec3 rgb) {
+    if (frame.z == 1.0) {
+        return srgbToLinear(rgb);
+    }
     if (frame.y == 1.0) {
         return rgb;
     }

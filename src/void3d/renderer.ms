@@ -33,6 +33,7 @@ import {
 	FRAME_UNIFORM_LENGTH,
 	FRAME_TIME,
 	FRAME_EXPOSURE,
+	FRAME_LINEAR,
 	MOVING_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
@@ -110,6 +111,9 @@ export interface Renderer {
 	// h3d.scene.pbr.Renderer's `exposure`, in its unit: stops of e, the multiplier exp(exposure),
 	// 0 exposing nothing. Its toneMode is Linear, the one curve here (docs/VOID3D.md, M45).
 	exposure: float32;
+	// The scene passes draw into an HDR target: scene programs write linear colour, and the
+	// preset that set this exposes and encodes it in its own pass.
+	linearOutput: boolean;
 	frameValues: Vec<float32>;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
@@ -213,6 +217,7 @@ export function createDrawing(
 		elapsedTime: 0.0,
 		timeWrap: 0.0,
 		exposure: 0.0,
+		linearOutput: false,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		readsTime: false,
 		preset: preset,
@@ -375,6 +380,7 @@ export function beginFrame(
 	renderer.time = renderer.time + renderer.elapsedTime;
 	renderer.frameValues[FRAME_TIME] = frameTime(renderer.time, renderer.timeWrap);
 	renderer.frameValues[FRAME_EXPOSURE] = exposureMultiplier(renderer.exposure);
+	renderer.frameValues[FRAME_LINEAR] = renderer.linearOutput ? 1.0 : 0.0;
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));

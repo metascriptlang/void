@@ -79,7 +79,12 @@ import {
 	ForwardRenderer,
 	ForwardError,
 	FORWARD_UNIFORM_LENGTH,
+	FORWARD_HDR_UNIFORM_LENGTH,
+	TONE_MAP_UNIFORM_SLOT,
+	TONE_MAP_UNIFORM_LENGTH,
 	renderFrame,
+	closeForward,
+	linearBackground,
 } from "../void3d/forwardRenderer";
 
 function pixelArt(program: Program): ProgramKey {
@@ -193,7 +198,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 88;
+	assert declared == 89;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -202,8 +207,10 @@ test "both presets draw every scene program's key in their own, and no screen pr
 		assert drawnAs(key, Preset.Core) == key;
 		assert drawnAs(key, Preset.PixelArt) == pixelArt(program);
 	}
-	const screens: Vec<ProgramKey> =
-		[ProgramKey.of(Program.Copy), pixelArt(Program.Post), pixelArt(Program.Blit)];
+	const screens: Vec<ProgramKey> = [
+		ProgramKey.of(Program.Copy), ProgramKey.of(Program.Post), pixelArt(Program.Post),
+		pixelArt(Program.Blit),
+	];
 	for (const screen of screens) {
 		assert declares(screen);
 		for (const preset of [Preset.Core, Preset.PixelArt]) {
@@ -271,6 +278,49 @@ test "the forward preset takes the core's blocks and a copy material and draws c
 	}
 }
 
+test "an HDR forward preset is refused by name where Rgba16f does not render, before it reserves" {
+	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_HDR_UNIFORM_LENGTH);
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	const refused: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.createHdrWhere(context, background, false);
+	assert !refused.ok && refused.error == ForwardError.HdrUnsupported;
+	assert context.uniforms.used == 0 && context.liveMaterials() == 0;
+}
+
+test "an HDR forward preset takes a tone map block and material, and its core writes linear" {
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	let small: DrawContext = DrawContext.withUniformCapacity(FORWARD_HDR_UNIFORM_LENGTH - 1);
+	const tight: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.createHdrWhere(small, background, true);
+	assert !tight.ok && tight.error == ForwardError.UniformPoolFull;
+	assert small.uniforms.used == 0 && small.liveMaterials() == 0;
+	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_HDR_UNIFORM_LENGTH);
+	const created: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.createHdrWhere(context, background, true);
+	assert created.ok;
+	if (created.ok) {
+		let forward: ForwardRenderer = created.value;
+		assert forward.hdr && forward.core.linearOutput;
+		assert context.uniforms.used == FORWARD_HDR_UNIFORM_LENGTH;
+		assert context.liveMaterials() == 2;
+		const toneMap: ProgramKey = context.materials[forward.toneMapMaterial.index].program;
+		assert toneMap == ProgramKey.of(Program.Post);
+		assert forward.toneMapBlock.slot == TONE_MAP_UNIFORM_SLOT;
+		closeForward(forward);
+		assert context.liveMaterials() == 0;
+	}
+	let ldrContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
+	const ldr: Result<ForwardRenderer, ForwardError> =
+		ForwardRenderer.create(ldrContext, background);
+	assert ldr.ok && !ldr.value.hdr && !ldr.value.core.linearOutput;
+}
+
+test "the HDR target clears to the background decoded, its alpha kept" {
+	const linear: Vec4 = linearBackground({ x: 0.0, y: 0.5, z: 1.0, w: 0.25 });
+	assert linear.x == 0.0 && linear.z == 1.0 && linear.w == 0.25;
+	assert approx(linear.y, 0.21404);
+}
+
 function declaredSlots(program: ProgramKey): int32 {
 	let count: int32 = 0;
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
@@ -307,6 +357,9 @@ test "every block the CPU writes is the length its shader declares, read off the
 	assert uniformBlockLength(pixelArt(Program.Post), POST_UNIFORM_SLOT) == POST_UNIFORM_LENGTH;
 	assert uniformBlockLength(pixelArt(Program.Blit), BLIT_UNIFORM_SLOT) == BLIT_UNIFORM_LENGTH;
 	assert declaredSlots(ProgramKey.of(Program.Copy)) == 0;
+	const toneMap: ProgramKey = ProgramKey.of(Program.Post);
+	assert uniformBlockLength(toneMap, TONE_MAP_UNIFORM_SLOT) == TONE_MAP_UNIFORM_LENGTH;
+	assert declaredSlots(toneMap) == 1;
 	assert uniformBlockLength(ProgramKey.of(Program.Lit), UNIFORM_SLOTS) == 0;
 }
 
