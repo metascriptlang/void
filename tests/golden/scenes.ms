@@ -1727,8 +1727,8 @@ function uiProfilerOverlayMinimal(): Scene2D { return overlayScene(256.0, 16.0, 
 
 function designFoldLabels(s: Scene2D): Scene2D {
 	const ink: Color = rgba(0.86, 0.90, 0.98, 1.0);
-	s.add(s.label("fn main() { let x: i32 = 42; }", 9.0, ink).at(6.0, 8.0));
-	s.add(s.label("LetterBox at 1.6, DPI 1.6", 13.0, ink).at(6.0, 30.0));
+	s.add(s.label("design labels stay crisp when folded", 9.0, ink).at(6.0, 8.0));
+	s.add(s.label("LetterBox scale one point six", 13.0, ink).at(6.0, 30.0));
 	s.add(s.label("0123456789 iiiimmmm WAVE", 11.0, ink).at(6.5, 60.0));
 	return s;
 }
