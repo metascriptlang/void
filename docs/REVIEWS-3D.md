@@ -2643,3 +2643,10 @@ session audited the findings before acting on them.
 
 One gate pair on the stack tip `db6c3ac`: `gate3d.sh` 329 PASS / 3 known skips, `gate.sh` 83/83,
 BUILD `99a851d7`, D3D11 only. See each "as built" section.
+
+## Carried follow-ups (`wt/void3d-followups`)
+
+Review: SHIP WITH FOLLOW-UPS; its one follow-up, the allocation allow-list keyed by module, was
+built before landing (`beb641cb`, controls in docs/VOID3D.md). Gate: see "Carried follow-ups, as
+built", Gate acceptance: three first-GPU-run failures fixed at their root and their stages rerun
+GREEN on `d75a235a`, BUILD `99a851d7`, D3D11 only.

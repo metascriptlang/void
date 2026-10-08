@@ -3139,8 +3139,19 @@ documented behaviour and is marked unread.
   and did not run.
 - Acceptance limited to what ran: `msc test src/test/programKeyCheck.ms`, with the one test above.
 
-**Not done:** the straight-alpha blended billboard (item 2); a GPU run of `billboardBlend` and
-`worldLabel`; the gate as a whole; Bevy's `globals.rs` read.
+**Not done:** the straight-alpha blended billboard (item 2); Bevy's `globals.rs` read.
+
+**Gate acceptance, D3D11 only.** The pair on `beb641cb` over main `7d61971a`, BUILD `99a851d7`
+throughout: `gate.sh` GREEN (golden 100/100, GL core 98/98, 7 known skips); `gate3d.sh` 332 PASS
+and three FAILs, each on a path no GPU had run: `billboardBlend` expected white from a
+premultiplied texel under the straight key (the straight billboard now reads a straight-alpha
+texture, `dd8bb82d`); the gate counted four world-label stages where the tint stage made five
+(`96903379`); the card table budgeted its label under the label's old key, so the UV-transform
+block did not fit (`Uniforms`; the sample now asks `worldLabel.ms` for `labelKey()`, `d75a235a`).
+The three touch tests, the sample and gate3d.sh, nothing gate.sh reads. Rerun on `d75a235a`, same
+BUILD, the stages they reach: shaders, pending, tests 1423/1423, billboard-blend (both presets
+and the straight control), world-label (both presets and both controls), card-table (and its
+featureless control), allocation and style, all GREEN. GLES3, web and Android NOT RUN.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
