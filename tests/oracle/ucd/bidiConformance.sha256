@@ -1,0 +1,5 @@
+# The Unicode 18.0.0 BiDi conformance files setup.sh fetches into deps/ucd, by sha256.
+# https://www.unicode.org/Public/18.0.0/ucd/BidiTest.txt (7,959,988 B)
+# https://www.unicode.org/Public/18.0.0/ucd/BidiCharacterTest.txt (6,880,771 B)
+9af2f882a4ab50912e388f069a673b94eacd82fa6d07d20a3ff7f3c759e905aa  BidiTest.txt
+045b24d2c8ab066951bd32fe8c6b4de34647f72b5b1c7df0265f24ab53573e01  BidiCharacterTest.txt

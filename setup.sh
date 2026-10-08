@@ -11,6 +11,11 @@
 # pin bump, delete the cached objects that include deps/sokol, or the build
 # silently links code compiled against the old headers.
 #
+# The BiDi conformance files (BidiTest.txt, BidiCharacterTest.txt, Unicode 18.0.0) are fetched into
+# deps/ucd and pinned by sha256 in tests/oracle/ucd/bidiConformance.sha256, which the oracle test
+# reads too. They are not vendored: 14.8 MB against the 0.6 MB of UAX #14 rows under
+# tests/oracle/ucd (docs/TESTING.md, "Why the BiDi rows are fetched").
+#
 # Also needed, as a sibling checkout: ../yoga (github.com/metascriptlang/yoga),
 # with libyoga.a built for the target (see its scripts/build-yoga.sh).
 set -e
@@ -45,6 +50,36 @@ fetch() {
 	echo "$name @ $(git -C "$dest" rev-parse --short HEAD)"
 }
 
+UCD_VERSION="18.0.0"
+UCD_PINS="tests/oracle/ucd/bidiConformance.sha256"
+
+sha256_of() {
+	if command -v sha256sum > /dev/null 2>&1; then
+		sha256sum "$1" | cut -d ' ' -f 1
+	else
+		shasum -a 256 "$1" | cut -d ' ' -f 1
+	fi
+}
+
+fetch_ucd() {
+	file="$1"
+	want="$(awk -v f="$file" '$2 == f { print $1 }' "$UCD_PINS" | tr -d '\r')"
+	[ -n "$want" ] || { echo "ucd $file: $UCD_PINS holds no sha256 for it"; exit 1; }
+	dest="deps/ucd/$file"
+	if [ ! -f "$dest" ] || [ "$(sha256_of "$dest")" != "$want" ]; then
+		echo "fetching $file"
+		curl -fsSL "https://www.unicode.org/Public/$UCD_VERSION/ucd/$file" -o "$dest.part"
+		got="$(sha256_of "$dest.part")"
+		if [ "$got" != "$want" ]; then
+			rm -f "$dest.part"
+			echo "ucd $file: sha256 is $got, the pin is $want"
+			exit 1
+		fi
+		mv "$dest.part" "$dest"
+	fi
+	echo "ucd $file @ $(echo "$want" | cut -c 1-8)"
+}
+
 mkdir -p deps
 fetch sokol           floooh/sokol           "$SOKOL_REV" "$SOKOL_FORK"
 fetch sokol-tools-bin floooh/sokol-tools-bin "$SOKOL_TOOLS_REV"
@@ -55,6 +90,10 @@ fetch nanosvg         memononen/nanosvg      "$NANOSVG_REV"
 if [ "${VOID_FREETYPE:-0}" = 1 ]; then
 	fetch freetype    freetype/freetype      "$FREETYPE_REV"
 fi
+
+mkdir -p deps/ucd
+fetch_ucd BidiTest.txt
+fetch_ucd BidiCharacterTest.txt
 
 if [ "$(uname -s)" = Darwin ]; then
 	sh scripts/build-sokol-macos.sh

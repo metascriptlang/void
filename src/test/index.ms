@@ -67,6 +67,7 @@ when (voidShaper) {
 }
 when (voidBidi) {
 	import "./bidiTableCheck";
+	import "./bidiOracleCheck";
 }
 when (voidSvg) {
 	import "./svgMaskCheck";
