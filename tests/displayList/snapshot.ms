@@ -916,10 +916,10 @@ test "T1 a hairline stroke keeps its coverage instead of its inset" {
 	for (let i: int32 = 0; i < vertexCount(); i++) {
 		const y: float32 = vertexField(i, 1);
 		if (vertexField(i, 7) == 0.0) {
-			assert approx(y, 10.0) || approx(y, 9.25) || approx(y, 10.75);
+			assert approx(y, 10.0) || approx(y, 9.0) || approx(y, 11.0);
 		} else {
 			assert approx(y, 10.0);
-			assert approx(vertexField(i, 7), 2.0 * 0.25 / 0.75);
+			assert approx(vertexField(i, 7), 0.5);
 			inner = inner + 1;
 		}
 	}

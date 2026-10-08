@@ -306,7 +306,7 @@ function fringeBounds(lb: Bounds2D, world: Transform2D): Bounds2D {
 	const det: float32 = world.a * world.d - world.b * world.c;
 	const scale: float32 = currentRenderScale();
 	if (det == 0.0 || !(scale > 0.0)) { return lb; }
-	const reach: float32 = FRINGE_HALF_WIDTH / (scale * (det < 0.0 ? -det : det));
+	const reach: float32 = 2.0 * FRINGE_HALF_WIDTH / (scale * (det < 0.0 ? -det : det));
 	const x: float32 = reach * sqrtf(world.c * world.c + world.d * world.d);
 	const y: float32 = reach * sqrtf(world.a * world.a + world.b * world.b);
 	return { xMin: lb.xMin - x, yMin: lb.yMin - y, xMax: lb.xMax + x, yMax: lb.yMax + y };

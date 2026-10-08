@@ -170,6 +170,7 @@ function contourFill(
 	tris: Readonly<Span<int32>>,
 	map: UvMap,
 	color: Color,
+	halfThickness: float32,
 ): void {
 	const total: int32 = pts.length as int32;
 	if (total < 3 || (loopEnds.length as int32) == 0) { return; }
@@ -216,13 +217,43 @@ function contourFill(
 		}
 	}
 	for (const k of tris) {
-		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH, 0.0);
+		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH, halfThickness);
 	}
 	for (let i: int32 = 0; i < total; i++) {
 		if (isNormal(edgeNormals[i])) {
-			fringeQuad(n, counted, corners[i], corners[nextOf[i]], map, color, 0.0);
+			fringeQuad(n, counted, corners[i], corners[nextOf[i]], map, color, halfThickness);
 		}
 	}
+}
+
+function halfThicknessIfConvex(pts: Readonly<Span<Vec2>>, loopEnds: Readonly<Span<int32>>): float32 {
+	let area: float32 = 0.0;
+	let perimeter: float32 = 0.0;
+	for (let k: int32 = 0; k < (loopEnds.length as int32); k++) {
+		const start: int32 = loopStart(loopEnds, k);
+		const end: int32 = loopEnds[k];
+		let loopArea: float32 = 0.0;
+		for (let i: int32 = start; i < end; i++) {
+			const j: int32 = i + 1 < end ? i + 1 : start;
+			loopArea = loopArea + pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+			const dx: float32 = pts[j].x - pts[i].x;
+			const dy: float32 = pts[j].y - pts[i].y;
+			perimeter = perimeter + sqrtf(dx * dx + dy * dy);
+		}
+		const half: float32 = (loopArea < 0.0 ? -loopArea : loopArea) * 0.5;
+		area = k == 0 ? area + half : area - half;
+	}
+	return perimeter > 0.0 ? area / perimeter : 0.0;
+}
+
+function rectHalfThickness(w: float32, h: float32): float32 {
+	const aw: float32 = w < 0.0 ? -w : w;
+	const ah: float32 = h < 0.0 ? -h : h;
+	return (aw < ah ? aw : ah) * 0.5;
+}
+
+function ellipseHalfThickness(rx: float32, ry: float32, seg: int32): float32 {
+	return (rx < ry ? rx : ry) * cosf(TAU * 0.5 / (seg as float32));
 }
 
 function fanTris(count: int32): int32[] {
@@ -301,7 +332,9 @@ export function setAntialias(this g: NodeRef, on: boolean): NodeRef {
 
 export function fillTriangle(this g: NodeRef, a: Vec2, b: Vec2, c: Vec2, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTriangle");
-	contourFill(target, true, [a, b, c], [3], [0, 1, 2], NO_UV, color);
+	const tri: Vec2[] = [a, b, c];
+	contourFill(target, true, tri, [3], [0, 1, 2], NO_UV, color,
+		halfThicknessIfConvex(tri, [3]));
 	return g;
 }
 
@@ -320,14 +353,15 @@ export function fillRect(
 	color: Color,
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillRect");
-	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, NO_UV, color);
+	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, NO_UV, color,
+		rectHalfThickness(w, h));
 	return g;
 }
 
 export function fillConvex(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillConvex");
 	const m: int32 = pts.length as int32;
-	contourFill(target, true, pts, [m], fanTris(m), NO_UV, color);
+	contourFill(target, true, pts, [m], fanTris(m), NO_UV, color, halfThicknessIfConvex(pts, [m]));
 	return g;
 }
 
@@ -475,7 +509,9 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 // h2d.Graphics arbitrary solid fill (convex shapes can use the cheaper fillConvex fan).
 export function fillPolygon(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPolygon");
-	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), NO_UV, color);
+	const loops: int32[] = [pts.length as int32];
+	contourFill(target, true, pts, loops, triangulate(pts), NO_UV, color,
+		halfThicknessIfConvex(pts, loops));
 	return g;
 }
 
@@ -507,7 +543,8 @@ export function fillGradientPolygonStops(
 		map = { ux: ax / span, uy: ay / span, uc: -minP / span, vx: 0.0, vy: 0.0, vc: 0.0 };
 	}
 	const start: int32 = (target.mesh.length as int32) / 8;
-	contourFill(target, false, pts, [m], triangulate(pts), map, white);
+	contourFill(target, false, pts, [m], triangulate(pts), map, white,
+		halfThicknessIfConvex(pts, [m]));
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	if (count > 0) {
 		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
@@ -596,7 +633,8 @@ export function fillRadialGradientStops(
 	const seg: int32 = circleSegs(r);
 	const map: UvMap = { ux: 1.0 / r, uy: 0.0, uc: -cx / r, vx: 0.0, vy: 1.0 / r, vc: -cy / r };
 	const start: int32 = (target.mesh.length as int32) / 8;
-	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, white);
+	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, white,
+		ellipseHalfThickness(r, r, seg));
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	appendOp(target, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
 		c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
@@ -640,7 +678,8 @@ function fillPatternRect(
 	const target: GraphicsMesh = meshOf(g, "fillPatternRect");
 	const map: UvMap = { ux: 1.0, uy: 0.0, uc: -x, vx: 0.0, vy: 1.0, vc: -y };
 	const start: int32 = (target.mesh.length as int32) / 8;
-	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, white);
+	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, white,
+		rectHalfThickness(w, h));
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	appendOp(target, kind, start, count, GradientSpace.Srgb, false, -1.0,
 		c0, c1, c1, p0, p1, 0.0, 0.0);
@@ -693,7 +732,8 @@ export function fillTexRect(
 	const du: float32 = (t.u1 - t.u0) / w;
 	const dv: float32 = (t.v1 - t.v0) / h;
 	const map: UvMap = { ux: du, uy: 0.0, uc: t.u0 - x * du, vx: 0.0, vy: dv, vc: t.v0 - y * dv };
-	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, map, color);
+	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, map, color,
+		rectHalfThickness(w, h));
 	return g;
 }
 
@@ -719,7 +759,9 @@ export function fillTexPolygon(
 		ux: du, uy: 0.0, uc: t.u0 - originX * du,
 		vx: 0.0, vy: dv, vc: t.v0 - originY * dv,
 	};
-	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), map, color);
+	const loops: int32[] = [pts.length as int32];
+	contourFill(target, true, pts, loops, triangulate(pts), map, color,
+		halfThicknessIfConvex(pts, loops));
 	return g;
 }
 
@@ -732,7 +774,8 @@ export function fillCircle(
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillCircle");
 	const seg: int32 = circleSegs(r);
-	contourFill(target, true, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), NO_UV, color);
+	contourFill(target, true, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), NO_UV, color,
+		ellipseHalfThickness(r, r, seg));
 	return g;
 }
 
@@ -889,7 +932,8 @@ export function fillEllipse(
 	const target: GraphicsMesh = meshOf(g, "fillEllipse");
 	const seg: int32 = arcSegs(rx > ry ? rx : ry, TAU);
 	const pts: Vec2[] = ellipsePoints(cx, cy, rx, ry, seg);
-	contourFill(target, true, pts, [seg], fanTris(seg), NO_UV, color);
+	contourFill(target, true, pts, [seg], fanTris(seg), NO_UV, color,
+		ellipseHalfThickness(rx, ry, seg));
 	return g;
 }
 
@@ -917,7 +961,8 @@ export function fillPie(
 		const a: float32 = angleStart + step * (i as float32);
 		pts.push(vec2(cx + cosf(a) * r, cy + sinf(a) * r));
 	}
-	contourFill(target, true, pts, [seg + 2], fanTris(seg + 2), NO_UV, color);
+	contourFill(target, true, pts, [seg + 2], fanTris(seg + 2), NO_UV, color,
+		halfThicknessIfConvex(pts, [seg + 2]));
 	return g;
 }
 
@@ -960,7 +1005,7 @@ export function fillRing(
 		tris.push(innerNext);
 	}
 	const loops: int32[] = full ? [rim, rim * 2] : [rim * 2];
-	contourFill(target, true, pts, loops, tris, NO_UV, color);
+	contourFill(target, true, pts, loops, tris, NO_UV, color, halfThicknessIfConvex(pts, loops));
 	return g;
 }
 

@@ -1196,11 +1196,12 @@ function edgeMove(
 	const reach: float32 = a1 > a2 ? a1 : a2;
 	const limit: float32 = edges[e + EDGE_LIMIT];
 	let coverage: float32 = 1.0;
-	if (limit > 0.0 && shift < 0.0 && reach > limit) {
-		const keep: float32 = limit / reach;
-		t1 = t1 * keep;
-		t2 = t2 * keep;
-		coverage = 2.0 * limit / (limit + reach);
+	let extent: float32 = reach;
+	if (limit > 0.0 && reach > limit) {
+		extent = shift < 0.0 ? limit : 2.0 * reach - limit;
+		t1 = t1 * extent / reach;
+		t2 = t2 * extent / reach;
+		if (shift < 0.0) { coverage = limit / reach; }
 	}
 	const det: float32 = n1x * n2y - n1y * n2x;
 	let x: float32 = n1x * t1;
@@ -1210,7 +1211,7 @@ function edgeMove(
 		y = (n1x * t2 - n2x * t1) / det;
 	}
 	const length: float32 = sqrtf(x * x + y * y);
-	const longest: float32 = EDGE_MITER_LIMIT * (reach < limit || limit <= 0.0 ? reach : limit);
+	const longest: float32 = EDGE_MITER_LIMIT * extent;
 	if (length > longest && length > 0.0) {
 		x = x * longest / length;
 		y = y * longest / length;
