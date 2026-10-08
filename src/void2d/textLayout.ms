@@ -1509,6 +1509,8 @@ export function selectedExtents(
 	const tailLow: float32 = rightToLeft ? left - tail : right;
 	const tailHigh: float32 = rightToLeft ? left : right + tail;
 	const extraHigh: float32 = tail > 0.0 ? tailHigh : 0.0;
+	// Keep this Vec<boolean> span: emcc refuses it until msc casts uint8_t * to MS_BOOL *
+	// (.inbox/compiler/2026-09-26-interface-array-to-span-void-pointer.md).
 	selectedSpans(flags, indices, xs, advances, start, end, gap, tailLow, extraHigh, out);
 	return out;
 }
@@ -1599,6 +1601,8 @@ function lineEdges(this l: TextLayout, li: int32): LineEdges {
 		if (k == first || l.glyphs[k].clusterStart) { starts.push(k); }
 	}
 	let edges: Vec<float32> = new Array(0);
+	// Keep this Vec<boolean> span: emcc refuses it until msc casts uint8_t * to MS_BOOL *
+	// (.inbox/compiler/2026-09-26-interface-array-to-span-void-pointer.md).
 	clusterEdges(l.slotLevels(li), flags, xs, advances, l.bidi.lineLevels[li], edges);
 	return { starts: starts, edges: edges };
 }
