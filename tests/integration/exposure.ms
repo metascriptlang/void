@@ -19,6 +19,7 @@ import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/voi
 import { LowResView } from "../../src/void3d/blit";
 import { ToneMode, setExposure, setToneMode } from "../../src/void3d/renderer";
 import { greyCurve } from "./toneCurves";
+import { toneMappedBackground } from "../../src/void3d/toneMap";
 import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, renderFrame as renderForward,
 } from "../../src/void3d/forwardRenderer";
@@ -143,7 +144,7 @@ function init(): void {
 	const over: RenderState = opaque.withBlendMode(BlendMode.Alpha);
 	items.push({
 		mesh: quad, material: unlit(texture, BACK, 1.0, opaque, Phase.Opaque),
-		world: scaling(10.0, 10.0, 1.0) * translation(0.0, 0.0, -1.0), order: 0,
+		world: scaling(5.0, 5.0, 1.0) * translation(0.0, 0.0, -1.0), order: 0,
 	});
 	items.push({
 		mesh: quad, material: unlit(texture, TOP, TOP_ALPHA, over, Phase.Alpha),
@@ -186,10 +187,13 @@ function layeredByte(multiplier: float32, mode: ToneMode): float32 {
 function check(multiplier: float32, mode: ToneMode): void {
 	const back: float32 = exposedByte(BACK, multiplier, mode);
 	const layered: float32 = layeredByte(multiplier, mode);
-	const alone: int32 = green(20, 20);
+	const alone: int32 = green(60, 20);
 	const overlap: int32 = green(WIDTH / 2, HEIGHT / 2);
+	const clear: int32 = green(5, 5);
+	const cleared: float32 = toneMappedBackground(GREY, multiplier, mode).y * 255.0;
 	console.log(`exposure: ${mode.toString()} x${multiplier} backdrop ${alone} (want ${back}), ` +
-		`overlap ${overlap} (want ${layered})`);
+		`overlap ${overlap} (want ${layered}), background ${clear} (want ${cleared})`);
+	if (!near(clear, cleared)) { fail(`the background drew ${clear}, not ${cleared}`); }
 	if (!near(alone, back)) { fail(`the backdrop drew ${alone}, not ${back}`); }
 	if (!near(overlap, layered)) { fail(`the overlap drew ${overlap}, not ${layered}`); }
 	if (multiplier == 1.0) { return; }

@@ -45,7 +45,12 @@ import {
 } from "./draw";
 import "./uniformPool";
 import { screenState } from "./screenFx";
-import { ToneMapPass, TONE_MAP_UNIFORM_LENGTH, linearBackground } from "./toneMap";
+import {
+	ToneMapPass,
+	TONE_MAP_UNIFORM_LENGTH,
+	linearBackground,
+	toneMappedBackground,
+} from "./toneMap";
 import {
 	Renderer,
 	RendererError,
@@ -58,6 +63,7 @@ import {
 	releasePrepared,
 	closeRenderer,
 	drawShadowPass,
+	exposureMultiplier,
 } from "./renderer";
 
 export interface ForwardRenderer {
@@ -301,6 +307,12 @@ export function prepareFrame(
 		adoptContext(renderer);
 	}
 	resizeTargets(renderer, width, height);
+	if (renderer.toneMap === null) {
+		const core: Renderer = renderer.core;
+		renderer.sceneColors[0].clear = toneMappedBackground(
+			renderer.background, exposureMultiplier(core.exposure), core.toneMode,
+		);
+	}
 	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.asTexture();
 	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.asHandle();
 	if (toneMap !== null) {

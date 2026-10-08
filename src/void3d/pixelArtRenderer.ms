@@ -72,7 +72,12 @@ import {
 	closePalette,
 } from "./palette";
 import { screenState } from "./screenFx";
-import { ToneMapPass, TONE_MAP_UNIFORM_LENGTH, linearBackground } from "./toneMap";
+import {
+	ToneMapPass,
+	TONE_MAP_UNIFORM_LENGTH,
+	linearBackground,
+	toneMappedBackground,
+} from "./toneMap";
 import {
 	Renderer,
 	RendererError,
@@ -85,6 +90,7 @@ import {
 	releasePrepared,
 	closeRenderer,
 	drawShadowPass,
+	exposureMultiplier,
 } from "./renderer";
 
 // The preset's own uniform blocks, from the `binding=` blocks in pixelArt3d.glsl. A lit
@@ -778,6 +784,12 @@ export function prepareFrame(
 		adoptContext(renderer);
 	}
 	resizeTargets(renderer, view.width, view.height);
+	if (renderer.toneMap === null) {
+		const core: Renderer = renderer.core;
+		renderer.sceneColors[0].clear = toneMappedBackground(
+			renderer.look.background, exposureMultiplier(core.exposure), core.toneMode,
+		);
+	}
 	upload(renderer.palette);
 	bindScreenTextures(renderer);
 	renderer.look.writePostParams(

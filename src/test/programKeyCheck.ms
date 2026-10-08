@@ -90,6 +90,8 @@ import {
 	TONE_MAP_UNIFORM_SLOT,
 	TONE_MAP_UNIFORM_LENGTH,
 	linearBackground,
+	toneMappedBackground,
+	toneCurved,
 } from "../void3d/toneMap";
 
 function pixelArt(program: Program): ProgramKey {
@@ -364,6 +366,39 @@ test "the HDR target clears to the background decoded, premultiplied as it was g
 	assert half.w == 0.25;
 	const clear: Vec4 = linearBackground({ x: 0.0, y: 0.0, z: 0.0, w: 0.0 });
 	assert clear.x == 0.0 && clear.y == 0.0 && clear.z == 0.0 && clear.w == 0.0;
+}
+
+// Heaps b9aa6dcb h3d/shader/pbr/ToneMapping.hx, evaluated apart from void3d (docs/REVIEWS-3D.md).
+test "the CPU tone curves read Heaps' formulas, values above 1 included" {
+	const two: Vec4 = { x: 2.0, y: 0.25, z: 0.5, w: 0.5 };
+	const reinhard: Vec4 = toneCurved(two, ToneMode.Reinhard);
+	assert approx(reinhard.x, 0.666667) && approx(reinhard.y, 0.2) && reinhard.w == 0.5;
+	const filmic: Vec4 = toneCurved({ x: 0.5, y: 3.0, z: 0.0, w: 1.0 }, ToneMode.Filmic);
+	assert approx(filmic.x, 0.616307) && approx(filmic.y, 0.953743) && filmic.z == 0.0;
+	const greyNeutral: Vec4 = toneCurved({ x: 2.0, y: 2.0, z: 2.0, w: 1.0 }, ToneMode.Neutral);
+	assert approx(greyNeutral.x, 0.96) && approx(greyNeutral.z, 0.96);
+	const low: Vec4 = toneCurved({ x: 0.5, y: 0.5, z: 0.5, w: 1.0 }, ToneMode.Neutral);
+	assert approx(low.x, 0.46);
+	const tinted: Vec4 = toneCurved({ x: 2.0, y: 0.5, z: 0.05, w: 1.0 }, ToneMode.Neutral);
+	assert approx(tinted.x, 0.960156) && approx(tinted.y, 0.323471) && approx(tinted.z, 0.132465);
+	const linear: Vec4 = toneCurved(two, ToneMode.Linear);
+	assert linear.x == 1.0 && linear.y == 0.25 && linear.z == 0.5;
+}
+
+test "an LDR clear is the HDR clear after the tone map, and left alone at the default" {
+	const grey: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
+	const untouched: Vec4 = toneMappedBackground(grey, 1.0, ToneMode.Linear);
+	assert untouched.x == 0.5 && untouched.y == 0.5 && untouched.z == 0.5 && untouched.w == 1.0;
+	const exposed: Vec4 = toneMappedBackground(grey, 1.5, ToneMode.Linear);
+	assert approx(exposed.x, 0.602155);
+	const curved: Vec4 = toneMappedBackground(grey, 1.0, ToneMode.Reinhard);
+	assert approx(curved.x, 0.456918);
+	const half: Vec4 = toneMappedBackground({ x: 0.25, y: 0.25, z: 0.25, w: 0.5 }, 1.0,
+		ToneMode.Reinhard);
+	assert approx(half.x, 0.456918 * 0.5) && half.w == 0.5;
+	const none: Vec4 = toneMappedBackground({ x: 0.0, y: 0.0, z: 0.0, w: 0.0 }, 1.5,
+		ToneMode.Filmic);
+	assert none.x == 0.0 && none.w == 0.0;
 }
 
 function declaredSlots(program: ProgramKey): int32 {
