@@ -346,7 +346,7 @@ void main() {
     texel = straightTexel(texel);
 #endif
     float alpha = billboardColor.a * texel.a * instanceColor.a;
-#ifndef PREMULTIPLIED
+#ifdef CUTOUT
     if (alpha < 0.5) {
         discard;
     }
@@ -362,8 +362,10 @@ void main() {
     }
 #ifdef PREMULTIPLIED
     fragColor = vec4(rgb * alpha, alpha);
-#else
+#elif defined(CUTOUT)
     fragColor = vec4(rgb, 0.0);
+#else
+    fragColor = vec4(rgb, alpha);
 #endif
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
 }

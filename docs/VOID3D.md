@@ -2194,7 +2194,7 @@ and fails in both presets. Headless: the kind table against Heaps', `passFor` ov
 base, the cutout twins' class, layout and blocks in both maps, the `NoAlphaKill` refusal,
 the glTF modes and cutoff with their refusals and the cutout program they choose, texture and
 factor alpha kept under MASK and BLEND and forced under OPAQUE, a texture shared by both
-refused; aborts `programMapCutMismatch`, `kindWithoutCutout` and `kindOnBillboard`. Not drawn: a glTF MASK file end to end (its
+refused; aborts `programMapCutMismatch`, `kindWithoutCutout` and `kindOnBillboard` (`kindOnParticle` since a billboard cuts by its key, follow-up stack row 3). Not drawn: a glTF MASK file end to end (its
 material is pinned headless), the pixel-art normal target under a cut pixel (a discard drops
 every output).
 
@@ -3245,6 +3245,27 @@ far plane is cut (311/311, BUILD `1090f789`). GPU: `tests/integration/dirShadow.
 `dir-shadow` stage runs it in both presets with its detached control; the pixel-art preset's
 outline under perspective stays PENDING3D `pixel-art-depth-orthographic`, and the check reads only
 the ground and caster colours. Not run yet: the GPU stage.
+
+**3. A straight-alpha blended billboard: the cutout bit, re-meant on billboards.** What changes
+for the author: a billboard material cuts at alpha 0.5 only when its key has `cutout`
+(`ProgramKey.of(Program.Billboard).withCutout()`, or `Material.ofKind(Program.Billboard,
+MaterialKind.AlphaKill)`); without it the billboard writes its colour and alpha as they are and
+blends as its render state says, so `ofKind(Program.Billboard, MaterialKind.Alpha)` is Heaps'
+`Alpha` and three.js' `Sprite` (straight colour, `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`). This is the
+meaning the cutout bit already has on the lit and unlit programs and Heaps' `refreshProps` gives
+`AlphaKill` against `Alpha` (`h3d/mat/Material.hx:265-283`, M33). Every caller that relied on the
+old always-cut billboard now names the cutout key: the campfire's grass and flames and the tests;
+`billboardCutout` and `pixelArtBillboardCutout` are declared (88 keys). The cut stays at the fixed
+0.5 the billboard always used, so `addMaterial` asks no alpha kill of a billboard block, and
+particles still always cut (`kindOnParticle` replaces the `kindOnBillboard` abort). In the pixel-art
+preset an uncut, unpremultiplied billboard writes its alpha (the cut one still writes 0, the
+outline mask the post pass reads). Captures: the sokol-shdc output of the new cutout programs is
+byte-identical to the old base billboard's on every backend, and only the base billboard's six
+fragment shaders changed (an array-by-array diff of both headers), so the campfire and particle
+captures are expected unchanged; the gate pair proves it. `tests/integration/billboardBlend.ms` adds
+a straight-alpha billboard checked against the same over-backdrop arithmetic as the premultiplied
+one. PENDING3D `particle-alpha-tested` now covers particles only. Ran: headless entry 1435/1435,
+the abort program; not run: the GPU stages.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 

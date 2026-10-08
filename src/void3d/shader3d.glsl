@@ -414,7 +414,6 @@ void main() {
 @end
 
 @fs billboardFs
-// PENDING3D: particle-alpha-tested
 @include_block billboardUniforms
 @include_block lightUniforms
 @include_block colorSpace
@@ -435,7 +434,7 @@ void main() {
     texel = straightTexel(texel);
 #endif
     vec4 pixel = billboardColor * texel * instanceColor;
-#ifndef PREMULTIPLIED
+#ifdef CUTOUT
     if (pixel.a < 0.5) {
         discard;
     }

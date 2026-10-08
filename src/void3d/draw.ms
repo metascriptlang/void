@@ -867,7 +867,8 @@ export function addMaterial(
 	if (material.program.premultiplied && !blendsPremultiplied(material.pass)) {
 		return Result.err(MaterialError.StraightBlend);
 	}
-	if (material.program.cutout && !context.cutsAbove(material.uniforms)) {
+	const fixedCut: boolean = material.program.program == Program.Billboard;
+	if (material.program.cutout && !fixedCut && !context.cutsAbove(material.uniforms)) {
 		return Result.err(MaterialError.NoAlphaKill);
 	}
 	const owned: Result<int32, UniformError> = ownRange(context.uniforms, material.uniforms);

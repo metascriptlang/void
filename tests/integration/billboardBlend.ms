@@ -42,6 +42,7 @@ const SIDE: float32 = 1.6;
 const STRAIGHT_X: float32 = -1.2;
 const BLENDED_X: float32 = 1.2;
 const GAP_X: float32 = 0.0;
+const STRAIGHT_BLEND_Y: float32 = 1.4;
 const WORLD_PER_TEXEL: float32 = 0.02;
 const TOLERANCE: int64 = 2;
 const GREY: Vec4 = { x: 0.2, y: 0.2, z: 0.2, w: 1.0 };
@@ -53,7 +54,7 @@ const THREE_QUARTERS_BYTE: int64 = 192;
 let pixelArt: boolean = voidCaptureEnvInt("VOID_BILLBOARD_BLEND_PIXEL_ART", 0) != 0;
 let control: boolean = voidCaptureEnvInt("VOID_BILLBOARD_BLEND_CONTROL", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 2 * BILLBOARD_UNIFORM_LENGTH,
+	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + 3 * BILLBOARD_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = makeForward();
 let preset: PixelArtRenderer = makePreset();
@@ -98,10 +99,10 @@ function halves(premultiplied: boolean): uint32 {
 	return makeTextureView(makeImage(pixels, 2, 1));
 }
 
-function instanceBuffer(x: float32): uint32 {
+function instanceBuffer(x: float32, y: float32): uint32 {
 	const tile: AtlasTile = { u: 0.0, v: 0.0, u2: 1.0, v2: 1.0 };
 	const instance: BillboardInstance = {
-		position: vec3(x, 0.0, 0.0), width: SIDE, height: SIDE, anchor: ANCHOR_CENTER,
+		position: vec3(x, y, 0.0), width: SIDE, height: SIDE, anchor: ANCHOR_CENTER,
 		tile: tile, color: WHITE,
 	};
 	let values: Vec<float32> = [];
@@ -110,7 +111,7 @@ function instanceBuffer(x: float32): uint32 {
 }
 
 function billboard(
-	x: float32, key: ProgramKey, pass: RenderState, phase: Phase, texels: uint32,
+	x: float32, y: float32, key: ProgramKey, pass: RenderState, phase: Phase, texels: uint32,
 ): void {
 	const values: Vec<float32> = [1.0, 1.0, 1.0, 1.0, 4.0, 0.0, 0.25, 0.0];
 	const reserved: Result<UniformBlock, UniformError> =
@@ -128,7 +129,7 @@ function billboard(
 		unreachable;
 	}
 	const mesh: Result<MeshId, MeshUploadError> =
-		addMesh(context, GpuMesh.billboards(instanceBuffer(x), 1));
+		addMesh(context, GpuMesh.billboards(instanceBuffer(x, y), 1));
 	if (!mesh.ok) { unreachable; }
 	items.push({ mesh: mesh.value, material: added.value, world: identity() });
 }
@@ -139,10 +140,12 @@ function init(): void {
 	const state: RenderState = RenderState.defaults().withCulling(Face.None);
 	const blended: RenderState = state.withBlendMode(BlendMode.AlphaAdd);
 	const straight: ProgramKey = ProgramKey.of(Program.Billboard);
-	billboard(STRAIGHT_X, straight, state, Phase.Opaque, halves(false));
-	const second: ProgramKey = control ? straight : straight.withPremultiplied();
+	billboard(STRAIGHT_X, 0.0, straight.withCutout(), state, Phase.Opaque, halves(false));
+	const second: ProgramKey = control ? straight.withCutout() : straight.withPremultiplied();
 	const phase: Phase = control ? Phase.Opaque : Phase.Alpha;
-	billboard(BLENDED_X, second, control ? state : blended, phase, halves(true));
+	billboard(BLENDED_X, 0.0, second, control ? state : blended, phase, halves(true));
+	const over: RenderState = control ? state : state.withBlendMode(BlendMode.Alpha);
+	billboard(GAP_X, STRAIGHT_BLEND_Y, straight, over, phase, halves(false));
 }
 
 function viewOf(): CameraView {
@@ -158,8 +161,8 @@ function viewOf(): CameraView {
 	unreachable;
 }
 
-function rgbAt(view: CameraView, x: float32): int64 {
-	const at: Vec3 = view.project(vec3(x, 0.0, 0.0), SCREEN, true);
+function rgbAt(view: CameraView, x: float32, y: float32 = 0.0): int64 {
+	const at: Vec3 = view.project(vec3(x, y, 0.0), SCREEN, true);
 	return voidCapturePixel(0, at.x as int32, at.y as int32) >> 8;
 }
 
@@ -185,13 +188,23 @@ function check(view: CameraView): void {
 	const light: int64 = rgbAt(view, BLENDED_X - SIDE / 4.0);
 	const heavy: int64 = rgbAt(view, BLENDED_X + SIDE / 4.0);
 	console.log(`billboard blend: premultiplied quarter ${light}, three-quarter ${heavy}`);
+	blendsOver(backdrop, light, heavy, "premultiplied");
+	const straightLight: int64 = rgbAt(view, GAP_X - SIDE / 4.0, STRAIGHT_BLEND_Y);
+	const straightHeavy: int64 = rgbAt(view, GAP_X + SIDE / 4.0, STRAIGHT_BLEND_Y);
+	console.log(`billboard blend: straight ${straightLight}, ${straightHeavy}`);
+	blendsOver(backdrop, straightLight, straightHeavy, "straight");
+}
+
+// White texels at a quarter and three quarters alpha over the backdrop, whether the texel was
+// stored premultiplied and blended ONE, ONE_MINUS_SRC_ALPHA or straight and blended SRC_ALPHA.
+function blendsOver(backdrop: int64, light: int64, heavy: int64, which: string): void {
 	for (const shift of [0, 8, 16]) {
 		const base: int64 = channel(backdrop, shift);
 		if (!near(channel(light, shift), overBackdrop(base, QUARTER_BYTE))) {
-			fail(`the quarter-alpha texel did not blend over the backdrop on channel ${shift}`);
+			fail(`the ${which} quarter texel did not blend over the backdrop on channel ${shift}`);
 		}
 		if (!near(channel(heavy, shift), overBackdrop(base, THREE_QUARTERS_BYTE))) {
-			fail(`the three-quarter texel did not blend over the backdrop on channel ${shift}`);
+			fail(`the ${which} 3/4 texel did not blend over the backdrop on channel ${shift}`);
 		}
 	}
 }
@@ -213,7 +226,7 @@ function frame(): void {
 	check(view);
 	stage = stage + 1;
 	if (stage < FRAMES) { return; }
-	console.log("PASS billboard blend: premultiplied texels blend over the backdrop, straight cut");
+	console.log("PASS billboard blend: premultiplied and straight texels blend, cutout cuts");
 	voidCaptureExit(0);
 }
 

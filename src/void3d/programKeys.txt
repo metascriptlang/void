@@ -90,3 +90,5 @@ billboardPremultiplied                  BILLBOARD       CORE      PREMULTIPLIED 
 pixelArtBillboardPremultiplied          BILLBOARD       PIXEL_ART PREMULTIPLIED                                billboardVs     billboardFs           BILLBOARD
 unlitTexturedUvTransformPremultiplied   UNLIT_TEXTURED  CORE      PREMULTIPLIED:UV_TRANSFORM                   unlitTexturedVs unlitTexturedFs       LIT_TEXTURED
 pixelArtUnlitTexturedUvTransformPremultiplied UNLIT_TEXTURED  PIXEL_ART PREMULTIPLIED:UV_TRANSFORM                   unlitTexturedVs unlitTexturedFs       LIT_TEXTURED
+billboardCutout                         BILLBOARD       CORE      CUTOUT                                       billboardVs     billboardFs           BILLBOARD
+pixelArtBillboardCutout                 BILLBOARD       PIXEL_ART CUTOUT                                       billboardVs     billboardFs           BILLBOARD

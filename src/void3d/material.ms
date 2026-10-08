@@ -136,7 +136,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.Lit => ProgramKey.of(program).withCutout(),
 		Program.LitTextured => ProgramKey.of(program).withCutout(),
 		Program.UnlitTextured => ProgramKey.of(program).withCutout(),
-		Program.Billboard => stopOnFixedCut(program),
+		Program.Billboard => ProgramKey.of(program).withCutout(),
 		Program.Particle => stopOnFixedCut(program),
 		Program.Copy => stopOnNoCutout(program),
 		Program.Post => stopOnNoCutout(program),
@@ -144,7 +144,8 @@ function cutoutOf(program: Program): ProgramKey {
 	};
 }
 
-// Their blocks hold colour where a material block holds the threshold.
+// A particle's block holds colour where a material block holds the threshold, and its program
+// always cuts.
 function stopOnFixedCut(program: Program): ProgramKey {
 	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which already cuts at ` +
 		"a fixed alpha");

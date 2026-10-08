@@ -2095,11 +2095,11 @@ run_billboard_blend() {
 		status=0
 		VOID_BILLBOARD_BLEND_PIXEL_ART=$preset VOID_BILLBOARD_BLEND_CONTROL=1 "$exe" > "$log.control.$preset.log" 2>&1 || status=$?
 		if [ "$status" -eq 0 ] || ! grep -q 'did not blend over the backdrop' "$log.control.$preset.log"; then
-			fail "billboard-blend: the straight control in preset $preset blended (exit $status)"
+			fail "billboard-blend: the opaque control in preset $preset blended (exit $status)"
 			return
 		fi
 	done
-	pass "billboard-blend: a premultiplied billboard blends over the backdrop in both presets; the straight control cuts"
+	pass "billboard-blend: a premultiplied and a straight billboard blend over the backdrop in both presets, a cutout one cuts; the opaque control does not blend"
 }
 
 run_sort_layer() {

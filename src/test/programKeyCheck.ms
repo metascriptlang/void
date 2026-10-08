@@ -121,7 +121,7 @@ function billboardMaterial(context: DrawContext, texture: uint32, sampler: uint3
 			BILLBOARD_UNIFORM_LENGTH,
 		) catch NO_UNIFORMS;
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+		...Material.keyed(cutBillboard(), RenderState.defaults(), Phase.Opaque),
 		texture0: texture,
 		sampler0: sampler,
 		uniforms: block,
@@ -190,7 +190,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 86;
+	assert declared == 88;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -807,4 +807,8 @@ test "a caster leaves the emissive map and keeps the normal map's layout" {
 		assert !bit(textureSlotMask(cast.value), NORMAL_VIEW_SLOT);
 		assert !bit(textureSlotMask(cast.value), EMISSIVE_VIEW_SLOT);
 	}
+}
+
+function cutBillboard(): ProgramKey {
+	return ProgramKey.of(Program.Billboard).withCutout();
 }

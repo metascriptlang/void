@@ -104,7 +104,7 @@ export function withPremultiplied(this key: ProgramKey): ProgramKey {
 
 export function withCutout(this key: ProgramKey): ProgramKey {
 	const cuts: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
-		key.program == Program.UnlitTextured;
+		key.program == Program.UnlitTextured || key.program == Program.Billboard;
 	if (!cuts) { return stopOnFeature(key, "cutout"); }
 	return { ...key, cutout: true };
 }

@@ -615,7 +615,7 @@ test "a lit billboard without ramp levels refuses the pixel-art frame; unlit, or
 				const values: Vec<float32> = [0.2, 0.3, 0.5, 1.0, levels, light, 0.25, 0.0];
 				assert writeUniforms(context, block.value, values).ok;
 				const material: Result<MaterialId, MaterialError> = addMaterial(context, {
-					...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+					...Material.keyed(cutBillboard(), RenderState.defaults(), Phase.Opaque),
 					texture0: 1,
 					sampler0: 1,
 					uniforms: block.value,
@@ -697,7 +697,7 @@ test "a billboard block too short to hold the ramp levels is refused by the core
 	if (created.ok && block.ok) {
 		let renderer: PixelArtRenderer = created.value;
 		const material: Result<MaterialId, MaterialError> = addMaterial(context, {
-			...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+			...Material.keyed(cutBillboard(), RenderState.defaults(), Phase.Opaque),
 			texture0: 1,
 			sampler0: 1,
 			uniforms: block.value,
@@ -712,4 +712,8 @@ test "a billboard block too short to hold the ramp levels is refused by the core
 		assert !result.ok && result.error == PixelArtError.MaterialBlock;
 		assert renderer.core.generation == 0;
 	}
+}
+
+function cutBillboard(): ProgramKey {
+	return ProgramKey.of(Program.Billboard).withCutout();
 }

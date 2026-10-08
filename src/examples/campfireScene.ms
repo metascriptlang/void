@@ -16,6 +16,7 @@ import {
 	BILLBOARD_UNIFORM_SLOT,
 	BILLBOARD_UNIFORM_LENGTH,
 	Program,
+	ProgramKey,
 	makeVertexBuffer,
 	makeImage,
 	destroyBuffer,
@@ -793,13 +794,13 @@ function setupDraws(): Result<int32, CampfireError> {
 		return Result.err(CampfireError.SetupRefused);
 	}
 	const grassAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.Billboard, state, Phase.Opaque),
+		...Material.keyed(ProgramKey.of(Program.Billboard).withCutout(), state, Phase.Opaque),
 		texture0: grassTexture,
 		sampler0: pointSampler.asHandle(),
 		uniforms: grassBlock,
 	});
 	const flameAdded: Result<MaterialId, MaterialError> = addMaterial(context, {
-		...Material.plain(Program.Billboard, state, Phase.Opaque),
+		...Material.keyed(ProgramKey.of(Program.Billboard).withCutout(), state, Phase.Opaque),
 		texture0: flameTexture,
 		sampler0: pointSampler.asHandle(),
 		uniforms: flameBlock,

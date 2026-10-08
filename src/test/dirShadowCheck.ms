@@ -335,7 +335,7 @@ test "a frame with a shadow map refuses a caster with no shadow output before it
 		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
 	if (!block.ok) { unreachable; }
 	const caster: Material = {
-		...Material.plain(Program.Billboard, RenderState.defaults(), Phase.Opaque),
+		...Material.keyed(cutBillboard(), RenderState.defaults(), Phase.Opaque),
 		texture0: 5,
 		sampler0: 6,
 		uniforms: block.value,
@@ -384,4 +384,8 @@ test "a perspective camera's shadow box spreads with its frustum and keeps its n
 	assert !kept.isEmpty() && kept.min.x <= -0.05 && kept.max.x >= 0.05;
 	const pastFar: Bounds3D = acrossDown(vec3(-0.5, -16.0, -17.0), vec3(0.5, -15.0, -16.0));
 	assert shadowBounds(DOWN, pastFar, perspective).isEmpty();
+}
+
+function cutBillboard(): ProgramKey {
+	return ProgramKey.of(Program.Billboard).withCutout();
 }
