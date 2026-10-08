@@ -644,6 +644,9 @@ if [ "$QUICK" -eq 1 ] || [ ! -f out/benchUi.exe ]; then
 	"$MSC" build -d:voidColourEmoji tests/bench/benchTextEmoji.ms --release --output=out/benchTextEmoji.exe >> out/gate-bench.log 2>&1 || true
 	"$MSC" build -d:voidProfiler -d:voidColourEmoji tests/bench/benchTextEmoji.ms --release \
 		--output=out/benchTextEmojiProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
+	"$MSC" build -d:voidTextOutline tests/bench/benchTextOutline.ms --release --output=out/benchTextOutline.exe >> out/gate-bench.log 2>&1 || true
+	"$MSC" build -d:voidProfiler -d:voidTextOutline tests/bench/benchTextOutline.ms --release \
+		--output=out/benchTextOutlineProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true
 	"$MSC" build -d:voidSdfText tests/bench/benchTextSdf.ms --release --output=out/benchTextSdf.exe >> out/gate-bench.log 2>&1 || true
 	"$MSC" build -d:voidProfiler -d:voidSdfText tests/bench/benchTextSdf.ms --release \
 		--output=out/benchTextSdfProfiler.exe >> out/gate-bench-profiler.log 2>&1 || true

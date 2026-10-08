@@ -49,6 +49,7 @@ export enum BenchKind {
 	Scroll,
 	TextEmoji,
 	TextSdf,
+	TextOutline,
 }
 
 const COLUMNS: int32 = 100;
@@ -63,6 +64,7 @@ const SWEEP_MIN: float32 = 0.5;
 const SWEEP_MAX: float32 = 4.0;
 const SDF_SETTLE_ANGLE: float32 = 0.5;
 const CODE_LINES: int32 = 40;
+const OUTLINE_WIDTH: float32 = 2.0;
 const CODE_LINE: string =
 	"fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
 
@@ -130,6 +132,8 @@ let colourBeforeFirstPaint: int32 = 0;
 let colourBeforeMeasure: int32 = 0;
 let sdfBeforeFirstPaint: int32 = 0;
 let sdfBeforeMeasure: int32 = 0;
+let outlineBeforeFirstPaint: int32 = 0;
+let outlineBeforeMeasure: int32 = 0;
 let codeBlock: NodeRef | null = null;
 let turnsCodeBlock: boolean = false;
 let scrollArea: NodeRef | null = null;
@@ -194,6 +198,18 @@ export function benchInit(kind: BenchKind): void {
 		s.add(block);
 		codeBlock = block;
 		warmupFrames = 2 * SWEEP_FRAMES + WARMUP_FRAMES;
+	} else if (kind === BenchKind.TextOutline) {
+		benchName = "textOutline";
+		const block = s.group();
+		for (let line: int32 = 0; line < CODE_LINES; line++) {
+			const y: float32 = 8.0 + (line as float32) * 17.0;
+			const label = s.label(CODE_LINE, 13.0, rgba(0.86, 0.90, 0.98, 1.0)).at(8.0, y);
+			label.setOutline(OUTLINE_WIDTH, rgba(0.08, 0.09, 0.12, 1.0));
+			block.addChild(label);
+		}
+		s.add(block);
+		codeBlock = block;
+		warmupFrames = SWEEP_FRAMES + WARMUP_FRAMES;
 	} else {
 		benchName = "sprites";
 		const pixels = loadImageSync("assets/test.png", 4);
@@ -219,7 +235,8 @@ export function benchInit(kind: BenchKind): void {
 	} else if (kind === BenchKind.Scroll) {
 		nodeCount = 2;
 		retainedNodeCount = 1;
-	} else if (kind === BenchKind.Text || kind === BenchKind.TextEmoji || kind === BenchKind.TextSdf) {
+	} else if (kind === BenchKind.Text || kind === BenchKind.TextEmoji ||
+		kind === BenchKind.TextSdf || kind === BenchKind.TextOutline) {
 		nodeCount = CODE_LINES + 1;
 		retainedNodeCount = CODE_LINES;
 	} else {
@@ -272,6 +289,10 @@ function report(): void {
 	console.log(`${benchName}.sdfBytes ${glyphAtlas.bytesOfKind(PageKind.Sdf)}`);
 	console.log(`${benchName}.sdfGenerationsSteady ${sdfGenerations() - sdfBeforeMeasure}`);
 	console.log(`${benchName}.sweepSdfGenerations ${sdfBeforeMeasure - sdfBeforeFirstPaint}`);
+	const outlineSteady: int32 = glyphAtlas.outlineRasterizations - outlineBeforeMeasure;
+	console.log(`${benchName}.outlineRasterizationsSteady ${outlineSteady}`);
+	const outlineSwept: int32 = outlineBeforeMeasure - outlineBeforeFirstPaint;
+	console.log(`${benchName}.sweepOutlineRasterizations ${outlineSwept}`);
 	console.log(`${benchName}.firstPaintRasterizations ${firstPaintRasterizations}`);
 	console.log(`${benchName}.firstPaintUploadBytes ${firstPaintUploadBytes}`);
 	const idle: boolean = benchScene !== null && (benchScene as Scene2D).isDirty();
@@ -370,6 +391,7 @@ export function benchFrame(): void {
 		firstPaintRasterizations = glyphRasterizations();
 		colourBeforeFirstPaint = glyphAtlas.colourRasterizations;
 		sdfBeforeFirstPaint = sdfGenerations();
+		outlineBeforeFirstPaint = glyphAtlas.outlineRasterizations;
 		firstPaintUploadBytes = uploadBytes();
 		return;
 	}
@@ -380,6 +402,7 @@ export function benchFrame(): void {
 		rasterizationsBeforeMeasure = glyphRasterizations();
 		colourBeforeMeasure = glyphAtlas.colourRasterizations;
 		sdfBeforeMeasure = sdfGenerations();
+		outlineBeforeMeasure = glyphAtlas.outlineRasterizations;
 		return;
 	}
 	benchScene.tick(FRAME_DT);

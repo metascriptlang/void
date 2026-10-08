@@ -108,6 +108,7 @@ Each line names who supports it: **G** GPUI, **M** Makepad, **Gh** Ghostty, **H*
 - **Fonts**: `Font { family, weight, style, features, fallbacks }` from bytes (G, M). The collection model is Ghostty's: ordered faces per style, deferred faces, explicit-vs-fallback presentation, a codepoint → face map that caches misses, whole-grapheme selection, **fallback size harmonisation**, synthetic bold/italic, lazy CJK/emoji families (Gh, M). System font discovery is host work. **Landed at P3 step 5** (`font.ms`): `registerFace(path, family, weight, style)` registers a face without loading it; `resolveFont(Font)` interns the value, picks the face in the CSS Fonts 4 weight order with italic preferred for italic, loads it, and synthesizes bold (weight ≥ 600 over a lighter face) and italic from the outline — Ghostty's policy on stb_truetype: `FT_Outline_EmboldenXY` ported to float at `lineHeight / 32` units, the advance widened by that strength as `FT_GlyphSlot_Embolden` does (Ghostty does not widen, because a grid cell is fixed), and a `tan 12°` skew about the baseline. A label takes it as h2d's `text.font = f`, spelled `setFont(id)`: since P4 `addFont` and `resolveFont` return `Result<FontId, FontError>`, so a refused font is the caller's to handle, not a label that silently keeps its old font. `features` honours `kern` only; any other tag refuses the font by name unless the shaper module (`-d:voidShaper`) is built, which takes any four-character tag. Fallback families resolve in the font's own weight and style, synthesized when they lack it. **Size harmonisation is Ghostty's `ic_width → ex_height → cap_height → line_height` chain, off by default** (`Font.sizeAdjust`). Measured on Inter + Noto Sans SC: `IcWidth`, Ghostty's default, draws hanzi 19.6 % larger than the Latin size — right for a terminal cell, wrong for UI text — while `ExHeight` moves them 0.5 %. The other references, read 2026-09-24 at the human's request, agree with off: GPUI does nothing (Rexa on GPUI adds only symbol fallback families), and WezTerm (`b09b56c`) has only an opt-in cap-height match, `use_cap_height_to_scale_fallback_fonts`, default false. **Colour emoji landed in P6 as the compile-time module `-d:voidColourEmoji`** (P6 "Colour emoji" has what was built and measured). stb_truetype reads no colour table and every reference draws colour glyphs through FreeType or the OS, so void reads them itself. Explicit-versus-fallback presentation and deferred faces are in the default glyph layer. **Whole-grapheme selection landed in P4** (`textLayout.ms` `assignFaces`, over `grapheme.ms`'s UAX #29 segmenter): a multi-codepoint grapheme takes the face of its first codepoint whose face covers every codepoint in it, joiners (ZWJ, VS15, VS16) ignored, as Ghostty's `indexForCell` does (`src/font/shaper/run.zig:318-382`). Where no one face covers it, Ghostty draws U+FFFD, because a terminal cell holds one font; a proportional line keeps a face per codepoint instead, so the text stays readable at the cost of a mark placed by another face's metrics.
 - **Runs and decorations**: `TextRun { len, font, color, background, underline, strikethrough }`; a style change splits the shaping run, so a ligature is never two-tone (G, Gh). Backgrounds, underline, strikethrough and wavy are instances of the UI pipeline; thickness and position from the font's `post` / `OS/2` metrics with broken-table fallbacks (Gh), snapped. **The metrics landed at P3 step 6** as `TextLayout.decoration` (`glyph.c` `void2dGlyphDecoration`), float, y-down from the baseline to the top of each stroke, from the primary face: Ghostty's rule exactly, where a zero thickness marks a table broken but keeps a non-zero position, and each missing value is estimated from the ex height (OS/2 v2+, else the measured `x`, else 0.75 of the cap height, itself OS/2, the measured `H`, or 0.75 of the ascent). One divergence: the ascent in that last estimate is stb_truetype's `hhea` ascent, where Ghostty prefers `OS/2` typo metrics; the two agree for Inter. Emission and snapping are P4's, with runs. **Landed in P4** (`setTextRuns`, `textLayout.ms` `layoutRuns`, `labelText.ms` `runDecorations`): `len` counts UTF-16 units and the runs must cover the text exactly, or the label stops and says so; a run's colour multiplies with the label's, as h2d's `setColorSegments` does with `textColor` (GPUI's replaces it); kerning stops at a run boundary, standing in for the shaping-run split until P6's shaper; the decoration boxes are laid out with the text and only transformed and snapped when drawn, so a frame builds no array for them. A decoration runs on across the runs that share it (kind, colour, position and thickness), as GPUI's does (`line.rs:633-663`), so a squiggle under several syntax runs keeps one phase. Each run's decoration sits on its own face's metrics, Ghostty's rule as the P3 metrics have it, so one that crosses faces with different metrics steps there and restarts its wave, where GPUI puts one offset on the whole line: a **W** for metric fidelity. A styled label's bounds reach its widest row's end, so a background or underline over trailing spaces is neither culled nor clipped. The human chose h2d's multiply on 2026-09-27 (asked 2026-09-26); **landed in P5**, before the host contract: a styled label is written white and coloured by its runs, as in h2d, and T1 pins the product. Backgrounds, glyphs and lines bind the same glyph-page view, so `text/decorations`, three styled labels, is one draw call.
 - **Caret and selection are their own instances**, never part of a text range, so a blink dirties nothing else (Gh, M). Selection is per-row quads unioned by smooth-min (M).
+- **Text outline** (`-d:voidTextOutline`): Godot's `outline_size` and `outline_color` on a label, a round-join dilation drawn under the fills in both regimes, from the glyph's exact distance at device size (coverage) or a pre-biased SDF tile (zoom and turn); built 2026-10-08, measured against FreeType, and described under P6 "Text outline".
 - **Atlas**: coverage pages and colour pages, 1024², a new page when full (G); 1 px gutter; a CPU mirror per page, dirty pages uploaded once per frame (sokol replaces whole images); ref-counted tiles; **a repack never moves a live tile** (Gh). **Resolved at P3 step 8: R8 coverage pages, with colour glyphs on a separate RGBA page kind**, not four planes per RGBA page (M) — P3 "Atlas page kinds" has the measurement. The R8 coverage kind is always built; the SDF kind is built with `-d:voidSdfText` and the RGBA kind with `-d:voidColourEmoji` (P6); the mask kind is not built. A page is reclaimed whole once no live tile and no quad of the current frame uses it. One divergence from GPUI: a glyph larger than a page (1023 px with the gutter) is refused with `AtlasError.TooLarge`, where GPUI gives an oversized item its own texture (GPUI.md:127); those sizes belong to the SDF regime.
 - **Shaper** — compile-time module (candidate `kb_text_shape`): GSUB features, ligatures, complex scripts; "break shaping at index" as an input (Gh). Without it: cmap, GPOS kerning, NFC input, fallback by coverage.
 - **Rasterizer — resolved at P3 step 8: stb_truetype only** (P3 has the experiment). stb_truetype is unhinted: what macOS and Ghostty-on-macOS ship, and sufficient on HiDPI. Ghostty ships FreeType **light hinting** everywhere else; Makepad is unhinted and unsnapped. Constraint if FreeType comes: hinting only in the pixel-exact regime, and the outline is shifted *before* hinting. Decided by the FreeType experiment and its wasm cost, not by captures beside Zed: that T5 look is still owed by the human, and it can move only the verdict on stem darkness.
@@ -1877,6 +1878,89 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (void has UAX #14 and #29) is not verified. The per-backend linked number is owed to
   `sh scripts/experiment-modulesWeb.sh shaper` on a box with emsdk 5.0.5; HarfBuzz, the fallback,
   was not measured.
+- **Text outline**, a compile-time module (`-d:voidTextOutline`), the card's "After GPUI parity" line
+  (`~/metascript/.wt/void2d-gpui.md`): Godot's `LabelSettings.outline_size` and `outline_color`,
+  both text regimes. **Built 2026-10-08** (`textOutline.ms`, `textOutlineSwitch.ms`, `glyph.c`
+  `distanceFill` and `void2dGlyphOutline*`, `labelText.ms` `placedOutline`, `render.ms`
+  `emitOutline`). GPUI has no text outline (`MonochromeSprite`, `scene.rs:711-719`, carries one
+  colour); Makepad has none in its text shader and only a halo of four offset draws in the map
+  widget (`widgets/src/map/view.rs:9789-9795`); the mechanism is Godot's and troika's.
+  *App-visible.* `node.setOutline(width, color)` on a label; a width of 0 clears it, a negative
+  one stops by name, and a build without the module stops by name on a width above 0
+  (`tests/aborts/outlineOff.ms`, `outlineNegative.ms`). The width is in the label's own units,
+  like its size, so it scales with the label; it is per label, not per run; shadow, blur and
+  stacked outlines are out of scope. **Dilation, not a ring**: the fill is drawn over a round-join
+  band outside the glyph, so a translucent fill never shows outline colour through it (Godot's MSDF
+  path is a dilation, `canvas.glsl:518-522`; its FreeType path strokes a ring under an opaque fill,
+  `text_server_adv.cpp:1344-1371`; troika's `distanceOffset`, `TextDerivedMaterial.js:162-176`).
+  **All outlines, then all fills** (Godot `label.cpp:817-878`, troika's preliminary draw): a tight
+  label never lets a neighbour's outline cover a fill (`outlineEmitCheck.ms`). The outline colour is
+  independent, `colour alpha * node alpha`, skipped at alpha 0 or width 0, and a label with no
+  outline records the stream it recorded before (a hash over every instance field,
+  `outlineEmitCheck.ms`). The outline grows the cull reach by `width + 1 / devicePerLocal`
+  (`render.ms` `localBounds`) and not the queried bounds, layout or measure; `setOutline` marks
+  `Changed.Text`. **Pixel-exact regime**: the device width is `snapStroke(width * devicePerLocal)`,
+  0 stays 0 and anything else is at least one device pixel, so a hairline outline never vanishes
+  (2 px at DPI 1.25 is 3 device px here and 2.5 in the SDF regime: the seam row measures it).
+  *Sprite and colour glyphs draw no outline* (rows `outline:sprite-glyph` and
+  `outline:colour-glyph`, declared): Godot's `FT_Glyph_Stroke` fails on a bitmap glyph and leaves it
+  unoutlined (`text_server_adv.cpp:1356-1370`), no reference dilates a procedural box glyph, and
+  refusing them by name would make a terminal-style label unusable with an outline.
+  **NEW MECHANISM 1, the coverage outline tile from the exact distance at device size.** No
+  reference does this: Godot has FreeType's stroker and void has `stb_truetype`, which has none.
+  The tile is `glyph.c`'s distance loop (the one `stbtt_GetGlyphSDF` is ported into, now
+  `distanceFill`, shared under `VOID2D_SDF_TEXT || VOID2D_TEXT_OUTLINE`) run at the label's device
+  scale with the quarter-pixel shift, `coverage = clamp(0.5 + d + w)`, which is the Minkowski sum
+  with a disc, the round-join dilation `FT_STROKER_LINEJOIN_ROUND` draws. It reads `glyphShape`, so
+  a synthetic bold or italic is outlined as drawn. Regresses: O(pixels x segments) per new (glyph,
+  size, variant, width) tile, a first-use cost. Against Pillow 12.3.0 / FreeType 2.14.3 at 8x
+  supersample (`tests/oracle/outline.py` to `outline.json`, 90 cases of Inter, a Noto Sans SC subset
+  and a CFF face, 13 and 26 px, quarter-pixel shifts, widths 0.5 to 3.5;
+  `src/test/outlineOracleCheck.ms`): mean absolute error at most 0.0452, p99 at most 0.459, ink
+  0.9545 to 1.0327; the plain fill against the same oracle at width 0 is the harness floor, 0.0726
+  and 0.376, so the 13 px numbers are mostly Pillow's hinting. The one exception is 13 px at 3.5 px
+  (p99 0.784): FreeType's stroker leaves the open counter of a small `g` or `@` unfilled where the
+  exact dilation closes it (ours covers 255 where the pixel is within 3.5 px of ink; 10 pixels over
+  two glyphs). The analytic ramp is kept: **an 8x8 supersample of
+  `d >= -w` was built and measured against the same oracle** and lowered the worst mean error from
+  0.045 to 0.035 (13 px `g` at 0.5 px) and that case's p99 from 0.31 to 0.17, but made the straight
+  edges worse (26 px `I` at 1 px: 0.003 to 0.018, ink ratio up to 1.024) and left the closed
+  counters alone; the ramp's worst 0.045 is inside the SDF regime's own mean-error bound of 0.072, so
+  by the rule fixed for the item the ramp stays. A plain fill held against the outline oracle
+  fails all 36 wide cases (the control), and an `I` stem at 1, 2 and 3 px, at every shift, matches
+  the exact rectangle distance within one level (`glyphOutlineCheck.ms`), round corner included.
+  **NEW MECHANISM 2, the SDF outline as a pre-biased tile.** The tile is the glyph's SDF with
+  `191 + 31.875 * (d + w)` and the pad grown by `ceil(w) + 2`; the shader, the 108 B instance, the
+  Vertex program's lack of a per-draw lane and every existing golden are untouched. The same
+  dilation as Godot's threshold shift (`canvas.glsl:518-522`), moved from the fragment shader into
+  the tile, one tile per (glyph, width in 1/8 texel), independent of the zoom: a 40-step zoom sweep
+  generates nothing after its first frame (`labelOutlineCheck.ms`). Against the coverage outline
+  (itself checked above) on the CPU emulation of the shader, 5 zooms x 4 turns
+  (`sdfOutlineOracleCheck.ms`): mae 0.0117 to 0.0325 at zoom 0.5 (p99 up to 0.263), 0.0027 to 0.0143
+  from zoom 1 (p99 up to 0.126), ink 0.970 to 0.998; the field without its bias fails (mae 0.62).
+  Regresses: a width change generates a tile set (an animated width hitches; the shader-threshold
+  form is the larger change that would fix it). Cubic glyphs inside an SDF label fall back to the
+  coverage outline at device size, the same `coverageInSdf` path the fill takes.
+  **NEW MECHANISM 3, the lane in the key.** `GlyphKey.outline` is 8 bits at bit 24 of the packed
+  key; the size quanta narrow to 16 bits (a size under 1024 px, which the atlas refused after
+  packing anyway). A key whose size does not fit stops by name before it is packed
+  (`tests/aborts/glyphKeyOverflow.ms`); `acquire` answers `TooLarge` for it, except that a glyph
+  with no ink at such a size shares one empty tile, as before (`labelTextCheck.ms` holds the count),
+  and a mask key counts its width in whole units. The lane is a quarter device pixel (coverage, at
+  most 63.75 px) or an eighth texel (SDF, at most 31.875); over it is `AtlasError.OutlineTooWide`.
+  **NEW MECHANISM 4, cubic contours flattened before the distance loop**:
+  `stbtt__tesselate_cubic` at the fill rasterizer's own tolerance (0.35 px), the points rounded onto
+  a grid up to 16 times finer than font units because `stbtt_vertex` holds `int16`; a CFF glyph is
+  outlined and checked against the oracle (`cffSynthetic.otf`). This does not lift the SDF module's
+  own cubic refusal.
+  **Weight** (`sh scripts/wasmModuleDelta.sh`, `tests/bench/wasm.json`): `glyph.c` with the flag
+  +9 256 B native, +6 667 B wasm32; beside `-d:voidSdfText` +5 610 and +4 887; the SDF module itself
+  moved by 6 B. Module off: no default-layer object names a `void2dGlyphOutline` symbol, with the
+  module-on object as control. **Owed, each a row in `tests/PENDING.md`**: the ten `text/outline*`
+  captures (`golden-missing:`, with the colour-effect invariant that reads one), the bench bounds
+  (`outline:bench-bounds`, `benchTextOutline.ms`), the native gate with the flag
+  (`outline:native-gate`), the other backends (`outline:backends`), a judge on the SDF captures
+  (`outline:capture-oracle`) and a look (`outline:look`).
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
   **Built (`-d:voidColourEmoji`, CBDT/CBLC, sbix and COLR v0), 2026-10-08:** the RGBA page kind is real
   (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
@@ -2521,6 +2605,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 
 
+
+**Text outline rows, owed to the human on 2026-10-08:** `golden-missing:text/outline`, `outlineDpi125`, `outlineTight`, `outlineAlpha`, `outlineRuns`, `outlineColorEffect`, `outlineSdfRotated`, `outlineSdfZoom4`, `outlineSdfScaleDown` and `outlineSdfSeam`, `outline:bench-bounds`, `outline:native-gate`, `outline:backends`, `outline:capture-oracle` and `outline:look`; `outline:sprite-glyph` and `outline:colour-glyph` are declared design choices and stay.
 
 **Re-owned to the human on 2026-10-08, each naming the run that is missing** (decision of the void manager; the Exit line above allows a SKIP that names it): `backend:metal-macos`, `backend:metal-ios`, `backend:gles3-android`, `macos:voidRunConfigured` and `macos:view-api` need a Mac, an iPhone or an Android device that the box owning this code does not have. Each row in `tests/PENDING.md` states the run that closes it, and `scripts/gate.sh` section 7 keeps printing a SKIP for the three backends until that run reports a pass rate.
 
