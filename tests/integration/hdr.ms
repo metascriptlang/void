@@ -16,13 +16,18 @@ import {
 } from "../../src/void3d/draw";
 import { UniformError } from "../../src/void3d/uniformPool";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/void3d/camera";
-import { ToneMode, setExposure, setToneMode } from "../../src/void3d/renderer";
+import { LowResView } from "../../src/void3d/blit";
+import { Renderer, ToneMode, setExposure, setToneMode } from "../../src/void3d/renderer";
 import { greyCurve } from "./toneCurves";
 import {
-	ForwardRenderer, ForwardError, FORWARD_HDR_UNIFORM_LENGTH, renderFrame,
+	ForwardRenderer, ForwardError, FORWARD_HDR_UNIFORM_LENGTH, renderFrame as renderForward,
 } from "../../src/void3d/forwardRenderer";
 import {
-	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureExit,
+	PixelArtRenderer, PixelArtError, PixelArtSettings, PixelArtLook, PIXEL_ART_HDR_UNIFORM_LENGTH,
+	renderFrame as renderPixelArt,
+} from "../../src/void3d/pixelArtRenderer";
+import {
+	voidCaptureBackend, voidCaptureGrab, voidCapturePixel, voidCaptureEnvInt, voidCaptureExit,
 } from "../capture/capture.h";
 
 @include("../../src/sokol/bridge.h");
@@ -46,18 +51,48 @@ const MODES: Vec<ToneMode> = [
 ];
 const GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
+const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
+let pixelArt: boolean = voidCaptureEnvInt("VOID_HDR_PIXEL_ART", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_HDR_UNIFORM_LENGTH + 4 * UNLIT_MATERIAL_UNIFORM_LENGTH,
+	(pixelArt ? PIXEL_ART_HDR_UNIFORM_LENGTH : FORWARD_HDR_UNIFORM_LENGTH) +
+		4 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer | null = null;
+let preset: PixelArtRenderer | null = null;
 let items: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
 
 function fail(message: string): void {
-	console.log(`FAIL hdr: stage ${stage}: ${message}`);
+	const which: string = pixelArt ? "pixel-art" : "forward";
+	console.log(`FAIL hdr: ${which} stage ${stage}: ${message}`);
 	voidCaptureExit(1);
+}
+
+// postPass off: the blit reads the tone mapped colour target as it is.
+function makePreset(): void {
+	const settings: PixelArtSettings = {
+		...PixelArtSettings.full(), lowResShortSide: HEIGHT, postPass: false,
+	};
+	const look: PixelArtLook = {
+		background: GREY,
+		outline: {
+			depthThreshold: 0.006, normalThreshold: 0.6, depthShade: 0.55, normalShade: 1.35,
+		},
+		fog: { start: 1.0, end: 1.0, strength: 0.0, color: GREY },
+		saturation: 0.0,
+	};
+	const made: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.createHdr(context, settings, look);
+	if (!made.ok) { fail(`createHdr refused: ${made.error.toString()}`); }
+	if (made.ok) { preset = made.value; }
+}
+
+function makeForward(): void {
+	const made: Result<ForwardRenderer, ForwardError> = ForwardRenderer.createHdr(context, GREY);
+	if (!made.ok) { fail(`createHdr refused: ${made.error.toString()}`); }
+	if (made.ok) { forward = made.value; }
 }
 
 function unitQuad(): MeshId {
@@ -111,9 +146,7 @@ function unlit(
 function init(): void {
 	if (voidCaptureBackend() == 0) { voidCaptureExit(3); }
 	gfxSetup();
-	const made: Result<ForwardRenderer, ForwardError> = ForwardRenderer.createHdr(context, GREY);
-	if (!made.ok) { fail(`createHdr refused: ${made.error.toString()}`); }
-	if (made.ok) { forward = made.value; }
+	if (pixelArt) { makePreset(); } else { makeForward(); }
 	const quad: MeshId = unitQuad();
 	const texture: TextureId = white();
 	const opaque: RenderState = RenderState.defaults();
@@ -220,25 +253,37 @@ function check(multiplier: float32): void {
 	}
 }
 
+function expose(core: Renderer, multiplier: float32, mode: ToneMode): void {
+	setExposure(core, Math.log(multiplier) as float32);
+	setToneMode(core, mode);
+}
+
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
-	if (forward === null) { fail("no preset"); }
-	if (forward !== null) {
-		const multiplier: float32 = MULTIPLIERS[stage];
-		const mode: ToneMode = MODES[stage];
-		setExposure(forward.core, Math.log(multiplier) as float32);
-		setToneMode(forward.core, mode);
-		const view: CameraView = viewOf();
-		view.writeCameraBlock(cameraValues);
+	const multiplier: float32 = MULTIPLIERS[stage];
+	const mode: ToneMode = MODES[stage];
+	const view: CameraView = viewOf();
+	view.writeCameraBlock(cameraValues);
+	const art: PixelArtRenderer | null = preset;
+	const fwd: ForwardRenderer | null = forward;
+	if (art !== null) {
+		expose(art.core, multiplier, mode);
+		const drawn: Result<int32, PixelArtError> =
+			renderPixelArt(art, items, cameraValues, lights, SCREEN);
+		if (!drawn.ok) { fail(`pixel-art refused: ${drawn.error.toString()}`); }
+	} else if (fwd !== null) {
+		expose(fwd.core, multiplier, mode);
 		const drawn: Result<int32, ForwardError> =
-			renderFrame(forward, items, cameraValues, lights, WIDTH, HEIGHT);
+			renderForward(fwd, items, cameraValues, lights, WIDTH, HEIGHT);
 		if (!drawn.ok) { fail(`forward refused: ${drawn.error.toString()}`); }
-		if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
-		if (mode == ToneMode.Linear) {
-			check(multiplier);
-		} else {
-			checkCurve(multiplier, mode);
-		}
+	} else {
+		fail("no preset");
+	}
+	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
+	if (mode == ToneMode.Linear) {
+		check(multiplier);
+	} else {
+		checkCurve(multiplier, mode);
 	}
 	stage = stage + 1;
 	if (stage < (MULTIPLIERS.length as int32)) { return; }

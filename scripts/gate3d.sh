@@ -1213,17 +1213,19 @@ run_hdr() {
 		fail "hdr: tests/integration/hdr.ms does not build — see $WORK/hdr.build.log"
 		return
 	fi
-	status=0
-	"$exe" > "$WORK/hdr.log" 2>&1 || status=$?
-	if [ "$status" -eq 3 ]; then
-		skip "hdr: no native readback backend"
-		return
-	fi
-	if [ "$status" -ne 0 ] || ! grep -q '^PASS hdr: ' "$WORK/hdr.log"; then
-		fail "hdr: the forward HDR preset (exit $status) — see $WORK/hdr.log"
-		return
-	fi
-	pass "hdr: an Rgba16f scene target blends in linear light, keeps sums above 1, and tone maps by Heaps' four curves"
+	for preset in 0 1; do
+		status=0
+		VOID_HDR_PIXEL_ART=$preset "$exe" > "$WORK/hdr.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "hdr: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS hdr: ' "$WORK/hdr.$preset.log"; then
+			fail "hdr: preset $preset (exit $status) — see $WORK/hdr.$preset.log"
+			return
+		fi
+	done
+	pass "hdr: an Rgba16f scene target in both presets blends in linear light, keeps sums above 1, and tone maps by Heaps' four curves"
 }
 
 # ---- gl core -------------------------------------------------------------------------------
@@ -1235,7 +1237,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:-"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
