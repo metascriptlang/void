@@ -12,6 +12,7 @@ import {
 	GifFrame,
 	animatedGif,
 	solidFrame,
+	GIF_NO_CONTROL,
 	GIF_RED,
 	GIF_GREEN,
 	GIF_BLUE,
@@ -208,6 +209,29 @@ test "disposal 3 on a frame that stb restores from the wrong image is refused by
 	const three = decodeAnimation(animatedGif(0x39, 4, 3, frames));
 	assert !three.ok;
 	if (!three.ok) { assert three.error == ImageError.UnsupportedDisposal; }
+}
+
+test "disposal 3 that a frame with no control block inherits from the one before is refused" {
+	const fromFirst = decodeAnimation(animatedGif(0x39, 4, 3, [
+		withDisposal(solidFrame(4, 3, 0, 10), 3),
+		withDisposal(solidFrame(4, 3, 1, 10), GIF_NO_CONTROL),
+		withDisposal(solidFrame(4, 3, 2, 10), GIF_NO_CONTROL),
+	]));
+	assert !fromFirst.ok;
+	if (!fromFirst.ok) { assert fromFirst.error == ImageError.UnsupportedDisposal; }
+	const fromSecond = decodeAnimation(animatedGif(0x39, 4, 3, [
+		solidFrame(4, 3, 0, 10),
+		withDisposal(solidFrame(4, 3, 1, 10), 3),
+		withDisposal(solidFrame(4, 3, 2, 10), GIF_NO_CONTROL),
+		withDisposal(solidFrame(4, 3, 3, 10), GIF_NO_CONTROL),
+	]));
+	assert !fromSecond.ok;
+	if (!fromSecond.ok) { assert fromSecond.error == ImageError.UnsupportedDisposal; }
+	const endsFirst = decodeAnimation(animatedGif(0x39, 4, 3, [
+		withDisposal(solidFrame(4, 3, 0, 10), 3),
+		withDisposal(solidFrame(4, 3, 1, 10), GIF_NO_CONTROL),
+	]));
+	assert endsFirst.ok;
 }
 
 test "disposal 3 that stb never runs on the last frame, or defaults on the first, decodes" {

@@ -144,6 +144,7 @@ export struct GifFrame {
 	disposal: int32;
 }
 
+export const GIF_NO_CONTROL: int32 = -1;
 export const GIF_RED: uint32 = 0xFF0000FF;
 export const GIF_GREEN: uint32 = 0xFF00FF00;
 export const GIF_BLUE: uint32 = 0xFFFF0000;
@@ -198,13 +199,15 @@ export function animatedGif(
 	out.push(0 as uint8);
 	for (const b of bytesOf([255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 0])) { out.push(b); }
 	for (const frame of frames) {
-		out.push(0x21 as uint8);
-		out.push(0xF9 as uint8);
-		out.push(4 as uint8);
-		out.push((frame.disposal << 2) as uint8);
-		pushLe16(out, frame.delayCentiseconds);
-		out.push(0 as uint8);
-		out.push(0 as uint8);
+		if (frame.disposal != GIF_NO_CONTROL) {
+			out.push(0x21 as uint8);
+			out.push(0xF9 as uint8);
+			out.push(4 as uint8);
+			out.push((frame.disposal << 2) as uint8);
+			pushLe16(out, frame.delayCentiseconds);
+			out.push(0 as uint8);
+			out.push(0 as uint8);
+		}
 		out.push(0x2C as uint8);
 		pushLe16(out, frame.x);
 		pushLe16(out, frame.y);

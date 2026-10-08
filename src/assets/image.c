@@ -65,7 +65,7 @@ int64_t void_gif_scan(const uint8_t *b, int64_t n) {
 	if (b[10] & 0x80) i += (int64_t)3 << ((b[10] & 7) + 1);
 	int64_t frames = 0;
 	int64_t restoringFrame = -1;
-	int restoresNext = 0;
+	int disposal = 0;
 	while (i < n) {
 		const uint8_t tag = b[i++];
 		if (tag == 0x3B) {
@@ -79,7 +79,7 @@ int64_t void_gif_scan(const uint8_t *b, int64_t n) {
 			const uint8_t label = b[i++];
 			if (label == 0xF9) {
 				if (i + 2 >= n) return GIF_SCAN_UNDECODABLE;
-				restoresNext = ((b[i + 1] >> 2) & 7) == 3 && frames >= 1;
+				disposal = (b[i + 1] >> 2) & 7;
 			}
 			i = skipSubBlocks(b, n, i);
 		} else if (tag == 0x2C) {
@@ -90,8 +90,7 @@ int64_t void_gif_scan(const uint8_t *b, int64_t n) {
 			i++;
 			if (i >= n) return GIF_SCAN_UNDECODABLE;
 			i = skipSubBlocks(b, n, i);
-			if (restoresNext && restoringFrame < 0) restoringFrame = frames;
-			restoresNext = 0;
+			if (disposal == 3 && frames >= 1 && restoringFrame < 0) restoringFrame = frames;
 			frames++;
 		} else {
 			return GIF_SCAN_UNDECODABLE;
