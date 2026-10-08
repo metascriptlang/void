@@ -350,7 +350,11 @@ function resolveBrackets(
 			if (c != BidiClass.L && c != BidiClass.R && c != BidiClass.EN && c != BidiClass.AN) {
 				continue;
 			}
-			if (strongDirection(c) == embedding) { foundEmbedding = true; } else { foundOpposite = true; }
+			if (strongDirection(c) == embedding) {
+				foundEmbedding = true;
+			} else {
+				foundOpposite = true;
+			}
 		}
 		let resolved: BidiClass = BidiClass.ON;
 		if (foundEmbedding) {
@@ -359,7 +363,8 @@ function resolveBrackets(
 			let context: BidiClass = sos;
 			for (let k = pair.open - 1; k >= 0; k--) {
 				const c: BidiClass = t[k];
-				if (c == BidiClass.L || c == BidiClass.R || c == BidiClass.EN || c == BidiClass.AN) {
+				if (c == BidiClass.L || c == BidiClass.R || c == BidiClass.EN ||
+					c == BidiClass.AN) {
 					context = strongDirection(c);
 					break;
 				}
@@ -374,7 +379,9 @@ function resolveBrackets(
 	}
 }
 
-function resolveNeutrals(ref t: Vec<BidiClass>, level: int32, sos: BidiClass, eos: BidiClass): void {
+function resolveNeutrals(
+	ref t: Vec<BidiClass>, level: int32, sos: BidiClass, eos: BidiClass,
+): void {
 	const m: int32 = t.length as int32;
 	const embedding: BidiClass = directionOfLevel(level);
 	let at: int32 = 0;

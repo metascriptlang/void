@@ -80,6 +80,6 @@ test "possiblyRtl holds every codepoint whose class can make text right to left"
 			extra = extra + 1;
 		}
 	}
-	console.log(`bidi oracle: possiblyRtl holds ${held} right-to-left codepoints and ${extra} others`);
+	console.log(`bidi oracle: possiblyRtl holds ${held} right-to-left codepoints, ${extra} others`);
 	assert held > 0;
 }
