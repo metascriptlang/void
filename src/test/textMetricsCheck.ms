@@ -13,12 +13,14 @@ import {
 	resolveFont,
 } from "../void2d/font";
 import { approx } from "./helpers";
+import { laid } from "./layoutHelpers";
+import { nodeSplit, nodeWidth } from "./nodeTextHelpers";
 
 const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
 test "textWidth is the width of the layout the label paints" {
 	const n = s.label("fn main() { }", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const direct = TextLayout.layout("fn main() { }", {
+	const direct = laid("fn main() { }", {
 		font: DEFAULT_FONT,
 		size: 13.0,
 		letterSpacing: 0.0,
@@ -40,10 +42,10 @@ test "a text change is measured without waiting for a frame" {
 
 test "calcTextWidth and splitText use the label's font, size and wrap width" {
 	const n = s.label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	const fits = n.calcTextWidth("aa bb");
+	const fits = nodeWidth(n, "aa bb");
 	n.setMaxWidth(fits);
-	assert n.splitText("aa bb cc") == "aa bb\ncc";
-	assert approx(n.calcTextWidth("aa bb cc"), TextLayout.layout("aa bb cc", {
+	assert nodeSplit(n, "aa bb cc") == "aa bb\ncc";
+	assert approx(nodeWidth(n, "aa bb cc"), laid("aa bb cc", {
 		font: DEFAULT_FONT,
 		size: 13.0,
 		letterSpacing: 0.0,

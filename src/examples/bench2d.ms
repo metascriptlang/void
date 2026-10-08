@@ -30,7 +30,7 @@ import { GlyphAtlas, PageKind } from "../void2d/glyphAtlas";
 import { NodeRef, Scene2D } from "../void2d/node";
 import { add, present, isDirty } from "../void2d/scene";
 import { Color, rgba, tile } from "../void2d/types";
-import { Align, TextRun, calcTextWidth } from "../void2d/textLayout";
+import { Align, TextRun, calcTextWidth, describe } from "../void2d/textLayout";
 import { glyphLookups } from "../void2d/face";
 import { loadImageSync, imageWidth, imageHeight, freeImage } from "../assets/image";
 when (voidProfiler) {
@@ -321,7 +321,7 @@ function reportProfile(): void {
 // Neon host's Yoga measure callback makes this call per text node per layout pass.
 function measureGlyphLookups(): int32 {
 	const before: uint32 = glyphLookups();
-	calcTextWidth(CODE_LINE, {
+	const measured = calcTextWidth(CODE_LINE, {
 		font: DEFAULT_FONT,
 		size: 13.0,
 		letterSpacing: 0.0,
@@ -329,6 +329,10 @@ function measureGlyphLookups(): int32 {
 		maxWidth: 0.0,
 		align: Align.Left,
 	});
+	if (!measured.ok) {
+		console.log(`bench2d: the code line was refused: ${measured.error.describe()}`);
+		unreachable;
+	}
 	return (glyphLookups() - before) as int32;
 }
 

@@ -21,9 +21,7 @@ import {
 	Truncate,
 	TextRun,
 	TextStyle,
-	layoutRuns,
 	setTextShaping,
-	shapeText,
 	wrapText,
 } from "../void2d/textLayout";
 import {
@@ -48,6 +46,7 @@ import "../void2d/scene";
 import { sync, getBounds } from "../void2d/render";
 import { LIGATURE_TEXT, LIGATURE_SIZE } from "../../tests/golden/table";
 import { approx } from "./helpers";
+import { laid, laidRuns, shapedOf } from "./layoutHelpers";
 
 const FIXTURE: string = "tests/fonts/shapeFixture.ttf";
 const CASCADIA: string = "tests/fonts/cascadiaSubset.ttf";
@@ -107,7 +106,7 @@ function plain(): FontFeature[] {
 }
 
 function layoutOf(font: FontId, text: string, spacing: float32): TextLayout {
-	return TextLayout.layout(text, styleOf(font, SIZE, spacing));
+	return laid(text, styleOf(font, SIZE, spacing));
 }
 
 function gid(font: FontId, codepoint: int32): int32 {
@@ -302,13 +301,13 @@ function runOf(len: int32, font: FontId): TextRun {
 function brokenAt(font: FontId, text: string, at: int32[]): TextLayout {
 	const style = styleOf(font, SIZE, 0.0);
 	const noRuns: TextRun[] = [];
-	return wrapText(shapeText(text, style, noRuns, at), style, PLAIN_LINES);
+	return wrapText(shapedOf(text, style, noRuns, at), style, PLAIN_LINES);
 }
 
 test "a run boundary keeps a ligature from forming across it" {
 	const font = fixture(plain());
 	const runs: TextRun[] = [runOf(1, font), runOf(1, font)];
-	const split = layoutRuns("fi", styleOf(font, SIZE, 0.0), runs);
+	const split = laidRuns("fi", styleOf(font, SIZE, 0.0), runs);
 	assert split.glyphs[0].glyph == gid(font, F) && split.glyphs[1].glyph == gid(font, I);
 	assert split.glyphs[0].run == 0 && split.glyphs[1].run == 1;
 	assert approx(split.glyphs[1].x, 5.0) && approx(split.width, 8.0);
@@ -343,7 +342,7 @@ test "a contextual substitution does not reach over a break" {
 	assert brokenAt(font, "ab", none).glyphs[1].glyph != gid(font, B);
 	assert brokenAt(font, "ab", at).glyphs[1].glyph == gid(font, B);
 	const runs: TextRun[] = [runOf(1, font), runOf(1, font)];
-	const split = layoutRuns("ab", styleOf(font, SIZE, 0.0), runs);
+	const split = laidRuns("ab", styleOf(font, SIZE, 0.0), runs);
 	assert split.glyphs[1].glyph == gid(font, B);
 }
 
@@ -352,7 +351,7 @@ test "a programming ligature split by a colour change draws the plain glyphs" {
 	const gone = fontWith(CASCADIA, false, off("calt"));
 	const style = styleOf(on, SIZE, 0.0);
 	const runs: TextRun[] = [runOf(1, on), runOf(1, on)];
-	const split = layoutRuns("->", style, runs);
+	const split = laidRuns("->", style, runs);
 	const whole = layoutOf(on, "->", 0.0);
 	const bare = layoutOf(gone, "->", 0.0);
 	assert whole.glyphs[1].glyph != bare.glyphs[1].glyph;
@@ -391,12 +390,12 @@ test "moving a shaping break changes only the glyph rows of its own label" {
 }
 
 function wrappedAt(font: FontId, text: string, width: float32): TextLayout {
-	return TextLayout.layout(text, { ...styleOf(font, SIZE, 0.0), maxWidth: width });
+	return laid(text, { ...styleOf(font, SIZE, 0.0), maxWidth: width });
 }
 
 test "a line never breaks inside a shaping cluster, though the break rules offer one there" {
 	const inter = DEFAULT_FONT;
-	const width: float32 = TextLayout.layout("aaaa-", styleOf(inter, SIZE, 0.0)).width + 0.25;
+	const width: float32 = laid("aaaa-", styleOf(inter, SIZE, 0.0)).width + 0.25;
 	setTextShaping(false);
 	const apart = wrappedAt(inter, "aaaa->bbbb", width);
 	setTextShaping(true);
@@ -410,7 +409,7 @@ test "a line never breaks inside a shaping cluster, though the break rules offer
 
 test "a break still falls between two clusters" {
 	const inter = DEFAULT_FONT;
-	const width: float32 = TextLayout.layout("a->b", styleOf(inter, SIZE, 0.0)).width + 0.25;
+	const width: float32 = laid("a->b", styleOf(inter, SIZE, 0.0)).width + 0.25;
 	const l = wrappedAt(inter, "a->b c->d", width);
 	assert l.splitText("a->b c->d") == "a->b\nc->d";
 }
@@ -456,7 +455,7 @@ test "forced width keeps a ligature's glyph in its first cell" {
 	const options: LineOptions = { truncate: Truncate.None, hangingIndent: 0.0, forceWidth: 6.0 };
 	const noRuns: TextRun[] = [];
 	const noBreaks: int32[] = [];
-	const l = wrapText(shapeText("fi\u{E9}", style, noRuns, noBreaks), style, options);
+	const l = wrapText(shapedOf("fi\u{E9}", style, noRuns, noBreaks), style, options);
 	assert (l.glyphs.length as int32) == 4;
 	assert l.glyphs[0].glyph != gid(font, F) && l.glyphs[1].glyph == NO_GLYPH;
 	assert approx(l.glyphs[0].x, 0.0) && approx(l.glyphs[1].x, 6.0) && approx(l.glyphs[2].x, 12.0);
@@ -470,7 +469,7 @@ test "truncation never cuts through a ligature" {
 	const ligature: int32 = layoutOf(font, "fi", 0.0).glyphs[0].glyph;
 	const noRuns: TextRun[] = [];
 	const noBreaks: int32[] = [];
-	const shaped = shapeText("aafiaafiaa", style, noRuns, noBreaks);
+	const shaped = shapedOf("aafiaafiaa", style, noRuns, noBreaks);
 	let truncated: int32 = 0;
 	for (const truncate of [Truncate.End, Truncate.Start, Truncate.Middle]) {
 		for (let w: int32 = 8; w < 70; w++) {
@@ -503,9 +502,9 @@ test "the golden ligature line lays out as its capture invariants assume" {
 	const style = styleOf(on, LIGATURE_SIZE, 0.0);
 	const runs: TextRun[] = [];
 	for (let i: int32 = 0; i < LIGATURE_TEXT.length; i++) { runs.push(runOf(1, on)); }
-	const ligated = TextLayout.layout(LIGATURE_TEXT, style);
-	const plainLine = TextLayout.layout(LIGATURE_TEXT, { ...style, font: gone });
-	const split = layoutRuns(LIGATURE_TEXT, style, runs);
+	const ligated = laid(LIGATURE_TEXT, style);
+	const plainLine = laid(LIGATURE_TEXT, { ...style, font: gone });
+	const split = laidRuns(LIGATURE_TEXT, style, runs);
 	const count: int32 = ligated.glyphs.length as int32;
 	assert count == LIGATURE_TEXT.length;
 	assert (plainLine.glyphs.length as int32) == count && (split.glyphs.length as int32) == count;
@@ -585,7 +584,7 @@ test "every left-to-right oracle row is laid out at the layout level as HarfBuzz
 		if (skip) { continue; }
 		const font = oracleFont(row, row.getDynamicField("path").asString());
 		const joiners: boolean = hasJoiner(codepoints);
-		const l = TextLayout.layout(text, styleOf(font, ORACLE_SIZE, 0.0));
+		const l = laid(text, styleOf(font, ORACLE_SIZE, 0.0));
 		const upem: float32 = row.getDynamicField("unitsPerEm").asNumber() as float32;
 		const perUnit: float32 = ORACLE_SIZE / upem;
 		const expected = row.getDynamicField("glyphs");
@@ -682,7 +681,7 @@ test "two runs of one face keep their own features though the text is one shapin
 	const ligated = fixture(plain());
 	const apart = fixture(off("liga"));
 	const runs: TextRun[] = [runOf(2, ligated), runOf(2, apart)];
-	const l = layoutRuns("fifi", styleOf(ligated, SIZE, 0.0), runs);
+	const l = laidRuns("fifi", styleOf(ligated, SIZE, 0.0), runs);
 	assert fontFace(ligated) == fontFace(apart);
 	assert l.glyphs[0].glyph != gid(ligated, F) && l.glyphs[1].glyph == NO_GLYPH;
 	assert l.glyphs[2].glyph == gid(apart, F) && l.glyphs[3].glyph == gid(apart, I);

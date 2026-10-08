@@ -31,6 +31,7 @@ import { NodeRef, Scene2D } from "../void2d/node";
 import "../void2d/scene";
 import { renderTargetsAlive, segmentBox } from "../void2d/render";
 import { approx } from "./helpers";
+import { nodeSplit, nodeWidth } from "./nodeTextHelpers";
 
 const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 
@@ -254,13 +255,13 @@ test "a decoration lands on device pixels at DPI 1.25, a stroke at least one pix
 test "calcTextWidth and splitText lay other text out with the label's line options" {
 	const cells = s.label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
 	cells.setForceWidth(10.0);
-	assert cells.calcTextWidth("abc") == 30.0;
+	assert nodeWidth(cells, "abc") == 30.0;
 	const text: string = "aa bb cc dd";
 	const n = s.label("", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	n.setMaxWidth(n.calcTextWidth("aa bb") + 1.0);
-	assert n.splitText(text) == "aa bb\ncc dd";
-	n.setHangingIndent(n.calcTextWidth("aa "));
-	assert n.splitText(text) == "aa bb\ncc\ndd";
+	n.setMaxWidth(nodeWidth(n, "aa bb") + 1.0);
+	assert nodeSplit(n, text) == "aa bb\ncc dd";
+	n.setHangingIndent(nodeWidth(n, "aa "));
+	assert nodeSplit(n, text) == "aa bb\ncc\ndd";
 	cells.dispose();
 	n.dispose();
 }

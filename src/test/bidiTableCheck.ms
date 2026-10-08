@@ -4,6 +4,7 @@ import {
 	bracketCode,
 	mirrorOf,
 } from "../void2d/bidi";
+import { possiblyRtl } from "../void2d/textDirection";
 
 test "the class of sampled codepoints, and the defaults of unassigned blocks" {
 	assert bidiClassOf(0x41) == BidiClass.L;
@@ -62,4 +63,23 @@ test "every bracket closes the pair its opening codepoint opens" {
 	}
 	console.log(`bidi oracle: ${opening} opening and ${closing} closing paired brackets`);
 	assert opening == 65 && closing == 65;
+}
+
+test "possiblyRtl holds every codepoint whose class can make text right to left" {
+	let held: int32 = 0;
+	let extra: int32 = 0;
+	for (let c = 0; c <= 0x10FFFF; c++) {
+		const cls: BidiClass = bidiClassOf(c);
+		const rightToLeft: boolean = cls == BidiClass.R || cls == BidiClass.AL ||
+			cls == BidiClass.AN || cls == BidiClass.RLE || cls == BidiClass.RLO ||
+			cls == BidiClass.RLI || cls == BidiClass.FSI;
+		if (rightToLeft) {
+			assert possiblyRtl(c);
+			held = held + 1;
+		} else if (possiblyRtl(c)) {
+			extra = extra + 1;
+		}
+	}
+	console.log(`bidi oracle: possiblyRtl holds ${held} right-to-left codepoints and ${extra} others`);
+	assert held > 0;
 }

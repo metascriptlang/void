@@ -37,6 +37,8 @@ import {
 	releaseLabelGlyphs,
 	setLabelRuns,
 	setLabelShapingBreaks,
+	setLabelDirection,
+	labelDirection,
 	setLabelLines,
 	labelLines,
 	setLabelSelection,
@@ -51,6 +53,7 @@ import {
 } from "./icon";
 import { FontId } from "./font";
 import { Align, TextRun, TextStyle, Truncate } from "./textLayout";
+import { TextDirection } from "./textDirection";
 import {
 	ImageStyle, NO_IMAGE_STYLE, allocateImageStyle, updateImageStyle, releaseImageStyle,
 } from "./imageStyle";
@@ -1498,6 +1501,15 @@ export function setTextRuns(this n: NodeRef, runs: Readonly<Span<TextRun>>): Nod
 export function setShapingBreaks(this n: NodeRef, breaks: Readonly<Span<int32>>): NodeRef {
 	setLabelShapingBreaks(textChanged(n, "setShapingBreaks"), breaks);
 	return n;
+}
+
+export function setTextDirection(this n: NodeRef, direction: TextDirection): NodeRef {
+	setLabelDirection(textChanged(n, "setTextDirection"), direction);
+	return n;
+}
+
+export function textDirection(this n: NodeRef): TextDirection {
+	return labelDirection(labelEntry(n, "textDirection"));
 }
 
 export function setTruncate(this n: NodeRef, truncate: Truncate): NodeRef {

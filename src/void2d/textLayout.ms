@@ -20,6 +20,11 @@ import {
 import { Color } from "./types";
 import { GraphemeCursor, startGraphemes, breaksBefore } from "./grapheme";
 import { lineBreaks } from "./lineBreak";
+import { TextDirection, possiblyRtl } from "./textDirection";
+
+when (voidBidi) {
+	import { BidiClass, bidiClassOf } from "./bidi";
+}
 
 when (voidShaper) {
 	import { glyphScale, glyphEmbolden } from "./face";
@@ -55,6 +60,25 @@ export enum Truncate {
 	Start,
 	Middle,
 	End,
+}
+
+export enum TextErrorKind {
+	RightToLeftNeedsBidi,
+	ArabicNeedsShaper,
+}
+
+export struct TextError {
+	kind: TextErrorKind;
+	index: int32;
+}
+
+export function describe(this e: TextError): string {
+	return match (e.kind) {
+		TextErrorKind.RightToLeftNeedsBidi =>
+			`right-to-left text at UTF-16 index ${e.index} needs -d:voidBidi`,
+		TextErrorKind.ArabicNeedsShaper =>
+			`Arabic-script text at UTF-16 index ${e.index} needs -d:voidShaper`,
+	};
 }
 
 export struct LineOptions {
@@ -519,6 +543,25 @@ function hasTab(cps: Readonly<Span<Codepoint>>): boolean {
 	return false;
 }
 
+function refusedText(cps: Readonly<Span<Codepoint>>): Result<void, TextError> {
+	when (voidBidi) {
+		if (textShapingOn()) { return Result.ok(null); }
+		for (const cp of cps) {
+			if (possiblyRtl(cp.value) && bidiClassOf(cp.value) == BidiClass.AL) {
+				return Result.err({ kind: TextErrorKind.ArabicNeedsShaper, index: cp.index });
+			}
+		}
+		return Result.ok(null);
+	} else {
+		for (const cp of cps) {
+			if (possiblyRtl(cp.value)) {
+				return Result.err({ kind: TextErrorKind.RightToLeftNeedsBidi, index: cp.index });
+			}
+		}
+		return Result.ok(null);
+	}
+}
+
 struct Cell {
 	shaped: boolean;
 	glyph: int32;
@@ -736,8 +779,10 @@ export function shapeText(
 	style: TextStyle,
 	runs: Readonly<Span<TextRun>>,
 	shapingBreaks: Readonly<Span<int32>>,
-): ShapedText {
+	direction: TextDirection = TextDirection.Auto,
+): Result<ShapedText, TextError> {
 	let cps: Vec<Codepoint> = decodeUtf8(text, style.font);
+	const accepted = try refusedText(cps);
 	const count: int32 = cps.length as int32;
 	const units: int32 = count > 0 ? cps[count - 1].unitEnd() : 0;
 	if (runs.length > 0) { assignRuns(cps, runs, units); }
@@ -826,7 +871,7 @@ export function shapeText(
 			pen = pen + extra.advance + spacing;
 		}
 	}
-	return {
+	return Result.ok({
 		glyphs: glyphs,
 		values: values,
 		breaks: new Array(0),
@@ -835,7 +880,7 @@ export function shapeText(
 		bytes: count > 0 ? cps[count - 1].byteEnd : 0,
 		style: style,
 		tabStop: stop,
-	};
+	});
 }
 
 function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
@@ -1102,20 +1147,30 @@ function unitsTo(shaped: ShapedText, end: int32): int32 {
 	return last.index + (last.codepoint >= 0x10000 ? 2 : 1);
 }
 
-export function layout(this typeof TextLayout, text: string, style: TextStyle): TextLayout {
+export function layout(
+	this typeof TextLayout,
+	text: string,
+	style: TextStyle,
+	direction: TextDirection = TextDirection.Auto,
+): Result<TextLayout, TextError> {
 	const plain: Vec<TextRun> = new Array(0);
-	return layoutRuns(text, style, plain);
+	return layoutRuns(text, style, plain, direction);
 }
 
 export function layoutRuns(
-	text: string, style: TextStyle, runs: Readonly<Span<TextRun>>,
-): TextLayout {
+	text: string,
+	style: TextStyle,
+	runs: Readonly<Span<TextRun>>,
+	direction: TextDirection = TextDirection.Auto,
+): Result<TextLayout, TextError> {
 	const noBreaks: Vec<int32> = new Array(0);
-	return wrapText(shapeText(text, style, runs, noBreaks), style, PLAIN_LINES);
+	const shaped = try shapeText(text, style, runs, noBreaks, direction);
+	return Result.ok(wrapText(shaped, style, PLAIN_LINES));
 }
 
-export function calcTextWidth(text: string, style: TextStyle): float32 {
-	return TextLayout.layout(text, { ...style, maxWidth: 0.0 }).width;
+export function calcTextWidth(text: string, style: TextStyle): Result<float32, TextError> {
+	const laid = try TextLayout.layout(text, { ...style, maxWidth: 0.0 });
+	return Result.ok(laid.width);
 }
 
 export function splitText(this l: TextLayout, text: string): string {

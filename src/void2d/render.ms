@@ -99,6 +99,7 @@ import {
 	NO_CURSOR,
 	cursorShown,
 	labelLines,
+	labelRefusal,
 } from "./labelText";
 import {
 	TextLayout,
@@ -109,9 +110,11 @@ import {
 	PLAIN_LINES,
 	NO_GLYPH,
 	NO_RUN,
+	TextError,
 	shapeText,
 	wrapText,
 } from "./textLayout";
+import { TextDirection } from "./textDirection";
 import { GlyphPage, NO_GLYPH_PAGE, PageKind } from "./glyphAtlas";
 import { PlacedIcon, placeIcon } from "./icon";
 import { glyphInkBox } from "./face";
@@ -1986,21 +1989,32 @@ export function textHeight(this n: NodeRef): float32 {
 	return labelTexts[shapedPayload(n, "textHeight")].layout.height;
 }
 
-function layoutLike(payload: int32, text: string, style: TextStyle): TextLayout {
+function layoutLike(
+	payload: int32, text: string, style: TextStyle,
+): Result<TextLayout, TextError> {
 	const noRuns: Vec<TextRun> = new Array(0);
 	const noBreaks: Vec<int32> = new Array(0);
 	const options: LineOptions = payload == NO_LABEL_TEXT ? PLAIN_LINES : labelLines(payload);
-	return wrapText(shapeText(text, style, noRuns, noBreaks), style, options);
+	const direction: TextDirection =
+		payload == NO_LABEL_TEXT ? TextDirection.Auto : labelTexts[payload].direction;
+	const shaped = try shapeText(text, style, noRuns, noBreaks, direction);
+	return Result.ok(wrapText(shaped, style, options));
 }
 
-export function calcTextWidth(this n: NodeRef, text: string): float32 {
+export function calcTextWidth(this n: NodeRef, text: string): Result<float32, TextError> {
 	const payload: int32 = n.scene.payloads[n.labelRow("calcTextWidth")];
-	return layoutLike(payload, text, { ...labelTexts[payload].style, maxWidth: 0.0 }).width;
+	const laid = try layoutLike(payload, text, { ...labelTexts[payload].style, maxWidth: 0.0 });
+	return Result.ok(laid.width);
 }
 
-export function splitText(this n: NodeRef, text: string): string {
+export function splitText(this n: NodeRef, text: string): Result<string, TextError> {
 	const payload: int32 = n.scene.payloads[n.labelRow("splitText")];
-	return layoutLike(payload, text, labelTexts[payload].style).splitText(text);
+	const laid = try layoutLike(payload, text, labelTexts[payload].style);
+	return Result.ok(laid.splitText(text));
+}
+
+export function textStatus(this n: NodeRef): Result<void, TextError> {
+	return labelRefusal(n.scene.payloads[n.labelRow("textStatus")]);
 }
 
 export function xForIndex(this n: NodeRef, index: int32): float32 {

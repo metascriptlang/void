@@ -2,7 +2,6 @@ import { readFile } from "std/fs";
 import { sha256, toHex } from "std/crypto/sha256";
 import {
 	BidiClass,
-	ParagraphDirection,
 	bidiClassOf,
 	bracketCode,
 	removedByX9,
@@ -10,6 +9,7 @@ import {
 	resetLineEnds,
 	resolveLevels,
 } from "../void2d/bidi";
+import { TextDirection } from "../void2d/textDirection";
 
 const BIDI_TEST: string = "deps/ucd/BidiTest.txt";
 const BIDI_CHARACTER_TEST: string = "deps/ucd/BidiCharacterTest.txt";
@@ -98,7 +98,7 @@ function agrees(
 	brackets: Readonly<Span<int32>>,
 	expectedLevels: Readonly<Span<int32>>,
 	expectedOrder: Readonly<Span<int32>>,
-	direction: ParagraphDirection,
+	direction: TextDirection,
 	expectedParagraph: int32,
 ): boolean {
 	const count: int32 = classes.length as int32;
@@ -131,7 +131,7 @@ function agrees(
 function described(
 	classes: Readonly<Span<BidiClass>>,
 	levels: Readonly<Span<int32>>,
-	direction: ParagraphDirection,
+	direction: TextDirection,
 ): string {
 	let out: string = `${direction.toString()}:`;
 	for (let i = 0; i < (classes.length as int32); i++) { out += ` ${classes[i].toString()}`; }
@@ -200,10 +200,10 @@ function bidiTestVerdict(): Verdict {
 			rows = rows + 1;
 			for (let bit = 0; bit < 3; bit++) {
 				if ((bits[0] & (1 << bit)) == 0) { continue; }
-				const direction: ParagraphDirection = match (bit) {
-					0 => ParagraphDirection.Auto,
-					1 => ParagraphDirection.Ltr,
-					_ => ParagraphDirection.Rtl,
+				const direction: TextDirection = match (bit) {
+					0 => TextDirection.Auto,
+					1 => TextDirection.Ltr,
+					_ => TextDirection.Rtl,
 				};
 				cases = cases + 1;
 				if (agrees(classes, noBrackets, expectedLevels, expectedOrder, direction, -1)) {
@@ -268,10 +268,10 @@ function bidiCharacterVerdict(): Verdict {
 			numbers(bytes, fields[2], fields[3] - 1, paragraph);
 			numbers(bytes, fields[3], fields[4] - 1, expectedLevels);
 			numbers(bytes, fields[4], fields[5] - 1, expectedOrder);
-			const mode: ParagraphDirection = match (direction[0]) {
-				0 => ParagraphDirection.Ltr,
-				1 => ParagraphDirection.Rtl,
-				_ => ParagraphDirection.Auto,
+			const mode: TextDirection = match (direction[0]) {
+				0 => TextDirection.Ltr,
+				1 => TextDirection.Rtl,
+				_ => TextDirection.Auto,
 			};
 			rows = rows + 1;
 			if (agrees(classes, brackets, expectedLevels, expectedOrder, mode, paragraph[0])) {

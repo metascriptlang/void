@@ -1,5 +1,4 @@
 // expect: void2d: right-to-left text at UTF-16 index 0 needs -d:voidBidi
-// flags: -d:voidShaper
 import { Align, TextLayout, describe } from "../../src/void2d/textLayout";
 import { addFont } from "../../src/void2d/font";
 

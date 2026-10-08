@@ -1,4 +1,5 @@
 import { void2dBidiClass, void2dBidiBracket, void2dBidiMirror } from "./bidiClass.h";
+import { TextDirection } from "./textDirection";
 
 export enum BidiClass {
 	L,
@@ -24,12 +25,6 @@ export enum BidiClass {
 	RLI,
 	FSI,
 	PDI,
-}
-
-export enum ParagraphDirection {
-	Auto,
-	Ltr,
-	Rtl,
 }
 
 export const MAX_DEPTH: int32 = 125;
@@ -415,10 +410,10 @@ function filled(count: int32, value: int32): Vec<int32> {
 }
 
 export function paragraphLevel(
-	classes: Readonly<Span<BidiClass>>, direction: ParagraphDirection,
+	classes: Readonly<Span<BidiClass>>, direction: TextDirection,
 ): int32 {
-	if (direction == ParagraphDirection.Ltr) { return 0; }
-	if (direction == ParagraphDirection.Rtl) { return 1; }
+	if (direction == TextDirection.Ltr) { return 0; }
+	if (direction == TextDirection.Rtl) { return 1; }
 	let matching: Vec<int32> = new Array(0);
 	matchIsolates(classes, matching);
 	return firstStrong(classes, matching, 0, classes.length as int32) == BidiClass.R ? 1 : 0;
@@ -429,16 +424,16 @@ export function paragraphLevel(
 export function resolveLevels(
 	classes: Readonly<Span<BidiClass>>,
 	brackets: Readonly<Span<int32>>,
-	direction: ParagraphDirection,
+	direction: TextDirection,
 	ref levels: Vec<int32>,
 ): int32 {
 	const count: int32 = classes.length as int32;
 	let matching: Vec<int32> = new Array(0);
 	matchIsolates(classes, matching);
 	let paragraph: int32 = 0;
-	if (direction == ParagraphDirection.Rtl) {
+	if (direction == TextDirection.Rtl) {
 		paragraph = 1;
-	} else if (direction == ParagraphDirection.Auto) {
+	} else if (direction == TextDirection.Auto) {
 		paragraph = firstStrong(classes, matching, 0, count) == BidiClass.R ? 1 : 0;
 	}
 	let explicit: Vec<int32> = new Array(0);

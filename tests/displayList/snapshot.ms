@@ -63,6 +63,7 @@ import { BlendMode } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
 import { PixelFormat, contextGeneration } from "../../src/gpu/door";
 import { TextLayout, TextRun } from "../../src/void2d/textLayout";
+import { nodeWidth } from "../../src/test/nodeTextHelpers";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { BoxStyle, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
 import {
@@ -1171,7 +1172,7 @@ function selectedSpans(root: NodeRef, w: float32, h: float32): Vec<float32> {
 test "a selection across a wrap with no separator lights only the text it covers" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const text = s.add(s.label("well-known", 16.0, rgba(0.9, 0.9, 0.9, 1.0)));
-	text.setMaxWidth(text.calcTextWidth("well-") + 1.0);
+	text.setMaxWidth(nodeWidth(text, "well-") + 1.0);
 	const lines = text.textLayout().lines;
 	assert (lines.length as int32) == 2;
 	assert lines[0].indexEnd == 5 && lines[1].indexStart == 5;

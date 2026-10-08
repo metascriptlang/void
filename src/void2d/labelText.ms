@@ -18,6 +18,9 @@ import {
 	LineBox,
 	LineOptions,
 	ShapedText,
+	TextError,
+	TextErrorKind,
+	describe,
 	NO_GLYPH,
 	NO_RUN,
 	PLAIN_LINES,
@@ -32,6 +35,7 @@ import {
 	colourTileBox,
 	isSpriteFace,
 } from "./face";
+import { TextDirection } from "./textDirection";
 import { DEFAULT_FONT, fontFace } from "./font";
 import { Transform2D, Color } from "./types";
 
@@ -114,6 +118,9 @@ export interface LabelText {
 	shaped: ShapedText;
 	shapedText: string;
 	reshape: boolean;
+	direction: TextDirection;
+	textRefused: boolean;
+	textRefusal: TextError;
 	options: LineOptions;
 	shapingBreaks: Vec<int32>;
 	selectionStart: int32;
@@ -186,6 +193,15 @@ function emptyLayout(): TextLayout {
 	};
 }
 
+function emptyShaped(style: TextStyle): ShapedText {
+	const noRuns: Vec<TextRun> = new Array(0);
+	const noBreaks: Vec<int32> = new Array(0);
+	const shaped = shapeText("", style, noRuns, noBreaks);
+	if (shaped.ok) { return shaped.value; }
+	console.log(`void2d: the empty text was refused: ${shaped.error.describe()}`);
+	unreachable;
+}
+
 export function allocateLabelText(): int32 {
 	const style: TextStyle = {
 		font: DEFAULT_FONT,
@@ -195,8 +211,6 @@ export function allocateLabelText(): int32 {
 		maxWidth: 0.0,
 		align: Align.Left,
 	};
-	const noRuns: Vec<TextRun> = new Array(0);
-	const noBreaks: Vec<int32> = new Array(0);
 	const entry: LabelText = {
 		text: "",
 		stale: true,
@@ -211,9 +225,12 @@ export function allocateLabelText(): int32 {
 		refused: 0,
 		runs: new Array(0),
 		decorations: new Array(0),
-		shaped: shapeText("", style, noRuns, noBreaks),
+		shaped: emptyShaped(style),
 		shapedText: "",
 		reshape: true,
+		direction: TextDirection.Auto,
+		textRefused: false,
+		textRefusal: { kind: TextErrorKind.RightToLeftNeedsBidi, index: 0 },
 		options: PLAIN_LINES,
 		shapingBreaks: new Array(0),
 		selectionStart: 0,
@@ -262,9 +279,17 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 	const entry: LabelText = labelTexts[index];
 	releasePlacement(entry);
 	if (shapeStale(entry, text, style)) {
-		entry.shaped = shapeText(text, style, entry.runs, entry.shapingBreaks);
+		const shaped = shapeText(text, style, entry.runs, entry.shapingBreaks, entry.direction);
 		entry.shapedText = text;
 		entry.reshape = false;
+		entry.textRefused = !shaped.ok;
+		if (shaped.ok) {
+			entry.shaped = shaped.value;
+		} else {
+			entry.textRefusal = shaped.error;
+			entry.shaped = emptyShaped(style);
+			console.log(`void2d: label text is not drawn: ${shaped.error.describe()}`);
+		}
 	}
 	entry.style = style;
 	entry.layout = wrapText(entry.shaped, style, entry.options);
@@ -373,6 +398,20 @@ export function setLabelShapingBreaks(index: int32, breaks: Readonly<Span<int32>
 	for (const at of breaks) { kept.push(at); }
 	labelTexts[index].shapingBreaks = kept;
 	labelTexts[index].reshape = true;
+}
+
+export function setLabelDirection(index: int32, direction: TextDirection): void {
+	labelTexts[index].direction = direction;
+	labelTexts[index].reshape = true;
+}
+
+export function labelDirection(index: int32): TextDirection {
+	return labelTexts[index].direction;
+}
+
+export function labelRefusal(index: int32): Result<void, TextError> {
+	if (labelTexts[index].textRefused) { return Result.err(labelTexts[index].textRefusal); }
+	return Result.ok(null);
 }
 
 export function setLabelLines(index: int32, options: LineOptions): void {

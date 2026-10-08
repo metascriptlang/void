@@ -11,7 +11,8 @@ import {
 	SfntSequence,
 } from "../void2d/face";
 import { DEFAULT_FONT, addFont } from "../void2d/font";
-import { Align, TextLayout } from "../void2d/textLayout";
+import { Align } from "../void2d/textLayout";
+import { laid } from "./layoutHelpers";
 
 const METRICS_PATH: string = "tests/oracle/metrics.json";
 const SHAPE_PATH: string = "tests/oracle/shape.json";
@@ -83,7 +84,7 @@ test "cmap glyph ids and kerned pen positions agree with HarfBuzz, GSUB off" {
 		const em: float32 = row.getDynamicField("unitsPerEm").asNumber() as float32;
 		const glyphs = row.getDynamicField("glyphs");
 		const xs = row.getDynamicField("x");
-		const l = TextLayout.layout(sample, {
+		const l = laid(sample, {
 			font: try addFont(path) catch DEFAULT_FONT,
 			size: em,
 			letterSpacing: 0.0,

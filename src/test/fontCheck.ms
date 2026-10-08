@@ -39,6 +39,7 @@ import "../void2d/scene";
 import { Align, TextLayout } from "../void2d/textLayout";
 import { rgba } from "../void2d/types";
 import { approx } from "./helpers";
+import { laid } from "./layoutHelpers";
 
 const LATIN: string = "assets/font.ttf";
 const CJK: string = "tests/fonts/NotoSansSC-subset.ttf";
@@ -105,7 +106,7 @@ function peekedCovers(path: string, codepoint: int32): boolean {
 }
 
 function layoutWith(fontId: FontId, text: string): TextLayout {
-	return TextLayout.layout(text, {
+	return laid(text, {
 		font: fontId,
 		size: 13.0,
 		letterSpacing: 0.0,

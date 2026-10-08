@@ -57,7 +57,8 @@ import {
 	LIGATURE_BG_X,
 	LIGATURE_BG_Y,
 } from "./table";
-import { TextLayout, Align } from "../../src/void2d/textLayout";
+import { Align, TextLayout } from "../../src/void2d/textLayout";
+import { laid } from "../../src/test/layoutHelpers";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { voidPngLoad, voidPngWidth, voidPngHeight, voidPngPixel } from "./pngio.h";
 
@@ -174,7 +175,7 @@ function raggedSelectionJoins(): int32 {
 	const background: int32[] = [
 		voidPngPixel(SLOT, 2, 2, 0), voidPngPixel(SLOT, 2, 2, 1), voidPngPixel(SLOT, 2, 2, 2),
 	];
-	const l = TextLayout.layout(CARET_TEXT, {
+	const l = laid(CARET_TEXT, {
 		font: DEFAULT_FONT,
 		size: CARET_SIZE,
 		letterSpacing: 0.0,
