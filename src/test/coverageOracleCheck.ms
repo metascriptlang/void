@@ -185,7 +185,8 @@ test "the shadow integral matches the kernel-integral truth within 0.02" {
 	let pxs: Vec<float32> = new Array(0);
 	let pys: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
-		analytic.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 2.0, 1.0));
+		analytic.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 2.0,
+			1.0));
 		pxs.push(pts[i]);
 		pys.push(pts[i + 1]);
 	}
@@ -200,7 +201,8 @@ test "the oracle convicts a shadow computed with the wrong blur" {
 	let pxs: Vec<float32> = new Array(0);
 	let pys: Vec<float32> = new Array(0);
 	for (let i: int32 = 0; i + 1 < (pts.length as int32); i = i + 2) {
-		wrong.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 3.0, 1.0));
+		wrong.push(shadowCoverage(pts[i], pts[i + 1], 10.0, 6.0, 3.0, 3.0, 3.0, 3.0, 1.5, -1.0, 3.0,
+			1.0));
 		pxs.push(pts[i]);
 		pys.push(pts[i + 1]);
 	}
@@ -211,7 +213,8 @@ test "the oracle convicts a shadow computed with the wrong blur" {
 
 test "per-corner radii mirror exactly under x negation" {
 	const a: float32 = shadowCoverage(11.5, -4.5, 10.0, 6.0, 5.0, 2.0, 3.0, 6.0, 1.5, -1.0, 2.0, 1.0);
-	const b: float32 = shadowCoverage(-11.5, -4.5, 10.0, 6.0, 2.0, 5.0, 6.0, 3.0, -1.5, -1.0, 2.0, 1.0);
+	const b: float32 =
+		shadowCoverage(-11.5, -4.5, 10.0, 6.0, 2.0, 5.0, 6.0, 3.0, -1.5, -1.0, 2.0, 1.0);
 	assert approx(a, b);
 	assert a != shadowCoverage(11.5, -4.5, 10.0, 6.0, 5.0, 6.0, 3.0, 2.0, 1.5, -1.0, 2.0, 1.0);
 }

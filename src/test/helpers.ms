@@ -54,11 +54,20 @@ export function meshHasVert(mesh: float32[], x: float32, y: float32): boolean {
 	return false;
 }
 
-export function meshHasVertUV(mesh: float32[], x: float32, y: float32, u: float32, v: float32): boolean {
+export function meshHasVertUV(
+	mesh: float32[],
+	x: float32,
+	y: float32,
+	u: float32,
+	v: float32,
+): boolean {
 	const len: int32 = mesh.length as int32;
 	let i: int32 = 0;
 	while (i + 8 <= len) {
-		if (approx(mesh[i], x) && approx(mesh[i + 1], y) && approx(mesh[i + 2], u) && approx(mesh[i + 3], v)) { return true; }
+		if (approx(mesh[i], x) && approx(mesh[i + 1], y) && approx(mesh[i + 2], u) &&
+				approx(mesh[i + 3], v)) {
+			return true;
+		}
 		i = i + 8;
 	}
 	return false;

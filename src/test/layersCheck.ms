@@ -370,7 +370,7 @@ test "setLayers on a camera node is the node's own mask and not what the camera 
 	assert cameraLayersOf(scene, camera) == DEFAULT_LAYERS;
 }
 
-test "the composite of a second view is a premultiplied textured material over, and straight is refused" {
+test "a second view composites as a premultiplied textured material over; straight is refused" {
 	let context: DrawContext = DrawContext.withUniformCapacity(0);
 	const over: RenderState = RenderState.defaults().withBlendMode(BlendMode.AlphaAdd);
 	for (const program of [Program.UnlitTextured, Program.LitTextured]) {

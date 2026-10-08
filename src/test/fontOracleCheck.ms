@@ -54,16 +54,19 @@ test "font and decoration metrics agree with fontTools, broken tables included" 
 		agree(path, "underlineTop", expect("underlineTop"), d.underlineTop as float64);
 		agree(path, "underlineThickness", expect("underlineThickness"), d.underlineThickness as float64);
 		agree(path, "strikethroughTop", expect("strikethroughTop"), d.strikethroughTop as float64);
-		agree(path, "strikethroughThickness", expect("strikethroughThickness"), d.strikethroughThickness as float64);
+		agree(path, "strikethroughThickness", expect("strikethroughThickness"),
+			d.strikethroughThickness as float64);
 		agree(path, "icWidth", expect("icWidth"), (h.icWidth * em) as float64);
 		agree(path, "exHeight", expect("exHeight"), (h.exHeight * em) as float64);
 		agree(path, "capHeight", expect("capHeight"), (h.capHeight * em) as float64);
 		agree(path, "icWidthEstimate", expect("icWidthEstimate"), (h.icWidthEstimate * em) as float64);
 		agree(path, "exHeightEstimate", expect("exHeightEstimate"), (h.exHeightEstimate * em) as float64);
-		agree(path, "capHeightEstimate", expect("capHeightEstimate"), (h.capHeightEstimate * em) as float64);
+		agree(path, "capHeightEstimate", expect("capHeightEstimate"),
+			(h.capHeightEstimate * em) as float64);
 		agree(path, "lineHeight", expect("lineHeight"), (h.lineHeight * em) as float64);
 	}
-	console.log(`font oracle: fontTools metrics ${count} fonts, ${compared - mismatches}/${compared} values agree`);
+	console.log(`font oracle: fontTools metrics ${count} fonts, ` +
+		`${compared - mismatches}/${compared} values agree`);
 	assert count > 0;
 	assert mismatches == 0;
 }
@@ -95,7 +98,8 @@ test "cmap glyph ids and kerned pen positions agree with HarfBuzz, GSUB off" {
 		const expected: int32 = glyphs.length() as int32;
 		if ((l.glyphs.length as int32) != expected) {
 			mismatches = mismatches + 1;
-			console.log(`font oracle: "${sample}" has ${l.glyphs.length} glyphs in void, ${expected} in HarfBuzz`);
+			console.log(`font oracle: "${sample}" has ${l.glyphs.length} glyphs in void, ${expected} in ` +
+				`HarfBuzz`);
 			continue;
 		}
 		for (let g: int32 = 0; g < expected; g++) {
@@ -103,7 +107,8 @@ test "cmap glyph ids and kerned pen positions agree with HarfBuzz, GSUB off" {
 			agree(`"${sample}" glyph ${g}`, "x", xs.at(g).asNumber(), l.glyphs[g].x as float64);
 		}
 	}
-	console.log(`font oracle: HarfBuzz kerning ${count} rows, ${compared - mismatches}/${compared} values agree`);
+	console.log(`font oracle: HarfBuzz kerning ${count} rows, ${compared - mismatches}/${compared} ` +
+		`values agree`);
 	assert count > 0;
 	assert mismatches == 0;
 }

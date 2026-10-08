@@ -138,7 +138,8 @@ function formatStream(): string {
 			out = out + ` pipe:vertex verts:${commandField(i, CMD_VERTEX_OFFSET) as int32}`
 				+ `+${commandField(i, CMD_VERTEX_COUNT) as int32}`;
 		}
-		out = out + ` clip:${f2(commandField(i, CMD_CLIP_X))},${f2(commandField(i, CMD_CLIP_Y))},${f2(commandField(i, CMD_CLIP_W))},${f2(commandField(i, CMD_CLIP_H))}`;
+		out = out + ` clip:${f2(commandField(i, CMD_CLIP_X))},${f2(commandField(i, CMD_CLIP_Y))},` +
+			`${f2(commandField(i, CMD_CLIP_W))},${f2(commandField(i, CMD_CLIP_H))}`;
 		if (commandField(i, CMD_CLIP_U_MAX) > commandField(i, CMD_CLIP_U_MIN)) {
 			out = out + ` edges:${f2(commandField(i, CMD_CLIP_U_X))},${f2(commandField(i, CMD_CLIP_U_Y))}`;
 			out = out + `,${f2(commandField(i, CMD_CLIP_U_MIN))},${f2(commandField(i, CMD_CLIP_U_MAX))}`;
@@ -175,7 +176,8 @@ function formatStream(): string {
 	for (let i: int32 = 0; i < vertexCount(); i++) {
 		out = out + `v ${i} ${f2(vertexField(i, 0))} ${f2(vertexField(i, 1))}`;
 		out = out + ` uv ${f2(vertexField(i, 2))} ${f2(vertexField(i, 3))}`;
-		out = out + ` rgba ${f2(vertexField(i, 4))} ${f2(vertexField(i, 5))} ${f2(vertexField(i, 6))} ${f2(vertexField(i, 7))}`;
+		out = out + ` rgba ${f2(vertexField(i, 4))} ${f2(vertexField(i, 5))} ` +
+			`${f2(vertexField(i, 6))} ${f2(vertexField(i, 7))}`;
 		out = out + "\n";
 	}
 	// One line per UI instance, and it prints the mode: P2's whole thesis is that a card, a
@@ -615,7 +617,11 @@ test "a colour effect drawn before a target does not reach the draw after it" {
 	endTarget();
 	setEffect(NO_COLOR_MATRIX, none, none);
 	drawImage(
-		tile(fakeTexture(11), 8.0, 8.0).premultiplied(), vec2(4.0, 4.0), vec2(8.0, 8.0), white, BlendMode.Alpha,
+		tile(fakeTexture(11), 8.0, 8.0).premultiplied(),
+		vec2(4.0, 4.0),
+		vec2(8.0, 8.0),
+		white,
+		BlendMode.Alpha,
 	);
 	finishRecording();
 	assert commandField(0, CMD_EFFECT) != (NO_EFFECT as float32);

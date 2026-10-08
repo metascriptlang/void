@@ -76,14 +76,20 @@ function checkAtMost(rows: BenchRow[], scene: string, metric: string, limit: int
 	return false;
 }
 
-function reportMilliseconds(rows: BenchRow[], scene: string, baseline: float64, warnFactor: float64): void {
+function reportMilliseconds(
+	rows: BenchRow[],
+	scene: string,
+	baseline: float64,
+	warnFactor: float64,
+): void {
 	const [reported, actual] = rowValue(rows, scene, "present");
 	if (!reported) {
 		console.log(`WARN ${scene}.present.ms was not reported`);
 		return;
 	}
 	const marker: string = actual > baseline * warnFactor ? "WARN" : "REPORT";
-	console.log(`${marker} ${scene}.present.ms ${actual} (baseline ${baseline}, warn above ${baseline * warnFactor})`);
+	console.log(`${marker} ${scene}.present.ms ${actual} (baseline ${baseline}, warn above ` +
+		`${baseline * warnFactor})`);
 }
 
 function reportProfile(rows: BenchRow[], scene: string): void {
@@ -130,13 +136,19 @@ function runCheck(): int32 {
 		"nodes", "retainedNodes", "draws", "buffersAlive", "vertices",
 		"uiInstances", "spriteInstances", "uploads", "uploadBytes", "atlasImages",
 		"renderTargets", "droppedFrames", "glyphRasterizationsSteady", "glyphPages", "glyphBytes",
-		"firstPaintRasterizations", "firstPaintUploadBytes", "idleDirty", "sweepPeakPages", "sweepRasterizations",
+		"firstPaintRasterizations", "firstPaintUploadBytes", "idleDirty", "sweepPeakPages",
+		"sweepRasterizations",
 	];
 	for (const metric of metrics) {
-		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) { failed = failed + 1; }
+		if (!checkCounter(uiRows, "ui", metric, counters.ui.getDynamicField(metric).asInt32())) {
+			failed = failed + 1;
+		}
 	}
 	for (const metric of metrics) {
-		if (!checkCounter(spriteRows, "sprites", metric, counters.sprites.getDynamicField(metric).asInt32())) { failed = failed + 1; }
+		if (!checkCounter(spriteRows, "sprites", metric,
+				counters.sprites.getDynamicField(metric).asInt32())) {
+			failed = failed + 1;
+		}
 	}
 	for (const metric of metrics) {
 		const expected: int32 = counters.text.getDynamicField(metric).asInt32();
@@ -232,7 +244,8 @@ function runCheck(): int32 {
 	if (unreadableRows > 0) {
 		console.log(`bench: ${unreadableRows} row(s) claimed to be a measurement and could not be read`);
 	}
-	console.log(`bench: ${failed} counter(s) off the baseline, ${ignoredLines} non-row line(s) ignored`);
+	console.log(`bench: ${failed} counter(s) off the baseline, ${ignoredLines} non-row line(s) ` +
+		`ignored`);
 	return failed == 0 && unreadableRows == 0 ? 0 : 1;
 }
 

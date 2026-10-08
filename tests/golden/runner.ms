@@ -111,16 +111,19 @@ function finish(): void {
 	const height: int32 = voidCaptureHeight(1);
 
 	if (width != row.width || height != row.height) {
-		console.log(`FAIL ${row.name} capture is ${width}x${height}, the table says ${row.width}x${row.height}`);
+		console.log(`FAIL ${row.name} capture is ${width}x${height}, the table says ` +
+			`${row.width}x${row.height}`);
 		voidCaptureExit(EXIT_FAILED);
 	}
 	if (voidCaptureUniform(1) != 0) {
-		console.log(`FAIL ${row.name} every pixel is one colour — captured before the draw, or a constant readback`);
+		console.log(`FAIL ${row.name} every pixel is one colour — captured before the draw, or a ` +
+			`constant readback`);
 		voidCaptureExit(EXIT_FAILED);
 	}
 	const differ: int32 = voidCaptureSlotsDiffer();
 	if (differ != 0) {
-		console.log(`FAIL ${row.name} is not deterministic: two draws of the same state differ in ${differ} pixels`);
+		console.log(`FAIL ${row.name} is not deterministic: two draws of the same state differ in ` +
+			`${differ} pixels`);
 		voidCaptureExit(EXIT_FAILED);
 	}
 
@@ -203,7 +206,8 @@ function startRunner(): void {
 		voidCaptureExit(EXIT_OK);
 	}
 	if (voidCaptureBackend() == 0) {
-		console.log("SKIP this build has no readback path — tests/capture/capture.c covers D3D11, GLES3 and GL core only");
+		console.log("SKIP this build has no readback path — tests/capture/capture.c covers D3D11, " +
+			"GLES3 and GL core only");
 		voidCaptureExit(EXIT_NO_READBACK);
 	}
 	index = voidCaptureEnvInt("VOID_SCENE", -1);

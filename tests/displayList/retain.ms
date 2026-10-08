@@ -731,7 +731,7 @@ test "a tile edit under a parent that moved or faded re-records the group" {
 	assert check(s, "a parent that moved, then an edit", "patch");
 }
 
-test "a tile edit re-records a group that took another write, drew through the vertex path or was culled" {
+test "a tile edit re-records a group that took another write, drew by vertices or was culled" {
 	const t: Tiles = tiles();
 	const s: Scene2D = t.s;
 	frame(s);
@@ -853,7 +853,8 @@ function drawnInstances(r: Recording): Map<string, int32> {
 		const base: int32 = c * COMMAND_FLOATS;
 		if (r.floats[base] != 0.0) { continue; }
 		const pipeline: int32 = r.floats[base + CMD_PIPELINE] as int32;
-		const state: string = `${pipeline} ${r.floats[base + CMD_VIEW]} ${r.floats[base + CMD_VIEW_HIGH]}` +
+		const state: string =
+			`${pipeline} ${r.floats[base + CMD_VIEW]} ${r.floats[base + CMD_VIEW_HIGH]}` +
 			` ${r.floats[base + CMD_BLEND]} ${r.floats[base + CMD_SAMPLER]}`;
 		let first: int32 = r.floats[base + CMD_INSTANCE_OFFSET] as int32;
 		let count: int32 = r.floats[base + CMD_INSTANCE_COUNT] as int32;

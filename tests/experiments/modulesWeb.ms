@@ -1,11 +1,17 @@
 // Imports no node.ms: Yoga has no web branch yet
 // (~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md).
 // Shapes one label and places it under a turn and a zoom every frame, so the shaper (-d:voidShaper)
-// and the SDF generator (-d:voidSdfText) are linked when their flag is on and absent when it is off.
+// and the SDF generator (-d:voidSdfText) are linked when their flag is on and absent when it is
+// off.
 
 import { gfxSetup, dpiScale } from "../../src/sokol/gpu";
 import { setup2d } from "../../src/void2d/draw";
-import { allocateLabelText, shapeLabel, placeLabel, beginGlyphFrame } from "../../src/void2d/labelText";
+import {
+	allocateLabelText,
+	shapeLabel,
+	placeLabel,
+	beginGlyphFrame,
+} from "../../src/void2d/labelText";
 import { DEFAULT_FONT } from "../../src/void2d/font";
 import { Align } from "../../src/void2d/textLayout";
 import { trs2d } from "../../src/void2d/types";

@@ -6,12 +6,20 @@ import { DEFAULT_FONT } from "../../src/void2d/font";
 // packer with plane p living on RGBA page p / 4, so both readings come from one run.
 // No GPU: the atlas, its CPU pages and the placement are all CPU-side.
 
-import { allocateLabelText, shapeLabel, placeLabel, glyphAtlas, glyphRasterizations } from "../../src/void2d/labelText";
+import {
+	allocateLabelText,
+	shapeLabel,
+	placeLabel,
+	glyphAtlas,
+	glyphRasterizations,
+} from "../../src/void2d/labelText";
 import { GlyphAtlas, NO_GLYPH_PAGE } from "../../src/void2d/glyphAtlas";
 import { trs2d } from "../../src/void2d/types";
 
-const CODE: string = "fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
-const PROSE: string = "The quick brown fox jumps over the lazy dog; Sphinx of black quartz, judge my vow!";
+const CODE: string =
+	"fn layout(node: &Node, width: f32) -> Size { node.measure(width) } // 0123456789";
+const PROSE: string =
+	"The quick brown fox jumps over the lazy dog; Sphinx of black quartz, judge my vow!";
 const ICONS: string = "← ↑ → ↓ • ◦ ▸ ▾ ✓ ✗ ★ ☆ ⌘ ⌥ ⇧ ⏎ ⌫ … · ¶ § † ‡ ©";
 const SIZES: float32[] = [12.0, 13.0, 14.0];
 const DPIS: float32[] = [1.0, 1.5];
@@ -68,9 +76,12 @@ function workload(sizes: float32[], dpis: float32[]): void {
 function report(name: string): void {
 	const planes: int32 = glyphAtlas.pageCount();
 	const rgbaPages: int32 = Math.ceil((planes as float32) / 4.0) as int32;
-	console.log(`PAGES ${name} glyphs ${pageOrder.length} tiles ${glyphAtlas.tileSlots()} rasterizations ${glyphRasterizations()}`);
-	console.log(`PAGES ${name} r8 pages ${planes} bytes ${planes * R8_PAGE_BYTES} switches ${switches(1)} upload-per-new-glyph ${R8_PAGE_BYTES}`);
-	console.log(`PAGES ${name} fourPlane pages ${rgbaPages} bytes ${rgbaPages * RGBA_PAGE_BYTES} switches ${switches(4)} upload-per-new-glyph ${RGBA_PAGE_BYTES}`);
+	console.log(`PAGES ${name} glyphs ${pageOrder.length} tiles ${glyphAtlas.tileSlots()} ` +
+		`rasterizations ${glyphRasterizations()}`);
+	console.log(`PAGES ${name} r8 pages ${planes} bytes ${planes * R8_PAGE_BYTES} switches ` +
+		`${switches(1)} upload-per-new-glyph ${R8_PAGE_BYTES}`);
+	console.log(`PAGES ${name} fourPlane pages ${rgbaPages} bytes ${rgbaPages * RGBA_PAGE_BYTES} ` +
+		`switches ${switches(4)} upload-per-new-glyph ${RGBA_PAGE_BYTES}`);
 }
 
 function run(): void {

@@ -27,7 +27,8 @@ function cellAt(n: NodeRef, k: int32): TileCell {
 }
 
 function three(): TileCell[] {
-	return [cell(0.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)), cell(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)),
+	return [cell(0.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)),
+		cell(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)),
 		cell(16.0, 0.0, tile(fakeTexture(12), 8.0, 8.0))];
 }
 
@@ -51,7 +52,9 @@ test "setTiles replaces the tiles and marks the group; the same tiles again mark
 	settled(g);
 	g.setTiles(three());
 	assert !marked(g, Changed.Content);
-	const two: TileCell[] = [cell(1.0, 2.0, tile(fakeTexture(13), 4.0, 4.0)), cell(3.0, 4.0, tile(fakeTexture(13), 4.0, 4.0))];
+	const two: TileCell[] =
+		[cell(1.0, 2.0, tile(fakeTexture(13), 4.0, 4.0)),
+			cell(3.0, 4.0, tile(fakeTexture(13), 4.0, 4.0))];
 	g.setTiles(two);
 	assert g.count() == 2;
 	assert cellAt(g, 0).tile.source.view() == 13 && approx(cellAt(g, 1).y, 4.0);
@@ -79,7 +82,8 @@ test "setTile rewrites one tile; the same tile again marks nothing" {
 	const g = s.add(s.tileGroup());
 	g.setTiles(three());
 	settled(g);
-	const red: TileCell = { ...cell(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) };
+	const red: TileCell =
+		{ ...cell(8.0, 0.0, tile(fakeTexture(11), 8.0, 8.0)), color: rgba(1.0, 0.0, 0.0, 1.0) };
 	g.setTile(1, red);
 	assert approx(cellAt(g, 1).color.g, 0.0);
 	assert approx(cellAt(g, 0).color.g, 1.0) && approx(cellAt(g, 2).color.g, 1.0);

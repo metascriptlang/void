@@ -78,7 +78,8 @@ function decodeAgain(texture: Texture): void {
 function init(): void {
 	gfxSetup();
 	setup2d();
-	const kept: Texture = made(Texture.fromPixels(checker(RED, YELLOW), CHECKER, CHECKER, true), "kept");
+	const kept: Texture =
+		made(Texture.fromPixels(checker(RED, YELLOW), CHECKER, CHECKER, true), "kept");
 	const hooked: Texture = Texture.create(CHECKER, CHECKER, decodeAgain);
 	const first: Result<int32, TextureError> = hooked.upload(checker(YELLOW, RED));
 	if (!first.ok) { fail(`the hooked texture was refused, ${first.error.toString()}`); }

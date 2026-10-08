@@ -219,9 +219,12 @@ function primPolygonBezier(): Scene2D {
 function primGradientLinear(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const g = s.graphics().at(12.0, 12.0);
-	g.fillGradientRect(0.0, 0.0, 100.0, 60.0, rgba(0.20, 0.45, 0.95, 1.0), rgba(0.95, 0.30, 0.55, 1.0), 0.0);
-	g.fillGradientRect(116.0, 0.0, 100.0, 60.0, rgba(0.15, 0.75, 0.55, 1.0), rgba(0.98, 0.85, 0.25, 1.0), 1.5708);
-	g.fillGradientRect(0.0, 72.0, 216.0, 60.0, rgba(0.02, 0.02, 0.03, 1.0), rgba(0.14, 0.14, 0.16, 1.0), 0.0);
+	g.fillGradientRect(0.0, 0.0, 100.0, 60.0, rgba(0.20, 0.45, 0.95, 1.0), rgba(0.95, 0.30, 0.55, 1.0),
+		0.0);
+	g.fillGradientRect(116.0, 0.0, 100.0, 60.0, rgba(0.15, 0.75, 0.55, 1.0),
+		rgba(0.98, 0.85, 0.25, 1.0), 1.5708);
+	g.fillGradientRect(0.0, 72.0, 216.0, 60.0, rgba(0.02, 0.02, 0.03, 1.0),
+		rgba(0.14, 0.14, 0.16, 1.0), 0.0);
 	s.add(g);
 	return s;
 }
@@ -1498,7 +1501,8 @@ function imagePremultipliedEffect(): Scene2D {
 		s.add(tinted);
 		const keyed = s.sprite(alphaRampTile(true, k == 1))
 			.at(x, PREMULTIPLIED_Y + PREMULTIPLIED_ROW_STEP);
-		keyed.setColorKey(rgba((40.0 / 255.0) as float32, (200.0 / 255.0) as float32, (90.0 / 255.0) as float32, 1.0));
+		keyed.setColorKey(rgba((40.0 / 255.0) as float32, (200.0 / 255.0) as float32,
+			(90.0 / 255.0) as float32, 1.0));
 		s.add(keyed);
 	}
 	return s;
@@ -1530,7 +1534,8 @@ function laneList(s: Scene2D, x: float32, promise: boolean): NodeRef {
 	for (let k: int32 = 0; k < 7; k++) {
 		const shade: Color = k % 2 == 0 ? rgba(0.22, 0.26, 0.34, 1.0) : rgba(0.16, 0.19, 0.25, 1.0);
 		const row = s.rect(LANES_W, 18.0, shade).at(0.0, (k as float32) * 20.0);
-		row.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0), rgba(0.4, 0.5, 0.7, 1.0)));
+		row.setBoxStyle(BoxStyle.create(uniformRadii(4.0), uniformBorders(1.0),
+			rgba(0.4, 0.5, 0.7, 1.0)));
 		row.addChild(s.sprite(icon).at(3.0, 2.0));
 		row.addChild(s.label(`row ${k}`, 11.0, rgba(0.86, 0.90, 0.98, 1.0)).at(22.0, 2.0));
 		list.addChild(row);

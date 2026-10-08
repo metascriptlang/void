@@ -74,7 +74,8 @@ function leaksNothing(drop: Drop): boolean {
 		for (let i: int32 = 0; i < WINDOW; i++) { cycle(drop); }
 		quietest = Math.min(quietest, heapBlocksInUse() - before);
 	}
-	console.log(`yogaLeak: ${drop.toString()} grew the heap by ${quietest} blocks in its quietest window of ${WINDOW} cycles`);
+	console.log(`yogaLeak: ${drop.toString()} grew the heap by ${quietest} blocks in its quietest ` +
+		`window of ${WINDOW} cycles`);
 	return quietest < (WINDOW as int64);
 }
 

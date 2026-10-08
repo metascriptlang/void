@@ -1,4 +1,13 @@
-import { Vec2, Transform2D, vec2, trs2d, identity2d, inverse2d, camera, viewMatrix } from "../void2d/types";
+import {
+	Vec2,
+	Transform2D,
+	vec2,
+	trs2d,
+	identity2d,
+	inverse2d,
+	camera,
+	viewMatrix,
+} from "../void2d/types";
 import { approx } from "./helpers";
 
 const HALF_PI: float32 = 1.5707963;

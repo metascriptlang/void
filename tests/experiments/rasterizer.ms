@@ -57,10 +57,13 @@ let stage: int32 = 0;
 function init(): void {
 	gfxSetup();
 	setup2d();
-	const s = Scene2D.create(rgba((BACKGROUND as float32) / 255.0, (BACKGROUND as float32) / 255.0, (BACKGROUND as float32) / 255.0, 1.0));
+	const s =
+		Scene2D.create(rgba((BACKGROUND as float32) / 255.0, (BACKGROUND as float32) / 255.0,
+			(BACKGROUND as float32) / 255.0, 1.0));
 	const ink = (FOREGROUND as float32) / 255.0;
 	for (let i: int32 = 0; i < (LINES.length as int32); i++) {
-		s.add(s.label(LINES[i], SIZES[sample], rgba(ink, ink, ink, 1.0)).at(8.0, 6.0 + (i as float32) * SIZES[sample] * 1.4));
+		s.add(s.label(LINES[i], SIZES[sample], rgba(ink, ink, ink, 1.0)).at(8.0,
+			6.0 + (i as float32) * SIZES[sample] * 1.4));
 	}
 	current = s;
 }
@@ -89,7 +92,8 @@ function measure(): void {
 	}
 	const name: string = `${ARM_NAMES[arm]}-${SIZES[sample]}px-${DPIS[sample]}x`;
 	console.log(
-		`RASTER ${name} ink ${ink} solidShare ${solid / ink} greyShare ${(grey as float64) / (touched as float64)}`
+		`RASTER ${name} ink ${ink} solidShare ${solid / ink} greyShare ` +
+			`${(grey as float64) / (touched as float64)}`
 		+ ` touched ${touched}`,
 	);
 	const path: string = `out/experiments/rasterizer/${name}.png`;

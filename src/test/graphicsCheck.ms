@@ -52,7 +52,8 @@ test "fillRect emits two triangles covering the rect" {
 }
 
 test "fillConvex fans n-2 triangles" {
-	const pts: Vec2[] = [vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(12.0, 8.0), vec2(5.0, 12.0), vec2(-2.0, 8.0)];
+	const pts: Vec2[] =
+		[vec2(0.0, 0.0), vec2(10.0, 0.0), vec2(12.0, 8.0), vec2(5.0, 12.0), vec2(-2.0, 8.0)];
 	const g = body().fillConvex(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 72;
 }
@@ -65,7 +66,9 @@ test "fillPolygon square matches shoelace area" {
 }
 
 test "fillPolygon concave arrow ear-clips without overlap" {
-	const pts: Vec2[] = [vec2(0.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(95.0, 52.0), vec2(48.0, 98.0), vec2(48.0, 72.0), vec2(0.0, 72.0)];
+	const pts: Vec2[] =
+		[vec2(0.0, 32.0), vec2(48.0, 32.0), vec2(48.0, 6.0), vec2(95.0, 52.0), vec2(48.0, 98.0),
+			vec2(48.0, 72.0), vec2(0.0, 72.0)];
 	const g = body().fillPolygon(pts, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === 120;
 	assert approxRel(meshTriArea(geometry(g).mesh), 4082.0, 0.5);

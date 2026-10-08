@@ -71,7 +71,9 @@ test "a clean bench stream parses every row and ignores nothing" {
 test "noise on the stream is ignored and counted, not parsed" {
 	// The shape sokol's own logging takes. It was survived by accident before: a line with
 	// more than two tokens fell through the same `continue` as a line that was read fine.
-	const p = parseRows("[sg][error][id:22] something went wrong\nui.draws 20000\nvoid2d: released 2 retired glyph atlas(es)");
+	const p =
+		parseRows("[sg][error][id:22] something went wrong\nui.draws 20000\nvoid2d: released 2 retired " +
+			"glyph atlas(es)");
 	assert (p.rows.length as int32) == 1;
 	assert p.rows[0].value == 20000.0;
 	assert p.ignored == 2;

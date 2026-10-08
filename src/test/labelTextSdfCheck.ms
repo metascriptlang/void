@@ -170,7 +170,7 @@ test "the DPI scale does not move an SDF placement" {
 	releaseLabelText(two);
 }
 
-test "a cubic outline falls back to the coverage atlas for that glyph and keeps the rest on the field" {
+test "a cubic outline falls back to coverage for that glyph and keeps the rest on the field" {
 	setSdfRegime(true);
 	defer setSdfRegime(false);
 	const font = try addFont("tests/fonts/cffSynthetic.otf") catch DEFAULT_FONT;

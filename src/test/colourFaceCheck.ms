@@ -389,7 +389,7 @@ test "a colour font whose last Unicode cmap record is the variation-selector one
 	assert colourTileBox(face, id, 16.0).glyph == ColourGlyph.Present;
 }
 
-test "CBLC index formats 1 to 3 and CBDT image formats 17 to 19 are each read from a face that uses them" {
+test "CBLC index formats 1-3 and CBDT image formats 17-19 are each read from a face using them" {
 	const face = try loadFace("tests/fonts/cbdtFormats.ttf") catch -1;
 	assert face >= 0;
 	const heart: int32 = glyphIndex(face, 0x2764);
@@ -408,7 +408,7 @@ test "CBLC index formats 1 to 3 and CBDT image formats 17 to 19 are each read fr
 	assert index1.right - index1.left == 32 && index1.bottom - index1.top == 26;
 }
 
-test "a size over the limit or a box over the texel limit is refused by name, bitmap and layer alike" {
+test "a size or a box over its limit is refused by name, bitmap and layer alike" {
 	const noto = try loadFace("tests/fonts/NotoColorEmoji-subset.ttf") catch -1;
 	assert noto >= 0;
 	const smile: int32 = glyphIndex(noto, 0x1F600);

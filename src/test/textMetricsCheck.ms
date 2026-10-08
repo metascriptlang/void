@@ -1,6 +1,13 @@
 import { Scene2D } from "../void2d/node";
 import "../void2d/scene";
-import { textLayout, textWidth, textHeight, calcTextWidth, splitText, getBounds } from "../void2d/render";
+import {
+	textLayout,
+	textWidth,
+	textHeight,
+	calcTextWidth,
+	splitText,
+	getBounds,
+} from "../void2d/render";
 import { Align, TextLayout } from "../void2d/textLayout";
 import { Bounds2D, rgba, emptyBounds, identity2d } from "../void2d/types";
 import {

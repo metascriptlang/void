@@ -95,7 +95,8 @@ function readPendingBudgets(): PendingBudget[] {
 		const id = trimSpaces(cells[1]);
 		if (!id.startsWith("golden:")) { continue; }
 		if ((cells.length as int32) < 8) {
-			console.log(`FAIL ${PENDING_PATH} row ${id} has ${cells.length as int32} cells, not the 8 a budget row needs`);
+			console.log(`FAIL ${PENDING_PATH} row ${id} has ${cells.length as int32} cells, not the 8 a ` +
+				`budget row needs`);
 			malformed = malformed + 1;
 			continue;
 		}
@@ -103,7 +104,8 @@ function readPendingBudgets(): PendingBudget[] {
 		const maxPixels: int32 = parseInt32(cells[6]);
 		const maxDelta: int32 = parseInt32(cells[7]);
 		if (maxPixels == NOT_A_NUMBER || maxDelta == NOT_A_NUMBER) {
-			console.log(`FAIL ${PENDING_PATH} row golden:${name} has an unreadable budget: maxPixels '${trimSpaces(cells[6])}', maxDelta '${trimSpaces(cells[7])}'`);
+			console.log(`FAIL ${PENDING_PATH} row golden:${name} has an unreadable budget: maxPixels ` +
+				`'${trimSpaces(cells[6])}', maxDelta '${trimSpaces(cells[7])}'`);
 			malformed = malformed + 1;
 			continue;
 		}
@@ -135,13 +137,16 @@ function checkHandComputed(row: SceneRow): boolean {
 				&& voidPngPixel(1, x, y, 1) == wantG
 				&& voidPngPixel(1, x, y, 2) == wantB) { continue; }
 			if (bad < 4) {
-				console.log(`    (${x},${y}) is ${voidPngPixel(1, x, y, 0)},${voidPngPixel(1, x, y, 1)},${voidPngPixel(1, x, y, 2)}, computed ${wantR},${wantG},${wantB}`);
+				console.log(`    (${x},${y}) is ` +
+					`${voidPngPixel(1, x, y, 0)},${voidPngPixel(1, x, y, 1)},` +
+					`${voidPngPixel(1, x, y, 2)}, computed ${wantR},${wantG},${wantB}`);
 			}
 			bad = bad + 1;
 		}
 	}
 	if (bad == 0) { return true; }
-	console.log(`  hand-computed check: ${bad} of ${row.width * row.height} pixels are not what the arithmetic says`);
+	console.log(`  hand-computed check: ${bad} of ${row.width * row.height} pixels are not what the ` +
+		`arithmetic says`);
 	return false;
 }
 
@@ -150,10 +155,16 @@ function reportDiff(name: string, differ: int32): void {
 		console.log(`  ${name}: 0 px differ, max delta 0`);
 		return;
 	}
-	console.log(`  ${name}: ${differ} px differ, max delta ${voidPngDiffMaxDelta()}, bbox (${voidPngDiffMinX()},${voidPngDiffMinY()})-(${voidPngDiffMaxX()},${voidPngDiffMaxY()})`);
+	console.log(`  ${name}: ${differ} px differ, max delta ${voidPngDiffMaxDelta()}, bbox ` +
+		`(${voidPngDiffMinX()},${voidPngDiffMinY()})-(${voidPngDiffMaxX()},${voidPngDiffMaxY()})`);
 }
 
-function judge(row: SceneRow, budgets: PendingBudget[], backend: string, captured: string): Verdict {
+function judge(
+	row: SceneRow,
+	budgets: PendingBudget[],
+	backend: string,
+	captured: string,
+): Verdict {
 	const goldenPath: string = `${GOLDEN_ROOT}/${backend}/${row.name}.png`;
 	const actualPath: string = `${ACTUAL_ROOT}/${captured}/${row.name}.png`;
 	const cross: boolean = !captured.equals(backend);
@@ -167,18 +178,21 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string, capture
 		return Verdict.Fail;
 	}
 	if (voidPngWidth(1) != row.width || voidPngHeight(1) != row.height) {
-		console.log(`FAIL ${row.name} capture is ${voidPngWidth(1)}x${voidPngHeight(1)}, the table says ${row.width}x${row.height}`);
+		console.log(`FAIL ${row.name} capture is ${voidPngWidth(1)}x${voidPngHeight(1)}, the table ` +
+			`says ${row.width}x${row.height}`);
 		return Verdict.Fail;
 	}
 
 	if (row.name.equals(HAND_COMPUTED_SCENE) && !checkHandComputed(row)) {
-		console.log(`FAIL ${row.name} does not match its hand-computed pixels — suspect the capture path, not the renderer`);
+		console.log(`FAIL ${row.name} does not match its hand-computed pixels — suspect the capture ` +
+			`path, not the renderer`);
 		return Verdict.Fail;
 	}
 
 	const differ: int32 = voidPngDiff();
 	if (differ < 0) {
-		console.log(`FAIL ${row.name} golden is ${voidPngWidth(0)}x${voidPngHeight(0)} and the capture is ${voidPngWidth(1)}x${voidPngHeight(1)}`);
+		console.log(`FAIL ${row.name} golden is ${voidPngWidth(0)}x${voidPngHeight(0)} and the capture ` +
+			`is ${voidPngWidth(1)}x${voidPngHeight(1)}`);
 		return Verdict.Fail;
 	}
 
@@ -186,10 +200,12 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string, capture
 	if (row.name.equals(MUST_FAIL_SCENE)) {
 		if (differ > 0) {
 			reportDiff(row.name, differ);
-			console.log(`PASS ${row.name} (the deliberately wrong golden was reported, so the comparator can fail)`);
+			console.log(`PASS ${row.name} (the deliberately wrong golden was reported, so the comparator ` +
+				`can fail)`);
 			return Verdict.Pass;
 		}
-		console.log(`FAIL ${row.name} matched its golden — that golden is supposed to be wrong, so the comparator cannot fail`);
+		console.log(`FAIL ${row.name} matched its golden — that golden is supposed to be wrong, so the ` +
+			`comparator cannot fail`);
 		return Verdict.Fail;
 	}
 
@@ -199,7 +215,8 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string, capture
 			&& (voidPngDiffOverOne() as float64) <= pixels * CROSS_MAX_SHARE;
 		if (within) {
 			reportDiff(row.name, differ);
-			console.log(`PASS ${row.name} within the cross-backend bound (${voidPngDiffOverOne()} px over delta 1)`);
+			console.log(`PASS ${row.name} within the cross-backend bound (${voidPngDiffOverOne()} px over ` +
+				`delta 1)`);
 			return Verdict.PassPending;
 		}
 	}
@@ -207,16 +224,19 @@ function judge(row: SceneRow, budgets: PendingBudget[], backend: string, capture
 	const budget = budgetFor(budgets, cross ? `${row.name}@${captured}` : row.name);
 	if (budget !== null) {
 		if (differ == 0) {
-			console.log(`FAIL ${row.name} is byte-identical and still listed in ${PENDING_PATH} — delete the entry`);
+			console.log(`FAIL ${row.name} is byte-identical and still listed in ${PENDING_PATH} — delete ` +
+				`the entry`);
 			return Verdict.Fail;
 		}
 		reportDiff(row.name, differ);
 		if (differ <= budget.maxPixels && voidPngDiffMaxDelta() <= budget.maxDelta) {
-			console.log(`PENDING ${row.name} within its budget (${budget.maxPixels} px, delta ${budget.maxDelta})`);
+			console.log(`PENDING ${row.name} within its budget (${budget.maxPixels} px, delta ` +
+				`${budget.maxDelta})`);
 			return Verdict.PassPending;
 		}
 		voidPngWriteDiffMask(`${ACTUAL_ROOT}/${captured}/${row.name}.diff.png`);
-		console.log(`FAIL ${row.name} is over its budget (${budget.maxPixels} px, delta ${budget.maxDelta})`);
+		console.log(`FAIL ${row.name} is over its budget (${budget.maxPixels} px, delta ` +
+			`${budget.maxDelta})`);
 		return Verdict.Fail;
 	}
 

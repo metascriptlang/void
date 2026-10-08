@@ -213,10 +213,12 @@ test "h2d's scale modes map the scene onto the window as checkResize does" {
 		}
 		if (!same && !listed) {
 			unlisted = unlisted + 1;
-			console.log(`h2d oracle: scale mode ${name} differs and has no ${PENDING_PATH} entry h2d:scale-${name}`);
+			console.log(`h2d oracle: scale mode ${name} differs and has no ${PENDING_PATH} entry ` +
+				`h2d:scale-${name}`);
 		}
 	}
-	console.log(`h2d oracle: ${agreeing}/${names.length} scale modes agree, ${compared} values compared`);
+	console.log(`h2d oracle: ${agreeing}/${names.length} scale modes agree, ${compared} values ` +
+		`compared`);
 	assert unlisted == 0;
 	assert graduated == 0;
 }

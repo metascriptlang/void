@@ -143,7 +143,8 @@ function runShadow(): int32 {
 		for (let x: int32 = 0; x < w; x++) {
 			const lx: float32 = ((x as float32) + 0.5) - SHADOW_CX;
 			const ly: float32 = ((y as float32) + 0.5) - SHADOW_CY;
-			if (lx > -SHADOW_HX - 2.0 && lx < SHADOW_HX + 2.0 && ly > -SHADOW_HY - 2.0 && ly < SHADOW_HY + 2.0) {
+			if (lx > -SHADOW_HX - 2.0 && lx < SHADOW_HX + 2.0 && ly > -SHADOW_HY - 2.0 &&
+					ly < SHADOW_HY + 2.0) {
 				continue;
 			}
 			const truth: float32 = blurredPixelCoverage(lx, ly, SHADOW_HX, SHADOW_HY, SHADOW_R,
@@ -172,7 +173,8 @@ function runShadow(): int32 {
 			+ ` - the shader's erf integral disagrees with the kernel integral`);
 		return 1;
 	}
-	console.log(`PASS coverage oracle: the capture's shadow is the kernel integral within ${SHADOW_BOUND}`);
+	console.log(`PASS coverage oracle: the capture's shadow is the kernel integral within ` +
+		`${SHADOW_BOUND}`);
 	return 0;
 }
 

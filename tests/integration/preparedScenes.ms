@@ -70,7 +70,8 @@ function frame(): void {
 	if (stage == 0 && !a.isDirty()) { fail("drawScreen cleared a post-prepare write"); }
 	stage = stage + 1;
 	if (stage < 2) { return; }
-	console.log("PASS prepared scenes: filtered snapshots, two DPIs, post-prepare writes and one screen owner");
+	console.log("PASS prepared scenes: filtered snapshots, two DPIs, post-prepare writes and one " +
+		"screen owner");
 	voidCaptureExit(0);
 }
 if (voidCaptureBackend() == 0) { voidCaptureExit(3); }

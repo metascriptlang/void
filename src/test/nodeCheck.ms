@@ -163,7 +163,8 @@ test "pivot shifts the node transform and its children around one local point" {
 }
 
 test "a centered Tile scales its visual offset with Sprite size" {
-	const n = fresh().sprite(tile(fakeTexture(1), 32.0, 16.0).center()).at(100.0, 50.0).setSize(64.0, 32.0);
+	const n =
+		fresh().sprite(tile(fakeTexture(1), 32.0, 16.0).center()).at(100.0, 50.0).setSize(64.0, 32.0);
 	n.sync(identity2d(), false);
 	let b = emptyBounds();
 	n.getBounds(b);
