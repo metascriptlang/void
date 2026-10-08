@@ -107,7 +107,7 @@ export function uvOfSubRect(
 	};
 }
 
-function labelKey(): ProgramKey {
+export function labelKey(): ProgramKey {
 	return ProgramKey.of(Program.UnlitTextured).withPremultiplied().withUvTransform();
 }
 

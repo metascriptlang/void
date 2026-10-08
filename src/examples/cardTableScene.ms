@@ -125,6 +125,7 @@ import {
 	labelQuad,
 	faceCamera,
 	refreshLabel,
+	labelKey,
 } from "../void3d/worldLabel";
 
 export enum CardTableError {
@@ -237,7 +238,7 @@ function poolKeys(): Vec<ProgramKey> {
 	let keys: Vec<ProgramKey> = [
 		ProgramKey.of(Program.LitTextured).withNormalMap().withShadowed(),
 		ProgramKey.of(Program.UnlitTextured).withDissolve().withPremultiplied(),
-		ProgramKey.of(Program.UnlitTextured), card, lit, lit,
+		ProgramKey.of(Program.UnlitTextured), labelKey(), lit, lit,
 		ProgramKey.of(Program.LitTextured).withEmissive().withShadowed(),
 		ProgramKey.of(Program.LitTextured).withEmissive().withShadowed(),
 	];
