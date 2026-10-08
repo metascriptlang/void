@@ -29,7 +29,13 @@ import {
 
 when (voidBidi) {
 	import { BidiClass, bidiClassOf } from "./bidi";
-	import { clusterEdges, mirroredValue, resolveText, visualPositions } from "./bidiLayout";
+	import {
+		clusterEdges,
+		mirroredValue,
+		resolveText,
+		selectedSpans,
+		visualPositions,
+	} from "./bidiLayout";
 } else {
 	function bidiOff(call: string): void {
 		console.log(`void2d: ${call} needs the BiDi module; build with -d:voidBidi`);
@@ -67,6 +73,21 @@ when (voidBidi) {
 		ref edges: Vec<float32>,
 	): void {
 		bidiOff("clusterEdges");
+	}
+
+	function selectedSpans(
+		starts: Readonly<Span<boolean>>,
+		indices: Readonly<Span<int32>>,
+		xs: Readonly<Span<float32>>,
+		advances: Readonly<Span<float32>>,
+		from: int32,
+		to: int32,
+		gap: float32,
+		extraLow: float32,
+		extraHigh: float32,
+		ref out: Vec<float32>,
+	): void {
+		bidiOff("selectedSpans");
 	}
 }
 
@@ -1406,6 +1427,96 @@ export function xForIndex(this l: TextLayout, index: int32): float32 {
 
 function distance(a: float32, b: float32): float32 {
 	return a < b ? b - a : a - b;
+}
+
+// The spans of line `li` that a selection of [start, end) covers, as (x0, x1) pairs from the left;
+// `tail` is the width of a selected line break, drawn on the paragraph-end side. A line whose
+// glyphs are all in order has one span at most.
+export function selectedExtents(
+	this l: TextLayout, li: int32, start: int32, end: int32, gap: float32, tail: float32,
+): Vec<float32> {
+	let out: Vec<float32> = new Array(0);
+	const first: int32 = l.lines[li].firstGlyph;
+	const stop: int32 = first + l.lines[li].glyphCount;
+	let flags: Vec<boolean> = new Array(0);
+	let indices: Vec<int32> = new Array(0);
+	let xs: Vec<float32> = new Array(0);
+	let advances: Vec<float32> = new Array(0);
+	let left: float32 = l.lines[li].x;
+	let right: float32 = l.lines[li].x;
+	for (let k = first; k < stop; k++) {
+		flags.push(l.glyphs[k].clusterStart);
+		indices.push(l.glyphs[k].index);
+		xs.push(l.glyphs[k].x);
+		advances.push(l.glyphs[k].advance);
+		if (k == first || l.glyphs[k].x < left) { left = l.glyphs[k].x; }
+		if (k == first || l.glyphs[k].x + l.glyphs[k].advance > right) {
+			right = l.glyphs[k].x + l.glyphs[k].advance;
+		}
+	}
+	const rightToLeft: boolean = (l.bidi.lineLevels[li] & 1) == 1;
+	const tailLow: float32 = rightToLeft ? left - tail : right;
+	const tailHigh: float32 = rightToLeft ? left : right + tail;
+	const extraHigh: float32 = tail > 0.0 ? tailHigh : 0.0;
+	selectedSpans(flags, indices, xs, advances, start, end, gap, tailLow, extraHigh, out);
+	return out;
+}
+
+export function lineIsBidi(this l: TextLayout, li: int32): boolean {
+	return l.isBidiLine(li);
+}
+
+// The glyph positions of one line, left to right, grouped by run: what a decoration walks.
+export struct RunSegment {
+	run: int32;
+	x0: float32;
+	right: float32;
+}
+
+export function runSegments(this l: TextLayout, li: int32): Vec<RunSegment> {
+	let out: Vec<RunSegment> = new Array(0);
+	const first: int32 = l.lines[li].firstGlyph;
+	const end: int32 = first + l.lines[li].glyphCount;
+	if (!l.isBidiLine(li)) {
+		let k: int32 = first;
+		while (k < end) {
+			const run: int32 = l.glyphs[k].run;
+			let last: int32 = k;
+			while (last + 1 < end && l.glyphs[last + 1].run == run) { last = last + 1; }
+			out.push({
+				run: run, x0: l.glyphs[k].x, right: l.glyphs[last].x + l.glyphs[last].advance,
+			});
+			k = last + 1;
+		}
+		return out;
+	}
+	let order: Vec<int32> = new Array(0);
+	for (let k = first; k < end; k++) { order.push(k); }
+	for (let a = 1; a < (order.length as int32); a++) {
+		const held: int32 = order[a];
+		let b: int32 = a - 1;
+		while (b >= 0 && l.glyphs[order[b]].x > l.glyphs[held].x) {
+			order[b + 1] = order[b];
+			b = b - 1;
+		}
+		order[b + 1] = held;
+	}
+	let p: int32 = 0;
+	while (p < (order.length as int32)) {
+		const run: int32 = l.glyphs[order[p]].run;
+		let x0: float32 = l.glyphs[order[p]].x;
+		let right: float32 = x0 + l.glyphs[order[p]].advance;
+		let q: int32 = p + 1;
+		while (q < (order.length as int32) && l.glyphs[order[q]].run == run) {
+			const g: LaidGlyph = l.glyphs[order[q]];
+			if (g.x < x0) { x0 = g.x; }
+			if (g.x + g.advance > right) { right = g.x + g.advance; }
+			q = q + 1;
+		}
+		out.push({ run: run, x0: x0, right: right });
+		p = q;
+	}
+	return out;
 }
 
 struct LineEdges {

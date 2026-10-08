@@ -683,9 +683,9 @@ FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScr
 	draw:drawUiInstance draw:drawSpriteAffine draw:useRun draw:openRun draw:closeRun
 	draw:finishRecording draw:applyClip draw:pushClip draw:popClip draw:setEffect
 	draw:drawMeshRange snap:snapBoxEdges render:showsEditing render:faded render:segmentBox
-	render:emitRunBox render:emitRunLine render:emitDecorations render:rowEnd render:xOnRow
-	render:selectedRow render:emitSelection render:emitCaret label84ext:cursorShown
-	text76ayout:xForIndex text76ayout:lineBoxAt text76ayout:lineOfIndex text76ayout:clusterEnd
+	render:emitRunBox render:emitRunLine render:emitDecorations render:neighbourSpan
+	render:emitSelection render:emitCaret label84ext:cursorShown
+	text76ayout:lineBoxAt text76ayout:lineOfIndex
 	render:emitTiles render:cellMatrix render:tileBounds render:drawnEnd render:tileTint
 	render:retilable render:queueRetile render:retileRow node:settleTiles draw:beginSprites
 	draw:appendSprite draw:rewriteSprite display76ist:putSpriteInstance render:lanesFor
@@ -695,7 +695,8 @@ FRAME_PATH="scene:tick scene:present scene:presentAt scene:prepare scene:drawScr
 	display76ist:laneSourceHolding"
 REBUILD_PATH="render:shapeIfChanged render:drawFiltered label84ext:placeLabel
 	label84ext:shapeLabel label84ext:releasePlacement label84ext:runDecorations
-	label84ext:lineDecorations
+	label84ext:lineDecorations label84ext:refreshSelection label84ext:rowSpans label84ext:rowEnd
+	label84ext:xOnRow
 	text76ayout:layout text76ayout:shapeText text76ayout:wrapText text76ayout:pushLine
 	text76ayout:pushTruncated text76ayout:forceCells text76ayout:decodeUtf8
 	text76ayout:assignFaces text76ayout:assignGrapheme text76ayout:graphemeFace

@@ -21,6 +21,10 @@ import {
 	TextError,
 	TextErrorKind,
 	describe,
+	lineIsBidi,
+	runSegments,
+	selectedExtents,
+	xForIndex,
 	NO_GLYPH,
 	NO_RUN,
 	PLAIN_LINES,
@@ -131,6 +135,10 @@ export interface LabelText {
 	cursorBlinkTime: float32;
 	blinkClock: float32;
 	rowsXMax: float32;
+	selectionStale: boolean;
+	selectionSpans: Vec<float32>;
+	selectionRowFirst: Vec<int32>;
+	cursorX: float32;
 }
 
 export const NO_CURSOR: int32 = -1;
@@ -245,6 +253,10 @@ export function allocateLabelText(): int32 {
 		cursorBlinkTime: CURSOR_BLINK_TIME,
 		blinkClock: 0.0,
 		rowsXMax: 0.0,
+		selectionStale: true,
+		selectionSpans: new Array(0),
+		selectionRowFirst: new Array(0),
+		cursorX: 0.0,
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -296,6 +308,7 @@ export function shapeLabel(index: int32, text: string, style: TextStyle): void {
 		}
 	}
 	entry.style = style;
+	entry.selectionStale = true;
 	entry.layout = wrapText(entry.shaped, style, entry.options);
 	entry.decorations = entry.layout.runDecorations(entry.runs, style.size);
 }
@@ -326,7 +339,6 @@ function lineDecorations(
 	ref out: Vec<Decoration>,
 ): void {
 	const line: LineBox = layout.lines[li];
-	const end: int32 = line.firstGlyph + line.glyphCount;
 	let open: boolean = false;
 	let openKind: DecorationKind = slot;
 	let openX: float32 = 0.0;
@@ -334,14 +346,10 @@ function lineDecorations(
 	let openY: float32 = 0.0;
 	let openH: float32 = 0.0;
 	let openColor: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
-	let k: int32 = line.firstGlyph;
-	while (k < end) {
-		const run: int32 = layout.glyphs[k].run;
-		const x0: float32 = layout.glyphs[k].x;
-		let last: int32 = k;
-		while (last + 1 < end && layout.glyphs[last + 1].run == run) { last = last + 1; }
-		const right: float32 = layout.glyphs[last].x + layout.glyphs[last].advance;
-		k = last + 1;
+	for (const segment of layout.runSegments(li)) {
+		const run: int32 = segment.run;
+		const x0: float32 = segment.x0;
+		const right: float32 = segment.right;
 		let color: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
 		let kind: DecorationKind = slot;
 		let y: float32 = line.top;
@@ -430,12 +438,93 @@ export function setLabelSelection(index: int32, start: int32, length: int32, col
 	labelTexts[index].selectionStart = start;
 	labelTexts[index].selectionLength = length;
 	labelTexts[index].selectionColor = color;
+	labelTexts[index].selectionStale = true;
+}
+
+export const EMPTY_ROW_WIDTH: float32 = 4.0;
+const SPAN_GAP: float32 = 2.0;
+
+export function rowEnd(this layout: TextLayout, li: int32): float32 {
+	const line: LineBox = layout.lines[li];
+	if (line.glyphCount == 0) { return line.x; }
+	let right: float32 = line.x;
+	if (layout.lineIsBidi(li)) {
+		for (let k = line.firstGlyph; k < line.firstGlyph + line.glyphCount; k++) {
+			const edge: float32 = layout.glyphs[k].x + layout.glyphs[k].advance;
+			if (edge > right) { right = edge; }
+		}
+		return right;
+	}
+	for (let k = line.firstGlyph + line.glyphCount - 1; k >= line.firstGlyph; k--) {
+		const edge: float32 = layout.glyphs[k].x + layout.glyphs[k].advance;
+		if (edge > right) { right = edge; }
+		if (layout.glyphs[k].clusterStart) { break; }
+	}
+	return right;
+}
+
+function xOnRow(this layout: TextLayout, li: int32, index: int32): float32 {
+	const line: LineBox = layout.lines[li];
+	const end: int32 = line.firstGlyph + line.glyphCount;
+	for (let k = line.firstGlyph; k < end; k++) {
+		if (layout.glyphs[k].index >= index) { return layout.glyphs[k].x; }
+	}
+	return layout.rowEnd(li);
+}
+
+// The selected spans of one line as (x0, x1) pairs in local units, left to right. A selected line
+// break shows as a short tail on the paragraph-end side, as an editor draws it.
+function rowSpans(entry: LabelText, li: int32, ref out: Vec<float32>): void {
+	const count: int32 = entry.layout.lines.length as int32;
+	const start: int32 = entry.selectionStart;
+	const end: int32 = start + entry.selectionLength;
+	const line: LineBox = entry.layout.lines[li];
+	const owned: int32 = li + 1 < count ? entry.layout.lines[li + 1].indexStart : line.indexEnd;
+	if (end <= line.indexStart || start >= owned || entry.selectionLength <= 0) { return; }
+	const tails: boolean = end > line.indexEnd && owned > line.indexEnd;
+	if (entry.layout.lineIsBidi(li)) {
+		const gap: float32 = entry.style.letterSpacing + SPAN_GAP;
+		const tail: float32 = tails ? EMPTY_ROW_WIDTH : 0.0;
+		const spans = entry.layout.selectedExtents(li, start, end, gap, tail);
+		for (const edge of spans) { out.push(edge); }
+		return;
+	}
+	const lineEnd: float32 = entry.layout.rowEnd(li);
+	const x0: float32 = start <= line.indexStart ? line.x : entry.layout.xOnRow(li, start);
+	let x1: float32 = end >= line.indexEnd ? lineEnd : entry.layout.xOnRow(li, end);
+	if (tails) { x1 = x1 + EMPTY_ROW_WIDTH; }
+	if (x1 > x0) {
+		out.push(x0);
+		out.push(x1);
+	}
+}
+
+// The selection spans and the caret x of the current layout, taken again when either changed.
+export function refreshSelection(entry: LabelText): void {
+	if (!entry.selectionStale) { return; }
+	entry.selectionStale = false;
+	let spans: Vec<float32> = new Array(0);
+	let first: Vec<int32> = new Array(0);
+	const rows: int32 = entry.layout.lines.length as int32;
+	if (entry.selectionLength > 0) {
+		for (let li = 0; li < rows; li++) {
+			first.push(spans.length as int32);
+			rowSpans(entry, li, spans);
+		}
+	}
+	first.push(spans.length as int32);
+	entry.selectionSpans = spans;
+	entry.selectionRowFirst = first;
+	entry.cursorX = entry.cursorIndex == NO_CURSOR || rows == 0
+		? 0.0
+		: entry.layout.xForIndex(entry.cursorIndex);
 }
 
 export function setLabelCursor(index: int32, at: int32, color: Color): void {
 	labelTexts[index].cursorIndex = at;
 	labelTexts[index].cursorColor = color;
 	labelTexts[index].blinkClock = 0.0;
+	labelTexts[index].selectionStale = true;
 }
 
 export function setLabelBlinkTime(index: int32, seconds: float32): void {

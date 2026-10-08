@@ -111,6 +111,70 @@ export function clusterEdges(
 	}
 }
 
+// The pairs (low, high) of the clusters whose first index is in [from, to), merged where they
+// touch within `gap`. `extraLow < extraHigh` adds one more extent that is always selected.
+export function selectedSpans(
+	starts: Readonly<Span<boolean>>,
+	indices: Readonly<Span<int32>>,
+	xs: Readonly<Span<float32>>,
+	advances: Readonly<Span<float32>>,
+	from: int32,
+	to: int32,
+	gap: float32,
+	extraLow: float32,
+	extraHigh: float32,
+	ref out: Vec<float32>,
+): void {
+	const count: int32 = xs.length as int32;
+	let lows: Vec<float32> = new Array(0);
+	let highs: Vec<float32> = new Array(0);
+	let k: int32 = 0;
+	while (k < count) {
+		let stop: int32 = k + 1;
+		while (stop < count && !starts[stop]) { stop = stop + 1; }
+		if (indices[k] >= from && indices[k] < to) {
+			let low: float32 = xs[k];
+			let high: float32 = xs[k] + advances[k];
+			for (let j = k; j < stop; j++) {
+				if (xs[j] < low) { low = xs[j]; }
+				if (xs[j] + advances[j] > high) { high = xs[j] + advances[j]; }
+			}
+			lows.push(low);
+			highs.push(high);
+		}
+		k = stop;
+	}
+	if (extraHigh > extraLow) {
+		lows.push(extraLow);
+		highs.push(extraHigh);
+	}
+	const total: int32 = lows.length as int32;
+	for (let a = 1; a < total; a++) {
+		const low: float32 = lows[a];
+		const high: float32 = highs[a];
+		let b: int32 = a - 1;
+		while (b >= 0 && lows[b] > low) {
+			lows[b + 1] = lows[b];
+			highs[b + 1] = highs[b];
+			b = b - 1;
+		}
+		lows[b + 1] = low;
+		highs[b + 1] = high;
+	}
+	let a: int32 = 0;
+	while (a < total) {
+		let right: float32 = highs[a];
+		let b: int32 = a + 1;
+		while (b < total && lows[b] <= right + gap) {
+			if (highs[b] > right) { right = highs[b]; }
+			b = b + 1;
+		}
+		out.push(lows[a]);
+		out.push(right);
+		a = b;
+	}
+}
+
 export function mirroredValue(codepoint: int32): int32 {
 	const mirror: int32 = mirrorOf(codepoint);
 	return mirror == 0 ? codepoint : mirror;

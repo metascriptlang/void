@@ -100,6 +100,8 @@ import {
 	cursorShown,
 	labelLines,
 	labelRefusal,
+	refreshSelection,
+	rowEnd,
 } from "./labelText";
 import {
 	TextLayout,
@@ -361,7 +363,10 @@ function drawScaleGrid(
 function shapeIfChanged(s: Scene2D, i: int32): void {
 	const payload: int32 = s.payloads[i];
 	const shaped: LabelText = labelTexts[payload];
-	if (!shaped.stale) { return; }
+	if (!shaped.stale) {
+		refreshSelection(shaped);
+		return;
+	}
 	shapeLabel(payload, shaped.text, shaped.style);
 	let xMin: float32 = 0.0;
 	let xMax: float32 = 0.0;
@@ -383,13 +388,14 @@ function shapeIfChanged(s: Scene2D, i: int32): void {
 		if (baseline + bottom > yMax) { yMax = baseline + bottom; }
 	}
 	let rowsXMax: float32 = xMax;
-	for (const line of shaped.layout.lines) {
-		const end: float32 = shaped.layout.rowEnd(line);
+	for (let li = 0; li < (shaped.layout.lines.length as int32); li++) {
+		const end: float32 = shaped.layout.rowEnd(li);
 		if (end > rowsXMax) { rowsXMax = end; }
 	}
 	s.bounds[i] = { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
 	shaped.rowsXMax = rowsXMax;
 	shaped.stale = false;
+	refreshSelection(shaped);
 }
 
 function meshBounds(s: Scene2D, i: int32): void {
@@ -534,44 +540,24 @@ function emitDecorations(
 	}
 }
 
-const EMPTY_ROW_WIDTH: float32 = 4.0;
-
-function rowEnd(this layout: TextLayout, line: LineBox): float32 {
-	if (line.glyphCount == 0) { return line.x; }
-	let right: float32 = line.x;
-	for (let k = line.firstGlyph + line.glyphCount - 1; k >= line.firstGlyph; k--) {
-		const edge: float32 = layout.glyphs[k].x + layout.glyphs[k].advance;
-		if (edge > right) { right = edge; }
-		if (layout.glyphs[k].clusterStart) { break; }
+// The span of a neighbouring row that overlaps [x0, x1] the most, else the nearest one, or
+// [0, -1] when the row has none.
+function neighbourSpan(
+	this text: LabelText, row: int32, x0: float32, x1: float32,
+): [float32, float32] {
+	if (row < 0 || row >= (text.layout.lines.length as int32)) { return [0.0, -1.0]; }
+	let best: [float32, float32] = [0.0, -1.0];
+	let reach: float32 = -1e30;
+	for (let s = text.selectionRowFirst[row]; s < text.selectionRowFirst[row + 1]; s += 2) {
+		const lo: float32 = text.selectionSpans[s];
+		const hi: float32 = text.selectionSpans[s + 1];
+		const overlap: float32 = Math.min(hi, x1) - Math.max(lo, x0);
+		if (overlap > reach) {
+			reach = overlap;
+			best = [lo, hi];
+		}
 	}
-	return right;
-}
-
-function xOnRow(this layout: TextLayout, line: LineBox, index: int32): float32 {
-	const end: int32 = line.firstGlyph + line.glyphCount;
-	for (let k = line.firstGlyph; k < end; k++) {
-		if (layout.glyphs[k].index >= index) { return layout.glyphs[k].x; }
-	}
-	return layout.rowEnd(line);
-}
-
-// The selected span of one line, [x0, x1] in local units, or x1 < x0 when the line holds none of
-// it. A selected line break shows as a short tail, as an editor draws it.
-function selectedRow(this text: LabelText, li: int32): [float32, float32] {
-	const count: int32 = text.layout.lines.length as int32;
-	if (li < 0 || li >= count) { return [0.0, -1.0]; }
-	const start: int32 = text.selectionStart;
-	const end: int32 = start + text.selectionLength;
-	const line: LineBox = text.layout.lines[li];
-	const owned: int32 = li + 1 < count ? text.layout.lines[li + 1].indexStart : line.indexEnd;
-	if (end <= line.indexStart || start >= owned || text.selectionLength <= 0) {
-		return [0.0, -1.0];
-	}
-	const lineEnd: float32 = text.layout.rowEnd(line);
-	const x0: float32 = start <= line.indexStart ? line.x : text.layout.xOnRow(line, start);
-	let x1: float32 = end >= line.indexEnd ? lineEnd : text.layout.xOnRow(line, end);
-	if (end > line.indexEnd && owned > line.indexEnd) { x1 = x1 + EMPTY_ROW_WIDTH; }
-	return [x0, x1];
+	return best;
 }
 
 // Makepad's selection (draw_selection.rs:5-113): a quad per row carrying its neighbours' x and
@@ -579,25 +565,29 @@ function selectedRow(this text: LabelText, li: int32): [float32, float32] {
 function emitSelection(blend: BlendMode, text: LabelText, world: Transform2D, na: float32): void {
 	const fill: Color = text.selectionColor.faded(na);
 	for (let li = 0; li < (text.layout.lines.length as int32); li++) {
-		const [x0, x1] = text.selectedRow(li);
-		if (x1 <= x0) { continue; }
-		const [p0, p1] = text.selectedRow(li - 1);
-		const [q0, q1] = text.selectedRow(li + 1);
-		const line: LineBox = text.layout.lines[li];
-		const w: float32 = x1 - x0;
-		const leading: float32 = text.style.lineSpacing * 0.5;
-		const h: float32 = line.height + text.style.lineSpacing;
-		const origin = vec2(x0 - SELECTION_GLOOP, line.top - leading) * world;
-		drawUiInstance(sharedGlyphView(), blend, {
-			...uiInstance(
-				InstanceMode.Selection, world, origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h, fill,
-			),
-			borders: [w * 0.5, h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
-			params1: [
-				p1 > p0 ? p0 - x0 : 0.0, p1 > p0 ? p1 - p0 : 0.0,
-				q1 > q0 ? q0 - x0 : 0.0, q1 > q0 ? q1 - q0 : 0.0,
-			],
-		});
+		for (let s = text.selectionRowFirst[li]; s < text.selectionRowFirst[li + 1]; s += 2) {
+			const x0: float32 = text.selectionSpans[s];
+			const x1: float32 = text.selectionSpans[s + 1];
+			if (x1 <= x0) { continue; }
+			const [p0, p1] = text.neighbourSpan(li - 1, x0, x1);
+			const [q0, q1] = text.neighbourSpan(li + 1, x0, x1);
+			const line: LineBox = text.layout.lines[li];
+			const w: float32 = x1 - x0;
+			const leading: float32 = text.style.lineSpacing * 0.5;
+			const h: float32 = line.height + text.style.lineSpacing;
+			const origin = vec2(x0 - SELECTION_GLOOP, line.top - leading) * world;
+			drawUiInstance(sharedGlyphView(), blend, {
+				...uiInstance(
+					InstanceMode.Selection, world, origin.x, origin.y, w + SELECTION_GLOOP * 2.0, h,
+					fill,
+				),
+				borders: [w * 0.5, h * 0.5, SELECTION_RADIUS, SELECTION_GLOOP],
+				params1: [
+					p1 > p0 ? p0 - x0 : 0.0, p1 > p0 ? p1 - p0 : 0.0,
+					q1 > q0 ? q0 - x0 : 0.0, q1 > q0 ? q1 - q0 : 0.0,
+				],
+			});
+		}
 	}
 }
 
@@ -605,7 +595,7 @@ function emitSelection(blend: BlendMode, text: LabelText, world: Transform2D, na
 function emitCaret(blend: BlendMode, text: LabelText, world: Transform2D, na: float32): void {
 	if (text.cursorIndex == NO_CURSOR || (text.layout.lines.length as int32) == 0) { return; }
 	const line: LineBox = text.layout.lineBoxAt(text.cursorIndex);
-	const x: float32 = text.layout.xForIndex(text.cursorIndex);
+	const x: float32 = text.cursorX;
 	const scale: float32 = currentRenderScale();
 	let box: [float32, float32, float32, float32] = [x, line.top, CURSOR_WIDTH, line.height];
 	if (axisAligned(world.a, world.b, world.c, world.d)) {
