@@ -132,6 +132,16 @@ test "an x exactly between two strong carets goes to the later index, as on the 
 	setTextShaping(was);
 }
 
+test "two boundaries on one x are not told apart: the click goes to the later boundary" {
+	const was = plainShaping();
+	const l = laidIn("\u{5D0}1", styleOf(hebrewFont(), 0.0), TextDirection.Ltr);
+	assert l.xForIndex(0) == l.xForIndex(1);
+	assert approx(l.xForIndex(0), 0.0);
+	assert l.indexAt(0.0, 1.0) == 1;
+	assert l.indexAt(l.xForIndex(0), 1.0) != 0;
+	setTextShaping(was);
+}
+
 test "a left-to-right run in a right-to-left paragraph answers like the plain path" {
 	const was = plainShaping();
 	const font = hebrewFont();

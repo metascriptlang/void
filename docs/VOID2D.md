@@ -2629,7 +2629,13 @@ a line's ends use the paragraph-direction edge. **Spec correction:** the spec sa
 is "the leading edge of the character at i". On a left-to-right line that ends in a Hebrew run,
 that puts the boundary before the run's first letter and the line end on the same x, and then
 `indexAt(xForIndex(i)) == i` cannot hold; the insertion rule maps every boundary of the tested lines
-to its own x and `bidiCaretCheck.ms` holds the round trip. The shader is unchanged (a Selection
+to its own x and `bidiCaretCheck.ms` holds the round trip. **The rule is not injective in general:**
+two boundaries can share one x, and then a click there goes to the later one in visual order
+(`indexAt` takes `<=`). A fuzz of 600 random mixed lines broke `indexAt(xForIndex(i)) == i` 26
+times. Two kinds: forced left-to-right `"א" + "1"` puts boundaries 0 and 1 both at x 0, so a
+click at the line start answers 1 (pinned exactly in `bidiCaretCheck.ms`); `"abc אבג 123"`
+puts boundaries 4 and 8 within 2e-6 px, and 4 wins by float noise. The weak caret, which is not
+built, is what tells such boundaries apart. The shader is unchanged (a Selection
 instance already takes its neighbours' x and width).
 
 **NEW MECHANISM D, the forced direction in the shaper bridge.** The bridge extends
