@@ -68,10 +68,16 @@ when ((windows && !voidGlCore) || ios || android) {
 	export type ViewId = int32;
 	export const ViewInvalid: ViewId = 0 as int32;
 
-	export function embedRegister(init: () => void, frame: () => void): void { voidEmbedRegister(init, frame); }
+	export function embedRegister(init: () => void, frame: () => void): void {
+		voidEmbedRegister(init, frame);
+	}
 	export function setViewSampleCount(count: int32): void { voidViewsSetSampleCount(count); }
-	export function viewCreate(native: int64, w: int32, h: int32, scale: float32): ViewId { return voidViewCreate(native, w, h, scale); }
-	export function viewResize(view: ViewId, w: int32, h: int32, scale: float32): void { voidViewResize(view, w, h, scale); }
+	export function viewCreate(native: int64, w: int32, h: int32, scale: float32): ViewId {
+		return voidViewCreate(native, w, h, scale);
+	}
+	export function viewResize(view: ViewId, w: int32, h: int32, scale: float32): void {
+		voidViewResize(view, w, h, scale);
+	}
 	export function viewFrame(view: ViewId): boolean { return voidViewFrame(view) !== 0; }
 	export function viewDestroy(view: ViewId): void { voidViewDestroy(view); }
 	export function viewSwapChain(view: ViewId): int64 { return voidViewSwapChain(view); }
@@ -91,7 +97,9 @@ export function fbWidth(): int32 { return voidFbWidth(); }
 export function fbHeight(): int32 { return voidFbHeight(); }
 export function dpiScale(): float32 { return voidDpiScale(); }
 export function keyDown(code: int32): boolean { return voidKeyDown(code) !== 0; }
-export function makeImage(rgba: Ptr<void>, w: int32, h: int32): uint32 { return voidMakeImage(rgba, w, h); }
+export function makeImage(rgba: Ptr<void>, w: int32, h: int32): uint32 {
+	return voidMakeImage(rgba, w, h);
+}
 export function makeView(image: uint32): uint32 { return voidMakeView(image); }
 
 // sokol_app keycodes (ASCII-aligned letters) for keyDown polling.

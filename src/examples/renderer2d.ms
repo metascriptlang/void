@@ -13,7 +13,10 @@ import {
 } from "../void2d/draw";
 import { blurToTarget, drawGlow, drawDropShadow } from "../void2d/filter";
 import { NodeRef, Scene2D } from "../void2d/node";
-import { fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon, strokePoly, cubicBezier, fillGradientRect, fillRadialGradient } from "../void2d/graphics";
+import {
+	fillRoundedRect, strokeRect, fillEllipse, fillPie, fillRing, fillPolygon, fillTexPolygon,
+	strokePoly, cubicBezier, fillGradientRect, fillRadialGradient,
+} from "../void2d/graphics";
 import { colorMatrixGrayscale } from "../void2d/effect";
 import { Align } from "../void2d/textLayout";
 import { add, present, tick } from "../void2d/scene";
@@ -56,7 +59,8 @@ export function init2d(): void {
 	const logoNode = sceneObj.sprite(tile(logoView, logoW, logoH)).at(30.0, 200.0);
 
 	const sheet = tile(logoView, iw as float32, ih as float32);
-	const cropNode = sceneObj.sprite(sheet.sub(0.0, 0.0, (iw as float32) * 0.5, (ih as float32) * 0.5)).at(210.0, 30.0);
+	const cropNode = sceneObj.sprite(sheet.sub(0.0, 0.0, (iw as float32) * 0.5, (ih as float32) * 0.5))
+		.at(210.0, 30.0);
 	cropNode.setSize(120.0, 120.0).setColorAdd(rgba(0.35, 0.0, 0.0, 0.0));
 
 	const greenNode = sceneObj.rect(140.0, 140.0, rgba(0.35, 0.80, 0.45, 1.0)).at(180.0, 180.0);
@@ -79,7 +83,9 @@ export function init2d(): void {
 	panelNode.addChild(greenNode);
 	panelNode.addChild(logoNode);
 	panelNode.addChild(animNode);
-	panelNode.addChild(sceneObj.label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0));
+	panelNode.addChild(
+		sceneObj.label("hello void2d", 40.0, rgba(0.95, 0.96, 1.0, 1.0)).at(20.0, 400.0),
+	);
 
 	const gfxNode = sceneObj.graphics().at(460.0, 40.0);
 	gfxNode.fillRoundedRect(0.0, 0.0, 170.0, 90.0, 22.0, rgba(0.30, 0.55, 0.85, 1.0));
@@ -87,7 +93,9 @@ export function init2d(): void {
 	gfxNode.fillEllipse(45.0, 165.0, 45.0, 28.0, rgba(0.95, 0.75, 0.25, 1.0));
 	gfxNode.fillPie(150.0, 165.0, 45.0, 0.0, 4.2, rgba(0.85, 0.40, 0.55, 1.0));
 	gfxNode.fillRing(255.0, 165.0, 45.0, 26.0, -1.2, 4.5, rgba(0.45, 0.80, 0.55, 1.0));
-	const curve: Vec2[] = cubicBezier(vec2(0.0, 250.0), vec2(80.0, 200.0), vec2(180.0, 320.0), vec2(280.0, 250.0), 40);
+	const curve: Vec2[] = cubicBezier(
+		vec2(0.0, 250.0), vec2(80.0, 200.0), vec2(180.0, 320.0), vec2(280.0, 250.0), 40,
+	);
 	gfxNode.strokePoly(curve, 6.0, rgba(0.40, 0.75, 1.0, 1.0), false);
 	const arrow: Vec2[] = [
 		vec2(300.0, 60.0), vec2(345.0, 60.0), vec2(345.0, 35.0), vec2(390.0, 80.0),
@@ -96,9 +104,16 @@ export function init2d(): void {
 	gfxNode.fillPolygon(arrow, rgba(0.62, 0.50, 0.92, 1.0));
 
 	const gradNode = sceneObj.graphics().at(40.0, 452.0);
-	gradNode.fillGradientRect(0.0, 0.0, 150.0, 95.0, rgba(0.20, 0.45, 0.95, 1.0), rgba(0.95, 0.30, 0.55, 1.0), 0.0);
-	gradNode.fillGradientRect(170.0, 0.0, 150.0, 95.0, rgba(0.15, 0.75, 0.55, 1.0), rgba(0.98, 0.85, 0.25, 1.0), 1.5708);
-	gradNode.fillRadialGradient(385.0, 47.0, 42.0, rgba(1.0, 1.0, 1.0, 1.0), rgba(0.30, 0.15, 0.60, 1.0));
+	gradNode.fillGradientRect(
+		0.0, 0.0, 150.0, 95.0, rgba(0.20, 0.45, 0.95, 1.0), rgba(0.95, 0.30, 0.55, 1.0), 0.0,
+	);
+	gradNode.fillGradientRect(
+		170.0, 0.0, 150.0, 95.0, rgba(0.15, 0.75, 0.55, 1.0), rgba(0.98, 0.85, 0.25, 1.0),
+		1.5708,
+	);
+	gradNode.fillRadialGradient(
+		385.0, 47.0, 42.0, rgba(1.0, 1.0, 1.0, 1.0), rgba(0.30, 0.15, 0.60, 1.0),
+	);
 
 	const maskNode = sceneObj.mask(150.0, 120.0).at(470.0, 380.0);
 	maskNode.addChild(sceneObj.rect(240.0, 240.0, rgba(0.92, 0.52, 0.20, 1.0)).at(-40.0, -40.0));
@@ -118,10 +133,13 @@ export function init2d(): void {
 	const linearNode = sceneObj.sprite(pixTile).at(810.0, 555.0);
 	linearNode.setSize(80.0, 80.0);
 
-	const ml = sceneObj.label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0)).at(800.0, 285.0);
+	const ml = sceneObj.label("Void 2D\ncentered\nmulti-line", 34.0, rgba(0.92, 0.96, 1.0, 1.0))
+		.at(800.0, 285.0);
 	ml.setTextAlign(Align.Center);
 
-	const para = sceneObj.label("The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0)).at(40.0, 565.0);
+	const para = sceneObj.label(
+		"The quick brown fox jumps over the lazy void dog.", 26.0, rgba(0.82, 0.88, 1.0, 1.0),
+	).at(40.0, 565.0);
 	para.setMaxWidth(330.0).setLineSpacing(5.0).setLetterSpacing(1.0);
 
 	const texGfx = sceneObj.graphics().at(815.0, 170.0);

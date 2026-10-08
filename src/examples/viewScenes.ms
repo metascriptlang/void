@@ -105,7 +105,8 @@ export function overlayScene(o: OverlayState): Scene2D {
 	const s = o.scene;
 	const barW: float32 = (PANEL_W - 2.0 * GAP) / (BAR_SLOTS as float32);
 	for (let i: int32 = 0 as int32; i < BAR_SLOTS; i++) {
-		const bar = s.rect(barW - 4.0, PANEL_H - 2.0 * GAP, rgba(1.0, 1.0, 1.0, 0.9)).at(GAP + (i as float32) * barW, GAP);
+		const bar = s.rect(barW - 4.0, PANEL_H - 2.0 * GAP, rgba(1.0, 1.0, 1.0, 0.9))
+			.at(GAP + (i as float32) * barW, GAP);
 		o.bars.push(bar);
 		o.panel.addChild(bar);
 	}
