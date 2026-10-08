@@ -8,7 +8,8 @@
 // regenerate exactly that group and nothing else.
 
 import { NodeRef, Scene2D, TileCell } from "../../src/void2d/node";
-import { Align, TextRun } from "../../src/void2d/textLayout";
+import { Align, TextRun, Truncate } from "../../src/void2d/textLayout";
+import { TextDirection } from "../../src/void2d/textDirection";
 import {
 	addFont, addFallbackFont, registerFace, resolveFont, Font, FontId, FontStyle, FontFeature,
 	SizeAdjust, DEFAULT_FONT, fontFace,
@@ -1014,6 +1015,143 @@ function textSpriteGlyphsDpi100(): Scene2D { return spriteGlyphsAt(1.0); }
 function textSpriteGlyphs(): Scene2D { return spriteGlyphsAt(1.25); }
 function textSpriteGlyphsDpi150(): Scene2D { return spriteGlyphsAt(1.5); }
 
+const HEBREW_PATH: string = "tests/fonts/notoSansHebrewSubset.ttf";
+const ARABIC_PATH: string = "tests/fonts/notoSansArabicSubset.ttf";
+const SHALOM: string = "\u{5E9}\u{5DC}\u{5D5}\u{5DD}";
+const HEBREW_PHRASE: string =
+	"\u{5E9}\u{5DC}\u{5D5}\u{5DD} \u{5E2}\u{5D5}\u{5DC}\u{5DD} " +
+	"\u{5D1}\u{5E8}\u{5D0}\u{5E9}\u{5D9}\u{5EA}";
+const MARHABA: string = "\u{645}\u{631}\u{62D}\u{628}\u{627}";
+const SALAAM: string = "\u{627}\u{644}\u{633}\u{644}\u{627}\u{645} " +
+	"\u{639}\u{644}\u{64A}\u{643}\u{645}";
+const KITAB_MUHAMMAD: string = "\u{643}\u{62A}\u{627}\u{628} \u{645}\u{62D}\u{645}\u{62F}";
+const BIDI_INK: Color = { r: 0.86, g: 0.90, b: 0.98, a: 1.0 };
+const BIDI_ROW: float32 = 32.0;
+
+function bidiFont(path: string): FontId {
+	const added = addFont(path);
+	if (added.ok) { return added.value; }
+	console.log(`golden: ${path} did not load`);
+	unreachable;
+}
+
+function bidiRun(len: int32, font: FontId, background: Color): TextRun {
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	return {
+		len: len, font: font, color: BIDI_INK, background: background, underline: clear,
+		wavy: false, strikethrough: clear,
+	};
+}
+
+function textBidiHebrew(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(HEBREW_PATH);
+	s.add(s.label(HEBREW_PHRASE, 18.0, BIDI_INK).setFont(font).at(12.0, 8.0));
+	s.add(
+		s.label(HEBREW_PHRASE, 18.0, BIDI_INK).setFont(font).setMaxWidth(296.0)
+			.setTextAlign(Align.Right).at(12.0, 8.0 + BIDI_ROW),
+	);
+	s.add(
+		s.label("abc 123", 18.0, BIDI_INK).setFont(font).setTextDirection(TextDirection.Rtl)
+			.setMaxWidth(296.0).setTextAlign(Align.Right).at(12.0, 8.0 + BIDI_ROW * 2.0),
+	);
+	return s;
+}
+
+function textBidiHebrewWrap(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(HEBREW_PATH);
+	s.add(
+		s.label(HEBREW_PHRASE + " " + HEBREW_PHRASE, 18.0, BIDI_INK).setFont(font)
+			.setMaxWidth(150.0).setLineSpacing(2.0).at(12.0, 8.0),
+	);
+	s.add(
+		s.label(HEBREW_PHRASE + " " + HEBREW_PHRASE, 18.0, BIDI_INK).setFont(font)
+			.setMaxWidth(120.0).setTruncate(Truncate.End).at(182.0, 8.0),
+	);
+	return s;
+}
+
+function textBidiMixedLatinHebrew(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(HEBREW_PATH);
+	const mixed: string = "abc (" + SHALOM + ") 123 def";
+	s.add(s.label(mixed, 18.0, BIDI_INK).setFont(font).at(12.0, 8.0));
+	s.add(
+		s.label(mixed, 18.0, BIDI_INK).setFont(font).setTextDirection(TextDirection.Rtl)
+			.setMaxWidth(296.0).setTextAlign(Align.Right).at(12.0, 8.0 + BIDI_ROW),
+	);
+	s.add(
+		s.label(SHALOM + " abc " + SHALOM, 18.0, BIDI_INK).setFont(font)
+			.at(12.0, 8.0 + BIDI_ROW * 2.0),
+	);
+	return s;
+}
+
+function textBidiArabic(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(ARABIC_PATH);
+	s.add(s.label(MARHABA, 24.0, BIDI_INK).setFont(font).at(12.0, 6.0));
+	s.add(
+		s.label(SALAAM, 24.0, BIDI_INK).setFont(font).setMaxWidth(296.0)
+			.setTextAlign(Align.Right).at(12.0, 6.0 + 36.0),
+	);
+	s.add(s.label(KITAB_MUHAMMAD, 24.0, BIDI_INK).setFont(font).at(12.0, 6.0 + 72.0));
+	return s;
+}
+
+function textBidiArabicMixed(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(ARABIC_PATH);
+	s.add(s.label(SALAAM, 22.0, BIDI_INK).setFont(font).at(12.0, 6.0));
+	s.add(s.label(SALAAM, 22.0, BIDI_INK).setFont(font).setLetterSpacing(3.0).at(12.0, 42.0));
+	const first: Color = rgba(0.30, 0.34, 0.46, 1.0);
+	const second: Color = rgba(0.38, 0.30, 0.20, 1.0);
+	const runs: TextRun[] = [
+		bidiRun(6, font, first),
+		bidiRun(1, font, rgba(0.0, 0.0, 0.0, 0.0)),
+		bidiRun(5, font, second),
+	];
+	s.add(s.label(SALAAM, 22.0, BIDI_INK).setFont(font).setTextRuns(runs).at(12.0, 78.0));
+	return s;
+}
+
+function textBidiSelection(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(HEBREW_PATH);
+	const selection: Color = rgba(0.30, 0.50, 0.90, 0.5);
+	const mixed = s.label("abc " + SHALOM + " def", 18.0, BIDI_INK).setFont(font).at(12.0, 8.0);
+	mixed.setSelectionRange({ start: 6, length: 5 }, selection);
+	mixed.setCursorBlinkTime(0.0);
+	mixed.setCursorIndex(6, rgba(1.0, 0.85, 0.3, 1.0));
+	s.add(mixed);
+	const hebrew = s.label(HEBREW_PHRASE, 18.0, BIDI_INK).setFont(font).setMaxWidth(296.0)
+		.setTextAlign(Align.Right).at(12.0, 8.0 + 44.0);
+	hebrew.setSelectionRange({ start: 2, length: 8 }, selection);
+	hebrew.setCursorBlinkTime(0.0);
+	hebrew.setCursorIndex(2, rgba(1.0, 0.85, 0.3, 1.0));
+	s.add(hebrew);
+	return s;
+}
+
+function textBidiDecorations(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const font = bidiFont(HEBREW_PATH);
+	const clear: Color = rgba(0.0, 0.0, 0.0, 0.0);
+	const runs: TextRun[] = [
+		bidiRun(4, font, rgba(0.30, 0.34, 0.46, 1.0)),
+		{ ...bidiRun(1, font, clear), underline: rgba(0.95, 0.35, 0.30, 1.0), wavy: true },
+		bidiRun(4, font, rgba(0.38, 0.30, 0.20, 1.0)),
+		{ ...bidiRun(3, font, clear), strikethrough: rgba(0.95, 0.60, 0.40, 1.0) },
+		bidiRun(2, font, clear),
+	];
+	s.add(
+		s.label("ab \u{5E9}\u{5DC}\u{5D5} cde fgh", 20.0, BIDI_INK).setFont(font)
+			.setTextRuns(runs).at(12.0, 10.0),
+	);
+	return s;
+}
+
 function textWrapped(): Scene2D {
 	const s = Scene2D.create(DARK);
 	const paragraph = s.label(
@@ -1970,5 +2108,12 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "ui/profilerOverlayMinimal", build: uiProfilerOverlayMinimal },
 		{ name: "text/designFold", build: textDesignFold },
 		{ name: "text/designFoldDpi", build: textDesignFoldDpi },
+		{ name: "text/bidiHebrew", build: textBidiHebrew },
+		{ name: "text/bidiHebrewWrap", build: textBidiHebrewWrap },
+		{ name: "text/bidiMixedLatinHebrew", build: textBidiMixedLatinHebrew },
+		{ name: "text/bidiArabic", build: textBidiArabic },
+		{ name: "text/bidiArabicMixed", build: textBidiArabicMixed },
+		{ name: "text/bidiSelection", build: textBidiSelection },
+		{ name: "text/bidiDecorations", build: textBidiDecorations },
 	];
 }

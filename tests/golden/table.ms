@@ -354,6 +354,20 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "text/designFoldDpi", phase: "P6", width: 320, height: 200, dpi: 1.6,
 			steps: 0, demo: false },
+		{ name: "text/bidiHebrew", phase: "P7", width: 320, height: 112, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/bidiHebrewWrap", phase: "P7", width: 320, height: 112, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/bidiMixedLatinHebrew", phase: "P7", width: 320, height: 112, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/bidiArabic", phase: "P7", width: 320, height: 120, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/bidiArabicMixed", phase: "P7", width: 320, height: 120, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/bidiSelection", phase: "P7", width: 320, height: 100, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "text/bidiDecorations", phase: "P7", width: 320, height: 100, dpi: 1.25,
+			steps: 0, demo: false },
 	];
 }
 
@@ -370,6 +384,7 @@ export function sceneDrawCounts(): int32[] {
 		1, 1, 2, 2, 2, 1, 6, 2, 1, 1, 1, 5, 3, 1, 2, 2, 2,
 		1, 2, 2, 1, 1, 1, 1, 1, 3, 31, 31, 31, 31, 2, 5, 17, 1,
 		2, 4, 2, 18, 4, 1, 2, 1, 3, 5, 5, 2, 2, 1, 1,
+		1, 1, 1, 1, 1, 1, 1,
 	];
 }
 
@@ -381,6 +396,7 @@ export function sceneRenderTargetCounts(): int32[] {
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5,
 		4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 0, 5, 0, 0,
 		0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0,
 	];
 }
 
