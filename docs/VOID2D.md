@@ -2501,7 +2501,11 @@ changes described above on today's compiler; the P4 web archive also takes its r
   would also move every antialiased Graphics fringe on D3D11 and it does not reach a threshold
   computed in the fragment shader. sokol-shdc compiled the biased `shader2d` for metal_macos,
   glsl300es, glsl430, wgsl and hlsl5 (`scripts/regen-shaders.sh --check` fresh), so `fwidth` has
-  its derivative on every target.
+  its derivative on every target. With the bias, `prim/patterns` moved on D3D11 by 2 452 px (the stripes at
+  the ties shift one pixel) and captures byte-identical on D3D11 and GL 4.3; the old D3D11 golden
+  recorded D3D11's own tie-break, and it was rebaselined in its own commit. Every other D3D11 row
+  stayed byte-identical (97 / 98). GL before the bias: 72 identical, 23 within bound, 1 structural
+  (`prim/patterns`); after: 73 identical, 23 within bound, 0 structural.
 
 **Defects closed.** None remaining; "Known defects" is empty by the end of P5.
 
