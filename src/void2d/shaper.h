@@ -26,6 +26,7 @@
 #define VOID2D_SHAPE_GLYPH_FIELDS 9
 
 int void2dShapeBegin(int face, int direction);
+int void2dShapeBeginForced(int face, int direction);
 int void2dShapeFeature(const char *tag, int value);
 int void2dShapeCodepoint(int codepoint);
 int void2dShapeBreak(void);

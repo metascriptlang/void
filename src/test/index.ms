@@ -71,6 +71,9 @@ when (voidBidi) {
 	import "./bidiLayoutCheck";
 	import "./bidiCaretCheck";
 	import "./bidiSelectionCheck";
+	when (voidShaper) {
+		import "./bidiShapedCheck";
+	}
 } else {
 	import "./bidiOffCheck";
 }

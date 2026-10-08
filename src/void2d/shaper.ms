@@ -19,6 +19,7 @@ export struct ShapedGlyph {
 when (voidShaper) {
 	import {
 		void2dShapeBegin,
+		void2dShapeBeginForced,
 		void2dShapeFeature,
 		void2dShapeCodepoint,
 		void2dShapeBreak,
@@ -46,14 +47,19 @@ when (voidShaper) {
 
 	export function shaperCompiled(): boolean { return true; }
 
+	function beginPass(face: int32, direction: ShapeDirection): int32 {
+		if (direction == ShapeDirection.Unknown) { return void2dShapeBegin(face, 0); }
+		return void2dShapeBeginForced(face, direction as int32);
+	}
+
 	export function shaperBegin(face: int32, direction: ShapeDirection): void {
-		shapeStatus(void2dShapeBegin(face, direction as int32), "begin");
+		shapeStatus(beginPass(face, direction), "begin");
 	}
 
 	let refusedFaces: Vec<int32> = new Array(0);
 
 	export function shaperTryBegin(face: int32, direction: ShapeDirection): boolean {
-		const status: int32 = void2dShapeBegin(face, direction as int32);
+		const status: int32 = beginPass(face, direction);
 		if (status == -1) { return false; }
 		if (status == -2) {
 			for (const seen of refusedFaces) {

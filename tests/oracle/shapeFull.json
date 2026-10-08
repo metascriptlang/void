@@ -6322,21 +6322,15 @@
    ]
   },
   {
-   "id": "missing-mixed-direction",
+   "id": "mixed-direction-latin-before",
    "path": "assets/font.ttf",
    "codepoints": [
     97,
     98,
-    32,
-    1605,
-    1585,
-    1581,
-    32,
-    99,
-    100
+    32
    ],
    "features": [],
-   "direction": 0,
+   "direction": 1,
    "runDirection": "ltr",
    "unitsPerEm": 2048,
    "glyphs": [
@@ -6363,10 +6357,25 @@
      0,
      0,
      0
-    ],
+    ]
+   ]
+  },
+  {
+   "id": "missing-mixed-direction-arabic",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    1605,
+    1585,
+    1581
+   ],
+   "features": [],
+   "direction": 2,
+   "runDirection": "rtl",
+   "unitsPerEm": 2048,
+   "glyphs": [
     [
      0,
-     3,
+     2,
      1344,
      0,
      0,
@@ -6374,7 +6383,7 @@
     ],
     [
      0,
-     4,
+     1,
      1344,
      0,
      0,
@@ -6382,15 +6391,30 @@
     ],
     [
      0,
-     5,
+     0,
      1344,
      0,
      0,
      0
-    ],
+    ]
+   ]
+  },
+  {
+   "id": "mixed-direction-latin-after",
+   "path": "assets/font.ttf",
+   "codepoints": [
+    32,
+    99,
+    100
+   ],
+   "features": [],
+   "direction": 1,
+   "runDirection": "ltr",
+   "unitsPerEm": 2048,
+   "glyphs": [
     [
      1777,
-     6,
+     0,
      576,
      0,
      0,
@@ -6398,7 +6422,7 @@
     ],
     [
      586,
-     7,
+     1,
      1170,
      0,
      0,
@@ -6406,7 +6430,7 @@
     ],
     [
      597,
-     8,
+     2,
      1254,
      0,
      0,

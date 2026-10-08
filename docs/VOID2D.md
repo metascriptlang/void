@@ -2562,7 +2562,7 @@ shaped in its direction by `kb_text_shape`, reordered per line for drawing, and 
 selection over visual order. Not started; the mechanism is chosen against its references when
 the phase opens.
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `shape:arabic-ltr-explicit`, `shape-cluster:arabic-ltr-explicit`, `shape:missing-mixed-direction`, `shape-cluster:missing-mixed-direction`.
+**Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The three rows that were not a difference of engines are deleted: the cluster row of the explicit left-to-right Arabic text agrees once the shaper bridge forces the direction, and the mixed-direction row is replaced by three explicit-direction rows that agree. The glyph row of the explicit left-to-right Arabic text is re-owned as declared with its measured reason.
 
 ### The budget, at every phase
 

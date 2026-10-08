@@ -32,6 +32,25 @@ static int s_featureCount;
 static int *s_glyphs;
 static int s_glyphCount;
 static int s_glyphCapacity;
+static int s_forced;
+static int *s_input;
+static unsigned char *s_inputBreak;
+static int s_inputCount;
+static int s_inputCapacity;
+static int s_breakNext;
+
+static int growInput(void) {
+	if (s_inputCount < s_inputCapacity) { return 1; }
+	int grown = s_inputCapacity ? s_inputCapacity * 2 : 128;
+	int *input = (int *)realloc(s_input, (size_t)grown * sizeof(int));
+	if (!input) { return 0; }
+	s_input = input;
+	unsigned char *marks = (unsigned char *)realloc(s_inputBreak, (size_t)grown);
+	if (!marks) { return 0; }
+	s_inputBreak = marks;
+	s_inputCapacity = grown;
+	return 1;
+}
 
 static int growGlyphs(void) {
 	if (s_glyphCount < s_glyphCapacity) { return 1; }
@@ -94,6 +113,7 @@ static void closeShape(void) {
 	}
 	s_featureCount = 0;
 	s_open = 0;
+	s_forced = 0;
 }
 
 static void discardContext(void) {
@@ -102,9 +122,10 @@ static void discardContext(void) {
 	if (s_current->context) { kbts_ShapePushFont(s_current->context, s_current->font); }
 	s_featureCount = 0;
 	s_open = 0;
+	s_forced = 0;
 }
 
-int void2dShapeBegin(int face, int direction) {
+static int openShape(int face, int direction, int forced) {
 	if (s_open) { return VOID2D_SHAPE_ALREADY_OPEN; }
 	int length = 0;
 	const unsigned char *bytes = void2dGlyphFaceData(face, &length);
@@ -117,8 +138,22 @@ int void2dShapeBegin(int face, int direction) {
 	kbts_ShapeBegin(s_current->context, (kbts_direction)direction, KBTS_LANGUAGE_DONT_KNOW);
 	s_glyphCount = 0;
 	s_nextIndex = 0;
+	s_inputCount = 0;
+	s_breakNext = 0;
+	s_forced = forced ? direction : 0;
 	s_open = 1;
 	return 0;
+}
+
+int void2dShapeBegin(int face, int direction) {
+	return openShape(face, direction, 0);
+}
+
+int void2dShapeBeginForced(int face, int direction) {
+	if (direction != VOID2D_SHAPE_DIRECTION_LTR && direction != VOID2D_SHAPE_DIRECTION_RTL) {
+		return VOID2D_SHAPE_ENGINE_ERROR;
+	}
+	return openShape(face, direction, 1);
 }
 
 int void2dShapeFeature(const char *tag, int value) {
@@ -137,18 +172,79 @@ int void2dShapeFeature(const char *tag, int value) {
 
 int void2dShapeCodepoint(int codepoint) {
 	if (!s_open) { return VOID2D_SHAPE_NOT_OPEN; }
+	if (s_forced) {
+		if (!growInput()) { return VOID2D_SHAPE_NO_MEMORY; }
+		s_input[s_inputCount] = codepoint;
+		s_inputBreak[s_inputCount] = (unsigned char)s_breakNext;
+		s_inputCount++;
+		s_breakNext = 0;
+		return 0;
+	}
 	kbts_ShapeCodepointWithUserId(s_current->context, codepoint, s_nextIndex++);
 	return 0;
 }
 
 int void2dShapeBreak(void) {
 	if (!s_open) { return VOID2D_SHAPE_NOT_OPEN; }
+	if (s_forced) {
+		s_breakNext = 1;
+		return 0;
+	}
 	kbts_ShapeManualBreak(s_current->context);
+	return 0;
+}
+
+static int feedForced(void) {
+	int count = s_inputCount;
+	kbts_script *scripts = 0;
+	unsigned char *starts = 0;
+	if (count > 0) {
+		scripts = (kbts_script *)calloc((size_t)count, sizeof(kbts_script));
+		starts = (unsigned char *)calloc((size_t)count, 1);
+		if (!scripts || !starts) {
+			free(scripts);
+			free(starts);
+			return VOID2D_SHAPE_NO_MEMORY;
+		}
+		kbts_break_state state;
+		kbts_BreakBegin(&state, (kbts_direction)s_forced, KBTS_JAPANESE_LINE_BREAK_STYLE_NORMAL, 0);
+		for (int i = 0; i < count; i++) {
+			kbts_BreakAddCodepoint(&state, s_input[i], 1, i == count - 1);
+			kbts_break found;
+			while (kbts_Break(&state, &found)) {
+				if ((found.Flags & KBTS_BREAK_FLAG_SCRIPT) && found.Position >= 0 &&
+					found.Position < count) {
+					starts[found.Position] = 1;
+					scripts[found.Position] = found.Script;
+				}
+			}
+		}
+	}
+	kbts_ShapeBeginManualRuns(s_current->context);
+	kbts_script current = KBTS_SCRIPT_DONT_KNOW;
+	for (int i = 0; i < count; i++) {
+		if (starts[i]) { current = scripts[i]; }
+		if (i == 0 || starts[i] || s_inputBreak[i]) {
+			kbts_ShapeNextManualRun(s_current->context, (kbts_direction)s_forced, current);
+		}
+		kbts_ShapeCodepointWithUserId(s_current->context, s_input[i], i);
+	}
+	kbts_ShapeEndManualRuns(s_current->context);
+	free(scripts);
+	free(starts);
 	return 0;
 }
 
 int void2dShapeEnd(void) {
 	if (!s_open) { return VOID2D_SHAPE_NOT_OPEN; }
+	if (s_forced) {
+		int fed = feedForced();
+		if (fed != 0) {
+			discardContext();
+			s_glyphCount = 0;
+			return fed;
+		}
+	}
 	kbts_ShapeEnd(s_current->context);
 	int run = 0;
 	int status = 0;

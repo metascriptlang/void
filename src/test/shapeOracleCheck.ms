@@ -183,3 +183,62 @@ test "a wrong glyph id, cluster or offset in the snapshot is caught row by row" 
 		assert caught == tried;
 	}
 }
+
+struct Pass {
+	text: string;
+	first: ShapeDirection;
+	mixed: boolean;
+}
+
+function passOf(row: JsonValue, direction: ShapeDirection): Pass {
+	const face: int32 = faceFor(row.getDynamicField("path").asString());
+	shaperBegin(face, direction);
+	const features = row.getDynamicField("features");
+	for (let f: int32 = 0; f < (features.length() as int32); f++) {
+		const feature = features.at(f);
+		shaperFeature(feature.at(0).asString(), feature.at(1).asNumber() as int32);
+	}
+	const codepoints = row.getDynamicField("codepoints");
+	for (let c: int32 = 0; c < (codepoints.length() as int32); c++) {
+		shaperCodepoint(codepoints.at(c).asNumber() as int32);
+	}
+	const count: int32 = shaperEnd();
+	let out: Pass = { text: "", first: ShapeDirection.Unknown, mixed: false };
+	for (let g: int32 = 0; g < count; g++) {
+		const got = shaperGlyph(g);
+		if (g == 0) { out.first = got.direction; }
+		if (got.direction != out.first) { out.mixed = true; }
+		out.text += `${got.glyph},${got.advanceX},${got.advanceY},${got.offsetX},` +
+			`${got.offsetY},${got.index},${got.codepoint},${got.direction as int32};`;
+	}
+	return out;
+}
+
+test "a pass forced to the direction auto mode chose gives the glyphs auto mode gave" {
+	const rows = oracleRows();
+	let compared: int32 = 0;
+	let mixed: int32 = 0;
+	for (let r: int32 = 0; r < (rows.length() as int32); r++) {
+		const row = rows.at(r);
+		const auto: Pass = passOf(row, ShapeDirection.Unknown);
+		if (auto.text.length == 0) { continue; }
+		if (auto.mixed) {
+			mixed = mixed + 1;
+			continue;
+		}
+		const forced: Pass = passOf(row, auto.first);
+		if (!forced.text.equals(auto.text)) {
+			const id: string = row.getDynamicField("id").asString();
+			console.log(`shape oracle: ${id} differs when forced`);
+			console.log(`  auto   ${auto.text}`);
+			console.log(`  forced ${forced.text}`);
+		}
+		assert forced.text.equals(auto.text);
+		compared = compared + 1;
+	}
+	console.log(
+		`shape oracle: ${compared} rows give the same glyphs forced and auto, ` +
+		`${mixed} mix directions`,
+	);
+	assert compared > 60;
+}

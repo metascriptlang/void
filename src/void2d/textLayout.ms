@@ -31,6 +31,7 @@ when (voidBidi) {
 	import { BidiClass, bidiClassOf } from "./bidi";
 	import {
 		clusterEdges,
+		joiningLetter,
 		mirroredValue,
 		resolveText,
 		selectedSpans,
@@ -43,6 +44,8 @@ when (voidBidi) {
 	}
 
 	function mirroredValue(codepoint: int32): int32 { return codepoint; }
+
+	function joiningLetter(codepoint: int32): boolean { return false; }
 
 	function resolveText(
 		values: Readonly<Span<int32>>,
@@ -262,6 +265,7 @@ export interface ShapedText {
 struct Codepoint {
 	value: int32;
 	shown: int32;
+	joining: boolean;
 	index: int32;
 	byteStart: int32;
 	byteEnd: int32;
@@ -302,7 +306,8 @@ function decodeUtf8(text: string, font: FontId): Vec<Codepoint> {
 			value = (value << 6) | (((bytes[i + k] as uint8) as int32) & 0x3F);
 		}
 		out.push({
-			value: value, shown: value, index: index, byteStart: i, byteEnd: i + length, font: font,
+			value: value, shown: value, joining: false, index: index, byteStart: i,
+			byteEnd: i + length, font: font,
 			run: NO_RUN, face: -1, scale: 1.0, clusterStart: false, shapingBreak: false,
 		});
 		index = index + (value >= 0x10000 ? 2 : 1);
@@ -668,6 +673,7 @@ function resolveBidi(
 	resolveText(values, direction, bidi.levels, bidi.resets, bidi.paragraphs);
 	for (let i = 0; i < (cps.length as int32); i++) {
 		if ((bidi.levels[i] & 1) == 1) { cps[i].shown = mirroredValue(cps[i].value); }
+		cps[i].joining = joiningLetter(cps[i].value);
 	}
 }
 
@@ -723,20 +729,46 @@ when (voidShaper) {
 			(a.font as int32) == (b.font as int32);
 	}
 
+	function levelAt(bidi: BidiRuns, k: int32): int32 {
+		return (bidi.levels.length as int32) == 0 ? -1 : bidi.levels[k];
+	}
+
+	function directionOf(level: int32): ShapeDirection {
+		if (level < 0) { return ShapeDirection.Unknown; }
+		return (level & 1) == 1 ? ShapeDirection.Rtl : ShapeDirection.Ltr;
+	}
+
+	function joins(cps: Readonly<Span<Codepoint>>, from: int32, to: int32): boolean {
+		for (let k = from; k < to; k++) {
+			if (cps[k].joining) { return true; }
+		}
+		return false;
+	}
+
+	function directionName(direction: ShapeDirection): string {
+		return match (direction) {
+			ShapeDirection.Ltr => "left to right",
+			ShapeDirection.Rtl => "right to left",
+			ShapeDirection.Unknown => "in no direction",
+		};
+	}
+
 	function shapeGroup(
 		cps: Readonly<Span<Codepoint>>,
 		from: int32,
 		to: int32,
 		style: TextStyle,
+		bidi: BidiRuns,
 		ref cells: Vec<Cell>,
 		ref extras: Vec<Extra>,
 	): void {
 		const first: Codepoint = cps[from];
-		if (!shaperTryBegin(first.face, ShapeDirection.Unknown)) { return; }
+		const direction: ShapeDirection = directionOf(levelAt(bidi, from));
+		if (!shaperTryBegin(first.face, direction)) { return; }
 		for (const feature of fontFeatures(first.font)) {
 			shaperFeature(feature.tag, feature.value);
 		}
-		if (style.letterSpacing != 0.0) {
+		if (style.letterSpacing != 0.0 && !joins(cps, from, to)) {
 			for (const tag of OPTIONAL_LIGATURES) { shaperFeature(tag, 0); }
 		}
 		for (let k = from; k < to; k++) {
@@ -747,21 +779,21 @@ when (voidShaper) {
 		}
 		const total: int32 = shaperEnd();
 		let glyphs: Vec<ShapedGlyph> = new Array(0);
-		let rightToLeft: int32 = -1;
-		for (let j = 0; j < total; j++) {
+		for (let n = 0; n < total; n++) {
+			const j: int32 = direction == ShapeDirection.Rtl ? total - 1 - n : n;
 			const g: ShapedGlyph = shaperGlyph(j);
-			const at: int32 = cps[from + g.index].index;
-			if (g.direction == ShapeDirection.Rtl && (rightToLeft < 0 || at < rightToLeft)) {
-				rightToLeft = at;
+			const expected: ShapeDirection = direction == ShapeDirection.Unknown
+				? ShapeDirection.Ltr
+				: direction;
+			if (g.direction != expected) {
+				const at: int32 = cps[from + g.index].index;
+				console.log(
+					`void2d: the shaper ran the text at UTF-16 index ${at} ` +
+					`${directionName(g.direction)} where BiDi resolved level ${levelAt(bidi, from)}`,
+				);
+				unreachable;
 			}
 			glyphs.push(g);
-		}
-		if (rightToLeft >= 0) {
-			console.log(
-				`void2d: right-to-left text at UTF-16 index ${rightToLeft} needs BiDi, ` +
-				`which the shaper module does not do`,
-			);
-			unreachable;
 		}
 		for (let k = from; k < to; k++) {
 			cells[k] = { ...UNSHAPED, shaped: true, shapeStart: false };
@@ -854,6 +886,7 @@ when (voidShaper) {
 	function shapeGroups(
 		cps: Readonly<Span<Codepoint>>,
 		style: TextStyle,
+		bidi: BidiRuns,
 		ref cells: Vec<Cell>,
 		ref extras: Vec<Extra>,
 	): void {
@@ -867,8 +900,11 @@ when (voidShaper) {
 				continue;
 			}
 			let to: int32 = from + 1;
-			while (to < count && cps[from].sameGroup(cps[to])) { to = to + 1; }
-			shapeGroup(cps, from, to, style, cells, extras);
+			while (to < count && cps[from].sameGroup(cps[to]) &&
+				levelAt(bidi, from) == levelAt(bidi, to)) {
+				to = to + 1;
+			}
+			shapeGroup(cps, from, to, style, bidi, cells, extras);
 			from = to;
 		}
 	}
@@ -876,6 +912,7 @@ when (voidShaper) {
 	function shapeGroups(
 		cps: Readonly<Span<Codepoint>>,
 		style: TextStyle,
+		bidi: BidiRuns,
 		ref cells: Vec<Cell>,
 		ref extras: Vec<Extra>,
 	): void {}
@@ -902,7 +939,7 @@ export function shapeText(
 	const stop: float32 = hasTab(cps) ? style.tabStop() : 0.0;
 	let cells: Vec<Cell> = new Array(0);
 	let extras: Vec<Extra> = new Array(0);
-	shapeGroups(cps, style, cells, extras);
+	shapeGroups(cps, style, bidi, cells, extras);
 	let glyphs: Vec<LaidGlyph> = new Array(0);
 	let values: Vec<int32> = new Array(0);
 	let pen: float32 = 0.0;
@@ -917,7 +954,7 @@ export function shapeText(
 			face: cp.face, glyph: NO_GLYPH, size: style.size, x: pen, advance: 0.0, next: pen,
 		};
 		let cell: Cell = UNSHAPED;
-		const spaced: boolean = i + 1 >= count || cps[i + 1].clusterStart;
+		const spaced: boolean = (i + 1 >= count || cps[i + 1].clusterStart) && !cp.joining;
 		if (cp.value != NEWLINE) {
 			if (cells.length > 0 && cells[i].shaped) {
 				cell = cells[i];

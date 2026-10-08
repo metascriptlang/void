@@ -175,6 +175,10 @@ export function selectedSpans(
 	}
 }
 
+export function joiningLetter(codepoint: int32): boolean {
+	return bidiClassOf(codepoint) == BidiClass.AL;
+}
+
 export function mirroredValue(codepoint: int32): int32 {
 	const mirror: int32 = mirrorOf(codepoint);
 	return mirror == 0 ? codepoint : mirror;
