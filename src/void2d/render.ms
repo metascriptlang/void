@@ -142,7 +142,7 @@ import { RenderTarget } from "../gpu/target";
 import { PixelFormat, contextGeneration } from "../gpu/door";
 import { colorMatrixAlphaOnly, NO_COLOR_MATRIX } from "./effect";
 import {
-	NO_BOX_STYLE, BorderStyle, BoxFill, BoxFillKind, BoxShadow, BoxStyle, boxStyles,
+	NO_BOX_STYLE, BorderStyle, BorderWidths, BoxFill, BoxFillKind, BoxShadow, CornerRadii, boxStyles,
 } from "./boxStyle";
 import { GradientSpace } from "./gradient";
 import { axisAligned, snapEdge, snapOffset, snapBoxEdges, snapStroke } from "./snap";
@@ -340,8 +340,7 @@ function boxRenderBounds(s: Scene2D, i: int32, world: Transform2D, lb: Bounds2D)
 	if (s.payloads[i] == NO_BOX_STYLE) {
 		return { xMin: xMin, yMin: yMin, xMax: xMax, yMax: yMax };
 	}
-	const shadows = boxStyles[s.payloads[i]].shadows;
-	const margin: Vec2 = dropMargin(shadows, aligned, deviceAX, deviceDX);
+	const margin: Vec2 = dropMargin(boxStyles[s.payloads[i]].shadows, aligned, deviceAX, deviceDX);
 	return {
 		xMin: xMin - margin.x, yMin: yMin - margin.y, xMax: xMax + margin.x, yMax: yMax + margin.y,
 	};
@@ -960,15 +959,16 @@ function emitBox(
 			uiInstance(InstanceMode.Box, world, at.x, at.y, w, h, col));
 		return;
 	}
-	const st: BoxStyle = boxStyles[payload];
 	const aligned: boolean = axisAligned(world.a, world.b, world.c, world.d);
 	const scale: float32 = currentRenderScale();
 	const deviceAX: float32 = aligned ? world.a * scale : 0.0;
 	const deviceDX: float32 = aligned ? world.d * scale : 0.0;
+	const corner: CornerRadii = boxStyles[payload].radii;
+	const side: BorderWidths = boxStyles[payload].borders;
+	const fill: BoxFill = boxStyles[payload].fill;
 	const radii: [float32, float32, float32, float32] =
-		[st.radii.topLeft, st.radii.topRight, st.radii.bottomRight, st.radii.bottomLeft];
-	let borders: [float32, float32, float32, float32] =
-		[st.borders.left, st.borders.top, st.borders.right, st.borders.bottom];
+		[corner.topLeft, corner.topRight, corner.bottomRight, corner.bottomLeft];
+	let borders: [float32, float32, float32, float32] = [side.left, side.top, side.right, side.bottom];
 	if (aligned) {
 		borders = [
 			snapStroke(borders[0] * deviceAX) / deviceAX,
@@ -977,24 +977,24 @@ function emitBox(
 			snapStroke(borders[3] * deviceDX) / deviceDX,
 		];
 	}
-	const source: Color = st.borderColor;
+	const source: Color = boxStyles[payload].borderColor;
 	const edge: Color = rgba(source.r, source.g, source.b, source.a * na);
-	const dashed: float32 = st.borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
+	const dashed: float32 = boxStyles[payload].borderStyle === BorderStyle.Dashed ? 1.0 : 0.0;
 	let visible: int32 = 0;
 	let insets: int32 = 0;
 	let only: int32 = 0;
-	for (let k: int32 = 0; k < (st.shadows.length as int32); k++) {
-		if (!(st.shadows[k].color.a > 0.0)) { continue; }
+	for (let k: int32 = 0; k < (boxStyles[payload].shadows.length as int32); k++) {
+		if (!(boxStyles[payload].shadows[k].color.a > 0.0)) { continue; }
 		visible = visible + 1;
 		only = k;
-		if (st.shadows[k].inset) { insets = insets + 1; }
+		if (boxStyles[payload].shadows[k].inset) { insets = insets + 1; }
 	}
-	const filled: boolean = st.fill.kind !== BoxFillKind.Solid;
-	if (!filled && (visible == 0 || (visible == 1 && st.shadows[only].spread == 0.0))) {
+	const filled: boolean = fill.kind !== BoxFillKind.Solid;
+	if (!filled && (visible == 0 || (visible == 1 && boxStyles[payload].shadows[only].spread == 0.0))) {
 		let params1: [float32, float32, float32, float32] = [0.0, 0.0, 0.0, 0.0];
 		let extra: Color = transparent;
 		if (visible == 1) {
-			const shadow: BoxShadow = st.shadows[only];
+			const shadow: BoxShadow = boxStyles[payload].shadows[only];
 			params1 = [
 				shadowOffset(shadow.offsetX, aligned, deviceAX),
 				shadowOffset(shadow.offsetY, aligned, deviceDX),
@@ -1014,27 +1014,27 @@ function emitBox(
 		});
 		return;
 	}
-	const margin: Vec2 = dropMargin(st.shadows, aligned, deviceAX, deviceDX);
+	const margin: Vec2 = dropMargin(boxStyles[payload].shadows, aligned, deviceAX, deviceDX);
 	const boxAt = vec2(quad.xMin + margin.x, quad.yMin + margin.y) * world;
 	const bw: float32 = w - 2.0 * margin.x;
 	const bh: float32 = h - 2.0 * margin.y;
 	const half: Vec2 = vec2(bw * 0.5, bh * 0.5);
-	for (const shadow of st.shadows) {
+	for (const shadow of boxStyles[payload].shadows) {
 		if (shadow.inset || !(shadow.color.a > 0.0)) { continue; }
 		drawBoxShadow(world, at, w, h, half, radii, shadow, aligned, deviceAX, deviceDX, na, blend);
 	}
 	drawUiInstance(sharedGlyphView(), blend, {
 		...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh,
-			filled ? st.fill.from.tinted(col) : col),
+			filled ? fill.from.tinted(col) : col),
 		uvRadii: radii,
 		borders: borders,
-		params: [dashed, (st.fill.kind as int32) as float32, fillFlags(st.fill)],
-		params1: fillParams(st.fill),
+		params: [dashed, (fill.kind as int32) as float32, fillFlags(fill)],
+		params1: fillParams(fill),
 		border: insets > 0 ? transparent : edge,
-		extra: filled ? st.fill.to.tinted(col) : transparent,
+		extra: filled ? fill.to.tinted(col) : transparent,
 	});
 	if (insets == 0) { return; }
-	for (const shadow of st.shadows) {
+	for (const shadow of boxStyles[payload].shadows) {
 		if (!shadow.inset || !(shadow.color.a > 0.0)) { continue; }
 		drawBoxShadow(world, boxAt, bw, bh, half, radii, shadow, aligned, deviceAX, deviceDX, na,
 			blend);
