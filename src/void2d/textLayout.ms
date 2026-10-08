@@ -24,6 +24,7 @@ import {
 	SEPARATOR_RESET,
 	TextDirection,
 	WHITESPACE_RESET,
+	joinsRightToLeft,
 	possiblyRtl,
 } from "./textDirection";
 
@@ -145,7 +146,7 @@ export function describe(this e: TextError): string {
 		TextErrorKind.RightToLeftNeedsBidi =>
 			`right-to-left text at UTF-16 index ${e.index} needs -d:voidBidi`,
 		TextErrorKind.ArabicNeedsShaper =>
-			`Arabic-script text at UTF-16 index ${e.index} needs -d:voidShaper`,
+			`joining right-to-left text at UTF-16 index ${e.index} needs -d:voidShaper`,
 	};
 }
 
@@ -638,7 +639,8 @@ function refusedText(
 	when (voidBidi) {
 		if (textShapingOn()) { return Result.ok(null); }
 		for (const cp of cps) {
-			if (possiblyRtl(cp.value) && bidiClassOf(cp.value) == BidiClass.AL) {
+			if (joinsRightToLeft(cp.value) ||
+				(possiblyRtl(cp.value) && bidiClassOf(cp.value) == BidiClass.AL)) {
 				return Result.err({ kind: TextErrorKind.ArabicNeedsShaper, index: cp.index });
 			}
 		}

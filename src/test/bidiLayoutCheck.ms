@@ -260,6 +260,20 @@ test "an Arabic-script letter without the shaper is refused by name, a Hebrew le
 	restoreShaping(was);
 }
 
+test "N'Ko, Mandaic and Adlam letters join without being Arabic, so the shaper refuses them too" {
+	const was = plainShaping();
+	const style = styleOf(hebrewFont(), 0.0);
+	const nko = TextLayout.layout("a\u{7CA}", style);
+	assert !nko.ok;
+	if (!nko.ok) {
+		assert nko.error.kind == TextErrorKind.ArabicNeedsShaper && nko.error.index == 1;
+	}
+	assert !TextLayout.layout("\u{841}", style).ok;
+	assert !TextLayout.layout("\u{1F600}\u{1E922}", style).ok;
+	assert TextLayout.layout("\u{7C0}\u{5D0}", style).ok;
+	restoreShaping(was);
+}
+
 test "a label takes its paragraph direction from setTextDirection" {
 	const was = plainShaping();
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));

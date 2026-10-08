@@ -2655,8 +2655,11 @@ and `bidiShapedCheck.ms` requires that a mixed Hebrew line shapes as its three r
   `TextLayout.layout`, `layoutRuns`, `calcTextWidth`, `NodeRef.calcTextWidth` and
   `NodeRef.splitText`; a label (`Scene2D.label`, `setText`) keeps its chainable signature, draws
   nothing for refused text, logs it once ("void2d: label text is not drawn: ...") and answers
-  `NodeRef.textStatus()`. With `-d:voidBidi` and no shaper, Arabic-script text is a result of the
-  same type ("needs -d:voidShaper"), not an abort.
+  `NodeRef.textStatus()`, which shapes the label first, so the answer holds straight after `setText`.
+  With `-d:voidBidi` and no shaper, text that joins is a result of the same type ("joining
+  right-to-left text ... needs -d:voidShaper"), not an abort: Bidi_Class AL, and the scripts of
+  another class that join (`joinsRightToLeft`: N'Ko, Mandaic, Manichaean, Psalter Pahlavi, Hanifi
+  Rohingya, Old Uyghur, Chorasmian, Adlam; letters only, listed from ArabicShaping.txt).
 - A bidi paragraph is the layout paragraph (split at `U+000A` only). A paragraph separator inside it
   ends the open embeddings and isolates (X8) but starts no paragraph of its own, so P1 is not
   followed there; BidiTest and BidiCharacterTest cannot tell (`bidiOracleCheck.ms` plants the row).

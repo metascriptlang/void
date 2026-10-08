@@ -1,4 +1,4 @@
-// expect: void2d: Arabic-script text at UTF-16 index 0 needs -d:voidShaper
+// expect: void2d: joining right-to-left text at UTF-16 index 0 needs -d:voidShaper
 // flags: -d:voidBidi
 import { Align, TextLayout, describe } from "../../src/void2d/textLayout";
 import { addFont } from "../../src/void2d/font";
