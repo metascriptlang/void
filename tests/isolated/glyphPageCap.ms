@@ -26,6 +26,7 @@ test "the renderer binds at most 64 glyph pages, and an atlas refused one fails 
 		glyph: glyphIndex(face, "H".code),
 		sizePx: 13.0,
 		variant: 0,
+		outline: 0,
 	});
 	assert !r.ok;
 	if (!r.ok) { assert r.error == AtlasError.Full; }

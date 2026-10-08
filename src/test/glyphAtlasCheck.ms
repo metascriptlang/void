@@ -29,6 +29,7 @@ function keyFor(face: int32, codepoint: int32, sizePx: float32, variant: int32):
 		glyph: glyphIndex(face, codepoint),
 		sizePx: sizePx,
 		variant: variant,
+		outline: 0,
 	};
 }
 
@@ -64,6 +65,7 @@ test "the key separates face, glyph, size and variant" {
 		glyph: 36,
 		sizePx: 16.25,
 		variant: 0,
+		outline: 0,
 	};
 	const variant: GlyphKey = { ...base, variant: 1 };
 	const larger: GlyphKey = { ...base, sizePx: 16.5 };
@@ -85,6 +87,7 @@ test "a coverage key packs to the bits it had before the kind lane" {
 		glyph: 36,
 		sizePx: 16.25,
 		variant: 3,
+		outline: 0,
 	};
 	assert key.packed() == 0x0001002400041003;
 }
@@ -96,6 +99,7 @@ test "the key separates the page kind and every kind other than coverage is refu
 		glyph: 36,
 		sizePx: 16.0,
 		variant: 0,
+		outline: 0,
 	};
 	const sdf: GlyphKey = { ...coverage, kind: PageKind.Sdf };
 	const rgba: GlyphKey = { ...coverage, kind: PageKind.Rgba };

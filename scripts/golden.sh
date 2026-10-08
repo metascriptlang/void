@@ -23,7 +23,7 @@ MSC="${MSC:-msc}"
 BACKEND_DIR=d3d11
 RUNNER=out/goldenRunner.exe
 COMPARE=out/goldenCompare.exe
-GOLDEN_DEFINES="${GOLDEN_DEFINES--d:voidSdfText -d:voidShaper -d:voidSvg -d:voidProfiler -d:voidColourEmoji -d:voidSprites -d:voidBidi}"
+GOLDEN_DEFINES="${GOLDEN_DEFINES--d:voidSdfText -d:voidShaper -d:voidSvg -d:voidProfiler -d:voidColourEmoji -d:voidSprites -d:voidBidi -d:voidTextOutline}"
 BACKEND_FLAGS=""
 
 mode=all

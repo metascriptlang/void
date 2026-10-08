@@ -44,6 +44,7 @@ import {
 	setLabelSelection,
 	setLabelCursor,
 	setLabelBlinkTime,
+	setLabelOutline,
 } from "./labelText";
 import {
 	IconId,
@@ -1557,6 +1558,19 @@ export function setCursorBlinkTime(this n: NodeRef, seconds: float32): NodeRef {
 export function setForceWidth(this n: NodeRef, cell: float32): NodeRef {
 	const index: int32 = textChanged(n, "setForceWidth");
 	setLabelLines(index, { ...labelLines(index), forceWidth: cell });
+	return n;
+}
+
+// Godot's LabelSettings.outline_size and outline_color, one outline per label; a width of 0
+// clears it. The width is in the label's own units, like its size.
+export function setOutline(this n: NodeRef, width: float32, color: Color): NodeRef {
+	const i: int32 = n.labelRow("setOutline");
+	if (!(width >= 0.0)) {
+		console.log(`void2d text outline: setOutline width ${width} is not zero or above`);
+		unreachable;
+	}
+	setLabelOutline(n.scene.payloads[i], width, color);
+	n.scene.markChanged(i, Changed.Text);
 	return n;
 }
 

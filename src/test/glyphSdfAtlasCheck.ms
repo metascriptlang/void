@@ -34,7 +34,7 @@ test "the SDF key carries no size and no variant" {
 	assert key.sizePx == 0.0;
 	assert key.variant == 0;
 	const coverage: GlyphKey = {
-		kind: PageKind.Coverage, face: 1, glyph: 36, sizePx: 0.0, variant: 0,
+		kind: PageKind.Coverage, face: 1, glyph: 36, sizePx: 0.0, variant: 0, outline: 0,
 	};
 	assert key.packed() != coverage.packed();
 	assert key.packed() == 0x0001002400000010;
@@ -105,6 +105,7 @@ test "a coverage zoom sweep adds no SDF page and an SDF glyph adds no coverage t
 			glyph: glyph,
 			sizePx: 8.0 + (step as float32) * 2.0,
 			variant: 0,
+			outline: 0,
 		});
 		assert r.ok;
 	}
@@ -123,6 +124,7 @@ test "SDF pages and coverage pages reclaim independently" {
 		glyph: glyphIndex(face, "g".code),
 		sizePx: 16.0,
 		variant: 0,
+		outline: 0,
 	});
 	assert coverage.ok;
 	let held: Vec<int32> = new Array(0);

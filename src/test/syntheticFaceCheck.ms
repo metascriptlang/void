@@ -27,6 +27,7 @@ function tileOf(face: int32, codepoint: int32): GlyphTile {
 		glyph: glyphIndex(face, codepoint),
 		sizePx: SIZE,
 		variant: 0,
+		outline: 0,
 	});
 	return atlas.tile(index.ok ? index.value : 0);
 }

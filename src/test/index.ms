@@ -9,6 +9,7 @@ import "./sceneCheck";
 import "./effectCheck";
 import "./faceCheck";
 import "./glyphAtlasCheck";
+import "./outlineKeyCheck";
 import "./textLayoutCheck";
 import "./labelTextCheck";
 import "./textMetricsCheck";

@@ -72,7 +72,7 @@ else
 	fail "module stage all-off: msc test src/test/index.ms — see out/gate-t0.log"
 fi
 
-moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg voidSprites voidBidi"
+moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg voidSprites voidBidi voidTextOutline"
 moduleDefines=""
 for flag in $moduleFlags; do moduleDefines="$moduleDefines -d:$flag"; done
 echo "      module stage all-off: the T0 run above, no -d: flag"

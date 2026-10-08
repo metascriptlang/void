@@ -1,4 +1,5 @@
 import "./textSdfSwitch";
+import "./textOutlineSwitch";
 import "./textColourSwitch";
 import "./svgMaskSwitch";
 import {
@@ -46,6 +47,7 @@ export enum AtlasError {
 	MaskBadShape,
 
 	ColourRefused,
+	OutlineTooWide,
 }
 
 export enum PageKind {
@@ -61,6 +63,7 @@ export struct GlyphKey {
 	glyph: int32;
 	sizePx: float32;
 	variant: int32;
+	outline: int32;
 }
 
 export struct GlyphTile {
@@ -107,6 +110,7 @@ export interface GlyphAtlas {
 	generations: int32;
 	reclaims: int32;
 	frame: int32;
+	emptyTile: int32;
 }
 
 export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32): GlyphAtlas {
@@ -123,6 +127,7 @@ export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32)
 		generations: 0,
 		reclaims: 0,
 		frame: 0,
+		emptyTile: -1,
 	};
 }
 
@@ -137,10 +142,53 @@ export function snapBaseline(deviceY: float32): int32 {
 	return Math.floor(deviceY + 0.5) as int32;
 }
 
+export const SIZE_QUANTA_MAX: int32 = 65535;
+export const OUTLINE_LANE_MAX: int32 = 255;
+
+export function sizeQuanta(this key: GlyphKey): int32 {
+	const scaled: float32 = key.kind == PageKind.Mask ? key.sizePx : key.sizePx * 64.0;
+	if (!(scaled < 2147483000.0)) { return 2147483647; }
+	return Math.floor(scaled + 0.5) as int32;
+}
+
+export function fitsKey(this key: GlyphKey): boolean {
+	const quanta: int32 = key.sizeQuanta();
+	return quanta >= 0 && quanta <= SIZE_QUANTA_MAX && key.outline >= 0 &&
+		key.outline <= OUTLINE_LANE_MAX;
+}
+
+function onlyOversize(key: GlyphKey): boolean {
+	return key.outline >= 0 && key.outline <= OUTLINE_LANE_MAX &&
+		key.sizeQuanta() > SIZE_QUANTA_MAX;
+}
+
+function retainEmpty(this atlas: GlyphAtlas): int32 {
+	atlas.rasterizations = atlas.rasterizations + 1;
+	if (atlas.emptyTile >= 0) {
+		atlas.tiles[atlas.emptyTile].refs = atlas.tiles[atlas.emptyTile].refs + 1;
+		return atlas.emptyTile;
+	}
+	atlas.tiles.push({
+		page: NO_GLYPH_PAGE, x: 0, y: 0, width: 0, height: 0, left: 0, top: 0, refs: 1,
+		key: 0xFFFFFFFFFFFFFFFF,
+	});
+	atlas.emptyTile = (atlas.tiles.length as int32) - 1;
+	return atlas.emptyTile;
+}
+
 export function packed(this key: GlyphKey): uint64 {
-	const sizeQ: uint64 = (Math.floor(key.sizePx * 64.0 + 0.5) as int32) as uint64;
+	if (!key.fitsKey()) {
+		console.log(
+			`void2d glyph atlas: a key of size ${key.sizePx} px and outline lane ${key.outline} ` +
+			`does not fit the packed key (size quanta 0..${SIZE_QUANTA_MAX}, ` +
+			`lane 0..${OUTLINE_LANE_MAX})`,
+		);
+		unreachable;
+	}
+	const sizeQ: uint64 = (key.sizeQuanta()) as uint64;
 	return ((key.face as uint64) << 48) |
 		((key.glyph as uint64) << 32) |
+		((key.outline as uint64) << 24) |
 		(sizeQ << 8) |
 		(((key.kind as int32) as uint64) << 4) |
 		(key.variant as uint64);
@@ -149,6 +197,7 @@ export function packed(this key: GlyphKey): uint64 {
 export function maskKey(icon: int32, width: int32, height: int32): GlyphKey {
 	return {
 		kind: PageKind.Mask, face: icon, glyph: height, sizePx: width as float32, variant: 0,
+		outline: 0,
 	};
 }
 
@@ -348,6 +397,13 @@ function allocate(
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
 	if (key.kind != PageKind.Coverage) { return Result.err(AtlasError.KindNotBuilt); }
 	if (key.variant < 0 || key.variant >= SUBPIXEL_VARIANTS) { return Result.err(AtlasError.VariantOutOfRange); }
+	if (key.outline != 0) { return Result.err(AtlasError.KindNotBuilt); }
+	if (!key.fitsKey()) {
+		if (!onlyOversize(key)) { return Result.err(AtlasError.TooLarge); }
+		const huge: Ptr<int32> = void2dGlyphBox(key.face, key.glyph, key.sizePx, 0.0);
+		if (huge[2] > huge[0] && huge[3] > huge[1]) { return Result.err(AtlasError.TooLarge); }
+		return Result.ok(atlas.retainEmpty());
+	}
 	const packedKey: uint64 = key.packed();
 	const hit = atlas.index.get(packedKey);
 	if (hit.present) {
@@ -386,6 +442,7 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 }
 
 export function cached(this atlas: GlyphAtlas, key: GlyphKey): boolean {
+	if (!key.fitsKey()) { return false; }
 	return atlas.index.get(key.packed()).present;
 }
 
@@ -402,6 +459,12 @@ export function acquireBlank(
 		return Result.err(AtlasError.KindNotBuilt);
 	}
 	if (key.variant != 0) { return Result.err(AtlasError.VariantOutOfRange); }
+	if (!key.fitsKey()) {
+		if (onlyOversize(key) && (width <= 0 || height <= 0)) {
+			return Result.ok(atlas.retainEmpty());
+		}
+		return Result.err(AtlasError.TooLarge);
+	}
 	const packedKey: uint64 = key.packed();
 	const hit = atlas.index.get(packedKey);
 	if (hit.present) {
@@ -432,7 +495,7 @@ export function acquireBlank(
 }
 
 export function retainMask(this atlas: GlyphAtlas, key: GlyphKey): int32 {
-	if (key.kind != PageKind.Mask) { return -1; }
+	if (key.kind != PageKind.Mask || !key.fitsKey()) { return -1; }
 	const hit = atlas.index.get(key.packed());
 	if (!hit.present) { return -1; }
 	atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
@@ -459,6 +522,7 @@ export function reserveMask(
 	}
 	if (key.variant != 0) { return Result.err(AtlasError.VariantOutOfRange); }
 	if (width < 1 || height < 1) { return Result.err(AtlasError.MaskBadShape); }
+	if (!key.fitsKey()) { return Result.err(AtlasError.TooLarge); }
 	const placed = try allocate(atlas, PageKind.Mask, width, height);
 	atlas.rasterizations = atlas.rasterizations + 1;
 	const packedKey: uint64 = key.packed();
@@ -556,7 +620,9 @@ when (voidSdfText) {
 	}
 
 	export function sdfKey(face: int32, glyph: int32): GlyphKey {
-		return { kind: PageKind.Sdf, face: face, glyph: glyph, sizePx: 0.0, variant: 0 };
+		return {
+			kind: PageKind.Sdf, face: face, glyph: glyph, sizePx: 0.0, variant: 0, outline: 0,
+		};
 	}
 
 	export function acquireSdf(
@@ -607,7 +673,9 @@ when (voidColourEmoji) {
 	import { void2dGlyphColourRasterize } from "./glyph.h";
 
 	export function colourKey(face: int32, glyph: int32, sizePx: float32): GlyphKey {
-		return { kind: PageKind.Rgba, face: face, glyph: glyph, sizePx: sizePx, variant: 0 };
+		return {
+			kind: PageKind.Rgba, face: face, glyph: glyph, sizePx: sizePx, variant: 0, outline: 0,
+		};
 	}
 
 	export const COLOUR_BUCKET_LIMIT: float32 = 16384.0;

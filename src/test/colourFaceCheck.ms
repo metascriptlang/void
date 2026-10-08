@@ -139,6 +139,7 @@ test "tile boxes and premultiplied area-average pixels agree with the oracle at 
 				assert box.ppem == want.getDynamicField("ppem").asNumber() as int32;
 				const key: GlyphKey = {
 					kind: PageKind.Rgba, face: face, glyph: id, sizePx: size, variant: 0,
+					outline: 0,
 				};
 				const width: int32 = box.right - box.left;
 				const height: int32 = box.bottom - box.top;
@@ -207,6 +208,7 @@ test "sbix tiles, dupe chains and refused graphic types agree with the oracle at
 				assert box.bottom == want.getDynamicField("bottom").asNumber() as int32;
 				const key: GlyphKey = {
 					kind: PageKind.Rgba, face: face, glyph: id, sizePx: size, variant: 0,
+					outline: 0,
 				};
 				const width: int32 = box.right - box.left;
 				const height: int32 = box.bottom - box.top;
@@ -283,6 +285,7 @@ test "COLR v0 layers, palette 0 and the composited tile agree with the oracle" {
 				assert box.bottom == want.getDynamicField("bottom").asNumber() as int32;
 				const key: GlyphKey = {
 					kind: PageKind.Rgba, face: face, glyph: id, sizePx: size, variant: 0,
+					outline: 0,
 				};
 				const width: int32 = box.right - box.left;
 				const height: int32 = box.bottom - box.top;
@@ -427,7 +430,9 @@ test "a tile aimed at the wrong place or with the wrong size is refused" {
 	assert face >= 0;
 	const id: int32 = glyphIndex(face, 0x1F600);
 	const atlas = GlyphAtlas.create(64, 2);
-	const key: GlyphKey = { kind: PageKind.Rgba, face: face, glyph: id, sizePx: 16.0, variant: 0 };
+	const key: GlyphKey = {
+		kind: PageKind.Rgba, face: face, glyph: id, sizePx: 16.0, variant: 0, outline: 0,
+	};
 	const index = atlas.acquireBlank(key, 16, 16, 0, -16);
 	assert index.ok;
 	if (!index.ok) { return; }

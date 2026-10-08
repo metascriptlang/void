@@ -24,7 +24,9 @@ function testFace(): int32 {
 }
 
 function colourKey(glyph: int32, variant: int32): GlyphKey {
-	return { kind: PageKind.Rgba, face: 7, glyph: glyph, sizePx: 16.0, variant: variant };
+	return {
+		kind: PageKind.Rgba, face: 7, glyph: glyph, sizePx: 16.0, variant: variant, outline: 0,
+	};
 }
 
 function pagesOfKind(atlas: GlyphAtlas, kind: PageKind): int32 {
@@ -63,6 +65,7 @@ test "coverage and Rgba tiles never share a page and bytes add per kind" {
 		glyph: glyphIndex(face, "g".code),
 		sizePx: 16.0,
 		variant: 0,
+		outline: 0,
 	});
 	assert coverage.ok;
 	assert atlas.pageCount() == 2;
@@ -95,7 +98,7 @@ test "an Rgba key is one tile, shared by reference, with variant zero only" {
 test "a coverage key is refused by acquireBlank and an Rgba key by acquire" {
 	const atlas = GlyphAtlas.create(64, 4);
 	const wrong = atlas.acquireBlank({
-		kind: PageKind.Coverage, face: 0, glyph: 1, sizePx: 16.0, variant: 0,
+		kind: PageKind.Coverage, face: 0, glyph: 1, sizePx: 16.0, variant: 0, outline: 0,
 	}, 8, 8, 0, 0);
 	assert !wrong.ok;
 	if (!wrong.ok) { assert wrong.error == AtlasError.KindNotBuilt; }
@@ -132,6 +135,7 @@ test "a blit outside the page or onto a coverage page is refused by name" {
 		glyph: glyphIndex(face, "g".code),
 		sizePx: 16.0,
 		variant: 0,
+		outline: 0,
 	});
 	assert coverage.ok;
 	if (!r.ok || !coverage.ok) { return; }

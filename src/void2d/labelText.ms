@@ -139,6 +139,9 @@ export interface LabelText {
 	selectionSpans: Vec<float32>;
 	selectionRowFirst: Vec<int32>;
 	cursorX: float32;
+	outlineWidth: float32;
+	outlineColor: Color;
+	placedOutline: Vec<PlacedGlyph>;
 }
 
 export const NO_CURSOR: int32 = -1;
@@ -257,6 +260,9 @@ export function allocateLabelText(): int32 {
 		selectionSpans: new Array(0),
 		selectionRowFirst: new Array(0),
 		cursorX: 0.0,
+		outlineWidth: 0.0,
+		outlineColor: { r: 0.0, g: 0.0, b: 0.0, a: 0.0 },
+		placedOutline: new Array(0),
 	};
 	if ((freeLabelTexts.length as int32) > 0) {
 		const index: int32 = freeLabelTexts.pop();
@@ -424,6 +430,23 @@ export function labelDirection(index: int32): TextDirection {
 export function labelRefusal(index: int32): Result<void, TextError> {
 	if (labelTexts[index].textRefused) { return Result.err(labelTexts[index].textRefusal); }
 	return Result.ok(null);
+}
+
+export function setLabelOutline(index: int32, width: float32, color: Color): void {
+	when (voidTextOutline) {
+		const entry: LabelText = labelTexts[index];
+		if (entry.outlineWidth != width) { entry.placedValid = false; }
+		entry.outlineWidth = width;
+		entry.outlineColor = color;
+	} else {
+		if (width > 0.0) {
+			console.log(
+				"void2d text outline: setOutline needs the outline module; " +
+				"build with -d:voidTextOutline",
+			);
+			unreachable;
+		}
+	}
 }
 
 export function setLabelLines(index: int32, options: LineOptions): void {
@@ -826,6 +849,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			const acquired = glyphAtlas.acquire({
 				kind: PageKind.Coverage,
 				face: g.face, glyph: g.glyph, sizePx: g.size * devicePerLocal, variant: variant,
+				outline: 0,
 			});
 			if (!acquired.ok) {
 				refused = refused + 1;
