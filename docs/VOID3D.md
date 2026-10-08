@@ -3181,8 +3181,18 @@ the headless entry `src/test/index.ms` 1417/1417. New test: two quads sharing a 
 6 vertices into 8, each side keeping its own tangent; the same test on the old Lengyel sum fails
 (the shared vertices average to zero). The old "mirrored" fixture reversed the winding instead of
 mirroring the UVs, which MikkTSpace reads as a back face; it is now counter-clockwise with u
-reversed. Not run: the captures that draw normal maps (`map-material`, `card-table`), the web
-builds (`mikkTangents.c` under emcc) and the gate pair.
+reversed.
+
+**Gate acceptance, D3D11.** On `c6cc579a` over main `1708be22`, BUILD `1090f789` before, between
+and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1429/1429; the normal-map
+`map-material` and `card-table` stages hold their captures, so the flat board did not move);
+`gate.sh` GREEN (golden 107/107, 7 known skips). A first pair is not counted: msc synced from
+`99a851d7` during its `gate.sh` (its `gate3d.sh`, wholly on `99a851d7`, was also GREEN).
+**Web.** `build-web.sh`'s default entry (`mainSokol2d.ms`) imports no `meshData`, and on
+`1090f789` it stops in void2d's `textLayout.ms` (routed to void2d). A void3d-only probe that
+calls `addTangents` (`VOID_WEB_ENTRY=out/tmp/mikkWeb/mikkWeb.ms`) built, compiled and linked
+`mikktspace.c` for both the WebGPU and the WebGL2 build, and each wasm run under node printed
+`ok, tangent x 1 w 1`, as native. Not run: a browser page, GLES3 and Android.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
