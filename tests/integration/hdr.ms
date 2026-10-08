@@ -16,7 +16,8 @@ import {
 } from "../../src/void3d/draw";
 import { UniformError } from "../../src/void3d/uniformPool";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/void3d/camera";
-import { setExposure } from "../../src/void3d/renderer";
+import { ToneMode, setExposure, setToneMode } from "../../src/void3d/renderer";
+import { greyCurve } from "./toneCurves";
 import {
 	ForwardRenderer, ForwardError, FORWARD_HDR_UNIFORM_LENGTH, renderFrame,
 } from "../../src/void3d/forwardRenderer";
@@ -38,7 +39,11 @@ const BACK: float32 = 0.2;
 const TOP: float32 = 0.9;
 const TOP_ALPHA: float32 = 0.5;
 const GLOW: float32 = 1.0;
-const MULTIPLIERS: Vec<float32> = [1.0, 1.5, 0.4];
+const MULTIPLIERS: Vec<float32> = [1.0, 1.5, 0.4, 0.6, 0.6, 0.6];
+const MODES: Vec<ToneMode> = [
+	ToneMode.Linear, ToneMode.Linear, ToneMode.Linear,
+	ToneMode.Reinhard, ToneMode.Filmic, ToneMode.Neutral,
+];
 const GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 let context: DrawContext = DrawContext.withUniformCapacity(
@@ -146,11 +151,9 @@ function viewOf(): CameraView {
 	unreachable;
 }
 
-// A linear value as the tone map writes it: exposed, saturated and encoded, in 8 bits.
-function toneMappedByte(linear: float32, multiplier: float32): float32 {
-	let exposed: float32 = linear * multiplier;
-	if (exposed > 1.0) { exposed = 1.0; }
-	return linearToSrgb(exposed) * 255.0;
+// A linear value as the tone map writes it: exposed, through the curve and encoded, in 8 bits.
+function toneMappedByte(linear: float32, multiplier: float32, mode: ToneMode): float32 {
+	return linearToSrgb(greyCurve(linear * multiplier, mode)) * 255.0;
 }
 
 function near(got: int32, want: float32): boolean {
@@ -168,6 +171,26 @@ function expect(what: string, got: int32, want: float32, other: float32, otherNa
 	}
 }
 
+// The curve's own stage: every region against the Heaps formula, the overlap and the additive sum
+// (above 1 in linear light) against the linear curve at the same exposure.
+function checkCurve(multiplier: float32, mode: ToneMode): void {
+	const back: float32 = srgbToLinear(BACK);
+	const layered: float32 = srgbToLinear(TOP) * TOP_ALPHA + back * (1.0 - TOP_ALPHA);
+	const summed: float32 = back + 2.0 * srgbToLinear(GLOW);
+	const alone: int32 = green(20, 20);
+	const overlap: int32 = green(WIDTH / 2, HEIGHT / 2);
+	const lit: int32 = green(WIDTH / 2 - 120, HEIGHT / 2);
+	const wantBack: float32 = toneMappedByte(back, multiplier, mode);
+	console.log(`hdr: ${mode.toString()} x${multiplier} backdrop ${alone} (want ${wantBack}), ` +
+		`overlap ${overlap}, additive ${lit}`);
+	if (!near(alone, wantBack)) { fail(`the backdrop drew ${alone}, not ${wantBack}`); }
+	const curve: string = `the linear curve's`;
+	expect("overlap", overlap, toneMappedByte(layered, multiplier, mode),
+		toneMappedByte(layered, multiplier, ToneMode.Linear), curve);
+	expect("additive sum", lit, toneMappedByte(summed, multiplier, mode),
+		toneMappedByte(summed, multiplier, ToneMode.Linear), curve);
+}
+
 function check(multiplier: float32): void {
 	const back: float32 = srgbToLinear(BACK);
 	const top: float32 = srgbToLinear(TOP);
@@ -175,22 +198,22 @@ function check(multiplier: float32): void {
 	const alone: int32 = green(20, 20);
 	const overlap: int32 = green(WIDTH / 2, HEIGHT / 2);
 	const lit: int32 = green(WIDTH / 2 - 120, HEIGHT / 2);
-	const wantBack: float32 = toneMappedByte(back, multiplier);
+	const wantBack: float32 = toneMappedByte(back, multiplier, ToneMode.Linear);
 	const wantOverlap: float32 =
-		toneMappedByte(top * TOP_ALPHA + back * (1.0 - TOP_ALPHA), multiplier);
-	const wantLit: float32 = toneMappedByte(back + 2.0 * glow, multiplier);
+		toneMappedByte(top * TOP_ALPHA + back * (1.0 - TOP_ALPHA), multiplier, ToneMode.Linear);
+	const wantLit: float32 = toneMappedByte(back + 2.0 * glow, multiplier, ToneMode.Linear);
 	console.log(`hdr: x${multiplier} backdrop ${alone} (want ${wantBack}), overlap ${overlap} ` +
 		`(want ${wantOverlap}), additive ${lit} (want ${wantLit})`);
 	if (!near(alone, wantBack)) { fail(`the backdrop drew ${alone}, not ${wantBack}`); }
-	const gammaBlend: float32 =
-		toneMappedByte(srgbToLinear(TOP * TOP_ALPHA + BACK * (1.0 - TOP_ALPHA)), multiplier);
+	const encodedBlend: float32 = srgbToLinear(TOP * TOP_ALPHA + BACK * (1.0 - TOP_ALPHA));
+	const gammaBlend: float32 = toneMappedByte(encodedBlend, multiplier, ToneMode.Linear);
 	if (multiplier <= 1.0) {
 		expect("overlap", overlap, wantOverlap, gammaBlend, "a blend of encoded colours");
 	} else if (!near(overlap, wantOverlap)) {
 		fail(`the overlap drew ${overlap}, not ${wantOverlap}`);
 	}
 	if (multiplier < 1.0) {
-		const clipped: float32 = toneMappedByte(1.0, multiplier);
+		const clipped: float32 = toneMappedByte(1.0, multiplier, ToneMode.Linear);
 		expect("additive sum", lit, wantLit, clipped, "a target clipped at 1");
 	} else if (!near(lit, wantLit)) {
 		fail(`the additive sum drew ${lit}, not ${wantLit}`);
@@ -202,18 +225,25 @@ function frame(): void {
 	if (forward === null) { fail("no preset"); }
 	if (forward !== null) {
 		const multiplier: float32 = MULTIPLIERS[stage];
+		const mode: ToneMode = MODES[stage];
 		setExposure(forward.core, Math.log(multiplier) as float32);
+		setToneMode(forward.core, mode);
 		const view: CameraView = viewOf();
 		view.writeCameraBlock(cameraValues);
 		const drawn: Result<int32, ForwardError> =
 			renderFrame(forward, items, cameraValues, lights, WIDTH, HEIGHT);
 		if (!drawn.ok) { fail(`forward refused: ${drawn.error.toString()}`); }
 		if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
-		check(multiplier);
+		if (mode == ToneMode.Linear) {
+			check(multiplier);
+		} else {
+			checkCurve(multiplier, mode);
+		}
 	}
 	stage = stage + 1;
 	if (stage < (MULTIPLIERS.length as int32)) { return; }
-	console.log("PASS hdr: linear blending, exposure over the sum, an additive sum above 1 kept");
+	console.log("PASS hdr: linear blending, exposure over the sum, an additive sum above 1 kept, " +
+		"Reinhard, Filmic and PBR Neutral as Heaps writes them");
 	voidCaptureExit(0);
 }
 

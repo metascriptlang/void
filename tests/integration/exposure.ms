@@ -17,7 +17,8 @@ import {
 import { UniformError } from "../../src/void3d/uniformPool";
 import { Camera3D, CameraView, CameraError, ProjectionKind } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
-import { setExposure } from "../../src/void3d/renderer";
+import { ToneMode, setExposure, setToneMode } from "../../src/void3d/renderer";
+import { greyCurve } from "./toneCurves";
 import {
 	ForwardRenderer, ForwardError, FORWARD_UNIFORM_LENGTH, renderFrame as renderForward,
 } from "../../src/void3d/forwardRenderer";
@@ -163,12 +164,10 @@ function viewOf(): CameraView {
 	unreachable;
 }
 
-// One channel of a grey layer as the scene programs write it: decoded, exposed, saturated and
-// encoded again (toneMap), in 8 bits.
-function exposedByte(grey: float32, multiplier: float32): float32 {
-	let linear: float32 = srgbToLinear(grey) * multiplier;
-	if (linear > 1.0) { linear = 1.0; }
-	return linearToSrgb(linear) * 255.0;
+// One channel of a grey layer as the scene programs write it: decoded, exposed, through the curve
+// and encoded again (toneMap), in 8 bits.
+function exposedByte(grey: float32, multiplier: float32, mode: ToneMode): float32 {
+	return linearToSrgb(greyCurve(srgbToLinear(grey) * multiplier, mode)) * 255.0;
 }
 
 function near(got: int32, want: float32): boolean {
@@ -179,27 +178,40 @@ function green(x: int32, y: int32): int32 {
 	return ((voidCapturePixel(0, x, y) >> 16) & 255) as int32;
 }
 
-function check(multiplier: float32): void {
-	const back: float32 = exposedByte(BACK, multiplier);
-	const layered: float32 = exposedByte(TOP, multiplier) * TOP_ALPHA + back * (1.0 - TOP_ALPHA);
+function layeredByte(multiplier: float32, mode: ToneMode): float32 {
+	const back: float32 = exposedByte(BACK, multiplier, mode);
+	return exposedByte(TOP, multiplier, mode) * TOP_ALPHA + back * (1.0 - TOP_ALPHA);
+}
+
+function check(multiplier: float32, mode: ToneMode): void {
+	const back: float32 = exposedByte(BACK, multiplier, mode);
+	const layered: float32 = layeredByte(multiplier, mode);
 	const alone: int32 = green(20, 20);
 	const overlap: int32 = green(WIDTH / 2, HEIGHT / 2);
-	console.log(`exposure: x${multiplier} backdrop ${alone} (want ${back}), ` +
+	console.log(`exposure: ${mode.toString()} x${multiplier} backdrop ${alone} (want ${back}), ` +
 		`overlap ${overlap} (want ${layered})`);
 	if (!near(alone, back)) { fail(`the backdrop drew ${alone}, not ${back}`); }
 	if (!near(overlap, layered)) { fail(`the overlap drew ${overlap}, not ${layered}`); }
 	if (multiplier == 1.0) { return; }
 	const unexposed: float32 = TOP * TOP_ALPHA + BACK * (1.0 - TOP_ALPHA);
-	const summed: float32 = exposedByte(unexposed, multiplier);
+	const summed: float32 = exposedByte(unexposed, multiplier, mode);
 	if (Math.abs(layered - summed) < 5.0 || near(overlap, summed)) {
 		fail(`the overlap ${overlap} cannot tell layers clipped one by one from a sum ${summed}`);
+	}
+	if (mode == ToneMode.Linear) { return; }
+	const linear: float32 = layeredByte(multiplier, ToneMode.Linear);
+	if (Math.abs(layered - linear) < 5.0 || near(overlap, linear)) {
+		const named: string = mode.toString();
+		fail(`the overlap ${overlap} cannot tell ${named} from the linear curve's ${linear}`);
 	}
 }
 
 function frame(): void {
 	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
 	const multiplier: float32 = stage == 0 ? 1.0 : EXPOSED;
+	const mode: ToneMode = stage == 2 ? ToneMode.Reinhard : ToneMode.Linear;
 	setExposure(pixelArt ? preset.core : forward.core, Math.log(multiplier) as float32);
+	setToneMode(pixelArt ? preset.core : forward.core, mode);
 	const view: CameraView = viewOf();
 	view.writeCameraBlock(cameraValues);
 	if (pixelArt) {
@@ -212,10 +224,11 @@ function frame(): void {
 		if (!drawn.ok) { fail(`forward refused: ${drawn.error.toString()}`); }
 	}
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
-	check(multiplier);
+	check(multiplier, mode);
 	stage = stage + 1;
-	if (stage < 2) { return; }
-	console.log("PASS exposure: none by default, each layer clipped before it blends");
+	if (stage < 3) { return; }
+	console.log("PASS exposure: none by default, each layer clipped before it blends, " +
+		"and curved per layer by Reinhard");
 	voidCaptureExit(0);
 }
 

@@ -1199,7 +1199,7 @@ run_exposure() {
 			return
 		fi
 	done
-	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending"
+	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending, Reinhard per layer"
 }
 
 run_hdr() {
@@ -1223,7 +1223,7 @@ run_hdr() {
 		fail "hdr: the forward HDR preset (exit $status) — see $WORK/hdr.log"
 		return
 	fi
-	pass "hdr: an Rgba16f scene target blends in linear light and keeps sums above 1 for the tone map"
+	pass "hdr: an Rgba16f scene target blends in linear light, keeps sums above 1, and tone maps by Heaps' four curves"
 }
 
 # ---- gl core -------------------------------------------------------------------------------
