@@ -361,7 +361,7 @@ in the same change as the fix.
 | GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
 
 | D3D11 | **83 / 83 captured scenes byte-identical**; the two `icon/` scenes await their first capture | every full gate, this box |
-| GL core 4.3 desktop (glsl430) | **96 / 96**: 73 byte-identical, 23 within the cross-backend bound, 0 structural failures, 2 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
+| GL core 4.3 desktop (glsl430) | **98 / 98**: 75 byte-identical, 23 within the cross-backend bound, 0 structural failures, 2 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |

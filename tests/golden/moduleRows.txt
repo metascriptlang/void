@@ -20,3 +20,5 @@ text/spriteGlyphsDpi100
 text/spriteGlyphsDpi150
 ui/profilerOverlayFull
 ui/profilerOverlayMinimal
+text/designFold
+text/designFoldDpi
