@@ -98,7 +98,6 @@ import {
 	SDF_ROTATED_SCENE, SDF_ZOOM_SCENE, SDF_SCALE_DOWN_SCENE,
 	SDF_EFFECT_SHIFT, SDF_EFFECT_TEXT, SDF_EFFECT_SIZE, SDF_EFFECT_X, SDF_EFFECT_Y,
 	SDF_EFFECT_ROTATION, SDF_EFFECT_ADD_Y, SDF_TEXT_R, SDF_TEXT_G, SDF_TEXT_B,
-	OUTLINE_SDF_ROTATED_SCENE, OUTLINE_SDF_ZOOM_SCENE, OUTLINE_SDF_SCALE_DOWN_SCENE,
 	OUTLINE_EFFECT_SHIFT,
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
@@ -1897,9 +1896,9 @@ function sdfOutlineText(scene: string): Scene2D {
 	return s;
 }
 
-function textOutlineSdfRotated(): Scene2D { return sdfOutlineText(OUTLINE_SDF_ROTATED_SCENE); }
-function textOutlineSdfZoom4(): Scene2D { return sdfOutlineText(OUTLINE_SDF_ZOOM_SCENE); }
-function textOutlineSdfScaleDown(): Scene2D { return sdfOutlineText(OUTLINE_SDF_SCALE_DOWN_SCENE); }
+function textOutlineSdfRotated(): Scene2D { return sdfOutlineText(SDF_ROTATED_SCENE); }
+function textOutlineSdfZoom4(): Scene2D { return sdfOutlineText(SDF_ZOOM_SCENE); }
+function textOutlineSdfScaleDown(): Scene2D { return sdfOutlineText(SDF_SCALE_DOWN_SCENE); }
 
 function textOutlineSdfSeam(): Scene2D {
 	const s = Scene2D.create(DARK);
