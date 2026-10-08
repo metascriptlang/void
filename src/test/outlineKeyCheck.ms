@@ -68,6 +68,7 @@ test "an oversize glyph with ink is refused by name and one with none shares an 
 	const face = try loadFace("assets/font.ttf") catch -1;
 	assert face >= 0;
 	const atlas = GlyphAtlas.create(1024, 2);
+	defer atlas.dispose();
 	const ink = keyOf(PageKind.Coverage, 1100.0, 0, 0);
 	const huge = atlas.acquire({ ...ink, face: face, glyph: glyphIndex(face, "W".code) });
 	assert !huge.ok;
@@ -90,6 +91,7 @@ test "releasing the shared empty tile leaves it to be retained again" {
 	const face = try loadFace("assets/font.ttf") catch -1;
 	assert face >= 0;
 	const atlas = GlyphAtlas.create(1024, 2);
+	defer atlas.dispose();
 	const space: GlyphKey = {
 		kind: PageKind.Coverage, face: face, glyph: glyphIndex(face, " ".code),
 		sizePx: 1100.0, variant: 0, outline: 0,

@@ -77,6 +77,7 @@ function expectedTexel(distance: float32, width: float32): int32 {
 function worstStemError(size: float32, variant: int32, widthPx: float32): int32 {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(1024, 2);
+	defer atlas.dispose();
 	const lane: int32 = laneOf(widthPx);
 	const r = atlas.acquireOutline(keyOf(face, glyphIndex(face, "I".code), size, variant, lane));
 	let worst: int32 = 255;
@@ -134,6 +135,7 @@ test "a glyph with no ink has an empty outline box and a space costs no tile" {
 	const space = void2dGlyphOutlineBox(face, glyphIndex(face, " ".code), 13.0, 0.0, 2.0);
 	assert space[0] == 0 && space[1] == 0 && space[2] == 0 && space[3] == 0;
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	const r = atlas.acquireOutline(keyOf(face, glyphIndex(face, " ".code), 13.0, 0, 8));
 	assert r.ok;
 	if (r.ok) { assert atlas.tile(r.value).width == 0; }
@@ -155,6 +157,7 @@ test "the quarter-pixel shift moves the outline with the fill" {
 test "the outer corner is rounded, not mitred" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(1024, 2);
+	defer atlas.dispose();
 	const r = atlas.acquireOutline(keyOf(face, glyphIndex(face, "I".code), 40.0, 0, laneOf(4.0)));
 	assert r.ok;
 	if (r.ok) {
@@ -173,6 +176,7 @@ test "the same key is one tile and a new width is another" {
 	const face = testFace();
 	const glyph: int32 = glyphIndex(face, "g".code);
 	const atlas = GlyphAtlas.create(512, 2);
+	defer atlas.dispose();
 	const a = atlas.acquireOutline(keyOf(face, glyph, 16.0, 1, 8));
 	const b = atlas.acquireOutline(keyOf(face, glyph, 16.0, 1, 8));
 	const c = atlas.acquireOutline(keyOf(face, glyph, 16.0, 1, 12));
@@ -190,6 +194,7 @@ test "a lane of zero, a bad variant and a plain acquire are refused by name" {
 	const face = testFace();
 	const glyph: int32 = glyphIndex(face, "g".code);
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	const none = atlas.acquireOutline(keyOf(face, glyph, 16.0, 0, 0));
 	assert !none.ok;
 	if (!none.ok) { assert none.error == AtlasError.KindNotBuilt; }
@@ -207,6 +212,7 @@ test "a cubic glyph gets an outline tile that holds its fill" {
 	assert face >= 0;
 	const glyph: int32 = glyphIndex(face, "A".code);
 	const atlas = GlyphAtlas.create(1024, 4);
+	defer atlas.dispose();
 	const outline = atlas.acquireOutline(keyOf(face, glyph, 40.0, 0, laneOf(2.0)));
 	const fill = atlas.acquire(keyOf(face, glyph, 40.0, 0, 0));
 	assert outline.ok && fill.ok;
@@ -245,6 +251,7 @@ when (voidSdfText) {
 	function worstSdfStemError(lane: int32): int32 {
 		const face = testFace();
 		const atlas = GlyphAtlas.create(1024, 2);
+		defer atlas.dispose();
 		const r = atlas.acquireSdfOutline(face, glyphIndex(face, "I".code), lane);
 		let worst: int32 = 255;
 		if (r.ok) {
@@ -275,6 +282,7 @@ when (voidSdfText) {
 	test "an SDF outline tile is the SDF box grown by ceil(width) + 2 and lives on an SDF page" {
 		const face = testFace();
 		const atlas = GlyphAtlas.create(1024, 2);
+		defer atlas.dispose();
 		for (const codepoint of ["I".code, "g".code, "W".code, "@".code]) {
 			const glyph: int32 = glyphIndex(face, codepoint);
 			const base = void2dGlyphSdfBox(face, glyph);
@@ -298,6 +306,7 @@ when (voidSdfText) {
 		const face = testFace();
 		const glyph: int32 = glyphIndex(face, "g".code);
 		const atlas = GlyphAtlas.create(1024, 2);
+		defer atlas.dispose();
 		const field = atlas.acquireSdf(face, glyph);
 		const outline = atlas.acquireSdfOutline(face, glyph, 16);
 		const again = atlas.acquireSdfOutline(face, glyph, 16);
@@ -315,6 +324,7 @@ when (voidSdfText) {
 	test "a cubic glyph has no SDF outline and a lane outside the key is refused by name" {
 		const face = cubicFace();
 		const atlas = GlyphAtlas.create(1024, 2);
+		defer atlas.dispose();
 		const cubic = atlas.acquireSdfOutline(face, glyphIndex(face, "A".code), 16);
 		assert !cubic.ok;
 		if (!cubic.ok) { assert cubic.error == AtlasError.SdfCubicOutline; }

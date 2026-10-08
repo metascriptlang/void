@@ -74,6 +74,7 @@ test "the mask side is twice the device pixels rounded up and nothing for no siz
 
 test "the same icon at the same mask size is one tile and the second costs no rasterization" {
 	const atlas = GlyphAtlas.create(128, 4);
+	defer atlas.dispose();
 	const id: IconId = registered(SQUARE);
 	const first = acquireIconMask(atlas, id, 48, 48);
 	assert first.ok;
@@ -90,6 +91,7 @@ test "the same icon at the same mask size is one tile and the second costs no ra
 
 test "two sizes of one icon and two icons at one size are separate tiles" {
 	const atlas = GlyphAtlas.create(128, 4);
+	defer atlas.dispose();
 	const square: IconId = registered(SQUARE);
 	const dot: IconId = registered(DOT);
 	const small = acquireIconMask(atlas, square, 32, 32);
@@ -106,6 +108,7 @@ test "two sizes of one icon and two icons at one size are separate tiles" {
 
 test "a mask tile holds the rasterized alpha and its gutter stays zero" {
 	const atlas = GlyphAtlas.create(128, 4);
+	defer atlas.dispose();
 	const id: IconId = registered(SQUARE);
 	const r = acquireIconMask(atlas, id, 40, 40);
 	assert r.ok;
@@ -123,6 +126,7 @@ test "a mask tile holds the rasterized alpha and its gutter stays zero" {
 
 test "a mask page is R8 and never shares a page with coverage" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const id: IconId = registered(SQUARE);
 	assert acquireIconMask(atlas, id, 32, 32).ok;
 	assert atlas.pageCount() == 1;
@@ -134,6 +138,7 @@ test "a mask page is R8 and never shares a page with coverage" {
 
 test "released masks are reclaimed whole when the page is full and nothing holds them" {
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	const square: IconId = registered(SQUARE);
 	const dot: IconId = registered(DOT);
 	const first = acquireIconMask(atlas, square, 48, 48);
@@ -153,6 +158,7 @@ test "released masks are reclaimed whole when the page is full and nothing holds
 
 test "a mask larger than a page is refused by name before it is rasterized" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const id: IconId = registered(SQUARE);
 	const r = acquireIconMask(atlas, id, 64, 32);
 	assert !r.ok;
@@ -173,6 +179,7 @@ test "mask keys differ by icon, width and height and never collide with another 
 
 test "the atlas refuses a mask of the wrong key kind, shape or variant by name" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const alpha: Vec<uint8> = [255, 255, 255, 255];
 	const coverage: GlyphKey = { ...maskKey(1, 2, 2), kind: PageKind.Coverage };
 	const wrongKind = atlas.acquireMask(coverage, 2, 2, alpha);

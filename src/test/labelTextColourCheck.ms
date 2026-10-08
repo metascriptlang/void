@@ -222,6 +222,7 @@ test "a colour tile whose rasterization is refused is discarded and its key is n
 	const box = colourTileBox(face, glyph, 20.0);
 	assert box.glyph == ColourGlyph.Present;
 	const atlas = GlyphAtlas.create(256, 4);
+	defer atlas.dispose();
 	const key = colourKey(face, glyph, 20.0);
 	const width: int32 = box.right - box.left;
 	const height: int32 = box.bottom - box.top;

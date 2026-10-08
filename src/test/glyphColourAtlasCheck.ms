@@ -39,6 +39,7 @@ function pagesOfKind(atlas: GlyphAtlas, kind: PageKind): int32 {
 
 test "the first Rgba page is allocated lazily and costs four bytes a texel" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	assert atlas.pageCount() == 0;
 	assert atlas.residentBytes() == 0;
 	const r = atlas.acquireBlank(colourKey(1, 0), 20, 18, 1, -17);
@@ -57,6 +58,7 @@ test "the first Rgba page is allocated lazily and costs four bytes a texel" {
 test "coverage and Rgba tiles never share a page and bytes add per kind" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const colour = atlas.acquireBlank(colourKey(1, 0), 10, 10, 0, -10);
 	assert colour.ok;
 	const coverage = atlas.acquire({
@@ -79,6 +81,7 @@ test "coverage and Rgba tiles never share a page and bytes add per kind" {
 
 test "an Rgba key is one tile, shared by reference, with variant zero only" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const first = atlas.acquireBlank(colourKey(2, 0), 8, 8, 0, -8);
 	assert first.ok;
 	assert atlas.cached(colourKey(2, 0));
@@ -97,6 +100,7 @@ test "an Rgba key is one tile, shared by reference, with variant zero only" {
 
 test "a coverage key is refused by acquireBlank and an Rgba key by acquire" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const wrong = atlas.acquireBlank({
 		kind: PageKind.Coverage, face: 0, glyph: 1, sizePx: 16.0, variant: 0, outline: 0,
 	}, 8, 8, 0, 0);
@@ -110,6 +114,7 @@ test "a coverage key is refused by acquireBlank and an Rgba key by acquire" {
 
 test "a blit lands four channels per texel and reads back packed" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireBlank(colourKey(1, 0), 2, 2, 0, 0);
 	assert r.ok;
 	if (!r.ok) { return; }
@@ -127,6 +132,7 @@ test "a blit lands four channels per texel and reads back packed" {
 test "a blit outside the page or onto a coverage page is refused by name" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireBlank(colourKey(1, 0), 4, 4, 0, 0);
 	assert r.ok;
 	const coverage = atlas.acquire({
@@ -151,6 +157,7 @@ test "a blit outside the page or onto a coverage page is refused by name" {
 test "a coverage tile aimed at an Rgba page draws nothing" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireBlank(colourKey(1, 0), 20, 20, 0, 0);
 	assert r.ok;
 	if (!r.ok) { return; }
@@ -166,6 +173,7 @@ test "a coverage tile aimed at an Rgba page draws nothing" {
 
 test "the pages of one kind are reclaimed without touching the other kind" {
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	const first = atlas.acquireBlank(colourKey(1, 0), 60, 60, 0, 0);
 	assert first.ok;
 	const second = atlas.acquireBlank(colourKey(2, 0), 60, 60, 0, 0);
@@ -180,6 +188,7 @@ test "the pages of one kind are reclaimed without touching the other kind" {
 
 test "a blit reads each source row at its stride, not at the tile width" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireBlank(colourKey(1, 0), 2, 2, 0, 0);
 	assert r.ok;
 	if (!r.ok) { return; }
@@ -196,6 +205,7 @@ test "a blit reads each source row at its stride, not at the tile width" {
 
 test "a reclaimed Rgba page is cleared in all four bytes of every texel" {
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	const first = atlas.acquireBlank(colourKey(1, 0), 60, 60, 0, 0);
 	assert first.ok;
 	if (!first.ok) { return; }
@@ -217,6 +227,7 @@ test "a reclaimed Rgba page is cleared in all four bytes of every texel" {
 
 test "a tile whose fill was refused is discarded and its key is not cached" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const key = colourKey(1, 0);
 	const first = atlas.acquireBlank(key, 8, 8, 0, -8);
 	assert first.ok;
@@ -237,6 +248,7 @@ test "a tile whose fill was refused is discarded and its key is not cached" {
 
 test "discarding a tile another holder shares only drops one reference" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const key = colourKey(1, 0);
 	const first = atlas.acquireBlank(key, 8, 8, 0, -8);
 	const second = atlas.acquireBlank(key, 8, 8, 0, -8);
@@ -250,6 +262,7 @@ test "discarding a tile another holder shares only drops one reference" {
 
 test "a lost device re-arms an Rgba page for a whole upload from its CPU mirror" {
 	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireBlank(colourKey(1, 0), 2, 2, 0, 0);
 	assert r.ok;
 	if (!r.ok) { return; }

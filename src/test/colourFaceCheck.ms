@@ -122,6 +122,7 @@ test "tile boxes and premultiplied area-average pixels agree with the oracle at 
 		const face = try loadFace(row.getDynamicField("path").asString()) catch -1;
 		assert face >= 0;
 		const atlas = GlyphAtlas.create(PAGE_SIZE, 4);
+		defer atlas.dispose();
 		const glyphs = row.getDynamicField("glyphs");
 		for (let g: int32 = 0; g < (glyphs.length() as int32); g++) {
 			const glyph = glyphs.at(g);
@@ -182,6 +183,7 @@ test "sbix tiles, dupe chains and refused graphic types agree with the oracle at
 		assert hasColourTables(face);
 		assert !isColourOnly(face);
 		const atlas = GlyphAtlas.create(PAGE_SIZE, 4);
+		defer atlas.dispose();
 		const glyphs = row.getDynamicField("glyphs");
 		for (let g: int32 = 0; g < (glyphs.length() as int32); g++) {
 			const glyph = glyphs.at(g);
@@ -254,6 +256,7 @@ test "COLR v0 layers, palette 0 and the composited tile agree with the oracle" {
 		assert hasColourTables(face);
 		assert !isColourOnly(face);
 		const atlas = GlyphAtlas.create(PAGE_SIZE, 4);
+		defer atlas.dispose();
 		const glyphs = row.getDynamicField("glyphs");
 		for (let g: int32 = 0; g < (glyphs.length() as int32); g++) {
 			const glyph = glyphs.at(g);
@@ -430,6 +433,7 @@ test "a tile aimed at the wrong place or with the wrong size is refused" {
 	assert face >= 0;
 	const id: int32 = glyphIndex(face, 0x1F600);
 	const atlas = GlyphAtlas.create(64, 2);
+	defer atlas.dispose();
 	const key: GlyphKey = {
 		kind: PageKind.Rgba, face: face, glyph: id, sizePx: 16.0, variant: 0, outline: 0,
 	};

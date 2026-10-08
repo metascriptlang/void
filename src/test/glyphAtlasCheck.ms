@@ -109,6 +109,7 @@ test "the key separates the page kind and every kind other than coverage is refu
 	assert rgba.packed() != mask.packed();
 	assert coverage.packed() != mask.packed();
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	for (const refused of [sdf, rgba, mask]) {
 		const r = atlas.acquire(refused);
 		assert !r.ok;
@@ -121,6 +122,7 @@ test "the key separates the page kind and every kind other than coverage is refu
 test "a variant past the subpixel steps is refused by name" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	for (const variant of [SUBPIXEL_VARIANTS, 15, 16, -1]) {
 		const r = atlas.acquire(keyFor(face, "g".code, 16.25, variant));
 		assert !r.ok;
@@ -131,6 +133,7 @@ test "a variant past the subpixel steps is refused by name" {
 test "a coverage tile lands on a coverage page" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	const r = atlas.acquire(keyFor(face, "g".code, 16.25, 0));
 	assert r.ok;
 	if (r.ok) { assert atlas.pageKind(atlas.tile(r.value).page) == PageKind.Coverage; }
@@ -139,6 +142,7 @@ test "a coverage tile lands on a coverage page" {
 test "one key rasterizes once and is shared by reference" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	const key = keyFor(face, "g".code, 16.25, 1);
 	const first = atlas.acquire(key);
 	const second = atlas.acquire(key);
@@ -154,6 +158,7 @@ test "one key rasterizes once and is shared by reference" {
 test "a glyph tile holds coverage and its variants are distinct tiles" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 2);
+	defer atlas.dispose();
 	const zero = atlas.acquire(keyFor(face, "H".code, 13.0, 0));
 	const three = atlas.acquire(keyFor(face, "H".code, 13.0, 3));
 	assert zero.ok;
@@ -181,6 +186,7 @@ test "a glyph tile holds coverage and its variants are distinct tiles" {
 test "an empty glyph is cached without a tile on any page" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 1);
+	defer atlas.dispose();
 	const space = atlas.acquire(keyFor(face, " ".code, 13.0, 0));
 	assert space.ok;
 	if (space.ok) {
@@ -193,6 +199,7 @@ test "an empty glyph is cached without a tile on any page" {
 test "a glyph larger than a page is refused, not clipped" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	const huge = atlas.acquire(keyFor(face, "W".code, 200.0, 0));
 	assert !huge.ok;
 	if (!huge.ok) { assert huge.error == AtlasError.TooLarge; }
@@ -211,6 +218,7 @@ function fillUntilFull(atlas: GlyphAtlas, face: int32): Vec<int32> {
 test "live tiles keep their page, so a full atlas fails loud" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	const held = fillUntilFull(atlas, face);
 	assert (held.length as int32) < 26;
 	const next = atlas.acquire(keyFor(face, "Z".code, 41.0, 0));
@@ -222,6 +230,7 @@ test "live tiles keep their page, so a full atlas fails loud" {
 test "a page with no live tile is reclaimed whole and bytes stay bounded" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	const held = fillUntilFull(atlas, face);
 	const slots = atlas.tileSlots();
 	for (const index of held) { atlas.release(index); }
@@ -239,6 +248,7 @@ test "a page with no live tile is reclaimed whole and bytes stay bounded" {
 test "a page drawn from in this frame is not reclaimed until the next frame" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	atlas.beginFrame(7);
 	const held = fillUntilFull(atlas, face);
 	atlas.markDrawn(atlas.tile(held[0]).page);
@@ -256,6 +266,7 @@ test "a page drawn from in this frame is not reclaimed until the next frame" {
 test "a page uploaded this frame takes no new tile, so a later bracket's glyph goes elsewhere" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 2);
+	defer atlas.dispose();
 	beginUploadFrame();
 	const first = atlas.acquire(keyFor(face, "A".code, 20.0, 0));
 	assert first.ok;
@@ -275,6 +286,7 @@ test "a page uploaded this frame takes no new tile, so a later bracket's glyph g
 test "a page uploaded this frame is not reclaimed until the next frame" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 1);
+	defer atlas.dispose();
 	beginUploadFrame();
 	const held = fillUntilFull(atlas, face);
 	for (const index of held) { atlas.release(index); }

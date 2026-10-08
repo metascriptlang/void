@@ -43,6 +43,7 @@ test "the SDF key carries no size and no variant" {
 test "one glyph acquired at sixty-four zooms is one tile and one generation" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 4);
+	defer atlas.dispose();
 	const glyph: int32 = glyphIndex(face, "g".code);
 	const before: uint32 = void2dGlyphSdfGenerations();
 	let first: int32 = -1;
@@ -66,6 +67,7 @@ test "one glyph acquired at sixty-four zooms is one tile and one generation" {
 test "an SDF tile lands on an SDF page, padded, with its box origin kept" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireSdf(face, glyphIndex(face, "I".code));
 	assert r.ok;
 	if (r.ok) {
@@ -81,6 +83,7 @@ test "an SDF tile lands on an SDF page, padded, with its box origin kept" {
 test "a space has a tile with no page and costs no generation" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 4);
+	defer atlas.dispose();
 	const r = atlas.acquireSdf(face, glyphIndex(face, " ".code));
 	assert r.ok;
 	if (r.ok) {
@@ -95,6 +98,7 @@ test "a space has a tile with no page and costs no generation" {
 test "a coverage zoom sweep adds no SDF page and an SDF glyph adds no coverage tile" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(512, 8);
+	defer atlas.dispose();
 	const glyph: int32 = glyphIndex(face, "g".code);
 	const sdf = atlas.acquireSdf(face, glyph);
 	assert sdf.ok;
@@ -118,6 +122,7 @@ test "a coverage zoom sweep adds no SDF page and an SDF glyph adds no coverage t
 test "SDF pages and coverage pages reclaim independently" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 2);
+	defer atlas.dispose();
 	const coverage = atlas.acquire({
 		kind: PageKind.Coverage,
 		face: face,
@@ -157,6 +162,7 @@ test "SDF pages and coverage pages reclaim independently" {
 
 test "a generic acquire still refuses an SDF key by name" {
 	const atlas = GlyphAtlas.create(64, 2);
+	defer atlas.dispose();
 	const r = atlas.acquire(sdfKey(0, 36));
 	assert !r.ok;
 	if (!r.ok) { assert r.error == AtlasError.KindNotBuilt; }
@@ -165,6 +171,7 @@ test "a generic acquire still refuses an SDF key by name" {
 test "the first coverage page is a coverage page when an SDF tile came first" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 4);
+	defer atlas.dispose();
 	assert atlas.acquireSdf(face, glyphIndex(face, "g".code)).ok;
 	assert atlas.pageKind(0 as GlyphPage) == PageKind.Sdf;
 	const handle = atlas.ensurePage();
@@ -180,6 +187,7 @@ test "the first coverage page is a coverage page when an SDF tile came first" {
 test "no coverage page is made past the page budget an SDF page already holds" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(256, 1);
+	defer atlas.dispose();
 	assert atlas.acquireSdf(face, glyphIndex(face, "g".code)).ok;
 	assert atlas.ensurePage() == NO_GLYPH_PAGE_HANDLE;
 	assert atlas.pageCount() == 1;
