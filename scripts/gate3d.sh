@@ -1951,7 +1951,7 @@ run_world_label() {
 			return
 		fi
 		if [ "$status" -ne 0 ] || ! grep -q '^PASS world label: ' "$log" ||
-			[ "$(grep -c '^world label: stage [0-9]* checked' "$log")" != "4" ]; then
+			[ "$(grep -c '^world label: stage [0-9]* checked' "$log")" != "5" ]; then
 			fail "world-label: $preset failed (exit $status) — see $log"
 			return
 		fi
