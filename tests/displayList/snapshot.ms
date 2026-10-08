@@ -794,6 +794,39 @@ test "T1 a view painted only by a box fill draws the fill, not its transparent b
 	assert uiInstanceField(0, REC_UI_COLOR_EXTRA + 3) == 1.0;
 }
 
+function oneBox(style: BoxStyle): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	s.add(s.rect(20.0, 24.0, rgba(1.0, 1.0, 1.0, 1.0)).at(30.0, 20.0)).setBoxStyle(style);
+	return s.refOf(s.root);
+}
+
+test "T1 a drop shadow's negative spread stops at the box's smaller half-extent" {
+	const shadows: BoxShadow[] = [
+		{ color: rgba(0.0, 0.0, 0.0, 0.5), blur: 2.0, offsetX: 0.0, offsetY: 0.0, spread: -12.0,
+			inset: false },
+	];
+	record(oneBox(BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0))
+		.castShadows(shadows)), 128.0, 64.0, 1.0);
+	assert uiInstanceField(0, REC_UI_PARAMS0) == 1.0;
+	assert uiInstanceField(0, REC_UI_PARAMS1 + 2) == -10.0;
+}
+
+test "T1 ditheredFill before the fill it dithers still dithers it" {
+	const plain = BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(0.0, 0.0, 0.0, 0.0));
+	record(oneBox(plain.ditheredFill().linearFill(90.0, rgba(1.0, 0.0, 0.0, 1.0), 0.0,
+		rgba(0.0, 0.0, 1.0, 1.0), 1.0, GradientSpace.Srgb)), 128.0, 64.0, 1.0);
+	assert uiInstanceField(0, REC_UI_PARAMS0 + 3) == 2.0;
+}
+
+test "T1 an inset shadow over a border of no width draws no border instance" {
+	record(oneBox(BoxStyle.create(uniformRadii(2.0), uniformBorders(0.0), rgba(1.0, 0.0, 0.0, 1.0))
+		.castShadows([
+			{ color: rgba(0.0, 0.0, 0.0, 0.5), blur: 2.0, offsetX: 0.0, offsetY: 0.0, spread: 1.0,
+				inset: true },
+		])), 128.0, 64.0, 1.0);
+	assert uiInstanceCount() == 2;
+}
+
 function shadowListScene(): NodeRef {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const shadows: BoxShadow[] = [

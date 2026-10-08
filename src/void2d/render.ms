@@ -927,6 +927,8 @@ function drawBoxShadow(
 	aligned: boolean, deviceAX: float32, deviceDX: float32, na: float32, blend: BlendMode,
 ): void {
 	const c: Color = shadow.color;
+	const smallest: float32 = half.x < half.y ? half.x : half.y;
+	const spread: float32 = !shadow.inset && shadow.spread < -smallest ? -smallest : shadow.spread;
 	drawUiInstance(sharedGlyphView(), blend, {
 		...uiInstance(InstanceMode.Shadow, world, at.x, at.y, w, h, transparent),
 		uvRadii: radii,
@@ -934,7 +936,7 @@ function drawBoxShadow(
 		params1: [
 			shadowOffset(shadow.offsetX, aligned, deviceAX),
 			shadowOffset(shadow.offsetY, aligned, deviceDX),
-			shadow.spread,
+			spread,
 			0.0,
 		],
 		extra: rgba(c.r, c.g, c.b, c.a * na),
@@ -1041,7 +1043,7 @@ function emitBox(
 		drawBoxShadow(world, boxAt, bw, bh, half, radii, shadow, aligned, deviceAX, deviceDX, na,
 			blend);
 	}
-	if (edge.a > 0.0) {
+	if (edge.a > 0.0 && borders[0] + borders[1] + borders[2] + borders[3] > 0.0) {
 		drawUiInstance(sharedGlyphView(), blend, {
 			...uiInstance(InstanceMode.Box, world, boxAt.x, boxAt.y, bw, bh, transparent),
 			uvRadii: radii,

@@ -161,7 +161,8 @@ export function linearFill(
 	return {
 		...s,
 		fill: {
-			...solidFill(), kind: BoxFillKind.Linear, space: space, from: from, to: to,
+			...solidFill(), kind: BoxFillKind.Linear, space: space, dither: s.fill.dither,
+			from: from, to: to,
 			angle: angle, fromStop: fromStop, toStop: toStop < fromStop ? fromStop : toStop,
 		},
 	};
@@ -181,7 +182,8 @@ export function slashFill(
 	return {
 		...s,
 		fill: {
-			...solidFill(), kind: BoxFillKind.Slash, from: stripe, to: between,
+			...solidFill(), kind: BoxFillKind.Slash, dither: s.fill.dither, from: stripe,
+			to: between,
 			stripe: width, gap: gap,
 		},
 	};
@@ -192,7 +194,10 @@ export function checkerFill(this s: BoxStyle, cell: Color, between: Color, size:
 	if (!(size > 0.0)) { stopOnBadFill("checkerFill", `got cell size ${size}; it must be > 0`); }
 	return {
 		...s,
-		fill: { ...solidFill(), kind: BoxFillKind.Checker, from: cell, to: between, cell: size },
+		fill: {
+			...solidFill(), kind: BoxFillKind.Checker, dither: s.fill.dither, from: cell,
+			to: between, cell: size,
+		},
 	};
 }
 
