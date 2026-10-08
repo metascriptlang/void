@@ -96,10 +96,14 @@ test "loadGltf decodes a hand-built triangle into one indexed MeshData" {
 	assert mesh.vertexCount() == 3;
 	assert mesh.triangleCount() == 1;
 	assert mesh.indices[0] == 0 && mesh.indices[1] == 1 && mesh.indices[2] == 2;
-	assert approx(mesh.vertices[3], 0.0) && approx(mesh.vertices[4], 0.0) && approx(mesh.vertices[5], 1.0);
-	assert approx(mesh.vertices[13], 0.0) && approx(mesh.vertices[14], 0.0) && approx(mesh.vertices[15], 1.0);
-	assert approx(mesh.vertices[6], 1.0) && approx(mesh.vertices[7], 0.0) && approx(mesh.vertices[8], 0.0);
-	assert approx(mesh.vertices[16], 0.0) && approx(mesh.vertices[17], 1.0) && approx(mesh.vertices[18], 0.0);
+	assert approx(mesh.vertices[3], 0.0) && approx(mesh.vertices[4], 0.0)
+		&& approx(mesh.vertices[5], 1.0);
+	assert approx(mesh.vertices[13], 0.0) && approx(mesh.vertices[14], 0.0)
+		&& approx(mesh.vertices[15], 1.0);
+	assert approx(mesh.vertices[6], 1.0) && approx(mesh.vertices[7], 0.0)
+		&& approx(mesh.vertices[8], 0.0);
+	assert approx(mesh.vertices[16], 0.0) && approx(mesh.vertices[17], 1.0)
+		&& approx(mesh.vertices[18], 0.0);
 	assert (data.sceneRoots.length as int32) == 1 && data.sceneRoots[0] == 0;
 }
 
@@ -183,7 +187,8 @@ test "COLOR_0 absent means white, and a wrong count is refused" {
 	const noColor = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
-		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},\"indices\":2}]}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":1},"
+		+ "\"indices\":2}]}],"
 		+ "\"accessors\":["
 		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
 		+ "{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC3\"},"
@@ -198,7 +203,8 @@ test "COLOR_0 absent means white, and a wrong count is refused" {
 	assert noColor.ok;
 	if (!noColor.ok) { return; }
 	const mesh = noColor.value.meshes[0];
-	assert approx(mesh.vertices[6], 1.0) && approx(mesh.vertices[7], 1.0) && approx(mesh.vertices[8], 1.0);
+	assert approx(mesh.vertices[6], 1.0) && approx(mesh.vertices[7], 1.0)
+		&& approx(mesh.vertices[8], 1.0);
 	const mismatch = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
@@ -269,7 +275,8 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	const zeroCount = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
-		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":0},\"indices\":1}]}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":0},"
+		+ "\"indices\":1}]}],"
 		+ "\"accessors\":["
 		+ "{\"bufferView\":0,\"componentType\":5126,\"count\":0,\"type\":\"VEC3\"},"
 		+ "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
@@ -281,11 +288,14 @@ test "malformed TRS, cyclic nodes and accessors past their buffer view fail loud
 	const misaligned = loadGltf(
 		"{\"asset\":{\"version\":\"2.0\"},\"scenes\":[{\"nodes\":[0]}],"
 		+ "\"nodes\":[{\"mesh\":0}],"
-		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":0},\"indices\":1}]}],"
+		+ "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0,\"NORMAL\":0},"
+		+ "\"indices\":1}]}],"
 		+ "\"accessors\":["
-		+ "{\"bufferView\":0,\"byteOffset\":2,\"componentType\":5126,\"count\":1,\"type\":\"VEC3\"},"
+		+ "{\"bufferView\":0,\"byteOffset\":2,\"componentType\":5126,\"count\":1,"
+		+ "\"type\":\"VEC3\"},"
 		+ "{\"bufferView\":1,\"componentType\":5123,\"count\":3,\"type\":\"SCALAR\"}],"
-		+ "\"bufferViews\":[{\"buffer\":0,\"byteLength\":14},{\"buffer\":0,\"byteOffset\":14,\"byteLength\":6}],"
+		+ "\"bufferViews\":[{\"buffer\":0,\"byteLength\":14},"
+		+ "{\"buffer\":0,\"byteOffset\":14,\"byteLength\":6}],"
 		+ "\"buffers\":[{\"byteLength\":20}]}",
 		triangleBuffer(),
 	);

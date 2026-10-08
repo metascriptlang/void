@@ -303,28 +303,45 @@ export function position(this m: Mat4): Vec3 {
 }
 
 export function determinant3x3(this m: Mat4): float32 {
-	return m.m11 * (m.m22 * m.m33 - m.m23 * m.m32) + m.m12 * (m.m23 * m.m31 - m.m21 * m.m33) + m.m13 * (m.m21 * m.m32 - m.m22 * m.m31);
+	return m.m11 * (m.m22 * m.m33 - m.m23 * m.m32) + m.m12 * (m.m23 * m.m31 - m.m21 * m.m33)
+		+ m.m13 * (m.m21 * m.m32 - m.m22 * m.m31);
 }
 
 // h3d.Matrix.initInverse: a singular matrix inverts to zero, as in Heaps.
 export function inverse(this m: Mat4): Mat4 {
 	const r: Mat4 = {
-		m11: m.m22 * m.m33 * m.m44 - m.m22 * m.m34 * m.m43 - m.m32 * m.m23 * m.m44 + m.m32 * m.m24 * m.m43 + m.m42 * m.m23 * m.m34 - m.m42 * m.m24 * m.m33,
-		m12: -m.m12 * m.m33 * m.m44 + m.m12 * m.m34 * m.m43 + m.m32 * m.m13 * m.m44 - m.m32 * m.m14 * m.m43 - m.m42 * m.m13 * m.m34 + m.m42 * m.m14 * m.m33,
-		m13: m.m12 * m.m23 * m.m44 - m.m12 * m.m24 * m.m43 - m.m22 * m.m13 * m.m44 + m.m22 * m.m14 * m.m43 + m.m42 * m.m13 * m.m24 - m.m42 * m.m14 * m.m23,
-		m14: -m.m12 * m.m23 * m.m34 + m.m12 * m.m24 * m.m33 + m.m22 * m.m13 * m.m34 - m.m22 * m.m14 * m.m33 - m.m32 * m.m13 * m.m24 + m.m32 * m.m14 * m.m23,
-		m21: -m.m21 * m.m33 * m.m44 + m.m21 * m.m34 * m.m43 + m.m31 * m.m23 * m.m44 - m.m31 * m.m24 * m.m43 - m.m41 * m.m23 * m.m34 + m.m41 * m.m24 * m.m33,
-		m22: m.m11 * m.m33 * m.m44 - m.m11 * m.m34 * m.m43 - m.m31 * m.m13 * m.m44 + m.m31 * m.m14 * m.m43 + m.m41 * m.m13 * m.m34 - m.m41 * m.m14 * m.m33,
-		m23: -m.m11 * m.m23 * m.m44 + m.m11 * m.m24 * m.m43 + m.m21 * m.m13 * m.m44 - m.m21 * m.m14 * m.m43 - m.m41 * m.m13 * m.m24 + m.m41 * m.m14 * m.m23,
-		m24: m.m11 * m.m23 * m.m34 - m.m11 * m.m24 * m.m33 - m.m21 * m.m13 * m.m34 + m.m21 * m.m14 * m.m33 + m.m31 * m.m13 * m.m24 - m.m31 * m.m14 * m.m23,
-		m31: m.m21 * m.m32 * m.m44 - m.m21 * m.m34 * m.m42 - m.m31 * m.m22 * m.m44 + m.m31 * m.m24 * m.m42 + m.m41 * m.m22 * m.m34 - m.m41 * m.m24 * m.m32,
-		m32: -m.m11 * m.m32 * m.m44 + m.m11 * m.m34 * m.m42 + m.m31 * m.m12 * m.m44 - m.m31 * m.m14 * m.m42 - m.m41 * m.m12 * m.m34 + m.m41 * m.m14 * m.m32,
-		m33: m.m11 * m.m22 * m.m44 - m.m11 * m.m24 * m.m42 - m.m21 * m.m12 * m.m44 + m.m21 * m.m14 * m.m42 + m.m41 * m.m12 * m.m24 - m.m41 * m.m14 * m.m22,
-		m34: -m.m11 * m.m22 * m.m34 + m.m11 * m.m24 * m.m32 + m.m21 * m.m12 * m.m34 - m.m21 * m.m14 * m.m32 - m.m31 * m.m12 * m.m24 + m.m31 * m.m14 * m.m22,
-		m41: -m.m21 * m.m32 * m.m43 + m.m21 * m.m33 * m.m42 + m.m31 * m.m22 * m.m43 - m.m31 * m.m23 * m.m42 - m.m41 * m.m22 * m.m33 + m.m41 * m.m23 * m.m32,
-		m42: m.m11 * m.m32 * m.m43 - m.m11 * m.m33 * m.m42 - m.m31 * m.m12 * m.m43 + m.m31 * m.m13 * m.m42 + m.m41 * m.m12 * m.m33 - m.m41 * m.m13 * m.m32,
-		m43: -m.m11 * m.m22 * m.m43 + m.m11 * m.m23 * m.m42 + m.m21 * m.m12 * m.m43 - m.m21 * m.m13 * m.m42 - m.m41 * m.m12 * m.m23 + m.m41 * m.m13 * m.m22,
-		m44: m.m11 * m.m22 * m.m33 - m.m11 * m.m23 * m.m32 - m.m21 * m.m12 * m.m33 + m.m21 * m.m13 * m.m32 + m.m31 * m.m12 * m.m23 - m.m31 * m.m13 * m.m22,
+		m11: m.m22 * m.m33 * m.m44 - m.m22 * m.m34 * m.m43 - m.m32 * m.m23 * m.m44
+			+ m.m32 * m.m24 * m.m43 + m.m42 * m.m23 * m.m34 - m.m42 * m.m24 * m.m33,
+		m12: -m.m12 * m.m33 * m.m44 + m.m12 * m.m34 * m.m43 + m.m32 * m.m13 * m.m44
+			- m.m32 * m.m14 * m.m43 - m.m42 * m.m13 * m.m34 + m.m42 * m.m14 * m.m33,
+		m13: m.m12 * m.m23 * m.m44 - m.m12 * m.m24 * m.m43 - m.m22 * m.m13 * m.m44
+			+ m.m22 * m.m14 * m.m43 + m.m42 * m.m13 * m.m24 - m.m42 * m.m14 * m.m23,
+		m14: -m.m12 * m.m23 * m.m34 + m.m12 * m.m24 * m.m33 + m.m22 * m.m13 * m.m34
+			- m.m22 * m.m14 * m.m33 - m.m32 * m.m13 * m.m24 + m.m32 * m.m14 * m.m23,
+		m21: -m.m21 * m.m33 * m.m44 + m.m21 * m.m34 * m.m43 + m.m31 * m.m23 * m.m44
+			- m.m31 * m.m24 * m.m43 - m.m41 * m.m23 * m.m34 + m.m41 * m.m24 * m.m33,
+		m22: m.m11 * m.m33 * m.m44 - m.m11 * m.m34 * m.m43 - m.m31 * m.m13 * m.m44
+			+ m.m31 * m.m14 * m.m43 + m.m41 * m.m13 * m.m34 - m.m41 * m.m14 * m.m33,
+		m23: -m.m11 * m.m23 * m.m44 + m.m11 * m.m24 * m.m43 + m.m21 * m.m13 * m.m44
+			- m.m21 * m.m14 * m.m43 - m.m41 * m.m13 * m.m24 + m.m41 * m.m14 * m.m23,
+		m24: m.m11 * m.m23 * m.m34 - m.m11 * m.m24 * m.m33 - m.m21 * m.m13 * m.m34
+			+ m.m21 * m.m14 * m.m33 + m.m31 * m.m13 * m.m24 - m.m31 * m.m14 * m.m23,
+		m31: m.m21 * m.m32 * m.m44 - m.m21 * m.m34 * m.m42 - m.m31 * m.m22 * m.m44
+			+ m.m31 * m.m24 * m.m42 + m.m41 * m.m22 * m.m34 - m.m41 * m.m24 * m.m32,
+		m32: -m.m11 * m.m32 * m.m44 + m.m11 * m.m34 * m.m42 + m.m31 * m.m12 * m.m44
+			- m.m31 * m.m14 * m.m42 - m.m41 * m.m12 * m.m34 + m.m41 * m.m14 * m.m32,
+		m33: m.m11 * m.m22 * m.m44 - m.m11 * m.m24 * m.m42 - m.m21 * m.m12 * m.m44
+			+ m.m21 * m.m14 * m.m42 + m.m41 * m.m12 * m.m24 - m.m41 * m.m14 * m.m22,
+		m34: -m.m11 * m.m22 * m.m34 + m.m11 * m.m24 * m.m32 + m.m21 * m.m12 * m.m34
+			- m.m21 * m.m14 * m.m32 - m.m31 * m.m12 * m.m24 + m.m31 * m.m14 * m.m22,
+		m41: -m.m21 * m.m32 * m.m43 + m.m21 * m.m33 * m.m42 + m.m31 * m.m22 * m.m43
+			- m.m31 * m.m23 * m.m42 - m.m41 * m.m22 * m.m33 + m.m41 * m.m23 * m.m32,
+		m42: m.m11 * m.m32 * m.m43 - m.m11 * m.m33 * m.m42 - m.m31 * m.m12 * m.m43
+			+ m.m31 * m.m13 * m.m42 + m.m41 * m.m12 * m.m33 - m.m41 * m.m13 * m.m32,
+		m43: -m.m11 * m.m22 * m.m43 + m.m11 * m.m23 * m.m42 + m.m21 * m.m12 * m.m43
+			- m.m21 * m.m13 * m.m42 - m.m41 * m.m12 * m.m23 + m.m41 * m.m13 * m.m22,
+		m44: m.m11 * m.m22 * m.m33 - m.m11 * m.m23 * m.m32 - m.m21 * m.m12 * m.m33
+			+ m.m21 * m.m13 * m.m32 + m.m31 * m.m12 * m.m23 - m.m31 * m.m13 * m.m22,
 	};
 	const det: float32 = m.m11 * r.m11 + m.m12 * r.m21 + m.m13 * r.m31 + m.m14 * r.m41;
 	if (absolute(det) < EPSILON) {
@@ -357,9 +374,12 @@ export function inverseAffine(this m: Mat4): Mat4 {
 		m32: m.m12 * m.m31 - m.m11 * m.m32,
 		m33: m.m11 * m.m22 - m.m12 * m.m21,
 		m34: 0.0,
-		m41: -m.m21 * m.m32 * m.m43 + m.m21 * m.m33 * m.m42 + m.m31 * m.m22 * m.m43 - m.m31 * m.m23 * m.m42 - m.m41 * m.m22 * m.m33 + m.m41 * m.m23 * m.m32,
-		m42: m.m11 * m.m32 * m.m43 - m.m11 * m.m33 * m.m42 - m.m31 * m.m12 * m.m43 + m.m31 * m.m13 * m.m42 + m.m41 * m.m12 * m.m33 - m.m41 * m.m13 * m.m32,
-		m43: -m.m11 * m.m22 * m.m43 + m.m11 * m.m23 * m.m42 + m.m21 * m.m12 * m.m43 - m.m21 * m.m13 * m.m42 - m.m41 * m.m12 * m.m23 + m.m41 * m.m13 * m.m22,
+		m41: -m.m21 * m.m32 * m.m43 + m.m21 * m.m33 * m.m42 + m.m31 * m.m22 * m.m43
+			- m.m31 * m.m23 * m.m42 - m.m41 * m.m22 * m.m33 + m.m41 * m.m23 * m.m32,
+		m42: m.m11 * m.m32 * m.m43 - m.m11 * m.m33 * m.m42 - m.m31 * m.m12 * m.m43
+			+ m.m31 * m.m13 * m.m42 + m.m41 * m.m12 * m.m33 - m.m41 * m.m13 * m.m32,
+		m43: -m.m11 * m.m22 * m.m43 + m.m11 * m.m23 * m.m42 + m.m21 * m.m12 * m.m43
+			- m.m21 * m.m13 * m.m42 - m.m41 * m.m12 * m.m23 + m.m41 * m.m13 * m.m22,
 		m44: 1.0,
 	};
 	const det: float32 = m.m11 * r.m11 + m.m12 * r.m21 + m.m13 * r.m31;
@@ -408,9 +428,12 @@ export function composeTransform(position: Vec3, rotation: Quat, scale: Vec3): M
 // Upload order: writes the 16 fields at `offset`, for a uniform block (see header).
 export function writeTo(this m: Mat4, out: Span<float32>, offset: int32): void {
 	out[offset] = m.m11; out[offset + 1] = m.m12; out[offset + 2] = m.m13; out[offset + 3] = m.m14;
-	out[offset + 4] = m.m21; out[offset + 5] = m.m22; out[offset + 6] = m.m23; out[offset + 7] = m.m24;
-	out[offset + 8] = m.m31; out[offset + 9] = m.m32; out[offset + 10] = m.m33; out[offset + 11] = m.m34;
-	out[offset + 12] = m.m41; out[offset + 13] = m.m42; out[offset + 14] = m.m43; out[offset + 15] = m.m44;
+	out[offset + 4] = m.m21; out[offset + 5] = m.m22;
+	out[offset + 6] = m.m23; out[offset + 7] = m.m24;
+	out[offset + 8] = m.m31; out[offset + 9] = m.m32;
+	out[offset + 10] = m.m33; out[offset + 11] = m.m34;
+	out[offset + 12] = m.m41; out[offset + 13] = m.m42;
+	out[offset + 14] = m.m43; out[offset + 15] = m.m44;
 }
 
 // ---- Quat (h3d.Quat) ----

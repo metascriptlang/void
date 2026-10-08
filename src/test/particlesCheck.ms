@@ -170,7 +170,8 @@ test "a poly value is Heaps' VPoly: Horner over the coefficients, and a size cur
 	const empty: ParticleValue = { kind: ValueKind.Poly, values: [] };
 	assert approx(empty.evaluate(0.5, 0.9), 0.0);
 	assert !parabola.drawsRandom();
-	let emitter: ParticleEmitter = emitterFor({ ...still(0.0), size: parabola, life: constant(1.0) }, 1);
+	let emitter: ParticleEmitter = emitterFor({ ...still(0.0), size: parabola,
+		life: constant(1.0) }, 1);
 	emitter.emitCount = 1.0;
 	assert step(emitter, 0.25) == 1;
 	assert approx(emitter.particles[0].size, 0.75);
@@ -264,7 +265,12 @@ function maxf(a: float32, b: float32): float32 {
 	return a > b ? a : b;
 }
 
-function emittedFrom(shape: EmitterShape, shell: boolean, count: int32, seed: uint32): ParticleEmitter {
+function emittedFrom(
+	shape: EmitterShape,
+	shell: boolean,
+	count: int32,
+	seed: uint32,
+): ParticleEmitter {
 	let emitter: ParticleEmitter = emitterFor({
 		...still(0.0),
 		shape: shape,
@@ -315,7 +321,8 @@ function placedAt(depths: Vec<float32>, sortMode: SortMode): ParticleEmitter {
 
 function writtenOrder(ref emitter: ParticleEmitter, view: Mat4): Vec<float32> {
 	let out: Vec<float32> = new Array(emitter.state.maxParts * PARTICLE_INSTANCE_STRIDE);
-	const written: Result<int32, ParticleError> = writeSortedInstances(emitter, identity(), view, out);
+	const written: Result<int32, ParticleError> = writeSortedInstances(emitter, identity(), view,
+		out);
 	let xs: Vec<float32> = [];
 	if (written.ok) {
 		for (let i = 0; i < written.value; i++) { xs.push(out[i * PARTICLE_INSTANCE_STRIDE]); }
@@ -330,7 +337,8 @@ test "Sort draws the farthest particle first and InvSort the nearest, as Particl
 	assert back[0] == 2.0 && back[1] == 0.0 && back[2] == 4.0 && back[3] == 1.0 && back[4] == 3.0;
 	let near: ParticleEmitter = placedAt([3.0, 1.0, 4.0, 0.0, 2.0], SortMode.InvSort);
 	const front: Vec<float32> = writtenOrder(near, identity());
-	assert front[0] == 3.0 && front[1] == 1.0 && front[2] == 4.0 && front[3] == 0.0 && front[4] == 2.0;
+	assert front[0] == 3.0 && front[1] == 1.0 && front[2] == 4.0 && front[3] == 0.0
+		&& front[4] == 2.0;
 }
 
 test "the order follows the view: a flipped view reverses what is farthest" {
@@ -342,7 +350,8 @@ test "the order follows the view: a flipped view reverses what is farthest" {
 test "particles at equal depth keep the order they were emitted in" {
 	let emitter: ParticleEmitter = placedAt([1.0, 1.0, 0.0, 1.0, 0.0], SortMode.Sort);
 	const order: Vec<float32> = writtenOrder(emitter, identity());
-	assert order[0] == 0.0 && order[1] == 1.0 && order[2] == 3.0 && order[3] == 2.0 && order[4] == 4.0;
+	assert order[0] == 0.0 && order[1] == 1.0 && order[2] == 3.0 && order[3] == 2.0
+		&& order[4] == 4.0;
 }
 
 test "Back keeps emission order, Front reverses it, and neither needs a view" {
@@ -350,8 +359,10 @@ test "Back keeps emission order, Front reverses it, and neither needs a view" {
 	let front: ParticleEmitter = placedAt([3.0, 1.0, 4.0], SortMode.Front);
 	const kept: Vec<float32> = instancesOf(back, identity());
 	const turned: Vec<float32> = instancesOf(front, identity());
-	assert kept[0] == 0.0 && kept[PARTICLE_INSTANCE_STRIDE] == 1.0 && kept[2 * PARTICLE_INSTANCE_STRIDE] == 2.0;
-	assert turned[0] == 2.0 && turned[PARTICLE_INSTANCE_STRIDE] == 1.0 && turned[2 * PARTICLE_INSTANCE_STRIDE] == 0.0;
+	assert kept[0] == 0.0 && kept[PARTICLE_INSTANCE_STRIDE] == 1.0
+		&& kept[2 * PARTICLE_INSTANCE_STRIDE] == 2.0;
+	assert turned[0] == 2.0 && turned[PARTICLE_INSTANCE_STRIDE] == 1.0
+		&& turned[2 * PARTICLE_INSTANCE_STRIDE] == 0.0;
 }
 
 test "a mode that sorts by view refuses a write that has no view" {
@@ -363,7 +374,8 @@ test "a mode that sorts by view refuses a write that has no view" {
 test "a sorted write moves a particle's whole instance, and sorts many particles into depth order" {
 	let emitter: ParticleEmitter = emitterFor({
 		...still(0.0),
-		shape: { kind: ShapeKind.Box, extents: { x: constant(2.0), y: constant(2.0), z: constant(10.0) } },
+		shape: { kind: ShapeKind.Box, extents: { x: constant(2.0), y: constant(2.0),
+			z: constant(10.0) } },
 		sortMode: SortMode.Sort,
 		size: { kind: ValueKind.Random, start: 0.5, length: 1.0, converge: Converge.No },
 		maxParts: 200,
@@ -422,7 +434,8 @@ test "a box fills its volume, centred, and its extents are half-widths as in God
 		low = vec3(minf(low.x, p.x), minf(low.y, p.y), minf(low.z, p.z));
 		high = vec3(maxf(high.x, p.x), maxf(high.y, p.y), maxf(high.z, p.z));
 	}
-	assert low.x < -0.9 && high.x > 0.9 && low.y < -1.8 && high.y > 1.8 && low.z < -2.7 && high.z > 2.7;
+	assert low.x < -0.9 && high.x > 0.9 && low.y < -1.8 && high.y > 1.8 && low.z < -2.7
+		&& high.z > 2.7;
 }
 
 test "a box draws x, y, z as three uniform values in [-1, 1] times its extents, as Godot's does" {
@@ -452,7 +465,7 @@ function faceCounts(seed: uint32, wide: float32): Vec<int32> {
 	return counts;
 }
 
-test "a box emitted from its shell lies on a face, and the faces are weighted by area, on two seeds" {
+test "a box emitted from its shell lies on a face, the faces weighted by area, on two seeds" {
 	const seeds: Vec<uint32> = [5, 77];
 	for (let k = 0; k < 2; k++) {
 		const counts: Vec<int32> = faceCounts(seeds[k], 4.0);
@@ -494,7 +507,8 @@ test "a ring is Godot's: area-uniform radius between inner and outer, a height a
 		low = minf(low, p.position.y);
 		high = maxf(high, p.position.y);
 	}
-	// sqrt(u (R^2 - r^2) + r^2) makes r^2 uniform on [1, 4]: mean 2.5. A radius linear in u gives 2.33.
+	// sqrt(u (R^2 - r^2) + r^2) makes r^2 uniform on [1, 4]: mean 2.5. A radius linear in u
+	// gives 2.33.
 	assert near(meanSquare / 2000.0, 2.5, 0.07);
 	assert low < -0.2 && high > 0.2;
 }
@@ -515,7 +529,14 @@ test "a ring's cone angle narrows it toward the top, by Godot's top radius" {
 	assert seenHigh;
 }
 
-function ringCase(seed: uint32, outer: float32, inner: float32, height: float32, axis: Vec3, cone: float32): Particle {
+function ringCase(
+	seed: uint32,
+	outer: float32,
+	inner: float32,
+	height: float32,
+	axis: Vec3,
+	cone: float32,
+): Particle {
 	const shape: EmitterShape = {
 		kind: ShapeKind.Ring,
 		radius: constant(outer),
@@ -531,7 +552,7 @@ function nearVec(a: Vec3, x: float32, y: float32, z: float32): boolean {
 	return near(a.x, x, 0.002) && near(a.y, y, 0.002) && near(a.z, z, 0.002);
 }
 
-test "a ring point is Godot's, draw for draw: a narrowing cone both ways, and a tilted and an x axis" {
+test "a ring point is Godot's draw for draw: a narrowing cone both ways, a tilted and an x axis" {
 	// Expected values: the `ring` lines of tests/oracle/godotNoise.js.
 	const narrowing: Particle = ringCase(7, 2.0, 1.0, 1.0, vec3(1.0, 2.0, 3.0), 45.0);
 	assert nearVec(narrowing.position, 0.72993, 0.79554, -0.17624);
@@ -573,7 +594,7 @@ function forcedAlong(x: float32, y: float32, z: float32, damping: float32): Part
 	return emitter;
 }
 
-test "damping is Godot's: the speed falls by damping per second along its own direction, to a stop" {
+test "damping is Godot's: speed falls by damping per second along its direction, to a stop" {
 	let slowed: ParticleEmitter = forcedAlong(3.0, 4.0, 0.0, 1.0);
 	assert step(slowed, 0.5) == 1;
 	assert approx(slowed.particles[0].force.x, 1.2) && approx(slowed.particles[0].force.y, 1.6);
@@ -606,7 +627,8 @@ test "the noise direction matches Godot's GLSL transcribed in float32 on the God
 	assert near(a.x, 0.35435, 0.003) && near(a.y, -0.93215, 0.003) && near(a.z, 0.07436, 0.003);
 	const b: Vec3 = noiseDirection(vec3(0.3, -0.7, 1.1), 0.5, 1.0, 4.0, vec3(1.0, 0.5, 0.25), 0.2);
 	assert near(b.x, -0.67330, 0.003) && near(b.y, -0.31516, 0.003) && near(b.z, -0.66883, 0.003);
-	const c: Vec3 = noiseDirection(vec3(-2.5, 3.1, 0.4), 1.25, 1.0, -0.104, vec3(0.0, 0.0, 0.0), 0.2);
+	const c: Vec3 = noiseDirection(vec3(-2.5, 3.1, 0.4), 1.25, 1.0, -0.104, vec3(0.0, 0.0, 0.0),
+		0.2);
 	assert near(c.x, 0.17383, 0.003) && near(c.y, -0.57915, 0.003) && near(c.z, 0.79647, 0.003);
 	const d: Vec3 = noiseDirection(vec3(1.9, 0.2, -3.3), 2.0, 3.0, 6.0, vec3(0.5, 0.5, 0.5), 0.2);
 	assert near(d.x, 0.44212, 0.003) && near(d.y, 0.89155, 0.003) && near(d.z, 0.09837, 0.003);
@@ -636,7 +658,7 @@ function shaken(influence: float32): ParticleEmitter {
 	return emitter;
 }
 
-test "turbulence turns the velocity toward the noise direction by its influence, as Godot mixes it" {
+test "turbulence turns velocity toward the noise direction by its influence, as Godot mixes it" {
 	let emitter: ParticleEmitter = shaken(0.5);
 	assert step(emitter, 0.0) == 1;
 	assert step(emitter, 0.1) == 1;
@@ -698,10 +720,11 @@ function lookingForward(): CameraView {
 	unreachable;
 }
 
-test "Sort under the real perspective camera puts the far particles first and the one behind the eye first of all" {
+test "Sort under a real perspective camera puts far particles first, one behind the eye foremost" {
 	const view: CameraView = lookingForward();
 	const ahead: Vec3 = view.basis.forward;
-	let emitter: ParticleEmitter = emitterFor({ ...still(0.0), sortMode: SortMode.Sort, life: constant(10.0) }, 1);
+	let emitter: ParticleEmitter = emitterFor({ ...still(0.0), sortMode: SortMode.Sort,
+		life: constant(10.0) }, 1);
 	emitter.emitCount = 4.0;
 	assert step(emitter, 0.0) == 4;
 	emitter.particles[0].position = ahead.scaled(3.0);
@@ -717,7 +740,7 @@ test "Sort under the real perspective camera puts the far particles first and th
 	assert near(along(out, 0, ahead), 1.0, 0.001) && near(along(out, 3, ahead), -2.0, 0.001);
 }
 
-test "an emitter with no initial speed writes exactly the instances it wrote before initial speed existed" {
+test "an emitter with no initial speed writes exactly the instances it wrote before that existed" {
 	const state: EmitterState = {
 		...EmitterState.defaults(),
 		maxParts: 64,
@@ -740,7 +763,7 @@ test "an emitter with no initial speed writes exactly the instances it wrote bef
 	assert (out[2] as float64) == -0.1819358468055725 && (out[3] as float64) == 0.10878288000822067;
 }
 
-test "an initial speed along the direction is damped linearly to rest at speed over damping, and stays" {
+test "an initial speed along the direction damps linearly to rest at speed over damping, stays" {
 	let emitter: ParticleEmitter = emitterFor({
 		...still(0.0),
 		initialSpeed: constant(3.0),
@@ -855,7 +878,8 @@ test "a bad state or a non-finite step is refused" {
 }
 
 test "raising maxParts on a live emitter does not outgrow the arrays it was made with" {
-	let emitter: ParticleEmitter = emitterFor({ ...still(100.0), maxParts: 4, life: constant(10.0) }, 1);
+	let emitter: ParticleEmitter = emitterFor({ ...still(100.0), maxParts: 4,
+		life: constant(10.0) }, 1);
 	emitter.state.maxParts = 64;
 	assert step(emitter, 0.5) == 4;
 }

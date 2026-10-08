@@ -1,7 +1,8 @@
 import {
 	Vec3, Vec4, Mat4, Quat, vec3, vec4, identity, translation, scaling,
 	rotationX, rotationY, rotationZ, rotationEuler, composeTransform,
-	identityQuat, axisAngle, eulerQuat, quatBetween, quatOfRotation, transformDirection, colorSaturated,
+	identityQuat, axisAngle, eulerQuat, quatBetween, quatOfRotation, transformDirection,
+	colorSaturated,
 	srgbToLinear, linearToSrgb,
 } from "../math/math3d";
 import { approx } from "./helpers";
@@ -13,10 +14,14 @@ function near(a: Vec3, x: float32, y: float32, z: float32): boolean {
 }
 
 function sameMatrix(a: Mat4, b: Mat4): boolean {
-	return approx(a.m11, b.m11) && approx(a.m12, b.m12) && approx(a.m13, b.m13) && approx(a.m14, b.m14)
-		&& approx(a.m21, b.m21) && approx(a.m22, b.m22) && approx(a.m23, b.m23) && approx(a.m24, b.m24)
-		&& approx(a.m31, b.m31) && approx(a.m32, b.m32) && approx(a.m33, b.m33) && approx(a.m34, b.m34)
-		&& approx(a.m41, b.m41) && approx(a.m42, b.m42) && approx(a.m43, b.m43) && approx(a.m44, b.m44);
+	return approx(a.m11, b.m11) && approx(a.m12, b.m12)
+		&& approx(a.m13, b.m13) && approx(a.m14, b.m14)
+		&& approx(a.m21, b.m21) && approx(a.m22, b.m22)
+		&& approx(a.m23, b.m23) && approx(a.m24, b.m24)
+		&& approx(a.m31, b.m31) && approx(a.m32, b.m32)
+		&& approx(a.m33, b.m33) && approx(a.m34, b.m34)
+		&& approx(a.m41, b.m41) && approx(a.m42, b.m42)
+		&& approx(a.m43, b.m43) && approx(a.m44, b.m44);
 }
 
 test "vec3 cross follows the right-hand rule" {
@@ -65,7 +70,8 @@ test "affine product matches the full product on affine operands" {
 }
 
 test "inverse undoes the transform" {
-	const m: Mat4 = scaling(2.0, 3.0, 4.0) * rotationEuler(0.3, -0.7, 1.1) * translation(5.0, -6.0, 7.0);
+	const m: Mat4 = scaling(2.0, 3.0, 4.0) * rotationEuler(0.3, -0.7, 1.1)
+		* translation(5.0, -6.0, 7.0);
 	const undone: Mat4 = m * m.inverse();
 	assert sameMatrix(undone, identity());
 	assert sameMatrix(m.inverseAffine(), m.inverse());
@@ -179,7 +185,8 @@ test "slerp takes the short way when quats point apart" {
 test "composeTransform is scale then rotate then translate" {
 	const q: Quat = eulerQuat(0.0, 0.0, HALF_PI);
 	const m: Mat4 = composeTransform(vec3(10.0, 0.0, 0.0), q, vec3(2.0, 2.0, 2.0));
-	const expected: Mat4 = scaling(2.0, 2.0, 2.0) * rotationZ(HALF_PI) * translation(10.0, 0.0, 0.0);
+	const expected: Mat4 = scaling(2.0, 2.0, 2.0) * rotationZ(HALF_PI)
+		* translation(10.0, 0.0, 0.0);
 	assert sameMatrix(m, expected);
 	const placed: Vec3 = vec3(1.0, 0.0, 0.0) * m;
 	assert near(placed, 10.0, 2.0, 0.0);
