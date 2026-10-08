@@ -1755,8 +1755,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   ligated, then with `calt 0`, then split by colour runs so no ligature crosses a colour change.
 - **SDF text** for the transformed regime: one ~32 px/em distance field per glyph, derivative-scaled ramp, luma bias (MAKEPAD.md:112) — so zoom and animation cost nothing, and void3d gets world-space text through the same glyph layer.
   **Built 2026-10-07, behind `-d:voidSdfText`, first four slices** (field, generator, atlas,
-  placement; the shader ramp and draw path followed, see "Shader and draw path" below; captures
-  and void3d are not built).
+  placement; the shader ramp, draw path and D3D11 captures followed, see "Shader and draw path"
+  below; void3d is not built).
   `textSdf.ms` is the T0 reference: field byte `191 - 31.875 * outward texels` (edge at 191/255,
   radius 8, pad 4, 32 px/em, as `stbtt_GetGlyphSDF` takes them and Makepad's
   `layouter.rs:249-255` encodes them) and Makepad's linear ramp
@@ -1800,9 +1800,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`void2dGlyphSdfGenerations` counts them for the budget; no budget is built).
   **Decisions to read before S5.** `setSdfRegime(true)` is the switch that makes `regimeOf` choose
   Sdf (translation and DPI only stay pixel-exact: `a == d == 1`, `b == c == 0`); it is off by
-  default because `batcher.c` `glyphPageViewMode` still aborts by name on an SDF page, and the
-  shader slice turns it on at setup. A zoom that passes exactly 1.0 is pixel-exact for that
-  frame and re-places on the coverage atlas, as the rule says. The design scale of a
+  default, and `setup2d` turns it on under `-d:voidSdfText`. A zoom that passes exactly 1.0 is
+  pixel-exact for that frame and re-places on the coverage atlas, as the rule says. The design scale of a
   `ScaleMode`'s uniform design scale is folded into the label's DPI-like scale (built
   2026-10-08, void manager decision 4): `scene.ms` `designFold` gives LetterBox, Zoom, AutoZoom
   and an even Stretch their scale (1 for Resize, Fixed and an uneven Stretch), `paint` keeps it as
@@ -1810,11 +1809,11 @@ changes described above on today's compiler; the P4 web archive also takes its r
   multiplied into the render scale, so a label in such a scene stays pixel-exact coverage; the
   emitted geometry keeps the real world and DPI. Camera zoom is not folded and goes to SDF.
   Held by `text/designFold` against `text/designFoldDpi` (the same labels at DPI 1.6), which the
-  invariant `designFoldMatchesDpi` requires byte-identical. NEW MECHANISM: the runtime regime switch
-  (a rollout guard, removed when the shader lands) and `void2dGlyphSdfStbDiff`, a verification
-  entry that stays in `glyph.c` under `VOID2D_SDF_TEXT` and is called from tests only; the
+  invariant `designFoldMatchesDpi` requires byte-identical. NEW MECHANISM: the runtime regime
+  switch (it stays as the headless tests' way to compare the two regimes) and
+  `void2dGlyphSdfStbDiff`, a verification entry that stays in `glyph.c` under `VOID2D_SDF_TEXT` and is called from tests only; the
   generator itself is the P6 spec's own "SDF generation from void2d's own outline".
-  **Shader and draw path, built 2026-10-07 (S5, S7); no pixel of it has been captured.**
+  **Shader and draw path, built 2026-10-07 (S5, S7); captured on D3D11 2026-10-08.**
   `shader2d.glsl` block `textSdf` is `textSdf.ms` `sdfCoverage` (edge 191/255, radius 8 texels,
   linear ramp, no luma bias) and `sdfTexelsPerPixel`, the mean of the lengths of `dFdx(uv)` and
   `dFdy(uv)` times the page's `textureSize`; gamma and contrast run after it through
@@ -1848,10 +1847,6 @@ changes described above on today's compiler; the P4 web archive also takes its r
   the bounds 0.075 / 0.40 / 0.94-1.07; the worst row is zoom 0.5. Control: dropping the
   derivative scale (`texels + 0.5`) fails it at rotated 13 px (mae 0.135) and zoom 0.5 (0.152).
   Owed: WebGL2 for the same rows (Yoga web link).
-
-  program's plain label within one level). Owed: the D3D11 capture of the four rows and of the
-  five that move, the oracle's first run (its bounds are the T0 table's, provisional until the
-  capture is measured) and its control, WebGL2 for the same rows.
   **Budget rows and module weight, built 2026-10-08 (S8).** `tests/bench/benchTextSdf.ms` is
   the text bench with `-d:voidSdfText`: the 40-line code block is zoomed 0.5x to 4x, then turned
   through a full circle, then settles at 1x turned by 0.5 rad, because an untransformed block
@@ -1905,8 +1900,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   kind). A tile whose fill `colourRasterize` refuses goes back through `GlyphAtlas.discard` and
   the label reports `ColourRefused` by name. Measured headless (`src/test/labelTextColourCheck.ms`,
   334 tests): placement at DPI 1.0, 1.25 and 1.5, the instance fields, the vertex-program quad and
-  the discard. Not measured: the golden `text/colourEmoji` capture (owed, D3D11, `tests/PENDING.md colour:capture-d3d11`), and the run
-  count of an alternating label, which needs real views (a headless view is 0, so both pages
+  the discard. The golden `text/colourEmoji` is captured on D3D11
+  (`tests/golden/d3d11/text/colourEmoji.png`). Not measured: the run count of an alternating label, which needs real views (a headless view is 0, so both pages
   record under one view).
   Transformed regime (`labelText.ms` `translationOnly`, `glyphAtlas.ms` `colourBucket`): a label
   whose matrix is more than a translation (a zoom, a rotation, a skew; DPI is not part of it) takes
@@ -2142,15 +2137,16 @@ changes described above on today's compiler; the P4 web archive also takes its r
     each new test was shown red by a local mutation (floor for ceil, no retain, a blit one texel
     wide, a nearest sampler, a skipped release, swapped width and height). T2 `icon/tinted` and
     `icon/tintedDpi150` are in the table with counters from the recorded stream (3 draws, no
-    target) and **no PNG yet: the capture is owed**, as is the device-loss run with an icon in it
-    (`tests/integration/deviceLoss.ms`, now built with `-d:voidSvg` by the gate).
+    target) and captured on D3D11 (`tests/golden/d3d11/icon/`). The device-loss run with an icon
+    in it (`tests/integration/deviceLoss.ms`, now built with `-d:voidSvg` by the gate) is owed.
   - **Weight, native, measured 2026-10-08** (`msc build src/examples/mainSokol2d.ms --release`,
     D3D11 exe, bytes): 1,515,520 before the icon path; 1,525,248 after it without the flag
     (+9,728, the node kind and the Mask page kind); 1,612,800 with `-d:voidSvg` (+87,552 more,
     nanosvg and the allowlist). Wasm is not measurable here (the full web build cannot link
     Yoga, `~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`);
-    the module-alone figure stays the V0 `emcc -Os -c` one above (64,507 B object). No shared
-    wasm budget gate exists in this tree, so none was added.
+    the module-alone figure stays the V0 `emcc -Os -c` one above (64,507 B object). The shared
+    wasm budget gate is `scripts/wasmModuleDelta.sh` against `tests/bench/wasm.json`; the svg
+    module is not in `wasm.json`.
   - **Spec corrections.** The spec asked a colour effect on an Icon to stop by name "like the
     Label case"; a Label stops on no effect, the effect row applies to its Glyph instances, and
     an Icon takes it the same way (`withEffect` runs after the Glyph coverage). The spec's
@@ -2251,14 +2247,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   sprite on the grid whatever the distance, which is the only change to the shared layout code.
   Three golden rows are built, `text/spriteGlyphsDpi100`, `text/spriteGlyphs` (DPI 1.25) and
   `text/spriteGlyphsDpi150`, each ten labels of a terminal grid; headless, the three place 204
-  glyphs with none refused. Predicted counters, one draw and no target each, are in
-  `tests/golden/table.ms` and are confirmed or corrected by the first capture.
-  **Weight.** `gcc -Os -c src/void2d/spriteGlyph.c` on this box: 20,928 B of code and tables,
-  64 B of data, 192 B of bss (21,184 B), the box table (128 x 4 B) and the octant table (230 B)
-  among them; no emcc is installed here, so no wasm figure is claimed. A build with the flag
-  pays those bytes and nothing per glyph: `font.ms` compares the codepoint with
-  `SPRITE_FIRST_CODEPOINT` before it calls into the table, and text below it, which is nearly
-  all text, costs one comparison. A build without the flag pays none of it.
+  glyphs with none refused. The three are captured on D3D11 (`tests/golden/d3d11/text/`), with
+  their counters, one draw and no target each, in `tests/golden/table.ms`.
   Nothing existing moves: no scene, test or example holds a codepoint in the sprite ranges
   (searched by character and by escape), so no golden is listed as moved. The vendored data is
   Ghostty's 36 reference PNGs only (78,166 B, MIT, `tests/oracle/ghostty/`); no third-party code
@@ -2273,8 +2263,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
   37,550 B and 39,611 B before: the shared rasterizer saves the accumulator and spends the
   saving on the wrapper, and the gain is the one rule, not bytes. The default layer's delta
   since the colour item's base fell from 40,045 B native and 41,488 B wasm32 to 2,647 B and
-  2,036 B, because the sprites left it. That replaces the 21 KB `gcc -Os` figure above as the
-  budget number.
+  2,036 B, because the sprites left it. A build with the flag pays those bytes and nothing per
+  glyph: `font.ms` compares the codepoint with `SPRITE_FIRST_CODEPOINT` before it calls into the
+  table, and text below it, which is nearly all text, costs one comparison. A build without the
+  flag pays none of it.
   **Visible change, in builds with `-d:voidSprites` only:** text that holds a sprite codepoint
   (a Nerd Font powerline glyph, a box line) comes from the sprite face and no longer from the
   font. Without the flag nothing moves.
@@ -2291,8 +2283,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   own glyphs are used. `tests/golden/table.ms` vectors are positional, so a merge with another
   lane that added rows needs the rows re-aligned by hand. `glyph.c` caches a sprite face's widest
   ASCII advance and its last cell; the bench for `void2dGlyphAdvance` is owed.
-  **Owed, not run:** `sh scripts/golden.sh --update text/spriteGlyphs` (the PNGs, three rows),
-  then `sh scripts/golden.sh` for the counters; a look at the half-tone shades and edges, which
+  **Owed, not run:** a look at the half-tone shades and edges, which
   the contrast and gamma of Glyph mode move; the web column of the three rows. Also owed, since
   the module split and the shared rasterizer ran no gate: `scripts/gate.sh` (its module stage
   now adds `voidSprites`, its flagless `mainSokol2d.exe` symbol check now names the sprite
@@ -2304,10 +2295,9 @@ changes described above on today's compiler; the P4 web archive also takes its r
   one sheet and shows it six times at 2x: four nodes pinned to frames 0 to 3 by `setFrame` and
   `setPaused`, one ticked by `tick(0.1)` then `tick(0.3)` to frame 2, one paused on frame 1
   after the first tick, one under a rounded `ImageStyle` and one under `Smooth.Off`. Nothing
-  reads the clock. The predicted counters are 3 draws (the sprite run, the styled instance, the
-  nearest-sampled sprite) and 0 targets. **Owed, not run:** `sh scripts/golden.sh --update
-  image/animatedFrames`, then delete `golden-missing:image/animatedFrames` from
-  `tests/PENDING.md` in the same commit; two captures byte-identical.
+  reads the clock. The counters are 3 draws (the sprite run, the styled instance, the
+  nearest-sampled sprite) and 0 targets; it is captured on D3D11
+  (`tests/golden/d3d11/image/animatedFrames.png`).
 - `Graphics` antialiasing by a vertex-shader fringe: the edge normal per fringe vertex, extruded by `1px / scale`. No MSAA intermediate, no baked fringe (guardrail 4). `sample_count` exposed as a knob on the mobile bridges instead of hard-coded 1 (guardrail 5) — the one place this phase touches void3d, since the swapchain sample count must match its pipelines.
   **Built 2026-10-07.** The fringe takes Makepad's GPU-expand encoding
   (`libs/svg/src/tessellate.rs` `emit_fill_fringe`, `:1003-1060`): every contour vertex is stored
@@ -2424,9 +2414,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
   Quiet-box first-frame measurements remain unproved, as do Metal/web warm-up costs.
   Both native gates passed on that source tree: gate.sh 1196 + 299 + 318 tests,
   golden 82/82, eight existing skips; gate3d.sh 311 PASS, three existing skips.
-- **The guardrail-9 backends this box can run**, which P3 did not reach: a desktop GLES3 build of the golden runner (a GL variant of `src/sokol/sokolWin.c` and `glsl430` shaders; `tests/capture/capture.c` already has the `glReadPixels` path, which WebGL2 exercises), and WebGPU's `copyTextureToBuffer` + `mapAsync` readback in a headed browser, since headless Chrome hands WebGPU no adapter here. Metal macOS, Metal iOS and GLES3 Android run on the human's hardware.
-- The mesh path's pixel-centre ties: bias mesh geometry by −1/64 px in device space, the fix `tests/PENDING.md conformance:webgl2-pixel-centre` proposes, which keeps D3D11's tie results and gives GL the same.
-- The P2 rows this phase owns: the independent non-uniform-SDF bound (`sdf-non-uniform-bound`) and the repository-wide line-length pass (`style:line-length`). Styled-box colour effects (`ui-box-color-effect`) closed at P6: built 2026-10-03 at `b76fee5`, `04484fd` and `4f5c8b7`, and its `tests/PENDING.md` row removed in `fa4426f`.
+- **The guardrail-9 backends this box can run**, which P3 did not reach: the desktop GL build of the golden runner, built as GL core 4.3 (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`; see "Built 2026-10-08 (GL core 4.3 desktop" below), and WebGPU's `copyTextureToBuffer` + `mapAsync` readback in a headed browser, since headless Chrome hands WebGPU no adapter here. Metal macOS, Metal iOS and GLES3 Android run on the human's hardware.
+- The P2 row this phase owns: the repository-wide line-length pass (`style:line-length`). Styled-box colour effects (`ui-box-color-effect`) closed at P6: built 2026-10-03 at `b76fee5`, `04484fd` and `4f5c8b7`, and its `tests/PENDING.md` row removed in `fa4426f`.
 - The frame profiler: histograms of dirty-to-present, draw time and input latency, plus the draw-call, instance and upload-byte counters GPUI lacks, drawn outside invalidation.
 
   **Built 2026-10-08** (pure core `f601ed1`, clock and marks `2fb0c3d`, counters `10b387a`,
@@ -2465,7 +2454,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
     right edge, and checks that a new readout reaches the screen; `recordingHolds` is a pure
     function so T0 pins each axis of the recording reuse key. The golden runner is built with `voidProfiler`, so the existing scenes also prove
     "module on, overlay hidden is pixel-identical".
-  - **Owed, not run.** The two golden captures and the PNG commit; `sh scripts/gate.sh`
+  - **Captured on D3D11:** `ui/profilerOverlayFull` and `ui/profilerOverlayMinimal`
+    (`tests/golden/d3d11/ui/`). **Owed, not run.** `sh scripts/gate.sh`
     (frame profiler stage, module-on bench counters equal to the baseline);
     `AB_SUFFIX_B=Profiler sh scripts/bench-ab.sh . . 6 Ui Sprites` for the overhead with the
     overlay hidden; `sh scripts/experiment-profilerWeb.sh` for the wasm delta per backend
@@ -2488,7 +2478,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
   cannot link Yoga) and Metal (no Mac here). Metal still carries its three variants in every
   Apple binary, because sokol-shdc puts macOS, iOS and simulator under one `SOKOL_METAL`.
 
-  **Built 2026-10-08 (GL core 4.3 desktop, item 6; the mesh bias is not built).** `shader2d` alone carries `glsl430` (`LANGS` in `scripts/regen-shaders.sh`); void3d's headers are unchanged. `backend.h` no longer refuses `SOKOL_GLCORE`: `src/void2d/shaderBackends.h` and `src/void3d/shaderBackends.h` (included by `batcher.c`, `gpu3d.c` and the gpu-registration fixture) stop a build whose backend the module's generated headers lack, each naming the header and the backend, so a GLCORE build with void3d still stops by name. `-d:voidGlCore` selects the window-only driver in `src/sokol/gpu.ms` (`sokolWin.c`, `bridge.c`, `bridgeWeb.c`, `-lopengl32`) and the void3d-free scene list in `tests/golden/scenes.ms`; `capture.c` reads the frame as backend 4, directory `gl430`; `sh scripts/golden.sh --backend gl` builds, captures and judges it against the D3D11 goldens under the cross-backend bound and refuses `--update`. Measured here: `clang -fsyntax-only` of `batcher.c` under D3D11, Metal, GLES3, WGPU and GLCORE, and of `gpu3d.c` and the fixture under GLCORE, which stops by name; the preprocessed `batcher.c` under D3D11, GLES3, WGPU and Metal is byte-identical before and after, so those binaries cannot have changed; `msc check -d:voidGlCore tests/golden/runner.ms` type-checks 104 modules against 122 without the flag, and a planted type error shows `when (windows && voidGlCore)` selects exactly one of the two driver blocks. Not measured, owed: the GL build, the first capture (`harness/solid` first) and the comparator run on the NVIDIA driver.
+  **Built 2026-10-08 (GL core 4.3 desktop, item 6; the mesh bias is not built).** `shader2d` alone carries `glsl430` (`LANGS` in `scripts/regen-shaders.sh`); void3d's headers are unchanged. `backend.h` no longer refuses `SOKOL_GLCORE`: `src/void2d/shaderBackends.h` and `src/void3d/shaderBackends.h` (included by `batcher.c`, `gpu3d.c` and the gpu-registration fixture) stop a build whose backend the module's generated headers lack, each naming the header and the backend, so a GLCORE build with void3d still stops by name. `-d:voidGlCore` selects the window-only driver in `src/sokol/gpu.ms` (`sokolWin.c`, `bridge.c`, `bridgeWeb.c`, `-lopengl32`) and the void3d-free scene list in `tests/golden/scenes.ms`; `capture.c` reads the frame as backend 4, directory `gl430`; `sh scripts/golden.sh --backend gl` builds, captures and judges it against the D3D11 goldens under the cross-backend bound and refuses `--update`. Measured here: `clang -fsyntax-only` of `batcher.c` under D3D11, Metal, GLES3, WGPU and GLCORE, and of `gpu3d.c` and the fixture under GLCORE, which stops by name; the preprocessed `batcher.c` under D3D11, GLES3, WGPU and Metal is byte-identical before and after, so those binaries cannot have changed; `msc check -d:voidGlCore tests/golden/runner.ms` type-checks 104 modules against 122 without the flag, and a planted type error shows `when (windows && voidGlCore)` selects exactly one of the two driver blocks. The first run is recorded below and in `docs/TESTING.md` "Guardrail 9".
 
   Mechanisms, each an extension of an existing idiom: `shaderBackends.h` is `backend.h`'s guard moved to the module that owns the generated headers (`scripts/regen-shaders.sh` `guard`); `-d:voidGlCore` is the `when (flag)` module switch of `voidShaper` and its siblings, used for a driver instead of a module; `sceneExclusion` in `tests/golden/table.ms` is **NEW MECHANISM**, small: a named absence per backend, printed as `EXCLUDED <scene> <reason>` by the runner and the comparator and left out of that backend's denominator, so a row that cannot run is never missing and never a silent skip. It can regress: a row added to the exclusion list drops out of that backend's pass rate; `src/test/sceneExclusionCheck.ms` holds the list to the two void3d scenes. The surface is GL core 4.3 because `deps/sokol/sokol_app.h:2378` lists only D3D11, GLCORE, WGPU, Vulkan and NOAPI for Win32, and its GL default is 4.3 off Apple (`:3564-3570`); an Apple GLCORE build would need `glsl410` and `shaderBackends.h` stops it by name. The `-1/64` mesh bias stays unbuilt: the run did not need it.
 
@@ -2521,8 +2511,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - Every module's wasm delta is recorded per backend and gated against a committed budget; a build with all modules off is measured too, and is the number guardrail 6 is about.
 - The fault-injection switch loses the device mid-frame and the next frame is correct.
 - `sample_count > 1` works on the iOS and Android bridges without breaking void3d's pipelines.
-- Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and its first run is owed; it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3.
-- The colour-emoji line (TESTING.md `text/`) draws in colour through the module, presentation selectors pick text or emoji per grapheme, and a build with the module off pays none of it. **Status 2026-10-08:** built and measured headless; the `text/colourEmoji` capture and the native gate stages are owed (see "Colour emoji" under Built); the module-off proof is by symbol on objects.
+- Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and measured 98 / 98 (75 byte-identical, 23 within the cross-backend bound, 0 structural, 2 void3d scenes excluded by name); it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3.
+- The colour-emoji line (TESTING.md `text/`) draws in colour through the module, presentation selectors pick text or emoji per grapheme, and a build with the module off pays none of it. **Status 2026-10-08:** built, measured headless and captured on D3D11 (`text/colourEmoji`); the native gate stages are owed (see "Colour emoji" under Built); the module-off proof is by symbol on objects.
 - A deferred CJK or emoji family answers coverage without loading, with the module on or off.
 - WebGL2 and GL core 4.3 desktop (glsl430) show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.
@@ -2536,8 +2526,8 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 **Deferred out of P6, each by name** (the builder's reading of void manager decisions 7 and 9 of 2026-10-07, which no tracked file records and the manager has not confirmed). None of these is a `tests/PENDING.md` row, because none is a known defect: each is work P6 does not do, with the reason and the condition that reopens it.
 
-- **void3d `TEXT_SDF` program (SDF spec slice S10).** A billboard program that samples the SDF page with the ramp of `textSdf` in `shader2d.glsl`. Not built because it adds a program to void3d (id 8 of 16 in the 4-bit field of `src/void3d/gpu3d.c`; the door's layout registry is full at eight layouts, so it would reuse BILLBOARD with a shared `position` and a per-glyph `anchor`), it needs the renderer integration of a new program (M33 and M35a as built, not read by the spec), and the void2d SDF it would reuse has no capture yet (`text/sdfRotated`, `sdfZoom4`, `sdfScaleDown` are owed). Reopens when the D3D11 captures of the SDF rows are committed and read through `tests/oracle/textSdfCheck.ms`, and the human confirms the SDF billboard over M41's route (a void2d label rendered into a target and drawn on a billboard, VOID3D.md M41) for a void3d consumer that needs world text.
-- **void3d glyph-layer import and its device loss (slices S9 and S11).** `src/void3d/label3d.ms` owning a `LabelText` through `allocateLabelText` and `shapeLabel`, an exported glyph-page upload callable outside void2d's replay, and a world label that survives `loseContext()` while sharing a page with a 2D label. Not built because it is the first import of `src/void2d` by void3d, a layering edge that `CLAUDE.md` (src/sokol to void2d to examples, one way) does not cover and that the human owns, and because without the `TEXT_SDF` program it has no draw to test. Reopens with S10, on the same two conditions plus the human's call on the layering edge (import in place, or move the glyph files to `src/text/` when a third consumer appears).
+- **void3d `TEXT_SDF` program (SDF spec slice S10).** A billboard program that samples the SDF page with the ramp of `textSdf` in `shader2d.glsl`. Not built because it adds a program to void3d (id 8 of 16 in the 4-bit field of `src/void3d/gpu3d.c`; the door's layout registry is full at eight layouts, so it would reuse BILLBOARD with a shared `position` and a per-glyph `anchor`), it needs the renderer integration of a new program (M33 and M35a as built, not read by the spec). Reopens when the human confirms the SDF billboard over M41's route (a void2d label rendered into a target and drawn on a billboard, VOID3D.md M41) for a void3d consumer that needs world text.
+- **void3d glyph-layer import and its device loss (slices S9 and S11).** `src/void3d/label3d.ms` owning a `LabelText` through `allocateLabelText` and `shapeLabel`, an exported glyph-page upload callable outside void2d's replay, and a world label that survives `loseContext()` while sharing a page with a 2D label. Not built because it is the first import of `src/void2d` by void3d, a layering edge that `CLAUDE.md` (src/sokol to void2d to examples, one way) does not cover and that the human owns, and because without the `TEXT_SDF` program it has no draw to test. Reopens with S10, on the same condition plus the human's call on the layering edge (import in place, or move the glyph files to `src/text/` when a third consumer appears).
 - **Flat world text.** Text laid on a surface in the world rather than facing the camera. The spec for world text starts with billboards and goes to a text mesh only "if a use case demands it" (VOID3D.md "Deferred from void2d: 3D text + SDF"); no consumer needs a surface-aligned label, and the same SDF tiles would serve it with a different vertex orientation. Reopens when a void3d scene needs a label fixed to a surface and S10 has shipped.
 - **Variable-font axes and stem darkening.** `stb_truetype` reads the default instance only and has no `fvar`/`gvar` and no darkening; Ghostty takes axes for style matching and darkens on CoreText only (GHOSTTY.md:29, :45, :110). Taking either means a second rasterizer or a stb patch (`deps/` is not tracked), and the FreeType route was decided out at P3 step 8. Reopens only if the T5 capture beside Zed shows a weight or shape gap that an axis or a darkening pass would close; it is then raised as **NEW MECHANISM** with the rasterizer question reopened, not folded into a fix.
 - **`cellMetrics(font, sizePx, dpi)` as void2d public API.** Integer device cell width, height, ascent and box thickness (Ghostty's `Metrics.calc`), so Terminator can set `forceWidth` from the owner of the glyph layer. Not built because it is new public surface in a repo with no consumer for it inside, Terminator is another repository that gets a note in `~/metascript/.inbox/terminator/` from its own session rather than a change from here, and void2d has no cell-metric owner to extend. Reopens when Terminator's session sends the request to `~/metascript/.inbox/void/` and the human approves the API.

@@ -355,15 +355,11 @@ in the same change as the fix.
 
 ## Guardrail 9 — how "same pixels on every platform" is actually checked
 
-**Current status, 2026-09-24 (P3 review): two backends of seven measured, and both numbers are printed. P3's exit asked for five; GL core 4.3 desktop (glsl430) is built and its run is owed, WebGPU is P6's, Metal and Android wait on the human's hardware.**
+**Current status, 2026-10-08: three backends of seven measured, and all three numbers are printed (D3D11, GL core 4.3 desktop (glsl430) and WebGL2). WebGPU is P6's, Metal and Android wait on the human's hardware.**
 
 | Backend | Conformance | Runs |
 |---|---|---|
 | D3D11 | **100 / 107 scenes byte-identical**; the seven `text/bidi*` scenes await their first capture | every full gate, this box |
-
-| GLES3 desktop | not run — the `glReadPixels` path now runs under WebGL2, but no desktop GL build exists: `src/sokol/sokolWin.c` is D3D11 only and the shaders carry no `glsl430`. P6 | SKIP |
-
-| D3D11 | **83 / 83 captured scenes byte-identical**; the two `icon/` scenes await their first capture | every full gate, this box |
 | GL core 4.3 desktop (glsl430) | **98 / 98**: 75 byte-identical, 23 within the cross-backend bound, 0 structural failures, 2 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
@@ -371,7 +367,7 @@ in the same change as the fix.
 | WebGPU | no readback in the wasm build, and headless Chrome has no adapter here, so the run is headed. P6 | SKIP |
 | WebGL2 | **78 / 82**: 60 byte-identical, 18 within the cross-backend bound, 4 structural failures (`tests/PENDING.md conformance:webgl2-pixel-centre`); measured 2026-10-03 with the four Door-closure G-I scenes added, BUILD `5791eadd`. ANGLE on D3D11 on the same GPU proves the GLSL ES path and GL conventions, not a second driver | `sh scripts/golden-web.sh`, and the gate with `--web` |
 
-So guardrail 9 is a number now, and the number is **2 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
+So guardrail 9 is a number now, and the number is **3 of 7 surfaces measured**. The WebGL2 path is the golden runner itself compiled with `--os=emcc`: `tests/golden/web/runner.html` passes the scene in the query, `tests/capture/capture.c` reads the frame with `glReadPixels` into the in-memory file system and sets `window.voidDone`, and `scripts/webGolden.mjs` drives headless Chrome over the DevTools protocol (node's own `WebSocket`) and copies each PNG out; `tests/golden/compare.ms` judges it against the D3D11 goldens with `VOID_CONFORM=webgl2`. Its first run found a real cross-backend bug, not a tolerance: the Bayer dither was indexed by `gl_FragCoord`, whose origin is bottom-left on GL, so the 4x4 pattern flipped and every dithered pixel moved by up to 5 levels (gradients, `prim/ditherBand`, all four demo frames). The mesh pipeline now carries the fragment's device pixel as a varying and D3D11 stayed byte-identical. The first run also taught one harness lesson: `golden-web.sh` reused a stale `goldenCompare.exe`, which compared the D3D11 captures with themselves and printed 100 %; the script now always rebuilds the comparator. What exists
 for the web today is liveness, not conformance: `scripts/web-liveness.sh` loads the built
 demo in headless Chrome and checks that the canvas is not blank. Measured 2026-09-20:
 **WebGL2 draws the demo; WebGPU builds and runs but headless Chrome hands it no adapter**

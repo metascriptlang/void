@@ -60,8 +60,7 @@ last two columns of those. Everything else on this page is for a reader.
 ## Image budgets
 
 None. Every scene in `tests/golden/table.ms` is byte-identical to its golden, across runs
-and across processes, and P0 found no scene that needs a tolerance. Two scenes that would
-have needed one are not in the table at all — see "Scenes that cannot be captured yet".
+and across processes, and P0 found no scene that needs a tolerance.
 
 | id | tier | reason | phase | date | maxPixels | maxDelta |
 |---|---|---|---|---|---|---|
@@ -113,7 +112,7 @@ tier that catches them is T1 — which does not exist until P1 creates the displ
 
 | id | tier | reason | phase | date |
 |---|---|---|---|---|
-| wasm:budget | T4 | guardrail 6's wasm budget per module has no linked number: `scripts/build-web.sh` cannot link Yoga for the web target (`~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`, owned by a session started in yoga) and emcc is not on the PATH of the box that wrote the module. What exists is `scripts/wasmModuleDelta.sh`: the default-layer and module objects in bytes, wasm32 and x86-64, recorded in `tests/bench/wasm.json` for colour emoji, SDF text and the shaper, and `scripts/experiment-modulesWeb.sh` with its entry `tests/experiments/modulesWeb.ms` (no `node.ms`, so no Yoga), which builds the shaper and SDF text off and on per backend and is owed. Re-owned from P6 to the session started in yoga, which clears the card, and then to the human for the emcc run; every new golden's WebGL2 column (`text/colourEmoji` among them) waits on the same link. Closes when `sh scripts/experiment-modulesWeb.sh` prints a `WASM` row per module and backend on a box with emsdk 5.0.5, its numbers are written as `modulesWeb-<module> <backend> off <bytes> on <bytes>` rows in `tests/bench/wasmBudget.txt`, and, once the web build links, `build-web.sh` gives the wasm bytes of the demo with every module off and with each module on, which then replace the object numbers as the budget | human | 2026-10-08 |
+| wasm:budget | T4 | guardrail 6's wasm budget per module has no linked number: `scripts/build-web.sh` cannot link Yoga for the web target (`~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md`, owned by a session started in yoga) and emcc is not on the PATH of the box that wrote the module. What exists is `scripts/wasmModuleDelta.sh`: the default-layer and module objects in bytes, wasm32 and x86-64, recorded in `tests/bench/wasm.json` for colour emoji, SDF text, the shaper, sprites and bidi, and `scripts/experiment-modulesWeb.sh` with its entry `tests/experiments/modulesWeb.ms` (no `node.ms`, so no Yoga), which builds the shaper and SDF text off and on per backend and is owed. Re-owned from P6 to the session started in yoga, which clears the card, and then to the human for the emcc run; every new golden's WebGL2 column (`text/colourEmoji` among them) waits on the same link. Closes when `sh scripts/experiment-modulesWeb.sh` prints a `WASM` row per module and backend on a box with emsdk 5.0.5, its numbers are written as `modulesWeb-<module> <backend> off <bytes> on <bytes>` rows in `tests/bench/wasmBudget.txt`, and, once the web build links, `build-web.sh` gives the wasm bytes of the demo with every module off and with each module on, which then replace the object numbers as the budget | human | 2026-10-08 |
 | font-sbix-apple | T2 | sbix is proven on `tests/fonts/sbixSynthetic.ttf` only (png and dupe strikes, origin offsets, a refused jpg, an empty glyph): Apple Color Emoji is proprietary and not on the box that wrote the reader, and the origin and dupe rules follow the Apple sbix text as fontTools writes it, not FreeType, which was not read. Closes when the human draws a label through Apple Color Emoji on a Mac with `-d:voidColourEmoji` and the glyphs sit where the strike puts them | human | 2026-10-08 |
 | colour:native-gate | T2 | the colour item's native stages have never run: the device-loss and occlusion stages built with `-d:voidColourEmoji` (an emoji label must put a colour page on the GPU and re-upload it), the `mainSokol2d.ms` module-off and module-on builds (the colour build larger, the off build naming no `void2dColour` symbol), `src/test/index.ms` and the headless checks with every module flag on, and the sampler of a zoomed tile on a real GPU. Closes when the human runs `sh scripts/gate.sh` on the native box and every colour stage is a PASS, not a SKIP | human | 2026-10-08 |
 | colour:bench-bounds | T4 | `colourBounds` in `tests/bench/baseline.json` (2 pages, 8 MiB, 40 sweep rasterizations, 0 steady) are the bench author's estimate with no slack, not a measurement: `benchTextEmoji.ms` has not run, and a shifted rung boundary fails the first native run. Closes when the human runs `benchTextEmoji.ms` natively and replaces the four numbers with what it printed | human | 2026-10-08 |
@@ -140,7 +139,7 @@ it can capture anything.
 
 ## Backends with no conformance run
 
-Guardrail 9 is "same pixels on every platform", and today it is measured on two backends, D3D11 and WebGL2.
+Guardrail 9 is "same pixels on every platform", and today it is measured on three backends, D3D11, GL core 4.3 desktop and WebGL2.
 `scripts/gate.sh` prints each of these as a loud SKIP and never as a PASS.
 
 | id | tier | reason | phase | date |
