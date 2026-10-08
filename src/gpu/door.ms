@@ -33,6 +33,7 @@ import {
 	doorEnvironmentColorFormat,
 	doorEnvironmentDepthFormat,
 	doorEnvironmentSampleCount,
+	doorFormatRenderable,
 	doorContextGeneration,
 	doorLoseContext,
 	doorFrameIndex,
@@ -64,6 +65,7 @@ export enum PixelFormat {
 	Depth,
 	Bgra8,
 	DepthStencil,
+	Rgba16f,
 }
 
 export enum LoadAction {
@@ -217,6 +219,12 @@ export function environmentDepthFormat(): PixelFormat {
 
 export function environmentSampleCount(): int32 {
 	return doorEnvironmentSampleCount();
+}
+
+// Whether this device can draw into a target of this format; Rgba16f needs a color-buffer-float
+// extension on GLES3 and WebGL2 (sokol_gfx.h _sg_gl_init_pixelformats_half_float).
+export function formatRenderable(format: PixelFormat): boolean {
+	return doorFormatRenderable(format as int32) != 0;
 }
 
 export function contextGeneration(): int32 {

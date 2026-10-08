@@ -115,6 +115,7 @@ int32_t doorDepthZeroToOne(void);
 int32_t doorEnvironmentColorFormat(void);
 int32_t doorEnvironmentDepthFormat(void);
 int32_t doorEnvironmentSampleCount(void);
+int32_t doorFormatRenderable(int32_t format);
 // Changes when the host rebuilt a lost GPU context (only the Android bridge does); every
 // handle made before is stale then.
 int32_t doorContextGeneration(void);

@@ -72,6 +72,7 @@ enum {
 	FORMAT_DEPTH,
 	FORMAT_BGRA8,
 	FORMAT_DEPTH_STENCIL,
+	FORMAT_RGBA16F,
 };
 static const sg_pixel_format PIXEL_FORMATS[] = {
 	SG_PIXELFORMAT_NONE,
@@ -80,6 +81,7 @@ static const sg_pixel_format PIXEL_FORMATS[] = {
 	SG_PIXELFORMAT_DEPTH,
 	SG_PIXELFORMAT_BGRA8,
 	SG_PIXELFORMAT_DEPTH_STENCIL,
+	SG_PIXELFORMAT_RGBA16F,
 };
 
 static bool isDepthFormat(int32_t format) {
@@ -120,7 +122,7 @@ _Static_assert(COUNT(BLEND_FACTORS) == 10, "BLEND_FACTORS must match Blend in st
 _Static_assert(COUNT(ALPHA_CHANNEL_BLEND_FACTORS) == 10,
 	"ALPHA_CHANNEL_BLEND_FACTORS must match Blend in state.ms");
 _Static_assert(COUNT(BLEND_OPERATIONS) == 5, "BLEND_OPERATIONS must match Operation in state.ms");
-_Static_assert(COUNT(PIXEL_FORMATS) == 6,"PIXEL_FORMATS must match PixelFormat in door.ms");
+_Static_assert(COUNT(PIXEL_FORMATS) == 7, "PIXEL_FORMATS must match PixelFormat in door.ms");
 _Static_assert(COUNT(LOAD_ACTIONS) == 3, "LOAD_ACTIONS must match LoadAction in door.ms");
 _Static_assert(COUNT(STORE_ACTIONS) == 2, "STORE_ACTIONS must match StoreAction in door.ms");
 _Static_assert(COUNT(FILTERS) == 2, "FILTERS must match FilterMode in door.ms");
@@ -612,6 +614,19 @@ int32_t doorEnvironmentDepthFormat(void) {
 
 int32_t doorEnvironmentSampleCount(void) {
 	return environmentDefaults().sample_count;
+}
+
+int32_t doorFormatRenderable(int32_t format) {
+	if (format == FORMAT_NONE || format == FORMAT_DEFAULT) {
+		fprintf(stderr, "gpu door: formatRenderable was asked about PixelFormat %d, "
+			"which names no one sokol format\n", (int)format);
+		abort();
+	}
+	if (!sg_isvalid()) {
+		fprintf(stderr, "gpu door: formatRenderable was asked before gfxSetup made the device\n");
+		abort();
+	}
+	return sg_query_pixelformat(LOOKUP(PIXEL_FORMATS, format)).render ? 1 : 0;
 }
 
 int32_t doorContextGeneration(void) {
