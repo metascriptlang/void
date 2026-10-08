@@ -65,6 +65,9 @@ when (voidShaper) {
 	import "./shapeOracleCheck";
 	import "./shapedLayoutCheck";
 }
+when (voidBidi) {
+	import "./bidiTableCheck";
+}
 when (voidSvg) {
 	import "./svgMaskCheck";
 	import "./svgOracleCheck";
