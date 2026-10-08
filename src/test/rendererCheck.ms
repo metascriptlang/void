@@ -52,8 +52,10 @@ import {
 	Stage,
 	PixelArtLook,
 	PIXEL_ART_UNIFORM_LENGTH,
+	PIXEL_ART_HDR_UNIFORM_LENGTH,
 	POST_UNIFORM_LENGTH,
 	planStages,
+	closePixelArt,
 	setSettings,
 	setPalette,
 	renderFrame,
@@ -142,10 +144,12 @@ function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 
 test "a frame runs scene, post, then blit; without the post pass it blits the scene" {
 	const full: Vec<Stage> = [Stage.Scene, Stage.Post, Stage.Blit];
-	assert sameStages(planStages(PixelArtSettings.full()), full);
-	assert sameStages(planStages(PixelArtSettings.preview()), full);
+	assert sameStages(planStages(PixelArtSettings.full(), false), full);
+	assert sameStages(planStages(PixelArtSettings.preview(), false), full);
 	const direct: Vec<Stage> = [Stage.Scene, Stage.Blit];
-	assert sameStages(planStages({ ...PixelArtSettings.full(), postPass: false }), direct);
+	assert sameStages(planStages({ ...PixelArtSettings.full(), postPass: false }, false), direct);
+	const toneMapped: Vec<Stage> = [Stage.Scene, Stage.ToneMap, Stage.Post, Stage.Blit];
+	assert sameStages(planStages(PixelArtSettings.full(), true), toneMapped);
 }
 
 test "preview halves the resolution and drops the outline, nothing else" {
@@ -329,6 +333,35 @@ test "post parameters carry the look, the switches and the depth unpack" {
 	const grey: PixelArtLook = { ...look(), saturation: -0.75 };
 	grey.writePostParams(every, 32, false, values);
 	assert values[20] == -0.75 && values[21] == 0.0 && values[23] == 0.0;
+}
+
+test "an HDR pixel-art preset is refused by name without Rgba16f, and tone maps before post" {
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
+	const refused: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), look(), false);
+	assert !refused.ok && refused.error == PixelArtError.HdrUnsupported;
+	assert context.uniforms.used == 0 && context.liveMaterials() == 0;
+	let small: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH - 1);
+	const tight: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.createHdrWhere(small, PixelArtSettings.full(), look(), true);
+	assert !tight.ok && tight.error == PixelArtError.UniformPoolFull;
+	assert small.uniforms.used == 0 && small.liveMaterials() == 0;
+	const created: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), look(), true);
+	assert created.ok;
+	if (created.ok) {
+		let renderer: PixelArtRenderer = created.value;
+		assert renderer.toneMap !== null && renderer.core.linearOutput;
+		assert context.uniforms.used == PIXEL_ART_HDR_UNIFORM_LENGTH;
+		assert context.liveMaterials() == 3;
+		const toneMapped: Vec<Stage> = [Stage.Scene, Stage.ToneMap, Stage.Post, Stage.Blit];
+		assert sameStages(renderer.stages, toneMapped);
+		setSettings(renderer, { ...PixelArtSettings.full(), postPass: false });
+		const direct: Vec<Stage> = [Stage.Scene, Stage.ToneMap, Stage.Blit];
+		assert sameStages(renderer.stages, direct);
+		closePixelArt(renderer);
+		assert context.liveMaterials() == 0;
+	}
 }
 
 test "a renderer needs a frame until one is drawn, then only when something changed" {

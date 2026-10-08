@@ -37,7 +37,7 @@ import {
 	contextGeneration,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
-import { originTopLeft, depthZeroToOne } from "../gpu/door";
+import { originTopLeft, depthZeroToOne, formatRenderable } from "../gpu/door";
 import { Material, Phase, UniformBlock } from "./material";
 import {
 	RenderTarget,
@@ -72,6 +72,7 @@ import {
 	closePalette,
 } from "./palette";
 import { screenState } from "./screenFx";
+import { ToneMapPass, TONE_MAP_UNIFORM_LENGTH, linearBackground } from "./toneMap";
 import {
 	Renderer,
 	RendererError,
@@ -102,6 +103,7 @@ export const BLIT_UNIFORM_LENGTH: int32 = 4;
 // The preset's passes, in the order a frame runs them.
 export enum Stage {
 	Scene,
+	ToneMap,
 	Post,
 	Blit,
 }
@@ -177,6 +179,8 @@ export enum PixelArtError {
 	RampLevels,
 	BlendedOpaque,
 	TranslucentDepthWrite,
+	// As ForwardError.HdrUnsupported.
+	HdrUnsupported,
 }
 
 export interface PixelArtRenderer {
@@ -195,6 +199,9 @@ export interface PixelArtRenderer {
 	translucentColors: Vec<ColorAttachment>;
 	translucentDepth: DepthAttachment;
 	postColors: Vec<ColorAttachment>;
+	// An HDR preset's scene target and tone map, which writes `colorTarget`; null for an LDR one.
+	toneMap: ToneMapPass | null;
+	toneMapColors: Vec<ColorAttachment>;
 	// As ForwardRenderer.targetEpoch, for the four targets.
 	targetEpoch: int32;
 	postBlock: UniformBlock;
@@ -211,6 +218,10 @@ export interface PixelArtRenderer {
 // Floats of the uniform pool the preset needs, the core's blocks included.
 export const PIXEL_ART_UNIFORM_LENGTH: int32 =
 	RENDERER_UNIFORM_LENGTH + POST_UNIFORM_LENGTH + BLIT_UNIFORM_LENGTH;
+
+// An HDR preset's floats: the same and the tone map's block.
+export const PIXEL_ART_HDR_UNIFORM_LENGTH: int32 =
+	PIXEL_ART_UNIFORM_LENGTH + TONE_MAP_UNIFORM_LENGTH;
 
 // Attachment formats of the scene and post passes: the target half of their pipeline keys.
 export const SCENE_LAYOUT: TargetLayout = {
@@ -230,6 +241,11 @@ export const TRANSLUCENT_LAYOUT: TargetLayout = {
 	depth: PixelFormat.Depth,
 	sampleCount: 1,
 };
+
+// An HDR preset's scene and translucent passes.
+export const HDR_SCENE_LAYOUT: TargetLayout = { ...SCENE_LAYOUT, color0: PixelFormat.Rgba16f };
+export const HDR_TRANSLUCENT_LAYOUT: TargetLayout =
+	{ ...TRANSLUCENT_LAYOUT, color0: PixelFormat.Rgba16f };
 
 export const POST_LAYOUT: TargetLayout = {
 	color0: PixelFormat.Rgba8,
@@ -274,9 +290,11 @@ export function preview(this typeof PixelArtSettings): PixelArtSettings {
 	return { ...PixelArtSettings.full(), resolutionDivisor: 2, outline: false };
 }
 
-// The stages a frame runs, in order. Allocates: called when the settings change.
-export function planStages(settings: PixelArtSettings): Vec<Stage> {
+// The stages a frame runs, in order; an HDR preset tone maps the scene before post reads it.
+// Allocates: called when the settings change.
+export function planStages(settings: PixelArtSettings, hdr: boolean): Vec<Stage> {
 	let stages: Vec<Stage> = [Stage.Scene];
+	if (hdr) { stages.push(Stage.ToneMap); }
 	if (settings.postPass) { stages.push(Stage.Post); }
 	stages.push(Stage.Blit);
 	return stages;
@@ -344,13 +362,52 @@ export function create(
 	look: PixelArtLook,
 ): Result<PixelArtRenderer, PixelArtError> {
 	context.requireOpen("PixelArtRenderer.create");
-	const blocks: Vec<int32> = [
+	return make(context, settings, look, false);
+}
+
+// The same, drawing the scene into an Rgba16f target tone mapped into `colorTarget` before the
+// post pass, as ForwardRenderer.createHdr; `context` needs PIXEL_ART_HDR_UNIFORM_LENGTH floats.
+export function createHdr(
+	this typeof PixelArtRenderer,
+	context: DrawContext,
+	settings: PixelArtSettings,
+	look: PixelArtLook,
+): Result<PixelArtRenderer, PixelArtError> {
+	context.requireOpen("PixelArtRenderer.createHdr");
+	return PixelArtRenderer.createHdrWhere(
+		context, settings, look, formatRenderable(PixelFormat.Rgba16f),
+	);
+}
+
+// createHdr with the device's answer given: a test gives its own.
+export function createHdrWhere(
+	this typeof PixelArtRenderer,
+	context: DrawContext,
+	settings: PixelArtSettings,
+	look: PixelArtLook,
+	rgba16fRenderable: boolean,
+): Result<PixelArtRenderer, PixelArtError> {
+	context.requireOpen("PixelArtRenderer.createHdrWhere");
+	if (!rgba16fRenderable) {
+		return Result.err(PixelArtError.HdrUnsupported);
+	}
+	return make(context, settings, look, true);
+}
+
+function make(
+	context: DrawContext,
+	settings: PixelArtSettings,
+	look: PixelArtLook,
+	hdr: boolean,
+): Result<PixelArtRenderer, PixelArtError> {
+	let blocks: Vec<int32> = [
 		VERTEX_UNIFORM_LENGTH,
 		LIGHT_UNIFORM_LENGTH,
 		FRAME_UNIFORM_LENGTH,
 		POST_UNIFORM_LENGTH,
 		BLIT_UNIFORM_LENGTH,
 	];
+	if (hdr) { blocks.push(TONE_MAP_UNIFORM_LENGTH); }
 	if (!context.uniforms.fits(blocks).ok) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
@@ -378,11 +435,12 @@ export function create(
 	const post: Result<MaterialId, MaterialError> = addMaterial(context, postMaterial);
 	const blit: Result<MaterialId, MaterialError> = addMaterial(context, blitMaterial);
 	if (!post.ok || !blit.ok) { unreachable; }
-	return Result.ok({
+	const toneMap: ToneMapPass | null = hdr ? ToneMapPass.reserve(context) : null;
+	let made: PixelArtRenderer = {
 		core: core.value,
 		settings: settings,
 		look: look,
-		stages: planStages(settings),
+		stages: planStages(settings, hdr),
 		colorTarget: RenderTarget.unallocated(PixelFormat.Rgba8, true),
 		normalTarget: RenderTarget.unallocated(PixelFormat.Rgba8, true),
 		depthTarget: RenderTarget.unallocated(PixelFormat.Depth, true),
@@ -394,6 +452,8 @@ export function create(
 		translucentColors: new Array(1),
 		translucentDepth: NO_DEPTH,
 		postColors: new Array(1),
+		toneMap: toneMap,
+		toneMapColors: new Array(1),
 		targetEpoch: 0,
 		postBlock: postBlock,
 		blitBlock: blitBlock,
@@ -403,20 +463,30 @@ export function create(
 		blitMaterial: blit.value,
 		view: NO_VIEW,
 		closed: false,
-	});
+	};
+	made.core.linearOutput = hdr;
+	return Result.ok(made);
 }
 
 export function setSettings(renderer: PixelArtRenderer, settings: PixelArtSettings): void {
 	if (renderer.closed) { stopOnClosed("setSettings"); }
 	renderer.settings = settings;
-	renderer.stages = planStages(settings);
+	renderer.stages = planStages(settings, renderer.toneMap !== null);
 	renderer.core.changed = true;
+}
+
+// The target the scene passes draw into: the HDR target when there is one, cleared to the
+// background decoded, else the colour target.
+function sceneColor(renderer: PixelArtRenderer, load: LoadAction, clear: Vec4): ColorAttachment {
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap === null) { return renderer.colorTarget.asColor(load, clear); }
+	return toneMap.target.asColor(load, linearBackground(clear));
 }
 
 export function setLook(renderer: PixelArtRenderer, look: PixelArtLook): void {
 	if (renderer.closed) { stopOnClosed("setLook"); }
 	renderer.look = look;
-	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, look.background);
+	renderer.sceneColors[0] = sceneColor(renderer, LoadAction.Clear, look.background);
 	renderer.core.changed = true;
 }
 
@@ -473,13 +543,19 @@ function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32):
 	renderer.normalTarget.resize(width, height);
 	renderer.depthTarget.resize(width, height);
 	renderer.postTarget.resize(width, height);
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) {
+		toneMap.target.resize(width, height);
+		renderer.toneMapColors[0] =
+			renderer.colorTarget.asColor(LoadAction.DontCare, UNUSED_CLEAR);
+	}
 	renderer.targetEpoch = renderer.targetEpoch + 1;
 	const background: Vec4 = renderer.look.background;
-	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, background);
+	renderer.sceneColors[0] = sceneColor(renderer, LoadAction.Clear, background);
 	renderer.sceneColors[1] = renderer.normalTarget.asColor(LoadAction.Clear, NORMAL_CLEAR);
 	renderer.sceneDepth =
 		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
-	renderer.translucentColors[0] = renderer.colorTarget.asColor(LoadAction.Load, UNUSED_CLEAR);
+	renderer.translucentColors[0] = sceneColor(renderer, LoadAction.Load, UNUSED_CLEAR);
 	renderer.translucentDepth =
 		renderer.depthTarget.asDepth(LoadAction.Load, FAR_DEPTH, StoreAction.DontCare);
 	renderer.postColors[0] = renderer.postTarget.asColor(LoadAction.DontCare, UNUSED_CLEAR);
@@ -518,13 +594,16 @@ function drawScene(renderer: PixelArtRenderer, items: Readonly<Span<DrawItem>>):
 	const sampled: boolean = postReadsDepth(renderer.settings);
 	renderer.sceneDepth.store = storeWhen(translucent || sampled);
 	renderer.translucentDepth.store = storeWhen(sampled);
+	const hdr: boolean = renderer.toneMap !== null;
+	const scene: TargetLayout = hdr ? HDR_SCENE_LAYOUT : SCENE_LAYOUT;
+	const blended: TargetLayout = hdr ? HDR_TRANSLUCENT_LAYOUT : TRANSLUCENT_LAYOUT;
 	beginPass(renderer.sceneColors, renderer.sceneDepth);
-	drawPhase(core, Phase.Opaque, items, SCENE_LAYOUT);
+	drawPhase(core, Phase.Opaque, items, scene);
 	endPass();
 	if (!translucent) { return; }
 	beginPass(renderer.translucentColors, renderer.translucentDepth);
-	drawPhase(core, Phase.Alpha, items, TRANSLUCENT_LAYOUT);
-	drawPhase(core, Phase.Additive, items, TRANSLUCENT_LAYOUT);
+	drawPhase(core, Phase.Alpha, items, blended);
+	drawPhase(core, Phase.Additive, items, blended);
 	endPass();
 }
 
@@ -536,6 +615,17 @@ function drawPost(renderer: PixelArtRenderer): void {
 		drawScreen(renderer.core, renderer.postMaterial, POST_LAYOUT);
 	if (!drawn.ok) { unreachable; }
 	endPass();
+}
+
+// prepareFrame refused the frame before any pass if the tone map material was gone; Stage.ToneMap
+// is planned only for a preset with one.
+function drawToneMap(renderer: PixelArtRenderer): void {
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) {
+		toneMap.draw(renderer.core, renderer.toneMapColors);
+		return;
+	}
+	unreachable;
 }
 
 function drawBlit(renderer: PixelArtRenderer): void {
@@ -660,6 +750,20 @@ export function prepareFrame(
 	const blocksKept: boolean = context.keepsItsUniforms(renderer.postMaterial) &&
 		context.keepsItsUniforms(renderer.blitMaterial);
 	if (!blocksKept) { return Result.err(PixelArtError.UniformsReplaced); }
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) {
+		const material: MaterialId = toneMap.material;
+		if (!context.hasMaterial(material)) {
+			const issued: boolean = context.issuedMaterial(material);
+			return Result.err(issued ? PixelArtError.StaleMaterial : PixelArtError.ForeignMaterial);
+		}
+		if (!context.keepsItsTexture(material)) {
+			return Result.err(PixelArtError.TextureReplaced);
+		}
+		if (!context.keepsItsUniforms(material)) {
+			return Result.err(PixelArtError.UniformsReplaced);
+		}
+	}
 	const shadowed: boolean = renderer.core.shadow !== null;
 	if (!rampsHaveLevels(renderer.core.preset, shadowed, context, items)) {
 		return Result.err(PixelArtError.RampLevels);
@@ -689,10 +793,15 @@ export function prepareFrame(
 		writeUniforms(context, renderer.blitBlock, renderer.blitValues);
 	if (!post.ok || !blit.ok) { return Result.err(PixelArtError.ScreenBlockLength); }
 
+	if (toneMap !== null) {
+		toneMap.prepare(renderer.core, renderer.sampler.asHandle());
+	}
+
 	const _casters: int32 = drawShadowPass(renderer.core, items, camera, lights);
 	for (const stage of renderer.stages) {
 		match (stage) {
 			Stage.Scene => { drawScene(renderer, items); },
+			Stage.ToneMap => { drawToneMap(renderer); },
 			Stage.Post => { drawPost(renderer); },
 			Stage.Blit => {},
 		};
@@ -761,6 +870,8 @@ export function closePixelArt(renderer: PixelArtRenderer): void {
 		console.log("void3d: closePixelArt found its post or blit material already released");
 		unreachable;
 	}
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) { toneMap.close(context, "closePixelArt"); }
 	if (!renderer.palette.isClosed()) { closePalette(renderer.palette); }
 	if (!renderer.core.isClosed()) { closeRenderer(renderer.core); }
 	renderer.closed = true;
