@@ -1176,6 +1176,32 @@ run_allocation() {
 	note "allocation: nor in the card table path ($(echo $CARD_TABLE_PATH_FUNCTIONS))"
 }
 
+run_exposure() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "exposure: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/exposure.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/exposure.ms --output="$exe" > "$WORK/exposure.build.log" 2>&1; then
+		fail "exposure: tests/integration/exposure.ms does not build — see $WORK/exposure.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_EXPOSURE_PIXEL_ART=$preset "$exe" > "$WORK/exposure.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "exposure: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS exposure: ' "$WORK/exposure.$preset.log"; then
+			fail "exposure: preset $preset (exit $status) — see $WORK/exposure.$preset.log"
+			return
+		fi
+	done
+	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending"
+}
+
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
@@ -1185,7 +1211,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -2778,6 +2804,7 @@ run_gltf
 run_both_layers
 run_world_label
 run_card_table
+run_exposure
 run_gl_core
 run_stores
 run_views

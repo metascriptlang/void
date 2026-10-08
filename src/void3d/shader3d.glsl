@@ -46,6 +46,8 @@ vec4 litShade(vec3 n) {
 @include_block materialUniforms
 @include_block lightUniforms
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
@@ -65,6 +67,7 @@ void main() {
         discard;
     }
 #endif
+    fragColor.rgb = toneMapped(fragColor.rgb);
 }
 @end
 
@@ -126,6 +129,8 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 #endif
 @include_block lightUniforms
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block pointLight
 @include_block saturation
 @include_block facingNormal
@@ -136,7 +141,6 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @include_block straightTexel
 #endif
 #ifdef UV_TRANSFORM
-@include_block frameUniforms
 @include_block movedUv
 #endif
 #ifdef BACK_TEXTURE
@@ -199,6 +203,7 @@ void main() {
         discard;
     }
 #endif
+    fragColor.rgb = toneMapped(fragColor.rgb);
 #ifdef PREMULTIPLIED
     fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
 #endif
@@ -228,11 +233,12 @@ void main() {
 @include_block unlitMaterialUniforms
 #endif
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 #ifdef PREMULTIPLIED
 @include_block straightTexel
 #endif
 #ifdef UV_TRANSFORM
-@include_block frameUniforms
 @include_block movedUv
 #endif
 #ifdef BACK_TEXTURE
@@ -277,6 +283,7 @@ void main() {
         discard;
     }
 #endif
+    fragColor.rgb = toneMapped(fragColor.rgb);
 #ifdef PREMULTIPLIED
     fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
 #endif
@@ -377,6 +384,9 @@ void main() {
 
 @fs particleFs
 // PENDING3D: particle-alpha-tested
+@include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 in vec4 particleColor;
 out vec4 fragColor;
 void main() {
@@ -384,6 +394,7 @@ void main() {
         discard;
     }
     fragColor = particleColor;
+    fragColor.rgb = toneMapped(fragColor.rgb);
 }
 @end
 
@@ -417,6 +428,8 @@ void main() {
 @include_block billboardUniforms
 @include_block lightUniforms
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block pointLight
 #ifdef PREMULTIPLIED
 @include_block straightTexel
@@ -448,6 +461,7 @@ void main() {
         }
         pixel.rgb = linearToSrgb(srgbToLinear(pixel.rgb) * light);
     }
+    pixel.rgb = toneMapped(pixel.rgb);
 #ifdef PREMULTIPLIED
     pixel = vec4(pixel.rgb * pixel.a, pixel.a);
 #endif

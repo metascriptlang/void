@@ -277,8 +277,12 @@ static const int32_t PROGRAM_KEYS[GPU3D_PROGRAM_TABLE_LENGTH] = {
 
 _Static_assert(sizeof(particle_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_particle_vertexParams == UB_lit_vertexParams,
 	"particle must take vertexParams as lit does");
+_Static_assert(sizeof(particle_frameParams_t) == sizeof(lit_frameParams_t) && UB_particle_frameParams == UB_lit_frameParams,
+	"particle must take frameParams as lit does");
 _Static_assert(sizeof(billboard_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboard_vertexParams == UB_lit_vertexParams,
 	"billboard must take vertexParams as lit does");
+_Static_assert(sizeof(billboard_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboard_frameParams == UB_lit_frameParams,
+	"billboard must take frameParams as lit does");
 _Static_assert(sizeof(billboard_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboard_lightParams == UB_lit_lightParams,
 	"billboard must take lightParams as lit does");
 _Static_assert(ATTR_pixelArtLit_program_position == ATTR_lit_program_position && ATTR_pixelArtLit_program_normal == ATTR_lit_program_normal && ATTR_pixelArtLit_program_color == ATTR_lit_program_color,
@@ -287,6 +291,8 @@ _Static_assert(sizeof(pixelArtLit_modelParams_t) == sizeof(lit_modelParams_t) &&
 	"pixelArtLit must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLit_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLit_vertexParams == UB_lit_vertexParams,
 	"pixelArtLit must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLit_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLit_frameParams == UB_lit_frameParams,
+	"pixelArtLit must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLit_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLit_lightParams == UB_lit_lightParams,
 	"pixelArtLit must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLit_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtLit_materialParams == UB_lit_materialParams,
@@ -295,10 +301,14 @@ _Static_assert(ATTR_pixelArtParticle_program_root == ATTR_particle_program_root 
 	"pixelArtParticle must take the PARTICLE layout as particle does");
 _Static_assert(sizeof(pixelArtParticle_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtParticle_vertexParams == UB_lit_vertexParams,
 	"pixelArtParticle must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtParticle_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtParticle_frameParams == UB_lit_frameParams,
+	"pixelArtParticle must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtBillboard_program_position == ATTR_billboard_program_position && ATTR_pixelArtBillboard_program_size == ATTR_billboard_program_size && ATTR_pixelArtBillboard_program_anchor == ATTR_billboard_program_anchor && ATTR_pixelArtBillboard_program_tile == ATTR_billboard_program_tile && ATTR_pixelArtBillboard_program_color == ATTR_billboard_program_color,
 	"pixelArtBillboard must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(pixelArtBillboard_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtBillboard_vertexParams == UB_lit_vertexParams,
 	"pixelArtBillboard must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtBillboard_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtBillboard_frameParams == UB_lit_frameParams,
+	"pixelArtBillboard must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtBillboard_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtBillboard_lightParams == UB_lit_lightParams,
 	"pixelArtBillboard must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtBillboard_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_pixelArtBillboard_billboardParams == UB_billboard_billboardParams,
@@ -311,6 +321,8 @@ _Static_assert(sizeof(litTextured_modelParams_t) == sizeof(lit_modelParams_t) &&
 	"litTextured must take modelParams as lit does");
 _Static_assert(sizeof(litTextured_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTextured_vertexParams == UB_lit_vertexParams,
 	"litTextured must take vertexParams as lit does");
+_Static_assert(sizeof(litTextured_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTextured_frameParams == UB_lit_frameParams,
+	"litTextured must take frameParams as lit does");
 _Static_assert(sizeof(litTextured_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTextured_lightParams == UB_lit_lightParams,
 	"litTextured must take lightParams as lit does");
 _Static_assert(sizeof(litTextured_materialParams_t) == sizeof(lit_materialParams_t) && UB_litTextured_materialParams == UB_lit_materialParams,
@@ -321,6 +333,8 @@ _Static_assert(sizeof(pixelArtLitTextured_modelParams_t) == sizeof(lit_modelPara
 	"pixelArtLitTextured must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTextured_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTextured_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTextured must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTextured_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTextured_frameParams == UB_lit_frameParams,
+	"pixelArtLitTextured must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTextured_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTextured_lightParams == UB_lit_lightParams,
 	"pixelArtLitTextured must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTextured_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtLitTextured_materialParams == UB_lit_materialParams,
@@ -329,12 +343,16 @@ _Static_assert(ATTR_unlitTextured_program_position == ATTR_litTextured_program_p
 	"unlitTextured must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTextured_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTextured_vertexParams == UB_lit_vertexParams,
 	"unlitTextured must take vertexParams as lit does");
+_Static_assert(sizeof(unlitTextured_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTextured_frameParams == UB_lit_frameParams,
+	"unlitTextured must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtUnlitTextured_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTextured_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTextured_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTextured_program_color == ATTR_litTextured_program_color,
 	"pixelArtUnlitTextured must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTextured_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTextured_vertexParams == UB_lit_vertexParams,
 	"pixelArtUnlitTextured must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTextured_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTextured_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTextured must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTextured_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTextured_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTextured must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTextured_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_pixelArtUnlitTextured_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"pixelArtUnlitTextured must take unlitMaterialParams as unlitTextured does");
 _Static_assert(ATTR_litTexturedPremultiplied_program_position == ATTR_litTextured_program_position && ATTR_litTexturedPremultiplied_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedPremultiplied_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedPremultiplied_program_color == ATTR_litTextured_program_color,
@@ -343,6 +361,8 @@ _Static_assert(sizeof(litTexturedPremultiplied_modelParams_t) == sizeof(lit_mode
 	"litTexturedPremultiplied must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedPremultiplied_vertexParams == UB_lit_vertexParams,
 	"litTexturedPremultiplied must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedPremultiplied_frameParams == UB_lit_frameParams,
+	"litTexturedPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedPremultiplied_lightParams == UB_lit_lightParams,
 	"litTexturedPremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedPremultiplied_materialParams_t) == sizeof(lit_materialParams_t) && UB_litTexturedPremultiplied_materialParams == UB_lit_materialParams,
@@ -353,6 +373,8 @@ _Static_assert(sizeof(pixelArtLitTexturedPremultiplied_modelParams_t) == sizeof(
 	"pixelArtLitTexturedPremultiplied must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedPremultiplied_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedPremultiplied must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedPremultiplied_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedPremultiplied_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedPremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedPremultiplied_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtLitTexturedPremultiplied_materialParams == UB_lit_materialParams,
@@ -363,6 +385,8 @@ _Static_assert(sizeof(unlitTexturedPremultiplied_vertexParams_t) == sizeof(lit_v
 	"unlitTexturedPremultiplied must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedPremultiplied_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedPremultiplied_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedPremultiplied must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedPremultiplied_frameParams == UB_lit_frameParams,
+	"unlitTexturedPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedPremultiplied_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_unlitTexturedPremultiplied_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"unlitTexturedPremultiplied must take unlitMaterialParams as unlitTextured does");
 _Static_assert(ATTR_pixelArtUnlitTexturedPremultiplied_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedPremultiplied_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedPremultiplied_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedPremultiplied_program_color == ATTR_litTextured_program_color,
@@ -371,6 +395,8 @@ _Static_assert(sizeof(pixelArtUnlitTexturedPremultiplied_vertexParams_t) == size
 	"pixelArtUnlitTexturedPremultiplied must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedPremultiplied_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedPremultiplied_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedPremultiplied must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedPremultiplied_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedPremultiplied_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_pixelArtUnlitTexturedPremultiplied_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"pixelArtUnlitTexturedPremultiplied must take unlitMaterialParams as unlitTextured does");
 _Static_assert(ATTR_litCutout_program_position == ATTR_lit_program_position && ATTR_litCutout_program_normal == ATTR_lit_program_normal && ATTR_litCutout_program_color == ATTR_lit_program_color,
@@ -379,6 +405,8 @@ _Static_assert(sizeof(litCutout_modelParams_t) == sizeof(lit_modelParams_t) && U
 	"litCutout must take modelParams as lit does");
 _Static_assert(sizeof(litCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litCutout_vertexParams == UB_lit_vertexParams,
 	"litCutout must take vertexParams as lit does");
+_Static_assert(sizeof(litCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_litCutout_frameParams == UB_lit_frameParams,
+	"litCutout must take frameParams as lit does");
 _Static_assert(sizeof(litCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_litCutout_lightParams == UB_lit_lightParams,
 	"litCutout must take lightParams as lit does");
 _Static_assert(sizeof(litCutout_materialParams_t) == sizeof(lit_materialParams_t) && UB_litCutout_materialParams == UB_lit_materialParams,
@@ -389,6 +417,8 @@ _Static_assert(sizeof(pixelArtLitCutout_modelParams_t) == sizeof(lit_modelParams
 	"pixelArtLitCutout must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitCutout_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitCutout must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitCutout_frameParams == UB_lit_frameParams,
+	"pixelArtLitCutout must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitCutout_lightParams == UB_lit_lightParams,
 	"pixelArtLitCutout must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutout_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtLitCutout_materialParams == UB_lit_materialParams,
@@ -399,6 +429,8 @@ _Static_assert(sizeof(litTexturedCutout_modelParams_t) == sizeof(lit_modelParams
 	"litTexturedCutout must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedCutout_vertexParams == UB_lit_vertexParams,
 	"litTexturedCutout must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedCutout_frameParams == UB_lit_frameParams,
+	"litTexturedCutout must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedCutout_lightParams == UB_lit_lightParams,
 	"litTexturedCutout must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedCutout_materialParams_t) == sizeof(lit_materialParams_t) && UB_litTexturedCutout_materialParams == UB_lit_materialParams,
@@ -409,6 +441,8 @@ _Static_assert(sizeof(pixelArtLitTexturedCutout_modelParams_t) == sizeof(lit_mod
 	"pixelArtLitTexturedCutout must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedCutout_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedCutout must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedCutout_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedCutout must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedCutout_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedCutout must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutout_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtLitTexturedCutout_materialParams == UB_lit_materialParams,
@@ -419,6 +453,8 @@ _Static_assert(sizeof(unlitTexturedCutout_vertexParams_t) == sizeof(lit_vertexPa
 	"unlitTexturedCutout must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedCutout_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedCutout_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedCutout must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedCutout_frameParams == UB_lit_frameParams,
+	"unlitTexturedCutout must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedCutout_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_unlitTexturedCutout_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"unlitTexturedCutout must take unlitMaterialParams as unlitTextured does");
 _Static_assert(ATTR_pixelArtUnlitTexturedCutout_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedCutout_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedCutout_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedCutout_program_color == ATTR_litTextured_program_color,
@@ -427,6 +463,8 @@ _Static_assert(sizeof(pixelArtUnlitTexturedCutout_vertexParams_t) == sizeof(lit_
 	"pixelArtUnlitTexturedCutout must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedCutout_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedCutout_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedCutout must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedCutout_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedCutout must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedCutout_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_pixelArtUnlitTexturedCutout_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"pixelArtUnlitTexturedCutout must take unlitMaterialParams as unlitTextured does");
 _Static_assert(ATTR_shadowLit_program_position == ATTR_lit_program_position && ATTR_shadowLit_program_normal == ATTR_lit_program_normal && ATTR_shadowLit_program_color == ATTR_lit_program_color,
@@ -477,6 +515,8 @@ _Static_assert(sizeof(litShadowed_modelParams_t) == sizeof(lit_modelParams_t) &&
 	"litShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litShadowed_vertexParams == UB_lit_vertexParams,
 	"litShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litShadowed_frameParams == UB_lit_frameParams,
+	"litShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litShadowed_lightParams == UB_lit_lightParams,
 	"litShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litShadowed_materialParams_t) == sizeof(lit_materialParams_t) && UB_litShadowed_materialParams == UB_lit_materialParams,
@@ -487,6 +527,8 @@ _Static_assert(sizeof(pixelArtLitShadowed_modelParams_t) == sizeof(lit_modelPara
 	"pixelArtLitShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -499,6 +541,8 @@ _Static_assert(sizeof(litCutoutShadowed_modelParams_t) == sizeof(lit_modelParams
 	"litCutoutShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litCutoutShadowed_vertexParams == UB_lit_vertexParams,
 	"litCutoutShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litCutoutShadowed_frameParams == UB_lit_frameParams,
+	"litCutoutShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litCutoutShadowed_lightParams == UB_lit_lightParams,
 	"litCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -511,6 +555,8 @@ _Static_assert(sizeof(pixelArtLitCutoutShadowed_modelParams_t) == sizeof(lit_mod
 	"pixelArtLitCutoutShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitCutoutShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitCutoutShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitCutoutShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitCutoutShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitCutoutShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -523,6 +569,8 @@ _Static_assert(sizeof(litTexturedShadowed_modelParams_t) == sizeof(lit_modelPara
 	"litTexturedShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -535,6 +583,8 @@ _Static_assert(sizeof(pixelArtLitTexturedShadowed_modelParams_t) == sizeof(lit_m
 	"pixelArtLitTexturedShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -547,6 +597,8 @@ _Static_assert(sizeof(litTexturedCutoutShadowed_modelParams_t) == sizeof(lit_mod
 	"litTexturedCutoutShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedCutoutShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedCutoutShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedCutoutShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedCutoutShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -559,6 +611,8 @@ _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_modelParams_t) == sizeof
 	"pixelArtLitTexturedCutoutShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedCutoutShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedCutoutShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedCutoutShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedCutoutShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedCutoutShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedCutoutShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedCutoutShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedCutoutShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -571,6 +625,8 @@ _Static_assert(sizeof(litTexturedUvTransform_modelParams_t) == sizeof(lit_modelP
 	"litTexturedUvTransform must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedUvTransform_vertexParams == UB_lit_vertexParams,
 	"litTexturedUvTransform must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedUvTransform_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedUvTransform_frameParams == UB_lit_frameParams,
+	"litTexturedUvTransform must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransform_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedUvTransform_lightParams == UB_lit_lightParams,
 	"litTexturedUvTransform must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedUvTransformShadowed_program_position == ATTR_litTextured_program_position && ATTR_litTexturedUvTransformShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedUvTransformShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedUvTransformShadowed_program_color == ATTR_litTextured_program_color,
@@ -579,64 +635,66 @@ _Static_assert(sizeof(litTexturedUvTransformShadowed_modelParams_t) == sizeof(li
 	"litTexturedUvTransformShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransformShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedUvTransformShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedUvTransformShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedUvTransformShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedUvTransformShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedUvTransformShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedUvTransformShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedUvTransformShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedUvTransformShadowed must take shadowParams as litShadowed does");
 _Static_assert(sizeof(litTexturedUvTransformShadowed_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_litTexturedUvTransformShadowed_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"litTexturedUvTransformShadowed must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(litTexturedUvTransformShadowed_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_litTexturedUvTransformShadowed_frameParams == UB_litTexturedUvTransform_frameParams,
-	"litTexturedUvTransformShadowed must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_unlitTexturedUvTransform_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedUvTransform_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedUvTransform_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedUvTransform_program_color == ATTR_litTextured_program_color,
 	"unlitTexturedUvTransform must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedUvTransform_vertexParams == UB_lit_vertexParams,
 	"unlitTexturedUvTransform must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedUvTransform_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedUvTransform_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedUvTransform must take modelTransformParams as unlitTextured does");
-_Static_assert(sizeof(unlitTexturedUvTransform_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_unlitTexturedUvTransform_frameParams == UB_litTexturedUvTransform_frameParams,
-	"unlitTexturedUvTransform must take frameParams as litTexturedUvTransform does");
+_Static_assert(sizeof(unlitTexturedUvTransform_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedUvTransform_frameParams == UB_lit_frameParams,
+	"unlitTexturedUvTransform must take frameParams as lit does");
 _Static_assert(ATTR_pixelArtLitTexturedUvTransform_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedUvTransform_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedUvTransform_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedUvTransform_program_color == ATTR_litTextured_program_color,
 	"pixelArtLitTexturedUvTransform must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransform_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtLitTexturedUvTransform_modelParams == UB_lit_modelParams,
 	"pixelArtLitTexturedUvTransform must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedUvTransform_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedUvTransform must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedUvTransform_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedUvTransform_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedUvTransform must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransform_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedUvTransform_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedUvTransform must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransform_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_pixelArtLitTexturedUvTransform_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"pixelArtLitTexturedUvTransform must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtLitTexturedUvTransform_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtLitTexturedUvTransform_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtLitTexturedUvTransform must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtLitTexturedUvTransformShadowed_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedUvTransformShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedUvTransformShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedUvTransformShadowed_program_color == ATTR_litTextured_program_color,
 	"pixelArtLitTexturedUvTransformShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_modelParams == UB_lit_modelParams,
 	"pixelArtLitTexturedUvTransformShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedUvTransformShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedUvTransformShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedUvTransformShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedUvTransformShadowed must take shadowParams as litShadowed does");
 _Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"pixelArtLitTexturedUvTransformShadowed must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtLitTexturedUvTransformShadowed_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtLitTexturedUvTransformShadowed_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtLitTexturedUvTransformShadowed must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtUnlitTexturedUvTransform_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedUvTransform_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedUvTransform_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedUvTransform_program_color == ATTR_litTextured_program_color,
 	"pixelArtUnlitTexturedUvTransform must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransform_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedUvTransform_vertexParams == UB_lit_vertexParams,
 	"pixelArtUnlitTexturedUvTransform must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransform_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedUvTransform_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedUvTransform must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedUvTransform_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedUvTransform_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedUvTransform must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransform_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_pixelArtUnlitTexturedUvTransform_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"pixelArtUnlitTexturedUvTransform must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtUnlitTexturedUvTransform_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtUnlitTexturedUvTransform_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtUnlitTexturedUvTransform must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_litTexturedBackTexture_program_position == ATTR_litTextured_program_position && ATTR_litTexturedBackTexture_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedBackTexture_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedBackTexture_program_color == ATTR_litTextured_program_color,
 	"litTexturedBackTexture must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedBackTexture_modelParams_t) == sizeof(lit_modelParams_t) && UB_litTexturedBackTexture_modelParams == UB_lit_modelParams,
 	"litTexturedBackTexture must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedBackTexture_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedBackTexture_vertexParams == UB_lit_vertexParams,
 	"litTexturedBackTexture must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedBackTexture_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedBackTexture_frameParams == UB_lit_frameParams,
+	"litTexturedBackTexture must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedBackTexture_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedBackTexture_lightParams == UB_lit_lightParams,
 	"litTexturedBackTexture must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedBackTexture_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_litTexturedBackTexture_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
@@ -647,6 +705,8 @@ _Static_assert(sizeof(litTexturedBackTextureShadowed_modelParams_t) == sizeof(li
 	"litTexturedBackTextureShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedBackTextureShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedBackTextureShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedBackTextureShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedBackTextureShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedBackTextureShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedBackTextureShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedBackTextureShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedBackTextureShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -659,6 +719,8 @@ _Static_assert(sizeof(unlitTexturedBackTexture_vertexParams_t) == sizeof(lit_ver
 	"unlitTexturedBackTexture must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedBackTexture_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedBackTexture_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedBackTexture must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedBackTexture_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedBackTexture_frameParams == UB_lit_frameParams,
+	"unlitTexturedBackTexture must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedBackTexture_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_unlitTexturedBackTexture_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"unlitTexturedBackTexture must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtLitTexturedBackTexture_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedBackTexture_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedBackTexture_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedBackTexture_program_color == ATTR_litTextured_program_color,
@@ -667,6 +729,8 @@ _Static_assert(sizeof(pixelArtLitTexturedBackTexture_modelParams_t) == sizeof(li
 	"pixelArtLitTexturedBackTexture must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTexture_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedBackTexture_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedBackTexture must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedBackTexture_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedBackTexture_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedBackTexture must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTexture_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedBackTexture_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedBackTexture must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTexture_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_pixelArtLitTexturedBackTexture_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
@@ -677,6 +741,8 @@ _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_modelParams_t) == s
 	"pixelArtLitTexturedBackTextureShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedBackTextureShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedBackTextureShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedBackTextureShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedBackTextureShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedBackTextureShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -689,6 +755,8 @@ _Static_assert(sizeof(pixelArtUnlitTexturedBackTexture_vertexParams_t) == sizeof
 	"pixelArtUnlitTexturedBackTexture must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedBackTexture_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedBackTexture_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedBackTexture must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedBackTexture_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedBackTexture_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedBackTexture must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedBackTexture_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_pixelArtUnlitTexturedBackTexture_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"pixelArtUnlitTexturedBackTexture must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
 _Static_assert(ATTR_litTexturedDissolve_program_position == ATTR_litTextured_program_position && ATTR_litTexturedDissolve_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedDissolve_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedDissolve_program_color == ATTR_litTextured_program_color,
@@ -697,6 +765,8 @@ _Static_assert(sizeof(litTexturedDissolve_modelParams_t) == sizeof(lit_modelPara
 	"litTexturedDissolve must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedDissolve_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedDissolve_vertexParams == UB_lit_vertexParams,
 	"litTexturedDissolve must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedDissolve_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolve_frameParams == UB_lit_frameParams,
+	"litTexturedDissolve must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedDissolve_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolve_lightParams == UB_lit_lightParams,
 	"litTexturedDissolve must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolve_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_litTexturedDissolve_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
@@ -707,6 +777,8 @@ _Static_assert(sizeof(litTexturedDissolveShadowed_modelParams_t) == sizeof(lit_m
 	"litTexturedDissolveShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedDissolveShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedDissolveShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedDissolveShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedDissolveShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -719,6 +791,8 @@ _Static_assert(sizeof(unlitTexturedDissolve_vertexParams_t) == sizeof(lit_vertex
 	"unlitTexturedDissolve must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedDissolve_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedDissolve_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedDissolve must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedDissolve_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedDissolve_frameParams == UB_lit_frameParams,
+	"unlitTexturedDissolve must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedDissolve_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_unlitTexturedDissolve_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"unlitTexturedDissolve must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtLitTexturedDissolve_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedDissolve_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedDissolve_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedDissolve_program_color == ATTR_litTextured_program_color,
@@ -727,6 +801,8 @@ _Static_assert(sizeof(pixelArtLitTexturedDissolve_modelParams_t) == sizeof(lit_m
 	"pixelArtLitTexturedDissolve must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolve_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedDissolve_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedDissolve must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedDissolve_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedDissolve_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedDissolve must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolve_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedDissolve_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedDissolve must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolve_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_pixelArtLitTexturedDissolve_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
@@ -737,6 +813,8 @@ _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_modelParams_t) == size
 	"pixelArtLitTexturedDissolveShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedDissolveShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedDissolveShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedDissolveShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedDissolveShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedDissolveShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedDissolveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedDissolveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedDissolveShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -749,6 +827,8 @@ _Static_assert(sizeof(pixelArtUnlitTexturedDissolve_vertexParams_t) == sizeof(li
 	"pixelArtUnlitTexturedDissolve must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedDissolve_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedDissolve_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedDissolve must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedDissolve_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedDissolve_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedDissolve must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedDissolve_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_pixelArtUnlitTexturedDissolve_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"pixelArtUnlitTexturedDissolve must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
 _Static_assert(ATTR_litTexturedMoving_program_position == ATTR_litTextured_program_position && ATTR_litTexturedMoving_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedMoving_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedMoving_program_color == ATTR_litTextured_program_color,
@@ -757,72 +837,72 @@ _Static_assert(sizeof(litTexturedMoving_modelParams_t) == sizeof(lit_modelParams
 	"litTexturedMoving must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedMoving_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedMoving_vertexParams == UB_lit_vertexParams,
 	"litTexturedMoving must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedMoving_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedMoving_frameParams == UB_lit_frameParams,
+	"litTexturedMoving must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedMoving_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedMoving_lightParams == UB_lit_lightParams,
 	"litTexturedMoving must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedMoving_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_litTexturedMoving_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"litTexturedMoving must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(litTexturedMoving_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_litTexturedMoving_frameParams == UB_litTexturedUvTransform_frameParams,
-	"litTexturedMoving must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_litTexturedMovingShadowed_program_position == ATTR_litTextured_program_position && ATTR_litTexturedMovingShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedMovingShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedMovingShadowed_program_color == ATTR_litTextured_program_color,
 	"litTexturedMovingShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(litTexturedMovingShadowed_modelParams_t) == sizeof(lit_modelParams_t) && UB_litTexturedMovingShadowed_modelParams == UB_lit_modelParams,
 	"litTexturedMovingShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedMovingShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedMovingShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedMovingShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedMovingShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedMovingShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedMovingShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedMovingShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedMovingShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedMovingShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"litTexturedMovingShadowed must take shadowParams as litShadowed does");
 _Static_assert(sizeof(litTexturedMovingShadowed_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_litTexturedMovingShadowed_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"litTexturedMovingShadowed must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(litTexturedMovingShadowed_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_litTexturedMovingShadowed_frameParams == UB_litTexturedUvTransform_frameParams,
-	"litTexturedMovingShadowed must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_unlitTexturedMoving_program_position == ATTR_litTextured_program_position && ATTR_unlitTexturedMoving_program_normal == ATTR_litTextured_program_normal && ATTR_unlitTexturedMoving_program_uv == ATTR_litTextured_program_uv && ATTR_unlitTexturedMoving_program_color == ATTR_litTextured_program_color,
 	"unlitTexturedMoving must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(unlitTexturedMoving_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_unlitTexturedMoving_vertexParams == UB_lit_vertexParams,
 	"unlitTexturedMoving must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedMoving_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedMoving_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedMoving must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedMoving_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedMoving_frameParams == UB_lit_frameParams,
+	"unlitTexturedMoving must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedMoving_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_unlitTexturedMoving_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"unlitTexturedMoving must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
-_Static_assert(sizeof(unlitTexturedMoving_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_unlitTexturedMoving_frameParams == UB_litTexturedUvTransform_frameParams,
-	"unlitTexturedMoving must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtLitTexturedMoving_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedMoving_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedMoving_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedMoving_program_color == ATTR_litTextured_program_color,
 	"pixelArtLitTexturedMoving must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedMoving_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtLitTexturedMoving_modelParams == UB_lit_modelParams,
 	"pixelArtLitTexturedMoving must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMoving_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedMoving_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedMoving must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedMoving_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedMoving_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedMoving must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMoving_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedMoving_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedMoving must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMoving_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_pixelArtLitTexturedMoving_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"pixelArtLitTexturedMoving must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtLitTexturedMoving_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtLitTexturedMoving_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtLitTexturedMoving must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtLitTexturedMovingShadowed_program_position == ATTR_litTextured_program_position && ATTR_pixelArtLitTexturedMovingShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtLitTexturedMovingShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtLitTexturedMovingShadowed_program_color == ATTR_litTextured_program_color,
 	"pixelArtLitTexturedMovingShadowed must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtLitTexturedMovingShadowed_modelParams == UB_lit_modelParams,
 	"pixelArtLitTexturedMovingShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedMovingShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedMovingShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedMovingShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedMovingShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedMovingShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedMovingShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedMovingShadowed_shadowParams == UB_litShadowed_shadowParams,
 	"pixelArtLitTexturedMovingShadowed must take shadowParams as litShadowed does");
 _Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_pixelArtLitTexturedMovingShadowed_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
 	"pixelArtLitTexturedMovingShadowed must take movingMaterialParams as litTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtLitTexturedMovingShadowed_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtLitTexturedMovingShadowed_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtLitTexturedMovingShadowed must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtUnlitTexturedMoving_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedMoving_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedMoving_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedMoving_program_color == ATTR_litTextured_program_color,
 	"pixelArtUnlitTexturedMoving must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedMoving_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedMoving_vertexParams == UB_lit_vertexParams,
 	"pixelArtUnlitTexturedMoving must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedMoving_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedMoving_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedMoving must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedMoving_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedMoving_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedMoving must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedMoving_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_pixelArtUnlitTexturedMoving_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"pixelArtUnlitTexturedMoving must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtUnlitTexturedMoving_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtUnlitTexturedMoving_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtUnlitTexturedMoving must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_shadowLitTexturedDissolve_program_position == ATTR_litTextured_program_position && ATTR_shadowLitTexturedDissolve_program_normal == ATTR_litTextured_program_normal && ATTR_shadowLitTexturedDissolve_program_uv == ATTR_litTextured_program_uv && ATTR_shadowLitTexturedDissolve_program_color == ATTR_litTextured_program_color,
 	"shadowLitTexturedDissolve must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(shadowLitTexturedDissolve_modelParams_t) == sizeof(lit_modelParams_t) && UB_shadowLitTexturedDissolve_modelParams == UB_lit_modelParams,
@@ -845,6 +925,8 @@ _Static_assert(sizeof(litTexturedEmissive_modelParams_t) == sizeof(lit_modelPara
 	"litTexturedEmissive must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedEmissive_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedEmissive_vertexParams == UB_lit_vertexParams,
 	"litTexturedEmissive must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedEmissive_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissive_frameParams == UB_lit_frameParams,
+	"litTexturedEmissive must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedEmissive_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissive_lightParams == UB_lit_lightParams,
 	"litTexturedEmissive must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedEmissiveShadowed_program_position == ATTR_litTextured_program_position && ATTR_litTexturedEmissiveShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedEmissiveShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedEmissiveShadowed_program_color == ATTR_litTextured_program_color,
@@ -853,6 +935,8 @@ _Static_assert(sizeof(litTexturedEmissiveShadowed_modelParams_t) == sizeof(lit_m
 	"litTexturedEmissiveShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedEmissiveShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedEmissiveShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedEmissiveShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -865,6 +949,8 @@ _Static_assert(sizeof(pixelArtLitTexturedEmissive_modelParams_t) == sizeof(lit_m
 	"pixelArtLitTexturedEmissive must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissive_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedEmissive_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedEmissive must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedEmissive_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedEmissive_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedEmissive must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissive_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissive_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedEmissive must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissive_emissiveMaterialParams_t) == sizeof(litTexturedEmissive_emissiveMaterialParams_t) && UB_pixelArtLitTexturedEmissive_emissiveMaterialParams == UB_litTexturedEmissive_emissiveMaterialParams,
@@ -875,6 +961,8 @@ _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_modelParams_t) == size
 	"pixelArtLitTexturedEmissiveShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedEmissiveShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedEmissiveShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -885,6 +973,8 @@ _Static_assert(sizeof(litTexturedNormalMap_modelParams_t) == sizeof(lit_modelPar
 	"litTexturedNormalMap must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedNormalMap_vertexParams == UB_lit_vertexParams,
 	"litTexturedNormalMap must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedNormalMap_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedNormalMap_frameParams == UB_lit_frameParams,
+	"litTexturedNormalMap must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMap_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedNormalMap_lightParams == UB_lit_lightParams,
 	"litTexturedNormalMap must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMap_materialParams_t) == sizeof(lit_materialParams_t) && UB_litTexturedNormalMap_materialParams == UB_lit_materialParams,
@@ -895,6 +985,8 @@ _Static_assert(sizeof(litTexturedNormalMapShadowed_modelParams_t) == sizeof(lit_
 	"litTexturedNormalMapShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedNormalMapShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedNormalMapShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedNormalMapShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedNormalMapShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -907,6 +999,8 @@ _Static_assert(sizeof(pixelArtLitTexturedNormalMap_modelParams_t) == sizeof(lit_
 	"pixelArtLitTexturedNormalMap must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedNormalMap_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedNormalMap must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedNormalMap_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedNormalMap_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedNormalMap must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMap_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedNormalMap_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedNormalMap must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMap_materialParams_t) == sizeof(lit_materialParams_t) && UB_pixelArtLitTexturedNormalMap_materialParams == UB_lit_materialParams,
@@ -917,6 +1011,8 @@ _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_modelParams_t) == siz
 	"pixelArtLitTexturedNormalMapShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedNormalMapShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedNormalMapShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -929,6 +1025,8 @@ _Static_assert(sizeof(litTexturedEmissiveNormalMap_modelParams_t) == sizeof(lit_
 	"litTexturedEmissiveNormalMap must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedEmissiveNormalMap_vertexParams == UB_lit_vertexParams,
 	"litTexturedEmissiveNormalMap must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveNormalMap_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveNormalMap_frameParams == UB_lit_frameParams,
+	"litTexturedEmissiveNormalMap must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMap_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveNormalMap_lightParams == UB_lit_lightParams,
 	"litTexturedEmissiveNormalMap must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMap_emissiveMaterialParams_t) == sizeof(litTexturedEmissive_emissiveMaterialParams_t) && UB_litTexturedEmissiveNormalMap_emissiveMaterialParams == UB_litTexturedEmissive_emissiveMaterialParams,
@@ -939,6 +1037,8 @@ _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_modelParams_t) == siz
 	"litTexturedEmissiveNormalMapShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedEmissiveNormalMapShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedEmissiveNormalMapShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedEmissiveNormalMapShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedEmissiveNormalMapShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedEmissiveNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedEmissiveNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -951,6 +1051,8 @@ _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMap_modelParams_t) == siz
 	"pixelArtLitTexturedEmissiveNormalMap must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMap_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedEmissiveNormalMap_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedEmissiveNormalMap must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMap_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedEmissiveNormalMap_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedEmissiveNormalMap must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMap_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveNormalMap_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedEmissiveNormalMap must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMap_emissiveMaterialParams_t) == sizeof(litTexturedEmissive_emissiveMaterialParams_t) && UB_pixelArtLitTexturedEmissiveNormalMap_emissiveMaterialParams == UB_litTexturedEmissive_emissiveMaterialParams,
@@ -961,6 +1063,8 @@ _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_modelParams_t
 	"pixelArtLitTexturedEmissiveNormalMapShadowed must take modelParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_vertexParams == UB_lit_vertexParams,
 	"pixelArtLitTexturedEmissiveNormalMapShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_frameParams == UB_lit_frameParams,
+	"pixelArtLitTexturedEmissiveNormalMapShadowed must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_lightParams == UB_lit_lightParams,
 	"pixelArtLitTexturedEmissiveNormalMapShadowed must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtLitTexturedEmissiveNormalMapShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_pixelArtLitTexturedEmissiveNormalMapShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -979,6 +1083,8 @@ _Static_assert(sizeof(unlitTexturedPremultipliedCutout_vertexParams_t) == sizeof
 	"unlitTexturedPremultipliedCutout must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedPremultipliedCutout_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedPremultipliedCutout_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedPremultipliedCutout must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedPremultipliedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedPremultipliedCutout_frameParams == UB_lit_frameParams,
+	"unlitTexturedPremultipliedCutout must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedPremultipliedCutout_unlitMaterialParams_t) == sizeof(unlitTextured_unlitMaterialParams_t) && UB_unlitTexturedPremultipliedCutout_unlitMaterialParams == UB_unlitTextured_unlitMaterialParams,
 	"unlitTexturedPremultipliedCutout must take unlitMaterialParams as unlitTextured does");
 _Static_assert(ATTR_litTexturedPremultipliedCutout_program_position == ATTR_litTextured_program_position && ATTR_litTexturedPremultipliedCutout_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedPremultipliedCutout_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedPremultipliedCutout_program_color == ATTR_litTextured_program_color,
@@ -987,6 +1093,8 @@ _Static_assert(sizeof(litTexturedPremultipliedCutout_modelParams_t) == sizeof(li
 	"litTexturedPremultipliedCutout must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedPremultipliedCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedPremultipliedCutout_vertexParams == UB_lit_vertexParams,
 	"litTexturedPremultipliedCutout must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedPremultipliedCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedPremultipliedCutout_frameParams == UB_lit_frameParams,
+	"litTexturedPremultipliedCutout must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedPremultipliedCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedPremultipliedCutout_lightParams == UB_lit_lightParams,
 	"litTexturedPremultipliedCutout must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedPremultipliedCutout_materialParams_t) == sizeof(lit_materialParams_t) && UB_litTexturedPremultipliedCutout_materialParams == UB_lit_materialParams,
@@ -997,6 +1105,8 @@ _Static_assert(sizeof(unlitTexturedDissolvePremultiplied_vertexParams_t) == size
 	"unlitTexturedDissolvePremultiplied must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedDissolvePremultiplied_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedDissolvePremultiplied_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedDissolvePremultiplied must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedDissolvePremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedDissolvePremultiplied_frameParams == UB_lit_frameParams,
+	"unlitTexturedDissolvePremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedDissolvePremultiplied_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_unlitTexturedDissolvePremultiplied_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"unlitTexturedDissolvePremultiplied must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
 _Static_assert(ATTR_litTexturedDissolvePremultiplied_program_position == ATTR_litTextured_program_position && ATTR_litTexturedDissolvePremultiplied_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedDissolvePremultiplied_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedDissolvePremultiplied_program_color == ATTR_litTextured_program_color,
@@ -1005,6 +1115,8 @@ _Static_assert(sizeof(litTexturedDissolvePremultiplied_modelParams_t) == sizeof(
 	"litTexturedDissolvePremultiplied must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedDissolvePremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedDissolvePremultiplied_vertexParams == UB_lit_vertexParams,
 	"litTexturedDissolvePremultiplied must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedDissolvePremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolvePremultiplied_frameParams == UB_lit_frameParams,
+	"litTexturedDissolvePremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedDissolvePremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolvePremultiplied_lightParams == UB_lit_lightParams,
 	"litTexturedDissolvePremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolvePremultiplied_movingMaterialParams_t) == sizeof(litTexturedUvTransform_movingMaterialParams_t) && UB_litTexturedDissolvePremultiplied_movingMaterialParams == UB_litTexturedUvTransform_movingMaterialParams,
@@ -1015,6 +1127,8 @@ _Static_assert(sizeof(litTexturedDissolveEmissive_modelParams_t) == sizeof(lit_m
 	"litTexturedDissolveEmissive must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissive_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedDissolveEmissive_vertexParams == UB_lit_vertexParams,
 	"litTexturedDissolveEmissive must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveEmissive_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveEmissive_frameParams == UB_lit_frameParams,
+	"litTexturedDissolveEmissive must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissive_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveEmissive_lightParams == UB_lit_lightParams,
 	"litTexturedDissolveEmissive must take lightParams as lit does");
 _Static_assert(ATTR_litTexturedDissolveEmissiveShadowed_program_position == ATTR_litTextured_program_position && ATTR_litTexturedDissolveEmissiveShadowed_program_normal == ATTR_litTextured_program_normal && ATTR_litTexturedDissolveEmissiveShadowed_program_uv == ATTR_litTextured_program_uv && ATTR_litTexturedDissolveEmissiveShadowed_program_color == ATTR_litTextured_program_color,
@@ -1023,6 +1137,8 @@ _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_modelParams_t) == size
 	"litTexturedDissolveEmissiveShadowed must take modelParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_litTexturedDissolveEmissiveShadowed_vertexParams == UB_lit_vertexParams,
 	"litTexturedDissolveEmissiveShadowed must take vertexParams as lit does");
+_Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_frameParams_t) == sizeof(lit_frameParams_t) && UB_litTexturedDissolveEmissiveShadowed_frameParams == UB_lit_frameParams,
+	"litTexturedDissolveEmissiveShadowed must take frameParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_lightParams_t) == sizeof(lit_lightParams_t) && UB_litTexturedDissolveEmissiveShadowed_lightParams == UB_lit_lightParams,
 	"litTexturedDissolveEmissiveShadowed must take lightParams as lit does");
 _Static_assert(sizeof(litTexturedDissolveEmissiveShadowed_shadowParams_t) == sizeof(litShadowed_shadowParams_t) && UB_litTexturedDissolveEmissiveShadowed_shadowParams == UB_litShadowed_shadowParams,
@@ -1033,6 +1149,8 @@ _Static_assert(ATTR_billboardPremultiplied_program_position == ATTR_billboard_pr
 	"billboardPremultiplied must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(billboardPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboardPremultiplied_vertexParams == UB_lit_vertexParams,
 	"billboardPremultiplied must take vertexParams as lit does");
+_Static_assert(sizeof(billboardPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardPremultiplied_frameParams == UB_lit_frameParams,
+	"billboardPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(billboardPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardPremultiplied_lightParams == UB_lit_lightParams,
 	"billboardPremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(billboardPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardPremultiplied_billboardParams == UB_billboard_billboardParams,
@@ -1041,6 +1159,8 @@ _Static_assert(ATTR_pixelArtBillboardPremultiplied_program_position == ATTR_bill
 	"pixelArtBillboardPremultiplied must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(pixelArtBillboardPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtBillboardPremultiplied_vertexParams == UB_lit_vertexParams,
 	"pixelArtBillboardPremultiplied must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtBillboardPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtBillboardPremultiplied_frameParams == UB_lit_frameParams,
+	"pixelArtBillboardPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtBillboardPremultiplied_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtBillboardPremultiplied_lightParams == UB_lit_lightParams,
 	"pixelArtBillboardPremultiplied must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtBillboardPremultiplied_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_pixelArtBillboardPremultiplied_billboardParams == UB_billboard_billboardParams,
@@ -1051,24 +1171,26 @@ _Static_assert(sizeof(unlitTexturedUvTransformPremultiplied_vertexParams_t) == s
 	"unlitTexturedUvTransformPremultiplied must take vertexParams as lit does");
 _Static_assert(sizeof(unlitTexturedUvTransformPremultiplied_modelTransformParams_t) == sizeof(unlitTextured_modelTransformParams_t) && UB_unlitTexturedUvTransformPremultiplied_modelTransformParams == UB_unlitTextured_modelTransformParams,
 	"unlitTexturedUvTransformPremultiplied must take modelTransformParams as unlitTextured does");
+_Static_assert(sizeof(unlitTexturedUvTransformPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_unlitTexturedUvTransformPremultiplied_frameParams == UB_lit_frameParams,
+	"unlitTexturedUvTransformPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(unlitTexturedUvTransformPremultiplied_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_unlitTexturedUvTransformPremultiplied_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"unlitTexturedUvTransformPremultiplied must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
-_Static_assert(sizeof(unlitTexturedUvTransformPremultiplied_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_unlitTexturedUvTransformPremultiplied_frameParams == UB_litTexturedUvTransform_frameParams,
-	"unlitTexturedUvTransformPremultiplied must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_pixelArtUnlitTexturedUvTransformPremultiplied_program_position == ATTR_litTextured_program_position && ATTR_pixelArtUnlitTexturedUvTransformPremultiplied_program_normal == ATTR_litTextured_program_normal && ATTR_pixelArtUnlitTexturedUvTransformPremultiplied_program_uv == ATTR_litTextured_program_uv && ATTR_pixelArtUnlitTexturedUvTransformPremultiplied_program_color == ATTR_litTextured_program_color,
 	"pixelArtUnlitTexturedUvTransformPremultiplied must take the LIT_TEXTURED layout as litTextured does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransformPremultiplied_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtUnlitTexturedUvTransformPremultiplied_vertexParams == UB_lit_vertexParams,
 	"pixelArtUnlitTexturedUvTransformPremultiplied must take vertexParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransformPremultiplied_modelParams_t) == sizeof(lit_modelParams_t) && UB_pixelArtUnlitTexturedUvTransformPremultiplied_modelParams == UB_lit_modelParams,
 	"pixelArtUnlitTexturedUvTransformPremultiplied must take modelParams as lit does");
+_Static_assert(sizeof(pixelArtUnlitTexturedUvTransformPremultiplied_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtUnlitTexturedUvTransformPremultiplied_frameParams == UB_lit_frameParams,
+	"pixelArtUnlitTexturedUvTransformPremultiplied must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtUnlitTexturedUvTransformPremultiplied_movingUnlitMaterialParams_t) == sizeof(unlitTexturedUvTransform_movingUnlitMaterialParams_t) && UB_pixelArtUnlitTexturedUvTransformPremultiplied_movingUnlitMaterialParams == UB_unlitTexturedUvTransform_movingUnlitMaterialParams,
 	"pixelArtUnlitTexturedUvTransformPremultiplied must take movingUnlitMaterialParams as unlitTexturedUvTransform does");
-_Static_assert(sizeof(pixelArtUnlitTexturedUvTransformPremultiplied_frameParams_t) == sizeof(litTexturedUvTransform_frameParams_t) && UB_pixelArtUnlitTexturedUvTransformPremultiplied_frameParams == UB_litTexturedUvTransform_frameParams,
-	"pixelArtUnlitTexturedUvTransformPremultiplied must take frameParams as litTexturedUvTransform does");
 _Static_assert(ATTR_billboardCutout_program_position == ATTR_billboard_program_position && ATTR_billboardCutout_program_size == ATTR_billboard_program_size && ATTR_billboardCutout_program_anchor == ATTR_billboard_program_anchor && ATTR_billboardCutout_program_tile == ATTR_billboard_program_tile && ATTR_billboardCutout_program_color == ATTR_billboard_program_color,
 	"billboardCutout must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(billboardCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_billboardCutout_vertexParams == UB_lit_vertexParams,
 	"billboardCutout must take vertexParams as lit does");
+_Static_assert(sizeof(billboardCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_billboardCutout_frameParams == UB_lit_frameParams,
+	"billboardCutout must take frameParams as lit does");
 _Static_assert(sizeof(billboardCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_billboardCutout_lightParams == UB_lit_lightParams,
 	"billboardCutout must take lightParams as lit does");
 _Static_assert(sizeof(billboardCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_billboardCutout_billboardParams == UB_billboard_billboardParams,
@@ -1077,6 +1199,8 @@ _Static_assert(ATTR_pixelArtBillboardCutout_program_position == ATTR_billboard_p
 	"pixelArtBillboardCutout must take the BILLBOARD layout as billboard does");
 _Static_assert(sizeof(pixelArtBillboardCutout_vertexParams_t) == sizeof(lit_vertexParams_t) && UB_pixelArtBillboardCutout_vertexParams == UB_lit_vertexParams,
 	"pixelArtBillboardCutout must take vertexParams as lit does");
+_Static_assert(sizeof(pixelArtBillboardCutout_frameParams_t) == sizeof(lit_frameParams_t) && UB_pixelArtBillboardCutout_frameParams == UB_lit_frameParams,
+	"pixelArtBillboardCutout must take frameParams as lit does");
 _Static_assert(sizeof(pixelArtBillboardCutout_lightParams_t) == sizeof(lit_lightParams_t) && UB_pixelArtBillboardCutout_lightParams == UB_lit_lightParams,
 	"pixelArtBillboardCutout must take lightParams as lit does");
 _Static_assert(sizeof(pixelArtBillboardCutout_billboardParams_t) == sizeof(billboard_billboardParams_t) && UB_pixelArtBillboardCutout_billboardParams == UB_billboard_billboardParams,

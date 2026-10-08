@@ -133,6 +133,17 @@ layout(binding=6) uniform frameParams {
 };
 @end
 
+@block toneMap
+// h3d.shader.pbr.ToneMapping mode 0 (linear), per fragment: the decoded colour times frame.y,
+// saturated, encoded again. frame.y is exactly 1 at exposure 0, and the colour is left alone.
+vec3 toneMapped(vec3 rgb) {
+    if (frame.y == 1.0) {
+        return rgb;
+    }
+    return linearToSrgb(clamp(srgbToLinear(rgb) * frame.y, 0.0, 1.0));
+}
+@end
+
 @block movedUv
 // h3d.shader.UVDelta's transform as Bevy's uv_transform (an Affine2), then UVScroll's
 // `uvSpeed * global.time`.

@@ -1,3 +1,4 @@
+import { approx } from "./helpers";
 import { Mat4, Vec4, identity } from "../math/math3d";
 import {
 	Program,
@@ -64,6 +65,8 @@ import { UniformError } from "../void3d/uniformPool";
 import { added, litShape } from "./drawHelpers";
 import {
 	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setElapsedTime, setTimeWrap,
+	setExposure,
+	exposureMultiplier,
 	frameTime,
 } from "../void3d/renderer";
 import {
@@ -287,16 +290,20 @@ test "every block the CPU writes is the length its shader declares, read off the
 		assert uniformBlockLength(lit, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, MATERIAL_UNIFORM_SLOT) == MATERIAL_UNIFORM_LENGTH;
 		assert uniformBlockLength(lit, MODEL_SLOT) == MODEL_LENGTH;
-		assert declaredSlots(lit) == 4;
+		assert uniformBlockLength(lit, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+		assert declaredSlots(lit) == 5;
 	}
 	for (const billboard of [ProgramKey.of(Program.Billboard), pixelArt(Program.Billboard)]) {
 		assert uniformBlockLength(billboard, VERTEX_UNIFORM_SLOT) == VERTEX_UNIFORM_LENGTH;
 		assert uniformBlockLength(billboard, LIGHT_UNIFORM_SLOT) == LIGHT_UNIFORM_LENGTH;
 		assert uniformBlockLength(billboard, BILLBOARD_UNIFORM_SLOT) == BILLBOARD_UNIFORM_LENGTH;
-		assert declaredSlots(billboard) == 3;
+		assert uniformBlockLength(billboard, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+		assert declaredSlots(billboard) == 4;
 	}
-	assert declaredSlots(ProgramKey.of(Program.Particle)) == 1;
-	assert declaredSlots(pixelArt(Program.Particle)) == 1;
+	for (const particle of [ProgramKey.of(Program.Particle), pixelArt(Program.Particle)]) {
+		assert uniformBlockLength(particle, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
+		assert declaredSlots(particle) == 2;
+	}
 	assert uniformBlockLength(pixelArt(Program.Post), POST_UNIFORM_SLOT) == POST_UNIFORM_LENGTH;
 	assert uniformBlockLength(pixelArt(Program.Blit), BLIT_UNIFORM_SLOT) == BLIT_UNIFORM_LENGTH;
 	assert declaredSlots(ProgramKey.of(Program.Copy)) == 0;
@@ -610,8 +617,7 @@ test "a moving key reads its program's block and the moving floats, and what its
 				const key: ProgramKey = drawnAs(feature, preset);
 				assert key.moves() && vertexLayoutOf(key) == vertexLayoutOf(plain);
 				assert uniformBlockLength(key, MATERIAL_UNIFORM_SLOT) == length;
-				const frame: int32 = uniformBlockLength(key, FRAME_UNIFORM_SLOT);
-				assert frame == (key.uvTransform ? FRAME_UNIFORM_LENGTH : 0);
+				assert uniformBlockLength(key, FRAME_UNIFORM_SLOT) == FRAME_UNIFORM_LENGTH;
 				assert uniformBlockLength(key, VERTEX_UNIFORM_SLOT) ==
 					uniformBlockLength(plain, VERTEX_UNIFORM_SLOT);
 				assert uniformBlockLength(key, LIGHT_UNIFORM_SLOT) ==
@@ -811,4 +817,20 @@ test "a caster leaves the emissive map and keeps the normal map's layout" {
 
 function cutBillboard(): ProgramKey {
 	return ProgramKey.of(Program.Billboard).withCutout();
+}
+
+test "the frame block carries Heaps' exposure as its multiplier, exactly 1 at stop 0" {
+	assert exposureMultiplier(0.0) == 1.0;
+	assert approx(exposureMultiplier(Math.log(1.5) as float32), 1.5);
+	assert approx(exposureMultiplier(-1.0), Math.exp(-1.0) as float32);
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (!created.ok) { return; }
+	let core: Renderer = created.value;
+	assert core.exposure == 0.0;
+	setExposure(core, 0.5);
+	assert core.exposure == 0.5;
+	setExposure(core, 0.0);
+	assert core.exposure == 0.0;
 }

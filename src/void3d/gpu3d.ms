@@ -343,10 +343,12 @@ export const EMISSIVE_COLOR: int32 = 0;
 export const EMISSIVE_STRENGTH: int32 = 3;
 export const EMISSIVE_LENGTH: int32 = 4;
 // The scene's frame block (binding=6, shader3dBlocks.glsl frameUniforms): Heaps' `global.time`
-// in seconds at FRAME_TIME, read by a key with a UV transform.
+// in seconds at FRAME_TIME, read by a key with a UV transform, and at FRAME_EXPOSURE the linear
+// multiplier every scene program's colour is exposed by (toneMap).
 export const FRAME_UNIFORM_SLOT: int32 = 6;
 export const FRAME_UNIFORM_LENGTH: int32 = 4;
 export const FRAME_TIME: int32 = 0;
+export const FRAME_EXPOSURE: int32 = 1;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {

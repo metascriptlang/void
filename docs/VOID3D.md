@@ -3297,6 +3297,45 @@ preset and, where it has one, the pixel-art preset, every run printing its `PASS
 cache is evicted around the GL builds (the cache ignores the backend define's headers). Ran: the GL
 core builds of `billboardBlend`, `dirShadow` and `cardTable` link. Not run: any GL frame.
 
+### M45 as built: exposure and a linear tone map
+
+**What changes for the author.** `setExposure(renderer.core, stops)` exposes the scene: every scene
+program (lit, lit textured, unlit textured, billboard and particle, both presets) multiplies its
+decoded colour by `exp(stops)`, saturates it and encodes it again. Stop 0, the default, leaves every
+pixel as it was. URG's Godot exposure of 1.5, a linear multiplier, is `Math.log(1.5)` here.
+
+**References, read.** Heaps `b9aa6dcb`: `h3d/scene/pbr/Renderer.hx:105-190` keeps `exposure` and
+`toneMode` on the renderer; `h3d/shader/pbr/ToneMapping.hx` sets `exposureExp = Math.exp(exposure)`
+(stops of e, default 0) and its mode 0, linear, is `saturate(rgb * exposureExp)`, run as a
+`ScreenFx` over the PBR renderer's HDR target. three.js `d4ea9b9`
+`src/renderers/shaders/ShaderChunk/tonemapping_pars_fragment.glsl.js`: `LinearToneMapping` is
+`saturate(toneMappingExposure * color)`, renderer-wide, applied per fragment in every material that
+includes `tonemapping_fragment` (unlit `meshbasic` and `sprite` included) unless the material sets
+`toneMapped = false`. Godot's Environment tonemap applies to all of 3D. Heaps owns the API: its unit
+and its name, and Linear as the one `toneMode`.
+
+**Where it diverges from Heaps, and why.** Heaps exposes the HDR frame in one post pass; void3d's fwd
+port has no HDR target (its targets hold gamma-encoded bytes), so the exposure runs per fragment as
+three.js runs it: a `toneMap` block (`shader3dBlocks.glsl`) after each program's shading and before
+any premultiply, reading the multiplier from the renderer's frame block (`FRAME_EXPOSURE`, beside
+`FRAME_TIME`), which every scene program now declares; the draw path already binds pass-wide blocks
+by declaration (`blockFits`), so nothing else moved. Consequence: blended layers are exposed and
+saturated one by one before they blend, so an overlap of translucent or additive layers clips per
+layer, where Heaps' post pass clips the sum. `tests/integration/exposure.ms` pins it: a 0.9 grey at
+half alpha over a 0.2 grey, at a multiplier of 1.5, reads the per-layer value, which differs from the
+exposed sum by more than five levels. The upgrade trigger is an HDR target: with one, the exposure
+moves into a post pass the Heaps way.
+
+**Byte identity at the default.** The block returns the colour untouched when the multiplier is
+exactly 1 (`exp(0)`), so at stop 0 every capture is expected byte-identical; the gate proves it.
+
+**Not built, recorded.** Heaps' Reinhard, Filmic and PBR Neutral curves; three.js' per-material
+`toneMapped = false`; an HDR target.
+
+**Ran.** Headless `programKeyCheck.ms` 327/327 (the frame block's slot in every scene program, the
+multiplier exactly 1 at stop 0); `msc check` of the integration test. Not run: the GPU stage, the
+captures.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.

@@ -32,6 +32,7 @@ import {
 	FRAME_UNIFORM_SLOT,
 	FRAME_UNIFORM_LENGTH,
 	FRAME_TIME,
+	FRAME_EXPOSURE,
 	MOVING_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
@@ -106,6 +107,9 @@ export interface Renderer {
 	// Bevy's `GlobalsUniform.time` wraps at an hour; Heaps' `global.time` never does, so this is 0,
 	// no wrap, until setTimeWrap.
 	timeWrap: float64;
+	// h3d.scene.pbr.Renderer's `exposure`, in its unit: stops of e, the multiplier exp(exposure),
+	// 0 exposing nothing. Its toneMode is Linear, the one curve here (docs/VOID3D.md, M45).
+	exposure: float32;
 	frameValues: Vec<float32>;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
@@ -208,6 +212,7 @@ export function createDrawing(
 		time: 0.0,
 		elapsedTime: 0.0,
 		timeWrap: 0.0,
+		exposure: 0.0,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		readsTime: false,
 		preset: preset,
@@ -254,6 +259,20 @@ export function attachShadow(renderer: Renderer, shadow: DirShadowMap | null): v
 export function setElapsedTime(renderer: Renderer, seconds: float64): void {
 	if (renderer.closed) { stopOnClosed("setElapsedTime"); }
 	renderer.elapsedTime = seconds;
+}
+
+// h3d.shader.pbr.ToneMapping.set_exposure: exposureExp = Math.exp(exposure).
+export function exposureMultiplier(stops: float32): float32 {
+	return Math.exp(stops) as float32;
+}
+
+export function setExposure(renderer: Renderer, stops: float32): void {
+	if (renderer.closed) { stopOnClosed("setExposure"); }
+	if (!Number.isFinite(stops)) {
+		console.log(`void3d: setExposure with ${stops} stops; an exposure is a finite number`);
+		unreachable;
+	}
+	renderer.exposure = stops;
 }
 
 export function setTimeWrap(renderer: Renderer, seconds: float64): void {
@@ -355,6 +374,7 @@ export function beginFrame(
 	if (!lightsWritten.ok) { return Result.err(RendererError.LightBlockLength); }
 	renderer.time = renderer.time + renderer.elapsedTime;
 	renderer.frameValues[FRAME_TIME] = frameTime(renderer.time, renderer.timeWrap);
+	renderer.frameValues[FRAME_EXPOSURE] = exposureMultiplier(renderer.exposure);
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));

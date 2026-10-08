@@ -50,6 +50,8 @@ vec4 litShade(vec3 n) {
 @include_block materialUniforms
 @include_block lightUniforms
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
@@ -72,6 +74,7 @@ void main() {
     }
 #endif
     fragNormal = vec4(n * 0.5 + 0.5, depth01);
+    fragColor.rgb = toneMapped(fragColor.rgb);
 }
 @end
 
@@ -130,6 +133,8 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 #endif
 @include_block lightUniforms
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block toonPointLight
 @include_block saturation
 @include_block facingNormal
@@ -140,7 +145,6 @@ vec4 litTexturedShade(vec4 texel, vec3 n) {
 @include_block straightTexel
 #endif
 #ifdef UV_TRANSFORM
-@include_block frameUniforms
 @include_block movedUv
 #endif
 #ifdef BACK_TEXTURE
@@ -205,6 +209,7 @@ void main() {
         discard;
     }
 #endif
+    fragColor.rgb = toneMapped(fragColor.rgb);
 #ifdef PREMULTIPLIED
     fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
 #endif
@@ -239,12 +244,13 @@ void main() {
 @include_block unlitMaterialUniforms
 #endif
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block facingNormal
 #ifdef PREMULTIPLIED
 @include_block straightTexel
 #endif
 #ifdef UV_TRANSFORM
-@include_block frameUniforms
 @include_block movedUv
 #endif
 #ifdef BACK_TEXTURE
@@ -293,6 +299,7 @@ void main() {
         discard;
     }
 #endif
+    fragColor.rgb = toneMapped(fragColor.rgb);
 #ifdef PREMULTIPLIED
     fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
 #endif
@@ -328,6 +335,8 @@ void main() {
 @include_block billboardUniforms
 @include_block lightUniforms
 @include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 @include_block toonPointLight
 #ifdef PREMULTIPLIED
 @include_block straightTexel
@@ -360,6 +369,7 @@ void main() {
         }
         rgb = linearToSrgb(srgbToLinear(rgb) + points);
     }
+    rgb = toneMapped(rgb);
 #ifdef PREMULTIPLIED
     fragColor = vec4(rgb * alpha, alpha);
 #elif defined(CUTOUT)
@@ -496,6 +506,9 @@ void main() {
 
 @fs particleFs
 // PENDING3D: particle-alpha-tested
+@include_block colorSpace
+@include_block frameUniforms
+@include_block toneMap
 in vec4 particleColor;
 in float depth01;
 layout(location=0) out vec4 fragColor;
@@ -506,5 +519,6 @@ void main() {
     }
     fragColor = vec4(particleColor.rgb, 0.0);
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
+    fragColor.rgb = toneMapped(fragColor.rgb);
 }
 @end
