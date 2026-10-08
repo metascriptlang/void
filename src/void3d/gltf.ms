@@ -1,5 +1,6 @@
 // glTF 2.0 subset loader: position, normal, COLOR_0, TEXCOORD_0 and TANGENT; materials with a
-// base colour, emissive and normal texture, each image a PNG or JPEG in the buffer. One buffer,
+// base colour, emissive and normal texture and one KHR_texture_transform they share, each image
+// a PNG or JPEG in the buffer. One buffer,
 // one buffer view per accessor, FLOAT32 attributes, UNSIGNED_SHORT indices, node TRS, triangle
 // primitives. Not loaded: skins, animations, cameras, morph targets, sparse accessors,
 // interleaved buffer views, more than one buffer, images by URI, occlusion textures.
@@ -157,6 +158,20 @@ export const GLTF_DEFAULT_CUTOFF: float32 = 0.5;
 // sampler (draw.ms textureFits); a white is made with the sampler its material's textures use.
 // `emissive` is glTF's linear `emissiveFactor`; `emissiveStrength` is
 // KHR_materials_emissive_strength's, default 1.
+// KHR_texture_transform's properties as the file states them; identity is the extension's
+// defaults.
+export struct GltfTextureTransform {
+	offsetU: float32;
+	offsetV: float32;
+	rotation: float32;
+	scaleU: float32;
+	scaleV: float32;
+}
+
+export const IDENTITY_TEXTURE_TRANSFORM: GltfTextureTransform = {
+	offsetU: 0.0, offsetV: 0.0, rotation: 0.0, scaleU: 1.0, scaleV: 1.0,
+};
+
 export struct GltfMaterial {
 	texture: int32;
 	doubleSided: boolean;
@@ -166,6 +181,7 @@ export struct GltfMaterial {
 	emissive: Vec3;
 	emissiveStrength: float32;
 	normalTexture: int32;
+	uvTransform: GltfTextureTransform;
 }
 
 export struct GltfData {
@@ -184,6 +200,7 @@ struct MaterialRead {
 	factor: Rgba;
 	realUvs: boolean;
 	emits: boolean;
+	transformRead: boolean;
 }
 
 struct ImageView {
@@ -203,10 +220,12 @@ const DEFAULT_READ: MaterialRead = {
 		alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 		emissiveTexture: NO_TEXTURE_INDEX, emissive: { x: 0.0, y: 0.0, z: 0.0 },
 		emissiveStrength: 1.0, normalTexture: NO_TEXTURE_INDEX,
+		uvTransform: IDENTITY_TEXTURE_TRANSFORM,
 	},
 	factor: { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 },
 	realUvs: false,
 	emits: false,
+	transformRead: false,
 };
 
 
@@ -858,16 +877,64 @@ function alphaCutoffOf(material: JsonValue): Result<float32, GltfError> {
 }
 
 // A textureInfo: the index of a texture sampled at TEXCOORD_0. The renderer's textured layout
-// carries one UV set and no per-texture transform, so another set or KHR_texture_transform is
-// refused rather than sampled at the wrong place.
+// carries one UV set, so another set is refused rather than sampled at the wrong place.
 function textureInfoIndex(info: JsonValue, textureCount: int32): Result<int32, GltfError> {
 	if (info.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
-	if (intField(info, "texCoord", 0) != 0 || !isNull(fieldOf(info, "extensions"))) {
-		return Result.err(GltfError.UnsupportedMaterial);
-	}
+	if (intField(info, "texCoord", 0) != 0) { return Result.err(GltfError.UnsupportedMaterial); }
 	const index: int32 = intField(info, "index", INVALID_INT);
 	if (index < 0 || index >= textureCount) { return Result.err(GltfError.BadReference); }
 	return Result.ok(index);
+}
+
+// A textureInfo's KHR_texture_transform, the only extension a texture reference may carry here.
+// Its texCoord override is held to 0 like the textureInfo's own.
+function textureTransformOf(info: JsonValue): Result<GltfTextureTransform, GltfError> {
+	const extensions: JsonValue = fieldOf(info, "extensions");
+	if (isNull(extensions)) { return Result.ok(IDENTITY_TEXTURE_TRANSFORM); }
+	if (extensions.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	for (const name of extensions.keys) {
+		if (name != "KHR_texture_transform") { return Result.err(GltfError.UnsupportedMaterial); }
+	}
+	const extension: JsonValue = fieldOf(extensions, "KHR_texture_transform");
+	if (extension.kind != JsonKind.Object) { return Result.err(GltfError.Unsupported); }
+	if (intField(extension, "texCoord", 0) != 0) {
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
+	let transform: GltfTextureTransform = IDENTITY_TEXTURE_TRANSFORM;
+	const offset: JsonValue = fieldOf(extension, "offset");
+	if (!isNull(offset)) {
+		if (offset.kind != JsonKind.Array || countOf(offset) != 2) {
+			return Result.err(GltfError.Unsupported);
+		}
+		transform.offsetU = try numberAt(offset, 0);
+		transform.offsetV = try numberAt(offset, 1);
+	}
+	const rotation: JsonValue = fieldOf(extension, "rotation");
+	if (!isNull(rotation)) { transform.rotation = try numberOf(rotation); }
+	const scale: JsonValue = fieldOf(extension, "scale");
+	if (!isNull(scale)) {
+		if (scale.kind != JsonKind.Array || countOf(scale) != 2) {
+			return Result.err(GltfError.Unsupported);
+		}
+		transform.scaleU = try numberAt(scale, 0);
+		transform.scaleV = try numberAt(scale, 1);
+	}
+	return Result.ok(transform);
+}
+
+// The material's textures share the one UV transform its program reads (Bevy takes the base
+// colour's and warns on another, bevy_gltf loader/mod.rs:1301-1350); one that differs is refused.
+function shareTransform(info: JsonValue, ref read: MaterialRead): Result<boolean, GltfError> {
+	const transform: GltfTextureTransform = try textureTransformOf(info);
+	if (!read.transformRead) {
+		read.material.uvTransform = transform;
+		read.transformRead = true;
+		return Result.ok(true);
+	}
+	if (transform != read.material.uvTransform) {
+		return Result.err(GltfError.UnsupportedMaterial);
+	}
+	return Result.ok(true);
 }
 
 // glTF 2.0 §3.9.2: emissiveFactor defaults to 0 and the emitted colour is factor times the map,
@@ -909,7 +976,10 @@ function loadEmission(
 	read.material.emissiveStrength = strength;
 	read.material.emissiveTexture = index;
 	read.emits = true;
-	if (index != NO_TEXTURE_INDEX) { read.realUvs = true; }
+	if (index != NO_TEXTURE_INDEX) {
+		read.realUvs = true;
+		const _shared: boolean = try shareTransform(info, read);
+	}
 	return Result.ok(true);
 }
 
@@ -930,6 +1000,7 @@ function loadNormalTexture(
 	}
 	read.material.normalTexture = index;
 	read.realUvs = true;
+	const _shared: boolean = try shareTransform(info, read);
 	return Result.ok(true);
 }
 
@@ -983,6 +1054,7 @@ function loadMaterial(material: JsonValue, textureCount: int32): Result<Material
 	if (isNull(info)) { return Result.ok(read); }
 	read.material.texture = try textureInfoIndex(info, textureCount);
 	read.realUvs = true;
+	const _shared: boolean = try shareTransform(info, read);
 	return Result.ok(read);
 }
 
@@ -1029,9 +1101,14 @@ function decodeGltf(
 	const version: string = versionField.asString();
 	if (version != "2.0") { return Result.err(GltfError.NotGltf); }
 	const requiredExtensions: JsonValue = fieldOf(root, "extensionsRequired");
-	if (!isNull(requiredExtensions)
-		&& (requiredExtensions.kind != JsonKind.Array || countOf(requiredExtensions) > 0)) {
-		return Result.err(GltfError.Unsupported);
+	if (!isNull(requiredExtensions)) {
+		if (requiredExtensions.kind != JsonKind.Array) { return Result.err(GltfError.Unsupported); }
+		for (let i = 0; i < countOf(requiredExtensions); i++) {
+			const name: JsonValue = at(requiredExtensions, i);
+			if (name.kind != JsonKind.String || name.strVal != "KHR_texture_transform") {
+				return Result.err(GltfError.Unsupported);
+			}
+		}
 	}
 	if (!isArrayOrAbsent(root, "accessors")
 		|| !isArrayOrAbsent(root, "bufferViews")

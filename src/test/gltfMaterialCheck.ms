@@ -8,6 +8,7 @@ import {
 	GltfMaterial,
 	GltfAlphaMode,
 	DEFAULT_MATERIAL,
+	IDENTITY_TEXTURE_TRANSFORM,
 } from "../void3d/gltf";
 import {
 	addGltfAssets,
@@ -28,8 +29,13 @@ import {
 	ProgramKey,
 	Preset,
 	EMISSIVE_LENGTH,
+	MOVING_UV_MATRIX,
+	MOVING_UV_OFFSET,
 	drawnIn,
 	declares,
+	movingBase,
+	uniformBlockLength,
+	withUvTransform,
 } from "../void3d/gpu3d";
 import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, stride, vertexCount } from "../void3d/meshData";
@@ -363,7 +369,9 @@ test "a material this renderer cannot draw is refused by name" {
 		"{\"occlusionTexture\":{\"index\":0}}",
 		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,\"texCoord\":1}}}",
 		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
-			+ "\"extensions\":{\"KHR_texture_transform\":{\"scale\":[2.0,2.0]}}}}}",
+			+ "\"extensions\":{\"EXT_texture_webp\":{\"source\":0}}}}}",
+		"{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0,"
+			+ "\"extensions\":{\"KHR_texture_transform\":{\"texCoord\":1}}}}}",
 	]) {
 		const parts: Parts = { ...texturedParts(), materials: material };
 		assert refusedAs(parts, GltfError.UnsupportedMaterial);
@@ -455,7 +463,7 @@ function sourceOf(
 	return {
 		texture: texture, doubleSided: doubleSided, alphaMode: alphaMode, alphaKill: alphaKill,
 		emissiveTexture: -1, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
-		normalTexture: -1,
+		normalTexture: -1, uvTransform: IDENTITY_TEXTURE_TRANSFORM,
 	};
 }
 
@@ -876,3 +884,87 @@ test "an emissive material with a zero factor loads under MASK, its map dropped"
 	}
 }
 
+
+function transformed(transform: string): string {
+	return ",\"extensions\":{\"KHR_texture_transform\":" + transform + "}";
+}
+
+function baseWith(transform: string): string {
+	return "{\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0"
+		+ transform + "}}}";
+}
+
+const SCALED_SHIFTED: string = "{\"offset\":[0.5,0.25],\"scale\":[2.0,3.0]}";
+
+test "KHR_texture_transform on the base colour is the material's UV transform key and block" {
+	const read = loaded({ ...texturedParts(), materials: baseWith(transformed(SCALED_SHIFTED)) });
+	assert read.ok;
+	if (!read.ok) { return; }
+	const material: GltfMaterial = read.value.materials[0];
+	assert material.uvTransform.offsetU == 0.5 && material.uvTransform.offsetV == 0.25;
+	assert material.uvTransform.scaleU == 2.0 && material.uvTransform.scaleV == 3.0;
+	assert material.uvTransform.rotation == 0.0;
+	const key: ProgramKey = gltfProgramOf(material);
+	assert key == ProgramKey.of(Program.LitTextured).withShadowed().withUvTransform();
+	assert drawnIn(key, Preset.Core, false).ok && drawnIn(key, Preset.PixelArt, true).ok;
+	const block: Vec<float32> = gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), material, key);
+	assert (block.length as int32) == uniformBlockLength(key, MATERIAL_UNIFORM_SLOT);
+	const at: int32 = movingBase(key);
+	assert block[at + MOVING_UV_MATRIX] == 2.0 && block[at + MOVING_UV_MATRIX + 1] == 0.0;
+	assert block[at + MOVING_UV_MATRIX + 2] == 0.0 && block[at + MOVING_UV_MATRIX + 3] == 3.0;
+	assert block[at + MOVING_UV_OFFSET] == 0.5 && block[at + MOVING_UV_OFFSET + 1] == 0.25;
+	const plain = loaded({ ...texturedParts(), materials: baseWith(transformed("{}")) });
+	assert plain.ok;
+	if (plain.ok) {
+		assert plain.value.materials[0].uvTransform == IDENTITY_TEXTURE_TRANSFORM;
+		assert !gltfProgramOf(plain.value.materials[0]).uvTransform;
+	}
+}
+
+test "a texture transform's rotation turns u toward -v, as Bevy and three.js read the spec" {
+	const quarter = "{\"rotation\":1.5707963,\"scale\":[2.0,1.0],\"offset\":[0.5,0.25]}";
+	const read = loaded({ ...texturedParts(), materials: baseWith(transformed(quarter)) });
+	assert read.ok;
+	if (!read.ok) { return; }
+	const key: ProgramKey = gltfProgramOf(read.value.materials[0]);
+	const block: Vec<float32> =
+		gltfBlockOf(setupOf([3.0, -1.0, 0.0, 0.0]), read.value.materials[0], key);
+	const at: int32 = movingBase(key) + MOVING_UV_MATRIX;
+	const u: float32 = block[at] + block[movingBase(key) + MOVING_UV_OFFSET];
+	const v: float32 = block[at + 1] + block[movingBase(key) + MOVING_UV_OFFSET + 1];
+	assert approx(u, 0.5) && approx(v, -1.75);
+	assert approx(block[at + 2], 1.0) && approx(block[at + 3], 0.0);
+}
+
+test "the textures of one material share its transform, and one that differs is refused" {
+	const shared: string = transformed(SCALED_SHIFTED);
+	const both: string = "{\"normalTexture\":{\"index\":0" + shared + "},"
+		+ "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0" + shared + "}}}";
+	const agreed = loaded({ ...texturedParts(), attributes: WITH_TANGENTS, materials: both });
+	assert agreed.ok;
+	if (agreed.ok) {
+		const key: ProgramKey = gltfProgramOf(agreed.value.materials[0]);
+		assert key.uvTransform && key.normalMap;
+	}
+	const differ: string = "{\"normalTexture\":{\"index\":0},"
+		+ "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0" + shared + "}}}";
+	assert refusedAs(
+		{ ...texturedParts(), attributes: WITH_TANGENTS, materials: differ },
+		GltfError.UnsupportedMaterial,
+	);
+}
+
+test "extensionsRequired may name KHR_texture_transform, and nothing else" {
+	const parts: Parts = { ...texturedParts(), materials: baseWith(transformed(SCALED_SHIFTED)) };
+	const document: string = documentOf(parts);
+	const tail: string = document.slice(1);
+	const required = loadGltf(
+		"{\"extensionsRequired\":[\"KHR_texture_transform\"]," + tail, quadBuffer(),
+	);
+	assert required.ok;
+	const unknown = loadGltf(
+		"{\"extensionsRequired\":[\"KHR_draco_mesh_compression\"]," + tail, quadBuffer(),
+	);
+	assert !unknown.ok;
+	if (!unknown.ok) { assert unknown.error == GltfError.Unsupported; }
+}

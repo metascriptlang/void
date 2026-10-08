@@ -15,7 +15,9 @@ import { Material, Phase, UniformBlock } from "../void3d/material";
 import { MeshData, MeshError, Rgba, addBox, addTexturedCube } from "../void3d/meshData";
 import { TextureData, TextureId, TextureUploadError, NO_TEXTURE } from "../void3d/texture";
 import { UniformError } from "../void3d/uniformPool";
-import { GltfData, GltfTransform, GltfAlphaMode, DEFAULT_MATERIAL } from "../void3d/gltf";
+import {
+	GltfData, GltfTransform, GltfAlphaMode, DEFAULT_MATERIAL, IDENTITY_TEXTURE_TRANSFORM,
+} from "../void3d/gltf";
 import {
 	GltfAssets,
 	GltfMaterialSetup,
@@ -178,7 +180,7 @@ function modelData(): GltfData {
 			{
 				texture: 0, doubleSided: true, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 				emissiveTexture: -1, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
-				normalTexture: -1,
+				normalTexture: -1, uvTransform: IDENTITY_TEXTURE_TRANSFORM,
 			},
 		],
 		textures: [checker()],

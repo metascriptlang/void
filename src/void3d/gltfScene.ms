@@ -2,6 +2,7 @@ import { RenderState, Face } from "../gpu/state";
 import { PassState, passState } from "../gpu/door";
 import {
 	GltfData, GltfMaterial, GltfAlphaMode, validateGltfGraph, DEFAULT_MATERIAL, NO_TEXTURE_INDEX,
+	GltfTextureTransform, IDENTITY_TEXTURE_TRANSFORM,
 } from "./gltf";
 import {
 	DrawContext,
@@ -30,13 +31,20 @@ import {
 	EMISSIVE_COLOR,
 	EMISSIVE_STRENGTH,
 	EMISSIVE_LENGTH,
+	MOVING_LENGTH,
+	MOVING_UV_MATRIX,
+	MOVING_UV_OFFSET,
+	MOVING_BACK_UV_MATRIX,
 	declares,
 	emissiveBase,
+	movingBase,
 	withEmissive,
 	withNormalMap,
+	withUvTransform,
 } from "./gpu3d";
 import { Material, MaterialKind, UniformBlock, passFor } from "./material";
 import { vec3, linearToSrgb } from "../math/math3d";
+import { sinf, cosf } from "../math/mat4";
 import { TextureId, TextureUploadError, NO_TEXTURE } from "./texture";
 import { UniformError } from "./uniformPool";
 import {
@@ -135,7 +143,7 @@ function isConsistent(data: GltfData): boolean {
 const DEFAULT_SOURCE: GltfMaterial = {
 	texture: NO_TEXTURE_INDEX, doubleSided: false, alphaMode: GltfAlphaMode.Opaque, alphaKill: 0.0,
 	emissiveTexture: NO_TEXTURE_INDEX, emissive: vec3(0.0, 0.0, 0.0), emissiveStrength: 1.0,
-	normalTexture: NO_TEXTURE_INDEX,
+	normalTexture: NO_TEXTURE_INDEX, uvTransform: IDENTITY_TEXTURE_TRANSFORM,
 };
 
 function kindOf(mode: GltfAlphaMode): MaterialKind {
@@ -156,7 +164,29 @@ export function gltfProgramOf(source: GltfMaterial): ProgramKey {
 	const key: ProgramKey = Material.ofKind(lit, kindOf(source.alphaMode)).program;
 	const emitting: ProgramKey =
 		source.emissiveTexture != NO_TEXTURE_INDEX ? key.withEmissive() : key;
-	return source.normalTexture != NO_TEXTURE_INDEX ? emitting.withNormalMap() : emitting;
+	const mapped: ProgramKey =
+		source.normalTexture != NO_TEXTURE_INDEX ? emitting.withNormalMap() : emitting;
+	return source.uvTransform != IDENTITY_TEXTURE_TRANSFORM ? mapped.withUvTransform() : mapped;
+}
+
+// KHR_texture_transform as the UV transform key's matrix and offset: translation, rotation, scale,
+// with the rotation negated as Bevy's texture_transform_to_affine2 (bevy_gltf
+// loader/gltf_ext/texture.rs:59-65) and three.js' Texture.rotation apply it.
+function writeUvTransform(
+	ref values: Vec<float32>,
+	at: int32,
+	transform: GltfTextureTransform,
+): void {
+	const c: float32 = cosf(transform.rotation);
+	const s: float32 = sinf(transform.rotation);
+	values[at + MOVING_UV_MATRIX] = transform.scaleU * c;
+	values[at + MOVING_UV_MATRIX + 1] = -transform.scaleU * s;
+	values[at + MOVING_UV_MATRIX + 2] = transform.scaleV * s;
+	values[at + MOVING_UV_MATRIX + 3] = transform.scaleV * c;
+	values[at + MOVING_UV_OFFSET] = transform.offsetU;
+	values[at + MOVING_UV_OFFSET + 1] = transform.offsetV;
+	values[at + MOVING_BACK_UV_MATRIX] = 1.0;
+	values[at + MOVING_BACK_UV_MATRIX + 3] = 1.0;
 }
 
 // The material's block: the setup's floats with the double-sided flag and alpha kill written
@@ -170,6 +200,11 @@ export function gltfBlockOf(
 	for (const value of setup.block) { values.push(value); }
 	values[MATERIAL_DOUBLE_SIDED] = source.doubleSided ? 1.0 : 0.0;
 	values[MATERIAL_ALPHA_KILL] = source.alphaKill;
+	if (program.uvTransform) {
+		if ((values.length as int32) != movingBase(program)) { unreachable; }
+		for (let i = 0; i < MOVING_LENGTH; i++) { values.push(0.0); }
+		writeUvTransform(values, movingBase(program), source.uvTransform);
+	}
 	if (program.emissive) {
 		if ((values.length as int32) != emissiveBase(program)) { unreachable; }
 		for (let i = 0; i < EMISSIVE_LENGTH; i++) { values.push(0.0); }

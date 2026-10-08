@@ -2796,7 +2796,7 @@ layout follows the key.
 
 **Refused rather than dropped.** `normalTexture.scale` other than 1 (the key has no scale;
 three.js sets `normalScale` from it, `GLTFLoader.js:3747-3756`), a `texCoord` other than 0 or
-an `extensions` object on any texture reference (the layout carries one UV set and no
+an `extensions` object on any texture reference (the layout carries one UV set and no (since the follow-up stack a texture reference may carry KHR_texture_transform; see "Follow-up stack (2026-10-08), as built", row 2)
 transform), an `occlusionTexture`, and a material whose base, emissive and normal textures do
 not share one filter and wrap: M37 reads both maps with the base texture's sampler, so a file
 that asks otherwise would be drawn with the wrong one (`UnsupportedSampler`; a white stand-in
@@ -3211,6 +3211,27 @@ since `c43cb01` its discarded card is `Phase.Alpha`. Pinned by `src/test/renderO
 ("an order interleaves only inside a phase; …"): an opaque-phase item with the highest order stays
 alone in the opaque list, and an opaque-state item in the alpha phase swaps places with a blended
 one as their orders swap. Ran: that file, 306/306, BUILD `1090f789`.
+
+**2. KHR_texture_transform in the glTF loader.** What changes for the author: a glTF material
+whose textures carry `KHR_texture_transform` (offset, rotation, scale) now loads and draws through
+the UV transform key, where before it was refused; a file may also list the extension in
+`extensionsRequired`. References: the extension's README (KhronosGroup/glTF `8e691206`,
+`extensions/2.0/Khronos/KHR_texture_transform`: translation × rotation × scale, defaults 0, 0,
+1); Bevy `fd980635` keeps one `uv_transform` per material, taken from the base colour texture, and
+warns when another texture's differs (`bevy_gltf/src/loader/mod.rs:1301-1350`,
+`gltf_ext/material.rs:131-150`), building it as `Affine2::from_scale_angle_translation(scale,
+-rotation, offset)` (`gltf_ext/texture.rs:59-65`); three.js reads the same negated rotation through
+`Texture.rotation`. void3d has one UV transform per material too (M36's `movedUv`, the matrix and
+offset of the moving block), so the loader follows Bevy, with two differences on purpose: a texture
+whose transform differs from the material's other textures is refused (`UnsupportedMaterial`)
+rather than drawn with the wrong one, and the extension's `texCoord` override is held to 0 as the
+textureInfo's is. Tangents (MikkTSpace) are derived from the untransformed UVs, as Bevy and
+three.js do. Declared keys: the plain lit textured key with a UV transform is declared in both
+presets, with and without shadows; a transformed material that is also emissive, normal-mapped or
+cut is refused by `addGltfAssets` as `UndeclaredProgram` before anything is made, and each such
+pairing is one row of `programKeys.txt` when a file needs it. Pinned by `gltfMaterialCheck.ms`
+(the base colour's transform reaches the key and the block, the rotation's sign, a shared
+transform loads and a differing one is refused, `extensionsRequired`); 329/329, BUILD `1090f789`.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
