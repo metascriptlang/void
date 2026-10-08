@@ -38,14 +38,23 @@ export const TONE_MAP_LAYOUT: TargetLayout = {
 	sampleCount: 1,
 };
 
-// The background as the HDR target holds it: linear, the alpha as is.
+// A background is premultiplied by its alpha, as a blend over a transparent clear stores colour
+// (M40). As the HDR target holds it: the straight colour decoded, premultiplied again.
 export function linearBackground(background: Vec4): Vec4 {
+	const alpha: float32 = unit(background.w);
+	if (alpha <= 0.0) { return { x: 0.0, y: 0.0, z: 0.0, w: background.w }; }
 	return {
-		x: srgbToLinear(background.x),
-		y: srgbToLinear(background.y),
-		z: srgbToLinear(background.z),
+		x: srgbToLinear(background.x / alpha) * alpha,
+		y: srgbToLinear(background.y / alpha) * alpha,
+		z: srgbToLinear(background.z / alpha) * alpha,
 		w: background.w,
 	};
+}
+
+function unit(value: float32): float32 {
+	if (value < 0.0) { return 0.0; }
+	if (value > 1.0) { return 1.0; }
+	return value;
 }
 
 export interface ToneMapPass {

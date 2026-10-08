@@ -356,10 +356,14 @@ test "an HDR forward preset fits a pool whose blocks a closed one freed" {
 	}
 }
 
-test "the HDR target clears to the background decoded, its alpha kept" {
-	const linear: Vec4 = linearBackground({ x: 0.0, y: 0.5, z: 1.0, w: 0.25 });
-	assert linear.x == 0.0 && linear.z == 1.0 && linear.w == 0.25;
-	assert approx(linear.y, 0.21404);
+test "the HDR target clears to the background decoded, premultiplied as it was given" {
+	const opaque: Vec4 = linearBackground({ x: 0.0, y: 0.5, z: 1.0, w: 1.0 });
+	assert opaque.x == 0.0 && opaque.z == 1.0 && opaque.w == 1.0 && approx(opaque.y, 0.21404);
+	const half: Vec4 = linearBackground({ x: 0.0, y: 0.125, z: 0.25, w: 0.25 });
+	assert half.x == 0.0 && approx(half.y, 0.21404 * 0.25) && approx(half.z, 0.25);
+	assert half.w == 0.25;
+	const clear: Vec4 = linearBackground({ x: 0.0, y: 0.0, z: 0.0, w: 0.0 });
+	assert clear.x == 0.0 && clear.y == 0.0 && clear.z == 0.0 && clear.w == 0.0;
 }
 
 function declaredSlots(program: ProgramKey): int32 {

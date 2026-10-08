@@ -490,8 +490,10 @@ void main() {
 
 @fs toneMapFs
 // h3d.shader.pbr.ToneMapping over the HDR target: the linear colour times the exposure multiplier
-// (toneMap.x), through the curve toneMap.y names, then encoded as the LDR target stores it; the
-// alpha passes through, so a transparent clear stays transparent for a caller compositing it.
+// (toneMap.x), through the curve toneMap.y names, then encoded as the LDR target stores it. The
+// target holds colour premultiplied by its alpha (a blend over a transparent clear), so the curve
+// and the encode run on the straight colour and the result is premultiplied again, as the LDR
+// presets store it; the alpha passes through for a caller compositing the target.
 @include_block colorSpace
 @include_block toneCurve
 layout(binding=0) uniform texture2D hdrTexture;
@@ -504,6 +506,13 @@ void main() {
     ivec2 size = textureSize(sampler2D(hdrTexture, pointSampler), 0);
     ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));
     vec4 texel = texelFetch(sampler2D(hdrTexture, pointSampler), p, 0);
-    fragColor = vec4(linearToSrgb(toneCurved(texel.rgb * toneMap.x, toneMap.y)), texel.a);
+    // An Rgba8 target saturates alpha at 1 (an additive layer adds to it); the HDR one does not.
+    float alpha = clamp(texel.a, 0.0, 1.0);
+    if (alpha <= 0.0) {
+        fragColor = vec4(0.0);
+        return;
+    }
+    vec3 straight = texel.rgb / alpha;
+    fragColor = vec4(linearToSrgb(toneCurved(straight * toneMap.x, toneMap.y)) * alpha, alpha);
 }
 @end

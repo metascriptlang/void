@@ -49,17 +49,26 @@ const MODES: Vec<ToneMode> = [
 	ToneMode.Linear, ToneMode.Linear, ToneMode.Linear,
 	ToneMode.Reinhard, ToneMode.Filmic, ToneMode.Neutral,
 ];
+// After the scene's stages, a second HDR preset over a transparent clear draws only the
+// half-transparent layer: its edge against the LDR presets' (M40's second camera composites it).
+const EDGE_MULTIPLIERS: Vec<float32> = [1.0, 0.6];
+const EDGE_MODES: Vec<ToneMode> = [ToneMode.Linear, ToneMode.Reinhard];
 const GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 1.0 };
+const CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let pixelArt: boolean = voidCaptureEnvInt("VOID_HDR_PIXEL_ART", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	(pixelArt ? PIXEL_ART_HDR_UNIFORM_LENGTH : FORWARD_HDR_UNIFORM_LENGTH) +
+		2 * (pixelArt ? PIXEL_ART_HDR_UNIFORM_LENGTH : FORWARD_HDR_UNIFORM_LENGTH) +
 		4 * UNLIT_MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer | null = null;
 let preset: PixelArtRenderer | null = null;
+let edgeForward: ForwardRenderer | null = null;
+let edgePreset: PixelArtRenderer | null = null;
 let items: Vec<DrawItem> = [];
+let edgeItems: Vec<DrawItem> = [];
 let cameraValues: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 let lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
 let stage: int32 = 0;
@@ -87,12 +96,17 @@ function makePreset(): void {
 		PixelArtRenderer.createHdr(context, settings, look);
 	if (!made.ok) { fail(`createHdr refused: ${made.error.toString()}`); }
 	if (made.ok) { preset = made.value; }
+	const edge: Result<PixelArtRenderer, PixelArtError> =
+		PixelArtRenderer.createHdr(context, settings, { ...look, background: CLEAR });
+	if (edge.ok) { edgePreset = edge.value; }
 }
 
 function makeForward(): void {
 	const made: Result<ForwardRenderer, ForwardError> = ForwardRenderer.createHdr(context, GREY);
 	if (!made.ok) { fail(`createHdr refused: ${made.error.toString()}`); }
 	if (made.ok) { forward = made.value; }
+	const edge: Result<ForwardRenderer, ForwardError> = ForwardRenderer.createHdr(context, CLEAR);
+	if (edge.ok) { edgeForward = edge.value; }
 }
 
 function unitQuad(): MeshId {
@@ -158,10 +172,12 @@ function init(): void {
 		mesh: quad, material: unlit(texture, BACK, 1.0, opaque, Phase.Opaque),
 		world: scaling(10.0, 10.0, 1.0) * translation(0.0, 0.0, -1.0), order: 0,
 	});
-	items.push({
+	const top: DrawItem = {
 		mesh: quad, material: unlit(texture, TOP, TOP_ALPHA, over, Phase.Alpha),
 		world: scaling(2.0, 2.0, 1.0), order: 0,
-	});
+	};
+	items.push(top);
+	edgeItems.push(top);
 	const depths: Vec<float32> = [0.1, 0.2];
 	for (const z of depths) {
 		items.push({
@@ -258,37 +274,70 @@ function expose(core: Renderer, multiplier: float32, mode: ToneMode): void {
 	setToneMode(core, mode);
 }
 
-function frame(): void {
-	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
-	const multiplier: float32 = MULTIPLIERS[stage];
-	const mode: ToneMode = MODES[stage];
-	const view: CameraView = viewOf();
-	view.writeCameraBlock(cameraValues);
-	const art: PixelArtRenderer | null = preset;
-	const fwd: ForwardRenderer | null = forward;
+// The edge of a half-transparent layer over a transparent clear, as an LDR preset stores it: the
+// layer's colour through the curve and encoded, then multiplied by its alpha (BlendMode.Alpha over
+// a zero clear). The transparent clear stays zero.
+function checkEdge(multiplier: float32, mode: ToneMode): void {
+	const edge: int32 = green(WIDTH / 2, HEIGHT / 2);
+	const outside: int32 = green(5, 5);
+	const straight: float32 = srgbToLinear(TOP) * multiplier;
+	const want: float32 = linearToSrgb(greyCurve(straight, mode)) * TOP_ALPHA * 255.0;
+	const unmixed: float32 = linearToSrgb(greyCurve(straight * TOP_ALPHA, mode)) * 255.0;
+	console.log(`hdr: edge ${mode.toString()} x${multiplier} ${edge} (want ${want}), ` +
+		`outside ${outside}`);
+	expect("edge", edge, want, unmixed, "a curve of the premultiplied colour");
+	if (outside != 0) { fail(`the transparent clear drew ${outside}, not 0`); }
+}
+
+// One frame of a preset, the scene's or the edge's, at the stage's exposure and curve.
+function draw(
+	art: PixelArtRenderer | null,
+	fwd: ForwardRenderer | null,
+	drawn: Vec<DrawItem>,
+	multiplier: float32,
+	mode: ToneMode,
+): void {
 	if (art !== null) {
 		expose(art.core, multiplier, mode);
-		const drawn: Result<int32, PixelArtError> =
-			renderPixelArt(art, items, cameraValues, lights, SCREEN);
-		if (!drawn.ok) { fail(`pixel-art refused: ${drawn.error.toString()}`); }
+		const done: Result<int32, PixelArtError> =
+			renderPixelArt(art, drawn, cameraValues, lights, SCREEN);
+		if (!done.ok) { fail(`pixel-art refused: ${done.error.toString()}`); }
 	} else if (fwd !== null) {
 		expose(fwd.core, multiplier, mode);
-		const drawn: Result<int32, ForwardError> =
-			renderForward(fwd, items, cameraValues, lights, WIDTH, HEIGHT);
-		if (!drawn.ok) { fail(`forward refused: ${drawn.error.toString()}`); }
+		const done: Result<int32, ForwardError> =
+			renderForward(fwd, drawn, cameraValues, lights, WIDTH, HEIGHT);
+		if (!done.ok) { fail(`forward refused: ${done.error.toString()}`); }
 	} else {
 		fail("no preset");
 	}
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
-	if (mode == ToneMode.Linear) {
-		check(multiplier);
+}
+
+function frame(): void {
+	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("the framebuffer size changed"); }
+	const view: CameraView = viewOf();
+	view.writeCameraBlock(cameraValues);
+	const scenes: int32 = MULTIPLIERS.length as int32;
+	if (stage < scenes) {
+		const multiplier: float32 = MULTIPLIERS[stage];
+		const mode: ToneMode = MODES[stage];
+		draw(preset, forward, items, multiplier, mode);
+		if (mode == ToneMode.Linear) {
+			check(multiplier);
+		} else {
+			checkCurve(multiplier, mode);
+		}
 	} else {
-		checkCurve(multiplier, mode);
+		const multiplier: float32 = EDGE_MULTIPLIERS[stage - scenes];
+		const mode: ToneMode = EDGE_MODES[stage - scenes];
+		draw(edgePreset, edgeForward, edgeItems, multiplier, mode);
+		checkEdge(multiplier, mode);
 	}
 	stage = stage + 1;
-	if (stage < (MULTIPLIERS.length as int32)) { return; }
+	if (stage < scenes + (EDGE_MULTIPLIERS.length as int32)) { return; }
 	console.log("PASS hdr: linear blending, exposure over the sum, an additive sum above 1 kept, " +
-		"Reinhard, Filmic and PBR Neutral as Heaps writes them");
+		"Reinhard, Filmic and PBR Neutral as Heaps writes them, " +
+		"transparent edges as LDR stores them");
 	voidCaptureExit(0);
 }
 
