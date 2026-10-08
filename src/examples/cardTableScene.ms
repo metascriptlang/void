@@ -273,18 +273,18 @@ function flameState(): EmitterState {
 		maxParts: 72,
 		shape: { kind: ShapeKind.Cone, radius: constant(0.05), angle: constant(0.3) },
 		life: { kind: ValueKind.Random, start: 0.7, length: 0.6, converge: Converge.No },
-		size: constant(0.07),
+		size: constant(0.12),
 		speed: constant(0.0),
-		initialSpeed: { kind: ValueKind.Random, start: 0.7, length: 0.5, converge: Converge.No },
+		initialSpeed: { kind: ValueKind.Random, start: 1.2, length: 0.6, converge: Converge.No },
 		gravity: constant(-0.35),
-		damping: constant(0.4),
+		damping: constant(0.2),
 		turbulence: {
 			...base.turbulence,
 			enabled: true,
-			noiseStrength: 1.5,
+			noiseStrength: 1.0,
 			noiseScale: 6.0,
 			noiseSpeed: vec3(0.0, 0.8, 0.0),
-			influence: constant(0.5),
+			influence: constant(0.02),
 		},
 		colors: [
 			{ time: 0.0, color: 0xFFE070 },
@@ -540,7 +540,7 @@ function handCard(index: int32, shown: MeshId): NodeId3D {
 function discardCard(shown: MeshId): NodeId3D {
 	const target: RenderTarget = cardTarget(0.80, 0.25, 0.70, "X", false);
 	const faceTexture: TextureId = targetTexture(target, TextureAlpha.Premultiplied);
-	const base: Material = Material.keyed(dissolveKey, RenderState.defaults(), Phase.Opaque)
+	const base: Material = Material.keyed(dissolveKey, premultipliedPass(), Phase.Alpha)
 		.withShadows(ShadowCasting.On, false).withShadowCulling(ShadowCulling.CullFront);
 	const edge: int32 = movingBase(dissolveKey) + MOVING_DISSOLVE_EDGE_COLOR;
 	for (let i = 0; i < 4; i++) { dissolveValues[UNLIT_MATERIAL_COLOR + i] = 1.0; }
