@@ -75,12 +75,14 @@ static GlyphRasterBox s_rasterBox;
 static GlyphRasterFill s_rasterFill;
 
 static int validFace(int face) { return face >= 0 && face < s_faceCount; }
+__attribute__((noinline, cold)) static int releasedPage(int page) {
+	fprintf(stderr, "void2d: glyph page %d was released\n", page);
+	return 0;
+}
+
 static int validPage(int page) {
 	if (page < 0 || page >= s_pageCount) { return 0; }
-	if (!s_pages[page].live) {
-		fprintf(stderr, "void2d: glyph page %d was released\n", page);
-		return 0;
-	}
+	if (!s_pages[page].live) { return releasedPage(page); }
 	return 1;
 }
 
