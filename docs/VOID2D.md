@@ -2517,7 +2517,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - WebGL2 and GL core 4.3 desktop (glsl430) show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `style:line-length`, `backend:gl-core-desktop`, `backend:webgpu`, `conformance:webgl2-pixel-centre`, `shape:inter-mark-pair`, `shape-cluster:devanagari-0`, `shape-cluster:devanagari-1`, `shape-cluster:devanagari-2`, `shape-cluster:devanagari-3`, `shape-cluster:devanagari-4`, `shape-cluster:devanagari-5`, `shape-cluster:devanagari-6`, `shape-cluster:thai-variable-0`, `shape-cluster:thai-variable-2`, `shape-cluster:thai-variable-3`, `shape-cluster:thai-variable-4`, `shape-cluster:thai-variable-kern-off`, `shape-cluster:khmer-0`, `shape-cluster:khmer-1`, `shape-cluster:khmer-2`, `shape-cluster:khmer-3`.
+**Closes** (`tests/PENDING.md`, checked by the gate): `style:line-length`, `backend:webgpu`, `conformance:webgl2-pixel-centre`, `shape:inter-mark-pair`, `shape-cluster:devanagari-0`, `shape-cluster:devanagari-1`, `shape-cluster:devanagari-2`, `shape-cluster:devanagari-3`, `shape-cluster:devanagari-4`, `shape-cluster:devanagari-5`, `shape-cluster:devanagari-6`, `shape-cluster:thai-variable-0`, `shape-cluster:thai-variable-2`, `shape-cluster:thai-variable-3`, `shape-cluster:thai-variable-4`, `shape-cluster:thai-variable-kern-off`, `shape-cluster:khmer-0`, `shape-cluster:khmer-1`, `shape-cluster:khmer-2`, `shape-cluster:khmer-3`.
 
 
 
