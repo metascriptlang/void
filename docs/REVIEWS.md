@@ -1963,3 +1963,41 @@ eight loud skips (golden D3D11 117/117, GL core 4.3 115/115), gate3d.sh 339 PASS
 skips. Follow-ups: `graphics:subpixel-fill` (P6, a capture first), `web:runs` (compiler card and the
 Yoga link), the native-gate and bench-bound rows owned by the human, and the line-length remainder
 (void3d's half lands with its next pair).
+
+## P8 review — SHIP after fixes (2026-10-09)
+
+P8 rows 1 and 2 (box fills, the shadow list), the sub-pixel fill fix and `f62f822a`, on
+`wt/void2d-gpui` from `30d79e99`. One defect pass, read only, by three reviewers who did not
+write the code: box fills and shadows against GPUI (`gradient_color`, `fs_shadow`,
+`paint_drop_shadows`/`paint_inset_shadows`, `Style::paint`); the sub-pixel fix (`contourFill`
+limits, `edgeMove`, fringe bounds); and siblings of `f62f822a`, any paint path multiplying a
+style colour by a promoted Group's transparent node colour. Each finding was re-read in the
+code by the builder; every fix carries a T1 pin that fails on the code before it.
+
+| # | site | defect | status |
+|---|---|---|---|
+| E1 | `graphics.ms` `contourFill`, `draw.ms` `edgeMove` | one scalar limit per vertex, the short side's half: a 10 x 20 rect under scale (1, 0.01) collapsed at 0.1 coverage where its device thickness is 0.2 | fixed `1d7770fd`: a limit per edge normal; pin "a fill thin only after a non-uniform scale" |
+| E2 | `graphics.ms` `halfThicknessIfConvex` | area over perimeter is half a triangle's inradius, so a triangle 1.6 px across clamped and lost about 10 % of its ink | fixed `1d7770fd`: the extent along each normal capped by 2A/P; pin "a triangle wider than a device pixel" |
+| E3 | `draw.ms` `edgeMove` | a limit of 0 read as no limit, so a rect of no width still inverted to a one-pixel band | fixed `1d7770fd`: zero collapses to no ink; pin "a rect of no width" |
+| E4 | `render.ms` `drawBoxShadow` | a drop spread below minus the box's half-extent gave the shader a negative rect (GPUI's `dilate` is unguarded alike) | fixed `d39bab31`: clamped at the smaller half-extent; pin "negative spread" |
+| E5 | `boxStyle.ms` `linearFill`/`slashFill`/`checkerFill` | rebuilt the fill from `solidFill()`, dropping a `ditheredFill()` called first | fixed `d39bab31`; pin "ditheredFill before the fill" |
+| E6 | `render.ms` `emitBox` | a border-only instance for a visible border colour of no width | fixed `d39bab31`; pin "an inset shadow over a border of no width" |
+| E7 | `render.ms` `fringeBounds` | a collapsed fill's miter may reach four times its extent, past the one-pixel bounds; the same gap held at half a pixel before | *plausible*, not fixed |
+| E8 | shader `boxFillAt` | a `BoxFill` struct literal with `cell: 0` or a zero slash period divides by zero; the constructors refuse both | *plausible*, not reachable through the constructors |
+
+Sound, as checked: the lane packing of every mode against the shader; mode isolation of
+`filled`; the inline card and the split order giving the same compositing; zero-alpha shadows;
+`na` applied once to fill, border and shadow; dashed borders under a fill; the gradient
+angle and short-side scaling against GPUI; the dither coordinate taken from the vertex stage, so
+the GL y-flip cannot move it; thick shapes unchanged by the limits (`reach <= limit` keeps every
+vertex where it was). No sibling of `f62f822a`: `takePaintable` promotes only a Group, every
+style colour in `emitBox` is faded by `na` alone, and the `unpainted` early-out requires no box
+style.
+
+Recorded, not defects: a sub-pixel dot or square collapses in two dimensions, so its peak is
+right and its ink overshoots (P6 "Sub-pixel fills"); `castShadow` appends since P8, by design;
+a translucent border shows no fill under its ring, the area-fraction model since P2, where GPUI
+paints the fill under the border.
+
+Owed on the native slot: `prim/subpixelFill` moves at its strip ends (each end now insets half
+a pixel where it inset the strip's own limit), recaptured with the next gate.

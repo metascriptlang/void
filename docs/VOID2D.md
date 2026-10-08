@@ -2438,11 +2438,19 @@ changes described above on today's compiler; the P4 web archive also takes its r
   `contourFill` gave its edges no inset limit (only `strokePoly` passed its half width), so a
   0.25-unit strip drew 1.0 of ink per column at full alpha and a radius-0.25 disc peaked at 1.0.
 
-  Each fill now passes a half-thickness limit:
-  - a rect: half its short side;
-  - a circle or ellipse: its polygon's inradius;
-  - any other contour: area over perimeter, the convex lower bound. A non-convex outline with a
-    neck thinner than a pixel can still invert there (`halfThicknessIfConvex`).
+  Each edge now carries its own inset limit in local units along its own normal, so a
+  non-uniform scale collapses the axis it compresses (`graphics.ms` `edgeHalfWidths`; the edge
+  column holds one limit per normal, `EDGE_LIMIT_BEFORE` and `EDGE_LIMIT_AFTER`):
+  - a rect: half the outline's extent along each edge's normal, exact because each edge faces
+    a parallel one;
+  - a circle, ellipse, triangle, polygon or pie: that extent capped by 2A/P, the inradius of a
+    triangle or a regular polygon, past which their insets cross;
+  - a ring, or a loop of more than 256 points: area over perimeter, exact for a ring and the
+    convex lower bound otherwise;
+  - a stroke: its half width on the sides and half its end segment on a cap.
+
+  A limit of zero collapses to no ink. A non-convex outline with a neck thinner than a pixel can
+  still invert at the neck, because its extent is measured across the whole loop.
 
   The clamped vertex took Skia's hairline rule rather than the earlier area-matched peak
   `2L / (L + 0.5)`. That peak is right in area but point-sampled at a pixel centre, and read
