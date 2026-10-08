@@ -359,7 +359,7 @@ in the same change as the fix.
 
 | Backend | Conformance | Runs |
 |---|---|---|
-| D3D11 | **100 / 107 scenes byte-identical**; the seven `text/bidi*` scenes await their first capture | every full gate, this box |
+| D3D11 | **107 / 107 scenes byte-identical** | every full gate, this box |
 | GL core 4.3 desktop (glsl430) | **98 / 98**: 75 byte-identical, 23 within the cross-backend bound, 0 structural failures, 2 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
