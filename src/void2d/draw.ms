@@ -1156,14 +1156,31 @@ export function blurPass(srcView: uint32, stepX: float32, stepY: float32): void 
 // draw per state run. P2 gives the transform back to the GPU as a per-instance affine; until
 // then the CPU does it, which is what the old dynamic path already did for every Rect.
 export const FRINGE_HALF_WIDTH: float32 = 0.5;
-export const EDGE_FLOATS: int32 = 10;
+export const EDGE_FLOATS: int32 = 11;
 export const EDGE_NORMAL_BEFORE: int32 = 0;
 export const EDGE_NORMAL_AFTER: int32 = 2;
 export const EDGE_SHIFT: int32 = 4;
-export const EDGE_LIMIT: int32 = 5;
-export const EDGE_UV: int32 = 6;
+export const EDGE_LIMIT_BEFORE: int32 = 5;
+export const EDGE_LIMIT_AFTER: int32 = 6;
+export const EDGE_UV: int32 = 7;
 const EDGE_MITER_LIMIT: float32 = 4.0;
 const EDGE_PARALLEL: float32 = 0.0001;
+
+struct Collapse {
+	t: float32;
+	extent: float32;
+	coverage: float32;
+}
+
+// One edge line's move under its inset limit, in local units. Past the limit the body
+// collapses to the centre line at coverage limit / reach and the fringe reaches one device
+// pixel from it, so the tent sums to the thickness at any pixel phase.
+function collapsed(t: float32, limit: float32, inward: boolean): Collapse {
+	const reach: float32 = t < 0.0 ? -t : t;
+	if (!(reach > limit) || reach <= 0.0) { return { t: t, extent: reach, coverage: 1.0 }; }
+	const extent: float32 = inward ? limit : 2.0 * reach - limit;
+	return { t: t * extent / reach, extent: extent, coverage: inward ? limit / reach : 1.0 };
+}
 
 struct EdgeMove {
 	x: float32;
@@ -1189,20 +1206,16 @@ function edgeMove(
 	const n2x: float32 = edges[e + EDGE_NORMAL_AFTER];
 	const n2y: float32 = edges[e + EDGE_NORMAL_AFTER + 1];
 	const shift: float32 = edges[e + EDGE_SHIFT] * worldPerDevice;
-	let t1: float32 = shift * normalScale(m, inverseDet, n1x, n1y);
-	let t2: float32 = shift * normalScale(m, inverseDet, n2x, n2y);
-	const a1: float32 = t1 < 0.0 ? -t1 : t1;
-	const a2: float32 = t2 < 0.0 ? -t2 : t2;
-	const reach: float32 = a1 > a2 ? a1 : a2;
-	const limit: float32 = edges[e + EDGE_LIMIT];
-	let coverage: float32 = 1.0;
-	let extent: float32 = reach;
-	if (limit > 0.0 && reach > limit) {
-		extent = shift < 0.0 ? limit : 2.0 * reach - limit;
-		t1 = t1 * extent / reach;
-		t2 = t2 * extent / reach;
-		if (shift < 0.0) { coverage = limit / reach; }
-	}
+	const inward: boolean = shift < 0.0;
+	const along1: Collapse = collapsed(
+		shift * normalScale(m, inverseDet, n1x, n1y), edges[e + EDGE_LIMIT_BEFORE], inward);
+	const along2: Collapse = collapsed(
+		shift * normalScale(m, inverseDet, n2x, n2y), edges[e + EDGE_LIMIT_AFTER], inward);
+	const t1: float32 = along1.t;
+	const t2: float32 = along2.t;
+	const coverage: float32 =
+		along1.coverage < along2.coverage ? along1.coverage : along2.coverage;
+	const extent: float32 = along1.extent > along2.extent ? along1.extent : along2.extent;
 	const det: float32 = n1x * n2y - n1y * n2x;
 	let x: float32 = n1x * t1;
 	let y: float32 = n1y * t1;

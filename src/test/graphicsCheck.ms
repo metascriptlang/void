@@ -20,7 +20,7 @@ import {
 	setAntialias,
 } from "../void2d/graphics";
 import { Vec2, vec2, rgba, tile, sub } from "../void2d/types";
-import { EDGE_FLOATS, EDGE_LIMIT } from "../void2d/draw";
+import { EDGE_FLOATS, EDGE_LIMIT_BEFORE, EDGE_LIMIT_AFTER } from "../void2d/draw";
 import { approx, approxRel, meshTriArea, meshHasVert, meshHasVertUV, fakeTexture } from "./helpers";
 
 const QUARTER: float32 = 1.5707963;
@@ -184,7 +184,7 @@ test "strokeRect equals closed strokePoly" {
 test "an antialiased fill adds one zero-area fringe quad per edge" {
 	const g = s.graphics().fillRect(2.0, 3.0, 10.0, 5.0, rgba(1.0, 1.0, 1.0, 1.0));
 	assert (geometry(g).mesh.length as int32) === (6 + 4 * 6) * 8;
-	assert (geometry(g).edges.length as int32) === (6 + 4 * 6) * 10;
+	assert (geometry(g).edges.length as int32) === (6 + 4 * 6) * EDGE_FLOATS;
 	assert geometry(g).fringed;
 	assert approxRel(meshTriArea(geometry(g).mesh), 50.0, 0.1);
 }
@@ -193,24 +193,32 @@ function edgeLimits(g: NodeRef): float32[] {
 	const edges = geometry(g).edges;
 	const out: float32[] = [];
 	for (let e: int32 = 0; e < (edges.length as int32); e = e + EDGE_FLOATS) {
-		out.push(edges[e + EDGE_LIMIT]);
+		out.push(edges[e + EDGE_LIMIT_BEFORE]);
+		out.push(edges[e + EDGE_LIMIT_AFTER]);
 	}
 	return out;
 }
 
-test "a fill thinner than its antialiasing inset limits the inset to its half thickness" {
+function hasLimit(limits: Readonly<Span<float32>>, want: float32): boolean {
+	for (const limit of limits) { if (approx(limit, want)) { return true; } }
+	return false;
+}
+
+test "each edge's inset limit is half the fill's extent along that edge's normal" {
 	const strip = s.graphics().fillRect(0.0, 0.0, 100.0, 0.25, rgba(1.0, 1.0, 1.0, 1.0));
-	for (const limit of edgeLimits(strip)) { assert approx(limit, 0.125); }
+	const across = edgeLimits(strip);
+	for (const limit of across) { assert approx(limit, 0.125) || approx(limit, 50.0); }
+	assert hasLimit(across, 0.125) && hasLimit(across, 50.0);
 	const ring = s.graphics().fillRing(0.0, 0.0, 10.0, 9.5, 0.0, FULL_TURN, rgba(1.0, 1.0, 1.0, 1.0));
 	for (const limit of edgeLimits(ring)) { assert limit > 0.24 && limit <= 0.25; }
 }
 
-test "a disc's inset limit stays inside its polygon" {
+test "a disc's and a triangle's inset limits are their inradius, where their insets meet" {
 	const disc = s.graphics().fillCircle(0.0, 0.0, 0.4, rgba(1.0, 1.0, 1.0, 1.0));
-	for (const limit of edgeLimits(disc)) { assert limit > 0.3 && limit < 0.4; }
+	for (const limit of edgeLimits(disc)) { assert approx(limit, 0.3696); }
 	const tri = s.graphics()
 		.fillTriangle(vec2(0.0, 0.0), vec2(4.0, 0.0), vec2(0.0, 3.0), rgba(1.0, 1.0, 1.0, 1.0));
-	for (const limit of edgeLimits(tri)) { assert approx(limit, 0.5); }
+	for (const limit of edgeLimits(tri)) { assert approx(limit, 1.0); }
 }
 
 test "clear drops the edge column with the mesh" {

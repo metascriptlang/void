@@ -52,7 +52,17 @@ struct Corner {
 	p: Vec2;
 	before: Vec2;
 	after: Vec2;
+	limitBefore: float32;
+	limitAfter: float32;
 }
+
+enum EdgeLimit {
+	Parallel,
+	Convex,
+	Ring,
+}
+
+const EXACT_EDGE_WIDTHS_UP_TO: int32 = 256;
 
 function pushMeshVertex(
 	n: GraphicsMesh,
@@ -116,7 +126,6 @@ function edgeVtx(
 	map: UvMap,
 	c: Color,
 	shift: float32,
-	limit: float32,
 ): void {
 	if (counted) { beginMeshVertex(n); }
 	pushMeshVertex(n, corner.p.x, corner.p.y, mapU(map, corner.p), mapV(map, corner.p), c);
@@ -125,7 +134,8 @@ function edgeVtx(
 	n.edges.push(corner.after.x);
 	n.edges.push(corner.after.y);
 	n.edges.push(shift);
-	n.edges.push(limit);
+	n.edges.push(corner.limitBefore);
+	n.edges.push(corner.limitAfter);
 	n.edges.push(map.ux);
 	n.edges.push(map.uy);
 	n.edges.push(map.vx);
@@ -142,15 +152,20 @@ function fringeQuad(
 	b: Corner,
 	map: UvMap,
 	color: Color,
-	limit: float32,
 ): void {
 	const clear: Color = transparent(color);
-	edgeVtx(n, counted, a, map, color, -FRINGE_HALF_WIDTH, limit);
-	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH, limit);
-	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH, limit);
-	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH, limit);
-	edgeVtx(n, counted, b, map, clear, FRINGE_HALF_WIDTH, limit);
-	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH, limit);
+	edgeVtx(n, counted, a, map, color, -FRINGE_HALF_WIDTH);
+	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH);
+	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH);
+	edgeVtx(n, counted, a, map, clear, FRINGE_HALF_WIDTH);
+	edgeVtx(n, counted, b, map, clear, FRINGE_HALF_WIDTH);
+	edgeVtx(n, counted, b, map, color, -FRINGE_HALF_WIDTH);
+}
+
+function halfLength(a: Vec2, b: Vec2): float32 {
+	const dx: float32 = b.x - a.x;
+	const dy: float32 = b.y - a.y;
+	return sqrtf(dx * dx + dy * dy) * 0.5;
 }
 
 function isNormal(v: Vec2): boolean { return v.x != 0.0 || v.y != 0.0; }
@@ -170,7 +185,7 @@ function contourFill(
 	tris: Readonly<Span<int32>>,
 	map: UvMap,
 	color: Color,
-	halfThickness: float32,
+	rule: EdgeLimit,
 ): void {
 	const total: int32 = pts.length as int32;
 	if (total < 3 || (loopEnds.length as int32) == 0) { return; }
@@ -197,6 +212,7 @@ function contourFill(
 			nextOf.push(j);
 		}
 	}
+	const edgeLimits: float32[] = edgeHalfWidths(pts, loopEnds, edgeNormals, rule);
 	const corners: Corner[] = [];
 	for (let k: int32 = 0; k < (loopEnds.length as int32); k++) {
 		const start: int32 = loopStart(loopEnds, k);
@@ -205,28 +221,41 @@ function contourFill(
 		for (let i: int32 = start; i < end; i++) {
 			let before: Vec2 = NO_NORMAL;
 			let after: Vec2 = NO_NORMAL;
+			let limitBefore: float32 = 0.0;
+			let limitAfter: float32 = 0.0;
 			for (let step: int32 = 1; step <= size; step++) {
-				const candidate: Vec2 = edgeNormals[start + (i - start - step + size * 2) % size];
-				if (isNormal(candidate)) { before = candidate; break; }
+				const edge: int32 = start + (i - start - step + size * 2) % size;
+				if (isNormal(edgeNormals[edge])) {
+					before = edgeNormals[edge];
+					limitBefore = edgeLimits[edge];
+					break;
+				}
 			}
 			for (let step: int32 = 0; step < size; step++) {
-				const candidate: Vec2 = edgeNormals[start + (i - start + step) % size];
-				if (isNormal(candidate)) { after = candidate; break; }
+				const edge: int32 = start + (i - start + step) % size;
+				if (isNormal(edgeNormals[edge])) {
+					after = edgeNormals[edge];
+					limitAfter = edgeLimits[edge];
+					break;
+				}
 			}
-			corners.push({ p: pts[i], before: before, after: after });
+			corners.push({
+				p: pts[i], before: before, after: after, limitBefore: limitBefore,
+				limitAfter: limitAfter,
+			});
 		}
 	}
 	for (const k of tris) {
-		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH, halfThickness);
+		edgeVtx(n, counted, corners[k], map, color, -FRINGE_HALF_WIDTH);
 	}
 	for (let i: int32 = 0; i < total; i++) {
 		if (isNormal(edgeNormals[i])) {
-			fringeQuad(n, counted, corners[i], corners[nextOf[i]], map, color, halfThickness);
+			fringeQuad(n, counted, corners[i], corners[nextOf[i]], map, color);
 		}
 	}
 }
 
-function halfThicknessIfConvex(pts: Readonly<Span<Vec2>>, loopEnds: Readonly<Span<int32>>): float32 {
+function areaOverPerimeter(pts: Readonly<Span<Vec2>>, loopEnds: Readonly<Span<int32>>): float32 {
 	let area: float32 = 0.0;
 	let perimeter: float32 = 0.0;
 	for (let k: int32 = 0; k < (loopEnds.length as int32); k++) {
@@ -246,14 +275,39 @@ function halfThicknessIfConvex(pts: Readonly<Span<Vec2>>, loopEnds: Readonly<Spa
 	return perimeter > 0.0 ? area / perimeter : 0.0;
 }
 
-function rectHalfThickness(w: float32, h: float32): float32 {
-	const aw: float32 = w < 0.0 ? -w : w;
-	const ah: float32 = h < 0.0 ? -h : h;
-	return (aw < ah ? aw : ah) * 0.5;
-}
-
-function ellipseHalfThickness(rx: float32, ry: float32, seg: int32): float32 {
-	return (rx < ry ? rx : ry) * cosf(TAU * 0.5 / (seg as float32));
+// Each edge's inset limit, in local units along that edge's normal, so a non-uniform scale
+// collapses the axis it compresses. Parallel: half the outline's inward extent, exact where
+// each edge faces a parallel one (rects). Convex: that extent capped by 2A/P, the inradius of
+// a triangle or a regular polygon, past which their insets cross. Ring, a contour with holes,
+// or a loop longer than EXACT_EDGE_WIDTHS_UP_TO: area over perimeter, exact for a ring and the
+// convex lower bound otherwise.
+function edgeHalfWidths(
+	pts: Readonly<Span<Vec2>>,
+	loopEnds: Readonly<Span<int32>>,
+	normals: Readonly<Span<Vec2>>,
+	rule: EdgeLimit,
+): float32[] {
+	const out: float32[] = [];
+	const total: int32 = pts.length as int32;
+	const uniform: float32 = areaOverPerimeter(pts, loopEnds);
+	const exact: boolean = rule != EdgeLimit.Ring && (loopEnds.length as int32) == 1
+		&& total <= EXACT_EDGE_WIDTHS_UP_TO;
+	if (!exact) {
+		for (let i: int32 = 0; i < total; i++) { out.push(uniform); }
+		return out;
+	}
+	const cap: float32 = rule == EdgeLimit.Convex ? 2.0 * uniform : -1.0;
+	for (let i: int32 = 0; i < total; i++) {
+		let deepest: float32 = 0.0;
+		for (let v: int32 = 0; v < total; v++) {
+			const inward: float32 = (pts[i].x - pts[v].x) * normals[i].x
+				+ (pts[i].y - pts[v].y) * normals[i].y;
+			if (inward > deepest) { deepest = inward; }
+		}
+		const half: float32 = deepest * 0.5;
+		out.push(cap >= 0.0 && cap < half ? cap : half);
+	}
+	return out;
 }
 
 function fanTris(count: int32): int32[] {
@@ -332,9 +386,7 @@ export function setAntialias(this g: NodeRef, on: boolean): NodeRef {
 
 export function fillTriangle(this g: NodeRef, a: Vec2, b: Vec2, c: Vec2, color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTriangle");
-	const tri: Vec2[] = [a, b, c];
-	contourFill(target, true, tri, [3], [0, 1, 2], NO_UV, color,
-		halfThicknessIfConvex(tri, [3]));
+	contourFill(target, true, [a, b, c], [3], [0, 1, 2], NO_UV, color, EdgeLimit.Convex);
 	return g;
 }
 
@@ -354,14 +406,14 @@ export function fillRect(
 ): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillRect");
 	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, NO_UV, color,
-		rectHalfThickness(w, h));
+		EdgeLimit.Parallel);
 	return g;
 }
 
 export function fillConvex(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillConvex");
 	const m: int32 = pts.length as int32;
-	contourFill(target, true, pts, [m], fanTris(m), NO_UV, color, halfThicknessIfConvex(pts, [m]));
+	contourFill(target, true, pts, [m], fanTris(m), NO_UV, color, EdgeLimit.Convex);
 	return g;
 }
 
@@ -509,9 +561,8 @@ function triangulate(pts: Readonly<Span<Vec2>>): int32[] {
 // h2d.Graphics arbitrary solid fill (convex shapes can use the cheaper fillConvex fan).
 export function fillPolygon(this g: NodeRef, pts: Vec2[], color: Color): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillPolygon");
-	const loops: int32[] = [pts.length as int32];
-	contourFill(target, true, pts, loops, triangulate(pts), NO_UV, color,
-		halfThicknessIfConvex(pts, loops));
+	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), NO_UV, color,
+		EdgeLimit.Convex);
 	return g;
 }
 
@@ -543,8 +594,7 @@ export function fillGradientPolygonStops(
 		map = { ux: ax / span, uy: ay / span, uc: -minP / span, vx: 0.0, vy: 0.0, vc: 0.0 };
 	}
 	const start: int32 = (target.mesh.length as int32) / 8;
-	contourFill(target, false, pts, [m], triangulate(pts), map, white,
-		halfThicknessIfConvex(pts, [m]));
+	contourFill(target, false, pts, [m], triangulate(pts), map, white, EdgeLimit.Convex);
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	if (count > 0) {
 		appendOp(target, GraphicsOpKind.LinearGradient, start, count, space, true, middle,
@@ -634,7 +684,7 @@ export function fillRadialGradientStops(
 	const map: UvMap = { ux: 1.0 / r, uy: 0.0, uc: -cx / r, vx: 0.0, vy: 1.0 / r, vc: -cy / r };
 	const start: int32 = (target.mesh.length as int32) / 8;
 	contourFill(target, false, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), map, white,
-		ellipseHalfThickness(r, r, seg));
+		EdgeLimit.Convex);
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	appendOp(target, GraphicsOpKind.RadialGradient, start, count, space, true, middle,
 		c0, cMiddle, c1, 0.0, 0.0, 0.0, 0.0);
@@ -679,7 +729,7 @@ function fillPatternRect(
 	const map: UvMap = { ux: 1.0, uy: 0.0, uc: -x, vx: 0.0, vy: 1.0, vc: -y };
 	const start: int32 = (target.mesh.length as int32) / 8;
 	contourFill(target, false, rectPoints(x, y, w, h), [4], RECT_TRIS, map, white,
-		rectHalfThickness(w, h));
+		EdgeLimit.Parallel);
 	const count: int32 = (target.mesh.length as int32) / 8 - start;
 	appendOp(target, kind, start, count, GradientSpace.Srgb, false, -1.0,
 		c0, c1, c1, p0, p1, 0.0, 0.0);
@@ -733,7 +783,7 @@ export function fillTexRect(
 	const dv: float32 = (t.v1 - t.v0) / h;
 	const map: UvMap = { ux: du, uy: 0.0, uc: t.u0 - x * du, vx: 0.0, vy: dv, vc: t.v0 - y * dv };
 	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, map, color,
-		rectHalfThickness(w, h));
+		EdgeLimit.Parallel);
 	return g;
 }
 
@@ -759,9 +809,8 @@ export function fillTexPolygon(
 		ux: du, uy: 0.0, uc: t.u0 - originX * du,
 		vx: 0.0, vy: dv, vc: t.v0 - originY * dv,
 	};
-	const loops: int32[] = [pts.length as int32];
-	contourFill(target, true, pts, loops, triangulate(pts), map, color,
-		halfThicknessIfConvex(pts, loops));
+	contourFill(target, true, pts, [pts.length as int32], triangulate(pts), map, color,
+		EdgeLimit.Convex);
 	return g;
 }
 
@@ -775,7 +824,7 @@ export function fillCircle(
 	const target: GraphicsMesh = meshOf(g, "fillCircle");
 	const seg: int32 = circleSegs(r);
 	contourFill(target, true, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), NO_UV, color,
-		ellipseHalfThickness(r, r, seg));
+		EdgeLimit.Convex);
 	return g;
 }
 
@@ -822,6 +871,8 @@ export function strokePoly(
 		let leftAfter: Vec2 = n2;
 		let rightBefore: Vec2 = negated(n1);
 		let rightAfter: Vec2 = negated(n2);
+		let limitBefore: float32 = hw;
+		let limitAfter: float32 = hw;
 		if (hasPrev && hasNext) {
 			let mxn: float32 = n1.x + n2.x;
 			let myn: float32 = n1.y + n2.y;
@@ -839,16 +890,22 @@ export function strokePoly(
 			const cap: Vec2 = vec2(-n2.y, n2.x);
 			leftBefore = cap;
 			rightBefore = cap;
+			limitBefore = halfLength(pts[i], pts[ni]);
 		} else {
 			nx = n1.x * hw;
 			ny = n1.y * hw;
 			const cap: Vec2 = vec2(n1.y, -n1.x);
 			leftAfter = cap;
 			rightAfter = cap;
+			limitAfter = halfLength(pts[pi], pts[i]);
 		}
-		left.push({ p: vec2(pts[i].x + nx, pts[i].y + ny), before: leftBefore, after: leftAfter });
+		left.push({
+			p: vec2(pts[i].x + nx, pts[i].y + ny), before: leftBefore, after: leftAfter,
+			limitBefore: limitBefore, limitAfter: limitAfter,
+		});
 		right.push({
 			p: vec2(pts[i].x - nx, pts[i].y - ny), before: rightBefore, after: rightAfter,
+			limitBefore: limitBefore, limitAfter: limitAfter,
 		});
 	}
 	const segs: int32 = closed ? m : (m - 1);
@@ -864,22 +921,22 @@ export function strokePoly(
 	for (let s: int32 = 0; s < segs; s++) {
 		const a: int32 = s;
 		const b: int32 = (s + 1) % m;
-		edgeVtx(target, true, left[a], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
-		edgeVtx(target, true, right[a], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
-		edgeVtx(target, true, right[b], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
-		edgeVtx(target, true, left[a], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
-		edgeVtx(target, true, right[b], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
-		edgeVtx(target, true, left[b], NO_UV, color, -FRINGE_HALF_WIDTH, hw);
+		edgeVtx(target, true, left[a], NO_UV, color, -FRINGE_HALF_WIDTH);
+		edgeVtx(target, true, right[a], NO_UV, color, -FRINGE_HALF_WIDTH);
+		edgeVtx(target, true, right[b], NO_UV, color, -FRINGE_HALF_WIDTH);
+		edgeVtx(target, true, left[a], NO_UV, color, -FRINGE_HALF_WIDTH);
+		edgeVtx(target, true, right[b], NO_UV, color, -FRINGE_HALF_WIDTH);
+		edgeVtx(target, true, left[b], NO_UV, color, -FRINGE_HALF_WIDTH);
 	}
 	for (let s: int32 = 0; s < segs; s++) {
 		const a: int32 = s;
 		const b: int32 = (s + 1) % m;
-		fringeQuad(target, true, left[a], left[b], NO_UV, color, hw);
-		fringeQuad(target, true, right[b], right[a], NO_UV, color, hw);
+		fringeQuad(target, true, left[a], left[b], NO_UV, color);
+		fringeQuad(target, true, right[b], right[a], NO_UV, color);
 	}
 	if (!closed) {
-		fringeQuad(target, true, right[0], left[0], NO_UV, color, hw);
-		fringeQuad(target, true, left[m - 1], right[m - 1], NO_UV, color, hw);
+		fringeQuad(target, true, right[0], left[0], NO_UV, color);
+		fringeQuad(target, true, left[m - 1], right[m - 1], NO_UV, color);
 	}
 	return g;
 }
@@ -932,8 +989,7 @@ export function fillEllipse(
 	const target: GraphicsMesh = meshOf(g, "fillEllipse");
 	const seg: int32 = arcSegs(rx > ry ? rx : ry, TAU);
 	const pts: Vec2[] = ellipsePoints(cx, cy, rx, ry, seg);
-	contourFill(target, true, pts, [seg], fanTris(seg), NO_UV, color,
-		ellipseHalfThickness(rx, ry, seg));
+	contourFill(target, true, pts, [seg], fanTris(seg), NO_UV, color, EdgeLimit.Convex);
 	return g;
 }
 
@@ -961,8 +1017,7 @@ export function fillPie(
 		const a: float32 = angleStart + step * (i as float32);
 		pts.push(vec2(cx + cosf(a) * r, cy + sinf(a) * r));
 	}
-	contourFill(target, true, pts, [seg + 2], fanTris(seg + 2), NO_UV, color,
-		halfThicknessIfConvex(pts, [seg + 2]));
+	contourFill(target, true, pts, [seg + 2], fanTris(seg + 2), NO_UV, color, EdgeLimit.Convex);
 	return g;
 }
 
@@ -1005,7 +1060,7 @@ export function fillRing(
 		tris.push(innerNext);
 	}
 	const loops: int32[] = full ? [rim, rim * 2] : [rim * 2];
-	contourFill(target, true, pts, loops, tris, NO_UV, color, halfThicknessIfConvex(pts, loops));
+	contourFill(target, true, pts, loops, tris, NO_UV, color, EdgeLimit.Ring);
 	return g;
 }
 

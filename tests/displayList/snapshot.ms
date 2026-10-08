@@ -920,6 +920,48 @@ test "T1 an antialiased fill's fringe is one device pixel under rotation, shear 
 	}
 }
 
+function peakCoverage(): float32 {
+	let peak: float32 = 0.0;
+	for (let i: int32 = 0; i < vertexCount(); i++) {
+		if (vertexField(i, 7) > peak) { peak = vertexField(i, 7); }
+	}
+	return peak;
+}
+
+function recordFill(build: (g: NodeRef) => void, sx: float32, sy: float32): void {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const g = s.add(s.graphics().at(4.0, 4.0));
+	g.setScaleX(sx);
+	g.setScaleY(sy);
+	build(g);
+	record(s.refOf(s.root), 64.0, 64.0, 1.0);
+}
+
+test "T1 a fill thin only after a non-uniform scale collapses at its device thickness" {
+	recordFill((g: NodeRef): void => {
+		g.fillRect(0.0, 0.0, 10.0, 20.0, rgba(1.0, 1.0, 1.0, 1.0));
+	}, 1.0, 0.01);
+	assert approx(peakCoverage(), 0.2);
+}
+
+test "T1 a triangle wider than a device pixel keeps full coverage" {
+	recordFill((g: NodeRef): void => {
+		g.fillTriangle(vec2(0.0, 0.0), vec2(4.0, 0.0), vec2(0.0, 3.0), rgba(1.0, 1.0, 1.0, 1.0));
+	}, 1.0, 1.0);
+	assert approx(peakCoverage(), 1.0);
+	recordFill((g: NodeRef): void => {
+		g.fillTriangle(vec2(0.0, 0.0), vec2(4.0, 0.0), vec2(0.0, 3.0), rgba(1.0, 1.0, 1.0, 1.0));
+	}, 0.8, 0.8);
+	assert approx(peakCoverage(), 1.0);
+}
+
+test "T1 a rect of no width draws no ink" {
+	recordFill((g: NodeRef): void => {
+		g.fillRect(0.0, 0.0, 0.0, 20.0, rgba(1.0, 1.0, 1.0, 1.0));
+	}, 1.0, 1.0);
+	assert peakCoverage() == 0.0;
+}
+
 test "T1 a hairline stroke keeps its coverage instead of its inset" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const g = s.add(s.graphics());
