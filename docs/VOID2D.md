@@ -2887,7 +2887,7 @@ WGSL's `%` truncates instead. The colour-space functions moved into one `@block 
 both the `Graphics` program and the UI program include. T1 `snapshot.ms` pins the lanes and the
 split order. `prim/boxFills` is the golden: seven cards covering linear sRGB, Oklab with stops and
 dither, slash under a dashed border, checker, gradient with drop shadow, gradient with inset
-shadow, and a turned translucent gradient. **Capture owed**: it waits for the native slot.
+shadow, and a turned translucent gradient. Captured on D3D11 at `3588855d`, BUILD `1090f789`.
 
 **Row 2 as built (2026-10-09).** `BoxStyle.shadows` is a list of `BoxShadow { color, blur,
 offsetX, offsetY, spread, inset }`. `castShadows(list)` sets the list in GPUI's `box_shadow`
@@ -2921,7 +2921,7 @@ margin. `prim/shadowStack` is the golden:
 - an inset under a 3 px border;
 - a gradient card with the elevation stack.
 
-**Capture owed**, with `prim/boxFills`.
+Captured with `prim/boxFills`.
 
 ### The budget, at every phase
 

@@ -89,9 +89,9 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `prim/` | P0 | roundedRect · strokeRect · ellipsePieRing · polygonBezier · gradientLinear · gradientRadial |
 | `prim/` | P2 | per-corner radii · per-side borders · dashed border · drop shadow · inset shadow · shadow+fill+border in one instance · gradient Oklab · multi-stop · dither band · slash and checkerboard |
 | `prim/` | P6 | aaNonUniformBox (four plain Rects at 2:1, 3:1, 1:3 and 4:1 rotated 20 degrees at DPI 1, judged by `captureCheck.ms` against the supersampled oracle; captured, `78795b3`) |
-| `prim/` | P6 | subpixelFill (Graphics strips 0.25 / 0.5 / 0.75 / 1.0 thick across and down, discs of radius 0.25 to 1.0, at DPI 1; `captureCheck.ms` sums each strip's coverage against its thickness) — **golden capture owed** |
-| `prim/` | P8 | boxFills (box fills: linear sRGB, Oklab with stops and dither, slash under a dashed border, checker, gradient with a drop shadow, gradient with an inset shadow, a turned translucent gradient) — **golden capture owed** |
-| `prim/` | P8 | shadowStack (shadow lists: three-layer elevation with negative spreads, a blur-0 spread ring, a drop plus an inset highlight, an inset with spread and offset, an inset under a 3 px border, a gradient card with the elevation stack) — **golden capture owed** |
+| `prim/` | P6 | subpixelFill (Graphics strips 0.25 / 0.5 / 0.75 / 1.0 thick across and down, discs of radius 0.25 to 1.0, at DPI 1; `captureCheck.ms` sums each strip's coverage against its thickness; captured, `3588855d`) |
+| `prim/` | P8 | boxFills (box fills: linear sRGB, Oklab with stops and dither, slash under a dashed border, checker, gradient with a drop shadow, gradient with an inset shadow, a turned translucent gradient; captured, `3588855d`) |
+| `prim/` | P8 | shadowStack (shadow lists: three-layer elevation with negative spreads, a blur-0 spread ring, a drop plus an inset highlight, an inset with spread and offset, an inset under a 3 px border, a gradient card with the elevation stack; captured, `3588855d`) |
 | `prim/` | D1 | effectOnUi (a box style, a wavy underline, a selection band, a label's runs, selection and caret, and an image style, each drawn plain and under a grayscale matrix on a grey ground; `tests/golden/invariants.ms` holds every pixel of the grey copy to its twin's luma within 2 levels, the rounding of two stacked blends) |
 | `xform/` | P0 | rotate (0 / 7° / 37° / 45°) · scale (0.5 / 1 / 2) · pivot · nonUniform |
 | `xform/` | P2 | pivot from `Tile.dx/dy` |
