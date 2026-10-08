@@ -2642,7 +2642,11 @@ text order (ids 43 19 15 8 47 3) where HarfBuzz picks other forms for four of si
 (38 19 14 47 10 2); counts, clusters and advances agree, so `shape-cluster:arabic-ltr-explicit`
 is closed. `missing-mixed-direction` is replaced by three explicit-direction rows that agree
 (`mixed-direction-latin-before`, `missing-mixed-direction-arabic`, `mixed-direction-latin-after`),
-and `bidiShapedCheck.ms` requires that a mixed Hebrew line shapes as its three runs.
+and `bidiShapedCheck.ms` requires that a mixed Hebrew line shapes as its three runs. Style runs
+inside one right-to-left level run reach kb as segments split by `shaperBreak`; kb returns the
+segments in text order, each in visual order, so `shapeGroup` reverses each segment on its own
+(found by the `text/bidiArabicMixed` capture, where reversing the whole group swapped the words;
+held by the two style-run rows of `bidiShapedCheck.ms`).
 
 **Declared.**
 
@@ -2676,9 +2680,8 @@ and `bidiShapedCheck.ms` requires that a mixed Hebrew line shapes as its three r
 
 **Owed** (runs that need the native gate, GPU or the web build, not run by this lane): `sh
 scripts/gate.sh` for the all-modules T0 stage with the BiDi oracle, the allocation and module-off
-checks; `sh scripts/golden.sh` for byte-identity of every existing golden with `-d:voidBidi`, and
-`sh scripts/golden.sh --update text/bidiHebrew` (and the six others, `tests/PENDING.md`
-`golden-missing:text/bidi*`) for the captures; `sh scripts/experiment-modulesWeb.sh bidi` and
+checks; `sh scripts/golden.sh` for byte-identity of every existing golden with `-d:voidBidi`;
+`sh scripts/experiment-modulesWeb.sh bidi` and
 `scripts/build-web.sh` for the linked wasm of the module and the WebGL2 pass rate of the new scenes;
 the `tests/golden/invariants.ms` no-gap check over a selection that is two spans on one row.
 
@@ -2689,7 +2692,8 @@ the `tests/golden/invariants.ms` no-gap check over a selection that is two spans
 (forced against auto). T1: `bidiTableCheck.ms`, `bidiOffCheck.ms` (the refusals, with the
 module off), `bidiLayoutCheck.ms`, `bidiCaretCheck.ms`, `bidiSelectionCheck.ms`,
 `bidiShapedCheck.ms`; abort programs `tests/aborts/bidiOff.ms`, `shaperRtl.ms`,
-`bidiArabicNeedsShaper.ms`. T2: seven `text/bidi*` scenes, captures owed.
+`bidiArabicNeedsShaper.ms`. T2: seven `text/bidi*` scenes at 320 units wide and DPI 1.25,
+captured on D3D11 2026-10-08 and read against the visual order UAX #9 gives each line.
 
 **Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The three rows that were not a difference of engines are deleted: the cluster row of the explicit left-to-right Arabic text agrees once the shaper bridge forces the direction, and the mixed-direction row is replaced by three explicit-direction rows that agree. The glyph row of the explicit left-to-right Arabic text is re-owned as declared with its measured reason.
 
