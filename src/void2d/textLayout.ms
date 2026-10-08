@@ -1493,7 +1493,8 @@ export function selectedExtents(
 			right = l.glyphs[k].x + l.glyphs[k].advance;
 		}
 	}
-	const rightToLeft: boolean = (l.bidi.lineLevels[li] & 1) == 1;
+	const rightToLeft: boolean =
+		(l.bidi.lineLevels.length as int32) > 0 && (l.bidi.lineLevels[li] & 1) == 1;
 	const tailLow: float32 = rightToLeft ? left - tail : right;
 	const tailHigh: float32 = rightToLeft ? left : right + tail;
 	const extraHigh: float32 = tail > 0.0 ? tailHigh : 0.0;

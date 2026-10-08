@@ -2,7 +2,7 @@ import { NodeRef, Scene2D, setFont, setSelectionRange, setTextRuns } from "../vo
 import "../void2d/scene";
 import { textWidth } from "../void2d/render";
 import { DecorationKind, labelTexts, setLabelSelection } from "../void2d/labelText";
-import { TextRun, setTextShaping, textShapingOn } from "../void2d/textLayout";
+import { TextRun, selectedExtents, setTextShaping, textShapingOn } from "../void2d/textLayout";
 import { FontId, addFont } from "../void2d/font";
 import { Color, rgba } from "../void2d/types";
 import { approx } from "./helpers";
@@ -39,6 +39,21 @@ function spansOf(n: NodeRef, row: int32): Vec<float32> {
 		out.push(entry.selectionSpans[s]);
 	}
 	return out;
+}
+
+test "selectedExtents of a left-to-right layout, empty text included, needs no bidi levels" {
+	const was = plainShaping();
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const empty = labelOf(s, "");
+	assert (empty.textLayout().selectedExtents(0, 0, 0, 0.0, 4.0).length as int32) >= 0;
+	const plain = labelOf(s, "abc");
+	const layout = plain.textLayout();
+	assert (layout.bidi.lineLevels.length as int32) == 0;
+	const spans = layout.selectedExtents(0, 1, 2, 0.0, 0.0);
+	assert (spans.length as int32) == 2 && spans[0] < spans[1];
+	empty.dispose();
+	plain.dispose();
+	setTextShaping(was);
 }
 
 test "a selection across a direction change is two rectangles on one row" {
