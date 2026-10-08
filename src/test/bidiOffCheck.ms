@@ -48,6 +48,7 @@ test "an Arabic letter, a right-to-left mark and a right-to-left isolate are all
 test "text with no possibly right-to-left codepoint is laid out as before" {
 	assert TextLayout.layout("abc \u{58F} \u{3042} \u{1F600}", STYLE).ok;
 	assert TextLayout.layout("", STYLE).ok;
+	assert TextLayout.layout("\u{FEFF}abc", STYLE).ok && !possiblyRtl(0xFEFF) && possiblyRtl(0xFEFE);
 	assert !possiblyRtl(0x58F) && possiblyRtl(0x590) && possiblyRtl(0x8FF) && !possiblyRtl(0x900);
 }
 

@@ -2580,7 +2580,7 @@ selection over visual order.
 - **Layout.** `shapeText` resolves one paragraph per `U+000A` (the P4 tailoring) and keeps
   `ShapedText.bidi` (per codepoint: level, L1 class, and a level per paragraph) as side tables,
   empty for text with no possibly-right-to-left codepoint (`possiblyRtl`, the range test of
-  Makepad `shaper.rs:31-37`). `wrapText` wraps on the logical pen, then reorders each line
+  Makepad `shaper.rs:31-37`, minus U+FEFF, a BN, so a leading byte order mark is not refused). `wrapText` wraps on the logical pen, then reorders each line
   (UAX #9 section 3.4): L1 with the trailing whitespace of the line, then L2 as geometry. The
   slot x of an odd-level run is the reflection of its logical interval inside the run's extent,
   nested from the highest level down. `TextLayout.bidi` keeps the levels, the L1 classes, the

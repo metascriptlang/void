@@ -29,7 +29,7 @@ export function possiblyRtl(codepoint: int32): boolean {
 	if (codepoint == 0x2067 || codepoint == 0x2068) { return true; }
 	if (codepoint < 0xFB1D) { return false; }
 	if (codepoint <= 0xFDFF) { return true; }
-	if (codepoint >= 0xFE70 && codepoint <= 0xFEFF) { return true; }
+	if (codepoint >= 0xFE70 && codepoint <= 0xFEFE) { return true; }
 	if (codepoint >= 0x10800 && codepoint <= 0x10FFF) { return true; }
 	return codepoint >= 0x1E800 && codepoint <= 0x1EFFF;
 }
