@@ -1176,6 +1176,66 @@ run_allocation() {
 	note "allocation: nor in the card table path ($(echo $CARD_TABLE_PATH_FUNCTIONS))"
 }
 
+# ---- gl core -------------------------------------------------------------------------------
+
+# The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
+# SOKOL_GLCORE (glsl430) as void2d's golden.sh --backend gl builds: name, then the env that
+# selects the pixel-art preset, or - when the check has only the core run.
+GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
+	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
+	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
+	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt"
+
+run_gl_core() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "gl-core: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	case "$(uname -s)" in
+		MINGW*|MSYS*|CYGWIN*) ;;
+		*) skip "gl-core: this runner builds the GL core variant on Windows only"; return ;;
+	esac
+	rm -rf out/debug/.cache
+	run_gl_checks
+	rm -rf out/debug/.cache
+}
+
+run_gl_checks() {
+	runs=0
+	for entry in $GL_CHECKS; do
+		name=${entry%%:*}
+		pixel=${entry#*:}
+		exe="$WORK/gl_$name.exe"
+		rm -f "$exe"
+		if ! msc build -d:voidGlCore --passC=-DSOKOL_GLCORE tests/integration/$name.ms --output="$exe" \
+			> "$WORK/gl_$name.build.log" 2>&1; then
+			fail "gl-core: tests/integration/$name.ms does not build for GL core — see $WORK/gl_$name.build.log"
+			return
+		fi
+		for preset in core $pixel; do
+			[ "$preset" = "-" ] && continue
+			log="$WORK/gl_$name.$preset.log"
+			status=0
+			if [ "$preset" = core ]; then
+				"$exe" > "$log" 2>&1 || status=$?
+			else
+				env "$preset" "$exe" > "$log" 2>&1 || status=$?
+			fi
+			if [ "$status" -eq 3 ]; then
+				skip "gl-core: no GL readback backend"
+				return
+			fi
+			if [ "$status" -ne 0 ] || ! grep -q '^PASS ' "$log"; then
+				fail "gl-core: $name ($preset) on GL core (exit $status) — see $log"
+				return
+			fi
+			runs=$((runs + 1))
+		done
+	done
+	pass "gl-core: $runs readback runs of $(echo $GL_CHECKS | wc -w) void3d checks pass on SOKOL_GLCORE (glsl430)"
+}
+
 # ---- pending ------------------------------------------------------------------------------
 
 # tests/PENDING3D.md on rexa's rule: a listed case that stops holding fails the run, and its row
@@ -2718,6 +2778,7 @@ run_gltf
 run_both_layers
 run_world_label
 run_card_table
+run_gl_core
 run_stores
 run_views
 run_target_owner

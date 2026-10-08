@@ -28,7 +28,7 @@ esac
 
 # The void3d shaders also ship to iOS (device + simulator); void2d does not.
 LANGS="metal_macos:glsl300es:glsl430:wgsl:hlsl5"
-LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:wgsl:hlsl5"
+LANGS_IOS="metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5"
 
 guard() {
 	guard="#if !defined(VOID_SOKOL_BACKEND_H)\n#error \"include src/sokol/backend.h before $2\"\n#endif"

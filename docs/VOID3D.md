@@ -3274,6 +3274,29 @@ campfire and particle capture byte-identical to its baseline, as row 3's shader 
 case and its control; `gate.sh` GREEN (golden 107/107, 7 known skips). Not run: GLES3, web and
 Android. Row 5 lands separately, after void2d's outline lane.
 
+### void3d on GL core (glsl430), as built
+
+**What changes for the author.** void3d builds for `SOKOL_GLCORE`, the desktop GL 4.3 backend Void's
+platform table gives Linux, where every such build used to stop at `src/void3d/shaderBackends.h`.
+Build with void2d's flags, `-d:voidGlCore --passC=-DSOKOL_GLCORE` (`scripts/golden.sh --backend gl`).
+
+**Mechanism: the existing one.** `scripts/regen-shaders.sh` adds `glsl430` to void3d's language
+list (`LANGS_IOS`), so `shader3d.glsl.h`, `pixelArt3d.glsl.h` and `gpuCopy.glsl.h` carry a GL core
+program for every declared key; sokol-shdc's `--ifdef` output keeps each backend's text behind its
+own define, so other backends compile nothing more. Every array the headers held before is
+byte-identical (an array-by-array diff); only glsl430 arrays were added. The backend differences the
+renderer must respect were already queried rather than assumed: depth range (`depthZeroToOne()`,
+the shadow map's `mapMatrix`) and row order (`originTopLeft()`, the label's UV, the shadow map's
+rows). No `src/gpu` change.
+
+**Evidence.** The D3D11 capture bytes are not GL's, so GL is judged as void2d's GL core row is,
+by checks that read their own thresholds: the gate's `gl-core` stage builds `alphaKill`,
+`billboardBlend`, `cardTable`, `dirShadow`, `mapMaterial`, `movingMaterial`, `mrtBlend`,
+`renderOrder`, `sortLayer`, `targetTexture` and `worldLabel` for GL core and runs each in the core
+preset and, where it has one, the pixel-art preset, every run printing its `PASS` line; the object
+cache is evicted around the GL builds (the cache ignores the backend define's headers). Ran: the GL
+core builds of `billboardBlend`, `dirShadow` and `cardTable` link. Not run: any GL frame.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
