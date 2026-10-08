@@ -2297,13 +2297,15 @@ run_dir_shadow() {
 	for preset in 0; do
 		log="$WORK/dirShadow.perspective.$preset.log"
 		status=0
-		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=0 VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" 			> "$log" 2>&1 || status=$?
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=0 VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" \
+			> "$log" 2>&1 || status=$?
 		if [ "$status" -ne 0 ] || ! grep -q '^PASS dir shadow: ' "$log"; then
 			fail "dir-shadow: the perspective camera in preset $preset (exit $status) — see $log"
 			return
 		fi
 		status=0
-		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=1 VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" 			> "$log.control" 2>&1 || status=$?
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=1 VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" \
+			> "$log.control" 2>&1 || status=$?
 		if [ "$status" -eq 0 ] || ! grep -q 'no shadow under the caster' "$log.control"; then
 			fail "dir-shadow: the perspective detached control in preset $preset still darkened the ground"
 			return
