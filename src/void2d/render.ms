@@ -231,7 +231,37 @@ function tileBounds(s: Scene2D, i: int32): void {
 }
 
 
+when (voidTextOutline) {
+	function outlineReach(s: Scene2D, i: int32): float32 {
+		const payload: int32 = s.payloads[i];
+		if (payload == NO_LABEL_TEXT) { return 0.0; }
+		const text: LabelText = labelTexts[payload];
+		if (!(text.outlineWidth > 0.0) || !(text.outlineColor.a > 0.0)) { return 0.0; }
+		const world = s.worlds[i];
+		const det: float32 = Math.abs(world.a * world.d - world.b * world.c) as float32;
+		const linear: float32 = Math.sqrt(det) as float32;
+		const devicePerLocal: float32 = linear * currentRenderScale();
+		if (!(devicePerLocal > 0.0)) { return text.outlineWidth; }
+		return text.outlineWidth + 1.0 / devicePerLocal;
+	}
+} else {
+	function outlineReach(s: Scene2D, i: int32): float32 {
+		return 0.0;
+	}
+}
+
 function localBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
+	const own: Bounds2D = ownBounds(s, i, query);
+	if (query || s.kinds[i] !== DrawKind.Label) { return own; }
+	const reach: float32 = outlineReach(s, i);
+	if (reach <= 0.0) { return own; }
+	return {
+		xMin: own.xMin - reach, yMin: own.yMin - reach,
+		xMax: own.xMax + reach, yMax: own.yMax + reach,
+	};
+}
+
+function ownBounds(s: Scene2D, i: int32, query: boolean): Bounds2D {
 	const kind: DrawKind = s.kinds[i];
 	const payload: int32 = s.payloads[i];
 	const w: float32 = s.contents[i].w;
@@ -664,6 +694,27 @@ function emitGlyph(
 	}
 }
 
+when (voidTextOutline) {
+	function emitOutline(space: GlyphSpace, blend: BlendMode, text: LabelText, na: float32): void {
+		if ((text.placedOutline.length as int32) == 0) { return; }
+		const ink: Color = text.outlineColor.faded(na);
+		let viewPage: GlyphPage = NO_GLYPH_PAGE;
+		let view: uint32 = 0;
+		for (const p of text.placedOutline) {
+			if (p.w <= 0.0 || p.h <= 0.0) { continue; }
+			if (p.page != viewPage) {
+				view = glyphPageView(glyphPageHandle(p.page));
+				viewPage = p.page;
+				markGlyphPageDrawn(p.page);
+			}
+			emitGlyph(space, blend, view, p, PageKind.Coverage, ink);
+		}
+	}
+} else {
+	function emitOutline(space: GlyphSpace, blend: BlendMode, text: LabelText, na: float32): void {
+	}
+}
+
 function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: float32): void {
 	const payload: int32 = s.payloads[i];
 	if (payload == NO_LABEL_TEXT) { return; }
@@ -695,6 +746,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		scale: scale,
 	};
 	if (text.regime == TextRegime.Sdf) { setSampler(Smooth.On, false); }
+	emitOutline(space, blend, text, na);
 	const passes: int32 = text.colourGlyphs > 0 ? 2 : 1;
 	const scaled: boolean = !translationOnly(world);
 	for (let pass: int32 = 0; pass < passes; pass++) {

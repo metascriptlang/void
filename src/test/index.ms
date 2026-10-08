@@ -105,6 +105,7 @@ when (voidTextOutline) {
 	import "./glyphOutlineCheck";
 	import "./outlineOracleCheck";
 	import "./labelOutlineCheck";
+	import "./outlineEmitCheck";
 }
 when (voidSdfText) {
 	import "./textSdfCheck";
