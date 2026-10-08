@@ -1983,7 +1983,7 @@ code by the builder; every fix carries a T1 pin that fails on the code before it
 | E5 | `boxStyle.ms` `linearFill`/`slashFill`/`checkerFill` | rebuilt the fill from `solidFill()`, dropping a `ditheredFill()` called first | fixed `d39bab31`; pin "ditheredFill before the fill" |
 | E6 | `render.ms` `emitBox` | a border-only instance for a visible border colour of no width | fixed `d39bab31`; pin "an inset shadow over a border of no width" |
 | E7 | `render.ms` `fringeBounds` | a collapsed fill's miter may reach four times its extent, past the one-pixel bounds; the same gap held at half a pixel before | *plausible*, not fixed |
-| E8 | shader `boxFillAt` | a `BoxFill` struct literal with `cell: 0` or a zero slash period divides by zero; the constructors refuse both | *plausible*, not reachable through the constructors |
+| E8 | shader `boxFillAt` | a `BoxFill` struct literal with `cell: 0`, a zero slash period or falling stops divides by zero; the constructors refuse them, a literal skipped them | fixed: `setBoxStyle` checks the fill (`boxStyle.ms` `checkFill`) and stops by name; abort entry `tests/aborts/boxFillCellZero.ms` |
 
 Sound, as checked: the lane packing of every mode against the shader; mode isolation of
 `filled`; the inline card and the split order giving the same compositing; zero-alpha shadows;
