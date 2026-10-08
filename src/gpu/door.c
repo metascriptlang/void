@@ -246,13 +246,32 @@ uint32_t doorUniformSlotMask(int32_t program) {
 	return mask;
 }
 
-// Every backend's desc carries the same block sizes; the D3D11 one is read, and a build whose
-// shader carries no hlsl5 (shader2d under GLCORE) stops by name.
+// Read only backend-agnostic fields (stages, block sizes); headless reflection runs before
+// sg_setup, so the backend is the compiled one, not sg_query_backend().
+#if defined(SOKOL_D3D11)
+	#define DOOR_REFLECTED_BACKEND SG_BACKEND_D3D11
+	#define DOOR_REFLECTED_NAME "D3D11"
+#elif defined(SOKOL_GLCORE)
+	#define DOOR_REFLECTED_BACKEND SG_BACKEND_GLCORE
+	#define DOOR_REFLECTED_NAME "GL core"
+#elif defined(SOKOL_GLES3)
+	#define DOOR_REFLECTED_BACKEND SG_BACKEND_GLES3
+	#define DOOR_REFLECTED_NAME "GLES3"
+#elif defined(SOKOL_WGPU)
+	#define DOOR_REFLECTED_BACKEND SG_BACKEND_WGPU
+	#define DOOR_REFLECTED_NAME "WebGPU"
+#elif defined(SOKOL_METAL)
+	#define DOOR_REFLECTED_BACKEND SG_BACKEND_METAL_MACOS
+	#define DOOR_REFLECTED_NAME "Metal"
+#else
+	#error "gpu door: no SOKOL_<backend> define to reflect shader slots from"
+#endif
+
 static const sg_shader_desc *reflectionDesc(int32_t program) {
-	const sg_shader_desc *desc = shaderOf(program)(SG_BACKEND_D3D11);
+	const sg_shader_desc *desc = shaderOf(program)(DOOR_REFLECTED_BACKEND);
 	if (desc == 0) {
-		fprintf(stderr, "gpu door: program %d carries no D3D11 shader desc to reflect slots from; "
-			"a GL core build has none\n", (int)program);
+		fprintf(stderr, "gpu door: program %d has no " DOOR_REFLECTED_NAME " shader desc\n",
+			(int)program);
 		abort();
 	}
 	return desc;
