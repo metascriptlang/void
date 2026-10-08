@@ -88,7 +88,7 @@ scene: rows marked later than the phase you are in are entries in `tests/PENDING
 | `harness/` | P0 | solid (hand-computed) · mustFail (deliberately wrong golden) |
 | `prim/` | P0 | roundedRect · strokeRect · ellipsePieRing · polygonBezier · gradientLinear · gradientRadial |
 | `prim/` | P2 | per-corner radii · per-side borders · dashed border · drop shadow · inset shadow · shadow+fill+border in one instance · gradient Oklab · multi-stop · dither band · slash and checkerboard |
-| `prim/` | P6 | aaNonUniformBox (four plain Rects at 2:1, 3:1, 1:3 and 4:1 rotated 20 degrees at DPI 1, judged by `captureCheck.ms` against the supersampled oracle; capture owed, `tests/PENDING.md sdf-non-uniform-bound`) |
+| `prim/` | P6 | aaNonUniformBox (four plain Rects at 2:1, 3:1, 1:3 and 4:1 rotated 20 degrees at DPI 1, judged by `captureCheck.ms` against the supersampled oracle; captured, `78795b3`) |
 | `prim/` | D1 | effectOnUi (a box style, a wavy underline, a selection band, a label's runs, selection and caret, and an image style, each drawn plain and under a grayscale matrix on a grey ground; `tests/golden/invariants.ms` holds every pixel of the grey copy to its twin's luma within 2 levels, the rounding of two stacked blends) |
 | `xform/` | P0 | rotate (0 / 7° / 37° / 45°) · scale (0.5 / 1 / 2) · pivot · nonUniform |
 | `xform/` | P2 | pivot from `Tile.dx/dy` |
