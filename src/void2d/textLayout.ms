@@ -608,7 +608,12 @@ function assignRuns(cps: Span<Codepoint>, runs: Readonly<Span<TextRun>>, units: 
 
 function markShapingBreaks(cps: Span<Codepoint>, breaks: Readonly<Span<int32>>): void {
 	const count: int32 = cps.length as int32;
+	const units: int32 = count > 0 ? cps[count - 1].unitEnd() : 0;
 	for (const at of breaks) {
+		if (at < 0 || at >= units) {
+			console.log(`void2d: shaping break ${at} falls outside the text's ${units} UTF-16 units`);
+			unreachable;
+		}
 		let lo: int32 = 0;
 		let hi: int32 = count;
 		while (lo < hi) {
