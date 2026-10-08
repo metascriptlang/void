@@ -3351,7 +3351,7 @@ moves into a post pass the Heaps way.
 exactly 1 (`exp(0)`), so at stop 0 every capture is expected byte-identical; the gate proves it.
 
 **Not built, recorded.** Heaps' Reinhard, Filmic and PBR Neutral curves; three.js' per-material
-`toneMapped = false`; an HDR target.
+`toneMapped = false`. The HDR target came after, opt-in: see "HDR scene target, as built".
 
 **Ran.** Headless `programKeyCheck.ms` 327/327 (the frame block's slot in every scene program, the
 multiplier exactly 1 at stop 0); `msc check` of the integration test. Not run: the GPU stage, the
@@ -3361,6 +3361,57 @@ captures.
 throughout: `gate3d.sh` 340 PASS with the 3 known skips (tests 1452/1452), every capture byte-identical
 at stop 0, the `exposure` stage GREEN in both presets (the frame block bound on slot 6 by every scene
 program drew no validation stop); `gate.sh` GREEN (golden 117/117, 8 known skips).
+
+### HDR scene target, as built
+
+**What changes for the author.** `ForwardRenderer.createHdr(context, background)` makes a forward
+preset whose scene draws into an Rgba16f target: blending happens in linear light, a sum of additive
+layers above 1 survives, and `setExposure` exposes that sum in one tone map pass before the colour
+target, the Heaps way. `colorTarget` stays the Rgba8 image `drawToScreen` copies and an
+`endPrepared` caller composites, so nothing downstream changes. The context needs
+`FORWARD_HDR_UNIFORM_LENGTH` floats. `ForwardRenderer.create` is untouched and remains the default:
+every LDR capture is expected byte-identical. A device that cannot render Rgba16f (GLES3 or WebGL2
+without a color-buffer-float extension) gets `ForwardError.HdrUnsupported` at creation, with no
+LDR fallback; createHdr asks the device, so it runs after `gfxSetup`.
+
+**References, read.** Heaps `b9aa6dcb` `h3d/scene/pbr/Renderer.hx`: `hdr` is RGBA16F (`:650`, RGB10A2
+under MRT_low), `ldr` the default format (`:651`); lighting, forward and forwardAlpha draw into hdr
+(`:841-850`), then `setTarget(ldr); tonemap.render()` (`:864-870`), a ScreenFx whose
+`hdrTexture` is hdr (`:788`); AfterTonemapping and overlays draw on ldr.
+`h3d/shader/pbr/ToneMapping.hx`: `color.rgb *= exposureExp`, mode 0 `saturate`, then the gamma
+encode, the alpha passed through. sokol renders RGBA16F on Metal, D3D11, GL core and WebGPU, on
+GLES3/WebGL2 only with EXT_color_buffer_(half_)float (`sokol_gfx.h` `_sg_gl_init_pixelformats_*`).
+
+**As built.** The door gained `PixelFormat.Rgba16f` and `formatRenderable(format)` (approved
+NEW MECHANISM, its own commit). The scene programs stay one set: the frame block's `FRAME_LINEAR`
+(`frame.z`) tells `toneMap` (`shader3dBlocks.glsl`) to return the colour decoded and unclamped,
+skipping M45's per-fragment exposure, so no key bit was added; `Renderer.linearOutput` writes it,
+set by the preset. The tone map is the core's `(Post, Core)` key (`programKeys.txt` row `toneMap`,
+`toneMapFs` in `shader3d.glsl`), drawn by `drawScreen` like the pixel-art Post stage, with its own
+4-float block (`TONE_MAP_UNIFORM_SLOT`, the exposure multiplier at `TONE_MAP_EXPOSURE`) and the hdr
+target bound as its texture. The HDR target clears to the background decoded
+(`linearBackground`). The encode is ColorSpaces' exact sRGB pair, as everywhere in void3d, not
+Heaps' `pow(1/gamma)`, so at exposure 0 an opaque scene reads as the LDR preset does, within the
+half-float step.
+
+**Where it diverges from Heaps, and why.** Heaps' pbr renderer is always HDR; here it is opt-in per
+preset, because Rgba16f doubles the scene's colour bandwidth (8 B/px plus one full-screen pass)
+and WebGL2 may not have it. Only Linear (mode 0) is built.
+
+**Cost.** One Rgba16f target the scene's size, one more full-screen pass per frame, a 4-float
+block, one material.
+
+**Not built, recorded.** HDR in the pixel-art preset; Reinhard, Filmic and PBR Neutral curves; bloom
+(the next row this target opens); the web stages (web3d is red on the compiler card, and WebGL2
+needs the extension query to pass).
+
+**Ran.** Headless `programKeyCheck.ms` 330/330 (the `(Post, Core)` key declared, 89 keys, its block
+length read off the shader desc, the refusal by name before any reservation, the tone map block and
+material, `linearBackground`); `msc check` and `msc build` of `tests/integration/hdr.ms`; the
+regenerated headers change only the scene programs' fragment sources (287 arrays: the toneMap
+branch) and add `toneMap`'s. Not run: the GPU stages `hdr` and `gl-core`'s `hdr` (three exposures:
+1, 1.5, 0.4; the overlap pinned against a blend of encoded colours, the additive sum at 0.4 against
+a target clipped at 1), the captures.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
