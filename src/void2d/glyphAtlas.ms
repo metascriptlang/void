@@ -439,9 +439,10 @@ function allocate(
 		if (placed.ok) { return Result.ok([p as GlyphPage, placed.value[0], placed.value[1]]); }
 	}
 	let page: GlyphPage = NO_GLYPH_PAGE;
-	if ((atlas.pages.length as int32) < atlas.maxPages) {
-		const handle: int32 = void2dGlyphPageCreate(atlas.pageSize, kind as int32);
-		if (handle < 0) { return Result.err(AtlasError.Full); }
+	const handle: int32 = (atlas.pages.length as int32) < atlas.maxPages
+		? void2dGlyphPageCreate(atlas.pageSize, kind as int32)
+		: -1;
+	if (handle >= 0) {
 		atlas.pages.push({ kind: kind, handle: handle as GlyphPageHandle, top: 0, drawnFrame: -1 });
 		page = ((atlas.pages.length as int32) - 1) as GlyphPage;
 	} else {

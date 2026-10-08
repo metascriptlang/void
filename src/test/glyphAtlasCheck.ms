@@ -14,6 +14,7 @@ import {
 	NO_GLYPH_PAGE,
 	beginUploadFrame,
 } from "../void2d/glyphAtlas";
+import { void2dGlyphPageCreate, void2dGlyphPageRelease } from "../void2d/glyph.h";
 
 let loadedFace: int32 = -1;
 
@@ -243,6 +244,26 @@ test "a page with no live tile is reclaimed whole and bytes stay bounded" {
 	const again = atlas.acquire(keyFor(face, "A".code, 40.0, 0));
 	assert again.ok;
 	assert atlas.rasterizations == (held.length as int32) + 2;
+}
+
+test "an atlas under its page limit reclaims its own page when the process has no slot left" {
+	const face = testFace();
+	const atlas = GlyphAtlas.create(64, 4);
+	defer atlas.dispose();
+	const first = atlas.acquire(keyFor(face, "A".code, 40.0, 0));
+	assert first.ok;
+	if (first.ok) { atlas.release(first.value); }
+	assert atlas.pageCount() == 1;
+	let slots: Vec<int32> = new Array(0);
+	let handle: int32 = void2dGlyphPageCreate(16, PageKind.Coverage as int32);
+	while (handle >= 0) {
+		slots.push(handle);
+		handle = void2dGlyphPageCreate(16, PageKind.Coverage as int32);
+	}
+	const next = atlas.acquire(keyFor(face, "Q".code, 41.0, 0));
+	for (const slot of slots) { assert void2dGlyphPageRelease(slot) == 0; }
+	assert next.ok;
+	assert atlas.reclaims == 1;
 }
 
 test "a page drawn from in this frame is not reclaimed until the next frame" {
