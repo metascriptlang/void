@@ -2646,7 +2646,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - WebGL2 and GL core 4.3 desktop (glsl430) show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
 - Metal macOS, Metal iOS and GLES3 Android have their readbacks written, and each reports a pass rate from a run on the human's hardware or stays a SKIP that names the missing run.
 
-**Closes** (`tests/PENDING.md`, checked by the gate): `style:line-length`, `graphics:subpixel-fill`.
+**Closes** (`tests/PENDING.md`, checked by the gate): `style:line-length`.
 
 **Re-owned at the P6 review, 2026-10-08** (void manager): the inter-mark pair and the sixteen cluster rows of the shaper oracle to declared, because kb against HarfBuzz is an upstream limit; the WebGPU backend and the WebGL2 pixel-centre rows to the compiler owner beside the new web-runs row, which names the compiler card and the Yoga link that block every web run; the mobile sample-count run to the human, with a gate SKIP that names it.
 
