@@ -12,8 +12,9 @@ OUT=out/web3d
 CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
 
 # name:pixel-art setting, or name:- for a check with only the core run. cardTable, worldLabel and
-# targetTexture draw void2d text, whose emcc build stops at the bool-span card
-# (~/metascript/.inbox/compiler/2026-09-26-interface-array-to-span-void-pointer.md).
+# targetTexture draw void2d text and link yoga, which the web build cannot: wasm-ld stops on
+# undefined YGNodeGetParent, YGNodeRemoveChild and YGNodeFreeRecursive
+# (~/metascript/.inbox/yoga/2026-10-03-yogah-has-no-web-branch-voids-wasm-cannot-link-sync.md).
 WEB_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
 	dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
