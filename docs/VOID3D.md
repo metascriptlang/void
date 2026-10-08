@@ -3396,12 +3396,13 @@ half-float step.
 
 **Where it diverges from Heaps, and why.** Heaps' pbr renderer is always HDR; here it is opt-in per
 preset, because Rgba16f doubles the scene's colour bandwidth (8 B/px plus one full-screen pass)
-and WebGL2 may not have it. Only Linear (mode 0) is built.
+and WebGL2 may not have it. Built with Linear (mode 0) only; the other curves followed (see "Tone
+curves, as built").
 
 **Cost.** One Rgba16f target the scene's size, one more full-screen pass per frame, a 4-float
 block, one material.
 
-**Not built, recorded.** HDR in the pixel-art preset; Reinhard, Filmic and PBR Neutral curves; bloom
+**Not built, recorded.** HDR in the pixel-art preset; bloom
 (the next row this target opens); the web stages (web3d is red on the compiler card, and WebGL2
 needs the extension query to pass).
 
@@ -3412,6 +3413,41 @@ regenerated headers change only the scene programs' fragment sources (287 arrays
 branch) and add `toneMap`'s. Not run: the GPU stages `hdr` and `gl-core`'s `hdr` (three exposures:
 1, 1.5, 0.4; the overlap pinned against a blend of encoded colours, the additive sum at 0.4 against
 a target clipped at 1), the captures.
+
+### Tone curves, as built
+
+**What changes for the author.** `setToneMode(renderer.core, ToneMode.Reinhard)` (or `Filmic`,
+`Neutral`) picks the curve the exposed colour goes through, after `setExposure`. In an HDR forward
+preset the curve runs once in the tone map pass, over the blended sum; in the LDR presets (forward
+and pixel-art) it runs per fragment, per layer, as M45's exposure does. `ToneMode.Linear` stays the
+default, so nothing changes until a caller asks.
+
+**References, read.** Heaps `b9aa6dcb` `h3d/shader/pbr/ToneMapping.hx`: `mode` 0 linear `saturate`,
+1 Reinhard `c / (c + 1)`, 2 Filmic `saturate((c(ac + b)) / (c(cc + d) + e))` with
+a..e = 2.51, 0.03, 2.43, 0.59, 0.14 (its constructor), 3 Khronos PBR Neutral (start compression
+0.76, desaturation 0.15); all after `color.rgb *= exposureExp`. `h3d/scene/pbr/Renderer.hx:105`
+(`toneMode : TonemapMap = Reinhard`), `:774-787` (the mode numbers, the Filmic props).
+
+**As built.** One `toneCurve` block (`shader3dBlocks.glsl`) holds the switch, shared by the
+per-fragment `toneMap` block and `toneMapFs`. The core's `toneMode` reaches the scene programs at
+`FRAME_TONE_MODE` (`frame.w`, the frame block's free lane, no length change) and the tone map pass at
+`TONE_MAP_MODE` in its own block. `ToneMode`'s members are ToneMapping's mode numbers, pinned by
+`programKeyCheck.ms`. The per-fragment fast path returns the colour untouched only at exposure 0 and
+the linear curve, so every capture is expected byte-identical.
+
+**Where it diverges from Heaps, and why.** Heaps defaults `toneMode` to Reinhard; void3d keeps
+Linear, so existing scenes and captures do not move and a curve is an explicit choice. Filmic's a..e
+are Heaps' defaults, fixed: the props that edit them are not built. In the LDR presets the curve
+runs per layer before blending (M45's divergence, unchanged); the HDR preset runs it over the sum,
+the Heaps way.
+
+**Ran.** Headless `programKeyCheck.ms` 331/331 (mode numbers, the linear default, setToneMode);
+`msc check` and `msc build` of `tests/integration/hdr.ms` and `exposure.ms`; regen changes only the
+scene programs' and `toneMap`'s fragment sources (294 arrays). The GPU stages are written, not run:
+`hdr` adds Reinhard, Filmic and Neutral at a multiplier of 0.6, each region against the Heaps
+formula (`tests/integration/toneCurves.ms`, on greys), the overlap (0.25 linear) and the additive
+sum (1.22 linear, above 1) against the linear curve, at least 10 levels apart; `exposure` adds
+Reinhard per layer at 1.5 in both presets.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
