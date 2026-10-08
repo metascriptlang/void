@@ -92,8 +92,9 @@ function makePreset(): PixelArtRenderer {
 	unreachable;
 }
 
-function halves(): uint32 {
-	const pixels: Vec<uint32> = [0x40404040, 0xC0C0C0C0];
+function halves(premultiplied: boolean): uint32 {
+	const pixels: Vec<uint32> =
+		premultiplied ? [0x40404040, 0xC0C0C0C0] : [0x40FFFFFF, 0xC0FFFFFF];
 	return makeTextureView(makeImage(pixels, 2, 1));
 }
 
@@ -108,7 +109,9 @@ function instanceBuffer(x: float32): uint32 {
 	return makeVertexBuffer(values[0..BILLBOARD_INSTANCE_STRIDE]);
 }
 
-function billboard(x: float32, key: ProgramKey, pass: RenderState, phase: Phase): void {
+function billboard(
+	x: float32, key: ProgramKey, pass: RenderState, phase: Phase, texels: uint32,
+): void {
 	const values: Vec<float32> = [1.0, 1.0, 1.0, 1.0, 4.0, 0.0, 0.25, 0.0];
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, BILLBOARD_UNIFORM_SLOT, BILLBOARD_UNIFORM_LENGTH);
@@ -116,7 +119,7 @@ function billboard(x: float32, key: ProgramKey, pass: RenderState, phase: Phase)
 	if (!writeUniforms(context, reserved.value, values).ok) { unreachable; }
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, {
 		...Material.keyed(key, pass, phase),
-		texture0: halves(),
+		texture0: texels,
 		sampler0: Sampler.create(FilterMode.Nearest, Wrap.Clamp).asHandle(),
 		uniforms: reserved.value,
 	});
@@ -136,9 +139,10 @@ function init(): void {
 	const state: RenderState = RenderState.defaults().withCulling(Face.None);
 	const blended: RenderState = state.withBlendMode(BlendMode.AlphaAdd);
 	const straight: ProgramKey = ProgramKey.of(Program.Billboard);
-	billboard(STRAIGHT_X, straight, state, Phase.Opaque);
+	billboard(STRAIGHT_X, straight, state, Phase.Opaque, halves(false));
 	const second: ProgramKey = control ? straight : straight.withPremultiplied();
-	billboard(BLENDED_X, second, control ? state : blended, control ? Phase.Opaque : Phase.Alpha);
+	const phase: Phase = control ? Phase.Opaque : Phase.Alpha;
+	billboard(BLENDED_X, second, control ? state : blended, phase, halves(true));
 }
 
 function viewOf(): CameraView {
