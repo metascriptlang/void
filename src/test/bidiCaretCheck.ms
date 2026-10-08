@@ -192,3 +192,48 @@ test "splitAt inside a Hebrew run gives each half its own reflection" {
 	assert approx(right.glyphs[0].x + right.glyphs[0].advance, right.lines[0].width);
 	setTextShaping(was);
 }
+
+test "a click past either end of a right-to-left line lands on its logical end and start" {
+	const was = plainShaping();
+	const l = laidIn(HEBREW_PHRASE, styleOf(hebrewFont(), 0.0), TextDirection.Auto);
+	assert l.indexAt(-20.0, 1.0) == l.lines[0].indexEnd;
+	assert l.indexAt(l.lines[0].width + 20.0, 1.0) == 0;
+	setTextShaping(was);
+}
+
+test "the empty line after a final newline of a right-to-left paragraph answers a caret" {
+	const was = plainShaping();
+	const l = laidIn("\u{5D0}\u{5D1}\n", styleOf(hebrewFont(), 0.0), TextDirection.Auto);
+	assert (l.lines.length as int32) == 2;
+	const last = l.lines[1];
+	assert l.lineBoxAt(last.indexStart).top == last.top;
+	assert l.indexAt(0.0, last.top + 1.0) == last.indexStart;
+	assert l.indexAt(l.xForIndex(last.indexStart), last.top + 1.0) == last.indexStart;
+	setTextShaping(was);
+}
+
+test "digits in a right-to-left paragraph run left to right, strong carets at their edges" {
+	const was = plainShaping();
+	const l = laidIn("\u{5D0} 123 \u{5D1}", styleOf(hebrewFont(), 0.0), TextDirection.Auto);
+	assert l.xForIndex(5) < l.xForIndex(3) && l.xForIndex(3) < l.xForIndex(4);
+	assert l.xForIndex(4) < l.xForIndex(2) && l.xForIndex(2) < l.xForIndex(1);
+	assert holdsRoundTrip(l);
+	setTextShaping(was);
+}
+
+test "an aligned mixed line keeps its carets on the drawn glyphs" {
+	const was = plainShaping();
+	const font = hebrewFont();
+	for (const align of [Align.Right, Align.Center]) {
+		const style: TextStyle = { ...styleOf(font, 300.0), align: align };
+		const l = laidIn(MIXED, style, TextDirection.Auto);
+		assert l.lines[0].x > 0.0;
+		assert approx(l.xForIndex(0), l.lines[0].x);
+		assert approx(l.xForIndex(11), l.lines[0].x + l.lines[0].width);
+		assert holdsRoundTrip(l);
+		const rtl = laidIn(HEBREW_PHRASE, style, TextDirection.Auto);
+		assert approx(rtl.xForIndex(0), rtl.lines[0].x + rtl.lines[0].width);
+		assert holdsRoundTrip(rtl);
+	}
+	setTextShaping(was);
+}
