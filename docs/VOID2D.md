@@ -2923,6 +2923,12 @@ margin. `prim/shadowStack` is the golden:
 
 Captured with `prim/boxFills`.
 
+**Follow-up, measured first.** The box gradient converts its stops to Oklab per fragment; GPUI
+does it once per instance in the vertex stage (`prepare_gradient_color`). Not built until a
+measure of fragment cost and shader bytes says it pays.
+
+**Closes** (`tests/PENDING.md`, checked by the gate): `ui:oklab-vertex`.
+
 ### The budget, at every phase
 
 Checked and recorded per phase, from `tests/bench/`: draw calls, instances and uploaded bytes at 10 000 Box + 10 000 Label; frame time of the sprite-only scene, which must not regress (guardrail 8); CPU time of a fully static 100 000-node frame and of the scrolling 200-line text view from P5 on; atlas pages and bytes after a zoom sweep; wasm size per backend and per module. Counters gate; milliseconds are reported with a warn threshold and never fail a commit — the reasoning is in [TESTING.md](TESTING.md) "T4".
