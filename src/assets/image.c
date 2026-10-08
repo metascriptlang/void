@@ -70,7 +70,7 @@ int64_t void_gif_scan(const uint8_t *b, int64_t n) {
 		const uint8_t tag = b[i++];
 		if (tag == 0x3B) {
 			if (frames == 0 || width == 0 || height == 0) return GIF_SCAN_UNDECODABLE;
-			if (restoringFrame >= 0 && restoringFrame < frames - 1) return GIF_SCAN_DISPOSAL_3;
+			if (restoringFrame >= 0) return GIF_SCAN_DISPOSAL_3;
 			if (frames > GIF_SCAN_MAX_FRAMES) return GIF_SCAN_UNDECODABLE;
 			return (width << 44) | (height << 28) | frames;
 		}

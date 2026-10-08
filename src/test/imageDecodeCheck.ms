@@ -231,15 +231,19 @@ test "disposal 3 that a frame with no control block inherits from the one before
 		withDisposal(solidFrame(4, 3, 0, 10), 3),
 		withDisposal(solidFrame(4, 3, 1, 10), GIF_NO_CONTROL),
 	]));
-	assert endsFirst.ok;
+	assert !endsFirst.ok;
+	if (!endsFirst.ok) { assert endsFirst.error == ImageError.UnsupportedDisposal; }
 }
 
-test "disposal 3 that stb never runs on the last frame, or defaults on the first, decodes" {
+test "disposal 3 on the last frame is refused, since stb runs it on reaching the trailer" {
 	const last = decodeAnimation(animatedGif(0x39, 4, 3, [
 		solidFrame(4, 3, 0, 10), withDisposal(solidFrame(4, 3, 1, 10), 3),
 	]));
-	assert last.ok;
-	if (last.ok) { assert last.value.frameCount == 2; }
+	assert !last.ok;
+	if (!last.ok) { assert last.error == ImageError.UnsupportedDisposal; }
+}
+
+test "disposal 3 on the first frame decodes, since stb defaults it with no image two back" {
 	const first = decodeAnimation(animatedGif(0x39, 4, 3, [
 		withDisposal(solidFrame(4, 3, 0, 10), 3), solidFrame(4, 3, 1, 10),
 	]));
