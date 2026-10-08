@@ -2660,7 +2660,7 @@ shaped in its direction by `kb_text_shape`, reordered per line for drawing, and 
 selection over visual order.
 
 **Built 2026-10-08, behind `-d:voidBidi`** (void-manager decisions of the same day; worktree
-`wt/p6-lane-a`, native gate and golden captures owed, see "Owed" below).
+landed on main, the web runs still owed, see "Owed" below).
 
 - **The resolver.** `src/void2d/bidi.ms` over the generated `bidiTable.h` (class ranges, paired
   brackets with their canonical openers, exact mirror pairs; `python tests/oracle/ucd.py regen`):
@@ -2706,8 +2706,8 @@ has one to extend (Makepad `shaper.rs:205` and GPUI via cosmic-text call the `un
 crate, which this builder did not read; the Makepad, GPUI and cosmic-text lines cited below are
 the spec's reading of upstream `main` on 2026-10-08, not re-read here, unlike `kb_text_shape.h`). It adds about 9.4 KB of tables per target (measured
 9 520 B native, 9 366 B wasm32 objects, `tests/bench/wasm.json`) and the resolver code. It can
-regress LTR text with the flag on if the fast path is wrong; every existing golden is to stay
-byte-identical with `-d:voidBidi` in `GOLDEN_DEFINES`, owed to the golden run.
+regress LTR text with the flag on if the fast path is wrong; every existing golden stayed
+byte-identical with `-d:voidBidi` in `GOLDEN_DEFINES` (the 2026-10-08 gate run).
 
 **NEW MECHANISM B, reordering per line after wrapping.** UAX #9 section 3.4: "these rules act on a
 per-line basis and are applied after any line wrapping". Makepad (`shaper.rs:223-226`) and GPUI via
@@ -2786,12 +2786,12 @@ held by the two style-run rows of `bidiShapedCheck.ms`).
 - The weak caret and visual cursor motion are not built; `bidi:weak-caret-and-visual-motion` in
   `tests/PENDING.md` is owned by the human, who decides whether Neon needs them.
 
-**Owed** (runs that need the native gate, GPU or the web build, not run by this lane): `sh
-scripts/gate.sh` for the all-modules T0 stage with the BiDi oracle, the allocation and module-off
-checks; `sh scripts/golden.sh` for byte-identity of every existing golden with `-d:voidBidi`;
-`sh scripts/experiment-modulesWeb.sh bidi` and
-`scripts/build-web.sh` for the linked wasm of the module and the WebGL2 pass rate of the new scenes;
-the `tests/golden/invariants.ms` no-gap check over a selection that is two spans on one row.
+**Owed** (runs that need the web build): `sh scripts/experiment-modulesWeb.sh bidi` and
+`scripts/build-web.sh` for the linked wasm of the module and the WebGL2 pass rate of the new
+scenes; the web build is also blocked by compiler card
+`2026-09-26-interface-array-to-span-void-pointer.md` (`compiler:bool-span-web`). Also owed: the
+`tests/golden/invariants.ms` no-gap check over a selection that is two spans on one row. The
+native gate ran green with the BiDi oracle in the all-modules T0 stage.
 
 **Measure.** BiDi tables 9 520 B native, 9 366 B wasm32 (objects); the forced-direction pass adds
 1 605 B and 1 339 B to `shaper.c`; the conformance oracle runs both files in about 5.5 s.
