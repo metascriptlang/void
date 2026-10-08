@@ -838,7 +838,8 @@ fi
 skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
 skip "metal iOS: no readback, and the first device run is T5"
 skip "gles3 Android: shares the glReadPixels path, needs the device"
-skip "webgpu: needs copyTextureToBuffer + mapAsync, and headless Chrome has no adapter here"
+skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"
+skip "sample_count on iOS and Android: needs the devices — tests/PENDING.md backend:sample-count-mobile"
 if [ "$WEB" -eq 1 ]; then
 	sh scripts/golden-web.sh > out/gate-golden-web.log 2>&1 || true
 	webgl2_conformance="$(grep -E '^golden webgl2' out/gate-golden-web.log || echo 'no conformance line — see out/gate-golden-web.log')"
