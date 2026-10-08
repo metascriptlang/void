@@ -11,10 +11,6 @@ export function outlineLane(width: float32, perUnit: float32): Result<int32, Atl
 	return Result.ok(lane < 1 ? 1 : lane);
 }
 
-export function laneWidth(lane: int32, perUnit: float32): float32 {
-	return (lane as float32) / perUnit;
-}
-
 export function deviceOutlineWidth(
 	widthLocal: float32,
 	devicePerLocal: float32,
@@ -22,10 +18,4 @@ export function deviceOutlineWidth(
 ): float32 {
 	const device: float32 = widthLocal * devicePerLocal;
 	return pixelExact ? snapStroke(device) : device;
-}
-
-export function outlineCoverage(inside: float32, width: float32): float32 {
-	const covered: float32 = 0.5 + inside + width;
-	if (covered <= 0.0) { return 0.0; }
-	return covered >= 1.0 ? 1.0 : covered;
 }

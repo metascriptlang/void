@@ -1889,10 +1889,18 @@ changes described above on today's compiler; the P4 web archive also takes its r
   one stops by name, and a build without the module stops by name on a width above 0
   (`tests/aborts/outlineOff.ms`, `outlineNegative.ms`). The width is in the label's own units,
   like its size, so it scales with the label; it is per label, not per run; shadow, blur and
-  stacked outlines are out of scope. **Dilation, not a ring**: the fill is drawn over a round-join
-  band outside the glyph, so a translucent fill never shows outline colour through it (Godot's MSDF
-  path is a dilation, `canvas.glsl:518-522`; its FreeType path strokes a ring under an opaque fill,
-  `text_server_adv.cpp:1344-1371`; troika's `distanceOffset`, `TextDerivedMaterial.js:162-176`).
+  stacked outlines are out of scope. **Dilation, not a ring**: the outline tile is the glyph grown by the width, so its
+  coverage is 1 under the whole glyph and the fill is drawn over it. A fill with alpha below 1, or a
+  node alpha, therefore shows the outline colour through it (the tile is `clamp(0.5 + d + w)`,
+  `d` positive inside), as Godot's MSDF path does (a dilation, `canvas.glsl:518-522`; troika's
+  `distanceOffset`, `TextDerivedMaterial.js:162-176`); only Godot's FreeType path strokes a ring
+  (`text_server_adv.cpp:1344-1371`). A band that leaves the interior clear is not built: no
+  reference text path is asked for it, and the edge pixel would need the fill's coverage in the
+  outline tile. Node alpha multiplies the fill and the outline colour separately, so the row
+  `outlineAlpha` shows a half-alpha fill over a half-alpha outline in the interior. Two
+  neighbours' tiles overlap at tight spacing and each is drawn on its own, so a translucent outline
+  colours the overlap twice; an opaque outline does not show it. Both are declared (rows `outline:translucent-interior` and
+  `outline:translucent-overlap`).
   **All outlines, then all fills** (Godot `label.cpp:817-878`, troika's preliminary draw): a tight
   label never lets a neighbour's outline cover a fill (`outlineEmitCheck.ms`). The outline colour is
   independent, `colour alpha * node alpha`, skipped at alpha 0 or width 0, and a label with no

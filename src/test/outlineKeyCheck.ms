@@ -12,10 +12,12 @@ import {
 } from "../void2d/glyphAtlas";
 import {
 	outlineLane,
-	laneWidth,
 	deviceOutlineWidth,
-	outlineCoverage,
 } from "../void2d/textOutline";
+
+function laneWidth(lane: int32, perUnit: float32): float32 {
+	return (lane as float32) / perUnit;
+}
 
 function keyOf(kind: PageKind, size: float32, variant: int32, outline: int32): GlyphKey {
 	return { kind: kind, face: 3, glyph: 77, sizePx: size, variant: variant, outline: outline };
@@ -84,6 +86,33 @@ test "an oversize glyph with ink is refused by name and one with none shares an 
 	assert atlas.tileSlots() == 1;
 }
 
+test "releasing the shared empty tile leaves it to be retained again" {
+	const face = try loadFace("assets/font.ttf") catch -1;
+	assert face >= 0;
+	const atlas = GlyphAtlas.create(1024, 2);
+	const space: GlyphKey = {
+		kind: PageKind.Coverage, face: face, glyph: glyphIndex(face, " ".code),
+		sizePx: 1100.0, variant: 0, outline: 0,
+	};
+	const first = atlas.acquire(space);
+	const second = atlas.acquire(space);
+	assert first.ok && second.ok;
+	if (first.ok && second.ok) {
+		atlas.release(first.value);
+		atlas.release(second.value);
+		assert atlas.tile(first.value).refs == 0;
+		atlas.release(second.value);
+		assert atlas.tile(first.value).refs == 0;
+		const third = atlas.acquire(space);
+		assert third.ok;
+		if (third.ok) {
+			assert third.value == first.value;
+			assert atlas.tile(third.value).refs == 1;
+		}
+	}
+	assert atlas.tileSlots() == 1;
+}
+
 test "a mask key counts its width in whole units, not in sixty-fourths" {
 	assert maskKey(4, 1023, 8).fitsKey();
 	assert maskKey(4, 8192, 8192).fitsKey();
@@ -130,13 +159,4 @@ test "a pixel-exact outline snaps to whole device pixels with a floor of one" {
 	assert deviceOutlineWidth(0.4, 1.0, true) == 1.0;
 	assert deviceOutlineWidth(0.0, 1.25, true) == 0.0;
 	assert deviceOutlineWidth(2.0, 1.25, false) == 2.5;
-}
-
-test "an outline coverage ramps over one pixel around the dilated edge" {
-	assert outlineCoverage(-3.0, 2.0) == 0.0;
-	assert outlineCoverage(-2.5, 2.0) == 0.0;
-	assert outlineCoverage(-2.0, 2.0) == 0.5;
-	assert outlineCoverage(-1.5, 2.0) == 1.0;
-	assert outlineCoverage(4.0, 2.0) == 1.0;
-	assert outlineCoverage(-0.25, 0.0) == 0.25;
 }

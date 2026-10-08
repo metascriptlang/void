@@ -202,7 +202,9 @@ function runCheck(): int32 {
 		}
 		const [drawn, tiles] = rowValue(outlineRows, "textOutline", "sweepOutlineRasterizations");
 		if (!drawn || (tiles as int32) < 1) {
-			console.log("FAIL textOutline.sweepOutlineRasterizations is 0: no outline tile was drawn");
+			console.log(
+				"FAIL textOutline.sweepOutlineRasterizations is 0: no outline tile was drawn",
+			);
 			failed = failed + 1;
 		}
 	}
