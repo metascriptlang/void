@@ -1942,3 +1942,24 @@ records them as declared with the reason, and asks for a re-review. The web runs
 
 T0 after the fixes, BUILD `1090f789`: all modules 1817 passed, bare 1442 passed. The native gate
 runs with the lane B land.
+
+## P6 re-review — SEND BACK on D1 only, then closed (2026-10-08)
+
+A fresh reader checked every resolution against its commit. Everything held but D1: stb applies a
+frame's disposal at the top of the next `stbi__gif_load_next` call, and the call that finds the
+trailer is such a call (`stb_image.h:6807-6818`, `:6943`), so a last frame with disposal 3 also read
+`two_back` before the buffer, and the test that called it safe asserted the wrong reading. Fixed in
+`f2b3301`: disposal 3 on any frame after the first is refused; the first frame's disposal 3 still
+decodes, because stb defaults it with no image two back. Follow-ups taken in the same land: the
+two remaining coverage refusal codes pinned (`glyphPageReleaseCheck.ms`), the sub-pixel fill
+finding owned as `graphics:subpixel-fill` (P6), the device skips citing their rows.
+
+The land's first gate went red on the default-layer wasm delta: page reclamation put the live-page
+check into every inlined page test. The report moved to a cold helper (`6430a5e`, -393 B) and the
+record was raised to 2 256 B wasm32 with its reason (`b4f32da`).
+
+**Verdict: SHIP WITH FOLLOW-UPS.** Landed as main `b4f32da` on BUILD `1090f789`: gate.sh green with
+eight loud skips (golden D3D11 117/117, GL core 4.3 115/115), gate3d.sh 339 PASS with three known
+skips. Follow-ups: `graphics:subpixel-fill` (P6, a capture first), `web:runs` (compiler card and the
+Yoga link), the native-gate and bench-bound rows owned by the human, and the line-length remainder
+(void3d's half lands with its next pair).
