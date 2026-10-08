@@ -3059,6 +3059,12 @@ documented behaviour and is marked unread.
   replaced by `run_allocation`, run from `out/tmp`): **no offender in the current tree.** The check
   can fail: the world-label entry with `draw:claimTexture` and `mesh68ata:withUvs` added to its list
   fails on the `GpuTexture` and `TextureData` copies, which copy structs holding a Vec.
+- Keyed by module (the review's follow-up): an entry is `module:Struct`, read from the mangled
+  copy name (`Vec3__M…ZmathZmath3dOmsCopy` is `math3d:Vec3`, the module spelled as in the path
+  lists), so a Vec-free struct allowed in one module does not admit a same-named one elsewhere.
+  Controls on the world-label entry with `draw:claimTexture` added, BUILD `99a851d7`: no list
+  fails naming `draw:GpuTexture` and `texture:TextureData`; those two keys listed pass; the bare
+  names fail; the right structs under another module fail. The stage alone stays GREEN.
 - Acceptance limited to what ran: the allocation stage alone, GREEN, before and after item 3;
   nothing else of the gate.
 

@@ -1115,7 +1115,8 @@ check_array_copies() {
 		fi
 		body=$(awk "/^[a-zA-Z_].*\y${fn}__M.*\{[ \t]*\$/,/^}/" "$emitted")
 		found=""
-		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy\(' | sed 's/__M.*//;s/($//'); do
+		for copyName in $(echo "$body" | grep -oE '[A-Za-z0-9_]*Copy\(' |
+			sed -E 's/^(.*)__M.*Z([A-Za-z0-9]+)O[a-z]+(_v[0-9]+)?Copy\($/\2:\1/;s/\($//'); do
 			case " $VEC_FREE_COPIES " in
 			*" $copyName "*) ;;
 			*) found="$found $copyName" ;;
@@ -1128,7 +1129,7 @@ check_array_copies() {
 	if [ -n "$offenders" ]; then
 		fail "allocation: the $2 copies — function=copy call in:$offenders"
 		echo "         CODE-STYLE section 5, the copy trap: index the field or take a Span view;"
-		echo "         a struct with no Vec goes in VEC_FREE_COPIES with its reason"
+		echo "         a struct with no Vec goes in VEC_FREE_COPIES as module:Struct, with its reason"
 		return 1
 	fi
 	if [ -n "$builders" ]; then
