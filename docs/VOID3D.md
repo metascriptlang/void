@@ -3014,7 +3014,7 @@ Where each probe lies comes from `cardPoint` (a card's own unit coordinates thro
 7. ~~The composite tile holds the target's view.~~ Closed: `showOverlay` renews the tile when `overlay.targetEpoch` differs from the one it saw.
 8. ~~A camera's pose lives twice.~~ Closed: the camera nodes are `addCameraAt(scene, root, camera)`.
 9. ~~Particles need two-sided passes by hand.~~ Closed: the particle material is `Material.ofKind(Program.Particle, MaterialKind.Opaque)`, unculled by default. The cards and the discard keep the default culling.
-10. **Render order cannot interleave lists.** Open, M43's stated limit: the opaque discard draws before every alpha hand card whatever the orders.
+10. ~~**Render order cannot interleave lists.**~~ Decided in "Follow-up stack (2026-10-08), as built": as in Heaps, three.js and Godot, the list is the material's phase; the discarded card is `Phase.Alpha` since `c43cb01`.
 11. ~~The uniform pool is sized by the caller.~~ Closed: `uniformFloatsFor(2, 0, 1, poolKeys())`, one key per material the sample reserves (thirteen), so the pool is exactly the presets, the map and those blocks; a headless probe checked each key's floats against the blocks `block()` writes (4, 32, 8, 8, 8, 4, 8).
 12. **No outline on the label.** Open, void2d's.
 
@@ -3193,6 +3193,24 @@ and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1429/1429; 
 calls `addTangents` (`VOID_WEB_ENTRY=out/tmp/mikkWeb/mikkWeb.ms`) built, compiled and linked
 `mikktspace.c` for both the WebGPU and the WebGL2 build, and each wasm run under node printed
 `ok, tangent x 1 w 1`, as native. Not run: a browser page, GLES3 and Android.
+
+### Follow-up stack (2026-10-08), as built
+
+**1. Render order across the opaque and alpha lists: decided, no new mechanism.** What changes for
+the author: nothing in the API. To draw an opaque-looking surface among translucent ones in an
+order the caller picks, give its material `Phase.Alpha` with an opaque render state (depth write,
+no blend); `renderOrder` then interleaves it with the alpha items. An order never moves an item
+between phases. References, all read: Heaps draws its passes in a fixed sequence, `default`, then
+`alpha` back to front, then `additive` (`h3d/scene/fwd/Renderer.hx:80-82`), and its `Pass.layer`
+sorts inside a pass; three.js renders the opaque, transmissive and transparent lists one after
+another (`src/renderers/WebGLRenderer.js:2001-2003`), its `renderOrder` sorts inside each, and an
+object enters the transparent list by `material.transparent`, not by its opacity; Godot's
+`render_priority` (`scene/resources/material.cpp:64`) orders transparent materials only. All three
+put the cross-list choice on the material, which is void3d's phase; the sample already does it,
+since `c43cb01` its discarded card is `Phase.Alpha`. Pinned by `src/test/renderOrderCheck.ms`
+("an order interleaves only inside a phase; …"): an opaque-phase item with the highest order stays
+alone in the opaque list, and an opaque-state item in the alpha phase swaps places with a blended
+one as their orders swap. Ran: that file, 306/306, BUILD `1090f789`.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 

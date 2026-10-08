@@ -2,7 +2,7 @@ import { vec3 } from "../math/math3d";
 import { DrawContext, DrawItem } from "../void3d/draw";
 import { Material, Phase } from "../void3d/material";
 import { Program } from "../void3d/gpu3d";
-import { RenderState } from "../gpu/state";
+import { RenderState, BlendMode } from "../gpu/state";
 import { PassList, collect, sortBackToFront, sortByLayer } from "../void3d/passList";
 import {
 	Scene3D,
@@ -169,4 +169,44 @@ test "equal orders keep node order in the layer sort" {
 	collect(opaque, items, alphaMaterials());
 	sortByLayer(opaque);
 	assert meshesInOrder(opaque, items) == 1302;
+}
+
+function meshWith(scene: Scene3D, context: DrawContext, slot: int32, z: float32): NodeId3D {
+	const added: Result<NodeId3D, SceneError> = addMeshNode(
+		scene, scene.rootId(), Transform3D.fromTranslation(vec3(0.0, 0.0, z)),
+		context.meshAt(slot), context.materialAt(slot),
+	);
+	return added.ok ? added.value : NO_NODE_ID;
+}
+
+test "an order interleaves only inside a phase; an opaque surface joins the alpha list by its phase" {
+	const context: DrawContext = contextOf(3, 3);
+	const scene: Scene3D = Scene3D.create(context);
+	const blended: RenderState = RenderState.defaults().withBlendMode(BlendMode.Alpha);
+	const materials: Vec<Material> = [
+		Material.plain(Program.Lit, RenderState.defaults(), Phase.Opaque),
+		Material.plain(Program.Lit, RenderState.defaults(), Phase.Alpha),
+		Material.plain(Program.Lit, blended, Phase.Alpha),
+	];
+	const first: NodeId3D = meshWith(scene, context, 0, 0.5);
+	const opaqueInAlpha: NodeId3D = meshWith(scene, context, 1, 0.5);
+	const translucent: NodeId3D = meshWith(scene, context, 2, 0.5);
+	setRenderOrder(scene, first, 9);
+	setRenderOrder(scene, opaqueInAlpha, 2);
+	setRenderOrder(scene, translucent, 1);
+	let items: Vec<DrawItem> = [];
+	assert refresh(scene, items) == 3;
+	let opaque: PassList = PassList.forPhase(Phase.Opaque);
+	collect(opaque, items, materials);
+	sortByLayer(opaque);
+	assert meshesInOrder(opaque, items) == 0;
+	let alpha: PassList = PassList.forPhase(Phase.Alpha);
+	collect(alpha, items, materials);
+	sortBackToFront(alpha, items, backToFront());
+	assert meshesInOrder(alpha, items) == 21;
+	setRenderOrder(scene, opaqueInAlpha, 0);
+	assert refresh(scene, items) == 3;
+	collect(alpha, items, materials);
+	sortBackToFront(alpha, items, backToFront());
+	assert meshesInOrder(alpha, items) == 12;
 }
