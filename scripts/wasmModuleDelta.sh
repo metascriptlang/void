@@ -1,5 +1,5 @@
 #!/bin/sh
-# What the colour emoji, SDF text and shaper modules cost and what a build without them pays
+# What the colour emoji, SDF text, shaper and BiDi modules cost and what a build without them pays
 # (docs/VOID2D.md P6, guardrail 6). Object-level, with clang and llvm-nm; no emcc, no Yoga, no GPU.
 #
 #   sh scripts/wasmModuleDelta.sh           measure, prove, and compare with tests/bench/wasm.json
@@ -69,6 +69,7 @@ compile "." "glyph.c" "on.glyph" "-DVOID2D_COLOUR_EMOJI"
 compile "." "colourEmoji/colourFace.c" "on.colourFace" ""
 compile "." "glyph.c" "on.sdf.glyph" "-DVOID2D_SDF_TEXT"
 compile "." "shaper.c" "on.shaper" ""
+compile "." "bidiClass.c" "on.bidi" ""
 [ "$failed" -eq 0 ] || exit 1
 
 echo "module off: symbols"
@@ -102,13 +103,17 @@ if ! llvm-nm "$OUT/on.glyph.o" | grep -q 'void2dColour'; then
 	failed=1
 fi
 for unit in glyph grapheme batcher sfnt; do
-	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dGlyphSdf\|void2dShape\|kbts_'; then
-		echo "FAIL wasm delta: the module-off $unit.c object names an SDF or shaper symbol"
+	if llvm-nm "$OUT/head.$unit.o" | grep -q 'void2dGlyphSdf\|void2dShape\|void2dBidi\|kbts_'; then
+		echo "FAIL wasm delta: the module-off $unit.c object names an SDF, shaper or BiDi symbol"
 		failed=1
 	fi
 done
 if ! llvm-nm "$OUT/on.sdf.glyph.o" | grep -q 'void2dGlyphSdf'; then
 	echo "FAIL wasm delta: glyph.c built with the SDF module names no void2dGlyphSdf symbol, so the check above sees nothing"
+	failed=1
+fi
+if ! llvm-nm "$OUT/on.bidi.o" | grep -q 'void2dBidiClass'; then
+	echo "FAIL wasm delta: bidiClass.c names no void2dBidiClass symbol, so the check above sees nothing"
 	failed=1
 fi
 if ! llvm-nm "$OUT/on.shaper.o" | grep -q 'kbts_'; then
@@ -149,6 +154,9 @@ sdf_wasm=$(( $(bytes "$OUT/on.sdf.glyph.wasm.o") - $(bytes "$OUT/head.glyph.wasm
 shaper_native=$(bytes "$OUT/on.shaper.o")
 shaper_wasm=$(bytes "$OUT/on.shaper.wasm.o")
 echo "module on: SDF text, glyph.c with VOID2D_SDF_TEXT +$sdf_native B native, +$sdf_wasm B wasm32; shaper.c $shaper_native B native, $shaper_wasm B wasm32"
+bidi_native=$(bytes "$OUT/on.bidi.o")
+bidi_wasm=$(bytes "$OUT/on.bidi.wasm.o")
+echo "module on: BiDi, bidiClass.c $bidi_native B native, $bidi_wasm B wasm32"
 sprite_native=$(bytes "$OUT/on.sprite.o")
 sprite_wasm=$(bytes "$OUT/on.sprite.wasm.o")
 spriteSeam_native=$(( $(bytes "$OUT/on.sprite.glyph.o") - $(bytes "$OUT/head.glyph.o") ))
@@ -161,6 +169,7 @@ if [ "$mode" = print ]; then
 	printf '  "seam": { "native": %s, "wasm32": %s },\n' "$seam_native" "$seam_wasm"
 	printf '  "sdf": { "native": %s, "wasm32": %s },\n' "$sdf_native" "$sdf_wasm"
 	printf '  "shaper": { "native": %s, "wasm32": %s },\n' "$shaper_native" "$shaper_wasm"
+	printf '  "bidi": { "native": %s, "wasm32": %s },\n' "$bidi_native" "$bidi_wasm"
 	printf '  "sprite": { "native": %s, "wasm32": %s },\n' "$sprite_native" "$sprite_wasm"
 	printf '  "spriteSeam": { "native": %s, "wasm32": %s }\n' "$spriteSeam_native" "$spriteSeam_wasm"
 	exit "$failed"
@@ -187,6 +196,8 @@ within "SDF text, wasm32 objects" "$sdf_wasm" "$(recorded sdf wasm32)"
 within "SDF text, native objects" "$sdf_native" "$(recorded sdf native)"
 within "shaper, wasm32 objects" "$shaper_wasm" "$(recorded shaper wasm32)"
 within "shaper, native objects" "$shaper_native" "$(recorded shaper native)"
+within "BiDi tables, wasm32 objects" "$bidi_wasm" "$(recorded bidi wasm32)"
+within "BiDi tables, native objects" "$bidi_native" "$(recorded bidi native)"
 within "sprites, wasm32 objects" "$sprite_wasm" "$(recorded sprite wasm32)"
 within "sprites, native objects" "$sprite_native" "$(recorded sprite native)"
 within "sprite seam, wasm32 objects" "$spriteSeam_wasm" "$(recorded spriteSeam wasm32)"

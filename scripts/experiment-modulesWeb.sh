@@ -4,14 +4,14 @@
 # (tests/PENDING.md wasm:budget); a recorded row in tests/bench/wasmBudget.txt is checked when there
 # is one:  modulesWeb-<module> <backend> off <bytes> on <bytes>
 #
-#   sh scripts/experiment-modulesWeb.sh            shaper and sdf
+#   sh scripts/experiment-modulesWeb.sh            shaper, sdf and bidi
 #   sh scripts/experiment-modulesWeb.sh shaper     one module
 set -e
 cd "$(dirname "$0")/.."
 OUT=out/experiments/modulesWeb
 mkdir -p "$OUT"
 export MSC_NO_GLOBAL_CACHE=1
-modules="${*:-shaper sdf}"
+modules="${*:-shaper sdf bidi}"
 
 build() {
 	label="$1"; flags="$2"
@@ -27,6 +27,7 @@ for module in $modules; do
 	case "$module" in
 		shaper) flag="-d:voidShaper" ;;
 		sdf) flag="-d:voidSdfText" ;;
+		bidi) flag="-d:voidBidi" ;;
 		*) echo "unknown module $module"; exit 2 ;;
 	esac
 	build "$module" "$flag"
