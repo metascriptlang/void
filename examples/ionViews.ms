@@ -33,7 +33,8 @@ struct Surface {
 }
 
 function surface(id: int32): Surface {
-	return { surface: id, view: ViewInvalid, width: 0 as int32, height: 0 as int32, scale: 1.0, dirty: false };
+	return { surface: id, view: ViewInvalid, width: 0 as int32, height: 0 as int32, scale: 1.0,
+		dirty: false };
 }
 
 let _board: Surface = surface(RenderSurfaceInvalid);
@@ -107,7 +108,8 @@ function drawDirty(s: Surface): Surface {
 }
 
 function main(): int32 {
-	const win = createWindow("main", defaultOptions("Void views on Ion", 960 as int32, 600 as int32, PAGE));
+	const win =
+		createWindow("main", defaultOptions("Void views on Ion", 960 as int32, 600 as int32, PAGE));
 	if (win === null) return 1;
 	webviewSetVisible(win, false);
 	embedRegister(initViews, frameView);
