@@ -1918,3 +1918,27 @@ statement after P3, the mobile `sample_count` claim.
 The builder fixes D2-D7 and B1-B4 on `wt/void2d-gpui`, each with its pin, verifies D8-D12 or
 records them as declared with the reason, and asks for a re-review. The web runs stay owned by
 `compiler:bool-span-web` and `wasm:budget`.
+
+### Resolutions, before the re-review (2026-10-08)
+
+| # | resolution |
+|---|---|
+| D1 | fixed `407cbda`: the scan carries the disposal from one control block to the next frame, as stb does; two variants pinned, red on the old scan |
+| D2 | fixed `a768e1c`: `void2dGlyphRasterize` returns a refusal code and refuses any page that is not Coverage; `acquire` answers `CoverageBadHandle`, `CoverageWrongPageKind`, `CoverageOutsidePage` or `CoverageBoxMismatch`; the Rgba-page test asserts the code |
+| D3 | fixed `a768e1c`: every refusal after `allocate` is cached by key (`GlyphAtlas.refused`, cleared by `dispose`), so the same key is answered with its error and spends no more page space; out-of-memory refusals are not cached |
+| D4 | fixed `a074143`: a break outside the text stops by name; abort program `tests/aborts/breakOutsideText.ms` |
+| D5 | fixed `0ea7997`: a label reshapes when the shaping switch changed since it was shaped; pinned both ways in `bidiShapedCheck.ms` |
+| D6 | fixed `eea1d8a`: the GL core and web window driver counts input for the profiler, as the D3D11 window does |
+| D7 | declared: sokol_app swaps after the frame callback returns and has no hook after the swap, so on its drivers (GL core, web) present ends at commit; the D3D11 window and the hosted views present inside the bracket |
+| D8 | not a defect: an invalidation during a draw is the renderer's own retry, and ignoring it is pinned by `profilerCheck.ms` "an invalidation during a draw is ignored and the next frame starts clean" |
+| D9 | open: needs a capture of a fill thinner than one device pixel before a fix is chosen; queued for the next native slot |
+| D10 | fixed `283ab9c`: an atlas under its own limit reclaims its page when the process has no slot left; pinned in `glyphAtlasCheck.ms`, red on the old `allocate` |
+| D11 | fixed `ef4c68d`: a device length past 2^20 gives the largest mask side, which the atlas refuses by name as too large, instead of wrapping to nothing |
+| D12 | declared: stb's own cmap choice takes the same record, so coverage and the glyph path agree; a font with only a platform-0 format-14 record maps nothing either way |
+| B1 | fixed `25b72c6`: the shaper oracle rows declared, the WebGPU and WebGL2 rows owned by the compiler beside the new `web:runs` row, the Closes line now names `style:line-length` only |
+| B2 | fixed `25b72c6`: `backend:sample-count-mobile`, owned by the human, and a gate SKIP that names it |
+| B3 | fixed `3d85b16`: exits 3 and 6 say what was measured and what waits on `web:runs` |
+| B4 | not a gap: `fontCheck.ms` "coverage of a fallback is answered from its summary, with no face loaded" and its two colour-module rows hold exit 8; the exit now names them |
+
+T0 after the fixes, BUILD `1090f789`: all modules 1817 passed, bare 1442 passed. The native gate
+runs with the lane B land.
