@@ -472,8 +472,6 @@ function xOnRow(this layout: TextLayout, li: int32, index: int32): float32 {
 	return layout.rowEnd(li);
 }
 
-// The selected spans of one line as (x0, x1) pairs in local units, left to right. A selected line
-// break shows as a short tail on the paragraph-end side, as an editor draws it.
 function rowSpans(entry: LabelText, li: int32, ref out: Vec<float32>): void {
 	const count: int32 = entry.layout.lines.length as int32;
 	const start: int32 = entry.selectionStart;
@@ -499,7 +497,6 @@ function rowSpans(entry: LabelText, li: int32, ref out: Vec<float32>): void {
 	}
 }
 
-// The selection spans and the caret x of the current layout, taken again when either changed.
 export function refreshSelection(entry: LabelText): void {
 	if (!entry.selectionStale) { return; }
 	entry.selectionStale = false;

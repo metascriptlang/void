@@ -338,7 +338,7 @@ test "levels, paragraph level and order agree with every row of the UCD's BidiCh
 }
 
 
-test "a paragraph separator inside the layout paragraph ends the embeddings and starts no paragraph" {
+test "a paragraph separator inside the layout paragraph ends the embeddings, starts no paragraph" {
 	const noBrackets: Vec<int32> = new Array(0);
 	const embedded: Vec<BidiClass> = [
 		BidiClass.LRE, BidiClass.L, BidiClass.B, BidiClass.L,

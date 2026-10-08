@@ -791,7 +791,8 @@ when (voidShaper) {
 				const at: int32 = cps[from + g.index].index;
 				console.log(
 					`void2d: the shaper ran the text at UTF-16 index ${at} ` +
-					`${directionName(g.direction)} where BiDi resolved level ${levelAt(bidi, from)}`,
+					`${directionName(g.direction)} where BiDi resolved ` +
+					`level ${levelAt(bidi, from)}`,
 				);
 				unreachable;
 			}
@@ -1468,9 +1469,6 @@ function distance(a: float32, b: float32): float32 {
 	return a < b ? b - a : a - b;
 }
 
-// The spans of line `li` that a selection of [start, end) covers, as (x0, x1) pairs from the left;
-// `tail` is the width of a selected line break, drawn on the paragraph-end side. A line whose
-// glyphs are all in order has one span at most.
 export function selectedExtents(
 	this l: TextLayout, li: int32, start: int32, end: int32, gap: float32, tail: float32,
 ): Vec<float32> {
@@ -1506,7 +1504,6 @@ export function lineIsBidi(this l: TextLayout, li: int32): boolean {
 	return l.isBidiLine(li);
 }
 
-// The glyph positions of one line, left to right, grouped by run: what a decoration walks.
 export struct RunSegment {
 	run: int32;
 	x0: float32;

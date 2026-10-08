@@ -540,8 +540,6 @@ function emitDecorations(
 	}
 }
 
-// The span of a neighbouring row that overlaps [x0, x1] the most, else the nearest one, or
-// [0, -1] when the row has none.
 function neighbourSpan(
 	this text: LabelText, row: int32, x0: float32, x1: float32,
 ): [float32, float32] {

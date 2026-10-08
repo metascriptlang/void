@@ -111,8 +111,6 @@ export function clusterEdges(
 	}
 }
 
-// The pairs (low, high) of the clusters whose first index is in [from, to), merged where they
-// touch within `gap`. `extraLow < extraHigh` adds one more extent that is always selected.
 export function selectedSpans(
 	starts: Readonly<Span<boolean>>,
 	indices: Readonly<Span<int32>>,
