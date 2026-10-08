@@ -4,7 +4,12 @@
 // target, as h3d.scene.pbr.Renderer draws into `hdr` and runs its ToneMapping ScreenFx into `ldr`.
 
 import { Vec4 } from "../math/math3d";
-import { Program } from "./gpu3d";
+import {
+	Program,
+	VERTEX_UNIFORM_LENGTH,
+	LIGHT_UNIFORM_LENGTH,
+	FRAME_UNIFORM_LENGTH,
+} from "./gpu3d";
 import {
 	PixelFormat,
 	formatRenderable,
@@ -166,7 +171,13 @@ function make(
 	background: Vec4,
 	hdr: boolean,
 ): Result<ForwardRenderer, ForwardError> {
-	if (hdr && !context.uniforms.fits([RENDERER_UNIFORM_LENGTH, TONE_MAP_UNIFORM_LENGTH]).ok) {
+	const blocks: Vec<int32> = [
+		VERTEX_UNIFORM_LENGTH,
+		LIGHT_UNIFORM_LENGTH,
+		FRAME_UNIFORM_LENGTH,
+		TONE_MAP_UNIFORM_LENGTH,
+	];
+	if (hdr && !context.uniforms.fits(blocks).ok) {
 		return Result.err(ForwardError.UniformPoolFull);
 	}
 	const core: Result<Renderer, RendererError> = Renderer.create(context);

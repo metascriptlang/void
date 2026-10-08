@@ -364,6 +364,16 @@ test "an HDR pixel-art preset is refused by name without Rgba16f, and tone maps 
 	}
 }
 
+test "an HDR pixel-art preset fits a pool whose blocks a closed one freed" {
+	let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_HDR_UNIFORM_LENGTH);
+	for (let round = 0; round < 2; round++) {
+		const created: Result<PixelArtRenderer, PixelArtError> =
+			PixelArtRenderer.createHdrWhere(context, PixelArtSettings.full(), look(), true);
+		assert created.ok;
+		if (created.ok) { closePixelArt(created.value); }
+	}
+}
+
 test "a renderer needs a frame until one is drawn, then only when something changed" {
 	let small: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH - 1);
 	const refused: Result<PixelArtRenderer, PixelArtError> = PixelArtRenderer.create(

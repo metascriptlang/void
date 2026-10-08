@@ -338,6 +338,20 @@ test "the tone modes are ToneMapping's mode numbers, and a core starts on the li
 	}
 }
 
+test "an HDR forward preset fits a pool whose blocks a closed one freed" {
+	let context: DrawContext = DrawContext.withUniformCapacity(FORWARD_HDR_UNIFORM_LENGTH);
+	const background: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
+	for (let round = 0; round < 2; round++) {
+		const created: Result<ForwardRenderer, ForwardError> =
+			ForwardRenderer.createHdrWhere(context, background, true);
+		assert created.ok;
+		if (created.ok) {
+			let forward: ForwardRenderer = created.value;
+			closeForward(forward);
+		}
+	}
+}
+
 test "the HDR target clears to the background decoded, its alpha kept" {
 	const linear: Vec4 = linearBackground({ x: 0.0, y: 0.5, z: 1.0, w: 0.25 });
 	assert linear.x == 0.0 && linear.z == 1.0 && linear.w == 0.25;
