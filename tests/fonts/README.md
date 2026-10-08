@@ -127,3 +127,14 @@ default instance.
 ```sh
 python tests/fonts/complexScripts.py DIR   # DIR holds devanagari.ttf, thai.ttf, arabic.ttf, khmer.ttf
 ```
+
+`notoSansHebrewSubset.ttf` (18,456 B) is the Hebrew face of the BiDi layout tests and goldens
+(docs/VOID2D.md P7): the alef-bet with its final forms, a few points, the Latin letters and digits
+and the punctuation the tests lay out beside them, so a mixed-direction line needs no fallback
+face. It is cut from `ofl/notosanshebrew/NotoSansHebrew[wdth,wght].ttf` at google/fonts `main` of
+2026-10-08, pinned to `wght=400 wdth=100`, every layout feature kept (SIL Open Font License 1.1,
+copyright The Noto Project Authors; `NotoSansHebrew-OFL.txt`).
+
+```sh
+python tests/fonts/hebrewSubset.py hebrew.ttf   # the google/fonts file, saved as hebrew.ttf
+```

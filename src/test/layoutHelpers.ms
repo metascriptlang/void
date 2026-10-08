@@ -9,6 +9,7 @@ import {
 	layoutRuns,
 	shapeText,
 } from "../void2d/textLayout";
+import { TextDirection } from "../void2d/textDirection";
 
 function stopped(error: TextError): void {
 	console.log(`layout helper: the text was refused: ${error.describe()}`);
@@ -36,6 +37,17 @@ export function shapedOf(
 	breaks: Readonly<Span<int32>>,
 ): ShapedText {
 	const shaped = shapeText(text, style, runs, breaks);
+	if (shaped.ok) { return shaped.value; }
+	stopped(shaped.error);
+	unreachable;
+}
+
+export function shapedIn(
+	text: string, style: TextStyle, direction: TextDirection,
+): ShapedText {
+	const noRuns: Vec<TextRun> = new Array(0);
+	const noBreaks: Vec<int32> = new Array(0);
+	const shaped = shapeText(text, style, noRuns, noBreaks, direction);
 	if (shaped.ok) { return shaped.value; }
 	stopped(shaped.error);
 	unreachable;

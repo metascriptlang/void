@@ -178,6 +178,8 @@ export function glyphRefusalReports(): int32 {
 function emptyLayout(): TextLayout {
 	return {
 		glyphs: new Array(0),
+		levels: new Array(0),
+		lineLevels: new Array(0),
 		lines: new Array(0),
 		ascent: 0.0,
 		descent: 0.0,

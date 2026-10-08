@@ -68,6 +68,7 @@ when (voidShaper) {
 when (voidBidi) {
 	import "./bidiTableCheck";
 	import "./bidiOracleCheck";
+	import "./bidiLayoutCheck";
 } else {
 	import "./bidiOffCheck";
 }

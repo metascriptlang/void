@@ -4,6 +4,10 @@ export enum TextDirection {
 	Rtl,
 }
 
+export const NO_RESET: int32 = 0;
+export const WHITESPACE_RESET: int32 = 1;
+export const SEPARATOR_RESET: int32 = 2;
+
 export function possiblyRtl(codepoint: int32): boolean {
 	if (codepoint < 0x0590) { return false; }
 	if (codepoint <= 0x08FF) { return true; }
