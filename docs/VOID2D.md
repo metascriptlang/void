@@ -1971,6 +1971,18 @@ changes described above on today's compiler; the P4 web archive also takes its r
   (`outline:bench-bounds`, `benchTextOutline.ms`), the native gate with the flag
   (`outline:native-gate`), the other backends (`outline:backends`), a judge on the SDF captures
   (`outline:capture-oracle`) and a look (`outline:look`).
+- **Glyph page reclamation** (2026-10-08, NEW MECHANISM, void manager's GO). `glyph.c`'s page
+  table is process-wide and capped at the renderer's 64 view slots; a page was never returned, so
+  every atlas a test created spent slots for the life of the process (58 of 64 at the end of the
+  all-modules T0 run before the outline tests, which then ran it out: `AtlasError.Full`).
+  `GlyphAtlas.dispose()` releases its pages, as Ghostty drops a grid with its atlases
+  (`SharedGridSet.zig:738-757`, [GHOSTTY.md](GHOSTTY.md)); `void2dGlyphPageCreate` reuses the
+  lowest released slot before growing, and the cap counts live pages. Each page carries a
+  generation, and the batcher destroys the image and view it made for a slot whose generation
+  changed before it binds or uploads that slot. A released handle is refused by name ("glyph
+  page N was released"). The renderer keeps one atlas for its life, so only tests release;
+  `src/test/glyphPageReleaseCheck.ms` pins three atlases per slot created and disposed with none
+  refused, and a reused slot taking a new generation and size.
 - **Colour emoji**, a compile-time module, decided at P3's review. stb_truetype reads no colour table, so the module reads them itself: CBDT/CBLC and sbix bitmap strikes decoded by `stb_image`, already a void dependency (`src/assets/image.c`), and COLRv0 as layers of stb outlines, each tinted by its palette entry. The module builds the RGBA page kind P3 decided but did not build (P3 "Atlas page kinds"): the page format, its view and a colour draw path at a whole-pixel origin with no gamma correction, as GPUI does (GPUI.md:51). Bitmap strikes are pre-shrunk into 1.25× size buckets, so a zoom does not churn the atlas (MAKEPAD.md:114). Explicit-versus-fallback presentation comes with it (GHOSTTY.md:24), VS15/VS16 over P4's grapheme segmentation. Deferred faces, which let a family answer coverage before it loads, land in the default glyph layer rather than in the module, because the lazy CJK families need them too.
   **Built (`-d:voidColourEmoji`, CBDT/CBLC, sbix and COLR v0), 2026-10-08:** the RGBA page kind is real
   (`glyph.c` `void2dGlyphPageCreate` four bytes a texel, `void2dGlyphPageBlitRgba`,
