@@ -66,6 +66,8 @@ import { added, litShape } from "./drawHelpers";
 import {
 	Renderer, RendererError, RENDERER_UNIFORM_LENGTH, beginFrame, setElapsedTime, setTimeWrap,
 	setExposure,
+	setToneMode,
+	ToneMode,
 	exposureMultiplier,
 	frameTime,
 } from "../void3d/renderer";
@@ -313,6 +315,20 @@ test "an HDR forward preset takes a tone map block and material, and its core wr
 	const ldr: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(ldrContext, background);
 	assert ldr.ok && !ldr.value.hdr && !ldr.value.core.linearOutput;
+}
+
+test "the tone modes are ToneMapping's mode numbers, and a core starts on the linear one" {
+	assert (ToneMode.Linear as int32) == 0 && (ToneMode.Reinhard as int32) == 1;
+	assert (ToneMode.Filmic as int32) == 2 && (ToneMode.Neutral as int32) == 3;
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const created: Result<Renderer, RendererError> = Renderer.create(context);
+	assert created.ok;
+	if (created.ok) {
+		let core: Renderer = created.value;
+		assert core.toneMode == ToneMode.Linear;
+		setToneMode(core, ToneMode.Filmic);
+		assert core.toneMode == ToneMode.Filmic;
+	}
 }
 
 test "the HDR target clears to the background decoded, its alpha kept" {

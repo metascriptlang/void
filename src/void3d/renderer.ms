@@ -34,6 +34,7 @@ import {
 	FRAME_TIME,
 	FRAME_EXPOSURE,
 	FRAME_LINEAR,
+	FRAME_TONE_MODE,
 	MOVING_UV_SCROLL,
 	movingBase,
 	SHADOW_SAMPLER_SLOT,
@@ -111,6 +112,7 @@ export interface Renderer {
 	// h3d.scene.pbr.Renderer's `exposure`, in its unit: stops of e, the multiplier exp(exposure),
 	// 0 exposing nothing. Its toneMode is Linear, the one curve here (docs/VOID3D.md, M45).
 	exposure: float32;
+	toneMode: ToneMode;
 	// The scene passes draw into an HDR target: scene programs write linear colour, and the
 	// preset that set this exposes and encodes it in its own pass.
 	linearOutput: boolean;
@@ -217,6 +219,7 @@ export function createDrawing(
 		elapsedTime: 0.0,
 		timeWrap: 0.0,
 		exposure: 0.0,
+		toneMode: ToneMode.Linear,
 		linearOutput: false,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		readsTime: false,
@@ -269,6 +272,21 @@ export function setElapsedTime(renderer: Renderer, seconds: float64): void {
 // h3d.shader.pbr.ToneMapping.set_exposure: exposureExp = Math.exp(exposure).
 export function exposureMultiplier(stops: float32): float32 {
 	return Math.exp(stops) as float32;
+}
+
+// h3d.scene.pbr.Renderer's `toneMode`, in ToneMapping's `mode` order: the curve the exposed
+// colour goes through. Heaps defaults to Reinhard; void3d to Linear, which leaves every colour
+// below 1 as it was (docs/VOID3D.md, tone curves).
+export enum ToneMode {
+	Linear,
+	Reinhard,
+	Filmic,
+	Neutral,
+}
+
+export function setToneMode(renderer: Renderer, mode: ToneMode): void {
+	if (renderer.closed) { stopOnClosed("setToneMode"); }
+	renderer.toneMode = mode;
 }
 
 export function setExposure(renderer: Renderer, stops: float32): void {
@@ -381,6 +399,7 @@ export function beginFrame(
 	renderer.frameValues[FRAME_TIME] = frameTime(renderer.time, renderer.timeWrap);
 	renderer.frameValues[FRAME_EXPOSURE] = exposureMultiplier(renderer.exposure);
 	renderer.frameValues[FRAME_LINEAR] = renderer.linearOutput ? 1.0 : 0.0;
+	renderer.frameValues[FRAME_TONE_MODE] = renderer.toneMode as float32;
 	if (!writeUniforms(context, renderer.frameBlock, renderer.frameValues).ok) { unreachable; }
 	while ((renderer.drawn.length as int32) < (items.length as int32)) {
 		renderer.drawn.push(ProgramKey.of(Program.Lit));

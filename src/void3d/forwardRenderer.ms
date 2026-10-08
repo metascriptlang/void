@@ -108,10 +108,12 @@ export enum ForwardError {
 // Floats of the uniform pool the preset needs: the core's blocks, and nothing of its own.
 export const FORWARD_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH;
 
-// The tone map's block (shader3d.glsl toneMapFs `toneMapParams`): the exposure multiplier first.
+// The tone map's block (shader3d.glsl toneMapFs `toneMapParams`): the exposure multiplier, then
+// the curve.
 export const TONE_MAP_UNIFORM_SLOT: int32 = 0;
 export const TONE_MAP_UNIFORM_LENGTH: int32 = 4;
 export const TONE_MAP_EXPOSURE: int32 = 0;
+export const TONE_MAP_MODE: int32 = 1;
 
 // An HDR preset's floats: the core's blocks and the tone map's.
 export const FORWARD_HDR_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH + TONE_MAP_UNIFORM_LENGTH;
@@ -349,6 +351,7 @@ export function prepareFrame(
 		context.materials[renderer.toneMapMaterial.index].texture0 = renderer.hdrTarget.asTexture();
 		context.materials[renderer.toneMapMaterial.index].sampler0 = renderer.sampler.asHandle();
 		renderer.toneMapValues[TONE_MAP_EXPOSURE] = exposureMultiplier(renderer.core.exposure);
+		renderer.toneMapValues[TONE_MAP_MODE] = renderer.core.toneMode as float32;
 		const written: Result<int32, UniformError> =
 			writeUniforms(context, renderer.toneMapBlock, renderer.toneMapValues);
 		if (!written.ok) { unreachable; }

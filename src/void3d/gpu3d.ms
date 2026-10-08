@@ -345,12 +345,14 @@ export const EMISSIVE_LENGTH: int32 = 4;
 // The scene's frame block (binding=6, shader3dBlocks.glsl frameUniforms): Heaps' `global.time`
 // in seconds at FRAME_TIME, read by a key with a UV transform, and at FRAME_EXPOSURE the linear
 // multiplier every scene program's colour is exposed by (toneMap); at FRAME_LINEAR 1 when the pass
-// draws into an HDR target, where every scene program writes its colour linear and unexposed.
+// draws into an HDR target, where every scene program writes its colour linear and unexposed; at
+// FRAME_TONE_MODE the curve (renderer.ms ToneMode) the exposed colour goes through.
 export const FRAME_UNIFORM_SLOT: int32 = 6;
 export const FRAME_UNIFORM_LENGTH: int32 = 4;
 export const FRAME_TIME: int32 = 0;
 export const FRAME_EXPOSURE: int32 = 1;
 export const FRAME_LINEAR: int32 = 2;
+export const FRAME_TONE_MODE: int32 = 3;
 
 // Where a moving key's own floats start in its material block.
 export function movingBase(key: ProgramKey): int32 {

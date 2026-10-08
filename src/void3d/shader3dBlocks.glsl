@@ -133,19 +133,52 @@ layout(binding=6) uniform frameParams {
 };
 @end
 
+@block toneCurve
+// h3d.shader.pbr.ToneMapping's `mode` switch over an exposed linear colour: 0 linear, 1 Reinhard,
+// 2 Filmic at Heaps' default a..e, 3 Khronos PBR Neutral.
+vec3 toneCurved(vec3 color, float mode) {
+    if (mode == 1.0) {
+        return color / (color + vec3(1.0));
+    }
+    if (mode == 2.0) {
+        return clamp((color * (2.51 * color + 0.03)) / (color * (2.43 * color + 0.59) + 0.14),
+            0.0, 1.0);
+    }
+    if (mode == 3.0) {
+        float startCompression = 0.8 - 0.04;
+        float desaturation = 0.15;
+        float x = min(color.r, min(color.g, color.b));
+        float offset = x < 0.08 ? x - 6.25 * x * x : 0.04;
+        color -= offset;
+        float peak = max(color.r, max(color.g, color.b));
+        if (peak >= startCompression) {
+            float d = 1.0 - startCompression;
+            float newPeak = 1.0 - d * d / (peak + d - startCompression);
+            color *= newPeak / peak;
+            float g = 1.0 - 1.0 / (desaturation * (peak - newPeak) + 1.0);
+            color = mix(color, vec3(newPeak), g);
+        }
+        return color;
+    }
+    return clamp(color, 0.0, 1.0);
+}
+@end
+
 @block toneMap
-// h3d.shader.pbr.ToneMapping mode 0 (linear), per fragment: the decoded colour times frame.y,
-// saturated, encoded again. frame.y is exactly 1 at exposure 0, and the colour is left alone.
-// frame.z is 1 when the pass draws into an HDR target: the colour is decoded and left unclamped,
-// and the preset's toneMapFs exposes and encodes it after blending, as Heaps' pbr Renderer does.
+// h3d.shader.pbr.ToneMapping per fragment: the decoded colour times frame.y, through the curve
+// frame.w names, encoded again. At exposure 0 (frame.y exactly 1) and the linear curve the colour
+// is left alone. frame.z is 1 when the pass draws into an HDR target: the colour is decoded and
+// left unclamped, and the preset's toneMapFs exposes and curves it after blending, as Heaps' pbr
+// Renderer does.
+@include_block toneCurve
 vec3 toneMapped(vec3 rgb) {
     if (frame.z == 1.0) {
         return srgbToLinear(rgb);
     }
-    if (frame.y == 1.0) {
+    if (frame.y == 1.0 && frame.w == 0.0) {
         return rgb;
     }
-    return linearToSrgb(clamp(srgbToLinear(rgb) * frame.y, 0.0, 1.0));
+    return linearToSrgb(toneCurved(srgbToLinear(rgb) * frame.y, frame.w));
 }
 @end
 
