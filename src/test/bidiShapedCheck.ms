@@ -14,13 +14,16 @@ import {
 	wrapText,
 } from "../void2d/textLayout";
 import { TextDirection } from "../void2d/textDirection";
+import { Color } from "../void2d/types";
 import { approx } from "./helpers";
-import { shapedIn } from "./layoutHelpers";
+import { laid, laidRuns, shapedIn } from "./layoutHelpers";
 
 const ARABIC_FACE: string = "tests/fonts/notoSansArabicSubset.ttf";
 const HEBREW_FACE: string = "tests/fonts/notoSansHebrewSubset.ttf";
 const MARHABA: string = "\u{645}\u{631}\u{62D}\u{628}\u{627}";
 const HEBREW_WORD: string = "\u{5E9}\u{5DC}\u{5D5}\u{5DD}";
+const SALAAM: string = "\u{627}\u{644}\u{633}\u{644}\u{627}\u{645} " +
+	"\u{639}\u{644}\u{64A}\u{643}\u{645}";
 
 function fontOf(path: string): FontId {
 	const added = addFont(path);
@@ -127,5 +130,44 @@ test "with the shaper off Arabic is refused by name and Hebrew is laid out" {
 	assert !arabic.ok;
 	if (!arabic.ok) { assert arabic.error.kind == TextErrorKind.ArabicNeedsShaper; }
 	assert TextLayout.layout(HEBREW_WORD, styleOf(fontOf(HEBREW_FACE), 0.0)).ok;
+	setTextShaping(was);
+}
+
+function plainRun(len: int32, font: FontId): TextRun {
+	const ink: Color = { r: 1.0, g: 1.0, b: 1.0, a: 1.0 };
+	const clear: Color = { r: 0.0, g: 0.0, b: 0.0, a: 0.0 };
+	return {
+		len: len, font: font, color: ink, background: clear, underline: clear, wavy: false,
+		strikethrough: clear,
+	};
+}
+
+function placedAsWithoutRuns(
+	text: string, style: TextStyle, runs: Readonly<Span<TextRun>>,
+): boolean {
+	const plain = laid(text, style);
+	const styled = laidRuns(text, style, runs);
+	if (plain.glyphs.length != styled.glyphs.length) { return false; }
+	for (let i = 0; i < (plain.glyphs.length as int32); i++) {
+		if (plain.glyphs[i].glyph != styled.glyphs[i].glyph) { return false; }
+		if (!approx(plain.glyphs[i].x, styled.glyphs[i].x)) { return false; }
+	}
+	return true;
+}
+
+test "style runs over a right-to-left line leave every glyph where the line without runs puts it" {
+	const was = shapingOn();
+	const font = fontOf(ARABIC_FACE);
+	const runs: TextRun[] = [plainRun(6, font), plainRun(1, font), plainRun(5, font)];
+	assert placedAsWithoutRuns(SALAAM, styleOf(font, 0.0), runs);
+	setTextShaping(was);
+}
+
+test "style runs that cut right-to-left words inside them keep the words in visual order" {
+	const was = shapingOn();
+	const font = fontOf(HEBREW_FACE);
+	const phrase: string = HEBREW_WORD + " " + HEBREW_WORD + " " + HEBREW_WORD;
+	const runs: TextRun[] = [plainRun(2, font), plainRun(5, font), plainRun(7, font)];
+	assert placedAsWithoutRuns(phrase, styleOf(font, 0.0), runs);
 	setTextShaping(was);
 }

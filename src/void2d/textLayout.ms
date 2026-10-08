@@ -773,16 +773,29 @@ when (voidShaper) {
 		if (style.letterSpacing != 0.0 && !joins(cps, from, to)) {
 			for (const tag of OPTIONAL_LIGATURES) { shaperFeature(tag, 0); }
 		}
+		let segmentOf: Vec<int32> = new Array(0);
+		let segments: int32 = 1;
 		for (let k = from; k < to; k++) {
 			if (k > from && (cps[k].run != cps[k - 1].run || cps[k].shapingBreak)) {
 				shaperBreak();
+				segments = segments + 1;
 			}
+			segmentOf.push(segments - 1);
 			shaperCodepoint(cps[k].value);
 		}
 		const total: int32 = shaperEnd();
+		let order: Vec<int32> = new Array(0);
+		if (direction == ShapeDirection.Rtl) {
+			for (let segment = 0; segment < segments; segment++) {
+				for (let j = total - 1; j >= 0; j--) {
+					if (segmentOf[shaperGlyph(j).index] == segment) { order.push(j); }
+				}
+			}
+		} else {
+			for (let j = 0; j < total; j++) { order.push(j); }
+		}
 		let glyphs: Vec<ShapedGlyph> = new Array(0);
-		for (let n = 0; n < total; n++) {
-			const j: int32 = direction == ShapeDirection.Rtl ? total - 1 - n : n;
+		for (const j of order) {
 			const g: ShapedGlyph = shaperGlyph(j);
 			const expected: ShapeDirection = direction == ShapeDirection.Unknown
 				? ShapeDirection.Ltr
