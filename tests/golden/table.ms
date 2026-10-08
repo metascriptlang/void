@@ -82,6 +82,21 @@ export function aaNonUniformCases(): AaBoxCase[] {
 	];
 }
 
+export const SUBPIXEL_FILL_SCENE: string = "prim/subpixelFill";
+export const SUBPIXEL_BLOCK: float32 = 40.0;
+export const SUBPIXEL_ACROSS_X: float32 = 64.0;
+export const SUBPIXEL_ACROSS_Y: float32 = 12.3;
+export const SUBPIXEL_DOWN_X: float32 = 12.3;
+export const SUBPIXEL_DOWN_Y: float32 = 60.0;
+export const SUBPIXEL_LENGTH: float32 = 90.0;
+export const SUBPIXEL_STEP: float32 = 10.0;
+export const SUBPIXEL_DISC_X: float32 = 140.5;
+export const SUBPIXEL_DISC_Y: float32 = 100.5;
+export const SUBPIXEL_DISC_STEP: float32 = 20.0;
+
+export function subpixelThicknesses(): float32[] { return [0.25, 0.5, 0.75, 1.0]; }
+export function subpixelRadii(): float32[] { return [0.25, 0.375, 0.5, 0.75, 1.0]; }
+
 // text/filteredDpi125 draws one line twice at the same device phase, plain and inside a
 // radius-0 blur, a whole number of device pixels apart, so the capture check can compare them.
 export const FILTERED_TEXT_SCENE: string = "text/filteredDpi125";
@@ -265,6 +280,8 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "prim/aaNonUniformBox", phase: "P6", width: 256, height: 160, dpi: 1.0,
 			steps: 0, demo: false },
+		{ name: "prim/subpixelFill", phase: "P6", width: 256, height: 160, dpi: 1.0,
+			steps: 0, demo: false },
 		{ name: "prim/perCornerRadii", phase: "P2", width: 320, height: 250, dpi: 1.25,
 			steps: 0, demo: false },
 		{ name: "prim/perSideBorders", phase: "P2", width: 320, height: 250, dpi: 1.25,
@@ -279,6 +296,10 @@ export function sceneRows(): SceneRow[] {
 			steps: 0, demo: false },
 		{ name: "prim/aaShadow", phase: "P2", width: 256, height: 200, dpi: 1.0, steps: 0, demo: false },
 		{ name: "prim/cardOneInstance", phase: "P2", width: 320, height: 250, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "prim/boxFills", phase: "P8", width: 416, height: 320, dpi: 1.25,
+			steps: 0, demo: false },
+		{ name: "prim/shadowStack", phase: "P8", width: 416, height: 260, dpi: 1.25,
 			steps: 0, demo: false },
 
 		{ name: "xform/rotate", phase: "P0", width: 256, height: 160, dpi: 1.0, steps: 0, demo: false },
@@ -481,8 +502,8 @@ export function sceneCount(): int32 { return sceneRows().length as int32; }
 // regression. The runner refuses to start unless both vectors cover every row.
 export function sceneDrawCounts(): int32[] {
 	return [
-		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1,
-		1, 1, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1,
+		1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1, 1,
+		1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1, 1,
 		1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 11, 1,
 		1, 1, 2, 2, 2, 1, 6, 2, 1, 1, 1, 5, 3, 1, 2, 2, 2,
 		1, 2, 2, 1, 1, 1, 1, 1, 3, 31, 31, 31, 31, 2, 5, 17, 1,
@@ -494,8 +515,8 @@ export function sceneDrawCounts(): int32[] {
 
 export function sceneRenderTargetCounts(): int32[] {
 	return [
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 5, 5, 5,
 		4, 4, 1, 0, 0, 0, 0, 0, 5, 5, 5, 5, 5, 0, 5, 0, 0,

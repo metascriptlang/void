@@ -22,6 +22,9 @@ import {
 	AA_BOX_ROTATION, AA_BOX_SCENE, AA_GRAPHICS_SCENE,
 	AA_NON_UNIFORM_SCENE, AA_NON_UNIFORM_CORNER_BAND, AA_NON_UNIFORM_EDGE_ABOVE,
 	AA_NON_UNIFORM_EDGE_BELOW, AA_NON_UNIFORM_CORNER_ABOVE, aaNonUniformCases,
+	SUBPIXEL_FILL_SCENE, SUBPIXEL_BLOCK, SUBPIXEL_ACROSS_X, SUBPIXEL_ACROSS_Y, SUBPIXEL_DOWN_X,
+	SUBPIXEL_DOWN_Y, SUBPIXEL_LENGTH, SUBPIXEL_STEP, SUBPIXEL_DISC_X, SUBPIXEL_DISC_Y,
+	SUBPIXEL_DISC_STEP, subpixelThicknesses, subpixelRadii,
 } from "../golden/table";
 import { trs2d } from "../../src/void2d/types";
 import {
@@ -84,6 +87,7 @@ function pixel(x: int32, y: int32, channel: int32): int32 {
 const GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaRotatedBox.png";
 const GRAPHICS_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaGraphics.png";
 const NON_UNIFORM_GOLDEN_PATH: string = "tests/golden/d3d11/prim/aaNonUniformBox.png";
+const SUBPIXEL_GOLDEN_PATH: string = "tests/golden/d3d11/prim/subpixelFill.png";
 
 // ===== the shadow half: the erf integral's GLSL copy, judged against the definition =====
 //
@@ -396,6 +400,93 @@ function runAffineFill(scene: string, goldenPath: string, overrideVar: string): 
 	return 0;
 }
 
+// A Graphics fill thinner than one device pixel collapses to its centre line and its fringe
+// becomes a one-pixel tent peaking at the thickness, so a column sums to the thickness at any
+// phase. Measured on the capture: worst 0.0035 over 0.25 to 1.0; the earlier area-matched
+// peak, 2L / (L + 0.5), read 0.123, and the uncollapsed inset 0.75.
+const SUBPIXEL_INK_BOUND: float32 = 0.01;
+// A disc collapses in two dimensions, where a one-pixel cone keeps the peak at the thickness
+// but not the ink (0.59 against 0.196 at radius 0.25): the peak is what is judged, and a body
+// that turns inside out reads 1.0.
+const SUBPIXEL_PEAK_SLACK: float32 = 0.02;
+const SUBPIXEL_REACH: int32 = 3;
+
+function subpixelCoverage(x: int32, y: int32, fill: Vec<int32>): float32 {
+	return coverageFromPixel(pixel(x, y, 0), pixel(x, y, 1), pixel(x, y, 2),
+		fill[0], fill[1], fill[2], fill[3], fill[4], fill[5]);
+}
+
+function stripInk(across: boolean, along: int32, at: float32, fill: Vec<int32>): float32 {
+	const first: int32 = (at as int32) - SUBPIXEL_REACH;
+	let ink: float32 = 0.0;
+	for (let k: int32 = first; k <= first + 2 * SUBPIXEL_REACH + 1; k++) {
+		ink = ink + (across ? subpixelCoverage(along, k, fill) : subpixelCoverage(k, along, fill));
+	}
+	return ink;
+}
+
+function runSubpixelFill(): int32 {
+	const override: string = env.get("VOID_AA_SUBPIXEL_CAPTURE");
+	const path: string = override.equals("") ? SUBPIXEL_GOLDEN_PATH : override;
+	if (voidPngLoad(SLOT, path) == 0) {
+		console.log(`FAIL coverage oracle ${SUBPIXEL_FILL_SCENE}: cannot read ${path}`);
+		return 1;
+	}
+	const centre: int32 = (8.0 + SUBPIXEL_BLOCK * 0.5) as int32;
+	const fill: Vec<int32> = [pixel(250, 150, 0), pixel(250, 150, 1), pixel(250, 150, 2),
+		pixel(centre, centre, 0), pixel(centre, centre, 1), pixel(centre, centre, 2)];
+	const thick = subpixelThicknesses();
+	let failed: int32 = 0;
+	for (let i: int32 = 0; i < (thick.length as int32); i++) {
+		const step: float32 = SUBPIXEL_STEP * (i as float32);
+		for (let pass: int32 = 0; pass < 2; pass++) {
+			const across: boolean = pass == 0;
+			const start: int32 = (across ? SUBPIXEL_ACROSS_X : SUBPIXEL_DOWN_Y) as int32;
+			const at: float32 = across ? SUBPIXEL_ACROSS_Y + step : SUBPIXEL_DOWN_X + step;
+			let worst: float32 = 0.0;
+			let total: float32 = 0.0;
+			let count: int32 = 0;
+			for (let along: int32 = start + 4; along < start + (SUBPIXEL_LENGTH as int32) - 4; along++) {
+				const ink: float32 = stripInk(across, along, at, fill);
+				const delta: float32 = ink > thick[i] ? ink - thick[i] : thick[i] - ink;
+				if (delta > worst) { worst = delta; }
+				total = total + ink;
+				count = count + 1;
+			}
+			const label: string = across ? "across" : "down";
+			console.log(`coverage oracle: capture ${SUBPIXEL_FILL_SCENE} ${label} strip ${thick[i]},`
+				+ ` mean ink ${total / (count as float32)}, worst error ${worst}`);
+			if (worst > SUBPIXEL_INK_BOUND) { failed = failed + 1; }
+		}
+	}
+	const radii = subpixelRadii();
+	for (let i: int32 = 0; i < (radii.length as int32); i++) {
+		const cx: int32 = (SUBPIXEL_DISC_X + SUBPIXEL_DISC_STEP * (i as float32)) as int32;
+		const cy: int32 = SUBPIXEL_DISC_Y as int32;
+		let ink: float32 = 0.0;
+		let peak: float32 = 0.0;
+		for (let y: int32 = cy - SUBPIXEL_REACH; y <= cy + SUBPIXEL_REACH; y++) {
+			for (let x: int32 = cx - SUBPIXEL_REACH; x <= cx + SUBPIXEL_REACH; x++) {
+				const c: float32 = subpixelCoverage(x, y, fill);
+				ink = ink + c;
+				if (c > peak) { peak = c; }
+			}
+		}
+		const area: float32 = 3.14159265 * radii[i] * radii[i];
+		console.log(`coverage oracle: capture ${SUBPIXEL_FILL_SCENE} disc ${radii[i]},`
+			+ ` ink ${ink} against area ${area}, peak ${peak}`);
+		if (radii[i] < 0.5 && peak > 2.0 * radii[i] + SUBPIXEL_PEAK_SLACK) { failed = failed + 1; }
+	}
+	if (failed > 0) {
+		console.log(`FAIL coverage oracle ${SUBPIXEL_FILL_SCENE}: ${failed} strips off their`
+			+ ` thickness by more than ${SUBPIXEL_INK_BOUND}, or discs peaking past their diameter`);
+		return 1;
+	}
+	console.log(`PASS coverage oracle ${SUBPIXEL_FILL_SCENE}: every strip's ink is its thickness`
+		+ ` within ${SUBPIXEL_INK_BOUND}, every sub-pixel disc peaks under its diameter`);
+	return 0;
+}
+
 function run(): int32 {
 	if (runRotatedFill(AA_BOX_SCENE, GOLDEN_PATH, "VOID_AA_CAPTURE", CORNER_BOUND) != 0) { return 1; }
 	const graphics: int32 = runRotatedFill(
@@ -403,9 +494,11 @@ function run(): int32 {
 	);
 	if (graphics != 0) { return 1; }
 	if (runShadow() != 0) { return 1; }
-	return runAffineFill(
+	const affine: int32 = runAffineFill(
 		AA_NON_UNIFORM_SCENE, NON_UNIFORM_GOLDEN_PATH, "VOID_AA_NON_UNIFORM_CAPTURE",
 	);
+	if (affine != 0) { return 1; }
+	return runSubpixelFill();
 }
 
 process.exit(run());

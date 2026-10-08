@@ -18,7 +18,10 @@ import { faceMetrics } from "../../src/void2d/face";
 when (voidSprites) {
 	import { spriteCellFor } from "../../src/void2d/font";
 }
-import { BoxStyle, CornerRadii, uniformRadii, uniformBorders } from "../../src/void2d/boxStyle";
+import {
+	BoxStyle, BoxShadow, CornerRadii, uniformRadii, uniformBorders, linearFill, slashFill,
+	checkerFill, ditheredFill, castShadows,
+} from "../../src/void2d/boxStyle";
 import {
 	fillRoundedRect,
 	strokeRect,
@@ -84,6 +87,9 @@ import {
 	AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B,
 	AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B,
 	aaNonUniformCases,
+	SUBPIXEL_BLOCK, SUBPIXEL_ACROSS_X, SUBPIXEL_ACROSS_Y, SUBPIXEL_DOWN_X, SUBPIXEL_DOWN_Y,
+	SUBPIXEL_LENGTH, SUBPIXEL_STEP, SUBPIXEL_DISC_X, SUBPIXEL_DISC_Y, SUBPIXEL_DISC_STEP,
+	subpixelThicknesses, subpixelRadii,
 	FILTERED_TEXT_X, FILTERED_TEXT_Y, FILTERED_TEXT_SHIFT,
 	CARET_TEXT, CARET_SIZE, CARET_X, CARET_Y, CARET_SELECTION_START, CARET_SELECTION_LENGTH,
 	CARET_SELECTION_R, CARET_SELECTION_G, CARET_SELECTION_B, CARET_SELECTION_A,
@@ -339,6 +345,26 @@ function primAaGraphics(): Scene2D {
 	return s;
 }
 
+function primSubpixelFill(): Scene2D {
+	const s = Scene2D.create(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
+	const fill = rgba(AA_BOX_FILL_R, AA_BOX_FILL_G, AA_BOX_FILL_B, 1.0);
+	const g = s.graphics();
+	g.fillRect(8.0, 8.0, SUBPIXEL_BLOCK, SUBPIXEL_BLOCK, fill);
+	const thick = subpixelThicknesses();
+	for (let i: int32 = 0; i < (thick.length as int32); i++) {
+		const step: float32 = SUBPIXEL_STEP * (i as float32);
+		g.fillRect(SUBPIXEL_ACROSS_X, SUBPIXEL_ACROSS_Y + step, SUBPIXEL_LENGTH, thick[i], fill);
+		g.fillRect(SUBPIXEL_DOWN_X + step, SUBPIXEL_DOWN_Y, thick[i], SUBPIXEL_LENGTH, fill);
+	}
+	const radii = subpixelRadii();
+	for (let i: int32 = 0; i < (radii.length as int32); i++) {
+		const x: float32 = SUBPIXEL_DISC_X + SUBPIXEL_DISC_STEP * (i as float32);
+		g.fillCircle(x, SUBPIXEL_DISC_Y, radii[i], fill);
+	}
+	s.add(g);
+	return s;
+}
+
 function primAaNonUniformBox(): Scene2D {
 	const s = Scene2D.create(rgba(AA_BOX_BG_R, AA_BOX_BG_G, AA_BOX_BG_B, 1.0));
 	const cases = aaNonUniformCases();
@@ -508,6 +534,71 @@ function primCardOneInstance(): Scene2D {
 	).castShadow(rgba(0.01, 0.01, 0.05, 0.5), 8.0, 9.0, 12.0));
 	clip.addChild(card);
 	s.add(clip);
+	return s;
+}
+
+function primBoxFills(): Scene2D {
+	const s = Scene2D.create(DARK);
+	const white = rgba(1.0, 1.0, 1.0, 1.0);
+	const edge = rgba(0.93, 0.95, 1.0, 1.0);
+	const card = (x: float32, y: float32, style: BoxStyle): NodeRef =>
+		s.add(s.rect(90.0, 56.0, white).at(x, y)).setBoxStyle(style);
+	const base = BoxStyle.create(uniformRadii(10.0), uniformBorders(1.5), edge);
+	const amber = rgba(0.98, 0.70, 0.20, 1.0);
+	const violet = rgba(0.35, 0.20, 0.85, 1.0);
+	card(10.0, 10.0, base.linearFill(90.0, amber, 0.0, violet, 1.0, GradientSpace.Srgb));
+	card(115.0, 10.0, base.linearFill(45.0, amber, 0.2, violet, 0.8, GradientSpace.Oklab)
+		.ditheredFill());
+	card(220.0, 10.0, base.slashFill(rgba(0.95, 0.35, 0.35, 0.9), rgba(0.15, 0.16, 0.2, 1.0),
+		3.0, 4.0).dashed());
+	card(10.0, 90.0, base.checkerFill(rgba(0.85, 0.86, 0.9, 1.0), rgba(0.55, 0.56, 0.6, 1.0), 6.0));
+	card(115.0, 90.0, base.linearFill(180.0, rgba(0.2, 0.6, 0.9, 1.0), 0.0,
+		rgba(0.1, 0.2, 0.4, 1.0), 1.0, GradientSpace.Oklab)
+		.castShadow(rgba(0.0, 0.0, 0.05, 0.6), 6.0, 4.0, 6.0));
+	card(220.0, 90.0, base.linearFill(0.0, amber, 0.0, violet, 1.0, GradientSpace.Srgb)
+		.castInsetShadow(rgba(0.0, 0.0, 0.0, 0.7), 4.0));
+	const turned = card(120.0, 170.0, base.linearFill(90.0, amber, 0.0, violet, 1.0,
+		GradientSpace.Oklab));
+	turned.setPivot(45.0, 28.0);
+	turned.setRotation(0.35);
+	turned.setAlpha(0.8);
+	return s;
+}
+
+function primShadowStack(): Scene2D {
+	const s = Scene2D.create(rgba(0.90, 0.91, 0.93, 1.0));
+	const paper = rgba(1.0, 1.0, 1.0, 1.0);
+	const edge = rgba(0.75, 0.78, 0.84, 1.0);
+	const card = (x: float32, y: float32, style: BoxStyle): NodeRef =>
+		s.add(s.rect(84.0, 56.0, paper).at(x, y)).setBoxStyle(style);
+	const base = BoxStyle.create(uniformRadii(8.0), uniformBorders(1.0), edge);
+	const elevation: BoxShadow[] = [
+		{ color: rgba(0.0, 0.0, 0.0, 0.10), blur: 1.0, offsetX: 0.0, offsetY: 1.0, spread: 0.0,
+			inset: false },
+		{ color: rgba(0.0, 0.0, 0.0, 0.12), blur: 6.0, offsetX: 0.0, offsetY: 4.0, spread: -1.0,
+			inset: false },
+		{ color: rgba(0.0, 0.0, 0.0, 0.16), blur: 12.0, offsetX: 0.0, offsetY: 10.0, spread: -4.0,
+			inset: false },
+	];
+	card(16.0, 16.0, base.castShadows(elevation));
+	card(120.0, 16.0, base.castShadows([
+		{ color: rgba(0.10, 0.30, 0.90, 0.5), blur: 0.0, offsetX: 0.0, offsetY: 0.0, spread: 3.0,
+			inset: false },
+	]));
+	card(224.0, 16.0, base.castShadows([
+		{ color: rgba(0.0, 0.0, 0.0, 0.25), blur: 4.0, offsetX: 2.0, offsetY: 3.0, spread: 0.0,
+			inset: false },
+		{ color: rgba(1.0, 1.0, 1.0, 0.9), blur: 0.0, offsetX: 0.0, offsetY: 1.0, spread: 0.0,
+			inset: true },
+	]));
+	card(16.0, 120.0, base.castShadows([
+		{ color: rgba(0.0, 0.0, 0.0, 0.45), blur: 3.0, offsetX: 0.0, offsetY: 2.0, spread: 2.0,
+			inset: true },
+	]));
+	card(120.0, 120.0, BoxStyle.create(uniformRadii(8.0), uniformBorders(3.0),
+		rgba(0.95, 0.45, 0.20, 1.0)).castInsetShadow(rgba(0.0, 0.0, 0.0, 0.6), 4.0));
+	card(224.0, 120.0, base.linearFill(90.0, rgba(0.98, 0.70, 0.20, 1.0), 0.0,
+		rgba(0.35, 0.20, 0.85, 1.0), 1.0, GradientSpace.Oklab).castShadows(elevation));
 	return s;
 }
 
@@ -2153,6 +2244,7 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/aaRotatedBox", build: primAaRotatedBox },
 		{ name: "prim/aaGraphics", build: primAaGraphics },
 		{ name: "prim/aaNonUniformBox", build: primAaNonUniformBox },
+		{ name: "prim/subpixelFill", build: primSubpixelFill },
 		{ name: "prim/perCornerRadii", build: primPerCornerRadii },
 		{ name: "prim/perSideBorders", build: primPerSideBorders },
 		{ name: "prim/dashedBorder", build: primDashedBorder },
@@ -2161,6 +2253,8 @@ export function sceneBuilders(): SceneBuilder[] {
 		{ name: "prim/insetShadow", build: primInsetShadow },
 		{ name: "prim/aaShadow", build: primAaShadow },
 		{ name: "prim/cardOneInstance", build: primCardOneInstance },
+		{ name: "prim/boxFills", build: primBoxFills },
+		{ name: "prim/shadowStack", build: primShadowStack },
 
 		{ name: "xform/rotate", build: xformRotate },
 		{ name: "xform/scale", build: xformScale },
