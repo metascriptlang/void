@@ -8,7 +8,8 @@ import { rgba, tile } from "../../src/void2d/types";
 const s: Scene2D = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 const map = s.add(s.tileGroup());
 const one: TileCell = {
-	x: 0.0, y: 0.0, tile: tile(fakeTexture(11), 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0), scaleX: 1.0,
+	x: 0.0, y: 0.0, tile: tile(fakeTexture(11), 8.0, 8.0), color: rgba(1.0, 1.0, 1.0, 1.0),
+	scaleX: 1.0,
 	scaleY: 1.0, rotation: 0.0,
 };
 const three: TileCell[] = [one, one, one];
