@@ -72,7 +72,7 @@ else
 	fail "module stage all-off: msc test src/test/index.ms — see out/gate-t0.log"
 fi
 
-moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg voidSprites"
+moduleFlags="voidProfiler voidShaper voidSdfText voidColourEmoji voidSvg voidSprites voidBidi"
 moduleDefines=""
 for flag in $moduleFlags; do moduleDefines="$moduleDefines -d:$flag"; done
 echo "      module stage all-off: the T0 run above, no -d: flag"
@@ -600,6 +600,24 @@ for oracle in GraphemeBreakTest LineBreakTest; do
 		fail "UCD oracle $oracle: '${ucd}' — see out/gate-t0.log"
 	fi
 done
+# The BiDi conformance rows are fetched by setup.sh, not vendored, and they run in the all-modules
+# stage (they need -d:voidBidi). A missing file or a sha256 that differs from the pin prints a line
+# naming it and fails the oracle: it is never a skip.
+for oracle in BidiTest BidiCharacterTest; do
+	line=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0-modules.log | grep -E "^bidi oracle: $oracle [0-9]+/[0-9]+ (cases|rows) agree" | tail -1)
+	counts=$(echo "$line" | sed -nE 's|^bidi oracle: [A-Za-z]+ ([0-9]+)/([0-9]+) .*|\1 \2|p')
+	if [ -n "$counts" ] && [ "${counts% *}" = "${counts#* }" ] && [ "${counts#* }" -gt 0 ]; then
+		pinned=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0-modules.log | grep -cE '^bidi oracle: 2 conformance files match' || true)
+		if [ "$pinned" -ge 1 ]; then
+			pass "UCD 18.0.0 ${line#bidi oracle: }, files at their sha256 pins"
+		else
+			fail "BiDi oracle $oracle: agrees, but the conformance files do not match tests/oracle/ucd/bidiConformance.sha256: run setup.sh — see out/gate-t0-modules.log"
+		fi
+	else
+		fail "BiDi oracle $oracle: '${line}': run setup.sh if a conformance file is missing or differs from its pin — see out/gate-t0-modules.log"
+		sed 's/\x1b\[[0-9;]*m//g' out/gate-t0-modules.log | grep -E '^bidi oracle: (deps|[0-9])' | head -3 | sed 's/^/      /'
+	fi
+done
 for oracle in "cases" "scale modes"; do
 	line=$(sed 's/\x1b\[[0-9;]*m//g' out/gate-t0.log | grep -E "^h2d oracle: [0-9]+/[0-9]+ $oracle agree" | tail -1)
 	if [ -n "$line" ]; then
@@ -747,13 +765,13 @@ if "$MSC" build src/examples/mainSokol2d.ms --release --output=out/tmp/mainSokol
 		fi
 	}
 	named_on=$(module_symbols out/tmp/mainSokol2dColour.exe | grep -c 'void2dColour' || true)
-	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
+	named_off=$(module_symbols out/tmp/mainSokol2dOff.exe | grep -c 'void2dColour\|void2dGlyphSdf\|kbts_\|void2dShape\|void2dBidi\|void2dSprite\(Count\|Index\|Codepoint\|TableFault\|Padding\|Canvas\|Draw\|Ink\)\|void2dGlyphFaceSprite\|void2dGlyphPolygonCoverage' || true)
 	if [ "$named_on" -eq 0 ]; then
 		skip "module off: the colour executable names no void2dColour symbol, so the executables get no symbol check"
 	elif [ "$named_off" -gt 0 ]; then
-		fail "module off: mainSokol2d.exe with every module flag off names $named_off colour, SDF, shaper or sprite symbols"
+		fail "module off: mainSokol2d.exe with every module flag off names $named_off colour, SDF, shaper, BiDi or sprite symbols"
 	else
-		pass "module off: mainSokol2d.exe names no colour, SDF, shaper or sprite symbol, the colour build names $named_on void2dColour"
+		pass "module off: mainSokol2d.exe names no colour, SDF, shaper, BiDi or sprite symbol, the colour build names $named_on void2dColour"
 	fi
 	if [ "$module_on_bytes" -gt "$module_off_bytes" ]; then
 		pass "module off: mainSokol2d.exe is $module_off_bytes B, with the colour module $module_on_bytes B (+$((module_on_bytes - module_off_bytes)) B)"
