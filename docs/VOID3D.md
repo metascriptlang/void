@@ -156,7 +156,7 @@ Rows, in order. A row's dependency is why it sits where it does.
 | M41 | void2d label → `drawTarget` → M27 target texture → billboard | **Text in the world**: a billboard label from a void2d scene, outline when void2d has it **Done**; see "M41 as built" | damage popups, labels |
 | M42 | void2d P6 item 2 (Heaps-style `src/gpu` texture owner) | **void3d texture slots hold the `src/gpu` texture owner** and re-upload on device loss, as void2d does; after that lands **Done**; see "M42 as built" | every layer recovering textures the same way |
 | M43 | three.js `d4ea9b9` `src/core/Object3D.js:327` (`renderOrder`), `src/renderers/webgl/WebGLRenderLists.js:7-9,37-39` (lists sort by `renderOrder` before z); Unity `Renderer.sortingOrder`; Unreal translucency sort priority. Heaps has only the material's `Pass.layer` (M34) | **A per-item render order**: an integer on the node/item, sorting after the material's layer and before depth, writable per frame without a new material. **NEW MECHANISM** against Heaps, backed by three references; Godot's world-unit `sorting_offset` bias is not built (URG maps it to an order) **Done**; see "M43 as built" | cards in a hand reordered every frame (URG `helpers/card_sorting_helper.gd:30`), UI on meshes, overlays, decals |
-| M44 | — | **A URG-class sample**: a board, cards as render targets on quads, a sun with shadows, torches, particles, a card dissolve, a highlight overlay; placeholder assets, built only from Void; the end-to-end consumer of M33–M43 | the proof |
+| M44 | — | **A URG-class sample**: a board, cards as render targets on quads, a sun with shadows, torches, particles, a card dissolve, a highlight overlay; placeholder assets, built only from Void; the end-to-end consumer of M33–M43 **Done**; see "M44 as built" | the proof |
 
 Not planned until a consumer reads it: a depth texture for translucent materials (soft
 particles), particle collision, MSAA. Exposure is one scale on the output; the sample bakes it.
@@ -3021,6 +3021,15 @@ Where each probe lies comes from `cardPoint` (a card's own unit coordinates thro
 **Not exercised, on purpose or for want of a consumer.** M34's material layer, `AlphaKill`, `Add` and `SoftAdd`; M36's UV transform, scroll and back texture; M38's other shapes and the sorted write; M39's glTF; the pixel-art preset; M42, which is not in this tree.
 
 **Acceptance, limited to what ran. The GPU did not run.** On `wt/void3d-gaps` `8ea587e`, `msc` v0.3.2 from the worktree, `MSC_NO_GLOBAL_CACHE=1`: `msc check` of the scene, the entry and the test is clean; `msc build` of `src/examples/mainCardTable.ms` and of `tests/integration/cardTable.ms` built and neither was run, since running opens a GPU window. The emitted C of the test was read for the functions in `CARD_TABLE_PATH_FUNCTIONS` (the same awk the stage runs): no `ArrayCopy` and no string builder in any. `gate3d.sh` was not touched by the move to the new APIs and passes `bash -n`; the gate, `gate.sh`, captures, goldens, Android and the web build did not run. So no pixel of the sample is evidenced: the order swap, the shadow (now through `CullFront` and a cut caster), the dissolve (now premultiplied), the overlay (now `endPrepared`), the label and the flames, and the sun, bias and colour numbers behind the thresholds, all wait for the native slot. The roadmap row is not flipped.
+
+**Native acceptance, 2026-10-08.** On `507f17a` over void2d's `853365b`, Windows D3D11, BUILD
+`99a851d7` unchanged throughout: `gate.sh` GREEN, golden 93/93; `gate3d.sh` 336 PASS / 3 known
+skips, 1411 tests, and one FAIL, `card-table`, its first GPU run, on two bugs in the sample: the
+discarded card drew a premultiplied dissolve without a premultiplied-over pass (M27 refuses it,
+`StraightBlend`), and the second torch's flames left their box (turbulence re-bent every step, as
+Godot does, at influence 0.08; a headless probe measured the drift; 0.02 now). `c43cb01` fixes
+both in the sample alone; `card-table` with its featureless control, allocation and style rerun
+alone GREEN, every other stage carrying over.
 
 ### Carried follow-ups, as built
 
