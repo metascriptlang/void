@@ -128,4 +128,4 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Scroll = re-emit integer rows | **G/W** | an editor needs pixel-smooth scroll; neither Ghostty nor GPUI has a cheap path |
 | SSBOs, `sampler2DRect`, GL 4.3 | **P** | |
 | Windows font directory scan | **W** | discovery is host work; hand void2d bytes |
-| LTR-only, monotonic-x assumption | **G** | |
+| LTR-only, monotonic-x assumption | **G** | a terminal row is a cell grid in one direction; void2d's BiDi module (VOID2D.md P7) is for proportional text, and a `forceWidth` line that holds right-to-left text is reordered as cells |

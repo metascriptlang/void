@@ -153,6 +153,7 @@ How the taken items are adapted — the display list, the unified UI pipeline, S
 | Three hand-written shader ports | **P** | one GLSL source |
 | Taffy, elements, entities, views, arena, actions, keymap, animation | **N** | Neon |
 | Hitboxes, dispatch tree, focus, tab stops, IME input handler, cursor styles, tooltips, `uniform_list` / `list`, a11y, frame scheduling, window/platform | **N** | Neon's Void host (and Ion) |
+| Line layout assumes glyph order is x order (`index_for_x`, `closest_index_for_x`, `x_for_index`, `line_layout.rs:61-130`; `ShapedLineCursor` falls back to `split_at` when bidirectional shaping reorders, `line.rs:258-270`), and the BiDi reorder happens in the platform text system or cosmic-text before wrapping (`cosmic_text_system.rs:748-760`) | **W** | UAX #9 section 3.4 reorders each line after wrapping, and the caret, hit test, `splitAt` and selection work over visual order: VOID2D.md P7 |
 | Layout pixel rounding (`taffy.rs:270-376`) | **N** | Yoga's `pointScaleFactor`, set to the DPI by the host |
 
 ## Open

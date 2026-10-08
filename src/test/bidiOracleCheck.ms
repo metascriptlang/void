@@ -337,3 +337,17 @@ test "levels, paragraph level and order agree with every row of the UCD's BidiCh
 	assert verdict.agreed == verdict.rows;
 }
 
+
+test "a paragraph separator inside the layout paragraph ends the embeddings and starts no paragraph" {
+	const noBrackets: Vec<int32> = new Array(0);
+	const embedded: Vec<BidiClass> = [
+		BidiClass.LRE, BidiClass.L, BidiClass.B, BidiClass.L,
+	];
+	let levels: Vec<int32> = new Array(0);
+	assert resolveLevels(embedded, noBrackets, TextDirection.Ltr, levels) == 0;
+	assert levels[1] == 2 && levels[2] == 0 && levels[3] == 0;
+	const kept: Vec<BidiClass> = [BidiClass.R, BidiClass.B, BidiClass.L];
+	let again: Vec<int32> = new Array(0);
+	assert resolveLevels(kept, noBrackets, TextDirection.Auto, again) == 1;
+	assert again[0] == 1 && again[1] == 1 && again[2] == 2;
+}

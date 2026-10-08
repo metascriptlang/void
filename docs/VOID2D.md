@@ -2559,8 +2559,138 @@ name (void-manager decision 5, 2026-10-07: "BiDi is its own later item, never si
 **Par.** GPUI takes paragraph direction and run order from its platform text systems; Void
 does it itself as a portable module: UAX #9 run levels over P4's segmentation, each level run
 shaped in its direction by `kb_text_shape`, reordered per line for drawing, and caret and
-selection over visual order. Not started; the mechanism is chosen against its references when
-the phase opens.
+selection over visual order.
+
+**Built 2026-10-08, behind `-d:voidBidi`** (void-manager decisions of the same day; worktree
+`wt/p6-lane-a`, native gate and golden captures owed, see "Owed" below).
+
+- **The resolver.** `src/void2d/bidi.ms` over the generated `bidiTable.h` (class ranges, paired
+  brackets with their canonical openers, exact mirror pairs; `python tests/oracle/ucd.py regen`):
+  P2-P3, X1-X10 with the removed characters retained (UAX #9 section 5.2), W1-W7, N0 with the
+  BD16 stack of 63, N1-N2, I1-I2, L1, L2. It is held at **every row** of BidiTest-18.0.0 (770 241
+  of 770 241 cases) and BidiCharacterTest-18.0.0 (91 707 of 91 707 rows); both files are fetched
+  by `setup.sh` at a pinned sha256 and the oracle fails by name when one is missing or differs
+  (TESTING.md T3). Five planted controls turned it red and green again (N0, X5c, max_depth 124,
+  BD16 stack 62, W4). Both files take about 5.5 s together.
+- **Why kb_text_shape's BiDi is not enough.** Its direction pass classifies with 11 classes
+  (`kb_text_shape.h:3380-3394`: NI, BN, L, R, NSM, AL, AN, EN, ES, ET, CS), has no embeddings,
+  overrides, isolates or paired brackets, and keeps only a shift buffer of classes; a conformant
+  UAX #9 resolver needs 23 classes, a directional status stack and BD16. A forced
+  LRO or RLO could not be honoured by it, so Void resolves levels itself and tells kb the result.
+- **Layout.** `shapeText` resolves one paragraph per `U+000A` (the P4 tailoring) and keeps
+  `ShapedText.bidi` (per codepoint: level, L1 class, and a level per paragraph) as side tables,
+  empty for text with no possibly-right-to-left codepoint (`possiblyRtl`, the range test of
+  Makepad `shaper.rs:31-37`). `wrapText` wraps on the logical pen, then reorders each line
+  (UAX #9 section 3.4): L1 with the trailing whitespace of the line, then L2 as geometry. The
+  slot x of an odd-level run is the reflection of its logical interval inside the run's extent,
+  nested from the highest level down. `TextLayout.bidi` keeps the levels, the L1 classes, the
+  logical x and the paragraph level of every line, so a layout can be cut and reordered again.
+- **Shaping.** Each level run is its own shaping pass, in the direction Void resolved
+  (`void2dShapeBeginForced`: kb manual runs, with the script boundaries of a kb break-state pass
+  over the group). The glyphs of a right-to-left pass are reversed back to logical order before
+  the cluster cut, and kb's glyph offsets (in its visual pen) apply to the reflected slot
+  unchanged; a mark glyph of zero advance lands on the left edge of its reflected base, as kb
+  put it. A glyph that reports another direction than the one forced stops the process by name
+  with the case. Measured: all 76 non-empty oracle rows give the same glyphs forced to the
+  direction auto mode chose as in auto mode (`shapeOracleCheck.ms`); with the script
+  boundaries left out, Devanagari already differs.
+- **Caret, hit test, selection, decorations.** `xForIndex` and `indexAt` work over the strong
+  caret of each cluster boundary; a selection is several (x0, x1) spans per row, merged where they
+  touch; run decorations walk the glyphs left to right, so a run split by a reflection gets two
+  segments. The selection spans and the caret x are computed when the label is shaped
+  (`refreshSelection`), not per frame, which keeps the frame path free of arrays; the gate's
+  allocation lists name the new functions (`scripts/gate.sh`); `scripts/allocation.awk` run by
+  hand on the emitted C of `benchUi` and `benchText` reported no copy and no fresh array.
+
+**NEW MECHANISM A, the UAX #9 resolver in MetaScript** (`bidi.ms`). The reference is UAX #9
+revision 52 (2026-09-01, Unicode 18.0.0) and its two conformance files; no rendering reference
+has one to extend (Makepad `shaper.rs:205` and GPUI via cosmic-text call the `unicode-bidi`
+crate, which this builder did not read; the Makepad, GPUI and cosmic-text lines cited below are
+the spec's reading of upstream `main` on 2026-10-08, not re-read here, unlike `kb_text_shape.h`). It adds about 9.4 KB of tables per target (measured
+9 520 B native, 9 366 B wasm32 objects, `tests/bench/wasm.json`) and the resolver code. It can
+regress LTR text with the flag on if the fast path is wrong; every existing golden is to stay
+byte-identical with `-d:voidBidi` in `GOLDEN_DEFINES`, owed to the golden run.
+
+**NEW MECHANISM B, reordering per line after wrapping.** UAX #9 section 3.4: "these rules act on a
+per-line basis and are applied after any line wrapping". Makepad (`shaper.rs:223-226`) and GPUI via
+cosmic-text (`cosmic_text_system.rs:748-760`, `Wrap::None`) reorder the unwrapped text, which breaks
+once a row wraps. The slot x stays the logical pen, so wrapping, truncation and `forceWidth` are
+untouched. It can regress tab stops (measured on the logical pen, declared below), the hang of
+trailing whitespace, and `forceWidth`, which keeps its one-pixel rule: the reflected cells are
+within a pixel of the grid, measured 0.74 px off on a Hebrew line.
+
+**NEW MECHANISM C, caret, hit test and selection over visual order.** The references are Pango's
+strong and weak cursors and cosmic-text's `Affinity`; GPUI (`line_layout.rs:61-130`) and Makepad
+(`layouter.rs:1338-1400`) scan left to right. The rule built: the boundary between two clusters
+of one direction sits at the leading edge of the next one; where the directions differ the strong
+caret is where a character of the paragraph direction inserted there would sit (the trailing edge
+of the previous cluster when it has the paragraph's parity, else the leading edge of the next);
+a line's ends use the paragraph-direction edge. **Spec correction:** the spec says the caret
+is "the leading edge of the character at i". On a left-to-right line that ends in a Hebrew run,
+that puts the boundary before the run's first letter and the line end on the same x, and then
+`indexAt(xForIndex(i)) == i` cannot hold; the insertion rule maps every boundary of the tested lines
+to its own x and `bidiCaretCheck.ms` holds the round trip. The shader is unchanged (a Selection
+instance already takes its neighbours' x and width).
+
+**NEW MECHANISM D, the forced direction in the shaper bridge.** The bridge extends
+`kbts_ShapeManualBreak` (already used) with `kbts_ShapeBeginManualRuns`,
+`kbts_ShapeNextManualRun(direction, script)` and a `kbts_BreakBegin` pass for the scripts
+(`kb_text_shape.h:26419-26465`, `:26595-26600`, read by this builder). `ShapeDirection.Ltr` and
+`Rtl` now **force** the pass where they were a paragraph hint; `Unknown` is the old path, which
+non-bidi text still takes. It adds 1 605 B native and 1 339 B wasm32 to the shaper object. It can
+regress script itemization against auto mode, held by the 76 rows above.
+
+**Resolved against the spec (what the oracle rows now say).** `shape:arabic-ltr-explicit` is
+re-owned as declared: forced to left to right, kb gives the right-to-left row's joining forms in
+text order (ids 43 19 15 8 47 3) where HarfBuzz picks other forms for four of six glyphs
+(38 19 14 47 10 2); counts, clusters and advances agree, so `shape-cluster:arabic-ltr-explicit`
+is closed. `missing-mixed-direction` is replaced by three explicit-direction rows that agree
+(`mixed-direction-latin-before`, `missing-mixed-direction-arabic`, `mixed-direction-latin-after`),
+and `bidiShapedCheck.ms` requires that a mixed Hebrew line shapes as its three runs.
+
+**Declared.**
+
+- A bare build, and a build with the module off after `setTextShaping(false)` for Arabic-script
+  text (Bidi_Class AL), refuses by name: `TextError` is returned by `shapeText`,
+  `TextLayout.layout`, `layoutRuns`, `calcTextWidth`, `NodeRef.calcTextWidth` and
+  `NodeRef.splitText`; a label (`Scene2D.label`, `setText`) keeps its chainable signature, draws
+  nothing for refused text, logs it once ("void2d: label text is not drawn: ...") and answers
+  `NodeRef.textStatus()`. With `-d:voidBidi` and no shaper, Arabic-script text is a result of the
+  same type ("needs -d:voidShaper"), not an abort.
+- A bidi paragraph is the layout paragraph (split at `U+000A` only). A paragraph separator inside it
+  ends the open embeddings and isolates (X8) but starts no paragraph of its own, so P1 is not
+  followed there; BidiTest and BidiCharacterTest cannot tell (`bidiOracleCheck.ms` plants the row).
+- Tab stops and truncation measure on the logical pen, so a tab on a mixed line can end at a
+  visual x that is not a multiple of the stop. Trailing whitespace hangs on the paragraph-end side
+  (at negative x in a right-to-left paragraph); `LineBox.width` and `x` describe the ink as before.
+- Alignment stays physical (`Align.Left` is left). Logical start and end alignment is Neon's.
+- Letter spacing is not applied after a joining letter (Bidi_Class AL), and the optional
+  ligatures stay on for a group that holds one. Measured on the Noto Arabic subset: spacing 3.0
+  leaves every glyph id and advance of an Arabic word as at 0, and only the space between words
+  takes it. The ligature switch-off cannot be told apart on that subset (no feature it names
+  changes a glyph), so that half of the rule is not pinned by a font.
+- Mirroring: kb mirrors a glyph of a right-to-left pass itself, and `bidi.ms` does it on the cmap
+  path only from the exact Bidi_Mirroring_Glyph pairs (364 of 438; the best-fit pairs are not
+  used). Void never hands kb a pre-mirrored codepoint.
+- The weak caret and visual cursor motion are not built; `bidi:weak-caret-and-visual-motion` in
+  `tests/PENDING.md` is owned by the human, who decides whether Neon needs them.
+
+**Owed** (runs that need the native gate, GPU or the web build, not run by this lane): `sh
+scripts/gate.sh` for the all-modules T0 stage with the BiDi oracle, the allocation and module-off
+checks; `sh scripts/golden.sh` for byte-identity of every existing golden with `-d:voidBidi`, and
+`sh scripts/golden.sh --update text/bidiHebrew` (and the six others, `tests/PENDING.md`
+`golden-missing:text/bidi*`) for the captures; `sh scripts/experiment-modulesWeb.sh bidi` and
+`scripts/build-web.sh` for the linked wasm of the module and the WebGL2 pass rate of the new scenes;
+the `tests/golden/invariants.ms` no-gap check over a selection that is two spans on one row.
+
+**Measure.** BiDi tables 9 520 B native, 9 366 B wasm32 (objects); the forced-direction pass adds
+1 605 B and 1 339 B to `shaper.c`; the conformance oracle runs both files in about 5.5 s.
+
+**Tests.** T3: `bidiOracleCheck.ms` (BidiTest, BidiCharacterTest, sha256 pins), `shapeOracleCheck.ms`
+(forced against auto). T1: `bidiTableCheck.ms`, `bidiOffCheck.ms` (the refusals, with the
+module off), `bidiLayoutCheck.ms`, `bidiCaretCheck.ms`, `bidiSelectionCheck.ms`,
+`bidiShapedCheck.ms`; abort programs `tests/aborts/bidiOff.ms`, `shaperRtl.ms`,
+`bidiArabicNeedsShaper.ms`. T2: seven `text/bidi*` scenes, captures owed.
 
 **Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The three rows that were not a difference of engines are deleted: the cluster row of the explicit left-to-right Arabic text agrees once the shaper bridge forces the direction, and the mixed-direction row is replaced by three explicit-direction rows that agree. The glyph row of the explicit left-to-right Arabic text is re-owned as declared with its measured reason.
 

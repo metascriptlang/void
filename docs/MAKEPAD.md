@@ -128,4 +128,6 @@ Reasons as in [GPUI.md](GPUI.md): **N** Neon/host covers it, **W** worse than wh
 | Editor text one scalar per call; no runs, no decorations, features unreachable, `y_offset` dropped | **W** | GPUI's shaped-line model stands |
 | Runtime shader generation with hand-kept per-backend semantics | **P** | dropped draws until compiled; sokol-shdc validates one GLSL at build time |
 | 2-stop axis-only sRGB gradients | **W** | |
+| `ParagraphBidiInfo` over the whole unwrapped text and `visual_runs` before wrapping (`shaper.rs:205`, `:223-226`); `x_in_lpxs_to_index` and `index_to_x_in_lpxs` left to right only (`layouter.rs:1338-1400`) | **W** | reorder per line after wrapping, hit test over visual order: VOID2D.md P7 |
+| Each BiDi level run shaped in its own direction (`shaper.rs:228-235`) and the `is_definitely_ltr` fast path (`shaper.rs:31-37`) | **Take** | kb manual runs forced to Void's resolved direction, and `possiblyRtl` |
 | Turtle layout, widgets, animator state machine, script VM, live reload | **N** | |
