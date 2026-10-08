@@ -807,15 +807,16 @@ function keepsAlpha(
 	return Result.ok(translucent);
 }
 
-// Takes `data` by reference, not its textures as a span: a field of a ref parameter passed as a
-// span derefs twice (.inbox/compiler/2026-10-07-ref-struct-field-to-span-derefs-twice.md).
-function sharedSampling(ref data: GltfData, material: GltfMaterial): Result<Sampling, GltfError> {
+function sharedSampling(
+	textures: Readonly<Span<TextureData>>,
+	material: GltfMaterial,
+): Result<Sampling, GltfError> {
 	let shared: Sampling = { filter: FilterMode.Linear, wrap: Wrap.Clamp };
 	let found: boolean = false;
 	for (const index of [material.texture, material.emissiveTexture, material.normalTexture]) {
 		if (index == NO_TEXTURE_INDEX) { continue; }
 		const sampling: Sampling =
-			{ filter: data.textures[index].filter, wrap: data.textures[index].wrap };
+			{ filter: textures[index].filter, wrap: textures[index].wrap };
 		if (found && (sampling.filter != shared.filter || sampling.wrap != shared.wrap)) {
 			return Result.err(GltfError.UnsupportedSampler);
 		}
@@ -849,7 +850,7 @@ function substituteWhites(
 	let whites: Vec<int32> = [];
 	for (let i = 0; i < (reads.length as int32); i++) {
 		const material: GltfMaterial = data.materials[i];
-		const sampling: Sampling = try sharedSampling(data, material);
+		const sampling: Sampling = try sharedSampling(data.textures, material);
 		const wantsEmissive: boolean =
 			reads[i].emits && material.emissiveTexture == NO_TEXTURE_INDEX;
 		const wantsBase: boolean = (reads[i].emits || material.normalTexture != NO_TEXTURE_INDEX)
