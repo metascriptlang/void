@@ -3031,6 +3031,16 @@ Godot does, at influence 0.08; a headless probe measured the drift; 0.02 now). `
 both in the sample alone; `card-table` with its featureless control, allocation and style rerun
 alone GREEN, every other stage carrying over.
 
+**The torches now take URG's own values** (`assets/torch/fire_light.tscn:27-41`): a sphere of
+0.08, gravity 2.4 up, no initial velocity, turbulence strength 0.5 at scale 1.0, influence 0.1
+(Godot's default) times a curve that is 0 until life 0.24 and 1 at life 1, life 1 s. A headless
+probe of M38's emitter with exactly those values, 180 steps at 1/60 s, settles the question the
+sample's first values raised (that the flames drifted because the port differs from Godot): at
+x = -3.2 the mean rise is 0.40 without turbulence and 0.27 with it, sideways 0.03 and 0.07; at
+x = 3.2, 0.40 and 0.32, sideways 0.03 and 0.09. With Godot's own settings the flames rise at
+both torches, so the first values were the sample's, not a port defect. The sample no longer
+exercises `initialSpeed` or damping; `particlesCheck.ms` holds both.
+
 ### Carried follow-ups, as built
 
 Four items the M33-M44 reviews carried, settled by their references. Heaps is the checkout at
