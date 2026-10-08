@@ -54,13 +54,13 @@ test "text with no possibly right-to-left codepoint is laid out as before" {
 test "a label whose text is refused draws nothing, says why, and recovers on new text" {
 	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
 	const n = s.label("\u{5D0}\u{5D1}", 13.0, rgba(1.0, 1.0, 1.0, 1.0));
-	assert n.textWidth() == 0.0;
 	const status = n.textStatus();
 	assert !status.ok;
 	if (!status.ok) {
 		assert status.error.index == 0;
 		assert status.error.kind == TextErrorKind.RightToLeftNeedsBidi;
 	}
+	assert n.textWidth() == 0.0;
 	n.setText("abc");
 	assert n.textWidth() > 0.0;
 	assert n.textStatus().ok;

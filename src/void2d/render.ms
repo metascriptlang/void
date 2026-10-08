@@ -2004,7 +2004,7 @@ export function splitText(this n: NodeRef, text: string): Result<string, TextErr
 }
 
 export function textStatus(this n: NodeRef): Result<void, TextError> {
-	return labelRefusal(n.scene.payloads[n.labelRow("textStatus")]);
+	return labelRefusal(shapedPayload(n, "textStatus"));
 }
 
 export function xForIndex(this n: NodeRef, index: int32): float32 {
