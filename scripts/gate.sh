@@ -836,8 +836,8 @@ else
 	fi
 fi
 skip "metal macOS: no readback (~50 lines) — tests/PENDING.md backend:metal-macos"
-skip "metal iOS: no readback, and the first device run is T5"
-skip "gles3 Android: shares the glReadPixels path, needs the device"
+skip "metal iOS: no readback, and the first device run is T5 — tests/PENDING.md backend:metal-ios"
+skip "gles3 Android: shares the glReadPixels path, needs the device — tests/PENDING.md backend:gles3-android"
 skip "webgpu: blocked with the other web runs — tests/PENDING.md web:runs"
 skip "sample_count on iOS and Android: needs the devices — tests/PENDING.md backend:sample-count-mobile"
 if [ "$WEB" -eq 1 ]; then
