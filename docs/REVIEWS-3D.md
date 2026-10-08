@@ -2683,14 +2683,22 @@ material and, through it, its block, once, before a frame, after a loss); the fr
 core and re-applied per draw; the four curves against `ToneMapping.hx`; premultiply after
 `toneMapped` in every program; sokol makes RGBA16F blendable wherever it is renderable.
 
-Carried, recorded:
+Fixed after void-manager's ruling ("solid": mechanism follow-ups are fixed in the milestone), the
+GPU pins written, not yet run (they wait for the pair):
 
-- **The background is tone mapped in HDR, not in LDR.** The HDR clear goes through `toneMapFs`
-  as in Heaps; an LDR clear never meets `toneMapped`, so with a curve or an exposure the two
-  presets show a different background. Present since M45; the LDR presets would have to clear
-  to a CPU-tone-mapped colour each frame.
-- **A transparent clear composited by the caller.** The HDR target holds linear colour with alpha
-  multiplied in, and `toneMapFs` encodes it without unpremultiplying, so an `endPrepared` caller
-  compositing a target with `background.w < 1` gets edges brighter than the LDR preset's. The
-  swapchain path is unaffected (`copyFs` writes alpha 1).
-- Forward still rebuilds `sceneColors[0]` in HDR mode, unused there.
+- **The background is tone mapped in HDR, not in LDR.** Heaps clears `hdr` and tone maps it
+  (`h3d/scene/pbr/Renderer.hx:841-870`), so the reference maps the clear. The LDR presets now
+  clear to `toneMappedBackground`, the CPU twin of the HDR path (`toneMap.ms` `toneCurved`, which
+  the GPU stages hold the shader's `toneCurve` block to), refreshed each frame; exposure 0 and the
+  linear curve return the background as given, so captures stay byte-identical. Pins: headless
+  "an LDR clear is the HDR clear after the tone map…" and "the CPU tone curves read Heaps'
+  formulas…" (values evaluated apart from void3d); GPU `exposure` samples the background in both
+  presets at x1.5 and with Reinhard, where the unmapped clear is off by more than 20 levels.
+- **A transparent clear composited by the caller.** A background is premultiplied (M40's
+  convention), so the HDR target holds linear colour premultiplied by alpha; `toneMapFs` now
+  unpremultiplies (alpha clamped to 1, as an Rgba8 target saturates it under an additive layer),
+  curves and encodes the straight colour and premultiplies again, a zero alpha giving zero.
+  `linearBackground` decodes the straight background the same way. Pin: `hdr` draws a
+  half-transparent layer into a second HDR preset over a transparent clear, Linear x1 and Reinhard
+  x0.6, against the LDR value and away from the curve of the premultiplied colour (old shader).
+Left as is: forward still rebuilds `sceneColors[0]` in HDR mode, unused there.

@@ -3434,6 +3434,15 @@ per-fragment `toneMap` block and `toneMapFs`. The core's `toneMode` reaches the 
 `programKeyCheck.ms`. The per-fragment fast path returns the colour untouched only at exposure 0 and
 the linear curve, so every capture is expected byte-identical.
 
+**The background, in both kinds of preset.** Heaps clears `hdr` and tone maps it with the scene
+(`h3d/scene/pbr/Renderer.hx:841-870`). The LDR presets clear to `toneMappedBackground`, the same
+exposure and curve on the CPU (`toneMap.ms` `toneCurved`, the GLSL block's twin, which the GPU
+stages compare against), each frame; at exposure 0 and Linear the background is used as given. A
+background is premultiplied by its alpha (M40). In an HDR preset the target therefore holds
+premultiplied linear colour, and `toneMapFs` unpremultiplies (alpha clamped to 1, as an Rgba8
+target saturates it), curves, encodes and premultiplies again, so a transparent target composited
+by an `endPrepared` caller has the edges an LDR preset gives it.
+
 **Where it diverges from Heaps, and why.** Heaps defaults `toneMode` to Reinhard; void3d keeps
 Linear, so existing scenes and captures do not move and a curve is an explicit choice. Filmic's a..e
 are Heaps' defaults, fixed: the props that edit them are not built. In the LDR presets the curve
