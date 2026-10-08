@@ -7,7 +7,11 @@ import {
 	commandCount, commandField, uiInstanceCount, uiInstanceField, vertexCount, CMD_PIPELINE,
 	Pipeline,
 } from "../void2d/displayList";
-import { REC_UI_COLOR_FILL, REC_UI_FLOATS } from "../void2d/instanceLayout";
+import { REC_UI_COLOR_FILL, REC_UI_FLOATS, REC_UI_PARAMS0 } from "../void2d/instanceLayout";
+import { SDF_GLYPH_FLAG } from "../void2d/instance";
+when (voidSdfText) {
+	import { setSdfRegime } from "../void2d/labelText";
+}
 import { Bounds2D, Color, emptyBounds, identity2d, rgba } from "../void2d/types";
 
 const WHITE = rgba(1.0, 1.0, 1.0, 1.0);
@@ -191,4 +195,36 @@ test "an outline reaching into the viewport keeps a label whose body is left of 
 	record(s.add(reaching));
 	assert uiInstanceCount() == 2;
 	frameEnd();
+}
+
+when (voidSdfText) {
+	function flagged(i: int32): boolean {
+		return uiInstanceField(i, REC_UI_PARAMS0 + 1) == SDF_GLYPH_FLAG;
+	}
+
+	test "a turned outlined label records its outlines and fills as SDF glyphs, outlines first" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		const n = label(s, "Turned", 2.0, RED).setRotation(0.5);
+		record(n);
+		assert uiInstanceCount() == 12;
+		for (let i: int32 = 0; i < 12; i++) {
+			assert flagged(i);
+			assert (greenAt(i) == 0.0) == (i < 6);
+		}
+		assert commandCount() == 1;
+		frameEnd();
+	}
+
+	test "a zoomed outlined label draws the same tiles at four times the size" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+		const n = label(s, "Zoom", 2.0, RED).setScale(4.0);
+		record(n);
+		assert uiInstanceCount() == 8;
+		assert uiInstanceField(0, 0) == 4.0;
+		frameEnd();
+	}
 }

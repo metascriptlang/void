@@ -7,7 +7,7 @@
   "seam": { "native": 5190, "wasm32": 4093 },
   "sdf": { "native": 11705, "wasm32": 8062 },
   "textOutline": { "native": 9256, "wasm32": 6667 },
-  "textOutlineWithSdf": { "native": 4036, "wasm32": 3227 },
+  "textOutlineWithSdf": { "native": 5610, "wasm32": 4887 },
   "shaper": { "native": 536213, "wasm32": 520300 },
   "bidi": { "native": 9520, "wasm32": 9366 },
   "sprite": { "native": 33757, "wasm32": 35647 },

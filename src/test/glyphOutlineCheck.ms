@@ -4,6 +4,12 @@ import {
 	void2dGlyphOutlineBox,
 	void2dGlyphOutlineGenerations,
 } from "../void2d/glyph.h";
+
+when (voidSdfText) {
+	import { void2dGlyphSdfBox, void2dGlyphSdfOutlineBox } from "../void2d/glyph.h";
+	import { acquireSdf, acquireSdfOutline, SDF_OUTLINE_PER_TEXEL } from "../void2d/glyphAtlas";
+	import { SDF_EM, SDF_EDGE } from "../void2d/textSdf";
+}
 import { loadFace, glyphIndex, pageTexel } from "../void2d/face";
 import {
 	GlyphAtlas,
@@ -225,5 +231,100 @@ test "a cubic glyph gets an outline tile that holds its fill" {
 		}
 		assert fillInk > 0;
 		assert outlineInk > fillInk + fillInk / 8;
+	}
+}
+
+when (voidSdfText) {
+	function sdfByte(distance: float32, texels: float32): int32 {
+		const value: float32 = (SDF_EDGE as float32) + 31.875 * (distance + texels);
+		if (value < 0.0) { return 0; }
+		if (value > 255.0) { return 255; }
+		return value as int32;
+	}
+
+	function worstSdfStemError(lane: int32): int32 {
+		const face = testFace();
+		const atlas = GlyphAtlas.create(1024, 2);
+		const r = atlas.acquireSdfOutline(face, glyphIndex(face, "I".code), lane);
+		let worst: int32 = 255;
+		if (r.ok) {
+			worst = 0;
+			const t: GlyphTile = atlas.tile(r.value);
+			const scale: float32 = SDF_EM / UNITS;
+			const texels: float32 = (lane as float32) / SDF_OUTLINE_PER_TEXEL;
+			for (let row = 0; row < t.height; row++) {
+				for (let col = 0; col < t.width; col++) {
+					const cx: float32 = ((t.left + col) as float32) + 0.5;
+					const cy: float32 = ((t.top + row) as float32) + 0.5;
+					const want: int32 = sdfByte(stemDistance(cx, cy, scale), texels);
+					const got: int32 = pageTexel(atlas.pageHandle(t.page), t.x + col, t.y + row);
+					const off: int32 = got > want ? got - want : want - got;
+					if (off > worst) { worst = off; }
+				}
+			}
+		}
+		return worst;
+	}
+
+	test "an SDF outline tile is the field shifted by the width, byte for byte on an I stem" {
+		assert worstSdfStemError(8) <= 1;
+		assert worstSdfStemError(24) <= 1;
+		assert worstSdfStemError(36) <= 1;
+	}
+
+	test "an SDF outline tile is the SDF box grown by ceil(width) + 2 and lives on an SDF page" {
+		const face = testFace();
+		const atlas = GlyphAtlas.create(1024, 2);
+		for (const codepoint of ["I".code, "g".code, "W".code, "@".code]) {
+			const glyph: int32 = glyphIndex(face, codepoint);
+			const base = void2dGlyphSdfBox(face, glyph);
+			const bx0: int32 = base[0];
+			const by0: int32 = base[1];
+			const bx1: int32 = base[2];
+			const by1: int32 = base[3];
+			for (const lane of [4, 12, 25]) {
+				const grown = void2dGlyphSdfOutlineBox(face, glyph, (lane as float32) / 8.0);
+				const extra: int32 = (Math.ceil((lane as float32) / 8.0) as int32) + 2;
+				assert grown[0] == bx0 - extra && grown[1] == by0 - extra;
+				assert grown[2] == bx1 + extra && grown[3] == by1 + extra;
+			}
+			const r = atlas.acquireSdfOutline(face, glyph, 12);
+			assert r.ok;
+			if (r.ok) { assert atlas.pageKind(atlas.tile(r.value).page) == PageKind.Sdf; }
+		}
+	}
+
+	test "the outline tile is another key than the field and costs no base generation" {
+		const face = testFace();
+		const glyph: int32 = glyphIndex(face, "g".code);
+		const atlas = GlyphAtlas.create(1024, 2);
+		const field = atlas.acquireSdf(face, glyph);
+		const outline = atlas.acquireSdfOutline(face, glyph, 16);
+		const again = atlas.acquireSdfOutline(face, glyph, 16);
+		const wider = atlas.acquireSdfOutline(face, glyph, 17);
+		assert field.ok && outline.ok && again.ok && wider.ok;
+		if (field.ok && outline.ok && again.ok && wider.ok) {
+			assert field.value != outline.value && outline.value == again.value;
+			assert wider.value != outline.value;
+			assert atlas.tile(outline.value).width > atlas.tile(field.value).width;
+		}
+		assert atlas.generations == 1;
+		assert atlas.outlineRasterizations == 2;
+	}
+
+	test "a cubic glyph has no SDF outline and a lane outside the key is refused by name" {
+		const face = cubicFace();
+		const atlas = GlyphAtlas.create(1024, 2);
+		const cubic = atlas.acquireSdfOutline(face, glyphIndex(face, "A".code), 16);
+		assert !cubic.ok;
+		if (!cubic.ok) { assert cubic.error == AtlasError.SdfCubicOutline; }
+		const plain = testFace();
+		const none = atlas.acquireSdfOutline(plain, glyphIndex(plain, "g".code), 0);
+		assert !none.ok;
+		if (!none.ok) { assert none.error == AtlasError.OutlineTooWide; }
+		const over = atlas.acquireSdfOutline(plain, glyphIndex(plain, "g".code), 256);
+		assert !over.ok;
+		if (!over.ok) { assert over.error == AtlasError.OutlineTooWide; }
+		assert atlas.pageCount() == 0;
 	}
 }

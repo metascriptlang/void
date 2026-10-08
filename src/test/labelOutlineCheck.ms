@@ -17,6 +17,10 @@ import {
 import { AtlasError, GlyphTile, quantizeX, snapBaseline } from "../void2d/glyphAtlas";
 import { Transform2D, trs2d, rgba } from "../void2d/types";
 import { Scene2D } from "../void2d/node";
+import { PageKind } from "../void2d/glyphAtlas";
+when (voidSdfText) {
+	import { setSdfRegime } from "../void2d/labelText";
+}
 import "../void2d/scene";
 
 const RED = rgba(1.0, 0.0, 0.0, 1.0);
@@ -220,6 +224,67 @@ when (voidSprites) {
 		assert text.placedValid;
 		assert (text.placed.length as int32) == 4;
 		assert (text.placedOutline.length as int32) == 2;
+		releaseLabelText(index);
+	}
+}
+
+when (voidSdfText) {
+	test "a turned label places an SDF outline tile per glyph at the width in texels" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const index = shaped("Turned", 13.0);
+		setLabelOutline(index, 2.0, RED);
+		const text = placeLabel(index, trs2d(0.0, 0.0, 0.5, 1.0, 1.0), 1.0);
+		assert text.regime == TextRegime.Sdf;
+		assert text.placedValid;
+		assert (text.placedOutline.length as int32) == 6;
+		for (const p of text.placedOutline) {
+			const tile = glyphAtlas.tile(p.tile);
+			assert glyphAtlas.pageKind(tile.page) == PageKind.Sdf;
+			assert laneOf(tile.key) == 39;
+		}
+		const larger = shaped("Big", 26.0);
+		setLabelOutline(larger, 2.0, RED);
+		const big = placeLabel(larger, trs2d(0.0, 0.0, 0.5, 1.0, 1.0), 1.0);
+		assert (big.placedOutline.length as int32) == 3;
+		for (const p of big.placedOutline) {
+			assert laneOf(glyphAtlas.tile(p.tile).key) == 20;
+		}
+		releaseLabelText(larger);
+		releaseLabelText(index);
+	}
+
+	test "a zoom sweep generates no outline tile after the first frame and a width change one set" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const index = shaped("zoom", 13.0);
+		setLabelOutline(index, 2.0, RED);
+		placeLabel(index, trs2d(0.0, 0.0, 0.0, 1.5, 1.5), 1.0);
+		const settled = glyphAtlas.outlineRasterizations;
+		const coverage = glyphAtlas.rasterizations;
+		for (let step = 0; step < 40; step++) {
+			const zoom: float32 = 1.1 + (step as float32) * 0.07;
+			const text = placeLabel(index, trs2d(0.0, 0.0, 0.0, zoom, zoom), 1.0);
+			assert text.placedValid && text.regime == TextRegime.Sdf;
+		}
+		assert glyphAtlas.outlineRasterizations == settled;
+		assert glyphAtlas.rasterizations == coverage;
+		setLabelOutline(index, 3.0, RED);
+		placeLabel(index, trs2d(0.0, 0.0, 0.0, 2.0, 2.0), 1.0);
+		assert glyphAtlas.outlineRasterizations == settled + 3;
+		releaseLabelText(index);
+	}
+
+	test "a label at translation only keeps the pixel-exact outline under the SDF regime" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const index = shaped("flat", 13.0);
+		setLabelOutline(index, 2.0, RED);
+		const text = placeLabel(index, trs2d(0.0, 0.0, 0.0, 1.0, 1.0), 1.0);
+		assert text.regime == TextRegime.PixelExact;
+		for (const p of text.placedOutline) {
+			assert glyphAtlas.pageKind(glyphAtlas.tile(p.tile).page) == PageKind.Coverage;
+		}
 		releaseLabelText(index);
 	}
 }

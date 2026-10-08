@@ -57,6 +57,10 @@ when (voidTextOutline) {
 	import { outlineLane, deviceOutlineWidth } from "./textOutline";
 }
 
+when (voidSdfText && voidTextOutline) {
+	import { acquireSdfOutline, SDF_OUTLINE_PER_TEXEL } from "./glyphAtlas";
+}
+
 export const NO_LABEL_TEXT: int32 = -1;
 const MAX_GLYPH_PAGES: int32 = 16;
 
@@ -768,6 +772,40 @@ when (voidTextOutline) {
 	}
 }
 
+when (voidSdfText && voidTextOutline) {
+	function sdfOutlinePlacedGlyph(
+		g: LaidGlyph,
+		baseline: float32,
+		widthLocal: float32,
+	): Result<PlacedGlyph, AtlasError> {
+		const lane = outlineLane(widthLocal * SDF_EM / g.size, SDF_OUTLINE_PER_TEXEL);
+		if (!lane.ok) { return Result.err(lane.error); }
+		const acquired = glyphAtlas.acquireSdfOutline(g.face, g.glyph, lane.value);
+		if (!acquired.ok) { return Result.err(acquired.error); }
+		const t: GlyphTile = glyphAtlas.tile(acquired.value);
+		const [u0, v0, u1, v1] = t.uvRect();
+		const k: float32 = g.size / SDF_EM;
+		return Result.ok({
+			tile: acquired.value, page: t.page,
+			x: g.x + g.offsetX + (t.left as float32) * k,
+			y: baseline + g.offsetY + (t.top as float32) * k,
+			w: (t.width as float32) * k, h: (t.height as float32) * k,
+			u0: u0, v0: v0, u1: u1, v1: v1, run: g.run,
+		});
+	}
+} else {
+	function sdfOutlinePlacedGlyph(
+		g: LaidGlyph,
+		baseline: float32,
+		widthLocal: float32,
+	): Result<PlacedGlyph, AtlasError> {
+		console.log(
+			"void2d text outline: a label chose the SDF outline without SDF text and outline both",
+		);
+		unreachable;
+	}
+}
+
 const NO_COLOUR_BOX: ColourTileBox = {
 	left: 0, top: 0, right: 0, bottom: 0, glyph: ColourGlyph.Absent, ppem: 0,
 };
@@ -859,15 +897,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let refusal: string = "";
 	const outlineWidth: float32 = outlineWidthOf(entry);
 	let outlineLaneValue: int32 = 0;
-	if (outlineWidth > 0.0 && devicePerLocal > 0.0) {
-		const lane = outlineLaneFor(outlineWidth, devicePerLocal, pixelExact);
-		if (lane.ok) {
-			outlineLaneValue = lane.value;
-		} else {
-			refused = refused + 1;
-			refusal = lane.error.toString();
-		}
-	}
+	let outlineLaneChecked: boolean = false;
 	let coverageInSdf: boolean = false;
 	let colourGlyphs: int32 = 0;
 	const bucketed: boolean = !translationOnly(world);
@@ -915,6 +945,15 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				const sdf = sdfPlacedGlyph(g, baseline);
 				if (sdf.ok) {
 					placed.push(sdf.value);
+					if (outlineWidth > 0.0) {
+						const outlined = sdfOutlinePlacedGlyph(g, baseline, outlineWidth);
+						if (!outlined.ok) {
+							refused = refused + 1;
+							refusal = outlined.error.toString();
+						} else if (outlined.value.w > 0.0) {
+							placedOutline.push(outlined.value);
+						}
+					}
 					continue;
 				}
 				if (sdf.error != AtlasError.SdfCubicOutline || devicePerLocal <= 0.0) {
@@ -953,6 +992,16 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			placed.push(placedGlyph(
 				g, tileIndex, t, baseline, devicePerLocal, pixelExact, whole, baselineDevice,
 			));
+			if (outlineWidth > 0.0 && !outlineLaneChecked) {
+				outlineLaneChecked = true;
+				const lane = outlineLaneFor(outlineWidth, devicePerLocal, pixelExact);
+				if (lane.ok) {
+					outlineLaneValue = lane.value;
+				} else {
+					refused = refused + 1;
+					refusal = lane.error.toString();
+				}
+			}
 			if (outlineLaneValue > 0 && !isSpriteFace(g.face)) {
 				const outlined = outlinePlacedGlyph(
 					g, baseline, devicePerLocal, pixelExact, outlineLaneValue, variant, whole,

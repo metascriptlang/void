@@ -753,6 +753,57 @@ when (voidSdfText) {
 	}
 }
 
+when (voidSdfText && voidTextOutline) {
+	import { void2dGlyphSdfOutlineBox, void2dGlyphSdfOutlineRasterize } from "./glyph.h";
+
+	export function acquireSdfOutline(
+		this atlas: GlyphAtlas,
+		face: int32,
+		glyph: int32,
+		lane: int32,
+	): Result<int32, AtlasError> {
+		if (lane < 1 || lane > OUTLINE_LANE_MAX) { return Result.err(AtlasError.OutlineTooWide); }
+		const key: GlyphKey = { ...sdfKey(face, glyph), outline: lane };
+		const packedKey: uint64 = key.packed();
+		const hit = atlas.index.get(packedKey);
+		if (hit.present) {
+			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
+			return Result.ok(hit.value);
+		}
+		const texels: float32 = (lane as float32) / SDF_OUTLINE_PER_TEXEL;
+		const box: Ptr<int32> = void2dGlyphSdfOutlineBox(face, glyph, texels);
+		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
+		const left: int32 = box[0];
+		const top: int32 = box[1];
+		const width: int32 = box[2] - left;
+		const height: int32 = box[3] - top;
+		let page: GlyphPage = NO_GLYPH_PAGE;
+		let x: int32 = 0;
+		let y: int32 = 0;
+		if (width > 0 && height > 0) {
+			const placed = try allocate(atlas, PageKind.Sdf, width, height);
+			page = placed[0];
+			x = placed[1];
+			y = placed[2];
+			const code: int32 = void2dGlyphSdfOutlineRasterize(face, glyph, texels,
+				atlas.pages[page as int32].handle as int32, x, y, width, height);
+			if (code != 0) { return Result.err(sdfRasterRefusal(code)); }
+			atlas.outlineRasterizations = atlas.outlineRasterizations + 1;
+		}
+		return Result.ok(atlas.record(packedKey, {
+			page: page,
+			x: x,
+			y: y,
+			width: width > 0 ? width : 0,
+			height: height > 0 ? height : 0,
+			left: left,
+			top: top,
+			refs: 1,
+			key: packedKey,
+		}));
+	}
+}
+
 when (voidColourEmoji) {
 	import { void2dGlyphColourRasterize } from "./glyph.h";
 

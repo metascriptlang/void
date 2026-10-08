@@ -699,15 +699,17 @@ when (voidTextOutline) {
 		if ((text.placedOutline.length as int32) == 0) { return; }
 		const ink: Color = text.outlineColor.faded(na);
 		let viewPage: GlyphPage = NO_GLYPH_PAGE;
+		let kind: PageKind = PageKind.Coverage;
 		let view: uint32 = 0;
 		for (const p of text.placedOutline) {
 			if (p.w <= 0.0 || p.h <= 0.0) { continue; }
 			if (p.page != viewPage) {
+				kind = glyphPageKind(p.page);
 				view = glyphPageView(glyphPageHandle(p.page));
 				viewPage = p.page;
 				markGlyphPageDrawn(p.page);
 			}
-			emitGlyph(space, blend, view, p, PageKind.Coverage, ink);
+			emitGlyph(space, blend, view, p, kind, ink);
 		}
 	}
 } else {

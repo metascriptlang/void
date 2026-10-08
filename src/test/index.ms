@@ -114,6 +114,9 @@ when (voidSdfText) {
 	import "./sdfOracleCheck";
 	import "./labelTextSdfCheck";
 	import "./sdfEmitCheck";
+	when (voidTextOutline) {
+		import "./sdfOutlineOracleCheck";
+	}
 }
 // The harness's own parsers. The gate is a claim about the renderer, so the code that reads
 // the gate's own tables has to be tested like anything else (docs/TESTING.md, "Distrust the

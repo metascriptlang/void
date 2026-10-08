@@ -1671,4 +1671,83 @@ int void2dGlyphOutlineRasterize(int face, int glyph, float sizePx, float shiftX,
 	STBTT_free(vertices, f->info.userdata);
 	return result;
 }
+#ifdef VOID2D_SDF_TEXT
+static int s_sdfOutlineBox[5];
+
+int *void2dGlyphSdfOutlineBox(int face, int glyph, float biasTexels) {
+	for (int i = 0; i < 5; i++) { s_sdfOutlineBox[i] = 0; }
+	if (!validFace(face)) { return s_sdfOutlineBox; }
+	GlyphFace *f = &s_faces[face];
+	if (f->sprite) {
+		s_sdfOutlineBox[4] = 1;
+		return s_sdfOutlineBox;
+	}
+	stbtt_vertex *vertices = NULL;
+	int count = glyphShape(f, glyph, &vertices);
+	if (count > 0) {
+		if (sdfHasCubic(vertices, count)) {
+			s_sdfOutlineBox[4] = 1;
+		} else {
+			sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM),
+				s_sdfOutlineBox);
+			if (s_sdfOutlineBox[2] > s_sdfOutlineBox[0]) {
+				int extra = (int)ceilf(biasTexels) + 2;
+				s_sdfOutlineBox[0] -= extra;
+				s_sdfOutlineBox[1] -= extra;
+				s_sdfOutlineBox[2] += extra;
+				s_sdfOutlineBox[3] += extra;
+			}
+		}
+	}
+	STBTT_free(vertices, f->info.userdata);
+	return s_sdfOutlineBox;
+}
+
+int void2dGlyphSdfOutlineRasterize(int face, int glyph, float biasTexels, int page, int x, int y,
+                                   int w, int h) {
+	if (!validFace(face) || s_faces[face].sprite || !validPage(page) || w <= 0 || h <= 0) {
+		return VOID2D_SDF_BAD_HANDLE;
+	}
+	GlyphPage *p = &s_pages[page];
+	if (p->kind != VOID2D_PAGE_SDF) {
+		fprintf(stderr, "void2d: an SDF outline tile was aimed at a %s page\n",
+			pageKindName(p->kind));
+		return VOID2D_SDF_WRONG_PAGE_KIND;
+	}
+	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
+		fprintf(stderr, "void2d: SDF outline tile %dx%d at (%d,%d) falls outside its %d page\n",
+			w, h, x, y, p->size);
+		return VOID2D_SDF_OUTSIDE_PAGE;
+	}
+	GlyphFace *f = &s_faces[face];
+	stbtt_vertex *vertices = NULL;
+	int count = glyphShape(f, glyph, &vertices);
+	int box[4] = { 0, 0, 0, 0 };
+	if (count > 0 && !sdfHasCubic(vertices, count)) {
+		sdfBitmapBox(f, glyph, vertices, count, void2dGlyphScale(face, SDF_EM), box);
+		if (box[2] > box[0]) {
+			int extra = (int)ceilf(biasTexels) + 2;
+			box[0] -= extra;
+			box[1] -= extra;
+			box[2] += extra;
+			box[3] += extra;
+		}
+	}
+	int result = VOID2D_SDF_OK;
+	if (box[2] - box[0] != w || box[3] - box[1] != h) {
+		fprintf(stderr, "void2d: SDF outline tile %dx%d does not match the glyph's %dx%d box\n",
+			w, h, box[2] - box[0], box[3] - box[1]);
+		result = VOID2D_SDF_BOX_MISMATCH;
+	} else {
+		result = distanceFill(vertices, count, void2dGlyphScale(face, SDF_EM), 0.0f, box, 0,
+			biasTexels, p->texels + (size_t)y * (size_t)p->size + (size_t)x, p->size);
+		if (result == VOID2D_SDF_OK) {
+			s_outlineGenerations++;
+			p->dirty = 1;
+		}
+	}
+	STBTT_free(vertices, f->info.userdata);
+	return result;
+}
+#endif
 #endif
