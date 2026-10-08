@@ -3388,10 +3388,12 @@ headed browser. Not run: any browser page.
 `dba64872`: 0 of 17 WebGL2 runs pass; each page logs `Error: index 0 out of bounds (length 0)` and
 exits before its check (`EXCEPTION Uncaught ExitStatus`). Bisected in `alphaKill`: the crash is the
 first `reserveUniforms` inside the frame loop's `init`, on the `DrawContext` the test builds at module
-level, while the same calls at module level succeed. Not yet measured: whether the module-level
-state is torn down when `main` returns on emscripten, where `sapp_run` returns at once and the frame
-loop runs later (a native `sapp_run` blocks inside `main`). void2d's web runner builds its state inside
-its callbacks and does not meet this.
+level, while the same calls at module level succeed. Cause, read in the emitted C: msc's `main` runs
+`MsDestroyGlobals` (every module's `__Deinit000`) right after `MsMain`, and under emscripten
+`sapp_run` returns at once, so the frame loop runs on torn-down module state (sokol_app.h, "there
+shouldn't be any code *after* sapp_run()"). Compiler card
+`2026-10-09-emcc-main-destroys-globals-before-frame-loop.md`; the checks keep their module-level
+state, red until it is fixed, rather than moving it into callbacks to hide it.
 
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
