@@ -3336,6 +3336,28 @@ exactly 1 (`exp(0)`), so at stop 0 every capture is expected byte-identical; the
 multiplier exactly 1 at stop 0); `msc check` of the integration test. Not run: the GPU stage, the
 captures.
 
+### void3d on the web (WebGPU and WebGL2), prepared
+
+**What changes for the author.** Nothing in the API: void3d's own samples already build for both
+web backends. `VOID_WEB_ENTRY=src/examples/mainCampfire.ms sh scripts/build-web.sh` links both the
+WebGPU and the WebGL2 wasm (2026-10-08, BUILD `1090f789`; 0.99 MB and 1.34 MB), with no Yoga and no
+void2d text in the link. The card table sample does not yet: it draws void2d text, and emcc stops at
+`src/void2d/textLayout.ms` (`Vec<boolean>` into `Span<boolean>`, compiler card
+`2026-09-26-interface-array-to-span-void-pointer.md`, where this site is parked). Native clang only
+warns on the same C.
+
+**Evidence method.** As on GL core, a check is judged by its own thresholds, not by D3D11 bytes.
+The capture library already reads back on WebGL2 (`glReadPixels` under `__EMSCRIPTEN__`, backend 3)
+and hands its verdict to the page as `window.voidDone`; `scripts/web3d.sh` builds each readback
+check for WebGL2, serves `out/web3d` with `tests/integration/web/runner3d.html` (the query's `VOID_*`
+settings become `ENV`), and `scripts/web3d.mjs` drives headless Chrome over DevTools, one page per
+run, collecting each `PASS` or `FAIL` line, as void2d's `scripts/golden-web.sh` does. Nine checks build
+for WebGL2 today (alpha kill, billboard blend, dir shadow, map and moving materials, MRT blend, render
+order, sort layer, exposure); `cardTable`, `worldLabel` and `targetTexture` wait on the card above.
+WebGPU has no readback in the capture library (void2d's PENDING `backend:webgpu`), and headless
+Chrome hands it no adapter (`scripts/web-liveness.sh`), so WebGPU stays a liveness question for a
+headed browser. Not run: any browser page.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
