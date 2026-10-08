@@ -27,7 +27,13 @@ import { sinf, cosf } from "../math/mat4";
 import { Mat4 } from "../math/math3d";
 import { NO_COLOR_MATRIX } from "./effect";
 import { FlexStyle, YGNode, freeLayoutTree } from "../../../yoga/src/index";
-import { BoxStyle, NO_BOX_STYLE, allocateBoxStyle, updateBoxStyle, releaseBoxStyle } from "./boxStyle";
+import {
+	BoxStyle,
+	NO_BOX_STYLE,
+	allocateBoxStyle,
+	updateBoxStyle,
+	releaseBoxStyle,
+} from "./boxStyle";
 import {
 	LabelText,
 	labelTexts,

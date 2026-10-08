@@ -44,19 +44,28 @@ export struct Filter {
 }
 
 export function noFilter(): Filter {
-	return { kind: FilterKind.None, radius: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0, offsetX: 0.0, offsetY: 0.0 };
+	return { kind: FilterKind.None, radius: 0.0, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0,
+		offsetX: 0.0, offsetY: 0.0 };
 }
 
 export function blurFilter(radius: float32): Filter {
-	return { kind: FilterKind.Blur, radius: radius, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0, offsetX: 0.0, offsetY: 0.0 };
+	return { kind: FilterKind.Blur, radius: radius, color: rgba(1.0, 1.0, 1.0, 1.0), gain: 1.0,
+		offsetX: 0.0, offsetY: 0.0 };
 }
 
 export function glowFilter(color: Color, radius: float32, gain: float32): Filter {
-	return { kind: FilterKind.Glow, radius: radius, color: color, gain: gain, offsetX: 0.0, offsetY: 0.0 };
+	return { kind: FilterKind.Glow, radius: radius, color: color, gain: gain, offsetX: 0.0,
+		offsetY: 0.0 };
 }
 
-export function dropShadowFilter(color: Color, radius: float32, offsetX: float32, offsetY: float32): Filter {
-	return { kind: FilterKind.DropShadow, radius: radius, color: color, gain: 1.0, offsetX: offsetX, offsetY: offsetY };
+export function dropShadowFilter(
+	color: Color,
+	radius: float32,
+	offsetX: float32,
+	offsetY: float32,
+): Filter {
+	return { kind: FilterKind.DropShadow, radius: radius, color: color, gain: 1.0, offsetX: offsetX,
+		offsetY: offsetY };
 }
 
 export struct TextureSource {
@@ -203,7 +212,8 @@ export function `*`(this m: Transform2D, n: Transform2D): Transform2D {
 	};
 }
 
-// apply: transform a point. `corner = vec2(x, y) * world`  (point on the left → no clash with compose)
+// apply: transform a point. `corner = vec2(x, y) * world`  (point on the left → no clash with
+// compose)
 export function `*`(this p: Vec2, m: Transform2D): Vec2 {
 	return vec2(m.a * p.x + m.c * p.y + m.tx, m.b * p.x + m.d * p.y + m.ty);
 }
@@ -233,7 +243,8 @@ export function camera(): Camera {
 
 // world → screen: translate(anchor px) ∘ rotate ∘ zoom ∘ translate(-x,-y)
 export function viewMatrix(this c: Camera, fbW: float32, fbH: float32): Transform2D {
-	return trs2d(c.anchorX * fbW, c.anchorY * fbH, c.rotation, c.zoom, c.zoom) * trs2d(-c.x, -c.y, 0.0, 1.0, 1.0);
+	return trs2d(c.anchorX * fbW, c.anchorY * fbH, c.rotation, c.zoom, c.zoom) *
+		trs2d(-c.x, -c.y, 0.0, 1.0, 1.0);
 }
 
 export struct Bounds2D {

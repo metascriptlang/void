@@ -38,7 +38,8 @@ import {
 	EFFECT_GRADIENT_META, EFFECT_GRADIENT_PARAMS, EFFECT_GRADIENT_COLOR0,
 	EFFECT_GRADIENT_COLOR1, EFFECT_GRADIENT_COLOR2,
 	SAMPLER_COUNT, SOURCE_PREMULTIPLIED, samplerIndex,
-	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded, spriteInstanceCount,
+	DrawContext2D, currentContext, useContext, useDefaultContext, isDefaultContext, uploaded,
+	spriteInstanceCount,
 	effectField, effectMatrix,
 	uiInstanceCount, pushUiInstance, recordUiDraw,
 	resetContext, commandCount, targetCommandCount, effectCount, vertexCount, drawCommandCount,
@@ -325,7 +326,8 @@ export function continuesLike(old: DrawContext2D, start: PaintIndex, end: PaintI
 		return false;
 	}
 	if (start.commands != end.commands || start.effects != end.effects) { return false; }
-	if (ctx.runOpen != start.runOpen || ctx.curPipeline != start.pipeline || ctx.curView != start.view) {
+	if (ctx.runOpen != start.runOpen || ctx.curPipeline != start.pipeline ||
+			ctx.curView != start.view) {
 		return false;
 	}
 	if (ctx.curBlend != start.blend || ctx.curSampler != start.sampler) { return false; }
@@ -935,7 +937,8 @@ function currentGradientKind(): int32 {
 export function setEffect(mat: Mat4, add: Color, key: Color): void {
 	const ctx: DrawContext2D = currentContext();
 	const hasMat: boolean = mat != NO_COLOR_MATRIX;
-	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 || add.a != 0.0 || key.a > 0.0;
+	const wantsEffect: boolean = hasMat || add.r != 0.0 || add.g != 0.0 || add.b != 0.0 ||
+		add.a != 0.0 || key.a > 0.0;
 	if (!wantsEffect && ctx.curEffect == NO_EFFECT) { return; }
 	if (wantsEffect && ctx.curEffect != NO_EFFECT && currentGradientKind() == 0
 		&& add == ctx.curAdd && key == ctx.curKey
@@ -1398,7 +1401,15 @@ export function fillQuad(a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend
 	quad4(void2dWhiteView(), false, blend, a, b, c, d, 0.0, 0.0, 1.0, 1.0, color);
 }
 
-export function imageQuad(t: Tile, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color, blend: BlendMode): void {
+export function imageQuad(
+	t: Tile,
+	a: Vec2,
+	b: Vec2,
+	c: Vec2,
+	d: Vec2,
+	color: Color,
+	blend: BlendMode,
+): void {
 	quad4(t.source.view(), t.alphaPremultiplied, blend, a, b, c, d, t.u0, t.v0, t.u1, t.v1, color);
 }
 

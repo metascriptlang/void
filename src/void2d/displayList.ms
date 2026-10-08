@@ -455,7 +455,9 @@ const defaultContext: DrawContext2D = DrawContext2D.create();
 let activeContext: DrawContext2D = defaultContext;
 
 export function useContext(next: DrawContext2D): void { activeContext = next; }
-export function isDefaultContext(context: DrawContext2D): boolean { return context === defaultContext; }
+export function isDefaultContext(context: DrawContext2D): boolean {
+	return context === defaultContext;
+}
 export function useDefaultContext(): void { activeContext = defaultContext; }
 export function currentContext(): DrawContext2D { return activeContext; }
 
@@ -509,7 +511,9 @@ export function pushScope(record: ScopeRecord): int32 {
 
 export function resolveScopes(): void {
 	const floats: int32 = activeContext.scopeTotal * SCOPE_FLOATS;
-	while ((activeContext.scopeValues.length as int32) < floats) { activeContext.scopeValues.push(0.0); }
+	while ((activeContext.scopeValues.length as int32) < floats) {
+		activeContext.scopeValues.push(0.0);
+	}
 	for (let k: int32 = 0; k < activeContext.scopeTotal; k++) {
 		const r: ScopeRecord = activeContext.scopes[k];
 		const base: int32 = k * SCOPE_FLOATS;
@@ -531,8 +535,12 @@ export function resolveScopes(): void {
 			const vy: float32 = activeContext.scopeValues[up + 3];
 			if (vx > x) { x = vx; }
 			if (vy > y) { y = vy; }
-			if (vx + activeContext.scopeValues[up + 4] < right) { right = vx + activeContext.scopeValues[up + 4]; }
-			if (vy + activeContext.scopeValues[up + 5] < bottom) { bottom = vy + activeContext.scopeValues[up + 5]; }
+			if (vx + activeContext.scopeValues[up + 4] < right) {
+				right = vx + activeContext.scopeValues[up + 4];
+			}
+			if (vy + activeContext.scopeValues[up + 5] < bottom) {
+				bottom = vy + activeContext.scopeValues[up + 5];
+			}
 			sx = sx + px;
 			sy = sy + py;
 		}
@@ -611,7 +619,8 @@ export function saveRange(a: PaintIndex, b: PaintIndex): void {
 		keep(k, activeContext.uiInstances[i]);
 		k = k + 1;
 	}
-	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
+	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
+			i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
 		keep(k, activeContext.spriteInstances[i]);
 		k = k + 1;
 	}
@@ -627,7 +636,9 @@ function addDirtyUi(from: int32, to: int32): void {
 		activeContext.dirtyUi[pairs * 2 - 1] = to;
 		return;
 	}
-	while ((activeContext.dirtyUi.length as int32) < (pairs + 1) * 2) { activeContext.dirtyUi.push(0); }
+	while ((activeContext.dirtyUi.length as int32) < (pairs + 1) * 2) {
+		activeContext.dirtyUi.push(0);
+	}
 	activeContext.dirtyUi[pairs * 2] = from;
 	activeContext.dirtyUi[pairs * 2 + 1] = to;
 	activeContext.dirtyUiTotal = pairs + 1;
@@ -648,7 +659,8 @@ export function noteRange(a: PaintIndex, b: PaintIndex): void {
 	}
 	if (first >= 0) { addDirtyUi(first, last + 1); }
 	let changed: boolean = false;
-	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS; i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
+	for (let i: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
+			i < b.spriteInstances * REC_SPRITE_FLOATS; i++) {
 		if (activeContext.saved[k] != activeContext.spriteInstances[i]) { changed = true; }
 		k = k + 1;
 	}
@@ -664,7 +676,9 @@ export function paintEndOf(row: int32): PaintIndex { return activeContext.paintE
 
 // Which pipeline set and device scale every command recorded from here will ask the replay
 // to use. A zero scale is the swapchain, whose scale belongs to the frame.
-export function setRenderTargetMode(on: boolean): void { activeContext.renderTargetScale = on ? 1.0 : 0.0; }
+export function setRenderTargetMode(on: boolean): void {
+	activeContext.renderTargetScale = on ? 1.0 : 0.0;
+}
 export function renderTargetScaleNow(): float32 { return activeContext.renderTargetScale; }
 
 export function commandCount(): int32 { return activeContext.commandTotal; }
@@ -725,7 +739,8 @@ export function copyPainted(old: DrawContext2D, a: PaintIndex, b: PaintIndex): v
 		const to: int32 = activeContext.spriteInstanceTotal * REC_SPRITE_FLOATS;
 		const from: int32 = a.spriteInstances * REC_SPRITE_FLOATS;
 		growTo(activeContext.spriteInstances, to + sprites * REC_SPRITE_FLOATS);
-		void2dCopyFloats(activeContext.spriteInstances[to], old.spriteInstances[from], sprites * REC_SPRITE_FLOATS);
+		void2dCopyFloats(activeContext.spriteInstances[to], old.spriteInstances[from],
+			sprites * REC_SPRITE_FLOATS);
 		activeContext.spriteInstanceTotal = activeContext.spriteInstanceTotal + sprites;
 	}
 	const vertices: int32 = b.vertices - a.vertices;
@@ -747,21 +762,26 @@ export function limitWrites(end: PaintIndex): void {
 export function unlimitWrites(): void { activeContext.limited = false; }
 
 function vertexSlot(): int32 {
-	if (!activeContext.limited || activeContext.vertexTotal < activeContext.limit.vertices) { return activeContext.vertexTotal; }
+	if (!activeContext.limited || activeContext.vertexTotal < activeContext.limit.vertices) {
+		return activeContext.vertexTotal;
+	}
 	const at: int32 = activeContext.spill.vertices;
 	activeContext.spill = { ...activeContext.spill, vertices: at + 1 };
 	return at;
 }
 
 function uiSlot(): int32 {
-	if (!activeContext.limited || activeContext.uiInstanceTotal < activeContext.limit.uiInstances) { return activeContext.uiInstanceTotal; }
+	if (!activeContext.limited || activeContext.uiInstanceTotal < activeContext.limit.uiInstances) {
+		return activeContext.uiInstanceTotal;
+	}
 	const at: int32 = activeContext.spill.uiInstances;
 	activeContext.spill = { ...activeContext.spill, uiInstances: at + 1 };
 	return at;
 }
 
 function spriteSlot(): int32 {
-	if (!activeContext.limited || activeContext.spriteInstanceTotal < activeContext.limit.spriteInstances) {
+	if (!activeContext.limited ||
+			activeContext.spriteInstanceTotal < activeContext.limit.spriteInstances) {
 		return activeContext.spriteInstanceTotal;
 	}
 	const at: int32 = activeContext.spill.spriteInstances;
@@ -770,14 +790,18 @@ function spriteSlot(): int32 {
 }
 
 function effectSlot(): int32 {
-	if (!activeContext.limited || activeContext.effectTotal < activeContext.limit.effects) { return activeContext.effectTotal; }
+	if (!activeContext.limited || activeContext.effectTotal < activeContext.limit.effects) {
+		return activeContext.effectTotal;
+	}
 	const at: int32 = activeContext.spill.effects;
 	activeContext.spill = { ...activeContext.spill, effects: at + 1 };
 	return at;
 }
 
 function commandSlot(): int32 {
-	if (!activeContext.limited || activeContext.commandTotal < activeContext.limit.commands) { return activeContext.commandTotal; }
+	if (!activeContext.limited || activeContext.commandTotal < activeContext.limit.commands) {
+		return activeContext.commandTotal;
+	}
 	const at: int32 = activeContext.spill.commands;
 	activeContext.spill = { ...activeContext.spill, commands: at + 1 };
 	return at;
@@ -916,7 +940,8 @@ export function spriteInstanceField(index: int32, field: int32): float32 {
 
 // What the frame will upload for its instances, in GPU bytes rather than record floats.
 export function instanceUploadBytes(): int32 {
-	return activeContext.uiInstanceTotal * UI_STRIDE + activeContext.spriteInstanceTotal * SPRITE_STRIDE;
+	return activeContext.uiInstanceTotal * UI_STRIDE +
+		activeContext.spriteInstanceTotal * SPRITE_STRIDE;
 }
 
 // How many instances carry each mode. The counter A4 asks for a negative control on: it
@@ -1145,7 +1170,8 @@ export function endTargetList(): boolean {
 		activeContext.targetCommands[write] = activeContext.commands[i];
 		write = write + 1;
 	}
-	activeContext.targetCommandTotal = activeContext.targetCommandTotal + (activeContext.commandTotal - mark);
+	activeContext.targetCommandTotal = activeContext.targetCommandTotal +
+		(activeContext.commandTotal - mark);
 	activeContext.commandTotal = mark;
 	activeContext.clip = activeContext.targetClipSaves[activeContext.targetDepthNow];
 	activeContext.clipRecorded = activeContext.targetClipRecordedSaves[activeContext.targetDepthNow];
@@ -1224,7 +1250,8 @@ function breakBetween(
 	if (prev[pb + CMD_PIPELINE] != next[nb + CMD_PIPELINE]) {
 		return (BreakReason.Pipeline as int32) as float32;
 	}
-	if (prev[pb + CMD_VIEW] != next[nb + CMD_VIEW] || prev[pb + CMD_VIEW_HIGH] != next[nb + CMD_VIEW_HIGH]) {
+	if (prev[pb + CMD_VIEW] != next[nb + CMD_VIEW] ||
+			prev[pb + CMD_VIEW_HIGH] != next[nb + CMD_VIEW_HIGH]) {
 		return (BreakReason.View as int32) as float32;
 	}
 	if (prev[pb + CMD_BLEND] != next[nb + CMD_BLEND]) {
@@ -1263,7 +1290,9 @@ export function lanesReorderable(c0: int32, c1: int32): boolean {
 		if (!isDraw(activeContext.commands, base)) { return false; }
 		if ((activeContext.commands[base + CMD_EFFECT] as int32) != NO_EFFECT) { return false; }
 		for (const f of PLACE_FIELDS) {
-			if (activeContext.commands[base + f] != activeContext.commands[c0 * COMMAND_FLOATS + f]) { return false; }
+			if (activeContext.commands[base + f] != activeContext.commands[c0 * COMMAND_FLOATS + f]) {
+				return false;
+			}
 		}
 	}
 	return true;
@@ -1296,7 +1325,9 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 	const total: int32 = streamTotal(pipeline);
 	if (total <= lo) { return; }
 	const span: int32 = (total - lo) * width;
-	while ((activeContext.laneScratch.length as int32) < span) { activeContext.laneScratch.push(0.0 as float32); }
+	while ((activeContext.laneScratch.length as int32) < span) {
+		activeContext.laneScratch.push(0.0 as float32);
+	}
 	let covered: int32 = 0;
 	for (const src of activeContext.laneOrder) {
 		if (pipelineAt(activeContext.commands, src * COMMAND_FLOATS) == pipeline) {
@@ -1311,9 +1342,15 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 		unreachable;
 	}
 	match (pipeline) {
-		Pipeline.Sprite => { void2dCopyFloats(activeContext.laneScratch[0], activeContext.spriteInstances[lo * width], span); },
-		Pipeline.Ui => { void2dCopyFloats(activeContext.laneScratch[0], activeContext.uiInstances[lo * width], span); },
-		Pipeline.Vertex => { void2dCopyFloats(activeContext.laneScratch[0], activeContext.vertices[lo * width], span); },
+		Pipeline.Sprite => {
+			void2dCopyFloats(activeContext.laneScratch[0], activeContext.spriteInstances[lo * width], span);
+		},
+		Pipeline.Ui => {
+			void2dCopyFloats(activeContext.laneScratch[0], activeContext.uiInstances[lo * width], span);
+		},
+		Pipeline.Vertex => {
+			void2dCopyFloats(activeContext.laneScratch[0], activeContext.vertices[lo * width], span);
+		},
 	}
 	for (const src of activeContext.laneOrder) {
 		if (pipelineAt(activeContext.commands, src * COMMAND_FLOATS) != pipeline) { continue; }
@@ -1322,9 +1359,15 @@ function permuteStream(pipeline: Pipeline, lo: int32, c0: int32): void {
 		const from: int32 = (activeContext.laneSourceOffsets[src - c0] - lo) * width;
 		const to: int32 = activeContext.laneOffsets[src - c0] * width;
 		match (pipeline) {
-			Pipeline.Sprite => { void2dCopyFloats(activeContext.spriteInstances[to], activeContext.laneScratch[from], n); },
-			Pipeline.Ui => { void2dCopyFloats(activeContext.uiInstances[to], activeContext.laneScratch[from], n); },
-			Pipeline.Vertex => { void2dCopyFloats(activeContext.vertices[to], activeContext.laneScratch[from], n); },
+			Pipeline.Sprite => {
+				void2dCopyFloats(activeContext.spriteInstances[to], activeContext.laneScratch[from], n);
+			},
+			Pipeline.Ui => {
+				void2dCopyFloats(activeContext.uiInstances[to], activeContext.laneScratch[from], n);
+			},
+			Pipeline.Vertex => {
+				void2dCopyFloats(activeContext.vertices[to], activeContext.laneScratch[from], n);
+			},
 		}
 	}
 }
@@ -1342,7 +1385,9 @@ export function layLanes(
 	sized(activeContext.laneSourceCounts, sources);
 	sized(activeContext.laneOutputs, sources);
 	sized(activeContext.laneOffsets, sources);
-	while ((activeContext.laneOut.length as int32) < sources * COMMAND_FLOATS) { activeContext.laneOut.push(0.0 as float32); }
+	while ((activeContext.laneOut.length as int32) < sources * COMMAND_FLOATS) {
+		activeContext.laneOut.push(0.0 as float32);
+	}
 	while ((activeContext.laneBySprite.length as int32) > 0) { activeContext.laneBySprite.pop(); }
 	while ((activeContext.laneByUi.length as int32) > 0) { activeContext.laneByUi.pop(); }
 	while ((activeContext.laneByVertex.length as int32) > 0) { activeContext.laneByVertex.pop(); }
@@ -1386,14 +1431,21 @@ export function layLanes(
 		const last: int32 = (outputs - 1) * COMMAND_FLOATS;
 		if (outputs > 0 && sameRun(activeContext.laneOut, last, activeContext.commands, sb)
 			&& runOffset(activeContext.laneOut, last) + runCount(activeContext.laneOut, last) == at) {
-			activeContext.laneOut[last + countField(activeContext.laneOut, last)] = (runCount(activeContext.laneOut, last) + count) as float32;
+			activeContext.laneOut[last + countField(activeContext.laneOut, last)] =
+				(runCount(activeContext.laneOut, last) + count) as float32;
 			activeContext.laneOutputs[src - c0] = c0 + outputs - 1;
 		} else {
 			const ob: int32 = outputs * COMMAND_FLOATS;
-			for (let f: int32 = 0; f < COMMAND_FLOATS; f++) { activeContext.laneOut[ob + f] = activeContext.commands[sb + f]; }
-			if (isDraw(activeContext.commands, sb)) { activeContext.laneOut[ob + offsetField(activeContext.laneOut, ob)] = at as float32; }
-			if (outputs > 0 && previous != src - 1 && isDraw(activeContext.laneOut, last) && isDraw(activeContext.laneOut, ob)) {
-				activeContext.laneOut[ob + CMD_BREAK] = breakBetween(activeContext.laneOut, last, activeContext.laneOut, ob);
+			for (let f: int32 = 0; f < COMMAND_FLOATS; f++) {
+				activeContext.laneOut[ob + f] = activeContext.commands[sb + f];
+			}
+			if (isDraw(activeContext.commands, sb)) {
+				activeContext.laneOut[ob + offsetField(activeContext.laneOut, ob)] = at as float32;
+			}
+			if (outputs > 0 && previous != src - 1 && isDraw(activeContext.laneOut, last) &&
+					isDraw(activeContext.laneOut, ob)) {
+				activeContext.laneOut[ob + CMD_BREAK] =
+					breakBetween(activeContext.laneOut, last, activeContext.laneOut, ob);
 			}
 			activeContext.laneOutputs[src - c0] = c0 + outputs;
 			outputs = outputs + 1;
@@ -1409,18 +1461,21 @@ export function layLanes(
 	if (pred >= 0 && outputs > 0) {
 		const pb: int32 = pred * COMMAND_FLOATS;
 		if (sameRun(activeContext.commands, pb, activeContext.laneOut, 0)
-			&& runOffset(activeContext.commands, pb) + runCount(activeContext.commands, pb) == runOffset(activeContext.laneOut, 0)) {
+			&& runOffset(activeContext.commands, pb) +
+				runCount(activeContext.commands, pb) == runOffset(activeContext.laneOut, 0)) {
 			activeContext.commands[pb + countField(activeContext.commands, pb)] =
 				(runCount(activeContext.commands, pb) + runCount(activeContext.laneOut, 0)) as float32;
 			skip = 1;
 			for (let k: int32 = 0; k < sources; k++) {
-				activeContext.laneOutputs[k] = activeContext.laneOutputs[k] == c0 ? pred : activeContext.laneOutputs[k] - 1;
+				activeContext.laneOutputs[k] =
+					activeContext.laneOutputs[k] == c0 ? pred : activeContext.laneOutputs[k] - 1;
 			}
 		}
 	}
 	for (let o: int32 = skip; o < outputs; o++) {
 		for (let f: int32 = 0; f < COMMAND_FLOATS; f++) {
-			activeContext.commands[(c0 + o - skip) * COMMAND_FLOATS + f] = activeContext.laneOut[o * COMMAND_FLOATS + f];
+			activeContext.commands[(c0 + o - skip) * COMMAND_FLOATS + f] =
+				activeContext.laneOut[o * COMMAND_FLOATS + f];
 		}
 	}
 	activeContext.commandTotal = c0 + outputs - skip;
@@ -1441,7 +1496,8 @@ function holding(ids: Readonly<Span<int32>>, at: int32, count: int32, c0: int32)
 	}
 	if (found < 0) { return -1; }
 	const src: int32 = ids[found];
-	const end: int32 = activeContext.laneSourceOffsets[src - c0] + activeContext.laneSourceCounts[src - c0];
+	const end: int32 = activeContext.laneSourceOffsets[src - c0] +
+		activeContext.laneSourceCounts[src - c0];
 	return at + count <= end ? src : -1;
 }
 
@@ -1453,8 +1509,12 @@ export function laneSourceHolding(pipeline: Pipeline, at: int32, count: int32, c
 	};
 }
 
-export function laneOutputOf(command: int32, c0: int32): int32 { return activeContext.laneOutputs[command - c0]; }
-export function laneOffsetOf(command: int32, c0: int32): int32 { return activeContext.laneOffsets[command - c0]; }
+export function laneOutputOf(command: int32, c0: int32): int32 {
+	return activeContext.laneOutputs[command - c0];
+}
+export function laneOffsetOf(command: int32, c0: int32): int32 {
+	return activeContext.laneOffsets[command - c0];
+}
 export function laneSourceOffsetOf(command: int32, c0: int32): int32 {
 	return activeContext.laneSourceOffsets[command - c0];
 }
@@ -1542,7 +1602,7 @@ test "the sampler index packs smooth and tileWrap into the four combinations" {
 	assert samplerIndex(true, true) + 1 == SAMPLER_COUNT;
 }
 
-test "a closed target block leaves the swapchain activeContext and lands in the target activeContext" {
+test "a closed target block leaves the swapchain activeContext for the target activeContext" {
 	resetContext();
 	recordDraw(BreakReason.First, 0, 6, 1, BlendMode.Alpha, samplerIndex(true, false), NO_EFFECT);
 	beginTargetList(7, 64.0, 32.0, 1.0, 0.0, 0.0, 0.0, 0.0);

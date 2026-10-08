@@ -124,7 +124,12 @@ function peak(buckets: Vec<int32>): int32 {
 	return most;
 }
 
-function barRects(ref rects: Vec<CellRect>, buckets: Vec<int32>, top: int32, ink: OverlayInk): void {
+function barRects(
+	ref rects: Vec<CellRect>,
+	buckets: Vec<int32>,
+	top: int32,
+	ink: OverlayInk,
+): void {
 	const most: int32 = peak(buckets);
 	const floor: int32 = top + BAR_MAX_HEIGHT;
 	for (let i: int32 = 0; i < (buckets.length as int32); i++) {

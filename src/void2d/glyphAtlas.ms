@@ -455,7 +455,9 @@ function allocate(
 
 export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, AtlasError> {
 	if (key.kind != PageKind.Coverage) { return Result.err(AtlasError.KindNotBuilt); }
-	if (key.variant < 0 || key.variant >= SUBPIXEL_VARIANTS) { return Result.err(AtlasError.VariantOutOfRange); }
+	if (key.variant < 0 || key.variant >= SUBPIXEL_VARIANTS) {
+		return Result.err(AtlasError.VariantOutOfRange);
+	}
 	if (key.outline != 0) { return Result.err(AtlasError.KindNotBuilt); }
 	if (!key.fitsKey()) {
 		if (!onlyOversize(key)) { return Result.err(AtlasError.TooLarge); }

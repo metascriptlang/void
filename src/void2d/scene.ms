@@ -43,7 +43,8 @@ export function create(this typeof Scene2D, clear: Color): Scene2D {
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
-		maskEnds: [], maskKinds: [], lanes: [], laneMarks: [], repaint: [], queued: [], patchSerial: 0, retry: [], scanNeeded: false,
+		maskEnds: [], maskKinds: [], lanes: [], laneMarks: [], repaint: [], queued: [], patchSerial: 0,
+		retry: [], scanNeeded: false,
 		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
 		anims: [], freeAnims: [], colorMatrices: [], freeColorMatrices: [],
 		meshes: [], freeMeshes: [], tileGroups: [], tileCells: [],
@@ -86,7 +87,12 @@ export function releaseGpu(this s: Scene2D): void {
 
 export function isClosed(this s: Scene2D): boolean { return s.closed; }
 
-export function setScaleMode(this s: Scene2D, mode: ScaleMode, designW: float32, designH: float32): void {
+export function setScaleMode(
+	this s: Scene2D,
+	mode: ScaleMode,
+	designW: float32,
+	designH: float32,
+): void {
 	s.requireOpen("setScaleMode");
 	s.scaleMode = mode;
 	s.designW = designW;

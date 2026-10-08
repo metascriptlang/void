@@ -1340,7 +1340,14 @@ export function refreshScopes(this s: Scene2D): void {
 	}
 }
 
-function drawContent(s: Scene2D, i: int32, a: float32, own: float32, vw: float32, vh: float32): void {
+function drawContent(
+	s: Scene2D,
+	i: int32,
+	a: float32,
+	own: float32,
+	vw: float32,
+	vh: float32,
+): void {
 	const na: float32 = a * own;
 	drawOwn(s, i, na, vw, vh);
 	if (s.scrollScope(i)) {
@@ -1519,7 +1526,8 @@ function remapLaneRows(s: Scene2D, parent: int32, c0: int32, c1: int32): void {
 			commands: out,
 			effects: start.effects,
 			runOpen: true,
-			runStart: commandField(out, pipeline == Pipeline.Vertex ? CMD_VERTEX_OFFSET : CMD_INSTANCE_OFFSET) as int32,
+			runStart: commandField(out,
+				pipeline == Pipeline.Vertex ? CMD_VERTEX_OFFSET : CMD_INSTANCE_OFFSET) as int32,
 			pipeline: pipeline,
 			reason: (commandField(out, CMD_BREAK) as int32) as BreakReason,
 			view: commandView(out),

@@ -311,7 +311,14 @@ function rectPoints(x: float32, y: float32, w: float32, h: float32): Vec2[] {
 
 const RECT_TRIS: int32[] = [0, 1, 2, 0, 2, 3];
 
-export function fillRect(this g: NodeRef, x: float32, y: float32, w: float32, h: float32, color: Color): NodeRef {
+export function fillRect(
+	this g: NodeRef,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	color: Color,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillRect");
 	contourFill(target, true, rectPoints(x, y, w, h), [4], RECT_TRIS, NO_UV, color);
 	return g;
@@ -376,11 +383,27 @@ function polyArea2(pts: Readonly<Span<Vec2>>): float32 {
 	return a;
 }
 
-function cross3(ax: float32, ay: float32, bx: float32, by: float32, cx: float32, cy: float32): float32 {
+function cross3(
+	ax: float32,
+	ay: float32,
+	bx: float32,
+	by: float32,
+	cx: float32,
+	cy: float32,
+): float32 {
 	return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
 }
 
-function pointInTri(px: float32, py: float32, ax: float32, ay: float32, bx: float32, by: float32, cx: float32, cy: float32): boolean {
+function pointInTri(
+	px: float32,
+	py: float32,
+	ax: float32,
+	ay: float32,
+	bx: float32,
+	by: float32,
+	cx: float32,
+	cy: float32,
+): boolean {
 	const d1: float32 = cross3(ax, ay, bx, by, px, py);
 	const d2: float32 = cross3(bx, by, cx, cy, px, py);
 	const d3: float32 = cross3(cx, cy, ax, ay, px, py);
@@ -654,7 +677,15 @@ export function fillCheckerRect(
 }
 
 // h2d.Graphics.drawTile — textured rect (tile mapped to the rect). Sets the node's view.
-export function fillTexRect(this g: NodeRef, t: Tile, x: float32, y: float32, w: float32, h: float32, color: Color): NodeRef {
+export function fillTexRect(
+	this g: NodeRef,
+	t: Tile,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	color: Color,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTexRect");
 	target.source = t.source;
 	target.alphaPremultiplied = t.alphaPremultiplied;
@@ -669,7 +700,16 @@ export function fillTexRect(this g: NodeRef, t: Tile, x: float32, y: float32, w:
 // h2d.Graphics.beginTileFill — fill an arbitrary shape with a tile; UV maps the tile
 // across the shape from (originX,originY) over (tileW,tileH) px (REPEAT sampler tiles it).
 // One view per Graphics node: don't mix textured + solid fills on the same node.
-export function fillTexPolygon(this g: NodeRef, t: Tile, pts: Vec2[], originX: float32, originY: float32, tileW: float32, tileH: float32, color: Color): NodeRef {
+export function fillTexPolygon(
+	this g: NodeRef,
+	t: Tile,
+	pts: Vec2[],
+	originX: float32,
+	originY: float32,
+	tileW: float32,
+	tileH: float32,
+	color: Color,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillTexPolygon");
 	target.source = t.source;
 	target.alphaPremultiplied = t.alphaPremultiplied;
@@ -683,7 +723,13 @@ export function fillTexPolygon(this g: NodeRef, t: Tile, pts: Vec2[], originX: f
 	return g;
 }
 
-export function fillCircle(this g: NodeRef, cx: float32, cy: float32, r: float32, color: Color): NodeRef {
+export function fillCircle(
+	this g: NodeRef,
+	cx: float32,
+	cy: float32,
+	r: float32,
+	color: Color,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillCircle");
 	const seg: int32 = circleSegs(r);
 	contourFill(target, true, ellipsePoints(cx, cy, r, r, seg), [seg], fanTris(seg), NO_UV, color);
@@ -706,7 +752,13 @@ export function strokeLine(
 
 function negated(v: Vec2): Vec2 { return vec2(-v.x, -v.y); }
 
-export function strokePoly(this g: NodeRef, pts: Vec2[], width: float32, color: Color, closed: boolean): NodeRef {
+export function strokePoly(
+	this g: NodeRef,
+	pts: Vec2[],
+	width: float32,
+	color: Color,
+	closed: boolean,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "strokePoly");
 	const m: int32 = pts.length as int32;
 	if (m < 2) { return g; }
@@ -789,13 +841,29 @@ export function strokePoly(this g: NodeRef, pts: Vec2[], width: float32, color: 
 	return g;
 }
 
-export function strokeRect(this g: NodeRef, x: float32, y: float32, w: float32, h: float32, width: float32, color: Color): NodeRef {
+export function strokeRect(
+	this g: NodeRef,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	width: float32,
+	color: Color,
+): NodeRef {
 	const pts: Vec2[] = [vec2(x, y), vec2(x + w, y), vec2(x + w, y + h), vec2(x, y + h)];
 	return g.strokePoly(pts, width, color, true);
 }
 
 // h2d.Graphics.drawRoundedRect — convex perimeter (4 corner arcs + edges) → fan fill.
-export function fillRoundedRect(this g: NodeRef, x: float32, y: float32, w: float32, h: float32, radius: float32, color: Color): NodeRef {
+export function fillRoundedRect(
+	this g: NodeRef,
+	x: float32,
+	y: float32,
+	w: float32,
+	h: float32,
+	radius: float32,
+	color: Color,
+): NodeRef {
 	const maxR: float32 = (w < h ? w : h) * 0.5;
 	let r: float32 = radius;
 	if (r > maxR) { r = maxR; }
@@ -810,7 +878,14 @@ export function fillRoundedRect(this g: NodeRef, x: float32, y: float32, w: floa
 }
 
 // h2d.Graphics.drawEllipse — fan from centre with independent x/y radii.
-export function fillEllipse(this g: NodeRef, cx: float32, cy: float32, rx: float32, ry: float32, color: Color): NodeRef {
+export function fillEllipse(
+	this g: NodeRef,
+	cx: float32,
+	cy: float32,
+	rx: float32,
+	ry: float32,
+	color: Color,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillEllipse");
 	const seg: int32 = arcSegs(rx > ry ? rx : ry, TAU);
 	const pts: Vec2[] = ellipsePoints(cx, cy, rx, ry, seg);
@@ -823,7 +898,15 @@ function isFullTurn(angleLength: float32): boolean {
 }
 
 // h2d.Graphics.drawPie — fan slice over [angleStart, angleStart+angleLength] (radians).
-export function fillPie(this g: NodeRef, cx: float32, cy: float32, r: float32, angleStart: float32, angleLength: float32, color: Color): NodeRef {
+export function fillPie(
+	this g: NodeRef,
+	cx: float32,
+	cy: float32,
+	r: float32,
+	angleStart: float32,
+	angleLength: float32,
+	color: Color,
+): NodeRef {
 	if (isFullTurn(angleLength)) { return g.fillCircle(cx, cy, r, color); }
 	const target: GraphicsMesh = meshOf(g, "fillPie");
 	if (angleLength == 0.0) { return g; }
@@ -839,7 +922,16 @@ export function fillPie(this g: NodeRef, cx: float32, cy: float32, r: float32, a
 }
 
 // h2d.Graphics.drawPieInner — annular sector (ring slice) between innerR and outerR.
-export function fillRing(this g: NodeRef, cx: float32, cy: float32, outerR: float32, innerR: float32, angleStart: float32, angleLength: float32, color: Color): NodeRef {
+export function fillRing(
+	this g: NodeRef,
+	cx: float32,
+	cy: float32,
+	outerR: float32,
+	innerR: float32,
+	angleStart: float32,
+	angleLength: float32,
+	color: Color,
+): NodeRef {
 	const target: GraphicsMesh = meshOf(g, "fillRing");
 	const full: boolean = isFullTurn(angleLength);
 	const sweep: float32 = full ? TAU : angleLength;
@@ -895,8 +987,10 @@ export function cubicBezier(a: Vec2, c1: Vec2, c2: Vec2, b: Vec2, segments: int3
 	for (let i: int32 = 0; i <= seg; i++) {
 		const t: float32 = (i as float32) / (seg as float32);
 		const u: float32 = 1.0 - t;
-		const x: float32 = u * u * u * a.x + 3.0 * u * u * t * c1.x + 3.0 * u * t * t * c2.x + t * t * t * b.x;
-		const y: float32 = u * u * u * a.y + 3.0 * u * u * t * c1.y + 3.0 * u * t * t * c2.y + t * t * t * b.y;
+		const x: float32 = u * u * u * a.x + 3.0 * u * u * t * c1.x + 3.0 * u * t * t * c2.x +
+			t * t * t * b.x;
+		const y: float32 = u * u * u * a.y + 3.0 * u * u * t * c1.y + 3.0 * u * t * t * c2.y +
+			t * t * t * b.y;
 		pts.push(vec2(x, y));
 	}
 	return pts;

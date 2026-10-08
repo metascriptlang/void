@@ -1270,7 +1270,8 @@ function pushTruncated(
 	const dots: float32 = ellipsisGlyph(shaped).advance;
 	const count: int32 = line.length as int32;
 	const content: float32 = room - dots;
-	const headBudget: float32 = truncate == Truncate.Middle ? (content * (2.0 / 3.0)) as float32 : content;
+	const headBudget: float32 =
+		truncate == Truncate.Middle ? (content * (2.0 / 3.0)) as float32 : content;
 	const tailBudget: float32 = truncate == Truncate.Middle ? content - headBudget : content;
 	let head: int32 = 0;
 	if (truncate != Truncate.Start) {
