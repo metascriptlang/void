@@ -60,6 +60,7 @@ import {
 	UNIFORM_SLOTS,
 	contextGeneration,
 	frameIndex,
+	PixelFormat,
 } from "../gpu/door";
 import {
 	DrawContext,
@@ -287,6 +288,7 @@ export enum ToneMode {
 export function setToneMode(renderer: Renderer, mode: ToneMode): void {
 	if (renderer.closed) { stopOnClosed("setToneMode"); }
 	renderer.toneMode = mode;
+	renderer.changed = true;
 }
 
 export function setExposure(renderer: Renderer, stops: float32): void {
@@ -296,6 +298,7 @@ export function setExposure(renderer: Renderer, stops: float32): void {
 		unreachable;
 	}
 	renderer.exposure = stops;
+	renderer.changed = true;
 }
 
 export function setTimeWrap(renderer: Renderer, seconds: float64): void {
@@ -475,6 +478,15 @@ export function drawPassLists(
 	drawPhase(renderer, Phase.Additive, items, targets);
 }
 
+// Scene programs write linear colour exactly when the core's linearOutput says so, and only an
+// Rgba16f target holds it; any other pairing shows wrong colours with no error.
+function stopOnColourSpace(renderer: Renderer, targets: TargetLayout): void {
+	const written: string = renderer.linearOutput ? "linear" : "encoded";
+	console.log(`void3d: drawPhase writes ${written} colour into a ${targets.color0.toString()} ` +
+		"target; linear colour goes into Rgba16f only, through an HDR preset");
+	unreachable;
+}
+
 // fwd.Renderer's renderPass(output, get(name)): one of the lists into the current pass, for a
 // preset that sends its lists to different targets.
 export function drawPhase(
@@ -484,6 +496,9 @@ export function drawPhase(
 	targets: TargetLayout,
 ): void {
 	if (renderer.closed) { stopOnClosed("drawPhase"); }
+	if ((targets.color0 == PixelFormat.Rgba16f) != renderer.linearOutput) {
+		stopOnColourSpace(renderer, targets);
+	}
 	const context: DrawContext = renderer.context;
 	const scene: SceneTexture = sceneTextureOf(renderer);
 	match (phase) {

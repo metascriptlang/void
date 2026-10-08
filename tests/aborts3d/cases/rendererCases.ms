@@ -7,9 +7,12 @@
 // expect closed.closeRenderer: void3d: closeRenderer on a renderer that was closed
 // expect coreClosed.prepareFrame: void3d: prepareFrame on a renderer that was closed
 // expect coreClosed.drawToScreen: void3d: drawToScreen on a renderer that was closed
+// expect linear.intoEncoded: void3d: drawPhase writes linear colour into a Default target
+// expect encoded.intoLinear: void3d: drawPhase writes encoded colour into a Rgba16f target
 import { argv } from "std/process";
 import { Vec4 } from "../../../src/math/math3d";
 import { SWAPCHAIN_LAYOUT } from "../../../src/gpu/target";
+import { PixelFormat } from "../../../src/gpu/door";
 import { VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH } from "../../../src/void3d/gpu3d";
 import { DrawContext, DrawItem, NO_MATERIAL } from "../../../src/void3d/draw";
 import { Phase } from "../../../src/void3d/material";
@@ -40,6 +43,15 @@ function closedCore(): Renderer {
 	if (!made.ok) { unreachable; }
 	let core: Renderer = made.value;
 	closeRenderer(core);
+	return core;
+}
+
+function openCore(linearOutput: boolean): Renderer {
+	let context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
+	const made: Result<Renderer, RendererError> = Renderer.create(context);
+	if (!made.ok) { unreachable; }
+	let core: Renderer = made.value;
+	core.linearOutput = linearOutput;
 	return core;
 }
 
@@ -77,6 +89,11 @@ function run(name: string): void {
 			prepareFrame(forwardWithClosedCore(), items, camera, lights, 32, 24);
 	} else if (name == "coreClosed.drawToScreen") {
 		drawToScreen(forwardWithClosedCore());
+	} else if (name == "linear.intoEncoded") {
+		drawPhase(openCore(true), Phase.Opaque, items, SWAPCHAIN_LAYOUT);
+	} else if (name == "encoded.intoLinear") {
+		drawPhase(openCore(false), Phase.Opaque, items,
+			{ ...SWAPCHAIN_LAYOUT, color0: PixelFormat.Rgba16f });
 	} else {
 		console.log(`no case named '${name}'`);
 		return;

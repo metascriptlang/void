@@ -333,8 +333,12 @@ test "the tone modes are ToneMapping's mode numbers, and a core starts on the li
 	if (created.ok) {
 		let core: Renderer = created.value;
 		assert core.toneMode == ToneMode.Linear;
+		core.changed = false;
 		setToneMode(core, ToneMode.Filmic);
-		assert core.toneMode == ToneMode.Filmic;
+		assert core.toneMode == ToneMode.Filmic && core.changed;
+		core.changed = false;
+		setExposure(core, 0.5);
+		assert core.changed;
 	}
 }
 
