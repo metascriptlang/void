@@ -199,6 +199,20 @@ test "Truncate.End puts the ellipsis at the paragraph end, the left of a Hebrew 
 	restoreShaping(was);
 }
 
+test "the ellipsis takes the paragraph level, not the level of the letter it replaces" {
+	const was = plainShaping();
+	const font = hebrewFont();
+	const options: LineOptions = { ...PLAIN_LINES, truncate: Truncate.End };
+	const text: string = "abc\u{5D0}\u{5D1}\u{5D2}\u{5D3}\u{5D4}\u{5D5}\u{5D6}";
+	const room: float32 = shapedIn(text, styleOf(font, 0.0), TextDirection.Auto).glyphs[6].x;
+	const l = laidIn(text, styleOf(font, room), TextDirection.Auto, options);
+	const last: int32 = (l.glyphs.length as int32) - 1;
+	assert l.glyphs[last].codepoint == 0x2026;
+	assert l.bidi.levels[last] == 0;
+	for (let i = 0; i < last; i++) { assert l.glyphs[last].x > l.glyphs[i].x; }
+	restoreShaping(was);
+}
+
 test "forceWidth puts a reordered line on the grid, mirrored" {
 	const was = plainShaping();
 	const options: LineOptions = { ...PLAIN_LINES, forceWidth: 10.0 };
