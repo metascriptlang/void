@@ -940,8 +940,8 @@ human has seen it as app code; the phase measurement comes last.
      (`~/metascript/.inbox/compiler/2026-09-27-overloads-by-literal-type-drop-all-but-first.md`).
    - A `valueOf`-style protocol on the field's type: it sees the value, never the node holding it,
      so it cannot mark the owner.
-   - `readonly` fields behind setters: `readonly` on an interface field crashes codegen
-     (`~/metascript/.inbox/compiler/2026-09-27-readonly-interface-field-unresolved-type.md`).
+   - `readonly` fields behind setters: `readonly` on an interface field crashed codegen until
+     recompiler `6fb6b5bd`; the choice below does not rest on it.
 
    **Chosen:** SCENE-SCALE.md's model, which void3d already cut its types by (VOID3D.md "Data
    types", `src/void3d/scene.ms` `Scene`, `NodeId`, `setLocal`): nodes are handles into a scene's

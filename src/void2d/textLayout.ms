@@ -1113,24 +1113,23 @@ function reorderRow(
 	glyphs: Span<LaidGlyph>,
 	first: int32,
 	inkRight: float32,
-	ref levels: Vec<int32>,
-	ref resets: Vec<int32>,
-	ref logicalX: Vec<float32>,
-	ref lineLevels: Vec<int32>,
+	ref bidi: LayoutBidi,
 ): void {
 	if ((shaped.bidi.levels.length as int32) == 0) { return; }
 	const paragraph: int32 = shaped.bidi.paragraphs[lineParagraph(shaped, lineStart)];
-	lineLevels.push(paragraph);
+	bidi.lineLevels.push(paragraph);
 	const total: int32 = glyphs.length as int32;
-	const base: int32 = levels.length as int32;
+	const base: int32 = bidi.levels.length as int32;
 	for (let k = first; k < total; k++) {
 		const elided: boolean = glyphs[k].byteEnd == glyphs[k].byteStart;
-		levels.push(elided ? paragraph : shaped.bidi.levels[glyphs[k].charIndex]);
-		resets.push(elided ? 0 : shaped.bidi.resets[glyphs[k].charIndex]);
-		logicalX.push(glyphs[k].x);
+		bidi.levels.push(elided ? paragraph : shaped.bidi.levels[glyphs[k].charIndex]);
+		bidi.resets.push(elided ? 0 : shaped.bidi.resets[glyphs[k].charIndex]);
+		bidi.logicalX.push(glyphs[k].x);
 	}
 	const end: int32 = base + total - first;
-	reflectLine(glyphs, first, levels[base..end], resets[base..end], paragraph, inkRight);
+	reflectLine(
+		glyphs, first, bidi.levels[base..end], bidi.resets[base..end], paragraph, inkRight,
+	);
 }
 
 export function slotLevels(this l: TextLayout, line: int32): Vec<int32> {
@@ -1358,10 +1357,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 			let lineWidth: float32 = options.forceWidth > 0.0
 				? forceCells(glyphs, firstGlyph, options.forceWidth)
 				: lineWidthOf(glyphs, firstGlyph);
-			reorderRow(
-				shaped, lineStart, glyphs, firstGlyph, lineWidth, layoutBidi.levels,
-				layoutBidi.resets, layoutBidi.logicalX, layoutBidi.lineLevels,
-			);
+			reorderRow(shaped, lineStart, glyphs, firstGlyph, lineWidth, layoutBidi);
 			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {
 				glyphs[k].x = glyphs[k].x + indent;
 			}
@@ -1515,8 +1511,6 @@ export function selectedExtents(
 	const tailLow: float32 = rightToLeft ? left - tail : right;
 	const tailHigh: float32 = rightToLeft ? left : right + tail;
 	const extraHigh: float32 = tail > 0.0 ? tailHigh : 0.0;
-	// Keep this Vec<boolean> span: emcc refuses it until msc casts uint8_t * to MS_BOOL *
-	// (.inbox/compiler/2026-09-26-interface-array-to-span-void-pointer.md).
 	selectedSpans(flags, indices, xs, advances, start, end, gap, tailLow, extraHigh, out);
 	return out;
 }
@@ -1607,8 +1601,6 @@ function lineEdges(this l: TextLayout, li: int32): LineEdges {
 		if (k == first || l.glyphs[k].clusterStart) { starts.push(k); }
 	}
 	let edges: Vec<float32> = new Array(0);
-	// Keep this Vec<boolean> span: emcc refuses it until msc casts uint8_t * to MS_BOOL *
-	// (.inbox/compiler/2026-09-26-interface-array-to-span-void-pointer.md).
 	clusterEdges(l.slotLevels(li), flags, xs, advances, l.bidi.lineLevels[li], edges);
 	return { starts: starts, edges: edges };
 }

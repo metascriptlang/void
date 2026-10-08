@@ -47,8 +47,9 @@ function byteAt(bytes: Readonly<Span<char>>, at: int32): int32 {
 	return (bytes[at] as uint8) as int32;
 }
 
-function emptied(ref values: Vec<int32>): void {
-	while ((values.length as int32) > 0) { values.pop(); }
+struct BidiExpected {
+	levels: Vec<int32>;
+	order: Vec<int32>;
 }
 
 function colonAfter(bytes: Readonly<Span<char>>, from: int32, end: int32): int32 {
@@ -96,8 +97,7 @@ function numbers(bytes: Readonly<Span<char>>, from: int32, end: int32, ref out: 
 function agrees(
 	classes: Readonly<Span<BidiClass>>,
 	brackets: Readonly<Span<int32>>,
-	expectedLevels: Readonly<Span<int32>>,
-	expectedOrder: Readonly<Span<int32>>,
+	expected: BidiExpected,
 	direction: TextDirection,
 	expectedParagraph: int32,
 ): boolean {
@@ -108,6 +108,8 @@ function agrees(
 	resetLineEnds(classes, paragraph, 0, count, resolved);
 	let keptLevels: Vec<int32> = new Array(0);
 	let keptIndex: Vec<int32> = new Array(0);
+	const expectedLevels: Vec<int32> = expected.levels;
+	const expectedOrder: Vec<int32> = expected.order;
 	if ((expectedLevels.length as int32) != count) { return false; }
 	for (let i = 0; i < count; i++) {
 		if (removedByX9(classes[i])) {
@@ -173,10 +175,10 @@ function bidiTestVerdict(): Verdict {
 		if (first == 64) {
 			const colon: int32 = colonAfter(bytes, at, end);
 			if (byteAt(bytes, at + 1) == 76) {
-				emptied(expectedLevels);
+				expectedLevels = new Array(0);
 				numbers(bytes, colon + 1, end, expectedLevels);
 			} else {
-				emptied(expectedOrder);
+				expectedOrder = new Array(0);
 				numbers(bytes, colon + 1, end, expectedOrder);
 			}
 		} else if (first != 35 && first != 10 && first != 13) {
@@ -206,7 +208,8 @@ function bidiTestVerdict(): Verdict {
 					_ => TextDirection.Rtl,
 				};
 				cases = cases + 1;
-				if (agrees(classes, noBrackets, expectedLevels, expectedOrder, direction, -1)) {
+				const expected: BidiExpected = { levels: expectedLevels, order: expectedOrder };
+				if (agrees(classes, noBrackets, expected, direction, -1)) {
 					agreed = agreed + 1;
 				} else if (shown < SHOWN_FAILURES) {
 					shown = shown + 1;
@@ -274,7 +277,8 @@ function bidiCharacterVerdict(): Verdict {
 				_ => TextDirection.Auto,
 			};
 			rows = rows + 1;
-			if (agrees(classes, brackets, expectedLevels, expectedOrder, mode, paragraph[0])) {
+			const expected: BidiExpected = { levels: expectedLevels, order: expectedOrder };
+			if (agrees(classes, brackets, expected, mode, paragraph[0])) {
 				agreed = agreed + 1;
 			} else if (shown < SHOWN_FAILURES) {
 				shown = shown + 1;
