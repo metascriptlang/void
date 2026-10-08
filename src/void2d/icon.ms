@@ -99,8 +99,11 @@ export function iconRefusalReports(): int32 { return reportedIcons; }
 
 export function iconRasterizations(): int32 { return rasterizedIcons; }
 
+const ICON_SIDE_MAX: float32 = 1048576.0;
+
 export function maskSide(deviceLength: float32): int32 {
 	if (!(deviceLength > ICON_SIZE_NOISE)) { return 0; }
+	if (deviceLength >= ICON_SIDE_MAX) { return (ICON_SIDE_MAX as int32) * ICON_SUPERSAMPLE; }
 	return (Math.ceil((deviceLength - ICON_SIZE_NOISE) as float64) as int32) * ICON_SUPERSAMPLE;
 }
 

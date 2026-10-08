@@ -70,6 +70,8 @@ test "the mask side is twice the device pixels rounded up and nothing for no siz
 	assert maskSide(0.5) == 2;
 	assert maskSide(0.0) == 0;
 	assert maskSide(-3.0) == 0;
+	assert maskSide(1.0e9) > 0;
+	assert maskSide(3.0e38) == maskSide(1.0e9);
 }
 
 test "the same icon at the same mask size is one tile and the second costs no rasterization" {
