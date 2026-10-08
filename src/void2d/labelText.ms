@@ -52,6 +52,11 @@ when (voidColourEmoji) {
 	import { acquireColour, colourBucket, colourKey } from "./glyphAtlas";
 }
 
+when (voidTextOutline) {
+	import { acquireOutline, COVERAGE_OUTLINE_PER_PX } from "./glyphAtlas";
+	import { outlineLane, deviceOutlineWidth } from "./textOutline";
+}
+
 export const NO_LABEL_TEXT: int32 = -1;
 const MAX_GLYPH_PAGES: int32 = 16;
 
@@ -83,10 +88,11 @@ struct PlacementKey {
 	scale: float32;
 	fracX: float32;
 	fracY: float32;
+	outline: float32;
 }
 
 const NO_PLACEMENT_KEY: PlacementKey = {
-	a: 0.0, b: 0.0, c: 0.0, d: 0.0, scale: 0.0, fracX: 0.0, fracY: 0.0,
+	a: 0.0, b: 0.0, c: 0.0, d: 0.0, scale: 0.0, fracX: 0.0, fracY: 0.0, outline: 0.0,
 };
 
 export enum DecorationKind {
@@ -275,7 +281,9 @@ export function allocateLabelText(): int32 {
 
 function releasePlacement(entry: LabelText): void {
 	for (const p of entry.placed) { glyphAtlas.release(p.tile); }
+	for (const p of entry.placedOutline) { glyphAtlas.release(p.tile); }
 	entry.placed = new Array(0);
+	entry.placedOutline = new Array(0);
 	entry.placedValid = false;
 }
 
@@ -435,7 +443,6 @@ export function labelRefusal(index: int32): Result<void, TextError> {
 export function setLabelOutline(index: int32, width: float32, color: Color): void {
 	when (voidTextOutline) {
 		const entry: LabelText = labelTexts[index];
-		if (entry.outlineWidth != width) { entry.placedValid = false; }
 		entry.outlineWidth = width;
 		entry.outlineColor = color;
 	} else {
@@ -600,7 +607,12 @@ function fraction(value: float32): float32 {
 	return value - (Math.floor(value) as float32);
 }
 
-function placementKey(world: Transform2D, scale: float32, regime: TextRegime): PlacementKey {
+function placementKey(
+	world: Transform2D,
+	scale: float32,
+	regime: TextRegime,
+	outline: float32,
+): PlacementKey {
 	const exact: boolean = regime == TextRegime.PixelExact;
 	return {
 		a: world.a,
@@ -610,12 +622,14 @@ function placementKey(world: Transform2D, scale: float32, regime: TextRegime): P
 		scale: scale,
 		fracX: exact ? fraction(world.tx * scale) : 0.0,
 		fracY: exact ? fraction(world.ty * scale) : 0.0,
+		outline: outline,
 	};
 }
 
 // Early exits, not one struct compare: this runs for every label on every frame.
 function placementCurrent(entry: LabelText, world: Transform2D, scale: float32): boolean {
 	if (!entry.placedValid) { return false; }
+	if (entry.key.outline != outlineWidthOf(entry)) { return false; }
 	const regime: TextRegime = regimeOf(world);
 	if (entry.regime != regime) { return false; }
 	if (regime == TextRegime.Sdf && !entry.coverageInSdf) { return true; }
@@ -684,6 +698,72 @@ when (voidSdfText) {
 } else {
 	function sdfPlacedGlyph(g: LaidGlyph, baseline: float32): Result<PlacedGlyph, AtlasError> {
 		console.log("void2d: a label chose the SDF text regime in a build without -d:voidSdfText");
+		unreachable;
+	}
+}
+
+when (voidTextOutline) {
+	function outlineWidthOf(entry: LabelText): float32 {
+		return entry.outlineColor.a > 0.0 && entry.outlineWidth > 0.0 ? entry.outlineWidth : 0.0;
+	}
+
+	function outlineLaneFor(
+		widthLocal: float32,
+		devicePerLocal: float32,
+		pixelExact: boolean,
+	): Result<int32, AtlasError> {
+		return outlineLane(
+			deviceOutlineWidth(widthLocal, devicePerLocal, pixelExact), COVERAGE_OUTLINE_PER_PX,
+		);
+	}
+
+	function outlinePlacedGlyph(
+		g: LaidGlyph,
+		baseline: float32,
+		devicePerLocal: float32,
+		pixelExact: boolean,
+		lane: int32,
+		variant: int32,
+		whole: int32,
+		baselineDevice: int32,
+	): Result<PlacedGlyph, AtlasError> {
+		const acquired = glyphAtlas.acquireOutline({
+			kind: PageKind.Coverage,
+			face: g.face, glyph: g.glyph, sizePx: g.size * devicePerLocal, variant: variant,
+			outline: lane,
+		});
+		if (!acquired.ok) { return Result.err(acquired.error); }
+		return Result.ok(placedGlyph(
+			g, acquired.value, glyphAtlas.tile(acquired.value), baseline, devicePerLocal,
+			pixelExact, whole, baselineDevice,
+		));
+	}
+} else {
+	function outlineWidthOf(entry: LabelText): float32 {
+		return 0.0;
+	}
+
+	function outlineLaneFor(
+		widthLocal: float32,
+		devicePerLocal: float32,
+		pixelExact: boolean,
+	): Result<int32, AtlasError> {
+		return Result.ok(0);
+	}
+
+	function outlinePlacedGlyph(
+		g: LaidGlyph,
+		baseline: float32,
+		devicePerLocal: float32,
+		pixelExact: boolean,
+		lane: int32,
+		variant: int32,
+		whole: int32,
+		baselineDevice: int32,
+	): Result<PlacedGlyph, AtlasError> {
+		console.log(
+			"void2d text outline: a label placed an outline in a build without -d:voidTextOutline",
+		);
 		unreachable;
 	}
 }
@@ -774,8 +854,20 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	const fracX: float32 = fraction(world.tx * scale);
 	const fracY: float32 = fraction(world.ty * scale);
 	let placed: Vec<PlacedGlyph> = new Array(0);
+	let placedOutline: Vec<PlacedGlyph> = new Array(0);
 	let refused: int32 = 0;
 	let refusal: string = "";
+	const outlineWidth: float32 = outlineWidthOf(entry);
+	let outlineLaneValue: int32 = 0;
+	if (outlineWidth > 0.0 && devicePerLocal > 0.0) {
+		const lane = outlineLaneFor(outlineWidth, devicePerLocal, pixelExact);
+		if (lane.ok) {
+			outlineLaneValue = lane.value;
+		} else {
+			refused = refused + 1;
+			refusal = lane.error.toString();
+		}
+	}
 	let coverageInSdf: boolean = false;
 	let colourGlyphs: int32 = 0;
 	const bucketed: boolean = !translationOnly(world);
@@ -861,6 +953,18 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			placed.push(placedGlyph(
 				g, tileIndex, t, baseline, devicePerLocal, pixelExact, whole, baselineDevice,
 			));
+			if (outlineLaneValue > 0 && !isSpriteFace(g.face)) {
+				const outlined = outlinePlacedGlyph(
+					g, baseline, devicePerLocal, pixelExact, outlineLaneValue, variant, whole,
+					baselineDevice,
+				);
+				if (!outlined.ok) {
+					refused = refused + 1;
+					refusal = outlined.error.toString();
+				} else if (outlined.value.w > 0.0) {
+					placedOutline.push(outlined.value);
+				}
+			}
 		}
 	}
 	refusedGlyphs = refusedGlyphs + refused;
@@ -873,10 +977,11 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	}
 	entry.refused = refused;
 	entry.placed = placed;
+	entry.placedOutline = placedOutline;
 	entry.placedValid = refused == 0;
 	entry.coverageInSdf = coverageInSdf;
 	entry.colourGlyphs = colourGlyphs;
 	entry.regime = regime;
-	entry.key = placementKey(world, scale, regime);
+	entry.key = placementKey(world, scale, regime, outlineWidth);
 	return entry;
 }

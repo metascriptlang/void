@@ -104,6 +104,7 @@ when (voidColourEmoji) {
 when (voidTextOutline) {
 	import "./glyphOutlineCheck";
 	import "./outlineOracleCheck";
+	import "./labelOutlineCheck";
 }
 when (voidSdfText) {
 	import "./textSdfCheck";
