@@ -1202,6 +1202,30 @@ run_exposure() {
 	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending"
 }
 
+run_hdr() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "hdr: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/hdr.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/hdr.ms --output="$exe" > "$WORK/hdr.build.log" 2>&1; then
+		fail "hdr: tests/integration/hdr.ms does not build — see $WORK/hdr.build.log"
+		return
+	fi
+	status=0
+	"$exe" > "$WORK/hdr.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "hdr: no native readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS hdr: ' "$WORK/hdr.log"; then
+		fail "hdr: the forward HDR preset (exit $status) — see $WORK/hdr.log"
+		return
+	fi
+	pass "hdr: an Rgba16f scene target blends in linear light and keeps sums above 1 for the tone map"
+}
+
 # ---- gl core -------------------------------------------------------------------------------
 
 # The readback checks, each judged by its own thresholds rather than D3D11's bytes, built for
@@ -1211,7 +1235,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:-"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -2827,6 +2851,7 @@ run_both_layers
 run_world_label
 run_card_table
 run_exposure
+run_hdr
 run_gl_core
 run_stores
 run_views
