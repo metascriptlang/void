@@ -79,9 +79,8 @@ export struct ObjectAnimation {
 	hasSynced: boolean;
 }
 
-// PENDING3D: store-serial-writable
 export interface MeshFrameAnimation {
-	context: DrawContext;
+	readonly context: DrawContext;
 	clock: AnimationClock;
 	name: string;
 	target: NodeId3D;

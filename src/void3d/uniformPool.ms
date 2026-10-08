@@ -13,9 +13,8 @@ export enum UniformError {
 	Foreign,
 }
 
-// PENDING3D: store-serial-writable
 export interface UniformPool {
-	serial: int32;
+	readonly serial: int32;
 	values: Vec<float32>;
 	used: int32;
 	lengths: Vec<int32>;

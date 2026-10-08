@@ -84,9 +84,8 @@ export struct GltfMaterialSetup {
 }
 
 // Every id is held once, until closeGltfAssets.
-// PENDING3D: store-serial-writable
 export interface GltfAssets {
-	context: DrawContext;
+	readonly context: DrawContext;
 	bindings: Vec<GltfMeshBinding>;
 	meshes: Vec<MeshId>;
 	materials: Vec<MaterialId>;

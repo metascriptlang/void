@@ -148,10 +148,9 @@ export struct SceneCamera {
 	layers: uint32;
 }
 
-// PENDING3D: store-serial-writable
 export interface Scene3D {
-	serial: int32;
-	context: DrawContext;
+	readonly serial: int32;
+	readonly context: DrawContext;
 	nodes: Vec<Object3D>;
 	slots: Slots;
 	meshes: Vec<MeshInstance>;

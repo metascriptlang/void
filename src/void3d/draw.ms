@@ -173,9 +173,8 @@ export struct DoomedBuffer {
 // range and the textures each material was added with, whatever its fields say later; the
 // textures MATERIAL_TEXTURE_ROLES to a material, by role. `textures`
 // and `textureData` are one index space, as `meshes` and `meshData` are.
-// PENDING3D: store-serial-writable
 export interface DrawContext {
-	serial: int32;
+	readonly serial: int32;
 	meshes: Vec<GpuMesh>;
 	meshData: Vec<MeshData>;
 	meshSlots: Slots;

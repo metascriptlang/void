@@ -91,9 +91,8 @@ import { Mat4 } from "../math/math3d";
 import { Frustum3D } from "./frustum";
 import { DirShadowMap, castsAll, drawShadows, sceneTexture } from "./dirShadowMap";
 
-// PENDING3D: store-serial-writable
 export interface Renderer {
-	context: DrawContext;
+	readonly context: DrawContext;
 	opaque: PassList;
 	alpha: PassList;
 	additive: PassList;
