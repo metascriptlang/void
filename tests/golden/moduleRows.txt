@@ -5,6 +5,13 @@ demo/frame200
 icon/tinted
 icon/tintedDpi150
 prim/cardWithLabel
+text/bidiArabic
+text/bidiArabicMixed
+text/bidiDecorations
+text/bidiHebrew
+text/bidiHebrewWrap
+text/bidiMixedLatinHebrew
+text/bidiSelection
 text/code13Dpi100
 text/code13Dpi125
 text/code13Dpi150
