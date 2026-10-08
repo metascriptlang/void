@@ -499,6 +499,26 @@ else
 	echo "      harness self-checks: hand-computed scene, deliberately wrong golden,"
 	echo "      two draws of the same state compared before either is written out,"
 	echo "      and the verdict decision proved above"
+	GOLDEN_DEFINES= sh scripts/golden.sh > out/gate-golden-bare.log 2>&1 || true
+	bare_failing=$(tr -d '\r' < out/gate-golden-bare.log | grep -E '^FAIL' | awk '{ print $2 }' | sort -u)
+	module_rows=$(tr -d '\r' < tests/golden/moduleRows.txt | sort -u)
+	bare_leaked=""
+	for scene in $bare_failing; do
+		case " $(echo $module_rows) " in *" $scene "*) ;; *) bare_leaked="$bare_leaked $scene" ;; esac
+	done
+	bare_stale=""
+	for scene in $module_rows; do
+		case " $(echo $bare_failing) " in *" $scene "*) ;; *) bare_stale="$bare_stale $scene" ;; esac
+	done
+	if ! tr -d '\r' < out/gate-golden-bare.log | grep -q '^golden d3d11'; then
+		fail "bare build golden did not run — see out/gate-golden-bare.log"
+	elif [ -n "$bare_leaked" ]; then
+		fail "bare build: rows that need no module moved:$bare_leaked (tests/golden/moduleRows.txt)"
+	elif [ -n "$bare_stale" ]; then
+		fail "bare build: rows listed as needing a module match without one:$bare_stale — drop them from tests/golden/moduleRows.txt"
+	else
+		pass "bare build: every row that needs no module is byte-identical; the $(echo $module_rows | wc -w) module rows differ, as listed"
+	fi
 fi
 "$MSC" build tests/golden/invariants.ms --output=out/goldenInvariants.exe > out/gate-invariants.log 2>&1 || true
 if [ -x out/goldenInvariants.exe ] && out/goldenInvariants.exe >> out/gate-invariants.log 2>&1; then
