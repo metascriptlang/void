@@ -128,6 +128,8 @@ vec3 oklabToLinear(vec3 c) {
         -1.2684380046 * lms.x + 2.6097574011 * lms.y - 0.3413193965 * lms.z,
         -0.0041960863 * lms.x - 0.7034186147 * lms.y + 1.7076147010 * lms.z);
 }
+const float PATTERN_TIE_BIAS = 1.0 / 64.0;
+
 vec4 mixGradient(vec4 a, vec4 b, float t) {
     vec3 rgb;
     if (gradientMeta.y > 0.5) {
@@ -189,10 +191,13 @@ void main() {
     } else if (gradientKind == 3) {
         float spacing = max(gradientParams.x, 1.0);
         float width = clamp(gradientParams.y, 0.0, spacing);
-        texel = mod(uv.x + uv.y, spacing) < width ? gradientColor1 : gradientColor0;
+        float diagonal = uv.x + uv.y;
+        diagonal += fwidth(diagonal) * PATTERN_TIE_BIAS;
+        texel = mod(diagonal, spacing) < width ? gradientColor1 : gradientColor0;
     } else if (gradientKind == 4) {
         float cell = max(gradientParams.x, 1.0);
-        float parity = mod(floor(uv.x / cell) + floor(uv.y / cell), 2.0);
+        vec2 sample_ = uv + fwidth(uv) * PATTERN_TIE_BIAS;
+        float parity = mod(floor(sample_.x / cell) + floor(sample_.y / cell), 2.0);
         texel = parity < 1.0 ? gradientColor0 : gradientColor1;
     } else {
         texel = texture(sampler2D(tex, smp), uv);
