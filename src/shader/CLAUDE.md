@@ -24,15 +24,20 @@ later replaces the hand-written GLSL source of each base.
   and `sin`/`exp` are implementation-defined. shady's own tests use `1e-4`. Pixel truth is
   the readback in `tests/capture3d/capture.c`.
 
-## Open before the emitter works
+## Compiler surface the emitter relies on
 
-- **Callee lookup (compiler).** A callee `Identifier` in the returned body has no `symHandle`, so
-  `getImpl(callee)` fails with "node is not a symbol". Only `bindSym(name)` works, and it breaks
-  across modules and overloads. The gate is `recompiler/src/compiler/meta/bridge.ms` `nodeToValue`,
-  `NodeKind.Identifier` branch. Card it in `~/metascript/.inbox/compiler/` when work here starts.
-- **Declaration order.** The body is typed only if the function was checked before the macro expands.
-  A module-level `glsl(frag)` after `frag` works; a call from a function declared earlier gets
-  "node carries no type".
+Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` identical, probes in
+`out/shaderPrerequisites/`. Compiler pins: corpus `macroTypedBodyCalleeIdentity`,
+`macroTypedBodyBeforeDeclaration`, `macroOutputKeepsSymbols`, `macroSeesGetterIdentity`,
+`accessorStructGetter`.
+
+- **Callee identity.** `getImpl(callee)` on a callee in a typed body returns the declaration the call
+  resolved to: an imported helper, a same-named helper under an alias, the winning overload, an
+  imported module constant. Never look a callee up by its spelling.
+- **Declaration order.** A body read before its declaration comes back checked.
+- **Swizzles.** `get xy()` in a struct body: `v.xy` is a value read with no heap object, and a
+  receiver with side effects runs once.
+- **Macro output keeps its symbols**; a local placed outside its own function is an error.
 - Macro bodies cannot recurse through flat `Node` fields; walk with `msNodeChildCount` / `msNodeChildAt`.
 
 ## Measured — sokol-shdc coverage
