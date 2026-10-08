@@ -1964,8 +1964,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
   **Weight** (`sh scripts/wasmModuleDelta.sh`, `tests/bench/wasm.json`): `glyph.c` with the flag
   +9 256 B native, +6 667 B wasm32; beside `-d:voidSdfText` +5 610 and +4 887; the SDF module itself
   moved by 6 B. Module off: no default-layer object names a `void2dGlyphOutline` symbol, with the
-  module-on object as control. **Owed, each a row in `tests/PENDING.md`**: the ten `text/outline*`
-  captures (`golden-missing:`, with the colour-effect invariant that reads one), the bench bounds
+  module-on object as control. The ten `text/outline*` rows are captured on D3D11 (2026-10-08);
+  the three `outlineSdf*` scenes first drew nothing, because their builders asked
+  `sdfLabelCases` for the outline rows' names, and now take the SDF rows' labels.
+  **Owed, each a row in `tests/PENDING.md`**: the bench bounds
   (`outline:bench-bounds`, `benchTextOutline.ms`), the native gate with the flag
   (`outline:native-gate`), the other backends (`outline:backends`), a judge on the SDF captures
   (`outline:capture-oracle`) and a look (`outline:look`).
@@ -2603,7 +2605,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 - Every module's wasm delta is recorded per backend and gated against a committed budget; a build with all modules off is measured too, and is the number guardrail 6 is about.
 - The fault-injection switch loses the device mid-frame and the next frame is correct.
 - `sample_count > 1` works on the iOS and Android bridges without breaking void3d's pipelines.
-- Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and measured 105 / 105 (82 byte-identical, 23 within the cross-backend bound, 0 structural, 2 void3d scenes excluded by name); it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3.
+- Guardrail 9 prints a pass rate for GL core 4.3 desktop (glsl430) and WebGPU instead of a SKIP. **Status 2026-10-08:** the GL surface is built (`-d:voidGlCore`, `sh scripts/golden.sh --backend gl`, gate section 7) and measured 115 / 115 (91 byte-identical, 24 within the cross-backend bound, 0 structural, 2 void3d scenes excluded by name); it reads GL core 4.3 and not GLES3 because sokol_app's Win32 list has no GLES3.
 - The colour-emoji line (TESTING.md `text/`) draws in colour through the module, presentation selectors pick text or emoji per grapheme, and a build with the module off pays none of it. **Status 2026-10-08:** built, measured headless and captured on D3D11 (`text/colourEmoji`); the native gate stages are owed (see "Colour emoji" under Built); the module-off proof is by symbol on objects.
 - A deferred CJK or emoji family answers coverage without loading, with the module on or off.
 - WebGL2 and GL core 4.3 desktop (glsl430) show no structural failure, and every `tests/PENDING.md` row owned by P6 is closed or re-owned by name.
@@ -2614,7 +2616,7 @@ changes described above on today's compiler; the P4 web archive also takes its r
 
 
 
-**Text outline rows, owed to the human on 2026-10-08:** `golden-missing:text/outline`, `outlineDpi125`, `outlineTight`, `outlineAlpha`, `outlineRuns`, `outlineColorEffect`, `outlineSdfRotated`, `outlineSdfZoom4`, `outlineSdfScaleDown` and `outlineSdfSeam`, `outline:bench-bounds`, `outline:native-gate`, `outline:backends`, `outline:capture-oracle` and `outline:look`; `outline:sprite-glyph` and `outline:colour-glyph` are declared design choices and stay.
+**Text outline rows, owed to the human on 2026-10-08:** `outline:bench-bounds`, `outline:native-gate`, `outline:backends`, `outline:capture-oracle` and `outline:look`; `outline:sprite-glyph` and `outline:colour-glyph` are declared design choices and stay.
 
 **Re-owned to the human on 2026-10-08, each naming the run that is missing** (decision of the void manager; the Exit line above allows a SKIP that names it): `backend:metal-macos`, `backend:metal-ios`, `backend:gles3-android`, `macos:voidRunConfigured` and `macos:view-api` need a Mac, an iPhone or an Android device that the box owning this code does not have. Each row in `tests/PENDING.md` states the run that closes it, and `scripts/gate.sh` section 7 keeps printing a SKIP for the three backends until that run reports a pass rate.
 
