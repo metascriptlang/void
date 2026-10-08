@@ -1,4 +1,4 @@
-import { Vec3, vec3, identity } from "../math/math3d";
+import { Vec3, vec3, identity, Mat4 } from "../math/math3d";
 import {
 	Program,
 	ProgramKey,
@@ -69,7 +69,9 @@ import {
 	castsAll,
 } from "../void3d/dirShadowMap";
 import { Bounds3D } from "../void3d/bounds";
-import { CameraBasis } from "../void3d/camera";
+import {
+	CameraBasis, Camera3D, CameraView, CameraError, CameraProjection, ProjectionKind,
+} from "../void3d/camera";
 
 const LIT_PROGRAMS: Vec<Program> = [Program.Lit, Program.LitTextured];
 
@@ -352,4 +354,34 @@ test "a frame with a shadow map refuses a caster with no shadow output before it
 	assert context.uniforms.values[core.cameraBlock.offset] == 0.0 && core.generation == 0;
 	attachShadow(core, null);
 	assert core.sceneGlobals.length == 3;
+}
+
+function inverseFrom(projection: CameraProjection): Mat4 {
+	const camera: Camera3D = {
+		position: vec3(0.0, 4.0, 4.0), yaw: 0.0, pitch: 0.785398,
+		nearPlane: 0.1, farPlane: 20.0, projection: projection,
+	};
+	const view: Result<CameraView, CameraError> = camera.resolve(320, 240);
+	if (!view.ok) { unreachable; }
+	return view.value.inverseViewProj;
+}
+
+// World boxes across DOWN's axes: light x is world x, light y is -z, light z is -y.
+function acrossDown(min: Vec3, max: Vec3): Bounds3D {
+	return Bounds3D.fromPoints(vec3(min.x, -max.z, -max.y), vec3(max.x, -min.z, -min.y));
+}
+
+test "a perspective camera's shadow box spreads with its frustum and keeps its near plane" {
+	const perspective: Mat4 = inverseFrom({ kind: ProjectionKind.Perspective, fovY: 0.6 });
+	const orthographic: Mat4 = inverseFrom({
+		kind: ProjectionKind.Orthographic, worldPerTexel: 0.02, snap: false,
+	});
+	const wide: Bounds3D = acrossDown(vec3(5.8, 0.0, -6.2), vec3(6.2, 1.0, -5.8));
+	assert !shadowBounds(DOWN, wide, perspective).isEmpty();
+	assert shadowBounds(DOWN, wide, orthographic).isEmpty();
+	const atNear: Bounds3D = acrossDown(vec3(-0.05, 3.74, 3.74), vec3(0.05, 3.84, 3.84));
+	const kept: Bounds3D = shadowBounds(DOWN, atNear, perspective);
+	assert !kept.isEmpty() && kept.min.x <= -0.05 && kept.max.x >= 0.05;
+	const pastFar: Bounds3D = acrossDown(vec3(-0.5, -16.0, -17.0), vec3(0.5, -15.0, -16.0));
+	assert shadowBounds(DOWN, pastFar, perspective).isEmpty();
 }

@@ -3233,6 +3233,19 @@ pairing is one row of `programKeys.txt` when a file needs it. Pinned by `gltfMat
 (the base colour's transform reaches the key and the block, the rotation's sign, a shared
 transform loads and a differing one is refused, `extensionsRequired`); 329/329, BUILD `1090f789`.
 
+**4. A perspective shadow test outside the sample.** What changes for the author: nothing; the
+shadow map's perspective path, until now evidenced only by the card table sample, has tests of its
+own. `shadowBounds` (Heaps' `calcShadowBounds`, Dynamic with autoShrink) cuts the casters to the
+light-space box of the camera's eight frustum corners at NDC z 0 and 1, which are the near and far
+planes because the perspective projection maps depth to [0, 1] (`cameraCheck.ms`). CPU, in
+`dirShadowCheck.ms`: a caster off to the side at depth is kept by the perspective frustum's spread
+and cut by the integration test's orthographic view, one at the near plane is kept, one past the
+far plane is cut (311/311, BUILD `1090f789`). GPU: `tests/integration/dirShadow.ms` takes
+`VOID_DIR_SHADOW_PERSPECTIVE=1` (a 0.6 rad perspective camera on the same pose), and the gate's
+`dir-shadow` stage runs it in both presets with its detached control; the pixel-art preset's
+outline under perspective stays PENDING3D `pixel-art-depth-orthographic`, and the check reads only
+the ground and caster colours. Not run yet: the GPU stage.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.

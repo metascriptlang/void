@@ -2294,6 +2294,21 @@ run_dir_shadow() {
 			return
 		fi
 	done
+	for preset in 0 1; do
+		log="$WORK/dirShadow.perspective.$preset.log"
+		status=0
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=0 VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" 			> "$log" 2>&1 || status=$?
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS dir shadow: ' "$log"; then
+			fail "dir-shadow: the perspective camera in preset $preset (exit $status) — see $log"
+			return
+		fi
+		status=0
+		VOID_DIR_SHADOW_PIXEL_ART=$preset VOID_DIR_SHADOW_CASE=1 VOID_DIR_SHADOW_PERSPECTIVE=1 "$exe" 			> "$log.control" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -q 'no shadow under the caster' "$log.control"; then
+			fail "dir-shadow: the perspective detached control in preset $preset still darkened the ground"
+			return
+		fi
+	done
 	for case in $DIR_SHADOW_CORE_CASES; do
 		status=0
 		VOID_DIR_SHADOW_PIXEL_ART=0 VOID_DIR_SHADOW_CASE=$case "$exe" \
@@ -2310,7 +2325,7 @@ run_dir_shadow() {
 		fail "dir-shadow: the card with no cutout still let its transparent half cast no shadow (exit $status)"
 		return
 	fi
-	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only, half opacity, a dissolving caster, a flat caster with its own shadow culling, a cut premultiplied card and emissive and premultiplied dissolves hold; the detached, undissolved and uncut controls fail"
+	pass "dir-shadow: casters shade receivers in both presets; cast off, receive off, shadow-only, half opacity, a dissolving caster, a flat caster with its own shadow culling, a cut premultiplied card and emissive and premultiplied dissolves hold; the detached, undissolved and uncut controls fail; a perspective camera shades and its detached control fails"
 }
 
 run_reparent() {

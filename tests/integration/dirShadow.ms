@@ -85,6 +85,7 @@ const FRAMES: int32 = 3;
 const CARD_RED: uint32 = 0xFF0000FF;
 let pixelArt: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PIXEL_ART", 0) != 0;
 let shadowCase: Case = voidCaptureEnvInt("VOID_DIR_SHADOW_CASE", 0) as Case;
+let perspective: boolean = voidCaptureEnvInt("VOID_DIR_SHADOW_PERSPECTIVE", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
 	FORWARD_UNIFORM_LENGTH + PIXEL_ART_UNIFORM_LENGTH + DIR_SHADOW_UNIFORM_LENGTH +
 	2 * MATERIAL_UNIFORM_LENGTH + MOVING_MATERIAL_UNIFORM_LENGTH,
@@ -349,7 +350,7 @@ function viewOf(): CameraView {
 	const camera: Camera3D = {
 		position: vec3(0.0, 4.0, 4.0), yaw: 0.0, pitch: 0.785398,
 		nearPlane: 0.1, farPlane: 20.0,
-		projection: {
+		projection: perspective ? { kind: ProjectionKind.Perspective, fovY: 0.6 } : {
 			kind: ProjectionKind.Orthographic, worldPerTexel: WORLD_PER_TEXEL, snap: false,
 		},
 	};
