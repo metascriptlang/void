@@ -69,6 +69,7 @@ when (voidBidi) {
 	import "./bidiTableCheck";
 	import "./bidiOracleCheck";
 	import "./bidiLayoutCheck";
+	import "./bidiCaretCheck";
 } else {
 	import "./bidiOffCheck";
 }

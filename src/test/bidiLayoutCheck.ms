@@ -68,7 +68,7 @@ test "text with no right-to-left codepoint keeps empty levels and its logical pe
 	const shaped = shapedIn("abc def", style, TextDirection.Auto);
 	assert (shaped.bidi.levels.length as int32) == 0;
 	const l = wrapText(shaped, style, PLAIN_LINES);
-	assert (l.levels.length as int32) == 0 && (l.lineLevels.length as int32) == 0;
+	assert (l.bidi.levels.length as int32) == 0 && (l.bidi.lineLevels.length as int32) == 0;
 	for (let i = 0; i < (l.glyphs.length as int32); i++) {
 		assert l.glyphs[i].x == shaped.glyphs[i].x;
 	}
@@ -83,12 +83,12 @@ test "a Hebrew word alone is a right-to-left paragraph and its slots are reflect
 	const l = wrapText(shaped, style, PLAIN_LINES);
 	for (let i = 0; i < 3; i++) {
 		assert approx(l.glyphs[i].x, reflected(shaped, 0, 3, i));
-		assert l.levels[i] == 1;
+		assert l.slotLevels(0)[i] == 1;
 	}
 	assert l.glyphs[0].x > l.glyphs[1].x && l.glyphs[1].x > l.glyphs[2].x;
 	assert approx(l.glyphs[0].x + l.glyphs[0].advance, l.lines[0].width);
 	assert approx(l.glyphs[2].x, 0.0);
-	assert l.lineLevels[0] == 1;
+	assert l.bidi.lineLevels[0] == 1;
 	restoreShaping(was);
 }
 
@@ -101,10 +101,10 @@ test "a Hebrew run inside a left-to-right paragraph is reflected inside its own 
 	for (let i = 0; i < 11; i++) {
 		if (i >= 4 && i <= 6) {
 			assert approx(l.glyphs[i].x, reflected(shaped, 4, 7, i));
-			assert l.levels[i] == 1;
+			assert l.slotLevels(0)[i] == 1;
 		} else {
 			assert l.glyphs[i].x == shaped.glyphs[i].x;
-			assert l.levels[i] == 0;
+			assert l.slotLevels(0)[i] == 0;
 		}
 	}
 	restoreShaping(was);
@@ -116,7 +116,7 @@ test "a forced right-to-left paragraph puts the Hebrew letter left of the Latin 
 	const shaped = shapedIn("abc \u{5D0}", style, TextDirection.Rtl);
 	assert shaped.bidi.paragraphs[0] == 1;
 	const l = wrapText(shaped, style, PLAIN_LINES);
-	assert l.levels[0] == 2 && l.levels[3] == 1 && l.levels[4] == 1;
+	assert l.slotLevels(0)[0] == 2 && l.slotLevels(0)[3] == 1 && l.slotLevels(0)[4] == 1;
 	assert l.glyphs[4].x < l.glyphs[3].x && l.glyphs[3].x < l.glyphs[0].x;
 	assert l.glyphs[0].x < l.glyphs[1].x && l.glyphs[1].x < l.glyphs[2].x;
 	restoreShaping(was);
@@ -128,7 +128,7 @@ test "a left-to-right run alone in a right-to-left paragraph keeps its pen" {
 	const shaped = shapedIn("abc (def)", style, TextDirection.Rtl);
 	const l = wrapText(shaped, style, PLAIN_LINES);
 	for (let i = 0; i < 9; i++) {
-		assert l.levels[i] == 2;
+		assert l.slotLevels(0)[i] == 2;
 		assert approx(l.glyphs[i].x, shaped.glyphs[i].x);
 	}
 	restoreShaping(was);
@@ -142,7 +142,7 @@ test "each wrapped line gets L1 and L2 of its own, so a split Hebrew phrase read
 	const room: float32 = whole.glyphs[6].x + whole.glyphs[6].advance + 1.0;
 	const l = laidIn(text, styleOf(font, room), TextDirection.Auto, PLAIN_LINES);
 	assert (l.lines.length as int32) == 2;
-	assert l.lineLevels[0] == 1 && l.lineLevels[1] == 1;
+	assert l.bidi.lineLevels[0] == 1 && l.bidi.lineLevels[1] == 1;
 	assert approx(l.glyphs[0].x + l.glyphs[0].advance, l.lines[0].width);
 	assert approx(l.glyphs[7].x + l.glyphs[7].advance, l.lines[1].width);
 	assert l.glyphs[0].x > l.glyphs[6].x;
@@ -159,7 +159,7 @@ test "L1 puts a space that ends a wrapped line back at the paragraph level, afte
 	const room: float32 = whole.glyphs[9].x + 1.0;
 	const l = laidIn(text, styleOf(font, room), TextDirection.Auto, PLAIN_LINES);
 	assert (l.lines.length as int32) == 2;
-	assert l.levels[7] == 0 && l.levels[4] == 1;
+	assert l.slotLevels(0)[7] == 0 && l.slotLevels(0)[4] == 1;
 	assert approx(l.glyphs[7].x, whole.glyphs[7].x);
 	for (let i = 4; i < 7; i++) {
 		assert approx(l.glyphs[i].x, reflected(whole, 4, 7, i));
@@ -243,7 +243,7 @@ test "every newline-ended paragraph has its own level, the empty one after a fin
 	const mixed = shapedIn("abc\n\u{5D0}\u{5D1}", style, TextDirection.Auto);
 	assert mixed.bidi.paragraphs[0] == 0 && mixed.bidi.paragraphs[1] == 1;
 	const l = wrapText(mixed, style, PLAIN_LINES);
-	assert l.lineLevels[0] == 0 && l.lineLevels[1] == 1;
+	assert l.bidi.lineLevels[0] == 0 && l.bidi.lineLevels[1] == 1;
 	restoreShaping(was);
 }
 
@@ -266,12 +266,12 @@ test "a label takes its paragraph direction from setTextDirection" {
 	const n = s.label("abc \u{5D0}\u{5D1}", 16.0, rgba(1.0, 1.0, 1.0, 1.0));
 	n.setFont(hebrewFont());
 	assert n.textDirection() == TextDirection.Auto;
-	assert n.textLayout().lineLevels[0] == 0;
+	assert n.textLayout().bidi.lineLevels[0] == 0;
 	n.setTextDirection(TextDirection.Rtl);
 	assert n.textDirection() == TextDirection.Rtl;
-	assert n.textLayout().lineLevels[0] == 1;
+	assert n.textLayout().bidi.lineLevels[0] == 1;
 	n.setTextDirection(TextDirection.Auto);
-	assert n.textLayout().lineLevels[0] == 0;
+	assert n.textLayout().bidi.lineLevels[0] == 0;
 	n.dispose();
 	restoreShaping(was);
 }

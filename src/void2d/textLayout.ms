@@ -29,7 +29,7 @@ import {
 
 when (voidBidi) {
 	import { BidiClass, bidiClassOf } from "./bidi";
-	import { mirroredValue, resolveText, visualPositions } from "./bidiLayout";
+	import { clusterEdges, mirroredValue, resolveText, visualPositions } from "./bidiLayout";
 } else {
 	function bidiOff(call: string): void {
 		console.log(`void2d: ${call} needs the BiDi module; build with -d:voidBidi`);
@@ -56,6 +56,17 @@ when (voidBidi) {
 		ref out: Vec<float32>,
 	): void {
 		bidiOff("visualPositions");
+	}
+
+	function clusterEdges(
+		levels: Readonly<Span<int32>>,
+		starts: Readonly<Span<boolean>>,
+		xs: Readonly<Span<float32>>,
+		advances: Readonly<Span<float32>>,
+		paragraph: int32,
+		ref edges: Vec<float32>,
+	): void {
+		bidiOff("clusterEdges");
 	}
 }
 
@@ -196,10 +207,16 @@ export struct BidiRuns {
 	paragraphs: Vec<int32>;
 }
 
+export struct LayoutBidi {
+	levels: Vec<int32>;
+	resets: Vec<int32>;
+	logicalX: Vec<float32>;
+	lineLevels: Vec<int32>;
+}
+
 export struct TextLayout {
 	glyphs: Vec<LaidGlyph>;
-	levels: Vec<int32>;
-	lineLevels: Vec<int32>;
+	bidi: LayoutBidi;
 	lines: Vec<LineBox>;
 	ascent: float32;
 	descent: float32;
@@ -962,45 +979,44 @@ function lineParagraph(shaped: ShapedText, lineStart: int32): int32 {
 	return (shaped.bidi.paragraphs.length as int32) - 1;
 }
 
-// UAX #9 L1 and L2 over the glyphs of one line from `first`: the slot levels go to `levelsOut`,
-// and the glyphs of an odd-level run take their reflected x.
-function reorderRow(
-	shaped: ShapedText,
-	lineStart: int32,
-	glyphs: Span<LaidGlyph>,
-	first: int32,
-	inkRight: float32,
-	ref levelsOut: Vec<int32>,
-	ref lineLevels: Vec<int32>,
+function lineLevelsOf(
+	levels: Readonly<Span<int32>>,
+	resets: Readonly<Span<int32>>,
+	paragraph: int32,
+	ref out: Vec<int32>,
 ): void {
-	if ((shaped.bidi.levels.length as int32) == 0) { return; }
-	const paragraph: int32 = shaped.bidi.paragraphs[lineParagraph(shaped, lineStart)];
-	lineLevels.push(paragraph);
-	const total: int32 = glyphs.length as int32;
-	const base: int32 = levelsOut.length as int32;
-	let highest: int32 = 0;
-	for (let k = first; k < total; k++) {
-		const own: int32 = glyphs[k].byteEnd == glyphs[k].byteStart
-			? paragraph
-			: shaped.bidi.levels[glyphs[k].charIndex];
-		levelsOut.push(own);
-	}
+	const count: int32 = levels.length as int32;
+	for (let k = 0; k < count; k++) { out.push(levels[k]); }
 	let trailing: boolean = true;
-	for (let k = total - 1; k >= first; k--) {
-		const reset: int32 = glyphs[k].byteEnd == glyphs[k].byteStart
-			? 0
-			: shaped.bidi.resets[glyphs[k].charIndex];
-		if (reset == SEPARATOR_RESET) {
-			levelsOut[base + k - first] = paragraph;
+	for (let k = count - 1; k >= 0; k--) {
+		if (resets[k] == SEPARATOR_RESET) {
+			out[k] = paragraph;
 			trailing = true;
-		} else if (reset == WHITESPACE_RESET) {
-			if (trailing) { levelsOut[base + k - first] = paragraph; }
+		} else if (resets[k] == WHITESPACE_RESET) {
+			if (trailing) { out[k] = paragraph; }
 		} else {
 			trailing = false;
 		}
-		if (levelsOut[base + k - first] > highest) { highest = levelsOut[base + k - first]; }
+	}
+}
+
+// The glyphs of one line from `first`, at their logical x, take the reflected x of UAX #9 L2.
+function reflectLine(
+	glyphs: Span<LaidGlyph>,
+	first: int32,
+	levels: Readonly<Span<int32>>,
+	resets: Readonly<Span<int32>>,
+	paragraph: int32,
+	inkRight: float32,
+): void {
+	let slots: Vec<int32> = new Array(0);
+	lineLevelsOf(levels, resets, paragraph, slots);
+	let highest: int32 = 0;
+	for (const level of slots) {
+		if (level > highest) { highest = level; }
 	}
 	if (highest == 0) { return; }
+	const total: int32 = glyphs.length as int32;
 	let xs: Vec<float32> = new Array(0);
 	let advances: Vec<float32> = new Array(0);
 	for (let k = first; k < total; k++) {
@@ -1008,8 +1024,44 @@ function reorderRow(
 		advances.push(glyphs[k].advance);
 	}
 	let placed: Vec<float32> = new Array(0);
-	visualPositions(levelsOut[base..(base + total - first)], xs, advances, inkRight, placed);
+	visualPositions(slots, xs, advances, inkRight, placed);
 	for (let k = first; k < total; k++) { glyphs[k].x = placed[k - first]; }
+}
+
+function reorderRow(
+	shaped: ShapedText,
+	lineStart: int32,
+	glyphs: Span<LaidGlyph>,
+	first: int32,
+	inkRight: float32,
+	ref levels: Vec<int32>,
+	ref resets: Vec<int32>,
+	ref logicalX: Vec<float32>,
+	ref lineLevels: Vec<int32>,
+): void {
+	if ((shaped.bidi.levels.length as int32) == 0) { return; }
+	const paragraph: int32 = shaped.bidi.paragraphs[lineParagraph(shaped, lineStart)];
+	lineLevels.push(paragraph);
+	const total: int32 = glyphs.length as int32;
+	const base: int32 = levels.length as int32;
+	for (let k = first; k < total; k++) {
+		const elided: boolean = glyphs[k].byteEnd == glyphs[k].byteStart;
+		levels.push(elided ? paragraph : shaped.bidi.levels[glyphs[k].charIndex]);
+		resets.push(elided ? 0 : shaped.bidi.resets[glyphs[k].charIndex]);
+		logicalX.push(glyphs[k].x);
+	}
+	const end: int32 = base + total - first;
+	reflectLine(glyphs, first, levels[base..end], resets[base..end], paragraph, inkRight);
+}
+
+export function slotLevels(this l: TextLayout, line: int32): Vec<int32> {
+	let out: Vec<int32> = new Array(0);
+	if ((l.bidi.lineLevels.length as int32) == 0) { return out; }
+	const first: int32 = l.lines[line].firstGlyph;
+	const end: int32 = first + l.lines[line].glyphCount;
+	const paragraph: int32 = l.bidi.lineLevels[line];
+	lineLevelsOf(l.bidi.levels[first..end], l.bidi.resets[first..end], paragraph, out);
+	return out;
 }
 
 function lineWidthOf(glyphs: Readonly<Span<LaidGlyph>>, first: int32): float32 {
@@ -1193,8 +1245,10 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 		}
 	}
 	let glyphs: Vec<LaidGlyph> = new Array(0);
-	let levels: Vec<int32> = new Array(0);
-	let lineLevels: Vec<int32> = new Array(0);
+	let layoutBidi: LayoutBidi = {
+		levels: new Array(0), resets: new Array(0), logicalX: new Array(0),
+		lineLevels: new Array(0),
+	};
 	let lines: Vec<LineBox> = new Array(0);
 	let width: float32 = 0.0;
 	let top: float32 = 0.0;
@@ -1224,7 +1278,10 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 			let lineWidth: float32 = options.forceWidth > 0.0
 				? forceCells(glyphs, firstGlyph, options.forceWidth)
 				: lineWidthOf(glyphs, firstGlyph);
-			reorderRow(shaped, lineStart, glyphs, firstGlyph, lineWidth, levels, lineLevels);
+			reorderRow(
+				shaped, lineStart, glyphs, firstGlyph, lineWidth, layoutBidi.levels,
+				layoutBidi.resets, layoutBidi.logicalX, layoutBidi.lineLevels,
+			);
 			for (let k = firstGlyph; k < (glyphs.length as int32); k++) {
 				glyphs[k].x = glyphs[k].x + indent;
 			}
@@ -1264,8 +1321,7 @@ export function wrapText(shaped: ShapedText, style: TextStyle, options: LineOpti
 	alignLines(glyphs, lines, style, width);
 	return {
 		glyphs: glyphs,
-		levels: levels,
-		lineLevels: lineLevels,
+		bidi: layoutBidi,
 		lines: lines,
 		ascent: metrics.ascent,
 		descent: metrics.descent,
@@ -1328,12 +1384,62 @@ function lineOfIndex(this l: TextLayout, index: int32): int32 {
 // `index`, a UTF-16 unit; past a line's last glyph it is the line's end.
 export function xForIndex(this l: TextLayout, index: int32): float32 {
 	if ((l.lines.length as int32) == 0) { return 0.0; }
-	const line: LineBox = l.lines[l.lineOfIndex(index)];
+	const li: int32 = l.lineOfIndex(index);
+	const line: LineBox = l.lines[li];
 	const end: int32 = line.firstGlyph + line.glyphCount;
+	if (l.isBidiLine(li)) {
+		const edges = l.lineEdges(li);
+		const clusters: int32 = edges.starts.length as int32;
+		for (let k = line.firstGlyph; k < end; k++) {
+			if (l.glyphs[k].index < index) { continue; }
+			for (let j = 0; j < clusters; j++) {
+				if (edges.starts[j] >= k) { return edges.edges[j]; }
+			}
+		}
+		return edges.edges[clusters];
+	}
 	for (let k = line.firstGlyph; k < end; k++) {
 		if (l.glyphs[k].index >= index) { return l.glyphs[k].x; }
 	}
 	return l.clusterEnd(line);
+}
+
+function distance(a: float32, b: float32): float32 {
+	return a < b ? b - a : a - b;
+}
+
+struct LineEdges {
+	starts: Vec<int32>;
+	edges: Vec<float32>;
+}
+
+function isBidiLine(this l: TextLayout, li: int32): boolean {
+	if ((l.bidi.lineLevels.length as int32) == 0 || l.lines[li].glyphCount == 0) { return false; }
+	if ((l.bidi.lineLevels[li] & 1) == 1) { return true; }
+	for (const level of l.slotLevels(li)) {
+		if ((level & 1) == 1) { return true; }
+	}
+	return false;
+}
+
+// The strong caret of every cluster boundary of a line, then of its end: edges[j] is the
+// boundary before the cluster that starts at slot starts[j].
+function lineEdges(this l: TextLayout, li: int32): LineEdges {
+	const first: int32 = l.lines[li].firstGlyph;
+	const end: int32 = first + l.lines[li].glyphCount;
+	let flags: Vec<boolean> = new Array(0);
+	let xs: Vec<float32> = new Array(0);
+	let advances: Vec<float32> = new Array(0);
+	let starts: Vec<int32> = new Array(0);
+	for (let k = first; k < end; k++) {
+		flags.push(l.glyphs[k].clusterStart);
+		xs.push(l.glyphs[k].x);
+		advances.push(l.glyphs[k].advance);
+		if (k == first || l.glyphs[k].clusterStart) { starts.push(k); }
+	}
+	let edges: Vec<float32> = new Array(0);
+	clusterEdges(l.slotLevels(li), flags, xs, advances, l.bidi.lineLevels[li], edges);
+	return { starts: starts, edges: edges };
 }
 
 function clusterEnd(this l: TextLayout, line: LineBox): float32 {
@@ -1359,6 +1465,20 @@ export function indexAt(this l: TextLayout, x: float32, y: float32): int32 {
 	while (li + 1 < count && y >= l.lines[li + 1].top) { li = li + 1; }
 	const line: LineBox = l.lines[li];
 	const end: int32 = line.firstGlyph + line.glyphCount;
+	if (l.isBidiLine(li)) {
+		const edges = l.lineEdges(li);
+		const clusters: int32 = edges.starts.length as int32;
+		let best: int32 = l.glyphs[edges.starts[0]].index;
+		let nearest: float32 = distance(x, edges.edges[0]);
+		for (let j = 1; j <= clusters; j++) {
+			const apart: float32 = distance(x, edges.edges[j]);
+			if (apart <= nearest) {
+				nearest = apart;
+				best = j < clusters ? l.glyphs[edges.starts[j]].index : line.indexEnd;
+			}
+		}
+		return best;
+	}
 	for (let k = line.firstGlyph; k < end; k++) {
 		if (!l.glyphs[k].clusterStart) { continue; }
 		let right: float32 = l.glyphs[k].x + l.glyphs[k].advance;
@@ -1375,10 +1495,6 @@ export function indexAt(this l: TextLayout, x: float32, y: float32): int32 {
 // GPUI's ShapedLine::split_at (line.rs:193-380): one line cut in two at `index` without being
 // shaped again; the right half starts at x 0.
 export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayout] {
-	if ((l.levels.length as int32) > 0) {
-		console.log("void2d: splitAt does not cut a layout that has BiDi levels yet");
-		unreachable;
-	}
 	if ((l.lines.length as int32) != 1) {
 		console.log(`void2d: splitAt cuts one line, and this layout has ${l.lines.length}`);
 		unreachable;
@@ -1397,16 +1513,28 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	}
 	let left: Vec<LaidGlyph> = new Array(0);
 	let right: Vec<LaidGlyph> = new Array(0);
-	const origin: float32 = cut < line.firstGlyph + line.glyphCount ? l.glyphs[cut].x : 0.0;
-	for (let k = line.firstGlyph; k < line.firstGlyph + line.glyphCount; k++) {
+	const bidi: boolean = (l.bidi.lineLevels.length as int32) > 0;
+	const total: int32 = line.firstGlyph + line.glyphCount;
+	const origin: float32 = cut < total ? (bidi ? l.bidi.logicalX[cut] : l.glyphs[cut].x) : 0.0;
+	for (let k = line.firstGlyph; k < total; k++) {
 		if (k < cut) {
-			left.push(l.glyphs[k]);
+			left.push(bidi ? { ...l.glyphs[k], x: l.bidi.logicalX[k] + line.x } : l.glyphs[k]);
 		} else {
-			right.push({ ...l.glyphs[k], x: l.glyphs[k].x - origin });
+			const own: float32 = bidi ? l.bidi.logicalX[k] : l.glyphs[k].x;
+			right.push({ ...l.glyphs[k], x: own - origin });
 		}
 	}
 	const leftWidth: float32 = lineWidthOf(left, 0);
 	const rightWidth: float32 = lineWidthOf(right, 0);
+	let leftBidi: LayoutBidi = l.bidi;
+	let rightBidi: LayoutBidi = l.bidi;
+	if (bidi) {
+		const paragraph: int32 = l.bidi.lineLevels[0];
+		leftBidi = splitBidi(l.bidi, line.firstGlyph, cut, 0.0);
+		rightBidi = splitBidi(l.bidi, cut, total, origin);
+		reflectLine(left, 0, leftBidi.levels, leftBidi.resets, paragraph, leftWidth);
+		reflectLine(right, 0, rightBidi.levels, rightBidi.resets, paragraph, rightWidth);
+	}
 	const whole: boolean = cut >= line.firstGlyph + line.glyphCount;
 	const leftEnd: int32 = whole ? line.indexEnd : l.glyphs[cut].index;
 	const leftByteEnd: int32 = whole ? line.byteEnd : l.glyphs[cut].byteStart;
@@ -1425,7 +1553,21 @@ export function splitAt(this l: TextLayout, index: int32): [TextLayout, TextLayo
 	let rightLines: Vec<LineBox> = new Array(0);
 	rightLines.push(rightLine);
 	return [
-		{ ...l, glyphs: left, lines: leftLines, width: leftWidth },
-		{ ...l, glyphs: right, lines: rightLines, width: rightWidth },
+		{ ...l, glyphs: left, bidi: leftBidi, lines: leftLines, width: leftWidth },
+		{ ...l, glyphs: right, bidi: rightBidi, lines: rightLines, width: rightWidth },
 	];
+}
+
+function splitBidi(whole: LayoutBidi, from: int32, to: int32, origin: float32): LayoutBidi {
+	let part: LayoutBidi = {
+		levels: new Array(0), resets: new Array(0), logicalX: new Array(0),
+		lineLevels: new Array(0),
+	};
+	part.lineLevels.push(whole.lineLevels[0]);
+	for (let k = from; k < to; k++) {
+		part.levels.push(whole.levels[k]);
+		part.resets.push(whole.resets[k]);
+		part.logicalX.push(whole.logicalX[k] - origin);
+	}
+	return part;
 }

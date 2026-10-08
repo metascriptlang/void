@@ -54,6 +54,63 @@ export function resolveText(
 	}
 }
 
+export function clusterEdges(
+	levels: Readonly<Span<int32>>,
+	starts: Readonly<Span<boolean>>,
+	xs: Readonly<Span<float32>>,
+	advances: Readonly<Span<float32>>,
+	paragraph: int32,
+	ref edges: Vec<float32>,
+): void {
+	const count: int32 = levels.length as int32;
+	let first: Vec<int32> = new Array(0);
+	for (let i = 0; i < count; i++) {
+		if (i == 0 || starts[i]) { first.push(i); }
+	}
+	const clusters: int32 = first.length as int32;
+	let left: Vec<float32> = new Array(0);
+	let right: Vec<float32> = new Array(0);
+	let lineLeft: float32 = 0.0;
+	let lineRight: float32 = 0.0;
+	for (let c = 0; c < clusters; c++) {
+		const stop: int32 = c + 1 < clusters ? first[c + 1] : count;
+		let low: float32 = xs[first[c]];
+		let high: float32 = xs[first[c]] + advances[first[c]];
+		for (let k = first[c]; k < stop; k++) {
+			if (xs[k] < low) { low = xs[k]; }
+			if (xs[k] + advances[k] > high) { high = xs[k] + advances[k]; }
+		}
+		left.push(low);
+		right.push(high);
+		if (c == 0 || low < lineLeft) { lineLeft = low; }
+		if (c == 0 || high > lineRight) { lineRight = high; }
+	}
+	const embedding: int32 = paragraph & 1;
+	for (let j = 0; j <= clusters; j++) {
+		if (clusters == 0) {
+			edges.push(0.0);
+			continue;
+		}
+		const next: int32 = j < clusters ? levels[first[j]] & 1 : embedding;
+		const previous: int32 = j > 0 ? levels[first[j - 1]] & 1 : embedding;
+		const leading: float32 = j < clusters
+			? (next == 0 ? xs[first[j]] : right[j])
+			: (embedding == 0 ? lineRight : lineLeft);
+		const trailing: float32 = j > 0
+			? (previous == 0 ? right[j - 1] : left[j - 1])
+			: (embedding == 0 ? lineLeft : lineRight);
+		if (j == clusters) {
+			edges.push(previous == embedding ? trailing : leading);
+		} else if (j == 0) {
+			edges.push(next == embedding ? leading : trailing);
+		} else if (previous == next) {
+			edges.push(leading);
+		} else {
+			edges.push(previous == embedding ? trailing : leading);
+		}
+	}
+}
+
 export function mirroredValue(codepoint: int32): int32 {
 	const mirror: int32 = mirrorOf(codepoint);
 	return mirror == 0 ? codepoint : mirror;
