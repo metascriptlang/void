@@ -139,6 +139,28 @@ test "releasing a label drops its outline tile references" {
 	assert glyphAtlas.tile(tileIndex).refs == held - 1;
 }
 
+function outlineLaneRefs(): int32 {
+	let refs: int32 = 0;
+	for (let i = 0; i < glyphAtlas.tileSlots(); i++) {
+		const t: GlyphTile = glyphAtlas.tile(i);
+		if (t.refs > 0 && t.key != 0xFFFFFFFFFFFFFFFF && laneOf(t.key) > 0) {
+			refs = refs + t.refs;
+		}
+	}
+	return refs;
+}
+
+test "releasing a label with spaces leaves no outline tile referenced" {
+	const before: int32 = outlineLaneRefs();
+	const index = shaped("a b c", 13.0);
+	setLabelOutline(index, 2.0, RED);
+	const text = placeLabel(index, trs2d(0.0, 0.0, 0.0, 1.0, 1.0), 1.0);
+	assert text.placedOutline.length == 3;
+	assert outlineLaneRefs() == before + (text.placedOutline.length as int32);
+	releaseLabelText(index);
+	assert outlineLaneRefs() == before;
+}
+
 test "a translation sweep acquires nothing once the four variants are cached" {
 	const index = shaped("sweep", 13.0);
 	setLabelOutline(index, 2.0, RED);
@@ -229,6 +251,19 @@ when (voidSprites) {
 }
 
 when (voidSdfText) {
+	test "releasing a turned label with spaces leaves no outline tile referenced" {
+		setSdfRegime(true);
+		defer setSdfRegime(false);
+		const before: int32 = outlineLaneRefs();
+		const index = shaped("a b c", 13.0);
+		setLabelOutline(index, 2.0, RED);
+		const text = placeLabel(index, trs2d(0.0, 0.0, 0.5, 1.0, 1.0), 1.0);
+		assert text.regime == TextRegime.Sdf;
+		assert outlineLaneRefs() == before + (text.placedOutline.length as int32);
+		releaseLabelText(index);
+		assert outlineLaneRefs() == before;
+	}
+
 	test "a turned label places an SDF outline tile per glyph at the width in texels" {
 		setSdfRegime(true);
 		defer setSdfRegime(false);

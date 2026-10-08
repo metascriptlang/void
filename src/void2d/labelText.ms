@@ -952,6 +952,8 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 							refusal = outlined.error.toString();
 						} else if (outlined.value.w > 0.0) {
 							placedOutline.push(outlined.value);
+						} else {
+							glyphAtlas.release(outlined.value.tile);
 						}
 					}
 					continue;
@@ -1012,6 +1014,8 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 					refusal = outlined.error.toString();
 				} else if (outlined.value.w > 0.0) {
 					placedOutline.push(outlined.value);
+				} else {
+					glyphAtlas.release(outlined.value.tile);
 				}
 			}
 		}
