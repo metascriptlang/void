@@ -179,7 +179,7 @@ function meshWith(scene: Scene3D, context: DrawContext, slot: int32, z: float32)
 	return added.ok ? added.value : NO_NODE_ID;
 }
 
-test "an order interleaves only inside a phase; an opaque surface joins the alpha list by its phase" {
+test "an order interleaves only inside a phase; an opaque surface joins alpha by its phase" {
 	const context: DrawContext = contextOf(3, 3);
 	const scene: Scene3D = Scene3D.create(context);
 	const blended: RenderState = RenderState.defaults().withBlendMode(BlendMode.Alpha);
