@@ -55,6 +55,8 @@ typedef struct {
 	int kind;
 	int dirty;
 	int uploaded;
+	int live;
+	unsigned int generation;
 } GlyphPage;
 
 static GlyphFace *s_faces;
@@ -63,6 +65,7 @@ static int s_faceCapacity;
 static GlyphPage *s_pages;
 static int s_pageCount;
 static int s_pageCapacity;
+static unsigned int s_pageGenerations;
 static float s_metrics[3];
 static float s_decoration[4];
 static float s_heights[7];
@@ -72,7 +75,14 @@ static GlyphRasterBox s_rasterBox;
 static GlyphRasterFill s_rasterFill;
 
 static int validFace(int face) { return face >= 0 && face < s_faceCount; }
-static int validPage(int page) { return page >= 0 && page < s_pageCount; }
+static int validPage(int page) {
+	if (page < 0 || page >= s_pageCount) { return 0; }
+	if (!s_pages[page].live) {
+		fprintf(stderr, "void2d: glyph page %d was released\n", page);
+		return 0;
+	}
+	return 1;
+}
 
 static unsigned char *readWholeFile(const char *path, long *outSize) {
 	FILE *f = fopen(path, "rb");
@@ -852,12 +862,14 @@ int void2dGlyphPageCreate(int size, int kind) {
 		fprintf(stderr, "void2d: glyph page kind %s (%d) is not built\n", pageKindName(kind), kind);
 		return -1;
 	}
-	if (s_pageCount >= VOID2D_MAX_GLYPH_PAGES) {
+	int slot = 0;
+	while (slot < s_pageCount && s_pages[slot].live) { slot++; }
+	if (slot >= VOID2D_MAX_GLYPH_PAGES) {
 		fprintf(stderr, "void2d: glyph page %d refused, the renderer binds at most %d\n",
-			s_pageCount, VOID2D_MAX_GLYPH_PAGES);
+			slot, VOID2D_MAX_GLYPH_PAGES);
 		return -1;
 	}
-	if (s_pageCount == s_pageCapacity) {
+	if (slot == s_pageCount && s_pageCount == s_pageCapacity) {
 		int grown = s_pageCapacity ? s_pageCapacity * 2 : 4;
 		GlyphPage *pages = (GlyphPage *)realloc(s_pages, sizeof(GlyphPage) * (size_t)grown);
 		if (!pages) {
@@ -872,12 +884,37 @@ int void2dGlyphPageCreate(int size, int kind) {
 		fprintf(stderr, "void2d: no memory for a %dx%d glyph page\n", size, size);
 		return -1;
 	}
-	s_pages[s_pageCount].texels = texels;
-	s_pages[s_pageCount].size = size;
-	s_pages[s_pageCount].kind = kind;
-	s_pages[s_pageCount].dirty = 1;
-	s_pages[s_pageCount].uploaded = 0;
-	return s_pageCount++;
+	s_pages[slot].texels = texels;
+	s_pages[slot].size = size;
+	s_pages[slot].kind = kind;
+	s_pages[slot].dirty = 1;
+	s_pages[slot].uploaded = 0;
+	s_pages[slot].live = 1;
+	s_pages[slot].generation = ++s_pageGenerations;
+	if (slot == s_pageCount) { s_pageCount++; }
+	return slot;
+}
+
+int void2dGlyphPageRelease(int page) {
+	if (!validPage(page)) {
+		fprintf(stderr, "void2d: glyph page %d cannot be released, it is not live\n", page);
+		return -1;
+	}
+	free(s_pages[page].texels);
+	s_pages[page].texels = NULL;
+	s_pages[page].live = 0;
+	return 0;
+}
+
+unsigned int void2dGlyphPageGeneration(int page) {
+	if (page < 0 || page >= s_pageCount || !s_pages[page].live) { return 0; }
+	return s_pages[page].generation;
+}
+
+int void2dGlyphPageLiveCount(void) {
+	int live = 0;
+	for (int page = 0; page < s_pageCount; page++) { live += s_pages[page].live; }
+	return live;
 }
 
 int void2dGlyphPageCount(void) { return s_pageCount; }

@@ -6,6 +6,7 @@ import {
 	void2dGlyphBox,
 	void2dGlyphRasterize,
 	void2dGlyphPageCreate,
+	void2dGlyphPageRelease,
 	void2dGlyphPageKindBuilt,
 	void2dGlyphPageBytes,
 	void2dGlyphPageClear,
@@ -217,6 +218,21 @@ export function pageKind(this atlas: GlyphAtlas, page: GlyphPage): PageKind {
 
 export function tileSlots(this atlas: GlyphAtlas): int32 {
 	return atlas.tiles.length as int32;
+}
+
+export function dispose(this atlas: GlyphAtlas): void {
+	for (const page of atlas.pages) {
+		if (void2dGlyphPageRelease(page.handle as int32) != 0) {
+			console.log(`void2d: the atlas could not release glyph page ${page.handle as int32}`);
+			unreachable;
+		}
+	}
+	atlas.pages = new Array(0);
+	atlas.shelves = new Array(0);
+	atlas.tiles = new Array(0);
+	atlas.freeTiles = new Array(0);
+	atlas.index = new Map<uint64, int32>();
+	atlas.emptyTile = -1;
 }
 
 export function pageCount(this atlas: GlyphAtlas): int32 {

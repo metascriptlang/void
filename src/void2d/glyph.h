@@ -40,6 +40,9 @@ int *void2dGlyphBox(int face, int glyph, float sizePx, float shiftX);
 
 int void2dGlyphPageKindBuilt(int kind);
 int void2dGlyphPageCreate(int size, int kind);
+int void2dGlyphPageRelease(int page);
+unsigned int void2dGlyphPageGeneration(int page);
+int void2dGlyphPageLiveCount(void);
 int void2dGlyphPageBytes(int page);
 int void2dGlyphPageKind(int page);
 int void2dGlyphPageCount(void);
