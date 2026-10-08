@@ -82,12 +82,15 @@ import {
 	ForwardError,
 	FORWARD_UNIFORM_LENGTH,
 	FORWARD_HDR_UNIFORM_LENGTH,
-	TONE_MAP_UNIFORM_SLOT,
-	TONE_MAP_UNIFORM_LENGTH,
 	renderFrame,
 	closeForward,
-	linearBackground,
 } from "../void3d/forwardRenderer";
+import {
+	ToneMapPass,
+	TONE_MAP_UNIFORM_SLOT,
+	TONE_MAP_UNIFORM_LENGTH,
+	linearBackground,
+} from "../void3d/toneMap";
 
 function pixelArt(program: Program): ProgramKey {
 	return ProgramKey.of(program).withPreset(Preset.PixelArt);
@@ -302,19 +305,23 @@ test "an HDR forward preset takes a tone map block and material, and its core wr
 	assert created.ok;
 	if (created.ok) {
 		let forward: ForwardRenderer = created.value;
-		assert forward.hdr && forward.core.linearOutput;
+		assert forward.core.linearOutput;
 		assert context.uniforms.used == FORWARD_HDR_UNIFORM_LENGTH;
 		assert context.liveMaterials() == 2;
-		const toneMap: ProgramKey = context.materials[forward.toneMapMaterial.index].program;
-		assert toneMap == ProgramKey.of(Program.Post);
-		assert forward.toneMapBlock.slot == TONE_MAP_UNIFORM_SLOT;
+		const pass: ToneMapPass | null = forward.toneMap;
+		assert pass !== null;
+		if (pass !== null) {
+			const toneMap: ProgramKey = context.materials[pass.material.index].program;
+			assert toneMap == ProgramKey.of(Program.Post);
+			assert pass.block.slot == TONE_MAP_UNIFORM_SLOT;
+		}
 		closeForward(forward);
 		assert context.liveMaterials() == 0;
 	}
 	let ldrContext: DrawContext = DrawContext.withUniformCapacity(FORWARD_UNIFORM_LENGTH);
 	const ldr: Result<ForwardRenderer, ForwardError> =
 		ForwardRenderer.create(ldrContext, background);
-	assert ldr.ok && !ldr.value.hdr && !ldr.value.core.linearOutput;
+	assert ldr.ok && ldr.value.toneMap === null && !ldr.value.core.linearOutput;
 }
 
 test "the tone modes are ToneMapping's mode numbers, and a core starts on the linear one" {

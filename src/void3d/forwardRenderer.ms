@@ -3,8 +3,8 @@
 // preset (createHdr) draws the scene into an Rgba16f target and tone maps it into the colour
 // target, as h3d.scene.pbr.Renderer draws into `hdr` and runs its ToneMapping ScreenFx into `ldr`.
 
-import { Vec4, srgbToLinear } from "../math/math3d";
-import { Program, ProgramKey } from "./gpu3d";
+import { Vec4 } from "../math/math3d";
+import { Program } from "./gpu3d";
 import {
 	PixelFormat,
 	formatRenderable,
@@ -17,7 +17,7 @@ import {
 	contextGeneration,
 } from "../gpu/door";
 import { FilterMode, Wrap } from "../gpu/state";
-import { Material, Phase, UniformBlock, NO_UNIFORMS } from "./material";
+import { Material, Phase } from "./material";
 import {
 	RenderTarget,
 	ColorAttachment,
@@ -37,12 +37,10 @@ import {
 	HandleError,
 	addMaterial,
 	releaseMaterial,
-	reserveUniforms,
-	writeUniforms,
-	NO_MATERIAL,
 } from "./draw";
-import { UniformError } from "./uniformPool";
+import "./uniformPool";
 import { screenState } from "./screenFx";
+import { ToneMapPass, TONE_MAP_UNIFORM_LENGTH, linearBackground } from "./toneMap";
 import {
 	Renderer,
 	RendererError,
@@ -55,7 +53,6 @@ import {
 	releasePrepared,
 	closeRenderer,
 	drawShadowPass,
-	exposureMultiplier,
 } from "./renderer";
 
 export interface ForwardRenderer {
@@ -67,13 +64,10 @@ export interface ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
-	hdr: boolean;
-	hdrTarget: RenderTarget;
+	// An HDR preset's target and tone map; null for an LDR one.
+	toneMap: ToneMapPass | null;
 	hdrColors: Vec<ColorAttachment>;
 	toneMapColors: Vec<ColorAttachment>;
-	toneMapMaterial: MaterialId;
-	toneMapBlock: UniformBlock;
-	toneMapValues: Vec<float32>;
 	// How many times the colour and depth targets were made: the first prepare, a new size or a
 	// new GPU context each add one. A caller holding the target's view (a void2d tile of
 	// `colorTarget`) renews it when this differs from the value it saw, in place of a poll of
@@ -108,13 +102,6 @@ export enum ForwardError {
 // Floats of the uniform pool the preset needs: the core's blocks, and nothing of its own.
 export const FORWARD_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH;
 
-// The tone map's block (shader3d.glsl toneMapFs `toneMapParams`): the exposure multiplier, then
-// the curve.
-export const TONE_MAP_UNIFORM_SLOT: int32 = 0;
-export const TONE_MAP_UNIFORM_LENGTH: int32 = 4;
-export const TONE_MAP_EXPOSURE: int32 = 0;
-export const TONE_MAP_MODE: int32 = 1;
-
 // An HDR preset's floats: the core's blocks and the tone map's.
 export const FORWARD_HDR_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH + TONE_MAP_UNIFORM_LENGTH;
 
@@ -130,9 +117,6 @@ export const FORWARD_LAYOUT: TargetLayout = {
 
 // An HDR preset's scene pass.
 export const FORWARD_HDR_LAYOUT: TargetLayout = { ...FORWARD_LAYOUT, color0: PixelFormat.Rgba16f };
-
-// The tone map pass: into the colour target, no depth.
-export const TONE_MAP_LAYOUT: TargetLayout = { ...FORWARD_LAYOUT, depth: PixelFormat.None };
 
 const FAR_DEPTH: float32 = 1.0;
 const SCREEN_CLEAR: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
@@ -192,24 +176,7 @@ function make(
 	const copy: Result<MaterialId, MaterialError> =
 		addMaterial(context, Material.plain(Program.Copy, screenState(), Phase.Opaque));
 	if (!copy.ok) { unreachable; }
-	let toneMapBlock: UniformBlock = NO_UNIFORMS;
-	let toneMapMaterial: MaterialId = NO_MATERIAL;
-	if (hdr) {
-		const reserved: Result<UniformBlock, UniformError> =
-			reserveUniforms(context, TONE_MAP_UNIFORM_SLOT, TONE_MAP_UNIFORM_LENGTH);
-		if (!reserved.ok) {
-			console.log("void3d: ForwardRenderer.createHdr could not reserve the tone map block " +
-				"it checked fits");
-			unreachable;
-		}
-		toneMapBlock = reserved.value;
-		const toneMap: Result<MaterialId, MaterialError> = addMaterial(context, {
-			...Material.keyed(ProgramKey.of(Program.Post), screenState(), Phase.Opaque),
-			uniforms: toneMapBlock,
-		});
-		if (!toneMap.ok) { unreachable; }
-		toneMapMaterial = toneMap.value;
-	}
+	const toneMap: ToneMapPass | null = hdr ? ToneMapPass.reserve(context) : null;
 	let made: ForwardRenderer = {
 		core: core.value,
 		background: background,
@@ -219,13 +186,9 @@ function make(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
-		hdr: hdr,
-		hdrTarget: RenderTarget.unallocated(PixelFormat.Rgba16f, true),
+		toneMap: toneMap,
 		hdrColors: new Array(1),
 		toneMapColors: new Array(1),
-		toneMapMaterial: toneMapMaterial,
-		toneMapBlock: toneMapBlock,
-		toneMapValues: new Array(TONE_MAP_UNIFORM_LENGTH),
 		targetEpoch: 0,
 		closed: false,
 	};
@@ -233,15 +196,6 @@ function make(
 	return Result.ok(made);
 }
 
-// The background as the HDR target holds it: linear, the alpha as is.
-export function linearBackground(background: Vec4): Vec4 {
-	return {
-		x: srgbToLinear(background.x),
-		y: srgbToLinear(background.y),
-		z: srgbToLinear(background.z),
-		w: background.w,
-	};
-}
 
 function fromCore(error: RendererError): ForwardError {
 	return match (error) {
@@ -280,21 +234,12 @@ function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): 
 	renderer.sceneColors[0] = renderer.colorTarget.asColor(LoadAction.Clear, renderer.background);
 	renderer.sceneDepth =
 		renderer.depthTarget.asDepth(LoadAction.Clear, FAR_DEPTH, StoreAction.DontCare);
-	if (!renderer.hdr) { return; }
-	renderer.hdrTarget.resize(width, height);
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap === null) { return; }
+	toneMap.target.resize(width, height);
 	renderer.hdrColors[0] =
-		renderer.hdrTarget.asColor(LoadAction.Clear, linearBackground(renderer.background));
+		toneMap.target.asColor(LoadAction.Clear, linearBackground(renderer.background));
 	renderer.toneMapColors[0] = renderer.colorTarget.asColor(LoadAction.DontCare, SCREEN_CLEAR);
-}
-
-// prepareFrame refused the frame before any pass if the tone map material, its texture or block,
-// or the screen mesh were gone.
-function drawToneMap(renderer: ForwardRenderer): void {
-	beginPass(renderer.toneMapColors, NO_DEPTH);
-	const drawn: Result<int32, RendererError> =
-		drawScreen(renderer.core, renderer.toneMapMaterial, TONE_MAP_LAYOUT);
-	if (!drawn.ok) { unreachable; }
-	endPass();
 }
 
 function screenMaterialError(renderer: ForwardRenderer, material: MaterialId): ForwardError | null {
@@ -333,9 +278,9 @@ export function prepareFrame(
 	}
 	const copyError: ForwardError | null = screenMaterialError(renderer, renderer.copyMaterial);
 	if (copyError !== null) { return Result.err(copyError); }
-	if (renderer.hdr) {
-		const toneMapError: ForwardError | null =
-			screenMaterialError(renderer, renderer.toneMapMaterial);
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) {
+		const toneMapError: ForwardError | null = screenMaterialError(renderer, toneMap.material);
 		if (toneMapError !== null) { return Result.err(toneMapError); }
 	}
 	const began: Result<boolean, RendererError> =
@@ -347,22 +292,16 @@ export function prepareFrame(
 	resizeTargets(renderer, width, height);
 	context.materials[renderer.copyMaterial.index].texture0 = renderer.colorTarget.asTexture();
 	context.materials[renderer.copyMaterial.index].sampler0 = renderer.sampler.asHandle();
-	if (renderer.hdr) {
-		context.materials[renderer.toneMapMaterial.index].texture0 = renderer.hdrTarget.asTexture();
-		context.materials[renderer.toneMapMaterial.index].sampler0 = renderer.sampler.asHandle();
-		renderer.toneMapValues[TONE_MAP_EXPOSURE] = exposureMultiplier(renderer.core.exposure);
-		renderer.toneMapValues[TONE_MAP_MODE] = renderer.core.toneMode as float32;
-		const written: Result<int32, UniformError> =
-			writeUniforms(context, renderer.toneMapBlock, renderer.toneMapValues);
-		if (!written.ok) { unreachable; }
+	if (toneMap !== null) {
+		toneMap.prepare(renderer.core, renderer.sampler.asHandle());
 	}
 
 	const _casters: int32 = drawShadowPass(renderer.core, items, camera, lights);
-	if (renderer.hdr) {
+	if (toneMap !== null) {
 		beginPass(renderer.hdrColors, renderer.sceneDepth);
 		drawPassLists(renderer.core, items, FORWARD_HDR_LAYOUT);
 		endPass();
-		drawToneMap(renderer);
+		toneMap.draw(renderer.core, renderer.toneMapColors);
 	} else {
 		beginPass(renderer.sceneColors, renderer.sceneDepth);
 		drawPassLists(renderer.core, items, FORWARD_LAYOUT);
@@ -425,7 +364,6 @@ export function closeForward(renderer: ForwardRenderer): void {
 	}
 	renderer.colorTarget.close();
 	renderer.depthTarget.close();
-	renderer.hdrTarget.close();
 	renderer.sampler = renderer.sampler.released();
 	const copy: Result<int32, HandleError> =
 		releaseMaterial(renderer.core.context, renderer.copyMaterial);
@@ -433,16 +371,8 @@ export function closeForward(renderer: ForwardRenderer): void {
 		console.log(`void3d: closeForward found its copy material ${copy.error.toString()}`);
 		unreachable;
 	}
-	if (renderer.hdr) {
-		const toneMap: Result<int32, HandleError> =
-			releaseMaterial(renderer.core.context, renderer.toneMapMaterial);
-		if (!toneMap.ok) {
-			console.log(
-				`void3d: closeForward found its tone map material ${toneMap.error.toString()}`,
-			);
-			unreachable;
-		}
-	}
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) { toneMap.close(renderer.core.context, "closeForward"); }
 	if (!renderer.core.isClosed()) { closeRenderer(renderer.core); }
 	renderer.closed = true;
 }
