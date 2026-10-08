@@ -290,7 +290,7 @@ remains open without a workaround in void.
 
 ## Roadmap
 
-Seven phases. Each ends with something demonstrable; none leaves `src/examples/renderer2d.ms` — the demo the golden suite captures — broken; each names the "Known defects" entries it closes. How a phase is proved is [TESTING.md](TESTING.md), and the tier names below (T0–T5) come from there.
+Nine phases. Each ends with something demonstrable; none leaves `src/examples/renderer2d.ms` — the demo the golden suite captures — broken; each names the "Known defects" entries it closes. How a phase is proved is [TESTING.md](TESTING.md), and the tier names below (T0–T5) come from there.
 
 **Baseline — two of them**, because the roadmap has moved and one line here used to claim
 both at once. Every run below is release, D3D11, 1280×720, `sample_count` 1, `high_dpi` 0,
@@ -2416,9 +2416,10 @@ changes described above on today's compiler; the P4 web archive also takes its r
   edge and coverage ramps to zero half a pixel outside it under any scale, shear, rotation or DPI,
   and nothing coincident reaches the GPU. The mesh keeps an edge column beside its vertices
   (`EDGE_FLOATS`): two normals, the shift, a stroke's half-width and the uv gradient, so a
-  textured, gradient or pattern fill keeps its uv on the moved vertex. A stroke narrower than a
-  device pixel collapses its body to the centre line and scales coverage by `2w / (w + 0.5)`
-  instead of inverting. A full-turn ring is two loops, the hole wound against the rim; a
+  textured, gradient or pattern fill keeps its uv on the moved vertex. A shape thinner than a
+  device pixel collapses its body to the centre line instead of inverting. Its outer fringe
+  then reaches one device pixel from that line, with coverage equal to the thickness, so the
+  tent sums to the thickness at any pixel phase; see "Sub-pixel fills" below. A full-turn ring is two loops, the hole wound against the rim; a
   full-turn pie is a circle; a pie of no angle draws nothing. `setAntialias(false)` builds the
   following fills without a fringe. A fringed Graphics' render and filter bounds grow by the
   half pixel in local units, which is why the filter goldens moved as a whole.
@@ -2432,6 +2433,28 @@ changes described above on today's compiler; the P4 web archive also takes its r
   two half-covered pixels (true area, as GPUI's paths and Canvas draw it), a 0.5 px stroke shows
   at its coverage instead of vanishing, and `fillSlashRect` stripes flip a few pixels where a
   stripe edge falls exactly on a pixel centre (the pattern itself has no antialiasing).
+  **Sub-pixel fills (2026-10-09, `graphics:subpixel-fill`).** The P6 review read, and a
+  capture of `prim/subpixelFill` confirmed, that a fill thinner than a device pixel inverted.
+  `contourFill` gave its edges no inset limit (only `strokePoly` passed its half width), so a
+  0.25-unit strip drew 1.0 of ink per column at full alpha and a radius-0.25 disc peaked at 1.0.
+
+  Each fill now passes a half-thickness limit:
+  - a rect: half its short side;
+  - a circle or ellipse: its polygon's inradius;
+  - any other contour: area over perimeter, the convex lower bound. A non-convex outline with a
+    neck thinner than a pixel can still invert there (`halfThicknessIfConvex`).
+
+  The clamped vertex took Skia's hairline rule rather than the earlier area-matched peak
+  `2L / (L + 0.5)`. That peak is right in area but point-sampled at a pixel centre, and read
+  0.335 for a 0.25 strip. With the tent rule, a collapsed edge's outer vertex moves to one device
+  pixel from the centre line and the peak is the thickness. Measured by `captureCheck.ms`:
+  - strips 0.25 / 0.5 / 0.75 / 1.0 read within 0.0035 of their thickness, against a bound of
+    0.01;
+  - a disc collapses in two dimensions, so its peak stays under its diameter (0.46 at radius
+    0.25) but a one-pixel cone overshoots its ink, 0.59 against 0.196;
+  - discs of radius 0.75 and up are unchanged.
+
+  Render bounds of a fringed Graphics grew from half a pixel to one pixel with the wider tent.
   CPU cost, release, 128 circles of radius 30 rotated every frame at DPI 1.5, recording only:
   0.12 ms and 8 064 vertices with antialias off, 0.64 ms and 25 728 vertices with it on. A
   static or scrolled Graphics replays and pays nothing. That does not justify moving the mesh
@@ -2806,6 +2829,99 @@ module off), `bidiLayoutCheck.ms`, `bidiCaretCheck.ms`, `bidiSelectionCheck.ms`,
 captured on D3D11 2026-10-08 and read against the visual order UAX #9 gives each line.
 
 **Closes** (`tests/PENDING.md`, checked by the gate): nothing left open. The three rows that were not a difference of engines are deleted: the cluster row of the explicit left-to-right Arabic text agrees once the shaper bridge forces the direction, and the mixed-direction row is replaced by three explicit-direction rows that agree. The glyph row of the explicit left-to-right Arabic text is re-owned as declared with its measured reason.
+
+### P8 — Box fills, shadow stacks, underline exclusions
+
+**Goal.** Close the gaps the P8 survey found between GPUI's rendering surface and void2d (GPUI
+`b961b49`, app model excluded; void-manager decisions 2026-10-09). Everything else in GPUI's
+rendering layer was at parity or past it at that commit: per-corner radii and per-side borders,
+dashed borders, the `erf` shadow, image styles, GIF frames, SVG masks, the rotated-mask clip,
+snapping, the glyph path, decorations, truncation, atlas reclamation, group opacity, filters.
+
+**Rows, in build order.**
+
+1. **Gradient and pattern fill inside the SDF box.** GPUI's `Quad.background` (`scene.rs:535-545`,
+   `color.rs:779-926`) is solid, linear gradient in sRGB or Oklab, slash or checkerboard, drawn
+   inside the same SDF as the radii, border and shadow (`gpui_wgpu/src/shaders.wgsl:430-516`).
+   void2d had them only on `Graphics` meshes, so a gradient card with rounded corners and a
+   border could not be one instance.
+2. **A shadow list with spread on `BoxStyle`.** GPUI's `paint_drop_shadows` and
+   `paint_inset_shadows` take `&[BoxShadow]` with `spread_radius` (`window.rs:4384-4444`: the
+   drop bounds dilated by the spread, the inset hole shrunk by it, the radii reduced with it).
+   The shape is GPUI's, a list on the style rather than extra nodes; one instance per shadow,
+   drawn in list order.
+3. **Underline exclusions: unneeded, not built.** GPUI's `paint_underline_with_exclusions`
+   (`window.rs:3059`) has no caller at `b961b49` outside `window.rs`'s own tests (`mod tests` from
+   `:7638`), and a GitHub code search of `zed-industries/zed` on 2026-10-09 found no caller, and no
+   skip-ink path, in Zed: its text underlines go through `paint_underline`
+   (`crates/gpui/src/text_system/line.rs`). Mode 4's full-width underline is at parity.
+
+**Open, waiting for a canvas consumer.** Round and square stroke caps, round joins, dash arrays
+and `arcTo` on `Graphics` (GPUI `path_builder.rs:88-186`; round caps and joins are a convex-corner
+fringe patch, NEW MECHANISM, see P6 "Graphics antialiasing"); scale-aware Bezier flattening in
+place of the caller's segment count (GPUI's Loop-Blinn curve path needs an MSAA intermediate,
+which guardrail 4 rules out).
+
+**Closed.** LCD subpixel text (guardrail 7; dual-source blending and a new atlas format, not on
+GLES3 or WebGL2; reopened only by the human's T5 comparison against Zed); `PaintSurface` YUV video
+(no editor use); animated WebP (GIF is built).
+
+**Row 1 as built (2026-10-09).** `BoxStyle.fill` is a `BoxFill`: `linearFill(angle, from,
+fromStop, to, toStop, space)`, `slashFill(stripe, between, width, gap)`, `checkerFill(cell,
+between, size)`, and `ditheredFill()` for the gradient. The node's colour multiplies both fill
+colours, as it does a styled label's runs. The stride stays 108 B: the fill rides lanes the box
+mode left free, `params0.zw` (kind, then space plus 2 for dither), `params1` (angle and stops, or
+the pattern sizes) and `colorExtra` (the second colour). `params1` and `colorExtra` are the lanes
+the one-instance card shadow uses, so a filled box with a shadow draws the shadow as a standalone
+shadow-mode instance, before the box for a drop shadow and after it for an inset one. This is the
+order row 2 needs for every shadow of a list. The shader is GPUI's `gradient_color` in local
+units, with two divergences:
+
+- **Ramp width.** The pattern ramps over the box's own antialiasing width instead of one device
+  pixel.
+- **Two-colour patterns.** A pattern has two colours where GPUI's has one over transparent.
+  Passing a transparent `between` gives GPUI's form.
+
+Angles follow CSS through GLSL's floored `mod`, so a negative angle turns the way CSS turns it.
+WGSL's `%` truncates instead. The colour-space functions moved into one `@block colorSpace` that
+both the `Graphics` program and the UI program include. T1 `snapshot.ms` pins the lanes and the
+split order. `prim/boxFills` is the golden: seven cards covering linear sRGB, Oklab with stops and
+dither, slash under a dashed border, checker, gradient with drop shadow, gradient with inset
+shadow, and a turned translucent gradient. **Capture owed**: it waits for the native slot.
+
+**Row 2 as built (2026-10-09).** `BoxStyle.shadows` is a list of `BoxShadow { color, blur,
+offsetX, offsetY, spread, inset }`. `castShadows(list)` sets the list in GPUI's `box_shadow`
+shape. `castShadow` and `castInsetShadow` now append to the list; before, they set the one
+shadow. A spread follows GPUI: a drop shadow's rect grows by it with the box's own radii, and
+an inset hole shrinks by it with its radii shrunk alike and clamped at zero. Both ride
+`params1.z` of the standalone shadow mode, and the hole now takes the shadow's offset as GPUI's
+does.
+
+The quad is inflated by the largest drop margin, 3 sigma plus the positive spread plus the
+offset. One visible shadow with no spread over a solid fill stays the one-instance card. Any
+other combination draws GPUI's `Style::paint` order (`style.rs:711-740`) as instances:
+
+1. every drop shadow, in list order;
+2. the fill;
+3. every inset shadow, in list order;
+4. the border, as a box instance with a transparent fill.
+
+The fill instance draws its own border only when the box has no inset shadow.
+
+The same order fixed the one-instance inset. It composited the shadow over the border, so an
+opaque border darkened under it, where GPUI draws the border after the inset shadow. The shader
+now composites the inset over the fill and the border over both. `prim/insetShadow` moves with
+that fix: its pill has a 1.5 px border. T1 `snapshot.ms` pins the order, the spread and the
+margin. `prim/shadowStack` is the golden:
+
+- a three-layer elevation with negative spreads;
+- a blur-0 spread ring, the focus-ring idiom;
+- a drop shadow with a top-edge inset highlight;
+- an inset with spread and offset;
+- an inset under a 3 px border;
+- a gradient card with the elevation stack.
+
+**Capture owed**, with `prim/boxFills`.
 
 ### The budget, at every phase
 
