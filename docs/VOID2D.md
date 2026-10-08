@@ -2932,11 +2932,13 @@ margin. `prim/shadowStack` is the golden:
 
 Captured with `prim/boxFills`.
 
-**Follow-up, measured first.** The box gradient converts its stops to Oklab per fragment; GPUI
-does it once per instance in the vertex stage (`prepare_gradient_color`). Not built until a
-measure of fragment cost and shader bytes says it pays.
-
-**Closes** (`tests/PENDING.md`, checked by the gate): `ui:oklab-vertex`.
+**Oklab stops in the vertex stage (2026-10-09, `ui:oklab-vertex`).** The box gradient converted
+both stops to Oklab per fragment; `uiVs` now converts them once per instance, as GPUI's
+`prepare_gradient_color` does, and the fragment mixes in Oklab and converts back once. Measured
+on D3D11, 1280 x 720, N full-screen gradient boxes, frame time over 300 frames (quantized to the
+6.06 ms vsync interval): before, sRGB 30.3 ms against Oklab 42.4 ms at 4000 layers (18.1 against
+24.2 at 2000); after, Oklab 30.3 ms (17.9-18.2 at 2000), the sRGB cost. Shader bytes +345 B
+glsl300es, +257 B wgsl, +766 B hlsl5. All 120 goldens byte-identical.
 
 ### The budget, at every phase
 
