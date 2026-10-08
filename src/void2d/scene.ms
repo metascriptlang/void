@@ -51,7 +51,7 @@ export function create(this typeof Scene2D, clear: Color): Scene2D {
 		stack: [], root: NO_NODE_2D,
 		context: context, spareContext: DrawContext2D.twin(context.id),
 		clear: clear, cam: camera(), scaleMode: ScaleMode.Resize, designW: 0.0, designH: 0.0,
-		viewMat: identity2d(), viewShift: vec2(0.0, 0.0), culledShift: vec2(0.0, 0.0),
+		viewMat: identity2d(), viewShift: vec2(0.0, 0.0), viewFold: 1.0, culledShift: vec2(0.0, 0.0),
 		viewInit: false, defaultSmooth: true, culls: [],
 	};
 	s.root = s.newRow(DrawKind.Group, NO_NODE_2D);
@@ -119,6 +119,31 @@ function wholeSceneUnits(window: float32, design: float32, zoom: float64): float
 	const covered: float64 = (design as float64) * zoom;
 	const margin: float64 = ((window as float64) - covered) / (2.0 * zoom);
 	return (Math.floor(margin) * zoom) as float32;
+}
+
+export function designFold(s: Scene2D, wf: float32, hf: float32): float32 {
+	if (s.designW <= 0.0 || s.designH <= 0.0) { return 1.0; }
+	const across: float32 = wf / s.designW;
+	const down: float32 = hf / s.designH;
+	let fold: float32 = 1.0;
+	match (s.scaleMode) {
+		ScaleMode.Resize => {},
+		ScaleMode.Fixed => {},
+		ScaleMode.Stretch => {
+			if (across == down) { fold = across; }
+		},
+		ScaleMode.LetterBox => {
+			fold = across < down ? across : down;
+		},
+		ScaleMode.Zoom => {
+			fold = across > down ? across : down;
+		},
+		ScaleMode.AutoZoom => {
+			const whole: int32 = (across < down ? across : down) as int32;
+			if (whole > 0) { fold = whole as float32; }
+		},
+	}
+	return fold;
 }
 
 export function sceneViewMatrix(s: Scene2D, wf: float32, hf: float32): Transform2D {
@@ -219,6 +244,7 @@ export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): 
 		s.viewInit = true;
 	}
 	s.viewShift = shiftOf(nv, dpi);
+	s.viewFold = designFold(s, wf, hf);
 	s.refreshOrder();
 	const l: DrawContext2D = s.context;
 	const kept: boolean = l.painted && !viewChanged &&

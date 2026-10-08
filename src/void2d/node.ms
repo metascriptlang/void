@@ -283,6 +283,7 @@ export interface Scene2D {
 	designH: float32;
 	viewMat: Transform2D;
 	viewShift: Vec2;
+	viewFold: float32;
 	culledShift: Vec2;
 	viewInit: boolean;
 	// What a node's `Smooth.Inherit` resolves to. h2d keeps this on the render context and

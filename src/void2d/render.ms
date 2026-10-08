@@ -678,7 +678,12 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 	if (payload == NO_LABEL_TEXT) { return; }
 	const blend: BlendMode = s.paints[i].blend;
 	const scale: float32 = currentRenderScale();
-	const text = placeLabel(payload, world, scale);
+	const fold: float32 = s.viewFold;
+	const designWorld: Transform2D = {
+		a: world.a / fold, b: world.b / fold, c: world.c / fold, d: world.d / fold,
+		tx: world.tx / fold, ty: world.ty / fold,
+	};
+	const text = placeLabel(payload, designWorld, scale * fold);
 	if (!text.placedValid) { s.retry.push(i); }
 	const editing: boolean = (text.runs.length as int32) > 0 || text.selectionLength > 0 ||
 		text.cursorIndex != NO_CURSOR;

@@ -1,5 +1,5 @@
 import { Scene2D } from "../void2d/node";
-import { setScaleMode, sceneViewMatrix } from "../void2d/scene";
+import { setScaleMode, sceneViewMatrix, designFold } from "../void2d/scene";
 import { ScaleMode, rgba } from "../void2d/types";
 import { approx } from "./helpers";
 
@@ -82,4 +82,24 @@ test "AutoZoom clamps to 1x when too small" {
 	const m = sceneViewMatrix(s, 800.0, 600.0);
 	assert approx(m.a, 1.0);
 	assert approx(m.d, 1.0);
+}
+
+test "the design fold is the view's uniform scale, and one where the scale is not uniform" {
+	const s = Scene2D.create(rgba(0, 0, 0, 1));
+	const modes: ScaleMode[] = [
+		ScaleMode.LetterBox, ScaleMode.Zoom, ScaleMode.AutoZoom, ScaleMode.Stretch,
+	];
+	for (const mode of modes) {
+		s.setScaleMode(mode, 200.0, 125.0);
+		const m = sceneViewMatrix(s, 320.0, 200.0);
+		assert approx(designFold(s, 320.0, 200.0), m.a) && approx(m.a, m.d);
+	}
+	s.setScaleMode(ScaleMode.LetterBox, 200.0, 125.0);
+	assert approx(designFold(s, 320.0, 200.0), 1.6);
+	s.setScaleMode(ScaleMode.Stretch, 200.0, 100.0);
+	assert designFold(s, 320.0, 200.0) == 1.0;
+	s.setScaleMode(ScaleMode.Fixed, 200.0, 125.0);
+	assert designFold(s, 320.0, 200.0) == 1.0;
+	s.setScaleMode(ScaleMode.Resize, 200.0, 125.0);
+	assert designFold(s, 320.0, 200.0) == 1.0;
 }
