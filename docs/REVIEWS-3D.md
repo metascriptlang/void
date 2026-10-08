@@ -2650,3 +2650,47 @@ Review: SHIP WITH FOLLOW-UPS; its one follow-up, the allocation allow-list keyed
 built before landing (`beb641cb`, controls in docs/VOID3D.md). Gate: see "Carried follow-ups, as
 built", Gate acceptance: three first-GPU-run failures fixed at their root and their stages rerun
 GREEN on `d75a235a`, BUILD `99a851d7`, D3D11 only.
+
+## HDR line — HDR target, tone curves, pixel-art HDR (`wt/void3d-tonecurve`)
+
+Review 2026-10-09 before the gate, asked by void-manager: two read-only defect reviewers (resource
+lifetime; colour space per target), every finding re-read against the code in the main session.
+Scope: the landed HDR row (`dc27350d`), the tone curves and pixel-art HDR.
+
+### Verdict: SHIP WITH FOLLOW-UPS
+
+Fixed, each pinned red on the code before the fix and green after:
+
+- **Forward HDR refused a pool it fits.** `make` asked `fits` for the core's three blocks as one
+  length, and `UniformPool.fits` reuses freed blocks only by exact length, so an HDR preset made,
+  closed and made again in an exact-size pool was refused `UniformPoolFull` (and a free block of
+  the summed length would have passed the check and stopped `ToneMapPass.reserve`). The blocks
+  are listed one by one, as the pixel-art preset does. Pins: programKeyCheck "an HDR forward
+  preset fits a pool whose blocks a closed one freed"; rendererCheck holds the pixel-art variant.
+- **Exposure and tone mode did not mark the core changed.** A host that draws only when
+  `needsFrame()` kept the old exposure or curve; `setExposure` had the gap since M45. Both set
+  `changed`. Pin: programKeyCheck "the tone modes are ToneMapping's mode numbers…".
+- **Nothing tied linear output to the target.** `linearOutput` is a writable field and
+  `drawPhase` took any layout, so linear colour into an Rgba8 target (too dark) or encoded colour
+  into Rgba16f (encoded twice) showed wrong colours without an error. No current path does it;
+  `drawPhase` now stops by name on either pairing. Pins: aborts3d `rendererCases`
+  `linear.intoEncoded`, `encoded.intoLinear`.
+
+Checked and correct: re-adoption after a context loss (both presets rebuild the Rgba16f target,
+every attachment that names it, and rebind the tone map texture and sampler each frame); resize
+(the HDR target always resizes with `colorTarget`); teardown (`ToneMapPass.close` releases the
+material and, through it, its block, once, before a frame, after a loss); the frame block is per
+core and re-applied per draw; the four curves against `ToneMapping.hx`; premultiply after
+`toneMapped` in every program; sokol makes RGBA16F blendable wherever it is renderable.
+
+Carried, recorded:
+
+- **The background is tone mapped in HDR, not in LDR.** The HDR clear goes through `toneMapFs`
+  as in Heaps; an LDR clear never meets `toneMapped`, so with a curve or an exposure the two
+  presets show a different background. Present since M45; the LDR presets would have to clear
+  to a CPU-tone-mapped colour each frame.
+- **A transparent clear composited by the caller.** The HDR target holds linear colour with alpha
+  multiplied in, and `toneMapFs` encodes it without unpremultiplying, so an `endPrepared` caller
+  compositing a target with `background.w < 1` gets edges brighter than the LDR preset's. The
+  swapchain path is unaffected (`copyFs` writes alpha 1).
+- Forward still rebuilds `sceneColors[0]` in HDR mode, unused there.
