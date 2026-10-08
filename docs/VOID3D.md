@@ -3267,6 +3267,13 @@ a straight-alpha billboard checked against the same over-backdrop arithmetic as 
 one. PENDING3D `particle-alpha-tested` now covers particles only. Ran: headless entry 1435/1435,
 the abort program; not run: the GPU stages.
 
+**Gate acceptance, rows 1-4, D3D11.** On `1c477b15` over main `317aea8c`, BUILD `1090f789` before,
+between and after: `gate3d.sh` GREEN, 339 PASS with the 3 known skips (tests 1435/1435); every
+campfire and particle capture byte-identical to its baseline, as row 3's shader diff predicted,
+`billboard-blend` with the straight billboard in both presets, `dir-shadow` with the perspective
+case and its control; `gate.sh` GREEN (golden 107/107, 7 known skips). Not run: GLES3, web and
+Android. Row 5 lands separately, after void2d's outline lane.
+
 ## AUDIT: corpus, oracle, QC and architecture at `07bff24` + M8 delta `d5d6c3b`
 
 The M1–M7 audit freezes tree `4db2a22e451bd783cdad6f58c0548cd9464cd335`.
