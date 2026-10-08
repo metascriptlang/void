@@ -206,6 +206,32 @@ export function checkerFill(
 	};
 }
 
+// A BoxFill is a public struct, so a literal can skip the constructors; setBoxStyle checks it
+// here before the shader divides by its sizes or stop span.
+export function checkFill(fill: BoxFill): void {
+	match (fill.kind) {
+		BoxFillKind.Solid => {},
+		BoxFillKind.Linear => {
+			if (!(fill.fromStop >= 0.0 && fill.toStop <= 1.0 && fill.toStop >= fill.fromStop)) {
+				stopOnBadFill("setBoxStyle", `got a linear BoxFill with stops ${fill.fromStop} and `
+					+ `${fill.toStop}; they must rise within 0..1`);
+			}
+		},
+		BoxFillKind.Slash => {
+			if (!(fill.stripe > 0.0) || !(fill.gap >= 0.0)) {
+				stopOnBadFill("setBoxStyle", `got a slash BoxFill with stripe ${fill.stripe} and `
+					+ `gap ${fill.gap}; stripe > 0, gap >= 0`);
+			}
+		},
+		BoxFillKind.Checker => {
+			if (!(fill.cell > 0.0)) {
+				stopOnBadFill("setBoxStyle", `got a checker BoxFill with cell ${fill.cell}; `
+					+ `it must be > 0`);
+			}
+		},
+	}
+}
+
 export function ditheredFill(this s: BoxStyle): BoxStyle {
 	return { ...s, fill: { ...s.fill, dither: true } };
 }

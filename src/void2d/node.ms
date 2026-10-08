@@ -31,6 +31,7 @@ import {
 	BoxStyle,
 	NO_BOX_STYLE,
 	allocateBoxStyle,
+	checkFill,
 	updateBoxStyle,
 	releaseBoxStyle,
 } from "./boxStyle";
@@ -1339,6 +1340,7 @@ export function setPaused(this n: NodeRef, paused: boolean): NodeRef {
 
 export function setBoxStyle(this n: NodeRef, style: BoxStyle): NodeRef {
 	const i: int32 = n.liveRow("setBoxStyle");
+	checkFill(style.fill);
 	takePaintable(n, i, "setBoxStyle");
 	const s: Scene2D = n.scene;
 	if (s.payloads[i] == NO_BOX_STYLE) {
