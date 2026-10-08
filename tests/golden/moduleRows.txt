@@ -18,6 +18,16 @@ text/code13Dpi150
 text/colourEmoji
 text/filteredDpi125
 text/ligature
+text/outline
+text/outlineAlpha
+text/outlineColorEffect
+text/outlineDpi125
+text/outlineRuns
+text/outlineSdfRotated
+text/outlineSdfScaleDown
+text/outlineSdfSeam
+text/outlineSdfZoom4
+text/outlineTight
 text/sdfColorEffect
 text/sdfRotated
 text/sdfScaleDown
