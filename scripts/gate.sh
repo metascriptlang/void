@@ -715,7 +715,7 @@ unreachable=""
 # call no function named in $4 (textLayout returns the whole layout by value: REVIEWS.md P3 F2).
 read_emitted_c() {
 	rm -f "out/debug/$(basename "$1" .ms).exe" out/debug/*ZsrcZvoid2dZ*Oms.c
-	if ! "$MSC" build "$1" --emit=c >> out/gate-allocation.log 2>&1; then
+	if ! "$MSC" build "$1" --emit=c -d:voidBidi >> out/gate-allocation.log 2>&1; then
 		unreachable="$unreachable (emitting C for $1 failed)"
 		return 0
 	fi
