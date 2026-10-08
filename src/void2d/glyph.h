@@ -48,8 +48,12 @@ int void2dGlyphPageKind(int page);
 int void2dGlyphPageCount(void);
 int void2dGlyphPageSize(int page);
 void void2dGlyphPageClear(int page);
-void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
-                          int page, int x, int y, int w, int h);
+#define VOID2D_COVERAGE_RASTER_BAD_HANDLE 1
+#define VOID2D_COVERAGE_RASTER_WRONG_PAGE_KIND 2
+#define VOID2D_COVERAGE_RASTER_OUTSIDE_PAGE 3
+#define VOID2D_COVERAGE_RASTER_BOX_MISMATCH 4
+int void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
+                         int page, int x, int y, int w, int h);
 int void2dGlyphPageTexel(int page, int x, int y);
 unsigned int void2dGlyphPageTexelRgba(int page, int x, int y);
 #define VOID2D_BLIT_OK 0

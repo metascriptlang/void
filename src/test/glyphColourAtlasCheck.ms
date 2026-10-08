@@ -154,7 +154,7 @@ test "a blit outside the page or onto a coverage page is refused by name" {
 	assert void2dGlyphPageTexelRgba(coverageHandle, 0, 0) == 0;
 }
 
-test "a coverage tile aimed at an Rgba page draws nothing" {
+test "a coverage tile aimed at an Rgba page is refused and draws nothing" {
 	const face = testFace();
 	const atlas = GlyphAtlas.create(64, 4);
 	defer atlas.dispose();
@@ -163,7 +163,9 @@ test "a coverage tile aimed at an Rgba page draws nothing" {
 	if (!r.ok) { return; }
 	const t = atlas.tile(r.value);
 	const handle: int32 = atlas.pageHandle(t.page) as int32;
-	void2dGlyphRasterize(face, glyphIndex(face, "g".code), 16.0, 0.0, handle, t.x, t.y, 20, 20);
+	const code: int32 =
+		void2dGlyphRasterize(face, glyphIndex(face, "g".code), 16.0, 0.0, handle, t.x, t.y, 20, 20);
+	assert code == 2;
 	for (let y = 0; y < 20; y++) {
 		for (let x = 0; x < 20; x++) {
 			assert void2dGlyphPageTexelRgba(handle, t.x + x, t.y + y) == 0;

@@ -55,6 +55,10 @@ export enum AtlasError {
 	OutlineBoxMismatch,
 	OutlineNoMemory,
 	OutlineFaceRefused,
+	CoverageBadHandle,
+	CoverageWrongPageKind,
+	CoverageOutsidePage,
+	CoverageBoxMismatch,
 }
 
 export enum PageKind {
@@ -112,6 +116,7 @@ export interface GlyphAtlas {
 	tiles: Vec<GlyphTile>;
 	freeTiles: Vec<int32>;
 	index: Map<uint64, int32>;
+	refused: Map<uint64, AtlasError>;
 	rasterizations: int32;
 	colourRasterizations: int32;
 	outlineRasterizations: int32;
@@ -130,6 +135,7 @@ export function create(this typeof GlyphAtlas, pageSize: int32, maxPages: int32)
 		tiles: new Array(0),
 		freeTiles: new Array(0),
 		index: new Map<uint64, int32>(),
+		refused: new Map<uint64, AtlasError>(),
 		rasterizations: 0,
 		colourRasterizations: 0,
 		outlineRasterizations: 0,
@@ -232,7 +238,33 @@ export function dispose(this atlas: GlyphAtlas): void {
 	atlas.tiles = new Array(0);
 	atlas.freeTiles = new Array(0);
 	atlas.index = new Map<uint64, int32>();
+	atlas.refused = new Map<uint64, AtlasError>();
 	atlas.emptyTile = -1;
+}
+
+const COVERAGE_RASTER_BAD_HANDLE: int32 = 1;
+const COVERAGE_RASTER_WRONG_PAGE_KIND: int32 = 2;
+const COVERAGE_RASTER_OUTSIDE_PAGE: int32 = 3;
+const COVERAGE_RASTER_BOX_MISMATCH: int32 = 4;
+
+function coverageRasterRefusal(code: int32): AtlasError {
+	if (code == COVERAGE_RASTER_BAD_HANDLE) { return AtlasError.CoverageBadHandle; }
+	if (code == COVERAGE_RASTER_WRONG_PAGE_KIND) { return AtlasError.CoverageWrongPageKind; }
+	if (code == COVERAGE_RASTER_OUTSIDE_PAGE) { return AtlasError.CoverageOutsidePage; }
+	if (code == COVERAGE_RASTER_BOX_MISMATCH) { return AtlasError.CoverageBoxMismatch; }
+	console.log(`void2d: the coverage rasterizer returned the unknown code ${code}`);
+	unreachable;
+}
+
+function transientRefusal(error: AtlasError): boolean {
+	return error == AtlasError.SdfNoMemory || error == AtlasError.OutlineNoMemory;
+}
+
+function refuseKey(
+	this atlas: GlyphAtlas, packedKey: uint64, error: AtlasError,
+): Result<int32, AtlasError> {
+	if (!transientRefusal(error)) { atlas.refused.set(packedKey, error); }
+	return Result.err(error);
 }
 
 export function pageCount(this atlas: GlyphAtlas): int32 {
@@ -436,6 +468,8 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 		atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
 		return Result.ok(hit.value);
 	}
+	const known = atlas.refused.get(packedKey);
+	if (known.present) { return Result.err(known.value); }
 	const shift: float32 = (key.variant as float32) / (SUBPIXEL_VARIANTS as float32);
 	const box: Ptr<int32> = void2dGlyphBox(key.face, key.glyph, key.sizePx, shift);
 	const left: int32 = box[0];
@@ -450,8 +484,9 @@ export function acquire(this atlas: GlyphAtlas, key: GlyphKey): Result<int32, At
 		page = placed[0];
 		x = placed[1];
 		y = placed[2];
-		void2dGlyphRasterize(key.face, key.glyph, key.sizePx, shift,
+		const code: int32 = void2dGlyphRasterize(key.face, key.glyph, key.sizePx, shift,
 			atlas.pages[page as int32].handle as int32, x, y, width, height);
+		if (code != 0) { return atlas.refuseKey(packedKey, coverageRasterRefusal(code)); }
 	}
 	atlas.rasterizations = atlas.rasterizations + 1;
 	return Result.ok(atlas.record(packedKey, {
@@ -662,6 +697,8 @@ when (voidTextOutline) {
 			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
 			return Result.ok(hit.value);
 		}
+		const known = atlas.refused.get(packedKey);
+		if (known.present) { return Result.err(known.value); }
 		const box: Ptr<int32> =
 			void2dGlyphOutlineBox(key.face, key.glyph, key.sizePx, shift, widthPx);
 		if (box[4] != 0) { return Result.err(AtlasError.OutlineFaceRefused); }
@@ -679,7 +716,7 @@ when (voidTextOutline) {
 			y = placed[2];
 			const code: int32 = void2dGlyphOutlineRasterize(key.face, key.glyph, key.sizePx, shift,
 				widthPx, atlas.pages[page as int32].handle as int32, x, y, width, height);
-			if (code != 0) { return Result.err(outlineRasterRefusal(code)); }
+			if (code != 0) { return atlas.refuseKey(packedKey, outlineRasterRefusal(code)); }
 			atlas.outlineRasterizations = atlas.outlineRasterizations + 1;
 		}
 		atlas.rasterizations = atlas.rasterizations + 1;
@@ -736,6 +773,8 @@ when (voidSdfText) {
 			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
 			return Result.ok(hit.value);
 		}
+		const known = atlas.refused.get(packedKey);
+		if (known.present) { return Result.err(known.value); }
 		const box: Ptr<int32> = void2dGlyphSdfBox(face, glyph);
 		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
 		const left: int32 = box[0];
@@ -752,7 +791,7 @@ when (voidSdfText) {
 			y = placed[2];
 			const code: int32 = void2dGlyphSdfRasterize(face, glyph,
 				atlas.pages[page as int32].handle as int32, x, y, width, height);
-			if (code != 0) { return Result.err(sdfRasterRefusal(code)); }
+			if (code != 0) { return atlas.refuseKey(packedKey, sdfRasterRefusal(code)); }
 			atlas.generations = atlas.generations + 1;
 		}
 		return Result.ok(atlas.record(packedKey, {
@@ -786,6 +825,8 @@ when (voidSdfText && voidTextOutline) {
 			atlas.tiles[hit.value].refs = atlas.tiles[hit.value].refs + 1;
 			return Result.ok(hit.value);
 		}
+		const known = atlas.refused.get(packedKey);
+		if (known.present) { return Result.err(known.value); }
 		const texels: float32 = (lane as float32) / SDF_OUTLINE_PER_TEXEL;
 		const box: Ptr<int32> = void2dGlyphSdfOutlineBox(face, glyph, texels);
 		if (box[4] != 0) { return Result.err(AtlasError.SdfCubicOutline); }
@@ -803,7 +844,7 @@ when (voidSdfText && voidTextOutline) {
 			y = placed[2];
 			const code: int32 = void2dGlyphSdfOutlineRasterize(face, glyph, texels,
 				atlas.pages[page as int32].handle as int32, x, y, width, height);
-			if (code != 0) { return Result.err(sdfRasterRefusal(code)); }
+			if (code != 0) { return atlas.refuseKey(packedKey, sdfRasterRefusal(code)); }
 			atlas.outlineRasterizations = atlas.outlineRasterizations + 1;
 		}
 		return Result.ok(atlas.record(packedKey, {

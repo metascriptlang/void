@@ -933,18 +933,20 @@ void void2dGlyphPageClear(int page) {
 	s_pages[page].dirty = 1;
 }
 
-void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
-                          int page, int x, int y, int w, int h) {
-	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) { return; }
+int void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
+                         int page, int x, int y, int w, int h) {
+	if (!validFace(face) || !validPage(page) || w <= 0 || h <= 0) {
+		return VOID2D_COVERAGE_RASTER_BAD_HANDLE;
+	}
 	GlyphPage *p = &s_pages[page];
-	if (p->kind == VOID2D_PAGE_RGBA || p->kind == VOID2D_PAGE_MASK) {
+	if (p->kind != VOID2D_PAGE_COVERAGE) {
 		fprintf(stderr, "void2d: a coverage tile was aimed at a %s page\n", pageKindName(p->kind));
-		return;
+		return VOID2D_COVERAGE_RASTER_WRONG_PAGE_KIND;
 	}
 	if (x < 0 || y < 0 || x + w > p->size || y + h > p->size) {
 		fprintf(stderr, "void2d: glyph tile %dx%d at (%d,%d) falls outside its %d page\n",
 			w, h, x, y, p->size);
-		return;
+		return VOID2D_COVERAGE_RASTER_OUTSIDE_PAGE;
 	}
 	float scale = void2dGlyphScale(face, sizePx);
 	GlyphFace *f = &s_faces[face];
@@ -957,7 +959,7 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 			box[2] - box[0] != w || box[3] - box[1] != h) {
 			fprintf(stderr, "void2d: sprite tile %dx%d does not match glyph %d's ink box\n", w, h,
 				glyph);
-			return;
+			return VOID2D_COVERAGE_RASTER_BOX_MISMATCH;
 		}
 		for (int row = 0; row < h; row++) {
 			memcpy(at + (size_t)row * (size_t)p->size, rows + (size_t)row * (size_t)stride,
@@ -982,6 +984,7 @@ void void2dGlyphRasterize(int face, int glyph, float sizePx, float shiftX,
 		stbtt_MakeGlyphBitmapSubpixel(&f->info, at, w, h, p->size, scale, scale, shiftX, 0.0f, glyph);
 	}
 	p->dirty = 1;
+	return 0;
 }
 
 #ifdef VOID2D_SPRITES
