@@ -1201,6 +1201,57 @@ run_exposure() {
 	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending, Reinhard per layer"
 }
 
+run_particle_fade() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "particle-fade: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	backends=native
+	case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) backends="native gl-core" ;; esac
+	for backend in $backends; do
+		exe="$WORK/particleFade.$backend.exe"
+		rm -f "$exe"
+		rm -rf out/debug/.cache
+		flags=""
+		[ "$backend" = gl-core ] && flags="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+		if ! msc build $flags tests/integration/particleFade.ms --output="$exe" \
+			> "$WORK/particleFade.$backend.build.log" 2>&1; then
+			fail "particle-fade: $backend build refused — see $WORK/particleFade.$backend.build.log"
+			continue
+		fi
+		for hdr in 0 1; do
+			for preset in 0 1; do
+				posts=0
+				[ "$preset" = 1 ] && posts="0 1 2"
+				for post in $posts; do
+					log="$WORK/particleFade.$backend.$hdr.$preset.$post.log"
+					status=0
+					VOID_PARTICLE_FADE_HDR=$hdr VOID_PARTICLE_FADE_PIXEL_ART=$preset \
+						VOID_PARTICLE_FADE_POST=$post "$exe" > "$log" 2>&1 || status=$?
+					if [ "$status" -eq 3 ]; then
+						skip "particle-fade: $backend has no readback backend"
+						continue
+					fi
+					if [ "$status" -ne 0 ] || ! grep -q '^PASS particle fade:' "$log"; then
+						fail "particle-fade: $backend HDR=$hdr preset=$preset post=$post — see $log"
+						continue
+					fi
+					status=0
+					VOID_PARTICLE_FADE_HDR=$hdr VOID_PARTICLE_FADE_PIXEL_ART=$preset \
+						VOID_PARTICLE_FADE_POST=$post VOID_PARTICLE_FADE_CONTROL=1 "$exe" \
+						> "$log.control" 2>&1 || status=$?
+					if [ "$status" -eq 0 ] || ! grep -q 'alpha did not blend continuously' "$log.control"; then
+						fail "particle-fade: $backend HDR=$hdr preset=$preset post=$post cutoff control not red"
+						continue
+					fi
+					pass "particle-fade: $backend HDR=$hdr preset=$preset post=$post; alpha, depth, control red"
+				done
+			done
+		done
+	done
+	rm -rf out/debug/.cache
+}
+
 run_bloom() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "bloom: GATE_SKIP_CAPTURE=1 — nothing was read back"
@@ -2880,6 +2931,7 @@ run_card_table
 run_exposure
 run_hdr
 run_bloom
+run_particle_fade
 run_gl_core
 run_stores
 run_views
