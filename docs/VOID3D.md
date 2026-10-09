@@ -3416,7 +3416,7 @@ curves, as built").
 **Cost.** One Rgba16f target the scene's size, one more full-screen pass per frame, a 4-float
 block, one material.
 
-**Not built, recorded.** Bloom (the next row this target opens); the web stages (web3d is red on the compiler card, and WebGL2
+**Not built, recorded.** Bloom followed (see "Bloom, as built"); the web stages (web3d is red on the compiler card, and WebGL2
 needs the extension query to pass).
 
 **Ran.** Headless `programKeyCheck.ms` 330/330 (the `(Post, Core)` key declared, 89 keys, its block
@@ -3516,6 +3516,66 @@ and the tone mapped background; `gl-core` 24 readback runs of 13 checks; aborts3
 `linear.intoEncoded` and `encoded.intoLinear` stop by name; `gate.sh` GREEN (golden d3d11
 120/120). Not shown: the new GPU pins red on the old shaders, which only the computed gaps in the
 tests (5 levels or more) stand for.
+
+### Bloom, as built
+
+**What changes for the author.** `setBloom(preset, BloomSettings.natural())` on an HDR preset
+(forward or pixel-art) blooms the HDR target before the tone map; `setBloom(preset, null)` turns
+it off and frees its mips. Off is the default and leaves every frame as it was. The settings are
+Bevy's: `intensity`, `lowFrequencyBoost`, `lowFrequencyBoostCurvature`, `highPassFrequency`, a
+soft `threshold` with `thresholdSoftness` (0, the default, blooms everything), `compositeMode`
+(`EnergyConserving`, the default, or `Additive`) and `maxMipDimension`. An LDR preset, or settings
+out of range, stop by name. **NEW MECHANISM** against Heaps, approved by void-manager 2026-10-09:
+Heaps' 3D renderer has no bloom (only `h2d.filter.Bloom`), so Bevy owns the shape.
+
+**References, read.** Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_post_process/src/bloom/`: `bloom.wesl` (`soft_threshold` :23, `karis_average` :40,
+`sample_input_13_tap` :48-125 with Karis' groups at :113, `sample_input_3x3_tent` :142,
+`downsample_first` :170, `upsample` :191); `mod.rs` (the texture format :41, the passes :184-270,
+one texture per mip on WebGL :286-312, the mip count and size :326-340, `compute_blend_factor`
+:486-500); `upsampling_pipeline.rs` (the composite blends :74-121, the TODO to carry the factor in
+alpha :86); `settings.rs` (`NATURAL` :132-145, the threshold precomputations :243-251).
+
+**As built.** `src/void3d/bloom.ms` holds `BloomSettings`, the CPU halves (`bloomMipCount`,
+`bloomMipWidth`, `bloomBlendFactor`, `writeThreshold`, `upsampleState`) and `BloomPass`, which
+`ToneMapPass` owns, so both presets have it from one place and it runs in `ToneMapPass.draw`
+before the tone map. Three screen programs (`BloomDownsampleFirst`, `BloomDownsample`,
+`BloomUpsample`, core preset, fullscreen layout; `shader3d.glsl`) each read one 12-float block:
+source and target texels, the blend factor, the threshold. Per frame, at mip_count = 8 for the
+default 512: the first downsample from the HDR target into mip 0 (13 taps, Karis, the 0.0001 floor,
+the threshold when it is above 0), seven downsamples, seven upsamples onto the mip above, and the
+final upsample onto the HDR target: 16 fullscreen passes. Mip 0 is the frame scaled to a height of
+`maxMipDimension`, each next mip half. The three materials and blocks are reserved with the HDR
+preset (`TONE_MAP_PASS_BLOCKS`); the mips are allocated by the first frame with bloom on and
+follow the HDR target's size and GPU context.
+
+**Where it diverges from Bevy, and why.**
+- Rgba16f mips, not Rg11b10Ufloat: the door has Rgba16f and no Rg11b10 format, and adding one is a
+  `src/gpu` change; the cost is twice the memory.
+- One render target per mip, as Bevy's own WebGL path: the door makes no mip-level views.
+- The blend factor rides in the upsample's alpha, colour blended One / OneMinusSrcAlpha (energy
+  conserving) or One / One (additive), alpha Zero / One: sokol has no per-draw blend constant, and
+  Bevy's TODO names this path. The HDR target's alpha is untouched, so a transparent target
+  composited by an `endPrepared` caller keeps its edges (bloom light over alpha 0 is dropped by
+  the tone map's unpremultiply).
+- The threshold is a uniform test, not a pipeline variant (`USE_THRESHOLD`); no anamorphic `scale`
+  and no viewport sub-rectangle.
+
+**Cost at 1280×720.** Mips from 910×512 down to 7×4, about 621k pixels, ≈ 5.0 MB at 8 B/px
+(Bevy's format: 2.5 MB); 16 passes, the first reading the full HDR target at 13 taps, the rest
+under a quarter of the frame each. With bloom off: no mips, no passes, 36 pool floats and three
+materials held.
+
+**Ran.** Headless `src/test/index.ms` 1477/1477 (`bloomCheck.ms`: the mip count and size, the
+blend factors and threshold precomputations against Bevy's formulas evaluated apart, the upsample's
+blend state, setBloom on and off; the 92 declared keys and the bloom blocks' lengths in
+programKeyCheck); aborts3d `bloom.ldr` in both presets and `bloom.settings` stop by name;
+`msc build` of `tests/integration/bloom.ms`; the regenerated headers add the three programs and
+change no existing array. Written, not run: the GPU stage `bloom` (gate3d, both presets, and
+gl-core): a bright square's light falls off with distance and evenly on four sides, energy
+conserving keeps the frame's light within -15%..+5% where additive adds 10% or more, bloom set off
+again draws the off frame byte for byte, and a half-transparent layer over a transparent clear
+keeps its alpha (no light outside it, its edge within 12 levels).
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
