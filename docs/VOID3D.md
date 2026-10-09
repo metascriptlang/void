@@ -3571,11 +3571,37 @@ blend factors and threshold precomputations against Bevy's formulas evaluated ap
 blend state, setBloom on and off; the 92 declared keys and the bloom blocks' lengths in
 programKeyCheck); aborts3d `bloom.ldr` in both presets and `bloom.settings` stop by name;
 `msc build` of `tests/integration/bloom.ms`; the regenerated headers add the three programs and
-change no existing array. Written, not run: the GPU stage `bloom` (gate3d, both presets, and
-gl-core): a bright square's light falls off with distance and evenly on four sides, energy
+change no existing array. Acceptance criteria, not yet accepted: the GPU stage `bloom`
+(gate3d, both presets, and gl-core) checks that a bright square's light falls off with distance
+and evenly on four sides, energy
 conserving keeps the frame's light within -15%..+5% where additive adds 10% or more, bloom set off
 again draws the off frame byte for byte, and a half-transparent layer over a transparent clear
 keeps its alpha (no light outside it, its edge within 12 levels).
+
+**Probe correction, 2026-10-10, BUILD `5039c014`.** The first GPU attempt read the off
+baseline from an unfilled capture slot. After fixing that, all four D3D11/GL core ×
+forward/pixel-art runs stopped at radius 8: right 27, left 35, up 36, down 28. The test
+sampled around integer `(160, 120)`, but an even 320×240 frame is centred between pixels:
+index `i` reflects to `dimension - 1 - i`, not `dimension / 2 - radius`.
+The independent float64 CPU chain reproduced 27/35/37/28, with reflected probes 27/27/28/28.
+For 1280×720, mips 910×512 → 455×256 → 227×128 → 113×64 → 56×32 → 28×16 →
+14×8 → 7×4, old probes read 35/43/43/35 and reflected probes 35/35/35/35;
+whole-frame reflection error was below 2.3e-15. Odd mip sizes did not shift the kernel.
+
+Reference checked: Bevy `157e1ce6` `bloom.wesl` `sample_input_13_tap` and
+`sample_input_3x3_tent`, `mod.rs` `prepare_bloom_textures`, and
+`bevy_core_pipeline/src/fullscreen_vertex_shader.wesl` `fullscreen_vertex_shader`.
+Bevy's interpolated UV is pixel-centred and top-left; Void's `fullscreenVs` has no UV
+varying, and bloom uses `gl_FragCoord / targetSize`. Framebuffer and texture rows share
+the same backend origin (`src/gpu/door.ms` `originTopLeft`), so GL's bottom-left origin
+needs no extra flip between these passes. Offsets, weights and odd mip rounding agree.
+No shader or symmetry tolerance changed: the integration probes now reflect indices.
+
+CPU pin `src/test/bloomKernelCheck.ms` runs both odd chains; substituting the old reflected
+index failed separately for 320×240 and 1280×720, restoring it passed. Headless
+`msc test src/test/index.ms` 1478/1478 and `msc check tests/integration/bloom.ms` pass
+on commit `043e33d0`, tree `f473f1a8711e63c67ddc06f68c95899ac562d80c`.
+The corrected GPU probes still await a slot; CPU agreement is not GPU acceptance.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
