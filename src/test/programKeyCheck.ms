@@ -93,6 +93,7 @@ import {
 	toneMappedBackground,
 	toneCurved,
 } from "../void3d/toneMap";
+import { BLOOM_UNIFORM_SLOT, BLOOM_UNIFORM_LENGTH } from "../void3d/bloom";
 
 function pixelArt(program: Program): ProgramKey {
 	return ProgramKey.of(program).withPreset(Preset.PixelArt);
@@ -147,7 +148,8 @@ function billboardMaterial(context: DrawContext, texture: uint32, sampler: uint3
 
 const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
-	Program.LitTextured, Program.UnlitTextured,
+	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
+	Program.BloomDownsample, Program.BloomUpsample,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -163,6 +165,9 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.Copy => VertexLayout.Fullscreen,
 		Program.Post => VertexLayout.Fullscreen,
 		Program.Blit => VertexLayout.Fullscreen,
+		Program.BloomDownsampleFirst => VertexLayout.Fullscreen,
+		Program.BloomDownsample => VertexLayout.Fullscreen,
+		Program.BloomUpsample => VertexLayout.Fullscreen,
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
 	};
@@ -205,7 +210,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 89;
+	assert declared == 92;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {
@@ -216,7 +221,8 @@ test "both presets draw every scene program's key in their own, and no screen pr
 	}
 	const screens: Vec<ProgramKey> = [
 		ProgramKey.of(Program.Copy), ProgramKey.of(Program.Post), pixelArt(Program.Post),
-		pixelArt(Program.Blit),
+		pixelArt(Program.Blit), ProgramKey.of(Program.BloomDownsampleFirst),
+		ProgramKey.of(Program.BloomDownsample), ProgramKey.of(Program.BloomUpsample),
 	];
 	for (const screen of screens) {
 		assert declares(screen);
@@ -309,7 +315,7 @@ test "an HDR forward preset takes a tone map block and material, and its core wr
 		let forward: ForwardRenderer = created.value;
 		assert forward.core.linearOutput;
 		assert context.uniforms.used == FORWARD_HDR_UNIFORM_LENGTH;
-		assert context.liveMaterials() == 2;
+		assert context.liveMaterials() == 5;
 		const pass: ToneMapPass | null = forward.toneMap;
 		assert pass !== null;
 		if (pass !== null) {
@@ -440,6 +446,12 @@ test "every block the CPU writes is the length its shader declares, read off the
 	const toneMap: ProgramKey = ProgramKey.of(Program.Post);
 	assert uniformBlockLength(toneMap, TONE_MAP_UNIFORM_SLOT) == TONE_MAP_UNIFORM_LENGTH;
 	assert declaredSlots(toneMap) == 1;
+	const blooms: Vec<Program> =
+		[Program.BloomDownsampleFirst, Program.BloomDownsample, Program.BloomUpsample];
+	for (const bloom of blooms) {
+		assert uniformBlockLength(ProgramKey.of(bloom), BLOOM_UNIFORM_SLOT) == BLOOM_UNIFORM_LENGTH;
+		assert declaredSlots(ProgramKey.of(bloom)) == 1;
+	}
 	assert uniformBlockLength(ProgramKey.of(Program.Lit), UNIFORM_SLOTS) == 0;
 }
 

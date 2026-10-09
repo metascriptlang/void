@@ -51,6 +51,9 @@ export enum Program {
 	Blit,
 	LitTextured,
 	UnlitTextured,
+	BloomDownsampleFirst,
+	BloomDownsample,
+	BloomUpsample,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -223,6 +226,23 @@ export enum ProgramError {
 	BlockShort,
 }
 
+// Drawn only by drawScreen, through its own material, over a whole target.
+export function isScreenProgram(program: Program): boolean {
+	return match (program) {
+		Program.Lit => false,
+		Program.Particle => false,
+		Program.Billboard => false,
+		Program.Copy => true,
+		Program.Post => true,
+		Program.Blit => true,
+		Program.LitTextured => false,
+		Program.UnlitTextured => false,
+		Program.BloomDownsampleFirst => true,
+		Program.BloomDownsample => true,
+		Program.BloomUpsample => true,
+	};
+}
+
 // What a renderer of `preset` draws for a material's key: the same key in its preset, when the
 // build declares it. A material names the core's scene programs; a screen program is drawn only
 // by drawScreen, through its own material. With no shadow map in the frame a receiver draws
@@ -232,8 +252,7 @@ export function drawnIn(
 	preset: Preset,
 	shadowMap: boolean,
 ): Result<ProgramKey, ProgramError> {
-	const screen: boolean =
-		key.program == Program.Copy || key.program == Program.Post || key.program == Program.Blit;
+	const screen: boolean = isScreenProgram(key.program);
 	if (screen || key.preset != Preset.Core || preset == Preset.Shadow) {
 		return Result.err(ProgramError.NotDrawn);
 	}

@@ -516,3 +516,118 @@ void main() {
     fragColor = vec4(linearToSrgb(toneCurved(straight * toneMap.x, toneMap.y)) * alpha, alpha);
 }
 @end
+
+@block bloomUniforms
+// Bevy 157e1ce6 bevy_post_process bloom.wesl BloomUniforms, for a fullscreen pass of one mip:
+// bloomTexel.xy one texel of the source, .zw one texel of the target; bloomBlend.x the upsample's
+// blend factor (mod.rs compute_blend_factor); bloomThreshold the soft threshold's precomputations
+// (settings.rs), x above 0 when the prefilter is on.
+layout(binding=0) uniform texture2D bloomSource;
+layout(binding=0) uniform sampler bloomSampler;
+layout(binding=0) uniform bloomParams {
+    vec4 bloomTexel;
+    vec4 bloomBlend;
+    vec4 bloomThreshold;
+};
+
+vec3 bloomTap(vec2 uv, vec2 offset) {
+    return texture(sampler2D(bloomSource, bloomSampler), uv + offset * bloomTexel.xy).rgb;
+}
+@end
+
+@block bloomDownsampling
+// bloom.wesl karis_average, Rec. 709 luminance.
+float bloomKaris(vec3 color) {
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722)) / 4.0;
+    return 1.0 / (1.0 + luma);
+}
+
+// bloom.wesl sample_input_13_tap ([COD] slide 153), the uniform-scale offsets.
+vec3 bloom13(vec2 uv, bool karis) {
+    vec3 a = bloomTap(uv, vec2(-2.0, 2.0));
+    vec3 b = bloomTap(uv, vec2(0.0, 2.0));
+    vec3 c = bloomTap(uv, vec2(2.0, 2.0));
+    vec3 d = bloomTap(uv, vec2(-2.0, 0.0));
+    vec3 e = bloomTap(uv, vec2(0.0, 0.0));
+    vec3 f = bloomTap(uv, vec2(2.0, 0.0));
+    vec3 g = bloomTap(uv, vec2(-2.0, -2.0));
+    vec3 h = bloomTap(uv, vec2(0.0, -2.0));
+    vec3 i = bloomTap(uv, vec2(2.0, -2.0));
+    vec3 j = bloomTap(uv, vec2(-1.0, 1.0));
+    vec3 k = bloomTap(uv, vec2(1.0, 1.0));
+    vec3 l = bloomTap(uv, vec2(-1.0, -1.0));
+    vec3 m = bloomTap(uv, vec2(1.0, -1.0));
+    if (karis) {
+        // [COD] slide 168: Karis' firefly reduction, per group, in linear light.
+        vec3 group0 = (a + b + d + e) * (0.125 / 4.0);
+        vec3 group1 = (b + c + e + f) * (0.125 / 4.0);
+        vec3 group2 = (d + e + g + h) * (0.125 / 4.0);
+        vec3 group3 = (e + f + h + i) * (0.125 / 4.0);
+        vec3 group4 = (j + k + l + m) * (0.5 / 4.0);
+        group0 *= bloomKaris(group0);
+        group1 *= bloomKaris(group1);
+        group2 *= bloomKaris(group2);
+        group3 *= bloomKaris(group3);
+        group4 *= bloomKaris(group4);
+        return group0 + group1 + group2 + group3 + group4;
+    }
+    vec3 sum = (a + c + g + i) * 0.03125;
+    sum += (b + d + f + h) * 0.0625;
+    sum += (e + j + k + l + m) * 0.125;
+    return sum;
+}
+@end
+
+@fs bloomDownsampleFirstFs
+// bloom.wesl downsample_first: the HDR target into mip 0, fireflies averaged out, floored at
+// 0.0001 so a black region does not stay black through the chain, then the soft threshold.
+@include_block bloomUniforms
+@include_block bloomDownsampling
+out vec4 fragColor;
+
+vec3 softThreshold(vec3 color) {
+    float brightness = max(color.r, max(color.g, color.b));
+    float softness = clamp(brightness - bloomThreshold.y, 0.0, bloomThreshold.z);
+    softness = softness * softness * bloomThreshold.w;
+    float contribution = max(brightness - bloomThreshold.x, softness);
+    return color * (contribution / max(brightness, 0.00001));
+}
+
+void main() {
+    vec2 uv = gl_FragCoord.xy * bloomTexel.zw;
+    vec3 sum = clamp(bloom13(uv, true), vec3(0.0001), vec3(3.40282347e37));
+    if (bloomThreshold.x > 0.0) {
+        sum = softThreshold(sum);
+    }
+    fragColor = vec4(sum, 1.0);
+}
+@end
+
+@fs bloomDownsampleFs
+// bloom.wesl downsample: mip i-1 into mip i.
+@include_block bloomUniforms
+@include_block bloomDownsampling
+out vec4 fragColor;
+void main() {
+    fragColor = vec4(bloom13(gl_FragCoord.xy * bloomTexel.zw, false), 1.0);
+}
+@end
+
+@fs bloomUpsampleFs
+// bloom.wesl upsample ([COD] slide 162, the 3x3 tent), mip i onto mip i-1 or the HDR target. The
+// blend factor rides in alpha in place of Bevy's blend constant (upsampling_pipeline.rs TODO):
+// the pipeline blends One / OneMinusSrcAlpha (energy conserving) or One / One (additive) on
+// colour, and leaves the target's alpha as it is.
+@include_block bloomUniforms
+out vec4 fragColor;
+void main() {
+    vec2 uv = gl_FragCoord.xy * bloomTexel.zw;
+    vec3 sum = bloomTap(uv, vec2(0.0, 0.0)) * 0.25;
+    sum += (bloomTap(uv, vec2(0.0, 1.0)) + bloomTap(uv, vec2(-1.0, 0.0)) +
+        bloomTap(uv, vec2(1.0, 0.0)) + bloomTap(uv, vec2(0.0, -1.0))) * 0.125;
+    sum += (bloomTap(uv, vec2(-1.0, 1.0)) + bloomTap(uv, vec2(1.0, 1.0)) +
+        bloomTap(uv, vec2(-1.0, -1.0)) + bloomTap(uv, vec2(1.0, -1.0))) * 0.0625;
+    float factor = bloomBlend.x;
+    fragColor = vec4(sum * factor, factor);
+}
+@end

@@ -44,10 +44,12 @@ import {
 	releaseMaterial,
 } from "./draw";
 import "./uniformPool";
+import { BloomSettings } from "./bloom";
 import { screenState } from "./screenFx";
 import {
 	ToneMapPass,
-	TONE_MAP_UNIFORM_LENGTH,
+	TONE_MAP_PASS_BLOCKS,
+	TONE_MAP_PASS_UNIFORM_LENGTH,
 	linearBackground,
 	toneMappedBackground,
 } from "./toneMap";
@@ -114,7 +116,8 @@ export enum ForwardError {
 export const FORWARD_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH;
 
 // An HDR preset's floats: the core's blocks and the tone map's.
-export const FORWARD_HDR_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH + TONE_MAP_UNIFORM_LENGTH;
+export const FORWARD_HDR_UNIFORM_LENGTH: int32 =
+	RENDERER_UNIFORM_LENGTH + TONE_MAP_PASS_UNIFORM_LENGTH;
 
 // The scene pass's attachments: the target half of its pipeline keys.
 export const FORWARD_LAYOUT: TargetLayout = {
@@ -177,12 +180,8 @@ function make(
 	background: Vec4,
 	hdr: boolean,
 ): Result<ForwardRenderer, ForwardError> {
-	const blocks: Vec<int32> = [
-		VERTEX_UNIFORM_LENGTH,
-		LIGHT_UNIFORM_LENGTH,
-		FRAME_UNIFORM_LENGTH,
-		TONE_MAP_UNIFORM_LENGTH,
-	];
+	let blocks: Vec<int32> = [VERTEX_UNIFORM_LENGTH, LIGHT_UNIFORM_LENGTH, FRAME_UNIFORM_LENGTH];
+	for (const length of TONE_MAP_PASS_BLOCKS) { blocks.push(length); }
 	if (hdr && !context.uniforms.fits(blocks).ok) {
 		return Result.err(ForwardError.UniformPoolFull);
 	}
@@ -237,6 +236,8 @@ function fromCore(error: RendererError): ForwardError {
 
 function adoptContext(renderer: ForwardRenderer): void {
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) { toneMap.bloom.adoptContext(); }
 }
 
 function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): void {
@@ -299,6 +300,12 @@ export function prepareFrame(
 	if (toneMap !== null) {
 		const toneMapError: ForwardError | null = screenMaterialError(renderer, toneMap.material);
 		if (toneMapError !== null) { return Result.err(toneMapError); }
+		const first: ForwardError | null = screenMaterialError(renderer, toneMap.bloom.first);
+		if (first !== null) { return Result.err(first); }
+		const down: ForwardError | null = screenMaterialError(renderer, toneMap.bloom.down);
+		if (down !== null) { return Result.err(down); }
+		const up: ForwardError | null = screenMaterialError(renderer, toneMap.bloom.up);
+		if (up !== null) { return Result.err(up); }
 	}
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
@@ -398,6 +405,20 @@ export function closeForward(renderer: ForwardRenderer): void {
 	if (toneMap !== null) { toneMap.close(renderer.core.context, "closeForward"); }
 	if (!renderer.core.isClosed()) { closeRenderer(renderer.core); }
 	renderer.closed = true;
+}
+
+// Bevy's Bloom on an HDR preset's target, before the tone map; null turns it off and releases its
+// mips. An LDR preset has no HDR target to bloom.
+export function setBloom(renderer: ForwardRenderer, settings: BloomSettings | null): void {
+	if (renderer.closed) { stopOnClosed("setBloom"); }
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) {
+		toneMap.bloom.setSettings(renderer.core.context, settings);
+		renderer.core.changed = true;
+		return;
+	}
+	console.log("void3d: setBloom on a forward preset made by create; bloom needs createHdr");
+	unreachable;
 }
 
 export function isClosed(this renderer: ForwardRenderer): boolean {

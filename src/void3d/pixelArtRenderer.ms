@@ -72,9 +72,11 @@ import {
 	closePalette,
 } from "./palette";
 import { screenState } from "./screenFx";
+import { BloomSettings } from "./bloom";
 import {
 	ToneMapPass,
-	TONE_MAP_UNIFORM_LENGTH,
+	TONE_MAP_PASS_BLOCKS,
+	TONE_MAP_PASS_UNIFORM_LENGTH,
 	linearBackground,
 	toneMappedBackground,
 } from "./toneMap";
@@ -227,7 +229,7 @@ export const PIXEL_ART_UNIFORM_LENGTH: int32 =
 
 // An HDR preset's floats: the same and the tone map's block.
 export const PIXEL_ART_HDR_UNIFORM_LENGTH: int32 =
-	PIXEL_ART_UNIFORM_LENGTH + TONE_MAP_UNIFORM_LENGTH;
+	PIXEL_ART_UNIFORM_LENGTH + TONE_MAP_PASS_UNIFORM_LENGTH;
 
 // Attachment formats of the scene and post passes: the target half of their pipeline keys.
 export const SCENE_LAYOUT: TargetLayout = {
@@ -413,7 +415,9 @@ function make(
 		POST_UNIFORM_LENGTH,
 		BLIT_UNIFORM_LENGTH,
 	];
-	if (hdr) { blocks.push(TONE_MAP_UNIFORM_LENGTH); }
+	if (hdr) {
+		for (const length of TONE_MAP_PASS_BLOCKS) { blocks.push(length); }
+	}
 	if (!context.uniforms.fits(blocks).ok) {
 		return Result.err(PixelArtError.UniformPoolFull);
 	}
@@ -537,6 +541,8 @@ export function viewFor(
 
 function adoptContext(renderer: PixelArtRenderer): void {
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) { toneMap.bloom.adoptContext(); }
 }
 
 function resizeTargets(renderer: PixelArtRenderer, width: int32, height: int32): void {
@@ -722,6 +728,9 @@ function rampsHaveLevels(
 			Program.Copy => true,
 			Program.Post => true,
 			Program.Blit => true,
+			Program.BloomDownsampleFirst => true,
+			Program.BloomDownsample => true,
+			Program.BloomUpsample => true,
 		};
 		if (!held) { return false; }
 	}
@@ -758,17 +767,14 @@ export function prepareFrame(
 	if (!blocksKept) { return Result.err(PixelArtError.UniformsReplaced); }
 	const toneMap: ToneMapPass | null = renderer.toneMap;
 	if (toneMap !== null) {
-		const material: MaterialId = toneMap.material;
-		if (!context.hasMaterial(material)) {
-			const issued: boolean = context.issuedMaterial(material);
-			return Result.err(issued ? PixelArtError.StaleMaterial : PixelArtError.ForeignMaterial);
-		}
-		if (!context.keepsItsTexture(material)) {
-			return Result.err(PixelArtError.TextureReplaced);
-		}
-		if (!context.keepsItsUniforms(material)) {
-			return Result.err(PixelArtError.UniformsReplaced);
-		}
+		const toneMapError: PixelArtError | null = screenMaterialError(context, toneMap.material);
+		if (toneMapError !== null) { return Result.err(toneMapError); }
+		const first: PixelArtError | null = screenMaterialError(context, toneMap.bloom.first);
+		if (first !== null) { return Result.err(first); }
+		const down: PixelArtError | null = screenMaterialError(context, toneMap.bloom.down);
+		if (down !== null) { return Result.err(down); }
+		const up: PixelArtError | null = screenMaterialError(context, toneMap.bloom.up);
+		if (up !== null) { return Result.err(up); }
 	}
 	const shadowed: boolean = renderer.core.shadow !== null;
 	if (!rampsHaveLevels(renderer.core.preset, shadowed, context, items)) {
@@ -887,6 +893,29 @@ export function closePixelArt(renderer: PixelArtRenderer): void {
 	if (!renderer.palette.isClosed()) { closePalette(renderer.palette); }
 	if (!renderer.core.isClosed()) { closeRenderer(renderer.core); }
 	renderer.closed = true;
+}
+
+function screenMaterialError(context: DrawContext, material: MaterialId): PixelArtError | null {
+	if (!context.hasMaterial(material)) {
+		const issued: boolean = context.issuedMaterial(material);
+		return issued ? PixelArtError.StaleMaterial : PixelArtError.ForeignMaterial;
+	}
+	if (!context.keepsItsTexture(material)) { return PixelArtError.TextureReplaced; }
+	if (!context.keepsItsUniforms(material)) { return PixelArtError.UniformsReplaced; }
+	return null;
+}
+
+// As ForwardRenderer's setBloom.
+export function setBloom(renderer: PixelArtRenderer, settings: BloomSettings | null): void {
+	if (renderer.closed) { stopOnClosed("setBloom"); }
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	if (toneMap !== null) {
+		toneMap.bloom.setSettings(renderer.core.context, settings);
+		renderer.core.changed = true;
+		return;
+	}
+	console.log("void3d: setBloom on a pixel-art preset made by create; bloom needs createHdr");
+	unreachable;
 }
 
 export function isClosed(this renderer: PixelArtRenderer): boolean {

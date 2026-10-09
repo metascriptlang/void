@@ -93,3 +93,6 @@ pixelArtUnlitTexturedUvTransformPremultiplied UNLIT_TEXTURED  PIXEL_ART PREMULTI
 billboardCutout                         BILLBOARD       CORE      CUTOUT                                       billboardVs     billboardFs           BILLBOARD
 pixelArtBillboardCutout                 BILLBOARD       PIXEL_ART CUTOUT                                       billboardVs     billboardFs           BILLBOARD
 toneMap                                 POST            CORE      -                                            fullscreenVs    toneMapFs             FULLSCREEN
+bloomDownsampleFirst                    BLOOM_DOWNSAMPLE_FIRST CORE  -                                         fullscreenVs    bloomDownsampleFirstFs FULLSCREEN
+bloomDownsample                         BLOOM_DOWNSAMPLE CORE      -                                            fullscreenVs    bloomDownsampleFs     FULLSCREEN
+bloomUpsample                           BLOOM_UPSAMPLE  CORE      -                                            fullscreenVs    bloomUpsampleFs       FULLSCREEN

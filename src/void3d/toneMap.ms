@@ -18,6 +18,7 @@ import {
 	writeUniforms,
 } from "./draw";
 import { UniformError } from "./uniformPool";
+import { BloomPass, BLOOM_UNIFORM_LENGTH, BLOOM_PASS_UNIFORM_LENGTH } from "./bloom";
 import { screenState } from "./screenFx";
 import { Renderer, RendererError, ToneMode, drawScreen, exposureMultiplier } from "./renderer";
 
@@ -27,6 +28,13 @@ export const TONE_MAP_UNIFORM_SLOT: int32 = 0;
 export const TONE_MAP_UNIFORM_LENGTH: int32 = 4;
 export const TONE_MAP_EXPOSURE: int32 = 0;
 export const TONE_MAP_MODE: int32 = 1;
+
+// The blocks a ToneMapPass reserves, its own and its bloom's, and their floats.
+export const TONE_MAP_PASS_BLOCKS: Vec<int32> = [
+	TONE_MAP_UNIFORM_LENGTH, BLOOM_UNIFORM_LENGTH, BLOOM_UNIFORM_LENGTH, BLOOM_UNIFORM_LENGTH,
+];
+export const TONE_MAP_PASS_UNIFORM_LENGTH: int32 =
+	TONE_MAP_UNIFORM_LENGTH + BLOOM_PASS_UNIFORM_LENGTH;
 
 // The tone map pass: into an Rgba8 colour target, no depth.
 export const TONE_MAP_LAYOUT: TargetLayout = {
@@ -139,10 +147,12 @@ export interface ToneMapPass {
 	block: UniformBlock;
 	material: MaterialId;
 	values: Vec<float32>;
+	// Off until the preset's setBloom; runs on `target` before the tone map.
+	bloom: BloomPass;
 }
 
-// Reserves the block and adds the material to `context`, whose pool the caller checked fits
-// TONE_MAP_UNIFORM_LENGTH. No GPU object is made here: `target` is allocated by its owner's resize.
+// Reserves the blocks and adds the materials to `context`, whose pool the caller checked fits
+// TONE_MAP_PASS_BLOCKS. No GPU object is made here: `target` is allocated by its owner's resize.
 export function reserve(this typeof ToneMapPass, context: DrawContext): ToneMapPass {
 	const reserved: Result<UniformBlock, UniformError> =
 		reserveUniforms(context, TONE_MAP_UNIFORM_SLOT, TONE_MAP_UNIFORM_LENGTH);
@@ -157,6 +167,7 @@ export function reserve(this typeof ToneMapPass, context: DrawContext): ToneMapP
 	if (!added.ok) { unreachable; }
 	return {
 		target: RenderTarget.unallocated(PixelFormat.Rgba16f, true),
+		bloom: BloomPass.reserve(context),
 		block: reserved.value,
 		material: added.value,
 		values: new Array(TONE_MAP_UNIFORM_LENGTH),
@@ -173,10 +184,13 @@ export function prepare(this pass: ToneMapPass, core: Renderer, sampler: uint32)
 	pass.values[TONE_MAP_MODE] = core.toneMode as float32;
 	const written: Result<int32, UniformError> = writeUniforms(context, pass.block, pass.values);
 	if (!written.ok) { unreachable; }
+	pass.bloom.resize(pass.target.width, pass.target.height);
 }
 
-// One pass over `colors`, an Rgba8 target of `target`'s size.
+// The bloom chain on `target` when it is on, then one pass over `colors`, an Rgba8 target of
+// `target`'s size.
 export function draw(this pass: ToneMapPass, core: Renderer, colors: Vec<ColorAttachment>): void {
+	pass.bloom.draw(core, pass.target);
 	beginPass(colors, NO_DEPTH);
 	const drawn: Result<int32, RendererError> = drawScreen(core, pass.material, TONE_MAP_LAYOUT);
 	if (!drawn.ok) { unreachable; }
@@ -184,6 +198,7 @@ export function draw(this pass: ToneMapPass, core: Renderer, colors: Vec<ColorAt
 }
 
 export function close(this pass: ToneMapPass, context: DrawContext, call: string): void {
+	pass.bloom.close(context, call);
 	pass.target.close();
 	const released: Result<int32, HandleError> = releaseMaterial(context, pass.material);
 	if (!released.ok) {

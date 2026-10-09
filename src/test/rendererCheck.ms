@@ -353,7 +353,7 @@ test "an HDR pixel-art preset is refused by name without Rgba16f, and tone maps 
 		let renderer: PixelArtRenderer = created.value;
 		assert renderer.toneMap !== null && renderer.core.linearOutput;
 		assert context.uniforms.used == PIXEL_ART_HDR_UNIFORM_LENGTH;
-		assert context.liveMaterials() == 3;
+		assert context.liveMaterials() == 6;
 		const toneMapped: Vec<Stage> = [Stage.Scene, Stage.ToneMap, Stage.Post, Stage.Blit];
 		assert sameStages(renderer.stages, toneMapped);
 		setSettings(renderer, { ...PixelArtSettings.full(), postPass: false });
