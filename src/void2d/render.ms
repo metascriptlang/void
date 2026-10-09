@@ -79,7 +79,7 @@ import {
 	reopenLast,
 	FRINGE_HALF_WIDTH,
 } from "./draw";
-import { InstanceMode, SDF_GLYPH_FLAG, UiInstance, uiInstance } from "./instance";
+import { InstanceMode, SDF_GLYPH_FLAG, uiInstance } from "./instance";
 import {
 	NO_LABEL_TEXT,
 	shapeLabel,
