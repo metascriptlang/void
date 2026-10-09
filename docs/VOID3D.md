@@ -162,7 +162,7 @@ Not planned until a consumer reads it: a depth texture for translucent materials
 particles), particle collision, MSAA. Exposure is one scale on the output; the sample bakes it.
 
 Particle lifetime alpha fade is a separate follow-up, built source-only and awaiting GPU
-acceptance: [particleFade.md](particleFade.md). It replaces the unconditional half-alpha
+acceptance: see "Particle alpha fade, as built". It replaces the unconditional half-alpha
 cutoff with the billboard row's explicit cutout idiom; no sampled-depth or pass-order addition.
 
 ### M2 as built
@@ -3606,6 +3606,66 @@ index failed separately for 320×240 and 1280×720, restoring it passed. Headles
 `msc test src/test/index.ms` 1478/1478 and `msc check tests/integration/bloom.ms` pass
 on commit `043e33d0`, tree `f473f1a8711e63c67ddc06f68c95899ac562d80c`.
 The corrected GPU probes still await a slot; CPU agreement is not GPU acceptance.
+
+### Particle alpha fade, as built
+
+**What changes for the author.** `Material.ofKind(Program.Particle, MaterialKind.Alpha)`
+keeps intermediate alpha instead of disappearing below half. It tests depth without
+writing it; other programs retain generic Alpha's existing depth-write default.
+Explicit AlphaKill particles retain the half-alpha silhouette. This is lifetime alpha
+fade, not soft intersections against opaque geometry. **Source built, GPU acceptance
+pending.** Bloom and fade will receive one full gate pair on their combined stack.
+
+**References, read.** Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`:
+`h3d/parts/Emitter.hx` `setState` (:40–46) selects Add/SoftAdd/Alpha;
+`h3d/parts/Particles.hx` `draw` (:161–169) selects the particle order;
+`h3d/mat/Material.hx` `set_blendMode` (:132–146) chooses phases and depth write.
+Heaps Alpha writes depth, Add/SoftAdd do not. Bevy
+`157e1ce6bc66fadca9f57260c18a16d743c11ed5`
+`crates/bevy_pbr/src/render/mesh.rs` `MeshPipeline::specialize` (:3527–3540) uses
+alpha/premultiplied blending without depth writes. That transparent mesh path, not a
+claim of built-in soft particles, owns this particle-depth default divergence.
+
+three.js `d4ea9b981603bc41e34983f998c52347e75b50bd`
+`src/materials/SpriteMaterial.js` defaults to transparency; `Material.js` defaults
+alphaTest to zero. Its `examples/jsm/tsl/utils/SoftParticles.js` `softParticles` reads
+opaque depth, reconstructs view-Z and multiplies opacity by a contrast curve of the gap.
+URG `godot/packs/BinbunVFX/shared/shader/transparent.gdshader` (:62, :123) writes ordinary
+alpha independently of its optional sampled-depth `proximity_fade` branch; the survey
+found that branch disabled. No soft-intersection implementation was found by the
+`soft.?particle`/`SoftParticle` search of Heaps' Haxe sources; that search is not proof
+that an equivalent cannot be composed. Soft intersection is a separate future row.
+
+**Mechanism.** The billboard row's cutout-versus-blended idiom, ProgramKey's existing
+cutout bit, material phases and `writeSortedInstances`. The particle cases extend
+`gpu3d.ms` `withCutout`, `draw.ms` `addMaterial`'s fixed-cut check and `material.ms`
+`cutoutOf`; undeclared keys and the non-fixed uniform-threshold check remain guarded.
+No `src/gpu` or pass-order change. PixelArtRenderer's `drawScene` already draws
+translucent items into color only after opaque MRT, preserving opaque normal/depth
+metadata. Per-emitter sorting does not promise global particle interleaving across
+separate emitter draws. Palette quantization can still make output colors step even
+when alpha is continuous. The door already supports sampled Depth for PixelArtRenderer;
+a future proximity fade must separately establish attachment/sample hazards, opaque-depth
+availability and projection reconstruction. None of those additions is built here.
+
+**Ran, source-only.** BUILD `5039c014`, commit `84482cbc`, tree
+`40d1497dfba5eff448699e0f3ed6324f0d9501f0`: `msc test src/test/index.ms` 1480/1480,
+fixture `msc check` and native `msc build`, and `msc check src/examples/campfireScene.ms`
+pass. The two new headless tests were red on the old key gate
+(`Core Particle has no cutout variant`), then green (300 including std).
+That is an API pin, not an old-shader GPU red control. Regenerated source comparison:
+all 14 vertex/fragment arrays in each preset (seven backends) of old Particle exactly
+equal new ParticleCutout. Only plain particle fragment arrays change. Campfire,
+card-table and churn consumers now explicitly name cutout; source identity supports
+but does not prove capture identity.
+
+**Written, not run.** `tests/integration/particleFade.ms` uses real streams, below-half
+alpha, zero/off, explicit cutout, opaque occlusion and two differently colored particles
+through `writeSortedInstances`. The stage runs native/GL core × LDR/HDR × both presets,
+plus pixel-art post on and palette on; former-cutoff controls must fail continuous alpha.
+Opaque cutout is checked positively in LDR; HDR checks the cut-away quarter-alpha sample,
+continuous alpha, ordering and opaque occlusion, not a new kept-HDR-cutout behavior.
+Existing campfire captures must stay byte-identical. No GPU acceptance is claimed.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
