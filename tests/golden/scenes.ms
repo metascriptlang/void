@@ -107,11 +107,7 @@ import {
 	OUTLINE_EFFECT_SHIFT,
 } from "./table";
 import { Texture, TextureError } from "../../src/gpu/texture";
-when (voidGlCore) {
-	import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenesGl";
-} else {
-	import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
-}
+import { mixedVoid3dTarget, mixedVoid3dTranslucentTarget } from "./mixedScenes";
 import {
 	loadImageSync, imageWidth, imageHeight, freeImage, decodeAnimation,
 } from "../../src/assets/image";
