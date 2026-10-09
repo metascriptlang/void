@@ -1,8 +1,8 @@
-# Particle lifetime fade — reference trace, not implemented
+# Particle lifetime fade — source built, GPU acceptance pending
 
 The requested result is a particle that becomes smoothly transparent over its lifetime,
 not one that disappears below half alpha. It is distinct from fading intersections
-against opaque geometry. Bloom acceptance comes first; this row is reference-only now.
+against opaque geometry. Bloom's GPU slot and acceptance come first; this row is built with light checks only.
 
 ## References read
 
@@ -44,8 +44,9 @@ intent, rather than silently retaining a cutoff on every particle material.
 For translucent particles, test against depth but do not write it; draw after opaque
 geometry, and sort instances back-to-front when the blend requires ordering.
 This follows Bevy's transparent depth behavior, not Heaps' Alpha depth-write default.
-Do not change generic `MaterialKind.Alpha` for other materials as part of this row.
-The author already has explicit RenderState and the emitter's SortMode to select it.
+`Material.ofKind(Program.Particle, MaterialKind.Alpha)` selects non-writing depth;
+other programs keep generic `MaterialKind.Alpha`'s existing depth-write default.
+The emitter's SortMode remains the author's choice.
 Sorting within an emitter does not promise global interleaving of particles from
 separate emitter draws; that limitation is not solved by this row.
 
@@ -73,5 +74,29 @@ None of that is requested or built for ordinary lifetime alpha fade.
   cutout and retain their baseline bytes.
 - Each GPU pin needs a red control of the old cutoff or wrong depth state, then green.
 
-GPU work waits for the manager's named slot. No implementation or GPU verdict is
-claimed by this reference note.
+## Source-only evidence
+
+On BUILD `5039c014`, implementation/test commit `84482cbc`, tree
+`40d1497dfba5eff448699e0f3ed6324f0d9501f0`:
+`msc test src/test/index.ms` 1480/1480, fixture `msc check` and native `msc build`
+pass, and `msc check src/examples/campfireScene.ms` passes. The new headless pin was
+red on the old key gate (`Core Particle has no cutout variant`), then green (two tests,
+300 including std). That is an API pin, not an old-shader GPU red control.
+
+Regenerated source-array comparison: all 14 vertex/fragment arrays in each preset
+(seven backends) of the old Particle exactly equal the new ParticleCutout arrays.
+Only the plain particle fragment arrays change. Campfire/card-table/churn consumers
+name explicit cutout; source-array identity supports the baseline expectation but
+is not a replacement for capture readback.
+
+`tests/integration/particleFade.ms` is the real stream consumer, with a below-half
+alpha readback, fixed cutout, opaque occlusion, and two differently colored particles
+written by `writeSortedInstances`. Its gate stage runs native and GL core × LDR/HDR,
+both presets, plus pixel-art post on and palette on. Its former-cutoff controls must
+fail the continuous-alpha assertion. None of these GPU runs has been executed yet.
+
+Opaque cutout preservation is checked positively in LDR; HDR reads the cut-away
+quarter-alpha sample, while continuous alpha, ordering and opaque occlusion are
+checked in both target formats. Do not claim a new HDR cutout behavior from this pin.
+
+GPU work waits for the manager's named slot. No GPU acceptance is claimed.

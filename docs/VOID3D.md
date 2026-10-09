@@ -161,6 +161,10 @@ Rows, in order. A row's dependency is why it sits where it does.
 Not planned until a consumer reads it: a depth texture for translucent materials (soft
 particles), particle collision, MSAA. Exposure is one scale on the output; the sample bakes it.
 
+Particle lifetime alpha fade is a separate follow-up, built source-only and awaiting GPU
+acceptance: [particleFade.md](particleFade.md). It replaces the unconditional half-alpha
+cutoff with the billboard row's explicit cutout idiom; no sampled-depth or pass-order addition.
+
 ### M2 as built
 
 - **Bridge.** `gpu3d.c` turns flat arrays into `sg_*_desc` and nothing else: a program table (`Program` → `*_shader_desc(sg_query_backend())`), three vertex layouts (`Lit`, `Billboard` with an instance buffer in slot 1, `Fullscreen`), and ordinal → sokol tables for every enum, each with a `_Static_assert` on its length against the MetaScript enum (order is still kept by hand). Descriptor layouts are `static const int32_t` in `gpu3d.h`, the one form of constant msc imports from a header. Front faces are CCW.
