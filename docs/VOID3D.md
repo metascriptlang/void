@@ -3288,6 +3288,11 @@ with the flag, draws a blue outline of width 3 around the white T and checks the
 untouched margin, the text and the outline pixels in both presets; the bare build stops by name.
 Ran: `msc check` of the test with and without the flag; not run: the GPU stage.
 
+Acceptance, D3D11: the pair on `dc27350d` (outline and HDR stacked on main `d5d09498`), BUILD
+`1090f789` before, between and after: `gate3d.sh` 343 PASS with the 3 known skips, the
+`world-label` outline stage GREEN in both presets with the bare build stopping by name, every capture
+byte-identical; `gate.sh` GREEN (golden d3d11 120/120).
+
 ### void3d on GL core (glsl430), as built
 
 **What changes for the author.** void3d builds for `SOKOL_GLCORE`, the desktop GL 4.3 backend Void's
@@ -3413,6 +3418,15 @@ branch) and add `toneMap`'s. Not run: the GPU stages `hdr` and `gl-core`'s `hdr`
 1, 1.5, 0.4; the overlap pinned against a blend of encoded colours, the additive sum at 0.4 against
 a target clipped at 1), the captures.
 
+**Acceptance, D3D11 and GL core.** The pair on `dc27350d` over main `d5d09498`, BUILD `1090f789`
+before, between and after: `gate3d.sh` 343 PASS with the 3 known skips (tests 1459/1459), every
+capture byte-identical with HDR off, the `hdr` stage GREEN at all three exposures, `gl-core` 23
+readback runs of 13 checks with `hdr` among them; `gate.sh` GREEN (golden d3d11 120/120). The same
+slot ran the web probe of the compiler card in headless Chrome on WebGL2: module state read
+`length 3` at top level and `length 0` in both sokol callbacks, confirming
+`.inbox/compiler/2026-10-09-emcc-main-destroys-globals-before-frame-loop.md`; the web stages stay
+red until it is fixed.
+
 ### Tone curves, as built
 
 **What changes for the author.** `setToneMode(renderer.core, ToneMode.Reinhard)` (or `Filmic`,
@@ -3483,6 +3497,16 @@ post and blit are unchanged. The scene programs write linear through the same `F
 length, the stage plan with and without post, close releasing all three materials); `msc build` of
 `tests/integration/hdr.ms`, which now runs in both presets (`VOID_HDR_PIXEL_ART`, gate3d and gl-core
 both). Not run: the GPU stages.
+
+**Acceptance, D3D11 and GL core, for the tone curves, pixel-art HDR and the review fixes.** The pair
+on `e3941c8f` over main `6ef480fd`, BUILD `1090f789` before, between and after: `gate3d.sh` 345
+PASS with the 3 known skips (tests 1472/1472), every capture byte-identical; `hdr` GREEN in both
+presets (Linear at three exposures, Reinhard, Filmic and Neutral against `toneCurved`, the
+transparent edge against the LDR value); `exposure` GREEN in both presets with Reinhard per layer
+and the tone mapped background; `gl-core` 24 readback runs of 13 checks; aborts3d
+`linear.intoEncoded` and `encoded.intoLinear` stop by name; `gate.sh` GREEN (golden d3d11
+120/120). Not shown: the new GPU pins red on the old shaders, which only the computed gaps in the
+tests (5 levels or more) stand for.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
