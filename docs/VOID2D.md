@@ -2821,8 +2821,9 @@ held by the two style-run rows of `bidiShapedCheck.ms`).
 
 **Owed** (runs that need the web build): `sh scripts/experiment-modulesWeb.sh bidi` and
 `scripts/build-web.sh` for the linked wasm of the module and the WebGL2 pass rate of the new
-scenes; the web build is also blocked by compiler card
-`2026-09-26-interface-array-to-span-void-pointer.md` (`compiler:bool-span-web`). Also owed: the
+scenes; the web build was also blocked by compiler card
+`2026-09-26-interface-array-to-span-void-pointer.md` until msc BUILD `5039c014`, and now stops only
+at Yoga's web link (`web:runs`). Also owed: the
 `tests/golden/invariants.ms` no-gap check over a selection that is two spans on one row. The
 native gate ran green with the BiDi oracle in the all-modules T0 stage.
 
