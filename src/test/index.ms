@@ -39,6 +39,7 @@ import "./snapCheck";
 import "./rendererCheck";
 import "./programKeyCheck";
 import "./bloomCheck";
+import "./bloomKernelCheck";
 import "./dirShadowCheck";
 import "./cameraCheck";
 import "./frustumCheck";

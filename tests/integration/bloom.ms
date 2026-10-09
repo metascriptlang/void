@@ -256,8 +256,8 @@ function checkFalloff(): void {
 	let previous: int32 = 256;
 	for (const r of RADII) {
 		const right: int32 = green(cx + r, cy);
-		const left: int32 = green(cx - r, cy);
-		const up: int32 = green(cx, cy - r);
+		const left: int32 = green(WIDTH - 1 - (cx + r), cy);
+		const up: int32 = green(cx, HEIGHT - 1 - (cy + r));
 		const down: int32 = green(cx, cy + r);
 		console.log(`bloom: radius ${r}: right ${right} left ${left} up ${up} down ${down}`);
 		const high: int32 = Math.max(Math.max(right, left), Math.max(up, down)) as int32;
