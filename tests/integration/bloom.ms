@@ -200,8 +200,10 @@ function viewOf(): CameraView {
 	unreachable;
 }
 
-function green(x: int32, y: int32): int32 {
-	return ((voidCapturePixel(0, x, y) >> 16) & 255) as int32;
+function green(x: int32, y: int32, slot: int32 = 0): int32 {
+	const pixel: int64 = voidCapturePixel(slot, x, y);
+	if (pixel < 0) { fail(`capture slot ${slot} has no pixel at (${x}, ${y})`); }
+	return ((pixel >> 16) & 255) as int32;
 }
 
 // The frame's light in linear units: every pixel's green decoded and summed.
@@ -273,7 +275,7 @@ function frame(): void {
 	const additive: BloomSettings = { ...natural, compositeMode: BloomCompositeMode.Additive };
 	if (stage == 0) {
 		draw(Scene.Bright, 1);
-		if (green(WIDTH / 2 + RADII[1], HEIGHT / 2) != 0) { fail("light outside the square, off"); }
+		if (green(WIDTH / 2 + RADII[1], HEIGHT / 2, 1) != 0) { fail("light outside the square, off"); }
 	} else if (stage == 1) {
 		setOn(natural, false);
 		draw(Scene.Bright, 0);
