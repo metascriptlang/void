@@ -365,7 +365,7 @@ in the same change as the fix.
 | Backend | Conformance | Runs |
 |---|---|---|
 | D3D11 | **120 / 120 scenes byte-identical** | every full gate, this box |
-| GL core 4.3 desktop (glsl430) | **118 / 118**: 92 byte-identical, 26 within the cross-backend bound, 0 structural failures, 2 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
+| GL core 4.3 desktop (glsl430) | **120 / 120**: 94 byte-identical, 26 within the cross-backend bound, 0 structural failures, 0 void3d scenes excluded by name | `sh scripts/golden.sh --backend gl`, and every full gate |
 | Metal macOS | no readback; the Mac is the human's | SKIP |
 | Metal iOS | no readback; the first device run is T5, on the human's device | SKIP |
 | GLES3 Android | shares the `glReadPixels` path; needs the human's device | SKIP |

@@ -8,10 +8,10 @@ function excludedCount(directory: string): int32 {
 	return count;
 }
 
-test "the GL core 4.3 backend leaves out the two scenes that draw with void3d, by name" {
-	assert sceneExclusion("gl430", "mixed/void3dTarget").length > 0;
-	assert sceneExclusion("gl430", "mixed/void3dTranslucentTarget").length > 0;
-	assert excludedCount("gl430") == 2;
+test "the GL core 4.3 backend includes both scenes that draw with void3d" {
+	assert sceneExclusion("gl430", "mixed/void3dTarget").length == 0;
+	assert sceneExclusion("gl430", "mixed/void3dTranslucentTarget").length == 0;
+	assert excludedCount("gl430") == 0;
 }
 
 test "no other backend leaves a scene out" {
