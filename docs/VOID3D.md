@@ -1382,7 +1382,16 @@ milestone's consumer run on `0048b18`.
 - `RenderTarget` is now a reference owner with in-place resize, terminal close and `isClosed`
   (`src/gpu/target.ms`, VOID2D.md "RenderTarget reference owner"); Sampler remains a value.
   Their generation and checked borrows are the shared door contract.
-- A store's `serial` is writable where it should be `readonly` (PENDING3D `store-serial-writable`).
+- The store serials and owner contexts are readonly after the compiler-debt unpark on
+  BUILD `5039c014`. Debt-only tree `b84286ecb0817b504f498c5608c17a05dcbc2db9`:
+  `msc test src/test/index.ms` 1472/1472 and `msc test src/test/layoutCheck.ms` 324/324.
+  Native evidence carried from `out/tmp/pairBloom`, commit `999d7333`, tree
+  `fd3fdf87dd764b8612b95c5f914d5a1c2a0a0eca`, on the same BUILD: gate.sh GREEN
+  (D3D11 golden 120/120, GL430 92 pass / 26 pending / 0 fail); gate3d 347 PASS,
+  3 skips, with only its two bloom stages red. That superset contains the identical debt
+  tree; bloom is opt-in and off in the carried checks. Bloom remains unaccepted.
+  WebGL2 is still 0/17 on the recorded emcc global-teardown card; the text-drawing
+  entries remain parked on the Yoga web-link card.
 
 ### M25 as built
 
@@ -1496,8 +1505,8 @@ The row is `b4f7fc5`; the milestone is the commits after it on `wt/void3d-m5`, o
   (`src/gpu/door.c`), so `upload`'s forget-and-remake and `closeContext`'s stale-sampler branch
   never execute. closeCheck reaches the stale `releaseGpu`, `closePalette` and `closeRenderer`
   with fabricated handles. A device run (V6) is what runs them.
-- Owner `context` fields and a scene's `serial` are writable where they should be `readonly`
-  (PENDING3D `store-serial-writable`).
+- Owner `context` fields and the scene's `serial` are now readonly; the debt-unpark
+  acceptance above records the synced compiler and the checked scope.
 - An interface literal that leaves out a reference field compiles, the field null
   (`src/examples/campfireScene.ms` had one; compiler card
   `2026-10-03-interface-literal-omitted-reference-field.md`).
