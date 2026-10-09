@@ -505,7 +505,6 @@ void main() {
 @end
 
 @fs particleFs
-// PENDING3D: particle-alpha-tested
 @include_block colorSpace
 @include_block frameUniforms
 @include_block toneMap
@@ -514,10 +513,14 @@ in float depth01;
 layout(location=0) out vec4 fragColor;
 layout(location=1) out vec4 fragNormal;
 void main() {
+#ifdef CUTOUT
     if (particleColor.a < 0.5) {
         discard;
     }
     fragColor = vec4(particleColor.rgb, 0.0);
+#else
+    fragColor = particleColor;
+#endif
     fragNormal = vec4(0.5, 1.0, 0.5, depth01);
     fragColor.rgb = toneMapped(fragColor.rgb);
 }

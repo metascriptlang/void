@@ -5,10 +5,12 @@
 # module                                program         preset    features                                     vs              fs                    layout
 lit                                     LIT             CORE      -                                            litVs           litFs                 LIT
 particle                                PARTICLE        CORE      -                                            particleVs      particleFs            PARTICLE
+particleCutout                          PARTICLE        CORE      CUTOUT                                       particleVs      particleFs            PARTICLE
 billboard                               BILLBOARD       CORE      -                                            billboardVs     billboardFs           BILLBOARD
 copy                                    COPY            CORE      -                                            fullscreenVs    copyFs                FULLSCREEN
 pixelArtLit                             LIT             PIXEL_ART -                                            litVs           litFs                 LIT
 pixelArtParticle                        PARTICLE        PIXEL_ART -                                            particleVs      particleFs            PARTICLE
+pixelArtParticleCutout                  PARTICLE        PIXEL_ART CUTOUT                                       particleVs      particleFs            PARTICLE
 pixelArtBillboard                       BILLBOARD       PIXEL_ART -                                            billboardVs     billboardFs           BILLBOARD
 pixelArtPost                            POST            PIXEL_ART -                                            fullscreenVs    postFs                FULLSCREEN
 pixelArtBlit                            BLIT            PIXEL_ART -                                            fullscreenVs    blitFs                FULLSCREEN

@@ -617,7 +617,7 @@ function torch(x: float32, which: int32): NodeId3D {
 		addStreamMesh(context, flameState().maxParts);
 	if (!stream.ok) { stop("a flame stream was refused"); unreachable; }
 	const particles: MaterialId =
-		material(Material.ofKind(Program.Particle, MaterialKind.Opaque));
+		material(Material.ofKind(Program.Particle, MaterialKind.AlphaKill));
 	const emitterAt: Transform3D = Transform3D.fromTranslation(vec3(x, FLAME_BASE, TORCH_Z));
 	const emitter: NodeId3D = place(scene.rootId(), emitterAt, stream.value, particles);
 	if (which == 0) { torchAMesh = stream.value; } else { torchBMesh = stream.value; }

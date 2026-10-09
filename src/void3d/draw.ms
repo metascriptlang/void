@@ -866,7 +866,8 @@ export function addMaterial(
 	if (material.program.premultiplied && !blendsPremultiplied(material.pass)) {
 		return Result.err(MaterialError.StraightBlend);
 	}
-	const fixedCut: boolean = material.program.program == Program.Billboard;
+	const fixedCut: boolean = material.program.program == Program.Billboard ||
+		material.program.program == Program.Particle;
 	if (material.program.cutout && !fixedCut && !context.cutsAbove(material.uniforms)) {
 		return Result.err(MaterialError.NoAlphaKill);
 	}

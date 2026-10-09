@@ -4,6 +4,7 @@ import { gfxSetup } from "../sokol/gpu";
 import { vec3, identityQuat } from "../math/math3d";
 import {
 	Program,
+	ProgramKey,
 	MATERIAL_UNIFORM_SLOT,
 	MATERIAL_UNIFORM_LENGTH,
 	VERTEX_UNIFORM_LENGTH,
@@ -251,7 +252,8 @@ function litMaterial(program: Program, texture: TextureId): Result<MaterialId, C
 }
 
 function particleMaterial(): Result<MaterialId, ChurnError> {
-	const plain: Material = Material.plain(Program.Particle, RenderState.defaults(), Phase.Opaque);
+	const plain: Material = Material.keyed(ProgramKey.of(Program.Particle).withCutout(),
+		RenderState.defaults(), Phase.Opaque);
 	const added: Result<MaterialId, MaterialError> = addMaterial(context, plain);
 	if (!added.ok) { return Result.err(ChurnError.MaterialRefused); }
 	return Result.ok(added.value);

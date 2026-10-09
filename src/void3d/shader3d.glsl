@@ -383,16 +383,17 @@ void main() {
 @end
 
 @fs particleFs
-// PENDING3D: particle-alpha-tested
 @include_block colorSpace
 @include_block frameUniforms
 @include_block toneMap
 in vec4 particleColor;
 out vec4 fragColor;
 void main() {
+#ifdef CUTOUT
     if (particleColor.a < 0.5) {
         discard;
     }
+#endif
     fragColor = particleColor;
     fragColor.rgb = toneMapped(fragColor.rgb);
 }

@@ -980,7 +980,8 @@ enum ParticleSetupError {
 
 function setupParticles(root: NodeId3D, state: RenderState): Result<int32, ParticleSetupError> {
 	const particleAdded: Result<MaterialId, MaterialError> =
-		addMaterial(context, Material.plain(Program.Particle, state, Phase.Opaque));
+		addMaterial(context,
+			Material.keyed(ProgramKey.of(Program.Particle).withCutout(), state, Phase.Opaque));
 	if (!particleAdded.ok) { return Result.err(ParticleSetupError.MaterialRefused); }
 	particleMaterial = particleAdded.value;
 	const snowStream: Result<MeshId, StreamError> = addStreamMesh(context, snow.capacity);

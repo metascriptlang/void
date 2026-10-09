@@ -62,6 +62,7 @@ import "./pickCheck";
 import "./layersCheck";
 import "./renderOrderCheck";
 import "./particlesCheck";
+import "./particleFadeCheck";
 import "./layoutCheck";
 import "./billboardCheck";
 when (voidShaper) {

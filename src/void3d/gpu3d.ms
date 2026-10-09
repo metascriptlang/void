@@ -107,7 +107,8 @@ export function withPremultiplied(this key: ProgramKey): ProgramKey {
 
 export function withCutout(this key: ProgramKey): ProgramKey {
 	const cuts: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
-		key.program == Program.UnlitTextured || key.program == Program.Billboard;
+		key.program == Program.UnlitTextured || key.program == Program.Billboard ||
+		key.program == Program.Particle;
 	if (!cuts) { return stopOnFeature(key, "cutout"); }
 	return { ...key, cutout: true };
 }

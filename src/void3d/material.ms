@@ -137,7 +137,7 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.LitTextured => ProgramKey.of(program).withCutout(),
 		Program.UnlitTextured => ProgramKey.of(program).withCutout(),
 		Program.Billboard => ProgramKey.of(program).withCutout(),
-		Program.Particle => stopOnFixedCut(program),
+		Program.Particle => ProgramKey.of(program).withCutout(),
 		Program.Copy => stopOnNoCutout(program),
 		Program.Post => stopOnNoCutout(program),
 		Program.Blit => stopOnNoCutout(program),
@@ -145,14 +145,6 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.BloomDownsample => stopOnNoCutout(program),
 		Program.BloomUpsample => stopOnNoCutout(program),
 	};
-}
-
-// A particle's block holds colour where a material block holds the threshold, and its program
-// always cuts.
-function stopOnFixedCut(program: Program): ProgramKey {
-	console.log(`void3d: MaterialKind.AlphaKill for ${program.toString()}, which already cuts at ` +
-		"a fixed alpha");
-	unreachable;
 }
 
 function stopOnNoCutout(program: Program): ProgramKey {
@@ -180,7 +172,10 @@ export function ofKind(this typeof Material, program: Program, kind: MaterialKin
 	const lit: boolean = program == Program.Lit || program == Program.LitTextured;
 	const faces: RenderState = culledByDefault(program) ?
 		RenderState.defaults() : RenderState.defaults().withCulling(Face.None);
-	const material: Material = Material.keyed(key, passFor(kind, faces), phaseFor(kind));
+	const pass: RenderState = passFor(kind, faces);
+	const particleAlpha: boolean = program == Program.Particle && kind == MaterialKind.Alpha;
+	const material: Material = Material.keyed(key,
+		particleAlpha ? pass.withDepth(false, pass.depthTest) : pass, phaseFor(kind));
 	const cast: ShadowCasting = castsByDefault(program) ? ShadowCasting.On : ShadowCasting.Off;
 	return material.withShadows(cast, lit);
 }
