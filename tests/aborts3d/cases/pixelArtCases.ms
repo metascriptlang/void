@@ -4,6 +4,7 @@
 // expect closed.viewFor: void3d: viewFor on a pixel-art preset that was closed
 // expect closed.drawToScreen: void3d: drawToScreen on a pixel-art preset that was closed
 // expect closed.closePixelArt: void3d: closePixelArt on a pixel-art preset that was closed
+// expect bloom.ldr: void3d: setBloom on a pixel-art preset made by create; bloom needs createHdr
 import { argv } from "std/process";
 import { Vec4 } from "../../../src/math/math3d";
 import { DrawContext } from "../../../src/void3d/draw";
@@ -20,7 +21,9 @@ import {
 	setPalette,
 	drawToScreen,
 	closePixelArt,
+	setBloom,
 } from "../../../src/void3d/pixelArtRenderer";
+import { BloomSettings } from "../../../src/void3d/bloom";
 
 const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 
@@ -50,7 +53,13 @@ function closedPixelArt(): PixelArtRenderer {
 
 function run(name: string): void {
 	let colors: Vec<uint32> = [0xFF000000, 0xFFFFFFFF];
-	if (name == "closed.setSettings") {
+	if (name == "bloom.ldr") {
+		let context: DrawContext = DrawContext.withUniformCapacity(PIXEL_ART_UNIFORM_LENGTH);
+		const made: Result<PixelArtRenderer, PixelArtError> =
+			PixelArtRenderer.create(context, PixelArtSettings.full(), look());
+		if (!made.ok) { unreachable; }
+		setBloom(made.value, BloomSettings.natural());
+	} else if (name == "closed.setSettings") {
 		setSettings(closedPixelArt(), PixelArtSettings.full());
 	} else if (name == "closed.setLook") {
 		setLook(closedPixelArt(), look());

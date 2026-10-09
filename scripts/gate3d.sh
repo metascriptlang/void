@@ -1201,6 +1201,32 @@ run_exposure() {
 	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending, Reinhard per layer"
 }
 
+run_bloom() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "bloom: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/bloom.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/bloom.ms --output="$exe" > "$WORK/bloom.build.log" 2>&1; then
+		fail "bloom: tests/integration/bloom.ms does not build — see $WORK/bloom.build.log"
+		return
+	fi
+	for preset in 0 1; do
+		status=0
+		VOID_BLOOM_PIXEL_ART=$preset "$exe" > "$WORK/bloom.$preset.log" 2>&1 || status=$?
+		if [ "$status" -eq 3 ]; then
+			skip "bloom: no native readback backend"
+			return
+		fi
+		if [ "$status" -ne 0 ] || ! grep -q '^PASS bloom: ' "$WORK/bloom.$preset.log"; then
+			fail "bloom: preset $preset (exit $status) — see $WORK/bloom.$preset.log"
+			return
+		fi
+	done
+	pass "bloom: Bevy's mip chain on the HDR target in both presets; falloff, energy, off byte-identical"
+}
+
 run_hdr() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "hdr: GATE_SKIP_CAPTURE=1 — nothing was read back"
@@ -1236,7 +1262,7 @@ GL_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_B
 	cardTable:- dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
 	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 targetTexture:VOID_TARGET_TEXTURE_PRESET=pixelArt
-	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1"
+	worldLabel:VOID_WORLD_LABEL_PRESET=pixelArt exposure:VOID_EXPOSURE_PIXEL_ART=1 hdr:VOID_HDR_PIXEL_ART=1 bloom:VOID_BLOOM_PIXEL_ART=1"
 
 run_gl_core() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
@@ -2853,6 +2879,7 @@ run_world_label
 run_card_table
 run_exposure
 run_hdr
+run_bloom
 run_gl_core
 run_stores
 run_views
