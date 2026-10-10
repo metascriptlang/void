@@ -161,8 +161,8 @@ Rows, in order. A row's dependency is why it sits where it does.
 Not planned until a consumer reads it: a depth texture for translucent materials (soft
 particles), particle collision, MSAA. Exposure is one scale on the output; the sample bakes it.
 
-Particle lifetime alpha fade is a separate follow-up, built source-only and awaiting GPU
-acceptance: see "Particle alpha fade, as built". It replaces the unconditional half-alpha
+Particle lifetime alpha fade is a separate follow-up, accepted on native D3D11 and GL
+core: see "Particle alpha fade, as built". It replaces the unconditional half-alpha
 cutoff with the billboard row's explicit cutout idiom; no sampled-depth or pass-order addition.
 
 ### M2 as built
@@ -3575,7 +3575,7 @@ blend factors and threshold precomputations against Bevy's formulas evaluated ap
 blend state, setBloom on and off; the 92 declared keys and the bloom blocks' lengths in
 programKeyCheck); aborts3d `bloom.ldr` in both presets and `bloom.settings` stop by name;
 `msc build` of `tests/integration/bloom.ms`; the regenerated headers add the three programs and
-change no existing array. Acceptance criteria, not yet accepted: the GPU stage `bloom`
+change no existing array. Acceptance criteria, now measured below: the GPU stage `bloom`
 (gate3d, both presets, and gl-core) checks that a bright square's light falls off with distance
 and evenly on four sides, energy
 conserving keeps the frame's light within -15%..+5% where additive adds 10% or more, bloom set off
@@ -3605,7 +3605,17 @@ CPU pin `src/test/bloomKernelCheck.ms` runs both odd chains; substituting the ol
 index failed separately for 320×240 and 1280×720, restoring it passed. Headless
 `msc test src/test/index.ms` 1478/1478 and `msc check tests/integration/bloom.ms` pass
 on commit `043e33d0`, tree `f473f1a8711e63c67ddc06f68c95899ac562d80c`.
-The corrected GPU probes still await a slot; CPU agreement is not GPU acceptance.
+CPU agreement alone was not GPU acceptance; the corrected probes' native acceptance follows.
+
+**Native acceptance, 2026-10-10, BUILD `5039c014` binary and support.** Full joint run
+`out/tmp/pairBloomFade` checked `958904e9`, tree
+`1b76c9c0487066bc8dd22661b803ac2ca226a9fd`. Bloom passed forward and pixel-art on
+D3D11 and GL core with matching measurements: radius 8 reads 27/27/28/28,
+radius 16 all 6, radius 32 all 1, radius 64 all 0. Patch energy 804.618 off,
+794.182 conserving (-1.30%), 1347.351 additive (+67.45%). Transparent edge 115 off,
+114 on, outside 0; switching off again is byte-identical. No tolerance was changed.
+The complete joint gate receipt is after "Particle alpha fade, as built".
+Web and a physical GLES3 device were not accepted by this run.
 
 ### Particle alpha fade, as built
 
@@ -3613,8 +3623,8 @@ The corrected GPU probes still await a slot; CPU agreement is not GPU acceptance
 keeps intermediate alpha instead of disappearing below half. It tests depth without
 writing it; other programs retain generic Alpha's existing depth-write default.
 Explicit AlphaKill particles retain the half-alpha silhouette. This is lifetime alpha
-fade, not soft intersections against opaque geometry. **Source built, GPU acceptance
-pending.** Bloom and fade will receive one full gate pair on their combined stack.
+fade, not soft intersections against opaque geometry. **Native acceptance passed on
+D3D11 and GL core**, using the joint full run and the isolated-control retry below.
 
 **References, read.** Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`:
 `h3d/parts/Emitter.hx` `setState` (:40–46) selects Add/SoftAdd/Alpha;
@@ -3659,13 +3669,36 @@ equal new ParticleCutout. Only plain particle fragment arrays change. Campfire,
 card-table and churn consumers now explicitly name cutout; source identity supports
 but does not prove capture identity.
 
-**Written, not run.** `tests/integration/particleFade.ms` uses real streams, below-half
+**Ran on the real consumer.** `tests/integration/particleFade.ms` uses streams, below-half
 alpha, zero/off, explicit cutout, opaque occlusion and two differently colored particles
-through `writeSortedInstances`. The stage runs native/GL core × LDR/HDR × both presets,
-plus pixel-art post on and palette on; former-cutoff controls must fail continuous alpha.
-Opaque cutout is checked positively in LDR; HDR checks the cut-away quarter-alpha sample,
-continuous alpha, ordering and opaque occlusion, not a new kept-HDR-cutout behavior.
-Existing campfire captures must stay byte-identical. No GPU acceptance is claimed.
+through `writeSortedInstances`. Native/GL core × LDR/HDR × both presets, plus pixel-art
+post on and palette on: 16 positive runs pass. Their 16 former-cutoff controls fail at
+stage 1's continuous-alpha assertion. LDR reads alpha 0.25 → green 102, 0.49 → 151,
+0.51 → 155 over background 51; HDR reads 143/189/192. Palette-on reads 102/153/153:
+alpha is continuous while quantized colors can step. Opaque cutout is checked positively
+in LDR; HDR checks the cut-away quarter-alpha sample, continuous alpha, ordering and
+opaque occlusion, not a new kept-HDR-cutout behavior.
+
+**Control isolation.** The original joint run passed all 16 positive fade cases but
+reported 12 pixel-art controls as failures: the control also cut the sorted emitter,
+whose colors failed at stage 0 before the intended fade assertion. `f4b1642c` changes
+only that emitter back to ordinary Alpha; the former-cutoff key remains on the fade
+probes. No product shader, alpha value, depth state, or tolerance changed. Exact stage
+retry `out/tmp/particleFadeRetry` checked `f4b1642c`, tree
+`7f98e1f8d96d0a6d5b7514e548aafbe83c4a5412`: 16 PASS, zero FAIL or skips, every
+cutoff control red at the intended assertion. Binary/support BUILD remained `5039c014`.
+
+**Joint acceptance receipt.** Full run `958904e9` on base `7061e605`:
+gate3d 352 PASS / 12 control-routing FAIL / 3 known skips; gate.sh GREEN with 8 loud skips.
+Replacing its fade stage results with the fresh isolated-control retry yields effective
+364 PASS / zero FAIL / the same 3 skips. Headless 1480/1480; accepted capture bytes
+unchanged, 72 manifest hashes; GL core 26 runs of 14 checks pass. D3D11 golden 120/120;
+GL430 94 pass / 26 bounded pending / zero fail of 120. Two exact legacy capture sets
+remain held rather than accepted (`capture-m14forward`, `capture-m16anchor`); physical
+GLES3 is the third skip. Android arm64 library built, not device-tested. The full run
+and retry record the same binary/support BUILD before, between and after each stage.
+Only the test control changed, so unaffected full-run evidence carries to the retry.
+Web was not rerun: its earlier 0/17 and the independent emcc/Yoga blockers remain open.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
