@@ -32,6 +32,7 @@ import { sinf, cosf } from "../math/mat4";
 import { Bounds3D, addPoint } from "./bounds";
 import { Ray } from "./ray";
 import { Face } from "../gpu/state";
+import { MAX_SKIN_PALETTE_JOINTS } from "./skinPalette";
 
 // position(3) + normal(3) + rgba(4), the `Lit` vertex layout in gpu3d.c describeLayout.
 export const LIT_VERTEX_STRIDE: int32 = 10;
@@ -64,6 +65,7 @@ export struct MeshData {
 	bounds: Bounds3D;
 	hasUvs: boolean;
 	hasTangents: boolean;
+	hasSkin: boolean;
 }
 
 export struct MeshRayHit {
@@ -77,11 +79,20 @@ export enum MeshError {
 	UvMismatch,
 	TangentsAdded,
 	TangentCount,
+	SkinAdded,
+	SkinCount,
+	SkinJoint,
+	SkinWeight,
 }
 
 export function empty(this typeof MeshData): MeshData {
 	return {
-		vertices: [], indices: [], bounds: Bounds3D.empty(), hasUvs: false, hasTangents: false,
+		vertices: [],
+		indices: [],
+		bounds: Bounds3D.empty(),
+		hasUvs: false,
+		hasTangents: false,
+		hasSkin: false,
 	};
 }
 
@@ -90,8 +101,51 @@ export function withUvs(this typeof MeshData): MeshData {
 }
 
 export function stride(this data: Readonly<MeshData>): int32 {
-	if (data.hasTangents) { return LIT_TEXTURED_TANGENT_VERTEX_STRIDE; }
-	return data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE;
+	const base: int32 = data.hasTangents ? LIT_TEXTURED_TANGENT_VERTEX_STRIDE :
+		(data.hasUvs ? LIT_TEXTURED_VERTEX_STRIDE : LIT_VERTEX_STRIDE);
+	return base + (data.hasSkin ? 8 : 0);
+}
+
+export function addSkinAttributes(
+	ref data: MeshData,
+	joints: Readonly<Span<int32>>,
+	weights: Readonly<Span<float32>>,
+): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
+	const count: int32 = data.vertexCount();
+	const base: int32 = data.stride();
+	if (count > MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
+	if (count < 1 || data.vertices.length != count * base ||
+		joints.length != count * 4 || weights.length != joints.length) {
+		return Result.err(MeshError.SkinCount);
+	}
+	for (let vertex = 0; vertex < count; vertex++) {
+		let total: float64 = 0.0;
+		for (let slot = 0; slot < 4; slot++) {
+			const at: int32 = vertex * 4 + slot;
+			if (joints[at] < 0 || joints[at] >= MAX_SKIN_PALETTE_JOINTS) {
+				return Result.err(MeshError.SkinJoint);
+			}
+			if (!Number.isFinite(weights[at]) || weights[at] < 0.0) {
+				return Result.err(MeshError.SkinWeight);
+			}
+			total += weights[at] as float64;
+		}
+		if (!Number.isFinite(total) || Math.abs(total - 1.0) > 0.00001) {
+			return Result.err(MeshError.SkinWeight);
+		}
+	}
+	let packed: Vec<float32> = [];
+	for (let vertex = 0; vertex < count; vertex++) {
+		for (let field = 0; field < base; field++) {
+			packed.push(data.vertices[vertex * base + field]);
+		}
+		for (let slot = 0; slot < 4; slot++) { packed.push(joints[vertex * 4 + slot] as float32); }
+		for (let slot = 0; slot < 4; slot++) { packed.push(weights[vertex * 4 + slot]); }
+	}
+	data.vertices = move packed;
+	data.hasSkin = true;
+	return Result.ok(count);
 }
 
 export function vertexCount(this data: Readonly<MeshData>): int32 {
@@ -120,6 +174,7 @@ export function addVertex(
 	normal: Vec3,
 	color: Rgba,
 ): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	const index: int32 = data.vertexCount();
 	if (index >= MAX_MESH_VERTICES) { return Result.err(MeshError.TooManyVertices); }
@@ -144,6 +199,7 @@ export function addTexturedVertex(
 	uv: Uv,
 	color: Rgba,
 ): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
 	let index: int32 = data.vertexCount();
@@ -238,6 +294,7 @@ export function addTexturedQuad(
 // disagree is split, the copy appended and those corners re-pointed: three.js' de-indexed result
 // with its duplicates shared. w is glTF's, the negated MikkTSpace sign (three.js negateSign, Bevy).
 export function addTangents(ref data: MeshData): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
 	const count: int32 = data.vertexCount();
@@ -317,6 +374,7 @@ export function addGivenTangents(
 	ref data: MeshData,
 	tangents: Readonly<Span<float32>>,
 ): Result<int32, MeshError> {
+	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
 	if ((tangents.length as int32) != data.vertexCount() * 4) {

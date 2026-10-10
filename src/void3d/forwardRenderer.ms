@@ -115,6 +115,7 @@ export enum ForwardError {
 	ForeignMaterial,
 	ProgramNotCast,
 	CasterBlock,
+	SkinPose,
 	DrawRange,
 	TargetSize,
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
@@ -250,6 +251,7 @@ function fromCore(error: RendererError): ForwardError {
 		RendererError.ForeignMaterial => ForwardError.ForeignMaterial,
 		RendererError.ProgramNotCast => ForwardError.ProgramNotCast,
 		RendererError.CasterBlock => ForwardError.CasterBlock,
+		RendererError.SkinPose => ForwardError.SkinPose,
 		RendererError.DrawRange => ForwardError.DrawRange,
 	};
 }

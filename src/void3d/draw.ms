@@ -6,8 +6,12 @@
 // and the pipeline cache. Items and materials are plain values holding indices and handles.
 
 import { Mat4, normalMatrix, writeTo } from "../math/math3d";
+import { SkinPose } from "./skinPose";
+import { isLive } from "./scene";
 import {
 	VertexLayout,
+	SKIN_UNIFORM_SLOT,
+	SKIN_UNIFORM_LENGTH,
 	Program,
 	drawsQuads,
 	doorProgram,
@@ -164,6 +168,8 @@ export struct DrawItem {
 	material: MaterialId;
 	world: Mat4;
 	order: int32;
+	skin: SkinPose | null;
+	skinPalette: int32;
 	range: DrawRange | null;
 }
 
@@ -171,6 +177,17 @@ export function validRange(this item: Readonly<DrawItem>, total: int32): boolean
 	const range = item.range;
 	return range === null || (range.base >= 0 && range.count >= 0 &&
 		range.base <= total && range.count <= total - range.base);
+}
+
+export function validSkin(this item: Readonly<DrawItem>, program: ProgramKey): boolean {
+	const pose = item.skin;
+	if (!program.skinned) { return pose === null; }
+	if (pose === null || !pose.ready || item.skinPalette < 0 ||
+		item.skinPalette >= pose.blocks.length) { return false; }
+	for (const joint of pose.joints) {
+		if (!pose.scene.isLive(joint)) { return false; }
+	}
+	return pose.blocks[item.skinPalette].length == SKIN_UNIFORM_LENGTH;
 }
 
 // Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
@@ -396,6 +413,10 @@ export function addMesh(context: DrawContext, mesh: GpuMesh): Result<MeshId, Mes
 }
 
 function layoutOf(this data: MeshData): VertexLayout {
+	if (data.hasSkin) {
+		if (data.hasTangents) { return VertexLayout.SkinLitTexturedTangent; }
+		return data.hasUvs ? VertexLayout.SkinLitTextured : VertexLayout.SkinLit;
+	}
 	if (data.hasTangents) { return VertexLayout.LitTexturedTangent; }
 	return data.hasUvs ? VertexLayout.LitTextured : VertexLayout.Lit;
 }
@@ -1470,7 +1491,7 @@ function stopOnReplacedTexture(): void {
 // the pass-wide blocks (camera, lights) applied before the material's own.
 export function drawItem(
 	context: DrawContext,
-	item: DrawItem,
+	item: Readonly<DrawItem>,
 	program: ProgramKey,
 	targets: TargetLayout,
 	globals: Readonly<Span<UniformBlock>>,
@@ -1484,7 +1505,7 @@ export function drawItem(
 // A caster draws with h3d.mat.Material's "shadow" Pass state, not the material's main pass.
 export function drawItemWith(
 	context: DrawContext,
-	item: DrawItem,
+	item: Readonly<DrawItem>,
 	program: ProgramKey,
 	state: RenderState,
 	targets: TargetLayout,
@@ -1500,8 +1521,9 @@ export function drawItemWith(
 	if (!context.keepsItsTexture(item.material)) { stopOnReplacedTexture(); }
 	const material: Material = context.materials[item.material.index];
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
-	if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
-		console.log("void3d: drawItem range outside mesh elements");
+	if (!item.validRange(context.logicalElementCount(item.mesh.index)) ||
+		!item.validSkin(program)) {
+		console.log("void3d: drawItem with invalid skin pose or element range");
 		unreachable;
 	}
 	if (mesh.hasNothingToDraw()) { return; }
@@ -1540,6 +1562,8 @@ export function drawItemWith(
 		}
 		applyUniforms(MODEL_SLOT, context.model[0..modelLength]);
 	}
+	const pose = item.skin;
+	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
 		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {
 			context.applyBlock(block);

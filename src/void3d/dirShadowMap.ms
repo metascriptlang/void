@@ -227,7 +227,7 @@ function casterBounds(
 	const toLight: Mat4 = basis.makeCameraMatrix(vec3(0.0, 0.0, 0.0));
 	let bounds: Bounds3D = Bounds3D.empty();
 	for (let i = 0; i < shadow.casters.count; i++) {
-		const item: DrawItem = items[shadow.casters.indices[i]];
+		const item: Readonly<DrawItem> = items[shadow.casters.indices[i]];
 		const local: Bounds3D = context.meshData[item.mesh.index].bounds;
 		if (local.isEmpty()) { continue; }
 		addBounds(bounds, local.transformed(item.world * toLight));
