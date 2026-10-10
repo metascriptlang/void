@@ -29,6 +29,7 @@ import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
 import "./skinPaletteCheck";
+import "./skinPartitionCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
