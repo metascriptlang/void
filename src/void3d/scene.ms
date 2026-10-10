@@ -197,7 +197,7 @@ export function nodeCount(this scene: Scene3D): int32 {
 }
 
 // True when `id` still names the node it was handed out for.
-export function isLive(this scene: Scene3D, id: NodeId3D): boolean {
+export function isLive(this scene: Readonly<Scene3D>, id: NodeId3D): boolean {
 	if (scene.closed || id.scene != scene.serial) { return false; }
 	return scene.slots.isCurrent(id.index, id.generation);
 }

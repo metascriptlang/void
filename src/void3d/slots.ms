@@ -15,7 +15,7 @@ export function empty(this typeof Slots): Slots {
 	return { generations: [], retired: [], free: [] };
 }
 
-export function slotCount(this slots: Slots): int32 {
+export function slotCount(this slots: Readonly<Slots>): int32 {
 	return slots.generations.length as int32;
 }
 
@@ -27,7 +27,7 @@ export function liveCount(this slots: Slots): int32 {
 	return slots.slotCount() - (slots.free.length as int32) - retired;
 }
 
-export function isCurrent(this slots: Slots, index: int32, generation: int32): boolean {
+export function isCurrent(this slots: Readonly<Slots>, index: int32, generation: int32): boolean {
 	if (index < 0 || index >= slots.slotCount()) { return false; }
 	return slots.generations[index] == generation;
 }
