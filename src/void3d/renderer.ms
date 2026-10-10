@@ -21,6 +21,7 @@ import {
 	ProgramError,
 	drawnIn,
 	VertexLayout,
+	SKIN_UNIFORM_SLOT,
 	vertexLayoutOf,
 	drawsQuads,
 	VERTEX_UNIFORM_SLOT,
@@ -77,6 +78,9 @@ import {
 	reserveUniforms,
 	writeUniforms,
 	drawItem,
+	validSkin,
+	validRange,
+	elementCount,
 	MODEL_SLOT,
 	SceneTexture,
 	NO_SCENE_TEXTURE,
@@ -152,6 +156,8 @@ export enum RendererError {
 	ForeignMaterial,
 	ProgramNotCast,
 	CasterBlock,
+	SkinPose,
+	DrawRange,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -358,6 +364,10 @@ export function beginFrame(
 		const drawn: Result<ProgramKey, ProgramError> =
 			drawnIn(context.materials[material].program, renderer.preset, shadowed);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
+		if (!item.validSkin(drawn.value)) { return Result.err(RendererError.SkinPose); }
+		if (!item.validRange(context.meshes[item.mesh.index].elementCount())) {
+			return Result.err(RendererError.DrawRange);
+		}
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
 		}
@@ -569,7 +579,8 @@ function blockFits(program: ProgramKey, block: UniformBlock): boolean {
 	for (let slot = 0; slot < UNIFORM_SLOTS; slot++) {
 		const passWide: boolean = slot == VERTEX_UNIFORM_SLOT || slot == LIGHT_UNIFORM_SLOT ||
 			slot == SHADOW_UNIFORM_SLOT || slot == FRAME_UNIFORM_SLOT;
-		if (passWide || slot == MODEL_SLOT || uniformBlockLength(program, slot) == 0) {
+		if (passWide || slot == MODEL_SLOT || slot == SKIN_UNIFORM_SLOT ||
+			uniformBlockLength(program, slot) == 0) {
 			continue;
 		}
 		if (own >= 0) { return false; }

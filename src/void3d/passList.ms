@@ -108,7 +108,7 @@ export function filterFrustum(
 	return excluded;
 }
 
-function depthOf(item: DrawItem, camera: Readonly<Span<float32>>): float32 {
+function depthOf(item: Readonly<DrawItem>, camera: Readonly<Span<float32>>): float32 {
 	let z: float32 = item.world.m41 * camera[CLIP_Z_X] +
 		item.world.m42 * camera[CLIP_Z_Y] +
 		item.world.m43 * camera[CLIP_Z_Z] +
