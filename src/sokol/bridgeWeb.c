@@ -2,6 +2,9 @@
 // (-d:voidGlCore) through sokol_app. bridgeWin.c carries the same window path beside its
 // host views.
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 #include <stdbool.h>
 
 #include "backend.h"
@@ -51,6 +54,12 @@ static void _event(const sapp_event *e) {
 
 static void _cleanup(void) { sg_shutdown(); }
 
+#if defined(__EMSCRIPTEN__)
+static void leaveCallerSuspendedWhileFramesRun(void) { emscripten_exit_with_live_runtime(); }
+#else
+static void leaveCallerSuspendedWhileFramesRun(void) {}
+#endif
+
 void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure init, msClosure frame) {
 	s_init = init;
 	s_reqW = w;
@@ -68,6 +77,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	d.window_title = "Void — sokol";
 	d.logger.func = slog_func;
 	sapp_run(&d);
+	leaveCallerSuspendedWhileFramesRun();
 }
 
 void voidRequestedSize(int *w, int *h) { *w = s_reqW; *h = s_reqH; }
