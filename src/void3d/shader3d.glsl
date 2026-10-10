@@ -484,8 +484,7 @@ out vec4 fragColor;
 void main() {
     ivec2 size = textureSize(sampler2D(sourceTexture, pointSampler), 0);
     ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));
-    vec4 texel = texelFetch(sampler2D(sourceTexture, pointSampler), p, 0);
-    fragColor = vec4(texel.rgb, 1.0);
+    fragColor = texelFetch(sampler2D(sourceTexture, pointSampler), p, 0);
 }
 @end
 
