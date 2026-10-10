@@ -3747,6 +3747,53 @@ LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/re
 No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
 Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
 
+### glTF skinning, traced CPU foundation
+
+**Not yet a rendering feature.** `loadGltf` still explicitly refuses a skin binding;
+no skin program, pose binding or animation importer is accepted yet. The first CPU
+foundation is `skinPalette.ms`: an owned palette map, IBM-before-world matrix order,
+three affine columns per joint and a full declared-size output. Skinning's trace verdict
+is **DIVERGE-INCOMPLETE**: follow Heaps' LBS and palette splitting, not merely loosen the
+importer's gate or impose a 64-joint rig cutoff.
+
+**Read and measured.** Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`,
+`scene/Skin.hx:56-78` builds `inverseBind * jointWorld` in row-vector order;
+`hxd/FloatBufferLoader.hx:39-51` packs three columns;
+`anim/Skin.hx:226-393` partitions triangles by material/joints, assigns shared split
+indices and remaps the GPU palette; `HMDOut.hx:1349-1363` calls that splitter. Real
+Haxe macro probes: 65 joints → 2 palettes (max 33), 129 → 3 (max 64), and 97 with
+four influences/two materials → 4 (max 47), every positive weight's joint and triangle
+material retained. Thus 64 is the proposed portable **per-palette**, not per-rig, limit.
+No texture palette or new GPU door mechanism is required by that reference path.
+
+Pinned glTF `b43260ee1291134a94b3098d415f54f479a59508`, skins section and Appendix C,
+and Bevy `157e1ce6bc66fadca9f57260c18a16d743c11ed5`, `skin.rs:410`,
+`bevy_gltf/loader/mod.rs:303-450`, `bevy_animation/gltf_curves.rs:64-75,125-136`,
+own joint-table/IBM meaning and independent timestamped TRS sampling. Real URG
+`Undead.glb` has 25 joints, 1133 skinned vertices, four active influences at most,
+six 75-channel clips and key counts 2/7/46/58/82/191/343. M9 fixed-frame/nlerp is not
+a substitute: a quarter of a 120° rotation yields SLERP z=0.258819 versus nlerp 0.240192.
+Existing M9's deliberate semantics stay unchanged.
+
+**CPU foundation acceptance, BUILD `5039c014`.** Eight palette tests pass on DRC and
+ORC (306 including std); full index 1488/1488. Rotation/translation case maps bind point
+to (5,0,0), wrong order to (3,2,0); nonuniform-scale variant maps to (1,2,1), matching
+real Heaps math. Palette rows include translation, unused slots reset to identity,
+and bad joint indices, shape/output lengths, non-affine matrices and float overflow
+are refused before output mutation. Size pin: 64 × 3 vec4 = **768 floats / 3072 bytes**.
+Sokol GL uses `glUniformXXX`, not Bevy's UBO; current generated GLES vertex programs in
+both presets use at most 14 vec4, so 192+14=206 is below the portable 256-vector budget.
+New skin shaders still need their own generated-budget and GPU pins. Slot 7 and ranged
+`gpu3dDraw(base,count,instances)` already exist; no `src/gpu` edit has been made.
+
+Minimal importer boundary probes: unbound mesh with joint attributes loads; adding only
+`skin:0` refuses Unsupported, with translated and two-joint variants too. Emitted C
+returns that error at the `gltf.ms:579-582` field-presence guard, so this is missing Void
+coverage, not a compiler bug. Matrix nodes remain a separately documented refusal.
+The real skin consumer, node-index binding, timestamp curves, posed bounds/picking,
+shadow/lifetime/rebuild and palette splitter are **not implemented** by this foundation;
+no skinning GPU, browser or device verdict is claimed.
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
