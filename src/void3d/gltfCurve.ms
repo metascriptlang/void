@@ -1,5 +1,10 @@
 import { Vec4, Quat, slerp } from "../math/math3d";
 
+export struct GltfPoseTrack {
+	sourceNode: int32;
+	curve: Readonly<GltfCurve>;
+}
+
 export enum GltfCurvePath {
 	Translation,
 	Rotation,

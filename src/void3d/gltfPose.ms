@@ -1,5 +1,6 @@
 import { vec3 } from "../math/math3d";
-import { GltfCurve, GltfCurvePath, sample } from "./gltfCurve";
+import { GltfCurvePath, GltfPoseTrack, sample } from "./gltfCurve";
+export { GltfPoseTrack } from "./gltfCurve";
 import { Scene3D, NodeId3D, Transform3D, isLive, setLocal } from "./scene";
 
 export enum GltfPoseError {
@@ -9,10 +10,6 @@ export enum GltfPoseError {
 	Curve,
 }
 
-export struct GltfPoseTrack {
-	sourceNode: int32;
-	curve: Readonly<GltfCurve>;
-}
 
 export interface GltfPose {
 	readonly scene: Scene3D;

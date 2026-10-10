@@ -33,6 +33,7 @@ import "./skinPoseCheck";
 import "./skinMeshCheck";
 import "./skinPartitionCheck";
 import "./gltfCurveCheck";
+import "./gltfAnimationCheck";
 import "./gltfPoseCheck";
 import "./skinInfluencesCheck";
 import "./pipelineCheck";
