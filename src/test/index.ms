@@ -31,6 +31,7 @@ import "./math3dCheck";
 import "./skinPaletteCheck";
 import "./skinPartitionCheck";
 import "./gltfCurveCheck";
+import "./gltfPoseCheck";
 import "./skinInfluencesCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";

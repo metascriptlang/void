@@ -36,11 +36,11 @@ function width(this path: GltfCurvePath): int32 {
 	};
 }
 
-function keyStride(this curve: GltfCurve): int32 {
+function keyStride(this curve: Readonly<GltfCurve>): int32 {
 	return curve.path.width() * (curve.mode == GltfCurveMode.CubicSpline ? 3 : 1);
 }
 
-function readValue(this curve: GltfCurve, at: int32): Vec4 {
+function readValue(this curve: Readonly<GltfCurve>, at: int32): Vec4 {
 	return {
 		x: curve.values[at], y: curve.values[at + 1], z: curve.values[at + 2],
 		w: curve.path == GltfCurvePath.Rotation ? curve.values[at + 3] : 0.0,
@@ -55,7 +55,7 @@ function lengthSquared(this value: Vec4): float64 {
 	return x * x + y * y + z * z + w * w;
 }
 
-function checked(this curve: GltfCurve, value: Vec4): Result<Vec4, GltfCurveError> {
+function checked(this curve: Readonly<GltfCurve>, value: Vec4): Result<Vec4, GltfCurveError> {
 	if (!Number.isFinite(value.x) || !Number.isFinite(value.y) ||
 		!Number.isFinite(value.z) || !Number.isFinite(value.w)) {
 		return Result.err(GltfCurveError.NonFinite);
@@ -127,7 +127,7 @@ function hermite(
 		seconds * (cube - square) * (incoming as float64)) as float32;
 }
 
-export function sample(this curve: GltfCurve, seconds: float64): Result<Vec4, GltfCurveError> {
+export function sample(this curve: Readonly<GltfCurve>, seconds: float64): Result<Vec4, GltfCurveError> {
 	if (!Number.isFinite(seconds)) { return Result.err(GltfCurveError.NonFinite); }
 	const stride: int32 = curve.keyStride();
 	if (curve.times.length < 1 || stride < 1 || curve.times.length > 0x7fffffff / stride ||
