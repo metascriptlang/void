@@ -23,9 +23,8 @@ export function create(
 	this typeof SkinPalette,
 	joints: Readonly<Span<int32>>,
 ): Result<SkinPalette, SkinPaletteError> {
-	const count: int32 = joints.length as int32;
-	if (count < 1) { return Result.err(SkinPaletteError.Empty); }
-	if (count > MAX_SKIN_PALETTE_JOINTS) {
+	if (joints.length < 1) { return Result.err(SkinPaletteError.Empty); }
+	if (joints.length > MAX_SKIN_PALETTE_JOINTS) {
 		return Result.err(SkinPaletteError.PaletteTooLarge);
 	}
 	let palette: SkinPalette = { joints: [] };
@@ -67,11 +66,11 @@ export function writePalette(
 	inverseBindMatrices: Readonly<Span<Mat4>>,
 	output: Span<float32>,
 ): Result<void, SkinPaletteError> {
-	const count: int32 = palette.joints.length as int32;
-	if (count < 1) { return Result.err(SkinPaletteError.Empty); }
-	if (count > MAX_SKIN_PALETTE_JOINTS) {
+	if (palette.joints.length < 1) { return Result.err(SkinPaletteError.Empty); }
+	if (palette.joints.length > MAX_SKIN_PALETTE_JOINTS) {
 		return Result.err(SkinPaletteError.PaletteTooLarge);
 	}
+	const count: int32 = palette.joints.length as int32;
 	if (jointWorlds.length != inverseBindMatrices.length) {
 		return Result.err(SkinPaletteError.PoseLength);
 	}
