@@ -3862,6 +3862,21 @@ and cubic variants. Ignoring animations gives298PASS/7FAIL; restored full index 
 animationDecodeOrc.log,animationDecodeIndex.log,controlIgnoredAnimations.log}`. No M9 fixed-FPS
 semantics changed. Actual skinned URG import/render and Geass viewer acceptance remain NOTRUN.
 
+`skinGeometry.ms` now owns canonical influences and separate published/staging positional
+geometry. Its world-space weighted positions follow Heaps `SkinCollider.hx:72-95`; bounds
+and triangle/UV picking read that same deformation, not GPU palette slot numbers. Publication
+uses explicit moves, avoiding per-frame MeshData array copies. Pose publication revisions
+play the role of Heaps `lastFrame`/`jointsUpdated` (`SkinCollider.hx:62-75`); stale revisions,
+recycled joints and late nonfinite vertices refuse spatial use. A pose may publish once and
+several geometries consume it through `deformPublished`, without sharing scratch buffers.
+Items can carry that geometry instead of a bare pose; colour/shadow use its pose, frustum
+filtering and alpha depth use its world bounds without another mesh model transform, and
+shadow fitting uses those bounds in light space. Six pins pass DRC/ORC304; full index
+**1538/1538**, +58/no new red from landed1480. GPU-slots-as-canonical and double-model-frustum
+controls each give303PASS/1FAIL. Receipts: `out/tmp/skinning/{geometryUnit.log,geometryOrc.log,
+geometryIndex.log,controlGeometryRemap.log,controlGeometryModel.log}`. Existing Scene3D picking
+still needs the glTF instance integration; this does not claim a rendered skinned asset.
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
