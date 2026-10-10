@@ -74,6 +74,7 @@ void voidRunConfigured(int w, int h, int sampleCount, int highDpi, msClosure ini
 	d.height = h;
 	d.sample_count = sampleCount;
 	d.high_dpi = highDpi != 0;
+	d.composite_mode = SAPP_COMPOSITEMODE_PREMULTIPLIED;
 	d.window_title = "Void — sokol";
 	d.logger.func = slog_func;
 	sapp_run(&d);
