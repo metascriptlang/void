@@ -12,8 +12,10 @@
 #define SOKOL_D3D11
 #elif defined(__APPLE__)
 #define SOKOL_METAL
-#elif defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+#elif defined(__ANDROID__)
 #define SOKOL_GLES3
+#elif defined(__EMSCRIPTEN__)
+#error "void: a browser build names its API; pass -d:webgpu or -d:webgl2 to msc"
 #else
 #error "void: no SOKOL_<backend> for this platform; define one with -D"
 #endif

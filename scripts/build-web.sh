@@ -43,10 +43,10 @@ fi
 
 # msc can flake on the uncached async-emcc path; retry.
 build() {
-	target="$1"; passc="$2"; passl="$3"; dest="$4"
+	target="$1"; api="$2"; dest="$3"
 	rm -f "out/release/$NAME.js" "out/release/$NAME.wasm" "out/release/$NAME.data"
 	for i in 1 2 3 4; do
-		"$MSC" build $MSC_FLAGS "$ENTRY" --os=emcc --passC="$passc $EXTRA_PASSC" --passL="$passl" \
+		"$MSC" build $MSC_FLAGS "$ENTRY" --os=emcc "-d:$api" --passC="$EXTRA_PASSC" --passL="$PRELOAD" \
 			--output="out/release/$NAME.js" >"$LOG_DIR/void_web_$target.log" 2>&1 || true
 		if grep -q "Built" "$LOG_DIR/void_web_$target.log" && [ -f "out/release/$NAME.wasm" ]; then
 			mkdir -p "$dest"
@@ -61,9 +61,9 @@ build() {
 PRELOAD="${VOID_WEB_PRELOAD:---preload-file assets/test.png --preload-file assets/font.ttf}"
 BACKENDS="${VOID_WEB_BACKENDS:-wgpu gl}"
 case " $BACKENDS " in *" wgpu "*)
-	build wgpu "--use-port=emdawnwebgpu -DSOKOL_WGPU" "--use-port=emdawnwebgpu $PRELOAD" "$DEST/wgpu" ;;
+	build wgpu webgpu "$DEST/wgpu" ;;
 esac
 case " $BACKENDS " in *" gl "*)
-	build gl   "-DSOKOL_GLES3" "-sFULL_ES3=1 -sMAX_WEBGL_VERSION=2 $PRELOAD" "$DEST/gl" ;;
+	build gl webgl2 "$DEST/gl" ;;
 esac
 echo "done — serve web/ and open void2d.html"

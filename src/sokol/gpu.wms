@@ -1,11 +1,21 @@
 // Void sokol GPU — browser (--os=emcc). Same API as gpu.ms; sokol impl compiled
-// by emcc (sokolWeb.c, backend via -D on the build command).
+// by emcc (sokolWeb.c). The build names the browser API with -d:webgpu or -d:webgl2.
 
 @passC("-I../../deps/sokol");
 @include("bridge.h");
 @compile("src/sokol/bridge.c");
 @compile("src/sokol/bridgeWeb.c");
 @compile("src/sokol/sokolWeb.c");
+
+when (webgpu) {
+	@passC("--use-port=emdawnwebgpu");
+	@passC("-DSOKOL_WGPU");
+	@passL("--use-port=emdawnwebgpu");
+} else when (webgl2) {
+	@passC("-DSOKOL_GLES3");
+	@passL("-sFULL_ES3=1");
+	@passL("-sMAX_WEBGL_VERSION=2");
+}
 
 extern function voidGfxSetup(): void;
 extern function voidFbWidth(): int32;
