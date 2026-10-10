@@ -3825,7 +3825,18 @@ independent channels, combined TRS, recycled-node refusal and atomic late-quater
 published/staging blocks, swaps only after every palette succeeds, and invalidates readiness
 on failure. Four pins pass DRC/ORC302: parent transforms/IBM order, independent actors,
 atomic multi-palette publication and recycled joint ids. Full index **1518/1518**, +38/no new
-red from landed1480. GPU/shader/bounds/pick/shadow acceptance remains NOTRUN.
+red from landed1480. GPU/bounds/pick/shadow acceptance remains NOTRUN.
+
+Skin program/layout preparation on BUILD `5039c014`: 77 variants added to the 94 existing
+keys, covering colour and shadow presets with four float joint slots/four float weights.
+Generated slot7 is 3072 bytes; strides18/20/24 and attribute ordering have native C assertions
+and headless pins. Both presets emit world-space LBS and signed-cofactor normals; tangent
+handedness follows the blended transform's determinant. GLES300 vertex sources declare at
+most198 vec4 uniform slots, under the WebGL2 minimum256. All1316 pre-existing shader byte
+arrays remain byte-identical after regeneration. Full index **1520/1520**, +40/no new red
+from landed1480. Local receipts: `out/tmp/skinning/{shaderRegenStable.log,shaderEvidence.json,
+skinnedProgramIndex.log}`. This proves generated programs and ABI, not a submitted skin draw;
+actual asset/draw consumer, GPU execution and browser/device acceptance remain NOTRUN.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
