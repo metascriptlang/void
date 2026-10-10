@@ -3,6 +3,10 @@ import { Mat4, Vec4, identity } from "../math/math3d";
 import {
 	Program,
 	ProgramKey,
+	withSkin,
+	SKIN_UNIFORM_SLOT,
+	SKIN_UNIFORM_LENGTH,
+	layoutFloats,
 	Preset,
 	ProgramError,
 	VertexLayout,
@@ -158,6 +162,10 @@ const SCENE_PROGRAMS: Vec<Program> = [
 ];
 
 function layoutFor(key: ProgramKey): VertexLayout {
+	if (key.skinned) {
+		if (key.normalMap) { return VertexLayout.SkinLitTexturedTangent; }
+		return key.program == Program.Lit ? VertexLayout.SkinLit : VertexLayout.SkinLitTextured;
+	}
 	if (key.normalMap) { return VertexLayout.LitTexturedTangent; }
 	return match (key.program) {
 		Program.Lit => VertexLayout.Lit,
@@ -184,13 +192,14 @@ function everyKey(): Vec<ProgramKey> {
 			for (const premultiplied of [false, true]) {
 				for (const cutout of [false, true]) {
 					for (const shadowed of [false, true]) {
-						for (let features = 0; features < 32; features++) {
+						for (let features = 0; features < 64; features++) {
 							keys.push({
 								program: program, preset: preset,
 								premultiplied: premultiplied, cutout: cutout, shadowed: shadowed,
 								uvTransform: (features & 1) != 0, backTexture: (features & 2) != 0,
 								dissolve: (features & 4) != 0, emissive: (features & 8) != 0,
-								normalMap: (features & 16) != 0, normalMrt: false,
+								normalMap: (features & 16) != 0, skinned: (features & 32) != 0,
+								normalMrt: false,
 							});
 						}
 					}
@@ -203,18 +212,76 @@ function everyKey(): Vec<ProgramKey> {
 
 test "every key packs to bits of its own, and each declared one reads its program's layout" {
 	let seen: Vec<boolean> = [];
-	for (let bits = 0; bits < 16384; bits++) { seen.push(false); }
+	for (let bits = 0; bits < 32768; bits++) { seen.push(false); }
 	let declared: int32 = 0;
 	for (const key of everyKey()) {
 		const bits: int32 = key.bits();
-		assert bits >= 0 && bits < 16384 && !seen[bits];
+		assert bits >= 0 && bits < 32768 && !seen[bits];
 		seen[bits] = true;
 		if (declares(key)) {
 			declared = declared + 1;
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 97;
+	assert declared == 174;
+}
+
+test "skin programs own slot7, omit mesh model and keep matching colour/shadow layouts" {
+	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
+		const key = ProgramKey.of(program).withSkin();
+		assert key.bits() == (ProgramKey.of(program).bits() | (1 << 14));
+		for (const preset of [Preset.Core, Preset.PixelArt]) {
+			const drawn = drawnIn(key, preset, false);
+			assert drawn.ok;
+			if (!drawn.ok) { continue; }
+			assert uniformBlockLength(drawn.value, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
+			assert uniformBlockLength(drawn.value, MODEL_SLOT) == 0;
+			const expected: int32 = program == Program.Lit ? 18 : 20;
+			assert layoutFloats(vertexLayoutOf(drawn.value), 0) == expected;
+		}
+		const caster = castIn(key);
+		assert caster.ok;
+		if (caster.ok) {
+			assert caster.value.skinned;
+			assert uniformBlockLength(caster.value, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
+			assert vertexLayoutOf(caster.value) == vertexLayoutOf(key);
+		}
+	}
+}
+
+test "skin tangent layouts retain24 floats and uniform7 for both presets and shadows" {
+	const key = ProgramKey.of(Program.LitTextured).withNormalMap().withSkin();
+	for (const preset of [Preset.Core, Preset.PixelArt, Preset.Shadow]) {
+		const variant = key.withPreset(preset);
+		assert declares(variant);
+		assert vertexLayoutOf(variant) == VertexLayout.SkinLitTexturedTangent;
+		assert layoutFloats(vertexLayoutOf(variant), 0) == 24;
+		assert uniformBlockLength(variant, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
+	}
+}
+
+test "every core normal MRT mesh key retains its skinned palette and separate feature bits" {
+	let checked: int32 = 0;
+	for (const program of [Program.Lit, Program.LitTextured, Program.UnlitTextured]) {
+		for (let features = 0; features < 256; features++) {
+			const key = {
+				...ProgramKey.of(program), normalMrt: true,
+				premultiplied: (features & 1) != 0, cutout: (features & 2) != 0,
+				shadowed: (features & 4) != 0, uvTransform: (features & 8) != 0,
+				backTexture: (features & 16) != 0, dissolve: (features & 32) != 0,
+				emissive: (features & 64) != 0, normalMap: (features & 128) != 0,
+			};
+			if (!declares(key)) { continue; }
+			const skin = key.withSkin();
+			assert declares(skin) && skin.normalMrt && skin.skinned;
+			assert skin.bits() == (key.bits() | (1 << 14));
+			assert skin.bits() >= (1 << 15) && skin.bits() < 65536;
+			assert uniformBlockLength(skin, SKIN_UNIFORM_SLOT) == SKIN_UNIFORM_LENGTH;
+			assert uniformBlockLength(skin, MODEL_SLOT) == 0;
+			checked++;
+		}
+	}
+	assert checked == 37;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {

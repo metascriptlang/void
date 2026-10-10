@@ -138,6 +138,9 @@ function itemOnItsLayout(context: DrawContext, material: MaterialId): DrawItem {
 		VertexLayout.LitTextured => ({ ...litShape(), layout: VertexLayout.LitTextured }),
 		VertexLayout.LitTexturedTangent =>
 			({ ...litShape(), layout: VertexLayout.LitTexturedTangent }),
+		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
+			VertexLayout.SkinLitTexturedTangent =>
+			({ ...litShape(), layout: vertexLayoutOf(program) }),
 	};
 	return { ...itemAt(context, material.index, 0.0), mesh: added(context, mesh) };
 }

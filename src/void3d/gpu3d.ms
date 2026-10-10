@@ -87,7 +87,7 @@ export struct ProgramKey {
 	dissolve: boolean;
 	emissive: boolean;
 	normalMap: boolean;
-	// Full-resolution Forward opaque MRT; bit14 is reserved for skinning.
+	skinned: boolean;
 	normalMrt: boolean;
 }
 
@@ -97,7 +97,7 @@ export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
-		normalMrt: false,
+		skinned: false, normalMrt: false,
 	};
 }
 
@@ -154,6 +154,12 @@ export function withEmissive(this key: ProgramKey): ProgramKey {
 	return { ...stopOnNotLitTextured(key, "emissive"), emissive: true };
 }
 
+export function withSkin(this key: ProgramKey): ProgramKey {
+	if (key.program != Program.Lit && key.program != Program.LitTextured &&
+		key.program != Program.UnlitTextured) { return stopOnFeature(key, "skinning"); }
+	return { ...key, skinned: true };
+}
+
 export function withNormalMap(this key: ProgramKey): ProgramKey {
 	return { ...stopOnNotLitTextured(key, "normal map"), normalMap: true };
 }
@@ -181,7 +187,7 @@ export function bits(this key: ProgramKey): int32 {
 		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
 		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
 		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
-		((key.normalMrt ? 1 : 0) << 15);
+		((key.skinned ? 1 : 0) << 14) | ((key.normalMrt ? 1 : 0) << 15);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -193,10 +199,11 @@ export function describe(this key: ProgramKey): string {
 	const dissolve: string = key.dissolve ? " dissolve" : "";
 	const emissive: string = key.emissive ? " emissive" : "";
 	const normalMap: string = key.normalMap ? " normal-map" : "";
+	const skin: string = key.skinned ? " skinned" : "";
 	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
 	const features: string =
 		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
-		normalMrt;
+		skin + normalMrt;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -307,6 +314,9 @@ export enum VertexLayout {
 	Fullscreen,
 	LitTextured,
 	LitTexturedTangent,
+	SkinLit,
+	SkinLitTextured,
+	SkinLitTexturedTangent,
 }
 
 export function vertexLayoutOf(program: ProgramKey): VertexLayout {
@@ -321,10 +331,14 @@ export function drawsQuads(layout: VertexLayout): boolean {
 		VertexLayout.Fullscreen => false,
 		VertexLayout.LitTextured => false,
 		VertexLayout.LitTexturedTangent => false,
+		VertexLayout.SkinLit | VertexLayout.SkinLitTextured |
+			VertexLayout.SkinLitTexturedTangent => false,
 	};
 }
 
 // Uniform block slots and sizes in floats, from the `binding=` blocks in shader3dBlocks.glsl.
+export const SKIN_UNIFORM_SLOT: int32 = 7;
+export const SKIN_UNIFORM_LENGTH: int32 = 768;
 export const VERTEX_UNIFORM_SLOT: int32 = 0;
 export const VERTEX_UNIFORM_LENGTH: int32 = 24;
 export const LIGHT_UNIFORM_SLOT: int32 = 1;

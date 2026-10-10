@@ -13,6 +13,34 @@ layout(binding=4) uniform modelParams {
 };
 @end
 
+@block skinUniforms
+layout(binding=7) uniform skinParams {
+    vec4 skinRows[192];
+};
+
+mat4 skinWorld(vec4 jointSlots, vec4 weights) {
+    ivec4 joints = ivec4(jointSlots);
+    vec4 x = vec4(0.0);
+    vec4 y = vec4(0.0);
+    vec4 z = vec4(0.0);
+    for (int i = 0; i < 4; i++) {
+        int row = joints[i] * 3;
+        x += skinRows[row] * weights[i];
+        y += skinRows[row + 1] * weights[i];
+        z += skinRows[row + 2] * weights[i];
+    }
+    return transpose(mat4(x, y, z, vec4(0.0, 0.0, 0.0, 1.0)));
+}
+
+mat3 skinNormal(mat3 linear) {
+    vec3 a = cross(linear[1], linear[2]);
+    vec3 b = cross(linear[2], linear[0]);
+    vec3 c = cross(linear[0], linear[1]);
+    float direction = dot(linear[0], a) < 0.0 ? -1.0 : 1.0;
+    return mat3(a, b, c) * direction;
+}
+@end
+
 @block modelTransformUniforms
 layout(binding=4) uniform modelTransformParams {
     mat4 model;

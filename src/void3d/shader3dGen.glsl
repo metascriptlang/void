@@ -11,28 +11,73 @@ void main() {
 @end
 
 @vs litVs
+#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
+#endif
+#ifndef SKINNED
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
 };
+#endif
+#ifdef SKINNED
+layout(binding=7) uniform skinParams {
+    vec4 skinRows[192];
+};
+#endif
 in vec3 position;
 in vec3 normal;
 in vec4 color;
+#ifdef SKINNED
+in vec4 skinJoints;
+#endif
+#ifdef SKINNED
+in vec4 skinWeights;
+#endif
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec4 baseColor;
+#ifdef SKINNED
+vec4 skinRow(vec4 joints, vec4 weights, int column) {
+    return (((skinRows[(int(joints.x) * 3) + column] * weights.x) + (skinRows[(int(joints.y) * 3) + column] * weights.y)) + (skinRows[(int(joints.z) * 3) + column] * weights.z)) + (skinRows[(int(joints.w) * 3) + column] * weights.w);
+}
+#endif
+#ifdef SKINNED
+mat4 skinWorld(vec4 joints, vec4 weights) {
+    return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
+}
+#endif
+#ifdef SKINNED
+vec3 skinNormal(mat4 world, vec3 normal_1) {
+    mat3 linear = mat3(world);
+    vec3 a = cross(linear[1], linear[2]);
+    vec3 b = cross(linear[2], linear[0]);
+    vec3 c = cross(linear[0], linear[1]);
+    float direction = (dot(linear[0], a) < 0.0) ? (-1.0) : 1.0;
+    return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
+}
+#endif
 void main() {
-    vec4 world = model * vec4(position, 1.0);
+#ifdef SKINNED
+    mat4 matrix = skinWorld(skinJoints, skinWeights);
+    vec4 world = matrix * vec4(position, 1.0);
     worldPosition = world.xyz;
-    worldNormal = (mat3(normalModel) * normal);
+    worldNormal = skinNormal(matrix, normal);
     baseColor = color;
     gl_Position = (viewProj * world);
     return;
+#else
+    vec4 world_1 = model * vec4(position, 1.0);
+    worldPosition = world_1.xyz;
+    worldNormal = (mat3(normalModel) * normal);
+    baseColor = color;
+    gl_Position = (viewProj * world_1);
+    return;
+#endif
 }
 @end
 
@@ -291,21 +336,36 @@ void main() {
 @end
 
 @vs litTexturedVs
+#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
+#endif
+#if !defined(SKINNED) || (!defined(SKINNED) && defined(NORMAL_MAP))
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
 };
+#endif
+#ifdef SKINNED
+layout(binding=7) uniform skinParams {
+    vec4 skinRows[192];
+};
+#endif
 in vec3 position;
 in vec3 normal;
 in vec2 uv;
 in vec4 color;
 #ifdef NORMAL_MAP
 in vec4 tangent;
+#endif
+#ifdef SKINNED
+in vec4 skinJoints;
+#endif
+#ifdef SKINNED
+in vec4 skinWeights;
 #endif
 #ifdef NORMAL_MAP
 out vec4 worldTangent;
@@ -314,17 +374,52 @@ out vec3 worldPosition;
 out vec3 worldNormal;
 out vec2 surfaceUv;
 out vec4 baseColor;
+#ifdef SKINNED
+vec4 skinRow(vec4 joints, vec4 weights, int column) {
+    return (((skinRows[(int(joints.x) * 3) + column] * weights.x) + (skinRows[(int(joints.y) * 3) + column] * weights.y)) + (skinRows[(int(joints.z) * 3) + column] * weights.z)) + (skinRows[(int(joints.w) * 3) + column] * weights.w);
+}
+#endif
+#ifdef SKINNED
+mat4 skinWorld(vec4 joints, vec4 weights) {
+    return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
+}
+#endif
+#ifdef SKINNED
+vec3 skinNormal(mat4 world, vec3 normal_1) {
+    mat3 linear = mat3(world);
+    vec3 a = cross(linear[1], linear[2]);
+    vec3 b = cross(linear[2], linear[0]);
+    vec3 c = cross(linear[0], linear[1]);
+    float direction = (dot(linear[0], a) < 0.0) ? (-1.0) : 1.0;
+    return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
+}
+#endif
 void main() {
-    vec4 world = model * vec4(position, 1.0);
+#ifdef SKINNED
+    mat4 matrix = skinWorld(skinJoints, skinWeights);
+    vec4 world = matrix * vec4(position, 1.0);
+    float handedness = (determinant(mat3(matrix)) < 0.0) ? (-1.0) : 1.0;
     worldPosition = world.xyz;
+    worldNormal = skinNormal(matrix, normal);
+#ifdef NORMAL_MAP
+    worldTangent = vec4((mat3(matrix) * tangent.xyz), (tangent.w * handedness));
+#endif
+    surfaceUv = uv;
+    baseColor = color;
+    gl_Position = (viewProj * world);
+    return;
+#else
+    vec4 world_1 = model * vec4(position, 1.0);
+    worldPosition = world_1.xyz;
     worldNormal = (mat3(normalModel) * normal);
 #ifdef NORMAL_MAP
     worldTangent = vec4((mat3(model) * tangent.xyz), tangent.w);
 #endif
     surfaceUv = uv;
     baseColor = color;
-    gl_Position = (viewProj * world);
+    gl_Position = (viewProj * world_1);
     return;
+#endif
 }
 @end
 
@@ -778,20 +873,27 @@ void main() {
 @end
 
 @vs unlitTexturedVs
+#if defined(SKINNED) || !defined(SKINNED)
 layout(binding=0) uniform vertexParams {
     mat4 viewProj;
     vec4 cameraRight;
     vec4 cameraUp;
 };
-#ifdef NORMAL_MRT
+#endif
+#if !defined(SKINNED) && defined(NORMAL_MRT)
 layout(binding=4) uniform modelParams {
     mat4 model;
     mat4 normalModel;
 };
 #endif
-#ifndef NORMAL_MRT
+#if !defined(SKINNED) && !defined(NORMAL_MRT)
 layout(binding=4) uniform modelTransformParams {
     mat4 model;
+};
+#endif
+#ifdef SKINNED
+layout(binding=7) uniform skinParams {
+    vec4 skinRows[192];
 };
 #endif
 in vec3 position;
@@ -801,11 +903,38 @@ in vec4 color;
 #ifdef NORMAL_MAP
 in vec4 tangent;
 #endif
+#ifdef SKINNED
+in vec4 skinJoints;
+#endif
+#ifdef SKINNED
+in vec4 skinWeights;
+#endif
 #ifdef NORMAL_MRT
 out vec3 worldNormal;
 #endif
 out vec2 surfaceUv;
 out vec4 baseColor;
+#ifdef SKINNED
+vec4 skinRow(vec4 joints, vec4 weights, int column) {
+    return (((skinRows[(int(joints.x) * 3) + column] * weights.x) + (skinRows[(int(joints.y) * 3) + column] * weights.y)) + (skinRows[(int(joints.z) * 3) + column] * weights.z)) + (skinRows[(int(joints.w) * 3) + column] * weights.w);
+}
+#endif
+#ifdef SKINNED
+mat4 skinWorld(vec4 joints, vec4 weights) {
+    return transpose(mat4(skinRow(joints, weights, 0), skinRow(joints, weights, 1), skinRow(joints, weights, 2), vec4(0.0, 0.0, 0.0, 1.0)));
+}
+#endif
+#if defined(SKINNED) && defined(NORMAL_MRT)
+vec3 skinNormal(mat4 world, vec3 normal_1) {
+    mat3 linear = mat3(world);
+    vec3 a = cross(linear[1], linear[2]);
+    vec3 b = cross(linear[2], linear[0]);
+    vec3 c = cross(linear[0], linear[1]);
+    float direction = (dot(linear[0], a) < 0.0) ? (-1.0) : 1.0;
+    return (((a * normal_1.x) + (b * normal_1.y)) + (c * normal_1.z)) * direction;
+}
+#endif
+#ifndef SKINNED
 mat4 unlitModel() {
 #ifdef NORMAL_MRT
     return model;
@@ -813,7 +942,18 @@ mat4 unlitModel() {
     return model;
 #endif
 }
+#endif
 void main() {
+#ifdef SKINNED
+    mat4 matrix = skinWorld(skinJoints, skinWeights);
+    gl_Position = ((viewProj * matrix) * vec4(position, 1.0));
+#ifdef NORMAL_MRT
+    worldNormal = skinNormal(matrix, normal);
+#endif
+    surfaceUv = uv;
+    baseColor = color;
+    return;
+#else
     gl_Position = ((viewProj * unlitModel()) * vec4(position, 1.0));
 #ifdef NORMAL_MRT
     worldNormal = (mat3(normalModel) * normal);
@@ -821,6 +961,7 @@ void main() {
     surfaceUv = uv;
     baseColor = color;
     return;
+#endif
 }
 @end
 

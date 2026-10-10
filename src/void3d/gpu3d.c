@@ -20,6 +20,9 @@ enum {
 	LAYOUT_FULLSCREEN,
 	LAYOUT_LIT_TEXTURED,
 	LAYOUT_LIT_TEXTURED_TANGENT,
+	LAYOUT_SKIN_LIT,
+	LAYOUT_SKIN_LIT_TEXTURED,
+	LAYOUT_SKIN_LIT_TEXTURED_TANGENT,
 	LAYOUT_COUNT,
 };
 
@@ -49,12 +52,20 @@ enum {
 };
 
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
-		backTexture, dissolve, emissive, normalMap, normalMrt) \
+		backTexture, dissolve, emissive, normalMap, skinned, normalMrt) \
 	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
 	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
-	((normalMap) << 13) | ((normalMrt) << 15))
+	((normalMap) << 13) | ((skinned) << 14) | ((normalMrt) << 15))
 
 #include "programTable.h"
+
+_Static_assert(sizeof(skinLit_skinParams_t) == 3072, "skin palette ABI");
+_Static_assert(ATTR_skinLit_program_skinJoints == 3 &&
+	ATTR_skinLit_program_skinWeights == 4 &&
+	ATTR_skinLitTextured_program_skinJoints == 4 &&
+	ATTR_skinLitTextured_program_skinWeights == 5 &&
+	ATTR_skinLitTexturedNormalMap_program_skinJoints == 5 &&
+	ATTR_skinLitTexturedNormalMap_program_skinWeights == 6, "skin attribute ABI");
 
 static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 	switch (layout) {
@@ -93,6 +104,30 @@ static void describeLayout(uint32_t layout, sg_vertex_layout_state *out) {
 		out->attrs[ATTR_litTexturedNormalMap_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
 		out->attrs[ATTR_litTexturedNormalMap_program_color].format = SG_VERTEXFORMAT_FLOAT4;
 		out->attrs[ATTR_litTexturedNormalMap_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case LAYOUT_SKIN_LIT:
+		out->attrs[ATTR_skinLit_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLit_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLit_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLit_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLit_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case LAYOUT_SKIN_LIT_TEXTURED:
+		out->attrs[ATTR_skinLitTextured_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTextured_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTextured_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_skinLitTextured_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTextured_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTextured_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
+		break;
+	case LAYOUT_SKIN_LIT_TEXTURED_TANGENT:
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_position].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_normal].format = SG_VERTEXFORMAT_FLOAT3;
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_color].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_tangent].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_skinJoints].format = SG_VERTEXFORMAT_FLOAT4;
+		out->attrs[ATTR_skinLitTexturedNormalMap_program_skinWeights].format = SG_VERTEXFORMAT_FLOAT4;
 		break;
 	default:
 		// clip-space position of a fullscreen triangle (copy, post, blit)

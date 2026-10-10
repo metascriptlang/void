@@ -12,12 +12,14 @@ import {
 	builtin,
 	clamp,
 	cross,
+	determinant,
 	discard,
 	dot,
 	feature,
 	length,
 	location,
 	mat2x2f,
+	mat4x4f,
 	max,
 	min,
 	mix,
@@ -28,6 +30,7 @@ import {
 	textureDimensions,
 	textureLoad,
 	textureSample,
+	transpose,
 	upperLeft3x3,
 	vec2f,
 	vec2i,
@@ -55,6 +58,8 @@ export struct LitAttributes {
 	position: Vec3f;
 	normal: Vec3f;
 	color: Vec4f;
+	@feature(SKINNED) skinJoints: Vec4f;
+	@feature(SKINNED) skinWeights: Vec4f;
 }
 
 export struct LitVaryings {
@@ -77,6 +82,8 @@ export struct TexturedAttributes {
 	uv: Vec2f;
 	color: Vec4f;
 	@feature(NORMAL_MAP) tangent: Vec4f;
+	@feature(SKINNED) skinJoints: Vec4f;
+	@feature(SKINNED) skinWeights: Vec4f;
 }
 
 export struct LitTexturedVaryings {
@@ -192,10 +199,15 @@ export struct ShadowParams {
 }
 
 // The blocks at one binding are the layouts a program key chooses between.
+export struct SkinParams {
+	skinRows: Vec4f[192];
+}
+
 export struct VertexBindings {
 	@binding(0) vertexParams: VertexParams;
 	@binding(4) modelParams: ModelParams;
 	@binding(4) modelTransformParams: ModelTransformParams;
+	@binding(7) skinParams: SkinParams;
 }
 
 export struct LitBindings {
@@ -232,6 +244,7 @@ export struct LitKey {
 	@feature(CUTOUT) cutout: boolean;
 	@feature(SHADOWED) shadowed: boolean;
 	@feature(NORMAL_MRT) normalMrt: boolean;
+	@feature(SKINNED) skinned: boolean;
 	@feature(PREMULTIPLIED) premultiplied: boolean;
 	@feature(UV_TRANSFORM) uvTransform: boolean;
 	@feature(BACK_TEXTURE) backTexture: boolean;
@@ -245,26 +258,80 @@ export struct LitOutput {
 	@location(1) @feature(NORMAL_MRT) normal: Vec4f;
 }
 
-export function litVs(input: LitAttributes, b: VertexBindings): LitVaryings {
-	const world = b.modelParams.model * vec4f(input.position, 1.0);
-	return {
-		worldPosition: world.xyz,
-		worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-		baseColor: input.color,
-		clip: b.vertexParams.viewProj * world,
-	};
+function skinRow(b: VertexBindings, joints: Vec4f, weights: Vec4f, column: int32): Vec4f {
+	return b.skinParams.skinRows[(joints.x as int32) * 3 + column] * weights.x +
+		b.skinParams.skinRows[(joints.y as int32) * 3 + column] * weights.y +
+		b.skinParams.skinRows[(joints.z as int32) * 3 + column] * weights.z +
+		b.skinParams.skinRows[(joints.w as int32) * 3 + column] * weights.w;
 }
 
-export function litTexturedVs(input: TexturedAttributes, b: VertexBindings): LitTexturedVaryings {
-	const world = b.modelParams.model * vec4f(input.position, 1.0);
-	return {
-		worldPosition: world.xyz,
-		worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-		worldTangent: vec4f(upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w),
-		surfaceUv: input.uv,
-		baseColor: input.color,
-		clip: b.vertexParams.viewProj * world,
-	};
+function skinWorld(b: VertexBindings, joints: Vec4f, weights: Vec4f): Mat4x4f {
+	return transpose(mat4x4f(
+		skinRow(b, joints, weights, 0), skinRow(b, joints, weights, 1),
+		skinRow(b, joints, weights, 2), vec4f(0.0, 0.0, 0.0, 1.0),
+	));
+}
+
+function skinNormal(world: Mat4x4f, normal: Vec3f): Vec3f {
+	const linear = upperLeft3x3(world);
+	const a = cross(linear.columns[1], linear.columns[2]);
+	const b = cross(linear.columns[2], linear.columns[0]);
+	const c = cross(linear.columns[0], linear.columns[1]);
+	const direction: float32 = dot(linear.columns[0], a) < 0.0 ? -1.0 : 1.0;
+	return (a * normal.x + b * normal.y + c * normal.z) * direction;
+}
+
+export function litVs(input: LitAttributes, b: VertexBindings, key: LitKey): LitVaryings {
+	if (key.skinned) {
+		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
+		const world = matrix * vec4f(input.position, 1.0);
+		return {
+			worldPosition: world.xyz,
+			worldNormal: skinNormal(matrix, input.normal),
+			baseColor: input.color,
+			clip: b.vertexParams.viewProj * world,
+		};
+	} else {
+		const world = b.modelParams.model * vec4f(input.position, 1.0);
+		return {
+			worldPosition: world.xyz,
+			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+			baseColor: input.color,
+			clip: b.vertexParams.viewProj * world,
+		};
+	}
+}
+
+export function litTexturedVs(
+	input: TexturedAttributes, b: VertexBindings, key: LitKey,
+): LitTexturedVaryings {
+	if (key.skinned) {
+		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
+		const world = matrix * vec4f(input.position, 1.0);
+		const handedness: float32 = determinant(upperLeft3x3(matrix)) < 0.0 ? -1.0 : 1.0;
+		return {
+			worldPosition: world.xyz,
+			worldNormal: skinNormal(matrix, input.normal),
+			worldTangent: vec4f(
+				upperLeft3x3(matrix) * input.tangent.xyz, input.tangent.w * handedness,
+			),
+			surfaceUv: input.uv,
+			baseColor: input.color,
+			clip: b.vertexParams.viewProj * world,
+		};
+	} else {
+		const world = b.modelParams.model * vec4f(input.position, 1.0);
+		return {
+			worldPosition: world.xyz,
+			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+			worldTangent: vec4f(
+				upperLeft3x3(b.modelParams.model) * input.tangent.xyz, input.tangent.w,
+			),
+			surfaceUv: input.uv,
+			baseColor: input.color,
+			clip: b.vertexParams.viewProj * world,
+		};
+	}
 }
 
 // An unlit draw needs the normal matrix only for the normal target.
@@ -281,12 +348,22 @@ export function unlitTexturedVs(
 	b: VertexBindings,
 	key: LitKey,
 ): UnlitTexturedVaryings {
-	return {
-		clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
-		worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
-		surfaceUv: input.uv,
-		baseColor: input.color,
-	};
+	if (key.skinned) {
+		const matrix = skinWorld(b, input.skinJoints, input.skinWeights);
+		return {
+			clip: b.vertexParams.viewProj * matrix * vec4f(input.position, 1.0),
+			worldNormal: skinNormal(matrix, input.normal),
+			surfaceUv: input.uv,
+			baseColor: input.color,
+		};
+	} else {
+		return {
+			clip: b.vertexParams.viewProj * unlitModel(b, key) * vec4f(input.position, 1.0),
+			worldNormal: upperLeft3x3(b.modelParams.normalModel) * input.normal,
+			surfaceUv: input.uv,
+			baseColor: input.color,
+		};
+	}
 }
 
 // h3d.shader.ColorSpaces' exact pair (ColorSpaces.hx:56-76); bevy_color's gamma_function carries

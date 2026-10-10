@@ -12,18 +12,33 @@ vec3 pointLightAt(int i, vec3 position, vec3 normal, float normalWeight, float l
 
 @vs litVs
 @include_block vertexUniforms
+#ifdef SKINNED
+@include_block skinUniforms
+#else
 @include_block modelUniforms
+#endif
 in vec3 position;
 in vec3 normal;
 in vec4 color;
+#ifdef SKINNED
+in vec4 skinJoints;
+in vec4 skinWeights;
+#endif
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec4 baseColor;
 out float depth01;
 void main() {
+#ifdef SKINNED
+    mat4 bone = skinWorld(skinJoints, skinWeights);
+    vec4 world = bone * vec4(position, 1.0);
+    worldPosition = world.xyz;
+    worldNormal = skinNormal(mat3(bone)) * normal;
+#else
     vec4 world = model * vec4(position, 1.0);
     worldPosition = world.xyz;
     worldNormal = mat3(normalModel) * normal;
+#endif
     baseColor = color;
     gl_Position = viewProj * world;
     // PENDING3D: pixel-art-depth-orthographic
@@ -80,7 +95,11 @@ void main() {
 
 @vs litTexturedVs
 @include_block vertexUniforms
+#ifdef SKINNED
+@include_block skinUniforms
+#else
 @include_block modelUniforms
+#endif
 in vec3 position;
 in vec3 normal;
 in vec2 uv;
@@ -89,17 +108,32 @@ in vec4 color;
 in vec4 tangent;
 out vec4 worldTangent;
 #endif
+#ifdef SKINNED
+in vec4 skinJoints;
+in vec4 skinWeights;
+#endif
 out vec3 worldPosition;
 out vec3 worldNormal;
 out vec2 surfaceUv;
 out vec4 baseColor;
 out float depth01;
 void main() {
+#ifdef SKINNED
+    mat4 bone = skinWorld(skinJoints, skinWeights);
+    vec4 world = bone * vec4(position, 1.0);
+    worldPosition = world.xyz;
+    worldNormal = skinNormal(mat3(bone)) * normal;
+#ifdef NORMAL_MAP
+    float handedness = determinant(mat3(bone)) < 0.0 ? -1.0 : 1.0;
+    worldTangent = vec4(mat3(bone) * tangent.xyz, tangent.w * handedness);
+#endif
+#else
     vec4 world = model * vec4(position, 1.0);
     worldPosition = world.xyz;
     worldNormal = mat3(normalModel) * normal;
 #ifdef NORMAL_MAP
     worldTangent = vec4(mat3(model) * tangent.xyz, tangent.w);
+#endif
 #endif
     surfaceUv = uv;
     baseColor = color;
@@ -219,18 +253,32 @@ void main() {
 
 @vs unlitTexturedVs
 @include_block vertexUniforms
+#ifdef SKINNED
+@include_block skinUniforms
+#else
 @include_block modelUniforms
+#endif
 in vec3 position;
 in vec3 normal;
 in vec2 uv;
 in vec4 color;
+#ifdef SKINNED
+in vec4 skinJoints;
+in vec4 skinWeights;
+#endif
 out vec3 worldNormal;
 out vec2 surfaceUv;
 out vec4 baseColor;
 out float depth01;
 void main() {
+#ifdef SKINNED
+    mat4 bone = skinWorld(skinJoints, skinWeights);
+    gl_Position = viewProj * bone * vec4(position, 1.0);
+    worldNormal = skinNormal(mat3(bone)) * normal;
+#else
     gl_Position = viewProj * model * vec4(position, 1.0);
     worldNormal = mat3(normalModel) * normal;
+#endif
     surfaceUv = uv;
     baseColor = color;
     depth01 = gl_Position.z;

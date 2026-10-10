@@ -16,10 +16,13 @@ import {
 import {
 	LitBindings,
 	LitKey,
+	TexturedAttributes,
 	UnlitBindings,
+	VertexBindings,
 	linearToSrgb,
 	litFs,
 	litTexturedFs,
+	litTexturedVs,
 	litVs,
 	movedUv,
 	saturated,
@@ -27,6 +30,7 @@ import {
 	straightTexel,
 	toneCurved,
 	unlitTexturedFs,
+	unlitTexturedVs,
 } from "../void3d/shader3d";
 
 function within(a: float32, b: float32): boolean {
@@ -134,6 +138,7 @@ test "a vertex under identity matrices lands where it is, its normal and colour 
 			vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
 			modelParams: { model: identity(), normalModel: identity() },
 		},
+		plainKey(),
 	);
 	assert near(out.worldPosition, vec3f(0.25, -0.5, 0.75));
 	assert near(out.worldNormal, vec3f(0.0, 1.0, 0.0));
@@ -196,4 +201,77 @@ test "a straight texel divides the colour by its alpha, and a clear texel stays 
 	const t = straightTexel(vec4f(0.25, 0.5, 0.125, 0.5));
 	assert near(t.rgb, vec3f(0.5, 1.0, 0.25)) && within(t.a, 0.5);
 	assert near(straightTexel(vec4f(0.3, 0.2, 0.1, 0.0)).rgb, vec3f(0.0));
+}
+
+function skinBindings(): VertexBindings {
+	let rows: Vec4f[192] = [vec4f(0.0)];
+	for (let i = 0; i < 64; i++) {
+		rows[i * 3] = vec4f(1.0, 0.0, 0.0, 0.0);
+		rows[i * 3 + 1] = vec4f(0.0, 1.0, 0.0, 0.0);
+		rows[i * 3 + 2] = vec4f(0.0, 0.0, 1.0, 0.0);
+	}
+	rows[0] = vec4f(0.0, -1.0, 0.0, 2.0);
+	rows[1] = vec4f(1.0, 0.0, 0.0, 3.0);
+	rows[2] = vec4f(0.0, 0.0, 1.0, 4.0);
+	rows[3] = vec4f(2.0, 0.0, 0.0, -1.0);
+	rows[4] = vec4f(0.0, 3.0, 0.0, 1.0);
+	rows[5] = vec4f(0.0, 0.0, 4.0, -2.0);
+	let model = identity();
+	model.columns[3] = vec4f(1000.0, 2000.0, 3000.0, 1.0);
+	return {
+		vertexParams: { viewProj: identity(), cameraRight: none(), cameraUp: none() },
+		modelParams: { model: model, normalModel: model },
+		modelTransformParams: { model: model },
+		skinParams: { skinRows: rows },
+	};
+}
+
+test "generated skin vertices share weighted rows, cofactor normals and no extra mesh model" {
+	const b = skinBindings();
+	const key: LitKey = { ...plainKey(), skinned: true, normalMap: true };
+	const input: TexturedAttributes = {
+		position: vec3f(2.0, -1.0, 0.5), normal: vec3f(1.0, 2.0, 3.0),
+		color: vec4f(0.2, 0.4, 0.6, 0.8), uv: vec2f(0.25, 0.75),
+		tangent: vec4f(1.0, 0.0, 0.0, -1.0),
+		skinJoints: vec4f(0.0, 1.0, 0.0, 0.0), skinWeights: vec4f(0.25, 0.75, 0.0, 0.0),
+	};
+	const lit = litVs({
+		position: input.position, normal: input.normal, color: input.color,
+		skinJoints: input.skinJoints, skinWeights: input.skinWeights,
+	}, b, key);
+	const textured = litTexturedVs(input, b, key);
+	for (const normalMrt of [false, true]) {
+		const unlit = unlitTexturedVs(input, b, { ...key, normalMrt: normalMrt });
+		assert near(unlit.clip.xyz, vec3f(3.0, -0.25, 1.125)) && within(unlit.clip.w, 1.0);
+		assert near(unlit.worldNormal, vec3f(5.6875, 10.5625, 10.3125));
+		assert nearUv(unlit.surfaceUv, input.uv) && near(unlit.baseColor.rgb, input.color.rgb);
+	}
+	assert near(lit.worldPosition, vec3f(3.0, -0.25, 1.125));
+	assert near(textured.worldPosition, lit.worldPosition) && near(textured.clip.xyz, lit.clip.xyz);
+	assert near(lit.worldNormal, vec3f(5.6875, 10.5625, 10.3125));
+	assert near(textured.worldNormal, lit.worldNormal);
+	assert near(textured.worldTangent.xyz, vec3f(1.5, 0.25, 0.0));
+	assert within(textured.worldTangent.w, -1.0) && nearUv(textured.surfaceUv, input.uv);
+	assert near(lit.baseColor.rgb, input.color.rgb) && within(lit.baseColor.a, input.color.a);
+}
+
+test "generated skin normals keep the determinant sign for a mirrored palette" {
+	let b = skinBindings();
+	b.skinParams.skinRows[0] = vec4f(-1.0, 0.0, 0.0, 0.0);
+	b.skinParams.skinRows[1] = vec4f(0.0, 2.0, 0.0, 0.0);
+	b.skinParams.skinRows[2] = vec4f(0.0, 0.0, 3.0, 0.0);
+	const out = litVs({
+		position: vec3f(2.0, -1.0, 0.5), normal: vec3f(1.0, 0.0, 0.0),
+		color: vec4f(1.0), skinJoints: vec4f(0.0), skinWeights: vec4f(1.0, 0.0, 0.0, 0.0),
+	}, b, { ...plainKey(), skinned: true });
+	assert near(out.worldPosition, vec3f(-2.0, -2.0, 1.5));
+	assert near(out.worldNormal, vec3f(-6.0, 0.0, 0.0));
+	const textured = litTexturedVs({
+		position: vec3f(2.0, -1.0, 0.5), normal: vec3f(1.0, 0.0, 0.0),
+		uv: vec2f(0.0), color: vec4f(1.0), tangent: vec4f(0.0, 1.0, 0.0, 1.0),
+		skinJoints: vec4f(0.0), skinWeights: vec4f(1.0, 0.0, 0.0, 0.0),
+	}, b, { ...plainKey(), skinned: true, normalMap: true });
+	assert near(textured.worldNormal, out.worldNormal);
+	assert near(textured.worldTangent.xyz, vec3f(0.0, 2.0, 0.0));
+	assert within(textured.worldTangent.w, -1.0);
 }
