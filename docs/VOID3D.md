@@ -3850,6 +3850,18 @@ readonly through pass lists and shadows. Five pins pass DRC/ORC303, full index *
 skinMeshIndex.log}`. This is consumer plumbing, not rendered-asset acceptance: glTF metadata,
 posed bounds/picking and actual GPU fixtures remain unfinished; loader skin refusal remains.
 
+`GltfData.animations` now decodes named clips into source-index TRS tracks consumed directly
+by `GltfPose.bind`. LINEAR defaults, STEP and CUBICSPLINE retain accessor timestamps; rotation
+uses VEC4, translation/scale VEC3, cubic outputs retain tangent triplets. Duplicate targets,
+unknown modes, morph tracks, invalid references/times/quaternions and output shapes refuse.
+Track definitions live with curves, keeping the decoder independent of scene-instance state;
+`gltfPose.ms` re-exports its existing track name. Seven pins pass DRC/ORC305, including actual
+loader→node binding→instance sampling with duplicate node names and positive scale, rotation
+and cubic variants. Ignoring animations gives298PASS/7FAIL; restored full index **1532/1532**,
++52/no new red from landed1480. Receipts: `out/tmp/skinning/{animationDecodeUnit.log,
+animationDecodeOrc.log,animationDecodeIndex.log,controlIgnoredAnimations.log}`. No M9 fixed-FPS
+semantics changed. Actual skinned URG import/render and Geass viewer acceptance remain NOTRUN.
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
