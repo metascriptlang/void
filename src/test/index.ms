@@ -31,6 +31,7 @@ import "./h2dOracleCheck";
 import "./math3dCheck";
 import "./skinPaletteCheck";
 import "./skinPartitionCheck";
+import "./skinInfluencesCheck";
 import "./pipelineCheck";
 import "./instanceLayoutCheck";
 import "./instanceStreamCheck";
