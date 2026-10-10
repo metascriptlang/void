@@ -3752,7 +3752,8 @@ Elapsed gate time is not a benchmark; other workspace CPU activity overlapped pa
 **Not yet a rendering feature.** `loadGltf` still explicitly refuses a skin binding;
 no skin program, pose binding or animation importer is accepted yet. The first CPU
 foundation is `skinPalette.ms`: an owned palette map, IBM-before-world matrix order,
-three affine columns per joint and a full declared-size output. Skinning's trace verdict
+three affine columns per joint and a full declared-size output. `skinPartition.ms` ports
+Heaps' material-preserving joint-set merge and shared-slot assignment. Skinning's trace verdict
 is **DIVERGE-INCOMPLETE**: follow Heaps' LBS and palette splitting, not merely loosen the
 importer's gate or impose a 64-joint rig cutoff.
 
@@ -3776,7 +3777,14 @@ a substitute: a quarter of a 120° rotation yields SLERP z=0.258819 versus nlerp
 Existing M9's deliberate semantics stay unchanged.
 
 **CPU foundation acceptance, BUILD `5039c014`.** Eight palette tests pass on DRC and
-ORC (306 including std); full index 1488/1488. Rotation/translation case maps bind point
+ORC (306 including std); seven partition tests pass on both (305 including std).
+Full index **1495/1495**, +15 from the landed 1480 baseline, no new red. The partition
+reproduces the real Haxe 65/129/97-joint fixtures, including four palettes/max 47 in the
+mixed-material case, checks every positive-weight remap and preserves source joints and
+weights. Shared vertices keep one coherent remap across palettes. Deliberately replacing
+all remaps with zero fails five tests; replacing returned material ids with zero fails
+two. As in Heaps, the bounded shared-slot retry can explicitly refuse PaletteAssignment;
+this is not a promise to pack every arbitrary rig graph, nor a vertex-duplication algorithm. Rotation/translation case maps bind point
 to (5,0,0), wrong order to (3,2,0); nonuniform-scale variant maps to (1,2,1), matching
 real Heaps math. Palette rows include translation, unused slots reset to identity,
 and bad joint indices, shape/output lengths, non-affine matrices and float overflow
@@ -3791,7 +3799,7 @@ Minimal importer boundary probes: unbound mesh with joint attributes loads; addi
 returns that error at the `gltf.ms:579-582` field-presence guard, so this is missing Void
 coverage, not a compiler bug. Matrix nodes remain a separately documented refusal.
 The real skin consumer, node-index binding, timestamp curves, posed bounds/picking,
-shadow/lifetime/rebuild and palette splitter are **not implemented** by this foundation;
+shadow/lifetime/rebuild are **not implemented** by this foundation;
 no skinning GPU, browser or device verdict is claimed.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
