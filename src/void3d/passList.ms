@@ -13,6 +13,8 @@ import { Material, Phase, UniformBlock, ShadowCasting } from "./material";
 import { ProgramKey } from "./gpu3d";
 import { MeshData } from "./meshData";
 import { Frustum3D } from "./frustum";
+import { identity } from "../math/math3d";
+import { center } from "./bounds";
 
 // Float offsets of the view-projection column that yields clip z, in the camera block
 // (shader3dBlocks.glsl `vertexParams`, viewProj first): Heaps' cam._13, _23, _33, _43.
@@ -95,7 +97,11 @@ export function filterFrustum(
 	let excluded: int32 = 0;
 	for (let i = 0; i < list.count; i++) {
 		let index: int32 = list.indices[i];
-		if (frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world)) {
+		const geometry = items[index].skinGeometry;
+		const visible: boolean = geometry === null ?
+			frustum.intersectsBounds(meshes[items[index].mesh.index].bounds, items[index].world) :
+			frustum.intersectsBounds(geometry.mesh.bounds, identity());
+		if (visible) {
 			list.indices[count] = index;
 			list.layers[count] = list.layers[i];
 			list.orders[count] = list.orders[i];
@@ -109,13 +115,17 @@ export function filterFrustum(
 }
 
 function depthOf(item: Readonly<DrawItem>, camera: Readonly<Span<float32>>): float32 {
-	let z: float32 = item.world.m41 * camera[CLIP_Z_X] +
-		item.world.m42 * camera[CLIP_Z_Y] +
-		item.world.m43 * camera[CLIP_Z_Z] +
-		camera[CLIP_Z_W];
-	let w: float32 = item.world.m41 * camera[3] +
-		item.world.m42 * camera[7] +
-		item.world.m43 * camera[11] + camera[15];
+	let x: float32 = item.world.m41;
+	let y: float32 = item.world.m42;
+	let depth: float32 = item.world.m43;
+	const geometry = item.skinGeometry;
+	if (geometry !== null) {
+		const middle = geometry.mesh.bounds.center();
+		x = middle.x; y = middle.y; depth = middle.z;
+	}
+	let z: float32 = x * camera[CLIP_Z_X] + y * camera[CLIP_Z_Y] +
+		depth * camera[CLIP_Z_Z] + camera[CLIP_Z_W];
+	let w: float32 = x * camera[3] + y * camera[7] + depth * camera[11] + camera[15];
 	return w > 0.0 ? z / w : -z / w;
 }
 

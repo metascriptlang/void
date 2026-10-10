@@ -31,6 +31,7 @@ import "./math3dCheck";
 import "./skinPaletteCheck";
 import "./skinPoseCheck";
 import "./skinMeshCheck";
+import "./skinGeometryCheck";
 import "./skinPartitionCheck";
 import "./gltfCurveCheck";
 import "./gltfAnimationCheck";
