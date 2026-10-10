@@ -3836,7 +3836,19 @@ most198 vec4 uniform slots, under the WebGL2 minimum256. All1316 pre-existing sh
 arrays remain byte-identical after regeneration. Full index **1520/1520**, +40/no new red
 from landed1480. Local receipts: `out/tmp/skinning/{shaderRegenStable.log,shaderEvidence.json,
 skinnedProgramIndex.log}`. This proves generated programs and ABI, not a submitted skin draw;
-actual asset/draw consumer, GPU execution and browser/device acceptance remain NOTRUN.
+actual asset consumer, GPU execution and browser/device acceptance remain NOTRUN.
+
+Mesh/draw seams now consume those layouts: `MeshData.addSkinAttributes` packs four palette
+slots followed by four weights, preserving base attributes and rejecting invalid late input
+before mutation. Packed geometry refuses further vertex/tangent construction; tangent
+preparation precedes packing. Its retained CPU data selects the same layout on GPU rebuild.
+`DrawItem` references the instance's published `SkinPose` plus palette and optional element
+range; core and shadow submission apply slot7 directly and submit that range. `beginFrame`
+refuses unready/stale poses and invalid ranges before preparation. Readonly items stay
+readonly through pass lists and shadows. Five pins pass DRC/ORC303, full index **1525/1525**,
++45/no new red from landed1480. Receipts: `out/tmp/skinning/{skinMeshUnit.log,skinMeshOrc.log,
+skinMeshIndex.log}`. This is consumer plumbing, not rendered-asset acceptance: glTF metadata,
+posed bounds/picking and actual GPU fixtures remain unfinished; loader skin refusal remains.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
