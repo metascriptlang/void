@@ -81,6 +81,9 @@ attributesOf() {
 		BILLBOARD)    echo "position size anchor tile color" ;;
 		LIT_TEXTURED) echo "position normal uv color" ;;
 		LIT_TEXTURED_TANGENT) echo "position normal uv color tangent" ;;
+		SKIN_LIT) echo "position normal color skinJoints skinWeights" ;;
+		SKIN_LIT_TEXTURED) echo "position normal uv color skinJoints skinWeights" ;;
+		SKIN_LIT_TEXTURED_TANGENT) echo "position normal uv color tangent skinJoints skinWeights" ;;
 		FULLSCREEN)   echo "position" ;;
 		*) echo "programKeys.txt: unknown layout $1" >&2; return 1 ;;
 	esac
@@ -122,6 +125,7 @@ regenKeys() {
 		dissolve=0
 		emissive=0
 		normalMap=0
+		skinned=0
 		defines=""
 		if [ "$features" != "-" ]; then
 			for feature in $(echo "$features" | tr ':' ' '); do
@@ -134,6 +138,7 @@ regenKeys() {
 					DISSOLVE)      dissolve=1 ;;
 					EMISSIVE)      emissive=1 ;;
 					NORMAL_MAP)    normalMap=1 ;;
+					SKINNED)       skinned=1 ;;
 					*) echo "programKeys.txt: row $module names unknown feature $feature"; exit 1 ;;
 				esac
 			done
@@ -158,9 +163,9 @@ regenKeys() {
 
 		printf '\t%s_program_shader_desc,\n' "$module" >> "$work/descs"
 		printf '\tLAYOUT_%s,\n' "$layout" >> "$work/layouts"
-		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
+		key='\tGPU3D_PROGRAM_KEY(GPU3D_PROGRAM_%s, GPU3D_PRESET_%s, %s, %s, %s, %s, %s, %s, %s, %s, %s),\n'
 		printf "$key" "$program" "$preset" "$premultiplied" "$cutout" "$shadowed" \
-			"$uvTransform" "$backTexture" "$dissolve" "$emissive" "$normalMap" >> "$work/keys"
+			"$uvTransform" "$backTexture" "$dissolve" "$emissive" "$normalMap" "$skinned" >> "$work/keys"
 		first=$(tr -d "\r" < "$KEYS" | awk -v l="$layout" '$1 !~ /^#/ && $7 == l { print $1; exit }')
 		if [ "$first" != "$module" ]; then
 			same=""
