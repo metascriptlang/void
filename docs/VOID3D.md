@@ -3750,7 +3750,8 @@ Elapsed gate time is not a benchmark; other workspace CPU activity overlapped pa
 ### glTF skinning, traced CPU foundation
 
 **Not yet a rendering feature.** `loadGltf` still explicitly refuses a skin binding;
-no skin program, pose binding or animation importer is accepted yet. The first CPU
+no skin program or animation importer is accepted yet. CPU source-node binding,
+TRS sampling and per-instance skin-palette ownership are built, not wired into rendering. The first CPU
 foundation is `skinPalette.ms`: an owned palette map, IBM-before-world matrix order,
 three affine columns per joint and a full declared-size output. `skinPartition.ms` ports
 Heaps' material-preserving joint-set merge and shared-slot assignment. Skinning's trace verdict
@@ -3798,9 +3799,33 @@ Minimal importer boundary probes: unbound mesh with joint attributes loads; addi
 `skin:0` refuses Unsupported, with translated and two-joint variants too. Emitted C
 returns that error at the `gltf.ms:579-582` field-presence guard, so this is missing Void
 coverage, not a compiler bug. Matrix nodes remain a separately documented refusal.
-The real skin consumer, node-index binding, timestamp curves, posed bounds/picking,
-shadow/lifetime/rebuild are **not implemented** by this foundation;
+The real skin draw consumer, animation/skin asset metadata import, posed bounds/picking
+and shadow/rebuild integration are **not implemented** by this foundation;
 no skinning GPU, browser or device verdict is claimed.
+
+**Timestamp/ownership follow-up, BUILD `5039c014`.** `gltfCurve.ms` implements independent
+sampler timestamps, endpoint clamping, exact-key STEP, vector LINEAR, shortest-path
+quaternion SLERP and cubic Hermite with duration-scaled tangents. Cubic quaternions normalize
+without sign repair; an all-zero interpolant returns InvalidQuaternion, not identity.
+Reference: glTF Appendix C:3795-3899; Bevy `gltf_curves.rs:54-75,118-136`. M9 unchanged.
+Seven curve pins pass DRC/ORC305 incl std; nlerp and omitted-duration controls each fail one.
+`skinInfluences.ms` decodes u8/u16 joints and float/unorm8/unorm16 weights, keeps canonical
+joint slots, checks accessor normalization flags/ranges, rejects duplicate positive joints
+and extra sets, checks exact quantized sums and renormalizes. Spec:2074-2103. Six pins pass
+DRC/ORC304. Real private URG Undead CPU consumer: 1133 vertices/3990 indices partition to
+one palette; all 450 TRS channels construct and sample endpoints/mid-domain (352 incl std).
+This does not claim a rendered asset or bind the actual exported node hierarchy yet.
+
+`addGltfBoundNodes` retains source-index→generation-checked scene-node ids; legacy
+`addGltfNodes` still returns its count. Unselected nodes remain NO_NODE_ID. `gltfPose.ms`
+shares immutable curves, owns each instance's target map/scratch and validates every target
+and sample before committing TRS. Six pins pass DRC/ORC304: duplicate names, clone independence,
+independent channels, combined TRS, recycled-node refusal and atomic late-quaternion failure.
+`skinPose.ms` gathers joint worlds from that scene, owns copied IBM/palette maps and separate
+published/staging blocks, swaps only after every palette succeeds, and invalidates readiness
+on failure. Four pins pass DRC/ORC302: parent transforms/IBM order, independent actors,
+atomic multi-palette publication and recycled joint ids. Full index **1518/1518**, +38/no new
+red from landed1480. GPU/shader/bounds/pick/shadow acceptance remains NOTRUN.
 
 ### void3d on the web (WebGPU and WebGL2), prepared
 
