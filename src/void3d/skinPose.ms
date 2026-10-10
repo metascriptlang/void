@@ -18,6 +18,7 @@ export interface SkinPose {
 	blocks: Vec<Vec<float32>>;
 	pendingBlocks: Vec<Vec<float32>>;
 	ready: boolean;
+	revision: uint64;
 }
 
 function paletteBlock(): Vec<float32> {
@@ -40,7 +41,7 @@ export function bind(
 	}
 	let pose: SkinPose = {
 		scene: scene, joints: [], inverseBindMatrices: [], palettes: [],
-		worlds: [], pendingWorlds: [], blocks: [], pendingBlocks: [], ready: false,
+		worlds: [], pendingWorlds: [], blocks: [], pendingBlocks: [], ready: false, revision: 0,
 	};
 	for (const source of sourceJoints) {
 		if (source < 0 || source >= mappedNodes.length || !isLive(scene, mappedNodes[source])) {
@@ -66,6 +67,7 @@ export function bind(
 
 export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> {
 	pose.ready = false;
+	if (pose.revision == (0xffffffffffffffff as uint64)) { return Result.err(SkinPoseError.Shape); }
 	const count: int32 = pose.joints.length as int32;
 	if (count < 1 || pose.inverseBindMatrices.length != count || pose.worlds.length != count ||
 		pose.pendingWorlds.length != count || pose.palettes.length != pose.blocks.length ||
@@ -95,6 +97,7 @@ export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> 
 	const oldBlocks = pose.blocks;
 	pose.blocks = pose.pendingBlocks;
 	pose.pendingBlocks = oldBlocks;
+	pose.revision += 1;
 	pose.ready = true;
 	return Result.ok(pose.palettes.length as int32);
 }

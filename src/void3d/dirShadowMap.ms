@@ -228,9 +228,14 @@ function casterBounds(
 	let bounds: Bounds3D = Bounds3D.empty();
 	for (let i = 0; i < shadow.casters.count; i++) {
 		const item: Readonly<DrawItem> = items[shadow.casters.indices[i]];
-		const local: Bounds3D = context.meshData[item.mesh.index].bounds;
-		if (local.isEmpty()) { continue; }
-		addBounds(bounds, local.transformed(item.world * toLight));
+		const geometry = item.skinGeometry;
+		if (geometry !== null) {
+			if (!geometry.mesh.bounds.isEmpty()) { addBounds(bounds, geometry.mesh.bounds.transformed(toLight)); }
+		} else {
+			const local: Bounds3D = context.meshData[item.mesh.index].bounds;
+			if (local.isEmpty()) { continue; }
+			addBounds(bounds, local.transformed(item.world * toLight));
+		}
 	}
 	return bounds;
 }

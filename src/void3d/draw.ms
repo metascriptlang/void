@@ -7,6 +7,7 @@
 
 import { Mat4, normalMatrix, writeTo } from "../math/math3d";
 import { SkinPose } from "./skinPose";
+import { SkinGeometry, spatialReady } from "./skinGeometry";
 import { isLive } from "./scene";
 import {
 	VertexLayout,
@@ -169,6 +170,7 @@ export struct DrawItem {
 	world: Mat4;
 	order: int32;
 	skin: SkinPose | null;
+	skinGeometry: SkinGeometry | null;
 	skinPalette: int32;
 	range: DrawRange | null;
 }
@@ -179,8 +181,15 @@ export function validRange(this item: Readonly<DrawItem>, total: int32): boolean
 		range.base <= total && range.count <= total - range.base);
 }
 
+export function skinPoseOf(this item: Readonly<DrawItem>): Readonly<SkinPose> | null {
+	const geometry = item.skinGeometry;
+	return geometry === null ? item.skin : geometry.pose;
+}
+
 export function validSkin(this item: Readonly<DrawItem>, program: ProgramKey): boolean {
-	const pose = item.skin;
+	const geometry = item.skinGeometry;
+	if (geometry !== null && (item.skin !== null || !spatialReady(geometry))) { return false; }
+	const pose = item.skinPoseOf();
 	if (!program.skinned) { return pose === null; }
 	if (pose === null || !pose.ready || item.skinPalette < 0 ||
 		item.skinPalette >= pose.blocks.length) { return false; }
@@ -1562,7 +1571,7 @@ export function drawItemWith(
 		}
 		applyUniforms(MODEL_SLOT, context.model[0..modelLength]);
 	}
-	const pose = item.skin;
+	const pose = item.skinPoseOf();
 	if (pose !== null) { applyUniforms(SKIN_UNIFORM_SLOT, pose.blocks[item.skinPalette]); }
 	for (const block of globals) {
 		if (context.pipelines.declaresBlock(globalProgram, block.slot)) {
