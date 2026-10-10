@@ -113,7 +113,7 @@ function init(): void {
 	addParticle(faded);
 	addParticle(Material.ofKind(Program.Particle, MaterialKind.Opaque));
 	addParticle(cut);
-	addParticle(faded, 2);
+	addParticle(alpha, 2);
 	emitter.emitCount = 2.0;
 	if (!updateEmitter(emitter, 0.0, identity()).ok || emitter.count != 2) {
 		fail("sorted emitter setup refused");
