@@ -25,6 +25,7 @@ import {
 	GltfSparseSource,
 } from "./gltfAccessor";
 import { GltfColour, GltfColourError, GltfLinearRgba, fromAccessor } from "./gltfColour";
+import { GltfCurve, GltfCurvePath, GltfCurveMode, GltfPoseTrack, forValues } from "./gltfCurve";
 import { TextureData } from "./texture";
 import {
 	MeshData,
@@ -187,6 +188,11 @@ export struct GltfMaterial {
 	uvTransform: GltfTextureTransform;
 }
 
+export struct GltfAnimation {
+	name: string;
+	tracks: Vec<GltfPoseTrack>;
+}
+
 export struct GltfData {
 	meshes: Vec<MeshData>;
 	meshMaterials: Vec<int32>;
@@ -194,6 +200,7 @@ export struct GltfData {
 	textures: Vec<TextureData>;
 	nodes: Vec<GltfNode>;
 	sceneRoots: Vec<int32>;
+	animations: Vec<GltfAnimation>;
 }
 
 // `realUvs`: some role names an image, so its primitives need their TEXCOORD_0; a material that
@@ -293,6 +300,100 @@ function accessorView(
 	}
 	const out: AccessorView = { offset: viewOffset + accessorOffset, count: count };
 	return Result.ok(out);
+}
+
+function animationPath(value: JsonValue): Result<GltfCurvePath, GltfError> {
+	if (value.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
+	return match (value.strVal) {
+		"translation" => Result.ok(GltfCurvePath.Translation),
+		"rotation" => Result.ok(GltfCurvePath.Rotation),
+		"scale" => Result.ok(GltfCurvePath.Scale),
+		_ => Result.err(GltfError.Unsupported),
+	};
+}
+
+function animationMode(value: JsonValue): Result<GltfCurveMode, GltfError> {
+	if (isNull(value)) { return Result.ok(GltfCurveMode.Linear); }
+	if (value.kind != JsonKind.String) { return Result.err(GltfError.Unsupported); }
+	return match (value.strVal) {
+		"STEP" => Result.ok(GltfCurveMode.Step),
+		"LINEAR" => Result.ok(GltfCurveMode.Linear),
+		"CUBICSPLINE" => Result.ok(GltfCurveMode.CubicSpline),
+		_ => Result.err(GltfError.Unsupported),
+	};
+}
+
+function animationValues(
+	accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
+	bufferLength: int32, index: int32, components: int32,
+): Result<Vec<float32>, GltfError> {
+	const normalized = fieldOf(accessors.at(index), "normalized");
+	if (!isNull(normalized) && (normalized.kind != JsonKind.Bool || normalized.boolVal)) {
+		return Result.err(GltfError.Unsupported);
+	}
+	const name: string = components == 1 ? "SCALAR" : (components == 3 ? "VEC3" : "VEC4");
+	const view = try accessorView(
+		accessors,
+		views,
+		bufferLength,
+		index,
+		COMPONENT_FLOAT,
+		name,
+		components,
+	);
+	let values: Vec<float32> = [];
+	for (let element = 0; element < view.count; element++) {
+		for (let component = 0; component < components; component++) {
+			values.push(float32At(buffer, view.offset + (element * components + component) * 4));
+		}
+	}
+	return Result.ok(move values);
+}
+
+function loadAnimations(
+	root: JsonValue, accessors: JsonValue, views: JsonValue, buffer: Readonly<Span<uint8>>,
+	bufferLength: int32, nodeCount: int32,
+): Result<Vec<GltfAnimation>, GltfError> {
+	let clips: Vec<GltfAnimation> = [];
+	const animations = arrayOf(root, "animations");
+	for (let index = 0; index < countOf(animations); index++) {
+		const animation = animations.at(index);
+		const channels = arrayOf(animation, "channels");
+		const samplers = arrayOf(animation, "samplers");
+		const name = fieldOf(animation, "name");
+		if (countOf(channels) < 1 || countOf(samplers) < 1 ||
+			(!isNull(name) && name.kind != JsonKind.String)) {
+			return Result.err(GltfError.Unsupported);
+		}
+		let clip: GltfAnimation = { name: isNull(name) ? "" : name.asString(), tracks: [] };
+		for (let channelIndex = 0; channelIndex < countOf(channels); channelIndex++) {
+			const channel = channels.at(channelIndex);
+			const target = fieldOf(channel, "target");
+			const node: int32 = intField(target, "node", -1);
+			const samplerIndex: int32 = intField(channel, "sampler", -1);
+			if (node < 0 || node >= nodeCount || samplerIndex < 0 ||
+				samplerIndex >= countOf(samplers)) {
+				return Result.err(GltfError.BadReference);
+			}
+			const path = try animationPath(fieldOf(target, "path"));
+			for (const previous of clip.tracks) {
+				if (previous.sourceNode == node && previous.curve.path == path) {
+					return Result.err(GltfError.Unsupported);
+				}
+			}
+			const sampler = samplers.at(samplerIndex);
+			const mode = try animationMode(fieldOf(sampler, "interpolation"));
+			const times = try animationValues(accessors, views, buffer, bufferLength,
+				intField(sampler, "input", -1), 1);
+			const values = try animationValues(accessors, views, buffer, bufferLength,
+				intField(sampler, "output", -1), path == GltfCurvePath.Rotation ? 4 : 3);
+			const curve = GltfCurve.forValues(path, mode, times, values);
+			if (!curve.ok) { return Result.err(GltfError.Unsupported); }
+			clip.tracks.push({ sourceNode: node, curve: curve.value });
+		}
+		clips.push(move clip);
+	}
+	return Result.ok(move clips);
 }
 
 function vec3At(buffer: Readonly<Span<uint8>>, offset: int32, i: int32): Vec3 {
@@ -1240,7 +1341,8 @@ function decodeGltf(
 		|| !isArrayOrAbsent(root, "images")
 		|| !isArrayOrAbsent(root, "samplers")
 		|| !isArrayOrAbsent(root, "textures")
-		|| !isArrayOrAbsent(root, "materials")) {
+		|| !isArrayOrAbsent(root, "materials")
+		|| !isArrayOrAbsent(root, "animations")) {
 		return Result.err(GltfError.Unsupported);
 	}
 	const accessors: JsonValue = arrayOf(root, "accessors");
@@ -1252,6 +1354,7 @@ function decodeGltf(
 		textures: [],
 		nodes: [],
 		sceneRoots: [],
+		animations: [],
 	};
 	const meshArray: JsonValue = arrayOf(root, "meshes");
 	const meshCount: int32 = countOf(meshArray);
@@ -1345,6 +1448,7 @@ function decodeGltf(
 		if (!node.ok) { return Result.err(node.error); }
 		data.nodes.push(node.value);
 	}
+	data.animations = try loadAnimations(root, accessors, views, buffer, declaredLength, nodeCount);
 	placePrimitives(data, runs, nodeCount);
 	const scenes: JsonValue = arrayOf(root, "scenes");
 	if (isNull(scenes)) { return Result.err(GltfError.NotGltf); }

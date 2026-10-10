@@ -185,7 +185,7 @@ export function validSkin(this item: Readonly<DrawItem>, program: ProgramKey): b
 	if (pose === null || !pose.ready || item.skinPalette < 0 ||
 		item.skinPalette >= pose.blocks.length) { return false; }
 	for (const joint of pose.joints) {
-		if (!pose.scene.isLive(joint)) { return false; }
+		if (!isLive(pose.scene, joint)) { return false; }
 	}
 	return pose.blocks[item.skinPalette].length == SKIN_UNIFORM_LENGTH;
 }

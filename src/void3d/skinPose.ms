@@ -43,7 +43,7 @@ export function bind(
 		worlds: [], pendingWorlds: [], blocks: [], pendingBlocks: [], ready: false,
 	};
 	for (const source of sourceJoints) {
-		if (source < 0 || source >= mappedNodes.length || !scene.isLive(mappedNodes[source])) {
+		if (source < 0 || source >= mappedNodes.length || !isLive(scene, mappedNodes[source])) {
 			return Result.err(SkinPoseError.Target);
 		}
 		pose.joints.push(mappedNodes[source]);
@@ -73,7 +73,7 @@ export function syncSkinPose(this pose: SkinPose): Result<int32, SkinPoseError> 
 		return Result.err(SkinPoseError.Shape);
 	}
 	for (const joint of pose.joints) {
-		if (!pose.scene.isLive(joint)) { return Result.err(SkinPoseError.Target); }
+		if (!isLive(pose.scene, joint)) { return Result.err(SkinPoseError.Target); }
 	}
 	const _synced: int32 = syncWorld(pose.scene);
 	for (let i = 0; i < count; i++) {
