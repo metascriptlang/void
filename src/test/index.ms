@@ -30,6 +30,7 @@ import "./ucdOracleCheck";
 import "./h2dOracleCheck";
 import "./math3dCheck";
 import "./skinPaletteCheck";
+import "./skinPoseCheck";
 import "./skinPartitionCheck";
 import "./skinInfluencesCheck";
 import "./pipelineCheck";
