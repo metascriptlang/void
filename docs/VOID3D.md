@@ -3890,6 +3890,20 @@ copying and empty-map replacement. Corrupting only the published source map give
 `out/tmp/skinning/tangentSources/`. No shader, importer gate or GPU/browser/device acceptance
 changed; retained instance and actual imported skin consumers remain unfinished.
 
+Element-range spatial queries now restrict the existing triangle/UV routine to the same
+int32 element base/count carried by `DrawRange`; uint16 vertex index values are not widened.
+`SkinGeometry.rayIntersectionElements` checks live publication before range validation and
+keeps posed world space. At source tree `e71d14320f0c65caf0e67dfad707c7d25a3fdfa3`, stable
+BUILD binary/support `89005562`, `msc test src/test/skinRangeCheck.ms` passes four pins,
+**302/302** including std. Indexed reorder, unindexed selection, distinctive offset65538,
+UVs, empty/malformed ranges and stale publication are covered. Full-mesh substitution gives
+**299 PASS / 3 FAIL**; narrowing only base to uint16 and skipping revision validation each
+produce **301 PASS / 1 FAIL**. Mutations removed; native full index is **100files1545/1545**,
++4/no new red against1541; existing mesh/geometry checks remain330/304. Receipts:
+`out/tmp/skinning/ranges/`. Metadata beyond signed-int32 storage refuses before narrowing;
+no near-limit allocation measured. Scene attachment/picking, loader skin-gate removal and
+GPU/browser/device acceptance remain unfinished; this proves only the CPU query seam.
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
