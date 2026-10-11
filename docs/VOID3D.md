@@ -3877,6 +3877,19 @@ controls each give303PASS/1FAIL. Receipts: `out/tmp/skinning/{geometryUnit.log,g
 geometryIndex.log,controlGeometryRemap.log,controlGeometryModel.log}`. Existing Scene3D picking
 still needs the glTF instance integration; this does not claim a rendered skinned asset.
 
+Tangent split provenance is now available through `meshData.ms` `addTangentsWithSources`,
+reusing the existing MikkTSpace split rather than inferring a source from position/UV. The
+reference requires per-corner results, not averaging through old indices
+(`deps/mikktspace/mikktspace.h:86-88`; glTF pin `b43260ee`, section 3.7.2.1).
+At source tree `b943ee3dace7799343c811461f7645e1566189b7`, BUILD binary/support `89005562`,
+`MSC_NO_GLOBAL_CACHE=1 msc test src/test/skinTangentCheck.ms` passes three pins, **301/301**
+including std, on DRC and ORC. Mirror-seam and continuous-island variants exercise influence
+copying and empty-map replacement. Corrupting only the published source map gives
+**299 PASS / 2 FAIL** at the intended source assertions; restored full index is **1541/1541**,
++3/no new red against1538. Existing mesh/skin-mesh checks pass330/303. Receipts:
+`out/tmp/skinning/tangentSources/`. No shader, importer gate or GPU/browser/device acceptance
+changed; retained instance and actual imported skin consumers remain unfinished.
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
