@@ -83,6 +83,7 @@ export enum MeshError {
 	SkinCount,
 	SkinJoint,
 	SkinWeight,
+	DrawRange,
 }
 
 export function empty(this typeof MeshData): MeshData {
@@ -156,12 +157,12 @@ export function indexCount(this data: Readonly<MeshData>): int32 {
 	return data.indices.length as int32;
 }
 
-export function isIndexed(this data: MeshData): boolean {
+export function isIndexed(this data: Readonly<MeshData>): boolean {
 	return data.indices.length > 0;
 }
 
 // h3d.prim.Primitive.triCount: the index count when indexed, the vertex count otherwise.
-export function triangleCount(this data: MeshData): int32 {
+export function triangleCount(this data: Readonly<MeshData>): int32 {
 	if (data.isIndexed()) { return (data.indices.length as int32) / 3; }
 	return data.vertexCount() / 3;
 }
@@ -438,13 +439,32 @@ export function recomputeBounds(ref data: MeshData): void {
 }
 
 // PENDING3D: pick-culling-follows-material
-export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): MeshRayHit {
+export function rayIntersection(this data: Readonly<MeshData>, ray: Ray, culling: Face): MeshRayHit {
+	return intersectTriangles(data, ray, culling, 0, data.triangleCount());
+}
+
+export function rayIntersectionElements(
+	this data: Readonly<MeshData>, ray: Ray, culling: Face, base: int32, count: int32,
+): Result<MeshRayHit, MeshError> {
+	if (data.indices.length > 0x7fffffff || data.vertices.length > 0x7fffffff) {
+		return Result.err(MeshError.DrawRange);
+	}
+	const total: int32 = data.isIndexed() ? data.indexCount() : data.vertexCount();
+	if (base < 0 || count < 0 || base % 3 != 0 || count % 3 != 0 ||
+		base > total || count > total - base) {
+		return Result.err(MeshError.DrawRange);
+	}
+	return Result.ok(intersectTriangles(data, ray, culling, base / 3, count / 3));
+}
+
+function intersectTriangles(
+	data: Readonly<MeshData>, ray: Ray, culling: Face, first: int32, count: int32,
+): MeshRayHit {
 	let best: float32 = -1.0;
 	let hitTriangle: int32 = -1;
 	let hitU: float32 = 0.0;
 	let hitV: float32 = 0.0;
-	const count: int32 = data.triangleCount();
-	for (let triangle = 0; triangle < count; triangle++) {
+	for (let triangle = first; triangle < first + count; triangle++) {
 		const p0: Vec3 = data.cornerOf(triangle, 0);
 		const edge1: Vec3 = data.cornerOf(triangle, 1) - p0;
 		const edge2: Vec3 = data.cornerOf(triangle, 2) - p0;
@@ -473,7 +493,7 @@ export function rayIntersection(this data: MeshData, ray: Ray, culling: Face): M
 	};
 }
 
-function interpolateUv(this data: MeshData, triangle: int32, u: float32, v: float32): Uv {
+function interpolateUv(this data: Readonly<MeshData>, triangle: int32, u: float32, v: float32): Uv {
 	const at: int32 = triangle * 3;
 	const stride: int32 = data.stride();
 	const indexed: boolean = data.isIndexed();
@@ -498,7 +518,7 @@ function facesKept(det: float32, culling: Face): boolean {
 	};
 }
 
-function cornerOf(this data: MeshData, triangle: int32, corner: int32): Vec3 {
+function cornerOf(this data: Readonly<MeshData>, triangle: int32, corner: int32): Vec3 {
 	const at: int32 = triangle * 3 + corner;
 	const vertex: int32 = data.isIndexed() ? (data.indices[at] as int32) : at;
 	const base: int32 = vertex * data.stride();

@@ -1,5 +1,8 @@
 import { vec3, Vec3, multiplyAffine } from "../math/math3d";
-import { MeshData, MeshRayHit, stride, vertexCount, rayIntersection as intersectMesh } from "./meshData";
+import {
+	MeshData, MeshRayHit, stride, vertexCount, rayIntersection as intersectMesh,
+	rayIntersectionElements as intersectElements,
+} from "./meshData";
 import { Ray } from "./ray";
 import { Face } from "../gpu/state";
 import { isLive } from "./scene";
@@ -12,6 +15,7 @@ export enum SkinGeometryError {
 	Influence,
 	Pose,
 	NonFinite,
+	Range,
 }
 
 export interface SkinGeometry {
@@ -131,8 +135,17 @@ export function spatialReady(this geometry: Readonly<SkinGeometry>): boolean {
 	return true;
 }
 
+export function rayIntersectionElements(
+	this geometry: Readonly<SkinGeometry>, ray: Ray, face: Face, base: int32, count: int32,
+): Result<MeshRayHit, SkinGeometryError> {
+	if (!geometry.spatialReady()) { return Result.err(SkinGeometryError.Pose); }
+	const hit = intersectElements(geometry.mesh, ray, face, base, count);
+	if (!hit.ok) { return Result.err(SkinGeometryError.Range); }
+	return Result.ok(hit.value);
+}
+
 export function rayIntersection(
-	this geometry: SkinGeometry, ray: Ray, face: Face,
+	this geometry: Readonly<SkinGeometry>, ray: Ray, face: Face,
 ): Result<MeshRayHit, SkinGeometryError> {
 	if (!geometry.spatialReady()) { return Result.err(SkinGeometryError.Pose); }
 	return Result.ok(intersectMesh(geometry.mesh, ray, face));

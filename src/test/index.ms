@@ -34,6 +34,7 @@ import "./skinPoseCheck";
 import "./skinMeshCheck";
 import "./skinTangentCheck";
 import "./skinGeometryCheck";
+import "./skinRangeCheck";
 import "./skinPartitionCheck";
 import "./gltfAnimationCheck";
 import "./skinInfluencesCheck";
