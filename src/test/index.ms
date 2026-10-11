@@ -68,6 +68,7 @@ import "./particlesCheck";
 import "./particleFadeCheck";
 import "./layoutCheck";
 import "./billboardCheck";
+import "./shaderCheck";
 when (voidShaper) {
 	import "./shaperBridgeCheck";
 	import "./shapeOracleCheck";
