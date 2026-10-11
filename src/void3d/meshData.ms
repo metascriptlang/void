@@ -294,6 +294,14 @@ export function addTexturedQuad(
 // disagree is split, the copy appended and those corners re-pointed: three.js' de-indexed result
 // with its duplicates shared. w is glTF's, the negated MikkTSpace sign (three.js negateSign, Bevy).
 export function addTangents(ref data: MeshData): Result<int32, MeshError> {
+	let sources: Vec<int32> = [];
+	return addTangentsWithSources(data, sources);
+}
+
+export function addTangentsWithSources(
+	ref data: MeshData,
+	ref appendedSources: Vec<int32>,
+): Result<int32, MeshError> {
 	if (data.hasSkin) { return Result.err(MeshError.SkinAdded); }
 	if (!data.hasUvs) { return Result.err(MeshError.UvMismatch); }
 	if (data.hasTangents) { return Result.err(MeshError.TangentsAdded); }
@@ -349,7 +357,9 @@ export function addTangents(ref data: MeshData): Result<int32, MeshError> {
 		}
 		data.indices = indices;
 	}
-	return interleaveTangents(data, tangents, sources);
+	const total: int32 = try interleaveTangents(data, tangents, sources);
+	appendedSources = move sources;
+	return Result.ok(total);
 }
 
 function mikkCorners(this data: Readonly<MeshData>, corners: Span<float32>): int32 {
