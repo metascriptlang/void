@@ -120,6 +120,14 @@ export struct GpuMesh {
 	writtenFrame: uint32;
 }
 
+export function logicalElementCount(this context: DrawContext, index: int32): int32 {
+	if (context.meshData[index].vertexCount() == 0) {
+		return context.meshes[index].elementCount();
+	}
+	return context.meshData[index].isIndexed() ? context.meshData[index].indexCount() :
+		context.meshData[index].vertexCount();
+}
+
 export function isIndexed(this mesh: GpuMesh): boolean {
 	return mesh.indexBuffer != 0;
 }
@@ -146,11 +154,23 @@ export struct MaterialId {
 export const NO_MESH: MeshId = { store: 0, index: -1, generation: 0 };
 export const NO_MATERIAL: MaterialId = { store: 0, index: -1, generation: 0 };
 
+export struct DrawRange {
+	base: int32;
+	count: int32;
+}
+
 export struct DrawItem {
 	mesh: MeshId;
 	material: MaterialId;
 	world: Mat4;
 	order: int32;
+	range: DrawRange | null;
+}
+
+export function validRange(this item: Readonly<DrawItem>, total: int32): boolean {
+	const range = item.range;
+	return range === null || (range.base >= 0 && range.count >= 0 &&
+		range.base <= total && range.count <= total - range.base);
 }
 
 // Slot 4, matching `layout(binding=4) uniform modelParams` in shader3dBlocks.glsl, a slot no
@@ -1480,6 +1500,10 @@ export function drawItemWith(
 	if (!context.keepsItsTexture(item.material)) { stopOnReplacedTexture(); }
 	const material: Material = context.materials[item.material.index];
 	const mesh: GpuMesh = context.meshes[item.mesh.index];
+	if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
+		console.log("void3d: drawItem range outside mesh elements");
+		unreachable;
+	}
 	if (mesh.hasNothingToDraw()) { return; }
 	const declared: TextureAlpha = material.program.premultiplied ?
 		TextureAlpha.Premultiplied : TextureAlpha.Straight;
@@ -1527,7 +1551,12 @@ export function drawItemWith(
 		const declared: int32 = uniformBlockLength(program, material.uniforms.slot);
 		context.applyBlockHead(material.uniforms, program, declared);
 	}
-	draw(0, mesh.elementCount(), mesh.instanceCount);
+	const range = item.range;
+	if (range === null) {
+		draw(0, mesh.elementCount(), mesh.instanceCount);
+	} else {
+		draw(range.base, range.count, mesh.instanceCount);
+	}
 }
 
 export function closeContext(context: DrawContext): void {

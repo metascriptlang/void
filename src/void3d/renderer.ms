@@ -154,6 +154,7 @@ export enum RendererError {
 	ForeignMaterial,
 	ProgramNotCast,
 	CasterBlock,
+	DrawRange,
 }
 
 // Floats of the uniform pool the core reserves: camera, lights and the frame block.
@@ -354,6 +355,9 @@ export function beginFrame(
 	const shadowed: boolean = shadow !== null;
 	for (const item of items) {
 		if (!context.hasMesh(item.mesh)) { return Result.err(meshError(context, item.mesh)); }
+		if (!item.validRange(context.logicalElementCount(item.mesh.index))) {
+			return Result.err(RendererError.DrawRange);
+		}
 		if (!context.hasMaterial(item.material)) {
 			return Result.err(materialError(context, item.material));
 		}
