@@ -3700,6 +3700,53 @@ and retry record the same binary/support BUILD before, between and after each st
 Only the test control changed, so unaffected full-run evidence carries to the retry.
 Web was not rerun: its earlier 0/17 and the independent emcc/Yoga blockers remain open.
 
+### Retained mesh LOD, bounded native acceptance
+
+**Author scope.** Caller-owned LOD selection can feed retained items into the existing renderer.
+See `src/void3d/meshLod.ms` `MeshLod`, `MeshLodRanges` and
+`MeshLodProjectedSize.referenceScreenRatioHeuristic`; the real consumer is
+`tests/integration/meshLod.ms` `selectItems` after retained scene refresh. This is not automatic
+`Scene3D` LOD, an importer or an instancing/deformation mechanism. Acceptance covers ordinary,
+positive-scale, nondeformed lit meshes only; mirrored/deformed selection remains held.
+
+**Reference, read.** Heaps `b9aa6dcbb2307b03c1f435e87bdb036060100984`:
+`h3d/scene/Mesh.hx` `screenRatio` (154-166), `h3d/col/Bounds.hx`
+`getBoundingRadius` (385-405), and `h3d/prim/HMDModel.hx` material/LOD lookup, index production
+and submission (58-67, 88-94, 272-280), plus threshold selection (347-374).
+The reference divides by camera distance even for orthographic projection. Keep that heuristic;
+it is not an exact orthographic projected diameter. LOD-major material ranges preserve the
+reference's ordering without changing the existing uint16 index storage or shader ABI.
+
+**Measured 2026-10-12.** Tree `971c04215d155bb57887a99bbbd7693111142191`, HEAD `88434a77`,
+base `d9213809`; binary/support BUILD `e8c024c8`. Named D3D11 run used
+`msc build --release --output=out/tmp/meshLod.exe tests/integration/meshLod.ms` followed by
+`VOID_MESH_LOD_CONTROL=<control> out/tmp/meshLod.exe`, separately for controls 0 through 5.
+Release executable
+SHA256 `31d0873129d5c71d455d640bb27af60c8ea143c2327f15bb551e24417ae57a5f`.
+Positive exit 0; five controls exit 1 at intended pixel assertions: always LOD0, material-major
+lookup, full-mesh draw, truncated element offset and omitted culling. No unmarked crash counted
+as a negative. First of four ranges starts at element 65538; uint16 storage remains unchanged.
+
+Positive stages near/far/reupload/remove/cull selected and rendered 2/2/2/1/0 items. Pixel checks
+cover silhouettes and distinct material responses. Retained identities/pins survive replacement;
+one removal preserves the other consumer. Reupload explicitly retires owned buffers and asserts
+new handles/current generation. Terminal close checks all six GPU resource counters zero.
+This is same-context reupload, **not actual device loss**. Item counts are not GPU primitive counts.
+
+**Full gate pair.** `sh scripts/gate3d.sh`: exit 0, 365 PASS / 0 FAIL / 3 loud skips, including
+its separately built LOD positive and five controls. `sh scripts/gate.sh`: exit 0,
+158 PASS / 0 FAIL / 8 loud skips; module all-off 1498/1498, all-on 1877/1877. No new red;
+skips remain the recorded native baseline: held Forward/Anchor captures and unset GLES3 device
+for 3D; Yoga wasm budget, Metal macOS/iOS, Android, WebGPU, mobile sample counts and two optional
+web stages for 2D (`tests/PENDING3D.md`, `tests/PENDING.md`). A worker timeout interrupted the first
+2D attempt: no verdict credited. Full 2D retry reused completed 3D evidence only after identical
+source, HEAD/tree/ref, BUILD and compiler hashes before/between/after. Named release and gate-built
+LOD executables are separate evidence epochs. Local receipts: `out/tmp/lodGpu/receipt.json`,
+`out/tmp/lodGatePair/receipt.json`, `out/tmp/lodGateAfterTimeout/receipt.json` and archived logs.
+
+No LOD browser, physical-device, actual-loss, shadow-pixel or picking acceptance claimed.
+Elapsed gate time is not a benchmark; other workspace CPU activity overlapped part of the run.
+
 ### void3d on the web (WebGPU and WebGL2), prepared
 
 **What changes for the author.** Nothing in the API: void3d's own samples already build for both
