@@ -112,6 +112,44 @@ No worker has been launched. Do not report peer sessions or shell tool concurren
 launched subagent campaign, and do not silently pivot to another launcher or install code.
 Launcher synchronization/setup must happen before actual fan-out.
 
+**Executed frontier.** After human setup, native workflow
+`d054a694-bfbd-4a83-a417-74929df2797a` completed its launcher smoke and ten read-only scouts
+at `c9381878`. The parent read every returned report. These are source/reference traces,
+not passing feature lanes: most scouts explicitly reported incomplete full-document retrieval.
+The parent recovered its own exact read coverage and read the missing VOID3D ranges before
+implementation. Runtime-managed `frontier/*.md` reports retain the individual anchors and limits.
+
+### Component wave contract
+
+This is a **multi-seam** campaign. The next writers own isolated **single-seam** components;
+integration across importer, retained scene, renderer, shaders and GPU door remains parent-owned.
+Each component must follow its reference and supply two variants plus an isolated negative control.
+Only source/fixture preparation may fan out during the compiler gate: CPU compilation/tests run
+serially after each writer exits, under the agreed scheduler slot. No component handoff counts as
+verified until those tests run; no component may lift an importer refusal or register a program.
+
+| Component owner | Exclusive files | Contract at the integration boundary |
+|---|---|---|
+| Accessor | `gltfAccessor.ms`, `gltfColour.ms`, dedicated checks | Owned decoded values from validated caller-supplied byte tables; stride/sparse/normalization and RGBA preservation. No URI policy or index-width GPU change. |
+| Direct PBR | `pbrResponse.ms`, `pbrResponse.glsl`, dedicated check | Heaps direct response and separate glTF map interpretation in linear space. No legacy look change, view-slot choice or invented zero-roughness floor. |
+| Mip data | `textureMip.ms`, dedicated check | Explicit supplied mip chains and complete supported sampler identity. No automatic generation, GPU door, cube target or environment approximation. |
+| Light shape | `lightShape.ms`, dedicated check | Spot angular evaluation/camera data; rectangle/capsule closest-point math. No scene enum, attenuation replacement or unsafe culling copied by convenience. |
+| Clip composition | `animationCompose.ms`, dedicated check | Staged TRS composition, captured-rest fallback and source-index exclusive masks; glTF intra-track SLERP and legacy sampling unchanged. |
+| Morph data | `morphGeometry.ms`, dedicated check | Owned base/deltas and instance weights; atomic mesh-space position/normal/tangent deformation before skin. No GPU-only spatial proxy or dynamic-buffer policy. |
+| LOD | `meshLod.ms`, dedicated check | Validated ordered thresholds and material/range-preserving CPU selection. No generic instance ABI or shared independent actor palettes. |
+| Colour effects | `colorMatrixPass.ms`, `fxaaFilter.glsl`, dedicated check | Distinct material/screen matrix alpha rules and Heaps color-only FXAA block. No registry, preset ordering, AO/decal/SSR input invention. |
+| Particle visuals | `particleVisual.ms`, dedicated check | Rotation/aspect/frame sampling and owned extended visual records, preserving current eight-float output and continuous Alpha. No compute or collision policy. |
+| Acceptance asset | `tests/fixtures/gltf/generateSkinnedAsymmetric.py`, `skinnedAsymmetric.glb` | Independently computed asymmetric joints/IBMs/TRS, duplicate names, multiple materials and clone expectations. No private asset committed or GPU receipt inferred. |
+
+All `.ms` paths above are under `src/void3d`; dedicated checks live under `src/test` and are
+unregistered until parent integration. Workspace `wt.sh` provisions one worktree per writer;
+the plugin does not allocate worktrees. Workers must finish mandatory document/reference reads,
+probe the contract, and report any unresolved mechanism instead of guessing. Shared glTF/scene,
+mesh/index ABI, materials/camera, GPU door/platform, shader registry/generated headers, test index
+and docs are not worker-owned. Parent continues actual skin importer/instance/pick work independently.
+Reference gaps (SSR compute on WebGL2, automatic mip generation, independent-pose instancing)
+remain separate mechanism decisions, not implicit permission from this component wave.
+
 Existing schedulers remain authoritative: timed BEGIN/END windows exclude heavy jobs;
 CPU tests run in an agreed slot; native GPU execution requires named `void-manager` GO.
 Parallel source workers do not justify simultaneous benchmark runs or changing acceptance
