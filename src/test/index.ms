@@ -45,6 +45,8 @@ import "./cameraCheck";
 import "./frustumCheck";
 import "./boundsCheck";
 import "./meshDataCheck";
+import "./meshLodCheck";
+import "./meshLodDrawCheck";
 import "./drawCheck";
 import "./gltfCheck";
 import "./gltfMaterialCheck";

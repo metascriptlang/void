@@ -1201,6 +1201,41 @@ run_exposure() {
 	pass "exposure: none by default, a linear exposure per layer in both presets, clipped before blending, Reinhard per layer"
 }
 
+run_mesh_lod() {
+	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
+		skip "mesh-lod: GATE_SKIP_CAPTURE=1 — nothing was read back"
+		return
+	fi
+	exe="$WORK/meshLod.exe"
+	rm -f "$exe"
+	if ! msc build tests/integration/meshLod.ms --output="$exe" \
+		> "$WORK/meshLod.build.log" 2>&1; then
+		fail "mesh-lod: build refused — see $WORK/meshLod.build.log"
+		return
+	fi
+	status=0
+	VOID_MESH_LOD_CONTROL=0 "$exe" > "$WORK/meshLod.0.log" 2>&1 || status=$?
+	if [ "$status" -eq 3 ]; then
+		skip "mesh-lod: no readback backend"
+		return
+	fi
+	if [ "$status" -ne 0 ] || ! grep -q '^PASS mesh LOD:' "$WORK/meshLod.0.log"; then
+		fail "mesh-lod: ranges/materials/culling/reupload/pins/close — see $WORK/meshLod.0.log"
+		return
+	fi
+	for control in 1 2 3 4 5; do
+		status=0
+		log="$WORK/meshLod.$control.log"
+		VOID_MESH_LOD_CONTROL=$control "$exe" > "$log" 2>&1 || status=$?
+		if [ "$status" -eq 0 ] || ! grep -qE \
+			'^FAIL mesh LOD:.*(silhouette did not match LOD/culling|material was replaced)' "$log"; then
+			fail "mesh-lod: control $control did not fail its pixel assertion — see $log"
+			return
+		fi
+	done
+	pass "mesh-lod: wide ranges/materials, LOD/culling, reupload/pins/close, five controls red"
+}
+
 run_particle_fade() {
 	if [ "${GATE_SKIP_CAPTURE:-0}" = "1" ]; then
 		skip "particle-fade: GATE_SKIP_CAPTURE=1 — nothing was read back"
@@ -2932,6 +2967,7 @@ run_exposure
 run_hdr
 run_bloom
 run_particle_fade
+run_mesh_lod
 run_gl_core
 run_stores
 run_views
