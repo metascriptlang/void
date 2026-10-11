@@ -20,6 +20,17 @@ later replaces the hand-written GLSL source of each base.
   author's code: textures and samplers are separate; uniform block members are only float, int,
   vec2–4, ivec2–4, mat3, mat4, and arrays only vec4, ivec4 or mat4; no recursion. The emitter packs an
   author's struct into those types, so a uniform block's layout comes from one MetaScript struct.
+- **Entry convention** (shady's, approved 2026-10-10). A plain parameter is a stage input and an
+  `out` parameter an output, each at `layout(location)` in parameter order. A `FragCoord` parameter is
+  `gl_FragCoord`. `Texture2D` and `Sampler` parameters are separate uniforms, bindings counted per kind
+  in parameter order. The stage and program name are the generator's (`@fs copyFs`), not the function's.
+- **Builtins by declaring module.** A call to a function declared in `glsl.ms` emits under that
+  declaration's name; a struct getter declared there emits as the swizzle it names. Any other callee
+  is the user's (slice 2: emitted transitively). The walk sits in nested functions of the macro body:
+  a top-level helper cannot read `Node` fields.
+- **Generated GLSL lives on disk.** `tools/genShaders.ms`, run by `scripts/regen-shaders.sh`, writes
+  `src/void3d/shader3dGen.glsl`, which `shader3d.glsl` includes; `--check` is the staleness gate.
+  Runtime modules never call `glsl`, so no binary carries GLSL text.
 - **CPU oracle within a tolerance, never pixel-exact.** GLSL allows contraction and looser ULP bounds,
   and `sin`/`exp` are implementation-defined. shady's own tests use `1e-4`. Pixel truth is
   the readback in `tests/capture3d/capture.c`.
@@ -38,7 +49,11 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 - **Swizzles.** `get xy()` in a struct body: `v.xy` is a value read with no heap object, and a
   receiver with side effects runs once.
 - **Macro output keeps its symbols**; a local placed outside its own function is an error.
-- Macro bodies cannot recurse through flat `Node` fields; walk with `msNodeChildCount` / `msNodeChildAt`.
+- A top-level helper cannot read flat `Node` fields; a function nested in the macro body can, and
+  recurses (measured 2026-10-11, BUILD `89005562`).
+- **Open:** a literal `bindSym("name")` node has `resolvedSym == null`, while the computed form and
+  every typed-body callee carry it (`out/shaderPrerequisites/bindSymSymbol.ms`, C and JS). The
+  builtin check needs it: card `~/metascript/.inbox/compiler/2026-10-11-bindsym-literal-node-has-no-symbol.md`.
 
 ## Measured — sokol-shdc coverage
 
