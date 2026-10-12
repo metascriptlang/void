@@ -787,10 +787,10 @@ export function pushClip(tl: Vec2, tr: Vec2, br: Vec2, bl: Vec2): boolean {
 	const axisAligned: boolean = (absf(ey) < 0.0001 && absf(fx) < 0.0001)
 		|| (absf(ex) < 0.0001 && absf(fy) < 0.0001);
 	if (!axisAligned && exLen > 0.0 && fLen > 0.0) {
-		const ux: float32 = ex / exLen;
-		const uy: float32 = ey / exLen;
-		const vx: float32 = fx / fLen;
-		const vy: float32 = fy / fLen;
+		const ux: float32 = fy / fLen;
+		const uy: float32 = -fx / fLen;
+		const vx: float32 = -ey / exLen;
+		const vy: float32 = ex / exLen;
 		if (next.uMax > next.uMin) {
 			const same: boolean =
 				(absf(next.ux * ux + next.uy * uy) > 0.9999

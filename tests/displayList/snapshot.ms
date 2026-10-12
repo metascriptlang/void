@@ -57,7 +57,7 @@ import {
 } from "../../src/void2d/instanceLayout";
 import { InstanceMode } from "../../src/void2d/instance";
 import {
-	Color, Tile, Vec2, rgba, tile, identity2d, emptyBounds, Smooth, vec2,
+	Color, Tile, Vec2, rgba, tile, identity2d, emptyBounds, Smooth, vec2, trs2d,
 } from "../../src/void2d/types";
 import { BlendMode } from "../../src/gpu/state";
 import { RenderTarget } from "../../src/gpu/target";
@@ -684,6 +684,80 @@ test "nine nested targets each record their own block" {
 
 test "T1 snapshot: a rotated Mask carries four exact edge distances" {
 	assert snapshot("rotatedClip", record(rotatedClipScene(), 128.0, 64.0, 1.0));
+}
+
+function affineMaskScene(sx: float32, nested: boolean, outside: boolean): NodeRef {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const parent = s.add(s.group().at(150.0, 40.0));
+	parent.setScaleX(sx);
+	const mask = parent.addChild(s.mask(40.0, 20.0));
+	mask.setRotation(0.4);
+	const clip = nested ? mask.addChild(s.mask(20.0, 10.0).at(10.0, 5.0)) : mask;
+	clip.addChild(s.rect(80.0, 40.0, rgba(0.0, 1.0, 0.0, 1.0)).at(-20.0, -10.0));
+	if (outside) {
+		mask.addChild(s.rect(1.0, 2.0, rgba(1.0, 0.0, 0.0, 1.0)).at(42.0, 9.0));
+	}
+	return s.refOf(s.root);
+}
+
+function affineMaskAccepts(sx: float32, x: float32, y: float32): boolean {
+	const world = trs2d(150.0, 40.0, 0.0, sx, 1.0) * trs2d(0.0, 0.0, 0.4, 1.0, 1.0);
+	const p: Vec2 = vec2(x, y) * world;
+	for (let i: int32 = 0; i < commandCount(); i++) {
+		if (commandField(i, CMD_INSTANCE_COUNT) <= 0.0) { continue; }
+		const u: float32 = p.x * commandField(i, CMD_CLIP_U_X)
+			+ p.y * commandField(i, CMD_CLIP_U_Y);
+		const v: float32 = p.x * commandField(i, CMD_CLIP_V_X)
+			+ p.y * commandField(i, CMD_CLIP_V_Y);
+		return u >= commandField(i, CMD_CLIP_U_MIN) - 0.0001
+			&& u <= commandField(i, CMD_CLIP_U_MAX) + 0.0001
+			&& v >= commandField(i, CMD_CLIP_V_MIN) - 0.0001
+			&& v <= commandField(i, CMD_CLIP_V_MAX) + 0.0001;
+	}
+	return false;
+}
+
+function affineMaskMatchesLocal(sx: float32): boolean {
+	record(affineMaskScene(sx, false, false), 320.0, 160.0, 1.0);
+	return uiInstanceCount() == 1
+		&& affineMaskAccepts(sx, 20.0, 10.0)
+		&& affineMaskAccepts(sx, 0.5, 0.5)
+		&& affineMaskAccepts(sx, 39.5, 19.5)
+		&& !affineMaskAccepts(sx, 42.0, 10.0)
+		&& !affineMaskAccepts(sx, -2.0, 10.0)
+		&& !affineMaskAccepts(sx, 20.0, 22.0)
+		&& !affineMaskAccepts(sx, 20.0, -2.0);
+}
+
+test "T1 stretched-parent rotated Mask rejects points outside every true edge" {
+	assert affineMaskMatchesLocal(2.0);
+}
+
+test "T1 compressed-parent rotated Mask rejects points outside every true edge" {
+	assert affineMaskMatchesLocal(0.5);
+}
+
+test "T1 reflected-parent rotated Mask keeps the true half-planes" {
+	assert affineMaskMatchesLocal(-2.0);
+}
+
+test "T1 orthogonal rotated Mask keeps its true half-planes" {
+	assert affineMaskMatchesLocal(1.0);
+}
+
+test "T1 same-axis nested sheared Masks intersect their true half-planes" {
+	record(affineMaskScene(2.0, true, false), 320.0, 160.0, 1.0);
+	assert uiInstanceCount() == 1;
+	assert affineMaskAccepts(2.0, 20.0, 10.0);
+	assert !affineMaskAccepts(2.0, 32.0, 10.0);
+	assert !affineMaskAccepts(2.0, 8.0, 10.0);
+	assert !affineMaskAccepts(2.0, 20.0, 17.0);
+	assert !affineMaskAccepts(2.0, 20.0, 3.0);
+}
+
+test "T1 sheared Mask culls a child outside its true edge but inside its AABB" {
+	record(affineMaskScene(2.0, false, true), 320.0, 160.0, 1.0);
+	assert uiInstanceCount() == 1;
 }
 
 test "T1 active-clip culling drops rows outside a Mask" {
