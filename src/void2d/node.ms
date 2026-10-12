@@ -262,6 +262,9 @@ export interface Scene2D {
 	laneMarks: Vec<int32>;
 	repaint: Vec<int32>;
 	queued: Vec<int32>;
+	propagated: Vec<int32>;
+	dirtySlots: Vec<float64>;
+	propagationVisits: int32;
 	patchSerial: int32;
 	retry: Vec<int32>;
 	scanNeeded: boolean;
@@ -417,6 +420,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 		s.alphas[i] = 1.0;
 		s.moved[i] = false;
 		s.queued[i] = 0;
+		s.propagated[i] = 0;
 		const listed: boolean = !s.changed[i].isEmpty();
 		s.changed[i] = freshBits();
 		if (!listed) {
@@ -448,6 +452,7 @@ export function newRow(this s: Scene2D, kind: DrawKind, payload: int32): int32 {
 	s.alphas.push(1.0);
 	s.moved.push(false);
 	s.queued.push(0);
+	s.propagated.push(0);
 	return i;
 }
 

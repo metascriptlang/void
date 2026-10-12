@@ -192,6 +192,7 @@ function fullFrame(s: Scene2D): Recording {
 }
 
 let reusedByRetained: int32 = 0;
+let visitsByRetained: int32 = 0;
 
 function ranges(s: Scene2D): Vec<int32> {
 	let out: Vec<int32> = [];
@@ -218,6 +219,7 @@ function check(s: Scene2D, what: string, path: string): boolean {
 	s.clearChanges();
 	s.retryRefused();
 	reusedByRetained = s.reused;
+	visitsByRetained = s.propagationVisits;
 	const taken: string = s.patches > patches ? "patch" : (s.splices > splices ? "splice" : "full");
 	s.context.painted = false;
 	s.viewInit = false;
@@ -368,6 +370,139 @@ test "a card's colour rewrites its one UI record and nothing else" {
 	}
 	assert changed > 0;
 	assert same({ counts: before.counts, floats: before.floats }, fullFrame(s)) == false;
+}
+
+test "independent dirty leaves keep setter order without propagation stamps" {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	let leaves: Vec<NodeRef> = [];
+	for (let i: int32 = 0; i < 3; i++) {
+		const leaf = s.rect(10.0, 10.0, rgba(0.2, 0.3, 0.5, 1.0)).at((i * 20) as float32, 4.0);
+		leaves.push(s.add(leaf));
+	}
+	frame(s);
+	for (let i: int32 = 2; i >= 0; i--) {
+		leaves[i].setColor(rgba(0.5, 0.3, 0.2, 1.0)).setX((i * 20 + 1) as float32).setAlpha(0.7);
+	}
+	const retained: Recording = frame(s);
+	assert s.repaint.length == 3;
+	for (let k: int32 = 0; k < 3; k++) {
+		assert s.repaint[k] == leaves[2 - k].id.index;
+		assert s.propagated[leaves[k].id.index] == 0;
+	}
+	s.context.painted = false;
+	assert same(retained, frame(s));
+}
+
+struct DirtyChain {
+	s: Scene2D;
+	rows: NodeRef[];
+}
+
+function dirtyChain(depth: int32, offscreen: boolean): DirtyChain {
+	const s = Scene2D.create(rgba(0.0, 0.0, 0.0, 1.0));
+	const rows: NodeRef[] = [];
+	let parent: NodeRef = s.refOf(s.root);
+	for (let i: int32 = 0; i < depth; i++) {
+		const row = s.rect(4.0, 4.0, rgba(0.2, 0.3, 0.5, 1.0));
+		if (i == 0) { row.at(offscreen ? W + 8.0 : 8.0, 8.0); }
+		parent.addChild(row);
+		rows.push(row);
+		parent = row;
+	}
+	frame(s);
+	return { s: s, rows: rows };
+}
+
+test "overlapping dirty chains propagate once, independent of setter order and paintability" {
+	for (const depth of [8, 32]) {
+		for (const offscreen of [false, true]) {
+			const c: DirtyChain = dirtyChain(depth, offscreen);
+			for (const reverse of [false, true]) {
+				for (let k: int32 = 0; k < depth; k++) {
+					const i: int32 = reverse ? depth - 1 - k : k;
+					c.rows[i].setColor(rgba(reverse ? 0.4 : 0.8, 0.1, 0.2, 1.0));
+				}
+				assert check(c.s, "an overlapping colour chain", "patch");
+				assert visitsByRetained == depth;
+			}
+		}
+	}
+}
+
+test "dirty descendants below a clean intermediate keep their changes in either setter order" {
+	for (const reverse of [false, true]) {
+		const c: DirtyChain = dirtyChain(3, false);
+		if (reverse) {
+			c.rows[2].setColor(rgba(0.9, 0.1, 0.1, 1.0));
+			c.rows[0].setColor(rgba(0.1, 0.9, 0.1, 1.0));
+		} else {
+			c.rows[0].setColor(rgba(0.1, 0.9, 0.1, 1.0));
+			c.rows[2].setColor(rgba(0.9, 0.1, 0.1, 1.0));
+		}
+		assert check(c.s, "a dirty leaf below a clean row", "patch");
+		assert visitsByRetained == 3;
+		c.rows[2].setX(1.0).setAlpha(0.8);
+		c.rows[0].setX(10.0).setAlpha(0.9);
+		assert check(c.s, "inherited state through a clean row", "patch");
+		assert visitsByRetained == 3;
+	}
+}
+
+test "reverse-ordered local and inherited-alpha changes propagate in preorder" {
+	const c: DirtyChain = dirtyChain(32, false);
+	for (let i: int32 = 31; i >= 0; i--) {
+		c.rows[i].setX(0.125 * ((i + 1) as float32)).setAlpha(0.99);
+	}
+	assert check(c.s, "a reverse-ordered moving and fading chain", "patch");
+	assert visitsByRetained == 32;
+	frame(c.s);
+	assert c.s.propagationVisits == 0;
+}
+
+test "propagation stamps reset on reused rows and do not hide reparented descendants" {
+	const c: DirtyChain = dirtyChain(3, false);
+	c.rows[0].setColor(rgba(0.9, 0.1, 0.1, 1.0));
+	c.rows[2].setColor(rgba(0.1, 0.9, 0.1, 1.0));
+	frame(c.s);
+	const row: int32 = c.rows[2].id.index;
+	assert c.s.propagated[row] == c.s.patchSerial;
+	c.rows[2].dispose();
+	const fresh = c.s.rect(4.0, 4.0, rgba(0.2, 0.3, 0.5, 1.0));
+	assert fresh.id.index == row;
+	assert c.s.propagated[row] == 0;
+	c.rows[0].addChild(fresh);
+	assert check(c.s, "a reused row under a dirty ancestor", "splice");
+	fresh.setAlpha(0.8);
+	c.rows[1].addChild(fresh);
+	c.rows[0].setX(12.0);
+	assert check(c.s, "a reparented dirty descendant", "splice");
+	fresh.setColor(rgba(0.8, 0.2, 0.1, 1.0));
+	c.rows[0].setAlpha(0.9);
+	assert check(c.s, "a patch after reuse and reparent", "patch");
+}
+
+function settledAfterEpoch(epoch: int32): boolean {
+	const c: DirtyChain = dirtyChain(3, false);
+	c.s.patchSerial = epoch - 1;
+	c.s.propagated[c.rows[0].id.index] = epoch;
+	c.rows[0].setX(12.0);
+	frame(c.s);
+	const head = c.s.worlds[c.s.root] * c.s.localMatrices[c.rows[0].id.index];
+	const leaf = head * c.s.localMatrices[c.rows[1].id.index] *
+		c.s.localMatrices[c.rows[2].id.index];
+	return c.s.worlds[c.rows[0].id.index] == head && c.s.worlds[c.rows[2].id.index] == leaf;
+}
+
+test "zero propagation epoch settles dirty branches with initial zero stamps" {
+	assert settledAfterEpoch(0);
+}
+
+test "returned positive propagation epochs do not hide dirty branches" {
+	assert settledAfterEpoch(2147483647);
+}
+
+test "returned negative propagation epochs do not hide dirty branches" {
+	assert settledAfterEpoch(-2147483647);
 }
 
 function spriteLast(): Scene2D {

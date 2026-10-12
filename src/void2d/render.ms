@@ -1774,7 +1774,7 @@ function retileRow(s: Scene2D, i: int32): void {
 	}
 }
 
-function descend(s: Scene2D, d: int32): void {
+function descend(s: Scene2D, d: int32, overlapping: boolean): void {
 	const top: int32 = s.slots[d];
 	if (top == NO_SLOT) { return; }
 	const bits: BitSet<Changed> = s.changed[d];
@@ -1783,9 +1783,11 @@ function descend(s: Scene2D, d: int32): void {
 		s.scanNeeded = true;
 	}
 	if (s.kinds[d] === DrawKind.Mask) { s.scanNeeded = true; }
+	if (overlapping && s.propagated[d] == s.patchSerial) { return; }
 	const end: int32 = s.orderEnd[top];
 	let p: int32 = top;
 	while (p < end) {
+		s.propagationVisits = s.propagationVisits + 1;
 		const i: int32 = s.order[p];
 		const up: int32 = s.parents[i];
 		const world: Transform2D = (p == 0 ? s.viewMat : s.childWorld(up)) * s.localMatrices[i];
@@ -1794,6 +1796,7 @@ function descend(s: Scene2D, d: int32): void {
 		if (p > top && !moved && alpha == s.alphas[i] && s.changed[i].isEmpty()) {
 			p = s.orderEnd[p];
 		} else {
+			if (overlapping) { s.propagated[i] = s.patchSerial; }
 			const state: PaintState = paintStateOf(i);
 			if (state == PaintState.InTarget || state == PaintState.InLanes) { s.scanNeeded = true; }
 			if (moved && s.kinds[i] === DrawKind.Mask) { s.scanNeeded = true; }
@@ -1820,7 +1823,36 @@ export function patchOrder(this s: Scene2D, vw: float32, vh: float32): boolean {
 	while ((s.repaint.length as int32) > 0) { s.repaint.pop(); }
 	while ((s.retile.length as int32) > 0) { s.retile.pop(); }
 	s.scanNeeded = s.structureChanged;
-	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) { descend(s, s.dirty[k]); }
+	let sorted: boolean = true;
+	let branch: boolean = false;
+	let previous: int32 = NO_SLOT;
+	for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
+		const slot: int32 = s.slots[s.dirty[k]];
+		if (slot == NO_SLOT) { continue; }
+		if (slot < previous) { sorted = false; }
+		if (s.orderEnd[slot] > slot + 1) { branch = true; }
+		previous = slot;
+	}
+	if (branch) {
+		for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
+			s.propagated[s.dirty[k]] = s.patchSerial ^ 1;
+		}
+	}
+	if (sorted || !branch) {
+		for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
+			descend(s, s.dirty[k], branch);
+		}
+	} else {
+		for (let k: int32 = 0; k < (s.dirty.length as int32); k++) {
+			const slot: int32 = s.slots[s.dirty[k]];
+			if (slot != NO_SLOT) { s.dirtySlots.push(slot as float64); }
+		}
+		s.dirtySlots.sort();
+		for (let k: int32 = 0; k < (s.dirtySlots.length as int32); k++) {
+			descend(s, s.order[s.dirtySlots[k] as int32], true);
+		}
+		while ((s.dirtySlots.length as int32) > 0) { s.dirtySlots.pop(); }
+	}
 	if (s.viewShift != s.culledShift) { panOrder(s, vw, vh); }
 	if (s.scanNeeded) { return false; }
 	for (let k: int32 = 0; k < (s.repaint.length as int32); k++) {

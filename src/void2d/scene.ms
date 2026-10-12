@@ -43,7 +43,8 @@ export function create(this typeof Scene2D, clear: Color): Scene2D {
 		structureChanged: true, locals: [], paints: [], contents: [], filters: [], orders: [],
 		layouts: [], parents: [], children: [], order: [], orderEnd: [], slots: [],
 		orderBuilds: 0, localMatrices: [], worlds: [], bounds: [], alphas: [], moved: [],
-		maskEnds: [], maskKinds: [], lanes: [], laneMarks: [], repaint: [], queued: [], patchSerial: 0,
+		maskEnds: [], maskKinds: [], lanes: [], laneMarks: [], repaint: [], queued: [],
+		propagated: [], dirtySlots: [], propagationVisits: 0, patchSerial: 0,
 		retry: [], scanNeeded: false,
 		patches: 0, splices: 0, repainted: NO_REPAINT, reused: 0,
 		anims: [], freeAnims: [], colorMatrices: [], freeColorMatrices: [],
@@ -239,6 +240,7 @@ function shiftOf(m: Transform2D, dpi: float32): Vec2 {
 export function paint(this s: Scene2D, wf: float32, hf: float32, dpi: float32): void {
 	s.requireOpen("paint");
 	s.retiled = 0;
+	s.propagationVisits = 0;
 	useContext(s.context);
 	setSceneSmooth(s.defaultSmooth);
 	openBracket(wf, hf, dpi);
