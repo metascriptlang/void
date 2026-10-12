@@ -477,8 +477,10 @@ function frame(): void {
 			color: stage == 62 ? { x:1.0,y:0.5,z:0.0,w:0.0 } :
 				(stage == 63 ? { x:0.0,y:0.0,z:0.0,w:0.5 } : LINE) });
 	}
-	if (stage == 0) { console.log(`FAIL forward outline diagnostic: factor${FACTOR} request${WIDTH}x${HEIGHT} actualfb${fbWidth()}x${fbHeight()}`); }
-	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) { fail("unexpected framebuffer size"); }
+	if (fbWidth() != WIDTH || fbHeight() != HEIGHT) {
+		fail(`unexpected framebuffer size: factor${FACTOR} request${WIDTH}x${HEIGHT} ` +
+			`actualfb${fbWidth()}x${fbHeight()}`);
+	}
 	let blend: float32 = 1.0;
 	if (stage == 0 || stage == 1 || stage == 4 || stage == 31) { blend = 0.0; }
 	if (stage == 3) { blend = 0.5; }

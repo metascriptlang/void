@@ -24,10 +24,10 @@ extern function voidRunConfigured(
 	init: () => void, frame: () => void,
 ): void;
 
-console.log("FAIL copy alpha diagnostic: entering global context construction");
+console.log("copy alpha diagnostic: entering global context construction");
 const context: DrawContext = DrawContext.withUniformCapacity(RENDERER_UNIFORM_LENGTH);
 const core: Renderer = makeCore();
-console.log("FAIL copy alpha diagnostic: completed global context/core construction");
+console.log("copy alpha diagnostic: completed global context/core construction");
 let copy: MaterialId = { store: 0, index: 0, generation: 0 };
 let camera: Vec<float32> = new Array(VERTEX_UNIFORM_LENGTH);
 const lights: Vec<float32> = new Array(LIGHT_UNIFORM_LENGTH);
@@ -45,11 +45,12 @@ function fail(message: string): void {
 }
 
 function init(): void {
-	console.log(`FAIL copy alpha diagnostic: init backend${voidCaptureBackend()} request160x120 fb${fbWidth()}x${fbHeight()}`);
+	console.log(`copy alpha diagnostic: init backend${voidCaptureBackend()} ` +
+		`request160x120 fb${fbWidth()}x${fbHeight()}`);
 	if (voidCaptureBackend() == 0) { fail("unsupported capture backend"); }
-	console.log("FAIL copy alpha diagnostic: entering gfxSetup");
+	console.log("copy alpha diagnostic: entering gfxSetup");
 	gfxSetup();
-	console.log("FAIL copy alpha diagnostic: gfxSetup complete");
+	console.log("copy alpha diagnostic: gfxSetup complete");
 	const data: TextureData = {
 		// Opaque, premultiplied half-alpha, transparent black, raw data RGB with zero alpha.
 		pixels: [0xFF808080, 0x80404040, 0x00000000, 0x00201008],
@@ -66,7 +67,7 @@ function init(): void {
 }
 
 function frame(): void {
-	console.log(`FAIL copy alpha diagnostic: frame fb${fbWidth()}x${fbHeight()}`);
+	console.log(`copy alpha diagnostic: frame fb${fbWidth()}x${fbHeight()}`);
 	core.openPrepare();
 	const began = beginFrame(core, empty, camera, lights);
 	if (!began.ok) { fail("frame refused"); }
