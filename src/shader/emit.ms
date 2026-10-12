@@ -30,7 +30,9 @@ export macro glsl(entry: Node): Node {
 	}
 
 	const stdSymbol = bindSym("textureLoad");
-	if (stdSymbol == null || stdSymbol.resolvedSym == null) { fail(entry, "./std did not resolve"); }
+	if (stdSymbol == null || stdSymbol.resolvedSym == null) {
+		fail(entry, "./std did not resolve");
+	}
 	const stdModule = stdSymbol.resolvedSym.modulePath;
 	const textureType = getTypeImpl(Texture2d);
 	const samplerType = getTypeImpl(Sampler);
@@ -78,7 +80,8 @@ export macro glsl(entry: Node): Node {
 		} else {
 			const fields = getTypeImpl(t);
 			if (fields == null || fields.kind != NodeKind.TypeObject || inputName != "") {
-				fail(entry, "parameter '" + name + "' is not a texture, a sampler or the one input struct");
+				fail(entry, "parameter '" + name +
+					"' is not a texture, a sampler or the one input struct");
 			}
 			inputName = name;
 			for (let f = 0; f < fields.typExprFieldNames.length; f++) {
@@ -95,7 +98,8 @@ export macro glsl(entry: Node): Node {
 			}
 		}
 	}
-	header += "layout(location=0) out " + glslType(signature.typExprReturn, entry) + " fragColor;\n";
+	const colour = glslType(signature.typExprReturn, entry);
+	header += "layout(location=0) out " + colour + " fragColor;\n";
 
 	function number(n: Node): string {
 		const kind = typeKind(getType(n));
@@ -128,7 +132,9 @@ export macro glsl(entry: Node): Node {
 				fail(n, "only functions of ./std can be called from a shader yet");
 			}
 			if (callee.kind == NodeKind.MemberExpr) {
-				if (!impl.fnName.startsWith("get_")) { fail(n, "method calls have no GLSL form yet"); }
+				if (!impl.fnName.startsWith("get_")) {
+					fail(n, "method calls have no GLSL form yet");
+				}
 				return expr(callee.object) + "." + impl.fnName.replace("get_", "");
 			}
 			let args: string[] = [];

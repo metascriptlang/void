@@ -32,7 +32,8 @@ export function clamp(v: Vec2i, low: Vec2i, high: Vec2i): Vec2i {
 	};
 }
 
-// The field decorator of a stage input struct: `@builtin(position) position: Vec4f`, as WGSL writes it.
+// The field decorator of a stage input struct: `@builtin(position) position: Vec4f`, as WGSL
+// writes it.
 export function builtin(): void {}
 
 export struct Texture2d {
