@@ -204,3 +204,134 @@ MetaScript: four programs, each a `main()` printing `performance.now()` deltas a
 Heaps: clone `heaps` and `HaxeFoundation/format`, pass both with `-cp` (haxelib is unusable here), subclass `h3d.scene.Object` to expose the private `syncPos()`, and compile with `haxe -js bench.js -main Bench -cp heaps -cp format -D js-es=6`. `Sys.println` is unavailable on the JS target; `untyped console.log` works. Run under `node --max-old-space-size=8192`, and write output to a file rather than a pipe — a killed run loses buffered stdout, which reads as a hang.
 
 All of it was run from a session scratchpad and is not checked in.
+
+## Ordered propagation — two rejected prototypes, measured V3 (2026-10-12)
+
+Overlapping dirty ancestor/descendant entries revisit derived state even though repaint emission
+is deduplicated. A counter probe with 1024 dirty rows measured 1024/4608/16896/33280 visits at
+chain depths 1/8/32/64: `N*(depth+1)/2`, with 1024 repaints in every case. This identifies a
+nested-tree cost, not the dominant cost of flat 100k rects.
+
+Current reference read, not benchmarked: Bevy 0.20.0 at
+`b3bdd75becaffe9a16677cf5bae5bd6d198f052b`, `bevy_transform/src/systems.rs`
+(`mark_dirty_trees`, propagation); Zed GPUI at `93d745668805029476e6d7fbb19652116fed51de`,
+`crates/gpui/src/window.rs` (`draw`, ancestor invalidation) and `scene.rs` (`replay`). They
+separate/deduplicate invalidation and propagation; inspected GPUI reconstructs next-frame scene
+from cached primitive replay. Neither supplied a dirty-density crossover. Void retains P5's
+measured changed-set/value-pruned descent, rather than reviving the rejected upward-root scan.
+Canonical preorder plus visited epochs is a semantic adaptation, not an engine-speed comparison.
+
+All three A/B cohorts used installed msc 0.3.2 BUILD `e8c024c8`, release, Windows 11/Ryzen 9950X/
+RTX 5090/D3D11. Immutable baseline tree `0c286fd12aa4826a2ce29120bdc1bee3e991c00e`;
+V1 code tree `898cf4fe4a7371b1502470ed29befb3522e2e145`;
+V2 code tree `093930e5b13f770feefb7c01cd6f8b1d080995c5`. Each cohort: 42 serial processes,
+17,640 raw/15,120 measured frames, seven fixtures × three rotated rounds × before/after;
+20 warm + 120 measured frames per phase, 360 pooled measured samples per phase/cell.
+BUILD/executable/source provenance held stable; every sample and machine-load reading retained.
+Times cover CPU mutation/paint/record/submission, excluding external native Present: not GPU
+execution time, FPS, latency or current-Zed acceptance.
+
+V1 staged/sorted unordered dirty slots, then avoided repeated propagation with a separate stamp.
+Depth64 full changes improved 11.5535→5.4310 ms, but flat-strided sparse worsened
+1.1511→1.3148 ms (+14.2%), in all three rounds. Rejected. A separate nine-process ordering
+profile measured sparse sort p50 0.0555 ms, complete ordering 0.0707 ms; aggregate sort share
+4.91% of total/5.19% of renderer. Dense strided sort was 5.9824 ms (13.88% total);
+reverse64 colour/local+alpha dense sorts 0.2780/0.2775 ms. Sort explains only part of the sparse
+regression; nested timings are not additive removable budgets.
+
+V2 kept original setter/repaint order for independent leaves and already ordered sets; sorted
+only unordered sets containing a branch. No density threshold. Pooled total p50, milliseconds:
+
+| Fixture | Sparse before→V2 | Full before→V2 |
+|---|---:|---:|
+| Flat prefix 100k | 0.9057→0.8777 | 33.5033→33.8388 |
+| Flat strided 100k | 1.0340→1.0481 | 65.8977→62.3624 |
+| Nested8 | 0.1825→0.1816 | 6.1285→5.5054 |
+| Nested64 | 0.2439→0.1741 | 11.3817→5.4745 |
+| Nested64 reverse colour | 0.2403→0.1628 | 11.7360→5.9249 |
+| Nested64 reverse local+alpha | 0.2706→0.2087 | 12.0350→6.3095 |
+| Nested64 leaves only | 0.0739→0.0787 | 0.2290→0.2425 |
+
+V2 also rejected/not accepted: strided sparse pairs were −5.4/−1.2/+13.0%; leaves-only sparse
+worsened in all three pairs (+4.5/+4.5/+12.5%, about 3–9 μs). Deep-tree wins do not establish
+sparse parity. Machine load: V1 9.81–18.92%, V2 4.66–13.08%; peer quiet is not machine quiet.
+
+Cross-process causal controls varied even in unchanged mutation work and cannot assign a budget.
+A subsequent six-process, same-executable/same-scene rotated six-mode control retained 720
+measured samples. Mean paint: original algorithm 0.705155 ms; V1 0.860990; no stamp 0.813389;
+no visit counter 0.853713; slot gather/indirection/pop without sort/reorder 0.724016;
+V2 0.716041. Stamp/counter removal changed paint by about 0.047601/0.007277 ms here; ordering
+and bookkeeping interactions dominate the remainder. Replay did not regress (V1 0.496449 vs
+original 0.509531 ms). Flat fixture adds neither equality checks nor clean intermediates.
+These controls share new Scene storage/global mode branches, not production baseline layout;
+interactions and separate profiles cannot be added into a removable-cost estimate.
+
+Reproduction receipts on this machine: `out/tmp/dirtyTree/runAB.py ab`, `runV2.py ab`,
+`runSix.py`; `beforeInputs.json`, `codeInputs.json`, `v2CodeInputs.json`, `results/`, `v2Results/`,
+`sixResults/`, corresponding summaries, and `findings.txt`. Historical V1 default/all-on
+headless 1476/1855 passed; V2 focused 345 passed with 24 pixel/control checks byte-identical.
+V1's broad checks do not certify later revisions. Pixel equality does not prove equivalent
+engine APIs. Neither rejected prototype establishes an accepted production speedup or a
+selected density policy.
+
+V3 omits stamp reads/writes for independent dirty leaves.
+Light e8 correctness checks also exposed an introduced epoch-alias bug: cached branch world
+state was skipped when the initial zero stamp matched epoch zero, or a stale stamp matched a
+returned positive/negative epoch. Immutable baseline derived-state controls passed 317 debug/
+318 release checks; pre-fix prototype failed exactly three/four, including actual signed release
+wrap from `INT_MAX` to `INT_MIN`. The fix initializes current dirty candidates to a nonmatching
+stamp before any descent, only for branch sets (`src/void2d/render.ms`, `patchOrder`). This
+retains the no-stamp leaf path; the added branch initialization pass is included in V3 timings. Bevy's visited bitmap is also reset per pass (`systems.rs`, visited marking
+216–230 and reset 300–304); our guard reads only dirty entry roots, so other rows need no reset.
+V3 focused 348 and epoch 317/318 checks passed; frozen V2 focused control had four expected
+failures. Both release consumers built. These checks prove derived-state propagation, not the
+pre-existing repaint-queue epoch/pixel contract.
+Runtime/test tree: `a30a8f06b9003a052deaad0fc98ceda76e116779`; commands:
+`msc test out/tmp/dirtyTree/testRetain.ms`, `msc test out/tmp/dirtyTree/epochV3.ms`, then the
+latter with `--release`. Negative entries: `testV2Stamp.ms`, `epochV2.ms`; baseline:
+`epochBefore.ms`. Inputs/hashes/build receipts: `v3CodeInputs.json` in the local evidence directory.
+
+V3's authoritative A/B completed 42/42 processes, 17,640 raw/15,120 measured frames under the
+same method above. All samples retained; whole-machine load 3.96–10.91%. Pooled total p50, ms:
+
+| Fixture | Sparse before→V3 | Full before→V3 |
+|---|---:|---:|
+| Flat prefix 100k | 0.8750→0.8853 | 32.1633→32.6761 |
+| Flat strided 100k | 0.9775→0.9741 | 60.5499→59.5336 |
+| Nested8 | 0.1754→0.1581 | 5.8959→5.5110 |
+| Nested64 | 0.2492→0.1702 | 11.1873→5.3656 |
+| Nested64 reverse colour | 0.2440→0.1625 | 11.2384→5.6642 |
+| Nested64 reverse local+alpha | 0.2675→0.1918 | 11.6855→6.3501 |
+| Nested64 leaves only | 0.0852→0.0775 | 0.2427→0.2386 |
+
+Flat-prefix sparse round pairs: −11.3/+3.4/+10.0%; strided: −2.5/−4.5/+5.0%; leaves:
+−22.7/−6.2/+4.3%. Dense leaves pairs −6.4/+4.6/+9.4% also remain in the record. The prior
+3/3 leaf regression did not recur; flat pooled sparse changes (+1.2/−0.3%) lie inside the
+observed pair spread. That meets this experiment's sparse-within-noise acceptance gate, not
+an equivalence proof or a universal sparse speedup. Depth64 full improved 52.0%, in every
+round (−51.8/−51.6/−53.1%); reverse local+alpha full improved 45.7%. Keep V3, not V1/V2.
+No A/A noise-control cohort was run. No density heuristic or GPU-time claim follows.
+
+Sixteen native capture processes passed 28 byte-identical checks: flat prefix/strided
+still/sparse/full, nested forward/reverse/local+alpha, and leaves-only still/sparse/full.
+Flat and colour/leaves cases use independent pixel oracles; local+alpha is baseline-pair-only.
+Broad correctness on the original base: default 1480/all-on 1859 tests, retainedReplay exit 0,
+D3D11 120 byte-identical, GL 94 byte-identical + 26 within the existing bound, zero exclusions.
+
+The five owned files then rebased byte-identically onto local main `24183064` carrying LOD;
+no 2D, shared GPU-door or math inputs changed. Pure-2D A/B consumers therefore keep their checked
+scope; mixed 3D/backend consumers were rebuilt and checked on the combined tree
+`fb9f31ed3e37fee21cde2ec8630a53b211308c58`. Actual serial `sh scripts/gate3d.sh` →
+`sh scripts/gate.sh`: 365/0/3 and 158/0/8 PASS/FAIL/SKIP, both exit 0, on stable e8;
+combined headless 1506/1885 (26 LOD tests added). Known skips remain held Forward/Anchor
+captures, Android device, Yoga/web and unavailable/mobile backend coverage; not new failures.
+The measured checks do not cover origin/main `9e1bcc6f`'s later web/backend/shader inputs.
+Any integration carrying those inputs needs its affected checks, including both gates, again.
+
+Reproduction: `python out/tmp/dirtyTree/runV3.py ab`, `checkV3Pixels.py`, `verifyV3Broad.py`,
+`verifyV3Pair.py`. Receipts: `v3Results/`, `v3Summary.json`, `v3LightVerification.json`,
+`v3BroadVerification.json`, `v3PairVerification.json`, `v3CombinedInputs.json` and
+`v3SourceProof.json`; frozen earlier revisions and failed/noisy attempts are retained.
+The epoch guards cover derived state, not pre-existing queued-stamp rollover pixels. Android
+build success is not device rendering; web Yoga, current-Zed/editor/terminal performance,
+GPU execution time and latency remain separate acceptance work.
