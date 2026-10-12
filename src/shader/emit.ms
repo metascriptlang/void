@@ -20,7 +20,6 @@ import {
 	Texture2d,
 	Vec2f,
 	Vec2i,
-	Vec3f,
 	Vec4f,
 	textureLoad,
 } from "./std";
@@ -37,11 +36,10 @@ export macro glsl(entry: Node): Node {
 	const samplerType = getTypeImpl(Sampler);
 	const vectorTypes = [
 		getTypeImpl(Vec2f),
-		getTypeImpl(Vec3f),
 		getTypeImpl(Vec4f),
 		getTypeImpl(Vec2i),
 	];
-	const vectorNames = ["vec2", "vec3", "vec4", "ivec2"];
+	const vectorNames = ["vec2", "vec4", "ivec2"];
 
 	function glslType(t: Node | null, at: Node): string {
 		if (t == null) { fail(at, "the expression has no type"); }
@@ -137,7 +135,6 @@ export macro glsl(entry: Node): Node {
 			for (const a of n.arguments) { args.push(expr(a)); }
 			const sampled = args.length >= 2 ? "sampler2D(" + args[0] + ", " + args[1] + ")" : "";
 			return match (impl.fnName) {
-				"vec4f" => "vec4(" + args.join(", ") + ")",
 				"vec2i" => "ivec2(" + args.join(", ") + ")",
 				"textureDimensions" => "textureSize(" + sampled + ", " + args[2] + ")",
 				"textureLoad" => "texelFetch(" + sampled + ", " + args[2] + ", " + args[3] + ")",

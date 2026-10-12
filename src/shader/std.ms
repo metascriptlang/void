@@ -7,19 +7,12 @@ export struct Vec2f {
 	y: float32;
 }
 
-export struct Vec3f {
-	x: float32;
-	y: float32;
-	z: float32;
-}
-
 export struct Vec4f {
 	x: float32;
 	y: float32;
 	z: float32;
 	w: float32;
 	get xy(): Vec2f { return { x: this.x, y: this.y }; }
-	get rgb(): Vec3f { return { x: this.x, y: this.y, z: this.z }; }
 }
 
 export struct Vec2i {
@@ -27,7 +20,6 @@ export struct Vec2i {
 	y: int32;
 }
 
-export function vec4f(v: Vec3f, w: float32): Vec4f { return { x: v.x, y: v.y, z: v.z, w }; }
 export function vec2i(x: int32, y: int32): Vec2i { return { x, y }; }
 export function vec2i(v: Vec2f): Vec2i { return { x: v.x as int32, y: v.y as int32 }; }
 
