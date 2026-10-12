@@ -48,8 +48,9 @@ const BLACK: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const WHITE: Rgba = { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 };
 const PREMULTIPLIED_GREY: Vec4 = { x: 0.5, y: 0.5, z: 0.5, w: 0.5 };
 const SCREEN: LowResView = { width: 320, height: 240, scale: 1, offsetX: 0.0, offsetY: 0.0 };
-// The normal (0, 0, 1) packed as n * 0.5 + 0.5, read through Copy, which writes alpha 1.
-const FACING_NORMAL: int64 = 0x7F7FFFFF;
+// Copy keeps RGBA, including packed orthographic depth: (4.5 - 0.1) / (10 - 0.1)
+// times 255 is 113.333, byte 0x71. This is data alpha, not canvas coverage.
+const FACING_NORMAL: int64 = 0x7F7FFF71;
 const ALPHA_X: float32 = -1.6;
 const PREMULTIPLIED_X: float32 = 0.0;
 const ADDITIVE_X: float32 = 1.6;

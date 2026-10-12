@@ -96,6 +96,7 @@ when (voidProfiler) {
 }
 
 import "./worldLabelCheck";
+import "./forwardOutlineCheck";
 
 
 when (voidColourEmoji) {

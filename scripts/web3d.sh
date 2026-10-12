@@ -18,7 +18,8 @@ CHROME="${CHROME:-/c/Program Files/Google/Chrome/Application/chrome.exe}"
 WEB_CHECKS="alphaKill:VOID_ALPHA_KILL_PIXEL_ART=1 billboardBlend:VOID_BILLBOARD_BLEND_PIXEL_ART=1
 	dirShadow:VOID_DIR_SHADOW_PIXEL_ART=1 mapMaterial:VOID_MAP_PIXEL_ART=1
 	movingMaterial:VOID_MOVING_PIXEL_ART=1 mrtBlend:- renderOrder:VOID_RENDER_ORDER_PIXEL_ART=1
-	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 exposure:VOID_EXPOSURE_PIXEL_ART=1"
+	sortLayer:VOID_SORT_LAYER_PIXEL_ART=1 exposure:VOID_EXPOSURE_PIXEL_ART=1
+	copyAlpha:- forwardOutline:VOID_OUTLINE_FRAMEBUFFER_FACTOR=2"
 
 [ -x "$CHROME" ] || { echo "SKIP web3d: no Chrome at $CHROME"; exit 0; }
 command -v python >/dev/null || { echo "SKIP web3d: no python to serve $OUT"; exit 0; }
