@@ -23,7 +23,8 @@ import {
 import { Camera3D, CameraView, ProjectionKind } from "../../src/void3d/camera";
 import { LowResView } from "../../src/void3d/blit";
 import {
-	ForwardRenderer, FORWARD_UNIFORM_LENGTH, closeForward, renderFrame,
+	ForwardRenderer, FORWARD_UNIFORM_LENGTH, FORWARD_OUTLINE_UNIFORM_LENGTH,
+	setOutlineBlend, closeForward, renderFrame,
 } from "../../src/void3d/forwardRenderer";
 import {
 	MeshLod, MeshLodRanges, MeshLodProjectedSize,
@@ -47,8 +48,10 @@ const BACKGROUND: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 1.0 };
 const SURFACE: Rgba = { red: 1.0, green: 0.2, blue: 0.1, alpha: 1.0 };
 const SCREEN: LowResView = { width: WIDTH, height: HEIGHT, scale: 1, offsetX: 0.0, offsetY: 0.0 };
 let control: int32 = voidCaptureEnvInt("VOID_MESH_LOD_CONTROL", 0);
+let outlined: boolean = voidCaptureEnvInt("VOID_MESH_LOD_OUTLINE", 0) != 0;
 let context: DrawContext = DrawContext.withUniformCapacity(
-	FORWARD_UNIFORM_LENGTH + 2 * MATERIAL_UNIFORM_LENGTH,
+	(outlined ? FORWARD_OUTLINE_UNIFORM_LENGTH : FORWARD_UNIFORM_LENGTH) +
+	2 * MATERIAL_UNIFORM_LENGTH,
 );
 let forward: ForwardRenderer = createForward();
 let scene: Scene3D = Scene3D.create(context);
@@ -213,10 +216,14 @@ function rgbAt(view: CameraView, group: int32): int64 {
 	return voidCapturePixel(0, p.x as int32, p.y as int32) >> 8;
 }
 
+function visibleGroup(group: int32): boolean {
+	return stage == 0 ? group < 2 :
+		(stage == 4 ? false : (stage == 3 ? group == 3 : group >= 2));
+}
+
 function checkPixels(view: CameraView): void {
 	for (let group = 0; group < 4; group++) {
-		const visible: boolean = stage == 0 ? group < 2 :
-			(stage == 4 ? false : (stage == 3 ? group == 3 : group >= 2));
+		const visible: boolean = visibleGroup(group);
 		const rgb: int64 = rgbAt(view, group);
 		if ((rgb != 0) != visible) {
 			fail(`group ${group} silhouette did not match LOD/culling: ${rgb}`);
@@ -231,6 +238,41 @@ function checkPixels(view: CameraView): void {
 			fail("desaturated material was replaced");
 		}
 	}
+}
+
+function checkOutlinedFrame(view: CameraView): void {
+	const plain: Vec<DrawItem> = selected;
+	setOutlineBlend(forward, 1.0);
+	const drawn = renderFrame(forward, selected, cameraValues, lights, WIDTH, HEIGHT);
+	if (!drawn.ok) { fail(`outline renderer ${drawn.error.toString()}`); unreachable; }
+	if (drawn.value != (plain.length as int32) || selected.length != plain.length) {
+		fail("outline changed selected item count");
+	}
+	for (let i = 0; i < (plain.length as int32); i++) {
+		const before = plain[i].range;
+		const after = selected[i].range;
+		if (before == null || after == null) { fail("outline lost selected range"); unreachable; }
+		if (before.base != after.base || before.count != after.count) {
+			fail("outline changed selected range");
+		}
+	}
+	if (voidCaptureGrab(0) == 0) { fail("outline readback failed"); }
+	for (let group = 0; group < 4; group++) {
+		const p: Vec3 = view.project(centerAt(group), SCREEN, true);
+		let coverage: int32 = 0;
+		for (let y = -20; y <= 20; y++) {
+			for (let x = -20; x <= 20; x++) {
+				if ((voidCapturePixel(0, (p.x as int32) + x, (p.y as int32) + y) & 255) != 0) {
+					coverage++;
+				}
+			}
+		}
+		if ((coverage != 0) != visibleGroup(group)) {
+			fail(`outline group ${group} silhouette did not match selected LOD: ${coverage}`);
+		}
+	}
+	setOutlineBlend(forward, 0.0);
+	console.log(`PASS mesh LOD: stage ${stage}, outline-selected silhouettes and ranges matched`);
 }
 
 function reuploadSameContext(): void {
@@ -283,11 +325,13 @@ function frame(): void {
 	if (!drawn.ok) { fail(`renderer ${drawn.error.toString()}`); unreachable; }
 	if (voidCaptureGrab(0) == 0) { fail("readback failed"); }
 	checkPixels(view);
+	if (outlined) { checkOutlinedFrame(view); }
 	const expectedItems: int32 = stage == 4 ? 0 : (stage == 3 ? 1 : 2);
 	if ((selected.length as int32) != expectedItems || drawn.value != expectedItems) {
 		fail("selected or rendered item count changed");
 	}
-	console.log(`mesh LOD: stage ${stage}, selected ${selected.length}, renderedItems ${drawn.value}`);
+	console.log(`mesh LOD: stage ${stage}, selected ${selected.length}, ` +
+		`renderedItems ${drawn.value}`);
 	stage++;
 	if (stage < 5) { return; }
 	closeScene(scene);
