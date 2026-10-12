@@ -56,8 +56,18 @@ TypeGPU `1f9d89d`, typegpu 0.12.7 (`~/projects/TypeGPU`): `packages/typegpu/src/
 | sample | `tex.get(uv)`, texture and sampler in one `Sampler2D` | `textureSample(texture, sampler, uv)` | TypeGPU's, which is also shdc's separate pair |
 | fetch / size | `tex.fetch(p)`, `tex.size()` | `textureLoad`, `textureDimensions` | one to one; Void's take a sampler (`src/shader/CLAUDE.md`) |
 | math | `mix` `clamp` `saturate` `smoothstep` `normalize` `dot` `cross` | the same names | one to one |
-| math, renamed | `dFdx` `dFdy` `inversesqrt` `mod` | `dpdx` `dpdy` `inverseSqrt` `mod` | TypeGPU's name |
+| math, renamed | `dFdx` `dFdy` `inversesqrt` | `dpdx` `dpdy` `inverseSqrt` | TypeGPU's name |
+| remainder | `mod`, emitted as GLSL `mod`: floored | `mod`, emitted as `%`: truncated (`std/operators.ts` `mod`) | **same name, two results** for a negative operand |
 | composing shaders | fragments linked through shared variables (`pixelColor`, `calculatedUV`), `__init__` ordered by dependency | function calls and slots | **no map**: the engine model's, so Heaps' and Bevy's |
+
+**A name brings its meaning.** A function declared under a WGSL name computes what WGSL defines for
+it, on the CPU and in the emitted GLSL, or the name is not taken: a `mod` spelled as GLSL `mod` would
+answer differently from the `mod` a WebGPU developer knows. Each builtin whose GLSL spelling differs
+gets a CPU oracle case at the operand where the two definitions part (a negative operand, a tie).
+TypeGPU states the CPU meaning of every std function as the `normalImpl` beside its `codegenImpl`
+(`std/numeric.ts`, `std/texture.ts`), which is the reference when `src/shader/std.ms` grows. Where
+TypeGPU's spelling and the WGSL specification differ, the specification is the anchor: TypeGPU is
+before 1.0.
 
 Where MetaScript's convention and TypeGPU's spelling differ, MetaScript's holds for the type name
 and TypeGPU's for the constructor: `Vec4f` the struct, `vec4f(…)` the function.
