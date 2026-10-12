@@ -1,10 +1,10 @@
 // The MetaScript shader functions run on the CPU, as the oracle for what their emitted GLSL draws
 // (src/shader/CLAUDE.md, "CPU oracle within a tolerance").
 
-import { FragCoord, Sampler, Texture2D, Vec4 } from "../shader/glsl";
-import { copyFs } from "../void3d/shader3d";
+import { Sampler, Texture2d, Vec4f } from "../shader/std";
+import { CopyInput, copyFs } from "../void3d/shader3d";
 
-function source(): Texture2D {
+function source(): Texture2d {
 	return {
 		width: 2,
 		height: 2,
@@ -15,12 +15,10 @@ function source(): Texture2D {
 	};
 }
 
-function copyAt(x: float32, y: float32): Vec4 {
-	const coord: FragCoord = { x, y, z: 0.5, w: 1.0 };
+function copyAt(x: float32, y: float32): Vec4f {
+	const input: CopyInput = { position: { x, y, z: 0.5, w: 1.0 } };
 	const point: Sampler = { nearest: true };
-	let color: Vec4 = { x: 0.0, y: 0.0, z: 0.0, w: 0.0 };
-	copyFs(coord, source(), point, out color);
-	return color;
+	return copyFs(input, source(), point);
 }
 
 test "copy reads the texel under the pixel centre and makes it opaque" {
