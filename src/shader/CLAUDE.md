@@ -20,7 +20,7 @@ later replaces the hand-written GLSL source of each base.
   author's code: textures and samplers are separate; uniform block members are only float, int,
   vec2–4, ivec2–4, mat3, mat4, and arrays only vec4, ivec4 or mat4; no recursion. The emitter packs an
   author's struct into those types, so a uniform block's layout comes from one MetaScript struct.
-- **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec4f`/`vec4f`, `Vec2i`,
+- **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec4f`, `Vec2i`/`vec2i`,
   `textureLoad`, `textureDimensions`, `@builtin(position)`. `std.ms` declares it with CPU
   meaning; the emitter spells each declaration in GLSL.
 - **Entry convention** (TypeGPU's `fragmentFn`, approved 2026-10-13; it replaces the shady `out`
@@ -97,15 +97,16 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 ## Measured — copyFs against the hand-written stage
 
 2026-10-13, BUILD `9a4775dc`, `sokol-tools-bin` `11d0cf6`,
-`metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5`. With copyFs generated, all 784 backend
-sources embedded in `src/void3d/shader3d.glsl.h` are byte-identical to the header of `24183064`, where
-copyFs was hand-written: the seven copy fragment sources and every other program's. So the programs
-the GPU receives did not change, on any backend shdc emits.
+`metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5`. With copyFs generated,
+`src/void3d/shader3d.glsl.h` is byte-identical to main's at `5dbcb662`, where copyFs is hand-written:
+the seven copy fragment sources and every other program's. So the programs the GPU receives did not
+change, on any backend shdc emits.
 
 That holds because `textureDimensions` returns `Vec2i`. Returning `Vec2u` as WGSL does, the emitted
 `ivec2(uvec2(textureSize(…)))` survived as text into all seven copy fragment sources (`uint2(int2(…))`
-in HLSL, two `bitcast` in WGSL). The image checks below ran on that earlier form (tree `f7a7b18c9183`,
-Windows x64, one quiet GPU window), so they also cover the path from the generator through shdc:
+in HLSL, two `bitcast` in WGSL). The image checks below ran on that earlier form, on base
+`24183064` where copy still wrote alpha 1 (tree `f7a7b18c9183`, Windows x64, one quiet GPU window),
+so they also cover the path from the generator through shdc:
 
 - **D3D11**: `GATE_SKIP_ANDROID=1 GATE_SKIP_BENCH=1 GATE_SKIP_CHURN=1 sh scripts/gate3d.sh` exit 0,
   363 PASS, 0 FAIL; every capture row "4 frames byte-identical" to `docs/baselines3d.sha256`,
