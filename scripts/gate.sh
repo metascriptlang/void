@@ -94,6 +94,12 @@ if "$MSC" test $moduleDefines src/test/index.ms > out/gate-t0-modules.log 2>&1; 
 else
 	fail "module stage all-on: msc test$moduleDefines src/test/index.ms — see out/gate-t0-modules.log"
 fi
+if "${PYTHON:-python}" tests/isolated/colourMemory.py > out/gate-colour-memory.log 2>&1 \
+		&& grep -q '^PASS colour memory:' out/gate-colour-memory.log; then
+	pass "colour allocation failures recover without retrying permanent PNG refusals"
+else
+	fail "colour memory recovery — see out/gate-colour-memory.log"
+fi
 for isolated in tests/isolated/*.ms; do
 	log="out/gate-isolated-$(basename "$isolated" .ms).log"
 	"$MSC" test "$isolated" > "$log" 2>&1 || true

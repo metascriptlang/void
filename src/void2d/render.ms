@@ -717,7 +717,7 @@ function emitLabel(s: Scene2D, i: int32, world: Transform2D, col: Color, na: flo
 		tx: world.tx / fold, ty: world.ty / fold,
 	};
 	const text = placeLabel(payload, designWorld, scale * fold);
-	if (!text.placedValid) { s.retry.push(i); }
+	if (text.placementRetryable) { s.retry.push(i); }
 	const editing: boolean = (text.runs.length as int32) > 0 || text.selectionLength > 0 ||
 		text.cursorIndex != NO_CURSOR;
 	const instanced: boolean = uiInstancingAvailable() || editing;

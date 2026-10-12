@@ -13,6 +13,7 @@ import "./glyphPageReleaseCheck";
 import "./outlineKeyCheck";
 import "./textLayoutCheck";
 import "./labelTextCheck";
+import "./glyphRetryCheck";
 import "./textMetricsCheck";
 import "./textGammaCheck";
 import "./fontCheck";

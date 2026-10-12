@@ -7,6 +7,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int pngNoMemory;
+
+static void *pngMalloc(size_t size) {
+	void *data = malloc(size);
+	if (!data) { pngNoMemory = 1; }
+	return data;
+}
+
+static void *pngRealloc(void *ptr, size_t size) {
+	void *data = realloc(ptr, size);
+	if (!data) { pngNoMemory = 1; }
+	return data;
+}
+
+#define STBI_MALLOC(size) pngMalloc(size)
+#define STBI_REALLOC_SIZED(ptr, oldSize, newSize) pngRealloc(ptr, newSize)
+#define STBI_FREE(ptr) free(ptr)
 #define STBI_ONLY_PNG
 #define STBI_NO_STDIO
 #define STBI_NO_HDR
@@ -825,13 +842,14 @@ int void2dColourGlyphRender(ColourFace *face, int glyph, float sizePx, unsigned 
 	chooseStrike(face, glyph, sizePx, &bitmap, &status);
 	if (status != VOID2D_COLOUR_PRESENT) { return VOID2D_COLOUR_REFUSED; }
 	int w = 0, h = 0, channels = 0;
+	pngNoMemory = 0;
 	unsigned char *pixels = stbi_load_from_memory(bitmap.png, (int)bitmap.pngLength, &w, &h,
 		&channels, 4);
 	if (!pixels || w != bitmap.width || h != bitmap.height) {
 		fprintf(stderr, "void2d: colour glyph %d: the PNG does not decode: %s\n", glyph,
 			pngReason());
 		if (pixels) { stbi_image_free(pixels); }
-		return VOID2D_COLOUR_REFUSED;
+		return pngNoMemory ? VOID2D_COLOUR_NO_MEMORY : VOID2D_COLOUR_REFUSED;
 	}
 	unsigned int *source = (unsigned int *)malloc(sizeof(unsigned int) * (size_t)w * (size_t)h);
 	if (!source) {

@@ -79,6 +79,7 @@ int *void2dGlyphColourBox(int face, int glyph, float sizePx);
 #define VOID2D_COLOUR_RASTER_WRONG_PAGE_KIND 2
 #define VOID2D_COLOUR_RASTER_OUTSIDE_PAGE 3
 #define VOID2D_COLOUR_RASTER_REFUSED 4
+#define VOID2D_COLOUR_RASTER_NO_MEMORY 5
 int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int x, int y,
                                int w, int h);
 int void2dGlyphColourLayerCount(int face, int glyph);

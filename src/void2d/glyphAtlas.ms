@@ -59,6 +59,7 @@ export enum AtlasError {
 	CoverageWrongPageKind,
 	CoverageOutsidePage,
 	CoverageBoxMismatch,
+	ColourNoMemory,
 }
 
 export enum PageKind {
@@ -256,8 +257,23 @@ function coverageRasterRefusal(code: int32): AtlasError {
 	unreachable;
 }
 
-function transientRefusal(error: AtlasError): boolean {
-	return error == AtlasError.SdfNoMemory || error == AtlasError.OutlineNoMemory;
+export function transientRefusal(error: AtlasError): boolean {
+	return error == AtlasError.Full || error == AtlasError.SdfNoMemory ||
+		error == AtlasError.OutlineNoMemory || error == AtlasError.ColourNoMemory;
+}
+
+test "only capacity and allocation failures are transient glyph refusals" {
+	assert transientRefusal(AtlasError.Full);
+	assert transientRefusal(AtlasError.SdfNoMemory);
+	assert transientRefusal(AtlasError.OutlineNoMemory);
+	assert transientRefusal(AtlasError.ColourNoMemory);
+	assert !transientRefusal(AtlasError.TooLarge);
+	assert !transientRefusal(AtlasError.KindNotBuilt);
+	assert !transientRefusal(AtlasError.VariantOutOfRange);
+	assert !transientRefusal(AtlasError.SdfCubicOutline);
+	assert !transientRefusal(AtlasError.ColourRefused);
+	assert !transientRefusal(AtlasError.OutlineTooWide);
+	assert !transientRefusal(AtlasError.CoverageBadHandle);
 }
 
 function refuseKey(
@@ -873,6 +889,18 @@ when (voidColourEmoji) {
 		};
 	}
 
+	function colourRasterRefusal(code: int32): AtlasError {
+		return code == 5 ? AtlasError.ColourNoMemory : AtlasError.ColourRefused;
+	}
+
+	test "colour raster allocation errors stay distinct from permanent refusals" {
+		assert colourRasterRefusal(5) == AtlasError.ColourNoMemory;
+		assert transientRefusal(colourRasterRefusal(5));
+		assert colourRasterRefusal(4) == AtlasError.ColourRefused;
+		assert !transientRefusal(colourRasterRefusal(4));
+		assert colourRasterRefusal(1) == AtlasError.ColourRefused;
+	}
+
 	export const COLOUR_BUCKET_LIMIT: float32 = 16384.0;
 
 	export function colourBucket(sizePx: float32): float32 {
@@ -898,7 +926,7 @@ when (voidColourEmoji) {
 			atlas.pages[t.page as int32].handle as int32, t.x, t.y, width, height);
 		if (code != 0) {
 			atlas.discard(index);
-			return Result.err(AtlasError.ColourRefused);
+			return Result.err(colourRasterRefusal(code));
 		}
 		atlas.colourRasterizations = atlas.colourRasterizations + 1;
 		return Result.ok(index);

@@ -8,6 +8,7 @@ import {
 	GLYPH_PAGE_SIZE,
 	quantizeX,
 	snapBaseline,
+	transientRefusal,
 } from "./glyphAtlas";
 import {
 	Align,
@@ -123,6 +124,7 @@ export interface LabelText {
 	style: TextStyle;
 	placed: Vec<PlacedGlyph>;
 	placedValid: boolean;
+	placementRetryable: boolean;
 	coverageInSdf: boolean;
 	colourGlyphs: int32;
 	regime: TextRegime;
@@ -245,6 +247,7 @@ export function allocateLabelText(): int32 {
 		style: style,
 		placed: new Array(0),
 		placedValid: false,
+		placementRetryable: false,
 		coverageInSdf: false,
 		colourGlyphs: 0,
 		regime: TextRegime.Bitmap,
@@ -292,6 +295,7 @@ function releasePlacement(entry: LabelText): void {
 	entry.placed = new Array(0);
 	entry.placedOutline = new Array(0);
 	entry.placedValid = false;
+	entry.placementRetryable = false;
 }
 
 export function releaseLabelGlyphs(index: int32): void {
@@ -899,6 +903,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	let placed: Vec<PlacedGlyph> = new Array(0);
 	let placedOutline: Vec<PlacedGlyph> = new Array(0);
 	let refused: int32 = 0;
+	let retryable: boolean = false;
 	let refusal: string = "";
 	const outlineWidth: float32 = outlineWidthOf(entry);
 	let outlineLaneValue: int32 = 0;
@@ -938,6 +943,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 					if (!coloured.ok) {
 						refused = refused + 1;
 						refusal = coloured.error.toString();
+						retryable = retryable || transientRefusal(coloured.error);
 						continue;
 					}
 					placed.push(coloured.value);
@@ -955,6 +961,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 						if (!outlined.ok) {
 							refused = refused + 1;
 							refusal = outlined.error.toString();
+							retryable = retryable || transientRefusal(outlined.error);
 						} else if (outlined.value.w > 0.0) {
 							placedOutline.push(outlined.value);
 						} else {
@@ -966,6 +973,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				if (sdf.error != AtlasError.SdfCubicOutline || devicePerLocal <= 0.0) {
 					refused = refused + 1;
 					refusal = sdf.error.toString();
+					retryable = retryable || transientRefusal(sdf.error);
 					continue;
 				}
 				coverageInSdf = true;
@@ -992,6 +1000,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 			if (!acquired.ok) {
 				refused = refused + 1;
 				refusal = acquired.error.toString();
+				retryable = retryable || transientRefusal(acquired.error);
 				continue;
 			}
 			const tileIndex: int32 = acquired.value;
@@ -1007,6 +1016,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				} else {
 					refused = refused + 1;
 					refusal = lane.error.toString();
+					retryable = retryable || transientRefusal(lane.error);
 				}
 			}
 			if (outlineLaneValue > 0 && !isSpriteFace(g.face)) {
@@ -1017,6 +1027,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 				if (!outlined.ok) {
 					refused = refused + 1;
 					refusal = outlined.error.toString();
+					retryable = retryable || transientRefusal(outlined.error);
 				} else if (outlined.value.w > 0.0) {
 					placedOutline.push(outlined.value);
 				} else {
@@ -1037,6 +1048,7 @@ export function placeLabel(index: int32, world: Transform2D, scale: float32): La
 	entry.placed = placed;
 	entry.placedOutline = placedOutline;
 	entry.placedValid = refused == 0;
+	entry.placementRetryable = retryable;
 	entry.coverageInSdf = coverageInSdf;
 	entry.colourGlyphs = colourGlyphs;
 	entry.regime = regime;

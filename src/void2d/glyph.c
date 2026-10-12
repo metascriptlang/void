@@ -1223,7 +1223,7 @@ static int colourLayerRasterize(GlyphFace *f, int glyph, float sizePx, unsigned 
 		unsigned char *coverage = (unsigned char *)calloc((size_t)lw * (size_t)lh, 1);
 		if (!coverage) {
 			fprintf(stderr, "void2d: no memory for a %dx%d colour layer\n", lw, lh);
-			return VOID2D_COLOUR_RASTER_REFUSED;
+			return VOID2D_COLOUR_RASTER_NO_MEMORY;
 		}
 		stbtt_MakeGlyphBitmapSubpixel(&f->info, coverage, lw, lh, lw, scale, scale, 0.0f, 0.0f,
 			layers[i].glyph);
@@ -1257,6 +1257,7 @@ int void2dGlyphColourRasterize(int face, int glyph, float sizePx, int page, int 
 		if (result == VOID2D_COLOUR_RASTER_OK) { p->dirty = 1; }
 		return result;
 	}
+	if (status == VOID2D_COLOUR_NO_MEMORY) { return VOID2D_COLOUR_RASTER_NO_MEMORY; }
 	if (status != VOID2D_COLOUR_PRESENT) { return VOID2D_COLOUR_RASTER_REFUSED; }
 	p->dirty = 1;
 	return VOID2D_COLOUR_RASTER_OK;
