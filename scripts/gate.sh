@@ -207,6 +207,36 @@ if "$MSC" build tests/integration/preparedScenes.ms --release --output=out/prepa
 else
 	fail "prepared Scene2D lifecycle — see out/gate-prepared-scenes-run.log"
 fi
+glyph_backends="native"
+case "$(uname -s)" in
+	MINGW*|MSYS*|CYGWIN*) glyph_backends="native gl" ;;
+esac
+for glyph_backend in $glyph_backends; do
+	glyph_flags=""
+	[ "$glyph_backend" != gl ] || glyph_flags="-d:voidGlCore --passC=-DSOKOL_GLCORE"
+	glyph_runner="out/glyphClip-$glyph_backend.exe"
+	if "$MSC" build -d:voidSvg -d:voidColourEmoji -d:voidSdfText $glyph_flags \
+			tests/integration/glyphClip.ms --release --output="$glyph_runner" \
+			> "out/gate-glyph-clip-$glyph_backend-build.log" 2>&1; then
+		for dpi in 1 2 3; do
+			glyph_log="out/gate-glyph-clip-$glyph_backend-dpi$dpi.log"
+			if GLYPH_DPI="$dpi" timeout 60 "$glyph_runner" > "$glyph_log" 2>&1; then
+				if grep -q "^PASS glyph clip dpi $dpi:" "$glyph_log"; then
+					pass "glyph clip $glyph_backend DPI$dpi: UV-independent bitmap/SDF shader coverage and RGBA/rounded controls"
+				elif grep -q '^SKIP glyph clip:' "$glyph_log"; then
+					skip "glyph clip $glyph_backend DPI$dpi: backend has no readback path"
+				else
+					fail "glyph clip $glyph_backend DPI$dpi has no verdict — see $glyph_log"
+				fi
+			else
+				fail "glyph clip $glyph_backend DPI$dpi — see $glyph_log"
+			fi
+		done
+	else
+		fail "glyph clip $glyph_backend build — see out/gate-glyph-clip-$glyph_backend-build.log"
+	fi
+done
+
 for misuse in unprepared twice no-pass nested consumed expired size; do
 	case "$misuse" in
 		unprepared|consumed) expected='with no prepared frame' ;;

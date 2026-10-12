@@ -373,7 +373,7 @@ void main() {
     vec2 t = mix(iUvRadii.xy, iUvRadii.zw, size.x > 0.0 && size.y > 0.0 ? local / size : vec2(0.0));
     vLocalHalf = vec4(local - size * 0.5, size * 0.5);
     vUvAa = vec4((viewport.z > 0.5) ? vec2(t.x, 1.0 - t.y) : t, aa, iParams0.x);
-    vRadii = iUvRadii;
+    vRadii = iParams0.x == 2.0 ? vec4(0.0) : iUvRadii;
     vBorders = iParams0.x == 0.0
         ? vec4(
             dilateStroke(iBorders.x, sx),
