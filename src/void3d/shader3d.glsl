@@ -509,17 +509,6 @@ void main() {
 }
 @end
 
-@fs copyFs
-layout(binding=0) uniform texture2D sourceTexture;
-layout(binding=0) uniform sampler pointSampler;
-out vec4 fragColor;
-void main() {
-    ivec2 size = textureSize(sampler2D(sourceTexture, pointSampler), 0);
-    ivec2 p = clamp(ivec2(gl_FragCoord.xy), ivec2(0, 0), size - ivec2(1, 1));
-    fragColor = texelFetch(sampler2D(sourceTexture, pointSampler), p, 0);
-}
-@end
-
 @fs toneMapFs
 // h3d.shader.pbr.ToneMapping over the HDR target: the linear colour times the exposure multiplier
 // (toneMap.x), through the curve toneMap.y names, then encoded as the LDR target stores it. The

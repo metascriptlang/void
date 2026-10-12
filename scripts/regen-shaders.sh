@@ -145,6 +145,7 @@ regenKeys() {
 		{
 			echo "@include $ROOT/src/void3d/shader3dBlocks.glsl"
 			stagesOf "$src" "$vs" "$fs"
+			case "$src" in "$GENERATED_FOR") stagesOf "$GENERATED" "$vs" "$fs" ;; esac
 			echo "@program program $vs $fs"
 		} > "$input"
 		for feature in $(echo "$features" | tr ':' ' '); do
@@ -221,7 +222,17 @@ regenKeys() {
 	settle "$work/programTable.h" src/void3d/programTable.h
 }
 
+# The stages written in MetaScript (src/void3d/shader3d.ms) join shader3d.glsl's as generated GLSL.
+GENERATED=src/void3d/shader3dGen.glsl
+GENERATED_FOR=src/void3d/shader3d.glsl
+generate() {
+	"${MSC:-msc}" run tools/genShaders.ms > "$SCRATCH/shader3dGen.glsl" 2> "$SCRATCH/genShaders.log" ||
+		{ cat "$SCRATCH/genShaders.log"; echo "tools/genShaders.ms failed"; exit 1; }
+	settle "$SCRATCH/shader3dGen.glsl" "$GENERATED"
+}
+
 [ "$CHECK" = 1 ] || echo "Regenerating shader headers..."
+generate
 regen src/void2d/shader2d.glsl src/void2d/shader2d.glsl.h "$LANGS"
 regenKeys
 regen tests/integration/gpuCopy.glsl tests/integration/gpuCopy.glsl.h "$LANGS_IOS"

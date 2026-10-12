@@ -21,14 +21,14 @@ function copyAt(x: float32, y: float32): Vec4f {
 	return copyFs(input, source(), point);
 }
 
-test "copy reads the texel under the pixel centre and makes it opaque" {
+test "copy reads the texel under the pixel centre, alpha included" {
 	const c = copyAt(1.5, 0.5);
-	assert c.x == 0.4 && c.y == 0.5 && c.z == 0.6 && c.w == 1.0;
+	assert c.x == 0.4 && c.y == 0.5 && c.z == 0.6 && c.w == 0.25;
 	const d = copyAt(0.5, 1.5);
-	assert d.x == 0.7 && d.y == 0.8 && d.z == 0.9 && d.w == 1.0;
+	assert d.x == 0.7 && d.y == 0.8 && d.z == 0.9 && d.w == 0.5;
 }
 
 test "copy clamps a pixel beyond the source to its last texel" {
 	const c = copyAt(5.5, 7.5);
-	assert c.x == 1.0 && c.y == 0.0 && c.z == 0.5 && c.w == 1.0;
+	assert c.x == 1.0 && c.y == 0.0 && c.z == 0.5 && c.w == 0.75;
 }
