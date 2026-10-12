@@ -21,7 +21,7 @@ later replaces the hand-written GLSL source of each base.
   vec2–4, ivec2–4, mat3, mat4, and arrays only vec4, ivec4 or mat4; no recursion. The emitter packs an
   author's struct into those types, so a uniform block's layout comes from one MetaScript struct.
 - **Vocabulary is TypeGPU's** ([docs/VOCABULARY.md](../../docs/VOCABULARY.md)): `Vec4f`/`vec4f`, `Vec2i`,
-  `Vec2u`, `textureLoad`, `textureDimensions`, `@builtin(position)`. `std.ms` declares it with CPU
+  `textureLoad`, `textureDimensions`, `@builtin(position)`. `std.ms` declares it with CPU
   meaning; the emitter spells each declaration in GLSL.
 - **Entry convention** (TypeGPU's `fragmentFn`, approved 2026-10-13; it replaces the shady `out`
   parameter approved 2026-10-10). The stage input is one struct parameter and the colour is the
@@ -97,13 +97,15 @@ Measured 2026-10-08 on installed msc BUILD `99a851d7`, C and `--target=js` ident
 ## Measured — copyFs against the hand-written stage
 
 2026-10-13, BUILD `9a4775dc`, `sokol-tools-bin` `11d0cf6`,
-`metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5`. The generated stage differs from the
-hand-written one in a single expression in every backend source, the size read through `vec2u` as WGSL
-types it: `ivec2(uvec2(textureSize(…)))` for `textureSize(…)` (`uint2(int2(…))` in HLSL). With
-`textureSize` left signed the seven sources are byte-identical (`out/shdcProbe/withReturn.glsl`).
+`metal_macos:metal_ios:metal_sim:glsl300es:glsl430:wgsl:hlsl5`. With copyFs generated, all 784 backend
+sources embedded in `src/void3d/shader3d.glsl.h` are byte-identical to the header of `24183064`, where
+copyFs was hand-written: the seven copy fragment sources and every other program's. So the programs
+the GPU receives did not change, on any backend shdc emits.
 
-The image, 2026-10-13, tree `f7a7b18c9183` (code as tree of `08794fe4`), BUILD `9a4775dc`, Windows x64, one
-quiet GPU window:
+That holds because `textureDimensions` returns `Vec2i`. Returning `Vec2u` as WGSL does, the emitted
+`ivec2(uvec2(textureSize(…)))` survived as text into all seven copy fragment sources (`uint2(int2(…))`
+in HLSL, two `bitcast` in WGSL). The image checks below ran on that earlier form (tree `f7a7b18c9183`,
+Windows x64, one quiet GPU window), so they also cover the path from the generator through shdc:
 
 - **D3D11**: `GATE_SKIP_ANDROID=1 GATE_SKIP_BENCH=1 GATE_SKIP_CHURN=1 sh scripts/gate3d.sh` exit 0,
   363 PASS, 0 FAIL; every capture row "4 frames byte-identical" to `docs/baselines3d.sha256`,

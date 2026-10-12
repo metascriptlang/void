@@ -54,7 +54,7 @@ TypeGPU `1f9d89d`, typegpu 0.12.7 (`~/projects/TypeGPU`): `packages/typegpu/src/
 | per-frame value | `@global` | a uniform shared across draws | one to one |
 | compile-time switch | `@const`, one program per value | `tgpu.slot`, filled when the shader is resolved | same idea; Void's is the program key (`src/void3d/programKeys.txt`) |
 | sample | `tex.get(uv)`, texture and sampler in one `Sampler2D` | `textureSample(texture, sampler, uv)` | TypeGPU's, which is also shdc's separate pair |
-| fetch / size | `tex.fetch(p)`, `tex.size()` | `textureLoad`, `textureDimensions` | one to one; Void's take a sampler (`src/shader/CLAUDE.md`) |
+| fetch / size | `tex.fetch(p)`, `tex.size()` | `textureLoad`, `textureDimensions` | one to one; Void's take a sampler, and the size is signed (below) |
 | math | `mix` `clamp` `saturate` `smoothstep` `normalize` `dot` `cross` | the same names | one to one |
 | math, renamed | `dFdx` `dFdy` `inversesqrt` | `dpdx` `dpdy` `inverseSqrt` | TypeGPU's name |
 | remainder | `mod`, emitted as GLSL `mod`: floored | `mod`, emitted as `%`: truncated (`std/operators.ts` `mod`) | **same name, two results** for a negative operand |
@@ -68,6 +68,11 @@ TypeGPU states the CPU meaning of every std function as the `normalImpl` beside 
 (`std/numeric.ts`, `std/texture.ts`), which is the reference when `src/shader/std.ms` grows. Where
 TypeGPU's spelling and the WGSL specification differ, the specification is the anchor: TypeGPU is
 before 1.0.
+
+One exception, the person's on 2026-10-13: `textureDimensions` returns `Vec2i` where WGSL returns
+`vec2u`. The value is the same; the texel coordinate it bounds is signed (`textureLoad` takes
+`Vec2i`), so the unsigned type only bought a cast at every use. It also keeps the emitted GLSL
+the hand-written expression, `textureSize(…)` with no conversion around it.
 
 Where MetaScript's convention and TypeGPU's spelling differ, MetaScript's holds for the type name
 and TypeGPU's for the constructor: `Vec4f` the struct, `vec4f(…)` the function.
