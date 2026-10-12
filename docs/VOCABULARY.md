@@ -12,8 +12,13 @@ them, it is the name TypeGPU and WebGPU already taught them.
 | Shader mechanism | shady | a macro reads the typed body, gathers callees, the CPU runs the same function; no author sees it |
 
 **When two disagree, the higher row wins**: platform, then engine model, then vocabulary, then
-mechanism. A name is taken from TypeGPU only where it maps one to one; a concept TypeGPU has and the
-row above forbids is left out, not adapted.
+mechanism. A concept TypeGPU has and a row above forbids is left out, not adapted.
+
+**Clear to the author comes before matching TypeGPU.** TypeGPU is where a familiar name is looked
+for first, not a spec to conform to: its name is taken when it maps one to one and reads plainly in
+MetaScript, and Void keeps or picks its own when that says more directly what the thing does. A
+signature states what the platform needs (a fetch here takes its sampler) even where TypeGPU's does
+not.
 
 ## Why not one reference
 
@@ -59,7 +64,8 @@ and TypeGPU's for the constructor: `Vec4f` the struct, `vec4f(…)` the function
 
 ## GPU layer
 
-`src/gpu` and `src/sokol` take WebGPU's names where a concept maps one to one: resource creation
+`src/gpu` and `src/sokol` take WebGPU's names where a concept maps one to one and the name is the
+clearer one: resource creation
 (`createTexture`, `createSampler`, `createRenderPipeline`), attachment load and store
 (`loadOp`, `storeOp`), render state (`cullMode`, `depthCompare`, `blend`), `vertexLayout`. Until that rename lands the layer keeps the names it has; the engine layers above it
 keep theirs for good.
