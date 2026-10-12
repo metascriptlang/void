@@ -27,15 +27,9 @@ export struct Vec2i {
 	y: int32;
 }
 
-export struct Vec2u {
-	x: uint32;
-	y: uint32;
-}
-
 export function vec4f(v: Vec3f, w: float32): Vec4f { return { x: v.x, y: v.y, z: v.z, w }; }
 export function vec2i(x: int32, y: int32): Vec2i { return { x, y }; }
 export function vec2i(v: Vec2f): Vec2i { return { x: v.x as int32, y: v.y as int32 }; }
-export function vec2i(v: Vec2u): Vec2i { return { x: v.x as int32, y: v.y as int32 }; }
 
 export function `-`(this a: Vec2i, b: Vec2i): Vec2i { return { x: a.x - b.x, y: a.y - b.y }; }
 
@@ -60,10 +54,11 @@ export struct Sampler {
 }
 
 // WGSL's textureDimensions and textureLoad take no sampler. These do: sokol-shdc cannot fetch
-// without one (src/shader/CLAUDE.md, "shdc's own limits").
-export function textureDimensions(texture: Texture2d, sampler: Sampler, level: int32): Vec2u {
+// without one (src/shader/CLAUDE.md, "shdc's own limits"). The size is signed, as the texel
+// coordinate it bounds is (docs/VOCABULARY.md, "A name brings its meaning").
+export function textureDimensions(texture: Texture2d, sampler: Sampler, level: int32): Vec2i {
 	if (level != 0) { unreachable "textureDimensions: the CPU texture has no mip levels"; }
-	return { x: texture.width as uint32, y: texture.height as uint32 };
+	return { x: texture.width, y: texture.height };
 }
 
 export function textureLoad(texture: Texture2d, sampler: Sampler, at: Vec2i, level: int32): Vec4f {

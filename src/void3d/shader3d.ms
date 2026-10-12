@@ -18,7 +18,7 @@ export struct CopyInput {
 
 // h3d.pass.Copy: the scene target onto the swapchain, one texel per pixel.
 export function copyFs(input: CopyInput, sourceTexture: Texture2d, pointSampler: Sampler): Vec4f {
-	const size = vec2i(textureDimensions(sourceTexture, pointSampler, 0));
+	const size = textureDimensions(sourceTexture, pointSampler, 0);
 	const p = clamp(vec2i(input.position.xy), vec2i(0, 0), size - vec2i(1, 1));
 	return textureLoad(sourceTexture, pointSampler, p, 0);
 }
