@@ -37,6 +37,9 @@ enum {
 	GPU3D_PROGRAM_BLOOM_DOWNSAMPLE_FIRST,
 	GPU3D_PROGRAM_BLOOM_DOWNSAMPLE,
 	GPU3D_PROGRAM_BLOOM_UPSAMPLE,
+	GPU3D_PROGRAM_OUTLINE_MASK,
+	GPU3D_PROGRAM_OUTLINE_MIX,
+	GPU3D_PROGRAM_OUTLINE_WIDTH,
 };
 
 enum {
@@ -46,10 +49,10 @@ enum {
 };
 
 #define GPU3D_PROGRAM_KEY(program, preset, premultiplied, cutout, shadowed, uvTransform, \
-		backTexture, dissolve, emissive, normalMap) \
+		backTexture, dissolve, emissive, normalMap, normalMrt) \
 	((program) | ((preset) << 4) | ((premultiplied) << 6) | ((cutout) << 7) | ((shadowed) << 8) | \
 	((uvTransform) << 9) | ((backTexture) << 10) | ((dissolve) << 11) | ((emissive) << 12) | \
-	((normalMap) << 13))
+	((normalMap) << 13) | ((normalMrt) << 15))
 
 #include "programTable.h"
 

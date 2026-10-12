@@ -116,6 +116,8 @@ export interface Renderer {
 	// The scene passes draw into an HDR target: scene programs write linear colour, and the
 	// preset that set this exposes and encodes it in its own pass.
 	linearOutput: boolean;
+	// Forward's enabled outline draws opaque meshes with their normal MRT variants.
+	normalMrt: boolean;
 	frameValues: Vec<float32>;
 	// The last frame drew a material whose UV transform scrolls.
 	readsTime: boolean;
@@ -221,6 +223,7 @@ export function createDrawing(
 		exposure: 0.0,
 		toneMode: ToneMode.Linear,
 		linearOutput: false,
+		normalMrt: false,
 		frameValues: new Array(FRAME_UNIFORM_LENGTH),
 		readsTime: false,
 		preset: preset,
@@ -356,7 +359,8 @@ export function beginFrame(
 		}
 		const material: int32 = item.material.index;
 		const drawn: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[material].program, renderer.preset, shadowed);
+			drawnIn(context.materials[material].program, renderer.preset, shadowed,
+				renderer.normalMrt && context.materials[material].phase == Phase.Opaque);
 		if (!drawn.ok) { return Result.err(RendererError.ProgramNotDrawn); }
 		if (!context.keepsItsUniforms(item.material)) {
 			return Result.err(RendererError.UniformsReplaced);
@@ -409,7 +413,8 @@ export function beginFrame(
 	let readsTime: boolean = false;
 	for (let i = 0; i < (items.length as int32); i++) {
 		const resolved: Result<ProgramKey, ProgramError> =
-			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed);
+			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed,
+				renderer.normalMrt && context.materials[items[i].material.index].phase == Phase.Opaque);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
 		readsTime = readsTime || scrolls(context, items[i].material.index, resolved.value);

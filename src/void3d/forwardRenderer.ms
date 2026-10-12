@@ -20,8 +20,9 @@ import {
 	commit,
 	passState,
 	contextGeneration,
+	depthZeroToOne,
 } from "../gpu/door";
-import { FilterMode, Wrap } from "../gpu/state";
+import { FilterMode, Wrap, Compare } from "../gpu/state";
 import { Material, Phase } from "./material";
 import {
 	RenderTarget,
@@ -47,6 +48,10 @@ import "./uniformPool";
 import { BloomSettings } from "./bloom";
 import { screenState } from "./screenFx";
 import {
+	ForwardOutlineSettings, ForwardOutlinePass, FORWARD_OUTLINE_PASS_UNIFORM_LENGTH,
+	FORWARD_OUTLINE_BLOCKS, OUTLINE_SCENE_LAYOUT,
+} from "./forwardOutline";
+import {
 	ToneMapPass,
 	TONE_MAP_PASS_BLOCKS,
 	TONE_MAP_PASS_UNIFORM_LENGTH,
@@ -59,6 +64,7 @@ import {
 	RENDERER_UNIFORM_LENGTH,
 	beginFrame,
 	drawPassLists,
+	drawPhase,
 	drawScreen,
 	closePrepare,
 	openScreen,
@@ -77,6 +83,9 @@ export interface ForwardRenderer {
 	sceneColors: Vec<ColorAttachment>;
 	sceneDepth: DepthAttachment;
 	copyMaterial: MaterialId;
+	outlineBlend: float32;
+	outlineSettings: ForwardOutlineSettings;
+	outline: ForwardOutlinePass | null;
 	// An HDR preset's target and tone map; null for an LDR one.
 	toneMap: ToneMapPass | null;
 	hdrColors: Vec<ColorAttachment>;
@@ -110,10 +119,16 @@ export enum ForwardError {
 	// The device cannot render into an Rgba16f target (GLES3 and WebGL2 without a
 	// color-buffer-float extension); there is no LDR fallback.
 	HdrUnsupported,
+	OutlineBlendedOpaque,
+	OutlineOpaqueDepth,
+	OutlineTranslucentDepthWrite,
 }
 
 // Floats of the uniform pool the preset needs: the core's blocks, and nothing of its own.
 export const FORWARD_UNIFORM_LENGTH: int32 = RENDERER_UNIFORM_LENGTH;
+// Budget for plain create plus its lazily reserved outline passes.
+export const FORWARD_OUTLINE_UNIFORM_LENGTH: int32 =
+	FORWARD_UNIFORM_LENGTH + FORWARD_OUTLINE_PASS_UNIFORM_LENGTH;
 
 // An HDR preset's floats: the core's blocks and the tone map's.
 export const FORWARD_HDR_UNIFORM_LENGTH: int32 =
@@ -202,6 +217,9 @@ function make(
 		sceneColors: new Array(1),
 		sceneDepth: NO_DEPTH,
 		copyMaterial: copy.value,
+		outlineBlend: 0.0,
+		outlineSettings: ForwardOutlineSettings.defaults(),
+		outline: null,
 		toneMap: toneMap,
 		hdrColors: new Array(1),
 		toneMapColors: new Array(1),
@@ -238,6 +256,8 @@ function adoptContext(renderer: ForwardRenderer): void {
 	renderer.sampler = Sampler.create(renderer.sampler.filter, renderer.sampler.wrap);
 	const toneMap: ToneMapPass | null = renderer.toneMap;
 	if (toneMap !== null) { toneMap.bloom.adoptContext(); }
+	const outline: ForwardOutlinePass | null = renderer.outline;
+	if (outline !== null) { outline.adoptContext(); }
 }
 
 function resizeTargets(renderer: ForwardRenderer, width: int32, height: int32): void {
@@ -289,6 +309,18 @@ export function prepareFrame(
 	height: int32,
 ): Result<int32, ForwardError> {
 	if (renderer.closed) { stopOnClosed("prepareFrame"); }
+	if (!Number.isFinite(renderer.outlineBlend) ||
+		renderer.outlineBlend < 0.0 || renderer.outlineBlend > 1.0) {
+		console.log("void3d: prepareFrame needs a finite outlineBlend in [0,1]; " +
+			"setOutlineBlend validates it");
+		unreachable;
+	}
+	if (renderer.outlineBlend > 0.0 &&
+		(renderer.outline === null || !renderer.outlineSettings.valid())) {
+		console.log("void3d: prepareFrame needs outline holders and valid outlineSettings; " +
+			"setOutlineBlend and setOutlineSettings validate them");
+		unreachable;
+	}
 	renderer.core.openPrepare();
 	const context: DrawContext = renderer.core.context;
 	if (width <= 0 || height <= 0) {
@@ -307,6 +339,19 @@ export function prepareFrame(
 		const up: ForwardError | null = screenMaterialError(renderer, toneMap.bloom.up);
 		if (up !== null) { return Result.err(up); }
 	}
+	const outline: ForwardOutlinePass | null = renderer.outline;
+	const outlined: boolean = renderer.outlineBlend > 0.0 && outline !== null;
+	if (outlined && outline !== null) {
+		const maskError: ForwardError | null = screenMaterialError(renderer, outline.maskMaterial);
+		if (maskError !== null) { return Result.err(maskError); }
+		const mixError: ForwardError | null = screenMaterialError(renderer, outline.mixMaterial);
+		if (mixError !== null) { return Result.err(mixError); }
+		const widthError: ForwardError | null = screenMaterialError(renderer, outline.widthMaterial);
+		if (widthError !== null) { return Result.err(widthError); }
+		const phases: ForwardError | null = outlinePhases(renderer.core.context, items);
+		if (phases !== null) { return Result.err(phases); }
+	}
+	renderer.core.normalMrt = outlined;
 	const began: Result<boolean, RendererError> =
 		beginFrame(renderer.core, items, camera, lights);
 	if (!began.ok) { return Result.err(fromCore(began.error)); }
@@ -327,7 +372,9 @@ export function prepareFrame(
 	}
 
 	const _casters: int32 = drawShadowPass(renderer.core, items, camera, lights);
-	if (toneMap !== null) {
+	if (outlined && outline !== null) {
+		drawOutlined(renderer, outline, items, width, height);
+	} else if (toneMap !== null) {
 		beginPass(renderer.hdrColors, renderer.sceneDepth);
 		drawPassLists(renderer.core, items, FORWARD_HDR_LAYOUT);
 		endPass();
@@ -353,7 +400,7 @@ function stopOnScreenDraw(error: RendererError): void {
 }
 
 // Into the screen pass the caller has open: its pipelines are keyed on SWAPCHAIN_LAYOUT.
-// PENDING3D: copy-opaque
+// Copy preserves the final premultiplied RGBA, including an outlined transparent clear.
 export function drawToScreen(renderer: ForwardRenderer): void {
 	if (renderer.closed) { stopOnClosed("drawToScreen"); }
 	openScreen(renderer.core);
@@ -395,6 +442,8 @@ export function closeForward(renderer: ForwardRenderer): void {
 	renderer.colorTarget.close();
 	renderer.depthTarget.close();
 	renderer.sampler = renderer.sampler.released();
+	const outline: ForwardOutlinePass | null = renderer.outline;
+	if (outline !== null) { outline.close(renderer.core.context); }
 	const copy: Result<int32, HandleError> =
 		releaseMaterial(renderer.core.context, renderer.copyMaterial);
 	if (!copy.ok) {
@@ -428,4 +477,102 @@ export function isClosed(this renderer: ForwardRenderer): boolean {
 function stopOnClosed(call: string): void {
 	console.log(`void3d: ${call} on a forward preset that was closed`);
 	unreachable;
+}
+
+// Per-frame scalar, like setExposure. Zero uses the original pass and program keys exactly.
+// Enabling reserves CPU holders only; first prepare allocates full-frame GPU targets.
+export function setOutlineBlend(renderer: ForwardRenderer, blend: float32): void {
+	if (renderer.closed) { stopOnClosed("setOutlineBlend"); }
+	if (!Number.isFinite(blend) || blend < 0.0 || blend > 1.0) {
+		console.log("void3d: setOutlineBlend needs a finite blend in [0,1]");
+		unreachable;
+	}
+	if (blend > 0.0 && renderer.outline === null) {
+		const context: DrawContext = renderer.core.context;
+		context.requireOpen("setOutlineBlend");
+		if (!context.uniforms.fits(FORWARD_OUTLINE_BLOCKS).ok) {
+			console.log("void3d: setOutlineBlend needs FORWARD_OUTLINE_PASS_UNIFORM_LENGTH " +
+				"additional uniform floats; FORWARD_OUTLINE_UNIFORM_LENGTH budgets plain create");
+			unreachable;
+		}
+		renderer.outline = ForwardOutlinePass.reserve(context);
+	}
+	renderer.outlineBlend = blend;
+	renderer.core.changed = true;
+}
+
+export function setOutlineSettings(
+	renderer: ForwardRenderer,
+	settings: ForwardOutlineSettings,
+): void {
+	if (renderer.closed) { stopOnClosed("setOutlineSettings"); }
+	if (!settings.valid()) {
+		console.log("void3d: setOutlineSettings needs finite straight RGBA [0,1], " +
+			"pixelWidth [1,16], depthThreshold (0,1], normalThreshold [-1,1]");
+		unreachable;
+	}
+	renderer.outlineSettings = settings;
+	renderer.core.changed = true;
+}
+
+function outlinePhases(
+	context: DrawContext,
+	items: Readonly<Span<DrawItem>>,
+): ForwardError | null {
+	for (const item of items) {
+		if (!context.hasMaterial(item.material)) { continue; }
+		const material: Material = context.materials[item.material.index];
+		if (material.phase == Phase.Opaque) {
+			if (material.pass.blends()) { return ForwardError.OutlineBlendedOpaque; }
+			if (!material.pass.depthWrite ||
+				(material.pass.depthTest != Compare.Less && material.pass.depthTest != Compare.LessEqual)) {
+				return ForwardError.OutlineOpaqueDepth;
+			}
+		} else if (material.pass.depthWrite) {
+			return ForwardError.OutlineTranslucentDepthWrite;
+		}
+	}
+	return null;
+}
+
+function drawOutlined(
+	renderer: ForwardRenderer,
+	outline: ForwardOutlinePass,
+	items: Readonly<Span<DrawItem>>,
+	width: int32,
+	height: int32,
+): void {
+	const core: Renderer = renderer.core;
+	if (outline.linearSampler.handle == 0) { outline.adoptContext(); }
+	outline.resize(width, height, renderer.outlineSettings.pixelWidth != 2.0);
+	const toneMap: ToneMapPass | null = renderer.toneMap;
+	const hdr: boolean = toneMap !== null;
+	const opaqueLayout: TargetLayout = hdr ?
+		{ ...OUTLINE_SCENE_LAYOUT, color0: PixelFormat.Rgba16f } : OUTLINE_SCENE_LAYOUT;
+	if (toneMap !== null) {
+		outline.sceneColors[0] = toneMap.target.asColor(LoadAction.Clear,
+			linearBackground(renderer.background));
+		outline.translucentColors[0] = toneMap.target.asColor(LoadAction.Load, SCREEN_CLEAR);
+	} else {
+		outline.sceneColors[0].clear = renderer.sceneColors[0].clear;
+	}
+	beginPass(outline.sceneColors, outline.sceneDepth);
+	drawPhase(core, Phase.Opaque, items, opaqueLayout);
+	endPass();
+	if (core.phaseCount(Phase.Alpha) + core.phaseCount(Phase.Additive) > 0) {
+		beginPass(outline.translucentColors, outline.translucentDepth);
+		const layout: TargetLayout = hdr ? FORWARD_HDR_LAYOUT : FORWARD_LAYOUT;
+		drawPhase(core, Phase.Alpha, items, layout);
+		drawPhase(core, Phase.Additive, items, layout);
+		endPass();
+	}
+	if (toneMap !== null) {
+		outline.translucentColors[0] = outline.lit.asColor(LoadAction.DontCare, SCREEN_CLEAR);
+		toneMap.draw(core, outline.translucentColors);
+	}
+	outline.prepare(core.context, renderer.outlineSettings, renderer.outlineBlend,
+		depthZeroToOne(), renderer.sampler.asHandle());
+	outline.drawMask(core);
+	if (renderer.outlineSettings.pixelWidth != 2.0) { outline.drawWidth(core); }
+	outline.drawMix(core, renderer.sceneColors);
 }

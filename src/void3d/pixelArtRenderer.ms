@@ -731,6 +731,9 @@ function rampsHaveLevels(
 			Program.BloomDownsampleFirst => true,
 			Program.BloomDownsample => true,
 			Program.BloomUpsample => true,
+			Program.OutlineMask => true,
+			Program.OutlineMix => true,
+			Program.OutlineWidth => true,
 		};
 		if (!held) { return false; }
 	}

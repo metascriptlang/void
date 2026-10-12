@@ -149,7 +149,8 @@ function billboardMaterial(context: DrawContext, texture: uint32, sampler: uint3
 const EVERY_PROGRAM: Vec<Program> = [
 	Program.Lit, Program.Particle, Program.Billboard, Program.Copy, Program.Post, Program.Blit,
 	Program.LitTextured, Program.UnlitTextured, Program.BloomDownsampleFirst,
-	Program.BloomDownsample, Program.BloomUpsample,
+	Program.BloomDownsample, Program.BloomUpsample, Program.OutlineMask, Program.OutlineMix,
+	Program.OutlineWidth,
 ];
 
 const SCENE_PROGRAMS: Vec<Program> = [
@@ -168,6 +169,9 @@ function layoutFor(key: ProgramKey): VertexLayout {
 		Program.BloomDownsampleFirst => VertexLayout.Fullscreen,
 		Program.BloomDownsample => VertexLayout.Fullscreen,
 		Program.BloomUpsample => VertexLayout.Fullscreen,
+		Program.OutlineMask => VertexLayout.Fullscreen,
+		Program.OutlineMix => VertexLayout.Fullscreen,
+		Program.OutlineWidth => VertexLayout.Fullscreen,
 		Program.LitTextured => VertexLayout.LitTextured,
 		Program.UnlitTextured => VertexLayout.LitTextured,
 	};
@@ -186,7 +190,7 @@ function everyKey(): Vec<ProgramKey> {
 								premultiplied: premultiplied, cutout: cutout, shadowed: shadowed,
 								uvTransform: (features & 1) != 0, backTexture: (features & 2) != 0,
 								dissolve: (features & 4) != 0, emissive: (features & 8) != 0,
-								normalMap: (features & 16) != 0,
+								normalMap: (features & 16) != 0, normalMrt: false,
 							});
 						}
 					}
@@ -210,7 +214,7 @@ test "every key packs to bits of its own, and each declared one reads its progra
 			assert vertexLayoutOf(key) == layoutFor(key);
 		}
 	}
-	assert declared == 94;
+	assert declared == 97;
 }
 
 test "both presets draw every scene program's key in their own, and no screen program" {

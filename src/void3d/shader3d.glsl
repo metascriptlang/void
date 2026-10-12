@@ -58,6 +58,9 @@ in vec3 worldPosition;
 in vec3 worldNormal;
 in vec4 baseColor;
 out vec4 fragColor;
+#ifdef NORMAL_MRT
+layout(location=1) out vec4 fragNormal;
+#endif
 @include_block litShade
 void main() {
     vec3 n = facingNormal(normalize(worldNormal), material.z);
@@ -66,6 +69,9 @@ void main() {
     if (fragColor.a < material.w) {
         discard;
     }
+#endif
+#ifdef NORMAL_MRT
+    fragNormal = vec4(n * 0.5 + 0.5, 1.0);
 #endif
     fragColor.rgb = toneMapped(fragColor.rgb);
 }
@@ -163,6 +169,9 @@ in vec3 worldNormal;
 in vec2 surfaceUv;
 in vec4 baseColor;
 out vec4 fragColor;
+#ifdef NORMAL_MRT
+layout(location=1) out vec4 fragNormal;
+#endif
 @include_block litTexturedShade
 void main() {
 #ifdef UV_TRANSFORM
@@ -203,6 +212,9 @@ void main() {
         discard;
     }
 #endif
+#ifdef NORMAL_MRT
+    fragNormal = vec4(n * 0.5 + 0.5, 1.0);
+#endif
     fragColor.rgb = toneMapped(fragColor.rgb);
 #ifdef PREMULTIPLIED
     fragColor = vec4(fragColor.rgb * fragColor.a, fragColor.a);
@@ -212,15 +224,25 @@ void main() {
 
 @vs unlitTexturedVs
 @include_block vertexUniforms
+#ifdef NORMAL_MRT
+@include_block modelUniforms
+#else
 @include_block modelTransformUniforms
+#endif
 in vec3 position;
 in vec3 normal;
 in vec2 uv;
 in vec4 color;
+#ifdef NORMAL_MRT
+out vec3 worldNormal;
+#endif
 out vec2 surfaceUv;
 out vec4 baseColor;
 void main() {
     gl_Position = viewProj * model * vec4(position, 1.0);
+#ifdef NORMAL_MRT
+    worldNormal = mat3(normalModel) * normal;
+#endif
     surfaceUv = uv;
     baseColor = color;
 }
@@ -249,9 +271,16 @@ void main() {
 #endif
 layout(binding=0) uniform texture2D baseTexture;
 layout(binding=0) uniform sampler baseSampler;
+#ifdef NORMAL_MRT
+@include_block facingNormal
+in vec3 worldNormal;
+#endif
 in vec2 surfaceUv;
 in vec4 baseColor;
 out vec4 fragColor;
+#ifdef NORMAL_MRT
+layout(location=1) out vec4 fragNormal;
+#endif
 @include_block unlitTexturedShade
 void main() {
 #ifdef UV_TRANSFORM
@@ -282,6 +311,9 @@ void main() {
     if (fragColor.a < material.w) {
         discard;
     }
+#endif
+#ifdef NORMAL_MRT
+    fragNormal = vec4(facingNormal(normalize(worldNormal), material.z) * 0.5 + 0.5, 1.0);
 #endif
     fragColor.rgb = toneMapped(fragColor.rgb);
 #ifdef PREMULTIPLIED
@@ -629,5 +661,128 @@ void main() {
         bloomTap(uv, vec2(-1.0, -1.0)) + bloomTap(uv, vec2(1.0, -1.0))) * 0.0625;
     float factor = bloomBlend.x;
     fragColor = vec4(sum * factor, factor);
+}
+@end
+
+@fs outlineMaskFs
+// Visible opaque normal/depth only. No discarded face can expose a second depth layer.
+@image_sample_type outlineDepth unfilterable_float
+@sampler_type outlineDepthSampler nonfiltering
+layout(binding=0) uniform texture2D outlineNormal;
+layout(binding=1) uniform texture2D outlineDepth;
+layout(binding=0) uniform sampler outlinePointSampler;
+layout(binding=1) uniform sampler outlineDepthSampler;
+layout(binding=0) uniform outlineMaskParams {
+    vec4 outlineEdge; // width, clip-depth threshold, normal dot threshold, stored-depth scale
+    vec4 outlineDepthMap; // stored-depth bias
+};
+out vec4 fragColor;
+ivec2 outlinePixel(ivec2 p, ivec2 size) {
+    return clamp(p, ivec2(0), size - ivec2(1));
+}
+float outlineDepthAt(ivec2 p, ivec2 size) {
+    return texelFetch(sampler2D(outlineDepth, outlineDepthSampler), outlinePixel(p, size), 0).r
+        * outlineEdge.w + outlineDepthMap.x;
+}
+void main() {
+    ivec2 size = textureSize(sampler2D(outlineNormal, outlinePointSampler), 0);
+    ivec2 p = ivec2(gl_FragCoord.xy);
+    vec4 center = texelFetch(sampler2D(outlineNormal, outlinePointSampler), p, 0);
+    float coverage = 0.0;
+    vec3 n = center.a > 0.5 ? normalize(center.xyz * 2.0 - 1.0) : vec3(0.0);
+    float depth = outlineDepthAt(p, size);
+    ivec2 offsets[4] = ivec2[4](ivec2(1,0), ivec2(-1,0), ivec2(0,1), ivec2(0,-1));
+    for (int i = 0; i < 4; i++) {
+        // A silhouette is inside the nearest surface; a crease straddles two visible normals.
+        ivec2 silhouette = p + ivec2(round(vec2(offsets[i]) * outlineEdge.x));
+        float silhouetteDelta = outlineDepthAt(silhouette, size) - depth;
+        vec4 silhouetteNormal = texelFetch(sampler2D(outlineNormal, outlinePointSampler),
+            outlinePixel(silhouette, size), 0);
+        ivec2 crease = p + ivec2(round(vec2(offsets[i]) * max(1.0, outlineEdge.x * 0.5)));
+        vec4 neighbor = texelFetch(sampler2D(outlineNormal, outlinePointSampler),
+            outlinePixel(crease, size), 0);
+        float creaseDelta = outlineDepthAt(crease, size) - depth;
+        vec3 nq = neighbor.a > 0.5 ? normalize(neighbor.xyz * 2.0 - 1.0) : vec3(0.0);
+        bool distinctNormal = any(notEqual(center.xyz, neighbor.xyz));
+        if (center.a > 0.5 && (silhouetteNormal.a < 0.5 || silhouetteDelta > outlineEdge.y ||
+            (neighbor.a > 0.5 && abs(creaseDelta) < outlineEdge.y &&
+                distinctNormal && dot(n,nq) < outlineEdge.z))) {
+            coverage = 1.0;
+        }
+    }
+    fragColor = vec4(coverage);
+}
+@end
+
+@fs outlineMixFs
+layout(binding=0) uniform texture2D outlineLit;
+layout(binding=1) uniform texture2D outlineMask;
+layout(binding=0) uniform sampler outlineLitSampler;
+layout(binding=1) uniform sampler outlineLinearSampler;
+layout(binding=0) uniform outlineMixParams {
+    vec4 outlineColor; // premultiplied RGBA
+    vec4 outlineMix; // blend
+};
+out vec4 fragColor;
+void main() {
+    ivec2 size = textureSize(sampler2D(outlineMask, outlineLinearSampler), 0);
+    vec2 delta = 1.0 / vec2(size);
+    vec2 tuv = gl_FragCoord.xy * delta;
+    // Unchanged Heaps pass/FXAA.hx RGB direction/taps/range selection on grayscale coverage.
+    vec3 nw = texture(sampler2D(outlineMask, outlineLinearSampler), tuv + vec2(-1,-1)*delta).rgb;
+    vec3 ne = texture(sampler2D(outlineMask, outlineLinearSampler), tuv + vec2(1,-1)*delta).rgb;
+    vec3 sw = texture(sampler2D(outlineMask, outlineLinearSampler), tuv + vec2(-1,1)*delta).rgb;
+    vec3 se = texture(sampler2D(outlineMask, outlineLinearSampler), tuv + vec2(1,1)*delta).rgb;
+    vec3 mid = texture(sampler2D(outlineMask, outlineLinearSampler), tuv).rgb;
+    vec3 lumA = vec3(0.299,0.587,0.114);
+    float lumNW = dot(nw,lumA);
+    float lumNE = dot(ne,lumA);
+    float lumSW = dot(sw,lumA);
+    float lumSE = dot(se,lumA);
+    float lumMid = dot(mid,lumA);
+    float lumMin = min(lumMid,min(min(lumNW,lumNE),min(lumSW,lumSE)));
+    float lumMax = max(lumMid,max(max(lumNW,lumNE),max(lumSW,lumSE)));
+    vec2 dir;
+    dir.x = -((lumNW+lumNE)-(lumSW+lumSE));
+    dir.y = ((lumNW+lumSW)-(lumNE+lumSE));
+    float dirReduce = max((lumNW+lumNE+lumSW+lumSE)*(0.25/128.0),1.0/8.0);
+    float rcpDirMin = 1.0/(min(abs(dir.x),abs(dir.y))+dirReduce);
+    dir = min(vec2(8),max(vec2(-8),dir*rcpDirMin))*delta;
+    vec3 rgbA = 0.5*(texture(sampler2D(outlineMask,outlineLinearSampler),
+        tuv+dir*(1.0/3.0-0.5)).rgb+texture(sampler2D(outlineMask,outlineLinearSampler),
+        tuv+dir*(2.0/3.0-0.5)).rgb);
+    vec3 rgbB = rgbA*0.5+0.25*(texture(sampler2D(outlineMask,outlineLinearSampler),
+        tuv+dir*-0.5).rgb+texture(sampler2D(outlineMask,outlineLinearSampler),tuv+dir*0.5).rgb);
+    float lumB = dot(rgbB,lumA);
+    bvec2 cmp = greaterThan(vec2(lumB,-lumB),vec2(lumMin,-lumMax));
+    vec3 filtered = mix(rgbA,rgbB,float(cmp.x)*float(cmp.y));
+    vec4 lit = texelFetch(sampler2D(outlineLit,outlineLitSampler),ivec2(gl_FragCoord.xy),0);
+    fragColor = mix(lit,outlineColor*filtered.r,outlineMix.x);
+}
+@end
+
+@fs outlineWidthFs
+@image_sample_type outlineWidthMask float
+@sampler_type outlineWidthSampler filtering
+layout(binding=0) uniform texture2D outlineWidthMask;
+layout(binding=0) uniform sampler outlineWidthSampler;
+layout(binding=0) uniform outlineWidthParams {
+    vec4 outlineWidth;
+};
+out vec4 fragColor;
+void main() {
+    vec2 delta = 1.0 / vec2(textureSize(sampler2D(outlineWidthMask, outlineWidthSampler), 0));
+    vec2 uv = gl_FragCoord.xy * delta;
+    float own = texture(sampler2D(outlineWidthMask, outlineWidthSampler), uv).r;
+    float maximum = outlineWidth.y > 0.5 ? 1.0 - own : own;
+    float angle = 0.0;
+    for (int i = 0; i < 48; i++) {
+        angle += 6.283185307179586 / 48.0;
+        vec2 displacement = vec2(cos(angle), sin(angle)) * outlineWidth.x * delta;
+        float current = texture(sampler2D(outlineWidthMask, outlineWidthSampler), uv + displacement).r;
+        maximum = max(maximum, outlineWidth.y > 0.5 ? 1.0 - current : current);
+    }
+    float coverage = outlineWidth.y > 0.5 ? 1.0 - maximum : maximum;
+    fragColor = vec4(coverage);
 }
 @end

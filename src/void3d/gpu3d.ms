@@ -54,6 +54,9 @@ export enum Program {
 	BloomDownsampleFirst,
 	BloomDownsample,
 	BloomUpsample,
+	OutlineMask,
+	OutlineMix,
+	OutlineWidth,
 }
 
 // Heaps adds a pass's output shaders to a material's (h3d.pass.Output); sokol-shdc programs
@@ -84,14 +87,17 @@ export struct ProgramKey {
 	dissolve: boolean;
 	emissive: boolean;
 	normalMap: boolean;
+	// Full-resolution Forward opaque MRT; bit14 is reserved for skinning.
+	normalMrt: boolean;
 }
 
-const KEY_LIMIT: int32 = 16384;
+const KEY_LIMIT: int32 = 65536;
 
 export function of(this typeof ProgramKey, program: Program): ProgramKey {
 	return {
 		program: program, preset: Preset.Core, premultiplied: false, cutout: false, shadowed: false,
 		uvTransform: false, backTexture: false, dissolve: false, emissive: false, normalMap: false,
+		normalMrt: false,
 	};
 }
 
@@ -152,6 +158,13 @@ export function withNormalMap(this key: ProgramKey): ProgramKey {
 	return { ...stopOnNotLitTextured(key, "normal map"), normalMap: true };
 }
 
+export function withNormalMrt(this key: ProgramKey): ProgramKey {
+	const mesh: boolean = key.program == Program.Lit || key.program == Program.LitTextured ||
+		key.program == Program.UnlitTextured;
+	if (!mesh || key.preset != Preset.Core) { return stopOnFeature(key, "normal MRT"); }
+	return { ...key, normalMrt: true };
+}
+
 // Any of the three reads the moving material block (MOVING_* below).
 export function moves(this key: ProgramKey): boolean {
 	return key.uvTransform || key.backTexture || key.dissolve;
@@ -167,7 +180,8 @@ export function bits(this key: ProgramKey): int32 {
 		((key.premultiplied ? 1 : 0) << 6) | ((key.cutout ? 1 : 0) << 7) |
 		((key.shadowed ? 1 : 0) << 8) | ((key.uvTransform ? 1 : 0) << 9) |
 		((key.backTexture ? 1 : 0) << 10) | ((key.dissolve ? 1 : 0) << 11) |
-		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13);
+		((key.emissive ? 1 : 0) << 12) | ((key.normalMap ? 1 : 0) << 13) |
+		((key.normalMrt ? 1 : 0) << 15);
 }
 
 export function describe(this key: ProgramKey): string {
@@ -179,8 +193,10 @@ export function describe(this key: ProgramKey): string {
 	const dissolve: string = key.dissolve ? " dissolve" : "";
 	const emissive: string = key.emissive ? " emissive" : "";
 	const normalMap: string = key.normalMap ? " normal-map" : "";
+	const normalMrt: string = key.normalMrt ? " normal-MRT" : "";
 	const features: string =
-		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}`;
+		`${premultiplied}${cutout}${shadowed}${uv}${back}${dissolve}${emissive}${normalMap}` +
+		normalMrt;
 	return `${key.preset.toString()} ${key.program.toString()}${features}`;
 }
 
@@ -241,6 +257,9 @@ export function isScreenProgram(program: Program): boolean {
 		Program.BloomDownsampleFirst => true,
 		Program.BloomDownsample => true,
 		Program.BloomUpsample => true,
+		Program.OutlineMask => true,
+		Program.OutlineMix => true,
+		Program.OutlineWidth => true,
 	};
 }
 
@@ -252,12 +271,15 @@ export function drawnIn(
 	key: ProgramKey,
 	preset: Preset,
 	shadowMap: boolean,
+	normalMrt: boolean = false,
 ): Result<ProgramKey, ProgramError> {
 	const screen: boolean = isScreenProgram(key.program);
 	if (screen || key.preset != Preset.Core || preset == Preset.Shadow) {
 		return Result.err(ProgramError.NotDrawn);
 	}
-	const drawn: ProgramKey = { ...key.withPreset(preset), shadowed: key.shadowed && shadowMap };
+	const drawn: ProgramKey = {
+		...key.withPreset(preset), shadowed: key.shadowed && shadowMap, normalMrt: normalMrt,
+	};
 	if (!declares(drawn)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(drawn);
 }
@@ -271,7 +293,7 @@ export function castIn(key: ProgramKey): Result<ProgramKey, ProgramError> {
 	const cast: ProgramKey = {
 		...key.withPreset(Preset.Shadow), premultiplied: false, shadowed: false,
 		uvTransform: key.uvTransform && key.cutout, backTexture: key.backTexture && key.cutout,
-		emissive: false,
+		emissive: false, normalMrt: false,
 	};
 	if (!declares(cast)) { return Result.err(ProgramError.NotDrawn); }
 	return Result.ok(cast);

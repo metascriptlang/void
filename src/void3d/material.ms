@@ -144,6 +144,9 @@ function cutoutOf(program: Program): ProgramKey {
 		Program.BloomDownsampleFirst => stopOnNoCutout(program),
 		Program.BloomDownsample => stopOnNoCutout(program),
 		Program.BloomUpsample => stopOnNoCutout(program),
+		Program.OutlineMask => stopOnNoCutout(program),
+		Program.OutlineMix => stopOnNoCutout(program),
+		Program.OutlineWidth => stopOnNoCutout(program),
 	};
 }
 
