@@ -346,7 +346,8 @@ export function prepareFrame(
 		if (maskError !== null) { return Result.err(maskError); }
 		const mixError: ForwardError | null = screenMaterialError(renderer, outline.mixMaterial);
 		if (mixError !== null) { return Result.err(mixError); }
-		const widthError: ForwardError | null = screenMaterialError(renderer, outline.widthMaterial);
+		const widthError: ForwardError | null =
+			screenMaterialError(renderer, outline.widthMaterial);
 		if (widthError !== null) { return Result.err(widthError); }
 		const phases: ForwardError | null = outlinePhases(renderer.core.context, items);
 		if (phases !== null) { return Result.err(phases); }
@@ -525,7 +526,8 @@ function outlinePhases(
 		if (material.phase == Phase.Opaque) {
 			if (material.pass.blends()) { return ForwardError.OutlineBlendedOpaque; }
 			if (!material.pass.depthWrite ||
-				(material.pass.depthTest != Compare.Less && material.pass.depthTest != Compare.LessEqual)) {
+				(material.pass.depthTest != Compare.Less &&
+					material.pass.depthTest != Compare.LessEqual)) {
 				return ForwardError.OutlineOpaqueDepth;
 			}
 		} else if (material.pass.depthWrite) {

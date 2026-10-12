@@ -414,7 +414,8 @@ export function beginFrame(
 	for (let i = 0; i < (items.length as int32); i++) {
 		const resolved: Result<ProgramKey, ProgramError> =
 			drawnIn(context.materials[items[i].material.index].program, renderer.preset, shadowed,
-				renderer.normalMrt && context.materials[items[i].material.index].phase == Phase.Opaque);
+				renderer.normalMrt &&
+					context.materials[items[i].material.index].phase == Phase.Opaque);
 		if (!resolved.ok) { unreachable; }
 		renderer.drawn[i] = resolved.value;
 		readsTime = readsTime || scrolls(context, items[i].material.index, resolved.value);
